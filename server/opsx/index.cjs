@@ -23,12 +23,18 @@ const inventoryDb = require('../inventory/mssql.cjs');
 const { getAppsTable } = require('../config/apps-table.cjs');
 
 // Kullanicidan gelen "operation" degeri ASLA dogrudan job'a gecmez — yalniz bu
-// beyaz listedeki uc degerden biri kabul edilir. Aksi halde extra_vars uzerinden
+// beyaz listedeki degerlerden biri kabul edilir. Aksi halde extra_vars uzerinden
 // playbook'a beklenmedik bir deger enjekte edilebilirdi.
+//
+// threaddump/heapdump SADECE Legacy'de anlamli (Openshift govdesinde operation
+// alani zaten yok — bkz. POST /api/opsx/run yorumu); onyuz OperationStep'i de
+// yalniz Legacy akisinda kullanildigi icin ayrica bir platform filtresi gerekmez.
 const ALLOWED_OPERATIONS = Object.freeze({
   restart: 'Uygulamamı restart et',
   stop: 'Uygulamamı durdur',
   start: 'Uygulamamı başlat',
+  threaddump: 'Thread dump al',
+  heapdump: 'Heap dump al',
 });
 
 const REGISTRY_KEYS = Object.freeze({

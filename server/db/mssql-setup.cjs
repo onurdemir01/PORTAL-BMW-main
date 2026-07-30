@@ -1072,7 +1072,7 @@ const PLAYBOOK_REGISTRY_SEED = [
   // kullaniciya "yonetici tanimlamali" mesaji doner.
   {
     key_name: 'opsx_legacy_operation', display_name: 'OpsX — Legacy Uygulama Operasyonu', category: 'opsx', handler: 'opsx_legacy',
-    description: 'JBoss/WAS geleneksel Linux sunucularda uygulama restart/stop/start islemi.',
+    description: 'JBoss/WAS geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.',
     playbook_path: null, env_var_name: 'OPSX_LEGACY_TEMPLATE_ID',
   },
   {

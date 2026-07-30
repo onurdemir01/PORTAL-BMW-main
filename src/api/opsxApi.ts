@@ -8,7 +8,7 @@ import { safeJson } from "./http";
 const BASE = "/api/opsx";
 
 export type OpsxPlatform = "legacy" | "openshift";
-export type OpsxOperation = "restart" | "stop" | "start";
+export type OpsxOperation = "restart" | "stop" | "start" | "threaddump" | "heapdump";
 
 export interface OpsxHost {
   host: string;

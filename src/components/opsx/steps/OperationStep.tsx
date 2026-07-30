@@ -4,13 +4,15 @@
 // böylece izin verilen işlem kümesi tek yerde (server/opsx/index.cjs ALLOWED_OPERATIONS)
 // tanımlı kalır. Sunucu her durumda gelen değeri o beyaz listeye karşı yeniden doğrular.
 import React, { useEffect, useState } from "react";
-import { ArrowPathIcon, StopCircleIcon, PlayCircleIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, StopCircleIcon, PlayCircleIcon, DocumentMagnifyingGlassIcon, CircleStackIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxOperation, type OpsxOperationDef } from "@/api/opsxApi";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   restart: ArrowPathIcon,
   stop: StopCircleIcon,
   start: PlayCircleIcon,
+  threaddump: DocumentMagnifyingGlassIcon,
+  heapdump: CircleStackIcon,
 };
 
 const OperationStep: React.FC<{
