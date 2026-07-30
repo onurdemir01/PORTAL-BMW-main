@@ -1,0 +1,85 @@
+# READ-ONLY: Ağ bağlantı durumunu görüntüler. Hiçbir şey değiştirmez.
+# Opsiyonel extra_vars: dest_host, dest_port (verilirse hedefe port testi de yapılır).
+- name: Network Bağlantı Durumu
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: false
+
+  vars:
+    check_dest_host: "{{ dest_host | default('') }}"
+    check_dest_port: "{{ dest_port | default('') }}"
+
+  tasks:
+    - name: Ağ arayüzleri ve IP adresleri
+      ansible.builtin.shell:
+        cmd: ip -4 addr show 2>/dev/null || ifconfig 2>/dev/null || echo 'ağ arayüzü bilgisi alınamadı'
+      register: net_ifaces
+      changed_when: false
+      ignore_errors: true
+
+    - name: Arayüz özeti
+      ansible.builtin.debug:
+        msg: "{{ net_ifaces.stdout_lines }}"
+
+    - name: Varsayılan route
+      ansible.builtin.shell:
+        cmd: ip route show default 2>/dev/null || route -n 2>/dev/null || echo 'route bilgisi alınamadı'
+      register: net_route
+      changed_when: false
+      ignore_errors: true
+
+    - name: Route özeti
+      ansible.builtin.debug:
+        msg: "{{ net_route.stdout_lines }}"
+
+    - name: DNS çözümleme testi (kendi hostname'i)
+      ansible.builtin.shell:
+        cmd: >
+          getent hosts "$(hostname)" 2>/dev/null ||
+          nslookup "$(hostname)" 2>/dev/null ||
+          echo 'DNS çözümlemesi başarısız'
+      register: dns_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: DNS özeti
+      ansible.builtin.debug:
+        msg: "{{ dns_check.stdout_lines }}"
+
+    - name: Dinleyen TCP portları
+      ansible.builtin.shell:
+        cmd: ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || echo 'dinleyen port bilgisi alınamadı (yetki gerekebilir)'
+      register: listening_ports
+      changed_when: false
+      ignore_errors: true
+
+    - name: Dinleyen port özeti
+      ansible.builtin.debug:
+        msg: "{{ listening_ports.stdout_lines }}"
+
+    - name: Hedefe DNS çözümleme (dest_host verildiyse)
+      ansible.builtin.shell:
+        cmd: "getent hosts '{{ check_dest_host }}' 2>/dev/null || echo 'çözümlenemedi'"
+      register: dest_dns
+      when: check_dest_host != ''
+      changed_when: false
+      ignore_errors: true
+
+    - name: Hedef DNS sonucu
+      ansible.builtin.debug:
+        msg: "{{ dest_dns.stdout_lines | default(['dest_host verilmedi, atlandı']) }}"
+
+    - name: Hedef porta bağlantı testi (dest_host + dest_port verildiyse)
+      ansible.builtin.shell:
+        cmd: >
+          timeout 5 bash -c "cat < /dev/null > /dev/tcp/{{ check_dest_host }}/{{ check_dest_port }}" 2>&1 &&
+          echo "BAŞARILI: {{ check_dest_host }}:{{ check_dest_port }} açık" ||
+          echo "BAŞARISIZ: {{ check_dest_host }}:{{ check_dest_port }} kapalı/ulaşılamıyor"
+      register: port_check
+      when: check_dest_host != '' and check_dest_port != ''
+      changed_when: false
+      ignore_errors: true
+
+    - name: Port testi sonucu
+      ansible.builtin.debug:
+        msg: "{{ port_check.stdout_lines | default(['dest_host/dest_port verilmedi, atlandı']) }}"

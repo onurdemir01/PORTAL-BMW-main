@@ -1,0 +1,555 @@
+---
+# LogX v2 - Legacy log dosyalarini kaynak sunucuda ZIP'leyip dogrudan staging'e yazar.
+#
+# Gerekli extra_vars:
+#   selected_files:
+#     - host: GBJBOQ01
+#       path: /vhosting/application/logs/application.log
+#     - host: GBJBOQ02                       # ← ARTIK COKLU HOST desteklenir
+#       path: /vhosting/application/logs/application.log
+#   staging_dir: /sw/BMW_PORTAL/logs/legacy
+#   fallback_dir: /tmp/logx-v2-fallback
+#   archive_name: fa52e9adfd9fc71572ea8c7b15b65ed4.zip
+#
+# COKLU-HOST DAVRANISI (yeni):
+# - TEK host secildiginde: dosyalar kaynak hostta dogrudan tek ZIP'e yazilir + staging
+#   erisilemezse fallback_dir'e yazilir (A4 ingest fetch-back ile portal'a itilir). Bu yol
+#   ESKISIYLE BIREBIR AYNI — calisani bozmadik.
+# - BIRDEN COK host secildiginde: her host KENDI dosyalarini paylasimli staging altindaki
+#   "<stem>__parts/<HOST>.zip" per-host ZIP'ine yazar; ardindan run_once bir aggregator
+#   (staging NFS'i mount eden bir kaynak host) tum per-host ZIP'leri TEK "archive_name"
+#   ZIP'i icinde birlestirir. Sonuc yine TEK arsiv (staged_path/filename/size_bytes) →
+#   backend/download sozlesmesi degismez. Kullanici tek ZIP acinca her sunucunun ZIP'ini bulur.
+#   NOT: Coklu-host, tum kaynak hostlarin ayni paylasimli staging_dir'i mount etmesini gerektirir
+#   (tek-host fallback yolu coklu-host'ta uygulanmaz).
+#
+# Onemli:
+# - Dosyalar AWX/controller'a fetch edilmez; her host kendi diskindeki loglari kendisi zipler.
+# - community.general collection'i gerekli: community.general.archive
+
+- name: "LogX v2 - Legacy transfer girdilerini dogrula"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    selected_hosts: >-
+      {{
+        selected_files
+        | default([])
+        | map(attribute='host')
+        | unique
+        | list
+      }}
+
+  tasks:
+    - name: "Zorunlu degiskenleri dogrula"
+      ansible.builtin.assert:
+        that:
+          - selected_files is defined
+          - selected_files is sequence
+          - selected_files | length > 0
+          - staging_dir is defined
+          - staging_dir | string | length > 1
+          - staging_dir is match('^/')
+          - fallback_dir is defined
+          - fallback_dir | string | length > 1
+          - fallback_dir is match('^/')
+          - archive_name is defined
+          - archive_name is match('^[A-Za-z0-9._-]+[.]zip$')
+        fail_msg: >-
+          selected_files, staging_dir, fallback_dir ve guvenli bir .zip archive_name
+          saglanmalidir.
+
+    - name: "En az bir kaynak host oldugunu dogrula"
+      ansible.builtin.assert:
+        that:
+          - selected_hosts | length >= 1
+        fail_msg: "selected_files en az bir gecerli host icermelidir."
+
+    - name: "Secilen dosya kayitlarini dogrula"
+      ansible.builtin.assert:
+        that:
+          - item is mapping
+          - item.host is defined
+          - item.host | string | length > 0
+          - item.path is defined
+          - item.path is match('^/')
+        fail_msg: "Gecersiz selected_files kaydi: {{ item }}"
+      loop: "{{ selected_files }}"
+      loop_control:
+        label: "{{ item.host | default('?') }}:{{ item.path | default('?') }}"
+
+
+- name: "LogX v2 - Legacy loglari kaynak hosttan arsivle (tek-host: dogrudan / coklu-host: per-host parca)"
+  hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
+  gather_facts: false
+  become: false
+  strategy: free
+
+  vars:
+    source_hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
+    single_host: "{{ (selected_files | map(attribute='host') | unique | list | length) == 1 }}"
+    archive_stem: "{{ archive_name | regex_replace('[.]zip$', '') }}"
+    parts_dir: "{{ staging_dir }}/{{ archive_name | regex_replace('[.]zip$', '') }}__parts"
+    staging_archive_path: "{{ staging_dir }}/{{ archive_name }}"
+    fallback_archive_path: "{{ fallback_dir }}/{{ archive_name }}"
+    host_part_path: "{{ staging_dir }}/{{ archive_name | regex_replace('[.]zip$', '') }}__parts/{{ inventory_hostname }}.zip"
+
+  tasks:
+    # ── ORTAK: bu hostun secilen dosyalarini hazirla + durumlarini kontrol et ──────────
+    - name: "Bu hosta ait secilen dosyalari hazirla"
+      ansible.builtin.set_fact:
+        host_selected_files: >-
+          {{
+            selected_files
+            | selectattr('host', 'equalto', inventory_hostname)
+            | list
+          }}
+        valid_source_paths: []
+        per_file_status: []
+      changed_when: false
+
+    - name: "Secilen kaynak dosyalarin durumunu kontrol et"
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+        follow: false
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      loop: "{{ host_selected_files }}"
+      loop_control:
+        label: "{{ item.path }}"
+      register: source_file_stats
+      changed_when: false
+      failed_when: false
+
+    - name: "Dosya durumlarini ve gecerli kaynak listesini olustur"
+      ansible.builtin.set_fact:
+        valid_source_paths: >-
+          {{
+            valid_source_paths
+            + (
+                [item.item.path]
+                if (
+                  item.stat.exists | default(false)
+                  and item.stat.isreg | default(false)
+                  and item.stat.readable | default(true)
+                )
+                else []
+              )
+          }}
+        per_file_status: >-
+          {{
+            per_file_status
+            + [
+                {
+                  'host': item.item.host,
+                  'path': item.item.path,
+                  'status': (
+                    'ok'
+                    if (
+                      item.stat.exists | default(false)
+                      and item.stat.isreg | default(false)
+                      and item.stat.readable | default(true)
+                    )
+                    else 'error'
+                  ),
+                  'error': (
+                    ''
+                    if (
+                      item.stat.exists | default(false)
+                      and item.stat.isreg | default(false)
+                      and item.stat.readable | default(true)
+                    )
+                    else (
+                      'Dosya bulunamadi'
+                      if not (item.stat.exists | default(false))
+                      else (
+                        'Path normal dosya degil'
+                        if not (item.stat.isreg | default(false))
+                        else 'Dosya okunamiyor'
+                      )
+                    )
+                  )
+                }
+              ]
+          }}
+      loop: "{{ source_file_stats.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+      changed_when: false
+
+    # ══════════════════════════════════════════════════════════════════════════════════
+    # TEK-HOST YOLU (ESKISIYLE BIREBIR AYNI): dogrudan staging'e ZIP + fallback
+    # ══════════════════════════════════════════════════════════════════════════════════
+    - name: "En az bir gecerli kaynak dosya oldugunu dogrula (tek-host)"
+      ansible.builtin.assert:
+        that:
+          - valid_source_paths | length > 0
+        fail_msg: "Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi."
+      when: single_host | bool
+
+    - name: "Staging dizininin durumunu kontrol et (tek-host)"
+      ansible.builtin.stat:
+        path: "{{ staging_dir }}"
+        follow: true
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: staging_dir_stat
+      changed_when: false
+      failed_when: false
+      when: single_host | bool
+
+    - name: "ZIP arsivini dogrudan staging dizininde olustur (tek-host)"
+      community.general.archive:
+        path: "{{ valid_source_paths }}"
+        dest: "{{ staging_archive_path }}"
+        format: zip
+        mode: "0775"
+        force_archive: true
+      register: staging_archive_result
+      when:
+        - single_host | bool
+        - staging_dir_stat.stat.exists | default(false)
+        - staging_dir_stat.stat.isdir | default(false)
+      failed_when: false
+
+    - name: "Staging kullanilamiyorsa fallback dizinini olustur (tek-host)"
+      ansible.builtin.file:
+        path: "{{ fallback_dir }}"
+        state: directory
+        mode: "0750"
+      register: fallback_dir_result
+      when:
+        - single_host | bool
+        - staging_archive_result is skipped or staging_archive_result.failed | default(false)
+      failed_when: false
+
+    - name: "Staging kullanilamiyorsa ZIP arsivini fallback dizininde olustur (tek-host)"
+      community.general.archive:
+        path: "{{ valid_source_paths }}"
+        dest: "{{ fallback_archive_path }}"
+        format: zip
+        mode: "0775"
+        force_archive: true
+      register: fallback_archive_result
+      when:
+        - single_host | bool
+        - staging_archive_result is skipped or staging_archive_result.failed | default(false)
+        - not (fallback_dir_result.failed | default(false))
+      failed_when: false
+
+    - name: "Nihai arsiv yolunu ve transfer durumunu belirle (tek-host)"
+      ansible.builtin.set_fact:
+        archive_written_to_staging: >-
+          {{
+            staging_archive_result is not skipped
+            and not (staging_archive_result.failed | default(false))
+          }}
+        archive_written_to_fallback: >-
+          {{
+            fallback_archive_result is defined
+            and fallback_archive_result is not skipped
+            and not (fallback_archive_result.failed | default(false))
+          }}
+        final_archive_path: >-
+          {{
+            staging_archive_path
+            if (
+              staging_archive_result is not skipped
+              and not (staging_archive_result.failed | default(false))
+            )
+            else fallback_archive_path
+          }}
+      changed_when: false
+      when: single_host | bool
+
+    - name: "Olusturulan arsivin bilgisini al (tek-host)"
+      ansible.builtin.stat:
+        path: "{{ final_archive_path }}"
+        follow: true
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: final_archive_stat
+      when:
+        - single_host | bool
+        - archive_written_to_staging or archive_written_to_fallback
+      changed_when: false
+      failed_when: false
+
+    - name: "Kaynak host sonucunu kaydet (tek-host → nihai logx_result sekli)"
+      ansible.builtin.set_fact:
+        host_logx_result:
+          overall_status: >-
+            {{
+              'failed'
+              if not (archive_written_to_staging or archive_written_to_fallback)
+              else (
+                'partial'
+                if (
+                  per_file_status
+                  | selectattr('status', 'equalto', 'error')
+                  | list
+                  | length
+                ) > 0
+                else 'success'
+              )
+            }}
+          staged_path: >-
+            {{
+              final_archive_path
+              if (archive_written_to_staging or archive_written_to_fallback)
+              else ''
+            }}
+          filename: "{{ archive_name }}"
+          size_bytes: "{{ final_archive_stat.stat.size | default(0) | int }}"
+          is_fallback: "{{ not archive_written_to_staging }}"
+          per_file_status: "{{ per_file_status }}"
+          error: >-
+            {{
+              ''
+              if (archive_written_to_staging or archive_written_to_fallback)
+              else (
+                fallback_archive_result.msg
+                | default(
+                    staging_archive_result.msg
+                    | default('ZIP arsivi olusturulamadi'),
+                    true
+                  )
+              )
+            }}
+      changed_when: false
+      when: single_host | bool
+
+    # ══════════════════════════════════════════════════════════════════════════════════
+    # COKLU-HOST YOLU: her host KENDI dosyalarini paylasimli staging'de per-host ZIP'e yazar
+    # ══════════════════════════════════════════════════════════════════════════════════
+    - name: "Paylasimli parca dizinini olustur (coklu-host)"
+      ansible.builtin.file:
+        path: "{{ parts_dir }}"
+        state: directory
+        mode: "0775"
+      register: parts_dir_result
+      when: not (single_host | bool)
+      failed_when: false
+
+    - name: "Bu hostun loglarini per-host parca ZIP'ine yaz (coklu-host)"
+      community.general.archive:
+        path: "{{ valid_source_paths }}"
+        dest: "{{ host_part_path }}"
+        format: zip
+        mode: "0775"
+        force_archive: true
+      register: host_part_result
+      when:
+        - not (single_host | bool)
+        - valid_source_paths | length > 0
+        - not (parts_dir_result.failed | default(false))
+      failed_when: false
+
+    - name: "Per-host parca bilgisini al (coklu-host)"
+      ansible.builtin.stat:
+        path: "{{ host_part_path }}"
+        follow: true
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: host_part_stat
+      when:
+        - not (single_host | bool)
+        - host_part_result is defined
+        - host_part_result is not skipped
+        - not (host_part_result.failed | default(false))
+      changed_when: false
+      failed_when: false
+
+    - name: "Kaynak host sonucunu kaydet (coklu-host → per-host ozet)"
+      ansible.builtin.set_fact:
+        host_logx_result:
+          host: "{{ inventory_hostname | upper }}"
+          status: >-
+            {{
+              'ok'
+              if (
+                host_part_stat is defined
+                and host_part_stat.stat is defined
+                and host_part_stat.stat.exists | default(false)
+              )
+              else 'error'
+            }}
+          part_filename: "{{ inventory_hostname }}.zip"
+          size_bytes: "{{ host_part_stat.stat.size | default(0) | int if (host_part_stat is defined and host_part_stat.stat is defined) else 0 }}"
+          per_file_status: "{{ per_file_status }}"
+          error: >-
+            {{
+              ''
+              if (
+                host_part_stat is defined
+                and host_part_stat.stat is defined
+                and host_part_stat.stat.exists | default(false)
+              )
+              else (
+                'Bu hostta arsivlenecek okunabilir dosya bulunamadi'
+                if (valid_source_paths | length == 0)
+                else (host_part_result.msg | default('Per-host ZIP olusturulamadi'))
+              )
+            }}
+      changed_when: false
+      when: not (single_host | bool)
+
+
+# ── TEK-HOST: sonucu dogrudan yayinla (ESKISIYLE AYNI) ────────────────────────────────
+- name: "LogX v2 - Tek-host birlesik artifact sonucunu yayinla"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    source_hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
+    source_host: "{{ selected_files | map(attribute='host') | unique | list | first }}"
+
+  tasks:
+    - name: "Kaynak host sonucunun olustugunu dogrula (tek-host)"
+      ansible.builtin.assert:
+        that:
+          - hostvars[source_host].host_logx_result is defined
+        fail_msg: "Kaynak host transfer sonucu olusturulamadi: {{ source_host }}"
+      when: source_hosts | length == 1
+
+    - name: "Sonucu yayinla (tek-host)"
+      ansible.builtin.set_stats:
+        data:
+          logx_result: "{{ hostvars[source_host].host_logx_result }}"
+        per_host: false
+      when: source_hosts | length == 1
+
+
+# ── COKLU-HOST: per-host ZIP'leri TEK arsivde birlestir + yayinla (run_once aggregator) ──
+# Aggregator, staging NFS'i mount eden bir kaynak host uzerinde run_once calisir; tum
+# per-host ZIP'ler ayni paylasimli parts_dir'de oldugundan onlari tek "archive_name" ZIP'i
+# icinde birlestirir. Sonuc yine TEK arsiv (staged_path/filename/size_bytes) → downstream degismez.
+- name: "LogX v2 - Coklu-host per-host ZIP'leri tek arsivde birlestir"
+  hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
+  gather_facts: false
+  become: false
+  run_once: true
+
+  vars:
+    source_hosts: "{{ selected_files | map(attribute='host') | unique | list }}"
+    parts_dir: "{{ staging_dir }}/{{ archive_name | regex_replace('[.]zip$', '') }}__parts"
+    staging_archive_path: "{{ staging_dir }}/{{ archive_name }}"
+    host_results: >-
+      {{
+        selected_files | map(attribute='host') | unique | list
+        | map('extract', hostvars, 'host_logx_result')
+        | select('defined')
+        | list
+      }}
+
+  tasks:
+    - name: "Mevcut per-host parca ZIP'lerini bul (coklu-host)"
+      ansible.builtin.find:
+        paths: "{{ parts_dir }}"
+        patterns: "*.zip"
+        recurse: false
+        file_type: file
+      register: part_files
+      when: source_hosts | length > 1
+      changed_when: false
+      failed_when: false
+
+    - name: "Per-host ZIP'leri tek arsivde birlestir (coklu-host)"
+      community.general.archive:
+        path: "{{ part_files.files | map(attribute='path') | list }}"
+        dest: "{{ staging_archive_path }}"
+        format: zip
+        mode: "0775"
+        force_archive: true
+      register: combined_archive_result
+      when:
+        - source_hosts | length > 1
+        - (part_files.files | default([]) | length) > 0
+      failed_when: false
+
+    - name: "Birlesik arsivin bilgisini al (coklu-host)"
+      ansible.builtin.stat:
+        path: "{{ staging_archive_path }}"
+        follow: true
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: combined_archive_stat
+      when:
+        - source_hosts | length > 1
+        - combined_archive_result is defined
+        - combined_archive_result is not skipped
+        - not (combined_archive_result.failed | default(false))
+      changed_when: false
+      failed_when: false
+
+    - name: "Gecici parca dizinini temizle (best-effort, coklu-host)"
+      ansible.builtin.file:
+        path: "{{ parts_dir }}"
+        state: absent
+      when:
+        - source_hosts | length > 1
+        - combined_archive_stat is defined
+        - combined_archive_stat.stat is defined
+        - combined_archive_stat.stat.exists | default(false)
+      failed_when: false
+      changed_when: false
+
+    - name: "Coklu-host birlesik sonucu yayinla (logx_result)"
+      ansible.builtin.set_stats:
+        data:
+          logx_result:
+            overall_status: >-
+              {{
+                'failed'
+                if not (
+                  combined_archive_stat is defined
+                  and combined_archive_stat.stat is defined
+                  and combined_archive_stat.stat.exists | default(false)
+                )
+                else (
+                  'success'
+                  if (
+                    (host_results | rejectattr('status', 'equalto', 'ok') | list | length) == 0
+                    and (host_results
+                          | map(attribute='per_file_status') | flatten
+                          | selectattr('status', 'equalto', 'error') | list | length) == 0
+                  )
+                  else 'partial'
+                )
+              }}
+            staged_path: >-
+              {{
+                staging_archive_path
+                if (
+                  combined_archive_stat is defined
+                  and combined_archive_stat.stat is defined
+                  and combined_archive_stat.stat.exists | default(false)
+                )
+                else ''
+              }}
+            filename: "{{ archive_name }}"
+            size_bytes: "{{ combined_archive_stat.stat.size | default(0) | int if (combined_archive_stat is defined and combined_archive_stat.stat is defined) else 0 }}"
+            is_fallback: false
+            hosts: "{{ host_results }}"
+            error: >-
+              {{
+                ''
+                if (
+                  combined_archive_stat is defined
+                  and combined_archive_stat.stat is defined
+                  and combined_archive_stat.stat.exists | default(false)
+                )
+                else 'Hicbir kaynak hosttan arsivlenecek dosya bulunamadi veya birlesik arsiv olusturulamadi'
+              }}
+        per_host: false
+      when: source_hosts | length > 1

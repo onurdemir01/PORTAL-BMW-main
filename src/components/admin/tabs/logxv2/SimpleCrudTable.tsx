@@ -1,0 +1,164 @@
+// src/components/admin/tabs/logxv2/SimpleCrudTable.tsx — LogX v2 admin ekranlarının 3'ü
+// (cluster-index, terminal-host-map, env-suffix-map) için ortak, jenerik satır-CRUD tablosu.
+// InventoryTab.tsx'in form deseninden (rounded-lg border, black focus ring) esinlenir ama
+// düşük-trafikli admin config ekranları için kasıtlı olarak daha kompakttır.
+import React, { useState } from "react";
+import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, CheckIcon } from "@heroicons/react/24/outline";
+
+export interface ColumnDef<T> {
+  key: keyof T;
+  label: string;
+  type?: "text" | "checkbox" | "number";
+  placeholder?: string;
+}
+
+interface Props<T extends { id: number }> {
+  columns: ColumnDef<T>[];
+  rows: T[];
+  emptyRow: Partial<T>;
+  onCreate: (data: Partial<T>) => Promise<void>;
+  onUpdate: (id: number, data: Partial<T>) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
+}
+
+export default function SimpleCrudTable<T extends { id: number }>({ columns, rows, emptyRow, onCreate, onUpdate, onDelete }: Props<T>) {
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<Partial<T>>(emptyRow);
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+
+  function startEdit(row: T) {
+    setEditingId(row.id);
+    setAdding(false);
+    setForm({ ...row });
+  }
+
+  function startAdd() {
+    setAdding(true);
+    setEditingId(null);
+    setForm(emptyRow);
+  }
+
+  function cancel() {
+    setAdding(false);
+    setEditingId(null);
+    setForm(emptyRow);
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      if (editingId !== null) await onUpdate(editingId, form);
+      else await onCreate(form);
+      cancel();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function renderFormRow() {
+    return (
+      <tr className="bg-blue-50/60">
+        {columns.map((col) => (
+          <td key={String(col.key)} className="px-3 py-2">
+            {col.type === "checkbox" ? (
+              <input
+                type="checkbox"
+                checked={!!form[col.key]}
+                onChange={(e) => setForm((prev) => ({ ...prev, [col.key]: e.target.checked }))}
+                className="rounded"
+              />
+            ) : (
+              <input
+                type={col.type === "number" ? "number" : "text"}
+                value={String(form[col.key] ?? "")}
+                placeholder={col.placeholder}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, [col.key]: col.type === "number" ? Number(e.target.value) : e.target.value }))
+                }
+                className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black transition"
+              />
+            )}
+          </td>
+        ))}
+        <td className="px-3 py-2 text-right whitespace-nowrap">
+          <button onClick={save} disabled={saving} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition disabled:opacity-50">
+            <CheckIcon className="w-4 h-4" />
+          </button>
+          <button onClick={cancel} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+            <XMarkIcon className="w-4 h-4" />
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        {!adding && editingId === null && (
+          <button
+            onClick={startAdd}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white text-xs rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            <PlusIcon className="w-3.5 h-3.5" />
+            Ekle
+          </button>
+        )}
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 text-gray-500 text-xs font-medium">
+              {columns.map((col) => (
+                <th key={String(col.key)} className="text-left px-3 py-2">{col.label}</th>
+              ))}
+              <th className="px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {adding && renderFormRow()}
+            {rows.map((row) =>
+              editingId === row.id ? (
+                <React.Fragment key={row.id}>{renderFormRow()}</React.Fragment>
+              ) : (
+                <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
+                  {columns.map((col) => (
+                    <td key={String(col.key)} className="px-3 py-2 text-gray-700">
+                      {col.type === "checkbox" ? (row[col.key] ? "✓" : "—") : String(row[col.key] ?? "")}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <button onClick={() => startEdit(row)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+                      <PencilIcon className="w-3.5 h-3.5" />
+                    </button>
+                    {confirmDelete === row.id ? (
+                      <>
+                        <button onClick={() => onDelete(row.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition text-xs">Emin misin?</button>
+                        <button onClick={() => setConfirmDelete(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+                          <XMarkIcon className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => setConfirmDelete(row.id)} className="p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition">
+                        <TrashIcon className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )
+            )}
+            {rows.length === 0 && !adding && (
+              <tr>
+                <td colSpan={columns.length + 1} className="px-3 py-6 text-center text-gray-400 text-sm">Kayıt yok.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

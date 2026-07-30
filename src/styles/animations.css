@@ -1,0 +1,286 @@
+/* ── Existing animations (preserved) ─────────────────────────────────────── */
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(0, 102, 204, 0.35); }
+  70%  { box-shadow: 0 0 0 8px rgba(0, 102, 204, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 102, 204, 0); }
+}
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes toastSlideOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(100%); }
+}
+
+/* ── New animations ───────────────────────────────────────────────────────── */
+
+/* Gradient wave skeleton */
+@keyframes shimmer {
+  from { background-position: 200% center; }
+  to   { background-position: -200% center; }
+}
+
+/* Spring bounce entrance — 100% resolves to `transform: none` (not an identity
+   matrix) so elements using this (incl. .page-enter, applied to EVERY page's
+   root wrapper) don't linger as a `position: fixed` containing block after the
+   animation ends via `animation-fill-mode: both`. Any transform value other
+   than the `none` keyword creates a new containing block for fixed
+   descendants — this silently broke every modal nested in an animated
+   ancestor (see docs/QUICK-SOLVER.md). */
+@keyframes springIn {
+  0%   { opacity: 0; transform: translateY(12px) scale(0.96); }
+  55%  { opacity: 1; transform: translateY(-3px) scale(1.01); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Glow pulse with accent color */
+@keyframes glowPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,102,204,0.25); }
+  50%     { box-shadow: 0 0 0 6px rgba(0,102,204,0); }
+}
+
+/* Gentle float */
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(-4px); }
+}
+
+/* Number count entrance */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Slide from bottom with spring */
+@keyframes slideUpSpring {
+  0%   { opacity: 0; transform: translateY(16px); }
+  60%  { transform: translateY(-2px); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Subtle rotate-in for icons */
+@keyframes rotateIn {
+  from { opacity: 0; transform: rotate(-10deg) scale(0.8); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Dashboard "Misyon Orbit" ve kısayol kartı mikro-animasyonları ────────── */
+
+/* Orbit halkası — saat yönünde yavaş dönüş */
+@keyframes orbitSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Orbit ikonları — halkanın tersine dönerek glyph'i dik tutar */
+@keyframes orbitCounterSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+
+/* Envanter kartı — sırayla yanıp sönen "sunucu rack ışığı" noktaları */
+@keyframes rackBlink {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 1; }
+}
+
+/* LogX kartı — yukarı doğru kayan "akan log satırları" */
+@keyframes logScroll {
+  0%   { transform: translateY(0);    opacity: 0.9; }
+  50%  { transform: translateY(-3px); opacity: 0.5; }
+  100% { transform: translateY(0);    opacity: 0.9; }
+}
+
+/* Performance kartı — nabız/heartbeat çizgisi vurgusu */
+@keyframes heartbeat {
+  0%, 100% { transform: scaleY(1);   opacity: 0.85; }
+  50%      { transform: scaleY(1.6); opacity: 1; }
+}
+
+/* Self Service kartı — yavaş sürekli dönen dişli */
+@keyframes gearSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Login ekranı — canlı/akışkan arka plan ("video" hissi veren katmanlar) ──── */
+
+/* Yavaşça sürüklenen, nefes alan ışık (aurora) yumağı */
+@keyframes auroraDrift {
+  0%,100% { transform: translate(-8%, -4%) scale(1); }
+  50%     { transform: translate(8%, 6%) scale(1.18); }
+}
+.animate-aurora-drift { animation: auroraDrift 16s ease-in-out infinite; }
+
+/* Yukarıdan aşağı süzülen radar/tarama çizgisi */
+@keyframes scanSweep {
+  0%   { transform: translateY(-120%); opacity: 0; }
+  12%  { opacity: 0.6; }
+  88%  { opacity: 0.6; }
+  100% { transform: translateY(120%); opacity: 0; }
+}
+.animate-scan-sweep { animation: scanSweep 7s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora-drift, .animate-scan-sweep { animation: none; }
+}
+
+/* ── Login sağ panel — sanatsal, organik "blob" arka planı ────────────────── */
+/* Not: genlikler (translate/scale) BİLEREK büyük tutuldu — önceki, daha ince
+   bir sürüm (translate ~%3-6, alpha ~0.2) gözle fark edilemeyecek kadar
+   belirsizdi. Blob'lar kartın etrafındaki panelde serbestçe gezindiği için
+   büyük genlik okunabilirliği bozmaz. */
+@keyframes blobDriftA {
+  0%,100% { transform: translate(0,0) scale(1);          border-radius: 42% 58% 65% 35% / 45% 45% 55% 55%; }
+  33%     { transform: translate(14%, 18%) scale(1.15);  border-radius: 58% 42% 35% 65% / 55% 60% 40% 45%; }
+  66%     { transform: translate(-10%, 12%) scale(0.9);  border-radius: 35% 65% 55% 45% / 40% 50% 50% 60%; }
+}
+@keyframes blobDriftB {
+  0%,100% { transform: translate(0,0) scale(1);           border-radius: 60% 40% 40% 60% / 50% 55% 45% 50%; }
+  40%     { transform: translate(-16%, -14%) scale(1.18); border-radius: 40% 60% 55% 45% / 60% 40% 60% 40%; }
+  70%     { transform: translate(10%, -18%) scale(0.88);  border-radius: 55% 45% 60% 40% / 45% 55% 45% 55%; }
+}
+@keyframes blobDriftC {
+  0%,100% { transform: translate(0,0) scale(1); }
+  50%     { transform: translate(-20%, 16%) scale(1.25); }
+}
+.animate-blob-a { animation: blobDriftA 16s ease-in-out infinite; }
+.animate-blob-b { animation: blobDriftB 19s ease-in-out infinite; }
+.animate-blob-c { animation: blobDriftC 11s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-blob-a, .animate-blob-b, .animate-blob-c { animation: none; }
+}
+
+/* Kartın üstündeki fırça darbesi gibi kayan gradyan aksan çizgisi */
+@keyframes brushIn {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.animate-brush-in { animation: brushIn 0.6s cubic-bezier(0.65,0,0.35,1) 0.15s both; transform-origin: left; }
+
+/* ── Modal açılış animasyonu (portal ile render edilir, .page-enter'dan bağımsız) ── */
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Bilgi Bankası kartı — otomatik yenilenen ipucu geçişi */
+@keyframes factSwap {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Bilgi Bankası kartı — bir sonraki otomatik yenilemeye kalan süreyi gösteren ince çubuk */
+@keyframes factProgress {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* ── Utility classes ──────────────────────────────────────────────────────── */
+.animate-slide-up        { animation: slideUp 0.22s ease both; }
+.animate-slide-in-right  { animation: slideInRight 0.22s ease both; }
+.animate-slide-in-left   { animation: slideInLeft 0.22s ease both; }
+.animate-fade-in         { animation: fadeIn 0.18s ease both; }
+.animate-scale-in        { animation: scaleIn 0.22s ease both; }
+.animate-pulse-ring      { animation: pulse-ring 1.8s infinite; }
+.animate-toast-in        { animation: toastSlideIn 0.32s cubic-bezier(0.34,1.56,0.64,1) both; }
+.animate-toast-out       { animation: toastSlideOut 0.25s ease forwards; }
+
+.animate-shimmer         { animation: shimmer 1.6s infinite ease-in-out; }
+.animate-spring-in       { animation: springIn 0.38s cubic-bezier(0.34,1.56,0.64,1) both; }
+.animate-glow-pulse      { animation: glowPulse 2s infinite; }
+.animate-float           { animation: float 3.2s ease-in-out infinite; }
+.animate-count-up        { animation: countUp 0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
+.animate-slide-up-spring { animation: slideUpSpring 0.38s cubic-bezier(0.34,1.56,0.64,1) both; }
+.animate-rotate-in       { animation: rotateIn 0.3s cubic-bezier(0.34,1.56,0.64,1) both; }
+.animate-modal-pop       { animation: modalPop 0.22s cubic-bezier(0.34,1.56,0.64,1) both; }
+.animate-fact-swap       { animation: factSwap 0.4s ease both; }
+.animate-fact-progress   { animation: factProgress 14s linear both; transform-origin: left; }
+
+.animate-orbit-spin         { animation: orbitSpin 18s linear infinite; }
+.animate-orbit-counter-spin { animation: orbitCounterSpin 18s linear infinite; }
+.animate-rack-blink         { animation: rackBlink 1.8s ease-in-out infinite; }
+.animate-log-scroll         { animation: logScroll 2.6s ease-in-out infinite; }
+.animate-heartbeat          { animation: heartbeat 1.6s ease-in-out infinite; }
+.animate-gear-spin          { animation: gearSpin 6s linear infinite; }
+
+/* Page transition — upgraded to spring */
+.page-enter {
+  animation: springIn 0.38s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+
+/* Staggered children delays */
+.stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.stagger > *:nth-child(2) { animation-delay: 0.08s; }
+.stagger > *:nth-child(3) { animation-delay: 0.12s; }
+.stagger > *:nth-child(4) { animation-delay: 0.16s; }
+.stagger > *:nth-child(5) { animation-delay: 0.20s; }
+.stagger > *:nth-child(6) { animation-delay: 0.24s; }
+
+/* ── Ansible log terminali — canlı "akan konsol" animasyonları ─────────────────── */
+
+/* Yanıp sönen terminal imleci (job çalışırken satır sonunda) */
+@keyframes caretBlink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.animate-caret { animation: caretBlink 1s steps(1) infinite; }
+
+/* Yeni log içeriği geldiğinde tek tek beliren satır (aşağıdan yukarı yumuşak) */
+@keyframes logLineIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-log-line { animation: logLineIn 0.28s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* Çalışırken terminal üstünde soldan sağa süzülen tarama parıltısı */
+@keyframes termScan {
+  0%   { transform: translateX(-120%); opacity: 0; }
+  40%  { opacity: 0.5; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+.animate-term-scan { animation: termScan 2.6s ease-in-out infinite; }
+
+/* Çalışırken durum noktasının nabzı (renk-korumalı) */
+@keyframes statusPulse {
+  0%, 100% { transform: scale(1);   box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  50%      { transform: scale(1.25); box-shadow: 0 0 0 4px transparent; opacity: 0.7; }
+}
+.animate-status-pulse { animation: statusPulse 1.4s ease-in-out infinite; }
+
+/* Yeni çıktı geldiğinde kısa "flash" — terminal kenarının anlık aydınlanması */
+@keyframes termFlash {
+  0%   { box-shadow: inset 0 0 0 1px rgba(0,102,204,0.0); }
+  30%  { box-shadow: inset 0 0 24px 0 rgba(0,102,204,0.20), inset 0 0 0 1px rgba(0,102,204,0.5); }
+  100% { box-shadow: inset 0 0 0 1px rgba(0,102,204,0.0); }
+}
+.animate-term-flash { animation: termFlash 0.6s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-caret, .animate-term-scan, .animate-status-pulse, .animate-term-flash, .animate-log-line {
+    animation: none;
+  }
+}

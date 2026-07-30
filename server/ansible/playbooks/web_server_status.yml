@@ -1,0 +1,69 @@
+# READ-ONLY: Nginx/Apache(httpd)/Tomcat durumunu ve 80/443 bağlantılarını görüntüler.
+- name: Web Sunucu Durumu
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Web sunucu prosesleri (nginx/httpd/apache/tomcat)
+      ansible.builtin.shell:
+        cmd: pgrep -la 'nginx|httpd|apache2|tomcat|catalina' 2>/dev/null || echo 'web sunucu prosesi bulunamadı'
+      register: web_procs
+      changed_when: false
+      ignore_errors: true
+
+    - name: Proses özeti
+      ansible.builtin.debug:
+        msg: "{{ web_procs.stdout_lines }}"
+
+    - name: Nginx config testi (varsa)
+      ansible.builtin.command:
+        cmd: nginx -t
+      register: nginx_test
+      changed_when: false
+      ignore_errors: true
+      failed_when: false
+
+    - name: Nginx config sonucu
+      ansible.builtin.debug:
+        msg: "{{ nginx_test.stdout_lines | default([]) + nginx_test.stderr_lines | default(['nginx bulunamadı, atlandı']) }}"
+      when: nginx_test is defined
+
+    - name: Apache/httpd config testi (varsa)
+      ansible.builtin.shell:
+        cmd: apachectl configtest 2>&1 || httpd -t 2>&1 || echo 'httpd/apachectl bulunamadı, atlandı'
+      register: httpd_test
+      changed_when: false
+      ignore_errors: true
+
+    - name: Apache/httpd config sonucu
+      ansible.builtin.debug:
+        msg: "{{ httpd_test.stdout_lines }}"
+
+    - name: 80/443 üzerindeki bağlantılar
+      ansible.builtin.shell:
+        cmd: >
+          ss -tnp 2>/dev/null | grep -E ':80 |:443 |:8080 ' ||
+          netstat -tnp 2>/dev/null | grep -E ':80 |:443 |:8080 ' ||
+          echo '80/443/8080 üzerinde aktif bağlantı bulunamadı veya yetki yok'
+      register: web_conns
+      changed_when: false
+      ignore_errors: true
+
+    - name: Bağlantı özeti
+      ansible.builtin.debug:
+        msg: "{{ web_conns.stdout_lines }}"
+
+    - name: Son erişim/hata log satırları (varsa, salt-okunur tail)
+      ansible.builtin.shell:
+        cmd: >
+          tail -n 20 /var/log/nginx/error.log 2>/dev/null ||
+          tail -n 20 /var/log/httpd/error_log 2>/dev/null ||
+          echo 'bilinen bir log dosyasına erişilemedi'
+      register: web_log_tail
+      changed_when: false
+      ignore_errors: true
+
+    - name: Son hata log satırları
+      ansible.builtin.debug:
+        msg: "{{ web_log_tail.stdout_lines }}"

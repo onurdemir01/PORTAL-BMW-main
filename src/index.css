@@ -1,0 +1,552 @@
+@import "tailwindcss";
+@import "./styles/animations.css";
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BMW Portal — Red Hat OpenShift (PatternFly) gorunum katmani
+   ───────────────────────────────────────────────────────────────────────────
+   Tum renk/tipografi/kose degerleri PatternFly v5 global token'larindan turetildi
+   (OpenShift Console ile ayni palet). Sayfalar hala Tailwind utility'leri ve
+   .card/.btn-primary/.input-modern gibi mevcut sinif adlarini kullanir — bu
+   dosya o siniflarin GORUNUMUNU degistirir, markup'a dokunulmaz.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Design Tokens (PatternFly v5) ─────────────────────────────────────────── */
+:root {
+  /* Tipografi — Red Hat font ailesi (index.html'de yuklenir, offline fallback var) */
+  --font-sans:    "Red Hat Text", "RedHatText", "Overpass", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Red Hat Display", "RedHatDisplay", var(--font-sans);
+  --font-mono:    "Red Hat Mono", "RedHatMono", "Liberation Mono", Consolas, "Courier New", monospace;
+
+  /* Marka */
+  --rh-red:       #ee0000;   /* Red Hat kirmizisi — yalniz logo/marka aksani */
+  --rh-red-dark:  #a30000;
+
+  /* Aksan = PatternFly blue-400 (#06c) — tum interaktif ogeler */
+  --accent:       #0066cc;
+  --accent-dark:  #004080;
+  --accent-light: #73bcf7;
+  --accent-glow:  rgba(0, 102, 204, 0.20);
+
+  /* Yuzeyler — PF: sayfa #f0f0f0, kart #fff */
+  --bg-base:     #f0f0f0;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #f5f5f5;
+  --bg-inset:    #fafafa;
+
+  /* Masthead + sol navigasyon (OpenShift Console) */
+  --masthead-bg:     #151515;
+  --masthead-border: #3c3f42;
+  --nav-bg:          #212427;
+  --nav-hover-bg:    #3c3f42;
+  --nav-current-bg:  #4f5255;
+  --nav-text:        #e0e0e0;
+  --nav-text-muted:  #b8bbbe;
+
+  /* Eski token adlari (dokunulmayan sayfalar hala kullaniyor) */
+  --sidebar-bg:        var(--nav-bg);
+  --sidebar-border:    #3c3f42;
+  --sidebar-active-bg: var(--nav-current-bg);
+
+  /* Metin */
+  --text-primary:   #151515;
+  --text-secondary: #4f5255;
+  --text-muted:     #6a6e73;
+  --text-on-dark:   #ffffff;
+
+  /* Kenarlik */
+  --border:        #d2d2d2;
+  --border-strong: #8a8d90;
+
+  /* Durum renkleri — PF status palette */
+  --status-danger:       #c9190b;
+  --status-danger-bg:    #faeae8;
+  --status-warning:      #f0ab00;
+  --status-warning-bg:   #fdf7e7;
+  --status-success:      #3e8635;
+  --status-success-bg:   #f3faf2;
+  --status-info:         #2b9af3;
+  --status-info-bg:      #e7f1fa;
+  --status-neutral:      #6a6e73;
+  --status-neutral-bg:   #f0f0f0;
+
+  /* PF golge olcegi (cok daha yumusak — SaaS tarzi derin golgeler yok) */
+  --shadow-xs: 0 0.0625rem 0.125rem 0 rgba(3, 3, 3, 0.12);
+  --shadow-sm: 0 0.0625rem 0.125rem 0 rgba(3, 3, 3, 0.12), 0 0 0.125rem 0 rgba(3, 3, 3, 0.06);
+  --shadow-md: 0 0.25rem 0.5rem 0 rgba(3, 3, 3, 0.12), 0 0 0.25rem 0 rgba(3, 3, 3, 0.06);
+  --shadow-lg: 0 0.5rem 1rem 0 rgba(3, 3, 3, 0.16), 0 0 0.375rem 0 rgba(3, 3, 3, 0.08);
+  --shadow-accent: var(--shadow-sm);
+
+  /* Kose yaricapi — PF neredeyse dumduz: 3px */
+  --radius-sm:   3px;
+  --radius-md:   3px;
+  --radius-lg:   3px;
+  --radius-full: 9999px;
+
+  /* Olculer */
+  --masthead-h: 4rem;
+  --nav-w:      17rem;
+
+  color-scheme: light;
+}
+
+/* ── Dark tema (PatternFly dark) ───────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  --accent:       #2b9af3;
+  --accent-dark:  #0066cc;
+  --accent-light: #73bcf7;
+  --accent-glow:  rgba(43, 154, 243, 0.24);
+
+  --bg-base:     #0f1214;
+  --bg-surface:  #1b1d21;
+  --bg-elevated: #212427;
+  --bg-inset:    #151515;
+
+  --masthead-bg:     #030303;
+  --masthead-border: #444548;
+  --nav-bg:          #151515;
+  --nav-hover-bg:    #3c3f42;
+  --nav-current-bg:  #4f5255;
+
+  --text-primary:   #e0e0e0;
+  --text-secondary: #b8bbbe;
+  --text-muted:     #8a8d90;
+
+  --border:        #444548;
+  --border-strong: #6a6e73;
+
+  --status-danger-bg:  rgba(201, 25, 11, 0.16);
+  --status-warning-bg: rgba(240, 171, 0, 0.16);
+  --status-success-bg: rgba(62, 134, 53, 0.18);
+  --status-info-bg:    rgba(43, 154, 243, 0.16);
+  --status-neutral-bg: rgba(240, 240, 240, 0.08);
+
+  --shadow-xs: 0 0.0625rem 0.125rem 0 rgba(3, 3, 3, 0.55);
+  --shadow-sm: 0 0.0625rem 0.125rem 0 rgba(3, 3, 3, 0.6), 0 0 0.125rem 0 rgba(3, 3, 3, 0.4);
+  --shadow-md: 0 0.25rem 0.5rem 0 rgba(3, 3, 3, 0.65), 0 0 0.25rem 0 rgba(3, 3, 3, 0.45);
+  --shadow-lg: 0 0.5rem 1rem 0 rgba(3, 3, 3, 0.7), 0 0 0.375rem 0 rgba(3, 3, 3, 0.5);
+
+  color-scheme: dark;
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;      /* PF govde olcegi 14px */
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 500;          /* PF basliklari 500 — 800/900 "black" degil */
+  letter-spacing: 0;
+  color: var(--text-primary);
+}
+
+code, pre, kbd, samp { font-family: var(--font-mono); }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-dark); text-decoration: underline; }
+
+::selection { background: var(--accent); color: #fff; }
+
+/* Klavye odagi — PF mavi outline (erisilebilirlik tabani) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* PF scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 0; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ═══ PatternFly bilesen siniflari ══════════════════════════════════════════ */
+
+/* ── Card ──────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid transparent;
+}
+:root[data-theme="dark"] .card { border-color: var(--border); }
+.card-hover { transition: box-shadow 0.15s ease; }
+.card-hover:hover { box-shadow: var(--shadow-md); transform: none; }
+
+/* PF Card basligi — kartin ic ust bandi */
+.pf-card-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  padding: 1rem 1.5rem 0.5rem;
+}
+.pf-card-body { padding: 0.5rem 1.5rem 1.5rem; }
+.pf-card-footer {
+  padding: 0.75rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background: transparent;
+}
+
+/* ── Buttons (PF Button) ───────────────────────────────────────────────────── */
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.pf-btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.375rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+  user-select: none;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  box-shadow: none;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-dark); border-color: var(--accent-dark); box-shadow: none; transform: none; }
+.btn-primary:active:not(:disabled) { background: var(--accent-dark); transform: none; box-shadow: none; }
+.btn-primary:disabled { background: var(--border); border-color: var(--border); color: var(--text-muted); opacity: 1; cursor: not-allowed; }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.btn-secondary:hover:not(:disabled) { background: transparent; color: var(--accent-dark); border-color: var(--accent-dark); }
+.btn-secondary:active:not(:disabled) { transform: none; }
+.btn-secondary:disabled { color: var(--text-muted); border-color: var(--border); background: var(--bg-elevated); opacity: 1; cursor: not-allowed; }
+
+.btn-danger {
+  background: var(--status-danger);
+  color: #fff;
+  border: 1px solid var(--status-danger);
+}
+.btn-danger:hover:not(:disabled) { background: #a30000; border-color: #a30000; }
+.btn-danger:disabled { background: var(--border); border-color: var(--border); color: var(--text-muted); opacity: 1; cursor: not-allowed; }
+
+/* PF "link" ve "tertiary" varyantlari */
+.pf-btn-link {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid transparent;
+  padding: 0.375rem 0.5rem;
+}
+.pf-btn-link:hover:not(:disabled) { color: var(--accent-dark); text-decoration: underline; }
+.pf-btn-tertiary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+}
+.pf-btn-tertiary:hover:not(:disabled) { border-color: var(--text-primary); }
+
+/* ── Form controls (PF Form Control — alt cizgi vurgulu) ───────────────────── */
+.input-modern,
+.pf-input {
+  width: 100%;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  outline: none;
+  transition: border-color 0.1s ease;
+}
+.input-modern::placeholder, .pf-input::placeholder { color: var(--text-muted); }
+.input-modern:hover:not(:disabled), .pf-input:hover:not(:disabled) { border-bottom-color: var(--accent); }
+.input-modern:focus, .pf-input:focus {
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: calc(0.375rem - 1px);
+  box-shadow: none;
+}
+.input-modern:disabled, .pf-input:disabled { background: var(--bg-elevated); color: var(--text-muted); border-bottom-style: solid; cursor: not-allowed; }
+
+.pf-label-text {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+.pf-helper-text { font-size: 0.875rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+/* ── Label (PF Label — durum etiketi) ──────────────────────────────────────── */
+.badge, .pf-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.4;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.pf-label--red    { background: var(--status-danger-bg);  border-color: var(--status-danger);  color: var(--status-danger); }
+.pf-label--orange { background: var(--status-warning-bg); border-color: #ec7a08;               color: #8f4700; }
+.pf-label--gold   { background: var(--status-warning-bg); border-color: var(--status-warning); color: #795600; }
+.pf-label--green  { background: var(--status-success-bg); border-color: var(--status-success); color: var(--status-success); }
+.pf-label--blue   { background: var(--status-info-bg);    border-color: var(--accent);         color: var(--accent-dark); }
+.pf-label--grey   { background: var(--status-neutral-bg); border-color: var(--border-strong);  color: var(--text-secondary); }
+
+:root[data-theme="dark"] .pf-label--red   { color: #f0788c; }
+:root[data-theme="dark"] .pf-label--gold  { color: #f4c145; }
+:root[data-theme="dark"] .pf-label--green { color: #5ba352; }
+:root[data-theme="dark"] .pf-label--blue  { color: var(--accent-light); }
+
+/* ── Alert (PF Alert) ──────────────────────────────────────────────────────── */
+.pf-alert {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--bg-surface);
+  border-top: 2px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+.pf-alert--danger  { border-top-color: var(--status-danger); }
+.pf-alert--warning { border-top-color: var(--status-warning); }
+.pf-alert--success { border-top-color: var(--status-success); }
+.pf-alert--info    { border-top-color: var(--accent); }
+
+/* ── Baslik / bolum etiketi ────────────────────────────────────────────────── */
+.page-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;         /* PF page title 24px */
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+.section-label {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 500;
+  text-transform: none;      /* PF'te bolum basliklari BUYUK HARF degil */
+  letter-spacing: 0;
+  color: var(--text-primary);
+}
+.divider { border-top: 1px solid var(--border); }
+
+/* ── Skeleton ──────────────────────────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--border) 50%, var(--bg-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite ease-in-out;
+  border-radius: 0;
+}
+.glow-accent { box-shadow: var(--shadow-sm); }
+
+/* ── Tablo (PF Table) ──────────────────────────────────────────────────────── */
+table { font-size: 0.875rem; }
+thead th {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── Masthead / Nav (yeni layout bilesenleri) ──────────────────────────────── */
+.pf-masthead {
+  height: var(--masthead-h);
+  background: var(--masthead-bg);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1rem 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+.pf-masthead-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  color: #d2d2d2;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+.pf-masthead-btn:hover { background: #3c3f42; color: #fff; }
+
+.pf-nav {
+  width: var(--nav-w);
+  height: 100%;
+  flex-shrink: 0;
+  background: var(--nav-bg);
+  color: var(--nav-text);
+  overflow-y: auto;
+  border-right: 1px solid transparent;
+}
+.pf-nav-section-title {
+  padding: 1rem 1rem 0.5rem;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #8a8d90;
+}
+.pf-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem 0.5rem 2rem;
+  font-size: 0.875rem;
+  color: var(--nav-text);
+  border-left: 4px solid transparent;
+  transition: background-color 0.1s ease;
+}
+.pf-nav-link:hover { background: var(--nav-hover-bg); color: #fff; text-decoration: none; }
+.pf-nav-link.is-current {
+  background: var(--nav-current-bg);
+  border-left-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+.pf-nav-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: var(--nav-text);
+  background: transparent;
+  border: none;
+  border-left: 4px solid transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.pf-nav-toggle:hover { background: var(--nav-hover-bg); color: #fff; }
+
+/* ── Tabs (PF Tabs — alt cizgili) ──────────────────────────────────────────── */
+.pf-tabs { display: flex; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.pf-tab {
+  position: relative;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pf-tab:hover { color: var(--text-primary); }
+.pf-tab.is-active { color: var(--accent); font-weight: 700; }
+.pf-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 3px;
+  background: var(--accent);
+}
+
+/* ═══ Tailwind uyumluluk katmani ════════════════════════════════════════════
+   Henuz PF bilesenlerine gecirilmemis ~30 sayfa hala ham Tailwind utility'leri
+   kullaniyor. Katmansiz (unlayered) CSS, Tailwind'in @layer utilities kurallarini
+   cascade'de yener — bu yuzden asagidaki eslemeler markup'a dokunmadan tum
+   sayfalari OpenShift paletine tasir.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Kose yaricapi: SaaS tarzi 12-16px yuvarlaklar → PF 3px (rounded-full korunur) */
+:root .rounded-sm, :root .rounded, :root .rounded-md,
+:root .rounded-lg, :root .rounded-xl, :root .rounded-2xl, :root .rounded-3xl { border-radius: var(--radius-sm); }
+:root .rounded-t-lg, :root .rounded-t-xl, :root .rounded-t-2xl { border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+:root .rounded-b-lg, :root .rounded-b-xl, :root .rounded-b-2xl { border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
+
+/* Font agirligi: PF'te 800/900 yok */
+:root .font-black, :root .font-extrabold { font-weight: 700; }
+
+/* Yuzeyler */
+:root .bg-white { background-color: var(--bg-surface); }
+:root .bg-gray-50, :root .bg-gray-100, :root .bg-slate-50, :root .bg-slate-100,
+:root .bg-neutral-50, :root .bg-neutral-100 { background-color: var(--bg-elevated); }
+:root .bg-gray-200, :root .bg-slate-200 { background-color: var(--border); }
+:root .hover\:bg-gray-50:hover, :root .hover\:bg-gray-100:hover,
+:root .hover\:bg-slate-50:hover, :root .hover\:bg-slate-100:hover { background-color: var(--bg-elevated); }
+
+/* Metin */
+:root .text-gray-900, :root .text-gray-800, :root .text-slate-900, :root .text-slate-800 { color: var(--text-primary); }
+:root .text-gray-700, :root .text-gray-600, :root .text-slate-700, :root .text-slate-600 { color: var(--text-secondary); }
+:root .text-gray-500, :root .text-gray-400, :root .text-gray-300,
+:root .text-slate-500, :root .text-slate-400, :root .text-slate-300 { color: var(--text-muted); }
+
+/* Kenarliklar */
+:root .border-gray-100, :root .border-gray-200, :root .border-gray-300,
+:root .border-slate-100, :root .border-slate-200, :root .border-slate-300 { border-color: var(--border); }
+
+/* Durum renkleri → PF status paleti */
+:root .text-blue-500, :root .text-blue-600, :root .text-blue-700, :root .text-indigo-500, :root .text-indigo-600 { color: var(--accent); }
+:root .bg-blue-500, :root .bg-blue-600, :root .bg-indigo-500, :root .bg-indigo-600 { background-color: var(--accent); }
+:root .bg-blue-50, :root .bg-blue-100, :root .bg-indigo-50, :root .bg-indigo-100 { background-color: var(--status-info-bg); }
+:root .border-blue-200, :root .border-blue-300, :root .border-indigo-200 { border-color: var(--accent); }
+
+:root .text-red-500, :root .text-red-600, :root .text-red-700, :root .text-rose-500, :root .text-rose-600 { color: var(--status-danger); }
+:root .bg-red-500, :root .bg-red-600, :root .bg-rose-500 { background-color: var(--status-danger); }
+:root .bg-red-50, :root .bg-red-100, :root .bg-rose-50 { background-color: var(--status-danger-bg); }
+:root .border-red-200, :root .border-red-300 { border-color: var(--status-danger); }
+
+:root .text-amber-500, :root .text-amber-600, :root .text-amber-700,
+:root .text-yellow-500, :root .text-yellow-600, :root .text-orange-500, :root .text-orange-600 { color: #8f4700; }
+:root .bg-amber-500, :root .bg-yellow-500, :root .bg-orange-500 { background-color: var(--status-warning); }
+:root .bg-amber-50, :root .bg-amber-100, :root .bg-yellow-50, :root .bg-yellow-100, :root .bg-orange-50 { background-color: var(--status-warning-bg); }
+:root .border-amber-200, :root .border-amber-300, :root .border-yellow-200 { border-color: var(--status-warning); }
+
+:root .text-emerald-500, :root .text-emerald-600, :root .text-emerald-700,
+:root .text-green-500, :root .text-green-600, :root .text-green-700, :root .text-teal-600 { color: var(--status-success); }
+:root .bg-emerald-500, :root .bg-green-500, :root .bg-green-600, :root .bg-teal-500 { background-color: var(--status-success); }
+:root .bg-emerald-50, :root .bg-emerald-100, :root .bg-green-50, :root .bg-green-100 { background-color: var(--status-success-bg); }
+:root .border-emerald-200, :root .border-green-200, :root .border-green-300 { border-color: var(--status-success); }
+
+:root .text-purple-500, :root .text-purple-600, :root .text-violet-500, :root .text-violet-600 { color: #5752d1; }
+:root .bg-purple-50, :root .bg-purple-100, :root .bg-violet-50 { background-color: #f2f0fc; }
+:root[data-theme="dark"] .bg-purple-50, :root[data-theme="dark"] .bg-purple-100 { background-color: rgba(87, 82, 209, 0.18); }
+
+/* Golgeler — PF cok daha duz */
+:root .shadow, :root .shadow-sm { box-shadow: var(--shadow-xs); }
+:root .shadow-md { box-shadow: var(--shadow-sm); }
+:root .shadow-lg, :root .shadow-xl, :root .shadow-2xl { box-shadow: var(--shadow-md); }
+
+/* Dark temada beyaz zeminli halka/ring'ler */
+:root[data-theme="dark"] .ring-white { --tw-ring-color: var(--bg-surface); }

@@ -1,0 +1,224 @@
+---
+# LogX v2 - OCP namespace discovery
+# Location:
+#   bmw_automation_folder/portal_tamplates/logx_ocp_namespace_discovery.yml
+# Global variables:
+#   bmw_openshift_jobs/global_variables/credentials_v2.yaml
+#   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
+#
+# Required extra_vars:
+#   terminal_host: GBAOCP01
+#   ocp_clusters:
+#     - env: lab
+#       tenant: ark
+#       cluster_name: gbocplab2
+#
+# Output:
+#   artifacts.logx_result
+
+- name: "Validate input and add terminal host dynamically"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: "Validate required input variables"
+      ansible.builtin.assert:
+        that:
+          - terminal_host is defined
+          - terminal_host | string | trim | length > 0
+          - ocp_clusters is defined
+          - ocp_clusters is sequence
+          - ocp_clusters | length > 0
+        fail_msg: "terminal_host and a non-empty ocp_clusters list are required."
+
+    - name: "Add terminal host to dynamic inventory"
+      ansible.builtin.add_host:
+        name: "{{ terminal_host }}"
+        groups: logx_terminal
+      changed_when: false
+
+
+- name: "LogX v2 - Discover OCP namespaces"
+  hosts: logx_terminal
+  gather_facts: false
+  become: false
+
+  vars_files:
+    - ../../bmw_openshift_jobs/global_variables/credentials_v2.yaml
+    - ../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
+
+  vars:
+    oc_binary: /usr/local/bin/oc
+    oc_async_timeout: 120
+    oc_async_retries: 120
+    oc_async_delay: 1
+    logx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+
+  tasks:
+    - name: "Initialize result lists"
+      ansible.builtin.set_fact:
+        resolved_clusters: []
+        validation_errors: []
+        cluster_ns_results: []
+      changed_when: false
+
+    - name: "Validate requested cluster records"
+      ansible.builtin.set_fact:
+        validation_errors: >-
+          {{
+            validation_errors + ([{
+              'cluster_name': item.cluster_name | default('unknown'),
+              'status': 'error',
+              'error': 'Cluster inventory record not found: ' ~
+                       (item.tenant | default('missing-tenant')) ~ '_' ~
+                       (item.env | default('missing-env')) ~ '/' ~
+                       (item.cluster_name | default('missing-cluster-name')),
+              'namespaces': []
+            }] if not cluster_exists else [])
+          }}
+      vars:
+        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        cluster_exists: >-
+          {{
+            item.tenant is defined and
+            item.env is defined and
+            item.cluster_name is defined and
+            clusters[inventory_key] is defined and
+            clusters[inventory_key][item.cluster_name] is defined and
+            clusters[inventory_key][item.cluster_name].url is defined and
+            clusters[inventory_key][item.cluster_name].password is defined
+          }}
+      loop: "{{ ocp_clusters }}"
+      loop_control:
+        label: "{{ item.tenant | default('?') }}_{{ item.env | default('?') }}/{{ item.cluster_name | default('?') }}"
+      no_log: true
+      changed_when: false
+
+    - name: "Resolve valid cluster connection records"
+      ansible.builtin.set_fact:
+        resolved_clusters: >-
+          {{
+            resolved_clusters + ([{
+              'cluster_name': item.cluster_name,
+              'env': item.env,
+              'tenant': item.tenant,
+              'inventory_key': inventory_key,
+              'url': clusters[inventory_key][item.cluster_name].url,
+              'password': clusters[inventory_key][item.cluster_name].password
+            }] if cluster_exists else [])
+          }}
+      vars:
+        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        cluster_exists: >-
+          {{
+            item.tenant is defined and
+            item.env is defined and
+            item.cluster_name is defined and
+            clusters[inventory_key] is defined and
+            clusters[inventory_key][item.cluster_name] is defined and
+            clusters[inventory_key][item.cluster_name].url is defined and
+            clusters[inventory_key][item.cluster_name].password is defined
+          }}
+      loop: "{{ ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      no_log: true
+      changed_when: false
+
+    - name: "Check oc binary"
+      ansible.builtin.stat:
+        path: "{{ oc_binary }}"
+      register: oc_binary_stat
+
+    - name: "Fail when oc binary is missing"
+      ansible.builtin.assert:
+        that:
+          - oc_binary_stat.stat.exists
+          - oc_binary_stat.stat.executable
+        fail_msg: "oc binary is missing or not executable: {{ oc_binary }}"
+
+    - name: "Login and list namespaces in parallel with isolated kubeconfigs"
+      ansible.builtin.shell: |
+        set -o pipefail
+        umask 077
+
+        export KUBECONFIG="/tmp/logx-ns-{{ logx_job_id }}-{{ cluster.cluster_name }}.kubeconfig"
+
+        cleanup() {
+          rm -f "${KUBECONFIG}"
+        }
+        trap cleanup EXIT
+
+        "{{ oc_binary }}" login \
+          --server={{ cluster.url | quote }} \
+          --username={{ username | quote }} \
+          --password={{ cluster.password | quote }} \
+          --insecure-skip-tls-verify=true \
+          >/dev/null
+
+        "{{ oc_binary }}" get projects -o name
+      args:
+        executable: /bin/bash
+      loop: "{{ resolved_clusters }}"
+      loop_control:
+        loop_var: cluster
+        label: "{{ cluster.cluster_name }}"
+      register: ns_jobs
+      async: "{{ oc_async_timeout }}"
+      poll: 0
+      changed_when: false
+      no_log: true
+
+    - name: "Wait for namespace discovery jobs"
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ ns_jobs.results | default([]) }}"
+      loop_control:
+        label: "{{ item.cluster.cluster_name }}"
+      register: ns_wait
+      until: ns_wait.finished
+      retries: "{{ oc_async_retries }}"
+      delay: "{{ oc_async_delay }}"
+      ignore_errors: true
+      changed_when: false
+      no_log: true
+
+    - name: "Build structured namespace results"
+      ansible.builtin.set_fact:
+        cluster_ns_results: >-
+          {{
+            cluster_ns_results + [{
+              'cluster_name': item.item.cluster.cluster_name,
+              'status': 'error' if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else 'ok',
+              'error': (
+                item.stderr | default(item.msg | default('Unknown OpenShift error'), true)
+              ) if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else '',
+              'namespaces': (
+                item.stdout_lines | default([])
+                | map('regex_replace', '^project/', '')
+                | list
+              ) if not (item.failed | default(false) or (item.rc | default(0) | int != 0)) else []
+            }]
+          }}
+      loop: "{{ ns_wait.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.cluster.cluster_name }}"
+      changed_when: false
+
+    - name: "Append validation errors"
+      ansible.builtin.set_fact:
+        cluster_ns_results: "{{ cluster_ns_results + validation_errors }}"
+      changed_when: false
+
+    - name: "Publish namespace discovery result"
+      ansible.builtin.set_stats:
+        data:
+          logx_result:
+            overall_status: >-
+              {% set ok_count = cluster_ns_results | selectattr('status', 'equalto', 'ok') | list | length %}
+              {% set error_count = cluster_ns_results | selectattr('status', 'equalto', 'error') | list | length %}
+              {{ 'success' if error_count == 0 else ('failed' if ok_count == 0 else 'partial') }}
+            clusters: "{{ cluster_ns_results }}"
+        per_host: false

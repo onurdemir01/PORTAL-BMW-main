@@ -1,0 +1,77 @@
+# READ-ONLY: Genel sistem sağlığını (CPU/bellek/yük/en yoğun prosesler) görüntüler.
+- name: Sistem Sağlığı Genel Görünüm
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Uptime ve yük ortalaması
+      ansible.builtin.shell:
+        cmd: uptime 2>/dev/null || echo 'uptime çalıştırılamadı'
+      register: uptime_out
+      changed_when: false
+      ignore_errors: true
+
+    - name: Uptime özeti
+      ansible.builtin.debug:
+        msg: "{{ uptime_out.stdout_lines }}"
+
+    - name: Bellek durumu
+      ansible.builtin.shell:
+        cmd: free -h 2>/dev/null || echo 'free çalıştırılamadı'
+      register: free_out
+      changed_when: false
+      ignore_errors: true
+
+    - name: Bellek özeti
+      ansible.builtin.debug:
+        msg: "{{ free_out.stdout_lines }}"
+
+    - name: CPU bilgisi
+      ansible.builtin.shell:
+        cmd: >
+          lscpu 2>/dev/null | grep -E 'Model name|CPU\(s\)|Thread|MHz' ||
+          grep -m1 'model name' /proc/cpuinfo 2>/dev/null ||
+          echo 'CPU bilgisi alınamadı'
+      register: cpu_out
+      changed_when: false
+      ignore_errors: true
+
+    - name: CPU özeti
+      ansible.builtin.debug:
+        msg: "{{ cpu_out.stdout_lines }}"
+
+    - name: CPU'ya göre en yoğun 10 proses
+      ansible.builtin.shell:
+        cmd: ps aux --sort=-%cpu 2>/dev/null | head -11 || echo 'ps çalıştırılamadı'
+      register: top_cpu
+      changed_when: false
+      ignore_errors: true
+
+    - name: En yoğun CPU prosesleri
+      ansible.builtin.debug:
+        msg: "{{ top_cpu.stdout_lines }}"
+
+    - name: Belleğe göre en yoğun 10 proses
+      ansible.builtin.shell:
+        cmd: ps aux --sort=-%mem 2>/dev/null | head -11 || echo 'ps çalıştırılamadı'
+      register: top_mem
+      changed_when: false
+      ignore_errors: true
+
+    - name: En yoğun bellek prosesleri
+      ansible.builtin.debug:
+        msg: "{{ top_mem.stdout_lines }}"
+
+    - name: Son sistem hataları (dmesg, izin varsa)
+      ansible.builtin.shell:
+        cmd: >
+          dmesg -T 2>/dev/null | grep -iE 'error|fail|oom' | tail -20 ||
+          echo 'dmesg okunamadı (yetki gerekebilir) — journalctl ile denenebilir'
+      register: dmesg_out
+      changed_when: false
+      ignore_errors: true
+
+    - name: Kernel hata/uyarı özeti
+      ansible.builtin.debug:
+        msg: "{{ dmesg_out.stdout_lines }}"

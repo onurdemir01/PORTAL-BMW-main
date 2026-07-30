@@ -1,0 +1,55 @@
+{
+  "name": "bmw-portal",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "server": "node server/index.cjs",
+    "start": "NODE_ENV=production node server/index.cjs",
+    "dev:all": "concurrently -n SERVER,WEB -c auto \"npm run server\" \"npm run dev\"",
+    "dev:serve": "NODE_ENV=production node server/index.cjs dev",
+    "test:all": "NODE_ENV=production node server/index.cjs test",
+    "qa": "NODE_ENV=production node server/index.cjs qa",
+    "prod": "NODE_ENV=production node server/index.cjs prod",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --experimental-test-module-mocks --test server/logx/v2/__tests__/*.test.cjs server/auth/__tests__/*.test.cjs server/db/__tests__/*.test.cjs server/ai-analyst/__tests__/*.test.cjs server/ai/__tests__/*.test.cjs server/inventory/__tests__/*.test.cjs server/ansible/__tests__/*.test.cjs",
+    "lint:ascii": "node scripts/check-ascii.cjs",
+    "migrate": "node server/db/migrate.cjs",
+    "db:seed": "node server/db/seed.cjs",
+    "dev:log": "bash scripts/devlog.sh",
+    "dev:log:win": "powershell -ExecutionPolicy Bypass -File scripts\\devlog.ps1",
+    "dev:win:log": "powershell -ExecutionPolicy Bypass -File scripts\\devlog.ps1"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@tanstack/react-virtual": "^3.14.5",
+    "compression": "^1.8.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "ldapts": "^8.1.8",
+    "mssql": "^12.7.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.11.0",
+    "undici": "^8.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/node": "^22.14.0",
+    "@types/react-router-dom": "^5.3.3",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.23",
+    "concurrently": "^9.2.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

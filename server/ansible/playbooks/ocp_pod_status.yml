@@ -1,0 +1,89 @@
+---
+# READ-ONLY: OCP/OpenShift pod durumunu jump server üzerinden sorgular. Hiçbir şey değiştirmez.
+- name: OCP Pod Durum Raporu
+  hosts: "{{ jump_host | default('localhost') }}"
+  gather_facts: false
+  become: false
+
+  vars:
+    ocp_namespace: "{{ namespace | default('--all-namespaces') }}"
+    ocp_label_selector: "{{ label_selector | default('') }}"
+
+  tasks:
+    - name: OCP bağlantı testi
+      ansible.builtin.shell:
+        cmd: oc whoami 2>/dev/null || echo 'oc bağlantısı kurulamadı'
+      register: oc_whoami
+      changed_when: false
+      ignore_errors: true
+
+    - name: OCP bağlantı durumu
+      ansible.builtin.debug:
+        msg: "Bağlı kullanıcı: {{ oc_whoami.stdout }}"
+
+    - name: Cluster versiyonu
+      ansible.builtin.shell:
+        cmd: oc version 2>/dev/null || echo 'oc version alınamadı'
+      register: oc_version
+      changed_when: false
+      ignore_errors: true
+
+    - name: OCP versiyon bilgisi
+      ansible.builtin.debug:
+        msg: "{{ oc_version.stdout_lines }}"
+
+    - name: Pod listesi (namespace bazlı)
+      ansible.builtin.shell:
+        cmd: >
+          {% if ocp_namespace == '--all-namespaces' %}
+          oc get pods --all-namespaces -o wide 2>/dev/null || echo 'pod listesi alınamadı'
+          {% else %}
+          oc get pods -n {{ ocp_namespace }}
+          {% if ocp_label_selector != '' %} -l {{ ocp_label_selector }}{% endif %}
+          -o wide 2>/dev/null || echo 'pod listesi alınamadı'
+          {% endif %}
+      register: pod_list
+      changed_when: false
+      ignore_errors: true
+
+    - name: Pod listesi
+      ansible.builtin.debug:
+        msg: "{{ pod_list.stdout_lines }}"
+
+    - name: CrashLoopBackOff ve Error durumundaki pod'lar
+      ansible.builtin.shell:
+        cmd: >
+          {% if ocp_namespace == '--all-namespaces' %}
+          oc get pods --all-namespaces 2>/dev/null | grep -E 'CrashLoop|Error|OOMKilled|Evicted' || echo 'Sorunlu pod yok'
+          {% else %}
+          oc get pods -n {{ ocp_namespace }} 2>/dev/null | grep -E 'CrashLoop|Error|OOMKilled|Evicted' || echo 'Sorunlu pod yok'
+          {% endif %}
+      register: problem_pods
+      changed_when: false
+      ignore_errors: true
+
+    - name: Sorunlu pod'lar
+      ansible.builtin.debug:
+        msg: "{{ problem_pods.stdout_lines }}"
+
+    - name: Node durumu
+      ansible.builtin.shell:
+        cmd: oc get nodes -o wide 2>/dev/null || echo 'node listesi alınamadı'
+      register: node_list
+      changed_when: false
+      ignore_errors: true
+
+    - name: Node listesi
+      ansible.builtin.debug:
+        msg: "{{ node_list.stdout_lines }}"
+
+    - name: Cluster operator durumu
+      ansible.builtin.shell:
+        cmd: oc get clusteroperators 2>/dev/null || echo 'cluster operator bilgisi alınamadı'
+      register: co_status
+      changed_when: false
+      ignore_errors: true
+
+    - name: Cluster operator'lar
+      ansible.builtin.debug:
+        msg: "{{ co_status.stdout_lines }}"

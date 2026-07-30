@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BMW Portal — OpenShift arayüz önizlemesi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Text:wght@400;500;700&display=swap" />
+<style>
+  /* Bu dosya yalnizca ONIZLEME icindir. Renk/olcu degerleri src/index.css ile birebir aynidir. */
+  :root{
+    --font-sans:"Red Hat Text",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-display:"Red Hat Display",var(--font-sans);
+    --accent:#0066cc; --accent-dark:#004080;
+    --bg-base:#f0f0f0; --bg-surface:#fff; --bg-elevated:#f5f5f5;
+    --masthead-bg:#151515; --nav-bg:#212427; --nav-hover:#3c3f42; --nav-current:#4f5255;
+    --text-primary:#151515; --text-secondary:#4f5255; --text-muted:#6a6e73;
+    --border:#d2d2d2; --border-strong:#8a8d90;
+    --danger:#c9190b; --warning:#f0ab00; --success:#3e8635;
+    --shadow-sm:0 .0625rem .125rem 0 rgba(3,3,3,.12),0 0 .125rem 0 rgba(3,3,3,.06);
+    --radius:3px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg-base);color:var(--text-primary);font-family:var(--font-sans);font-size:14px;line-height:1.5}
+  h1,h2,h3{font-family:var(--font-display);font-weight:500;margin:0}
+  a{color:var(--accent);text-decoration:none}
+
+  .masthead{height:64px;background:var(--masthead-bg);display:flex;align-items:center;gap:8px;color:#fff;padding-right:8px}
+  .mbtn{width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;color:#d2d2d2;background:none;border:0;cursor:pointer}
+  .mbtn:hover{background:#3c3f42;color:#fff}
+  .brand{display:flex;align-items:center;gap:8px;padding-left:4px}
+  .logo{width:28px;height:28px;border-radius:4px;background:#ee0000;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;padding:3px}
+  .logo i{background:#fff;display:block}
+  .logo i:nth-child(2),.logo i:nth-child(3){opacity:.35}
+  .brand b{font-family:var(--font-display);font-weight:500;font-size:17px}
+  .brand b span{color:#b8bbbe}
+  .user{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;color:rgba(255,255,255,.9);cursor:pointer}
+  .user:hover{background:#3c3f42}
+  .avatar{width:24px;height:24px;border-radius:50%;background:#4f5255;display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+
+  .shell{display:flex;height:calc(100vh - 64px)}
+  .nav{width:272px;flex-shrink:0;background:var(--nav-bg);color:#e0e0e0;overflow-y:auto}
+  .persp{display:flex;align-items:center;gap:8px;height:48px;padding:0 16px;border-bottom:1px solid #3c3f42;font-size:14px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#ee0000}
+  .nav ul{list-style:none;margin:0;padding:8px 0}
+  .nav a{display:block;padding:8px 16px 8px 32px;color:#e0e0e0;border-left:4px solid transparent;font-size:14px}
+  .nav a:hover{background:var(--nav-hover);color:#fff}
+  .nav a.current{background:var(--nav-current);border-left-color:var(--accent);color:#fff;font-weight:700}
+  .nav a.top{padding-left:16px}
+  .navtoggle{display:flex;justify-content:space-between;align-items:center;width:100%;padding:8px 16px;background:none;border:0;border-left:4px solid transparent;color:#e0e0e0;font:inherit;cursor:pointer}
+  .navtoggle:hover{background:var(--nav-hover);color:#fff}
+
+  main{flex:1;overflow-y:auto;padding:24px}
+  .page-title{font-size:24px}
+  .muted{color:var(--text-muted)}
+  .grid{display:grid;gap:16px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:1100px){.g3,.g2{grid-template-columns:1fr}.nav{display:none}}
+  .card{background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+  .card h2{font-size:16px;padding:20px 24px 12px}
+  .card .body{padding:0 24px 20px}
+  .row{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+  .row:first-child{border-top:1px solid var(--border)}
+  .ico{width:16px;height:16px;border-radius:50%;flex:0 0 16px;margin-top:3px}
+  .ok{background:var(--success)}.warn{background:var(--warning)}.err{background:var(--danger)}.unk{background:#6a6e73}
+  .inv{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer}
+  .inv:first-child{border-top:1px solid var(--border)}
+  .inv .num{margin-left:auto;font-family:var(--font-display);font-size:20px}
+  .label{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:999px;border:1px solid;font-size:14px}
+  .l-red{background:#faeae8;border-color:var(--danger);color:var(--danger)}
+  .l-green{background:#f3faf2;border-color:var(--success);color:var(--success)}
+  .l-blue{background:#e7f1fa;border-color:var(--accent);color:var(--accent-dark)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 16px;border-radius:var(--radius);font-size:14px;cursor:pointer;border:1px solid transparent}
+  .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn-primary:hover{background:var(--accent-dark)}
+  .btn-link{background:none;color:var(--accent);border:0;padding:6px 8px;cursor:pointer;font:inherit}
+  .input{width:100%;padding:6px 8px;border:1px solid var(--border);border-bottom:1px solid var(--border-strong);border-radius:0;font:inherit;background:#fff}
+  .input:focus{outline:none;border-bottom:2px solid var(--accent);padding-bottom:5px}
+  .tabs{display:flex;border-bottom:1px solid var(--border);padding:0 8px}
+  .tab{padding:12px 16px;border:0;background:none;font:inherit;color:var(--text-secondary);cursor:pointer;position:relative}
+  .tab.active{color:var(--accent);font-weight:700}
+  .tab.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--accent)}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--border);border-radius:999px;font-size:13px}
+  .note{max-width:none;background:#fff;border-top:2px solid var(--accent);box-shadow:var(--shadow-sm);padding:16px;margin-bottom:16px}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <button class="mbtn" aria-label="Menü">☰</button>
+  <a class="brand" href="#"><span class="logo"><i></i><i></i><i></i><i></i></span><b>BMW <span>Portal</span></b></a>
+  <div style="flex:1"></div>
+  <button class="mbtn" title="Ara">⌕</button>
+  <button class="mbtn" title="Tema">◐</button>
+  <button class="mbtn" title="Yardım">?</button>
+  <div class="user"><span class="avatar">A</span><span>Ahmet Yılmaz</span><span style="opacity:.7">▾</span></div>
+</header>
+
+<div class="shell">
+  <nav class="nav">
+    <div class="persp"><span class="dot"></span> Yönetici görünümü</div>
+    <ul>
+      <li><button class="navtoggle"><span style="font-weight:700;color:#fff">Genel</span><span>⌄</span></button>
+        <ul style="padding:0">
+          <li><a class="current" href="#">Dashboard</a></li>
+          <li><a href="#">Envanter</a></li>
+        </ul>
+      </li>
+      <li><a class="top" href="#">LogX</a></li>
+      <li><a class="top" href="#">Performance</a></li>
+      <li><button class="navtoggle"><span>Operasyon</span><span>⌄</span></button>
+        <ul style="padding:0"><li><a href="#">Görevler</a></li><li><a href="#">Nöbet</a></li></ul>
+      </li>
+      <li><button class="navtoggle"><span>Otomasyon</span><span>⌄</span></button>
+        <ul style="padding:0"><li><a href="#">Self Service</a></li><li><a href="#">Ansible</a></li></ul>
+      </li>
+      <li><a class="top" href="#">AI Analist</a></li>
+      <li><a class="top" href="#">Yardımcı Araçlar</a></li>
+      <li><a class="top" href="#">Admin</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <div class="note">
+      <strong>Önizleme.</strong> Bu sayfa, <code>src/index.css</code> içindeki PatternFly token'ları ve yeni layout
+      bileşenleriyle birebir aynı değerleri kullanır; gerçek uygulamada aynı görünümü verir.
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      <div>
+        <h1 class="page-title">Genel bakış</h1>
+        <p class="muted" style="margin:4px 0 0">Ahmet Yılmaz · 26 Temmuz 2026 Pazar</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="label l-red">Admin</span>
+        <button class="btn-link">? Bu sayfa nasıl kullanılır?</button>
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-bottom:16px">
+      <section class="card">
+        <h2>Durum</h2>
+        <div class="body">
+          <div class="row"><span class="ico warn"></span><div><div>Dynatrace</div><div class="muted" style="font-size:13px">3 açık sorun</div></div></div>
+          <div class="row"><span class="ico ok"></span><div><div>Envanter veritabanı</div><div class="muted" style="font-size:13px">Bağlantı sağlandı</div></div></div>
+          <div class="row"><span class="ico ok"></span><div><div>Self service kataloğu</div><div class="muted" style="font-size:13px">7 servis yayında</div></div></div>
+          <div class="row"><span class="ico unk"></span><div><div>Nöbet servisi</div><div class="muted" style="font-size:13px">Sorgulanıyor</div></div></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Envanter</h2>
+        <div class="body">
+          <div class="inv"><span class="muted">▦</span><span><span style="color:var(--accent)">Sunucular</span><br><span class="muted" style="font-size:13px">Envanter kayıtları</span></span><span class="num">1.284</span></div>
+          <div class="inv"><span class="muted">◫</span><span><span style="color:var(--accent)">Açık performans sorunu</span><br><span class="muted" style="font-size:13px">Dynatrace problems</span></span><span class="num">3</span></div>
+          <div class="inv"><span class="muted">▤</span><span><span style="color:var(--accent)">Self service</span><br><span class="muted" style="font-size:13px">Yayındaki servisler</span></span><span class="num">7</span></div>
+          <div class="inv"><span class="muted">▥</span><span><span style="color:var(--accent)">Görevler</span><br><span class="muted" style="font-size:13px">4 devam ediyor · 22 tamamlandı</span></span><span class="num">31</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Bugünün nöbetçisi</h2>
+        <div class="body" style="display:flex;gap:12px;align-items:center">
+          <span style="width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:18px">M</span>
+          <div>
+            <div style="font-family:var(--font-display);font-size:16px">Mehmet Demir</div>
+            <div class="muted" style="font-size:13px">Sistem Yöneticisi</div>
+            <div style="color:var(--text-secondary)">Dahili: 4712</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>Açık performans sorunları</h2>
+        <button class="btn-link" style="margin-right:16px">✦ AI ile özetle</button>
+      </div>
+      <div class="body">
+        <div class="row"><span class="ico err"></span><a href="#">JVM heap kullanımı %92 — app-prod-03</a></div>
+        <div class="row"><span class="ico err"></span><a href="#">Response time degradation — ödeme servisi</a></div>
+        <div class="row"><span class="ico err"></span><a href="#">Disk doluluk uyarısı — logsrv-01</a></div>
+      </div>
+    </section>
+
+    <div class="grid g2" style="margin-bottom:16px">
+      <section class="card">
+        <h2>AI Analist'e soru sor</h2>
+        <div class="body">
+          <div style="display:flex;gap:8px">
+            <input class="input" placeholder="Örn: X sunucusunda bugün neden yavaşlık var?" />
+            <button class="btn btn-primary">Sor</button>
+          </div>
+          <p class="muted" style="margin:4px 0 0">Soru, AI Analist sohbetine önceden doldurulmuş olarak aktarılır.</p>
+        </div>
+      </section>
+      <section class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h2>Şu an aktif</h2><span class="label l-green" style="margin-right:24px">4 kullanıcı</span>
+        </div>
+        <div class="body" style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="chip"><span class="avatar" style="background:#6a6e73">SY</span> Selin Yıldız</span>
+          <span class="chip"><span class="avatar" style="background:#6a6e73">KA</span> Kerem Ateş</span>
+          <span class="chip"><span class="avatar" style="background:#6a6e73">BÖ</span> Burak Öz</span>
+          <span class="chip"><span class="avatar" style="background:#6a6e73">EÇ</span> Ece Çelik</span>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Sekme örneği (PatternFly Tabs)</h2>
+      <div class="tabs"><button class="tab active">Problems</button><button class="tab">Events</button><button class="tab">Entities</button><button class="tab">Metrics</button></div>
+      <div class="body" style="padding-top:16px">
+        <p class="muted" style="margin:0">Aktif sekme 3px mavi alt çizgiyle işaretlenir; kapsayıcı tek bir gri hatla kapanır.</p>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

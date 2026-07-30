@@ -1,0 +1,5 @@
+{
+  "name": "BMW Portal Project Management Dashboard",
+  "description": "A modern, responsive project management dashboard for the BMW Portal, built with React, TypeScript, and Tailwind CSS. It provides a comprehensive overview of projects, tasks, and team productivity.",
+  "requestFramePermissions": []
+}

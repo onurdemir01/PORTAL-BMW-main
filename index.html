@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#151515" />
+    <title>BMW Portal</title>
+
+    <!-- Sekme logosu: Admin > Marka sekmesinden yuklenen gorsel sunucudan gelir.
+         TEK <link> girdisi bilincli: birden fazla rel="icon" verildiginde tarayici
+         hangisini kullanacagina KENDI karar verir (Chrome olceklenebilir SVG'yi
+         tercih edebilir) ve yuklenen logo yok sayilir. Logo yuklenmemisse endpoint
+         404 DEGIL, gomulu varsayilan gorseli doner — fallback sunucu tarafinda. -->
+    <link rel="icon" href="/api/branding/favicon" />
+
+    <!-- Red Hat font ailesi (PatternFly / OpenShift Console ile ayni).
+         Kurumsal ag disariya kapaliysa istek sessizce basarisiz olur ve
+         index.css'teki sistem-font fallback zinciri devreye girer. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Text:wght@400;500;700&family=Red+Hat+Mono:wght@400;500&display=swap"
+    />
+
+    <!-- Tema baslatma (FOUC onlemek icin ilk boyamadan ONCE senkron calisir):
+         kayitli tercih (localStorage 'bmw-theme') > isletim sistemi tercihi. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("bmw-theme");
+          var sysDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme = stored === "light" || stored === "dark" ? stored : (sysDark ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Vite entry -->
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

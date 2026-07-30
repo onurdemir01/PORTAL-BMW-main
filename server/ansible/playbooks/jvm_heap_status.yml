@@ -1,0 +1,88 @@
+---
+# READ-ONLY: JVM heap ve GC istatistiklerini görüntüler. jstat/jmap ile sadece okuma yapar.
+- name: JVM Heap Durumu
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Java proseslerini bul
+      ansible.builtin.shell:
+        cmd: pgrep -la java 2>/dev/null || echo 'Java prosesi bulunamadı'
+      register: java_procs
+      changed_when: false
+      ignore_errors: true
+
+    - name: Java prosesleri
+      ansible.builtin.debug:
+        msg: "{{ java_procs.stdout_lines }}"
+
+    - name: JBoss PID'ini al
+      ansible.builtin.shell:
+        cmd: >
+          pgrep -f 'jboss\|wildfly\|eap' 2>/dev/null | head -1 || echo ''
+      register: jboss_pid
+      changed_when: false
+      ignore_errors: true
+
+    - name: Jstat GC istatistikleri (5 örnek, 2s aralık)
+      ansible.builtin.shell:
+        cmd: >
+          PID={{ jboss_pid.stdout | trim }};
+          if [ -n "$PID" ] && [ "$PID" != "" ]; then
+            jstat -gc "$PID" 2000 5 2>/dev/null || echo 'jstat çalıştırılamadı';
+          else
+            echo 'JBoss PID bulunamadı';
+          fi
+      register: jstat_out
+      changed_when: false
+      ignore_errors: true
+
+    - name: GC istatistikleri
+      ansible.builtin.debug:
+        msg: "{{ jstat_out.stdout_lines }}"
+
+    - name: Jstat heap kapasitesi
+      ansible.builtin.shell:
+        cmd: >
+          PID={{ jboss_pid.stdout | trim }};
+          if [ -n "$PID" ] && [ "$PID" != "" ]; then
+            jstat -gcutil "$PID" 2>/dev/null || echo 'jstat -gcutil çalıştırılamadı';
+          else
+            echo 'PID bulunamadı';
+          fi
+      register: gcutil_out
+      changed_when: false
+      ignore_errors: true
+
+    - name: GC kullanım yüzdesi
+      ansible.builtin.debug:
+        msg: "{{ gcutil_out.stdout_lines }}"
+
+    - name: Sistem bellek durumu
+      ansible.builtin.shell:
+        cmd: free -h 2>/dev/null || echo 'free çalıştırılamadı'
+      register: free_out
+      changed_when: false
+      ignore_errors: true
+
+    - name: Bellek özeti
+      ansible.builtin.debug:
+        msg: "{{ free_out.stdout_lines }}"
+
+    - name: JVM başlangıç parametreleri
+      ansible.builtin.shell:
+        cmd: >
+          PID={{ jboss_pid.stdout | trim }};
+          if [ -n "$PID" ] && [ "$PID" != "" ]; then
+            cat /proc/"$PID"/cmdline 2>/dev/null | tr '\0' ' ' | grep -oP '\-Xm[sx]\S+|\-XX:\S+' | sort -u;
+          else
+            echo 'PID bulunamadı';
+          fi
+      register: jvm_flags
+      changed_when: false
+      ignore_errors: true
+
+    - name: JVM bayrakları (-Xms, -Xmx, -XX)
+      ansible.builtin.debug:
+        msg: "{{ jvm_flags.stdout_lines }}"

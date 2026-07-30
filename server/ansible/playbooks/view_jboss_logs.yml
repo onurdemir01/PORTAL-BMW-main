@@ -1,0 +1,68 @@
+---
+# READ-ONLY: JBoss log dosyalarını okur (tail + grep). Hiçbir şey değiştirmez.
+- name: JBoss Log Görüntüleme
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: false
+
+  vars:
+    log_lines: "{{ lines | default(200) }}"
+    log_pattern: "{{ pattern | default('ERROR|WARN|FATAL') }}"
+
+  tasks:
+    - name: JBoss log dosyalarını bul
+      ansible.builtin.find:
+        paths:
+          - /opt/jboss/standalone/log
+          - /opt/wildfly/standalone/log
+          - /opt/eap/standalone/log
+          - /var/log/jboss
+        patterns:
+          - "server.log"
+          - "*.log"
+        recurse: false
+      register: log_files
+      ignore_errors: true
+
+    - name: Bulunan log dosyaları
+      ansible.builtin.debug:
+        msg: "Bulunan dosyalar: {{ log_files.files | map(attribute='path') | list }}"
+
+    - name: server.log son satırları
+      ansible.builtin.shell:
+        cmd: >
+          LOG=$(find /opt /var -name 'server.log' -path '*/standalone/log/*' 2>/dev/null | head -1);
+          if [ -n "$LOG" ]; then tail -n {{ log_lines }} "$LOG"; else echo 'server.log bulunamadı'; fi
+      register: server_log_tail
+      changed_when: false
+      ignore_errors: true
+
+    - name: server.log içeriği
+      ansible.builtin.debug:
+        msg: "{{ server_log_tail.stdout_lines }}"
+
+    - name: Hata/Uyarı grep
+      ansible.builtin.shell:
+        cmd: >
+          LOG=$(find /opt /var -name 'server.log' -path '*/standalone/log/*' 2>/dev/null | head -1);
+          if [ -n "$LOG" ]; then grep -E '{{ log_pattern }}' "$LOG" | tail -n 100; else echo 'Dosya bulunamadı'; fi
+      register: grep_result
+      changed_when: false
+      ignore_errors: true
+
+    - name: Filtrelenmiş log satırları ({{ log_pattern }})
+      ansible.builtin.debug:
+        msg: "{{ grep_result.stdout_lines }}"
+
+    - name: GC log (varsa)
+      ansible.builtin.shell:
+        cmd: >
+          GC=$(find /opt /var -name 'gc.log' -o -name '*gc*.log' 2>/dev/null | head -1);
+          if [ -n "$GC" ]; then tail -n 50 "$GC"; else echo 'GC log bulunamadı'; fi
+      register: gc_log
+      changed_when: false
+      ignore_errors: true
+
+    - name: GC log (son 50 satır)
+      ansible.builtin.debug:
+        msg: "{{ gc_log.stdout_lines }}"

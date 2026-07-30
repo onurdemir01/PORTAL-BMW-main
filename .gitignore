@@ -1,0 +1,42 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Sensitive files — NEVER commit ──────────────────────────────────────────
+# TÜM ortam dosyaları gizlidir; yalnız .env.example commit edilir.
+.env
+.env.*
+!.env.example
+
+# TLS certificates & private keys
+*.pem
+*.key
+*.crt
+*.cer
+
+# May contain real server IPs (fill in ocp-clusters.json locally, not in git)
+server/ansible/ocp-clusters.json
+
+# JSON data stores — small deployments only; move to DB in production
+server/data/

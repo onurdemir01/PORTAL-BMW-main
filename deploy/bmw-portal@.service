@@ -1,0 +1,55 @@
+# deploy/bmw-portal@.service — BMW Portal systemd SABLON birimi (RHEL 8/9, root/sudo gerektirir).
+#
+# Bu bir INSTANCE (template) birimidir — "%i" ortam adiyla (dev|test|qa|prod) degistirilir.
+# Root/sudo erisimi OLMAYAN operatorler icin bkz. deploy/run.sh + deploy/install-cron.sh
+# (cron tabanli watchdog + @reboot — ayni sonucu root'suz verir). Iki mekanizmayi AYNI
+# ortam icin birlikte KULLANMAYIN — bu birim run.sh'i cagirmaz, dogrudan node calistirir,
+# PID takibi run.sh'inkiyle (logs/<env>.pid) CAKISMAZ ama ikisi ayni anda ayni ortami
+# yonetmeye calisirsa (ör. biri systemctl start, digeri run.sh start) cift-surec olusabilir.
+#
+# Kurulum:
+#   sudo cp deploy/bmw-portal@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bmw-portal@prod      # ornek: prod ortami
+#   sudo systemctl status bmw-portal@prod
+#   sudo systemctl stop bmw-portal@prod
+#
+# Crash sonrasi otomatik yeniden baslatma (Restart=on-failure) ve VM reboot sonrasi
+# otomatik acilma (enable) systemd'den ucretsiz gelir — cron/watchdog GEREKMEZ.
+#
+# Loglar: journalctl -u bmw-portal@prod -f
+[Unit]
+Description=BMW Portal (Node.js) — %i ortami
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=was
+Group=was
+WorkingDirectory=/vhosting8/bmw_portal/app/PORTAL-BMW-main
+# .env.%i dotenv ile uygulama icinden okunur (server/index.cjs argv[1] = APP_ENV).
+# NODE_ENV=production BURADA ACIKCA verilir — .env.%i icindeki satira bagimli DEGILDIR
+# (dotenv zaten-set edilen degeri ezmez, bu yuzden bu satir kesin garantidir).
+# Kurumsal nginx :3000'e proxy'ler — PORT .env.%i icinde 3000'dir.
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node server/index.cjs %i
+Restart=on-failure
+RestartSec=5
+# Graceful stop icin SIGTERM (varsayilan) + 20s bekleme
+TimeoutStopSec=20
+
+# ── Temel sertlestirme ────────────────────────────────────────────────────────
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+# Uygulamanin yazmasi gereken dizinler: sertifikalar + loglar + LogX staging fallback.
+# server/data artik gerekmiyor — tum kalici veri MSSQL'de (TBMWANS).
+ReadWritePaths=/vhosting8/bmw_portal/app/PORTAL-BMW-main/server/certs /vhosting8/bmw_portal/app/PORTAL-BMW-main/logs
+# Bellek siniri — LogX buffer'lari icin pay birakilmis (bkz. docs/SCALABILITY.md):
+MemoryMax=2G
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,42 @@
+# READ-ONLY: Yaygın servislerin (nginx/httpd/docker/podman/jbossas/tomcat) durumunu
+# tek seferde görüntüler. Sistemde olmayan servisler sessizce atlanır.
+- name: Servis Durumu Kontrolü
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: false
+
+  vars:
+    common_services:
+      - nginx
+      - httpd
+      - apache2
+      - docker
+      - podman
+      - jbossas
+      - wildfly
+      - tomcat
+
+  tasks:
+    - name: Tüm servislerin durumunu keşfet (salt-okunur fact toplama)
+      ansible.builtin.service_facts:
+      register: services_result
+      ignore_errors: true
+
+    - name: Servis durumu özeti (bilinen servisler)
+      ansible.builtin.debug:
+        msg: >-
+          {%- for svc_name in common_services -%}
+          {%- set matched = ansible_facts.services | default({}) | dict2items
+              | selectattr('key', 'match', '^' ~ svc_name ~ '(\\.service)?$') | list -%}
+          {%- if matched | length > 0 -%}
+          {{ svc_name }}: {{ matched[0].value.state }} |
+          {%- else -%}
+          {{ svc_name }}: kayıtlı-değil |
+          {%- endif -%}
+          {%- endfor -%}
+      when: services_result is succeeded
+
+    - name: Servis keşfi başarısız oldu
+      ansible.builtin.debug:
+        msg: "service_facts modülü çalıştırılamadı — bu host'ta systemd olmayabilir veya yetki gerekebilir."
+      when: services_result is not succeeded

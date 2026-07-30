@@ -1,0 +1,53 @@
+---
+# READ-ONLY: Bu playbook yalnızca sistem bilgisi toplar. Hiçbir değişiklik yapmaz.
+- name: Sunucu Durum Raporu
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: true
+  become: false
+
+  tasks:
+    - name: İşletim sistemi bilgisi
+      ansible.builtin.debug:
+        msg: |
+          Hostname : {{ ansible_hostname }}
+          OS       : {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Kernel   : {{ ansible_kernel }}
+          Arch     : {{ ansible_architecture }}
+          FQDN     : {{ ansible_fqdn }}
+
+    - name: CPU ve bellek bilgisi
+      ansible.builtin.debug:
+        msg: |
+          CPU Cores : {{ ansible_processor_vcpus }}
+          RAM Total : {{ (ansible_memtotal_mb / 1024) | round(1) }} GB
+          RAM Free  : {{ (ansible_memfree_mb / 1024) | round(1) }} GB
+
+    - name: Disk kullanımı
+      ansible.builtin.command:
+        cmd: df -hT --output=source,fstype,size,used,avail,pcent,target
+      register: df_out
+      changed_when: false
+
+    - name: Disk raporu
+      ansible.builtin.debug:
+        msg: "{{ df_out.stdout_lines }}"
+
+    - name: Uptime bilgisi
+      ansible.builtin.command:
+        cmd: uptime -p
+      register: uptime_out
+      changed_when: false
+
+    - name: Uptime
+      ansible.builtin.debug:
+        msg: "{{ uptime_out.stdout }}"
+
+    - name: Aktif kullanıcılar
+      ansible.builtin.command:
+        cmd: who
+      register: who_out
+      changed_when: false
+
+    - name: Aktif oturumlar
+      ansible.builtin.debug:
+        msg: "{{ who_out.stdout_lines }}"

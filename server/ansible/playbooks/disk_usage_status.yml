@@ -1,0 +1,53 @@
+# READ-ONLY: Disk kullanımı ve inode durumunu görüntüler. Hiçbir şey değiştirmez.
+- name: Disk Kullanım Durumu
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Dosya sistemi kullanımı (df -h)
+      ansible.builtin.shell:
+        cmd: df -h 2>/dev/null || echo 'df çalıştırılamadı'
+      register: df_out
+      changed_when: false
+      ignore_errors: true
+
+    - name: Disk kullanım özeti
+      ansible.builtin.debug:
+        msg: "{{ df_out.stdout_lines }}"
+
+    - name: Inode kullanımı (df -i)
+      ansible.builtin.shell:
+        cmd: df -i 2>/dev/null || echo 'inode bilgisi alınamadı'
+      register: df_inode
+      changed_when: false
+      ignore_errors: true
+
+    - name: Inode özeti
+      ansible.builtin.debug:
+        msg: "{{ df_inode.stdout_lines }}"
+
+    - name: En büyük dizinler (/var, /opt, /home — 10 saniye sınırlı tarama)
+      ansible.builtin.shell:
+        cmd: >
+          timeout 10 du -h --max-depth=2 /var /opt /home 2>/dev/null | sort -rh | head -20 ||
+          echo 'du taraması tamamlanamadı (zaman aşımı veya yetki)'
+      register: du_out
+      changed_when: false
+      ignore_errors: true
+
+    - name: En büyük dizinler özeti
+      ansible.builtin.debug:
+        msg: "{{ du_out.stdout_lines }}"
+
+    - name: Açık silinmiş dosyalar (disk dolulukta gizli sebep olabilir)
+      ansible.builtin.shell:
+        cmd: >
+          lsof +L1 2>/dev/null | head -20 || echo 'lsof bulunamadı veya yetki yok'
+      register: deleted_files
+      changed_when: false
+      ignore_errors: true
+
+    - name: Silinmiş ama açık dosya tutan prosesler
+      ansible.builtin.debug:
+        msg: "{{ deleted_files.stdout_lines }}"

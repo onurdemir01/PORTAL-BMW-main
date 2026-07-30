@@ -1,0 +1,88 @@
+---
+# READ-ONLY: Nginx yapılandırma ve servis durumunu kontrol eder. Hiçbir şey değiştirmez.
+- name: Nginx Durum Kontrolü
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Nginx servis durumu
+      ansible.builtin.command:
+        cmd: systemctl is-active nginx 2>/dev/null || echo 'not-found'
+      register: nginx_active
+      changed_when: false
+      ignore_errors: true
+
+    - name: Nginx aktif mi?
+      ansible.builtin.debug:
+        msg: "nginx servis durumu: {{ nginx_active.stdout }}"
+
+    - name: Nginx yapılandırma testi
+      ansible.builtin.command:
+        cmd: nginx -t 2>&1 || true
+      register: nginx_test
+      changed_when: false
+      ignore_errors: true
+
+    - name: Yapılandırma testi sonucu
+      ansible.builtin.debug:
+        msg: "{{ nginx_test.stdout_lines + nginx_test.stderr_lines }}"
+
+    - name: Nginx versiyon bilgisi
+      ansible.builtin.command:
+        cmd: nginx -V 2>&1 || true
+      register: nginx_version
+      changed_when: false
+      ignore_errors: true
+
+    - name: Nginx versiyonu ve derleme bayrakları
+      ansible.builtin.debug:
+        msg: "{{ nginx_version.stdout_lines + nginx_version.stderr_lines }}"
+
+    - name: Port dinleme durumu (80 / 443 / 8080)
+      ansible.builtin.command:
+        cmd: "ss -tlnp 2>/dev/null | grep -E ':80 |:443 |:8080 ' || echo 'ilgili port dinlenmiyor'"
+      register: port_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: Port durumu
+      ansible.builtin.debug:
+        msg: "{{ port_check.stdout_lines }}"
+
+    - name: Nginx process bilgisi
+      ansible.builtin.command:
+        cmd: pgrep -la nginx 2>/dev/null || echo 'nginx prosesi bulunamadı'
+      register: nginx_procs
+      changed_when: false
+      ignore_errors: true
+
+    - name: Nginx prosesleri
+      ansible.builtin.debug:
+        msg: "{{ nginx_procs.stdout_lines }}"
+
+    - name: Access log son 50 satır
+      ansible.builtin.shell:
+        cmd: >
+          LOG=$(find /var/log/nginx /var/log -name 'access.log' 2>/dev/null | head -1);
+          if [ -n "$LOG" ]; then tail -n 50 "$LOG"; else echo 'access.log bulunamadı'; fi
+      register: access_log
+      changed_when: false
+      ignore_errors: true
+
+    - name: Access log
+      ansible.builtin.debug:
+        msg: "{{ access_log.stdout_lines }}"
+
+    - name: Error log son 50 satır
+      ansible.builtin.shell:
+        cmd: >
+          LOG=$(find /var/log/nginx /var/log -name 'error.log' 2>/dev/null | head -1);
+          if [ -n "$LOG" ]; then tail -n 50 "$LOG"; else echo 'error.log bulunamadı'; fi
+      register: error_log
+      changed_when: false
+      ignore_errors: true
+
+    - name: Error log
+      ansible.builtin.debug:
+        msg: "{{ error_log.stdout_lines }}"

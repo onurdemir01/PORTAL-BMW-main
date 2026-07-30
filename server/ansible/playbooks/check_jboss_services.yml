@@ -1,0 +1,63 @@
+---
+# READ-ONLY: JBoss/WildFly servis durumunu kontrol eder. Hiçbir şey başlatmaz/durdurrmaz.
+- name: JBoss Servis Durumu Kontrolü
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: false
+  become: false
+
+  vars:
+    jboss_service_names:
+      - jboss
+      - wildfly
+      - eap7
+      - eap6
+
+  tasks:
+    - name: Systemd servis durumları
+      ansible.builtin.shell:
+        cmd: "systemctl is-active {{ item }} 2>/dev/null || echo 'not-found'"
+      loop: "{{ jboss_service_names }}"
+      register: service_status
+      changed_when: false
+      ignore_errors: true
+
+    - name: Servis durumu raporu
+      ansible.builtin.debug:
+        msg: "{{ item.item }}: {{ item.stdout }}"
+      loop: "{{ service_status.results }}"
+
+    - name: JBoss process kontrolü
+      ansible.builtin.command:
+        cmd: >
+          pgrep -la -f 'jboss|wildfly|eap' 2>/dev/null || echo 'process not found'
+      register: jboss_procs
+      changed_when: false
+      ignore_errors: true
+
+    - name: JBoss prosesleri
+      ansible.builtin.debug:
+        msg: "{{ jboss_procs.stdout_lines }}"
+
+    - name: Port dinleme durumu (8080 / 8443 / 9990)
+      ansible.builtin.command:
+        cmd: "ss -tlnp 2>/dev/null | grep -E ':8080|:8443|:9990' || echo 'port not listening'"
+      register: port_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: JBoss port raporu
+      ansible.builtin.debug:
+        msg: "{{ port_check.stdout_lines }}"
+
+    - name: Son 50 JBoss log satırı (server.log)
+      ansible.builtin.shell:
+        cmd: >
+          find /opt /var /srv -name 'server.log' -path '*/log/*' 2>/dev/null | head -1 |
+          xargs -I{} tail -n 50 {} 2>/dev/null || echo 'server.log bulunamadı'
+      register: jboss_log
+      changed_when: false
+      ignore_errors: true
+
+    - name: JBoss log (son 50 satır)
+      ansible.builtin.debug:
+        msg: "{{ jboss_log.stdout_lines }}"
