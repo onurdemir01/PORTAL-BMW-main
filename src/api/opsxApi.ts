@@ -31,6 +31,14 @@ export interface OpsxRunResult {
   sentBody: { limit?: string; extra_vars: Record<string, unknown> };
 }
 
+export interface OpsxJobStatus {
+  ok: boolean;
+  status: string;
+  output: string;
+  finished?: string;
+  failed?: boolean;
+}
+
 export const opsxApi = {
   // Uygulama arama — LogX legacy ile aynı kaynak; DB erişilemezse fallbackMode=true
   // ile son bilinen snapshot döner.
@@ -69,4 +77,10 @@ export const opsxApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then(safeJson),
+
+  // Tetiklenen job'ın canlı durumu + stdout'u. Self Service'in ss/job-status'uyla
+  // aynı desen — kendini-zamanlayan adaptif polling ile çağrılması beklenir
+  // (bkz. OpsXWizardPage.tsx).
+  jobStatus: (serverId: number, jobId: number): Promise<OpsxJobStatus> =>
+    fetch(`${BASE}/job-status/${serverId}/${jobId}`).then(safeJson),
 };

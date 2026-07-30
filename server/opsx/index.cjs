@@ -131,6 +131,55 @@ function initOpsX(app) {
     });
   });
 
+  // GET /api/opsx/job-status/:serverId/:jobId — tetiklenen job'in CANLI durumu ve
+  // stdout'u. Self Service'in ss/job-status'uyla AYNI iki-cagrili desen
+  // (getJobStatusOnServer + getJobOutputOnServer) — ama OpsX'in KENDI endpoint'i,
+  // cunku Self Service'teki cikti-filtresi ozelligi yalnizca SS kayitlarina bagli
+  // (ansible_ss_customizations) ve OpsX'te anlamsiz; ayri tutmak iki ozelligi
+  // birbirine bagimli kilmiyor.
+  app.get('/api/opsx/job-status/:serverId/:jobId', requireAuth, async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
+    }
+
+    // IDOR korumasi: job ansible_job_history'de KAYITLI ve BASKA kullaniciya aitse
+    // (admin degilse) reddet — Self Service'teki ayni kontrol. Kayit yoksa/DB hatasi
+    // varsa fail-open (mesru akisi bozmaz; OpsX kendi launch'inda bu satiri zaten
+    // await ile yaziyor, yani normal akista kayit her zaman mevcuttur).
+    try {
+      const db = require('../db/index.cjs');
+      const reqUser = req.session?.user || {};
+      if (reqUser.role !== 'Admin') {
+        const { rows } = await db.query(
+          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+          [jobId, serverId]
+        );
+        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
+        }
+      }
+    } catch { /* DB hiccup -> fail-open */ }
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      const [statusInfo, outputInfo] = await Promise.all([
+        runner.getJobStatusOnServer(serverId, jobId),
+        runner.getJobOutputOnServer(serverId, jobId),
+      ]);
+      res.json({
+        ok: true,
+        status: statusInfo.status,
+        output: outputInfo.output || '',
+        finished: statusInfo.finished,
+        failed: statusInfo.failed,
+      });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // POST /api/opsx/run — islemi tetikler.
   //
   // IKI PLATFORM, IKI FARKLI GOVDE (kullanici sartnamesi):
@@ -280,6 +329,27 @@ function initOpsX(app) {
       // ise payload'a HIC eklenmez (bkz. runner.cjs: `if (limit) payload.limit = limit`),
       // dolayisiyla Openshift govdesinde ust-seviye limit alani olusmaz.
       const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
+
+      // ansible_job_history'ye kayit: Self Service'in kullandigi AYNI genel-amacli
+      // tablo. Bu, iki sey saglar: (a) job-status endpoint'i IDOR korumasi icin
+      // "bu job kime ait" sorusunu cevaplayabilir, (b) ilerde bir "OpsX Gecmisi"
+      // ekrani gerekirse veri zaten burada. `params` alanina extraVars'i OLDUGU GIBI
+      // yazariz — Self Service'teki gibi maskeleme YOK, cunku OpsX parametreleri
+      // (uygulama adi, sunucu listesi, islem) hassas veri tasimiyor.
+      try {
+        const db = require('../db/index.cjs');
+        await db.query(
+          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            req.session?.user?.username || 'unknown',
+            serverId, templateId, `OpsX: ${plat}`,
+            result?.jobId, result?.status || 'pending',
+            JSON.stringify({ platform: plat, ...(limitValue ? { limit: limitValue } : {}), ...extraVars }),
+          ]
+        );
+      } catch (e) {
+        console.warn('[OpsX] Gecmis kaydedilemedi:', e.message);
+      }
 
       try {
         require('../audit/index.cjs').auditPortal(req, 'opsx_operation', {

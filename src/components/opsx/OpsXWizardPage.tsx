@@ -7,9 +7,10 @@
 // kısa ve tek bir tetiklemeyle bitiyor, dolayısıyla adım durumu client'ta tutulur.
 // Güvenlik buna dayanmaz: son POST /api/opsx/run çağrısında sunucu uygulama-host
 // eşleşmesini ve cluster'ı envanterden YENİDEN doğrular.
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxPlatform, type OpsxOperation, type OpsxRunResult } from "@/api/opsxApi";
+import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
 import HostSelectStep from "./steps/HostSelectStep";
@@ -46,6 +47,10 @@ const OpsXWizardPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OpsxRunResult | null>(null);
+  // Canlı iş takibi — Self Service'teki ssJobStatus polling'inin OpsX karşılığı.
+  const [jobOutput, setJobOutput] = useState("");
+  const [jobStatus, setJobStatus] = useState("");
+  const [pollErr, setPollErr] = useState("");
 
   function restart() {
     setStep("platform");
@@ -59,6 +64,9 @@ const OpsXWizardPage: React.FC = () => {
     setAppName("");
     setError(null);
     setResult(null);
+    setJobOutput("");
+    setJobStatus("");
+    setPollErr("");
   }
 
   // Adıma göre "← Geri" hedefi. Hedefi olmayan adımlarda buton hiç render edilmez.
@@ -120,6 +128,58 @@ const OpsXWizardPage: React.FC = () => {
   }
 
   const canGoBack = backTargetFor(step) !== null;
+
+  // Canlı log polling'i — Self Service'in SurveyModal'ındaki AYNI desen: SSE değil,
+  // kendini-zamanlayan uyarlanabilir döngü. Stdout akarken hızlı yoklar, henüz
+  // çıktı yokken biraz daha yavaş, geçici hatada (oturum yenilenmesi/ağ titremesi)
+  // hemen pes etmez — artan gecikmeyle ~50sn boyunca tekrar dener.
+  useEffect(() => {
+    if (step !== "done" || result?.jobId == null) return;
+    const serverId = result.awxServerId;
+    const jobId = result.jobId;
+
+    let stopped = false;
+    let consecutiveErrors = 0;
+    let timer: number | undefined;
+
+    const RUN_MS = 1500;
+    const IDLE_MS = 3000;
+    const MAX_ERRORS = 12;
+
+    const schedule = (ms: number) => { if (!stopped) timer = window.setTimeout(tick, ms); };
+
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        const r = await opsxApi.jobStatus(serverId, jobId);
+        consecutiveErrors = 0;
+        setPollErr("");
+        setJobStatus(r.status);
+        if (r.output) setJobOutput(r.output);
+        const terminal = r.status === "successful" || r.status === "failed" || r.status === "error" || r.status === "canceled";
+        if (terminal) {
+          if (!r.output && (r.status === "failed" || r.status === "error")) {
+            setJobOutput("Job başarısız oldu ancak AWX bu iş için stdout döndürmedi. AWX arayüzünden job detayını kontrol edin.");
+          }
+          stopped = true;
+          return;
+        }
+        schedule(r.output ? RUN_MS : IDLE_MS);
+      } catch (e: unknown) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= MAX_ERRORS) {
+          setPollErr(`Durum güncellenemiyor: ${e instanceof Error ? e.message : String(e)}`);
+          stopped = true;
+          return;
+        }
+        setPollErr(`Bağlantı yenileniyor… (deneme ${consecutiveErrors}/${MAX_ERRORS})`);
+        schedule(Math.min(RUN_MS * consecutiveErrors, 6000));
+      }
+    };
+
+    tick();
+    return () => { stopped = true; if (timer) window.clearTimeout(timer); };
+  }, [step, result]);
 
   const operationSummary = (
     <>
@@ -191,17 +251,29 @@ const OpsXWizardPage: React.FC = () => {
         )}
 
         {step === "done" && result && (
-          <div className="flex flex-col items-center gap-4 py-8 text-center">
+          <div className="flex flex-col items-center gap-4 py-6 text-center">
             <CheckCircleIcon className="w-10 h-10 text-green-600" />
             <div>
               <p className="text-sm font-medium text-[var(--text-primary)]">İşlem başlatıldı.</p>
               {result.jobId != null && (
                 <p className="mt-1 text-xs text-[var(--text-muted)]">
                   AWX Job: <span className="font-mono">#{result.jobId}</span>
-                  {result.status ? ` · ${result.status}` : ""}
                 </p>
               )}
             </div>
+
+            {/* Canlı iş takibi — Self Service'teki aynı terminal bileşeni. */}
+            {result.jobId != null && (
+              <div className="w-full text-left">
+                <AnsibleLogTerminal
+                  output={jobOutput}
+                  status={jobStatus || result.status || "pending"}
+                  title={`opsx-job-${result.jobId}`}
+                />
+                {pollErr && <p className="mt-1.5 text-xs text-amber-600">{pollErr}</p>}
+              </div>
+            )}
+
             {/* Job'a gerçekten NE gönderildiğini göster — kullanıcı beklediği parametrelerin
                 gittiğini doğrulayabilsin (özellikle virgülle ayrılmış sunucu listesi). */}
             <div className="w-full text-left bg-[var(--bg-elevated)] rounded-xl p-3">
