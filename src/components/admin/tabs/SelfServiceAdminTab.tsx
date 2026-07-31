@@ -11,6 +11,7 @@ import {
   DocumentTextIcon,
 } from "@heroicons/react/24/outline";
 import { selfServiceApi, type SelfServiceGroup } from "@/api/selfServiceApi";
+import { ansibleApi, type AnsibleSsItem } from "@/api/ansibleApi";
 import Collapse from "@/components/common/Collapse";
 import { Select } from "@/components/ui/Form";
 import type { SelfServiceStore, SelfServiceTab, SelfServiceSubTab, SelfServiceItem } from "@/types";
@@ -226,6 +227,82 @@ const GroupsSection: React.FC<{ groups: SelfServiceGroup[]; onChange: (groups: S
   );
 };
 
+// Otomasyon > Ansible sekmesindeki liste hem admin hem normal kullanıcı icin
+// `enabled` alanına göre filtrelenir (bkz. SelfServicePage.tsx AnsibleSection) —
+// yani bir servis kapatıldığında admin de onu o ekrandan bir daha göremez/geri
+// açamaz. Burası (Admin > Self Service) TÜM kayıtlı Ansible servislerini
+// (enabled=false dahil) listeleyip görünürlüğü tek tıkla açıp kapatmayı sağlar.
+const AnsibleVisibilitySection: React.FC = () => {
+  const [items, setItems] = useState<AnsibleSsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  async function reload() {
+    try {
+      setLoading(true);
+      setError(null);
+      const r = await ansibleApi.ssItems();
+      setItems(r.items || []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { reload(); }, []);
+
+  async function toggleEnabled(item: AnsibleSsItem) {
+    setTogglingId(item.id);
+    try {
+      const r = await ansibleApi.saveSsItem({ ...item, enabled: !item.enabled });
+      if (r.ok) setItems(r.items || items.map((i) => (i.id === item.id ? { ...i, enabled: !i.enabled } : i)));
+    } catch {
+      /* kullanici tekrar deneyebilir */
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  return (
+    <div className="border border-gray-100 rounded-2xl p-4 space-y-2 bg-gray-50/50">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ansible Servis Görünürlüğü</p>
+      <p className="text-[11px] text-gray-400">
+        Otomasyon &gt; Ansible sekmesinde kullanıcılara hangi servislerin gösterileceğini burada
+        açıp kapatabilirsiniz — kapatılan bir servis kullanıcı listesinden kalkar ama kaydı silinmez.
+      </p>
+
+      {loading ? (
+        <div className="py-4 text-center text-xs text-gray-400">Yükleniyor...</div>
+      ) : error ? (
+        <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</div>
+      ) : items.length === 0 ? (
+        <div className="py-4 text-center text-xs text-gray-400">Henüz Ansible servisi tanımlanmamış.</div>
+      ) : (
+        <div className="space-y-1.5">
+          {[...items].sort((a, b) => a.order - b.order).map((item) => (
+            <div key={item.id} className="flex items-center gap-2 bg-white border border-gray-100 rounded-lg px-3 py-1.5">
+              <span className="flex-1 text-sm text-gray-700 truncate">{item.title}</span>
+              <span className="text-xs text-gray-400">Template #{item.awxTemplateId} · Server {item.awxServerId}</span>
+              <button
+                onClick={() => toggleEnabled(item)}
+                disabled={togglingId === item.id}
+                title={item.enabled ? "Kullanıcılara kapat" : "Kullanıcılara aç"}
+                className={`text-xs px-2 py-0.5 rounded-full transition disabled:opacity-50 ${
+                  item.enabled ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                }`}
+              >
+                {item.enabled ? "kullanıcılara açık" : "kullanıcılara kapalı"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ----- Main component -----
 const SelfServiceAdminTab: React.FC = () => {
   const [store, setStore] = useState<SelfServiceStore>(emptyStore);
@@ -323,6 +400,7 @@ const SelfServiceAdminTab: React.FC = () => {
   return (
     <div className="space-y-3">
       <GroupsSection groups={groups} onChange={setGroups} />
+      <AnsibleVisibilitySection />
 
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm text-gray-500">{tabs.length} tab</p>
