@@ -43,17 +43,13 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
   const meta = statusMeta(status);
   const lineCount = useMemo(() => (output ? output.split("\n").length : 0), [output]);
 
-  // Yeni çıktı geldiğinde: en alta kaydır + kısa kenar flash'ı (yalnızca büyüdüyse).
+  // Yeni çıktı geldiğinde: KOŞULSUZ en alta kaydır (kullanıcı yukarı kaydırmış olsa
+  // bile) — canlı log takibinde her zaman son satır görünsün istendi, "yakınsa takip
+  // et" sezgisi burada istenmiyor.
   useLayoutEffect(() => {
     if (output.length > prevLenRef.current) {
       const el = scrollRef.current;
-      if (el) {
-        const firstLoad = prevLenRef.current === 0;
-        // İlk yükleme (ör. geçmiş bir job'ın tam logu): doğrudan en alta — hata genelde sondadır.
-        // Sonraki güncellemeler: kullanıcı yukarı kaydırmadıysa (dibe yakınsa) takip et.
-        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-        if (firstLoad || nearBottom) el.scrollTop = el.scrollHeight;
-      }
+      if (el) el.scrollTop = el.scrollHeight;
       if (prevLenRef.current > 0) { setFlash(true); }
     }
     prevLenRef.current = output.length;
