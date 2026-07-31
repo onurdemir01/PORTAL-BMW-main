@@ -10,42 +10,19 @@ function createApp() {
   // L-01: Remove Express fingerprint header
   app.disable("x-powered-by");
 
-  // TANI (gecici): en erken noktada, kosulsuz, HER /api istegini logla — express.json,
-  // CORS, rate-limit, session'dan bile ONCE. Amac: nginx'te "istemci 500 aliyor ama
-  // app logunda SIFIR iz yok" seklinde tekrarlayan bir sorunu ayiklamak. Eger sorunlu
-  // istek bu satirda bile GORUNMUYORSA, istegin Express'e/Node'a hic ulasmadigi (TCP
-  // seviyesinde nginx-Node arasinda dustugu) kesinlesir — o zaman sorun app kodunda
-  // degil, ag/nginx katmanindadir. Gorunuyorsa, sorunu daha asagi middleware'lere
-  // daraltmak icin ayni desen orada da tekrarlanir. Teshis bitince kaldirilabilir.
+  // Nginx bir 5xx yanitinin govdesini kendi hata sayfasiyla degistirebiliyor (bu host'ta
+  // dogrulandi — bkz. git log) — yani istemci tarafinda gercek hata mesaji hicbir zaman
+  // gorunmuyor. Bu yuzden 400+ donen her /api yanitinin GERCEK govdesini burada, en
+  // erken noktada (express.json/session'dan once) yakalayip logluyoruz; aksi halde bir
+  // sonraki "500 aliyorum ama sebebini bilmiyorum" turunu tekrar yasariz.
   app.use("/api", (req, res, next) => {
-    // ms hassasiyetli zaman damgasi + soketin uzak portu: bir sonraki olayda bu
-    // satiri [Server] clientError logundakiyle (o da ayni damgayi kullanir) kesin
-    // eslestirebilmek icin — iki log birbirine yakin gorunse de FARKLI baglantilara
-    // ait olabilir (sayfa acilirken pek cok istek ayni anda gider).
-    const tag = `${req.method} ${req.originalUrl} remotePort=${req.socket?.remotePort}`;
-    console.log(`[REQ] ${new Date().toISOString()} ${tag}`);
-    // Bu ISTEGIN soketi, yanit TAMAMLANMADAN kapanirsa/hata verirse acikca logla —
-    // boylece "hangi istek nginx tarafindan yarida kesildi" sorusuna tahminle degil
-    // KESIN cevap veririz (remotePort ile clientError'a birebir eslesir).
-    req.socket?.once("close", () => {
-      if (!res.writableEnded) console.warn(`[REQ] SOKET YANIT TAMAMLANMADAN KAPANDI: ${tag}`);
-    });
-    // 400+ govdesini yakala — nginx istemciye HTML gonderse bile GERCEK JSON hata
-    // mesajini burada goreceğiz (bkz. asagidaki [REQ] -> status logu ile birlikte).
     const origJson = res.json.bind(res);
     res.json = (body) => {
-      if (res.statusCode >= 400) console.warn(`[REQ] hata govdesi (${res.statusCode}) ${tag}:`, JSON.stringify(body));
+      if (res.statusCode >= 400) {
+        console.warn(`[API hata] ${res.statusCode} ${req.method} ${req.originalUrl}:`, JSON.stringify(body));
+      }
       return origJson(body);
     };
-    // Node'un GERCEKTEN hangi status kodunu gonderdigini acikca logla — clientError/
-    // erken-soket-kapanma YOKSA, bu satir "Node 200 mi 500 mu dondu" sorusuna kesin
-    // cevap verir. Eger burada 500 gorunuyorsa hata GERCEKTEN uygulama kodundan
-    // geliyordur (nginx sadece govdeyi degistiriyordur); 200 gorunuyorsa sorun
-    // Node'un disinda (nginx<->tarayici arasi) bir yerdedir.
-    const startedAt = Date.now();
-    res.on("finish", () => {
-      console.log(`[REQ] -> ${res.statusCode} (${Date.now() - startedAt}ms) ${tag}`);
-    });
     next();
   });
 

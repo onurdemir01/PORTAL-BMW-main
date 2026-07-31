@@ -184,32 +184,24 @@ async function main() {
   });
 
   // Node'un varsayilan keepAliveTimeout'u (5s) nginx'in upstream keep-alive suresinden
-  // KISA olabilir — nginx bir soketi hala acik sanip uzerinden yeni istek gonderirken
-  // Node tam o an kapatmaya karar vermisse, istek Express'e HIC ULASMADAN (TCP
-  // seviyesinde, hicbir middleware/log'un goremeyecegi bir yerde) baglanti duser.
-  // nginx bunu sessizce retry edip 2. denemede basarili olur — bizim gordugumuz "istemci
-  // 500 aliyor, app logunda SIFIR iz var, nginx logunda ayni upstream'e iki deneme"
-  // deseninin tipik imzasi budur (bkz. yukaridaki A1 yorumundaki HAR kaniti). Node'un
-  // keepAliveTimeout'unu nginx'in olasi upstream timeout'undan BUYUK tutmak bu yarisi
-  // ortadan kaldirir. headersTimeout, Node'un kendi kuralinca keepAliveTimeout'tan
-  // BUYUK olmak zorunda.
-  // 75s'in yeterli olup olmadigi dogrulanamadi (kurumsal nginx'in gercek upstream
-  // keep-alive suresini bilmiyoruz) — belirsizligi ortadan kaldirmak icin bu deger
-  // conf'taki bilinen en uzun sureden (proxy_read_timeout 300s) daha buyuk tutuldu.
+  // KISA olabilir — bu durumda nginx bir soketi hala acik sanip uzerinden yeni istek
+  // gonderirken Node tam o an kapatmaya karar vermisse, istek Express'e hic ulasmadan
+  // baglanti duser. Bu host'ta yasanan asil 500 sorunu baska bir yerde (bkz. AnsiblePage.tsx
+  // addToSelfService — sort_order icin Date.now() kullanimi, INT32 tasmasi) bulundu, yani
+  // BU olayin sebebi degildi — ama bu ayar genel iyi pratik oldugu ve zarari olmadigi icin
+  // korunuyor (nginx'in olasi upstream timeout'undan BUYUK: 310s; headersTimeout Node'un
+  // kendi kuralinca bundan buyuk olmak zorunda).
   server.keepAliveTimeout = 310_000;
   server.headersTimeout = 311_000;
 
-  // TANI (gecici): 'clientError' Express'in HICBIR ZAMAN goremeyecegi bir olaydir —
-  // soket/HTTP-parse seviyesinde (ör. ECONNRESET, bozuk istek satiri) olusur, 'request'
-  // event'i hic tetiklenmeden. Yukaridaki [REQ] logu ile birlikte: sorunlu istek ne
-  // [REQ] ne burada gorunuyorsa, nginx-Node arasinda TCP baglanti kurulumunda/soket
-  // devrinde bir sorun var demektir (Node'a bile ulasmiyor).
+  // 'clientError', Express'in hicbir zaman goremeyecegi bir olaydir — soket/HTTP-parse
+  // seviyesinde (ör. ECONNRESET, bozuk istek satiri) olusur, 'request' event'i hic
+  // tetiklenmeden. Dusuk gurultulu (yalniz gercek baglanti hatalarinda tetiklenir) ve
+  // ileride benzer bir "istemci 500 aliyor, uygulama logunda hicbir iz yok" tekrarinda
+  // hizli teshis saglar diye kalici olarak tutuluyor.
   server.on("clientError", (err, socket) => {
-    // remotePort, service.cjs'teki [REQ] logunun remotePort'uyla eslestirilebilsin diye
-    // (ayni ms'de gorunen iki satir farkli baglantilara ait olabilir — kesin korelasyon
-    // icin port + ISO zaman damgasi sart).
     console.error(
-      `[Server] clientError ${new Date().toISOString()} remotePort=${socket?.remotePort} ` +
+      `[Server] clientError remotePort=${socket?.remotePort} ` +
       `(Express'e ulasmadan, soket seviyesinde):`, err.code || err.message
     );
     if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");

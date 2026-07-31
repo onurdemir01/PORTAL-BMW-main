@@ -382,7 +382,10 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
         awxServerId: serverId,
         awxTemplateId: template.id,
         enabled: true,
-        order: Date.now(),
+        // Date.now() (ms) MSSQL'deki sort_order INT (32-bit, maks ~2.14 milyar) sinirini
+        // asiyordu — HER kayitta "Validation failed for parameter" ile 500 donduruyordu.
+        // Saniye cinsinden epoch de sirlama amaci icin yeterli ve int32'ye sigar (2038'e kadar).
+        order: Math.floor(Date.now() / 1000),
       });
       if (!r.ok) throw new Error(r.message || "Self service kaydı başarısız");
       toast.success(`"${ssTitle.trim()}" self service kataloğuna eklendi.`);
