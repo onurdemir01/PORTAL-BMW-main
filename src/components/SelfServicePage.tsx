@@ -609,6 +609,11 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
 
   if (loading) return <div className="flex items-center justify-center h-32"><div className="w-5 h-5 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" /></div>;
 
+  // enabled=false yalnizca NORMAL kullanicilardan gizlenir (Admin > Self Service'teki
+  // gorunurluk anahtari) — admin her zaman TUM kayitlari gorur ve calistirabilir,
+  // aksi halde bir servisi kapatan admin onu bir daha o ekrandan yonetemezdi.
+  const visibleItems = isAdmin ? items : items.filter((i) => i.enabled);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -662,20 +667,29 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      {items.filter((i) => i.enabled).length === 0 ? (
+      {visibleItems.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 flex items-center justify-center h-40">
           <p className="text-sm text-gray-400">{isAdmin ? "Henüz Ansible servisi yok. Servis Ekle butonunu kullanın." : "Henüz Ansible servisi tanımlanmamış."}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {items.filter((i) => i.enabled).sort((a, b) => a.order - b.order).map((item) => (
-            <div key={item.id} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-[var(--shadow-sm)] card-hover group relative">
+          {visibleItems.sort((a, b) => a.order - b.order).map((item) => (
+            <div key={item.id} className={`bg-white rounded-2xl border p-5 shadow-[var(--shadow-sm)] card-hover group relative ${item.enabled ? "border-gray-100" : "border-amber-200"}`}>
               <div className="absolute top-2 right-2 opacity-5 pointer-events-none">
                 <CommandLineIcon className="w-14 h-14 text-[#0066CC]" />
               </div>
               <div className="mb-3">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-bold text-gray-900 text-base">{item.title}</h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-gray-900 text-base">{item.title}</h3>
+                    {/* enabled=false SADECE normal kullanicilardan gizler — admin her zaman
+                        gorur ve calistirabilir; bu rozet admin'e bunu hatirlatir. */}
+                    {isAdmin && !item.enabled && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                        kullanıcılara kapalı
+                      </span>
+                    )}
+                  </div>
                   {isAdmin && (
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
                       <button onClick={() => setFieldsItem(item)} title="Alanları Yönet" className="p-1 text-gray-300 hover:text-[#0066CC] rounded">
