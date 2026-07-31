@@ -1098,7 +1098,7 @@ export default function SelfServicePage() {
   const [err, setErr] = useState("");
   const [store, setStore] = useState<SelfServiceStore>(emptyStore);
   const [groups, setGroups] = useState<SelfServiceGroup[]>([]);
-  const [activeTop, setActiveTop] = useState<TopTab>("smart");
+  const [activeTop, setActiveTop] = useState<TopTab>("ansible");
   const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
