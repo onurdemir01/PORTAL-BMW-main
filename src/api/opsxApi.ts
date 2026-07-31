@@ -99,10 +99,14 @@ export const opsxApi = {
   // Ansible playbook'u tetikleyip sunucu tarafında kısa polling ile çekip döner (bkz.
   // server/opsx/index.cjs POST /api/opsx/status-check) — bu yüzden bu çağrı birkaç
   // saniye sürebilir, çağıran taraf bir yükleniyor göstergesi göstermeli.
-  checkStatus: (application: string, hosts: string[]): Promise<OpsxStatusCheckResult> =>
+  // jbossVersion: "jboss7" | "jboss8" | undefined — playbook'un dogru jboss-cli
+  // aracini (jboss-cli.sh vs jboss-cli8.sh) secebilmesi icin. Secili host'lar
+  // karisik majorlerdeyse (ör. hem 7.X hem 8.Y) belirsiz bir deger gondermek
+  // yerine caginan taraf (OperationStep.tsx) bunu OMIT eder.
+  checkStatus: (application: string, hosts: string[], jbossVersion?: string): Promise<OpsxStatusCheckResult> =>
     fetch(`${BASE}/status-check`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ application, hosts }),
+      body: JSON.stringify({ application, hosts, jbossVersion }),
     }).then(safeJson),
 };

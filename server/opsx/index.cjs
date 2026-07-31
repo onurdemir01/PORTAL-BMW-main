@@ -214,8 +214,12 @@ function initOpsX(app) {
   // onyuz TUM islemleri devre disi birakir — bir restart/stop/dump'i YANLIS bir "durum
   // bilinmiyor, serbest birak" varsayimiyla calistirmak, yanlislikla calisan bir
   // uygulamayi durdurmaktan (ya da tersi) daha tehlikelidir.
+  // jboss_version icin de operation'daki gibi beyaz liste — istemciden gelen deger
+  // dogrudan extra_vars'a gecmez.
+  const ALLOWED_JBOSS_VERSIONS = new Set(['jboss7', 'jboss8']);
+
   app.post('/api/opsx/status-check', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { application, hosts } = req.body || {};
+    const { application, hosts, jbossVersion } = req.body || {};
     if (!String(application || '').trim()) {
       return res.status(400).json({ ok: false, message: 'Uygulama adı gerekli.' });
     }
@@ -254,9 +258,15 @@ function initOpsX(app) {
       const cfg = (await opsxConfig.getConfig()).legacy;
       const runner = require('../ansible/runner.cjs');
       const limitValue = requested.join(cfg.separator);
-      const launch = await runner.launchJobOnServer(
-        serverId, templateId, { [cfg.applicationKey]: String(application).trim() }, limitValue
-      );
+      const extraVars = { [cfg.applicationKey]: String(application).trim() };
+      // Secili host'lar tek bir JBoss majorune ait ise gonderilir (karisik ise onyuz
+      // hic gondermez) — playbook'un dogru jboss-cli aracini (jboss-cli.sh/jboss-cli8.sh)
+      // dogrudan secmesini saglar; boylece playbook her iki surumu de korlemesine gerek
+      // kalmaz.
+      if (ALLOWED_JBOSS_VERSIONS.has(jbossVersion)) {
+        extraVars.jboss_version = jbossVersion;
+      }
+      const launch = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
 
       // Kisa polling — "hizlica ceksin" istegine uygun, sinirli sure (~30sn ust sinir).
       const POLL_MS = 1000;

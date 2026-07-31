@@ -265,7 +265,7 @@ const OpsXWizardPage: React.FC = () => {
         )}
 
         {step === "operation" && (
-          <OperationStep summary={operationSummary} application={app} hosts={hosts} busy={busy} onSelect={runLegacy} />
+          <OperationStep summary={operationSummary} application={app} hosts={hosts} jbossVersions={jbossVersions} busy={busy} onSelect={runLegacy} />
         )}
 
         {step === "done" && result && (

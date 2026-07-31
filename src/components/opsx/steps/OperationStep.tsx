@@ -34,13 +34,30 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
   stopped: { label: "DURMUŞ", className: "bg-red-50 text-red-700 border-red-100" },
 };
 
+// Secili jboss surumlerinden ("7.4.0", "8.1" gibi tam degerler) TEK bir majör
+// ("jboss7"/"jboss8") cikarir — playbook'un dogru jboss-cli aracini secmesi icin.
+// Karisik major (hem 7.X hem 8.Y birlikte secilmisse) belirsiz oldugu icin
+// undefined doner; caginan taraf bu durumda degiskeni HIC gondermez.
+function deriveJbossMajor(versions: string[]): string | undefined {
+  const majors = new Set(
+    versions
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .map((v) => v[0])
+      .filter((d) => d === "7" || d === "8")
+  );
+  if (majors.size !== 1) return undefined;
+  return `jboss${[...majors][0]}`;
+}
+
 const OperationStep: React.FC<{
   summary: React.ReactNode;
   application: string;
   hosts: string[];
+  jbossVersions: string[];
   busy?: boolean;
   onSelect: (op: OpsxOperation) => void;
-}> = ({ summary, application, hosts, busy, onSelect }) => {
+}> = ({ summary, application, hosts, jbossVersions, busy, onSelect }) => {
   const [ops, setOps] = useState<OpsxOperationDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +77,7 @@ const OperationStep: React.FC<{
   useEffect(() => {
     setStatusLoading(true);
     setStatusError(null);
-    opsxApi.checkStatus(application, hosts)
+    opsxApi.checkStatus(application, hosts, deriveJbossMajor(jbossVersions))
       .then((r) => {
         if (r.ok) setStatuses(r.statuses || {});
         else setStatusError(r.message || "Durum kontrolü başarısız oldu.");
@@ -68,7 +85,7 @@ const OperationStep: React.FC<{
       .catch((err) => setStatusError(err instanceof Error ? err.message : String(err)))
       .finally(() => setStatusLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [application, hosts.join(","), checkNonce]);
+  }, [application, hosts.join(","), jbossVersions.join(","), checkNonce]);
 
   const anyRunning = useMemo(() => hosts.some((h) => statuses[h] === "running"), [hosts, statuses]);
   const anyStopped = useMemo(() => hosts.some((h) => statuses[h] === "stopped"), [hosts, statuses]);
