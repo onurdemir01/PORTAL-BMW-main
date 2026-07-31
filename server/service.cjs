@@ -10,6 +10,18 @@ function createApp() {
   // L-01: Remove Express fingerprint header
   app.disable("x-powered-by");
 
+  // TANI (gecici): en erken noktada, kosulsuz, HER /api istegini logla — express.json,
+  // CORS, rate-limit, session'dan bile ONCE. Amac: nginx'te "istemci 500 aliyor ama
+  // app logunda SIFIR iz yok" seklinde tekrarlayan bir sorunu ayiklamak. Eger sorunlu
+  // istek bu satirda bile GORUNMUYORSA, istegin Express'e/Node'a hic ulasmadigi (TCP
+  // seviyesinde nginx-Node arasinda dustugu) kesinlesir — o zaman sorun app kodunda
+  // degil, ag/nginx katmanindadir. Gorunuyorsa, sorunu daha asagi middleware'lere
+  // daraltmak icin ayni desen orada da tekrarlanir. Teshis bitince kaldirilabilir.
+  app.use("/api", (req, res, next) => {
+    console.log(`[REQ] ${req.method} ${req.originalUrl}`);
+    next();
+  });
+
   // L-06: Gzip compression — nobetci/list 55KB → ~8KB
   app.use(compression());
 

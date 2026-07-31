@@ -193,8 +193,21 @@ async function main() {
   // keepAliveTimeout'unu nginx'in olasi upstream timeout'undan BUYUK tutmak bu yarisi
   // ortadan kaldirir. headersTimeout, Node'un kendi kuralinca keepAliveTimeout'tan
   // BUYUK olmak zorunda.
-  server.keepAliveTimeout = 75_000;
-  server.headersTimeout = 76_000;
+  // 75s'in yeterli olup olmadigi dogrulanamadi (kurumsal nginx'in gercek upstream
+  // keep-alive suresini bilmiyoruz) — belirsizligi ortadan kaldirmak icin bu deger
+  // conf'taki bilinen en uzun sureden (proxy_read_timeout 300s) daha buyuk tutuldu.
+  server.keepAliveTimeout = 310_000;
+  server.headersTimeout = 311_000;
+
+  // TANI (gecici): 'clientError' Express'in HICBIR ZAMAN goremeyecegi bir olaydir —
+  // soket/HTTP-parse seviyesinde (ör. ECONNRESET, bozuk istek satiri) olusur, 'request'
+  // event'i hic tetiklenmeden. Yukaridaki [REQ] logu ile birlikte: sorunlu istek ne
+  // [REQ] ne burada gorunuyorsa, nginx-Node arasinda TCP baglanti kurulumunda/soket
+  // devrinde bir sorun var demektir (Node'a bile ulasmiyor).
+  server.on("clientError", (err, socket) => {
+    console.error(`[Server] clientError (Express'e ulasmadan, soket seviyesinde):`, err.code || err.message);
+    if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+  });
 }
 
 main().catch((e) => {
