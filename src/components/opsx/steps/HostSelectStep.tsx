@@ -11,10 +11,10 @@ import { opsxApi, type OpsxHost } from "@/api/opsxApi";
 
 const HostSelectStep: React.FC<{
   app: string;
-  jbossVersion: string;
+  jbossVersions: string[];
   busy?: boolean;
   onSubmit: (hosts: string[]) => void;
-}> = ({ app, jbossVersion, busy, onSubmit }) => {
+}> = ({ app, jbossVersions, busy, onSubmit }) => {
   const [hosts, setHosts] = useState<OpsxHost[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -29,12 +29,11 @@ const HostSelectStep: React.FC<{
       .finally(() => setLoading(false));
   }, [app]);
 
-  // Bir önceki adımda seçilen JBoss sürümüne göre daralt — jbossVersion boşsa
-  // (kullanıcı "Bilinmiyor" seçtiyse) versiyon alanı boş/"NF" olan host'lar gösterilir.
-  const filteredHosts = useMemo(
-    () => hosts.filter((h) => (h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "") === jbossVersion),
-    [hosts, jbossVersion]
-  );
+  // Bir önceki adımda seçilen JBoss sürümlerine (birden fazla olabilir) göre daralt.
+  const filteredHosts = useMemo(() => {
+    const wanted = new Set(jbossVersions);
+    return hosts.filter((h) => wanted.has(h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : ""));
+  }, [hosts, jbossVersions]);
 
   // Ortama göre grupla — kullanıcı prod/test sunucusunu ayırt edebilsin.
   const grouped = useMemo(() => {
@@ -74,7 +73,7 @@ const HostSelectStep: React.FC<{
       <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
         <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
         <span>
-          <strong>{app}</strong> için {jbossVersion ? `JBoss ${jbossVersion}` : "bilinmeyen JBoss sürümünde"} sunucu bulunamadı.
+          <strong>{app}</strong> için seçilen JBoss sürümünde ({jbossVersions.map((v) => v || "Bilinmiyor").join(", ")}) sunucu bulunamadı.
         </span>
       </div>
     );

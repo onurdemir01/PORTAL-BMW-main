@@ -41,7 +41,7 @@ const OpsXWizardPage: React.FC = () => {
   const [step, setStep] = useState<Step>("platform");
   const [platform, setPlatform] = useState<OpsxPlatform | null>(null);
   const [app, setApp] = useState("");
-  const [jbossVersion, setJbossVersion] = useState("");
+  const [jbossVersions, setJbossVersions] = useState<string[]>([]);
   const [hosts, setHosts] = useState<string[]>([]);
   const [env, setEnv] = useState("");
   const [tenant, setTenant] = useState("");
@@ -60,7 +60,7 @@ const OpsXWizardPage: React.FC = () => {
     setStep("platform");
     setPlatform(null);
     setApp("");
-    setJbossVersion("");
+    setJbossVersions([]);
     setHosts([]);
     setEnv("");
     setTenant("");
@@ -192,7 +192,7 @@ const OpsXWizardPage: React.FC = () => {
     <>
       Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span>
       {" · "}
-      JBoss: <span className="font-mono text-[var(--text-primary)]">{jbossVersion || "Bilinmiyor"}</span>
+      JBoss: <span className="font-mono text-[var(--text-primary)]">{jbossVersions.map((v) => v || "Bilinmiyor").join(", ")}</span>
       {" · "}
       {hosts.length} sunucu: <span className="font-mono">{hosts.join(", ")}</span>
     </>
@@ -239,7 +239,7 @@ const OpsXWizardPage: React.FC = () => {
         {step === "legacy_app" && (
           <AppSearchStep
             busy={busy}
-            onSelect={(a) => { setApp(a); setJbossVersion(""); setHosts([]); setStep("legacy_jboss_version"); }}
+            onSelect={(a) => { setApp(a); setJbossVersions([]); setHosts([]); setStep("legacy_jboss_version"); }}
           />
         )}
 
@@ -247,14 +247,14 @@ const OpsXWizardPage: React.FC = () => {
           <JbossVersionStep
             app={app}
             busy={busy}
-            onSelect={(v) => { setJbossVersion(v); setHosts([]); setStep("legacy_hosts"); }}
+            onSubmit={(v) => { setJbossVersions(v); setHosts([]); setStep("legacy_hosts"); }}
           />
         )}
 
         {step === "legacy_hosts" && (
           <HostSelectStep
             app={app}
-            jbossVersion={jbossVersion}
+            jbossVersions={jbossVersions}
             busy={busy}
             onSubmit={(h) => { setHosts(h); setStep("operation"); }}
           />

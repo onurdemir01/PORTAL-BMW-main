@@ -1,7 +1,8 @@
 // src/components/opsx/steps/JbossVersionStep.tsx — uygulama seçildikten sonra,
 // sunucu listesinden ÖNCE JBoss versiyonu sorulur. Aynı uygulamanın host'ları
-// farklı JBoss majör sürümlerinde (7.X / 8.Y) olabiliyor — kullanıcı önce versiyonu
-// seçer, HostSelectStep listeyi buna göre filtreler.
+// farklı JBoss majör sürümlerinde (7.X / 8.Y) olabiliyor — kullanıcı birden fazla
+// sürümü BİRLİKTE seçebilir (ör. hem 7.X hem 8.Y), HostSelectStep listeyi buna
+// göre filtreler.
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxHost } from "@/api/opsxApi";
@@ -11,9 +12,10 @@ const UNKNOWN_LABEL = "Bilinmiyor";
 const JbossVersionStep: React.FC<{
   app: string;
   busy?: boolean;
-  onSelect: (version: string) => void;
-}> = ({ app, busy, onSelect }) => {
+  onSubmit: (versions: string[]) => void;
+}> = ({ app, busy, onSubmit }) => {
   const [hosts, setHosts] = useState<OpsxHost[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +44,14 @@ const JbossVersionStep: React.FC<{
     });
   }, [hosts]);
 
+  function toggle(version: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(version)) next.delete(version); else next.add(version);
+      return next;
+    });
+  }
+
   if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Sunucular yükleniyor...</div>;
   if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
 
@@ -59,24 +69,40 @@ const JbossVersionStep: React.FC<{
       <div>
         <p className="text-sm text-[var(--text-secondary)]">Hangi JBoss sürümündeki sunucularla işlem yapmak istiyorsunuz?</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
-          Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span>
+          Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span> · birden fazla sürüm birlikte seçilebilir
         </p>
       </div>
 
       <div className="space-y-1.5">
         {versions.map(([version, count]) => (
-          <button
+          <label
             key={version || "(unknown)"}
-            onClick={() => onSelect(version)}
-            disabled={busy}
-            className="w-full flex items-center justify-between gap-3 px-4 py-3 border border-[var(--border)] rounded-xl text-left hover:border-[var(--accent)] hover:shadow-sm transition-all active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none"
+            className="w-full flex items-center gap-3 px-4 py-3 border border-[var(--border)] rounded-xl cursor-pointer hover:border-[var(--accent)] hover:shadow-sm transition-all has-[:checked]:border-[var(--accent)]"
           >
-            <span className="text-sm font-medium text-[var(--text-primary)] font-mono">
+            <input
+              type="checkbox"
+              checked={selected.has(version)}
+              onChange={() => toggle(version)}
+              disabled={busy}
+              className="rounded"
+            />
+            <span className="flex-1 text-sm font-medium text-[var(--text-primary)] font-mono">
               {version ? `JBoss ${version}` : UNKNOWN_LABEL}
             </span>
             <span className="text-xs text-[var(--text-muted)]">{count} sunucu</span>
-          </button>
+          </label>
         ))}
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-[var(--text-muted)]">{selected.size} sürüm seçildi</span>
+        <button
+          onClick={() => onSubmit([...selected])}
+          disabled={selected.size === 0 || busy}
+          className="btn-primary"
+        >
+          Devam Et
+        </button>
       </div>
     </div>
   );
