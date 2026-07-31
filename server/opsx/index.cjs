@@ -42,12 +42,16 @@ const REGISTRY_KEYS = Object.freeze({
   openshift: 'opsx_openshift_operation',
 });
 
+// Legacy'ye ozel: secili sunucularda uygulamanin RUNNING/STOPPED durumunu kontrol eden
+// playbook'un registry anahtari — bir "platform" degil, ayri bir is akisi oldugu icin
+// REGISTRY_KEYS'in disinda tutulur.
+const STATUS_CHECK_KEY = 'opsx_legacy_status_check';
+
 // Template ID + AWX sunucusu Playbook Kayitlari'ndan cozulur. getEffectiveTemplateId()
 // once satirdaki awx_template_id'ye, o bos ise satirda tanimli env degiskenine bakar
 // (bkz. server/ansible/playbook-registry.cjs) — LogX'in kullandigi ayni mekanizma.
-async function resolveTarget(platform) {
+async function resolveByKey(keyName) {
   const playbookRegistry = require('../ansible/playbook-registry.cjs');
-  const keyName = REGISTRY_KEYS[platform];
   const row = await playbookRegistry.getByKey(keyName).catch(() => null);
   if (!row || row.enabled === false) {
     return { templateId: null, serverId: null, keyName };
@@ -59,6 +63,10 @@ async function resolveTarget(platform) {
     ? Number(row.awxServerId)
     : (Number.isInteger(envServer) && envServer >= 0 ? envServer : 0);
   return { templateId: templateId || null, serverId, keyName };
+}
+
+async function resolveTarget(platform) {
+  return resolveByKey(REGISTRY_KEYS[platform]);
 }
 
 // Secilen uygulamanin bulundugu sunucular. LogX'in resolveHostsForApp'i ile ayni
@@ -186,6 +194,100 @@ function initOpsX(app) {
         finished: statusInfo.finished,
         failed: statusInfo.failed,
       });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST /api/opsx/status-check — Legacy'ye ozel: secili sunucularda uygulamanin CANLI
+  // RUNNING/STOPPED durumunu bir Ansible playbook'u tetikleyip HIZLICA (kisa polling ile)
+  // ceker. Onyuz bunu Operasyon adiminda kullanir: uygulama STOPPED ise restart/stop/
+  // thread dump/heap dump, RUNNING ise "başlat" secilemez hale gelir.
+  //
+  // SOZLESME: playbook'un son adiminda `ansible.builtin.set_stats` ile
+  //   host_status: { "<HOST>": "running" | "stopped", ... }
+  // seklinde bir artifact yayinlamasi BEKLENIR — LogX v2/getJobStatusOnServer'in zaten
+  // kullandigi artifacts-tabanli desenle AYNI (bkz. runner.cjs yorumu). Admin bu playbook'u
+  // Playbook Kayitlari'nda "opsx_legacy_status_check" satirina template ID olarak tanimlamali.
+  //
+  // Durum kontrolu BASARISIZ/zaman asimina UGRARSA fail-open davranilmaz: 502 doner ve
+  // onyuz TUM islemleri devre disi birakir — bir restart/stop/dump'i YANLIS bir "durum
+  // bilinmiyor, serbest birak" varsayimiyla calistirmak, yanlislikla calisan bir
+  // uygulamayi durdurmaktan (ya da tersi) daha tehlikelidir.
+  app.post('/api/opsx/status-check', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
+    const { application, hosts } = req.body || {};
+    if (!String(application || '').trim()) {
+      return res.status(400).json({ ok: false, message: 'Uygulama adı gerekli.' });
+    }
+    if (!Array.isArray(hosts) || hosts.length === 0) {
+      return res.status(400).json({ ok: false, message: 'En az bir sunucu seçilmeli.' });
+    }
+
+    // Anti-TOCTOU: /run ile AYNI kontrol — client'in gonderdigi host listesine guvenilmez.
+    let allowed;
+    try {
+      allowed = new Set((await hostsForApp(application)).map((h) => h.host.toUpperCase()));
+    } catch (err) {
+      return res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+    const requested = hosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean);
+    const notMine = requested.filter((h) => !allowed.has(h));
+    if (notMine.length) {
+      return res.status(400).json({
+        ok: false,
+        message: `Bu sunucular seçilen uygulamaya ait değil: ${notMine.join(', ')}`,
+      });
+    }
+
+    const { templateId, serverId, keyName } = await resolveByKey(STATUS_CHECK_KEY);
+    if (!templateId) {
+      return res.status(501).json({
+        ok: false,
+        message: `Durum kontrolü için AWX job template'i henüz tanımlanmadı. `
+               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
+               + `Template ID alanını doldurmalı.`,
+      });
+    }
+
+    try {
+      const opsxConfig = require('./config.cjs');
+      const cfg = (await opsxConfig.getConfig()).legacy;
+      const runner = require('../ansible/runner.cjs');
+      const limitValue = requested.join(cfg.separator);
+      const launch = await runner.launchJobOnServer(
+        serverId, templateId, { [cfg.applicationKey]: String(application).trim() }, limitValue
+      );
+
+      // Kisa polling — "hizlica ceksin" istegine uygun, sinirli sure (~30sn ust sinir).
+      const POLL_MS = 1000;
+      const MAX_ATTEMPTS = 30;
+      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+      let statusInfo = null;
+      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        statusInfo = await runner.getJobStatusOnServer(serverId, launch.jobId);
+        if (TERMINAL.has(statusInfo.status)) break;
+        await new Promise((r) => setTimeout(r, POLL_MS));
+      }
+
+      if (!statusInfo || statusInfo.status !== 'successful') {
+        return res.status(502).json({
+          ok: false,
+          message: statusInfo
+            ? `Durum kontrolü tamamlanamadı (job durumu: ${statusInfo.status}).`
+            : 'Durum kontrolü zaman aşımına uğradı.',
+          jobId: launch.jobId,
+        });
+      }
+
+      // Artifact anahtarlari playbook'un gonderdigi buyuk/kucuk harfe gore esnek okunur.
+      const hostStatus = statusInfo.artifacts?.host_status || {};
+      const statuses = {};
+      for (const h of requested) {
+        const raw = hostStatus[h] ?? hostStatus[h.toLowerCase()] ?? hostStatus[h.toUpperCase()];
+        statuses[h] = typeof raw === 'string' ? raw.trim().toLowerCase() : 'unknown';
+      }
+
+      res.json({ ok: true, statuses, jobId: launch.jobId });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -402,6 +504,12 @@ function initOpsX(app) {
         const t = await resolveTarget(plat);
         targets[plat] = { registryKey: t.keyName, templateId: t.templateId, awxServerId: t.serverId };
       }
+      const statusCheckTarget = await resolveByKey(STATUS_CHECK_KEY);
+      targets.legacyStatusCheck = {
+        registryKey: statusCheckTarget.keyName,
+        templateId: statusCheckTarget.templateId,
+        awxServerId: statusCheckTarget.serverId,
+      };
       res.json({ ok: true, config: cfg, targets, defaults: opsxConfig.DEFAULTS });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });

@@ -1080,6 +1080,16 @@ const PLAYBOOK_REGISTRY_SEED = [
     description: 'ARK/Non-ARK container uygulamalarinda restart/stop/start islemi.',
     playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_TEMPLATE_ID',
   },
+  {
+    // Legacy'ye ozel: secili sunucularda uygulamanin RUNNING/STOPPED durumunu hizlica
+    // kontrol eder — bu durum, Operasyon adiminda hangi islemlerin (restart/stop/start/
+    // dump) secilebilir oldugunu belirler. Playbook'un son adiminda `ansible.builtin.set_stats`
+    // ile `host_status: { "<HOST>": "running"|"stopped" }` seklinde bir artifact yayinlamasi
+    // BEKLENIR (bkz. server/opsx/index.cjs POST /api/opsx/status-check yorumu).
+    key_name: 'opsx_legacy_status_check', display_name: 'OpsX — Legacy Durum Kontrolu', category: 'opsx', handler: 'opsx_legacy_status',
+    description: 'JBoss/WAS sunucularinda uygulamanin RUNNING/STOPPED durumunu hizlica kontrol eder.',
+    playbook_path: null, env_var_name: 'OPSX_LEGACY_STATUS_TEMPLATE_ID',
+  },
 ];
 
 async function seedPlaybookRegistry(pool) {

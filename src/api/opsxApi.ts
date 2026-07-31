@@ -40,6 +40,16 @@ export interface OpsxJobStatus {
   failed?: boolean;
 }
 
+// "running" | "stopped" | "unknown" — playbook'un set_stats ile yayinladigi ham
+// deger kucuk harfe cevrilip aynen geciriliyor; beklenmedik bir deger de "unknown"
+// gibi ele alinmali (bkz. OperationStep.tsx).
+export interface OpsxStatusCheckResult {
+  ok: boolean;
+  statuses: Record<string, string>;
+  jobId?: number;
+  message?: string;
+}
+
 export const opsxApi = {
   // Uygulama arama — LogX legacy ile aynı kaynak; DB erişilemezse fallbackMode=true
   // ile son bilinen snapshot döner.
@@ -84,4 +94,15 @@ export const opsxApi = {
   // (bkz. OpsXWizardPage.tsx).
   jobStatus: (serverId: number, jobId: number): Promise<OpsxJobStatus> =>
     fetch(`${BASE}/job-status/${serverId}/${jobId}`).then(safeJson),
+
+  // Legacy'ye özel: seçili sunucularda uygulamanın CANLI RUNNING/STOPPED durumunu bir
+  // Ansible playbook'u tetikleyip sunucu tarafında kısa polling ile çekip döner (bkz.
+  // server/opsx/index.cjs POST /api/opsx/status-check) — bu yüzden bu çağrı birkaç
+  // saniye sürebilir, çağıran taraf bir yükleniyor göstergesi göstermeli.
+  checkStatus: (application: string, hosts: string[]): Promise<OpsxStatusCheckResult> =>
+    fetch(`${BASE}/status-check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ application, hosts }),
+    }).then(safeJson),
 };
