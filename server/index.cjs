@@ -178,10 +178,23 @@ async function main() {
   });
 
   /* ===================== LISTEN ===================== */
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     const envLabel = APP_ENV || "(APP_ENV yok — .env.local/.env)";
     console.log(`[Server] listening on :${PORT}  ·  ortam=${envLabel}  ·  NODE_ENV=${process.env.NODE_ENV || "(unset)"}`);
   });
+
+  // Node'un varsayilan keepAliveTimeout'u (5s) nginx'in upstream keep-alive suresinden
+  // KISA olabilir — nginx bir soketi hala acik sanip uzerinden yeni istek gonderirken
+  // Node tam o an kapatmaya karar vermisse, istek Express'e HIC ULASMADAN (TCP
+  // seviyesinde, hicbir middleware/log'un goremeyecegi bir yerde) baglanti duser.
+  // nginx bunu sessizce retry edip 2. denemede basarili olur — bizim gordugumuz "istemci
+  // 500 aliyor, app logunda SIFIR iz var, nginx logunda ayni upstream'e iki deneme"
+  // deseninin tipik imzasi budur (bkz. yukaridaki A1 yorumundaki HAR kaniti). Node'un
+  // keepAliveTimeout'unu nginx'in olasi upstream timeout'undan BUYUK tutmak bu yarisi
+  // ortadan kaldirir. headersTimeout, Node'un kendi kuralinca keepAliveTimeout'tan
+  // BUYUK olmak zorunda.
+  server.keepAliveTimeout = 75_000;
+  server.headersTimeout = 76_000;
 }
 
 main().catch((e) => {
