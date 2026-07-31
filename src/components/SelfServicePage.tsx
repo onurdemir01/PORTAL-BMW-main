@@ -675,9 +675,6 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {visibleItems.sort((a, b) => a.order - b.order).map((item) => (
             <div key={item.id} className={`bg-white rounded-2xl border p-5 shadow-[var(--shadow-sm)] card-hover group relative ${item.enabled ? "border-gray-100" : "border-amber-200"}`}>
-              <div className="absolute top-2 right-2 opacity-5 pointer-events-none">
-                <CommandLineIcon className="w-14 h-14 text-[#0066CC]" />
-              </div>
               <div className="mb-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
