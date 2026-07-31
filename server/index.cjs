@@ -23,6 +23,21 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 
+// A0: yakalanmamis promise reddi / istisna GUARD'i — Express'in kendi hata-yakalama
+// zincirinin (asagidaki A1) GORMEDIGI hatalar icindir: bir middleware/route disinda
+// (ör. bir "fire-and-forget" async cagri, ya da bir Store callback'i) reddedilen
+// bir promise. Node 15+'ta varsayilan davranis boyle bir reddi SESSIZCE surecin
+// cokmesine (ve genelde hicbir sey loglanmadan) yol acabilir — nginx istemciye HTML
+// hata sayfasi dondururken app logunda HICBIR IZ kalmamasinin en olasi aciklamasi budur.
+// Burada sadece LOGLUYORUZ, surec sonlandirilmiyor (repo genelindeki "fail-open/devam et"
+// felsefesiyle tutarli — cokup yeniden baslamak zaten mevcut watchdog'a birakilmis durumda).
+process.on("unhandledRejection", (reason) => {
+  console.error("[Server] Yakalanmamis promise reddi:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[Server] Yakalanmamis istisna:", err);
+});
+
 const { createApp } = require("./service.cjs");
 const { initAuth } = require("./auth/index.cjs");
 const { initAnsible } = require("./ansible/index.cjs");

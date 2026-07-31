@@ -32,7 +32,12 @@ function createMssqlSessionStore(session) {
           try { parsed = JSON.parse(rows[0].sess); } catch { /* bozuk satir → session yok say */ }
           cb(null, parsed);
         })
-        .catch((err) => cb(err));
+        // express-session bu hatayi next(err)'e verir (bkz. express-session kaynagi) —
+        // ama o zincir HTML/JSON'a nasil cevrildigini biz kontrol etmiyoruz (nginx
+        // araya girebiliyor) ve global handler'a ulasip ulasmadigini teyit edemedik.
+        // Bu yuzden burada da ACIKCA logluyoruz — bir sonraki olayda gercek DB hatasi
+        // (timeout/ECONNRESET/vb.) prod.out'ta gorunsun.
+        .catch((err) => { console.error("[SessionStore] get() basarisiz:", err.message); cb(err); });
     }
 
     // Upsert — codebase idiom'u (writeVisibility) ile ayni: once UPDATE, satir yoksa INSERT.
@@ -45,20 +50,20 @@ function createMssqlSessionStore(session) {
           return db.query(`INSERT INTO portal_sessions (sid, sess, expires) VALUES ($1, $2, $3)`, [sid, json, expires]);
         })
         .then(() => cb && cb(null))
-        .catch((err) => cb && cb(err));
+        .catch((err) => { console.error("[SessionStore] set() basarisiz:", err.message); cb && cb(err); });
     }
 
     destroy(sid, cb) {
       db.query(`DELETE FROM portal_sessions WHERE sid = $1`, [sid])
         .then(() => cb && cb(null))
-        .catch((err) => cb && cb(err));
+        .catch((err) => { console.error("[SessionStore] destroy() basarisiz:", err.message); cb && cb(err); });
     }
 
     // Aktif kullanimda sureyi uzatir (express-session `touch` — rolling/aktivite yenilemesi).
     touch(sid, sess, cb) {
       db.query(`UPDATE portal_sessions SET expires = $1 WHERE sid = $2`, [expiryFrom(sess), sid])
         .then(() => cb && cb(null))
-        .catch(() => cb && cb(null)); // touch hatasi oturumu dusurmesin
+        .catch((err) => { console.warn("[SessionStore] touch() basarisiz (yoksayildi):", err.message); cb && cb(null); }); // touch hatasi oturumu dusurmesin
     }
   }
 
