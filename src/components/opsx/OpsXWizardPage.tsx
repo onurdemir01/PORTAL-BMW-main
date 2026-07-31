@@ -13,6 +13,7 @@ import { opsxApi, type OpsxPlatform, type OpsxOperation, type OpsxRunResult } fr
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
+import JbossVersionStep from "./steps/JbossVersionStep";
 import HostSelectStep from "./steps/HostSelectStep";
 import OcpTargetStep from "./steps/OcpTargetStep";
 import OperationStep from "./steps/OperationStep";
@@ -20,6 +21,7 @@ import OperationStep from "./steps/OperationStep";
 type Step =
   | "platform"
   | "legacy_app"
+  | "legacy_jboss_version"
   | "legacy_hosts"
   | "ocp_target"
   | "operation"
@@ -28,6 +30,7 @@ type Step =
 const STEP_TITLES: Record<Step, string> = {
   platform: "Uygulama Tipi",
   legacy_app: "Uygulama Seçimi",
+  legacy_jboss_version: "JBoss Sürümü",
   legacy_hosts: "Sunucu Seçimi",
   ocp_target: "Openshift Hedefi",
   operation: "İşlem Seçimi",
@@ -38,6 +41,7 @@ const OpsXWizardPage: React.FC = () => {
   const [step, setStep] = useState<Step>("platform");
   const [platform, setPlatform] = useState<OpsxPlatform | null>(null);
   const [app, setApp] = useState("");
+  const [jbossVersion, setJbossVersion] = useState("");
   const [hosts, setHosts] = useState<string[]>([]);
   const [env, setEnv] = useState("");
   const [tenant, setTenant] = useState("");
@@ -56,6 +60,7 @@ const OpsXWizardPage: React.FC = () => {
     setStep("platform");
     setPlatform(null);
     setApp("");
+    setJbossVersion("");
     setHosts([]);
     setEnv("");
     setTenant("");
@@ -75,8 +80,10 @@ const OpsXWizardPage: React.FC = () => {
       case "legacy_app":
       case "ocp_target":
         return "platform";
-      case "legacy_hosts":
+      case "legacy_jboss_version":
         return "legacy_app";
+      case "legacy_hosts":
+        return "legacy_jboss_version";
       case "operation":
         return "legacy_hosts";
       default:
@@ -185,6 +192,8 @@ const OpsXWizardPage: React.FC = () => {
     <>
       Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span>
       {" · "}
+      JBoss: <span className="font-mono text-[var(--text-primary)]">{jbossVersion || "Bilinmiyor"}</span>
+      {" · "}
       {hosts.length} sunucu: <span className="font-mono">{hosts.join(", ")}</span>
     </>
   );
@@ -230,13 +239,22 @@ const OpsXWizardPage: React.FC = () => {
         {step === "legacy_app" && (
           <AppSearchStep
             busy={busy}
-            onSelect={(a) => { setApp(a); setHosts([]); setStep("legacy_hosts"); }}
+            onSelect={(a) => { setApp(a); setJbossVersion(""); setHosts([]); setStep("legacy_jboss_version"); }}
+          />
+        )}
+
+        {step === "legacy_jboss_version" && (
+          <JbossVersionStep
+            app={app}
+            busy={busy}
+            onSelect={(v) => { setJbossVersion(v); setHosts([]); setStep("legacy_hosts"); }}
           />
         )}
 
         {step === "legacy_hosts" && (
           <HostSelectStep
             app={app}
+            jbossVersion={jbossVersion}
             busy={busy}
             onSubmit={(h) => { setHosts(h); setStep("operation"); }}
           />

@@ -11,9 +11,10 @@ import { opsxApi, type OpsxHost } from "@/api/opsxApi";
 
 const HostSelectStep: React.FC<{
   app: string;
+  jbossVersion: string;
   busy?: boolean;
   onSubmit: (hosts: string[]) => void;
-}> = ({ app, busy, onSubmit }) => {
+}> = ({ app, jbossVersion, busy, onSubmit }) => {
   const [hosts, setHosts] = useState<OpsxHost[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -28,15 +29,22 @@ const HostSelectStep: React.FC<{
       .finally(() => setLoading(false));
   }, [app]);
 
+  // Bir önceki adımda seçilen JBoss sürümüne göre daralt — jbossVersion boşsa
+  // (kullanıcı "Bilinmiyor" seçtiyse) versiyon alanı boş/"NF" olan host'lar gösterilir.
+  const filteredHosts = useMemo(
+    () => hosts.filter((h) => (h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "") === jbossVersion),
+    [hosts, jbossVersion]
+  );
+
   // Ortama göre grupla — kullanıcı prod/test sunucusunu ayırt edebilsin.
   const grouped = useMemo(() => {
     const g: Record<string, OpsxHost[]> = {};
-    for (const h of hosts) {
+    for (const h of filteredHosts) {
       const key = h.env || "(ortam belirtilmemiş)";
       (g[key] ||= []).push(h);
     }
     return g;
-  }, [hosts]);
+  }, [filteredHosts]);
 
   function toggle(host: string) {
     setSelected((prev) => {
@@ -61,11 +69,13 @@ const HostSelectStep: React.FC<{
   if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Sunucular yükleniyor...</div>;
   if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
 
-  if (hosts.length === 0) {
+  if (filteredHosts.length === 0) {
     return (
       <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
         <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-        <span><strong>{app}</strong> için envanterde sunucu bulunamadı.</span>
+        <span>
+          <strong>{app}</strong> için {jbossVersion ? `JBoss ${jbossVersion}` : "bilinmeyen JBoss sürümünde"} sunucu bulunamadı.
+        </span>
       </div>
     );
   }

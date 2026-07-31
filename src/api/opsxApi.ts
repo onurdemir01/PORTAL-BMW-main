@@ -13,6 +13,7 @@ export type OpsxOperation = "restart" | "stop" | "start" | "threaddump" | "heapd
 export interface OpsxHost {
   host: string;
   env: string;
+  jbossVersion: string;
 }
 
 export interface OpsxOperationDef {

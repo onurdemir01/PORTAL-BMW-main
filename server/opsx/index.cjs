@@ -62,8 +62,9 @@ async function resolveTarget(platform) {
 }
 
 // Secilen uygulamanin bulundugu sunucular. LogX'in resolveHostsForApp'i ile ayni
-// tabloyu okur ama OpsX'in kendi ihtiyaci farkli: burada env bilgisi de dondurulur
-// (kullanici hangi ortamdaki sunucuyu sectigini gormeli).
+// tabloyu okur ama OpsX'in kendi ihtiyaci farkli: burada env VE jboss_version bilgisi
+// de dondurulur (kullanici hangi ortamdaki/versiyondaki sunucuyu sectigini gormeli —
+// ayni uygulamanin host'lari FARKLI JBoss majör surumlerinde olabiliyor).
 async function hostsForApp(app) {
   const appName = String(app || '').trim();
   if (!appName) {
@@ -76,11 +77,15 @@ async function hostsForApp(app) {
   const req = pool.request();
   req.input('app', appName);
   const result = await req.query(
-    `SELECT DISTINCT UPPER(host) AS host, env FROM ${getAppsTable()} WHERE app = @app ORDER BY host`
+    `SELECT DISTINCT UPPER(host) AS host, env, jboss_version FROM ${getAppsTable()} WHERE app = @app ORDER BY host`
   );
   return result.recordset
     .filter((r) => r.host)
-    .map((r) => ({ host: String(r.host).trim(), env: String(r.env || '').trim() }));
+    .map((r) => ({
+      host: String(r.host).trim(),
+      env: String(r.env || '').trim(),
+      jbossVersion: String(r.jboss_version || '').trim(),
+    }));
 }
 
 function initOpsX(app) {

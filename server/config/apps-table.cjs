@@ -7,7 +7,7 @@
 // bir sonraki degisiklikte kod degistirip yeniden deploy etmek yerine
 // Admin > Sistem ekranindan duzeltilmesini saglar.
 //
-// Kod bu tablodan su sutunlari bekler: app, host, env
+// Kod bu tablodan su sutunlari bekler: app, host, env (+ OpsX icin jboss_version)
 //
 // GUVENLIK: SQL tanimlayicilari (tablo adi) parametre olarak baglanamaz —
 // sorguya string olarak girer. Bu yuzden deger KATI bir bicim kontrolunden
