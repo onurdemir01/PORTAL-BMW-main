@@ -18,7 +18,18 @@ function createApp() {
   // degil, ag/nginx katmanindadir. Gorunuyorsa, sorunu daha asagi middleware'lere
   // daraltmak icin ayni desen orada da tekrarlanir. Teshis bitince kaldirilabilir.
   app.use("/api", (req, res, next) => {
-    console.log(`[REQ] ${req.method} ${req.originalUrl}`);
+    // ms hassasiyetli zaman damgasi + soketin uzak portu: bir sonraki olayda bu
+    // satiri [Server] clientError logundakiyle (o da ayni damgayi kullanir) kesin
+    // eslestirebilmek icin — iki log birbirine yakin gorunse de FARKLI baglantilara
+    // ait olabilir (sayfa acilirken pek cok istek ayni anda gider).
+    const tag = `${req.method} ${req.originalUrl} remotePort=${req.socket?.remotePort}`;
+    console.log(`[REQ] ${new Date().toISOString()} ${tag}`);
+    // Bu ISTEGIN soketi, yanit TAMAMLANMADAN kapanirsa/hata verirse acikca logla —
+    // boylece "hangi istek nginx tarafindan yarida kesildi" sorusuna tahminle degil
+    // KESIN cevap veririz (remotePort ile clientError'a birebir eslesir).
+    req.socket?.once("close", () => {
+      if (!res.writableEnded) console.warn(`[REQ] SOKET YANIT TAMAMLANMADAN KAPANDI: ${tag}`);
+    });
     next();
   });
 

@@ -205,7 +205,13 @@ async function main() {
   // [REQ] ne burada gorunuyorsa, nginx-Node arasinda TCP baglanti kurulumunda/soket
   // devrinde bir sorun var demektir (Node'a bile ulasmiyor).
   server.on("clientError", (err, socket) => {
-    console.error(`[Server] clientError (Express'e ulasmadan, soket seviyesinde):`, err.code || err.message);
+    // remotePort, service.cjs'teki [REQ] logunun remotePort'uyla eslestirilebilsin diye
+    // (ayni ms'de gorunen iki satir farkli baglantilara ait olabilir — kesin korelasyon
+    // icin port + ISO zaman damgasi sart).
+    console.error(
+      `[Server] clientError ${new Date().toISOString()} remotePort=${socket?.remotePort} ` +
+      `(Express'e ulasmadan, soket seviyesinde):`, err.code || err.message
+    );
     if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
   });
 }
