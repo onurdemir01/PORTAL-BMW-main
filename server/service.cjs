@@ -30,6 +30,22 @@ function createApp() {
     req.socket?.once("close", () => {
       if (!res.writableEnded) console.warn(`[REQ] SOKET YANIT TAMAMLANMADAN KAPANDI: ${tag}`);
     });
+    // 400+ govdesini yakala — nginx istemciye HTML gonderse bile GERCEK JSON hata
+    // mesajini burada goreceğiz (bkz. asagidaki [REQ] -> status logu ile birlikte).
+    const origJson = res.json.bind(res);
+    res.json = (body) => {
+      if (res.statusCode >= 400) console.warn(`[REQ] hata govdesi (${res.statusCode}) ${tag}:`, JSON.stringify(body));
+      return origJson(body);
+    };
+    // Node'un GERCEKTEN hangi status kodunu gonderdigini acikca logla — clientError/
+    // erken-soket-kapanma YOKSA, bu satir "Node 200 mi 500 mu dondu" sorusuna kesin
+    // cevap verir. Eger burada 500 gorunuyorsa hata GERCEKTEN uygulama kodundan
+    // geliyordur (nginx sadece govdeyi degistiriyordur); 200 gorunuyorsa sorun
+    // Node'un disinda (nginx<->tarayici arasi) bir yerdedir.
+    const startedAt = Date.now();
+    res.on("finish", () => {
+      console.log(`[REQ] -> ${res.statusCode} (${Date.now() - startedAt}ms) ${tag}`);
+    });
     next();
   });
 
