@@ -72,12 +72,17 @@ const OperationStep: React.FC<{
 
   const anyRunning = useMemo(() => hosts.some((h) => statuses[h] === "running"), [hosts, statuses]);
   const anyStopped = useMemo(() => hosts.some((h) => statuses[h] === "stopped"), [hosts, statuses]);
+  // Bir host icin artifact hic gelmemis olabilir (ör. playbook o host'ta uygulamayi
+  // bulamayip erken `fail` ettiyse) — "running" da "stopped" da DEGILSE guvenli
+  // varsayilan bilinmiyordur, "serbest birak" degil: TUM islemler kilitli kalir.
+  const anyUnknown = useMemo(() => hosts.some((h) => statuses[h] !== "running" && statuses[h] !== "stopped"), [hosts, statuses]);
 
   // Durum kontrolü tamamlanmadan ya da başarısız olduysa hicbir islem secilemez —
   // "durum bilinmiyor, serbest birak" varsayimi restart/stop gibi islemlerde risklidir.
   function disabledReason(op: OpsxOperation): string | null {
     if (statusLoading) return "Sunucu durumu kontrol ediliyor…";
     if (statusError) return "Durum kontrolü başarısız — işlem seçilemez.";
+    if (anyUnknown) return "Seçili sunucu(lar)dan en az birinin durumu belirlenemedi.";
     if (DISABLED_WHEN_STOPPED.has(op) && anyStopped) return "Seçili sunucu(lar)dan en az biri durmuş durumda.";
     if (DISABLED_WHEN_RUNNING.has(op) && anyRunning) return "Seçili sunucu(lar)dan en az biri zaten çalışıyor.";
     return null;

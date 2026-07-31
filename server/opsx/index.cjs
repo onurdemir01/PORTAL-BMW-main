@@ -269,7 +269,13 @@ function initOpsX(app) {
         await new Promise((r) => setTimeout(r, POLL_MS));
       }
 
-      if (!statusInfo || statusInfo.status !== 'successful') {
+      // 'failed' de KABUL EDILIR (yalniz 'error'/'canceled'/zaman asimi reddedilir):
+      // playbook bir host'ta uygulamayi BULAMAZSA o host icin `ansible.builtin.fail`
+      // tetikler ve AWX genel job durumunu "failed" yapar — ama DIGER host'lar icin
+      // set_stats yine calisip artifact uretmis olabilir. "failed" durumunu topyekun
+      // reddetmek, bir host'taki veri hatasi yuzunden butun sunuculardaki GECERLI
+      // durum bilgisini de atmak olurdu.
+      if (!statusInfo || !['successful', 'failed'].includes(statusInfo.status)) {
         return res.status(502).json({
           ok: false,
           message: statusInfo
@@ -280,6 +286,9 @@ function initOpsX(app) {
       }
 
       // Artifact anahtarlari playbook'un gonderdigi buyuk/kucuk harfe gore esnek okunur.
+      // Bir host icin artifact hic yoksa (o host'ta `fail` tetiklenmis olabilir) 'unknown'
+      // kalir — onyuz bunu ne "running" ne "stopped" sayar, ilgili host icin islem
+      // secimini yine de kilitli tutar (bkz. OperationStep.tsx).
       const hostStatus = statusInfo.artifacts?.host_status || {};
       const statuses = {};
       for (const h of requested) {
