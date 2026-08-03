@@ -30,7 +30,7 @@ function jobOfType(jobs: LogXv2Job[], jobType: string): LogXv2Job | undefined {
 }
 
 const STEP_TITLES: Record<string, string> = {
-  platform: "Platform Seçimi",
+  platform: "",
   legacy_app: "Uygulama Seçimi",
   legacy_discovering: "Log Dosyaları Taranıyor",
   legacy_file_select: "Dosya Seçimi",
@@ -189,7 +189,7 @@ const LogXWizardPage: React.FC = () => {
         )}
         <div className="flex-1">
           <h1 className="page-title">LogX v2 — Güvenli Log İndirme</h1>
-          <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>
+          {STEP_TITLES[step] && <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>}
         </div>
       </div>
 

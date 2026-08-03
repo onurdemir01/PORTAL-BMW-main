@@ -28,7 +28,7 @@ type Step =
   | "done";
 
 const STEP_TITLES: Record<Step, string> = {
-  platform: "Uygulama Tipi",
+  platform: "",
   legacy_app: "Uygulama Seçimi",
   legacy_jboss_version: "JBoss Sürümü",
   legacy_hosts: "Sunucu Seçimi",
@@ -214,7 +214,7 @@ const OpsXWizardPage: React.FC = () => {
         )}
         <div className="flex-1">
           <h1 className="page-title">OpsX - Güvenli Uygulama Operasyonları</h1>
-          <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>
+          {STEP_TITLES[step] && <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>}
         </div>
       </div>
 
