@@ -98,7 +98,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   // kalmasın diye yükseklik İÇERİĞE göre kendiliğinden ayarlanır; kullanıcı köşeden
   // ELLE büyütürse o andan itibaren sabitlenir ve terminal o boşluğu doldurur (asağıdaki
   // size={floatSize.h === "auto" ? "compact" : "fill"}).
-  const { ref: floatRef, pos: floatPos, size: floatSize, startMove, startResize } = useFloatingWindow({ w: 640, h: 640 }, { w: 420, h: 380 }, { autoHeight: true });
+  const { ref: floatRef, size: floatSize, style: floatStyle, startMove, startResize } = useFloatingWindow({ w: 640, h: 640 }, { w: 420, h: 380 }, { autoHeight: true });
   // Satır-içi doğrulama (Faz 5): alan dokunulunca veya submit denenince hata gösterilir.
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -221,7 +221,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
         <div
           ref={floatRef}
           className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl flex flex-col animate-modal-pop relative"
-          style={{ position: "fixed", left: floatPos.x, top: floatPos.y, width: floatSize.w, height: floatSize.h, maxWidth: "calc(100vw - 2rem)", maxHeight: "calc(100vh - 2rem)" }}
+          style={floatStyle}
         >
         {/* Temiz başlık — ikon + başlık + alt-metin + kapat; aynı zamanda sürükle-taşı tutamacı. */}
         <div

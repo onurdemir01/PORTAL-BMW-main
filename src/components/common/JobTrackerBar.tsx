@@ -29,7 +29,7 @@ export default function JobTrackerBar() {
   // Satır filtresi salt-UI durumu.
   const [filters, setFilters] = useState<Record<string, { enabled: boolean; prefix: string }>>({});
 
-  const { ref, pos, size, startMove, startResize, recenter } = useFloatingWindow(DEFAULT_SIZE);
+  const { ref, style, startMove, startResize, recenter } = useFloatingWindow(DEFAULT_SIZE);
   const expanded = jobs.find((j) => !j.minimized);
   const prevExpandedIdRef = useRef<string | null>(null);
 
@@ -60,8 +60,8 @@ export default function JobTrackerBar() {
       {expanded && (
         <div
           ref={ref}
-          className="fixed z-[60] shadow-2xl rounded-xl animate-modal-pop flex flex-col"
-          style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, maxWidth: "calc(100vw - 2rem)", maxHeight: "calc(100vh - 2rem)" }}
+          className="z-[60] shadow-2xl rounded-xl animate-modal-pop flex flex-col"
+          style={style}
         >
           {expanded.filterable && (
             <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[var(--bg-surface)] border border-b-0 border-[var(--border)] rounded-t-xl flex-shrink-0">

@@ -152,7 +152,36 @@ export function useFloatingWindow(
     return () => ro.disconnect();
   }, [autoHeight]);
 
-  return { ref, pos, size, startMove, startResize, recenter };
+  // NOT (stabilite duzeltmesi): boyutlandirma sirasinda `output` her poll tick'inde
+  // (~1.5-3sn) degisip JobTrackerBar/SurveyModal'i yeniden render ediyor — eger style
+  // burada `pos`/`size` REACT STATE'INDEN kurulsaydi (surukleme bitmeden bunlar hala
+  // ESKI degerlerde, cunku sadece pointerup'ta commit ediliyor), o render ELDEKI canli
+  // DOM mutasyonunu STATE'TEKI eski degerle EZERDI — tutamaci uzun sure birakmadan
+  // tutunca ekran "bazen boyutlanmiyor/zipliyor" hissi verirdi. Surukleme AKTIFKEN
+  // (dragRef.current dolu) stil, state yerine ref'in O ANKI DOM stilinden okunur.
+  const dragging = !!dragRef.current;
+  const liveEl = ref.current;
+  const style: React.CSSProperties = dragging && liveEl
+    ? {
+        position: "fixed",
+        left: liveEl.style.left,
+        top: liveEl.style.top,
+        width: liveEl.style.width,
+        height: liveEl.style.height,
+        maxWidth: "calc(100vw - 2rem)",
+        maxHeight: "calc(100vh - 2rem)",
+      }
+    : {
+        position: "fixed",
+        left: pos.x,
+        top: pos.y,
+        width: size.w,
+        height: size.h,
+        maxWidth: "calc(100vw - 2rem)",
+        maxHeight: "calc(100vh - 2rem)",
+      };
+
+  return { ref, pos, size, style, startMove, startResize, recenter };
 }
 
 // Sağ-alt köşe için görünür, ortak boyutlandırma tutamacı JSX'i — hem JobTrackerBar
