@@ -323,7 +323,6 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
           {jobId && (
             <div className="space-y-1.5 animate-fade-in text-center py-4">
               <p className="text-sm font-medium text-[var(--text-primary)]">İş başlatıldı — AWX Job #{jobId}</p>
-              <p className="text-xs text-[var(--text-muted)]">Canlı çıktıyı sağ alttaki panelden takip edebilirsiniz.</p>
             </div>
           )}
         </div>

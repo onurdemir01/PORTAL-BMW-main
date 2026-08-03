@@ -1,7 +1,11 @@
 // src/components/common/JobTrackerBar.tsx — AppLayout'ta sabit render edilen, tarayıcı
 // sekmesi/indirme çubuğu benzeri iş takip arayüzü. En fazla bir iş her an "büyütülmüş"
 // (floating panel) olabilir; geri kalanı alt çubukta küçük sekmeler olarak durur.
-import React, { useState } from "react";
+//
+// Panel elle boyutlandırılabilir (sol-üst köşeden sürükle) — kullanıcı isterse büyütüp
+// küçültebilsin istendi. Küçültme YALNIZCA kullanıcı "küçült" butonuna basınca olur;
+// job başlar başlamaz otomatik minimize etmiyoruz.
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import AnsibleLogTerminal from "./AnsibleLogTerminal";
 
@@ -15,11 +19,50 @@ const STATUS_DOT: Record<string, string> = {
   waiting: "#8b949e",
 };
 
+const DEFAULT_SIZE = { w: 760, h: 560 };
+const MIN_SIZE = { w: 420, h: 280 };
+
 export default function JobTrackerBar() {
   const { jobs, expand, minimize, remove } = useJobTracker();
   // Satır filtresi salt-UI durumu — context'in polling sorumluluğuna karışmaması icin
   // burada, job id'sine göre yerel olarak tutulur (bkz. TrackedJob.filterable).
   const [filters, setFilters] = useState<Record<string, { enabled: boolean; prefix: string }>>({});
+
+  // Panel boyutu — kullanıcı sol-üst köşeden sürükleyerek değiştirir, oturum boyunca
+  // hatırlanır (panel sağ-alta sabit kalır, büyüme sola/yukarı doğru olur).
+  const [size, setSize] = useState(DEFAULT_SIZE);
+  const dragRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  const onResizeMove = useCallback((e: PointerEvent) => {
+    const start = dragRef.current;
+    if (!start) return;
+    const dx = start.x - e.clientX;
+    const dy = start.y - e.clientY;
+    const maxW = window.innerWidth - 32;
+    const maxH = window.innerHeight - 96;
+    setSize({
+      w: Math.min(maxW, Math.max(MIN_SIZE.w, start.w + dx)),
+      h: Math.min(maxH, Math.max(MIN_SIZE.h, start.h + dy)),
+    });
+  }, []);
+
+  const onResizeEnd = useCallback(() => {
+    dragRef.current = null;
+    window.removeEventListener("pointermove", onResizeMove);
+    window.removeEventListener("pointerup", onResizeEnd);
+  }, [onResizeMove]);
+
+  function onResizeStart(e: React.PointerEvent) {
+    e.preventDefault();
+    dragRef.current = { x: e.clientX, y: e.clientY, w: size.w, h: size.h };
+    window.addEventListener("pointermove", onResizeMove);
+    window.addEventListener("pointerup", onResizeEnd);
+  }
+
+  useEffect(() => () => {
+    window.removeEventListener("pointermove", onResizeMove);
+    window.removeEventListener("pointerup", onResizeEnd);
+  }, [onResizeMove, onResizeEnd]);
 
   if (jobs.length === 0) return null;
 
@@ -38,9 +81,21 @@ export default function JobTrackerBar() {
   return (
     <>
       {expanded && (
-        <div className="fixed bottom-4 right-4 z-[60] w-[560px] max-w-[calc(100vw-2rem)] shadow-2xl rounded-xl animate-modal-pop">
+        <div
+          className="fixed bottom-4 right-4 z-[60] shadow-2xl rounded-xl animate-modal-pop flex flex-col relative"
+          style={{ width: size.w, height: size.h, maxWidth: "calc(100vw - 2rem)", maxHeight: "calc(100vh - 6rem)" }}
+        >
+          {/* Sol-üst köşe: sürükleyerek boyutlandırma tutamacı. */}
+          <div
+            onPointerDown={onResizeStart}
+            title="Boyutlandırmak için sürükleyin"
+            className="absolute -top-1.5 -left-1.5 w-4 h-4 cursor-nwse-resize z-10 group"
+          >
+            <div className="w-full h-full rounded-full bg-[var(--accent)] opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+
           {expanded.filterable && (
-            <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[var(--bg-surface)] border border-b-0 border-[var(--border)] rounded-t-xl">
+            <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[var(--bg-surface)] border border-b-0 border-[var(--border)] rounded-t-xl flex-shrink-0">
               <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
                 <input
                   type="checkbox"
@@ -59,17 +114,19 @@ export default function JobTrackerBar() {
               />
             </div>
           )}
-          <AnsibleLogTerminal
-            output={displayedOutput}
-            status={expanded.status}
-            title={expanded.title}
-            size="large"
-            className={expanded.filterable ? "rounded-t-none" : ""}
-            onMinimize={() => minimize(expanded.id)}
-            onClose={() => remove(expanded.id)}
-          />
+          <div className="flex-1 min-h-0">
+            <AnsibleLogTerminal
+              output={displayedOutput}
+              status={expanded.status}
+              title={expanded.title}
+              size="fill"
+              className={expanded.filterable ? "rounded-t-none" : ""}
+              onMinimize={() => minimize(expanded.id)}
+              onClose={() => remove(expanded.id)}
+            />
+          </div>
           {expanded.pollErr && (
-            <div className="bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-b-xl border border-t-0 border-amber-100">
+            <div className="bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-b-xl border border-t-0 border-amber-100 flex-shrink-0">
               {expanded.pollErr}
             </div>
           )}

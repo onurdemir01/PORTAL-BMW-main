@@ -217,7 +217,6 @@ const TelnetWizardPage: React.FC = () => {
               {result.jobId != null && (
                 <p className="mt-1 text-xs text-[var(--text-muted)]">
                   AWX Job: <span className="font-mono">#{result.jobId}</span>
-                  {" · "}canlı çıktıyı sağ alttaki panelden takip edebilirsiniz
                 </p>
               )}
             </div>

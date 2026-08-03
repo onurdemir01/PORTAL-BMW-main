@@ -16,8 +16,10 @@ type Props = {
   /** Boşken (henüz çıktı yok) gösterilecek metin. */
   placeholder?: string;
   className?: string;
-  /** "large" — JobTrackerBar'ın büyütülmüş panelinde daha uzun gövde. Varsayılan "compact". */
-  size?: "compact" | "large";
+  /** "large" — sabit daha uzun gövde. "fill" — dış kapsayıcının (ör. elle
+   * boyutlandırılan JobTrackerBar paneli) yüksekliğini birebir doldurur, kendi
+   * max-h sınırı koymaz. Varsayılan "compact". */
+  size?: "compact" | "large" | "fill";
   /** Verilirse başlık çubuğuna bir "küçült" butonu eklenir (bkz. JobTrackerBar.tsx). */
   onMinimize?: () => void;
   /** Verilirse başlık çubuğuna bir "kapat" butonu eklenir (bkz. JobTrackerBar.tsx). */
@@ -73,7 +75,7 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
 
   return (
     <div
-      className={`rounded-xl overflow-hidden border transition-shadow ${flash ? "animate-term-flash" : ""} ${className}`}
+      className={`rounded-xl overflow-hidden border transition-shadow ${flash ? "animate-term-flash" : ""} ${size === "fill" ? "h-full flex flex-col" : ""} ${className}`}
       style={{ background: "#0d1117", borderColor: running ? `${meta.color}55` : "rgba(255,255,255,0.08)", boxShadow: running ? `0 0 0 1px ${meta.color}22, 0 8px 30px -12px ${meta.color}55` : undefined }}
     >
       {/* Başlık çubuğu — trafik ışıkları + başlık + durum pili + satır sayısı + kopyala */}
@@ -117,7 +119,12 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
       </div>
 
       {/* Gövde — kaydırılabilir konsol */}
-      <div ref={scrollRef} className={`relative overflow-auto ${size === "large" ? "max-h-[32rem]" : "max-h-72"} min-h-[3.5rem] px-4 py-3`}>
+      <div
+        ref={scrollRef}
+        className={`relative overflow-auto min-h-[3.5rem] px-4 py-3 ${
+          size === "fill" ? "flex-1 min-h-0" : size === "large" ? "max-h-[32rem]" : "max-h-72"
+        }`}
+      >
         {output ? (
           <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap break-words text-[#c9d1d9] m-0">
             {output}
