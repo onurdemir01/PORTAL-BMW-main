@@ -6,10 +6,10 @@
 // extra_vars'a `application` HİÇ eklenmez — Telnet'in AWX gövdesi yalnızca ip/port taşır
 // (kullanıcı sartnamesi). Güvenlik OpsX ile AYNI: son POST /api/telnet/run çağrısında
 // sunucu uygulama-host eşleşmesini ve cluster'ı envanterden YENİDEN doğrular.
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import { telnetApi, type TelnetPlatform, type TelnetRunResult } from "@/api/telnetApi";
-import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
+import { useJobTracker } from "@/contexts/JobTrackerContext";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
 import JbossVersionStep from "./steps/JbossVersionStep";
@@ -49,18 +49,7 @@ const TelnetWizardPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TelnetRunResult | null>(null);
-
-  // Canlı iş takibi — OpsX'teki AYNI kendini-zamanlayan adaptif polling deseni.
-  const [jobOutput, setJobOutput] = useState("");
-  const [jobStatus, setJobStatus] = useState("");
-  const [pollErr, setPollErr] = useState("");
-
-  // Çıktı satır filtresi — Self Service'teki output-filter fikrinin istemci-tarafı,
-  // ad-hoc karşılığı: kalıcı bir admin ayarı değil, kullanıcı sonuç ekranında istediği
-  // an açıp kapatabildiği bir görüntüleme seçeneği (yalnızca EKRANDA gösterileni
-  // daraltır, gerçek job çıktısını değiştirmez).
-  const [filterEnabled, setFilterEnabled] = useState(false);
-  const [filterPrefix, setFilterPrefix] = useState("");
+  const { addJob } = useJobTracker();
 
   function restart() {
     setStep("platform");
@@ -74,11 +63,18 @@ const TelnetWizardPage: React.FC = () => {
     setNamespace("");
     setError(null);
     setResult(null);
-    setJobOutput("");
-    setJobStatus("");
-    setPollErr("");
-    setFilterEnabled(false);
-    setFilterPrefix("");
+  }
+
+  // Job basariyla tetiklendiginde uygulama-geneli takipciye kaydeder (bkz.
+  // OpsXWizardPage.tsx'teki ayni desen) — filterable:true, JobTrackerBar'da "sadece
+  // X karakteriyle baslayan satirlari goster" seçeneğini gösterir.
+  function trackJob(r: TelnetRunResult) {
+    if (r.jobId == null) return;
+    addJob({
+      title: `Telnet #${r.jobId}`,
+      fetchStatus: () => telnetApi.jobStatus(r.awxServerId, r.jobId as number),
+      filterable: true,
+    });
   }
 
   function backTargetFor(s: Step): Step | null {
@@ -116,6 +112,7 @@ const TelnetWizardPage: React.FC = () => {
       const r = await telnetApi.run(body);
       setResult(r);
       setStep("done");
+      trackJob(r);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -124,54 +121,6 @@ const TelnetWizardPage: React.FC = () => {
   }
 
   const canGoBack = backTargetFor(step) !== null;
-
-  useEffect(() => {
-    if (step !== "done" || result?.jobId == null) return;
-    const serverId = result.awxServerId;
-    const jobId = result.jobId;
-
-    let stopped = false;
-    let consecutiveErrors = 0;
-    let timer: number | undefined;
-
-    const RUN_MS = 1500;
-    const IDLE_MS = 3000;
-    const MAX_ERRORS = 12;
-
-    const schedule = (ms: number) => { if (!stopped) timer = window.setTimeout(tick, ms); };
-
-    const tick = async () => {
-      if (stopped) return;
-      try {
-        const r = await telnetApi.jobStatus(serverId, jobId);
-        consecutiveErrors = 0;
-        setPollErr("");
-        setJobStatus(r.status);
-        if (r.output) setJobOutput(r.output);
-        const terminal = r.status === "successful" || r.status === "failed" || r.status === "error" || r.status === "canceled";
-        if (terminal) {
-          if (!r.output && (r.status === "failed" || r.status === "error")) {
-            setJobOutput("Job başarısız oldu ancak AWX bu iş için stdout döndürmedi. AWX arayüzünden job detayını kontrol edin.");
-          }
-          stopped = true;
-          return;
-        }
-        schedule(r.output ? RUN_MS : IDLE_MS);
-      } catch (e: unknown) {
-        consecutiveErrors++;
-        if (consecutiveErrors >= MAX_ERRORS) {
-          setPollErr(`Durum güncellenemiyor: ${e instanceof Error ? e.message : String(e)}`);
-          stopped = true;
-          return;
-        }
-        setPollErr(`Bağlantı yenileniyor… (deneme ${consecutiveErrors}/${MAX_ERRORS})`);
-        schedule(Math.min(RUN_MS * consecutiveErrors, 6000));
-      }
-    };
-
-    tick();
-    return () => { stopped = true; if (timer) window.clearTimeout(timer); };
-  }, [step, result]);
 
   const inputSummary = platform === "openshift" ? (
     <>
@@ -186,10 +135,6 @@ const TelnetWizardPage: React.FC = () => {
       {hosts.length} sunucu: <span className="font-mono">{hosts.join(", ")}</span>
     </>
   );
-
-  const displayedOutput = filterEnabled && filterPrefix
-    ? jobOutput.split("\n").filter((l) => l.startsWith(filterPrefix)).join("\n")
-    : jobOutput;
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
@@ -272,39 +217,10 @@ const TelnetWizardPage: React.FC = () => {
               {result.jobId != null && (
                 <p className="mt-1 text-xs text-[var(--text-muted)]">
                   AWX Job: <span className="font-mono">#{result.jobId}</span>
+                  {" · "}canlı çıktıyı sağ alttaki panelden takip edebilirsiniz
                 </p>
               )}
             </div>
-
-            {result.jobId != null && (
-              <div className="w-full text-left space-y-2">
-                {/* Çıktı satır filtresi — yalnızca EKRANDA gösterileni daraltır. */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={filterEnabled}
-                      onChange={(e) => setFilterEnabled(e.target.checked)}
-                      className="rounded"
-                    />
-                    Sadece şu karakterle başlayan satırları göster:
-                  </label>
-                  <input
-                    value={filterPrefix}
-                    onChange={(e) => setFilterPrefix(e.target.value)}
-                    disabled={!filterEnabled}
-                    placeholder="ör: >"
-                    className="w-20 px-2 py-1 text-xs font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)] disabled:opacity-50"
-                  />
-                </div>
-                <AnsibleLogTerminal
-                  output={displayedOutput}
-                  status={jobStatus || result.status || "pending"}
-                  title={`telnet-job-${result.jobId}`}
-                />
-                {pollErr && <p className="mt-1.5 text-xs text-amber-600">{pollErr}</p>}
-              </div>
-            )}
 
             <div className="w-full text-left bg-[var(--bg-elevated)] rounded-xl p-3">
               <div className="text-xs mb-1 text-[var(--text-muted)]">AWX'e gönderilen gövde:</div>

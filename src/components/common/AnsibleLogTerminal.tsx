@@ -6,7 +6,7 @@
 // (status-pulse), otomatik en-alta kaydırma ve durum-renkli çerçeve. Büyük loglar için satır
 // başına ayrı DOM düğümü ÜRETMEZ (tek <pre>) — performanslı; canlılık container animasyonlarıyla.
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ClipboardIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { ClipboardIcon, CheckIcon, MinusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
 type Props = {
   output: string;
@@ -16,6 +16,12 @@ type Props = {
   /** Boşken (henüz çıktı yok) gösterilecek metin. */
   placeholder?: string;
   className?: string;
+  /** "large" — JobTrackerBar'ın büyütülmüş panelinde daha uzun gövde. Varsayılan "compact". */
+  size?: "compact" | "large";
+  /** Verilirse başlık çubuğuna bir "küçült" butonu eklenir (bkz. JobTrackerBar.tsx). */
+  onMinimize?: () => void;
+  /** Verilirse başlık çubuğuna bir "kapat" butonu eklenir (bkz. JobTrackerBar.tsx). */
+  onClose?: () => void;
 };
 
 const RUNNING = new Set(["pending", "waiting", "running", ""]);
@@ -33,7 +39,7 @@ function statusMeta(status: string): { label: string; color: string; dot: string
   }
 }
 
-const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-output", elapsedSec, placeholder = "Konsol çıktısı bekleniyor…", className = "" }) => {
+const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-output", elapsedSec, placeholder = "Konsol çıktısı bekleniyor…", className = "", size = "compact", onMinimize, onClose }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(0);
   const [flash, setFlash] = useState(false);
@@ -90,6 +96,16 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
           <button onClick={copy} className="text-white/30 hover:text-white/70 transition-colors" title="Kopyala">
             {copied ? <CheckIcon className="w-3.5 h-3.5 text-emerald-400" /> : <ClipboardIcon className="w-3.5 h-3.5" />}
           </button>
+          {onMinimize && (
+            <button onClick={onMinimize} className="text-white/30 hover:text-white/70 transition-colors" title="Küçült">
+              <MinusIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onClose && (
+            <button onClick={onClose} className="text-white/30 hover:text-white/70 transition-colors" title="Kapat">
+              <XMarkIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Çalışırken soldan sağa süzülen tarama parıltısı */}
@@ -101,7 +117,7 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
       </div>
 
       {/* Gövde — kaydırılabilir konsol */}
-      <div ref={scrollRef} className="relative overflow-auto max-h-72 min-h-[3.5rem] px-4 py-3">
+      <div ref={scrollRef} className={`relative overflow-auto ${size === "large" ? "max-h-[32rem]" : "max-h-72"} min-h-[3.5rem] px-4 py-3`}>
         {output ? (
           <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap break-words text-[#c9d1d9] m-0">
             {output}

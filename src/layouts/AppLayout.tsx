@@ -15,6 +15,8 @@ import { AuthContext } from "@/contexts/AuthContext";
 import { ToastContainer } from "@/components/common/Toast";
 import { CommandPalette } from "@/components/common/CommandPalette";
 import { AppDataProvider } from "@/contexts/AppContext";
+import { JobTrackerProvider } from "@/contexts/JobTrackerContext";
+import JobTrackerBar from "@/components/common/JobTrackerBar";
 
 export default function AppLayout() {
   const location = useLocation();
@@ -41,6 +43,7 @@ export default function AppLayout() {
 
   return (
     <AppDataProvider>
+    <JobTrackerProvider>
       <div className="flex flex-col h-screen overflow-hidden" style={{ background: "var(--bg-base)" }}>
         <Masthead onToggleNav={() => setNavOpen((v) => !v)} />
 
@@ -78,7 +81,9 @@ export default function AppLayout() {
         />
         <ToastContainer />
         <CommandPalette />
+        <JobTrackerBar />
       </div>
+    </JobTrackerProvider>
     </AppDataProvider>
   );
 }

@@ -12,6 +12,7 @@ import SimpleNameModal from "@/components/self_service/SimpleNameModal";
 import FieldOverridesModal from "@/components/self_service/FieldOverridesModal";
 import Collapse from "@/components/common/Collapse";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
+import { useJobTracker } from "@/contexts/JobTrackerContext";
 import { Field, TextInput, Textarea, Select } from "@/components/ui/Form";
 import {
   ChevronDownIcon,
@@ -84,10 +85,8 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   const [loading, setLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
   const [jobId, setJobId] = useState<number | null>(null);
-  const [jobOutput, setJobOutput] = useState("");
-  const [jobStatus, setJobStatus] = useState("");
   const [err, setErr] = useState("");
-  const [pollErr, setPollErr] = useState("");
+  const { addJob } = useJobTracker();
   // Satır-içi doğrulama (Faz 5): alan dokunulunca veya submit denenince hata gösterilir.
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -150,69 +149,22 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   }
   const hasAnyFieldError = fields.some((f) => fieldError(f) !== null);
 
-  // Canlı log polling'i (SSE değil): ss/job-status → AWX /stdout. Sabit setInterval yerine
-  // KENDİNİ-ZAMANLAYAN uyarlanabilir döngü — böylece (a) stdout akarken hızlı yoklar, (b) job
-  // henüz çıktı üretmeden biraz daha yavaş, (c) GEÇİCİ 401/ağ titremesinde HEMEN PES ETMEZ
-  // (oturum yenilenmesi tek bir 401 ile tüm canlı logu öldürüyordu — kök neden). Artan
-  // gecikmeyle ~50sn boyunca tekrar dener ve "Bağlantı yenileniyor…" gösterir.
-  useEffect(() => {
-    if (!jobId) return;
-    let stopped = false;
-    let consecutiveErrors = 0;
-    let timer: number | undefined;
-
-    const RUN_MS = 1500;   // stdout akıyor → hızlı tazele
-    const IDLE_MS = 3000;  // koşuyor ama henüz çıktı yok
-    const MAX_ERRORS = 12; // geçici hataya tolerans (backoff ile ~50sn)
-
-    const schedule = (ms: number) => {
-      if (stopped) return;
-      timer = window.setTimeout(tick, ms);
-    };
-
-    const tick = async () => {
-      if (stopped) return;
-      try {
-        const r = await ansibleApi.ssJobStatus(item.awxServerId, jobId);
-        consecutiveErrors = 0;
-        setPollErr("");
-        setJobStatus(r.status);
+  // Canlı log takibi artık bu modala bağlı değil — job başarıyla tetiklenince
+  // uygulama-geneli JobTrackerContext'e kaydedilir (bkz. OpsXWizardPage.tsx'teki
+  // aynı desen). Kullanıcı modalı kapatıp başka bir sayfaya geçse bile polling
+  // devam eder, JobTrackerBar sağ-alt panelinde/alt çubukta takip edilebilir.
+  function trackJob(id: number) {
+    addJob({
+      title: item.title,
+      fetchStatus: async () => {
+        const r = await ansibleApi.ssJobStatus(item.awxServerId, id);
         // Parse/erken hatada AWX stdout'u BOŞ döner; hata result_traceback/job_explanation'dadır.
-        // Log önceliği: stdout > traceback > explanation. AWX koşan job için birikmiş stdout'u
-        // döndürdüğünden her yoklamada büyüyerek canlı akış izlenimi verir.
+        // Log önceliği: stdout > traceback > explanation.
         const log = r.output || r.resultTraceback || r.jobExplanation || "";
-        if (log) setJobOutput(log);
-        const terminal = r.status === "successful" || r.status === "failed" || r.status === "error" || r.status === "canceled";
-        if (terminal) {
-          // Terminal ama hâlâ hiç log yoksa, en azından net bir bilgi ver.
-          if (!log) {
-            setJobOutput(
-              (r.status === "failed" || r.status === "error")
-                ? "Job başarısız oldu ancak AWX bu iş için stdout/traceback döndürmedi. AWX arayüzünden job detayını kontrol edin (çoğu zaman playbook parse/şablon hatası)."
-                : ""
-            );
-          }
-          stopped = true;
-          return;
-        }
-        // Koşuyor: stdout gelmeye başladıysa hızlı, henüz boşsa biraz daha yavaş yokla.
-        schedule(log ? RUN_MS : IDLE_MS);
-      } catch (e: unknown) {
-        consecutiveErrors++;
-        if (consecutiveErrors >= MAX_ERRORS) {
-          setPollErr(`Durum güncellenemiyor: ${e instanceof Error ? e.message : String(e)}`);
-          stopped = true;
-          return;
-        }
-        // Geçici hata (oturum yenilenmesi/ağ) → pes etme; artan gecikmeyle tekrar dene.
-        setPollErr(`Bağlantı yenileniyor… (deneme ${consecutiveErrors}/${MAX_ERRORS})`);
-        schedule(Math.min(RUN_MS * consecutiveErrors, 6000));
-      }
-    };
-
-    tick(); // İlk poll'u BEKLEMEDEN çalıştır — log anında akmaya başlasın.
-    return () => { stopped = true; if (timer) window.clearTimeout(timer); };
-  }, [jobId, item.awxServerId]);
+        return { status: r.status, output: log };
+      },
+    });
+  }
 
   async function launch() {
     setSubmitAttempted(true); // tüm alan hatalarını göster
@@ -242,7 +194,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
       });
       if (r.ok) {
         setJobId(r.jobId);
-        setJobStatus(r.status);
+        trackJob(r.jobId);
       } else {
         setErr(r.field ? `${r.field}: ${r.message}` : (r.message || "İş başlatılamadı."));
       }
@@ -369,18 +321,9 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
           )}
 
           {jobId && (
-            <div className="space-y-3 animate-fade-in">
-              {pollErr && (
-                <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">{pollErr}</div>
-              )}
-              {/* Canlı, animasyonlu AWX konsol çıktısı — durum pili + akan tarama + otomatik
-                  en-alta kaydırma. Fail'de traceback/explanation da burada görünür (poll'de set). */}
-              <AnsibleLogTerminal
-                output={jobOutput}
-                status={jobStatus}
-                title={`${item.title} — AWX job`}
-                placeholder="AWX job başlatıldı — konsol çıktısı akmaya başlayacak…"
-              />
+            <div className="space-y-1.5 animate-fade-in text-center py-4">
+              <p className="text-sm font-medium text-[var(--text-primary)]">İş başlatıldı — AWX Job #{jobId}</p>
+              <p className="text-xs text-[var(--text-muted)]">Canlı çıktıyı sağ alttaki panelden takip edebilirsiniz.</p>
             </div>
           )}
         </div>
