@@ -876,6 +876,7 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'Envanter', roles: 'Admin,User' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
+  { page_name: 'Telnet', roles: 'Admin,User' },
   { page_name: 'Self Service', roles: 'Admin,User' },
   { page_name: 'Ansible', roles: 'Admin' },
   { page_name: 'Performance', roles: 'Admin,User' },
@@ -927,6 +928,7 @@ const ELEMENT_SEED = [
   { element_key: 'Envanter',     element_type: 'page', parent_key: 'navgroup:envanter',    label: 'Envanter',     route: '/envanter',        sort_order: 2,  roles: ['Admin', 'User'] },
   { element_key: 'LogX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'LogX',         route: '/logx',            sort_order: 7,  roles: ['Admin', 'User'] },
   { element_key: 'OpsX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'OpsX',         route: '/opsx',            sort_order: 8,  roles: ['Admin', 'User'] },
+  { element_key: 'Telnet',       element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Telnet',       route: '/telnet',          sort_order: 9,  roles: ['Admin', 'User'] },
   { element_key: 'Self Service', element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Otomasyon',    route: '/self-service',    sort_order: 5,  roles: ['Admin', 'User'] },
   { element_key: 'Ansible',      element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Ansible',      route: '/ansible',         sort_order: 6,  roles: ['Admin'] },
   { element_key: 'Performance',  element_type: 'page', parent_key: 'navgroup:performance', label: 'Performance',  route: '/performance',     sort_order: 7,  roles: ['Admin', 'User'] },
@@ -1079,6 +1081,17 @@ const PLAYBOOK_REGISTRY_SEED = [
     key_name: 'opsx_openshift_operation', display_name: 'OpsX — Openshift Uygulama Operasyonu', category: 'opsx', handler: 'opsx_openshift',
     description: 'ARK/Non-ARK container uygulamalarinda restart/stop/start islemi.',
     playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_TEMPLATE_ID',
+  },
+  // ── Telnet baglanti testi — OpsX ile AYNI desen (bkz. server/telnet/index.cjs) ────
+  {
+    key_name: 'telnet_legacy_operation', display_name: 'Telnet — Legacy Baglanti Testi', category: 'telnet', handler: 'telnet_legacy',
+    description: 'JBoss/WAS sunucularindan verilen IP/Port\'a Telnet baglanti testi.',
+    playbook_path: null, env_var_name: 'TELNET_LEGACY_TEMPLATE_ID',
+  },
+  {
+    key_name: 'telnet_openshift_operation', display_name: 'Telnet — Openshift Baglanti Testi', category: 'telnet', handler: 'telnet_openshift',
+    description: 'ARK/Non-ARK container ortamlarindan verilen IP/Port\'a Telnet baglanti testi.',
+    playbook_path: null, env_var_name: 'TELNET_OPENSHIFT_TEMPLATE_ID',
   },
 ];
 

@@ -15,6 +15,7 @@ const SelfServicePage = React.lazy(() => import("@/components/SelfServicePage"))
 const AnsiblePage = React.lazy(() => import("@/components/ansible/AnsiblePage"));
 const LogXWizardPage = React.lazy(() => import("@/components/logx_v2/LogXWizardPage"));
 const OpsXWizardPage = React.lazy(() => import("@/components/opsx/OpsXWizardPage"));
+const TelnetWizardPage = React.lazy(() => import("@/components/telnet/TelnetWizardPage"));
 const AdminPage = React.lazy(() => import("@/components/admin/AdminPage"));
 const AiAnalystPage = React.lazy(() => import("@/components/ai_analyst/AiAnalystPage"));
 
@@ -72,6 +73,9 @@ export default function App() {
           </Route>
           <Route element={<PageVisibilityRoute pageId="OpsX" />}>
             <Route path="/opsx" element={<OpsXWizardPage />} />
+          </Route>
+          <Route element={<PageVisibilityRoute pageId="Telnet" />}>
+            <Route path="/telnet" element={<TelnetWizardPage />} />
           </Route>
           {/* "Ansible" artık AdminRoute'un hardcoded admin-only kısıtı yerine
               genel, admin panelinden konfigüre edilebilir sisteme bağlı —
