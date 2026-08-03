@@ -515,7 +515,7 @@ function makeOcpPodStatusTool(row, templateId) {
   return {
     name: `portal_playbook_${row.keyName}`,
     description: `${row.description || row.displayName} Önce hangi cluster'ların kayıtlı olduğunu ` +
-      'bilmiyorsan kullanıcıya sor veya Admin > Ansible Config > OCP Clusters listesine yönlendir. ' +
+      'bilmiyorsan kullanıcıya sor veya Admin > Ansible Info > OCP Clusters listesine yönlendir. ' +
       'Hemen sonuçlanmazsa jobId ile "henüz tamamlanmadı" döner — portal_logx_job_result ile takip edin.',
     inputSchema: {
       type: 'object',
@@ -537,7 +537,7 @@ function makeOcpPodStatusTool(row, templateId) {
         return { text: `"${clusterName}" adında kayıtlı bir OCP cluster bulunamadı. Kayıtlı cluster'lar: ${clusters.map((c) => c.display || c.name).join(', ') || '(yok)'}` };
       }
       if (!cluster.jumpHost) {
-        return { text: `"${cluster.display || cluster.name}" cluster'ı için jump/bastion host tanımlı değil — Admin > Ansible Config'ten ekleyin.` };
+        return { text: `"${cluster.display || cluster.name}" cluster'ı için jump/bastion host tanımlı değil — Admin > Ansible Info'dan ekleyin.` };
       }
 
       const label = `[${cluster.display || cluster.name}] ${row.displayName}`;

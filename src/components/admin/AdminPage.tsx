@@ -30,7 +30,7 @@ const TABS = [
   { id: "logxv2",      label: "LogX Yapılandırma", icon: ServerStackIcon },
   { id: "audit",       label: "Denetim Kaydı",     icon: ClipboardDocumentListIcon },
   { id: "selfservice", label: "Self Service",     icon: WrenchScrewdriverIcon },
-  { id: "ansible",     label: "Ansible Config",   icon: CommandLineIcon },
+  { id: "ansible",     label: "Ansible Info",     icon: CommandLineIcon },
   { id: "playbooks",   label: "Playbook Kayıtları", icon: CommandLineIcon },
   { id: "system",      label: "Sistem",           icon: CogIcon },
   { id: "users",       label: "Kullanıcılar",     icon: UsersIcon },
