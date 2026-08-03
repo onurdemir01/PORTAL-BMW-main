@@ -4,7 +4,6 @@ import {
   ServerStackIcon,
   ClipboardDocumentListIcon,
   WrenchScrewdriverIcon,
-  CalendarIcon,
   CommandLineIcon,
   CogIcon,
   UsersIcon,
@@ -13,7 +12,6 @@ import {
 } from "@heroicons/react/24/outline";
 import AuditLogTab from "./tabs/AuditLogTab";
 import SelfServiceAdminTab from "./tabs/SelfServiceAdminTab";
-import NobetAdminTab from "./tabs/NobetAdminTab";
 import AnsibleConfigTab from "./tabs/AnsibleConfigTab";
 import PlaybookRegistryTab from "./tabs/PlaybookRegistryTab";
 import SystemConfigTab from "./tabs/SystemConfigTab";
@@ -32,7 +30,6 @@ const TABS = [
   { id: "logxv2",      label: "LogX Yapılandırma", icon: ServerStackIcon },
   { id: "audit",       label: "Denetim Kaydı",     icon: ClipboardDocumentListIcon },
   { id: "selfservice", label: "Self Service",     icon: WrenchScrewdriverIcon },
-  { id: "nobet",       label: "Nöbet Yönetimi",   icon: CalendarIcon },
   { id: "ansible",     label: "Ansible Config",   icon: CommandLineIcon },
   { id: "playbooks",   label: "Playbook Kayıtları", icon: CommandLineIcon },
   { id: "system",      label: "Sistem",           icon: CogIcon },
@@ -97,7 +94,6 @@ const AdminPage: React.FC = () => {
         <div key={activeTab} style={{ animation: "fadeIn 0.18s ease" }}>
           {activeTab === "audit"       && <AuditLogTab />}
           {activeTab === "selfservice" && <SelfServiceAdminTab />}
-          {activeTab === "nobet"       && <NobetAdminTab />}
           {activeTab === "ansible"     && <AnsibleConfigTab />}
           {activeTab === "playbooks"   && <PlaybookRegistryTab />}
           {activeTab === "system"      && <SystemConfigTab />}

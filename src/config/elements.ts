@@ -80,7 +80,6 @@ export const ADMIN_TABS: TabElement[] = [
   { id: "admintab:logxv2",      label: "LogX Yapılandırma" },
   { id: "admintab:audit",       label: "Denetim Kaydı" },
   { id: "admintab:selfservice", label: "Self Service" },
-  { id: "admintab:nobet",       label: "Nöbet Yönetimi" },
   { id: "admintab:ansible",     label: "Ansible Config" },
   { id: "admintab:playbooks",   label: "Playbook Kayıtları" },
   { id: "admintab:system",      label: "Sistem" },

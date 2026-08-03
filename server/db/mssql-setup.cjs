@@ -947,7 +947,6 @@ const ELEMENT_SEED = [
   { element_key: 'admintab:logxv2',      element_type: 'admin_tab', parent_key: 'Admin', label: 'LogX Yapılandırma',  sort_order: 1,  default_visible: 1 },
   { element_key: 'admintab:audit',       element_type: 'admin_tab', parent_key: 'Admin', label: 'Denetim Kaydı',      sort_order: 2,  default_visible: 1 },
   { element_key: 'admintab:selfservice', element_type: 'admin_tab', parent_key: 'Admin', label: 'Self Service',       sort_order: 3,  default_visible: 1 },
-  { element_key: 'admintab:nobet',       element_type: 'admin_tab', parent_key: 'Admin', label: 'Nöbet Yönetimi',     sort_order: 4,  default_visible: 1 },
   { element_key: 'admintab:ansible',     element_type: 'admin_tab', parent_key: 'Admin', label: 'Ansible Config',     sort_order: 6,  default_visible: 1 },
   { element_key: 'admintab:playbooks',   element_type: 'admin_tab', parent_key: 'Admin', label: 'Playbook Kayıtları', sort_order: 7,  default_visible: 1 },
   { element_key: 'admintab:system',      element_type: 'admin_tab', parent_key: 'Admin', label: 'Sistem',             sort_order: 8,  default_visible: 1 },

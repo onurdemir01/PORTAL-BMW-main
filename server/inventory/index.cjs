@@ -859,6 +859,20 @@ function initInventory(app) {
           { name: "id", type: sql.Int, value: id },
         ]
       );
+      // Envanter sayfasindaki sekme basliklari bu "Gorunen Ad"i DEGIL,
+      // inventory_table_aliases'i okur (bkz. EnvanterPage.tsx / Admin > Sistem > Tablo
+      // Takma Adlari) — buradaki alan onceden BURADA kaydedilip hicbir yerde
+      // gosterilmiyordu ("islem yaptigimda bir ise yaramadi"). Iki ekranin ayni sonucu
+      // vermesi icin buradaki degisiklik de aynen alias tablosuna yazilir.
+      const tvRow = await query(`SELECT table_name FROM inventory_table_visibility WHERE id = @id`, [{ name: "id", type: sql.Int, value: id }]);
+      const tableName = tvRow.recordset[0]?.table_name;
+      if (tableName && tableName !== "*") {
+        if (displayName && String(displayName).trim()) {
+          await setAlias(tableName, String(displayName).trim(), { description });
+        } else {
+          await removeAlias(tableName);
+        }
+      }
       _visibleTablesCache = null;
       _inactiveCache = null;
       res.json({ ok: true });
