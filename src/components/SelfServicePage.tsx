@@ -13,6 +13,7 @@ import FieldOverridesModal from "@/components/self_service/FieldOverridesModal";
 import Collapse from "@/components/common/Collapse";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
+import { useFloatingWindow, ResizeHandle } from "@/hooks/useFloatingWindow";
 import { Field, TextInput, Textarea, Select } from "@/components/ui/Form";
 import {
   ChevronDownIcon,
@@ -91,6 +92,9 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   // Modal açıkken CANLI çıktı burada (inline) gösterilir — bkz. OpsXWizardPage.tsx'teki
   // aynı desen. Modal kapatılırsa is arka planda takip edilmeye devam eder (alt çubuk).
   const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
+  // Modal GERÇEK bir kayan pencere gibi davranır — başlıktan tutup taşınabilir,
+  // sağ-alt köşesinden boyutlandırılabilir (bkz. JobTrackerBar.tsx'teki AYNI hook).
+  const { ref: floatRef, pos: floatPos, size: floatSize, startMove, startResize } = useFloatingWindow({ w: 640, h: 680 }, { w: 420, h: 380 });
   // Satır-içi doğrulama (Faz 5): alan dokunulunca veya submit denenince hata gösterilir.
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -209,11 +213,17 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="min-h-full flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100dvh-2rem)] my-4 animate-modal-pop">
-        {/* Temiz başlık — ikon + başlık + alt-metin + kapat (süsleme Mac-bar kaldırıldı) */}
-        <div className="flex items-start gap-3 px-5 py-4 border-b border-[var(--border)] flex-shrink-0">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div
+          ref={floatRef}
+          className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl flex flex-col animate-modal-pop relative"
+          style={{ position: "fixed", left: floatPos.x, top: floatPos.y, width: floatSize.w, height: floatSize.h, maxWidth: "calc(100vw - 2rem)", maxHeight: "calc(100vh - 2rem)" }}
+        >
+        {/* Temiz başlık — ikon + başlık + alt-metin + kapat; aynı zamanda sürükle-taşı tutamacı. */}
+        <div
+          onPointerDown={startMove}
+          className="flex items-start gap-3 px-5 py-4 border-b border-[var(--border)] flex-shrink-0 cursor-move select-none"
+        >
           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "var(--accent-glow)" }}>
             <PlayIcon className="w-5 h-5 text-[var(--accent)]" />
           </div>
@@ -221,7 +231,12 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
             <h2 className="text-[15px] font-bold text-[var(--text-primary)] truncate">{item.title}</h2>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">Parametreleri doldurup işi başlatın.</p>
           </div>
-          <button onClick={onClose} className="p-1.5 -mr-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors flex-shrink-0" aria-label="Kapat">
+          <button
+            onClick={onClose}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="p-1.5 -mr-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors flex-shrink-0"
+            aria-label="Kapat"
+          >
             <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
@@ -361,8 +376,8 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
               </button>
             )}
           </div>
+          <ResizeHandle onPointerDown={startResize} />
         </div>
-      </div>
     </div>,
     document.body
   );
