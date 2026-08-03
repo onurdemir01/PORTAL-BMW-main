@@ -1727,8 +1727,14 @@ function initAnsibleRunner(app) {
     const templateId = Number(req.params.templateId);
     if (isNaN(templateId) || templateId <= 0) return res.status(400).json({ ok: false, message: "Geçersiz template ID." });
 
+    // enabled=false bir item kullanicilardan gizlenir (bkz. SelfServicePage.tsx
+    // visibleItems), ama ADMIN'e panelde yine de gosterilir (once-goz-atma/test
+    // amacli) — bu yuzden enabled kontrolu Admin'ler icin atlanir, aksi halde admin
+    // kendi henuz yayinlamadigi bir isi bile calistiramaz ("kullanicilara kapali"
+    // == diger kullanicilardan gizli, Admin'den degil).
+    const isAdmin = req.session?.user?.role === "Admin";
     const ssItem = readSsItems().find((i) =>
-      i.enabled && Number(i.awxServerId) === server.id && Number(i.awxTemplateId) === templateId
+      (isAdmin || i.enabled) && Number(i.awxServerId) === server.id && Number(i.awxTemplateId) === templateId
     );
     if (!ssItem) {
       return res.status(403).json({ ok: false, message: "Bu template Self Service listesinde kayıtlı/etkin değil." });
