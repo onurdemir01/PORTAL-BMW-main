@@ -24,6 +24,9 @@ type Props = {
   onMinimize?: () => void;
   /** Verilirse başlık çubuğuna bir "kapat" butonu eklenir (bkz. JobTrackerBar.tsx). */
   onClose?: () => void;
+  /** Verilirse başlık çubuğu bir sürükle-taşı tutamacı olur (bkz. JobTrackerBar.tsx —
+   * kayan pencereyi başlıktan tutup taşımak için). Buton tıklamaları bundan etkilenmez. */
+  onHeaderPointerDown?: (e: React.PointerEvent) => void;
 };
 
 const RUNNING = new Set(["pending", "waiting", "running", ""]);
@@ -41,7 +44,7 @@ function statusMeta(status: string): { label: string; color: string; dot: string
   }
 }
 
-const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-output", elapsedSec, placeholder = "Konsol çıktısı bekleniyor…", className = "", size = "compact", onMinimize, onClose }) => {
+const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-output", elapsedSec, placeholder = "Konsol çıktısı bekleniyor…", className = "", size = "compact", onMinimize, onClose, onHeaderPointerDown }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(0);
   const [flash, setFlash] = useState(false);
@@ -78,12 +81,13 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
       className={`rounded-xl overflow-hidden border transition-shadow ${flash ? "animate-term-flash" : ""} ${size === "fill" ? "h-full flex flex-col" : ""} ${className}`}
       style={{ background: "#0d1117", borderColor: running ? `${meta.color}55` : "rgba(255,255,255,0.08)", boxShadow: running ? `0 0 0 1px ${meta.color}22, 0 8px 30px -12px ${meta.color}55` : undefined }}
     >
-      {/* Başlık çubuğu — trafik ışıkları + başlık + durum pili + satır sayısı + kopyala */}
-      <div className="relative flex items-center gap-2 px-3 py-2 border-b border-white/[0.06]" style={{ background: "#060c17" }}>
-        <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]" />
-        <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
-        <span className="w-2.5 h-2.5 rounded-full bg-[#27c93f]" />
-        <span className="ml-1 text-[11px] font-mono text-white/40 truncate">{title}</span>
+      {/* Başlık çubuğu — başlık + durum pili + satır sayısı + kopyala (+ varsa sürükle-taşı) */}
+      <div
+        onPointerDown={onHeaderPointerDown}
+        className={`relative flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] ${onHeaderPointerDown ? "cursor-move select-none" : ""}`}
+        style={{ background: "#060c17" }}
+      >
+        <span className="text-[11px] font-mono text-white/40 truncate">{title}</span>
 
         <div className="ml-auto flex items-center gap-3">
           {lineCount > 0 && <span className="text-[10px] font-mono text-white/30">{lineCount} satır</span>}
@@ -95,16 +99,16 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
             />
             {meta.label}
           </span>
-          <button onClick={copy} className="text-white/30 hover:text-white/70 transition-colors" title="Kopyala">
+          <button onClick={copy} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="Kopyala">
             {copied ? <CheckIcon className="w-3.5 h-3.5 text-emerald-400" /> : <ClipboardIcon className="w-3.5 h-3.5" />}
           </button>
           {onMinimize && (
-            <button onClick={onMinimize} className="text-white/30 hover:text-white/70 transition-colors" title="Küçült">
+            <button onClick={onMinimize} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="Küçült">
               <MinusIcon className="w-3.5 h-3.5" />
             </button>
           )}
           {onClose && (
-            <button onClick={onClose} className="text-white/30 hover:text-white/70 transition-colors" title="Kapat">
+            <button onClick={onClose} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="Kapat">
               <XMarkIcon className="w-3.5 h-3.5" />
             </button>
           )}

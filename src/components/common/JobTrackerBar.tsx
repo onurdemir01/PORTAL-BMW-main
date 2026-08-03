@@ -1,10 +1,11 @@
 // src/components/common/JobTrackerBar.tsx — AppLayout'ta sabit render edilen, tarayıcı
 // sekmesi/indirme çubuğu benzeri iş takip arayüzü. En fazla bir iş her an "büyütülmüş"
-// (floating panel) olabilir; geri kalanı alt çubukta küçük sekmeler olarak durur.
+// (floating pencere) olabilir; geri kalanı alt çubukta küçük sekmeler olarak durur.
 //
-// Panel elle boyutlandırılabilir (sol-üst köşeden sürükle) — kullanıcı isterse büyütüp
-// küçültebilsin istendi. Küçültme YALNIZCA kullanıcı "küçült" butonuna basınca olur;
-// job başlar başlamaz otomatik minimize etmiyoruz.
+// Pencere GERÇEK bir kayan pencere gibi davranır: başlık çubuğundan tutup HER YERE
+// sürüklenebilir, sağ-alt köşesinden görünür bir tutamaçla boyutlandırılabilir.
+// Küçültme YALNIZCA kullanıcı "küçült" butonuna basınca olur; job başlar başlamaz
+// otomatik minimize etmiyoruz.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import AnsibleLogTerminal from "./AnsibleLogTerminal";
@@ -20,7 +21,16 @@ const STATUS_DOT: Record<string, string> = {
 };
 
 const DEFAULT_SIZE = { w: 760, h: 560 };
-const MIN_SIZE = { w: 420, h: 280 };
+const MIN_SIZE = { w: 380, h: 240 };
+const MARGIN = 16;
+
+function defaultPos() {
+  if (typeof window === "undefined") return { x: 0, y: 0 };
+  return {
+    x: Math.max(MARGIN, window.innerWidth - DEFAULT_SIZE.w - MARGIN),
+    y: Math.max(MARGIN, window.innerHeight - DEFAULT_SIZE.h - MARGIN),
+  };
+}
 
 export default function JobTrackerBar() {
   const { jobs, expand, minimize, remove } = useJobTracker();
@@ -28,41 +38,57 @@ export default function JobTrackerBar() {
   // burada, job id'sine göre yerel olarak tutulur (bkz. TrackedJob.filterable).
   const [filters, setFilters] = useState<Record<string, { enabled: boolean; prefix: string }>>({});
 
-  // Panel boyutu — kullanıcı sol-üst köşeden sürükleyerek değiştirir, oturum boyunca
-  // hatırlanır (panel sağ-alta sabit kalır, büyüme sola/yukarı doğru olur).
+  const [pos, setPos] = useState(defaultPos);
   const [size, setSize] = useState(DEFAULT_SIZE);
-  const dragRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const dragRef = useRef<{ mode: "move" | "resize"; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number } | null>(null);
 
-  const onResizeMove = useCallback((e: PointerEvent) => {
-    const start = dragRef.current;
-    if (!start) return;
-    const dx = start.x - e.clientX;
-    const dy = start.y - e.clientY;
-    const maxW = window.innerWidth - 32;
-    const maxH = window.innerHeight - 96;
-    setSize({
-      w: Math.min(maxW, Math.max(MIN_SIZE.w, start.w + dx)),
-      h: Math.min(maxH, Math.max(MIN_SIZE.h, start.h + dy)),
-    });
-  }, []);
+  const onPointerMove = useCallback((e: PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (d.mode === "move") {
+      const maxX = window.innerWidth - 120;   // en az başlığın bir kısmı görünür kalsın
+      const maxY = window.innerHeight - 40;
+      setPos({
+        x: Math.min(maxX, Math.max(-size.w + 120, d.origX + dx)),
+        y: Math.min(maxY, Math.max(0, d.origY + dy)),
+      });
+    } else {
+      const maxW = window.innerWidth - pos.x - MARGIN;
+      const maxH = window.innerHeight - pos.y - MARGIN;
+      setSize({
+        w: Math.min(maxW, Math.max(MIN_SIZE.w, d.origW + dx)),
+        h: Math.min(maxH, Math.max(MIN_SIZE.h, d.origH + dy)),
+      });
+    }
+  }, [pos.x, pos.y, size.w]);
 
-  const onResizeEnd = useCallback(() => {
+  const onPointerUp = useCallback(() => {
     dragRef.current = null;
-    window.removeEventListener("pointermove", onResizeMove);
-    window.removeEventListener("pointerup", onResizeEnd);
-  }, [onResizeMove]);
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+  }, [onPointerMove]);
 
-  function onResizeStart(e: React.PointerEvent) {
+  function startMove(e: React.PointerEvent) {
     e.preventDefault();
-    dragRef.current = { x: e.clientX, y: e.clientY, w: size.w, h: size.h };
-    window.addEventListener("pointermove", onResizeMove);
-    window.addEventListener("pointerup", onResizeEnd);
+    dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y, origW: size.w, origH: size.h };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }
+
+  function startResize(e: React.PointerEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { mode: "resize", startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y, origW: size.w, origH: size.h };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
   }
 
   useEffect(() => () => {
-    window.removeEventListener("pointermove", onResizeMove);
-    window.removeEventListener("pointerup", onResizeEnd);
-  }, [onResizeMove, onResizeEnd]);
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+  }, [onPointerMove, onPointerUp]);
 
   if (jobs.length === 0) return null;
 
@@ -82,18 +108,9 @@ export default function JobTrackerBar() {
     <>
       {expanded && (
         <div
-          className="fixed bottom-4 right-4 z-[60] shadow-2xl rounded-xl animate-modal-pop flex flex-col relative"
-          style={{ width: size.w, height: size.h, maxWidth: "calc(100vw - 2rem)", maxHeight: "calc(100vh - 6rem)" }}
+          className="fixed z-[60] shadow-2xl rounded-xl animate-modal-pop flex flex-col"
+          style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
         >
-          {/* Sol-üst köşe: sürükleyerek boyutlandırma tutamacı. */}
-          <div
-            onPointerDown={onResizeStart}
-            title="Boyutlandırmak için sürükleyin"
-            className="absolute -top-1.5 -left-1.5 w-4 h-4 cursor-nwse-resize z-10 group"
-          >
-            <div className="w-full h-full rounded-full bg-[var(--accent)] opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-
           {expanded.filterable && (
             <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[var(--bg-surface)] border border-b-0 border-[var(--border)] rounded-t-xl flex-shrink-0">
               <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
@@ -114,7 +131,7 @@ export default function JobTrackerBar() {
               />
             </div>
           )}
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 relative">
             <AnsibleLogTerminal
               output={displayedOutput}
               status={expanded.status}
@@ -123,7 +140,18 @@ export default function JobTrackerBar() {
               className={expanded.filterable ? "rounded-t-none" : ""}
               onMinimize={() => minimize(expanded.id)}
               onClose={() => remove(expanded.id)}
+              onHeaderPointerDown={startMove}
             />
+            {/* Sağ-alt köşe: görünür, sürüklenebilir boyutlandırma tutamacı. */}
+            <div
+              onPointerDown={startResize}
+              title="Boyutlandırmak için sürükleyin"
+              className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize flex items-end justify-end p-0.5"
+            >
+              <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 text-white/40">
+                <path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </div>
           </div>
           {expanded.pollErr && (
             <div className="bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-b-xl border border-t-0 border-amber-100 flex-shrink-0">
