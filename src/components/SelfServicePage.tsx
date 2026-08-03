@@ -94,7 +94,11 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
   // Modal GERÇEK bir kayan pencere gibi davranır — başlıktan tutup taşınabilir,
   // sağ-alt köşesinden boyutlandırılabilir (bkz. JobTrackerBar.tsx'teki AYNI hook).
-  const { ref: floatRef, pos: floatPos, size: floatSize, startMove, startResize } = useFloatingWindow({ w: 640, h: 680 }, { w: 420, h: 380 });
+  // autoHeight:true — kısa bir formda (ör. tek "sunucu" alanı) altta gereksiz boşluk
+  // kalmasın diye yükseklik İÇERİĞE göre kendiliğinden ayarlanır; kullanıcı köşeden
+  // ELLE büyütürse o andan itibaren sabitlenir ve terminal o boşluğu doldurur (asağıdaki
+  // size={floatSize.h === "auto" ? "compact" : "fill"}).
+  const { ref: floatRef, pos: floatPos, size: floatSize, startMove, startResize } = useFloatingWindow({ w: 640, h: 640 }, { w: 420, h: 380 }, { autoHeight: true });
   // Satır-içi doğrulama (Faz 5): alan dokunulunca veya submit denenince hata gösterilir.
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -241,7 +245,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
           </button>
         </div>
 
-          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 flex flex-col">
           {err && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>}
 
           {loading && (
@@ -337,20 +341,21 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
           )}
 
           {jobId && (
-            <div className="space-y-3 animate-fade-in">
-              <p className="text-sm font-medium text-[var(--text-primary)] text-center">İş başlatıldı — AWX Job #{jobId}</p>
+            <div className="space-y-3 animate-fade-in flex-1 min-h-0 flex flex-col">
+              <p className="text-sm font-medium text-[var(--text-primary)] text-center flex-shrink-0">İş başlatıldı — AWX Job #{jobId}</p>
               {trackedJob && (
-                <>
+                <div className="flex-1 min-h-0 flex flex-col">
                   <AnsibleLogTerminal
                     output={trackedJob.output}
                     status={trackedJob.status}
                     title={`${item.title} — AWX job`}
                     placeholder="AWX job başlatıldı — konsol çıktısı akmaya başlayacak…"
+                    size={floatSize.h === "auto" ? "compact" : "fill"}
                   />
                   {trackedJob.pollErr && (
-                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">{trackedJob.pollErr}</div>
+                    <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 flex-shrink-0">{trackedJob.pollErr}</div>
                   )}
-                </>
+                </div>
               )}
             </div>
           )}

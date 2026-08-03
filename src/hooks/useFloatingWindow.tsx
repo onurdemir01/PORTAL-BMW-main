@@ -6,9 +6,17 @@
 // log ciktisi icin her piksel hareketinde tum agaci yeniden render etmek gozle gorulur
 // takilmaya yol acar) — DOM stilini `ref` uzerinden dogrudan mutasyonla guncelleriz,
 // state'e yalnizca birakildiginda (pointerup) yaziriz.
+//
+// autoHeight SECENEGI: form gibi degisken/kisa icerikli pencereler (Self Service
+// SurveyModal) icin yukseklik BASTAN sabit bir piksel degeri DEGIL, icerige gore
+// kendiliginden buyur ("auto") — aksi halde kisa bir formda pencerenin altinda
+// gereksiz bosluk kalirdi. Kullanici koseden SURUKLEYEREK boyutlandirinca (yalnizca
+// resize, sadece tasima degil) o andan itibaren sabit bir piksel degerine gecer;
+// cagiran taraf bunu (size.h === "auto" mi degil mi) kullanarak icerideki terminali
+// "compact" (sabit) ya da "fill" (kalan alani doldur) modunda gosterebilir.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-export interface FloatingSize { w: number; h: number }
+export interface FloatingSize { w: number; h: number | "auto" }
 export interface FloatingPos { x: number; y: number }
 
 const MARGIN = 16;
@@ -21,9 +29,15 @@ export function centeredPos(w: number, h: number): FloatingPos {
   };
 }
 
-export function useFloatingWindow(defaultSize: FloatingSize, minSize: FloatingSize = { w: 380, h: 240 }) {
-  const [pos, setPos] = useState<FloatingPos>(() => centeredPos(defaultSize.w, defaultSize.h));
-  const [size, setSize] = useState<FloatingSize>(defaultSize);
+export function useFloatingWindow(
+  defaultSize: { w: number; h: number },
+  minSize: { w: number; h: number } = { w: 380, h: 240 },
+  opts: { autoHeight?: boolean } = {}
+) {
+  const autoHeight = !!opts.autoHeight;
+  const initialH: number | "auto" = autoHeight ? "auto" : defaultSize.h;
+  const [pos, setPos] = useState<FloatingPos>(() => centeredPos(defaultSize.w, autoHeight ? defaultSize.h : defaultSize.h));
+  const [size, setSize] = useState<FloatingSize>({ w: defaultSize.w, h: initialH });
   const ref = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ mode: "move" | "resize"; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number } | null>(null);
 
@@ -55,8 +69,14 @@ export function useFloatingWindow(defaultSize: FloatingSize, minSize: FloatingSi
     const el = ref.current;
     if (d && el) {
       const rect = el.getBoundingClientRect();
-      setPos({ x: rect.left, y: rect.top });
-      setSize({ w: rect.width, h: rect.height });
+      if (d.mode === "move") {
+        // Sadece tasima — boyut NE ISE (auto ya da sabit) OYLE kalir.
+        setPos({ x: rect.left, y: rect.top });
+      } else {
+        // Gercek bir boyutlandirma oldu — bundan sonra sabit piksel degerine gecer.
+        setPos({ x: rect.left, y: rect.top });
+        setSize({ w: rect.width, h: rect.height });
+      }
     }
     dragRef.current = null;
     document.body.style.userSelect = "";
@@ -88,10 +108,10 @@ export function useFloatingWindow(defaultSize: FloatingSize, minSize: FloatingSi
   }, [onPointerMove, onPointerUp]);
 
   const recenter = useCallback(() => {
-    setSize(defaultSize);
-    setPos(centeredPos(defaultSize.w, defaultSize.h));
+    setSize({ w: defaultSize.w, h: initialH });
+    setPos(centeredPos(defaultSize.w, autoHeight ? minSize.h : defaultSize.h));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultSize.w, defaultSize.h]);
+  }, [defaultSize.w, defaultSize.h, initialH, autoHeight, minSize.h]);
 
   useEffect(() => () => {
     window.removeEventListener("pointermove", onPointerMove);
