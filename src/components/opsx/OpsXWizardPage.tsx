@@ -11,6 +11,7 @@ import React, { useState } from "react";
 import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxPlatform, type OpsxOperation, type OpsxRunResult } from "@/api/opsxApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
+import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
 import JbossVersionStep from "./steps/JbossVersionStep";
@@ -51,7 +52,14 @@ const OpsXWizardPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OpsxRunResult | null>(null);
-  const { addJob } = useJobTracker();
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
+  const { addJob, jobs } = useJobTracker();
+  // Bu sayfa açıkken CANLI çıktıyı kendi içinde (inline) gösterir — takipçiden aynı
+  // job'ın güncel verisini okur, kendi polling'ini yapmaz. Sayfadan ayrılınca (ya da
+  // "Yeni İşlem" ile sıfırlanınca) bu inline görünüm kaybolur ama job arka planda
+  // takip edilmeye devam eder (alt çubuktaki sekme) — AYNI iş için iki ayrı pencere
+  // birden açılmaz (bkz. JobTrackerContext.tsx).
+  const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
 
   function restart() {
     setStep("platform");
@@ -66,17 +74,16 @@ const OpsXWizardPage: React.FC = () => {
     setAppName("");
     setError(null);
     setResult(null);
+    setTrackedJobId(null);
   }
 
-  // Job basariyla tetiklendiginde uygulama-geneli takipciye kaydeder — canli cikti
-  // artik bu sayfaya bagli degil, JobTrackerBar sag-alt panelinde/alt cubukta gorunur
-  // ve kullanici baska sayfaya gecse bile polling devam eder (bkz. JobTrackerContext).
   function trackJob(r: OpsxRunResult) {
     if (r.jobId == null) return;
-    addJob({
+    const id = addJob({
       title: `OpsX #${r.jobId}`,
       fetchStatus: () => opsxApi.jobStatus(r.awxServerId, r.jobId as number),
     });
+    setTrackedJobId(id);
   }
 
   // Adıma göre "← Geri" hedefi. Hedefi olmayan adımlarda buton hiç render edilmez.
@@ -234,6 +241,17 @@ const OpsXWizardPage: React.FC = () => {
                 </p>
               )}
             </div>
+
+            {trackedJob && (
+              <div className="w-full text-left">
+                <AnsibleLogTerminal
+                  output={trackedJob.output}
+                  status={trackedJob.status || result.status || "pending"}
+                  title={trackedJob.title}
+                />
+                {trackedJob.pollErr && <p className="mt-1.5 text-xs text-amber-600">{trackedJob.pollErr}</p>}
+              </div>
+            )}
 
             {/* Job'a gerçekten NE gönderildiğini göster — kullanıcı beklediği parametrelerin
                 gittiğini doğrulayabilsin (özellikle virgülle ayrılmış sunucu listesi). */}

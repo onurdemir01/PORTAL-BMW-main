@@ -3,9 +3,14 @@
 // (floating pencere) olabilir; geri kalanı alt çubukta küçük sekmeler olarak durur.
 //
 // Pencere GERÇEK bir kayan pencere gibi davranır: başlık çubuğundan tutup HER YERE
-// sürüklenebilir, sağ-alt köşesinden görünür bir tutamaçla boyutlandırılabilir.
-// Küçültme YALNIZCA kullanıcı "küçült" butonuna basınca olur; job başlar başlamaz
-// otomatik minimize etmiyoruz.
+// sürüklenebilir, sağ-alt köşesindeki görünür bir tutamaçla boyutlandırılabilir.
+// PERFORMANS: sürükleme/boyutlandırma sırasında React state'i GÜNCELLENMEZ (her piksel
+// hareketinde büyük log çıktısını yeniden render etmek gözle görülür takılmaya yol açardı)
+// — DOM stilini ref üzerinden doğrudan mutasyonla güncelliyoruz, state'e yalnızca
+// bırakıldığında (pointerup) yazılır.
+//
+// Küçültme YALNIZCA kullanıcı "küçült" butonuna basınca olur; yeni bir iş başlayınca
+// pencere her zaman ekranın ORTASINDA açılır (önceki job'ın konumundan bağımsız).
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import AnsibleLogTerminal from "./AnsibleLogTerminal";
@@ -24,55 +29,85 @@ const DEFAULT_SIZE = { w: 760, h: 560 };
 const MIN_SIZE = { w: 380, h: 240 };
 const MARGIN = 16;
 
-function defaultPos() {
+function centeredPos(w: number, h: number) {
   if (typeof window === "undefined") return { x: 0, y: 0 };
   return {
-    x: Math.max(MARGIN, window.innerWidth - DEFAULT_SIZE.w - MARGIN),
-    y: Math.max(MARGIN, window.innerHeight - DEFAULT_SIZE.h - MARGIN),
+    x: Math.max(MARGIN, Math.round((window.innerWidth - w) / 2)),
+    y: Math.max(MARGIN, Math.round((window.innerHeight - h) / 2)),
   };
 }
 
 export default function JobTrackerBar() {
   const { jobs, expand, minimize, remove } = useJobTracker();
-  // Satır filtresi salt-UI durumu — context'in polling sorumluluğuna karışmaması icin
-  // burada, job id'sine göre yerel olarak tutulur (bkz. TrackedJob.filterable).
+  // Satır filtresi salt-UI durumu.
   const [filters, setFilters] = useState<Record<string, { enabled: boolean; prefix: string }>>({});
 
-  const [pos, setPos] = useState(defaultPos);
+  const [pos, setPos] = useState(() => centeredPos(DEFAULT_SIZE.w, DEFAULT_SIZE.h));
   const [size, setSize] = useState(DEFAULT_SIZE);
+  const panelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ mode: "move" | "resize"; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number } | null>(null);
+
+  const expanded = jobs.find((j) => !j.minimized);
+  const prevExpandedIdRef = useRef<string | null>(null);
+
+  // Yeni bir iş "büyütülmüş" duruma geçince (yeni tetiklenen job ya da alt çubuktan
+  // farklı bir sekme açılınca) pencereyi HER ZAMAN ortala — önceki job'ın nereye
+  // sürüklendiği yeni job'ı etkilemesin.
+  useEffect(() => {
+    const id = expanded?.id ?? null;
+    if (id && id !== prevExpandedIdRef.current) {
+      setSize(DEFAULT_SIZE);
+      setPos(centeredPos(DEFAULT_SIZE.w, DEFAULT_SIZE.h));
+    }
+    prevExpandedIdRef.current = id;
+  }, [expanded?.id]);
 
   const onPointerMove = useCallback((e: PointerEvent) => {
     const d = dragRef.current;
-    if (!d) return;
+    const el = panelRef.current;
+    if (!d || !el) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (d.mode === "move") {
-      const maxX = window.innerWidth - 120;   // en az başlığın bir kısmı görünür kalsın
+      const maxX = window.innerWidth - 120;
       const maxY = window.innerHeight - 40;
-      setPos({
-        x: Math.min(maxX, Math.max(-size.w + 120, d.origX + dx)),
-        y: Math.min(maxY, Math.max(0, d.origY + dy)),
-      });
+      const nx = Math.min(maxX, Math.max(-d.origW + 120, d.origX + dx));
+      const ny = Math.min(maxY, Math.max(0, d.origY + dy));
+      el.style.left = `${nx}px`;
+      el.style.top = `${ny}px`;
     } else {
-      const maxW = window.innerWidth - pos.x - MARGIN;
-      const maxH = window.innerHeight - pos.y - MARGIN;
-      setSize({
-        w: Math.min(maxW, Math.max(MIN_SIZE.w, d.origW + dx)),
-        h: Math.min(maxH, Math.max(MIN_SIZE.h, d.origH + dy)),
-      });
+      const maxW = window.innerWidth - d.origX - MARGIN;
+      const maxH = window.innerHeight - d.origY - MARGIN;
+      const nw = Math.min(maxW, Math.max(MIN_SIZE.w, d.origW + dx));
+      const nh = Math.min(maxH, Math.max(MIN_SIZE.h, d.origH + dy));
+      el.style.width = `${nw}px`;
+      el.style.height = `${nh}px`;
     }
-  }, [pos.x, pos.y, size.w]);
+  }, []);
 
   const onPointerUp = useCallback(() => {
+    const d = dragRef.current;
+    const el = panelRef.current;
+    if (d && el) {
+      // Suruklemenin SONUNDA React state'ine yaz — boylece sonraki re-render'larda
+      // (ör. yeni log ciktisi geldiginde) konum/boyut SIFIRLANMAZ.
+      const rect = el.getBoundingClientRect();
+      setPos({ x: rect.left, y: rect.top });
+      setSize({ w: rect.width, h: rect.height });
+    }
     dragRef.current = null;
+    document.body.style.userSelect = "";
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
   }, [onPointerMove]);
 
   function startMove(e: React.PointerEvent) {
     e.preventDefault();
-    dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y, origW: size.w, origH: size.h };
+    const el = panelRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top, origW: rect.width, origH: rect.height };
+    document.body.style.userSelect = "none"; // surukleme sirasinda sayfa metnini secmesin
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
   }
@@ -80,7 +115,11 @@ export default function JobTrackerBar() {
   function startResize(e: React.PointerEvent) {
     e.preventDefault();
     e.stopPropagation();
-    dragRef.current = { mode: "resize", startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y, origW: size.w, origH: size.h };
+    const el = panelRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    dragRef.current = { mode: "resize", startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top, origW: rect.width, origH: rect.height };
+    document.body.style.userSelect = "none";
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
   }
@@ -88,11 +127,11 @@ export default function JobTrackerBar() {
   useEffect(() => () => {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
+    document.body.style.userSelect = "";
   }, [onPointerMove, onPointerUp]);
 
   if (jobs.length === 0) return null;
 
-  const expanded = jobs.find((j) => !j.minimized);
   const minimized = jobs.filter((j) => j.minimized);
   const filter = expanded ? (filters[expanded.id] || { enabled: false, prefix: "" }) : { enabled: false, prefix: "" };
 
@@ -108,6 +147,7 @@ export default function JobTrackerBar() {
     <>
       {expanded && (
         <div
+          ref={panelRef}
           className="fixed z-[60] shadow-2xl rounded-xl animate-modal-pop flex flex-col"
           style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
         >
@@ -146,10 +186,10 @@ export default function JobTrackerBar() {
             <div
               onPointerDown={startResize}
               title="Boyutlandırmak için sürükleyin"
-              className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize flex items-end justify-end p-0.5"
+              className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize flex items-end justify-end p-1"
             >
-              <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 text-white/40">
-                <path d="M9 1L1 9M9 5L5 9M9 9L9 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <svg viewBox="0 0 10 10" className="w-3 h-3 text-white/40">
+                <path d="M9 1L1 9M9 5L5 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
               </svg>
             </div>
           </div>

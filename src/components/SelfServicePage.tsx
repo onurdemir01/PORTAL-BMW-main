@@ -85,8 +85,12 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   const [loading, setLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
   const [jobId, setJobId] = useState<number | null>(null);
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const [err, setErr] = useState("");
-  const { addJob } = useJobTracker();
+  const { addJob, jobs } = useJobTracker();
+  // Modal açıkken CANLI çıktı burada (inline) gösterilir — bkz. OpsXWizardPage.tsx'teki
+  // aynı desen. Modal kapatılırsa is arka planda takip edilmeye devam eder (alt çubuk).
+  const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
   // Satır-içi doğrulama (Faz 5): alan dokunulunca veya submit denenince hata gösterilir.
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -149,12 +153,8 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   }
   const hasAnyFieldError = fields.some((f) => fieldError(f) !== null);
 
-  // Canlı log takibi artık bu modala bağlı değil — job başarıyla tetiklenince
-  // uygulama-geneli JobTrackerContext'e kaydedilir (bkz. OpsXWizardPage.tsx'teki
-  // aynı desen). Kullanıcı modalı kapatıp başka bir sayfaya geçse bile polling
-  // devam eder, JobTrackerBar sağ-alt panelinde/alt çubukta takip edilebilir.
   function trackJob(id: number) {
-    addJob({
+    const trackerId = addJob({
       title: item.title,
       fetchStatus: async () => {
         const r = await ansibleApi.ssJobStatus(item.awxServerId, id);
@@ -164,6 +164,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
         return { status: r.status, output: log };
       },
     });
+    setTrackedJobId(trackerId);
   }
 
   async function launch() {
@@ -321,8 +322,21 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
           )}
 
           {jobId && (
-            <div className="space-y-1.5 animate-fade-in text-center py-4">
-              <p className="text-sm font-medium text-[var(--text-primary)]">İş başlatıldı — AWX Job #{jobId}</p>
+            <div className="space-y-3 animate-fade-in">
+              <p className="text-sm font-medium text-[var(--text-primary)] text-center">İş başlatıldı — AWX Job #{jobId}</p>
+              {trackedJob && (
+                <>
+                  <AnsibleLogTerminal
+                    output={trackedJob.output}
+                    status={trackedJob.status}
+                    title={`${item.title} — AWX job`}
+                    placeholder="AWX job başlatıldı — konsol çıktısı akmaya başlayacak…"
+                  />
+                  {trackedJob.pollErr && (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">{trackedJob.pollErr}</div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>

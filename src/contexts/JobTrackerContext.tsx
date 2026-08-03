@@ -59,9 +59,15 @@ export function JobTrackerProvider({ children }: { children: React.ReactNode }) 
 
   const addJob = useCallback((input: AddJobInput): string => {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    // minimized: true BASTAN — yuzen paneli OTOMATIK ACMAYIZ. Isi tetikleyen sayfa
+    // (OpsX/Telnet "done" adimi, Self Service SurveyModal) canli ciktiyi KENDI icinde
+    // (bu context'ten okuyarak) inline gosterir; kullanici sayfadan ayrilirsa/modali
+    // kapatirsa is arka planda takip edilmeye devam eder (alt cubuktaki sekme), yuzen
+    // panel YALNIZCA o sekmeye tiklanirsa (expand()) acilir — boylece ayni is icin
+    // ayni anda IKI pencere birden gorunmez.
     setJobs((prev) => [
-      ...prev.map((j) => ({ ...j, minimized: true })), // yeni is baslayinca digerleri kuculur
-      { id, title: input.title, status: "", output: "", pollErr: "", minimized: false, done: false, filterable: input.filterable },
+      ...prev,
+      { id, title: input.title, status: "", output: "", pollErr: "", minimized: true, done: false, filterable: input.filterable },
     ]);
 
     const tick = (errCount: number) => {

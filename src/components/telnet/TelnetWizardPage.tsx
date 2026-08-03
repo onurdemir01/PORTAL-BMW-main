@@ -10,6 +10,7 @@ import React, { useState } from "react";
 import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import { telnetApi, type TelnetPlatform, type TelnetRunResult } from "@/api/telnetApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
+import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
 import JbossVersionStep from "./steps/JbossVersionStep";
@@ -49,7 +50,14 @@ const TelnetWizardPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TelnetRunResult | null>(null);
-  const { addJob } = useJobTracker();
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
+  const { addJob, jobs } = useJobTracker();
+  // Sayfa açıkken CANLI çıktı burada (inline) gösterilir — bkz. OpsXWizardPage.tsx'teki
+  // aynı desen. filterable:true olduğu için, iş küçültülüp yüzen panelden açılırsa da
+  // "sadece X karakteriyle başlayan satırları göster" seçeneği orada da bulunur.
+  const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
+  const [filterEnabled, setFilterEnabled] = useState(false);
+  const [filterPrefix, setFilterPrefix] = useState("");
 
   function restart() {
     setStep("platform");
@@ -63,18 +71,19 @@ const TelnetWizardPage: React.FC = () => {
     setNamespace("");
     setError(null);
     setResult(null);
+    setTrackedJobId(null);
+    setFilterEnabled(false);
+    setFilterPrefix("");
   }
 
-  // Job basariyla tetiklendiginde uygulama-geneli takipciye kaydeder (bkz.
-  // OpsXWizardPage.tsx'teki ayni desen) — filterable:true, JobTrackerBar'da "sadece
-  // X karakteriyle baslayan satirlari goster" seçeneğini gösterir.
   function trackJob(r: TelnetRunResult) {
     if (r.jobId == null) return;
-    addJob({
+    const id = addJob({
       title: `Telnet #${r.jobId}`,
       fetchStatus: () => telnetApi.jobStatus(r.awxServerId, r.jobId as number),
       filterable: true,
     });
+    setTrackedJobId(id);
   }
 
   function backTargetFor(s: Step): Step | null {
@@ -220,6 +229,37 @@ const TelnetWizardPage: React.FC = () => {
                 </p>
               )}
             </div>
+
+            {trackedJob && (
+              <div className="w-full text-left space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={filterEnabled}
+                      onChange={(e) => setFilterEnabled(e.target.checked)}
+                      className="rounded"
+                    />
+                    Sadece şu karakterle başlayan satırları göster:
+                  </label>
+                  <input
+                    value={filterPrefix}
+                    onChange={(e) => setFilterPrefix(e.target.value)}
+                    disabled={!filterEnabled}
+                    placeholder="ör: >"
+                    className="w-20 px-2 py-1 text-xs font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)] disabled:opacity-50"
+                  />
+                </div>
+                <AnsibleLogTerminal
+                  output={filterEnabled && filterPrefix
+                    ? trackedJob.output.split("\n").filter((l) => l.startsWith(filterPrefix)).join("\n")
+                    : trackedJob.output}
+                  status={trackedJob.status || result.status || "pending"}
+                  title={trackedJob.title}
+                />
+                {trackedJob.pollErr && <p className="mt-1.5 text-xs text-amber-600">{trackedJob.pollErr}</p>}
+              </div>
+            )}
 
             <div className="w-full text-left bg-[var(--bg-elevated)] rounded-xl p-3">
               <div className="text-xs mb-1 text-[var(--text-muted)]">AWX'e gönderilen gövde:</div>
