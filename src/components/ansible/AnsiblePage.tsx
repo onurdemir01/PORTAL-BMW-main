@@ -381,7 +381,10 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
         description: ssDesc.trim(),
         awxServerId: serverId,
         awxTemplateId: template.id,
-        enabled: true,
+        // Yeni eklenen Self Service otomasyonlari varsayilan olarak kullanicilara KAPALI
+        // baslar — admin, "Self Service Yonetimi" ekranindaki gorunurluk anahtariyla
+        // bilinclii sekilde acmadan hicbir kullanici gormez.
+        enabled: false,
         // Date.now() (ms) MSSQL'deki sort_order INT (32-bit, maks ~2.14 milyar) sinirini
         // asiyordu — HER kayitta "Validation failed for parameter" ile 500 donduruyordu.
         // Saniye cinsinden epoch de sirlama amaci icin yeterli ve int32'ye sigar (2038'e kadar).

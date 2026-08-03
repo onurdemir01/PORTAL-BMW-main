@@ -588,7 +588,7 @@ const TABLES = [
         description     NVARCHAR(MAX),
         awx_server_id   INT NOT NULL DEFAULT 1,
         awx_template_id INT NOT NULL,
-        enabled         BIT NOT NULL DEFAULT 1,
+        enabled         BIT NOT NULL DEFAULT 0,
         sort_order      INT NOT NULL DEFAULT 0,
         updated_at      DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         UNIQUE(awx_server_id, awx_template_id)

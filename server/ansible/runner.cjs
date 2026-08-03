@@ -1447,7 +1447,9 @@ function initAnsibleRunner(app) {
   // allowlist disi ID ve (server,template) cifti dedupe kontrolu — hepsi kayittan ONCE
   // reddedilir (onceden bunlarin hicbiri kontrol edilmiyordu, bkz. plan).
   app.post("/api/ansible/ss/items", requireAuth, requireAdmin, async (req, res) => {
-    const { id, title, description, awxServerId, awxTemplateId, enabled = true, order = 0 } = req.body || {};
+    // Varsayilan KAPALI: yeni bir Self Service otomasyonu admin bilinclii sekilde
+    // acmadan hicbir kullaniciya gorunmesin (istek govdesi enabled belirtmezse).
+    const { id, title, description, awxServerId, awxTemplateId, enabled = false, order = 0 } = req.body || {};
 
     const trimmedTitle = String(title || "").trim();
     if (!trimmedTitle) {
