@@ -42,11 +42,6 @@ const REGISTRY_KEYS = Object.freeze({
   openshift: 'opsx_openshift_operation',
 });
 
-// Legacy'ye ozel: secili sunucularda uygulamanin RUNNING/STOPPED durumunu kontrol eden
-// playbook'un registry anahtari — bir "platform" degil, ayri bir is akisi oldugu icin
-// REGISTRY_KEYS'in disinda tutulur.
-const STATUS_CHECK_KEY = 'opsx_legacy_status_check';
-
 // Template ID + AWX sunucusu Playbook Kayitlari'ndan cozulur. getEffectiveTemplateId()
 // once satirdaki awx_template_id'ye, o bos ise satirda tanimli env degiskenine bakar
 // (bkz. server/ansible/playbook-registry.cjs) — LogX'in kullandigi ayni mekanizma.
@@ -70,9 +65,12 @@ async function resolveTarget(platform) {
 }
 
 // Secilen uygulamanin bulundugu sunucular. LogX'in resolveHostsForApp'i ile ayni
-// tabloyu okur ama OpsX'in kendi ihtiyaci farkli: burada env VE jboss_version bilgisi
-// de dondurulur (kullanici hangi ortamdaki/versiyondaki sunucuyu sectigini gormeli —
-// ayni uygulamanin host'lari FARKLI JBoss majör surumlerinde olabiliyor).
+// tabloyu okur ama OpsX'in kendi ihtiyaci farkli: burada env, jboss_version VE status
+// bilgisi de dondurulur (kullanici hangi ortamdaki/versiyondaki sunucuyu sectigini
+// gormeli — ayni uygulamanin host'lari FARKLI JBoss majör surumlerinde olabiliyor;
+// status ise canli bir Ansible sorgusuyla DEGIL, dogrudan envanterden (MWAppsInventory.status,
+// "running"/"stopped") okunur — daha once bir playbook tetikleyip polling yapan
+// /api/opsx/status-check yaklasimi TERK EDILDI, cunku bu deger zaten envanterde hazir.
 async function hostsForApp(app) {
   const appName = String(app || '').trim();
   if (!appName) {
@@ -85,7 +83,7 @@ async function hostsForApp(app) {
   const req = pool.request();
   req.input('app', appName);
   const result = await req.query(
-    `SELECT DISTINCT UPPER(host) AS host, env, jboss_version FROM ${getAppsTable()} WHERE app = @app ORDER BY host`
+    `SELECT DISTINCT UPPER(host) AS host, env, jboss_version, status FROM ${getAppsTable()} WHERE app = @app ORDER BY host`
   );
   return result.recordset
     .filter((r) => r.host)
@@ -93,6 +91,7 @@ async function hostsForApp(app) {
       host: String(r.host).trim(),
       env: String(r.env || '').trim(),
       jbossVersion: String(r.jboss_version || '').trim(),
+      status: String(r.status || '').trim().toLowerCase(),
     }));
 }
 
@@ -194,119 +193,6 @@ function initOpsX(app) {
         finished: statusInfo.finished,
         failed: statusInfo.failed,
       });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
-
-  // POST /api/opsx/status-check — Legacy'ye ozel: secili sunucularda uygulamanin CANLI
-  // RUNNING/STOPPED durumunu bir Ansible playbook'u tetikleyip HIZLICA (kisa polling ile)
-  // ceker. Onyuz bunu Operasyon adiminda kullanir: uygulama STOPPED ise restart/stop/
-  // thread dump/heap dump, RUNNING ise "başlat" secilemez hale gelir.
-  //
-  // SOZLESME: playbook'un son adiminda `ansible.builtin.set_stats` ile
-  //   host_status: { "<HOST>": "running" | "stopped", ... }
-  // seklinde bir artifact yayinlamasi BEKLENIR — LogX v2/getJobStatusOnServer'in zaten
-  // kullandigi artifacts-tabanli desenle AYNI (bkz. runner.cjs yorumu). Admin bu playbook'u
-  // Playbook Kayitlari'nda "opsx_legacy_status_check" satirina template ID olarak tanimlamali.
-  //
-  // Durum kontrolu BASARISIZ/zaman asimina UGRARSA fail-open davranilmaz: 502 doner ve
-  // onyuz TUM islemleri devre disi birakir — bir restart/stop/dump'i YANLIS bir "durum
-  // bilinmiyor, serbest birak" varsayimiyla calistirmak, yanlislikla calisan bir
-  // uygulamayi durdurmaktan (ya da tersi) daha tehlikelidir.
-  // jboss_version icin de operation'daki gibi beyaz liste — istemciden gelen deger
-  // dogrudan extra_vars'a gecmez.
-  const ALLOWED_JBOSS_VERSIONS = new Set(['jboss7', 'jboss8']);
-
-  app.post('/api/opsx/status-check', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { application, hosts, jbossVersion } = req.body || {};
-    if (!String(application || '').trim()) {
-      return res.status(400).json({ ok: false, message: 'Uygulama adı gerekli.' });
-    }
-    if (!Array.isArray(hosts) || hosts.length === 0) {
-      return res.status(400).json({ ok: false, message: 'En az bir sunucu seçilmeli.' });
-    }
-
-    // Anti-TOCTOU: /run ile AYNI kontrol — client'in gonderdigi host listesine guvenilmez.
-    let allowed;
-    try {
-      allowed = new Set((await hostsForApp(application)).map((h) => h.host.toUpperCase()));
-    } catch (err) {
-      return res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-    const requested = hosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean);
-    const notMine = requested.filter((h) => !allowed.has(h));
-    if (notMine.length) {
-      return res.status(400).json({
-        ok: false,
-        message: `Bu sunucular seçilen uygulamaya ait değil: ${notMine.join(', ')}`,
-      });
-    }
-
-    const { templateId, serverId, keyName } = await resolveByKey(STATUS_CHECK_KEY);
-    if (!templateId) {
-      return res.status(501).json({
-        ok: false,
-        message: `Durum kontrolü için AWX job template'i henüz tanımlanmadı. `
-               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
-               + `Template ID alanını doldurmalı.`,
-      });
-    }
-
-    try {
-      const opsxConfig = require('./config.cjs');
-      const cfg = (await opsxConfig.getConfig()).legacy;
-      const runner = require('../ansible/runner.cjs');
-      const limitValue = requested.join(cfg.separator);
-      const extraVars = { [cfg.applicationKey]: String(application).trim() };
-      // Secili host'lar tek bir JBoss majorune ait ise gonderilir (karisik ise onyuz
-      // hic gondermez) — playbook'un dogru jboss-cli aracini (jboss-cli.sh/jboss-cli8.sh)
-      // dogrudan secmesini saglar; boylece playbook her iki surumu de korlemesine gerek
-      // kalmaz.
-      if (ALLOWED_JBOSS_VERSIONS.has(jbossVersion)) {
-        extraVars.jboss_version = jbossVersion;
-      }
-      const launch = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
-
-      // Kisa polling — "hizlica ceksin" istegine uygun, sinirli sure (~30sn ust sinir).
-      const POLL_MS = 1000;
-      const MAX_ATTEMPTS = 30;
-      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
-      let statusInfo = null;
-      for (let i = 0; i < MAX_ATTEMPTS; i++) {
-        statusInfo = await runner.getJobStatusOnServer(serverId, launch.jobId);
-        if (TERMINAL.has(statusInfo.status)) break;
-        await new Promise((r) => setTimeout(r, POLL_MS));
-      }
-
-      // 'failed' de KABUL EDILIR (yalniz 'error'/'canceled'/zaman asimi reddedilir):
-      // playbook bir host'ta uygulamayi BULAMAZSA o host icin `ansible.builtin.fail`
-      // tetikler ve AWX genel job durumunu "failed" yapar — ama DIGER host'lar icin
-      // set_stats yine calisip artifact uretmis olabilir. "failed" durumunu topyekun
-      // reddetmek, bir host'taki veri hatasi yuzunden butun sunuculardaki GECERLI
-      // durum bilgisini de atmak olurdu.
-      if (!statusInfo || !['successful', 'failed'].includes(statusInfo.status)) {
-        return res.status(502).json({
-          ok: false,
-          message: statusInfo
-            ? `Durum kontrolü tamamlanamadı (job durumu: ${statusInfo.status}).`
-            : 'Durum kontrolü zaman aşımına uğradı.',
-          jobId: launch.jobId,
-        });
-      }
-
-      // Artifact anahtarlari playbook'un gonderdigi buyuk/kucuk harfe gore esnek okunur.
-      // Bir host icin artifact hic yoksa (o host'ta `fail` tetiklenmis olabilir) 'unknown'
-      // kalir — onyuz bunu ne "running" ne "stopped" sayar, ilgili host icin islem
-      // secimini yine de kilitli tutar (bkz. OperationStep.tsx).
-      const hostStatus = statusInfo.artifacts?.host_status || {};
-      const statuses = {};
-      for (const h of requested) {
-        const raw = hostStatus[h] ?? hostStatus[h.toLowerCase()] ?? hostStatus[h.toUpperCase()];
-        statuses[h] = typeof raw === 'string' ? raw.trim().toLowerCase() : 'unknown';
-      }
-
-      res.json({ ok: true, statuses, jobId: launch.jobId });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -523,12 +409,6 @@ function initOpsX(app) {
         const t = await resolveTarget(plat);
         targets[plat] = { registryKey: t.keyName, templateId: t.templateId, awxServerId: t.serverId };
       }
-      const statusCheckTarget = await resolveByKey(STATUS_CHECK_KEY);
-      targets.legacyStatusCheck = {
-        registryKey: statusCheckTarget.keyName,
-        templateId: statusCheckTarget.templateId,
-        awxServerId: statusCheckTarget.serverId,
-      };
       res.json({ ok: true, config: cfg, targets, defaults: opsxConfig.DEFAULTS });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });

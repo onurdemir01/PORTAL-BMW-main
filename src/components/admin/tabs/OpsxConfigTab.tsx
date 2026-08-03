@@ -61,7 +61,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 
 export default function OpsxConfigTab() {
   const [config, setConfig] = useState<Record<Platform, PlatformConfig> | null>(null);
-  const [targets, setTargets] = useState<(Record<Platform, TargetInfo> & { legacyStatusCheck: TargetInfo }) | null>(null);
+  const [targets, setTargets] = useState<Record<Platform, TargetInfo> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,31 +160,6 @@ export default function OpsxConfigTab() {
                 )}
               </div>
             </div>
-
-            {/* Durum kontrolu (start/stop/restart/dump'in secilebilirligini belirler) —
-                yalniz Legacy'de anlamli, Openshift'te durum kavrami farkli (pod bazli). */}
-            {plat === "legacy" && (
-              <div className="text-xs flex items-center gap-1.5">
-                {targets.legacyStatusCheck.templateId ? (
-                  <>
-                    <CheckCircleIcon className="w-4 h-4 text-green-600" />
-                    <span style={{ color: "var(--text-muted)" }}>
-                      Durum kontrolü template'i tanımlı — Template{" "}
-                      <span className="font-mono">{targets.legacyStatusCheck.templateId}</span>
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <ExclamationTriangleIcon className="w-4 h-4 text-amber-600" />
-                    <span className="text-amber-700">
-                      Durum kontrolü template'i tanımsız — Playbook Kayıtları →{" "}
-                      <span className="font-mono">{targets.legacyStatusCheck.registryKey}</span>
-                      {" "}(tanımlanmadan Operasyon adımında hiçbir işlem seçilemez)
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {KEY_FIELDS[plat].map(({ field, label }) => (

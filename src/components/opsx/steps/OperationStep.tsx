@@ -4,15 +4,15 @@
 // böylece izin verilen işlem kümesi tek yerde (server/opsx/index.cjs ALLOWED_OPERATIONS)
 // tanımlı kalır. Sunucu her durumda gelen değeri o beyaz listeye karşı yeniden doğrular.
 //
-// DURUM KONTROLÜ: adıma girildiğinde bir Ansible playbook'u tetiklenip seçili
-// sunucularda uygulamanın CANLI RUNNING/STOPPED durumu çekilir (bkz. opsxApi.checkStatus).
-// Buna göre bazı işlemler ANLAMSIZ/TEHLİKELİ olabileceği için devre dışı bırakılır:
+// DURUM KONTROLÜ: uygulamanın RUNNING/STOPPED durumu bir Ansible playbook'u tetiklenerek
+// DEĞİL, doğrudan envanterden (MWAppsInventory.status, opsxApi.getHosts) okunur — bu
+// yüzden anlık ve ucuzdur. Buna göre bazı işlemler ANLAMSIZ/TEHLİKELİ olabileceği için
+// devre dışı bırakılır:
 //   - Herhangi bir sunucu STOPPED ise: restart/stop/thread dump/heap dump seçilemez
 //     (durmuş bir JVM'de dump alınamaz, zaten durmuşu tekrar durduramazsınız).
 //   - Herhangi bir sunucu RUNNING ise: "başlat" seçilemez.
-// Durum kontrolü BAŞARISIZ olursa (template tanımsız/AWX hatası/zaman aşımı) fail-open
-// DAVRANILMAZ — hangi işlemin güvenli olduğunu bilmeden hiçbir işlem seçilemez; kullanıcı
-// "Tekrar Dene" ile yeniden deneyebilir.
+// Durum bilgisi eksik/beklenmedik bir değerse (envanterde status boşsa) fail-open
+// DAVRANILMAZ — hangi işlemin güvenli olduğunu bilmeden hiçbir işlem seçilemez.
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowPathIcon, StopCircleIcon, PlayCircleIcon, DocumentMagnifyingGlassIcon, CircleStackIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxOperation, type OpsxOperationDef } from "@/api/opsxApi";
@@ -34,30 +34,13 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
   stopped: { label: "DURMUŞ", className: "bg-red-50 text-red-700 border-red-100" },
 };
 
-// Secili jboss surumlerinden ("7.4.0", "8.1" gibi tam degerler) TEK bir majör
-// ("jboss7"/"jboss8") cikarir — playbook'un dogru jboss-cli aracini secmesi icin.
-// Karisik major (hem 7.X hem 8.Y birlikte secilmisse) belirsiz oldugu icin
-// undefined doner; caginan taraf bu durumda degiskeni HIC gondermez.
-function deriveJbossMajor(versions: string[]): string | undefined {
-  const majors = new Set(
-    versions
-      .map((v) => v.trim())
-      .filter(Boolean)
-      .map((v) => v[0])
-      .filter((d) => d === "7" || d === "8")
-  );
-  if (majors.size !== 1) return undefined;
-  return `jboss${[...majors][0]}`;
-}
-
 const OperationStep: React.FC<{
   summary: React.ReactNode;
   application: string;
   hosts: string[];
-  jbossVersions: string[];
   busy?: boolean;
   onSelect: (op: OpsxOperation) => void;
-}> = ({ summary, application, hosts, jbossVersions, busy, onSelect }) => {
+}> = ({ summary, application, hosts, busy, onSelect }) => {
   const [ops, setOps] = useState<OpsxOperationDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,25 +60,25 @@ const OperationStep: React.FC<{
   useEffect(() => {
     setStatusLoading(true);
     setStatusError(null);
-    opsxApi.checkStatus(application, hosts, deriveJbossMajor(jbossVersions))
+    opsxApi.getHosts(application)
       .then((r) => {
-        if (r.ok) setStatuses(r.statuses || {});
-        else setStatusError(r.message || "Durum kontrolü başarısız oldu.");
+        if (!r.ok) { setStatusError("Sunucu durumu alınamadı."); return; }
+        const map: Record<string, string> = {};
+        for (const h of r.hosts) map[h.host] = h.status;
+        setStatuses(map);
       })
       .catch((err) => setStatusError(err instanceof Error ? err.message : String(err)))
       .finally(() => setStatusLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [application, hosts.join(","), jbossVersions.join(","), checkNonce]);
+  }, [application, checkNonce]);
 
   const anyRunning = useMemo(() => hosts.some((h) => statuses[h] === "running"), [hosts, statuses]);
   const anyStopped = useMemo(() => hosts.some((h) => statuses[h] === "stopped"), [hosts, statuses]);
-  // Bir host icin artifact hic gelmemis olabilir (ör. playbook o host'ta uygulamayi
-  // bulamayip erken `fail` ettiyse) — "running" da "stopped" da DEGILSE guvenli
-  // varsayilan bilinmiyordur, "serbest birak" degil: TUM islemler kilitli kalir.
+  // Bir host icin envanterde status bos/beklenmedik bir degerse "running" da "stopped"
+  // da DEGILDIR — guvenli varsayilan bilinmiyordur, "serbest birak" degil: TUM islemler
+  // kilitli kalir.
   const anyUnknown = useMemo(() => hosts.some((h) => statuses[h] !== "running" && statuses[h] !== "stopped"), [hosts, statuses]);
 
-  // Durum kontrolü tamamlanmadan ya da başarısız olduysa hicbir islem secilemez —
-  // "durum bilinmiyor, serbest birak" varsayimi restart/stop gibi islemlerde risklidir.
   function disabledReason(op: OpsxOperation): string | null {
     if (statusLoading) return "Sunucu durumu kontrol ediliyor…";
     if (statusError) return "Durum kontrolü başarısız — işlem seçilemez.";
@@ -115,7 +98,7 @@ const OperationStep: React.FC<{
         <div className="mt-1 text-xs text-[var(--text-muted)]">{summary}</div>
       </div>
 
-      {/* Sunucu bazında canlı durum — kullanıcı hangi işlemin neden kilitli olduğunu görsün. */}
+      {/* Sunucu bazında envanterdeki durum — kullanıcı hangi işlemin neden kilitli olduğunu görsün. */}
       <div className="space-y-1.5">
         {hosts.map((h) => {
           const s = statuses[h];

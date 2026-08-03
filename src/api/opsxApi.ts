@@ -14,6 +14,9 @@ export interface OpsxHost {
   host: string;
   env: string;
   jbossVersion: string;
+  // "running" | "stopped" | "" — MWAppsInventory.status'tan dogrudan okunur (kucuk
+  // harfe cevrilir). Canli bir Ansible sorgusu YOK; bu deger envanterde hazir.
+  status: string;
 }
 
 export interface OpsxOperationDef {
@@ -38,16 +41,6 @@ export interface OpsxJobStatus {
   output: string;
   finished?: string;
   failed?: boolean;
-}
-
-// "running" | "stopped" | "unknown" — playbook'un set_stats ile yayinladigi ham
-// deger kucuk harfe cevrilip aynen geciriliyor; beklenmedik bir deger de "unknown"
-// gibi ele alinmali (bkz. OperationStep.tsx).
-export interface OpsxStatusCheckResult {
-  ok: boolean;
-  statuses: Record<string, string>;
-  jobId?: number;
-  message?: string;
 }
 
 export const opsxApi = {
@@ -94,19 +87,4 @@ export const opsxApi = {
   // (bkz. OpsXWizardPage.tsx).
   jobStatus: (serverId: number, jobId: number): Promise<OpsxJobStatus> =>
     fetch(`${BASE}/job-status/${serverId}/${jobId}`).then(safeJson),
-
-  // Legacy'ye özel: seçili sunucularda uygulamanın CANLI RUNNING/STOPPED durumunu bir
-  // Ansible playbook'u tetikleyip sunucu tarafında kısa polling ile çekip döner (bkz.
-  // server/opsx/index.cjs POST /api/opsx/status-check) — bu yüzden bu çağrı birkaç
-  // saniye sürebilir, çağıran taraf bir yükleniyor göstergesi göstermeli.
-  // jbossVersion: "jboss7" | "jboss8" | undefined — playbook'un dogru jboss-cli
-  // aracini (jboss-cli.sh vs jboss-cli8.sh) secebilmesi icin. Secili host'lar
-  // karisik majorlerdeyse (ör. hem 7.X hem 8.Y) belirsiz bir deger gondermek
-  // yerine caginan taraf (OperationStep.tsx) bunu OMIT eder.
-  checkStatus: (application: string, hosts: string[], jbossVersion?: string): Promise<OpsxStatusCheckResult> =>
-    fetch(`${BASE}/status-check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ application, hosts, jbossVersion }),
-    }).then(safeJson),
 };
