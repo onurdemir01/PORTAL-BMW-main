@@ -39,7 +39,7 @@ export function useFloatingWindow(
   const [pos, setPos] = useState<FloatingPos>(() => centeredPos(defaultSize.w, autoHeight ? defaultSize.h : defaultSize.h));
   const [size, setSize] = useState<FloatingSize>({ w: defaultSize.w, h: initialH });
   const ref = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ mode: "move" | "resize"; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number } | null>(null);
+  const dragRef = useRef<{ mode: "move" | "resize"; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number; effMinW: number; effMinH: number } | null>(null);
 
   const onPointerMove = useCallback((e: PointerEvent) => {
     const d = dragRef.current;
@@ -57,12 +57,15 @@ export function useFloatingWindow(
     } else {
       const maxW = window.innerWidth - d.origX - MARGIN;
       const maxH = window.innerHeight - d.origY - MARGIN;
-      const nw = Math.min(maxW, Math.max(minSize.w, d.origW + dx));
-      const nh = Math.min(maxH, Math.max(minSize.h, d.origH + dy));
+      // effMinW/effMinH (baslangic gercek boyutuyla minSize'in kucugu) kullanilir — aksi
+      // halde autoHeight'ta icerige-gore-kisa bir kutu (ör. 200px) minSize'e (ör. 380px)
+      // ANINDA ziplar (ilk piksel hareketinde) ve kullanicidan geri KUCULTULEMEZ hale gelir.
+      const nw = Math.min(maxW, Math.max(d.effMinW, d.origW + dx));
+      const nh = Math.min(maxH, Math.max(d.effMinH, d.origH + dy));
       el.style.width = `${nw}px`;
       el.style.height = `${nh}px`;
     }
-  }, [minSize.w, minSize.h]);
+  }, []);
 
   const onPointerUp = useCallback(() => {
     const d = dragRef.current;
@@ -89,11 +92,11 @@ export function useFloatingWindow(
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top, origW: rect.width, origH: rect.height };
+    dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top, origW: rect.width, origH: rect.height, effMinW: minSize.w, effMinH: minSize.h };
     document.body.style.userSelect = "none";
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
-  }, [onPointerMove, onPointerUp]);
+  }, [onPointerMove, onPointerUp, minSize.w, minSize.h]);
 
   const startResize = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -101,11 +104,13 @@ export function useFloatingWindow(
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    dragRef.current = { mode: "resize", startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top, origW: rect.width, origH: rect.height };
+    const effMinW = Math.min(minSize.w, rect.width);
+    const effMinH = Math.min(minSize.h, rect.height);
+    dragRef.current = { mode: "resize", startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top, origW: rect.width, origH: rect.height, effMinW, effMinH };
     document.body.style.userSelect = "none";
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
-  }, [onPointerMove, onPointerUp]);
+  }, [onPointerMove, onPointerUp, minSize.w, minSize.h]);
 
   const recenter = useCallback(() => {
     setSize({ w: defaultSize.w, h: initialH });
@@ -118,6 +123,34 @@ export function useFloatingWindow(
     window.removeEventListener("pointerup", onPointerUp);
     document.body.style.userSelect = "";
   }, [onPointerMove, onPointerUp]);
+
+  // autoHeight'ta icerik degistikce (ör. form alanlari yuklenince cok satirli hale
+  // gelmesi) kutunun GERCEK yuksekligi degisir; pos.y ise BASLANGICTA sabit bir
+  // varsayima gore hesaplanmisti. Kullanici henuz ELLE boyutlandirmadiysa (size.h
+  // hala "auto"), her boyut degisiminde kutuyu viewport icinde kalacak sekilde DIKEY
+  // olarak yeniden ortala/kelepcele — aksi halde tasan alt kisim (ör. "Baslat" butonu)
+  // position:fixed oldugu icin sayfa kaydirilarak da erisilemez hale gelir.
+  const sizeRef = useRef(size);
+  useEffect(() => { sizeRef.current = size; }, [size]);
+
+  useEffect(() => {
+    if (!autoHeight) return;
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (dragRef.current) return; // aktif surukleme/boyutlandirma sirasinda mudahale etme
+      if (sizeRef.current.h !== "auto") return; // kullanici zaten elle boyutlandirdi
+      const rect = el.getBoundingClientRect();
+      const maxTop = window.innerHeight - MARGIN - rect.height;
+      const idealTop = Math.round((window.innerHeight - rect.height) / 2);
+      const newTop = Math.max(MARGIN, Math.min(maxTop, idealTop));
+      if (Math.abs(newTop - rect.top) > 1) {
+        setPos((p) => ({ ...p, y: newTop }));
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [autoHeight]);
 
   return { ref, pos, size, startMove, startResize, recenter };
 }
