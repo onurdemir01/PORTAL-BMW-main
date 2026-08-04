@@ -170,6 +170,8 @@ const DashboardPage: React.FC = () => {
   const [aiQuestion, setAiQuestion] = useState("");
   const [spotlightLinks, setSpotlightLinks] = useState<PortalLink[]>([]);
   const [awxJobServers, setAwxJobServers] = useState<RecentAwxJobsServer[]>([]);
+  const [awxJobsLoaded, setAwxJobsLoaded] = useState(false);
+  const [awxJobsFetchError, setAwxJobsFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     linksApi.list()
@@ -213,8 +215,17 @@ const DashboardPage: React.FC = () => {
     let alive = true;
     const load = () =>
       ansibleApi.recentJobs()
-        .then((r) => { if (alive && r.ok) setAwxJobServers(r.servers ?? []); })
-        .catch(() => {});
+        .then((r) => {
+          if (!alive) return;
+          setAwxJobsFetchError(null);
+          setAwxJobsLoaded(true);
+          setAwxJobServers(r.servers ?? []);
+        })
+        .catch((e: unknown) => {
+          if (!alive) return;
+          setAwxJobsLoaded(true);
+          setAwxJobsFetchError(e instanceof Error ? e.message : "İstek başarısız.");
+        });
     load();
     const iv = setInterval(load, 15_000);
     return () => { alive = false; clearInterval(iv); };
@@ -522,12 +533,19 @@ const DashboardPage: React.FC = () => {
       {/* ── Kuyruktaki Ansible İşleri (Maestro/Maestro2, canlı) ─────────── */}
       {canViewPage("Ansible") && (
         <CardShell title="Kuyruktaki Ansible İşleri">
+          {awxJobsFetchError && (
+            <p className="text-[0.8125rem] mb-2" style={{ color: "var(--status-danger)" }}>
+              Liste alınamadı: {awxJobsFetchError}
+            </p>
+          )}
           {awxJobServers.some((s) => !s.ok) && (
             <p className="text-[0.8125rem] mb-2" style={{ color: "var(--status-warning)" }}>
               {awxJobServers.filter((s) => !s.ok).map((s) => `${s.serverName}: ${s.error || "erişilemedi"}`).join(" · ")}
             </p>
           )}
-          {awxJobServers.every((s) => s.jobs.length === 0) ? (
+          {!awxJobsLoaded ? (
+            <p className="text-[0.875rem] py-4 text-center" style={{ color: "var(--text-muted)" }}>Yükleniyor…</p>
+          ) : awxJobServers.every((s) => s.jobs.length === 0) ? (
             <p className="text-[0.875rem] py-4 text-center" style={{ color: "var(--text-muted)" }}>Kuyrukta iş yok.</p>
           ) : (
             <div className="overflow-x-auto">
