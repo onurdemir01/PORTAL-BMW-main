@@ -81,6 +81,19 @@ const HELP_SECTIONS: HelpSection[] = [
 
 // ─── Kucuk yardimci bilesenler ─────────────────────────────
 
+// Kuyruktaki/çalışan bir job'ı görsel olarak vurgulamak için dönen kum saati —
+// yalnızca dekoratif, sürekli "animate-spin" ile döner.
+function SpinningHourglassIcon({ className = "", style = {} }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={`animate-spin ${className}`} style={{ animationDuration: "1.6s", ...style }}>
+      <path
+        d="M6 3h12M6 21h12M7 3c0 4 3.5 6 5 8-1.5 2-5 4-5 8M17 3c0 4-3.5 6-5 8 1.5 2 5 4 5 8"
+        stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function CardShell({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="card flex flex-col">
@@ -487,7 +500,55 @@ const DashboardPage: React.FC = () => {
         )}
       </div>
 
-      {/* ── Baslangic kaynaklari ─────────────────────────────────── */}
+      {/* ── Kuyruktaki Ansible İşleri (Maestro/Maestro2, canlı) ─────────── */}
+      {canViewPage("Ansible") && (
+        <CardShell title="Kuyruktaki Ansible İşleri">
+          {awxJobsFetchError && (
+            <p className="text-[0.8125rem] mb-2" style={{ color: "var(--status-danger)" }}>
+              Liste alınamadı: {awxJobsFetchError}
+            </p>
+          )}
+          {awxJobServers.some((s) => !s.ok) && (
+            <p className="text-[0.8125rem] mb-2" style={{ color: "var(--status-warning)" }}>
+              {awxJobServers.filter((s) => !s.ok).map((s) => `${s.serverName}: ${s.error || "erişilemedi"}`).join(" · ")}
+            </p>
+          )}
+          {!awxJobsLoaded ? (
+            <p className="text-[0.875rem] py-4 text-center" style={{ color: "var(--text-muted)" }}>Yükleniyor…</p>
+          ) : awxJobServers.every((s) => s.jobs.length === 0) ? (
+            <p className="text-[0.875rem] py-4 text-center" style={{ color: "var(--text-muted)" }}>Kuyrukta iş yok.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[0.8125rem]">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <th className="w-8 py-2" />
+                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Ansible Server</th>
+                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job ID</th>
+                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job Template</th>
+                    <th className="text-left py-2 font-medium" style={{ color: "var(--text-muted)" }}>Tetikleyen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {awxJobServers.flatMap((s) => s.jobs.map((j) => (
+                    <tr key={`${s.serverId}-${j.jobId}`} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td className="py-2 pr-2">
+                        <SpinningHourglassIcon className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                      </td>
+                      <td className="py-2 pr-4" style={{ color: "var(--text-primary)" }}>{s.serverName}</td>
+                      <td className="py-2 pr-4 font-mono" style={{ color: "var(--text-primary)" }}>#{j.jobId}</td>
+                      <td className="py-2 pr-4" style={{ color: "var(--text-primary)" }}>{j.jobTemplate}</td>
+                      <td className="py-2" style={{ color: "var(--text-muted)" }}>{j.executer}</td>
+                    </tr>
+                  )))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardShell>
+      )}
+
+      {/* ── Baslangic kaynaklari (en altta) ─────────────────────────────── */}
       <CardShell title="Başlangıç kaynakları">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8" style={{ borderTop: "1px solid var(--border)" }}>
           {visibleTools.map((link) => {
@@ -529,50 +590,6 @@ const DashboardPage: React.FC = () => {
           </div>
         )}
       </CardShell>
-
-      {/* ── Kuyruktaki Ansible İşleri (Maestro/Maestro2, canlı) ─────────── */}
-      {canViewPage("Ansible") && (
-        <CardShell title="Kuyruktaki Ansible İşleri">
-          {awxJobsFetchError && (
-            <p className="text-[0.8125rem] mb-2" style={{ color: "var(--status-danger)" }}>
-              Liste alınamadı: {awxJobsFetchError}
-            </p>
-          )}
-          {awxJobServers.some((s) => !s.ok) && (
-            <p className="text-[0.8125rem] mb-2" style={{ color: "var(--status-warning)" }}>
-              {awxJobServers.filter((s) => !s.ok).map((s) => `${s.serverName}: ${s.error || "erişilemedi"}`).join(" · ")}
-            </p>
-          )}
-          {!awxJobsLoaded ? (
-            <p className="text-[0.875rem] py-4 text-center" style={{ color: "var(--text-muted)" }}>Yükleniyor…</p>
-          ) : awxJobServers.every((s) => s.jobs.length === 0) ? (
-            <p className="text-[0.875rem] py-4 text-center" style={{ color: "var(--text-muted)" }}>Kuyrukta iş yok.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-[0.8125rem]">
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Ansible Server</th>
-                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job ID</th>
-                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job Template</th>
-                    <th className="text-left py-2 font-medium" style={{ color: "var(--text-muted)" }}>Tetikleyen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {awxJobServers.flatMap((s) => s.jobs.map((j) => (
-                    <tr key={`${s.serverId}-${j.jobId}`} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td className="py-2 pr-4" style={{ color: "var(--text-primary)" }}>{s.serverName}</td>
-                      <td className="py-2 pr-4 font-mono" style={{ color: "var(--text-primary)" }}>#{j.jobId}</td>
-                      <td className="py-2 pr-4" style={{ color: "var(--text-primary)" }}>{j.jobTemplate}</td>
-                      <td className="py-2" style={{ color: "var(--text-muted)" }}>{j.executer}</td>
-                    </tr>
-                  )))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardShell>
-      )}
 
       <HelpModal
         open={showHelp}
