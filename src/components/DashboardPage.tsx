@@ -25,6 +25,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { dynatraceApi, type DtProblem } from "@/api/dynatraceApi";
 import { linksApi, type PortalLink } from "@/api/linksApi";
+import { ansibleApi, type RecentAwxJobsServer } from "@/api/ansibleApi";
 import { openExternalUrl } from "@/utils/url";
 import { seedAiAnalystChat } from "@/utils/aiHandoff";
 import { AuthContext } from "@/contexts/AuthContext";
@@ -168,6 +169,7 @@ const DashboardPage: React.FC = () => {
   const [onlineUsers, setOnlineUsers] = useState<{ username: string; displayName: string; hasAvatar: boolean }[]>([]);
   const [aiQuestion, setAiQuestion] = useState("");
   const [spotlightLinks, setSpotlightLinks] = useState<PortalLink[]>([]);
+  const [awxJobServers, setAwxJobServers] = useState<RecentAwxJobsServer[]>([]);
 
   useEffect(() => {
     linksApi.list()
@@ -203,6 +205,20 @@ const DashboardPage: React.FC = () => {
     // Gorunurluk sunucudan yuklenene kadar gated uc'lara istek atma (403 cascade onlemi).
     if (!visibilityReady) return;
   }, [isAdmin, canViewPage, visibilityReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Kuyruktaki Ansible İşleri" — Maestro/Maestro2'de pending/waiting/running job'lar,
+  // sayfa yenilenmeden kendiliğinden güncellensin diye periyodik olarak yeniden çekilir.
+  useEffect(() => {
+    if (!visibilityReady || !canViewPage("Ansible")) return;
+    let alive = true;
+    const load = () =>
+      ansibleApi.recentJobs()
+        .then((r) => { if (alive && r.ok) setAwxJobServers(r.servers ?? []); })
+        .catch(() => {});
+    load();
+    const iv = setInterval(load, 15_000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [visibilityReady, canViewPage]);
 
   useEffect(() => {
     if (dtHealth?.mcpConnected && canViewPage("Performance")) {
@@ -502,6 +518,43 @@ const DashboardPage: React.FC = () => {
           </div>
         )}
       </CardShell>
+
+      {/* ── Kuyruktaki Ansible İşleri (Maestro/Maestro2, canlı) ─────────── */}
+      {canViewPage("Ansible") && (
+        <CardShell title="Kuyruktaki Ansible İşleri">
+          {awxJobServers.some((s) => !s.ok) && (
+            <p className="text-[0.8125rem] mb-2" style={{ color: "var(--status-warning)" }}>
+              {awxJobServers.filter((s) => !s.ok).map((s) => `${s.serverName}: ${s.error || "erişilemedi"}`).join(" · ")}
+            </p>
+          )}
+          {awxJobServers.every((s) => s.jobs.length === 0) ? (
+            <p className="text-[0.875rem] py-4 text-center" style={{ color: "var(--text-muted)" }}>Kuyrukta iş yok.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[0.8125rem]">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Ansible Server</th>
+                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job ID</th>
+                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job Template</th>
+                    <th className="text-left py-2 font-medium" style={{ color: "var(--text-muted)" }}>Executer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {awxJobServers.flatMap((s) => s.jobs.map((j) => (
+                    <tr key={`${s.serverId}-${j.jobId}`} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td className="py-2 pr-4" style={{ color: "var(--text-primary)" }}>{s.serverName}</td>
+                      <td className="py-2 pr-4 font-mono" style={{ color: "var(--text-primary)" }}>#{j.jobId}</td>
+                      <td className="py-2 pr-4" style={{ color: "var(--text-primary)" }}>{j.jobTemplate}</td>
+                      <td className="py-2" style={{ color: "var(--text-muted)" }}>{j.executer}</td>
+                    </tr>
+                  )))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardShell>
+      )}
 
       <HelpModal
         open={showHelp}

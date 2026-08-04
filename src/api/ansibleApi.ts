@@ -126,6 +126,22 @@ export interface AwxServerHealth {
   connectionType?: "token" | "user_pass";
 }
 
+export interface RecentAwxJob {
+  jobId: number;
+  status: string;
+  jobTemplate: string;
+  executer: string;
+  created: string | null;
+}
+
+export interface RecentAwxJobsServer {
+  serverId: number;
+  serverName: string;
+  ok: boolean;
+  jobs: RecentAwxJob[];
+  error?: string;
+}
+
 export const ansibleApi = {
   // Gercek AWX /api/v2/ping/ sonucu (actions.md #8) — her yapilandirilmis sunucu icin.
   health: (): Promise<{
@@ -147,6 +163,11 @@ export const ansibleApi = {
 
   clusters: (): Promise<{ ok: boolean; clusters: OcpCluster[] }> =>
     fetch(`${BASE}/clusters`).then(safeJson),
+
+  // Dashboard "Kuyruktaki Ansible İşleri" karti — Maestro/Maestro2'de su an
+  // kuyrukta/calisan job'lar (pending|waiting|running).
+  recentJobs: (): Promise<{ ok: boolean; servers: RecentAwxJobsServer[] }> =>
+    fetch(`${BASE}/awx/recent-jobs`).then(safeJson),
 
   addCluster: (data: Omit<OcpCluster, "id">): Promise<{ ok: boolean; cluster: OcpCluster; message?: string }> =>
     fetch(`${BASE}/clusters`, {

@@ -821,6 +821,43 @@ function initAnsibleRunner(app) {
     res.json({ ok: true, servers });
   });
 
+  // GET /api/ansible/awx/recent-jobs — Dashboard "Kuyruktaki Ansible İşleri" karti icin
+  // Maestro/Maestro2 AWX sunucularinda su an kuyrukta/calisan (pending|waiting|running)
+  // job'lari doner. Sunucu adi "Maestro"/"Maestro2" ile eslesenler taranir (case-insensitive) —
+  // hicbiri eslesmezse (farkli ortam/adlandirma) TUM tanimli sunuculara duser, boylece
+  // ekran sessizce bomsu birakilmaz.
+  app.get("/api/ansible/awx/recent-jobs", requireAuth, async (req, res) => {
+    const all = getServers();
+    const wanted = new Set(["maestro", "maestro2"]);
+    const targets = all.filter((s) => wanted.has(String(s.name || "").toLowerCase()));
+    const servers = targets.length > 0 ? targets : all;
+
+    const results = await Promise.all(servers.map(async (server) => {
+      if (!server.token && !(server.user && server.password)) {
+        return { serverId: server.id, serverName: server.name, ok: false, jobs: [], error: "Kimlik bilgisi eksik." };
+      }
+      try {
+        const token = await getTokenForServer(server);
+        const data = await awxRequestToServer(
+          server, token, "GET",
+          "/api/v2/jobs/?status__in=pending,waiting,running&order_by=-created&page_size=15"
+        );
+        const jobs = (data.results || []).map((j) => ({
+          jobId:       j.id,
+          status:      j.status,
+          jobTemplate: j.summary_fields?.job_template?.name || j.name || "—",
+          executer:    j.summary_fields?.launched_by?.name || "—",
+          created:     j.created,
+        }));
+        return { serverId: server.id, serverName: server.name, ok: true, jobs };
+      } catch (err) {
+        return { serverId: server.id, serverName: server.name, ok: false, jobs: [], error: err.message || "AWX'e erişilemedi." };
+      }
+    }));
+
+    res.json({ ok: true, servers: results });
+  });
+
   // GET /api/ansible/templates/:serverId — templates for a specific server
   // F-09: ?search=query filters by name/description
   app.get("/api/ansible/templates/:serverId", requireAuth, async (req, res) => {
