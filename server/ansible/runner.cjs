@@ -823,13 +823,13 @@ function initAnsibleRunner(app) {
 
   // GET /api/ansible/awx/recent-jobs — Dashboard "Kuyruktaki Ansible İşleri" karti icin
   // Maestro/Maestro2 AWX sunucularinda su an kuyrukta/calisan (pending|waiting|running)
-  // job'lari doner. Sunucu adi "Maestro"/"Maestro2" ile eslesenler taranir (case-insensitive) —
-  // hicbiri eslesmezse (farkli ortam/adlandirma) TUM tanimli sunuculara duser, boylece
-  // ekran sessizce bomsu birakilmaz.
+  // job'lari doner. Sunucu adi "maestro" ile BASLAYANLAR taranir (case-insensitive) —
+  // onceki halde tam "maestro"/"maestro2" esitligi araniyordu; "Maestro" eslesince
+  // fallback hic tetiklenmiyordu, "Maestro2" adi ufak bir bosluk/tire farkiyla bile
+  // kayiyordu (bkz. kullanici bildirimi: Maestro gorunuyor, Maestro2 gorunmuyor).
   app.get("/api/ansible/awx/recent-jobs", requireAuth, async (req, res) => {
     const all = getServers();
-    const wanted = new Set(["maestro", "maestro2"]);
-    const targets = all.filter((s) => wanted.has(String(s.name || "").toLowerCase()));
+    const targets = all.filter((s) => String(s.name || "").toLowerCase().replace(/[\s_-]/g, "").startsWith("maestro"));
     const servers = targets.length > 0 ? targets : all;
 
     const results = await Promise.all(servers.map(async (server) => {
@@ -846,7 +846,12 @@ function initAnsibleRunner(app) {
           jobId:       j.id,
           status:      j.status,
           jobTemplate: j.summary_fields?.job_template?.name || j.name || "—",
-          executer:    j.summary_fields?.launched_by?.name || "—",
+          // AWX'in LISTE endpoint'i (list serializer) summary_fields.launched_by'i
+          // DETAY endpoint'inden farkli olarak bazen atlar — created_by'e de dusuyoruz.
+          executer:    j.summary_fields?.launched_by?.name
+                       || j.summary_fields?.created_by?.username
+                       || j.summary_fields?.created_by?.name
+                       || "—",
           created:     j.created,
         }));
         return { serverId: server.id, serverName: server.name, ok: true, jobs };

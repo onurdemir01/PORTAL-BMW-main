@@ -555,7 +555,7 @@ const DashboardPage: React.FC = () => {
                     <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Ansible Server</th>
                     <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job ID</th>
                     <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job Template</th>
-                    <th className="text-left py-2 font-medium" style={{ color: "var(--text-muted)" }}>Executer</th>
+                    <th className="text-left py-2 font-medium" style={{ color: "var(--text-muted)" }}>Tetikleyen</th>
                   </tr>
                 </thead>
                 <tbody>
