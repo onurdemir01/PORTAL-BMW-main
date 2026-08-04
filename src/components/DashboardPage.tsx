@@ -58,13 +58,8 @@ const HELP_SECTIONS: HelpSection[] = [
   },
   {
     icon: ServerStackIcon,
-    title: "Durum özeti (Sayılar)",
-    body: "Açık performans sorunu, yayındaki self service sayısı ve görev dağılımı. Her satır ilgili sayfayı açar. Envanter artık Genel menüsünde ayrı bir sayfa olarak erişilebilir.",
-  },
-  {
-    icon: SparklesIcon,
-    title: "AI Analist'e soru sorma",
-    body: "Doğal dilde yazdığınız soru, AI Analist sohbetine önceden doldurulmuş olarak aktarılır.",
+    title: "Envanter özeti",
+    body: "Açık performans sorunu, yayındaki self service sayısı ve LogX kısayolu. Her satır ilgili sayfayı açar; ayrıntılı envanter için ayrı Envanter sayfası kullanılır.",
   },
   {
     icon: LinkIcon,
@@ -180,7 +175,6 @@ const DashboardPage: React.FC = () => {
 
   const [dtProblems, setDtProblems] = useState<DtProblem[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<{ username: string; displayName: string; hasAvatar: boolean }[]>([]);
-  const [aiQuestion, setAiQuestion] = useState("");
   const [spotlightLinks, setSpotlightLinks] = useState<PortalLink[]>([]);
   const [awxJobServers, setAwxJobServers] = useState<RecentAwxJobsServer[]>([]);
   const [awxJobsLoaded, setAwxJobsLoaded] = useState(false);
@@ -194,13 +188,6 @@ const DashboardPage: React.FC = () => {
       })
       .catch(() => {});
   }, []);
-
-  function handleAskAi(e?: React.FormEvent) {
-    e?.preventDefault();
-    const q = aiQuestion.trim();
-    if (!q) return;
-    seedAiAnalystChat(navigate, q);
-  }
 
   useEffect(() => {
     let alive = true;
@@ -278,8 +265,8 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Durum + Envanter ────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* ── Durum + Bugunun nobetcisi ─────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Durum */}
         <CardShell title="Durum">
@@ -324,39 +311,6 @@ const DashboardPage: React.FC = () => {
               ) : (
                 <StatusRow state="warn" label="Nöbet servisi" detail={nobetci.message || "Bilgi alınamadı"} onClick={() => navigate("/duty-roster")} />
               )
-            )}
-          </div>
-        </CardShell>
-
-        {/* Envanter ozeti */}
-        <CardShell title="Envanter">
-          <div style={{ borderTop: "1px solid var(--border)" }}>
-            {canViewPage("Performance") && (
-              <InventoryRow
-                icon={ChartBarIcon}
-                label="Açık performans sorunu"
-                hint="Dynatrace problems"
-                value={dtHealth?.mcpConnected ? dtProblems.length : "—"}
-                onClick={() => navigate("/performance")}
-              />
-            )}
-            {canViewPage("Self Service") && (
-              <InventoryRow
-                icon={Squares2X2Icon}
-                label="Self service"
-                hint="Yayındaki servisler"
-                value={selfSrvLoading ? "…" : selfSrvCount ?? "—"}
-                onClick={() => navigate("/self-service")}
-              />
-            )}
-            {canViewPage("LogX") && (
-              <InventoryRow
-                icon={DocumentTextIcon}
-                label="LogX"
-                hint="Legacy ve OpenShift log indirme"
-                value={<ArrowRightIcon className="w-4 h-4" />}
-                onClick={() => navigate("/logx")}
-              />
             )}
           </div>
         </CardShell>
@@ -444,25 +398,39 @@ const DashboardPage: React.FC = () => {
         </CardShell>
       )}
 
-      {/* ── AI Analist + aktif kullanicilar ──────────────────────── */}
+      {/* ── Envanter + aktif kullanicilar ────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {canViewPage("AI Analist") && (
-          <CardShell title="AI Analist'e soru sor">
-            <form onSubmit={handleAskAi} className="flex gap-2">
-              <input
-                value={aiQuestion}
-                onChange={(e) => setAiQuestion(e.target.value)}
-                placeholder="Örn: X sunucusunda bugün neden yavaşlık var?"
-                className="pf-input flex-1"
-                aria-label="AI Analist sorusu"
+        <CardShell title="Envanter">
+          <div style={{ borderTop: "1px solid var(--border)" }}>
+            {canViewPage("Performance") && (
+              <InventoryRow
+                icon={ChartBarIcon}
+                label="Açık performans sorunu"
+                hint="Dynatrace problems"
+                value={dtHealth?.mcpConnected ? dtProblems.length : "—"}
+                onClick={() => navigate("/performance")}
               />
-              <button type="submit" disabled={!aiQuestion.trim()} className="btn-primary flex-shrink-0">
-                Sor
-              </button>
-            </form>
-            <p className="pf-helper-text">Soru, AI Analist sohbetine önceden doldurulmuş olarak aktarılır.</p>
-          </CardShell>
-        )}
+            )}
+            {canViewPage("Self Service") && (
+              <InventoryRow
+                icon={Squares2X2Icon}
+                label="Self service"
+                hint="Yayındaki servisler"
+                value={selfSrvLoading ? "…" : selfSrvCount ?? "—"}
+                onClick={() => navigate("/self-service")}
+              />
+            )}
+            {canViewPage("LogX") && (
+              <InventoryRow
+                icon={DocumentTextIcon}
+                label="LogX"
+                hint="Legacy ve OpenShift log indirme"
+                value={<ArrowRightIcon className="w-4 h-4" />}
+                onClick={() => navigate("/logx")}
+              />
+            )}
+          </div>
+        </CardShell>
 
         {onlineUsers.length > 0 && (
           <CardShell
