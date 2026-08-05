@@ -9,13 +9,10 @@ import {
   CommandLineIcon,
   PhoneIcon,
   LinkIcon,
-  ArrowRightIcon,
   SparklesIcon,
   QuestionMarkCircleIcon,
   ServerStackIcon,
-  DocumentTextIcon,
   ChartBarIcon,
-  Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import {
   CheckCircleIcon,
@@ -128,36 +125,6 @@ function StatusRow({
         {detail && <p className="text-[0.8125rem] mt-0.5" style={{ color: "var(--text-muted)" }}>{detail}</p>}
       </div>
     </div>
-  );
-}
-
-function InventoryRow({
-  icon: Icon, label, value, hint, onClick,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: React.ReactNode;
-  hint?: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex w-full items-center gap-3 py-3 text-left"
-      style={{ borderBottom: "1px solid var(--border)" }}
-    >
-      <Icon className="w-5 h-5 flex-shrink-0" style={{ color: "var(--text-muted)" }} />
-      <span className="flex-1 min-w-0">
-        <span className="block text-[0.875rem]" style={{ color: "var(--accent)" }}>{label}</span>
-        {hint && <span className="block text-[0.8125rem]" style={{ color: "var(--text-muted)" }}>{hint}</span>}
-      </span>
-      <span
-        className="flex-shrink-0"
-        style={{ fontFamily: "var(--font-display)", fontSize: "1.25rem", fontWeight: 500, color: "var(--text-primary)" }}
-      >
-        {value}
-      </span>
-    </button>
   );
 }
 
@@ -398,75 +365,41 @@ const DashboardPage: React.FC = () => {
         </CardShell>
       )}
 
-      {/* ── Envanter + aktif kullanicilar ────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <CardShell title="Envanter">
-          <div style={{ borderTop: "1px solid var(--border)" }}>
-            {canViewPage("Performance") && (
-              <InventoryRow
-                icon={ChartBarIcon}
-                label="Açık performans sorunu"
-                hint="Dynatrace problems"
-                value={dtHealth?.mcpConnected ? dtProblems.length : "—"}
-                onClick={() => navigate("/performance")}
-              />
-            )}
-            {canViewPage("Self Service") && (
-              <InventoryRow
-                icon={Squares2X2Icon}
-                label="Self service"
-                hint="Yayındaki servisler"
-                value={selfSrvLoading ? "…" : selfSrvCount ?? "—"}
-                onClick={() => navigate("/self-service")}
-              />
-            )}
-            {canViewPage("LogX") && (
-              <InventoryRow
-                icon={DocumentTextIcon}
-                label="LogX"
-                hint="Legacy ve OpenShift log indirme"
-                value={<ArrowRightIcon className="w-4 h-4" />}
-                onClick={() => navigate("/logx")}
-              />
-            )}
+      {/* ── Aktif kullanicilar ───────────────────────────────────── */}
+      {onlineUsers.length > 0 && (
+        <CardShell
+          title="Şu an aktif"
+          action={<span className="badge pf-label--green">{onlineUsers.length} kullanıcı</span>}
+        >
+          <div className="flex flex-wrap gap-2">
+            {onlineUsers.map((u) => (
+              <span
+                key={u.username}
+                title={u.displayName}
+                className="flex items-center gap-2 px-2 py-1"
+                style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-full)" }}
+              >
+                {u.hasAvatar ? (
+                  <img
+                    src={`/api/users/avatar/${encodeURIComponent(u.username)}`}
+                    alt=""
+                    className="h-6 w-6 rounded-full object-cover"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : (
+                  <span
+                    className="h-6 w-6 rounded-full flex items-center justify-center text-white text-[0.6875rem]"
+                    style={{ background: "var(--status-neutral)" }}
+                  >
+                    {u.displayName.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
+                  </span>
+                )}
+                <span className="text-[0.8125rem]" style={{ color: "var(--text-primary)" }}>{u.displayName}</span>
+              </span>
+            ))}
           </div>
         </CardShell>
-
-        {onlineUsers.length > 0 && (
-          <CardShell
-            title="Şu an aktif"
-            action={<span className="badge pf-label--green">{onlineUsers.length} kullanıcı</span>}
-          >
-            <div className="flex flex-wrap gap-2">
-              {onlineUsers.map((u) => (
-                <span
-                  key={u.username}
-                  title={u.displayName}
-                  className="flex items-center gap-2 px-2 py-1"
-                  style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-full)" }}
-                >
-                  {u.hasAvatar ? (
-                    <img
-                      src={`/api/users/avatar/${encodeURIComponent(u.username)}`}
-                      alt=""
-                      className="h-6 w-6 rounded-full object-cover"
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                    />
-                  ) : (
-                    <span
-                      className="h-6 w-6 rounded-full flex items-center justify-center text-white text-[0.6875rem]"
-                      style={{ background: "var(--status-neutral)" }}
-                    >
-                      {u.displayName.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
-                    </span>
-                  )}
-                  <span className="text-[0.8125rem]" style={{ color: "var(--text-primary)" }}>{u.displayName}</span>
-                </span>
-              ))}
-            </div>
-          </CardShell>
-        )}
-      </div>
+      )}
 
       {/* ── Kuyruktaki Ansible İşleri (Maestro/Maestro2, canlı) ─────────── */}
       {canViewPage("Ansible") && (
