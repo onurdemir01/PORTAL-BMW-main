@@ -1445,6 +1445,123 @@ function initInventory(app) {
     res.json({ ok: true, queries });
   });
 
+  // ── Envanter Yenile ("Ürün Envanteri" tablosu icin AWX tetikleme) ────────────
+  // Kullanicinin acikca belirttigi sabit hedef: AWX job template #612, "Maestro2"
+  // sunucusu — Dashboard'daki "Kuyruktaki Ansible Isleri" karti ile AYNI isim-onekli
+  // sunucu cozumlemesi kullanilir (server_no ortamdan ortama degisebilir, isim sabit).
+  // Template ID KOD ICINDE sabit tutulur (playbook-registry'ye BILINCLI OLARAK
+  // eklenmedi — o mekanizma AI Analist'in sohbette otomatik arac olarak kesfedip
+  // cagirabildigi TUM kayitli satirlari tarar; bu job'in beklenmedik sekilde AI
+  // tarafindan tetiklenmesini istemedik).
+  const INVENTORY_REFRESH_TEMPLATE_ID = 612;
+  const INVENTORY_REFRESH_CHOICES = new Set(["all", "nginx", "ihs", "rha", "jboss", "was", "ctg"]);
+
+  function resolveInventoryRefreshServer() {
+    const runner = require("../ansible/runner.cjs");
+    const servers = runner.getServers();
+    return servers.find((s) => String(s.name || "").toLowerCase().replace(/[\s_-]/g, "").startsWith("maestro2")) || null;
+  }
+
+  // POST /api/inventory/refresh/run — secilen deger(ler) icin AWX job'ini tetikler.
+  router.post("/refresh/run", async (req, res) => {
+    const { choices } = req.body || {};
+    if (!Array.isArray(choices) || choices.length === 0) {
+      return res.status(400).json({ ok: false, message: "En az bir değer seçilmeli." });
+    }
+    const cleaned = [...new Set(choices.map((c) => String(c || "").trim().toLowerCase()).filter(Boolean))];
+    const invalid = cleaned.filter((c) => !INVENTORY_REFRESH_CHOICES.has(c));
+    if (invalid.length) {
+      return res.status(400).json({ ok: false, message: `Geçersiz seçim: ${invalid.join(", ")}` });
+    }
+    // "Tumu" secilmisken baska bir deger secilemez — istemci tarafinda da engellenir,
+    // burada TEKRAR dogrulanir (client'e guvenilmez).
+    if (cleaned.includes("all") && cleaned.length > 1) {
+      return res.status(400).json({ ok: false, message: `"Tümü" seçiliyken başka bir değer seçilemez.` });
+    }
+
+    const server = resolveInventoryRefreshServer();
+    if (!server) {
+      return res.status(503).json({ ok: false, message: "Maestro2 AWX sunucusu yapılandırılmamış." });
+    }
+
+    try {
+      const runner = require("../ansible/runner.cjs");
+      // Sartname: extra_vars = { choise: <deger> } — birden fazla secimde virgulle
+      // birlestirilir (playbook'un TEK bir "choise" anahtari beklemesi nedeniyle).
+      const extraVars = { choise: cleaned.join(",") };
+      const result = await runner.launchJobOnServer(server.id, INVENTORY_REFRESH_TEMPLATE_ID, extraVars);
+
+      // ansible_job_history: OpsX/Self-Service'in kullandigi AYNI genel-amacli tablo —
+      // job-status endpoint'inin IDOR korumasi buna dayanir.
+      try {
+        const db = require("../db/index.cjs");
+        await db.query(
+          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            getRequestUser(req)?.username || "unknown",
+            server.id, INVENTORY_REFRESH_TEMPLATE_ID, "Envanteri Yenile",
+            result?.jobId, result?.status || "pending",
+            JSON.stringify(extraVars),
+          ]
+        );
+      } catch (e) {
+        console.warn("[Inventory] Yenileme geçmişi kaydedilemedi:", e.message);
+      }
+
+      try {
+        require("../audit/index.cjs").auditPortal(req, "inventory_refresh", {
+          detail: JSON.stringify({ choices: cleaned, jobId: result?.jobId ?? null }),
+        });
+      } catch { /* denetim kaydi best-effort */ }
+
+      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: server.id, choices: cleaned });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/inventory/refresh/job-status/:jobId — tetiklenen job'in canli durumu +
+  // stdout'u. OpsX'in job-status'uyla AYNI iki-cagrili desen ve IDOR korumasi.
+  router.get("/refresh/job-status/:jobId", async (req, res) => {
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ ok: false, message: "Geçersiz iş numarası." });
+    }
+    const server = resolveInventoryRefreshServer();
+    if (!server) return res.status(503).json({ ok: false, message: "Maestro2 AWX sunucusu yapılandırılmamış." });
+
+    try {
+      const db = require("../db/index.cjs");
+      const reqUser = getRequestUser(req) || {};
+      if (getRequestRole(req) !== "Admin") {
+        const { rows } = await db.query(
+          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+          [jobId, server.id]
+        );
+        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || "").toLowerCase()) {
+          return res.status(403).json({ ok: false, message: "Bu iş size ait değil." });
+        }
+      }
+    } catch { /* DB hiccup -> fail-open */ }
+
+    try {
+      const runner = require("../ansible/runner.cjs");
+      const [statusInfo, outputInfo] = await Promise.all([
+        runner.getJobStatusOnServer(server.id, jobId),
+        runner.getJobOutputOnServer(server.id, jobId),
+      ]);
+      res.json({
+        ok: true,
+        status: statusInfo.status,
+        output: outputInfo.output || "",
+        finished: statusInfo.finished,
+        failed: statusInfo.failed,
+      });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   app.use("/api/inventory", router);
   console.log("[Inventory] module mounted at /api/inventory");
 }

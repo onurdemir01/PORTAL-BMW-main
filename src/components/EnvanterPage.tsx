@@ -23,6 +23,7 @@ import DynamicTable from "./envanter/DynamicTable";
 import ColumnPicker from "./envanter/ColumnPicker";
 import QueryPanel from "./envanter/QueryPanel";
 import { FilterBar } from "./envanter/FilterBar";
+import InventoryRefreshModal from "./envanter/InventoryRefreshModal";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 
 const ENVANTER_HELP_SECTIONS: HelpSection[] = [
@@ -163,6 +164,7 @@ const EnvanterPage: React.FC = () => {
   const [dbAvailable, setDbAvailable] = useState<boolean | null>(null);
   const [showColPicker, setShowColPicker] = useState(false);
   const [showQuery, setShowQuery] = useState(false);
+  const [showRefreshModal, setShowRefreshModal] = useState(false);
   const colPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -523,6 +525,19 @@ const EnvanterPage: React.FC = () => {
         </div>
       )}
 
+      {/* "Ürün Envanteri" (Inventory) tablosu için: sunuculara bağlanıp runtime'daki
+          gerçek durumu çekerek envanteri güncelleyen AWX job'ını tetikleyen bar. */}
+      {activeTable === "Inventory" && (
+        <button
+          onClick={() => setShowRefreshModal(true)}
+          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm font-medium text-white rounded-xl transition-colors"
+          style={{ background: "#1C69D4" }}
+        >
+          <ArrowPathIcon className="w-4 h-4" />
+          Envanteri Yenile
+        </button>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
@@ -728,6 +743,8 @@ const EnvanterPage: React.FC = () => {
         title="Envanter — Nasıl Kullanılır?"
         sections={ENVANTER_HELP_SECTIONS}
       />
+
+      {showRefreshModal && <InventoryRefreshModal onClose={() => setShowRefreshModal(false)} />}
     </div>
   );
 };

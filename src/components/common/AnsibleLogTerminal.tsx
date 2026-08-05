@@ -6,7 +6,7 @@
 // (status-pulse), otomatik en-alta kaydırma ve durum-renkli çerçeve. Büyük loglar için satır
 // başına ayrı DOM düğümü ÜRETMEZ (tek <pre>) — performanslı; canlılık container animasyonlarıyla.
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ClipboardIcon, CheckIcon, MinusIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { ClipboardIcon, CheckIcon, MinusIcon, XMarkIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 
 type Props = {
   output: string;
@@ -76,6 +76,16 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
     try { await navigator.clipboard.writeText(output); setCopied(true); window.setTimeout(() => setCopied(false), 1400); } catch { /* yoksay */ }
   }
 
+  function download() {
+    const blob = new Blob([output], { type: "text/plain;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/[^a-zA-Z0-9_-]+/g, "_")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div
       className={`rounded-xl overflow-hidden border transition-shadow ${flash ? "animate-term-flash" : ""} ${size === "fill" ? "h-full flex flex-col" : ""} ${className}`}
@@ -102,6 +112,11 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
           <button onClick={copy} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="Kopyala">
             {copied ? <CheckIcon className="w-3.5 h-3.5 text-emerald-400" /> : <ClipboardIcon className="w-3.5 h-3.5" />}
           </button>
+          {output && (
+            <button onClick={download} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="İndir">
+              <ArrowDownTrayIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
           {onMinimize && (
             <button onClick={onMinimize} onPointerDown={(e) => e.stopPropagation()} className="text-white/30 hover:text-white/70 transition-colors" title="Küçült">
               <MinusIcon className="w-3.5 h-3.5" />

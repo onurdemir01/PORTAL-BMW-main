@@ -80,6 +80,26 @@ export interface SavedQuery {
   description: string;
 }
 
+export type InventoryRefreshChoice = "all" | "nginx" | "ihs" | "rha" | "jboss" | "was" | "ctg";
+
+export interface InventoryRefreshRunResult {
+  ok: boolean;
+  jobId: number | null;
+  status: string | null;
+  awxServerId: number;
+  choices: InventoryRefreshChoice[];
+  message?: string;
+}
+
+export interface InventoryRefreshJobStatus {
+  ok: boolean;
+  status: string;
+  output: string;
+  finished?: string;
+  failed?: boolean;
+  message?: string;
+}
+
 export const inventoryApi = {
   health: () => fetch(`${BASE}/health`).then(safeJson),
 
@@ -248,4 +268,15 @@ export const inventoryApi = {
     _tablesCache.at = 0;
     _colCache.clear();
   },
+
+  // "Envanteri Yenile" — Ürün Envanteri (Inventory) tablosu için AWX job'ını tetikler.
+  refreshRun: (choices: InventoryRefreshChoice[]): Promise<InventoryRefreshRunResult> =>
+    fetch(`${BASE}/refresh/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ choices }),
+    }).then(safeJson),
+
+  refreshJobStatus: (jobId: number): Promise<InventoryRefreshJobStatus> =>
+    fetch(`${BASE}/refresh/job-status/${jobId}`).then(safeJson),
 };
