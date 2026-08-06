@@ -330,6 +330,12 @@ export interface SurveyField {
   description: string;
   min?: number;
   max?: number;
+  // Yalnızca Survey Tasarımcısı (özel alanlar) için: seçim alanlarında AWX'e/extra_vars'a
+  // giden HAM değer (choices[i]) ile kullanıcıya gösterilen metin farklı olabilir.
+  choiceLabels?: Record<string, string>;
+  // Yalnızca Survey Tasarımcısı için: bu alan yalnızca "field" adlı BAŞKA bir özel alanın
+  // değeri "equals" ile eşleşirse kullanıcıya sorulur (koşullu alan).
+  dependsOn?: { field: string; equals: string };
 }
 
 export interface JobHistoryRecord {

@@ -141,9 +141,16 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
       .finally(() => setLoading(false));
   }, [item]);
 
+  // Koşullu alanlar (Survey Tasarımcısı "dependsOn"): bir alan yalnızca BAŞKA bir alanın
+  // O ANKİ değeri belirtilen değere eşitse kullanıcıya gösterilir/zorunlu tutulur/launch'a
+  // gönderilir — sunucudaki resolveCustomSurveyExtraVars'in isActive() mantığıyla AYNI.
+  const visibleFields = fields.filter(
+    (f) => !f.dependsOn?.field || (values[f.dependsOn.field] ?? "").trim() === f.dependsOn.equals
+  );
+
   // Görünür ve dolu olması gereken zorunlu alanlar — submit'i istemci tarafında da
   // engeller (önceden yalnızca kozmetik bir `*` işareti vardı, hiçbir şeyi engellemiyordu).
-  const missingRequiredLabels = fields
+  const missingRequiredLabels = visibleFields
     .filter((f) => f.required && !(values[f.name] ?? "").trim())
     .map((f) => f.label);
 
@@ -159,7 +166,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
     }
     return null;
   }
-  const hasAnyFieldError = fields.some((f) => fieldError(f) !== null);
+  const hasAnyFieldError = visibleFields.some((f) => fieldError(f) !== null);
 
   function trackJob(id: number) {
     const trackerId = addJob({
@@ -187,7 +194,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
     setErr("");
     try {
       const extraVars: Record<string, string> = {};
-      for (const f of fields) {
+      for (const f of visibleFields) {
         const val = (values[f.name] ?? "").trim();
         if (!val) continue;
         extraVars[f.name] = val;
@@ -256,11 +263,11 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
 
           {!loading && !jobId && (
             <>
-              {fields.length === 0 ? (
+              {visibleFields.length === 0 ? (
                 <p className="text-sm text-[var(--text-muted)] text-center py-4">Bu template için ek parametre gerekmez.</p>
               ) : (
                 <div className="space-y-4">
-                  {fields.map((f) => {
+                  {visibleFields.map((f) => {
                     const id = `f-${f.name}`;
                     const err = (submitAttempted || touched.has(f.name)) ? fieldError(f) : null;
                     const val = values[f.name] || "";
@@ -271,7 +278,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
                         {f.type === "multiplechoice" || f.type === "multiselect" ? (
                           <Select id={id} error={!!err} value={val} onChange={(e) => set(e.target.value)} onBlur={onBlur}>
                             <option value="">Seçin…</option>
-                            {f.choices.map((c) => <option key={c} value={c}>{c}</option>)}
+                            {f.choices.map((c) => <option key={c} value={c}>{f.choiceLabels?.[c] ?? c}</option>)}
                           </Select>
                         ) : f.type === "textarea" ? (
                           <Textarea id={id} rows={3} error={!!err} className="font-mono" value={val} onChange={(e) => set(e.target.value)} onBlur={onBlur} />

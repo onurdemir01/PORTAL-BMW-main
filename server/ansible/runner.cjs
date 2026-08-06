@@ -1409,8 +1409,33 @@ function initAnsibleRunner(app) {
   // overrides katmani YOK — admin bu degerleri zaten Survey Tasarimcisi'nda dogrudan
   // ayarliyor) okur.
   function resolveCustomSurveyExtraVars(customFields, submittedValues) {
+    const fields = customFields || [];
+
+    // 1. gecis: dependsOn kosullarini degerlendirebilmek icin TUM alanlarin "etkin
+    // deger"ini onceden hesapla (gizliyse admin varsayilani, degilse kullanicinin
+    // gonderdigi HAM deger — henuz zorunlu/tip dogrulamasi YAPILMADI, sadece kosul
+    // kontrolu icin kullanilacak).
+    const effective = {};
+    for (const field of fields) {
+      if (field.hidden) {
+        effective[field.name] = field.defaultValue || "";
+      } else {
+        const raw = submittedValues ? submittedValues[field.name] : undefined;
+        effective[field.name] = raw === undefined || raw === null ? "" : String(raw).trim();
+      }
+    }
+
+    function isActive(field) {
+      if (!field.dependsOn || !field.dependsOn.field) return true;
+      return (effective[field.dependsOn.field] ?? "") === (field.dependsOn.equals ?? "");
+    }
+
     const extraVars = {};
-    for (const field of (customFields || [])) {
+    for (const field of fields) {
+      // Kosul saglanmiyorsa bu alan kullaniciya HIC sorulmadi — dogrulanmaz, extra_vars'a
+      // eklenmez (istemci tarafiyla AYNI davranis, bkz. SurveyModal visibleFields).
+      if (!isActive(field)) continue;
+
       const label = field.label || field.name;
 
       if (field.hidden) {
@@ -1422,8 +1447,7 @@ function initAnsibleRunner(app) {
         continue;
       }
 
-      const raw = submittedValues ? submittedValues[field.name] : undefined;
-      const val = raw === undefined || raw === null ? "" : String(raw).trim();
+      const val = effective[field.name];
 
       if (field.required && val === "") {
         throw Object.assign(new Error(`Zorunlu alan boş: ${label}`), { status: 400, field: field.name });
@@ -1819,6 +1843,14 @@ function initAnsibleRunner(app) {
         }
         if ((f?.type === "multiplechoice" || f?.type === "multiselect") && (!Array.isArray(f.choices) || f.choices.filter((c) => String(c || "").trim()).length === 0)) {
           return res.status(400).json({ ok: false, message: `"${f.label}" bir seçim alanı ama hiç seçeneği yok.` });
+        }
+        if (f?.dependsOn?.field) {
+          if (f.dependsOn.field === name) {
+            return res.status(400).json({ ok: false, message: `"${f.label}" kendi kendine bağlı olamaz.` });
+          }
+          if (!customSurveyFields.some((other) => String(other?.name || "").trim() === f.dependsOn.field)) {
+            return res.status(400).json({ ok: false, message: `"${f.label}" tanımsız bir alana bağlı: "${f.dependsOn.field}"` });
+          }
         }
       }
 

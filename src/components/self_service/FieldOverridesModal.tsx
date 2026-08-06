@@ -122,6 +122,42 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
     setCustomFields((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function addChoice(fieldIndex: number) {
+    setCustomFields((prev) => prev.map((f, i) => (i === fieldIndex ? { ...f, choices: [...f.choices, ""] } : f)));
+  }
+  // Secenegin DEGERI degisirse, o degere bagli gorunen-ad kaydı da (choiceLabels'ta)
+  // eski anahtardan yeni anahtara TASINIR — aksi halde kullanici deger'i duzeltince
+  // girdigi gorunen ad sessizce kaybolurdu (choiceLabels degeri anahtar olarak kullanir).
+  function updateChoiceValue(fieldIndex: number, choiceIndex: number, newValue: string) {
+    setCustomFields((prev) => prev.map((f, i) => {
+      if (i !== fieldIndex) return f;
+      const oldValue = f.choices[choiceIndex];
+      const choices = f.choices.map((c, ci) => (ci === choiceIndex ? newValue : c));
+      const choiceLabels = { ...(f.choiceLabels || {}) };
+      if (oldValue in choiceLabels) {
+        choiceLabels[newValue] = choiceLabels[oldValue];
+        delete choiceLabels[oldValue];
+      }
+      return { ...f, choices, choiceLabels };
+    }));
+  }
+  function updateChoiceLabel(fieldIndex: number, choiceIndex: number, newLabel: string) {
+    setCustomFields((prev) => prev.map((f, i) => {
+      if (i !== fieldIndex) return f;
+      const value = f.choices[choiceIndex];
+      return { ...f, choiceLabels: { ...(f.choiceLabels || {}), [value]: newLabel } };
+    }));
+  }
+  function removeChoice(fieldIndex: number, choiceIndex: number) {
+    setCustomFields((prev) => prev.map((f, i) => {
+      if (i !== fieldIndex) return f;
+      const value = f.choices[choiceIndex];
+      const choiceLabels = { ...(f.choiceLabels || {}) };
+      delete choiceLabels[value];
+      return { ...f, choices: f.choices.filter((_, ci) => ci !== choiceIndex), choiceLabels };
+    }));
+  }
+
   // Backend'deki (POST /ss/custom) kurallarla BİREBİR aynı ön-doğrulama.
   const customFieldNames = customFields.map((f) => f.name.trim());
   const invalidCustomField = customFields.find((f) => !f.name.trim() || !f.label.trim());
@@ -131,6 +167,12 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   const invalidCustomChoices = customFields.find(
     (f) => (f.type === "multiplechoice" || f.type === "multiselect") && f.choices.filter((c) => c.trim()).length === 0
   );
+  const invalidDependsOn = customFields.find((f) => {
+    if (f.dependsOn === undefined) return false;
+    const parentName = f.dependsOn.field.trim();
+    if (!parentName || parentName === f.name.trim()) return true;
+    return !customFields.some((o) => o !== f && o.name.trim() === parentName);
+  });
 
   // Backend kuralıyla birebir aynı client-side ön-doğrulama: HANGİ ALAN OLURSA OLSUN
   // (zorunlu dahil) gizlenebilir, YETER Kİ çözümlenebilir (boş olmayan) bir varsayılan
@@ -173,6 +215,10 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
     }
     if (invalidCustomChoices) {
       setErr(`"${invalidCustomChoices.label}" bir seçim alanı ama hiç seçeneği yok.`);
+      return;
+    }
+    if (invalidDependsOn) {
+      setErr(`"${invalidDependsOn.label || invalidDependsOn.name}" için geçerli bir koşul alanı seçin.`);
       return;
     }
     setSaving(true);
@@ -303,17 +349,43 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                         </div>
 
                         {isChoiceType && (
-                          <div>
-                            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
-                              Seçenekler (her satıra bir tane)
-                            </label>
-                            <Textarea
-                              rows={2}
-                              className="text-xs font-mono"
-                              value={f.choices.join("\n")}
-                              onChange={(e) => updateCustomField(i, { choices: e.target.value.split(/\r?\n/) })}
-                              placeholder={"prod\ntest\nqa"}
-                            />
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                                Seçenekler — değer (extra_vars'a giden) + görünen ad
+                              </label>
+                              <button
+                                onClick={() => addChoice(i)}
+                                className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
+                              >
+                                <PlusIcon className="w-3 h-3" /> Seçenek Ekle
+                              </button>
+                            </div>
+                            {f.choices.length === 0 && (
+                              <p className="text-[11px] text-[var(--text-muted)]">Henüz seçenek yok.</p>
+                            )}
+                            {f.choices.map((c, ci) => (
+                              <div key={ci} className="flex items-center gap-1.5">
+                                <TextInput
+                                  value={c}
+                                  placeholder="değer"
+                                  className="font-mono text-xs"
+                                  onChange={(e) => updateChoiceValue(i, ci, e.target.value)}
+                                />
+                                <TextInput
+                                  value={f.choiceLabels?.[c] ?? ""}
+                                  placeholder="görünen ad (opsiyonel)"
+                                  onChange={(e) => updateChoiceLabel(i, ci, e.target.value)}
+                                />
+                                <button
+                                  onClick={() => removeChoice(i, ci)}
+                                  className="text-red-400 hover:text-red-600 flex-shrink-0"
+                                  title="Seçeneği kaldır"
+                                >
+                                  <TrashIcon className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
                           </div>
                         )}
 
@@ -337,6 +409,39 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                             onChange={(e) => updateCustomField(i, { description: e.target.value })}
                             placeholder="Kullanıcıya gösterilecek kısa ipucu"
                           />
+                        </div>
+
+                        <div className="border-t border-[var(--border)] pt-2">
+                          <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer mb-1.5">
+                            <input
+                              type="checkbox"
+                              checked={f.dependsOn !== undefined}
+                              onChange={(e) => updateCustomField(i, { dependsOn: e.target.checked ? { field: "", equals: "" } : undefined })}
+                            />
+                            Koşullu göster (başka bir alanın değerine bağlı)
+                          </label>
+                          {f.dependsOn !== undefined && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <Select
+                                value={f.dependsOn.field}
+                                onChange={(e) => updateCustomField(i, { dependsOn: { field: e.target.value, equals: f.dependsOn?.equals || "" } })}
+                              >
+                                <option value="">Alan seçin…</option>
+                                {customFields.filter((_, oi) => oi !== i).map((other, oi) => (
+                                  <option key={oi} value={other.name}>{other.label || other.name || `Alan ${oi + 1}`}</option>
+                                ))}
+                              </Select>
+                              <TextInput
+                                value={f.dependsOn.equals}
+                                placeholder="şu değere eşitse (ör. deactive)"
+                                onChange={(e) => updateCustomField(i, { dependsOn: { field: f.dependsOn?.field || "", equals: e.target.value } })}
+                              />
+                            </div>
+                          )}
+                          <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                            Seçilen alanın o anki değeri buradaki metinle BİREBİR eşleşirse bu alan kullanıcıya
+                            gösterilir; eşleşmezse hiç sorulmaz ve extra_vars'a eklenmez.
+                          </p>
                         </div>
 
                         <div className="flex justify-end">
