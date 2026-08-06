@@ -72,9 +72,18 @@ function determineRole(memberOf) {
   // (ayricalik yukseltme riski). g.endsWith(',' + adminGroup) DN hiyerarsisinde "ayni RDN zinciri"
   // anlamina gelir, rastgele substring eslesmesi degil.
   if (adminGroup && groups.some((g) => g === adminGroup || g.endsWith(',' + adminGroup))) return 'Admin';
-  if (userGroup  && groups.some((g) => g === userGroup  || g.endsWith(',' + userGroup)))  return 'User';
-  if (!adminGroup && !userGroup) return 'User';
-  return null;
+  // LDAP_USER_GROUP TANIMLIYSA bu bir beyaz liste gibi davranir: yalniz o gruba
+  // uye olanlar 'User' alir, digerleri reddedilir (kurumun ozellikle kisitlamak
+  // istedigi durum icin). TANIMLI DEGILSE (varsayilan/mevcut uretim durumu),
+  // Admin grubunda olmayan ama gecerli AD kimlik bilgileriyle dogrulanan HERKES
+  // 'User' rolu alir - LDAP_ADMIN_GROUP'un TEK BASINA tanimlanmasi (LDAP_USER_GROUP
+  // olmadan) yanlislikla Admin disi TUM kullanicilari login'de reddediyordu
+  // (adminGroup dolu oldugu icin eski "ikisi de bossa User ver" kacis yolu hic
+  // tetiklenmiyordu) - bu portaldaki gercek bir uretim kilitlenmesiydi.
+  if (userGroup) {
+    return groups.some((g) => g === userGroup || g.endsWith(',' + userGroup)) ? 'User' : null;
+  }
+  return 'User';
 }
 
 // Ortak search attr'lari
