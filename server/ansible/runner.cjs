@@ -582,15 +582,29 @@ function fetchAwxPlainText(baseUrl, token, pathname) {
   });
 }
 
+// AWX'in `/stdout/?format=txt` ucu, cikti kendi ic esigini (varsayilan 1MB,
+// STDOUT_MAX_BYTES_DISPLAY) astiginda HTTP 200 ile birlikte GERCEK stdout YERINE
+// "Standard Output too large to display (N bytes), only download supported for
+// sizes over M bytes." metnini doner — bu bir hata durumu DEGIL (4xx firlatmaz),
+// dolayisiyla `!output.trim()` bos-cikti kontrolu bunu YAKALAMAZ ve bu uyari metni
+// kullaniciya SANKI GERCEK STDOUT'MUS gibi gosterilirdi. job_events yedegine
+// (sayfalanmis, boyut siniri olmayan) dusmek icin bu deseni ayrica tespit ederiz.
+function isAwxStdoutTooLarge(text) {
+  return typeof text === "string" && /Standard Output too large to display/i.test(text);
+}
+
 // Stdout gercekten bos donduren (parse hatasi degil, gercek bosluk) durumlar icin
 // yedek: job_events uzerinden her event'in kendi `stdout` alanini birlestirir.
 // requestJson: (pathname) => Promise<jsonBody> — cagirana gore awxRequest veya
 // awxRequestToServer(server, token, ...) baglanir (bkz. asagidaki iki sarmalayici).
 async function collectJobEventsStdout(requestJson, jobId) {
-  let pathname = `/api/v2/jobs/${jobId}/job_events/?page_size=200&order_by=counter`;
+  // page_size/guard: "cikti cok buyuk" senaryosunun tam olarak KENDISI icin bir yedek
+  // oldugundan (bkz. isAwxStdoutTooLarge) eski 200*25=5000 event sinirini asan gercekten
+  // buyuk job'lar (ör. 1MB+ stdout) yarim cikti gorurdu — 500*80=40000 event'e cikarildi.
+  let pathname = `/api/v2/jobs/${jobId}/job_events/?page_size=500&order_by=counter`;
   const chunks = [];
   let guard = 0;
-  while (pathname && guard < 25) {
+  while (pathname && guard < 80) {
     let data;
     try {
       data = await requestJson(pathname);
@@ -615,7 +629,7 @@ async function getJobOutput(jobId) {
   const token = await getToken();
 
   let output = await fetchAwxPlainText(url, token, `/api/v2/jobs/${id}/stdout/?format=txt`);
-  if (!output || !output.trim()) {
+  if (!output || !output.trim() || isAwxStdoutTooLarge(output)) {
     output = await collectJobEventsStdout((p) => awxRequest("GET", p), id);
   }
 
@@ -691,7 +705,7 @@ async function getJobOutputOnServer(serverId, jobId) {
     console.warn(`[AWX] stdout cekilemedi (job ${id}, server ${serverId}): ${err.message}`);
   }
 
-  if (!output || !output.trim()) {
+  if (!output || !output.trim() || isAwxStdoutTooLarge(output)) {
     output = await collectJobEventsStdout((p) => awxRequestToServer(server, token, "GET", p), id);
   }
 
