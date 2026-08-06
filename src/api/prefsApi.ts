@@ -40,18 +40,30 @@ export const prefsApi = {
   },
 
   // Tek/coklu tercih yazar (null → siler). Fire-and-forget kullanim icin catch'li cagrilmali.
+  //
+  // ONEMLI: eskiden sunucu yaniti HIC KONTROL EDILMIYORDU — fetch() sadece gercek bir ag
+  // hatasinda reddeder, HTTP 4xx/5xx'te (ör. bir reverse proxy PUT'u engelliyorsa, oturum
+  // suresi dolmussa, WAF/CSRF reddi vb.) SESSIZCE "basarili" gorunuyordu. Bu arada yerel
+  // `_cache` yine de guncelleniyordu, yani AYNI sekme/oturumda degisiklik kalici gibi
+  // GORUNUYOR ama sunucuya hic yazilmamis oluyordu — sayfa yenilenince (_cache sifirlanip
+  // sunucudan yeniden cekilince) sessizce eski degere donuyordu. Artik basarisiz bir yazimda
+  // istisna firlatilir VE yerel cache GUNCELLENMEZ (yanlis "kaydedildi" izlenimi verilmez).
   async set(prefs: Record<string, PrefValue>): Promise<void> {
+    const res = await fetch("/api/auth/prefs", {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prefs }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error((body as { error?: string } | null)?.error || `Tercih kaydedilemedi (HTTP ${res.status}).`);
+    }
     if (_cache) {
       for (const [k, v] of Object.entries(prefs)) {
         if (v === null) delete _cache[k];
         else _cache[k] = v;
       }
     }
-    await fetch("/api/auth/prefs", {
-      method: "PUT",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prefs }),
-    });
   },
 };

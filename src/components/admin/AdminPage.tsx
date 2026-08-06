@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { prefsApi } from "../../api/prefsApi";
+import { toast } from "@/hooks/useToast";
 import {
   ServerStackIcon,
   ClipboardDocumentListIcon,
@@ -81,7 +82,7 @@ const AdminPage: React.FC = () => {
 
   const setActiveTab = (id: TabId) => {
     setActiveTabState(id);
-    prefsApi.set({ [ADMIN_TAB_PREF]: id }).catch(() => {});
+    prefsApi.set({ [ADMIN_TAB_PREF]: id }).catch(() => { /* aktif sekme tercihi - sessiz hata kabul edilebilir */ });
   };
 
   function moveTab(id: TabId, direction: -1 | 1) {
@@ -91,7 +92,11 @@ const AdminPage: React.FC = () => {
       if (idx < 0 || swapWith < 0 || swapWith >= prev.length) return prev;
       const next = [...prev];
       [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
-      prefsApi.set({ [ADMIN_TAB_ORDER_PREF]: JSON.stringify(next) }).catch(() => {});
+      // Basarisiz bir kayit artik SESSIZCE yutulmuyor — reverse proxy PUT'u engelliyorsa/
+      // oturum dolmussa vb. kullaniciya HEMEN gorunur olsun (aksi halde "kaydettim ama
+      // sayfa yenilenince eski haline donuyor" hatasi teshis edilemezdi).
+      prefsApi.set({ [ADMIN_TAB_ORDER_PREF]: JSON.stringify(next) })
+        .catch((e: unknown) => toast.error(`Sekme sırası kaydedilemedi: ${e instanceof Error ? e.message : String(e)}`));
       return next;
     });
   }
