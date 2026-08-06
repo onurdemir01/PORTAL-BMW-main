@@ -50,6 +50,27 @@ const EMPTY_CUSTOM_FIELD: SurveyField = {
   choices: [], hidden: false, description: "",
 };
 
+// Kaydedilmis customSurveyFields'i GUVENLI bir sekle sokar — eski (tek {field,equals})
+// bicimden gecis sirasinda kaydedilmis satirlar olabilir; conditions dizisi eksik/bozuksa
+// TypeError firlatmak (ve tum React agacini cokertip beyaz ekrana dusurmek) yerine
+// sessizce ya yeni sekle tasir ya da kosulu tamamen kaldirir.
+function normalizeCustomField(f: SurveyField): SurveyField {
+  const raw = f.dependsOn as unknown;
+  if (!raw || typeof raw !== "object") return { ...f, dependsOn: undefined };
+  const dep = raw as { mode?: string; conditions?: unknown; field?: string; equals?: string };
+  if (Array.isArray(dep.conditions)) {
+    const conditions = dep.conditions
+      .filter((c): c is { field: string; equals: string } => !!c && typeof c === "object")
+      .map((c) => ({ field: String((c as { field?: unknown }).field ?? ""), equals: String((c as { equals?: unknown }).equals ?? "") }));
+    return { ...f, dependsOn: { mode: dep.mode === "all" ? "all" : "any", conditions } };
+  }
+  // Eski tek-kosul bicimi ({field, equals}) — yeni {mode, conditions[]} bicimine tasi.
+  if (typeof dep.field === "string" && dep.field) {
+    return { ...f, dependsOn: { mode: "any", conditions: [{ field: dep.field, equals: String(dep.equals ?? "") }] } };
+  }
+  return { ...f, dependsOn: undefined };
+}
+
 const LAUNCH_OPTION_KEYS = ["limit", "forks", "jobTags", "skipTags", "verbosity", "jobType"] as const;
 type LaunchOptionKey = (typeof LAUNCH_OPTION_KEYS)[number];
 const LAUNCH_OPTION_LABELS: Record<LaunchOptionKey, string> = {
@@ -97,7 +118,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
           setRawExtraVars(customRes.customization?.rawExtraVars || "");
           setLaunchOptionOverrides(customRes.customization?.launchOptionOverrides || {});
           setOutputFilter(customRes.customization?.outputFilter || { enabled: false, contains: "" });
-          setCustomFields(customRes.customization?.customSurveyFields || []);
+          setCustomFields((customRes.customization?.customSurveyFields || []).map(normalizeCustomField));
         }
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
@@ -169,9 +190,10 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   );
   const invalidDependsOn = customFields.find((f) => {
     if (f.dependsOn === undefined) return false;
-    if (f.dependsOn.conditions.length === 0) return true;
-    return f.dependsOn.conditions.some((c) => {
-      const parentName = c.field.trim();
+    const conditions = Array.isArray(f.dependsOn.conditions) ? f.dependsOn.conditions : [];
+    if (conditions.length === 0) return true;
+    return conditions.some((c) => {
+      const parentName = (c.field || "").trim();
       if (!parentName || parentName === f.name.trim()) return true;
       return !customFields.some((o) => o !== f && o.name.trim() === parentName);
     });
@@ -468,7 +490,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                                 </label>
                               </div>
 
-                              {f.dependsOn.conditions.map((c, ci) => (
+                              {(Array.isArray(f.dependsOn.conditions) ? f.dependsOn.conditions : []).map((c, ci) => (
                                 <div key={ci} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
                                   <Select
                                     value={c.field}
