@@ -301,6 +301,12 @@ export interface FieldCustomization {
   rawExtraVars?: string;
   launchOptionOverrides?: Partial<Record<"limit" | "forks" | "jobTags" | "skipTags" | "verbosity" | "jobType", LaunchOptionOverride>>;
   outputFilter?: OutputFilter;
+  // AWX'te Survey KAPALIYSA (survey_enabled=false) admin'in portal arayüzünden
+  // baştan tasarladığı "sahte" survey — SurveyField ile AYNI şekli kullanır ki
+  // SurveyModal'ın mevcut render/doğrulama kodu AWX-native survey ile bunun
+  // arasında hiçbir fark gözetmesin. Boşsa (tanımsız/[]) mevcut davranış
+  // korunur: survey kapalı template'lerde kullanıcıya hiçbir alan sorulmaz.
+  customSurveyFields?: SurveyField[];
 }
 
 export interface AnsibleSsItem {

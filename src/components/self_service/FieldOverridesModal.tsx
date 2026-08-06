@@ -11,10 +11,10 @@
 // "Ek Değişkenler" bloğu (survey'de karşılığı olmayan, AWX'in ask_variables_on_launch
 // desteklediği ama hiçbir yerde free-form giriş noktası olmayan boşluğu kapatır).
 import React, { useEffect, useState } from "react";
-import { LockClosedIcon, ShieldExclamationIcon, InformationCircleIcon, AdjustmentsHorizontalIcon } from "@heroicons/react/24/outline";
+import { LockClosedIcon, ShieldExclamationIcon, InformationCircleIcon, AdjustmentsHorizontalIcon, PlusIcon, TrashIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/common/Modal";
-import { TextInput, Textarea } from "@/components/ui/Form";
-import { ansibleApi, type LaunchOptions, type FieldOverride, type LaunchOptionOverride, type OutputFilter } from "@/api/ansibleApi";
+import { TextInput, Textarea, Select } from "@/components/ui/Form";
+import { ansibleApi, type LaunchOptions, type FieldOverride, type LaunchOptionOverride, type OutputFilter, type SurveyField } from "@/api/ansibleApi";
 
 interface FieldOverridesModalItem {
   awxServerId: number;
@@ -32,6 +32,24 @@ interface LocalFieldState {
   hidden: boolean;
 }
 
+// Survey Tasarımcısı'nda seçilebilecek alan tipleri — SurveyModal'ın (SelfServicePage.tsx)
+// mevcut render anahtarıyla BİREBİR aynı: multiplechoice/multiselect → Select,
+// textarea → Textarea, integer/float → number input, password → password input, diğer → text.
+const CUSTOM_FIELD_TYPES: { value: string; label: string }[] = [
+  { value: "text", label: "Metin" },
+  { value: "textarea", label: "Uzun Metin" },
+  { value: "integer", label: "Tam Sayı" },
+  { value: "float", label: "Ondalıklı Sayı" },
+  { value: "password", label: "Şifre/Gizli" },
+  { value: "multiplechoice", label: "Tekli Seçim (liste)" },
+  { value: "multiselect", label: "Çoklu Seçim (liste)" },
+];
+
+const EMPTY_CUSTOM_FIELD: SurveyField = {
+  name: "", label: "", type: "text", required: false, defaultValue: "",
+  choices: [], hidden: false, description: "",
+};
+
 const LAUNCH_OPTION_KEYS = ["limit", "forks", "jobTags", "skipTags", "verbosity", "jobType"] as const;
 type LaunchOptionKey = (typeof LAUNCH_OPTION_KEYS)[number];
 const LAUNCH_OPTION_LABELS: Record<LaunchOptionKey, string> = {
@@ -46,6 +64,8 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   const [askVariables, setAskVariables] = useState(false);
   const [rawExtraVars, setRawExtraVars] = useState("");
   const [outputFilter, setOutputFilter] = useState<OutputFilter>({ enabled: false, contains: "" });
+  // Survey Tasarımcısı — yalnızca AWX'te survey KAPALIYKEN (!surveyEnabled) gösterilir.
+  const [customFields, setCustomFields] = useState<SurveyField[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -77,6 +97,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
           setRawExtraVars(customRes.customization?.rawExtraVars || "");
           setLaunchOptionOverrides(customRes.customization?.launchOptionOverrides || {});
           setOutputFilter(customRes.customization?.outputFilter || { enabled: false, contains: "" });
+          setCustomFields(customRes.customization?.customSurveyFields || []);
         }
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
@@ -90,6 +111,26 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   function updateLaunchOption(key: LaunchOptionKey, patch: Partial<LaunchOptionOverride>) {
     setLaunchOptionOverrides((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }
+
+  function addCustomField() {
+    setCustomFields((prev) => [...prev, { ...EMPTY_CUSTOM_FIELD }]);
+  }
+  function updateCustomField(index: number, patch: Partial<SurveyField>) {
+    setCustomFields((prev) => prev.map((f, i) => (i === index ? { ...f, ...patch } : f)));
+  }
+  function removeCustomField(index: number) {
+    setCustomFields((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  // Backend'deki (POST /ss/custom) kurallarla BİREBİR aynı ön-doğrulama.
+  const customFieldNames = customFields.map((f) => f.name.trim());
+  const invalidCustomField = customFields.find((f) => !f.name.trim() || !f.label.trim());
+  const invalidCustomName = customFields.find((f) => f.name.trim() && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(f.name.trim()));
+  const duplicateCustomName = customFieldNames.find((n, i) => n && customFieldNames.indexOf(n) !== i);
+  const invalidCustomHidden = customFields.find((f) => f.hidden && !f.defaultValue.trim());
+  const invalidCustomChoices = customFields.find(
+    (f) => (f.type === "multiplechoice" || f.type === "multiselect") && f.choices.filter((c) => c.trim()).length === 0
+  );
 
   // Backend kuralıyla birebir aynı client-side ön-doğrulama: HANGİ ALAN OLURSA OLSUN
   // (zorunlu dahil) gizlenebilir, YETER Kİ çözümlenebilir (boş olmayan) bir varsayılan
@@ -114,6 +155,26 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
       setErr("Çıktı filtresi etkin ama aranacak metin boş — bir metin girin veya filtreyi kapatın.");
       return;
     }
+    if (invalidCustomField) {
+      setErr("Her özel survey alanının bir değişken adı ve görünen adı olmalı.");
+      return;
+    }
+    if (invalidCustomName) {
+      setErr(`Geçersiz değişken adı: "${invalidCustomName.name}" — yalnızca harf, rakam, alt çizgi içerebilir ve rakamla başlayamaz.`);
+      return;
+    }
+    if (duplicateCustomName) {
+      setErr(`Değişken adı tekrar ediyor: "${duplicateCustomName}"`);
+      return;
+    }
+    if (invalidCustomHidden) {
+      setErr(`"${invalidCustomHidden.label}" gizli ama varsayılan değeri yok — önce bir varsayılan değer girin.`);
+      return;
+    }
+    if (invalidCustomChoices) {
+      setErr(`"${invalidCustomChoices.label}" bir seçim alanı ama hiç seçeneği yok.`);
+      return;
+    }
     setSaving(true);
     setErr("");
     try {
@@ -124,6 +185,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
         rawExtraVars: rawExtraVars.trim() || undefined,
         launchOptionOverrides,
         outputFilter: outputFilter.enabled ? outputFilter : { enabled: false, contains: "" },
+        customSurveyFields: customFields.map((f) => ({ ...f, name: f.name.trim(), label: f.label.trim() })),
       });
       if (!r.ok) { setErr(r.message || "Kaydedilemedi."); return; }
       onClose();
@@ -163,14 +225,132 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                 <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
               </div>
             ) : !surveyEnabled ? (
-              <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm text-amber-800">
-                <ShieldExclamationIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>
-                  Bu template'te AWX survey <strong>kapalı</strong> — launch'ta kullanıcıya sorulacak bir alan yok.
-                  (Template detayında görünen survey soruları AWX'te tanımlı olsa da survey kapalı olduğu için sorulmaz.)
-                  Yine de aşağıdaki <strong>Ek Değişkenler</strong> alanından her launch'a otomatik eklenecek statik
-                  değişkenler tanımlayabilirsiniz.
-                </span>
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm text-amber-800">
+                  <ShieldExclamationIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    Bu template'te AWX survey <strong>kapalı</strong> — AWX'in kendi soruları
+                    launch'ta sorulmaz. Aşağıda kendi survey'inizi tasarlayıp değerleri
+                    extra_vars üzerinden AWX'e iletebilirsiniz; hiçbir alan eklemezseniz
+                    (mevcut davranış) kullanıcıya hiçbir şey sorulmaz.
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
+                    <SparklesIcon className="w-3.5 h-3.5" /> Survey Tasarımcısı
+                  </p>
+                  <button
+                    onClick={addCustomField}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent)] text-white hover:opacity-90 transition-opacity"
+                  >
+                    <PlusIcon className="w-3.5 h-3.5" /> Alan Ekle
+                  </button>
+                </div>
+
+                {customFields.length === 0 ? (
+                  <p className="text-xs text-[var(--text-muted)] text-center py-3 border border-dashed border-[var(--border)] rounded-xl">
+                    Henüz özel alan yok — "Alan Ekle" ile başlayın.
+                  </p>
+                ) : (
+                  customFields.map((f, i) => {
+                    const isChoiceType = f.type === "multiplechoice" || f.type === "multiselect";
+                    return (
+                      <div key={i} className="border border-[var(--border)] rounded-xl p-3 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Görünen Ad (label)</label>
+                            <TextInput
+                              value={f.label}
+                              error={!f.label.trim()}
+                              placeholder="ör. Hedef Ortam"
+                              onChange={(e) => updateCustomField(i, { label: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                              Değişken Adı (extra_vars key)
+                            </label>
+                            <TextInput
+                              value={f.name}
+                              error={!f.name.trim() || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(f.name.trim() || "x")}
+                              placeholder="ör. target_env"
+                              className="font-mono"
+                              onChange={(e) => updateCustomField(i, { name: e.target.value })}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Tip</label>
+                            <Select value={f.type} onChange={(e) => updateCustomField(i, { type: e.target.value })}>
+                              {CUSTOM_FIELD_TYPES.map((t) => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                              ))}
+                            </Select>
+                          </div>
+                          <div className="flex items-end gap-4 pb-1.5">
+                            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                              <input type="checkbox" checked={f.required} onChange={(e) => updateCustomField(i, { required: e.target.checked })} />
+                              Zorunlu
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                              <input type="checkbox" checked={f.hidden} onChange={(e) => updateCustomField(i, { hidden: e.target.checked })} />
+                              Kullanıcıdan gizle
+                            </label>
+                          </div>
+                        </div>
+
+                        {isChoiceType && (
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                              Seçenekler (her satıra bir tane)
+                            </label>
+                            <Textarea
+                              rows={2}
+                              className="text-xs font-mono"
+                              value={f.choices.join("\n")}
+                              onChange={(e) => updateCustomField(i, { choices: e.target.value.split(/\r?\n/) })}
+                              placeholder={"prod\ntest\nqa"}
+                            />
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                            {f.hidden ? "Varsayılan Değer (zorunlu — kullanıcı görmeyecek)" : "Varsayılan Değer (opsiyonel)"}
+                          </label>
+                          <TextInput
+                            type={f.type === "password" ? "password" : "text"}
+                            error={f.hidden && !f.defaultValue.trim()}
+                            value={f.defaultValue}
+                            onChange={(e) => updateCustomField(i, { defaultValue: e.target.value })}
+                            autoComplete="off"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Açıklama (opsiyonel)</label>
+                          <TextInput
+                            value={f.description}
+                            onChange={(e) => updateCustomField(i, { description: e.target.value })}
+                            placeholder="Kullanıcıya gösterilecek kısa ipucu"
+                          />
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => removeCustomField(i)}
+                            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                          >
+                            <TrashIcon className="w-3.5 h-3.5" /> Alanı Kaldır
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             ) : fields.length === 0 ? (
               <p className="text-sm text-[var(--text-secondary)] text-center py-4">Bu template için tanımlı bir alan yok.</p>

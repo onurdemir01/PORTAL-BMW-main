@@ -1402,6 +1402,55 @@ function initAnsibleRunner(app) {
     return extraVars;
   }
 
+  // resolveLaunchExtraVars'in "Survey Tasarimcisi" (customSurveyFields) surumu — AYNI
+  // kurallar (zorunlu/tip/min-max/choices dogrulamasi, gizli alan icin sunucu-tarafi
+  // varsayilan enjeksiyonu), ama AWX'in kendi survey_spec sekli yerine SurveyField
+  // seklini (name/label/defaultValue/hidden dogrudan alanin UZERINDE, ayri bir
+  // overrides katmani YOK — admin bu degerleri zaten Survey Tasarimcisi'nda dogrudan
+  // ayarliyor) okur.
+  function resolveCustomSurveyExtraVars(customFields, submittedValues) {
+    const extraVars = {};
+    for (const field of (customFields || [])) {
+      const label = field.label || field.name;
+
+      if (field.hidden) {
+        const def = field.defaultValue || "";
+        if (def === "") {
+          throw Object.assign(new Error(`Gizli alanın varsayılan değeri yok, launch güvenli değil: ${label}`), { status: 500, field: field.name });
+        }
+        extraVars[field.name] = def;
+        continue;
+      }
+
+      const raw = submittedValues ? submittedValues[field.name] : undefined;
+      const val = raw === undefined || raw === null ? "" : String(raw).trim();
+
+      if (field.required && val === "") {
+        throw Object.assign(new Error(`Zorunlu alan boş: ${label}`), { status: 400, field: field.name });
+      }
+      if (val === "") {
+        if (field.defaultValue) extraVars[field.name] = field.defaultValue;
+        continue;
+      }
+
+      if (Array.isArray(field.choices) && field.choices.length > 0 && !field.choices.includes(val)) {
+        throw Object.assign(new Error(`Geçersiz seçim (${label}): ${val}`), { status: 400, field: field.name });
+      }
+      if (field.type === "integer" || field.type === "float") {
+        const num = Number(val);
+        if (isNaN(num)) throw Object.assign(new Error(`Sayısal olmayan değer: ${label}`), { status: 400, field: field.name });
+        if (field.min !== undefined && field.min !== null && num < field.min) {
+          throw Object.assign(new Error(`${label} minimum ${field.min} olmalı.`), { status: 400, field: field.name });
+        }
+        if (field.max !== undefined && field.max !== null && num > field.max) {
+          throw Object.assign(new Error(`${label} maksimum ${field.max} olmalı.`), { status: 400, field: field.name });
+        }
+      }
+      extraVars[field.name] = val;
+    }
+    return extraVars;
+  }
+
   // Admin'in add-time'da (FieldOverridesModal) built-in launch secenekleri (limit/forks/
   // job_tags/skip_tags/verbosity/job_type) icin tanimladigi varsayilan+gizleme kuralini
   // uygular — survey field'larin "hidden" kuraliyla BIREBIR ayni mantik: admin bir
@@ -1473,7 +1522,11 @@ function initAnsibleRunner(app) {
     for (const [key, value] of Object.entries(extraVars)) {
       const field = (specFields || []).find((f) => f.variable === key);
       const ov = (overrides?.fieldOverrides || []).find((o) => o.fieldName === key);
-      const isSensitive = !!ov?.hidden || field?.type === "password";
+      // Survey Tasarimcisi (customSurveyFields) alanlari AYRI bir dizide yasar (AWX
+      // specFields'ta degil) — password-tipi veya gizli olarak isaretlenmis bir custom
+      // alan da AYNI sekilde redakte edilmeli, aksi halde gecmis kaydinda acikta kalirdi.
+      const customField = (overrides?.customSurveyFields || []).find((f) => f.name === key);
+      const isSensitive = !!ov?.hidden || field?.type === "password" || !!customField?.hidden || customField?.type === "password";
       redacted[key] = isSensitive ? "***gizli***" : value;
     }
     return redacted;
@@ -1582,10 +1635,14 @@ function initAnsibleRunner(app) {
       // "Ek Degiskenler" kutusunu bilgilendirmek icin (bkz. plan: free-form extra_vars gap).
       const askVariables = !!detail.ask_variables_on_launch;
 
-      // Survey AWX'te devre disiysa (survey_enabled === false) hicbir alan/parametre
-      // gosterilmez veya istenmez — extra_vars fallback'e de dusulmez.
+      // Survey AWX'te devre disiysa (survey_enabled === false): admin bu template icin
+      // portal uzerinden KENDI survey'ini tasarladiysa (bkz. FieldOverridesModal "Survey
+      // Tasarimcisi") o alanlar gosterilir; tasarlanmamissa eskisi gibi hicbir alan
+      // gosterilmez/istenmez (AWX'in kendi extra_vars fallback'ine de dusulmez).
       if (detail.survey_enabled === false) {
-        return res.json({ ok: true, fields: [], surveyEnabled: false, launchOptions, askVariables, templateId: req.params.templateId });
+        const customFields = Array.isArray(overrides.customSurveyFields) ? overrides.customSurveyFields : [];
+        const visibleCustomFields = wantsAdminView ? customFields : customFields.filter((f) => !f.hidden);
+        return res.json({ ok: true, fields: visibleCustomFields, surveyEnabled: false, launchOptions, askVariables, templateId: req.params.templateId });
       }
 
       let fields = [];
@@ -1738,6 +1795,33 @@ function initAnsibleRunner(app) {
         return res.status(400).json({ ok: false, message: "Çıktı filtresi etkin ama aranacak metin boş — bir metin girin veya filtreyi kapatın." });
       }
 
+      // Survey Tasarimcisi (customSurveyFields): AWX survey KAPALIYKEN admin'in portaldan
+      // baştan tanımladığı sahte survey alanları — client'e güvenilmez, kayıttan önce
+      // burada da doğrulanır (isim benzersiz + güvenli değişken-adı deseni, gizli alanın
+      // varsayılan değeri olması, çoktan-seçmeli alanların en az bir seçeneği olması).
+      const customSurveyFields = Array.isArray(data.customSurveyFields) ? data.customSurveyFields : [];
+      const seenNames = new Set();
+      for (const f of customSurveyFields) {
+        const name = String(f?.name || "").trim();
+        if (!name) return res.status(400).json({ ok: false, message: "Her özel alanın bir değişken adı olmalı." });
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+          return res.status(400).json({ ok: false, message: `Geçersiz değişken adı: "${name}" — yalnızca harf, rakam, alt çizgi içerebilir ve rakamla başlayamaz.` });
+        }
+        if (seenNames.has(name)) {
+          return res.status(400).json({ ok: false, message: `Değişken adı tekrar ediyor: "${name}"` });
+        }
+        seenNames.add(name);
+        if (!String(f?.label || "").trim()) {
+          return res.status(400).json({ ok: false, message: `"${name}" alanının bir görünen adı (label) olmalı.` });
+        }
+        if (f?.hidden && !String(f?.defaultValue || "").trim()) {
+          return res.status(400).json({ ok: false, message: `"${f.label}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.` });
+        }
+        if ((f?.type === "multiplechoice" || f?.type === "multiselect") && (!Array.isArray(f.choices) || f.choices.filter((c) => String(c || "").trim()).length === 0)) {
+          return res.status(400).json({ ok: false, message: `"${f.label}" bir seçim alanı ama hiç seçeneği yok.` });
+        }
+      }
+
       await writeCustom(server.id, req.params.templateId, data);
       res.json({ ok: true });
     } catch (err) {
@@ -1799,9 +1883,16 @@ function initAnsibleRunner(app) {
       let extraVars = {};
       let specFields = null;
       if (detail.survey_enabled === false) {
-        // Survey devre disi — hicbir survey degiskeni kullanicidan gelmez, AWX template'in
-        // kendi statik extra_vars'iyla calisir.
-        extraVars = {};
+        // Survey devre disi. Admin bu template icin bir "Survey Tasarimcisi" tanimladiysa
+        // (overrides.customSurveyFields) o alanlar AYNI AWX-native survey kadar sikica
+        // (zorunlu/tip/min-max/choices, gizli alan icin sunucu-tarafi varsayilan) dogrulanip
+        // extra_vars'a donusturulur. Tanimlanmamissa eskisi gibi hicbir survey degiskeni
+        // kullanicidan gelmez, AWX template'in kendi statik extra_vars'iyla calisir.
+        if (Array.isArray(overrides.customSurveyFields) && overrides.customSurveyFields.length > 0) {
+          extraVars = resolveCustomSurveyExtraVars(overrides.customSurveyFields, submittedExtraVars);
+        } else {
+          extraVars = {};
+        }
       } else {
         try {
           const spec = await awxRequestToServer(server, token, "GET", `/api/v2/job_templates/${templateId}/survey_spec/`);
