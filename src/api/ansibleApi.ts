@@ -307,6 +307,12 @@ export interface FieldCustomization {
   // arasında hiçbir fark gözetmesin. Boşsa (tanımsız/[]) mevcut davranış
   // korunur: survey kapalı template'lerde kullanıcıya hiçbir alan sorulmaz.
   customSurveyFields?: SurveyField[];
+  // İşi başlatan kullanıcının oturumdaki e-posta/kullanıcı adını extra_vars'a
+  // OTOMATİK ve DEĞİŞTİRİLEMEZ şekilde ekler — kullanıcı arayüzünde hiç
+  // gösterilmez, submit edilen değerler bu alanlara ASLA yazamaz (sunucu her
+  // zaman oturumdan okuyup en SON adımda enjekte eder). Anahtar adları
+  // (varsayılan "email"/"username") playbook'un beklediği isme göre değiştirilebilir.
+  injectUserInfo?: { enabled: boolean; emailKey?: string; usernameKey?: string };
 }
 
 export interface AnsibleSsItem {

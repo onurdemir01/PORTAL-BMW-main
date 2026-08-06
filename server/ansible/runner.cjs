@@ -1966,6 +1966,16 @@ function initAnsibleRunner(app) {
         extraVars = { ...parseSimpleYaml(overrides.rawExtraVars), ...extraVars };
       }
 
+      // Baslatan kullanicinin e-posta/kullanici adi — EN SON adimda, oturumdan okunarak
+      // enjekte edilir (client'in gonderdigi HICBIR deger bu iki anahtari EZEMEZ — survey/
+      // custom-survey/rawExtraVars her ne uretmis olursa olsun burada ustune yazilir).
+      if (overrides.injectUserInfo?.enabled) {
+        const emailKey = String(overrides.injectUserInfo.emailKey || "").trim() || "email";
+        const usernameKey = String(overrides.injectUserInfo.usernameKey || "").trim() || "username";
+        extraVars[emailKey] = req.session?.user?.mail || "";
+        extraVars[usernameKey] = req.session?.user?.username || "";
+      }
+
       const resolvedLaunchOptions = resolveLaunchOptions(overrides, { limit, forks, jobTags, skipTags, verbosity, jobType });
       const payload = buildAwxLaunchPayload(detail, { extraVars, ...resolvedLaunchOptions });
       const data = await awxRequestToServer(server, token, "POST", `/api/v2/job_templates/${templateId}/launch/`, payload);

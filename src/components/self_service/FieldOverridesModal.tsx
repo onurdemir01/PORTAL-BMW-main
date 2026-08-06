@@ -87,6 +87,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   const [outputFilter, setOutputFilter] = useState<OutputFilter>({ enabled: false, contains: "" });
   // Survey Tasarımcısı — yalnızca AWX'te survey KAPALIYKEN (!surveyEnabled) gösterilir.
   const [customFields, setCustomFields] = useState<SurveyField[]>([]);
+  const [injectUserInfo, setInjectUserInfo] = useState({ enabled: false, emailKey: "email", usernameKey: "username" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -119,6 +120,12 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
           setLaunchOptionOverrides(customRes.customization?.launchOptionOverrides || {});
           setOutputFilter(customRes.customization?.outputFilter || { enabled: false, contains: "" });
           setCustomFields((customRes.customization?.customSurveyFields || []).map(normalizeCustomField));
+          const inj = customRes.customization?.injectUserInfo;
+          setInjectUserInfo({
+            enabled: !!inj?.enabled,
+            emailKey: inj?.emailKey || "email",
+            usernameKey: inj?.usernameKey || "username",
+          });
         }
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
@@ -277,6 +284,11 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
         launchOptionOverrides,
         outputFilter: outputFilter.enabled ? outputFilter : { enabled: false, contains: "" },
         customSurveyFields: customFields.map((f) => ({ ...f, name: f.name.trim(), label: f.label.trim() })),
+        injectUserInfo: {
+          enabled: injectUserInfo.enabled,
+          emailKey: injectUserInfo.emailKey.trim() || "email",
+          usernameKey: injectUserInfo.usernameKey.trim() || "username",
+        },
       });
       if (!r.ok) { setErr(r.message || "Kaydedilemedi."); return; }
       onClose();
@@ -669,6 +681,50 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                     value={outputFilter.contains}
                     onChange={(e) => setOutputFilter((f) => ({ ...f, contains: e.target.value }))}
                   />
+                )}
+              </div>
+            )}
+
+            {!loading && (
+              <div className="border border-[var(--border)] rounded-xl p-3">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-xs font-semibold text-[var(--text-secondary)]">Kullanıcı Bilgisi Ekle (opsiyonel)</p>
+                  <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer flex-shrink-0">
+                    Etkin
+                    <input
+                      type="checkbox"
+                      checked={injectUserInfo.enabled}
+                      onChange={(e) => setInjectUserInfo((s) => ({ ...s, enabled: e.target.checked }))}
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mb-2">
+                  İşi başlatan kullanıcının oturumdaki e-posta ve kullanıcı adını aşağıdaki
+                  anahtarlarla extra_vars'a ekler. Kullanıcıya hiçbir zaman gösterilmez ve
+                  kullanıcının gönderdiği hiçbir değer bu iki anahtarın üzerine yazamaz —
+                  sunucu bunu launch'ın EN SON adımında oturumdan okuyarak enjekte eder.
+                </p>
+                {injectUserInfo.enabled && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">E-posta anahtarı</label>
+                      <TextInput
+                        className="font-mono text-xs"
+                        value={injectUserInfo.emailKey}
+                        placeholder="email"
+                        onChange={(e) => setInjectUserInfo((s) => ({ ...s, emailKey: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Kullanıcı adı anahtarı</label>
+                      <TextInput
+                        className="font-mono text-xs"
+                        value={injectUserInfo.usernameKey}
+                        placeholder="username"
+                        onChange={(e) => setInjectUserInfo((s) => ({ ...s, usernameKey: e.target.value }))}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             )}
