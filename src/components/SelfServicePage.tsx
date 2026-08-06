@@ -141,12 +141,17 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
       .finally(() => setLoading(false));
   }, [item]);
 
-  // Koşullu alanlar (Survey Tasarımcısı "dependsOn"): bir alan yalnızca BAŞKA bir alanın
-  // O ANKİ değeri belirtilen değere eşitse kullanıcıya gösterilir/zorunlu tutulur/launch'a
-  // gönderilir — sunucudaki resolveCustomSurveyExtraVars'in isActive() mantığıyla AYNI.
-  const visibleFields = fields.filter(
-    (f) => !f.dependsOn?.field || (values[f.dependsOn.field] ?? "").trim() === f.dependsOn.equals
-  );
+  // Koşullu alanlar (Survey Tasarımcısı "dependsOn"): bir alan yalnızca koşul(lar)ı
+  // sağlanırsa kullanıcıya gösterilir/zorunlu tutulur/launch'a gönderilir — sunucudaki
+  // resolveCustomSurveyExtraVars'in isActive() mantığıyla AYNI (mode="any" → VEYA,
+  // aksi halde VE).
+  function isFieldActive(f: SurveyField): boolean {
+    const dep = f.dependsOn;
+    if (!dep || !Array.isArray(dep.conditions) || dep.conditions.length === 0) return true;
+    const results = dep.conditions.map((c) => (values[c.field] ?? "").trim() === c.equals);
+    return dep.mode === "any" ? results.some(Boolean) : results.every(Boolean);
+  }
+  const visibleFields = fields.filter(isFieldActive);
 
   // Görünür ve dolu olması gereken zorunlu alanlar — submit'i istemci tarafında da
   // engeller (önceden yalnızca kozmetik bir `*` işareti vardı, hiçbir şeyi engellemiyordu).

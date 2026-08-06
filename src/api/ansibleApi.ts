@@ -333,9 +333,16 @@ export interface SurveyField {
   // Yalnızca Survey Tasarımcısı (özel alanlar) için: seçim alanlarında AWX'e/extra_vars'a
   // giden HAM değer (choices[i]) ile kullanıcıya gösterilen metin farklı olabilir.
   choiceLabels?: Record<string, string>;
-  // Yalnızca Survey Tasarımcısı için: bu alan yalnızca "field" adlı BAŞKA bir özel alanın
-  // değeri "equals" ile eşleşirse kullanıcıya sorulur (koşullu alan).
-  dependsOn?: { field: string; equals: string };
+  // Yalnızca Survey Tasarımcısı için: bu alan yalnızca aşağıdaki koşul(lar) sağlanırsa
+  // kullanıcıya sorulur (koşullu alan). mode="any" → koşullardan HERHANGİ BİRİ yeterli
+  // (VEYA — ör. op_selection=deactive VEYA op_selection=activate); mode="all" → koşulların
+  // TÜMÜ sağlanmalı (VE — farklı alanlar üzerinde birden fazla şart).
+  dependsOn?: { mode: "all" | "any"; conditions: SurveyFieldCondition[] };
+}
+
+export interface SurveyFieldCondition {
+  field: string;
+  equals: string;
 }
 
 export interface JobHistoryRecord {

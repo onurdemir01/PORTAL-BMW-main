@@ -1426,8 +1426,11 @@ function initAnsibleRunner(app) {
     }
 
     function isActive(field) {
-      if (!field.dependsOn || !field.dependsOn.field) return true;
-      return (effective[field.dependsOn.field] ?? "") === (field.dependsOn.equals ?? "");
+      const dep = field.dependsOn;
+      if (!dep || !Array.isArray(dep.conditions) || dep.conditions.length === 0) return true;
+      const results = dep.conditions.map((c) => (effective[c.field] ?? "") === (c.equals ?? ""));
+      // mode="any" → VEYA (herhangi biri yeterli), aksi halde (varsayilan "all") VE (hepsi sart).
+      return dep.mode === "any" ? results.some(Boolean) : results.every(Boolean);
     }
 
     const extraVars = {};
@@ -1844,12 +1847,22 @@ function initAnsibleRunner(app) {
         if ((f?.type === "multiplechoice" || f?.type === "multiselect") && (!Array.isArray(f.choices) || f.choices.filter((c) => String(c || "").trim()).length === 0)) {
           return res.status(400).json({ ok: false, message: `"${f.label}" bir seçim alanı ama hiç seçeneği yok.` });
         }
-        if (f?.dependsOn?.field) {
-          if (f.dependsOn.field === name) {
-            return res.status(400).json({ ok: false, message: `"${f.label}" kendi kendine bağlı olamaz.` });
+        if (f?.dependsOn) {
+          const conditions = Array.isArray(f.dependsOn.conditions) ? f.dependsOn.conditions : [];
+          if (conditions.length === 0) {
+            return res.status(400).json({ ok: false, message: `"${f.label}" koşullu işaretli ama hiç koşulu yok.` });
           }
-          if (!customSurveyFields.some((other) => String(other?.name || "").trim() === f.dependsOn.field)) {
-            return res.status(400).json({ ok: false, message: `"${f.label}" tanımsız bir alana bağlı: "${f.dependsOn.field}"` });
+          for (const c of conditions) {
+            const condField = String(c?.field || "").trim();
+            if (!condField) {
+              return res.status(400).json({ ok: false, message: `"${f.label}" için bir koşul alanı seçilmemiş.` });
+            }
+            if (condField === name) {
+              return res.status(400).json({ ok: false, message: `"${f.label}" kendi kendine bağlı olamaz.` });
+            }
+            if (!customSurveyFields.some((other) => String(other?.name || "").trim() === condField)) {
+              return res.status(400).json({ ok: false, message: `"${f.label}" tanımsız bir alana bağlı: "${condField}"` });
+            }
           }
         }
       }

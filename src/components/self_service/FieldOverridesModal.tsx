@@ -169,10 +169,33 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   );
   const invalidDependsOn = customFields.find((f) => {
     if (f.dependsOn === undefined) return false;
-    const parentName = f.dependsOn.field.trim();
-    if (!parentName || parentName === f.name.trim()) return true;
-    return !customFields.some((o) => o !== f && o.name.trim() === parentName);
+    if (f.dependsOn.conditions.length === 0) return true;
+    return f.dependsOn.conditions.some((c) => {
+      const parentName = c.field.trim();
+      if (!parentName || parentName === f.name.trim()) return true;
+      return !customFields.some((o) => o !== f && o.name.trim() === parentName);
+    });
   });
+
+  function addCondition(fieldIndex: number) {
+    setCustomFields((prev) => prev.map((f, i) => {
+      if (i !== fieldIndex || !f.dependsOn) return f;
+      return { ...f, dependsOn: { ...f.dependsOn, conditions: [...f.dependsOn.conditions, { field: "", equals: "" }] } };
+    }));
+  }
+  function updateCondition(fieldIndex: number, condIndex: number, patch: Partial<{ field: string; equals: string }>) {
+    setCustomFields((prev) => prev.map((f, i) => {
+      if (i !== fieldIndex || !f.dependsOn) return f;
+      const conditions = f.dependsOn.conditions.map((c, ci) => (ci === condIndex ? { ...c, ...patch } : c));
+      return { ...f, dependsOn: { ...f.dependsOn, conditions } };
+    }));
+  }
+  function removeCondition(fieldIndex: number, condIndex: number) {
+    setCustomFields((prev) => prev.map((f, i) => {
+      if (i !== fieldIndex || !f.dependsOn) return f;
+      return { ...f, dependsOn: { ...f.dependsOn, conditions: f.dependsOn.conditions.filter((_, ci) => ci !== condIndex) } };
+    }));
+  }
 
   // Backend kuralıyla birebir aynı client-side ön-doğrulama: HANGİ ALAN OLURSA OLSUN
   // (zorunlu dahil) gizlenebilir, YETER Kİ çözümlenebilir (boş olmayan) bir varsayılan
@@ -416,31 +439,73 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                             <input
                               type="checkbox"
                               checked={f.dependsOn !== undefined}
-                              onChange={(e) => updateCustomField(i, { dependsOn: e.target.checked ? { field: "", equals: "" } : undefined })}
+                              onChange={(e) => updateCustomField(i, {
+                                dependsOn: e.target.checked ? { mode: "any", conditions: [{ field: "", equals: "" }] } : undefined,
+                              })}
                             />
-                            Koşullu göster (başka bir alanın değerine bağlı)
+                            Koşullu göster (başka alan(lar)ın değerine bağlı)
                           </label>
                           {f.dependsOn !== undefined && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <Select
-                                value={f.dependsOn.field}
-                                onChange={(e) => updateCustomField(i, { dependsOn: { field: e.target.value, equals: f.dependsOn?.equals || "" } })}
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-3">
+                                <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`depends-mode-${i}`}
+                                    checked={f.dependsOn.mode === "any"}
+                                    onChange={() => updateCustomField(i, { dependsOn: { ...f.dependsOn!, mode: "any" } })}
+                                  />
+                                  Herhangi biri yeterli (VEYA)
+                                </label>
+                                <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`depends-mode-${i}`}
+                                    checked={f.dependsOn.mode === "all"}
+                                    onChange={() => updateCustomField(i, { dependsOn: { ...f.dependsOn!, mode: "all" } })}
+                                  />
+                                  Hepsi sağlanmalı (VE)
+                                </label>
+                              </div>
+
+                              {f.dependsOn.conditions.map((c, ci) => (
+                                <div key={ci} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                                  <Select
+                                    value={c.field}
+                                    onChange={(e) => updateCondition(i, ci, { field: e.target.value })}
+                                  >
+                                    <option value="">Alan seçin…</option>
+                                    {customFields.filter((_, oi) => oi !== i).map((other, oi) => (
+                                      <option key={oi} value={other.name}>{other.label || other.name || `Alan ${oi + 1}`}</option>
+                                    ))}
+                                  </Select>
+                                  <TextInput
+                                    value={c.equals}
+                                    placeholder="şu değere eşitse (ör. deactive)"
+                                    onChange={(e) => updateCondition(i, ci, { equals: e.target.value })}
+                                  />
+                                  <button
+                                    onClick={() => removeCondition(i, ci)}
+                                    className="text-red-400 hover:text-red-600 flex-shrink-0"
+                                    title="Koşulu kaldır"
+                                  >
+                                    <TrashIcon className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+
+                              <button
+                                onClick={() => addCondition(i)}
+                                className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
                               >
-                                <option value="">Alan seçin…</option>
-                                {customFields.filter((_, oi) => oi !== i).map((other, oi) => (
-                                  <option key={oi} value={other.name}>{other.label || other.name || `Alan ${oi + 1}`}</option>
-                                ))}
-                              </Select>
-                              <TextInput
-                                value={f.dependsOn.equals}
-                                placeholder="şu değere eşitse (ör. deactive)"
-                                onChange={(e) => updateCustomField(i, { dependsOn: { field: f.dependsOn?.field || "", equals: e.target.value } })}
-                              />
+                                <PlusIcon className="w-3 h-3" /> Koşul Ekle
+                              </button>
                             </div>
                           )}
                           <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                            Seçilen alanın o anki değeri buradaki metinle BİREBİR eşleşirse bu alan kullanıcıya
-                            gösterilir; eşleşmezse hiç sorulmaz ve extra_vars'a eklenmez.
+                            "VEYA" seçiliyse koşullardan herhangi biri sağlanınca (ör. op_selection=deactive VEYA
+                            op_selection=activate), "VE" seçiliyse hepsi birden sağlanınca bu alan kullanıcıya
+                            gösterilir; aksi halde hiç sorulmaz ve extra_vars'a eklenmez.
                           </p>
                         </div>
 
