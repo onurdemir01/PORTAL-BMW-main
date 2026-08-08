@@ -50,6 +50,7 @@ function buildSeedRows(inventory = INVENTORY, jumpHosts = CLUSTER_JUMP_HOSTS) {
 async function seedClusters(rows) {
   let inserted = 0;
   let skipped = 0;
+  let failed = 0;
   for (const r of rows) {
     try {
       const { rows: existing } = await db.query(
@@ -68,10 +69,11 @@ async function seedClusters(rows) {
       );
       inserted++;
     } catch (e) {
+      failed++;
       console.warn(`[OcpSeed] '${r.tenant}/${r.env}/${r.cluster_name}' eklenemedi:`, e.message);
     }
   }
-  return { inserted, skipped };
+  return { inserted, skipped, failed };
 }
 
 async function seedTerminalHostMap(map = TERMINAL_HOST_MAP) {
@@ -121,6 +123,19 @@ async function seedOcpBootstrapOnce({ force = false } = {}) {
     terminalHostMap: hostMap,
     totalCandidates: rows.length,
   };
+
+  // ISARET, SEED GERCEKTEN CALISTIYSA yazilir. Hicbir satir eklenemediyse VE hicbiri zaten
+  // yoksa (yani her INSERT patladiysa — or. kolon eksik, DB kesintisi) isaret YAZILMAZ ki
+  // bir sonraki boot tekrar denesin. Aksi halde katalog KALICI OLARAK bos kalirdi.
+  const nothingWorked = clusters.inserted === 0 && clusters.skipped === 0 && clusters.failed > 0;
+  if (nothingWorked) {
+    console.warn(
+      `[OcpSeed] hicbir cluster yazilamadi (${clusters.failed} hata) — isaret ATILMADI, ` +
+      `bir sonraki acilista tekrar denenecek.`
+    );
+    return { skipped: false, incomplete: true, ...summary };
+  }
+
   await settings.setSetting(SEED_FLAG, JSON.stringify(summary), {
     description: 'OCP katalog ilk kurulumu (bir kerelik). Silinirse bir sonraki boot yeniden calisir.',
   });

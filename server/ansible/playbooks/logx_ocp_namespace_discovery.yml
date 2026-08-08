@@ -63,8 +63,13 @@
   become: false
 
   vars_files:
+    # credentials.yaml ZORUNLU: parolalar (vault) buradan gelir ve portal bunlari ASLA
+    # tasimaz — extra_vars yalnizca anahtarin ADINI (credential_key) tasir.
     - ../../bmw_openshift_jobs/global_variables/credentials.yaml
-    - ../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
+    # openshift_inventory_vars.yaml OPSIYONEL: portal artik api_url'i extra_vars ile
+    # gonderiyor. Dosya ileride kaldirilirsa playbook CALISMAYA DEVAM EDER; yalnizca
+    # portal metadata gondermeyen (eski) cagrilarda geriye donus icin durur.
+    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
 
   vars:
     # oc'nin yolu SABIT DEGIL. Sirasiyla: (1) extra_vars ile gelen `oc_binary` override'i,
@@ -130,15 +135,29 @@
           }}
       vars:
         inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        # v3: portal api_url + credential_key gonderiyorsa O kullanilir; gondermiyorsa
+        # eski inventory yoluna dusulur. Ikisi de yoksa cluster "bulunamadi" sayilir.
+        has_portal_meta: >-
+          {{ (item.api_url | default('') | string | trim | length > 0)
+             and (item.credential_key | default('') | string | trim | length > 0) }}
+        inv_has: >-
+          {{ clusters is defined
+             and clusters[inventory_key] is defined
+             and clusters[inventory_key][item.cluster_name] is defined
+             and clusters[inventory_key][item.cluster_name].url is defined
+             and clusters[inventory_key][item.cluster_name].password is defined }}
+        resolved_url: >-
+          {{ item.api_url if (has_portal_meta | bool)
+             else (clusters[inventory_key][item.cluster_name].url if (inv_has | bool) else '') }}
+        resolved_password: >-
+          {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
+             else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
         cluster_exists: >-
           {{
             item.tenant is defined and
             item.env is defined and
             item.cluster_name is defined and
-            clusters[inventory_key] is defined and
-            clusters[inventory_key][item.cluster_name] is defined and
-            clusters[inventory_key][item.cluster_name].url is defined and
-            clusters[inventory_key][item.cluster_name].password is defined
+            ((has_portal_meta | bool) or (inv_has | bool))
           }}
       loop: "{{ my_ocp_clusters }}"
       loop_control:
@@ -168,21 +187,35 @@
                   'env': item.env,
                   'tenant': item.tenant,
                   'inventory_key': inventory_key,
-                  'url': clusters[inventory_key][item.cluster_name].url,
-                  'password': clusters[inventory_key][item.cluster_name].password
+                  'url': resolved_url,
+                  'password': resolved_password
                 }] if cluster_exists else [])
               }}
           vars:
             inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+            # v3: portal api_url + credential_key gonderiyorsa O kullanilir; gondermiyorsa
+            # eski inventory yoluna dusulur. Ikisi de yoksa cluster "bulunamadi" sayilir.
+            has_portal_meta: >-
+              {{ (item.api_url | default('') | string | trim | length > 0)
+                 and (item.credential_key | default('') | string | trim | length > 0) }}
+            inv_has: >-
+              {{ clusters is defined
+                 and clusters[inventory_key] is defined
+                 and clusters[inventory_key][item.cluster_name] is defined
+                 and clusters[inventory_key][item.cluster_name].url is defined
+                 and clusters[inventory_key][item.cluster_name].password is defined }}
+            resolved_url: >-
+              {{ item.api_url if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].url if (inv_has | bool) else '') }}
+            resolved_password: >-
+              {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
             cluster_exists: >-
               {{
                 item.tenant is defined and
                 item.env is defined and
                 item.cluster_name is defined and
-                clusters[inventory_key] is defined and
-                clusters[inventory_key][item.cluster_name] is defined and
-                clusters[inventory_key][item.cluster_name].url is defined and
-                clusters[inventory_key][item.cluster_name].password is defined
+                ((has_portal_meta | bool) or (inv_has | bool))
               }}
           loop: "{{ my_ocp_clusters }}"
           loop_control:

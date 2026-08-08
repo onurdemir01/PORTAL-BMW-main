@@ -62,8 +62,12 @@ function normalizeTimeout(value, fallback) {
   return Math.min(MAX_TIMEOUT, Math.max(MIN_TIMEOUT, Math.floor(n)));
 }
 
-// Genel amacli tamsayi kirpma (aralik disi/gecersiz → varsayilan).
+// Genel amacli tamsayi kirpma (aralik disi → sinira, gecersiz/bos → varsayilan).
+// DIKKAT: null ve '' JS'te Number() ile 0'a cevrilir; bunlari "gecersiz" saymazsak
+// admin ekrani bos alan gonderdiginde deger sessizce ALT SINIRA duserdi (or. TTL 24
+// saat yerine 1 saat, sync araligi 360 yerine 15 dakika).
 function normalizeInt(value, fallback, min, max) {
+  if (value == null || value === '') return fallback;
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.floor(n)));

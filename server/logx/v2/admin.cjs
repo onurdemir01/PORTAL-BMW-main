@@ -49,6 +49,27 @@ function normalizeTerminalHost(value) {
   return s.length ? s : null;
 }
 
+// API URL dogrulamasi: yalnizca https ve sema-uyumlu bir URL kabul edilir. Bu deger
+// playbook'a gidip `oc login --server=` argumani olur — serbest metin kabul etmek kabuk
+// enjeksiyonu ve yanlis hedef riski demektir. Gecersizse NULL (eski inventory yoluna duser).
+function normalizeApiUrl(value) {
+  const s = String(value ?? '').trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== 'https:') return null;
+    if (/[\s"'`$;&|<>\\]/.test(s)) return null;
+    return s;
+  } catch { return null; }
+}
+
+// Vault anahtarinin ADI (parola DEGIL). Ansible degisken adi kurallarina uymali —
+// lookup('vars', <ad>) ile cozulecegi icin serbest metin guvenli degil.
+function normalizeVaultKey(value) {
+  const s = String(value ?? '').trim();
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) ? s : null;
+}
+
 async function createClusterIndexRow(data) {
   const { env, tenant, cluster_name, is_active } = data;
   if (!env || !tenant || !cluster_name) {
@@ -56,10 +77,12 @@ async function createClusterIndexRow(data) {
   }
   const { rows } = await insertOrConflict(
     () => db.query(
-      `INSERT INTO ocp_cluster_index (env, tenant, cluster_name, terminal_host, is_active)
+      `INSERT INTO ocp_cluster_index (env, tenant, cluster_name, terminal_host, api_url, vault_credential_key, is_active)
        OUTPUT INSERTED.*
-       VALUES ($1,$2,$3,$4,$5)`,
-      [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host), is_active !== false ? 1 : 0]
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host),
+       normalizeApiUrl(data.api_url), normalizeVaultKey(data.vault_credential_key),
+       is_active !== false ? 1 : 0]
     ),
     `Bu kayıt zaten var: ${env}/${tenant}/${cluster_name}.`
   );
@@ -69,10 +92,13 @@ async function createClusterIndexRow(data) {
 async function updateClusterIndexRow(id, data) {
   const { env, tenant, cluster_name, is_active } = data;
   const { rows } = await db.query(
-    `UPDATE ocp_cluster_index SET env=$1, tenant=$2, cluster_name=$3, terminal_host=$4, is_active=$5, updated_at=GETUTCDATE()
+    `UPDATE ocp_cluster_index SET env=$1, tenant=$2, cluster_name=$3, terminal_host=$4,
+       api_url=$5, vault_credential_key=$6, is_active=$7, updated_at=GETUTCDATE()
      OUTPUT INSERTED.*
-     WHERE id=$6`,
-    [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host), is_active !== false ? 1 : 0, id]
+     WHERE id=$8`,
+    [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host),
+     normalizeApiUrl(data.api_url), normalizeVaultKey(data.vault_credential_key),
+     is_active !== false ? 1 : 0, id]
   );
   return rows[0] ? normalizeBit(rows[0]) : null;
 }
@@ -106,6 +132,41 @@ async function getTerminalHost(tenant, env) {
     [tenant, env]
   );
   return rows[0]?.terminal_host || null;
+}
+
+// Cluster'in CALISMA ZAMANI metadata'si: bastion + API URL + hangi vault anahtarinin
+// kullanilacagi. Playbook artik AWX'teki openshift_inventory_vars.yaml'a bagimli olmadan
+// calisabilsin diye bu bilgiler extra_vars ile gonderilir.
+//
+// PAROLA BURADA YOK ve OLMAYACAK: yalnizca `vault_credential_key` (credentials.yaml
+// icindeki anahtarin ADI) tasinir; parolayi playbook lookup('vars', <ad>) ile cozer.
+//
+// Donus: { [clusterName]: { terminal_host, api_url, vault_credential_key } }
+// Eksik alanlar null gelir — cagiran taraf bunlari extra_vars'a HIC koymaz, boylece
+// playbook eski inventory yoluna duser (asamali gecis).
+async function resolveClusterMeta(env, tenant, clusterNames) {
+  const names = [...new Set((clusterNames || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  const out = {};
+  if (!names.length) return out;
+
+  const { rows } = await db.query(
+    `SELECT cluster_name, terminal_host, api_url, vault_credential_key
+     FROM ocp_cluster_index
+     WHERE env=$1 AND tenant=$2 AND is_active=1`,
+    [env, tenant]
+  );
+  const byName = new Map(rows.map((r) => [r.cluster_name, r]));
+  const fallbackHost = await getTerminalHost(tenant, env);
+
+  for (const name of names) {
+    const row = byName.get(name) || {};
+    out[name] = {
+      terminal_host: normalizeTerminalHost(row.terminal_host) || fallbackHost || null,
+      api_url: String(row.api_url || '').trim() || null,
+      vault_credential_key: String(row.vault_credential_key || '').trim() || null,
+    };
+  }
+  return out;
 }
 
 // OCP dinamik yapi — CLUSTER-bazli bastion cozumlemesi. Tum OCP akislarinin (LogX v2,
@@ -284,7 +345,7 @@ async function deleteMaskRule(id) {
 
 module.exports = {
   listClusterIndex, getClusterTree, createClusterIndexRow, updateClusterIndexRow, deleteClusterIndexRow, clusterExists,
-  listTerminalHostMap, getTerminalHost, resolveTerminalHosts, createTerminalHostRow, updateTerminalHostRow, deleteTerminalHostRow,
+  listTerminalHostMap, getTerminalHost, resolveTerminalHosts, resolveClusterMeta, createTerminalHostRow, updateTerminalHostRow, deleteTerminalHostRow,
   listEnvSuffixMap, createEnvSuffixRow, updateEnvSuffixRow, deleteEnvSuffixRow, resolveEnvLabel,
   listMaskRules, createMaskRule, updateMaskRule, deleteMaskRule,
 };

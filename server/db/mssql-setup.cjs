@@ -222,9 +222,9 @@ const TABLES = [
       CREATE TABLE ocp_namespace_cache (
         id           INT IDENTITY(1,1) PRIMARY KEY,
         env          NVARCHAR(30) NOT NULL,
-        tenant       NVARCHAR(100) NOT NULL,
-        cluster_name NVARCHAR(150) NOT NULL,
-        namespace    NVARCHAR(256) NOT NULL,
+        tenant       NVARCHAR(64) NOT NULL,
+        cluster_name NVARCHAR(64) NOT NULL,
+        namespace    NVARCHAR(100) NOT NULL,
         source       NVARCHAR(32) NOT NULL DEFAULT 'discovery',
         fetched_at   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         expires_at   DATETIME2 NULL,
@@ -243,11 +243,11 @@ const TABLES = [
       CREATE TABLE ocp_app_cache (
         id            INT IDENTITY(1,1) PRIMARY KEY,
         env           NVARCHAR(30) NOT NULL,
-        tenant        NVARCHAR(100) NOT NULL,
-        cluster_name  NVARCHAR(150) NOT NULL,
-        namespace     NVARCHAR(256) NOT NULL,
-        kind          NVARCHAR(64) NOT NULL,
-        app_name      NVARCHAR(256) NOT NULL,
+        tenant        NVARCHAR(64) NOT NULL,
+        cluster_name  NVARCHAR(64) NOT NULL,
+        namespace     NVARCHAR(100) NOT NULL,
+        kind          NVARCHAR(32) NOT NULL,
+        app_name      NVARCHAR(150) NOT NULL,
         replicas      INT NULL,
         image         NVARCHAR(512) NULL,
         label_app     NVARCHAR(256) NULL,
@@ -1361,14 +1361,11 @@ async function setupTables() {
   await seedSplunkProducts(pool);
   await seedSelfServiceGroups(pool);
 
-  // OCP katalogu ilk kurulumu — digerlerinden FARKLI olarak BIR KERELIK calisir
-  // (isaret: portal_settings). Sebep: admin bir cluster'i bilerek silerse restart onu
-  // geri getirmemeli. Eklenen satirlar PASIF baslar (bkz. ocp-bootstrap-seed.cjs).
-  try {
-    await require('./ocp-bootstrap-seed.cjs').seedOcpBootstrapOnce();
-  } catch (e) {
-    console.warn('[DB] OCP katalog seed atlandi:', e.message);
-  }
+  // NOT: OCP katalog seed'i BURADA DEGIL, setupTables'in EN SONUNDA calisir — kullandigi
+  // kolonlar (api_url, vault_credential_key, source, terminal_host) asagidaki ALTER
+  // dongusuyle ekleniyor. Burada calistirilsaydi her INSERT "Invalid column name" ile
+  // patlar, hatalar yutulur ve "yapildi" isareti yine de yazilirdi → katalog KALICI
+  // OLARAK BOS kalirdi.
 
   // Not: Eski portal_config_blobs uzlastirmasi (config-mirror.cjs) kaldirildi — store'lar
   // artik normalize tablolara dogrudan yazar; blob'lar yalnizca her store'un kendi
@@ -1714,6 +1711,18 @@ async function setupTables() {
     } catch (err) {
       console.warn(`[DB] Index olusturulamadi (${name}):`, err.message);
     }
+  }
+
+  // ── OCP katalogu ilk kurulumu — EN SONDA ────────────────────────────────────
+  // Digerlerinden FARKLI olarak BIR KERELIK calisir (isaret: portal_settings). Sebep:
+  // admin bir cluster'i bilerek silerse restart onu geri getirmemeli.
+  // BURADA olmasi ZORUNLU: kullandigi kolonlar (api_url, vault_credential_key, source,
+  // terminal_host) yukaridaki ALTER dongusunde ekleniyor; seed daha once calisirsa her
+  // INSERT "Invalid column name" ile patlar ve katalog kalici olarak bos kalirdi.
+  try {
+    await require('./ocp-bootstrap-seed.cjs').seedOcpBootstrapOnce();
+  } catch (e) {
+    console.warn('[DB] OCP katalog seed atlandi:', e.message);
   }
 }
 

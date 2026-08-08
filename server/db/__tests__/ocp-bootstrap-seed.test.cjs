@@ -36,7 +36,10 @@ test('parseInventoryKey(): bozuk girdilerde patlamaz', () => {
 
 test('buildSeedRows(): her cluster api_url + credential anahtari tasir, PAROLA YOK', () => {
   const rows = seed.buildSeedRows();
-  assert.ok(rows.length > 40, 'envanterden anlamli sayida satir uretilmeli');
+  // KESIN sayi: envanterin yarisi silinse 'rows.length > 40' testi yine gecerdi.
+  assert.equal(rows.length, 62, 'envanterdeki (tenant_env, cluster) ciftlerinin TAMAMI uretilmeli');
+  const keys = new Set(rows.map((r) => `${r.env}|${r.tenant}|${r.cluster_name}`));
+  assert.equal(keys.size, rows.length, 'UNIQUE(env,tenant,cluster_name) ile cakisma OLMAMALI');
   for (const r of rows) {
     assert.ok(r.api_url.startsWith('https://api.'), `api_url bekleniyor: ${r.cluster_name}`);
     assert.ok(r.vault_credential_key, `credential anahtari bekleniyor: ${r.cluster_name}`);
@@ -64,7 +67,7 @@ test('buildSeedRows(): metaco/das cluster\'lari uxmid_das anahtarini kullanir', 
 
 // ── Bir-kerelik davranis ──────────────────────────────────────────────────────
 
-function withMocks(fn, { flag = null, existingClusters = new Set() } = {}) {
+function withMocks(fn, { flag = null, existingClusters = new Set(), insertFails = false } = {}) {
   const origGetStrict = settings.getSettingStrict;
   const origSet = settings.setSetting;
   const origQuery = db.query;
@@ -77,7 +80,11 @@ function withMocks(fn, { flag = null, existingClusters = new Set() } = {}) {
       calls.selects++;
       return { rows: existingClusters.has(params[2]) ? [{ id: 1 }] : [] };
     }
-    if (/INSERT INTO ocp_cluster_index/i.test(sql)) { calls.inserts.push(params); return { rows: [] }; }
+    if (/INSERT INTO ocp_cluster_index/i.test(sql)) {
+      if (insertFails) throw new Error("Invalid column name 'vault_credential_key'");
+      calls.inserts.push({ sql, params });
+      return { rows: [] };
+    }
     if (/FROM ocp_terminal_host_map/i.test(sql)) return { rows: [{ id: 1 }] };  // hepsi var say
     return { rows: [], rowCount: 1 };
   };
@@ -103,17 +110,34 @@ test('seedOcpBootstrapOnce(): yeni satirlar PASIF (is_active=0) ve source=invent
   await withMocks(async (calls) => {
     await seed.seedOcpBootstrapOnce();
     assert.ok(calls.inserts.length > 0, 'satir eklenmeli');
-    // INSERT SQL'inde sabit yazili: source='inventory-seed', is_active=0
-    // parametre sirasi: env, tenant, cluster_name, api_url, vault_credential_key, terminal_host
     const first = calls.inserts[0];
-    assert.equal(first.length, 6, 'parola gibi fazladan bir alan gonderilmemeli');
+    assert.equal(first.params.length, 6, 'parola gibi fazladan bir alan gonderilmemeli');
+    // SQL METNINI dogrula: is_active/source sabit yazili oldugu icin parametrelere
+    // bakmak yetmez — biri 0'i 1 yapsa test yine gecerdi.
+    assert.match(first.sql, /'inventory-seed'\s*,\s*0\s*\)/,
+      "yeni satirlar source='inventory-seed' ve is_active=0 ile eklenmeli");
   }, { flag: null });
+});
+
+test('seedOcpBootstrapOnce(): TUM insert\'ler patlarsa isaret ATILMAZ (katalog bos kalmasin)', async () => {
+  let flagWritten = false;
+  const origSet = settings.setSetting;
+  settings.setSetting = async () => { flagWritten = true; };
+  try {
+    await withMocks(async () => {
+      const r = await seed.seedOcpBootstrapOnce();
+      assert.equal(r.incomplete, true, 'eksik kurulum olarak isaretlenmeli');
+      assert.equal(flagWritten, false, "hicbir satir yazilamadiysa 'yapildi' isareti ATILMAMALI");
+    }, { flag: null, insertFails: true });
+  } finally {
+    settings.setSetting = origSet;
+  }
 });
 
 test('seedOcpBootstrapOnce(): DB\'de ZATEN olan cluster atlanir (admin duzenlemesi korunur)', async () => {
   await withMocks(async (calls) => {
     await seed.seedOcpBootstrapOnce();
-    const inserted = calls.inserts.map((p) => p[2]);
+    const inserted = calls.inserts.map((c) => c.params[2]);
     assert.ok(!inserted.includes('gbocpprod1'), 'var olan satir yeniden eklenmemeli');
     assert.ok(inserted.includes('gbocpprod2'), 'olmayan satir eklenmeli');
   }, { flag: null, existingClusters: new Set(['gbocpprod1']) });

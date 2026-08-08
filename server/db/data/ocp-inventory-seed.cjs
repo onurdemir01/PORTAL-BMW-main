@@ -111,6 +111,13 @@ const TERMINAL_HOST_MAP = {
   metaco_das_test: 'damtct01', metaco_das_prod: 'daaocp01',
   metaco_gar_test: 'damtct01', metaco_gar_prod: 'daaocp01',
 
+  // `digital_assets_*` gruplari envanterde metaco/wyden ile AYNI cluster'lari isaret eder
+  // ama kendi tenant adlariyla ayri satirlar uretir. Yedek eslemesi olmazsa bu satirlar
+  // aktive edildigi anda "bastion tanimli degil" 400'u alirdi.
+  digital_assets_metaco_test: 'damtct01', digital_assets_metaco_prod: 'daaocp01',
+  digital_assets_wyden_dev: 'gbaocp01', digital_assets_wyden_test: 'gbaocp01',
+  digital_assets_wyden_qa: 'gbaocp01', digital_assets_wyden_prod: 'gbaocp01',
+
   wyden_dev: 'gbaocp01', wyden_test: 'gbaocp01',
   wyden_qa: 'gbaocp01', wyden_prod: 'gbaocp01',
 
