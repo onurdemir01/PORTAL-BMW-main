@@ -20,9 +20,11 @@ interface PlatformConfig {
   operationKey?: string;
   // Openshift
   terminalHostKey?: string;
+  terminalHostsKey?: string;
   namespaceKey?: string;
   appNameKey?: string;
   clustersKey?: string;
+  clusterListStyle?: "joined" | "perCluster";
   // Ortak
   extraVars: string;
   separator: string;
@@ -36,7 +38,8 @@ const KEY_FIELDS: Record<Platform, { field: keyof PlatformConfig; label: string 
     { field: "operationKey", label: "İşlem değişkeni" },
   ],
   openshift: [
-    { field: "terminalHostKey", label: "Terminal host değişkeni" },
+    { field: "terminalHostKey", label: "Jump server (bastion) değişkeni" },
+    { field: "terminalHostsKey", label: "Jump server listesi değişkeni" },
     { field: "namespaceKey", label: "Namespace değişkeni" },
     { field: "appNameKey", label: "Uygulama adı değişkeni" },
     { field: "clustersKey", label: "Cluster listesi değişkeni" },
@@ -176,6 +179,34 @@ export default function OpsxConfigTab() {
               ))}
             </div>
 
+            {plat === "openshift" && (
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                  Cluster listesi biçimi
+                </label>
+                <select
+                  value={c.clusterListStyle ?? "joined"}
+                  onChange={(e) => update(plat, "clusterListStyle", e.target.value)}
+                  className="px-2.5 py-1.5 text-sm border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
+                >
+                  <option value="joined">Birleşik (tek öğe, cluster adları ayıraçla)</option>
+                  <option value="perCluster">Cluster başına (her cluster kendi jump server'ı ile)</option>
+                </select>
+                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <strong>Birleşik</strong> bugünkü davranıştır ve tek jump server varsayar; seçilen
+                  cluster'lar farklı jump server'lara düşerse işlem hata verir. <strong>Cluster başına</strong>
+                  seçeneği her cluster'ı kendi jump server'ıyla gönderir (LogX ile aynı sözleşme) —
+                  yalnızca playbook çoklu bastion destekliyorsa seçin.
+                </p>
+                <p className="mt-1 text-xs px-2 py-1.5 rounded-lg bg-amber-50 text-amber-800">
+                  ⚠ Bu Openshift ayarları (değişken adları, ayıraç ve liste biçimi) <strong>Telnet</strong>
+                  modülünün OpenShift akışında da kullanılır. Değiştirmeden önce Telnet playbook'unun
+                  (<span className="font-mono">telnet_openshift_operation</span>) aynı sözleşmeyi
+                  beklediğinden emin olun.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
                 Sunucu listesi ayıracı
@@ -227,14 +258,25 @@ export default function OpsxConfigTab() {
       },
     }, null, 2)
   : JSON.stringify({
-      extra_vars: {
-        [c.terminalHostKey || "terminal_host"]: "GBAOCP01",
-        [c.namespaceKey || "namespace"]: "das-trading-management-qa",
-        [c.appNameKey || "app_name"]: "dropcopy-integration-v0",
-        [c.clustersKey || "ocp_clusters"]: [
-          { env: "qa", tenant: "ark", cluster_name: `gbocpqa1${c.separator}gbocpqa2` },
-        ],
-      },
+      extra_vars: (c.clusterListStyle ?? "joined") === "perCluster"
+        ? {
+            [c.terminalHostKey || "terminal_host"]: "GBAOCP01",
+            [c.terminalHostsKey || "terminal_hosts"]: ["GBAOCP01", "GBAOCP02"],
+            [c.namespaceKey || "namespace"]: "das-trading-management-qa",
+            [c.appNameKey || "app_name"]: "dropcopy-integration-v0",
+            [c.clustersKey || "ocp_clusters"]: [
+              { env: "qa", tenant: "ark", cluster_name: "gbocpqa1", terminal_host: "GBAOCP01" },
+              { env: "qa", tenant: "ark", cluster_name: "gbocpqa2", terminal_host: "GBAOCP02" },
+            ],
+          }
+        : {
+            [c.terminalHostKey || "terminal_host"]: "GBAOCP01",
+            [c.namespaceKey || "namespace"]: "das-trading-management-qa",
+            [c.appNameKey || "app_name"]: "dropcopy-integration-v0",
+            [c.clustersKey || "ocp_clusters"]: [
+              { env: "qa", tenant: "ark", cluster_name: `gbocpqa1${c.separator}gbocpqa2` },
+            ],
+          },
     }, null, 2)}
               </pre>
             </div>

@@ -49,6 +49,12 @@ function initTelnet(app) {
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
   } catch { /* auth modulu yoksa deny kalir */ }
 
+  // Telnet sayfasi kullaniciya kapaliysa GERCEK 403 (OpsX/LogX v2 ile ayni desen).
+  try {
+    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
+    app.use('/api/telnet', requireVisiblePrefix('Telnet'));
+  } catch { /* motor yoksa yoksay */ }
+
   // GET /api/telnet/apps?search= — OpsX ile AYNI kaynak.
   app.get('/api/telnet/apps', requireAuth, async (req, res) => {
     try {
@@ -190,55 +196,21 @@ function initTelnet(app) {
 
     } else {
       // ── Openshift ───────────────────────────────────────────────────────────
-      const envKey = String(env || '').trim();
-      const tenantKey = String(tenant || '').trim();
-      const ns = String(namespace || '').trim();
-
-      if (!ns) return res.status(400).json({ ok: false, message: 'Namespace gerekli.' });
-      if (!Array.isArray(clusters) || clusters.length === 0) {
-        return res.status(400).json({ ok: false, message: 'En az bir cluster seçilmeli.' });
-      }
-
-      const adminData = require('../logx/v2/admin.cjs');
-      let tree;
+      // OpsX ile ORTAK yardimci (opsx/ocp-target.cjs): katalog dogrulamasi + cluster
+      // seviyesinde bastion cozumleme + extra_vars. Anahtar adlari da artik koda sabit
+      // degil, OpsX'in openshift yapilandirmasindan gelir (ayni playbook ailesi).
+      // Telnet'te `app_name` YOK — appName gecilmez, yardimci alani hic eklemez.
       try {
-        tree = await adminData.getClusterTree();
+        const cfg = (await require('../opsx/config.cjs').getConfig()).openshift;
+        const built = await require('../opsx/ocp-target.cjs').buildOcpTarget({
+          env, tenant, clusters, namespace, cfg,
+          staticVars: { ip: ipTrim, port: portTrim },
+        });
+        extraVars = built.extraVars;
+        logSummary = `${built.logSummary} ip=${ipTrim} port=${portTrim}`;
       } catch (err) {
-        return res.status(503).json({ ok: false, message: `Cluster kataloğu okunamadı: ${err.message}` });
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
-      if (!envKey || !tree[envKey]) {
-        return res.status(400).json({ ok: false, message: `Ortam tanımlı değil: ${envKey || '(boş)'}` });
-      }
-      if (!tenantKey || !tree[envKey][tenantKey]) {
-        return res.status(400).json({ ok: false, message: `Tenant tanımlı değil: ${tenantKey || '(boş)'}` });
-      }
-      const validClusters = new Set(tree[envKey][tenantKey] || []);
-      const requested = clusters.map((c) => String(c || '').trim()).filter(Boolean);
-      const notValid = requested.filter((c) => !validClusters.has(c));
-      if (notValid.length) {
-        return res.status(400).json({
-          ok: false,
-          message: `Bu cluster'lar "${envKey}/${tenantKey}" altında tanımlı değil: ${notValid.join(', ')}`,
-        });
-      }
-
-      const terminalHost = await adminData.getTerminalHost(tenantKey, envKey);
-      if (!terminalHost) {
-        return res.status(400).json({
-          ok: false,
-          message: `"${tenantKey}/${envKey}" için terminal/bastion host tanımlı değil — `
-                 + `Admin > LogX v2 Yapılandırma ekranından eklenmeli.`,
-        });
-      }
-
-      extraVars = {
-        terminal_host: terminalHost,
-        namespace: ns,
-        ocp_clusters: [{ env: envKey, tenant: tenantKey, cluster_name: requested.join(',') }],
-        ip: ipTrim,
-        port: portTrim,
-      };
-      logSummary = `ns=${ns} clusters=${requested.join(',')} terminal=${terminalHost} ip=${ipTrim} port=${portTrim}`;
     }
 
     try {

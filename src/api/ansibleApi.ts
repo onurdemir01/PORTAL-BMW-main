@@ -88,6 +88,9 @@ export interface OcpCluster {
   /** AWX inventory'de zaten "oc login" yapılmış bastion/jump host — canlı pod/node
    *  durumu sorguları (ocp_pod_status.yml) bunun üzerinden çalışır. */
   jumpHost?: string;
+  /** Katalog birleştirme: LogX/OpsX/Telnet cluster ağacındaki platform (tenant). Boşsa
+   *  kayıt ortak ağaca PASİF olarak aynalanır ve sihirbazlarda görünmez. */
+  tenant?: string;
   isActive?: boolean;
   createdAt?: string | null;
   createdBy?: string | null;

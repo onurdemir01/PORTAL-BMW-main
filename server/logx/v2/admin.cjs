@@ -43,6 +43,12 @@ async function getClusterTree() {
   return tree;
 }
 
+// Bos/whitespace terminal_host → NULL (fallback devrede); dolu deger trimlenir.
+function normalizeTerminalHost(value) {
+  const s = String(value ?? '').trim();
+  return s.length ? s : null;
+}
+
 async function createClusterIndexRow(data) {
   const { env, tenant, cluster_name, is_active } = data;
   if (!env || !tenant || !cluster_name) {
@@ -50,10 +56,10 @@ async function createClusterIndexRow(data) {
   }
   const { rows } = await insertOrConflict(
     () => db.query(
-      `INSERT INTO ocp_cluster_index (env, tenant, cluster_name, is_active)
+      `INSERT INTO ocp_cluster_index (env, tenant, cluster_name, terminal_host, is_active)
        OUTPUT INSERTED.*
-       VALUES ($1,$2,$3,$4)`,
-      [env, tenant, cluster_name, is_active !== false ? 1 : 0]
+       VALUES ($1,$2,$3,$4,$5)`,
+      [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host), is_active !== false ? 1 : 0]
     ),
     `Bu kayıt zaten var: ${env}/${tenant}/${cluster_name}.`
   );
@@ -63,10 +69,10 @@ async function createClusterIndexRow(data) {
 async function updateClusterIndexRow(id, data) {
   const { env, tenant, cluster_name, is_active } = data;
   const { rows } = await db.query(
-    `UPDATE ocp_cluster_index SET env=$1, tenant=$2, cluster_name=$3, is_active=$4, updated_at=GETUTCDATE()
+    `UPDATE ocp_cluster_index SET env=$1, tenant=$2, cluster_name=$3, terminal_host=$4, is_active=$5, updated_at=GETUTCDATE()
      OUTPUT INSERTED.*
-     WHERE id=$5`,
-    [env, tenant, cluster_name, is_active !== false ? 1 : 0, id]
+     WHERE id=$6`,
+    [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host), is_active !== false ? 1 : 0, id]
   );
   return rows[0] ? normalizeBit(rows[0]) : null;
 }
@@ -100,6 +106,38 @@ async function getTerminalHost(tenant, env) {
     [tenant, env]
   );
   return rows[0]?.terminal_host || null;
+}
+
+// OCP dinamik yapi — CLUSTER-bazli bastion cozumlemesi. Tum OCP akislarinin (LogX v2,
+// OpsX, Telnet) kullanmasi gereken TEK kapi. Oncelik sirasi:
+//   1) ocp_cluster_index.terminal_host (cluster satirinda dolu ise o kazanir)
+//   2) ocp_terminal_host_map(tenant, env)  — eski davranis, fallback
+// Donus: { hosts: { [clusterName]: host }, missing: [clusterName, ...] }
+// `missing` bos degilse cagiran taraf anlasilir bir 400 uretmelidir (hangi cluster'larin
+// bastion'siz kaldigi kullaniciya soylenir); burada throw EDILMEZ ki cagiran mesaji
+// kendi baglamina gore kurabilsin.
+async function resolveTerminalHosts(env, tenant, clusterNames) {
+  const names = [...new Set((clusterNames || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  const hosts = {};
+  const missing = [];
+  if (!names.length) return { hosts, missing };
+
+  const { rows } = await db.query(
+    `SELECT cluster_name, terminal_host FROM ocp_cluster_index
+     WHERE env=$1 AND tenant=$2 AND is_active=1`,
+    [env, tenant]
+  );
+  const byName = new Map(rows.map((r) => [r.cluster_name, normalizeTerminalHost(r.terminal_host)]));
+
+  // Fallback bir kez cozulur (tum cluster'lar ayni tenant/env altinda).
+  const fallback = await getTerminalHost(tenant, env);
+  for (const name of names) {
+    const own = byName.get(name);
+    const resolved = own || fallback;
+    if (resolved) hosts[name] = resolved;
+    else missing.push(name);
+  }
+  return { hosts, missing };
 }
 
 async function createTerminalHostRow(data) {
@@ -246,7 +284,7 @@ async function deleteMaskRule(id) {
 
 module.exports = {
   listClusterIndex, getClusterTree, createClusterIndexRow, updateClusterIndexRow, deleteClusterIndexRow, clusterExists,
-  listTerminalHostMap, getTerminalHost, createTerminalHostRow, updateTerminalHostRow, deleteTerminalHostRow,
+  listTerminalHostMap, getTerminalHost, resolveTerminalHosts, createTerminalHostRow, updateTerminalHostRow, deleteTerminalHostRow,
   listEnvSuffixMap, createEnvSuffixRow, updateEnvSuffixRow, deleteEnvSuffixRow, resolveEnvLabel,
   listMaskRules, createMaskRule, updateMaskRule, deleteMaskRule,
 };

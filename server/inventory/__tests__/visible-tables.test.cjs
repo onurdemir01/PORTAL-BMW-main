@@ -126,10 +126,12 @@ test('reconcileTableVisibility(): artik canli olmayan tablo SILINMEZ, is_active=
 });
 
 test('migrateLegacyVisibleTablesIfNeeded(): eski tablo da BOSSA DEFAULT_VISIBLE yeni semaya yazilir', async () => {
-  await inv._reconcileTableVisibility(['Inventory', 'EnvanterApps', 'OpenshiftInventory']);
+  // DEFAULT_VISIBLE (inventory/index.cjs) kurumsal envanter tablosu adiyla birlikte
+  // guncellendi: EnvanterApps -> MWAppsInventory. Test o listeyi TAKIP eder.
+  await inv._reconcileTableVisibility(['Inventory', 'MWAppsInventory', 'OpenshiftInventory']);
   await inv._migrateLegacyVisibleTablesIfNeeded();
   const userRows = rv.filter((r) => r.role_name === 'User').map((r) => tv.find((t) => t.id === r.table_visibility_id)?.table_name).sort();
-  assert.deepEqual(userRows, ['EnvanterApps', 'Inventory', 'OpenshiftInventory']);
+  assert.deepEqual(userRows, ['Inventory', 'MWAppsInventory', 'OpenshiftInventory']);
   const adminIsStar = rv.some((r) => r.role_name === 'Admin' && tv.find((t) => t.id === r.table_visibility_id)?.table_name === '*');
   assert.ok(adminIsStar, 'Admin varsayilan olarak * (tum tablolar) olmali');
 });
@@ -161,10 +163,10 @@ test('migrateLegacyVisibleTablesIfNeeded(): rol-gorunurlugu ZATEN doluysa TEKRAR
 });
 
 test('readVisibleTables(): eski API seklini ({User:[...], Admin:"*"}) BIREBIR korur', async () => {
-  await inv._reconcileTableVisibility(['Inventory', 'EnvanterApps']);
+  await inv._reconcileTableVisibility(['Inventory', 'MWAppsInventory']);
   await inv._migrateLegacyVisibleTablesIfNeeded();
   const config = await inv._readVisibleTables();
-  assert.deepEqual([...config.User].sort(), ['EnvanterApps', 'Inventory']);
+  assert.deepEqual([...config.User].sort(), ['Inventory', 'MWAppsInventory']);
   assert.equal(config.Admin, '*');
 });
 

@@ -50,6 +50,9 @@ const LogXWizardPage: React.FC = () => {
   const [request, setRequest] = useState<LogXv2Request | null>(null);
   const [jobs, setJobs] = useState<LogXv2Job[]>([]);
   const [download, setDownload] = useState<DownloadInfo | null>(null);
+  // Çok-bastion'lu OCP çekiminde bir istek birden çok arşiv üretebilir; tekil `download`
+  // sözleşme olarak korunur (ilk arşiv), liste hepsini taşır.
+  const [downloadList, setDownloadList] = useState<DownloadInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [busyError, setBusyError] = useState<string | null>(null);
@@ -60,6 +63,7 @@ const LogXWizardPage: React.FC = () => {
     setRequest(r.request);
     setJobs(r.jobs);
     setDownload(r.download);
+    setDownloadList(r.downloads ?? []);
     return r;
   }, []);
 
@@ -292,7 +296,7 @@ const LogXWizardPage: React.FC = () => {
           return <JobProgress jobId={job.id} discoveringLabel="Pod'lar taranıyor ve loglar toplanıyor…" onDone={() => refresh(requestId)} />;
         })()}
 
-        {step === "ready" && download && <DownloadStep download={download} onRestart={restart} />}
+        {step === "ready" && download && <DownloadStep download={download} downloads={downloadList} onRestart={restart} />}
 
         {step === "failed" && (
           <div className="flex flex-col items-center gap-4 py-8 text-center">

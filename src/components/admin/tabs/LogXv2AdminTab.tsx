@@ -18,18 +18,34 @@ const SUB_TABS = [
 ] as const;
 type SubTabId = (typeof SUB_TABS)[number]["id"];
 
-const CLUSTER_COLUMNS: ColumnDef<OcpClusterIndexRow>[] = [
-  { key: "env", label: "Ortam (env)", placeholder: "dev" },
-  { key: "tenant", label: "Tenant", placeholder: "ark" },
-  { key: "cluster_name", label: "Cluster Adı", placeholder: "gbocptest1" },
-  { key: "is_active", label: "Aktif", type: "checkbox" },
-];
-const CLUSTER_EMPTY: Partial<OcpClusterIndexRow> = { env: "", tenant: "", cluster_name: "", is_active: true };
+// Cluster satirinin Jump Server hucresi BOSSA, devreye girecek yedek (tenant/env) degeri
+// okuma modunda soluk gosterilir — admin hangi cluster'in FIILEN hangi bastion'a gidecegini
+// sekme degistirmeden gorur. Yedek de yoksa kirmizi uyari (o cluster secilirse akis 400 verir).
+function clusterColumns(terminalRows: OcpTerminalHostRow[]): ColumnDef<OcpClusterIndexRow>[] {
+  return [
+    { key: "env", label: "Ortam (env)", placeholder: "dev" },
+    { key: "tenant", label: "Tenant", placeholder: "ark" },
+    { key: "cluster_name", label: "Cluster Adı", placeholder: "gbocptest1" },
+    {
+      key: "terminal_host",
+      label: "Jump Server (bastion)",
+      placeholder: "boş = tenant/env yedek eşlemesi",
+      emptyHint: (row) => {
+        const fb = terminalRows.find(
+          (t) => t.is_active && t.tenant === row.tenant && t.env === row.env
+        );
+        return fb ? `yedek: ${fb.terminal_host}` : "⚠ eşleme yok";
+      },
+    },
+    { key: "is_active", label: "Aktif", type: "checkbox" },
+  ];
+}
+const CLUSTER_EMPTY: Partial<OcpClusterIndexRow> = { env: "", tenant: "", cluster_name: "", terminal_host: "", is_active: true };
 
 const TERMINAL_COLUMNS: ColumnDef<OcpTerminalHostRow>[] = [
   { key: "tenant", label: "Tenant", placeholder: "ark" },
   { key: "env", label: "Ortam (env)", placeholder: "dev" },
-  { key: "terminal_host", label: "Terminal/Bastion Host", placeholder: "gbaocp01" },
+  { key: "terminal_host", label: "Jump Server (bastion)", placeholder: "gbaocp01" },
   { key: "is_active", label: "Aktif", type: "checkbox" },
 ];
 const TERMINAL_EMPTY: Partial<OcpTerminalHostRow> = { tenant: "", env: "", terminal_host: "", is_active: true };
@@ -253,6 +269,9 @@ const LogXv2AdminTab: React.FC = () => {
   const envSuffix = useCrudSection(
     logxV2Api.admin.listEnvSuffixMap, logxV2Api.admin.createEnvSuffix, logxV2Api.admin.updateEnvSuffix, logxV2Api.admin.deleteEnvSuffix
   );
+  // Cluster tablosundaki "boş Jump Server" hücrelerinde yedek eşlemeyi gösterebilmek için
+  // terminal-host satırlarına ihtiyaç var (iki sekme de aynı sayfada yüklüdür).
+  const clusterCols = React.useMemo(() => clusterColumns(terminals.rows), [terminals.rows]);
 
   return (
     <div className="space-y-4">
@@ -278,14 +297,30 @@ const LogXv2AdminTab: React.FC = () => {
       {subTab === "clusters" && (
         clusters.loading ? <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div> :
         clusters.error ? <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{clusters.error}</div> :
-        <SimpleCrudTable columns={CLUSTER_COLUMNS} rows={clusters.rows} emptyRow={CLUSTER_EMPTY}
-          onCreate={clusters.onCreate} onUpdate={clusters.onUpdate} onDelete={clusters.onDelete} />
+        <div className="space-y-3">
+          <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-800">
+            Her cluster kendi <strong>Jump Server</strong>'ını kullanabilir; aynı işlemde farklı cluster'lar
+            farklı jump server'lara gidebilir. Alan boş bırakılırsa <strong>Terminal/Bastion Host</strong>
+            sekmesindeki tenant/env yedek eşlemesi kullanılır. Her ikisi de yoksa o cluster seçildiğinde
+            işlem başlatılamaz.
+          </div>
+          <SimpleCrudTable columns={clusterCols} rows={clusters.rows} emptyRow={CLUSTER_EMPTY}
+            onCreate={clusters.onCreate} onUpdate={clusters.onUpdate} onDelete={clusters.onDelete} />
+        </div>
       )}
       {subTab === "terminals" && (
         terminals.loading ? <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div> :
         terminals.error ? <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{terminals.error}</div> :
-        <SimpleCrudTable columns={TERMINAL_COLUMNS} rows={terminals.rows} emptyRow={TERMINAL_EMPTY}
-          onCreate={terminals.onCreate} onUpdate={terminals.onUpdate} onDelete={terminals.onDelete} />
+        <div className="space-y-3">
+          <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-800">
+            Bu tablo <strong>yedek (fallback)</strong> eşlemedir: bir cluster'ın kendi satırında
+            (OCP Cluster Hiyerarşisi sekmesi) Jump Server doluysa <strong>o kazanır</strong>; boşsa buradaki
+            tenant/env eşlemesi kullanılır. Tek bir tenant/env için birden fazla satır tanımlanamaz —
+            cluster'lara ayrı jump server vermek için diğer sekmeyi kullanın.
+          </div>
+          <SimpleCrudTable columns={TERMINAL_COLUMNS} rows={terminals.rows} emptyRow={TERMINAL_EMPTY}
+            onCreate={terminals.onCreate} onUpdate={terminals.onUpdate} onDelete={terminals.onDelete} />
+        </div>
       )}
       {subTab === "envsuffix" && (
         envSuffix.loading ? <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div> :

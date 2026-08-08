@@ -58,22 +58,47 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
       break;
     case 'legacy_transfer':
     case 'ocp_discover_fetch': {
-      if (jobAfter.artifacts && jobAfter.artifacts.staged_path) {
-        const tokenInfo = await downloads.issueDownloadToken({
-          requestId: requestRow.request_id,
-          username: requestRow.username,
-          sessionToken: requestRow.session_token,
-          stagedPath: jobAfter.artifacts.staged_path,
-          filename: jobAfter.artifacts.filename || 'logs.zip',
-          sizeBytes: jobAfter.artifacts.size_bytes,
-          isFallback: !!jobAfter.artifacts.is_fallback,
-        });
+      // Cok-bastion'li OCP fetch'inde playbook bastion BASINA bir arsiv uretebilir ve
+      // bunlari `staged_files[]` olarak bildirir. Tek-bastion (ve legacy transfer)
+      // durumunda bu dizi yoktur; o zaman eski tekil staged_path/filename alanlari
+      // kullanilir — iki durum da tek kod yolundan gecsin diye once normalize edilir.
+      const art = jobAfter.artifacts || {};
+      const files = Array.isArray(art.staged_files) && art.staged_files.length
+        ? art.staged_files.filter((f) => f && f.staged_path)
+        : (art.staged_path ? [{ staged_path: art.staged_path, filename: art.filename, size_bytes: art.size_bytes, is_fallback: art.is_fallback }] : []);
+      if (files.length) {
+        // Ayni arsiv icin ikinci kez token uretmeyi onle: iki es zamanli /jobs/:id/status
+        // poll'u ayni terminal gecisini yakalayabilir (index.cjs:47 guard'i yarisa acik).
+        const already = await downloads.listTokenizedPaths(requestRow.request_id).catch(() => new Set());
+        const prefixes = [];
+        const failures = [];
+        for (const f of files) {
+          if (already.has(f.staged_path)) continue;
+          try {
+            const tokenInfo = await downloads.issueDownloadToken({
+              requestId: requestRow.request_id,
+              username: requestRow.username,
+              sessionToken: requestRow.session_token,
+              stagedPath: f.staged_path,
+              filename: f.filename || 'logs.zip',
+              sizeBytes: f.size_bytes,
+              isFallback: !!f.is_fallback,
+            });
+            prefixes.push(tokenInfo.token.slice(0, 8));
+          } catch (err) {
+            // Bir arsivin token'i uretilemezse TUM finalize'i dusurmeyiz: aksi halde istek
+            // 'transferring'de kilitli kalir (guard yeniden finalize etmez) ve kullanici
+            // basarili arsivlere de erisemez. Hata audit'e yazilir.
+            failures.push(`${f.filename || f.staged_path}: ${err.message}`);
+          }
+        }
         await requests.updateRequest(requestRow.request_id, { state: 'ready' });
         await audit.log({
           username: requestRow.username,
           action: jobAfter.jobType === 'legacy_transfer' ? 'v2_transfer' : 'v2_ocp_discover_fetch',
-          result: jobAfter.artifacts.overall_status || 'unknown',
-          detail: `download_token_issued token_prefix=${tokenInfo.token.slice(0, 8)}`,
+          result: art.overall_status || 'unknown',
+          detail: `download_token_issued count=${prefixes.length}/${files.length} token_prefixes=${prefixes.join(',')}`
+                + (failures.length ? ` failed=[${failures.join(' | ')}]` : ''),
         }).catch(() => {});
       } else {
         await requests.updateRequest(requestRow.request_id, { state: 'failed', errorMessage: jobAfter.errorMessage || 'Transfer başarısız oldu.' });
@@ -126,10 +151,16 @@ function initLogXv2(app) {
     const row = await loadOwnedRequest(req);
     const request = requests.normalizeRequest(row);
     const jobs = await jobsMod.listJobsForRequest(row.request_id);
+    // `download` (tekil) SOZLESME OLARAK KORUNUR — eski frontend surumleri bunu okur.
+    // `downloadList` cok-bastion'li fetch'te olusan TUM arsivleri tasir (tek arsivde
+    // tek elemanlidir, yani yeni UI da tek kod yolundan calisir).
     const download = request.state === 'ready'
       ? await downloads.getLatestDownloadForRequest(row.request_id)
       : null;
-    res.json({ ok: true, request, jobs, download });
+    const downloadList = request.state === 'ready'
+      ? await downloads.listDownloadsForRequest(row.request_id)
+      : [];
+    res.json({ ok: true, request, jobs, download, downloads: downloadList });
   }));
 
   // Sihirbaz "← Geri": onceki secim adimina donebilmek icin ilgili sunucu-durumunu geri sarar

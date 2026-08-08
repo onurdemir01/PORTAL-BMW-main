@@ -30,20 +30,33 @@ const DEFAULTS = Object.freeze({
   },
   openshift: {
     terminalHostKey: 'terminal_host',
+    // Cok-bastion payload'inda bastion LISTESININ anahtari (v2 sozlesmesi).
+    terminalHostsKey: 'terminal_hosts',
     namespaceKey: 'namespace',
     appNameKey: 'app_name',
     clustersKey: 'ocp_clusters',
     extraVars: '',
-    // Coklu cluster secimindeki cluster_name ayiraci.
+    // Coklu cluster secimindeki cluster_name ayiraci ('joined' modda kullanilir).
     separator: ',',
+    // Cluster listesinin AWX'e hangi SEKILDE gonderilecegi:
+    //   'joined'     → bugunku davranis: TEK oge, cluster_name'ler `separator` ile birlesik.
+    //                  Mevcut OpsX/Telnet playbook'lari bunu bekler — VARSAYILAN budur ki
+    //                  bu surum canliya ciktiginda hicbir sey degismesin.
+    //   'perCluster' → LogX ile ayni v2 sozlesmesi: her cluster ayri oge + kendi
+    //                  terminal_host'u + terminal_hosts[] listesi. Playbook cok-bastion'a
+    //                  guncellendikten SONRA admin ekranindan secilir (deploy gerekmez).
+    clusterListStyle: 'joined',
   },
 });
 
 // Hangi platformda hangi anahtar alanlari duzenlenebilir.
 const KEY_FIELDS = Object.freeze({
   legacy: ['applicationKey', 'operationKey'],
-  openshift: ['terminalHostKey', 'namespaceKey', 'appNameKey', 'clustersKey'],
+  openshift: ['terminalHostKey', 'terminalHostsKey', 'namespaceKey', 'appNameKey', 'clustersKey'],
 });
+
+// Anahtar-adi olmayan, sabit secenekli alanlar.
+const CLUSTER_LIST_STYLES = Object.freeze(['joined', 'perCluster']);
 
 // extra_vars anahtarlari playbook'a AYNEN gecer — bicim kontrolu olmadan serbest metin
 // kabul etmek, YAML'i bozan veya beklenmedik degisken enjekte eden degerlere yol acardi.
@@ -65,6 +78,9 @@ function normalizePlatform(platform, raw, fallback) {
   const sep = raw?.separator;
   // Ayirac tek bir noktalama/bosluk karakteri olmali.
   if (typeof sep === 'string' && sep.length >= 1 && sep.length <= 3) out.separator = sep;
+  if (platform === 'openshift' && CLUSTER_LIST_STYLES.includes(raw?.clusterListStyle)) {
+    out.clusterListStyle = raw.clusterListStyle;
+  }
   return out;
 }
 
@@ -125,4 +141,7 @@ function parseExtraVarLines(text) {
   return { vars: out, rejected };
 }
 
-module.exports = { getConfig, saveConfig, invalidate, parseExtraVarLines, DEFAULTS, KEY_FIELDS, BLOB_NAME };
+module.exports = {
+  getConfig, saveConfig, invalidate, parseExtraVarLines,
+  DEFAULTS, KEY_FIELDS, CLUSTER_LIST_STYLES, BLOB_NAME,
+};

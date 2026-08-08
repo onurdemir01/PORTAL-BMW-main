@@ -94,7 +94,7 @@ export const logxV2Api = {
   createRequest: (platform: Platform) => postJson<{ ok: boolean; requestId: string }>("/requests", { platform }),
 
   getRequest: (requestId: string) =>
-    fetch(`${BASE}/requests/${requestId}`).then((r) => json<{ ok: boolean; request: LogXv2Request; jobs: LogXv2Job[]; download: DownloadInfo | null }>(r)),
+    fetch(`${BASE}/requests/${requestId}`).then((r) => json<{ ok: boolean; request: LogXv2Request; jobs: LogXv2Job[]; download: DownloadInfo | null; downloads?: DownloadInfo[] }>(r)),
 
   // ── Legacy ─────────────────────────────────────────────────────────────────
   searchLegacyApps: (search: string) =>
@@ -172,7 +172,7 @@ export const logxV2Api = {
   },
 };
 
-export interface OcpClusterIndexRow { id: number; env: string; tenant: string; cluster_name: string; is_active: boolean }
+export interface OcpClusterIndexRow { id: number; env: string; tenant: string; cluster_name: string; terminal_host: string | null; is_active: boolean }
 export interface OcpTerminalHostRow { id: number; tenant: string; env: string; terminal_host: string; is_active: boolean }
 export interface EnvSuffixRow { id: number; suffix: string; env_label: string; sort_order: number; is_active: boolean }
 export interface RestrictionRow { id: number; resourceType: string; resourceKey: string; description: string | null; grants: string[] }

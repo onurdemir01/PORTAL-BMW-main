@@ -3,28 +3,46 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { MagnifyingGlassIcon, ArrowRightIcon } from "@heroicons/react/24/outline";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
+import { useAuth } from "@/contexts/AuthContext";
+import { PAGES as PAGE_ELEMENTS } from "@/config/elements";
 
 interface PaletteItem {
+  id: string;
   label: string;
   description: string;
   to: string;
   keywords?: string;
 }
 
-const PAGES: PaletteItem[] = [
-  { label: "Dashboard",      description: "Ana sayfa",                    to: "/dashboard",       keywords: "home ana" },
-  { label: "Envanter",       description: "Sunucu ve uygulama envanteri", to: "/envanter",        keywords: "server sunucu liste" },
-  { label: "LogX",           description: "Güvenli log dosyası indirme",  to: "/logx",            keywords: "log analiz sunucu openshift indirme" },
-  { label: "Self Service",   description: "Ansible servis istekleri",     to: "/self-service",    keywords: "ansible servis self" },
-  { label: "Ansible",        description: "Template ve job yönetimi",     to: "/ansible",         keywords: "playbook template awx" },
-  { label: "Performance",    description: "Dynatrace metrikler",          to: "/performance",     keywords: "dynatrace metric alarm" },
-  { label: "Nöbet",          description: "Nöbet çizelgesi",              to: "/duty-roster",     keywords: "nobet roster" },
-  { label: "Önemli Linkler", description: "Sık kullanılan bağlantılar",   to: "/important-links", keywords: "link url" },
-  { label: "Admin",          description: "Sistem yönetimi",              to: "/admin",           keywords: "admin yonetim" },
-];
+// Sayfa listesi artık merkezi elements.ts kaydından türetilir — eskiden burada AYRI bir
+// sabit liste vardı ve yeni sayfalar (OpsX/Telnet/AI Analist) hiç görünmüyor, kaldırılan
+// izinler dikkate alınmıyordu. Açıklama/anahtar kelimeler yalnızca arama kolaylığı içindir.
+const META: Record<string, { description: string; keywords?: string }> = {
+  "Dashboard":    { description: "Ana sayfa",                    keywords: "home ana" },
+  "Envanter":     { description: "Sunucu ve uygulama envanteri",  keywords: "server sunucu liste" },
+  "LogX":         { description: "Güvenli log dosyası indirme",   keywords: "log analiz openshift indirme" },
+  "OpsX":         { description: "Uygulama operasyonları",        keywords: "restart stop start jboss openshift" },
+  "Telnet":       { description: "Bağlantı (ip/port) testi",      keywords: "telnet port baglanti test" },
+  "Self Service": { description: "Ansible servis istekleri",      keywords: "ansible servis self otomasyon" },
+  "Ansible":      { description: "Template ve job yönetimi",      keywords: "playbook template awx" },
+  "Performance":  { description: "Dynatrace/Instana metrikler",   keywords: "dynatrace instana metric alarm" },
+  "AI Analist":   { description: "AI destekli analiz sohbeti",    keywords: "ai analist llm" },
+  "Nöbet":        { description: "Nöbet çizelgesi",               keywords: "nobet roster" },
+  "Linkler":      { description: "Sık kullanılan bağlantılar",    keywords: "link url onemli" },
+  "Admin":        { description: "Sistem yönetimi",               keywords: "admin yonetim" },
+};
+
+const PAGES: PaletteItem[] = PAGE_ELEMENTS.map((p) => ({
+  id: p.id,
+  label: p.label,
+  to: p.route,
+  description: META[p.id]?.description ?? "",
+  keywords: META[p.id]?.keywords,
+}));
 
 export function CommandPalette() {
   const { open, setOpen } = useCommandPalette();
+  const { canViewPage } = useAuth();
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -38,7 +56,9 @@ export function CommandPalette() {
     }
   }, [open]);
 
-  const filtered = PAGES.filter((p) => {
+  // Kullanıcının GÖREMEDİĞİ sayfalar listelenmez: eskiden filtre yoktu ve palette
+  // kapalı bir sayfaya yönlendirip 403 aldırıyordu.
+  const filtered = PAGES.filter((p) => canViewPage(p.id)).filter((p) => {
     const q = query.toLowerCase();
     return (
       p.label.toLowerCase().includes(q) ||

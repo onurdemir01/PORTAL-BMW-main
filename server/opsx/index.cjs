@@ -106,6 +106,14 @@ function initOpsX(app) {
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
   } catch { /* auth modulu yoksa deny kalir */ }
 
+  // OpsX sayfasi kullaniciya kapaliysa GERCEK 403 (kozmetik degil): sayfa gizlense de
+  // API'ler aciktir ve URL'i bilen biri dogrudan cagirabilirdi. LogX v2 ile ayni desen
+  // (logx/v2/index.cjs). Admin route'lari ayrica requireAdmin tasir.
+  try {
+    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
+    app.use('/api/opsx', requireVisiblePrefix('OpsX'));
+  } catch { /* motor yoksa yoksay */ }
+
   // GET /api/opsx/apps?search= — LogX ile AYNI kaynak (uygulama envanteri + snapshot
   // fallback). Kod tekrarlamak yerine legacy modulunun searchApps'i kullanilir.
   app.get('/api/opsx/apps', requireAuth, async (req, res) => {
@@ -278,67 +286,22 @@ function initOpsX(app) {
 
     } else {
       // ── Openshift ───────────────────────────────────────────────────────────
-      const envKey = String(env || '').trim();
-      const tenantKey = String(tenant || '').trim();
-      const ns = String(namespace || '').trim();
-      const appN = String(appName || '').trim();
-
-      if (!ns) return res.status(400).json({ ok: false, message: 'Namespace gerekli.' });
-      if (!appN) return res.status(400).json({ ok: false, message: 'Uygulama adı (app_name) gerekli.' });
-      if (!Array.isArray(clusters) || clusters.length === 0) {
-        return res.status(400).json({ ok: false, message: 'En az bir cluster seçilmeli.' });
+      // Dogrulama + bastion cozumleme + extra_vars uretimi Telnet ile ORTAK
+      // yardimcida (ocp-target.cjs). Bastion artik cluster seviyesinde cozulur.
+      if (!String(appName || '').trim()) {
+        return res.status(400).json({ ok: false, message: 'Uygulama adı (app_name) gerekli.' });
       }
-
-      // Secim katalog agacina karsi yeniden dogrulanir — client'in gonderdigine guvenilmez.
-      const adminData = require('../logx/v2/admin.cjs');
-      let tree;
       try {
-        tree = await adminData.getClusterTree();
+        const built = await require('./ocp-target.cjs').buildOcpTarget({
+          env, tenant, clusters, namespace, appName, cfg, staticVars,
+        });
+        // Openshift govdesinde `operation` YOK (sartnamedeki ornek govdelerde gecmiyor).
+        // Gerekiyorsa Admin > OpsX Yapilandirma > "Ek sabit degiskenler" ile eklenebilir.
+        extraVars = built.extraVars;
+        logSummary = built.logSummary;
       } catch (err) {
-        return res.status(503).json({ ok: false, message: `Cluster kataloğu okunamadı: ${err.message}` });
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
-      if (!envKey || !tree[envKey]) {
-        return res.status(400).json({ ok: false, message: `Ortam tanımlı değil: ${envKey || '(boş)'}` });
-      }
-      if (!tenantKey || !tree[envKey][tenantKey]) {
-        return res.status(400).json({ ok: false, message: `Tenant tanımlı değil: ${tenantKey || '(boş)'}` });
-      }
-      const validClusters = new Set(tree[envKey][tenantKey] || []);
-      const requested = clusters.map((c) => String(c || '').trim()).filter(Boolean);
-      const notValid = requested.filter((c) => !validClusters.has(c));
-      if (notValid.length) {
-        return res.status(400).json({
-          ok: false,
-          message: `Bu cluster'lar "${envKey}/${tenantKey}" altında tanımlı değil: ${notValid.join(', ')}`,
-        });
-      }
-
-      // terminal_host SUNUCUDA cozulur (ocp_terminal_host_map) — kullanici girmez,
-      // client gondermez. LogX de ayni haritayi kullanir.
-      const terminalHost = await adminData.getTerminalHost(tenantKey, envKey);
-      if (!terminalHost) {
-        return res.status(400).json({
-          ok: false,
-          message: `"${tenantKey}/${envKey}" için terminal/bastion host tanımlı değil — `
-                 + `Admin > LogX v2 Yapılandırma ekranından eklenmeli.`,
-        });
-      }
-
-      extraVars = {
-        ...staticVars,
-        [cfg.terminalHostKey]: terminalHost,
-        [cfg.namespaceKey]: ns,
-        [cfg.appNameKey]: appN,
-        [cfg.clustersKey]: [{
-          env: envKey,
-          tenant: tenantKey,
-          // Sartname: coklu secimde TEK oge, cluster_name virgulle birlesik.
-          cluster_name: requested.join(cfg.separator),
-        }],
-      };
-      // Openshift govdesinde `operation` YOK (sartnamedeki ornek govdelerde gecmiyor).
-      // Gerekiyorsa Admin > OpsX Yapilandirma > "Ek sabit degiskenler" ile eklenebilir.
-      logSummary = `ns=${ns} app_name=${appN} clusters=${requested.join(',')} terminal=${terminalHost}`;
     }
 
     try {
