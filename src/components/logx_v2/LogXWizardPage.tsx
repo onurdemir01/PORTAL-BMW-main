@@ -3,7 +3,7 @@
 // senkronize edilir (client kendi gerçeğini icat etmez) — sayfa yenilemesi sonrası
 // `?logxRequest=<id>` üzerinden kaldığı yerden devam eder (bkz. plan dosyası I. bölümü).
 import React, { useCallback, useEffect, useState } from "react";
-import { ExclamationTriangleIcon, ArrowPathIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
+import { ExclamationTriangleIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
 import {
   logxV2Api, type Platform, type LogXv2Request, type LogXv2Job, type DownloadInfo,
   type LegacyDiscoveryResult, type OcpNamespaceDiscoveryResult,
@@ -17,6 +17,7 @@ import NamespacePickerStep from "./steps/ocp/NamespacePickerStep";
 import AppNameStep from "./steps/ocp/AppNameStep";
 import JobProgress from "./shared/JobProgress";
 import DownloadStep from "./shared/DownloadStep";
+import FailedStep from "./shared/FailedStep";
 
 function setUrlParam(id: string | null) {
   const url = new URL(window.location.href);
@@ -27,6 +28,11 @@ function setUrlParam(id: string | null) {
 
 function jobOfType(jobs: LogXv2Job[], jobType: string): LogXv2Job | undefined {
   return [...jobs].reverse().find((j) => j.jobType === jobType);
+}
+
+// Başarısız ekranında çıktısı gösterilecek job: en son başlatılan (tipi ne olursa olsun).
+function lastJob(jobs: LogXv2Job[]): LogXv2Job | undefined {
+  return jobs.length ? jobs[jobs.length - 1] : undefined;
 }
 
 const STEP_TITLES: Record<string, string> = {
@@ -53,6 +59,8 @@ const LogXWizardPage: React.FC = () => {
   // Çok-bastion'lu OCP çekiminde bir istek birden çok arşiv üretebilir; tekil `download`
   // sözleşme olarak korunur (ilk arşiv), liste hepsini taşır.
   const [downloadList, setDownloadList] = useState<DownloadInfo[]>([]);
+  // Yalnızca Admin yanıtında gelir; başarısız ekranında yönetici notu olarak gösterilir.
+  const [technicalDetail, setTechnicalDetail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [busyError, setBusyError] = useState<string | null>(null);
@@ -224,7 +232,7 @@ const LogXWizardPage: React.FC = () => {
             <JobProgress
               jobId={job.id}
               discoveringLabel="Dosyalar taranıyor…"
-              onDone={() => refresh(requestId)}
+              onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }}
             />
           );
         })()}
@@ -243,7 +251,7 @@ const LogXWizardPage: React.FC = () => {
         {step === "legacy_transferring" && requestId && (() => {
           const job = jobOfType(jobs, "legacy_transfer");
           if (!job) return null;
-          return <JobProgress jobId={job.id} discoveringLabel="Dosyalar aktarılıyor ve zip'leniyor…" onDone={() => refresh(requestId)} />;
+          return <JobProgress jobId={job.id} discoveringLabel="Dosyalar aktarılıyor ve zip'leniyor…" onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }} />;
         })()}
 
         {step === "ocp_cluster_select" && requestId && (
@@ -270,7 +278,7 @@ const LogXWizardPage: React.FC = () => {
         {step === "ocp_namespace_discovering" && requestId && (() => {
           const job = jobOfType(jobs, "ocp_namespace_discovery");
           if (!job) return null;
-          return <JobProgress jobId={job.id} discoveringLabel="Namespace'ler taranıyor…" onDone={() => refresh(requestId)} />;
+          return <JobProgress jobId={job.id} discoveringLabel="Namespace'ler taranıyor…" onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }} />;
         })()}
 
         {step === "ocp_namespace_picker" && request?.discoveryResult && (
@@ -293,23 +301,18 @@ const LogXWizardPage: React.FC = () => {
         {step === "ocp_transferring" && requestId && (() => {
           const job = jobOfType(jobs, "ocp_discover_fetch");
           if (!job) return null;
-          return <JobProgress jobId={job.id} discoveringLabel="Pod'lar taranıyor ve loglar toplanıyor…" onDone={() => refresh(requestId)} />;
+          return <JobProgress jobId={job.id} discoveringLabel="Pod'lar taranıyor ve loglar toplanıyor…" onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }} />;
         })()}
 
         {step === "ready" && download && <DownloadStep download={download} downloads={downloadList} onRestart={restart} />}
 
         {step === "failed" && (
-          <div className="flex flex-col items-center gap-4 py-8 text-center">
-            <ExclamationTriangleIcon className="w-10 h-10 text-red-500" />
-            <p className="text-sm text-red-700">{request?.errorMessage || "İşlem başarısız oldu."}</p>
-            <button
-              onClick={restart}
-              className="btn-primary"
-            >
-              <ArrowPathIcon className="w-4 h-4" />
-              Yeniden Başla
-            </button>
-          </div>
+          <FailedStep
+            jobId={lastJob(jobs)?.id}
+            message={request?.errorMessage || "İşlem tamamlanamadı. Lütfen sistem yöneticinize başvurun."}
+            technicalDetail={technicalDetail ?? undefined}
+            onRestart={restart}
+          />
         )}
       </div>
     </div>

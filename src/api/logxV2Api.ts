@@ -123,7 +123,9 @@ export const logxV2Api = {
 
   // ── Jobs / downloads ─────────────────────────────────────────────────────────
   jobStatus: (jobId: number) =>
-    fetch(`${BASE}/jobs/${jobId}/status`).then((r) => json<{ ok: boolean; status: string; jobType: string; elapsedSec: number; artifacts: Record<string, unknown> | null; errorMessage: string | null }>(r)),
+    // `technicalDetail` YALNIZCA Admin rolüne gönderilir (bkz. server/logx/v2/index.cjs) —
+    // normal kullanıcı Ansible/AWX jargonu görmemeli.
+    fetch(`${BASE}/jobs/${jobId}/status`).then((r) => json<{ ok: boolean; status: string; jobType: string; elapsedSec: number; artifacts: Record<string, unknown> | null; errorMessage: string | null; technicalDetail?: string }>(r)),
 
   // Canlı AWX stdout — yalnızca görünürlük için, sonuç kaynağı değil (bkz. jobs.cjs).
   jobOutput: (jobId: number) =>
