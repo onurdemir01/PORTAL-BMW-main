@@ -917,14 +917,14 @@ function initAnsibleRunner(app) {
 
   // POST /api/ansible/clusters — admin, yeni cluster ekle
   app.post("/api/ansible/clusters", requireAuth, requireAdmin, async (req, res) => {
-    const { name, display, env, apiUrl, consoleUrl, token, description, namespace, jumpHost } = req.body || {};
+    const { name, display, env, apiUrl, consoleUrl, token, description, namespace, jumpHost, tenant } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ ok: false, message: "name zorunlu." });
     }
     let cluster;
     try {
       cluster = await addOcpCluster({
-        name, display, env, apiUrl, consoleUrl, token, description, namespace, jumpHost,
+        name, display, env, apiUrl, consoleUrl, token, description, namespace, jumpHost, tenant,
         createdBy: req.session?.user?.username || null,
       });
     } catch (e) {

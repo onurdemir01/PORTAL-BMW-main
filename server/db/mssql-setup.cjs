@@ -1424,6 +1424,26 @@ async function setupTables() {
       table: 'ocp_cluster_index', col: 'terminal_host',
       sql: `ALTER TABLE ocp_cluster_index ADD terminal_host NVARCHAR(255) NULL`,
     },
+    // ── Katalog birlestirme: ansible_ocp_clusters alanlari ocp_cluster_index'e tasinir ──
+    // Portalda IKI ayri OCP katalogu vardi: ocp_cluster_index (env/tenant/cluster_name —
+    // LogX/OpsX/Telnet sihirbazlari) ve ansible_ocp_clusters (URL/token/jump_host — Ansible
+    // Info ekrani + AI pod-status). Ortak anahtarlari yoktu. Asagidaki kolonlar ikinciyi
+    // birincinin icinde temsil edebilmek icindir; hepsi NULL'lanabilir, mevcut satirlar
+    // etkilenmez. `legacy_id` goc idempotentligini saglar (ayni satir iki kez tasinmaz).
+    { table: 'ocp_cluster_index', col: 'display',           sql: `ALTER TABLE ocp_cluster_index ADD display NVARCHAR(150) NULL` },
+    { table: 'ocp_cluster_index', col: 'api_url',           sql: `ALTER TABLE ocp_cluster_index ADD api_url NVARCHAR(500) NULL` },
+    { table: 'ocp_cluster_index', col: 'console_url',       sql: `ALTER TABLE ocp_cluster_index ADD console_url NVARCHAR(500) NULL` },
+    { table: 'ocp_cluster_index', col: 'token',             sql: `ALTER TABLE ocp_cluster_index ADD token NVARCHAR(MAX) NULL` },
+    { table: 'ocp_cluster_index', col: 'description',       sql: `ALTER TABLE ocp_cluster_index ADD description NVARCHAR(MAX) NULL` },
+    { table: 'ocp_cluster_index', col: 'default_namespace', sql: `ALTER TABLE ocp_cluster_index ADD default_namespace NVARCHAR(150) NULL` },
+    { table: 'ocp_cluster_index', col: 'created_by',        sql: `ALTER TABLE ocp_cluster_index ADD created_by NVARCHAR(255) NULL` },
+    { table: 'ocp_cluster_index', col: 'last_checked_at',   sql: `ALTER TABLE ocp_cluster_index ADD last_checked_at DATETIME2 NULL` },
+    { table: 'ocp_cluster_index', col: 'connection_status', sql: `ALTER TABLE ocp_cluster_index ADD connection_status NVARCHAR(20) NULL` },
+    { table: 'ocp_cluster_index', col: 'legacy_id',         sql: `ALTER TABLE ocp_cluster_index ADD legacy_id NVARCHAR(64) NULL` },
+    // Ansible katalogunda tenant (platform) kavrami yoktu; ortak agacta yerini bulabilmesi
+    // icin eklendi. Bos birakilirsa kayit '_atanmadi' tenant'i ile PASIF aynalanir.
+    { table: 'ansible_ocp_clusters', col: 'tenant',         sql: `ALTER TABLE ansible_ocp_clusters ADD tenant NVARCHAR(100) NULL` },
+    { table: 'ocp_cluster_index', col: 'source',            sql: `ALTER TABLE ocp_cluster_index ADD source NVARCHAR(20) NULL` },
     // actions.md #13 (Bolum L) — Tablo Takma Adlari eksik alanlar.
     {
       table: 'inventory_table_aliases', col: 'schema_name',

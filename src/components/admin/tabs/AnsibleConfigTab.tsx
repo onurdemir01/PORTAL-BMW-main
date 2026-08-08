@@ -22,8 +22,8 @@ const ENV_COLORS: Record<string, string> = {
   dev:  "bg-green-50 text-green-700 border-green-100",
 };
 
-type ClusterForm = { name: string; display: string; env: OcpCluster["env"]; apiUrl: string; consoleUrl: string; token: string; description: string; namespace: string; jumpHost: string };
-const EMPTY_FORM: ClusterForm = { name: "", display: "", env: "prod", apiUrl: "", consoleUrl: "", token: "", description: "", namespace: "", jumpHost: "" };
+type ClusterForm = { name: string; display: string; env: OcpCluster["env"]; apiUrl: string; consoleUrl: string; token: string; description: string; namespace: string; jumpHost: string; tenant: string };
+const EMPTY_FORM: ClusterForm = { name: "", display: "", env: "prod", apiUrl: "", consoleUrl: "", token: "", description: "", namespace: "", jumpHost: "", tenant: "" };
 
 type TemplateSummary = { serverId: number; serverName: string; ok: boolean; templates: AwxTemplate[]; error?: string };
 
@@ -112,7 +112,7 @@ export default function AnsibleConfigTab() {
 
   function openEdit(c: OcpCluster) {
     setEditId(c.id);
-    setForm({ name: c.name, display: c.display, env: c.env, apiUrl: c.apiUrl, consoleUrl: c.consoleUrl || "", token: c.token || "", description: c.description, namespace: c.namespace, jumpHost: c.jumpHost || "" });
+    setForm({ name: c.name, display: c.display, env: c.env, apiUrl: c.apiUrl, consoleUrl: c.consoleUrl || "", token: c.token || "", description: c.description, namespace: c.namespace, jumpHost: c.jumpHost || "", tenant: c.tenant || "" });
     setShowForm(true);
   }
 
@@ -310,11 +310,21 @@ export default function AnsibleConfigTab() {
                   className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#1A56DB] font-mono" />
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Jump/Bastion Host (opsiyonel)</label>
+                <label className="text-xs text-gray-500 block mb-1">Jump Server / Bastion Host (opsiyonel)</label>
                 <input value={form.jumpHost} onChange={(e) => setForm((f) => ({ ...f, jumpHost: e.target.value }))}
                   placeholder="oc login yapılmış bastion hostname"
                   className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#1A56DB] font-mono" />
                 <p className="text-[11px] text-gray-400 mt-0.5">Canlı pod/node durumu sorguları (AWX) bu host üzerinden çalışır.</p>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Tenant / Platform (opsiyonel)</label>
+                <input value={form.tenant} onChange={(e) => setForm((f) => ({ ...f, tenant: e.target.value }))}
+                  placeholder="ör. ark"
+                  className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#1A56DB] font-mono" />
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  LogX/OpsX/Telnet sihirbazları cluster'ları <span className="font-mono">ortam → tenant → cluster</span> ağacından
+                  okur. Bu alan boş kalırsa kayıt ortak ağaca <strong>pasif</strong> aynalanır ve sihirbazlarda görünmez.
+                </p>
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Açıklama</label>
