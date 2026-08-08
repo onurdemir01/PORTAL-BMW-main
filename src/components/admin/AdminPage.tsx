@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { prefsApi } from "../../api/prefsApi";
 import { toast } from "@/hooks/useToast";
 import {
@@ -64,6 +65,7 @@ function normalizeTabOrder(saved: unknown): TabId[] {
 }
 
 const AdminPage: React.FC = () => {
+  const { canSee } = useAuth();
   const [activeTab, setActiveTabState] = useState<TabId>("logxv2");
   const [tabOrder, setTabOrder] = useState<TabId[]>(DEFAULT_TAB_IDS);
   const [reordering, setReordering] = useState(false);
@@ -101,7 +103,19 @@ const AdminPage: React.FC = () => {
     });
   }
 
-  const orderedTabs = tabOrder.map((id) => TAB_BY_ID.get(id)!).filter(Boolean);
+  // Admin sekmeleri de görünürlük motoruna tabidir (`admintab:<id>` element anahtarları).
+  // Bu anahtarlar Sayfa Erişimi ekranında zaten yönetilebiliyordu ama HİÇBİR YERDE
+  // uygulanmıyordu — kapatmak hiçbir şey değiştirmiyordu. Kayıtsız anahtar → görünür.
+  const orderedTabs = tabOrder
+    .map((id) => TAB_BY_ID.get(id)!)
+    .filter(Boolean)
+    .filter((tab) => canSee(`admintab:${tab.id}`));
+
+  // Aktif sekme gizlenmişse ilk görünür sekmeye düş (boş içerik gösterme).
+  useEffect(() => {
+    if (!orderedTabs.length) return;
+    if (!orderedTabs.some((t) => t.id === activeTab)) setActiveTab(orderedTabs[0].id);
+  }, [orderedTabs, activeTab]);
 
   return (
     <div className="space-y-6">

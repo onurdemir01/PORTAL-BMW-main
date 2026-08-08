@@ -25,6 +25,9 @@ interface AuthContextType {
   // /tasks/stats) yalnızca bu true iken tetiklenmesi için — aksi halde boş/default-open harita
   // yüzünden gated uç'lara istek atılıp 403 cascade oluşuyordu (bkz. Faz 1).
   visibilityReady: boolean;
+  // Harita kalıcı olarak alınamadı mı (ilk deneme + bir retry başarısız)? Route guard'ları
+  // bu durumda korumalı sayfayı AÇMAZ — sunucu tarafı da fail-closed davranır.
+  visibilityFailed: boolean;
   // Görünürlük haritasını manuel tazeler (admin bir değişiklik kaydettikten hemen sonra).
   refreshVisibility: () => Promise<void>;
 }
@@ -50,6 +53,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Element bazlı çözülmüş görünürlük haritası (key → görünür mü) + izlenen versiyon.
   const [visibilityMap, setVisibilityMap] = useState<Record<string, boolean>>({});
   const [visibilityReady, setVisibilityReady] = useState(false);
+  const [visibilityFailed, setVisibilityFailed] = useState(false);
   const visibilityVersion = useRef(0);
 
   const timeoutId = useRef<number | null>(null);
@@ -120,15 +124,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Çözülmüş görünürlük haritasını (element→bool) sunucudan tazeler + versiyonu kaydeder.
-  const refreshVisibility = useCallback(() => {
+  const refreshVisibility = useCallback((): Promise<void> => {
     return visibilityApi.getResolved()
       .then(({ version, visibility }) => {
         visibilityVersion.current = version;
         setVisibilityMap(visibility);
         setVisibilityReady(true); // BAŞARILI yükleme → gated fetch'ler artık tetiklenebilir
+        setVisibilityFailed(false);
       })
       .catch(() => { /* açılışta authsız/401 olabilir — ready FALSE kalır, gated fetch atılmaz */ });
   }, []);
+
+  // İlk yüklemede harita gelmezse BİR kez daha dener; o da başarısızsa `visibilityFailed`
+  // işaretlenir ve route guard'ları korumalı sayfaları açmaz (fail-closed). Yalnızca
+  // oturum açmış kullanıcı için anlamlıdır — login öncesi 401 normaldir.
+  useEffect(() => {
+    if (!user || visibilityReady) return;
+    const id = window.setTimeout(() => {
+      refreshVisibility().then(() => {
+        setVisibilityReady((ready) => { if (!ready) setVisibilityFailed(true); return ready; });
+      });
+    }, 2500);
+    return () => window.clearTimeout(id);
+  }, [user, visibilityReady, refreshVisibility]);
 
   // Canlı yayılım: admin bir görünürlük değişikliği yapınca versiyon artar; istemci hafif
   // version ucunu poll'leyip değişince haritayı yeniden çeker — reload GEREKMEZ.
@@ -193,7 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         user, isAuthenticated: !!user, login, logout, showTimeoutModal, countdown, extendSession,
-        pageVisibility, pageVisibilityLoaded, canViewPage, canSee, visibilityReady, refreshVisibility,
+        pageVisibility, pageVisibilityLoaded, canViewPage, canSee, visibilityReady, visibilityFailed, refreshVisibility,
       }}
     >
       {children}

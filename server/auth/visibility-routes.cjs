@@ -18,7 +18,9 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   // ── Page Visibility (herkes okuyabilir, admin yazabilir) ──────────────────
   // Mount /api/visibility altinda oldugu icin path yalniz "/pages" — eskiden /api/auth/
   // page-visibility idi, "/api/visibility/page-visibility" gibi tekrarli olmasin diye kisaltildi.
-  router.get("/pages", async (req, res) => {
+  // requireAuth (G7): bu uc eskiden KIMLIKSIZ okunabiliyordu ve sayfa→rol haritasini
+  // login olmadan sizdiriyordu (hangi modullerin var oldugu + hangi rollere acik).
+  router.get("/pages", requireAuth, async (req, res) => {
     res.json({ ok: true, visibility: await visibilityEngine.readVisibility() });
   });
 
@@ -48,10 +50,12 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   // Kullanicinin cozulmus element haritasi + versiyon. Frontend AuthContext bunu ceker;
   // `version`'i poll'leyip degisince yeniden ceker (reload'suz yayilim). Ayni "tekrar" kaygisi
   // ile path "/resolved" (eskiden /api/auth/visibility → /api/visibility/resolved).
+  // Soft surum: motor okunamazsa 500 yerine bos harita doner (UI kilitlenmez). Gercek
+  // erisim karari her zaman sunucudaki requireVisible'dadir ve orasi fail-CLOSED'dir.
   router.get("/resolved", requireAuth, async (req, res) => {
     const user = getRequestUser(req);
-    const { version, visibility } = await visibilityEngine.resolveVisibility(user);
-    res.json({ ok: true, version, visibility });
+    const { version, visibility } = await visibilityEngine.resolveVisibilitySoft(user);
+    res.json({ ok: true, version, visibility, ok_engine: Object.keys(visibility).length > 0 });
   });
 
   // Hafif versiyon ucu — istemci bunu sik poll'ler, degisince /resolved'i tazeler.

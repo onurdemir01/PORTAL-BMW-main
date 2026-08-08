@@ -199,19 +199,35 @@ async function canSee(user, elementKey) {
 }
 
 // Express middleware fabrikasi — element kullaniciya gorunmezse 403. GERCEK server-side deny.
-// Motor hatasinda (DB anlik erisilemez) fail-open: mevcut sistemin default-open durusuyla
-// tutarli, availability'yi korur; normal yol dogru sekilde reddeder.
+//
+// FAIL-CLOSED (G6): motor okunamazsa (DB anlik erisilemez) eskiden `next()` denip erisim
+// ACILIYORDU — yani bir DB kesintisi tum gorunurluk sistemini sessizce devre disi
+// birakiyordu. Artik 503 ile reddedilir. Admin rolu bu karardan MUAF tutulur ki bir
+// kesintide yoneticiler portali onaramaz hale gelmesin.
+// Acil kacis: VISIBILITY_FAIL_OPEN=1 (eski davranisa doner, kullanimi loglanir).
 function requireVisible(elementKey) {
   return async (req, res, next) => {
+    let user = null;
     try {
-      const user = getRequestUser(req);
+      user = getRequestUser(req);
       if (!user) return res.status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
       const ok = await canSee(user, elementKey);
       if (!ok) return res.status(403).json({ ok: false, error: 'Bu kaynağa erişiminiz kapalı.' });
       return next();
     } catch (err) {
-      console.warn('[visibility] requireVisible hata (fail-open):', err.message);
-      return next();
+      if (user && user.role === 'Admin') {
+        console.warn(`[visibility] motor okunamadi, Admin muafiyeti ile devam (${elementKey}):`, err.message);
+        return next();
+      }
+      if (process.env.VISIBILITY_FAIL_OPEN === '1') {
+        console.warn(`[visibility] motor okunamadi, VISIBILITY_FAIL_OPEN=1 ile ACILDI (${elementKey}):`, err.message);
+        return next();
+      }
+      console.error(`[visibility] motor okunamadi, erisim REDDEDILDI (${elementKey}):`, err.message);
+      return res.status(503).json({
+        ok: false,
+        error: 'Görünürlük servisi geçici olarak kullanılamıyor, erişim güvenlik gereği reddedildi.',
+      });
     }
   };
 }
@@ -230,7 +246,8 @@ function requireVisiblePrefix(elementKey, opts = {}) {
 }
 
 module.exports = {
-  resolveVisibility, canSee, requireVisible, requireVisiblePrefix, getVersion, bumpVersion,
+  resolveVisibility, resolveVisibilitySoft, canSee, requireVisible, requireVisiblePrefix, getVersion, bumpVersion,
+  _applyParentCascade: applyParentCascade,
   // Legacy sayfa-gorunurlugu (DEFAULT_VISIBILITY tablosu) — element-bazli motordan ayri.
   readVisibility, writeVisibility, DEFAULT_VISIBILITY,
   // saf yardimcilar — birim testleri icin acildi (DB gerektirmez)

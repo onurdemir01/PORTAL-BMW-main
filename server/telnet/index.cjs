@@ -49,6 +49,12 @@ function initTelnet(app) {
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
   } catch { /* auth modulu yoksa deny kalir */ }
 
+  // Telnet sayfasi kullaniciya kapaliysa GERCEK 403 (OpsX/LogX v2 ile ayni desen).
+  try {
+    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
+    app.use('/api/telnet', requireVisiblePrefix('Telnet'));
+  } catch { /* motor yoksa yoksay */ }
+
   // GET /api/telnet/apps?search= — OpsX ile AYNI kaynak.
   app.get('/api/telnet/apps', requireAuth, async (req, res) => {
     try {

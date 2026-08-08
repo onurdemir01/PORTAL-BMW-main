@@ -106,6 +106,14 @@ function initOpsX(app) {
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
   } catch { /* auth modulu yoksa deny kalir */ }
 
+  // OpsX sayfasi kullaniciya kapaliysa GERCEK 403 (kozmetik degil): sayfa gizlense de
+  // API'ler aciktir ve URL'i bilen biri dogrudan cagirabilirdi. LogX v2 ile ayni desen
+  // (logx/v2/index.cjs). Admin route'lari ayrica requireAdmin tasir.
+  try {
+    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
+    app.use('/api/opsx', requireVisiblePrefix('OpsX'));
+  } catch { /* motor yoksa yoksay */ }
+
   // GET /api/opsx/apps?search= — LogX ile AYNI kaynak (uygulama envanteri + snapshot
   // fallback). Kod tekrarlamak yerine legacy modulunun searchApps'i kullanilir.
   app.get('/api/opsx/apps', requireAuth, async (req, res) => {
