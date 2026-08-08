@@ -3,7 +3,7 @@
 # Location:
 #   bmw_automation_folder/portal_tamplates/logx_ocp_namespace_discovery.yml
 # Global variables:
-#   bmw_openshift_jobs/global_variables/credentials_v2.yaml
+#   bmw_openshift_jobs/global_variables/credentials.yaml
 #   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 #
 # Required extra_vars (v2 - per-cluster bastion):
@@ -63,7 +63,7 @@
   become: false
 
   vars_files:
-    - ../../bmw_openshift_jobs/global_variables/credentials_v2.yaml
+    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
     - ../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 
   vars:
