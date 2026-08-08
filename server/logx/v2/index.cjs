@@ -67,25 +67,38 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
         ? art.staged_files.filter((f) => f && f.staged_path)
         : (art.staged_path ? [{ staged_path: art.staged_path, filename: art.filename, size_bytes: art.size_bytes, is_fallback: art.is_fallback }] : []);
       if (files.length) {
+        // Ayni arsiv icin ikinci kez token uretmeyi onle: iki es zamanli /jobs/:id/status
+        // poll'u ayni terminal gecisini yakalayabilir (index.cjs:47 guard'i yarisa acik).
+        const already = await downloads.listTokenizedPaths(requestRow.request_id).catch(() => new Set());
         const prefixes = [];
+        const failures = [];
         for (const f of files) {
-          const tokenInfo = await downloads.issueDownloadToken({
-            requestId: requestRow.request_id,
-            username: requestRow.username,
-            sessionToken: requestRow.session_token,
-            stagedPath: f.staged_path,
-            filename: f.filename || 'logs.zip',
-            sizeBytes: f.size_bytes,
-            isFallback: !!f.is_fallback,
-          });
-          prefixes.push(tokenInfo.token.slice(0, 8));
+          if (already.has(f.staged_path)) continue;
+          try {
+            const tokenInfo = await downloads.issueDownloadToken({
+              requestId: requestRow.request_id,
+              username: requestRow.username,
+              sessionToken: requestRow.session_token,
+              stagedPath: f.staged_path,
+              filename: f.filename || 'logs.zip',
+              sizeBytes: f.size_bytes,
+              isFallback: !!f.is_fallback,
+            });
+            prefixes.push(tokenInfo.token.slice(0, 8));
+          } catch (err) {
+            // Bir arsivin token'i uretilemezse TUM finalize'i dusurmeyiz: aksi halde istek
+            // 'transferring'de kilitli kalir (guard yeniden finalize etmez) ve kullanici
+            // basarili arsivlere de erisemez. Hata audit'e yazilir.
+            failures.push(`${f.filename || f.staged_path}: ${err.message}`);
+          }
         }
         await requests.updateRequest(requestRow.request_id, { state: 'ready' });
         await audit.log({
           username: requestRow.username,
           action: jobAfter.jobType === 'legacy_transfer' ? 'v2_transfer' : 'v2_ocp_discover_fetch',
           result: art.overall_status || 'unknown',
-          detail: `download_token_issued count=${files.length} token_prefixes=${prefixes.join(',')}`,
+          detail: `download_token_issued count=${prefixes.length}/${files.length} token_prefixes=${prefixes.join(',')}`
+                + (failures.length ? ` failed=[${failures.join(' | ')}]` : ''),
         }).catch(() => {});
       } else {
         await requests.updateRequest(requestRow.request_id, { state: 'failed', errorMessage: jobAfter.errorMessage || 'Transfer başarısız oldu.' });

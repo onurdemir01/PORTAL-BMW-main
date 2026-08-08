@@ -39,7 +39,8 @@
     logx_bastions: >-
       {{
         (terminal_hosts | default([]) | union([terminal_host | default('')]))
-        | union(ocp_clusters | default([]) | map(attribute='terminal_host', default='') | list)
+        | union(ocp_clusters | default([]) | selectattr('terminal_host', 'defined')
+                                          | map(attribute='terminal_host') | list)
         | map('trim') | reject('equalto', '') | unique | sort | list
       }}
 
@@ -90,8 +91,11 @@
   vars:
     oc_binary: /usr/local/bin/oc
     logx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
-    remote_work_dir: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}"
-    remote_archive_path: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}.zip"
+    # inventory_hostname DAHIL: iki farkli bastion adi ayni makineye cozulurse (or.
+    # GBAOCP01 ve gbaocp01.bmw.com) ayni dizini paylasip birbirinin arsivini silerlerdi.
+    remote_host_slug: "{{ inventory_hostname | lower | regex_replace('[^a-z0-9._-]', '-') }}"
+    remote_work_dir: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}_{{ remote_host_slug }}"
+    remote_archive_path: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}_{{ remote_host_slug }}.zip"
     oc_list_timeout: 120
     oc_log_timeout: 300
     staging_runas_user: "{{ staging_user | default('was', true) }}"
@@ -580,18 +584,20 @@
     # Bu bastion'un ozeti host fact olarak birakilir; TEK set_stats yazari asagidaki
     # toplayici play'dir (birden cok host ayni anahtari yazarsa Ansible listeleri
     # birlestirmez, sonuncu yazan ezer).
-    - name: "Record this bastion's summary as a host fact"
+    # NOT: cluster sonuclari `cluster_fetch_results` fact'inde kalir; bu ozet YALNIZ arsiv
+    # meta'sini tasir (staged_files[] icine bu gider — artifact gereksiz sismesin).
+    # Bool alanlar `| bool` ile GERCEK boolean'a zorlanir: string "False" truthy olurdu.
+    - name: "Record this bastion's archive summary as a host fact"
       ansible.builtin.set_fact:
         logx_bastion_summary:
           terminal_host: "{{ inventory_hostname }}"
-          clusters: "{{ cluster_fetch_results }}"
           staged_path: "{{ staged_archive_path }}"
           filename: "{{ logx_archive_name if collected_log_files.matched | int > 0 else '' }}"
           size_bytes: "{{ staged_archive_stat.stat.size | default(0) | int }}"
-          is_fallback: "{{ fallback_succeeded }}"
+          is_fallback: "{{ fallback_succeeded | bool }}"
           staging_error: "{{ staging_error }}"
-          archive_created: "{{ collected_log_files.matched | int > 0 }}"
-          staged_ok: "{{ (collected_log_files.matched | int > 0) and (staged_archive_stat.stat.exists | default(false)) }}"
+          archive_created: "{{ (collected_log_files.matched | int > 0) | bool }}"
+          staged_ok: "{{ ((collected_log_files.matched | int > 0) and (staged_archive_stat.stat.exists | default(false))) | bool }}"
       changed_when: false
 
     - name: "Clean remote temporary files"
@@ -615,6 +621,8 @@
   become: false
 
   vars:
+    # Yalnizca RAPOR VEREN bastion'larin arsiv meta'si (cluster sonuclari ayri fact'te:
+    # cluster_fetch_results — boylece staged_files gereksiz sismez).
     bastion_summaries: >-
       {{
         (groups['logx_terminal'] | default([]) | sort)
@@ -624,9 +632,38 @@
     staged_files: >-
       {{ bastion_summaries | selectattr('staged_path', 'defined')
                            | rejectattr('staged_path', 'equalto', '') | list }}
-    merged_clusters: "{{ bastion_summaries | map(attribute='clusters') | list | flatten }}"
 
   tasks:
+    - name: "Initialize merged cluster list"
+      ansible.builtin.set_fact:
+        merged_clusters: []
+      changed_when: false
+
+    # KRITIK: raporlamayan (erisilemez / play2'de erken dusen) bastion'in cluster'lari
+    # SESSIZCE KAYBOLMAMALI — aksi halde overall_status 'success' cikar ve kullanici
+    # eksik arsivi tam sanardi. Istenen HER cluster icin sahibinden sonuc aranir.
+    - name: "Collect each requested cluster's result from its own bastion"
+      ansible.builtin.set_fact:
+        merged_clusters: >-
+          {{
+            merged_clusters + (reported if (reported | length > 0) else [{
+              'cluster_name': item.cluster_name | default('unknown'),
+              'status': 'error',
+              'error': 'Bastion did not report a result (unreachable or failed early): ' ~ owner_host,
+              'pods_matched': [],
+              'pods_failed': []
+            }])
+          }}
+      vars:
+        # Sahipsiz cluster'in sahibi play2 ile AYNI kuralla belirlenir (ilk alfabetik bastion).
+        owner_host: "{{ item.terminal_host | default((groups['logx_terminal'] | default([]) | sort | first), true) }}"
+        host_results: "{{ (hostvars[owner_host] | default({}, true)).cluster_fetch_results | default([], true) }}"
+        reported: "{{ host_results | selectattr('cluster_name', 'equalto', item.cluster_name | default('')) | list }}"
+      loop: "{{ ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      changed_when: false
+
     - name: "Publish final LogX result"
       ansible.builtin.set_stats:
         data:

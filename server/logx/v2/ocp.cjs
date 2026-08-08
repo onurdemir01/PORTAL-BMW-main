@@ -21,7 +21,11 @@ async function getClusterTree() {
 // per-cluster alanlari yoksayarsa davranis birebir eskisi gibi kalir.
 // Saf fonksiyon — DB'ye dokunmaz, dogrudan test edilir.
 function buildOcpExtraVars({ env, tenant, clusters, hosts }) {
-  const items = clusters.map((name) => ({
+  // Adlar resolveTerminalHosts ile AYNI sekilde normalize edilir (trim + tekillestirme);
+  // aksi halde " c1" gibi bir ad hosts[] icinde bulunamaz ve terminal_host undefined
+  // kalir (playbook'ta "sahipsiz cluster" kovasina duser).
+  const names = [...new Set((clusters || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  const items = names.map((name) => ({
     env, tenant, cluster_name: name, terminal_host: hosts[name],
   }));
   const terminalHosts = [...new Set(items.map((i) => i.terminal_host))].sort();
@@ -140,7 +144,7 @@ async function discoverFetch(requestRow, namespace, appName) {
     namespace: ns,
     app_name: app,
     staging_dir: process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
-    fallback_dir: require('./downloads.cjs').fallbackStagingDir(),
+    fallback_dir: require('./downloads.cjs').remoteFallbackDir(),
     archive_name: archiveName,
     ...(ingestInfo ? { ingest_url: ingestInfo.url } : {}),
   });

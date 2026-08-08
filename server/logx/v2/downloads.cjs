@@ -48,18 +48,49 @@ async function getLatestDownloadForRequest(requestId) {
 // staged_files ogesi → bir token). Sihirbazin indirme adimi hepsini listeleyebilsin diye
 // istegin TUM gecerli indirme kayitlari (en yeniden eskiye) dondurulur.
 async function listDownloadsForRequest(requestId) {
+  // Yalniz GECERLI (suresi dolmamis) kayitlar; ayni staged_path icin birden fazla token
+  // uretilmisse (finalize yarisi) yalnizca EN YENISI gosterilir — kullanici mukerrer
+  // satir gormez ve tiklayinca 410 alan olu baglantilar listelenmez.
   const { rows } = await db.query(
-    `SELECT token, filename, size_bytes, expires_at FROM logx_v2_downloads WHERE request_id = $1 ORDER BY id DESC`,
+    `SELECT token, filename, size_bytes, expires_at, staged_path FROM logx_v2_downloads
+     WHERE request_id = $1 AND expires_at > GETUTCDATE() ORDER BY id DESC`,
     [requestId]
   );
-  return rows.map((r) => ({ token: r.token, filename: r.filename, sizeBytes: r.size_bytes, expiresAt: r.expires_at }));
+  const seen = new Set();
+  const out = [];
+  for (const r of rows) {
+    const key = r.staged_path || r.filename || r.token;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ token: r.token, filename: r.filename, sizeBytes: r.size_bytes, expiresAt: r.expires_at });
+  }
+  return out;
 }
 
-// Yerel fallback staging dizininin TEK tanimi. Eskiden yazma tarafi (extra_vars
-// fallback_dir varsayilani, ocp.cjs/legacy.cjs) '/tmp/logx-v2-fallback' gonderirken
-// okuma tarafi (stagingRoots) 'cwd/data/logx-v2-fallback' ariyordu — fallback'e dusen
-// arsiv hicbir zaman servis edilemiyordu. Iki taraf da artik bu fonksiyonu kullanir.
-function fallbackStagingDir() {
+// Bir istek icin HANGI staged_path'lerin zaten token'landigini doner — finalize'in iki
+// kez calismasi (es zamanli iki /jobs/:id/status poll'u) durumunda ayni arsiv icin
+// ikinci token uretilmesini onler.
+async function listTokenizedPaths(requestId) {
+  const { rows } = await db.query(
+    `SELECT staged_path FROM logx_v2_downloads WHERE request_id = $1`, [requestId]
+  );
+  return new Set(rows.map((r) => r.staged_path).filter(Boolean));
+}
+
+// Fallback staging dizini IKI FARKLI baglamda kullanilir; ikisini karistirmak eski
+// hatanin (yazilan yer ile aranan yerin uyusmamasi) kaynagiydi:
+//
+//   remoteFallbackDir() → playbook'a `fallback_dir` olarak gider ve UZAK host'ta (bastion)
+//     olusturulur. Varsayilani /tmp olmalidir: portalin kendi dizin yolu uzak makinede
+//     yaratilamayabilir ve rescue yolu da coker.
+//   localFallbackDir()  → portalin KENDI diskinde ingest (fetch-back) ile yazilan yer.
+//
+// LOGX_STAGING_FALLBACK_DIR set edilirse ikisi de onu kullanir (paylasilan mount senaryosu).
+// stagingRoots() her ikisini birden tarar; boylece dosya hangisindeyse bulunur.
+function remoteFallbackDir() {
+  return process.env.LOGX_STAGING_FALLBACK_DIR || '/tmp/logx-v2-fallback';
+}
+function localFallbackDir() {
   return process.env.LOGX_STAGING_FALLBACK_DIR || path.join(process.cwd(), 'data', 'logx-v2-fallback');
 }
 
@@ -121,7 +152,10 @@ function stagingRoots() {
   return [
     process.env.LOGX_V2_STAGING_LEGACY_DIR || '/sw/BMW_PORTAL/logs/legacy',
     process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
-    fallbackStagingDir(),
+    // Fallback iki yerde olabilir (uzak /tmp paylasimli mount ise, ya da ingest ile
+    // portalin kendi diskine yazildiysa) — ikisi de taranir.
+    remoteFallbackDir(),
+    localFallbackDir(),
   ].map((r) => path.resolve(r));
 }
 
@@ -195,5 +229,5 @@ async function cleanupExpiredDownloads() {
 module.exports = {
   issueDownloadToken, getDownloadByToken, getLatestDownloadForRequest, handleDownloadRoute,
   deleteStagedFile, cleanupExpiredDownloads, resolveStagedFile, isUnderStagingRoot, stagingRoots,
-  listDownloadsForRequest, fallbackStagingDir,
+  listDownloadsForRequest, listTokenizedPaths, remoteFallbackDir, localFallbackDir,
 };

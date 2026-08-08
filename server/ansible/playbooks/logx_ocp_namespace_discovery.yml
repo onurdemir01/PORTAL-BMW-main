@@ -32,7 +32,8 @@
     logx_bastions: >-
       {{
         (terminal_hosts | default([]) | union([terminal_host | default('')]))
-        | union(ocp_clusters | default([]) | map(attribute='terminal_host', default='') | list)
+        | union(ocp_clusters | default([]) | selectattr('terminal_host', 'defined')
+                                          | map(attribute='terminal_host') | list)
         | map('trim') | reject('equalto', '') | unique | sort | list
       }}
 
@@ -272,8 +273,9 @@
             }])
           }}
       vars:
-        owner_host: "{{ item.terminal_host | default(terminal_host | default('')) }}"
-        host_results: "{{ (hostvars[owner_host] | default({}, true)).cluster_ns_results | default([]) }}"
+        # Sahipsiz cluster'in sahibi play2 ile AYNI kuralla belirlenir (ilk alfabetik bastion).
+        owner_host: "{{ item.terminal_host | default((groups['logx_terminal'] | default([]) | sort | first), true) }}"
+        host_results: "{{ (hostvars[owner_host] | default({}, true)).cluster_ns_results | default([], true) }}"
         reported: "{{ host_results | selectattr('cluster_name', 'equalto', item.cluster_name | default('')) | list }}"
       loop: "{{ ocp_clusters }}"
       loop_control:
