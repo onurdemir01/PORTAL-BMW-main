@@ -180,6 +180,25 @@ Bu repodaki playbook'lar **referans kopyadır**; çalıştırılan sürüm AWX p
 - `server/ansible/playbooks/logx_ocp_namespace_discovery.yml`
 - `server/ansible/playbooks/logx_ocp_discover_fetch.yml`
 
+> **Sürüm sapması uyarısı (2026-08-08 tespiti).** AWX'teki iki playbook AYNI sürümde
+> olmayabilir. Son tespit edilen durum:
+>
+> | Playbook | AWX'te | Sonuç |
+> |---|---|---|
+> | `logx_ocp_namespace_discovery.yml` | çoklu-bastion ✅, `oc_binary` elle `/bin/oc` yamalı | Namespace keşfi çalışır |
+> | `logx_ocp_discover_fetch.yml` | **eski tek-bastion** (2 play), `oc_binary: /usr/local/bin/oc` | **Log çekme adımı aynı hatayla düşer** |
+>
+> İki playbook birlikte güncellenmelidir. Yalnız birini güncellemek, sihirbazın ilk adımını
+> çalışır gösterip ikinci adımda aynı hataya düşürür — kullanıcı için en kafa karıştırıcı senaryo.
+>
+> Ayrıca eski `discover_fetch`, portalın gönderdiği `terminal_hosts` ve cluster-başına
+> `terminal_host` alanlarını **yok sayar**; tüm cluster'ları tek bastionda (alfabetik ilk)
+> işler. Yani "her cluster kendi jump server'ından" garantisi log çekme adımında sağlanmaz.
+>
+> **`vars_files` yolu:** AWX `credentials.yaml` kullanır. Repo kopyaları bu sürümde buna
+> hizalandı; ileride değişirse taşımadan önce iki dosyanın `vars_files` satırları
+> karşılaştırılmalıdır (yanlış yol = her host için fatal, teşhisi zor bir hata).
+
 **Sıra — önce AWX, sonra portal:**
 1. İki playbook'u AWX projesindeki karşılıklarının üzerine kopyala, proje senkronu çalıştır.
    Yeni playbook **eski payload ile de çalışır** (portal henüz yeni alanları göndermese bile),
