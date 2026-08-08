@@ -310,6 +310,24 @@ function initLogXv2(app) {
     res.json({ ok: true, config: await require('./ocp-runtime-config.cjs').saveConfig(req.body || {}) });
   }));
 
+  // ── Admin: OCP katalog ilk kurulumunu yeniden calistir ──────────────────────
+  // Seed normalde BIR KERE calisir (portal_settings isareti). Bu uc isareti silip
+  // yeniden calistirir — yalnizca EKSIK satirlari ekler, var olanlara DOKUNMAZ,
+  // yeni satirlar yine PASIF gelir. Yanlis veriyle doldurulmus bir kurulumu
+  // duzelttikten sonra kullanilir.
+  router.post('/admin/ocp/bootstrap-seed/rerun', requireAdmin, asyncRoute(async (req, res) => {
+    const seed = require('../../db/ocp-bootstrap-seed.cjs');
+    const result = await seed.seedOcpBootstrapOnce({ force: true });
+    res.json({ ok: true, result });
+  }));
+  router.get('/admin/ocp/bootstrap-seed', requireAdmin, asyncRoute(async (req, res) => {
+    const seed = require('../../db/ocp-bootstrap-seed.cjs');
+    const raw = await require('../../db/settings.cjs').getSetting(seed.SEED_FLAG);
+    let summary = null;
+    try { summary = raw ? JSON.parse(raw) : null; } catch { summary = { raw }; }
+    res.json({ ok: true, seeded: !!raw, summary });
+  }));
+
   // ── Admin: ocp_terminal_host_map ─────────────────────────────────────────────
   router.get('/admin/ocp-terminal-host-map', requireAdmin, asyncRoute(async (req, res) => {
     res.json({ ok: true, rows: await adminData.listTerminalHostMap() });

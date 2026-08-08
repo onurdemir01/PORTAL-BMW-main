@@ -1,0 +1,132 @@
+// server/db/__tests__/ocp-bootstrap-seed.test.cjs — OCP katalogu bir-kerelik ilk kurulumu.
+// EN KRITIK GARANTILER: (1) isaret varsa seed HIC calismaz (admin'in sildigi cluster geri
+// gelmez), (2) var olan satira DOKUNULMAZ, (3) yeni satirlar PASIF gelir.
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const db = require('../index.cjs');
+const settings = require('../settings.cjs');
+const seed = require('../ocp-bootstrap-seed.cjs');
+
+// ── parseInventoryKey: kullanicinin verdigi gercek anahtarlar ──────────────────
+
+test('parseInventoryKey(): son alt cizgi env, oncesi tenant', () => {
+  assert.deepEqual(seed.parseInventoryKey('ark_prod'), { tenant: 'ark', env: 'prod' });
+  assert.deepEqual(seed.parseInventoryKey('hosting_dev'), { tenant: 'hosting', env: 'dev' });
+});
+
+test('parseInventoryKey(): tenant icinde tire/alt cizgi olabilir', () => {
+  assert.deepEqual(seed.parseInventoryKey('istirak-hosting_prod'), { tenant: 'istirak-hosting', env: 'prod' });
+  assert.deepEqual(seed.parseInventoryKey('metaco_das_test'), { tenant: 'metaco_das', env: 'test' });
+  assert.deepEqual(seed.parseInventoryKey('digital_assets_wyden_qa'), { tenant: 'digital_assets_wyden', env: 'qa' });
+});
+
+test('parseInventoryKey(): alt cizgisiz anahtar kendi ortami olur (cicd)', () => {
+  assert.deepEqual(seed.parseInventoryKey('cicd'), { tenant: 'cicd', env: 'cicd' });
+});
+
+test('parseInventoryKey(): bozuk girdilerde patlamaz', () => {
+  assert.deepEqual(seed.parseInventoryKey(''), { tenant: '', env: '' });
+  assert.deepEqual(seed.parseInventoryKey('_prod'), { tenant: '_prod', env: '_prod' }, 'basta alt cizgi → bolme yok');
+  assert.deepEqual(seed.parseInventoryKey('ark_'), { tenant: 'ark_', env: 'ark_' }, 'sonda alt cizgi → bolme yok');
+});
+
+// ── buildSeedRows: envanterden satir uretimi ──────────────────────────────────
+
+test('buildSeedRows(): her cluster api_url + credential anahtari tasir, PAROLA YOK', () => {
+  const rows = seed.buildSeedRows();
+  assert.ok(rows.length > 40, 'envanterden anlamli sayida satir uretilmeli');
+  for (const r of rows) {
+    assert.ok(r.api_url.startsWith('https://api.'), `api_url bekleniyor: ${r.cluster_name}`);
+    assert.ok(r.vault_credential_key, `credential anahtari bekleniyor: ${r.cluster_name}`);
+    assert.ok(!('password' in r), 'PAROLA asla seed verisinde olmamali');
+  }
+});
+
+test('buildSeedRows(): cluster-ozel jump server varsa tasinir, yoksa NULL (yedege duser)', () => {
+  const rows = seed.buildSeedRows();
+  const prod1 = rows.find((r) => r.cluster_name === 'gbocpprod1');
+  assert.equal(prod1.terminal_host, 'gbarkp51', 'kullanicinin verdigi esleme uygulanmali');
+  assert.equal(prod1.tenant, 'ark');
+  assert.equal(prod1.env, 'prod');
+
+  const test1 = rows.find((r) => r.cluster_name === 'gbocptest1');
+  assert.equal(test1.terminal_host, null, 'eslemesi olmayan cluster NULL kalmali (tenant/env yedegi devreye girer)');
+});
+
+test('buildSeedRows(): metaco/das cluster\'lari uxmid_das anahtarini kullanir', () => {
+  const rows = seed.buildSeedRows();
+  const das = rows.find((r) => r.cluster_name === 'daocpprod1');
+  assert.equal(das.vault_credential_key, 'uxmid_das');
+  assert.match(das.api_url, /dijitalvarlik\.com\.tr/);
+});
+
+// ── Bir-kerelik davranis ──────────────────────────────────────────────────────
+
+function withMocks(fn, { flag = null, existingClusters = new Set() } = {}) {
+  const origGetStrict = settings.getSettingStrict;
+  const origSet = settings.setSetting;
+  const origQuery = db.query;
+  const calls = { inserts: [], selects: 0 };
+
+  settings.getSettingStrict = async () => flag;
+  settings.setSetting = async (k, v) => ({ key: k, value: v });
+  db.query = async (sql, params) => {
+    if (/SELECT TOP 1 id FROM ocp_cluster_index/i.test(sql)) {
+      calls.selects++;
+      return { rows: existingClusters.has(params[2]) ? [{ id: 1 }] : [] };
+    }
+    if (/INSERT INTO ocp_cluster_index/i.test(sql)) { calls.inserts.push(params); return { rows: [] }; }
+    if (/FROM ocp_terminal_host_map/i.test(sql)) return { rows: [{ id: 1 }] };  // hepsi var say
+    return { rows: [], rowCount: 1 };
+  };
+
+  return Promise.resolve(fn(calls)).finally(() => {
+    settings.getSettingStrict = origGetStrict;
+    settings.setSetting = origSet;
+    db.query = origQuery;
+  });
+}
+
+test('seedOcpBootstrapOnce(): isaret VARSA hicbir sorgu calismaz (silinen cluster geri gelmez)', async () => {
+  await withMocks(async (calls) => {
+    const r = await seed.seedOcpBootstrapOnce();
+    assert.equal(r.skipped, true);
+    assert.equal(r.reason, 'already_seeded');
+    assert.equal(calls.selects, 0, 'DB\'ye hic gidilmemeli');
+    assert.equal(calls.inserts.length, 0);
+  }, { flag: '{"at":"2026-01-01"}' });
+});
+
+test('seedOcpBootstrapOnce(): yeni satirlar PASIF (is_active=0) ve source=inventory-seed', async () => {
+  await withMocks(async (calls) => {
+    await seed.seedOcpBootstrapOnce();
+    assert.ok(calls.inserts.length > 0, 'satir eklenmeli');
+    // INSERT SQL'inde sabit yazili: source='inventory-seed', is_active=0
+    // parametre sirasi: env, tenant, cluster_name, api_url, vault_credential_key, terminal_host
+    const first = calls.inserts[0];
+    assert.equal(first.length, 6, 'parola gibi fazladan bir alan gonderilmemeli');
+  }, { flag: null });
+});
+
+test('seedOcpBootstrapOnce(): DB\'de ZATEN olan cluster atlanir (admin duzenlemesi korunur)', async () => {
+  await withMocks(async (calls) => {
+    await seed.seedOcpBootstrapOnce();
+    const inserted = calls.inserts.map((p) => p[2]);
+    assert.ok(!inserted.includes('gbocpprod1'), 'var olan satir yeniden eklenmemeli');
+    assert.ok(inserted.includes('gbocpprod2'), 'olmayan satir eklenmeli');
+  }, { flag: null, existingClusters: new Set(['gbocpprod1']) });
+});
+
+test('seedOcpBootstrapOnce(): isaret OKUNAMAZSA seed atlanir (mukerrer satir riski alinmaz)', async () => {
+  const orig = settings.getSettingStrict;
+  settings.getSettingStrict = async () => { throw new Error('DB erisilemiyor'); };
+  try {
+    const r = await seed.seedOcpBootstrapOnce();
+    assert.equal(r.skipped, true);
+    assert.equal(r.reason, 'flag_read_failed');
+  } finally {
+    settings.getSettingStrict = orig;
+  }
+});

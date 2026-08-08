@@ -1361,6 +1361,15 @@ async function setupTables() {
   await seedSplunkProducts(pool);
   await seedSelfServiceGroups(pool);
 
+  // OCP katalogu ilk kurulumu — digerlerinden FARKLI olarak BIR KERELIK calisir
+  // (isaret: portal_settings). Sebep: admin bir cluster'i bilerek silerse restart onu
+  // geri getirmemeli. Eklenen satirlar PASIF baslar (bkz. ocp-bootstrap-seed.cjs).
+  try {
+    await require('./ocp-bootstrap-seed.cjs').seedOcpBootstrapOnce();
+  } catch (e) {
+    console.warn('[DB] OCP katalog seed atlandi:', e.message);
+  }
+
   // Not: Eski portal_config_blobs uzlastirmasi (config-mirror.cjs) kaldirildi — store'lar
   // artik normalize tablolara dogrudan yazar; blob'lar yalnizca her store'un kendi
   // tek-seferlik goc adiminda (tablo bosken) okunur. Blob satirlari geri donus emniyeti
