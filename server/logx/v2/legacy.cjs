@@ -165,7 +165,10 @@ async function transfer(requestRow, selected) {
   const job = await jobs.launchJob(requestRow.request_id, 'legacy_transfer', {
     selected_files: selected,
     staging_dir: process.env.LOGX_V2_STAGING_LEGACY_DIR || '/sw/BMW_PORTAL/logs/legacy',
-    fallback_dir: process.env.LOGX_STAGING_FALLBACK_DIR || '/tmp/logx-v2-fallback',
+    // Portalin OKUDUGU fallback koku ile ayni kaynak (bkz. downloads.fallbackStagingDir):
+    // eskiden burada '/tmp/logx-v2-fallback' yaziliyken okuma 'data/logx-v2-fallback'te
+    // ariyordu — fallback'e dusen arsiv asla servis edilemiyordu.
+    fallback_dir: require('./downloads.cjs').fallbackStagingDir(),
     archive_name: archiveName,
     ...(ingestInfo ? { ingest_url: ingestInfo.url } : {}),
   });

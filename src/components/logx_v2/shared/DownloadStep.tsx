@@ -1,66 +1,118 @@
 // src/components/logx_v2/shared/DownloadStep.tsx — İndirme hazır olduğunda gösterilen
 // son adım. Platform-agnostik (hem Legacy hem OCP aynı bileşeni kullanır).
 //
-// İndirme artık düz `<a href>` navigasyonu DEĞİL: fetch ile (credentials dahil) blob olarak
+// İndirme düz `<a href>` navigasyonu DEĞİL: fetch ile (credentials dahil) blob olarak
 // çekilir. Böylece hata durumunda tarayıcıda ham JSON sayfası açılmaz — kullanıcıya NET bir
 // hata mesajı gösterilir (ör. "arşiv portalda bulunamadı / staging mount"). Başarıda dosya
 // bir object URL ile indirilir.
+//
+// Çok-bastion'lu OCP çekiminde bir istek BİRDEN ÇOK arşiv üretebilir (her jump server kendi
+// arşivini stage eder). `downloads` doluysa her arşiv ayrı satır olarak listelenir; tek arşiv
+// varsa görünüm eskisiyle aynıdır.
 import React, { useState } from "react";
 import { ArrowDownTrayIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { logxV2Api, type DownloadInfo } from "@/api/logxV2Api";
 
-const DownloadStep: React.FC<{ download: DownloadInfo; onRestart: () => void }> = ({ download, onRestart }) => {
+function useBlobDownload() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleDownload() {
+  async function run(item: DownloadInfo) {
     if (busy) return;
     setBusy(true);
     setError(null);
+    let url: string | null = null;
     try {
-      const res = await fetch(logxV2Api.downloadUrl(download.token), { credentials: "include" });
+      const res = await fetch(logxV2Api.downloadUrl(item.token), { credentials: "include" });
       if (!res.ok) {
         // Backend JSON hata döner (401/403/404/410) — mesajı göster.
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { message?: string }).message || `İndirme başarısız (HTTP ${res.status}).`);
       }
       const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
+      url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = download.filename || "logs.zip";
+      a.download = item.filename || "logs.zip";
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(url);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      if (url) window.URL.revokeObjectURL(url);
       setBusy(false);
     }
   }
 
-  return (
-    <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
-      <CheckCircleIcon className="w-12 h-12 text-emerald-500" />
-      <div>
-        <p className="text-sm font-semibold text-[var(--text-primary)]">Log dosyanız hazır</p>
-        <p className="text-xs text-[var(--text-muted)] mt-1">{download.filename}</p>
-      </div>
+  return { busy, error, run };
+}
 
+const DownloadButton: React.FC<{ item: DownloadInfo; compact?: boolean }> = ({ item, compact }) => {
+  const { busy, error, run } = useBlobDownload();
+  return (
+    <div className={compact ? "flex items-center gap-3 w-full" : "flex flex-col items-center gap-3"}>
+      {compact && (
+        <span className="text-xs text-[var(--text-secondary)] truncate flex-1 text-left" title={item.filename}>
+          {item.filename}
+        </span>
+      )}
+      <button
+        onClick={() => run(item)}
+        disabled={busy}
+        className="btn-primary active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+      >
+        <ArrowDownTrayIcon className="w-4 h-4" />
+        {busy ? "İndiriliyor…" : error ? "Tekrar Dene" : "İndir (.zip)"}
+      </button>
       {error && (
         <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700 max-w-md text-left">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
+    </div>
+  );
+};
 
-      <button onClick={handleDownload} disabled={busy} className="btn-primary active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none">
-        <ArrowDownTrayIcon className="w-4 h-4" />
-        {busy ? "İndiriliyor…" : error ? "Tekrar Dene" : "İndir (.zip)"}
-      </button>
+const DownloadStep: React.FC<{ download: DownloadInfo; downloads?: DownloadInfo[]; onRestart: () => void }> = ({
+  download, downloads, onRestart,
+}) => {
+  // Sunucu `downloads[]` göndermezse (eski backend) tekil kayda düşeriz.
+  const items = downloads && downloads.length ? downloads : [download];
+  const multi = items.length > 1;
 
-      <p className="text-xs text-[var(--text-muted)]">Bu bağlantı {new Date(download.expiresAt).toLocaleTimeString("tr-TR")} itibarıyla sona erecek.</p>
+  return (
+    <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
+      <CheckCircleIcon className="w-12 h-12 text-emerald-500" />
+      <div>
+        <p className="text-sm font-semibold text-[var(--text-primary)]">
+          {multi ? `Log arşivleriniz hazır (${items.length} adet)` : "Log dosyanız hazır"}
+        </p>
+        {multi ? (
+          <p className="text-xs text-[var(--text-muted)] mt-1">
+            Seçtiğiniz cluster'lar farklı jump server'lar üzerinden toplandı — her biri için ayrı arşiv oluştu.
+          </p>
+        ) : (
+          <p className="text-xs text-[var(--text-muted)] mt-1">{items[0]?.filename}</p>
+        )}
+      </div>
+
+      {multi ? (
+        <div className="w-full max-w-lg flex flex-col gap-2">
+          {items.map((it) => (
+            <div key={it.token} className="border border-[var(--border)] rounded-xl px-3 py-2">
+              <DownloadButton item={it} compact />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <DownloadButton item={items[0]} />
+      )}
+
+      <p className="text-xs text-[var(--text-muted)]">
+        Bu bağlantı {new Date(items[0]?.expiresAt).toLocaleTimeString("tr-TR")} itibarıyla sona erecek.
+      </p>
       <button onClick={onRestart} className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline mt-2">
         Yeni bir istek başlat
       </button>

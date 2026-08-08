@@ -6,37 +6,51 @@
 #   bmw_openshift_jobs/global_variables/credentials_v2.yaml
 #   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 #
-# Required extra_vars:
-#   terminal_host: GBAOCP01
+# Required extra_vars (v2 - per-cluster bastion):
+#   terminal_host: GBAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
+#   terminal_hosts: [GBAOCP01, GBAOCP02] # optional; unique, sorted list of bastions
 #   ocp_clusters:
 #     - env: lab
 #       tenant: ark
 #       cluster_name: gbocplab2
+#       terminal_host: GBAOCP01          # optional; when absent the scalar terminal_host is used
+#
+# Backward compatibility: when neither `terminal_hosts` nor per-cluster `terminal_host`
+# is supplied, this playbook behaves EXACTLY as before (one bastion, all clusters on it).
 #
 # Output:
-#   artifacts.logx_result
+#   artifacts.logx_result  (shape unchanged: { overall_status, clusters[] })
 
-- name: "Validate input and add terminal host dynamically"
+- name: "Validate input and add terminal hosts dynamically"
   hosts: localhost
   connection: local
   gather_facts: false
   become: false
 
+  vars:
+    # Effective bastion list: explicit list wins, else the legacy scalar, else per-cluster values.
+    logx_bastions: >-
+      {{
+        (terminal_hosts | default([]) | union([terminal_host | default('')]))
+        | union(ocp_clusters | default([]) | map(attribute='terminal_host', default='') | list)
+        | map('trim') | reject('equalto', '') | unique | sort | list
+      }}
+
   tasks:
     - name: "Validate required input variables"
       ansible.builtin.assert:
         that:
-          - terminal_host is defined
-          - terminal_host | string | trim | length > 0
+          - logx_bastions | length > 0
           - ocp_clusters is defined
           - ocp_clusters is sequence
           - ocp_clusters | length > 0
-        fail_msg: "terminal_host and a non-empty ocp_clusters list are required."
+        fail_msg: "At least one bastion (terminal_host / terminal_hosts / ocp_clusters[].terminal_host) and a non-empty ocp_clusters list are required."
 
-    - name: "Add terminal host to dynamic inventory"
+    - name: "Add every bastion to dynamic inventory"
       ansible.builtin.add_host:
-        name: "{{ terminal_host }}"
+        name: "{{ item }}"
         groups: logx_terminal
+      loop: "{{ logx_bastions }}"
       changed_when: false
 
 
@@ -62,6 +76,23 @@
         resolved_clusters: []
         validation_errors: []
         cluster_ns_results: []
+      changed_when: false
+
+    # Cok-bastion: her bastion YALNIZ kendisine atanmis cluster'lari isler. Hicbir cluster
+    # ogesinde terminal_host yoksa (eski payload) tum liste tek bastion'da islenir; kismi
+    # tanimli payload'da sahipsiz kalanlar ilk (alfabetik) bastion'a dusurulur ki
+    # sessizce dusmesinler.
+    - name: "Select the cluster subset that belongs to this bastion"
+      ansible.builtin.set_fact:
+        my_ocp_clusters: >-
+          {{
+            (ocp_clusters | selectattr('terminal_host', 'defined')
+                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+            +
+            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+             if inventory_hostname == ((groups['logx_terminal'] | default([])) | sort | first)
+             else [])
+          }}
       changed_when: false
 
     - name: "Validate requested cluster records"
@@ -90,7 +121,7 @@
             clusters[inventory_key][item.cluster_name].url is defined and
             clusters[inventory_key][item.cluster_name].password is defined
           }}
-      loop: "{{ ocp_clusters }}"
+      loop: "{{ my_ocp_clusters }}"
       loop_control:
         label: "{{ item.tenant | default('?') }}_{{ item.env | default('?') }}/{{ item.cluster_name | default('?') }}"
       no_log: true
@@ -121,7 +152,7 @@
             clusters[inventory_key][item.cluster_name].url is defined and
             clusters[inventory_key][item.cluster_name].password is defined
           }}
-      loop: "{{ ocp_clusters }}"
+      loop: "{{ my_ocp_clusters }}"
       loop_control:
         label: "{{ item.cluster_name | default('?') }}"
       no_log: true
@@ -212,13 +243,50 @@
         cluster_ns_results: "{{ cluster_ns_results + validation_errors }}"
       changed_when: false
 
+
+# set_stats BILEREK tek bir yazardan (localhost) yayinlanir: birden cok host ayni
+# `logx_result` anahtarini yazarsa Ansible listeleri BIRLESTIRMEZ, sonuncu yazan ezer.
+# Bu play, istenen HER cluster'i sahibi olan bastion'un fact'inden toplar; sonuc sekli
+# tek-bastion'daki ile birebir aynidir (overall_status + clusters[]).
+- name: "Aggregate per-bastion results and publish a single logx_result"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: "Initialize merged result list"
+      ansible.builtin.set_fact:
+        merged_ns_results: []
+      changed_when: false
+
+    - name: "Collect each requested cluster's result from its own bastion"
+      ansible.builtin.set_fact:
+        merged_ns_results: >-
+          {{
+            merged_ns_results + (reported if (reported | length > 0) else [{
+              'cluster_name': item.cluster_name | default('unknown'),
+              'status': 'error',
+              'error': 'Bastion did not report a result: ' ~ (owner_host | default('?')),
+              'namespaces': []
+            }])
+          }}
+      vars:
+        owner_host: "{{ item.terminal_host | default(terminal_host | default('')) }}"
+        host_results: "{{ (hostvars[owner_host] | default({}, true)).cluster_ns_results | default([]) }}"
+        reported: "{{ host_results | selectattr('cluster_name', 'equalto', item.cluster_name | default('')) | list }}"
+      loop: "{{ ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      changed_when: false
+
     - name: "Publish namespace discovery result"
       ansible.builtin.set_stats:
         data:
           logx_result:
             overall_status: >-
-              {% set ok_count = cluster_ns_results | selectattr('status', 'equalto', 'ok') | list | length %}
-              {% set error_count = cluster_ns_results | selectattr('status', 'equalto', 'error') | list | length %}
+              {% set ok_count = merged_ns_results | selectattr('status', 'equalto', 'ok') | list | length %}
+              {% set error_count = merged_ns_results | selectattr('status', 'equalto', 'error') | list | length %}
               {{ 'success' if error_count == 0 else ('failed' if ok_count == 0 else 'partial') }}
-            clusters: "{{ cluster_ns_results }}"
+            clusters: "{{ merged_ns_results }}"
         per_host: false

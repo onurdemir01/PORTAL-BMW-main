@@ -10,6 +10,9 @@ export interface ColumnDef<T> {
   label: string;
   type?: "text" | "checkbox" | "number";
   placeholder?: string;
+  // Hücre BOŞ olduğunda okuma modunda gösterilecek açıklama (ör. devreye girecek fallback
+  // değeri). Boş string dönerse "—" gösterilir. Yalnızca görüntüdür, kayda etki etmez.
+  emptyHint?: (row: T) => string;
 }
 
 interface Props<T extends { id: number }> {
@@ -126,11 +129,19 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                 <React.Fragment key={row.id}>{renderFormRow()}</React.Fragment>
               ) : (
                 <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
-                  {columns.map((col) => (
-                    <td key={String(col.key)} className="px-3 py-2 text-gray-700">
-                      {col.type === "checkbox" ? (row[col.key] ? "✓" : "—") : String(row[col.key] ?? "")}
-                    </td>
-                  ))}
+                  {columns.map((col) => {
+                    const raw = row[col.key];
+                    const isEmpty = raw === null || raw === undefined || raw === "";
+                    return (
+                      <td key={String(col.key)} className="px-3 py-2 text-gray-700">
+                        {col.type === "checkbox"
+                          ? (raw ? "✓" : "—")
+                          : isEmpty && col.emptyHint
+                            ? <span className="text-gray-400 italic">{col.emptyHint(row) || "—"}</span>
+                            : String(raw ?? "")}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <button onClick={() => startEdit(row)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
                       <PencilIcon className="w-3.5 h-3.5" />

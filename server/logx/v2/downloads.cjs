@@ -44,6 +44,25 @@ async function getLatestDownloadForRequest(requestId) {
     : null;
 }
 
+// Cok-bastion'lu OCP fetch'te bir istek BIRDEN COK arsiv uretebilir (bastion basina bir
+// staged_files ogesi → bir token). Sihirbazin indirme adimi hepsini listeleyebilsin diye
+// istegin TUM gecerli indirme kayitlari (en yeniden eskiye) dondurulur.
+async function listDownloadsForRequest(requestId) {
+  const { rows } = await db.query(
+    `SELECT token, filename, size_bytes, expires_at FROM logx_v2_downloads WHERE request_id = $1 ORDER BY id DESC`,
+    [requestId]
+  );
+  return rows.map((r) => ({ token: r.token, filename: r.filename, sizeBytes: r.size_bytes, expiresAt: r.expires_at }));
+}
+
+// Yerel fallback staging dizininin TEK tanimi. Eskiden yazma tarafi (extra_vars
+// fallback_dir varsayilani, ocp.cjs/legacy.cjs) '/tmp/logx-v2-fallback' gonderirken
+// okuma tarafi (stagingRoots) 'cwd/data/logx-v2-fallback' ariyordu — fallback'e dusen
+// arsiv hicbir zaman servis edilemiyordu. Iki taraf da artik bu fonksiyonu kullanir.
+function fallbackStagingDir() {
+  return process.env.LOGX_STAGING_FALLBACK_DIR || path.join(process.cwd(), 'data', 'logx-v2-fallback');
+}
+
 // GET /api/logx/v2/downloads/:token — requireAuth zaten uygulanmis olmali (index.cjs'de).
 async function handleDownloadRoute(req, res) {
   const token = String(req.params.token || '');
@@ -102,7 +121,7 @@ function stagingRoots() {
   return [
     process.env.LOGX_V2_STAGING_LEGACY_DIR || '/sw/BMW_PORTAL/logs/legacy',
     process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
-    process.env.LOGX_STAGING_FALLBACK_DIR || path.join(process.cwd(), 'data', 'logx-v2-fallback'),
+    fallbackStagingDir(),
   ].map((r) => path.resolve(r));
 }
 
@@ -176,4 +195,5 @@ async function cleanupExpiredDownloads() {
 module.exports = {
   issueDownloadToken, getDownloadByToken, getLatestDownloadForRequest, handleDownloadRoute,
   deleteStagedFile, cleanupExpiredDownloads, resolveStagedFile, isUnderStagingRoot, stagingRoots,
+  listDownloadsForRequest, fallbackStagingDir,
 };

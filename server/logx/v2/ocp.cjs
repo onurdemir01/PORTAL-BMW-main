@@ -13,6 +13,39 @@ async function getClusterTree() {
   return adminData.getClusterTree();
 }
 
+// extra_vars v2 sozlesmesi (OCP dinamik yapi). Playbook'a HER ZAMAN uc alan birden gider:
+//   terminal_host  : legacy SKALER (= terminal_hosts[0]) — eski playbook surumleriyle uyum
+//   terminal_hosts : benzersiz + sirali bastion listesi (deterministik payload)
+//   ocp_clusters[] : { env, tenant, cluster_name, terminal_host } — cluster-BASINA bastion
+// Tek bastion'li kurulumda uretilen payload, eski payload'in ustkumesidir; playbook
+// per-cluster alanlari yoksayarsa davranis birebir eskisi gibi kalir.
+// Saf fonksiyon — DB'ye dokunmaz, dogrudan test edilir.
+function buildOcpExtraVars({ env, tenant, clusters, hosts }) {
+  const items = clusters.map((name) => ({
+    env, tenant, cluster_name: name, terminal_host: hosts[name],
+  }));
+  const terminalHosts = [...new Set(items.map((i) => i.terminal_host))].sort();
+  return { terminal_host: terminalHosts[0], terminal_hosts: terminalHosts, ocp_clusters: items };
+}
+
+// Secilen cluster'lar icin bastion'lari cozer; eksik varsa anlasilir 400 firlatir.
+// Cagiran her yerde (select + her job launch'i) TEKRAR calisir: admin verisi degismis
+// olabilir, client'in gonderdigi input_json'a asla guvenilmez.
+async function resolveHostsOrThrow(env, tenant, clusters) {
+  const { hosts, missing } = await adminData.resolveTerminalHosts(env, tenant, clusters);
+  if (missing.length) {
+    throw Object.assign(
+      new Error(
+        `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — ` +
+        `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin ` +
+        `veya "${tenant}/${env}" için yedek eşleme tanımlayın.`
+      ),
+      { status: 400 }
+    );
+  }
+  return hosts;
+}
+
 // POST /ocp/:requestId/select — { env, tenant, clusters: [name,...] }
 async function selectClusters(requestRow, env, tenant, clusters) {
   if (!env || !tenant || !Array.isArray(clusters) || clusters.length === 0) {
@@ -24,31 +57,30 @@ async function selectClusters(requestRow, env, tenant, clusters) {
       throw Object.assign(new Error(`Cluster tanımlı/aktif değil: ${clusterName}`), { status: 400 });
     }
   }
-  const terminalHost = await adminData.getTerminalHost(tenant, env);
-  if (!terminalHost) {
-    throw Object.assign(
-      new Error(`"${tenant}/${env}" için terminal/bastion host tanımlı değil — admin panelinden eklenmeli.`),
-      { status: 400 }
-    );
-  }
+  const hosts = await resolveHostsOrThrow(env, tenant, clusters);
+  // `terminalHost` (tekil) yalnizca geriye donuk uyum icin saklanir: bu alani okuyan eski
+  // istek satirlari ve UI hala calissin diye. Gercek kaynak her launch'ta taze cozulur.
+  const terminalHost = [...new Set(Object.values(hosts))].sort()[0];
 
   await requests.updateRequest(requestRow.request_id, {
     state: 'draft',
-    input: { env, tenant, clusters, terminalHost },
+    input: { env, tenant, clusters, terminalHost, clusterHosts: hosts },
   });
-  return { terminalHost };
+  return { terminalHost, clusterHosts: hosts };
 }
 
 // POST /ocp/:requestId/namespaces/discover
 async function discoverNamespaces(requestRow) {
   const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : null;
-  if (!input?.terminalHost || !Array.isArray(input?.clusters)) {
+  if (!Array.isArray(input?.clusters) || !input.clusters.length) {
     throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
   }
-  const job = await jobs.launchJob(requestRow.request_id, 'ocp_namespace_discovery', {
-    terminal_host: input.terminalHost,
-    ocp_clusters: input.clusters.map((name) => ({ env: input.env, tenant: input.tenant, cluster_name: name })),
-  });
+  const hosts = await resolveHostsOrThrow(input.env, input.tenant, input.clusters);
+  const job = await jobs.launchJob(
+    requestRow.request_id,
+    'ocp_namespace_discovery',
+    buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts })
+  );
   await requests.updateRequest(requestRow.request_id, { state: 'namespace_discovering' });
   return job;
 }
@@ -86,7 +118,7 @@ async function finalizeNamespaceDiscovery(requestRow, job) {
 // client'tan gelmez — playbook kendi `oc get pods` ciktisindan bulur.
 async function discoverFetch(requestRow, namespace, appName) {
   const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : null;
-  if (!input?.terminalHost || !Array.isArray(input?.clusters)) {
+  if (!Array.isArray(input?.clusters) || !input.clusters.length) {
     throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
   }
   const ns = String(namespace || '').trim();
@@ -94,12 +126,9 @@ async function discoverFetch(requestRow, namespace, appName) {
   if (!ns || !app) {
     throw Object.assign(new Error('namespace ve appName zorunlu.'), { status: 400 });
   }
-  // Terminal host'u client input'undan degil, taze bir DB sorgusuyla yeniden dogrular
+  // Bastion'lar client input'undan degil, taze bir DB sorgusuyla yeniden cozulur
   // (client'in gonderdigi input_json'a degil, admin verisine guveniriz).
-  const terminalHost = await adminData.getTerminalHost(input.tenant, input.env);
-  if (!terminalHost) {
-    throw Object.assign(new Error('Terminal host artık tanımlı değil.'), { status: 400 });
-  }
+  const hosts = await resolveHostsOrThrow(input.env, input.tenant, input.clusters);
 
   const archiveName = `${require('crypto').randomBytes(16).toString('hex')}.zip`;
   // A4 fetch-back: terminal/kaynak host NFS'e yazamazsa arsivi bu URL'ye push edebilir.
@@ -107,12 +136,11 @@ async function discoverFetch(requestRow, namespace, appName) {
     .issueIngestToken({ requestId: requestRow.request_id, filename: archiveName })
     .catch(() => null);
   const job = await jobs.launchJob(requestRow.request_id, 'ocp_discover_fetch', {
-    terminal_host: terminalHost,
+    ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts }),
     namespace: ns,
     app_name: app,
-    ocp_clusters: input.clusters.map((name) => ({ env: input.env, tenant: input.tenant, cluster_name: name })),
     staging_dir: process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
-    fallback_dir: process.env.LOGX_STAGING_FALLBACK_DIR || '/tmp/logx-v2-fallback',
+    fallback_dir: require('./downloads.cjs').fallbackStagingDir(),
     archive_name: archiveName,
     ...(ingestInfo ? { ingest_url: ingestInfo.url } : {}),
   });
@@ -124,4 +152,7 @@ async function discoverFetch(requestRow, namespace, appName) {
   return job;
 }
 
-module.exports = { getClusterTree, selectClusters, discoverNamespaces, finalizeNamespaceDiscovery, discoverFetch };
+module.exports = {
+  getClusterTree, selectClusters, discoverNamespaces, finalizeNamespaceDiscovery, discoverFetch,
+  buildOcpExtraVars,
+};

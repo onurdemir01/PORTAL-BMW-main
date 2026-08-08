@@ -228,13 +228,19 @@ test('ocp.selectClusters(): admin tarafından tanımlanmamış bir cluster redde
   );
 });
 
-test('ocp.selectClusters(): terminal host tanımlı değilse job hiç launch edilmeden reddedilir', async (t) => {
+// Bastion cozumlemesi artik CLUSTER seviyesinde (cluster kolonu > tenant/env yedegi):
+// ikisi de yoksa cluster `missing` doner ve istek job launch EDILMEDEN 400 ile reddedilir.
+test('ocp.selectClusters(): hicbir jump server cozulemezse job hic launch edilmeden reddedilir', async (t) => {
   t.mock.method(admin, 'clusterExists', async () => true);
-  t.mock.method(admin, 'getTerminalHost', async () => null);
+  t.mock.method(admin, 'resolveTerminalHosts', async (env, tenant, names) => ({ hosts: {}, missing: [...names] }));
   const requestRow = { request_id: 'r1' };
   await assert.rejects(
     () => ocp.selectClusters(requestRow, 'dev', 'ark', ['gbocptest1']),
-    (err) => { assert.equal(err.status, 400); return true; }
+    (err) => {
+      assert.equal(err.status, 400);
+      assert.match(err.message, /gbocptest1/, 'hangi cluster(lar)in bastion\'siz oldugu mesajda gecmeli');
+      return true;
+    }
   );
 });
 

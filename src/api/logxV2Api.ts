@@ -94,7 +94,7 @@ export const logxV2Api = {
   createRequest: (platform: Platform) => postJson<{ ok: boolean; requestId: string }>("/requests", { platform }),
 
   getRequest: (requestId: string) =>
-    fetch(`${BASE}/requests/${requestId}`).then((r) => json<{ ok: boolean; request: LogXv2Request; jobs: LogXv2Job[]; download: DownloadInfo | null }>(r)),
+    fetch(`${BASE}/requests/${requestId}`).then((r) => json<{ ok: boolean; request: LogXv2Request; jobs: LogXv2Job[]; download: DownloadInfo | null; downloads?: DownloadInfo[] }>(r)),
 
   // ── Legacy ─────────────────────────────────────────────────────────────────
   searchLegacyApps: (search: string) =>

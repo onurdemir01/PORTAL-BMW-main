@@ -6,22 +6,28 @@
 #   bmw_openshift_jobs/global_variables/credentials_v2.yaml
 #   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 #
-# Required extra_vars:
-#   terminal_host: GBAOCP01
+# Required extra_vars (v2 - per-cluster bastion):
+#   terminal_host: GBAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
+#   terminal_hosts: [GBAOCP01, GBAOCP02] # optional; unique, sorted list of bastions
 #   namespace: application-namespace
 #   app_name: application-name-fragment
 #   ocp_clusters:
 #     - env: lab
 #       tenant: ark
 #       cluster_name: gbocplab2
+#       terminal_host: GBAOCP01          # optional; when absent the scalar terminal_host is used
 #   staging_dir: /target/staging/path
 #   fallback_dir: /tmp/logx_fallback
-#   archive_name: logx_ocp_logs.zip
+#   archive_name: logx_ocp_logs.zip      # with >1 bastion each host prefixes it with its own name
+#
+# Backward compatibility: with a single bastion and no per-cluster terminal_host the
+# behaviour AND the archive name are identical to the previous version.
 #
 # Output:
-#   artifacts.logx_result
+#   artifacts.logx_result — legacy scalar fields kept (first archive) plus
+#   `staged_files[]` carrying every produced archive (one per bastion).
 
-- name: "Validate input and add terminal host dynamically"
+- name: "Validate input and add terminal hosts dynamically"
   hosts: localhost
   connection: local
   gather_facts: false
@@ -29,13 +35,19 @@
 
   vars:
     oc_namespace: "{{ oc_namespace_input | default(namespace | default('')) }}"
+    # Etkin bastion listesi: acik liste > legacy skaler > cluster-basina degerler.
+    logx_bastions: >-
+      {{
+        (terminal_hosts | default([]) | union([terminal_host | default('')]))
+        | union(ocp_clusters | default([]) | map(attribute='terminal_host', default='') | list)
+        | map('trim') | reject('equalto', '') | unique | sort | list
+      }}
 
   tasks:
     - name: "Validate required input variables"
       ansible.builtin.assert:
         that:
-          - terminal_host is defined
-          - terminal_host | string | trim | length > 0
+          - logx_bastions | length > 0
           - oc_namespace | string | trim | length > 0
           - app_name is defined
           - app_name | string | trim | length > 0
@@ -51,11 +63,18 @@
           - archive_name is match('^[A-Za-z0-9._-]+\\.zip$')
         fail_msg: "Required variables are missing or archive_name is invalid."
 
-    - name: "Add terminal host to dynamic inventory"
+    - name: "Add every bastion to dynamic inventory"
       ansible.builtin.add_host:
-        name: "{{ terminal_host }}"
+        name: "{{ item }}"
         groups: logx_terminal
         oc_namespace: "{{ oc_namespace }}"
+        # Birden fazla bastion varsa her biri KENDI arsivini uretir; ayni staging
+        # dizinine yazildiklari icin dosya adlari benzersizlestirilir. Tek bastion'da
+        # ad DEGISMEZ → mevcut davranisla birebir uyum.
+        logx_archive_name: >-
+          {{ archive_name if (logx_bastions | length) == 1
+             else (item | lower | regex_replace('[^a-z0-9._-]', '-')) ~ '__' ~ archive_name }}
+      loop: "{{ logx_bastions }}"
       changed_when: false
 
 
@@ -89,6 +108,22 @@
         cluster_fetch_results: []
       changed_when: false
 
+    # Cok-bastion: her bastion YALNIZ kendi cluster'larini toplar. Cluster ogelerinde
+    # terminal_host yoksa (eski payload) tum liste tek bastion'da islenir; kismi tanimli
+    # payload'da sahipsizler ilk (alfabetik) bastion'a dusurulur — sessiz kayip olmaz.
+    - name: "Select the cluster subset that belongs to this bastion"
+      ansible.builtin.set_fact:
+        my_ocp_clusters: >-
+          {{
+            (ocp_clusters | selectattr('terminal_host', 'defined')
+                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+            +
+            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+             if inventory_hostname == ((groups['logx_terminal'] | default([])) | sort | first)
+             else [])
+          }}
+      changed_when: false
+
     - name: "Validate requested cluster records"
       ansible.builtin.set_fact:
         validation_errors: >-
@@ -116,7 +151,7 @@
             clusters[inventory_key][item.cluster_name].url is defined and
             clusters[inventory_key][item.cluster_name].password is defined
           }}
-      loop: "{{ ocp_clusters }}"
+      loop: "{{ my_ocp_clusters }}"
       loop_control:
         label: "{{ item.cluster_name | default('?') }}"
       no_log: true
@@ -147,7 +182,7 @@
             clusters[inventory_key][item.cluster_name].url is defined and
             clusters[inventory_key][item.cluster_name].password is defined
           }}
-      loop: "{{ ocp_clusters }}"
+      loop: "{{ my_ocp_clusters }}"
       loop_control:
         label: "{{ item.cluster_name | default('?') }}"
       no_log: true
@@ -474,14 +509,14 @@
         - name: "Copy archive to staging directory as SSH user"
           ansible.builtin.copy:
             src: "{{ remote_archive_path }}"
-            dest: "{{ staging_dir }}/{{ archive_name }}"
+            dest: "{{ staging_dir }}/{{ logx_archive_name }}"
             remote_src: true
             mode: "{{ staged_archive_mode }}"
           register: staging_copy_result
 
         - name: "Verify primary staged archive"
           ansible.builtin.stat:
-            path: "{{ staging_dir }}/{{ archive_name }}"
+            path: "{{ staging_dir }}/{{ logx_archive_name }}"
             get_checksum: true
             checksum_algorithm: sha256
           register: primary_staged_archive_stat
@@ -493,12 +528,12 @@
               - primary_staged_archive_stat.stat.exists | default(false)
               - primary_staged_archive_stat.stat.isreg | default(false)
               - primary_staged_archive_stat.stat.size | default(0) | int > 0
-            fail_msg: "Archive copy to primary staging failed: {{ staging_dir }}/{{ archive_name }}"
+            fail_msg: "Archive copy to primary staging failed: {{ staging_dir }}/{{ logx_archive_name }}"
 
         - name: "Mark staging as successful"
           ansible.builtin.set_fact:
             staging_succeeded: true
-            staged_archive_path: "{{ staging_dir }}/{{ archive_name }}"
+            staged_archive_path: "{{ staging_dir }}/{{ logx_archive_name }}"
           changed_when: false
 
       rescue:
@@ -522,7 +557,7 @@
         - name: "Copy archive to fallback directory on terminal host"
           ansible.builtin.copy:
             src: "{{ remote_archive_path }}"
-            dest: "{{ fallback_dir }}/{{ archive_name }}"
+            dest: "{{ fallback_dir }}/{{ logx_archive_name }}"
             remote_src: true
             mode: "{{ staged_archive_mode }}"
           register: fallback_copy_result
@@ -530,7 +565,7 @@
         - name: "Mark fallback as successful"
           ansible.builtin.set_fact:
             fallback_succeeded: true
-            staged_archive_path: "{{ fallback_dir }}/{{ archive_name }}"
+            staged_archive_path: "{{ fallback_dir }}/{{ logx_archive_name }}"
           changed_when: false
 
     - name: "Read staged archive metadata on terminal host"
@@ -542,31 +577,22 @@
         - staged_archive_path | length > 0
       changed_when: false
 
-    - name: "Publish final LogX result"
-      ansible.builtin.set_stats:
-        data:
-          logx_result:
-            overall_status: >-
-              {% set ok_count = cluster_fetch_results | selectattr('status', 'equalto', 'ok') | list | length %}
-              {% set partial_count = cluster_fetch_results | selectattr('status', 'equalto', 'partial') | list | length %}
-              {% set error_count = cluster_fetch_results | selectattr('status', 'equalto', 'error') | list | length %}
-              {% set no_match_count = cluster_fetch_results | selectattr('status', 'equalto', 'no_match') | list | length %}
-              {% set archive_created = collected_log_files.matched | int > 0 %}
-              {% set staged_ok = archive_created and staged_archive_stat.stat.exists | default(false) %}
-              {{
-                'failed' if error_count > 0 and ok_count == 0 and partial_count == 0
-                else ('no_match' if not archive_created and no_match_count > 0 and error_count == 0
-                else ('success' if staged_ok and error_count == 0 and partial_count == 0
-                else ('partial' if staged_ok else 'failed')))
-              }}
-            terminal_host: "{{ inventory_hostname }}"
-            clusters: "{{ cluster_fetch_results }}"
-            staged_path: "{{ staged_archive_path }}"
-            filename: "{{ archive_name if collected_log_files.matched | int > 0 else '' }}"
-            size_bytes: "{{ staged_archive_stat.stat.size | default(0) | int }}"
-            is_fallback: "{{ fallback_succeeded }}"
-            staging_error: "{{ staging_error }}"
-        per_host: false
+    # Bu bastion'un ozeti host fact olarak birakilir; TEK set_stats yazari asagidaki
+    # toplayici play'dir (birden cok host ayni anahtari yazarsa Ansible listeleri
+    # birlestirmez, sonuncu yazan ezer).
+    - name: "Record this bastion's summary as a host fact"
+      ansible.builtin.set_fact:
+        logx_bastion_summary:
+          terminal_host: "{{ inventory_hostname }}"
+          clusters: "{{ cluster_fetch_results }}"
+          staged_path: "{{ staged_archive_path }}"
+          filename: "{{ logx_archive_name if collected_log_files.matched | int > 0 else '' }}"
+          size_bytes: "{{ staged_archive_stat.stat.size | default(0) | int }}"
+          is_fallback: "{{ fallback_succeeded }}"
+          staging_error: "{{ staging_error }}"
+          archive_created: "{{ collected_log_files.matched | int > 0 }}"
+          staged_ok: "{{ (collected_log_files.matched | int > 0) and (staged_archive_stat.stat.exists | default(false)) }}"
+      changed_when: false
 
     - name: "Clean remote temporary files"
       ansible.builtin.file:
@@ -577,3 +603,53 @@
         - "{{ remote_archive_path }}"
       when: staged_archive_stat.stat.exists | default(false)
       changed_when: false
+
+
+# Tek yazar: tum bastion'larin ozetlerini birlestirip logx_result'i yayinlar. Cikti sekli
+# tek-bastion'daki ile UYUMLUDUR — eski tekil alanlar (terminal_host/staged_path/filename/
+# size_bytes/is_fallback) ILK arsivi gosterir, yeni `staged_files[]` hepsini tasir.
+- name: "Aggregate per-bastion results and publish a single logx_result"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    bastion_summaries: >-
+      {{
+        (groups['logx_terminal'] | default([]) | sort)
+        | map('extract', hostvars, 'logx_bastion_summary')
+        | select('defined') | list
+      }}
+    staged_files: >-
+      {{ bastion_summaries | selectattr('staged_path', 'defined')
+                           | rejectattr('staged_path', 'equalto', '') | list }}
+    merged_clusters: "{{ bastion_summaries | map(attribute='clusters') | list | flatten }}"
+
+  tasks:
+    - name: "Publish final LogX result"
+      ansible.builtin.set_stats:
+        data:
+          logx_result:
+            overall_status: >-
+              {% set ok_count = merged_clusters | selectattr('status', 'equalto', 'ok') | list | length %}
+              {% set partial_count = merged_clusters | selectattr('status', 'equalto', 'partial') | list | length %}
+              {% set error_count = merged_clusters | selectattr('status', 'equalto', 'error') | list | length %}
+              {% set no_match_count = merged_clusters | selectattr('status', 'equalto', 'no_match') | list | length %}
+              {% set archive_created = staged_files | length > 0 %}
+              {% set staged_ok = bastion_summaries | selectattr('staged_ok') | list | length > 0 %}
+              {{
+                'failed' if error_count > 0 and ok_count == 0 and partial_count == 0
+                else ('no_match' if not archive_created and no_match_count > 0 and error_count == 0
+                else ('success' if staged_ok and error_count == 0 and partial_count == 0
+                else ('partial' if staged_ok else 'failed')))
+              }}
+            clusters: "{{ merged_clusters }}"
+            terminal_host: "{{ (staged_files | map(attribute='terminal_host') | list | first) | default('', true) }}"
+            staged_path: "{{ (staged_files | map(attribute='staged_path') | list | first) | default('', true) }}"
+            filename: "{{ (staged_files | map(attribute='filename') | list | first) | default('', true) }}"
+            size_bytes: "{{ (staged_files | map(attribute='size_bytes') | list | first) | default(0, true) }}"
+            is_fallback: "{{ (staged_files | map(attribute='is_fallback') | list | first) | default(false, true) }}"
+            staging_error: "{{ bastion_summaries | map(attribute='staging_error') | select() | list | join(' | ') }}"
+            staged_files: "{{ staged_files }}"
+        per_host: false
