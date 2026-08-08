@@ -299,6 +299,17 @@ function initLogXv2(app) {
     res.json({ ok: await adminData.deleteClusterIndexRow(req.params.id) });
   }));
 
+  // ── Admin: OCP calisma zamani ayarlari (oc yolu + zaman asimlari) ───────────
+  // Playbook'taki sabit oc yolu uretimde tum bastion'larin dusmesine yol acmisti; bu uc
+  // sayesinde aday yollar ve zaman asimlari DEPLOY GEREKTIRMEDEN degistirilebilir.
+  router.get('/admin/ocp-runtime-config', requireAdmin, asyncRoute(async (req, res) => {
+    const cfg = require('./ocp-runtime-config.cjs');
+    res.json({ ok: true, config: await cfg.getConfig(), defaults: cfg.DEFAULTS });
+  }));
+  router.put('/admin/ocp-runtime-config', requireAdmin, express.json({ limit: '16kb' }), asyncRoute(async (req, res) => {
+    res.json({ ok: true, config: await require('./ocp-runtime-config.cjs').saveConfig(req.body || {}) });
+  }));
+
   // ── Admin: ocp_terminal_host_map ─────────────────────────────────────────────
   router.get('/admin/ocp-terminal-host-map', requireAdmin, asyncRoute(async (req, res) => {
     res.json({ ok: true, rows: await adminData.listTerminalHostMap() });

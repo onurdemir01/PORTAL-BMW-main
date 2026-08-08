@@ -32,6 +32,22 @@ function buildOcpExtraVars({ env, tenant, clusters, hosts }) {
   return { terminal_host: terminalHosts[0], terminal_hosts: terminalHosts, ocp_clusters: items };
 }
 
+// Admin-yonetimli calisma zamani degiskenleri (oc yolu + zaman asimlari) → extra_vars.
+// Saf fonksiyon (DB'ye dokunmaz). `ocBinary` BOSSA anahtar HIC gonderilmez; boylece
+// playbook kendi kesfini yapar. Doluysa kesfin onune gecer.
+function buildOcpRuntimeVars(cfg) {
+  const c = cfg || {};
+  return {
+    ...(c.ocBinary ? { oc_binary: c.ocBinary } : {}),
+    ...(Array.isArray(c.ocBinaryCandidates) && c.ocBinaryCandidates.length
+      ? { oc_binary_candidates: c.ocBinaryCandidates }
+      : {}),
+    ...(c.ocAsyncTimeout ? { oc_async_timeout: c.ocAsyncTimeout } : {}),
+    ...(c.ocListTimeout ? { oc_list_timeout: c.ocListTimeout } : {}),
+    ...(c.ocLogTimeout ? { oc_log_timeout: c.ocLogTimeout } : {}),
+  };
+}
+
 // Secilen cluster'lar icin bastion'lari cozer; eksik varsa anlasilir 400 firlatir.
 // Cagiran her yerde (select + her job launch'i) TEKRAR calisir: admin verisi degismis
 // olabilir, client'in gonderdigi input_json'a asla guvenilmez.
@@ -80,10 +96,14 @@ async function discoverNamespaces(requestRow) {
     throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
   }
   const hosts = await resolveHostsOrThrow(input.env, input.tenant, input.clusters);
+  const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
   const job = await jobs.launchJob(
     requestRow.request_id,
     'ocp_namespace_discovery',
-    buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts })
+    {
+      ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts }),
+      ...buildOcpRuntimeVars(runtimeCfg),
+    }
   );
   await requests.updateRequest(requestRow.request_id, { state: 'namespace_discovering' });
   return job;
@@ -139,8 +159,10 @@ async function discoverFetch(requestRow, namespace, appName) {
   const ingestInfo = await require('./ingest.cjs')
     .issueIngestToken({ requestId: requestRow.request_id, filename: archiveName })
     .catch(() => null);
+  const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
   const job = await jobs.launchJob(requestRow.request_id, 'ocp_discover_fetch', {
     ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts }),
+    ...buildOcpRuntimeVars(runtimeCfg),
     namespace: ns,
     app_name: app,
     staging_dir: process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
@@ -158,5 +180,5 @@ async function discoverFetch(requestRow, namespace, appName) {
 
 module.exports = {
   getClusterTree, selectClusters, discoverNamespaces, finalizeNamespaceDiscovery, discoverFetch,
-  buildOcpExtraVars,
+  buildOcpExtraVars, buildOcpRuntimeVars,
 };
