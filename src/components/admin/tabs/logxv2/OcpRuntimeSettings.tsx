@@ -137,7 +137,8 @@ export default function OcpRuntimeSettings() {
           className="w-full px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[#0066CC]"
         />
         <p className="mt-1 text-[11px] text-gray-400">
-          Doldurulursa <strong>otomatik aramanın önüne geçer</strong> ve tüm sunucularda bu yol kullanılır.
+          Doldurulursa <strong>ilk sırada denenir</strong> — sunucuda varsa otomatik aramanın önüne geçer.
+          Bu yol o sunucuda bulunamazsa aşağıdaki adaylara düşülür (işlem yolsuzluktan dolayı durmaz).
           Yalnızca otomatik arama yanlış bir sürüm buluyorsa gerekir.
         </p>
       </div>

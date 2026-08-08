@@ -179,6 +179,13 @@
     # cluster'lari hata olarak isaretlenir ve host FAIL sayilmaz. Boylece hem diger
     # bastion'lar hem de toplayici play (set_stats yazari) calismaya devam eder.
     - name: "Collect this bastion's clusters (failure-isolated)"
+      # ignore_unreachable SART: rescue yalnizca GOREV hatalarini yakalar, SSH/DNS kesintisini
+      # (unreachable) YAKALAMAZ. O durumda host "unreachable" isaretlenir, tum bastion'lar
+      # boyle duserse Ansible "NO MORE HOSTS LEFT" ile sonraki play'leri ATLAR ve toplayici
+      # play (tek set_stats yazari) yine calismaz — yani orijinal uretim hatasi tekrarlanir.
+      # Bununla host unreachable olsa bile play akisi surer ve toplayici play, o bastion'in
+      # cluster'larini "Bastion did not report a result" olarak isaretler.
+      ignore_unreachable: true
       block:
         - name: "Resolve valid cluster connection records"
           ansible.builtin.set_fact:
@@ -218,6 +225,9 @@
           loop: "{{ oc_probe_paths }}"
           register: oc_stats
           changed_when: false
+          # Bir aday yolun stat izni yoksa TUM bastion dusmesin — karar tek noktada
+          # (asagidaki oc_bin bos mu) verilir.
+          failed_when: false
 
         - name: "Collect usable oc paths"
           ansible.builtin.set_fact:
@@ -672,6 +682,13 @@
               }}
           changed_when: false
 
+        # Katalog dogrulama hatalari block DISINDA uretilmisti; block coktugu icin
+        # "Append ..." gorevi calismadi — burada eklenir ki kaybolmasinlar.
+        - name: "Keep validation errors even when the bastion failed"
+          ansible.builtin.set_fact:
+            cluster_fetch_results: "{{ cluster_fetch_results + (validation_errors | default([])) }}"
+          changed_when: false
+
         - name: "Mark this bastion's unfinished clusters as failed"
           ansible.builtin.set_fact:
             cluster_fetch_results: >-
@@ -692,11 +709,23 @@
             (cluster_fetch_results | default([]) | map(attribute='cluster_name') | list)
           changed_when: false
 
-        # Katalog dogrulama hatalari block DISINDA uretilmisti; block coktugu icin
-        # "Append ..." gorevi calismadi — burada eklenir ki kaybolmasinlar.
-        - name: "Keep validation errors even when the bastion failed"
+        # SESSIZ HATA ONLEME: cluster sonuclari uretildikten SONRA cokuldugunde (or. arsiv
+        # olusturma assert'i veya staging fallback'inin de dusmesi) yukaridaki `when` filtresi
+        # her cluster'i eler ('ok' durumdalar) ve ozet fact'i HIC yazilmazdi. Bu durumda
+        # toplayici play "cluster'lar ok ama arsiv yok, sebep bos" gibi anlasilmaz bir sonuc
+        # uretiyordu. Ozeti burada da yazariz — hata sebebi staging_error uzerinden tasinir.
+        - name: "Record a failure summary so the aggregator can explain the missing archive"
           ansible.builtin.set_fact:
-            cluster_fetch_results: "{{ cluster_fetch_results + (validation_errors | default([])) }}"
+            logx_bastion_summary:
+              terminal_host: "{{ inventory_hostname }}"
+              staged_path: ""
+              filename: ""
+              size_bytes: 0
+              is_fallback: false
+              staging_error: "{{ bastion_error }}"
+              archive_created: false
+              staged_ok: false
+          when: logx_bastion_summary is not defined
           changed_when: false
 
 

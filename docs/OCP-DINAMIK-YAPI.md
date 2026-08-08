@@ -206,9 +206,10 @@ Bu repodaki playbook'lar **referans kopyadır**; çalıştırılan sürüm AWX p
 2. Portalı deploy et (Faz 3–6: sade hata mesajı, log paneli, admin ayarları).
 
 **Geri alma:** Playbook'u önceki sürüme döndürmek yeterlidir. Acil durumda **kod değişikliği
-olmadan** da eski davranışa dönülebilir: AWX template'inin extra_vars alanına
-`oc_binary: /usr/local/bin/oc` yazmak keşfi devre dışı bırakır (aynı etki portaldaki
-"Kesin yol" alanından da sağlanabilir).
+olmadan** da belirli bir yola sabitlenebilir: AWX template'inin extra_vars alanına
+`oc_binary: <yol>` yazmak (veya portaldaki "Kesin yol" alanı) o yolu **aday listesinin başına**
+koyar — sunucuda varsa kesin olarak o kullanılır. Yol bulunamazsa iş durmaz, diğer adaylara
+düşülür (bilinçli: yanlış yazılmış bir override tüm işi kilitlemesin).
 
 **Doğrulama (AWX'te):** Job çıktısında `Probe candidate oc paths` ve `Resolve the oc binary
 for this bastion` adımları görünmeli; bir bastion çökerse `PLAY RECAP`'te o host `failed=0`

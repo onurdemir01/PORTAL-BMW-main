@@ -149,6 +149,13 @@
     # cluster'lari hata olarak isaretlenir ve host FAIL sayilmaz. Boylece hem diger
     # bastion'lar hem de toplayici play (set_stats yazari) calismaya devam eder.
     - name: "Collect this bastion's clusters (failure-isolated)"
+      # ignore_unreachable SART: rescue yalnizca GOREV hatalarini yakalar, SSH/DNS kesintisini
+      # (unreachable) YAKALAMAZ. O durumda host "unreachable" isaretlenir, tum bastion'lar
+      # boyle duserse Ansible "NO MORE HOSTS LEFT" ile sonraki play'leri ATLAR ve toplayici
+      # play (tek set_stats yazari) yine calismaz — yani orijinal uretim hatasi tekrarlanir.
+      # Bununla host unreachable olsa bile play akisi surer ve toplayici play, o bastion'in
+      # cluster'larini "Bastion did not report a result" olarak isaretler.
+      ignore_unreachable: true
       block:
         - name: "Resolve valid cluster connection records"
           ansible.builtin.set_fact:
@@ -188,6 +195,9 @@
           loop: "{{ oc_probe_paths }}"
           register: oc_stats
           changed_when: false
+          # Bir aday yolun stat izni yoksa TUM bastion dusmesin — karar tek noktada
+          # (asagidaki oc_bin bos mu) verilir.
+          failed_when: false
 
         - name: "Collect usable oc paths"
           ansible.builtin.set_fact:
@@ -314,6 +324,13 @@
               }}
           changed_when: false
 
+        # Katalog dogrulama hatalari block DISINDA uretilmisti; block coktugu icin
+        # "Append ..." gorevi calismadi — burada eklenir ki kaybolmasinlar.
+        - name: "Keep validation errors even when the bastion failed"
+          ansible.builtin.set_fact:
+            cluster_ns_results: "{{ cluster_ns_results + (validation_errors | default([])) }}"
+          changed_when: false
+
         - name: "Mark this bastion's unfinished clusters as failed"
           ansible.builtin.set_fact:
             cluster_ns_results: >-
@@ -331,13 +348,6 @@
           when: >-
             (item.cluster_name | default('')) not in
             (cluster_ns_results | default([]) | map(attribute='cluster_name') | list)
-          changed_when: false
-
-        # Katalog dogrulama hatalari block DISINDA uretilmisti; block coktugu icin
-        # "Append ..." gorevi calismadi — burada eklenir ki kaybolmasinlar.
-        - name: "Keep validation errors even when the bastion failed"
-          ansible.builtin.set_fact:
-            cluster_ns_results: "{{ cluster_ns_results + (validation_errors | default([])) }}"
           changed_when: false
 
 
