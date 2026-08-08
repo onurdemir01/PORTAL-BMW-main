@@ -242,7 +242,14 @@ function initLogXv2(app) {
     await finalizeIfNeeded(requestRow, before, after);
 
     const elapsedSec = after.startedAt ? Math.floor((Date.now() - new Date(after.startedAt).getTime()) / 1000) : 0;
-    res.json({ ok: true, status: after.status, jobType: after.jobType, elapsedSec, artifacts: after.artifacts, errorMessage: after.errorMessage });
+    // `errorMessage` SON KULLANICI icindir (sade, is numarali). Teknik ayrinti yalnizca
+    // Admin rolune eklenir — normal kullanici Ansible/AWX jargonu gormemeli.
+    const isAdmin = currentUser(req)?.role === 'Admin';
+    res.json({
+      ok: true, status: after.status, jobType: after.jobType, elapsedSec,
+      artifacts: after.artifacts, errorMessage: after.errorMessage,
+      ...(isAdmin && after.technicalDetail ? { technicalDetail: after.technicalDetail } : {}),
+    });
   }));
 
   // Canli AWX stdout — yalnizca "su an ne oluyor" gorunurlugu icin, job sonucunun
