@@ -29,7 +29,8 @@ interface AuthContextType {
   // bu durumda korumalı sayfayı AÇMAZ — sunucu tarafı da fail-closed davranır.
   visibilityFailed: boolean;
   // Görünürlük haritasını manuel tazeler (admin bir değişiklik kaydettikten hemen sonra).
-  refreshVisibility: () => Promise<void>;
+  /** Görünürlük haritasını tazeler; harita GERÇEKTEN yüklendiyse true döner. */
+  refreshVisibility: () => Promise<boolean>;
 }
 
 export const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -124,15 +125,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Çözülmüş görünürlük haritasını (element→bool) sunucudan tazeler + versiyonu kaydeder.
-  const refreshVisibility = useCallback((): Promise<void> => {
+  // Dönüş: harita GERÇEKTEN yüklendi mi (401/503/motor-hatası → false).
+  const refreshVisibility = useCallback((): Promise<boolean> => {
     return visibilityApi.getResolved()
       .then(({ version, visibility }) => {
         visibilityVersion.current = version;
         setVisibilityMap(visibility);
         setVisibilityReady(true); // BAŞARILI yükleme → gated fetch'ler artık tetiklenebilir
         setVisibilityFailed(false);
+        return true;
       })
-      .catch(() => { /* açılışta authsız/401 olabilir — ready FALSE kalır, gated fetch atılmaz */ });
+      .catch(() => false); // açılışta authsız/401 olabilir — ready FALSE kalır, gated fetch atılmaz
   }, []);
 
   // İlk yüklemede harita gelmezse BİR kez daha dener; o da başarısızsa `visibilityFailed`
@@ -140,10 +143,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // oturum açmış kullanıcı için anlamlıdır — login öncesi 401 normaldir.
   useEffect(() => {
     if (!user || visibilityReady) return;
-    const id = window.setTimeout(() => {
-      refreshVisibility().then(() => {
-        setVisibilityReady((ready) => { if (!ready) setVisibilityFailed(true); return ready; });
-      });
+    const id = window.setTimeout(async () => {
+      // State updater'ı saf tutmak için sonucu doğrudan refreshVisibility'den okuruz
+      // (updater içinde başka setState çağırmak StrictMode'da iki kez çalışırdı).
+      const ok = await refreshVisibility();
+      if (!ok) setVisibilityFailed(true);
     }, 2500);
     return () => window.clearTimeout(id);
   }, [user, visibilityReady, refreshVisibility]);
@@ -191,6 +195,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       authSource:  data.authSource || "local",
     });
     resetSessionTimeout();
+    // Login ÖNCESİ çekilen harita 401 aldığı için boştur. Burada tazelenmezse kullanıcı
+    // ilk versiyon poll'üne (45 sn) kadar boş haritayla, yani varsayılan-açık gezerdi.
+    await refreshVisibility();
   };
 
   // Activity resets timeout

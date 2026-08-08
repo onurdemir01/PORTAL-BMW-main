@@ -106,10 +106,13 @@ const AdminPage: React.FC = () => {
   // Admin sekmeleri de görünürlük motoruna tabidir (`admintab:<id>` element anahtarları).
   // Bu anahtarlar Sayfa Erişimi ekranında zaten yönetilebiliyordu ama HİÇBİR YERDE
   // uygulanmıyordu — kapatmak hiçbir şey değiştirmiyordu. Kayıtsız anahtar → görünür.
+  // KAÇIŞ KAPISI: "Sayfa Erişimi" sekmesi ASLA gizlenmez. Görünürlük kurallarını buradan
+  // yönetiyoruz; kendisi de gizlenebilseydi (ör. yanlışlıkla kill-switch kapatılınca)
+  // geri almanın UI yolu kalmaz, DB müdahalesi gerekirdi.
   const orderedTabs = tabOrder
     .map((id) => TAB_BY_ID.get(id)!)
     .filter(Boolean)
-    .filter((tab) => canSee(`admintab:${tab.id}`));
+    .filter((tab) => tab.id === "visibility" || canSee(`admintab:${tab.id}`));
 
   // Aktif sekme gizlenmişse ilk görünür sekmeye düş (boş içerik gösterme).
   useEffect(() => {

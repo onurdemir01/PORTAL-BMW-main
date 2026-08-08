@@ -198,6 +198,12 @@ export default function OpsxConfigTab() {
                   seçeneği her cluster'ı kendi jump server'ıyla gönderir (LogX ile aynı sözleşme) —
                   yalnızca playbook çoklu bastion destekliyorsa seçin.
                 </p>
+                <p className="mt-1 text-xs px-2 py-1.5 rounded-lg bg-amber-50 text-amber-800">
+                  ⚠ Bu Openshift ayarları (değişken adları, ayıraç ve liste biçimi) <strong>Telnet</strong>
+                  modülünün OpenShift akışında da kullanılır. Değiştirmeden önce Telnet playbook'unun
+                  (<span className="font-mono">telnet_openshift_operation</span>) aynı sözleşmeyi
+                  beklediğinden emin olun.
+                </p>
               </div>
             )}
 

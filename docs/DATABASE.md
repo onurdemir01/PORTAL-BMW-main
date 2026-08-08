@@ -34,11 +34,12 @@ Baglanti: `PORTAL_DB_*` env'leri (bos alanlar `MSSQL_*`'e duser) —
 | `inventory_table_aliases` / `inventory_visible_tables` | (zaten DB) | inventory/index.cjs |
 | `portal_config_blobs` | Eski blob aynasi — yalnizca goc kaynagi, artik guncellenmez | db/config-mirror.cjs |
 
-## Gorevler
+## Gorevler (KALDIRILDI)
 
-| Tablo | Amac |
-|---|---|
-| `portal_tasks` / `portal_task_comments` | Gorev yonetimi + yorumlar |
+"Gorevler" ozelligi portaldan cikarildi; yeni kurulumlarin seed'inde `portal_tasks` /
+`portal_task_comments` tablolari YOKTUR. Mevcut kurulumlarda tablolar veri iceriyor
+olabilecegi icin kendiliginden dusurulmez — temizlik `scripts/remove-tasks.cjs` ile
+elle yapilir (varsayilan GUVENLI: `--drop-tables` verilmedikce tablolar birakilir).
 
 ## Ansible / AWX
 
@@ -59,7 +60,9 @@ Baglanti: `PORTAL_DB_*` env'leri (bos alanlar `MSSQL_*`'e duser) —
 | `logx_audit_logs` | LogX akis denetimi (v3 hash-zincir) |
 | `logx_v2_requests` / `logx_v2_jobs` / `logx_v2_downloads` / `logx_v2_ingest` | LogX v2 sihirbaz durum makinesi + indirme/ingest token'lari |
 | `logx_v2_restrictions` / `logx_v2_restriction_grants` | Varsayilan-acik erisim kisitlari |
-| `ocp_cluster_index` / `ocp_terminal_host_map` / `logx_env_suffix_map` | OCP hiyerarsi + bastion eslemesi + ortam etiketi |
+| `ocp_cluster_index` | OCP hiyerarsi (env/tenant/cluster) + CLUSTER-BAZLI jump server (`terminal_host`) + birlesik katalog alanlari (`legacy_id` ile `ansible_ocp_clusters` aynasi) — bkz. docs/OCP-DINAMIK-YAPI.md |
+| `ocp_terminal_host_map` | Bastion YEDEK eslemesi (tenant+env) — cluster satirinda `terminal_host` bossa devreye girer |
+| `logx_env_suffix_map` | Legacy ortam etiketi (EAR klasor son-eki) |
 | `logx_mask_rules` | PII maskeleme kurallari (admin duzenlenebilir; sort_order = regex sirasi) |
 
 ## AI Analist

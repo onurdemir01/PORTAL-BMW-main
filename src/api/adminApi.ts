@@ -86,9 +86,15 @@ export const pageVisibilityApi = {
 // `version`'ı poll'leyip değişince haritayı reload'suz tazeler (bkz. server/auth/visibility.cjs).
 
 export const visibilityApi = {
+  // DİKKAT: burada `safeJson` DEĞİL `json` kullanılır — safeJson HTTP durumunu kontrol
+  // etmez, yani 401/503 gövdesi de "başarılı" sayılırdı. Bu, AuthContext'in "harita
+  // yüklendi" bayrağını yanlışlıkla true yapıp TÜM sayfaları varsayılan-açık bırakıyordu.
+  // Motor okunamadığında (`ok_engine === false`) da hata fırlatılır ki istemci
+  // fail-closed davransın (sunucudaki requireVisible zaten öyle).
   async getResolved(): Promise<{ version: number; visibility: Record<string, boolean> }> {
     const res = await fetch("/api/visibility/resolved");
-    const d: { ok: boolean; version: number; visibility: Record<string, boolean> } = await safeJson(res);
+    const d = await json<{ ok: boolean; ok_engine?: boolean; version: number; visibility: Record<string, boolean> }>(res);
+    if (d.ok_engine === false) throw new Error("Görünürlük motoru şu an okunamıyor.");
     return { version: d.version ?? 0, visibility: d.visibility ?? {} };
   },
 

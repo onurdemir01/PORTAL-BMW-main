@@ -111,6 +111,45 @@ test('Telnet kullanimi: appName gecilmezse app_name alani HIC eklenmez, staticVa
   });
 });
 
+// Bu test resolveTerminalHosts'u MOCK'LAMAZ — gercek cozumleme yolunu (cluster kolonu >
+// tenant/env yedegi) db.query seviyesinden dogrular. Diger testler yalnizca payload
+// SEKLINI koruyor; burada host DEGERININ dogru secildigini garanti ediyoruz.
+test('gercek cozumleme: cluster kolonu doluysa OpsX de tenant/env yedegi yerine onu kullanir', async (t) => {
+  const db = require('../../db/index.cjs');
+  t.mock.method(adminData, 'getClusterTree', async () => TREE);
+  t.mock.method(db, 'query', async (sql) => {
+    if (/FROM ocp_cluster_index/i.test(sql)) {
+      return { rows: [
+        { cluster_name: 'gbocpqa1', terminal_host: 'jumpA' },   // kolon dolu
+        { cluster_name: 'gbocpqa2', terminal_host: null },      // kolon bos → yedege duser
+      ] };
+    }
+    if (/FROM ocp_terminal_host_map/i.test(sql)) return { rows: [{ terminal_host: 'yedekHost' }] };
+    throw new Error(`beklenmeyen sorgu: ${sql}`);
+  });
+
+  // Tek cluster: kolon degeri kazanmali (eskiden her zaman 'yedekHost' giderdi).
+  const one = await buildOcpTarget({
+    env: 'qa', tenant: 'ark', clusters: ['gbocpqa1'], namespace: 'ns', appName: 'a', cfg: CFG,
+  });
+  assert.equal(one.extraVars.terminal_host, 'jumpA');
+
+  // Kolonu bos olan cluster yedegi kullanir.
+  const two = await buildOcpTarget({
+    env: 'qa', tenant: 'ark', clusters: ['gbocpqa2'], namespace: 'ns', appName: 'a', cfg: CFG,
+  });
+  assert.equal(two.extraVars.terminal_host, 'yedekHost');
+
+  // Ikisi birlikte farkli host'a dustugu icin joined modda ACIK hata verilir
+  // (sessizce yanlis sunucuda islem calistirmak yerine).
+  await assert.rejects(
+    () => buildOcpTarget({
+      env: 'qa', tenant: 'ark', clusters: ['gbocpqa1', 'gbocpqa2'], namespace: 'ns', appName: 'a', cfg: CFG,
+    }),
+    (err) => { assert.equal(err.status, 400); assert.match(err.message, /jumpA|yedekHost/); return true; }
+  );
+});
+
 test('tekrarli cluster secimi tekillestirilir', async (t) => {
   mockAdmin(t, { tree: TREE, hosts: { gbocpqa1: 'GBAOCP01' } });
   const { extraVars, requested } = await buildOcpTarget({
