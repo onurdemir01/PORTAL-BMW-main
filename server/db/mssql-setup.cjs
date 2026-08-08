@@ -210,6 +210,57 @@ const TABLES = [
       )`,
   },
   {
+    // OCP namespace ONBELLEGI. Namespace kesfi bugune kadar REQUEST-SCOPED idi
+    // (logx_v2_requests.discovery_result_json, 24s TTL) — yani her kullanici her seferinde
+    // yeniden AWX job'i calistiriyordu ve sonuc kimseyle paylasilmiyordu. Bu tablo sonucu
+    // kullanicilar arasi paylasilir hale getirir: sihirbaz ONCE buradan okur, kullanici
+    // aradigini bulamazsa "Burada kesfet" ile taze tarama tetikler.
+    // TTL dolunca satir SILINMEZ, `stale` olarak isaretlenip yine gosterilir (bayat veri,
+    // hic veri olmamasindan iyidir — bkz. logx/v2/legacy.cjs snapshot fallback deseni).
+    name: 'ocp_namespace_cache',
+    sql: `
+      CREATE TABLE ocp_namespace_cache (
+        id           INT IDENTITY(1,1) PRIMARY KEY,
+        env          NVARCHAR(30) NOT NULL,
+        tenant       NVARCHAR(100) NOT NULL,
+        cluster_name NVARCHAR(150) NOT NULL,
+        namespace    NVARCHAR(256) NOT NULL,
+        source       NVARCHAR(32) NOT NULL DEFAULT 'discovery',
+        fetched_at   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        expires_at   DATETIME2 NULL,
+        is_deleted   BIT NOT NULL DEFAULT 0,
+        UNIQUE(env, tenant, cluster_name, namespace)
+      )`,
+  },
+  {
+    // OCP namespace ICINDEKI is yuku/ag objeleri onbellegi. Kullanici uygulama adini
+    // bilmek zorunda kalmasin diye: sihirbaz listeyi buradan gosterir, bulunamazsa
+    // "Burada kesfet" ile logx_ocp_app_discovery playbook'u calisir.
+    // `kind` obje tipidir (Deployment/StatefulSet/Service/Route/...); ayni namespace'te
+    // ayni ada sahip FARKLI tipler olabilir, bu yuzden UNIQUE'e dahildir.
+    name: 'ocp_app_cache',
+    sql: `
+      CREATE TABLE ocp_app_cache (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        env           NVARCHAR(30) NOT NULL,
+        tenant        NVARCHAR(100) NOT NULL,
+        cluster_name  NVARCHAR(150) NOT NULL,
+        namespace     NVARCHAR(256) NOT NULL,
+        kind          NVARCHAR(64) NOT NULL,
+        app_name      NVARCHAR(256) NOT NULL,
+        replicas      INT NULL,
+        image         NVARCHAR(512) NULL,
+        label_app     NVARCHAR(256) NULL,
+        created_at_k8s DATETIME2 NULL,
+        payload_json  NVARCHAR(MAX) NULL,
+        source        NVARCHAR(32) NOT NULL DEFAULT 'discovery',
+        fetched_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        expires_at    DATETIME2 NULL,
+        is_deleted    BIT NOT NULL DEFAULT 0,
+        UNIQUE(env, tenant, cluster_name, namespace, kind, app_name)
+      )`,
+  },
+  {
     // Legacy EAR-klasor-son-eki ('-T','-D', son-ek-yok) → ortam etiketi — EnvanterApps.env
     // sutunu guvenilmez oldugu icin ortam etiketi BURADAN turetilir (admin duzeltebilir).
     name: 'logx_env_suffix_map',
@@ -1444,6 +1495,16 @@ async function setupTables() {
     // icin eklendi. Bos birakilirsa kayit '_atanmadi' tenant'i ile PASIF aynalanir.
     { table: 'ansible_ocp_clusters', col: 'tenant',         sql: `ALTER TABLE ansible_ocp_clusters ADD tenant NVARCHAR(100) NULL` },
     { table: 'ocp_cluster_index', col: 'source',            sql: `ALTER TABLE ocp_cluster_index ADD source NVARCHAR(20) NULL` },
+    // ── OCP katalogunun AWX inventory dosyasindan bagimsizlastirilmasi ──────────
+    // Playbook'lar cluster URL/parolasini AWX'teki openshift_inventory_vars.yaml'dan
+    // okuyordu; artik URL portaldan gelir. PAROLA ASLA DB'YE GIRMEZ — yalnizca hangi
+    // vault anahtarinin (credentials.yaml icindeki uxmid_gar / uxmid_das / uxmid_gtek ...)
+    // kullanilacaginin ADI tutulur; playbook parolayi lookup('vars', <ad>) ile cozer.
+    { table: 'ocp_cluster_index', col: 'vault_credential_key', sql: `ALTER TABLE ocp_cluster_index ADD vault_credential_key NVARCHAR(128) NULL` },
+    // Periyodik besleme job'inin cluster basina son durumu (tanilama icin).
+    { table: 'ocp_cluster_index', col: 'last_synced_at',     sql: `ALTER TABLE ocp_cluster_index ADD last_synced_at DATETIME2 NULL` },
+    { table: 'ocp_cluster_index', col: 'sync_status',        sql: `ALTER TABLE ocp_cluster_index ADD sync_status NVARCHAR(32) NULL` },
+    { table: 'ocp_cluster_index', col: 'sync_error',         sql: `ALTER TABLE ocp_cluster_index ADD sync_error NVARCHAR(1000) NULL` },
     // actions.md #13 (Bolum L) — Tablo Takma Adlari eksik alanlar.
     {
       table: 'inventory_table_aliases', col: 'schema_name',

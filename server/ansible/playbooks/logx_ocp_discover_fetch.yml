@@ -94,9 +94,11 @@
     # oc'nin yolu SABIT DEGIL — bkz. logx_ocp_namespace_discovery.yml'deki ayni desen.
     # Sirasiyla: extra_vars `oc_binary` override'i > aday yollar > PATH (command -v oc).
     oc_binary: ""
+    # /bin/oc ILK: kurumsal bastion'larda oc gercekte burada. (Uretimde
+    # /usr/local/bin/oc varsayimi TUM bastion'larin ayni anda dusmesine yol acmisti.)
     oc_binary_candidates:
-      - /usr/local/bin/oc
       - /bin/oc
+      - /usr/local/bin/oc
       - /usr/bin/oc
     oc_probe_paths: >-
       {{

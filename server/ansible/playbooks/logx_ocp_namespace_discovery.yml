@@ -72,9 +72,11 @@
     # farkli yollara sahip olabilir (/bin/oc vs /usr/local/bin/oc); sabit yol uretimde TUM
     # bastion'larin ayni anda fatal olmasina ve isin hic sonuc uretememesine yol acmisti.
     oc_binary: ""
+    # /bin/oc ILK: kurumsal bastion'larda oc gercekte burada. (Uretimde
+    # /usr/local/bin/oc varsayimi TUM bastion'larin ayni anda dusmesine yol acmisti.)
     oc_binary_candidates:
-      - /usr/local/bin/oc
       - /bin/oc
+      - /usr/local/bin/oc
       - /usr/bin/oc
     oc_async_timeout: 120
     oc_async_retries: 120
