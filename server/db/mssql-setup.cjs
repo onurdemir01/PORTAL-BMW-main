@@ -1417,6 +1417,13 @@ async function setupTables() {
       table: 'ansible_ocp_clusters', col: 'connection_status',
       sql: `ALTER TABLE ansible_ocp_clusters ADD connection_status NVARCHAR(20) NULL`,
     },
+    {
+      // OCP dinamik yapi: bastion artik CLUSTER seviyesinde tanimlanabilir. NULL ise
+      // ocp_terminal_host_map(tenant,env) fallback'i gecerlidir (bkz. logx/v2/admin.cjs
+      // resolveTerminalHosts) — mevcut kurulumlar hicbir davranis degisikligi gormez.
+      table: 'ocp_cluster_index', col: 'terminal_host',
+      sql: `ALTER TABLE ocp_cluster_index ADD terminal_host NVARCHAR(255) NULL`,
+    },
     // actions.md #13 (Bolum L) — Tablo Takma Adlari eksik alanlar.
     {
       table: 'inventory_table_aliases', col: 'schema_name',

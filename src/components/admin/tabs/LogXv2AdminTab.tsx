@@ -22,9 +22,10 @@ const CLUSTER_COLUMNS: ColumnDef<OcpClusterIndexRow>[] = [
   { key: "env", label: "Ortam (env)", placeholder: "dev" },
   { key: "tenant", label: "Tenant", placeholder: "ark" },
   { key: "cluster_name", label: "Cluster Adı", placeholder: "gbocptest1" },
+  { key: "terminal_host", label: "Jump Server (opsiyonel)", placeholder: "boş = tenant/env eşlemesi" },
   { key: "is_active", label: "Aktif", type: "checkbox" },
 ];
-const CLUSTER_EMPTY: Partial<OcpClusterIndexRow> = { env: "", tenant: "", cluster_name: "", is_active: true };
+const CLUSTER_EMPTY: Partial<OcpClusterIndexRow> = { env: "", tenant: "", cluster_name: "", terminal_host: "", is_active: true };
 
 const TERMINAL_COLUMNS: ColumnDef<OcpTerminalHostRow>[] = [
   { key: "tenant", label: "Tenant", placeholder: "ark" },
@@ -284,8 +285,15 @@ const LogXv2AdminTab: React.FC = () => {
       {subTab === "terminals" && (
         terminals.loading ? <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div> :
         terminals.error ? <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{terminals.error}</div> :
-        <SimpleCrudTable columns={TERMINAL_COLUMNS} rows={terminals.rows} emptyRow={TERMINAL_EMPTY}
-          onCreate={terminals.onCreate} onUpdate={terminals.onUpdate} onDelete={terminals.onDelete} />
+        <div className="space-y-3">
+          <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-800">
+            Bu tablo artık <strong>yedek (fallback)</strong> eşlemedir: bir cluster'ın kendi satırında
+            (OCP Cluster Hiyerarşisi sekmesi) Jump Server doluysa <strong>o kazanır</strong>; boşsa buradaki
+            tenant/env eşlemesi kullanılır.
+          </div>
+          <SimpleCrudTable columns={TERMINAL_COLUMNS} rows={terminals.rows} emptyRow={TERMINAL_EMPTY}
+            onCreate={terminals.onCreate} onUpdate={terminals.onUpdate} onDelete={terminals.onDelete} />
+        </div>
       )}
       {subTab === "envsuffix" && (
         envSuffix.loading ? <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div> :
