@@ -89,7 +89,18 @@
     - ../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 
   vars:
-    oc_binary: /usr/local/bin/oc
+    # oc'nin yolu SABIT DEGIL — bkz. logx_ocp_namespace_discovery.yml'deki ayni desen.
+    # Sirasiyla: extra_vars `oc_binary` override'i > aday yollar > PATH (command -v oc).
+    oc_binary: ""
+    oc_binary_candidates:
+      - /usr/local/bin/oc
+      - /bin/oc
+      - /usr/bin/oc
+    oc_probe_paths: >-
+      {{
+        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
+         + (oc_binary_candidates | default([]))) | unique | list
+      }}
     logx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
     # inventory_hostname DAHIL: iki farkli bastion adi ayni makineye cozulurse (or.
     # GBAOCP01 ve gbaocp01.bmw.com) ayni dizini paylasip birbirinin arsivini silerlerdi.
@@ -192,17 +203,50 @@
       no_log: true
       changed_when: false
 
-    - name: "Check oc binary"
+    # ── oc kesfi (namespace_discovery.yml ile AYNI desen) ────────────────────
+    - name: "Probe candidate oc paths"
       ansible.builtin.stat:
-        path: "{{ oc_binary }}"
-      register: oc_binary_stat
+        path: "{{ item }}"
+      loop: "{{ oc_probe_paths }}"
+      register: oc_stats
+      changed_when: false
 
-    - name: "Fail when oc binary is missing"
-      ansible.builtin.assert:
-        that:
-          - oc_binary_stat.stat.exists
-          - oc_binary_stat.stat.executable
-        fail_msg: "oc binary is missing or not executable: {{ oc_binary }}"
+    - name: "Collect usable oc paths"
+      ansible.builtin.set_fact:
+        oc_stat_hits: >-
+          {{
+            oc_stats.results | default([])
+            | selectattr('stat', 'defined')
+            | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+            | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+            | map(attribute='stat.path') | list
+          }}
+      changed_when: false
+
+    - name: "Fall back to PATH lookup when no candidate matched"
+      ansible.builtin.shell: command -v oc || true
+      args:
+        executable: /bin/bash
+      register: oc_which
+      when: oc_stat_hits | length == 0
+      changed_when: false
+      failed_when: false
+
+    - name: "Resolve the oc binary for this bastion"
+      ansible.builtin.set_fact:
+        oc_bin: >-
+          {{
+            oc_stat_hits[0] if (oc_stat_hits | length > 0)
+            else (oc_which.stdout | default('', true) | trim)
+          }}
+      changed_when: false
+
+    - name: "Fail when no usable oc binary was found"
+      ansible.builtin.fail:
+        msg: >-
+          Bu sunucuda 'oc' bulunamadi. Denenen yollar: {{ oc_probe_paths | join(', ') }};
+          PATH aramasi (command -v oc) da sonucsuz kaldi.
+      when: oc_bin | length == 0
 
     - name: "Reset remote working directory"
       ansible.builtin.file:
@@ -232,14 +276,14 @@
         }
         trap cleanup EXIT
 
-        "{{ oc_binary }}" login \
+        "{{ oc_bin }}" login \
           --server={{ cluster.url | quote }} \
           --username={{ username | quote }} \
           --password={{ cluster.password | quote }} \
           --insecure-skip-tls-verify=true \
           >/dev/null
 
-        "{{ oc_binary }}" get pods \
+        "{{ oc_bin }}" get pods \
           --namespace={{ oc_namespace | quote }} \
           --output=name
       args:
@@ -331,14 +375,14 @@
         }
         trap cleanup EXIT
 
-        "{{ oc_binary }}" login \
+        "{{ oc_bin }}" login \
           --server={{ target.url | quote }} \
           --username={{ username | quote }} \
           --password={{ target.password | quote }} \
           --insecure-skip-tls-verify=true \
           >/dev/null
 
-        "{{ oc_binary }}" logs \
+        "{{ oc_bin }}" logs \
           --namespace={{ oc_namespace | quote }} \
           {{ target.pod | quote }} \
           > "${output_file}"

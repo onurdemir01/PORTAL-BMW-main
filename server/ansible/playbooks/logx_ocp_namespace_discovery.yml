@@ -65,11 +65,25 @@
     - ../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 
   vars:
-    oc_binary: /usr/local/bin/oc
+    # oc'nin yolu SABIT DEGIL. Sirasiyla: (1) extra_vars ile gelen `oc_binary` override'i,
+    # (2) asagidaki aday yollar, (3) PATH (command -v oc). Bastion'lar farkli dagitimlarda
+    # farkli yollara sahip olabilir (/bin/oc vs /usr/local/bin/oc); sabit yol uretimde TUM
+    # bastion'larin ayni anda fatal olmasina ve isin hic sonuc uretememesine yol acmisti.
+    oc_binary: ""
+    oc_binary_candidates:
+      - /usr/local/bin/oc
+      - /bin/oc
+      - /usr/bin/oc
     oc_async_timeout: 120
     oc_async_retries: 120
     oc_async_delay: 1
     logx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+    # Denenecek yollar: override (varsa) HER ZAMAN ilk sirada — gecerliyse dogal olarak kazanir.
+    oc_probe_paths: >-
+      {{
+        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
+         + (oc_binary_candidates | default([]))) | unique | list
+      }}
 
   tasks:
     - name: "Initialize result lists"
@@ -159,17 +173,55 @@
       no_log: true
       changed_when: false
 
-    - name: "Check oc binary"
+    # ── oc kesfi ─────────────────────────────────────────────────────────────
+    - name: "Probe candidate oc paths"
       ansible.builtin.stat:
-        path: "{{ oc_binary }}"
-      register: oc_binary_stat
+        path: "{{ item }}"
+      loop: "{{ oc_probe_paths }}"
+      register: oc_stats
+      changed_when: false
 
-    - name: "Fail when oc binary is missing"
-      ansible.builtin.assert:
-        that:
-          - oc_binary_stat.stat.exists
-          - oc_binary_stat.stat.executable
-        fail_msg: "oc binary is missing or not executable: {{ oc_binary }}"
+    - name: "Collect usable oc paths"
+      ansible.builtin.set_fact:
+        oc_stat_hits: >-
+          {{
+            oc_stats.results | default([])
+            | selectattr('stat', 'defined')
+            | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+            | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+            | map(attribute='stat.path') | list
+          }}
+      changed_when: false
+
+    # Aday yollarin hicbiri tutmadiysa PATH'e bak. `command` modulu shell built-in'ini
+    # calistiramaz, bu yuzden shell kullanilir; `|| true` + failed_when:false ile bu adim
+    # asla fatal olmaz (bulunamama karari asagidaki tek noktada verilir).
+    - name: "Fall back to PATH lookup when no candidate matched"
+      ansible.builtin.shell: command -v oc || true
+      args:
+        executable: /bin/bash
+      register: oc_which
+      when: oc_stat_hits | length == 0
+      changed_when: false
+      failed_when: false
+
+    - name: "Resolve the oc binary for this bastion"
+      ansible.builtin.set_fact:
+        oc_bin: >-
+          {{
+            oc_stat_hits[0] if (oc_stat_hits | length > 0)
+            else (oc_which.stdout | default('', true) | trim)
+          }}
+      changed_when: false
+
+    # assert DEGIL fail: block/rescue bunu yakalayip YALNIZ bu bastion'in cluster'larina
+    # hata girdisi yazar; diger bastion'lar calismaya devam eder ve toplayici play calisir.
+    - name: "Fail when no usable oc binary was found"
+      ansible.builtin.fail:
+        msg: >-
+          Bu sunucuda 'oc' bulunamadi. Denenen yollar: {{ oc_probe_paths | join(', ') }};
+          PATH aramasi (command -v oc) da sonucsuz kaldi.
+      when: oc_bin | length == 0
 
     - name: "Login and list namespaces in parallel with isolated kubeconfigs"
       ansible.builtin.shell: |
@@ -183,14 +235,14 @@
         }
         trap cleanup EXIT
 
-        "{{ oc_binary }}" login \
+        "{{ oc_bin }}" login \
           --server={{ cluster.url | quote }} \
           --username={{ username | quote }} \
           --password={{ cluster.password | quote }} \
           --insecure-skip-tls-verify=true \
           >/dev/null
 
-        "{{ oc_binary }}" get projects -o name
+        "{{ oc_bin }}" get projects -o name
       args:
         executable: /bin/bash
       loop: "{{ resolved_clusters }}"
