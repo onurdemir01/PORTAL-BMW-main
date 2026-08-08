@@ -148,10 +148,57 @@ Varsayılan tenant etiketi `OCP_CATALOG_DEFAULT_TENANT` env'i ile değiştirileb
    "başarılı" saymaz (eskiden `safeJson` HTTP durumunu yok sayıyordu); login sonrası harita
    hemen tazelenir.
 
-## 10. Doğrulama
+## 10. Üretim olayı (2026-08-08) ve `oc` keşfi
+
+**Ne oldu:** Cluster-başına jump server canlıda denendi. Portal doğru payload'ı gönderdi,
+3 bastion envantere eklendi, her biri kendi cluster alt kümesini aldı — **mekanizma çalıştı**.
+Ancak playbook `oc_binary: /usr/local/bin/oc` sabitini bekliyordu; sunucularda `oc` gerçekte
+`/bin/oc` konumundaydı. Üç bastion da `assert`'te fatal oldu.
+
+**Neden hiç sonuç dönmedi:** Ansible'da bir play'de *tüm* hostlar fail olursa sonraki play'ler
+farklı host pattern (localhost) kullansa bile atlanır. Toplayıcı Play3 hiç çalışmadı →
+`set_stats` yazılmadı → artifacts boş → portal jenerik "yapılandırılmış çıktı bulunamadı"
+mesajını verdi ve gerçek neden (`oc` yok) hiçbir yerde görünmedi.
+
+**Alınan önlemler:**
+
+| Sorun | Çözüm |
+|---|---|
+| Sabit `oc` yolu | Playbook `oc`'yi keşfediyor: override → aday yollar (`stat`) → `command -v oc`. Bulunamazsa `fail` (assert değil). |
+| Tek bastion tüm işi öldürüyor | Play2'nin oc'ye bağımlı kısmı `block`/`rescue` içinde; çöken bastion'ın cluster'ları `status: error` olur, host FAIL sayılmaz, diğerleri devam eder. |
+| Play3 hiç çalışmıyor | Artık hiçbir host FAIL olmadığı için garanti çalışır; ek sigorta `meta: clear_host_errors`. |
+| Kullanıcı gerçek nedeni göremiyor | Mesaj sadeleşti (iş no + yöneticiye başvur); başarısız ekranında **Ansible çıktı paneli** açılabiliyor; teknik ayrıntı Admin'e ve audit'e gidiyor. |
+| Yollar koda gömülü | Admin → LogX Yapılandırma → **OCP Çalıştırma Ayarları** (aday yollar + zaman aşımları), deploy gerektirmez. |
+
+## 11. AWX projesine taşıma
+
+Bu repodaki playbook'lar **referans kopyadır**; çalıştırılan sürüm AWX projesindedir
+(`bmw_automation_folder/portal_tamplates/`). Buradaki düzeltmeler AWX'e kopyalanmadıkça
+üretime yansımaz.
+
+**Taşınacak dosyalar (2):**
+- `server/ansible/playbooks/logx_ocp_namespace_discovery.yml`
+- `server/ansible/playbooks/logx_ocp_discover_fetch.yml`
+
+**Sıra — önce AWX, sonra portal:**
+1. İki playbook'u AWX projesindeki karşılıklarının üzerine kopyala, proje senkronu çalıştır.
+   Yeni playbook **eski payload ile de çalışır** (portal henüz yeni alanları göndermese bile),
+   bu yüzden bu adım tek başına güvenlidir.
+2. Portalı deploy et (Faz 3–6: sade hata mesajı, log paneli, admin ayarları).
+
+**Geri alma:** Playbook'u önceki sürüme döndürmek yeterlidir. Acil durumda **kod değişikliği
+olmadan** da eski davranışa dönülebilir: AWX template'inin extra_vars alanına
+`oc_binary: /usr/local/bin/oc` yazmak keşfi devre dışı bırakır (aynı etki portaldaki
+"Kesin yol" alanından da sağlanabilir).
+
+**Doğrulama (AWX'te):** Job çıktısında `Probe candidate oc paths` ve `Resolve the oc binary
+for this bastion` adımları görünmeli; bir bastion çökerse `PLAY RECAP`'te o host `failed=0`
+(rescue devrede) olmalı ve toplayıcı play çalışmalıdır.
+
+## 12. Doğrulama
 
 ```bash
-npm test          # 192/192 yeşil olmalı
+npm test          # 203/203 yeşil olmalı
 npx tsc --noEmit  # yeni hata olmamalı
 npm run build
 ```
