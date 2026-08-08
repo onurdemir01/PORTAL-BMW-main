@@ -12,7 +12,7 @@ import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 interface Props {
   jobId: number;
   discoveringLabel?: string;
-  onDone: (result: { status: string; artifacts: Record<string, unknown> | null; errorMessage: string | null }) => void;
+  onDone: (result: { status: string; artifacts: Record<string, unknown> | null; errorMessage: string | null; technicalDetail?: string }) => void;
 }
 
 function phaseText(status: string, elapsedSec: number, discoveringLabel: string): string {
@@ -68,7 +68,7 @@ const JobProgress: React.FC<Props> = ({ jobId, discoveringLabel = "Dosyalar tara
         setErrorCount(0);
         if (["successful", "failed", "error", "canceled"].includes(r.status)) {
           doneRef.current = true;
-          onDone({ status: r.status, artifacts: r.artifacts, errorMessage: r.errorMessage });
+          onDone({ status: r.status, artifacts: r.artifacts, errorMessage: r.errorMessage, technicalDetail: r.technicalDetail });
         }
       } catch {
         setErrorCount((prev) => {

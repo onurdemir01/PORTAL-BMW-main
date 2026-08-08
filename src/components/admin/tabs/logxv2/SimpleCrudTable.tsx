@@ -143,18 +143,35 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                     );
                   })}
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <button onClick={() => startEdit(row)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+                    <button onClick={() => startEdit(row)} aria-label="Satırı düzenle" title="Düzenle"
+                      className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
                       <PencilIcon className="w-3.5 h-3.5" />
                     </button>
                     {confirmDelete === row.id ? (
                       <>
-                        <button onClick={() => onDelete(row.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition text-xs">Emin misin?</button>
-                        <button onClick={() => setConfirmDelete(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+                        {/* Silme hatası eskiden SESSİZCE yutuluyordu: satır ekranda kalıyor,
+                            kullanıcı neden silinmediğini anlamıyordu. */}
+                        <button
+                          onClick={async () => {
+                            try {
+                              await onDelete(row.id);
+                              setConfirmDelete(null);
+                            } catch (err) {
+                              alert(err instanceof Error ? err.message : String(err));
+                            }
+                          }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition text-xs"
+                        >
+                          Emin misin?
+                        </button>
+                        <button onClick={() => setConfirmDelete(null)} aria-label="Silmeyi iptal et" title="Vazgeç"
+                          className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
                           <XMarkIcon className="w-3.5 h-3.5" />
                         </button>
                       </>
                     ) : (
-                      <button onClick={() => setConfirmDelete(row.id)} className="p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition">
+                      <button onClick={() => setConfirmDelete(row.id)} aria-label="Satırı sil" title="Sil"
+                        className="p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition">
                         <TrashIcon className="w-3.5 h-3.5" />
                       </button>
                     )}

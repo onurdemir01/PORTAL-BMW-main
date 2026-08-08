@@ -123,7 +123,9 @@ export const logxV2Api = {
 
   // ── Jobs / downloads ─────────────────────────────────────────────────────────
   jobStatus: (jobId: number) =>
-    fetch(`${BASE}/jobs/${jobId}/status`).then((r) => json<{ ok: boolean; status: string; jobType: string; elapsedSec: number; artifacts: Record<string, unknown> | null; errorMessage: string | null }>(r)),
+    // `technicalDetail` YALNIZCA Admin rolüne gönderilir (bkz. server/logx/v2/index.cjs) —
+    // normal kullanıcı Ansible/AWX jargonu görmemeli.
+    fetch(`${BASE}/jobs/${jobId}/status`).then((r) => json<{ ok: boolean; status: string; jobType: string; elapsedSec: number; artifacts: Record<string, unknown> | null; errorMessage: string | null; technicalDetail?: string }>(r)),
 
   // Canlı AWX stdout — yalnızca görünürlük için, sonuç kaynağı değil (bkz. jobs.cjs).
   jobOutput: (jobId: number) =>
@@ -148,6 +150,13 @@ export const logxV2Api = {
     createTerminalHost: (data: Partial<OcpTerminalHostRow>) => postJson<{ ok: boolean; row: OcpTerminalHostRow }>("/admin/ocp-terminal-host-map", data),
     updateTerminalHost: (id: number, data: Partial<OcpTerminalHostRow>) => putJson<{ ok: boolean; row: OcpTerminalHostRow }>(`/admin/ocp-terminal-host-map/${id}`, data),
     deleteTerminalHost: (id: number) => del<{ ok: boolean }>(`/admin/ocp-terminal-host-map/${id}`),
+
+    // OCP çalışma zamanı ayarları: oc'nin aranacağı yollar + zaman aşımları. Deploy
+    // gerektirmeden değişir; playbook bunları extra_vars olarak alır.
+    getOcpRuntimeConfig: () =>
+      fetch(`${BASE}/admin/ocp-runtime-config`).then((r) => json<{ ok: boolean; config: OcpRuntimeConfig; defaults: OcpRuntimeConfig }>(r)),
+    saveOcpRuntimeConfig: (config: OcpRuntimeConfig) =>
+      putJson<{ ok: boolean; config: OcpRuntimeConfig }>("/admin/ocp-runtime-config", config),
 
     listEnvSuffixMap: () => fetch(`${BASE}/admin/env-suffix-map`).then((r) => json<{ ok: boolean; rows: EnvSuffixRow[] }>(r)),
     createEnvSuffix: (data: Partial<EnvSuffixRow>) => postJson<{ ok: boolean; row: EnvSuffixRow }>("/admin/env-suffix-map", data),
@@ -175,4 +184,12 @@ export const logxV2Api = {
 export interface OcpClusterIndexRow { id: number; env: string; tenant: string; cluster_name: string; terminal_host: string | null; is_active: boolean }
 export interface OcpTerminalHostRow { id: number; tenant: string; env: string; terminal_host: string; is_active: boolean }
 export interface EnvSuffixRow { id: number; suffix: string; env_label: string; sort_order: number; is_active: boolean }
+export interface OcpRuntimeConfig {
+  /** Boş = otomatik keşif (playbook adayları + PATH). Dolu = kesin yol, keşfin önüne geçer. */
+  ocBinary: string;
+  ocBinaryCandidates: string[];
+  ocAsyncTimeout: number;
+  ocListTimeout: number;
+  ocLogTimeout: number;
+}
 export interface RestrictionRow { id: number; resourceType: string; resourceKey: string; description: string | null; grants: string[] }

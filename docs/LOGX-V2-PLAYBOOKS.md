@@ -125,3 +125,21 @@ gizler). Bu yüzden arşiv, **portal sunucusunun okuyabildiği bir konumda** olm
   (`uxmid_*`) çözer. Portal sadece `env/tenant/cluster/namespace/app` gibi tanımlayıcı
   değerleri gönderir.
 - İndirme linkleri tek kullanıcıya bağlı, kripto-rastgele ve TTL'li (15 dk).
+
+---
+
+## OCP playbook'ları: `oc` keşfi ve hata izolasyonu (2026-08-08)
+
+Üretimde playbook `oc`'yi sabit bir yolda (`/usr/local/bin/oc`) arıyordu; sunucularda `oc`
+`/bin/oc` olduğu için tüm jump server'lar aynı anda düştü ve iş hiç sonuç üretemedi
+(tüm hostlar fail olunca Ansible toplayıcı play'i de atlar). Alınan önlemler:
+
+1. **`oc` yolu artık sabit değil** — her jump server'da sırayla admin override → aday yollar
+   → `PATH` denenir. Aday listesi ve zaman aşımları **Admin → LogX Yapılandırma → OCP
+   Çalıştırma Ayarları** ekranından, deploy gerekmeden değiştirilir.
+2. **Bastion başına hata izolasyonu** — bir jump server çökse bile diğerleri devam eder,
+   toplayıcı play her zaman çalışır; sonuç `partial` döner ve hangi cluster'ın neden
+   başarısız olduğu portalda görünür.
+
+Ayrıntı, AWX projesine taşıma adımları ve geri alma:
+[OCP-DINAMIK-YAPI.md](OCP-DINAMIK-YAPI.md) §10–11.

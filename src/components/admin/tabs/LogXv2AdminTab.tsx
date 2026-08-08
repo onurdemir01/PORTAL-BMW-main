@@ -2,17 +2,19 @@
 // kaynağı için tek sekme: OCP cluster hiyerarşisi, terminal/bastion host eşlemesi, Legacy
 // ortam-etiketi son-ek eşlemesi ve varsayılan-açık yetkilendirme kısıtlamaları.
 import React, { useEffect, useState } from "react";
-import { ServerStackIcon, CommandLineIcon, TagIcon, LockClosedIcon } from "@heroicons/react/24/outline";
+import { ServerStackIcon, CommandLineIcon, TagIcon, LockClosedIcon, WrenchScrewdriverIcon } from "@heroicons/react/24/outline";
 import {
   logxV2Api,
   type OcpClusterIndexRow, type OcpTerminalHostRow, type EnvSuffixRow, type RestrictionRow,
 } from "@/api/logxV2Api";
 import SimpleCrudTable, { type ColumnDef } from "./logxv2/SimpleCrudTable";
+import OcpRuntimeSettings from "./logxv2/OcpRuntimeSettings";
 import { Select } from "@/components/ui/Form";
 
 const SUB_TABS = [
   { id: "clusters", label: "OCP Cluster Hiyerarşisi", icon: ServerStackIcon },
   { id: "terminals", label: "Terminal/Bastion Host", icon: CommandLineIcon },
+  { id: "ocpruntime", label: "OCP Çalıştırma Ayarları", icon: WrenchScrewdriverIcon },
   { id: "envsuffix", label: "Legacy Ortam Son-Eki", icon: TagIcon },
   { id: "restrictions", label: "Kısıtlamalar", icon: LockClosedIcon },
 ] as const;
@@ -328,6 +330,7 @@ const LogXv2AdminTab: React.FC = () => {
         <SimpleCrudTable columns={ENVSUFFIX_COLUMNS} rows={envSuffix.rows} emptyRow={ENVSUFFIX_EMPTY}
           onCreate={envSuffix.onCreate} onUpdate={envSuffix.onUpdate} onDelete={envSuffix.onDelete} />
       )}
+      {subTab === "ocpruntime" && <OcpRuntimeSettings />}
       {subTab === "restrictions" && <RestrictionsSection />}
     </div>
   );

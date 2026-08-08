@@ -242,7 +242,14 @@ function initLogXv2(app) {
     await finalizeIfNeeded(requestRow, before, after);
 
     const elapsedSec = after.startedAt ? Math.floor((Date.now() - new Date(after.startedAt).getTime()) / 1000) : 0;
-    res.json({ ok: true, status: after.status, jobType: after.jobType, elapsedSec, artifacts: after.artifacts, errorMessage: after.errorMessage });
+    // `errorMessage` SON KULLANICI icindir (sade, is numarali). Teknik ayrinti yalnizca
+    // Admin rolune eklenir — normal kullanici Ansible/AWX jargonu gormemeli.
+    const isAdmin = currentUser(req)?.role === 'Admin';
+    res.json({
+      ok: true, status: after.status, jobType: after.jobType, elapsedSec,
+      artifacts: after.artifacts, errorMessage: after.errorMessage,
+      ...(isAdmin && after.technicalDetail ? { technicalDetail: after.technicalDetail } : {}),
+    });
   }));
 
   // Canli AWX stdout — yalnizca "su an ne oluyor" gorunurlugu icin, job sonucunun
@@ -290,6 +297,17 @@ function initLogXv2(app) {
   }));
   router.delete('/admin/ocp-cluster-index/:id', requireAdmin, asyncRoute(async (req, res) => {
     res.json({ ok: await adminData.deleteClusterIndexRow(req.params.id) });
+  }));
+
+  // ── Admin: OCP calisma zamani ayarlari (oc yolu + zaman asimlari) ───────────
+  // Playbook'taki sabit oc yolu uretimde tum bastion'larin dusmesine yol acmisti; bu uc
+  // sayesinde aday yollar ve zaman asimlari DEPLOY GEREKTIRMEDEN degistirilebilir.
+  router.get('/admin/ocp-runtime-config', requireAdmin, asyncRoute(async (req, res) => {
+    const cfg = require('./ocp-runtime-config.cjs');
+    res.json({ ok: true, config: await cfg.getConfig(), defaults: cfg.DEFAULTS });
+  }));
+  router.put('/admin/ocp-runtime-config', requireAdmin, express.json({ limit: '16kb' }), asyncRoute(async (req, res) => {
+    res.json({ ok: true, config: await require('./ocp-runtime-config.cjs').saveConfig(req.body || {}) });
   }));
 
   // ── Admin: ocp_terminal_host_map ─────────────────────────────────────────────
