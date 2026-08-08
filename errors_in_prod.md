@@ -1,227 +1,879 @@
-commit ettikten sonra geldim admin kısmını düzenledim 
+logx_ocp_discover_fetch.yml:
+---
+# LogX v2 - OCP pod discovery, log collection and archive staging
+# Location:
+#   bmw_automation_folder/portal_tamplates/logx_ocp_discover_fetch.yml
+# Global variables:
+#   bmw_openshift_jobs/global_variables/credentials.yaml
+#   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
+#
+# Required extra_vars:
+#   terminal_host: GBAOCP01
+#   namespace: application-namespace
+#   app_name: application-name-fragment
+#   ocp_clusters:
+#     - env: lab
+#       tenant: ark
+#       cluster_name: gbocplab2
+#   staging_dir: /target/staging/path
+#   fallback_dir: /tmp/logx_fallback
+#   archive_name: logx_ocp_logs.zip
+#
+# Output:
+#   artifacts.logx_result
 
-prod	ark	gbocpankprod2	GBARKAP82	✓	
-prod	ark	gbocpprod1	GBARKP51	✓	
-prod	ark	gbocpprod2	GBARKP52	✓	
-prod	ark	gbocpprod4	GBARKP54	✓
+- name: "Validate input and add terminal host dynamically"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
 
-şu şekilde ekledim
+  vars:
+    oc_namespace: "{{ oc_namespace_input | default(namespace | default('')) }}"
 
-logx ocp kısmını çalıştırdım.
+  tasks:
+    - name: "Validate required input variables"
+      ansible.builtin.assert:
+        that:
+          - terminal_host is defined
+          - terminal_host | string | trim | length > 0
+          - oc_namespace | string | trim | length > 0
+          - app_name is defined
+          - app_name | string | trim | length > 0
+          - ocp_clusters is defined
+          - ocp_clusters is sequence
+          - ocp_clusters | length > 0
+          - staging_dir is defined
+          - staging_dir | string | trim | length > 0
+          - fallback_dir is defined
+          - fallback_dir | string | trim | length > 0
+          - archive_name is defined
+          - archive_name | string | trim | length > 0
+          - archive_name is match('^[A-Za-z0-9._-]+\\.zip$')
+        fail_msg: "Required variables are missing or archive_name is invalid."
 
-portalde bunu verdi:
-Job sonlandı ancak yapılandırılmış çıktı bulunamadı (beklenen: artifacts.logx_result veya artifacts.data.logx_result). Mevcut anahtarlar: top=[], data=[], ansible_stats.data=[]. AWX ayrıntısı: jobId=3203029, serverId=2, status=failed, playbook=bmw_automation_folder/portal_tamplates/logx_ocp_namespace_discovery.yml, inventory=BMW - Openshift Jump Server Inventory. Playbook set_stats adımını ve AWX template'in doğru playbook'a bağlı olduğunu kontrol edin.
+    - name: "Add terminal host to dynamic inventory"
+      ansible.builtin.add_host:
+        name: "{{ terminal_host }}"
+        groups: logx_terminal
+        oc_namespace: "{{ oc_namespace }}"
+      changed_when: false
 
 
-ansible kısmında ise:
+- name: "LogX v2 - Discover pods and collect OCP logs"
+  hosts: logx_terminal
+  gather_facts: false
+  become: false
 
-{
-  "terminal_host": "GBARKAP82",
-  "ocp_clusters": [
-    {
-      "env": "prod",
-      "tenant": "ark",
-      "cluster_name": "gbocpankprod2",
-      "terminal_host": "GBARKAP82"
-    },
-    {
-      "env": "prod",
-      "tenant": "ark",
-      "cluster_name": "gbocpprod1",
-      "terminal_host": "GBARKP51"
-    },
-    {
-      "env": "prod",
-      "tenant": "ark",
-      "cluster_name": "gbocpprod4",
-      "terminal_host": "GBARKP54"
-    }
-  ],
-  "terminal_hosts": [
-    "GBARKAP82",
-    "GBARKP51",
-    "GBARKP54"
-  ]
-}
+  vars_files:
+    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
+    - ../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 
-bu variablelarla job çağrıldı
+  vars:
+    oc_binary: /usr/local/bin/oc
+    logx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+    remote_work_dir: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}"
+    remote_archive_path: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}.zip"
+    oc_list_timeout: 120
+    oc_log_timeout: 300
+    staging_runas_user: "{{ staging_user | default('was', true) }}"
+    staging_directory_mode: "2777"
+    staged_archive_mode: "0666"
 
-Identity added: /runner/artifacts/3203029/ssh_key_data (uxmid@gbansp01)
-add_file: sshkey_cert_copy: invalid argument
-[DEPRECATION WARNING]: ANSIBLE_COLLECTIONS_PATHS option, does not fit var 
-naming standard, use the singular form ANSIBLE_COLLECTIONS_PATH instead. This 
-feature will be removed from ansible-core in version 2.19. Deprecation warnings
- can be disabled by setting deprecation_warnings=False in ansible.cfg.
-Vault password: 
-[WARNING]: Invalid characters were found in group names but not replaced, use
--vvvv to see details
+  tasks:
+    - name: "Initialize working facts"
+      ansible.builtin.set_fact:
+        resolved_clusters: []
+        validation_errors: []
+        cluster_pod_matches: []
+        pod_fetch_targets: []
+        cluster_fetch_results: []
+      changed_when: false
 
-PLAY [Validate input and add terminal hosts dynamically] ***********************
+    - name: "Validate requested cluster records"
+      ansible.builtin.set_fact:
+        validation_errors: >-
+          {{
+            validation_errors + ([{
+              'cluster_name': item.cluster_name | default('unknown'),
+              'status': 'error',
+              'error': 'Cluster inventory record not found: ' ~
+                       (item.tenant | default('missing-tenant')) ~ '_' ~
+                       (item.env | default('missing-env')) ~ '/' ~
+                       (item.cluster_name | default('missing-cluster-name')),
+              'pods_matched': [],
+              'pods_failed': []
+            }] if not cluster_exists else [])
+          }}
+      vars:
+        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        cluster_exists: >-
+          {{
+            item.tenant is defined and
+            item.env is defined and
+            item.cluster_name is defined and
+            clusters[inventory_key] is defined and
+            clusters[inventory_key][item.cluster_name] is defined and
+            clusters[inventory_key][item.cluster_name].url is defined and
+            clusters[inventory_key][item.cluster_name].password is defined
+          }}
+      loop: "{{ ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      no_log: true
+      changed_when: false
 
-TASK [Validate required input variables] ***************************************
-ok: [localhost] => {
-    "changed": false,
-    "msg": "All assertions passed"
-}
+    - name: "Resolve valid cluster connection records"
+      ansible.builtin.set_fact:
+        resolved_clusters: >-
+          {{
+            resolved_clusters + ([{
+              'cluster_name': item.cluster_name,
+              'env': item.env,
+              'tenant': item.tenant,
+              'inventory_key': inventory_key,
+              'url': clusters[inventory_key][item.cluster_name].url,
+              'password': clusters[inventory_key][item.cluster_name].password
+            }] if cluster_exists else [])
+          }}
+      vars:
+        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        cluster_exists: >-
+          {{
+            item.tenant is defined and
+            item.env is defined and
+            item.cluster_name is defined and
+            clusters[inventory_key] is defined and
+            clusters[inventory_key][item.cluster_name] is defined and
+            clusters[inventory_key][item.cluster_name].url is defined and
+            clusters[inventory_key][item.cluster_name].password is defined
+          }}
+      loop: "{{ ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      no_log: true
+      changed_when: false
 
-TASK [Add every bastion to dynamic inventory] **********************************
-ok: [localhost] => (item=GBARKAP82)
-ok: [localhost] => (item=GBARKP51)
-ok: [localhost] => (item=GBARKP54)
+    - name: "Check oc binary"
+      ansible.builtin.stat:
+        path: "{{ oc_binary }}"
+      register: oc_binary_stat
 
-PLAY [LogX v2 - Discover OCP namespaces] ***************************************
+    - name: "Fail when oc binary is missing"
+      ansible.builtin.assert:
+        that:
+          - oc_binary_stat.stat.exists
+          - oc_binary_stat.stat.executable
+        fail_msg: "oc binary is missing or not executable: {{ oc_binary }}"
 
-TASK [Initialize result lists] *************************************************
-ok: [GBARKAP82]
-ok: [GBARKP51]
-ok: [GBARKP54]
+    - name: "Reset remote working directory"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ remote_work_dir }}"
+        - "{{ remote_archive_path }}"
+      changed_when: false
 
-TASK [Select the cluster subset that belongs to this bastion] ******************
-ok: [GBARKAP82]
-ok: [GBARKP51]
-ok: [GBARKP54]
+    - name: "Create remote working directory"
+      ansible.builtin.file:
+        path: "{{ remote_work_dir }}"
+        state: directory
+        mode: '0700'
+      changed_when: false
 
-TASK [Validate requested cluster records] **************************************
-ok: [GBARKAP82] => (item=None)
-ok: [GBARKAP82]
-ok: [GBARKP51] => (item=None)
-ok: [GBARKP51]
-ok: [GBARKP54] => (item=None)
-ok: [GBARKP54]
+    - name: "Login and list namespace pods in parallel"
+      ansible.builtin.shell: |
+        set -o pipefail
+        umask 077
 
-TASK [Resolve valid cluster connection records] ********************************
-ok: [GBARKAP82] => (item=None)
-ok: [GBARKAP82]
-ok: [GBARKP51] => (item=None)
-ok: [GBARKP51]
-ok: [GBARKP54] => (item=None)
-ok: [GBARKP54]
+        export KUBECONFIG="/tmp/logx-pods-{{ logx_job_id }}-{{ cluster.cluster_name }}.kubeconfig"
 
-TASK [Check oc binary] *********************************************************
-ok: [GBARKP54]
-ok: [GBARKAP82]
-ok: [GBARKP51]
+        cleanup() {
+          rm -f "${KUBECONFIG}"
+        }
+        trap cleanup EXIT
 
-TASK [Fail when oc binary is missing] ******************************************
-fatal: [GBARKAP82]: FAILED! => {
-    "assertion": "oc_binary_stat.stat.exists",
-    "changed": false,
-    "evaluated_to": false,
-    "msg": "oc binary is missing or not executable: /usr/local/bin/oc"
-}
-fatal: [GBARKP51]: FAILED! => {
-    "assertion": "oc_binary_stat.stat.exists",
-    "changed": false,
-    "evaluated_to": false,
-    "msg": "oc binary is missing or not executable: /usr/local/bin/oc"
-}
-fatal: [GBARKP54]: FAILED! => {
-    "assertion": "oc_binary_stat.stat.exists",
-    "changed": false,
-    "evaluated_to": false,
-    "msg": "oc binary is missing or not executable: /usr/local/bin/oc"
-}
+        "{{ oc_binary }}" login \
+          --server={{ cluster.url | quote }} \
+          --username={{ username | quote }} \
+          --password={{ cluster.password | quote }} \
+          --insecure-skip-tls-verify=true \
+          >/dev/null
 
-PLAY RECAP *********************************************************************
-GBARKAP82                  : ok=5    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0   
-GBARKP51                   : ok=5    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0   
-GBARKP54                   : ok=5    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0   
-localhost                  : ok=2    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+        "{{ oc_binary }}" get pods \
+          --namespace={{ oc_namespace | quote }} \
+          --output=name
+      args:
+        executable: /bin/bash
+      loop: "{{ resolved_clusters }}"
+      loop_control:
+        loop_var: cluster
+        label: "{{ cluster.cluster_name }}"
+      register: pod_list_jobs
+      async: "{{ oc_list_timeout }}"
+      poll: 0
+      changed_when: false
+      no_log: true
 
-hatasını aldı 
+    - name: "Wait for pod listing jobs"
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ pod_list_jobs.results | default([]) }}"
+      loop_control:
+        label: "{{ item.cluster.cluster_name }}"
+      register: pod_list_wait
+      until: pod_list_wait.finished
+      retries: 120
+      delay: 1
+      ignore_errors: true
+      changed_when: false
+      no_log: true
 
-sunuculardan birine gittim
+    - name: "Filter pod names in memory"
+      ansible.builtin.set_fact:
+        cluster_pod_matches: >-
+          {{
+            cluster_pod_matches + [{
+              'cluster_name': item.item.cluster.cluster_name,
+              'url': item.item.cluster.url,
+              'password': item.item.cluster.password,
+              'list_status': 'error' if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else 'ok',
+              'list_error': (
+                item.stderr | default(item.msg | default('Unknown OpenShift error'), true)
+              ) if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else '',
+              'pods': (
+                item.stdout_lines | default([])
+                | map('regex_replace', '^pod/', '')
+                | select('search', app_name | regex_escape)
+                | list
+              ) if not (item.failed | default(false) or (item.rc | default(0) | int != 0)) else []
+            }]
+          }}
+      loop: "{{ pod_list_wait.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.cluster.cluster_name }}"
+      no_log: true
+      changed_when: false
 
-[uxmid@gbarkp51 - PROD - PENDIK - ARK GBOCPPROD1] $ which oc
-/bin/oc
-[uxmid@gbarkp51 - PROD - PENDIK - ARK GBOCPPROD1] $ oc
-OpenShift Client
+    - name: "Build pod log fetch targets"
+      ansible.builtin.set_fact:
+        pod_fetch_targets: >-
+          {{
+            pod_fetch_targets + (
+              item.pods
+              | map('community.general.dict_kv', 'pod')
+              | map('combine', {
+                  'cluster_name': item.cluster_name,
+                  'url': item.url,
+                  'password': item.password
+                })
+              | list
+            )
+          }}
+      loop: "{{ cluster_pod_matches }}"
+      loop_control:
+        label: "{{ item.cluster_name }}"
+      when:
+        - item.list_status == 'ok'
+        - item.pods | length > 0
+      no_log: true
+      changed_when: false
 
-This client helps you develop, build, deploy, and run your applications on any
-OpenShift or Kubernetes cluster. It also includes the administrative
-commands for managing a cluster under the 'adm' subcommand.
+    - name: "Login and collect each pod log in parallel"
+      ansible.builtin.shell: |
+        set -o pipefail
+        umask 077
 
-Basic Commands:
-  login             Log in to a server
-  new-project       Request a new project
-  new-app           Create a new application
-  status            Show an overview of the current project
-  project           Switch to another project
-  projects          Display existing projects
-  explain           Get documentation for a resource
+        export KUBECONFIG="/tmp/logx-logs-{{ logx_job_id }}-{{ target.cluster_name }}-{{ target.pod }}.kubeconfig"
+        output_file={{ (remote_work_dir ~ '/' ~ target.cluster_name ~ '__' ~ target.pod ~ '.log') | quote }}
 
-Build and Deploy Commands:
-  rollout           Manage a Kubernetes deployment or OpenShift deployment config
-  rollback          Revert part of an application back to a previous deployment
-  new-build         Create a new build configuration
-  start-build       Start a new build
-  cancel-build      Cancel running, pending, or new builds
-  import-image      Import images from a container image registry
-  tag               Tag existing images into image streams
+        cleanup() {
+          rm -f "${KUBECONFIG}"
+        }
+        trap cleanup EXIT
 
-Application Management Commands:
-  create            Create a resource from a file or from stdin
-  apply             Apply a configuration to a resource by file name or stdin
-  get               Display one or many resources
-  describe          Show details of a specific resource or group of resources
-  edit              Edit a resource on the server
-  set               Commands that help set specific features on objects
-  label             Update the labels on a resource
-  annotate          Update the annotations on a resource
-  expose            Expose a replicated application as a service or route
-  delete            Delete resources by file names, stdin, resources and names, or by resources and label selector
-  scale             Set a new size for a deployment, replica set, or replication controller
-  autoscale         Autoscale a deployment config, deployment, replica set, stateful set, or replication controller
-  secrets           Manage secrets
+        "{{ oc_binary }}" login \
+          --server={{ target.url | quote }} \
+          --username={{ username | quote }} \
+          --password={{ target.password | quote }} \
+          --insecure-skip-tls-verify=true \
+          >/dev/null
 
-Troubleshooting and Debugging Commands:
-  logs              Print the logs for a container in a pod
-  rsh               Start a shell session in a container
-  rsync             Copy files between a local file system and a pod
-  port-forward      Forward one or more local ports to a pod
-  debug             Launch a new instance of a pod for debugging
-  exec              Execute a command in a container
-  proxy             Run a proxy to the Kubernetes API server
-  attach            Attach to a running container
-  run               Run a particular image on the cluster
-  cp                Copy files and directories to and from containers
-  wait              Experimental: Wait for a specific condition on one or many resources
-  events            List events
+        "{{ oc_binary }}" logs \
+          --namespace={{ oc_namespace | quote }} \
+          {{ target.pod | quote }} \
+          > "${output_file}"
+      args:
+        executable: /bin/bash
+      loop: "{{ pod_fetch_targets }}"
+      loop_control:
+        loop_var: target
+        label: "{{ target.cluster_name }}/{{ target.pod }}"
+      register: log_fetch_jobs
+      async: "{{ oc_log_timeout }}"
+      poll: 0
+      changed_when: false
+      no_log: true
 
-Advanced Commands:
-  adm               Tools for managing a cluster
-  replace           Replace a resource by file name or stdin
-  patch             Update fields of a resource
-  process           Process a template into list of resources
-  extract           Extract secrets or config maps to disk
-  observe           Observe changes to resources and react to them (experimental)
-  policy            Manage authorization policy
-  auth              Inspect authorization
-  image             Useful commands for managing images
-  registry          Commands for working with the registry
-  idle              Idle scalable resources
-  api-versions      Print the supported API versions on the server, in the form of "group/version"
-  api-resources     Print the supported API resources on the server
-  cluster-info      Display cluster information
-  diff              Diff the live version against a would-be applied version
-  kustomize         Build a kustomization target from a directory or URL
+    - name: "Wait for pod log collection jobs"
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ log_fetch_jobs.results | default([]) }}"
+      loop_control:
+        label: "{{ item.target.cluster_name }}/{{ item.target.pod }}"
+      register: log_fetch_wait
+      until: log_fetch_wait.finished
+      retries: 300
+      delay: 1
+      ignore_errors: true
+      changed_when: false
+      no_log: true
 
-Settings Commands:
-  get-token         Experimental: Get token from external OIDC issuer as credentials exec plugin
-  logout            End the current server session
-  config            Modify kubeconfig files
-  whoami            Return information about the current session
-  completion        Output shell completion code for the specified shell (bash, zsh, fish, or powershell)
+    - name: "Build per-cluster collection results"
+      ansible.builtin.set_fact:
+        cluster_fetch_results: >-
+          {{
+            cluster_fetch_results + [{
+              'cluster_name': cluster_item.cluster_name,
+              'status': cluster_status,
+              'error': cluster_error,
+              'pods_matched': cluster_item.pods,
+              'pods_failed': failed_pods
+            }]
+          }}
+      vars:
+        fetch_results_for_cluster: >-
+          {{
+            log_fetch_wait.results | default([])
+            | selectattr('item.target.cluster_name', 'equalto', cluster_item.cluster_name)
+            | list
+          }}
+        failed_pods: >-
+          {{
+            fetch_results_for_cluster
+            | selectattr('failed', 'defined')
+            | selectattr('failed', 'equalto', true)
+            | map(attribute='item.target.pod')
+            | map('community.general.dict_kv', 'pod')
+            | list
+          }}
+        cluster_status: >-
+          {{
+            'error' if cluster_item.list_status == 'error'
+            else ('no_match' if cluster_item.pods | length == 0
+            else ('partial' if failed_pods | length > 0 else 'ok'))
+          }}
+        cluster_error: "{{ cluster_item.list_error if cluster_item.list_status == 'error' else '' }}"
+      loop: "{{ cluster_pod_matches }}"
+      loop_control:
+        loop_var: cluster_item
+        label: "{{ cluster_item.cluster_name }}"
+      no_log: true
+      changed_when: false
 
-Other Commands:
-  plugin            Provides utilities for interacting with plugins
-  version           Print the client and server version information
+    - name: "Append cluster validation errors"
+      ansible.builtin.set_fact:
+        cluster_fetch_results: "{{ cluster_fetch_results + validation_errors }}"
+      changed_when: false
 
-Usage:
-  oc [flags] [options]
+    - name: "Count collected log files"
+      ansible.builtin.find:
+        paths: "{{ remote_work_dir }}"
+        patterns: '*.log'
+        file_type: file
+      register: collected_log_files
+      changed_when: false
 
-Use "oc <command> --help" for more information about a given command.
-Use "oc options" for a list of global command-line options (applies to all commands).
-[uxmid@gbarkp51 - PROD - PENDIK - ARK GBOCPPROD1] $ 
+    - name: "Create archive on terminal host"
+      community.general.archive:
+        path: "{{ remote_work_dir }}/*.log"
+        dest: "{{ remote_archive_path }}"
+        format: zip
+        mode: '0600'
+      register: remote_archive
+      when: collected_log_files.matched | int > 0
+      changed_when: false
 
-sana hatayı ve buna dair log ve sonuçalrı attım bunlara bakarak sorunumuzu çözecek planlamayı ve taskları bütün ajanları kullanarak yap ve tasklarını oluştur.
+    - name: "Verify archive exists on terminal host"
+      ansible.builtin.stat:
+        path: "{{ remote_archive_path }}"
+      register: remote_archive_stat
+      when: collected_log_files.matched | int > 0
+      changed_when: false
+
+    - name: "Fail when archive creation did not produce a file"
+      ansible.builtin.assert:
+        that:
+          - remote_archive_stat.stat.exists | default(false)
+          - remote_archive_stat.stat.isreg | default(false)
+          - remote_archive_stat.stat.size | default(0) | int > 0
+        fail_msg: "Archive was not created at {{ remote_archive_path }}"
+      when: collected_log_files.matched | int > 0
+
+    - name: "Initialize staging result facts"
+      ansible.builtin.set_fact:
+        staging_succeeded: false
+        fallback_succeeded: false
+        staged_archive_path: ""
+        staging_error: ""
+      changed_when: false
+
+    - name: "Validate staging paths and run-as user"
+      ansible.builtin.assert:
+        that:
+          - staging_dir | string | trim | length > 1
+          - staging_dir is match('^/')
+          - fallback_dir | string | trim | length > 1
+          - fallback_dir is match('^/')
+          - staging_runas_user | string | trim | length > 0
+          - staging_directory_mode == '2777'
+          - staged_archive_mode == '0666'
+        fail_msg: >-
+          Invalid staging settings. staging_dir={{ staging_dir }},
+          fallback_dir={{ fallback_dir }}, runas={{ staging_runas_user }}
+
+    - name: "Stage archive directly on terminal host"
+      when: collected_log_files.matched | int > 0
+      block:
+        - name: "Create and authorize staging directory through allowed dzdo user"
+          ansible.builtin.command:
+            argv:
+              - dzdo
+              - -n
+              - -u
+              - "{{ staging_runas_user }}"
+              - /bin/sh
+              - -c
+              - >-
+                umask 000;
+                /bin/mkdir -p -- {{ staging_dir | quote }} &&
+                /bin/chmod {{ staging_directory_mode | quote }} -- {{ staging_dir | quote }}
+          register: staging_directory_prepare
+          changed_when: false
+
+        - name: "Verify staging directory permissions"
+          ansible.builtin.stat:
+            path: "{{ staging_dir }}"
+          register: staging_directory_stat
+          changed_when: false
+
+        - name: "Validate staging directory"
+          ansible.builtin.assert:
+            that:
+              - staging_directory_stat.stat.exists | default(false)
+              - staging_directory_stat.stat.isdir | default(false)
+              - staging_directory_stat.stat.mode | default('') == staging_directory_mode
+              - staging_directory_stat.stat.writeable | default(false)
+            fail_msg: >-
+              Staging directory is unavailable or not writable.
+              path={{ staging_dir }},
+              owner={{ staging_directory_stat.stat.pw_name | default('unknown') }},
+              group={{ staging_directory_stat.stat.gr_name | default('unknown') }},
+              mode={{ staging_directory_stat.stat.mode | default('unknown') }}
+
+        - name: "Copy archive to staging directory as SSH user"
+          ansible.builtin.copy:
+            src: "{{ remote_archive_path }}"
+            dest: "{{ staging_dir }}/{{ archive_name }}"
+            remote_src: true
+            mode: "{{ staged_archive_mode }}"
+          register: staging_copy_result
+
+        - name: "Verify primary staged archive"
+          ansible.builtin.stat:
+            path: "{{ staging_dir }}/{{ archive_name }}"
+            get_checksum: true
+            checksum_algorithm: sha256
+          register: primary_staged_archive_stat
+          changed_when: false
+
+        - name: "Validate primary staged archive"
+          ansible.builtin.assert:
+            that:
+              - primary_staged_archive_stat.stat.exists | default(false)
+              - primary_staged_archive_stat.stat.isreg | default(false)
+              - primary_staged_archive_stat.stat.size | default(0) | int > 0
+            fail_msg: "Archive copy to primary staging failed: {{ staging_dir }}/{{ archive_name }}"
+
+        - name: "Mark staging as successful"
+          ansible.builtin.set_fact:
+            staging_succeeded: true
+            staged_archive_path: "{{ staging_dir }}/{{ archive_name }}"
+          changed_when: false
+
+      rescue:
+        - name: "Record staging failure"
+          ansible.builtin.set_fact:
+            staging_error: >-
+              {{
+                ansible_failed_result.stderr
+                | default(ansible_failed_result.msg, true)
+                | default('Unknown staging error', true)
+              }}
+          changed_when: false
+
+        - name: "Ensure fallback directory exists on terminal host"
+          ansible.builtin.file:
+            path: "{{ fallback_dir }}"
+            state: directory
+            mode: '0777'
+          changed_when: false
+
+        - name: "Copy archive to fallback directory on terminal host"
+          ansible.builtin.copy:
+            src: "{{ remote_archive_path }}"
+            dest: "{{ fallback_dir }}/{{ archive_name }}"
+            remote_src: true
+            mode: "{{ staged_archive_mode }}"
+          register: fallback_copy_result
+
+        - name: "Mark fallback as successful"
+          ansible.builtin.set_fact:
+            fallback_succeeded: true
+            staged_archive_path: "{{ fallback_dir }}/{{ archive_name }}"
+          changed_when: false
+
+    - name: "Read staged archive metadata on terminal host"
+      ansible.builtin.stat:
+        path: "{{ staged_archive_path }}"
+      register: staged_archive_stat
+      when:
+        - collected_log_files.matched | int > 0
+        - staged_archive_path | length > 0
+      changed_when: false
+
+    - name: "Publish final LogX result"
+      ansible.builtin.set_stats:
+        data:
+          logx_result:
+            overall_status: >-
+              {% set ok_count = cluster_fetch_results | selectattr('status', 'equalto', 'ok') | list | length %}
+              {% set partial_count = cluster_fetch_results | selectattr('status', 'equalto', 'partial') | list | length %}
+              {% set error_count = cluster_fetch_results | selectattr('status', 'equalto', 'error') | list | length %}
+              {% set no_match_count = cluster_fetch_results | selectattr('status', 'equalto', 'no_match') | list | length %}
+              {% set archive_created = collected_log_files.matched | int > 0 %}
+              {% set staged_ok = archive_created and staged_archive_stat.stat.exists | default(false) %}
+              {{
+                'failed' if error_count > 0 and ok_count == 0 and partial_count == 0
+                else ('no_match' if not archive_created and no_match_count > 0 and error_count == 0
+                else ('success' if staged_ok and error_count == 0 and partial_count == 0
+                else ('partial' if staged_ok else 'failed')))
+              }}
+            terminal_host: "{{ inventory_hostname }}"
+            clusters: "{{ cluster_fetch_results }}"
+            staged_path: "{{ staged_archive_path }}"
+            filename: "{{ archive_name if collected_log_files.matched | int > 0 else '' }}"
+            size_bytes: "{{ staged_archive_stat.stat.size | default(0) | int }}"
+            is_fallback: "{{ fallback_succeeded }}"
+            staging_error: "{{ staging_error }}"
+        per_host: false
+
+    - name: "Clean remote temporary files"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ remote_work_dir }}"
+        - "{{ remote_archive_path }}"
+      when: staged_archive_stat.stat.exists | default(false)
+      changed_when: false
+
+
+logx_ocp_namespace_discovery.yml:
+---
+# LogX v2 - OCP namespace discovery
+# Location:
+#   bmw_automation_folder/portal_tamplates/logx_ocp_namespace_discovery.yml
+# Global variables:
+#   bmw_openshift_jobs/global_variables/credentials.yaml
+#   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
+#
+# Required extra_vars (v2 - per-cluster bastion):
+#   terminal_host: GBAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
+#   terminal_hosts: [GBAOCP01, GBAOCP02] # optional; unique, sorted list of bastions
+#   ocp_clusters:
+#     - env: lab
+#       tenant: ark
+#       cluster_name: gbocplab2
+#       terminal_host: GBAOCP01          # optional; when absent the scalar terminal_host is used
+#
+# Backward compatibility: when neither `terminal_hosts` nor per-cluster `terminal_host`
+# is supplied, this playbook behaves EXACTLY as before (one bastion, all clusters on it).
+#
+# Output:
+#   artifacts.logx_result  (shape unchanged: { overall_status, clusters[] })
+
+- name: "Validate input and add terminal hosts dynamically"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    # Effective bastion list: explicit list wins, else the legacy scalar, else per-cluster values.
+    logx_bastions: >-
+      {{
+        (terminal_hosts | default([]) | union([terminal_host | default('')]))
+        | union(ocp_clusters | default([]) | selectattr('terminal_host', 'defined')
+                                          | map(attribute='terminal_host') | list)
+        | map('trim') | reject('equalto', '') | unique | sort | list
+      }}
+
+  tasks:
+    - name: "Validate required input variables"
+      ansible.builtin.assert:
+        that:
+          - logx_bastions | length > 0
+          - ocp_clusters is defined
+          - ocp_clusters is sequence
+          - ocp_clusters | length > 0
+        fail_msg: "At least one bastion (terminal_host / terminal_hosts / ocp_clusters[].terminal_host) and a non-empty ocp_clusters list are required."
+
+    - name: "Add every bastion to dynamic inventory"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: logx_terminal
+      loop: "{{ logx_bastions }}"
+      changed_when: false
+
+
+- name: "LogX v2 - Discover OCP namespaces"
+  hosts: logx_terminal
+  gather_facts: false
+  become: false
+
+  vars_files:
+    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
+    - ../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
+
+  vars:
+    oc_binary: /bin/oc
+    oc_async_timeout: 120
+    oc_async_retries: 120
+    oc_async_delay: 1
+    logx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+
+  tasks:
+    - name: "Initialize result lists"
+      ansible.builtin.set_fact:
+        resolved_clusters: []
+        validation_errors: []
+        cluster_ns_results: []
+      changed_when: false
+
+    # Cok-bastion: her bastion YALNIZ kendisine atanmis cluster'lari isler. Hicbir cluster
+    # ogesinde terminal_host yoksa (eski payload) tum liste tek bastion'da islenir; kismi
+    # tanimli payload'da sahipsiz kalanlar ilk (alfabetik) bastion'a dusurulur ki
+    # sessizce dusmesinler.
+    - name: "Select the cluster subset that belongs to this bastion"
+      ansible.builtin.set_fact:
+        my_ocp_clusters: >-
+          {{
+            (ocp_clusters | selectattr('terminal_host', 'defined')
+                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+            +
+            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+             if inventory_hostname == ((groups['logx_terminal'] | default([])) | sort | first)
+             else [])
+          }}
+      changed_when: false
+
+    - name: "Validate requested cluster records"
+      ansible.builtin.set_fact:
+        validation_errors: >-
+          {{
+            validation_errors + ([{
+              'cluster_name': item.cluster_name | default('unknown'),
+              'status': 'error',
+              'error': 'Cluster inventory record not found: ' ~
+                       (item.tenant | default('missing-tenant')) ~ '_' ~
+                       (item.env | default('missing-env')) ~ '/' ~
+                       (item.cluster_name | default('missing-cluster-name')),
+              'namespaces': []
+            }] if not cluster_exists else [])
+          }}
+      vars:
+        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        cluster_exists: >-
+          {{
+            item.tenant is defined and
+            item.env is defined and
+            item.cluster_name is defined and
+            clusters[inventory_key] is defined and
+            clusters[inventory_key][item.cluster_name] is defined and
+            clusters[inventory_key][item.cluster_name].url is defined and
+            clusters[inventory_key][item.cluster_name].password is defined
+          }}
+      loop: "{{ my_ocp_clusters }}"
+      loop_control:
+        label: "{{ item.tenant | default('?') }}_{{ item.env | default('?') }}/{{ item.cluster_name | default('?') }}"
+      no_log: true
+      changed_when: false
+
+    - name: "Resolve valid cluster connection records"
+      ansible.builtin.set_fact:
+        resolved_clusters: >-
+          {{
+            resolved_clusters + ([{
+              'cluster_name': item.cluster_name,
+              'env': item.env,
+              'tenant': item.tenant,
+              'inventory_key': inventory_key,
+              'url': clusters[inventory_key][item.cluster_name].url,
+              'password': clusters[inventory_key][item.cluster_name].password
+            }] if cluster_exists else [])
+          }}
+      vars:
+        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        cluster_exists: >-
+          {{
+            item.tenant is defined and
+            item.env is defined and
+            item.cluster_name is defined and
+            clusters[inventory_key] is defined and
+            clusters[inventory_key][item.cluster_name] is defined and
+            clusters[inventory_key][item.cluster_name].url is defined and
+            clusters[inventory_key][item.cluster_name].password is defined
+          }}
+      loop: "{{ my_ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      no_log: true
+      changed_when: false
+
+    - name: "Check oc binary"
+      ansible.builtin.stat:
+        path: "{{ oc_binary }}"
+      register: oc_binary_stat
+
+    - name: "Fail when oc binary is missing"
+      ansible.builtin.assert:
+        that:
+          - oc_binary_stat.stat.exists
+          - oc_binary_stat.stat.executable
+        fail_msg: "oc binary is missing or not executable: {{ oc_binary }}"
+
+    - name: "Login and list namespaces in parallel with isolated kubeconfigs"
+      ansible.builtin.shell: |
+        set -o pipefail
+        umask 077
+
+        export KUBECONFIG="/tmp/logx-ns-{{ logx_job_id }}-{{ cluster.cluster_name }}.kubeconfig"
+
+        cleanup() {
+          rm -f "${KUBECONFIG}"
+        }
+        trap cleanup EXIT
+
+        "{{ oc_binary }}" login \
+          --server={{ cluster.url | quote }} \
+          --username={{ username | quote }} \
+          --password={{ cluster.password | quote }} \
+          --insecure-skip-tls-verify=true \
+          >/dev/null
+
+        "{{ oc_binary }}" get projects -o name
+      args:
+        executable: /bin/bash
+      loop: "{{ resolved_clusters }}"
+      loop_control:
+        loop_var: cluster
+        label: "{{ cluster.cluster_name }}"
+      register: ns_jobs
+      async: "{{ oc_async_timeout }}"
+      poll: 0
+      changed_when: false
+      no_log: true
+
+    - name: "Wait for namespace discovery jobs"
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ ns_jobs.results | default([]) }}"
+      loop_control:
+        label: "{{ item.cluster.cluster_name }}"
+      register: ns_wait
+      until: ns_wait.finished
+      retries: "{{ oc_async_retries }}"
+      delay: "{{ oc_async_delay }}"
+      ignore_errors: true
+      changed_when: false
+      no_log: true
+
+    - name: "Build structured namespace results"
+      ansible.builtin.set_fact:
+        cluster_ns_results: >-
+          {{
+            cluster_ns_results + [{
+              'cluster_name': item.item.cluster.cluster_name,
+              'status': 'error' if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else 'ok',
+              'error': (
+                item.stderr | default(item.msg | default('Unknown OpenShift error'), true)
+              ) if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else '',
+              'namespaces': (
+                item.stdout_lines | default([])
+                | map('regex_replace', '^project/', '')
+                | list
+              ) if not (item.failed | default(false) or (item.rc | default(0) | int != 0)) else []
+            }]
+          }}
+      loop: "{{ ns_wait.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.cluster.cluster_name }}"
+      changed_when: false
+
+    - name: "Append validation errors"
+      ansible.builtin.set_fact:
+        cluster_ns_results: "{{ cluster_ns_results + validation_errors }}"
+      changed_when: false
+
+
+# set_stats BILEREK tek bir yazardan (localhost) yayinlanir: birden cok host ayni
+# `logx_result` anahtarini yazarsa Ansible listeleri BIRLESTIRMEZ, sonuncu yazan ezer.
+# Bu play, istenen HER cluster'i sahibi olan bastion'un fact'inden toplar; sonuc sekli
+# tek-bastion'daki ile birebir aynidir (overall_status + clusters[]).
+- name: "Aggregate per-bastion results and publish a single logx_result"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: "Initialize merged result list"
+      ansible.builtin.set_fact:
+        merged_ns_results: []
+      changed_when: false
+
+    - name: "Collect each requested cluster's result from its own bastion"
+      ansible.builtin.set_fact:
+        merged_ns_results: >-
+          {{
+            merged_ns_results + (reported if (reported | length > 0) else [{
+              'cluster_name': item.cluster_name | default('unknown'),
+              'status': 'error',
+              'error': 'Bastion did not report a result: ' ~ (owner_host | default('?')),
+              'namespaces': []
+            }])
+          }}
+      vars:
+        # Sahipsiz cluster'in sahibi play2 ile AYNI kuralla belirlenir (ilk alfabetik bastion).
+        owner_host: "{{ item.terminal_host | default((groups['logx_terminal'] | default([]) | sort | first), true) }}"
+        host_results: "{{ (hostvars[owner_host] | default({}, true)).cluster_ns_results | default([], true) }}"
+        reported: "{{ host_results | selectattr('cluster_name', 'equalto', item.cluster_name | default('')) | list }}"
+      loop: "{{ ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      changed_when: false
+
+    - name: "Publish namespace discovery result"
+      ansible.builtin.set_stats:
+        data:
+          logx_result:
+            overall_status: >-
+              {% set ok_count = merged_ns_results | selectattr('status', 'equalto', 'ok') | list | length %}
+              {% set error_count = merged_ns_results | selectattr('status', 'equalto', 'error') | list | length %}
+              {{ 'success' if error_count == 0 else ('failed' if ok_count == 0 else 'partial') }}
+            clusters: "{{ merged_ns_results }}"
+        per_host: false
+
+bunlar bugünki değişiklik öncesi çalışan playbookalr
