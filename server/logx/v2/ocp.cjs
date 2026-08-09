@@ -130,6 +130,66 @@ async function discoverNamespaces(requestRow) {
   return job;
 }
 
+// POST /ocp/:requestId/apps/discover — { namespaces: [ad,...] }
+// Secilen cluster'larda VERILEN namespace'lerdeki uygulama/objeleri tarar. Sonuc
+// portalda onbellege yazilir (ocp_app_cache) — bir sonraki kullanici listeyi ANINDA gorur.
+async function discoverApps(requestRow, namespaces) {
+  const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : null;
+  if (!Array.isArray(input?.clusters) || !input.clusters.length) {
+    throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
+  }
+  const nsList = [...new Set((namespaces || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  if (!nsList.length) {
+    throw Object.assign(new Error('En az bir namespace gerekli.'), { status: 400 });
+  }
+
+  const { hosts, meta } = await resolveClusterContextOrThrow(input.env, input.tenant, input.clusters);
+  const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
+  const base = buildOcpExtraVars({
+    env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta,
+  });
+  // Her cluster ayni namespace kumesini tarar; playbook cluster-basina `namespaces`
+  // alanini okur (yoksa genel `ocp_namespaces` listesine duser).
+  const job = await jobs.launchJob(requestRow.request_id, 'ocp_app_discovery', {
+    ...base,
+    ocp_clusters: base.ocp_clusters.map((c) => ({ ...c, namespaces: nsList })),
+    ocp_namespaces: nsList,
+    ...buildOcpRuntimeVars(runtimeCfg),
+  });
+  await requests.updateRequest(requestRow.request_id, {
+    state: 'app_discovering',
+    input: { ...input, appDiscoveryNamespaces: nsList },
+  });
+  return job;
+}
+
+async function finalizeAppDiscovery(requestRow, job) {
+  if (!job.artifacts) {
+    await requests.updateRequest(requestRow.request_id, {
+      state: 'failed',
+      errorMessage: job.errorMessage || 'Uygulama keşfi başarısız oldu.',
+    });
+    return;
+  }
+  const parsed = require('./ocp-app-parse.cjs').parseAppDiscoveryResult(job.artifacts);
+
+  // Onbellege yaz — kesif sonucu artik kullanicilar arasi paylasilir (best-effort:
+  // onbellek yazimi basarisiz olsa da sihirbaz akisi durmamali).
+  try {
+    const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : {};
+    await require('./ocp-cache.cjs').putApps({
+      env: input.env, tenant: input.tenant, entries: parsed.entries, source: 'discovery',
+    });
+  } catch (e) {
+    console.warn('[LogXv2] uygulama onbellegi yazilamadi:', e.message);
+  }
+
+  await requests.updateRequest(requestRow.request_id, {
+    state: 'apps_discovered',
+    discoveryResult: parsed,
+  });
+}
+
 // `oc get projects -o name` ciktisi ortama gore `project/<ad>` VEYA
 // `project.project.openshift.io/<ad>` oneki tasir (API-group'lu tam ad). Namespace ADI
 // her zaman son `/`'ten SONRASIDIR — oneki ne olursa olsun guvenle siyiririz. Boslari
@@ -153,9 +213,29 @@ async function finalizeNamespaceDiscovery(requestRow, job) {
     await requests.updateRequest(requestRow.request_id, { state: 'failed', errorMessage: job.errorMessage || 'Namespace keşfi başarısız oldu.' });
     return;
   }
+  const normalized = normalizeDiscoveryResult(job.artifacts);
+
+  // Onbellege yaz — sonuc artik kullanicilar arasi paylasilir (best-effort: onbellek
+  // yazimi basarisiz olsa da sihirbaz akisi durmamali).
+  try {
+    const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : {};
+    const cache = require('./ocp-cache.cjs');
+    for (const c of normalized.clusters || []) {
+      // Yalnizca BASARILI taramalar yazilir; hatali cluster icin "namespace yok" yazmak
+      // kullaniciyi yanlis yonlendirirdi.
+      if (c.status !== 'ok') continue;
+      await cache.putNamespaces({
+        env: input.env, tenant: input.tenant, clusterName: c.cluster_name,
+        namespaces: c.namespaces, source: 'discovery',
+      });
+    }
+  } catch (e) {
+    console.warn('[LogXv2] namespace onbellegi yazilamadi:', e.message);
+  }
+
   await requests.updateRequest(requestRow.request_id, {
     state: 'namespaces_discovered',
-    discoveryResult: normalizeDiscoveryResult(job.artifacts),
+    discoveryResult: normalized,
   });
 }
 
@@ -201,5 +281,6 @@ async function discoverFetch(requestRow, namespace, appName) {
 
 module.exports = {
   getClusterTree, selectClusters, discoverNamespaces, finalizeNamespaceDiscovery, discoverFetch,
+  discoverApps, finalizeAppDiscovery,
   buildOcpExtraVars, buildOcpRuntimeVars,
 };

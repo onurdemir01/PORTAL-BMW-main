@@ -1114,6 +1114,11 @@ const PLAYBOOK_REGISTRY_SEED = [
     playbook_path: 'server/ansible/playbooks/logx_ocp_namespace_discovery.yml', env_var_name: 'AWX_LOGX_OCP_NAMESPACE_DISCOVERY_TEMPLATE_ID',
   },
   {
+    key_name: 'logx_ocp_app_discovery', display_name: 'LogX — OCP Uygulama/Obje Keşfi', category: 'logx', handler: 'ocp_app_discovery',
+    description: 'Seçilen namespace(ler)de çalışan uygulama ve objeleri (deployment, statefulset, pod, service, route…) salt-okunur listeler; sonuç portalda önbelleğe alınır.',
+    playbook_path: 'server/ansible/playbooks/logx_ocp_app_discovery.yml', env_var_name: 'AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID',
+  },
+  {
     key_name: 'logx_ocp_discover_fetch', display_name: 'LogX — OCP Pod Log Keşfi+Çekme', category: 'logx', handler: 'ocp_discover_fetch',
     description: 'Seçilen cluster(lar)da uygulama adına eşleşen tüm pod\'ların loglarını çeker, zip\'ler, staging dizinine bırakır.',
     playbook_path: 'server/ansible/playbooks/logx_ocp_discover_fetch.yml', env_var_name: 'AWX_LOGX_OCP_DISCOVER_FETCH_TEMPLATE_ID',

@@ -56,6 +56,9 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
     case 'ocp_namespace_discovery':
       await ocp.finalizeNamespaceDiscovery(requestRow, jobAfter);
       break;
+    case 'ocp_app_discovery':
+      await ocp.finalizeAppDiscovery(requestRow, jobAfter);
+      break;
     case 'legacy_transfer':
     case 'ocp_discover_fetch': {
       // Cok-bastion'li OCP fetch'inde playbook bastion BASINA bir arsiv uretebilir ve
@@ -218,6 +221,45 @@ function initLogXv2(app) {
     const row = await loadOwnedRequest(req);
     const job = await ocp.discoverNamespaces(row);
     res.json({ ok: true, jobId: job.id });
+  }));
+
+  // Namespace ICINDEKI uygulama/objeleri tarar (kullanici uygulama adini ezberden
+  // bilmek zorunda kalmasin). Sonuc onbellege yazilir.
+  router.post('/ocp/:requestId/apps/discover', asyncRoute(async (req, res) => {
+    const row = await loadOwnedRequest(req);
+    const { namespaces } = req.body || {};
+    const input = row.input_json ? JSON.parse(row.input_json) : {};
+    // Log cekmeyle AYNI yetki kapisi: namespace bazli kisitlama burada da uygulanir,
+    // aksi halde kisitli bir namespace'in icerigi kesif ekraninda gorunurdu.
+    for (const ns of namespaces || []) {
+      const resourceKey = `${input.tenant}/${input.env}/${(input.clusters || []).join('+')}/${ns}`;
+      await restrictions.assertAllowed('ocp_namespace', resourceKey, currentUser(req));
+    }
+    const job = await ocp.discoverApps(row, namespaces);
+    res.json({ ok: true, jobId: job.id });
+  }));
+
+  // ── Kesif onbellegi (kullanicilar arasi paylasimli) ─────────────────────────
+  // Sihirbaz ONCE buradan okur: liste aninda gelir, `stale` bayragi bayatligi gosterir.
+  // Bos veya bayatsa kullanici "Burada kesfet" ile taze tarama tetikler.
+  router.get('/ocp/cache/namespaces', asyncRoute(async (req, res) => {
+    const { env, tenant, cluster } = req.query || {};
+    if (!env || !tenant || !cluster) {
+      return res.status(400).json({ ok: false, message: 'env, tenant ve cluster gerekli.' });
+    }
+    const out = await require('./ocp-cache.cjs').getNamespaces({ env, tenant, clusterName: cluster });
+    res.json({ ok: true, ...out });
+  }));
+
+  router.get('/ocp/cache/apps', asyncRoute(async (req, res) => {
+    const { env, tenant, cluster, namespace } = req.query || {};
+    if (!env || !tenant || !cluster || !namespace) {
+      return res.status(400).json({ ok: false, message: 'env, tenant, cluster ve namespace gerekli.' });
+    }
+    const resourceKey = `${tenant}/${env}/${cluster}/${namespace}`;
+    await restrictions.assertAllowed('ocp_namespace', resourceKey, currentUser(req));
+    const out = await require('./ocp-cache.cjs').getApps({ env, tenant, clusterName: cluster, namespace });
+    res.json({ ok: true, ...out });
   }));
 
   router.post('/ocp/:requestId/discover-fetch', asyncRoute(async (req, res) => {
