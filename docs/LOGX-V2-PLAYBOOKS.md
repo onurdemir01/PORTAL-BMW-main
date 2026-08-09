@@ -10,7 +10,7 @@ template** olarak tanımlanır. Portal bu template'leri sadece "başlat + durumu
 
 ## 1. Ne yapacaksın (özet)
 
-1. 4 playbook'u Ansible projene koy (biz `bmw_automation_folder/portal_tamplates/` altına koyduk).
+1. 5 playbook'u Ansible projene koy (biz `bmw_automation_folder/portal_tamplates/` altına koyduk).
 2. Her biri için AWX'te bir **Job Template** oluştur (aşağıdaki tablo).
 3. Template'lerde **"Prompt on launch → Variables (Değişken sorar)"** açık olsun (portal extra_vars gönderiyor).
 4. Template ID'lerini ve **hangi AWX sunucusunda** olduklarını `.env.local`'a yaz (Bölüm 3).
@@ -18,7 +18,7 @@ template** olarak tanımlanır. Portal bu template'leri sadece "başlat + durumu
 
 ---
 
-## 2. 4 Playbook / Template
+## 2. 5 Playbook / Template
 
 | Playbook dosyası | Ne yapar | Gereken extra_vars |
 |---|---|---|
@@ -26,6 +26,7 @@ template** olarak tanımlanır. Portal bu template'leri sadece "başlat + durumu
 | `logx_legacy_transfer.yml` | Seçilen log dosyalarını zip'leyip staging dizinine **kopyalar** | `selected_files`, `staging_dir`, `fallback_dir`, `archive_name` |
 | `logx_ocp_namespace_discovery.yml` | Seçilen cluster(lar)da namespace listesini getirir | `terminal_host`, `ocp_clusters` |
 | `logx_ocp_discover_fetch.yml` | Uygulamaya ait pod'ların logunu çeker, zip'ler, staging'e bırakır | `terminal_host`, `namespace`, `app_name`, `ocp_clusters`, `staging_dir`, `fallback_dir`, `archive_name` |
+| `logx_ocp_app_discovery.yml` | **(yeni)** Verilen namespace'lerdeki uygulama/objeleri listeler — kullanıcı uygulama adını ezberden bilmek zorunda kalmasın | `terminal_host`, `ocp_clusters` (her öğede `namespaces`), `ocp_namespaces` |
 
 **Çıktı sözleşmesi (hepsi için ortak):** Playbook'un SON adımı
 `ansible.builtin.set_stats` ile `logx_result` adında bir JSON yayınlar. Portal sonucu
@@ -37,7 +38,7 @@ yorumda yazılı. Bu adım ÇALIŞMAZSA portal "sonuç bulunamadı" der.
 ## 3. `.env.local`'a eklenecekler
 
 ```env
-# 4 template hangi AWX sunucusunda? (AWX_1_* = 1, AWX_2_* = 2 ...). Hepsi aynı
+# 5 template hangi AWX sunucusunda? (AWX_1_* = 1, AWX_2_* = 2 ...). Hepsi aynı
 # sunucudaysa tek satır yeterli. YANLIŞSA "AWX HTTP 404" alırsın.
 AWX_LOGX_SERVER_ID=2
 
@@ -46,6 +47,9 @@ AWX_LOGX_LEGACY_DISCOVERY_TEMPLATE_ID=2139
 AWX_LOGX_LEGACY_TRANSFER_TEMPLATE_ID=2140
 AWX_LOGX_OCP_NAMESPACE_DISCOVERY_TEMPLATE_ID=2142
 AWX_LOGX_OCP_DISCOVER_FETCH_TEMPLATE_ID=2141
+# Uygulama/obje keşfi (yeni). Boşsa yalnızca bu özellik çalışmaz, sihirbazın
+# geri kalanı etkilenmez — serbest metinle uygulama adı girme yolu korunur.
+AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID=
 
 # Portalın okuyabildiği (NFS) staging dizinleri — playbook zip'i buraya bırakır:
 LOGX_V2_STAGING_LEGACY_DIR=/sw/BMW_PORTAL/logs/legacy
@@ -143,3 +147,25 @@ gizler). Bu yüzden arşiv, **portal sunucusunun okuyabildiği bir konumda** olm
 
 Ayrıntı, AWX projesine taşıma adımları ve geri alma:
 [OCP-DINAMIK-YAPI.md](OCP-DINAMIK-YAPI.md) §10–11.
+
+---
+
+## Playbook yazarken kaçınılması gerekenler (gerçek arızalardan)
+
+Bunların her biri üretimde ya da doğrulamada bir kez yaşandı; hepsi **YAML geçerliyken**
+çıkan hatalar, yani gözle bakınca fark edilmezler.
+
+| Tuzak | Ne olur | Doğrusu |
+|---|---|---|
+| `shell: \|` bloğunun **yorum** satırında kesme işareti (`API'si`) | Ansible argümanları bölerken tek tırnakları sayar → `unbalanced jinja2 block or quotes`, playbook **hiç yüklenmez** | Yorumlarda kesme işareti kullanma. `playbook-shell-quotes.test.cjs` bunu yakalar |
+| `async_status` sonucunda `item.target` | Orijinal döngü öğesi bir seviye **altta** durur; `'dict object' has no attribute 'target'` ile blok çöker | `item.item.target` |
+| Birden çok host aynı `set_stats` anahtarını yazar | Ansible listeleri **birleştirmez**, son yazan ezer | Tek yazarlı `localhost` toplayıcı play |
+| `rescue` unreachable host'u yakalar sanmak | Yakalamaz; sonraki play'ler "NO MORE HOSTS LEFT" ile atlanır | `ignore_unreachable: true` + toplayıcıda "yanıt vermeyen bastion" kontrolü |
+| Çok tipli `oc get`te rc'ye bakmak | Tek bir tip patlarsa (kapalı DeploymentConfig API kaynağı, route RBAC reddi) **başarılı** tiplerin çıktısı da atılır | Ölçüt "satır geldi mi"; stderr ayrı tutulur |
+| `overall_status: >-` içinde `{% set %}` | Katlamalı skalerde satırlar boşluğa dönüşür, değer `"  success"` olur ve karşılaştırma tutmaz | Tek ifade yaz (ya da portalda `trim`) |
+
+**Her değişiklikten sonra:**
+
+```bash
+ansible-playbook --syntax-check server/ansible/playbooks/logx_ocp_app_discovery.yml
+```
