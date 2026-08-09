@@ -167,6 +167,10 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
   let launch;
   try {
     await assertTemplateMatchesRegistry(awxServerId, templateId, registryRow.playbookPath);
+    // AWX, "Prompt on launch" kapali template'lerde extra_vars'i SESSIZCE yok sayar —
+    // is baslar ama playbook bos girdiyle calisir (2026-08-09'da app-discovery boyle dustu).
+    await require('../../ansible/template-preflight.cjs')
+      .assertTemplateAcceptsExtraVars(awxServerId, templateId, extraVars, { label: keyName });
     launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit);
   } catch (err) {
     if (!isAwx404Error(err)) throw err;
@@ -178,6 +182,8 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
       console.warn(`[LogXv2] Template ${templateId} AWX ${configuredServerId} uzerinde bulunamadi, AWX ${alternative} ile yeniden deneniyor.`);
       awxServerId = alternative;
       await assertTemplateMatchesRegistry(awxServerId, templateId, registryRow.playbookPath);
+      await require('../../ansible/template-preflight.cjs')
+        .assertTemplateAcceptsExtraVars(awxServerId, templateId, extraVars, { label: keyName });
       launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit);
       // Otomatik-iyilestirme: dogru sunucuyu kalici yaz → sonraki launch'lar ~7sn telafi
       // taramasini atlar. Best-effort; yazamazsa job yine de basladi, sadece hiz kaybi olur.

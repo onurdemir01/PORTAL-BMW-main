@@ -23,8 +23,17 @@
 #     - env, tenant, cluster_name
 #       terminal_host                     # opsiyonel
 #       api_url, credential_key           # opsiyonel (yoksa inventory'den — geriye uyum)
+#       username: uxmid                   # oc login kullanicisi; yoksa `ocp_username`
 #       namespaces: [ns1, ns2]            # BU cluster'da taranacak namespace'ler
 #   ocp_namespaces: [ns1, ns2]            # opsiyonel GENEL liste (cluster'da yoksa)
+#   ocp_username: uxmid                   # portalin GENEL varsayilani (cluster'da yoksa)
+#
+# ASIL KAYNAK PORTALDIR. openshift_inventory_vars.yaml yalnizca FALLBACK'tir: portal
+# api_url/credential_key/username gonderiyorsa o dosya hic okunmasa da is calisir.
+#
+# AWX NOTU: job template'inde "Prompt on launch" (Variables) ACIK olmalidir. Kapaliysa
+# AWX asagidaki extra_vars'i SESSIZCE yok sayar ve bu playbook bos girdiyle dusen bir
+# assert uretir (2026-08-09'da tam olarak bu oldu). Portal artik launch oncesi uyarir.
 #
 # Output:
 #   artifacts.logx_result:
@@ -54,7 +63,16 @@
           - ocp_clusters is defined
           - ocp_clusters is sequence
           - ocp_clusters | length > 0
-        fail_msg: "En az bir bastion ve bos olmayan bir ocp_clusters listesi gerekli."
+        # HANGI alanin eksik oldugu yazilir. Uretimde (2026-08-09) bu is bos extra_vars
+        # ile calisti ve "En az bir bastion..." mesaji tek basina teshise yetmedi; asil
+        # sebep AWX template'inde "Prompt on launch" kapali oldugu icin portalin
+        # gonderdigi degiskenlerin YOK SAYILMASIYDI.
+        fail_msg: >-
+          Zorunlu extra_vars eksik →
+          bastion: {{ 'VAR (' ~ (logx_bastions | join(',')) ~ ')' if (logx_bastions | length > 0) else 'YOK' }},
+          ocp_clusters: {{ (ocp_clusters | default([]) | length) ~ ' oge' if (ocp_clusters is defined) else 'TANIMSIZ' }}.
+          Tumu bossa AWX job template'inde "Prompt on launch" (extra variables) kapali
+          olabilir — bu durumda AWX portalin gonderdigi degiskenleri yok sayar.
 
     - name: "Add every bastion to dynamic inventory"
       ansible.builtin.add_host:
@@ -128,9 +146,16 @@
               'cluster_name': item.cluster_name | default('unknown'),
               'namespace': '',
               'status': 'error',
-              'error': 'Cluster baglanti bilgisi cozulemedi: ' ~
-                       (item.tenant | default('?')) ~ '_' ~ (item.env | default('?')) ~ '/' ~
-                       (item.cluster_name | default('?')),
+              'error': (
+                'OCP kullanici adi tanimli degil (oc login --username). Admin > LogX '
+                ~ 'Yapilandirma > OCP Cluster Hiyerarsisi satirindaki "OCP Kullanici Adi" '
+                ~ 'alanini doldurun ya da OCP Calistirma Ayarlari\'nda genel varsayilani girin: '
+                ~ (item.cluster_name | default('?'))
+              ) if (has_portal_meta | bool) or (inv_has | bool) else (
+                'Cluster baglanti bilgisi cozulemedi: '
+                ~ (item.tenant | default('?')) ~ '_' ~ (item.env | default('?')) ~ '/'
+                ~ (item.cluster_name | default('?'))
+              ),
               'lines': []
             }] if not cluster_exists else [])
           }}
@@ -145,10 +170,19 @@
              and clusters[inventory_key][item.cluster_name] is defined
              and clusters[inventory_key][item.cluster_name].url is defined
              and clusters[inventory_key][item.cluster_name].password is defined }}
+        # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
+        # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
+        # Ucu de yoksa BOS kalir ve cluster dogrulamada elenir — daha once bu durumda
+        # Jinja "'username' is undefined" ile TUM bastion'u dusuruyordu (2026-08-09).
+        resolved_username: >-
+          {{ (item.username | default('', true))
+             or (ocp_username | default('', true))
+             or (username | default('', true)) }}
         cluster_exists: >-
           {{
             item.cluster_name is defined and
-            ((has_portal_meta | bool) or (inv_has | bool))
+            ((has_portal_meta | bool) or (inv_has | bool)) and
+            (resolved_username | trim | length > 0)
           }}
       loop: "{{ my_ocp_clusters }}"
       loop_control:
@@ -169,6 +203,7 @@
                 resolved_clusters + ([{
                   'cluster_name': item.cluster_name,
                   'url': resolved_url,
+                  'username': resolved_username,
                   'password': resolved_password,
                   'namespaces': (item.namespaces | default(ocp_namespaces | default([])))
                 }] if cluster_exists else [])
@@ -190,10 +225,19 @@
             resolved_password: >-
               {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
                  else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
+            # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
+            # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
+            # Ucu de yoksa BOS kalir ve cluster dogrulamada elenir — daha once bu durumda
+            # Jinja "'username' is undefined" ile TUM bastion'u dusuruyordu (2026-08-09).
+            resolved_username: >-
+              {{ (item.username | default('', true))
+                 or (ocp_username | default('', true))
+                 or (username | default('', true)) }}
             cluster_exists: >-
               {{
                 item.cluster_name is defined and
-                ((has_portal_meta | bool) or (inv_has | bool))
+                ((has_portal_meta | bool) or (inv_has | bool)) and
+                (resolved_username | trim | length > 0)
               }}
           loop: "{{ my_ocp_clusters }}"
           loop_control:
@@ -210,6 +254,7 @@
                 scan_targets + [{
                   'cluster_name': item.0.cluster_name,
                   'url': item.0.url,
+                  'username': item.0.username,
                   'password': item.0.password,
                   'namespace': item.1
                 }]
@@ -283,7 +328,7 @@
 
             "{{ oc_bin }}" login \
               --server={{ target.url | quote }} \
-              --username={{ username | quote }} \
+              --username={{ target.username | quote }} \
               --password={{ target.password | quote }} \
               --insecure-skip-tls-verify=true \
               >/dev/null

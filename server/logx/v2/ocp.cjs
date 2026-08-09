@@ -38,19 +38,28 @@ function buildOcpExtraVars({ env, tenant, clusters, hosts, meta }) {
       // playbook o zaman eski inventory yoluna (clusters[tenant_env][ad]) duser.
       ...(m.api_url ? { api_url: m.api_url } : {}),
       ...(m.vault_credential_key ? { credential_key: m.vault_credential_key } : {}),
+      // `oc login --username`. Bu alan eksik oldugu icin uretimde (2026-08-09) TUM
+      // cluster'lar "'username' is undefined" ile dustu: playbook degeri yalnizca
+      // AWX'teki openshift_inventory_vars.yaml'dan okuyabiliyordu, o dosya ise yok.
+      // Bos ise anahtar KONMAZ → playbook genel `ocp_username` varsayilanina duser.
+      ...(m.ocp_username ? { username: m.ocp_username } : {}),
     };
   });
   const terminalHosts = [...new Set(items.map((i) => i.terminal_host))].sort();
   return { terminal_host: terminalHosts[0], terminal_hosts: terminalHosts, ocp_clusters: items };
 }
 
-// Admin-yonetimli calisma zamani degiskenleri (oc yolu + zaman asimlari) → extra_vars.
+// Admin-yonetimli calisma zamani degiskenleri (oc yolu + kullanici adi + zaman asimlari)
+// → extra_vars.
 // Saf fonksiyon (DB'ye dokunmaz). `ocBinary` BOSSA anahtar HIC gonderilmez; boylece
 // playbook kendi kesfini yapar. Doluysa kesfin onune gecer.
 function buildOcpRuntimeVars(cfg) {
   const c = cfg || {};
   return {
     ...(c.ocBinary ? { oc_binary: c.ocBinary } : {}),
+    // Cluster satirinda kullanici adi girilmemisse playbook buna duser. Portalin
+    // gonderdigi TEK genel varsayilan; AWX inventory dosyasi artik gerekmez.
+    ...(c.defaultOcpUsername ? { ocp_username: c.defaultOcpUsername } : {}),
     ...(Array.isArray(c.ocBinaryCandidates) && c.ocBinaryCandidates.length
       ? { oc_binary_candidates: c.ocBinaryCandidates }
       : {}),
@@ -265,6 +274,10 @@ async function discoverFetch(requestRow, namespace, appName) {
   const job = await jobs.launchJob(requestRow.request_id, 'ocp_discover_fetch', {
     ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta }),
     ...buildOcpRuntimeVars(runtimeCfg),
+    // `namespace` Ansible'da REZERVE bir addir ("Found variable using reserved name"
+    // uyarisi). Playbook once `oc_namespace_input`'a bakar; `namespace` yalnizca eski
+    // playbook surumleriyle uyum icin gonderilmeye devam eder.
+    oc_namespace_input: ns,
     namespace: ns,
     app_name: app,
     staging_dir: process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',

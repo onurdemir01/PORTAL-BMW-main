@@ -306,6 +306,10 @@ function initOpsX(app) {
 
     try {
       const runner = require('../ansible/runner.cjs');
+      // AWX'te "Prompt on launch" kapaliysa gonderilen extra_vars SESSIZCE yutulur ve
+      // playbook bos girdiyle calisir. LogX ile ORTAK kontrol (2026-08-09 olayi).
+      await require('../ansible/template-preflight.cjs')
+        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
       // launchJobOnServer(serverId, templateId, extraVars, limit) — limit bos string
       // ise payload'a HIC eklenmez (bkz. runner.cjs: `if (limit) payload.limit = limit`),
       // dolayisiyla Openshift govdesinde ust-seviye limit alani olusmaz.

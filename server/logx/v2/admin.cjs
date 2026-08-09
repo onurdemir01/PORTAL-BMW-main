@@ -27,7 +27,8 @@ async function listClusterIndex() {
     // Acik kolon listesi: `SELECT *` ileride eklenecek her sutunu (ornegin bir sir
     // tasiyacak olani) otomatik olarak admin API yanitina tasirdi.
     `SELECT id, env, tenant, cluster_name, display, default_namespace, terminal_host,
-            api_url, vault_credential_key, is_active, source, last_synced_at, sync_status
+            api_url, vault_credential_key, ocp_username, is_active, source,
+            last_synced_at, sync_status
      FROM ocp_cluster_index ORDER BY env, tenant, cluster_name`
   );
   return rows.map(normalizeBit);
@@ -74,6 +75,15 @@ function normalizeVaultKey(value) {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) ? s : null;
 }
 
+// `oc login --username=<deger>` icin kullanici adi. Deger playbook'a ve oradan KABUK
+// KOMUT SATIRINA gider — serbest metin kabul edilemez. Bos/gecersiz ise NULL doner ve
+// calisma aninda genel varsayilan (Admin > OCP Calistirma Ayarlari) devreye girer.
+function normalizeOcpUsername(value) {
+  const s = String(value ?? '').trim();
+  if (!s || s.length > 128) return null;
+  return /^[A-Za-z0-9][A-Za-z0-9._\-@]*$/.test(s) ? s : null;
+}
+
 async function createClusterIndexRow(data) {
   const { env, tenant, cluster_name, is_active } = data;
   if (!env || !tenant || !cluster_name) {
@@ -81,12 +91,13 @@ async function createClusterIndexRow(data) {
   }
   const { rows } = await insertOrConflict(
     () => db.query(
-      `INSERT INTO ocp_cluster_index (env, tenant, cluster_name, terminal_host, api_url, vault_credential_key, is_active)
+      `INSERT INTO ocp_cluster_index (env, tenant, cluster_name, terminal_host, api_url,
+         vault_credential_key, ocp_username, is_active)
        OUTPUT INSERTED.*
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host),
        normalizeApiUrl(data.api_url), normalizeVaultKey(data.vault_credential_key),
-       is_active !== false ? 1 : 0]
+       normalizeOcpUsername(data.ocp_username), is_active !== false ? 1 : 0]
     ),
     `Bu kayıt zaten var: ${env}/${tenant}/${cluster_name}.`
   );
@@ -97,12 +108,13 @@ async function updateClusterIndexRow(id, data) {
   const { env, tenant, cluster_name, is_active } = data;
   const { rows } = await db.query(
     `UPDATE ocp_cluster_index SET env=$1, tenant=$2, cluster_name=$3, terminal_host=$4,
-       api_url=$5, vault_credential_key=$6, is_active=$7, updated_at=GETUTCDATE()
+       api_url=$5, vault_credential_key=$6, ocp_username=$7, is_active=$8,
+       updated_at=GETUTCDATE()
      OUTPUT INSERTED.*
-     WHERE id=$8`,
+     WHERE id=$9`,
     [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host),
      normalizeApiUrl(data.api_url), normalizeVaultKey(data.vault_credential_key),
-     is_active !== false ? 1 : 0, id]
+     normalizeOcpUsername(data.ocp_username), is_active !== false ? 1 : 0, id]
   );
   return rows[0] ? normalizeBit(rows[0]) : null;
 }
@@ -121,6 +133,100 @@ async function clusterExists(env, tenant, clusterName) {
     [env, tenant, clusterName]
   );
   return rows.length > 0;
+}
+
+// ── ocp_vault_key_catalog ────────────────────────────────────────────────────
+// credentials.yaml icindeki vault DEGISKEN ADLARININ katalogu. Cluster satirindaki
+// "Vault Anahtari" alani onerilerini buradan alir. PAROLA TUTULMAZ.
+
+async function listVaultKeys() {
+  const { rows } = await db.query(
+    `SELECT id, key_name, default_username, description, is_active
+     FROM ocp_vault_key_catalog ORDER BY key_name`
+  );
+  return rows.map(normalizeBit);
+}
+
+// Yalnizca aktif anahtar ADLARI (sihirbaz/oneri listesi icin).
+async function listActiveVaultKeyNames() {
+  const { rows } = await db.query(
+    `SELECT key_name FROM ocp_vault_key_catalog WHERE is_active = 1 ORDER BY key_name`
+  );
+  return rows.map((r) => r.key_name);
+}
+
+// Anahtar adi Ansible degisken adi kurallarina uymali (lookup('vars', <ad>)).
+// Gecersizse 400 — cluster satirindaki normalizeVaultKey sessizce NULL'lar, ama burada
+// admin BILEREK bir anahtar tanimliyor: sessizce yutmak yerine sebebini soyleriz.
+function assertVaultKeyName(value) {
+  const s = String(value ?? '').trim();
+  const ok = /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) && s.length <= 128;
+  if (!ok) {
+    throw Object.assign(
+      new Error(
+        'Geçersiz vault anahtarı adı. Ansible değişken adı kurallarına uymalı: ' +
+        'harf veya alt çizgi ile başlar, yalnızca harf/rakam/alt çizgi içerir (ör. uxmid_gar).'
+      ),
+      { status: 400 }
+    );
+  }
+  return s;
+}
+
+async function createVaultKey(data) {
+  const keyName = assertVaultKeyName(data && data.key_name);
+  const { rows } = await insertOrConflict(
+    () => db.query(
+      `INSERT INTO ocp_vault_key_catalog (key_name, default_username, description, is_active)
+       OUTPUT INSERTED.* VALUES ($1,$2,$3,$4)`,
+      [keyName, normalizeOcpUsername(data.default_username),
+       String(data.description ?? '').trim().slice(0, 400) || null,
+       data.is_active !== false ? 1 : 0]
+    ),
+    `Bu vault anahtarı zaten tanımlı: ${keyName}.`
+  );
+  return normalizeBit(rows[0]);
+}
+
+async function updateVaultKey(id, data) {
+  const keyName = assertVaultKeyName(data && data.key_name);
+  const { rows } = await insertOrConflict(
+    () => db.query(
+      `UPDATE ocp_vault_key_catalog SET key_name=$1, default_username=$2, description=$3,
+         is_active=$4, updated_at=GETUTCDATE()
+       OUTPUT INSERTED.* WHERE id=$5`,
+      [keyName, normalizeOcpUsername(data.default_username),
+       String(data.description ?? '').trim().slice(0, 400) || null,
+       data.is_active !== false ? 1 : 0, Number(id)]
+    ),
+    `Bu vault anahtarı zaten tanımlı: ${keyName}.`
+  );
+  return rows[0] ? normalizeBit(rows[0]) : null;
+}
+
+// Silme, anahtari KULLANAN cluster satirlari varsa reddedilir: sessizce silmek o
+// cluster'lari calisma aninda "parola cozulemedi" hatasina dusururdu.
+async function deleteVaultKey(id) {
+  const { rows } = await db.query(
+    `SELECT key_name FROM ocp_vault_key_catalog WHERE id = $1`, [Number(id)]
+  );
+  if (!rows.length) return false;
+  const keyName = rows[0].key_name;
+
+  const { rows: users } = await db.query(
+    `SELECT TOP 5 env, tenant, cluster_name FROM ocp_cluster_index WHERE vault_credential_key = $1`,
+    [keyName]
+  );
+  if (users.length) {
+    const list = users.map((r) => `${r.tenant}/${r.env}/${r.cluster_name}`).join(', ');
+    throw Object.assign(
+      new Error(`Bu anahtar kullanımda, silinemez: ${list}${users.length === 5 ? ' …' : ''}`),
+      { status: 409, code: 'conflict' }
+    );
+  }
+
+  const { rowCount } = await db.query(`DELETE FROM ocp_vault_key_catalog WHERE id = $1`, [Number(id)]);
+  return rowCount > 0;
 }
 
 // ── ocp_terminal_host_map ────────────────────────────────────────────────────
@@ -145,7 +251,7 @@ async function getTerminalHost(tenant, env) {
 // PAROLA BURADA YOK ve OLMAYACAK: yalnizca `vault_credential_key` (credentials.yaml
 // icindeki anahtarin ADI) tasinir; parolayi playbook lookup('vars', <ad>) ile cozer.
 //
-// Donus: { [clusterName]: { terminal_host, api_url, vault_credential_key } }
+// Donus: { [clusterName]: { terminal_host, api_url, vault_credential_key, ocp_username } }
 // Eksik alanlar null gelir — cagiran taraf bunlari extra_vars'a HIC koymaz, boylece
 // playbook eski inventory yoluna duser (asamali gecis).
 async function resolveClusterMeta(env, tenant, clusterNames) {
@@ -154,7 +260,7 @@ async function resolveClusterMeta(env, tenant, clusterNames) {
   if (!names.length) return out;
 
   const { rows } = await db.query(
-    `SELECT cluster_name, terminal_host, api_url, vault_credential_key
+    `SELECT cluster_name, terminal_host, api_url, vault_credential_key, ocp_username
      FROM ocp_cluster_index
      WHERE env=$1 AND tenant=$2 AND is_active=1`,
     [env, tenant]
@@ -168,6 +274,9 @@ async function resolveClusterMeta(env, tenant, clusterNames) {
       terminal_host: normalizeTerminalHost(row.terminal_host) || fallbackHost || null,
       api_url: String(row.api_url || '').trim() || null,
       vault_credential_key: String(row.vault_credential_key || '').trim() || null,
+      // `oc login --username`. Bos ise cagiran taraf anahtari extra_vars'a KOYMAZ ve
+      // playbook genel varsayilana (ocp_username) duser.
+      ocp_username: normalizeOcpUsername(row.ocp_username),
     };
   }
   return out;
@@ -349,6 +458,8 @@ async function deleteMaskRule(id) {
 
 module.exports = {
   listClusterIndex, getClusterTree, createClusterIndexRow, updateClusterIndexRow, deleteClusterIndexRow, clusterExists,
+  listVaultKeys, listActiveVaultKeyNames, createVaultKey, updateVaultKey, deleteVaultKey,
+  normalizeOcpUsername,
   listTerminalHostMap, getTerminalHost, resolveTerminalHosts, resolveClusterMeta, createTerminalHostRow, updateTerminalHostRow, deleteTerminalHostRow,
   listEnvSuffixMap, createEnvSuffixRow, updateEnvSuffixRow, deleteEnvSuffixRow, resolveEnvLabel,
   listMaskRules, createMaskRule, updateMaskRule, deleteMaskRule,
