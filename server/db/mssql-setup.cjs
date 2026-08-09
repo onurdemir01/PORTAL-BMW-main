@@ -1173,13 +1173,14 @@ const PLAYBOOK_REGISTRY_SEED = [
     playbook_path: null, env_var_name: 'TELNET_OPENSHIFT_TEMPLATE_ID',
   },
   // ── FileX — Self Servis dosya listeleme (SADECE Legacy) ──────────────────────
-  // OpsX ile AYNI desen: satir seed'den gelir, admin yalniz awx_template_id +
-  // awx_server_id doldurur. Referans playbook sozlesmesi icin bkz.
-  // server/ansible/playbooks/filex_list_files.yml basligindaki yorum.
+  // OpsX/Telnet ile AYNI desen: satir seed'den gelir, admin yalniz awx_template_id +
+  // awx_server_id doldurur. Playbook'un kendisi bu repo'nun DISINDA tutulur
+  // (middleware_inventory.yml/openshift_inventory.yml ile ayni konvansiyon) — bu yuzden
+  // playbook_path null (OpsX/Telnet gibi).
   {
     key_name: 'filex_list_files', display_name: 'FileX — Dosya Listeleme (Legacy)', category: 'filex', handler: 'filex_list_files',
     description: 'Secilen uygulamanin .ear dizinindeki (logs haric) tum dosyalari ls -la + sha512sum bilgisiyle salt-okunur listeler.',
-    playbook_path: 'server/ansible/playbooks/filex_list_files.yml', env_var_name: 'FILEX_LIST_FILES_TEMPLATE_ID',
+    playbook_path: null, env_var_name: 'FILEX_LIST_FILES_TEMPLATE_ID',
   },
 ];
 

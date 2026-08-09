@@ -8,8 +8,10 @@
 // karşılaştırarak bize sormadan cevaplayabilsin diye.
 //
 // HANGI AWX SUNUCUSU / TEMPLATE'I: Admin > Playbook Kayıtları ekranından yönetilir
-// (ansible_playbook_registry satırı: filex_list_files). Referans playbook sözleşmesi
-// için bkz. server/ansible/playbooks/filex_list_files.yml.
+// (ansible_playbook_registry satırı: filex_list_files). Playbook'un kendisi bu repo'nun
+// DIŞINDA tutulur (middleware_inventory.yml/openshift_inventory.yml ile aynı konvansiyon —
+// AWX'e ayrı bir Ansible projesi olarak yüklenir); sözleşme (extra_vars + filex_result
+// JSON şeması) için o dosyanın başlığına bakılmalı.
 'use strict';
 
 const REGISTRY_KEY = 'filex_list_files';
