@@ -231,9 +231,14 @@ function initLogXv2(app) {
     const input = row.input_json ? JSON.parse(row.input_json) : {};
     // Log cekmeyle AYNI yetki kapisi: namespace bazli kisitlama burada da uygulanir,
     // aksi halde kisitli bir namespace'in icerigi kesif ekraninda gorunurdu.
+    // Anahtar CLUSTER BASINA kurulur — `c1+c2` gibi birlesik bir anahtar hicbir kisitlama
+    // satiriyla eslesmez ve varsayilan-acik modelde sessizce izin verilmis olurdu.
     for (const ns of namespaces || []) {
-      const resourceKey = `${input.tenant}/${input.env}/${(input.clusters || []).join('+')}/${ns}`;
-      await restrictions.assertAllowed('ocp_namespace', resourceKey, currentUser(req));
+      for (const cluster of input.clusters || []) {
+        await restrictions.assertAllowed(
+          'ocp_namespace', `${input.tenant}/${input.env}/${cluster}/${ns}`, currentUser(req)
+        );
+      }
     }
     const job = await ocp.discoverApps(row, namespaces);
     res.json({ ok: true, jobId: job.id });
@@ -248,7 +253,14 @@ function initLogXv2(app) {
       return res.status(400).json({ ok: false, message: 'env, tenant ve cluster gerekli.' });
     }
     const out = await require('./ocp-cache.cjs').getNamespaces({ env, tenant, clusterName: cluster });
-    res.json({ ok: true, ...out });
+    // Kisitli namespace'ler listeden DUSURULUR. Tek bir on-kontrol mumkun degil (liste
+    // donuyoruz), bu yuzden filtreleme sonda yapilir — icerik ucuyla (`/cache/apps`) ayni
+    // kapi, farkli bicimde. Admin icin isAllowed her zaman true doner.
+    const prefix = `${tenant}/${env}/${cluster}/`;
+    const allowedKeys = new Set(
+      await restrictions.filterAllowed('ocp_namespace', out.items.map((ns) => prefix + ns), currentUser(req))
+    );
+    res.json({ ok: true, ...out, items: out.items.filter((ns) => allowedKeys.has(prefix + ns)) });
   }));
 
   router.get('/ocp/cache/apps', asyncRoute(async (req, res) => {

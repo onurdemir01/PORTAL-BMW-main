@@ -17,9 +17,11 @@ function parseObjectLine(line) {
   if (!raw.trim()) return null;
 
   const parts = raw.split('|');
-  // Alan sayisi tutmuyorsa satiri ATLA — yarim veriyi "obje" diye gostermek,
-  // hic gostermemekten daha kotudur (kullanici olmayan bir uygulamayi secer).
-  if (parts.length < FIELDS) return null;
+  // Alan sayisi TAM tutmali. Az ise satir yarim; FAZLA ise bir alan (pratikte `image`,
+  // cunku Kubernetes image dizesini bicim olarak dogrulamaz) icinde `|` gecmis ve tum
+  // alanlar KAYMIS demektir — sessizce yanlis veri yazmaktansa satiri atiyoruz.
+  // Ad ve etiket degerlerinde `|` zaten yasak, o yuzden kayma yalnizca buradan gelebilir.
+  if (parts.length !== FIELDS) return null;
 
   const [kind, name, replicas, image, podImage, labelApp, created] = parts.map((p) => p.trim());
   if (!name) return null;
@@ -70,7 +72,9 @@ function parseAppDiscoveryResult(artifacts) {
   }
 
   return {
-    overallStatus: String(a.overall_status || 'unknown'),
+    // `trim`: playbook katlamali skaler (`>-`) kullaniyor; Jinja blok etiketleri deger
+    // basina bosluk birakabiliyor ve "  success" ile 'success' karsilastirmasi tutmuyordu.
+    overallStatus: String(a.overall_status || 'unknown').trim() || 'unknown',
     clusters: [...byCluster.entries()].map(([clusterName, namespaces]) => ({
       clusterName,
       namespaces,

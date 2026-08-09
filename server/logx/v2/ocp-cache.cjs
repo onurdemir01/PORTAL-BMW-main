@@ -23,6 +23,27 @@ async function ttlHours() {
   }
 }
 
+// Tur baslangicini SUNUCU saatinden alir: portal ile veritabani saatleri kaymissa
+// "bu turda yazildi mi" karsilastirmasi yanlis sonuc verirdi.
+async function dbNow() {
+  const { rows } = await db.query('SELECT GETUTCDATE() AS now_utc');
+  return rows[0].now_utc;
+}
+
+// Kubernetes obje adlari 253 karaktere kadar cikabilir ama `app_name` kolonu (UNIQUE
+// indeks 900 bayt sinirina sigsin diye) 150. Uzun adi kesmek YANLIS bir kayit uretirdi;
+// MSSQL'e oldugu gibi gondermek ise "String or binary data would be truncated" ile o
+// namespace'in TUM yazimini dusururdu. Bu yuzden yalniz o obje atlanir.
+const APP_NAME_MAX = 150;
+
+// k8s `creationTimestamp` (ISO8601) → Date. Bicimi bozuk gelirse null: gecersiz bir tarihi
+// DATETIME2'ye gondermek o namespace'in tum yazimini dusururdu.
+function toDateOrNull(value) {
+  if (!value) return null;
+  const d = new Date(String(value));
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
 function isStale(expiresAt) {
   if (!expiresAt) return true;
   return new Date(expiresAt).getTime() < Date.now();
@@ -54,20 +75,22 @@ async function upsertNamespace({ env, tenant, clusterName, namespace, source, tt
 async function putNamespaces({ env, tenant, clusterName, namespaces, source = 'discovery' }) {
   const list = [...new Set((namespaces || []).map((n) => String(n || '').trim()).filter(Boolean))];
   const { ns: ttl } = await ttlHours();
+  const runStart = await dbNow();
 
   for (const namespace of list) {
     await upsertNamespace({ env, tenant, clusterName, namespace, source, ttl });
   }
 
-  if (list.length) {
-    // Parametreli IN listesi — dize birlestirme YOK.
-    const ph = list.map((_, i) => `$${i + 4}`).join(', ');
-    await db.query(
-      `UPDATE ocp_namespace_cache SET is_deleted=1
-       WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace NOT IN (${ph})`,
-      [String(env), String(tenant), String(clusterName), ...list]
-    );
-  }
+  // Bu taramada GORULMEYENLER = `fetched_at`'i tur baslangicindan eski kalanlar. Eskiden
+  // `namespace NOT IN (...)` kullaniliyordu; 2097'den fazla namespace'te MSSQL'in 2100
+  // parametre siniri asilir ve TUM yazim throw ederdi (ustteki catch yutar → onbellek
+  // sessizce bos kalir). Zaman damgasi olcutu parametre sayisindan bagimsizdir ve liste
+  // BOS geldiginde de dogru calisir (hepsi silinmis olarak isaretlenir).
+  await db.query(
+    `UPDATE ocp_namespace_cache SET is_deleted=1
+     WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND is_deleted=0 AND fetched_at < $4`,
+    [String(env), String(tenant), String(clusterName), runStart]
+  );
   return { written: list.length };
 }
 
@@ -93,7 +116,9 @@ async function getNamespaces({ env, tenant, clusterName }) {
 // ({ clusterName, namespace, status, objects[] }).
 async function putApps({ env, tenant, entries, source = 'discovery' }) {
   const { app: ttl } = await ttlHours();
+  const runStart = await dbNow();
   let written = 0;
+  let skipped = 0;
 
   for (const e of entries || []) {
     // Basarisiz namespace taramasi onbellege YAZILMAZ — aksi halde "hic uygulama yok"
@@ -101,24 +126,29 @@ async function putApps({ env, tenant, entries, source = 'discovery' }) {
     if (!e || e.status !== 'ok' || !e.clusterName || !e.namespace) continue;
 
     for (const o of e.objects || []) {
+      const name = String(o.name || '');
+      if (!name || name.length > APP_NAME_MAX) { skipped++; continue; }
+
       const params = [
         String(env), String(tenant), String(e.clusterName), String(e.namespace),
-        String(o.kind || 'Unknown'), String(o.name),
+        String(o.kind || 'Unknown'), name,
         o.replicas == null ? null : Number(o.replicas),
-        o.image || null, o.labelApp || null, String(source), Number(ttl),
+        o.image || null, o.labelApp || null, toDateOrNull(o.created),
+        String(source), Number(ttl),
       ];
       const upd = await db.query(
         `UPDATE ocp_app_cache
-           SET replicas=$7, image=$8, label_app=$9, source=$10,
-               fetched_at=GETUTCDATE(), expires_at=DATEADD(HOUR, $11, GETUTCDATE()), is_deleted=0
+           SET replicas=$7, image=$8, label_app=$9, created_at_k8s=$10, source=$11,
+               fetched_at=GETUTCDATE(), expires_at=DATEADD(HOUR, $12, GETUTCDATE()), is_deleted=0
          WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND kind=$5 AND app_name=$6`,
         params
       );
       if (!upd.rowCount) {
         await db.query(
           `INSERT INTO ocp_app_cache
-             (env, tenant, cluster_name, namespace, kind, app_name, replicas, image, label_app, source, expires_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, DATEADD(HOUR, $11, GETUTCDATE()))`,
+             (env, tenant, cluster_name, namespace, kind, app_name, replicas, image, label_app,
+              created_at_k8s, source, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, DATEADD(HOUR, $12, GETUTCDATE()))`,
           params
         );
       }
@@ -126,17 +156,18 @@ async function putApps({ env, tenant, entries, source = 'discovery' }) {
     }
 
     // Bu taramada gorulmeyen objeleri isaretle (silinmis/yeniden adlandirilmis olabilir).
-    const names = (e.objects || []).map((o) => String(o.name));
-    if (names.length) {
-      const ph = names.map((_, i) => `$${i + 5}`).join(', ');
-      await db.query(
-        `UPDATE ocp_app_cache SET is_deleted=1
-         WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND app_name NOT IN (${ph})`,
-        [String(env), String(tenant), String(e.clusterName), String(e.namespace), ...names]
-      );
-    }
+    // Olcut zaman damgasi: `app_name NOT IN (...)` hem MSSQL parametre sinirina takilirdi
+    // hem de namespace TAMAMEN bosaldiginda (objects=[]) hic calismaz, eski uygulamalar
+    // listede kalirdi.
+    await db.query(
+      `UPDATE ocp_app_cache SET is_deleted=1
+       WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4
+         AND is_deleted=0 AND fetched_at < $5`,
+      [String(env), String(tenant), String(e.clusterName), String(e.namespace), runStart]
+    );
   }
-  return { written };
+  if (skipped) console.warn(`[OcpCache] ${skipped} obje atlandi (ad ${APP_NAME_MAX} karakterden uzun).`);
+  return { written, skipped };
 }
 
 async function getApps({ env, tenant, clusterName, namespace }) {

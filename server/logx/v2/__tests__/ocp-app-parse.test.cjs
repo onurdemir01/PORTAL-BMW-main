@@ -42,6 +42,23 @@ test('parseObjectLine(): bos/bozuk/eksik alanli satirlar ATLANIR', () => {
   assert.equal(parseObjectLine('Deployment||3|img||app|t'), null, 'adsiz obje atlanmali');
 });
 
+// Kubernetes `image` alanini bicim olarak DOGRULAMAZ; icinde `|` gecen bir deger tum
+// alanlari kaydirir. Eskiden yalnizca "az alan" kontrolu vardi, bu yuzden kaymis satir
+// SESSIZCE onbellege yazilir ve kullaniciya yanlis kind/etiket gosterilirdi.
+test('parseObjectLine(): alan sayisi FAZLA gelen (kaymis) satir da ATLANIR', () => {
+  const kaymis = 'Deployment|api|3|registry/img:a|b||app|2024-01-01T00:00:00Z';
+  assert.equal(kaymis.split('|').length, 8, 'test verisi 8 alanli olmali');
+  assert.equal(parseObjectLine(kaymis), null, 'kaymis satir obje sayilmamali');
+});
+
+test('parseAppDiscoveryResult(): overall_status bastaki bosluklardan arindirilir', () => {
+  // Playbook katlamali skaler (`>-`) kullaniyor; Jinja blok etiketleri deger basina
+  // bosluk birakabiliyordu ve '  success' === 'success' karsilastirmasi tutmuyordu.
+  const out = parseAppDiscoveryResult({ overall_status: '  success', results: [] });
+  assert.equal(out.overallStatus, 'success');
+  assert.equal(parseAppDiscoveryResult({ overall_status: '   ' }).overallStatus, 'unknown');
+});
+
 test('parseAppDiscoveryResult(): sonuclar cluster bazinda gruplanir', () => {
   const out = parseAppDiscoveryResult({
     overall_status: 'success',

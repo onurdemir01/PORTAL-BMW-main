@@ -24,7 +24,11 @@ async function insertOrConflict(runQuery, dupMsg) {
 
 async function listClusterIndex() {
   const { rows } = await db.query(
-    `SELECT * FROM ocp_cluster_index ORDER BY env, tenant, cluster_name`
+    // Acik kolon listesi: `SELECT *` ileride eklenecek her sutunu (ornegin bir sir
+    // tasiyacak olani) otomatik olarak admin API yanitina tasirdi.
+    `SELECT id, env, tenant, cluster_name, display, default_namespace, terminal_host,
+            api_url, vault_credential_key, is_active, source, last_synced_at, sync_status
+     FROM ocp_cluster_index ORDER BY env, tenant, cluster_name`
   );
   return rows.map(normalizeBit);
 }

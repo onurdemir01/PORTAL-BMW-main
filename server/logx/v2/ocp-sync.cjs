@@ -17,6 +17,10 @@ const db = require('../../db/index.cjs');
 let _timer = null;
 let _running = false;   // ust uste calismayi onler (uzun suren tur bir sonrakini bloklamasin)
 
+// Arka plan isteklerinin sahibi. Admin ekranindaki istek listesi bu adla filtrelenebilsin
+// ve temizlik bu satirlari tanisin diye tek yerde tanimli.
+const SYNC_USERNAME = 'system:ocp-sync';
+
 // Taranacak cluster'lar: yalnizca AKTIF ve calistirmak icin gereken metadata'si TAM olanlar.
 // api_url/vault_credential_key eksikse playbook eski inventory yoluna duserdi; arka plan
 // job'inda bunu denemek yerine atlamak daha dogru (sessiz hata uretmesin).
@@ -75,9 +79,15 @@ async function runOnce() {
     for (const group of byHost.values()) {
       report.scanned += group.length;
       try {
-        await syncGroup(group);
-        for (const c of group) await markSync(c, 'ok', null);
-        report.ok += group.length;
+        // Cluster BASINA durum: eskiden grubun tamami 'ok' isaretleniyordu, bu yuzden
+        // erisilemeyen bir cluster hem tanilamada basarili gorunuyor hem de
+        // `last_synced_at` guncellendigi icin siranin en sonuna atiliyordu.
+        const perCluster = await syncGroup(group);
+        for (const c of group) {
+          const err = perCluster.get(c.cluster_name);
+          await markSync(c, err ? 'error' : 'ok', err || null);
+          if (err) report.failed++; else report.ok++;
+        }
       } catch (e) {
         for (const c of group) await markSync(c, 'error', e.message);
         report.failed += group.length;
@@ -105,35 +115,56 @@ async function syncGroup(group) {
   const clusterNames = group.map((c) => c.cluster_name);
 
   // Arka plan taramasi icin teknik bir istek satiri — kullaniciya ait DEGIL.
+  // `session_token` kolonu NOT NULL: null gecmek her turda INSERT hatasi verirdi.
+  // Sabit, oturuma karsilik gelmeyen bir belirtec kullaniyoruz (hicbir oturum dogrulamasi
+  // bu degeri kabul etmez, yalniz kolonu doldurur).
   const request = await requests.createRequest(
-    { username: 'system:ocp-sync', sessionToken: null }, 'openshift'
+    { username: SYNC_USERNAME, sessionToken: 'ocp-sync', role: 'System' }, 'openshift'
   );
   await requests.updateRequest(request.id, {
     state: 'draft',
     input: { env: first.env, tenant: first.tenant, clusters: clusterNames },
   });
 
-  const row = await requests.getRequestRow(request.id);
-  const job = await ocp.discoverNamespaces(row);
+  // Cluster adi → hata metni (bos = basarili). Cagiran her cluster'in durumunu ayri yazar.
+  const errors = new Map();
+  try {
+    const row = await requests.getRequestRow(request.id);
+    const job = await ocp.discoverNamespaces(row);
 
-  // Terminal duruma kadar bekle (arka plan job'i — kullaniciyi bekletmiyoruz).
-  const started = Date.now();
-  const TIMEOUT_MS = 10 * 60 * 1000;
-  let last = job;
-  while (!jobs.TERMINAL_STATUSES.has(last.status)) {
-    if (Date.now() - started > TIMEOUT_MS) throw new Error('Tarama zaman asimina ugradi.');
-    await new Promise((r) => setTimeout(r, 5000));
-    last = await jobs.pollJob(last);
-  }
-  if (!last.artifacts) throw new Error(last.errorMessage || 'Tarama sonuc uretmedi.');
+    // Terminal duruma kadar bekle (arka plan job'i — kullaniciyi bekletmiyoruz).
+    const started = Date.now();
+    const TIMEOUT_MS = 10 * 60 * 1000;
+    let last = job;
+    while (!jobs.TERMINAL_STATUSES.has(last.status)) {
+      if (Date.now() - started > TIMEOUT_MS) throw new Error('Tarama zaman asimina ugradi.');
+      await new Promise((r) => setTimeout(r, 5000));
+      last = await jobs.pollJob(last);
+    }
+    if (!last.artifacts) throw new Error(last.errorMessage || 'Tarama sonuc uretmedi.');
 
-  const normalized = last.artifacts;
-  for (const c of normalized.clusters || []) {
-    if (c.status !== 'ok') continue;
-    await cache.putNamespaces({
-      env: first.env, tenant: first.tenant, clusterName: c.cluster_name,
-      namespaces: (c.namespaces || []).map((n) => String(n).replace(/^.*\//, '').trim()),
-      source: 'periodic',
+    const reported = new Set();
+    for (const c of last.artifacts.clusters || []) {
+      reported.add(c.cluster_name);
+      if (c.status !== 'ok') { errors.set(c.cluster_name, c.error || 'Cluster taranamadi.'); continue; }
+      await cache.putNamespaces({
+        env: first.env, tenant: first.tenant, clusterName: c.cluster_name,
+        namespaces: (c.namespaces || []).map((n) => String(n).replace(/^.*\//, '').trim()),
+        source: 'periodic',
+      });
+    }
+    // Sonuc uretmeyen cluster da basarili sayilmamali.
+    for (const name of clusterNames) {
+      if (!reported.has(name)) errors.set(name, 'Playbook bu cluster icin sonuc dondurmedi.');
+    }
+    return errors;
+  } finally {
+    // Teknik istek satiri isini bitirdi. Silinmezse her turda bir satir birikir ve
+    // `namespace_discovering` durumunda takili kalarak admin istek listesini doldurur.
+    // Job satirlari ON DELETE CASCADE ile birlikte gider.
+    await db.query('DELETE FROM logx_v2_requests WHERE request_id = $1 AND username = $2',
+      [request.id, SYNC_USERNAME]).catch((e) => {
+      console.warn('[OcpSync] teknik istek satiri silinemedi:', e.message);
     });
   }
 }

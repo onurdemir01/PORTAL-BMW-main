@@ -23,7 +23,13 @@ type SubTabId = (typeof SUB_TABS)[number]["id"];
 // Cluster satirinin Jump Server hucresi BOSSA, devreye girecek yedek (tenant/env) degeri
 // okuma modunda soluk gosterilir — admin hangi cluster'in FIILEN hangi bastion'a gidecegini
 // sekme degistirmeden gorur. Yedek de yoksa kirmizi uyari (o cluster secilirse akis 400 verir).
-function clusterColumns(terminalRows: OcpTerminalHostRow[]): ColumnDef<OcpClusterIndexRow>[] {
+function clusterColumns(
+  terminalRows: OcpTerminalHostRow[],
+  clusterRows: OcpClusterIndexRow[],
+): ColumnDef<OcpClusterIndexRow>[] {
+  // Öneriler MEVCUT satırlardan türetilir — vault anahtarı listesi hiçbir yere gömülmez,
+  // yeni bir anahtar eklendiğinde kendiliğinden önerilere girer.
+  const vaultKeys = [...new Set(clusterRows.map((r) => r.vault_credential_key).filter(Boolean) as string[])].sort();
   return [
     { key: "env", label: "Ortam (env)", placeholder: "dev" },
     { key: "tenant", label: "Tenant", placeholder: "ark" },
@@ -39,10 +45,30 @@ function clusterColumns(terminalRows: OcpTerminalHostRow[]): ColumnDef<OcpCluste
         return fb ? `yedek: ${fb.terminal_host}` : "⚠ eşleme yok";
       },
     },
+    {
+      key: "api_url",
+      label: "API Adresi",
+      placeholder: "https://api.gbocptest1...:6443",
+      truncate: true,
+      // Boşsa playbook eski AWX envanter dosyasına düşer — çalışır ama portalın
+      // "her şey DB'de" ilkesinin dışında kalır, bunu görünür kılıyoruz.
+      emptyHint: () => "envanter dosyasından",
+    },
+    {
+      key: "vault_credential_key",
+      label: "Vault Anahtarı",
+      placeholder: "uxmid_gar",
+      suggestions: vaultKeys,
+      // PAROLA DEĞİL: credentials.yaml içindeki değişkenin ADI. Parola hiçbir zaman
+      // portal veritabanına yazılmaz.
+      emptyHint: () => "envanter dosyasından",
+    },
     { key: "is_active", label: "Aktif", type: "checkbox" },
   ];
 }
-const CLUSTER_EMPTY: Partial<OcpClusterIndexRow> = { env: "", tenant: "", cluster_name: "", terminal_host: "", is_active: true };
+const CLUSTER_EMPTY: Partial<OcpClusterIndexRow> = {
+  env: "", tenant: "", cluster_name: "", terminal_host: "", api_url: "", vault_credential_key: "", is_active: true,
+};
 
 const TERMINAL_COLUMNS: ColumnDef<OcpTerminalHostRow>[] = [
   { key: "tenant", label: "Tenant", placeholder: "ark" },
@@ -59,6 +85,59 @@ const ENVSUFFIX_COLUMNS: ColumnDef<EnvSuffixRow>[] = [
   { key: "is_active", label: "Aktif", type: "checkbox" },
 ];
 const ENVSUFFIX_EMPTY: Partial<EnvSuffixRow> = { suffix: "", env_label: "", sort_order: 0, is_active: true };
+
+// Envanter tohumlaması (bootstrap seed) durumu. Portal ilk açılışta ~60 cluster'ı DB'ye
+// PASİF olarak ekler; bu panel onun çalışıp çalışmadığını gösterir ve gerekirse yeniden
+// çalıştırır. Yeniden çalıştırma var olan satırlara DOKUNMAZ — admin'in sildiği bir cluster
+// geri gelmez, yalnızca hiç olmayanlar eklenir.
+const BootstrapSeedPanel: React.FC<{ onSeeded: () => void }> = ({ onSeeded }) => {
+  const [seeded, setSeeded] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    logxV2Api.admin.getBootstrapSeed()
+      .then((r) => setSeeded(r.seeded))
+      .catch(() => setSeeded(null));
+  }, []);
+
+  async function rerun() {
+    if (busy) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await logxV2Api.admin.rerunBootstrapSeed();
+      const { inserted = 0, skipped = 0, failed = 0 } = r.result || {};
+      setNote(`${inserted} yeni cluster eklendi (pasif), ${skipped} zaten vardı${failed ? `, ${failed} eklenemedi` : ""}.`);
+      setSeeded(true);
+      onSeeded();
+    } catch (err: unknown) {
+      setNote(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (seeded === null) return null;
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5 text-xs text-gray-600">
+      <div className="min-w-0">
+        <span className="font-medium text-gray-700">Envanter tohumlaması:</span>{" "}
+        {seeded ? "yapıldı" : "henüz yapılmadı"}. Yeniden çalıştırmak mevcut satırlara dokunmaz,
+        yalnızca eksik cluster'ları <strong>pasif</strong> olarak ekler.
+        {note && <div className="mt-1 text-gray-500">{note}</div>}
+      </div>
+      <button
+        onClick={rerun}
+        disabled={busy}
+        className="flex-shrink-0 px-3 py-1.5 rounded-lg border border-gray-200 bg-white font-medium hover:border-black transition-colors active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+      >
+        {busy ? "Çalışıyor…" : "Yeniden çalıştır"}
+      </button>
+    </div>
+  );
+};
 
 function useCrudSection<T extends { id: number }>(
   list: () => Promise<{ ok: boolean; rows: T[] }>,
@@ -273,7 +352,10 @@ const LogXv2AdminTab: React.FC = () => {
   );
   // Cluster tablosundaki "boş Jump Server" hücrelerinde yedek eşlemeyi gösterebilmek için
   // terminal-host satırlarına ihtiyaç var (iki sekme de aynı sayfada yüklüdür).
-  const clusterCols = React.useMemo(() => clusterColumns(terminals.rows), [terminals.rows]);
+  const clusterCols = React.useMemo(
+    () => clusterColumns(terminals.rows, clusters.rows),
+    [terminals.rows, clusters.rows],
+  );
 
   return (
     <div className="space-y-4">
@@ -306,6 +388,7 @@ const LogXv2AdminTab: React.FC = () => {
             sekmesindeki tenant/env yedek eşlemesi kullanılır. Her ikisi de yoksa o cluster seçildiğinde
             işlem başlatılamaz.
           </div>
+          <BootstrapSeedPanel onSeeded={clusters.reload} />
           <SimpleCrudTable columns={clusterCols} rows={clusters.rows} emptyRow={CLUSTER_EMPTY}
             onCreate={clusters.onCreate} onUpdate={clusters.onUpdate} onDelete={clusters.onDelete} />
         </div>

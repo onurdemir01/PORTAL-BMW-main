@@ -274,7 +274,7 @@
             set -o pipefail
             umask 077
 
-            export KUBECONFIG="/tmp/logx-app-{{ logx_job_id }}-{{ target.cluster_name }}-{{ target.namespace | regex_replace('[^A-Za-z0-9._-]', '_') }}.kubeconfig"
+            export KUBECONFIG="/tmp/logx-app-{{ logx_job_id }}-{{ target.cluster_name | regex_replace('[^A-Za-z0-9._-]', '_') }}-{{ target.namespace | regex_replace('[^A-Za-z0-9._-]', '_') }}.kubeconfig"
 
             cleanup() {
               rm -f "${KUBECONFIG}"
@@ -288,10 +288,25 @@
               --insecure-skip-tls-verify=true \
               >/dev/null
 
+            # DIKKAT: bu blok icindeki yorumlarda KESME ISARETI KULLANMAYIN. Ansible
+            # argumanlari bolerken tek tirnaklari sayar; tek basina bir kesme isareti
+            # "unbalanced jinja2 block or quotes" hatasi verir ve playbook yuklenemez.
+            #
+            # Cok tipli oc get TEK bir tip icin bile hata verse (kapatilmis
+            # DeploymentConfig API kaynagi, route uzerinde RBAC reddi) rc=1 doner ve
+            # BASARIYLA listelenmis tiplerin ciktisi da atilirdi. stderr ayri tutulup rc
+            # yutuluyor; asagida "satir geldi mi" olcutune bakilir. Kismi sonuc KAYBOLMAZ.
             "{{ oc_bin }}" get {{ oc_object_kinds }} \
               -n {{ target.namespace | quote }} \
               --allow-missing-template-keys=true \
-              -o jsonpath='{range .items[*]}{.kind}{"|"}{.metadata.name}{"|"}{.spec.replicas}{"|"}{.spec.template.spec.containers[0].image}{"|"}{.spec.containers[0].image}{"|"}{.metadata.labels.app}{"|"}{.metadata.creationTimestamp}{"\n"}{end}'
+              -o jsonpath='{range .items[*]}{.kind}{"|"}{.metadata.name}{"|"}{.spec.replicas}{"|"}{.spec.template.spec.containers[0].image}{"|"}{.spec.containers[0].image}{"|"}{.metadata.labels.app}{"|"}{.metadata.creationTimestamp}{"\n"}{end}' \
+              2>/tmp/logx-app-err.$$ || true
+
+            if [ -s /tmp/logx-app-err.$$ ]; then
+              echo "LOGX_STDERR_BEGIN" >&2
+              cat /tmp/logx-app-err.$$ >&2
+            fi
+            rm -f /tmp/logx-app-err.$$
           args:
             executable: /bin/bash
           loop: "{{ scan_targets }}"
@@ -325,18 +340,24 @@
             cluster_app_results: >-
               {{
                 cluster_app_results + [{
-                  'cluster_name': item.target.cluster_name,
-                  'namespace': item.target.namespace,
-                  'status': ('error' if failed_now else 'ok'),
+                  'cluster_name': item.item.target.cluster_name,
+                  'namespace': item.item.target.namespace,
+                  'status': ('ok' if has_lines else 'error'),
                   'error': ((item.stderr | default(item.msg | default('Bilinmeyen OpenShift hatasi'), true)) if failed_now else ''),
-                  'lines': ([] if failed_now else (item.stdout_lines | default([])))
+                  'lines': (item.stdout_lines | default([]))
                 }]
               }}
           vars:
+            # `item` = async_status sonucu; ORIJINAL dongu ogesi bir seviye altta durur
+            # (`item.item.target`). Dogrudan `item.target` yazmak 'dict object has no
+            # attribute target' ile TUM block'u dusururdu.
             failed_now: "{{ (item.failed | default(false)) or ((item.rc | default(0) | int) != 0) }}"
+            # Olcut "rc" degil "satir geldi mi": cok tipli `oc get`te bir tip patlasa bile
+            # digerlerinin ciktisi gecerlidir. Hic satir yoksa gercekten basarisiziz.
+            has_lines: "{{ (item.stdout_lines | default([]) | length) > 0 }}"
           loop: "{{ app_wait.results | default([]) }}"
           loop_control:
-            label: "{{ item.target.cluster_name }}/{{ item.target.namespace }}"
+            label: "{{ item.item.target.cluster_name }}/{{ item.item.target.namespace }}"
           changed_when: false
 
         - name: "Append validation errors"
@@ -404,15 +425,52 @@
     - name: "Clear any host errors so aggregation always runs"
       ansible.builtin.meta: clear_host_errors
 
+    - name: "Initialize merged result list"
+      ansible.builtin.set_fact:
+        merged_app_results: "{{ flat_results }}"
+      changed_when: false
+
+    # ULASILAMAYAN BASTION SIGORTASI: `ignore_unreachable: true` sayesinde play devam eder
+    # ama o hostun rescue'su CALISMAZ — hic `cluster_app_results` yazmaz. Bu durumda ilgili
+    # (cluster, namespace) ciftleri sonuctan sessizce DUSER ve kullanici hatasiz bir
+    # "0 uygulama" ekrani gorur. Istenen her cifti burada acikca dogruluyoruz.
+    - name: "Report requested pairs that no bastion answered for"
+      ansible.builtin.set_fact:
+        merged_app_results: >-
+          {{
+            merged_app_results + ([] if (reported | length > 0) else [{
+              'cluster_name': item.0.cluster_name | default('unknown'),
+              'namespace': item.1,
+              'status': 'error',
+              'error': 'Atlama sunucusu yanit vermedi: ' ~ (owner_host | default('?')),
+              'lines': []
+            }])
+          }}
+      vars:
+        owner_host: "{{ item.0.terminal_host | default((groups['logx_terminal'] | default([]) | sort | first), true) }}"
+        reported: >-
+          {{
+            flat_results
+            | selectattr('cluster_name', 'equalto', item.0.cluster_name | default(''))
+            | selectattr('namespace', 'equalto', item.1)
+            | list
+          }}
+      loop: "{{ ocp_clusters | default([]) | subelements('namespaces', skip_missing=True) }}"
+      loop_control:
+        label: "{{ item.0.cluster_name | default('?') }}/{{ item.1 }}"
+      changed_when: false
+
     # Cluster bazinda gruplama PORTALDA yapilir — duz liste hem daha kucuk hem de
     # Jinja'da grup kurmaya gerek birakmaz.
     - name: "Publish application discovery result"
       ansible.builtin.set_stats:
         data:
           logx_result:
+            # TEK ifade: `{% set %}` satirlari katlamali skalerde bosluga donusup sonuca
+            # "  success" gibi bastan bosluklu bir deger birakiyordu.
             overall_status: >-
-              {% set ok_count = flat_results | selectattr('status', 'equalto', 'ok') | list | length %}
-              {% set error_count = flat_results | selectattr('status', 'equalto', 'error') | list | length %}
-              {{ 'success' if error_count == 0 else ('failed' if ok_count == 0 else 'partial') }}
-            results: "{{ flat_results }}"
+              {{ 'success' if (merged_app_results | rejectattr('status', 'equalto', 'ok') | list | length) == 0
+                 else ('failed' if (merged_app_results | selectattr('status', 'equalto', 'ok') | list | length) == 0
+                       else 'partial') }}
+            results: "{{ merged_app_results }}"
         per_host: false

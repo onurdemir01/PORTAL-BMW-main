@@ -184,10 +184,11 @@ async function finalizeAppDiscovery(requestRow, job) {
     console.warn('[LogXv2] uygulama onbellegi yazilamadi:', e.message);
   }
 
-  await requests.updateRequest(requestRow.request_id, {
-    state: 'apps_discovered',
-    discoveryResult: parsed,
-  });
+  // `discovery_result_json` BILEREK YAZILMAZ: o sutun namespace kesfinin sonucunu tutar ve
+  // sayfa yenilendiginde sihirbazin namespace listesini geri kurmasini saglar. Uygulama
+  // sonucunu oraya yazmak namespace listesini kalici olarak silerdi. Uygulamalarin kalici
+  // yeri onbellektir (yukarida yazildi); sihirbaz listeyi oradan okur.
+  await requests.updateRequest(requestRow.request_id, { state: 'apps_discovered' });
 }
 
 // `oc get projects -o name` ciktisi ortama gore `project/<ad>` VEYA
