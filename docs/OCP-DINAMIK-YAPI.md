@@ -158,6 +158,54 @@ Cluster listesinin biçimi Admin → OpsX Yapılandırma'dan seçilir (deploy ge
 | `joined` (**varsayılan**) | Bugünkü sözleşme: tek öğe, cluster adları ayıraçla birleşik. Seçilen cluster'lar **farklı** jump server'lara düşerse sessizce birini seçmek yerine ne yapılacağını söyleyen **400** döner. |
 | `perCluster` | LogX ile aynı v2 sözleşmesi (her cluster kendi bastion'ı + `terminal_hosts[]`). **Yalnızca** OpsX/Telnet playbook'ları çoklu bastion destekliyorsa seçin. |
 
+### 5b. OpsX OCP — portalın kendi playbook'u (2026-08-09)
+
+OpsX'in OpenShift tarafı portalın **sahip olmadığı**, tek-bastion bir playbook'u çağırıyordu;
+namespace ve uygulama adı ekranda **elle** yazılıyordu. Artık ikinci bir yol var:
+
+| `playbookMode` | Playbook Kayıtları satırı | Davranış |
+|---|---|---|
+| `external` (**varsayılan**) | `opsx_openshift_operation` | Bugünkü davranış. `operation` gövdeye konmaz, cluster metadata'sı gönderilmez. Bu sürüm canlıya çıktığında **hiçbir şey değişmez.** |
+| `portal` | `opsx_ocp_operation` | `server/ansible/playbooks/opsx_ocp_operation.yml` — LogX OCP playbook'larıyla **aynı iskelet**: cluster başına bastion, portaldan gelen `api_url`/`credential_key`/`username`, `oc` yolunun keşfi, bastion başına hata izolasyonu. Cluster listesi **her zaman** cluster başınadır (mod, `clusterListStyle`'ı zorlar). |
+
+**İşlem kümesi** (`portal` modunda; sunucu ve playbook **ayrı ayrı** doğrular):
+
+| İşlem | `oc` karşılığı | Tip |
+|---|---|---|
+| `restart` | `oc rollout restart <kind>/<ad>` | değiştirir |
+| `stop` | `oc scale --replicas=0` (önceki değeri çıktıya yazar) | değiştirir |
+| `start` | `oc scale --replicas=<keşiften gelen\|1>` | değiştirir |
+| `threaddump` | pod içinde `kill -3` + `oc logs` → bastion | değiştirir |
+| `heapdump` | `jcmd GC.heap_dump` (yoksa `jmap`) + `oc cp` → bastion | değiştirir |
+| `podrestart` | `oc delete pod` | **yıkıcı** |
+| `podlist` | `oc get pods -o wide` | salt-okunur |
+| `describe` | `oc describe <kind>/<ad>` | salt-okunur |
+| `events` | `oc get events --sort-by=.lastTimestamp` | salt-okunur |
+| `rolloutstatus` | `oc rollout status` | salt-okunur |
+
+`destructive` işaretli işlemler ön yüzde **ek onay** ister. `podlist`/`events` namespace
+kapsamlıdır, uygulama seçimi gerektirmez. `scale` playbook'ta start/stop mekanizması olarak
+durur ama **menüde görünmez** (serbest replica değişimi bu sürümün kapsamı dışında;
+`rollout undo/pause` hiç yok).
+
+**Sihirbaz akışı LogX'e benzetildi:** cluster seçimi → namespace → uygulama → işlem.
+Namespace ve uygulama listeleri **LogX'in paylaşımlı keşif önbelleğinden** okunur
+(`/api/opsx/ocp/cache/*` — veri ve kısıtlama mantığı `logx/v2/ocp-cache.cjs` +
+`restrictions.cjs`, kopya yok; ayrı uç gerekti çünkü LogX router'ı
+`requireVisiblePrefix('LogX')` arkasında). **OpsX kendi keşif job'ını açmaz** — önbellek
+boşsa kullanıcı adı elle yazar. Picker ve uygulama seçici bileşenleri
+`src/components/ocp/` altına taşınıp iki sihirbazın **ortak** bileşeni yapıldı.
+
+> **Sınır (bilinçli):** `threaddump`/`heapdump` çıktısı **bastion üzerinde** `staging_dir`
+> altında bırakılır ve yolu sonuca yazılır. Portal üzerinden indirme YOKTUR — LogX'in
+> indirme sözleşmesi bir LogX istek satırına bağlı (`logx_v2_downloads.request_id`) ve
+> OpsX'in istek satırı yok. Operatör dosyayı bastion'dan alır.
+
+**Devreye alma:** `opsx_ocp_operation.yml` dosyasını AWX projesine kopyala → Job Template
+aç (**Prompt on launch** işaretli) → Template ID'yi Admin > Playbook Kayıtları'ndaki
+`opsx_ocp_operation` satırına (ya da `AWX_OPSX_OCP_OPERATION_TEMPLATE_ID`) yaz → Admin >
+OpsX Yapılandırma'da **Playbook modu = Portal** seç. Geri alma: modu `external`'a çevir.
+
 ## 6. Katalog birleştirme (aşamalı)
 
 Portalda ortak anahtarı olmayan iki OCP kataloğu vardı:
@@ -349,10 +397,11 @@ for this bastion` adımları görünmeli; bir bastion çökerse `PLAY RECAP`'te 
 ## 12. Doğrulama
 
 ```bash
-npm test          # 283/283 yeşil olmalı
+npm test          # 298/298 yeşil olmalı
 npx tsc --noEmit  # yeni hata olmamalı (mevcut 4 hata bu işten önce de vardı)
 npm run build
-ansible-playbook --syntax-check server/ansible/playbooks/logx_ocp_*.yml   # üçü de temiz
+ansible-playbook --syntax-check server/ansible/playbooks/logx_ocp_*.yml \
+                                server/ansible/playbooks/opsx_ocp_operation.yml   # dördü de temiz
 ```
 
 > `--syntax-check` adımını atlamayın: YAML geçerli olduğu hâlde Ansible'ın yükleyemediği

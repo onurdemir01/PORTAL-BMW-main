@@ -4,11 +4,24 @@
 // Uygulama listesi ve cluster kataloğu LogX ile AYNI kaynaktan gelir (backend
 // server/opsx/index.cjs bunları yeniden kullanır) — burada ayrı bir gerçek yok.
 import { safeJson } from "./http";
+import type { CachedList, OcpAppItem } from "./logxV2Api";
 
 const BASE = "/api/opsx";
 
 export type OpsxPlatform = "legacy" | "openshift";
-export type OpsxOperation = "restart" | "stop" | "start" | "threaddump" | "heapdump";
+/** Legacy platformun işlem kümesi. */
+export type OpsxLegacyOperation = "restart" | "stop" | "start" | "threaddump" | "heapdump";
+/** OpenShift'in genişletilmiş kümesi: legacy karşılıkları + salt-okunur teşhis + pod silme.
+ *  Yalnızca "portal" playbook modunda kullanılır (bkz. Admin > OpsX Yapılandırma). */
+export type OpsxOcpOperation =
+  | OpsxLegacyOperation
+  | "scale"
+  | "podlist"
+  | "describe"
+  | "events"
+  | "rolloutstatus"
+  | "podrestart";
+export type OpsxOperation = OpsxLegacyOperation | OpsxOcpOperation;
 
 export interface OpsxHost {
   host: string;
@@ -22,6 +35,12 @@ export interface OpsxHost {
 export interface OpsxOperationDef {
   key: OpsxOperation;
   label: string;
+  /** Hangi `oc` komutuna karşılık geldiği — kullanıcı ne olacağını görsün. */
+  hint?: string;
+  /** true ise ön yüz EK ONAY ister (durdurma, pod silme, heap dump…). */
+  destructive?: boolean;
+  /** Hiçbir şeyi değiştirmeyen teşhis adımları. */
+  readOnly?: boolean;
 }
 
 export interface OpsxRunResult {
@@ -57,9 +76,20 @@ export const opsxApi = {
   getClusters: (): Promise<{ ok: boolean; tree: Record<string, Record<string, string[]>> }> =>
     fetch(`${BASE}/clusters`).then(safeJson),
 
-  // Desteklenen işlemler sunucudan gelir (ön yüz hardcode etmesin).
-  getOperations: (): Promise<{ ok: boolean; operations: OpsxOperationDef[] }> =>
-    fetch(`${BASE}/operations`).then(safeJson),
+  // Desteklenen işlemler sunucudan gelir (ön yüz hardcode etmesin). Küme platforma
+  // göre değişir: OpenShift'te legacy karşılıkları + teşhis adımları + pod silme.
+  getOperations: (platform: OpsxPlatform = "legacy"): Promise<{ ok: boolean; platform: OpsxPlatform; operations: OpsxOperationDef[] }> =>
+    fetch(`${BASE}/operations?platform=${encodeURIComponent(platform)}`).then(safeJson),
+
+  // OCP keşif önbelleği — LogX ile AYNI veri, ayrı HTTP kapısı. LogX router'ı
+  // `requireVisiblePrefix('LogX')` arkasında olduğu için OpsX kendi ucunu kullanır.
+  cachedNamespaces: (env: string, tenant: string, cluster: string) =>
+    fetch(`${BASE}/ocp/cache/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&cluster=${encodeURIComponent(cluster)}`)
+      .then(safeJson) as Promise<CachedList<string>>,
+
+  cachedApps: (env: string, tenant: string, cluster: string, namespace: string) =>
+    fetch(`${BASE}/ocp/cache/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&cluster=${encodeURIComponent(cluster)}&namespace=${encodeURIComponent(namespace)}`)
+      .then(safeJson) as Promise<CachedList<OcpAppItem>>,
 
   // İşlemi tetikler. AWX job template'i tanımlı değilse sunucu 501 + açıklayıcı
   // mesaj döner (sessizce yanlış job tetiklenmez).
@@ -75,6 +105,10 @@ export const opsxApi = {
     clusters?: string[];
     namespace?: string;
     appName?: string;
+    /** "portal" playbook modunda gönderilir; boşsa playbook kind'i kendisi çözer. */
+    objectKind?: string;
+    podName?: string;
+    replicas?: number | null;
   }): Promise<OpsxRunResult> =>
     fetch(`${BASE}/run`, {
       method: "POST",

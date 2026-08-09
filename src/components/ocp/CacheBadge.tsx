@@ -1,4 +1,4 @@
-// src/components/logx_v2/shared/CacheBadge.tsx — Liste önbellekten geldiğinde kullanıcıya
+// src/components/ocp/CacheBadge.tsx — Liste önbellekten geldiğinde kullanıcıya
 // "bu veri ne kadar taze" bilgisini ve her durumda bir tazeleme yolunu verir.
 //
 // NEDEN: önbellek listeyi anında getirir ama kullanıcı ekranda gördüğü şeyin ne zamanki

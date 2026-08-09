@@ -18,6 +18,10 @@ import JbossVersionStep from "./steps/JbossVersionStep";
 import HostSelectStep from "./steps/HostSelectStep";
 import OcpTargetStep from "./steps/OcpTargetStep";
 import OperationStep from "./steps/OperationStep";
+// LogX ile ORTAK bileşenler: önbellek rozeti, kısıtlama davranışı ve "hepsi başarısız"
+// hata kartı iki sihirbazda da aynı olsun diye kopyalanmadı.
+import NamespacePickerStep from "@/components/ocp/NamespacePickerStep";
+import AppNameStep from "@/components/ocp/AppNameStep";
 
 type Step =
   | "platform"
@@ -25,7 +29,10 @@ type Step =
   | "legacy_jboss_version"
   | "legacy_hosts"
   | "ocp_target"
+  | "ocp_namespace"
+  | "ocp_app"
   | "operation"
+  | "ocp_operation"
   | "done";
 
 const STEP_TITLES: Record<Step, string> = {
@@ -34,7 +41,10 @@ const STEP_TITLES: Record<Step, string> = {
   legacy_jboss_version: "JBoss Sürümü",
   legacy_hosts: "Sunucu Seçimi",
   ocp_target: "Openshift Hedefi",
+  ocp_namespace: "Namespace Seçimi",
+  ocp_app: "Uygulama Seçimi",
   operation: "İşlem Seçimi",
+  ocp_operation: "İşlem Seçimi",
   done: "İşlem Başlatıldı",
 };
 
@@ -49,6 +59,16 @@ const OpsXWizardPage: React.FC = () => {
   const [clusters, setClusters] = useState<string[]>([]);
   const [namespace, setNamespace] = useState("");
   const [appName, setAppName] = useState("");
+  // Uygulama listeden seçildiyse kind/replica bilgisi de taşınır: playbook
+  // `oc rollout restart deployment/<ad>` ve `scale --replicas=<n>` için kullanır.
+  // Kullanıcı adı ELLE yazdıysa boş kalır; playbook kind'i kendisi çözer.
+  const [objectKind, setObjectKind] = useState("");
+  const [appReplicas, setAppReplicas] = useState<number | null>(null);
+  // Namespace listesi: paylaşımlı önbellekten okunur. Boşsa kullanıcı adı elle yazar
+  // (OpsX kendi keşif job'ını AÇMAZ — keşif LogX'in işidir, burada yalnızca okunur).
+  const [nsItems, setNsItems] = useState<string[] | null>(null);
+  const [nsFailed, setNsFailed] = useState<string[]>([]);
+  const [nsCache, setNsCache] = useState<{ fetchedAt: string | null; stale: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OpsxRunResult | null>(null);
@@ -98,6 +118,12 @@ const OpsXWizardPage: React.FC = () => {
         return "legacy_jboss_version";
       case "operation":
         return "legacy_hosts";
+      case "ocp_namespace":
+        return "ocp_target";
+      case "ocp_app":
+        return "ocp_namespace";
+      case "ocp_operation":
+        return "ocp_app";
       default:
         return null;
     }
@@ -130,14 +156,17 @@ const OpsXWizardPage: React.FC = () => {
     }
   }
 
-  async function runOpenshift(v: { env: string; tenant: string; clusters: string[]; namespace: string; appName: string }) {
+  async function runOpenshift(operation: OpsxOperation) {
     if (busy) return;
     setBusy(true);
     setError(null);
-    setEnv(v.env); setTenant(v.tenant); setClusters(v.clusters);
-    setNamespace(v.namespace); setAppName(v.appName);
     try {
-      const r = await opsxApi.run({ platform: "openshift", ...v });
+      const r = await opsxApi.run({
+        platform: "openshift", env, tenant, clusters, namespace, appName, operation,
+        objectKind: objectKind || undefined,
+        // `start`/`scale` icin hedef replica: kesiften gelen deger, yoksa 1.
+        replicas: ["start", "scale"].includes(operation) ? (appReplicas || 1) : undefined,
+      });
       setResult(r);
       setStep("done");
       trackJob(r);
@@ -148,7 +177,46 @@ const OpsXWizardPage: React.FC = () => {
     }
   }
 
+  // Namespace listesi paylaşımlı önbellekten okunur. Cluster başına ayrı istek: biri
+  // erişilemezse listenin EKSİK olduğu kullanıcıya söylenir (sessiz eksiklik yok).
+  async function loadNamespaces(e: string, t: string, cs: string[]) {
+    const results = await Promise.all(
+      cs.map((c) =>
+        opsxApi.cachedNamespaces(e, t, c)
+          .then((r) => ({ cluster: c, r }))
+          .catch(() => ({ cluster: c, r: null }))
+      )
+    );
+    const items: string[] = [];
+    const failed: string[] = [];
+    let newest: string | null = null;
+    let stale = false;
+    let anyCached = false;
+    for (const { cluster, r } of results) {
+      if (!r) { failed.push(cluster); continue; }
+      if (!r.cached) continue;
+      anyCached = true;
+      items.push(...(r.items || []));
+      if (r.stale) stale = true;
+      if (r.fetchedAt && (!newest || new Date(r.fetchedAt) > new Date(newest))) newest = r.fetchedAt;
+    }
+    setNsItems([...new Set(items)]);
+    setNsFailed(failed);
+    setNsCache(anyCached ? { fetchedAt: newest, stale } : null);
+  }
+
   const canGoBack = backTargetFor(step) !== null;
+
+  const ocpSummary = (
+    <>
+      Cluster: <span className="font-mono text-[var(--text-primary)]">{clusters.join(", ")}</span>
+      {" · "}
+      Namespace: <span className="font-mono text-[var(--text-primary)]">{namespace}</span>
+      {" · "}
+      Uygulama: <span className="font-mono text-[var(--text-primary)]">{appName || "(namespace geneli)"}</span>
+      {objectKind && <> {" · "}Tip: <span className="font-mono">{objectKind}</span></>}
+    </>
+  );
 
   const operationSummary = (
     <>
@@ -223,7 +291,103 @@ const OpsXWizardPage: React.FC = () => {
         )}
 
         {step === "ocp_target" && (
-          <OcpTargetStep busy={busy} onSubmit={runOpenshift} />
+          <OcpTargetStep
+            busy={busy}
+            onSubmit={async (v) => {
+              setEnv(v.env); setTenant(v.tenant); setClusters(v.clusters);
+              setNamespace(""); setAppName(""); setObjectKind(""); setAppReplicas(null);
+              setNsItems(null); setNsFailed([]); setNsCache(null);
+              setStep("ocp_namespace");
+              // Liste arka planda gelir; gelene kadar picker "kayıt yok" durumunu gösterir
+              // ve kullanıcı adı elle yazabilir.
+              await loadNamespaces(v.env, v.tenant, v.clusters).catch(() => {});
+            }}
+          />
+        )}
+
+        {step === "ocp_namespace" && (
+          nsItems && (nsItems.length > 0 || nsFailed.length > 0) ? (
+            <NamespacePickerStep
+              namespaces={nsItems}
+              failedClusters={nsFailed}
+              cache={nsCache}
+              busy={busy}
+              onSelect={(ns) => { setNamespace(ns); setStep("ocp_app"); }}
+            />
+          ) : (
+            // Önbellek boş: OpsX kendi keşif job'ını AÇMAZ (keşif LogX'in işi).
+            // Kullanıcı adı elle yazar — akış durmaz.
+            <div className="space-y-3">
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+                Bu cluster'lar için kayıtlı namespace listesi yok. Adını biliyorsanız yazın;
+                listeyi doldurmak için LogX sihirbazından bir keşif çalıştırabilirsiniz.
+              </div>
+              <input
+                autoFocus
+                value={namespace}
+                onChange={(e) => setNamespace(e.target.value)}
+                placeholder="das-trading-management-qa"
+                className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
+              />
+              <button
+                onClick={() => setStep("ocp_app")}
+                disabled={!namespace.trim() || busy}
+                className="btn-primary w-full"
+              >
+                Devam
+              </button>
+            </div>
+          )
+        )}
+
+        {step === "ocp_app" && (
+          <AppNameStep
+            env={env}
+            tenant={tenant}
+            clusters={clusters}
+            namespace={namespace}
+            busy={busy}
+            fetchApps={opsxApi.cachedApps}
+            submitLabel="Devam"
+            description={
+              <>
+                <span className="font-mono text-[var(--text-primary)]">{namespace}</span> içindeki
+                uygulamayı seçin — işlem bu iş yüküne uygulanacaktır.
+              </>
+            }
+            onSubmitDetailed={(a) => {
+              // Kind listesi birden fazla olabilir (Deployment + Service + Route). İşlem
+              // yalnız IS YUKUNE uygulanir; ilk is yuku tipini secip digerlerini atariz.
+              const workload = a.kinds.find((k) =>
+                ["Deployment", "DeploymentConfig", "StatefulSet", "Rollout"].includes(k));
+              setObjectKind(workload || "");
+              setAppReplicas(a.replicas);
+            }}
+            onSubmit={(name) => { setAppName(name); setStep("ocp_operation"); }}
+          />
+        )}
+        {step === "ocp_app" && (
+          // `podlist` ve `events` NAMESPACE kapsamlidir, uygulama adi gerektirmez.
+          // Bu cikis olmasaydi kullanici yalnizca pod listesi gormek icin de bir
+          // uygulama secmek zorunda kalirdi.
+          <button
+            onClick={() => { setAppName(""); setObjectKind(""); setAppReplicas(null); setStep("ocp_operation"); }}
+            disabled={busy}
+            className="mt-2 w-full text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+          >
+            Uygulama seçmeden devam et — yalnızca namespace geneli işlemler (pod listesi, olaylar)
+          </button>
+        )}
+
+        {step === "ocp_operation" && (
+          <OperationStep
+            platform="openshift"
+            summary={ocpSummary}
+            application={appName}
+            hosts={[]}
+            busy={busy}
+            onSelect={runOpenshift}
+          />
         )}
 
         {step === "operation" && (

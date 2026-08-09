@@ -14,8 +14,11 @@
 // Durum bilgisi eksik/beklenmedik bir değerse (envanterde status boşsa) fail-open
 // DAVRANILMAZ — hangi işlemin güvenli olduğunu bilmeden hiçbir işlem seçilemez.
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowPathIcon, StopCircleIcon, PlayCircleIcon, DocumentMagnifyingGlassIcon, CircleStackIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { opsxApi, type OpsxOperation, type OpsxOperationDef } from "@/api/opsxApi";
+import {
+  ArrowPathIcon, StopCircleIcon, PlayCircleIcon, DocumentMagnifyingGlassIcon, CircleStackIcon,
+  ExclamationTriangleIcon, ArrowsUpDownIcon, ListBulletIcon, ClockIcon, TrashIcon,
+} from "@heroicons/react/24/outline";
+import { opsxApi, type OpsxOperation, type OpsxOperationDef, type OpsxPlatform } from "@/api/opsxApi";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   restart: ArrowPathIcon,
@@ -23,6 +26,13 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   start: PlayCircleIcon,
   threaddump: DocumentMagnifyingGlassIcon,
   heapdump: CircleStackIcon,
+  // OpenShift'e ozgu islemler
+  scale: ArrowsUpDownIcon,
+  podlist: ListBulletIcon,
+  describe: DocumentMagnifyingGlassIcon,
+  events: ClockIcon,
+  rolloutstatus: ArrowPathIcon,
+  podrestart: TrashIcon,
 };
 
 // Bu işlemler, ilgili sunucu(lar) o durumdayken anlamsız/uygulanamaz.
@@ -40,7 +50,9 @@ const OperationStep: React.FC<{
   hosts: string[];
   busy?: boolean;
   onSelect: (op: OpsxOperation) => void;
-}> = ({ summary, application, hosts, busy, onSelect }) => {
+  /** İşlem kümesi platforma göre değişir (OpenShift'te teşhis adımları + pod silme). */
+  platform?: OpsxPlatform;
+}> = ({ summary, application, hosts, busy, onSelect, platform = "legacy" }) => {
   const [ops, setOps] = useState<OpsxOperationDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,13 +63,18 @@ const OperationStep: React.FC<{
   const [checkNonce, setCheckNonce] = useState(0);
 
   useEffect(() => {
-    opsxApi.getOperations()
+    setLoading(true);
+    opsxApi.getOperations(platform)
       .then((r) => setOps(r.operations))
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [platform]);
 
   useEffect(() => {
+    // OpenShift'te "sunucu durumu" kavrami YOK: is yukunun durumu cluster'da yasar ve
+    // envanterde tutulmaz. Legacy'nin durum-tabanli kilitlemesi burada uygulanmaz;
+    // yerine yikici islemler EK ONAY ister.
+    if (platform === "openshift") { setStatusLoading(false); return; }
     setStatusLoading(true);
     setStatusError(null);
     opsxApi.getHosts(application)
@@ -79,7 +96,19 @@ const OperationStep: React.FC<{
   // kilitli kalir.
   const anyUnknown = useMemo(() => hosts.some((h) => statuses[h] !== "running" && statuses[h] !== "stopped"), [hosts, statuses]);
 
+  const NAMESPACE_SCOPED = new Set<OpsxOperation>(["podlist", "events"]);
+
   function disabledReason(op: OpsxOperation): string | null {
+    if (platform === "openshift") {
+      // Uygulama secilmeden yalnizca NAMESPACE kapsamli islemler calisir; digerleri
+      // bir is yukune uygulanir ve sunucu zaten reddederdi — kullaniciyi job acmadan
+      // once uyarmak daha iyi.
+      if (!application.trim() && !NAMESPACE_SCOPED.has(op)) {
+        return "Bu işlem bir uygulama seçimi gerektirir (geri dönüp seçin).";
+      }
+      // OpenShift'te envanter durumu yok — baska hicbir kilit uygulanmaz.
+      return null;
+    }
     if (statusLoading) return "Sunucu durumu kontrol ediliyor…";
     if (statusError) return "Durum kontrolü başarısız — işlem seçilemez.";
     if (anyUnknown) return "Seçili sunucu(lar)dan en az birinin durumu belirlenemedi.";
@@ -100,7 +129,7 @@ const OperationStep: React.FC<{
 
       {/* Sunucu bazında envanterdeki durum — kullanıcı hangi işlemin neden kilitli olduğunu görsün. */}
       <div className="space-y-1.5">
-        {hosts.map((h) => {
+        {(platform === "openshift" ? [] : hosts).map((h) => {
           const s = statuses[h];
           const meta = STATUS_META[s];
           return (
@@ -118,7 +147,7 @@ const OperationStep: React.FC<{
         })}
       </div>
 
-      {statusError && (
+      {statusError && platform !== "openshift" && (
         <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
@@ -141,14 +170,34 @@ const OperationStep: React.FC<{
           return (
             <button
               key={op.key}
-              onClick={() => onSelect(op.key)}
+              onClick={() => {
+                // Yikici islemler (durdurma, pod silme, heap dump) EK ONAY ister:
+                // salt-okunur bir teshis adimiyla ayni tek tikla tetiklenmemeli.
+                if (op.destructive && !window.confirm(
+                  `"${op.label}" işlemi çalışan uygulamayı etkiler.\n\n` +
+                  `${op.hint ? `Çalışacak komut: ${op.hint}\n` : ""}` +
+                  "Devam edilsin mi?"
+                )) return;
+                onSelect(op.key);
+              }}
               disabled={disabled}
-              title={reason || undefined}
+              title={reason || op.hint || undefined}
               className="w-full flex items-center gap-3 px-4 py-3 border border-[var(--border)] rounded-xl text-left hover:border-[var(--accent)] hover:shadow-sm transition-all active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none disabled:hover:border-[var(--border)]"
             >
               <Icon className="w-5 h-5 text-[var(--text-primary)] flex-shrink-0" />
               <div className="flex-1">
                 <span className="text-sm font-medium text-[var(--text-primary)]">{op.label}</span>
+                {op.readOnly && (
+                  <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-100">
+                    SALT-OKUNUR
+                  </span>
+                )}
+                {op.destructive && (
+                  <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-amber-50 text-amber-800 border-amber-100">
+                    ONAY İSTER
+                  </span>
+                )}
+                {op.hint && <p className="text-xs font-mono text-[var(--text-muted)] mt-0.5">{op.hint}</p>}
                 {reason && <p className="text-xs text-[var(--text-muted)] mt-0.5">{reason}</p>}
               </div>
             </button>

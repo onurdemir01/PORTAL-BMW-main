@@ -26,16 +26,42 @@ const { getAppsTable } = require('../config/apps-table.cjs');
 // beyaz listedeki degerlerden biri kabul edilir. Aksi halde extra_vars uzerinden
 // playbook'a beklenmedik bir deger enjekte edilebilirdi.
 //
-// threaddump/heapdump SADECE Legacy'de anlamli (Openshift govdesinde operation
-// alani zaten yok — bkz. POST /api/opsx/run yorumu); onyuz OperationStep'i de
-// yalniz Legacy akisinda kullanildigi icin ayrica bir platform filtresi gerekmez.
-const ALLOWED_OPERATIONS = Object.freeze({
-  restart: 'Uygulamamı restart et',
-  stop: 'Uygulamamı durdur',
-  start: 'Uygulamamı başlat',
-  threaddump: 'Thread dump al',
-  heapdump: 'Heap dump al',
+// PLATFORM BAZLI: Openshift'te 'portal' playbook modu acildiginda (bkz. config.cjs
+// playbookMode) OpsX artik OCP tarafinda da islem calistirir. Legacy'nin 5 islemi
+// OCP'de birebir karsilik bulmaz — `oc rollout restart`, `scale --replicas=0` gibi
+// karsiliklarla eslesirler — ayrica OCP'ye ozgu salt-okunur teshis adimlari eklenir.
+//
+// `destructive: true` olanlar onyuzde EK ONAY ister. Salt-okunur olanlar hicbir sey
+// degistirmez; en cok kullanilan teshis adimlari bunlardir.
+const OPERATIONS = Object.freeze({
+  legacy: Object.freeze({
+    restart:    { label: 'Uygulamamı restart et', destructive: true },
+    stop:       { label: 'Uygulamamı durdur', destructive: true },
+    start:      { label: 'Uygulamamı başlat', destructive: false },
+    threaddump: { label: 'Thread dump al', destructive: false },
+    heapdump:   { label: 'Heap dump al', destructive: true },
+  }),
+  openshift: Object.freeze({
+    // Legacy karsiliklari
+    restart:       { label: 'Uygulamamı restart et', hint: 'oc rollout restart', destructive: true },
+    stop:          { label: 'Uygulamamı durdur', hint: 'replicas=0', destructive: true },
+    start:         { label: 'Uygulamamı başlat', hint: 'replicas geri yükle', destructive: false },
+    threaddump:    { label: 'Thread dump al', hint: 'pod içinde kill -3', destructive: false },
+    heapdump:      { label: 'Heap dump al', hint: 'jcmd/jmap + bastion’a kopyala', destructive: true },
+    // Salt-okunur teshis
+    podlist:       { label: 'Pod listesi/durumu', hint: 'oc get pods -o wide', destructive: false, readOnly: true },
+    describe:      { label: 'Nesne ayrıntısı (describe)', hint: 'oc describe', destructive: false, readOnly: true },
+    events:        { label: 'Namespace olayları', hint: 'oc get events', destructive: false, readOnly: true },
+    rolloutstatus: { label: 'Rollout durumu', hint: 'oc rollout status', destructive: false, readOnly: true },
+    // Yikici
+    podrestart:    { label: "Pod'u sil (yeniden oluştur)", hint: 'oc delete pod', destructive: true },
+  }),
 });
+
+// Legacy tarafinda cagrilan yerler icin geriye donuk kisayol.
+const ALLOWED_OPERATIONS = Object.freeze(
+  Object.fromEntries(Object.entries(OPERATIONS.legacy).map(([k, v]) => [k, v.label]))
+);
 
 const REGISTRY_KEYS = Object.freeze({
   legacy: 'opsx_legacy_operation',
@@ -60,7 +86,15 @@ async function resolveByKey(keyName) {
   return { templateId: templateId || null, serverId, keyName };
 }
 
-async function resolveTarget(platform) {
+// Openshift'te hangi playbook kaydinin kullanilacagi ADMIN AYARINA baglidir:
+//   'external' (varsayilan) → opsx_openshift_operation (harici, tek-bastion)
+//   'portal'                → opsx_ocp_operation (portalin sahip oldugu, cok-bastion)
+async function resolveTarget(platform, cfg) {
+  if (platform === 'openshift') {
+    const opsxConfig = require('./config.cjs');
+    const mode = (cfg && cfg.playbookMode) || opsxConfig.DEFAULTS.openshift.playbookMode;
+    return resolveByKey(opsxConfig.REGISTRY_KEY_BY_MODE[mode] || REGISTRY_KEYS.openshift);
+  }
   return resolveByKey(REGISTRY_KEYS[platform]);
 }
 
@@ -149,11 +183,58 @@ function initOpsX(app) {
     }
   });
 
-  // GET /api/opsx/operations — desteklenen islemler (onyuz bunu hardcode etmesin)
+  // ── OCP kesif onbellegi (LogX ile ORTAK veri, AYRI kapi) ────────────────────
+  // Neden ayri uc: LogX router'i `requireVisiblePrefix('LogX')` arkasinda. OpsX gorunur
+  // ama LogX gorunmez olan bir kullanici o uclari cagiramaz. Veri ve kisitlama mantigi
+  // AYNI modullerden gelir (logx/v2/ocp-cache.cjs + restrictions.cjs) — kopya YOK.
+  function opsxUser(req) {
+    const s = req.session?.user || req.user || {};
+    return { username: s.username, role: s.role || 'User' };
+  }
+
+  app.get('/api/opsx/ocp/cache/namespaces', requireAuth, async (req, res) => {
+    try {
+      const { env, tenant, cluster } = req.query || {};
+      if (!env || !tenant || !cluster) {
+        return res.status(400).json({ ok: false, message: 'env, tenant ve cluster gerekli.' });
+      }
+      const restrictions = require('../logx/v2/restrictions.cjs');
+      const out = await require('../logx/v2/ocp-cache.cjs').getNamespaces({ env, tenant, clusterName: cluster });
+      // Kisitli namespace'ler listeden DUSURULUR (LogX'teki ile ayni sonda-filtreleme).
+      const prefix = `${tenant}/${env}/${cluster}/`;
+      const allowed = new Set(
+        await restrictions.filterAllowed('ocp_namespace', out.items.map((ns) => prefix + ns), opsxUser(req))
+      );
+      res.json({ ok: true, ...out, items: out.items.filter((ns) => allowed.has(prefix + ns)) });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  app.get('/api/opsx/ocp/cache/apps', requireAuth, async (req, res) => {
+    try {
+      const { env, tenant, cluster, namespace } = req.query || {};
+      if (!env || !tenant || !cluster || !namespace) {
+        return res.status(400).json({ ok: false, message: 'env, tenant, cluster ve namespace gerekli.' });
+      }
+      const restrictions = require('../logx/v2/restrictions.cjs');
+      await restrictions.assertAllowed('ocp_namespace', `${tenant}/${env}/${cluster}/${namespace}`, opsxUser(req));
+      const out = await require('../logx/v2/ocp-cache.cjs').getApps({ env, tenant, clusterName: cluster, namespace });
+      res.json({ ok: true, ...out });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/opsx/operations?platform=legacy|openshift — desteklenen islemler.
+  // Onyuz listeyi HARDCODE ETMEZ; izin verilen kume tek yerde (OPERATIONS) durur ve
+  // sunucu gelen degeri her durumda ayni kumeye karsi yeniden dogrular.
   app.get('/api/opsx/operations', requireAuth, (req, res) => {
+    const plat = req.query.platform === 'openshift' ? 'openshift' : 'legacy';
     res.json({
       ok: true,
-      operations: Object.entries(ALLOWED_OPERATIONS).map(([key, label]) => ({ key, label })),
+      platform: plat,
+      operations: Object.entries(OPERATIONS[plat]).map(([key, def]) => ({ key, ...def })),
     });
   });
 
@@ -222,11 +303,19 @@ function initOpsX(app) {
   //   cluster_name virgulle birlestirilir (LogX her cluster icin AYRI oge uretir —
   //   OpsX'te sartname farkli).
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
-    const { platform, application, hosts, operation, env, tenant, clusters, namespace, appName } = req.body || {};
+    const {
+      platform, application, hosts, operation, env, tenant, clusters, namespace, appName,
+      objectKind, podName, replicas,
+    } = req.body || {};
 
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
-    const { templateId, serverId, keyName } = await resolveTarget(plat);
+    // Yapilandirma ONCE okunur: Openshift'te hangi playbook kaydinin kullanilacagi
+    // (external/portal) buna baglidir.
+    const opsxConfig = require('./config.cjs');
+    const cfg = (await opsxConfig.getConfig())[plat];
+
+    const { templateId, serverId, keyName } = await resolveTarget(plat, cfg);
     if (!templateId) {
       return res.status(501).json({
         ok: false,
@@ -236,8 +325,6 @@ function initOpsX(app) {
       });
     }
 
-    const opsxConfig = require('./config.cjs');
-    const cfg = (await opsxConfig.getConfig())[plat];
     const { vars: staticVars, rejected: badLines } = opsxConfig.parseExtraVarLines(cfg.extraVars);
     if (badLines.length) {
       console.warn(`[OpsX] yapilandirilmis ek degiskenlerde gecersiz satir(lar) atlandi: ${badLines.join(' | ')}`);
@@ -288,15 +375,32 @@ function initOpsX(app) {
       // ── Openshift ───────────────────────────────────────────────────────────
       // Dogrulama + bastion cozumleme + extra_vars uretimi Telnet ile ORTAK
       // yardimcida (ocp-target.cjs). Bastion artik cluster seviyesinde cozulur.
-      if (!String(appName || '').trim()) {
+      const portalMode = cfg.playbookMode === 'portal';
+
+      // 'portal' modunda islem beyaz listeye karsi dogrulanir — client'in gonderdigine
+      // ASLA guvenilmez; playbook da kendi listesini ayrica kontrol eder (iki kapi).
+      if (portalMode && !OPERATIONS.openshift[operation]) {
+        return res.status(400).json({
+          ok: false,
+          message: `Geçersiz işlem: ${operation || '(boş)'}. İzin verilenler: `
+                 + `${Object.keys(OPERATIONS.openshift).join(', ')}.`,
+        });
+      }
+      // `podlist`/`events` namespace kapsamlidir, uygulama adi gerektirmez. Diger
+      // islemler bir is yukune uygulanir.
+      const appOptional = portalMode && ['podlist', 'events'].includes(operation);
+      if (!appOptional && !String(appName || '').trim()) {
         return res.status(400).json({ ok: false, message: 'Uygulama adı (app_name) gerekli.' });
       }
       try {
         const built = await require('./ocp-target.cjs').buildOcpTarget({
           env, tenant, clusters, namespace, appName, cfg, staticVars,
+          // 'external' modda bunlarin hicbiri govdeye KONMAZ (bkz. ocp-target.cjs).
+          operation: String(operation || ''),
+          objectKind: String(objectKind || ''),
+          podName: String(podName || ''),
+          replicas,
         });
-        // Openshift govdesinde `operation` YOK (sartnamedeki ornek govdelerde gecmiyor).
-        // Gerekiyorsa Admin > OpsX Yapilandirma > "Ek sabit degiskenler" ile eklenebilir.
         extraVars = built.extraVars;
         logSummary = built.logSummary;
       } catch (err) {

@@ -35,6 +35,11 @@ const DEFAULTS = Object.freeze({
     namespaceKey: 'namespace',
     appNameKey: 'app_name',
     clustersKey: 'ocp_clusters',
+    // Yalniz 'portal' modunda gonderilir (harici playbook bunlari bilmiyor).
+    operationKey: 'operation',
+    objectKindKey: 'object_kind',
+    podNameKey: 'pod_name',
+    replicasKey: 'replicas',
     extraVars: '',
     // Coklu cluster secimindeki cluster_name ayiraci ('joined' modda kullanilir).
     separator: ',',
@@ -46,13 +51,35 @@ const DEFAULTS = Object.freeze({
     //                  terminal_host'u + terminal_hosts[] listesi. Playbook cok-bastion'a
     //                  guncellendikten SONRA admin ekranindan secilir (deploy gerekmez).
     clusterListStyle: 'joined',
+
+    // Hangi playbook calisir:
+    //   'external' → BUGUNKU davranis: Playbook Kayitlari'ndaki `opsx_openshift_operation`
+    //                satiri (portalin sahip OLMADIGI, harici, tek-bastion playbook).
+    //                `operation` govdeye KONMAZ (sartnamedeki ornek govdelerde yok).
+    //                VARSAYILAN budur ki bu surum canliya ciktiginda hicbir sey degismesin.
+    //   'portal'   → `opsx_ocp_operation` satiri: portalin sahip oldugu, LogX OCP
+    //                playbook'lariyla ayni iskeletteki cok-bastion playbook. Cluster
+    //                basina api_url/credential_key/username gonderilir, `operation`
+    //                (ve gerekiyorsa object_kind/pod_name/replicas) govdeye eklenir.
+    //                Bu modda cluster listesi HER ZAMAN cluster-basinadir.
+    playbookMode: 'external',
   },
+});
+
+// Openshift tarafinda hangi playbook kaydinin (Playbook Kayitlari) kullanilacagi.
+const PLAYBOOK_MODES = Object.freeze(['external', 'portal']);
+const REGISTRY_KEY_BY_MODE = Object.freeze({
+  external: 'opsx_openshift_operation',
+  portal: 'opsx_ocp_operation',
 });
 
 // Hangi platformda hangi anahtar alanlari duzenlenebilir.
 const KEY_FIELDS = Object.freeze({
   legacy: ['applicationKey', 'operationKey'],
-  openshift: ['terminalHostKey', 'terminalHostsKey', 'namespaceKey', 'appNameKey', 'clustersKey'],
+  openshift: [
+    'terminalHostKey', 'terminalHostsKey', 'namespaceKey', 'appNameKey', 'clustersKey',
+    'operationKey', 'objectKindKey', 'podNameKey', 'replicasKey',
+  ],
 });
 
 // Anahtar-adi olmayan, sabit secenekli alanlar.
@@ -80,6 +107,15 @@ function normalizePlatform(platform, raw, fallback) {
   if (typeof sep === 'string' && sep.length >= 1 && sep.length <= 3) out.separator = sep;
   if (platform === 'openshift' && CLUSTER_LIST_STYLES.includes(raw?.clusterListStyle)) {
     out.clusterListStyle = raw.clusterListStyle;
+  }
+  if (platform === 'openshift' && PLAYBOOK_MODES.includes(raw?.playbookMode)) {
+    out.playbookMode = raw.playbookMode;
+  }
+  // 'portal' modundaki playbook cluster-basina payload BEKLER; 'joined' ile calistirmak
+  // tum cluster'lari tek bir birlesik ada indirger ve is sessizce yanlis hedefe gider.
+  // Bu yuzden mod secimi stili DE belirler — admin iki ayri kutuyu tutturmak zorunda kalmasin.
+  if (platform === 'openshift' && out.playbookMode === 'portal') {
+    out.clusterListStyle = 'perCluster';
   }
   return out;
 }
@@ -143,5 +179,5 @@ function parseExtraVarLines(text) {
 
 module.exports = {
   getConfig, saveConfig, invalidate, parseExtraVarLines,
-  DEFAULTS, KEY_FIELDS, CLUSTER_LIST_STYLES, BLOB_NAME,
+  DEFAULTS, KEY_FIELDS, CLUSTER_LIST_STYLES, PLAYBOOK_MODES, REGISTRY_KEY_BY_MODE, BLOB_NAME,
 };

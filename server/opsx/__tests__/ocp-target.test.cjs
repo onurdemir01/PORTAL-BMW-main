@@ -159,3 +159,115 @@ test('tekrarli cluster secimi tekillestirilir', async (t) => {
   assert.deepEqual(requested, ['gbocpqa1']);
   assert.equal(extraVars.ocp_clusters[0].cluster_name, 'gbocpqa1');
 });
+
+// ── 'portal' playbook modu — Faz B ───────────────────────────────────────────
+// Portal modunda OpsX, LogX OCP playbook'lariyla AYNI sozlesmeyi kullanir: cluster
+// basina bastion + portaldan gelen api_url/credential_key/username. Bu testler iki
+// modulun payload'inin AYRISMADIGINI kilitler.
+
+const PORTAL_CFG = {
+  ...CFG,
+  playbookMode: 'portal',
+  operationKey: 'operation',
+  objectKindKey: 'object_kind',
+  podNameKey: 'pod_name',
+  replicasKey: 'replicas',
+};
+
+function withCatalog(fn, { meta = {} } = {}) {
+  const origTree = adminData.getClusterTree;
+  const origHosts = adminData.resolveTerminalHosts;
+  const origMeta = adminData.resolveClusterMeta;
+  adminData.getClusterTree = async () => ({ prod: { ark: ['gbocpprod2', 'gbocpprod4'] } });
+  adminData.resolveTerminalHosts = async (e, t, names) => ({
+    hosts: Object.fromEntries(names.map((n) => [n, n === 'gbocpprod4' ? 'GBARKP54' : 'GBARKP52'])),
+    missing: [],
+  });
+  adminData.resolveClusterMeta = async () => meta;
+  return Promise.resolve(fn()).finally(() => {
+    adminData.getClusterTree = origTree;
+    adminData.resolveTerminalHosts = origHosts;
+    adminData.resolveClusterMeta = origMeta;
+  });
+}
+
+const META = {
+  gbocpprod2: { api_url: 'https://api.gbocpprod2.fw.garanti.com.tr:6443', vault_credential_key: 'uxmid_gar', ocp_username: 'uxmid' },
+  gbocpprod4: { api_url: 'https://api.gbocpprod4.fw.garanti.com.tr:6443', vault_credential_key: 'uxmid_gar', ocp_username: 'uxmid' },
+};
+
+test('portal modu: her cluster kendi bastion + api_url + credential_key + username ile gider', async () => {
+  await withCatalog(async () => {
+    const { extraVars } = await buildOcpTarget({
+      env: 'prod', tenant: 'ark', clusters: ['gbocpprod2', 'gbocpprod4'],
+      namespace: 'reference-applications-prod', appName: 'parallel-composition-v3',
+      cfg: PORTAL_CFG, operation: 'restart',
+    });
+    assert.equal(extraVars.ocp_clusters.length, 2);
+    for (const c of extraVars.ocp_clusters) {
+      assert.ok(c.terminal_host, 'her cluster kendi bastion bilgisini tasimali');
+      assert.ok(c.api_url, 'api_url portaldan gelmeli');
+      assert.equal(c.credential_key, 'uxmid_gar');
+      assert.equal(c.username, 'uxmid', "2026-08-09 arizasi: username eksikse tum cluster'lar duser");
+    }
+    assert.deepEqual(extraVars.terminal_hosts, ['GBARKP52', 'GBARKP54']);
+  }, { meta: META });
+});
+
+test('portal modu: operation + rezerve-ad kacinmasi (oc_namespace_input) gonderilir', async () => {
+  await withCatalog(async () => {
+    const { extraVars } = await buildOcpTarget({
+      env: 'prod', tenant: 'ark', clusters: ['gbocpprod2'],
+      namespace: 'ns1', appName: 'app1', cfg: PORTAL_CFG,
+      operation: 'podrestart', objectKind: 'Deployment', podName: 'app1-abc', replicas: 3,
+    });
+    assert.equal(extraVars.operation, 'podrestart');
+    assert.equal(extraVars.object_kind, 'Deployment');
+    assert.equal(extraVars.pod_name, 'app1-abc');
+    assert.equal(extraVars.replicas, 3);
+    // `namespace` Ansible'da REZERVE ad — playbook once bunu okur.
+    assert.equal(extraVars.oc_namespace_input, 'ns1');
+    assert.equal(extraVars.namespace, 'ns1', 'eski ad geriye uyum icin durmali');
+  }, { meta: META });
+});
+
+test('portal modu: PAROLA payload\'a HICBIR kosulda girmez', async () => {
+  await withCatalog(async () => {
+    const { extraVars } = await buildOcpTarget({
+      env: 'prod', tenant: 'ark', clusters: ['gbocpprod2'],
+      namespace: 'ns1', appName: 'app1', cfg: PORTAL_CFG, operation: 'restart',
+    });
+    const json = JSON.stringify(extraVars);
+    assert.ok(!json.includes('GIZLI'));
+    assert.ok(!/"password"/.test(json), 'password anahtari hic olmamali');
+  }, { meta: { gbocpprod2: { ...META.gbocpprod2, password: 'GIZLI' } } });
+});
+
+test('portal modu: clusterListStyle joined OLSA BILE cluster-basina gonderilir', async () => {
+  // Yanlis yapilandirilmis bir blob yuzunden portal playbook'una BIRLESIK cluster adi
+  // gitmemeli — playbook onu cozemez ve is sessizce yanlis hedefe gider.
+  await withCatalog(async () => {
+    const { extraVars } = await buildOcpTarget({
+      env: 'prod', tenant: 'ark', clusters: ['gbocpprod2', 'gbocpprod4'],
+      namespace: 'ns1', appName: 'app1',
+      cfg: { ...PORTAL_CFG, clusterListStyle: 'joined' }, operation: 'restart',
+    });
+    assert.equal(extraVars.ocp_clusters.length, 2, 'birlesik ada indirgenmemeli');
+    assert.ok(!extraVars.ocp_clusters.some((c) => c.cluster_name.includes(',')));
+  }, { meta: META });
+});
+
+test('external mod: portal alanlarinin HICBIRI govdeye girmez (regresyon)', async () => {
+  await withCatalog(async () => {
+    const { extraVars } = await buildOcpTarget({
+      env: 'prod', tenant: 'ark', clusters: ['gbocpprod2'],
+      namespace: 'ns1', appName: 'app1', cfg: CFG,
+      operation: 'restart', objectKind: 'Deployment', podName: 'p1', replicas: 2,
+    });
+    for (const key of ['operation', 'object_kind', 'pod_name', 'replicas', 'oc_namespace_input', 'ocp_username']) {
+      assert.ok(!(key in extraVars), `external modda '${key}' gonderilmemeli`);
+    }
+    // Harici playbook cluster metadata'sini de bilmiyor.
+    assert.ok(!('api_url' in extraVars.ocp_clusters[0]));
+  }, { meta: META });
+});

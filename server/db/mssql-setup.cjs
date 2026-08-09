@@ -1155,9 +1155,18 @@ const PLAYBOOK_REGISTRY_SEED = [
     playbook_path: null, env_var_name: 'OPSX_LEGACY_TEMPLATE_ID',
   },
   {
-    key_name: 'opsx_openshift_operation', display_name: 'OpsX — Openshift Uygulama Operasyonu', category: 'opsx', handler: 'opsx_openshift',
-    description: 'ARK/Non-ARK container uygulamalarinda restart/stop/start islemi.',
+    key_name: 'opsx_openshift_operation', display_name: 'OpsX — Openshift Uygulama Operasyonu (harici playbook)', category: 'opsx', handler: 'opsx_openshift',
+    description: 'ARK/Non-ARK container uygulamalarinda restart/stop/start islemi. HARICI, tek-bastion playbook — Admin > OpsX Yapilandirma > "Playbook modu" VARSAYILAN (external) iken bu satir kullanilir.',
     playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_TEMPLATE_ID',
+  },
+  {
+    // Portalin SAHIP OLDUGU OCP operasyon playbook'u: LogX OCP playbook'lariyla ayni
+    // iskelet (cluster basina bastion, portaldan gelen api_url/credential_key/username,
+    // oc yolunun kesfi, bastion basina hata izolasyonu). Admin > OpsX Yapilandirma'da
+    // "Playbook modu" = portal secildiginde devreye girer.
+    key_name: 'opsx_ocp_operation', display_name: 'OpsX — OCP Uygulama Operasyonu (portal playbook)', category: 'opsx', handler: 'opsx_ocp',
+    description: 'OpenShift uygulamalarinda restart/stop/start/scale, thread & heap dump, pod silme ve salt-okunur teshis (pod listesi, describe, events, rollout status). Cok-bastion destekler.',
+    playbook_path: 'server/ansible/playbooks/opsx_ocp_operation.yml', env_var_name: 'AWX_OPSX_OCP_OPERATION_TEMPLATE_ID',
   },
   // ── Telnet baglanti testi — OpsX ile AYNI desen (bkz. server/telnet/index.cjs) ────
   {

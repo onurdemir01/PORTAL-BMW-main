@@ -1,0 +1,599 @@
+---
+# OpsX - OpenShift uygulama operasyonlari
+# Location:
+#   bmw_automation_folder/portal_tamplates/opsx_ocp_operation.yml
+# Global variables:
+#   bmw_openshift_jobs/global_variables/credentials.yaml
+#
+# NEDEN VAR: OpsX'in Legacy tarafinda (restart/stop/start/threaddump/heapdump) portalin
+# sahip oldugu bir playbook vardi; OpenShift tarafinda ise harici, tek-bastion bir
+# playbook cagriliyordu. Bu dosya OpenShift'i LogX OCP playbook'lariyla AYNI iskelete
+# tasir: cluster-basina bastion, portaldan gelen api_url/credential_key/username,
+# `oc` yolunun kesfi ve bastion-basina hata izolasyonu.
+#
+# ASIL KAYNAK PORTALDIR. Bu playbook AWX'teki openshift_inventory_vars.yaml dosyasina
+# BAGIMLI DEGILDIR; parola yalnizca credentials.yaml (vault) icinden
+# lookup('vars', credential_key) ile cozulur.
+#
+# Required extra_vars:
+#   terminal_host / terminal_hosts        # bkz. logx_ocp_namespace_discovery.yml
+#   ocp_clusters:
+#     - env, tenant, cluster_name
+#       terminal_host                     # opsiyonel; yoksa skaler terminal_host
+#       api_url, credential_key           # portal (v3)
+#       username: uxmid                   # oc login kullanicisi; yoksa `ocp_username`
+#   ocp_username: uxmid                   # portalin GENEL varsayilani
+#   oc_namespace_input: my-namespace      # `namespace` REZERVE ad; portal bunu yollar
+#   app_name: my-app                      # is yuku (Deployment/DC/StatefulSet) ADI
+#   operation: restart                    # asagidaki beyaz listeden biri
+#
+# Opsiyonel extra_vars:
+#   object_kind: Deployment               # bos ise playbook kendisi cozer
+#   pod_name: my-app-7d9f-abcde           # bos ise ada gore ILK eslesen pod
+#   replicas: 2                           # yalniz `start`/`scale` icin hedef replica
+#   staging_dir: /sw/BMW_PORTAL/logs/ocp  # threaddump/heapdump ciktisi buraya birakilir
+#
+# Desteklenen operasyonlar (portal ayrica kendi beyaz listesine karsi dogrular):
+#   DEGISTIREN : restart stop start scale threaddump heapdump podrestart
+#   SALT-OKUNUR: podlist describe events rolloutstatus
+#
+# NOT: threaddump/heapdump ciktisi BASTION uzerinde `staging_dir` altinda birakilir ve
+# yolu sonuca yazilir. Portal uzerinden indirme bu surumde YOKTUR (LogX'in indirme
+# sozlesmesi bir LogX istek satirina baglidir); operator dosyayi bastion'dan alir.
+#
+# AWX NOTU: job template'inde "Prompt on launch" (Variables) ACIK olmalidir. Kapaliysa
+# AWX gonderilen extra_vars'i SESSIZCE yok sayar ve playbook bos girdiyle duser.
+#
+# Output:
+#   artifacts.opsx_result:
+#     { overall_status, operation, namespace, app_name,
+#       clusters: [ { cluster_name, status, error, output_lines[], artifact{} } ] }
+
+- name: "Validate input and add terminal hosts dynamically"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    oc_namespace: "{{ oc_namespace_input | default(namespace | default('')) }}"
+    opsx_operation: "{{ operation | default('') | trim }}"
+    # Etkin bastion listesi: acik liste > legacy skaler > cluster-basina degerler.
+    logx_bastions: >-
+      {{
+        (terminal_hosts | default([]) | union([terminal_host | default('')]))
+        | union(ocp_clusters | default([]) | selectattr('terminal_host', 'defined')
+                                          | map(attribute='terminal_host') | list)
+        | map('trim') | reject('equalto', '') | unique | sort | list
+      }}
+    # Playbook KENDI beyaz listesini tutar: portal dogrulamasi atlansa bile (yanlis
+    # yapilandirilmis bir template, elle launch) rastgele bir komut calismaz.
+    opsx_allowed_operations:
+      - restart
+      - stop
+      - start
+      - scale
+      - threaddump
+      - heapdump
+      - podrestart
+      - podlist
+      - describe
+      - events
+      - rolloutstatus
+
+  tasks:
+    - name: "Validate required input variables"
+      ansible.builtin.assert:
+        that:
+          - logx_bastions | length > 0
+          - ocp_clusters is defined
+          - ocp_clusters is sequence
+          - ocp_clusters | length > 0
+          - oc_namespace | string | trim | length > 0
+          - opsx_operation in opsx_allowed_operations
+        fail_msg: >-
+          Zorunlu extra_vars eksik veya gecersiz →
+          bastion: {{ 'VAR' if (logx_bastions | length > 0) else 'YOK' }},
+          ocp_clusters: {{ (ocp_clusters | default([]) | length) ~ ' oge' if (ocp_clusters is defined) else 'TANIMSIZ' }},
+          namespace: {{ 'VAR' if (oc_namespace | string | trim | length > 0) else 'YOK' }},
+          operation: {{ opsx_operation | default('(bos)') }}
+          (izin verilenler: {{ opsx_allowed_operations | join(', ') }}).
+          Tumu bossa AWX job template'inde "Prompt on launch" (extra variables) kapali
+          olabilir — bu durumda AWX portalin gonderdigi degiskenleri yok sayar.
+
+    # `app_name` salt-okunur namespace islemlerinde (podlist/events) GEREKMEZ; digerlerinde
+    # sart. Ayri assert: mesaj hangi operasyon icin gerektigini soylesin.
+    - name: "Validate app_name for workload-scoped operations"
+      ansible.builtin.assert:
+        that:
+          - app_name is defined
+          - app_name | string | trim | length > 0
+        fail_msg: >-
+          '{{ opsx_operation }}' islemi bir uygulama adi gerektirir (app_name bos).
+      when: opsx_operation not in ['podlist', 'events']
+
+    - name: "Add every bastion to dynamic inventory"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: opsx_terminal
+        oc_namespace: "{{ oc_namespace }}"
+        opsx_operation: "{{ opsx_operation }}"
+      loop: "{{ logx_bastions }}"
+      changed_when: false
+
+
+- name: "OpsX - Run OpenShift operation per cluster"
+  hosts: opsx_terminal
+  # Bir bastion cokse bile digerleri devam etsin.
+  any_errors_fatal: false
+  gather_facts: false
+  become: false
+
+  vars_files:
+    # Parolalar (vault) buradan gelir; extra_vars yalnizca anahtarin ADINI tasir.
+    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
+
+  vars:
+    oc_binary: ""
+    # /bin/oc ILK: kurumsal bastion'larda oc gercekte burada.
+    oc_binary_candidates:
+      - /bin/oc
+      - /usr/local/bin/oc
+      - /usr/bin/oc
+    oc_async_timeout: 300
+    oc_async_retries: 300
+    oc_async_delay: 1
+    opsx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+    opsx_staging_dir: "{{ staging_dir | default('/tmp') }}"
+    opsx_app_name: "{{ app_name | default('') }}"
+    opsx_object_kind: "{{ object_kind | default('') }}"
+    opsx_pod_name: "{{ pod_name | default('') }}"
+    opsx_replicas: "{{ replicas | default(1) }}"
+    oc_probe_paths: >-
+      {{
+        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
+         + (oc_binary_candidates | default([]))) | unique | list
+      }}
+
+  tasks:
+    - name: "Initialize result lists"
+      ansible.builtin.set_fact:
+        resolved_clusters: []
+        validation_errors: []
+        cluster_op_results: []
+      changed_when: false
+
+    - name: "Select the cluster subset that belongs to this bastion"
+      ansible.builtin.set_fact:
+        my_ocp_clusters: >-
+          {{
+            (ocp_clusters | selectattr('terminal_host', 'defined')
+                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+            +
+            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+             if inventory_hostname == ((groups['opsx_terminal'] | default([])) | sort | first)
+             else [])
+          }}
+      changed_when: false
+
+    - name: "Validate requested cluster records"
+      ansible.builtin.set_fact:
+        validation_errors: >-
+          {{
+            validation_errors + ([{
+              'cluster_name': item.cluster_name | default('unknown'),
+              'status': 'error',
+              'error': (
+                'OCP kullanici adi tanimli degil (oc login --username). Admin > LogX '
+                ~ 'Yapilandirma > OCP Cluster Hiyerarsisi satirindaki "OCP Kullanici Adi" '
+                ~ 'alanini doldurun ya da OCP Calistirma Ayarlari icindeki genel '
+                ~ 'varsayilani girin: ' ~ (item.cluster_name | default('?'))
+              ) if (has_portal_meta | bool) else (
+                'Cluster baglanti bilgisi cozulemedi (api_url + credential_key gerekli): '
+                ~ (item.cluster_name | default('?'))
+              ),
+              'output_lines': []
+            }] if not cluster_exists else [])
+          }}
+      vars:
+        has_portal_meta: >-
+          {{ (item.api_url | default('') | string | trim | length > 0)
+             and (item.credential_key | default('') | string | trim | length > 0) }}
+        # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
+        # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
+        resolved_username: >-
+          {{ (item.username | default('', true))
+             or (ocp_username | default('', true))
+             or (username | default('', true)) }}
+        cluster_exists: >-
+          {{
+            item.cluster_name is defined and
+            (has_portal_meta | bool) and
+            (resolved_username | trim | length > 0)
+          }}
+      loop: "{{ my_ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      no_log: true
+      changed_when: false
+
+    # HATA IZOLASYONU: bu bastion'a ait tum is block icinde. ignore_unreachable SART —
+    # rescue yalnizca GOREV hatalarini yakalar, SSH/DNS kesintisini yakalamaz ve o durumda
+    # Ansible toplayici play'i de ATLARDI.
+    - name: "Run this bastion's operations (failure-isolated)"
+      ignore_unreachable: true
+      block:
+        - name: "Resolve valid cluster connection records"
+          ansible.builtin.set_fact:
+            resolved_clusters: >-
+              {{
+                resolved_clusters + ([{
+                  'cluster_name': item.cluster_name,
+                  'url': item.api_url,
+                  'username': resolved_username,
+                  'password': lookup('vars', item.credential_key, default='')
+                }] if cluster_exists else [])
+              }}
+          vars:
+            has_portal_meta: >-
+              {{ (item.api_url | default('') | string | trim | length > 0)
+                 and (item.credential_key | default('') | string | trim | length > 0) }}
+            resolved_username: >-
+              {{ (item.username | default('', true))
+                 or (ocp_username | default('', true))
+                 or (username | default('', true)) }}
+            cluster_exists: >-
+              {{
+                item.cluster_name is defined and
+                (has_portal_meta | bool) and
+                (resolved_username | trim | length > 0)
+              }}
+          loop: "{{ my_ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          no_log: true
+          changed_when: false
+
+        # ── oc kesfi (LogX playbook'lari ile AYNI desen) ─────────────────────────
+        - name: "Probe candidate oc paths"
+          ansible.builtin.stat:
+            path: "{{ item }}"
+          loop: "{{ oc_probe_paths }}"
+          register: oc_stat
+          changed_when: false
+          failed_when: false
+
+        - name: "Collect usable oc paths"
+          ansible.builtin.set_fact:
+            oc_stat_hits: >-
+              {{
+                oc_stat.results | default([])
+                | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+                | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+                | map(attribute='item') | list
+              }}
+          changed_when: false
+
+        - name: "Fall back to PATH lookup when no candidate matched"
+          ansible.builtin.command: command -v oc
+          register: oc_which
+          changed_when: false
+          failed_when: false
+          when: oc_stat_hits | length == 0
+
+        - name: "Resolve the oc binary for this bastion"
+          ansible.builtin.set_fact:
+            oc_bin: >-
+              {{
+                oc_stat_hits[0] if (oc_stat_hits | length > 0)
+                else (oc_which.stdout | default('', true) | trim)
+              }}
+          changed_when: false
+
+        - name: "Fail when no usable oc binary was found"
+          ansible.builtin.fail:
+            msg: >-
+              Bu sunucuda 'oc' bulunamadi. Denenen yollar: {{ oc_probe_paths | join(', ') }};
+              PATH aramasi (command -v oc) da sonucsuz kaldi.
+          when: oc_bin | length == 0
+
+        - name: "Create staging directory for dump artifacts"
+          ansible.builtin.file:
+            path: "{{ opsx_staging_dir }}"
+            state: directory
+            mode: "0750"
+          when: opsx_operation in ['threaddump', 'heapdump']
+          changed_when: false
+          failed_when: false
+
+        # ── Operasyon ───────────────────────────────────────────────────────────
+        # TEK shell blogu + `case`: on ayri gorev seti yerine tek yerde toplanir, ekleme
+        # yapmak bir `case` dali eklemektir. Cikti satir satir portala doner.
+        #
+        # DIKKAT: bu blok icindeki yorumlarda KESME ISARETI KULLANMAYIN. Ansible
+        # argumanlari bolerken tek tirnaklari sayar; tek basina bir kesme isareti
+        # "unbalanced jinja2 block or quotes" hatasi verir ve playbook yuklenemez.
+        - name: "Run the requested operation per cluster"
+          ansible.builtin.shell: |
+            set -o pipefail
+            umask 077
+
+            OC="{{ oc_bin }}"
+            NS={{ oc_namespace | quote }}
+            APP={{ opsx_app_name | quote }}
+            KIND={{ opsx_object_kind | quote }}
+            POD={{ opsx_pod_name | quote }}
+            REPLICAS={{ opsx_replicas | quote }}
+            OP={{ opsx_operation | quote }}
+            STAGE={{ opsx_staging_dir | quote }}
+            JOB={{ opsx_job_id | quote }}
+            CLUSTER={{ cluster.cluster_name | quote }}
+
+            export KUBECONFIG="/tmp/opsx-{{ opsx_job_id }}-{{ cluster.cluster_name | regex_replace('[^A-Za-z0-9._-]', '_') }}.kubeconfig"
+            cleanup() { rm -f "${KUBECONFIG}"; }
+            trap cleanup EXIT
+
+            "${OC}" login \
+              --server={{ cluster.url | quote }} \
+              --username={{ cluster.username | quote }} \
+              --password={{ cluster.password | quote }} \
+              --insecure-skip-tls-verify=true \
+              >/dev/null
+
+            # Is yukunun tam referansi (kind/ad). Portal kind gonderdiyse o kullanilir;
+            # gondermediyse (kullanici adi ELLE yazdiysa) burada cozulur. Cozulemezse
+            # is yuku gerektiren operasyonlar anlasilir bir hatayla durur.
+            resolve_ref() {
+              if [ -n "${KIND}" ]; then
+                echo "${KIND}/${APP}"
+                return 0
+              fi
+              found=$("${OC}" get deployment,deploymentconfig,statefulset -n "${NS}" -o name 2>/dev/null \
+                      | grep -E "/${APP}$" | head -1)
+              if [ -z "${found}" ]; then
+                echo "OPSX_ERROR: '${APP}' adiyla Deployment/DeploymentConfig/StatefulSet bulunamadi (namespace ${NS})." >&2
+                return 1
+              fi
+              echo "${found}"
+            }
+
+            # Ada gore ILK eslesen pod. Portal pod_name gonderdiyse dogrudan o kullanilir.
+            resolve_pod() {
+              if [ -n "${POD}" ]; then
+                echo "${POD}"
+                return 0
+              fi
+              found=$("${OC}" get pods -n "${NS}" -o name 2>/dev/null \
+                      | sed "s|^pod/||" | grep -E "^${APP}" | head -1)
+              if [ -z "${found}" ]; then
+                echo "OPSX_ERROR: '${APP}' ile eslesen calisan bir pod yok (namespace ${NS})." >&2
+                return 1
+              fi
+              echo "${found}"
+            }
+
+            case "${OP}" in
+              podlist)
+                "${OC}" get pods -n "${NS}" -o wide
+                ;;
+              events)
+                "${OC}" get events -n "${NS}" --sort-by=.lastTimestamp
+                ;;
+              describe)
+                REF=$(resolve_ref) || exit 1
+                "${OC}" describe "${REF}" -n "${NS}"
+                ;;
+              rolloutstatus)
+                REF=$(resolve_ref) || exit 1
+                "${OC}" rollout status "${REF}" -n "${NS}" --timeout=120s
+                ;;
+              restart)
+                REF=$(resolve_ref) || exit 1
+                "${OC}" rollout restart "${REF}" -n "${NS}"
+                "${OC}" rollout status "${REF}" -n "${NS}" --timeout=120s || true
+                ;;
+              stop)
+                REF=$(resolve_ref) || exit 1
+                # ONCEKI replica sayisi ciktiya yazilir: operator geri alirken bu degeri
+                # kullanir. Yazilmazsa "start" hangi sayiya donecegini bilemez.
+                CURRENT=$("${OC}" get "${REF}" -n "${NS}" -o jsonpath='{.spec.replicas}' 2>/dev/null)
+                echo "OPSX_PREVIOUS_REPLICAS=${CURRENT:-bilinmiyor}"
+                "${OC}" scale "${REF}" -n "${NS}" --replicas=0
+                ;;
+              start|scale)
+                REF=$(resolve_ref) || exit 1
+                "${OC}" scale "${REF}" -n "${NS}" --replicas="${REPLICAS}"
+                "${OC}" rollout status "${REF}" -n "${NS}" --timeout=120s || true
+                ;;
+              podrestart)
+                TARGET_POD=$(resolve_pod) || exit 1
+                echo "OPSX_DELETED_POD=${TARGET_POD}"
+                "${OC}" delete pod "${TARGET_POD}" -n "${NS}"
+                ;;
+              threaddump)
+                TARGET_POD=$(resolve_pod) || exit 1
+                OUT="${STAGE}/threaddump_${CLUSTER}_${TARGET_POD}_${JOB}.txt"
+                # JVM thread dump SIGQUIT ile alinir ve JVM in KENDI stdout una yazilir;
+                # bu yuzden dump u pod loglarindan toplariz.
+                "${OC}" exec "${TARGET_POD}" -n "${NS}" -- kill -3 1
+                sleep 3
+                "${OC}" logs "${TARGET_POD}" -n "${NS}" --tail=4000 > "${OUT}"
+                echo "OPSX_ARTIFACT=${OUT}"
+                echo "OPSX_ARTIFACT_BYTES=$(wc -c < "${OUT}" | tr -d ' ')"
+                ;;
+              heapdump)
+                TARGET_POD=$(resolve_pod) || exit 1
+                REMOTE="/tmp/heapdump_${JOB}.hprof"
+                OUT="${STAGE}/heapdump_${CLUSTER}_${TARGET_POD}_${JOB}.hprof"
+                # PID 1 varsayimi kurumsal JVM imajlarinda gecerli; degilse jcmd/jmap
+                # zaten anlasilir bir hata dondurur ve is bu cluster icin durur.
+                "${OC}" exec "${TARGET_POD}" -n "${NS}" -- jcmd 1 GC.heap_dump "${REMOTE}" \
+                  || "${OC}" exec "${TARGET_POD}" -n "${NS}" -- jmap -dump:live,format=b,file="${REMOTE}" 1
+                "${OC}" cp "${NS}/${TARGET_POD}:${REMOTE}" "${OUT}"
+                "${OC}" exec "${TARGET_POD}" -n "${NS}" -- rm -f "${REMOTE}" || true
+                echo "OPSX_ARTIFACT=${OUT}"
+                echo "OPSX_ARTIFACT_BYTES=$(wc -c < "${OUT}" | tr -d ' ')"
+                ;;
+              *)
+                echo "OPSX_ERROR: desteklenmeyen operasyon: ${OP}" >&2
+                exit 2
+                ;;
+            esac
+          args:
+            executable: /bin/bash
+          loop: "{{ resolved_clusters }}"
+          loop_control:
+            loop_var: cluster
+            label: "{{ cluster.cluster_name }}"
+          register: op_jobs
+          async: "{{ oc_async_timeout }}"
+          poll: 0
+          # `changed_when: false` DEGIL: bu playbook GERCEKTEN degisiklik yapabiliyor.
+          # Salt-okunur operasyonlarda degisiklik bildirmemek dogru olan.
+          changed_when: opsx_operation not in ['podlist', 'describe', 'events', 'rolloutstatus']
+          no_log: true
+
+        - name: "Wait for operation jobs"
+          ansible.builtin.async_status:
+            jid: "{{ item.ansible_job_id }}"
+          loop: "{{ op_jobs.results | default([]) }}"
+          loop_control:
+            label: "{{ item.cluster.cluster_name }}"
+          register: op_wait
+          until: op_wait.finished
+          retries: "{{ oc_async_retries }}"
+          delay: "{{ oc_async_delay }}"
+          ignore_errors: true
+          changed_when: false
+          no_log: true
+
+        - name: "Build structured operation results"
+          ansible.builtin.set_fact:
+            cluster_op_results: >-
+              {{
+                cluster_op_results + [{
+                  'cluster_name': item.item.cluster.cluster_name,
+                  'status': 'error' if failed_now else 'ok',
+                  'error': (item.stderr | default(item.msg | default('Bilinmeyen OpenShift hatasi'), true)) if failed_now else '',
+                  'output_lines': item.stdout_lines | default([]),
+                  'artifact': {
+                    'path': (marker_lines | select('match', '^OPSX_ARTIFACT=') | map('regex_replace', '^OPSX_ARTIFACT=', '') | list | first) | default('', true),
+                    'size_bytes': (marker_lines | select('match', '^OPSX_ARTIFACT_BYTES=') | map('regex_replace', '^OPSX_ARTIFACT_BYTES=', '') | list | first) | default('', true)
+                  }
+                }]
+              }}
+          vars:
+            failed_now: "{{ item.failed | default(false) or (item.rc | default(0) | int != 0) }}"
+            marker_lines: "{{ item.stdout_lines | default([]) }}"
+          loop: "{{ op_wait.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.cluster.cluster_name }}"
+          changed_when: false
+
+        - name: "Append validation errors"
+          ansible.builtin.set_fact:
+            cluster_op_results: "{{ cluster_op_results + validation_errors }}"
+          changed_when: false
+
+      rescue:
+        - name: "Record the bastion-level failure"
+          ansible.builtin.set_fact:
+            bastion_error: >-
+              {{
+                ansible_failed_result.msg
+                | default(ansible_failed_result.stderr | default('Bilinmeyen bastion hatasi', true), true)
+              }}
+          changed_when: false
+
+        # Katalog dogrulama hatalari block DISINDA uretilmisti; block coktugu icin
+        # "Append ..." gorevi calismadi — burada eklenir ki kaybolmasinlar.
+        - name: "Keep validation errors even when the bastion failed"
+          ansible.builtin.set_fact:
+            cluster_op_results: "{{ cluster_op_results + (validation_errors | default([])) }}"
+          changed_when: false
+
+        - name: "Mark this bastion's unfinished clusters as failed"
+          ansible.builtin.set_fact:
+            cluster_op_results: >-
+              {{
+                cluster_op_results + [{
+                  'cluster_name': item.cluster_name | default('unknown'),
+                  'status': 'error',
+                  'error': bastion_error,
+                  'output_lines': [],
+                  'artifact': {'path': '', 'size_bytes': ''}
+                }]
+              }}
+          loop: "{{ my_ocp_clusters | default([]) }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          when: >-
+            (item.cluster_name | default('')) not in
+            (cluster_op_results | default([]) | map(attribute='cluster_name') | list)
+          changed_when: false
+
+
+# set_stats BILEREK tek bir yazardan (localhost) yayinlanir: birden cok host ayni anahtari
+# yazarsa Ansible listeleri BIRLESTIRMEZ, sonuncu yazan ezer.
+- name: "Aggregate per-bastion results and publish a single opsx_result"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    oc_namespace: "{{ oc_namespace_input | default(namespace | default('')) }}"
+
+  tasks:
+    - name: "Clear any host errors so aggregation always runs"
+      ansible.builtin.meta: clear_host_errors
+
+    - name: "Initialize merged result list"
+      ansible.builtin.set_fact:
+        merged_op_results: []
+      changed_when: false
+
+    - name: "Collect each requested cluster's result from its own bastion"
+      ansible.builtin.set_fact:
+        merged_op_results: >-
+          {{
+            merged_op_results + [
+              (found | first) if (found | length > 0) else {
+                'cluster_name': item.cluster_name | default('unknown'),
+                'status': 'error',
+                'error': 'Bastion sonuc bildirmedi (erisilemedi ya da is yarida kaldi).',
+                'output_lines': [],
+                'artifact': {'path': '', 'size_bytes': ''}
+              }
+            ]
+          }}
+      vars:
+        owner: >-
+          {{ item.terminal_host | default((groups['opsx_terminal'] | default([])) | sort | first) }}
+        found: >-
+          {{
+            (hostvars[owner]['cluster_op_results'] | default([]))
+            | selectattr('cluster_name', 'equalto', item.cluster_name | default(''))
+            | list
+          }}
+      loop: "{{ ocp_clusters | default([]) }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      changed_when: false
+
+    - name: "Publish OpsX operation result"
+      ansible.builtin.set_stats:
+        data:
+          opsx_result:
+            # TEK ifade: `{% set %}` satirlari katlamali skalerde bosluga donusup sonuca
+            # "  success" gibi bastan bosluklu bir deger birakiyordu (LogX'te gozlendi).
+            overall_status: >-
+              {{ 'success' if (merged_op_results | rejectattr('status', 'equalto', 'ok') | list | length) == 0
+                 else ('failed' if (merged_op_results | selectattr('status', 'equalto', 'ok') | list | length) == 0
+                 else 'partial') }}
+            operation: "{{ operation | default('') }}"
+            namespace: "{{ oc_namespace }}"
+            app_name: "{{ app_name | default('') }}"
+            clusters: "{{ merged_op_results }}"
+        aggregate: true
+        per_host: false

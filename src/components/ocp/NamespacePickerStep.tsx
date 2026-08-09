@@ -1,12 +1,15 @@
-// src/components/logx_v2/steps/ocp/NamespacePickerStep.tsx — Namespace listesini
+// src/components/ocp/NamespacePickerStep.tsx — Namespace listesini
 // (cluster'lar arasında tekilleştirilmiş) aranabilir şekilde gösterir.
+//
+// PAYLAŞIMLI: LogX ve OpsX sihirbazlarının ikisi de bunu kullanır. Kopyalanmadı —
+// önbellek rozeti, kısıtlama davranışı ve "hepsi başarısız" hata kartı tek yerde kalsın.
 //
 // Liste iki kaynaktan gelebilir: paylaşımlı önbellek (anında) veya canlı discovery job'ı.
 // Bileşen kaynağı UMURSAMAZ — düz bir ad listesi alır; tazelik bilgisi `cache` prop'uyla
 // gelir ve rozette gösterilir. Böylece "önce önbellek, istersen tazele" akışı tek yerde kalır.
 import React, { useMemo, useState } from "react";
 import { MagnifyingGlassIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import CacheBadge from "../../shared/CacheBadge";
+import CacheBadge from "./CacheBadge";
 
 interface Props {
   namespaces: string[];

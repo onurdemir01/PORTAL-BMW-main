@@ -1,16 +1,22 @@
 // src/components/opsx/steps/OcpTargetStep.tsx — Openshift hedefi: ortam → tenant →
-// cluster(lar) + namespace + uygulama adı.
+// cluster(lar).
 //
 // NEDEN ÜÇ SEVİYE: AWX gövdesi `ocp_clusters: [{ env, tenant, cluster_name }]` istiyor,
 // yani env VE tenant VE cluster_name ayrı ayrı gerekiyor — bu yüzden LogX'teki üç
 // kademeli seçim korunmak zorunda. `terminal_host` ise SUNUCUDA çözülür
 // (ocp_terminal_host_map, tenant+env eşlemesi) — kullanıcı girmez.
+//
+// NAMESPACE VE UYGULAMA ADI BURADA DEĞİL: eskiden ikisi de bu ekranda ELLE yazılıyordu
+// (kullanıcı adları ezberden bilmek zorundaydı). Artık LogX'in paylaşımlı keşif
+// önbelleğinden seçilirler — sihirbazın sonraki iki adımı
+// (`src/components/ocp/NamespacePickerStep` + `AppNameStep`, iki modülün ORTAK
+// bileşenleri). Serbest metin girişi yine mümkün; yalnız varsayılan yol seçim oldu.
 import React, { useEffect, useState } from "react";
 import { opsxApi } from "@/api/opsxApi";
 
 const OcpTargetStep: React.FC<{
   busy?: boolean;
-  onSubmit: (v: { env: string; tenant: string; clusters: string[]; namespace: string; appName: string }) => void;
+  onSubmit: (v: { env: string; tenant: string; clusters: string[] }) => void;
 }> = ({ busy, onSubmit }) => {
   const [tree, setTree] = useState<Record<string, Record<string, string[]>>>({});
   const [loading, setLoading] = useState(true);
@@ -18,8 +24,6 @@ const OcpTargetStep: React.FC<{
   const [env, setEnv] = useState("");
   const [tenant, setTenant] = useState("");
   const [clusters, setClusters] = useState<Set<string>>(new Set());
-  const [namespace, setNamespace] = useState("");
-  const [appName, setAppName] = useState("");
 
   useEffect(() => {
     opsxApi.getClusters()
@@ -40,7 +44,7 @@ const OcpTargetStep: React.FC<{
     });
   }
 
-  const ready = env && tenant && clusters.size > 0 && namespace.trim() && appName.trim();
+  const ready = Boolean(env && tenant && clusters.size > 0);
 
   if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
   if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
@@ -102,35 +106,12 @@ const OcpTargetStep: React.FC<{
         </div>
       )}
 
-      {clusters.size > 0 && (
-        <>
-          <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Namespace</label>
-            <input
-              value={namespace}
-              onChange={(e) => setNamespace(e.target.value)}
-              placeholder="das-trading-management-qa"
-              className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Uygulama Adı</label>
-            <input
-              value={appName}
-              onChange={(e) => setAppName(e.target.value)}
-              placeholder="dropcopy-integration-v0"
-              className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
-            />
-          </div>
-        </>
-      )}
-
       <button
-        onClick={() => onSubmit({ env, tenant, clusters: [...clusters], namespace: namespace.trim(), appName: appName.trim() })}
+        onClick={() => onSubmit({ env, tenant, clusters: [...clusters] })}
         disabled={!ready || busy}
         className="btn-primary w-full"
       >
-        {busy ? "Gönderiliyor…" : "İşlemi Başlat"}
+        Devam
       </button>
     </div>
   );

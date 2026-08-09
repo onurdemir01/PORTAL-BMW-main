@@ -1,4 +1,4 @@
-// src/components/logx_v2/steps/ocp/AppNameStep.tsx — `oc get pods | grep -i <app>`
+// src/components/ocp/AppNameStep.tsx — `oc get pods | grep -i <app>`
 // semantiğine karşılık gelen uygulama seçimi. Eşleşen TÜM pod'ların logları backend
 // tarafından otomatik toplanır (kullanıcı kararı — ayrı bir pod-seçim adımı yok).
 //
@@ -8,8 +8,8 @@
 // yazabilmek geriye uyum ve kaçış yoludur.
 import React, { useEffect, useMemo, useState } from "react";
 import { MagnifyingGlassIcon, MagnifyingGlassCircleIcon } from "@heroicons/react/24/outline";
-import { logxV2Api, type OcpAppItem } from "@/api/logxV2Api";
-import CacheBadge from "../../shared/CacheBadge";
+import { logxV2Api, type OcpAppItem, type CachedList } from "@/api/logxV2Api";
+import CacheBadge from "./CacheBadge";
 
 interface Props {
   env?: string;
@@ -19,9 +19,21 @@ interface Props {
   /** Değiştiğinde önbellek yeniden okunur (keşif job'ı bittiğinde üst bileşen artırır). */
   reloadToken?: number;
   onSubmit: (appName: string) => void;
-  /** Canlı uygulama keşfini tetikler (AWX job'ı). */
+  /** Canlı uygulama keşfini tetikler (AWX job'ı). Verilmezse "tara" butonu çıkmaz. */
   onDiscover?: () => void;
   busy?: boolean;
+  /** Önbellek okuyucusu. Varsayılan LogX ucudur; OpsX kendi ucunu geçer
+   *  (LogX router'ı `requireVisiblePrefix('LogX')` arkasında — OpsX görünür ama LogX
+   *  görünmez olan kullanıcı o ucu çağıramaz). Veri ve kısıtlama mantığı aynı sunucu
+   *  modüllerinden gelir; ayrılan yalnızca HTTP kapısıdır. */
+  fetchApps?: (env: string, tenant: string, cluster: string, namespace: string) => Promise<CachedList<OcpAppItem>>;
+  /** Seçim yapıldığında uygulama meta bilgisi de gerekiyorsa (OpsX işlem adımı `kind` ve
+   *  `replicas` değerlerini playbook'a taşır). */
+  onSubmitDetailed?: (app: { name: string; kinds: string[]; replicas: number | null }) => void;
+  /** Devam butonunun metni. Varsayılan LogX akışına göredir. */
+  submitLabel?: string;
+  /** Liste üstündeki açıklama. Varsayılan LogX akışına göredir (tüm pod logları). */
+  description?: React.ReactNode;
 }
 
 // Aynı uygulama birden çok cluster'da ve birden çok obje tipinde (Deployment + Service +
@@ -42,7 +54,10 @@ export function groupApps(items: OcpAppItem[]): { name: string; kinds: string[];
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reloadToken, onSubmit, onDiscover, busy }) => {
+const AppNameStep: React.FC<Props> = ({
+  env, tenant, clusters, namespace, reloadToken, onSubmit, onDiscover, busy,
+  fetchApps = logxV2Api.cachedApps, onSubmitDetailed, submitLabel, description,
+}) => {
   const [appName, setAppName] = useState("");
   const [items, setItems] = useState<OcpAppItem[]>([]);
   const [cache, setCache] = useState<{ fetchedAt: string | null; stale: boolean } | null>(null);
@@ -62,7 +77,7 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
       try {
         const results = await Promise.all(
           clusterKey.split(",").map((c) =>
-            logxV2Api.cachedApps(env, tenant, c, namespace)
+            fetchApps(env, tenant, c, namespace)
               .then((r) => ({ cluster: c, r, status: 0 }))
               .catch((e: unknown) => ({
                 cluster: c, r: null, status: (e as { status?: number })?.status ?? 0,
@@ -113,8 +128,12 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
       {cache && <CacheBadge fetchedAt={cache.fetchedAt} stale={cache.stale} onRediscover={onDiscover} busy={busy} actionLabel="Yeniden tara" />}
 
       <p className="text-sm text-[var(--text-secondary)]">
-        <span className="font-mono text-[var(--text-primary)]">{namespace}</span> içindeki uygulamayı seçin
-        {" — "}eşleşen TÜM pod'ların logları toplanacaktır.
+        {description ?? (
+          <>
+            <span className="font-mono text-[var(--text-primary)]">{namespace}</span> içindeki uygulamayı seçin
+            {" — "}eşleşen TÜM pod'ların logları toplanacaktır.
+          </>
+        )}
       </p>
 
       <div className="relative">
@@ -176,11 +195,18 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
       )}
 
       <button
-        onClick={() => onSubmit(appName.trim())}
+        onClick={() => {
+          const name = appName.trim();
+          // Ad listeden geldiyse kind/replica bilgisi de tasinabilir — OpsX bunlari
+          // playbook'a gecirir (oc rollout restart deployment/<ad> gibi). Kullanici adi
+          // ELLE yazdiysa eslesme olmaz; o zaman playbook kind'i kendisi cozer.
+          onSubmitDetailed?.(groups.find((g) => g.name === name) ?? { name, kinds: [], replicas: null });
+          onSubmit(name);
+        }}
         disabled={!appName.trim() || busy}
         className="btn-primary w-full"
       >
-        {busy ? "Başlatılıyor…" : "Logları Getir"}
+        {busy ? "Başlatılıyor…" : (submitLabel ?? "Logları Getir")}
       </button>
     </div>
   );

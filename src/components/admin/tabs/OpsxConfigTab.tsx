@@ -25,6 +25,10 @@ interface PlatformConfig {
   appNameKey?: string;
   clustersKey?: string;
   clusterListStyle?: "joined" | "perCluster";
+  /** Openshift'te hangi playbook kaydının kullanılacağı. Varsayılan `external`
+   *  (bugünkü harici, tek-bastion playbook); `portal` portalın sahip olduğu
+   *  çok-bastion playbook'u (`opsx_ocp_operation`) çalıştırır. */
+  playbookMode?: "external" | "portal";
   // Ortak
   extraVars: string;
   separator: string;
@@ -180,7 +184,35 @@ export default function OpsxConfigTab() {
             </div>
 
             {plat === "openshift" && (
-              <div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                    Playbook modu
+                  </label>
+                  <select
+                    value={c.playbookMode ?? "external"}
+                    onChange={(e) => update(plat, "playbookMode", e.target.value)}
+                    className="px-2.5 py-1.5 text-sm border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
+                  >
+                    <option value="external">Harici playbook (opsx_openshift_operation)</option>
+                    <option value="portal">Portal playbook (opsx_ocp_operation)</option>
+                  </select>
+                  <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                    <strong>Harici</strong> bugünkü davranıştır: portalın sahip olmadığı, tek-bastion
+                    playbook çağrılır ve gövdeye <span className="font-mono">operation</span> konmaz.
+                    <strong className="ml-1">Portal</strong> seçeneği, LogX OCP playbook'larıyla aynı
+                    iskeletteki <span className="font-mono">opsx_ocp_operation</span> kaydını çalıştırır:
+                    cluster başına jump server, portaldan gelen API URL / vault anahtarı / kullanıcı adı
+                    ve genişletilmiş işlem kümesi (scale, pod silme, salt-okunur teşhis). Bu modda cluster
+                    listesi <strong>her zaman cluster başına</strong> gönderilir.
+                  </p>
+                  <p className="mt-1 text-xs px-2 py-1.5 rounded-lg bg-amber-50 text-amber-800">
+                    ⚠ Portal moduna geçmeden önce <span className="font-mono">opsx_ocp_operation.yml</span>
+                    dosyasını AWX projesine kopyalayın, bir Job Template açın ve Template ID'sini
+                    Admin &gt; Playbook Kayıtları'ndaki <span className="font-mono">opsx_ocp_operation</span>
+                    satırına yazın. Template'te <strong>Prompt on launch</strong> (Variables) işaretli olmalı.
+                  </p>
+                </div>
                 <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
                   Cluster listesi biçimi
                 </label>
@@ -204,6 +236,12 @@ export default function OpsxConfigTab() {
                   (<span className="font-mono">telnet_openshift_operation</span>) aynı sözleşmeyi
                   beklediğinden emin olun.
                 </p>
+                {c.playbookMode === "portal" && (
+                  <p className="mt-1 text-xs px-2 py-1.5 rounded-lg bg-blue-50 text-blue-800">
+                    Portal modunda liste biçimi <strong>cluster başına</strong> olarak sabitlenir;
+                    yukarıdaki seçim yok sayılır (portal playbook'u birleşik adı çözemez).
+                  </p>
+                )}
               </div>
             )}
 
