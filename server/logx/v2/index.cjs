@@ -457,6 +457,11 @@ function initLogXv2(app) {
 
   app.use('/api/logx/v2', router);
   cleanup.startCleanupJob();
+  // Kesif onbellegini besleyen periyodik job — VARSAYILAN KAPALI, admin ekranindan
+  // acilir (bkz. ocp-sync.cjs). Baslatma hatasi portali dusurmemeli.
+  try { require('./ocp-sync.cjs').startOcpSync(); } catch (e) {
+    console.warn('[LogXv2] OCP sync baslatilamadi:', e.message);
+  }
   console.log('[LogXv2] module mounted at /api/logx/v2');
 }
 
