@@ -35,12 +35,18 @@ async function resolveTarget() {
 // JSON'dan gelir. LogX v2'nin jobs.cjs'teki extractLogxResultFromArtifacts'inin FileX icin
 // kucuk bir kopyasi — LogX'in kendi kalici request/job tablosuna bagimli olmadan, OpsX gibi
 // hafif (stateless) bir akista kullanilabilsin diye ayri tutulur.
+//
+// playbook v2'den itibaren her host'un dosya listesi HAM METIN olarak gelir (meta_raw +
+// sha_raw, bkz. filex_list_files.yml basligindaki performans notu) — burada
+// filex-parse.cjs ile path bazinda birlestirilip nihai `files[]` uretilir. Bu adim
+// olmadan onyuz meta_raw/sha_raw dize ciftini gormek zorunda kalirdi.
 function extractFilexResult(rawArtifacts) {
   const artifacts = rawArtifacts || {};
-  if (artifacts.filex_result && typeof artifacts.filex_result === 'object') return artifacts.filex_result;
-  if (artifacts.data?.filex_result && typeof artifacts.data.filex_result === 'object') return artifacts.data.filex_result;
+  const { parseFilexResult } = require('./filex-parse.cjs');
+  if (artifacts.filex_result && typeof artifacts.filex_result === 'object') return parseFilexResult(artifacts.filex_result);
+  if (artifacts.data?.filex_result && typeof artifacts.data.filex_result === 'object') return parseFilexResult(artifacts.data.filex_result);
   if (artifacts.ansible_stats?.data?.filex_result && typeof artifacts.ansible_stats.data.filex_result === 'object') {
-    return artifacts.ansible_stats.data.filex_result;
+    return parseFilexResult(artifacts.ansible_stats.data.filex_result);
   }
   return null;
 }
