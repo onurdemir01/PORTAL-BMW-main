@@ -181,3 +181,48 @@ test('ocp-runtime-config: anahtar YOKSA varsayilan, BILEREK bosaltilmissa bos ka
   assert.equal(cfg.normalize({}).defaultOcpUsername, 'uxmid');
   assert.equal(cfg.normalize({ defaultOcpUsername: '' }).defaultOcpUsername, '');
 });
+
+// ── Coklu hedef + arsiv adlandirma (2026-08-09 kullanici istegi) ─────────────
+// LogX bir calistirmada tek (namespace, uygulama) cifti aliyordu; uc uygulamanin logunu
+// isteyen kullanici sihirbazi uc kez bastan calistirmak zorundaydi. Ayrica uretilen arsiv
+// adi yalnizca jump server + rastgele hash idi (gbarkp54__0dda63d4....zip) ve indirilen
+// dosyanin neye ait oldugu anlasilmiyordu.
+
+test('normalizeTargets(): kirpar, bos olani atar, tekillestirir', () => {
+  const { normalizeTargets } = require('../ocp.cjs');
+  assert.deepEqual(
+    normalizeTargets([
+      { namespace: '  ns1 ', appName: ' app1 ' },
+      { namespace: 'ns1', appName: 'app1' },        // mukerrer
+      { namespace: 'ns1', appName: '' },            // uygulama bos → atilir
+      { namespace: '', appName: 'app2' },           // namespace bos → atilir
+      { namespace: 'ns2', app_name: 'app2' },       // playbook alan adi da kabul
+    ]),
+    [{ namespace: 'ns1', appName: 'app1' }, { namespace: 'ns2', appName: 'app2' }]
+  );
+});
+
+test('normalizeTargets(): TEK nesne de kabul edilir (eski cagri sekli)', () => {
+  const { normalizeTargets } = require('../ocp.cjs');
+  assert.deepEqual(
+    normalizeTargets({ namespace: 'ns1', appName: 'app1' }),
+    [{ namespace: 'ns1', appName: 'app1' }]
+  );
+});
+
+test('slugPart(): dosya adina guvenli, kirpilmis parca uretir', () => {
+  const { slugPart } = require('../ocp.cjs');
+  assert.equal(slugPart('Reference-Applications_PROD'), 'reference-applications_prod');
+  assert.equal(slugPart('risk/engine v2'), 'risk-engine-v2');
+  assert.equal(slugPart('!!!'), 'x', 'tamamen gecersiz girdi bos ad uretmemeli');
+  assert.equal(slugPart('a'.repeat(200)).length, 60, 'parca basina kirpma');
+  // Dosya adina giren her karakter guvenli olmali (path ayraci, bosluk, tirnak YOK).
+  assert.match(slugPart('../../etc/passwd'), /^[a-z0-9._-]+$/);
+  assert.ok(!slugPart('../../etc/passwd').includes('/'));
+});
+
+test('MAX_TARGETS: sunucu tarafinda ust sinir TANIMLI', () => {
+  const { MAX_TARGETS } = require('../ocp.cjs');
+  // Sinirsiz olsaydi tek POST ile yuzlerce `oc login` + pod taramasi tetiklenebilirdi.
+  assert.ok(Number.isInteger(MAX_TARGETS) && MAX_TARGETS > 0 && MAX_TARGETS <= 100);
+});

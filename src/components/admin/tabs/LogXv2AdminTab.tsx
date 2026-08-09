@@ -9,7 +9,7 @@ import {
 import {
   logxV2Api,
   type OcpClusterIndexRow, type OcpTerminalHostRow, type EnvSuffixRow, type RestrictionRow,
-  type OcpVaultKeyRow,
+  type OcpVaultKeyRow, type PlaybookReadinessRow,
 } from "@/api/logxV2Api";
 import SimpleCrudTable, { type ColumnDef } from "./logxv2/SimpleCrudTable";
 import { useToast } from "@/hooks/useToast";
@@ -441,6 +441,76 @@ const ClusterRowActions: React.FC<{ row: OcpClusterIndexRow }> = ({ row }) => {
   );
 };
 
+// LogX'in kullandigi playbook kayitlarinin hazirlik durumu. Uretimde "Bu namespace'i tara"
+// 503 dondu ve sebebi (template ID tanimsiz ya da AWX'te "Prompt on launch" KAPALI —
+// bu durumda AWX gonderilen extra_vars'i sessizce yok sayar) hicbir ekranda gorunmuyordu.
+const PlaybookReadinessPanel: React.FC = () => {
+  const [rows, setRows] = useState<PlaybookReadinessRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await logxV2Api.admin.getPlaybookReadiness();
+      setRows(r.rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  const problems = (rows || []).filter(
+    (r) => !r.templateId || r.foundOnAwx === false || r.promptOnLaunch === false || !r.enabled
+  );
+
+  return (
+    <div className="border border-gray-200 rounded-xl p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-semibold text-gray-700">Playbook hazırlık durumu</h4>
+        <button onClick={load} disabled={loading}
+          className="text-xs text-gray-500 hover:text-gray-800 disabled:opacity-50">
+          {loading ? "Kontrol ediliyor…" : "Yenile"}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-700">{error}</p>}
+      {rows && problems.length === 0 && (
+        <p className="text-xs text-emerald-700">Tüm LogX playbook kayıtları hazır.</p>
+      )}
+      {rows && problems.length > 0 && (
+        <ul className="space-y-1.5">
+          {problems.map((r) => (
+            <li key={r.keyName} className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
+              <span className="font-mono font-medium">{r.keyName}</span>
+              {" — "}
+              {!r.enabled && "kayıt devre dışı. "}
+              {!r.templateId && "AWX template ID tanımlı değil (Admin > Playbook Kayıtları). "}
+              {r.foundOnAwx === false && `Template ${r.templateId}, AWX ${r.awxServerId} üzerinde bulunamadı. `}
+              {r.promptOnLaunch === false && (
+                <>
+                  AWX'te <strong>"Prompt on launch" (Variables) KAPALI</strong> — bu durumda AWX,
+                  portalın gönderdiği değişkenleri sessizce yok sayar ve playbook boş girdiyle
+                  hata verir. AWX &gt; Job Templates &gt; {r.templateName || r.templateId} &gt;
+                  Variables bölümünde kutuyu işaretleyin.
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows && rows.some((r) => r.foundOnAwx === null && r.templateId) && (
+        <p className="text-xs text-gray-400">
+          Bazı template'lerin durumu AWX'ten okunamadı (ağ/yetki) — "kapalı" anlamına gelmez.
+        </p>
+      )}
+    </div>
+  );
+};
+
 const LogXv2AdminTab: React.FC = () => {
   const [subTab, setSubTab] = useState<SubTabId>("clusters");
 
@@ -501,6 +571,7 @@ const LogXv2AdminTab: React.FC = () => {
             diğer cluster'lar çalışmaya devam eder.
           </div>
           <VaultKeyWarning />
+          <PlaybookReadinessPanel />
           <BootstrapSeedPanel onSeeded={clusters.reload} />
           <SimpleCrudTable columns={clusterCols} rows={clusters.rows} emptyRow={CLUSTER_EMPTY}
             onCreate={clusters.onCreate} onUpdate={clusters.onUpdate} onDelete={clusters.onDelete}

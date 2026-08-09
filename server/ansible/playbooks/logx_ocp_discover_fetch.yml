@@ -9,6 +9,14 @@
 # Required extra_vars (v2 - per-cluster bastion):
 #   terminal_host: GBAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
 #   terminal_hosts: [GBAOCP01, GBAOCP02] # optional; unique, sorted list of bastions
+#   ocp_targets:                          # COKLU HEDEF (namespace, app) ciftleri
+#     - namespace: reference-applications-prod
+#       app_name: parallel-composition-v3
+#     - namespace: das-trading-qa
+#       app_name: risk-engine
+#   archive_id: 0dda63d4                  # calistirmayi benzersizlestiren kisa kimlik
+#
+#   # Geriye uyum (ocp_targets YOKSA tek hedef bunlardan kurulur):
 #   oc_namespace_input: application-namespace   # `namespace` REZERVE ad; portal bunu yollar
 #   namespace: application-namespace            # eski ad, geriye uyum icin hala okunur
 #   app_name: application-name-fragment
@@ -26,14 +34,16 @@
 # api_url/credential_key/username gonderiyorsa o dosya hic okunmasa da is calisir.
 #   staging_dir: /target/staging/path
 #   fallback_dir: /tmp/logx_fallback
-#   archive_name: logx_ocp_logs.zip      # with >1 bastion each host prefixes it with its own name
 #
-# Backward compatibility: with a single bastion and no per-cluster terminal_host the
-# behaviour AND the archive name are identical to the previous version.
+# ARSIV ADI ARTIK BURADA KURULUR. Is birimi = (cluster x namespace x uygulama); her birim
+# KENDI arsivini uretir ve adi
+#   <cluster>__<namespace>__<uygulama>__<archive_id>.zip
+# olur. Eskiden ad yalnizca bastion adi + rastgele hash idi ve indirilen dosyanin neye ait
+# oldugu anlasilmiyordu (kullanici geri bildirimi, 2026-08-09).
 #
 # Output:
-#   artifacts.logx_result — legacy scalar fields kept (first archive) plus
-#   `staged_files[]` carrying every produced archive (one per bastion).
+#   artifacts.logx_result — legacy tekil alanlar (ilk arsiv) korunur; `staged_files[]`
+#   uretilen HER arsivi tasir (birim basina bir oge: cluster/namespace/app_name/filename).
 
 - name: "Validate input and add terminal hosts dynamically"
   hosts: localhost
@@ -43,6 +53,15 @@
 
   vars:
     oc_namespace: "{{ oc_namespace_input | default(namespace | default('')) }}"
+    # COKLU HEDEF: portal (namespace, app_name) ciftlerini `ocp_targets` ile yollar.
+    # Gondermezse (eski portal surumu) tekil alanlardan tek elemanli liste kurulur —
+    # tek hedef, coklu hedefin ozel halidir; iki ayri kod yolu YOK.
+    logx_targets: >-
+      {{
+        (ocp_targets | default([], true))
+        if (ocp_targets | default([], true) | length > 0)
+        else ([{'namespace': oc_namespace, 'app_name': app_name | default('')}])
+      }}
     # Etkin bastion listesi: acik liste > legacy skaler > cluster-basina degerler.
     logx_bastions: >-
       {{
@@ -57,32 +76,36 @@
       ansible.builtin.assert:
         that:
           - logx_bastions | length > 0
-          - oc_namespace | string | trim | length > 0
-          - app_name is defined
-          - app_name | string | trim | length > 0
           - ocp_clusters is defined
           - ocp_clusters is sequence
           - ocp_clusters | length > 0
+          - logx_targets | length > 0
+          # Her hedef HEM namespace HEM uygulama adi tasimali; biri bos ise o birim
+          # sessizce "hicbir pod eslesmedi" gibi gorunurdu.
+          - logx_targets | rejectattr('namespace', 'defined') | list | length == 0
+          - logx_targets | rejectattr('app_name', 'defined') | list | length == 0
+          - logx_targets | map(attribute='namespace') | map('trim') | select('equalto', '') | list | length == 0
+          - logx_targets | map(attribute='app_name') | map('trim') | select('equalto', '') | list | length == 0
           - staging_dir is defined
           - staging_dir | string | trim | length > 0
           - fallback_dir is defined
           - fallback_dir | string | trim | length > 0
-          - archive_name is defined
-          - archive_name | string | trim | length > 0
-          - archive_name is match('^[A-Za-z0-9._-]+\\.zip$')
-        fail_msg: "Required variables are missing or archive_name is invalid."
+          # Arsiv ADINI artik playbook kurar (cluster/namespace/uygulama bilgisi burada);
+          # portal yalnizca calistirmayi benzersizlestiren kisa bir kimlik gonderir.
+          - archive_id is defined
+          - archive_id is match('^[A-Za-z0-9]{4,32}$')
+        fail_msg: >-
+          Zorunlu degiskenler eksik ya da gecersiz →
+          bastion: {{ logx_bastions | length }}, cluster: {{ ocp_clusters | default([]) | length }},
+          hedef: {{ logx_targets | length }}, archive_id: {{ archive_id | default('(yok)') }}.
+          Tumu bossa AWX job template'inde "Prompt on launch" (extra variables) kapali olabilir.
 
     - name: "Add every bastion to dynamic inventory"
       ansible.builtin.add_host:
         name: "{{ item }}"
         groups: logx_terminal
         oc_namespace: "{{ oc_namespace }}"
-        # Birden fazla bastion varsa her biri KENDI arsivini uretir; ayni staging
-        # dizinine yazildiklari icin dosya adlari benzersizlestirilir. Tek bastion'da
-        # ad DEGISMEZ → mevcut davranisla birebir uyum.
-        logx_archive_name: >-
-          {{ archive_name if (logx_bastions | length) == 1
-             else (item | lower | regex_replace('[^a-z0-9._-]', '-')) ~ '__' ~ archive_name }}
+        logx_targets: "{{ logx_targets }}"
       loop: "{{ logx_bastions }}"
       changed_when: false
 
@@ -123,7 +146,9 @@
     # GBAOCP01 ve gbaocp01.bmw.com) ayni dizini paylasip birbirinin arsivini silerlerdi.
     remote_host_slug: "{{ inventory_hostname | lower | regex_replace('[^a-z0-9._-]', '-') }}"
     remote_work_dir: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}_{{ remote_host_slug }}"
-    remote_archive_path: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}_{{ remote_host_slug }}.zip"
+    # Arsivler calisma dizininin YANINA yazilir: `archive` modulu kaynak dizinin ICINE
+    # yazarsa kendi ciktisini arsivlemeye calisirdi.
+    remote_work_root: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}_{{ remote_host_slug }}_zips"
     oc_list_timeout: 120
     oc_log_timeout: 300
     staging_runas_user: "{{ staging_user | default('was', true) }}"
@@ -135,9 +160,11 @@
       ansible.builtin.set_fact:
         resolved_clusters: []
         validation_errors: []
+        fetch_units: []
         cluster_pod_matches: []
         pod_fetch_targets: []
         cluster_fetch_results: []
+        staged_unit_files: []
       changed_when: false
 
     # Cok-bastion: her bastion YALNIZ kendi cluster'larini toplar. Cluster ogelerinde
@@ -156,6 +183,11 @@
           }}
       changed_when: false
 
+      # DIKKAT — asagidaki mesajdaki apostrof CIFT TIRNAKLI string icinde durur.
+      # Jinja, ters-boluyle kacirilmis apostrofu YAML gibi yorumlamaz: tek tirnakli
+      # bir string apostrofta BITER ve kalan harfler sozdizimi sanilir —
+      #   template error while templating string: expected token ')', got 'nda'
+      # 2026-08-09'da uc playbook da uretimde bu yuzden dustu.
     - name: "Validate requested cluster records"
       ansible.builtin.set_fact:
         validation_errors: >-
@@ -166,7 +198,7 @@
               'error': (
                 'OCP kullanici adi tanimli degil (oc login --username). Admin > LogX '
                 ~ 'Yapilandirma > OCP Cluster Hiyerarsisi satirindaki "OCP Kullanici Adi" '
-                ~ 'alanini doldurun ya da OCP Calistirma Ayarlari\'nda genel varsayilani girin: '
+                ~ "alanini doldurun ya da OCP Calistirma Ayarlari'nda genel varsayilani girin: "
                 ~ (item.cluster_name | default('missing-cluster-name'))
               ) if (has_portal_meta | bool) or (inv_has | bool) else (
                 'Cluster inventory record not found: '
@@ -335,20 +367,53 @@
               PATH aramasi (command -v oc) da sonucsuz kaldi.
           when: oc_bin | length == 0
 
-        - name: "Reset remote working directory"
-          ansible.builtin.file:
-            path: "{{ item }}"
-            state: absent
-          loop:
-            - "{{ remote_work_dir }}"
-            - "{{ remote_archive_path }}"
+        # IS BIRIMI = (cluster x hedef). Her birim KENDI dizinine toplanir ve KENDI
+        # arsivini uretir; boylece indirilen zip'in hangi cluster/namespace/uygulamaya
+        # ait oldugu ADINDAN bellidir (eskiden ad yalnizca bastion + rastgele hash'ti).
+        - name: "Build fetch units (cluster x target)"
+          ansible.builtin.set_fact:
+            fetch_units: >-
+              {{
+                fetch_units + [{
+                  'cluster_name': item.0.cluster_name,
+                  'url': item.0.url,
+                  'username': item.0.username,
+                  'password': item.0.password,
+                  'namespace': item.1.namespace,
+                  'app_name': item.1.app_name,
+                  'slug': unit_slug,
+                  'work_dir': remote_work_dir ~ '/' ~ unit_slug,
+                  'archive_path': remote_work_root ~ '/' ~ unit_slug ~ '.zip',
+                  'archive_name': unit_slug ~ '.zip'
+                }]
+              }}
+          vars:
+            # Parca basina 60 karakter kirpma + guvenli karakter kumesi: dosya adi
+            # sinirina (255) takilmadan okunabilir kalsin.
+            part_cluster: "{{ item.0.cluster_name | lower | regex_replace('[^a-z0-9._-]', '-') | truncate(60, true, '') }}"
+            part_ns: "{{ item.1.namespace | lower | regex_replace('[^a-z0-9._-]', '-') | truncate(60, true, '') }}"
+            part_app: "{{ item.1.app_name | lower | regex_replace('[^a-z0-9._-]', '-') | truncate(60, true, '') }}"
+            unit_slug: "{{ part_cluster ~ '__' ~ part_ns ~ '__' ~ part_app ~ '__' ~ archive_id }}"
+          loop: "{{ resolved_clusters | product(logx_targets) | list }}"
+          loop_control:
+            label: "{{ item.0.cluster_name }}/{{ item.1.namespace }}/{{ item.1.app_name }}"
+          no_log: true
           changed_when: false
 
-        - name: "Create remote working directory"
+        - name: "Reset remote working directory"
           ansible.builtin.file:
             path: "{{ remote_work_dir }}"
+            state: absent
+          changed_when: false
+
+        - name: "Create per-unit working directories"
+          ansible.builtin.file:
+            path: "{{ item.work_dir }}"
             state: directory
             mode: '0700'
+          loop: "{{ fetch_units }}"
+          loop_control:
+            label: "{{ item.slug }}"
           changed_when: false
 
         - name: "Login and list namespace pods in parallel"
@@ -356,7 +421,7 @@
             set -o pipefail
             umask 077
 
-            export KUBECONFIG="/tmp/logx-pods-{{ logx_job_id }}-{{ cluster.cluster_name }}.kubeconfig"
+            export KUBECONFIG="/tmp/logx-pods-{{ logx_job_id }}-{{ unit.slug }}.kubeconfig"
 
             cleanup() {
               rm -f "${KUBECONFIG}"
@@ -364,21 +429,21 @@
             trap cleanup EXIT
 
             "{{ oc_bin }}" login \
-              --server={{ cluster.url | quote }} \
-              --username={{ cluster.username | quote }} \
-              --password={{ cluster.password | quote }} \
+              --server={{ unit.url | quote }} \
+              --username={{ unit.username | quote }} \
+              --password={{ unit.password | quote }} \
               --insecure-skip-tls-verify=true \
               >/dev/null
 
             "{{ oc_bin }}" get pods \
-              --namespace={{ oc_namespace | quote }} \
+              --namespace={{ unit.namespace | quote }} \
               --output=name
           args:
             executable: /bin/bash
-          loop: "{{ resolved_clusters }}"
+          loop: "{{ fetch_units }}"
           loop_control:
-            loop_var: cluster
-            label: "{{ cluster.cluster_name }}"
+            loop_var: unit
+            label: "{{ unit.slug }}"
           register: pod_list_jobs
           async: "{{ oc_list_timeout }}"
           poll: 0
@@ -390,7 +455,10 @@
             jid: "{{ item.ansible_job_id }}"
           loop: "{{ pod_list_jobs.results | default([]) }}"
           loop_control:
-            label: "{{ item.cluster.cluster_name }}"
+            # Dongu degiskeni `unit` (eskiden `cluster`); etiket de ondan okunmali.
+            # `item.cluster` kalinca Ansible etiketi templateleyemeyip GOREVI DUSURUYORDU
+            # ve hata "'dict object' has no attribute 'cluster'" olarak sonuca yaziliyordu.
+            label: "{{ item.unit.slug }}"
           register: pod_list_wait
           until: pod_list_wait.finished
           retries: 120
@@ -399,30 +467,33 @@
           changed_when: false
           no_log: true
 
+        # Eslesme olcutu DEGISMEDI: pod adinda uygulama adinin gecmesi. Degisen tek sey,
+        # olcutun artik BIRIMIN kendi uygulama adiyla yapilmasi (eskiden tek bir global
+        # `app_name` vardi).
         - name: "Filter pod names in memory"
           ansible.builtin.set_fact:
             cluster_pod_matches: >-
               {{
-                cluster_pod_matches + [{
-                  'cluster_name': item.item.cluster.cluster_name,
-                  'url': item.item.cluster.url,
-                  'username': item.item.cluster.username,
-                  'password': item.item.cluster.password,
-                  'list_status': 'error' if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else 'ok',
-                  'list_error': (
-                    item.stderr | default(item.msg | default('Unknown OpenShift error'), true)
-                  ) if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else '',
-                  'pods': (
-                    item.stdout_lines | default([])
-                    | map('regex_replace', '^pod/', '')
-                    | select('search', app_name | regex_escape)
-                    | list
-                  ) if not (item.failed | default(false) or (item.rc | default(0) | int != 0)) else []
-                }]
+                cluster_pod_matches + [
+                  item.item.unit | combine({
+                    'list_status': 'error' if failed_now else 'ok',
+                    'list_error': (
+                      item.stderr | default(item.msg | default('Unknown OpenShift error'), true)
+                    ) if failed_now else '',
+                    'pods': (
+                      item.stdout_lines | default([])
+                      | map('regex_replace', '^pod/', '')
+                      | select('search', item.item.unit.app_name | regex_escape)
+                      | list
+                    ) if not failed_now else []
+                  })
+                ]
               }}
+          vars:
+            failed_now: "{{ item.failed | default(false) or (item.rc | default(0) | int != 0) }}"
           loop: "{{ pod_list_wait.results | default([]) }}"
           loop_control:
-            label: "{{ item.item.cluster.cluster_name }}"
+            label: "{{ item.item.unit.slug }}"
           no_log: true
           changed_when: false
 
@@ -435,6 +506,9 @@
                   | map('community.general.dict_kv', 'pod')
                   | map('combine', {
                       'cluster_name': item.cluster_name,
+                      'namespace': item.namespace,
+                      'slug': item.slug,
+                      'work_dir': item.work_dir,
                       'url': item.url,
                       'username': item.username,
                       'password': item.password
@@ -444,7 +518,7 @@
               }}
           loop: "{{ cluster_pod_matches }}"
           loop_control:
-            label: "{{ item.cluster_name }}"
+            label: "{{ item.slug }}"
           when:
             - item.list_status == 'ok'
             - item.pods | length > 0
@@ -456,8 +530,8 @@
             set -o pipefail
             umask 077
 
-            export KUBECONFIG="/tmp/logx-logs-{{ logx_job_id }}-{{ target.cluster_name }}-{{ target.pod }}.kubeconfig"
-            output_file={{ (remote_work_dir ~ '/' ~ target.cluster_name ~ '__' ~ target.pod ~ '.log') | quote }}
+            export KUBECONFIG="/tmp/logx-logs-{{ logx_job_id }}-{{ target.slug }}-{{ target.pod }}.kubeconfig"
+            output_file={{ (target.work_dir ~ '/' ~ target.pod ~ '.log') | quote }}
 
             cleanup() {
               rm -f "${KUBECONFIG}"
@@ -472,7 +546,7 @@
               >/dev/null
 
             "{{ oc_bin }}" logs \
-              --namespace={{ oc_namespace | quote }} \
+              --namespace={{ target.namespace | quote }} \
               {{ target.pod | quote }} \
               > "${output_file}"
           args:
@@ -480,7 +554,7 @@
           loop: "{{ pod_fetch_targets }}"
           loop_control:
             loop_var: target
-            label: "{{ target.cluster_name }}/{{ target.pod }}"
+            label: "{{ target.slug }}/{{ target.pod }}"
           register: log_fetch_jobs
           async: "{{ oc_log_timeout }}"
           poll: 0
@@ -492,7 +566,7 @@
             jid: "{{ item.ansible_job_id }}"
           loop: "{{ log_fetch_jobs.results | default([]) }}"
           loop_control:
-            label: "{{ item.target.cluster_name }}/{{ item.target.pod }}"
+            label: "{{ item.target.slug }}/{{ item.target.pod }}"
           register: log_fetch_wait
           until: log_fetch_wait.finished
           retries: 300
@@ -507,6 +581,8 @@
               {{
                 cluster_fetch_results + [{
                   'cluster_name': cluster_item.cluster_name,
+                  'namespace': cluster_item.namespace,
+                  'app_name': cluster_item.app_name,
                   'status': cluster_status,
                   'error': cluster_error,
                   'pods_matched': cluster_item.pods,
@@ -517,7 +593,7 @@
             fetch_results_for_cluster: >-
               {{
                 log_fetch_wait.results | default([])
-                | selectattr('item.target.cluster_name', 'equalto', cluster_item.cluster_name)
+                | selectattr('item.target.slug', 'equalto', cluster_item.slug)
                 | list
               }}
             failed_pods: >-
@@ -539,7 +615,7 @@
           loop: "{{ cluster_pod_matches }}"
           loop_control:
             loop_var: cluster_item
-            label: "{{ cluster_item.cluster_name }}"
+            label: "{{ cluster_item.slug }}"
           no_log: true
           changed_when: false
 
@@ -548,39 +624,69 @@
             cluster_fetch_results: "{{ cluster_fetch_results + validation_errors }}"
           changed_when: false
 
-        - name: "Count collected log files"
+        - name: "Count collected log files per unit"
           ansible.builtin.find:
-            paths: "{{ remote_work_dir }}"
+            paths: "{{ item.work_dir }}"
             patterns: '*.log'
             file_type: file
+          loop: "{{ fetch_units }}"
+          loop_control:
+            label: "{{ item.slug }}"
           register: collected_log_files
           changed_when: false
 
-        - name: "Create archive on terminal host"
+        # Yalnizca LOG URETEN birimler arsivlenir. Bos bir birim (hicbir pod eslesmedi)
+        # bos bir zip uretmemeli — kullanici indirip icini bos bulmasin; durumu
+        # `clusters[].status = no_match` olarak zaten gorur.
+        - name: "Select units that produced logs"
+          ansible.builtin.set_fact:
+            archivable_units: >-
+              {{
+                collected_log_files.results | default([])
+                | selectattr('matched', 'defined')
+                | selectattr('matched', 'gt', 0)
+                | map(attribute='item') | list
+              }}
+          changed_when: false
+
+        - name: "Create archive root"
+          ansible.builtin.file:
+            path: "{{ remote_work_root }}"
+            state: directory
+            mode: '0700'
+          when: archivable_units | length > 0
+          changed_when: false
+
+        - name: "Create one archive per unit on terminal host"
           community.general.archive:
-            path: "{{ remote_work_dir }}/*.log"
-            dest: "{{ remote_archive_path }}"
+            path: "{{ item.work_dir }}/*.log"
+            dest: "{{ item.archive_path }}"
             format: zip
             mode: '0600'
-          register: remote_archive
-          when: collected_log_files.matched | int > 0
+          loop: "{{ archivable_units }}"
+          loop_control:
+            label: "{{ item.archive_name }}"
           changed_when: false
 
-        - name: "Verify archive exists on terminal host"
+        - name: "Verify unit archives exist on terminal host"
           ansible.builtin.stat:
-            path: "{{ remote_archive_path }}"
-          register: remote_archive_stat
-          when: collected_log_files.matched | int > 0
+            path: "{{ item.archive_path }}"
+          loop: "{{ archivable_units }}"
+          loop_control:
+            label: "{{ item.archive_name }}"
+          register: remote_archive_stats
           changed_when: false
 
-        - name: "Fail when archive creation did not produce a file"
+        - name: "Fail when an archive was not produced"
           ansible.builtin.assert:
             that:
-              - remote_archive_stat.stat.exists | default(false)
-              - remote_archive_stat.stat.isreg | default(false)
-              - remote_archive_stat.stat.size | default(0) | int > 0
-            fail_msg: "Archive was not created at {{ remote_archive_path }}"
-          when: collected_log_files.matched | int > 0
+              - item.stat.exists | default(false)
+              - item.stat.isreg | default(false)
+              - item.stat.size | default(0) | int > 0
+            fail_msg: "Archive was not created at {{ item.item.archive_path }}"
+          loop: "{{ remote_archive_stats.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.archive_name }}"
 
         - name: "Initialize staging result facts"
           ansible.builtin.set_fact:
@@ -604,8 +710,8 @@
               Invalid staging settings. staging_dir={{ staging_dir }},
               fallback_dir={{ fallback_dir }}, runas={{ staging_runas_user }}
 
-        - name: "Stage archive directly on terminal host"
-          when: collected_log_files.matched | int > 0
+        - name: "Stage archives directly on terminal host"
+          when: archivable_units | length > 0
           block:
             - name: "Create and authorize staging directory through allowed dzdo user"
               ansible.builtin.command:
@@ -643,34 +749,58 @@
                   group={{ staging_directory_stat.stat.gr_name | default('unknown') }},
                   mode={{ staging_directory_stat.stat.mode | default('unknown') }}
 
-            - name: "Copy archive to staging directory as SSH user"
+            # Dizin hazirligi BASTION basinadir (yukarida, bir kez); kopyalama ise BIRIM
+            # basinadir. Dizin yazilamiyorsa rescue tum birimleri yedek dizine alir.
+            - name: "Copy each archive to staging directory as SSH user"
               ansible.builtin.copy:
-                src: "{{ remote_archive_path }}"
-                dest: "{{ staging_dir }}/{{ logx_archive_name }}"
+                src: "{{ item.archive_path }}"
+                dest: "{{ staging_dir }}/{{ item.archive_name }}"
                 remote_src: true
                 mode: "{{ staged_archive_mode }}"
+              loop: "{{ archivable_units }}"
+              loop_control:
+                label: "{{ item.archive_name }}"
               register: staging_copy_result
 
-            - name: "Verify primary staged archive"
+            - name: "Verify staged archives"
               ansible.builtin.stat:
-                path: "{{ staging_dir }}/{{ logx_archive_name }}"
-                get_checksum: true
-                checksum_algorithm: sha256
-              register: primary_staged_archive_stat
+                path: "{{ staging_dir }}/{{ item.archive_name }}"
+              loop: "{{ archivable_units }}"
+              loop_control:
+                label: "{{ item.archive_name }}"
+              register: primary_staged_stats
               changed_when: false
 
-            - name: "Validate primary staged archive"
+            - name: "Validate staged archives"
               ansible.builtin.assert:
                 that:
-                  - primary_staged_archive_stat.stat.exists | default(false)
-                  - primary_staged_archive_stat.stat.isreg | default(false)
-                  - primary_staged_archive_stat.stat.size | default(0) | int > 0
-                fail_msg: "Archive copy to primary staging failed: {{ staging_dir }}/{{ logx_archive_name }}"
+                  - item.stat.exists | default(false)
+                  - item.stat.isreg | default(false)
+                  - item.stat.size | default(0) | int > 0
+                fail_msg: "Archive copy to primary staging failed: {{ staging_dir }}/{{ item.item.archive_name }}"
+              loop: "{{ primary_staged_stats.results | default([]) }}"
+              loop_control:
+                label: "{{ item.item.archive_name }}"
 
-            - name: "Mark staging as successful"
+            - name: "Record staged archives"
               ansible.builtin.set_fact:
+                staged_unit_files: >-
+                  {{
+                    staged_unit_files + [{
+                      'terminal_host': inventory_hostname,
+                      'cluster_name': item.item.cluster_name,
+                      'namespace': item.item.namespace,
+                      'app_name': item.item.app_name,
+                      'filename': item.item.archive_name,
+                      'staged_path': staging_dir ~ '/' ~ item.item.archive_name,
+                      'size_bytes': item.stat.size | default(0) | int,
+                      'is_fallback': false
+                    }]
+                  }}
                 staging_succeeded: true
-                staged_archive_path: "{{ staging_dir }}/{{ logx_archive_name }}"
+              loop: "{{ primary_staged_stats.results | default([]) }}"
+              loop_control:
+                label: "{{ item.item.archive_name }}"
               changed_when: false
 
           rescue:
@@ -682,6 +812,9 @@
                     | default(ansible_failed_result.msg, true)
                     | default('Unknown staging error', true)
                   }}
+                # Kismi kopyalama olmus olabilir; yedek yol TEMIZ bir listeyle baslar ki
+                # ayni arsiv iki kez bildirilmesin.
+                staged_unit_files: []
               changed_when: false
 
             - name: "Ensure fallback directory exists on terminal host"
@@ -691,46 +824,61 @@
                 mode: '0777'
               changed_when: false
 
-            - name: "Copy archive to fallback directory on terminal host"
+            - name: "Copy each archive to fallback directory on terminal host"
               ansible.builtin.copy:
-                src: "{{ remote_archive_path }}"
-                dest: "{{ fallback_dir }}/{{ logx_archive_name }}"
+                src: "{{ item.archive_path }}"
+                dest: "{{ fallback_dir }}/{{ item.archive_name }}"
                 remote_src: true
                 mode: "{{ staged_archive_mode }}"
+              loop: "{{ archivable_units }}"
+              loop_control:
+                label: "{{ item.archive_name }}"
               register: fallback_copy_result
 
-            - name: "Mark fallback as successful"
-              ansible.builtin.set_fact:
-                fallback_succeeded: true
-                staged_archive_path: "{{ fallback_dir }}/{{ logx_archive_name }}"
+            - name: "Verify fallback archives"
+              ansible.builtin.stat:
+                path: "{{ fallback_dir }}/{{ item.archive_name }}"
+              loop: "{{ archivable_units }}"
+              loop_control:
+                label: "{{ item.archive_name }}"
+              register: fallback_staged_stats
               changed_when: false
 
-        - name: "Read staged archive metadata on terminal host"
-          ansible.builtin.stat:
-            path: "{{ staged_archive_path }}"
-          register: staged_archive_stat
-          when:
-            - collected_log_files.matched | int > 0
-            - staged_archive_path | length > 0
-          changed_when: false
+            - name: "Record fallback archives"
+              ansible.builtin.set_fact:
+                staged_unit_files: >-
+                  {{
+                    staged_unit_files + [{
+                      'terminal_host': inventory_hostname,
+                      'cluster_name': item.item.cluster_name,
+                      'namespace': item.item.namespace,
+                      'app_name': item.item.app_name,
+                      'filename': item.item.archive_name,
+                      'staged_path': fallback_dir ~ '/' ~ item.item.archive_name,
+                      'size_bytes': item.stat.size | default(0) | int,
+                      'is_fallback': true
+                    }]
+                  }}
+                fallback_succeeded: true
+              loop: "{{ fallback_staged_stats.results | default([]) }}"
+              loop_control:
+                label: "{{ item.item.archive_name }}"
+              when: item.stat.exists | default(false)
+              changed_when: false
 
         # Bu bastion'un ozeti host fact olarak birakilir; TEK set_stats yazari asagidaki
         # toplayici play'dir (birden cok host ayni anahtari yazarsa Ansible listeleri
         # birlestirmez, sonuncu yazan ezer).
-        # NOT: cluster sonuclari `cluster_fetch_results` fact'inde kalir; bu ozet YALNIZ arsiv
-        # meta'sini tasir (staged_files[] icine bu gider — artifact gereksiz sismesin).
-        # Bool alanlar `| bool` ile GERCEK boolean'a zorlanir: string "False" truthy olurdu.
+        # NOT: cluster/birim sonuclari `cluster_fetch_results` fact'inde kalir; bu ozet
+        # YALNIZ arsiv meta'sini tasir (artifact gereksiz sismesin).
         - name: "Record this bastion's archive summary as a host fact"
           ansible.builtin.set_fact:
             logx_bastion_summary:
               terminal_host: "{{ inventory_hostname }}"
-              staged_path: "{{ staged_archive_path }}"
-              filename: "{{ logx_archive_name if collected_log_files.matched | int > 0 else '' }}"
-              size_bytes: "{{ staged_archive_stat.stat.size | default(0) | int }}"
-              is_fallback: "{{ fallback_succeeded | bool }}"
+              files: "{{ staged_unit_files }}"
               staging_error: "{{ staging_error }}"
-              archive_created: "{{ (collected_log_files.matched | int > 0) | bool }}"
-              staged_ok: "{{ ((collected_log_files.matched | int > 0) and (staged_archive_stat.stat.exists | default(false))) | bool }}"
+              archive_created: "{{ (archivable_units | length > 0) | bool }}"
+              staged_ok: "{{ (staged_unit_files | length > 0) | bool }}"
           changed_when: false
 
         - name: "Clean remote temporary files"
@@ -739,8 +887,10 @@
             state: absent
           loop:
             - "{{ remote_work_dir }}"
-            - "{{ remote_archive_path }}"
-          when: staged_archive_stat.stat.exists | default(false)
+            - "{{ remote_work_root }}"
+          # Yalnizca EN AZ BIR arsiv staging'e ulastiysa temizle; ulasmadiysa dosyalar
+          # bastion'da kalsin ki operator elle alabilsin.
+          when: staged_unit_files | length > 0
           changed_when: false
 
       rescue:
@@ -766,6 +916,8 @@
               {{
                 cluster_fetch_results + [{
                   'cluster_name': item.cluster_name | default('unknown'),
+                  'namespace': '',
+                  'app_name': '',
                   'status': 'error',
                   'error': bastion_error,
                   'pods_matched': [],
@@ -789,10 +941,7 @@
           ansible.builtin.set_fact:
             logx_bastion_summary:
               terminal_host: "{{ inventory_hostname }}"
-              staged_path: ""
-              filename: ""
-              size_bytes: 0
-              is_fallback: false
+              files: []
               staging_error: "{{ bastion_error }}"
               archive_created: false
               staged_ok: false
@@ -818,9 +967,11 @@
         | map('extract', hostvars, 'logx_bastion_summary')
         | select('defined') | list
       }}
+    # Her bastion, URETTIGI HER BIRIM icin bir arsiv kaydi tasir (files[]); hepsi tek
+    # duz listede toplanir. Portal bu listedeki HER oge icin ayri bir indirme tokeni
+    # uretir (bkz. server/logx/v2/index.cjs).
     staged_files: >-
-      {{ bastion_summaries | selectattr('staged_path', 'defined')
-                           | rejectattr('staged_path', 'equalto', '') | list }}
+      {{ bastion_summaries | map(attribute='files') | select('defined') | list | flatten }}
 
   tasks:
     # Ek sigorta: block/rescue sayesinde hicbir host FAIL olmamali; yine de
@@ -836,12 +987,16 @@
     # KRITIK: raporlamayan (erisilemez / play2'de erken dusen) bastion'in cluster'lari
     # SESSIZCE KAYBOLMAMALI — aksi halde overall_status 'success' cikar ve kullanici
     # eksik arsivi tam sanardi. Istenen HER cluster icin sahibinden sonuc aranir.
+    # Bir cluster BIRDEN COK satir dondurebilir: her (namespace, uygulama) cifti ayri bir
+    # is birimidir ve ayri raporlanir. `reported` bir LISTEDIR ve tamami eklenir.
     - name: "Collect each requested cluster's result from its own bastion"
       ansible.builtin.set_fact:
         merged_clusters: >-
           {{
             merged_clusters + (reported if (reported | length > 0) else [{
               'cluster_name': item.cluster_name | default('unknown'),
+              'namespace': '',
+              'app_name': '',
               'status': 'error',
               'error': 'Bastion did not report a result (unreachable or failed early): ' ~ owner_host,
               'pods_matched': [],
@@ -862,23 +1017,25 @@
       ansible.builtin.set_stats:
         data:
           logx_result:
-            # `| trim` SART: {% set %} satirlari ciktiya bosluk sizdiriyor ve deger
-            # "      failed" olarak yayinlaniyordu (uretimde gozlendi).
+            # `{%- ... -%}` SART: YAML katlamali skalerde satir sonlari BOSLUGA doner ve
+            # `{% set %}` etiketleri arasindaki bosluklar ciktiya sizar. `| trim` yalniz
+            # IFADENIN SONUCUNU kirpar, etiketlerden gelen bu bosluklari DEGIL — deger
+            # uretimde "      failed" olarak yayinlanmisti. Bosluk denetimi tek cozum.
             overall_status: >-
-              {% set ok_count = merged_clusters | selectattr('status', 'equalto', 'ok') | list | length %}
-              {% set partial_count = merged_clusters | selectattr('status', 'equalto', 'partial') | list | length %}
-              {% set error_count = merged_clusters | selectattr('status', 'equalto', 'error') | list | length %}
-              {% set no_match_count = merged_clusters | selectattr('status', 'equalto', 'no_match') | list | length %}
-              {% set archive_created = staged_files | length > 0 %}
-              {% set staged_ok = bastion_summaries | selectattr('staged_ok') | list | length > 0 %}
-              {{
+              {%- set ok_count = merged_clusters | selectattr('status', 'equalto', 'ok') | list | length -%}
+              {%- set partial_count = merged_clusters | selectattr('status', 'equalto', 'partial') | list | length -%}
+              {%- set error_count = merged_clusters | selectattr('status', 'equalto', 'error') | list | length -%}
+              {%- set no_match_count = merged_clusters | selectattr('status', 'equalto', 'no_match') | list | length -%}
+              {%- set archive_created = staged_files | length > 0 -%}
+              {%- set staged_ok = bastion_summaries | selectattr('staged_ok') | list | length > 0 -%}
+              {{-
                 (
                   'failed' if error_count > 0 and ok_count == 0 and partial_count == 0
                   else ('no_match' if not archive_created and no_match_count > 0 and error_count == 0
                   else ('success' if staged_ok and error_count == 0 and partial_count == 0
                   else ('partial' if staged_ok else 'failed')))
                 ) | trim
-              }}
+              -}}
             clusters: "{{ merged_clusters }}"
             terminal_host: "{{ (staged_files | map(attribute='terminal_host') | list | first) | default('', true) }}"
             staged_path: "{{ (staged_files | map(attribute='staged_path') | list | first) | default('', true) }}"
