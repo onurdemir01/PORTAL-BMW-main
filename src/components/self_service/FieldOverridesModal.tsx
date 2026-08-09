@@ -14,7 +14,7 @@ import React, { useEffect, useState } from "react";
 import { LockClosedIcon, ShieldExclamationIcon, InformationCircleIcon, AdjustmentsHorizontalIcon, PlusIcon, TrashIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/common/Modal";
 import { TextInput, Textarea, Select } from "@/components/ui/Form";
-import { ansibleApi, type LaunchOptions, type FieldOverride, type LaunchOptionOverride, type OutputFilter, type SurveyField } from "@/api/ansibleApi";
+import { ansibleApi, type LaunchOptions, type FieldOverride, type LaunchOptionOverride, type OutputFilter, type SurveyField, type FieldCustomization } from "@/api/ansibleApi";
 
 interface FieldOverridesModalItem {
   awxServerId: number;
@@ -88,6 +88,10 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   // Survey Tasarımcısı — yalnızca AWX'te survey KAPALIYKEN (!surveyEnabled) gösterilir.
   const [customFields, setCustomFields] = useState<SurveyField[]>([]);
   const [injectUserInfo, setInjectUserInfo] = useState({ enabled: false, emailKey: "email", usernameKey: "username" });
+  // Etkinse: bu servis çalıştırıldığında AWX job'ı HEMEN tetiklenmez — önce Smart'ta bir
+  // talep açılır, onaylanana kadar kullanıcı "onay bekleniyor" ekranını görür (bkz.
+  // server/ansible/runner.cjs POST /launch-ss ve server/smart/poller.cjs).
+  const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -95,7 +99,10 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   useEffect(() => {
     Promise.all([
       ansibleApi.surveySpecAdmin(item.awxServerId, item.awxTemplateId),
-      ansibleApi.getCustomization(item.awxServerId, item.awxTemplateId).catch(() => ({ ok: false, customization: { fieldOverrides: [], rawExtraVars: "", launchOptionOverrides: {} } })),
+      ansibleApi.getCustomization(item.awxServerId, item.awxTemplateId).catch(() => ({
+        ok: false,
+        customization: { fieldOverrides: [], rawExtraVars: "", launchOptionOverrides: {} } as FieldCustomization,
+      })),
     ])
       .then(([specRes, customRes]) => {
         if (!specRes.ok) { setErr(specRes.message || "Alanlar yüklenemedi."); return; }
@@ -126,6 +133,8 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
             emailKey: inj?.emailKey || "email",
             usernameKey: inj?.usernameKey || "username",
           });
+          const smartOv = customRes.customization?.smartApproval;
+          setSmartApproval({ enabled: !!smartOv?.enabled, flowKey: smartOv?.flowKey || "" });
         }
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
@@ -235,6 +244,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
     return ov?.hidden && !(ov.default || "").trim();
   });
   const invalidOutputFilter = outputFilter.enabled && !outputFilter.contains.trim();
+  const invalidSmartApproval = smartApproval.enabled && !smartApproval.flowKey.trim();
 
   async function save() {
     if (invalidHidden) {
@@ -247,6 +257,10 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
     }
     if (invalidOutputFilter) {
       setErr("Çıktı filtresi etkin ama aranacak metin boş — bir metin girin veya filtreyi kapatın.");
+      return;
+    }
+    if (invalidSmartApproval) {
+      setErr("Smart onayı etkin ama Flow Key boş — bir Flow Key girin veya Smart onayını kapatın.");
       return;
     }
     if (invalidCustomField) {
@@ -288,6 +302,10 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
           enabled: injectUserInfo.enabled,
           emailKey: injectUserInfo.emailKey.trim() || "email",
           usernameKey: injectUserInfo.usernameKey.trim() || "username",
+        },
+        smartApproval: {
+          enabled: smartApproval.enabled,
+          flowKey: smartApproval.flowKey.trim(),
         },
       });
       if (!r.ok) { setErr(r.message || "Kaydedilemedi."); return; }
@@ -724,6 +742,39 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                         onChange={(e) => setInjectUserInfo((s) => ({ ...s, usernameKey: e.target.value }))}
                       />
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!loading && (
+              <div className="border border-[var(--border)] rounded-xl p-3">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-xs font-semibold text-[var(--text-secondary)]">Smart Onayı Gerekli (opsiyonel)</p>
+                  <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer flex-shrink-0">
+                    Etkin
+                    <input
+                      type="checkbox"
+                      checked={smartApproval.enabled}
+                      onChange={(e) => setSmartApproval((s) => ({ ...s, enabled: e.target.checked }))}
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mb-2">
+                  Etkinse bu servis çalıştırıldığında AWX job'ı hemen tetiklenmez — önce
+                  Smart'ta bu Flow Key ile bir talep açılır. Kullanıcı talep onaylanana kadar
+                  "onay bekleniyor" ekranını görür; talep reddedilirse iş hiç başlatılmaz.
+                </p>
+                {smartApproval.enabled && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Smart Flow Key</label>
+                    <TextInput
+                      className="font-mono text-xs"
+                      error={invalidSmartApproval}
+                      value={smartApproval.flowKey}
+                      placeholder="ör. VIRTUAL_SERVER_TICKET_FLOW"
+                      onChange={(e) => setSmartApproval((s) => ({ ...s, flowKey: e.target.value }))}
+                    />
                   </div>
                 )}
               </div>

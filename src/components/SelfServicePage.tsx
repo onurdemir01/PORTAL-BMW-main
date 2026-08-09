@@ -88,6 +88,11 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   const [jobId, setJobId] = useState<number | null>(null);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  // Bu servis Smart onayı gerektiriyorsa (bkz. FieldOverridesModal.tsx "Smart Onayı
+  // Gerekli") launch() jobId yerine bir ticketId döner — AWX job'ı onay gelene kadar
+  // TETİKLENMEMİŞTİR. ticketStatus: PENDING (bekliyor) | REJECTED | TIMEOUT | ERROR |
+  // LAUNCHED (poller onayladı, jobId artık dolu — normal iş takibine geçilir).
+  const [pendingTicket, setPendingTicket] = useState<{ id: number; status: string; errorMessage?: string | null } | null>(null);
   const { addJob, jobs } = useJobTracker();
   // Modal açıkken CANLI çıktı burada (inline) gösterilir — bkz. OpsXWizardPage.tsx'teki
   // aynı desen. Modal kapatılırsa is arka planda takip edilmeye devam eder (alt çubuk).
@@ -187,6 +192,32 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
     setTrackedJobId(trackerId);
   }
 
+  // Smart onayı bekleyen bir talebi periyodik kontrol eder. LAUNCHED olunca normal
+  // job takibine (trackJob) geçilir — kullanıcı hiçbir ek tıklama yapmadan aynı
+  // ekranda "onay bekleniyor" -> "iş çalışıyor" akışını görür.
+  useEffect(() => {
+    if (!pendingTicket || pendingTicket.status !== "PENDING") return;
+    const timer = setInterval(async () => {
+      try {
+        const r = await ansibleApi.smartTicketStatus(pendingTicket.id);
+        if (!r.ok) return;
+        if (r.status === "LAUNCHED" && r.jobId) {
+          clearInterval(timer);
+          setPendingTicket(null);
+          setJobId(r.jobId);
+          trackJob(r.jobId);
+          return;
+        }
+        if (r.status !== "PENDING") {
+          clearInterval(timer);
+          setPendingTicket({ id: pendingTicket.id, status: r.status, errorMessage: r.errorMessage });
+        }
+      } catch { /* gecici hata — bir sonraki tick'te tekrar denenir */ }
+    }, 4000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTicket?.id, pendingTicket?.status]);
+
   async function launch() {
     setSubmitAttempted(true); // tüm alan hatalarını göster
     if (hasAnyFieldError) {
@@ -213,7 +244,9 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
         verbosity: launchOptions?.verbosity.enabled ? Number(verbosity) : undefined,
         jobType: launchOptions?.jobType.enabled ? jobType : undefined,
       });
-      if (r.ok) {
+      if (r.ok && r.pendingApproval && r.ticketId != null) {
+        setPendingTicket({ id: r.ticketId, status: "PENDING" });
+      } else if (r.ok && r.jobId != null) {
         setJobId(r.jobId);
         trackJob(r.jobId);
       } else {
@@ -266,7 +299,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
             </div>
           )}
 
-          {!loading && !jobId && (
+          {!loading && !jobId && !pendingTicket && (
             <>
               {visibleFields.length === 0 ? (
                 <p className="text-sm text-[var(--text-muted)] text-center py-4">Bu template için ek parametre gerekmez.</p>
@@ -352,6 +385,36 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
             </>
           )}
 
+          {pendingTicket && (
+            <div className="space-y-3 animate-fade-in text-center py-6">
+              {pendingTicket.status === "PENDING" && (
+                <>
+                  <div className="mx-auto w-6 h-6 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm font-medium text-[var(--text-primary)]">Smart üzerinde onay bekleniyor…</p>
+                  <p className="text-xs text-[var(--text-muted)]">Talep #{pendingTicket.id} — onaylanınca iş otomatik başlar, bu pencereyi kapatabilirsiniz.</p>
+                </>
+              )}
+              {pendingTicket.status === "REJECTED" && (
+                <>
+                  <p className="text-sm font-medium text-red-600">Smart talebi reddedildi.</p>
+                  <p className="text-xs text-[var(--text-muted)]">İş başlatılmadı. Detay için Smart talep #{pendingTicket.id}'e bakın.</p>
+                </>
+              )}
+              {pendingTicket.status === "TIMEOUT" && (
+                <>
+                  <p className="text-sm font-medium text-amber-700">Smart onayı zaman aşımına uğradı.</p>
+                  <p className="text-xs text-[var(--text-muted)]">{pendingTicket.errorMessage || "İş başlatılmadı."}</p>
+                </>
+              )}
+              {pendingTicket.status === "ERROR" && (
+                <>
+                  <p className="text-sm font-medium text-red-600">Talep onaylandı ama iş başlatılamadı.</p>
+                  <p className="text-xs text-[var(--text-muted)]">{pendingTicket.errorMessage || "Lütfen sistem yöneticinize başvurun."}</p>
+                </>
+              )}
+            </div>
+          )}
+
           {jobId && (
             <div className="space-y-3 animate-fade-in flex-1 min-h-0 flex flex-col">
               <p className="text-sm font-medium text-[var(--text-primary)] text-center flex-shrink-0">İş başlatıldı — AWX Job #{jobId}</p>
@@ -375,9 +438,9 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
 
           <div className="px-5 py-4 border-t border-[var(--border)] flex items-center justify-between gap-3 flex-shrink-0">
             <button onClick={onClose} className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition">
-              {jobId ? "Kapat" : "İptal"}
+              {jobId || pendingTicket ? "Kapat" : "İptal"}
             </button>
-            {!jobId && (
+            {!jobId && !pendingTicket && (
               <button
                 onClick={launch}
                 disabled={launching || loading || hasAnyFieldError}

@@ -240,13 +240,17 @@ export const ansibleApi = {
   templateDetail: (serverId: number, templateId: number): Promise<{ ok: boolean; template?: AwxTemplateDetail; message?: string }> =>
     fetch(`${BASE}/template-detail/${serverId}/${templateId}`).then(safeJson),
 
+  // pendingApproval=true ise iş HENÜZ tetiklenmedi — Smart'ta bir talep açıldı, jobId
+  // YOK, ticketId ile smartTicketStatus() poll edilmeli (bkz. server/ansible/runner.cjs
+  // POST /launch-ss). Bu servis için Smart onayı gerekmiyorsa jobId doğrudan gelir,
+  // önceki davranış birebir korunur.
   launchSs: (
     serverId: number,
     templateId: number,
     extraVars: Record<string, string>,
     templateName: string,
     options: { limit?: string; forks?: number; jobTags?: string; skipTags?: string; verbosity?: number; jobType?: string } = {}
-  ): Promise<{ ok: boolean; jobId: number; status: string; message?: string; field?: string }> =>
+  ): Promise<{ ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number; message?: string; field?: string }> =>
     fetch(`${BASE}/launch-ss/${serverId}/${templateId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -255,6 +259,12 @@ export const ansibleApi = {
 
   ssJobStatus: (serverId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; resultTraceback?: string; jobExplanation?: string; finished?: string; failed?: boolean }> =>
     fetch(`${BASE}/ss/job-status/${serverId}/${jobId}`).then(safeJson),
+
+  // Smart onayı bekleyen bir talebin durumu. status: PENDING | LAUNCHED | REJECTED |
+  // TIMEOUT | ERROR — LAUNCHED olunca jobId dolar ve çağıran normal ssJobStatus
+  // takibine geçebilir.
+  smartTicketStatus: (ticketId: number): Promise<{ ok: boolean; status: string; smartStateName?: string; jobId?: number | null; errorMessage?: string | null; message?: string }> =>
+    fetch(`${BASE}/ss/smart-ticket/${ticketId}/status`).then(safeJson),
 
   history: (days = 30): Promise<{ ok: boolean; history: JobHistoryRecord[] }> =>
     fetch(`${BASE}/history?days=${days}`).then(safeJson),
@@ -316,6 +326,10 @@ export interface FieldCustomization {
   // zaman oturumdan okuyup en SON adımda enjekte eder). Anahtar adları
   // (varsayılan "email"/"username") playbook'un beklediği isme göre değiştirilebilir.
   injectUserInfo?: { enabled: boolean; emailKey?: string; usernameKey?: string };
+  // Etkinse bu servis çalıştırıldığında AWX job'ı hemen tetiklenmez — önce Smart'ta
+  // flowKey ile bir talep açılır (bkz. server/smart/*, server/ansible/runner.cjs
+  // POST /launch-ss). Kullanıcı talep onaylanana/reddedilene kadar bekler.
+  smartApproval?: { enabled: boolean; flowKey?: string };
 }
 
 export interface AnsibleSsItem {

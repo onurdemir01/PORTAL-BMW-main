@@ -682,6 +682,31 @@ const TABLES = [
       )`,
   },
   {
+    // Self Service akislarinda "Smart onayi gerekli" isaretlenmis (bkz.
+    // ansible_ss_customizations.data.smartApproval) bir servis calistirildiginda acilan
+    // Smart/RFF talebinin durumunu tutar. AWX job'i APPROVED olana kadar TETIKLENMEZ —
+    // pending_launch_json'da (extraVars + launch secenekleri) saklanip, onay geldiginde
+    // server/smart/poller.cjs tarafindan launch edilir. Bkz. server/smart/README notlari.
+    name: 'smart_tickets',
+    sql: `
+      CREATE TABLE smart_tickets (
+        id                  INT IDENTITY(1,1) PRIMARY KEY,
+        external_ticket_id  NVARCHAR(200) NOT NULL,
+        username            NVARCHAR(200) NOT NULL,
+        awx_server_id       INT NOT NULL,
+        awx_template_id     INT NOT NULL,
+        flow_key            NVARCHAR(200) NULL,
+        status              NVARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        smart_state_name    NVARCHAR(200) NULL,
+        pending_launch_json NVARCHAR(MAX) NOT NULL,
+        awx_job_id          INT NULL,
+        error_message       NVARCHAR(MAX) NULL,
+        created_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        resolved_at         DATETIME2 NULL
+      )`,
+  },
+  {
     // Eskiden server/data/inventory-saved-queries.json — kimlik anahtari 'name'
     // (bkz. server/inventory/index.cjs readSavedQueries/writeSavedQueries).
     name: 'inventory_saved_queries',

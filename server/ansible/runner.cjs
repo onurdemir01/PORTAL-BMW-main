@@ -1584,6 +1584,56 @@ function initAnsibleRunner(app) {
     return redacted;
   }
 
+  // AWX'e GERCEKTEN job baslatan tek yer — hem POST /launch-ss'in dogrudan (Smart onayi
+  // gerekmeyen) yolundan, hem de server/smart/poller.cjs'in "talep onaylandi" callback'inden
+  // cagirilir. `req` poller'dan cagrildiginda null'dur (canli bir HTTP istegi yok) —
+  // auditPortal ve username bunu tolere eder (bkz. server/audit/index.cjs).
+  async function performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req }) {
+    const token = await getTokenForServer(server);
+    const payload = buildAwxLaunchPayload(detail, { extraVars, ...resolvedLaunchOptions });
+    const data = await awxRequestToServer(server, token, "POST", `/api/v2/job_templates/${templateId}/launch/`, payload);
+    const jobId = data.id;
+
+    const paramsForHistory = redactExtraVarsForHistory(extraVars, specFields, overrides);
+    const db = require("../db/index.cjs");
+    await db.query(
+      `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [username, server.id, templateId, templateName || String(templateId), jobId, data.status || "pending", JSON.stringify(paramsForHistory)]
+    ).catch((e) => console.warn("[AnsibleSS] Geçmiş kaydedilemedi:", e.message));
+
+    require("../audit/index.cjs").auditPortal(req || null, "selfservice_ansible_launch", {
+      username,
+      detail: JSON.stringify({
+        awxServerId: server.id,
+        templateId,
+        templateName: templateName || String(templateId),
+        jobId,
+        status: data.status || "pending",
+        inventory: detail?.summary_fields?.inventory?.name || null,
+        project: detail?.summary_fields?.project?.name || null,
+        credentials: (detail?.summary_fields?.credentials || []).map((c) => c.name),
+        extraVars: paramsForHistory,
+      }),
+    });
+
+    return { jobId, status: data.status || "pending" };
+  }
+
+  // Smart poller'i BIR KEZ baslat — onay bekleyen bir talep onaylandiginda cagrilacak
+  // callback, o talebin acilis anindaki TAM launch baglamini (pendingLaunch) kullanir.
+  // isConfigured() false ise (SMART_API_URL vb. henuz girilmemis) poller yine de kurulur
+  // ama her tick'te sessizce hicbir sey yapmaz (bkz. poller.cjs basi).
+  try {
+    require("../smart/poller.cjs").startPoller(async (ticket) => {
+      const server = getServerById(ticket.awxServerId);
+      if (!server) throw new Error(`AWX sunucusu bulunamadı: ${ticket.awxServerId}`);
+      const { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName } = ticket.pendingLaunch;
+      return performSsLaunch(server, ticket.awxTemplateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req: null });
+    });
+  } catch (e) {
+    console.warn("[Smart] poller başlatılamadı:", e.message);
+  }
+
   // GET /api/ansible/ss/items — Self-Service Ansible item listesi
   app.get("/api/ansible/ss/items", requireAuth, (req, res) => {
     res.json({ ok: true, items: readSsItems() });
@@ -2002,47 +2052,75 @@ function initAnsibleRunner(app) {
       }
 
       const resolvedLaunchOptions = resolveLaunchOptions(overrides, { limit, forks, jobTags, skipTags, verbosity, jobType });
-      const payload = buildAwxLaunchPayload(detail, { extraVars, ...resolvedLaunchOptions });
-      const data = await awxRequestToServer(server, token, "POST", `/api/v2/job_templates/${templateId}/launch/`, payload);
-      const jobId = data.id;
 
-      // Gecmis kaydet — GERCEK launch edilen extraVars DEGIL, redakte edilmis bir kopya
-      // saklanir (gizli/hassas alanlar "***gizli***" ile degistirilir) — AWX'e giden GERCEK
-      // payload yukarida zaten olusturuldu ve bundan ETKILENMEZ, yalnizca gecmise/API
-      // yanitina sizmasin diye ayri bir maskelenmis kopya uretilir.
-      const paramsForHistory = redactExtraVarsForHistory(extraVars, specFields, overrides);
-      const db = require("../db/index.cjs");
-      // AWAIT: gecmis satiri res.json'dan ONCE yazilir → (a) job-status ownership kontrolu ilk
-      // poll'da satiri bulur, (b) Faz 4 status-finalize guvenilir. DB hatasi launch'i bozmasin.
-      await db.query(
-        `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [username, server.id, templateId, templateName || String(templateId), jobId, data.status || "pending", JSON.stringify(paramsForHistory)]
-      ).catch((e) => console.warn("[AnsibleSS] Geçmiş kaydedilemedi:", e.message));
-
-      // Birlesik Denetim Kaydi ekraniyla ayni kaynaga yazar (portal_audit_logs) —
-      // onceden bu islem yalniz ansible_job_history'ye dusuyordu, Denetim Kaydi'nda
-      // GORUNMUYORDU (actions.md #4).
-      require("../audit/index.cjs").auditPortal(req, "selfservice_ansible_launch", {
-        detail: JSON.stringify({
+      // SMART ONAYI: bu template icin admin "Smart onayi gerekli" isaretlediyse (bkz.
+      // FieldOverridesModal.tsx, overrides.smartApproval) AWX job'i HEMEN tetiklenmez —
+      // Smart'ta bir talep acilir, gerekli her sey (extraVars, launch secenekleri) DB'ye
+      // yazilir ve onay geldiginde server/smart/poller.cjs bu ayni launch mantigini
+      // (performSsLaunch) cagirir. Kullanici "onay bekleniyor" ekranini gorur.
+      if (overrides.smartApproval?.enabled) {
+        const smartClient = require("../smart/client.cjs");
+        const smartStore = require("../smart/store.cjs");
+        const flowKey = String(overrides.smartApproval.flowKey || "").trim();
+        if (!flowKey) {
+          return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
+        }
+        let created;
+        try {
+          created = await smartClient.createTicket({
+            flowKey,
+            username,
+            metadata: { application: templateName || String(templateId), requestedBy: username },
+          });
+        } catch (smartErr) {
+          return res.status(smartErr.status || 502).json({ ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` });
+        }
+        const ticket = await smartStore.createTicket({
+          externalTicketId: created.ticketId,
+          username,
           awxServerId: server.id,
-          templateId,
-          templateName: templateName || String(templateId),
-          jobId,
-          status: data.status || "pending",
-          inventory: detail?.summary_fields?.inventory?.name || null,
-          project: detail?.summary_fields?.project?.name || null,
-          credentials: (detail?.summary_fields?.credentials || []).map((c) => c.name),
-          extraVars: paramsForHistory,
-        }),
-      });
+          awxTemplateId: templateId,
+          flowKey,
+          pendingLaunch: { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
+        });
+        require("../audit/index.cjs").auditPortal(req, "selfservice_smart_ticket_open", {
+          detail: JSON.stringify({ awxServerId: server.id, templateId, flowKey, ticketId: created.ticketId }),
+        });
+        return res.json({ ok: true, pendingApproval: true, ticketId: ticket.id });
+      }
 
-      res.json({ ok: true, jobId, status: data.status });
+      const result = await performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req });
+      res.json({ ok: true, jobId: result.jobId, status: result.status });
     } catch (err) {
       if (err.field) {
         return res.status(err.status || 500).json({ ok: false, message: err.message, field: err.field });
       }
       const { status, message } = friendlyAwxError(err);
       res.status(status).json({ ok: false, message });
+    }
+  });
+
+  // GET /api/ansible/ss/smart-ticket/:id/status — Smart onayi bekleyen bir talebin
+  // durumu (kullanici bu ID'yi launch-ss'in pendingApproval yanitindan alir, kendi
+  // talebi olup olmadigi username karsilastirmasiyla korunur).
+  app.get("/api/ansible/ss/smart-ticket/:id/status", requireAuth, async (req, res) => {
+    try {
+      const smartStore = require("../smart/store.cjs");
+      const ticket = await smartStore.getTicket(Number(req.params.id));
+      if (!ticket) return res.status(404).json({ ok: false, message: "Talep bulunamadı." });
+      const reqUser = req.session?.user || {};
+      if (reqUser.role !== "Admin" && ticket.username.toLowerCase() !== String(reqUser.username || "").toLowerCase()) {
+        return res.status(403).json({ ok: false, message: "Bu talep size ait değil." });
+      }
+      res.json({
+        ok: true,
+        status: ticket.status,
+        smartStateName: ticket.smartStateName,
+        jobId: ticket.awxJobId,
+        errorMessage: ticket.errorMessage,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
     }
   });
 
