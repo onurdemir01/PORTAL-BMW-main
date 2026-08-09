@@ -12,10 +12,15 @@ async function json<T>(r: Response): Promise<T> {
     // Ham HTML'i kullaniciya basmak (eskiden oyle oluyordu) tum index.html'i
     // ekrana dokuyordu — hem okunaksiz hem de teshisi zorlastiriyordu.
     if (!contentType.includes("application/json")) {
-      throw new Error(
-        `Sunucu JSON yerine ${contentType.split(";")[0] || "bilinmeyen"} yanıt döndü ` +
-        `(HTTP ${r.status}). İstek büyük olasılıkla uygulamaya ulaşmadan ters-proxy ` +
-        `tarafından karşılandı — yöneticiye bildirin.`
+      // Durum kodu HATAYA ILISTIRILIR: cagiran 503 (hazir degil) ile 403'u ayirt
+      // edebilsin. Eskiden bu dalda `status` yoktu ve hepsi ayni genel hataya donusuyordu.
+      throw Object.assign(
+        new Error(
+          `Sunucu JSON yerine ${contentType.split(";")[0] || "bilinmeyen"} yanıt döndü ` +
+          `(HTTP ${r.status}). İstek büyük olasılıkla uygulamaya ulaşmadan ters-proxy ` +
+          `tarafından karşılandı — yöneticiye bildirin.`
+        ),
+        { status: r.status },
       );
     }
     const text = await r.text().catch(() => "");
@@ -152,8 +157,10 @@ export const logxV2Api = {
   discoverNamespaces: (requestId: string) =>
     postJson<{ ok: boolean; jobId: number }>(`/ocp/${requestId}/namespaces/discover`, {}),
 
-  discoverFetchOcp: (requestId: string, namespace: string, appName: string) =>
-    postJson<{ ok: boolean; jobId: number }>(`/ocp/${requestId}/discover-fetch`, { namespace, appName }),
+  /** Tek çalıştırmada birden fazla (namespace, uygulama) çifti. Her çift için ayrı bir
+   *  arşiv üretilir: `<cluster>__<namespace>__<uygulama>__<id>.zip`. */
+  discoverFetchOcp: (requestId: string, targets: OcpFetchTarget[]) =>
+    postJson<{ ok: boolean; jobId: number }>(`/ocp/${requestId}/discover-fetch`, { targets }),
 
   // ── Jobs / downloads ─────────────────────────────────────────────────────────
   jobStatus: (jobId: number) =>
@@ -205,6 +212,12 @@ export const logxV2Api = {
     createVaultKey: (data: Partial<OcpVaultKeyRow>) => postJson<{ ok: boolean; row: OcpVaultKeyRow }>("/admin/ocp-vault-keys", data),
     updateVaultKey: (id: number, data: Partial<OcpVaultKeyRow>) => putJson<{ ok: boolean; row: OcpVaultKeyRow }>(`/admin/ocp-vault-keys/${id}`, data),
     deleteVaultKey: (id: number) => del<{ ok: boolean }>(`/admin/ocp-vault-keys/${id}`),
+
+    // LogX'in kullandığı 5 playbook kaydının hazırlık durumu: template ID tanımlı mı,
+    // AWX'te bulunuyor mu, "Prompt on launch" açık mı. Üretimde bir keşif 503 döndüğünde
+    // sebebi tek bakışta görülsün diye (AWX'e girip job incelemeye gerek kalmasın).
+    getPlaybookReadiness: () =>
+      fetch(`${BASE}/admin/playbook-readiness`).then((r) => json<{ ok: boolean; rows: PlaybookReadinessRow[] }>(r)),
 
     listTerminalHostMap: () => fetch(`${BASE}/admin/ocp-terminal-host-map`).then((r) => json<{ ok: boolean; rows: OcpTerminalHostRow[] }>(r)),
     createTerminalHost: (data: Partial<OcpTerminalHostRow>) => postJson<{ ok: boolean; row: OcpTerminalHostRow }>("/admin/ocp-terminal-host-map", data),
@@ -265,6 +278,18 @@ export interface OcpVaultKeyRow {
   description: string | null;
   is_active: boolean;
 }
+export interface PlaybookReadinessRow {
+  keyName: string;
+  displayName: string;
+  enabled: boolean;
+  templateId: number | null;
+  awxServerId: number;
+  /** null = AWX'e sorulamadı (ağ/yetki) — "kapalı" ile karıştırılmamalı. */
+  foundOnAwx: boolean | null;
+  templateName: string | null;
+  /** null = bilinmiyor. false ise AWX gönderilen extra_vars'ı SESSİZCE yok sayar. */
+  promptOnLaunch: boolean | null;
+}
 export interface OcpTerminalHostRow { id: number; tenant: string; env: string; terminal_host: string; is_active: boolean }
 export interface EnvSuffixRow { id: number; suffix: string; env_label: string; sort_order: number; is_active: boolean }
 /** Önbellekten dönen liste + tazelik bilgisi. `stale` true ise veri TTL'ini geçmiştir
@@ -275,8 +300,15 @@ export interface CachedList<T> {
   cached: boolean;
   fetchedAt: string | null;
   stale: boolean;
+  /** `openshift_inventory` = yalnızca zamanlanmış envanter; `mixed` = envanter +
+   *  kullanıcı taramalarının birleşimi (bkz. server/logx/v2/ocp-catalog.cjs). */
   source: string | null;
+  /** Öğe adı → geldiği kaynak. Envanterde olmayanı kullanıcıya rozetlemek için. */
+  sources?: Record<string, "inventory" | "discovery">;
 }
+
+/** Log çekilecek bir (namespace, uygulama) çifti. */
+export interface OcpFetchTarget { namespace: string; appName: string }
 
 export interface OcpAppItem {
   kind: string;

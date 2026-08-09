@@ -12,6 +12,8 @@ import { logxV2Api, type OcpAppItem } from "@/api/logxV2Api";
 import CacheBadge from "../../shared/CacheBadge";
 
 interface Props {
+  /** Devam butonunun metni. Varsayılan "Listeye Ekle". */
+  submitLabel?: string;
   env?: string;
   tenant?: string;
   clusters?: string[];
@@ -42,10 +44,13 @@ export function groupApps(items: OcpAppItem[]): { name: string; kinds: string[];
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reloadToken, onSubmit, onDiscover, busy }) => {
+const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reloadToken, onSubmit, onDiscover, busy, submitLabel }) => {
   const [appName, setAppName] = useState("");
   const [items, setItems] = useState<OcpAppItem[]>([]);
-  const [cache, setCache] = useState<{ fetchedAt: string | null; stale: boolean } | null>(null);
+  const [cache, setCache] = useState<{ fetchedAt: string | null; stale: boolean; source?: string | null } | null>(null);
+  // Ad → kaynak. Envanterde olmayan (kullanıcı taramasıyla gelen) uygulamalar rozetlenir;
+  // kullanıcı listede bir adı NEDEN gördüğünü/göremediğini anlasın.
+  const [sources, setSources] = useState<Record<string, string>>({});
   const [loadingCache, setLoadingCache] = useState(false);
   // "Kayit yok" ile "yetkin yok" AYRI seyler. Eskiden ikisi de ayni bos ekrani gosteriyordu;
   // kullanici "tara" deyip ancak o zaman 403 goruyordu.
@@ -71,12 +76,14 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
           setFailed([]);
           setDenied(false);
           setCache(null);
+          setSources({});
           return;
         }
         setItems(r.items || []);
         setFailed([]);
         setDenied(false);
-        setCache({ fetchedAt: r.fetchedAt, stale: r.stale });
+        setCache({ fetchedAt: r.fetchedAt, stale: r.stale, source: r.source });
+        setSources(r.sources || {});
       } finally {
         if (!cancelled) setLoadingCache(false);
       }
@@ -95,11 +102,21 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
           Bu liste eksik olabilir — şu cluster'lardan yanıt alınamadı: {failed.join(", ")}
         </div>
       )}
-      {cache && <CacheBadge fetchedAt={cache.fetchedAt} stale={cache.stale} onRediscover={onDiscover} busy={busy} actionLabel="Yeniden tara" />}
+      {cache && (
+        <CacheBadge
+          fetchedAt={cache.fetchedAt}
+          stale={cache.stale}
+          source={cache.source}
+          discoveredCount={Object.values(sources).filter((v) => v === "discovery").length}
+          onRediscover={onDiscover}
+          busy={busy}
+          actionLabel="Yeniden tara"
+        />
+      )}
 
       <p className="text-sm text-[var(--text-secondary)]">
         <span className="font-mono text-[var(--text-primary)]">{namespace}</span> içindeki uygulamayı seçin
-        {" — "}eşleşen TÜM pod'ların logları toplanacaktır.
+        {" — "}eşleşen TÜM pod'ların logları tek bir arşivde toplanır.
       </p>
 
       <div className="relative">
@@ -133,6 +150,14 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
                   {g.kinds.join(", ")}
                   {g.replicas !== null && ` • ${g.replicas} replika`}
                 </span>
+                {sources[g.name] === "discovery" && (
+                  <span
+                    className="ml-2 px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[10px] font-semibold text-[var(--text-muted)]"
+                    title="Zamanlanmış envanterde henüz yok — bir kullanıcının taramasıyla geldi."
+                  >
+                    tarama
+                  </span>
+                )}
               </button>
             ))
           )}
@@ -160,12 +185,14 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
         )
       )}
 
+      {/* Tek calistirmada birden fazla (namespace, uygulama) cifti toplanabilir; secim
+          dogrudan job baslatmaz, listeye eklenir (bkz. TargetListStep). */}
       <button
         onClick={() => onSubmit(appName.trim())}
         disabled={!appName.trim() || busy}
         className="btn-primary w-full"
       >
-        {busy ? "Başlatılıyor…" : "Logları Getir"}
+        {busy ? "Ekleniyor…" : (submitLabel ?? "Listeye Ekle")}
       </button>
     </div>
   );

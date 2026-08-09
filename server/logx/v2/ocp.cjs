@@ -14,6 +14,11 @@ const jobs = require('./jobs.cjs');
 const requests = require('./requests.cjs');
 const adminData = require('./admin.cjs');
 
+// Tek calistirmada izin verilen azami (namespace, uygulama) cifti. Ust sinir olmadan bir
+// kullanici yuzlerce cift gonderip AWX'i ve bastion'lari doldurabilirdi; her cift ayri bir
+// `oc login` + pod listeleme + log cekme demek.
+const MAX_TARGETS = 20;
+
 async function getClusterTree() {
   return adminData.getClusterTree();
 }
@@ -249,46 +254,98 @@ async function finalizeNamespaceDiscovery(requestRow, job) {
   });
 }
 
-// POST /ocp/:requestId/discover-fetch — { namespace, appName }. Pod adi hicbir zaman
-// client'tan gelmez — playbook kendi `oc get pods` ciktisindan bulur.
-async function discoverFetch(requestRow, namespace, appName) {
+// Cagirandan gelen (namespace, appName) ciftlerini normalize eder: kirpar, bos olanlari
+// atar, tekillestirir. Saf fonksiyon — dogrudan test edilir.
+// Tek cift gonderen ESKI cagrilar da buradan gecer (dizi haline getirilir), boylece
+// tek-hedef davranisi coklu-hedefin ozel hali olur ve iki ayri kod yolu olusmaz.
+function normalizeTargets(targets) {
+  const list = Array.isArray(targets) ? targets : [targets];
+  const seen = new Set();
+  const out = [];
+  for (const t of list) {
+    const namespace = String(t?.namespace ?? '').trim();
+    const appName = String(t?.appName ?? t?.app_name ?? '').trim();
+    if (!namespace || !appName) continue;
+    const key = `${namespace}\u0000${appName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ namespace, appName });
+  }
+  return out;
+}
+
+// Arsiv adinin parcalari dosya adina girer: yalnizca guvenli karakterler kalir ve her
+// parca kirpilir. Playbook ayni kurali uygular; buradaki amac portalin urettigi degerin
+// de daha bastan guvenli olmasi (assert'e takilip is yarida kalmasin).
+const ARCHIVE_PART_MAX = 60;
+function slugPart(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, ARCHIVE_PART_MAX) || 'x';
+}
+
+// POST /ocp/:requestId/discover-fetch — { targets: [{namespace, appName}, ...] }.
+// Pod adi hicbir zaman client'tan gelmez — playbook kendi `oc get pods` ciktisindan bulur.
+//
+// COKLU HEDEF: kullanici tek calistirmada birden fazla (namespace, uygulama) cifti
+// secebilir. Is birimi (cluster × namespace × uygulama) basina AYRI bir arsiv uretilir —
+// boylece hangi zip'in ne oldugu ADINDAN bellidir.
+async function discoverFetch(requestRow, targets) {
   const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : null;
   if (!Array.isArray(input?.clusters) || !input.clusters.length) {
     throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
   }
-  const ns = String(namespace || '').trim();
-  const app = String(appName || '').trim();
-  if (!ns || !app) {
-    throw Object.assign(new Error('namespace ve appName zorunlu.'), { status: 400 });
+  const list = normalizeTargets(targets);
+  if (!list.length) {
+    throw Object.assign(new Error('En az bir (namespace, uygulama) çifti gerekli.'), { status: 400 });
+  }
+  if (list.length > MAX_TARGETS) {
+    throw Object.assign(
+      new Error(`Tek çalıştırmada en fazla ${MAX_TARGETS} (namespace, uygulama) çifti seçilebilir.`),
+      { status: 400 }
+    );
   }
   // Bastion'lar client input'undan degil, taze bir DB sorgusuyla yeniden cozulur
   // (client'in gonderdigi input_json'a degil, admin verisine guveniriz).
   const { hosts, meta } = await resolveClusterContextOrThrow(input.env, input.tenant, input.clusters);
 
-  const archiveName = `${require('crypto').randomBytes(16).toString('hex')}.zip`;
-  // A4 fetch-back: terminal/kaynak host NFS'e yazamazsa arsivi bu URL'ye push edebilir.
+  // Arsiv ADINI artik playbook kurar (cluster/ns/app bilgisi orada). Portal yalnizca
+  // calistirmayi benzersizlestiren kisa bir kimlik uretir.
+  const archiveId = require('crypto').randomBytes(4).toString('hex');
+  const first = list[0];
+  // Ingest (fetch-back) tokeni tek dosya adi bekler; coklu hedefte ILK arsivin adiyla
+  // uretilir — bu yol yalnizca NFS yazilamadiginda devreye giren yedek yoldur.
+  const firstArchive = `${slugPart(input.clusters[0])}__${slugPart(first.namespace)}__${slugPart(first.appName)}__${archiveId}.zip`;
   const ingestInfo = await require('./ingest.cjs')
-    .issueIngestToken({ requestId: requestRow.request_id, filename: archiveName })
+    .issueIngestToken({ requestId: requestRow.request_id, filename: firstArchive })
     .catch(() => null);
   const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
   const job = await jobs.launchJob(requestRow.request_id, 'ocp_discover_fetch', {
     ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta }),
     ...buildOcpRuntimeVars(runtimeCfg),
-    // `namespace` Ansible'da REZERVE bir addir ("Found variable using reserved name"
-    // uyarisi). Playbook once `oc_namespace_input`'a bakar; `namespace` yalnizca eski
-    // playbook surumleriyle uyum icin gonderilmeye devam eder.
-    oc_namespace_input: ns,
-    namespace: ns,
-    app_name: app,
+    // Coklu hedef sozlesmesi.
+    ocp_targets: list.map((t) => ({ namespace: t.namespace, app_name: t.appName })),
+    archive_id: archiveId,
+    // GERIYE UYUM: eski playbook surumu `ocp_targets`i bilmez; ilk hedefi eski alanlarla
+    // da gondeririz ki en azindan tek hedef calissin. `namespace` Ansible'da REZERVE bir
+    // addir ("Found variable using reserved name" uyarisi) — playbook once
+    // `oc_namespace_input`a bakar.
+    oc_namespace_input: first.namespace,
+    namespace: first.namespace,
+    app_name: first.appName,
     staging_dir: process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
     fallback_dir: require('./downloads.cjs').remoteFallbackDir(),
-    archive_name: archiveName,
     ...(ingestInfo ? { ingest_url: ingestInfo.url } : {}),
   });
 
   await requests.updateRequest(requestRow.request_id, {
     state: 'transferring',
-    input: { ...input, namespace: ns, appName: app },
+    // `targets` yeni kaynak; `namespace`/`appName` ILK hedeften turetilerek yazilmaya
+    // devam eder — bu alanlari okuyan eski istek satirlari ve ekranlar kirilmasin.
+    input: { ...input, targets: list, namespace: first.namespace, appName: first.appName },
   });
   return job;
 }
@@ -296,5 +353,5 @@ async function discoverFetch(requestRow, namespace, appName) {
 module.exports = {
   getClusterTree, selectClusters, discoverNamespaces, finalizeNamespaceDiscovery, discoverFetch,
   discoverApps, finalizeAppDiscovery,
-  buildOcpExtraVars, buildOcpRuntimeVars,
+  buildOcpExtraVars, buildOcpRuntimeVars, normalizeTargets, slugPart, MAX_TARGETS,
 };

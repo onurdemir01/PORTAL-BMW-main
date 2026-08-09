@@ -327,7 +327,10 @@ function initLogXv2(app) {
     if (!env || !tenant || !clusters.length) {
       return res.status(400).json({ ok: false, message: 'env, tenant ve clusters gerekli.' });
     }
-    const out = await require('./ocp-inventory.cjs').getNamespaces({ clusterNames: clusters });
+    // BIRLESIK okuma: envanter (birincil) ∪ kullanici taramasi onbellegi. Eskiden yalniz
+    // envanter okunuyordu; "Bu namespace'i tara" sonucu onbellege yaziliyor ama hicbir
+    // yerde OKUNMUYORDU — tarayan kullanici bile sonucu goremiyordu. bkz. ocp-catalog.cjs
+    const out = await require('./ocp-catalog.cjs').getNamespaces({ env, tenant, clusterNames: clusters });
     const allowedKeys = new Set();
     for (const clusterName of clusters) {
       const prefix = `${tenant}/${env}/${clusterName}/`;
@@ -335,7 +338,11 @@ function initLogXv2(app) {
         allowedKeys.add(k.slice(prefix.length));
       }
     }
-    res.json({ ok: true, ...out, items: out.items.filter((ns) => allowedKeys.has(ns)) });
+    // `sources` de suzulur: kisitlanmis bir namespace'in adi rozet haritasinda kalirsa
+    // istemciye sizardi (liste bos olsa bile ADIN varligini ele verir).
+    const items = out.items.filter((ns) => allowedKeys.has(ns));
+    const sources = Object.fromEntries(items.map((ns) => [ns, out.sources?.[ns] || 'inventory']));
+    res.json({ ok: true, ...out, items, sources });
   }));
 
   router.get('/ocp/inventory/apps', asyncRoute(async (req, res) => {
@@ -351,16 +358,23 @@ function initLogXv2(app) {
       const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, currentUser(req)).catch(() => false);
       if (!allowed) return res.json({ ok: true, items: [], cached: false, fetchedAt: null, stale: false, source: null });
     }
-    const out = await require('./ocp-inventory.cjs').getApps({ clusterNames: clusters, namespace });
+    const out = await require('./ocp-catalog.cjs').getApps({ env, tenant, clusterNames: clusters, namespace });
     res.json({ ok: true, ...out });
   }));
 
+  // Coklu hedef: { targets: [{namespace, appName}, ...] }. Tek hedefli ESKI govde
+  // ({ namespace, appName }) da kabul edilir — dagitim sirasinda eski onyuz kirilmasin.
   router.post('/ocp/:requestId/discover-fetch', asyncRoute(async (req, res) => {
     const row = await loadOwnedRequest(req);
-    const { namespace, appName } = req.body || {};
+    const { targets, namespace, appName } = req.body || {};
+    const list = Array.isArray(targets) && targets.length ? targets : [{ namespace, appName }];
     const input = row.input_json ? JSON.parse(row.input_json) : {};
-    await assertNamespaceAllowed(input, namespace, currentUser(req));
-    const job = await ocp.discoverFetch(row, namespace, appName);
+    // Yetki kapisi HER hedef icin AYRI calisir. Tek bir birlesik kontrol, listeye
+    // kisitli bir namespace eklenmesini sessizce gecirirdi.
+    for (const t of list) {
+      await assertNamespaceAllowed(input, t?.namespace, currentUser(req));
+    }
+    const job = await ocp.discoverFetch(row, list);
     res.json({ ok: true, jobId: job.id });
   }));
 
@@ -431,6 +445,40 @@ function initLogXv2(app) {
   }));
   router.delete('/admin/ocp-cluster-index/:id', requireAdmin, asyncRoute(async (req, res) => {
     res.json({ ok: await adminData.deleteClusterIndexRow(req.params.id) });
+  }));
+
+  // ── Admin: playbook hazirlik durumu ──────────────────────────────────────────
+  // NEDEN VAR: uretimde "Bu namespace'i tara" 503 dondu ve sebebi (app-discovery
+  // template'inin tanimsiz olmasi ya da AWX'te "Prompt on launch"un kapali olmasi)
+  // hicbir ekranda gorunmuyordu; teshis AWX'e girip job'i elle incelemeyi gerektirdi.
+  // Bu uc, LogX'in kullandigi BES playbook kaydinin durumunu tek bakista verir.
+  router.get('/admin/playbook-readiness', requireAdmin, asyncRoute(async (req, res) => {
+    const playbookRegistry = require('../../ansible/playbook-registry.cjs');
+    const preflight = require('../../ansible/template-preflight.cjs');
+    const KEYS = [
+      'logx_legacy_discovery', 'logx_legacy_transfer',
+      'logx_ocp_namespace_discovery', 'logx_ocp_app_discovery', 'logx_ocp_discover_fetch',
+    ];
+    const rows = [];
+    for (const keyName of KEYS) {
+      const row = await playbookRegistry.getByKey(keyName).catch(() => null);
+      const templateId = row ? playbookRegistry.getEffectiveTemplateId(row) : null;
+      const serverId = row?.awxServerId || Number(process.env.AWX_LOGX_SERVER_ID) || 1;
+      // Template AWX'te bulunamazsa (ag/yetki) `null` doner — "bilinmiyor" ile "kapali"
+      // AYRI gosterilir; fail-open kurali burada da gecerli.
+      const tpl = templateId ? await preflight.findTemplate(serverId, templateId) : null;
+      rows.push({
+        keyName,
+        displayName: row?.displayName || keyName,
+        enabled: row ? row.enabled !== false : false,
+        templateId: templateId || null,
+        awxServerId: serverId,
+        foundOnAwx: templateId ? Boolean(tpl) : null,
+        templateName: tpl?.name || null,
+        promptOnLaunch: tpl ? tpl.ask_variables !== false : null,
+      });
+    }
+    res.json({ ok: true, rows });
   }));
 
   // ── Admin: cluster satirinin CANLI kontrolu ─────────────────────────────────

@@ -15,6 +15,12 @@ interface Props {
   busy?: boolean;
   /** Buton metni — "Burada keşfet" varsayılan, adım bağlamına göre özelleştirilebilir. */
   actionLabel?: string;
+  /** Listenin kaynağı. `openshift_inventory` = zamanlanmış envanter (tek kaynak),
+   *  `mixed` = envanter + kullanıcı taramaları birleşimi. Kullanıcı bir adı listede
+   *  görüp göremediğinin NEDENİNİ anlasın diye gösterilir. */
+  source?: string | null;
+  /** Yalnızca kullanıcı taramasından gelen (envanterde henüz olmayan) öğe sayısı. */
+  discoveredCount?: number;
 }
 
 // "2 saat önce" gibi kısa bir görelilik — mutlak tarih title'da kalır.
@@ -30,8 +36,11 @@ export function formatAge(iso: string | null): string {
   return `${Math.floor(hours / 24)} gün önce`;
 }
 
-const CacheBadge: React.FC<Props> = ({ fetchedAt, stale, onRediscover, busy, actionLabel = "Burada keşfet" }) => {
+const CacheBadge: React.FC<Props> = ({
+  fetchedAt, stale, onRediscover, busy, actionLabel = "Burada keşfet", source, discoveredCount = 0,
+}) => {
   const absolute = fetchedAt ? new Date(fetchedAt).toLocaleString("tr-TR") : "";
+  const originLabel = source === "openshift_inventory" ? "Envanterden" : "Envanter + tarama";
 
   return (
     <div
@@ -44,8 +53,16 @@ const CacheBadge: React.FC<Props> = ({ fetchedAt, stale, onRediscover, busy, act
         <span className="truncate" title={absolute} aria-label={absolute ? `Liste ${absolute} tarihinde alındı` : undefined}>
           {stale
             ? `Bu liste ${formatAge(fetchedAt)} alındı, güncelliğini yitirmiş olabilir.`
-            : `Önbellekten • ${formatAge(fetchedAt)}`}
+            : `${originLabel} • ${formatAge(fetchedAt)}`}
         </span>
+        {discoveredCount > 0 && (
+          <span
+            className="flex-shrink-0 px-1.5 py-0.5 rounded-full border border-current/30 text-[10px] font-semibold"
+            title="Bu öğeler zamanlanmış envanterde yok; bir kullanıcının taramasıyla geldi."
+          >
+            +{discoveredCount} tarama
+          </span>
+        )}
       </span>
       {onRediscover && (
         <button

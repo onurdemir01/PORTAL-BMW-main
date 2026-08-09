@@ -33,10 +33,10 @@ for (const file of OCP_PLAYBOOKS) {
     const loginArgs = read(file).split('\n').filter((l) => /--username=/.test(l));
     assert.ok(loginArgs.length > 0, 'playbook oc login yapmali');
     for (const line of loginArgs) {
-      // Cozulmus deger bir loop degiskeninden gelmeli (cluster./target.).
+      // Cozulmus deger bir loop degiskeninden gelmeli (cluster. / unit. / target.).
       assert.match(
         line,
-        /--username=\{\{\s*(cluster|target)\.username\s*\|\s*quote\s*\}\}/,
+        /--username=\{\{\s*(cluster|unit|target)\.username\s*\|\s*quote\s*\}\}/,
         `AWX inventory dosyasina bagimli ciplak degisken: ${line.trim()}`
       );
     }
@@ -78,5 +78,62 @@ test('overall_status bastan/sondan bosluk BIRAKMAZ ({% set %} sizintisi)', () =>
     const block = text.slice(idx, idx + 1200);
     if (!block.includes('{% set ')) continue;   // tek satirlik ifade — sizinti yok
     assert.match(block, /\|\s*trim/, `${file}: {% set %} kullanan blok | trim ile bitmeli`);
+  }
+});
+
+// ── Jinja apostrof tuzagi (2026-08-09 uretim arizasi #2) ─────────────────────
+// Hata mesajina eklenen `Ayarlari\'nda` ifadesi, TEK TIRNAKLI bir Jinja string'i
+// icinde ters-boluyle kacirilmis apostrof tasiyordu. AWX'teki ansible-core 2.16.11 /
+// jinja 3.1.4 bunu YAML gibi yorumlamadi: string apostrofta bitti, kalan `nda`
+// sozdizimi sanildi ve UC PLAYBOOK DA uretimde su hatayla dustu:
+//   template error while templating string: expected token ')', got 'nda'
+//
+// NEDEN GREP TESTI: bu sinif `ansible-playbook --syntax-check`ten GECER (YAML
+// gecerlidir, ifade ancak calisma aninda derlenir) ve davranis ansible/jinja
+// SURUMUNE gore degisir — yerelde daha yeni bir surumde sessizce calisabilir.
+// Tek guvenli kural: bu playbook'larda kacirilmis apostrof HIC kullanilmasin;
+// apostrof gereken metin CIFT TIRNAKLI string icine yazilsin.
+
+test('OCP playbook\'larinda kacirilmis apostrof (\\\') YOK', () => {
+  for (const file of OCP_PLAYBOOKS) {
+    const bad = read(file).split('\n')
+      .map((line, i) => ({ line, no: i + 1 }))
+      .filter(({ line }) => line.includes("\\'"));
+    assert.deepEqual(
+      bad.map((b) => `${file}:${b.no}: ${b.line.trim()}`),
+      [],
+      'apostrof iceren metin cift tirnakli string icine alinmali'
+    );
+  }
+});
+
+test('hata mesajindaki apostrof CIFT TIRNAKLI string icinde', () => {
+  // Mesajin kendisi hala uretiliyor mu (fix sirasinda silinmedigini kilitler).
+  for (const file of OCP_PLAYBOOKS) {
+    assert.match(
+      read(file),
+      /~ "alanini doldurun ya da OCP Calistirma Ayarlari'nda genel varsayilani girin: "/,
+      `${file}: kullanici adi hata mesaji cift tirnakli olarak durmali`
+    );
+  }
+});
+
+test('Jinja ifadelerinin ICINE `#` yorum satiri konmamis', () => {
+  // `>-` katlamali skaler icinde `#` YAML yorumu DEGILDIR — ifadenin parcasi olur ve
+  // Jinja'yi bozar. Aciklamalar gorevin USTUNE, gercek YAML yorumu olarak yazilmali.
+  for (const file of OCP_PLAYBOOKS) {
+    // Katlamali skaler, ANAHTARDAN daha derin girintili satirlar boyunca surer.
+    // Sabit bir girinti esigi kullanmak ic ice bloklarda (vars: altindaki anahtarlar)
+    // yanlis pozitif verirdi.
+    let keyIndent = null;
+    read(file).split('\n').forEach((line, i) => {
+      const m = /^(\s*)\S.*:\s*>-\s*$/.exec(line);
+      if (m) { keyIndent = m[1].length; return; }
+      if (keyIndent === null) return;
+      if (line.trim() === '') return;
+      const indent = line.length - line.trimStart().length;
+      if (indent <= keyIndent) { keyIndent = null; return; }
+      assert.ok(!/^\s*#/.test(line), `${file}:${i + 1}: katlamali skaler icinde '#' yorum satiri`);
+    });
   }
 });
