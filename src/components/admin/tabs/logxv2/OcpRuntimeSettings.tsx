@@ -143,6 +143,28 @@ export default function OcpRuntimeSettings() {
         </p>
       </div>
 
+      <div>
+        <label className="block text-xs font-medium mb-1 text-gray-600">
+          OCP kullanıcı adı — genel varsayılan
+        </label>
+        <input
+          value={cfg.defaultOcpUsername}
+          onChange={(e) => patch({ defaultOcpUsername: e.target.value })}
+          placeholder="uxmid"
+          className="w-full px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[#0066CC]"
+        />
+        {/* Bu alan olmadığında playbook `username` değerini yalnızca AWX'teki
+            openshift_inventory_vars.yaml dosyasından okuyabiliyordu; o dosya AWX'te
+            bulunmadığı için 2026-08-09'da tüm cluster'lar düştü. */}
+        <p className="mt-1 text-[11px] text-gray-400">
+          Playbook'un <span className="font-mono">oc login --username</span> değeri.
+          <strong> OCP Cluster Hiyerarşisi</strong> sekmesinde bir cluster'a özel değer girilmişse
+          <strong> o kazanır</strong>; burası yalnızca boş bırakılan satırlar için geçerlidir.
+          Boş bırakırsanız cluster satırında da değer yoksa o cluster keşifte anlaşılır bir
+          hatayla elenir (diğerleri çalışmaya devam eder). PAROLA DEĞİLDİR.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {TIMEOUTS.map(({ key, label, help }) => (
           <div key={key}>

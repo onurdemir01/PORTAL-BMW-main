@@ -28,9 +28,13 @@ interface Props<T extends { id: number }> {
   onCreate: (data: Partial<T>) => Promise<void>;
   onUpdate: (id: number, data: Partial<T>) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  // Satıra özel ek aksiyonlar (ör. "Bağlantı Testi"). Düzenle/Sil'in SOLUNA gelir ve
+  // yalnızca okuma modundaki satırlarda gösterilir — düzenleme sırasında yan etkili bir
+  // işlem tetiklemek kaydedilmemiş değişiklikleri kaybettirirdi.
+  rowActions?: (row: T) => React.ReactNode;
 }
 
-export default function SimpleCrudTable<T extends { id: number }>({ columns, rows, emptyRow, onCreate, onUpdate, onDelete }: Props<T>) {
+export default function SimpleCrudTable<T extends { id: number }>({ columns, rows, emptyRow, onCreate, onUpdate, onDelete, rowActions }: Props<T>) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<Partial<T>>(emptyRow);
@@ -161,6 +165,7 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                     );
                   })}
                   <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {rowActions?.(row)}
                     <button onClick={() => startEdit(row)} aria-label="Satırı düzenle" title="Düzenle"
                       className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
                       <PencilIcon className="w-3.5 h-3.5" />

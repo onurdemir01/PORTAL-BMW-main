@@ -433,6 +433,36 @@ function initLogXv2(app) {
     res.json({ ok: await adminData.deleteClusterIndexRow(req.params.id) });
   }));
 
+  // ── Admin: cluster satirinin CANLI kontrolu ─────────────────────────────────
+  // Bu iki aksiyon eskiden Admin > Ansible Yapilandirma'daki AYRI OCP katalogundaydi
+  // (ansible_ocp_clusters). Iki katalog paralel yasadigi icin o ekran uretimde BOS
+  // gorunuyordu. Tek katalog: ocp_cluster_index — aksiyonlar da onunla birlikte.
+  router.post('/admin/ocp-cluster-index/:id/test-connection', requireAdmin, asyncRoute(async (req, res) => {
+    res.json(await require('./ocp-health.cjs').testConnection(req.params.id));
+  }));
+  router.post('/admin/ocp-cluster-index/:id/pod-status', requireAdmin, express.json({ limit: '16kb' }), asyncRoute(async (req, res) => {
+    const { namespace, labelSelector } = req.body || {};
+    res.json(await require('./ocp-health.cjs').podStatus(req.params.id, { namespace, labelSelector }));
+  }));
+
+  // ── Admin: ocp_vault_key_catalog ─────────────────────────────────────────────
+  // credentials.yaml icindeki vault DEGISKEN ADLARI. Cluster satirindaki "Vault Anahtari"
+  // alani onerilerini buradan alir. PAROLA TUTULMAZ — yalnizca anahtarin ADI.
+  router.get('/admin/ocp-vault-keys', requireAdmin, asyncRoute(async (req, res) => {
+    res.json({ ok: true, rows: await adminData.listVaultKeys() });
+  }));
+  router.post('/admin/ocp-vault-keys', requireAdmin, asyncRoute(async (req, res) => {
+    res.json({ ok: true, row: await adminData.createVaultKey(req.body || {}) });
+  }));
+  router.put('/admin/ocp-vault-keys/:id', requireAdmin, asyncRoute(async (req, res) => {
+    const row = await adminData.updateVaultKey(req.params.id, req.body || {});
+    if (!row) return res.status(404).json({ ok: false, message: 'Kayıt bulunamadı.' });
+    res.json({ ok: true, row });
+  }));
+  router.delete('/admin/ocp-vault-keys/:id', requireAdmin, asyncRoute(async (req, res) => {
+    res.json({ ok: await adminData.deleteVaultKey(req.params.id) });
+  }));
+
   // ── Admin: OCP calisma zamani ayarlari (oc yolu + zaman asimlari) ───────────
   // Playbook'taki sabit oc yolu uretimde tum bastion'larin dusmesine yol acmisti; bu uc
   // sayesinde aday yollar ve zaman asimlari DEPLOY GEREKTIRMEDEN degistirilebilir.

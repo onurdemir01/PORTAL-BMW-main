@@ -51,7 +51,7 @@ const CacheBadge: React.FC<Props> = ({ fetchedAt, stale, onRediscover, busy, act
         <button
           onClick={onRediscover}
           disabled={busy}
-          title="Sunuculara bağlanıp listeyi yeniden tarar — 1-3 dakika sürebilir"
+          title="Sunuculara bağlanıp listeyi yeniden tarar"
           className="flex items-center gap-1 flex-shrink-0 px-2.5 py-1 rounded-lg border border-current/30 font-medium hover:bg-white/60 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
         >
           <ArrowPathIcon aria-hidden="true" className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} />

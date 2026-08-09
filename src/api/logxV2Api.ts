@@ -190,6 +190,22 @@ export const logxV2Api = {
       postJson<{ ok: boolean; result: { inserted?: number; skipped?: number; failed?: number } }>(
         "/admin/ocp/bootstrap-seed/rerun"),
 
+    // Cluster satırının CANLI kontrolü. Eskiden Admin > Ansible Yapılandırma'daki AYRI
+    // OCP kataloğundaydı; o katalog boş kaldığı için aksiyonlar hiç kullanılamıyordu.
+    testClusterConnection: (id: number) =>
+      postJson<{ ok: boolean; message?: string; responseTimeMs?: number; status?: string }>(
+        `/admin/ocp-cluster-index/${id}/test-connection`, {}),
+    clusterPodStatus: (id: number, body: { namespace?: string; labelSelector?: string } = {}) =>
+      postJson<{ ok: boolean; output?: string; jobId?: number; jumpHost?: string }>(
+        `/admin/ocp-cluster-index/${id}/pod-status`, body),
+
+    // Vault anahtar kataloğu: credentials.yaml içindeki DEĞİŞKEN ADLARI (parola DEĞİL).
+    // Cluster satırındaki "Vault Anahtarı" alanının önerileri buradan gelir.
+    listVaultKeys: () => fetch(`${BASE}/admin/ocp-vault-keys`).then((r) => json<{ ok: boolean; rows: OcpVaultKeyRow[] }>(r)),
+    createVaultKey: (data: Partial<OcpVaultKeyRow>) => postJson<{ ok: boolean; row: OcpVaultKeyRow }>("/admin/ocp-vault-keys", data),
+    updateVaultKey: (id: number, data: Partial<OcpVaultKeyRow>) => putJson<{ ok: boolean; row: OcpVaultKeyRow }>(`/admin/ocp-vault-keys/${id}`, data),
+    deleteVaultKey: (id: number) => del<{ ok: boolean }>(`/admin/ocp-vault-keys/${id}`),
+
     listTerminalHostMap: () => fetch(`${BASE}/admin/ocp-terminal-host-map`).then((r) => json<{ ok: boolean; rows: OcpTerminalHostRow[] }>(r)),
     createTerminalHost: (data: Partial<OcpTerminalHostRow>) => postJson<{ ok: boolean; row: OcpTerminalHostRow }>("/admin/ocp-terminal-host-map", data),
     updateTerminalHost: (id: number, data: Partial<OcpTerminalHostRow>) => putJson<{ ok: boolean; row: OcpTerminalHostRow }>(`/admin/ocp-terminal-host-map/${id}`, data),
@@ -232,10 +248,22 @@ export interface OcpClusterIndexRow {
   api_url: string | null;
   /** credentials.yaml içindeki değişkenin ADI — parola PORTALDA TUTULMAZ. */
   vault_credential_key: string | null;
+  /** `oc login --username` değeri. Boşsa OCP Çalıştırma Ayarları'ndaki genel varsayılan
+   *  kullanılır; o da boşsa cluster keşifte anlaşılır bir hatayla elenir. */
+  ocp_username: string | null;
   is_active: boolean;
   source?: string | null;
   last_synced_at?: string | null;
   sync_status?: string | null;
+}
+/** credentials.yaml içindeki vault DEĞİŞKEN ADI. PAROLA DEĞİL — parola portalda tutulmaz. */
+export interface OcpVaultKeyRow {
+  id: number;
+  key_name: string;
+  /** Yeni cluster satırı eklenirken "OCP Kullanıcı Adı" alanını ön-doldurmak için. */
+  default_username: string | null;
+  description: string | null;
+  is_active: boolean;
 }
 export interface OcpTerminalHostRow { id: number; tenant: string; env: string; terminal_host: string; is_active: boolean }
 export interface EnvSuffixRow { id: number; suffix: string; env_label: string; sort_order: number; is_active: boolean }
@@ -265,5 +293,8 @@ export interface OcpRuntimeConfig {
   ocAsyncTimeout: number;
   ocListTimeout: number;
   ocLogTimeout: number;
+  /** `oc login --username` genel varsayılanı. Cluster satırındaki değer varsa O kazanır.
+   *  Boş bırakılırsa playbook AWX'teki eski `username` değişkenine düşer. */
+  defaultOcpUsername: string;
 }
 export interface RestrictionRow { id: number; resourceType: string; resourceKey: string; description: string | null; grants: string[] }

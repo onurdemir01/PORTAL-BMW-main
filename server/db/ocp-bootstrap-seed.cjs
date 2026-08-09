@@ -12,9 +12,14 @@
 
 const db = require('./index.cjs');
 const settings = require('./settings.cjs');
-const { INVENTORY, CLUSTER_JUMP_HOSTS, TERMINAL_HOST_MAP } = require('./data/ocp-inventory-seed.cjs');
+const {
+  INVENTORY, CLUSTER_JUMP_HOSTS, TERMINAL_HOST_MAP, VAULT_KEYS, DEFAULT_OCP_USERNAME,
+} = require('./data/ocp-inventory-seed.cjs');
 
 const SEED_FLAG = 'ocp_bootstrap_seed_v1';
+// AYRI isaret: cluster seed'i cok once calismis kurulumlarda da vault katalogu bir kez
+// dolsun. Ayni isareti paylassalardi mevcut kurulumlar katalogu HIC gormezdi.
+const VAULT_SEED_FLAG = 'ocp_vault_key_seed_v1';
 
 // Inventory anahtarini tenant/env'e ayirir: SON alt cizgi env, oncesi tenant.
 // Alt cizgi yoksa ikisi de anahtarin kendisidir ('cicd' → cicd/cicd).
@@ -38,6 +43,9 @@ function buildSeedRows(inventory = INVENTORY, jumpHosts = CLUSTER_JUMP_HOSTS) {
         cluster_name: clusterName,
         api_url: apiUrl,
         vault_credential_key: group.credentialKey || null,
+        // `oc login --username=...`. Envanterdeki tum anahtarlar ayni servis hesabina ait;
+        // farkli olan cluster'da admin satiri duzenler.
+        ocp_username: group.username || DEFAULT_OCP_USERNAME,
         // Cluster'a ozel jump server yoksa NULL birakilir; calisma aninda
         // ocp_terminal_host_map(tenant, env) yedegi devreye girer.
         terminal_host: jumpHosts[clusterName] || null,
@@ -63,9 +71,11 @@ async function seedClusters(rows) {
 
       await db.query(
         `INSERT INTO ocp_cluster_index
-           (env, tenant, cluster_name, api_url, vault_credential_key, terminal_host, source, is_active)
-         VALUES ($1,$2,$3,$4,$5,$6,'inventory-seed',0)`,
-        [r.env, r.tenant, r.cluster_name, r.api_url, r.vault_credential_key, r.terminal_host]
+           (env, tenant, cluster_name, api_url, vault_credential_key, ocp_username,
+            terminal_host, source, is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'inventory-seed',0)`,
+        [r.env, r.tenant, r.cluster_name, r.api_url, r.vault_credential_key,
+         r.ocp_username, r.terminal_host]
       );
       inserted++;
     } catch (e) {
@@ -98,8 +108,69 @@ async function seedTerminalHostMap(map = TERMINAL_HOST_MAP) {
   return { inserted, skipped };
 }
 
+// Vault anahtar katalogu — CLUSTER seed'inden BAGIMSIZ bir-kerelik seed.
+// Var olan anahtara dokunulmaz (admin'in duzenledigi aciklama korunur).
+async function seedVaultKeys(keys = VAULT_KEYS) {
+  let inserted = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const k of keys) {
+    try {
+      const { rows } = await db.query(
+        `SELECT TOP 1 id FROM ocp_vault_key_catalog WHERE key_name = $1`, [k.key_name]
+      );
+      if (rows.length) { skipped++; continue; }
+      await db.query(
+        `INSERT INTO ocp_vault_key_catalog (key_name, default_username, description, is_active)
+         VALUES ($1,$2,$3,1)`,
+        [k.key_name, k.default_username || null, k.description || null]
+      );
+      inserted++;
+    } catch (e) {
+      failed++;
+      console.warn(`[OcpSeed] vault anahtari '${k.key_name}' eklenemedi:`, e.message);
+    }
+  }
+  return { inserted, skipped, failed };
+}
+
+// Cluster seed'inden AYRI kapi: kendi isaretini tasir, bu yuzden katalog eklenmeden once
+// kurulmus portallar da anahtarlari bir kez alir. Admin bir anahtari silerse geri gelmez.
+async function seedVaultKeysOnce({ force = false } = {}) {
+  if (!force) {
+    let flag;
+    try {
+      flag = await settings.getSettingStrict(VAULT_SEED_FLAG);
+    } catch (e) {
+      console.warn('[OcpSeed] vault isareti okunamadi, seed atlandi:', e.message);
+      return { skipped: true, reason: 'flag_read_failed' };
+    }
+    if (flag) return { skipped: true, reason: 'already_seeded' };
+  }
+
+  const result = await seedVaultKeys();
+  // Cluster seed'iyle AYNI kural: hicbiri yazilamadiysa (or. tablo henuz yok) isaret
+  // atilmaz ki bir sonraki acilista tekrar denensin.
+  if (result.inserted === 0 && result.skipped === 0 && result.failed > 0) {
+    console.warn(`[OcpSeed] hicbir vault anahtari yazilamadi (${result.failed} hata) — isaret ATILMADI.`);
+    return { skipped: false, incomplete: true, vaultKeys: result };
+  }
+  await settings.setSetting(VAULT_SEED_FLAG, JSON.stringify({ at: new Date().toISOString(), ...result }), {
+    description: 'OCP vault anahtar katalogu ilk kurulumu (bir kerelik).',
+  });
+  console.log(`[OcpSeed] vault anahtari: ${result.inserted} eklendi / ${result.skipped} zaten vardi.`);
+  return { skipped: false, vaultKeys: result };
+}
+
 // Boot'ta cagrilir. `force` yalnizca admin "yeniden calistir" ucundan gelir.
 async function seedOcpBootstrapOnce({ force = false } = {}) {
+  // Cluster isaretinden ONCE ve ONDAN BAGIMSIZ: cluster katalogu coktan seed edilmis
+  // kurulumlarda da vault anahtarlari dolsun.
+  const vault = await seedVaultKeysOnce({ force }).catch((e) => {
+    console.warn('[OcpSeed] vault katalog seed hatasi:', e.message);
+    return { skipped: true, reason: 'error' };
+  });
+
   if (!force) {
     // DIKKAT: getSettingStrict hatayi YUTMAZ. DB okunamiyorsa seed'i "yapilmamis" sayip
     // calistirmak yanlis olurdu (mukerrer satir riski) — bu yuzden hata durumunda atlanir.
@@ -110,7 +181,7 @@ async function seedOcpBootstrapOnce({ force = false } = {}) {
       console.warn('[OcpSeed] isaret okunamadi, seed atlandi:', e.message);
       return { skipped: true, reason: 'flag_read_failed' };
     }
-    if (flag) return { skipped: true, reason: 'already_seeded' };
+    if (flag) return { skipped: true, reason: 'already_seeded', vault };
   }
 
   const rows = buildSeedRows();
@@ -121,6 +192,7 @@ async function seedOcpBootstrapOnce({ force = false } = {}) {
     at: new Date().toISOString(),
     clusters,
     terminalHostMap: hostMap,
+    vault,
     totalCandidates: rows.length,
   };
 
@@ -149,6 +221,7 @@ async function seedOcpBootstrapOnce({ force = false } = {}) {
 
 module.exports = {
   seedOcpBootstrapOnce, SEED_FLAG,
+  seedVaultKeysOnce, VAULT_SEED_FLAG,
   // saf yardimcilar — birim testleri icin
   parseInventoryKey, buildSeedRows,
 };

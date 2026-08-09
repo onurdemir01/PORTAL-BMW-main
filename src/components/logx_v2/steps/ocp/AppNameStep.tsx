@@ -153,7 +153,7 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] transition-colors active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
               >
                 <MagnifyingGlassCircleIcon aria-hidden="true" className="w-4 h-4" />
-                {busy ? "Başlatılıyor…" : "Bu namespace'i tara (1-3 dk)"}
+                {busy ? "Başlatılıyor…" : "Bu namespace'i tara"}
               </button>
             )}
           </div>
