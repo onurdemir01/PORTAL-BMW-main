@@ -470,12 +470,13 @@
       ansible.builtin.set_stats:
         data:
           logx_result:
-            # `| trim` SART: asagidaki {% set %} satirlari ciktiya bosluk sizdiriyor ve
-            # deger "      failed" olarak yayinlaniyordu (uretimde gozlendi). Portal bu
-            # alani es-esitlikle karsilastiriyor.
+            # `{%- ... -%}` SART: YAML katlamali skalerde satir sonlari BOSLUGA doner ve
+            # `{% set %}` etiketleri arasindaki bosluklar ciktiya sizar. `| trim` yalniz
+            # IFADENIN SONUCUNU kirpar, etiketlerden gelen bu bosluklari DEGIL — deger
+            # uretimde "      failed" olarak yayinlanmisti. Bosluk denetimi tek cozum.
             overall_status: >-
-              {% set ok_count = merged_ns_results | selectattr('status', 'equalto', 'ok') | list | length %}
-              {% set error_count = merged_ns_results | selectattr('status', 'equalto', 'error') | list | length %}
-              {{ ('success' if error_count == 0 else ('failed' if ok_count == 0 else 'partial')) | trim }}
+              {%- set ok_count = merged_ns_results | selectattr('status', 'equalto', 'ok') | list | length -%}
+              {%- set error_count = merged_ns_results | selectattr('status', 'equalto', 'error') | list | length -%}
+              {{- ('success' if error_count == 0 else ('failed' if ok_count == 0 else 'partial')) | trim -}}
             clusters: "{{ merged_ns_results }}"
         per_host: false

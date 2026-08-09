@@ -455,7 +455,10 @@
             jid: "{{ item.ansible_job_id }}"
           loop: "{{ pod_list_jobs.results | default([]) }}"
           loop_control:
-            label: "{{ item.cluster.cluster_name }}"
+            # Dongu degiskeni `unit` (eskiden `cluster`); etiket de ondan okunmali.
+            # `item.cluster` kalinca Ansible etiketi templateleyemeyip GOREVI DUSURUYORDU
+            # ve hata "'dict object' has no attribute 'cluster'" olarak sonuca yaziliyordu.
+            label: "{{ item.unit.slug }}"
           register: pod_list_wait
           until: pod_list_wait.finished
           retries: 120
@@ -1014,23 +1017,25 @@
       ansible.builtin.set_stats:
         data:
           logx_result:
-            # `| trim` SART: {% set %} satirlari ciktiya bosluk sizdiriyor ve deger
-            # "      failed" olarak yayinlaniyordu (uretimde gozlendi).
+            # `{%- ... -%}` SART: YAML katlamali skalerde satir sonlari BOSLUGA doner ve
+            # `{% set %}` etiketleri arasindaki bosluklar ciktiya sizar. `| trim` yalniz
+            # IFADENIN SONUCUNU kirpar, etiketlerden gelen bu bosluklari DEGIL — deger
+            # uretimde "      failed" olarak yayinlanmisti. Bosluk denetimi tek cozum.
             overall_status: >-
-              {% set ok_count = merged_clusters | selectattr('status', 'equalto', 'ok') | list | length %}
-              {% set partial_count = merged_clusters | selectattr('status', 'equalto', 'partial') | list | length %}
-              {% set error_count = merged_clusters | selectattr('status', 'equalto', 'error') | list | length %}
-              {% set no_match_count = merged_clusters | selectattr('status', 'equalto', 'no_match') | list | length %}
-              {% set archive_created = staged_files | length > 0 %}
-              {% set staged_ok = bastion_summaries | selectattr('staged_ok') | list | length > 0 %}
-              {{
+              {%- set ok_count = merged_clusters | selectattr('status', 'equalto', 'ok') | list | length -%}
+              {%- set partial_count = merged_clusters | selectattr('status', 'equalto', 'partial') | list | length -%}
+              {%- set error_count = merged_clusters | selectattr('status', 'equalto', 'error') | list | length -%}
+              {%- set no_match_count = merged_clusters | selectattr('status', 'equalto', 'no_match') | list | length -%}
+              {%- set archive_created = staged_files | length > 0 -%}
+              {%- set staged_ok = bastion_summaries | selectattr('staged_ok') | list | length > 0 -%}
+              {{-
                 (
                   'failed' if error_count > 0 and ok_count == 0 and partial_count == 0
                   else ('no_match' if not archive_created and no_match_count > 0 and error_count == 0
                   else ('success' if staged_ok and error_count == 0 and partial_count == 0
                   else ('partial' if staged_ok else 'failed')))
                 ) | trim
-              }}
+              -}}
             clusters: "{{ merged_clusters }}"
             terminal_host: "{{ (staged_files | map(attribute='terminal_host') | list | first) | default('', true) }}"
             staged_path: "{{ (staged_files | map(attribute='staged_path') | list | first) | default('', true) }}"

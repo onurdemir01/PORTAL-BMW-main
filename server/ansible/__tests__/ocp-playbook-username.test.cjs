@@ -68,16 +68,70 @@ for (const file of OCP_PLAYBOOKS) {
   });
 }
 
-test('overall_status bastan/sondan bosluk BIRAKMAZ ({% set %} sizintisi)', () => {
-  // Uretimde `"      failed"` yayinlandi: katlamali skalerde `{% set %}` satirlari
-  // ciktiya bosluk sizdiriyor. Portal bu alani es-esitlikle karsilastiriyor.
+test('overall_status bastan/sondan bosluk BIRAKMAZ (Jinja bosluk denetimi)', () => {
+  // Uretimde iki kez `"      failed"` yayinlandi. Sebep: YAML katlamali skalerde satir
+  // sonlari BOSLUGA doner ve `{% set %}` etiketleri arasindaki bosluklar ciktiya sizar.
+  // `| trim` YETMEZ — o yalnizca IFADENIN SONUCUNU kirpar, etiketlerden gelen cevre
+  // boslugunu degil. Tek cozum `{%- ... -%}` / `{{- ... -}}` bosluk denetimi.
   for (const file of OCP_PLAYBOOKS) {
     const text = read(file);
     const idx = text.indexOf('overall_status:');
     assert.ok(idx > 0, `${file}: overall_status yayinlanmali`);
-    const block = text.slice(idx, idx + 1200);
-    if (!block.includes('{% set ')) continue;   // tek satirlik ifade — sizinti yok
-    assert.match(block, /\|\s*trim/, `${file}: {% set %} kullanan blok | trim ile bitmeli`);
+    const block = text.slice(idx, idx + 1400);
+    const setTags = block.match(/\{%-?\s*set /g) || [];
+    if (setTags.length === 0) continue;                 // tek satirlik ifade — sizinti yok
+    assert.ok(
+      setTags.every((t) => t.startsWith('{%-')),
+      `${file}: overall_status icindeki her {% set %} '{%-' ile baslamali`
+    );
+    assert.match(block, /\{%-[^%]*-%\}/, `${file}: set etiketleri '-%}' ile bitmeli`);
+    assert.match(block, /\{\{-/, `${file}: cikti ifadesi '{{-' ile baslamali`);
+    assert.match(block, /-\}\}/, `${file}: cikti ifadesi '-}}' ile bitmeli`);
+  }
+});
+
+test('kayit sonucu uzerinden donen label ifadeleri DOGRU dongu degiskenine bakiyor', () => {
+  // GERCEK ARIZA (2026-08-09): pod listeleme gorevinin loop_var'i `cluster` -> `unit`
+  // olarak degistirildi ama onu BEKLEYEN gorevin label'i `item.cluster.cluster_name`
+  // kaldi. Ansible etiketi templateleyemeyip GOREVI DUSURDU; hata sonuca
+  // "'dict object' has no attribute 'cluster'" olarak yazildi ve is tamamen bosa gitti.
+  //
+  // Kontrol: `register: X` olan bir gorevin loop_var'ini ogren; `X.results` uzerinde
+  // donen bir gorevin label'i `item.<ad>` diyorsa <ad> ya O loop_var olmali ya da
+  // async_status sonucunun kendi alani (`item` = orijinal oge).
+  const ASYNC_FIELDS = new Set(['item', 'ansible_job_id', 'stdout', 'stderr', 'rc', 'failed']);
+
+  for (const file of OCP_PLAYBOOKS) {
+    const lines = read(file).split('\n');
+
+    // 1) register adi -> o gorevin loop_var'i
+    const loopVarOf = {};
+    let pendingVar = 'item';
+    for (const line of lines) {
+      if (/^\s*-\s+name:/.test(line)) pendingVar = 'item';
+      const lv = /^\s*loop_var:\s*(\S+)/.exec(line);
+      if (lv) pendingVar = lv[1];
+      const reg = /^\s*register:\s*(\S+)/.exec(line);
+      if (reg) loopVarOf[reg[1]] = pendingVar;
+    }
+
+    // 2) `<X>.results` uzerinde donen gorevlerin label'lerini dogrula
+    let src = null;
+    lines.forEach((line, i) => {
+      const lp = /^\s*loop:\s*"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\.results/.exec(line);
+      if (lp) { src = lp[1]; return; }
+      if (/^\s*loop:/.test(line)) { src = null; return; }
+      const lab = /^\s*label:\s*"(.+)"\s*$/.exec(line);
+      if (!lab || !src || !(src in loopVarOf)) return;
+      const expected = loopVarOf[src];
+      for (const m of lab[1].matchAll(/\{\{\s*item\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
+        const seg = m[1];
+        assert.ok(
+          seg === expected || ASYNC_FIELDS.has(seg),
+          `${file}:${i + 1}: label 'item.${seg}' diyor ama '${src}' gorevinin dongu degiskeni '${expected}'`
+        );
+      }
+    });
   }
 });
 
