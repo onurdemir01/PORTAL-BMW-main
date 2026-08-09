@@ -41,6 +41,11 @@ const DEFAULTS = Object.freeze({
   periodicSyncEnabled: false,
   periodicSyncIntervalMin: 360,   // 6 saat
   periodicSyncMaxClusters: 25,    // tek turda taranacak azami cluster
+  // Namespace taramasindan sonra UYGULAMA kesfi de yapilir (uygulama onbellegi bos
+  // kalmasin diye — kullanicinin en sik bekledigi job budur). Kontrolsuz AWX yuku
+  // olmasin diye tur basina taranacak namespace sayisi sinirlidir; 0 = uygulama
+  // kesfini tamamen kapat.
+  periodicSyncMaxNamespaces: 40,
 });
 
 // Playbook'a giden degisken adlari — kod icinde tekrarlanmasin diye tek yerde.
@@ -115,6 +120,7 @@ function normalize(raw) {
     periodicSyncEnabled: raw?.periodicSyncEnabled === true,
     periodicSyncIntervalMin: normalizeInt(raw?.periodicSyncIntervalMin, DEFAULTS.periodicSyncIntervalMin, 15, 10080),
     periodicSyncMaxClusters: normalizeInt(raw?.periodicSyncMaxClusters, DEFAULTS.periodicSyncMaxClusters, 1, 500),
+    periodicSyncMaxNamespaces: normalizeInt(raw?.periodicSyncMaxNamespaces, DEFAULTS.periodicSyncMaxNamespaces, 0, 500),
   };
 }
 

@@ -165,6 +165,90 @@ Cluster listesinin biçimi Admin → OpsX Yapılandırma'dan seçilir (deploy ge
 | `joined` (**varsayılan**) | Bugünkü sözleşme: tek öğe, cluster adları ayıraçla birleşik. Seçilen cluster'lar **farklı** jump server'lara düşerse sessizce birini seçmek yerine ne yapılacağını söyleyen **400** döner. |
 | `perCluster` | LogX ile aynı v2 sözleşmesi (her cluster kendi bastion'ı + `terminal_hosts[]`). **Yalnızca** OpsX/Telnet playbook'ları çoklu bastion destekliyorsa seçin. |
 
+### 5c. Jinja apostrof tuzağı (2026-08-09 üretim arızası #2)
+
+`username` düzeltmesiyle eklenen hata mesajı, **tek tırnaklı** bir Jinja string'i içinde
+ters bölüyle kaçırılmış apostrof taşıyordu:
+
+```yaml
+~ 'alanini doldurun ya da OCP Calistirma Ayarlari\'nda genel varsayilani girin: '
+```
+
+AWX'teki ansible-core 2.16.11 / jinja 3.1.4 bunu YAML gibi yorumlamadı: string apostrofta
+bitti, kalan `nda` sözdizimi sanıldı ve **üç playbook da** şu hatayla düştü:
+
+```
+template error while templating string: expected token ')', got 'nda'
+```
+
+Düzeltme: dış tırnağı **çift tırnak** yapmak, apostrofu normal karakter olarak bırakmak.
+
+> **Bu sınıf `ansible-playbook --syntax-check`'ten GEÇER** (YAML geçerlidir, ifade ancak
+> çalışma anında derlenir) ve davranış ansible/jinja **sürümüne göre değişir** — daha yeni
+> bir sürümde yerelde sessizce çalışabilir. Bu yüzden koruma bir **grep testidir**:
+> `server/ansible/__tests__/ocp-playbook-username.test.cjs` bu playbook'larda kaçırılmış
+> apostrof bulunmasını yasaklar. Aynı test, `>-` katlamalı skaler **içine** `#` yorum
+> satırı konmasını da yasaklar (orada `#` YAML yorumu değildir, ifadenin parçası olur).
+
+### 5d. Çoklu hedef ve arşiv adlandırma
+
+Kullanıcı tek çalıştırmada birden fazla **(namespace, uygulama)** çifti seçebilir
+(OpsX'in "Listeye Ekle" deseninin LogX karşılığı — `steps/ocp/TargetListStep.tsx`).
+
+İş birimi = **cluster × namespace × uygulama**. Her birim kendi dizininde toplanır ve
+**kendi arşivini** üretir:
+
+```
+<cluster>__<namespace>__<uygulama>__<archive_id>.zip
+gbocpprod2__reference-applications-prod__parallel-composition-v3__0dda63d4.zip
+```
+
+Eskiden ad yalnızca jump server + rastgele hash'ti (`gbarkp54__0dda63d4….zip`) ve indirilen
+dosyanın neye ait olduğu anlaşılmıyordu.
+
+- Portal `ocp_targets[]` + kısa `archive_id` gönderir; **adı playbook kurar**
+  (`server/logx/v2/ocp.cjs` → `discoverFetch(row, targets)`).
+- `ocp_targets` yoksa playbook eski tekil alanlardan tek elemanlı liste kurar —
+  **tek hedef, çoklunun özel hâlidir**; iki ayrı kod yolu yok.
+- Yetki kapısı (`assertNamespaceAllowed`) **her hedef için ayrı** çalışır.
+- Üst sınır: `MAX_TARGETS = 20` (her çift ayrı bir `oc login` + pod taraması demek).
+- `staged_files[]` birim başına bir öğe taşır; portal zaten her öğe için ayrı indirme
+  token'ı üretiyordu — o taraf değişmedi.
+
+### 5e. Katalog okuma: envanter ∪ önbellek
+
+**Kırık döngü:** sihirbaz namespace/uygulamayı yalnızca `dbo.Openshift_Inventory`'den
+okuyordu, ama "Bu namespace'i tara" sonucu `ocp_*_cache`'e yazılıyordu ve **o tabloları
+kimse okumuyordu**. Taramayı tetikleyen kullanıcı bile sonucu göremiyordu.
+
+`server/logx/v2/ocp-catalog.cjs` iki kaynağı **birleştirir**:
+
+| | Kaynak | Yazan |
+|---|---|---|
+| Birincil | `dbo.Openshift_Inventory` | portal dışı, zamanlanmış Ansible job'ı (Onur'un kararı) |
+| Ek | `ocp_namespace_cache` / `ocp_app_cache` | kullanıcı taraması + `ocp-sync.cjs` |
+
+- Aynı ad iki kaynakta da varsa **envanter** kaynak etiketini kazanır; uygulama kaydında
+  ise **önbellek** kazanır (kind/replica bilgisi orada, envanterde yalnızca ad var).
+- **Onur'un kararı korunur:** bu modül envanter tablosuna **YAZMAZ**, yalnızca okur.
+  Test bunu kilitler (`__tests__/ocp-catalog.test.cjs`).
+- Kısıtlama filtresi yerinde kalır (`index.cjs`), birleştirme filtreden önce olur.
+- Rozet kaynağı gösterir: "Envanterden • 2 saat önce" / "Envanter + tarama" + satır
+  bazında `tarama` etiketi.
+
+**Periyodik sync artık uygulama önbelleğini de besler** (`ocp-sync.cjs`): namespace
+taramasının ardından aynı teknik istekle uygulama keşfi çalışır ve sonuç `periodic`
+kaynağıyla yazılır. `periodicSyncMaxNamespaces` (varsayılan 40, `0` = kapalı) tur başına
+taranacak namespace sayısını sınırlar. Amaç: kullanıcının ~1 dk beklediği keşif job'ına
+ihtiyacı azaltmak. **Sync bütünüyle varsayılan KAPALI** (`periodicSyncEnabled: false`).
+
+### 5f. Playbook hazırlık paneli
+
+Admin > LogX Yapılandırma > OCP Cluster Hiyerarşisi'nde: beş LogX playbook kaydı için
+template ID tanımlı mı, AWX'te bulunuyor mu, **Prompt on launch açık mı**. Üretimde bir
+keşif 503 döndüğünde sebebini AWX'e girmeden görmek için
+(`GET /admin/playbook-readiness`, `template-preflight.cjs` yeniden kullanılır).
+
 ## 6. Katalog birleştirme (aşamalı)
 
 Portalda ortak anahtarı olmayan iki OCP kataloğu vardı:
@@ -356,14 +440,21 @@ for this bastion` adımları görünmeli; bir bastion çökerse `PLAY RECAP`'te 
 ## 12. Doğrulama
 
 ```bash
-npm test          # 283/283 yeşil olmalı
+npm test          # 310/310 yeşil olmalı
 npx tsc --noEmit  # yeni hata olmamalı (mevcut 4 hata bu işten önce de vardı)
 npm run build
 ansible-playbook --syntax-check server/ansible/playbooks/logx_ocp_*.yml   # üçü de temiz
+
+# Jinja apostrof regresyonu — `--syntax-check` bu sınıfı YAKALAMAZ (bkz. §5c)
+grep -rn "\\\\'" server/ansible/playbooks/logx_ocp_*.yml   # boş dönmeli
 ```
 
 > `--syntax-check` adımını atlamayın: YAML geçerli olduğu hâlde Ansible'ın yükleyemediği
 > playbook'lar (bkz. §11 kesme işareti notu) yalnızca burada görünür.
+>
+> Ama tek başına **yetmez**: Jinja ifadeleri çalışma anında derlenir. Bir ifadeyi
+> değiştirdiyseniz scratchpad'de birebir kopyasını içeren küçük bir playbook'u gerçekten
+> `ansible-playbook` ile çalıştırıp mesajın beklendiği gibi üretildiğini görün.
 
 Manuel kontrol listesi:
 

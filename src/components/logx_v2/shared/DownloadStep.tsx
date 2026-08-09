@@ -6,8 +6,9 @@
 // hata mesajı gösterilir (ör. "arşiv portalda bulunamadı / staging mount"). Başarıda dosya
 // bir object URL ile indirilir.
 //
-// Çok-bastion'lu OCP çekiminde bir istek BİRDEN ÇOK arşiv üretebilir (her jump server kendi
-// arşivini stage eder). `downloads` doluysa her arşiv ayrı satır olarak listelenir; tek arşiv
+// OCP çekiminde bir istek BİRDEN ÇOK arşiv üretebilir: iş birimi (cluster × namespace ×
+// uygulama) başına bir arşiv. Dosya adı `<cluster>__<namespace>__<uygulama>__<id>.zip`
+// biçimindedir. `downloads` doluysa her arşiv ayrı satır olarak listelenir; tek arşiv
 // varsa görünüm eskisiyle aynıdır.
 import React, { useState } from "react";
 import { ArrowDownTrayIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
@@ -91,7 +92,8 @@ const DownloadStep: React.FC<{ download: DownloadInfo; downloads?: DownloadInfo[
         </p>
         {multi ? (
           <p className="text-xs text-[var(--text-muted)] mt-1">
-            Seçtiğiniz cluster'lar farklı jump server'lar üzerinden toplandı — her biri için ayrı arşiv oluştu.
+            Her <strong>cluster / namespace / uygulama</strong> birleşimi için ayrı arşiv oluştu —
+            dosya adı hangi arşivin neye ait olduğunu söyler.
           </p>
         ) : (
           <p className="text-xs text-[var(--text-muted)] mt-1">{items[0]?.filename}</p>

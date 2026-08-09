@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ExclamationTriangleIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
 import {
   logxV2Api, type Platform, type LogXv2Request, type LogXv2Job, type DownloadInfo,
-  type LegacyDiscoveryResult, type OcpNamespaceDiscoveryResult,
+  type LegacyDiscoveryResult, type OcpNamespaceDiscoveryResult, type OcpFetchTarget,
 } from "@/api/logxV2Api";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/legacy/AppSearchStep";
@@ -15,6 +15,7 @@ import ClusterSelectStep from "./steps/ocp/ClusterSelectStep";
 import NamespaceStep from "./steps/ocp/NamespaceStep";
 import NamespacePickerStep from "./steps/ocp/NamespacePickerStep";
 import AppNameStep from "./steps/ocp/AppNameStep";
+import TargetListStep from "./steps/ocp/TargetListStep";
 import JobProgress from "./shared/JobProgress";
 import DownloadStep from "./shared/DownloadStep";
 import FailedStep from "./shared/FailedStep";
@@ -43,7 +44,9 @@ interface NamespaceList {
    *  üretimde gerçek sebep ("'username' is undefined") hiçbir ekranda görünmedi. */
   failedDetails?: { cluster: string; error: string }[];
   /** Önbellekten geldiyse tazelik bilgisi; canlı taramada null. */
-  cache: { fetchedAt: string | null; stale: boolean } | null;
+  cache: { fetchedAt: string | null; stale: boolean; source?: string | null } | null;
+  /** Ad → kaynak ('inventory' | 'discovery'). Envanterde olmayanı rozetlemek için. */
+  sources?: Record<string, string>;
 }
 
 interface OcpInput { env?: string; tenant?: string; clusters?: string[]; appDiscoveryNamespaces?: string[] }
@@ -66,7 +69,11 @@ async function loadNamespaceCache(input: OcpInput | undefined): Promise<Namespac
     return null;   // envanter okunamadi -> canlı keşif fallback'ine düş
   }
   if (!out.cached) return null;
-  return { items: out.items, failed: [], cache: { fetchedAt: out.fetchedAt, stale: out.stale } };
+  return {
+    items: out.items, failed: [],
+    cache: { fetchedAt: out.fetchedAt, stale: out.stale, source: out.source },
+    sources: out.sources,
+  };
 }
 
 const STEP_TITLES: Record<string, string> = {
@@ -80,11 +87,17 @@ const STEP_TITLES: Record<string, string> = {
   ocp_namespace_discovering: "Namespace'ler Taranıyor",
   ocp_namespace_picker: "Namespace Seçimi",
   ocp_app_name: "Uygulama Seçimi",
+  ocp_target_list: "Toplanacak Uygulamalar",
   ocp_app_discovering: "Uygulamalar Taranıyor",
   ocp_transferring: "Loglar Toplanıyor",
   ready: "İndirmeye Hazır",
   failed: "Hata",
 };
+
+// Tek calistirmada izin verilen azami (namespace, uygulama) cifti. SUNUCU da ayni siniri
+// uygular (server/logx/v2/ocp.cjs MAX_TARGETS) — buradaki deger yalnizca kullaniciyi
+// gereksiz bir 400'e dusurmemek icin.
+const MAX_OCP_TARGETS = 20;
 
 const LogXWizardPage: React.FC = () => {
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -101,6 +114,14 @@ const LogXWizardPage: React.FC = () => {
   const busyRef = React.useRef(false);
   const [busyError, setBusyError] = useState<string | null>(null);
   const [chosenNamespace, setChosenNamespace] = useState<string | null>(null);
+  // Tek çalıştırmada toplanacak (namespace, uygulama) çiftleri. Kullanıcı "Listeye Ekle"
+  // ile biriktirir; her çift AYRI bir arşiv üretir. Tek çift eklemek bugünkü akışla aynı
+  // sonucu verir — çoklu hedef, tekilin genel hâlidir.
+  const [targets, setTargets] = useState<OcpFetchTarget[]>([]);
+  // Hedef listesi ekranda mı? Sunucu durumundan TÜRETİLEMEZ: liste tamamen client'ta
+  // birikir ve sunucu hâlâ 'draft'/'apps_discovered' der. Bu bayrak olmadan kullanıcı
+  // bir çift ekledikten sonra uygulama adımında takılı kalırdı.
+  const [showTargetList, setShowTargetList] = useState(false);
   // ÖNBELLEKTEN gelen namespace listesi. Canlı keşif sonucu sunucudan türetilir
   // (`nsFromServer`); bu state yalnızca "kullanıcı önbelleği seçti" durumunu taşır.
   const [nsList, setNsList] = useState<NamespaceList | null>(null);
@@ -190,6 +211,8 @@ const LogXWizardPage: React.FC = () => {
     setDownload(null);
     setChosenNamespace(null);
     setNsList(null);
+    setTargets([]);
+    setShowTargetList(false);
   }
 
   // Adıma göre "← Geri": client-state adımları anında geri alınır; sunucu-durumlu adımlar
@@ -202,6 +225,8 @@ const LogXWizardPage: React.FC = () => {
         return "restart";
       case "ocp_app_name":
         return "client"; // sadece chosenNamespace temizle
+      case "ocp_target_list":
+        return "client"; // listeden namespace seçimine dön (liste korunur)
       case "legacy_file_select":
         return "legacy_app";
       case "ocp_namespace_step":
@@ -220,7 +245,14 @@ const LogXWizardPage: React.FC = () => {
     const target = backTargetFor(currentStep);
     if (!target) return;
     if (target === "restart") { restart(); return; }
-    if (target === "client") { setChosenNamespace(null); return; }
+    if (target === "client") {
+      // Hedef listesindeyken "geri" = namespace seçimine dön; eklenen çiftler KORUNUR.
+      if (currentStep === "ocp_target_list") { setShowTargetList(false); setChosenNamespace(null); return; }
+      // Uygulama adımındayken "geri": liste doluysa listeye, değilse namespace seçimine.
+      setChosenNamespace(null);
+      if (targets.length > 0) setShowTargetList(true);
+      return;
+    }
     // Liste ÖNBELLEKTEN geldiyse sunucuda geri sarılacak bir durum yok (state hâlâ 'draft'):
     // client listesini temizlemek yeter, gereksiz reset çağrısı yapılmaz.
     if (currentStep === "ocp_namespace_picker" && request?.state === "draft") { setNsList(null); return; }
@@ -272,6 +304,11 @@ const LogXWizardPage: React.FC = () => {
   // namespace adımına indiriyoruz — oradan "Hayır, listele" önbellekten anında geri getirir.
   // (Kural: render edemeyeceğimiz bir adımı asla seçme.)
   if (step === "ocp_namespace_picker" && !namespaceList) step = "ocp_namespace_step";
+
+  // Hedef listesi client state'idir; sunucu durumu hâlâ seçim aşamasını gösterdiği sürece
+  // (job başlamadı) listeyi göstermek kullanıcının bulunduğu yerdir.
+  const SELECTION_STEPS = ["ocp_namespace_step", "ocp_namespace_picker", "ocp_app_name"];
+  if (showTargetList && targets.length > 0 && SELECTION_STEPS.includes(step)) step = "ocp_target_list";
 
   const canGoBack = backTargetFor(step) !== null;
 
@@ -386,6 +423,7 @@ const LogXWizardPage: React.FC = () => {
             failedClusters={namespaceList.failed}
             failedDetails={namespaceList.failedDetails}
             cache={namespaceList.cache}
+            sources={namespaceList.sources}
             busy={busy}
             onRediscover={() => guarded(async () => {
               await logxV2Api.discoverNamespaces(requestId);
@@ -412,13 +450,39 @@ const LogXWizardPage: React.FC = () => {
                 await logxV2Api.discoverApps(requestId, [activeNamespace]);
                 await refresh(requestId);
               })}
-              onSubmit={(appName) => guarded(async () => {
-                await logxV2Api.discoverFetchOcp(requestId, activeNamespace, appName);
-                await refresh(requestId);
-              })}
+              // Secim JOB BASLATMAZ: cift listeye eklenir. Tek cift ekleyip "Loglari
+              // Getir" demek bugunku akisla ayni sonucu verir.
+              onSubmit={(appName) => {
+                setTargets((prev) => (
+                  prev.some((t) => t.namespace === activeNamespace && t.appName === appName)
+                    ? prev
+                    : [...prev, { namespace: activeNamespace, appName }]
+                ));
+                setChosenNamespace(null);
+                setShowTargetList(true);
+              }}
             />
           );
         })()}
+
+        {step === "ocp_target_list" && requestId && (
+          <TargetListStep
+            targets={targets}
+            max={MAX_OCP_TARGETS}
+            busy={busy}
+            onRemove={(i) => setTargets((prev) => {
+              const next = prev.filter((_, idx) => idx !== i);
+              // Liste bosaldiysa secim akisina don — bos bir liste ekrani anlamsiz.
+              if (next.length === 0) setShowTargetList(false);
+              return next;
+            })}
+            onAddMore={() => { setShowTargetList(false); setChosenNamespace(null); }}
+            onSubmit={() => guarded(async () => {
+              await logxV2Api.discoverFetchOcp(requestId, targets);
+              await refresh(requestId);
+            })}
+          />
+        )}
 
         {step === "ocp_app_discovering" && requestId && (() => {
           const job = jobOfType(jobs, "ocp_app_discovery");

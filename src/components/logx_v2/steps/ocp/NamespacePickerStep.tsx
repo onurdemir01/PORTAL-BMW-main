@@ -16,14 +16,16 @@ interface Props {
    *  ("'username' is undefined") hiçbir ekranda görünmedi, kullanıcı boş liste gördü. */
   failedDetails?: { cluster: string; error: string }[];
   /** Liste önbellekten geldiyse tazelik bilgisi; canlı sonuçta null. */
-  cache?: { fetchedAt: string | null; stale: boolean } | null;
+  cache?: { fetchedAt: string | null; stale: boolean; source?: string | null } | null;
+  /** Ad → kaynak. Envanterde olmayan (kullanıcı taramasıyla gelen) adlar rozetlenir. */
+  sources?: Record<string, string>;
   onRediscover?: () => void;
   busy?: boolean;
   onSelect: (ns: string) => void;
 }
 
 const NamespacePickerStep: React.FC<Props> = ({
-  namespaces, failedClusters = [], failedDetails = [], cache, onRediscover, busy, onSelect,
+  namespaces, failedClusters = [], failedDetails = [], cache, sources, onRediscover, busy, onSelect,
 }) => {
   const [search, setSearch] = useState("");
   const [showErrors, setShowErrors] = useState(false);
@@ -112,7 +114,16 @@ const NamespacePickerStep: React.FC<Props> = ({
 
   return (
     <div className="space-y-3">
-      {cache && <CacheBadge fetchedAt={cache.fetchedAt} stale={cache.stale} onRediscover={onRediscover} busy={busy} />}
+      {cache && (
+        <CacheBadge
+          fetchedAt={cache.fetchedAt}
+          stale={cache.stale}
+          source={cache.source}
+          discoveredCount={Object.values(sources || {}).filter((v) => v === "discovery").length}
+          onRediscover={onRediscover}
+          busy={busy}
+        />
+      )}
       {failedClusters.length > 0 && (
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           Bazı cluster'lara erişilemedi: {failedClusters.join(", ")} — aşağıdaki liste EKSİK olabilir.
@@ -146,6 +157,14 @@ const NamespacePickerStep: React.FC<Props> = ({
               className="w-full text-left px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors font-mono"
             >
               {ns}
+              {sources?.[ns] === "discovery" && (
+                <span
+                  className="ml-2 px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[10px] font-semibold text-[var(--text-muted)] align-middle"
+                  title="Zamanlanmış envanterde henüz yok — bir kullanıcının taramasıyla geldi."
+                >
+                  tarama
+                </span>
+              )}
             </button>
           ))
         )}

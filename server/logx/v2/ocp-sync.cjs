@@ -157,6 +157,16 @@ async function syncGroup(group) {
     for (const name of clusterNames) {
       if (!reported.has(name)) errors.set(name, 'Playbook bu cluster icin sonuc dondurmedi.');
     }
+
+    // ── Uygulama kesfi ────────────────────────────────────────────────────────
+    // NEDEN: periyodik sync eskiden YALNIZCA namespace yaziyordu; uygulama onbellegi hic
+    // beslenmiyordu. Kullanicinin en sik bekledigi job da buydu ("Bu namespace'i tara",
+    // ~1 dk). Namespaceleri tararken uygulamalari da doldurursak o beklemeyi buyuk olcude
+    // ortadan kaldiririz. Basarisizligi TURU DUSURMEZ: namespace onbellegi zaten yazildi.
+    await syncApps({ request, first, artifacts: last.artifacts }).catch((e) => {
+      console.warn('[OcpSync] uygulama kesfi atlandi:', e.message);
+    });
+
     return errors;
   } finally {
     // Teknik istek satiri isini bitirdi. Silinmezse her turda bir satir birikir ve
@@ -167,6 +177,56 @@ async function syncGroup(group) {
       console.warn('[OcpSync] teknik istek satiri silinemedi:', e.message);
     });
   }
+}
+
+// Namespace taramasinin ARDINDAN ayni teknik istek satiriyla uygulama kesfi calistirir
+// ve sonucu onbellege `periodic` kaynagiyla yazar. Namespace sayisi yapilandirilabilir
+// bir tavanla sinirlidir (`periodicSyncMaxNamespaces`, 0 = kapali) — aksi halde yuzlerce
+// namespace'li bir cluster tek turda AWX'i doldururdu.
+async function syncApps({ request, first, artifacts }) {
+  const cfg = await require('./ocp-runtime-config.cjs').getConfig();
+  const maxNs = Number(cfg.periodicSyncMaxNamespaces || 0);
+  if (maxNs <= 0) return;
+
+  const jobs = require('./jobs.cjs');
+  const requests = require('./requests.cjs');
+  const ocp = require('./ocp.cjs');
+  const cache = require('./ocp-cache.cjs');
+
+  // Yalnizca BASARILI cluster'larin namespace'leri; tekillestirilip tavana kirpilir.
+  const nsSet = new Set();
+  for (const c of artifacts.clusters || []) {
+    if (c.status !== 'ok') continue;
+    for (const n of c.namespaces || []) {
+      const clean = String(n).replace(/^.*\//, '').trim();
+      if (clean) nsSet.add(clean);
+    }
+  }
+  const namespaces = [...nsSet].sort().slice(0, maxNs);
+  if (!namespaces.length) return;
+  if (nsSet.size > namespaces.length) {
+    // Sessiz kirpma YOK: hangi kismin taranmadigi loga yazilir.
+    console.warn(`[OcpSync] ${first.tenant}/${first.env}: ${nsSet.size} namespace'ten ilk ${namespaces.length} tanesi tarandi (periodicSyncMaxNamespaces).`);
+  }
+
+  const row = await requests.getRequestRow(request.id);
+  const job = await ocp.discoverApps(row, namespaces);
+
+  const started = Date.now();
+  const TIMEOUT_MS = 15 * 60 * 1000;
+  let last = job;
+  while (!jobs.TERMINAL_STATUSES.has(last.status)) {
+    if (Date.now() - started > TIMEOUT_MS) throw new Error('Uygulama kesfi zaman asimina ugradi.');
+    await new Promise((r) => setTimeout(r, 5000));
+    last = await jobs.pollJob(last);
+  }
+  if (!last.artifacts) throw new Error(last.errorMessage || 'Uygulama kesfi sonuc uretmedi.');
+
+  const parsed = require('./ocp-app-parse.cjs').parseAppDiscoveryResult(last.artifacts);
+  const { written } = await cache.putApps({
+    env: first.env, tenant: first.tenant, entries: parsed.entries, source: 'periodic',
+  });
+  console.log(`[OcpSync] ${first.tenant}/${first.env}: ${namespaces.length} namespace, ${written} uygulama onbellege yazildi.`);
 }
 
 // Boot'ta cagrilir. Ilk tur 5 dk gecikmeli (acilis yukunu artirmasin).
