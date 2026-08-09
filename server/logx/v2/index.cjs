@@ -314,6 +314,47 @@ function initLogXv2(app) {
     res.json({ ok: true, ...out });
   }));
 
+  // ── Bagimsiz zamanlanmis envanter (dbo.Openshift_Inventory) ─────────────────
+  // ONUR'UN KARARI: namespace/uygulama katalogunun BIRINCIL kaynagi artik yukaridaki
+  // kullanici-tetikli AWX kesif + TTL onbellegi (ocp/cache/*) DEGIL, portaldan bagimsiz
+  // zamanlanmis bir Ansible job'inin besledigi bu tablo (bkz. ocp-inventory.cjs basi).
+  // ocp/cache/* uclari SILINMEDI — sihirbazin "Yeniden tara"/"Bu namespace'i tara"
+  // canli-kesif fallback'i hala onlari kullanir. Bu mimariyi degistirmeden once ONUR
+  // ile konusulmasi gerekir.
+  router.get('/ocp/inventory/namespaces', asyncRoute(async (req, res) => {
+    const { env, tenant } = req.query || {};
+    const clusters = String(req.query?.clusters || '').split(',').map((c) => c.trim()).filter(Boolean);
+    if (!env || !tenant || !clusters.length) {
+      return res.status(400).json({ ok: false, message: 'env, tenant ve clusters gerekli.' });
+    }
+    const out = await require('./ocp-inventory.cjs').getNamespaces({ clusterNames: clusters });
+    const allowedKeys = new Set();
+    for (const clusterName of clusters) {
+      const prefix = `${tenant}/${env}/${clusterName}/`;
+      for (const k of await restrictions.filterAllowed('ocp_namespace', out.items.map((ns) => prefix + ns), currentUser(req))) {
+        allowedKeys.add(k.slice(prefix.length));
+      }
+    }
+    res.json({ ok: true, ...out, items: out.items.filter((ns) => allowedKeys.has(ns)) });
+  }));
+
+  router.get('/ocp/inventory/apps', asyncRoute(async (req, res) => {
+    const { env, tenant, namespace } = req.query || {};
+    const clusters = String(req.query?.clusters || '').split(',').map((c) => c.trim()).filter(Boolean);
+    if (!env || !tenant || !namespace || !clusters.length) {
+      return res.status(400).json({ ok: false, message: 'env, tenant, namespace ve clusters gerekli.' });
+    }
+    // Bu namespace HERHANGI bir secili cluster'da kisitlanmissa liste tamamen gizlenir
+    // (fail-safe — restart tetikleyen OpsX ile ayni gerekce).
+    for (const clusterName of clusters) {
+      const resourceKey = `${tenant}/${env}/${clusterName}/${namespace}`;
+      const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, currentUser(req)).catch(() => false);
+      if (!allowed) return res.json({ ok: true, items: [], cached: false, fetchedAt: null, stale: false, source: null });
+    }
+    const out = await require('./ocp-inventory.cjs').getApps({ clusterNames: clusters, namespace });
+    res.json({ ok: true, ...out });
+  }));
+
   router.post('/ocp/:requestId/discover-fetch', asyncRoute(async (req, res) => {
     const row = await loadOwnedRequest(req);
     const { namespace, appName } = req.body || {};

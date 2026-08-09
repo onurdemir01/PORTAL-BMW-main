@@ -132,6 +132,19 @@ export const logxV2Api = {
     fetch(`${BASE}/ocp/cache/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&cluster=${encodeURIComponent(cluster)}&namespace=${encodeURIComponent(namespace)}`)
       .then((r) => json<CachedList<OcpAppItem>>(r)),
 
+  // ── Bağımsız zamanlanmış envanter (dbo.Openshift_Inventory) — BİRİNCİL kaynak ──
+  // Portaldan ayrı, zamanlanmış bir Ansible job'ı besler; portal burada sadece okur,
+  // hiçbir AWX job'ı tetiklemez — bu yüzden yanıt her zaman anındadır (bkz. server
+  // ocp-inventory.cjs başlığı). cachedNamespaces/cachedApps yukarıda hâlâ dururlar
+  // (sihirbazın canlı-keşif fallback'i onları kullanır) ama artık ikincil.
+  inventoryNamespaces: (env: string, tenant: string, clusters: string[]) =>
+    fetch(`${BASE}/ocp/inventory/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&clusters=${encodeURIComponent(clusters.join(","))}`)
+      .then((r) => json<CachedList<string>>(r)),
+
+  inventoryApps: (env: string, tenant: string, clusters: string[], namespace: string) =>
+    fetch(`${BASE}/ocp/inventory/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&clusters=${encodeURIComponent(clusters.join(","))}&namespace=${encodeURIComponent(namespace)}`)
+      .then((r) => json<CachedList<OcpAppItem>>(r)),
+
   // Namespace içindeki uygulama/objeleri tarar (AWX job'ı başlatır).
   discoverApps: (requestId: string, namespaces: string[]) =>
     postJson<{ ok: boolean; jobId: number }>(`/ocp/${requestId}/apps/discover`, { namespaces }),

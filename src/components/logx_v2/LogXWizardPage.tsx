@@ -45,8 +45,10 @@ interface NamespaceList {
 
 interface OcpInput { env?: string; tenant?: string; clusters?: string[]; appDiscoveryNamespaces?: string[] }
 
-// Seçili cluster'ların namespace önbelleklerini birleştirir. Hiçbirinde KAYIT yoksa null
-// döner — çağıran o zaman canlı taramaya düşer (bugünkü davranış korunur).
+// BİRİNCİL kaynak: dbo.Openshift_Inventory (portaldan bağımsız, zamanlanmış Ansible
+// job'ı besler — bkz. server/logx/v2/ocp-inventory.cjs başlığı). Tek bir senkron DB
+// okuması; hiçbir AWX job'ı tetiklenmez. Kayıt yoksa null döner — çağıran o zaman
+// (nadiren) canlı keşif fallback'ine düşer (bkz. NamespaceStep onTriggerDiscovery).
 //
 // Kayıt VAR ama liste boşsa (kullanıcının yetkisi olan namespace kalmamışsa) boş liste
 // döneriz, null DEĞİL: aksi halde kısıtlı kullanıcı canlı taramaya düşer, dakikalarca
@@ -54,28 +56,14 @@ interface OcpInput { env?: string; tenant?: string; clusters?: string[]; appDisc
 async function loadNamespaceCache(input: OcpInput | undefined): Promise<NamespaceList | null> {
   const { env, tenant, clusters } = input || {};
   if (!env || !tenant || !clusters?.length) return null;
-  const results = await Promise.all(
-    clusters.map((c) =>
-      logxV2Api.cachedNamespaces(env, tenant, c)
-        .then((r) => ({ cluster: c, r }))
-        .catch(() => ({ cluster: c, r: null }))
-    )
-  );
-  const items: string[] = [];
-  const failed: string[] = [];
-  let newest: string | null = null;
-  let stale = false;
-  let anyCached = false;
-  for (const { cluster, r } of results) {
-    if (!r) { failed.push(cluster); continue; }   // sessiz eksiklik YOK — uyarı gösterilir
-    if (!r.cached) continue;
-    anyCached = true;
-    items.push(...(r.items || []));
-    if (r.stale) stale = true;
-    if (r.fetchedAt && (!newest || new Date(r.fetchedAt) > new Date(newest))) newest = r.fetchedAt;
+  let out;
+  try {
+    out = await logxV2Api.inventoryNamespaces(env, tenant, clusters);
+  } catch {
+    return null;   // envanter okunamadi -> canlı keşif fallback'ine düş
   }
-  if (!anyCached) return null;
-  return { items, failed, cache: { fetchedAt: newest, stale } };
+  if (!out.cached) return null;
+  return { items: out.items, failed: [], cache: { fetchedAt: out.fetchedAt, stale: out.stale } };
 }
 
 const STEP_TITLES: Record<string, string> = {

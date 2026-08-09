@@ -109,32 +109,28 @@ async function hostsForApp(app) {
 // env+tenant secimine karsilik gelen GERCEK cluster isimleri (ocp_cluster_index'ten,
 // LogX'in kullandigi AYNI katalog). Gercek bmw_openshift_jobs playbook'lari `hosts:
 // "{{ oc_cluster }}_{{ env }}"` ile TUM bu cluster'lari TEK grupta hedefler — bu yuzden
-// OpsX artik tek tek cluster_name secmez, sadece bu isimleri namespace/app onbellegini
-// (ocp-cache.cjs) sorgulamak icin kullanir.
+// OpsX artik tek tek cluster_name secmez, sadece bu isimleri namespace/app envanterini
+// (ocp-inventory.cjs → dbo.Openshift_Inventory) sorgulamak icin kullanir.
 async function resolveClusterNames(env, tenant) {
   const adminData = require('../logx/v2/admin.cjs');
   const tree = await adminData.getClusterTree();
   return tree?.[env]?.[tenant] || [];
 }
 
-// LogX v2'nin paylasimli kesif onbellegini (ocp_namespace_cache/ocp_app_cache,
-// bkz. server/logx/v2/ocp-cache.cjs) okur — OpsX kendi ayri bir envanter TUTMAZ, ayni
-// veriyi ayri bir tabloda ikinci kez saklamak veri sapmasina yol acardi. env/tenant'a
-// ait TUM gercek cluster'lardan gelen sonuclar birlestirilir (union); namespace-bazli
-// erisim kisitlamasi (logx_v2_restrictions) LogX ile AYNI kapidan (restrictions.cjs)
-// uygulanir — restart TETIKLEYEN bir modulde bu kontrolu atlamak LogX'ten bile daha
-// riskli olurdu.
+// PORTALDAN BAGIMSIZ, zamanlanmis bir Ansible job'i (openshift_inventory.yml) TUM
+// cluster'lari periyodik tarayip dbo.Openshift_Inventory'i besler; OpsX burada SADECE
+// OKUR — kendi bir AWX job'i tetiklemez, bu yuzden secim aninda doner (bkz.
+// server/logx/v2/ocp-inventory.cjs basindaki mimari notu — ONUR'UN KARARI, degistirmeden
+// once onunla konusun). Namespace-bazli erisim kisitlamasi (logx_v2_restrictions) LogX
+// ile AYNI kapidan (restrictions.cjs) uygulanir — restart TETIKLEYEN bir modulde bu
+// kontrolu atlamak LogX'ten (salt log indirme) bile daha riskli olurdu.
 async function namespacesForCluster(env, tenant, user) {
   const clusterNames = await resolveClusterNames(env, tenant);
   if (!clusterNames.length) return [];
-  const ocpCache = require('../logx/v2/ocp-cache.cjs');
+  const ocpInventory = require('../logx/v2/ocp-inventory.cjs');
   const restrictions = require('../logx/v2/restrictions.cjs');
-  const seen = new Set();
-  for (const clusterName of clusterNames) {
-    const out = await ocpCache.getNamespaces({ env, tenant, clusterName }).catch(() => ({ items: [] }));
-    for (const ns of out.items || []) seen.add(ns);
-  }
-  const all = [...seen].sort();
+  const out = await ocpInventory.getNamespaces({ clusterNames }).catch(() => ({ items: [] }));
+  const all = [...new Set(out.items || [])].sort();
   // filterAllowed birebir anahtar eslesmesi bekler; namespace cluster-bagimsiz secildigi
   // icin her namespace'i HER gercek cluster adiyla ayrica kontrol ederiz — bir tanesinde
   // bile acikca kisitlanmissa o namespace listeden dusurulur (fail-safe).
@@ -152,17 +148,17 @@ async function appsForNamespace(env, tenant, namespace, user) {
   if (!ns) return [];
   const clusterNames = await resolveClusterNames(env, tenant);
   if (!clusterNames.length) return [];
-  const ocpCache = require('../logx/v2/ocp-cache.cjs');
+  const ocpInventory = require('../logx/v2/ocp-inventory.cjs');
   const restrictions = require('../logx/v2/restrictions.cjs');
-  const seen = new Set();
+  // Bu namespace HERHANGI bir cluster'da kisitlanmissa TUM uygulama listesi gizlenir
+  // (fail-safe — ayni gerekce yukarida).
   for (const clusterName of clusterNames) {
     const resourceKey = `${tenant}/${env}/${clusterName}/${ns}`;
     const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, user).catch(() => false);
-    if (!allowed) continue;
-    const out = await ocpCache.getApps({ env, tenant, clusterName, namespace: ns }).catch(() => ({ items: [] }));
-    for (const item of out.items || []) seen.add(item.name);
+    if (!allowed) return [];
   }
-  return [...seen].sort();
+  const out = await ocpInventory.getApps({ clusterNames, namespace: ns }).catch(() => ({ items: [] }));
+  return [...new Set((out.items || []).map((i) => i.name))].sort();
 }
 
 function initOpsX(app) {

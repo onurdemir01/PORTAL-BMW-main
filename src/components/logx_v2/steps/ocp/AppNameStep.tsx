@@ -54,44 +54,29 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
 
   const clusterKey = (clusters || []).join(",");
 
+  // BİRİNCİL kaynak: dbo.Openshift_Inventory (portaldan bağımsız, zamanlanmış Ansible
+  // job'ı besler — bkz. server/logx/v2/ocp-inventory.cjs başlığı). Tek senkron DB
+  // okuması, AWX job'ı tetiklenmez. `onDiscover` (aşağıda) hâlâ canlı keşif fallback'i
+  // sunar — envanterde henüz taranmamış YENİ bir namespace için kaçış yolu.
   useEffect(() => {
     if (!env || !tenant || !namespace || !clusterKey) return;
     let cancelled = false;
     setLoadingCache(true);
     (async () => {
       try {
-        const results = await Promise.all(
-          clusterKey.split(",").map((c) =>
-            logxV2Api.cachedApps(env, tenant, c, namespace)
-              .then((r) => ({ cluster: c, r, status: 0 }))
-              .catch((e: unknown) => ({
-                cluster: c, r: null, status: (e as { status?: number })?.status ?? 0,
-              }))
-          )
-        );
+        const r = await logxV2Api.inventoryApps(env, tenant, clusterKey.split(","), namespace).catch(() => null);
         if (cancelled) return;
-        const merged: OcpAppItem[] = [];
-        const failedClusters: string[] = [];
-        let newest: string | null = null;
-        let stale = false;
-        let anyCached = false;
-        let anyDenied = false;
-        for (const { cluster, r, status } of results) {
-          if (!r) {
-            if (status === 403) anyDenied = true;
-            else failedClusters.push(cluster);   // sessiz eksiklik YOK
-            continue;
-          }
-          if (!r.cached) continue;
-          anyCached = true;
-          merged.push(...(r.items || []));
-          if (r.stale) stale = true;
-          if (r.fetchedAt && (!newest || new Date(r.fetchedAt) > new Date(newest))) newest = r.fetchedAt;
+        if (!r || !r.cached) {
+          setItems([]);
+          setFailed([]);
+          setDenied(false);
+          setCache(null);
+          return;
         }
-        setItems(merged);
-        setFailed(failedClusters);
-        setDenied(anyDenied);
-        setCache(anyCached ? { fetchedAt: newest, stale } : null);
+        setItems(r.items || []);
+        setFailed([]);
+        setDenied(false);
+        setCache({ fetchedAt: r.fetchedAt, stale: r.stale });
       } finally {
         if (!cancelled) setLoadingCache(false);
       }

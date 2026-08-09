@@ -1,5 +1,12 @@
 # OCP Dinamik Yapı — Cluster Bazlı Jump Server
 
+> **NOT (Onur):** Bu dosya sadece BASTION/jump-server çözümlemesini kapsar — hâlâ geçerli.
+> Namespace/uygulama KATALOĞUNUN kaynağı ise bu belgeden SONRA değişti: birincil kaynak
+> artık `ocp_namespace_cache`/`ocp_app_cache` değil, bağımsız zamanlanmış
+> `dbo.Openshift_Inventory` tablosu. Detay ve gerekçe için önce
+> [OCP-NAMESPACE-KATALOGU-KARARI.md](./OCP-NAMESPACE-KATALOGU-KARARI.md) okunmalı —
+> namespace/uygulama seçim akışını değiştirmeden önce Onur ile konuşulması gerekir.
+
 > Amaç: Portaldaki tüm OCP servisleri (LogX OCP, OpsX OCP, Telnet OCP) ortak, tamamen
 > admin-yönetimli bir yapı üzerinden çalışır: **Ortam → Platform (tenant) → Cluster → Jump Server**.
 > Hiçbir bilgi kodda sabit değildir; yeni cluster/ortam/jump server eklemek için deploy gerekmez.
