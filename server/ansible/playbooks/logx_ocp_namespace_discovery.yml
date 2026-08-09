@@ -14,6 +14,13 @@
 #       tenant: ark
 #       cluster_name: gbocplab2
 #       terminal_host: GBAOCP01          # optional; when absent the scalar terminal_host is used
+#       api_url: https://api...:6443     # portal (v3); yoksa inventory dosyasina duser
+#       credential_key: uxmid_gar        # vault degisken ADI (parola DEGIL)
+#       username: uxmid                  # oc login kullanicisi; yoksa `ocp_username`
+#   ocp_username: uxmid                  # portalin GENEL varsayilani (cluster'da yoksa)
+#
+# ASIL KAYNAK PORTALDIR. openshift_inventory_vars.yaml yalnizca FALLBACK'tir: portal
+# api_url/credential_key/username gonderiyorsa o dosya hic okunmasa da is calisir.
 #
 # Backward compatibility: when neither `terminal_hosts` nor per-cluster `terminal_host`
 # is supplied, this playbook behaves EXACTLY as before (one bastion, all clusters on it).
@@ -126,10 +133,17 @@
             validation_errors + ([{
               'cluster_name': item.cluster_name | default('unknown'),
               'status': 'error',
-              'error': 'Cluster inventory record not found: ' ~
-                       (item.tenant | default('missing-tenant')) ~ '_' ~
-                       (item.env | default('missing-env')) ~ '/' ~
-                       (item.cluster_name | default('missing-cluster-name')),
+              'error': (
+                'OCP kullanici adi tanimli degil (oc login --username). Admin > LogX '
+                ~ 'Yapilandirma > OCP Cluster Hiyerarsisi satirindaki "OCP Kullanici Adi" '
+                ~ 'alanini doldurun ya da OCP Calistirma Ayarlari\'nda genel varsayilani girin: '
+                ~ (item.cluster_name | default('missing-cluster-name'))
+              ) if (has_portal_meta | bool) or (inv_has | bool) else (
+                'Cluster inventory record not found: '
+                ~ (item.tenant | default('missing-tenant')) ~ '_'
+                ~ (item.env | default('missing-env')) ~ '/'
+                ~ (item.cluster_name | default('missing-cluster-name'))
+              ),
               'namespaces': []
             }] if not cluster_exists else [])
           }}
@@ -152,12 +166,21 @@
         resolved_password: >-
           {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
              else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
+        # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
+        # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
+        # Ucu de yoksa BOS kalir ve cluster dogrulamada elenir — daha once bu durumda
+        # Jinja "'username' is undefined" ile TUM bastion'u dusuruyordu (2026-08-09).
+        resolved_username: >-
+          {{ (item.username | default('', true))
+             or (ocp_username | default('', true))
+             or (username | default('', true)) }}
         cluster_exists: >-
           {{
             item.tenant is defined and
             item.env is defined and
             item.cluster_name is defined and
-            ((has_portal_meta | bool) or (inv_has | bool))
+            ((has_portal_meta | bool) or (inv_has | bool)) and
+            (resolved_username | trim | length > 0)
           }}
       loop: "{{ my_ocp_clusters }}"
       loop_control:
@@ -188,6 +211,7 @@
                   'tenant': item.tenant,
                   'inventory_key': inventory_key,
                   'url': resolved_url,
+                  'username': resolved_username,
                   'password': resolved_password
                 }] if cluster_exists else [])
               }}
@@ -210,12 +234,21 @@
             resolved_password: >-
               {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
                  else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
+            # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
+            # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
+            # Ucu de yoksa BOS kalir ve cluster dogrulamada elenir — daha once bu durumda
+            # Jinja "'username' is undefined" ile TUM bastion'u dusuruyordu (2026-08-09).
+            resolved_username: >-
+              {{ (item.username | default('', true))
+                 or (ocp_username | default('', true))
+                 or (username | default('', true)) }}
             cluster_exists: >-
               {{
                 item.tenant is defined and
                 item.env is defined and
                 item.cluster_name is defined and
-                ((has_portal_meta | bool) or (inv_has | bool))
+                ((has_portal_meta | bool) or (inv_has | bool)) and
+                (resolved_username | trim | length > 0)
               }}
           loop: "{{ my_ocp_clusters }}"
           loop_control:
@@ -290,7 +323,7 @@
 
             "{{ oc_bin }}" login \
               --server={{ cluster.url | quote }} \
-              --username={{ username | quote }} \
+              --username={{ cluster.username | quote }} \
               --password={{ cluster.password | quote }} \
               --insecure-skip-tls-verify=true \
               >/dev/null
@@ -432,9 +465,12 @@
       ansible.builtin.set_stats:
         data:
           logx_result:
+            # `| trim` SART: asagidaki {% set %} satirlari ciktiya bosluk sizdiriyor ve
+            # deger "      failed" olarak yayinlaniyordu (uretimde gozlendi). Portal bu
+            # alani es-esitlikle karsilastiriyor.
             overall_status: >-
               {% set ok_count = merged_ns_results | selectattr('status', 'equalto', 'ok') | list | length %}
               {% set error_count = merged_ns_results | selectattr('status', 'equalto', 'error') | list | length %}
-              {{ 'success' if error_count == 0 else ('failed' if ok_count == 0 else 'partial') }}
+              {{ ('success' if error_count == 0 else ('failed' if ok_count == 0 else 'partial')) | trim }}
             clusters: "{{ merged_ns_results }}"
         per_host: false

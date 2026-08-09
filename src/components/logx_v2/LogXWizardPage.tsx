@@ -39,6 +39,9 @@ interface NamespaceList {
   items: string[];
   /** Listesi alınamayan cluster'lar — kullanıcı eksik listeyi tam sanmasın. */
   failed: string[];
+  /** Cluster başına HAM hata metni. Bu olmadan kullanıcı yalnızca "erişilemedi" görüyordu;
+   *  üretimde gerçek sebep ("'username' is undefined") hiçbir ekranda görünmedi. */
+  failedDetails?: { cluster: string; error: string }[];
   /** Önbellekten geldiyse tazelik bilgisi; canlı taramada null. */
   cache: { fetchedAt: string | null; stale: boolean } | null;
 }
@@ -144,14 +147,18 @@ const LogXWizardPage: React.FC = () => {
     if (!Array.isArray(result?.clusters)) return null;
     const items: string[] = [];
     const failed: string[] = [];
+    const failedDetails: { cluster: string; error: string }[] = [];
     let looksLikeNamespaces = false;
     for (const c of result.clusters) {
       if (!Array.isArray(c?.namespaces)) continue;
       looksLikeNamespaces = true;
-      if (c.status === "ok") items.push(...c.namespaces.filter((n) => typeof n === "string"));
-      else failed.push(c.cluster_name);
+      if (c.status === "ok") { items.push(...c.namespaces.filter((n) => typeof n === "string")); continue; }
+      failed.push(c.cluster_name);
+      // Playbook hata metnini cluster başına döndürüyor; eskiden okunmuyordu.
+      const detail = String((c as { error?: string }).error || "").trim();
+      failedDetails.push({ cluster: c.cluster_name, error: detail || "Bilinmeyen hata." });
     }
-    return looksLikeNamespaces ? { items, failed, cache: null } : null;
+    return looksLikeNamespaces ? { items, failed, failedDetails, cache: null } : null;
   }, [request?.discoveryResult]);
 
   // Önbellekten gelen liste (varsa) sunucu sonucunu EZER — kullanıcı bilerek onu istedi.
@@ -380,11 +387,17 @@ const LogXWizardPage: React.FC = () => {
           return <JobProgress jobId={job.id} discoveringLabel="Namespace'ler taranıyor…" onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }} />;
         })()}
 
-        {step === "ocp_namespace_picker" && requestId && nsList && (
+        {/* `namespaceList` = önbellek (nsList) ?? CANLI keşif sonucu (nsFromServer).
+            Burada eskiden yalnızca `nsList` vardı: canlı keşiften dönen kullanıcı adım
+            olarak picker'a geçiyor ama koşul sağlanmadığı için ekranda HİÇBİR ŞEY
+            görmüyordu (üretimde "boş ekran" olarak raporlandı). Adım seçimi zaten
+            `namespaceList` üzerinden yapılıyordu — ikisi artık aynı kaynağa bakıyor. */}
+        {step === "ocp_namespace_picker" && requestId && namespaceList && (
           <NamespacePickerStep
-            namespaces={nsList.items}
-            failedClusters={nsList.failed}
-            cache={nsList.cache}
+            namespaces={namespaceList.items}
+            failedClusters={namespaceList.failed}
+            failedDetails={namespaceList.failedDetails}
+            cache={namespaceList.cache}
             busy={busy}
             onRediscover={() => guarded(async () => {
               await logxV2Api.discoverNamespaces(requestId);

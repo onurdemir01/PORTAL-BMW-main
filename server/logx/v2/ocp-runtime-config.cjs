@@ -20,6 +20,11 @@ const DEFAULTS = Object.freeze({
   // /bin/oc ILK: kurumsal bastion'larda oc gercekte burada (uretimde /usr/local/bin/oc
   // varsayimi tum bastion'larin ayni anda dusmesine yol acmisti).
   ocBinaryCandidates: ['/bin/oc', '/usr/local/bin/oc', '/usr/bin/oc'],
+  // `oc login --username=<deger>` icin GENEL varsayilan. Cluster satirinda
+  // (Admin > OCP Cluster Hiyerarsisi > OCP Kullanici Adi) deger varsa O kazanir.
+  // Bos birakilirsa playbook AWX'teki eski `username` degiskenine duser — o da yoksa
+  // ilgili cluster anlasilir bir dogrulama hatasi verir (sessizce tum job dusmez).
+  defaultOcpUsername: 'uxmid',
   // Saniye. Playbook'taki ayni adli degiskenleri ezer.
   ocAsyncTimeout: 120,   // namespace kesfi (oc login + get projects)
   ocListTimeout: 120,    // pod listeleme
@@ -73,6 +78,14 @@ function normalizeInt(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.floor(n)));
 }
 
+// Kullanici adi playbook'a ve oradan KABUK KOMUT SATIRINA gider — serbest metin degil.
+// Alan bos birakilabilir (o zaman gonderilmez); gecersiz karakter varsa da bos sayilir.
+function normalizeUsername(value) {
+  const s = String(value ?? '').trim();
+  if (!s || s.length > 128) return '';
+  return /^[A-Za-z0-9][A-Za-z0-9._\-@]*$/.test(s) ? s : '';
+}
+
 // Onbellek TTL'i saat cinsinden: 1 saat - 30 gun.
 function normalizeHours(value, fallback) {
   return normalizeInt(value, fallback, 1, 720);
@@ -87,6 +100,12 @@ function normalize(raw) {
     : [];
   return {
     ocBinary: normalizePath(raw?.ocBinary),
+    // ANAHTAR YOKSA varsayilan, VARSA (bos olsa bile) admin'in dedigi. Ayrimi yapmazsak
+    // ya (a) hic kaydedilmemis kurulumlarda varsayilan kaybolur ve her cluster duser,
+    // ya da (b) admin alani BILEREK bosaltamaz.
+    defaultOcpUsername: raw?.defaultOcpUsername === undefined
+      ? DEFAULTS.defaultOcpUsername
+      : normalizeUsername(raw.defaultOcpUsername),
     ocBinaryCandidates: cleaned.length ? cleaned : [...DEFAULTS.ocBinaryCandidates],
     ocAsyncTimeout: normalizeTimeout(raw?.ocAsyncTimeout, DEFAULTS.ocAsyncTimeout),
     ocListTimeout: normalizeTimeout(raw?.ocListTimeout, DEFAULTS.ocListTimeout),

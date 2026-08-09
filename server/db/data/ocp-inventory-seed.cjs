@@ -124,4 +124,24 @@ const TERMINAL_HOST_MAP = {
   cicd: 'gbaocp01',
 };
 
-module.exports = { INVENTORY, CLUSTER_JUMP_HOSTS, TERMINAL_HOST_MAP };
+// `oc login --username=...` icin varsayilan kullanici. Envanterdeki tum vault anahtarlari
+// (uxmid_gar, uxmid_das, ...) ayni servis hesabina aittir; cluster satirinda ayri bir deger
+// girilirse O kazanir.
+const DEFAULT_OCP_USERNAME = 'uxmid';
+
+// credentials.yaml icinde tanimli vault DEGISKEN ADLARI. Bir-kerelik seed ile
+// ocp_vault_key_catalog tablosuna yazilir; sonrasinda tek gercek kaynak DB'dir
+// (admin ekler/siler, bu liste guncellense bile mevcut kurulum etkilenmez).
+//
+// PAROLA YOK: burada yalnizca ANAHTAR ADI vardir.
+const VAULT_KEYS = [
+  { key_name: 'uxmid_gar',      description: 'Garanti BBVA (fw.garanti.com.tr) cluster\'lari' },
+  { key_name: 'uxmid_gtek',     description: 'Garanti Teknoloji (fw.gteknoloji.com.tr)' },
+  { key_name: 'uxmid_das',      description: 'Dijital Varliklar (fw.dijitalvarlik.com.tr)' },
+  { key_name: 'uxmid_gtdmz',    description: 'Garanti DMZ' },
+  { key_name: 'uxmid_gtekdmz',  description: 'Garanti Teknoloji DMZ' },
+  { key_name: 'uxmid_takasnet', description: 'Takasnet' },
+  { key_name: 'uxmid_gohas',    description: 'Gohas' },
+].map((k) => ({ ...k, default_username: DEFAULT_OCP_USERNAME }));
+
+module.exports = { INVENTORY, CLUSTER_JUMP_HOSTS, TERMINAL_HOST_MAP, VAULT_KEYS, DEFAULT_OCP_USERNAME };

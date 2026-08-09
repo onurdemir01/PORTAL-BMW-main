@@ -210,6 +210,28 @@ const TABLES = [
       )`,
   },
   {
+    // credentials.yaml icindeki vault DEGISKEN ADLARININ katalogu (uxmid_gar, uxmid_das,
+    // uxmid_gtek ...). Admin buradan ekler/duzenler/siler; OCP Cluster Hiyerarsisi
+    // ekranindaki "Vault Anahtari" alani onerilerini BURADAN alir — daha once oneriler
+    // mevcut cluster satirlarindan turetiliyordu, yani hic kullanilmamis bir anahtar
+    // hicbir zaman onerilmiyordu.
+    //
+    // PAROLA BURADA YOK ve OLMAYACAK: yalnizca anahtarin ADI tutulur. Parolayi playbook
+    // AWX vault'undan lookup('vars', <ad>) ile cozer.
+    name: 'ocp_vault_key_catalog',
+    sql: `
+      CREATE TABLE ocp_vault_key_catalog (
+        id               INT IDENTITY(1,1) PRIMARY KEY,
+        key_name         NVARCHAR(128) NOT NULL,
+        default_username NVARCHAR(128) NULL,
+        description      NVARCHAR(400) NULL,
+        is_active        BIT NOT NULL DEFAULT 1,
+        created_at       DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_at       DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UNIQUE(key_name)
+      )`,
+  },
+  {
     // OCP namespace ONBELLEGI. Namespace kesfi bugune kadar REQUEST-SCOPED idi
     // (logx_v2_requests.discovery_result_json, 24s TTL) — yani her kullanici her seferinde
     // yeniden AWX job'i calistiriyordu ve sonuc kimseyle paylasilmiyordu. Bu tablo sonucu
@@ -1512,6 +1534,12 @@ async function setupTables() {
     // vault anahtarinin (credentials.yaml icindeki uxmid_gar / uxmid_das / uxmid_gtek ...)
     // kullanilacaginin ADI tutulur; playbook parolayi lookup('vars', <ad>) ile cozer.
     { table: 'ocp_cluster_index', col: 'vault_credential_key', sql: `ALTER TABLE ocp_cluster_index ADD vault_credential_key NVARCHAR(128) NULL` },
+    // `oc login --username=...` degeri. Playbook'lar bunu AWX'teki
+    // openshift_inventory_vars.yaml icindeki `username` degiskeninden okuyordu; o dosya
+    // AWX'te YOK ve uretimde TUM cluster'lar "'username' is undefined" ile dustu
+    // (2026-08-09). Artik cluster satirinin kendi degeri kullanilir; bos ise
+    // Admin > OCP Calistirma Ayarlari'ndaki genel varsayilan devreye girer.
+    { table: 'ocp_cluster_index', col: 'ocp_username',       sql: `ALTER TABLE ocp_cluster_index ADD ocp_username NVARCHAR(128) NULL` },
     // Periyodik besleme job'inin cluster basina son durumu (tanilama icin).
     { table: 'ocp_cluster_index', col: 'last_synced_at',     sql: `ALTER TABLE ocp_cluster_index ADD last_synced_at DATETIME2 NULL` },
     { table: 'ocp_cluster_index', col: 'sync_status',        sql: `ALTER TABLE ocp_cluster_index ADD sync_status NVARCHAR(32) NULL` },

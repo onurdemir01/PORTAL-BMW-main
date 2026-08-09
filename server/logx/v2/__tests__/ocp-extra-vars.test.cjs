@@ -111,3 +111,73 @@ test('buildOcpExtraVars(): kismi meta — yalniz dolu alan gonderilir', () => {
   assert.ok(!('credential_key' in vars.ocp_clusters[0]), 'bos anahtar gonderilmemeli');
   assert.ok(!('api_url' in vars.ocp_clusters[1]), 'metasi olmayan cluster eski yola duser');
 });
+
+// ── `username`: 2026-08-09 uretim arizasinin tam merkezi ─────────────────────
+// Playbook `oc login --username={{ username }}` yaziyordu ve bu degisken YALNIZCA
+// AWX'teki openshift_inventory_vars.yaml icinde tanimliydi. O dosya AWX'te yok →
+// "'username' is undefined" → UC BASTION DA rescue'ya dustu, hicbir namespace donmedi.
+// Artik deger portaldan gelir.
+
+test('buildOcpExtraVars(): cluster satirindaki ocp_username payload\'a `username` olarak gider', () => {
+  const vars = buildOcpExtraVars({
+    env: 'prod', tenant: 'ark', clusters: ['gbocpankprod2'], hosts: { gbocpankprod2: 'GBARKAP82' },
+    meta: {
+      gbocpankprod2: {
+        api_url: 'https://api.gbocpankprod2.fw.garanti.com.tr:6443',
+        vault_credential_key: 'uxmid_gar',
+        ocp_username: 'uxmid',
+      },
+    },
+  });
+  assert.equal(vars.ocp_clusters[0].username, 'uxmid');
+});
+
+test('buildOcpExtraVars(): ocp_username BOSSA anahtar HIC konmaz (playbook genel varsayilana duser)', () => {
+  for (const empty of [null, '', undefined]) {
+    const vars = buildOcpExtraVars({
+      env: 'prod', tenant: 'ark', clusters: ['c1'], hosts: { c1: 'b1' },
+      meta: { c1: { api_url: 'https://api.c1:6443', vault_credential_key: 'uxmid_gar', ocp_username: empty } },
+    });
+    assert.ok(!('username' in vars.ocp_clusters[0]), `bos deger (${JSON.stringify(empty)}) anahtar uretmemeli`);
+  }
+});
+
+test('buildOcpExtraVars(): her cluster KENDI kullanici adiyla gider (tek degere sabitlenmez)', () => {
+  const vars = buildOcpExtraVars({
+    env: 'prod', tenant: 'ark', clusters: ['a', 'b'], hosts: { a: 'b1', b: 'b2' },
+    meta: {
+      a: { api_url: 'https://api.a:6443', vault_credential_key: 'uxmid_gar', ocp_username: 'uxmid' },
+      b: { api_url: 'https://api.b:6443', vault_credential_key: 'uxmid_das', ocp_username: 'svc-das' },
+    },
+  });
+  assert.equal(vars.ocp_clusters.find((c) => c.cluster_name === 'a').username, 'uxmid');
+  assert.equal(vars.ocp_clusters.find((c) => c.cluster_name === 'b').username, 'svc-das');
+});
+
+// ── Genel varsayilan (runtime config) ────────────────────────────────────────
+
+test('buildOcpRuntimeVars(): defaultOcpUsername → `ocp_username` extra_var\'i', () => {
+  const { buildOcpRuntimeVars } = require('../ocp.cjs');
+  assert.equal(buildOcpRuntimeVars({ defaultOcpUsername: 'uxmid' }).ocp_username, 'uxmid');
+  // Bos ise anahtar HIC gonderilmez — playbook eski `username` degiskenine dusebilsin.
+  assert.ok(!('ocp_username' in buildOcpRuntimeVars({ defaultOcpUsername: '' })));
+  assert.ok(!('ocp_username' in buildOcpRuntimeVars({})));
+});
+
+test('ocp-runtime-config: kabuk metakarakteri iceren kullanici adi ELENIR', () => {
+  const cfg = require('../ocp-runtime-config.cjs');
+  for (const bad of ['; rm -rf /', 'a b', '$(id)', '`id`', 'a|b']) {
+    assert.equal(cfg.normalize({ defaultOcpUsername: bad }).defaultOcpUsername, '', `reddedilmeli: ${bad}`);
+  }
+  for (const good of ['uxmid', 'svc-ocp', 'svc_ocp.1', 'user@realm']) {
+    assert.equal(cfg.normalize({ defaultOcpUsername: good }).defaultOcpUsername, good, `kabul edilmeli: ${good}`);
+  }
+});
+
+test('ocp-runtime-config: anahtar YOKSA varsayilan, BILEREK bosaltilmissa bos kalir', () => {
+  const cfg = require('../ocp-runtime-config.cjs');
+  // Bu ayrim olmadan ya hic kaydedilmemis kurulumlarda varsayilan kaybolur (her cluster
+  // duser), ya da admin alani bilerek bosaltamaz.
+  assert.equal(cfg.normalize({}).defaultOcpUsername, 'uxmid');
+  assert.equal(cfg.normalize({ defaultOcpUsername: '' }).defaultOcpUsername, '');
+});

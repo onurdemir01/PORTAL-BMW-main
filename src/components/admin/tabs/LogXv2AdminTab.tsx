@@ -2,17 +2,23 @@
 // kaynağı için tek sekme: OCP cluster hiyerarşisi, terminal/bastion host eşlemesi, Legacy
 // ortam-etiketi son-ek eşlemesi ve varsayılan-açık yetkilendirme kısıtlamaları.
 import React, { useEffect, useState } from "react";
-import { ServerStackIcon, CommandLineIcon, TagIcon, LockClosedIcon, WrenchScrewdriverIcon } from "@heroicons/react/24/outline";
+import {
+  ServerStackIcon, CommandLineIcon, TagIcon, LockClosedIcon, WrenchScrewdriverIcon, KeyIcon,
+  SignalIcon, CubeIcon,
+} from "@heroicons/react/24/outline";
 import {
   logxV2Api,
   type OcpClusterIndexRow, type OcpTerminalHostRow, type EnvSuffixRow, type RestrictionRow,
+  type OcpVaultKeyRow,
 } from "@/api/logxV2Api";
 import SimpleCrudTable, { type ColumnDef } from "./logxv2/SimpleCrudTable";
+import { useToast } from "@/hooks/useToast";
 import OcpRuntimeSettings from "./logxv2/OcpRuntimeSettings";
 import { Select } from "@/components/ui/Form";
 
 const SUB_TABS = [
   { id: "clusters", label: "OCP Cluster Hiyerarşisi", icon: ServerStackIcon },
+  { id: "vaultkeys", label: "Vault Anahtarları", icon: KeyIcon },
   { id: "terminals", label: "Terminal/Bastion Host", icon: CommandLineIcon },
   { id: "ocpruntime", label: "OCP Çalıştırma Ayarları", icon: WrenchScrewdriverIcon },
   { id: "envsuffix", label: "Legacy Ortam Son-Eki", icon: TagIcon },
@@ -26,10 +32,15 @@ type SubTabId = (typeof SUB_TABS)[number]["id"];
 function clusterColumns(
   terminalRows: OcpTerminalHostRow[],
   clusterRows: OcpClusterIndexRow[],
+  vaultRows: OcpVaultKeyRow[],
 ): ColumnDef<OcpClusterIndexRow>[] {
-  // Öneriler MEVCUT satırlardan türetilir — vault anahtarı listesi hiçbir yere gömülmez,
-  // yeni bir anahtar eklendiğinde kendiliğinden önerilere girer.
-  const vaultKeys = [...new Set(clusterRows.map((r) => r.vault_credential_key).filter(Boolean) as string[])].sort();
+  // Öneriler artık "Vault Anahtarları" sekmesindeki KATALOGDAN gelir. Eskiden mevcut
+  // cluster satırlarından türetiliyordu; bu yüzden henüz hiçbir cluster'da kullanılmamış
+  // bir anahtar (ör. uxmid_gohas) hiçbir zaman önerilmiyordu. Katalog okunamazsa
+  // kullanımdaki değerlere düşülür — öneri listesi boş kalmasın.
+  const fromCatalog = vaultRows.filter((r) => r.is_active !== false).map((r) => r.key_name);
+  const inUse = clusterRows.map((r) => r.vault_credential_key).filter(Boolean) as string[];
+  const vaultKeys = [...new Set([...fromCatalog, ...inUse])].sort();
   return [
     { key: "env", label: "Ortam (env)", placeholder: "dev" },
     { key: "tenant", label: "Tenant", placeholder: "ark" },
@@ -63,12 +74,46 @@ function clusterColumns(
       // portal veritabanına yazılmaz.
       emptyHint: () => "envanter dosyasından",
     },
+    {
+      key: "ocp_username",
+      label: "OCP Kullanıcı Adı",
+      placeholder: "uxmid",
+      suggestions: [...new Set(vaultRows.map((r) => r.default_username).filter(Boolean) as string[])].sort(),
+      // `oc login --username`. Bu alan YOKKEN playbook değeri yalnızca AWX'teki
+      // openshift_inventory_vars.yaml'dan okuyabiliyordu; o dosya AWX'te olmadığı için
+      // 2026-08-09'da tüm cluster'lar "'username' is undefined" ile düştü.
+      emptyHint: () => "genel varsayılandan",
+    },
     { key: "is_active", label: "Aktif", type: "checkbox" },
   ];
 }
 const CLUSTER_EMPTY: Partial<OcpClusterIndexRow> = {
-  env: "", tenant: "", cluster_name: "", terminal_host: "", api_url: "", vault_credential_key: "", is_active: true,
+  env: "", tenant: "", cluster_name: "", terminal_host: "", api_url: "",
+  vault_credential_key: "", ocp_username: "", is_active: true,
 };
+
+const VAULT_KEY_COLUMNS: ColumnDef<OcpVaultKeyRow>[] = [
+  { key: "key_name", label: "Vault Anahtarı (parola değil)", placeholder: "uxmid_gar" },
+  { key: "default_username", label: "Varsayılan Kullanıcı", placeholder: "uxmid" },
+  { key: "description", label: "Açıklama", placeholder: "Garanti BBVA cluster'ları", truncate: true },
+  { key: "is_active", label: "Aktif", type: "checkbox" },
+];
+const VAULT_KEY_EMPTY: Partial<OcpVaultKeyRow> = {
+  key_name: "", default_username: "", description: "", is_active: true,
+};
+
+// Hem cluster hem de vault sekmesinde gösterilir: "Vault Anahtarı" başlığını gören bir
+// admin oraya gerçek parolayı yapıştırırsa portal veritabanına düz metin yazılırdı.
+const VaultKeyWarning: React.FC = () => (
+  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+    <strong>Vault Anahtarı bir parola DEĞİLDİR.</strong> Buraya AWX'teki
+    <code className="mx-1 px-1 rounded bg-amber-100">credentials.yaml</code>
+    dosyasında tanımlı <strong>değişkenin adını</strong> yazın (ör.
+    <code className="mx-1 px-1 rounded bg-amber-100">uxmid_gar</code>). Parolalar portal
+    veritabanında tutulmaz; playbook değeri doğrudan vault'tan okur.
+    <strong className="ml-1">Buraya asla gerçek parola yazmayın.</strong>
+  </div>
+);
 
 const TERMINAL_COLUMNS: ColumnDef<OcpTerminalHostRow>[] = [
   { key: "tenant", label: "Tenant", placeholder: "ark" },
@@ -340,6 +385,62 @@ const RestrictionsSection: React.FC = () => {
   );
 };
 
+// Cluster satırının canlı kontrolleri. Bu iki aksiyon eskiden Admin > Ansible
+// Yapılandırma altındaki AYRI OCP kataloğundaydı; o katalog bu kataloğdan bağımsızdı ve
+// üretimde boştu, dolayısıyla aksiyonlar hiç kullanılamıyordu. Tek katalog, tek yer.
+const ClusterRowActions: React.FC<{ row: OcpClusterIndexRow }> = ({ row }) => {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState<"conn" | "pods" | null>(null);
+  const [podOutput, setPodOutput] = useState<string | null>(null);
+
+  async function run(kind: "conn" | "pods") {
+    setBusy(kind);
+    try {
+      if (kind === "conn") {
+        const r = await logxV2Api.admin.testClusterConnection(row.id);
+        if (r.ok) toast.success(`${row.cluster_name}: erişilebilir${r.responseTimeMs != null ? ` (${r.responseTimeMs} ms)` : ""}${r.message ? ` — ${r.message}` : ""}`);
+        else toast.error(`${row.cluster_name}: ${r.message || "erişilemedi"}`);
+      } else {
+        const r = await logxV2Api.admin.clusterPodStatus(row.id);
+        setPodOutput(r.output || "(çıktı boş)");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <button onClick={() => run("conn")} disabled={busy !== null}
+        aria-label={`${row.cluster_name} bağlantısını test et`} title="Bağlantı Testi (API /version)"
+        className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition disabled:opacity-40">
+        <SignalIcon className="w-3.5 h-3.5" />
+      </button>
+      <button onClick={() => run("pods")} disabled={busy !== null}
+        aria-label={`${row.cluster_name} pod durumunu getir`} title="Pod Durumu (jump server üzerinden)"
+        className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition disabled:opacity-40">
+        <CubeIcon className="w-3.5 h-3.5" />
+      </button>
+      {podOutput !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog" aria-modal="true" aria-label={`${row.cluster_name} pod durumu`}
+          onClick={() => setPodOutput(null)}>
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[80vh] overflow-auto p-4 text-left"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold text-gray-700">{row.cluster_name} — pod durumu</h4>
+              <button onClick={() => setPodOutput(null)} className="text-xs text-gray-500 hover:text-gray-800">Kapat</button>
+            </div>
+            <pre className="text-[11px] font-mono whitespace-pre-wrap text-gray-700">{podOutput}</pre>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 const LogXv2AdminTab: React.FC = () => {
   const [subTab, setSubTab] = useState<SubTabId>("clusters");
 
@@ -352,11 +453,14 @@ const LogXv2AdminTab: React.FC = () => {
   const envSuffix = useCrudSection(
     logxV2Api.admin.listEnvSuffixMap, logxV2Api.admin.createEnvSuffix, logxV2Api.admin.updateEnvSuffix, logxV2Api.admin.deleteEnvSuffix
   );
+  const vaultKeys = useCrudSection(
+    logxV2Api.admin.listVaultKeys, logxV2Api.admin.createVaultKey, logxV2Api.admin.updateVaultKey, logxV2Api.admin.deleteVaultKey
+  );
   // Cluster tablosundaki "boş Jump Server" hücrelerinde yedek eşlemeyi gösterebilmek için
   // terminal-host satırlarına ihtiyaç var (iki sekme de aynı sayfada yüklüdür).
   const clusterCols = React.useMemo(
-    () => clusterColumns(terminals.rows, clusters.rows),
-    [terminals.rows, clusters.rows],
+    () => clusterColumns(terminals.rows, clusters.rows, vaultKeys.rows),
+    [terminals.rows, clusters.rows, vaultKeys.rows],
   );
 
   return (
@@ -390,19 +494,32 @@ const LogXv2AdminTab: React.FC = () => {
             sekmesindeki tenant/env yedek eşlemesi kullanılır. Her ikisi de yoksa o cluster seçildiğinde
             işlem başlatılamaz.
           </div>
-          {/* Bu uyarı KODDA DEĞİL EKRANDA olmalı: "Vault Anahtarı" başlığını gören bir admin
-              oraya gerçek parolayı yapıştırırsa portal veritabanına düz metin yazılırdı. */}
-          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
-            <strong>Vault Anahtarı bir parola DEĞİLDİR.</strong> Buraya AWX'teki
-            <code className="mx-1 px-1 rounded bg-amber-100">credentials.yaml</code>
-            dosyasında tanımlı <strong>değişkenin adını</strong> yazın (ör.
-            <code className="mx-1 px-1 rounded bg-amber-100">uxmid_gar</code>). Parolalar portal
-            veritabanında tutulmaz; playbook değeri doğrudan vault'tan okur.
-            <strong className="ml-1">Buraya asla gerçek parola yazmayın.</strong>
+          <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-800">
+            <strong>OCP Kullanıcı Adı</strong>, playbook'un <code className="px-1 rounded bg-blue-100">oc login --username</code>
+            değeridir. Boş bırakılırsa <strong>OCP Çalıştırma Ayarları</strong> sekmesindeki genel
+            varsayılan kullanılır. İkisi de boşsa o cluster keşifte anlaşılır bir hatayla elenir —
+            diğer cluster'lar çalışmaya devam eder.
           </div>
+          <VaultKeyWarning />
           <BootstrapSeedPanel onSeeded={clusters.reload} />
           <SimpleCrudTable columns={clusterCols} rows={clusters.rows} emptyRow={CLUSTER_EMPTY}
-            onCreate={clusters.onCreate} onUpdate={clusters.onUpdate} onDelete={clusters.onDelete} />
+            onCreate={clusters.onCreate} onUpdate={clusters.onUpdate} onDelete={clusters.onDelete}
+            rowActions={(row) => <ClusterRowActions row={row} />} />
+        </div>
+      )}
+      {subTab === "vaultkeys" && (
+        vaultKeys.loading ? <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div> :
+        vaultKeys.error ? <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{vaultKeys.error}</div> :
+        <div className="space-y-3">
+          <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-800">
+            AWX'teki <code className="px-1 rounded bg-blue-100">credentials.yaml</code> dosyasında tanımlı
+            vault değişkenlerinin <strong>adları</strong>. <strong>OCP Cluster Hiyerarşisi</strong> sekmesindeki
+            "Vault Anahtarı" alanı önerilerini buradan alır. Kullanımda olan bir anahtar silinemez —
+            önce onu kullanan cluster satırlarını güncelleyin.
+          </div>
+          <VaultKeyWarning />
+          <SimpleCrudTable columns={VAULT_KEY_COLUMNS} rows={vaultKeys.rows} emptyRow={VAULT_KEY_EMPTY}
+            onCreate={vaultKeys.onCreate} onUpdate={vaultKeys.onUpdate} onDelete={vaultKeys.onDelete} />
         </div>
       )}
       {subTab === "terminals" && (

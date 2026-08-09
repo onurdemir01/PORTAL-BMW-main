@@ -58,6 +58,25 @@ test('buildSeedRows(): cluster-ozel jump server varsa tasinir, yoksa NULL (yedeg
   assert.equal(test1.terminal_host, null, 'eslemesi olmayan cluster NULL kalmali (tenant/env yedegi devreye girer)');
 });
 
+test('buildSeedRows(): her satir `oc login` kullanici adini tasir', () => {
+  // Bu alan YOKKEN playbook degeri yalnizca AWX'teki openshift_inventory_vars.yaml'dan
+  // okuyabiliyordu; o dosya AWX'te olmadigi icin 2026-08-09'da tum cluster'lar dustu.
+  const rows = seed.buildSeedRows();
+  assert.ok(rows.every((r) => r.ocp_username === 'uxmid'), 'tum seed satirlari kullanici adi tasimali');
+});
+
+test('VAULT_KEYS: kullanicinin verdigi 7 anahtarin TAMAMI var ve PAROLA yok', () => {
+  const { VAULT_KEYS } = require('../data/ocp-inventory-seed.cjs');
+  const names = VAULT_KEYS.map((k) => k.key_name).sort();
+  assert.deepEqual(names, [
+    'uxmid_das', 'uxmid_gar', 'uxmid_gohas', 'uxmid_gtdmz',
+    'uxmid_gtek', 'uxmid_gtekdmz', 'uxmid_takasnet',
+  ]);
+  // Anahtar ADI Ansible degisken adi kurallarina uymali (lookup('vars', <ad>)).
+  assert.ok(VAULT_KEYS.every((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k.key_name)));
+  assert.ok(!JSON.stringify(VAULT_KEYS).match(/password|parola|secret/i), 'PAROLA TUTULMAZ');
+});
+
 test('buildSeedRows(): metaco/das cluster\'lari uxmid_das anahtarini kullanir', () => {
   const rows = seed.buildSeedRows();
   const das = rows.find((r) => r.cluster_name === 'daocpprod1');
@@ -111,7 +130,10 @@ test('seedOcpBootstrapOnce(): yeni satirlar PASIF (is_active=0) ve source=invent
     await seed.seedOcpBootstrapOnce();
     assert.ok(calls.inserts.length > 0, 'satir eklenmeli');
     const first = calls.inserts[0];
-    assert.equal(first.params.length, 6, 'parola gibi fazladan bir alan gonderilmemeli');
+    // env, tenant, cluster_name, api_url, vault_credential_key, ocp_username, terminal_host
+    assert.equal(first.params.length, 7, 'parola gibi fazladan bir alan gonderilmemeli');
+    // Anahtar ADI ile PAROLA karistirilmasin: gonderilen degerlerin hicbiri parola olamaz.
+    assert.ok(first.params.every((v) => v == null || !/pass|parola|secret/i.test(String(v))));
     // SQL METNINI dogrula: is_active/source sabit yazili oldugu icin parametrelere
     // bakmak yetmez — biri 0'i 1 yapsa test yine gecerdi.
     assert.match(first.sql, /'inventory-seed'\s*,\s*0\s*\)/,

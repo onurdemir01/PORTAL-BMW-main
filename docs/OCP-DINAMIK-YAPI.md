@@ -61,7 +61,35 @@ ocp_clusters:
     terminal_host: GBAOCP01
     api_url: "https://api.gbocpqa1.garanti.com.tr:6443"   # DB'den (ocp_cluster_index.api_url)
     credential_key: "uxmid_gar"                            # credentials.yaml'daki DEĞİŞKEN ADI
+    username: "uxmid"                                      # DB'den (ocp_cluster_index.ocp_username)
 ```
+
+### `username` — 2026-08-09 üretim arızasının kökü
+
+Playbook'lar `oc login --username={{ username }}` yazıyordu. Bu değişken **yalnızca**
+`openshift_inventory_vars.yaml` içinde tanımlıydı; o dosya AWX projesinde **yok** ve
+`first_found ... errors='ignore'` ile sessizce atlanıyordu. Sonuç: her bastion
+`'username' is undefined` ile rescue'ya düştü, **üç cluster'ın üçü de** `status: error`
+döndürdü, kullanıcı boş bir namespace ekranı gördü. `oc` keşfi, bastion ayrımı ve parola
+çözümlemesi doğru çalışıyordu — tek eksik kullanıcı adıydı.
+
+Çözüm sırası (playbook'ta `resolved_username`):
+
+1. `ocp_clusters[i].username` — cluster satırı (`ocp_cluster_index.ocp_username`)
+2. `ocp_username` — portalın genel varsayılanı (Admin > **OCP Çalıştırma Ayarları**)
+3. `username` — eski inventory değişkeni (yalnızca geriye uyum)
+
+Üçü de boşsa o cluster **doğrulamada elenir** ve anlaşılır bir hata metni döner; diğer
+cluster'lar çalışmaya devam eder. Eskiden bu durum tüm bastion'ı düşürüyordu.
+
+Kullanıcı adı kabuk komut satırına gittiği için hem portalda hem playbook'ta
+`[A-Za-z0-9][A-Za-z0-9._\-@]*` kalıbına zorlanır.
+
+**Vault anahtarı kataloğu:** `ocp_vault_key_catalog` tablosu `credentials.yaml` içindeki
+değişken adlarını (uxmid_gar, uxmid_gtek, uxmid_das, uxmid_gtdmz, uxmid_gtekdmz,
+uxmid_takasnet, uxmid_gohas) tutar; Admin > LogX Yapılandırma > **Vault Anahtarları**
+sekmesinden yönetilir ve cluster satırındaki "Vault Anahtarı" alanının önerilerini besler.
+Kullanımdaki bir anahtar silinemez. **Parola burada da tutulmaz.**
 
 **Parola portal veritabanına ASLA yazılmaz.** DB yalnızca anahtarın *adını* tutar; playbook
 `lookup('vars', item.credential_key)` ile değeri AWX'teki vault'tan (`credentials.yaml`) okur.
@@ -274,30 +302,39 @@ Bu repodaki playbook'lar **referans kopyadır**; çalıştırılan sürüm AWX p
 > geçerli kalır, testler yeşil görünür — hata ancak AWX'te çalıştırınca çıkar. Bu sınıfı
 > `server/ansible/__tests__/playbook-shell-quotes.test.cjs` yakalar.
 
-> **Sürüm sapması uyarısı (2026-08-08 tespiti).** AWX'teki iki playbook AYNI sürümde
-> olmayabilir. Son tespit edilen durum:
+> **Sürüm sapması uyarısı — 2026-08-09 itibarıyla GİDERİLDİ.** 2026-08-08'de AWX'teki
+> `logx_ocp_discover_fetch.yml` hâlâ eski tek-bastion sürümüydü. 2026-08-09 üretim
+> denemesinin job çıktısı her iki playbook'un da **çoklu-bastion sürümünde** olduğunu
+> gösterdi (her bastion kendi cluster alt kümesini işledi, `oc` keşfi çalıştı). Uyarı
+> tarihsel kayıt olarak burada duruyor: **iki playbook birlikte güncellenmelidir**, yalnız
+> birini güncellemek sihirbazın ilk adımını çalışır gösterip ikinci adımda düşürür —
+> kullanıcı için en kafa karıştırıcı senaryo.
 >
-> | Playbook | AWX'te | Sonuç |
-> |---|---|---|
-> | `logx_ocp_namespace_discovery.yml` | çoklu-bastion ✅, `oc_binary` elle `/bin/oc` yamalı | Namespace keşfi çalışır |
-> | `logx_ocp_discover_fetch.yml` | **eski tek-bastion** (2 play), `oc_binary: /usr/local/bin/oc` | **Log çekme adımı aynı hatayla düşer** |
+> **`vars_files` yolu:** AWX `credentials.yaml` kullanır. Repo kopyaları buna hizalandı;
+> ileride değişirse taşımadan önce dosyaların `vars_files` satırları karşılaştırılmalıdır
+> (yanlış yol = her host için fatal, teşhisi zor bir hata).
 >
-> İki playbook birlikte güncellenmelidir. Yalnız birini güncellemek, sihirbazın ilk adımını
-> çalışır gösterip ikinci adımda aynı hataya düşürür — kullanıcı için en kafa karıştırıcı senaryo.
->
-> Ayrıca eski `discover_fetch`, portalın gönderdiği `terminal_hosts` ve cluster-başına
-> `terminal_host` alanlarını **yok sayar**; tüm cluster'ları tek bastionda (alfabetik ilk)
-> işler. Yani "her cluster kendi jump server'ından" garantisi log çekme adımında sağlanmaz.
->
-> **`vars_files` yolu:** AWX `credentials.yaml` kullanır. Repo kopyaları bu sürümde buna
-> hizalandı; ileride değişirse taşımadan önce iki dosyanın `vars_files` satırları
-> karşılaştırılmalıdır (yanlış yol = her host için fatal, teşhisi zor bir hata).
+> **"Prompt on launch" ZORUNLU.** AWX job template'inde Variables > *Prompt on launch*
+> kapalıysa AWX, portalın gönderdiği extra_vars'ı **sessizce yok sayar**: job başlar,
+> playbook boş girdiyle çalışır ve anlamsız bir assert hatası verir. 2026-08-09'da
+> `logx_ocp_app_discovery` tam olarak böyle düştü (AWX arayüzünde değişkenler `{}`).
+> Portal artık launch öncesi bunu kontrol eder ve işi hiç başlatmadan ne yapılacağını
+> söyler (`server/ansible/template-preflight.cjs`). **Üç template'te de işaretli olmalı.**
 
 **Sıra — önce AWX, sonra portal:**
-1. İki playbook'u AWX projesindeki karşılıklarının üzerine kopyala, proje senkronu çalıştır.
-   Yeni playbook **eski payload ile de çalışır** (portal henüz yeni alanları göndermese bile),
-   bu yüzden bu adım tek başına güvenlidir.
-2. Portalı deploy et (Faz 3–6: sade hata mesajı, log paneli, admin ayarları).
+1. **Üç** playbook'u AWX projesindeki karşılıklarının üzerine kopyala, proje senkronu
+   çalıştır. Yeni sürüm **eski payload ile de çalışır** (portal henüz `username`
+   göndermese bile eski `username` değişkenine düşer), bu yüzden bu adım tek başına
+   güvenlidir.
+2. Üç template'te de **Variables > Prompt on launch** işaretli olduğunu doğrula
+   (yukarıdaki nota bak). `logx_ocp_app_discovery` için template yoksa aç ve ID'sini
+   `AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID`'ye ya da Playbook Kayıtları satırına yaz.
+3. Portalı deploy et. İlk açılışta şema `ocp_cluster_index.ocp_username` kolonunu ve
+   `ocp_vault_key_catalog` tablosunu ekler; vault anahtarları bir kerelik seed edilir
+   (işaret: `portal_settings.ocp_vault_key_seed_v1`).
+4. Admin > LogX Yapılandırma > OCP Cluster Hiyerarşisi'nde kullanılan cluster'ların
+   **OCP Kullanıcı Adı** alanını doldur (boş bırakılırsa OCP Çalıştırma Ayarları'ndaki
+   genel varsayılan — `uxmid` — devreye girer).
 
 **Geri alma:** Playbook'u önceki sürüme döndürmek yeterlidir. Acil durumda **kod değişikliği
 olmadan** da belirli bir yola sabitlenebilir: AWX template'inin extra_vars alanına
@@ -312,7 +349,7 @@ for this bastion` adımları görünmeli; bir bastion çökerse `PLAY RECAP`'te 
 ## 12. Doğrulama
 
 ```bash
-npm test          # 247/247 yeşil olmalı
+npm test          # 283/283 yeşil olmalı
 npx tsc --noEmit  # yeni hata olmamalı (mevcut 4 hata bu işten önce de vardı)
 npm run build
 ansible-playbook --syntax-check server/ansible/playbooks/logx_ocp_*.yml   # üçü de temiz
