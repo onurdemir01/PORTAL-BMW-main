@@ -65,7 +65,7 @@ const HostFileList: React.FC<{ files: FilexFileEntry[] }> = ({ files }) => {
         <div className="px-3 py-1.5 font-medium">Değiştirilme</div>
         <div className="px-3 py-1.5 font-medium">SHA512</div>
       </div>
-      <div ref={parentRef} className="overflow-auto" style={{ height: Math.min(files.length * ROW_HEIGHT, 420) }}>
+      <div ref={parentRef} className="overflow-auto" style={{ height: Math.min(files.length * ROW_HEIGHT, 640) }}>
         <div style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
           {virtualItems.map((vRow) => {
             const f = files[vRow.index];

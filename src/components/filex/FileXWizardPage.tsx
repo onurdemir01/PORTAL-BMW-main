@@ -101,9 +101,13 @@ const FileXWizardPage: React.FC = () => {
   }
 
   const canGoBack = backTargetFor(step) !== null;
+  // Sonuc adiminda binlerce dosya olabilir — dar sihirbaz sutunu (max-w-2xl) veriyi
+  // ezerdi. Sadece bu adimda tam genislik (sol menu + ust bar disindaki tum alan)
+  // kullanilir; diger adimlar (form niteligindeki secimler) dar/ortali kalir.
+  const isFullWidth = step === "result";
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
+    <div className={isFullWidth ? "w-full space-y-5" : "max-w-2xl mx-auto space-y-5"}>
       <div className="flex items-start gap-3">
         {canGoBack && (
           <button
@@ -129,7 +133,7 @@ const FileXWizardPage: React.FC = () => {
         </div>
       )}
 
-      <div key={step} className="card p-5 animate-slide-up">
+      <div key={step} className={`card p-5 animate-slide-up ${isFullWidth ? "w-full" : ""}`}>
         {step === "app" && (
           <AppSearchStep
             busy={busy}
