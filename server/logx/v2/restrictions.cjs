@@ -27,6 +27,29 @@ async function isAllowed(resourceType, resourceKey, user) {
   return rows.some((r) => r.username);
 }
 
+// Liste filtreleme icin toplu surum. `isAllowed`'i dongude cagirmak 1000 namespace'lik bir
+// cluster'da 1000 sorgu demekti; burada TEK sorgu ile o tipin TUM kisitlama satirlari
+// okunur ve karar bellekte verilir (varsayilan-acik semantigi birebir korunur).
+async function filterAllowed(resourceType, resourceKeys, user) {
+  const keys = Array.isArray(resourceKeys) ? resourceKeys : [];
+  if (user.role === 'Admin' || keys.length === 0) return keys;
+
+  const { rows } = await db.query(
+    `SELECT r.resource_key, g.username
+     FROM logx_v2_restrictions r
+     LEFT JOIN logx_v2_restriction_grants g ON g.restriction_id = r.id AND g.username = $2
+     WHERE r.resource_type = $1`,
+    [resourceType, user.username]
+  );
+  // key → bu kullaniciya acik mi. Satiri OLMAYAN key hic haritada gorunmez → acik.
+  const grantedByKey = new Map();
+  for (const row of rows) {
+    const prev = grantedByKey.get(row.resource_key) || false;
+    grantedByKey.set(row.resource_key, prev || Boolean(row.username));
+  }
+  return keys.filter((k) => !grantedByKey.has(k) || grantedByKey.get(k));
+}
+
 async function assertAllowed(resourceType, resourceKey, user) {
   const allowed = await isAllowed(resourceType, resourceKey, user);
   if (!allowed) {
@@ -111,4 +134,4 @@ async function removeGrant(restrictionId, username) {
   return rowCount > 0;
 }
 
-module.exports = { isAllowed, assertAllowed, listRestrictions, createRestriction, updateRestriction, deleteRestriction, addGrant, removeGrant };
+module.exports = { isAllowed, assertAllowed, filterAllowed, listRestrictions, createRestriction, updateRestriction, deleteRestriction, addGrant, removeGrant };

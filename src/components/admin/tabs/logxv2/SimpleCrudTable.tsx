@@ -13,6 +13,12 @@ export interface ColumnDef<T> {
   // Hücre BOŞ olduğunda okuma modunda gösterilecek açıklama (ör. devreye girecek fallback
   // değeri). Boş string dönerse "—" gösterilir. Yalnızca görüntüdür, kayda etki etmez.
   emptyHint?: (row: T) => string;
+  // Yazarken açılan öneri listesi (datalist). Değerler MEVCUT satırlardan türetilir —
+  // sabit bir liste gömmek istemiyoruz, yeni bir vault anahtarı/URL kalıbı çıktığında
+  // kod değişmesin. Serbest metin girişi engellenmez, yalnızca yazım hatası azaltılır.
+  suggestions?: string[];
+  // Uzun değerleri (api_url gibi) okuma modunda kısaltır; tam değer title'da kalır.
+  truncate?: boolean;
 }
 
 interface Props<T extends { id: number }> {
@@ -75,15 +81,23 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                 className="rounded"
               />
             ) : (
-              <input
-                type={col.type === "number" ? "number" : "text"}
-                value={String(form[col.key] ?? "")}
-                placeholder={col.placeholder}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, [col.key]: col.type === "number" ? Number(e.target.value) : e.target.value }))
-                }
-                className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black transition"
-              />
+              <>
+                <input
+                  type={col.type === "number" ? "number" : "text"}
+                  list={col.suggestions?.length ? `sct-${String(col.key)}` : undefined}
+                  value={String(form[col.key] ?? "")}
+                  placeholder={col.placeholder}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, [col.key]: col.type === "number" ? Number(e.target.value) : e.target.value }))
+                  }
+                  className="w-full min-w-[7rem] px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black transition"
+                />
+                {col.suggestions?.length ? (
+                  <datalist id={`sct-${String(col.key)}`}>
+                    {col.suggestions.map((s) => <option key={s} value={s} />)}
+                  </datalist>
+                ) : null}
+              </>
             )}
           </td>
         ))}
@@ -133,7 +147,11 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                     const raw = row[col.key];
                     const isEmpty = raw === null || raw === undefined || raw === "";
                     return (
-                      <td key={String(col.key)} className="px-3 py-2 text-gray-700">
+                      <td
+                        key={String(col.key)}
+                        title={col.truncate ? String(raw ?? "") : undefined}
+                        className={`px-3 py-2 text-gray-700 ${col.truncate ? "max-w-[14rem] truncate" : ""}`}
+                      >
                         {col.type === "checkbox"
                           ? (raw ? "✓" : "—")
                           : isEmpty && col.emptyHint

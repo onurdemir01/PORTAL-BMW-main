@@ -210,6 +210,57 @@ const TABLES = [
       )`,
   },
   {
+    // OCP namespace ONBELLEGI. Namespace kesfi bugune kadar REQUEST-SCOPED idi
+    // (logx_v2_requests.discovery_result_json, 24s TTL) — yani her kullanici her seferinde
+    // yeniden AWX job'i calistiriyordu ve sonuc kimseyle paylasilmiyordu. Bu tablo sonucu
+    // kullanicilar arasi paylasilir hale getirir: sihirbaz ONCE buradan okur, kullanici
+    // aradigini bulamazsa "Burada kesfet" ile taze tarama tetikler.
+    // TTL dolunca satir SILINMEZ, `stale` olarak isaretlenip yine gosterilir (bayat veri,
+    // hic veri olmamasindan iyidir — bkz. logx/v2/legacy.cjs snapshot fallback deseni).
+    name: 'ocp_namespace_cache',
+    sql: `
+      CREATE TABLE ocp_namespace_cache (
+        id           INT IDENTITY(1,1) PRIMARY KEY,
+        env          NVARCHAR(30) NOT NULL,
+        tenant       NVARCHAR(64) NOT NULL,
+        cluster_name NVARCHAR(64) NOT NULL,
+        namespace    NVARCHAR(100) NOT NULL,
+        source       NVARCHAR(32) NOT NULL DEFAULT 'discovery',
+        fetched_at   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        expires_at   DATETIME2 NULL,
+        is_deleted   BIT NOT NULL DEFAULT 0,
+        UNIQUE(env, tenant, cluster_name, namespace)
+      )`,
+  },
+  {
+    // OCP namespace ICINDEKI is yuku/ag objeleri onbellegi. Kullanici uygulama adini
+    // bilmek zorunda kalmasin diye: sihirbaz listeyi buradan gosterir, bulunamazsa
+    // "Burada kesfet" ile logx_ocp_app_discovery playbook'u calisir.
+    // `kind` obje tipidir (Deployment/StatefulSet/Service/Route/...); ayni namespace'te
+    // ayni ada sahip FARKLI tipler olabilir, bu yuzden UNIQUE'e dahildir.
+    name: 'ocp_app_cache',
+    sql: `
+      CREATE TABLE ocp_app_cache (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        env           NVARCHAR(30) NOT NULL,
+        tenant        NVARCHAR(64) NOT NULL,
+        cluster_name  NVARCHAR(64) NOT NULL,
+        namespace     NVARCHAR(100) NOT NULL,
+        kind          NVARCHAR(32) NOT NULL,
+        app_name      NVARCHAR(150) NOT NULL,
+        replicas      INT NULL,
+        image         NVARCHAR(512) NULL,
+        label_app     NVARCHAR(256) NULL,
+        created_at_k8s DATETIME2 NULL,
+        payload_json  NVARCHAR(MAX) NULL,
+        source        NVARCHAR(32) NOT NULL DEFAULT 'discovery',
+        fetched_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        expires_at    DATETIME2 NULL,
+        is_deleted    BIT NOT NULL DEFAULT 0,
+        UNIQUE(env, tenant, cluster_name, namespace, kind, app_name)
+      )`,
+  },
+  {
     // Legacy EAR-klasor-son-eki ('-T','-D', son-ek-yok) → ortam etiketi — EnvanterApps.env
     // sutunu guvenilmez oldugu icin ortam etiketi BURADAN turetilir (admin duzeltebilir).
     name: 'logx_env_suffix_map',
@@ -1063,6 +1114,11 @@ const PLAYBOOK_REGISTRY_SEED = [
     playbook_path: 'server/ansible/playbooks/logx_ocp_namespace_discovery.yml', env_var_name: 'AWX_LOGX_OCP_NAMESPACE_DISCOVERY_TEMPLATE_ID',
   },
   {
+    key_name: 'logx_ocp_app_discovery', display_name: 'LogX — OCP Uygulama/Obje Keşfi', category: 'logx', handler: 'ocp_app_discovery',
+    description: 'Seçilen namespace(ler)de çalışan uygulama ve objeleri (deployment, statefulset, pod, service, route…) salt-okunur listeler; sonuç portalda önbelleğe alınır.',
+    playbook_path: 'server/ansible/playbooks/logx_ocp_app_discovery.yml', env_var_name: 'AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID',
+  },
+  {
     key_name: 'logx_ocp_discover_fetch', display_name: 'LogX — OCP Pod Log Keşfi+Çekme', category: 'logx', handler: 'ocp_discover_fetch',
     description: 'Seçilen cluster(lar)da uygulama adına eşleşen tüm pod\'ların loglarını çeker, zip\'ler, staging dizinine bırakır.',
     playbook_path: 'server/ansible/playbooks/logx_ocp_discover_fetch.yml', env_var_name: 'AWX_LOGX_OCP_DISCOVER_FETCH_TEMPLATE_ID',
@@ -1310,6 +1366,12 @@ async function setupTables() {
   await seedSplunkProducts(pool);
   await seedSelfServiceGroups(pool);
 
+  // NOT: OCP katalog seed'i BURADA DEGIL, setupTables'in EN SONUNDA calisir — kullandigi
+  // kolonlar (api_url, vault_credential_key, source, terminal_host) asagidaki ALTER
+  // dongusuyle ekleniyor. Burada calistirilsaydi her INSERT "Invalid column name" ile
+  // patlar, hatalar yutulur ve "yapildi" isareti yine de yazilirdi → katalog KALICI
+  // OLARAK BOS kalirdi.
+
   // Not: Eski portal_config_blobs uzlastirmasi (config-mirror.cjs) kaldirildi — store'lar
   // artik normalize tablolara dogrudan yazar; blob'lar yalnizca her store'un kendi
   // tek-seferlik goc adiminda (tablo bosken) okunur. Blob satirlari geri donus emniyeti
@@ -1444,6 +1506,16 @@ async function setupTables() {
     // icin eklendi. Bos birakilirsa kayit '_atanmadi' tenant'i ile PASIF aynalanir.
     { table: 'ansible_ocp_clusters', col: 'tenant',         sql: `ALTER TABLE ansible_ocp_clusters ADD tenant NVARCHAR(100) NULL` },
     { table: 'ocp_cluster_index', col: 'source',            sql: `ALTER TABLE ocp_cluster_index ADD source NVARCHAR(20) NULL` },
+    // ── OCP katalogunun AWX inventory dosyasindan bagimsizlastirilmasi ──────────
+    // Playbook'lar cluster URL/parolasini AWX'teki openshift_inventory_vars.yaml'dan
+    // okuyordu; artik URL portaldan gelir. PAROLA ASLA DB'YE GIRMEZ — yalnizca hangi
+    // vault anahtarinin (credentials.yaml icindeki uxmid_gar / uxmid_das / uxmid_gtek ...)
+    // kullanilacaginin ADI tutulur; playbook parolayi lookup('vars', <ad>) ile cozer.
+    { table: 'ocp_cluster_index', col: 'vault_credential_key', sql: `ALTER TABLE ocp_cluster_index ADD vault_credential_key NVARCHAR(128) NULL` },
+    // Periyodik besleme job'inin cluster basina son durumu (tanilama icin).
+    { table: 'ocp_cluster_index', col: 'last_synced_at',     sql: `ALTER TABLE ocp_cluster_index ADD last_synced_at DATETIME2 NULL` },
+    { table: 'ocp_cluster_index', col: 'sync_status',        sql: `ALTER TABLE ocp_cluster_index ADD sync_status NVARCHAR(32) NULL` },
+    { table: 'ocp_cluster_index', col: 'sync_error',         sql: `ALTER TABLE ocp_cluster_index ADD sync_error NVARCHAR(1000) NULL` },
     // actions.md #13 (Bolum L) — Tablo Takma Adlari eksik alanlar.
     {
       table: 'inventory_table_aliases', col: 'schema_name',
@@ -1644,6 +1716,18 @@ async function setupTables() {
     } catch (err) {
       console.warn(`[DB] Index olusturulamadi (${name}):`, err.message);
     }
+  }
+
+  // ── OCP katalogu ilk kurulumu — EN SONDA ────────────────────────────────────
+  // Digerlerinden FARKLI olarak BIR KERELIK calisir (isaret: portal_settings). Sebep:
+  // admin bir cluster'i bilerek silerse restart onu geri getirmemeli.
+  // BURADA olmasi ZORUNLU: kullandigi kolonlar (api_url, vault_credential_key, source,
+  // terminal_host) yukaridaki ALTER dongusunde ekleniyor; seed daha once calisirsa her
+  // INSERT "Invalid column name" ile patlar ve katalog kalici olarak bos kalirdi.
+  try {
+    await require('./ocp-bootstrap-seed.cjs').seedOcpBootstrapOnce();
+  } catch (e) {
+    console.warn('[DB] OCP katalog seed atlandi:', e.message);
   }
 }
 

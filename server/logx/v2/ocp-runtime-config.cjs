@@ -17,11 +17,25 @@ const DEFAULTS = Object.freeze({
   // `oc_binary` extra_var'i olarak gider ve kesfin ONUNE gecer.
   ocBinary: '',
   // Playbook'un sirayla deneyecegi mutlak yollar (bulunan ILK calistirilabilir kazanir).
-  ocBinaryCandidates: ['/usr/local/bin/oc', '/bin/oc', '/usr/bin/oc'],
+  // /bin/oc ILK: kurumsal bastion'larda oc gercekte burada (uretimde /usr/local/bin/oc
+  // varsayimi tum bastion'larin ayni anda dusmesine yol acmisti).
+  ocBinaryCandidates: ['/bin/oc', '/usr/local/bin/oc', '/usr/bin/oc'],
   // Saniye. Playbook'taki ayni adli degiskenleri ezer.
   ocAsyncTimeout: 120,   // namespace kesfi (oc login + get projects)
   ocListTimeout: 120,    // pod listeleme
   ocLogTimeout: 300,     // pod loglarinin cekilmesi
+
+  // ── Kesif onbellegi (ocp_namespace_cache / ocp_app_cache) ──────────────────
+  // TTL dolunca kayit SILINMEZ; "bayat" isaretiyle gosterilmeye devam eder.
+  nsCacheTtlHours: 24,
+  appCacheTtlHours: 12,
+
+  // ── Periyodik besleme job'i (server/logx/v2/ocp-sync.cjs) ──────────────────
+  // VARSAYILAN KAPALI: ilk surumde opt-in. Acilinca aktif cluster'lari gezip
+  // onbellegi tazeler.
+  periodicSyncEnabled: false,
+  periodicSyncIntervalMin: 360,   // 6 saat
+  periodicSyncMaxClusters: 25,    // tek turda taranacak azami cluster
 });
 
 // Playbook'a giden degisken adlari — kod icinde tekrarlanmasin diye tek yerde.
@@ -48,6 +62,22 @@ function normalizeTimeout(value, fallback) {
   return Math.min(MAX_TIMEOUT, Math.max(MIN_TIMEOUT, Math.floor(n)));
 }
 
+// Genel amacli tamsayi kirpma (aralik disi → sinira, gecersiz/bos → varsayilan).
+// DIKKAT: null ve '' JS'te Number() ile 0'a cevrilir; bunlari "gecersiz" saymazsak
+// admin ekrani bos alan gonderdiginde deger sessizce ALT SINIRA duserdi (or. TTL 24
+// saat yerine 1 saat, sync araligi 360 yerine 15 dakika).
+function normalizeInt(value, fallback, min, max) {
+  if (value == null || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
+// Onbellek TTL'i saat cinsinden: 1 saat - 30 gun.
+function normalizeHours(value, fallback) {
+  return normalizeInt(value, fallback, 1, 720);
+}
+
 // Gecersiz girdiler SESSIZCE varsayilana duser — bu ekran bir "ayar" ekrani, kullanicinin
 // yanlis yazmasi isi tamamen durdurmamali (playbook zaten kendi kesfini yapabiliyor).
 function normalize(raw) {
@@ -61,6 +91,11 @@ function normalize(raw) {
     ocAsyncTimeout: normalizeTimeout(raw?.ocAsyncTimeout, DEFAULTS.ocAsyncTimeout),
     ocListTimeout: normalizeTimeout(raw?.ocListTimeout, DEFAULTS.ocListTimeout),
     ocLogTimeout: normalizeTimeout(raw?.ocLogTimeout, DEFAULTS.ocLogTimeout),
+    nsCacheTtlHours: normalizeHours(raw?.nsCacheTtlHours, DEFAULTS.nsCacheTtlHours),
+    appCacheTtlHours: normalizeHours(raw?.appCacheTtlHours, DEFAULTS.appCacheTtlHours),
+    periodicSyncEnabled: raw?.periodicSyncEnabled === true,
+    periodicSyncIntervalMin: normalizeInt(raw?.periodicSyncIntervalMin, DEFAULTS.periodicSyncIntervalMin, 15, 10080),
+    periodicSyncMaxClusters: normalizeInt(raw?.periodicSyncMaxClusters, DEFAULTS.periodicSyncMaxClusters, 1, 500),
   };
 }
 

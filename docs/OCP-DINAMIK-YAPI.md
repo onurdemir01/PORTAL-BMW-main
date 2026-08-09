@@ -45,6 +45,55 @@ Tek bastion'lı kurulumda üretilen payload, eski payload'ın **üst kümesidir*
 sürümü yeni alanları yok sayarsa davranış birebir aynı kalır (`buildOcpExtraVars` golden testi
 bunu garanti eder: `server/logx/v2/__tests__/ocp-extra-vars.test.cjs`).
 
+### v3 — cluster kataloğu DB'de (parola hâlâ vault'ta)
+
+Bugüne kadar cluster'ın **API adresi ve parolası** AWX'teki `openshift_inventory_vars.yaml`
+dosyasından okunuyordu (`clusters[tenant_env][cluster].url/.password`). Yeni cluster eklemek
+AWX dosyası düzenlemeyi gerektiriyor, portal DB'si o cluster'ın adresini hiç bilmiyordu.
+
+v3'te `ocp_clusters[]` öğeleri iki alan daha taşır:
+
+```yaml
+ocp_clusters:
+  - env: qa
+    tenant: ark
+    cluster_name: gbocpqa1
+    terminal_host: GBAOCP01
+    api_url: "https://api.gbocpqa1.garanti.com.tr:6443"   # DB'den (ocp_cluster_index.api_url)
+    credential_key: "uxmid_gar"                            # credentials.yaml'daki DEĞİŞKEN ADI
+```
+
+**Parola portal veritabanına ASLA yazılmaz.** DB yalnızca anahtarın *adını* tutar; playbook
+`lookup('vars', item.credential_key)` ile değeri AWX'teki vault'tan (`credentials.yaml`) okur.
+Yani "şifreyi belli kırılımlara göre credentials'tan çekiyorum" mantığı korunur, portal sadece
+hangi kırılımın kullanılacağını söyler.
+
+**Geriye uyum bilinçlidir:** alan boşsa portal anahtarı **hiç göndermez** ve playbook eski
+inventory yoluna düşer:
+
+```yaml
+resolved_url: "{{ item.api_url if has_portal_meta else clusters[inventory_key][name].url }}"
+```
+
+`openshift_inventory_vars.yaml` `first_found` ile **opsiyonel** hale getirildi — dosya
+kaldırılsa bile playbook yüklenir. Geri alma: kolonları NULL'lamak yeter, kod değişmez.
+
+### Kataloğun bir kerelik tohumlanması
+
+`server/db/data/ocp-inventory-seed.cjs` (~62 satır, **parola yok**) + `ocp-bootstrap-seed.cjs`
+ilk açılışta eksik cluster'ları ekler. Üç kural:
+
+- **Bir kere çalışır.** İşaret `portal_settings.ocp_bootstrap_seed_v1`'de tutulur; admin'in
+  sildiği bir cluster restart'ta geri gelmez.
+- **Yeniler PASİF başlar** (`is_active=0`, `source='inventory-seed'`) — doğrulanmadan
+  üretime sızmaz.
+- **Hepsi başarısız olursa işaret YAZILMAZ** (`{incomplete:true}`) — aksi halde katalog
+  kalıcı olarak boş kalırdı. Seed çağrısı bu yüzden `setupTables()`'ın **en sonunda**,
+  kolonları ekleyen ALTER'lardan sonra durur.
+
+Admin ekranı (OCP Cluster Hiyerarşisi sekmesi) durumu gösterir ve "Yeniden çalıştır" sunar;
+yeniden çalıştırma mevcut satırlara dokunmaz, yalnız eksikleri ekler.
+
 ## 4. Playbook deseni (çoklu bastion)
 
 `logx_ocp_namespace_discovery.yml` ve `logx_ocp_discover_fetch.yml` üç play'e ayrıldı:
@@ -170,15 +219,60 @@ mesajını verdi ve gerçek neden (`oc` yok) hiçbir yerde görünmedi.
 | Kullanıcı gerçek nedeni göremiyor | Mesaj sadeleşti (iş no + yöneticiye başvur); başarısız ekranında **Ansible çıktı paneli** açılabiliyor; teknik ayrıntı Admin'e ve audit'e gidiyor. |
 | Yollar koda gömülü | Admin → LogX Yapılandırma → **OCP Çalıştırma Ayarları** (aday yollar + zaman aşımları), deploy gerektirmez. |
 
+## 10b. Keşif önbelleği ve uygulama keşfi
+
+**Sorun:** namespace keşfi request-scoped'tı (`logx_v2_requests.discovery_result_json`) —
+kullanıcılar arasında paylaşılmıyor, her seferinde bir AWX job'ı gerekiyordu. Uygulama adını
+ise kullanıcı **ezberden bilmek** zorundaydı (serbest metin).
+
+**Çözüm — iki paylaşımlı tablo:**
+
+| Tablo | İçerik | Varsayılan TTL |
+|---|---|---|
+| `ocp_namespace_cache` | (env, tenant, cluster) → namespace listesi | 24 saat |
+| `ocp_app_cache` | (…, namespace) → kind, ad, replika, image, `app` etiketi | 12 saat |
+
+Sihirbaz **önce önbelleğe** bakar; liste anında gelir ve rozet ne zaman alındığını söyler.
+Bayatsa (TTL geçmiş) satır **silinmez**, sarı uyarıyla gösterilir — bayat liste boş ekrandan
+iyidir. Her durumda **"Burada keşfet"** butonu canlı taramayı tetikler.
+
+Uygulama keşfi yeni bir playbook'la yapılır (`logx_ocp_app_discovery.yml`):
+`oc get deployment,deploymentconfig,statefulset,daemonset,cronjob,pod,service,route -o jsonpath`
+ile satır satır `kind|name|replicas|image|podImage|labelApp|created` üretir; **ayrıştırma
+portalda** (`ocp-app-parse.cjs`) yapılır — tam JSON pod spec'leri AWX artifact'ini gereksiz
+şişirirdi. Alan sayısı 7'den az VEYA fazla olan satır atılır (image içinde `|` geçerse alanlar
+kayar ve sessizce yanlış veri yazılırdı).
+
+**Silinen objelerin takibi:** ölçüt ad listesi değil **tur başlangıç zamanı**
+(`fetched_at < runStart` → `is_deleted=1`). `NOT IN (...)` MSSQL'in 2100 parametre sınırına
+takılıyordu (2097+ namespace'li cluster'da tüm yazım sessizce düşerdi) ve namespace tamamen
+boşaldığında hiç çalışmıyordu.
+
+**Periyodik besleme** (`ocp-sync.cjs`) — **varsayılan KAPALI**. Admin > OCP Çalıştırma
+Ayarları'ndan açılır; acil durumda `LOGX_OCP_SYNC_DISABLED=1` ile kod değişikliği olmadan
+durdurulur. Yalnızca `is_active=1 AND api_url IS NOT NULL AND vault_credential_key IS NOT NULL`
+cluster'ları, bastion'a göre gruplayarak, en eski senkronlanandan başlayarak tarar. Ürettiği
+teknik istek satırı iş bitince **silinir** (aksi halde admin istek listesini doldururdu).
+
 ## 11. AWX projesine taşıma
 
 Bu repodaki playbook'lar **referans kopyadır**; çalıştırılan sürüm AWX projesindedir
 (`bmw_automation_folder/portal_tamplates/`). Buradaki düzeltmeler AWX'e kopyalanmadıkça
 üretime yansımaz.
 
-**Taşınacak dosyalar (2):**
+**Taşınacak dosyalar (3):**
 - `server/ansible/playbooks/logx_ocp_namespace_discovery.yml`
 - `server/ansible/playbooks/logx_ocp_discover_fetch.yml`
+- `server/ansible/playbooks/logx_ocp_app_discovery.yml` — **YENİ.** AWX'te ayrıca bir
+  Job Template açılmalı ve ID'si `AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID` ortam değişkenine
+  (ya da playbook kayıt tablosundaki `logx_ocp_app_discovery` satırına) yazılmalıdır. Template
+  yoksa uygulama keşfi butonu hata verir; sihirbazın geri kalanı etkilenmez.
+
+> **Shell bloklarında kesme işareti kullanmayın.** Ansible argümanları bölerken tek tırnakları
+> sayar; `shell: |` bloğunun **yorum satırında** tek başına bir `'` (ör. "API'si") bloğu
+> `unbalanced jinja2 block or quotes` ile reddettirir ve playbook **hiç yüklenmez**. YAML
+> geçerli kalır, testler yeşil görünür — hata ancak AWX'te çalıştırınca çıkar. Bu sınıfı
+> `server/ansible/__tests__/playbook-shell-quotes.test.cjs` yakalar.
 
 > **Sürüm sapması uyarısı (2026-08-08 tespiti).** AWX'teki iki playbook AYNI sürümde
 > olmayabilir. Son tespit edilen durum:
@@ -218,10 +312,14 @@ for this bastion` adımları görünmeli; bir bastion çökerse `PLAY RECAP`'te 
 ## 12. Doğrulama
 
 ```bash
-npm test          # 203/203 yeşil olmalı
-npx tsc --noEmit  # yeni hata olmamalı
+npm test          # 247/247 yeşil olmalı
+npx tsc --noEmit  # yeni hata olmamalı (mevcut 4 hata bu işten önce de vardı)
 npm run build
+ansible-playbook --syntax-check server/ansible/playbooks/logx_ocp_*.yml   # üçü de temiz
 ```
+
+> `--syntax-check` adımını atlamayın: YAML geçerli olduğu hâlde Ansible'ın yükleyemediği
+> playbook'lar (bkz. §11 kesme işareti notu) yalnızca burada görünür.
 
 Manuel kontrol listesi:
 
@@ -235,3 +333,15 @@ Manuel kontrol listesi:
    Ansible Info'da tenant atanınca kayıt sihirbaz ağacında beliriyor.
 6. **Görünürlük:** User'a OpsX/Telnet/Ansible kapatınca nav + doğrudan URL + API 403;
    DB kesintisinde normal kullanıcı 503, admin geçebiliyor.
+7. **Katalog tohumlaması:** ① İlk boot → seed raporu (`inserted/skipped`), yeni satırlar
+   **pasif**, mevcutlar aktif · ② İkinci boot → seed atlanır · ③ Admin bir cluster siler →
+   restart'ta geri gelmez.
+8. **v3 alanları:** `api_url`+`vault_credential_key` dolu bir cluster ile namespace keşfi →
+   AWX'te extra_vars'ta görünür, `openshift_inventory_vars.yaml` olmadan login olur.
+   Alanlar boşken eski davranış (inventory yolu) aynen sürer.
+9. **Önbellek:** namespace listesi anında gelir + "Önbellekten" rozeti; "Burada keşfet"
+   tazeler; TTL geçince sarı uyarı çıkar ama liste kaybolmaz.
+10. **Uygulama keşfi:** namespace seçtikten sonra liste objelerle dolar (kind + replika);
+    **serbest metin hâlâ çalışır** (listede olmayan/yeni uygulama).
+11. **Yetki:** kısıtlı bir namespace için grant'ı olmayan kullanıcı onu ne önbellek
+    listesinde görür ne de uygulamalarını tarayabilir (çoklu cluster seçiminde de).

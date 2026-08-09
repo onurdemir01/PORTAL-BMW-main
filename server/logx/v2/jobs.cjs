@@ -14,6 +14,7 @@ const JOB_KEY_BY_TYPE = {
   legacy_discovery: 'logx_legacy_discovery',
   legacy_transfer: 'logx_legacy_transfer',
   ocp_namespace_discovery: 'logx_ocp_namespace_discovery',
+  ocp_app_discovery: 'logx_ocp_app_discovery',
   ocp_discover_fetch: 'logx_ocp_discover_fetch',
 };
 

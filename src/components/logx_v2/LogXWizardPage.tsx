@@ -35,6 +35,49 @@ function lastJob(jobs: LogXv2Job[]): LogXv2Job | undefined {
   return jobs.length ? jobs[jobs.length - 1] : undefined;
 }
 
+interface NamespaceList {
+  items: string[];
+  /** Listesi alınamayan cluster'lar — kullanıcı eksik listeyi tam sanmasın. */
+  failed: string[];
+  /** Önbellekten geldiyse tazelik bilgisi; canlı taramada null. */
+  cache: { fetchedAt: string | null; stale: boolean } | null;
+}
+
+interface OcpInput { env?: string; tenant?: string; clusters?: string[]; appDiscoveryNamespaces?: string[] }
+
+// Seçili cluster'ların namespace önbelleklerini birleştirir. Hiçbirinde KAYIT yoksa null
+// döner — çağıran o zaman canlı taramaya düşer (bugünkü davranış korunur).
+//
+// Kayıt VAR ama liste boşsa (kullanıcının yetkisi olan namespace kalmamışsa) boş liste
+// döneriz, null DEĞİL: aksi halde kısıtlı kullanıcı canlı taramaya düşer, dakikalarca
+// AWX job'ı bekler ve kısıtlamanın amacı da anlamsızlaşırdı.
+async function loadNamespaceCache(input: OcpInput | undefined): Promise<NamespaceList | null> {
+  const { env, tenant, clusters } = input || {};
+  if (!env || !tenant || !clusters?.length) return null;
+  const results = await Promise.all(
+    clusters.map((c) =>
+      logxV2Api.cachedNamespaces(env, tenant, c)
+        .then((r) => ({ cluster: c, r }))
+        .catch(() => ({ cluster: c, r: null }))
+    )
+  );
+  const items: string[] = [];
+  const failed: string[] = [];
+  let newest: string | null = null;
+  let stale = false;
+  let anyCached = false;
+  for (const { cluster, r } of results) {
+    if (!r) { failed.push(cluster); continue; }   // sessiz eksiklik YOK — uyarı gösterilir
+    if (!r.cached) continue;
+    anyCached = true;
+    items.push(...(r.items || []));
+    if (r.stale) stale = true;
+    if (r.fetchedAt && (!newest || new Date(r.fetchedAt) > new Date(newest))) newest = r.fetchedAt;
+  }
+  if (!anyCached) return null;
+  return { items, failed, cache: { fetchedAt: newest, stale } };
+}
+
 const STEP_TITLES: Record<string, string> = {
   platform: "",
   legacy_app: "Uygulama Seçimi",
@@ -45,7 +88,8 @@ const STEP_TITLES: Record<string, string> = {
   ocp_namespace_step: "Namespace",
   ocp_namespace_discovering: "Namespace'ler Taranıyor",
   ocp_namespace_picker: "Namespace Seçimi",
-  ocp_app_name: "Uygulama Adı",
+  ocp_app_name: "Uygulama Seçimi",
+  ocp_app_discovering: "Uygulamalar Taranıyor",
   ocp_transferring: "Loglar Toplanıyor",
   ready: "İndirmeye Hazır",
   failed: "Hata",
@@ -63,8 +107,15 @@ const LogXWizardPage: React.FC = () => {
   const [technicalDetail, setTechnicalDetail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const busyRef = React.useRef(false);
   const [busyError, setBusyError] = useState<string | null>(null);
   const [chosenNamespace, setChosenNamespace] = useState<string | null>(null);
+  // ÖNBELLEKTEN gelen namespace listesi. Canlı keşif sonucu sunucudan türetilir
+  // (`nsFromServer`); bu state yalnızca "kullanıcı önbelleği seçti" durumunu taşır.
+  const [nsList, setNsList] = useState<NamespaceList | null>(null);
+  // Uygulama keşfi bittiğinde AppNameStep'in önbelleği yeniden okumasını tetikler.
+  // (Bugün `key={step}` zaten remount ediyor; bu, o davranışa bağımlı kalmamak için.)
+  const [appCacheToken, setAppCacheToken] = useState(0);
 
   const refresh = useCallback(async (id: string) => {
     const r = await logxV2Api.getRequest(id);
@@ -85,32 +136,55 @@ const LogXWizardPage: React.FC = () => {
       .finally(() => setLoading(false));
   }, [refresh]);
 
+  // Canlı keşif sonucu SUNUCUDAN türetilir (client state'ine kopyalanmaz): sayfa
+  // yenilendiğinde de kaldığı yerden devam edebilsin. Ölçüt state değil ŞEKİL — sonuç
+  // namespace listesi taşıyorsa kullanılır, taşımıyorsa null.
+  const nsFromServer = React.useMemo<NamespaceList | null>(() => {
+    const result = request?.discoveryResult as OcpNamespaceDiscoveryResult | null;
+    if (!Array.isArray(result?.clusters)) return null;
+    const items: string[] = [];
+    const failed: string[] = [];
+    let looksLikeNamespaces = false;
+    for (const c of result.clusters) {
+      if (!Array.isArray(c?.namespaces)) continue;
+      looksLikeNamespaces = true;
+      if (c.status === "ok") items.push(...c.namespaces.filter((n) => typeof n === "string"));
+      else failed.push(c.cluster_name);
+    }
+    return looksLikeNamespaces ? { items, failed, cache: null } : null;
+  }, [request?.discoveryResult]);
+
+  // Önbellekten gelen liste (varsa) sunucu sonucunu EZER — kullanıcı bilerek onu istedi.
+  const namespaceList = nsList ?? nsFromServer;
+
+  // Sayfa yenilendiğinde `chosenNamespace` kaybolur; uygulama keşfi başlatılmışsa hangi
+  // namespace için başlatıldığı sunucuda duruyor (`input.appDiscoveryNamespaces`). Onu geri
+  // kurmazsak kullanıcı keşif bittikten sonra boş bir "namespace seçin" ekranına düşerdi.
+  const serverNamespace = (request?.input as OcpInput | undefined)?.appDiscoveryNamespaces?.[0] ?? null;
+  const activeNamespace = chosenNamespace ?? serverNamespace;
+
   async function startPlatform(platform: Platform) {
-    if (busy) return;
-    setBusy(true);
-    setBusyError(null);
-    try {
+    await guarded(async () => {
       const r = await logxV2Api.createRequest(platform);
       setRequestId(r.requestId);
       setUrlParam(r.requestId);
       await refresh(r.requestId);
-    } catch (err: unknown) {
-      setBusyError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
-  // Tüm adım aksiyonları bundan geçer. Yeniden-giriş kilidi (`if (busy) return`) aynı
-  // aksiyonun in-flight iken ikinci kez tetiklenmesini — dolayısıyla üst üste job
-  // açılmasını — KESİN engeller (buton görsel disable'ından bağımsız güvence).
+  // Tüm adım aksiyonları bundan geçer. Yeniden-giriş kilidi aynı aksiyonun in-flight iken
+  // ikinci kez tetiklenmesini — dolayısıyla üst üste job açılmasını — KESİN engeller
+  // (buton görsel disable'ından bağımsız güvence).
   async function guarded(fn: () => Promise<void>) {
-    if (busy) return;
+    // Kilit `busy` state'i DEĞİL bir ref: `busy` render anında yakalanır, aynı tick'te gelen
+    // iki tık ikisi de `false` görüp İKİ AWX job'ı açabilirdi. Ref anında görünür.
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setBusyError(null);
     try { await fn(); }
     catch (err: unknown) { setBusyError(err instanceof Error ? err.message : String(err)); }
-    finally { setBusy(false); }
+    finally { busyRef.current = false; setBusy(false); }
   }
 
   function restart() {
@@ -120,6 +194,7 @@ const LogXWizardPage: React.FC = () => {
     setJobs([]);
     setDownload(null);
     setChosenNamespace(null);
+    setNsList(null);
   }
 
   // Adıma göre "← Geri": client-state adımları anında geri alınır; sunucu-durumlu adımlar
@@ -138,6 +213,8 @@ const LogXWizardPage: React.FC = () => {
         return "ocp_cluster_select";
       case "ocp_namespace_picker":
         return "ocp_namespace_step";
+      case "ocp_app_discovering":
+        return null; // job çalışırken geri yok (iptal ayrı bir aksiyon)
       default:
         return null;
     }
@@ -149,10 +226,14 @@ const LogXWizardPage: React.FC = () => {
     if (!target) return;
     if (target === "restart") { restart(); return; }
     if (target === "client") { setChosenNamespace(null); return; }
+    // Liste ÖNBELLEKTEN geldiyse sunucuda geri sarılacak bir durum yok (state hâlâ 'draft'):
+    // client listesini temizlemek yeter, gereksiz reset çağrısı yapılmaz.
+    if (currentStep === "ocp_namespace_picker" && request?.state === "draft") { setNsList(null); return; }
     if (!requestId) return;
     await guarded(async () => {
       await logxV2Api.resetRequest(requestId, target);
       setChosenNamespace(null);
+      setNsList(null);
       await refresh(requestId);
     });
   }
@@ -173,15 +254,29 @@ const LogXWizardPage: React.FC = () => {
       else if (request.state === "transferring") step = "legacy_transferring";
     } else if (request.platform === "openshift") {
       if (request.state === "draft") {
-        step = request.input?.clusters ? (chosenNamespace ? "ocp_app_name" : "ocp_namespace_step") : "ocp_cluster_select";
+        // Önbellekten liste geldiyse (nsList) sunucu durumu 'draft' kalsa da picker gösterilir.
+        step = request.input?.clusters
+          ? (activeNamespace ? "ocp_app_name" : (namespaceList ? "ocp_namespace_picker" : "ocp_namespace_step"))
+          : "ocp_cluster_select";
       } else if (request.state === "namespace_discovering") step = "ocp_namespace_discovering";
       // Namespace listesi geldiğinde picker gösterilir; kullanıcı bir namespace SEÇİNCE
       // (chosenNamespace set) app_name adımına ilerler. Önceden state hâlâ
       // "namespaces_discovered" olduğu için picker'da takılıp kalıyordu (seçim ilerlemiyordu).
-      else if (request.state === "namespaces_discovered") step = chosenNamespace ? "ocp_app_name" : "ocp_namespace_picker";
+      else if (request.state === "namespaces_discovered") step = activeNamespace ? "ocp_app_name" : "ocp_namespace_picker";
+      // Uygulama keşfi namespace SEÇİLDİKTEN sonra çalışır; bitince aynı adıma dönülür
+      // (liste artık önbellekte dolu). Namespace listesi client'ta (nsList) korunduğu için
+      // "← Geri" ile picker'a dönüş bu durumlarda da çalışır.
+      else if (request.state === "app_discovering") step = "ocp_app_discovering";
+      else if (request.state === "apps_discovered") step = activeNamespace ? "ocp_app_name" : "ocp_namespace_picker";
       else if (request.state === "transferring") step = "ocp_transferring";
     }
   }
+
+  // Namespace listesi client state'inde durduğu için SAYFA YENİLENDİĞİNDE kaybolur. Picker'a
+  // düşen ama listesi olmayan bir durumda kart bomboş kalırdı; bunun yerine kullanıcıyı
+  // namespace adımına indiriyoruz — oradan "Hayır, listele" önbellekten anında geri getirir.
+  // (Kural: render edemeyeceğimiz bir adımı asla seçme.)
+  if (step === "ocp_namespace_picker" && !namespaceList) step = "ocp_namespace_step";
 
   const canGoBack = backTargetFor(step) !== null;
 
@@ -269,6 +364,10 @@ const LogXWizardPage: React.FC = () => {
             busy={busy}
             onKnown={(ns) => setChosenNamespace(ns)}
             onTriggerDiscovery={() => guarded(async () => {
+              // ÖNCE paylaşımlı önbellek: liste anında gelir, AWX job'ı hiç açılmaz.
+              // Boşsa bugünkü canlı keşif davranışı aynen sürer.
+              const cached = await loadNamespaceCache(request?.input as OcpInput | undefined);
+              if (cached) { setNsList(cached); return; }
               await logxV2Api.discoverNamespaces(requestId);
               await refresh(requestId);
             })}
@@ -281,22 +380,60 @@ const LogXWizardPage: React.FC = () => {
           return <JobProgress jobId={job.id} discoveringLabel="Namespace'ler taranıyor…" onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }} />;
         })()}
 
-        {step === "ocp_namespace_picker" && request?.discoveryResult && (
+        {step === "ocp_namespace_picker" && requestId && nsList && (
           <NamespacePickerStep
-            result={request.discoveryResult as OcpNamespaceDiscoveryResult}
+            namespaces={nsList.items}
+            failedClusters={nsList.failed}
+            cache={nsList.cache}
+            busy={busy}
+            onRediscover={() => guarded(async () => {
+              await logxV2Api.discoverNamespaces(requestId);
+              await refresh(requestId);
+              // Önbellek listesini SONRA bırak: önce bıraksaydık arada bir render'da
+              // ne önbellek ne sunucu sonucu olurdu ve kullanıcı bir an önceki adımı görürdü.
+              setNsList(null);
+            })}
             onSelect={(ns) => setChosenNamespace(ns)}
           />
         )}
 
-        {step === "ocp_app_name" && requestId && chosenNamespace && (
-          <AppNameStep
-            busy={busy}
-            onSubmit={(appName) => guarded(async () => {
-              await logxV2Api.discoverFetchOcp(requestId, chosenNamespace, appName);
-              await refresh(requestId);
-            })}
-          />
-        )}
+        {step === "ocp_app_name" && requestId && activeNamespace && (() => {
+          const input = request?.input as OcpInput | undefined;
+          return (
+            <AppNameStep
+              busy={busy}
+              env={input?.env}
+              tenant={input?.tenant}
+              clusters={input?.clusters}
+              namespace={activeNamespace}
+              reloadToken={appCacheToken}
+              onDiscover={() => guarded(async () => {
+                await logxV2Api.discoverApps(requestId, [activeNamespace]);
+                await refresh(requestId);
+              })}
+              onSubmit={(appName) => guarded(async () => {
+                await logxV2Api.discoverFetchOcp(requestId, activeNamespace, appName);
+                await refresh(requestId);
+              })}
+            />
+          );
+        })()}
+
+        {step === "ocp_app_discovering" && requestId && (() => {
+          const job = jobOfType(jobs, "ocp_app_discovery");
+          if (!job) return null;
+          return (
+            <JobProgress
+              jobId={job.id}
+              discoveringLabel="Namespace içindeki uygulamalar taranıyor…"
+              onDone={(r) => {
+                setTechnicalDetail(r.technicalDetail ?? null);
+                setAppCacheToken((t) => t + 1);   // AppNameStep önbelleği yeniden okusun
+                refresh(requestId);
+              }}
+            />
+          );
+        })()}
 
         {step === "ocp_transferring" && requestId && (() => {
           const job = jobOfType(jobs, "ocp_discover_fetch");
