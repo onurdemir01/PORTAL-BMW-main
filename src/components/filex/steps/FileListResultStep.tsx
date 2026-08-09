@@ -7,9 +7,9 @@
 // .ear dizinleri binlerce dosya döndürebiliyor — hepsini HAM <table> olarak DOM'a basmak
 // tarayıcı sekmesini kilitleyip beyaz ekrana yol açtı (üretimde gözlemlendi). Sadece
 // görünür satırlar render edilir, host başına dosya sayısından BAĞIMSIZ sabit DOM boyutu.
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ClipboardDocumentIcon, CheckIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { ClipboardDocumentIcon, CheckIcon, ExclamationTriangleIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import type { FilexResult, FilexHostResult, FilexFileEntry } from "@/api/filexApi";
 
 const ROW_HEIGHT = 32;
@@ -93,14 +93,14 @@ const HostFileList: React.FC<{ files: FilexFileEntry[] }> = ({ files }) => {
   );
 };
 
-const HostBlock: React.FC<{ h: FilexHostResult }> = ({ h }) => (
+const HostBlock: React.FC<{ h: FilexHostResult; files: FilexFileEntry[]; searching: boolean }> = ({ h, files, searching }) => (
   <div className="border border-[var(--border)] rounded-xl overflow-hidden">
     <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-elevated)]">
       <span className="text-sm font-medium font-mono text-[var(--text-primary)]">{h.host}</span>
       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
         h.status === "ok" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-red-50 text-red-700 border-red-100"
       }`}>
-        {h.status === "ok" ? `${h.files.length} DOSYA` : (h.status || "HATA").toUpperCase()}
+        {h.status === "ok" ? `${files.length}${searching ? ` / ${h.files.length}` : ""} DOSYA` : (h.status || "HATA").toUpperCase()}
       </span>
     </div>
 
@@ -113,14 +113,29 @@ const HostBlock: React.FC<{ h: FilexHostResult }> = ({ h }) => (
     )}
 
     {h.status === "ok" && (
-      h.files.length === 0
-        ? <p className="px-4 py-4 text-xs text-[var(--text-muted)] text-center">Dosya bulunamadı.</p>
-        : <HostFileList files={h.files} />
+      files.length === 0
+        ? <p className="px-4 py-4 text-xs text-[var(--text-muted)] text-center">{searching ? "Aramayla eşleşen dosya yok." : "Dosya bulunamadı."}</p>
+        : <HostFileList files={files} />
     )}
   </div>
 );
 
 const FileListResultStep: React.FC<{ result: FilexResult; onRestart: () => void }> = ({ result, onRestart }) => {
+  const [search, setSearch] = useState("");
+  const query = search.trim().toLowerCase();
+
+  // Yol (path) uzerinden basit alt-metin arama — sunucular arasi hepsi tek kutudan
+  // filtrelenir, her host kendi eslesen alt kumesini virtualized olarak gosterir.
+  const filteredHosts = useMemo(() => {
+    if (!query) return result.hosts.map((h) => ({ h, files: h.files }));
+    return result.hosts.map((h) => ({
+      h,
+      files: h.files.filter((f) => f.path.toLowerCase().includes(query)),
+    }));
+  }, [result.hosts, query]);
+
+  const totalMatches = filteredHosts.reduce((acc, { files }) => acc + files.length, 0);
+
   return (
     <div className="space-y-4">
       {result.overall_status !== "success" && (
@@ -134,7 +149,22 @@ const FileListResultStep: React.FC<{ result: FilexResult; onRestart: () => void 
         </div>
       )}
 
-      {result.hosts.map((h) => <HostBlock key={h.host} h={h} />)}
+      <div className="relative">
+        <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Dosya adı/yolu ara… (ör. app.jar, /lib/, web.xml)"
+          className="w-full pl-9 pr-3 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
+        />
+        {query && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)]">
+            {totalMatches} eşleşme
+          </span>
+        )}
+      </div>
+
+      {filteredHosts.map(({ h, files }) => <HostBlock key={h.host} h={h} files={files} searching={!!query} />)}
 
       <button onClick={onRestart} className="btn-secondary w-full">
         Yeni Sorgu
