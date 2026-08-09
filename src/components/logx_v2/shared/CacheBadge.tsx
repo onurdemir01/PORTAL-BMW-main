@@ -40,8 +40,8 @@ const CacheBadge: React.FC<Props> = ({ fetchedAt, stale, onRediscover, busy, act
       }`}
     >
       <span className="flex items-center gap-1.5 min-w-0">
-        <ClockIcon className="w-3.5 h-3.5 flex-shrink-0" />
-        <span className="truncate" title={absolute}>
+        <ClockIcon aria-hidden="true" className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="truncate" title={absolute} aria-label={absolute ? `Liste ${absolute} tarihinde alındı` : undefined}>
           {stale
             ? `Bu liste ${formatAge(fetchedAt)} alındı, güncelliğini yitirmiş olabilir.`
             : `Önbellekten • ${formatAge(fetchedAt)}`}
@@ -51,10 +51,10 @@ const CacheBadge: React.FC<Props> = ({ fetchedAt, stale, onRediscover, busy, act
         <button
           onClick={onRediscover}
           disabled={busy}
-          title="Sunuculara bağlanıp listeyi yeniden tara"
+          title="Sunuculara bağlanıp listeyi yeniden tarar — 1-3 dakika sürebilir"
           className="flex items-center gap-1 flex-shrink-0 px-2.5 py-1 rounded-lg border border-current/30 font-medium hover:bg-white/60 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
         >
-          <ArrowPathIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} />
+          <ArrowPathIcon aria-hidden="true" className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} />
           {busy ? "Taranıyor…" : actionLabel}
         </button>
       )}

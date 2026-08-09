@@ -150,6 +150,26 @@ function initLogXv2(app) {
     res.json({ ok: true, requestId: request.id });
   }));
 
+  // OCP namespace kesfi sonucundaki listeyi kullanicinin yetkisine gore suzer. Sonuc
+  // OCP namespace kesfi degilse (legacy, uygulama kesfi vb.) OLDUGU GIBI doner.
+  async function filterDiscoveryResult(request, user) {
+    const result = request.discoveryResult;
+    if (request.platform !== 'openshift' || !Array.isArray(result?.clusters)) return result;
+    const input = request.input || {};
+    if (!input.tenant || !input.env) return result;
+
+    const clusters = [];
+    for (const c of result.clusters) {
+      if (!Array.isArray(c?.namespaces)) { clusters.push(c); continue; }
+      const prefix = `${input.tenant}/${input.env}/${c.cluster_name}/`;
+      const allowed = new Set(
+        await restrictions.filterAllowed('ocp_namespace', c.namespaces.map((n) => prefix + n), user)
+      );
+      clusters.push({ ...c, namespaces: c.namespaces.filter((n) => allowed.has(prefix + n)) });
+    }
+    return { ...result, clusters };
+  }
+
   router.get('/requests/:requestId', asyncRoute(async (req, res) => {
     const row = await loadOwnedRequest(req);
     const request = requests.normalizeRequest(row);
@@ -163,6 +183,12 @@ function initLogXv2(app) {
     const downloadList = request.state === 'ready'
       ? await downloads.listDownloadsForRequest(row.request_id)
       : [];
+    // CANLI kesif sonucu da kisitlamalardan gecer. Onbellek ucu (`/ocp/cache/namespaces`)
+    // filtreliyordu ama AWX kesfinin sonucu ham donuyordu; kullanici kisitli bir
+    // namespace'i "listele" diyerek gorebiliyordu. Filtre okuma anindadir cunku
+    // discovery_result_json paylasimli degil kullaniciya ozeldir ve rol bilgisi
+    // ancak burada mevcuttur.
+    request.discoveryResult = await filterDiscoveryResult(request, currentUser(req));
     res.json({ ok: true, request, jobs, download, downloads: downloadList });
   }));
 
@@ -205,6 +231,24 @@ function initLogXv2(app) {
   }));
 
   // ── OpenShift ────────────────────────────────────────────────────────────────
+
+  // Namespace yetkisi icin TEK kapi. Anahtar CLUSTER BASINA kurulur ve secilen her
+  // cluster ayri ayri denetlenir.
+  //
+  // GECMIS ARIZA: anahtar `${tenant}/${env}/${clusters.join('+')}/${ns}` seklinde
+  // kuruluyordu. Kullanici tek cluster secince `ark/prod/c1/ns` ile kisitlama satirina
+  // takiliyor, IKI cluster secince anahtar `ark/prod/c1+c2/ns` oluyor ve HICBIR satirla
+  // eslesmedigi icin varsayilan-acik modelde sessizce izin veriliyordu — yani kisitlama
+  // ikinci cluster secilerek atlanabiliyordu. Bu yardimci, ayni mantigin iki ayri uctan
+  // (uygulama kesfi ve log cekme) farkli sekilde yazilmasini da onler.
+  async function assertNamespaceAllowed(input, namespace, user) {
+    const clusters = Array.isArray(input?.clusters) ? input.clusters : [];
+    for (const cluster of clusters) {
+      await restrictions.assertAllowed(
+        'ocp_namespace', `${input.tenant}/${input.env}/${cluster}/${namespace}`, user
+      );
+    }
+  }
   router.get('/ocp/cluster-index', asyncRoute(async (req, res) => {
     const tree = await ocp.getClusterTree();
     res.json({ ok: true, tree });
@@ -234,11 +278,7 @@ function initLogXv2(app) {
     // Anahtar CLUSTER BASINA kurulur — `c1+c2` gibi birlesik bir anahtar hicbir kisitlama
     // satiriyla eslesmez ve varsayilan-acik modelde sessizce izin verilmis olurdu.
     for (const ns of namespaces || []) {
-      for (const cluster of input.clusters || []) {
-        await restrictions.assertAllowed(
-          'ocp_namespace', `${input.tenant}/${input.env}/${cluster}/${ns}`, currentUser(req)
-        );
-      }
+      await assertNamespaceAllowed(input, ns, currentUser(req));
     }
     const job = await ocp.discoverApps(row, namespaces);
     res.json({ ok: true, jobId: job.id });
@@ -278,8 +318,7 @@ function initLogXv2(app) {
     const row = await loadOwnedRequest(req);
     const { namespace, appName } = req.body || {};
     const input = row.input_json ? JSON.parse(row.input_json) : {};
-    const resourceKey = `${input.tenant}/${input.env}/${(input.clusters || []).join('+')}/${namespace}`;
-    await restrictions.assertAllowed('ocp_namespace', resourceKey, currentUser(req));
+    await assertNamespaceAllowed(input, namespace, currentUser(req));
     const job = await ocp.discoverFetch(row, namespace, appName);
     res.json({ ok: true, jobId: job.id });
   }));

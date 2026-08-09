@@ -47,6 +47,10 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
   const [items, setItems] = useState<OcpAppItem[]>([]);
   const [cache, setCache] = useState<{ fetchedAt: string | null; stale: boolean } | null>(null);
   const [loadingCache, setLoadingCache] = useState(false);
+  // "Kayit yok" ile "yetkin yok" AYRI seyler. Eskiden ikisi de ayni bos ekrani gosteriyordu;
+  // kullanici "tara" deyip ancak o zaman 403 goruyordu.
+  const [denied, setDenied] = useState(false);
+  const [failed, setFailed] = useState<string[]>([]);
 
   const clusterKey = (clusters || []).join(",");
 
@@ -58,22 +62,35 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
       try {
         const results = await Promise.all(
           clusterKey.split(",").map((c) =>
-            logxV2Api.cachedApps(env, tenant, c, namespace).catch(() => null)
+            logxV2Api.cachedApps(env, tenant, c, namespace)
+              .then((r) => ({ cluster: c, r, status: 0 }))
+              .catch((e: unknown) => ({
+                cluster: c, r: null, status: (e as { status?: number })?.status ?? 0,
+              }))
           )
         );
         if (cancelled) return;
         const merged: OcpAppItem[] = [];
+        const failedClusters: string[] = [];
         let newest: string | null = null;
         let stale = false;
         let anyCached = false;
-        for (const r of results) {
-          if (!r || !r.cached) continue;
+        let anyDenied = false;
+        for (const { cluster, r, status } of results) {
+          if (!r) {
+            if (status === 403) anyDenied = true;
+            else failedClusters.push(cluster);   // sessiz eksiklik YOK
+            continue;
+          }
+          if (!r.cached) continue;
           anyCached = true;
           merged.push(...(r.items || []));
           if (r.stale) stale = true;
           if (r.fetchedAt && (!newest || new Date(r.fetchedAt) > new Date(newest))) newest = r.fetchedAt;
         }
         setItems(merged);
+        setFailed(failedClusters);
+        setDenied(anyDenied);
         setCache(anyCached ? { fetchedAt: newest, stale } : null);
       } finally {
         if (!cancelled) setLoadingCache(false);
@@ -88,6 +105,11 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
 
   return (
     <div className="space-y-3">
+      {failed.length > 0 && (
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+          Bu liste eksik olabilir — şu cluster'lardan yanıt alınamadı: {failed.join(", ")}
+        </div>
+      )}
       {cache && <CacheBadge fetchedAt={cache.fetchedAt} stale={cache.stale} onRediscover={onDiscover} busy={busy} actionLabel="Yeniden tara" />}
 
       <p className="text-sm text-[var(--text-secondary)]">
@@ -134,16 +156,19 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
         !loadingCache && (
           <div className="rounded-xl border border-[var(--border)] p-4 text-center space-y-2">
             <p className="text-xs text-[var(--text-muted)]">
-              Bu namespace için kayıtlı uygulama listesi yok. Adını biliyorsanız yukarıya yazın.
+              {denied
+                ? "Bu namespace'in uygulama listesini görme yetkiniz yok. Uygulama adını biliyorsanız yukarıya yazabilirsiniz."
+                : "Bu namespace için kayıtlı uygulama listesi yok. Adını biliyorsanız yukarıya yazın."}
             </p>
-            {onDiscover && (
+            {onDiscover && !denied && (
               <button
                 onClick={onDiscover}
                 disabled={busy}
+                title="Sunuculara bağlanıp namespace içindeki uygulamaları listeler"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] transition-colors active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
               >
-                <MagnifyingGlassCircleIcon className="w-4 h-4" />
-                {busy ? "Başlatılıyor…" : "Bu namespace'i tara"}
+                <MagnifyingGlassCircleIcon aria-hidden="true" className="w-4 h-4" />
+                {busy ? "Başlatılıyor…" : "Bu namespace'i tara (1-3 dk)"}
               </button>
             )}
           </div>

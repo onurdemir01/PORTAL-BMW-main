@@ -24,7 +24,12 @@ async function json<T>(r: Response): Promise<T> {
       const parsed = JSON.parse(text);
       message = parsed.error || parsed.message || text;
     } catch { /* duz metin hata */ }
-    throw new Error(String(message).slice(0, 300) || `HTTP ${r.status}`);
+    // HTTP durumu hataya iliştirilir: çağıranın "yetkin yok" (403) ile "sunucu hatası"nı
+    // ayırt edebilmesi için tek yol bu — aksi halde ikisi de aynı boş ekranı gösterir.
+    throw Object.assign(
+      new Error(String(message).slice(0, 300) || `HTTP ${r.status}`),
+      { status: r.status },
+    );
   }
   return safeJson(r);
 }

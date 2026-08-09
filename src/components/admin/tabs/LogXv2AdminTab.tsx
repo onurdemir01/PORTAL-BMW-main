@@ -56,7 +56,7 @@ function clusterColumns(
     },
     {
       key: "vault_credential_key",
-      label: "Vault Anahtarı",
+      label: "Vault Anahtarı (parola değil)",
       placeholder: "uxmid_gar",
       suggestions: vaultKeys,
       // PAROLA DEĞİL: credentials.yaml içindeki değişkenin ADI. Parola hiçbir zaman
@@ -118,13 +118,15 @@ const BootstrapSeedPanel: React.FC<{ onSeeded: () => void }> = ({ onSeeded }) =>
     }
   }
 
-  if (seeded === null) return null;
+  // Durum okunamasa bile paneli GİZLEME: eskiden 500 alınca panel yok oluyordu ve admin
+  // böyle bir düğmenin varlığından haberdar olmuyordu.
+  const durum = seeded === null ? "okunamadı" : seeded ? "yapıldı" : "henüz yapılmadı";
 
   return (
     <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5 text-xs text-gray-600">
       <div className="min-w-0">
         <span className="font-medium text-gray-700">Envanter tohumlaması:</span>{" "}
-        {seeded ? "yapıldı" : "henüz yapılmadı"}. Yeniden çalıştırmak mevcut satırlara dokunmaz,
+        {durum}. Yeniden çalıştırmak mevcut satırlara dokunmaz,
         yalnızca eksik cluster'ları <strong>pasif</strong> olarak ekler.
         {note && <div className="mt-1 text-gray-500">{note}</div>}
       </div>
@@ -387,6 +389,16 @@ const LogXv2AdminTab: React.FC = () => {
             farklı jump server'lara gidebilir. Alan boş bırakılırsa <strong>Terminal/Bastion Host</strong>
             sekmesindeki tenant/env yedek eşlemesi kullanılır. Her ikisi de yoksa o cluster seçildiğinde
             işlem başlatılamaz.
+          </div>
+          {/* Bu uyarı KODDA DEĞİL EKRANDA olmalı: "Vault Anahtarı" başlığını gören bir admin
+              oraya gerçek parolayı yapıştırırsa portal veritabanına düz metin yazılırdı. */}
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+            <strong>Vault Anahtarı bir parola DEĞİLDİR.</strong> Buraya AWX'teki
+            <code className="mx-1 px-1 rounded bg-amber-100">credentials.yaml</code>
+            dosyasında tanımlı <strong>değişkenin adını</strong> yazın (ör.
+            <code className="mx-1 px-1 rounded bg-amber-100">uxmid_gar</code>). Parolalar portal
+            veritabanında tutulmaz; playbook değeri doğrudan vault'tan okur.
+            <strong className="ml-1">Buraya asla gerçek parola yazmayın.</strong>
           </div>
           <BootstrapSeedPanel onSeeded={clusters.reload} />
           <SimpleCrudTable columns={clusterCols} rows={clusters.rows} emptyRow={CLUSTER_EMPTY}
