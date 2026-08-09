@@ -115,6 +115,8 @@ const AiAnalystPage: React.FC = () => {
   }
 
   async function removeConversation(id: number) {
+    // Geri alınamaz bir işlem: portalın diğer silme akışlarıyla aynı onay deseni.
+    if (!window.confirm("Bu sohbet kalıcı olarak silinecek. Devam edilsin mi?")) return;
     await aiAnalystApi.deleteConversation(id).catch(() => {});
     if (id === conversationId) {
       setConversationId(null);

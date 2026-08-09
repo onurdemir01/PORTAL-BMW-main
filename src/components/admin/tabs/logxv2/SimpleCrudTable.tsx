@@ -10,6 +10,15 @@ export interface ColumnDef<T> {
   label: string;
   type?: "text" | "checkbox" | "number";
   placeholder?: string;
+  // Hücre BOŞ olduğunda okuma modunda gösterilecek açıklama (ör. devreye girecek fallback
+  // değeri). Boş string dönerse "—" gösterilir. Yalnızca görüntüdür, kayda etki etmez.
+  emptyHint?: (row: T) => string;
+  // Yazarken açılan öneri listesi (datalist). Değerler MEVCUT satırlardan türetilir —
+  // sabit bir liste gömmek istemiyoruz, yeni bir vault anahtarı/URL kalıbı çıktığında
+  // kod değişmesin. Serbest metin girişi engellenmez, yalnızca yazım hatası azaltılır.
+  suggestions?: string[];
+  // Uzun değerleri (api_url gibi) okuma modunda kısaltır; tam değer title'da kalır.
+  truncate?: boolean;
 }
 
 interface Props<T extends { id: number }> {
@@ -72,15 +81,23 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                 className="rounded"
               />
             ) : (
-              <input
-                type={col.type === "number" ? "number" : "text"}
-                value={String(form[col.key] ?? "")}
-                placeholder={col.placeholder}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, [col.key]: col.type === "number" ? Number(e.target.value) : e.target.value }))
-                }
-                className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black transition"
-              />
+              <>
+                <input
+                  type={col.type === "number" ? "number" : "text"}
+                  list={col.suggestions?.length ? `sct-${String(col.key)}` : undefined}
+                  value={String(form[col.key] ?? "")}
+                  placeholder={col.placeholder}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, [col.key]: col.type === "number" ? Number(e.target.value) : e.target.value }))
+                  }
+                  className="w-full min-w-[7rem] px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black transition"
+                />
+                {col.suggestions?.length ? (
+                  <datalist id={`sct-${String(col.key)}`}>
+                    {col.suggestions.map((s) => <option key={s} value={s} />)}
+                  </datalist>
+                ) : null}
+              </>
             )}
           </td>
         ))}
@@ -126,24 +143,53 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                 <React.Fragment key={row.id}>{renderFormRow()}</React.Fragment>
               ) : (
                 <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
-                  {columns.map((col) => (
-                    <td key={String(col.key)} className="px-3 py-2 text-gray-700">
-                      {col.type === "checkbox" ? (row[col.key] ? "✓" : "—") : String(row[col.key] ?? "")}
-                    </td>
-                  ))}
+                  {columns.map((col) => {
+                    const raw = row[col.key];
+                    const isEmpty = raw === null || raw === undefined || raw === "";
+                    return (
+                      <td
+                        key={String(col.key)}
+                        title={col.truncate ? String(raw ?? "") : undefined}
+                        className={`px-3 py-2 text-gray-700 ${col.truncate ? "max-w-[14rem] truncate" : ""}`}
+                      >
+                        {col.type === "checkbox"
+                          ? (raw ? "✓" : "—")
+                          : isEmpty && col.emptyHint
+                            ? <span className="text-gray-400 italic">{col.emptyHint(row) || "—"}</span>
+                            : String(raw ?? "")}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <button onClick={() => startEdit(row)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+                    <button onClick={() => startEdit(row)} aria-label="Satırı düzenle" title="Düzenle"
+                      className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
                       <PencilIcon className="w-3.5 h-3.5" />
                     </button>
                     {confirmDelete === row.id ? (
                       <>
-                        <button onClick={() => onDelete(row.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition text-xs">Emin misin?</button>
-                        <button onClick={() => setConfirmDelete(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+                        {/* Silme hatası eskiden SESSİZCE yutuluyordu: satır ekranda kalıyor,
+                            kullanıcı neden silinmediğini anlamıyordu. */}
+                        <button
+                          onClick={async () => {
+                            try {
+                              await onDelete(row.id);
+                              setConfirmDelete(null);
+                            } catch (err) {
+                              alert(err instanceof Error ? err.message : String(err));
+                            }
+                          }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition text-xs"
+                        >
+                          Emin misin?
+                        </button>
+                        <button onClick={() => setConfirmDelete(null)} aria-label="Silmeyi iptal et" title="Vazgeç"
+                          className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
                           <XMarkIcon className="w-3.5 h-3.5" />
                         </button>
                       </>
                     ) : (
-                      <button onClick={() => setConfirmDelete(row.id)} className="p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition">
+                      <button onClick={() => setConfirmDelete(row.id)} aria-label="Satırı sil" title="Sil"
+                        className="p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition">
                         <TrashIcon className="w-3.5 h-3.5" />
                       </button>
                     )}

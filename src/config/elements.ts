@@ -76,14 +76,19 @@ export const PERF_TABS: TabElement[] = [
 ];
 
 // ── Admin sekmeleri (görünürlük anahtarı "admintab:*") ────────────────────────
+// AdminPage.tsx'teki DEFAULT_TABS ile BİREBİR aynı olmalı: sekmeler artık gerçekten
+// canSee(`admintab:<id>`) ile filtreleniyor, eksik/eskimiş bir kayıt yönetilemeyen
+// sekme demek. (Etiketler de AdminPage ile eşitlendi.)
 export const ADMIN_TABS: TabElement[] = [
-  { id: "admintab:logxv2",      label: "LogX Yapılandırma" },
-  { id: "admintab:audit",       label: "Denetim Kaydı" },
-  { id: "admintab:selfservice", label: "Self Service" },
-  { id: "admintab:ansible",     label: "Ansible Info" },
-  { id: "admintab:playbooks",   label: "Playbook Kayıtları" },
-  { id: "admintab:system",      label: "Sistem" },
-  { id: "admintab:users",       label: "Kullanıcılar" },
-  { id: "admintab:visibility",  label: "Görünürlük" },
+  { id: "admintab:logxv2",       label: "LogX Yapılandırma" },
+  { id: "admintab:audit",        label: "Denetim Kaydı" },
+  { id: "admintab:selfservice",  label: "Self Service" },
+  { id: "admintab:ansible",      label: "Ansible Info" },
+  { id: "admintab:playbooks",    label: "Playbook Kayıtları" },
+  { id: "admintab:system",       label: "Sistem" },
+  { id: "admintab:users",        label: "Kullanıcılar" },
+  { id: "admintab:visibility",   label: "Sayfa Erişimi" },
   { id: "admintab:inventoryvis", label: "Envanter Görünürlüğü" },
+  { id: "admintab:opsxconfig",   label: "OpsX Yapılandırma" },
+  { id: "admintab:branding",     label: "Marka" },
 ];

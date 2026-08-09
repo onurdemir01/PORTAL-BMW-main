@@ -3,58 +3,96 @@
 # Location:
 #   bmw_automation_folder/portal_tamplates/logx_ocp_namespace_discovery.yml
 # Global variables:
-#   bmw_openshift_jobs/global_variables/credentials_v2.yaml
+#   bmw_openshift_jobs/global_variables/credentials.yaml
 #   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 #
-# Required extra_vars:
-#   terminal_host: GBAOCP01
+# Required extra_vars (v2 - per-cluster bastion):
+#   terminal_host: GBAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
+#   terminal_hosts: [GBAOCP01, GBAOCP02] # optional; unique, sorted list of bastions
 #   ocp_clusters:
 #     - env: lab
 #       tenant: ark
 #       cluster_name: gbocplab2
+#       terminal_host: GBAOCP01          # optional; when absent the scalar terminal_host is used
+#
+# Backward compatibility: when neither `terminal_hosts` nor per-cluster `terminal_host`
+# is supplied, this playbook behaves EXACTLY as before (one bastion, all clusters on it).
 #
 # Output:
-#   artifacts.logx_result
+#   artifacts.logx_result  (shape unchanged: { overall_status, clusters[] })
 
-- name: "Validate input and add terminal host dynamically"
+- name: "Validate input and add terminal hosts dynamically"
   hosts: localhost
   connection: local
   gather_facts: false
   become: false
 
+  vars:
+    # Effective bastion list: explicit list wins, else the legacy scalar, else per-cluster values.
+    logx_bastions: >-
+      {{
+        (terminal_hosts | default([]) | union([terminal_host | default('')]))
+        | union(ocp_clusters | default([]) | selectattr('terminal_host', 'defined')
+                                          | map(attribute='terminal_host') | list)
+        | map('trim') | reject('equalto', '') | unique | sort | list
+      }}
+
   tasks:
     - name: "Validate required input variables"
       ansible.builtin.assert:
         that:
-          - terminal_host is defined
-          - terminal_host | string | trim | length > 0
+          - logx_bastions | length > 0
           - ocp_clusters is defined
           - ocp_clusters is sequence
           - ocp_clusters | length > 0
-        fail_msg: "terminal_host and a non-empty ocp_clusters list are required."
+        fail_msg: "At least one bastion (terminal_host / terminal_hosts / ocp_clusters[].terminal_host) and a non-empty ocp_clusters list are required."
 
-    - name: "Add terminal host to dynamic inventory"
+    - name: "Add every bastion to dynamic inventory"
       ansible.builtin.add_host:
-        name: "{{ terminal_host }}"
+        name: "{{ item }}"
         groups: logx_terminal
+      loop: "{{ logx_bastions }}"
       changed_when: false
 
 
 - name: "LogX v2 - Discover OCP namespaces"
   hosts: logx_terminal
+  # Bir bastion cokse bile digerleri devam etsin (varsayilan deger; niyet acik olsun diye yazili).
+  any_errors_fatal: false
   gather_facts: false
   become: false
 
   vars_files:
-    - ../../bmw_openshift_jobs/global_variables/credentials_v2.yaml
-    - ../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
+    # credentials.yaml ZORUNLU: parolalar (vault) buradan gelir ve portal bunlari ASLA
+    # tasimaz — extra_vars yalnizca anahtarin ADINI (credential_key) tasir.
+    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
+    # openshift_inventory_vars.yaml OPSIYONEL: portal artik api_url'i extra_vars ile
+    # gonderiyor. Dosya ileride kaldirilirsa playbook CALISMAYA DEVAM EDER; yalnizca
+    # portal metadata gondermeyen (eski) cagrilarda geriye donus icin durur.
+    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
 
   vars:
-    oc_binary: /usr/local/bin/oc
+    # oc'nin yolu SABIT DEGIL. Sirasiyla: (1) extra_vars ile gelen `oc_binary` override'i,
+    # (2) asagidaki aday yollar, (3) PATH (command -v oc). Bastion'lar farkli dagitimlarda
+    # farkli yollara sahip olabilir (/bin/oc vs /usr/local/bin/oc); sabit yol uretimde TUM
+    # bastion'larin ayni anda fatal olmasina ve isin hic sonuc uretememesine yol acmisti.
+    oc_binary: ""
+    # /bin/oc ILK: kurumsal bastion'larda oc gercekte burada. (Uretimde
+    # /usr/local/bin/oc varsayimi TUM bastion'larin ayni anda dusmesine yol acmisti.)
+    oc_binary_candidates:
+      - /bin/oc
+      - /usr/local/bin/oc
+      - /usr/bin/oc
     oc_async_timeout: 120
     oc_async_retries: 120
     oc_async_delay: 1
     logx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+    # Denenecek yollar: override (varsa) HER ZAMAN ilk sirada — gecerliyse dogal olarak kazanir.
+    oc_probe_paths: >-
+      {{
+        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
+         + (oc_binary_candidates | default([]))) | unique | list
+      }}
 
   tasks:
     - name: "Initialize result lists"
@@ -62,6 +100,23 @@
         resolved_clusters: []
         validation_errors: []
         cluster_ns_results: []
+      changed_when: false
+
+    # Cok-bastion: her bastion YALNIZ kendisine atanmis cluster'lari isler. Hicbir cluster
+    # ogesinde terminal_host yoksa (eski payload) tum liste tek bastion'da islenir; kismi
+    # tanimli payload'da sahipsiz kalanlar ilk (alfabetik) bastion'a dusurulur ki
+    # sessizce dusmesinler.
+    - name: "Select the cluster subset that belongs to this bastion"
+      ansible.builtin.set_fact:
+        my_ocp_clusters: >-
+          {{
+            (ocp_clusters | selectattr('terminal_host', 'defined')
+                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+            +
+            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+             if inventory_hostname == ((groups['logx_terminal'] | default([])) | sort | first)
+             else [])
+          }}
       changed_when: false
 
     - name: "Validate requested cluster records"
@@ -80,136 +135,297 @@
           }}
       vars:
         inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        # v3: portal api_url + credential_key gonderiyorsa O kullanilir; gondermiyorsa
+        # eski inventory yoluna dusulur. Ikisi de yoksa cluster "bulunamadi" sayilir.
+        has_portal_meta: >-
+          {{ (item.api_url | default('') | string | trim | length > 0)
+             and (item.credential_key | default('') | string | trim | length > 0) }}
+        inv_has: >-
+          {{ clusters is defined
+             and clusters[inventory_key] is defined
+             and clusters[inventory_key][item.cluster_name] is defined
+             and clusters[inventory_key][item.cluster_name].url is defined
+             and clusters[inventory_key][item.cluster_name].password is defined }}
+        resolved_url: >-
+          {{ item.api_url if (has_portal_meta | bool)
+             else (clusters[inventory_key][item.cluster_name].url if (inv_has | bool) else '') }}
+        resolved_password: >-
+          {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
+             else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
         cluster_exists: >-
           {{
             item.tenant is defined and
             item.env is defined and
             item.cluster_name is defined and
-            clusters[inventory_key] is defined and
-            clusters[inventory_key][item.cluster_name] is defined and
-            clusters[inventory_key][item.cluster_name].url is defined and
-            clusters[inventory_key][item.cluster_name].password is defined
+            ((has_portal_meta | bool) or (inv_has | bool))
           }}
-      loop: "{{ ocp_clusters }}"
+      loop: "{{ my_ocp_clusters }}"
       loop_control:
         label: "{{ item.tenant | default('?') }}_{{ item.env | default('?') }}/{{ item.cluster_name | default('?') }}"
       no_log: true
       changed_when: false
 
-    - name: "Resolve valid cluster connection records"
+    # HATA IZOLASYONU: bu bastion'a ait tum is block icinde. Herhangi bir adim coker
+    # (or. oc bulunamadi, SSH/login hatasi) rescue devreye girer, YALNIZ bu bastion'in
+    # cluster'lari hata olarak isaretlenir ve host FAIL sayilmaz. Boylece hem diger
+    # bastion'lar hem de toplayici play (set_stats yazari) calismaya devam eder.
+    - name: "Collect this bastion's clusters (failure-isolated)"
+      # ignore_unreachable SART: rescue yalnizca GOREV hatalarini yakalar, SSH/DNS kesintisini
+      # (unreachable) YAKALAMAZ. O durumda host "unreachable" isaretlenir, tum bastion'lar
+      # boyle duserse Ansible "NO MORE HOSTS LEFT" ile sonraki play'leri ATLAR ve toplayici
+      # play (tek set_stats yazari) yine calismaz — yani orijinal uretim hatasi tekrarlanir.
+      # Bununla host unreachable olsa bile play akisi surer ve toplayici play, o bastion'in
+      # cluster'larini "Bastion did not report a result" olarak isaretler.
+      ignore_unreachable: true
+      block:
+        - name: "Resolve valid cluster connection records"
+          ansible.builtin.set_fact:
+            resolved_clusters: >-
+              {{
+                resolved_clusters + ([{
+                  'cluster_name': item.cluster_name,
+                  'env': item.env,
+                  'tenant': item.tenant,
+                  'inventory_key': inventory_key,
+                  'url': resolved_url,
+                  'password': resolved_password
+                }] if cluster_exists else [])
+              }}
+          vars:
+            inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+            # v3: portal api_url + credential_key gonderiyorsa O kullanilir; gondermiyorsa
+            # eski inventory yoluna dusulur. Ikisi de yoksa cluster "bulunamadi" sayilir.
+            has_portal_meta: >-
+              {{ (item.api_url | default('') | string | trim | length > 0)
+                 and (item.credential_key | default('') | string | trim | length > 0) }}
+            inv_has: >-
+              {{ clusters is defined
+                 and clusters[inventory_key] is defined
+                 and clusters[inventory_key][item.cluster_name] is defined
+                 and clusters[inventory_key][item.cluster_name].url is defined
+                 and clusters[inventory_key][item.cluster_name].password is defined }}
+            resolved_url: >-
+              {{ item.api_url if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].url if (inv_has | bool) else '') }}
+            resolved_password: >-
+              {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
+            cluster_exists: >-
+              {{
+                item.tenant is defined and
+                item.env is defined and
+                item.cluster_name is defined and
+                ((has_portal_meta | bool) or (inv_has | bool))
+              }}
+          loop: "{{ my_ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          no_log: true
+          changed_when: false
+
+        # ── oc kesfi ─────────────────────────────────────────────────────────────
+        - name: "Probe candidate oc paths"
+          ansible.builtin.stat:
+            path: "{{ item }}"
+          loop: "{{ oc_probe_paths }}"
+          register: oc_stats
+          changed_when: false
+          # Bir aday yolun stat izni yoksa TUM bastion dusmesin — karar tek noktada
+          # (asagidaki oc_bin bos mu) verilir.
+          failed_when: false
+
+        - name: "Collect usable oc paths"
+          ansible.builtin.set_fact:
+            oc_stat_hits: >-
+              {{
+                oc_stats.results | default([])
+                | selectattr('stat', 'defined')
+                | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+                | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+                | map(attribute='stat.path') | list
+              }}
+          changed_when: false
+
+        # Aday yollarin hicbiri tutmadiysa PATH'e bak. `command` modulu shell built-in'ini
+        # calistiramaz, bu yuzden shell kullanilir; `|| true` + failed_when:false ile bu adim
+        # asla fatal olmaz (bulunamama karari asagidaki tek noktada verilir).
+        - name: "Fall back to PATH lookup when no candidate matched"
+          ansible.builtin.shell: command -v oc || true
+          args:
+            executable: /bin/bash
+          register: oc_which
+          when: oc_stat_hits | length == 0
+          changed_when: false
+          failed_when: false
+
+        - name: "Resolve the oc binary for this bastion"
+          ansible.builtin.set_fact:
+            oc_bin: >-
+              {{
+                oc_stat_hits[0] if (oc_stat_hits | length > 0)
+                else (oc_which.stdout | default('', true) | trim)
+              }}
+          changed_when: false
+
+        # assert DEGIL fail: block/rescue bunu yakalayip YALNIZ bu bastion'in cluster'larina
+        # hata girdisi yazar; diger bastion'lar calismaya devam eder ve toplayici play calisir.
+        - name: "Fail when no usable oc binary was found"
+          ansible.builtin.fail:
+            msg: >-
+              Bu sunucuda 'oc' bulunamadi. Denenen yollar: {{ oc_probe_paths | join(', ') }};
+              PATH aramasi (command -v oc) da sonucsuz kaldi.
+          when: oc_bin | length == 0
+
+        - name: "Login and list namespaces in parallel with isolated kubeconfigs"
+          ansible.builtin.shell: |
+            set -o pipefail
+            umask 077
+
+            export KUBECONFIG="/tmp/logx-ns-{{ logx_job_id }}-{{ cluster.cluster_name }}.kubeconfig"
+
+            cleanup() {
+              rm -f "${KUBECONFIG}"
+            }
+            trap cleanup EXIT
+
+            "{{ oc_bin }}" login \
+              --server={{ cluster.url | quote }} \
+              --username={{ username | quote }} \
+              --password={{ cluster.password | quote }} \
+              --insecure-skip-tls-verify=true \
+              >/dev/null
+
+            "{{ oc_bin }}" get projects -o name
+          args:
+            executable: /bin/bash
+          loop: "{{ resolved_clusters }}"
+          loop_control:
+            loop_var: cluster
+            label: "{{ cluster.cluster_name }}"
+          register: ns_jobs
+          async: "{{ oc_async_timeout }}"
+          poll: 0
+          changed_when: false
+          no_log: true
+
+        - name: "Wait for namespace discovery jobs"
+          ansible.builtin.async_status:
+            jid: "{{ item.ansible_job_id }}"
+          loop: "{{ ns_jobs.results | default([]) }}"
+          loop_control:
+            label: "{{ item.cluster.cluster_name }}"
+          register: ns_wait
+          until: ns_wait.finished
+          retries: "{{ oc_async_retries }}"
+          delay: "{{ oc_async_delay }}"
+          ignore_errors: true
+          changed_when: false
+          no_log: true
+
+        - name: "Build structured namespace results"
+          ansible.builtin.set_fact:
+            cluster_ns_results: >-
+              {{
+                cluster_ns_results + [{
+                  'cluster_name': item.item.cluster.cluster_name,
+                  'status': 'error' if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else 'ok',
+                  'error': (
+                    item.stderr | default(item.msg | default('Unknown OpenShift error'), true)
+                  ) if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else '',
+                  'namespaces': (
+                    item.stdout_lines | default([])
+                    | map('regex_replace', '^project/', '')
+                    | list
+                  ) if not (item.failed | default(false) or (item.rc | default(0) | int != 0)) else []
+                }]
+              }}
+          loop: "{{ ns_wait.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.cluster.cluster_name }}"
+          changed_when: false
+
+        - name: "Append validation errors"
+          ansible.builtin.set_fact:
+            cluster_ns_results: "{{ cluster_ns_results + validation_errors }}"
+          changed_when: false
+
+      rescue:
+        - name: "Record the bastion-level failure"
+          ansible.builtin.set_fact:
+            bastion_error: >-
+              {{
+                ansible_failed_result.msg
+                | default(ansible_failed_result.stderr | default('Bilinmeyen bastion hatasi', true), true)
+              }}
+          changed_when: false
+
+        # Katalog dogrulama hatalari block DISINDA uretilmisti; block coktugu icin
+        # "Append ..." gorevi calismadi — burada eklenir ki kaybolmasinlar.
+        - name: "Keep validation errors even when the bastion failed"
+          ansible.builtin.set_fact:
+            cluster_ns_results: "{{ cluster_ns_results + (validation_errors | default([])) }}"
+          changed_when: false
+
+        - name: "Mark this bastion's unfinished clusters as failed"
+          ansible.builtin.set_fact:
+            cluster_ns_results: >-
+              {{
+                cluster_ns_results + [{
+                  'cluster_name': item.cluster_name | default('unknown'),
+                  'status': 'error',
+                  'error': bastion_error,
+                  'namespaces': []
+                }]
+              }}
+          loop: "{{ my_ocp_clusters | default([]) }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          when: >-
+            (item.cluster_name | default('')) not in
+            (cluster_ns_results | default([]) | map(attribute='cluster_name') | list)
+          changed_when: false
+
+
+# set_stats BILEREK tek bir yazardan (localhost) yayinlanir: birden cok host ayni
+# `logx_result` anahtarini yazarsa Ansible listeleri BIRLESTIRMEZ, sonuncu yazan ezer.
+# Bu play, istenen HER cluster'i sahibi olan bastion'un fact'inden toplar; sonuc sekli
+# tek-bastion'daki ile birebir aynidir (overall_status + clusters[]).
+- name: "Aggregate per-bastion results and publish a single logx_result"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    # Ek sigorta: block/rescue sayesinde hicbir host FAIL olmamali; yine de
+    # ileride play2ye korumasiz bir gorev eklenirse bu play calismaya devam etsin.
+    - name: "Clear any host errors so aggregation always runs"
+      ansible.builtin.meta: clear_host_errors
+
+    - name: "Initialize merged result list"
       ansible.builtin.set_fact:
-        resolved_clusters: >-
+        merged_ns_results: []
+      changed_when: false
+
+    - name: "Collect each requested cluster's result from its own bastion"
+      ansible.builtin.set_fact:
+        merged_ns_results: >-
           {{
-            resolved_clusters + ([{
-              'cluster_name': item.cluster_name,
-              'env': item.env,
-              'tenant': item.tenant,
-              'inventory_key': inventory_key,
-              'url': clusters[inventory_key][item.cluster_name].url,
-              'password': clusters[inventory_key][item.cluster_name].password
-            }] if cluster_exists else [])
+            merged_ns_results + (reported if (reported | length > 0) else [{
+              'cluster_name': item.cluster_name | default('unknown'),
+              'status': 'error',
+              'error': 'Bastion did not report a result: ' ~ (owner_host | default('?')),
+              'namespaces': []
+            }])
           }}
       vars:
-        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
-        cluster_exists: >-
-          {{
-            item.tenant is defined and
-            item.env is defined and
-            item.cluster_name is defined and
-            clusters[inventory_key] is defined and
-            clusters[inventory_key][item.cluster_name] is defined and
-            clusters[inventory_key][item.cluster_name].url is defined and
-            clusters[inventory_key][item.cluster_name].password is defined
-          }}
+        # Sahipsiz cluster'in sahibi play2 ile AYNI kuralla belirlenir (ilk alfabetik bastion).
+        owner_host: "{{ item.terminal_host | default((groups['logx_terminal'] | default([]) | sort | first), true) }}"
+        host_results: "{{ (hostvars[owner_host] | default({}, true)).cluster_ns_results | default([], true) }}"
+        reported: "{{ host_results | selectattr('cluster_name', 'equalto', item.cluster_name | default('')) | list }}"
       loop: "{{ ocp_clusters }}"
       loop_control:
         label: "{{ item.cluster_name | default('?') }}"
-      no_log: true
-      changed_when: false
-
-    - name: "Check oc binary"
-      ansible.builtin.stat:
-        path: "{{ oc_binary }}"
-      register: oc_binary_stat
-
-    - name: "Fail when oc binary is missing"
-      ansible.builtin.assert:
-        that:
-          - oc_binary_stat.stat.exists
-          - oc_binary_stat.stat.executable
-        fail_msg: "oc binary is missing or not executable: {{ oc_binary }}"
-
-    - name: "Login and list namespaces in parallel with isolated kubeconfigs"
-      ansible.builtin.shell: |
-        set -o pipefail
-        umask 077
-
-        export KUBECONFIG="/tmp/logx-ns-{{ logx_job_id }}-{{ cluster.cluster_name }}.kubeconfig"
-
-        cleanup() {
-          rm -f "${KUBECONFIG}"
-        }
-        trap cleanup EXIT
-
-        "{{ oc_binary }}" login \
-          --server={{ cluster.url | quote }} \
-          --username={{ username | quote }} \
-          --password={{ cluster.password | quote }} \
-          --insecure-skip-tls-verify=true \
-          >/dev/null
-
-        "{{ oc_binary }}" get projects -o name
-      args:
-        executable: /bin/bash
-      loop: "{{ resolved_clusters }}"
-      loop_control:
-        loop_var: cluster
-        label: "{{ cluster.cluster_name }}"
-      register: ns_jobs
-      async: "{{ oc_async_timeout }}"
-      poll: 0
-      changed_when: false
-      no_log: true
-
-    - name: "Wait for namespace discovery jobs"
-      ansible.builtin.async_status:
-        jid: "{{ item.ansible_job_id }}"
-      loop: "{{ ns_jobs.results | default([]) }}"
-      loop_control:
-        label: "{{ item.cluster.cluster_name }}"
-      register: ns_wait
-      until: ns_wait.finished
-      retries: "{{ oc_async_retries }}"
-      delay: "{{ oc_async_delay }}"
-      ignore_errors: true
-      changed_when: false
-      no_log: true
-
-    - name: "Build structured namespace results"
-      ansible.builtin.set_fact:
-        cluster_ns_results: >-
-          {{
-            cluster_ns_results + [{
-              'cluster_name': item.item.cluster.cluster_name,
-              'status': 'error' if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else 'ok',
-              'error': (
-                item.stderr | default(item.msg | default('Unknown OpenShift error'), true)
-              ) if (item.failed | default(false) or (item.rc | default(0) | int != 0)) else '',
-              'namespaces': (
-                item.stdout_lines | default([])
-                | map('regex_replace', '^project/', '')
-                | list
-              ) if not (item.failed | default(false) or (item.rc | default(0) | int != 0)) else []
-            }]
-          }}
-      loop: "{{ ns_wait.results | default([]) }}"
-      loop_control:
-        label: "{{ item.item.cluster.cluster_name }}"
-      changed_when: false
-
-    - name: "Append validation errors"
-      ansible.builtin.set_fact:
-        cluster_ns_results: "{{ cluster_ns_results + validation_errors }}"
       changed_when: false
 
     - name: "Publish namespace discovery result"
@@ -217,8 +433,8 @@
         data:
           logx_result:
             overall_status: >-
-              {% set ok_count = cluster_ns_results | selectattr('status', 'equalto', 'ok') | list | length %}
-              {% set error_count = cluster_ns_results | selectattr('status', 'equalto', 'error') | list | length %}
+              {% set ok_count = merged_ns_results | selectattr('status', 'equalto', 'ok') | list | length %}
+              {% set error_count = merged_ns_results | selectattr('status', 'equalto', 'error') | list | length %}
               {{ 'success' if error_count == 0 else ('failed' if ok_count == 0 else 'partial') }}
-            clusters: "{{ cluster_ns_results }}"
+            clusters: "{{ merged_ns_results }}"
         per_host: false

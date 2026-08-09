@@ -1,5 +1,9 @@
 // server/opsx/config.cjs — OpsX'in AWX'e GONDERDIGI parametrelerin admin tarafindan
-// duzenlenebilir yapilandirmasi.
+// duzenlenebilir yapilandirmasi. Telnet modulu de bu blob'un openshift bolumunu
+// PAYLASIR (bkz. server/opsx/ocp-target.cjs + server/telnet/index.cjs) — bu yuzden
+// terminalHost*/namespaceKey/appNameKey/clustersKey/clusterListStyle alanlari
+// SILINEMEZ, sadece OpsX'in KENDI /api/opsx/run yolu bunlari artik KULLANMIYOR
+// (bkz. asagidaki not).
 //
 // NEDEN VAR: parametre adlari ('application', 'limit', 'operation') onceden KOD ICINDE
 // sabitti — playbook farkli isimler bekliyorsa kod degistirip yeniden deploy etmek
@@ -15,12 +19,18 @@
 const BLOB_NAME = 'opsx:params';
 
 // Kod icindeki mantiksal alan adlari -> playbook'un bekledigi extra_vars anahtarlari.
-// Varsayilanlar kullanicinin ilk sartnamesiyle ayni (application / limit / operation).
 // Legacy ve Openshift govdeleri YAPISAL OLARAK farkli oldugu icin alan setleri de farkli:
 //   Legacy    -> extra_vars: { application, operation };  sunucu listesi AWX'in `limit` alaninda
-//   Openshift -> extra_vars: { env, oc_cluster, oc_input }; limit YOK. oc_input coklu
-//   namespace/uygulama ciftini "ns1,app1;ns2,app2" formatinda tasir (bkz. bmw_openshift_jobs
-//   production playbook'lariyla ayni sartname).
+//
+//   Openshift -> OpsX'in KENDI /api/opsx/run'i artik SADECE envKey/ocClusterKey/ocInputKey
+//   kullanir: extra_vars: { env, oc_cluster, oc_input }; limit YOK, terminal_host YOK.
+//   oc_input coklu namespace/uygulama ciftini "ns1,app1;ns2,app2" formatinda tasir — gercek
+//   bmw_openshift_jobs/application_rollout.yaml production playbook'unun BEKLEDIGI AYNI
+//   sartname (playbook hedefi kendisi `hosts: "{{ oc_cluster }}_{{ env }}"` ile cozer).
+//
+//   terminalHostKey/terminalHostsKey/namespaceKey/appNameKey/clustersKey/clusterListStyle
+//   alanlari OpsX tarafindan artik OKUNMUYOR ama Telnet modulu (server/telnet/index.cjs)
+//   hala buradan okuyup server/opsx/ocp-target.cjs'e gecirdigi icin KORUNUR.
 const DEFAULTS = Object.freeze({
   legacy: {
     applicationKey: 'application',
@@ -31,20 +41,38 @@ const DEFAULTS = Object.freeze({
     separator: ',',
   },
   openshift: {
+    // OpsX'in KENDI /api/opsx/run yolunun kullandigi alanlar.
     envKey: 'env',
     ocClusterKey: 'oc_cluster',
     ocInputKey: 'oc_input',
+    // Asagidakiler artik SADECE Telnet icin (bkz. dosya basi notu).
+    terminalHostKey: 'terminal_host',
+    terminalHostsKey: 'terminal_hosts',
+    namespaceKey: 'namespace',
+    appNameKey: 'app_name',
+    clustersKey: 'ocp_clusters',
     extraVars: '',
-    // Coklu namespace/uygulama ciftleri arasindaki ayirac (oc_input icinde ";").
+    // Coklu namespace/uygulama ciftleri arasindaki ayirac (OpsX'in oc_input'unda ";").
+    // Telnet tarafinda ise cluster_name listesini birlestirmek icin kullanilir.
     separator: ',',
+    // Telnet'in cluster listesini AWX'e hangi SEKILDE gonderecegi (bkz. ocp-target.cjs).
+    //   'joined'     → TEK oge, cluster_name'ler `separator` ile birlesik (varsayilan).
+    //   'perCluster' → her cluster ayri oge + kendi terminal_host'u + terminal_hosts[].
+    clusterListStyle: 'joined',
   },
 });
 
 // Hangi platformda hangi anahtar alanlari duzenlenebilir.
 const KEY_FIELDS = Object.freeze({
   legacy: ['applicationKey', 'operationKey'],
-  openshift: ['envKey', 'ocClusterKey', 'ocInputKey'],
+  openshift: [
+    'envKey', 'ocClusterKey', 'ocInputKey',
+    'terminalHostKey', 'terminalHostsKey', 'namespaceKey', 'appNameKey', 'clustersKey',
+  ],
 });
+
+// Anahtar-adi olmayan, sabit secenekli alanlar (Telnet icin).
+const CLUSTER_LIST_STYLES = Object.freeze(['joined', 'perCluster']);
 
 // extra_vars anahtarlari playbook'a AYNEN gecer — bicim kontrolu olmadan serbest metin
 // kabul etmek, YAML'i bozan veya beklenmedik degisken enjekte eden degerlere yol acardi.
@@ -66,6 +94,9 @@ function normalizePlatform(platform, raw, fallback) {
   const sep = raw?.separator;
   // Ayirac tek bir noktalama/bosluk karakteri olmali.
   if (typeof sep === 'string' && sep.length >= 1 && sep.length <= 3) out.separator = sep;
+  if (platform === 'openshift' && CLUSTER_LIST_STYLES.includes(raw?.clusterListStyle)) {
+    out.clusterListStyle = raw.clusterListStyle;
+  }
   return out;
 }
 
@@ -126,4 +157,7 @@ function parseExtraVarLines(text) {
   return { vars: out, rejected };
 }
 
-module.exports = { getConfig, saveConfig, invalidate, parseExtraVarLines, DEFAULTS, KEY_FIELDS, BLOB_NAME };
+module.exports = {
+  getConfig, saveConfig, invalidate, parseExtraVarLines,
+  DEFAULTS, KEY_FIELDS, CLUSTER_LIST_STYLES, BLOB_NAME,
+};

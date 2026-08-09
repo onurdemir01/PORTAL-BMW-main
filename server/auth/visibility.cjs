@@ -27,12 +27,17 @@ const CACHE_TTL_MS = 15000;
 // Yukaridaki element-bazli motordan AYRI, daha eski/kaba-taneli bir sistem (sayfa dusen 11
 // sabit anahtar). server/auth/index.cjs'ten buraya tasindi (SRP — kurumsal AI kod incelemesi,
 // review.md #14) — tum "gorunurluk" mantigi artik tek dosyada.
+// NOT (G8): bu legacy tablo artik yalnizca YEDEK'tir — hicbir admin ekrani buraya yazmaz
+// (PageVisibilityTab element-bazli motoru kullanir) ve `canViewPage` bunu okumaz. Yeni
+// sayfalar eklendiginde yine de senkron tutulur ki eski istemci/probe yollari sasmasin.
 const DEFAULT_VISIBILITY = {
   "Dashboard":    ["Admin", "User"],
   "Envanter":     ["Admin", "User"],
   "LogX":         ["Admin", "User"],
   "Self Service": ["Admin", "User"],
   "Ansible":      ["Admin"],
+  "OpsX":         ["Admin", "User"],
+  "Telnet":       ["Admin", "User"],
   "Performance":  ["Admin", "User"],
   "AI Analist":   ["Admin", "User"],
   "Nöbet":        ["Admin", "User"],
@@ -111,22 +116,79 @@ function decide(el, ruleIndex, role, usernameLower) {
   return truthy(el.default_visible);                     // 5) varsayilan
 }
 
+// Parent → child kaskadi (G11): admin ekraninda belgelenen "bir menu/sayfa kapatilirsa
+// altindaki tab/buton da gizlenir" kurali artik GERCEKTEN uygulanir. Bir ogenin ATA
+// zincirinde gorunmeyen tek bir halka varsa oge de gorunmez.
+//
+// Admin muafiyeti KASITLI olarak kaskadin da USTUNDEDIR: decide() Admin'e her enabled
+// ogeyi acar; ata `enabled=false` ise decide zaten false doner ve kaskad da onu tasir
+// (kill-switch adminde de calisir).
+function applyParentCascade(map, elements) {
+  const byKey = new Map(elements.map((el) => [el.element_key, el]));
+  const resolved = new Map();
+
+  function visible(key, seen) {
+    if (resolved.has(key)) return resolved.get(key);
+    if (seen.has(key)) return map[key] ?? true;   // dongu korumasi (bozuk parent zinciri)
+    seen.add(key);
+    const el = byKey.get(key);
+    let out = map[key] ?? true;
+    if (out && el && el.parent_key && byKey.has(el.parent_key)) {
+      out = visible(el.parent_key, seen);
+    }
+    resolved.set(key, out);
+    return out;
+  }
+
+  const cascaded = {};
+  for (const key of Object.keys(map)) cascaded[key] = visible(key, new Set());
+  return cascaded;
+}
+
+// Cozulmus harita, (versiyon + rol + kullanici) basina memo'lanir (G12): requireVisible
+// her istekte tum haritayi yeniden kuruyordu. bumpVersion() cache'i dusurur.
+let _resolvedMemo = new Map();
+let _resolvedMemoVersion = _version;
+
 // Bir kullanici icin TUM elementlerin cozulmus gorunurluk haritasini doner.
 async function resolveVisibility(user) {
   const role = (user && user.role) || 'User';
   const usernameLower = ((user && user.username) || '').toLowerCase();
+
+  if (_resolvedMemoVersion !== _version) { _resolvedMemo = new Map(); _resolvedMemoVersion = _version; }
+  const memoKey = `${role}|${usernameLower}`;
+  const hit = _resolvedMemo.get(memoKey);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { version: _version, visibility: hit.visibility };
+
   let elements = [];
   let rules = [];
   try {
     ({ elements, rules } = await loadAll());
   } catch (err) {
+    // Harita kurulamadi. UI tarafi icin bos harita "bilinmiyor" demektir (istemci
+    // varsayilan-acik davranir); GERCEK erisim karari requireVisible'da verilir ve
+    // orasi fail-CLOSED'dir (bkz. asagisi) — bu yuzden burada throw ETMEYIZ.
     console.warn('[visibility] loadAll hata (bos harita donuluyor):', err.message);
-    return { version: _version, visibility: {} };
+    const e = new Error('visibility_unavailable');
+    e.code = 'VISIBILITY_UNAVAILABLE';
+    throw e;
   }
   const ruleIndex = buildRuleIndex(rules);
   const map = {};
   for (const el of elements) map[el.element_key] = decide(el, ruleIndex, role, usernameLower);
-  return { version: _version, visibility: map };
+  const visibility = applyParentCascade(map, elements);
+  _resolvedMemo.set(memoKey, { visibility, at: Date.now() });
+  return { version: _version, visibility };
+}
+
+// UI icin yumusak surum: motor okunamazsa bos harita doner (istemci varsayilan-acik
+// davranir, ekran bos kalmaz). Gercek yetki karari her zaman sunucuda requireVisible'dadir.
+async function resolveVisibilitySoft(user) {
+  try {
+    return await resolveVisibility(user);
+  } catch {
+    return { version: _version, visibility: {} };
+  }
 }
 
 // Tek element kontrolu. Registry'de OLMAYAN element → varsayilan gorunur (kayitsiz ogeyi
@@ -137,19 +199,35 @@ async function canSee(user, elementKey) {
 }
 
 // Express middleware fabrikasi — element kullaniciya gorunmezse 403. GERCEK server-side deny.
-// Motor hatasinda (DB anlik erisilemez) fail-open: mevcut sistemin default-open durusuyla
-// tutarli, availability'yi korur; normal yol dogru sekilde reddeder.
+//
+// FAIL-CLOSED (G6): motor okunamazsa (DB anlik erisilemez) eskiden `next()` denip erisim
+// ACILIYORDU — yani bir DB kesintisi tum gorunurluk sistemini sessizce devre disi
+// birakiyordu. Artik 503 ile reddedilir. Admin rolu bu karardan MUAF tutulur ki bir
+// kesintide yoneticiler portali onaramaz hale gelmesin.
+// Acil kacis: VISIBILITY_FAIL_OPEN=1 (eski davranisa doner, kullanimi loglanir).
 function requireVisible(elementKey) {
   return async (req, res, next) => {
+    let user = null;
     try {
-      const user = getRequestUser(req);
+      user = getRequestUser(req);
       if (!user) return res.status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
       const ok = await canSee(user, elementKey);
       if (!ok) return res.status(403).json({ ok: false, error: 'Bu kaynağa erişiminiz kapalı.' });
       return next();
     } catch (err) {
-      console.warn('[visibility] requireVisible hata (fail-open):', err.message);
-      return next();
+      if (user && user.role === 'Admin') {
+        console.warn(`[visibility] motor okunamadi, Admin muafiyeti ile devam (${elementKey}):`, err.message);
+        return next();
+      }
+      if (process.env.VISIBILITY_FAIL_OPEN === '1') {
+        console.warn(`[visibility] motor okunamadi, VISIBILITY_FAIL_OPEN=1 ile ACILDI (${elementKey}):`, err.message);
+        return next();
+      }
+      console.error(`[visibility] motor okunamadi, erisim REDDEDILDI (${elementKey}):`, err.message);
+      return res.status(503).json({
+        ok: false,
+        error: 'Görünürlük servisi geçici olarak kullanılamıyor, erişim güvenlik gereği reddedildi.',
+      });
     }
   };
 }
@@ -168,7 +246,8 @@ function requireVisiblePrefix(elementKey, opts = {}) {
 }
 
 module.exports = {
-  resolveVisibility, canSee, requireVisible, requireVisiblePrefix, getVersion, bumpVersion,
+  resolveVisibility, resolveVisibilitySoft, canSee, requireVisible, requireVisiblePrefix, getVersion, bumpVersion,
+  _applyParentCascade: applyParentCascade,
   // Legacy sayfa-gorunurlugu (DEFAULT_VISIBILITY tablosu) — element-bazli motordan ayri.
   readVisibility, writeVisibility, DEFAULT_VISIBILITY,
   // saf yardimcilar — birim testleri icin acildi (DB gerektirmez)

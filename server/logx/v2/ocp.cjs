@@ -1,8 +1,13 @@
 // server/logx/v2/ocp.cjs — OpenShift akisi: cluster/tenant/env secimi (admin-yonetimli
 // ocp_cluster_index'e karsi dogrulanir), namespace iki-asamali cozumleme, pod kesfi+log
-// cekme. Cluster URL/credential bu dosyada veya DB'de HICBIR ZAMAN tutulmaz — playbook
-// bunlari kendi (bu repo disindaki) vault verisinden cozer; biz yalnizca
-// env/tenant/cluster_name/namespace/app_name gibi tanimlayicilari extra_vars olarak geceriz.
+// cekme.
+//
+// CLUSTER METADATA'SI (v3): cluster'in API URL'i ve hangi vault anahtarini kullandigi
+// artik portal DB'sinde (ocp_cluster_index) tutulur ve extra_vars ile gonderilir — boylece
+// playbook AWX'teki openshift_inventory_vars.yaml dosyasina BAGIMLI DEGILDIR.
+// PAROLA hicbir zaman DB'ye girmez: yalnizca anahtarin ADI (`vault_credential_key`)
+// tasinir, parolayi playbook lookup('vars', <ad>) ile AWX vault'undan cozer.
+// Alanlar bos ise extra_vars'a HIC konmaz → playbook eski inventory yoluna duser.
 'use strict';
 
 const jobs = require('./jobs.cjs');
@@ -11,6 +16,75 @@ const adminData = require('./admin.cjs');
 
 async function getClusterTree() {
   return adminData.getClusterTree();
+}
+
+// extra_vars v2 sozlesmesi (OCP dinamik yapi). Playbook'a HER ZAMAN uc alan birden gider:
+//   terminal_host  : legacy SKALER (= terminal_hosts[0]) — eski playbook surumleriyle uyum
+//   terminal_hosts : benzersiz + sirali bastion listesi (deterministik payload)
+//   ocp_clusters[] : { env, tenant, cluster_name, terminal_host } — cluster-BASINA bastion
+// Tek bastion'li kurulumda uretilen payload, eski payload'in ustkumesidir; playbook
+// per-cluster alanlari yoksayarsa davranis birebir eskisi gibi kalir.
+// Saf fonksiyon — DB'ye dokunmaz, dogrudan test edilir.
+function buildOcpExtraVars({ env, tenant, clusters, hosts, meta }) {
+  // Adlar resolveTerminalHosts ile AYNI sekilde normalize edilir (trim + tekillestirme);
+  // aksi halde " c1" gibi bir ad hosts[] icinde bulunamaz ve terminal_host undefined
+  // kalir (playbook'ta "sahipsiz cluster" kovasina duser).
+  const names = [...new Set((clusters || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  const items = names.map((name) => {
+    const m = (meta && meta[name]) || {};
+    return {
+      env, tenant, cluster_name: name, terminal_host: hosts[name],
+      // v3: cluster metadata'si DB'den gelir. Bos olan alan HIC gonderilmez —
+      // playbook o zaman eski inventory yoluna (clusters[tenant_env][ad]) duser.
+      ...(m.api_url ? { api_url: m.api_url } : {}),
+      ...(m.vault_credential_key ? { credential_key: m.vault_credential_key } : {}),
+    };
+  });
+  const terminalHosts = [...new Set(items.map((i) => i.terminal_host))].sort();
+  return { terminal_host: terminalHosts[0], terminal_hosts: terminalHosts, ocp_clusters: items };
+}
+
+// Admin-yonetimli calisma zamani degiskenleri (oc yolu + zaman asimlari) → extra_vars.
+// Saf fonksiyon (DB'ye dokunmaz). `ocBinary` BOSSA anahtar HIC gonderilmez; boylece
+// playbook kendi kesfini yapar. Doluysa kesfin onune gecer.
+function buildOcpRuntimeVars(cfg) {
+  const c = cfg || {};
+  return {
+    ...(c.ocBinary ? { oc_binary: c.ocBinary } : {}),
+    ...(Array.isArray(c.ocBinaryCandidates) && c.ocBinaryCandidates.length
+      ? { oc_binary_candidates: c.ocBinaryCandidates }
+      : {}),
+    ...(c.ocAsyncTimeout ? { oc_async_timeout: c.ocAsyncTimeout } : {}),
+    ...(c.ocListTimeout ? { oc_list_timeout: c.ocListTimeout } : {}),
+    ...(c.ocLogTimeout ? { oc_log_timeout: c.ocLogTimeout } : {}),
+  };
+}
+
+// Secilen cluster'lar icin bastion'lari cozer; eksik varsa anlasilir 400 firlatir.
+// Cagiran her yerde (select + her job launch'i) TEKRAR calisir: admin verisi degismis
+// olabilir, client'in gonderdigi input_json'a asla guvenilmez.
+// Bastion + cluster metadata'sini (api_url, vault anahtari) BIRLIKTE cozer.
+// Bastion eksikse 400 firlatir; api_url/credential_key eksikse HATA DEGIL — o cluster icin
+// alanlar gonderilmez ve playbook eski inventory yoluna duser (asamali gecis).
+async function resolveClusterContextOrThrow(env, tenant, clusters) {
+  const hosts = await resolveHostsOrThrow(env, tenant, clusters);
+  const meta = await adminData.resolveClusterMeta(env, tenant, clusters).catch(() => ({}));
+  return { hosts, meta };
+}
+
+async function resolveHostsOrThrow(env, tenant, clusters) {
+  const { hosts, missing } = await adminData.resolveTerminalHosts(env, tenant, clusters);
+  if (missing.length) {
+    throw Object.assign(
+      new Error(
+        `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — ` +
+        `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin ` +
+        `veya "${tenant}/${env}" için yedek eşleme tanımlayın.`
+      ),
+      { status: 400 }
+    );
+  }
+  return hosts;
 }
 
 // POST /ocp/:requestId/select — { env, tenant, clusters: [name,...] }
@@ -24,33 +98,97 @@ async function selectClusters(requestRow, env, tenant, clusters) {
       throw Object.assign(new Error(`Cluster tanımlı/aktif değil: ${clusterName}`), { status: 400 });
     }
   }
-  const terminalHost = await adminData.getTerminalHost(tenant, env);
-  if (!terminalHost) {
-    throw Object.assign(
-      new Error(`"${tenant}/${env}" için terminal/bastion host tanımlı değil — admin panelinden eklenmeli.`),
-      { status: 400 }
-    );
-  }
+  const hosts = await resolveHostsOrThrow(env, tenant, clusters);
+  // `terminalHost` (tekil) yalnizca geriye donuk uyum icin saklanir: bu alani okuyan eski
+  // istek satirlari ve UI hala calissin diye. Gercek kaynak her launch'ta taze cozulur.
+  const terminalHost = [...new Set(Object.values(hosts))].sort()[0];
 
   await requests.updateRequest(requestRow.request_id, {
     state: 'draft',
-    input: { env, tenant, clusters, terminalHost },
+    input: { env, tenant, clusters, terminalHost, clusterHosts: hosts },
   });
-  return { terminalHost };
+  return { terminalHost, clusterHosts: hosts };
 }
 
 // POST /ocp/:requestId/namespaces/discover
 async function discoverNamespaces(requestRow) {
   const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : null;
-  if (!input?.terminalHost || !Array.isArray(input?.clusters)) {
+  if (!Array.isArray(input?.clusters) || !input.clusters.length) {
     throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
   }
-  const job = await jobs.launchJob(requestRow.request_id, 'ocp_namespace_discovery', {
-    terminal_host: input.terminalHost,
-    ocp_clusters: input.clusters.map((name) => ({ env: input.env, tenant: input.tenant, cluster_name: name })),
-  });
+  const { hosts, meta } = await resolveClusterContextOrThrow(input.env, input.tenant, input.clusters);
+  const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
+  const job = await jobs.launchJob(
+    requestRow.request_id,
+    'ocp_namespace_discovery',
+    {
+      ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta }),
+      ...buildOcpRuntimeVars(runtimeCfg),
+    }
+  );
   await requests.updateRequest(requestRow.request_id, { state: 'namespace_discovering' });
   return job;
+}
+
+// POST /ocp/:requestId/apps/discover — { namespaces: [ad,...] }
+// Secilen cluster'larda VERILEN namespace'lerdeki uygulama/objeleri tarar. Sonuc
+// portalda onbellege yazilir (ocp_app_cache) — bir sonraki kullanici listeyi ANINDA gorur.
+async function discoverApps(requestRow, namespaces) {
+  const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : null;
+  if (!Array.isArray(input?.clusters) || !input.clusters.length) {
+    throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
+  }
+  const nsList = [...new Set((namespaces || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  if (!nsList.length) {
+    throw Object.assign(new Error('En az bir namespace gerekli.'), { status: 400 });
+  }
+
+  const { hosts, meta } = await resolveClusterContextOrThrow(input.env, input.tenant, input.clusters);
+  const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
+  const base = buildOcpExtraVars({
+    env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta,
+  });
+  // Her cluster ayni namespace kumesini tarar; playbook cluster-basina `namespaces`
+  // alanini okur (yoksa genel `ocp_namespaces` listesine duser).
+  const job = await jobs.launchJob(requestRow.request_id, 'ocp_app_discovery', {
+    ...base,
+    ocp_clusters: base.ocp_clusters.map((c) => ({ ...c, namespaces: nsList })),
+    ocp_namespaces: nsList,
+    ...buildOcpRuntimeVars(runtimeCfg),
+  });
+  await requests.updateRequest(requestRow.request_id, {
+    state: 'app_discovering',
+    input: { ...input, appDiscoveryNamespaces: nsList },
+  });
+  return job;
+}
+
+async function finalizeAppDiscovery(requestRow, job) {
+  if (!job.artifacts) {
+    await requests.updateRequest(requestRow.request_id, {
+      state: 'failed',
+      errorMessage: job.errorMessage || 'Uygulama keşfi başarısız oldu.',
+    });
+    return;
+  }
+  const parsed = require('./ocp-app-parse.cjs').parseAppDiscoveryResult(job.artifacts);
+
+  // Onbellege yaz — kesif sonucu artik kullanicilar arasi paylasilir (best-effort:
+  // onbellek yazimi basarisiz olsa da sihirbaz akisi durmamali).
+  try {
+    const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : {};
+    await require('./ocp-cache.cjs').putApps({
+      env: input.env, tenant: input.tenant, entries: parsed.entries, source: 'discovery',
+    });
+  } catch (e) {
+    console.warn('[LogXv2] uygulama onbellegi yazilamadi:', e.message);
+  }
+
+  // `discovery_result_json` BILEREK YAZILMAZ: o sutun namespace kesfinin sonucunu tutar ve
+  // sayfa yenilendiginde sihirbazin namespace listesini geri kurmasini saglar. Uygulama
+  // sonucunu oraya yazmak namespace listesini kalici olarak silerdi. Uygulamalarin kalici
+  // yeri onbellektir (yukarida yazildi); sihirbaz listeyi oradan okur.
+  await requests.updateRequest(requestRow.request_id, { state: 'apps_discovered' });
 }
 
 // `oc get projects -o name` ciktisi ortama gore `project/<ad>` VEYA
@@ -76,9 +214,29 @@ async function finalizeNamespaceDiscovery(requestRow, job) {
     await requests.updateRequest(requestRow.request_id, { state: 'failed', errorMessage: job.errorMessage || 'Namespace keşfi başarısız oldu.' });
     return;
   }
+  const normalized = normalizeDiscoveryResult(job.artifacts);
+
+  // Onbellege yaz — sonuc artik kullanicilar arasi paylasilir (best-effort: onbellek
+  // yazimi basarisiz olsa da sihirbaz akisi durmamali).
+  try {
+    const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : {};
+    const cache = require('./ocp-cache.cjs');
+    for (const c of normalized.clusters || []) {
+      // Yalnizca BASARILI taramalar yazilir; hatali cluster icin "namespace yok" yazmak
+      // kullaniciyi yanlis yonlendirirdi.
+      if (c.status !== 'ok') continue;
+      await cache.putNamespaces({
+        env: input.env, tenant: input.tenant, clusterName: c.cluster_name,
+        namespaces: c.namespaces, source: 'discovery',
+      });
+    }
+  } catch (e) {
+    console.warn('[LogXv2] namespace onbellegi yazilamadi:', e.message);
+  }
+
   await requests.updateRequest(requestRow.request_id, {
     state: 'namespaces_discovered',
-    discoveryResult: normalizeDiscoveryResult(job.artifacts),
+    discoveryResult: normalized,
   });
 }
 
@@ -86,7 +244,7 @@ async function finalizeNamespaceDiscovery(requestRow, job) {
 // client'tan gelmez — playbook kendi `oc get pods` ciktisindan bulur.
 async function discoverFetch(requestRow, namespace, appName) {
   const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : null;
-  if (!input?.terminalHost || !Array.isArray(input?.clusters)) {
+  if (!Array.isArray(input?.clusters) || !input.clusters.length) {
     throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
   }
   const ns = String(namespace || '').trim();
@@ -94,25 +252,23 @@ async function discoverFetch(requestRow, namespace, appName) {
   if (!ns || !app) {
     throw Object.assign(new Error('namespace ve appName zorunlu.'), { status: 400 });
   }
-  // Terminal host'u client input'undan degil, taze bir DB sorgusuyla yeniden dogrular
+  // Bastion'lar client input'undan degil, taze bir DB sorgusuyla yeniden cozulur
   // (client'in gonderdigi input_json'a degil, admin verisine guveniriz).
-  const terminalHost = await adminData.getTerminalHost(input.tenant, input.env);
-  if (!terminalHost) {
-    throw Object.assign(new Error('Terminal host artık tanımlı değil.'), { status: 400 });
-  }
+  const { hosts, meta } = await resolveClusterContextOrThrow(input.env, input.tenant, input.clusters);
 
   const archiveName = `${require('crypto').randomBytes(16).toString('hex')}.zip`;
   // A4 fetch-back: terminal/kaynak host NFS'e yazamazsa arsivi bu URL'ye push edebilir.
   const ingestInfo = await require('./ingest.cjs')
     .issueIngestToken({ requestId: requestRow.request_id, filename: archiveName })
     .catch(() => null);
+  const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
   const job = await jobs.launchJob(requestRow.request_id, 'ocp_discover_fetch', {
-    terminal_host: terminalHost,
+    ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta }),
+    ...buildOcpRuntimeVars(runtimeCfg),
     namespace: ns,
     app_name: app,
-    ocp_clusters: input.clusters.map((name) => ({ env: input.env, tenant: input.tenant, cluster_name: name })),
     staging_dir: process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
-    fallback_dir: process.env.LOGX_STAGING_FALLBACK_DIR || '/tmp/logx-v2-fallback',
+    fallback_dir: require('./downloads.cjs').remoteFallbackDir(),
     archive_name: archiveName,
     ...(ingestInfo ? { ingest_url: ingestInfo.url } : {}),
   });
@@ -124,4 +280,8 @@ async function discoverFetch(requestRow, namespace, appName) {
   return job;
 }
 
-module.exports = { getClusterTree, selectClusters, discoverNamespaces, finalizeNamespaceDiscovery, discoverFetch };
+module.exports = {
+  getClusterTree, selectClusters, discoverNamespaces, finalizeNamespaceDiscovery, discoverFetch,
+  discoverApps, finalizeAppDiscovery,
+  buildOcpExtraVars, buildOcpRuntimeVars,
+};

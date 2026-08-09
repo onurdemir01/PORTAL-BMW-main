@@ -41,6 +41,7 @@ export default function PageVisibilityTab() {
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [allRules, setAllRules] = useState<ElementRule[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [newEl, setNewEl] = useState({ key: "", type: "button", label: "", parentKey: "", description: "" });
@@ -51,6 +52,7 @@ export default function PageVisibilityTab() {
     try {
       const { elements, rules } = await elementsApi.list();
       setElements(elements);
+      setAllRules(rules);   // saveAll bu ekranın YÖNETMEDİĞİ kuralları koruyabilsin diye
       const map: Record<string, Editable> = {};
       for (const el of elements) map[el.key] = deriveEditable(el, rules);
       setEdit(map);
@@ -91,13 +93,24 @@ export default function PageVisibilityTab() {
         const e = edit[key];
         if (!e) continue;
         await elementsApi.setEnabled(key, e.enabled);
-        const rules = [
+        // setRules ilgili elementin TÜM kurallarını silip yenisini yazar. Bu ekran yalnız
+        // "User" rol kuralını ve kullanıcı override'larını yönetir; bu yüzden DOKUNMADIĞIMIZ
+        // diğer principal'lar (ör. seed'den gelen "Admin" rol kuralı veya ileride eklenecek
+        // başka roller) korunarak yeniden gönderilir — aksi halde her kayıtta sessizce
+        // siliniyorlardı.
+        const preserved = allRules
+          .filter((r) => r.elementKey === key)
+          .filter((r) => !(r.principalType === "role" && r.principalId === "User"))
+          .filter((r) => r.principalType !== "user")
+          .map((r) => ({ principalType: r.principalType, principalId: r.principalId, allow: r.allow }));
+        const nextRules = [
+          ...preserved,
           { principalType: "role" as const, principalId: "User", allow: e.userVisible },
           ...e.overrides
             .filter((o) => o.username.trim())
             .map((o) => ({ principalType: "user" as const, principalId: o.username.trim(), allow: o.allow })),
         ];
-        await elementsApi.setRules(key, rules);
+        await elementsApi.setRules(key, nextRules);
       }
       await refreshVisibility();
       toast.success("Görünürlük kaydedildi — anında yansıdı.");

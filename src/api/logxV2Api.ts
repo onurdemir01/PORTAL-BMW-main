@@ -24,7 +24,12 @@ async function json<T>(r: Response): Promise<T> {
       const parsed = JSON.parse(text);
       message = parsed.error || parsed.message || text;
     } catch { /* duz metin hata */ }
-    throw new Error(String(message).slice(0, 300) || `HTTP ${r.status}`);
+    // HTTP durumu hataya iliştirilir: çağıranın "yetkin yok" (403) ile "sunucu hatası"nı
+    // ayırt edebilmesi için tek yol bu — aksi halde ikisi de aynı boş ekranı gösterir.
+    throw Object.assign(
+      new Error(String(message).slice(0, 300) || `HTTP ${r.status}`),
+      { status: r.status },
+    );
   }
   return safeJson(r);
 }
@@ -54,6 +59,7 @@ export type Platform = "legacy" | "openshift";
 export type RequestState =
   | "draft" | "discovering" | "discovered"
   | "namespace_discovering" | "namespaces_discovered"
+  | "app_discovering" | "apps_discovered"
   | "transferring" | "ready" | "failed" | "expired";
 
 export interface DiscoveredFile { path: string; size?: number; mtime?: string; environment?: string }
@@ -94,7 +100,7 @@ export const logxV2Api = {
   createRequest: (platform: Platform) => postJson<{ ok: boolean; requestId: string }>("/requests", { platform }),
 
   getRequest: (requestId: string) =>
-    fetch(`${BASE}/requests/${requestId}`).then((r) => json<{ ok: boolean; request: LogXv2Request; jobs: LogXv2Job[]; download: DownloadInfo | null }>(r)),
+    fetch(`${BASE}/requests/${requestId}`).then((r) => json<{ ok: boolean; request: LogXv2Request; jobs: LogXv2Job[]; download: DownloadInfo | null; downloads?: DownloadInfo[] }>(r)),
 
   // ── Legacy ─────────────────────────────────────────────────────────────────
   searchLegacyApps: (search: string) =>
@@ -115,6 +121,21 @@ export const logxV2Api = {
   selectClusters: (requestId: string, env: string, tenant: string, clusters: string[]) =>
     postJson<{ ok: boolean; terminalHost: string }>(`/ocp/${requestId}/select`, { env, tenant, clusters }),
 
+  // ── Keşif önbelleği (kullanıcılar arası paylaşımlı) ────────────────────────
+  // Sihirbaz ÖNCE buradan okur: liste anında gelir. `stale` bayrağı verinin bayat
+  // olduğunu söyler — kullanıcı isterse "Burada keşfet" ile yeniden tarar.
+  cachedNamespaces: (env: string, tenant: string, cluster: string) =>
+    fetch(`${BASE}/ocp/cache/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&cluster=${encodeURIComponent(cluster)}`)
+      .then((r) => json<CachedList<string>>(r)),
+
+  cachedApps: (env: string, tenant: string, cluster: string, namespace: string) =>
+    fetch(`${BASE}/ocp/cache/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&cluster=${encodeURIComponent(cluster)}&namespace=${encodeURIComponent(namespace)}`)
+      .then((r) => json<CachedList<OcpAppItem>>(r)),
+
+  // Namespace içindeki uygulama/objeleri tarar (AWX job'ı başlatır).
+  discoverApps: (requestId: string, namespaces: string[]) =>
+    postJson<{ ok: boolean; jobId: number }>(`/ocp/${requestId}/apps/discover`, { namespaces }),
+
   discoverNamespaces: (requestId: string) =>
     postJson<{ ok: boolean; jobId: number }>(`/ocp/${requestId}/namespaces/discover`, {}),
 
@@ -123,7 +144,9 @@ export const logxV2Api = {
 
   // ── Jobs / downloads ─────────────────────────────────────────────────────────
   jobStatus: (jobId: number) =>
-    fetch(`${BASE}/jobs/${jobId}/status`).then((r) => json<{ ok: boolean; status: string; jobType: string; elapsedSec: number; artifacts: Record<string, unknown> | null; errorMessage: string | null }>(r)),
+    // `technicalDetail` YALNIZCA Admin rolüne gönderilir (bkz. server/logx/v2/index.cjs) —
+    // normal kullanıcı Ansible/AWX jargonu görmemeli.
+    fetch(`${BASE}/jobs/${jobId}/status`).then((r) => json<{ ok: boolean; status: string; jobType: string; elapsedSec: number; artifacts: Record<string, unknown> | null; errorMessage: string | null; technicalDetail?: string }>(r)),
 
   // Canlı AWX stdout — yalnızca görünürlük için, sonuç kaynağı değil (bkz. jobs.cjs).
   jobOutput: (jobId: number) =>
@@ -144,10 +167,27 @@ export const logxV2Api = {
     updateClusterIndex: (id: number, data: Partial<OcpClusterIndexRow>) => putJson<{ ok: boolean; row: OcpClusterIndexRow }>(`/admin/ocp-cluster-index/${id}`, data),
     deleteClusterIndex: (id: number) => del<{ ok: boolean }>(`/admin/ocp-cluster-index/${id}`),
 
+    // Envanter tohumlaması BİR KERE çalışır; bu iki uç durumu gösterir ve gerekirse
+    // (yanlış veri girildiyse) yeniden çalıştırır. Yeniden çalıştırma var olan satırlara
+    // DOKUNMAZ, yalnızca eksik olanları pasif (is_active=0) olarak ekler.
+    getBootstrapSeed: () =>
+      fetch(`${BASE}/admin/ocp/bootstrap-seed`).then((r) =>
+        json<{ ok: boolean; seeded: boolean; summary: Record<string, unknown> | null }>(r)),
+    rerunBootstrapSeed: () =>
+      postJson<{ ok: boolean; result: { inserted?: number; skipped?: number; failed?: number } }>(
+        "/admin/ocp/bootstrap-seed/rerun"),
+
     listTerminalHostMap: () => fetch(`${BASE}/admin/ocp-terminal-host-map`).then((r) => json<{ ok: boolean; rows: OcpTerminalHostRow[] }>(r)),
     createTerminalHost: (data: Partial<OcpTerminalHostRow>) => postJson<{ ok: boolean; row: OcpTerminalHostRow }>("/admin/ocp-terminal-host-map", data),
     updateTerminalHost: (id: number, data: Partial<OcpTerminalHostRow>) => putJson<{ ok: boolean; row: OcpTerminalHostRow }>(`/admin/ocp-terminal-host-map/${id}`, data),
     deleteTerminalHost: (id: number) => del<{ ok: boolean }>(`/admin/ocp-terminal-host-map/${id}`),
+
+    // OCP çalışma zamanı ayarları: oc'nin aranacağı yollar + zaman aşımları. Deploy
+    // gerektirmeden değişir; playbook bunları extra_vars olarak alır.
+    getOcpRuntimeConfig: () =>
+      fetch(`${BASE}/admin/ocp-runtime-config`).then((r) => json<{ ok: boolean; config: OcpRuntimeConfig; defaults: OcpRuntimeConfig }>(r)),
+    saveOcpRuntimeConfig: (config: OcpRuntimeConfig) =>
+      putJson<{ ok: boolean; config: OcpRuntimeConfig }>("/admin/ocp-runtime-config", config),
 
     listEnvSuffixMap: () => fetch(`${BASE}/admin/env-suffix-map`).then((r) => json<{ ok: boolean; rows: EnvSuffixRow[] }>(r)),
     createEnvSuffix: (data: Partial<EnvSuffixRow>) => postJson<{ ok: boolean; row: EnvSuffixRow }>("/admin/env-suffix-map", data),
@@ -172,7 +212,45 @@ export const logxV2Api = {
   },
 };
 
-export interface OcpClusterIndexRow { id: number; env: string; tenant: string; cluster_name: string; is_active: boolean }
+export interface OcpClusterIndexRow {
+  id: number; env: string; tenant: string; cluster_name: string;
+  terminal_host: string | null;
+  /** OpenShift API adresi. Boşsa playbook eski AWX envanter dosyasına düşer. */
+  api_url: string | null;
+  /** credentials.yaml içindeki değişkenin ADI — parola PORTALDA TUTULMAZ. */
+  vault_credential_key: string | null;
+  is_active: boolean;
+  source?: string | null;
+  last_synced_at?: string | null;
+  sync_status?: string | null;
+}
 export interface OcpTerminalHostRow { id: number; tenant: string; env: string; terminal_host: string; is_active: boolean }
 export interface EnvSuffixRow { id: number; suffix: string; env_label: string; sort_order: number; is_active: boolean }
+/** Önbellekten dönen liste + tazelik bilgisi. `stale` true ise veri TTL'ini geçmiştir
+ *  ama yine de gösterilir (bayat liste, hiç liste olmamasından iyidir). */
+export interface CachedList<T> {
+  ok: boolean;
+  items: T[];
+  cached: boolean;
+  fetchedAt: string | null;
+  stale: boolean;
+  source: string | null;
+}
+
+export interface OcpAppItem {
+  kind: string;
+  name: string;
+  replicas: number | null;
+  image: string | null;
+  labelApp: string | null;
+}
+
+export interface OcpRuntimeConfig {
+  /** Boş = otomatik keşif (playbook adayları + PATH). Dolu = kesin yol, keşfin önüne geçer. */
+  ocBinary: string;
+  ocBinaryCandidates: string[];
+  ocAsyncTimeout: number;
+  ocListTimeout: number;
+  ocLogTimeout: number;
+}
 export interface RestrictionRow { id: number; resourceType: string; resourceKey: string; description: string | null; grants: string[] }

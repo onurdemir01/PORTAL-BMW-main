@@ -1,10 +1,25 @@
-// src/components/logx_v2/steps/ocp/NamespacePickerStep.tsx — Discovery job'ından dönen
-// namespace listesini (cluster'lar arasında tekilleştirilmiş) aranabilir şekilde gösterir.
+// src/components/logx_v2/steps/ocp/NamespacePickerStep.tsx — Namespace listesini
+// (cluster'lar arasında tekilleştirilmiş) aranabilir şekilde gösterir.
+//
+// Liste iki kaynaktan gelebilir: paylaşımlı önbellek (anında) veya canlı discovery job'ı.
+// Bileşen kaynağı UMURSAMAZ — düz bir ad listesi alır; tazelik bilgisi `cache` prop'uyla
+// gelir ve rozette gösterilir. Böylece "önce önbellek, istersen tazele" akışı tek yerde kalır.
 import React, { useMemo, useState } from "react";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import type { OcpNamespaceDiscoveryResult } from "@/api/logxV2Api";
+import CacheBadge from "../../shared/CacheBadge";
 
-const NamespacePickerStep: React.FC<{ result: OcpNamespaceDiscoveryResult; onSelect: (ns: string) => void }> = ({ result, onSelect }) => {
+interface Props {
+  namespaces: string[];
+  /** Erişilemeyen cluster adları — canlı taramada dolar, önbellekte boştur. */
+  failedClusters?: string[];
+  /** Liste önbellekten geldiyse tazelik bilgisi; canlı sonuçta null. */
+  cache?: { fetchedAt: string | null; stale: boolean } | null;
+  onRediscover?: () => void;
+  busy?: boolean;
+  onSelect: (ns: string) => void;
+}
+
+const NamespacePickerStep: React.FC<Props> = ({ namespaces, failedClusters = [], cache, onRediscover, busy, onSelect }) => {
   const [search, setSearch] = useState("");
 
   // Savunma amaçlı: backend normalize etmiş olsa da, `project.project.openshift.io/<ad>`
@@ -18,27 +33,28 @@ const NamespacePickerStep: React.FC<{ result: OcpNamespaceDiscoveryResult; onSel
 
   const allNamespaces = useMemo(() => {
     const set = new Set<string>();
-    for (const c of result.clusters || []) {
-      for (const ns of c.namespaces || []) {
-        const clean = cleanNs(ns);
-        if (clean) set.add(clean);
-      }
+    for (const ns of namespaces || []) {
+      // Yalnızca metin değerleri: çağıran yanlış şekilli bir sonuç geçirirse
+      // "[object Object]" satırları basmak yerine sessizce elenirler.
+      if (typeof ns !== "string") continue;
+      const clean = cleanNs(ns);
+      if (clean) set.add(clean);
     }
     return [...set].sort((a, b) => {
       const sa = isSystemNs(a), sb = isSystemNs(b);
       if (sa !== sb) return sa ? 1 : -1; // sistem namespace'leri sona
       return a.localeCompare(b);
     });
-  }, [result]);
+  }, [namespaces]);
 
   const filtered = allNamespaces.filter((ns) => ns.toLowerCase().includes(search.toLowerCase()));
-  const failedClusters = (result.clusters || []).filter((c) => c.status !== "ok");
 
   return (
     <div className="space-y-3">
+      {cache && <CacheBadge fetchedAt={cache.fetchedAt} stale={cache.stale} onRediscover={onRediscover} busy={busy} />}
       {failedClusters.length > 0 && (
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
-          Bazı cluster'lara erişilemedi: {failedClusters.map((c) => c.cluster_name).join(", ")}
+          Bazı cluster'lara erişilemedi: {failedClusters.join(", ")}
         </div>
       )}
       <div className="flex items-center justify-between">
@@ -72,6 +88,16 @@ const NamespacePickerStep: React.FC<{ result: OcpNamespaceDiscoveryResult; onSel
           ))
         )}
       </div>
+      {/* Liste canlı taramadan geldiyse rozet yok — tazeleme yolu yine de sunulur. */}
+      {!cache && onRediscover && (
+        <button
+          onClick={onRediscover}
+          disabled={busy}
+          className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+        >
+          Aradığınız namespace listede yok mu? Yeniden tara
+        </button>
+      )}
     </div>
   );
 };

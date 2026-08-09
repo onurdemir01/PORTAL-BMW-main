@@ -1,7 +1,10 @@
 // src/components/admin/tabs/OpsxConfigTab.tsx — Admin > OpsX Yapılandırma.
 //
 // Burada YÖNETİLEN: OpsX'in AWX job'ına gönderdiği extra_vars anahtar adları, sunucu
-// listesi ayıracı ve her çalıştırmaya eklenecek sabit değişkenler.
+// listesi ayıracı ve her çalıştırmaya eklenecek sabit değişkenler. Openshift bölümündeki
+// terminalHost*/namespaceKey/appNameKey/clustersKey/clusterListStyle alanları artık OpsX
+// tarafından KULLANILMIYOR (OpsX kendi çalıştırmasında sadece env/oc_cluster/oc_input
+// gönderir) — ama aynı blob'u Telnet modülü paylaştığı için burada düzenlenebilir kalır.
 //
 // Burada YÖNETİLMEYEN: hangi AWX sunucusu / hangi job template'i. Onlar
 // Admin > Playbook Kayıtları ekranında (opsx_legacy_operation ve
@@ -18,10 +21,17 @@ interface PlatformConfig {
   // Legacy
   applicationKey?: string;
   operationKey?: string;
-  // Openshift
+  // Openshift — OpsX'in KENDI /api/opsx/run yolu
   envKey?: string;
   ocClusterKey?: string;
   ocInputKey?: string;
+  // Openshift — SADECE Telnet icin paylasilan alanlar (bkz. dosya basi notu)
+  terminalHostKey?: string;
+  terminalHostsKey?: string;
+  namespaceKey?: string;
+  appNameKey?: string;
+  clustersKey?: string;
+  clusterListStyle?: "joined" | "perCluster";
   // Ortak
   extraVars: string;
   separator: string;
@@ -41,9 +51,19 @@ const KEY_FIELDS: Record<Platform, { field: keyof PlatformConfig; label: string 
   ],
 };
 
+// Telnet paylaşımlı alanları — OpsX bunları göstermez/kullanmaz ama Telnet'in OpenShift
+// akışı hâlâ bu blob'dan okuduğu için burada ayrı bir grupta düzenlenebilir kalır.
+const TELNET_SHARED_FIELDS: { field: keyof PlatformConfig; label: string }[] = [
+  { field: "terminalHostKey", label: "Jump server (bastion) değişkeni" },
+  { field: "terminalHostsKey", label: "Jump server listesi değişkeni" },
+  { field: "namespaceKey", label: "Namespace değişkeni" },
+  { field: "appNameKey", label: "Uygulama adı değişkeni" },
+  { field: "clustersKey", label: "Cluster listesi değişkeni" },
+];
+
 const SEPARATOR_HELP: Record<Platform, string> = {
   legacy: "Birden fazla sunucu seçildiğinde AWX'in limit alanında aralarına konur.",
-  openshift: "Kullanılmıyor (oc_input içindeki çiftler her zaman \";\" ile ayrılır).",
+  openshift: "OpsX'in oc_input çiftleri her zaman \";\" ile ayrılır (bu ayıraç kullanılmaz); Telnet'in cluster_name listesinde kullanılır.",
 };
 
 interface TargetInfo {
@@ -190,6 +210,59 @@ export default function OpsxConfigTab() {
               </div>
             )}
 
+            {plat === "openshift" && (
+              <details className="border border-[var(--border)] rounded-lg p-3">
+                <summary className="text-xs font-medium cursor-pointer select-none" style={{ color: "var(--text-secondary)" }}>
+                  Telnet ile paylaşılan alanlar (OpsX bunları kullanmaz)
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <p className="text-xs px-2 py-1.5 rounded-lg bg-amber-50 text-amber-800">
+                    ⚠ Bu alanlar <strong>OpsX'te artık kullanılmıyor</strong> — OpsX her zaman
+                    env/oc_cluster/oc_input gönderir. Aynı yapılandırma blob'unu{" "}
+                    <strong>Telnet</strong> modülü de paylaştığı için burada kalır; değiştirmeden
+                    önce Telnet'in OpenShift akışının aynı sözleşmeyi beklediğinden emin olun.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {TELNET_SHARED_FIELDS.map(({ field, label }) => (
+                      <div key={String(field)}>
+                        <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                          {label}
+                        </label>
+                        <input
+                          value={String(c[field] ?? "")}
+                          onChange={(e) => update(plat, field, e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-sm font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                      Cluster listesi biçimi (Telnet)
+                    </label>
+                    <select
+                      value={c.clusterListStyle ?? "joined"}
+                      onChange={(e) => update(plat, "clusterListStyle", e.target.value)}
+                      className="px-2.5 py-1.5 text-sm border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
+                    >
+                      <option value="joined">Birleşik (tek öğe, cluster adları ayıraçla)</option>
+                      <option value="perCluster">Cluster başına (her cluster kendi jump server'ı ile)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                      Cluster listesi ayıracı (Telnet)
+                    </label>
+                    <input
+                      value={c.separator}
+                      onChange={(e) => update(plat, "separator", e.target.value)}
+                      className="w-24 px-2.5 py-1.5 text-sm font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
+                    />
+                  </div>
+                </div>
+              </details>
+            )}
+
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
                 Ek sabit değişkenler (opsiyonel)
@@ -204,18 +277,16 @@ export default function OpsxConfigTab() {
               <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
                 Her satır <span className="font-mono">anahtar: değer</span> biçiminde. Her
                 çalıştırmaya otomatik eklenir; kullanıcı bunları görmez ve değiştiremez.
-                Yukarıdaki üç değişkenle aynı adı taşıyan satırlar ezilir.
+                Yukarıdaki değişkenlerle aynı adı taşıyan satırlar ezilir.
               </p>
             </div>
 
-            {/* Kaydedilecek biçimin canlı önizlemesi — admin ne göndereceğini
-                tahmin etmek zorunda kalmasın. */}
             {/* AWX'e gidecek gövdenin canlı önizlemesi — admin ne göndereceğini
                 tahmin etmek zorunda kalmasın. Legacy'de sunucu listesi ÜST SEVİYEDE
                 `limit` alanında, Openshift'te ise her şey extra_vars içinde. */}
             <div className="bg-[var(--bg-elevated)] rounded-lg p-3">
               <div className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>
-                AWX'e gidecek gövde (örnek):
+                OpsX'in AWX'e gidecek gövdesi (örnek):
               </div>
               <pre className="text-xs font-mono whitespace-pre-wrap break-all">
 {plat === "legacy"

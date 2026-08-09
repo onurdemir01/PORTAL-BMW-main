@@ -162,14 +162,52 @@ test('jobs.pollJob(): terminal duruma ulaşınca artifacts.logx_result DB\'ye ya
 test('jobs.pollJob(): job terminal ama artifacts.logx_result YOKSA hata mesajıyla işaretlenir (sessizce başarılı sayılmaz)', async (t) => {
   t.mock.method(runner, 'getJobStatusOnServer', async () => ({ status: 'successful', artifacts: {} }));
   let capturedParams = null;
-  t.mock.method(db, 'query', async (_sql, params) => {
-    capturedParams = params;
-    return { rows: [{ id: 1, status: 'successful', artifacts_json: null, error_message: params[2] }] };
+  // NOT: pollJob ayrica audit.log() cagirir (teknik ayrinti kaydi) ve o da db.query
+  // kullanir — bu yuzden YALNIZ job UPDATE sorgusunun parametreleri yakalanir.
+  t.mock.method(db, 'query', async (sql, params) => {
+    if (/UPDATE logx_v2_jobs/i.test(sql)) {
+      capturedParams = params;
+      return { rows: [{ id: 1, status: 'successful', artifacts_json: null, error_message: params[2] }] };
+    }
+    return { rows: [] };
   });
   const job = { id: 1, status: 'running', awxServerId: 1, awxJobId: 999 };
-  await jobs.pollJob(job);
+  const out = await jobs.pollJob(job);
   assert.ok(capturedParams[1] === null, 'artifacts_json null yazılmalı');
-  assert.match(capturedParams[2], /set_stats/, 'hata mesajı playbook yapılandırma sorununa işaret etmeli');
+  // Kullanıcıya giden metin SADE; playbook/set_stats teşhisi artık teknik ayrıntıda.
+  assert.match(capturedParams[2], /İş No: 999/, 'kullanıcı mesajı iş numarası taşımalı');
+  assert.match(out.technicalDetail, /set_stats/, 'teknik ayrıntı playbook yapılandırma sorununa işaret etmeli');
+});
+
+// ── Kullaniciya gosterilen hata metni: teknik jargon YOK, is no VAR ──────────────
+// Son kullanici Ansible/AWX bilmek zorunda degil; teknik ayrinti ayri alanda tasinir.
+
+test('buildUserFacingJobError(): başarısız job — sade metin, iş no ve yöneticiye yönlendirme içerir', () => {
+  const msg = jobs.buildUserFacingJobError({ awxJobId: 3203029 }, { status: 'failed' });
+  assert.match(msg, /İş No: 3203029/);
+  assert.match(msg, /yöneticinize başvurun/i);
+  for (const jargon of ['artifacts', 'set_stats', 'playbook', 'inventory', 'AWX']) {
+    assert.ok(!msg.includes(jargon), `kullanıcı mesajında teknik terim OLMAMALI: ${jargon}`);
+  }
+});
+
+test('buildUserFacingJobError(): başarılı ama sonuçsuz job — farklı ama yine sade metin', () => {
+  const msg = jobs.buildUserFacingJobError({ awxJobId: 42 }, { status: 'successful' });
+  assert.match(msg, /İş No: 42/);
+  assert.match(msg, /sonuç alınamadı/i);
+  assert.ok(!msg.includes('set_stats'));
+});
+
+test('buildTechnicalJobDetail(): yönetici metni teşhis için gereken tüm alanları taşır', () => {
+  const detail = jobs.buildTechnicalJobDetail(
+    { awxJobId: 999, awxServerId: 2 },
+    { status: 'failed', playbook: 'p.yml', inventory: 'inv' },
+    { top: [], data: [], ansibleStatsData: [] }
+  );
+  assert.match(detail, /jobId=999/);
+  assert.match(detail, /serverId=2/);
+  assert.match(detail, /playbook=p\.yml/);
+  assert.match(detail, /set_stats/);
 });
 
 // ── downloads.cjs — IDOR-direncli token uretimi ────────────────────────────────
@@ -228,13 +266,19 @@ test('ocp.selectClusters(): admin tarafından tanımlanmamış bir cluster redde
   );
 });
 
-test('ocp.selectClusters(): terminal host tanımlı değilse job hiç launch edilmeden reddedilir', async (t) => {
+// Bastion cozumlemesi artik CLUSTER seviyesinde (cluster kolonu > tenant/env yedegi):
+// ikisi de yoksa cluster `missing` doner ve istek job launch EDILMEDEN 400 ile reddedilir.
+test('ocp.selectClusters(): hicbir jump server cozulemezse job hic launch edilmeden reddedilir', async (t) => {
   t.mock.method(admin, 'clusterExists', async () => true);
-  t.mock.method(admin, 'getTerminalHost', async () => null);
+  t.mock.method(admin, 'resolveTerminalHosts', async (env, tenant, names) => ({ hosts: {}, missing: [...names] }));
   const requestRow = { request_id: 'r1' };
   await assert.rejects(
     () => ocp.selectClusters(requestRow, 'dev', 'ark', ['gbocptest1']),
-    (err) => { assert.equal(err.status, 400); return true; }
+    (err) => {
+      assert.equal(err.status, 400);
+      assert.match(err.message, /gbocptest1/, 'hangi cluster(lar)in bastion\'siz oldugu mesajda gecmeli');
+      return true;
+    }
   );
 });
 

@@ -82,50 +82,6 @@ async function resolveTarget(platform) {
 // status ise canli bir Ansible sorgusuyla DEGIL, dogrudan envanterden (MWAppsInventory.status,
 // "running"/"stopped") okunur — daha once bir playbook tetikleyip polling yapan
 // /api/opsx/status-check yaklasimi TERK EDILDI, cunku bu deger zaten envanterde hazir.
-// env+tenant secimine karsilik gelen GERCEK cluster isimleri (ocp_cluster_index'ten,
-// LogX'in kullandigi AYNI katalog). Openshift_Inventory tablosu satirlarini bu isimlerle
-// filtrelemek icin kullanilir — tablo tenant/env bilmiyor, yalniz gercek cluster adini.
-async function resolveClusterNames(env, tenant) {
-  const adminData = require('../logx/v2/admin.cjs');
-  const tree = await adminData.getClusterTree();
-  return tree?.[env]?.[tenant] || [];
-}
-
-// Openshift_Inventory'den (dbo.Openshift_Inventory: cluster, namespace, application)
-// secilen env/tenant'a ait cluster'lardaki namespace/uygulama listelerini okur. Envanter
-// gunluk scheduled job ile beslenir (bkz. openshift_inventory.yml) — burasi salt-okunur,
-// hizli bir SQL sorgusu; canli bir AWX job'i tetiklenmez.
-async function namespacesForCluster(env, tenant) {
-  const clusterNames = await resolveClusterNames(env, tenant);
-  if (!clusterNames.length) return [];
-  const pool = await inventoryDb.getPool();
-  if (!pool) return [];
-  const req = pool.request();
-  clusterNames.forEach((c, i) => req.input(`c${i}`, c));
-  const placeholders = clusterNames.map((_, i) => `@c${i}`).join(', ');
-  const result = await req.query(
-    `SELECT DISTINCT namespace FROM dbo.Openshift_Inventory WHERE cluster IN (${placeholders}) ORDER BY namespace`
-  );
-  return result.recordset.map((r) => String(r.namespace || '').trim()).filter(Boolean);
-}
-
-async function appsForNamespace(env, tenant, namespace) {
-  const ns = String(namespace || '').trim();
-  if (!ns) return [];
-  const clusterNames = await resolveClusterNames(env, tenant);
-  if (!clusterNames.length) return [];
-  const pool = await inventoryDb.getPool();
-  if (!pool) return [];
-  const req = pool.request();
-  req.input('ns', ns);
-  clusterNames.forEach((c, i) => req.input(`c${i}`, c));
-  const placeholders = clusterNames.map((_, i) => `@c${i}`).join(', ');
-  const result = await req.query(
-    `SELECT DISTINCT application FROM dbo.Openshift_Inventory WHERE namespace = @ns AND cluster IN (${placeholders}) ORDER BY application`
-  );
-  return result.recordset.map((r) => String(r.application || '').trim()).filter(Boolean);
-}
-
 async function hostsForApp(app) {
   const appName = String(app || '').trim();
   if (!appName) {
@@ -150,6 +106,65 @@ async function hostsForApp(app) {
     }));
 }
 
+// env+tenant secimine karsilik gelen GERCEK cluster isimleri (ocp_cluster_index'ten,
+// LogX'in kullandigi AYNI katalog). Gercek bmw_openshift_jobs playbook'lari `hosts:
+// "{{ oc_cluster }}_{{ env }}"` ile TUM bu cluster'lari TEK grupta hedefler — bu yuzden
+// OpsX artik tek tek cluster_name secmez, sadece bu isimleri namespace/app onbellegini
+// (ocp-cache.cjs) sorgulamak icin kullanir.
+async function resolveClusterNames(env, tenant) {
+  const adminData = require('../logx/v2/admin.cjs');
+  const tree = await adminData.getClusterTree();
+  return tree?.[env]?.[tenant] || [];
+}
+
+// LogX v2'nin paylasimli kesif onbellegini (ocp_namespace_cache/ocp_app_cache,
+// bkz. server/logx/v2/ocp-cache.cjs) okur — OpsX kendi ayri bir envanter TUTMAZ, ayni
+// veriyi ayri bir tabloda ikinci kez saklamak veri sapmasina yol acardi. env/tenant'a
+// ait TUM gercek cluster'lardan gelen sonuclar birlestirilir (union); namespace-bazli
+// erisim kisitlamasi (logx_v2_restrictions) LogX ile AYNI kapidan (restrictions.cjs)
+// uygulanir — restart TETIKLEYEN bir modulde bu kontrolu atlamak LogX'ten bile daha
+// riskli olurdu.
+async function namespacesForCluster(env, tenant, user) {
+  const clusterNames = await resolveClusterNames(env, tenant);
+  if (!clusterNames.length) return [];
+  const ocpCache = require('../logx/v2/ocp-cache.cjs');
+  const restrictions = require('../logx/v2/restrictions.cjs');
+  const seen = new Set();
+  for (const clusterName of clusterNames) {
+    const out = await ocpCache.getNamespaces({ env, tenant, clusterName }).catch(() => ({ items: [] }));
+    for (const ns of out.items || []) seen.add(ns);
+  }
+  const all = [...seen].sort();
+  // filterAllowed birebir anahtar eslesmesi bekler; namespace cluster-bagimsiz secildigi
+  // icin her namespace'i HER gercek cluster adiyla ayrica kontrol ederiz — bir tanesinde
+  // bile acikca kisitlanmissa o namespace listeden dusurulur (fail-safe).
+  const finalAllowed = [];
+  for (const ns of all) {
+    const keys = clusterNames.map((c) => `${tenant}/${env}/${c}/${ns}`);
+    const ok = await restrictions.filterAllowed('ocp_namespace', keys, user);
+    if (ok.length === keys.length) finalAllowed.push(ns);
+  }
+  return finalAllowed;
+}
+
+async function appsForNamespace(env, tenant, namespace, user) {
+  const ns = String(namespace || '').trim();
+  if (!ns) return [];
+  const clusterNames = await resolveClusterNames(env, tenant);
+  if (!clusterNames.length) return [];
+  const ocpCache = require('../logx/v2/ocp-cache.cjs');
+  const restrictions = require('../logx/v2/restrictions.cjs');
+  const seen = new Set();
+  for (const clusterName of clusterNames) {
+    const resourceKey = `${tenant}/${env}/${clusterName}/${ns}`;
+    const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, user).catch(() => false);
+    if (!allowed) continue;
+    const out = await ocpCache.getApps({ env, tenant, clusterName, namespace: ns }).catch(() => ({ items: [] }));
+    for (const item of out.items || []) seen.add(item.name);
+  }
+  return [...seen].sort();
+}
+
 function initOpsX(app) {
   const express = require('express');
 
@@ -160,6 +175,14 @@ function initOpsX(app) {
     const authMod = require('../auth/index.cjs');
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
   } catch { /* auth modulu yoksa deny kalir */ }
+
+  // OpsX sayfasi kullaniciya kapaliysa GERCEK 403 (kozmetik degil): sayfa gizlense de
+  // API'ler aciktir ve URL'i bilen biri dogrudan cagirabilirdi. LogX v2 ile ayni desen
+  // (logx/v2/index.cjs). Admin route'lari ayrica requireAdmin tasir.
+  try {
+    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
+    app.use('/api/opsx', requireVisiblePrefix('OpsX'));
+  } catch { /* motor yoksa yoksay */ }
 
   // GET /api/opsx/apps?search= — LogX ile AYNI kaynak (uygulama envanteri + snapshot
   // fallback). Kod tekrarlamak yerine legacy modulunun searchApps'i kullanilir.
@@ -196,15 +219,17 @@ function initOpsX(app) {
     }
   });
 
-  // GET /api/opsx/ocp/namespaces?env=&tenant= — Openshift_Inventory'den, secilen
-  // env/tenant'a ait cluster'larda GORULMUS namespace'ler. Kullanici bunlardan secebilir
-  // ya da bilmiyorsa/envanterde henuz yoksa serbest metin girebilir (onyuz karari).
+  // GET /api/opsx/ocp/namespaces?env=&tenant= — LogX v2'nin paylasimli kesif onbellegin-
+  // den (ocp_namespace_cache), secilen env/tenant'a ait TUM gercek cluster'larda GORULMUS
+  // namespace'ler (kisitlananlar dusurulmus). Kullanici bunlardan secebilir ya da
+  // bilmiyorsa/onbellekte henuz yoksa serbest metin girebilir (onyuz karari).
   app.get('/api/opsx/ocp/namespaces', requireAuth, async (req, res) => {
     try {
       const env = String(req.query.env || '').trim();
       const tenant = String(req.query.tenant || '').trim();
       if (!env || !tenant) return res.status(400).json({ ok: false, message: 'env ve tenant gerekli.' });
-      const namespaces = await namespacesForCluster(env, tenant);
+      const user = req.session?.user || {};
+      const namespaces = await namespacesForCluster(env, tenant, user);
       res.json({ ok: true, namespaces });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -221,7 +246,8 @@ function initOpsX(app) {
       if (!env || !tenant || !namespace) {
         return res.status(400).json({ ok: false, message: 'env, tenant ve namespace gerekli.' });
       }
-      const apps = await appsForNamespace(env, tenant, namespace);
+      const user = req.session?.user || {};
+      const apps = await appsForNamespace(env, tenant, namespace, user);
       res.json({ ok: true, apps });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -395,18 +421,21 @@ function initOpsX(app) {
       if (!tree[envKey]) {
         return res.status(400).json({ ok: false, message: `Ortam tanımlı değil: ${envKey}` });
       }
-      if (!tree[envKey][tenantKey]) {
+      const clusterNames = tree[envKey][tenantKey];
+      if (!clusterNames) {
         return res.status(400).json({ ok: false, message: `Cluster tanımlı değil: ${tenantKey}` });
       }
 
       // Her cift {namespace, application} sekliyle gelir. Namespace serbest metin
-      // olabilir (kullanici biliyorsa) ya da Openshift_Inventory'den secilmis olabilir —
-      // ikisi de burada AYNI sekilde ele alinir: sadece format/bosluk dogrulanir,
-      // gercekte var olup olmadigini playbook'un kendisi (`oc get`) belirler.
+      // olabilir (kullanici biliyorsa) ya da onbellekten secilmis olabilir — ikisi de
+      // burada AYNI sekilde ele alinir: format/bosluk dogrulanir, gercekte var olup
+      // olmadigini playbook'un kendisi (`oc get`) belirler.
       if (!Array.isArray(pairs) || pairs.length === 0) {
         return res.status(400).json({ ok: false, message: 'En az bir namespace/uygulama çifti eklenmeli.' });
       }
       const cleanPairs = [];
+      const restrictions = require('../logx/v2/restrictions.cjs');
+      const user = req.session?.user || {};
       for (const p of pairs) {
         const ns = String(p?.namespace || '').trim();
         const appN = String(p?.application || '').trim();
@@ -415,6 +444,20 @@ function initOpsX(app) {
         }
         if (ns.includes(',') || ns.includes(';') || appN.includes(',') || appN.includes(';')) {
           return res.status(400).json({ ok: false, message: 'Namespace/uygulama adı "," veya ";" içeremez.' });
+        }
+        // YETKI KONTROLU: bu tenant/env grubundaki HERHANGI bir gercek cluster icin bu
+        // namespace acikca kisitlanmissa (LogX v2 > Erisim Kisitlamalari) tum istek
+        // reddedilir — restart calistiran bir modulde bunu atlamak LogX'ten (salt log
+        // indirme) bile daha riskli olurdu. fail-safe: tek bir kisitlama tum grubu kapatir.
+        for (const clusterName of clusterNames) {
+          const resourceKey = `${tenantKey}/${envKey}/${clusterName}/${ns}`;
+          const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, user).catch(() => false);
+          if (!allowed) {
+            return res.status(403).json({
+              ok: false,
+              message: `"${ns}" namespace'i için erişim yetkiniz yok — ekibiniz bu kaynağı kısıtlamış olabilir.`,
+            });
+          }
         }
         cleanPairs.push(`${ns},${appN}`);
       }

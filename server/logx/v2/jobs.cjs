@@ -8,11 +8,13 @@ const path = require('path');
 const db = require('../../db/index.cjs');
 const playbookRegistry = require('../../ansible/playbook-registry.cjs');
 const runner = require('../../ansible/runner.cjs');
+const audit = require('../audit.cjs');
 
 const JOB_KEY_BY_TYPE = {
   legacy_discovery: 'logx_legacy_discovery',
   legacy_transfer: 'logx_legacy_transfer',
   ocp_namespace_discovery: 'logx_ocp_namespace_discovery',
+  ocp_app_discovery: 'logx_ocp_app_discovery',
   ocp_discover_fetch: 'logx_ocp_discover_fetch',
 };
 
@@ -216,6 +218,36 @@ async function listJobsForRequest(requestId) {
   return rows.map(normalizeJob);
 }
 
+// KULLANICIYA gosterilen hata metni. Son kullanici Ansible/AWX bilmek ZORUNDA DEGIL:
+// mesaj sade tutulur, is numarasi verilir ve yoneticiye yonlendirilir. Teknik ayrinti
+// ayri bir metinde (buildTechnicalJobDetail) uretilir; kullanici isterse ayni ekrandaki
+// cikti panelinden ham Ansible loguna bakabilir.
+// Saf fonksiyon — dogrudan test edilir.
+function buildUserFacingJobError(job, live) {
+  const jobNo = job.awxJobId;
+  if (live.status === 'failed' || live.status === 'error') {
+    return `İşlem tamamlanamadı (İş No: ${jobNo}). Otomasyon tarafında beklenmeyen bir hata oluştu. `
+         + `Lütfen bu iş numarasıyla birlikte sistem yöneticinize başvurun. `
+         + `Teknik ayrıntılar aşağıdaki çıktı panelindedir.`;
+  }
+  if (live.status === 'canceled') {
+    return `İşlem iptal edildi (İş No: ${jobNo}).`;
+  }
+  // Terminal ama beklenen sonucu uretmemis (ornegin playbook set_stats adimina hic ulasmamis).
+  return `İşlem tamamlandı ancak sonuç alınamadı (İş No: ${jobNo}). `
+       + `Lütfen bu iş numarasıyla birlikte sistem yöneticinize başvurun. `
+       + `Teknik ayrıntılar aşağıdaki çıktı panelindedir.`;
+}
+
+// YONETICI/destek icin teknik ayrinti. Kullaniciya gosterilmez; audit'e yazilir ve
+// /jobs/:id/status yanitinda YALNIZCA Admin rolune eklenir.
+function buildTechnicalJobDetail(job, live, keyInfo) {
+  return `Yapılandırılmış çıktı bulunamadı (beklenen: artifacts.logx_result veya artifacts.data.logx_result). `
+       + `Mevcut anahtarlar: top=[${keyInfo.top.join(', ')}], data=[${keyInfo.data.join(', ')}], ansible_stats.data=[${keyInfo.ansibleStatsData.join(', ')}]. `
+       + `AWX ayrıntısı: jobId=${job.awxJobId}, serverId=${job.awxServerId}, status=${live.status}, playbook=${live.playbook || '-'}, inventory=${live.inventory || '-'}. `
+       + `Job başarısızsa ham Ansible çıktısına bakın; başarılı görünüyorsa playbook'un set_stats adımını ve AWX template'in doğru playbook'a bağlı olduğunu kontrol edin.`;
+}
+
 // AWX'ten guncel durumu ceker, terminal durumdaysa logx_v2_jobs'i artifacts ile gunceller.
 // Zaten terminal durumdaki bir job'i tekrar AWX'e sormaz (cache'lenmis satiri doner).
 async function pollJob(job) {
@@ -231,12 +263,20 @@ async function pollJob(job) {
 
   const artifacts = extractLogxResultFromArtifacts(live.artifacts);
   const keyInfo = summarizeArtifactKeys(live.artifacts);
-  const errorMessage = artifacts
-    ? null
-    : `Job sonlandı ancak yapılandırılmış çıktı bulunamadı (beklenen: artifacts.logx_result veya artifacts.data.logx_result). `
-      + `Mevcut anahtarlar: top=[${keyInfo.top.join(', ')}], data=[${keyInfo.data.join(', ')}], ansible_stats.data=[${keyInfo.ansibleStatsData.join(', ')}]. `
-      + `AWX ayrıntısı: jobId=${job.awxJobId}, serverId=${job.awxServerId}, status=${live.status}, playbook=${live.playbook || '-'}, inventory=${live.inventory || '-'}. `
-      + `Playbook set_stats adımını ve AWX template'in doğru playbook'a bağlı olduğunu kontrol edin.`;
+  const errorMessage = artifacts ? null : buildUserFacingJobError(job, live);
+  const technicalDetail = artifacts ? null : buildTechnicalJobDetail(job, live, keyInfo);
+
+  if (technicalDetail) {
+    // Teknik ayrinti DB semasina EKLENMEZ (yeni kolon yok); kalici iz audit'te ve
+    // asil kaynak olan AWX stdout'unda kalir (bkz. getJobOutput).
+    audit.log({
+      username: 'system',
+      action: 'v2_job_failed',
+      result: live.status,
+      detail: technicalDetail,
+    }).catch(() => {});
+  }
+
   const { rows } = await db.query(
     `UPDATE logx_v2_jobs
        SET status = $1, artifacts_json = $2, finished_at = GETUTCDATE(), error_message = $3
@@ -244,7 +284,7 @@ async function pollJob(job) {
      WHERE id = $4`,
     [live.status, artifacts ? JSON.stringify(artifacts) : null, errorMessage, job.id]
   );
-  return normalizeJob(rows[0]);
+  return { ...normalizeJob(rows[0]), technicalDetail };
 }
 
 // Calisan bir job'i AWX'te iptal eder ve DB satirini `canceled` durumuna ceker. Zaten
@@ -288,4 +328,8 @@ function normalizeJob(row) {
   };
 }
 
-module.exports = { launchJob, getJobById, listJobsForRequest, pollJob, cancelJob, getJobOutput, TERMINAL_STATUSES };
+module.exports = {
+  launchJob, getJobById, listJobsForRequest, pollJob, cancelJob, getJobOutput, TERMINAL_STATUSES,
+  // saf yardimcilar — birim testleri icin acildi (DB/AWX gerektirmez)
+  buildUserFacingJobError, buildTechnicalJobDetail,
+};

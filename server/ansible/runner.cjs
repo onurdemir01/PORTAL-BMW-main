@@ -758,13 +758,24 @@ function initAnsibleRunner(app) {
     // auth modulu yoksa deny kalir
   }
 
+  // "Ansible" SAYFASINA ozgu uclar icin gercek server-side gorunurluk kontrolu: sayfa
+  // kullaniciya kapatilsa bile bu API'ler aciktir ve URL'i bilen biri cagirabilirdi.
+  //
+  // DIKKAT: /api/ansible prefix'inin TAMAMI kapatilamaz — /ss/*, /survey/*,
+  // /awx/recent-jobs gibi uclar Self Service sayfasi ve Dashboard tarafindan, Ansible
+  // sayfasi gorunmese de kullanilir. Bu yuzden gate SAYFAYA OZGU uclara tek tek konur.
+  let requireAnsiblePage = (req, res, next) => next();
+  try {
+    requireAnsiblePage = require("../auth/visibility.cjs").requireVisible("Ansible");
+  } catch { /* motor yoksa gecis serbest (mevcut davranis) */ }
+
   // GET /api/ansible/awx/health — GERCEK AWX baglanti kontrolu (actions.md #8).
   // Onceden bu ucu yalniz env/DB'de yapilandirma VAR MI kontrol ediyordu, AWX'e hic
   // baglanmiyordu — frontend'in gostermeye calistigi url/version alanlari hep boyle
   // olu kalmisti. Artik her yapilandirilmis sunucuya gercek bir /api/v2/ping/ atilir,
   // sonuc (ulasilabilirlik, kimlik dogrulama, sure, versiyon) hem yanitta doner hem
   // (DB'den yuklenmis sunucular icin) ansible_awx_servers'a kalici yazilir.
-  app.get("/api/ansible/awx/health", requireAuth, async (req, res) => {
+  app.get("/api/ansible/awx/health", requireAuth, requireAnsiblePage, async (req, res) => {
     const servers = getServers();
     if (servers.length === 0) {
       return res.json({ ok: false, configured: false, serverCount: 0, servers: [], message: "Hiçbir AWX sunucusu yapılandırılmamış." });
@@ -879,7 +890,7 @@ function initAnsibleRunner(app) {
 
   // GET /api/ansible/templates/:serverId — templates for a specific server
   // F-09: ?search=query filters by name/description
-  app.get("/api/ansible/templates/:serverId", requireAuth, async (req, res) => {
+  app.get("/api/ansible/templates/:serverId", requireAuth, requireAnsiblePage, async (req, res) => {
     const server = getServerById(req.params.serverId);
     if (!server) return res.status(404).json({ ok: false, message: "Sunucu bulunamadı." });
     if (!server.token && !(server.user && server.password)) {
@@ -906,14 +917,14 @@ function initAnsibleRunner(app) {
 
   // POST /api/ansible/clusters — admin, yeni cluster ekle
   app.post("/api/ansible/clusters", requireAuth, requireAdmin, async (req, res) => {
-    const { name, display, env, apiUrl, consoleUrl, token, description, namespace, jumpHost } = req.body || {};
+    const { name, display, env, apiUrl, consoleUrl, token, description, namespace, jumpHost, tenant } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ ok: false, message: "name zorunlu." });
     }
     let cluster;
     try {
       cluster = await addOcpCluster({
-        name, display, env, apiUrl, consoleUrl, token, description, namespace, jumpHost,
+        name, display, env, apiUrl, consoleUrl, token, description, namespace, jumpHost, tenant,
         createdBy: req.session?.user?.username || null,
       });
     } catch (e) {
