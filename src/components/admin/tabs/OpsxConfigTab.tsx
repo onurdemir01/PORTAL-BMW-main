@@ -19,10 +19,9 @@ interface PlatformConfig {
   applicationKey?: string;
   operationKey?: string;
   // Openshift
-  terminalHostKey?: string;
-  namespaceKey?: string;
-  appNameKey?: string;
-  clustersKey?: string;
+  envKey?: string;
+  ocClusterKey?: string;
+  ocInputKey?: string;
   // Ortak
   extraVars: string;
   separator: string;
@@ -36,16 +35,15 @@ const KEY_FIELDS: Record<Platform, { field: keyof PlatformConfig; label: string 
     { field: "operationKey", label: "İşlem değişkeni" },
   ],
   openshift: [
-    { field: "terminalHostKey", label: "Terminal host değişkeni" },
-    { field: "namespaceKey", label: "Namespace değişkeni" },
-    { field: "appNameKey", label: "Uygulama adı değişkeni" },
-    { field: "clustersKey", label: "Cluster listesi değişkeni" },
+    { field: "envKey", label: "Ortam değişkeni" },
+    { field: "ocClusterKey", label: "Cluster (tenant) değişkeni" },
+    { field: "ocInputKey", label: "Namespace/uygulama girdisi değişkeni" },
   ],
 };
 
 const SEPARATOR_HELP: Record<Platform, string> = {
   legacy: "Birden fazla sunucu seçildiğinde AWX'in limit alanında aralarına konur.",
-  openshift: "Birden fazla cluster seçildiğinde cluster_name içinde aralarına konur.",
+  openshift: "Kullanılmıyor (oc_input içindeki çiftler her zaman \";\" ile ayrılır).",
 };
 
 interface TargetInfo {
@@ -176,19 +174,21 @@ export default function OpsxConfigTab() {
               ))}
             </div>
 
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
-                Sunucu listesi ayıracı
-              </label>
-              <input
-                value={c.separator}
-                onChange={(e) => update(plat, "separator", e.target.value)}
-                className="w-24 px-2.5 py-1.5 text-sm font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
-              />
-              <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-                {SEPARATOR_HELP[plat]} Varsayılan virgül.
-              </p>
-            </div>
+            {plat === "legacy" && (
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                  Sunucu listesi ayıracı
+                </label>
+                <input
+                  value={c.separator}
+                  onChange={(e) => update(plat, "separator", e.target.value)}
+                  className="w-24 px-2.5 py-1.5 text-sm font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
+                />
+                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  {SEPARATOR_HELP[plat]} Varsayılan virgül.
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
@@ -228,12 +228,9 @@ export default function OpsxConfigTab() {
     }, null, 2)
   : JSON.stringify({
       extra_vars: {
-        [c.terminalHostKey || "terminal_host"]: "GBAOCP01",
-        [c.namespaceKey || "namespace"]: "das-trading-management-qa",
-        [c.appNameKey || "app_name"]: "dropcopy-integration-v0",
-        [c.clustersKey || "ocp_clusters"]: [
-          { env: "qa", tenant: "ark", cluster_name: `gbocpqa1${c.separator}gbocpqa2` },
-        ],
+        [c.envKey || "env"]: "qa",
+        [c.ocClusterKey || "oc_cluster"]: "ark",
+        [c.ocInputKey || "oc_input"]: "das-trading-management-qa,dropcopy-integration-v0;another-ns,another-app",
       },
     }, null, 2)}
               </pre>

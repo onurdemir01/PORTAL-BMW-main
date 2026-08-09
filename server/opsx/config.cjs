@@ -18,7 +18,9 @@ const BLOB_NAME = 'opsx:params';
 // Varsayilanlar kullanicinin ilk sartnamesiyle ayni (application / limit / operation).
 // Legacy ve Openshift govdeleri YAPISAL OLARAK farkli oldugu icin alan setleri de farkli:
 //   Legacy    -> extra_vars: { application, operation };  sunucu listesi AWX'in `limit` alaninda
-//   Openshift -> extra_vars: { terminal_host, namespace, app_name, ocp_clusters[] }; limit YOK
+//   Openshift -> extra_vars: { env, oc_cluster, oc_input }; limit YOK. oc_input coklu
+//   namespace/uygulama ciftini "ns1,app1;ns2,app2" formatinda tasir (bkz. bmw_openshift_jobs
+//   production playbook'lariyla ayni sartname).
 const DEFAULTS = Object.freeze({
   legacy: {
     applicationKey: 'application',
@@ -29,12 +31,11 @@ const DEFAULTS = Object.freeze({
     separator: ',',
   },
   openshift: {
-    terminalHostKey: 'terminal_host',
-    namespaceKey: 'namespace',
-    appNameKey: 'app_name',
-    clustersKey: 'ocp_clusters',
+    envKey: 'env',
+    ocClusterKey: 'oc_cluster',
+    ocInputKey: 'oc_input',
     extraVars: '',
-    // Coklu cluster secimindeki cluster_name ayiraci.
+    // Coklu namespace/uygulama ciftleri arasindaki ayirac (oc_input icinde ";").
     separator: ',',
   },
 });
@@ -42,7 +43,7 @@ const DEFAULTS = Object.freeze({
 // Hangi platformda hangi anahtar alanlari duzenlenebilir.
 const KEY_FIELDS = Object.freeze({
   legacy: ['applicationKey', 'operationKey'],
-  openshift: ['terminalHostKey', 'namespaceKey', 'appNameKey', 'clustersKey'],
+  openshift: ['envKey', 'ocClusterKey', 'ocInputKey'],
 });
 
 // extra_vars anahtarlari playbook'a AYNEN gecer — bicim kontrolu olmadan serbest metin

@@ -24,6 +24,20 @@ export interface OpsxOperationDef {
   label: string;
 }
 
+// Openshift bacağındaki 4 işlem butonu — sadece "enabled: true" olan tıklanabilir.
+export type OpsxOcpOperation = "restart" | "threaddump" | "heapdump" | "tcpdump";
+export interface OpsxOcpOperationDef {
+  key: OpsxOcpOperation;
+  label: string;
+  enabled: boolean;
+}
+
+// oc_input'a giden tek bir namespace/uygulama çifti.
+export interface OpsxOcpPair {
+  namespace: string;
+  application: string;
+}
+
 export interface OpsxRunResult {
   ok: boolean;
   jobId: number | null;
@@ -53,13 +67,28 @@ export const opsxApi = {
   getHosts: (app: string): Promise<{ ok: boolean; hosts: OpsxHost[] }> =>
     fetch(`${BASE}/hosts?app=${encodeURIComponent(app)}`).then(safeJson),
 
-  // OpenShift ortam/cluster ağacı — LogX'in kataloğunun aynısı.
+  // OpenShift ortam/cluster ağacı — LogX'in kataloğunun aynısı. tree[env][tenant] = [cluster_name,...]
+  // Openshift bacağında artık yalnız env + tenant (oc_cluster) seçilir, tek tek cluster_name değil —
+  // gerçek playbook zaten tenant_env grubundaki TÜM cluster'ları geziyor.
   getClusters: (): Promise<{ ok: boolean; tree: Record<string, Record<string, string[]>> }> =>
     fetch(`${BASE}/clusters`).then(safeJson),
 
   // Desteklenen işlemler sunucudan gelir (ön yüz hardcode etmesin).
   getOperations: (): Promise<{ ok: boolean; operations: OpsxOperationDef[] }> =>
     fetch(`${BASE}/operations`).then(safeJson),
+
+  // Openshift_Inventory'den, seçilen env/tenant'a ait cluster'larda görülmüş namespace'ler.
+  // Kullanıcı bunlardan seçebilir ya da bilmiyorsa serbest metin girebilir.
+  getOcpNamespaces: (env: string, tenant: string): Promise<{ ok: boolean; namespaces: string[] }> =>
+    fetch(`${BASE}/ocp/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}`).then(safeJson),
+
+  // Namespace seçildiğinde otomatik dolan, SADECE listeden seçilebilen uygulama dropdown'u.
+  getOcpApps: (env: string, tenant: string, namespace: string): Promise<{ ok: boolean; apps: string[] }> =>
+    fetch(`${BASE}/ocp/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&namespace=${encodeURIComponent(namespace)}`).then(safeJson),
+
+  // Openshift bacağındaki işlem butonları (restart/threaddump/heapdump/tcpdump) — hangisi aktif sunucudan gelir.
+  getOcpOperations: (): Promise<{ ok: boolean; operations: OpsxOcpOperationDef[] }> =>
+    fetch(`${BASE}/ocp/operations`).then(safeJson),
 
   // İşlemi tetikler. AWX job template'i tanımlı değilse sunucu 501 + açıklayıcı
   // mesaj döner (sessizce yanlış job tetiklenmez).
@@ -72,9 +101,8 @@ export const opsxApi = {
     // Openshift alanları
     env?: string;
     tenant?: string;
-    clusters?: string[];
-    namespace?: string;
-    appName?: string;
+    pairs?: OpsxOcpPair[];
+    ocOperation?: OpsxOcpOperation;
   }): Promise<OpsxRunResult> =>
     fetch(`${BASE}/run`, {
       method: "POST",

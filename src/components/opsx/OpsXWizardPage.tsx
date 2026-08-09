@@ -9,7 +9,7 @@
 // eşleşmesini ve cluster'ı envanterden YENİDEN doğrular.
 import React, { useState } from "react";
 import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import { opsxApi, type OpsxPlatform, type OpsxOperation, type OpsxRunResult } from "@/api/opsxApi";
+import { opsxApi, type OpsxPlatform, type OpsxOperation, type OpsxOcpOperation, type OpsxOcpPair, type OpsxRunResult } from "@/api/opsxApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
@@ -18,6 +18,7 @@ import JbossVersionStep from "./steps/JbossVersionStep";
 import HostSelectStep from "./steps/HostSelectStep";
 import OcpTargetStep from "./steps/OcpTargetStep";
 import OperationStep from "./steps/OperationStep";
+import OcpOperationStep from "./steps/OcpOperationStep";
 
 type Step =
   | "platform"
@@ -26,6 +27,7 @@ type Step =
   | "legacy_hosts"
   | "ocp_target"
   | "operation"
+  | "ocp_operation"
   | "done";
 
 const STEP_TITLES: Record<Step, string> = {
@@ -35,6 +37,7 @@ const STEP_TITLES: Record<Step, string> = {
   legacy_hosts: "Sunucu Seçimi",
   ocp_target: "Openshift Hedefi",
   operation: "İşlem Seçimi",
+  ocp_operation: "İşlem Seçimi",
   done: "İşlem Başlatıldı",
 };
 
@@ -46,9 +49,7 @@ const OpsXWizardPage: React.FC = () => {
   const [hosts, setHosts] = useState<string[]>([]);
   const [env, setEnv] = useState("");
   const [tenant, setTenant] = useState("");
-  const [clusters, setClusters] = useState<string[]>([]);
-  const [namespace, setNamespace] = useState("");
-  const [appName, setAppName] = useState("");
+  const [pairs, setPairs] = useState<OpsxOcpPair[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OpsxRunResult | null>(null);
@@ -69,9 +70,7 @@ const OpsXWizardPage: React.FC = () => {
     setHosts([]);
     setEnv("");
     setTenant("");
-    setClusters([]);
-    setNamespace("");
-    setAppName("");
+    setPairs([]);
     setError(null);
     setResult(null);
     setTrackedJobId(null);
@@ -98,6 +97,8 @@ const OpsXWizardPage: React.FC = () => {
         return "legacy_jboss_version";
       case "operation":
         return "legacy_hosts";
+      case "ocp_operation":
+        return "ocp_target";
       default:
         return null;
     }
@@ -111,9 +112,8 @@ const OpsXWizardPage: React.FC = () => {
     setStep(target);
   }
 
-  // Legacy: uygulama + sunucular + islem. Openshift: env/tenant/cluster + namespace +
-  // app_name (islem SEÇİMİ YOK — sartnamedeki Openshift gövdesinde `operation` alanı
-  // bulunmuyor; gerekirse Admin > OpsX Yapılandırma'dan sabit değişken olarak eklenir).
+  // Legacy: uygulama + sunucular + islem. Openshift: env/oc_cluster + oc_input (bir veya
+  // daha fazla namespace/uygulama cifti) + islem (su an SADECE restart aktif).
   async function runLegacy(operation: OpsxOperation) {
     if (busy) return;
     setBusy(true);
@@ -130,14 +130,17 @@ const OpsXWizardPage: React.FC = () => {
     }
   }
 
-  async function runOpenshift(v: { env: string; tenant: string; clusters: string[]; namespace: string; appName: string }) {
+  function submitOcpTarget(v: { env: string; tenant: string; pairs: OpsxOcpPair[] }) {
+    setEnv(v.env); setTenant(v.tenant); setPairs(v.pairs);
+    setStep("ocp_operation");
+  }
+
+  async function runOpenshift(ocOperation: OpsxOcpOperation) {
     if (busy) return;
     setBusy(true);
     setError(null);
-    setEnv(v.env); setTenant(v.tenant); setClusters(v.clusters);
-    setNamespace(v.namespace); setAppName(v.appName);
     try {
-      const r = await opsxApi.run({ platform: "openshift", ...v });
+      const r = await opsxApi.run({ platform: "openshift", env, tenant, pairs, ocOperation });
       setResult(r);
       setStep("done");
       trackJob(r);
@@ -223,11 +226,15 @@ const OpsXWizardPage: React.FC = () => {
         )}
 
         {step === "ocp_target" && (
-          <OcpTargetStep busy={busy} onSubmit={runOpenshift} />
+          <OcpTargetStep busy={busy} onSubmit={submitOcpTarget} />
         )}
 
         {step === "operation" && (
           <OperationStep summary={operationSummary} application={app} hosts={hosts} busy={busy} onSelect={runLegacy} />
+        )}
+
+        {step === "ocp_operation" && (
+          <OcpOperationStep env={env} tenant={tenant} pairs={pairs} busy={busy} onSelect={runOpenshift} />
         )}
 
         {step === "done" && result && (

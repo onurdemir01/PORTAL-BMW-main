@@ -12,9 +12,8 @@
 //
 // JOB'A GIDEN PARAMETRELER: Admin > OpsX Yapilandirma ekranindan duzenlenebilir
 // (bkz. server/opsx/config.cjs). Varsayilan esleme:
-//   application: <Uygulama Adi>
-//   limit:       <Sunucu1,Sunucu2,...>   ← ayirac da yapilandirilabilir
-//   operation:   restart | stop | start
+//   Legacy    -> application: <Uygulama Adi>, limit: <Sunucu1,Sunucu2,...>, operation: restart|stop|start
+//   Openshift -> env: <ortam>, oc_cluster: <tenant>, oc_input: "ns1,app1;ns2,app2"
 // Anahtar adlari playbook'un bekledigi isimlerle degistirilebilir; ayrica her
 // calistirmaya eklenecek sabit degiskenler tanimlanabilir.
 'use strict';
@@ -36,6 +35,18 @@ const ALLOWED_OPERATIONS = Object.freeze({
   threaddump: 'Thread dump al',
   heapdump: 'Heap dump al',
 });
+
+// Openshift bacagindaki islem secenekleri — sunucuya HICBIR sekilde `operation` olarak
+// gitmez (bkz. run() Openshift dali: extra_vars sadece env/oc_cluster/oc_input tasir).
+// SADECE restart su an aktif — digerleri onyuzde gorunur ama devre disi birakilir;
+// ileride gercek playbook destegi eklendiginde `enabled: true` yapilip run()'a islenir.
+// Sunucu tarafinda da restart DISINDA bir key kabul EDILMEZ (defence in depth).
+const OCP_OPERATIONS = Object.freeze([
+  { key: 'restart', label: 'Uygulamamı restart et', enabled: true },
+  { key: 'threaddump', label: 'Thread dump al', enabled: false },
+  { key: 'heapdump', label: 'Heap dump al', enabled: false },
+  { key: 'tcpdump', label: 'Tcpdump al', enabled: false },
+]);
 
 const REGISTRY_KEYS = Object.freeze({
   legacy: 'opsx_legacy_operation',
@@ -71,6 +82,50 @@ async function resolveTarget(platform) {
 // status ise canli bir Ansible sorgusuyla DEGIL, dogrudan envanterden (MWAppsInventory.status,
 // "running"/"stopped") okunur — daha once bir playbook tetikleyip polling yapan
 // /api/opsx/status-check yaklasimi TERK EDILDI, cunku bu deger zaten envanterde hazir.
+// env+tenant secimine karsilik gelen GERCEK cluster isimleri (ocp_cluster_index'ten,
+// LogX'in kullandigi AYNI katalog). Openshift_Inventory tablosu satirlarini bu isimlerle
+// filtrelemek icin kullanilir — tablo tenant/env bilmiyor, yalniz gercek cluster adini.
+async function resolveClusterNames(env, tenant) {
+  const adminData = require('../logx/v2/admin.cjs');
+  const tree = await adminData.getClusterTree();
+  return tree?.[env]?.[tenant] || [];
+}
+
+// Openshift_Inventory'den (dbo.Openshift_Inventory: cluster, namespace, application)
+// secilen env/tenant'a ait cluster'lardaki namespace/uygulama listelerini okur. Envanter
+// gunluk scheduled job ile beslenir (bkz. openshift_inventory.yml) — burasi salt-okunur,
+// hizli bir SQL sorgusu; canli bir AWX job'i tetiklenmez.
+async function namespacesForCluster(env, tenant) {
+  const clusterNames = await resolveClusterNames(env, tenant);
+  if (!clusterNames.length) return [];
+  const pool = await inventoryDb.getPool();
+  if (!pool) return [];
+  const req = pool.request();
+  clusterNames.forEach((c, i) => req.input(`c${i}`, c));
+  const placeholders = clusterNames.map((_, i) => `@c${i}`).join(', ');
+  const result = await req.query(
+    `SELECT DISTINCT namespace FROM dbo.Openshift_Inventory WHERE cluster IN (${placeholders}) ORDER BY namespace`
+  );
+  return result.recordset.map((r) => String(r.namespace || '').trim()).filter(Boolean);
+}
+
+async function appsForNamespace(env, tenant, namespace) {
+  const ns = String(namespace || '').trim();
+  if (!ns) return [];
+  const clusterNames = await resolveClusterNames(env, tenant);
+  if (!clusterNames.length) return [];
+  const pool = await inventoryDb.getPool();
+  if (!pool) return [];
+  const req = pool.request();
+  req.input('ns', ns);
+  clusterNames.forEach((c, i) => req.input(`c${i}`, c));
+  const placeholders = clusterNames.map((_, i) => `@c${i}`).join(', ');
+  const result = await req.query(
+    `SELECT DISTINCT application FROM dbo.Openshift_Inventory WHERE namespace = @ns AND cluster IN (${placeholders}) ORDER BY application`
+  );
+  return result.recordset.map((r) => String(r.application || '').trim()).filter(Boolean);
+}
+
 async function hostsForApp(app) {
   const appName = String(app || '').trim();
   if (!appName) {
@@ -141,12 +196,49 @@ function initOpsX(app) {
     }
   });
 
+  // GET /api/opsx/ocp/namespaces?env=&tenant= — Openshift_Inventory'den, secilen
+  // env/tenant'a ait cluster'larda GORULMUS namespace'ler. Kullanici bunlardan secebilir
+  // ya da bilmiyorsa/envanterde henuz yoksa serbest metin girebilir (onyuz karari).
+  app.get('/api/opsx/ocp/namespaces', requireAuth, async (req, res) => {
+    try {
+      const env = String(req.query.env || '').trim();
+      const tenant = String(req.query.tenant || '').trim();
+      if (!env || !tenant) return res.status(400).json({ ok: false, message: 'env ve tenant gerekli.' });
+      const namespaces = await namespacesForCluster(env, tenant);
+      res.json({ ok: true, namespaces });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/opsx/ocp/apps?env=&tenant=&namespace= — namespace secildiginde otomatik
+  // fetch edilen, SADECE bu listeden secilebilen (freetext girisi yok) uygulama dropdown'u.
+  app.get('/api/opsx/ocp/apps', requireAuth, async (req, res) => {
+    try {
+      const env = String(req.query.env || '').trim();
+      const tenant = String(req.query.tenant || '').trim();
+      const namespace = String(req.query.namespace || '').trim();
+      if (!env || !tenant || !namespace) {
+        return res.status(400).json({ ok: false, message: 'env, tenant ve namespace gerekli.' });
+      }
+      const apps = await appsForNamespace(env, tenant, namespace);
+      res.json({ ok: true, apps });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // GET /api/opsx/operations — desteklenen islemler (onyuz bunu hardcode etmesin)
   app.get('/api/opsx/operations', requireAuth, (req, res) => {
     res.json({
       ok: true,
       operations: Object.entries(ALLOWED_OPERATIONS).map(([key, label]) => ({ key, label })),
     });
+  });
+
+  // GET /api/opsx/ocp/operations — Openshift bacagindaki islem butonlari (sadece restart aktif).
+  app.get('/api/opsx/ocp/operations', requireAuth, (req, res) => {
+    res.json({ ok: true, operations: OCP_OPERATIONS });
   });
 
   // GET /api/opsx/job-status/:serverId/:jobId — tetiklenen job'in CANLI durumu ve
@@ -206,15 +298,15 @@ function initOpsX(app) {
   //   { "limit": "GBCJAP01,GBCJAP03",
   //     "extra_vars": { "application": "...", "operation": "restart" } }
   //
-  // Openshift — `limit` YOK; her sey extra_vars icinde:
-  //   { "extra_vars": { "terminal_host": "GBAOCP01",
-  //                     "namespace": "...", "app_name": "...",
-  //                     "ocp_clusters": [ { env, tenant, cluster_name } ] } }
-  //   Birden fazla cluster secilirse TEK bir ocp_clusters ogesi uretilir ve
-  //   cluster_name virgulle birlestirilir (LogX her cluster icin AYRI oge uretir —
-  //   OpsX'te sartname farkli).
+  // Openshift — `limit` YOK; her sey extra_vars icinde, gercek bmw_openshift_jobs
+  // playbook'larinin (application_rollout.yaml) bekledigi AYNI govde:
+  //   { "extra_vars": { "env": "prod", "oc_cluster": "ark",
+  //                     "oc_input": "ns1,app1;ns2,app2" } }
+  //   terminal_host YOK — playbook `hosts: "{{ oc_cluster }}_{{ env }}"` ile hedefi
+  //   kendisi cozer. oc_input, tek POST'ta birden fazla namespace/uygulama ciftini
+  //   ";" ile tasir (onyuzde birikimli eklenir — bkz. OcpTargetStep.tsx).
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
-    const { platform, application, hosts, operation, env, tenant, clusters, namespace, appName } = req.body || {};
+    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation } = req.body || {};
 
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
@@ -280,13 +372,16 @@ function initOpsX(app) {
       // ── Openshift ───────────────────────────────────────────────────────────
       const envKey = String(env || '').trim();
       const tenantKey = String(tenant || '').trim();
-      const ns = String(namespace || '').trim();
-      const appN = String(appName || '').trim();
 
-      if (!ns) return res.status(400).json({ ok: false, message: 'Namespace gerekli.' });
-      if (!appN) return res.status(400).json({ ok: false, message: 'Uygulama adı (app_name) gerekli.' });
-      if (!Array.isArray(clusters) || clusters.length === 0) {
-        return res.status(400).json({ ok: false, message: 'En az bir cluster seçilmeli.' });
+      // Su an SADECE restart aktif — sunucu tarafinda da beyaz liste kontrolu
+      // (defence in depth; onyuzde zaten disable ama client'a guvenilmez).
+      const ocOp = OCP_OPERATIONS.find((o) => o.key === ocOperation);
+      if (!ocOp || !ocOp.enabled) {
+        return res.status(400).json({ ok: false, message: 'Bu Openshift işlemi henüz kullanıma açık değil.' });
+      }
+
+      if (!envKey || !tenantKey) {
+        return res.status(400).json({ ok: false, message: 'Ortam ve cluster (tenant) gerekli.' });
       }
 
       // Secim katalog agacina karsi yeniden dogrulanir — client'in gonderdigine guvenilmez.
@@ -297,48 +392,40 @@ function initOpsX(app) {
       } catch (err) {
         return res.status(503).json({ ok: false, message: `Cluster kataloğu okunamadı: ${err.message}` });
       }
-      if (!envKey || !tree[envKey]) {
-        return res.status(400).json({ ok: false, message: `Ortam tanımlı değil: ${envKey || '(boş)'}` });
+      if (!tree[envKey]) {
+        return res.status(400).json({ ok: false, message: `Ortam tanımlı değil: ${envKey}` });
       }
-      if (!tenantKey || !tree[envKey][tenantKey]) {
-        return res.status(400).json({ ok: false, message: `Tenant tanımlı değil: ${tenantKey || '(boş)'}` });
-      }
-      const validClusters = new Set(tree[envKey][tenantKey] || []);
-      const requested = clusters.map((c) => String(c || '').trim()).filter(Boolean);
-      const notValid = requested.filter((c) => !validClusters.has(c));
-      if (notValid.length) {
-        return res.status(400).json({
-          ok: false,
-          message: `Bu cluster'lar "${envKey}/${tenantKey}" altında tanımlı değil: ${notValid.join(', ')}`,
-        });
+      if (!tree[envKey][tenantKey]) {
+        return res.status(400).json({ ok: false, message: `Cluster tanımlı değil: ${tenantKey}` });
       }
 
-      // terminal_host SUNUCUDA cozulur (ocp_terminal_host_map) — kullanici girmez,
-      // client gondermez. LogX de ayni haritayi kullanir.
-      const terminalHost = await adminData.getTerminalHost(tenantKey, envKey);
-      if (!terminalHost) {
-        return res.status(400).json({
-          ok: false,
-          message: `"${tenantKey}/${envKey}" için terminal/bastion host tanımlı değil — `
-                 + `Admin > LogX v2 Yapılandırma ekranından eklenmeli.`,
-        });
+      // Her cift {namespace, application} sekliyle gelir. Namespace serbest metin
+      // olabilir (kullanici biliyorsa) ya da Openshift_Inventory'den secilmis olabilir —
+      // ikisi de burada AYNI sekilde ele alinir: sadece format/bosluk dogrulanir,
+      // gercekte var olup olmadigini playbook'un kendisi (`oc get`) belirler.
+      if (!Array.isArray(pairs) || pairs.length === 0) {
+        return res.status(400).json({ ok: false, message: 'En az bir namespace/uygulama çifti eklenmeli.' });
+      }
+      const cleanPairs = [];
+      for (const p of pairs) {
+        const ns = String(p?.namespace || '').trim();
+        const appN = String(p?.application || '').trim();
+        if (!ns || !appN) {
+          return res.status(400).json({ ok: false, message: 'Her satırda namespace ve uygulama adı dolu olmalı.' });
+        }
+        if (ns.includes(',') || ns.includes(';') || appN.includes(',') || appN.includes(';')) {
+          return res.status(400).json({ ok: false, message: 'Namespace/uygulama adı "," veya ";" içeremez.' });
+        }
+        cleanPairs.push(`${ns},${appN}`);
       }
 
       extraVars = {
         ...staticVars,
-        [cfg.terminalHostKey]: terminalHost,
-        [cfg.namespaceKey]: ns,
-        [cfg.appNameKey]: appN,
-        [cfg.clustersKey]: [{
-          env: envKey,
-          tenant: tenantKey,
-          // Sartname: coklu secimde TEK oge, cluster_name virgulle birlesik.
-          cluster_name: requested.join(cfg.separator),
-        }],
+        [cfg.envKey]: envKey,
+        [cfg.ocClusterKey]: tenantKey,
+        [cfg.ocInputKey]: cleanPairs.join(';'),
       };
-      // Openshift govdesinde `operation` YOK (sartnamedeki ornek govdelerde gecmiyor).
-      // Gerekiyorsa Admin > OpsX Yapilandirma > "Ek sabit degiskenler" ile eklenebilir.
-      logSummary = `ns=${ns} app_name=${appN} clusters=${requested.join(',')} terminal=${terminalHost}`;
+      logSummary = `env=${envKey} oc_cluster=${tenantKey} oc_input=${cleanPairs.join(';')}`;
     }
 
     try {
