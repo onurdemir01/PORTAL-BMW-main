@@ -949,6 +949,7 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'Envanter', roles: 'Admin,User' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
+  { page_name: 'FileX', roles: 'Admin,User' },
   { page_name: 'Telnet', roles: 'Admin,User' },
   { page_name: 'Self Service', roles: 'Admin,User' },
   { page_name: 'Ansible', roles: 'Admin' },
@@ -1001,6 +1002,7 @@ const ELEMENT_SEED = [
   { element_key: 'Envanter',     element_type: 'page', parent_key: 'navgroup:envanter',    label: 'Envanter',     route: '/envanter',        sort_order: 2,  roles: ['Admin', 'User'] },
   { element_key: 'LogX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'LogX',         route: '/logx',            sort_order: 7,  roles: ['Admin', 'User'] },
   { element_key: 'OpsX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'OpsX',         route: '/opsx',            sort_order: 8,  roles: ['Admin', 'User'] },
+  { element_key: 'FileX',        element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'FileX',        route: '/filex',           sort_order: 8,  roles: ['Admin', 'User'] },
   { element_key: 'Telnet',       element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Telnet',       route: '/telnet',          sort_order: 9,  roles: ['Admin', 'User'] },
   { element_key: 'Self Service', element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Otomasyon',    route: '/self-service',    sort_order: 5,  roles: ['Admin', 'User'] },
   { element_key: 'Ansible',      element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Ansible',      route: '/ansible',         sort_order: 6,  roles: ['Admin'] },
@@ -1170,6 +1172,15 @@ const PLAYBOOK_REGISTRY_SEED = [
     description: 'ARK/Non-ARK container ortamlarindan verilen IP/Port\'a Telnet baglanti testi.',
     playbook_path: null, env_var_name: 'TELNET_OPENSHIFT_TEMPLATE_ID',
   },
+  // ── FileX — Self Servis dosya listeleme (SADECE Legacy) ──────────────────────
+  // OpsX ile AYNI desen: satir seed'den gelir, admin yalniz awx_template_id +
+  // awx_server_id doldurur. Referans playbook sozlesmesi icin bkz.
+  // server/ansible/playbooks/filex_list_files.yml basligindaki yorum.
+  {
+    key_name: 'filex_list_files', display_name: 'FileX — Dosya Listeleme (Legacy)', category: 'filex', handler: 'filex_list_files',
+    description: 'Secilen uygulamanin .ear dizinindeki (logs haric) tum dosyalari ls -la + sha512sum bilgisiyle salt-okunur listeler.',
+    playbook_path: 'server/ansible/playbooks/filex_list_files.yml', env_var_name: 'FILEX_LIST_FILES_TEMPLATE_ID',
+  },
 ];
 
 async function seedPlaybookRegistry(pool) {
@@ -1333,7 +1344,7 @@ async function migrateSelfServiceSectionsToGroups(pool) {
 async function migratePageParentKeysToNavGroups(pool) {
   const pageToGroup = {
     'Dashboard': 'navgroup:genel', 'Envanter': 'navgroup:genel',
-    'LogX': 'navgroup:otomasyon', 'OpsX': 'navgroup:otomasyon',
+    'LogX': 'navgroup:otomasyon', 'OpsX': 'navgroup:otomasyon', 'FileX': 'navgroup:otomasyon',
     'Nöbet': 'navgroup:operasyon',
     'Self Service': 'navgroup:otomasyon', 'Ansible': 'navgroup:otomasyon',
     'Performance': 'navgroup:performance',

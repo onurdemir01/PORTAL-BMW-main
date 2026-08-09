@@ -30,6 +30,7 @@ export const PAGES: PageElement[] = [
   { id: "Envanter",     label: "Envanter",     route: "/envanter"        },
   { id: "LogX",         label: "LogX",         route: "/logx"            },
   { id: "OpsX",         label: "OpsX",         route: "/opsx"            },
+  { id: "FileX",        label: "FileX",        route: "/filex"           },
   { id: "Telnet",       label: "Telnet",       route: "/telnet"          },
   // element_key ("Self Service") DEGISMEDI — portal_element_visibility kurallari ve
   // canViewPage() cagrilari bu anahtara bagli. Yalniz GORUNEN etiket "Otomasyon" oldu.
@@ -59,7 +60,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.
   // Grup etiketi "Otomasyon" -> "Self Servis"; grup ANAHTARI ("otomasyon") degismedi
   // (DB'deki nav_group element_key'i ve ona bagli kayitlar korunsun diye).
-  { id: "otomasyon",   label: "Self Servis",      itemIds: ["Self Service", "Ansible", "LogX", "OpsX", "Telnet"] },
+  { id: "otomasyon",   label: "Self Servis",      itemIds: ["Self Service", "Ansible", "LogX", "OpsX", "FileX", "Telnet"] },
   { id: "ai",          label: "AI Analist",       itemIds: ["AI Analist"] },
   { id: "kaynaklar",   label: "Yardımcı Araçlar", itemIds: ["Linkler"] },
   { id: "admin",       label: "Admin",            itemIds: ["Admin"] },

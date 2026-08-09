@@ -37,6 +37,7 @@ const DEFAULT_VISIBILITY = {
   "Self Service": ["Admin", "User"],
   "Ansible":      ["Admin"],
   "OpsX":         ["Admin", "User"],
+  "FileX":        ["Admin", "User"],
   "Telnet":       ["Admin", "User"],
   "Performance":  ["Admin", "User"],
   "AI Analist":   ["Admin", "User"],
