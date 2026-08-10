@@ -83,6 +83,7 @@ köklerin altındaki intermediate'lerdir; ihtiyaç duyulanlar fetch-ca ile zaten
 | `ERR_INVALID_URL` | URL bozuk (boşluk / birleşen satır) | `.env.local` satırlarını kontrol et — her değişken AYRI satırda, URL'de boşluk yok |
 | `ECONNRESET` (proxy tanımlıyken) | Kurum içi adres proxy'ye gidiyor, proxy kesiyor | `NO_PROXY`'ye iç domain'leri ekle |
 | `SELF_SIGNED_CERT_IN_CHAIN` | Zincirdeki kök güvenilir değil | fetch-ca + build-ca-bundle + `CORP_CA_CERT_PATH` |
+| `SELF_SIGNED_CERT_IN_CHAIN` (SADECE proxy arkasındaki servis-özel hedeflerde, ör. Smart) | Hedef bir proxy'nin (ör. `SMART_PROXY_URL`) arkasında ve proxy SSL inspection yapıyor olabilir | `fetch-ca.sh <host> <port> <outdir> <proxy_host:port>` — proxy'nin AYNI CONNECT tüneli üzerinden zinciri yakalar |
 | `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` | Sunulan zincirin issuer'ı depoda yok (tipik: SSL inspection) | Hedefin (ör. api.openai.com) zincirini fetch-ca ile çek, bundle'ı yeniden üret |
 | `AI API 429 ... quota` | TLS/ağ TAMAM — sağlayıcı kotası/bakiye | API hesabına bakiye/plan (portalda düzeltilecek şey yok) |
 | Zincirde tek sertifika (leaf) | Sunucu intermediate göndermiyor | Kök/intermediate'i IT sertifika portalından alıp `*-ca-chain.pem`'e elle ekle |

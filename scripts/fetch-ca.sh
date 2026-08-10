@@ -5,6 +5,11 @@
 # KULLANIM (kurumsal agda):
 #   bash scripts/fetch-ca.sh api.openai.com
 #   bash scripts/fetch-ca.sh dynatrace-mcp.apps-3rd-t.fw.garanti.com.tr 443 server/certs/mcp
+#   # Hedefe SADECE bir proxy uzerinden ulasiliyorsa (ör. SMART_PROXY_URL gibi
+#   # servise-ozel proxy'ler) 4. argumana proxy host:port verin — openssl CONNECT
+#   # tuneli kurar, uygulamanin gerctekte gordugu AYNI zinciri (proxy SSL inspection
+#   # yapiyorsa onun enjekte ettigi sertifika dahil) yakalamis olursunuz:
+#   bash scripts/fetch-ca.sh gbca.fw.garanti.com.tr 8443 server/certs/smart tekprxv2.fw.garanti.com.tr:80
 #
 # CIKTILAR (<outdir> altinda):
 #   certificate-N.pem      → zincirdeki her sertifika (0 = leaf)
@@ -14,19 +19,26 @@
 # Tam rehber: docs/TLS-SETUP.md
 set -euo pipefail
 
-HOST="${1:?Kullanım: fetch-ca.sh <host> [port] [outdir]}"
+HOST="${1:?Kullanım: fetch-ca.sh <host> [port] [outdir] [proxy_host:port]}"
 PORT="${2:-443}"
 SAFE_NAME=$(echo "$HOST" | tr -c 'a-zA-Z0-9.-' '_' | sed 's/_$//')
 OUTDIR="${3:-server/certs/$SAFE_NAME}"
+PROXY="${4:-}"
 
 mkdir -p "$OUTDIR"
 echo "── Hedef: $HOST:$PORT"
+[ -n "$PROXY" ] && echo "── Proxy: $PROXY"
 echo "── Cikti dizini: $OUTDIR"
 
 # -showcerts: sunucunun sundugu TUM zinciri doker (leaf + intermediate'ler;
 # kok genelde gonderilmez — eksikse IT'den alinip zincire elle eklenir)
-RAW=$(echo | openssl s_client -showcerts -servername "$HOST" -connect "$HOST:$PORT" 2>/dev/null) \
-  || { echo "✗ Bağlantı başarısız (ağ/VPN?)"; exit 1; }
+if [ -n "$PROXY" ]; then
+  RAW=$(echo | openssl s_client -proxy "$PROXY" -showcerts -servername "$HOST" -connect "$HOST:$PORT" 2>/dev/null) \
+    || { echo "✗ Bağlantı başarısız (proxy/ağ/VPN?)"; exit 1; }
+else
+  RAW=$(echo | openssl s_client -showcerts -servername "$HOST" -connect "$HOST:$PORT" 2>/dev/null) \
+    || { echo "✗ Bağlantı başarısız (ağ/VPN?)"; exit 1; }
+fi
 
 # Zinciri tek tek dosyalara ayir
 COUNT=$(grep -c 'BEGIN CERTIFICATE' <<< "$RAW" || true)
