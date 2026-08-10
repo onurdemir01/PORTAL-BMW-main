@@ -39,9 +39,14 @@ async function post(path, body, extraHeaders) {
   const auth = Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
   const target = `${cfg.baseUrl}${path}`;
   const dispatcher = buildSmartDispatcher(target);
+  // Node'un yerlesik fetch'i (bundled undici) DEGIL — dispatcher npm-undici paketinden
+  // geliyor, ikisi karisirsa ic webidl brand-check'leri patlar (gorulen hata:
+  // "webidl.util.markAsUncloneable is not a function", server/mcp/client.cjs:142-143'teki
+  // ayni ders). Dispatcher'i yaratan undici ile fetch'i cagiran undici AYNI olmali.
+  const undiciFetch = require('undici').fetch;
   let res;
   try {
-    res = await fetch(target, {
+    res = await undiciFetch(target, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${auth}`,
