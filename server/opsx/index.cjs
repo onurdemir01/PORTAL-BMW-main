@@ -365,13 +365,17 @@ function initOpsX(app) {
       }
 
       // ANTI-TOCTOU: client'in gonderdigi host listesine GUVENILMEZ — envanterden
-      // yeniden cozulur ve yalniz gercekten bu uygulamaya ait olanlar gecer.
-      let allowed;
+      // yeniden cozulur ve yalniz gercekten bu uygulamaya ait olanlar gecer. Ayni
+      // envanter satirlari jboss_version'i da tasidigi icin (asagida) client'in
+      // secim adimlarina (JbossVersionStep/HostSelectStep) da guvenilmeden yeniden
+      // turetilir.
+      let appHosts;
       try {
-        allowed = new Set((await hostsForApp(application)).map((h) => h.host.toUpperCase()));
+        appHosts = await hostsForApp(application);
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
+      const allowed = new Set(appHosts.map((h) => h.host.toUpperCase()));
       const requested = hosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean);
       const notMine = requested.filter((h) => !allowed.has(h));
       if (notMine.length) {
@@ -388,7 +392,30 @@ function initOpsX(app) {
         [cfg.applicationKey]: String(application).trim(),
         [cfg.operationKey]: operation,
       };
-      logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}`;
+
+      // jboss_version: secilen sunucularin GERCEK envanter degerinden turetilir
+      // (ör. "8.0.7" -> jboss8, "7.3.10" -> jboss7). Legacy platform hem JBoss hem
+      // WAS uygulamalarini kapsadigi icin bos/tanimsiz surum HATA sayilmaz — o
+      // durumda extra_vars'a jboss_version HIC eklenmez (opsiyonel zenginlestirme).
+      // Ayni istekte HEM 7.X HEM 8.X birlikte secilirse (karisik majorler) reddedilir
+      // — tek bir jboss_version degeri hangisini temsil edecegi belirsiz olurdu.
+      const versionByHost = new Map(appHosts.map((h) => [h.host.toUpperCase(), h.jbossVersion]));
+      const jbossMajors = new Set();
+      for (const h of requested) {
+        const major = (versionByHost.get(h) || '').match(/^(\d+)/)?.[1];
+        if (major === '7' || major === '8') jbossMajors.add(major);
+      }
+      if (jbossMajors.size > 1) {
+        return res.status(400).json({
+          ok: false,
+          message: 'Seçilen sunucular farklı JBoss majör sürümlerinde (7.X ve 8.X karışık) — lütfen tek seferde tek majör sürüm seçin.',
+        });
+      }
+      if (jbossMajors.size === 1) {
+        extraVars.jboss_version = `jboss${[...jbossMajors][0]}`;
+      }
+
+      logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${extraVars.jboss_version ? ` jboss_version=${extraVars.jboss_version}` : ''}`;
 
     } else {
       // ── Openshift ───────────────────────────────────────────────────────────
@@ -520,53 +547,7 @@ function initOpsX(app) {
     }
   });
 
-  // ── ADMIN: parametre esleme yapilandirmasi ─────────────────────────────────
-  let requireAdmin = (req, res, next) => res.status(403).json({ ok: false, message: 'Auth modülü yok.' });
-  try {
-    const authMod = require('../auth/index.cjs');
-    if (typeof authMod.requireAdmin === 'function') requireAdmin = authMod.requireAdmin;
-  } catch { /* deny kalir */ }
-
-  const opsxConfig = require('./config.cjs');
-
-  // Mevcut yapilandirma + her platformun Playbook Kayitlari'ndaki hedefi (salt-okunur
-  // ozet) — admin tek ekranda "template tanimli mi" sorusunu gorebilsin.
-  app.get('/api/admin/opsx/config', requireAdmin, async (req, res) => {
-    try {
-      const cfg = await opsxConfig.getConfig();
-      const targets = {};
-      for (const plat of ['legacy', 'openshift']) {
-        const t = await resolveTarget(plat);
-        targets[plat] = { registryKey: t.keyName, templateId: t.templateId, awxServerId: t.serverId };
-      }
-      res.json({ ok: true, config: cfg, targets, defaults: opsxConfig.DEFAULTS });
-    } catch (err) {
-      res.status(500).json({ ok: false, message: err.message });
-    }
-  });
-
-  app.put('/api/admin/opsx/config', requireAdmin, express.json({ limit: '64kb' }), async (req, res) => {
-    try {
-      // Gecersiz ek-degisken satirlari sessizce yutulmaz — admin'e bildirilir.
-      const warnings = [];
-      for (const plat of ['legacy', 'openshift']) {
-        const { rejected } = opsxConfig.parseExtraVarLines(req.body?.[plat]?.extraVars);
-        if (rejected.length) warnings.push(`${plat}: ${rejected.join(' | ')}`);
-      }
-      const saved = await opsxConfig.saveConfig(req.body);
-      try {
-        require('../audit/index.cjs').auditPortal(req, 'opsx_config_update', {
-          detail: JSON.stringify(saved),
-        });
-      } catch { /* best-effort */ }
-      console.log(`[OpsX] ${req.session?.user?.username} -> parametre yapilandirmasi guncellendi.`);
-      res.json({ ok: true, config: saved, warnings });
-    } catch (err) {
-      res.status(500).json({ ok: false, message: err.message });
-    }
-  });
-
-  console.log('[OpsX] endpoints mounted at /api/opsx + /api/admin/opsx');
+  console.log('[OpsX] endpoints mounted at /api/opsx');
 }
 
 module.exports = { initOpsX, hostsForApp, ALLOWED_OPERATIONS };

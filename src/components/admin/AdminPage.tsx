@@ -26,7 +26,6 @@ import PageVisibilityTab from "./tabs/PageVisibilityTab";
 import LogXv2AdminTab from "./tabs/LogXv2AdminTab";
 import InventoryVisibilityTab from "./tabs/InventoryVisibilityTab";
 import BrandingTab from "./tabs/BrandingTab";
-import OpsxConfigTab from "./tabs/OpsxConfigTab";
 
 // Eski port-1111 LogX admin yüzeyleri (Oturumlar, İzinler, LogX Inventory) tamamen
 // kaldırıldı — yeni yapıda log akışı "LogX v2 Yapılandırma" (OCP cluster/terminal
@@ -42,7 +41,6 @@ const DEFAULT_TABS = [
   { id: "users",       label: "Kullanıcılar",     icon: UsersIcon },
   { id: "visibility",  label: "Sayfa Erişimi",    icon: EyeIcon },
   { id: "inventoryvis", label: "Envanter Görünürlüğü", icon: ServerStackIcon },
-  { id: "opsxconfig",  label: "OpsX Yapılandırma", icon: CommandLineIcon },
   { id: "branding",    label: "Marka",            icon: PhotoIcon },
 ] as const;
 
@@ -200,7 +198,6 @@ const AdminPage: React.FC = () => {
           {activeTab === "visibility"  && <PageVisibilityTab />}
           {activeTab === "logxv2"      && <LogXv2AdminTab />}
           {activeTab === "inventoryvis" && <InventoryVisibilityTab />}
-          {activeTab === "opsxconfig"  && <OpsxConfigTab />}
           {activeTab === "branding"    && <BrandingTab />}
         </div>
       </div>

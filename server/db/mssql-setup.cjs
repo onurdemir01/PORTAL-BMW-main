@@ -1077,7 +1077,6 @@ const ELEMENT_SEED = [
   { element_key: 'admintab:users',       element_type: 'admin_tab', parent_key: 'Admin', label: 'Kullanıcılar',       sort_order: 9,  default_visible: 1 },
   { element_key: 'admintab:visibility',  element_type: 'admin_tab', parent_key: 'Admin', label: 'Görünürlük',         sort_order: 10, default_visible: 1 },
   { element_key: 'admintab:inventoryvis', element_type: 'admin_tab', parent_key: 'Admin', label: 'Envanter Görünürlüğü', sort_order: 11, default_visible: 1 },
-  { element_key: 'admintab:opsxconfig',   element_type: 'admin_tab', parent_key: 'Admin', label: 'OpsX Yapılandırma',  sort_order: 12, default_visible: 1 },
   { element_key: 'admintab:branding',     element_type: 'admin_tab', parent_key: 'Admin', label: 'Marka',              sort_order: 13, default_visible: 1 },
   // AI-tetiklemeli altyapi launch kill-switch'i (guvenlik-hassas). Kapatinca AI, altyapi
   // job'i baslatamaz (bkz. server/ai-analyst/portal-tools.cjs feature:ai_infra_launch).

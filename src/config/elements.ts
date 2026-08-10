@@ -90,6 +90,5 @@ export const ADMIN_TABS: TabElement[] = [
   { id: "admintab:users",        label: "Kullanıcılar" },
   { id: "admintab:visibility",   label: "Sayfa Erişimi" },
   { id: "admintab:inventoryvis", label: "Envanter Görünürlüğü" },
-  { id: "admintab:opsxconfig",   label: "OpsX Yapılandırma" },
   { id: "admintab:branding",     label: "Marka" },
 ];
