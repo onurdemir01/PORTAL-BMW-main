@@ -46,6 +46,7 @@ COUNT=$(grep -c 'BEGIN CERTIFICATE' <<< "$RAW" || true)
 echo "── Yakalanan zincir ($COUNT sertifika):"
 
 awk -v dir="$OUTDIR" '
+  BEGIN { n = 0 }
   /-----BEGIN CERTIFICATE-----/ { f = dir "/certificate-" n ".pem"; n++ }
   f { print > f }
   /-----END CERTIFICATE-----/ { f = "" }
@@ -55,9 +56,12 @@ CHAIN="$OUTDIR/$SAFE_NAME-ca-chain.pem"
 : > "$CHAIN"
 for i in $(seq 0 $((COUNT - 1))); do
   PEM="$OUTDIR/certificate-$i.pem"
-  SUBJ=$(openssl x509 -in "$PEM" -noout -subject 2>/dev/null | sed 's/^subject=//')
-  ISSU=$(openssl x509 -in "$PEM" -noout -issuer 2>/dev/null | sed 's/^issuer=//')
-  VALID=$(openssl x509 -in "$PEM" -noout -enddate 2>/dev/null | sed 's/^notAfter=//')
+  # set -e altinda "SUBJ=$(... | ...)" borusu basarisiz olan komutlarda TUM script'i
+  # SESSIZCE durdurur (pipefail) — bir sertifika dosyasi okunamasa bile diger
+  # sertifikalarin islenmeye devam etmesi icin "|| true" ile yutulur.
+  SUBJ=$( { openssl x509 -in "$PEM" -noout -subject 2>/dev/null || true; } | sed 's/^subject=//')
+  ISSU=$( { openssl x509 -in "$PEM" -noout -issuer 2>/dev/null || true; } | sed 's/^issuer=//')
+  VALID=$( { openssl x509 -in "$PEM" -noout -enddate 2>/dev/null || true; } | sed 's/^notAfter=//')
   echo ""
   echo "[$i] Subject: $SUBJ"
   echo "    Issuer : $ISSU"
