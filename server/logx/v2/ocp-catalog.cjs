@@ -62,11 +62,26 @@ async function getNamespaces({ env, tenant, clusterNames }) {
   );
 
   const sources = {};
+  // Ad → hangi cluster'larda VAR. Coklu cluster seciminde onyuz bunu rozetle gosterir
+  // ("bu namespace yalnizca gbocpprod2'de") ve cluster suzgeci bunun uzerinden calisir.
+  const clusterMap = {};
+  const addCluster = (name, cluster) => {
+    if (!cluster) return;
+    if (!clusterMap[name]) clusterMap[name] = [];
+    if (!clusterMap[name].includes(cluster)) clusterMap[name].push(cluster);
+  };
+
   // ONCE envanter: ayni ad iki kaynakta da varsa envanter kazanir (birincil kaynak).
-  for (const ns of inv.items || []) sources[ns] = 'inventory';
-  for (const out of cachedPerCluster) {
-    for (const ns of out.items || []) if (!sources[ns]) sources[ns] = 'discovery';
+  for (const ns of inv.items || []) {
+    sources[ns] = 'inventory';
+    for (const c of inv.clusters?.[ns] || []) addCluster(ns, c);
   }
+  cachedPerCluster.forEach((out, i) => {
+    for (const ns of out.items || []) {
+      if (!sources[ns]) sources[ns] = 'discovery';
+      addCluster(ns, clusters[i]);   // onbellek cluster BASINA okunur; indis = cluster
+    }
+  });
 
   // Namespace basina uygulama SAYISI: envanterden gelir (tek GROUP BY). Onbellekten gelen
   // namespace'ler icin sayi bilinmez — `undefined` kalir ve onyuz "bilinmiyor" gosterir;
@@ -79,6 +94,7 @@ async function getNamespaces({ env, tenant, clusterNames }) {
     items: Object.keys(sources).sort(),
     sources,
     counts,
+    clusters: clusterMap,
     cached: Boolean(inv.cached || cachedPerCluster.some((c) => c.cached)),
     ...freshness,
     // Onyuz rozeti icin: liste tamamen envanterden mi geliyor, karisik mi?
@@ -101,19 +117,30 @@ async function getApps({ env, tenant, clusterNames, namespace }) {
 
   const byName = new Map();
   const sources = {};
+  // Ad → cluster listesi (bkz. getNamespaces'teki ayni harita). Pod adlari cluster'a gore
+  // FARKLI oldugu icin bu bilgi uygulama ekraninda ozellikle degerli.
+  const clusterMap = {};
+  const addCluster = (name, cluster) => {
+    if (!cluster) return;
+    if (!clusterMap[name]) clusterMap[name] = [];
+    if (!clusterMap[name].includes(cluster)) clusterMap[name].push(cluster);
+  };
+
   for (const it of inv.items || []) {
     if (!it?.name) continue;
     byName.set(it.name, it);
     sources[it.name] = 'inventory';
+    for (const c of inv.clusters?.[it.name] || []) addCluster(it.name, c);
   }
-  for (const out of cachedPerCluster) {
+  cachedPerCluster.forEach((out, i) => {
     for (const it of out.items || []) {
       if (!it?.name) continue;
       // Onbellek kaydi daha zengin — envanterin yalin kaydinin UZERINE yazar.
       byName.set(it.name, it);
       if (sources[it.name] !== 'inventory') sources[it.name] = 'discovery';
+      addCluster(it.name, clusters[i]);
     }
-  }
+  });
 
   const anyCache = cachedPerCluster.find((c) => c.cached) || EMPTY;
   const freshness = mergeFreshness(inv, anyCache);
@@ -127,6 +154,7 @@ async function getApps({ env, tenant, clusterNames, namespace }) {
   return {
     items: [...byName.values()].sort((a, b) => String(a.name).localeCompare(String(b.name))),
     sources,
+    clusters: clusterMap,
     scannedAt,
     scannedEmpty: Boolean(scannedAt) && cachedPerCluster.every((c) => c.scannedEmpty !== false)
       && [...byName.values()].length === 0,

@@ -22,19 +22,27 @@ interface Props {
   /** Ad → içindeki uygulama sayısı (envanterden). Anahtar YOKSA sayı bilinmiyor demektir;
    *  0 ("uygulama yok") ile karıştırılmamalı — biri bilgi, diğeri bilgisizlik. */
   counts?: Record<string, number>;
+  /** Ad → hangi cluster'larda var. Liste BİRLEŞİK gösterilir; yalnız bazı cluster'larda
+   *  olan namespace rozetlenir ve cluster çipleriyle süzülebilir. */
+  clusterMembership?: Record<string, string[]>;
+  /** Seçili cluster adları — çipleri ve "hepsinde var mı" karşılaştırmasını kurar. */
+  selectedClusters?: string[];
   onRediscover?: () => void;
   busy?: boolean;
   onSelect: (ns: string) => void;
 }
 
 const NamespacePickerStep: React.FC<Props> = ({
-  namespaces, failedClusters = [], failedDetails = [], cache, sources, counts, onRediscover, busy, onSelect,
+  namespaces, failedClusters = [], failedDetails = [], cache, sources, counts,
+  clusterMembership, selectedClusters = [], onRediscover, busy, onSelect,
 }) => {
   const [search, setSearch] = useState("");
   const [showErrors, setShowErrors] = useState(false);
   // "Yalnızca uygulaması olanlar": boş namespace'ler listeyi şişiriyor ve kullanıcı
   // bunu ancak seçip ~1 dk tarama bekledikten sonra anlıyordu.
   const [onlyWithApps, setOnlyWithApps] = useState(false);
+  // Cluster süzgeci — yalnızca birden çok cluster seçiliyken anlamlı.
+  const [clusterFilter, setClusterFilter] = useState<string | null>(null);
 
   // Savunma amaçlı: backend normalize etmiş olsa da, `project.project.openshift.io/<ad>`
   // gibi API-group önekli değerler gelirse son `/`'ten sonrasını al (namespace adı).
@@ -61,8 +69,14 @@ const NamespacePickerStep: React.FC<Props> = ({
     });
   }, [namespaces]);
 
+  const multiCluster = selectedClusters.length > 1;
   const filtered = allNamespaces.filter((ns) => {
     if (onlyWithApps && counts?.[ns] === 0) return false;
+    if (clusterFilter) {
+      const owners = clusterMembership?.[ns];
+      // Üyelik bilgisi YOKSA gizleme: bilgisizlik, yokluk değildir.
+      if (owners && !owners.includes(clusterFilter)) return false;
+    }
     return ns.toLowerCase().includes(search.toLowerCase());
   });
   // Süzgeci yalnızca gerçekten işe yarayacaksa göster (envanter sayı döndürmediyse anlamsız).
@@ -158,7 +172,7 @@ const NamespacePickerStep: React.FC<Props> = ({
             </button>
           )}
           <span className="text-xs text-[var(--text-muted)]">
-            {search || onlyWithApps ? `${filtered.length} / ${allNamespaces.length}` : `${allNamespaces.length} namespace`}
+            {search || onlyWithApps || clusterFilter ? `${filtered.length} / ${allNamespaces.length}` : `${allNamespaces.length} namespace`}
           </span>
         </div>
       </div>
@@ -172,6 +186,26 @@ const NamespacePickerStep: React.FC<Props> = ({
           className="w-full pl-9 pr-3 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
         />
       </div>
+      {/* Cluster çipleri: tek cluster seçiliyken hiç render edilmez (gereksiz gürültü). */}
+      {multiCluster && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-[var(--text-muted)]">Cluster:</span>
+          {[null, ...selectedClusters].map((c) => (
+            <button
+              key={c ?? "__all__"}
+              onClick={() => setClusterFilter(c)}
+              className={`px-2.5 py-1 text-xs rounded-full border transition-colors font-mono ${
+                clusterFilter === c
+                  ? "bg-[var(--accent)] text-white border-[var(--accent)]"
+                  : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"
+              }`}
+            >
+              {c ?? "Tümü"}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
         {filtered.length === 0 ? (
           <p className="text-sm text-[var(--text-muted)] text-center py-6">Sonuç yok.</p>
@@ -195,6 +229,18 @@ const NamespacePickerStep: React.FC<Props> = ({
                   {counts[ns] === 0 ? "uygulama kaydı yok" : `${counts[ns]} uygulama`}
                 </span>
               )}
+              {/* Rozet YALNIZCA fark varsa: her cluster'da olan adı rozetlemek listeyi
+                  gürültüye boğardı. */}
+              {multiCluster && clusterMembership?.[ns] && clusterMembership[ns].length < selectedClusters.length &&
+                clusterMembership[ns].map((c) => (
+                  <span
+                    key={c}
+                    title={`Yalnızca ${c} cluster'ında var`}
+                    className="ml-2 px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border)] text-[10px] text-[var(--text-secondary)] align-middle"
+                  >
+                    {c}
+                  </span>
+                ))}
               {sources?.[ns] === "discovery" && (
                 <span
                   className="ml-2 px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[10px] font-semibold text-[var(--text-muted)] align-middle"
