@@ -490,6 +490,9 @@ function initOpsX(app) {
         [cfg.envKey]: envKey,
         [cfg.ocClusterKey]: tenantKey,
         [cfg.ocInputKey]: cleanPairs.join(';'),
+        // Su an SADECE restart/rollout aktif (bkz. OCP_OPERATIONS) — bmw_openshift_jobs
+        // AWX job template'inin hangi operasyonu calistiracagini secen sabit deger.
+        openshift_operations: 'openshift_application_rollout',
       };
       logSummary = `env=${envKey} oc_cluster=${tenantKey} oc_input=${cleanPairs.join(';')}`;
     }
