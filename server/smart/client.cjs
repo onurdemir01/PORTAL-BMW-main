@@ -1,12 +1,16 @@
 // server/smart/client.cjs — Smart/RFF REST istemcisi.
 //
-// SEKIL referans kod tabanindaki (kardes ekip) dashboard/smart.py::GBCA sinifindan
-// AYNEN alindi: Basic Auth (base64 user:pass) + ozel "RFF-Request-Token" header'i,
-// JSON govde. O kod tabani AYNI sirketin AYNI Smart sistemine baglaniyor, bu yuzden
-// protokol sekli buyuk ihtimalle dogru — ama gercek endpoint path'leri, gonderilecek
-// alan adlari (flowKey/metadataData vb.) ve durum-sorgulama cevabinin TAM sekli Onur'dan
-// gelecek gercek ornek istek/yanitla DOGRULANMALI. Asagidaki iki fonksiyon o dogrulama
-// icin TEK dokunulacak yer olacak sekilde izole edildi.
+// 2026-08-10: SOS02-KL-001-EN "SMART Request Fulfillment (RFF) Services User Guide"
+// (Onur'un servis ekibinden aldigi resmi dokuman) okunup DOGRULANDI. createTicket()
+// artik TAHMIN degil — path, govde sekli, basari kriteri (resultCode) ve Basic Auth +
+// RFF-Request-Token header'i dokumandaki "Request Flow Opening Service - REST" ve
+// "Authentication"/"Integration Key" bolumleriyle BIREBIR eslesiyor.
+//
+// checkTicketStatus() ise HALA DOGRULANMADI: dokumanda talep durumu sorgulayan hicbir
+// REST endpoint'i YOK. Referans kod tabanindaki (kardes ekip) durum sorgusu Smart'in
+// kendisinden degil, ayri bir sistemden ("Servicerepository") geliyordu — bu dokumanin
+// kapsami disinda. SMART_CHECK_TICKET_PATH bos oldugu surece bu fonksiyon ACIKCA hata
+// firlatir (bkz. asagisi) — Onur o ayri sistemin dokumanini getirene kadar boyle kalmali.
 'use strict';
 
 const { getConfig, isConfigured } = require('./config.cjs');
@@ -33,16 +37,18 @@ async function post(path, body, extraHeaders) {
   return parsed;
 }
 
-// Talep acar. `flowKey` hangi is akisina ait oldugunu belirtir (admin, Self Service
-// item'inin "Smart Flow Key" alanindan girer — kardes ekipteki AppSettings-tabanli
-// esdegeri; burada DB yerine per-item override'da tutulur, bkz. FieldOverridesModal).
-// `metadata` referanstaki "metadataData.metadatas" dizisine karsilik gelir: talebe
-// eklenecek serbest key/value cift listesi (ör. uygulama adi, sunucu listesi, islem).
+// Talep acar — DOGRULANDI (SOS02-KL-001-EN, "Request Flow Opening Service - REST").
+// `flowKey` hangi is akisina ait oldugunu belirtir (admin, Self Service item'inin "Smart
+// Flow Key" alanindan girer — dokumandaki Designer > "Integration Information" ile
+// alinan deger, bkz. FieldOverridesModal.tsx). `metadata` dokumandaki
+// "metadataData.metadatas" dizisine karsilik gelir: talebe eklenecek serbest
+// key/value cift listesi (ör. uygulama adi, sunucu listesi, islem) — hangi key'lerin
+// beklendigini ogrenmek icin bkz. getFlowMetadata().
 //
-// DONUS: { ticketId, stateName, raw } — ticketId referans kod tabanindaki wfInstanceId
-// karsiligidir, smart_tickets.external_ticket_id'ye yazilir. Gercek yanit sekli
-// dogrulanana kadar `ticketId`/`stateName` cikarma mantigi TAHMINIDIR (asagida acikca
-// isaretli) — Onur'dan ornek yanit gelince tek bu blok guncellenmeli.
+// DONUS: { ticketId, stateInstanceId, raw }. ticketId = dokumandaki wfInstanceId
+// (smart_tickets.external_ticket_id'ye yazilir). resultCode "1000" DISINDAKI her
+// deger basarisizliktir (dokuman: "if the value is 1000, the operation is successful,
+// if 9000, it is unsuccessful") — resultMessage varsa hataya eklenir.
 async function createTicket({ flowKey, username, domain, metadata }) {
   if (!isConfigured()) {
     throw Object.assign(new Error('Smart entegrasyonu yapılandırılmamış (SMART_API_URL/SMART_API_USERNAME/SMART_API_PASSWORD eksik).'), { status: 503 });
@@ -50,7 +56,7 @@ async function createTicket({ flowKey, username, domain, metadata }) {
   const cfg = getConfig();
   const body = {
     logonName: username,
-    domain: domain || '',
+    domain: domain || cfg.domain,
     flowKey,
     metaAttachmentsData: {},
     metadataData: {
@@ -58,27 +64,52 @@ async function createTicket({ flowKey, username, domain, metadata }) {
     },
   };
   const result = await post(cfg.createTicketPath, body);
-  // TAHMIN (dogrulanmadi): referans kod tabaninda result.result.wfInstanceId +
-  // result.result.resultCode=="1000" basari kriteriydi.
-  const ticketId = result?.result?.wfInstanceId || result?.wfInstanceId || result?.ticketId;
-  if (!ticketId) {
-    throw Object.assign(new Error(`Smart talep açma yanıtında ticket ID bulunamadı: ${JSON.stringify(result).slice(0, 300)}`), { status: 502 });
+  const resultCode = String(result?.result?.resultCode ?? '');
+  if (resultCode !== '1000') {
+    const msg = result?.result?.resultMessage || `resultCode=${resultCode || 'yok'}`;
+    throw Object.assign(new Error(`Smart talebi reddedildi: ${msg}`), { status: 502 });
   }
-  return { ticketId: String(ticketId), raw: result };
+  const ticketId = result?.result?.wfInstanceId;
+  if (!ticketId) {
+    throw Object.assign(new Error(`Smart yanıtında wfInstanceId bulunamadı: ${JSON.stringify(result).slice(0, 300)}`), { status: 502 });
+  }
+  return { ticketId: String(ticketId), stateInstanceId: result?.result?.stateInstanceId ?? null, raw: result };
 }
 
-// Talebin GUNCEL durumunu sorgular. DONUS: { completed, rejected, stateName, blockName, raw }
-//   completed = onaylanip is akisinin son adimina (FINISH_BLOCK esdegeri) ulasti
-//   rejected  = talep reddedildi/iptal edildi (durum adinda "CANCEL"/"REJECT" geciyor)
-// TAHMIN (dogrulanmadi) — referans kod tabanindaki ServiceRepository.check_state_ticket +
-// get_block_state_in_ticket mantigi buraya tasindi; gercek Smart API'nizin yaniti farkli
-// alan adlari kullaniyorsa SADECE bu fonksiyon guncellenmeli, cagiran kod (poller.cjs)
-// degismez.
-async function checkTicketStatus(ticketId) {
+// Bir flowKey'in bekledigi metadata alanlarini (ElementName/IsRequired/DataType/...)
+// sorgular — DOGRULANDI (SOS02-KL-001-EN, "Metadata Service Required to Start Request
+// Flow - REST"). Su an hicbir yerden cagrilmiyor; createTicket()'a hangi `metadata`
+// key'lerinin gecmesi gerektigini ELLE bulmak yerine admin arac-kutusuna eklemek icin
+// hazir tutulur.
+async function getFlowMetadata(flowName) {
   if (!isConfigured()) {
     throw Object.assign(new Error('Smart entegrasyonu yapılandırılmamış.'), { status: 503 });
   }
   const cfg = getConfig();
+  const result = await post(cfg.getMetadataPath, { flowName });
+  const resultCode = String(result?.result?.resultCode ?? '');
+  if (resultCode !== '1000') {
+    throw Object.assign(new Error(`Smart metadata sorgusu başarısız: ${result?.result?.resultMessage || `resultCode=${resultCode || 'yok'}`}`), { status: 502 });
+  }
+  return result?.result?.result || [];
+}
+
+// Talebin GUNCEL durumunu sorgular — DOGRULANMADI, bkz. dosya basi notu. SMART_CHECK_TICKET_PATH
+// (Admin > Sistem > Smart) bos oldugu surece BILEREK hata firlatir: bir Smart API'si
+// TAHMIN edip sessizce yanlis "hicbir zaman onaylanmadi" sonucuna dusmek, hicbir sonuca
+// dusmemekten (poller sadece "henuz kontrol edilemedi" der, talep PENDING kalir) daha
+// tehlikelidir.
+async function checkTicketStatus(ticketId) {
+  const cfg = getConfig();
+  if (!cfg.checkTicketPath) {
+    throw Object.assign(
+      new Error('Smart talep durumu sorgulama endpoint\'i tanımlı değil (SMART_CHECK_TICKET_PATH) — bu, Smart RFF REST dokümanının kapsamı dışında, ayrı bir sistem olabilir.'),
+      { status: 501 }
+    );
+  }
+  if (!isConfigured()) {
+    throw Object.assign(new Error('Smart entegrasyonu yapılandırılmamış.'), { status: 503 });
+  }
   const result = await post(cfg.checkTicketPath, { wfInstanceId: ticketId, languageCode: 'TR' });
   const blocks = result?.result?.Blocks || result?.Blocks || [];
   const currentBlock = Array.isArray(blocks) ? blocks.find((b) => b?.IsCurrentBlock === true) : null;
@@ -94,4 +125,4 @@ async function checkTicketStatus(ticketId) {
   };
 }
 
-module.exports = { createTicket, checkTicketStatus };
+module.exports = { createTicket, getFlowMetadata, checkTicketStatus };
