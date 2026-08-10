@@ -275,10 +275,6 @@ const LogXWizardPage: React.FC = () => {
     });
   }
 
-  if (loading) {
-    return <div className="max-w-2xl mx-auto py-16 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
-  }
-
   // ── Adım türetme: her zaman server state'inden, client kendi gerçeğini icat etmez ──
   let step = "platform";
   if (request) {
@@ -328,7 +324,8 @@ const LogXWizardPage: React.FC = () => {
   // `step` değerine bakar; ref olmadan aynı seçim için birden fazla AWX job'ı açılabilirdi.
   const nsResolveRef = React.useRef<string | null>(null);
   useEffect(() => {
-    if (step !== "ocp_namespace_resolving" || !requestId || busy) return;
+    // `loading` sırasında hiçbir şey tetiklenmez: istek henüz sunucudan okunmadı.
+    if (loading || step !== "ocp_namespace_resolving" || !requestId || busy) return;
     const input = request?.input as OcpInput | undefined;
     const key = `${requestId}|${(input?.clusters || []).join(",")}`;
     if (nsResolveRef.current === key) return;
@@ -339,7 +336,18 @@ const LogXWizardPage: React.FC = () => {
       await logxV2Api.discoverNamespaces(requestId);
       await refresh(requestId);
     });
-  }, [step, requestId, request?.input, busy]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, step, requestId, request?.input, busy]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ERKEN ÇIKIŞ BURADA — TÜM hook'ların ALTINDA. Yukarı taşımayın.
+  //
+  // GERÇEK ARIZA (2026-08-10): bu blok hook'ların ÜSTÜNDEYDİ. İlk render `loading === true`
+  // ile erken dönüp 17 hook çalıştırıyor, `setLoading(false)` sonrası ikinci render 19 hook
+  // çalıştırıyordu → React "Rendered more hooks than during the previous render." fırlattı,
+  // ağaç unmount oldu, /logx BEMBEYAZ açıldı. TypeScript de build de bunu yakalamaz;
+  // src/__tests__/hook-order.test.cjs yakalar.
+  if (loading) {
+    return <div className="max-w-2xl mx-auto py-16 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
+  }
 
   const canGoBack = backTargetFor(step) !== null;
 
