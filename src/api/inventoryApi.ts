@@ -13,19 +13,13 @@ export interface TableVisibilityRow {
   // Bu tablo User/Admin rolüne görünür mü — ilgili rol için "Tüm tabloları göster" açıksa
   // (bkz. allTablesVisible) her satırda true gelir, ayrı ayrı düzenlenemez.
   roleVisible: Record<"User" | "Admin", boolean>;
+  // Takma adın (displayName) KENDİ aktif/pasif durumu — tablonun isActive'inden AYRI bir
+  // kavram: pasif bir takma ad tabloyu gizlemez, sadece ham tablo adına düşürür (eskiden
+  // Admin > Sistem > "Tablo Takma Adları" ekranındaki "Aktif/Pasif" anahtarı).
+  aliasActive: boolean;
 }
 export interface TableUserOverride {
   username: string; override_type: "allow" | "deny"; created_by: string | null; created_at: string | null;
-}
-
-export interface TableAliasDetail {
-  tableName: string;
-  alias: string;
-  schemaName: string;
-  description: string;
-  isActive: boolean;
-  language: string;
-  sortOrder: number;
 }
 
 export type FilterOp =
@@ -176,19 +170,11 @@ export const inventoryApi = {
     return fetch(`${BASE}/data/${encodeURIComponent(table)}?${qs}`).then(safeJson);
   },
 
+  // Basit ad->alias haritasi (salt-okunur, kullanici-yuzlu ekranlar icin — ör. QueryHelpPanel.tsx).
+  // Admin-duzenleme ucu (eskiden tableAliasesDetailed/setTableAlias) KALDIRILDI; ayni
+  // duzenleme artik updateTableVisibility'nin aliasActive alani uzerinden yapilir.
   tableAliases: (): Promise<{ ok: boolean; aliases: Record<string, string> }> =>
     fetch(`${BASE}/table-aliases`).then(safeJson),
-
-  // actions.md #13 — schema/description/is_active/language/sort_order dahil tam satirlar (admin).
-  tableAliasesDetailed: (): Promise<{ ok: boolean; aliases: TableAliasDetail[] }> =>
-    fetch(`${BASE}/table-aliases/detail`).then(safeJson),
-
-  setTableAlias: (tableName: string, alias: string, extra?: Partial<Omit<TableAliasDetail, "tableName" | "alias">>) =>
-    fetch(`${BASE}/table-aliases`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tableName, alias, ...extra }),
-    }).then(safeJson),
 
   // actions.md #12 (Bolum K) — her tablo icin bir satir (eski 2-satirlik CSV modeli yerine).
   // Rol-bazli gorunurluk (Admin > Sistem'deki eski "Kullanici Tablo Gorunurlugu" ekraninin
@@ -196,7 +182,7 @@ export const inventoryApi = {
   tableVisibilityList: (): Promise<{ ok: boolean; tables: TableVisibilityRow[]; allTablesVisible: Record<"User" | "Admin", boolean> }> =>
     fetch(`${BASE}/table-visibility`).then(safeJson),
 
-  updateTableVisibility: (id: number, data: { isActive: boolean; displayName?: string; description?: string; sortOrder?: number }) =>
+  updateTableVisibility: (id: number, data: { isActive: boolean; displayName?: string; description?: string; sortOrder?: number; aliasActive?: boolean }) =>
     fetch(`${BASE}/table-visibility/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

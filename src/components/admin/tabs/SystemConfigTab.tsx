@@ -56,11 +56,6 @@ const ENV_VARS: EnvVarMeta[] = [
 
 interface ConfigValue { key: string; value: string; defined: boolean; masked: boolean; }
 
-interface AliasEntry {
-  table: string; alias: string; editing?: boolean;
-  schemaName: string; description: string; isActive: boolean; language: string; sortOrder: number;
-}
-
 const CACHE_ACTIONS = [
   { key: "nobetci",    label: "Nöbet Önbelleği",   desc: "nobetci/today 5dk cache",       serverEndpoint: "/api/admin/cache/nobetci" },
   { key: "awx-tokens", label: "AWX Token",          desc: "Tüm sunucu token'ları",         serverEndpoint: "/api/admin/cache/awx-tokens" },
@@ -69,8 +64,6 @@ const CACHE_ACTIONS = [
 ];
 
 export default function SystemConfigTab() {
-  const [aliases, setAliases] = useState<AliasEntry[]>([]);
-  const [aliasLoading, setAliasLoading] = useState(true);
   const [cacheClearing, setCacheClearing] = useState<string | null>(null);
 
   // System config (env) state
@@ -113,24 +106,6 @@ export default function SystemConfigTab() {
     }
   }
 
-  useEffect(() => {
-    Promise.all([inventoryApi.tableAliasesDetailed(), inventoryApi.tables()])
-      .then(([ar, tr]) => {
-        const detailMap = new Map((ar.aliases || []).map((d) => [d.tableName, d]));
-        const tables = tr.tables || [];
-        setAliases(tables.map((t) => {
-          const d = detailMap.get(t);
-          return {
-            table: t, alias: d?.alias || "",
-            schemaName: d?.schemaName || "", description: d?.description || "",
-            isActive: d?.isActive !== false, language: d?.language || "tr", sortOrder: d?.sortOrder ?? 0,
-          };
-        }));
-      })
-      .catch(() => {})
-      .finally(() => { setAliasLoading(false); });
-  }, []);
-
   async function clearCache(key: string, endpoint: string | null) {
     setCacheClearing(key);
     try {
@@ -159,112 +134,11 @@ export default function SystemConfigTab() {
     }
   }
 
-  async function saveAlias(table: string, alias: string) {
-    const current = aliases.find((a) => a.table === table);
-    const r = await inventoryApi.setTableAlias(table, alias, {
-      schemaName: current?.schemaName, description: current?.description,
-      isActive: current?.isActive, language: current?.language, sortOrder: current?.sortOrder,
-    });
-    if (r.ok) {
-      setAliases((prev) => prev.map((a) => a.table === table ? { ...a, alias, editing: false } : a));
-      toast.success(`"${table}" alias güncellendi.`);
-    } else toast.error("Güncellenemedi.");
-  }
-
-  async function toggleAliasActive(entry: AliasEntry) {
-    if (!entry.alias) return; // aktiflik yalnizca tanimli bir alias icin anlamli
-    const nextActive = !entry.isActive;
-    const r = await inventoryApi.setTableAlias(entry.table, entry.alias, {
-      schemaName: entry.schemaName, description: entry.description,
-      isActive: nextActive, language: entry.language, sortOrder: entry.sortOrder,
-    });
-    if (r.ok) setAliases((prev) => prev.map((a) => a.table === entry.table ? { ...a, isActive: nextActive } : a));
-    else toast.error("Güncellenemedi.");
-  }
-
   // Group env vars
   const groups = Array.from(new Set(ENV_VARS.map((v) => v.group)));
 
   return (
     <div className="space-y-8">
-
-      {/* Table Aliases */}
-      <section>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Tablo Takma Adları (Alias)</h3>
-        <p className="text-xs text-gray-400 mb-4">Envanter sekmesinde teknik tablo adları yerine gösterilecek isimler.</p>
-
-        {aliasLoading ? (
-          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 bg-gray-100 rounded-xl animate-pulse" />)}</div>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-left">
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Tablo Adı</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Takma Ad (Alias)</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Açıklama</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Aktif</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {aliases.map((a) => (
-                  <tr key={a.table} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-xs font-mono text-gray-700">{a.table}</td>
-                    <td className="px-4 py-2">
-                      {a.editing ? (
-                        <input
-                          autoFocus
-                          defaultValue={a.alias}
-                          onBlur={(e) => saveAlias(a.table, e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setAliases((prev) => prev.map((x) => x.table === a.table ? { ...x, editing: false } : x)); }}
-                          className="px-2 py-1 text-xs border border-[#1A56DB] rounded-lg outline-none w-full"
-                        />
-                      ) : (
-                        <span className={`text-xs ${a.alias ? "text-gray-800 font-medium" : "text-gray-300 italic"}`}>
-                          {a.alias || "(takma ad yok)"}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <input
-                        defaultValue={a.description}
-                        placeholder="—"
-                        onBlur={(e) => {
-                          const description = e.target.value;
-                          setAliases((prev) => prev.map((x) => x.table === a.table ? { ...x, description } : x));
-                          if (a.alias) saveAlias(a.table, a.alias);
-                        }}
-                        className="px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#1A56DB] w-full"
-                      />
-                    </td>
-                    <td className="px-4 py-2">
-                      <button
-                        onClick={() => toggleAliasActive(a)}
-                        disabled={!a.alias}
-                        title={!a.alias ? "Önce bir takma ad tanımlayın" : a.isActive ? "Pasif yap" : "Aktif yap"}
-                        className={`text-xs px-2 py-0.5 rounded-full font-medium disabled:opacity-30 ${a.isActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-400"}`}
-                      >
-                        {a.isActive ? "Aktif" : "Pasif"}
-                      </button>
-                    </td>
-                    <td className="px-4 py-2">
-                      {!a.editing && (
-                        <button
-                          onClick={() => setAliases((prev) => prev.map((x) => x.table === a.table ? { ...x, editing: true } : x))}
-                          className="text-xs text-[#1A56DB] hover:underline"
-                        >
-                          Düzenle
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
 
       {/* K-08: Cache Clear Buttons */}
       <section>

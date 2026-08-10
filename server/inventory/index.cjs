@@ -77,24 +77,6 @@ async function readAliases() {
   }
 }
 
-// Admin ekrani icin TAM satirlari doner (schema/description/is_active/language/sort_order dahil).
-async function readAliasesDetailed() {
-  try {
-    const result = await query(`SELECT * FROM inventory_table_aliases ORDER BY sort_order, table_name`);
-    return result.recordset.map((r) => ({
-      tableName: r.table_name,
-      alias: r.alias,
-      schemaName: r.schema_name || "",
-      description: r.description || "",
-      isActive: r.is_active === true || r.is_active === 1,
-      language: r.language || "tr",
-      sortOrder: r.sort_order ?? 0,
-    }));
-  } catch {
-    return [];
-  }
-}
-
 async function setAlias(tableName, alias, extra = {}) {
   const schemaName = extra.schemaName != null ? String(extra.schemaName) : null;
   const description = extra.description != null ? String(extra.description) : null;
@@ -806,16 +788,22 @@ function initInventory(app) {
   router.get("/table-visibility", async (req, res) => {
     if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
     try {
+      // inventory_table_aliases LEFT JOIN: eskiden Admin > Sistem > "Tablo Takma Adlari"
+      // ayri bir ekrandi, orada "Aktif/Pasif" alias'in KENDI is_active'iydi (tablonun
+      // gorunurlugunden AYRI bir kavram — pasif alias sadece HAM tablo adina duser,
+      // tabloyu gizlemez). O ekran kaldirildi; alias_active BURADA tasinir.
       const { recordset } = await query(
         `SELECT tv.*,
+                al.is_active AS alias_active,
                 (SELECT COUNT(*) FROM inventory_table_user_override o WHERE o.table_visibility_id = tv.id) AS override_count
            FROM inventory_table_visibility tv
+           LEFT JOIN inventory_table_aliases al ON al.table_name = tv.table_name
           WHERE tv.table_name <> '*'
           ORDER BY tv.sort_order, tv.table_name`
       );
-      // Rol-bazli gorunurluk (Admin > Sistem'deki "Kullanici Tablo Gorunurlugu" ekraniyla
-      // AYNI alttaki veri: inventory_table_role_visibility, readVisibleTables uzerinden) artik
-      // BURADA, tablo basina tek satirda gosterilir — ayri bir ekrana gerek kalmadi.
+      // Rol-bazli gorunurluk (Admin > Sistem'deki eski "Kullanici Tablo Gorunurlugu"
+      // ekraniyla AYNI alttaki veri: inventory_table_role_visibility, readVisibleTables
+      // uzerinden) artik BURADA, tablo basina tek satirda gosterilir.
       const roleConfig = await readVisibleTables();
       const isRoleVisible = (role, tableName) => (
         roleConfig[role] === "*" ? true : (Array.isArray(roleConfig[role]) && roleConfig[role].includes(tableName))
@@ -828,6 +816,9 @@ function initInventory(app) {
           displayName: r.display_name, isActive: r.is_active === true || r.is_active === 1,
           sortOrder: r.sort_order, description: r.description, overrideCount: r.override_count,
           roleVisible: { User: isRoleVisible("User", r.table_name), Admin: isRoleVisible("Admin", r.table_name) },
+          // Alias satiri hic yoksa (henuz bir gorunen ad girilmemis) varsayilan true —
+          // setAlias() ile ayni varsayilan (bkz. dosya basi).
+          aliasActive: r.alias_active === false || r.alias_active === 0 ? false : true,
         })),
       });
     } catch (err) {
@@ -888,7 +879,7 @@ function initInventory(app) {
   router.put("/table-visibility/:id", async (req, res) => {
     if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
     const id = Number(req.params.id);
-    const { isActive, displayName, description, sortOrder } = req.body || {};
+    const { isActive, displayName, description, sortOrder, aliasActive } = req.body || {};
     try {
       await query(
         `UPDATE inventory_table_visibility
@@ -903,15 +894,17 @@ function initInventory(app) {
         ]
       );
       // Envanter sayfasindaki sekme basliklari bu "Gorunen Ad"i DEGIL,
-      // inventory_table_aliases'i okur (bkz. EnvanterPage.tsx / Admin > Sistem > Tablo
-      // Takma Adlari) — buradaki alan onceden BURADA kaydedilip hicbir yerde
-      // gosterilmiyordu ("islem yaptigimda bir ise yaramadi"). Iki ekranin ayni sonucu
-      // vermesi icin buradaki degisiklik de aynen alias tablosuna yazilir.
+      // inventory_table_aliases'i okur (bkz. EnvanterPage.tsx) — buradaki alan
+      // aynen alias tablosuna da yazilir (tek ekran, iki tablo senkron).
+      // aliasActive: eskiden Admin > Sistem > "Tablo Takma Adlari" ekranindaki ayri
+      // "Aktif/Pasif" anahtari — pasif alias tabloyu GIZLEMEZ, sadece HAM tablo adina
+      // dusurur (bkz. readAliases). Gonderilmezse (undefined) setAlias'in kendi
+      // varsayilanina (true) duser.
       const tvRow = await query(`SELECT table_name FROM inventory_table_visibility WHERE id = @id`, [{ name: "id", type: sql.Int, value: id }]);
       const tableName = tvRow.recordset[0]?.table_name;
       if (tableName && tableName !== "*") {
         if (displayName && String(displayName).trim()) {
-          await setAlias(tableName, String(displayName).trim(), { description });
+          await setAlias(tableName, String(displayName).trim(), { description, isActive: aliasActive });
         } else {
           await removeAlias(tableName);
         }
@@ -1124,26 +1117,13 @@ function initInventory(app) {
   });
 
   // ── Table aliases ────────────────────────────────────────────────────────────
+  // Admin-duzenleme ucu (eskiden GET /table-aliases/detail + PUT /table-aliases, Admin >
+  // Sistem > "Tablo Takma Adlari" ekraninin veri kaynagiydi) KALDIRILDI — ayni duzenleme
+  // artik PUT /table-visibility/:id (aliasActive dahil) uzerinden, Admin > Envanter
+  // Gorunurlugu ekraninda yapilir. Bu salt-okunur uc (basit ad->alias haritasi) hala
+  // QueryHelpPanel.tsx gibi kullanici-yuzlu ekranlarca okunuyor, KALDI.
   router.get("/table-aliases", async (req, res) => {
     res.json({ ok: true, aliases: await readAliases() });
-  });
-
-  // Admin ekrani icin TAM satirlar (schema/description/is_active/language/sort_order) — actions.md #13.
-  router.get("/table-aliases/detail", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
-    res.json({ ok: true, aliases: await readAliasesDetailed() });
-  });
-
-  router.put("/table-aliases", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
-    const { tableName, alias, schemaName, description, isActive, language, sortOrder } = req.body || {};
-    if (!tableName) return res.status(400).json({ ok: false, error: "tableName gerekli." });
-    if (alias && String(alias).trim()) {
-      await setAlias(tableName, String(alias).trim(), { schemaName, description, isActive, language, sortOrder });
-    } else {
-      await removeAlias(tableName);
-    }
-    res.json({ ok: true, aliases: await readAliases(), detail: await readAliasesDetailed() });
   });
 
   // ── Data (pagination + search + advanced filterGroup + sorting) ──────────────

@@ -16,7 +16,7 @@ export default function InventoryVisibilityTab() {
   const [allTablesVisible, setAllTablesVisibleState] = useState<Record<"User" | "Admin", boolean>>({ User: false, Admin: true });
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<{ displayName: string; description: string; sortOrder: string }>({ displayName: "", description: "", sortOrder: "0" });
+  const [editForm, setEditForm] = useState<{ displayName: string; description: string; sortOrder: string; aliasActive: boolean }>({ displayName: "", description: "", sortOrder: "0", aliasActive: true });
   const [detailId, setDetailId] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState<"overrides" | "columns">("overrides");
 
@@ -63,6 +63,7 @@ export default function InventoryVisibilityTab() {
       await inventoryApi.updateTableVisibility(row.id, {
         isActive: !row.isActive, displayName: row.displayName || undefined,
         description: row.description || undefined, sortOrder: row.sortOrder,
+        aliasActive: row.aliasActive, // korunmazsa takma adin aktif/pasif durumu YANLISLIKLA sifirlanirdi
       });
       setTables((prev) => prev.map((t) => (t.id === row.id ? { ...t, isActive: !t.isActive } : t)));
     } catch {
@@ -72,7 +73,7 @@ export default function InventoryVisibilityTab() {
 
   function openEdit(row: TableVisibilityRow) {
     setEditId(row.id);
-    setEditForm({ displayName: row.displayName || "", description: row.description || "", sortOrder: String(row.sortOrder) });
+    setEditForm({ displayName: row.displayName || "", description: row.description || "", sortOrder: String(row.sortOrder), aliasActive: row.aliasActive !== false });
   }
 
   async function saveEdit(row: TableVisibilityRow) {
@@ -80,14 +81,31 @@ export default function InventoryVisibilityTab() {
       await inventoryApi.updateTableVisibility(row.id, {
         isActive: row.isActive, displayName: editForm.displayName.trim() || undefined,
         description: editForm.description.trim() || undefined, sortOrder: Number(editForm.sortOrder) || 0,
+        aliasActive: editForm.aliasActive,
       });
       setTables((prev) => prev.map((t) => (t.id === row.id
-        ? { ...t, displayName: editForm.displayName.trim() || null, description: editForm.description.trim() || null, sortOrder: Number(editForm.sortOrder) || 0 }
+        ? { ...t, displayName: editForm.displayName.trim() || null, description: editForm.description.trim() || null, sortOrder: Number(editForm.sortOrder) || 0, aliasActive: editForm.aliasActive }
         : t)));
       setEditId(null);
       toast.success("Kaydedildi.");
     } catch {
       toast.error("Kaydedilemedi.");
+    }
+  }
+
+  // Duzenleme moduna girmeden hizli acik/kapa — takma adin KENDI aktif/pasif durumu
+  // (eskiden Admin > Sistem > "Tablo Takma Adlari" ekranindaki tiklanabilir rozet).
+  async function toggleAliasActive(row: TableVisibilityRow) {
+    if (!row.displayName) return; // aktiflik yalnizca tanimli bir takma ad icin anlamli
+    const next = !row.aliasActive;
+    try {
+      await inventoryApi.updateTableVisibility(row.id, {
+        isActive: row.isActive, displayName: row.displayName, description: row.description || undefined,
+        sortOrder: row.sortOrder, aliasActive: next,
+      });
+      setTables((prev) => prev.map((t) => (t.id === row.id ? { ...t, aliasActive: next } : t)));
+    } catch {
+      toast.error("Güncellenemedi.");
     }
   }
 
@@ -154,10 +172,28 @@ export default function InventoryVisibilityTab() {
                           placeholder="Görünen ad" className="px-2 py-1 text-xs border border-gray-200 rounded-lg" />
                         <input value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
                           placeholder="Açıklama" className="px-2 py-1 text-xs border border-gray-200 rounded-lg" />
+                        {editForm.displayName.trim() && (
+                          <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">
+                            <input type="checkbox" checked={editForm.aliasActive}
+                              onChange={(e) => setEditForm((f) => ({ ...f, aliasActive: e.target.checked }))} />
+                            Takma ad aktif (pasifse ham tablo adı gösterilir)
+                          </label>
+                        )}
                       </div>
                     ) : (
                       <div>
-                        <div className="text-xs text-gray-700">{row.displayName || <span className="text-gray-300 italic">isim yok</span>}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-gray-700">{row.displayName || <span className="text-gray-300 italic">isim yok</span>}</span>
+                          {row.displayName && (
+                            <button
+                              onClick={() => toggleAliasActive(row)}
+                              title={row.aliasActive ? "Takma adı pasif yap" : "Takma adı aktif yap"}
+                              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${row.aliasActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-400"}`}
+                            >
+                              {row.aliasActive ? "Aktif" : "Pasif"}
+                            </button>
+                          )}
+                        </div>
                         {row.description && <div className="text-[11px] text-gray-400">{row.description}</div>}
                       </div>
                     )}
