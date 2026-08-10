@@ -99,7 +99,18 @@ export interface LogXv2Job {
   errorMessage: string | null;
 }
 
-export interface DownloadInfo { token: string; filename: string; sizeBytes: number | null; expiresAt: string }
+/** Envanterden gelen sunucu satırı (canlı sorgu değil). */
+export interface LegacyHost { host: string; env: string; jbossVersion: string; status: string }
+
+export interface DownloadInfo {
+  token: string;
+  filename: string;
+  sizeBytes: number | null;
+  expiresAt: string;
+  /** Arşiv paylaşımlı staging yerine kaynak host'un YEREL yedek dizinine düştüyse true —
+   *  portal o dizini göremiyorsa indirme 404 verir, kullanıcı önceden uyarılır. */
+  isFallback?: boolean;
+}
 
 export const logxV2Api = {
   createRequest: (platform: Platform) => postJson<{ ok: boolean; requestId: string }>("/requests", { platform }),
@@ -108,11 +119,19 @@ export const logxV2Api = {
     fetch(`${BASE}/requests/${requestId}`).then((r) => json<{ ok: boolean; request: LogXv2Request; jobs: LogXv2Job[]; download: DownloadInfo | null; downloads?: DownloadInfo[] }>(r)),
 
   // ── Legacy ─────────────────────────────────────────────────────────────────
+  // Uygulamanın sunucuları (envanterden: ortam, JBoss sürümü, durum). Sunucu seçimi
+  // adımı bunu okur — canlı sorgu YOK, `status` envanterde hazır.
+  legacyHosts: (app: string) =>
+    fetch(`${BASE}/legacy/hosts?app=${encodeURIComponent(app)}`)
+      .then((r) => json<{ ok: boolean; hosts: LegacyHost[] }>(r)),
+
   searchLegacyApps: (search: string) =>
     fetch(`${BASE}/legacy/apps?search=${encodeURIComponent(search)}`).then((r) => json<{ ok: boolean; apps: string[]; fallbackMode: boolean }>(r)),
 
-  discoverLegacy: (requestId: string, app: string) =>
-    postJson<{ ok: boolean; jobId: number }>(`/legacy/${requestId}/discover`, { app }),
+  /** `hosts` verilirse YALNIZ o sunucular taranır; boşsa uygulamanın tüm sunucuları
+   *  (eski davranış). Sunucular sunucu tarafında envantere karşı yeniden doğrulanır. */
+  discoverLegacy: (requestId: string, app: string, hosts?: string[]) =>
+    postJson<{ ok: boolean; jobId: number }>(`/legacy/${requestId}/discover`, { app, hosts }),
 
   discoverLegacyFallback: (requestId: string, hosts: string[]) =>
     postJson<{ ok: boolean; jobId: number }>(`/legacy/${requestId}/discover`, { hosts }),

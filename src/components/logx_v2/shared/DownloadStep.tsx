@@ -100,6 +100,20 @@ const DownloadStep: React.FC<{ download: DownloadInfo; downloads?: DownloadInfo[
         )}
       </div>
 
+      {/* Arşiv paylaşımlı staging yerine kaynak host'un YEREL yedek dizinine düştüyse
+          portal onu göremeyebilir. Eskiden kullanıcı bunu ancak indirmeye basıp 404
+          alınca anlıyordu — sebebi ÖNCEDEN söylüyoruz. */}
+      {items.some((it) => it.isFallback) && (
+        <div className="w-full max-w-lg flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800 text-left">
+          <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            {items.filter((it) => it.isFallback).length} arşiv, paylaşımlı staging dizini yerine
+            <strong> kaynak sunucunun yerel yedek dizinine</strong> yazıldı. Portal bu dizini
+            göremiyorsa indirme başarısız olur — yöneticinize staging mount'unu kontrol ettirin.
+          </span>
+        </div>
+      )}
+
       {multi ? (
         <div className="w-full max-w-lg flex flex-col gap-2">
           {items.map((it) => (

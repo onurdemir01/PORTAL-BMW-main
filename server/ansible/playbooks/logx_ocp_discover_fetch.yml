@@ -148,12 +148,11 @@
     remote_work_dir: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}_{{ remote_host_slug }}"
     # Arsivler calisma dizininin YANINA yazilir: `archive` modulu kaynak dizinin ICINE
     # yazarsa kendi ciktisini arsivlemeye calisirdi.
-    remote_work_root: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}_{{ remote_host_slug }}_zips"
+    # Arsiv DOGRUDAN staging'e (ya da fallback'e) yazilir — ara bir "zips" dizini yok.
+    # Legacy (logx_legacy_transfer.yml) da boyle calisiyor ve UretimDE calisan yol bu.
+    staging_archive_mode: "0775"
     oc_list_timeout: 120
     oc_log_timeout: 300
-    staging_runas_user: "{{ staging_user | default('was', true) }}"
-    staging_directory_mode: "2777"
-    staged_archive_mode: "0666"
 
   tasks:
     - name: "Initialize working facts"
@@ -383,7 +382,8 @@
                   'app_name': item.1.app_name,
                   'slug': unit_slug,
                   'work_dir': remote_work_dir ~ '/' ~ unit_slug,
-                  'archive_path': remote_work_root ~ '/' ~ unit_slug ~ '.zip',
+                  'staging_archive_path': staging_dir ~ '/' ~ unit_slug ~ '.zip',
+                  'fallback_archive_path': fallback_dir ~ '/' ~ unit_slug ~ '.zip',
                   'archive_name': unit_slug ~ '.zip'
                 }]
               }}
@@ -649,228 +649,168 @@
               }}
           changed_when: false
 
-        - name: "Create archive root"
+        # ══════════════════════════════════════════════════════════════════════
+        # ARSIVLEME + STAGING — legacy (logx_legacy_transfer.yml) ile AYNI DESEN
+        # ══════════════════════════════════════════════════════════════════════
+        # ONCEKI SURUM `dzdo -u was mkdir/chmod 2777` ile staging dizinini KENDISI
+        # hazirlamaya calisiyordu. Uretimde bu `dzdo: unknown user: was` ile dustu
+        # (bastion'larda "was" diye bir kullanici yok), arsivler bastion'in yerel
+        # /tmp fallback'ine yazildi ve portal onlari GOREMEDIGI icin indirme 404
+        # verdi. Legacy tarafi yillardir calisiyor ve dzdo KULLANMIYOR: /sw mount'u
+        # zaten hazir varsayar, sadece `stat` ile bakar ve arsivi DOGRUDAN oraya
+        # yazar. Ayni yol buraya uyarlandi.
+        - name: "Ensure staging directory exists (best-effort, as SSH user)"
           ansible.builtin.file:
-            path: "{{ remote_work_root }}"
+            path: "{{ staging_dir }}"
             state: directory
-            mode: '0700'
-          when: archivable_units | length > 0
+            mode: "0775"
+          # Legacy /sw/BMW_PORTAL/logs/legacy'yi hazir varsayar; OCP alt dizini ilk
+          # kullanimda olusabilsin diye deniyoruz. Yetki yoksa AKIS DURMAZ — asagidaki
+          # stat sonucu staging'i kullanilamaz sayar ve fallback devreye girer.
+          failed_when: false
           changed_when: false
 
-        - name: "Create one archive per unit on terminal host"
+        - name: "Check staging directory"
+          ansible.builtin.stat:
+            path: "{{ staging_dir }}"
+            follow: true
+            get_checksum: false
+            get_mime: false
+            get_attributes: false
+          register: staging_dir_stat
+          failed_when: false
+          changed_when: false
+
+        - name: "Create each unit archive directly in the staging directory"
           community.general.archive:
             path: "{{ item.work_dir }}/*.log"
-            dest: "{{ item.archive_path }}"
+            dest: "{{ item.staging_archive_path }}"
             format: zip
-            mode: '0600'
+            mode: "{{ staging_archive_mode }}"
+            force_archive: true
           loop: "{{ archivable_units }}"
           loop_control:
             label: "{{ item.archive_name }}"
+          register: staging_archive_results
+          when:
+            - staging_dir_stat.stat.exists | default(false)
+            - staging_dir_stat.stat.isdir | default(false)
+          # Tek bir birim yazilamazsa digerleri denenmeye devam etsin; karar asagida
+          # dosyanin GERCEKTEN var olup olmadigina bakilarak verilir.
+          failed_when: false
           changed_when: false
 
-        - name: "Verify unit archives exist on terminal host"
-          ansible.builtin.stat:
-            path: "{{ item.archive_path }}"
-          loop: "{{ archivable_units }}"
-          loop_control:
-            label: "{{ item.archive_name }}"
-          register: remote_archive_stats
-          changed_when: false
-
-        - name: "Fail when an archive was not produced"
-          ansible.builtin.assert:
-            that:
-              - item.stat.exists | default(false)
-              - item.stat.isreg | default(false)
-              - item.stat.size | default(0) | int > 0
-            fail_msg: "Archive was not created at {{ item.item.archive_path }}"
-          loop: "{{ remote_archive_stats.results | default([]) }}"
-          loop_control:
-            label: "{{ item.item.archive_name }}"
-
-        - name: "Initialize staging result facts"
+        # Staging'e yazilamayan birimler (dizin yok / yetki yok / disk dolu) fallback'e.
+        - name: "Select units that still need a fallback archive"
           ansible.builtin.set_fact:
-            staging_succeeded: false
-            fallback_succeeded: false
-            staged_archive_path: ""
-            staging_error: ""
+            fallback_units: >-
+              {{
+                staging_archive_results.results | default([])
+                | selectattr('failed', 'defined') | selectattr('failed')
+                | map(attribute='item') | list
+                if (staging_archive_results.results is defined)
+                else archivable_units
+              }}
           changed_when: false
 
-        - name: "Validate staging paths and run-as user"
-          ansible.builtin.assert:
-            that:
-              - staging_dir | string | trim | length > 1
-              - staging_dir is match('^/')
-              - fallback_dir | string | trim | length > 1
-              - fallback_dir is match('^/')
-              - staging_runas_user | string | trim | length > 0
-              - staging_directory_mode == '2777'
-              - staged_archive_mode == '0666'
-            fail_msg: >-
-              Invalid staging settings. staging_dir={{ staging_dir }},
-              fallback_dir={{ fallback_dir }}, runas={{ staging_runas_user }}
+        - name: "Record why staging was unusable"
+          ansible.builtin.set_fact:
+            staging_error: >-
+              {{
+                ('Staging dizini kullanilamiyor: ' ~ staging_dir)
+                if not (staging_dir_stat.stat.isdir | default(false))
+                else (staging_archive_results.results | default([])
+                      | selectattr('failed', 'defined') | selectattr('failed')
+                      | map(attribute='msg') | select() | list | join(' | '))
+              }}
+          when: fallback_units | length > 0
+          changed_when: false
 
-        - name: "Stage archives directly on terminal host"
-          when: archivable_units | length > 0
-          block:
-            - name: "Create and authorize staging directory through allowed dzdo user"
-              ansible.builtin.command:
-                argv:
-                  - dzdo
-                  - -n
-                  - -u
-                  - "{{ staging_runas_user }}"
-                  - /bin/sh
-                  - -c
-                  - >-
-                    umask 000;
-                    /bin/mkdir -p -- {{ staging_dir | quote }} &&
-                    /bin/chmod {{ staging_directory_mode | quote }} -- {{ staging_dir | quote }}
-              register: staging_directory_prepare
-              changed_when: false
+        - name: "Ensure fallback directory exists on terminal host"
+          ansible.builtin.file:
+            path: "{{ fallback_dir }}"
+            state: directory
+            mode: "0750"
+          when: fallback_units | length > 0
+          failed_when: false
+          changed_when: false
 
-            - name: "Verify staging directory permissions"
-              ansible.builtin.stat:
-                path: "{{ staging_dir }}"
-              register: staging_directory_stat
-              changed_when: false
+        - name: "Create fallback archives for units staging could not take"
+          community.general.archive:
+            path: "{{ item.work_dir }}/*.log"
+            dest: "{{ item.fallback_archive_path }}"
+            format: zip
+            mode: "{{ staging_archive_mode }}"
+            force_archive: true
+          loop: "{{ fallback_units }}"
+          loop_control:
+            label: "{{ item.archive_name }}"
+          failed_when: false
+          changed_when: false
 
-            - name: "Validate staging directory"
-              ansible.builtin.assert:
-                that:
-                  - staging_directory_stat.stat.exists | default(false)
-                  - staging_directory_stat.stat.isdir | default(false)
-                  - staging_directory_stat.stat.mode | default('') == staging_directory_mode
-                  - staging_directory_stat.stat.writeable | default(false)
-                fail_msg: >-
-                  Staging directory is unavailable or not writable.
-                  path={{ staging_dir }},
-                  owner={{ staging_directory_stat.stat.pw_name | default('unknown') }},
-                  group={{ staging_directory_stat.stat.gr_name | default('unknown') }},
-                  mode={{ staging_directory_stat.stat.mode | default('unknown') }}
+        # Nerede olustuysa ORASI kaydedilir — bildirilen yol her zaman GERCEK yoldur.
+        - name: "Stat staging archives"
+          ansible.builtin.stat:
+            path: "{{ item.staging_archive_path }}"
+            get_checksum: false
+            get_mime: false
+            get_attributes: false
+          loop: "{{ archivable_units }}"
+          loop_control:
+            label: "{{ item.archive_name }}"
+          register: staging_stats
+          failed_when: false
+          changed_when: false
 
-            # Dizin hazirligi BASTION basinadir (yukarida, bir kez); kopyalama ise BIRIM
-            # basinadir. Dizin yazilamiyorsa rescue tum birimleri yedek dizine alir.
-            - name: "Copy each archive to staging directory as SSH user"
-              ansible.builtin.copy:
-                src: "{{ item.archive_path }}"
-                dest: "{{ staging_dir }}/{{ item.archive_name }}"
-                remote_src: true
-                mode: "{{ staged_archive_mode }}"
-              loop: "{{ archivable_units }}"
-              loop_control:
-                label: "{{ item.archive_name }}"
-              register: staging_copy_result
+        - name: "Stat fallback archives"
+          ansible.builtin.stat:
+            path: "{{ item.fallback_archive_path }}"
+            get_checksum: false
+            get_mime: false
+            get_attributes: false
+          loop: "{{ archivable_units }}"
+          loop_control:
+            label: "{{ item.archive_name }}"
+          register: fallback_stats
+          failed_when: false
+          changed_when: false
 
-            - name: "Verify staged archives"
-              ansible.builtin.stat:
-                path: "{{ staging_dir }}/{{ item.archive_name }}"
-              loop: "{{ archivable_units }}"
-              loop_control:
-                label: "{{ item.archive_name }}"
-              register: primary_staged_stats
-              changed_when: false
+        - name: "Record produced archives"
+          ansible.builtin.set_fact:
+            staged_unit_files: >-
+              {{
+                staged_unit_files + ([{
+                  'terminal_host': inventory_hostname,
+                  'cluster_name': item.0.item.cluster_name,
+                  'namespace': item.0.item.namespace,
+                  'app_name': item.0.item.app_name,
+                  'filename': item.0.item.archive_name,
+                  'staged_path': (item.0.item.staging_archive_path
+                                  if in_staging else item.0.item.fallback_archive_path),
+                  'size_bytes': (item.0.stat.size if in_staging else item.1.stat.size) | default(0) | int,
+                  'is_fallback': (not in_staging)
+                }] if (in_staging or in_fallback) else [])
+              }}
+          vars:
+            in_staging: "{{ item.0.stat.exists | default(false) and (item.0.stat.size | default(0) | int > 0) }}"
+            in_fallback: "{{ item.1.stat.exists | default(false) and (item.1.stat.size | default(0) | int > 0) }}"
+          loop: "{{ staging_stats.results | default([]) | zip(fallback_stats.results | default([])) | list }}"
+          loop_control:
+            label: "{{ item.0.item.archive_name }}"
+          changed_when: false
 
-            - name: "Validate staged archives"
-              ansible.builtin.assert:
-                that:
-                  - item.stat.exists | default(false)
-                  - item.stat.isreg | default(false)
-                  - item.stat.size | default(0) | int > 0
-                fail_msg: "Archive copy to primary staging failed: {{ staging_dir }}/{{ item.item.archive_name }}"
-              loop: "{{ primary_staged_stats.results | default([]) }}"
-              loop_control:
-                label: "{{ item.item.archive_name }}"
+        # Hicbir arsiv uretilemediyse bu bastion BASARISIZDIR — sessizce "success"
+        # raporlamak kullaniciya bos bir indirme ekrani gosterirdi.
+        - name: "Fail when no archive could be produced"
+          ansible.builtin.fail:
+            msg: >-
+              Hicbir arsiv olusturulamadi. staging_dir={{ staging_dir }}
+              (mevcut={{ staging_dir_stat.stat.isdir | default(false) }}),
+              fallback_dir={{ fallback_dir }}. Ayrinti: {{ staging_error | default('-') }}
+          when:
+            - archivable_units | length > 0
+            - staged_unit_files | length == 0
 
-            - name: "Record staged archives"
-              ansible.builtin.set_fact:
-                staged_unit_files: >-
-                  {{
-                    staged_unit_files + [{
-                      'terminal_host': inventory_hostname,
-                      'cluster_name': item.item.cluster_name,
-                      'namespace': item.item.namespace,
-                      'app_name': item.item.app_name,
-                      'filename': item.item.archive_name,
-                      'staged_path': staging_dir ~ '/' ~ item.item.archive_name,
-                      'size_bytes': item.stat.size | default(0) | int,
-                      'is_fallback': false
-                    }]
-                  }}
-                staging_succeeded: true
-              loop: "{{ primary_staged_stats.results | default([]) }}"
-              loop_control:
-                label: "{{ item.item.archive_name }}"
-              changed_when: false
-
-          rescue:
-            - name: "Record staging failure"
-              ansible.builtin.set_fact:
-                staging_error: >-
-                  {{
-                    ansible_failed_result.stderr
-                    | default(ansible_failed_result.msg, true)
-                    | default('Unknown staging error', true)
-                  }}
-                # Kismi kopyalama olmus olabilir; yedek yol TEMIZ bir listeyle baslar ki
-                # ayni arsiv iki kez bildirilmesin.
-                staged_unit_files: []
-              changed_when: false
-
-            - name: "Ensure fallback directory exists on terminal host"
-              ansible.builtin.file:
-                path: "{{ fallback_dir }}"
-                state: directory
-                mode: '0777'
-              changed_when: false
-
-            - name: "Copy each archive to fallback directory on terminal host"
-              ansible.builtin.copy:
-                src: "{{ item.archive_path }}"
-                dest: "{{ fallback_dir }}/{{ item.archive_name }}"
-                remote_src: true
-                mode: "{{ staged_archive_mode }}"
-              loop: "{{ archivable_units }}"
-              loop_control:
-                label: "{{ item.archive_name }}"
-              register: fallback_copy_result
-
-            - name: "Verify fallback archives"
-              ansible.builtin.stat:
-                path: "{{ fallback_dir }}/{{ item.archive_name }}"
-              loop: "{{ archivable_units }}"
-              loop_control:
-                label: "{{ item.archive_name }}"
-              register: fallback_staged_stats
-              changed_when: false
-
-            - name: "Record fallback archives"
-              ansible.builtin.set_fact:
-                staged_unit_files: >-
-                  {{
-                    staged_unit_files + [{
-                      'terminal_host': inventory_hostname,
-                      'cluster_name': item.item.cluster_name,
-                      'namespace': item.item.namespace,
-                      'app_name': item.item.app_name,
-                      'filename': item.item.archive_name,
-                      'staged_path': fallback_dir ~ '/' ~ item.item.archive_name,
-                      'size_bytes': item.stat.size | default(0) | int,
-                      'is_fallback': true
-                    }]
-                  }}
-                fallback_succeeded: true
-              loop: "{{ fallback_staged_stats.results | default([]) }}"
-              loop_control:
-                label: "{{ item.item.archive_name }}"
-              when: item.stat.exists | default(false)
-              changed_when: false
-
-        # Bu bastion'un ozeti host fact olarak birakilir; TEK set_stats yazari asagidaki
-        # toplayici play'dir (birden cok host ayni anahtari yazarsa Ansible listeleri
-        # birlestirmez, sonuncu yazan ezer).
-        # NOT: cluster/birim sonuclari `cluster_fetch_results` fact'inde kalir; bu ozet
-        # YALNIZ arsiv meta'sini tasir (artifact gereksiz sismesin).
         - name: "Record this bastion's archive summary as a host fact"
           ansible.builtin.set_fact:
             logx_bastion_summary:
@@ -881,15 +821,13 @@
               staged_ok: "{{ (staged_unit_files | length > 0) | bool }}"
           changed_when: false
 
-        - name: "Clean remote temporary files"
+        - name: "Clean remote temporary log files"
           ansible.builtin.file:
-            path: "{{ item }}"
+            path: "{{ remote_work_dir }}"
             state: absent
-          loop:
-            - "{{ remote_work_dir }}"
-            - "{{ remote_work_root }}"
-          # Yalnizca EN AZ BIR arsiv staging'e ulastiysa temizle; ulasmadiysa dosyalar
-          # bastion'da kalsin ki operator elle alabilsin.
+          # Yalnizca EN AZ BIR arsiv uretildiyse temizle; uretilemediyse ham loglar
+          # bastion'da kalsin ki operator elle alabilsin. Arsivlerin KENDISI staging
+          # (ya da fallback) dizininde durur, burada silinmez.
           when: staged_unit_files | length > 0
           changed_when: false
 

@@ -25,7 +25,7 @@ template** olarak tanımlanır. Portal bu template'leri sadece "başlat + durumu
 | `logx_legacy_discovery.yml` | Legacy sunucularda (`/vhosting`, `/vhosting8`) uygulamanın log dosyalarını **bulur** (indirmez) | `app_name`, `target_hosts` |
 | `logx_legacy_transfer.yml` | Seçilen log dosyalarını zip'leyip staging dizinine **kopyalar** | `selected_files`, `staging_dir`, `fallback_dir`, `archive_name` |
 | `logx_ocp_namespace_discovery.yml` | Seçilen cluster(lar)da namespace listesini getirir | `terminal_host`, `ocp_clusters` |
-| `logx_ocp_discover_fetch.yml` | Uygulamaya ait pod'ların logunu çeker, zip'ler, staging'e bırakır | `terminal_host`, `namespace`, `app_name`, `ocp_clusters`, `staging_dir`, `fallback_dir`, `archive_name` |
+| `logx_ocp_discover_fetch.yml` | Seçilen **her (cluster × namespace × uygulama) birimi** için pod loglarını çeker, zip'ler, staging'e bırakır | `ocp_clusters`, `ocp_targets[]`, `archive_id`, `staging_dir`, `fallback_dir` (+ geriye uyum: `terminal_host`, `oc_namespace_input`, `app_name`) |
 | `logx_ocp_app_discovery.yml` | **(yeni)** Verilen namespace'lerdeki uygulama/objeleri listeler — kullanıcı uygulama adını ezberden bilmek zorunda kalmasın | `terminal_host`, `ocp_clusters` (her öğede `namespaces`), `ocp_namespaces` |
 
 **Çıktı sözleşmesi (hepsi için ortak):** Playbook'un SON adımı
@@ -85,39 +85,16 @@ gizler). Bu yüzden arşiv, **portal sunucusunun okuyabildiği bir konumda** olm
 1. **Önerilen (paylaşılan NFS):** log-kaynak host arşivi `staging_dir` (= paylaşılan NFS mount)
    içine yazar → portal aynı NFS'ten okur. `LOGX_V2_STAGING_*` env'leri **portalın** NFS mount
    yolunu göstermeli (kaynak host'taki yolla aynı olması şart değil — portal `filename` ile arar).
-2. **Fallback — A4 fetch-back (UYGULANDI):** kaynak host paylaşılan NFS'e yazamazsa, arşivi
-   portal'a **HTTP ile PUSH** eder. Portal her transfer job'ına `ingest_url` extra_var'ı verir;
-   playbook NFS başarısızsa bu URL'ye upload yapar, portal streaming olarak yerel fallback
-   dizinine (`LOGX_STAGING_FALLBACK_DIR`) yazar, resolver oradan okur.
+2. **Fallback — yerel fallback dizini:** kaynak host `staging_dir`'e yazamazsa arşivi
+   `fallback_dir`'e bırakır. Bu dizin portal ile paylaşılmıyorsa dosya indirilemez; indirme
+   ekranı bu durumda **uyarı gösterir** (sessiz 404 yok).
 
-   **Playbook upload deseni (kaynak/terminal host'ta çalışır — portal'a HTTP erişimi olmalı):**
-   ```yaml
-   - name: "Arşivi portal'a push et (NFS staging başarısızsa fallback)"
-     ansible.builtin.command:
-       argv:
-         - curl
-         - -fsS
-         - -X
-         - POST
-         - --data-binary
-         - "@{{ archive_path }}"
-         - -H
-         - "Content-Type: application/octet-stream"
-         - "{{ ingest_url }}"
-     when: (staging_result is failed) and (ingest_url is defined)
-     changed_when: false
-   ```
-   (`Content-Type: application/octet-stream` ŞART — aksi halde portalın global JSON parser'ı
-   body'yi yutar. Token URL içinde; tek-kullanımlık + TTL'li.)
-
-   **Env (portal):**
-   | Env | Varsayılan | Ne |
-   |---|---|---|
-   | `LOGX_INGEST_BASE_URL` | `http://localhost:5055` | Kaynak host'ların portal'a ERİŞTİĞİ taban URL (ör. `https://bmwv2.fw.garanti.com.tr`) — `ingest_url` bundan üretilir |
-   | `LOGX_INGEST_TTL_MINUTES` | `60` | ingest token ömrü |
-   | `LOGX_INGEST_MAX_BYTES` | `209715200` (200MB) | upload boyut sınırı |
-
-   bkz. `server/logx/v2/ingest.cjs`.
+> **`ingest_url` ARTIK GÖNDERİLMİYOR (2026-08-09).** Hiçbir playbook onu çağırmıyordu
+> (`grep ingest_url server/ansible/playbooks/` → 0 sonuç) ve üretilen URL portalın KENDİ
+> `localhost`'unu gösterdiği için bastion'dan zaten erişilemezdi; her çalıştırmada boşuna
+> token + DB satırı üretiyordu. Ingest ucu (`server/logx/v2/ingest.cjs`) silinmedi — gerçek
+> bir fetch-back gerekirse yeri hazır, ama o gün gelene kadar portal bu değişkeni göndermez.
+> `server/ansible/__tests__/ocp-staging-parity.test.cjs` bunu kilitler.
 
 ---
 
@@ -162,6 +139,7 @@ Bunların her biri üretimde ya da doğrulamada bir kez yaşandı; hepsi **YAML 
 | Birden çok host aynı `set_stats` anahtarını yazar | Ansible listeleri **birleştirmez**, son yazan ezer | Tek yazarlı `localhost` toplayıcı play |
 | `rescue` unreachable host'u yakalar sanmak | Yakalamaz; sonraki play'ler "NO MORE HOSTS LEFT" ile atlanır | `ignore_unreachable: true` + toplayıcıda "yanıt vermeyen bastion" kontrolü |
 | Çok tipli `oc get`te rc'ye bakmak | Tek bir tip patlarsa (kapalı DeploymentConfig API kaynağı, route RBAC reddi) **başarılı** tiplerin çıktısı da atılır | Ölçüt "satır geldi mi"; stderr ayrı tutulur |
+| Staging dizinini `dzdo -u <kullanıcı>` ile hazırlamaya çalışmak | Bastion'da o kullanıcı yoksa `dzdo: unknown user: was` → staging hiç oluşmaz, arşivler bastion'ın yerel `/tmp` dizinine düşer, **indirme 404** verir (2026-08-09, job 3208785: 6 arşivin hiçbiri inmedi) | Legacy modeli: `dzdo` YOK, staging kullanıcısı/mod ayarı YOK. `stat` ile `/sw` mount'una bak, arşivi **doğrudan** oraya yaz, olmazsa `fallback_dir` |
 | `overall_status: >-` içinde `{% set %}` | Katlamalı skalerde satırlar boşluğa dönüşür, değer `"  success"` olur ve karşılaştırma tutmaz | Tek ifade yaz (ya da portalda `trim`) |
 
 **Her değişiklikten sonra:**
