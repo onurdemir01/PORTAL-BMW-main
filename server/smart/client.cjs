@@ -37,42 +37,52 @@ function buildSmartDispatcher(targetUrl) {
 async function post(path, body, extraHeaders) {
   const cfg = getConfig();
   const auth = Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
-  const target = `${cfg.baseUrl}${path}`;
-  const dispatcher = buildSmartDispatcher(target);
-  // Node'un yerlesik fetch'i (bundled undici) DEGIL — dispatcher npm-undici paketinden
-  // geliyor, ikisi karisirsa ic webidl brand-check'leri patlar (gorulen hata:
-  // "webidl.util.markAsUncloneable is not a function", server/mcp/client.cjs:142-143'teki
-  // ayni ders). Dispatcher'i yaratan undici ile fetch'i cagiran undici AYNI olmali.
-  const undiciFetch = require('undici').fetch;
-  let res;
+  const targetUrl = new URL(`${cfg.baseUrl}${path}`);
+  const dispatcher = buildSmartDispatcher(targetUrl.toString());
+  // fetch() DEGIL — undici'nin dusuk seviyeli dispatcher.request() API'si kullanilir.
+  // fetch(), WHATWG spec'ine uygun Response/Request nesneleri kurarken bazi Node
+  // surumlerinde eksik olan bir ic yardimciyi (webidl.util.markAsUncloneable, normalde
+  // node:worker_threads'ten gelir) sartsiz cagiriyor — "webidl.util.markAsUncloneable
+  // is not a function" hatasi tam bu yuzden olustu (yerelde tekrar uretilemedi, ama
+  // dispatcher.request() bu WHATWG sarmalamasina hic girmedigi icin sorunu tamamen
+  // atlar). dispatcher.request() ayni Agent/ProxyAgent baglanti havuzunu kullanir,
+  // sadece ustteki fetch() katmanini devre disi birakir.
+  let statusCode, text;
   try {
-    res = await undiciFetch(target, {
+    const result = await dispatcher.request({
+      origin: targetUrl.origin,
+      path: targetUrl.pathname + targetUrl.search,
       method: 'POST',
       headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/json;charset=UTF-8',
-        ...(cfg.requestToken ? { 'RFF-Request-Token': cfg.requestToken } : {}),
+        authorization: `Basic ${auth}`,
+        'content-type': 'application/json;charset=UTF-8',
+        ...(cfg.requestToken ? { 'rff-request-token': cfg.requestToken } : {}),
         ...extraHeaders,
       },
       body: JSON.stringify(body),
-      dispatcher,
-      signal: AbortSignal.timeout(20_000),
+      headersTimeout: 20_000,
+      bodyTimeout: 20_000,
     });
+    statusCode = result.statusCode;
+    text = await result.body.text();
   } catch (err) {
     console.error('[Smart] Baglanti hatasi:', {
-      url: target,
+      url: targetUrl.toString(),
       message: err.message,
       code: err.code || null,
       causeMessage: err.cause?.message || null,
       causeCode: err.cause?.code || null,
     });
     throw err;
+  } finally {
+    // Her cagrida taze dispatcher yaratiliyor (config canli — admin panelinden
+    // degisebilir) — havuzu acik birakmamak icin kapatilir.
+    dispatcher.close().catch(() => {});
   }
-  const text = await res.text();
   let parsed;
   try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
-  if (!res.ok) {
-    throw Object.assign(new Error(`Smart API hata verdi (HTTP ${res.status}): ${text.slice(0, 300)}`), { status: 502 });
+  if (statusCode < 200 || statusCode >= 300) {
+    throw Object.assign(new Error(`Smart API hata verdi (HTTP ${statusCode}): ${text.slice(0, 300)}`), { status: 502 });
   }
   return parsed;
 }
