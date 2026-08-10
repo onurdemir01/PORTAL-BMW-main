@@ -38,17 +38,17 @@ async function post(path, body, extraHeaders) {
   const cfg = getConfig();
   const auth = Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
   const targetUrl = new URL(`${cfg.baseUrl}${path}`);
-  const dispatcher = buildSmartDispatcher(targetUrl.toString());
   // fetch() DEGIL — undici'nin dusuk seviyeli dispatcher.request() API'si kullanilir.
   // fetch(), WHATWG spec'ine uygun Response/Request nesneleri kurarken bazi Node
   // surumlerinde eksik olan bir ic yardimciyi (webidl.util.markAsUncloneable, normalde
-  // node:worker_threads'ten gelir) sartsiz cagiriyor — "webidl.util.markAsUncloneable
-  // is not a function" hatasi tam bu yuzden olustu (yerelde tekrar uretilemedi, ama
-  // dispatcher.request() bu WHATWG sarmalamasina hic girmedigi icin sorunu tamamen
-  // atlar). dispatcher.request() ayni Agent/ProxyAgent baglanti havuzunu kullanir,
-  // sadece ustteki fetch() katmanini devre disi birakir.
+  // node:worker_threads'ten gelir) sartsiz cagirabiliyor. dispatcher.request() bu WHATWG
+  // sarmalamasina girmez. Dispatcher KURULUMU da (ProxyAgent/Agent, buildSmartDispatcher)
+  // BILEREK try icinde: hata orada da olusabilir, disaridaysa asagidaki tani loglari
+  // hic calismazdi.
+  let dispatcher = null;
   let statusCode, text;
   try {
+    dispatcher = buildSmartDispatcher(targetUrl.toString());
     const result = await dispatcher.request({
       origin: targetUrl.origin,
       path: targetUrl.pathname + targetUrl.search,
@@ -66,18 +66,27 @@ async function post(path, body, extraHeaders) {
     statusCode = result.statusCode;
     text = await result.body.text();
   } catch (err) {
+    // Tani icin: node surumu + kurulu undici surumu + TAM stack (sadece mesaj degil) —
+    // "webidl.util.markAsUncloneable is not a function" gibi ic-kutuphane hatalarinda
+    // hangi dosya/satirdan geldigini gormeden kaynagi bulmak imkansiz.
+    let undiciVersion = 'bilinmiyor';
+    try { undiciVersion = require('undici/package.json').version; } catch { /* yoksay */ }
     console.error('[Smart] Baglanti hatasi:', {
       url: targetUrl.toString(),
+      nodeVersion: process.version,
+      undiciVersion,
       message: err.message,
       code: err.code || null,
       causeMessage: err.cause?.message || null,
       causeCode: err.cause?.code || null,
+      stack: err.stack,
+      causeStack: err.cause?.stack || null,
     });
     throw err;
   } finally {
     // Her cagrida taze dispatcher yaratiliyor (config canli — admin panelinden
     // degisebilir) — havuzu acik birakmamak icin kapatilir.
-    dispatcher.close().catch(() => {});
+    if (dispatcher) dispatcher.close().catch(() => {});
   }
   let parsed;
   try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
