@@ -54,6 +54,11 @@ function getConfig() {
     // KOPYALANMADI (bkz. arastirma notlari) — bir talep bu sureyi asarsa TIMEOUT
     // olarak isaretlenir, worker'i sonsuza dek isgal etmez.
     ticketTimeoutHours: Number(process.env.SMART_TICKET_TIMEOUT_HOURS || 24),
+    // Opsiyonel, Smart'a OZEL proxy (global HTTPS_PROXY'den BILEREK bagimsiz — o,
+    // MCP/Splunk/AI gibi diger tum entegrasyonlari da etkiler, admin sadece Smart
+    // trafigini proxy'lemek istedi). Bos ise dogrudan baglanti kurulur; bkz. client.cjs
+    // buildSmartDispatcher().
+    proxyUrl: (process.env.SMART_PROXY_URL || '').trim(),
   };
 }
 

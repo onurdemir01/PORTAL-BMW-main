@@ -14,16 +14,31 @@
 'use strict';
 
 const { getConfig, isConfigured } = require('./config.cjs');
-// TLS/proxy icin server/mcp/client.cjs'teki CA/NO_PROXY-farkinda dispatcher yeniden
-// kullanilir (splunk/client.cjs ile ayni desen) — Smart REST'i de kurum ici, HTTPS_PROXY
-// arkasindaki bir host olabilir; NO_PROXY'de listeliyse dogrudan baglanir.
-const { buildDispatcher } = require('../mcp/client.cjs');
+// TLS icin server/ai/ca.cjs'teki (public kokler + kurumsal zincirler) birlesik CA
+// yeniden kullanilir — yeni bir guven deposu icat edilmiyor. Proxy ise BILEREK
+// server/mcp/client.cjs'teki GLOBAL HTTPS_PROXY'den bagimsiz: admin sadece Smart
+// trafigini proxy'lemek istedi (SMART_PROXY_URL, Admin > Sistem > Smart), global
+// HTTPS_PROXY MCP/Splunk/AI gibi diger TUM entegrasyonlari da etkiler.
+const { buildCombinedCa } = require('../ai/ca.cjs');
+
+function buildSmartDispatcher(targetUrl) {
+  const cfg = getConfig();
+  const { Agent, ProxyAgent } = require('undici');
+  const target = new URL(targetUrl);
+  const { ca } = buildCombinedCa();
+  const tlsOpts = { ca, rejectUnauthorized: true, servername: target.hostname };
+  if (cfg.proxyUrl) {
+    console.log(`[Smart] Proxy uzerinden baglanilacak: ${cfg.proxyUrl} -> ${target.hostname}`);
+    return new ProxyAgent({ uri: cfg.proxyUrl, requestTls: tlsOpts });
+  }
+  return new Agent({ connect: tlsOpts });
+}
 
 async function post(path, body, extraHeaders) {
   const cfg = getConfig();
   const auth = Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
   const target = `${cfg.baseUrl}${path}`;
-  const dispatcher = buildDispatcher(target, 'smart');
+  const dispatcher = buildSmartDispatcher(target);
   let res;
   try {
     res = await fetch(target, {
