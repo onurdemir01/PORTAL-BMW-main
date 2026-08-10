@@ -1,12 +1,13 @@
 // server/smart/config.cjs — Smart/RFF (kurum ici talep yonetim sistemi) baglanti
-// ayarlari. LDAP_URL/LDAP_BIND_DN deseniyle AYNI: env var'lardan okunur, DB'ye
-// YAZILMAZ (kimlik bilgisi/servis hesabi sifresi portal DB'sine asla girmez).
+// ayarlari. Bu dosya HER ZAMAN process.env'den okur — ama AWX_PASSWORD/ANTHROPIC_API_KEY
+// ile AYNI desen: gercek deger Admin > Sistem ekranindan girilip DB'ye (portal_env_overrides,
+// AES-256-GCM ile sifreli — bkz. server/db/env-overrides.cjs) yazilir, boot'ta process.env'e
+// UYGULANIR. Yani "env var" ile "DB'den admin panelinden girilen deger" burada CELISMEZ —
+// ikincisi birincisini besler. .env dosyasina elle yazmak da hala calisir (ör. dev ortami),
+// DB override'i varsa o kazanir.
 //
-// GERCEK DEGERLER BILINMIYOR (2026-08-09 itibariyle) — Onur'un REST endpoint + servis
-// hesabi bilgisi var ama henuz portala girilmedi. Bu dosya sadece hangi env var'larin
-// BEKLENDIGINI tanimlar; deger girilene kadar isConfigured() false doner ve Smart
-// onayi gerektiren Self Service item'lari devre disi kalir (sessizce YANLIS calismaz,
-// acikca "yapilandirilmamis" hatasi doner).
+// Deger girilene kadar isConfigured() false doner ve Smart onayi gerektiren Self Service
+// item'lari devre disi kalir (sessizce YANLIS calismaz, acikca "yapilandirilmamis" hatasi doner).
 'use strict';
 
 function isConfigured() {
