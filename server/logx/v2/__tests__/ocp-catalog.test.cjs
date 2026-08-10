@@ -89,6 +89,58 @@ test('uygulama: ONBELLEK kaydi envanterin yalin kaydini EZER (kind/replica tasir
   });
 });
 
+test('cluster uyeligi: hangi ad hangi cluster(lar)da — onyuz rozeti bunun uzerine kurulur', async () => {
+  // COKLU CLUSTER KARARI (2026-08-10): liste BIRLESIK gosterilir; fark rozetle belirtilir.
+  // "Her cluster'da var" ile "yalnizca birinde var" ayrimi bu haritadan gelir; ayrica
+  // cluster suzgeci de bunu kullanir. Pod adlari cluster'a gore farkli oldugu icin bu
+  // bilgi ozellikle uygulama ekraninda degerli.
+  await withSources({
+    inv: {
+      namespaces: {
+        items: ['ns-her-yerde', 'ns-yalniz-c1'],
+        clusters: { 'ns-her-yerde': ['c1', 'c2'], 'ns-yalniz-c1': ['c1'] },
+        cached: true, fetchedAt: null, stale: false,
+      },
+    },
+    cached: {
+      namespaces: {
+        c2: { items: ['ns-taramadan-c2'], cached: true, fetchedAt: null, stale: false },
+      },
+    },
+  }, async () => {
+    const out = await catalog.getNamespaces(ARGS);
+    assert.deepEqual(out.clusters['ns-her-yerde'], ['c1', 'c2']);
+    assert.deepEqual(out.clusters['ns-yalniz-c1'], ['c1']);
+    // Onbellek cluster BASINA okunur; kaynak cluster indisle eslesir.
+    assert.deepEqual(out.clusters['ns-taramadan-c2'], ['c2'], 'tarama sonucu kendi cluster\'ina yazilmali');
+  });
+});
+
+test('uygulama cluster uyeligi: envanter + tarama BIRLESIR', async () => {
+  await withSources({
+    inv: {
+      apps: {
+        items: [{ kind: 'Unknown', name: 'app1', replicas: null }],
+        clusters: { app1: ['c1'] },
+        cached: true, fetchedAt: null, stale: false,
+      },
+    },
+    cached: {
+      apps: {
+        c2: {
+          items: [{ kind: 'Deployment', name: 'app1', replicas: 2 },
+                  { kind: 'Pod', name: 'app1-7-abcde', replicas: null }],
+          cached: true, fetchedAt: null, stale: false,
+        },
+      },
+    },
+  }, async () => {
+    const out = await catalog.getApps({ ...ARGS, namespace: 'ns1' });
+    assert.deepEqual(out.clusters.app1, ['c1', 'c2'], 'iki kaynaktaki cluster\'lar birlesmeli');
+    assert.deepEqual(out.clusters['app1-7-abcde'], ['c2'], 'pod yalnizca kendi cluster\'inda');
+  });
+});
+
 test('bir kaynak PATLARSA digeri yine doner (kesinti buyutulmez)', async () => {
   const oi = inventory.getNamespaces;
   const oc = cache.getNamespaces;

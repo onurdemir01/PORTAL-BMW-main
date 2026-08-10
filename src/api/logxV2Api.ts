@@ -340,6 +340,10 @@ export interface CachedList<T> {
   /** SADECE namespace listesinde: namespace → içindeki uygulama sayısı (envanterden).
    *  Anahtar yoksa sayı BİLİNMİYOR demektir — 0 ("uygulama yok") ile karıştırılmamalı. */
   counts?: Record<string, number>;
+  /** Ad → hangi cluster'larda var. Çoklu cluster seçiminde liste BİRLEŞİK gösterilir,
+   *  fark rozetle belirtilir; cluster süzgeci de bunun üzerinden çalışır. Anahtar yoksa
+   *  üyelik bilinmiyor demektir — süzgeç o satırı GİZLEMEZ (bilgisizlik ≠ yokluk). */
+  clusters?: Record<string, string[]>;
   /** SADECE uygulama listesinde: bu namespace en son ne zaman tarandı (hiç taranmadıysa null). */
   scannedAt?: string | null;
   /** Tarandı ve GERÇEKTEN boş çıktı. Sihirbaz bu durumda otomatik tarama yapmaz —

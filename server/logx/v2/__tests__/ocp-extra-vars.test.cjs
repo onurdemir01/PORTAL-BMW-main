@@ -202,6 +202,27 @@ test('normalizeTargets(): kirpar, bos olani atar, tekillestirir', () => {
   );
 });
 
+test('normalizeTargets(): KARARLI sira (namespace, sonra uygulama)', () => {
+  // Toplu secimde kullanici onlarca hedefi rastgele sirayla isaretler. Sirayi girdiye
+  // birakmak, ayni secimin iki calistirmasinda arsivlerin ve job ciktisinin FARKLI sirada
+  // uretilmesi demekti — kiyaslamayi ve teshisi zorlastiriyordu.
+  const { normalizeTargets } = require('../ocp.cjs');
+  assert.deepEqual(
+    normalizeTargets([
+      { namespace: 'ns2', appName: 'b' },
+      { namespace: 'ns1', appName: 'z' },
+      { namespace: 'ns2', appName: 'a' },
+      { namespace: 'ns1', appName: 'a' },
+    ]),
+    [
+      { namespace: 'ns1', appName: 'a' },
+      { namespace: 'ns1', appName: 'z' },
+      { namespace: 'ns2', appName: 'a' },
+      { namespace: 'ns2', appName: 'b' },
+    ]
+  );
+});
+
 test('normalizeTargets(): TEK nesne de kabul edilir (eski cagri sekli)', () => {
   const { normalizeTargets } = require('../ocp.cjs');
   assert.deepEqual(

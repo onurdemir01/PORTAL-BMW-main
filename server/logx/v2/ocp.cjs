@@ -277,6 +277,10 @@ function normalizeTargets(targets) {
     seen.add(key);
     out.push({ namespace, appName });
   }
+  // KARARLI SIRA: toplu secimde kullanici onlarca hedefi rastgele sirayla isaretleyebilir.
+  // Sirayi girdiye birakmak, ayni secimin iki calistirmasinda arsivlerin ve job ciktisinin
+  // farkli sirada uretilmesi demekti — kiyaslamayi ve teshisi zorlastiriyordu.
+  out.sort((a, b) => a.namespace.localeCompare(b.namespace) || a.appName.localeCompare(b.appName));
   return out;
 }
 

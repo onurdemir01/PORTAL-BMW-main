@@ -357,7 +357,12 @@ function initLogXv2(app) {
     const counts = Object.fromEntries(
       items.filter((ns) => out.counts?.[ns] !== undefined).map((ns) => [ns, out.counts[ns]])
     );
-    res.json({ ok: true, ...out, items, sources, counts });
+    // Cluster uyeligi haritasi da ayni suzgecten gecer (ayni gerekce: kisitlanmis bir
+    // namespace'in ADI haritada kalirsa varligini ele verir).
+    const clusterMap = Object.fromEntries(
+      items.filter((ns) => out.clusters?.[ns]).map((ns) => [ns, out.clusters[ns]])
+    );
+    res.json({ ok: true, ...out, items, sources, counts, clusters: clusterMap });
   }));
 
   router.get('/ocp/inventory/apps', asyncRoute(async (req, res) => {

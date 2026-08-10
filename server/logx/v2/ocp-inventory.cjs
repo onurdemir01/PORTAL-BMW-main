@@ -33,22 +33,35 @@ async function getNamespaces({ clusterNames }) {
   // listede rozetle gosterir. Kullanici bos bir namespace'i secip bir dakika beklemek
   // yerine daha secim ekraninda gorur (2026-08-10 kullanici geri bildirimi). Ek maliyet
   // yok — ayni tablo, ayni WHERE, yalnizca bir GROUP BY.
+  // CLUSTER kirilimi da alinir: coklu cluster seciminde kullanici bir namespace'in
+  // hangi cluster'larda VAR oldugunu gormeli (2026-08-10 kullanici karari: birlesik liste
+  // + rozet). `counts` cluster'lar arasi TOPLAM degil, namespace basina ayri ayri
+  // toplanir — ayni uygulama iki cluster'da varsa iki kez sayilmaz.
   const result = await req.query(
-    `SELECT namespace, COUNT(DISTINCT application) AS app_count
+    `SELECT cluster, namespace, COUNT(DISTINCT application) AS app_count
        FROM dbo.Openshift_Inventory
       WHERE cluster IN (${placeholders})
-      GROUP BY namespace
+      GROUP BY cluster, namespace
       ORDER BY namespace`
   );
   const fetchedAt = await latestLoadedAt(pool, clusters);
   const counts = {};
+  const clusterMap = {};
+  const items = [];
   for (const r of result.recordset) {
     const ns = String(r.namespace || '').trim();
-    if (ns) counts[ns] = Number(r.app_count || 0);
+    if (!ns) continue;
+    if (!(ns in counts)) { counts[ns] = 0; clusterMap[ns] = []; items.push(ns); }
+    // Cluster'lar arasi en YUKSEK sayi: "bu namespace'te kac uygulama var" sorusunun
+    // cevabi, cluster'larin toplami degil (ayni uygulama her cluster'da tekrar eder).
+    counts[ns] = Math.max(counts[ns], Number(r.app_count || 0));
+    const cluster = String(r.cluster || '').trim();
+    if (cluster && !clusterMap[ns].includes(cluster)) clusterMap[ns].push(cluster);
   }
   return {
-    items: result.recordset.map((r) => String(r.namespace || '').trim()).filter(Boolean),
+    items,
     counts,
+    clusters: clusterMap,
     cached: result.recordset.length > 0,
     fetchedAt,
     stale: false, // tazelik zamanlanmis job'un periyoduyla belirlenir, TTL-bazli degil
@@ -68,14 +81,30 @@ async function getApps({ clusterNames, namespace }) {
   req.input('ns', ns);
   clusters.forEach((c, i) => req.input(`c${i}`, c));
   const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
+  // Cluster kirilimi: ayni uygulama her cluster'da olmayabilir; onyuz farki rozetle
+  // gosterir. `kind: 'Unknown'` bilincli — envanter tablosu yalnizca UYGULAMA ADI tutar,
+  // obje tipi (Deployment/Pod/Service) yalnizca canli taramadan gelir.
   const result = await req.query(
-    `SELECT DISTINCT application FROM dbo.Openshift_Inventory WHERE namespace = @ns AND cluster IN (${placeholders}) ORDER BY application`
+    `SELECT DISTINCT cluster, application FROM dbo.Openshift_Inventory
+      WHERE namespace = @ns AND cluster IN (${placeholders})
+      ORDER BY application`
   );
   const fetchedAt = await latestLoadedAt(pool, clusters);
+  const clusterMap = {};
+  const items = [];
+  for (const r of result.recordset) {
+    const name = String(r.application || '').trim();
+    if (!name) continue;
+    if (!(name in clusterMap)) {
+      clusterMap[name] = [];
+      items.push({ kind: 'Unknown', name, replicas: null, image: null, labelApp: null });
+    }
+    const cluster = String(r.cluster || '').trim();
+    if (cluster && !clusterMap[name].includes(cluster)) clusterMap[name].push(cluster);
+  }
   return {
-    items: result.recordset
-      .map((r) => ({ kind: 'Unknown', name: String(r.application || '').trim(), replicas: null, image: null, labelApp: null }))
-      .filter((i) => i.name),
+    items,
+    clusters: clusterMap,
     cached: result.recordset.length > 0,
     fetchedAt,
     stale: false,
