@@ -13,6 +13,11 @@ template** olarak tanımlanır. Portal bu template'leri sadece "başlat + durumu
 1. 5 playbook'u Ansible projene koy (biz `bmw_automation_folder/portal_tamplates/` altına koyduk).
 2. Her biri için AWX'te bir **Job Template** oluştur (aşağıdaki tablo).
 3. Template'lerde **"Prompt on launch → Variables (Değişken sorar)"** açık olsun (portal extra_vars gönderiyor).
+   Kapalıysa AWX gönderilen değişkenleri **sessizce yok sayar**, job başlar ve playbook boş
+   girdiyle düşer. Portal bunu launch öncesi yakalar (`server/ansible/template-preflight.cjs`),
+   **409** ile reddeder ve sihirbaz o işi hiç başlatmaz. Hangi template'te kapalı olduğunu
+   Admin > LogX Yapılandırma > playbook hazırlık listesinden görebilirsiniz
+   (`GET /api/logx/v2/admin/playbook-readiness`).
 4. Template ID'lerini ve **hangi AWX sunucusunda** olduklarını `.env.local`'a yaz (Bölüm 3).
 5. Bitti — portalda LogX ekranından kullan.
 
@@ -139,6 +144,8 @@ Bunların her biri üretimde ya da doğrulamada bir kez yaşandı; hepsi **YAML 
 | Birden çok host aynı `set_stats` anahtarını yazar | Ansible listeleri **birleştirmez**, son yazan ezer | Tek yazarlı `localhost` toplayıcı play |
 | `rescue` unreachable host'u yakalar sanmak | Yakalamaz; sonraki play'ler "NO MORE HOSTS LEFT" ile atlanır | `ignore_unreachable: true` + toplayıcıda "yanıt vermeyen bastion" kontrolü |
 | Çok tipli `oc get`te rc'ye bakmak | Tek bir tip patlarsa (kapalı DeploymentConfig API kaynağı, route RBAC reddi) **başarılı** tiplerin çıktısı da atılır | Ölçüt "satır geldi mi"; stderr ayrı tutulur |
+| `when:` ile korunan bir `set_fact`'i play başında ilklememek | Koşul sağlanmadığında değişken **hiç tanımlanmaz**; onu okuyan görev `'x' is undefined` ile düşer. 2026-08-10'da dört arşivin dördü de staging'e yazılmışken `staging_error` tanımsız kaldığı için çalıştırma **`failed`** raporlandı ve kullanıcı "Transfer başarısız oldu" gördü | Koşullu set edilen her değişkeni "Initialize working facts" içinde koşulsuz ilkle. `ocp-staging-parity.test.cjs` bunu kilitler |
+| Paylaşımlı staging dizinini `file: state=directory` + `mode` ile "garantiye almak" | Dizin zaten varsa ve sahibi başka bir kullanıcıysa chmod denemesi `PermissionError: Operation not permitted` verir — her çalıştırmada gürültü, sıfır fayda | Legacy gibi yalnızca `stat` ile bak; `/sw` mount'u hazır varsayılır, değilse `fallback_dir`'e düş |
 | Staging dizinini `dzdo -u <kullanıcı>` ile hazırlamaya çalışmak | Bastion'da o kullanıcı yoksa `dzdo: unknown user: was` → staging hiç oluşmaz, arşivler bastion'ın yerel `/tmp` dizinine düşer, **indirme 404** verir (2026-08-09, job 3208785: 6 arşivin hiçbiri inmedi) | Legacy modeli: `dzdo` YOK, staging kullanıcısı/mod ayarı YOK. `stat` ile `/sw` mount'una bak, arşivi **doğrudan** oraya yaz, olmazsa `fallback_dir` |
 | `overall_status: >-` içinde `{% set %}` | Katlamalı skalerde satırlar boşluğa dönüşür, değer `"  success"` olur ve karşılaştırma tutmaz | Tek ifade yaz (ya da portalda `trim`) |
 

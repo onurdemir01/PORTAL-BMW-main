@@ -283,6 +283,30 @@ const TABLES = [
       )`,
   },
   {
+    // Uygulama TARAMASININ kendisinin kaydi — sonucu degil.
+    //
+    // NEDEN VAR (2026-08-10): `ocp_app_cache` yalnizca BULUNAN uygulamalari tutuyordu ve
+    // `getApps` "onbellekte var mi"yi `rows.length > 0` ile olcuyordu. Gercekten BOS bir
+    // namespace tarandiginda hicbir satir yazilmadigi icin sonuc "hic taranmamis"tan
+    // ayirt edilemiyordu: sihirbaz her girişte ~1 dk'lik AWX job'ini yeniden aciyordu ve
+    // kullaniciya hep ayni "kayit yok" cumlesi gosteriliyordu.
+    //
+    // Burada BOS sonuc da bir kayittir (app_count = 0) — "tarandi, bos cikti" artik
+    // bilinebilir bir durum.
+    name: 'ocp_app_scan_log',
+    sql: `
+      CREATE TABLE ocp_app_scan_log (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        env           NVARCHAR(30) NOT NULL,
+        tenant        NVARCHAR(64) NOT NULL,
+        cluster_name  NVARCHAR(64) NOT NULL,
+        namespace     NVARCHAR(100) NOT NULL,
+        app_count     INT NOT NULL DEFAULT 0,
+        scanned_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UNIQUE(env, tenant, cluster_name, namespace)
+      )`,
+  },
+  {
     // Legacy EAR-klasor-son-eki ('-T','-D', son-ek-yok) → ortam etiketi — EnvanterApps.env
     // sutunu guvenilmez oldugu icin ortam etiketi BURADAN turetilir (admin duzeltebilir).
     name: 'logx_env_suffix_map',

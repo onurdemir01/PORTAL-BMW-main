@@ -31,8 +31,14 @@ async function findTemplate(serverId, templateId) {
   }
 }
 
-// Gonderilecek extra_vars VARSA ve template onlari kabul etmiyorsa `status: 503` tasiyan
+// Gonderilecek extra_vars VARSA ve template onlari kabul etmiyorsa `status: 409` tasiyan
 // bir Error firlatir. Bos extra_vars'ta hicbir sey yapmaz (kontrol anlamsizdir).
+//
+// NEDEN 409, 503 DEGIL (2026-08-10): kurumsal ters-proxy 5xx govdelerini SPA index.html'i
+// ile DEGISTIRIYOR. Kontrol 503 dondugunde kullanici bu net mesaj yerine "istek uygulamaya
+// ulasamadi" gibi yaniltici bir uyari goruyordu (HAR: 503 + text/html 2185B). Ayni HAR'da
+// 401 JSON'u sag salim geldigine gore 4xx yutulmuyor. Anlamca da 409 dogru: sunucu ayakta,
+// hedef kaynagin (AWX template) durumu istegi kabul etmeye uygun degil.
 //
 // `label` yalnizca mesaja girer (ör. "logx_ocp_app_discovery") — admin hangi template'i
 // duzeltecegini bilsin diye.
@@ -52,7 +58,7 @@ async function assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, {
       `AWX > Job Templates > ${tpl.name || templateId} > Variables bölümündeki ` +
       `"Prompt on launch" kutusunu işaretleyip kaydedin.`
     ),
-    { status: 503, code: 'awx_prompt_on_launch_disabled' }
+    { status: 409, code: 'awx_prompt_on_launch_disabled' }
   );
 }
 

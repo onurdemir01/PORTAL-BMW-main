@@ -68,11 +68,17 @@ async function getNamespaces({ env, tenant, clusterNames }) {
     for (const ns of out.items || []) if (!sources[ns]) sources[ns] = 'discovery';
   }
 
+  // Namespace basina uygulama SAYISI: envanterden gelir (tek GROUP BY). Onbellekten gelen
+  // namespace'ler icin sayi bilinmez — `undefined` kalir ve onyuz "bilinmiyor" gosterir;
+  // 0 ile karistirilmamalidir ("uygulama yok" ile "sayilmadi" ayri seylerdir).
+  const counts = { ...(inv.counts || {}) };
+
   const anyCache = cachedPerCluster.find((c) => c.cached) || EMPTY;
   const freshness = mergeFreshness(inv, anyCache);
   return {
     items: Object.keys(sources).sort(),
     sources,
+    counts,
     cached: Boolean(inv.cached || cachedPerCluster.some((c) => c.cached)),
     ...freshness,
     // Onyuz rozeti icin: liste tamamen envanterden mi geliyor, karisik mi?
@@ -111,9 +117,19 @@ async function getApps({ env, tenant, clusterNames, namespace }) {
 
   const anyCache = cachedPerCluster.find((c) => c.cached) || EMPTY;
   const freshness = mergeFreshness(inv, anyCache);
+  // TARAMA KAYDI: cluster'lardan HERHANGI biri "tarandi ve bos cikti" diyorsa sihirbaz
+  // otomatik taramayi TEKRARLAMAZ (aksi halde bos bir namespace her girişte yeni bir
+  // AWX job'i aciyordu). En yeni tarama zamani gosterilir.
+  const scanned = cachedPerCluster.filter((c) => c.scannedAt);
+  const scannedAt = scanned.length
+    ? new Date(Math.max(...scanned.map((c) => new Date(c.scannedAt).getTime()))).toISOString()
+    : null;
   return {
     items: [...byName.values()].sort((a, b) => String(a.name).localeCompare(String(b.name))),
     sources,
+    scannedAt,
+    scannedEmpty: Boolean(scannedAt) && cachedPerCluster.every((c) => c.scannedEmpty !== false)
+      && [...byName.values()].length === 0,
     cached: Boolean(inv.cached || cachedPerCluster.some((c) => c.cached)),
     ...freshness,
     source: inv.cached && cachedPerCluster.every((c) => !c.cached) ? 'openshift_inventory' : 'mixed',

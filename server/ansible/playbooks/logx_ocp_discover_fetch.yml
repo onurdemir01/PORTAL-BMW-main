@@ -164,6 +164,11 @@
         pod_fetch_targets: []
         cluster_fetch_results: []
         staged_unit_files: []
+        # KOSULLU set edilen HER degisken burada da ilklenir. `staging_error` yalnizca
+        # fallback gerektiginde yaziliyordu; her sey yolunda gidince tanimsiz kaliyor ve
+        # asagidaki ozet gorevi "'staging_error' is undefined" ile dusuyordu — dort arsiv
+        # de staging'e yazilmisken calistirma "failed" raporlaniyordu (2026-08-10, uretim).
+        staging_error: ''
       changed_when: false
 
     # Cok-bastion: her bastion YALNIZ kendi cluster'larini toplar. Cluster ogelerinde
@@ -659,17 +664,11 @@
         # verdi. Legacy tarafi yillardir calisiyor ve dzdo KULLANMIYOR: /sw mount'u
         # zaten hazir varsayar, sadece `stat` ile bakar ve arsivi DOGRUDAN oraya
         # yazar. Ayni yol buraya uyarlandi.
-        - name: "Ensure staging directory exists (best-effort, as SSH user)"
-          ansible.builtin.file:
-            path: "{{ staging_dir }}"
-            state: directory
-            mode: "0775"
-          # Legacy /sw/BMW_PORTAL/logs/legacy'yi hazir varsayar; OCP alt dizini ilk
-          # kullanimda olusabilsin diye deniyoruz. Yetki yoksa AKIS DURMAZ — asagidaki
-          # stat sonucu staging'i kullanilamaz sayar ve fallback devreye girer.
-          failed_when: false
-          changed_when: false
-
+        # Legacy (logx_legacy_transfer.yml) staging dizinini OLUSTURMAZ, yalnizca
+        # `stat` ile bakar. Onceki surumde buradaki `file: state=directory` her
+        # calistirmada `PermissionError: Operation not permitted: /sw/BMW_PORTAL/logs/ocp`
+        # veriyordu: dizin zaten var (mode 2777) ve sahibi baska bir kullanici, chmod
+        # denemesi dusuyordu. Gorev hicbir ise yaramadigi icin KALDIRILDI.
         - name: "Check staging directory"
           ansible.builtin.stat:
             path: "{{ staging_dir }}"
@@ -816,7 +815,7 @@
             logx_bastion_summary:
               terminal_host: "{{ inventory_hostname }}"
               files: "{{ staged_unit_files }}"
-              staging_error: "{{ staging_error }}"
+              staging_error: "{{ staging_error | default('') }}"
               archive_created: "{{ (archivable_units | length > 0) | bool }}"
               staged_ok: "{{ (staged_unit_files | length > 0) | bool }}"
           changed_when: false

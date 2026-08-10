@@ -112,6 +112,13 @@ export interface DownloadInfo {
   isFallback?: boolean;
 }
 
+/** Sihirbazın gördüğü sadeleştirilmiş hazırlık kaydı. `reason` yalnızca ready=false iken dolu. */
+export interface PlaybookReadiness {
+  keyName: string;
+  ready: boolean;
+  reason: "disabled" | "template_missing" | "prompt_on_launch_disabled" | null;
+}
+
 export const logxV2Api = {
   createRequest: (platform: Platform) => postJson<{ ok: boolean; requestId: string }>("/requests", { platform }),
 
@@ -168,6 +175,12 @@ export const logxV2Api = {
   inventoryApps: (env: string, tenant: string, clusters: string[], namespace: string) =>
     fetch(`${BASE}/ocp/inventory/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&clusters=${encodeURIComponent(clusters.join(","))}&namespace=${encodeURIComponent(namespace)}`)
       .then((r) => json<CachedList<OcpAppItem>>(r)),
+
+  /** LogX'in bağlı olduğu AWX template'leri launch'a hazır mı? Sihirbaz, başarısız
+   *  olacağı belli bir job'ı hiç başlatmamak için okur (bkz. server playbook-readiness.cjs).
+   *  Yanıt bilerek sade: altyapı ayrıntısı (template adı/ID) admin ucunda kalır. */
+  playbookReadiness: () =>
+    fetch(`${BASE}/playbook-readiness`).then((r) => json<{ ok: boolean; rows: PlaybookReadiness[] }>(r)),
 
   // Namespace içindeki uygulama/objeleri tarar (AWX job'ı başlatır).
   discoverApps: (requestId: string, namespaces: string[]) =>
@@ -324,6 +337,14 @@ export interface CachedList<T> {
   source: string | null;
   /** Öğe adı → geldiği kaynak. Envanterde olmayanı kullanıcıya rozetlemek için. */
   sources?: Record<string, "inventory" | "discovery">;
+  /** SADECE namespace listesinde: namespace → içindeki uygulama sayısı (envanterden).
+   *  Anahtar yoksa sayı BİLİNMİYOR demektir — 0 ("uygulama yok") ile karıştırılmamalı. */
+  counts?: Record<string, number>;
+  /** SADECE uygulama listesinde: bu namespace en son ne zaman tarandı (hiç taranmadıysa null). */
+  scannedAt?: string | null;
+  /** Tarandı ve GERÇEKTEN boş çıktı. Sihirbaz bu durumda otomatik tarama yapmaz —
+   *  aksi halde boş bir namespace her girişte yeni bir AWX job'ı açıyordu. */
+  scannedEmpty?: boolean;
 }
 
 /** Log çekilecek bir (namespace, uygulama) çifti. */
