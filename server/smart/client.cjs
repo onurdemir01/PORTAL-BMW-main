@@ -14,20 +14,40 @@
 'use strict';
 
 const { getConfig, isConfigured } = require('./config.cjs');
+// TLS/proxy icin server/mcp/client.cjs'teki CA/NO_PROXY-farkinda dispatcher yeniden
+// kullanilir (splunk/client.cjs ile ayni desen) — Smart REST'i de kurum ici, HTTPS_PROXY
+// arkasindaki bir host olabilir; NO_PROXY'de listeliyse dogrudan baglanir.
+const { buildDispatcher } = require('../mcp/client.cjs');
 
 async function post(path, body, extraHeaders) {
   const cfg = getConfig();
   const auth = Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
-  const res = await fetch(`${cfg.baseUrl}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': 'application/json;charset=UTF-8',
-      ...(cfg.requestToken ? { 'RFF-Request-Token': cfg.requestToken } : {}),
-      ...extraHeaders,
-    },
-    body: JSON.stringify(body),
-  });
+  const target = `${cfg.baseUrl}${path}`;
+  const dispatcher = buildDispatcher(target, 'smart');
+  let res;
+  try {
+    res = await fetch(target, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/json;charset=UTF-8',
+        ...(cfg.requestToken ? { 'RFF-Request-Token': cfg.requestToken } : {}),
+        ...extraHeaders,
+      },
+      body: JSON.stringify(body),
+      dispatcher,
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (err) {
+    console.error('[Smart] Baglanti hatasi:', {
+      url: target,
+      message: err.message,
+      code: err.code || null,
+      causeMessage: err.cause?.message || null,
+      causeCode: err.cause?.code || null,
+    });
+    throw err;
+  }
   const text = await res.text();
   let parsed;
   try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
