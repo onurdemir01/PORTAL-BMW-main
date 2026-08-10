@@ -11,6 +11,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import Masthead from "@/components/layout/Masthead";
 import PageNav from "@/components/layout/PageNav";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
+import PageErrorBoundary from "@/components/common/PageErrorBoundary";
 import { AuthContext } from "@/contexts/AuthContext";
 import { ToastContainer } from "@/components/common/Toast";
 import { CommandPalette } from "@/components/common/CommandPalette";
@@ -68,7 +69,13 @@ export default function AppLayout() {
 
           <main className="flex-1 min-w-0 overflow-y-auto">
             <div className="px-4 py-5 lg:px-6 lg:py-6">
-              <Outlet />
+              {/* Bir sayfa render sırasında patlarsa masthead ve menü ayakta kalsın,
+                  kullanıcı BEYAZ EKRAN yerine hata mesajı görsün (bkz. PageErrorBoundary).
+                  `key` olarak yol verilir: başka bir sayfaya geçince sınır sıfırlanır,
+                  aksi halde hata kartı yeni sayfada da takılı kalırdı. */}
+              <PageErrorBoundary key={location.pathname}>
+                <Outlet />
+              </PageErrorBoundary>
             </div>
           </main>
         </div>
