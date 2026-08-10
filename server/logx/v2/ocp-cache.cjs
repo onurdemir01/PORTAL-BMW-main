@@ -180,6 +180,10 @@ async function getApps({ env, tenant, clusterName, namespace }) {
   );
   const newest = rows.reduce((acc, r) => (!acc || new Date(r.fetched_at) > new Date(acc) ? r.fetched_at : acc), null);
   const oldestExpiry = rows.reduce((acc, r) => (!acc || new Date(r.expires_at) < new Date(acc) ? r.expires_at : acc), null);
+  // TARAMANIN KENDISI ayri tutulur: bos bir namespace hicbir satir uretmez, dolayisiyla
+  // `rows.length` "hic taranmadi" ile "tarandi, bos cikti"yi AYIRT EDEMEZ. Bu ayrim
+  // olmadan sihirbaz her girişte yeniden ~1 dk'lik bir AWX job'i aciyordu.
+  const scan = await getAppScan({ env, tenant, clusterName, namespace });
   return {
     items: rows.map((r) => ({
       kind: r.kind, name: r.app_name, replicas: r.replicas,
@@ -189,7 +193,53 @@ async function getApps({ env, tenant, clusterName, namespace }) {
     fetchedAt: newest,
     stale: rows.length > 0 ? isStale(oldestExpiry) : true,
     source: rows[0]?.source || null,
+    scannedAt: scan?.scannedAt || null,
+    // "Tarandi ve GERCEKTEN bos cikti" — sihirbaz bu durumda otomatik tarama yapmaz.
+    scannedEmpty: Boolean(scan && scan.appCount === 0 && rows.length === 0),
   };
 }
 
-module.exports = { getNamespaces, putNamespaces, getApps, putApps, isStale };
+// Bir (cluster, namespace) icin son tarama kaydi. Yoksa null.
+async function getAppScan({ env, tenant, clusterName, namespace }) {
+  try {
+    const { rows } = await db.query(
+      `SELECT app_count, scanned_at FROM ocp_app_scan_log
+        WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4`,
+      [String(env), String(tenant), String(clusterName), String(namespace)]
+    );
+    if (!rows.length) return null;
+    return { appCount: Number(rows[0].app_count || 0), scannedAt: rows[0].scanned_at };
+  } catch (e) {
+    // Tablo henuz olusmamis olabilir (eski kurulum) — tarama kaydi YOKMUS gibi davran.
+    console.warn('[OcpCache] tarama kaydi okunamadi:', e.message);
+    return null;
+  }
+}
+
+// Tarama sonucunu KAYDET — bos sonuc da yazilir (app_count = 0). Bu, "hic taranmadi" ile
+// "tarandi, uygulama yok"u ayirt eden TEK kayittir.
+async function putAppScan({ env, tenant, entries }) {
+  let written = 0;
+  for (const e of entries || []) {
+    // Basarisiz tarama kaydedilmez: "bos" demek yaniltici olurdu.
+    if (!e || e.status !== 'ok' || !e.clusterName || !e.namespace) continue;
+    const params = [String(env), String(tenant), String(e.clusterName), String(e.namespace),
+                    Number((e.objects || []).length)];
+    const upd = await db.query(
+      `UPDATE ocp_app_scan_log SET app_count=$5, scanned_at=GETUTCDATE()
+        WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4`,
+      params
+    );
+    if (!upd.rowCount) {
+      await db.query(
+        `INSERT INTO ocp_app_scan_log (env, tenant, cluster_name, namespace, app_count)
+         VALUES ($1, $2, $3, $4, $5)`,
+        params
+      );
+    }
+    written++;
+  }
+  return { written };
+}
+
+module.exports = { getNamespaces, putNamespaces, getApps, putApps, getAppScan, putAppScan, isStale };

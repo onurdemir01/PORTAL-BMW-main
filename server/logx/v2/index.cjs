@@ -352,7 +352,12 @@ function initLogXv2(app) {
     // istemciye sizardi (liste bos olsa bile ADIN varligini ele verir).
     const items = out.items.filter((ns) => allowedKeys.has(ns));
     const sources = Object.fromEntries(items.map((ns) => [ns, out.sources?.[ns] || 'inventory']));
-    res.json({ ok: true, ...out, items, sources });
+    // `counts` de ayni sekilde suzulur: kisitlanmis bir namespace'in adi sayilar
+    // haritasinda kalirsa ADIN varligini ele verirdi.
+    const counts = Object.fromEntries(
+      items.filter((ns) => out.counts?.[ns] !== undefined).map((ns) => [ns, out.counts[ns]])
+    );
+    res.json({ ok: true, ...out, items, sources, counts });
   }));
 
   router.get('/ocp/inventory/apps', asyncRoute(async (req, res) => {
@@ -463,32 +468,18 @@ function initLogXv2(app) {
   // hicbir ekranda gorunmuyordu; teshis AWX'e girip job'i elle incelemeyi gerektirdi.
   // Bu uc, LogX'in kullandigi BES playbook kaydinin durumunu tek bakista verir.
   router.get('/admin/playbook-readiness', requireAdmin, asyncRoute(async (req, res) => {
-    const playbookRegistry = require('../../ansible/playbook-registry.cjs');
-    const preflight = require('../../ansible/template-preflight.cjs');
-    const KEYS = [
-      'logx_legacy_discovery', 'logx_legacy_transfer',
-      'logx_ocp_namespace_discovery', 'logx_ocp_app_discovery', 'logx_ocp_discover_fetch',
-    ];
-    const rows = [];
-    for (const keyName of KEYS) {
-      const row = await playbookRegistry.getByKey(keyName).catch(() => null);
-      const templateId = row ? playbookRegistry.getEffectiveTemplateId(row) : null;
-      const serverId = row?.awxServerId || Number(process.env.AWX_LOGX_SERVER_ID) || 1;
-      // Template AWX'te bulunamazsa (ag/yetki) `null` doner — "bilinmiyor" ile "kapali"
-      // AYRI gosterilir; fail-open kurali burada da gecerli.
-      const tpl = templateId ? await preflight.findTemplate(serverId, templateId) : null;
-      rows.push({
-        keyName,
-        displayName: row?.displayName || keyName,
-        enabled: row ? row.enabled !== false : false,
-        templateId: templateId || null,
-        awxServerId: serverId,
-        foundOnAwx: templateId ? Boolean(tpl) : null,
-        templateName: tpl?.name || null,
-        promptOnLaunch: tpl ? tpl.ask_variables !== false : null,
-      });
-    }
-    res.json({ ok: true, rows });
+    res.json({ ok: true, rows: await require('./playbook-readiness.cjs').getRows() });
+  }));
+
+  // ── Sihirbaz: playbook hazir mi? (admin DEGIL, oturum acmis her kullanici) ───
+  // NEDEN VAR: app-discovery template'inde "Prompt on launch" kapaliyken sihirbaz yine de
+  // job aciyordu; AWX extra_vars'i sessizce yutuyor, playbook bos girdiyle dusuyordu.
+  // Sihirbaz artik doomed job'i HIC baslatmaz — ne yapilmasi gerektigini soyler.
+  // Yanit BILEREK sade: yalnizca keyName/ready/reason. Template adi, ID ve AWX sunucu
+  // numarasi altyapi ayrintisidir, admin ucunda kalir.
+  router.get('/playbook-readiness', asyncRoute(async (req, res) => {
+    const readiness = require('./playbook-readiness.cjs');
+    res.json({ ok: true, rows: readiness.toPublic(await readiness.getRows()) });
   }));
 
   // ── Admin: cluster satirinin CANLI kontrolu ─────────────────────────────────

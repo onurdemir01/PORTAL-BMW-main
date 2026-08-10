@@ -26,6 +26,48 @@ interface Props {
   busy?: boolean;
 }
 
+// AWX template'i launch'a hazır mı? Hazır DEĞİLSE sebebi (kullanıcıya gösterilecek
+// metnin anahtarı) döner, hazırsa null.
+//
+// NEDEN VAR (2026-08-10, üretim): `BMW Portal - LogX_OCP_App_Discovery` template'inde
+// Variables > "Prompt on launch" kapalıydı. O kutu kapalıyken AWX, portalın gönderdiği
+// extra_vars'ı SESSİZCE yok sayar; job başlar ve playbook boş girdiyle düşer. Portal
+// bunu launch öncesi yakalıyordu ama hata 503 döndüğü için ters-proxy gövdeyi SPA ile
+// değiştiriyor ve kullanıcı gerçek sebebi hiç görmüyordu. Artık job HİÇ açılmıyor.
+async function checkReadiness(): Promise<string | null> {
+  try {
+    const out = await logxV2Api.playbookReadiness();
+    const row = (out.rows || []).find((r) => r.keyName === "logx_ocp_app_discovery");
+    // Bilinmiyor/hazır → engelleme yok (fail-open: meşru bir işi metadata eksikliği
+    // yüzünden durdurmak, çözdüğü problemden büyük olurdu).
+    return row && row.ready === false ? (row.reason || "unknown") : null;
+  } catch {
+    return null;
+  }
+}
+
+const NOT_READY_TEXT: Record<string, string> = {
+  prompt_on_launch_disabled:
+    'AWX\'te uygulama keşfi job template\'i üzerinde Variables > "Prompt on launch" kapalı. ' +
+    "O kutu kapalıyken AWX, portalın gönderdiği değişkenleri sessizce yok sayar ve tarama " +
+    "boş girdiyle çalışıp hata verir — bu yüzden iş hiç başlatılmadı. Bir yönetici kutuyu " +
+    "işaretleyip kaydettikten sonra tarama çalışacak.",
+  template_missing:
+    "Uygulama keşfi için AWX job template'i tanımlı değil. Yönetici Admin > Ansible " +
+    "Yapılandırma ekranından template'i eşleştirmeli.",
+  disabled: "Uygulama keşfi playbook'u yönetici tarafından devre dışı bırakılmış.",
+  unknown: "Uygulama keşfi şu anda çalıştırılamıyor. Yöneticiye bildirin.",
+};
+
+// Tarih → "10 Ağu 12:34" (liste rozetlerinde yer kaplamasın diye kısa).
+function shortDate(value: string | null): string {
+  if (!value) return "";
+  const d = new Date(value);
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+    : "";
+}
+
 // Aynı uygulama birden çok cluster'da ve birden çok obje tipinde (Deployment + Service +
 // Route) çıkar. Kullanıcı için anlamlı birim UYGULAMA ADI'dır — tipleri altında toplarız.
 export function groupApps(items: OcpAppItem[]): { name: string; kinds: string[]; replicas: number | null }[] {
@@ -58,6 +100,12 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
   // kullanici "tara" deyip ancak o zaman 403 goruyordu.
   const [denied, setDenied] = useState(false);
   const [failed, setFailed] = useState<string[]>([]);
+  // Tarandı ama BOŞ çıktı: "hiç taranmadı"dan ayrı bir durum (bkz. ocp_app_scan_log).
+  // Bu bilgi olmadan sihirbaz aynı namespace'e her girişte yeni bir AWX job'ı açıyordu.
+  const [scannedAt, setScannedAt] = useState<string | null>(null);
+  // AWX template'i launch'a hazır değilse (ör. "Prompt on launch" kapalı) job HİÇ
+  // başlatılmaz — AWX gönderilen değişkenleri sessizce yutacağı için sonuç garanti hata.
+  const [notReady, setNotReady] = useState<string | null>(null);
 
   const clusterKey = (clusters || []).join(",");
 
@@ -79,12 +127,24 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
           setDenied(false);
           setCache(null);
           setSources({});
+          setScannedAt(r?.scannedAt ?? null);
+          // ZATEN TARANMIŞ VE BOŞ ÇIKMIŞSA tekrar tarama: namespace gerçekten boş.
+          // Kullanıcı isterse elle tazeler. Bu kontrol olmadan boş bir namespace her
+          // girişte (ve her kullanıcı için) ~1 dk'lık bir AWX job'ı açıyordu.
+          if (r?.scannedEmpty) return;
           // KAYIT YOKSA KULLANICIYA SORMA, TARA. Aynı (cluster, namespace) için yalnız BİR
           // kez — ref olmadan her render yeni bir AWX job'ı açabilirdi. Kullanıcı yine de
           // uygulama adını elle yazıp devam edebilir (kaçış yolu korunur).
           const key = `${clusterKey}|${namespace}`;
           if (onDiscover && autoScanRef.current !== key) {
             autoScanRef.current = key;
+            // BAŞARISIZ OLACAĞI BELLİ BİR JOB'I HİÇ AÇMA: AWX template'inde "Prompt on
+            // launch" kapalıysa gönderilen extra_vars sessizce yutulur ve playbook boş
+            // girdiyle düşer. Üretimde bu, kullanıcıya "ters-proxy" hatası olarak
+            // görünüyordu (2026-08-10).
+            const blocked = await checkReadiness();
+            if (cancelled) return;
+            if (blocked) { setNotReady(blocked); return; }
             onDiscover();
           }
           return;
@@ -92,6 +152,7 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
         setItems(r.items || []);
         setFailed([]);
         setDenied(false);
+        setScannedAt(r.scannedAt ?? null);
         setCache({ fetchedAt: r.fetchedAt, stale: r.stale, source: r.source });
         setSources(r.sources || {});
       } finally {
@@ -101,12 +162,31 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
     return () => { cancelled = true; };
   }, [env, tenant, clusterKey, namespace, reloadToken]);
 
+  // Elle tetiklenen taramalar da aynı kapıdan geçer: hazır değilse job açmak yerine
+  // kullanıcıya ne yapılması gerektiğini söyler.
+  async function handleDiscover() {
+    if (!onDiscover) return;
+    const blocked = await checkReadiness();
+    if (blocked) { setNotReady(blocked); return; }
+    setNotReady(null);
+    onDiscover();
+  }
+
   const groups = useMemo(() => groupApps(items), [items]);
   const query = appName.trim().toLowerCase();
   const filtered = query ? groups.filter((g) => g.name.toLowerCase().includes(query)) : groups;
 
   return (
     <div className="space-y-3">
+      {notReady && (
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-900 space-y-1">
+          <p className="font-semibold">Uygulama taraması başlatılamıyor</p>
+          <p>{NOT_READY_TEXT[notReady] || NOT_READY_TEXT.unknown}</p>
+          <p className="text-amber-800">
+            Bu arada uygulama adını biliyorsanız yukarıya yazıp devam edebilirsiniz.
+          </p>
+        </div>
+      )}
       {failed.length > 0 && (
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           Bu liste eksik olabilir — şu cluster'lardan yanıt alınamadı: {failed.join(", ")}
@@ -118,7 +198,7 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
           stale={cache.stale}
           source={cache.source}
           discoveredCount={Object.values(sources).filter((v) => v === "discovery").length}
-          onRediscover={onDiscover}
+          onRediscover={handleDiscover}
           busy={busy}
           actionLabel="Yeniden tara"
         />
@@ -174,21 +254,25 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
         </div>
       ) : (
         !loadingCache && (
+          /* Boş durumun ÜÇ ayrı hâli var; eskiden hepsi aynı cümleyi gösteriyordu ve
+             kullanıcı "tarandı mı, boş mu, yetkim mi yok" ayrımını yapamıyordu. */
           <div className="rounded-xl border border-[var(--border)] p-4 text-center space-y-2">
             <p className="text-xs text-[var(--text-muted)]">
               {denied
                 ? "Bu namespace'in uygulama listesini görme yetkiniz yok. Uygulama adını biliyorsanız yukarıya yazabilirsiniz."
-                : "Bu namespace için kayıtlı uygulama listesi yok. Adını biliyorsanız yukarıya yazın."}
+                : scannedAt
+                  ? `Bu namespace ${shortDate(scannedAt)} tarihinde tarandı ve çalışan bir uygulama bulunamadı — namespace boş görünüyor.`
+                  : "Bu namespace için kayıtlı uygulama listesi yok. Adını biliyorsanız yukarıya yazın."}
             </p>
             {onDiscover && !denied && (
               <button
-                onClick={onDiscover}
+                onClick={handleDiscover}
                 disabled={busy}
                 title="Sunuculara bağlanıp namespace içindeki uygulamaları listeler"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] transition-colors active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
               >
                 <MagnifyingGlassCircleIcon aria-hidden="true" className="w-4 h-4" />
-                {busy ? "Başlatılıyor…" : "Bu namespace'i tara"}
+                {busy ? "Başlatılıyor…" : scannedAt ? "Yine de tekrar tara" : "Bu namespace'i tara"}
               </button>
             )}
           </div>

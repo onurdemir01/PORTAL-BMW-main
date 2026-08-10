@@ -191,9 +191,15 @@ async function finalizeAppDiscovery(requestRow, job) {
   // onbellek yazimi basarisiz olsa da sihirbaz akisi durmamali).
   try {
     const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : {};
-    await require('./ocp-cache.cjs').putApps({
+    const cache = require('./ocp-cache.cjs');
+    await cache.putApps({
       env: input.env, tenant: input.tenant, entries: parsed.entries, source: 'discovery',
     });
+    // TARAMANIN KENDISI de kaydedilir — sonuc BOS olsa bile. `putApps` yalnizca bulunan
+    // uygulamalari yazar; gercekten bos bir namespace hicbir satir uretmez ve "hic
+    // taranmamis" ile ayirt edilemezdi. Sihirbaz o yuzden ayni namespace'e her girişte
+    // yeniden ~1 dk'lik bir AWX job'i aciyordu (2026-08-10 kullanici geri bildirimi).
+    await cache.putAppScan({ env: input.env, tenant: input.tenant, entries: parsed.entries });
   } catch (e) {
     console.warn('[LogXv2] uygulama onbellegi yazilamadi:', e.message);
   }

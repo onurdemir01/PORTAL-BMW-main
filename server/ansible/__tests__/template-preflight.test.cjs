@@ -25,12 +25,14 @@ function withTemplates(templates, fn, { servers = [{ id: 1, name: 'awx1' }] } = 
 
 const VARS = { ocp_clusters: [{ cluster_name: 'gbocpprod2' }], terminal_host: 'GBARKP52' };
 
-test('ask_variables=false + DOLU extra_vars → 503 ile reddedilir', async () => {
+test('ask_variables=false + DOLU extra_vars → 409 ile reddedilir (proxy 5xx govdesini yutuyor)', async () => {
   await withTemplates([{ id: 42, name: 'LogX OCP App Discovery', ask_variables: false }], async () => {
     await assert.rejects(
       () => preflight.assertTemplateAcceptsExtraVars(1, 42, VARS, { label: 'logx_ocp_app_discovery' }),
       (err) => {
-        assert.equal(err.status, 503);
+        // 503 DEGIL: ters-proxy 5xx govdesini SPA ile degistirdigi icin mesaj kullaniciya
+        // hic ulasmiyordu (bkz. template-preflight.cjs basligi).
+        assert.equal(err.status, 409);
         assert.equal(err.code, 'awx_prompt_on_launch_disabled');
         // Mesaj NE YAPILACAGINI soylemeli — teshis uretimde saatler almisti.
         assert.match(err.message, /Prompt on launch/i);

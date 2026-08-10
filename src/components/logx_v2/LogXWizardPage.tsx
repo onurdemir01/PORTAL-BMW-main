@@ -47,6 +47,9 @@ interface NamespaceList {
   cache: { fetchedAt: string | null; stale: boolean; source?: string | null } | null;
   /** Ad → kaynak ('inventory' | 'discovery'). Envanterde olmayanı rozetlemek için. */
   sources?: Record<string, string>;
+  /** Ad → içindeki uygulama sayısı (envanterden). Anahtar yoksa sayı BİLİNMİYOR —
+   *  kullanıcı boş bir namespace'i seçip bir dakika beklemesin diye listede gösterilir. */
+  counts?: Record<string, number>;
 }
 
 interface OcpInput { env?: string; tenant?: string; clusters?: string[]; appDiscoveryNamespaces?: string[] }
@@ -74,6 +77,7 @@ async function loadNamespaceCache(input: OcpInput | undefined): Promise<Namespac
     items: out.items, failed: [],
     cache: { fetchedAt: out.fetchedAt, stale: out.stale, source: out.source },
     sources: out.sources,
+    counts: out.counts,
   };
 }
 
@@ -473,6 +477,7 @@ const LogXWizardPage: React.FC = () => {
             failedDetails={namespaceList.failedDetails}
             cache={namespaceList.cache}
             sources={namespaceList.sources}
+            counts={namespaceList.counts}
             busy={busy}
             onRediscover={() => guarded(async () => {
               await logxV2Api.discoverNamespaces(requestId);

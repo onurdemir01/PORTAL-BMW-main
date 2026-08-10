@@ -19,16 +19,22 @@ interface Props {
   cache?: { fetchedAt: string | null; stale: boolean; source?: string | null } | null;
   /** Ad → kaynak. Envanterde olmayan (kullanıcı taramasıyla gelen) adlar rozetlenir. */
   sources?: Record<string, string>;
+  /** Ad → içindeki uygulama sayısı (envanterden). Anahtar YOKSA sayı bilinmiyor demektir;
+   *  0 ("uygulama yok") ile karıştırılmamalı — biri bilgi, diğeri bilgisizlik. */
+  counts?: Record<string, number>;
   onRediscover?: () => void;
   busy?: boolean;
   onSelect: (ns: string) => void;
 }
 
 const NamespacePickerStep: React.FC<Props> = ({
-  namespaces, failedClusters = [], failedDetails = [], cache, sources, onRediscover, busy, onSelect,
+  namespaces, failedClusters = [], failedDetails = [], cache, sources, counts, onRediscover, busy, onSelect,
 }) => {
   const [search, setSearch] = useState("");
   const [showErrors, setShowErrors] = useState(false);
+  // "Yalnızca uygulaması olanlar": boş namespace'ler listeyi şişiriyor ve kullanıcı
+  // bunu ancak seçip ~1 dk tarama bekledikten sonra anlıyordu.
+  const [onlyWithApps, setOnlyWithApps] = useState(false);
 
   // Savunma amaçlı: backend normalize etmiş olsa da, `project.project.openshift.io/<ad>`
   // gibi API-group önekli değerler gelirse son `/`'ten sonrasını al (namespace adı).
@@ -55,7 +61,12 @@ const NamespacePickerStep: React.FC<Props> = ({
     });
   }, [namespaces]);
 
-  const filtered = allNamespaces.filter((ns) => ns.toLowerCase().includes(search.toLowerCase()));
+  const filtered = allNamespaces.filter((ns) => {
+    if (onlyWithApps && counts?.[ns] === 0) return false;
+    return ns.toLowerCase().includes(search.toLowerCase());
+  });
+  // Süzgeci yalnızca gerçekten işe yarayacaksa göster (envanter sayı döndürmediyse anlamsız).
+  const emptyCount = counts ? allNamespaces.filter((ns) => counts[ns] === 0).length : 0;
 
   // Ayrıntı paneli hem kısmi hem tam başarısızlıkta aynı: tek yerde kurulur.
   const errorDetails = failedDetails.length > 0 && (
@@ -132,9 +143,24 @@ const NamespacePickerStep: React.FC<Props> = ({
       )}
       <div className="flex items-center justify-between">
         <p className="text-xs text-[var(--text-secondary)]">Log çekmek istediğiniz namespace'i seçin</p>
-        <span className="text-xs text-[var(--text-muted)]">
-          {search ? `${filtered.length} / ${allNamespaces.length}` : `${allNamespaces.length} namespace`}
-        </span>
+        <div className="flex items-center gap-2">
+          {emptyCount > 0 && (
+            <button
+              onClick={() => setOnlyWithApps((v) => !v)}
+              className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                onlyWithApps
+                  ? "bg-[var(--accent)] text-white border-[var(--accent)]"
+                  : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"
+              }`}
+              title={`${emptyCount} namespace'te envanterde uygulama kaydı yok`}
+            >
+              Yalnızca uygulaması olanlar
+            </button>
+          )}
+          <span className="text-xs text-[var(--text-muted)]">
+            {search || onlyWithApps ? `${filtered.length} / ${allNamespaces.length}` : `${allNamespaces.length} namespace`}
+          </span>
+        </div>
       </div>
       <div className="relative">
         <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
@@ -157,6 +183,18 @@ const NamespacePickerStep: React.FC<Props> = ({
               className="w-full text-left px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors font-mono"
             >
               {ns}
+              {counts?.[ns] !== undefined && (
+                <span
+                  className={`ml-2 text-[11px] align-middle ${
+                    counts[ns] === 0 ? "text-[var(--text-muted)] italic" : "text-[var(--text-secondary)]"
+                  }`}
+                  title={counts[ns] === 0
+                    ? "Envanterde bu namespace için uygulama kaydı yok — boş olabilir."
+                    : "Envanterdeki uygulama sayısı"}
+                >
+                  {counts[ns] === 0 ? "uygulama kaydı yok" : `${counts[ns]} uygulama`}
+                </span>
+              )}
               {sources?.[ns] === "discovery" && (
                 <span
                   className="ml-2 px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[10px] font-semibold text-[var(--text-muted)] align-middle"

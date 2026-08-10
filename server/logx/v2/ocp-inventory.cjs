@@ -29,12 +29,26 @@ async function getNamespaces({ clusterNames }) {
   const req = pool.request();
   clusters.forEach((c, i) => req.input(`c${i}`, c));
   const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
+  // Uygulama SAYISI da alinir: sihirbaz "bu namespace'te kac uygulama var" bilgisini
+  // listede rozetle gosterir. Kullanici bos bir namespace'i secip bir dakika beklemek
+  // yerine daha secim ekraninda gorur (2026-08-10 kullanici geri bildirimi). Ek maliyet
+  // yok — ayni tablo, ayni WHERE, yalnizca bir GROUP BY.
   const result = await req.query(
-    `SELECT DISTINCT namespace FROM dbo.Openshift_Inventory WHERE cluster IN (${placeholders}) ORDER BY namespace`
+    `SELECT namespace, COUNT(DISTINCT application) AS app_count
+       FROM dbo.Openshift_Inventory
+      WHERE cluster IN (${placeholders})
+      GROUP BY namespace
+      ORDER BY namespace`
   );
   const fetchedAt = await latestLoadedAt(pool, clusters);
+  const counts = {};
+  for (const r of result.recordset) {
+    const ns = String(r.namespace || '').trim();
+    if (ns) counts[ns] = Number(r.app_count || 0);
+  }
   return {
     items: result.recordset.map((r) => String(r.namespace || '').trim()).filter(Boolean),
+    counts,
     cached: result.recordset.length > 0,
     fetchedAt,
     stale: false, // tazelik zamanlanmis job'un periyoduyla belirlenir, TTL-bazli degil
