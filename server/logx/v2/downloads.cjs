@@ -52,7 +52,8 @@ async function listDownloadsForRequest(requestId) {
   // uretilmisse (finalize yarisi) yalnizca EN YENISI gosterilir — kullanici mukerrer
   // satir gormez ve tiklayinca 410 alan olu baglantilar listelenmez.
   const { rows } = await db.query(
-    `SELECT token, filename, size_bytes, expires_at, staged_path FROM logx_v2_downloads
+    `SELECT token, filename, size_bytes, expires_at, staged_path, is_fallback
+     FROM logx_v2_downloads
      WHERE request_id = $1 AND expires_at > GETUTCDATE() ORDER BY id DESC`,
     [requestId]
   );
@@ -62,7 +63,13 @@ async function listDownloadsForRequest(requestId) {
     const key = r.staged_path || r.filename || r.token;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ token: r.token, filename: r.filename, sizeBytes: r.size_bytes, expiresAt: r.expires_at });
+    out.push({
+      token: r.token, filename: r.filename, sizeBytes: r.size_bytes, expiresAt: r.expires_at,
+      // Arsiv PAYLASIMLI staging yerine kaynak host'un YEREL yedek dizinine dustuyse
+      // portal onu goremeyebilir; indirme ekrani bunu onceden soylesin (eskiden kullanici
+      // ancak indirmeye basinca 404 goruyordu).
+      isFallback: r.is_fallback === true || r.is_fallback === 1,
+    });
   }
   return out;
 }

@@ -51,6 +51,8 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
   // Ad → kaynak. Envanterde olmayan (kullanıcı taramasıyla gelen) uygulamalar rozetlenir;
   // kullanıcı listede bir adı NEDEN gördüğünü/göremediğini anlasın.
   const [sources, setSources] = useState<Record<string, string>>({});
+  // Otomatik taramanın aynı seçim için tekrar tetiklenmesini engeller.
+  const autoScanRef = React.useRef<string | null>(null);
   const [loadingCache, setLoadingCache] = useState(false);
   // "Kayit yok" ile "yetkin yok" AYRI seyler. Eskiden ikisi de ayni bos ekrani gosteriyordu;
   // kullanici "tara" deyip ancak o zaman 403 goruyordu.
@@ -77,6 +79,14 @@ const AppNameStep: React.FC<Props> = ({ env, tenant, clusters, namespace, reload
           setDenied(false);
           setCache(null);
           setSources({});
+          // KAYIT YOKSA KULLANICIYA SORMA, TARA. Aynı (cluster, namespace) için yalnız BİR
+          // kez — ref olmadan her render yeni bir AWX job'ı açabilirdi. Kullanıcı yine de
+          // uygulama adını elle yazıp devam edebilir (kaçış yolu korunur).
+          const key = `${clusterKey}|${namespace}`;
+          if (onDiscover && autoScanRef.current !== key) {
+            autoScanRef.current = key;
+            onDiscover();
+          }
           return;
         }
         setItems(r.items || []);

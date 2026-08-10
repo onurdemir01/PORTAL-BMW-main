@@ -10,9 +10,9 @@ import {
 } from "@/api/logxV2Api";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/legacy/AppSearchStep";
+import HostSelectStep from "./steps/legacy/HostSelectStep";
 import FileSelectionStep from "./steps/legacy/FileSelectionStep";
 import ClusterSelectStep from "./steps/ocp/ClusterSelectStep";
-import NamespaceStep from "./steps/ocp/NamespaceStep";
 import NamespacePickerStep from "./steps/ocp/NamespacePickerStep";
 import AppNameStep from "./steps/ocp/AppNameStep";
 import TargetListStep from "./steps/ocp/TargetListStep";
@@ -54,7 +54,8 @@ interface OcpInput { env?: string; tenant?: string; clusters?: string[]; appDisc
 // BİRİNCİL kaynak: dbo.Openshift_Inventory (portaldan bağımsız, zamanlanmış Ansible
 // job'ı besler — bkz. server/logx/v2/ocp-inventory.cjs başlığı). Tek bir senkron DB
 // okuması; hiçbir AWX job'ı tetiklenmez. Kayıt yoksa null döner — çağıran o zaman
-// (nadiren) canlı keşif fallback'ine düşer (bkz. NamespaceStep onTriggerDiscovery).
+// (nadiren) canlı keşif fallback'ine düşer — bu karar artık kullanıcıya SORULMAZ, otomatik
+// verilir (bkz. resolveNamespaces).
 //
 // Kayıt VAR ama liste boşsa (kullanıcının yetkisi olan namespace kalmamışsa) boş liste
 // döneriz, null DEĞİL: aksi halde kısıtlı kullanıcı canlı taramaya düşer, dakikalarca
@@ -79,11 +80,12 @@ async function loadNamespaceCache(input: OcpInput | undefined): Promise<Namespac
 const STEP_TITLES: Record<string, string> = {
   platform: "",
   legacy_app: "Uygulama Seçimi",
+  legacy_hosts: "Sunucu Seçimi",
   legacy_discovering: "Log Dosyaları Taranıyor",
   legacy_file_select: "Dosya Seçimi",
   legacy_transferring: "Dosyalar Hazırlanıyor",
   ocp_cluster_select: "Cluster Seçimi",
-  ocp_namespace_step: "Namespace",
+  ocp_namespace_resolving: "Namespace Hazırlanıyor",
   ocp_namespace_discovering: "Namespace'ler Taranıyor",
   ocp_namespace_picker: "Namespace Seçimi",
   ocp_app_name: "Uygulama Seçimi",
@@ -118,6 +120,9 @@ const LogXWizardPage: React.FC = () => {
   // ile biriktirir; her çift AYRI bir arşiv üretir. Tek çift eklemek bugünkü akışla aynı
   // sonucu verir — çoklu hedef, tekilin genel hâlidir.
   const [targets, setTargets] = useState<OcpFetchTarget[]>([]);
+  // Legacy: uygulama seçildi ama keşif henüz başlamadı — araya sunucu seçimi girer.
+  // Sunucu seçimi client state'idir; sunucu durumu bu aşamada hâlâ 'draft'tir.
+  const [legacyApp, setLegacyApp] = useState<string | null>(null);
   // Hedef listesi ekranda mı? Sunucu durumundan TÜRETİLEMEZ: liste tamamen client'ta
   // birikir ve sunucu hâlâ 'draft'/'apps_discovered' der. Bu bayrak olmadan kullanıcı
   // bir çift ekledikten sonra uygulama adımında takılı kalırdı.
@@ -213,26 +218,29 @@ const LogXWizardPage: React.FC = () => {
     setNsList(null);
     setTargets([]);
     setShowTargetList(false);
+    setLegacyApp(null);
   }
 
   // Adıma göre "← Geri": client-state adımları anında geri alınır; sunucu-durumlu adımlar
   // reset endpoint'iyle bir önceki seçim adımına sarılır. İlk seçim adımından geri = platform
   // seçimine dönüş (restart). Bir back hedefi olmayan adımlarda buton hiç render edilmez.
-  function backTargetFor(s: string): "restart" | "client" | "legacy_app" | "ocp_cluster_select" | "ocp_namespace_step" | null {
+  function backTargetFor(s: string): "restart" | "client" | "legacy_app" | "ocp_cluster_select" | null {
     switch (s) {
       case "legacy_app":
       case "ocp_cluster_select":
         return "restart";
+      case "legacy_hosts":
+        return "client";   // uygulama seçimine dön (keşif henüz başlamadı)
       case "ocp_app_name":
         return "client"; // sadece chosenNamespace temizle
       case "ocp_target_list":
         return "client"; // listeden namespace seçimine dön (liste korunur)
       case "legacy_file_select":
         return "legacy_app";
-      case "ocp_namespace_step":
+      case "ocp_namespace_resolving":
         return "ocp_cluster_select";
       case "ocp_namespace_picker":
-        return "ocp_namespace_step";
+        return "ocp_cluster_select";
       case "ocp_app_discovering":
         return null; // job çalışırken geri yok (iptal ayrı bir aksiyon)
       default:
@@ -246,6 +254,8 @@ const LogXWizardPage: React.FC = () => {
     if (!target) return;
     if (target === "restart") { restart(); return; }
     if (target === "client") {
+      // Legacy sunucu adımından geri = uygulama seçimine dön.
+      if (currentStep === "legacy_hosts") { setLegacyApp(null); return; }
       // Hedef listesindeyken "geri" = namespace seçimine dön; eklenen çiftler KORUNUR.
       if (currentStep === "ocp_target_list") { setShowTargetList(false); setChosenNamespace(null); return; }
       // Uygulama adımındayken "geri": liste doluysa listeye, değilse namespace seçimine.
@@ -275,7 +285,7 @@ const LogXWizardPage: React.FC = () => {
     if (request.state === "failed") step = "failed";
     else if (request.state === "ready" && download) step = "ready";
     else if (request.platform === "legacy") {
-      if (request.state === "draft") step = "legacy_app";
+      if (request.state === "draft") step = legacyApp ? "legacy_hosts" : "legacy_app";
       else if (request.state === "discovering") step = "legacy_discovering";
       else if (request.state === "discovered") step = "legacy_file_select";
       else if (request.state === "transferring") step = "legacy_transferring";
@@ -283,7 +293,7 @@ const LogXWizardPage: React.FC = () => {
       if (request.state === "draft") {
         // Önbellekten liste geldiyse (nsList) sunucu durumu 'draft' kalsa da picker gösterilir.
         step = request.input?.clusters
-          ? (activeNamespace ? "ocp_app_name" : (namespaceList ? "ocp_namespace_picker" : "ocp_namespace_step"))
+          ? (activeNamespace ? "ocp_app_name" : (namespaceList ? "ocp_namespace_picker" : "ocp_namespace_resolving"))
           : "ocp_cluster_select";
       } else if (request.state === "namespace_discovering") step = "ocp_namespace_discovering";
       // Namespace listesi geldiğinde picker gösterilir; kullanıcı bir namespace SEÇİNCE
@@ -300,15 +310,36 @@ const LogXWizardPage: React.FC = () => {
   }
 
   // Namespace listesi client state'inde durduğu için SAYFA YENİLENDİĞİNDE kaybolur. Picker'a
-  // düşen ama listesi olmayan bir durumda kart bomboş kalırdı; bunun yerine kullanıcıyı
-  // namespace adımına indiriyoruz — oradan "Hayır, listele" önbellekten anında geri getirir.
+  // düşen ama listesi olmayan bir durumda kart bomboş kalırdı; bunun yerine çözümleme
+  // adımına indiriyoruz — orası listeyi kendiliğinden geri getirir.
   // (Kural: render edemeyeceğimiz bir adımı asla seçme.)
-  if (step === "ocp_namespace_picker" && !namespaceList) step = "ocp_namespace_step";
+  if (step === "ocp_namespace_picker" && !namespaceList) step = "ocp_namespace_resolving";
 
   // Hedef listesi client state'idir; sunucu durumu hâlâ seçim aşamasını gösterdiği sürece
   // (job başlamadı) listeyi göstermek kullanıcının bulunduğu yerdir.
-  const SELECTION_STEPS = ["ocp_namespace_step", "ocp_namespace_picker", "ocp_app_name"];
+  const SELECTION_STEPS = ["ocp_namespace_resolving", "ocp_namespace_picker", "ocp_app_name"];
   if (showTargetList && targets.length > 0 && SELECTION_STEPS.includes(step)) step = "ocp_target_list";
+
+  // Namespace çözümlemesi KULLANICIYA SORULMADAN yapılır: önce paylaşımlı katalog
+  // (envanter ∪ önbellek) okunur; kayıt yoksa canlı keşif job'ı otomatik başlatılır ve
+  // sonucu kataloğa yazılır (sonraki kullanıcı anında görür).
+  //
+  // Tekrar-tetikleme koruması `nsResolveRef`: bu etki her render'da yeniden değerlendirilen
+  // `step` değerine bakar; ref olmadan aynı seçim için birden fazla AWX job'ı açılabilirdi.
+  const nsResolveRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (step !== "ocp_namespace_resolving" || !requestId || busy) return;
+    const input = request?.input as OcpInput | undefined;
+    const key = `${requestId}|${(input?.clusters || []).join(",")}`;
+    if (nsResolveRef.current === key) return;
+    nsResolveRef.current = key;
+    guarded(async () => {
+      const cached = await loadNamespaceCache(input);
+      if (cached) { setNsList(cached); return; }
+      await logxV2Api.discoverNamespaces(requestId);
+      await refresh(requestId);
+    });
+  }, [step, requestId, request?.input, busy]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const canGoBack = backTargetFor(step) !== null;
 
@@ -345,8 +376,18 @@ const LogXWizardPage: React.FC = () => {
         {step === "legacy_app" && requestId && (
           <AppSearchStep
             busy={busy}
-            onSelect={(app) => guarded(async () => {
-              await logxV2Api.discoverLegacy(requestId, app);
+            // Uygulama seçimi artık DOĞRUDAN tarama başlatmaz: araya sunucu seçimi girer.
+            // Eskiden uygulamanın TÜM sunucuları (30'a kadar) taranıyordu.
+            onSelect={(app) => setLegacyApp(app)}
+          />
+        )}
+
+        {step === "legacy_hosts" && requestId && legacyApp && (
+          <HostSelectStep
+            app={legacyApp}
+            busy={busy}
+            onSubmit={(hosts) => guarded(async () => {
+              await logxV2Api.discoverLegacy(requestId, legacyApp, hosts);
               await refresh(requestId);
             })}
           />
@@ -391,19 +432,19 @@ const LogXWizardPage: React.FC = () => {
           />
         )}
 
-        {step === "ocp_namespace_step" && requestId && (
-          <NamespaceStep
-            busy={busy}
-            onKnown={(ns) => setChosenNamespace(ns)}
-            onTriggerDiscovery={() => guarded(async () => {
-              // ÖNCE paylaşımlı önbellek: liste anında gelir, AWX job'ı hiç açılmaz.
-              // Boşsa bugünkü canlı keşif davranışı aynen sürer.
-              const cached = await loadNamespaceCache(request?.input as OcpInput | undefined);
-              if (cached) { setNsList(cached); return; }
-              await logxV2Api.discoverNamespaces(requestId);
-              await refresh(requestId);
-            })}
-          />
+        {/* "Namespace'i biliyor musun?" SORUSU KALDIRILDI. Cluster seçiminden sonra akış
+            kendi ilerler: DB'de kayıt varsa liste anında gelir, yoksa tarama kullanıcıya
+            sorulmadan başlar. Bu adım yalnızca o kararın verildiği kısa aradır (sayfa
+            yenilendiğinde de aynı yoldan geçilir). */}
+        {step === "ocp_namespace_resolving" && requestId && (
+          <div className="py-10 flex flex-col items-center gap-3 text-center">
+            <div className="w-6 h-6 border-2 border-[var(--border)] border-t-[var(--accent)] rounded-full animate-spin" />
+            <p className="text-sm text-[var(--text-secondary)]">Namespace listesi hazırlanıyor…</p>
+            <p className="text-xs text-[var(--text-muted)]">
+              Kayıtlı liste varsa anında gelir; yoksa cluster'lar taranır (bir kez — sonraki
+              kullanıcılar hazır listeyi görür).
+            </p>
+          </div>
         )}
 
         {step === "ocp_namespace_discovering" && requestId && (() => {

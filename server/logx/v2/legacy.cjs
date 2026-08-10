@@ -89,10 +89,63 @@ async function resolveHostsForApp(app, fallbackMode) {
   return result.recordset.map((r) => r.host);
 }
 
+// Sihirbazin SUNUCU SECIMI adimi icin: uygulamanin sunuculari + ortam/JBoss/durum.
+// `resolveHostsForApp` yalnizca host ADLARINI dondurur; secim ekraninda kullanicinin
+// filtreleyebilmesi icin bu alanlar da gerekir (ayni tablo, tek sorgu).
+// Durum CANLI SORGULANMAZ — envanterdeki `status` okunur (ucuz ve anlik).
+async function listHostsForApp(app) {
+  const appName = String(app || '').trim();
+  if (!appName) throw Object.assign(new Error('Uygulama adı gerekli.'), { status: 400 });
+  const pool = await inventoryDb.getPool();
+  if (!pool) throw Object.assign(new Error('Envanter DB bağlantısı yok.'), { status: 503 });
+  const req = pool.request();
+  req.input('app', appName);
+  const result = await req.query(
+    `SELECT DISTINCT UPPER(host) AS host, env, jboss_version, status
+     FROM ${getAppsTable()} WHERE app = @app ORDER BY host`
+  );
+  return result.recordset
+    .filter((r) => r.host)
+    .map((r) => ({
+      host: String(r.host).trim(),
+      env: String(r.env || '').trim(),
+      jbossVersion: String(r.jboss_version || '').trim(),
+      status: String(r.status || '').trim().toLowerCase(),
+    }));
+}
+
 // POST /legacy/:requestId/discover
-async function discover(requestRow, app, fallbackHosts) {
-  const fallbackMode = Array.isArray(fallbackHosts) && fallbackHosts.length > 0;
-  const hosts = fallbackMode ? fallbackHosts.map((h) => String(h).toUpperCase()) : await resolveHostsForApp(app, false);
+//
+// `selectedHosts`: kullanicinin SUNUCU SECIMI adiminda isaretledigi hostlar. Bos ise eski
+// davranis korunur (uygulamanin TUM hostlari taranir) — boylece bu alani gondermeyen eski
+// istemciler kirilmaz.
+//
+// ANTI-TOCTOU: client'in gonderdigi listeye guvenilmez; secim envanterden yeniden cozulen
+// host kumesine karsi suzulur. Aksi halde kullanici bu uygulamaya ait OLMAYAN bir sunucuda
+// log taratabilirdi.
+async function discover(requestRow, app, selectedHosts) {
+  const inventoryHosts = await resolveHostsForApp(app, false).catch(() => []);
+  const allowed = new Set(inventoryHosts.map((h) => String(h).toUpperCase()));
+
+  const requested = Array.isArray(selectedHosts)
+    ? [...new Set(selectedHosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean))]
+    : [];
+
+  let hosts;
+  if (requested.length) {
+    const notMine = requested.filter((h) => !allowed.has(h));
+    if (notMine.length) {
+      throw Object.assign(
+        new Error(`Bu sunucular seçilen uygulamaya ait değil: ${notMine.join(', ')}`),
+        { status: 400 }
+      );
+    }
+    hosts = requested;
+  } else {
+    // Secim yok → eski davranis. Envanter okunamadiysa (DB kesintisi) snapshot yoluna dus.
+    hosts = inventoryHosts.length ? inventoryHosts : await resolveHostsForApp(app, true);
+  }
+
   if (hosts.length === 0) {
     throw Object.assign(new Error('Bu uygulama için envanterde host bulunamadı.'), { status: 404 });
   }
@@ -184,4 +237,4 @@ function cryptoRandomId() {
   return require('crypto').randomBytes(16).toString('hex');
 }
 
-module.exports = { searchApps, resolveHostsForApp, discover, finalizeDiscovery, transfer };
+module.exports = { searchApps, resolveHostsForApp, listHostsForApp, discover, finalizeDiscovery, transfer };

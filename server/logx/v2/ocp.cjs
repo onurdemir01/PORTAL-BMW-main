@@ -316,12 +316,11 @@ async function discoverFetch(requestRow, targets) {
   // calistirmayi benzersizlestiren kisa bir kimlik uretir.
   const archiveId = require('crypto').randomBytes(4).toString('hex');
   const first = list[0];
-  // Ingest (fetch-back) tokeni tek dosya adi bekler; coklu hedefte ILK arsivin adiyla
-  // uretilir — bu yol yalnizca NFS yazilamadiginda devreye giren yedek yoldur.
-  const firstArchive = `${slugPart(input.clusters[0])}__${slugPart(first.namespace)}__${slugPart(first.appName)}__${archiveId}.zip`;
-  const ingestInfo = await require('./ingest.cjs')
-    .issueIngestToken({ requestId: requestRow.request_id, filename: firstArchive })
-    .catch(() => null);
+  // INGEST (fetch-back) BILEREK KULLANILMIYOR: hicbir playbook `ingest_url`'i cagirmiyor
+  // (legacy de dahil — `grep ingest_url` playbook'larda 0 sonuc). Her calistirmada bosuna
+  // token + DB satiri uretiliyordu ve uretilen URL portalin KENDI localhost'unu isaret
+  // ettigi icin bastion'dan zaten erisilemezdi. Teslim yolu legacy ile ayni: arsiv
+  // paylasimli staging dizinine (NFS) yazilir, portal oradan okur.
   const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
   const job = await jobs.launchJob(requestRow.request_id, 'ocp_discover_fetch', {
     ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta }),
@@ -338,7 +337,6 @@ async function discoverFetch(requestRow, targets) {
     app_name: first.appName,
     staging_dir: process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
     fallback_dir: require('./downloads.cjs').remoteFallbackDir(),
-    ...(ingestInfo ? { ingest_url: ingestInfo.url } : {}),
   });
 
   await requests.updateRequest(requestRow.request_id, {

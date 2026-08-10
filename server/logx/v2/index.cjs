@@ -214,6 +214,16 @@ function initLogXv2(app) {
     res.json({ ok: true, ...result });
   }));
 
+  // Uygulamanin sunuculari — sihirbazin SUNUCU SECIMI adimi bunu okur. Yetki kapisi
+  // uygulama duzeyinde zaten discover'da uygulaniyor; burada da aynisi yapilir ki
+  // kisitli bir uygulamanin sunucu listesi sizmasin.
+  router.get('/legacy/hosts', asyncRoute(async (req, res) => {
+    const app = String(req.query?.app || '').trim();
+    if (!app) return res.status(400).json({ ok: false, message: 'app parametresi gerekli.' });
+    await restrictions.assertAllowed('legacy_app', app, currentUser(req));
+    res.json({ ok: true, hosts: await legacy.listHostsForApp(app) });
+  }));
+
   router.post('/legacy/:requestId/discover', asyncRoute(async (req, res) => {
     const row = await loadOwnedRequest(req);
     const { app, hosts } = req.body || {};
