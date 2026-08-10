@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { CheckCircleIcon, XCircleIcon, PlusIcon, TrashIcon, ArrowPathIcon, PencilIcon } from "@heroicons/react/24/outline";
+import { XCircleIcon, TrashIcon, ArrowPathIcon, PencilIcon } from "@heroicons/react/24/outline";
 import { inventoryApi } from "@/api/inventoryApi";
 import { toast } from "@/hooks/useToast";
 import { nobetciApi } from "@/api/nobetciApi";
@@ -70,15 +70,8 @@ const CACHE_ACTIONS = [
 
 export default function SystemConfigTab() {
   const [aliases, setAliases] = useState<AliasEntry[]>([]);
-  const [availableTables, setAvailableTables] = useState<string[]>([]);
   const [aliasLoading, setAliasLoading] = useState(true);
   const [cacheClearing, setCacheClearing] = useState<string | null>(null);
-
-  // Visible tables state
-  const [visibleConfig, setVisibleConfig] = useState<Record<string, string[] | "*">>({ User: [], Admin: "*" });
-  const [visibleLoading, setVisibleLoading] = useState(true);
-  const [newTableInput, setNewTableInput] = useState("");
-  const [visRole, setVisRole] = useState<"User" | "Admin">("User");
 
   // System config (env) state
   const [configValues, setConfigValues] = useState<Record<string, ConfigValue>>({});
@@ -121,11 +114,10 @@ export default function SystemConfigTab() {
   }
 
   useEffect(() => {
-    Promise.all([inventoryApi.tableAliasesDetailed(), inventoryApi.tables(), inventoryApi.visibleTablesConfig()])
-      .then(([ar, tr, vr]) => {
+    Promise.all([inventoryApi.tableAliasesDetailed(), inventoryApi.tables()])
+      .then(([ar, tr]) => {
         const detailMap = new Map((ar.aliases || []).map((d) => [d.tableName, d]));
         const tables = tr.tables || [];
-        setAvailableTables(tables);
         setAliases(tables.map((t) => {
           const d = detailMap.get(t);
           return {
@@ -134,38 +126,10 @@ export default function SystemConfigTab() {
             isActive: d?.isActive !== false, language: d?.language || "tr", sortOrder: d?.sortOrder ?? 0,
           };
         }));
-        if (vr.ok) setVisibleConfig(vr.config as Record<string, string[] | "*">);
       })
       .catch(() => {})
-      .finally(() => { setAliasLoading(false); setVisibleLoading(false); });
+      .finally(() => { setAliasLoading(false); });
   }, []);
-
-  async function toggleRoleTable(role: "User" | "Admin", table: string) {
-    const current = visibleConfig[role];
-    if (current === "*") return;
-    const next = current.includes(table)
-      ? current.filter((t) => t !== table)
-      : [...current, table];
-    const r = await inventoryApi.setVisibleTables(role, next);
-    if (r.ok) { setVisibleConfig(r.config); toast.success(`${role === "Admin" ? "Admin" : "Kullanıcı"} tablo görünürlüğü güncellendi.`); }
-    else toast.error("Güncellenemedi.");
-  }
-
-  async function addCustomTable(role: "User" | "Admin") {
-    const t = newTableInput.trim();
-    if (!t) return;
-    const current = visibleConfig[role];
-    if (current === "*" || current.includes(t)) { setNewTableInput(""); return; }
-    const r = await inventoryApi.setVisibleTables(role, [...current, t]);
-    if (r.ok) { setVisibleConfig(r.config); setNewTableInput(""); toast.success(`"${t}" eklendi.`); }
-    else toast.error("Eklenemedi.");
-  }
-
-  async function setRoleAllTables(role: "User" | "Admin", all: boolean) {
-    const r = await inventoryApi.setVisibleTables(role, all ? "*" : []);
-    if (r.ok) { setVisibleConfig(r.config); toast.success(all ? "Tüm tablolar görünür oldu." : "Tablolar temizlendi."); }
-    else toast.error("Güncellenemedi.");
-  }
 
   async function clearCache(key: string, endpoint: string | null) {
     setCacheClearing(key);
@@ -221,80 +185,8 @@ export default function SystemConfigTab() {
   // Group env vars
   const groups = Array.from(new Set(ENV_VARS.map((v) => v.group)));
 
-  const userVisible = visibleConfig[visRole] ?? [];
-  const isAllTablesVisible = userVisible === "*";
-
   return (
     <div className="space-y-8">
-
-      {/* Visible Tables */}
-      <section>
-        <h3 className="text-sm font-semibold text-gray-700 mb-1">Kullanıcı Tablo Görünürlüğü</h3>
-        <p className="text-xs text-gray-400 mb-3">
-          Hangi tabloların hangi role görüneceğini belirle. Admin için ayrı bir kısıtlama tanımlamazsanız
-          ("Tüm tabloları göster" işaretliyse) admin'ler tüm tabloları görmeye devam eder.
-        </p>
-
-        <div className="flex gap-1 mb-4 bg-gray-100 p-0.5 rounded-lg w-fit">
-          {(["User", "Admin"] as const).map((r) => (
-            <button key={r} onClick={() => setVisRole(r)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                visRole === r ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}>
-              {r === "Admin" ? "Admin" : "Kullanıcı"}
-            </button>
-          ))}
-        </div>
-
-        {visibleLoading ? (
-          <div className="h-24 bg-gray-100 rounded-xl animate-pulse" />
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={isAllTablesVisible}
-                  onChange={(e) => setRoleAllTables(visRole, e.target.checked)}
-                  className="rounded border-gray-300" />
-                Tüm tabloları göster (kısıtlama yok)
-              </label>
-            </div>
-
-            {!isAllTablesVisible && (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  {availableTables.map((t) => {
-                    const checked = Array.isArray(userVisible) && userVisible.includes(t);
-                    return (
-                      <button key={t} onClick={() => toggleRoleTable(visRole, t)}
-                        className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-full border transition-colors ${
-                          checked ? "bg-[#1A56DB] text-white border-[#1A56DB]" : "bg-white text-gray-600 border-gray-200 hover:border-[#1A56DB]"
-                        }`}>
-                        {checked && <CheckCircleIcon className="w-3.5 h-3.5" />}
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex gap-2 items-center">
-                  <input value={newTableInput} onChange={(e) => setNewTableInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addCustomTable(visRole)}
-                    placeholder="Özel tablo adı ekle..."
-                    className="px-3 py-1.5 text-xs border border-gray-200 rounded-xl outline-none focus:border-[#1A56DB] w-56" />
-                  <button onClick={() => addCustomTable(visRole)}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[#1A56DB] text-white rounded-xl hover:bg-blue-700">
-                    <PlusIcon className="w-3.5 h-3.5" /> Ekle
-                  </button>
-                </div>
-                {Array.isArray(userVisible) && userVisible.length > 0 && (
-                  <p className="text-xs text-gray-400">
-                    Seçili: <span className="font-medium text-gray-700">{userVisible.join(", ")}</span>
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </section>
 
       {/* Table Aliases */}
       <section>

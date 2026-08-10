@@ -1,9 +1,10 @@
 // src/components/admin/tabs/InventoryVisibilityTab.tsx — actions.md #12 (Bölüm K):
 // Kullanıcı Tablo Görünürlüğü. Eskiden yalnızca 2 satırlık (rol → CSV liste) bir model
-// SystemConfigTab içinde yaşıyordu; artık HER tabloya bir satır (aktif/pasif/sıra/açıklama),
-// kullanıcı-bazlı override ve kolon-seviyesi görünürlük için ayrı bir yönetim ekranı.
-// Rol-bazlı ("User görür mü") ayar hâlâ SystemConfigTab'de kalır (backend uyumluluğu
-// korunuyor) — bu ekran onun ÜZERİNE inşa edilen ince taneli katmanları yönetir.
+// SystemConfigTab içinde yaşıyordu; artık HER tabloya bir satır (aktif/pasif/sıra/açıklama,
+// rol-bazlı User/Admin görünürlüğü, kullanıcı-bazlı override, kolon-seviyesi görünürlük) —
+// TEK yönetim ekranı. Rol-bazlı görünürlük (eskiden Admin > Sistem'de ayrı bir bölümdü,
+// aynı alttaki inventory_table_role_visibility verisini okuyup yazıyordu) BURAYA taşındı;
+// Sistem sekmesi artık bu özelliği içermiyor.
 import React, { useEffect, useState } from "react";
 import { PencilSquareIcon, PlusIcon, TrashIcon, TableCellsIcon, UsersIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { inventoryApi, type TableVisibilityRow, type TableUserOverride } from "@/api/inventoryApi";
@@ -12,6 +13,7 @@ import { Select } from "@/components/ui/Form";
 
 export default function InventoryVisibilityTab() {
   const [tables, setTables] = useState<TableVisibilityRow[]>([]);
+  const [allTablesVisible, setAllTablesVisibleState] = useState<Record<"User" | "Admin", boolean>>({ User: false, Admin: true });
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<{ displayName: string; description: string; sortOrder: string }>({ displayName: "", description: "", sortOrder: "0" });
@@ -23,6 +25,7 @@ export default function InventoryVisibilityTab() {
     try {
       const r = await inventoryApi.tableVisibilityList();
       setTables(r.tables || []);
+      if (r.allTablesVisible) setAllTablesVisibleState(r.allTablesVisible);
     } catch {
       toast.error("Tablolar yüklenemedi.");
     } finally {
@@ -30,6 +33,30 @@ export default function InventoryVisibilityTab() {
     }
   }
   useEffect(() => { reload(); }, []);
+
+  async function toggleAllTablesVisible(role: "User" | "Admin") {
+    const next = !allTablesVisible[role];
+    try {
+      await inventoryApi.setAllTablesVisible(role, next);
+      setAllTablesVisibleState((prev) => ({ ...prev, [role]: next }));
+      // Kapatıldığında altta bireysel liste BOŞ başlar (backend ile aynı davranış) —
+      // yeniden yüklemek satırlardaki roleVisible'ı bununla senkron tutar.
+      await reload();
+      toast.success(`${role === "Admin" ? "Admin" : "Kullanıcı"} görünürlüğü güncellendi.`);
+    } catch {
+      toast.error("Güncellenemedi.");
+    }
+  }
+
+  async function toggleRoleForTable(row: TableVisibilityRow, role: "User" | "Admin") {
+    if (allTablesVisible[role]) return; // "Tüm tabloları göster" açıkken tek tek düzenlenemez
+    try {
+      await inventoryApi.setTableRoleVisibility(row.id, role, !row.roleVisible[role]);
+      setTables((prev) => prev.map((t) => (t.id === row.id ? { ...t, roleVisible: { ...t.roleVisible, [role]: !t.roleVisible[role] } } : t)));
+    } catch {
+      toast.error("Güncellenemedi.");
+    }
+  }
 
   async function toggleActive(row: TableVisibilityRow) {
     try {
@@ -72,10 +99,24 @@ export default function InventoryVisibilityTab() {
         <h3 className="text-sm font-semibold text-gray-800 mb-1">Envanter Tablo Görünürlüğü</h3>
         <p className="text-xs text-gray-500 max-w-2xl">
           Her fiziksel tablo için ayrı bir kayıt: aktif/pasif (Pasif bir tablo hiç kimseye —
-          "*" rolüne sahip kullanıcılara bile — görünmez), sıralama, açıklama. Rol-bazlı temel
-          görünürlük (User/Admin) Admin &gt; Sistem sekmesinde kalır; buradaki "Detay" ile her
-          tablo için kullanıcı-bazlı istisna ve kolon-seviyesi gizleme yönetilir.
+          "Tüm tabloları göster" işaretli bir role bile — görünmez), sıralama, açıklama,
+          User/Admin rolüne göre temel görünürlük. "Detay" ile her tablo için kullanıcı-bazlı
+          istisna ve kolon-seviyesi gizleme yönetilir.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-4">
+        {(["User", "Admin"] as const).map((role) => (
+          <label key={role} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+            <input
+              type="checkbox"
+              checked={allTablesVisible[role]}
+              onChange={() => toggleAllTablesVisible(role)}
+              className="rounded border-gray-300"
+            />
+            {role === "Admin" ? "Adminler" : "Kullanıcılar"}: Tüm tabloları göster (kısıtlama yok)
+          </label>
+        ))}
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-gray-100">
@@ -86,6 +127,8 @@ export default function InventoryVisibilityTab() {
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Tablo</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Görünen Ad / Açıklama</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sıra</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Kullanıcı</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Admin</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Override</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500" />
             </tr>
@@ -127,6 +170,24 @@ export default function InventoryVisibilityTab() {
                       <span className="text-xs text-gray-500">{row.sortOrder}</span>
                     )}
                   </td>
+                  {(["User", "Admin"] as const).map((role) => (
+                    <td key={role} className="px-3 py-2">
+                      <button
+                        onClick={() => toggleRoleForTable(row, role)}
+                        disabled={allTablesVisible[role]}
+                        title={
+                          allTablesVisible[role]
+                            ? `"Tüm tabloları göster" açık — tek tek düzenlenemez`
+                            : (row.roleVisible[role] ? "Gizle" : "Göster")
+                        }
+                        className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          row.roleVisible[role] || allTablesVisible[role] ? "bg-[#1A56DB] border-[#1A56DB] text-white" : "border-gray-200"
+                        }`}
+                      >
+                        {(row.roleVisible[role] || allTablesVisible[role]) && <span className="text-xs">✓</span>}
+                      </button>
+                    </td>
+                  ))}
                   <td className="px-3 py-2">
                     {row.overrideCount > 0
                       ? <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{row.overrideCount} kullanıcı</span>
@@ -157,7 +218,7 @@ export default function InventoryVisibilityTab() {
                 </tr>
                 {detailId === row.id && (
                   <tr className="bg-gray-50/40">
-                    <td colSpan={6} className="px-4 py-3">
+                    <td colSpan={8} className="px-4 py-3">
                       <TableDetailPanel tableVisibilityId={row.id} tab={detailTab} setTab={setDetailTab} />
                     </td>
                   </tr>

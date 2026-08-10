@@ -10,6 +10,9 @@ const COL_TTL = 5 * 60_000;
 export interface TableVisibilityRow {
   id: number; schemaName: string; tableName: string; displayName: string | null;
   isActive: boolean; sortOrder: number; description: string | null; overrideCount: number;
+  // Bu tablo User/Admin rolüne görünür mü — ilgili rol için "Tüm tabloları göster" açıksa
+  // (bkz. allTablesVisible) her satırda true gelir, ayrı ayrı düzenlenemez.
+  roleVisible: Record<"User" | "Admin", boolean>;
 }
 export interface TableUserOverride {
   username: string; override_type: "allow" | "deny"; created_by: string | null; created_at: string | null;
@@ -187,18 +190,10 @@ export const inventoryApi = {
       body: JSON.stringify({ tableName, alias, ...extra }),
     }).then(safeJson),
 
-  visibleTablesConfig: (): Promise<{ ok: boolean; config: Record<string, string | string[]> }> =>
-    fetch(`${BASE}/visible-tables`).then(safeJson),
-
-  setVisibleTables: (role: "User" | "Admin", tables: string[] | "*") =>
-    fetch(`${BASE}/visible-tables`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role, tables }),
-    }).then(safeJson),
-
   // actions.md #12 (Bolum K) — her tablo icin bir satir (eski 2-satirlik CSV modeli yerine).
-  tableVisibilityList: (): Promise<{ ok: boolean; tables: TableVisibilityRow[] }> =>
+  // Rol-bazli gorunurluk (Admin > Sistem'deki eski "Kullanici Tablo Gorunurlugu" ekraninin
+  // yerini alir) artik BURADA, tablo satirinin bir parcasi olarak gelir/duzenlenir.
+  tableVisibilityList: (): Promise<{ ok: boolean; tables: TableVisibilityRow[]; allTablesVisible: Record<"User" | "Admin", boolean> }> =>
     fetch(`${BASE}/table-visibility`).then(safeJson),
 
   updateTableVisibility: (id: number, data: { isActive: boolean; displayName?: string; description?: string; sortOrder?: number }) =>
@@ -206,6 +201,23 @@ export const inventoryApi = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+    }).then(safeJson),
+
+  // Tek bir tablonun bir role gore gorunurlugunu acar/kapatir. "Tum tablolari goster"
+  // (setAllTablesVisible) o rol icin AÇIKKEN 400 doner — once o kapatilmali.
+  setTableRoleVisibility: (id: number, role: "User" | "Admin", visible: boolean) =>
+    fetch(`${BASE}/table-visibility/${id}/role`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, visible }),
+    }).then(safeJson),
+
+  // Bir rol icin toplu "tum tablolar gorunur / hicbiri gorunmez" anahtari.
+  setAllTablesVisible: (role: "User" | "Admin", allVisible: boolean) =>
+    fetch(`${BASE}/table-visibility/role-all`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, allVisible }),
     }).then(safeJson),
 
   listTableUserOverrides: (id: number): Promise<{ ok: boolean; overrides: TableUserOverride[] }> =>

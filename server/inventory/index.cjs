@@ -139,10 +139,12 @@ async function removeAlias(tableName) {
 // inventory_table_role_visibility'de cok-satirli tutulur. table_name='*' bir SENTINEL
 // satirdir ("tum tablolar" — eski {tables:"*"} davranisini temsil eder). Kullanici-bazli
 // override (inventory_table_user_override) ve kolon-gorunurlugu (inventory_column_visibility)
-// TAMAMEN yeni katmanlardir. Bu bolumdeki DIS API sekli (readVisibleTables/
-// writeVisibleTablesForRole/filterTablesByRole imzalari ve donus bicimi) BILEREK KORUNUR —
-// /visible-tables route'u ve SystemConfigTab.tsx hic degismeden calismaya devam eder
-// (adapter deseni).
+// TAMAMEN yeni katmanlardir. readVisibleTables/writeVisibleTablesForRole/filterTablesByRole
+// hala GERCEK kullanici-erisimi filtrelemesinde (asagida /tables, /table/:name) kullanilir.
+// Eskiden bunlarin ADMIN-DUZENLEME ucu ayri bir route'tu (/visible-tables, Admin > Sistem
+// sekmesindeki "Kullanici Tablo Gorunurlugu"); o ekran KALDIRILDI — ayni duzenleme artik
+// /table-visibility/:id/role ve /table-visibility/role-all uzerinden, Admin > Envanter
+// Gorunurlugu ekraninda (InventoryVisibilityTab.tsx) yapilir.
 const DEFAULT_VISIBLE = {
   User:  ["Inventory", "MWAppsInventory", "OpenshiftInventory"],
   Admin: "*",
@@ -798,24 +800,6 @@ function initInventory(app) {
     }
   });
 
-  // ── Visible tables config (admin CRUD) ───────────────────────────────────────
-  router.get("/visible-tables", async (req, res) => {
-    res.json({ ok: true, config: await readVisibleTables() });
-  });
-
-  router.put("/visible-tables", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
-    const { role, tables } = req.body || {};
-    if (!role || !["User", "Admin"].includes(role)) {
-      return res.status(400).json({ ok: false, error: "role: 'User' veya 'Admin' olmalı." });
-    }
-    const config = await readVisibleTables();
-    const resolved = tables === "*" ? "*" : Array.isArray(tables) ? tables : config[role];
-    await writeVisibleTablesForRole(role, resolved);
-    config[role] = resolved;
-    res.json({ ok: true, config });
-  });
-
   // ── Tablo gorunurlugu admin ekrani (actions.md #12) ──────────────────────────
   // Her tablonun tam satiri (aktif/pasif, sira, aciklama) + o tabloya bagli rol/kullanici
   // override sayilari — sentinel ('*') satiri listeye dahil edilmez (gercek bir tablo degil).
@@ -829,16 +813,75 @@ function initInventory(app) {
           WHERE tv.table_name <> '*'
           ORDER BY tv.sort_order, tv.table_name`
       );
+      // Rol-bazli gorunurluk (Admin > Sistem'deki "Kullanici Tablo Gorunurlugu" ekraniyla
+      // AYNI alttaki veri: inventory_table_role_visibility, readVisibleTables uzerinden) artik
+      // BURADA, tablo basina tek satirda gosterilir — ayri bir ekrana gerek kalmadi.
+      const roleConfig = await readVisibleTables();
+      const isRoleVisible = (role, tableName) => (
+        roleConfig[role] === "*" ? true : (Array.isArray(roleConfig[role]) && roleConfig[role].includes(tableName))
+      );
       res.json({
         ok: true,
+        allTablesVisible: { User: roleConfig.User === "*", Admin: roleConfig.Admin === "*" },
         tables: recordset.map((r) => ({
           id: r.id, schemaName: r.schema_name, tableName: r.table_name,
           displayName: r.display_name, isActive: r.is_active === true || r.is_active === 1,
           sortOrder: r.sort_order, description: r.description, overrideCount: r.override_count,
+          roleVisible: { User: isRoleVisible("User", r.table_name), Admin: isRoleVisible("Admin", r.table_name) },
         })),
       });
     } catch (err) {
       res.status(503).json({ ok: false, error: err.message });
+    }
+  });
+
+  // "Tum tablolari goster" toplu anahtari — role '*' (kisitlama yok) yazar/kaldirir.
+  // Bu ACIKKEN bireysel tablo anahtarlari (asagidaki /:id/role) anlamsizdir; onyuz o
+  // durumda onlari devre disi gosterir (SystemConfigTab'daki eski davranisla AYNI).
+  router.put("/table-visibility/role-all", async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+    const { role, allVisible } = req.body || {};
+    if (!["User", "Admin"].includes(role)) {
+      return res.status(400).json({ ok: false, error: "role: 'User' veya 'Admin' olmalı." });
+    }
+    try {
+      // Kapatildiginda BOS listeye duser (eski setRoleAllTables(role,false) davranisiyla
+      // AYNI) — admin sonra tek tek tabloyu isaretler.
+      await writeVisibleTablesForRole(role, allVisible ? "*" : []);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // Tek bir tablonun bir role gore gorunurlugunu acar/kapatir — mevcut listeye
+  // ekleme/cikarma yapar (readVisibleTables/writeVisibleTablesForRole zaten var olan,
+  // test edilmis fonksiyonlar; burada sadece tek-tablo diff'i hesaplanir).
+  router.put("/table-visibility/:id/role", async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+    const id = Number(req.params.id);
+    const { role, visible } = req.body || {};
+    if (!["User", "Admin"].includes(role)) {
+      return res.status(400).json({ ok: false, error: "role: 'User' veya 'Admin' olmalı." });
+    }
+    try {
+      const tvRow = await query(`SELECT table_name FROM inventory_table_visibility WHERE id = @id`, [{ name: "id", type: sql.Int, value: id }]);
+      const tableName = tvRow.recordset[0]?.table_name;
+      if (!tableName || tableName === "*") return res.status(404).json({ ok: false, error: "Tablo bulunamadı." });
+
+      const config = await readVisibleTables();
+      const current = config[role];
+      if (current === "*") {
+        return res.status(400).json({ ok: false, error: `Bu rol için "Tüm tabloları göster" açık — önce onu kapatın.` });
+      }
+      const list = Array.isArray(current) ? current.slice() : [];
+      const next = visible
+        ? [...new Set([...list, tableName])]
+        : list.filter((t) => t !== tableName);
+      await writeVisibleTablesForRole(role, next);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
     }
   });
 
