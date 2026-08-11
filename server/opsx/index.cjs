@@ -129,20 +129,17 @@ async function resolveLegacyTargets(application, hosts) {
   }
   // jboss_version: "8.0.7" -> jboss8, "7.3.10" -> jboss7. WAS gibi JBoss olmayan
   // uygulamalarda bos/tanimsiz surum HATA sayilmaz (null doner, cagiran extra_vars'a
-  // hic eklemez). Karisik 7.X/8.X secimi reddedilir — tek deger belirsiz olurdu.
+  // hic eklemez). Karisik 7.X/8.X secimi ARTIK REDDEDILMEZ (kullanici karari) —
+  // "all" gonderilir, playbook'un kendisi hangi majorlerin gercekten var oldugunu
+  // (jboss_existence/jboss8_existence, bkz. bmw_portal/java_app_ops/operations/tasks/
+  // main.yml) zaten ayrica kontrol ediyor.
   const versionByHost = new Map(appHosts.map((h) => [h.host.toUpperCase(), h.jbossVersion]));
   const jbossMajors = new Set();
   for (const h of requested) {
     const major = (versionByHost.get(h) || '').match(/^(\d+)/)?.[1];
     if (major === '7' || major === '8') jbossMajors.add(major);
   }
-  if (jbossMajors.size > 1) {
-    throw Object.assign(
-      new Error('Seçilen sunucular farklı JBoss majör sürümlerinde (7.X ve 8.X karışık) — lütfen tek seferde tek majör sürüm seçin.'),
-      { status: 400 }
-    );
-  }
-  const jbossVersion = jbossMajors.size === 1 ? `jboss${[...jbossMajors][0]}` : null;
+  const jbossVersion = jbossMajors.size > 1 ? 'all' : (jbossMajors.size === 1 ? `jboss${[...jbossMajors][0]}` : null);
   return { requested, jbossVersion };
 }
 

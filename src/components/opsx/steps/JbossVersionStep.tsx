@@ -3,11 +3,26 @@
 // farklı JBoss majör sürümlerinde (7.X / 8.Y) olabiliyor — kullanıcı birden fazla
 // sürümü BİRLİKTE seçebilir (ör. hem 7.X hem 8.Y), HostSelectStep listeyi buna
 // göre filtreler.
+//
+// MAJÖR SÜRÜM BAZINDA GRUPLANIR (tam sürüm string'i DEĞİL): eskiden burada TAM
+// envanter değeri ("7.3.10", "8.1.2" gibi) tek tek seçenek olarak listeleniyordu —
+// aynı majör sürümde birden fazla minör sürüm varsa (ör. hem "8.0.7" hem "8.1.2"
+// host'ları), kullanıcı sadece BİRİNİ işaretlediğinde diğer minör sürümdeki host'lar
+// HostSelectStep'te hiç görünmüyordu (bildirilen hata: "Jboss8 sunucuları
+// listelenmedi"). Artık tek bir "JBoss 8.X" seçeneği o majör sürümdeki TÜM host'ları
+// kapsar — server/opsx/index.cjs.resolveLegacyTargets zaten majör sürüm bazında
+// çalışıyordu, önyüz de aynı granülariteye getirildi.
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxHost } from "@/api/opsxApi";
 
 const UNKNOWN_LABEL = "Bilinmiyor";
+
+// Envanterdeki tam sürüm string'inden ("8.1.2" -> "8") majör sürümü çıkarır.
+// Tanınmayan/bilinmeyen bir biçimse boş string döner ("Bilinmiyor" grubuna girer).
+export function jbossMajorOf(version: string): string {
+  return /^(\d+)/.exec(version || '')?.[1] || '';
+}
 
 const JbossVersionStep: React.FC<{
   app: string;
@@ -28,14 +43,15 @@ const JbossVersionStep: React.FC<{
       .finally(() => setLoading(false));
   }, [app]);
 
-  // Bu uygulamanın host'larında fiilen görülen versiyonlar — sabit bir liste değil,
-  // envanterden gelen gerçek değerler (ör. "7.3.10", "8.0.7"). Boş/"NF" gibi
-  // bilinmeyen değerler tek bir "Bilinmiyor" seçeneğinde toplanır.
+  // Bu uygulamanın host'larında fiilen görülen MAJÖR sürümler (bkz. dosya başı notu) —
+  // sabit bir liste değil, envanterden türetilir. Boş/"NF"/tanınmayan biçim tek bir
+  // "Bilinmiyor" seçeneğinde toplanır.
   const versions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const h of hosts) {
-      const v = h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "";
-      counts.set(v, (counts.get(v) || 0) + 1);
+      const raw = h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "";
+      const major = jbossMajorOf(raw);
+      counts.set(major, (counts.get(major) || 0) + 1);
     }
     return [...counts.entries()].sort(([a], [b]) => {
       if (!a) return 1;
@@ -87,7 +103,7 @@ const JbossVersionStep: React.FC<{
               className="rounded"
             />
             <span className="flex-1 text-sm font-medium text-[var(--text-primary)] font-mono">
-              {version ? `JBoss ${version}` : UNKNOWN_LABEL}
+              {version ? `JBoss ${version}.X` : UNKNOWN_LABEL}
             </span>
             <span className="text-xs text-[var(--text-muted)]">{count} sunucu</span>
           </label>

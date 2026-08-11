@@ -261,7 +261,7 @@ const OpsXWizardPage: React.FC = () => {
     <>
       Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span>
       {" · "}
-      JBoss: <span className="font-mono text-[var(--text-primary)]">{jbossVersions.map((v) => v || "Bilinmiyor").join(", ")}</span>
+      JBoss: <span className="font-mono text-[var(--text-primary)]">{jbossVersions.map((v) => v ? `${v}.X` : "Bilinmiyor").join(", ")}</span>
       {" · "}
       {hosts.length} sunucu: <span className="font-mono">{hosts.join(", ")}</span>
     </>

@@ -7,6 +7,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { telnetApi, type TelnetHost } from "@/api/telnetApi";
+import { jbossMajorOf } from "@/components/opsx/steps/JbossVersionStep";
 
 const HostSelectStep: React.FC<{
   app: string;
@@ -28,9 +29,13 @@ const HostSelectStep: React.FC<{
       .finally(() => setLoading(false));
   }, [app]);
 
+  // Majör sürüm bazında filtrelenir (bkz. OpsX'in HostSelectStep.tsx dosya başı notu).
   const filteredHosts = useMemo(() => {
     const wanted = new Set(jbossVersions);
-    return hosts.filter((h) => wanted.has(h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : ""));
+    return hosts.filter((h) => {
+      const raw = h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "";
+      return wanted.has(jbossMajorOf(raw));
+    });
   }, [hosts, jbossVersions]);
 
   const grouped = useMemo(() => {
@@ -70,7 +75,7 @@ const HostSelectStep: React.FC<{
       <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
         <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
         <span>
-          <strong>{app}</strong> için seçilen JBoss sürümünde ({jbossVersions.map((v) => v || "Bilinmiyor").join(", ")}) sunucu bulunamadı.
+          <strong>{app}</strong> için seçilen JBoss sürümünde ({jbossVersions.map((v) => v ? `${v}.X` : "Bilinmiyor").join(", ")}) sunucu bulunamadı.
         </span>
       </div>
     );

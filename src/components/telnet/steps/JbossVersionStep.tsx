@@ -1,9 +1,14 @@
 // src/components/telnet/steps/JbossVersionStep.tsx — uygulama seçildikten sonra,
 // sunucu listesinden ÖNCE JBoss versiyonu sorulur. OpsX'in JbossVersionStep'iyle
 // BİREBİR aynı davranış — birden fazla sürüm birlikte seçilebilir.
+//
+// MAJÖR SÜRÜM BAZINDA GRUPLANIR (bkz. OpsX'in JbossVersionStep.tsx dosya başı notu) —
+// aynı hata (bir minör sürüm seçilince diğer minör sürümdeki host'ların hiç görünmemesi)
+// burada da vardı, OpsX ile AYNI düzeltme uygulandı.
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { telnetApi, type TelnetHost } from "@/api/telnetApi";
+import { jbossMajorOf } from "@/components/opsx/steps/JbossVersionStep";
 
 const UNKNOWN_LABEL = "Bilinmiyor";
 
@@ -29,8 +34,9 @@ const JbossVersionStep: React.FC<{
   const versions = useMemo(() => {
     const counts = new Map<string, number>();
     for (const h of hosts) {
-      const v = h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "";
-      counts.set(v, (counts.get(v) || 0) + 1);
+      const raw = h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "";
+      const major = jbossMajorOf(raw);
+      counts.set(major, (counts.get(major) || 0) + 1);
     }
     return [...counts.entries()].sort(([a], [b]) => {
       if (!a) return 1;
@@ -82,7 +88,7 @@ const JbossVersionStep: React.FC<{
               className="rounded"
             />
             <span className="flex-1 text-sm font-medium text-[var(--text-primary)] font-mono">
-              {version ? `JBoss ${version}` : UNKNOWN_LABEL}
+              {version ? `JBoss ${version}.X` : UNKNOWN_LABEL}
             </span>
             <span className="text-xs text-[var(--text-muted)]">{count} sunucu</span>
           </label>
