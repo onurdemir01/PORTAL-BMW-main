@@ -46,18 +46,31 @@ const JbossVersionStep: React.FC<{
   // Bu uygulamanın host'larında fiilen görülen MAJÖR sürümler (bkz. dosya başı notu) —
   // sabit bir liste değil, envanterden türetilir. Boş/"NF"/tanınmayan biçim tek bir
   // "Bilinmiyor" seçeneğinde toplanır.
+  //
+  // Seçim majör bazında yapılır ama kullanıcıya o gruptaki GERÇEK sürümler de gösterilir
+  // (ör. "JBoss 8 · 8.0.7, 8.1.2") — envanterdeki asıl değeri gizlemek, hangi sunucunun
+  // hangi yamada olduğunu göremez hale getirirdi.
   const versions = useMemo(() => {
-    const counts = new Map<string, number>();
+    const buckets = new Map<string, { count: number; actual: Set<string> }>();
     for (const h of hosts) {
       const raw = h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "";
       const major = jbossMajorOf(raw);
-      counts.set(major, (counts.get(major) || 0) + 1);
+      const b = buckets.get(major) || { count: 0, actual: new Set<string>() };
+      b.count += 1;
+      if (raw) b.actual.add(raw);
+      buckets.set(major, b);
     }
-    return [...counts.entries()].sort(([a], [b]) => {
-      if (!a) return 1;
-      if (!b) return -1;
-      return a.localeCompare(b, undefined, { numeric: true });
-    });
+    return [...buckets.entries()]
+      .map(([major, b]) => ({
+        major,
+        count: b.count,
+        actual: [...b.actual].sort((a, c) => a.localeCompare(c, undefined, { numeric: true })),
+      }))
+      .sort((a, b) => {
+        if (!a.major) return 1;
+        if (!b.major) return -1;
+        return a.major.localeCompare(b.major, undefined, { numeric: true });
+      });
   }, [hosts]);
 
   function toggle(version: string) {
@@ -90,22 +103,31 @@ const JbossVersionStep: React.FC<{
       </div>
 
       <div className="space-y-1.5">
-        {versions.map(([version, count]) => (
+        {versions.map(({ major, count, actual }) => (
           <label
-            key={version || "(unknown)"}
+            key={major || "(unknown)"}
             className="w-full flex items-center gap-3 px-4 py-3 border border-[var(--border)] rounded-xl cursor-pointer hover:border-[var(--accent)] hover:shadow-sm transition-all has-[:checked]:border-[var(--accent)]"
           >
             <input
               type="checkbox"
-              checked={selected.has(version)}
-              onChange={() => toggle(version)}
+              checked={selected.has(major)}
+              onChange={() => toggle(major)}
               disabled={busy}
               className="rounded"
             />
-            <span className="flex-1 text-sm font-medium text-[var(--text-primary)] font-mono">
-              {version ? `JBoss ${version}.X` : UNKNOWN_LABEL}
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium text-[var(--text-primary)] font-mono">
+                {major ? `JBoss ${major}` : UNKNOWN_LABEL}
+              </span>
+              {/* Envanterdeki GERÇEK sürümler — seçim majör bazında yapılsa da kullanıcı
+                  hangi yamaların kapsandığını görebilmeli. */}
+              {actual.length > 0 && (
+                <span className="block mt-0.5 text-[11px] text-[var(--text-muted)] font-mono truncate" title={actual.join(", ")}>
+                  {actual.join(", ")}
+                </span>
+              )}
             </span>
-            <span className="text-xs text-[var(--text-muted)]">{count} sunucu</span>
+            <span className="text-xs text-[var(--text-muted)] flex-shrink-0">{count} sunucu</span>
           </label>
         ))}
       </div>

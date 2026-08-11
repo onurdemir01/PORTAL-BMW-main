@@ -80,7 +80,7 @@ const HostSelectStep: React.FC<{
       <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
         <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
         <span>
-          <strong>{app}</strong> için seçilen JBoss sürümünde ({jbossVersions.map((v) => v ? `${v}.X` : "Bilinmiyor").join(", ")}) sunucu bulunamadı.
+          <strong>{app}</strong> için seçilen JBoss sürümünde ({jbossVersions.map((v) => v ? `JBoss ${v}` : "Bilinmiyor").join(", ")}) sunucu bulunamadı.
         </span>
       </div>
     );
