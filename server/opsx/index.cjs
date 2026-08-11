@@ -823,4 +823,4 @@ function initOpsX(app) {
   console.log('[OpsX] endpoints mounted at /api/opsx');
 }
 
-module.exports = { initOpsX, hostsForApp, ALLOWED_OPERATIONS, extractOpsxDumpResult };
+module.exports = { initOpsX, hostsForApp, ALLOWED_OPERATIONS, extractOpsxDumpResult, namespacesForCluster };

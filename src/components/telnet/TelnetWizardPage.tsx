@@ -1,14 +1,20 @@
-// src/components/telnet/TelnetWizardPage.tsx — Telnet sihirbazı: OpsX'in Legacy/Openshift
-// + uygulama/sunucu seçim akışının BİREBİR kopyası (kullanıcı isteği); son adımda bir
-// İŞLEM (restart/stop/...) değil, IP + Port sorulur ve tek bir bağlantı testi tetiklenir.
+// src/components/telnet/TelnetWizardPage.tsx — Telnet sihirbazı: Legacy OpsX'in
+// uygulama/sunucu seçim akışının BİREBİR kopyası (kullanıcı isteği); son adımda bir
+// İŞLEM (restart/stop/...) değil, IP + Port sorulur ve bir bağlantı testi tetiklenir.
 //
-// OpsX'ten YAPISAL FARK: Openshift'te "Uygulama Adı" sorulmaz (yalnızca namespace) ve
-// extra_vars'a `application` HİÇ eklenmez — Telnet'in AWX gövdesi yalnızca ip/port taşır
-// (kullanıcı sartnamesi). Güvenlik OpsX ile AYNI: son POST /api/telnet/run çağrısında
-// sunucu uygulama-host eşleşmesini ve cluster'ı envanterden YENİDEN doğrular.
+// Legacy: OpsX'ten YAPISAL FARK — "Uygulama Adı" sorulur ama extra_vars'a HİÇ eklenmez
+// (yalnız ip/port taşır, kullanıcı şartnamesi). TEK AWX job'i tetiklenir.
+//
+// Openshift: cluster/bastion seçimi YOK (kullanıcı kararıyla kaldırıldı) — ortam + tenant/
+// iş birimi + bir veya daha fazla namespace seçilir, HER namespace için AYRI bir AWX
+// job'i tetiklenir (bkz. server/telnet/index.cjs). Bu yüzden "done" adımı Legacy'de TEK
+// bir sonuç/log, Openshift'te namespace başına bir sonuç/log gösterir.
+//
+// Güvenlik OpsX ile AYNI: son POST /api/telnet/run çağrısında sunucu uygulama-host
+// eşleşmesini ve namespace/tenant'ı envanterden YENİDEN doğrular.
 import React, { useState } from "react";
 import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import { telnetApi, type TelnetPlatform, type TelnetRunResult } from "@/api/telnetApi";
+import { telnetApi, type TelnetPlatform, type TelnetRunResult, type TelnetOcpJobResult } from "@/api/telnetApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
@@ -37,6 +43,12 @@ const STEP_TITLES: Record<Step, string> = {
   done: "Test Başlatıldı",
 };
 
+interface OcpTrackedJob {
+  namespace: string;
+  trackedId: string | null;
+  message?: string; // launch bu namespace için başarısız olduysa
+}
+
 const TelnetWizardPage: React.FC = () => {
   const [step, setStep] = useState<Step>("platform");
   const [platform, setPlatform] = useState<TelnetPlatform | null>(null);
@@ -45,16 +57,18 @@ const TelnetWizardPage: React.FC = () => {
   const [hosts, setHosts] = useState<string[]>([]);
   const [env, setEnv] = useState("");
   const [tenant, setTenant] = useState("");
-  const [clusters, setClusters] = useState<string[]>([]);
-  const [namespace, setNamespace] = useState("");
+  const [namespaces, setNamespaces] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Legacy: tek job/sonuç.
   const [result, setResult] = useState<TelnetRunResult | null>(null);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
+
+  // Openshift: namespace başına bir job/sonuç.
+  const [ocpTrackedJobs, setOcpTrackedJobs] = useState<OcpTrackedJob[]>([]);
+
   const { addJob, jobs } = useJobTracker();
-  // Sayfa açıkken CANLI çıktı burada (inline) gösterilir — bkz. OpsXWizardPage.tsx'teki
-  // aynı desen. filterable:true olduğu için, iş küçültülüp yüzen panelden açılırsa da
-  // "sadece X karakteriyle başlayan satırları göster" seçeneği orada da bulunur.
   const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [filterPrefix, setFilterPrefix] = useState("");
@@ -67,11 +81,11 @@ const TelnetWizardPage: React.FC = () => {
     setHosts([]);
     setEnv("");
     setTenant("");
-    setClusters([]);
-    setNamespace("");
+    setNamespaces([]);
     setError(null);
     setResult(null);
     setTrackedJobId(null);
+    setOcpTrackedJobs([]);
     setFilterEnabled(false);
     setFilterPrefix("");
   }
@@ -84,6 +98,18 @@ const TelnetWizardPage: React.FC = () => {
       filterable: true,
     });
     setTrackedJobId(id);
+  }
+
+  function trackOcpJobs(results: TelnetOcpJobResult[]) {
+    setOcpTrackedJobs(results.map((r) => {
+      if (r.jobId == null) return { namespace: r.namespace, trackedId: null, message: r.message };
+      const id = addJob({
+        title: `Telnet #${r.jobId} (${r.namespace})`,
+        fetchStatus: () => telnetApi.jobStatus(r.awxServerId, r.jobId as number),
+        filterable: true,
+      });
+      return { namespace: r.namespace, trackedId: id };
+    }));
   }
 
   function backTargetFor(s: Step): Step | null {
@@ -115,13 +141,20 @@ const TelnetWizardPage: React.FC = () => {
     setBusy(true);
     setError(null);
     try {
-      const body = platform === "openshift"
-        ? { platform: "openshift" as const, env, tenant, clusters, namespace, ip, port }
-        : { platform: "legacy" as const, application: app, hosts, ip, port };
-      const r = await telnetApi.run(body);
-      setResult(r);
-      setStep("done");
-      trackJob(r);
+      if (platform === "openshift") {
+        const r = await telnetApi.run({ platform: "openshift", env, tenant, namespaces, ip, port });
+        if ("results" in r) {
+          setStep("done");
+          trackOcpJobs(r.results);
+        }
+      } else {
+        const r = await telnetApi.run({ platform: "legacy", application: app, hosts, ip, port });
+        if (!("results" in r)) {
+          setResult(r);
+          setStep("done");
+          trackJob(r);
+        }
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -133,9 +166,11 @@ const TelnetWizardPage: React.FC = () => {
 
   const inputSummary = platform === "openshift" ? (
     <>
-      Namespace: <span className="font-mono text-[var(--text-primary)]">{namespace}</span>
+      Ortam: <span className="font-mono text-[var(--text-primary)]">{env}</span>
       {" · "}
-      Cluster(lar): <span className="font-mono">{clusters.join(", ")}</span>
+      Tenant: <span className="font-mono text-[var(--text-primary)]">{tenant}</span>
+      {" · "}
+      {namespaces.length} namespace: <span className="font-mono">{namespaces.join(", ")}</span>
     </>
   ) : (
     <>
@@ -143,6 +178,27 @@ const TelnetWizardPage: React.FC = () => {
       {" · "}
       {hosts.length} sunucu: <span className="font-mono">{hosts.join(", ")}</span>
     </>
+  );
+
+  const filterLine = (
+    <div className="flex items-center gap-2 flex-wrap">
+      <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+        <input
+          type="checkbox"
+          checked={filterEnabled}
+          onChange={(e) => setFilterEnabled(e.target.checked)}
+          className="rounded"
+        />
+        Sadece şu karakterle başlayan satırları göster:
+      </label>
+      <input
+        value={filterPrefix}
+        onChange={(e) => setFilterPrefix(e.target.value)}
+        disabled={!filterEnabled}
+        placeholder="ör: >"
+        className="w-20 px-2 py-1 text-xs font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)] disabled:opacity-50"
+      />
+    </div>
   );
 
   return (
@@ -210,7 +266,7 @@ const TelnetWizardPage: React.FC = () => {
         {step === "ocp_target" && (
           <OcpTargetStep
             busy={busy}
-            onSubmit={(v) => { setEnv(v.env); setTenant(v.tenant); setClusters(v.clusters); setNamespace(v.namespace); setStep("telnet_input"); }}
+            onSubmit={(v) => { setEnv(v.env); setTenant(v.tenant); setNamespaces(v.namespaces); setStep("telnet_input"); }}
           />
         )}
 
@@ -218,7 +274,7 @@ const TelnetWizardPage: React.FC = () => {
           <TelnetInputStep summary={inputSummary} busy={busy} onSubmit={(v) => runTelnet(v.ip, v.port)} />
         )}
 
-        {step === "done" && result && (
+        {step === "done" && platform === "legacy" && result && (
           <div className="flex flex-col items-center gap-4 py-6 text-center">
             <CheckCircleIcon className="w-10 h-10 text-green-600" />
             <div>
@@ -232,24 +288,7 @@ const TelnetWizardPage: React.FC = () => {
 
             {trackedJob && (
               <div className="w-full text-left space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={filterEnabled}
-                      onChange={(e) => setFilterEnabled(e.target.checked)}
-                      className="rounded"
-                    />
-                    Sadece şu karakterle başlayan satırları göster:
-                  </label>
-                  <input
-                    value={filterPrefix}
-                    onChange={(e) => setFilterPrefix(e.target.value)}
-                    disabled={!filterEnabled}
-                    placeholder="ör: >"
-                    className="w-20 px-2 py-1 text-xs font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)] disabled:opacity-50"
-                  />
-                </div>
+                {filterLine}
                 <AnsibleLogTerminal
                   output={filterEnabled && filterPrefix
                     ? trackedJob.output.split("\n").filter((l) => l.startsWith(filterPrefix)).join("\n")
@@ -267,6 +306,52 @@ const TelnetWizardPage: React.FC = () => {
                 {JSON.stringify(result.sentBody, null, 2)}
               </pre>
             </div>
+            <button onClick={restart} className="btn-primary">
+              <ArrowPathIcon className="w-4 h-4" />
+              Yeni Test
+            </button>
+          </div>
+        )}
+
+        {/* Openshift: namespace başına bir kart — her biri kendi job'ının canlı çıktısını
+            ve gönderilen gövdesini gösterir. Bir namespace'in launch'ı başarısız olsa bile
+            (r.message dolu) diğerleri etkilenmez — kısmi başarı normal bir durumdur. */}
+        {step === "done" && platform === "openshift" && ocpTrackedJobs.length > 0 && (
+          <div className="flex flex-col items-center gap-4 py-6 text-center">
+            <CheckCircleIcon className="w-10 h-10 text-green-600" />
+            <p className="text-sm font-medium text-[var(--text-primary)]">
+              {ocpTrackedJobs.length} namespace için Telnet testi başlatıldı.
+            </p>
+
+            {ocpTrackedJobs.length > 1 && <div className="w-full text-left">{filterLine}</div>}
+
+            <div className="w-full space-y-4 text-left">
+              {ocpTrackedJobs.map((t) => {
+                const job = t.trackedId ? jobs.find((j) => j.id === t.trackedId) : undefined;
+                return (
+                  <div key={t.namespace} className="border border-[var(--border)] rounded-xl p-3 space-y-2">
+                    <div className="text-xs font-semibold text-[var(--text-primary)] font-mono">{t.namespace}</div>
+                    {t.message ? (
+                      <p className="text-xs text-red-600">{t.message}</p>
+                    ) : job ? (
+                      <>
+                        <AnsibleLogTerminal
+                          output={filterEnabled && filterPrefix
+                            ? job.output.split("\n").filter((l) => l.startsWith(filterPrefix)).join("\n")
+                            : job.output}
+                          status={job.status || "pending"}
+                          title={job.title}
+                        />
+                        {job.pollErr && <p className="mt-1.5 text-xs text-amber-600">{job.pollErr}</p>}
+                      </>
+                    ) : (
+                      <p className="text-xs text-[var(--text-muted)]">İş başlatılamadı.</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
             <button onClick={restart} className="btn-primary">
               <ArrowPathIcon className="w-4 h-4" />
               Yeni Test

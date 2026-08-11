@@ -25,6 +25,24 @@ export interface TelnetRunResult {
   sentBody: { limit?: string; extra_vars: Record<string, unknown> };
 }
 
+// Openshift: cluster/bastion seçimi YOK, HER namespace için AYRI bir AWX job'i
+// tetiklenir — bu yüzden Legacy'nin tek-nesne TelnetRunResult'ından FARKLI, bir
+// sonuç listesi döner (bkz. server/telnet/index.cjs POST /api/telnet/run yorumu).
+export interface TelnetOcpJobResult {
+  namespace: string;
+  jobId: number | null;
+  status: string | null;
+  awxServerId: number;
+  templateId: number;
+  sentBody: { extra_vars: Record<string, unknown> };
+  message?: string; // bu namespace için launch başarısız olduysa
+}
+
+export interface TelnetOcpRunResult {
+  ok: boolean;
+  results: TelnetOcpJobResult[];
+}
+
 export interface TelnetJobStatus {
   ok: boolean;
   status: string;
@@ -43,7 +61,15 @@ export const telnetApi = {
   getClusters: (): Promise<{ ok: boolean; tree: Record<string, Record<string, string[]>> }> =>
     fetch(`${BASE}/clusters`).then(safeJson),
 
+  // Openshift_Inventory'den, seçilen env/tenant'a ait cluster'larda GÖRÜLMÜŞ namespace'ler
+  // (erişim kısıtlamaları uygulanmış) — OpsX'in AYNI kaynağı (server/opsx/index.cjs
+  // namespacesForCluster, doğrudan yeniden kullanılır).
+  getOcpNamespaces: (env: string, tenant: string): Promise<{ ok: boolean; namespaces: string[] }> =>
+    fetch(`${BASE}/ocp/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}`).then(safeJson),
+
   // Testi tetikler. AWX job template'i tanımlı değilse sunucu 501 + açıklayıcı mesaj döner.
+  // Legacy: TelnetRunResult (tek job) döner. Openshift: TelnetOcpRunResult (namespace
+  // başına bir job) döner — çağıran "results" alanının varlığıyla ayırt eder.
   run: (body: {
     platform: TelnetPlatform;
     // Legacy alanları
@@ -52,12 +78,11 @@ export const telnetApi = {
     // Openshift alanları
     env?: string;
     tenant?: string;
-    clusters?: string[];
-    namespace?: string;
+    namespaces?: string[];
     // Ortak
     ip: string;
     port: string;
-  }): Promise<TelnetRunResult> =>
+  }): Promise<TelnetRunResult | TelnetOcpRunResult> =>
     fetch(`${BASE}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
