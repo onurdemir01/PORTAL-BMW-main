@@ -1241,7 +1241,7 @@ const PLAYBOOK_REGISTRY_SEED = [
   },
   {
     key_name: 'opsx_openshift_dump', display_name: 'OpsX — Openshift Thread/Heap Dump', category: 'opsx', handler: 'opsx_openshift_dump',
-    description: 'ARK/Non-ARK pod\'larinda heap/thread dump alir (bmw_openshift_jobs/get_dumps/get_dump.yaml).',
+    description: 'ARK/Non-ARK pod\'larinda heap/thread dump alir (bmw_openshift_jobs/get_dumps/opsx_get_dump.yaml) - teslimat FTP\'ye yapilir, portalin staging dizinini kullanmaz.',
     playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID',
   },
   // ── Telnet baglanti testi — OpsX ile AYNI desen (bkz. server/telnet/index.cjs) ────

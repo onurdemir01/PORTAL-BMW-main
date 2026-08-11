@@ -63,15 +63,23 @@ export type OpsxDumpType = "threaddump" | "heapdump";
 
 // Backend'in playbook set_stats çıktısını (opsx_dump_result.results) OLDUĞU GİBİ
 // ilettiği alan adları — host bazlı (Legacy) veya namespace/application bazlı (Openshift).
+// Legacy: staged_path/filename doluysa portal üzerinden indirilir (downloadToken üretilir).
+// Openshift: teslimat FTP'ye yapılır (opsx_get_dump.yaml) — staged_path/filename YOK,
+// bunun yerine ok:true + delivery:"ftp" + ftp_location/note doner; indirme butonu yerine
+// bilgilendirme mesajı gösterilir (bkz. OpsXWizardPage.tsx).
 export interface OpsxDumpResultItem {
   host?: string;
   namespace?: string;
   application?: string;
+  pod?: string;
   ok: boolean;
   staged_path?: string;
   filename?: string;
   size_bytes?: number;
   downloadToken?: string;
+  delivery?: "ftp";
+  ftp_location?: string;
+  note?: string;
   error?: string;
 }
 

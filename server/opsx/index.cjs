@@ -657,6 +657,14 @@ function initOpsX(app) {
   });
 
   // POST /api/opsx/dump/openshift — { env, tenant, pairs, dumpType }
+  //
+  // GERCEK PLAYBOOK SOZLESMESI (bmw_openshift_jobs/get_dumps/opsx_get_dump.yaml,
+  // get_dump.yaml referans alinarak yazildi — bkz. proje ekibiyle paylasilan tasarim):
+  // rollout'un `env`/`oc_input` sozlesmesinden FARKLI. Tek seferde TEK pod hedeflenir
+  // (get_dump.yaml'in kendisi de tek pod_name bekliyor); pod adi playbook icinde
+  // namespace+application'dan cozulur. TESLIMAT STAGING_DIR DEGIL, FTP'dir (pgarftplog01) —
+  // bu yuzden opsx_dump_downloads token sistemi burada KULLANILMAZ, sonuc dogrudan
+  // FTP konumu bilgisi olarak dondurulur (bkz. asagidaki /status route'u).
   app.post('/api/opsx/dump/openshift', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
     const { env, tenant, pairs, dumpType } = req.body || {};
     if (!DUMP_TYPES.has(dumpType)) {
@@ -679,15 +687,22 @@ function initOpsX(app) {
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
+    // opsx_get_dump.yaml TEK pod hedefler (get_dump.yaml'in kendi kisitlamasi) — restart'ın
+    // aksine burada birikimli namespace/uygulama seçimi desteklenmez.
+    if (cleanPairs.length !== 1) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Dump işlemi tek seferde yalnızca bir namespace/uygulama hedefleyebilir.',
+      });
+    }
+    const target = cleanPairs[0];
 
-    const opsxDownloads = require('./downloads.cjs');
-    const ocInput = cleanPairs.map((p) => p.joined).join(';');
     const extraVars = {
-      env: envKey,
       oc_cluster: tenantKey,
-      oc_input: ocInput,
-      dump_type: dumpType,
-      staging_dir: opsxDownloads.stagingRoot(),
+      oc_environment: envKey,
+      namespace: target.namespace,
+      application: target.application,
+      choose: dumpType === 'heapdump' ? 'memory' : 'cpu',
     };
 
     try {
