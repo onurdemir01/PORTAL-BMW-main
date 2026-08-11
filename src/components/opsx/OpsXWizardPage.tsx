@@ -387,13 +387,6 @@ const OpsXWizardPage: React.FC = () => {
                           <ArrowDownTrayIcon className="w-3.5 h-3.5" />
                           İndir
                         </a>
-                      ) : r.ok && r.delivery === "ftp" ? (
-                        // Openshift dump'ları portala DEĞİL, FTP'ye teslim edilir (bkz.
-                        // opsx_get_dump.yaml) — indirme butonu yerine konum bilgisi gösterilir.
-                        <span className="text-xs text-[var(--text-secondary)] text-right">
-                          FTP'ye yüklendi: <span className="font-mono">{r.ftp_location}</span>
-                          {r.note && <><br />{r.note}</>}
-                        </span>
                       ) : (
                         <span className="text-xs text-red-600">{r.error || "Başarısız"}</span>
                       )}

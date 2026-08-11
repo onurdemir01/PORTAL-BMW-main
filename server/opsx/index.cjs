@@ -659,12 +659,12 @@ function initOpsX(app) {
   // POST /api/opsx/dump/openshift — { env, tenant, pairs, dumpType }
   //
   // GERCEK PLAYBOOK SOZLESMESI (bmw_openshift_jobs/get_dumps/opsx_get_dump.yaml,
-  // get_dump.yaml referans alinarak yazildi — bkz. proje ekibiyle paylasilan tasarim):
-  // rollout'un `env`/`oc_input` sozlesmesinden FARKLI. Tek seferde TEK pod hedeflenir
-  // (get_dump.yaml'in kendisi de tek pod_name bekliyor); pod adi playbook icinde
-  // namespace+application'dan cozulur. TESLIMAT STAGING_DIR DEGIL, FTP'dir (pgarftplog01) —
-  // bu yuzden opsx_dump_downloads token sistemi burada KULLANILMAZ, sonuc dogrudan
-  // FTP konumu bilgisi olarak dondurulur (bkz. asagidaki /status route'u).
+  // get_dump.yaml referans alinarak yazildi): rollout'un `env`/`oc_input` sozlesmesinden
+  // FARKLI. Tek seferde TEK pod hedeflenir (get_dump.yaml'in kendisi de tek pod_name
+  // bekliyor); pod adi playbook icinde namespace+application'dan cozulur. Teslimat
+  // LogX'in OCP log-cekme akisiyla (logx_ocp_discover_fetch.yml) AYNI desen: dump
+  // `oc rsync` ile pod'dan cekilir, staging_dir'e kopyalanir — opsx_dump_downloads
+  // token sistemi Legacy ile AYNI sekilde calisir (FTP YOK).
   app.post('/api/opsx/dump/openshift', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
     const { env, tenant, pairs, dumpType } = req.body || {};
     if (!DUMP_TYPES.has(dumpType)) {
@@ -697,12 +697,14 @@ function initOpsX(app) {
     }
     const target = cleanPairs[0];
 
+    const opsxDownloads = require('./downloads.cjs');
     const extraVars = {
       oc_cluster: tenantKey,
       oc_environment: envKey,
       namespace: target.namespace,
       application: target.application,
       choose: dumpType === 'heapdump' ? 'memory' : 'cpu',
+      staging_dir: opsxDownloads.stagingRoot(),
     };
 
     try {
