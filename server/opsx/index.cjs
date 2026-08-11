@@ -54,6 +54,7 @@ const REGISTRY_KEYS = Object.freeze({
   openshift: 'opsx_openshift_operation',
   legacyDump: 'opsx_legacy_dump',
   openshiftDump: 'opsx_openshift_dump',
+  openshiftPods: 'opsx_openshift_pods',
 });
 
 // Template ID + AWX sunucusu Playbook Kayitlari'ndan cozulur. getEffectiveTemplateId()
@@ -195,21 +196,29 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user) {
   return { envKey, tenantKey, cleanPairs };
 }
 
-// artifacts.opsx_dump_result'i (dump playbook'unun son adimda set_stats ile yayinladigi
-// yapilandirilmis sonuc) okur — LogX'in extractLogxResultFromArtifacts'iyle AYNI desen
-// (bkz. server/logx/v2/jobs.cjs), farkli anahtar adiyla.
-function extractOpsxDumpResult(rawArtifacts) {
+// AWX artifacts'inden bir set_stats anahtarini okur. AWX controller surumune gore ayni
+// veri UC FARKLI sekilde gelebilir (top-level / data / ansible_stats.data) — LogX'in
+// extractLogxResultFromArtifacts'iyle AYNI tolerans (bkz. server/logx/v2/jobs.cjs).
+function extractStatsKey(rawArtifacts, key) {
   const artifacts = rawArtifacts || {};
-  if (artifacts.opsx_dump_result && typeof artifacts.opsx_dump_result === 'object') {
-    return artifacts.opsx_dump_result;
-  }
-  if (artifacts.data?.opsx_dump_result && typeof artifacts.data.opsx_dump_result === 'object') {
-    return artifacts.data.opsx_dump_result;
-  }
-  if (artifacts.ansible_stats?.data?.opsx_dump_result && typeof artifacts.ansible_stats.data.opsx_dump_result === 'object') {
-    return artifacts.ansible_stats.data.opsx_dump_result;
+  for (const candidate of [
+    artifacts[key],
+    artifacts.data?.[key],
+    artifacts.ansible_stats?.data?.[key],
+  ]) {
+    if (candidate && typeof candidate === 'object') return candidate;
   }
   return null;
+}
+
+// Dump playbook'unun son adimda set_stats ile yayinladigi yapilandirilmis sonuc.
+function extractOpsxDumpResult(rawArtifacts) {
+  return extractStatsKey(rawArtifacts, 'opsx_dump_result');
+}
+
+// Pod kesfi playbook'unun (opsx_openshift_pods.yaml) sonucu.
+function extractOpsxPodsResult(rawArtifacts) {
+  return extractStatsKey(rawArtifacts, 'opsx_pods_result');
 }
 
 // env+tenant secimine karsilik gelen GERCEK cluster isimleri (ocp_cluster_index'ten,
@@ -653,17 +662,137 @@ function initOpsX(app) {
     }
   });
 
-  // POST /api/opsx/dump/openshift — { env, tenant, pairs, dumpType }
+  // ── Openshift POD KESFI ────────────────────────────────────────────────────────
+  // Pod adlari EFEMERALDIR (her deploy'da degisir) — envanterde tutulamaz, bu yuzden
+  // sihirbaz ANLIK bir AWX job'i (opsx_openshift_pods.yaml) tetikleyip namespace'teki
+  // pod'lari listeler. Kullanici listeden bir veya birden fazla pod secer, dump o
+  // pod'lardan alinir.
   //
-  // GERCEK PLAYBOOK SOZLESMESI (bmw_openshift_jobs/get_dumps/opsx_get_dump.yaml,
+  // POST /api/opsx/ocp/pods/discover — { env, tenant, namespace } → { jobId, awxServerId }
+  app.post('/api/opsx/ocp/pods/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
+    const { env, tenant, namespace } = req.body || {};
+    const { templateId, serverId, keyName } = await resolveTarget('openshiftPods');
+    if (!templateId) {
+      return res.status(501).json({
+        ok: false,
+        message: `OpsX Openshift pod keşfi için AWX job template'i henüz tanımlanmadı. `
+               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
+               + `Template ID alanını doldurmalı.`,
+      });
+    }
+
+    // Namespace/tenant dogrulamasi restart/dump ile AYNI kapidan gecer (katalog +
+    // erisim kisitlamasi) — kullanici goremedigi bir namespace'in pod'larini listeleyemez.
+    let envKey, tenantKey, cleanPairs;
+    try {
+      const user = req.session?.user || {};
+      ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(
+        env, tenant, [{ namespace, application: 'x' }], user
+      ));
+    } catch (err) {
+      return res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+
+    const extraVars = {
+      oc_cluster: tenantKey,
+      oc_environment: envKey,
+      namespace: cleanPairs[0].namespace,
+    };
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      await require('../ansible/template-preflight.cjs')
+        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
+
+      // IDOR korumasi /api/opsx/ocp/pods/:serverId/:jobId/status'ta bu kayda bakar.
+      try {
+        const db = require('../db/index.cjs');
+        await db.query(
+          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            req.session?.user?.username || 'unknown',
+            serverId, templateId, `OpsX: Openshift pod keşfi`,
+            result?.jobId, result?.status || 'pending',
+            JSON.stringify({ platform: 'openshift-pods', ...extraVars }),
+          ]
+        );
+      } catch (e) {
+        console.warn('[OpsX] Pod kesfi gecmisi kaydedilemedi:', e.message);
+      }
+
+      console.log(`[OpsX] ${req.session?.user?.username} -> pod kesfi env=${envKey} oc_cluster=${tenantKey} namespace=${extraVars.namespace} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/opsx/ocp/pods/:serverId/:jobId/status — job bitince pod listesini doner.
+  app.get('/api/opsx/ocp/pods/:serverId/:jobId/status', requireAuth, async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
+    }
+
+    const reqUser = req.session?.user || {};
+    try {
+      const db = require('../db/index.cjs');
+      if (reqUser.role !== 'Admin') {
+        const { rows } = await db.query(
+          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+          [jobId, serverId]
+        );
+        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
+        }
+      }
+    } catch { /* DB hiccup -> fail-open, /job-status ile ayni desen */ }
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
+      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+      if (!TERMINAL.has(statusInfo.status)) {
+        return res.json({ ok: true, status: statusInfo.status });
+      }
+      if (statusInfo.status !== 'successful') {
+        return res.json({ ok: true, status: statusInfo.status, message: 'Pod listesi alınamadı (iş başarısız oldu).' });
+      }
+
+      const raw = extractOpsxPodsResult(statusInfo.artifacts);
+      if (!raw) {
+        return res.json({
+          ok: true,
+          status: statusInfo.status,
+          message: 'İş tamamlandı ancak pod listesi alınamadı — playbook\'un set_stats adımını kontrol edin.',
+        });
+      }
+      const parsed = require('./pod-parse.cjs').parsePodDiscoveryResult(raw);
+      if (parsed.overallStatus !== 'ok') {
+        return res.json({ ok: true, status: statusInfo.status, message: parsed.error || 'Pod listesi alınamadı.' });
+      }
+      res.json({ ok: true, status: statusInfo.status, namespace: parsed.namespace, pods: parsed.pods });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST /api/opsx/dump/openshift — { env, tenant, namespace, pods[], dumpType,
+  //                                   threadDumpCount?, threadDumpInterval? }
+  //
+  // GERCEK PLAYBOOK SOZLESMESI (bmw_portal/opsx_openshift_dump/opsx_openshift_dump.yaml,
   // get_dump.yaml referans alinarak yazildi): rollout'un `env`/`oc_input` sozlesmesinden
-  // FARKLI. Tek seferde TEK pod hedeflenir (get_dump.yaml'in kendisi de tek pod_name
-  // bekliyor); pod adi playbook icinde namespace+application'dan cozulur. Teslimat
-  // LogX'in OCP log-cekme akisiyla (logx_ocp_discover_fetch.yml) AYNI desen: dump
-  // `oc rsync` ile pod'dan cekilir, staging_dir'e kopyalanir — opsx_dump_downloads
-  // token sistemi Legacy ile AYNI sekilde calisir (FTP YOK).
+  // FARKLI. Hedefleme POD SEVIYESINDEDIR — kullanici yukaridaki kesif adiminda cikan
+  // listeden bir veya birden fazla pod secer (uygulama adi degil). Teslimat LogX'in OCP
+  // log-cekme akisiyla AYNI desen: dump'lar pod'lardan cekilir, TEK bir arsivde toplanip
+  // staging_dir'e birakilir — opsx_dump_downloads token sistemi Legacy ile AYNI (FTP YOK).
+  //
+  // Coklu thread dump: YALNIZ thread dump icin dump_count/dump_interval gonderilir
+  // (varsayilan 1 dump, beklemesiz). Heap dump'ta bu alanlar HIC gonderilmez.
   app.post('/api/opsx/dump/openshift', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { env, tenant, pairs, dumpType } = req.body || {};
+    const { env, tenant, namespace, pods, dumpType, threadDumpCount, threadDumpInterval } = req.body || {};
     if (!DUMP_TYPES.has(dumpType)) {
       return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
     }
@@ -680,29 +809,49 @@ function initOpsX(app) {
     let envKey, tenantKey, cleanPairs;
     try {
       const user = req.session?.user || {};
-      ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(env, tenant, pairs, user));
+      ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(
+        env, tenant, [{ namespace, application: 'x' }], user
+      ));
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
-    // opsx_get_dump.yaml TEK pod hedefler (get_dump.yaml'in kendi kisitlamasi) — restart'ın
-    // aksine burada birikimli namespace/uygulama seçimi desteklenmez.
-    if (cleanPairs.length !== 1) {
-      return res.status(400).json({
-        ok: false,
-        message: 'Dump işlemi tek seferde yalnızca bir namespace/uygulama hedefleyebilir.',
-      });
+    const nsKey = cleanPairs[0].namespace;
+
+    // Pod adlari client'tan gelir ama kesif job'inin ciktisindan secilir. Yine de
+    // bicim dogrulamasi yapilir — playbook bunlari shell'e gecirdigi icin (oc exec)
+    // Kubernetes ad sozdizimi disinda bir sey KABUL EDILMEZ.
+    if (!Array.isArray(pods) || pods.length === 0) {
+      return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
     }
-    const target = cleanPairs[0];
+    const cleanPods = [...new Set(pods.map((p) => String(p || '').trim()).filter(Boolean))];
+    const badPod = cleanPods.find((p) => !/^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/i.test(p) || p.length > 253);
+    if (badPod) {
+      return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${badPod}` });
+    }
 
     const opsxDownloads = require('./downloads.cjs');
     const extraVars = {
       oc_cluster: tenantKey,
       oc_environment: envKey,
-      namespace: target.namespace,
-      application: target.application,
+      namespace: nsKey,
+      pods: cleanPods,
       choose: dumpType === 'heapdump' ? 'memory' : 'cpu',
       staging_dir: opsxDownloads.stagingRoot(),
     };
+
+    // Coklu thread dump — playbook'taki AYNI sinirlar (1-100 adet, 0-3600 sn).
+    if (dumpType === 'threaddump') {
+      const count = Number(threadDumpCount ?? 1);
+      const interval = Number(threadDumpInterval ?? 0);
+      if (!Number.isInteger(count) || count < 1 || count > 100) {
+        return res.status(400).json({ ok: false, message: 'Thread dump adedi 1-100 arasında olmalı.' });
+      }
+      if (!Number.isInteger(interval) || interval < 0 || interval > 3600) {
+        return res.status(400).json({ ok: false, message: 'Thread dump aralığı 0-3600 saniye arasında olmalı.' });
+      }
+      extraVars.dump_count = count;
+      extraVars.dump_interval = interval;
+    }
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -820,4 +969,7 @@ function initOpsX(app) {
   console.log('[OpsX] endpoints mounted at /api/opsx');
 }
 
-module.exports = { initOpsX, hostsForApp, ALLOWED_OPERATIONS, extractOpsxDumpResult, namespacesForCluster };
+module.exports = {
+  initOpsX, hostsForApp, ALLOWED_OPERATIONS, namespacesForCluster,
+  extractOpsxDumpResult, extractOpsxPodsResult,
+};

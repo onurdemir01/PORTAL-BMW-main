@@ -23,6 +23,7 @@ import HostSelectStep from "./steps/HostSelectStep";
 import OcpTargetStep from "./steps/OcpTargetStep";
 import OperationStep from "./steps/OperationStep";
 import OcpOperationStep from "./steps/OcpOperationStep";
+import OcpPodSelectStep from "./steps/OcpPodSelectStep";
 
 type Step =
   | "platform"
@@ -32,6 +33,7 @@ type Step =
   | "ocp_target"
   | "operation"
   | "ocp_operation"
+  | "ocp_pods"
   | "done";
 
 const STEP_TITLES: Record<Step, string> = {
@@ -42,6 +44,7 @@ const STEP_TITLES: Record<Step, string> = {
   ocp_target: "Openshift Hedefi",
   operation: "İşlem Seçimi",
   ocp_operation: "İşlem Seçimi",
+  ocp_pods: "Pod Seçimi",
   done: "İşlem Başlatıldı",
 };
 
@@ -66,6 +69,9 @@ const OpsXWizardPage: React.FC = () => {
   // BAĞIMSIZ, aynı SelfServicePage.tsx'teki Smart ticket polling deseni.
   const [dumpJob, setDumpJob] = useState<{ awxServerId: number; jobId: number } | null>(null);
   const [dumpStatus, setDumpStatus] = useState<OpsxDumpStatus | null>(null);
+  // Openshift'te işlem seçimi ile dump'ın tetiklenmesi arasında bir pod seçim adımı
+  // olduğu için, seçilen dump tipi o adım boyunca burada tutulur.
+  const [dumpType, setDumpType] = useState<OpsxDumpType | null>(null);
   const { addJob, jobs } = useJobTracker();
   // Bu sayfa açıkken CANLI çıktıyı kendi içinde (inline) gösterir — takipçiden aynı
   // job'ın güncel verisini okur, kendi polling'ini yapmaz. Sayfadan ayrılınca (ya da
@@ -88,6 +94,7 @@ const OpsXWizardPage: React.FC = () => {
     setTrackedJobId(null);
     setDumpJob(null);
     setDumpStatus(null);
+    setDumpType(null);
   }
 
   function trackJob(r: OpsxRunResult | OpsxDumpLaunchResult) {
@@ -142,6 +149,8 @@ const OpsXWizardPage: React.FC = () => {
         return "legacy_hosts";
       case "ocp_operation":
         return "ocp_target";
+      case "ocp_pods":
+        return "ocp_operation";
       default:
         return null;
     }
@@ -227,13 +236,23 @@ const OpsXWizardPage: React.FC = () => {
     }
   }
 
-  // Legacy'deki AYNI dallanma — threaddump/heapdump opsx_openshift_dump template'ine gider.
-  async function runOpenshiftDump(dumpType: OpsxDumpType) {
+  // Openshift dump POD seviyesinde çalışır — işlem seçildikten sonra doğrudan
+  // tetiklenmez, önce pod seçim adımına (canlı AWX keşfi) gidilir.
+  async function runOpenshiftDump(
+    dumpType: OpsxDumpType,
+    selectedPods: string[],
+    threadDumpCount: number,
+    threadDumpInterval: number,
+  ) {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const r = await opsxApi.dumpOpenshift(env, tenant, pairs, dumpType);
+      const r = await opsxApi.dumpOpenshift(
+        env, tenant, pairs[0].namespace, selectedPods, dumpType,
+        dumpType === "threaddump" ? threadDumpCount : undefined,
+        dumpType === "threaddump" ? threadDumpInterval : undefined,
+      );
       setResult(r);
       setStep("done");
       if (r.jobId != null) {
@@ -249,7 +268,15 @@ const OpsXWizardPage: React.FC = () => {
 
   function handleOcpOperation(ocOperation: OpsxOcpOperation) {
     if (DUMP_OPERATIONS.has(ocOperation)) {
-      runOpenshiftDump(ocOperation as OpsxDumpType);
+      // Dump tek bir namespace hedefler (playbook pod bazlı çalışır); OcpTargetStep
+      // birden fazla çift biriktirmeye izin verdiği için burada açıkça engellenir —
+      // aksi halde kullanıcı sessizce yalnızca ilk çiftin pod'larını görürdü.
+      if (pairs.length !== 1) {
+        setError("Dump işlemi tek seferde yalnızca bir namespace hedefleyebilir — lütfen geri dönüp tek bir namespace/uygulama bırakın.");
+        return;
+      }
+      setDumpType(ocOperation as OpsxDumpType);
+      setStep("ocp_pods");
     } else {
       runOpenshift(ocOperation);
     }
@@ -341,6 +368,18 @@ const OpsXWizardPage: React.FC = () => {
           <OcpOperationStep env={env} tenant={tenant} pairs={pairs} busy={busy} onSelect={handleOcpOperation} />
         )}
 
+        {step === "ocp_pods" && dumpType && pairs.length === 1 && (
+          <OcpPodSelectStep
+            env={env}
+            tenant={tenant}
+            namespace={pairs[0].namespace}
+            application={pairs[0].application}
+            dumpType={dumpType}
+            busy={busy}
+            onSubmit={(v) => runOpenshiftDump(dumpType, v.pods, v.threadDumpCount, v.threadDumpInterval)}
+          />
+        )}
+
         {step === "done" && result && (
           <div className="flex flex-col items-center gap-4 py-6 text-center">
             <CheckCircleIcon className="w-10 h-10 text-green-600" />
@@ -376,8 +415,13 @@ const OpsXWizardPage: React.FC = () => {
                       key={i}
                       className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]"
                     >
-                      <span className="text-sm font-mono text-[var(--text-primary)]">
-                        {r.host || `${r.namespace}/${r.application}`}
+                      {/* Etiket kaynağa göre değişir: Legacy host bazlı; Openshift'te
+                          arşiv kaydı pod LİSTESİ, başarısız kayıtlar tek pod taşır. */}
+                      <span className="text-sm font-mono text-[var(--text-primary)] truncate">
+                        {r.host
+                          || (r.pods?.length ? `${r.namespace} · ${r.pods.length} pod` : null)
+                          || (r.pod ? `${r.namespace}/${r.pod}` : null)
+                          || (r.application ? `${r.namespace}/${r.application}` : r.namespace)}
                       </span>
                       {r.ok && r.downloadToken ? (
                         <a

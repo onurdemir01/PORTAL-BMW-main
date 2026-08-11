@@ -70,7 +70,8 @@ export interface OpsxDumpResultItem {
   host?: string;
   namespace?: string;
   application?: string;
-  pod?: string;
+  pod?: string;   // Openshift: BAŞARISIZ tek pod kaydı
+  pods?: string[]; // Openshift: arşiv kaydının kapsadığı pod'lar
   ok: boolean;
   staged_path?: string;
   filename?: string;
@@ -92,6 +93,32 @@ export interface OpsxDumpStatus {
   status: string;
   message?: string;
   results?: OpsxDumpResultItem[];
+}
+
+// Openshift dump artık POD seviyesinde çalışır. Pod adları efemeraldir (her deploy'da
+// değişir) — envanterde tutulamaz, bu yüzden sihirbaz anlık bir AWX keşif job'ı
+// tetikleyip namespace'teki pod'ları listeler (bkz. opsx_openshift_pods.yaml).
+export interface OpsxPod {
+  name: string;
+  ready: string;    // "1/1"
+  status: string;   // "Running" | "Pending" | ...
+  restarts: string; // "0" veya "2 (3d ago)"
+  age: string;      // "5d"
+}
+
+export interface OpsxPodDiscoveryLaunch {
+  ok: boolean;
+  jobId: number | null;
+  status: string | null;
+  awxServerId: number;
+}
+
+export interface OpsxPodDiscoveryStatus {
+  ok: boolean;
+  status: string;
+  message?: string;
+  namespace?: string;
+  pods?: OpsxPod[];
 }
 
 export const opsxApi = {
@@ -162,12 +189,34 @@ export const opsxApi = {
       body: JSON.stringify({ application, hosts, dumpType }),
     }).then(safeJson),
 
-  // Openshift thread/heap dump başlatır — AYRI bir AWX template'e (opsx_openshift_dump) gider.
-  dumpOpenshift: (env: string, tenant: string, pairs: OpsxOcpPair[], dumpType: OpsxDumpType): Promise<OpsxDumpLaunchResult> =>
+  // Namespace'teki pod'ları listelemek için anlık bir AWX keşif job'ı tetikler.
+  discoverOcpPods: (env: string, tenant: string, namespace: string): Promise<OpsxPodDiscoveryLaunch> =>
+    fetch(`${BASE}/ocp/pods/discover`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ env, tenant, namespace }),
+    }).then(safeJson),
+
+  // Keşif job'ının durumu — terminal + başarılıysa `pods` dolu döner.
+  ocpPodsStatus: (awxServerId: number, jobId: number): Promise<OpsxPodDiscoveryStatus> =>
+    fetch(`${BASE}/ocp/pods/${awxServerId}/${jobId}/status`).then(safeJson),
+
+  // Openshift thread/heap dump başlatır — AYRI bir AWX template'e (opsx_openshift_dump)
+  // gider. Hedefleme POD seviyesindedir (yukarıdaki keşif adımından seçilir).
+  // threadDumpCount/threadDumpInterval YALNIZ thread dump için anlamlıdır.
+  dumpOpenshift: (
+    env: string,
+    tenant: string,
+    namespace: string,
+    pods: string[],
+    dumpType: OpsxDumpType,
+    threadDumpCount?: number,
+    threadDumpInterval?: number,
+  ): Promise<OpsxDumpLaunchResult> =>
     fetch(`${BASE}/dump/openshift`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ env, tenant, pairs, dumpType }),
+      body: JSON.stringify({ env, tenant, namespace, pods, dumpType, threadDumpCount, threadDumpInterval }),
     }).then(safeJson),
 
   // Dump job'ının durumu — terminal + başarılıysa `results` her başarılı öge için

@@ -1241,8 +1241,13 @@ const PLAYBOOK_REGISTRY_SEED = [
   },
   {
     key_name: 'opsx_openshift_dump', display_name: 'OpsX — Openshift Thread/Heap Dump', category: 'opsx', handler: 'opsx_openshift_dump',
-    description: 'ARK/Non-ARK pod\'larinda heap/thread dump alir (bmw_openshift_jobs/get_dumps/opsx_get_dump.yaml) - dosya oc rsync ile pod\'dan cekilip portalin staging dizinine kopyalanir.',
+    description: 'Secilen pod\'lardan heap/thread dump alir (bmw_portal/opsx_openshift_dump/opsx_openshift_dump.yaml) - dump\'lar tek arsivde toplanip portalin staging dizinine birakilir, kullanici portaldan indirir.',
     playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID',
+  },
+  {
+    key_name: 'opsx_openshift_pods', display_name: 'OpsX — Openshift Pod Keşfi', category: 'opsx', handler: 'opsx_openshift_pods',
+    description: 'Bir namespace\'teki pod\'lari listeler (salt-okunur, oc get pods) - dump sihirbazi kullaniciya pod sectirmek icin ANLIK tetikler. bmw_portal/opsx_openshift_dump/opsx_openshift_pods.yaml',
+    playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_PODS_TEMPLATE_ID',
   },
   // ── Telnet baglanti testi — OpsX ile AYNI desen (bkz. server/telnet/index.cjs) ────
   {
