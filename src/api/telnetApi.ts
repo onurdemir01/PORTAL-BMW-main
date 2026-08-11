@@ -23,6 +23,9 @@ export interface TelnetRunResult {
   awxServerId: number;
   templateId: number;
   sentBody: { limit?: string; extra_vars: Record<string, unknown> };
+  // ok:false ise backend'in ürettiği hata metni — ÇAĞIRAN BUNU KONTROL ETMELİ (safeJson()
+  // 4xx/5xx'te reddetmez, bkz. src/api/http.ts ve OpsX'teki aynı desen/opsxApi.ts).
+  message?: string;
 }
 
 // Openshift: cluster/bastion seçimi YOK, HER namespace için AYRI bir AWX job'i

@@ -172,6 +172,13 @@ const OpsXWizardPage: React.FC = () => {
     setError(null);
     try {
       const r = await opsxApi.run({ platform: "legacy", application: app, operation, hosts });
+      // safeJson() 4xx/5xx'te reddetmez (bkz. src/api/http.ts) — backend'in ok:false +
+      // message ile döndüğü hatalar burada AÇIKÇA kontrol edilmezse kullanıcıya "İşlem
+      // başlatıldı" yeşil onayı gösterilir (job hiç tetiklenmemiş olsa bile).
+      if (!r.ok) {
+        setError(r.message || "İşlem başlatılamadı.");
+        return;
+      }
       setResult(r);
       setStep("done");
       trackJob(r);
@@ -191,6 +198,10 @@ const OpsXWizardPage: React.FC = () => {
     setError(null);
     try {
       const r = await opsxApi.dumpLegacy(app, hosts, dumpType);
+      if (!r.ok) {
+        setError(r.message || "Dump işi başlatılamadı.");
+        return;
+      }
       setResult(r);
       setStep("done");
       if (r.jobId != null) {
@@ -226,6 +237,10 @@ const OpsXWizardPage: React.FC = () => {
     setError(null);
     try {
       const r = await opsxApi.run({ platform: "openshift", env, tenant, pairs, ocOperation });
+      if (!r.ok) {
+        setError(r.message || "İşlem başlatılamadı.");
+        return;
+      }
       setResult(r);
       setStep("done");
       trackJob(r);
@@ -253,6 +268,10 @@ const OpsXWizardPage: React.FC = () => {
         dumpType === "threaddump" ? threadDumpCount : undefined,
         dumpType === "threaddump" ? threadDumpInterval : undefined,
       );
+      if (!r.ok) {
+        setError(r.message || "Dump işi başlatılamadı.");
+        return;
+      }
       setResult(r);
       setStep("done");
       if (r.jobId != null) {

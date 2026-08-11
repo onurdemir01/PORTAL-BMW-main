@@ -150,6 +150,12 @@ const TelnetWizardPage: React.FC = () => {
       } else {
         const r = await telnetApi.run({ platform: "legacy", application: app, hosts, ip, port });
         if (!("results" in r)) {
+          // safeJson() 4xx/5xx'te reddetmez — backend'in ok:false + message ile döndüğü
+          // hatalar burada kontrol edilmezse kullanıcıya sahte bir "başlatıldı" ekranı gösterilir.
+          if (!r.ok) {
+            setError(r.message || "İşlem başlatılamadı.");
+            return;
+          }
           setResult(r);
           setStep("done");
           trackJob(r);

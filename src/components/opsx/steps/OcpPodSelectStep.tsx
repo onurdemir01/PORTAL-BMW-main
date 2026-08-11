@@ -68,7 +68,7 @@ const OcpPodSelectStep: React.FC<{
       .then((r) => {
         if (cancelled) return;
         if (r.jobId == null) {
-          setError("Pod keşfi işi başlatılamadı.");
+          setError(r.message || "Pod keşfi işi başlatılamadı.");
           setLoading(false);
           return;
         }

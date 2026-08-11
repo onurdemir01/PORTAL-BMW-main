@@ -204,6 +204,35 @@ async function listTemplatesForServer(server) {
   }));
 }
 
+// AWX hata gövdesini insanın okuyabileceği tek satıra çeviren yardımcı (2026-08-11
+// üretim raporu: "OpsX Legacy dump" ve "OpsX Openshift pod keşfi" — iki AYRI, ilgisiz
+// template — 400 ile düşüyordu ve kullanıcı "birebir aynı logu atıyor" diyordu. Sebep bu
+// fonksiyonun eskiden HİÇ var olmaması: awxRequestToServer her zaman jenerik
+// "AWX HTTP 400" mesajı fırlatıyordu, AWX'in GERÇEK ret sebebi (ör. survey'de zorunlu alan
+// eksik, extra_vars'ta tanınmayan alan) hiçbir yere yazılmıyor, hiçbir yere gösterilmiyordu
+// — iki farklı sebep de aynı jenerik metne düştüğü için "aynı" görünüyordu.
+function summarizeAwxErrorBody(json) {
+  if (!json || typeof json !== "object") return "";
+  if (typeof json.detail === "string") return json.detail;
+  // AWX launch endpoint'i, survey'de zorunlu ama gönderilmeyen alanlar varsa bunu döner.
+  if (Array.isArray(json.variables_needed_to_start) && json.variables_needed_to_start.length) {
+    return `AWX survey'inde zorunlu alan(lar) eksik: ${json.variables_needed_to_start.join(", ")}`;
+  }
+  // DRF tarzı alan-bazlı validasyon hataları: { alan_adi: ["mesaj", ...], ... }
+  const parts = [];
+  for (const [field, val] of Object.entries(json)) {
+    if (field === "variables_needed_to_start") continue;
+    if (Array.isArray(val) && val.length) parts.push(`${field}: ${val.join(" ")}`);
+    else if (typeof val === "string" && val) parts.push(`${field}: ${val}`);
+  }
+  if (parts.length) return parts.join(" | ");
+  try {
+    return JSON.stringify(json).slice(0, 300);
+  } catch {
+    return "";
+  }
+}
+
 function awxRequestToServer(server, token, method, pathname, body = null) {
   const parsed  = new URL(pathname, server.url);
   const lib     = parsed.protocol === "https:" ? https : http;
@@ -230,8 +259,14 @@ function awxRequestToServer(server, token, method, pathname, body = null) {
       res.on("end", () => {
         try {
           const json = JSON.parse(data);
-          if (res.statusCode >= 400) reject(Object.assign(new Error(`AWX HTTP ${res.statusCode}`), { status: res.statusCode, body: json }));
-          else resolve(json);
+          if (res.statusCode >= 400) {
+            const detail = summarizeAwxErrorBody(json);
+            console.error(`[AWX] ${method} ${parsed.pathname} -> HTTP ${res.statusCode}:`, data.slice(0, 1000));
+            reject(Object.assign(
+              new Error(detail ? `AWX HTTP ${res.statusCode}: ${detail}` : `AWX HTTP ${res.statusCode}`),
+              { status: res.statusCode, body: json }
+            ));
+          } else resolve(json);
         } catch {
           reject(new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${data.slice(0, 200)}`));
         }

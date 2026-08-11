@@ -47,6 +47,10 @@ export interface OpsxRunResult {
   // AWX'e gönderilen gövdenin aynısı — son ekranda gösterilir. Legacy'de üst
   // seviyede `limit` bulunur; Openshift'te bulunmaz (her şey extra_vars içinde).
   sentBody: { limit?: string; extra_vars: Record<string, unknown> };
+  // ok:false ise backend'in ürettiği insanın okuyabileceği hata metni (bkz. server/opsx/index.cjs
+  // route'larındaki `res.status(err.status||500).json({ok:false, message: err.message})`).
+  // ÇAĞIRAN BUNU KONTROL ETMELİ — safeJson() 4xx/5xx'te fetch reddetmez, sadece JSON'u döner.
+  message?: string;
 }
 
 export interface OpsxJobStatus {
@@ -86,6 +90,8 @@ export interface OpsxDumpLaunchResult {
   status: string | null;
   awxServerId: number;
   sentBody: { limit?: string; extra_vars: Record<string, unknown> };
+  // ok:false ise backend'in ürettiği hata metni — bkz. OpsxRunResult.message notu.
+  message?: string;
 }
 
 export interface OpsxDumpStatus {
@@ -111,6 +117,8 @@ export interface OpsxPodDiscoveryLaunch {
   jobId: number | null;
   status: string | null;
   awxServerId: number;
+  // ok:false ise backend'in ürettiği hata metni — bkz. OpsxRunResult.message notu.
+  message?: string;
 }
 
 export interface OpsxPodDiscoveryStatus {
