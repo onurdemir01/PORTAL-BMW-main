@@ -57,6 +57,39 @@ export interface OpsxJobStatus {
   failed?: boolean;
 }
 
+// Thread/Heap dump — restart/stop/start'tan AYRI bir akış: iş bitince bir dosya üretir
+// ve kullanıcı onu indirir (bkz. server/opsx/downloads.cjs).
+export type OpsxDumpType = "threaddump" | "heapdump";
+
+// Backend'in playbook set_stats çıktısını (opsx_dump_result.results) OLDUĞU GİBİ
+// ilettiği alan adları — host bazlı (Legacy) veya namespace/application bazlı (Openshift).
+export interface OpsxDumpResultItem {
+  host?: string;
+  namespace?: string;
+  application?: string;
+  ok: boolean;
+  staged_path?: string;
+  filename?: string;
+  size_bytes?: number;
+  downloadToken?: string;
+  error?: string;
+}
+
+export interface OpsxDumpLaunchResult {
+  ok: boolean;
+  jobId: number | null;
+  status: string | null;
+  awxServerId: number;
+  sentBody: { limit?: string; extra_vars: Record<string, unknown> };
+}
+
+export interface OpsxDumpStatus {
+  ok: boolean;
+  status: string;
+  message?: string;
+  results?: OpsxDumpResultItem[];
+}
+
 export const opsxApi = {
   // Uygulama arama — LogX legacy ile aynı kaynak; DB erişilemezse fallbackMode=true
   // ile son bilinen snapshot döner.
@@ -115,4 +148,29 @@ export const opsxApi = {
   // (bkz. OpsXWizardPage.tsx).
   jobStatus: (serverId: number, jobId: number): Promise<OpsxJobStatus> =>
     fetch(`${BASE}/job-status/${serverId}/${jobId}`).then(safeJson),
+
+  // Legacy thread/heap dump başlatır — AYRI bir AWX template'e (opsx_legacy_dump) gider,
+  // template tanımlı değilse 501 döner.
+  dumpLegacy: (application: string, hosts: string[], dumpType: OpsxDumpType): Promise<OpsxDumpLaunchResult> =>
+    fetch(`${BASE}/dump/legacy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ application, hosts, dumpType }),
+    }).then(safeJson),
+
+  // Openshift thread/heap dump başlatır — AYRI bir AWX template'e (opsx_openshift_dump) gider.
+  dumpOpenshift: (env: string, tenant: string, pairs: OpsxOcpPair[], dumpType: OpsxDumpType): Promise<OpsxDumpLaunchResult> =>
+    fetch(`${BASE}/dump/openshift`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ env, tenant, pairs, dumpType }),
+    }).then(safeJson),
+
+  // Dump job'ının durumu — terminal + başarılıysa `results` her başarılı öge için
+  // bir `downloadToken` taşır (bkz. dumpDownloadUrl).
+  dumpStatus: (awxServerId: number, jobId: number): Promise<OpsxDumpStatus> =>
+    fetch(`${BASE}/dump/${awxServerId}/${jobId}/status`).then(safeJson),
+
+  // İndirme URL'i — doğrudan <a href> olarak kullanılır, ayrı bir fetch gerekmez.
+  dumpDownloadUrl: (token: string): string => `${BASE}/dump/download/${token}`,
 };

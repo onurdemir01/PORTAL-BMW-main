@@ -158,6 +158,29 @@ const TABLES = [
       )`,
   },
   {
+    // OpsX Thread/Heap Dump indirme token'lari — logx_v2_downloads ile AYNI IDOR-direncli
+    // desen (kripto-rastgele token, TTL), ama LogX'in request/job state-machine'ine
+    // (logx_v2_requests) BAGLANMAZ: OpsX'in kendi tek-tablolu, basit mekanizmasi
+    // (bkz. server/opsx/downloads.cjs) — AWX job'i dogrudan awx_server_id/awx_job_id ile
+    // izlenir, ayri bir "request" kavrami yok.
+    name: 'opsx_dump_downloads',
+    sql: `
+      CREATE TABLE opsx_dump_downloads (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        token          NVARCHAR(64) NOT NULL,
+        username       NVARCHAR(255) NOT NULL,
+        awx_server_id  INT NOT NULL,
+        awx_job_id     INT NOT NULL,
+        staged_path    NVARCHAR(1000) NOT NULL,
+        filename       NVARCHAR(500) NOT NULL,
+        size_bytes     BIGINT,
+        consumed_count INT NOT NULL DEFAULT 0,
+        expires_at     DATETIME2 NOT NULL,
+        created_at     DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UNIQUE(token)
+      )`,
+  },
+  {
     // A4 fetch-back: log-kaynak host NFS'e ERISEMEZSE arsivi portal'a HTTP ile push eder.
     // Bu tablo tek-kullanimlik, TTL'li ingest token'larini tutar (kaynak host bu token'li
     // URL'ye upload yapar → portal fallback dizinine yazar). Bkz. server/logx/v2/ingest.cjs.
@@ -1209,6 +1232,18 @@ const PLAYBOOK_REGISTRY_SEED = [
     description: 'ARK/Non-ARK container uygulamalarinda restart/stop/start islemi.',
     playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_TEMPLATE_ID',
   },
+  // ── OpsX Thread/Heap Dump — restart/stop/start'tan AYRI template'ler (dosya
+  // staging/indirme gerektirdigi icin mimari olarak farkli, bkz. server/opsx/downloads.cjs).
+  {
+    key_name: 'opsx_legacy_dump', display_name: 'OpsX — Legacy Thread/Heap Dump', category: 'opsx', handler: 'opsx_legacy_dump',
+    description: 'JBoss7/8 sunucularda jmap/jstack ile heap/thread dump alir, paylasilan staging dizinine birakir.',
+    playbook_path: 'server/ansible/playbooks/opsx_legacy_dump.yml', env_var_name: 'OPSX_LEGACY_DUMP_TEMPLATE_ID',
+  },
+  {
+    key_name: 'opsx_openshift_dump', display_name: 'OpsX — Openshift Thread/Heap Dump', category: 'opsx', handler: 'opsx_openshift_dump',
+    description: 'ARK/Non-ARK pod\'larinda heap/thread dump alir (bmw_openshift_jobs/get_dumps/get_dump.yaml).',
+    playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID',
+  },
   // ── Telnet baglanti testi — OpsX ile AYNI desen (bkz. server/telnet/index.cjs) ────
   {
     key_name: 'telnet_legacy_operation', display_name: 'Telnet — Legacy Baglanti Testi', category: 'telnet', handler: 'telnet_legacy',
@@ -1780,6 +1815,8 @@ async function setupTables() {
     { name: 'IX_dl_expires',          table: 'logx_v2_downloads', cols: 'expires_at' },
     { name: 'IX_dl_token',            table: 'logx_v2_downloads', cols: 'token' },
     { name: 'IX_dl_request',          table: 'logx_v2_downloads', cols: 'request_id' },
+    { name: 'IX_opsxdl_expires',      table: 'opsx_dump_downloads', cols: 'expires_at' },
+    { name: 'IX_opsxdl_token',        table: 'opsx_dump_downloads', cols: 'token' },
     { name: 'IX_jobs_request',        table: 'logx_v2_jobs',      cols: 'request_id' },
     { name: 'IX_req_state',           table: 'logx_v2_requests',  cols: 'state' },
     { name: 'IX_req_expires',         table: 'logx_v2_requests',  cols: 'expires_at' },

@@ -7,9 +7,13 @@
 // kısa ve tek bir tetiklemeyle bitiyor, dolayısıyla adım durumu client'ta tutulur.
 // Güvenlik buna dayanmaz: son POST /api/opsx/run çağrısında sunucu uygulama-host
 // eşleşmesini ve cluster'ı envanterden YENİDEN doğrular.
-import React, { useState } from "react";
-import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import { opsxApi, type OpsxPlatform, type OpsxOperation, type OpsxOcpOperation, type OpsxOcpPair, type OpsxRunResult } from "@/api/opsxApi";
+import React, { useEffect, useState } from "react";
+import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import {
+  opsxApi,
+  type OpsxPlatform, type OpsxOperation, type OpsxOcpOperation, type OpsxOcpPair,
+  type OpsxRunResult, type OpsxDumpType, type OpsxDumpLaunchResult, type OpsxDumpStatus,
+} from "@/api/opsxApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
@@ -41,6 +45,8 @@ const STEP_TITLES: Record<Step, string> = {
   done: "İşlem Başlatıldı",
 };
 
+const DUMP_OPERATIONS = new Set(["threaddump", "heapdump"]);
+
 const OpsXWizardPage: React.FC = () => {
   const [step, setStep] = useState<Step>("platform");
   const [platform, setPlatform] = useState<OpsxPlatform | null>(null);
@@ -52,8 +58,14 @@ const OpsXWizardPage: React.FC = () => {
   const [pairs, setPairs] = useState<OpsxOcpPair[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<OpsxRunResult | null>(null);
+  const [result, setResult] = useState<OpsxRunResult | OpsxDumpLaunchResult | null>(null);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
+  // Dump akışı restart/stop/start'tan FARKLI: iş bitince indirilecek bir dosya üretir.
+  // dumpJob dolu olduğu sürece ayrı bir interval bu bilgiyi (server/opsx/index.cjs
+  // GET /dump/:serverId/:jobId/status) poll eder — trackJob'un genel AWX log takibinden
+  // BAĞIMSIZ, aynı SelfServicePage.tsx'teki Smart ticket polling deseni.
+  const [dumpJob, setDumpJob] = useState<{ awxServerId: number; jobId: number } | null>(null);
+  const [dumpStatus, setDumpStatus] = useState<OpsxDumpStatus | null>(null);
   const { addJob, jobs } = useJobTracker();
   // Bu sayfa açıkken CANLI çıktıyı kendi içinde (inline) gösterir — takipçiden aynı
   // job'ın güncel verisini okur, kendi polling'ini yapmaz. Sayfadan ayrılınca (ya da
@@ -74,9 +86,11 @@ const OpsXWizardPage: React.FC = () => {
     setError(null);
     setResult(null);
     setTrackedJobId(null);
+    setDumpJob(null);
+    setDumpStatus(null);
   }
 
-  function trackJob(r: OpsxRunResult) {
+  function trackJob(r: OpsxRunResult | OpsxDumpLaunchResult) {
     if (r.jobId == null) return;
     const id = addJob({
       title: `OpsX #${r.jobId}`,
@@ -84,6 +98,35 @@ const OpsXWizardPage: React.FC = () => {
     });
     setTrackedJobId(id);
   }
+
+  // Dump job'ı bitene kadar aralıklı olarak sonucu (indirme token'ları dahil) sorgular.
+  // Genel AWX log takibinden (trackJob/JobTrackerContext) BAĞIMSIZ — o sadece stdout
+  // gösterir, bu ise set_stats'tan gelen yapılandırılmış sonucu (dosya hazır mı?) okur.
+  useEffect(() => {
+    if (!dumpJob) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
+
+    async function tick() {
+      try {
+        const r = await opsxApi.dumpStatus(dumpJob!.awxServerId, dumpJob!.jobId);
+        if (cancelled) return;
+        setDumpStatus(r);
+        if (!TERMINAL.has(r.status)) {
+          timer = window.setTimeout(tick, 3000);
+        }
+      } catch {
+        if (cancelled) return;
+        timer = window.setTimeout(tick, 5000);
+      }
+    }
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [dumpJob]);
 
   // Adıma göre "← Geri" hedefi. Hedefi olmayan adımlarda buton hiç render edilmez.
   function backTargetFor(s: Step): Step | null {
@@ -130,6 +173,39 @@ const OpsXWizardPage: React.FC = () => {
     }
   }
 
+  // threaddump/heapdump AYRI bir AWX template'ine (opsx_legacy_dump) gider — restart'ın
+  // /api/opsx/run'ından farklı olarak sonucu bir indirme listesine dönüşür (bkz. dumpStatus
+  // polling'i yukarıda).
+  async function runLegacyDump(dumpType: OpsxDumpType) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await opsxApi.dumpLegacy(app, hosts, dumpType);
+      setResult(r);
+      setStep("done");
+      if (r.jobId != null) {
+        setDumpJob({ awxServerId: r.awxServerId, jobId: r.jobId });
+        trackJob(r);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // OperationStep'in tek onSelect'i restart/stop/start İLE threaddump/heapdump'ı AYNI
+  // listede sunar (bkz. server/opsx/index.cjs ALLOWED_OPERATIONS) — burada hangi backend
+  // yoluna gideceğine ayrılır.
+  function handleLegacyOperation(operation: OpsxOperation) {
+    if (DUMP_OPERATIONS.has(operation)) {
+      runLegacyDump(operation as OpsxDumpType);
+    } else {
+      runLegacy(operation);
+    }
+  }
+
   function submitOcpTarget(v: { env: string; tenant: string; pairs: OpsxOcpPair[] }) {
     setEnv(v.env); setTenant(v.tenant); setPairs(v.pairs);
     setStep("ocp_operation");
@@ -148,6 +224,34 @@ const OpsXWizardPage: React.FC = () => {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Legacy'deki AYNI dallanma — threaddump/heapdump opsx_openshift_dump template'ine gider.
+  async function runOpenshiftDump(dumpType: OpsxDumpType) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await opsxApi.dumpOpenshift(env, tenant, pairs, dumpType);
+      setResult(r);
+      setStep("done");
+      if (r.jobId != null) {
+        setDumpJob({ awxServerId: r.awxServerId, jobId: r.jobId });
+        trackJob(r);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleOcpOperation(ocOperation: OpsxOcpOperation) {
+    if (DUMP_OPERATIONS.has(ocOperation)) {
+      runOpenshiftDump(ocOperation as OpsxDumpType);
+    } else {
+      runOpenshift(ocOperation);
     }
   }
 
@@ -230,11 +334,11 @@ const OpsXWizardPage: React.FC = () => {
         )}
 
         {step === "operation" && (
-          <OperationStep summary={operationSummary} application={app} hosts={hosts} busy={busy} onSelect={runLegacy} />
+          <OperationStep summary={operationSummary} application={app} hosts={hosts} busy={busy} onSelect={handleLegacyOperation} />
         )}
 
         {step === "ocp_operation" && (
-          <OcpOperationStep env={env} tenant={tenant} pairs={pairs} busy={busy} onSelect={runOpenshift} />
+          <OcpOperationStep env={env} tenant={tenant} pairs={pairs} busy={busy} onSelect={handleOcpOperation} />
         )}
 
         {step === "done" && result && (
@@ -257,6 +361,42 @@ const OpsXWizardPage: React.FC = () => {
                   title={trackedJob.title}
                 />
                 {trackedJob.pollErr && <p className="mt-1.5 text-xs text-amber-600">{trackedJob.pollErr}</p>}
+              </div>
+            )}
+
+            {/* Dump indirme sonuçları — restart/stop/start'ta HİÇ görünmez (dumpJob null
+                kalır). Job tamamlanana kadar "alınıyor" mesajı, sonra host/namespace başına
+                bir indirme butonu ya da hata gösterilir. */}
+            {dumpJob && (
+              <div className="w-full text-left bg-[var(--bg-elevated)] rounded-xl p-3 space-y-2">
+                <div className="text-xs font-medium text-[var(--text-muted)]">Dump Sonuçları</div>
+                {dumpStatus?.results && dumpStatus.results.length > 0 ? (
+                  dumpStatus.results.map((r, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]"
+                    >
+                      <span className="text-sm font-mono text-[var(--text-primary)]">
+                        {r.host || `${r.namespace}/${r.application}`}
+                      </span>
+                      {r.ok && r.downloadToken ? (
+                        <a
+                          href={opsxApi.dumpDownloadUrl(r.downloadToken)}
+                          className="btn-secondary text-xs flex items-center gap-1"
+                        >
+                          <ArrowDownTrayIcon className="w-3.5 h-3.5" />
+                          İndir
+                        </a>
+                      ) : (
+                        <span className="text-xs text-red-600">{r.error || "Başarısız"}</span>
+                      )}
+                    </div>
+                  ))
+                ) : dumpStatus?.message ? (
+                  <p className="text-xs text-amber-700">{dumpStatus.message}</p>
+                ) : (
+                  <p className="text-xs text-[var(--text-muted)]">Dump alınıyor, lütfen bekleyin…</p>
+                )}
               </div>
             )}
 

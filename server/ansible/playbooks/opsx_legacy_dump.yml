@@ -1,0 +1,252 @@
+---
+# server/ansible/playbooks/opsx_legacy_dump.yml — OpsX Legacy: JBoss7/8 uyumlu Thread/Heap Dump.
+#
+# Hedef host listesi (LogX/OpsX restart ile AYNI desen — bkz. server/opsx/index.cjs POST
+# /api/opsx/run yorumu): bir extra_var DEGIL, AWX'in KENDI `limit` alaninda gelir. Bu
+# yuzden play "hosts: all" kullanir, gercek daralma AWX tarafindan uygulanir.
+#
+# Gerekli extra_vars:
+#   dump_type: "heapdump" | "threaddump"
+#   staging_dir: /sw/BMW_PORTAL/opsx/dumps        (portalin okuyabildigi paylasilan dizin —
+#                                                   HEDEF HOST'LARDA DA mount'lu olmasi beklenir,
+#                                                   logx_legacy_transfer.yml'in birincil
+#                                                   varsayimiyla AYNI)
+# Opsiyonel extra_vars:
+#   application: <uygulama adi>                   (yalniz dosya adlandirma icin)
+#   jboss_version: "jboss7" | "jboss8"             (BILGI amacli — davranisi ETKILEMEZ: JDK
+#                                                    yolu HER ZAMAN calisan prosesten dinamik
+#                                                    cozulur, asagiya bakin)
+#
+# JBoss7/8 UYUMLULUGU: /usr/jboss/jdk/bin/ gibi sabit bir JDK yolu VARSAYILMAZ — host'lar
+# farkli JDK kurulumlarina sahip olabilir. Bunun yerine calisan JVM prosesinin GERCEK
+# binary yolu /proc/<pid>/exe symlink'i uzerinden cozulur (jvm_heap_status.yml'deki
+# PID-bulma deseniyle AYNI), jmap/jstack o dizinin kardesi olarak turetilir.
+#
+# CIKTI SOZLESMESI (server/opsx/index.cjs extractOpsxDumpResult() ile BIREBIR eslesir):
+#   set_stats: { opsx_dump_result: { overall_status, results: [
+#     {host, ok:true, staged_path, filename, size_bytes} | {host, ok:false, error}
+#   ]}}
+
+- name: "OpsX Legacy - Thread/Heap Dump"
+  hosts: all
+  gather_facts: false
+  become: false
+
+  vars:
+    dump_type: "{{ dump_type | default('heapdump') }}"
+    application: "{{ application | default('') }}"
+    local_dump_dir: "/tmp/opsx-dump"
+    dump_ts: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+    dump_basename: "{{ (application | default('app') | regex_replace('[^A-Za-z0-9_-]', '_')) }}_{{ inventory_hostname }}_{{ dump_ts }}"
+    dump_filename: "{{ (dump_basename ~ '.hprof') if dump_type == 'heapdump' else (dump_basename ~ '-thread.txt') }}"
+    local_dump_path: "{{ local_dump_dir }}/{{ dump_filename }}"
+
+  tasks:
+    - name: "Girdileri dogrula"
+      ansible.builtin.assert:
+        that:
+          - dump_type in ['heapdump', 'threaddump']
+          - staging_dir is defined
+          - staging_dir | string | length > 1
+          - staging_dir is match('^/')
+        fail_msg: "dump_type ('heapdump'|'threaddump') ve mutlak bir staging_dir gereklidir."
+      run_once: true
+
+    - name: "Uygulamanin JVM PID'ini bul"
+      ansible.builtin.shell:
+        cmd: pgrep -f 'jboss\|wildfly\|eap' | head -1
+      register: jvm_pid
+      changed_when: false
+      failed_when: false
+
+    - name: "PID bulunamadiysa sonucu kaydet"
+      ansible.builtin.set_fact:
+        host_dump_result:
+          host: "{{ inventory_hostname | upper }}"
+          ok: false
+          error: "Bu hostta çalışan bir JBoss/WildFly/EAP prosesi bulunamadı."
+      when: (jvm_pid.stdout | trim | length) == 0
+
+    # ── JBoss7/8 uyumlulugu: sabit bir JDK yolu YOK, calisan prosesten cozulur ──────────
+    - name: "GERÇEK java binary yolunu çöz (/proc/<pid>/exe)"
+      ansible.builtin.shell:
+        cmd: readlink -f /proc/{{ jvm_pid.stdout | trim }}/exe
+      register: java_bin
+      when: host_dump_result is not defined
+      changed_when: false
+      failed_when: false
+
+    - name: "JDK bin dizinini türet"
+      ansible.builtin.set_fact:
+        jdk_bin_dir: "{{ java_bin.stdout | trim | dirname }}"
+      when:
+        - host_dump_result is not defined
+        - java_bin.stdout is defined
+        - (java_bin.stdout | trim | length) > 0
+
+    - name: "JDK yolu çözülemediyse sonucu kaydet"
+      ansible.builtin.set_fact:
+        host_dump_result:
+          host: "{{ inventory_hostname | upper }}"
+          ok: false
+          error: "JVM binary yolu çözülemedi (/proc/{{ jvm_pid.stdout | trim }}/exe okunamadı)."
+      when:
+        - host_dump_result is not defined
+        - jdk_bin_dir is not defined
+
+    - name: "Yerel geçici dump dizinini oluştur"
+      ansible.builtin.file:
+        path: "{{ local_dump_dir }}"
+        state: directory
+        mode: "0770"
+      when: host_dump_result is not defined
+      register: local_dir_result
+      failed_when: false
+
+    - name: "Heap dump al (jmap)"
+      ansible.builtin.command:
+        cmd: "{{ jdk_bin_dir }}/jmap -dump:format=b,file={{ local_dump_path }} {{ jvm_pid.stdout | trim }}"
+      when:
+        - host_dump_result is not defined
+        - dump_type == 'heapdump'
+        - not (local_dir_result.failed | default(false))
+      register: jmap_result
+      changed_when: true
+      failed_when: false
+
+    - name: "Thread dump al (jstack)"
+      ansible.builtin.shell:
+        cmd: "{{ jdk_bin_dir }}/jstack {{ jvm_pid.stdout | trim }} > {{ local_dump_path }}"
+      when:
+        - host_dump_result is not defined
+        - dump_type == 'threaddump'
+        - not (local_dir_result.failed | default(false))
+      register: jstack_result
+      changed_when: true
+      failed_when: false
+
+    - name: "Dump komutu başarısız olduysa sonucu kaydet"
+      ansible.builtin.set_fact:
+        host_dump_result:
+          host: "{{ inventory_hostname | upper }}"
+          ok: false
+          error: >-
+            {{
+              (jmap_result.stderr | default(jmap_result.msg | default('jmap başarısız oldu')))
+              if dump_type == 'heapdump'
+              else (jstack_result.stderr | default(jstack_result.msg | default('jstack başarısız oldu')))
+            }}
+      when:
+        - host_dump_result is not defined
+        - (
+            (dump_type == 'heapdump' and (jmap_result.rc | default(1)) != 0)
+            or (dump_type == 'threaddump' and (jstack_result.rc | default(1)) != 0)
+          )
+
+    - name: "Oluşturulan dump dosyasının bilgisini al"
+      ansible.builtin.stat:
+        path: "{{ local_dump_path }}"
+        follow: true
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: local_dump_stat
+      when: host_dump_result is not defined
+      changed_when: false
+      failed_when: false
+
+    - name: "Dump dosyası oluşmadıysa sonucu kaydet"
+      ansible.builtin.set_fact:
+        host_dump_result:
+          host: "{{ inventory_hostname | upper }}"
+          ok: false
+          error: "Dump dosyası oluşturulamadı veya boş."
+      when:
+        - host_dump_result is not defined
+        - not (local_dump_stat.stat.exists | default(false) and (local_dump_stat.stat.size | default(0)) > 0)
+
+    # ── Paylaşılan staging dizinine kopyala — hedef host'ta da mount'lu olduğu varsayılır
+    # (logx_legacy_transfer.yml'in birincil varsayımıyla AYNI, bkz. dosya başı notu) ─────
+    - name: "Paylaşılan staging dizinini oluştur"
+      ansible.builtin.file:
+        path: "{{ staging_dir }}"
+        state: directory
+        mode: "0775"
+      when: host_dump_result is not defined
+      register: staging_dir_result
+      failed_when: false
+
+    - name: "Dump dosyasını paylaşılan staging dizinine kopyala"
+      ansible.builtin.copy:
+        src: "{{ local_dump_path }}"
+        dest: "{{ staging_dir }}/{{ dump_filename }}"
+        remote_src: true
+        mode: "0664"
+      when:
+        - host_dump_result is not defined
+        - not (staging_dir_result.failed | default(false))
+      register: staging_copy_result
+      failed_when: false
+
+    - name: "Kopyalanan dosyanın bilgisini al (staging)"
+      ansible.builtin.stat:
+        path: "{{ staging_dir }}/{{ dump_filename }}"
+        follow: true
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: staged_stat
+      when: host_dump_result is not defined
+      changed_when: false
+      failed_when: false
+
+    - name: "Başarılı sonucu kaydet"
+      ansible.builtin.set_fact:
+        host_dump_result:
+          host: "{{ inventory_hostname | upper }}"
+          ok: true
+          staged_path: "{{ staging_dir }}/{{ dump_filename }}"
+          filename: "{{ dump_filename }}"
+          size_bytes: "{{ staged_stat.stat.size | default(0) | int }}"
+      when:
+        - host_dump_result is not defined
+        - staged_stat.stat.exists | default(false)
+        - (staged_stat.stat.size | default(0)) > 0
+
+    - name: "Staging kopyalama başarısız olduysa sonucu kaydet"
+      ansible.builtin.set_fact:
+        host_dump_result:
+          host: "{{ inventory_hostname | upper }}"
+          ok: false
+          error: "Dump dosyası paylaşılan staging dizinine kopyalanamadı (mount edilmemiş olabilir)."
+      when: host_dump_result is not defined
+
+    - name: "Yerel geçici dump dosyasını temizle (best-effort)"
+      ansible.builtin.file:
+        path: "{{ local_dump_path }}"
+        state: absent
+      failed_when: false
+      changed_when: false
+
+    # ── Aggregator: TÜM hedef hostların sonucunu TEK opsx_dump_result olarak yayınla ────
+    # run_once + delegate_to: localhost — logx_legacy_transfer.yml'in run_once aggregator
+    # deseniyle AYNI mantık, ayrı bir play gerekmeden (bu playbook'ta her host TEK dosya
+    # ürettiği için LogX'teki per-host-ZIP-birleştirme adımına ihtiyaç yok).
+    - name: "Birleşik sonucu yayınla (opsx_dump_result)"
+      ansible.builtin.set_stats:
+        data:
+          opsx_dump_result:
+            overall_status: >-
+              {{
+                'ok'
+                if (ansible_play_hosts_all | map('extract', hostvars, 'host_dump_result') | selectattr('ok', 'equalto', false) | list | length) == 0
+                else (
+                  'partial'
+                  if (ansible_play_hosts_all | map('extract', hostvars, 'host_dump_result') | selectattr('ok', 'equalto', true) | list | length) > 0
+                  else 'failed'
+                )
+              }}
+            results: "{{ ansible_play_hosts_all | map('extract', hostvars, 'host_dump_result') | list }}"
+        per_host: false
+      run_once: true
+      delegate_to: localhost

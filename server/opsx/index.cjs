@@ -1,21 +1,21 @@
 // server/opsx/index.cjs — OpsX: Guvenli Uygulama Operasyonlari.
 //
-// LogX log INDIRIR; OpsX uygulama uzerinde ISLEM yapar (restart/stop/start). Ikisi de
-// ayni envanteri ve ayni cluster katalogunu okur, ama OpsX'in kendi AWX job template'i
-// vardir ve HICBIR dosya transferi yapmaz.
+// LogX log INDIRIR; OpsX uygulama uzerinde ISLEM yapar (restart/stop/start) VEYA dosya
+// URETIP indirtir (thread/heap dump — bkz. dosya sonundaki "Thread/Heap Dump" bolumu,
+// server/opsx/downloads.cjs). Ikisi de ayni envanteri ve ayni cluster katalogunu okur.
 //
 // HANGI AWX SUNUCUSU / TEMPLATE'I: Admin > Playbook Kayitlari ekranindan yonetilir
-// (ansible_playbook_registry satirlari: opsx_legacy_operation, opsx_openshift_operation).
-// LogX ile AYNI desen — template ID koda gomulu DEGIL. Registry'de template ID bos ise
-// endpoint 501 doner ve kullaniciya "yonetici tanimlamali" mesaji gosterilir; sessizce
-// yanlis bir job tetiklenmez.
+// (ansible_playbook_registry satirlari: opsx_legacy_operation, opsx_openshift_operation,
+// opsx_legacy_dump, opsx_openshift_dump). LogX ile AYNI desen — template ID koda gomulu
+// DEGIL. Registry'de template ID bos ise endpoint 501 doner ve kullaniciya "yonetici
+// tanimlamali" mesaji gosterilir; sessizce yanlis bir job tetiklenmez.
 //
-// JOB'A GIDEN PARAMETRELER: Admin > OpsX Yapilandirma ekranindan duzenlenebilir
-// (bkz. server/opsx/config.cjs). Varsayilan esleme:
+// JOB'A GIDEN PARAMETRELER: server/opsx/config.cjs'te tanimli (anahtar adlari +
+// her calistirmaya eklenen sabit degiskenler) — bunu duzenleyen ayri bir admin ekrani
+// ARTIK YOK (kaldirildi, kararsizdi); degisiklik gerekirse dogrudan kod uzerinden yapilir.
+// Varsayilan esleme:
 //   Legacy    -> application: <Uygulama Adi>, limit: <Sunucu1,Sunucu2,...>, operation: restart|stop|start
 //   Openshift -> env: <ortam>, oc_cluster: <tenant>, oc_input: "ns1,app1;ns2,app2"
-// Anahtar adlari playbook'un bekledigi isimlerle degistirilebilir; ayrica her
-// calistirmaya eklenecek sabit degiskenler tanimlanabilir.
 'use strict';
 
 const inventoryDb = require('../inventory/mssql.cjs');
@@ -36,21 +36,24 @@ const ALLOWED_OPERATIONS = Object.freeze({
   heapdump: 'Heap dump al',
 });
 
-// Openshift bacagindaki islem secenekleri — sunucuya HICBIR sekilde `operation` olarak
-// gitmez (bkz. run() Openshift dali: extra_vars sadece env/oc_cluster/oc_input tasir).
-// SADECE restart su an aktif — digerleri onyuzde gorunur ama devre disi birakilir;
-// ileride gercek playbook destegi eklendiginde `enabled: true` yapilip run()'a islenir.
-// Sunucu tarafinda da restart DISINDA bir key kabul EDILMEZ (defence in depth).
+// Openshift bacagindaki islem secenekleri — restart, extra_vars'ta `operation` olarak
+// DEGIL ozel bir openshift_operations sabitiyle gider (bkz. run() Openshift dali).
+// threaddump/heapdump artik AYRI bir AWX job template'i (opsx_openshift_dump, bkz.
+// POST /api/opsx/dump/openshift) uzerinden calisir — bu listedeki enabled bayragi SADECE
+// onyuzdeki dugmenin tiklanabilir olup olmadigini belirler. tcpdump henuz desteklenmiyor.
+// Sunucu tarafinda da bu listenin disinda bir key kabul EDILMEZ (defence in depth).
 const OCP_OPERATIONS = Object.freeze([
   { key: 'restart', label: 'Uygulamamı restart et', enabled: true },
-  { key: 'threaddump', label: 'Thread dump al', enabled: false },
-  { key: 'heapdump', label: 'Heap dump al', enabled: false },
+  { key: 'threaddump', label: 'Thread dump al', enabled: true },
+  { key: 'heapdump', label: 'Heap dump al', enabled: true },
   { key: 'tcpdump', label: 'Tcpdump al', enabled: false },
 ]);
 
 const REGISTRY_KEYS = Object.freeze({
   legacy: 'opsx_legacy_operation',
   openshift: 'opsx_openshift_operation',
+  legacyDump: 'opsx_legacy_dump',
+  openshiftDump: 'opsx_openshift_dump',
 });
 
 // Template ID + AWX sunucusu Playbook Kayitlari'ndan cozulur. getEffectiveTemplateId()
@@ -104,6 +107,112 @@ async function hostsForApp(app) {
       jbossVersion: String(r.jboss_version || '').trim(),
       status: String(r.status || '').trim().toLowerCase(),
     }));
+}
+
+// Legacy sunucu listesini anti-TOCTOU ile dogrular ve secilen sunucularin ORTAK JBoss
+// majör surumunu (varsa) turetir. Hem POST /api/opsx/run (restart/stop/start) hem
+// POST /api/opsx/dump/legacy tarafindan kullanilir — ikisi de AYNI dogrulama/türetme
+// kurallarina tabi olmali.
+async function resolveLegacyTargets(application, hosts) {
+  if (!String(application || '').trim()) {
+    throw Object.assign(new Error('Uygulama adı gerekli.'), { status: 400 });
+  }
+  if (!Array.isArray(hosts) || hosts.length === 0) {
+    throw Object.assign(new Error('En az bir sunucu seçilmeli.'), { status: 400 });
+  }
+  const appHosts = await hostsForApp(application);
+  const allowed = new Set(appHosts.map((h) => h.host.toUpperCase()));
+  const requested = hosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean);
+  const notMine = requested.filter((h) => !allowed.has(h));
+  if (notMine.length) {
+    throw Object.assign(new Error(`Bu sunucular seçilen uygulamaya ait değil: ${notMine.join(', ')}`), { status: 400 });
+  }
+  // jboss_version: "8.0.7" -> jboss8, "7.3.10" -> jboss7. WAS gibi JBoss olmayan
+  // uygulamalarda bos/tanimsiz surum HATA sayilmaz (null doner, cagiran extra_vars'a
+  // hic eklemez). Karisik 7.X/8.X secimi reddedilir — tek deger belirsiz olurdu.
+  const versionByHost = new Map(appHosts.map((h) => [h.host.toUpperCase(), h.jbossVersion]));
+  const jbossMajors = new Set();
+  for (const h of requested) {
+    const major = (versionByHost.get(h) || '').match(/^(\d+)/)?.[1];
+    if (major === '7' || major === '8') jbossMajors.add(major);
+  }
+  if (jbossMajors.size > 1) {
+    throw Object.assign(
+      new Error('Seçilen sunucular farklı JBoss majör sürümlerinde (7.X ve 8.X karışık) — lütfen tek seferde tek majör sürüm seçin.'),
+      { status: 400 }
+    );
+  }
+  const jbossVersion = jbossMajors.size === 1 ? `jboss${[...jbossMajors][0]}` : null;
+  return { requested, jbossVersion };
+}
+
+// Openshift namespace/uygulama ciftlerini cluster katalogu + erisim kisitlamalarina
+// karsi dogrular. Hem POST /api/opsx/run (restart) hem POST /api/opsx/dump/openshift
+// tarafindan kullanilir.
+async function resolveOpenshiftTargets(env, tenant, pairs, user) {
+  const envKey = String(env || '').trim();
+  const tenantKey = String(tenant || '').trim();
+  if (!envKey || !tenantKey) {
+    throw Object.assign(new Error('Ortam ve cluster (tenant) gerekli.'), { status: 400 });
+  }
+  const adminData = require('../logx/v2/admin.cjs');
+  let tree;
+  try {
+    tree = await adminData.getClusterTree();
+  } catch (err) {
+    throw Object.assign(new Error(`Cluster kataloğu okunamadı: ${err.message}`), { status: 503 });
+  }
+  if (!tree[envKey]) throw Object.assign(new Error(`Ortam tanımlı değil: ${envKey}`), { status: 400 });
+  const clusterNames = tree[envKey][tenantKey];
+  if (!clusterNames) throw Object.assign(new Error(`Cluster tanımlı değil: ${tenantKey}`), { status: 400 });
+  if (!Array.isArray(pairs) || pairs.length === 0) {
+    throw Object.assign(new Error('En az bir namespace/uygulama çifti eklenmeli.'), { status: 400 });
+  }
+  const cleanPairs = [];
+  const restrictions = require('../logx/v2/restrictions.cjs');
+  for (const p of pairs) {
+    const ns = String(p?.namespace || '').trim();
+    const appN = String(p?.application || '').trim();
+    if (!ns || !appN) {
+      throw Object.assign(new Error('Her satırda namespace ve uygulama adı dolu olmalı.'), { status: 400 });
+    }
+    if (ns.includes(',') || ns.includes(';') || appN.includes(',') || appN.includes(';')) {
+      throw Object.assign(new Error('Namespace/uygulama adı "," veya ";" içeremez.'), { status: 400 });
+    }
+    // YETKI KONTROLU: bu tenant/env grubundaki HERHANGI bir gercek cluster icin bu
+    // namespace acikca kisitlanmissa (LogX v2 > Erisim Kisitlamalari) tum istek
+    // reddedilir — restart/dump tetikleyen bir modulde bunu atlamak LogX'ten (salt log
+    // indirme) bile daha riskli olurdu. fail-safe: tek bir kisitlama tum grubu kapatir.
+    for (const clusterName of clusterNames) {
+      const resourceKey = `${tenantKey}/${envKey}/${clusterName}/${ns}`;
+      const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, user).catch(() => false);
+      if (!allowed) {
+        throw Object.assign(
+          new Error(`"${ns}" namespace'i için erişim yetkiniz yok — ekibiniz bu kaynağı kısıtlamış olabilir.`),
+          { status: 403 }
+        );
+      }
+    }
+    cleanPairs.push({ namespace: ns, application: appN, joined: `${ns},${appN}` });
+  }
+  return { envKey, tenantKey, cleanPairs };
+}
+
+// artifacts.opsx_dump_result'i (dump playbook'unun son adimda set_stats ile yayinladigi
+// yapilandirilmis sonuc) okur — LogX'in extractLogxResultFromArtifacts'iyle AYNI desen
+// (bkz. server/logx/v2/jobs.cjs), farkli anahtar adiyla.
+function extractOpsxDumpResult(rawArtifacts) {
+  const artifacts = rawArtifacts || {};
+  if (artifacts.opsx_dump_result && typeof artifacts.opsx_dump_result === 'object') {
+    return artifacts.opsx_dump_result;
+  }
+  if (artifacts.data?.opsx_dump_result && typeof artifacts.data.opsx_dump_result === 'object') {
+    return artifacts.data.opsx_dump_result;
+  }
+  if (artifacts.ansible_stats?.data?.opsx_dump_result && typeof artifacts.ansible_stats.data.opsx_dump_result === 'object') {
+    return artifacts.ansible_stats.data.opsx_dump_result;
+  }
+  return null;
 }
 
 // env+tenant secimine karsilik gelen GERCEK cluster isimleri (ocp_cluster_index'ten,
@@ -357,32 +466,13 @@ function initOpsX(app) {
       if (!ALLOWED_OPERATIONS[operation]) {
         return res.status(400).json({ ok: false, message: 'Geçersiz işlem.' });
       }
-      if (!String(application || '').trim()) {
-        return res.status(400).json({ ok: false, message: 'Uygulama adı gerekli.' });
-      }
-      if (!Array.isArray(hosts) || hosts.length === 0) {
-        return res.status(400).json({ ok: false, message: 'En az bir sunucu seçilmeli.' });
-      }
-
-      // ANTI-TOCTOU: client'in gonderdigi host listesine GUVENILMEZ — envanterden
-      // yeniden cozulur ve yalniz gercekten bu uygulamaya ait olanlar gecer. Ayni
-      // envanter satirlari jboss_version'i da tasidigi icin (asagida) client'in
-      // secim adimlarina (JbossVersionStep/HostSelectStep) da guvenilmeden yeniden
-      // turetilir.
-      let appHosts;
+      // ANTI-TOCTOU + jboss_version turetme: resolveLegacyTargets() (bkz. dosya basi) —
+      // dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
+      let requested, jbossVersion;
       try {
-        appHosts = await hostsForApp(application);
+        ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
-      }
-      const allowed = new Set(appHosts.map((h) => h.host.toUpperCase()));
-      const requested = hosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean);
-      const notMine = requested.filter((h) => !allowed.has(h));
-      if (notMine.length) {
-        return res.status(400).json({
-          ok: false,
-          message: `Bu sunucular seçilen uygulamaya ait değil: ${notMine.join(', ')}`,
-        });
       }
 
       limitValue = requested.join(cfg.separator);
@@ -391,111 +481,45 @@ function initOpsX(app) {
         ...staticVars,
         [cfg.applicationKey]: String(application).trim(),
         [cfg.operationKey]: operation,
+        ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
       };
 
-      // jboss_version: secilen sunucularin GERCEK envanter degerinden turetilir
-      // (ör. "8.0.7" -> jboss8, "7.3.10" -> jboss7). Legacy platform hem JBoss hem
-      // WAS uygulamalarini kapsadigi icin bos/tanimsiz surum HATA sayilmaz — o
-      // durumda extra_vars'a jboss_version HIC eklenmez (opsiyonel zenginlestirme).
-      // Ayni istekte HEM 7.X HEM 8.X birlikte secilirse (karisik majorler) reddedilir
-      // — tek bir jboss_version degeri hangisini temsil edecegi belirsiz olurdu.
-      const versionByHost = new Map(appHosts.map((h) => [h.host.toUpperCase(), h.jbossVersion]));
-      const jbossMajors = new Set();
-      for (const h of requested) {
-        const major = (versionByHost.get(h) || '').match(/^(\d+)/)?.[1];
-        if (major === '7' || major === '8') jbossMajors.add(major);
-      }
-      if (jbossMajors.size > 1) {
-        return res.status(400).json({
-          ok: false,
-          message: 'Seçilen sunucular farklı JBoss majör sürümlerinde (7.X ve 8.X karışık) — lütfen tek seferde tek majör sürüm seçin.',
-        });
-      }
-      if (jbossMajors.size === 1) {
-        extraVars.jboss_version = `jboss${[...jbossMajors][0]}`;
-      }
-
-      logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${extraVars.jboss_version ? ` jboss_version=${extraVars.jboss_version}` : ''}`;
+      logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ` jboss_version=${jbossVersion}` : ''}`;
 
     } else {
       // ── Openshift ───────────────────────────────────────────────────────────
-      const envKey = String(env || '').trim();
-      const tenantKey = String(tenant || '').trim();
-
-      // Su an SADECE restart aktif — sunucu tarafinda da beyaz liste kontrolu
-      // (defence in depth; onyuzde zaten disable ama client'a guvenilmez).
+      // /api/opsx/run SADECE restart/rollout icin — threaddump/heapdump artik enabled:true
+      // ama AYRI bir AWX template'e (opsx_openshift_dump, bkz. POST /api/opsx/dump/openshift)
+      // gider, bu route'a DEGIL. `ocOp.key !== 'restart'` kontrolu bu ayrimi sunucu
+      // tarafinda da zorunlu kilar (defence in depth; onyuz zaten dogru route'a yonlendirir
+      // ama client'a guvenilmez).
       const ocOp = OCP_OPERATIONS.find((o) => o.key === ocOperation);
-      if (!ocOp || !ocOp.enabled) {
+      if (!ocOp || !ocOp.enabled || ocOp.key !== 'restart') {
         return res.status(400).json({ ok: false, message: 'Bu Openshift işlemi henüz kullanıma açık değil.' });
       }
 
-      if (!envKey || !tenantKey) {
-        return res.status(400).json({ ok: false, message: 'Ortam ve cluster (tenant) gerekli.' });
-      }
-
-      // Secim katalog agacina karsi yeniden dogrulanir — client'in gonderdigine guvenilmez.
-      const adminData = require('../logx/v2/admin.cjs');
-      let tree;
+      // Katalog + erisim kisitlamasi dogrulamasi: resolveOpenshiftTargets() (bkz. dosya
+      // basi) — dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
+      let envKey, tenantKey, cleanPairs;
       try {
-        tree = await adminData.getClusterTree();
+        const user = req.session?.user || {};
+        ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(env, tenant, pairs, user));
       } catch (err) {
-        return res.status(503).json({ ok: false, message: `Cluster kataloğu okunamadı: ${err.message}` });
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
-      if (!tree[envKey]) {
-        return res.status(400).json({ ok: false, message: `Ortam tanımlı değil: ${envKey}` });
-      }
-      const clusterNames = tree[envKey][tenantKey];
-      if (!clusterNames) {
-        return res.status(400).json({ ok: false, message: `Cluster tanımlı değil: ${tenantKey}` });
-      }
-
-      // Her cift {namespace, application} sekliyle gelir. Namespace serbest metin
-      // olabilir (kullanici biliyorsa) ya da onbellekten secilmis olabilir — ikisi de
-      // burada AYNI sekilde ele alinir: format/bosluk dogrulanir, gercekte var olup
-      // olmadigini playbook'un kendisi (`oc get`) belirler.
-      if (!Array.isArray(pairs) || pairs.length === 0) {
-        return res.status(400).json({ ok: false, message: 'En az bir namespace/uygulama çifti eklenmeli.' });
-      }
-      const cleanPairs = [];
-      const restrictions = require('../logx/v2/restrictions.cjs');
-      const user = req.session?.user || {};
-      for (const p of pairs) {
-        const ns = String(p?.namespace || '').trim();
-        const appN = String(p?.application || '').trim();
-        if (!ns || !appN) {
-          return res.status(400).json({ ok: false, message: 'Her satırda namespace ve uygulama adı dolu olmalı.' });
-        }
-        if (ns.includes(',') || ns.includes(';') || appN.includes(',') || appN.includes(';')) {
-          return res.status(400).json({ ok: false, message: 'Namespace/uygulama adı "," veya ";" içeremez.' });
-        }
-        // YETKI KONTROLU: bu tenant/env grubundaki HERHANGI bir gercek cluster icin bu
-        // namespace acikca kisitlanmissa (LogX v2 > Erisim Kisitlamalari) tum istek
-        // reddedilir — restart calistiran bir modulde bunu atlamak LogX'ten (salt log
-        // indirme) bile daha riskli olurdu. fail-safe: tek bir kisitlama tum grubu kapatir.
-        for (const clusterName of clusterNames) {
-          const resourceKey = `${tenantKey}/${envKey}/${clusterName}/${ns}`;
-          const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, user).catch(() => false);
-          if (!allowed) {
-            return res.status(403).json({
-              ok: false,
-              message: `"${ns}" namespace'i için erişim yetkiniz yok — ekibiniz bu kaynağı kısıtlamış olabilir.`,
-            });
-          }
-        }
-        cleanPairs.push(`${ns},${appN}`);
-      }
+      const ocInput = cleanPairs.map((p) => p.joined).join(';');
 
       extraVars = {
         ...staticVars,
         [cfg.envKey]: envKey,
         [cfg.ocClusterKey]: tenantKey,
-        [cfg.ocInputKey]: cleanPairs.join(';'),
+        [cfg.ocInputKey]: ocInput,
         // Su an SADECE restart/rollout aktif (bkz. OCP_OPERATIONS) — bmw_openshift_jobs
         // AWX job template'inin hangi operasyonu calistiracagini secen sabit deger.
         openshift_operations: 'openshift_application_rollout',
         choise: true,
       };
-      logSummary = `env=${envKey} oc_cluster=${tenantKey} oc_input=${cleanPairs.join(';')}`;
+      logSummary = `env=${envKey} oc_cluster=${tenantKey} oc_input=${ocInput}`;
     }
 
     try {
@@ -551,7 +575,235 @@ function initOpsX(app) {
     }
   });
 
+  // ── Thread/Heap Dump ──────────────────────────────────────────────────────────
+  // restart/stop/start'tan (yukaridaki /api/opsx/run) BILEREK AYRI: dump islemleri bir
+  // dosya URETIP kullaniciya indirtiyor, bu yuzden AYRI AWX template'leri (opsx_legacy_dump/
+  // opsx_openshift_dump) ve LogX'in "job bitince set_stats'tan yapilandirilmis sonuc oku +
+  // indirme token'i uret" desenini (bkz. server/logx/v2/jobs.cjs + downloads.cjs) izler —
+  // ama LogX'in logx_v2_requests/logx_v2_jobs state-machine'ine BAGLANMADAN, kendi tek
+  // tablolu mekanizmasiyla (server/opsx/downloads.cjs).
+  const DUMP_TYPES = new Set(['threaddump', 'heapdump']);
+
+  // POST /api/opsx/dump/legacy — { application, hosts, dumpType }
+  app.post('/api/opsx/dump/legacy', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
+    const { application, hosts, dumpType } = req.body || {};
+    if (!DUMP_TYPES.has(dumpType)) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
+    }
+    const { templateId, serverId, keyName } = await resolveTarget('legacyDump');
+    if (!templateId) {
+      return res.status(501).json({
+        ok: false,
+        message: `OpsX Legacy dump işlemi için AWX job template'i henüz tanımlanmadı. `
+               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
+               + `Template ID alanını doldurmalı.`,
+      });
+    }
+
+    let requested, jbossVersion;
+    try {
+      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts));
+    } catch (err) {
+      return res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+
+    const opsxDownloads = require('./downloads.cjs');
+    const limitValue = requested.join(',');
+    const extraVars = {
+      application: String(application).trim(),
+      dump_type: dumpType,
+      staging_dir: opsxDownloads.stagingRoot(),
+      ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
+    };
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      await require('../ansible/template-preflight.cjs')
+        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
+
+      try {
+        const db = require('../db/index.cjs');
+        await db.query(
+          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            req.session?.user?.username || 'unknown',
+            serverId, templateId, `OpsX: Legacy ${dumpType}`,
+            result?.jobId, result?.status || 'pending',
+            JSON.stringify({ platform: 'legacy-dump', limit: limitValue, ...extraVars }),
+          ]
+        );
+      } catch (e) {
+        console.warn('[OpsX] Dump gecmisi kaydedilemedi:', e.message);
+      }
+
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'opsx_dump', {
+          detail: JSON.stringify({ platform: 'legacy', dumpType, limit: limitValue, jobId: result?.jobId ?? null }),
+        });
+      } catch { /* best-effort */ }
+
+      console.log(`[OpsX] ${req.session?.user?.username} -> legacy dump app=${application} type=${dumpType} limit=${limitValue} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      res.json({
+        ok: true,
+        jobId: result?.jobId ?? null,
+        status: result?.status ?? null,
+        awxServerId: serverId,
+        sentBody: { limit: limitValue, extra_vars: extraVars },
+      });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST /api/opsx/dump/openshift — { env, tenant, pairs, dumpType }
+  app.post('/api/opsx/dump/openshift', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
+    const { env, tenant, pairs, dumpType } = req.body || {};
+    if (!DUMP_TYPES.has(dumpType)) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
+    }
+    const { templateId, serverId, keyName } = await resolveTarget('openshiftDump');
+    if (!templateId) {
+      return res.status(501).json({
+        ok: false,
+        message: `OpsX Openshift dump işlemi için AWX job template'i henüz tanımlanmadı. `
+               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
+               + `Template ID alanını doldurmalı.`,
+      });
+    }
+
+    let envKey, tenantKey, cleanPairs;
+    try {
+      const user = req.session?.user || {};
+      ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(env, tenant, pairs, user));
+    } catch (err) {
+      return res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+
+    const opsxDownloads = require('./downloads.cjs');
+    const ocInput = cleanPairs.map((p) => p.joined).join(';');
+    const extraVars = {
+      env: envKey,
+      oc_cluster: tenantKey,
+      oc_input: ocInput,
+      dump_type: dumpType,
+      staging_dir: opsxDownloads.stagingRoot(),
+    };
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      await require('../ansible/template-preflight.cjs')
+        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
+
+      try {
+        const db = require('../db/index.cjs');
+        await db.query(
+          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            req.session?.user?.username || 'unknown',
+            serverId, templateId, `OpsX: Openshift ${dumpType}`,
+            result?.jobId, result?.status || 'pending',
+            JSON.stringify({ platform: 'openshift-dump', ...extraVars }),
+          ]
+        );
+      } catch (e) {
+        console.warn('[OpsX] Dump gecmisi kaydedilemedi:', e.message);
+      }
+
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'opsx_dump', {
+          detail: JSON.stringify({ platform: 'openshift', dumpType, extraVars, jobId: result?.jobId ?? null }),
+        });
+      } catch { /* best-effort */ }
+
+      console.log(`[OpsX] ${req.session?.user?.username} -> openshift dump env=${envKey} oc_cluster=${tenantKey} type=${dumpType} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      res.json({
+        ok: true,
+        jobId: result?.jobId ?? null,
+        status: result?.status ?? null,
+        awxServerId: serverId,
+        sentBody: { extra_vars: extraVars },
+      });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/opsx/dump/:serverId/:jobId/status — job terminal + basariliysa
+  // artifacts.opsx_dump_result okunur, her basarili sonuc icin bir indirme token'i
+  // uretilir. IDOR korumasi /api/opsx/job-status ile AYNI desen (ansible_job_history'de
+  // sahiplik kontrolu).
+  app.get('/api/opsx/dump/:serverId/:jobId/status', requireAuth, async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
+    }
+
+    const reqUser = req.session?.user || {};
+    try {
+      const db = require('../db/index.cjs');
+      if (reqUser.role !== 'Admin') {
+        const { rows } = await db.query(
+          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+          [jobId, serverId]
+        );
+        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
+        }
+      }
+    } catch { /* DB hiccup -> fail-open, /job-status ile ayni desen */ }
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
+      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+      if (!TERMINAL.has(statusInfo.status)) {
+        return res.json({ ok: true, status: statusInfo.status });
+      }
+      if (statusInfo.status !== 'successful') {
+        return res.json({ ok: true, status: statusInfo.status, message: 'İşlem başarısız oldu.' });
+      }
+
+      const dumpResult = extractOpsxDumpResult(statusInfo.artifacts);
+      if (!dumpResult) {
+        return res.json({
+          ok: true,
+          status: statusInfo.status,
+          message: 'İşlem tamamlandı ancak sonuç alınamadı — playbook\'un set_stats adımını kontrol edin.',
+        });
+      }
+
+      const opsxDownloads = require('./downloads.cjs');
+      const results = [];
+      for (const r of (dumpResult.results || [])) {
+        if (r.ok && r.staged_path && r.filename) {
+          const { token } = await opsxDownloads.issueDownloadToken({
+            username: reqUser.username || 'unknown',
+            awxServerId: serverId,
+            awxJobId: jobId,
+            stagedPath: r.staged_path,
+            filename: r.filename,
+            sizeBytes: r.size_bytes,
+          });
+          results.push({ ...r, downloadToken: token });
+        } else {
+          results.push(r);
+        }
+      }
+      res.json({ ok: true, status: statusInfo.status, results });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/opsx/dump/download/:token — server/opsx/downloads.cjs'e delege eder.
+  app.get('/api/opsx/dump/download/:token', requireAuth, async (req, res) => {
+    await require('./downloads.cjs').handleDownloadRoute(req, res);
+  });
+
   console.log('[OpsX] endpoints mounted at /api/opsx');
 }
 
-module.exports = { initOpsX, hostsForApp, ALLOWED_OPERATIONS };
+module.exports = { initOpsX, hostsForApp, ALLOWED_OPERATIONS, extractOpsxDumpResult };
