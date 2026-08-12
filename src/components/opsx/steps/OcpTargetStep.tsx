@@ -33,6 +33,14 @@ const OcpTargetStep: React.FC<{
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
   const [namespaceMode, setNamespaceMode] = useState<"list" | "free">("list");
   const [namespace, setNamespace] = useState("");
+  // "Yaz" (serbest metin) kipinde `namespace` düz bir <input>'tan gelir ve HER TUŞ
+  // VURUŞUNDA değişir. Bunu doğrudan "Uygulama Adı" bloğunun görünürlüğüne VE
+  // getOcpApps çağrısına bağlamak, kullanıcı daha namespace'i yazarken her harfte o
+  // bloğun belirip API'nin tekrar tekrar çağrılmasına yol açıyordu — ekran yazarken
+  // zıplıyor, "alt alta bozulmuş" görünüyordu ("Listeden seç" kipinde FilterableList
+  // değeri yalnızca TIKLAMADA commit ettiği için bu sorun yoktu). Kullanıcı yazmayı
+  // KISA BİR SÜRE durdurunca (debounce) namespace burada "yerleşir".
+  const [settledNamespace, setSettledNamespace] = useState("");
 
   const [appOptions, setAppOptions] = useState<string[]>([]);
   const [appsLoading, setAppsLoading] = useState(false);
@@ -57,23 +65,30 @@ const OcpTargetStep: React.FC<{
 
   // Ortam/cluster değişince namespace listesi yeniden çekilir; önceki secimler sıfırlanır.
   useEffect(() => {
-    setNamespace(""); setNamespaceOptions([]); setApplication(""); setAppOptions([]);
+    setNamespace(""); setSettledNamespace(""); setNamespaceOptions([]); setApplication(""); setAppOptions([]);
     if (!env || !tenant) return;
     opsxApi.getOcpNamespaces(env, tenant)
       .then((r) => setNamespaceOptions(r.namespaces || []))
       .catch(() => setNamespaceOptions([]));
   }, [env, tenant]);
 
-  // Namespace seçilince uygulama dropdown'u otomatik dolar.
+  // namespace listeden seçilince (tıklama, anında) YA DA serbest yazımda kısa bir süre
+  // durunca (debounce) "yerleşir".
+  useEffect(() => {
+    const t = window.setTimeout(() => setSettledNamespace(namespace.trim()), 350);
+    return () => window.clearTimeout(t);
+  }, [namespace]);
+
+  // Namespace yerleşince uygulama dropdown'u otomatik dolar.
   useEffect(() => {
     setApplication(""); setAppOptions([]);
-    if (!env || !tenant || !namespace.trim()) return;
+    if (!env || !tenant || !settledNamespace) return;
     setAppsLoading(true);
-    opsxApi.getOcpApps(env, tenant, namespace.trim())
+    opsxApi.getOcpApps(env, tenant, settledNamespace)
       .then((r) => setAppOptions(r.apps || []))
       .catch(() => setAppOptions([]))
       .finally(() => setAppsLoading(false));
-  }, [env, tenant, namespace]);
+  }, [env, tenant, settledNamespace]);
 
   const canAddPair = namespace.trim() && application.trim();
 
@@ -83,7 +98,7 @@ const OcpTargetStep: React.FC<{
     const app = application.trim();
     if (pairs.some((p) => p.namespace === ns && p.application === app)) return;
     setPairs((prev) => [...prev, { namespace: ns, application: app }]);
-    setNamespace(""); setApplication(""); setAppOptions([]);
+    setNamespace(""); setSettledNamespace(""); setApplication(""); setAppOptions([]);
   }
 
   function removePair(i: number) {
@@ -191,7 +206,7 @@ const OcpTargetStep: React.FC<{
             )}
           </div>
 
-          {namespace.trim() && (
+          {settledNamespace && (
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Uygulama Adı</label>
               {appsLoading ? (
