@@ -15,9 +15,10 @@
 //
 // ÇOKLU İŞLEM: kullanıcı birden fazla namespace/uygulama çiftini "Ekle" ile listeye
 // biriktirebilir; tek POST'ta oc_input = "ns1,app1;ns2,app2" olarak sunucuya gider.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
+import FilterableList from "@/components/common/FilterableList";
 
 const OcpTargetStep: React.FC<{
   busy?: boolean;
@@ -34,7 +35,6 @@ const OcpTargetStep: React.FC<{
   const [namespace, setNamespace] = useState("");
 
   const [appOptions, setAppOptions] = useState<string[]>([]);
-  const [appSearch, setAppSearch] = useState("");
   const [appsLoading, setAppsLoading] = useState(false);
   const [application, setApplication] = useState("");
 
@@ -52,7 +52,7 @@ const OcpTargetStep: React.FC<{
 
   // Ortam/cluster değişince namespace listesi yeniden çekilir; önceki secimler sıfırlanır.
   useEffect(() => {
-    setNamespace(""); setNamespaceOptions([]); setApplication(""); setAppOptions([]); setAppSearch("");
+    setNamespace(""); setNamespaceOptions([]); setApplication(""); setAppOptions([]);
     if (!env || !tenant) return;
     opsxApi.getOcpNamespaces(env, tenant)
       .then((r) => setNamespaceOptions(r.namespaces || []))
@@ -61,7 +61,7 @@ const OcpTargetStep: React.FC<{
 
   // Namespace seçilince uygulama dropdown'u otomatik dolar.
   useEffect(() => {
-    setApplication(""); setAppOptions([]); setAppSearch("");
+    setApplication(""); setAppOptions([]);
     if (!env || !tenant || !namespace.trim()) return;
     setAppsLoading(true);
     opsxApi.getOcpApps(env, tenant, namespace.trim())
@@ -69,12 +69,6 @@ const OcpTargetStep: React.FC<{
       .catch(() => setAppOptions([]))
       .finally(() => setAppsLoading(false));
   }, [env, tenant, namespace]);
-
-  const filteredApps = useMemo(() => {
-    const q = appSearch.trim().toLowerCase();
-    if (!q) return appOptions;
-    return appOptions.filter((a) => a.toLowerCase().includes(q));
-  }, [appOptions, appSearch]);
 
   const canAddPair = namespace.trim() && application.trim();
 
@@ -84,7 +78,7 @@ const OcpTargetStep: React.FC<{
     const app = application.trim();
     if (pairs.some((p) => p.namespace === ns && p.application === app)) return;
     setPairs((prev) => [...prev, { namespace: ns, application: app }]);
-    setNamespace(""); setApplication(""); setAppOptions([]); setAppSearch("");
+    setNamespace(""); setApplication(""); setAppOptions([]);
   }
 
   function removePair(i: number) {
@@ -161,16 +155,14 @@ const OcpTargetStep: React.FC<{
             </div>
 
             {namespaceMode === "list" && namespaceOptions.length > 0 ? (
-              <select
+              /* Arama + vurgulama + daha uzun liste. "Yaz" kipi ve serbest yazım kaçış
+                 yolu OLDUĞU GİBİ duruyor — yalnızca liste kipi zenginleşti. */
+              <FilterableList
+                options={namespaceOptions}
                 value={namespace}
-                onChange={(e) => setNamespace(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition bg-[var(--bg-primary)]"
-              >
-                <option value="">Seçiniz…</option>
-                {namespaceOptions.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
+                onChange={setNamespace}
+                placeholder="Namespace ara…"
+              />
             ) : (
               <input
                 value={namespace}
@@ -196,24 +188,14 @@ const OcpTargetStep: React.FC<{
                   Bu namespace için envanterde uygulama bulunamadı.
                 </p>
               ) : (
-                <div className="space-y-1.5">
-                  <input
-                    value={appSearch}
-                    onChange={(e) => setAppSearch(e.target.value)}
-                    placeholder="Ara…"
-                    className="w-full px-3 py-1.5 text-xs border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)] transition"
-                  />
-                  <select
-                    value={application}
-                    onChange={(e) => setApplication(e.target.value)}
-                    size={Math.min(6, Math.max(3, filteredApps.length))}
-                    className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition bg-[var(--bg-primary)]"
-                  >
-                    {filteredApps.map((a) => (
-                      <option key={a} value={a}>{a}</option>
-                    ))}
-                  </select>
-                </div>
+                /* Eskiden ayrı bir arama kutusu + `<select size>` vardı: eşleşen metin
+                   vurgulanamıyor ve liste 3-6 satırla sınırlı kalıyordu. */
+                <FilterableList
+                  options={appOptions}
+                  value={application}
+                  onChange={setApplication}
+                  placeholder="Uygulama ara…"
+                />
               )}
             </div>
           )}

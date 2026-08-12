@@ -12,6 +12,7 @@
 import React, { useEffect, useState } from "react";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { telnetApi } from "@/api/telnetApi";
+import FilterableList from "@/components/common/FilterableList";
 
 const OcpTargetStep: React.FC<{
   busy?: boolean;
@@ -129,16 +130,14 @@ const OcpTargetStep: React.FC<{
             </div>
 
             {namespaceMode === "list" && namespaceOptions.length > 0 ? (
-              <select
+              /* Arama + vurgulama + daha uzun liste (OpsX ile aynı bileşen). "Yaz" kipi
+                 ve serbest yazım kaçış yolu OLDUĞU GİBİ duruyor. */
+              <FilterableList
+                options={namespaceOptions}
                 value={namespace}
-                onChange={(e) => setNamespace(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition bg-[var(--bg-primary)]"
-              >
-                <option value="">Seçiniz…</option>
-                {namespaceOptions.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
+                onChange={setNamespace}
+                placeholder="Namespace ara…"
+              />
             ) : (
               <input
                 value={namespace}
