@@ -3,41 +3,46 @@
 #
 # ÖNEMLİ: Bu dosya YALNIZCA REFERANS'tır — portal bunu ÇALIŞTIRMAZ. Gerçek playbook
 # `bmw_openshift_jobs/ocp_telnet_control.yml` yolunda, AYRI bir Ansible projesinde deploy
-# edilir. Buradaki sürüm, üretimde düşen sürümün düzeltilmiş hâlidir; AWX'e kopyalanacak
-# metin budur (repo'daki `logx_legacy_discovery.yml` ile aynı "referans" konvansiyonu).
+# edilir. AWX'e kopyalanacak metin budur (repo'daki `logx_*.yml` ile aynı konvansiyon).
+#
+# ── YAPI: LOGX MODELİ (2026-08-12 kullanıcı kararı) ────────────────────────────────────
+# Hedef host'lar JUMP SERVER'lardır; cluster'lar VERİ olarak gelir. Portal
+# `terminal_hosts[]` (bastion adları) ve `ocp_clusters[]` (cluster başına `terminal_host` +
+# `api_url` + `credential_key`) gönderir; ilk play bunları `add_host` ile dinamik gruba atar,
+# ikinci play her bastion'da YALNIZCA o bastion'a ait cluster'lara `oc login` yapar. Bu,
+# `logx_ocp_discover_fetch.yml`'de üretimde kanıtlanmış desenin birebir aynısıdır.
+#
+# ÖNCEKİ YAPI VE NEDEN BIRAKILDI: playbook `hosts: "{{ cluster }}_{{ env }}"` ile envanter
+# grubunu (ör. ark_qa) hedefliyordu. Cluster → jump server eşlemesi AWX envanterinin İÇİNDE
+# gizliydi (envanterde `gbocpqa1` hem GRUP hem HOST olarak tanımlı — Ansible bunu uyarı
+# olarak basıyor) ve portalın DB'sindeki `ocp_cluster_index.terminal_host` kaydı hiç
+# kullanılmıyordu. Artık eşlemenin tek kaynağı portal.
 #
 # ── ÜRETİMDE NE DÜŞTÜ (job 3218662) ────────────────────────────────────────────────────
-# 1) `'target_host' is undefined` — playbook telnet hedefini `target_host`/`target_port`
-#    adlarıyla okuyordu, portal ise `ip`/`port` gönderiyor. Üç host da bu yüzden telnet
-#    komutunu hiç çalıştıramadı ("VARIABLE IS NOT DEFINED!").
-#    → Aşağıda hedef İKİ addan da türetiliyor; portal artık ikisini birden gönderiyor
-#      (server/telnet/index.cjs), yani playbook eski kalsa bile çalışır, yenisi de çalışır.
-#
-# 2) `gbocptest4` daha ilk adımda düştü ama görevde `no_log: true` olduğu için SEBEP
-#    görünmedi ("censored"). Aynı `uxmid` hesabıyla eş zamanlı koşan başka bir job'ın
-#    log'unda sebep açıkça yazıyor:
+# 1) `'target_host' is undefined` — playbook hedefi `target_host`/`target_port` adlarıyla
+#    okuyordu, portal `ip`/`port` gönderiyordu. Üç host da telnet komutunu hiç çalıştıramadı.
+#    → Hedef her iki addan da türetiliyor; portal da ikisini birden gönderiyor.
+# 2) `gbocptest4` ilk adımda düştü ama görevde `no_log: true` olduğu için SEBEP görünmedi.
+#    Aynı hesapla eş zamanlı koşan başka bir job'ın log'unda sebep yazıyor:
 #      error loading config file "/home/uxmid/.kube/config": yaml: line 12: ...
-#    Yani eş zamanlı `oc login`'ler ORTAK kubeconfig dosyasını bozuyor.
-#    → İki düzeltme: (a) her çalıştırma KENDİ geçici KUBECONFIG'ini kullanır, (b) login ile
-#      pod oluşturma AYRI görevlere bölündü; `no_log` yalnız parolayı taşıyan login'de kalır,
-#      pod hatası artık okunabilir.
-#
-# 3) Geçici pod, akış ortada düşerse cluster'da KALIYORDU. → `block/always` ile temizlik
-#    her durumda çalışır.
-#
-# 4) `namespace` ve `port` Ansible'da REZERVE adlardır ("Found variable using reserved name"
-#    uyarıları). → Başta yerel fact'lere kopyalanıp playbook boyunca onlar kullanılır.
-#
-# 5) Pod adı sabit `telnet-test` idi: aynı namespace'te eş zamanlı iki test birbirinin
-#    pod'unu siliyordu. → Ada AWX job numarası eklendi.
+#    Eş zamanlı `oc login`'ler ORTAK kubeconfig'i bozuyor.
+#    → (a) her birim KENDİ geçici KUBECONFIG'ini kullanır, (b) login ile pod oluşturma AYRI
+#      görevlerdir; `no_log` yalnız parolayı taşıyan login'de kalır, pod hatası okunabilir.
+# 3) Geçici pod, akış ortada düşerse cluster'da KALIYORDU → `block/always` ile her durumda
+#    temizlenir.
+# 4) `namespace`/`port` Ansible'da REZERVE adlar → yerel fact'lere kopyalanır.
+# 5) Pod adı sabit `telnet-test` idi; eş zamanlı iki test birbirinin pod'unu siliyordu →
+#    ada AWX job numarası eklendi.
 #
 # ── PORTALIN GÖNDERDİĞİ extra_vars ─────────────────────────────────────────────────────
-#   env          : ortam (ör. qa)            cluster : tenant/iş birimi (ör. ark)
-#   namespace    : hedef namespace           ip/port : telnet hedefi
-#   target_host / target_port : ip/port ile AYNI değerler (geriye uyum aliası)
+#   terminal_hosts : ["GBARKAP82", ...]           ← jump server'lar (hedef host'lar)
+#   ocp_clusters   : [{ cluster_name, terminal_host, api_url, credential_key }, ...]
+#   namespace      : hedef namespace
+#   ip / port      : telnet hedefi (target_host / target_port ile AYNI değerler)
+#   env / cluster  : geriye uyum (eski playbook grubu bunlardan kuruyordu)
 #
-# Hedef host'lar `{{ cluster }}_{{ env }}` envanter grubundan çözülür (ör. ark_qa) —
-# grup, o tenant/ortamın TÜM gerçek cluster'larını içerir ve HER BİRİNDE ayrı test koşar.
+# PAROLA: extra_vars'ta ASLA taşınmaz. `credential_key` yalnızca vault değişkeninin ADIdır;
+# değeri `credentials.yaml` (vault) içinden `lookup('vars', ...)` ile çözülür — LogX ile aynı.
 
 - name: "--- [Play] OpenShift Telnet Test - Prepare & Validate ---"
   hosts: localhost
@@ -45,132 +50,197 @@
   gather_facts: false
 
   tasks:
-    - name: "--- [Task] Resolve target inventory group for chosen cluster/environment ---"
-      ansible.builtin.set_fact:
-        target_group: "{{ cluster }}_{{ env }}"
+    - name: "--- [Task] Validate required input ---"
+      ansible.builtin.assert:
+        that:
+          - terminal_hosts is defined
+          - terminal_hosts | length > 0
+          - ocp_clusters is defined
+          - ocp_clusters | length > 0
+          - namespace is defined
+          - (namespace | string | length) > 0
+        fail_msg: >-
+          Zorunlu değişkenler eksik → bastion: {{ terminal_hosts | default([]) | length }},
+          cluster: {{ ocp_clusters | default([]) | length }},
+          namespace: {{ namespace | default('(yok)') }}.
+          Tümü boşsa AWX job template'inde "Prompt on launch" (Variables) kapalı olabilir.
 
-    - name: "--- [Task] Fail early when the group is empty or undefined ---"
-      # Grup yoksa playbook "no hosts matched" ile SESSİZCE geçerdi; kullanıcı işin
-      # çalıştığını sanırdı. Burada açıkça durur.
-      ansible.builtin.fail:
-        msg: >-
-          Envanterde "{{ target_group }}" grubu bulunamadı ya da boş —
-          ortam/tenant seçimi ile AWX envanteri uyuşmuyor.
-      when: (groups[target_group] | default([])) | length == 0
+    - name: "--- [Task] Add every jump server to dynamic inventory ---"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: telnet_terminal
+      loop: "{{ terminal_hosts }}"
+      changed_when: false
 
-    - name: "--- [Task] Debug resolved target group ---"
+    - name: "--- [Task] Debug resolved targets ---"
       ansible.builtin.debug:
-        msg: "Target group: {{ target_group }} -> hosts: {{ groups[target_group] }}"
+        msg: >-
+          Jump server'lar: {{ terminal_hosts }} |
+          cluster'lar: {{ ocp_clusters | map(attribute='cluster_name') | list }}
 
 - name: "--- [Play] OpenShift Telnet Test ---"
-  # Grup adı doğrudan extra_vars'tan kurulur (ilk play ile AYNI ifade). `hostvars` üzerinden
-  # okumak da mümkündü ama `hosts:` anahtarı envanter yüklenmeden değerlendirildiği için
-  # `--syntax-check` gibi araçlarda kırılgan oluyor.
-  hosts: "{{ cluster }}_{{ env }}"
+  hosts: telnet_terminal
+  # Bir bastion çökse bile diğerleri devam etsin (varsayılan; niyet açık olsun diye yazılı).
+  any_errors_fatal: false
   gather_facts: false
+  become: false
 
   vars_files:
+    # Parolalar (vault) BURADAN gelir; portal yalnızca anahtarın ADINI taşır.
     - ./global_variables/credentials.yaml
-    - ./global_variables/openshift_inventory_vars.yaml
+    # OPSİYONEL: portal `api_url`i extra_vars ile gönderiyor. Dosya ileride kaldırılırsa
+    # playbook ÇALIŞMAYA DEVAM EDER; yalnızca metadata göndermeyen eski çağrılar için durur.
+    - "{{ lookup('first_found', ['./global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
 
   vars:
-    pod_name: "telnet-test-{{ tower_job_id | default('local') }}"
-    image: nicolaka/netshoot
     # REZERVE ADLARDAN KAÇIN: `namespace` ve `port` Ansible'ın kendi ad alanında; doğrudan
-    # kullanmak "Found variable using reserved name" uyarısı üretiyor ve ileride sessiz
-    # çakışmaya açık. Değerleri bir kez buraya alıp playbook boyunca bunları kullanıyoruz.
+    # kullanmak "Found variable using reserved name" uyarısı üretir ve sessiz çakışmaya açıktır.
     ns_name: "{{ namespace }}"
     telnet_host: "{{ target_host | default(ip) }}"
     telnet_port: "{{ target_port | default(port) }}"
-    # HER ÇALIŞTIRMA KENDİ KUBECONFIG'İ: eş zamanlı job'lar aynı `~/.kube/config`'i yazınca
-    # dosya bozuluyor ve `oc` "could not find expected ':'" ile düşüyor (üretimde yaşandı).
-    kubeconfig_path: "/tmp/kubeconfig-{{ tower_job_id | default('local') }}-{{ inventory_hostname }}"
-
-  environment:
-    KUBECONFIG: "{{ kubeconfig_path }}"
+    image: nicolaka/netshoot
+    job_tag: "{{ tower_job_id | default('local') }}"
 
   tasks:
-    - name: "--- [Task] Resolve selected cluster connection record ---"
+    - name: "--- [Task] Select the cluster subset that belongs to this jump server ---"
+      # Her bastion YALNIZCA kendi cluster'larına bağlanır. `terminal_host` taşımayan (eski
+      # payload) kayıtlar sahipsiz kalmasın diye ilk bastion'a düşürülür — sessiz kayıp olmaz.
       ansible.builtin.set_fact:
-        selected_cluster: "{{ clusters[cluster ~ '_' ~ env][inventory_hostname] }}"
-      # Cluster kaydı yoksa aşağıdaki login anlamsız bir hata verirdi; sebebi burada söylüyoruz.
-      failed_when: false
+        my_ocp_clusters: >-
+          {{
+            (ocp_clusters | selectattr('terminal_host', 'defined')
+                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+            +
+            (ocp_clusters | rejectattr('terminal_host', 'defined') | list
+             if inventory_hostname == (terminal_hosts | sort | first) else [])
+          }}
+      changed_when: false
 
-    - name: "--- [Task] Fail with a clear message when the cluster record is missing ---"
-      ansible.builtin.fail:
-        msg: >-
-          "{{ inventory_hostname }}" için openshift_inventory_vars.yaml içinde
-          clusters["{{ cluster }}_{{ env }}"] altında kayıt yok.
-      when: selected_cluster is not defined or selected_cluster is none
+    - name: "--- [Task] Build per-cluster work units ---"
+      # Her birim: bağlantı bilgisi + KENDİ kubeconfig'i + KENDİ pod adı. Parola vault'tan
+      # `credential_key` ADI üzerinden çözülür (LogX ile aynı desen).
+      ansible.builtin.set_fact:
+        telnet_units: >-
+          {{
+            telnet_units | default([]) + [{
+              'cluster_name': item.cluster_name,
+              'url': item.api_url,
+              'username': item.username | default(ocp_username | default('')),
+              'password': lookup('vars', item.credential_key),
+              'kubeconfig': '/tmp/kubeconfig-telnet-' ~ job_tag ~ '-' ~ item.cluster_name,
+              'pod_name': 'telnet-test-' ~ job_tag
+            }]
+          }}
+      loop: "{{ my_ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name }}"
+      no_log: true
+      changed_when: false
+
+    - name: "--- [Task] Skip this jump server when it owns no cluster ---"
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} bu çalıştırmada hiçbir cluster'a sahip değil — atlanıyor."
+      when: (telnet_units | default([])) | length == 0
 
     - block:
-        # PAROLA yalnız BU görevde geçiyor; `no_log` sadece burada. Böylece diğer adımların
-        # hataları AWX çıktısında OKUNABİLİR kalıyor (eskiden hepsi "censored" idi).
-        - name: "--- [Task] Login to the cluster ---"
+        # PAROLA yalnız BU görevde geçiyor; `no_log` sadece burada. Diğer adımların hataları
+        # AWX çıktısında OKUNABİLİR kalır (eskiden tek görev olduğu için hepsi "censored"di).
+        - name: "--- [Task] Login to each cluster (isolated KUBECONFIG) ---"
           ansible.builtin.shell: |
             oc login \
-              --server="{{ selected_cluster.url }}" \
-              --username="{{ username }}" \
-              --password="{{ selected_cluster.password }}"
-          register: login_result
+              --server={{ item.url | quote }} \
+              --username={{ item.username | quote }} \
+              --password={{ item.password | quote }}
+          environment:
+            KUBECONFIG: "{{ item.kubeconfig }}"
+          loop: "{{ telnet_units }}"
+          loop_control:
+            label: "{{ item.cluster_name }}"
+          register: login_results
           changed_when: false
           no_log: true
 
         - name: "--- [Task] Create temporary pod ---"
           ansible.builtin.shell: |
-            oc run "{{ pod_name }}" \
-              -n "{{ ns_name }}" \
-              --image="{{ image }}" \
+            oc run {{ item.pod_name | quote }} \
+              -n {{ ns_name | quote }} \
+              --image={{ image | quote }} \
               --restart=Never \
               --command -- sleep 3600
-          register: create_pod
+          environment:
+            KUBECONFIG: "{{ item.kubeconfig }}"
+          loop: "{{ telnet_units }}"
+          loop_control:
+            label: "{{ item.cluster_name }}"
+          register: create_results
           changed_when: true
+          # Bir cluster'da pod açılamazsa diğerleri denenmeye devam etsin; karar aşağıda
+          # telnet çıktısına bakılarak verilir.
+          failed_when: false
 
         - name: "--- [Task] Wait until pod is Ready ---"
           ansible.builtin.shell: |
-            oc wait \
-              --for=condition=Ready \
-              pod/{{ pod_name }} \
-              -n {{ ns_name }} \
+            oc wait --for=condition=Ready \
+              pod/{{ item.pod_name }} \
+              -n {{ ns_name | quote }} \
               --timeout=60s
-          register: wait_result
+          environment:
+            KUBECONFIG: "{{ item.kubeconfig }}"
+          loop: "{{ telnet_units }}"
+          loop_control:
+            label: "{{ item.cluster_name }}"
+          register: wait_results
           changed_when: false
+          failed_when: false
 
         - name: "--- [Task] Run telnet test ---"
           ansible.builtin.shell: |
-            oc exec -n {{ ns_name }} {{ pod_name }} -- \
+            oc exec -n {{ ns_name | quote }} {{ item.pod_name | quote }} -- \
               sh -c "timeout 10 telnet {{ telnet_host }} {{ telnet_port }}"
-          register: telnet_result
-          # Bağlantı kurulamaması BAŞARISIZLIK DEĞİL, testin SONUCUDUR — akış devam etmeli
-          # ki pod temizlensin ve çıktı gösterilebilsin.
-          ignore_errors: true
+          environment:
+            KUBECONFIG: "{{ item.kubeconfig }}"
+          loop: "{{ telnet_units }}"
+          loop_control:
+            label: "{{ item.cluster_name }}"
+          register: telnet_results
+          # Bağlantı kurulamaması BAŞARISIZLIK DEĞİL, testin SONUCUDUR.
+          failed_when: false
           changed_when: false
 
-        - name: "--- [Task] Show telnet output ---"
+        - name: "--- [Task] Show telnet outcome per cluster ---"
           ansible.builtin.debug:
             msg: >-
-              {{ inventory_hostname }} -> {{ telnet_host }}:{{ telnet_port }} =
-              {{ 'ACIK' if (telnet_result.rc | default(1)) == 0 else 'KAPALI/ERISILEMEDI' }}
-              | {{ (telnet_result.stdout_lines | default([])) + (telnet_result.stderr_lines | default([])) }}
+              {{ item.item.cluster_name }} ({{ inventory_hostname }}) →
+              {{ telnet_host }}:{{ telnet_port }} =
+              {{ 'ACIK' if (item.rc | default(1)) == 0 else 'KAPALI/ERISILEMEDI' }}
+              | {{ (item.stdout_lines | default([])) + (item.stderr_lines | default([])) }}
+          loop: "{{ telnet_results.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.cluster_name }}"
+
+      when: (telnet_units | default([])) | length > 0
 
       always:
-        # Geçici pod ve kubeconfig HER DURUMDA temizlenir — akış ortada düşse bile
-        # cluster'da artık pod kalmaz, bastion'da artık dosya birikmez.
+        # Geçici pod ve kubeconfig HER DURUMDA temizlenir — akış ortada düşse bile cluster'da
+        # pod, bastion'da dosya kalmaz.
         - name: "--- [Task] Delete temporary pod ---"
           ansible.builtin.shell: |
-            oc delete pod {{ pod_name }} \
-              -n {{ ns_name }} \
+            oc delete pod {{ item.pod_name | quote }} \
+              -n {{ ns_name | quote }} \
               --ignore-not-found=true
+          environment:
+            KUBECONFIG: "{{ item.kubeconfig }}"
+          loop: "{{ telnet_units | default([]) }}"
+          loop_control:
+            label: "{{ item.cluster_name }}"
           changed_when: true
-          failed_when: false
-
-        - name: "--- [Task] OCP logout ---"
-          ansible.builtin.shell: "oc logout"
-          changed_when: false
           failed_when: false
 
         - name: "--- [Task] Remove temporary kubeconfig ---"
           ansible.builtin.file:
-            path: "{{ kubeconfig_path }}"
+            path: "{{ item.kubeconfig }}"
             state: absent
+          loop: "{{ telnet_units | default([]) }}"
+          loop_control:
+            label: "{{ item.cluster_name }}"
           failed_when: false

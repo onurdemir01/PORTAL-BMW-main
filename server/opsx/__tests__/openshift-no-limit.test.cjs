@@ -51,3 +51,16 @@ test('Telnet OCP: telnet hedefi IKI adla birden gonderilir (geriye uyum)', () =>
   assert.match(TELNET, /ip: ipTrim/, 'eski alan adlari da KALMALI');
   assert.match(TELNET, /port: portTrim/);
 });
+
+test('Telnet OCP: LOGX MODELI — jump server\'lar ve cluster kayitlari gonderilir', () => {
+  // 2026-08-12 kullanici karari: hedef host'lar JUMP SERVER'lardir, cluster'lar VERI olarak
+  // gider. Eski modelde cluster -> jump server eslemesi AWX envanterinin ICINDE gizliydi ve
+  // portalin `ocp_cluster_index.terminal_host` kaydi hic kullanilmiyordu.
+  assert.match(TELNET, /adminData\.resolveTerminalHosts\(envKey, tenantKey, clusterNames\)/);
+  assert.match(TELNET, /resolveClusterMeta\(envKey, tenantKey, clusterNames\)/);
+  // Payload sekli LogX/OpsX ile AYNI yardimcidan gelir — tek yerde tanimli.
+  assert.match(TELNET, /require\('\.\.\/logx\/v2\/ocp\.cjs'\)\.buildOcpExtraVars/);
+  assert.match(TELNET, /\.\.\.fanout,/, 'fanout extra_vars\'a yayilmali');
+  // Jump server tanimsizsa is BASLATILMAZ — sessizce eksik cluster'la kosmaz.
+  assert.match(TELNET, /Jump Server \(bastion\) tanımlı değil/);
+});
