@@ -22,11 +22,16 @@ const BLOB_NAME = 'opsx:params';
 // Legacy ve Openshift govdeleri YAPISAL OLARAK farkli oldugu icin alan setleri de farkli:
 //   Legacy    -> extra_vars: { application, operation };  sunucu listesi AWX'in `limit` alaninda
 //
-//   Openshift -> OpsX'in KENDI /api/opsx/run'i artik SADECE envKey/ocClusterKey/ocInputKey
+//   Openshift -> OpsX'in KENDI /api/opsx/run'i artik SADECE ocClusterKey/ocInputKey
 //   kullanir: extra_vars: { oc_environment, oc_cluster, oc_input }; limit YOK, terminal_host YOK.
 //   oc_input coklu namespace/uygulama ciftini "ns1,app1;ns2,app2" formatinda tasir — gercek
 //   bmw_openshift_jobs/application_rollout.yaml production playbook'unun BEKLEDIGI AYNI
-//   sartname (playbook hedefi kendisi `hosts: "{{ oc_cluster }}_{{ env }}"` ile cozer).
+//   sartname (playbook hedefi kendisi `hosts: "{{ oc_cluster }}_{{ oc_environment }}"` ile cozer).
+//
+//   `env` alaninin AWX'e giden anahtar ADI ('oc_environment') ARTIK BURADA YAPILANDIRILAMAZ —
+//   index.cjs'de SABIT yazilir (2026-08-12, uretimde 3. kez yasandi: kaldirilmis "OpsX
+//   Yapilandirma" admin ekraninden DB'ye eskiden kaydedilmis 'env' degeri, koddaki DEFAULT
+//   duzeltilse bile DB satirinin oncelikli olmasi yuzunden gerci ezmeye devam ediyordu).
 //
 //   terminalHostKey/terminalHostsKey/namespaceKey/appNameKey/clustersKey/clusterListStyle
 //   alanlari OpsX tarafindan artik OKUNMUYOR ama Telnet modulu (server/telnet/index.cjs)
@@ -41,13 +46,7 @@ const DEFAULTS = Object.freeze({
     separator: ',',
   },
   openshift: {
-    // OpsX'in KENDI /api/opsx/run yolunun kullandigi alanlar.
-    // envKey='oc_environment': gercek bmw_portal/opsx_openshift_application_rollout
-    // playbook'u SADECE oc_environment okur, `env` hic kullanmaz (2026-08-12 dogrulandi —
-    // playbook genelinde `{{ env }}` referansi YOK). Telnet'in ayri ocp-target.cjs'i
-    // KENDI sabit 'env' anahtarini kullanir (farkli playbook: ocp_telnet_control.yml),
-    // buradan ETKILENMEZ.
-    envKey: 'oc_environment',
+    // OpsX'in KENDI /api/opsx/run yolunun kullandigi alanlar (env HARIC — yukaridaki nota bak).
     ocClusterKey: 'oc_cluster',
     ocInputKey: 'oc_input',
     // Asagidakiler artik SADECE Telnet icin (bkz. dosya basi notu).
@@ -71,7 +70,7 @@ const DEFAULTS = Object.freeze({
 const KEY_FIELDS = Object.freeze({
   legacy: ['applicationKey', 'operationKey'],
   openshift: [
-    'envKey', 'ocClusterKey', 'ocInputKey',
+    'ocClusterKey', 'ocInputKey',
     'terminalHostKey', 'terminalHostsKey', 'namespaceKey', 'appNameKey', 'clustersKey',
   ],
 });

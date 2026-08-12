@@ -599,7 +599,15 @@ function initOpsX(app) {
         ...staticVars,
         // staticVars'ta `email` varsa admin bilerek yazmistir; yalnizca YOKSA doldururuz.
         ...(staticVars.email ? {} : { email: runnerEmail }),
-        [cfg.envKey]: envKey,
+        // SABIT 'oc_environment' — BILEREK cfg.envKey UZERINDEN DEGIL. OpsX Yapilandirma
+        // admin ekrani kaldirildi (kullanicidan onay), ama DB'deki 'opsx:params' blob'u
+        // o ekran hala varken 'env' olarak KAYDEDILMIS olabilir ve config.cjs'teki
+        // DEFAULT'u DB satiri EZER (getConfig() DB'yi koda tercih eder). Bu playbook
+        // (bmw_portal/opsx_openshift_application_rollout) SADECE oc_environment okuyor,
+        // `env` HIC KULLANMIYOR — kod-varsayilanini duzeltmek ayni hatanin (uretimde
+        // 3. kez yasandi) TEKRAR DB'den gelmesini engellemiyordu. Anahtar burada admin
+        // yapilandirmasindan TAMAMEN COPARILDI, artik hicbir DB satiri bunu degistiremez.
+        oc_environment: envKey,
         [cfg.ocClusterKey]: tenantKey,
         [cfg.ocInputKey]: ocInput,
         // playbook'un hosts: satirini TEK bu gercek cluster'a yonlendirir — BOSSA (kullanici
