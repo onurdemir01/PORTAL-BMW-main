@@ -6,7 +6,9 @@
 // SADECE sunucu-tarafinda anti-TOCTOU dogrulamasi icin kullanilir, playbook'a
 // GONDERILMEZ (kullanici sartnamesi — extra_vars yalniz ip/port icerir).
 //
-// Openshift: cluster secimi/terminal_host/bastion cozumleme YOK (eski bastion-bazli
+// Openshift (2026-08-12'den beri LOGX MODELI): hedef JUMP SERVER'lardir, cluster'lar VERI
+// olarak gider — portal `terminal_hosts[]`/`ocp_clusters[]` gonderir (bkz. asagidaki not).
+// Onceki not (artik gecerli DEGIL): cluster secimi/terminal_host/bastion cozumleme YOK (eski bastion-bazli
 // akis kullanici karariyla kaldirildi) — sadece ortam + tenant/is birimi + namespace(ler).
 // HER namespace icin AYRI bir AWX job'i tetiklenir, govde duz: { env, cluster, namespace,
 // ip, port } (bkz. POST /api/telnet/run yorumu). Legacy'den YAPISAL OLARAK farkli bir
@@ -221,6 +223,41 @@ function initTelnet(app) {
         return res.status(400).json({ ok: false, message: `Geçersiz namespace adı: ${badNs}` });
       }
 
+      // ── LOGX MODELI (2026-08-12 kullanici karari) ──────────────────────────────
+      // Playbook artik `{{ cluster }}_{{ env }}` envanter GRUBUNU hedeflemiyor; hedef
+      // JUMP SERVER'lardir ve cluster'lar VERI olarak gider — LogX'in uretimde kanitlanmis
+      // modeli (bkz. logx_ocp_discover_fetch.yml: portal `terminal_hosts[]` gonderir,
+      // playbook `add_host` ile onlari gruba atar, her bastion kendi cluster'ina
+      // `oc login` yapar).
+      //
+      // NEDEN: eski modelde cluster -> jump server eslemesi AWX envanterinin ICINDE gizliydi
+      // (envanterde `gbocpqa1` hem GRUP hem HOST olarak tanimli — Ansible bunu uyari olarak
+      // basiyor). Portalin DB'sindeki `ocp_cluster_index.terminal_host` kaydi hic
+      // kullanilmiyordu. Artik eslemenin tek kaynagi portal.
+      //
+      // YAN FAYDA: cluster alt kumesi secimi bu modelde AWX `limit`ine HIC ihtiyac duymadan
+      // mumkun hale gelir (az cluster secilirse az `ocp_clusters[]` kaydi gonderilir) —
+      // `limit`in sessizce yutulmasi sorunu bu yolda hic ortaya cikmaz.
+      const clusterNames = tree[envKey][tenantKey];
+      let fanout;
+      try {
+        const { hosts, missing } = await adminData.resolveTerminalHosts(envKey, tenantKey, clusterNames);
+        if (missing.length) {
+          return res.status(400).json({
+            ok: false,
+            message: `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — `
+                   + `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`,
+          });
+        }
+        const meta = await adminData.resolveClusterMeta(envKey, tenantKey, clusterNames).catch(() => ({}));
+        // LogX ve OpsX ile AYNI yardimci — payload sekli tek yerde tanimli.
+        fanout = require('../logx/v2/ocp.cjs').buildOcpExtraVars({
+          env: envKey, tenant: tenantKey, clusters: clusterNames, hosts, meta,
+        });
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+
       const runner = require('../ansible/runner.cjs');
       const results = [];
       for (const ns of cleanNamespaces) {
@@ -231,6 +268,12 @@ function initTelnet(app) {
         // hangi surumde olursa olsun calisir, AWX'e kopyalama beklenmez. (Ayni desen LogX'te
         // `oc_namespace_input` + `namespace` icin de kullaniliyor.)
         const extraVars = {
+          // Jump server + cluster baglanti kayitlari (terminal_hosts[], ocp_clusters[]).
+          ...fanout,
+          // GERIYE UYUM: eski playbook surumu grubu `{{ cluster }}_{{ env }}` ile cozuyor ve
+          // hedefi `ip`/`port` yerine `target_host`/`target_port` adlariyla okuyor. Iki
+          // sozlesmeyi birden tasiyoruz ki playbook hangi surumde olursa olsun calissin
+          // (ayni desen LogX'te `oc_namespace_input` + `namespace` icin de var).
           env: envKey,
           cluster: tenantKey,
           namespace: ns,
