@@ -5,10 +5,11 @@
 // Legacy: OpsX'ten YAPISAL FARK — "Uygulama Adı" sorulur ama extra_vars'a HİÇ eklenmez
 // (yalnız ip/port taşır, kullanıcı şartnamesi). TEK AWX job'i tetiklenir.
 //
-// Openshift: cluster/bastion seçimi YOK (kullanıcı kararıyla kaldırıldı) — ortam + tenant/
-// iş birimi + bir veya daha fazla namespace seçilir. TEK bir AWX job'i tetiklenir; playbook
-// (cluster x namespace) çapraz çarpımını kendi içinde işler (bkz. server/telnet/index.cjs) —
-// bu yüzden "done" adımı Legacy ile AYNI: tek sonuç/log gösterir.
+// Openshift: ortam + tenant/iş birimi + bir veya daha fazla namespace seçilir, ardından
+// OpsX Openshift Rollout'la AYNI UX'te bir cluster seçimi (OcpClusterPickStep) — tenant/env
+// grubundaki GERÇEK cluster'lardan biri YA DA "Tüm cluster'lar". TEK bir AWX job'i tetiklenir;
+// playbook (cluster x namespace) çapraz çarpımını kendi içinde işler (bkz.
+// server/telnet/index.cjs) — bu yüzden "done" adımı Legacy ile AYNI: tek sonuç/log gösterir.
 //
 // Güvenlik OpsX ile AYNI: son POST /api/telnet/run çağrısında sunucu uygulama-host
 // eşleşmesini ve namespace/tenant'ı envanterden YENİDEN doğrular.
@@ -22,6 +23,7 @@ import AppSearchStep from "./steps/AppSearchStep";
 import JbossVersionStep from "./steps/JbossVersionStep";
 import HostSelectStep from "./steps/HostSelectStep";
 import OcpTargetStep from "./steps/OcpTargetStep";
+import OcpClusterPickStep from "./steps/OcpClusterPickStep";
 import TelnetInputStep from "./steps/TelnetInputStep";
 
 type Step =
@@ -30,6 +32,7 @@ type Step =
   | "legacy_jboss_version"
   | "legacy_hosts"
   | "ocp_target"
+  | "ocp_cluster"
   | "telnet_input"
   | "done";
 
@@ -39,6 +42,7 @@ const STEP_TITLES: Record<Step, string> = {
   legacy_jboss_version: "JBoss Sürümü",
   legacy_hosts: "Sunucu Seçimi",
   ocp_target: "Openshift Hedefi",
+  ocp_cluster: "Cluster Seçimi",
   telnet_input: "Telnet Hedefi",
   done: "Test Başlatıldı",
 };
@@ -52,6 +56,8 @@ const TelnetWizardPage: React.FC = () => {
   const [env, setEnv] = useState("");
   const [tenant, setTenant] = useState("");
   const [namespaces, setNamespaces] = useState<string[]>([]);
+  // Openshift: OpsX Openshift Rollout ile AYNI UX (OcpClusterPickStep) — "" = tüm cluster'lar.
+  const [cluster, setCluster] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,6 +79,7 @@ const TelnetWizardPage: React.FC = () => {
     setEnv("");
     setTenant("");
     setNamespaces([]);
+    setCluster("");
     setError(null);
     setResult(null);
     setTrackedJobId(null);
@@ -99,8 +106,10 @@ const TelnetWizardPage: React.FC = () => {
         return "legacy_app";
       case "legacy_hosts":
         return "legacy_jboss_version";
+      case "ocp_cluster":
+        return "ocp_target";
       case "telnet_input":
-        return platform === "openshift" ? "ocp_target" : "legacy_hosts";
+        return platform === "openshift" ? "ocp_cluster" : "legacy_hosts";
       default:
         return null;
     }
@@ -120,7 +129,7 @@ const TelnetWizardPage: React.FC = () => {
     setError(null);
     try {
       const r = platform === "openshift"
-        ? await telnetApi.run({ platform: "openshift", env, tenant, namespaces, ip, port })
+        ? await telnetApi.run({ platform: "openshift", env, tenant, namespaces, cluster, ip, port })
         : await telnetApi.run({ platform: "legacy", application: app, hosts, ip, port });
       // safeJson() 4xx/5xx'te reddetmez — backend'in ok:false + message ile döndüğü
       // hatalar burada kontrol edilmezse kullanıcıya sahte bir "başlatıldı" ekranı gösterilir.
@@ -145,6 +154,8 @@ const TelnetWizardPage: React.FC = () => {
       Ortam: <span className="font-mono text-[var(--text-primary)]">{env}</span>
       {" · "}
       Tenant: <span className="font-mono text-[var(--text-primary)]">{tenant}</span>
+      {" · "}
+      Cluster: <span className="font-mono text-[var(--text-primary)]">{cluster || "tümü"}</span>
       {" · "}
       {namespaces.length} namespace: <span className="font-mono">{namespaces.join(", ")}</span>
     </>
@@ -242,7 +253,16 @@ const TelnetWizardPage: React.FC = () => {
         {step === "ocp_target" && (
           <OcpTargetStep
             busy={busy}
-            onSubmit={(v) => { setEnv(v.env); setTenant(v.tenant); setNamespaces(v.namespaces); setStep("telnet_input"); }}
+            onSubmit={(v) => { setEnv(v.env); setTenant(v.tenant); setNamespaces(v.namespaces); setStep("ocp_cluster"); }}
+          />
+        )}
+
+        {step === "ocp_cluster" && (
+          <OcpClusterPickStep
+            env={env}
+            tenant={tenant}
+            busy={busy}
+            onSubmit={(c) => { setCluster(c); setStep("telnet_input"); }}
           />
         )}
 

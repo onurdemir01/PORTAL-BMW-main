@@ -65,6 +65,10 @@ export const telnetApi = {
     env?: string;
     tenant?: string;
     namespaces?: string[];
+    // Tenant/env grubundaki GERÇEK cluster'lardan (bkz. getClusters) TEK birinin adı — YA DA
+    // "" (boş, "Tüm cluster'lar" seçilirse; bkz. OcpClusterPickStep.tsx). OpsX Openshift
+    // Rollout'la AYNI UX, ama AWX `limit`e ihtiyaç duymaz (bkz. server/telnet/index.cjs).
+    cluster?: string;
     // Ortak
     ip: string;
     port: string;

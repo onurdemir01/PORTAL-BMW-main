@@ -1,9 +1,9 @@
 // src/components/telnet/steps/OcpTargetStep.tsx — Openshift hedefi: ortam → tenant/iş
-// birimi → bir veya daha fazla namespace. OpsX'in OcpTargetStep'inden İKİ FARKI: (1)
-// "Uygulama Adı" alanı YOK (kullanıcı isteği — Telnet testi için gerekli değil), (2)
-// ayrı bir "Cluster" (checkbox listesi) adımı YOK — kullanıcı kararıyla kaldırıldı,
-// ortam+tenant seçimi sonrası doğrudan namespace seçimine geçilir (bastion/terminal_host
-// çözümlemesi backend'de de yok artık, bkz. server/telnet/index.cjs).
+// birimi → bir veya daha fazla namespace. OpsX'in OcpTargetStep'inden FARKI: "Uygulama Adı"
+// alanı YOK (kullanıcı isteği — Telnet testi için gerekli değil). Bu adımdan sonra
+// TelnetWizardPage bir "ocp_cluster" adımına (OcpClusterPickStep) geçer — tenant/env
+// grubundaki GERÇEK cluster'lardan biri ya da "Tüm cluster'lar" seçilir (bkz.
+// server/telnet/index.cjs).
 //
 // NAMESPACE: OpsX'in OcpTargetStep'iyle BİREBİR aynı UX — envanterden (Openshift_Inventory)
 // GÖRÜLMÜŞ namespace'ler dropdown'da listelenir, bilinmiyorsa serbest yazılabilir.

@@ -160,19 +160,26 @@ function initTelnet(app) {
   //   { "limit": "GBCJAP01,GBCJAP03", "extra_vars": { "ip": "...", "port": "..." } }
   //   Tek istek = tek AWX job'i, yanit tek nesnedir (jobId/status/...).
   //
-  // Openshift — cluster secimi/terminal_host/bastion cozumleme YOK (kullanici karari,
-  // eski bastion-bazli akis kaldirildi): TEK AWX job'i, TUM namespace'ler extra_vars'ta:
-  //   { "namespaces": ["ns1", "ns2"], "extra_vars": { "env": "test", "cluster": "ark",
-  //     "namespaces": ["ns1","ns2"], "ip": "...", "port": "..." } }
+  // Openshift — bastion/terminal_host cozumleme portalda (LogX modeli), TEK AWX job'i,
+  // TUM namespace'ler extra_vars'ta:
+  //   { "namespaces": ["ns1", "ns2"], "cluster": "gbocptest1" (opsiyonel — bkz. asagisi),
+  //     "extra_vars": { "env": "test", "cluster": "ark", "namespaces": ["ns1","ns2"],
+  //     "ip": "...", "port": "..." } }
   //   Yanit Legacy ile AYNI sekil: `{ ok, jobId, status, awxServerId, templateId, sentBody }`
   //   (bkz. src/api/telnetApi.ts TelnetRunResult) — eskiden namespace basina ayri job/sonuc
   //   dizisi donuyordu, playbook artik (cluster x namespace) capraz carpimini TEK jobda
   //   islediginden buna gerek kalmadi.
   //
+  // CLUSTER SECIMI (OpsX Openshift Rollout ile AYNI UX): govdedeki `cluster` (tekil, GERCEK
+  // cluster adi, ör. "gbocptest1") OPSIYONEL — bosşa/gonderilmezse tenant/env grubunun TUM
+  // cluster'lari hedeflenir (eski davranis). Openshift Rollout'tan FARKLI olarak burada AWX
+  // `limit`e HIC ihtiyac YOK: bastion fan-out modeli zaten `ocp_clusters[]` VERISINI (asagida)
+  // kisitlayarak calisir, playbook'a hic dokunulmadi.
+  //
   // Not: `application` yalniz sunucu-tarafi anti-TOCTOU dogrulamasi icindir, extra_vars'a
   // KONMAZ (kullanici sartnamesi).
   app.post('/api/telnet/run', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { platform, application, hosts, env, tenant, namespaces, ip, port } = req.body || {};
+    const { platform, application, hosts, env, tenant, namespaces, cluster, ip, port } = req.body || {};
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
     const { templateId, serverId, keyName } = await resolveTarget(plat);
@@ -213,6 +220,19 @@ function initTelnet(app) {
       if (!tree[envKey]) return res.status(400).json({ ok: false, message: `Ortam tanımlı değil: ${envKey}` });
       if (!tree[envKey][tenantKey]) return res.status(400).json({ ok: false, message: `Tenant/İş birimi tanımlı değil: ${tenantKey}` });
 
+      // TEK CLUSTER OPSIYONEL (OpsX Openshift Rollout ile AYNI UX — bkz. server/opsx/index.cjs
+      // OcpClusterPickStep notu): kullanici "Tum cluster'lar"i secerse `cluster` HIC
+      // gonderilmez, tum grup hedeflenir (eski davranis). Burada OpsX'ten FARKLI olarak
+      // AWX `limit`e HIC ihtiyac YOK — bastion fan-out modeli (asagida) zaten `ocp_clusters[]`
+      // VERISINI kisitlayarak calisir, bu yuzden secim ZORUNLU degil, opsiyonel bir daraltma.
+      const targetCluster = String(cluster || '').trim();
+      if (targetCluster && !tree[envKey][tenantKey].includes(targetCluster)) {
+        return res.status(400).json({
+          ok: false,
+          message: `Geçersiz cluster seçimi (${tree[envKey][tenantKey].join(', ')}).`,
+        });
+      }
+
       if (!Array.isArray(namespaces) || namespaces.length === 0) {
         return res.status(400).json({ ok: false, message: 'En az bir namespace seçilmeli.' });
       }
@@ -239,8 +259,10 @@ function initTelnet(app) {
       //
       // YAN FAYDA: cluster alt kumesi secimi bu modelde AWX `limit`ine HIC ihtiyac duymadan
       // mumkun hale gelir (az cluster secilirse az `ocp_clusters[]` kaydi gonderilir) —
-      // `limit`in sessizce yutulmasi sorunu bu yolda hic ortaya cikmaz.
-      const clusterNames = tree[envKey][tenantKey];
+      // `limit`in sessizce yutulmasi sorunu bu yolda hic ortaya cikmaz. targetCluster
+      // doluysa fan-out SADECE o cluster icin kurulur (asagidaki tum resolveTerminalHosts/
+      // resolveClusterMeta/buildOcpExtraVars cagrilari clusterNames yerine bunu kullanir).
+      const clusterNames = targetCluster ? [targetCluster] : tree[envKey][tenantKey];
       let fanout;
       try {
         const { hosts, missing } = await adminData.resolveTerminalHosts(envKey, tenantKey, clusterNames);
@@ -315,7 +337,7 @@ function initTelnet(app) {
           });
         } catch { /* denetim kaydi best-effort */ }
 
-        console.log(`[Telnet] ${req.session?.user?.username} -> openshift env=${envKey} cluster=${tenantKey} namespaces=${cleanNamespaces.join(',')} ip=${ipTrim} port=${portTrim} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+        console.log(`[Telnet] ${req.session?.user?.username} -> openshift env=${envKey} tenant=${tenantKey} target_cluster=${targetCluster || '(tümü)'} namespaces=${cleanNamespaces.join(',')} ip=${ipTrim} port=${portTrim} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
         return res.json({
           ok: true,
           jobId: result?.jobId ?? null,
