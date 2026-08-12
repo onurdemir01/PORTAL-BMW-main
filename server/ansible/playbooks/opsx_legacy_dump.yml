@@ -43,13 +43,15 @@
 - name: "OpsX Legacy - Thread/Heap Dump"
   hosts: all
   gather_facts: false
-  # DIKKAT: play/task seviyesinde become KULLANILMAZ — tum task'lari (staging dizini
-  # olusturma/kopyalama dahil) "was" kullanicisina yukseltmek denendi, ama staging_dir
-  # (paylasilan NFS) "was" icin yazilabilir DEGIL, sadece AWX'in baglandigi kullanici
-  # (ör. uxmid) icin — "cp: ... Permission denied" ile dustu (2026-08-12 gercek job
-  # hatasi). Bunun yerine SADECE jmap/jstack cagrilari (asagidaki task) `dzdo -u was`
-  # ile satir icinde yukseltilir; dizin olusturma/kopyalama/temizlik NORMAL baglanti
-  # kullanicisiyla kalir.
+  # PLAY SEVIYESINDE become YOK: tum task'lari (staging dizinine kopyalama dahil) "was"
+  # kullanicisina yukseltmek "cp: ... Permission denied" ile dustu — staging_dir (paylasilan
+  # NFS) "was" icin yazilabilir degil, sadece AWX'in baglandigi kullanici (ör. uxmid) icin
+  # (2026-08-12 gercek job hatasi). Satir ici `dzdo -u was <komut>` de "user uxmid is not
+  # allowed to execute ... as was" ile reddedildi — dzdo yetki politikasi, komutu Ansible'in
+  # KENDI become mekanizmasi DISINDA calistirildiginda tanimiyor (2026-08-12, ikinci gercek
+  # hata). Bu yuzden SADECE jmap/jstack'e dokunan task (asagida) kendi become:true/
+  # become_method:dzdo/become_user:was'ini tasir — dizin olusturma/kopyalama/temizlik
+  # NORMAL baglanti kullanicisiyla kalir.
   become: false
 
   vars:
@@ -98,17 +100,24 @@
       when: (my_pids | length) > 0
 
     # Her seçili JVM için TEK bir bash betiği: JDK yolu jbossMajor'a göre SABİT seçilir
-    # (dosya başı notuna bakın — dinamik keşif YOK), dump'ı alır, paylaşılan staging
-    # dizinine kopyalar. failed_when:false — bir PID patlarsa diğerleri devam eder
-    # (sonuç aşağıda PID bazında raporlanır).
+    # (dosya başı notuna bakın — dinamik keşif YOK), dump'ı LOKAL dizine alır (STAGING'e
+    # kopyalama AYRI, become'suz bir task'ta — bkz. altı). failed_when:false — bir PID
+    # patlarsa diğerleri devam eder (sonuç aşağıda PID bazında raporlanır).
+    #
+    # BECOME BURADA (task seviyesinde) — satır içi `dzdo -u was <komut>` dzdo yetki
+    # politikası tarafından reddedildi ("user uxmid is not allowed to execute ... as was"),
+    # Ansible'ın KENDİ become mekanizması (görevin TAMAMINI dzdo ile sarmalar) kabul
+    # ediliyor (2026-08-12, iki gerçek job hatasıyla doğrulandı).
     - name: "Seçili JVM'lerden dump al"
+      become: true
+      become_method: dzdo
+      become_user: was
       ansible.builtin.shell: |
         set -eu
 
         PID="{{ item.pid }}"
         DUMP_TYPE="{{ dump_type }}"
         LOCAL_DIR="{{ local_dump_dir }}"
-        STAGING_DIR="{{ staging_dir }}"
 
         if [ "{{ item.jbossMajor }}" = "8" ]; then
           JDK_BIN="/usr/jboss8/jdk/bin"
@@ -122,32 +131,23 @@
         fi
 
         BASENAME="{{ (application | default('app') | regex_replace('[^A-Za-z0-9_-]', '_')) }}_{{ inventory_hostname }}_${PID}_$(date +%Y%m%d%H%M%S)"
-        # SADECE jmap/jstack "was" kullanicisina yukseltilir (dzdo) — JVM sürecine ptrace
-        # ile baglanabilmek icin ONU CALISTIRAN kullanici olarak calismalari gerekir. Dizin
-        # olusturma/kopyalama/temizlik play seviyesinde zaten NORMAL kullaniciyla kaliyor
-        # (bkz. play basi notu — staging_dir "was" icin yazilabilir degil).
         if [ "$DUMP_TYPE" = "heapdump" ]; then
           FILE="${BASENAME}.hprof"
-          dzdo -u was "${JDK_BIN}/jmap" -dump:format=b,file="${LOCAL_DIR}/${FILE}" "$PID"
+          "${JDK_BIN}/jmap" -dump:format=b,file="${LOCAL_DIR}/${FILE}" "$PID"
         else
           FILE="${BASENAME}-thread.txt"
-          dzdo -u was "${JDK_BIN}/jstack" "$PID" > "${LOCAL_DIR}/${FILE}"
+          "${JDK_BIN}/jstack" "$PID" > "${LOCAL_DIR}/${FILE}"
         fi
 
-        # jmap dosyayi "was" sahipliginde olusturur (jstack'in aksine — o stdout'u NORMAL
-        # kullanicinin acik dosya tanimlayicisina yazar) — asagidaki `cp` NORMAL kullanici
-        # olarak calistigi icin dosyanin okunabilir olmasi gerekir.
-        dzdo -u was chmod a+r "${LOCAL_DIR}/${FILE}" 2>/dev/null || true
+        # Dosya "was" sahipliginde olusabilir — sonraki kopyalama gorevi NORMAL kullanici
+        # olarak calistigi icin okunabilir yapilir.
+        chmod a+r "${LOCAL_DIR}/${FILE}" 2>/dev/null || true
 
         if [ ! -s "${LOCAL_DIR}/${FILE}" ]; then
           echo "Dump dosyası oluşturulamadı veya boş: $FILE" >&2
           exit 1
         fi
-
-        cp "${LOCAL_DIR}/${FILE}" "${STAGING_DIR}/${FILE}"
-        SIZE="$(stat -c %s "${STAGING_DIR}/${FILE}" 2>/dev/null || stat -f %z "${STAGING_DIR}/${FILE}")"
-        rm -f "${LOCAL_DIR}/${FILE}"
-        echo "OK|${FILE}|${SIZE}"
+        echo "OK|${FILE}"
       args:
         executable: /bin/bash
       loop: "{{ my_pids }}"
@@ -158,26 +158,58 @@
       changed_when: true
       failed_when: false
 
-    # Betik başarılıysa stdout "OK|dosya|boyut" biçiminde tek satır — ayrıştırılıp sonuç
-    # listesine eklenir. Başarısızsa stderr/msg hata mesajı olarak kaydedilir.
+    # Staging'e kopyalama NORMAL baglanti kullanicisiyla (become YOK) — staging_dir "was"
+    # icin yazilabilir degil (bkz. play basi notu). Sadece bir onceki adimda basarili olan
+    # PID'ler icin calisir (when: dump_item.rc == 0).
+    - name: "Dump dosyasını paylaşılan staging dizinine kopyala"
+      ansible.builtin.shell: |
+        set -eu
+        FILE="{{ (dump_item.stdout | trim).split('|')[1] }}"
+        cp "{{ local_dump_dir }}/${FILE}" "{{ staging_dir }}/${FILE}"
+        SIZE="$(stat -c %s "{{ staging_dir }}/${FILE}" 2>/dev/null || stat -f %z "{{ staging_dir }}/${FILE}")"
+        rm -f "{{ local_dump_dir }}/${FILE}"
+        echo "OK|${FILE}|${SIZE}"
+      args:
+        executable: /bin/bash
+      vars:
+        dump_item: "{{ item }}"
+      loop: "{{ pid_dump_results.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.pid }}"
+      when: >-
+        (my_pids | length) > 0 and (item.rc | default(1)) == 0
+        and (item.stdout | default('') | trim).startswith('OK|')
+      register: staged_copy_results
+      changed_when: true
+      failed_when: false
+
+    # pid_dump_results (dump alindi mi) ve staged_copy_results (staging'e kopyalandi mi)
+    # AYNI SIRADA, AYNI UZUNLUKTA iki liste — index ile eslestirilir (kopyalama task'i
+    # basarisiz PID'leri "skipped" olarak isaretler, listeden DUSMEZ).
     - name: "PID sonuçlarını topla"
       ansible.builtin.set_fact:
         host_dump_results: >-
           {{
             (host_dump_results | default([])) + [
-              ({'host': inventory_hostname | upper, 'pid': item.item.pid, 'ok': true,
-                'staged_path': (staging_dir ~ '/' ~ (item.stdout | trim).split('|')[1]),
-                'filename': (item.stdout | trim).split('|')[1],
-                'size_bytes': ((item.stdout | trim).split('|')[2] | int)}
-               if ((item.rc | default(1)) == 0 and (item.stdout | default('') | trim).startswith('OK|'))
+              ({'host': inventory_hostname | upper, 'pid': dump_item.item.pid, 'ok': true,
+                'staged_path': (staging_dir ~ '/' ~ (copy_item.stdout | trim).split('|')[1]),
+                'filename': (copy_item.stdout | trim).split('|')[1],
+                'size_bytes': ((copy_item.stdout | trim).split('|')[2] | int)}
+               if ((dump_item.rc | default(1)) == 0 and (copy_item.rc | default(1)) == 0
+                   and (copy_item.stdout | default('') | trim).startswith('OK|'))
                else
-               {'host': inventory_hostname | upper, 'pid': item.item.pid, 'ok': false,
-                'error': (item.stderr | default(item.msg | default('Dump alınamadı')) | trim)})
+               {'host': inventory_hostname | upper, 'pid': dump_item.item.pid, 'ok': false,
+                'error': ((dump_item.stderr | default('') | trim)
+                          if (dump_item.rc | default(1)) != 0
+                          else (copy_item.stderr | default('') | trim)) | default('Dump alınamadı', true)})
             ]
           }}
-      loop: "{{ pid_dump_results.results | default([]) }}"
+      vars:
+        dump_item: "{{ pid_dump_results.results[idx] }}"
+        copy_item: "{{ staged_copy_results.results[idx] }}"
+      loop: "{{ range(0, pid_dump_results.results | default([]) | length) | list }}"
       loop_control:
-        label: "{{ item.item.pid }}"
+        loop_var: idx
       when: (my_pids | length) > 0
 
     - name: "Yerel geçici dump dizinini temizle (best-effort)"
