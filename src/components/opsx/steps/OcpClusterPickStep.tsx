@@ -1,23 +1,30 @@
 // src/components/opsx/steps/OcpClusterPickStep.tsx — restart/rollout tetiklenmeden önce,
 // tenant/env grubundaki GERÇEK cluster'lardan (bkz. OcpTargetStep dosya başı notu — ör.
-// ark_prod → gbocpprod1, gbocpprod2, gbocpprod4) hedeflenecek TEK birinin seçimi.
+// ark_prod → gbocpprod1, gbocpprod2, gbocpprod4) hedeflenecek TEK birinin YA DA grubun
+// TAMAMININ seçimi.
 //
-// NEDEN ZORUNLU TEK SEÇİM (çoklu seçim/"hepsi" YOK): AWX'in `limit` alanı production'da
-// sessizce yutulduğu için (bkz. server/opsx/index.cjs dosya başı notu) gerçek kısıtlama
-// SADECE playbook'un `hosts:` satırının doğrudan TEK bir gerçek cluster adına
-// şablonlanmasıyla mümkün — bu da kullanıcının MUTLAKA birini seçmesini gerektirir.
+// NEDEN TEK CLUSTER SEÇENEĞİ AWX `limit` DEĞİL: AWX'in `limit` alanı production'da
+// sessizce yutulduğu için (bkz. server/opsx/index.cjs dosya başı notu) belirli bir cluster'a
+// kısıtlamak SADECE playbook'un `hosts:` satırının doğrudan o cluster adına şablonlanmasıyla
+// mümkün. "Tüm cluster'lar" seçilirse `cluster` alanı HİÇ gönderilmez (bkz. onSubmit) —
+// playbook bu durumda zaten KANITLI çalışan eski yönteme (oc_cluster/oc_environment'ın
+// çözdüğü grubun tamamını `hosts:` yapmak) geri döner, AWX limit'e hiç ihtiyaç duymaz.
 import React, { useEffect, useState } from "react";
-import { ServerStackIcon } from "@heroicons/react/24/outline";
+import { ServerStackIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { opsxApi } from "@/api/opsxApi";
+
+const ALL = "__all__";
 
 const OcpClusterPickStep: React.FC<{
   env: string;
   tenant: string;
   busy?: boolean;
+  // Belirli bir cluster adı YA DA "" (tüm grup — bkz. dosya başı notu).
   onSubmit: (cluster: string) => void;
 }> = ({ env, tenant, busy, onSubmit }) => {
   const [clusters, setClusters] = useState<string[]>([]);
-  const [selected, setSelected] = useState("");
+  // null = henüz seçim yok (buton kapalı); ALL = "tüm cluster'lar"; aksi halde gerçek cluster adı.
+  const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +35,7 @@ const OcpClusterPickStep: React.FC<{
       .then((r) => {
         const names = r.tree?.[env]?.[tenant] || [];
         setClusters(names);
-        if (names.length === 1) setSelected(names[0]); // tek seçenek varsa önceden işaretle
+        setSelected(names.length === 1 ? names[0] : null); // tek seçenek varsa önceden işaretle
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
@@ -46,6 +53,11 @@ const OcpClusterPickStep: React.FC<{
     );
   }
 
+  function submit() {
+    if (selected == null) return;
+    onSubmit(selected === ALL ? "" : selected);
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -56,6 +68,21 @@ const OcpClusterPickStep: React.FC<{
       </div>
 
       <div className="border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
+        {clusters.length > 1 && (
+          <label className="flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer">
+            <input
+              type="radio"
+              name="ocp-cluster"
+              checked={selected === ALL}
+              onChange={() => setSelected(ALL)}
+              className="rounded-full"
+            />
+            <Squares2X2Icon aria-hidden="true" className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
+            <span className="text-sm font-medium text-[var(--text-primary)] flex-1">
+              Tüm cluster'lar <span className="text-[var(--text-muted)] font-normal">({clusters.length})</span>
+            </span>
+          </label>
+        )}
         {clusters.map((name) => (
           <label
             key={name}
@@ -74,9 +101,15 @@ const OcpClusterPickStep: React.FC<{
         ))}
       </div>
 
+      {selected === ALL && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          İşlem grubun TÜM cluster'larında ({clusters.join(", ")}) çalışacak.
+        </p>
+      )}
+
       <button
-        onClick={() => onSubmit(selected)}
-        disabled={!selected || busy}
+        onClick={submit}
+        disabled={selected == null || busy}
         className="btn-primary w-full"
       >
         Devam Et

@@ -483,9 +483,11 @@ function initOpsX(app) {
   //   satiri ZATEN extra_vars'tan sablonlaniyordu (oc_cluster ~ '_' ~ oc_environment ile grup
   //   adi kuruluyordu) — bu KANITLI calisan bir mekanizma (AWX limit'in aksine extra_vars
   //   sessizce yutulmuyor). O sablonlamayi TEK bir gercek cluster adina (target_cluster)
-  //   yonlendirerek ayni yontemle GERCEK kisitlama saglanir. Kullanici artik oc_cluster/
+  //   yonlendirerek ayni yontemle GERCEK kisitlama saglanir. Kullanici oc_cluster/
   //   oc_environment SECTIKTEN SONRA o gruptaki HANGI gercek cluster'in (ör. gbocptest1/
-  //   gbocptest2/gbocptest4) hedefleneceğini de seçmek ZORUNDA (bkz. OcpClusterPickStep.tsx).
+  //   gbocptest2/gbocptest4) hedefleneceğini SEÇEBİLİR — YA DA "Tüm cluster'lar"ı seçip
+  //   grubun tamamını hedefleyebilir (bu durumda target_cluster HİÇ gönderilmez, playbook
+  //   eski/kanıtlı grup-tabanlı `hosts:`e döner). Bkz. OcpClusterPickStep.tsx.
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
     const { platform, application, hosts, operation, env, tenant, pairs, ocOperation, cluster } = req.body || {};
 
@@ -559,16 +561,18 @@ function initOpsX(app) {
       }
       const ocInput = cleanPairs.map((p) => p.joined).join(';');
 
-      // TEK CLUSTER ZORUNLU: AWX limit calismadigi icin gercek kisitlama SADECE hosts:'un
-      // dogrudan tek bir gercek cluster adina sablonlanmasiyla mumkun (bkz. yukaridaki dosya
-      // basi notu) — bu yuzden "hepsi" secenegi YOK, kullanici MUTLAKA birini secmeli.
-      // ANTI-TOCTOU: istemcinin gonderdigi ad, resolveOpenshiftTargets'in AZ ONCE DB'den
-      // cozdugu gercek cluster listesine karsi dogrulanir.
+      // TEK CLUSTER OPSIYONEL: AWX limit calismadigi icin belirli bir cluster'a kisitlamak
+      // SADECE hosts:'un dogrudan o cluster adina sablonlanmasiyla mumkun (bkz. yukaridaki
+      // dosya basi notu). Kullanici "Tum cluster'lar"i secerse `cluster` HIC gonderilmez —
+      // bu durumda target_cluster extraVars'a hic EKLENMEZ (asagida), playbook kanitli
+      // calisan eski yontemine (oc_cluster/oc_environment grubunun TAMAMI) doner.
+      // ANTI-TOCTOU: istemcinin gonderdigi ad (BOS DEGILSE), resolveOpenshiftTargets'in AZ
+      // ONCE DB'den cozdugu gercek cluster listesine karsi dogrulanir.
       const targetCluster = String(cluster || '').trim();
-      if (!targetCluster || !clusterNames.includes(targetCluster)) {
+      if (targetCluster && !clusterNames.includes(targetCluster)) {
         return res.status(400).json({
           ok: false,
-          message: `Geçerli bir cluster seçilmeli (${clusterNames.join(', ') || 'tanımlı cluster yok'}).`,
+          message: `Geçersiz cluster seçimi (${clusterNames.join(', ') || 'tanımlı cluster yok'}).`,
         });
       }
 
@@ -598,14 +602,16 @@ function initOpsX(app) {
         [cfg.envKey]: envKey,
         [cfg.ocClusterKey]: tenantKey,
         [cfg.ocInputKey]: ocInput,
-        // playbook'un hosts: satirini TEK bu gercek cluster'a yonlendirir (bkz. dosya basi).
-        target_cluster: targetCluster,
+        // playbook'un hosts: satirini TEK bu gercek cluster'a yonlendirir — BOSSA (kullanici
+        // "Tum cluster'lar"i sectiyse) HIC EKLENMEZ, playbook'taki `default(...)` grubun
+        // TAMAMINA doner (bkz. dosya basi notu).
+        ...(targetCluster ? { target_cluster: targetCluster } : {}),
         // Su an SADECE restart/rollout aktif (bkz. OCP_OPERATIONS) — bmw_openshift_jobs
         // AWX job template'inin hangi operasyonu calistiracagini secen sabit deger.
         openshift_operations: 'openshift_application_rollout',
         choise: true,
       };
-      logSummary = `env=${envKey} oc_cluster=${tenantKey} target_cluster=${targetCluster} oc_input=${ocInput}`;
+      logSummary = `env=${envKey} oc_cluster=${tenantKey} target_cluster=${targetCluster || '(tümü)'} oc_input=${ocInput}`;
     }
 
     try {

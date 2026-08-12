@@ -220,9 +220,11 @@ export const opsxApi = {
     pairs?: OpsxOcpPair[];
     ocOperation?: OpsxOcpOperation;
     // Openshift restart/rollout: `oc_cluster`/`env`'in çözdüğü gruptaki GERÇEK cluster'lardan
-    // (bkz. getClusters) TEK birinin adı — ZORUNLU (AWX `limit` production'da sessizce
-    // yutulduğu için tek cluster hedeflemek artık SADECE bunun playbook'un `hosts:`
-    // satırına doğrudan geçmesiyle mümkün, bkz. server/opsx/index.cjs dosya başı notu).
+    // (bkz. getClusters) TEK birinin adı — YA DA "" (boş, "Tüm cluster'lar" seçilirse; bkz.
+    // OcpClusterPickStep.tsx). AWX `limit` production'da sessizce yutulduğu için tek cluster
+    // hedeflemek SADECE bunun playbook'un `hosts:` satırına doğrudan geçmesiyle mümkün —
+    // boşsa target_cluster hiç gönderilmez, playbook grubun TAMAMINI hedefler (bkz.
+    // server/opsx/index.cjs dosya başı notu).
     cluster?: string;
   }): Promise<OpsxRunResult> =>
     fetch(`${BASE}/run`, {
