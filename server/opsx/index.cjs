@@ -472,15 +472,17 @@ function initOpsX(app) {
   //   terminal_host YOK — playbook `hosts: "{{ oc_cluster }}_{{ env }}"` ile hedefi
   //   kendisi cozer. oc_input, tek POST'ta birden fazla namespace/uygulama ciftini
   //   ";" ile tasir (onyuzde birikimli eklenir — bkz. OcpTargetStep.tsx).
-  //   Bir tenant/env grubuna BIRDEN FAZLA gercek cluster bagli olabilir (ör. ark_prod →
-  //   gbocpprod1,gbocpprod2,gbocpprod4) — uygulama sahibi bazen SADECE birini hedeflemek
-  //   ister. Bunun icin oc_cluster/env DEGISTIRILMEZ (harici application_rollout.yaml'in
-  //   `hosts:`/prepare.yaml grup dogrulamasi hala bunlara bagimli) — bunun yerine, Legacy'nin
-  //   zaten kullandigi AYNI mekanizma (AWX'in KENDI `limit` alani) ocClusters[] doluysa
-  //   secili gercek cluster adlariyla doldurulur; Ansible bunu oc_cluster_env grubuyla
-  //   KESISTIRIR. Bos/gonderilmemis ocClusters = kisitlama yok (tum cluster'lar, eski davranis).
+  //   CLUSTER ALT KUMESI DENENDI VE KALDIRILDI (2026-08-12). Secilen gercek cluster adlari
+  //   AWX'in `limit` alanina konuluyordu. IKI sebeple calismadi:
+  //     (1) AWX, template'te Limit icin "Prompt on launch" KAPALIYSA bu alani SESSIZCE yok
+  //         sayar — portal `limit: "gbocpankqa2"` gonderdi, is yine ark_qa'nin DORT
+  //         host'unda kostu (uretim job 3217901).
+  //     (2) Dogru kisit zaten cluster ADI degil, o cluster'larin bagli oldugu jump server
+  //         olurdu; bu grupta oyle bir eslesme yok.
+  //   Bu yuzden `limit` Openshift dalinda HIC gonderilmiyor; kullanici seçim yapip "oldu"
+  //   sanmasin diye ekrandaki cluster adimi da kaldirildi (bkz. OcpTargetStep bilgi satiri).
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
-    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation, ocClusters } = req.body || {};
+    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation } = req.body || {};
 
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
@@ -502,7 +504,7 @@ function initOpsX(app) {
     }
 
     let extraVars;
-    let limitValue = '';   // Legacy'de HER ZAMAN dolu; Openshift'te SADECE cluster kisitlamasi secildiyse — AWX'in --limit alani
+    let limitValue = '';   // yalniz Legacy'de dolu — AWX'in --limit alani
     let logSummary;
 
     if (plat === 'legacy') {
@@ -543,33 +545,38 @@ function initOpsX(app) {
 
       // Katalog + erisim kisitlamasi dogrulamasi: resolveOpenshiftTargets() (bkz. dosya
       // basi) — dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
-      let envKey, tenantKey, cleanPairs, clusterNames;
+      let envKey, tenantKey, cleanPairs;
       try {
         const user = req.session?.user || {};
-        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(env, tenant, pairs, user));
+        ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(env, tenant, pairs, user));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
       const ocInput = cleanPairs.map((p) => p.joined).join(';');
 
-      // ANTI-TOCTOU: client'in gonderdigi ocClusters[], resolveOpenshiftTargets'in bu
-      // tenant/env icin DB'den az once cozdugu gercek cluster listesine (clusterNames)
-      // KARSI dogrulanir — bu grubun disindaki bir isim limit'e asla sizmaz.
-      let ocClusterLimit = '';
-      if (Array.isArray(ocClusters) && ocClusters.length > 0) {
-        const requestedClusters = [...new Set(ocClusters.map((c) => String(c || '').trim()).filter(Boolean))];
-        const unknown = requestedClusters.filter((c) => !clusterNames.includes(c));
-        if (unknown.length) {
-          return res.status(400).json({ ok: false, message: `Geçersiz cluster: ${unknown.join(', ')}` });
-        }
-        if (requestedClusters.length < clusterNames.length) {
-          ocClusterLimit = requestedClusters.join(cfg.separator);
-        }
+      // BILDIRIMI GONDEREN ADRES: harici application_rollout playbook'u son adimda
+      // `{{ email }}` ile bilgilendirme maili atiyor; degisken gelmeyince job "'email' is
+      // undefined" ile DUSUYORDU (uretim job 3218675) — hem de rollout ZATEN yapildiktan
+      // sonra. Isi TETIKLEYEN kullanicinin LDAP adresini gonderiyoruz.
+      //
+      // ADMIN ONCELIGI: yonetici OpsX yapilandirmasindaki ek degiskenlerde `email`
+      // tanimladiysa ona DOKUNULMAZ (staticVars zaten asagida once yayiliyor).
+      const runnerEmail = String(req.session?.user?.mail || '').trim();
+      if (!staticVars.email && !runnerEmail) {
+        // Bos `email` ile job acmak, bir dakika bekleyip ayni hatayi gormek demek.
+        return res.status(400).json({
+          ok: false,
+          message: 'E-posta adresiniz profilinizde bulunamadı. Playbook işlem sonunda bu '
+                 + 'adrese bilgilendirme maili atıyor; adres olmadan iş başlatılamaz. '
+                 + 'Yönetici, OpsX yapılandırmasındaki ek değişkenler alanına varsayılan '
+                 + 'bir `email` tanımlayabilir.',
+        });
       }
-      limitValue = ocClusterLimit;
 
       extraVars = {
         ...staticVars,
+        // staticVars'ta `email` varsa admin bilerek yazmistir; yalnizca YOKSA doldururuz.
+        ...(staticVars.email ? {} : { email: runnerEmail }),
         [cfg.envKey]: envKey,
         [cfg.ocClusterKey]: tenantKey,
         [cfg.ocInputKey]: ocInput,
@@ -578,7 +585,7 @@ function initOpsX(app) {
         openshift_operations: 'openshift_application_rollout',
         choise: true,
       };
-      logSummary = `env=${envKey} oc_cluster=${tenantKey} oc_input=${ocInput}${ocClusterLimit ? ` limit=${ocClusterLimit}` : ''}`;
+      logSummary = `env=${envKey} oc_cluster=${tenantKey} oc_input=${ocInput}`;
     }
 
     try {
