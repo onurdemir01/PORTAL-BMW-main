@@ -1,0 +1,1090 @@
+---
+# nginx_config_migration.yml - Eski nginx sunucusundaki (GBRVST01) konfigurasyon
+# dosyalarini ortam bazli yeni sunuculara tasir. Daha once elle calistirilan uc ayri
+# adimi (create.sh + paket kontrolu + migrate.sh) tek otomasyonda birlestirir:
+#
+#   1) Kaynak sunucudaki her <Service>-<ORTAM>.conf dosyasi ayristirilir; her location
+#      blogu ve o blogun proxy_pass satiri okunur. proxy_pass URL'inden:
+#         https://<application ... -vN>.<namespace>...  ->  application + namespace
+#      cikarilir (uygulama adi "-v0/-v1/-v2..." ile biten kisim, hemen ardindaki
+#      nokta-etiketi namespace).
+#   2) Dosya adinin sonekine gore hedef sunucu secilir (-DEV/-TEST/-QA), yeni sunucuda
+#      "<prefix>-<application>.conf" uygulama konfigurasyonlari template.conf'tan
+#      uretilir ve ana konfigurasyon dosyasi include'lu location bloklariyla yazilir.
+#      Ana dosyanin geri kalani orijinaliyle AYNIDIR; yalnizca listen satirindaki IP
+#      hedef sunucununkiyle degistirilir.
+#   3) Hedef sunucuda /hysdeploy/<application> dizini olmayan uygulamalar tespit edilir;
+#      istenirse GBAOCP01 uzerinden ilgili OCP cluster'ina login olunup pod icindeki
+#      source klasoru staging dizinine "oc rsync" ile cekilir.
+#
+# VARSAYILAN OLARAK HICBIR SEY YAZILMAZ. Playbook once plani cikarir (hangi dosya
+# hangi sunucuya, hangi location -> hangi uygulama/namespace, hangi paket eksik).
+# Gercek yazma icin "-e apply=true" verilir.
+#
+# ORNEK - once plan (hicbir sey degismez):
+#   ansible-playbook server/ansible/playbooks/nginx_config_migration.yml -i <inventory>
+#
+# ORNEK - yalnizca DEV ortamini gercekten tasi:
+#   ansible-playbook server/ansible/playbooks/nginx_config_migration.yml -i <inventory> \
+#     -e apply=true -e '{"only_env": ["DEV"]}'
+#
+# ORNEK - eksik paketleri OCP'den staging'e cek (DEV + TEST cluster'lari):
+#   ansible-playbook server/ansible/playbooks/nginx_config_migration.yml -i <inventory> \
+#     -e ocp_extract=true \
+#     -e '{"ocp_clusters": {"DEV": {"url": "https://api.gbocpdev1.example.corp:6443",
+#                                   "username": "onur.demir", "password": "***"},
+#                           "TEST": {"url": "https://api.gbocptest1.example.corp:6443",
+#                                    "username": "onur.demir", "password": "***"}}}'
+#
+# Opsiyonel extra_vars (hepsinin makul varsayilani vardir):
+#   source_host          : GBRVST01              - konfigurasyonlarin okundugu eski sunucu
+#   source_conf_dir      : /usr/nginx/conf.d     - kaynak konfigurasyon dizini
+#   exclude_name_regex   : upstream              - dosya ADINDA gecerse atlanir ("| grep -v upstream")
+#   env_targets          : {DEV: GBNGXD02, TEST: GBNGXT34, QA: GBNGXQ02}
+#   suffix_aliases       : {TST: TEST}           - standart disi sonekler (PLATFORMBANKING-TST.conf)
+#   only_env             : []                    - orn. ["DEV"] -> yalnizca DEV dosyalari islenir
+#   only_services        : []                    - orn. ["APIPORTAL"] -> yalnizca o servis
+#   target_conf_dir      : /usr/nginx/conf.d     - hedef sunuculardaki konfigurasyon dizini
+#   app_conf_subdir      : application-confs
+#   app_conf_template    : template.conf         - $context/$application/$cors_application iceren sablon
+#   service_prefix_map   : {}                    - orn. {GEINTDIGITAL: glomo}; varsayilan servis adinin kucuk harfi
+#   listen_ip_map        : {}                    - orn. {GBNGXD02: 10.1.2.3}; bos ise sunucunun birincil IP'si
+#   conf_owner/conf_group: (bos)                 - verilirse uretilen dosyalara uygulanir
+#   conf_mode            : "0640"
+#   apply                : false                 - true olmadan hicbir dosya yazilmaz
+#   overwrite_main_conf  : false                 - hedefte ayni adli ana konfigurasyon varsa uzerine yazilmaz
+#   run_nginx_test       : true                  - apply sonrasi "nginx -t"
+#   nginx_binary         : /usr/nginx/sbin/nginx
+#   package_root         : /hysdeploy            - paket varlik kontrolu bu dizinde yapilir
+#   ocp_extract          : false                 - eksik paketleri OCP'den cek
+#   ocp_terminal_host    : GBAOCP01              - oc client'in bulundugu sunucu
+#   ocp_clusters         : {}                    - {ORTAM: {url, username, password}}
+#   ocp_dest_base_dir    : /sw/WAS_IMAGES/Onur   - <prefix>-nginx-<ortam>/<application> altina cekilir
+#   oc_binary            : /usr/local/bin/oc
+#   pod_source_path      : /opt/app-root/src/
+#   deploy_exclude_pattern: -deploy
+#
+# AWX/TOWER SURVEY NOTU: Survey alanlari yalnizca duz tip dondurdugu icin sozluk tipli
+#      degiskenler (env_targets, suffix_aliases, service_prefix_map, listen_ip_map,
+#      ocp_clusters) survey'de Textarea olarak tanimlanip icine YAML ya da JSON metni
+#      yazilabilir; playbook bunlari otomatik cozer. Ornek Textarea icerigi:
+#          GEINTDIGITAL: glomo
+#          WEBFORMS: webforms
+#      Bos birakilan Textarea "" olarak gelir ve varsayilan davranisa duser.
+#
+# NOT: Playbook nginx'i RELOAD ETMEZ. apply sonrasi yalnizca "nginx -t" ile dogrulama
+#      yapilir; devreye alma kararini siz verirsiniz.
+#
+# Cikti: artifacts.nginx_migration_result
+
+- name: "Girdileri dogrula ve kaynak/hedef sunuculari envantere ekle"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    source_host: GBRVST01
+    env_targets:
+      DEV: GBNGXD02
+      TEST: GBNGXT34
+      QA: GBNGXQ02
+    suffix_aliases:
+      TST: TEST
+    apply: false
+    ocp_extract: false
+    ocp_terminal_host: GBAOCP01
+    ocp_clusters: {}
+
+    # AWX/Tower survey alanlari yalnizca duz tip (metin, sifre, secim) dondurur;
+    # sozluk degiskenler bir Textarea'ya YAML/JSON olarak yazilir ve buraya METIN
+    # olarak ulasir. Asagidaki normalize ifadeleri her iki girdiyi de kabul eder:
+    # extra_vars'tan gercek sozluk gelirse oldugu gibi, survey'den metin gelirse
+    # from_yaml ile cozulerek. Bos birakilan survey alani "" olarak gelir ve
+    # default({}, true) ile bos sozluge duser.
+    env_target_map: >-
+      {{ (env_targets | from_yaml | default({}, true)) if (env_targets is string) else (env_targets | default({})) }}
+    cluster_map: >-
+      {{ (ocp_clusters | from_yaml | default({}, true)) if (ocp_clusters is string) else (ocp_clusters | default({})) }}
+
+  tasks:
+    - name: "Zorunlu degiskenleri dogrula"
+      ansible.builtin.assert:
+        that:
+          - source_host | string | trim | length > 0
+          - env_target_map is mapping
+          - env_target_map | length > 0
+          - (only_env | default([])) is sequence
+          - (only_services | default([])) is sequence
+        fail_msg: >-
+          source_host bos olamaz, env_targets bir sozluk olmali (orn. {DEV: GBNGXD02}),
+          only_env/only_services liste olmali.
+
+    - name: "OCP cekimi istendiyse cluster bilgilerinin verildigini dogrula"
+      ansible.builtin.assert:
+        that:
+          - cluster_map is mapping
+          - cluster_map | length > 0
+        fail_msg: >-
+          ocp_extract=true verildi ancak ocp_clusters bos. Her ortam icin
+          {ORTAM: {url: ..., username: ..., password: ...}} saglanmalidir.
+      when: ocp_extract | bool
+
+    - name: "OCP cluster kayitlarinin eksiksiz oldugunu dogrula"
+      ansible.builtin.assert:
+        that:
+          - cluster_map[item] is mapping
+          - cluster_map[item].url | default('') | string | trim | length > 0
+          - cluster_map[item].username | default('') | string | trim | length > 0
+          - cluster_map[item].password | default('') | string | length > 0
+        fail_msg: "ocp_clusters['{{ item }}'] icin url, username ve password zorunludur."
+      loop: "{{ cluster_map.keys() | list }}"
+      no_log: true
+      when: ocp_extract | bool
+
+    - name: "Kaynak sunucuyu envantere ekle"
+      ansible.builtin.add_host:
+        name: "{{ source_host }}"
+        groups: nginx_migration_source
+      changed_when: false
+
+    - name: "Hedef sunuculari envantere ekle"
+      ansible.builtin.add_host:
+        name: "{{ env_target_map[item] }}"
+        groups: nginx_migration_targets
+      loop: "{{ env_target_map.keys() | list }}"
+      when:
+        - (only_env | default([])) | length == 0 or item in (only_env | default([]))
+        - env_target_map[item] | string | trim | length > 0
+      changed_when: false
+
+    - name: "OCP terminal sunucusunu envantere ekle"
+      ansible.builtin.add_host:
+        name: "{{ ocp_terminal_host }}"
+        groups: nginx_migration_ocp
+      when: ocp_extract | bool
+      changed_when: false
+
+    - name: "Calisma modunu bildir"
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            'APPLY MODU: hedef sunuculara dosya YAZILACAK.'
+            if (apply | bool)
+            else 'PLAN MODU: hicbir dosya yazilmayacak. Gercek tasima icin -e apply=true verin.'
+          }}
+
+
+- name: "Kaynak sunucudaki konfigurasyonlari ayristir"
+  hosts: nginx_migration_source
+  gather_facts: false
+  become: false
+
+  vars:
+    source_conf_dir: /usr/nginx/conf.d
+    exclude_name_regex: upstream
+    env_targets:
+      DEV: GBNGXD02
+      TEST: GBNGXT34
+      QA: GBNGXQ02
+    suffix_aliases:
+      TST: TEST
+    service_prefix_map: {}
+
+    # Survey'den metin olarak gelen sozlukleri normalize et (bkz. ilk play'deki not).
+    env_target_map: >-
+      {{ (env_targets | from_yaml | default({}, true)) if (env_targets is string) else (env_targets | default({})) }}
+    suffix_alias_map: >-
+      {{ (suffix_aliases | from_yaml | default({}, true)) if (suffix_aliases is string) else (suffix_aliases | default({})) }}
+    prefix_map: >-
+      {{ (service_prefix_map | from_yaml | default({}, true)) if (service_prefix_map is string) else (service_prefix_map | default({})) }}
+
+  tasks:
+    - name: "Kaynak konfigurasyon dizininin varligini dogrula"
+      ansible.builtin.stat:
+        path: "{{ source_conf_dir }}"
+      register: src_dir_stat
+
+    - name: "Kaynak dizin yoksa hata ver"
+      ansible.builtin.assert:
+        that:
+          - src_dir_stat.stat.exists
+          - src_dir_stat.stat.isdir
+        fail_msg: "Kaynak konfigurasyon dizini bulunamadi: {{ source_conf_dir }}"
+
+    # Her .conf dosyasi icin iki gecis yapilir:
+    #   MODE=meta -> location/proxy_pass/application/namespace bilgisini JSON olarak verir
+    #   MODE=skel -> location bloklari cikarilmis, listen IP'si maskelenmis iskeleti verir
+    # Iskelet base64 olarak tasinir; boylece icerikteki tirnak/ters bolu/satir sonlari
+    # JSON'a zarar vermez. awk betigi bilinerek POSIX awk ozellikleriyle sinirli tutuldu.
+    - name: "Konfigurasyon dosyalarini ayristir"
+      ansible.builtin.shell:
+        cmd: |
+          {% raw %}
+          set -u
+
+          AWK_SCRIPT=$(cat <<'AWKEOF'
+          BEGIN {
+            depth = 0; server_idx = 0; loc_active = 0; loc_start_depth = 0
+            loc_header = ""; loc_body = ""; loc_srv = 1
+            n_loc = 0; n_keep = 0; n_err = 0; n_listen = 0; n_conf = 0
+            json_loc = ""; json_keep = ""; json_err = ""; json_listen = ""; json_conf = ""
+            pending_blank_skip = 0
+          }
+
+          function strip_comment(s,   t) { t = s; sub(/#.*/, "", t); return t }
+
+          function count_char(s, c,   n, i) {
+            n = 0
+            for (i = 1; i <= length(s); i++) if (substr(s, i, 1) == c) n++
+            return n
+          }
+
+          function jesc(s,   t) {
+            t = s
+            gsub(/\\/, "\\\\", t)
+            gsub(/"/, "\\\"", t)
+            gsub(/\t/, " ", t)
+            gsub(/\r/, "", t)
+            return t
+          }
+
+          function parse_loc_header(h,   t, n, a) {
+            t = strip_comment(h)
+            sub(/^[ \t]*location[ \t]+/, "", t)
+            sub(/\{.*$/, "", t)
+            gsub(/^[ \t]+/, "", t); gsub(/[ \t]+$/, "", t)
+            n = split(t, a, /[ \t]+/)
+            if (n >= 2) { g_mod = a[1]; g_path = a[2] } else { g_mod = ""; g_path = a[1] }
+          }
+
+          function find_proxy_pass(body,   n, a, i, c, u) {
+            n = split(body, a, "\n")
+            for (i = 1; i <= n; i++) {
+              c = strip_comment(a[i])
+              if (c ~ /^[ \t]*proxy_pass[ \t]+/) {
+                u = c
+                sub(/^[ \t]*proxy_pass[ \t]+/, "", u)
+                sub(/;.*$/, "", u)
+                gsub(/^[ \t]+/, "", u); gsub(/[ \t]+$/, "", u)
+                return u
+              }
+            }
+            return ""
+          }
+
+          # proxy_pass URL'inden uygulama ve namespace cikarir:
+          #   https://<application ... -vN>.<namespace>....  ->  g_app / g_ns
+          function extract_app(url,   rest, hostpart, after, a, n) {
+            g_app = ""; g_ns = ""
+            if (url !~ /^https?:\/\//) return
+            rest = url; sub(/^https?:\/\//, "", rest)
+            hostpart = rest
+            sub(/[\/:?#].*$/, "", hostpart)
+            if (hostpart == "") return
+            if (match(hostpart, /-v[0-9]+/) == 0) return
+            after = substr(hostpart, RSTART + RLENGTH)
+            # "-vN" host adinin sonunda ya da nokta ile devam eden bir etiketin sonunda olmali
+            if (after != "" && substr(after, 1, 1) != ".") return
+            g_app = substr(hostpart, 1, RSTART + RLENGTH - 1)
+            sub(/^\./, "", after)
+            if (after != "") { n = split(after, a, "."); g_ns = a[1] }
+          }
+
+          function close_location(   pp, full, head_rest) {
+            full = loc_header "\n" loc_body
+            parse_loc_header(loc_header)
+            # Tek satirlik "location /x { proxy_pass ...; }" bloklarinda proxy_pass baslik
+            # satirinin kendisindedir; acilis suslu parantezinden sonraki kismi da arariz.
+            head_rest = loc_header
+            sub(/^[^{]*\{/, "", head_rest)
+            pp = find_proxy_pass(head_rest "\n" loc_body)
+            extract_app(pp)
+
+            if (g_app != "") {
+              if (MODE == "meta") {
+                # Ayni uygulama iki farkli context'ten besleniyorsa tek bir
+                # "<prefix>-<application>.conf" uretmek location kaybina yol acar
+                # (eski create.sh bu durumda ikinci location'i sessizce atliyordu).
+                if (g_app in app_ctx) {
+                  if (app_ctx[g_app] != g_path && !((g_app SUBSEP g_path) in ctx_seen)) {
+                    ctx_seen[g_app SUBSEP g_path] = 1
+                    n_conf++
+                    json_conf = json_conf (n_conf > 1 ? "," : "") \
+                      "{\"application\":\"" jesc(g_app) "\"" \
+                      ",\"first_context\":\"" jesc(app_ctx[g_app]) "\"" \
+                      ",\"other_context\":\"" jesc(g_path) "\"}"
+                  }
+                } else {
+                  app_ctx[g_app] = g_path
+                  ctx_seen[g_app SUBSEP g_path] = 1
+                }
+                n_loc++
+                json_loc = json_loc (n_loc > 1 ? "," : "") \
+                  "{\"server\":" loc_srv \
+                  ",\"modifier\":\"" jesc(g_mod) "\"" \
+                  ",\"path\":\"" jesc(g_path) "\"" \
+                  ",\"proxy_pass\":\"" jesc(pp) "\"" \
+                  ",\"application\":\"" jesc(g_app) "\"" \
+                  ",\"namespace\":\"" jesc(g_ns) "\"}"
+              } else {
+                if (!(loc_srv in marker_done)) {
+                  printf "__NGINX_LOCATIONS_%d__\n", loc_srv
+                  marker_done[loc_srv] = 1
+                }
+                # Cikarilan blogun ardindaki tek bos ayirici satiri yut ki iskelette
+                # ust uste bos satir yiginlari kalmasin.
+                pending_blank_skip = 1
+              }
+            } else {
+              # proxy_pass yok ya da -vN kalibina uymuyor: blok iskelette oldugu gibi korunur
+              if (MODE == "meta") {
+                n_keep++
+                json_keep = json_keep (n_keep > 1 ? "," : "") \
+                  "{\"server\":" loc_srv \
+                  ",\"modifier\":\"" jesc(g_mod) "\"" \
+                  ",\"path\":\"" jesc(g_path) "\"" \
+                  ",\"proxy_pass\":\"" jesc(pp) "\"" \
+                  ",\"reason\":\"" (pp == "" ? "proxy_pass_yok" : "vN_kalibi_yok") "\"}"
+              } else {
+                printf "%s", full
+                pending_blank_skip = 0
+              }
+            }
+            loc_active = 0; loc_header = ""; loc_body = ""
+          }
+
+          {
+            raw = $0
+            sub(/\r$/, "", raw)
+            code = strip_comment(raw)
+            opens = count_char(code, "{")
+            closes = count_char(code, "}")
+
+            if (loc_active == 0) {
+              if (code ~ /^[ \t]*server[ \t]*\{/) server_idx++
+
+              if (code ~ /^[ \t]*location[ \t]+[^ \t]/ && opens > 0) {
+                loc_active = 1
+                loc_start_depth = depth
+                loc_header = raw
+                loc_body = ""
+                loc_srv = (server_idx > 0 ? server_idx : 1)
+                depth += opens - closes
+                if (depth <= loc_start_depth) close_location()
+                next
+              }
+
+              if (code ~ /^[ \t]*listen[ \t]/) {
+                if (MODE == "meta") {
+                  if (match(code, /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/)) {
+                    n_listen++
+                    json_listen = json_listen (n_listen > 1 ? "," : "") "\"" substr(code, RSTART, RLENGTH) "\""
+                  }
+                } else {
+                  out = raw
+                  gsub(/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/, "__NGINX_LISTEN_IP__", out)
+                  print out
+                  pending_blank_skip = 0
+                  depth += opens - closes
+                  next
+                }
+              }
+
+              if (MODE == "skel") {
+                if (pending_blank_skip == 1 && raw ~ /^[ \t]*$/) {
+                  pending_blank_skip = 0
+                  depth += opens - closes
+                  next
+                }
+                pending_blank_skip = 0
+                print raw
+              }
+              depth += opens - closes
+              next
+            }
+
+            loc_body = loc_body raw "\n"
+            depth += opens - closes
+            if (depth <= loc_start_depth) close_location()
+          }
+
+          END {
+            if (loc_active == 1) {
+              if (MODE == "skel") { printf "%s\n%s", loc_header, loc_body }
+              else { n_err++; json_err = json_err (n_err > 1 ? "," : "") "\"kapanmamis_location_blogu\"" }
+            }
+            if (MODE == "meta") {
+              if (depth != 0) {
+                n_err++
+                json_err = json_err (n_err > 1 ? "," : "") "\"dengesiz_suslu_parantez\""
+              }
+              printf "\"server_count\":%d,", (server_idx > 0 ? server_idx : 1)
+              printf "\"listen_ips\":[%s],", json_listen
+              printf "\"locations\":[%s],", json_loc
+              printf "\"kept_locations\":[%s],", json_keep
+              printf "\"context_conflicts\":[%s],", json_conf
+              printf "\"errors\":[%s]", json_err
+            }
+          }
+          AWKEOF
+          )
+
+          printf '{"files":['
+          first=1
+          for f in "$CONF_DIR"/*.conf; do
+            [ -f "$f" ] || continue
+            b=$(basename "$f")
+            if [ -n "$EXCLUDE_RE" ]; then
+              if printf '%s\n' "$b" | grep -qi -- "$EXCLUDE_RE"; then continue; fi
+            fi
+            skel=$(awk -v MODE=skel "$AWK_SCRIPT" "$f" | base64 | tr -d '\n')
+            if [ "$first" -eq 0 ]; then printf ','; fi
+            first=0
+            printf '{"path":"%s","basename":"%s","skeleton_b64":"%s",' "$f" "$b" "$skel"
+            awk -v MODE=meta "$AWK_SCRIPT" "$f"
+            printf '}'
+          done
+          printf ']}'
+          {% endraw %}
+        executable: /bin/bash
+      environment:
+        CONF_DIR: "{{ source_conf_dir }}"
+        EXCLUDE_RE: "{{ exclude_name_regex | default('') }}"
+      register: parse_raw
+      changed_when: false
+
+    - name: "Ayristirma ciktisinin gecerli oldugunu dogrula"
+      ansible.builtin.assert:
+        that:
+          - parse_raw.stdout | length > 0
+          - (parse_raw.stdout | from_json).files is defined
+        fail_msg: >-
+          Konfigurasyon ayristirma ciktisi okunamadi. stderr: {{ parse_raw.stderr | default('') }}
+
+    # Dosya adindan servis/ortam bilgisi cikarilir:
+    #   GEINTDIGITAL-ARK-DEV.conf -> service=GEINTDIGITAL-ARK, sonek=DEV
+    #   PLATFORMBANKING-TST.conf  -> service=PLATFORMBANKING,  sonek=TST -> ortam=TEST
+    - name: "Dosyalari servis / ortam / hedef sunucu bilgisiyle zenginlestir"
+      ansible.builtin.set_fact:
+        nginx_migration_files: >-
+          {{
+            nginx_migration_files | default([]) + [
+              item | combine({
+                'service': service_name,
+                'suffix': raw_suffix,
+                'env': env_name,
+                'target_host': target,
+                'prefix': prefix_name,
+                'included': is_included,
+                'skip_reason': skip_reason
+              })
+            ]
+          }}
+      vars:
+        stem: "{{ item.basename | regex_replace('[.]conf$', '') }}"
+        raw_suffix: "{{ (stem.split('-') | last) | upper }}"
+        service_name: "{{ stem.split('-')[:-1] | join('-') }}"
+        env_name: "{{ suffix_alias_map.get(raw_suffix, raw_suffix) }}"
+        target: "{{ env_target_map.get(env_name, '') }}"
+        prefix_name: "{{ prefix_map.get(service_name, service_name | lower) }}"
+        env_ok: "{{ (only_env | default([])) | length == 0 or env_name in (only_env | default([])) }}"
+        svc_ok: "{{ (only_services | default([])) | length == 0 or service_name in (only_services | default([])) }}"
+        is_included: "{{ (service_name | length > 0) and (target | length > 0) and (env_ok | bool) and (svc_ok | bool) }}"
+        skip_reason: >-
+          {{
+            '' if is_included | bool
+            else ('dosya_adi_sonek_icermiyor' if service_name | length == 0
+                  else ('ortam_esleme_yok:' ~ raw_suffix if target | length == 0
+                        else 'filtre_disi'))
+          }}
+      loop: "{{ (parse_raw.stdout | from_json).files }}"
+      loop_control:
+        label: "{{ item.basename }}"
+      changed_when: false
+
+    - name: "Ayristirma ozetini yazdir"
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.basename }} -> {{ item.target_host if (item.skip_reason | length == 0) else ('ATLANDI (' ~ item.skip_reason ~ ')') }}
+          | tasinacak location: {{ item.locations | length }}
+          | korunan location: {{ item.kept_locations | length }}
+          {{ '| CONTEXT CAKISMASI: ' ~ (item.context_conflicts | map(attribute='application') | join(', ')) if item.context_conflicts | length > 0 else '' }}
+          {{ '| AYRISTIRMA HATASI: ' ~ (item.errors | join(', ')) if item.errors | length > 0 else '' }}
+      loop: "{{ nginx_migration_files | default([]) }}"
+      loop_control:
+        label: "{{ item.basename }}"
+
+
+- name: "Hedef sunucularda konfigurasyonlari olustur"
+  hosts: nginx_migration_targets
+  gather_facts: true
+  become: "{{ use_become | default(false) }}"
+
+  vars:
+    target_conf_dir: /usr/nginx/conf.d
+    app_conf_subdir: application-confs
+    app_conf_template: template.conf
+    package_root: /hysdeploy
+    listen_ip_map: {}
+    conf_mode: "0640"
+    apply: false
+    overwrite_main_conf: false
+    run_nginx_test: true
+    nginx_binary: /usr/nginx/sbin/nginx
+
+    src_host: "{{ groups['nginx_migration_source'] | first }}"
+    app_conf_dir: "{{ target_conf_dir }}/{{ app_conf_subdir }}"
+    # Survey'den metin olarak gelen sozlugu normalize et (bkz. ilk play'deki not).
+    ip_map: >-
+      {{ (listen_ip_map | from_yaml | default({}, true)) if (listen_ip_map is string) else (listen_ip_map | default({})) }}
+    listen_ip: "{{ ip_map.get(inventory_hostname, (ansible_default_ipv4 | default({})).address | default('')) }}"
+    # NOT: filtrelemede bool alan yerine "skip_reason bos mu" kullaniliyor — template
+    # sonucu bool yerine "False" string'i olarak gelirse selectattr('included') her
+    # kaydi truthy sayardi.
+    my_files: >-
+      {{
+        hostvars[src_host].nginx_migration_files | default([])
+        | selectattr('skip_reason', 'equalto', '')
+        | selectattr('target_host', 'equalto', inventory_hostname)
+        | list
+      }}
+
+  tasks:
+    - name: "Bu sunucu icin islenecek dosya yoksa bilgilendir"
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} icin tasinacak konfigurasyon dosyasi yok (filtreleri kontrol edin)."
+      when: my_files | length == 0
+
+    - name: "Tasima adimlari"
+      when: my_files | length > 0
+      block:
+        - name: "Hedef dizinlerin ve sablonun varligini kontrol et"
+          ansible.builtin.stat:
+            path: "{{ item }}"
+          loop:
+            - "{{ target_conf_dir }}"
+            - "{{ app_conf_dir }}"
+            - "{{ app_conf_dir }}/{{ app_conf_template }}"
+          register: target_paths
+          loop_control:
+            label: "{{ item }}"
+
+        - name: "Hedefteki mevcut konfigurasyonlari ve paketleri listele"
+          ansible.builtin.shell:
+            cmd: |
+              set -u
+              printf '###MAINCONF###\n'
+              ls -1 -- "$TARGET_CONF_DIR" 2>/dev/null || true
+              printf '###APPCONF###\n'
+              ls -1 -- "$APP_CONF_DIR" 2>/dev/null || true
+              printf '###PACKAGE###\n'
+              ls -1 -- "$PACKAGE_ROOT" 2>/dev/null || true
+            executable: /bin/bash
+          environment:
+            TARGET_CONF_DIR: "{{ target_conf_dir }}"
+            APP_CONF_DIR: "{{ app_conf_dir }}"
+            PACKAGE_ROOT: "{{ package_root }}"
+          register: target_inventory
+          changed_when: false
+
+        - name: "Mevcut dosya/paket listelerini ayikla"
+          ansible.builtin.set_fact:
+            existing_main_confs: >-
+              {{
+                ((target_inventory.stdout.split('###APPCONF###') | first)
+                 | replace('###MAINCONF###', '') | trim).splitlines()
+                | map('trim') | reject('equalto', '') | list
+              }}
+            existing_app_confs: >-
+              {{
+                (((target_inventory.stdout.split('###APPCONF###') | last).split('###PACKAGE###') | first)
+                 | trim).splitlines()
+                | map('trim') | reject('equalto', '') | list
+              }}
+            existing_packages: >-
+              {{
+                ((target_inventory.stdout.split('###PACKAGE###') | last) | trim).splitlines()
+                | map('trim') | reject('equalto', '') | list
+              }}
+          changed_when: false
+
+        # Plan: her (dosya, location) icin uygulama konfigurasyonu var mi, paketi var mi.
+        - name: "Uygulama konfigurasyonu planini cikar"
+          ansible.builtin.set_fact:
+            app_conf_plan: >-
+              {{
+                app_conf_plan | default([]) + [{
+                  'source_file': item.0.basename,
+                  'service': item.0.service,
+                  'env': item.0.env,
+                  'context': item.1.path,
+                  'modifier': item.1.modifier,
+                  'application': item.1.application,
+                  'namespace': item.1.namespace,
+                  'app_conf': conf_name,
+                  'action': ('mevcut_atlanacak' if conf_name in existing_app_confs else 'olusturulacak'),
+                  'package_exists': (item.1.application in existing_packages)
+                }]
+              }}
+          vars:
+            conf_name: "{{ item.0.prefix }}-{{ item.1.application }}.conf"
+          loop: "{{ my_files | subelements('locations') }}"
+          loop_control:
+            label: "{{ item.0.basename }} {{ item.1.path }} -> {{ item.1.application }}"
+          changed_when: false
+
+        - name: "Ana konfigurasyon dosyasi planini cikar"
+          ansible.builtin.set_fact:
+            main_conf_plan: >-
+              {{
+                main_conf_plan | default([]) + [{
+                  'source_file': item.basename,
+                  'dest': target_conf_dir ~ '/' ~ item.basename,
+                  'location_count': item.locations | length,
+                  'kept_count': item.kept_locations | length,
+                  'listen_ip': listen_ip,
+                  'action': (
+                    'atlanacak_zaten_var' if (item.basename in existing_main_confs and not (overwrite_main_conf | bool))
+                    else ('uzerine_yazilacak' if item.basename in existing_main_confs else 'olusturulacak')
+                  ),
+                  'context_conflicts': item.context_conflicts,
+                  'parse_errors': item.errors
+                }]
+              }}
+          loop: "{{ my_files }}"
+          loop_control:
+            label: "{{ item.basename }}"
+          changed_when: false
+
+        - name: "Paketi bulunmayan uygulamalari tespit et"
+          ansible.builtin.set_fact:
+            missing_packages: >-
+              {{
+                missing_packages | default([]) + [{
+                  'env': item.0.env,
+                  'service': item.0.service,
+                  'prefix': item.0.prefix,
+                  'application': item.1.application,
+                  'namespace': item.1.namespace,
+                  'context': item.1.path,
+                  'source_file': item.0.basename,
+                  'target_host': inventory_hostname
+                }]
+              }}
+          loop: "{{ my_files | subelements('locations') }}"
+          loop_control:
+            label: "{{ item.1.application }}"
+          when:
+            - item.1.application not in existing_packages
+            - item.1.application not in (missing_packages | default([]) | map(attribute='application') | list)
+          changed_when: false
+
+        - name: "Plan ozetini yazdir"
+          ansible.builtin.debug:
+            msg: >-
+              {{ inventory_hostname }} ({{ listen_ip | default('IP TESPIT EDILEMEDI', true) }}):
+              {{ my_files | length }} konfigurasyon dosyasi,
+              {{ app_conf_plan | default([]) | length }} location,
+              {{ app_conf_plan | default([]) | selectattr('action', 'equalto', 'olusturulacak') | list | length }} yeni uygulama konfigurasyonu,
+              {{ app_conf_plan | default([]) | selectattr('action', 'equalto', 'mevcut_atlanacak') | list | length }} mevcut (atlanacak),
+              {{ missing_packages | default([]) | length }} uygulamanin paketi {{ package_root }} altinda YOK.
+
+        - name: "Paketi olmayan uygulamalari listele (eski 'ls -ld /hysdeploy/... -- 0' ciktisinin karsiligi)"
+          ansible.builtin.debug:
+            msg: "{{ item.context }} {{ item.application }} {{ item.namespace | default('-') }} -- 0"
+          loop: "{{ missing_packages | default([]) }}"
+          loop_control:
+            label: "{{ item.application }}"
+
+        # ---- Buradan sonrasi yalnizca apply=true iken calisir ----
+
+        - name: "Yazma oncesi ortam gereksinimlerini dogrula"
+          ansible.builtin.assert:
+            that:
+              - target_paths.results[0].stat.exists
+              - target_paths.results[1].stat.exists
+              - target_paths.results[2].stat.exists
+              - listen_ip | length > 0
+            fail_msg: >-
+              apply=true icin gereksinimler eksik. {{ target_conf_dir }},
+              {{ app_conf_dir }} ve {{ app_conf_dir }}/{{ app_conf_template }} hedef
+              sunucuda bulunmalidir. listen IP tespit edilemediyse
+              -e '{"listen_ip_map": {"{{ inventory_hostname }}": "10.x.x.x"}}' verin
+              (su an tespit edilen: "{{ listen_ip }}").
+          when: apply | bool
+
+        # Ayristirma hatasi ya da context cakismasi varsa uretilen dosya sessizce eksik
+        # olurdu; bu yuzden apply varsayilan olarak durdurulur. Bilerek devam etmek icin
+        # -e allow_conflicts=true verilir (ilk context kazanir, digerleri duser).
+        - name: "Ayristirma hatasi / context cakismasi varsa apply'i durdur"
+          ansible.builtin.assert:
+            that:
+              - (my_files | map(attribute='context_conflicts') | flatten | length) == 0
+              - (my_files | map(attribute='errors') | flatten | length) == 0
+            fail_msg: >-
+              Cakisma/hata tespit edildi, hicbir dosya yazilmadi. Ayni uygulamaya iki
+              farkli context yonlendiriliyorsa tek bir <prefix>-<application>.conf ile
+              temsil edilemez; detay icin yukaridaki plan ciktisina bakin. Bilerek devam
+              etmek icin -e allow_conflicts=true verin.
+          when:
+            - apply | bool
+            - not (allow_conflicts | default(false) | bool)
+
+        - name: "Uygulama konfigurasyon sablonunu oku"
+          ansible.builtin.slurp:
+            src: "{{ app_conf_dir }}/{{ app_conf_template }}"
+          register: app_template_raw
+          when: apply | bool
+
+        # create.sh'deki uc sed islemi ile ayni: $context, $application, $cors_application.
+        # force:false sayesinde zaten var olan uygulama konfigurasyonlarina dokunulmaz
+        # ("Uygulama konfigurasyonu mevcut pas geciliyor").
+        - name: "Uygulama konfigurasyonlarini olustur"
+          ansible.builtin.copy:
+            dest: "{{ app_conf_dir }}/{{ item.0.prefix }}-{{ item.1.application }}.conf"
+            content: >-
+              {{
+                (app_template_raw.content | b64decode)
+                | replace('$cors_application', item.1.application | replace('-', '_'))
+                | replace('$context', item.1.path)
+                | replace('$application', item.1.application)
+              }}
+            owner: "{{ conf_owner | default(omit) }}"
+            group: "{{ conf_group | default(omit) }}"
+            mode: "{{ conf_mode }}"
+            force: false
+          loop: "{{ my_files | subelements('locations') }}"
+          loop_control:
+            label: "{{ item.0.prefix }}-{{ item.1.application }}.conf"
+          when: apply | bool
+
+        - name: "Ana konfigurasyon dosyalarini olustur"
+          ansible.builtin.template:
+            src: nginx_migrated_conf.j2
+            dest: "{{ target_conf_dir }}/{{ item.basename }}"
+            owner: "{{ conf_owner | default(omit) }}"
+            group: "{{ conf_group | default(omit) }}"
+            mode: "{{ conf_mode }}"
+            force: "{{ overwrite_main_conf | bool }}"
+            backup: "{{ overwrite_main_conf | bool }}"
+          vars:
+            mig_file: "{{ item }}"
+            mig_listen_ip: "{{ listen_ip }}"
+            mig_app_conf_dir: "{{ app_conf_dir }}"
+          loop: "{{ my_files }}"
+          loop_control:
+            label: "{{ item.basename }}"
+          when: apply | bool
+
+        - name: "nginx yapilandirmasini test et"
+          ansible.builtin.command:
+            argv:
+              - "{{ nginx_binary }}"
+              - "-t"
+          register: nginx_test
+          changed_when: false
+          failed_when: false
+          when:
+            - apply | bool
+            - run_nginx_test | bool
+
+        - name: "nginx -t sonucu"
+          ansible.builtin.debug:
+            msg: "{{ (nginx_test.stdout_lines | default([])) + (nginx_test.stderr_lines | default([])) }}"
+          when:
+            - apply | bool
+            - run_nginx_test | bool
+
+
+- name: "Paketi olmayan uygulamalari OCP'den staging'e cek"
+  hosts: nginx_migration_ocp
+  gather_facts: false
+  become: false
+
+  vars:
+    oc_binary: /usr/local/bin/oc
+    ocp_clusters: {}
+    ocp_dest_base_dir: /sw/WAS_IMAGES/Onur
+    pod_source_path: /opt/app-root/src/
+    deploy_exclude_pattern: -deploy
+    ocp_insecure_skip_tls_verify: true
+    extract_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+
+    # Survey'den metin olarak gelen sozlugu normalize et (bkz. ilk play'deki not).
+    cluster_map: >-
+      {{ (ocp_clusters | from_yaml | default({}, true)) if (ocp_clusters is string) else (ocp_clusters | default({})) }}
+    all_missing: >-
+      {{
+        groups['nginx_migration_targets'] | default([])
+        | map('extract', hostvars, 'missing_packages')
+        | select('defined') | flatten
+      }}
+    extract_targets: >-
+      {{ all_missing | selectattr('env', 'in', cluster_map.keys() | list) | list }}
+    extract_envs: "{{ extract_targets | map(attribute='env') | unique | list }}"
+
+  tasks:
+    - name: "Cluster tanimi olmayan ortamlari bildir"
+      ansible.builtin.debug:
+        msg: >-
+          ocp_clusters icinde tanimi olmadigi icin atlanan uygulamalar:
+          {{
+            all_missing | rejectattr('env', 'in', cluster_map.keys() | list)
+            | map(attribute='application') | list | join(', ')
+          }}
+      when: (all_missing | length) > (extract_targets | length)
+
+    - name: "Cekilecek uygulama yoksa bilgilendir"
+      ansible.builtin.debug:
+        msg: "OCP'den cekilecek uygulama yok (tum paketler mevcut ya da cluster tanimi eksik)."
+      when: extract_targets | length == 0
+
+    - name: "OCP cekim adimlari"
+      when: extract_targets | length > 0
+      block:
+        - name: "oc binary'nin varligini kontrol et"
+          ansible.builtin.stat:
+            path: "{{ oc_binary }}"
+          register: oc_binary_stat
+
+        - name: "oc binary yoksa hata ver"
+          ansible.builtin.assert:
+            that:
+              - oc_binary_stat.stat.exists
+              - oc_binary_stat.stat.executable
+            fail_msg: "oc binary bulunamadi veya calistirilabilir degil: {{ oc_binary }}"
+
+        # Her ortamin kendi cluster'i ve kendi kubeconfig'i vardir; rsync adimi dogru
+        # kubeconfig'i ortam adindan secer, boylece tek calistirmada birden cok cluster
+        # islenebilir.
+        - name: "Her ortamin OCP cluster'ina giris yap"
+          ansible.builtin.command:
+            argv:
+              - "{{ oc_binary }}"
+              - login
+              - "--server={{ cluster_map[item].url }}"
+              - "--username={{ cluster_map[item].username }}"
+              - "--password={{ cluster_map[item].password }}"
+              - "--insecure-skip-tls-verify={{ 'true' if (ocp_insecure_skip_tls_verify | bool) else 'false' }}"
+          environment:
+            KUBECONFIG: "/tmp/nginxmig-{{ extract_job_id }}-{{ item }}.kubeconfig"
+          loop: "{{ extract_envs }}"
+          register: oc_login_result
+          no_log: true
+          changed_when: false
+
+        # migrate.sh ile ayni is: eslesen (deploy olmayan) pod bulunur ve source klasoru
+        # <ocp_dest_base_dir>/<prefix>-nginx-<ortam>/<application> altina cekilir.
+        # Orijinal script'teki hata burada duzeltildi: pod_count deploy pod'larini da
+        # sayiyordu, ama pod atamasi onlari disliyordu; yalnizca deploy pod'u olan
+        # durumda "BULUNAMADI" denmeden bos pod adiyla rsync calisiyordu.
+        - name: "Her uygulamanin pod source'unu cek"
+          ansible.builtin.shell:
+            cmd: |
+              set -u
+              ns={{ item.namespace | quote }}
+              app={{ item.application | quote }}
+              dest_dir={{ (ocp_dest_base_dir ~ '/' ~ item.prefix ~ '-nginx-' ~ (item.env | lower) ~ '/' ~ item.application) | quote }}
+              exclude={{ deploy_exclude_pattern | quote }}
+
+              if [ -z "$ns" ]; then
+                echo "STATUS=namespace_bilinmiyor"
+                echo "POD="
+                exit 0
+              fi
+
+              raw_pods=$("{{ oc_binary }}" get pods -n "$ns" --no-headers -o custom-columns=NAME:.metadata.name 2>&1)
+              if [ $? -ne 0 ]; then
+                echo "STATUS=namespace_error"
+                echo "POD="
+                echo "$raw_pods" >&2
+                exit 0
+              fi
+
+              all_matches=$(printf '%s\n' "$raw_pods" | grep -F -- "$app")
+              if [ -z "$all_matches" ]; then
+                echo "STATUS=not_found"
+                echo "POD="
+                exit 0
+              fi
+
+              non_deploy=$(printf '%s\n' "$all_matches" | grep -vF -- "$exclude")
+              if [ -z "$non_deploy" ]; then
+                echo "STATUS=only_deploy_pod"
+                echo "POD="
+                exit 0
+              fi
+
+              pod=$(printf '%s\n' "$non_deploy" | head -n1)
+              mkdir -p -- "$dest_dir"
+
+              rsync_out=$("{{ oc_binary }}" rsync -n "$ns" "${pod}:{{ pod_source_path }}" "$dest_dir/" 2>&1)
+              if [ $? -ne 0 ]; then
+                echo "STATUS=rsync_error"
+                echo "POD=$pod"
+                echo "$rsync_out" >&2
+                exit 0
+              fi
+
+              echo "STATUS=ok"
+              echo "POD=$pod"
+            executable: /bin/bash
+          environment:
+            KUBECONFIG: "/tmp/nginxmig-{{ extract_job_id }}-{{ item.env }}.kubeconfig"
+          loop: "{{ extract_targets }}"
+          loop_control:
+            label: "{{ item.env }} {{ item.namespace }}/{{ item.application }}"
+          register: extract_result
+          changed_when: false
+          failed_when: false
+
+        - name: "Cekim sonuclarini yapilandirilmis listeye donustur"
+          ansible.builtin.set_fact:
+            ocp_extract_summary: >-
+              {{
+                ocp_extract_summary | default([]) + [{
+                  'env': item.item.env,
+                  'service': item.item.service,
+                  'application': item.item.application,
+                  'namespace': item.item.namespace,
+                  'status': (
+                    item.stdout.splitlines() | map('trim')
+                    | select('match', '^STATUS=') | map('regex_replace', '^STATUS=', '')
+                    | list | first | default('unknown')
+                  ),
+                  'pod': (
+                    item.stdout.splitlines() | map('trim')
+                    | select('match', '^POD=') | map('regex_replace', '^POD=', '')
+                    | list | first | default('')
+                  ),
+                  'error': item.stderr | default(''),
+                  'dest_dir': (ocp_dest_base_dir ~ '/' ~ item.item.prefix ~ '-nginx-' ~ (item.item.env | lower) ~ '/' ~ item.item.application)
+                }]
+              }}
+          loop: "{{ extract_result.results }}"
+          loop_control:
+            label: "{{ item.item.namespace }}/{{ item.item.application }}"
+          changed_when: false
+
+        - name: "Cekim ozetini yazdir"
+          ansible.builtin.debug:
+            msg: >-
+              {{ item.namespace }} {{ item.application }}
+              {{
+                'BULUNAMADI' if item.status == 'not_found'
+                else ('SADECE DEPLOY POD BULUNDU, ATLANDI' if item.status == 'only_deploy_pod'
+                else ('NAMESPACE BOS (proxy_pass URL cozulemedi)' if item.status == 'namespace_bilinmiyor'
+                else ('NAMESPACE HATASI: ' ~ item.error if item.status == 'namespace_error'
+                else ('RSYNC HATASI (' ~ item.pod ~ '): ' ~ item.error if item.status == 'rsync_error'
+                else (item.pod ~ ' EXTRACT EDILDI -> ' ~ item.dest_dir)))))
+              }}
+          loop: "{{ ocp_extract_summary | default([]) }}"
+          loop_control:
+            label: "{{ item.application }}"
+
+      always:
+        - name: "Kubeconfig'leri temizle"
+          ansible.builtin.file:
+            path: "/tmp/nginxmig-{{ extract_job_id }}-{{ item }}.kubeconfig"
+            state: absent
+          loop: "{{ extract_envs }}"
+          changed_when: false
+
+
+- name: "Birlesik sonuc raporu"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    apply: false
+    package_root: /hysdeploy
+    src_host: "{{ groups['nginx_migration_source'] | first }}"
+    parsed_files: "{{ hostvars[src_host].nginx_migration_files | default([]) }}"
+    target_hosts: "{{ groups['nginx_migration_targets'] | default([]) }}"
+    all_app_plans: >-
+      {{ target_hosts | map('extract', hostvars, 'app_conf_plan') | select('defined') | flatten }}
+    all_main_plans: >-
+      {{ target_hosts | map('extract', hostvars, 'main_conf_plan') | select('defined') | flatten }}
+    all_missing: >-
+      {{ target_hosts | map('extract', hostvars, 'missing_packages') | select('defined') | flatten }}
+    all_extracts: >-
+      {{
+        groups['nginx_migration_ocp'] | default([])
+        | map('extract', hostvars, 'ocp_extract_summary') | select('defined') | flatten
+      }}
+    included_files: "{{ parsed_files | selectattr('skip_reason', 'equalto', '') | list }}"
+    conflicts: "{{ included_files | map(attribute='context_conflicts') | flatten }}"
+    parse_errors: "{{ included_files | map(attribute='errors') | flatten }}"
+
+  tasks:
+    - name: "Rapor icin dosya ozetini hazirla (iskelet iceriksiz)"
+      ansible.builtin.set_fact:
+        file_summaries: >-
+          {{
+            file_summaries | default([]) + [{
+              'basename': item.basename,
+              'path': item.path,
+              'service': item.service,
+              'env': item.env,
+              'target_host': item.target_host,
+              'prefix': item.prefix,
+              'skip_reason': item.skip_reason,
+              'server_count': item.server_count,
+              'listen_ips': item.listen_ips | unique | list,
+              'migrated_location_count': item.locations | length,
+              'kept_locations': item.kept_locations,
+              'context_conflicts': item.context_conflicts,
+              'errors': item.errors
+            }]
+          }}
+      loop: "{{ parsed_files }}"
+      loop_control:
+        label: "{{ item.basename }}"
+      changed_when: false
+
+    - name: "Ozet"
+      ansible.builtin.debug:
+        msg:
+          - "MOD                        : {{ 'APPLY (dosyalar yazildi)' if apply | bool else 'PLAN (hicbir dosya yazilmadi)' }}"
+          - "Ayristirilan dosya         : {{ parsed_files | length }} ({{ included_files | length }} islendi)"
+          - "Tasinan location           : {{ all_app_plans | length }}"
+          - "Yeni uygulama konfigurasyonu: {{ all_app_plans | selectattr('action', 'equalto', 'olusturulacak') | list | length }}"
+          - "Zaten mevcut (atlandi)     : {{ all_app_plans | selectattr('action', 'equalto', 'mevcut_atlanacak') | list | length }}"
+          - "Paketi eksik uygulama      : {{ all_missing | length }}"
+          - "OCP'den cekilen            : {{ all_extracts | selectattr('status', 'equalto', 'ok') | list | length }} / {{ all_extracts | length }}"
+          - "Context cakismasi          : {{ conflicts | length }}"
+          - "Ayristirma hatasi          : {{ parse_errors | length }}"
+
+    # Eski akistaki apps.txt'nin birebir karsiligi: "<context> <application> <namespace>".
+    # Bir adimi elle yurutmek isterseniz bu ciktiyi dogrudan kullanabilirsiniz.
+    - name: "apps.txt formatinda location listesi"
+      ansible.builtin.debug:
+        msg: "{{ item.context }} {{ item.application }} {{ item.namespace | default('-') }}"
+      loop: "{{ all_app_plans }}"
+      loop_control:
+        label: "{{ item.source_file }}"
+
+    - name: "Sonucu yayinla"
+      ansible.builtin.set_stats:
+        data:
+          nginx_migration_result:
+            overall_status: >-
+              {{
+                'failed' if (parse_errors | length > 0)
+                else ('partial' if (conflicts | length > 0 or (all_missing | length > 0))
+                else 'success')
+              }}
+            mode: "{{ 'apply' if apply | bool else 'plan' }}"
+            source_host: "{{ src_host }}"
+            package_root: "{{ package_root }}"
+            files: "{{ file_summaries | default([]) }}"
+            app_conf_plan: "{{ all_app_plans }}"
+            main_conf_plan: "{{ all_main_plans }}"
+            missing_packages: "{{ all_missing }}"
+            ocp_extracts: "{{ all_extracts }}"
+            context_conflicts: "{{ conflicts }}"
+            parse_errors: "{{ parse_errors }}"
+        per_host: false

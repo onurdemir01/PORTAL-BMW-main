@@ -1,0 +1,29 @@
+{#
+  nginx_config_migration.yml tarafindan kullanilir.
+
+  Kaynak sunucudan gelen "iskelet" (location bloklari cikarilmis, listen IP'si
+  __NGINX_LISTEN_IP__ ile maskelenmis orijinal dosya) uzerine:
+    - listen satirlarindaki IP  -> hedef sunucunun IP'si
+    - __NGINX_LOCATIONS_<n>__   -> o server blogunun include'lu location bloklari
+  yazilarak yeni sunucunun konfigurasyonu uretilir. Iskelette dokunulmayan her sey
+  (ssl_certificate, server_name, log satirlari, proxy_pass'i olmayan location'lar)
+  orijinal dosyadaki haliyle korunur.
+
+  Beklenen degiskenler: mig_file, mig_listen_ip, mig_app_conf_dir
+#}
+{% set body = (mig_file.skeleton_b64 | b64decode) | replace('__NGINX_LISTEN_IP__', mig_listen_ip) %}
+{% for line in body.rstrip('\n').split('\n') %}
+{%   if line is match('^__NGINX_LOCATIONS_[0-9]+__$') %}
+{#   Grup referansi ('\1') yerine rakam disi karakterleri atiyoruz: Jinja string
+     literal'inda '\1' Python octal escape'i olarak chr(1)'e cozulur. #}
+{%     set srv = line | regex_replace('[^0-9]', '') | int %}
+{%     for loc in mig_file.locations if loc.server == srv %}
+  location {{ (loc.modifier ~ ' ') if loc.modifier else '' }}{{ loc.path }} {
+       include {{ mig_app_conf_dir }}/{{ mig_file.prefix }}-{{ loc.application }}.conf;
+  }
+
+{%     endfor %}
+{%   else %}
+{{ line }}
+{%   endif %}
+{% endfor %}
