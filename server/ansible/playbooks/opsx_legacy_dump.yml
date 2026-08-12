@@ -149,7 +149,12 @@
         BASENAME="{{ (application | default('app') | regex_replace('[^A-Za-z0-9_-]', '_')) }}_{{ inventory_hostname }}_${PID}_$(date +%Y%m%d%H%M%S)"
         if [ "$DUMP_TYPE" = "heapdump" ]; then
           FILE="${BASENAME}.hprof"
-          "${JDK_BIN}/jmap" -dump:format=b,file="${LOCAL_DIR}/${FILE}" "$PID"
+          # jmap KENDI ilerleme mesajlarini ("Dumping heap to ... Heap dump file created")
+          # standart cikisa basar — bastirilmazsa gorev ciktisina karisip asagidaki
+          # "OK|dosya" satirini bozardi (jstack farkli: onun ciktisi zaten dosyaya
+          # yonlendiriliyor, gorev ciktisina hic karismiyor). Gercek hata (2026-08-12):
+          # heap dump BASARIYLA aliniyordu ama bu yuzden "basarisiz" raporlaniyordu.
+          "${JDK_BIN}/jmap" -dump:format=b,file="${LOCAL_DIR}/${FILE}" "$PID" >/dev/null
         else
           FILE="${BASENAME}-thread.txt"
           "${JDK_BIN}/jstack" "$PID" > "${LOCAL_DIR}/${FILE}"
@@ -163,6 +168,8 @@
           echo "Dump dosyası oluşturulamadı veya boş: $FILE" >&2
           exit 1
         fi
+        # SON SATIR olarak basilir — asagidaki gorevler her ihtimale karsi ciktinin
+        # SON satirini okur (jmap ya da jstack beklenmedik ek cikti basarsa bile savunma).
         echo "OK|${FILE}"
       args:
         executable: /bin/bash
@@ -180,8 +187,11 @@
     - name: "Dump dosyasını paylaşılan staging dizinine kopyala"
       ansible.builtin.shell: |
         set -eu
-        FILE="{{ (dump_item.stdout | trim).split('|')[1] }}"
+        FILE="{{ (dump_item.stdout | trim).split('\n')[-1].split('|')[1] }}"
         cp "{{ local_dir_for_item }}/${FILE}" "{{ staging_dir }}/${FILE}"
+        # Portal sunucusu (Node.js, "was" DEGIL) bu dosyayi indirme aninda okuyabilmeli —
+        # kaynak "was" sahipliginde olsa da cp SONRASI kopya artik normal kullanicinin.
+        chmod 644 "{{ staging_dir }}/${FILE}" 2>/dev/null || true
         SIZE="$(stat -c %s "{{ staging_dir }}/${FILE}" 2>/dev/null || stat -f %z "{{ staging_dir }}/${FILE}")"
         rm -f "{{ local_dir_for_item }}/${FILE}"
         echo "OK|${FILE}|${SIZE}"
@@ -195,7 +205,7 @@
         label: "{{ item.item.pid }}"
       when: >-
         (my_pids | length) > 0 and (item.rc | default(1)) == 0
-        and (item.stdout | default('') | trim).startswith('OK|')
+        and (item.stdout | default('') | trim).split('\n')[-1].startswith('OK|')
       register: staged_copy_results
       changed_when: true
       failed_when: false
@@ -209,11 +219,11 @@
           {{
             (host_dump_results | default([])) + [
               ({'host': inventory_hostname | upper, 'pid': dump_item.item.pid, 'ok': true,
-                'staged_path': (staging_dir ~ '/' ~ (copy_item.stdout | trim).split('|')[1]),
-                'filename': (copy_item.stdout | trim).split('|')[1],
-                'size_bytes': ((copy_item.stdout | trim).split('|')[2] | int)}
+                'staged_path': (staging_dir ~ '/' ~ copy_last_line.split('|')[1]),
+                'filename': copy_last_line.split('|')[1],
+                'size_bytes': (copy_last_line.split('|')[2] | int)}
                if ((dump_item.rc | default(1)) == 0 and (copy_item.rc | default(1)) == 0
-                   and (copy_item.stdout | default('') | trim).startswith('OK|'))
+                   and copy_last_line.startswith('OK|'))
                else
                {'host': inventory_hostname | upper, 'pid': dump_item.item.pid, 'ok': false,
                 'error': ((dump_item.stderr | default('') | trim)
@@ -224,6 +234,7 @@
       vars:
         dump_item: "{{ pid_dump_results.results[idx] }}"
         copy_item: "{{ staged_copy_results.results[idx] }}"
+        copy_last_line: "{{ (copy_item.stdout | default('') | trim).split('\n')[-1] }}"
       loop: "{{ range(0, pid_dump_results.results | default([]) | length) | list }}"
       loop_control:
         loop_var: idx
