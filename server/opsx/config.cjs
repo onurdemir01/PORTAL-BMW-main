@@ -23,7 +23,7 @@ const BLOB_NAME = 'opsx:params';
 //   Legacy    -> extra_vars: { application, operation };  sunucu listesi AWX'in `limit` alaninda
 //
 //   Openshift -> OpsX'in KENDI /api/opsx/run'i artik SADECE envKey/ocClusterKey/ocInputKey
-//   kullanir: extra_vars: { env, oc_cluster, oc_input }; limit YOK, terminal_host YOK.
+//   kullanir: extra_vars: { oc_environment, oc_cluster, oc_input }; limit YOK, terminal_host YOK.
 //   oc_input coklu namespace/uygulama ciftini "ns1,app1;ns2,app2" formatinda tasir — gercek
 //   bmw_openshift_jobs/application_rollout.yaml production playbook'unun BEKLEDIGI AYNI
 //   sartname (playbook hedefi kendisi `hosts: "{{ oc_cluster }}_{{ env }}"` ile cozer).
@@ -42,7 +42,12 @@ const DEFAULTS = Object.freeze({
   },
   openshift: {
     // OpsX'in KENDI /api/opsx/run yolunun kullandigi alanlar.
-    envKey: 'env',
+    // envKey='oc_environment': gercek bmw_portal/opsx_openshift_application_rollout
+    // playbook'u SADECE oc_environment okur, `env` hic kullanmaz (2026-08-12 dogrulandi —
+    // playbook genelinde `{{ env }}` referansi YOK). Telnet'in ayri ocp-target.cjs'i
+    // KENDI sabit 'env' anahtarini kullanir (farkli playbook: ocp_telnet_control.yml),
+    // buradan ETKILENMEZ.
+    envKey: 'oc_environment',
     ocClusterKey: 'oc_cluster',
     ocInputKey: 'oc_input',
     // Asagidakiler artik SADECE Telnet icin (bkz. dosya basi notu).

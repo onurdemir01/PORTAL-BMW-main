@@ -467,9 +467,9 @@ function initOpsX(app) {
   //
   // Openshift — `limit` YOK; her sey extra_vars icinde, gercek bmw_openshift_jobs
   // playbook'larinin (application_rollout.yaml) bekledigi AYNI govde:
-  //   { "extra_vars": { "env": "prod", "oc_cluster": "ark",
+  //   { "extra_vars": { "oc_environment": "prod", "oc_cluster": "ark",
   //                     "oc_input": "ns1,app1;ns2,app2" } }
-  //   terminal_host YOK — playbook `hosts: "{{ oc_cluster }}_{{ env }}"` ile hedefi
+  //   terminal_host YOK — playbook `hosts: "{{ oc_cluster }}_{{ oc_environment }}"` ile hedefi
   //   kendisi cozer. oc_input, tek POST'ta birden fazla namespace/uygulama ciftini
   //   ";" ile tasir (onyuzde birikimli eklenir — bkz. OcpTargetStep.tsx).
   //   CLUSTER ALT KUMESI (AWX limit ile) DENENDI VE KALDIRILDI (2026-08-12). Secilen gercek
