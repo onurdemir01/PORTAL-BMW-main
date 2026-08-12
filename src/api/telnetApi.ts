@@ -28,24 +28,6 @@ export interface TelnetRunResult {
   message?: string;
 }
 
-// Openshift: cluster/bastion seçimi YOK, HER namespace için AYRI bir AWX job'i
-// tetiklenir — bu yüzden Legacy'nin tek-nesne TelnetRunResult'ından FARKLI, bir
-// sonuç listesi döner (bkz. server/telnet/index.cjs POST /api/telnet/run yorumu).
-export interface TelnetOcpJobResult {
-  namespace: string;
-  jobId: number | null;
-  status: string | null;
-  awxServerId: number;
-  templateId: number;
-  sentBody: { extra_vars: Record<string, unknown> };
-  message?: string; // bu namespace için launch başarısız olduysa
-}
-
-export interface TelnetOcpRunResult {
-  ok: boolean;
-  results: TelnetOcpJobResult[];
-}
-
 export interface TelnetJobStatus {
   ok: boolean;
   status: string;
@@ -71,8 +53,9 @@ export const telnetApi = {
     fetch(`${BASE}/ocp/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}`).then(safeJson),
 
   // Testi tetikler. AWX job template'i tanımlı değilse sunucu 501 + açıklayıcı mesaj döner.
-  // Legacy: TelnetRunResult (tek job) döner. Openshift: TelnetOcpRunResult (namespace
-  // başına bir job) döner — çağıran "results" alanının varlığıyla ayırt eder.
+  // Legacy ve Openshift AYNI şekli döner (TelnetRunResult, tek job) — Openshift'te birden
+  // fazla namespace seçilse bile TEK job tetiklenir, playbook (cluster x namespace) çapraz
+  // çarpımını kendi içinde işler (bkz. server/telnet/index.cjs dosya başı notu).
   run: (body: {
     platform: TelnetPlatform;
     // Legacy alanları
@@ -85,7 +68,7 @@ export const telnetApi = {
     // Ortak
     ip: string;
     port: string;
-  }): Promise<TelnetRunResult | TelnetOcpRunResult> =>
+  }): Promise<TelnetRunResult> =>
     fetch(`${BASE}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

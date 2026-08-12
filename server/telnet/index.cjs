@@ -10,9 +10,11 @@
 // olarak gider — portal `terminal_hosts[]`/`ocp_clusters[]` gonderir (bkz. asagidaki not).
 // Onceki not (artik gecerli DEGIL): cluster secimi/terminal_host/bastion cozumleme YOK (eski bastion-bazli
 // akis kullanici karariyla kaldirildi) — sadece ortam + tenant/is birimi + namespace(ler).
-// HER namespace icin AYRI bir AWX job'i tetiklenir, govde duz: { env, cluster, namespace,
-// ip, port } (bkz. POST /api/telnet/run yorumu). Legacy'den YAPISAL OLARAK farkli bir
-// yanit sekli doner (results: [...]) — TEK job degil, namespace basina bir job.
+//
+// COKLU NAMESPACE TEK JOBDA (2026-08-12, ikinci karar): eskiden HER namespace icin AYRI
+// bir AWX job'i tetikleniyordu (results: [...] donuyordu). Playbook artik (cluster x
+// namespace) capraz carpimini TEK jobda isliyor (bkz. ocp_telnet_control.yml `product()`
+// notu) - portal da TEK job tetikler, Legacy ile AYNI TelnetRunResult seklini doner.
 //
 // HANGI AWX SUNUCUSU / TEMPLATE'I: Admin > Playbook Kayitlari ekranindan yonetilir
 // (ansible_playbook_registry satirlari: telnet_legacy_operation, telnet_openshift_operation)
@@ -159,13 +161,13 @@ function initTelnet(app) {
   //   Tek istek = tek AWX job'i, yanit tek nesnedir (jobId/status/...).
   //
   // Openshift — cluster secimi/terminal_host/bastion cozumleme YOK (kullanici karari,
-  // eski bastion-bazli akis kaldirildi): duz bir govde, HER namespace icin AYRI bir
-  // AWX job'i tetiklenir (kullanici karari — bkz. AskUserQuestion):
-  //   { "namespaces": ["ns1", "ns2"], "extra_vars sablonu": { "env": "test",
-  //     "cluster": "ark", "namespace": "<her job icin kendi degeri>", "ip": "...", "port": "..." } }
-  //   Yanit `{ ok, results: [{ namespace, jobId, status, awxServerId, templateId,
-  //   sentBody, message? }] }` sekli — Legacy'nin tek-nesne yanitindan FARKLI (bkz.
-  //   src/api/telnetApi.ts TelnetOcpRunResult).
+  // eski bastion-bazli akis kaldirildi): TEK AWX job'i, TUM namespace'ler extra_vars'ta:
+  //   { "namespaces": ["ns1", "ns2"], "extra_vars": { "env": "test", "cluster": "ark",
+  //     "namespaces": ["ns1","ns2"], "ip": "...", "port": "..." } }
+  //   Yanit Legacy ile AYNI sekil: `{ ok, jobId, status, awxServerId, templateId, sentBody }`
+  //   (bkz. src/api/telnetApi.ts TelnetRunResult) — eskiden namespace basina ayri job/sonuc
+  //   dizisi donuyordu, playbook artik (cluster x namespace) capraz carpimini TEK jobda
+  //   islediginden buna gerek kalmadi.
   //
   // Not: `application` yalniz sunucu-tarafi anti-TOCTOU dogrulamasi icindir, extra_vars'a
   // KONMAZ (kullanici sartnamesi).
@@ -268,76 +270,63 @@ function initTelnet(app) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
 
+      // GERIYE UYUM ALIASI (2026-08-12, uretim): playbook telnet hedefini
+      // `{{ target_host }}` / `{{ target_port }}` adlariyla okuyor, portal ise `ip`/`port`
+      // gonderiyordu — job 3218662'de UC host da "'target_host' is undefined" ile dustu ve
+      // telnet ciktisi "VARIABLE IS NOT DEFINED!" oldu. Iki adi da gonderiyoruz: playbook
+      // hangi surumde olursa olsun calisir, AWX'e kopyalama beklenmez. (Ayni desen LogX'te
+      // `oc_namespace_input` + `namespace` icin de kullaniliyor.)
+      const extraVars = {
+        // Jump server + cluster baglanti kayitlari (terminal_hosts[], ocp_clusters[]).
+        ...fanout,
+        env: envKey,
+        cluster: tenantKey,
+        // COKLU NAMESPACE TEK JOBDA: playbook (cluster x namespace) capraz carpimini
+        // kendisi kuruyor (bkz. ocp_telnet_control.yml `product()` notu).
+        namespaces: cleanNamespaces,
+        ip: ipTrim,
+        port: portTrim,
+        target_host: ipTrim,
+        target_port: portTrim,
+      };
+
       const runner = require('../ansible/runner.cjs');
-      const results = [];
-      for (const ns of cleanNamespaces) {
-        // GERIYE UYUM ALIASI (2026-08-12, uretim): playbook telnet hedefini
-        // `{{ target_host }}` / `{{ target_port }}` adlariyla okuyor, portal ise `ip`/`port`
-        // gonderiyordu — job 3218662'de UC host da "'target_host' is undefined" ile dustu ve
-        // telnet ciktisi "VARIABLE IS NOT DEFINED!" oldu. Iki adi da gonderiyoruz: playbook
-        // hangi surumde olursa olsun calisir, AWX'e kopyalama beklenmez. (Ayni desen LogX'te
-        // `oc_namespace_input` + `namespace` icin de kullaniliyor.)
-        const extraVars = {
-          // Jump server + cluster baglanti kayitlari (terminal_hosts[], ocp_clusters[]).
-          ...fanout,
-          // GERIYE UYUM: eski playbook surumu grubu `{{ cluster }}_{{ env }}` ile cozuyor ve
-          // hedefi `ip`/`port` yerine `target_host`/`target_port` adlariyla okuyor. Iki
-          // sozlesmeyi birden tasiyoruz ki playbook hangi surumde olursa olsun calissin
-          // (ayni desen LogX'te `oc_namespace_input` + `namespace` icin de var).
-          env: envKey,
-          cluster: tenantKey,
-          namespace: ns,
-          ip: ipTrim,
-          port: portTrim,
-          target_host: ipTrim,
-          target_port: portTrim,
-        };
+      try {
+        const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
+
         try {
-          const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
-
-          try {
-            const db = require('../db/index.cjs');
-            await db.query(
-              `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-              [
-                req.session?.user?.username || 'unknown',
-                serverId, templateId, `Telnet: openshift (${ns})`,
-                result?.jobId, result?.status || 'pending',
-                JSON.stringify({ platform: 'openshift', ...extraVars }),
-              ]
-            );
-          } catch (e) {
-            console.warn('[Telnet] Gecmis kaydedilemedi:', e.message);
-          }
-
-          try {
-            require('../audit/index.cjs').auditPortal(req, 'telnet_operation', {
-              detail: JSON.stringify({ platform: 'openshift', extraVars, jobId: result?.jobId ?? null }),
-            });
-          } catch { /* denetim kaydi best-effort */ }
-
-          console.log(`[Telnet] ${req.session?.user?.username} -> openshift env=${envKey} cluster=${tenantKey} namespace=${ns} ip=${ipTrim} port=${portTrim} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
-          results.push({
-            namespace: ns,
-            jobId: result?.jobId ?? null,
-            status: result?.status ?? null,
-            awxServerId: serverId,
-            templateId,
-            sentBody: { extra_vars: extraVars },
-          });
-        } catch (err) {
-          results.push({
-            namespace: ns,
-            jobId: null,
-            status: null,
-            awxServerId: serverId,
-            templateId,
-            sentBody: { extra_vars: extraVars },
-            message: err.message,
-          });
+          const db = require('../db/index.cjs');
+          await db.query(
+            `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              req.session?.user?.username || 'unknown',
+              serverId, templateId, `Telnet: openshift (${cleanNamespaces.join(',')})`,
+              result?.jobId, result?.status || 'pending',
+              JSON.stringify({ platform: 'openshift', ...extraVars }),
+            ]
+          );
+        } catch (e) {
+          console.warn('[Telnet] Gecmis kaydedilemedi:', e.message);
         }
+
+        try {
+          require('../audit/index.cjs').auditPortal(req, 'telnet_operation', {
+            detail: JSON.stringify({ platform: 'openshift', extraVars, jobId: result?.jobId ?? null }),
+          });
+        } catch { /* denetim kaydi best-effort */ }
+
+        console.log(`[Telnet] ${req.session?.user?.username} -> openshift env=${envKey} cluster=${tenantKey} namespaces=${cleanNamespaces.join(',')} ip=${ipTrim} port=${portTrim} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+        return res.json({
+          ok: true,
+          jobId: result?.jobId ?? null,
+          status: result?.status ?? null,
+          awxServerId: serverId,
+          templateId,
+          sentBody: { extra_vars: extraVars },
+        });
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
-      return res.json({ ok: true, results });
     }
 
     // ── Legacy ──────────────────────────────────────────────────────────────────────
