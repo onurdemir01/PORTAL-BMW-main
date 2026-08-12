@@ -17,6 +17,15 @@ function jvmKey(host: string, pid: string): string {
   return `${host}::${pid}`;
 }
 
+// Playbook her zaman '7'/'8' etiketlemeli (bkz. opsx_legacy_jvm_discover.yml) — ama AWX'teki
+// job template hâlâ ESKİ (jbossMajor'sız) sürümü çalıştırıyorsa bu alan boş/eksik gelebilir.
+// Böyle bir JVM SEÇİLEMEZ hale getirilir (dump playbook'u hangi SABİT JDK yolunu kullanacağını
+// bilemez) — backend'in kriptik "Geçersiz JBoss sürümü: undefined" hatasına düşmek yerine
+// sorun burada, net bir mesajla gösterilir.
+function isKnownMajor(j: OpsxJvm): boolean {
+  return j.jbossMajor === "7" || j.jbossMajor === "8";
+}
+
 const LegacyJvmSelectStep: React.FC<{
   application: string;
   hosts: string[];
@@ -57,7 +66,7 @@ const LegacyJvmSelectStep: React.FC<{
           }
           const preselected = new Set<string>();
           for (const list of byHost.values()) {
-            if (list.length === 1) preselected.add(jvmKey(list[0].host, list[0].pid));
+            if (list.length === 1 && isKnownMajor(list[0])) preselected.add(jvmKey(list[0].host, list[0].pid));
           }
           setSelected(preselected);
         } else {
@@ -112,7 +121,7 @@ const LegacyJvmSelectStep: React.FC<{
   function submit() {
     const pidMap: Record<string, OpsxPidSelection[]> = {};
     for (const j of jvms) {
-      if (!selected.has(jvmKey(j.host, j.pid))) continue;
+      if (!selected.has(jvmKey(j.host, j.pid)) || !isKnownMajor(j)) continue;
       (pidMap[j.host] ||= []).push({ pid: j.pid, jbossMajor: j.jbossMajor });
     }
     onSubmit({ pidMap });
@@ -170,6 +179,17 @@ const LegacyJvmSelectStep: React.FC<{
         </p>
       </div>
 
+      {jvms.some((j) => !isKnownMajor(j)) && (
+        <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-xs text-red-700">
+          <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>
+            Bazı JVM'ler için sürüm belirlenemedi, bunlardan dump alınamaz. Bu genelde AWX'teki
+            "OpsX — Legacy JVM Keşfi" job template'inin henüz güncel playbook'u çalıştırmadığını
+            gösterir — yöneticinize bildirin.
+          </span>
+        </div>
+      )}
+
       {hosts.filter((h) => !grouped[h.toUpperCase()]?.length).length > 0 && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
@@ -185,25 +205,33 @@ const LegacyJvmSelectStep: React.FC<{
           <div key={host}>
             <label className="text-xs font-medium text-[var(--text-secondary)]">{host}</label>
             <div className="mt-1 space-y-1 border border-[var(--border)] rounded-xl p-1.5">
-              {grouped[host].map((j) => (
-                <label
-                  key={j.pid}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(jvmKey(j.host, j.pid))}
-                    onChange={() => toggle(j.host, j.pid)}
-                    disabled={busy}
-                    className="rounded"
-                  />
-                  <span className="text-xs text-[var(--text-muted)] font-mono flex-shrink-0">PID {j.pid}</span>
-                  <span className="flex-1 text-sm text-[var(--text-primary)] font-mono truncate" title={j.cmd}>{j.cmd}</span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-gray-50 text-gray-500 border-gray-200 flex-shrink-0">
-                    JBoss {j.jbossMajor}
-                  </span>
-                </label>
-              ))}
+              {grouped[host].map((j) => {
+                const known = isKnownMajor(j);
+                return (
+                  <label
+                    key={j.pid}
+                    title={known ? undefined : "Bu JVM için JBoss sürümü belirlenemedi (AWX'teki job template güncel olmayabilir) — dump alınamaz."}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] ${known ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.has(jvmKey(j.host, j.pid))}
+                      onChange={() => toggle(j.host, j.pid)}
+                      disabled={busy || !known}
+                      className="rounded"
+                    />
+                    <span className="text-xs text-[var(--text-muted)] font-mono flex-shrink-0">PID {j.pid}</span>
+                    <span className="flex-1 text-sm text-[var(--text-primary)] font-mono truncate" title={j.cmd}>{j.cmd}</span>
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${
+                        known ? "bg-gray-50 text-gray-500 border-gray-200" : "bg-red-50 text-red-700 border-red-100"
+                      }`}
+                    >
+                      {known ? `JBoss ${j.jbossMajor}` : "Sürüm belirlenemedi"}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
         ))}
