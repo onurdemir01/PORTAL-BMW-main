@@ -13,6 +13,7 @@ import {
   opsxApi,
   type OpsxPlatform, type OpsxOperation, type OpsxOcpOperation, type OpsxOcpPair,
   type OpsxRunResult, type OpsxDumpType, type OpsxDumpLaunchResult, type OpsxDumpStatus,
+  type OpsxPidSelection,
 } from "@/api/opsxApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
@@ -199,7 +200,7 @@ const OpsXWizardPage: React.FC = () => {
   // polling'i yukarıda). pidMap, bir önceki "legacy_jvm" adımında kullanıcının seçtiği
   // {HOST: [pid,...]} eşlemesi — aynı uygulamaya ait bir host'ta birden fazla JVM varsa
   // birden fazla PID seçilmiş olabilir.
-  async function runLegacyDump(dumpType: OpsxDumpType, pidMap: Record<string, string[]>) {
+  async function runLegacyDump(dumpType: OpsxDumpType, pidMap: Record<string, OpsxPidSelection[]>) {
     if (busy) return;
     setBusy(true);
     setError(null);

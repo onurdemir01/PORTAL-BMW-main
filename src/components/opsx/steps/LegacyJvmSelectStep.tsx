@@ -9,7 +9,7 @@
 // host aynı anda söz konusu olduğu için gruplama gerekli (pod keşfinde tek namespace vardı).
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import { opsxApi, type OpsxJvm } from "@/api/opsxApi";
+import { opsxApi, type OpsxJvm, type OpsxPidSelection } from "@/api/opsxApi";
 
 const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
 
@@ -21,7 +21,7 @@ const LegacyJvmSelectStep: React.FC<{
   application: string;
   hosts: string[];
   busy?: boolean;
-  onSubmit: (v: { pidMap: Record<string, string[]> }) => void;
+  onSubmit: (v: { pidMap: Record<string, OpsxPidSelection[]> }) => void;
 }> = ({ application, hosts, busy, onSubmit }) => {
   const [jvms, setJvms] = useState<OpsxJvm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,10 +110,10 @@ const LegacyJvmSelectStep: React.FC<{
   }
 
   function submit() {
-    const pidMap: Record<string, string[]> = {};
-    for (const k of selected) {
-      const [host, pid] = k.split("::");
-      (pidMap[host] ||= []).push(pid);
+    const pidMap: Record<string, OpsxPidSelection[]> = {};
+    for (const j of jvms) {
+      if (!selected.has(jvmKey(j.host, j.pid))) continue;
+      (pidMap[j.host] ||= []).push({ pid: j.pid, jbossMajor: j.jbossMajor });
     }
     onSubmit({ pidMap });
   }
@@ -199,6 +199,9 @@ const LegacyJvmSelectStep: React.FC<{
                   />
                   <span className="text-xs text-[var(--text-muted)] font-mono flex-shrink-0">PID {j.pid}</span>
                   <span className="flex-1 text-sm text-[var(--text-primary)] font-mono truncate" title={j.cmd}>{j.cmd}</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-gray-50 text-gray-500 border-gray-200 flex-shrink-0">
+                    JBoss {j.jbossMajor}
+                  </span>
                 </label>
               ))}
             </div>

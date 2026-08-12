@@ -596,13 +596,26 @@ function initOpsX(app) {
   // tablolu mekanizmasiyla (server/opsx/downloads.cjs).
   const DUMP_TYPES = new Set(['threaddump', 'heapdump']);
 
+  // JBoss majorune gore izin verilen kurulum yolu (opsx_legacy_jvm_discover.yml'de
+  // SABIT olarak tanimli /usr/jboss/ (7) ve /usr/jboss8/ (8) ile eslesir — kullanicinin
+  // verdigi GERCEK komutlardan). "all" (karisik 7/8 secimi) ya da bilinmeyen bir surumde
+  // HER IKISI de kabul edilir; keskin bir major biliniyorsa SADECE o kabul edilir —
+  // aksi halde Jboss8 secilse bile ayni uygulamanin Jboss7 JVM'i listeye sizardi
+  // (bildirilen hata: "Jboss8 secmeme ragmen Jboss7 JVM'inin PID'sini de getirdi").
+  function jbossMajorsFor(jbossVersion) {
+    if (jbossVersion === 'jboss7') return ['7'];
+    if (jbossVersion === 'jboss8') return ['8'];
+    return ['7', '8'];
+  }
+
   // ── Legacy JVM KESFI ──────────────────────────────────────────────────────────
   // Ayni uygulamaya ait BIRDEN FAZLA JVM ayni host'ta calisiyor olabilir — eskiden dump
   // playbook'u PID'i korlemesine (`pgrep -f 'jboss|wildfly|eap' | head -1`) buluyordu,
   // uygulama adini hic kullanmiyordu ve boyle bir durumda sessizce SADECE ILKINI aliyordu.
   // Artik OpenShift pod kesfiyle AYNI desen: sihirbaz secili host'larda ANLIK bir AWX job'i
-  // (opsx_legacy_jvm_discover.yml) tetikleyip application adina calisan JVM'leri (PID +
-  // komut satiri) listeler, kullanici bir/birden fazla (host,pid) cifti secer.
+  // (opsx_legacy_jvm_discover.yml) tetikleyip application adina VE secilen JBoss majorune
+  // ait kurulum yolunda calisan JVM'leri (PID + komut satiri) listeler, kullanici bir/birden
+  // fazla (host,pid) cifti secer.
   //
   // POST /api/opsx/legacy/jvm/discover — { application, hosts } → { jobId, awxServerId }
   app.post('/api/opsx/legacy/jvm/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
@@ -617,17 +630,21 @@ function initOpsX(app) {
       });
     }
 
-    // Anti-TOCTOU: host'ların gercekten bu uygulamaya ait oldugu MEVCUT resolveLegacyTargets
-    // ile dogrulanir — dump launch'inin zaten kullandigi AYNI kapi.
-    let requested;
+    // Anti-TOCTOU: host'ların gercekten bu uygulamaya ait oldugu VE ortak JBoss majorunun
+    // (varsa) ne oldugu MEVCUT resolveLegacyTargets ile dogrulanir/turetilir — dump
+    // launch'inin zaten kullandigi AYNI kapi, ayni turetme.
+    let requested, jbossVersion;
     try {
-      ({ requested } = await resolveLegacyTargets(application, hosts));
+      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts));
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
 
     const limitValue = requested.join(',');
-    const extraVars = { application: String(application).trim() };
+    const extraVars = {
+      application: String(application).trim(),
+      jboss_majors: jbossMajorsFor(jbossVersion),
+    };
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -729,26 +746,39 @@ function initOpsX(app) {
     }
 
     // pid_map anti-TOCTOU: her anahtar yukarida dogrulanan `requested` host kumesinin bir
-    // uyesi OLMALI (host secimiyle PID secimi tutarsiz olamaz), her PID kucuk bir pozitif
-    // tamsayi olmali (playbook'ta shell'e enjekte edildigi icin — opsx_openshift_dump.yaml'daki
-    // `pods` adi dogrulamasiyla AYNI gerekce).
+    // uyesi OLMALI (host secimiyle PID secimi tutarsiz olamaz). Her oge {pid, jbossMajor}
+    // — pid kucuk bir pozitif tamsayi olmali (playbook'ta shell'e enjekte edildigi icin —
+    // opsx_openshift_dump.yaml'daki `pods` adi dogrulamasiyla AYNI gerekce), jbossMajor
+    // SADECE '7' ya da '8' olabilir (playbook'ta HANGI SABIT JDK yolunun kullanilacagini
+    // secer — /usr/jboss/ vs /usr/jboss8/, kullanicinin verdigi GERCEK komutlar).
     if (!pidMap || typeof pidMap !== 'object' || Array.isArray(pidMap) || Object.keys(pidMap).length === 0) {
       return res.status(400).json({ ok: false, message: 'En az bir JVM (host + PID) seçilmeli.' });
     }
     const allowedHosts = new Set(requested);
     const cleanPidMap = {};
-    for (const [host, pids] of Object.entries(pidMap)) {
+    for (const [host, items] of Object.entries(pidMap)) {
       const h = String(host || '').trim().toUpperCase();
       if (!allowedHosts.has(h)) {
         return res.status(400).json({ ok: false, message: `Bu host seçilen sunucular arasında değil: ${host}` });
       }
-      if (!Array.isArray(pids) || pids.length === 0) continue;
-      const cleanPids = [...new Set(pids.map((p) => String(p || '').trim()).filter(Boolean))];
-      const badPid = cleanPids.find((p) => !/^\d{1,10}$/.test(p));
-      if (badPid) {
-        return res.status(400).json({ ok: false, message: `Geçersiz PID: ${badPid}` });
+      if (!Array.isArray(items) || items.length === 0) continue;
+      const seen = new Set();
+      const cleanItems = [];
+      for (const it of items) {
+        const pid = String(it?.pid || '').trim();
+        const jbossMajor = String(it?.jbossMajor || '').trim();
+        if (!/^\d{1,10}$/.test(pid)) {
+          return res.status(400).json({ ok: false, message: `Geçersiz PID: ${it?.pid}` });
+        }
+        if (jbossMajor !== '7' && jbossMajor !== '8') {
+          return res.status(400).json({ ok: false, message: `Geçersiz JBoss sürümü: ${it?.jbossMajor}` });
+        }
+        const dedupeKey = `${pid}:${jbossMajor}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        cleanItems.push({ pid, jbossMajor });
       }
-      if (cleanPids.length) cleanPidMap[h] = cleanPids;
+      if (cleanItems.length) cleanPidMap[h] = cleanItems;
     }
     if (Object.keys(cleanPidMap).length === 0) {
       return res.status(400).json({ ok: false, message: 'En az bir JVM (host + PID) seçilmeli.' });

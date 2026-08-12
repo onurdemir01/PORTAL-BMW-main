@@ -1,6 +1,7 @@
 ---
 # server/ansible/playbooks/opsx_legacy_jvm_discover.yml — OpsX Legacy: secilen host'larda
-# `application` adina ait CALISAN JVM'leri (PID + komut satiri) listeler.
+# `application` adina ait VE secilen JBoss majorune ait kurulum yolunda CALISAN JVM'leri
+# (PID + komut satiri) listeler.
 #
 # NEDEN VAR: opsx_legacy_dump.yml eskiden PID'i korlemesine buluyordu
 # (`pgrep -f 'jboss\|wildfly\|eap' | head -1`) — uygulama adini hic kullanmiyordu ve bir
@@ -9,14 +10,26 @@
 # AYNI deseni — bkz. opsx_openshift_pods.yaml), kullanici hangi JVM(ler)den dump alinacagini
 # seciyor, secim opsx_legacy_dump.yml'e `pid_map` olarak geri gonderiliyor.
 #
+# JBOSS MAJORUNE GORE FILTRELEME: sadece uygulama adiyla grep yapmak yetersizdi — Jboss8
+# secilse bile ayni uygulamanin (varsa) Jboss7 JVM'i de listeye siziyordu (bildirilen hata).
+# Bu yuzden komut satiri, JBoss majorune GORE SABIT kurulum yoluna gore de filtrelenir:
+#   JBoss7 -> /usr/jboss/      JBoss8 -> /usr/jboss8/
+# (kullanicinin verdigi GERCEK dump komutlarindaki JDK yollariyla AYNI — bkz.
+# opsx_legacy_dump.yml dosya basi notu). Bu ikisi disinda bir yolda calisan proses
+# (bilinmeyen/farkli bir kurulum) SONUCA HIC GIRMEZ — "hangi JVM oldugu belirsizse gosterme"
+# ilkesi (LogX/OpsX'in genel "fail-closed, sessizce yanlis davranma" tutarliligi).
+#
 # Gerekli extra_vars:
-#   application: <uygulama adi>   (grep deseni olarak KULLANILIR — bkz. asagidaki task)
+#   application:  <uygulama adi>         (grep deseni olarak KULLANILIR)
+#   jboss_majors: ["7"] | ["8"] | ["7","8"]   (hangi kurulum yolu/yollarinin kabul
+#                 edilecegi — server/opsx/index.cjs jbossMajorsFor() tarafindan secilen
+#                 JBoss surumunden turetilir; belirsizse/karisiksa IKISI DE kabul edilir)
 # Host listesi bir extra_var DEGIL, restart/dump ile AYNI desen: AWX'in KENDI `limit`
 # alaninda gelir (bu yuzden "hosts: all" kullanilir, gercek daralma AWX tarafindan uygulanir).
 #
 # CIKTI SOZLESMESI (server/opsx/index.cjs extractOpsxJvmResult() ile eslesir):
 #   set_stats: { opsx_jvm_result: { overall_status: "ok", results: [
-#     {host, pid, cmd}, ...   (bir host'ta 0, 1 ya da N eslesme olabilir — hepsi listelenir)
+#     {host, pid, cmd, jbossMajor: "7"|"8"}, ...   (bir host'ta 0, 1 ya da N eslesme olabilir)
 #   ]}}
 
 - name: "OpsX Legacy - JVM Keşfi"
@@ -45,14 +58,26 @@
       failed_when: false
 
     # Her satır "  PID komut satırı..." biçiminde — ilk boşluğa kadar PID, kalanı komut.
-    # ansible.builtin dışında bir filtreye (community.general vb.) bağımlı kalmamak için
-    # saf Jinja/Python string metotlarıyla (split) ayrıştırılır.
-    - name: "Bulunan JVM'leri host için topla"
+    # Komut satırında SABIT JBoss kurulum yolu (/usr/jboss8/ ya da /usr/jboss/) aranır ve
+    # bulunan majöre göre etiketlenir; jboss_majors'ta İZİN VERİLMEYEN ya da HİÇBİR bilinen
+    # yolda olmayan satırlar (jmajor boş) sonuca hiç girmez — bkz. dosya başı notu.
+    - name: "Bulunan JVM'leri host için topla (yalnız izin verilen JBoss kurulum yollarından)"
       ansible.builtin.set_fact:
-        host_jvm_list: "{{ host_jvm_list | default([]) + [{'host': inventory_hostname | upper, 'pid': item.split()[0], 'cmd': (item.split(' ', 1)[1] | default('') | trim | truncate(160, True))}] }}"
+        host_jvm_list: >-
+          {{
+            (host_jvm_list | default([])) + [{
+              'host': inventory_hostname | upper,
+              'pid': item.split()[0],
+              'cmd': (item.split(' ', 1)[1] | default('') | trim | truncate(160, True)),
+              'jbossMajor': jmajor
+            }]
+          }}
+      vars:
+        jmajor: "{{ '8' if '/usr/jboss8/' in item else ('7' if '/usr/jboss/' in item else '') }}"
       loop: "{{ jvm_ps.stdout_lines | default([]) | map('trim') | select('match', '^[0-9]+\\s') | list }}"
       loop_control:
         label: "{{ item.split()[0] }}"
+      when: (jmajor != '') and (jmajor in (jboss_majors | default(['7', '8'])))
 
     - name: "Host'ta hiç JVM bulunamadıysa boş liste ata"
       ansible.builtin.set_fact:

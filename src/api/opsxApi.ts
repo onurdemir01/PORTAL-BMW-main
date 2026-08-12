@@ -139,6 +139,9 @@ export interface OpsxJvm {
   host: string;
   pid: string;
   cmd: string; // kısaltılmış komut satırı — aynı host'taki birden fazla JVM'i ayırt etmek için
+  // "7" | "8" — backend'in komut satırındaki SABİT kurulum yoluna (/usr/jboss/ | /usr/jboss8/)
+  // bakarak belirlediği majör; dump playbook'u JDK yolunu (jmap/jstack) buna göre seçer.
+  jbossMajor: string;
 }
 
 export interface OpsxJvmDiscoveryLaunch {
@@ -154,6 +157,13 @@ export interface OpsxJvmDiscoveryStatus {
   status: string;
   message?: string;
   jvms?: OpsxJvm[];
+}
+
+// dumpLegacy'nin pidMap'inde host başına gönderilen her JVM seçimi — OpsxJvm'in
+// pid+jbossMajor'ının aynısı (cmd/host burada gereksiz, backend zaten host'u anahtardan bilir).
+export interface OpsxPidSelection {
+  pid: string;
+  jbossMajor: string;
 }
 
 export const opsxApi = {
@@ -230,10 +240,11 @@ export const opsxApi = {
 
   // Legacy thread/heap dump başlatır — AYRI bir AWX template'e (opsx_legacy_dump) gider,
   // template tanımlı değilse 501 döner. pidMap: kullanıcının JVM keşfinde seçtiği
-  // {HOST: [pid, ...]} eşlemesi — bir host'ta birden fazla PID seçilmişse o host için
-  // birden fazla dump üretilir.
+  // {HOST: [{pid,jbossMajor}, ...]} eşlemesi — bir host'ta birden fazla JVM seçilmişse o
+  // host için birden fazla dump üretilir; jbossMajor playbook'un hangi SABİT JDK yolunu
+  // (/usr/jboss/ | /usr/jboss8/) kullanacağını belirler.
   dumpLegacy: (
-    application: string, hosts: string[], dumpType: OpsxDumpType, pidMap: Record<string, string[]>,
+    application: string, hosts: string[], dumpType: OpsxDumpType, pidMap: Record<string, OpsxPidSelection[]>,
   ): Promise<OpsxDumpLaunchResult> =>
     fetch(`${BASE}/dump/legacy`, {
       method: "POST",
