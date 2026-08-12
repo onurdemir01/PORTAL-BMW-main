@@ -72,6 +72,7 @@ export type OpsxDumpType = "threaddump" | "heapdump";
 // opsx_get_dump.yaml (ikisi de `oc rsync`/`cp` ile paylaşılan staging dizinine yazar).
 export interface OpsxDumpResultItem {
   host?: string;
+  pid?: string;    // Legacy: dump'ın alındığı JVM (bkz. LegacyJvmSelectStep)
   namespace?: string;
   application?: string;
   pod?: string;   // Openshift: BAŞARISIZ tek pod kaydı
@@ -127,6 +128,32 @@ export interface OpsxPodDiscoveryStatus {
   message?: string;
   namespace?: string;
   pods?: OpsxPod[];
+}
+
+// Legacy dump için: aynı uygulamaya ait bir host'ta BİRDEN FAZLA JVM çalışıyor olabilir —
+// eskiden dump playbook'u PID'i körlemesine (ilk eşleşen JBoss/WildFly/EAP prosesi) alıyordu.
+// Artık OCP pod keşfiyle AYNI desen: anlık bir AWX job'ı (opsx_legacy_jvm_discover.yml)
+// application adına çalışan JVM'leri host başına listeler, kullanıcı bir/birden fazla
+// (host,pid) çifti seçer.
+export interface OpsxJvm {
+  host: string;
+  pid: string;
+  cmd: string; // kısaltılmış komut satırı — aynı host'taki birden fazla JVM'i ayırt etmek için
+}
+
+export interface OpsxJvmDiscoveryLaunch {
+  ok: boolean;
+  jobId: number | null;
+  status: string | null;
+  awxServerId: number;
+  message?: string;
+}
+
+export interface OpsxJvmDiscoveryStatus {
+  ok: boolean;
+  status: string;
+  message?: string;
+  jvms?: OpsxJvm[];
 }
 
 export const opsxApi = {
@@ -188,13 +215,30 @@ export const opsxApi = {
   jobStatus: (serverId: number, jobId: number): Promise<OpsxJobStatus> =>
     fetch(`${BASE}/job-status/${serverId}/${jobId}`).then(safeJson),
 
+  // application adına host başında çalışan JVM'leri listelemek için anlık bir AWX
+  // keşif job'ı tetikler (bkz. OpsxJvm) — OCP pod keşfiyle AYNI desen.
+  discoverLegacyJvms: (application: string, hosts: string[]): Promise<OpsxJvmDiscoveryLaunch> =>
+    fetch(`${BASE}/legacy/jvm/discover`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ application, hosts }),
+    }).then(safeJson),
+
+  // Keşif job'ının durumu — terminal + başarılıysa `jvms` dolu döner.
+  legacyJvmStatus: (awxServerId: number, jobId: number): Promise<OpsxJvmDiscoveryStatus> =>
+    fetch(`${BASE}/legacy/jvm/${awxServerId}/${jobId}/status`).then(safeJson),
+
   // Legacy thread/heap dump başlatır — AYRI bir AWX template'e (opsx_legacy_dump) gider,
-  // template tanımlı değilse 501 döner.
-  dumpLegacy: (application: string, hosts: string[], dumpType: OpsxDumpType): Promise<OpsxDumpLaunchResult> =>
+  // template tanımlı değilse 501 döner. pidMap: kullanıcının JVM keşfinde seçtiği
+  // {HOST: [pid, ...]} eşlemesi — bir host'ta birden fazla PID seçilmişse o host için
+  // birden fazla dump üretilir.
+  dumpLegacy: (
+    application: string, hosts: string[], dumpType: OpsxDumpType, pidMap: Record<string, string[]>,
+  ): Promise<OpsxDumpLaunchResult> =>
     fetch(`${BASE}/dump/legacy`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ application, hosts, dumpType }),
+      body: JSON.stringify({ application, hosts, dumpType, pidMap }),
     }).then(safeJson),
 
   // Namespace'teki pod'ları listelemek için anlık bir AWX keşif job'ı tetikler.

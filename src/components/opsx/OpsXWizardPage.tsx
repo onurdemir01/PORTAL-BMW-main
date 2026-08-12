@@ -24,12 +24,14 @@ import OcpTargetStep from "./steps/OcpTargetStep";
 import OperationStep from "./steps/OperationStep";
 import OcpOperationStep from "./steps/OcpOperationStep";
 import OcpPodSelectStep from "./steps/OcpPodSelectStep";
+import LegacyJvmSelectStep from "./steps/LegacyJvmSelectStep";
 
 type Step =
   | "platform"
   | "legacy_app"
   | "legacy_jboss_version"
   | "legacy_hosts"
+  | "legacy_jvm"
   | "ocp_target"
   | "operation"
   | "ocp_operation"
@@ -41,6 +43,7 @@ const STEP_TITLES: Record<Step, string> = {
   legacy_app: "Uygulama Seçimi",
   legacy_jboss_version: "JBoss Sürümü",
   legacy_hosts: "Sunucu Seçimi",
+  legacy_jvm: "JVM Seçimi",
   ocp_target: "Openshift Hedefi",
   operation: "İşlem Seçimi",
   ocp_operation: "İşlem Seçimi",
@@ -147,6 +150,8 @@ const OpsXWizardPage: React.FC = () => {
         return "legacy_jboss_version";
       case "operation":
         return "legacy_hosts";
+      case "legacy_jvm":
+        return "operation";
       case "ocp_operation":
         return "ocp_target";
       case "ocp_pods":
@@ -191,13 +196,15 @@ const OpsXWizardPage: React.FC = () => {
 
   // threaddump/heapdump AYRI bir AWX template'ine (opsx_legacy_dump) gider — restart'ın
   // /api/opsx/run'ından farklı olarak sonucu bir indirme listesine dönüşür (bkz. dumpStatus
-  // polling'i yukarıda).
-  async function runLegacyDump(dumpType: OpsxDumpType) {
+  // polling'i yukarıda). pidMap, bir önceki "legacy_jvm" adımında kullanıcının seçtiği
+  // {HOST: [pid,...]} eşlemesi — aynı uygulamaya ait bir host'ta birden fazla JVM varsa
+  // birden fazla PID seçilmiş olabilir.
+  async function runLegacyDump(dumpType: OpsxDumpType, pidMap: Record<string, string[]>) {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const r = await opsxApi.dumpLegacy(app, hosts, dumpType);
+      const r = await opsxApi.dumpLegacy(app, hosts, dumpType, pidMap);
       if (!r.ok) {
         setError(r.message || "Dump işi başlatılamadı.");
         return;
@@ -217,10 +224,12 @@ const OpsXWizardPage: React.FC = () => {
 
   // OperationStep'in tek onSelect'i restart/stop/start İLE threaddump/heapdump'ı AYNI
   // listede sunar (bkz. server/opsx/index.cjs ALLOWED_OPERATIONS) — burada hangi backend
-  // yoluna gideceğine ayrılır.
+  // yoluna gideceğine ayrılır. Dump doğrudan tetiklenmez, önce JVM seçim adımına (canlı
+  // AWX keşfi) gidilir — Openshift'in handleOcpOperation'ıyla AYNI yönlendirme deseni.
   function handleLegacyOperation(operation: OpsxOperation) {
     if (DUMP_OPERATIONS.has(operation)) {
-      runLegacyDump(operation as OpsxDumpType);
+      setDumpType(operation as OpsxDumpType);
+      setStep("legacy_jvm");
     } else {
       runLegacy(operation);
     }
@@ -383,6 +392,15 @@ const OpsXWizardPage: React.FC = () => {
           <OperationStep summary={operationSummary} application={app} hosts={hosts} busy={busy} onSelect={handleLegacyOperation} />
         )}
 
+        {step === "legacy_jvm" && dumpType && (
+          <LegacyJvmSelectStep
+            application={app}
+            hosts={hosts}
+            busy={busy}
+            onSubmit={(v) => runLegacyDump(dumpType, v.pidMap)}
+          />
+        )}
+
         {step === "ocp_operation" && (
           <OcpOperationStep env={env} tenant={tenant} pairs={pairs} busy={busy} onSelect={handleOcpOperation} />
         )}
@@ -434,11 +452,12 @@ const OpsXWizardPage: React.FC = () => {
                       key={i}
                       className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]"
                     >
-                      {/* Etiket kaynağa göre değişir: Legacy host bazlı; Openshift'te
+                      {/* Etiket kaynağa göre değişir: Legacy host (+PID) bazlı; Openshift'te
                           arşiv kaydı pod LİSTESİ, başarısız kayıtlar tek pod taşır. */}
                       <span className="text-sm font-mono text-[var(--text-primary)] truncate">
                         {r.host
-                          || (r.pods?.length ? `${r.namespace} · ${r.pods.length} pod` : null)
+                          ? `${r.host}${r.pid ? ` · PID ${r.pid}` : ""}`
+                          : (r.pods?.length ? `${r.namespace} · ${r.pods.length} pod` : null)
                           || (r.pod ? `${r.namespace}/${r.pod}` : null)
                           || (r.application ? `${r.namespace}/${r.application}` : r.namespace)}
                       </span>

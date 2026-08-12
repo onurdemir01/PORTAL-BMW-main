@@ -1,0 +1,71 @@
+---
+# server/ansible/playbooks/opsx_legacy_jvm_discover.yml — OpsX Legacy: secilen host'larda
+# `application` adina ait CALISAN JVM'leri (PID + komut satiri) listeler.
+#
+# NEDEN VAR: opsx_legacy_dump.yml eskiden PID'i korlemesine buluyordu
+# (`pgrep -f 'jboss\|wildfly\|eap' | head -1`) — uygulama adini hic kullanmiyordu ve bir
+# host'ta ayni uygulamaya ait BIRDEN FAZLA JVM varsa sessizce SADECE ILKINI aliyordu. Artik
+# PID'ler bu playbook ile ONCEDEN kesfedilip kullaniciya sunuluyor (OpenShift pod kesfinin
+# AYNI deseni — bkz. opsx_openshift_pods.yaml), kullanici hangi JVM(ler)den dump alinacagini
+# seciyor, secim opsx_legacy_dump.yml'e `pid_map` olarak geri gonderiliyor.
+#
+# Gerekli extra_vars:
+#   application: <uygulama adi>   (grep deseni olarak KULLANILIR — bkz. asagidaki task)
+# Host listesi bir extra_var DEGIL, restart/dump ile AYNI desen: AWX'in KENDI `limit`
+# alaninda gelir (bu yuzden "hosts: all" kullanilir, gercek daralma AWX tarafindan uygulanir).
+#
+# CIKTI SOZLESMESI (server/opsx/index.cjs extractOpsxJvmResult() ile eslesir):
+#   set_stats: { opsx_jvm_result: { overall_status: "ok", results: [
+#     {host, pid, cmd}, ...   (bir host'ta 0, 1 ya da N eslesme olabilir — hepsi listelenir)
+#   ]}}
+
+- name: "OpsX Legacy - JVM Keşfi"
+  hosts: all
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: "Girdileri doğrula"
+      ansible.builtin.assert:
+        that:
+          - application is defined
+          - (application | string | trim | length) > 0
+        fail_msg: "application gereklidir."
+      run_once: true
+
+    # `ps -eo pid,args` + `grep -F` -- `pgrep -a` bazi eski RHEL surumlerinde yok, bu ikisi
+    # her yerde calisir. `-F` uygulama adini duz metin olarak arar (regex ozel karakterlerini
+    # kacirmaya gerek kalmaz). `|| true`: hic eslesme olmamasi bir HATA degil, bos sonuctur.
+    - name: "Uygulama adına ait çalışan JVM'leri bul"
+      ansible.builtin.shell:
+        cmd: >-
+          ps -eo pid,args --no-headers | grep -F -- "{{ application }}" | grep -v grep || true
+      register: jvm_ps
+      changed_when: false
+      failed_when: false
+
+    # Her satır "  PID komut satırı..." biçiminde — ilk boşluğa kadar PID, kalanı komut.
+    # ansible.builtin dışında bir filtreye (community.general vb.) bağımlı kalmamak için
+    # saf Jinja/Python string metotlarıyla (split) ayrıştırılır.
+    - name: "Bulunan JVM'leri host için topla"
+      ansible.builtin.set_fact:
+        host_jvm_list: "{{ host_jvm_list | default([]) + [{'host': inventory_hostname | upper, 'pid': item.split()[0], 'cmd': (item.split(' ', 1)[1] | default('') | trim | truncate(160, True))}] }}"
+      loop: "{{ jvm_ps.stdout_lines | default([]) | map('trim') | select('match', '^[0-9]+\\s') | list }}"
+      loop_control:
+        label: "{{ item.split()[0] }}"
+
+    - name: "Host'ta hiç JVM bulunamadıysa boş liste ata"
+      ansible.builtin.set_fact:
+        host_jvm_list: "{{ host_jvm_list | default([]) }}"
+
+    # ── Aggregator: TÜM hedef hostların listesini TEK opsx_jvm_result olarak yayınla ──────
+    # opsx_legacy_dump.yml'deki run_once+delegate_to:localhost aggregator deseniyle AYNI.
+    - name: "Birleşik sonucu yayınla (opsx_jvm_result)"
+      ansible.builtin.set_stats:
+        data:
+          opsx_jvm_result:
+            overall_status: "ok"
+            results: "{{ ansible_play_hosts_all | map('extract', hostvars, 'host_jvm_list') | list | sum(start=[]) }}"
+        per_host: false
+      run_once: true
+      delegate_to: localhost

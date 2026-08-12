@@ -1249,6 +1249,11 @@ const PLAYBOOK_REGISTRY_SEED = [
     description: 'Bir namespace\'teki pod\'lari listeler (salt-okunur, oc get pods) - dump sihirbazi kullaniciya pod sectirmek icin ANLIK tetikler. bmw_portal/opsx_openshift_dump/opsx_openshift_pods.yaml',
     playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_PODS_TEMPLATE_ID',
   },
+  {
+    key_name: 'opsx_legacy_jvm_discover', display_name: 'OpsX — Legacy JVM Keşfi', category: 'opsx', handler: 'opsx_legacy_jvm_discover',
+    description: 'Secili sunucularda uygulama adina calisan JVM\'leri (PID + komut satiri) listeler (salt-okunur, ps) - dump sihirbazi kullaniciya JVM sectirmek icin ANLIK tetikler. server/ansible/playbooks/opsx_legacy_jvm_discover.yml',
+    playbook_path: 'server/ansible/playbooks/opsx_legacy_jvm_discover.yml', env_var_name: 'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
+  },
   // ── Telnet baglanti testi — OpsX ile AYNI desen (bkz. server/telnet/index.cjs) ────
   {
     key_name: 'telnet_legacy_operation', display_name: 'Telnet — Legacy Baglanti Testi', category: 'telnet', handler: 'telnet_legacy',

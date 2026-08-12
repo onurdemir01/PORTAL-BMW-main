@@ -55,6 +55,7 @@ const REGISTRY_KEYS = Object.freeze({
   legacyDump: 'opsx_legacy_dump',
   openshiftDump: 'opsx_openshift_dump',
   openshiftPods: 'opsx_openshift_pods',
+  legacyJvmDiscover: 'opsx_legacy_jvm_discover',
 });
 
 // Template ID + AWX sunucusu Playbook Kayitlari'ndan cozulur. getEffectiveTemplateId()
@@ -219,6 +220,11 @@ function extractOpsxDumpResult(rawArtifacts) {
 // Pod kesfi playbook'unun (opsx_openshift_pods.yaml) sonucu.
 function extractOpsxPodsResult(rawArtifacts) {
   return extractStatsKey(rawArtifacts, 'opsx_pods_result');
+}
+
+// JVM kesfi playbook'unun (opsx_legacy_jvm_discover.yml) sonucu.
+function extractOpsxJvmResult(rawArtifacts) {
+  return extractStatsKey(rawArtifacts, 'opsx_jvm_result');
 }
 
 // env+tenant secimine karsilik gelen GERCEK cluster isimleri (ocp_cluster_index'ten,
@@ -590,9 +596,118 @@ function initOpsX(app) {
   // tablolu mekanizmasiyla (server/opsx/downloads.cjs).
   const DUMP_TYPES = new Set(['threaddump', 'heapdump']);
 
-  // POST /api/opsx/dump/legacy — { application, hosts, dumpType }
+  // ── Legacy JVM KESFI ──────────────────────────────────────────────────────────
+  // Ayni uygulamaya ait BIRDEN FAZLA JVM ayni host'ta calisiyor olabilir — eskiden dump
+  // playbook'u PID'i korlemesine (`pgrep -f 'jboss|wildfly|eap' | head -1`) buluyordu,
+  // uygulama adini hic kullanmiyordu ve boyle bir durumda sessizce SADECE ILKINI aliyordu.
+  // Artik OpenShift pod kesfiyle AYNI desen: sihirbaz secili host'larda ANLIK bir AWX job'i
+  // (opsx_legacy_jvm_discover.yml) tetikleyip application adina calisan JVM'leri (PID +
+  // komut satiri) listeler, kullanici bir/birden fazla (host,pid) cifti secer.
+  //
+  // POST /api/opsx/legacy/jvm/discover — { application, hosts } → { jobId, awxServerId }
+  app.post('/api/opsx/legacy/jvm/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
+    const { application, hosts } = req.body || {};
+    const { templateId, serverId, keyName } = await resolveTarget('legacyJvmDiscover');
+    if (!templateId) {
+      return res.status(501).json({
+        ok: false,
+        message: `OpsX Legacy JVM keşfi için AWX job template'i henüz tanımlanmadı. `
+               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
+               + `Template ID alanını doldurmalı.`,
+      });
+    }
+
+    // Anti-TOCTOU: host'ların gercekten bu uygulamaya ait oldugu MEVCUT resolveLegacyTargets
+    // ile dogrulanir — dump launch'inin zaten kullandigi AYNI kapi.
+    let requested;
+    try {
+      ({ requested } = await resolveLegacyTargets(application, hosts));
+    } catch (err) {
+      return res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+
+    const limitValue = requested.join(',');
+    const extraVars = { application: String(application).trim() };
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      await require('../ansible/template-preflight.cjs')
+        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
+
+      // IDOR korumasi /api/opsx/legacy/jvm/:serverId/:jobId/status'ta bu kayda bakar.
+      try {
+        const db = require('../db/index.cjs');
+        await db.query(
+          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            req.session?.user?.username || 'unknown',
+            serverId, templateId, `OpsX: Legacy JVM keşfi`,
+            result?.jobId, result?.status || 'pending',
+            JSON.stringify({ platform: 'legacy-jvm-discover', limit: limitValue, ...extraVars }),
+          ]
+        );
+      } catch (e) {
+        console.warn('[OpsX] JVM kesfi gecmisi kaydedilemedi:', e.message);
+      }
+
+      console.log(`[OpsX] ${req.session?.user?.username} -> jvm kesfi app=${application} limit=${limitValue} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/opsx/legacy/jvm/:serverId/:jobId/status — is bitince JVM listesini doner.
+  app.get('/api/opsx/legacy/jvm/:serverId/:jobId/status', requireAuth, async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
+    }
+
+    const reqUser = req.session?.user || {};
+    try {
+      const db = require('../db/index.cjs');
+      if (reqUser.role !== 'Admin') {
+        const { rows } = await db.query(
+          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+          [jobId, serverId]
+        );
+        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
+        }
+      }
+    } catch { /* DB hiccup -> fail-open, /job-status ile ayni desen */ }
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
+      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+      if (!TERMINAL.has(statusInfo.status)) {
+        return res.json({ ok: true, status: statusInfo.status });
+      }
+      if (statusInfo.status !== 'successful') {
+        return res.json({ ok: true, status: statusInfo.status, message: 'JVM listesi alınamadı (iş başarısız oldu).' });
+      }
+
+      const raw = extractOpsxJvmResult(statusInfo.artifacts);
+      if (!raw) {
+        return res.json({
+          ok: true,
+          status: statusInfo.status,
+          message: 'İş tamamlandı ancak JVM listesi alınamadı — playbook\'un set_stats adımını kontrol edin.',
+        });
+      }
+      res.json({ ok: true, status: statusInfo.status, jvms: raw.results || [] });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST /api/opsx/dump/legacy — { application, hosts, dumpType, pidMap }
   app.post('/api/opsx/dump/legacy', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { application, hosts, dumpType } = req.body || {};
+    const { application, hosts, dumpType, pidMap } = req.body || {};
     if (!DUMP_TYPES.has(dumpType)) {
       return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
     }
@@ -613,12 +728,39 @@ function initOpsX(app) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
 
+    // pid_map anti-TOCTOU: her anahtar yukarida dogrulanan `requested` host kumesinin bir
+    // uyesi OLMALI (host secimiyle PID secimi tutarsiz olamaz), her PID kucuk bir pozitif
+    // tamsayi olmali (playbook'ta shell'e enjekte edildigi icin — opsx_openshift_dump.yaml'daki
+    // `pods` adi dogrulamasiyla AYNI gerekce).
+    if (!pidMap || typeof pidMap !== 'object' || Array.isArray(pidMap) || Object.keys(pidMap).length === 0) {
+      return res.status(400).json({ ok: false, message: 'En az bir JVM (host + PID) seçilmeli.' });
+    }
+    const allowedHosts = new Set(requested);
+    const cleanPidMap = {};
+    for (const [host, pids] of Object.entries(pidMap)) {
+      const h = String(host || '').trim().toUpperCase();
+      if (!allowedHosts.has(h)) {
+        return res.status(400).json({ ok: false, message: `Bu host seçilen sunucular arasında değil: ${host}` });
+      }
+      if (!Array.isArray(pids) || pids.length === 0) continue;
+      const cleanPids = [...new Set(pids.map((p) => String(p || '').trim()).filter(Boolean))];
+      const badPid = cleanPids.find((p) => !/^\d{1,10}$/.test(p));
+      if (badPid) {
+        return res.status(400).json({ ok: false, message: `Geçersiz PID: ${badPid}` });
+      }
+      if (cleanPids.length) cleanPidMap[h] = cleanPids;
+    }
+    if (Object.keys(cleanPidMap).length === 0) {
+      return res.status(400).json({ ok: false, message: 'En az bir JVM (host + PID) seçilmeli.' });
+    }
+
     const opsxDownloads = require('./downloads.cjs');
     const limitValue = requested.join(',');
     const extraVars = {
       application: String(application).trim(),
       dump_type: dumpType,
       staging_dir: opsxDownloads.stagingRoot(),
+      pid_map: cleanPidMap,
       ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
     };
 
@@ -971,5 +1113,5 @@ function initOpsX(app) {
 
 module.exports = {
   initOpsX, hostsForApp, ALLOWED_OPERATIONS, namespacesForCluster,
-  extractOpsxDumpResult, extractOpsxPodsResult,
+  extractOpsxDumpResult, extractOpsxPodsResult, extractOpsxJvmResult,
 };
