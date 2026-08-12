@@ -178,7 +178,9 @@
 - name: "Kaynak sunucudaki konfigurasyonlari ayristir"
   hosts: nginx_migration_source
   gather_facts: false
-  become: false
+  become: true
+  become_method: dzdo
+  become_user: www
 
   vars:
     source_conf_dir: /usr/nginx/conf.d
@@ -519,7 +521,9 @@
 - name: "Hedef sunucularda konfigurasyonlari olustur"
   hosts: nginx_migration_targets
   gather_facts: true
-  become: "{{ use_become | default(false) }}"
+  become: true
+  become_method: dzdo
+  become_user: www
 
   vars:
     target_conf_dir: /usr/nginx/conf.d
