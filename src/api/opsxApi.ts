@@ -45,7 +45,8 @@ export interface OpsxRunResult {
   awxServerId: number;
   templateId: number;
   // AWX'e gönderilen gövdenin aynısı — son ekranda gösterilir. Legacy'de üst
-  // seviyede `limit` bulunur; Openshift'te bulunmaz (her şey extra_vars içinde).
+  // seviyede `limit` HER ZAMAN bulunur; Openshift'te SADECE kullanıcı belirli
+  // cluster(lar) seçip tüm grubu kısıtladıysa bulunur (bkz. ocClusters).
   sentBody: { limit?: string; extra_vars: Record<string, unknown> };
   // ok:false ise backend'in ürettiği insanın okuyabileceği hata metni (bkz. server/opsx/index.cjs
   // route'larındaki `res.status(err.status||500).json({ok:false, message: err.message})`).
@@ -219,6 +220,11 @@ export const opsxApi = {
     tenant?: string;
     pairs?: OpsxOcpPair[];
     ocOperation?: OpsxOcpOperation;
+    // Tenant/env grubundaki gercek cluster'lardan (bkz. getClusters) SECILI bir alt-kume —
+    // bos/gonderilmezse kisitlama yok (grubun TUMU hedeflenir, eski davranis). Dolu ve
+    // TUM cluster'lardan AZ ise backend bunu AWX'in `limit` alanina koyar (bkz.
+    // OcpClusterSelectStep.tsx).
+    ocClusters?: string[];
   }): Promise<OpsxRunResult> =>
     fetch(`${BASE}/run`, {
       method: "POST",
