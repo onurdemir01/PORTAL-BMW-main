@@ -250,10 +250,20 @@ function initTelnet(app) {
           });
         }
         const meta = await adminData.resolveClusterMeta(envKey, tenantKey, clusterNames).catch(() => ({}));
+        const ocpMod = require('../logx/v2/ocp.cjs');
+        // RUNTIME AYARLARI DA GONDERILMELI (2026-08-12, uretim job 3218799/3218800):
+        // `oc login --username` degeri once cluster satirindan (`ocp_username` kolonu),
+        // O YOKSA portalin GENEL varsayilanindan gelir — ve genel varsayilan yalnizca
+        // `buildOcpRuntimeVars` ile tasinir. Telnet bunu gondermeyince kullanici adi BOS
+        // kaldi ve UC cluster'da da login dustu; hata `no_log` altinda gorunmuyordu.
+        // LogX'in uc job'i da bu ikiliyi (extra + runtime) BIRLIKTE gonderiyor — ayni
+        // dersin ikinci kez ogrenilmemesi icin burada da oyle.
+        const runtimeCfg = await require('../logx/v2/ocp-runtime-config.cjs').getConfig().catch(() => ({}));
         // LogX ve OpsX ile AYNI yardimci — payload sekli tek yerde tanimli.
-        fanout = require('../logx/v2/ocp.cjs').buildOcpExtraVars({
-          env: envKey, tenant: tenantKey, clusters: clusterNames, hosts, meta,
-        });
+        fanout = {
+          ...ocpMod.buildOcpExtraVars({ env: envKey, tenant: tenantKey, clusters: clusterNames, hosts, meta }),
+          ...ocpMod.buildOcpRuntimeVars(runtimeCfg),
+        };
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }

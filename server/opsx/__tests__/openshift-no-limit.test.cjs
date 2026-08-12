@@ -59,8 +59,14 @@ test('Telnet OCP: LOGX MODELI — jump server\'lar ve cluster kayitlari gonderil
   assert.match(TELNET, /adminData\.resolveTerminalHosts\(envKey, tenantKey, clusterNames\)/);
   assert.match(TELNET, /resolveClusterMeta\(envKey, tenantKey, clusterNames\)/);
   // Payload sekli LogX/OpsX ile AYNI yardimcidan gelir — tek yerde tanimli.
-  assert.match(TELNET, /require\('\.\.\/logx\/v2\/ocp\.cjs'\)\.buildOcpExtraVars/);
+  assert.match(TELNET, /ocpMod\.buildOcpExtraVars\(/);
+  assert.match(TELNET, /require\('\.\.\/logx\/v2\/ocp\.cjs'\)/);
   assert.match(TELNET, /\.\.\.fanout,/, 'fanout extra_vars\'a yayilmali');
   // Jump server tanimsizsa is BASLATILMAZ — sessizce eksik cluster'la kosmaz.
   assert.match(TELNET, /Jump Server \(bastion\) tanımlı değil/);
+  // RUNTIME AYARLARI DA GITMELI: `oc login --username` degeri cluster satirinda yoksa
+  // portalin GENEL varsayilanindan (`ocp_username`) gelir ve o yalnizca buildOcpRuntimeVars
+  // ile tasinir. Eksikligi uretimde UC cluster'da da login'i dusurdu (job 3218799/3218800)
+  // ve hata `no_log` altinda gorunmedi.
+  assert.match(TELNET, /buildOcpRuntimeVars\(runtimeCfg\)/);
 });
