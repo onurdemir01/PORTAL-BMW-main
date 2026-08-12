@@ -96,7 +96,16 @@
       ansible.builtin.file:
         path: "{{ staging_dir }}"
         state: directory
-        mode: "0775"
+        # 0777: 0775 ile "cp: ... Permission denied" alindi (gercek job hatasi,
+        # 2026-08-12) — dizin muhtemelen uxmid'in sahibi/grubu OLMADIGI bir kullaniciyla
+        # (ör. daha once dogrudan kurulmus, ya da ilk NFS mount'unda farkli bir uid/gid'e
+        # eslenmis) var olusturulmus; mode:0775 SADECE sahip+grup icin yazma izni verir,
+        # uxmid (baglanti kullanicisi) ne biri ne digeriyse "other" olarak salt-okunur
+        # kalir. Ansible mevcut bir dizinin SAHIPLIGINI degistirmez (owner/group
+        # verilmedigi surece), bu yuzden mode'u tek basina 0775 yapmak yetersiz — dizin
+        # dosya paylasim alani oldugu icin (hassas veri degil) 0777 ile bu belirsizlik
+        # tamamen ortadan kaldirilir.
+        mode: "0777"
       when: (my_pids | length) > 0
 
     # Her seçili JVM için TEK bir bash betiği: JDK yolu jbossMajor'a göre SABİT seçilir
