@@ -126,7 +126,7 @@
               'cluster_name': item.cluster_name,
               'url': item.api_url,
               'username': item.username | default(ocp_username | default('')),
-              'password': lookup('vars', item.credential_key),
+              'password': lookup('vars', item.credential_key, default=''),
               'kubeconfig': '/tmp/kubeconfig-telnet-' ~ job_tag ~ '-' ~ item.cluster_name,
               'pod_name': 'telnet-test-' ~ job_tag
             }]
@@ -141,6 +141,34 @@
       ansible.builtin.debug:
         msg: "{{ inventory_hostname }} bu çalıştırmada hiçbir cluster'a sahip değil — atlanıyor."
       when: (telnet_units | default([])) | length == 0
+
+    - name: "--- [Task] Validate connection inputs (no secrets in output) ---"
+      # ÜRETİMDE NE OLDU (job 3218799/3218800): kullanıcı adı boş kaldığı için ÜÇ cluster'da
+      # da `oc login` düştü; görevde `no_log: true` olduğu için AWX çıktısında yalnızca
+      # "censored" göründü ve sebep hiçbir yerde yazmadı. Burada yalnızca AD listeleri
+      # üretilir — parola hiçbir zaman bir çıktıya girmez.
+      ansible.builtin.set_fact:
+        units_missing_username: "{{ telnet_units | selectattr('username', 'equalto', '') | map(attribute='cluster_name') | list }}"
+        units_missing_password: "{{ telnet_units | selectattr('password', 'equalto', '') | map(attribute='cluster_name') | list }}"
+        units_missing_url: "{{ telnet_units | selectattr('url', 'equalto', '') | map(attribute='cluster_name') | list }}"
+      when: (telnet_units | default([])) | length > 0
+      changed_when: false
+
+    - name: "--- [Task] Fail with the actual reason when an input is missing ---"
+      ansible.builtin.assert:
+        that:
+          - units_missing_username | length == 0
+          - units_missing_password | length == 0
+          - units_missing_url | length == 0
+        fail_msg: >-
+          Bağlantı bilgisi eksik →
+          kullanıcı adı yok: {{ units_missing_username | default([]) | join(', ') | default('-', true) }} |
+          vault parolası çözülemedi: {{ units_missing_password | default([]) | join(', ') | default('-', true) }} |
+          api_url yok: {{ units_missing_url | default([]) | join(', ') | default('-', true) }}.
+          Kullanıcı adı cluster satırından (Admin > LogX Yapılandırma > OCP Cluster Hiyerarşisi)
+          ya da genel varsayılandan (OCP Çalıştırma Ayarları) gelir; parola `credentials.yaml`
+          içindeki vault anahtarından çözülür.
+      when: (telnet_units | default([])) | length > 0
 
     - block:
         # PAROLA yalnız BU görevde geçiyor; `no_log` sadece burada. Diğer adımların hataları
@@ -158,7 +186,41 @@
             label: "{{ item.cluster_name }}"
           register: login_results
           changed_when: false
+          # Bir cluster'a girilemezse DIGERLERI denenmeye devam etsin; karar asagida
+          # sanitize edilmis sonuca bakilarak verilir (LogX'in "bir bastion coker, digerleri
+          # devam eder" ilkesi).
+          failed_when: false
           no_log: true
+
+        - name: "--- [Task] Show login outcome per cluster (sanitized) ---"
+          # `no_log` görevin KENDI ciktisini gizler; register edilen degisken DOLUDUR.
+          # Burada BILEREK yalnizca `rc` ve `stderr` okunur — `cmd`/`invocation` parolayi
+          # icerir ve ASLA yazdirilmaz. Uretimde sebebi gorunmeyen hata artik okunabilir.
+          ansible.builtin.debug:
+            msg: >-
+              {{ item.item.cluster_name }} login rc={{ item.rc | default('?') }}
+              {{ ('| ' ~ (item.stderr | default('') | trim)) if (item.rc | default(1)) != 0 else '' }}
+          loop: "{{ login_results.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.cluster_name }}"
+
+        - name: "--- [Task] Keep only the clusters we could log in to ---"
+          ansible.builtin.set_fact:
+            ok_units: >-
+              {{
+                login_results.results | default([])
+                | selectattr('rc', 'defined') | selectattr('rc', 'equalto', 0)
+                | map(attribute='item') | list
+              }}
+          no_log: true
+          changed_when: false
+
+        - name: "--- [Task] Fail when no cluster could be logged in to ---"
+          ansible.builtin.fail:
+            msg: >-
+              Hiçbir cluster'a giriş yapılamadı — yukarıdaki "login outcome" satırlarındaki
+              rc/stderr sebebi söyler.
+          when: (ok_units | default([])) | length == 0
 
         - name: "--- [Task] Create temporary pod ---"
           ansible.builtin.shell: |
@@ -169,7 +231,7 @@
               --command -- sleep 3600
           environment:
             KUBECONFIG: "{{ item.kubeconfig }}"
-          loop: "{{ telnet_units }}"
+          loop: "{{ ok_units }}"
           loop_control:
             label: "{{ item.cluster_name }}"
           register: create_results
@@ -186,7 +248,7 @@
               --timeout=60s
           environment:
             KUBECONFIG: "{{ item.kubeconfig }}"
-          loop: "{{ telnet_units }}"
+          loop: "{{ ok_units }}"
           loop_control:
             label: "{{ item.cluster_name }}"
           register: wait_results
@@ -199,7 +261,7 @@
               sh -c "timeout 10 telnet {{ telnet_host }} {{ telnet_port }}"
           environment:
             KUBECONFIG: "{{ item.kubeconfig }}"
-          loop: "{{ telnet_units }}"
+          loop: "{{ ok_units }}"
           loop_control:
             label: "{{ item.cluster_name }}"
           register: telnet_results
