@@ -15,7 +15,7 @@ import FileSelectionStep from "./steps/legacy/FileSelectionStep";
 import ClusterSelectStep from "./steps/ocp/ClusterSelectStep";
 import NamespacePickerStep from "./steps/ocp/NamespacePickerStep";
 import AppNameStep from "./steps/ocp/AppNameStep";
-import SelectedTargetsBar from "./steps/ocp/SelectedTargetsBar";
+import SelectedItemsBar from "@/components/common/SelectedItemsBar";
 import JobProgress from "./shared/JobProgress";
 import DownloadStep from "./shared/DownloadStep";
 import FailedStep from "./shared/FailedStep";
@@ -377,11 +377,22 @@ const LogXWizardPage: React.FC = () => {
       )}
 
       {showBasket && requestId && (
-        <SelectedTargetsBar
-          targets={targets}
+        <SelectedItemsBar
+          title="Toplanacak"
+          submitLabel="Logları Getir"
           max={MAX_OCP_TARGETS}
           busy={busy}
-          onRemove={(i) => setTargets((prev) => prev.filter((_, idx) => idx !== i))}
+          // Namespace'e göre grupla: aynı namespace'ten beş uygulama seçildiğinde ad beş
+          // kez tekrarlanmasın, tek başlık altında toplansın.
+          groups={[...new Map(
+            targets.map((t) => [t.namespace, targets.filter((x) => x.namespace === t.namespace)])
+          ).entries()].map(([namespace, list]) => ({
+            title: namespace,
+            items: list.map((t) => ({ id: `${t.namespace}/${t.appName}`, label: t.appName })),
+          }))}
+          // Kimlik ÜZERİNDEN çıkarma (indis değil): liste değişince indis kayar ve yanlış
+          // hedef silinirdi.
+          onRemove={(id) => setTargets((prev) => prev.filter((t) => `${t.namespace}/${t.appName}` !== id))}
           onClear={() => setTargets([])}
           onSubmit={() => guarded(async () => {
             await logxV2Api.discoverFetchOcp(requestId, targets);
