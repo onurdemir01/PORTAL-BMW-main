@@ -82,9 +82,6 @@ export const telnetApi = {
     env?: string;
     tenant?: string;
     namespaces?: string[];
-    /** Hedeflenecek gerçek cluster'lar. Verilmezse kısıtlama yok (grubun tümü) —
-     *  sunucu bunu AWX `limit` alanına çevirir ve kendi kataloğuna karşı doğrular. */
-    clusters?: string[];
     // Ortak
     ip: string;
     port: string;

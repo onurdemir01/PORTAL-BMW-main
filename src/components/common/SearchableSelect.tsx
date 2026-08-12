@@ -11,7 +11,17 @@
 // bileşen yalnızca süzme yapar.
 //
 // Klavye: ↑/↓ gezinir, Enter seçer, Esc kapatır. Fare: dışarı tıklayınca kapanır.
+//
+// LİSTE NEDEN PORTAL + `fixed` (2026-08-12 kullanıcı şikâyeti): liste önce `absolute z-20`
+// ile açılıyordu ve alttaki bölümlerin üstüne binip okunamaz hâle geliyordu. Mutlak
+// konumlanan bir liste, herhangi bir üst kutunun `overflow` kısıtına ya da yeni bir
+// stacking context'ine (transform/animasyon/opacity) takıldığı anda kesiliyor veya altta
+// kalıyor — ve bu, sihirbaz ekranlarına her yeni sarmalayıcı eklendiğinde yeniden olur.
+// `createPortal` ile `document.body`'ye taşıyıp input'un ekran koordinatına göre `fixed`
+// yerleştirmek bu sınıfın tamamını ortadan kaldırır: hiçbir ata düğüm listeyi kesemez.
+// Konum scroll/resize'da yeniden hesaplanır; aşağıda yer yoksa liste YUKARI açılır.
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MagnifyingGlassIcon, ChevronUpDownIcon } from "@heroicons/react/24/outline";
 
 interface Props {
@@ -35,20 +45,56 @@ const SearchableSelect: React.FC<Props> = ({
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  // Listenin ekran koordinatlari (position: fixed). `null` iken liste render edilmez —
+  // ilk karede yanlis yerde bir kutu parlamasin.
+  const [rect, setRect] = useState<{ left: number; top: number; width: number; maxHeight: number; drop: "down" | "up" } | null>(null);
   const listId = `${id || "sel"}-listbox`;
 
-  // Dışarı tıklama kapatır. Kapanışta, serbest yazım YOKSA kutu seçili değere geri döner —
-  // aksi halde ekranda kabul edilmemiş bir metin kalır ve kullanıcı onu seçili sanır.
+  // Konumu input'un GERCEK ekran dikdortgeninden hesaplar. Asagida 160px'den az yer varsa
+  // liste yukari acilir (kisa ekranlarda liste ekran disina tasmasin).
+  const place = React.useCallback(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - 8;
+    const above = r.top - 8;
+    const dropUp = below < 160 && above > below;
+    setRect({
+      left: r.left,
+      top: dropUp ? r.top : r.bottom + 4,
+      width: r.width,
+      maxHeight: Math.max(120, Math.min(224, dropUp ? above : below)),
+      drop: dropUp ? "up" : "down",
+    });
+  }, []);
+
+  // Dışarı tıklama kapatır. Liste artık `document.body` altında (portal) olduğu için
+  // "dışarısı" kontrolü HEM input kutusunu HEM listeyi hesaba katmalı — yoksa listeye
+  // tıklamak menüyü kapatırdı.
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
+      const t = e.target as Node;
+      if (boxRef.current?.contains(t) || listRef.current?.contains(t)) return;
+      setOpen(false);
+      setQuery("");
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
+
+  // Açıkken konumu canlı tut: sayfa kaydırıldığında ya da pencere yeniden boyutlandığında
+  // liste input'a yapışık kalmalı. `capture: true` — kaydırma, iç içe bir kutuda da olabilir.
+  useEffect(() => {
+    if (!open) { setRect(null); return; }
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -118,11 +164,23 @@ const SearchableSelect: React.FC<Props> = ({
         className="w-4 h-4 text-[var(--text-muted)] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
       />
 
-      {open && !disabled && !loading && (
+      {open && !disabled && !loading && rect && createPortal(
         <ul
+          ref={listRef}
           id={listId}
           role="listbox"
-          className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto border border-[var(--border)] rounded-xl bg-[var(--bg)] shadow-lg divide-y divide-[var(--border)]"
+          style={{
+            position: "fixed",
+            left: rect.left,
+            width: rect.width,
+            maxHeight: rect.maxHeight,
+            // Yukari acilirken listeyi input'un USTUNE hizala (alt kenari input'a degsin).
+            ...(rect.drop === "down" ? { top: rect.top } : { bottom: window.innerHeight - rect.top + 4 }),
+            // Portal `body` altinda; uygulamadaki en yuksek katmanin (modal/masthead)
+            // uzerinde kalmasi icin yuksek z-index.
+            zIndex: 1000,
+          }}
+          className="overflow-y-auto border border-[var(--border)] rounded-xl bg-[var(--bg)] shadow-lg divide-y divide-[var(--border)]"
         >
           {filtered.length === 0 ? (
             <li className="px-3 py-2 text-xs text-[var(--text-muted)]">
@@ -149,7 +207,8 @@ const SearchableSelect: React.FC<Props> = ({
               </li>
             ))
           )}
-        </ul>
+        </ul>,
+        document.body,
       )}
     </div>
   );
