@@ -219,9 +219,11 @@ export const opsxApi = {
     tenant?: string;
     pairs?: OpsxOcpPair[];
     ocOperation?: OpsxOcpOperation;
-    // NOT: Openshift'te cluster ALT KUMESI YOK — is her zaman `{{ oc_cluster }}_{{ env }}`
-    // grubunun TAMAMINA gider (bkz. server/opsx/index.cjs'teki "CLUSTER ALT KUMESI
-    // DENENDI VE KALDIRILDI" notu).
+    // Openshift restart/rollout: `oc_cluster`/`env`'in çözdüğü gruptaki GERÇEK cluster'lardan
+    // (bkz. getClusters) TEK birinin adı — ZORUNLU (AWX `limit` production'da sessizce
+    // yutulduğu için tek cluster hedeflemek artık SADECE bunun playbook'un `hosts:`
+    // satırına doğrudan geçmesiyle mümkün, bkz. server/opsx/index.cjs dosya başı notu).
+    cluster?: string;
   }): Promise<OpsxRunResult> =>
     fetch(`${BASE}/run`, {
       method: "POST",

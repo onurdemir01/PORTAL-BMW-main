@@ -472,17 +472,22 @@ function initOpsX(app) {
   //   terminal_host YOK — playbook `hosts: "{{ oc_cluster }}_{{ env }}"` ile hedefi
   //   kendisi cozer. oc_input, tek POST'ta birden fazla namespace/uygulama ciftini
   //   ";" ile tasir (onyuzde birikimli eklenir — bkz. OcpTargetStep.tsx).
-  //   CLUSTER ALT KUMESI DENENDI VE KALDIRILDI (2026-08-12). Secilen gercek cluster adlari
-  //   AWX'in `limit` alanina konuluyordu. IKI sebeple calismadi:
+  //   CLUSTER ALT KUMESI (AWX limit ile) DENENDI VE KALDIRILDI (2026-08-12). Secilen gercek
+  //   cluster adlari AWX'in `limit` alanina konuluyordu. IKI sebeple calismadi:
   //     (1) AWX, template'te Limit icin "Prompt on launch" KAPALIYSA bu alani SESSIZCE yok
   //         sayar — portal `limit: "gbocpankqa2"` gonderdi, is yine ark_qa'nin DORT
   //         host'unda kostu (uretim job 3217901).
   //     (2) Dogru kisit zaten cluster ADI degil, o cluster'larin bagli oldugu jump server
   //         olurdu; bu grupta oyle bir eslesme yok.
-  //   Bu yuzden `limit` Openshift dalinda HIC gonderilmiyor; kullanici seçim yapip "oldu"
-  //   sanmasin diye ekrandaki cluster adimi da kaldirildi (bkz. OcpTargetStep bilgi satiri).
+  //   YERINE (bkz. bmw_portal/opsx_openshift_application_rollout.yaml): playbook'un `hosts:`
+  //   satiri ZATEN extra_vars'tan sablonlaniyordu (oc_cluster ~ '_' ~ oc_environment ile grup
+  //   adi kuruluyordu) — bu KANITLI calisan bir mekanizma (AWX limit'in aksine extra_vars
+  //   sessizce yutulmuyor). O sablonlamayi TEK bir gercek cluster adina (target_cluster)
+  //   yonlendirerek ayni yontemle GERCEK kisitlama saglanir. Kullanici artik oc_cluster/
+  //   oc_environment SECTIKTEN SONRA o gruptaki HANGI gercek cluster'in (ör. gbocptest1/
+  //   gbocptest2/gbocptest4) hedefleneceğini de seçmek ZORUNDA (bkz. OcpClusterPickStep.tsx).
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
-    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation } = req.body || {};
+    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation, cluster } = req.body || {};
 
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
@@ -545,14 +550,27 @@ function initOpsX(app) {
 
       // Katalog + erisim kisitlamasi dogrulamasi: resolveOpenshiftTargets() (bkz. dosya
       // basi) — dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
-      let envKey, tenantKey, cleanPairs;
+      let envKey, tenantKey, cleanPairs, clusterNames;
       try {
         const user = req.session?.user || {};
-        ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(env, tenant, pairs, user));
+        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(env, tenant, pairs, user));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
       const ocInput = cleanPairs.map((p) => p.joined).join(';');
+
+      // TEK CLUSTER ZORUNLU: AWX limit calismadigi icin gercek kisitlama SADECE hosts:'un
+      // dogrudan tek bir gercek cluster adina sablonlanmasiyla mumkun (bkz. yukaridaki dosya
+      // basi notu) — bu yuzden "hepsi" secenegi YOK, kullanici MUTLAKA birini secmeli.
+      // ANTI-TOCTOU: istemcinin gonderdigi ad, resolveOpenshiftTargets'in AZ ONCE DB'den
+      // cozdugu gercek cluster listesine karsi dogrulanir.
+      const targetCluster = String(cluster || '').trim();
+      if (!targetCluster || !clusterNames.includes(targetCluster)) {
+        return res.status(400).json({
+          ok: false,
+          message: `Geçerli bir cluster seçilmeli (${clusterNames.join(', ') || 'tanımlı cluster yok'}).`,
+        });
+      }
 
       // BILDIRIMI GONDEREN ADRES: harici application_rollout playbook'u son adimda
       // `{{ email }}` ile bilgilendirme maili atiyor; degisken gelmeyince job "'email' is
@@ -580,12 +598,14 @@ function initOpsX(app) {
         [cfg.envKey]: envKey,
         [cfg.ocClusterKey]: tenantKey,
         [cfg.ocInputKey]: ocInput,
+        // playbook'un hosts: satirini TEK bu gercek cluster'a yonlendirir (bkz. dosya basi).
+        target_cluster: targetCluster,
         // Su an SADECE restart/rollout aktif (bkz. OCP_OPERATIONS) — bmw_openshift_jobs
         // AWX job template'inin hangi operasyonu calistiracagini secen sabit deger.
         openshift_operations: 'openshift_application_rollout',
         choise: true,
       };
-      logSummary = `env=${envKey} oc_cluster=${tenantKey} oc_input=${ocInput}`;
+      logSummary = `env=${envKey} oc_cluster=${tenantKey} target_cluster=${targetCluster} oc_input=${ocInput}`;
     }
 
     try {
