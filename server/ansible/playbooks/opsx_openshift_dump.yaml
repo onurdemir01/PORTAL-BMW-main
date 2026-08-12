@@ -181,16 +181,28 @@
       changed_when: false
       when: my_ocp_clusters | length > 0
 
-    # Bu bastion'a düşen HER (cluster, pod) çifti — Jinja liste-içi-liste (comprehension):
-    # her resolved_cluster için ocp_pod_targets'ta o cluster'a ait pod'lar eşlenir.
+    # Bu bastion'a düşen HER (cluster, pod) çifti — Python tarzı liste içi liste (list
+    # comprehension) Jinja2'nin `{{ }}` ifade sözdiziminde DESTEKLENMİYOR ("expected
+    # token ',', got 'for'", gerçek job hatası 2026-08-12) — Ansible'ın Jinja'sı sadece
+    # filtre zincirlerini (map/select/selectattr) destekler. Bunun yerine `ocp_pod_targets`
+    # üzerinde döngü kurup her pod'un sahibi cluster'ı `resolved_clusters`'tan filtre ile
+    # bulan, bu dosyadaki diğer tüm biriktirme task'larıyla AYNI desen kullanılır.
     - name: "Build per-pod dump units owned by this bastion"
       ansible.builtin.set_fact:
         pod_dump_units: >-
           {{
-            [{'cluster_name': c.cluster_name, 'url': c.url, 'username': c.username, 'password': c.password, 'pod': p}
-             for c in (resolved_clusters | default([]))
-             for p in (ocp_pod_targets | selectattr('cluster_name', 'equalto', c.cluster_name) | map(attribute='pod') | list)]
+            (pod_dump_units | default([])) + (
+              [{'cluster_name': item.cluster_name, 'url': owning_cluster[0].url,
+                'username': owning_cluster[0].username, 'password': owning_cluster[0].password,
+                'pod': item.pod}]
+              if (owning_cluster | length) > 0 else []
+            )
           }}
+      vars:
+        owning_cluster: "{{ resolved_clusters | default([]) | selectattr('cluster_name', 'equalto', item.cluster_name) | list }}"
+      loop: "{{ ocp_pod_targets }}"
+      loop_control:
+        label: "{{ item.cluster_name }}/{{ item.pod }}"
       when: my_ocp_clusters | length > 0
       changed_when: false
       no_log: true

@@ -57,7 +57,13 @@
   vars:
     dump_type: "{{ dump_type | default('heapdump') }}"
     application: "{{ application | default('') }}"
-    local_dump_dir: "/tmp/opsx-dump"
+    # Jboss7 -> /vhosting/dumpdir, Jboss8 -> /vhosting8/dumpdir (kullanicinin verdigi
+    # GERCEK yollar) — /tmp bu host'larda dump dosyalari icin cok kucuk (2026-08-12).
+    # Bu dizinlerin JBoss kurulumunun standart bir parcasi olarak ZATEN VAR oldugu
+    # varsayilir (kullanicinin orijinal referans komutlari da mkdir icermiyordu).
+    local_dump_dirs:
+      "7": "/vhosting/dumpdir"
+      "8": "/vhosting8/dumpdir"
     # Bu host icin secilen {pid, jbossMajor} listesi — pid_map'te bu host YOKSA (kesifte
     # hic JVM bulunamadi ya da kullanici hicbirini secmedi) bos liste doner, asagidaki
     # task tek bir ok:false sonucu uretir.
@@ -82,15 +88,16 @@
             error: "Bu host için seçilmiş JVM yok (JVM keşfinde bulunamamış ya da seçilmemiş olabilir)."
       when: (my_pids | length) == 0
 
-    - name: "Yerel geçici dump dizinini oluştur"
+    # best-effort: /vhosting(8)/dumpdir'in zaten var oldugu varsayilir (bkz. vars notu);
+    # normal baglanti kullanicisinin (uxmid) bu ust dizinlerde olusturma izni olmayabilir,
+    # dizin zaten mevcutsa bu no-op'tur — failed_when:false o yuzden burada.
+    - name: "Yerel dump dizinlerinin var olduğundan emin ol"
       ansible.builtin.file:
-        path: "{{ local_dump_dir }}"
+        path: "{{ item }}"
         state: directory
-        # 0777: bu dizine jmap/jstack "was" olarak (dzdo ile) YAZAR, sonraki cp adimi ise
-        # normal baglanti kullanicisi olarak OKUR — iki farkli kullanici arasinda paylasilan,
-        # tek bir job'luk omru olan bir /tmp alt dizini oldugu icin bu gevseklik dusuk risklidir.
-        mode: "0777"
+      loop: "{{ local_dump_dirs.values() | list }}"
       when: (my_pids | length) > 0
+      failed_when: false
 
     - name: "Paylaşılan staging dizinini oluştur"
       ansible.builtin.file:
@@ -126,7 +133,7 @@
 
         PID="{{ item.pid }}"
         DUMP_TYPE="{{ dump_type }}"
-        LOCAL_DIR="{{ local_dump_dir }}"
+        LOCAL_DIR="{{ local_dump_dirs[item.jbossMajor] }}"
 
         if [ "{{ item.jbossMajor }}" = "8" ]; then
           JDK_BIN="/usr/jboss8/jdk/bin"
@@ -174,14 +181,15 @@
       ansible.builtin.shell: |
         set -eu
         FILE="{{ (dump_item.stdout | trim).split('|')[1] }}"
-        cp "{{ local_dump_dir }}/${FILE}" "{{ staging_dir }}/${FILE}"
+        cp "{{ local_dir_for_item }}/${FILE}" "{{ staging_dir }}/${FILE}"
         SIZE="$(stat -c %s "{{ staging_dir }}/${FILE}" 2>/dev/null || stat -f %z "{{ staging_dir }}/${FILE}")"
-        rm -f "{{ local_dump_dir }}/${FILE}"
+        rm -f "{{ local_dir_for_item }}/${FILE}"
         echo "OK|${FILE}|${SIZE}"
       args:
         executable: /bin/bash
       vars:
         dump_item: "{{ item }}"
+        local_dir_for_item: "{{ local_dump_dirs[dump_item.item.jbossMajor] }}"
       loop: "{{ pid_dump_results.results | default([]) }}"
       loop_control:
         label: "{{ item.item.pid }}"
@@ -221,13 +229,10 @@
         loop_var: idx
       when: (my_pids | length) > 0
 
-    - name: "Yerel geçici dump dizinini temizle (best-effort)"
-      ansible.builtin.file:
-        path: "{{ local_dump_dir }}"
-        state: absent
-      when: (my_pids | length) > 0
-      failed_when: false
-      changed_when: false
+    # NOT: /vhosting(8)/dumpdir bu playbook'a OZEL, tek-job'luk bir /tmp dizini DEGIL —
+    # JBoss kurulumunun kalici, paylasilan bir parcasi. Bu yuzden (eski /tmp tasarimindan
+    # farkli olarak) SONUNDA state:absent ile SILINMEZ — yalnizca kopyalanan TEK dosya
+    # bir onceki task'ta `rm -f` ile temizlenir.
 
     # ── Aggregator: TÜM hedef hostların (host başına artık N sonuç olabilir) listesini
     # TEK opsx_dump_result olarak yayınla — logx_legacy_transfer.yml'in run_once aggregator
