@@ -346,7 +346,7 @@
       ansible.builtin.set_fact:
         bastion_dump_result: >-
           {{
-            (([{
+            ([{
               'cluster': (pod_dump_units | map(attribute='cluster_name') | unique | list | join(',')),
               'pods': (pod_dump_units | map(attribute='pod') | list
                        | difference(failed_pod_results | default([]) | map(attribute='pod') | list)),
