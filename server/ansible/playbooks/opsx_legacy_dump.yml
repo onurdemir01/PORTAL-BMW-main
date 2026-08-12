@@ -43,7 +43,13 @@
 - name: "OpsX Legacy - Thread/Heap Dump"
   hosts: all
   gather_facts: false
-  become: false
+  # jmap/jstack, JVM'e ptrace ile baglanabilmek icin ONU CALISTIRAN kullanici olarak
+  # calismali — AWX'in SSH baglandigi kullanici (ör. uxmid) farkli oldugunda "Operation
+  # not permitted" ile duser (2026-08-12 gercek job hatasi). Kurumsal Centrify/dzdo
+  # yetki modeliyle "was" kullanicisina yukseltilir.
+  become: true
+  become_method: dzdo
+  become_user: was
 
   vars:
     dump_type: "{{ dump_type | default('heapdump') }}"
