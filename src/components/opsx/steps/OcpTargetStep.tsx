@@ -41,10 +41,18 @@ const OcpTargetStep: React.FC<{
   // değeri yalnızca TIKLAMADA commit ettiği için bu sorun yoktu). Kullanıcı yazmayı
   // KISA BİR SÜRE durdurunca (debounce) namespace burada "yerleşir".
   const [settledNamespace, setSettledNamespace] = useState("");
+  // "Listeden seç" kipinde bir namespace'e TIKLANINCA true olur: liste (arama kutusu +
+  // ~10 satırlık kaydırılabilir kutu) kapanıp tek satırlık "seçili: X · Değiştir" görünümüne
+  // döner. Bu OLMADAN namespace VE uygulama listeleri aynı anda tam açık kalıyor, ikisi de
+  // kendi arama kutusu+uzun listesiyle alt alta yığılıp ekranı gereksiz uzatıyordu.
+  const [namespaceLocked, setNamespaceLocked] = useState(false);
 
   const [appOptions, setAppOptions] = useState<string[]>([]);
   const [appsLoading, setAppsLoading] = useState(false);
   const [application, setApplication] = useState("");
+  // Uygulama listesi için AYNI "seç → kapan" deseni — namespace'in yanına ikinci bir
+  // uzun liste daha eklenmesin.
+  const [applicationLocked, setApplicationLocked] = useState(false);
 
   const [pairs, setPairs] = useState<OpsxOcpPair[]>([]);
 
@@ -65,7 +73,8 @@ const OcpTargetStep: React.FC<{
 
   // Ortam/cluster değişince namespace listesi yeniden çekilir; önceki secimler sıfırlanır.
   useEffect(() => {
-    setNamespace(""); setSettledNamespace(""); setNamespaceOptions([]); setApplication(""); setAppOptions([]);
+    setNamespace(""); setSettledNamespace(""); setNamespaceLocked(false);
+    setNamespaceOptions([]); setApplication(""); setAppOptions([]); setApplicationLocked(false);
     if (!env || !tenant) return;
     opsxApi.getOcpNamespaces(env, tenant)
       .then((r) => setNamespaceOptions(r.namespaces || []))
@@ -81,7 +90,7 @@ const OcpTargetStep: React.FC<{
 
   // Namespace yerleşince uygulama dropdown'u otomatik dolar.
   useEffect(() => {
-    setApplication(""); setAppOptions([]);
+    setApplication(""); setAppOptions([]); setApplicationLocked(false);
     if (!env || !tenant || !settledNamespace) return;
     setAppsLoading(true);
     opsxApi.getOcpApps(env, tenant, settledNamespace)
@@ -98,7 +107,8 @@ const OcpTargetStep: React.FC<{
     const app = application.trim();
     if (pairs.some((p) => p.namespace === ns && p.application === app)) return;
     setPairs((prev) => [...prev, { namespace: ns, application: app }]);
-    setNamespace(""); setSettledNamespace(""); setApplication(""); setAppOptions([]);
+    setNamespace(""); setSettledNamespace(""); setNamespaceLocked(false);
+    setApplication(""); setAppOptions([]); setApplicationLocked(false);
   }
 
   function removePair(i: number) {
@@ -173,7 +183,7 @@ const OcpTargetStep: React.FC<{
                     Listeden seç
                   </button>
                   <button
-                    onClick={() => setNamespaceMode("free")}
+                    onClick={() => { setNamespaceMode("free"); setNamespaceLocked(false); }}
                     className={`px-2 py-0.5 rounded-full border ${namespaceMode === "free" ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}
                   >
                     Yaz
@@ -183,14 +193,29 @@ const OcpTargetStep: React.FC<{
             </div>
 
             {namespaceMode === "list" && namespaceOptions.length > 0 ? (
-              /* Arama + vurgulama + daha uzun liste. "Yaz" kipi ve serbest yazım kaçış
-                 yolu OLDUĞU GİBİ duruyor — yalnızca liste kipi zenginleşti. */
-              <FilterableList
-                options={namespaceOptions}
-                value={namespace}
-                onChange={setNamespace}
-                placeholder="Namespace ara…"
-              />
+              namespaceLocked && namespace.trim() ? (
+                /* Seçildi: uzun liste kapanır, ekran tek satırlık bir öze döner — "Uygulama
+                   Adı" bloğuyla ikisi birden tam açıkken oluşan "alt alta yığılma" görünümü
+                   böyle önlenir. */
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-xl bg-[var(--bg-elevated)]">
+                  <span className="text-sm font-mono text-[var(--text-primary)] truncate">{namespace}</span>
+                  <button
+                    onClick={() => setNamespaceLocked(false)}
+                    className="text-xs text-[var(--accent)] hover:underline flex-shrink-0"
+                  >
+                    Değiştir
+                  </button>
+                </div>
+              ) : (
+                /* Arama + vurgulama + daha uzun liste. "Yaz" kipi ve serbest yazım kaçış
+                   yolu OLDUĞU GİBİ duruyor — yalnızca liste kipi zenginleşti. */
+                <FilterableList
+                  options={namespaceOptions}
+                  value={namespace}
+                  onChange={(v) => { setNamespace(v); setNamespaceLocked(true); }}
+                  placeholder="Namespace ara…"
+                />
+              )
             ) : (
               <input
                 value={namespace}
@@ -215,13 +240,23 @@ const OcpTargetStep: React.FC<{
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                   Bu namespace için envanterde uygulama bulunamadı.
                 </p>
+              ) : applicationLocked && application.trim() ? (
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-xl bg-[var(--bg-elevated)]">
+                  <span className="text-sm font-mono text-[var(--text-primary)] truncate">{application}</span>
+                  <button
+                    onClick={() => setApplicationLocked(false)}
+                    className="text-xs text-[var(--accent)] hover:underline flex-shrink-0"
+                  >
+                    Değiştir
+                  </button>
+                </div>
               ) : (
                 /* Eskiden ayrı bir arama kutusu + `<select size>` vardı: eşleşen metin
                    vurgulanamıyor ve liste 3-6 satırla sınırlı kalıyordu. */
                 <FilterableList
                   options={appOptions}
                   value={application}
-                  onChange={setApplication}
+                  onChange={(v) => { setApplication(v); setApplicationLocked(true); }}
                   placeholder="Uygulama ara…"
                 />
               )}
