@@ -49,6 +49,11 @@ const OcpTargetStep: React.FC<{
 
   const envs = Object.keys(tree).sort();
   const tenants = env ? Object.keys(tree[env] || {}).sort() : [];
+  // Bu tenant/ortam grubundaki GERÇEK cluster'lar. Seçtirmiyoruz — iş her zaman grubun
+  // tamamına gider (AWX `limit` denendi, sessizce yutuldu; bkz. server/opsx/index.cjs).
+  // Ama kullanıcı neyin hedefleneceğini GÖRMELİ: sessizce "hepsi" demek, seçim yaptığını
+  // sanma yanılgısının kaynağıydı.
+  const groupClusters = env && tenant ? (tree[env]?.[tenant] || []) : [];
 
   // Ortam/cluster değişince namespace listesi yeniden çekilir; önceki secimler sıfırlanır.
   useEffect(() => {
@@ -129,6 +134,14 @@ const OcpTargetStep: React.FC<{
             ))}
           </div>
         </div>
+      )}
+
+      {env && tenant && groupClusters.length > 0 && (
+        <p className="text-[11px] text-[var(--text-muted)]">
+          Hedeflenecek cluster'lar:{" "}
+          <span className="font-mono text-[var(--text-secondary)]">{groupClusters.join(", ")}</span>
+          {groupClusters.length > 1 && " — grubun tamamı hedeflenir."}
+        </p>
       )}
 
       {env && tenant && (

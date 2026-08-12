@@ -1,0 +1,176 @@
+---
+# ocp_telnet_control.yml — Telnet OCP testi (REFERANS PLAYBOOK).
+#
+# ÖNEMLİ: Bu dosya YALNIZCA REFERANS'tır — portal bunu ÇALIŞTIRMAZ. Gerçek playbook
+# `bmw_openshift_jobs/ocp_telnet_control.yml` yolunda, AYRI bir Ansible projesinde deploy
+# edilir. Buradaki sürüm, üretimde düşen sürümün düzeltilmiş hâlidir; AWX'e kopyalanacak
+# metin budur (repo'daki `logx_legacy_discovery.yml` ile aynı "referans" konvansiyonu).
+#
+# ── ÜRETİMDE NE DÜŞTÜ (job 3218662) ────────────────────────────────────────────────────
+# 1) `'target_host' is undefined` — playbook telnet hedefini `target_host`/`target_port`
+#    adlarıyla okuyordu, portal ise `ip`/`port` gönderiyor. Üç host da bu yüzden telnet
+#    komutunu hiç çalıştıramadı ("VARIABLE IS NOT DEFINED!").
+#    → Aşağıda hedef İKİ addan da türetiliyor; portal artık ikisini birden gönderiyor
+#      (server/telnet/index.cjs), yani playbook eski kalsa bile çalışır, yenisi de çalışır.
+#
+# 2) `gbocptest4` daha ilk adımda düştü ama görevde `no_log: true` olduğu için SEBEP
+#    görünmedi ("censored"). Aynı `uxmid` hesabıyla eş zamanlı koşan başka bir job'ın
+#    log'unda sebep açıkça yazıyor:
+#      error loading config file "/home/uxmid/.kube/config": yaml: line 12: ...
+#    Yani eş zamanlı `oc login`'ler ORTAK kubeconfig dosyasını bozuyor.
+#    → İki düzeltme: (a) her çalıştırma KENDİ geçici KUBECONFIG'ini kullanır, (b) login ile
+#      pod oluşturma AYRI görevlere bölündü; `no_log` yalnız parolayı taşıyan login'de kalır,
+#      pod hatası artık okunabilir.
+#
+# 3) Geçici pod, akış ortada düşerse cluster'da KALIYORDU. → `block/always` ile temizlik
+#    her durumda çalışır.
+#
+# 4) `namespace` ve `port` Ansible'da REZERVE adlardır ("Found variable using reserved name"
+#    uyarıları). → Başta yerel fact'lere kopyalanıp playbook boyunca onlar kullanılır.
+#
+# 5) Pod adı sabit `telnet-test` idi: aynı namespace'te eş zamanlı iki test birbirinin
+#    pod'unu siliyordu. → Ada AWX job numarası eklendi.
+#
+# ── PORTALIN GÖNDERDİĞİ extra_vars ─────────────────────────────────────────────────────
+#   env          : ortam (ör. qa)            cluster : tenant/iş birimi (ör. ark)
+#   namespace    : hedef namespace           ip/port : telnet hedefi
+#   target_host / target_port : ip/port ile AYNI değerler (geriye uyum aliası)
+#
+# Hedef host'lar `{{ cluster }}_{{ env }}` envanter grubundan çözülür (ör. ark_qa) —
+# grup, o tenant/ortamın TÜM gerçek cluster'larını içerir ve HER BİRİNDE ayrı test koşar.
+
+- name: "--- [Play] OpenShift Telnet Test - Prepare & Validate ---"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: "--- [Task] Resolve target inventory group for chosen cluster/environment ---"
+      ansible.builtin.set_fact:
+        target_group: "{{ cluster }}_{{ env }}"
+
+    - name: "--- [Task] Fail early when the group is empty or undefined ---"
+      # Grup yoksa playbook "no hosts matched" ile SESSİZCE geçerdi; kullanıcı işin
+      # çalıştığını sanırdı. Burada açıkça durur.
+      ansible.builtin.fail:
+        msg: >-
+          Envanterde "{{ target_group }}" grubu bulunamadı ya da boş —
+          ortam/tenant seçimi ile AWX envanteri uyuşmuyor.
+      when: (groups[target_group] | default([])) | length == 0
+
+    - name: "--- [Task] Debug resolved target group ---"
+      ansible.builtin.debug:
+        msg: "Target group: {{ target_group }} -> hosts: {{ groups[target_group] }}"
+
+- name: "--- [Play] OpenShift Telnet Test ---"
+  # Grup adı doğrudan extra_vars'tan kurulur (ilk play ile AYNI ifade). `hostvars` üzerinden
+  # okumak da mümkündü ama `hosts:` anahtarı envanter yüklenmeden değerlendirildiği için
+  # `--syntax-check` gibi araçlarda kırılgan oluyor.
+  hosts: "{{ cluster }}_{{ env }}"
+  gather_facts: false
+
+  vars_files:
+    - ./global_variables/credentials.yaml
+    - ./global_variables/openshift_inventory_vars.yaml
+
+  vars:
+    pod_name: "telnet-test-{{ tower_job_id | default('local') }}"
+    image: nicolaka/netshoot
+    # REZERVE ADLARDAN KAÇIN: `namespace` ve `port` Ansible'ın kendi ad alanında; doğrudan
+    # kullanmak "Found variable using reserved name" uyarısı üretiyor ve ileride sessiz
+    # çakışmaya açık. Değerleri bir kez buraya alıp playbook boyunca bunları kullanıyoruz.
+    ns_name: "{{ namespace }}"
+    telnet_host: "{{ target_host | default(ip) }}"
+    telnet_port: "{{ target_port | default(port) }}"
+    # HER ÇALIŞTIRMA KENDİ KUBECONFIG'İ: eş zamanlı job'lar aynı `~/.kube/config`'i yazınca
+    # dosya bozuluyor ve `oc` "could not find expected ':'" ile düşüyor (üretimde yaşandı).
+    kubeconfig_path: "/tmp/kubeconfig-{{ tower_job_id | default('local') }}-{{ inventory_hostname }}"
+
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+
+  tasks:
+    - name: "--- [Task] Resolve selected cluster connection record ---"
+      ansible.builtin.set_fact:
+        selected_cluster: "{{ clusters[cluster ~ '_' ~ env][inventory_hostname] }}"
+      # Cluster kaydı yoksa aşağıdaki login anlamsız bir hata verirdi; sebebi burada söylüyoruz.
+      failed_when: false
+
+    - name: "--- [Task] Fail with a clear message when the cluster record is missing ---"
+      ansible.builtin.fail:
+        msg: >-
+          "{{ inventory_hostname }}" için openshift_inventory_vars.yaml içinde
+          clusters["{{ cluster }}_{{ env }}"] altında kayıt yok.
+      when: selected_cluster is not defined or selected_cluster is none
+
+    - block:
+        # PAROLA yalnız BU görevde geçiyor; `no_log` sadece burada. Böylece diğer adımların
+        # hataları AWX çıktısında OKUNABİLİR kalıyor (eskiden hepsi "censored" idi).
+        - name: "--- [Task] Login to the cluster ---"
+          ansible.builtin.shell: |
+            oc login \
+              --server="{{ selected_cluster.url }}" \
+              --username="{{ username }}" \
+              --password="{{ selected_cluster.password }}"
+          register: login_result
+          changed_when: false
+          no_log: true
+
+        - name: "--- [Task] Create temporary pod ---"
+          ansible.builtin.shell: |
+            oc run "{{ pod_name }}" \
+              -n "{{ ns_name }}" \
+              --image="{{ image }}" \
+              --restart=Never \
+              --command -- sleep 3600
+          register: create_pod
+          changed_when: true
+
+        - name: "--- [Task] Wait until pod is Ready ---"
+          ansible.builtin.shell: |
+            oc wait \
+              --for=condition=Ready \
+              pod/{{ pod_name }} \
+              -n {{ ns_name }} \
+              --timeout=60s
+          register: wait_result
+          changed_when: false
+
+        - name: "--- [Task] Run telnet test ---"
+          ansible.builtin.shell: |
+            oc exec -n {{ ns_name }} {{ pod_name }} -- \
+              sh -c "timeout 10 telnet {{ telnet_host }} {{ telnet_port }}"
+          register: telnet_result
+          # Bağlantı kurulamaması BAŞARISIZLIK DEĞİL, testin SONUCUDUR — akış devam etmeli
+          # ki pod temizlensin ve çıktı gösterilebilsin.
+          ignore_errors: true
+          changed_when: false
+
+        - name: "--- [Task] Show telnet output ---"
+          ansible.builtin.debug:
+            msg: >-
+              {{ inventory_hostname }} -> {{ telnet_host }}:{{ telnet_port }} =
+              {{ 'ACIK' if (telnet_result.rc | default(1)) == 0 else 'KAPALI/ERISILEMEDI' }}
+              | {{ (telnet_result.stdout_lines | default([])) + (telnet_result.stderr_lines | default([])) }}
+
+      always:
+        # Geçici pod ve kubeconfig HER DURUMDA temizlenir — akış ortada düşse bile
+        # cluster'da artık pod kalmaz, bastion'da artık dosya birikmez.
+        - name: "--- [Task] Delete temporary pod ---"
+          ansible.builtin.shell: |
+            oc delete pod {{ pod_name }} \
+              -n {{ ns_name }} \
+              --ignore-not-found=true
+          changed_when: true
+          failed_when: false
+
+        - name: "--- [Task] OCP logout ---"
+          ansible.builtin.shell: "oc logout"
+          changed_when: false
+          failed_when: false
+
+        - name: "--- [Task] Remove temporary kubeconfig ---"
+          ansible.builtin.file:
+            path: "{{ kubeconfig_path }}"
+            state: absent
+          failed_when: false

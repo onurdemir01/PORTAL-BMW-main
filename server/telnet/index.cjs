@@ -224,7 +224,21 @@ function initTelnet(app) {
       const runner = require('../ansible/runner.cjs');
       const results = [];
       for (const ns of cleanNamespaces) {
-        const extraVars = { env: envKey, cluster: tenantKey, namespace: ns, ip: ipTrim, port: portTrim };
+        // GERIYE UYUM ALIASI (2026-08-12, uretim): playbook telnet hedefini
+        // `{{ target_host }}` / `{{ target_port }}` adlariyla okuyor, portal ise `ip`/`port`
+        // gonderiyordu — job 3218662'de UC host da "'target_host' is undefined" ile dustu ve
+        // telnet ciktisi "VARIABLE IS NOT DEFINED!" oldu. Iki adi da gonderiyoruz: playbook
+        // hangi surumde olursa olsun calisir, AWX'e kopyalama beklenmez. (Ayni desen LogX'te
+        // `oc_namespace_input` + `namespace` icin de kullaniliyor.)
+        const extraVars = {
+          env: envKey,
+          cluster: tenantKey,
+          namespace: ns,
+          ip: ipTrim,
+          port: portTrim,
+          target_host: ipTrim,
+          target_port: portTrim,
+        };
         try {
           const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
 
