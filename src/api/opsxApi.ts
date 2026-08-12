@@ -268,16 +268,11 @@ export const opsxApi = {
   // Seçili namespace'lerdeki (birden fazla olabilir) pod'ları listelemek için anlık bir
   // AWX keşif job'ı tetikler — `pairs`, OcpTargetStep'in ürettiği (namespace,uygulama)
   // çiftlerinin AYNISI (artık tek bir namespace'e zorlanmıyor).
-  // `clusters` OPSİYONEL: verilmezse sunucu bugünkü davranışı sürdürür (tenant'ın TÜM
-  // gerçek cluster'larına bakar). Verilirse keşif yalnız o cluster'lara bağlanır — sunucu
-  // listeyi kendi kataloğuna karşı yeniden doğrular (anti-TOCTOU).
-  discoverOcpPods: (
-    env: string, tenant: string, pairs: OpsxOcpPair[], clusters?: string[],
-  ): Promise<OpsxPodDiscoveryLaunch> =>
+  discoverOcpPods: (env: string, tenant: string, pairs: OpsxOcpPair[]): Promise<OpsxPodDiscoveryLaunch> =>
     fetch(`${BASE}/ocp/pods/discover`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ env, tenant, pairs, ...(clusters?.length ? { clusters } : {}) }),
+      body: JSON.stringify({ env, tenant, pairs }),
     }).then(safeJson),
 
   // Keşif job'ının durumu — terminal + başarılıysa `pods` dolu döner.

@@ -58,9 +58,6 @@ const TelnetWizardPage: React.FC = () => {
   const [env, setEnv] = useState("");
   const [tenant, setTenant] = useState("");
   const [namespaces, setNamespaces] = useState<string[]>([]);
-  // Hedeflenecek gerçek cluster'lar (opsiyonel kısıtlama). Boş/tümü = bugünkü davranış:
-  // sunucu `limit` göndermez ve iş grubun tamamına gider.
-  const [ocClusters, setOcClusters] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,7 +142,7 @@ const TelnetWizardPage: React.FC = () => {
     setError(null);
     try {
       if (platform === "openshift") {
-        const r = await telnetApi.run({ platform: "openshift", env, tenant, namespaces, clusters: ocClusters, ip, port });
+        const r = await telnetApi.run({ platform: "openshift", env, tenant, namespaces, ip, port });
         if ("results" in r) {
           setStep("done");
           trackOcpJobs(r.results);
@@ -275,7 +272,7 @@ const TelnetWizardPage: React.FC = () => {
         {step === "ocp_target" && (
           <OcpTargetStep
             busy={busy}
-            onSubmit={(v) => { setEnv(v.env); setTenant(v.tenant); setNamespaces(v.namespaces); setOcClusters(v.clusters); setStep("telnet_input"); }}
+            onSubmit={(v) => { setEnv(v.env); setTenant(v.tenant); setNamespaces(v.namespaces); setStep("telnet_input"); }}
           />
         )}
 

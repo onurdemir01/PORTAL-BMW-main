@@ -197,24 +197,6 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user) {
   return { envKey, tenantKey, cleanPairs, clusterNames };
 }
 
-// Client'in gonderdigi cluster alt kumesini, bu tenant/env icin DB'den AZ ONCE cozulmus
-// gercek cluster listesine karsi dogrular (ANTI-TOCTOU). Grup disindaki bir isim ne AWX
-// `limit`ine ne de `ocp_clusters[]`e sizabilir.
-//
-// Bos/gonderilmemis liste = KISITLAMA YOK: cagiran bugunku davranisi (tum cluster'lar)
-// surdurur. Bu, "calisan yapiyi bozma" kuralinin somut hali — alan opsiyoneldir, eski
-// onyuz yeni sunucuyla aynen calisir.
-function pickClusterSubset(requested, clusterNames) {
-  if (!Array.isArray(requested) || requested.length === 0) return clusterNames;
-  const wanted = [...new Set(requested.map((c) => String(c || '').trim()).filter(Boolean))];
-  if (!wanted.length) return clusterNames;
-  const unknown = wanted.filter((c) => !clusterNames.includes(c));
-  if (unknown.length) {
-    throw Object.assign(new Error(`Geçersiz cluster: ${unknown.join(', ')}`), { status: 400 });
-  }
-  return wanted;
-}
-
 // Bir tenant'a BIRDEN FAZLA gercek OCP cluster'i bagli olabilir (getClusterTree()) — pod
 // kesfi/dump eskiden bunlardan yalniz BIRINE (AWX inventory grubundaki run_once ilk host)
 // bagleniyordu, digerlerindeki pod'lar hic gorunmuyordu (bildirilen hata). LogX v2'nin
@@ -574,13 +556,15 @@ function initOpsX(app) {
       // tenant/env icin DB'den az once cozdugu gercek cluster listesine (clusterNames)
       // KARSI dogrulanir — bu grubun disindaki bir isim limit'e asla sizmaz.
       let ocClusterLimit = '';
-      try {
-        const picked = pickClusterSubset(ocClusters, clusterNames);
-        // Hepsi seciliyse `limit` BOS birakilir — AWX'e gereksiz bir kisit gondermemek
-        // bugunku davranisi birebir korur.
-        if (picked.length < clusterNames.length) ocClusterLimit = picked.join(cfg.separator);
-      } catch (err) {
-        return res.status(err.status || 400).json({ ok: false, message: err.message });
+      if (Array.isArray(ocClusters) && ocClusters.length > 0) {
+        const requestedClusters = [...new Set(ocClusters.map((c) => String(c || '').trim()).filter(Boolean))];
+        const unknown = requestedClusters.filter((c) => !clusterNames.includes(c));
+        if (unknown.length) {
+          return res.status(400).json({ ok: false, message: `Geçersiz cluster: ${unknown.join(', ')}` });
+        }
+        if (requestedClusters.length < clusterNames.length) {
+          ocClusterLimit = requestedClusters.join(cfg.separator);
+        }
       }
       limitValue = ocClusterLimit;
 
@@ -912,11 +896,7 @@ function initOpsX(app) {
   // uygulama adina gore filtrelemiyor) ama HER pair yine de erisim kisitlamasindan
   // (resolveOpenshiftTargets) tek tek gecer.
   app.post('/api/opsx/ocp/pods/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-    // `clusters` OPSIYONEL: gonderilmezse bugunku davranis (tenant'in TUM gercek
-    // cluster'larina paralel baglan) aynen surer. Gonderilirse kesif yalniz o
-    // cluster'lara baglanir — daha az `oc login`, daha hizli sonuc, daha kisa pod listesi
-    // (2026-08-12 kullanici istegi).
-    const { env, tenant, pairs, clusters } = req.body || {};
+    const { env, tenant, pairs } = req.body || {};
     const { templateId, serverId, keyName } = await resolveTarget('openshiftPods');
     if (!templateId) {
       return res.status(501).json({
@@ -935,13 +915,10 @@ function initOpsX(app) {
       ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
         env, tenant, pairs, user
       ));
-      // Kullanicinin sectigi alt kume, DB'den az once cozulen listeye karsi dogrulanir.
-      const targetClusters = pickClusterSubset(clusters, clusterNames);
-      // Bir tenant'a BIRDEN FAZLA gercek cluster bagli olabilir — SECILENLERIN hepsine
-      // paralel baglanip pod'un HANGI cluster'da oldugunu gostermek icin (bkz.
-      // resolveOcpClusterFanout yorumu) fan-out extra_vars'i kurulur; TEK `oc_cluster`
-      // alanina guvenilmez.
-      fanout = await resolveOcpClusterFanout(envKey, tenantKey, targetClusters);
+      // Bir tenant'a BIRDEN FAZLA gercek cluster bagli olabilir — hepsine paralel
+      // baglanip pod'un HANGI cluster'da oldugunu gostermek icin (bkz. resolveOcpClusterFanout
+      // yorumu) fan-out extra_vars'i kurulur; TEK `oc_cluster` alanina guvenilmez.
+      fanout = await resolveOcpClusterFanout(envKey, tenantKey, clusterNames);
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -1269,7 +1246,4 @@ function initOpsX(app) {
 module.exports = {
   initOpsX, hostsForApp, ALLOWED_OPERATIONS, namespacesForCluster,
   extractOpsxDumpResult, extractOpsxPodsResult, extractOpsxJvmResult,
-  // Testler icin: cluster alt kumesi dogrulamasi (anti-TOCTOU) route disinda da
-  // dogrulanabilsin — HTTP katmani olmadan.
-  pickClusterSubset,
 };

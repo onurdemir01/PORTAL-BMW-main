@@ -70,10 +70,6 @@ const OpsXWizardPage: React.FC = () => {
   // "ocp_cluster" adimi girdigi icin secim burada bekletilir (dump'in dumpType'i ile
   // AYNI desen).
   const [ocOperationPending, setOcOperationPending] = useState<OpsxOcpOperation | null>(null);
-  // Cluster adımından çıkan seçim. Dump akışında pod KEŞFİNE de geçirilir: keşif yalnız
-  // seçilen cluster'lara bağlanır (daha az `oc login`, daha kısa pod listesi). Boş dizi =
-  // kısıtlama yok — sunucu da bunu bugünkü davranış olarak yorumlar.
-  const [ocClusters, setOcClusters] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OpsxRunResult | OpsxDumpLaunchResult | null>(null);
@@ -170,7 +166,7 @@ const OpsXWizardPage: React.FC = () => {
       case "ocp_cluster":
         return "ocp_operation";
       case "ocp_pods":
-        return "ocp_cluster";
+        return "ocp_operation";
       default:
         return null;
     }
@@ -311,24 +307,22 @@ const OpsXWizardPage: React.FC = () => {
   }
 
   function handleOcpOperation(ocOperation: OpsxOcpOperation) {
-    // HER İKİ akış da önce cluster adımından geçer (2026-08-12): restart/stop/start için
-    // seçim AWX `limit`ine, dump için pod KEŞFİNE gider. Eskiden dump doğrudan pod
-    // keşfine düşüyor ve tenant'ın TÜM cluster'larına bağlanıyordu.
     if (DUMP_OPERATIONS.has(ocOperation)) {
       // Pod keşfi/dump artık pairs'teki TÜM (namespace,uygulama) çiftlerini birden
       // hedefleyebiliyor (bkz. opsx_openshift_pods.yaml/opsx_openshift_dump.yaml'ın
       // cluster × namespace çapraz çarpımı) — eskiden burada tek çifte zorlanıyordu.
       setDumpType(ocOperation as OpsxDumpType);
+      setStep("ocp_pods");
+    } else {
+      // restart/stop/start: hemen tetiklenmez, önce hangi gerçek cluster(lar)ın
+      // hedefleneceği sorulur (bkz. OcpClusterSelectStep dosya başı notu).
+      setOcOperationPending(ocOperation);
+      setStep("ocp_cluster");
     }
-    setOcOperationPending(ocOperation);
-    setStep("ocp_cluster");
   }
 
   function submitOcpCluster(clusters: string[]) {
     if (!ocOperationPending) return;
-    setOcClusters(clusters);
-    // Dump: seçim pod keşfine taşınır (job orada başlar). Diğerleri: iş hemen tetiklenir.
-    if (DUMP_OPERATIONS.has(ocOperationPending)) { setStep("ocp_pods"); return; }
     runOpenshift(ocOperationPending, clusters);
   }
 
@@ -433,7 +427,6 @@ const OpsXWizardPage: React.FC = () => {
 
         {step === "ocp_pods" && dumpType && pairs.length > 0 && (
           <OcpPodSelectStep
-            clusters={ocClusters}
             env={env}
             tenant={tenant}
             pairs={pairs}

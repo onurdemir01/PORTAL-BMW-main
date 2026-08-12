@@ -17,7 +17,7 @@
     "prod": "NODE_ENV=production node server/index.cjs prod",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --experimental-test-module-mocks --test server/logx/v2/__tests__/*.test.cjs server/auth/__tests__/*.test.cjs server/db/__tests__/*.test.cjs server/ai-analyst/__tests__/*.test.cjs server/ai/__tests__/*.test.cjs server/inventory/__tests__/*.test.cjs server/ansible/__tests__/*.test.cjs server/opsx/__tests__/*.test.cjs server/filex/__tests__/*.test.cjs server/telnet/__tests__/*.test.cjs src/__tests__/*.test.cjs",
+    "test": "node --experimental-test-module-mocks --test server/logx/v2/__tests__/*.test.cjs server/auth/__tests__/*.test.cjs server/db/__tests__/*.test.cjs server/ai-analyst/__tests__/*.test.cjs server/ai/__tests__/*.test.cjs server/inventory/__tests__/*.test.cjs server/ansible/__tests__/*.test.cjs server/opsx/__tests__/*.test.cjs server/filex/__tests__/*.test.cjs src/__tests__/*.test.cjs",
     "lint:ascii": "node scripts/check-ascii.cjs",
     "migrate": "node server/db/migrate.cjs",
     "db:seed": "node server/db/seed.cjs",
