@@ -262,10 +262,11 @@ const OpsXWizardPage: React.FC = () => {
   }
 
   // Openshift dump POD seviyesinde çalışır — işlem seçildikten sonra doğrudan
-  // tetiklenmez, önce pod seçim adımına (canlı AWX keşfi) gidilir.
+  // tetiklenmez, önce pod seçim adımına (canlı AWX keşfi) gidilir. Artık TEK namespace'e
+  // zorlanmıyor — pairs'teki TÜM (namespace,uygulama) çiftleri kesif+dump'a geçiyor.
   async function runOpenshiftDump(
     dumpType: OpsxDumpType,
-    selectedPods: { cluster: string; pod: string }[],
+    selectedPods: { cluster: string; namespace: string; pod: string }[],
     threadDumpCount: number,
     threadDumpInterval: number,
   ) {
@@ -274,7 +275,7 @@ const OpsXWizardPage: React.FC = () => {
     setError(null);
     try {
       const r = await opsxApi.dumpOpenshift(
-        env, tenant, pairs[0].namespace, selectedPods, dumpType,
+        env, tenant, pairs, selectedPods, dumpType,
         dumpType === "threaddump" ? threadDumpCount : undefined,
         dumpType === "threaddump" ? threadDumpInterval : undefined,
       );
@@ -297,13 +298,9 @@ const OpsXWizardPage: React.FC = () => {
 
   function handleOcpOperation(ocOperation: OpsxOcpOperation) {
     if (DUMP_OPERATIONS.has(ocOperation)) {
-      // Dump tek bir namespace hedefler (playbook pod bazlı çalışır); OcpTargetStep
-      // birden fazla çift biriktirmeye izin verdiği için burada açıkça engellenir —
-      // aksi halde kullanıcı sessizce yalnızca ilk çiftin pod'larını görürdü.
-      if (pairs.length !== 1) {
-        setError("Dump işlemi tek seferde yalnızca bir namespace hedefleyebilir — lütfen geri dönüp tek bir namespace/uygulama bırakın.");
-        return;
-      }
+      // Pod keşfi/dump artık pairs'teki TÜM (namespace,uygulama) çiftlerini birden
+      // hedefleyebiliyor (bkz. opsx_openshift_pods.yaml/opsx_openshift_dump.yaml'ın
+      // cluster × namespace çapraz çarpımı) — eskiden burada tek çifte zorlanıyordu.
       setDumpType(ocOperation as OpsxDumpType);
       setStep("ocp_pods");
     } else {
@@ -406,12 +403,11 @@ const OpsXWizardPage: React.FC = () => {
           <OcpOperationStep env={env} tenant={tenant} pairs={pairs} busy={busy} onSelect={handleOcpOperation} />
         )}
 
-        {step === "ocp_pods" && dumpType && pairs.length === 1 && (
+        {step === "ocp_pods" && dumpType && pairs.length > 0 && (
           <OcpPodSelectStep
             env={env}
             tenant={tenant}
-            namespace={pairs[0].namespace}
-            application={pairs[0].application}
+            pairs={pairs}
             dumpType={dumpType}
             busy={busy}
             onSubmit={(v) => runOpenshiftDump(dumpType, v.pods, v.threadDumpCount, v.threadDumpInterval)}
@@ -458,11 +454,14 @@ const OpsXWizardPage: React.FC = () => {
                       className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]"
                     >
                       {/* Etiket kaynağa göre değişir: Legacy host (+PID) bazlı; Openshift'te
-                          arşiv kaydı cluster+pod LİSTESİ, başarısız kayıtlar tek cluster/pod taşır. */}
+                          arşiv kaydı cluster+namespace(ler)+pod LİSTESİ, başarısız kayıtlar
+                          tek cluster/pod taşır. */}
                       <span className="text-sm font-mono text-[var(--text-primary)] truncate">
                         {r.host
                           ? `${r.host}${r.pid ? ` · PID ${r.pid}` : ""}`
-                          : (r.pods?.length ? `${r.cluster ? `${r.cluster} · ` : ""}${r.pods.length} pod` : null)
+                          : (r.pods?.length
+                              ? `${r.cluster ? `${r.cluster} · ` : ""}${r.namespaces?.join(",") ? `${r.namespaces.join(",")} · ` : ""}${r.pods.length} pod`
+                              : null)
                           || (r.pod ? `${r.cluster ? `${r.cluster}/` : ""}${r.pod}` : null)
                           || (r.application ? `${r.namespace}/${r.application}` : r.namespace)}
                       </span>

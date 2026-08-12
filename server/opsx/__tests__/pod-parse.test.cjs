@@ -34,12 +34,12 @@ test('bos/eksik alanli satirlar null doner (cagiran filtreler)', () => {
   assert.equal(parsePodLine('sadece-ad 1/1 Running'), null, '5 alandan az satir kabul edilmemeli');
 });
 
-test('parsePodDiscoveryResult: tek cluster - lines -> pods, bozuk satirlar elenir', () => {
+test('parsePodDiscoveryResult: tek cluster/namespace - lines -> pods, bozuk satirlar elenir', () => {
   const out = parsePodDiscoveryResult({
     overall_status: 'ok',
-    namespace: 'deneme-test',
     results: [{
       cluster: 'gbocpqa1',
+      namespace: 'deneme-test',
       ok: true,
       lines: [
         'pod-a-1   1/1   Running   0   5d',
@@ -50,38 +50,42 @@ test('parsePodDiscoveryResult: tek cluster - lines -> pods, bozuk satirlar eleni
     }],
   });
   assert.equal(out.overallStatus, 'ok');
-  assert.equal(out.namespace, 'deneme-test');
+  assert.deepEqual(out.namespaces, ['deneme-test']);
   assert.equal(out.pods.length, 2);
   assert.deepEqual(out.pods.map((p) => p.name), ['pod-a-1', 'pod-b-2']);
   assert.equal(out.pods[1].restarts, '7 (2m ago)');
   assert.equal(out.pods[0].cluster, 'gbocpqa1', 'her pod HANGI cluster\'dan geldigini tasimali');
+  assert.equal(out.pods[0].namespace, 'deneme-test', 'her pod HANGI namespace\'ten geldigini tasimali');
 });
 
-test('parsePodDiscoveryResult: coklu cluster - HER cluster kendi pod\'larini katkilar', () => {
+test('parsePodDiscoveryResult: coklu cluster x coklu namespace - HER kombinasyon kendi pod\'larini katkilar', () => {
   const out = parsePodDiscoveryResult({
     overall_status: 'ok',
-    namespace: 'deneme-test',
     results: [
-      { cluster: 'gbocpqa1', ok: true, lines: ['pod-a-1   1/1   Running   0   5d'] },
-      { cluster: 'gbocpqa2', ok: true, lines: ['pod-b-1   1/1   Running   0   2d'] },
+      { cluster: 'gbocpqa1', namespace: 'ns-a', ok: true, lines: ['pod-a-1   1/1   Running   0   5d'] },
+      { cluster: 'gbocpqa2', namespace: 'ns-a', ok: true, lines: ['pod-b-1   1/1   Running   0   2d'] },
+      { cluster: 'gbocpqa1', namespace: 'ns-b', ok: true, lines: ['pod-c-1   1/1   Running   0   1d'] },
     ],
   });
-  assert.equal(out.pods.length, 2);
-  assert.deepEqual(out.pods.map((p) => `${p.cluster}/${p.name}`), ['gbocpqa1/pod-a-1', 'gbocpqa2/pod-b-1']);
+  assert.equal(out.pods.length, 3);
+  assert.deepEqual(
+    out.pods.map((p) => `${p.cluster}/${p.namespace}/${p.name}`),
+    ['gbocpqa1/ns-a/pod-a-1', 'gbocpqa2/ns-a/pod-b-1', 'gbocpqa1/ns-b/pod-c-1']
+  );
+  assert.deepEqual(out.namespaces.sort(), ['ns-a', 'ns-b']);
 });
 
-test('parsePodDiscoveryResult: bir cluster basarisiz olsa da digerleri etkilenmez', () => {
+test('parsePodDiscoveryResult: bir (cluster,namespace) cifti basarisiz olsa da digerleri etkilenmez', () => {
   const out = parsePodDiscoveryResult({
     overall_status: 'partial',
-    namespace: 'deneme-test',
     results: [
-      { cluster: 'gbocpqa1', ok: true, lines: ['pod-a-1   1/1   Running   0   5d'] },
-      { cluster: 'gbocpqa2', ok: false, error: 'oc login basarisiz' },
+      { cluster: 'gbocpqa1', namespace: 'ns-a', ok: true, lines: ['pod-a-1   1/1   Running   0   5d'] },
+      { cluster: 'gbocpqa2', namespace: 'ns-a', ok: false, error: 'oc login basarisiz' },
     ],
   });
   assert.equal(out.pods.length, 1);
   assert.equal(out.pods[0].cluster, 'gbocpqa1');
-  assert.match(out.error, /gbocpqa2.*oc login basarisiz/);
+  assert.match(out.error, /gbocpqa2\/ns-a.*oc login basarisiz/);
 });
 
 test('overall_status katlamali skalerden bosluklu gelse de trimlenir', () => {
@@ -95,5 +99,5 @@ test('bos/yok artifacts guvenli varsayilanlara duser (500 atmaz)', () => {
   const out = parsePodDiscoveryResult(null);
   assert.equal(out.overallStatus, 'unknown');
   assert.deepEqual(out.pods, []);
-  assert.equal(out.namespace, '');
+  assert.deepEqual(out.namespaces, []);
 });

@@ -76,6 +76,7 @@ export interface OpsxDumpResultItem {
   namespace?: string;
   application?: string;
   cluster?: string; // Openshift: kaydın ait olduğu gerçek cluster (birden fazlaysa "," ile)
+  namespaces?: string[]; // Openshift: arşiv kaydının kapsadığı namespace'ler
   pod?: string;   // Openshift: BAŞARISIZ tek pod kaydı
   pods?: string[]; // Openshift: arşiv kaydının kapsadığı pod'lar
   ok: boolean;
@@ -105,12 +106,14 @@ export interface OpsxDumpStatus {
 
 // Openshift dump artık POD seviyesinde çalışır. Pod adları efemeraldir (her deploy'da
 // değişir) — envanterde tutulamaz, bu yüzden sihirbaz anlık bir AWX keşif job'ı
-// tetikleyip namespace'teki pod'ları listeler (bkz. opsx_openshift_pods.yaml). Bir tenant'a
-// birden fazla gerçek cluster bağlı olabilir — keşif ARTIK HEPSİNE bakıyor, bu yüzden her
-// pod HANGİ cluster'dan geldiğini taşır (aynı namespace adı birden fazla cluster'da olabilir).
+// tetikleyip TÜM seçili namespace'lerdeki pod'ları listeler (bkz. opsx_openshift_pods.yaml).
+// Bir tenant'a birden fazla gerçek cluster bağlı olabilir VE kullanıcı birden fazla
+// namespace seçebilir — keşif ARTIK HEPSİNİN ÇAPRAZ ÇARPIMINA bakıyor, bu yüzden her pod
+// HANGİ cluster'dan VE HANGİ namespace'ten geldiğini taşır.
 export interface OpsxPod {
   name: string;
-  cluster: string;  // gerçek cluster adı (ocp_cluster_index.cluster_name)
+  cluster: string;   // gerçek cluster adı (ocp_cluster_index.cluster_name)
+  namespace: string;
   ready: string;    // "1/1"
   status: string;   // "Running" | "Pending" | ...
   restarts: string; // "0" veya "2 (3d ago)"
@@ -130,7 +133,7 @@ export interface OpsxPodDiscoveryStatus {
   ok: boolean;
   status: string;
   message?: string;
-  namespace?: string;
+  namespaces?: string[];
   pods?: OpsxPod[];
 }
 
@@ -256,12 +259,14 @@ export const opsxApi = {
       body: JSON.stringify({ application, hosts, dumpType, pidMap }),
     }).then(safeJson),
 
-  // Namespace'teki pod'ları listelemek için anlık bir AWX keşif job'ı tetikler.
-  discoverOcpPods: (env: string, tenant: string, namespace: string): Promise<OpsxPodDiscoveryLaunch> =>
+  // Seçili namespace'lerdeki (birden fazla olabilir) pod'ları listelemek için anlık bir
+  // AWX keşif job'ı tetikler — `pairs`, OcpTargetStep'in ürettiği (namespace,uygulama)
+  // çiftlerinin AYNISI (artık tek bir namespace'e zorlanmıyor).
+  discoverOcpPods: (env: string, tenant: string, pairs: OpsxOcpPair[]): Promise<OpsxPodDiscoveryLaunch> =>
     fetch(`${BASE}/ocp/pods/discover`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ env, tenant, namespace }),
+      body: JSON.stringify({ env, tenant, pairs }),
     }).then(safeJson),
 
   // Keşif job'ının durumu — terminal + başarılıysa `pods` dolu döner.
@@ -270,14 +275,15 @@ export const opsxApi = {
 
   // Openshift thread/heap dump başlatır — AYRI bir AWX template'e (opsx_openshift_dump)
   // gider. Hedefleme POD seviyesindedir (yukarıdaki keşif adımından seçilir); her pod
-  // HANGİ gerçek cluster'dan geldiğini taşır (bkz. OpsxPod.cluster) — playbook o pod'u
-  // sadece kendi cluster'ına login olarak dump alır (birden fazla gerçek cluster olabilir).
+  // HANGİ gerçek cluster'dan VE HANGİ namespace'ten geldiğini taşır (bkz. OpsxPod) —
+  // playbook o pod'u sadece kendi cluster'ına login olarak dump alır. `pairs`, anti-TOCTOU
+  // için gönderilir (seçilen pod'ların namespace'i bu çiftlerden biri OLMALI).
   // threadDumpCount/threadDumpInterval YALNIZ thread dump için anlamlıdır.
   dumpOpenshift: (
     env: string,
     tenant: string,
-    namespace: string,
-    pods: { cluster: string; pod: string }[],
+    pairs: OpsxOcpPair[],
+    pods: { cluster: string; namespace: string; pod: string }[],
     dumpType: OpsxDumpType,
     threadDumpCount?: number,
     threadDumpInterval?: number,
@@ -285,7 +291,7 @@ export const opsxApi = {
     fetch(`${BASE}/dump/openshift`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ env, tenant, namespace, pods, dumpType, threadDumpCount, threadDumpInterval }),
+      body: JSON.stringify({ env, tenant, pairs, pods, dumpType, threadDumpCount, threadDumpInterval }),
     }).then(safeJson),
 
   // Dump job'ının durumu — terminal + başarılıysa `results` her başarılı öge için

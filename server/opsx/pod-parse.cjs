@@ -39,28 +39,31 @@ function parsePodLine(line) {
 
 // artifacts.opsx_pods_result → portal ic bicimi.
 //
-// COK-CLUSTER (bkz. server/opsx/index.cjs resolveOcpClusterFanout): bir tenant'a birden
-// fazla gercek cluster bagli olabilir, playbook artik HEPSINE paralel baglanip HER
-// cluster'in kendi `oc get pods` ciktisini AYRI bir sonuc olarak (block/rescue ile hata
-// izole) doner — `results: [{cluster, ok, lines}|{cluster, ok:false, error}]`. Her
-// cluster'in satirlari ayristirilip pod'a `cluster` etiketi eklenir; basarisiz cluster'lar
-// (o cluster'a hic baglanilamadiysa) `error`'a toplanir, DIGER cluster'larin pod'larini
-// engellemez.
+// COK-CLUSTER x COK-NAMESPACE (bkz. server/opsx/index.cjs resolveOcpClusterFanout): bir
+// tenant'a birden fazla gercek cluster bagli olabilir VE kullanici birden fazla namespace
+// secebilir — playbook artik HER (cluster,namespace) cifti icin AYRI bir `oc get pods`
+// ciktisini AYRI bir sonuc olarak (hata izole) doner —
+// `results: [{cluster, namespace, ok, lines}|{cluster, namespace, ok:false, error}]`.
+// Her satir ayristirilip pod'a HEM `cluster` HEM `namespace` etiketi eklenir; basarisiz
+// (cluster,namespace) ciftleri (baglanilamadiysa) `error`'a toplanir, DIGERLERINI engellemez.
 function parsePodDiscoveryResult(artifacts) {
   const a = artifacts || {};
   const clusterResults = Array.isArray(a.results) ? a.results : [];
   const pods = [];
   const errors = [];
+  const namespaceSet = new Set();
   for (const cr of clusterResults) {
     const cluster = String(cr?.cluster || '').trim();
+    const namespace = String(cr?.namespace || '').trim();
+    if (namespace) namespaceSet.add(namespace);
     if (cr?.ok === false) {
-      errors.push(`${cluster || '?'}: ${String(cr?.error || 'Pod listesi alınamadı').trim()}`);
+      errors.push(`${cluster || '?'}/${namespace || '?'}: ${String(cr?.error || 'Pod listesi alınamadı').trim()}`);
       continue;
     }
     const lines = Array.isArray(cr?.lines) ? cr.lines : [];
     for (const line of lines) {
       const parsed = parsePodLine(line);
-      if (parsed) pods.push({ ...parsed, cluster });
+      if (parsed) pods.push({ ...parsed, cluster, namespace });
     }
   }
 
@@ -68,7 +71,7 @@ function parsePodDiscoveryResult(artifacts) {
     // `trim`: playbook katlamali skaler (`>-`) kullanabiliyor ve Jinja blok etiketleri
     // deger basina bosluk birakabiliyor (logx tarafinda birebir bu hata yasandi).
     overallStatus: String(a.overall_status || 'unknown').trim() || 'unknown',
-    namespace: String(a.namespace || ''),
+    namespaces: [...namespaceSet],
     error: errors.join(' | '),
     pods,
   };

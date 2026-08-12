@@ -864,9 +864,16 @@ function initOpsX(app) {
   // pod'lari listeler. Kullanici listeden bir veya birden fazla pod secer, dump o
   // pod'lardan alinir.
   //
-  // POST /api/opsx/ocp/pods/discover — { env, tenant, namespace } → { jobId, awxServerId }
+  // POST /api/opsx/ocp/pods/discover — { env, tenant, pairs } → { jobId, awxServerId }
+  //
+  // COKLU NAMESPACE: OcpTargetStep birden fazla (namespace, uygulama) cifti biriktirmeye
+  // izin veriyor (restart bunu zaten destekliyordu) — pod kesfi/dump artik TEK bir
+  // namespace'e ZORLAMIYOR, `pairs`'teki TUM namespace'lere (VE tenant'a bagli TUM gercek
+  // cluster'lara) paralel bakar. `application` alani burada islevsel degil (pod kesfi
+  // uygulama adina gore filtrelemiyor) ama HER pair yine de erisim kisitlamasindan
+  // (resolveOpenshiftTargets) tek tek gecer.
   app.post('/api/opsx/ocp/pods/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-    const { env, tenant, namespace } = req.body || {};
+    const { env, tenant, pairs } = req.body || {};
     const { templateId, serverId, keyName } = await resolveTarget('openshiftPods');
     if (!templateId) {
       return res.status(501).json({
@@ -883,7 +890,7 @@ function initOpsX(app) {
     try {
       const user = req.session?.user || {};
       ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
-        env, tenant, [{ namespace, application: 'x' }], user
+        env, tenant, pairs, user
       ));
       // Bir tenant'a BIRDEN FAZLA gercek cluster bagli olabilir — hepsine paralel
       // baglanip pod'un HANGI cluster'da oldugunu gostermek icin (bkz. resolveOcpClusterFanout
@@ -893,7 +900,8 @@ function initOpsX(app) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
 
-    const extraVars = { ...fanout, namespace: cleanPairs[0].namespace };
+    const namespaces = [...new Set(cleanPairs.map((p) => p.namespace))];
+    const extraVars = { ...fanout, namespaces };
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -917,7 +925,7 @@ function initOpsX(app) {
         console.warn('[OpsX] Pod kesfi gecmisi kaydedilemedi:', e.message);
       }
 
-      console.log(`[OpsX] ${req.session?.user?.username} -> pod kesfi env=${envKey} tenant=${tenantKey} clusters=${clusterNames.join(',')} namespace=${extraVars.namespace} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      console.log(`[OpsX] ${req.session?.user?.username} -> pod kesfi env=${envKey} tenant=${tenantKey} clusters=${clusterNames.join(',')} namespaces=${namespaces.join(',')} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
       res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -976,7 +984,7 @@ function initOpsX(app) {
       res.json({
         ok: true,
         status: statusInfo.status,
-        namespace: parsed.namespace,
+        namespaces: parsed.namespaces,
         pods: parsed.pods,
         ...(parsed.error ? { message: parsed.error } : {}),
       });
@@ -1000,8 +1008,11 @@ function initOpsX(app) {
   //
   // Coklu thread dump: YALNIZ thread dump icin dump_count/dump_interval gonderilir
   // (varsayilan 1 dump, beklemesiz). Heap dump'ta bu alanlar HIC gonderilmez.
+  //
+  // COKLU NAMESPACE: pod'lar artik TEK bir namespace'e sabitlenmez — her pod HANGI
+  // namespace'ten geldigini de tasir (`pairs`'teki namespace'lerden biri OLMALI, anti-TOCTOU).
   app.post('/api/opsx/dump/openshift', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { env, tenant, namespace, pods, dumpType, threadDumpCount, threadDumpInterval } = req.body || {};
+    const { env, tenant, pairs, pods, dumpType, threadDumpCount, threadDumpInterval } = req.body || {};
     if (!DUMP_TYPES.has(dumpType)) {
       return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
     }
@@ -1019,18 +1030,19 @@ function initOpsX(app) {
     try {
       const user = req.session?.user || {};
       ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
-        env, tenant, [{ namespace, application: 'x' }], user
+        env, tenant, pairs, user
       ));
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
-    const nsKey = cleanPairs[0].namespace;
+    const allowedNamespaces = new Set(cleanPairs.map((p) => p.namespace));
 
-    // Pod+cluster ciftleri client'tan gelir ama kesif job'inin ciktisindan secilir —
-    // anti-TOCTOU: her cluster adi, yukarida katalogdan dogrulanmis clusterNames'in bir
-    // uyesi OLMALI (Legacy'nin pid_map'teki jbossMajor dogrulamasiyla AYNI gerekce). Pod
-    // adi bicimi de dogrulanir — playbook bunlari shell'e gecirdigi icin (oc exec)
-    // Kubernetes ad sozdizimi disinda bir sey KABUL EDILMEZ.
+    // Pod+cluster+namespace ucluleri client'tan gelir ama kesif job'inin ciktisindan
+    // secilir — anti-TOCTOU: her cluster adi katalogdan dogrulanmis clusterNames'in, her
+    // namespace de yukarida dogrulanmis `pairs`'in bir uyesi OLMALI (Legacy'nin pid_map'teki
+    // jbossMajor dogrulamasiyla AYNI gerekce). Pod adi bicimi de dogrulanir — playbook
+    // bunlari shell'e gecirdigi icin (oc exec) Kubernetes ad sozdizimi disinda bir sey
+    // KABUL EDILMEZ.
     if (!Array.isArray(pods) || pods.length === 0) {
       return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
     }
@@ -1040,17 +1052,21 @@ function initOpsX(app) {
     const cleanPodTargets = [];
     for (const p of pods) {
       const cluster = String(p?.cluster || '').trim();
+      const namespace = String(p?.namespace || '').trim();
       const pod = String(p?.pod || '').trim();
       if (!allowedClusters.has(cluster)) {
         return res.status(400).json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
       }
+      if (!allowedNamespaces.has(namespace)) {
+        return res.status(400).json({ ok: false, message: `Bu namespace seçilenler arasında değil: ${p?.namespace}` });
+      }
       if (!podNameRe.test(pod) || pod.length > 253) {
         return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${p?.pod}` });
       }
-      const key = `${cluster}::${pod}`;
+      const key = `${cluster}::${namespace}::${pod}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      cleanPodTargets.push({ cluster, pod });
+      cleanPodTargets.push({ cluster, namespace, pod });
     }
     if (cleanPodTargets.length === 0) {
       return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
@@ -1069,8 +1085,7 @@ function initOpsX(app) {
     const opsxDownloads = require('./downloads.cjs');
     const extraVars = {
       ...fanout,
-      namespace: nsKey,
-      ocp_pod_targets: cleanPodTargets.map((t) => ({ cluster_name: t.cluster, pod: t.pod })),
+      ocp_pod_targets: cleanPodTargets.map((t) => ({ cluster_name: t.cluster, namespace: t.namespace, pod: t.pod })),
       choose: dumpType === 'heapdump' ? 'memory' : 'cpu',
       staging_dir: opsxDownloads.stagingRoot(),
     };

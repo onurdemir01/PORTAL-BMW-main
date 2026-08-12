@@ -5,46 +5,53 @@
 // tetiklenir, iş bitene kadar beklenir ve çıkan liste kullanıcıya sunulur — namespace/
 // uygulama seçiminin aksine burada ÖNBELLEK YOKTUR, liste her zaman canlıdır.
 //
-// COK-CLUSTER: bir tenant'a birden fazla gerçek OCP cluster'ı bağlı olabilir — keşif
-// ARTIK HEPSİNE bakıyor (bkz. server/opsx/index.cjs resolveOcpClusterFanout), bu yüzden
-// pod'lar CLUSTER BAZINDA gruplanır (LegacyJvmSelectStep'in host bazlı gruplamasıyla AYNI
-// desen) ve seçim {cluster,pod} çifti olarak backend'e gider — dump playbook'u her pod'u
-// KENDİ cluster'ına login olarak alır.
+// COK-CLUSTER x COK-NAMESPACE: bir tenant'a birden fazla gerçek OCP cluster'ı bağlı
+// olabilir VE kullanıcı OcpTargetStep'te birden fazla (namespace,uygulama) çifti seçmiş
+// olabilir — keşif ARTIK HEPSİNİN ÇAPRAZ ÇARPIMINA bakıyor (bkz. server/opsx/index.cjs
+// resolveOcpClusterFanout + opsx_openshift_pods.yaml), bu yüzden pod'lar "cluster/namespace"
+// birleşik etiketiyle GRUPLANIR (LegacyJvmSelectStep'in host bazlı gruplamasıyla AYNI
+// desen) ve seçim {cluster,namespace,pod} üçlüsü olarak backend'e gider — dump playbook'u
+// her pod'u KENDİ cluster'ına ve namespace'ine göre alır.
 //
 // Thread dump seçildiyse ayrıca "kaç dump, kaç saniye arayla" sorulur (varsayılan 1 dump,
 // beklemesiz; sınırlar backend ve playbook ile AYNI: 1-100 adet, 0-3600 sn).
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import { opsxApi, type OpsxPod, type OpsxDumpType } from "@/api/opsxApi";
+import { opsxApi, type OpsxPod, type OpsxDumpType, type OpsxOcpPair } from "@/api/opsxApi";
 
 const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
 
-function podKey(cluster: string, name: string): string {
-  return `${cluster}::${name}`;
+function podKey(cluster: string, namespace: string, name: string): string {
+  return `${cluster}::${namespace}::${name}`;
+}
+
+function groupLabel(cluster: string, namespace: string): string {
+  return `${cluster} / ${namespace}`;
 }
 
 const OcpPodSelectStep: React.FC<{
   env: string;
   tenant: string;
-  namespace: string;
-  /** Keşif listesinde ilgili pod'ları öne çıkarmak için ön-doldurulan arama metni. */
-  application?: string;
+  pairs: OpsxOcpPair[];
   dumpType: OpsxDumpType;
   busy?: boolean;
-  onSubmit: (v: { pods: { cluster: string; pod: string }[]; threadDumpCount: number; threadDumpInterval: number }) => void;
-}> = ({ env, tenant, namespace, application, dumpType, busy, onSubmit }) => {
+  onSubmit: (v: { pods: { cluster: string; namespace: string; pod: string }[]; threadDumpCount: number; threadDumpInterval: number }) => void;
+}> = ({ env, tenant, pairs, dumpType, busy, onSubmit }) => {
   const [pods, setPods] = useState<OpsxPod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Kısmi başarı: bazı cluster'lar başarısız olsa da başarılı olanların pod'ları gösterilir,
-  // bu sadece bir UYARI olarak eklenir (r.pods VE r.message BİRLİKTE gelebilir).
+  // Kısmi başarı: bazı (cluster,namespace) çiftleri başarısız olsa da başarılı olanların
+  // pod'ları gösterilir, bu sadece bir UYARI olarak eklenir (r.pods VE r.message BİRLİKTE gelebilir).
   const [warning, setWarning] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState(application || "");
+  const [search, setSearch] = useState(pairs[0]?.application || "");
   const [nonce, setNonce] = useState(0);
 
   const [threadDumpCount, setThreadDumpCount] = useState(1);
   const [threadDumpInterval, setThreadDumpInterval] = useState(0);
+
+  const namespaceList = useMemo(() => [...new Set(pairs.map((p) => p.namespace))], [pairs]);
+  const pairsKey = pairs.map((p) => p.namespace).sort().join(",");
 
   // Keşif job'ı: tetikle → terminal duruma gelene kadar poll et → listeyi göster.
   useEffect(() => {
@@ -79,7 +86,7 @@ const OcpPodSelectStep: React.FC<{
       }
     }
 
-    opsxApi.discoverOcpPods(env, tenant, namespace)
+    opsxApi.discoverOcpPods(env, tenant, pairs)
       .then((r) => {
         if (cancelled) return;
         if (r.jobId == null) {
@@ -99,7 +106,8 @@ const OcpPodSelectStep: React.FC<{
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [env, tenant, namespace, nonce]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [env, tenant, pairsKey, nonce]);
 
   const filteredPods = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -109,14 +117,14 @@ const OcpPodSelectStep: React.FC<{
 
   const grouped = useMemo(() => {
     const g: Record<string, OpsxPod[]> = {};
-    for (const p of filteredPods) (g[p.cluster] ||= []).push(p);
+    for (const p of filteredPods) (g[groupLabel(p.cluster, p.namespace)] ||= []).push(p);
     return g;
   }, [filteredPods]);
 
-  function toggle(cluster: string, name: string) {
+  function toggle(cluster: string, namespace: string, name: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      const k = podKey(cluster, name);
+      const k = podKey(cluster, namespace, name);
       if (next.has(k)) next.delete(k); else next.add(k);
       return next;
     });
@@ -129,8 +137,8 @@ const OcpPodSelectStep: React.FC<{
 
   function submit() {
     const targets = pods
-      .filter((p) => selected.has(podKey(p.cluster, p.name)))
-      .map((p) => ({ cluster: p.cluster, pod: p.name }));
+      .filter((p) => selected.has(podKey(p.cluster, p.namespace, p.name)))
+      .map((p) => ({ cluster: p.cluster, namespace: p.namespace, pod: p.name }));
     onSubmit({ pods: targets, threadDumpCount, threadDumpInterval });
   }
 
@@ -139,7 +147,7 @@ const OcpPodSelectStep: React.FC<{
       <div className="py-8 text-center space-y-2">
         <ArrowPathIcon className="w-5 h-5 mx-auto animate-spin text-[var(--text-muted)]" />
         <p className="text-sm text-[var(--text-muted)]">
-          <span className="font-mono text-[var(--text-primary)]">{namespace}</span> namespace'i tüm cluster'larda taranıyor…
+          <span className="font-mono text-[var(--text-primary)]">{namespaceList.join(", ")}</span> tüm cluster'larda taranıyor…
         </p>
         <p className="text-xs text-[var(--text-muted)]">Bunun için bir Ansible işi çalıştırılıyor, birkaç saniye sürebilir.</p>
       </div>
@@ -166,7 +174,7 @@ const OcpPodSelectStep: React.FC<{
       <div className="space-y-3">
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span><strong>{namespace}</strong> namespace'inde çalışan pod bulunamadı.</span>
+          <span>Seçili namespace'lerde (<strong>{namespaceList.join(", ")}</strong>) çalışan pod bulunamadı.</span>
         </div>
         <button onClick={() => setNonce((n) => n + 1)} className="btn-secondary w-full text-sm">
           <ArrowPathIcon className="w-4 h-4" />
@@ -183,7 +191,7 @@ const OcpPodSelectStep: React.FC<{
           Hangi pod'lardan {dumpType === "heapdump" ? "heap" : "thread"} dump alınsın?
         </p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
-          Namespace: <span className="font-mono text-[var(--text-primary)]">{namespace}</span>
+          Namespace{namespaceList.length > 1 ? "'ler" : ""}: <span className="font-mono text-[var(--text-primary)]">{namespaceList.join(", ")}</span>
           {" · "}birden fazla pod seçilebilir
         </p>
       </div>
@@ -191,7 +199,7 @@ const OcpPodSelectStep: React.FC<{
       {warning && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-          <span>Bazı cluster'lara ulaşılamadı: {warning}. Aşağıda erişilebilen cluster'lardaki pod'lar listelendi.</span>
+          <span>Bazılarına ulaşılamadı: {warning}. Aşağıda erişilebilenlerin pod'ları listelendi.</span>
         </div>
       )}
 
@@ -205,19 +213,19 @@ const OcpPodSelectStep: React.FC<{
       <div className="space-y-3 max-h-72 overflow-y-auto">
         {Object.keys(grouped).length === 0 ? (
           <p className="text-xs text-[var(--text-muted)] px-2 py-3 text-center">Aramayla eşleşen pod yok.</p>
-        ) : Object.keys(grouped).sort().map((cluster) => (
-          <div key={cluster}>
-            <label className="text-xs font-medium text-[var(--text-secondary)]">{cluster}</label>
+        ) : Object.keys(grouped).sort().map((label) => (
+          <div key={label}>
+            <label className="text-xs font-medium text-[var(--text-secondary)]">{label}</label>
             <div className="mt-1 space-y-1 border border-[var(--border)] rounded-xl p-1.5">
-              {grouped[cluster].map((p) => (
+              {grouped[label].map((p) => (
                 <label
                   key={p.name}
                   className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] cursor-pointer"
                 >
                   <input
                     type="checkbox"
-                    checked={selected.has(podKey(p.cluster, p.name))}
-                    onChange={() => toggle(p.cluster, p.name)}
+                    checked={selected.has(podKey(p.cluster, p.namespace, p.name))}
+                    onChange={() => toggle(p.cluster, p.namespace, p.name)}
                     disabled={busy}
                     className="rounded"
                   />

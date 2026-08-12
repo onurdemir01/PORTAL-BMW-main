@@ -20,17 +20,17 @@
 # Gerekli extra_vars (server/opsx/index.cjs POST /api/opsx/dump/openshift tarafından kurulur):
 #   ocp_clusters: [{env, tenant, cluster_name, terminal_host, api_url?, credential_key?, username?}, ...]
 #   terminal_hosts: [bastion, ...]
-#   namespace: <namespace>
-#   ocp_pod_targets: [{cluster_name, pod}, ...]   (seçilen HER pod + HANGİ cluster'dan geldiği)
+#   ocp_pod_targets: [{cluster_name, namespace, pod}, ...]   (seçilen HER pod + HANGİ
+#     cluster/namespace'ten geldiği — pod'lar artık BİRDEN FAZLA namespace'ten gelebilir)
 #   choose: "memory" (heap dump) | "cpu" (thread dump)
 #   staging_dir: portalın okuyabildiği paylaşılan dizin
 # Opsiyonel (YALNIZ choose=cpu için): dump_count (varsayılan 1), dump_interval (varsayılan 0)
 #
 # CIKTI SOZLESMESI (server/opsx/index.cjs extractOpsxDumpResult() ile eslesir —
-# opsx_legacy_dump.yml ile AYNI sozlesme, `cluster` alani EKLENDI):
+# opsx_legacy_dump.yml ile AYNI sozlesme, `cluster`/`namespaces` alanlari EKLENDI):
 #   set_stats: { opsx_dump_result: { overall_status, results: [
-#     {cluster, pods:[{cluster,pod}], ok:true, staged_path, filename, size_bytes},  # arsiv
-#     {cluster, pod, ok:false, error}                                              # basarisiz pod
+#     {cluster, namespaces:[...], pods:[...], ok:true, staged_path, filename, size_bytes}, # arsiv
+#     {cluster, pod, ok:false, error}                                                      # basarisiz pod
 #   ]}}
 
 - name: "Validate input and add terminal hosts dynamically"
@@ -45,15 +45,16 @@
         that:
           - terminal_hosts is defined and terminal_hosts | length > 0
           - ocp_clusters is defined and ocp_clusters is sequence and ocp_clusters | length > 0
-          - namespace is defined and (namespace | string | trim | length) > 0
           - ocp_pod_targets is defined and ocp_pod_targets is sequence and ocp_pod_targets | length > 0
+          - ocp_pod_targets | rejectattr('namespace', 'defined') | list | length == 0
+          - ocp_pod_targets | map(attribute='namespace') | map('trim') | select('equalto', '') | list | length == 0
           - choose is defined and choose in ['memory', 'cpu']
           - staging_dir is defined and (staging_dir | length) > 1 and staging_dir is match('^/')
         fail_msg: >-
           Zorunlu değişkenler eksik/geçersiz → terminal_hosts: {{ terminal_hosts | default([]) | length }},
           ocp_clusters: {{ ocp_clusters | default([]) | length }}, ocp_pod_targets:
-          {{ ocp_pod_targets | default([]) | length }}, choose: {{ choose | default('(yok)') }},
-          staging_dir: {{ staging_dir | default('(yok)') }}.
+          {{ ocp_pod_targets | default([]) | length }} (her ögede namespace dolu olmalı),
+          choose: {{ choose | default('(yok)') }}, staging_dir: {{ staging_dir | default('(yok)') }}.
 
     - name: "Thread dump parametrelerini doğrula"
       ansible.builtin.assert:
@@ -192,7 +193,7 @@
         pod_dump_units: >-
           {{
             (pod_dump_units | default([])) + (
-              [{'cluster_name': item.cluster_name, 'url': owning_cluster[0].url,
+              [{'cluster_name': item.cluster_name, 'namespace': item.namespace, 'url': owning_cluster[0].url,
                 'username': owning_cluster[0].username, 'password': owning_cluster[0].password,
                 'pod': item.pod}]
               if (owning_cluster | length) > 0 else []
@@ -221,7 +222,7 @@
       ansible.builtin.shell: |
         set -eu
 
-        export KUBECONFIG="/tmp/opsx-dump-{{ job_id }}-{{ item.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.pod }}.kubeconfig"
+        export KUBECONFIG="/tmp/opsx-dump-{{ job_id }}-{{ item.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.namespace | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.pod }}.kubeconfig"
         trap 'rm -f "${KUBECONFIG}"' EXIT
 
         if [ -z "{{ item.url }}" ]; then
@@ -235,7 +236,7 @@
           --insecure-skip-tls-verify=true >/dev/null
 
         POD="{{ item.pod }}"
-        NS="{{ namespace }}"
+        NS="{{ item.namespace }}"
         WORK="{{ work_dir }}"
         CHOOSE="{{ choose }}"
         COUNT="{{ dump_count | default(1) | int }}"
@@ -279,7 +280,7 @@
         executable: /bin/bash
       loop: "{{ pod_dump_units | default([]) }}"
       loop_control:
-        label: "{{ item.cluster_name }}/{{ item.pod }}"
+        label: "{{ item.cluster_name }}/{{ item.namespace }}/{{ item.pod }}"
       register: pod_dump_results
       no_log: true
       changed_when: true
@@ -315,7 +316,7 @@
           echo "ARSIVLENECEK_DOSYA_YOK" >&2
           exit 1
         fi
-        BASE="opsx-{{ 'heap' if choose == 'memory' else 'thread' }}-dump-{{ namespace }}-{{ inventory_hostname }}-job{{ job_id }}-$(date +%Y%m%d_%H%M%S)"
+        BASE="opsx-{{ 'heap' if choose == 'memory' else 'thread' }}-dump-{{ pod_dump_units | map(attribute='namespace') | unique | join('_') }}-{{ inventory_hostname }}-job{{ job_id }}-$(date +%Y%m%d_%H%M%S)"
         if command -v zip >/dev/null 2>&1; then
           zip -r -q "{{ staging_dir }}/${BASE}.zip" .
           echo "{{ staging_dir }}/${BASE}.zip"
@@ -348,6 +349,7 @@
           {{
             ([{
               'cluster': (pod_dump_units | map(attribute='cluster_name') | unique | list | join(',')),
+              'namespaces': (pod_dump_units | map(attribute='namespace') | unique | list),
               'pods': (pod_dump_units | map(attribute='pod') | list
                        | difference(failed_pod_results | default([]) | map(attribute='pod') | list)),
               'ok': true,

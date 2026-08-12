@@ -21,11 +21,17 @@
 # Gerekli extra_vars (server/opsx/index.cjs resolveOcpClusterFanout() tarafından kurulur):
 #   ocp_clusters: [{env, tenant, cluster_name, terminal_host, api_url?, credential_key?, username?}, ...]
 #   terminal_hosts: [bastion, ...]  (benzersiz + sıralı)
-#   namespace: <namespace>
+#   namespaces: [namespace, ...]  (kullanıcı OcpTargetStep'te birden fazla namespace seçebilir)
+#
+# COKLU NAMESPACE: her bastion, sahip olduğu HER cluster için, İSTENEN HER namespace'i
+# ayrı ayrı tarar (cluster × namespace çapraz çarpımı — `product()` Jinja filtresi,
+# logx_ocp_discover_fetch.yml'deki "cluster × hedef" desenin AYNISI, liste-içi-liste
+# comprehension'ın YERİNE — Jinja2 onu desteklemiyor, bkz. opsx_openshift_dump.yaml
+# dosya başı notu).
 #
 # CIKTI SOZLESMESI (server/opsx/pod-parse.cjs parsePodDiscoveryResult() ile eslesir):
-#   set_stats: { opsx_pods_result: { overall_status: "ok"|"partial"|"failed", namespace,
-#     results: [ {cluster, ok:true, lines:[...]} | {cluster, ok:false, error} ] } }
+#   set_stats: { opsx_pods_result: { overall_status: "ok"|"partial"|"failed",
+#     results: [ {cluster, namespace, ok:true, lines:[...]} | {cluster, namespace, ok:false, error} ] } }
 
 - name: "Validate input and add terminal hosts dynamically"
   hosts: localhost
@@ -39,11 +45,12 @@
         that:
           - terminal_hosts is defined and terminal_hosts | length > 0
           - ocp_clusters is defined and ocp_clusters is sequence and ocp_clusters | length > 0
-          - namespace is defined and (namespace | string | trim | length) > 0
+          - namespaces is defined and namespaces is sequence and namespaces | length > 0
         fail_msg: >-
           Zorunlu değişkenler eksik → terminal_hosts: {{ terminal_hosts | default([]) | length }},
-          ocp_clusters: {{ ocp_clusters | default([]) | length }}, namespace: {{ namespace | default('(yok)') }}.
-          Tümü boşsa AWX job template'inde "Prompt on launch" (extra variables) kapalı olabilir.
+          ocp_clusters: {{ ocp_clusters | default([]) | length }}, namespaces:
+          {{ namespaces | default([]) | length }}. Tümü boşsa AWX job template'inde
+          "Prompt on launch" (extra variables) kapalı olabilir.
 
     - name: "Add every bastion to dynamic inventory"
       ansible.builtin.add_host:
@@ -168,30 +175,32 @@
       changed_when: false
       when: my_ocp_clusters | length > 0
 
-    # oc login + get pods — PER CLUSTER izole (register + failed_when:false, bu repodaki
-    # opsx_legacy_dump.yml/opsx_openshift_dump.yaml'daki AYNI desen): biri patlarsa
-    # digerleri devam eder, sonuc asagida cluster bazinda ayristirilir.
+    # oc login + get pods — HER (cluster,namespace) cifti icin izole (register +
+    # failed_when:false, bu repodaki opsx_legacy_dump.yml/opsx_openshift_dump.yaml'daki
+    # AYNI desen): biri patlarsa digerleri devam eder. `product()` cluster × namespace
+    # capraz carpimini kurar (logx_ocp_discover_fetch.yml'deki "cluster × hedef" AYNI
+    # desen) — item.0 = cluster kaydi, item.1 = namespace string'i.
     - name: "Login and list namespace pods per cluster"
       ansible.builtin.shell: |
         set -o pipefail
         umask 077
-        export KUBECONFIG="/tmp/opsx-pods-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}.kubeconfig"
+        export KUBECONFIG="/tmp/opsx-pods-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.0.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.1 | regex_replace('[^A-Za-z0-9._-]', '-') }}.kubeconfig"
         trap 'rm -f "${KUBECONFIG}"' EXIT
-        if [ -z "{{ item.url }}" ]; then
+        if [ -z "{{ item.0.url }}" ]; then
           echo "Cluster için API URL/kimlik bilgisi çözülemedi." >&2
           exit 1
         fi
         "{{ oc_bin }}" login \
-          --server={{ item.url | quote }} \
-          --username={{ item.username | quote }} \
-          --password={{ item.password | quote }} \
+          --server={{ item.0.url | quote }} \
+          --username={{ item.0.username | quote }} \
+          --password={{ item.0.password | quote }} \
           --insecure-skip-tls-verify=true >/dev/null
-        "{{ oc_bin }}" get pods -n {{ namespace | quote }} --no-headers
+        "{{ oc_bin }}" get pods -n {{ item.1 | quote }} --no-headers
       args:
         executable: /bin/bash
-      loop: "{{ resolved_clusters | default([]) }}"
+      loop: "{{ resolved_clusters | default([]) | product(namespaces | default([])) | list }}"
       loop_control:
-        label: "{{ item.cluster_name }}"
+        label: "{{ item.0.cluster_name }}/{{ item.1 }}"
       register: pod_list_jobs
       no_log: true
       changed_when: false
@@ -203,30 +212,31 @@
         cluster_fetch_results: >-
           {{
             (cluster_fetch_results | default([])) + [
-              ({'cluster': item.item.cluster_name, 'ok': true, 'lines': (item.stdout_lines | default([]))}
+              ({'cluster': item.item.0.cluster_name, 'namespace': item.item.1, 'ok': true,
+                'lines': (item.stdout_lines | default([]))}
                if (item.rc | default(1)) == 0
-               else {'cluster': item.item.cluster_name, 'ok': false,
+               else {'cluster': item.item.0.cluster_name, 'namespace': item.item.1, 'ok': false,
                      'error': (item.stderr | default('') | trim) | default('oc login veya pod listeleme başarısız oldu.', true)})
             ]
           }}
       loop: "{{ pod_list_jobs.results | default([]) }}"
       loop_control:
-        label: "{{ item.item.cluster_name }}"
+        label: "{{ item.item.0.cluster_name }}/{{ item.item.1 }}"
       when: my_ocp_clusters | length > 0
       changed_when: false
 
-    - name: "Report oc binary missing as a per-cluster error"
+    - name: "Report oc binary missing as a per (cluster,namespace) error"
       ansible.builtin.set_fact:
         cluster_fetch_results: >-
           {{
             (cluster_fetch_results | default([])) + [{
-              'cluster': item.cluster_name, 'ok': false,
+              'cluster': item.0.cluster_name, 'namespace': item.1, 'ok': false,
               'error': "Bu sunucuda 'oc' bulunamadı: " ~ (oc_probe_paths | join(', '))
             }]
           }}
-      loop: "{{ my_ocp_clusters }}"
+      loop: "{{ my_ocp_clusters | product(namespaces | default([])) | list }}"
       loop_control:
-        label: "{{ item.cluster_name }}"
+        label: "{{ item.0.cluster_name }}/{{ item.1 }}"
       when: (my_ocp_clusters | length > 0) and ((oc_bin | default('') | trim | length) == 0)
       changed_when: false
 
@@ -241,26 +251,29 @@
     - name: "Clear any host errors so aggregation always runs"
       ansible.builtin.meta: clear_host_errors
 
-    # KRITIK: raporlamayan (erisilemez) bastion'in cluster'lari SESSIZCE KAYBOLMAMALI —
-    # istenen HER cluster icin sahibinden sonuc aranir, yoksa "bastion rapor vermedi"
-    # hatasi uretilir.
-    - name: "Collect each requested cluster's result from its own bastion"
+    # KRITIK: raporlamayan (erisilemez) bastion'in (cluster,namespace) ciftleri SESSIZCE
+    # KAYBOLMAMALI — istenen HER (cluster,namespace) cifti icin sahibinden sonuc aranir,
+    # yoksa "bastion rapor vermedi" hatasi uretilir.
+    - name: "Collect each requested (cluster,namespace) pair's result from its own bastion"
       ansible.builtin.set_fact:
         merged_results: >-
           {{
             (merged_results | default([])) + (reported if (reported | length > 0) else [{
-              'cluster': item.cluster_name | default('unknown'),
+              'cluster': item.0.cluster_name | default('unknown'),
+              'namespace': item.1,
               'ok': false,
               'error': 'Bastion sonuç bildirmedi (erişilemedi ya da erken düştü): ' ~ owner_host
             }])
           }}
       vars:
-        owner_host: "{{ item.terminal_host | default((groups['opsx_terminal'] | default([]) | sort | first), true) }}"
+        owner_host: "{{ item.0.terminal_host | default((groups['opsx_terminal'] | default([]) | sort | first), true) }}"
         host_results: "{{ (hostvars[owner_host] | default({}, true)).cluster_fetch_results | default([], true) }}"
-        reported: "{{ host_results | selectattr('cluster', 'equalto', item.cluster_name | default('')) | list }}"
-      loop: "{{ ocp_clusters }}"
+        reported: >-
+          {{ host_results | selectattr('cluster', 'equalto', item.0.cluster_name | default(''))
+                          | selectattr('namespace', 'equalto', item.1) | list }}
+      loop: "{{ ocp_clusters | product(namespaces | default([])) | list }}"
       loop_control:
-        label: "{{ item.cluster_name | default('?') }}"
+        label: "{{ item.0.cluster_name | default('?') }}/{{ item.1 }}"
       changed_when: false
 
     - name: "Publish opsx_pods_result"
@@ -277,6 +290,5 @@
                   else 'failed'
                 )
               }}
-            namespace: "{{ namespace }}"
             results: "{{ merged_results }}"
         per_host: false
