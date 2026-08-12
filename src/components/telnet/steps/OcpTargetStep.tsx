@@ -22,10 +22,11 @@ import { PlusIcon } from "@heroicons/react/24/outline";
 import { telnetApi } from "@/api/telnetApi";
 import SearchableSelect from "@/components/common/SearchableSelect";
 import SelectedItemsBar from "@/components/common/SelectedItemsBar";
+import ClusterPickStep from "@/components/common/ClusterPickStep";
 
 const OcpTargetStep: React.FC<{
   busy?: boolean;
-  onSubmit: (v: { env: string; tenant: string; namespaces: string[] }) => void;
+  onSubmit: (v: { env: string; tenant: string; namespaces: string[]; clusters: string[] }) => void;
 }> = ({ busy, onSubmit }) => {
   const [tree, setTree] = useState<Record<string, Record<string, string[]>>>({});
   const [loading, setLoading] = useState(true);
@@ -37,6 +38,8 @@ const OcpTargetStep: React.FC<{
   const [namespace, setNamespace] = useState("");
 
   const [namespaces, setNamespaces] = useState<string[]>([]);
+  // Hedeflenecek gerçek cluster'lar. Varsayılan: grubun TÜMÜ (kısıtlama yok).
+  const [selectedClusters, setSelectedClusters] = useState<string[]>([]);
 
   useEffect(() => {
     telnetApi.getClusters()
@@ -57,9 +60,13 @@ const OcpTargetStep: React.FC<{
       .catch(() => setNamespaceOptions([]));
   }, [env, tenant]);
 
-  // Bu tenant/ortam grubundaki GERÇEK cluster'lar — seçtirmiyoruz (bkz. aşağıdaki bilgi
-  // satırı ve dosya başı notu), ama kullanıcı neyin hedefleneceğini görmeli.
+  // Tenant değişince cluster seçimi grubun TÜMÜ olarak sıfırlanır — kullanıcı hiçbir şey
+  // yapmazsa iş bugünküyle aynı yere gider.
   const groupClusters = env && tenant ? (tree[env]?.[tenant] || []) : [];
+  useEffect(() => {
+    setSelectedClusters(groupClusters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [env, tenant, groupClusters.join(",")]);
 
   function addNamespace() {
     const ns = namespace.trim();
@@ -90,7 +97,7 @@ const OcpTargetStep: React.FC<{
         groups={[{ items: namespaces.map((n) => ({ id: n, label: n })) }]}
         onRemove={(id) => setNamespaces((prev) => prev.filter((n) => n !== id))}
         onClear={() => setNamespaces([])}
-        onSubmit={() => onSubmit({ env, tenant, namespaces })}
+        onSubmit={() => onSubmit({ env, tenant, namespaces, clusters: selectedClusters })}
       />
 
       <div>
@@ -123,17 +130,6 @@ const OcpTargetStep: React.FC<{
             ))}
           </div>
         </div>
-      )}
-
-      {env && tenant && groupClusters.length > 0 && (
-        /* Cluster SEÇTİRMİYORUZ (bkz. dosya başı notu: AWX `limit`i yutuyor) ama kullanıcı
-           neyin hedefleneceğini görmeli — sessizce "hepsi" demek, üretimde tam olarak bu
-           yanılgıyı yaratmıştı. */
-        <p className="text-[11px] text-[var(--text-muted)]">
-          Hedeflenecek cluster'lar:{" "}
-          <span className="font-mono text-[var(--text-secondary)]">{groupClusters.join(", ")}</span>
-          {groupClusters.length > 1 && " — grubun tamamı hedeflenir."}
-        </p>
       )}
 
       {env && tenant && (
@@ -169,9 +165,22 @@ const OcpTargetStep: React.FC<{
         </div>
       )}
 
+      {/* Cluster adımı YALNIZCA birden fazla gerçek cluster varsa gösterilir — tek
+          cluster'lı bir tenant'ta boş bir karar ekranı ve fazladan bir tık olurdu. */}
+      {env && tenant && groupClusters.length > 1 && (
+        <div className="border border-[var(--border)] rounded-xl p-3">
+          <ClusterPickStep
+            clusters={groupClusters}
+            selected={selectedClusters}
+            onChange={setSelectedClusters}
+            hint="Telnet testi hangi cluster'larda çalışsın?"
+          />
+        </div>
+      )}
+
       <button
-        onClick={() => onSubmit({ env, tenant, namespaces })}
-        disabled={!ready || busy}
+        onClick={() => onSubmit({ env, tenant, namespaces, clusters: selectedClusters })}
+        disabled={!ready || busy || (groupClusters.length > 1 && selectedClusters.length === 0)}
         className="btn-primary w-full"
       >
         Devam Et

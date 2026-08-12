@@ -33,10 +33,13 @@ const OcpPodSelectStep: React.FC<{
   env: string;
   tenant: string;
   pairs: OpsxOcpPair[];
+  /** Keşfin bağlanacağı gerçek cluster'lar. Boş dizi = kısıtlama yok (tenant'ın tümü) —
+   *  sunucu da bunu bugünkü davranış olarak yorumlar. */
+  clusters?: string[];
   dumpType: OpsxDumpType;
   busy?: boolean;
   onSubmit: (v: { pods: { cluster: string; namespace: string; pod: string }[]; threadDumpCount: number; threadDumpInterval: number }) => void;
-}> = ({ env, tenant, pairs, dumpType, busy, onSubmit }) => {
+}> = ({ env, tenant, pairs, clusters, dumpType, busy, onSubmit }) => {
   const [pods, setPods] = useState<OpsxPod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +55,7 @@ const OcpPodSelectStep: React.FC<{
 
   const namespaceList = useMemo(() => [...new Set(pairs.map((p) => p.namespace))], [pairs]);
   const pairsKey = pairs.map((p) => p.namespace).sort().join(",");
+  const clustersKey = (clusters || []).join(",");
 
   // Keşif job'ı: tetikle → terminal duruma gelene kadar poll et → listeyi göster.
   useEffect(() => {
@@ -86,7 +90,7 @@ const OcpPodSelectStep: React.FC<{
       }
     }
 
-    opsxApi.discoverOcpPods(env, tenant, pairs)
+    opsxApi.discoverOcpPods(env, tenant, pairs, clusters)
       .then((r) => {
         if (cancelled) return;
         if (r.jobId == null) {
@@ -107,7 +111,10 @@ const OcpPodSelectStep: React.FC<{
       if (timer) window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [env, tenant, pairsKey, nonce]);
+    // `clustersKey`: cluster seçimi bu adıma girmeden önce yapılıyor, yani pratikte
+    // değişmez; yine de bağımlılığa eklenir ki ileride seçim bu ekranda değiştirilirse
+    // keşif sessizce eski listeyle çalışmasın.
+  }, [env, tenant, pairsKey, clustersKey, nonce]);
 
   const filteredPods = useMemo(() => {
     const q = search.trim().toLowerCase();

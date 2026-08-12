@@ -502,21 +502,6 @@ const PlaybookReadinessPanel: React.FC = () => {
           ))}
         </ul>
       )}
-      {/* BİLGİ (uyarı değil): Limit için "Prompt on launch" durumu. Bugün hiçbir akış AWX
-          `limit` alanını göndermiyor — 2026-08-12'de denendi, AWX kapalı kutuda alanı
-          sessizce yuttu ve iş yine grubun tamamına gitti (bkz. server/opsx/index.cjs).
-          Kutu açılırsa cluster alt kümesi seçimi geri getirilebilir; bu liste o yüzden
-          burada duruyor, `problems` sayacına KATILMIYOR. */}
-      {rows && rows.some((r) => r.limitPrompt === false) && (
-        <p className="text-[11px] text-gray-500">
-          Limit &gt; "Prompt on launch" kapalı olan template'ler:{" "}
-          <span className="font-mono">
-            {rows.filter((r) => r.limitPrompt === false).map((r) => r.keyName).join(", ")}
-          </span>
-          {" "}— bugün limit gönderilmediği için sorun değil; cluster alt kümesi seçimi
-          istenirse önce bu kutular açılmalı.
-        </p>
-      )}
       {rows && rows.some((r) => r.foundOnAwx === null && r.templateId) && (
         <p className="text-xs text-gray-400">
           Bazı template'lerin durumu AWX'ten okunamadı (ağ/yetki) — "kapalı" anlamına gelmez.

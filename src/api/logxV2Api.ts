@@ -321,9 +321,6 @@ export interface PlaybookReadinessRow {
   templateName: string | null;
   /** null = bilinmiyor. false ise AWX gönderilen extra_vars'ı SESSİZCE yok sayar. */
   promptOnLaunch: boolean | null;
-  /** Limit için "Prompt on launch". Bugün hiçbir akış AWX `limit`i göndermiyor; bu alan
-   *  yalnızca BİLGİ — kutu açıksa cluster alt kümesi özelliği geri getirilebilir. */
-  limitPrompt?: boolean | null;
 }
 export interface OcpTerminalHostRow { id: number; tenant: string; env: string; terminal_host: string; is_active: boolean }
 export interface EnvSuffixRow { id: number; suffix: string; env_label: string; sort_order: number; is_active: boolean }
