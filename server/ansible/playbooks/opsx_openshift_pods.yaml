@@ -1,0 +1,282 @@
+---
+# server/ansible/playbooks/opsx_openshift_pods.yaml — OpsX Openshift: bir namespace'teki
+# POD'ları TÜM gerçek cluster'larda arar, her pod'un HANGİ cluster'da olduğunu etiketler.
+#
+# NEDEN YENIDEN YAZILDI (2026-08-12): eski surum TEK bir AWX inventory grubuna
+# (`{{ oc_cluster }}_{{ oc_environment }}`, `run_once: true`) bağlanıp `oc login` oluyordu
+# — ama bir tenant'a BİRDEN FAZLA gerçek OCP cluster'ı bağlı olabilir (bkz.
+# server/logx/v2/admin.cjs getClusterTree/ocp_cluster_index). Sonuç: kullanıcı yalnızca
+# rastgele/ilk cluster'daki pod'ları görüyordu (bildirilen hata: "sanki tek cluster'a
+# login olup pod'ları çekti").
+#
+# ÇÖZÜM: server/ansible/playbooks/logx_ocp_discover_fetch.yml'in production'da kanıtlanmış
+# "her bastion'a paralel bağlan, sonucları birleştir" deseninin SADELEŞTİRİLMİŞ hali (log
+# çekme/arşivleme YOK, sadece salt-okunur `oc get pods`) — Play1 (add_host) / Play2
+# (per-bastion) / Play3 (aggregate) iskeleti VE kredensiyel çözümleme mantığı oradan
+# UYARLANDI. Bastion içindeki PER-CLUSTER hata izolasyonu için block/rescue YERİNE bu
+# repodaki opsx_legacy_dump.yml/opsx_openshift_dump.yaml'ın ZATEN KULLANDIĞI
+# register+failed_when:false+ayrı-toplama deseni kullanılır (Ansible'da bir task'a HEM
+# `loop` HEM `block` birlikte uygulanamaz — bu daha basit desen aynı izolasyonu verir).
+#
+# Gerekli extra_vars (server/opsx/index.cjs resolveOcpClusterFanout() tarafından kurulur):
+#   ocp_clusters: [{env, tenant, cluster_name, terminal_host, api_url?, credential_key?, username?}, ...]
+#   terminal_hosts: [bastion, ...]  (benzersiz + sıralı)
+#   namespace: <namespace>
+#
+# CIKTI SOZLESMESI (server/opsx/pod-parse.cjs parsePodDiscoveryResult() ile eslesir):
+#   set_stats: { opsx_pods_result: { overall_status: "ok"|"partial"|"failed", namespace,
+#     results: [ {cluster, ok:true, lines:[...]} | {cluster, ok:false, error} ] } }
+
+- name: "Validate input and add terminal hosts dynamically"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: "Validate required input variables"
+      ansible.builtin.assert:
+        that:
+          - terminal_hosts is defined and terminal_hosts | length > 0
+          - ocp_clusters is defined and ocp_clusters is sequence and ocp_clusters | length > 0
+          - namespace is defined and (namespace | string | trim | length) > 0
+        fail_msg: >-
+          Zorunlu değişkenler eksik → terminal_hosts: {{ terminal_hosts | default([]) | length }},
+          ocp_clusters: {{ ocp_clusters | default([]) | length }}, namespace: {{ namespace | default('(yok)') }}.
+          Tümü boşsa AWX job template'inde "Prompt on launch" (extra variables) kapalı olabilir.
+
+    - name: "Add every bastion to dynamic inventory"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: opsx_terminal
+      loop: "{{ terminal_hosts }}"
+      changed_when: false
+
+- name: "OpsX Openshift - Pod Discovery (multi-cluster)"
+  hosts: opsx_terminal
+  any_errors_fatal: false
+  gather_facts: false
+  become: false
+
+  vars_files:
+    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
+    # openshift_inventory_vars.yaml OPSIYONEL — portal artik cluster basina api_url +
+    # credential_key gonderiyor (bkz. dosya basi notu); bu dosya SADECE portalin henuz
+    # metadata gondermedigi (eski) cluster kayitlari icin GERIYE UYUM saglar.
+    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
+
+  vars:
+    oc_binary: ""
+    oc_binary_candidates:
+      - /bin/oc
+      - /usr/local/bin/oc
+      - /usr/bin/oc
+    oc_probe_paths: >-
+      {{
+        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
+         + (oc_binary_candidates | default([]))) | unique | list
+      }}
+
+  tasks:
+    # Cok-bastion: her bastion YALNIZ kendi cluster'larini toplar (logx_ocp_discover_fetch.
+    # yml'deki AYNI desen) — terminal_host'u tanimsiz kalan (sahipsiz) cluster'lar sessiz
+    # kaybolmasin diye ilk (alfabetik) bastion'a dusurulur.
+    - name: "Select the cluster subset that belongs to this bastion"
+      ansible.builtin.set_fact:
+        my_ocp_clusters: >-
+          {{
+            (ocp_clusters | selectattr('terminal_host', 'defined')
+                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+            +
+            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+             if inventory_hostname == ((groups['opsx_terminal'] | default([])) | sort | first)
+             else [])
+          }}
+      changed_when: false
+
+    - name: "Probe candidate oc paths"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ oc_probe_paths }}"
+      register: oc_stats
+      changed_when: false
+      failed_when: false
+      when: my_ocp_clusters | length > 0
+
+    - name: "Collect usable oc paths"
+      ansible.builtin.set_fact:
+        oc_stat_hits: >-
+          {{
+            oc_stats.results | default([])
+            | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+            | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+            | map(attribute='stat.path') | list
+          }}
+      when: my_ocp_clusters | length > 0
+      changed_when: false
+
+    # PATH araması REMOTE bastion'da calismali (lookup('pipe', ...) YANLIŞ olurdu — o
+    # AWX'in KENDI execution node'unda calışır, bastion'da degil).
+    - name: "Fall back to PATH lookup when no candidate matched"
+      ansible.builtin.shell: command -v oc || true
+      args:
+        executable: /bin/bash
+      register: oc_which
+      when: (my_ocp_clusters | length > 0) and (oc_stat_hits | default([]) | length == 0)
+      changed_when: false
+      failed_when: false
+
+    - name: "Resolve the oc binary for this bastion"
+      ansible.builtin.set_fact:
+        oc_bin: >-
+          {{
+            oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
+            else (oc_which.stdout | default('', true) | trim)
+          }}
+      when: my_ocp_clusters | length > 0
+      changed_when: false
+
+    # Her cluster icin baglanti bilgisi (url/username/password) TEK bir dongude cozulur —
+    # portal metadata'si (api_url+credential_key) VARSA o, yoksa openshift_inventory_vars.
+    # yaml'daki eski `clusters[tenant_env][cluster_name]` yoluna dusulur (GERIYE UYUM).
+    - name: "Resolve connection details for each owned cluster"
+      ansible.builtin.set_fact:
+        resolved_clusters: >-
+          {{
+            (resolved_clusters | default([])) + [{
+              'cluster_name': item.cluster_name,
+              'url': resolved_url, 'username': resolved_username, 'password': resolved_password
+            }]
+          }}
+      vars:
+        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        inv_row: >-
+          {{ (clusters[inventory_key][item.cluster_name])
+             if (clusters is defined and clusters[inventory_key] is defined
+                 and clusters[inventory_key][item.cluster_name] is defined)
+             else {} }}
+        resolved_url: "{{ item.api_url | default('') | trim or (inv_row.url | default('')) }}"
+        resolved_username: "{{ item.username | default('') | trim or (username | default('')) }}"
+        resolved_password: >-
+          {{ (lookup('vars', item.credential_key, default=''))
+             if (item.credential_key | default('') | trim | length > 0)
+             else (inv_row.password | default('')) }}
+      loop: "{{ my_ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name }}"
+      no_log: true
+      changed_when: false
+      when: my_ocp_clusters | length > 0
+
+    # oc login + get pods — PER CLUSTER izole (register + failed_when:false, bu repodaki
+    # opsx_legacy_dump.yml/opsx_openshift_dump.yaml'daki AYNI desen): biri patlarsa
+    # digerleri devam eder, sonuc asagida cluster bazinda ayristirilir.
+    - name: "Login and list namespace pods per cluster"
+      ansible.builtin.shell: |
+        set -o pipefail
+        umask 077
+        export KUBECONFIG="/tmp/opsx-pods-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}.kubeconfig"
+        trap 'rm -f "${KUBECONFIG}"' EXIT
+        if [ -z "{{ item.url }}" ]; then
+          echo "Cluster için API URL/kimlik bilgisi çözülemedi." >&2
+          exit 1
+        fi
+        "{{ oc_bin }}" login \
+          --server={{ item.url | quote }} \
+          --username={{ item.username | quote }} \
+          --password={{ item.password | quote }} \
+          --insecure-skip-tls-verify=true >/dev/null
+        "{{ oc_bin }}" get pods -n {{ namespace | quote }} --no-headers
+      args:
+        executable: /bin/bash
+      loop: "{{ resolved_clusters | default([]) }}"
+      loop_control:
+        label: "{{ item.cluster_name }}"
+      register: pod_list_jobs
+      no_log: true
+      changed_when: false
+      failed_when: false
+      when: (my_ocp_clusters | length > 0) and (oc_bin | default('') | trim | length > 0)
+
+    - name: "Collect per-cluster results for this bastion"
+      ansible.builtin.set_fact:
+        cluster_fetch_results: >-
+          {{
+            (cluster_fetch_results | default([])) + [
+              ({'cluster': item.item.cluster_name, 'ok': true, 'lines': (item.stdout_lines | default([]))}
+               if (item.rc | default(1)) == 0
+               else {'cluster': item.item.cluster_name, 'ok': false,
+                     'error': (item.stderr | default('') | trim) | default('oc login veya pod listeleme başarısız oldu.', true)})
+            ]
+          }}
+      loop: "{{ pod_list_jobs.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.cluster_name }}"
+      when: my_ocp_clusters | length > 0
+      changed_when: false
+
+    - name: "Report oc binary missing as a per-cluster error"
+      ansible.builtin.set_fact:
+        cluster_fetch_results: >-
+          {{
+            (cluster_fetch_results | default([])) + [{
+              'cluster': item.cluster_name, 'ok': false,
+              'error': "Bu sunucuda 'oc' bulunamadı: " ~ (oc_probe_paths | join(', '))
+            }]
+          }}
+      loop: "{{ my_ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name }}"
+      when: (my_ocp_clusters | length > 0) and ((oc_bin | default('') | trim | length) == 0)
+      changed_when: false
+
+- name: "Aggregate per-bastion results and publish opsx_pods_result"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    # Ek sigorta: bir bastion unreachable/erken duserse bile bu play calismaya devam etsin.
+    - name: "Clear any host errors so aggregation always runs"
+      ansible.builtin.meta: clear_host_errors
+
+    # KRITIK: raporlamayan (erisilemez) bastion'in cluster'lari SESSIZCE KAYBOLMAMALI —
+    # istenen HER cluster icin sahibinden sonuc aranir, yoksa "bastion rapor vermedi"
+    # hatasi uretilir.
+    - name: "Collect each requested cluster's result from its own bastion"
+      ansible.builtin.set_fact:
+        merged_results: >-
+          {{
+            (merged_results | default([])) + (reported if (reported | length > 0) else [{
+              'cluster': item.cluster_name | default('unknown'),
+              'ok': false,
+              'error': 'Bastion sonuç bildirmedi (erişilemedi ya da erken düştü): ' ~ owner_host
+            }])
+          }}
+      vars:
+        owner_host: "{{ item.terminal_host | default((groups['opsx_terminal'] | default([]) | sort | first), true) }}"
+        host_results: "{{ (hostvars[owner_host] | default({}, true)).cluster_fetch_results | default([], true) }}"
+        reported: "{{ host_results | selectattr('cluster', 'equalto', item.cluster_name | default('')) | list }}"
+      loop: "{{ ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      changed_when: false
+
+    - name: "Publish opsx_pods_result"
+      ansible.builtin.set_stats:
+        data:
+          opsx_pods_result:
+            overall_status: >-
+              {{
+                'ok'
+                if (merged_results | selectattr('ok', 'equalto', false) | list | length) == 0
+                else (
+                  'partial'
+                  if (merged_results | selectattr('ok', 'equalto', true) | list | length) > 0
+                  else 'failed'
+                )
+              }}
+            namespace: "{{ namespace }}"
+            results: "{{ merged_results }}"
+        per_host: false

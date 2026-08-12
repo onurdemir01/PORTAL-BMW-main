@@ -1,0 +1,399 @@
+---
+# server/ansible/playbooks/opsx_openshift_dump.yaml — OpsX Openshift: seçilen POD'lardan
+# Thread/Heap Dump alır, HANGİ gerçek cluster'a ait olurlarsa olsunlar.
+#
+# NEDEN YENIDEN YAZILDI (2026-08-12): eski surum TEK bir AWX inventory grubuna
+# (`{{ oc_cluster }}_{{ oc_environment }}`, `run_once: true`) bağlanıyordu — bir tenant'a
+# BİRDEN FAZLA gerçek cluster bağlıysa bu playbook yalnızca birine (rastgele/ilk) login
+# olabiliyordu. Artık opsx_openshift_pods.yaml'daki AYNI çok-bastion fan-out iskeleti
+# (Play1 add_host / Play2 per-bastion / Play3 aggregate, bkz. o dosyanın başı notu)
+# kullanılır — seçilen her pod HANGİ cluster'dan geldiğini taşır (`ocp_pod_targets`),
+# playbook o pod'u SADECE kendi gerçek cluster'ına login olarak dump alır.
+#
+# TESLIMAT ARTIK BASTION-BAZINDA: pod'lar FARKLI cluster'lardan (dolayısıyla FARKLI
+# bastion'lardan) gelebileceği için dosyalar TEK bir makinede toplanamaz — eski "tek
+# global arşiv" varsayımı artık geçersiz. Bunun yerine HER bastion, KENDİ başarıyla
+# aldığı pod'ları TEK bir arşivde toplar ve paylaşılan staging_dir'e (NFS, tüm
+# bastion'larda ortak) yazar — Legacy dump'ın "host başına ayrı sonuç" deseniyle AYNI
+# mantık, burada "bastion başına ayrı arşiv".
+#
+# Gerekli extra_vars (server/opsx/index.cjs POST /api/opsx/dump/openshift tarafından kurulur):
+#   ocp_clusters: [{env, tenant, cluster_name, terminal_host, api_url?, credential_key?, username?}, ...]
+#   terminal_hosts: [bastion, ...]
+#   namespace: <namespace>
+#   ocp_pod_targets: [{cluster_name, pod}, ...]   (seçilen HER pod + HANGİ cluster'dan geldiği)
+#   choose: "memory" (heap dump) | "cpu" (thread dump)
+#   staging_dir: portalın okuyabildiği paylaşılan dizin
+# Opsiyonel (YALNIZ choose=cpu için): dump_count (varsayılan 1), dump_interval (varsayılan 0)
+#
+# CIKTI SOZLESMESI (server/opsx/index.cjs extractOpsxDumpResult() ile eslesir —
+# opsx_legacy_dump.yml ile AYNI sozlesme, `cluster` alani EKLENDI):
+#   set_stats: { opsx_dump_result: { overall_status, results: [
+#     {cluster, pods:[{cluster,pod}], ok:true, staged_path, filename, size_bytes},  # arsiv
+#     {cluster, pod, ok:false, error}                                              # basarisiz pod
+#   ]}}
+
+- name: "Validate input and add terminal hosts dynamically"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: "Validate required input variables"
+      ansible.builtin.assert:
+        that:
+          - terminal_hosts is defined and terminal_hosts | length > 0
+          - ocp_clusters is defined and ocp_clusters is sequence and ocp_clusters | length > 0
+          - namespace is defined and (namespace | string | trim | length) > 0
+          - ocp_pod_targets is defined and ocp_pod_targets is sequence and ocp_pod_targets | length > 0
+          - choose is defined and choose in ['memory', 'cpu']
+          - staging_dir is defined and (staging_dir | length) > 1 and staging_dir is match('^/')
+        fail_msg: >-
+          Zorunlu değişkenler eksik/geçersiz → terminal_hosts: {{ terminal_hosts | default([]) | length }},
+          ocp_clusters: {{ ocp_clusters | default([]) | length }}, ocp_pod_targets:
+          {{ ocp_pod_targets | default([]) | length }}, choose: {{ choose | default('(yok)') }},
+          staging_dir: {{ staging_dir | default('(yok)') }}.
+
+    - name: "Thread dump parametrelerini doğrula"
+      ansible.builtin.assert:
+        that:
+          - (dump_count | default(1) | int) >= 1
+          - (dump_count | default(1) | int) <= 100
+          - (dump_interval | default(0) | int) >= 0
+          - (dump_interval | default(0) | int) <= 3600
+        fail_msg: "Geçersiz thread dump parametreleri. dump_count 1-100, dump_interval 0-3600 saniye aralığında olmalıdır."
+      when: choose == 'cpu'
+
+    - name: "Add every bastion to dynamic inventory"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: opsx_terminal
+      loop: "{{ terminal_hosts }}"
+      changed_when: false
+
+- name: "OpsX Openshift - Pod Dump (multi-cluster)"
+  hosts: opsx_terminal
+  any_errors_fatal: false
+  gather_facts: false
+  become: false
+
+  vars_files:
+    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
+    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
+
+  vars:
+    oc_binary: ""
+    oc_binary_candidates:
+      - /bin/oc
+      - /usr/local/bin/oc
+      - /usr/bin/oc
+    oc_probe_paths: >-
+      {{
+        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
+         + (oc_binary_candidates | default([]))) | unique | list
+      }}
+    job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+    work_dir: "/tmp/opsx-ocp-dump-{{ job_id }}"
+
+  tasks:
+    # ── Bu bastion'un sahip olduğu cluster'lar + baglanti bilgileri — opsx_openshift_pods.
+    # yaml'daki AYNI 4 task (my_ocp_clusters / oc_bin / resolved_clusters) ────────────────
+    - name: "Select the cluster subset that belongs to this bastion"
+      ansible.builtin.set_fact:
+        my_ocp_clusters: >-
+          {{
+            (ocp_clusters | selectattr('terminal_host', 'defined')
+                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+            +
+            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+             if inventory_hostname == ((groups['opsx_terminal'] | default([])) | sort | first)
+             else [])
+          }}
+      changed_when: false
+
+    - name: "Probe candidate oc paths"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ oc_probe_paths }}"
+      register: oc_stats
+      changed_when: false
+      failed_when: false
+      when: my_ocp_clusters | length > 0
+
+    - name: "Collect usable oc paths"
+      ansible.builtin.set_fact:
+        oc_stat_hits: >-
+          {{
+            oc_stats.results | default([])
+            | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+            | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+            | map(attribute='stat.path') | list
+          }}
+      when: my_ocp_clusters | length > 0
+      changed_when: false
+
+    - name: "Fall back to PATH lookup when no candidate matched"
+      ansible.builtin.shell: command -v oc || true
+      args:
+        executable: /bin/bash
+      register: oc_which
+      when: (my_ocp_clusters | length > 0) and (oc_stat_hits | default([]) | length == 0)
+      changed_when: false
+      failed_when: false
+
+    - name: "Resolve the oc binary for this bastion"
+      ansible.builtin.set_fact:
+        oc_bin: >-
+          {{
+            oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
+            else (oc_which.stdout | default('', true) | trim)
+          }}
+      when: my_ocp_clusters | length > 0
+      changed_when: false
+
+    - name: "Resolve connection details for each owned cluster"
+      ansible.builtin.set_fact:
+        resolved_clusters: >-
+          {{
+            (resolved_clusters | default([])) + [{
+              'cluster_name': item.cluster_name,
+              'url': resolved_url, 'username': resolved_username, 'password': resolved_password
+            }]
+          }}
+      vars:
+        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+        inv_row: >-
+          {{ (clusters[inventory_key][item.cluster_name])
+             if (clusters is defined and clusters[inventory_key] is defined
+                 and clusters[inventory_key][item.cluster_name] is defined)
+             else {} }}
+        resolved_url: "{{ item.api_url | default('') | trim or (inv_row.url | default('')) }}"
+        resolved_username: "{{ item.username | default('') | trim or (username | default('')) }}"
+        resolved_password: >-
+          {{ (lookup('vars', item.credential_key, default=''))
+             if (item.credential_key | default('') | trim | length > 0)
+             else (inv_row.password | default('')) }}
+      loop: "{{ my_ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name }}"
+      no_log: true
+      changed_when: false
+      when: my_ocp_clusters | length > 0
+
+    # Bu bastion'a düşen HER (cluster, pod) çifti — Jinja liste-içi-liste (comprehension):
+    # her resolved_cluster için ocp_pod_targets'ta o cluster'a ait pod'lar eşlenir.
+    - name: "Build per-pod dump units owned by this bastion"
+      ansible.builtin.set_fact:
+        pod_dump_units: >-
+          {{
+            [{'cluster_name': c.cluster_name, 'url': c.url, 'username': c.username, 'password': c.password, 'pod': p}
+             for c in (resolved_clusters | default([]))
+             for p in (ocp_pod_targets | selectattr('cluster_name', 'equalto', c.cluster_name) | map(attribute='pod') | list)]
+          }}
+      when: my_ocp_clusters | length > 0
+      changed_when: false
+      no_log: true
+
+    - name: "Yerel çalışma dizinini oluştur"
+      ansible.builtin.file:
+        path: "{{ work_dir }}"
+        state: directory
+        mode: "0700"
+      when: (pod_dump_units | default([]) | length) > 0
+
+    # Her pod için: KENDİ cluster'ına login ol (KUBECONFIG izole), konteyner adını
+    # KESIN olarak oku, dump'ı al, work_dir'e çek. failed_when:false — bir pod patlarsa
+    # diğerleri (farklı cluster'da olsalar bile) devam eder.
+    - name: "Login and dump each pod owned by this bastion"
+      ansible.builtin.shell: |
+        set -eu
+
+        export KUBECONFIG="/tmp/opsx-dump-{{ job_id }}-{{ item.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.pod }}.kubeconfig"
+        trap 'rm -f "${KUBECONFIG}"' EXIT
+
+        if [ -z "{{ item.url }}" ]; then
+          echo "Cluster için API URL/kimlik bilgisi çözülemedi: {{ item.cluster_name }}" >&2
+          exit 1
+        fi
+        "{{ oc_bin }}" login \
+          --server={{ item.url | quote }} \
+          --username={{ item.username | quote }} \
+          --password={{ item.password | quote }} \
+          --insecure-skip-tls-verify=true >/dev/null
+
+        POD="{{ item.pod }}"
+        NS="{{ namespace }}"
+        WORK="{{ work_dir }}"
+        CHOOSE="{{ choose }}"
+        COUNT="{{ dump_count | default(1) | int }}"
+        INTERVAL="{{ dump_interval | default(0) | int }}"
+
+        CONTAINER="$("{{ oc_bin }}" get pod "$POD" -n "$NS" -o jsonpath='{.spec.containers[0].name}')"
+        if [ -z "$CONTAINER" ]; then
+          echo "Konteyner adı çözülemedi: $POD" >&2
+          exit 1
+        fi
+
+        if [ "$CHOOSE" = "memory" ]; then
+          PID="$("{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- ps -f | grep java | grep -v grep | head -n 1 | awk '{print $2}')"
+          if [ -z "$PID" ]; then
+            echo "Pod içinde çalışan java prosesi bulunamadı: $POD" >&2
+            exit 1
+          fi
+          FILE="${POD}-$(date +%Y%m%d_%H%M%S)-heap.hprof"
+          "{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- jcmd "$PID" GC.heap_dump "/tmp/${FILE}"
+          "{{ oc_bin }}" -n "$NS" rsync "${POD}:/tmp/${FILE}" "${WORK}/" -c "$CONTAINER"
+          "{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- rm -f "/tmp/${FILE}" || true
+          echo "Heap dump alındı: ${FILE}"
+        else
+          i=1
+          while [ "$i" -le "$COUNT" ]; do
+            SEQ="$(printf '%03d' "$i")"
+            FILE="${POD}-$(date +%Y%m%d_%H%M%S)-${SEQ}-thread.txt"
+            "{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- jcmd 1 Thread.print > "${WORK}/${FILE}"
+            if [ ! -s "${WORK}/${FILE}" ]; then
+              echo "Thread dump boş üretildi: ${FILE}" >&2
+              exit 1
+            fi
+            echo "Thread dump alındı (${i}/${COUNT}): ${FILE}"
+            if [ "$i" -lt "$COUNT" ] && [ "$INTERVAL" -gt 0 ]; then
+              sleep "$INTERVAL"
+            fi
+            i=$((i + 1))
+          done
+        fi
+      args:
+        executable: /bin/bash
+      loop: "{{ pod_dump_units | default([]) }}"
+      loop_control:
+        label: "{{ item.cluster_name }}/{{ item.pod }}"
+      register: pod_dump_results
+      no_log: true
+      changed_when: true
+      failed_when: false
+      when: (pod_dump_units | default([]) | length) > 0
+
+    # Başarısız pod'lar okunabilir bir döngüyle toplanır (opsx_legacy_dump.yml'deki AYNI
+    # desen) — bu bastion'un ürettiği archive'a hiç girmeyecekler.
+    - name: "Başarısız pod'ları topla"
+      ansible.builtin.set_fact:
+        failed_pod_results: >-
+          {{
+            (failed_pod_results | default([])) + [{
+              'cluster': item.item.cluster_name,
+              'pod': item.item.pod,
+              'ok': false,
+              'error': (item.stderr | default('') | trim) | default('Dump alınamadı', true)
+            }]
+          }}
+      loop: "{{ pod_dump_results.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.cluster_name }}/{{ item.item.pod }}"
+      when: (item.rc | default(1)) != 0
+      changed_when: false
+
+    # Bu bastion'un BAŞARIYLA aldığı TÜM dump'lar TEK bir arşivde toplanıp paylaşılan
+    # staging_dir'e yazılır — `zip` varsa zip, yoksa tar.gz.
+    - name: "Dump'ları tek arşivde topla"
+      ansible.builtin.shell: |
+        set -eu
+        cd "{{ work_dir }}"
+        if [ -z "$(ls -A . 2>/dev/null)" ]; then
+          echo "ARSIVLENECEK_DOSYA_YOK" >&2
+          exit 1
+        fi
+        BASE="opsx-{{ 'heap' if choose == 'memory' else 'thread' }}-dump-{{ namespace }}-{{ inventory_hostname }}-job{{ job_id }}-$(date +%Y%m%d_%H%M%S)"
+        if command -v zip >/dev/null 2>&1; then
+          zip -r -q "{{ staging_dir }}/${BASE}.zip" .
+          echo "{{ staging_dir }}/${BASE}.zip"
+        else
+          tar -czf "{{ staging_dir }}/${BASE}.tar.gz" .
+          echo "{{ staging_dir }}/${BASE}.tar.gz"
+        fi
+      args:
+        executable: /bin/bash
+      register: archive_result
+      changed_when: true
+      failed_when: false
+      when: (pod_dump_units | default([]) | length) > 0
+
+    - name: "Arşivin bilgisini al"
+      ansible.builtin.stat:
+        path: "{{ archive_result.stdout | trim }}"
+        follow: true
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: archive_stat
+      when: (pod_dump_units | default([]) | length) > 0 and (archive_result.rc | default(1)) == 0
+      changed_when: false
+      failed_when: false
+
+    - name: "Bu bastion'un sonucunu yayınla (bastion_dump_result)"
+      ansible.builtin.set_fact:
+        bastion_dump_result: >-
+          {{
+            (([{
+              'cluster': (pod_dump_units | map(attribute='cluster_name') | unique | list | join(',')),
+              'pods': (pod_dump_units | map(attribute='pod') | list
+                       | difference(failed_pod_results | default([]) | map(attribute='pod') | list)),
+              'ok': true,
+              'staged_path': archive_path,
+              'filename': (archive_path | basename),
+              'size_bytes': (archive_stat.stat.size | default(0) | int)
+            }] if archive_ok else []) + (failed_pod_results | default([]))
+          }}
+      vars:
+        archive_path: "{{ archive_stat.stat.path | default('') }}"
+        archive_ok: >-
+          {{ archive_stat is defined and archive_stat.stat is defined
+             and (archive_stat.stat.exists | default(false))
+             and (archive_stat.stat.size | default(0) | int) > 0 }}
+      when: (pod_dump_units | default([]) | length) > 0
+      changed_when: false
+
+    - name: "Yerel çalışma dizinini temizle (best-effort)"
+      ansible.builtin.file:
+        path: "{{ work_dir }}"
+        state: absent
+      when: (pod_dump_units | default([]) | length) > 0
+      failed_when: false
+      changed_when: false
+
+- name: "Aggregate per-bastion results and publish opsx_dump_result"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: "Clear any host errors so aggregation always runs"
+      ansible.builtin.meta: clear_host_errors
+
+    - name: "Bilinen tüm pod hedeflerini bastion sonuçlarından toparla"
+      ansible.builtin.set_fact:
+        flat_results: >-
+          {{
+            (groups['opsx_terminal'] | default([]) | sort)
+            | map('extract', hostvars, 'bastion_dump_result')
+            | select('defined') | list | sum(start=[])
+          }}
+      changed_when: false
+
+    - name: "Publish opsx_dump_result"
+      ansible.builtin.set_stats:
+        data:
+          opsx_dump_result:
+            overall_status: >-
+              {{
+                'ok'
+                if (flat_results | selectattr('ok', 'equalto', false) | list | length) == 0
+                else (
+                  'partial'
+                  if (flat_results | selectattr('ok', 'equalto', true) | list | length) > 0
+                  else 'failed'
+                )
+              }}
+            results: "{{ flat_results }}"
+        per_host: false

@@ -38,18 +38,38 @@ function parsePodLine(line) {
 }
 
 // artifacts.opsx_pods_result → portal ic bicimi.
+//
+// COK-CLUSTER (bkz. server/opsx/index.cjs resolveOcpClusterFanout): bir tenant'a birden
+// fazla gercek cluster bagli olabilir, playbook artik HEPSINE paralel baglanip HER
+// cluster'in kendi `oc get pods` ciktisini AYRI bir sonuc olarak (block/rescue ile hata
+// izole) doner — `results: [{cluster, ok, lines}|{cluster, ok:false, error}]`. Her
+// cluster'in satirlari ayristirilip pod'a `cluster` etiketi eklenir; basarisiz cluster'lar
+// (o cluster'a hic baglanilamadiysa) `error`'a toplanir, DIGER cluster'larin pod'larini
+// engellemez.
 function parsePodDiscoveryResult(artifacts) {
   const a = artifacts || {};
-  const pods = (Array.isArray(a.lines) ? a.lines : [])
-    .map(parsePodLine)
-    .filter(Boolean);
+  const clusterResults = Array.isArray(a.results) ? a.results : [];
+  const pods = [];
+  const errors = [];
+  for (const cr of clusterResults) {
+    const cluster = String(cr?.cluster || '').trim();
+    if (cr?.ok === false) {
+      errors.push(`${cluster || '?'}: ${String(cr?.error || 'Pod listesi alınamadı').trim()}`);
+      continue;
+    }
+    const lines = Array.isArray(cr?.lines) ? cr.lines : [];
+    for (const line of lines) {
+      const parsed = parsePodLine(line);
+      if (parsed) pods.push({ ...parsed, cluster });
+    }
+  }
 
   return {
     // `trim`: playbook katlamali skaler (`>-`) kullanabiliyor ve Jinja blok etiketleri
     // deger basina bosluk birakabiliyor (logx tarafinda birebir bu hata yasandi).
     overallStatus: String(a.overall_status || 'unknown').trim() || 'unknown',
     namespace: String(a.namespace || ''),
-    error: String(a.error || '').trim(),
+    error: errors.join(' | '),
     pods,
   };
 }

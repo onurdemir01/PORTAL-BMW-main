@@ -265,7 +265,7 @@ const OpsXWizardPage: React.FC = () => {
   // tetiklenmez, önce pod seçim adımına (canlı AWX keşfi) gidilir.
   async function runOpenshiftDump(
     dumpType: OpsxDumpType,
-    selectedPods: string[],
+    selectedPods: { cluster: string; pod: string }[],
     threadDumpCount: number,
     threadDumpInterval: number,
   ) {
@@ -458,12 +458,12 @@ const OpsXWizardPage: React.FC = () => {
                       className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]"
                     >
                       {/* Etiket kaynağa göre değişir: Legacy host (+PID) bazlı; Openshift'te
-                          arşiv kaydı pod LİSTESİ, başarısız kayıtlar tek pod taşır. */}
+                          arşiv kaydı cluster+pod LİSTESİ, başarısız kayıtlar tek cluster/pod taşır. */}
                       <span className="text-sm font-mono text-[var(--text-primary)] truncate">
                         {r.host
                           ? `${r.host}${r.pid ? ` · PID ${r.pid}` : ""}`
-                          : (r.pods?.length ? `${r.namespace} · ${r.pods.length} pod` : null)
-                          || (r.pod ? `${r.namespace}/${r.pod}` : null)
+                          : (r.pods?.length ? `${r.cluster ? `${r.cluster} · ` : ""}${r.pods.length} pod` : null)
+                          || (r.pod ? `${r.cluster ? `${r.cluster}/` : ""}${r.pod}` : null)
                           || (r.application ? `${r.namespace}/${r.application}` : r.namespace)}
                       </span>
                       {r.ok && r.downloadToken ? (

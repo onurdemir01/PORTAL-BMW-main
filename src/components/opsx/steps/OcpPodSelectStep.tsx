@@ -5,6 +5,12 @@
 // tetiklenir, iş bitene kadar beklenir ve çıkan liste kullanıcıya sunulur — namespace/
 // uygulama seçiminin aksine burada ÖNBELLEK YOKTUR, liste her zaman canlıdır.
 //
+// COK-CLUSTER: bir tenant'a birden fazla gerçek OCP cluster'ı bağlı olabilir — keşif
+// ARTIK HEPSİNE bakıyor (bkz. server/opsx/index.cjs resolveOcpClusterFanout), bu yüzden
+// pod'lar CLUSTER BAZINDA gruplanır (LegacyJvmSelectStep'in host bazlı gruplamasıyla AYNI
+// desen) ve seçim {cluster,pod} çifti olarak backend'e gider — dump playbook'u her pod'u
+// KENDİ cluster'ına login olarak alır.
+//
 // Thread dump seçildiyse ayrıca "kaç dump, kaç saniye arayla" sorulur (varsayılan 1 dump,
 // beklemesiz; sınırlar backend ve playbook ile AYNI: 1-100 adet, 0-3600 sn).
 import React, { useEffect, useMemo, useState } from "react";
@@ -12,6 +18,10 @@ import { ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outl
 import { opsxApi, type OpsxPod, type OpsxDumpType } from "@/api/opsxApi";
 
 const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
+
+function podKey(cluster: string, name: string): string {
+  return `${cluster}::${name}`;
+}
 
 const OcpPodSelectStep: React.FC<{
   env: string;
@@ -21,11 +31,14 @@ const OcpPodSelectStep: React.FC<{
   application?: string;
   dumpType: OpsxDumpType;
   busy?: boolean;
-  onSubmit: (v: { pods: string[]; threadDumpCount: number; threadDumpInterval: number }) => void;
+  onSubmit: (v: { pods: { cluster: string; pod: string }[]; threadDumpCount: number; threadDumpInterval: number }) => void;
 }> = ({ env, tenant, namespace, application, dumpType, busy, onSubmit }) => {
   const [pods, setPods] = useState<OpsxPod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Kısmi başarı: bazı cluster'lar başarısız olsa da başarılı olanların pod'ları gösterilir,
+  // bu sadece bir UYARI olarak eklenir (r.pods VE r.message BİRLİKTE gelebilir).
+  const [warning, setWarning] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState(application || "");
   const [nonce, setNonce] = useState(0);
@@ -40,6 +53,7 @@ const OcpPodSelectStep: React.FC<{
 
     setLoading(true);
     setError(null);
+    setWarning(null);
     setPods([]);
     setSelected(new Set());
 
@@ -51,8 +65,9 @@ const OcpPodSelectStep: React.FC<{
           timer = window.setTimeout(() => poll(awxServerId, jobId), 3000);
           return;
         }
-        if (r.pods) {
+        if (r.pods && r.pods.length > 0) {
           setPods(r.pods);
+          if (r.message) setWarning(r.message);
         } else {
           setError(r.message || "Pod listesi alınamadı.");
         }
@@ -92,10 +107,17 @@ const OcpPodSelectStep: React.FC<{
     return pods.filter((p) => p.name.toLowerCase().includes(q));
   }, [pods, search]);
 
-  function toggle(name: string) {
+  const grouped = useMemo(() => {
+    const g: Record<string, OpsxPod[]> = {};
+    for (const p of filteredPods) (g[p.cluster] ||= []).push(p);
+    return g;
+  }, [filteredPods]);
+
+  function toggle(cluster: string, name: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
+      const k = podKey(cluster, name);
+      if (next.has(k)) next.delete(k); else next.add(k);
       return next;
     });
   }
@@ -105,12 +127,19 @@ const OcpPodSelectStep: React.FC<{
   const threadOptionsInvalid = dumpType === "threaddump" && (invalidCount || invalidInterval);
   const ready = selected.size > 0 && !threadOptionsInvalid;
 
+  function submit() {
+    const targets = pods
+      .filter((p) => selected.has(podKey(p.cluster, p.name)))
+      .map((p) => ({ cluster: p.cluster, pod: p.name }));
+    onSubmit({ pods: targets, threadDumpCount, threadDumpInterval });
+  }
+
   if (loading) {
     return (
       <div className="py-8 text-center space-y-2">
         <ArrowPathIcon className="w-5 h-5 mx-auto animate-spin text-[var(--text-muted)]" />
         <p className="text-sm text-[var(--text-muted)]">
-          <span className="font-mono text-[var(--text-primary)]">{namespace}</span> namespace'indeki pod'lar listeleniyor…
+          <span className="font-mono text-[var(--text-primary)]">{namespace}</span> namespace'i tüm cluster'larda taranıyor…
         </p>
         <p className="text-xs text-[var(--text-muted)]">Bunun için bir Ansible işi çalıştırılıyor, birkaç saniye sürebilir.</p>
       </div>
@@ -159,6 +188,13 @@ const OcpPodSelectStep: React.FC<{
         </p>
       </div>
 
+      {warning && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+          <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>Bazı cluster'lara ulaşılamadı: {warning}. Aşağıda erişilebilen cluster'lardaki pod'lar listelendi.</span>
+        </div>
+      )}
+
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
@@ -166,33 +202,40 @@ const OcpPodSelectStep: React.FC<{
         className="w-full px-3 py-2 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
       />
 
-      <div className="space-y-1 max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl p-1.5">
-        {filteredPods.length === 0 ? (
+      <div className="space-y-3 max-h-72 overflow-y-auto">
+        {Object.keys(grouped).length === 0 ? (
           <p className="text-xs text-[var(--text-muted)] px-2 py-3 text-center">Aramayla eşleşen pod yok.</p>
-        ) : filteredPods.map((p) => (
-          <label
-            key={p.name}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] cursor-pointer"
-          >
-            <input
-              type="checkbox"
-              checked={selected.has(p.name)}
-              onChange={() => toggle(p.name)}
-              disabled={busy}
-              className="rounded"
-            />
-            <span className="flex-1 text-sm text-[var(--text-primary)] font-mono truncate" title={p.name}>{p.name}</span>
-            <span className="text-[10px] text-[var(--text-muted)] font-mono">{p.ready}</span>
-            <span
-              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                p.status === "Running"
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                  : "bg-amber-50 text-amber-700 border-amber-100"
-              }`}
-            >
-              {p.status}
-            </span>
-          </label>
+        ) : Object.keys(grouped).sort().map((cluster) => (
+          <div key={cluster}>
+            <label className="text-xs font-medium text-[var(--text-secondary)]">{cluster}</label>
+            <div className="mt-1 space-y-1 border border-[var(--border)] rounded-xl p-1.5">
+              {grouped[cluster].map((p) => (
+                <label
+                  key={p.name}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(podKey(p.cluster, p.name))}
+                    onChange={() => toggle(p.cluster, p.name)}
+                    disabled={busy}
+                    className="rounded"
+                  />
+                  <span className="flex-1 text-sm text-[var(--text-primary)] font-mono truncate" title={p.name}>{p.name}</span>
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">{p.ready}</span>
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                      p.status === "Running"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                        : "bg-amber-50 text-amber-700 border-amber-100"
+                    }`}
+                  >
+                    {p.status}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 
@@ -242,7 +285,7 @@ const OcpPodSelectStep: React.FC<{
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-[var(--text-muted)]">{selected.size} pod seçildi</span>
         <button
-          onClick={() => onSubmit({ pods: [...selected], threadDumpCount, threadDumpInterval })}
+          onClick={submit}
           disabled={!ready || busy}
           className="btn-primary"
         >

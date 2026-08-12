@@ -34,29 +34,60 @@ test('bos/eksik alanli satirlar null doner (cagiran filtreler)', () => {
   assert.equal(parsePodLine('sadece-ad 1/1 Running'), null, '5 alandan az satir kabul edilmemeli');
 });
 
-test('parsePodDiscoveryResult: lines -> pods, bozuk satirlar elenir', () => {
+test('parsePodDiscoveryResult: tek cluster - lines -> pods, bozuk satirlar elenir', () => {
   const out = parsePodDiscoveryResult({
     overall_status: 'ok',
     namespace: 'deneme-test',
-    lines: [
-      'pod-a-1   1/1   Running   0   5d',
-      '',
-      'bozuk satir',
-      'pod-b-2   0/1   CrashLoopBackOff   7 (2m ago)   1h',
-    ],
-    error: '',
+    results: [{
+      cluster: 'gbocpqa1',
+      ok: true,
+      lines: [
+        'pod-a-1   1/1   Running   0   5d',
+        '',
+        'bozuk satir',
+        'pod-b-2   0/1   CrashLoopBackOff   7 (2m ago)   1h',
+      ],
+    }],
   });
   assert.equal(out.overallStatus, 'ok');
   assert.equal(out.namespace, 'deneme-test');
   assert.equal(out.pods.length, 2);
   assert.deepEqual(out.pods.map((p) => p.name), ['pod-a-1', 'pod-b-2']);
   assert.equal(out.pods[1].restarts, '7 (2m ago)');
+  assert.equal(out.pods[0].cluster, 'gbocpqa1', 'her pod HANGI cluster\'dan geldigini tasimali');
+});
+
+test('parsePodDiscoveryResult: coklu cluster - HER cluster kendi pod\'larini katkilar', () => {
+  const out = parsePodDiscoveryResult({
+    overall_status: 'ok',
+    namespace: 'deneme-test',
+    results: [
+      { cluster: 'gbocpqa1', ok: true, lines: ['pod-a-1   1/1   Running   0   5d'] },
+      { cluster: 'gbocpqa2', ok: true, lines: ['pod-b-1   1/1   Running   0   2d'] },
+    ],
+  });
+  assert.equal(out.pods.length, 2);
+  assert.deepEqual(out.pods.map((p) => `${p.cluster}/${p.name}`), ['gbocpqa1/pod-a-1', 'gbocpqa2/pod-b-1']);
+});
+
+test('parsePodDiscoveryResult: bir cluster basarisiz olsa da digerleri etkilenmez', () => {
+  const out = parsePodDiscoveryResult({
+    overall_status: 'partial',
+    namespace: 'deneme-test',
+    results: [
+      { cluster: 'gbocpqa1', ok: true, lines: ['pod-a-1   1/1   Running   0   5d'] },
+      { cluster: 'gbocpqa2', ok: false, error: 'oc login basarisiz' },
+    ],
+  });
+  assert.equal(out.pods.length, 1);
+  assert.equal(out.pods[0].cluster, 'gbocpqa1');
+  assert.match(out.error, /gbocpqa2.*oc login basarisiz/);
 });
 
 test('overall_status katlamali skalerden bosluklu gelse de trimlenir', () => {
   // Playbook `>-` kullandiginda Jinja blok etiketleri deger basina bosluk birakabiliyor
   // (logx tarafinda birebir bu hata yasandi).
-  const out = parsePodDiscoveryResult({ overall_status: '  ok  ', lines: [] });
+  const out = parsePodDiscoveryResult({ overall_status: '  ok  ', results: [] });
   assert.equal(out.overallStatus, 'ok');
 });
 

@@ -75,6 +75,7 @@ export interface OpsxDumpResultItem {
   pid?: string;    // Legacy: dump'ın alındığı JVM (bkz. LegacyJvmSelectStep)
   namespace?: string;
   application?: string;
+  cluster?: string; // Openshift: kaydın ait olduğu gerçek cluster (birden fazlaysa "," ile)
   pod?: string;   // Openshift: BAŞARISIZ tek pod kaydı
   pods?: string[]; // Openshift: arşiv kaydının kapsadığı pod'lar
   ok: boolean;
@@ -104,9 +105,12 @@ export interface OpsxDumpStatus {
 
 // Openshift dump artık POD seviyesinde çalışır. Pod adları efemeraldir (her deploy'da
 // değişir) — envanterde tutulamaz, bu yüzden sihirbaz anlık bir AWX keşif job'ı
-// tetikleyip namespace'teki pod'ları listeler (bkz. opsx_openshift_pods.yaml).
+// tetikleyip namespace'teki pod'ları listeler (bkz. opsx_openshift_pods.yaml). Bir tenant'a
+// birden fazla gerçek cluster bağlı olabilir — keşif ARTIK HEPSİNE bakıyor, bu yüzden her
+// pod HANGİ cluster'dan geldiğini taşır (aynı namespace adı birden fazla cluster'da olabilir).
 export interface OpsxPod {
   name: string;
+  cluster: string;  // gerçek cluster adı (ocp_cluster_index.cluster_name)
   ready: string;    // "1/1"
   status: string;   // "Running" | "Pending" | ...
   restarts: string; // "0" veya "2 (3d ago)"
@@ -265,13 +269,15 @@ export const opsxApi = {
     fetch(`${BASE}/ocp/pods/${awxServerId}/${jobId}/status`).then(safeJson),
 
   // Openshift thread/heap dump başlatır — AYRI bir AWX template'e (opsx_openshift_dump)
-  // gider. Hedefleme POD seviyesindedir (yukarıdaki keşif adımından seçilir).
+  // gider. Hedefleme POD seviyesindedir (yukarıdaki keşif adımından seçilir); her pod
+  // HANGİ gerçek cluster'dan geldiğini taşır (bkz. OpsxPod.cluster) — playbook o pod'u
+  // sadece kendi cluster'ına login olarak dump alır (birden fazla gerçek cluster olabilir).
   // threadDumpCount/threadDumpInterval YALNIZ thread dump için anlamlıdır.
   dumpOpenshift: (
     env: string,
     tenant: string,
     namespace: string,
-    pods: string[],
+    pods: { cluster: string; pod: string }[],
     dumpType: OpsxDumpType,
     threadDumpCount?: number,
     threadDumpInterval?: number,

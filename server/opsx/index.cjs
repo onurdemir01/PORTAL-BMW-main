@@ -194,7 +194,31 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user) {
     }
     cleanPairs.push({ namespace: ns, application: appN, joined: `${ns},${appN}` });
   }
-  return { envKey, tenantKey, cleanPairs };
+  return { envKey, tenantKey, cleanPairs, clusterNames };
+}
+
+// Bir tenant'a BIRDEN FAZLA gercek OCP cluster'i bagli olabilir (getClusterTree()) — pod
+// kesfi/dump eskiden bunlardan yalniz BIRINE (AWX inventory grubundaki run_once ilk host)
+// bagleniyordu, digerlerindeki pod'lar hic gorunmuyordu (bildirilen hata). LogX v2'nin
+// AYNI sorunu cozen, production'da kanitlanmis mekanizmasi burada YENIDEN KULLANILIR
+// (sifirdan yazilmaz): cluster basina bastion+metadata (api_url/vault anahtari) DB'den
+// cozulur, playbook'un `ocp_clusters[]`/`terminal_hosts[]` ile fan-out yapabilmesi icin
+// extra_vars kurulur — bkz. server/ansible/playbooks/logx_ocp_discover_fetch.yml.
+async function resolveOcpClusterFanout(envKey, tenantKey, clusterNames) {
+  const adminData = require('../logx/v2/admin.cjs');
+  const { buildOcpExtraVars } = require('../logx/v2/ocp.cjs');
+  const { hosts, missing } = await adminData.resolveTerminalHosts(envKey, tenantKey, clusterNames);
+  if (missing.length) {
+    throw Object.assign(
+      new Error(
+        `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — ` +
+        `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`
+      ),
+      { status: 400 }
+    );
+  }
+  const meta = await adminData.resolveClusterMeta(envKey, tenantKey, clusterNames).catch(() => ({}));
+  return buildOcpExtraVars({ env: envKey, tenant: tenantKey, clusters: clusterNames, hosts, meta });
 }
 
 // AWX artifacts'inden bir set_stats anahtarini okur. AWX controller surumune gore ayni
@@ -855,21 +879,21 @@ function initOpsX(app) {
 
     // Namespace/tenant dogrulamasi restart/dump ile AYNI kapidan gecer (katalog +
     // erisim kisitlamasi) — kullanici goremedigi bir namespace'in pod'larini listeleyemez.
-    let envKey, tenantKey, cleanPairs;
+    let envKey, tenantKey, cleanPairs, clusterNames, fanout;
     try {
       const user = req.session?.user || {};
-      ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(
+      ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
         env, tenant, [{ namespace, application: 'x' }], user
       ));
+      // Bir tenant'a BIRDEN FAZLA gercek cluster bagli olabilir — hepsine paralel
+      // baglanip pod'un HANGI cluster'da oldugunu gostermek icin (bkz. resolveOcpClusterFanout
+      // yorumu) fan-out extra_vars'i kurulur; TEK `oc_cluster` alanina guvenilmez.
+      fanout = await resolveOcpClusterFanout(envKey, tenantKey, clusterNames);
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
 
-    const extraVars = {
-      oc_cluster: tenantKey,
-      oc_environment: envKey,
-      namespace: cleanPairs[0].namespace,
-    };
+    const extraVars = { ...fanout, namespace: cleanPairs[0].namespace };
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -893,7 +917,7 @@ function initOpsX(app) {
         console.warn('[OpsX] Pod kesfi gecmisi kaydedilemedi:', e.message);
       }
 
-      console.log(`[OpsX] ${req.session?.user?.username} -> pod kesfi env=${envKey} oc_cluster=${tenantKey} namespace=${extraVars.namespace} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      console.log(`[OpsX] ${req.session?.user?.username} -> pod kesfi env=${envKey} tenant=${tenantKey} clusters=${clusterNames.join(',')} namespace=${extraVars.namespace} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
       res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -941,25 +965,38 @@ function initOpsX(app) {
           message: 'İş tamamlandı ancak pod listesi alınamadı — playbook\'un set_stats adımını kontrol edin.',
         });
       }
+      // COK-CLUSTER: bir cluster basarisiz olsa bile DIGERLERININ pod'lari gosterilir
+      // (block/rescue izolasyonu, bkz. pod-parse.cjs) — sadece HICBIR cluster'dan pod
+      // gelmediyse hata olarak raporlanir. Kismi basarida `message` da doner, kullanici
+      // hangi cluster'in atlandigini gorur ama bulunan pod'lari yine secebilir.
       const parsed = require('./pod-parse.cjs').parsePodDiscoveryResult(raw);
-      if (parsed.overallStatus !== 'ok') {
-        return res.json({ ok: true, status: statusInfo.status, message: parsed.error || 'Pod listesi alınamadı.' });
+      if (parsed.pods.length === 0 && parsed.error) {
+        return res.json({ ok: true, status: statusInfo.status, message: parsed.error });
       }
-      res.json({ ok: true, status: statusInfo.status, namespace: parsed.namespace, pods: parsed.pods });
+      res.json({
+        ok: true,
+        status: statusInfo.status,
+        namespace: parsed.namespace,
+        pods: parsed.pods,
+        ...(parsed.error ? { message: parsed.error } : {}),
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
   });
 
-  // POST /api/opsx/dump/openshift — { env, tenant, namespace, pods[], dumpType,
-  //                                   threadDumpCount?, threadDumpInterval? }
+  // POST /api/opsx/dump/openshift — { env, tenant, namespace, pods: [{cluster,pod}],
+  //                                   dumpType, threadDumpCount?, threadDumpInterval? }
   //
   // GERCEK PLAYBOOK SOZLESMESI (bmw_portal/opsx_openshift_dump/opsx_openshift_dump.yaml,
   // get_dump.yaml referans alinarak yazildi): rollout'un `env`/`oc_input` sozlesmesinden
   // FARKLI. Hedefleme POD SEVIYESINDEDIR — kullanici yukaridaki kesif adiminda cikan
-  // listeden bir veya birden fazla pod secer (uygulama adi degil). Teslimat LogX'in OCP
-  // log-cekme akisiyla AYNI desen: dump'lar pod'lardan cekilir, TEK bir arsivde toplanip
-  // staging_dir'e birakilir — opsx_dump_downloads token sistemi Legacy ile AYNI (FTP YOK).
+  // listeden bir veya birden fazla pod secer (uygulama adi degil). Her pod HANGI gercek
+  // cluster'dan geldigini de tasir (kesif artik TUM cluster'lara bakiyor — bkz.
+  // resolveOcpClusterFanout) — playbook o cluster'a baglanip dump'i oradan alir. Teslimat
+  // LogX'in OCP log-cekme akisiyla AYNI desen: dump'lar pod'lardan cekilir, TEK bir
+  // arsivde toplanip staging_dir'e birakilir — opsx_dump_downloads token sistemi Legacy
+  // ile AYNI (FTP YOK).
   //
   // Coklu thread dump: YALNIZ thread dump icin dump_count/dump_interval gonderilir
   // (varsayilan 1 dump, beklemesiz). Heap dump'ta bu alanlar HIC gonderilmez.
@@ -978,10 +1015,10 @@ function initOpsX(app) {
       });
     }
 
-    let envKey, tenantKey, cleanPairs;
+    let envKey, tenantKey, cleanPairs, clusterNames;
     try {
       const user = req.session?.user || {};
-      ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(
+      ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
         env, tenant, [{ namespace, application: 'x' }], user
       ));
     } catch (err) {
@@ -989,24 +1026,51 @@ function initOpsX(app) {
     }
     const nsKey = cleanPairs[0].namespace;
 
-    // Pod adlari client'tan gelir ama kesif job'inin ciktisindan secilir. Yine de
-    // bicim dogrulamasi yapilir — playbook bunlari shell'e gecirdigi icin (oc exec)
+    // Pod+cluster ciftleri client'tan gelir ama kesif job'inin ciktisindan secilir —
+    // anti-TOCTOU: her cluster adi, yukarida katalogdan dogrulanmis clusterNames'in bir
+    // uyesi OLMALI (Legacy'nin pid_map'teki jbossMajor dogrulamasiyla AYNI gerekce). Pod
+    // adi bicimi de dogrulanir — playbook bunlari shell'e gecirdigi icin (oc exec)
     // Kubernetes ad sozdizimi disinda bir sey KABUL EDILMEZ.
     if (!Array.isArray(pods) || pods.length === 0) {
       return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
     }
-    const cleanPods = [...new Set(pods.map((p) => String(p || '').trim()).filter(Boolean))];
-    const badPod = cleanPods.find((p) => !/^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/i.test(p) || p.length > 253);
-    if (badPod) {
-      return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${badPod}` });
+    const allowedClusters = new Set(clusterNames);
+    const podNameRe = /^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/i;
+    const seen = new Set();
+    const cleanPodTargets = [];
+    for (const p of pods) {
+      const cluster = String(p?.cluster || '').trim();
+      const pod = String(p?.pod || '').trim();
+      if (!allowedClusters.has(cluster)) {
+        return res.status(400).json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
+      }
+      if (!podNameRe.test(pod) || pod.length > 253) {
+        return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${p?.pod}` });
+      }
+      const key = `${cluster}::${pod}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cleanPodTargets.push({ cluster, pod });
+    }
+    if (cleanPodTargets.length === 0) {
+      return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
+    }
+
+    // Sadece secili pod'larin kapsadigi cluster'lara login acilir — kullanicinin
+    // gormedigi/secmedigi diger cluster'lara gereksiz baglanti YOK.
+    const neededClusters = [...new Set(cleanPodTargets.map((t) => t.cluster))];
+    let fanout;
+    try {
+      fanout = await resolveOcpClusterFanout(envKey, tenantKey, neededClusters);
+    } catch (err) {
+      return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
 
     const opsxDownloads = require('./downloads.cjs');
     const extraVars = {
-      oc_cluster: tenantKey,
-      oc_environment: envKey,
+      ...fanout,
       namespace: nsKey,
-      pods: cleanPods,
+      ocp_pod_targets: cleanPodTargets.map((t) => ({ cluster_name: t.cluster, pod: t.pod })),
       choose: dumpType === 'heapdump' ? 'memory' : 'cpu',
       staging_dir: opsxDownloads.stagingRoot(),
     };
@@ -1052,7 +1116,7 @@ function initOpsX(app) {
         });
       } catch { /* best-effort */ }
 
-      console.log(`[OpsX] ${req.session?.user?.username} -> openshift dump env=${envKey} oc_cluster=${tenantKey} type=${dumpType} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      console.log(`[OpsX] ${req.session?.user?.username} -> openshift dump env=${envKey} tenant=${tenantKey} clusters=${neededClusters.join(',')} type=${dumpType} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
       res.json({
         ok: true,
         jobId: result?.jobId ?? null,

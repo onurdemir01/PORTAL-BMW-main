@@ -122,8 +122,8 @@
         fi
 
         BASENAME="{{ (application | default('app') | regex_replace('[^A-Za-z0-9_-]', '_')) }}_{{ inventory_hostname }}_${PID}_$(date +%Y%m%d%H%M%S)"
-        # SADECE jmap/jstack "was" kullanicisina yukseltilir (dzdo) — JVM'e ptrace ile
-        # baglanabilmek icin ONU CALISTIRAN kullanici olarak calismalari gerekir. Dizin
+        # SADECE jmap/jstack "was" kullanicisina yukseltilir (dzdo) — JVM sürecine ptrace
+        # ile baglanabilmek icin ONU CALISTIRAN kullanici olarak calismalari gerekir. Dizin
         # olusturma/kopyalama/temizlik play seviyesinde zaten NORMAL kullaniciyla kaliyor
         # (bkz. play basi notu — staging_dir "was" icin yazilabilir degil).
         if [ "$DUMP_TYPE" = "heapdump" ]; then
