@@ -49,9 +49,10 @@
   # (2026-08-12 gercek job hatasi). Satir ici `dzdo -u was <komut>` de "user uxmid is not
   # allowed to execute ... as was" ile reddedildi — dzdo yetki politikasi, komutu Ansible'in
   # KENDI become mekanizmasi DISINDA calistirildiginda tanimiyor (2026-08-12, ikinci gercek
-  # hata). Bu yuzden SADECE jmap/jstack'e dokunan task (asagida) kendi become:true/
-  # become_method:dzdo/become_user:was'ini tasir — dizin olusturma/kopyalama/temizlik
-  # NORMAL baglanti kullanicisiyla kalir.
+  # hata). Bu yuzden SADECE JBoss'un/dizinlerinin sahibi olan "was" kullanicisina AIT
+  # islemler (yerel dizin olusturma, jmap/jstack) kendi become:true/become_method:dzdo/
+  # become_user:was'ini task seviyesinde tasir — staging'e kopyalama/temizlik ise NORMAL
+  # baglanti kullanicisiyla kalir (staging_dir "was" icin yazilabilir degil).
   become: false
 
   vars:
@@ -88,13 +89,19 @@
             error: "Bu host için seçilmiş JVM yok (JVM keşfinde bulunamamış ya da seçilmemiş olabilir)."
       when: (my_pids | length) == 0
 
-    # best-effort: /vhosting(8)/dumpdir'in zaten var oldugu varsayilir (bkz. vars notu);
-    # normal baglanti kullanicisinin (uxmid) bu ust dizinlerde olusturma izni olmayabilir,
-    # dizin zaten mevcutsa bu no-op'tur — failed_when:false o yuzden burada.
+    # "was" olarak calisir (become) — /vhosting(8) normal baglanti kullanicisinin (uxmid)
+    # degil, JBoss'u calistiran "was" kullanicisinin sahip olmasi beklenen dizinler; dizin
+    # zaten varsa bu no-op'tur, yoksa "was" olarak olusturulur. failed_when:false yine de
+    # kalir — dizin ust seviyede (ör. /vhosting8'in kendisi) hic yoksa jmap/jstack adiminda
+    # daha net bir hata almak, burada sessizce dusmekten iyidir.
     - name: "Yerel dump dizinlerinin var olduğundan emin ol"
+      become: true
+      become_method: dzdo
+      become_user: was
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
+        mode: "0755"
       loop: "{{ local_dump_dirs.values() | list }}"
       when: (my_pids | length) > 0
       failed_when: false
