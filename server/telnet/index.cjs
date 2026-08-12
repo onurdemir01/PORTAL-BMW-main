@@ -168,7 +168,7 @@ function initTelnet(app) {
   // Not: `application` yalniz sunucu-tarafi anti-TOCTOU dogrulamasi icindir, extra_vars'a
   // KONMAZ (kullanici sartnamesi).
   app.post('/api/telnet/run', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { platform, application, hosts, env, tenant, namespaces, ip, port } = req.body || {};
+    const { platform, application, hosts, env, tenant, namespaces, ip, port, clusters } = req.body || {};
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
     const { templateId, serverId, keyName } = await resolveTarget(plat);
@@ -221,12 +221,34 @@ function initTelnet(app) {
         return res.status(400).json({ ok: false, message: `Geçersiz namespace adı: ${badNs}` });
       }
 
+      // CLUSTER ALT KUMESI (2026-08-12, opsiyonel): bir tenant/env grubuna birden fazla
+      // GERCEK cluster bagli olabilir (or. ark_prod -> gbocpprod1,gbocpprod2,gbocpprod4) ve
+      // dis playbook hedefi `{{ cluster }}_{{ env }}` grubuyla cozdugu icin is her zaman
+      // hepsine gidiyordu. Cozum OpsX restart'takiyle AYNI (bkz. server/opsx/index.cjs,
+      // commit ea686eb): env/cluster DEGISTIRILMEZ, secilen gercek cluster adlari AWX'in
+      // KENDI `limit` alanina konur, Ansible bunu grupla KESISTIRIR — playbook'a hic
+      // dokunulmaz. Telnet legacy zaten bu mekanizmayi kullaniyor.
+      //
+      // Gonderilmemis/bos = KISITLAMA YOK: `limit` bos kalir, davranis bugunkuyle AYNI.
+      const groupClusters = tree[envKey][tenantKey] || [];
+      let clusterLimit = '';
+      if (Array.isArray(clusters) && clusters.length > 0) {
+        const wanted = [...new Set(clusters.map((c) => String(c || '').trim()).filter(Boolean))];
+        // ANTI-TOCTOU: client'in gonderdigi adlar, DB'den AZ ONCE okunan gruba karsi
+        // dogrulanir — grup disindaki bir isim `limit`e asla sizmaz.
+        const unknown = wanted.filter((c) => !groupClusters.includes(c));
+        if (unknown.length) {
+          return res.status(400).json({ ok: false, message: `Geçersiz cluster: ${unknown.join(', ')}` });
+        }
+        if (wanted.length && wanted.length < groupClusters.length) clusterLimit = wanted.join(',');
+      }
+
       const runner = require('../ansible/runner.cjs');
       const results = [];
       for (const ns of cleanNamespaces) {
         const extraVars = { env: envKey, cluster: tenantKey, namespace: ns, ip: ipTrim, port: portTrim };
         try {
-          const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
+          const result = await runner.launchJobOnServer(serverId, templateId, extraVars, clusterLimit);
 
           try {
             const db = require('../db/index.cjs');
@@ -256,7 +278,7 @@ function initTelnet(app) {
             status: result?.status ?? null,
             awxServerId: serverId,
             templateId,
-            sentBody: { extra_vars: extraVars },
+            sentBody: { ...(clusterLimit ? { limit: clusterLimit } : {}), extra_vars: extraVars },
           });
         } catch (err) {
           results.push({
@@ -265,7 +287,7 @@ function initTelnet(app) {
             status: null,
             awxServerId: serverId,
             templateId,
-            sentBody: { extra_vars: extraVars },
+            sentBody: { ...(clusterLimit ? { limit: clusterLimit } : {}), extra_vars: extraVars },
             message: err.message,
           });
         }
