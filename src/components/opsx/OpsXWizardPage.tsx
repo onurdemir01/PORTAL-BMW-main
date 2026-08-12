@@ -430,7 +430,11 @@ const OpsXWizardPage: React.FC = () => {
               )}
             </div>
 
-            {trackedJob && (
+            {/* Ham AWX log terminali dump akışlarında GÖSTERİLMEZ — aşağıdaki "Dump
+                Sonuçları" zaten sonucu (indirme butonu/hata) net gösteriyor, ham stdout
+                kullanıcının kafasını karıştırıyordu. restart/stop/start'ta (dumpJob null)
+                canlı ilerlemeyi görmek hâlâ faydalı, orada aynen kalır. */}
+            {trackedJob && !dumpJob && (
               <div className="w-full text-left">
                 <AnsibleLogTerminal
                   output={trackedJob.output}
@@ -484,13 +488,17 @@ const OpsXWizardPage: React.FC = () => {
             )}
 
             {/* Job'a gerçekten NE gönderildiğini göster — kullanıcı beklediği parametrelerin
-                gittiğini doğrulayabilsin (özellikle virgülle ayrılmış sunucu listesi). */}
-            <div className="w-full text-left bg-[var(--bg-elevated)] rounded-xl p-3">
-              <div className="text-xs mb-1 text-[var(--text-muted)]">AWX'e gönderilen gövde:</div>
-              <pre className="text-xs font-mono whitespace-pre-wrap break-all">
-                {JSON.stringify(result.sentBody, null, 2)}
-              </pre>
-            </div>
+                gittiğini doğrulayabilsin (özellikle virgülle ayrılmış sunucu listesi).
+                Dump akışlarında GÖSTERİLMEZ — ham extra_vars JSON'u kullanıcının kafasını
+                karıştırıyordu, "Dump Sonuçları" zaten yeterli. */}
+            {!dumpJob && (
+              <div className="w-full text-left bg-[var(--bg-elevated)] rounded-xl p-3">
+                <div className="text-xs mb-1 text-[var(--text-muted)]">AWX'e gönderilen gövde:</div>
+                <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+                  {JSON.stringify(result.sentBody, null, 2)}
+                </pre>
+              </div>
+            )}
             <button onClick={restart} className="btn-primary">
               <ArrowPathIcon className="w-4 h-4" />
               Yeni İşlem

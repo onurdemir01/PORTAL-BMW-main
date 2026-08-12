@@ -43,13 +43,14 @@
 - name: "OpsX Legacy - Thread/Heap Dump"
   hosts: all
   gather_facts: false
-  # jmap/jstack, JVM'e ptrace ile baglanabilmek icin ONU CALISTIRAN kullanici olarak
-  # calismali — AWX'in SSH baglandigi kullanici (ör. uxmid) farkli oldugunda "Operation
-  # not permitted" ile duser (2026-08-12 gercek job hatasi). Kurumsal Centrify/dzdo
-  # yetki modeliyle "was" kullanicisina yukseltilir.
-  become: true
-  become_method: dzdo
-  become_user: was
+  # DIKKAT: play/task seviyesinde become KULLANILMAZ — tum task'lari (staging dizini
+  # olusturma/kopyalama dahil) "was" kullanicisina yukseltmek denendi, ama staging_dir
+  # (paylasilan NFS) "was" icin yazilabilir DEGIL, sadece AWX'in baglandigi kullanici
+  # (ör. uxmid) icin — "cp: ... Permission denied" ile dustu (2026-08-12 gercek job
+  # hatasi). Bunun yerine SADECE jmap/jstack cagrilari (asagidaki task) `dzdo -u was`
+  # ile satir icinde yukseltilir; dizin olusturma/kopyalama/temizlik NORMAL baglanti
+  # kullanicisiyla kalir.
+  become: false
 
   vars:
     dump_type: "{{ dump_type | default('heapdump') }}"
@@ -83,7 +84,10 @@
       ansible.builtin.file:
         path: "{{ local_dump_dir }}"
         state: directory
-        mode: "0770"
+        # 0777: bu dizine jmap/jstack "was" olarak (dzdo ile) YAZAR, sonraki cp adimi ise
+        # normal baglanti kullanicisi olarak OKUR — iki farkli kullanici arasinda paylasilan,
+        # tek bir job'luk omru olan bir /tmp alt dizini oldugu icin bu gevseklik dusuk risklidir.
+        mode: "0777"
       when: (my_pids | length) > 0
 
     - name: "Paylaşılan staging dizinini oluştur"
@@ -118,13 +122,22 @@
         fi
 
         BASENAME="{{ (application | default('app') | regex_replace('[^A-Za-z0-9_-]', '_')) }}_{{ inventory_hostname }}_${PID}_$(date +%Y%m%d%H%M%S)"
+        # SADECE jmap/jstack "was" kullanicisina yukseltilir (dzdo) — JVM'e ptrace ile
+        # baglanabilmek icin ONU CALISTIRAN kullanici olarak calismalari gerekir. Dizin
+        # olusturma/kopyalama/temizlik play seviyesinde zaten NORMAL kullaniciyla kaliyor
+        # (bkz. play basi notu — staging_dir "was" icin yazilabilir degil).
         if [ "$DUMP_TYPE" = "heapdump" ]; then
           FILE="${BASENAME}.hprof"
-          "${JDK_BIN}/jmap" -dump:format=b,file="${LOCAL_DIR}/${FILE}" "$PID"
+          dzdo -u was "${JDK_BIN}/jmap" -dump:format=b,file="${LOCAL_DIR}/${FILE}" "$PID"
         else
           FILE="${BASENAME}-thread.txt"
-          "${JDK_BIN}/jstack" "$PID" > "${LOCAL_DIR}/${FILE}"
+          dzdo -u was "${JDK_BIN}/jstack" "$PID" > "${LOCAL_DIR}/${FILE}"
         fi
+
+        # jmap dosyayi "was" sahipliginde olusturur (jstack'in aksine — o stdout'u NORMAL
+        # kullanicinin acik dosya tanimlayicisina yazar) — asagidaki `cp` NORMAL kullanici
+        # olarak calistigi icin dosyanin okunabilir olmasi gerekir.
+        dzdo -u was chmod a+r "${LOCAL_DIR}/${FILE}" 2>/dev/null || true
 
         if [ ! -s "${LOCAL_DIR}/${FILE}" ]; then
           echo "Dump dosyası oluşturulamadı veya boş: $FILE" >&2
