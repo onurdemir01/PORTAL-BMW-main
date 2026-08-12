@@ -186,11 +186,6 @@ async function listTemplatesForServer(server) {
     playbook:     t.playbook,
     inventory:    t.summary_fields?.inventory?.name || "",
     ask_variables: t.ask_variables_on_launch || false,
-    // AWX, template'te Limit icin "Prompt on launch" KAPALIYSA launch payload'indaki
-    // `limit` alanini SESSIZCE yok sayar (2026-08-12 uretim olayi: portal limit gonderdi,
-    // is yine tum gruba gitti). Bayragi disari veriyoruz ki admin ekrani DURUMU
-    // gosterebilsin — bkz. server/logx/v2/playbook-readiness.cjs.
-    ask_limit:    t.ask_limit_on_launch || false,
     variables:    t.extra_vars || "",
     labels:       (t.summary_fields?.labels?.results || []).map((l) => l.name),
     isReadOnly:   allowedIds.length === 0 || allowedIds.includes(t.id),

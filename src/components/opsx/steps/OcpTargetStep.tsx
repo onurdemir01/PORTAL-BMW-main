@@ -13,19 +13,12 @@
 // UYGULAMA: namespace seçilir seçilmez otomatik fetch edilir, SADECE dropdown'dan seçilir
 // (serbest yazım yok) — arama filtre olarak kullanılabilir ama liste dışı değer kabul edilmez.
 //
-// 2026-08-12: namespace düz bir `<select>`, uygulama ise "ayrı arama kutusu + ayrı liste"
-// idi; yüzlerce namespace'te aranan şey bulunamıyordu. İkisi de tek kutulu combobox'a
-// (common/SearchableSelect) geçti — namespace'te serbest yazım KORUNDU (`allowFreeText`),
-// uygulamada liste dışı değer hâlâ kabul edilmiyor. Biriken çiftler de ekran içi listeden
-// üstteki ortak sepete (common/SelectedItemsBar) taşındı.
-//
 // ÇOKLU İŞLEM: kullanıcı birden fazla namespace/uygulama çiftini "Ekle" ile listeye
 // biriktirebilir; tek POST'ta oc_input = "ns1,app1;ns2,app2" olarak sunucuya gider.
 import React, { useEffect, useState } from "react";
-import { PlusIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
-import SearchableSelect from "@/components/common/SearchableSelect";
-import SelectedItemsBar from "@/components/common/SelectedItemsBar";
+import FilterableList from "@/components/common/FilterableList";
 
 const OcpTargetStep: React.FC<{
   busy?: boolean;
@@ -38,6 +31,7 @@ const OcpTargetStep: React.FC<{
   const [tenant, setTenant] = useState("");
 
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
+  const [namespaceMode, setNamespaceMode] = useState<"list" | "free">("list");
   const [namespace, setNamespace] = useState("");
 
   const [appOptions, setAppOptions] = useState<string[]>([]);
@@ -53,11 +47,8 @@ const OcpTargetStep: React.FC<{
       .finally(() => setLoading(false));
   }, []);
 
-  // Bu tenant/ortam grubundaki GERÇEK cluster'lar. Seçtirmiyoruz (AWX `limit`i yutuyor —
-  // bkz. server/opsx/index.cjs'teki not), ama kullanıcı neyin hedefleneceğini görmeli.
   const envs = Object.keys(tree).sort();
   const tenants = env ? Object.keys(tree[env] || {}).sort() : [];
-  const groupClusters = env && tenant ? (tree[env]?.[tenant] || []) : [];
 
   // Ortam/cluster değişince namespace listesi yeniden çekilir; önceki secimler sıfırlanır.
   useEffect(() => {
@@ -90,6 +81,10 @@ const OcpTargetStep: React.FC<{
     setNamespace(""); setApplication(""); setAppOptions([]);
   }
 
+  function removePair(i: number) {
+    setPairs((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
   const ready = env && tenant && pairs.length > 0;
 
   if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
@@ -104,23 +99,6 @@ const OcpTargetStep: React.FC<{
 
   return (
     <div className="space-y-4">
-      {/* Sepet ÜSTTE: kullanıcı ekle → seç → ekle döngüsünde ne topladığını her an görür
-          (LogX ile aynı desen). Boşken hiç render edilmez. */}
-      <SelectedItemsBar
-        title="Eklenen işlemler"
-        submitLabel="Devam Et"
-        busy={busy}
-        groups={[...new Map(
-          pairs.map((p) => [p.namespace, pairs.filter((x) => x.namespace === p.namespace)])
-        ).entries()].map(([ns, list]) => ({
-          title: ns,
-          items: list.map((p) => ({ id: `${p.namespace}/${p.application}`, label: p.application })),
-        }))}
-        onRemove={(id) => setPairs((prev) => prev.filter((p) => `${p.namespace}/${p.application}` !== id))}
-        onClear={() => setPairs([])}
-        onSubmit={() => onSubmit({ env, tenant, pairs })}
-      />
-
       <div>
         <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Ortam</label>
         <div className="flex flex-wrap gap-1.5">
@@ -153,33 +131,46 @@ const OcpTargetStep: React.FC<{
         </div>
       )}
 
-      {env && tenant && groupClusters.length > 0 && (
-        /* Cluster SEÇTİRMİYORUZ (bkz. dosya başı notu: AWX `limit`i yutuyor) ama kullanıcı
-           neyin hedefleneceğini görmeli — sessizce "hepsi" demek, üretimde tam olarak bu
-           yanılgıyı yaratmıştı. */
-        <p className="text-[11px] text-[var(--text-muted)]">
-          Hedeflenecek cluster'lar:{" "}
-          <span className="font-mono text-[var(--text-secondary)]">{groupClusters.join(", ")}</span>
-          {groupClusters.length > 1 && " — grubun tamamı hedeflenir."}
-        </p>
-      )}
-
       {env && tenant && (
         <div className="space-y-3 border border-[var(--border)] rounded-xl p-3">
           <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Namespace</label>
-            {/* Serbest yazım korunuyor: envanterde henüz görünmeyen yeni bir namespace
-                yazılabilsin diye (eski "Listeden seç / Yaz" ikili düğmesinin yerini
-                combobox'ın kendisi aldı). */}
-            <SearchableSelect
-              id="opsx-ns"
-              options={namespaceOptions}
-              value={namespace}
-              onChange={setNamespace}
-              allowFreeText
-              placeholder="Namespace ara veya yaz…"
-              emptyText="Bu cluster için envanterde henüz namespace kaydı yok — bildiğinizi yazabilirsiniz."
-            />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-[var(--text-secondary)]">Namespace</label>
+              {namespaceOptions.length > 0 && (
+                <div className="flex gap-1 text-[10px]">
+                  <button
+                    onClick={() => setNamespaceMode("list")}
+                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === "list" ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+                  >
+                    Listeden seç
+                  </button>
+                  <button
+                    onClick={() => setNamespaceMode("free")}
+                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === "free" ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+                  >
+                    Yaz
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {namespaceMode === "list" && namespaceOptions.length > 0 ? (
+              /* Arama + vurgulama + daha uzun liste. "Yaz" kipi ve serbest yazım kaçış
+                 yolu OLDUĞU GİBİ duruyor — yalnızca liste kipi zenginleşti. */
+              <FilterableList
+                options={namespaceOptions}
+                value={namespace}
+                onChange={setNamespace}
+                placeholder="Namespace ara…"
+              />
+            ) : (
+              <input
+                value={namespace}
+                onChange={(e) => setNamespace(e.target.value)}
+                placeholder="das-trading-management-qa"
+                className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
+              />
+            )}
             {namespaceOptions.length === 0 && (
               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
                 Bu cluster için envanterde henüz namespace kaydı yok — bildiğiniz namespace'i yazabilirsiniz.
@@ -190,19 +181,19 @@ const OcpTargetStep: React.FC<{
           {namespace.trim() && (
             <div>
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Uygulama Adı</label>
-              {appOptions.length === 0 && !appsLoading ? (
+              {appsLoading ? (
+                <div className="text-xs text-[var(--text-muted)] py-2">Uygulamalar yükleniyor…</div>
+              ) : appOptions.length === 0 ? (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                   Bu namespace için envanterde uygulama bulunamadı.
                 </p>
               ) : (
-                /* Uygulama listesi KAPALI uçlu: liste dışı değer kabul edilmez, combobox
-                   yalnızca süzer (allowFreeText verilmez). */
-                <SearchableSelect
-                  id="opsx-app"
+                /* Eskiden ayrı bir arama kutusu + `<select size>` vardı: eşleşen metin
+                   vurgulanamıyor ve liste 3-6 satırla sınırlı kalıyordu. */
+                <FilterableList
                   options={appOptions}
                   value={application}
                   onChange={setApplication}
-                  loading={appsLoading}
                   placeholder="Uygulama ara…"
                 />
               )}
@@ -217,6 +208,24 @@ const OcpTargetStep: React.FC<{
             <PlusIcon className="w-3.5 h-3.5" />
             Listeye Ekle
           </button>
+        </div>
+      )}
+
+      {pairs.length > 0 && (
+        <div>
+          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+            Eklenen İşlemler ({pairs.length})
+          </label>
+          <div className="space-y-1">
+            {pairs.map((p, i) => (
+              <div key={`${p.namespace}-${p.application}`} className="flex items-center justify-between gap-2 px-3 py-1.5 border border-[var(--border)] rounded-lg">
+                <span className="text-sm font-mono text-[var(--text-primary)]">{p.namespace} / {p.application}</span>
+                <button onClick={() => removePair(i)} disabled={busy} className="text-[var(--text-muted)] hover:text-red-600">
+                  <XMarkIcon className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

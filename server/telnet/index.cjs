@@ -8,11 +8,6 @@
 //
 // Openshift: cluster secimi/terminal_host/bastion cozumleme YOK (eski bastion-bazli
 // akis kullanici karariyla kaldirildi) — sadece ortam + tenant/is birimi + namespace(ler).
-// CLUSTER ALT KUMESI DENENDI VE GERI ALINDI (2026-08-12): secilen gercek cluster adlari
-// AWX'in `limit` alanina konuldu, ama AWX template'te Limit icin "Prompt on launch" kapali
-// oldugu icin alani SESSIZCE yok saydi — portal `limit: "gbocptest1,gbocptest4"` gonderdi,
-// job ark_test'in UC host'unda da kostu. Cozum AWX'te bir kutu; kod tarafinda yapilacak bir
-// sey olmadigi icin limit HIC gonderilmiyor (bkz. server/opsx/index.cjs'teki ayni not).
 // HER namespace icin AYRI bir AWX job'i tetiklenir, govde duz: { env, cluster, namespace,
 // ip, port } (bkz. POST /api/telnet/run yorumu). Legacy'den YAPISAL OLARAK farkli bir
 // yanit sekli doner (results: [...]) — TEK job degil, namespace basina bir job.

@@ -40,10 +40,6 @@ async function getRows(keys = LOGX_KEYS) {
       foundOnAwx: templateId ? Boolean(tpl) : null,
       templateName: tpl?.name || null,
       promptOnLaunch: tpl ? tpl.ask_variables !== false : null,
-      // Limit icin "Prompt on launch". BUGUN HICBIR AKIS limit gondermiyor (bkz.
-      // server/opsx/index.cjs'teki not) — bu alan yalnizca BILGI: kutu acilirsa cluster
-      // alt kumesi ozelligi geri getirilebilir. `ready` hesabina KATILMAZ.
-      limitPrompt: tpl ? tpl.ask_limit !== false : null,
     });
   }
   return rows;

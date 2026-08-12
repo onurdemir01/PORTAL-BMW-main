@@ -9,19 +9,10 @@
 // GÖRÜLMÜŞ namespace'ler dropdown'da listelenir, bilinmiyorsa serbest yazılabilir.
 // "Ekle" ile listeye BİRİKTİRİLİR (birden fazla namespace seçilebilir) — OpsX'in
 // namespace/uygulama çifti biriktirme deseninin aynısı, sadece uygulama alanı yok.
-//
-// 2026-08-12 (kullanıcı isteği): (1) namespace düz `<select>` yerine tek kutulu combobox
-// (serbest yazım KORUNDU), (2) biriken namespace'ler ekran içi listeden üstteki ortak
-// sepete taşındı, (3) CLUSTER SEÇİMİ geri geldi — ama eski "bastion çözümleme" biçiminde
-// DEĞİL: seçilen gerçek cluster adları sunucuda AWX'in kendi `limit` alanına konur ve
-// Ansible bunu `{{ cluster }}_{{ env }}` grubuyla kesiştirir (OpsX restart'ta kanıtlanmış
-// mekanizma, commit ea686eb). Dış playbook'a dokunulmaz. Varsayılan tümü seçili =
-// bugünkü davranış.
 import React, { useEffect, useState } from "react";
-import { PlusIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { telnetApi } from "@/api/telnetApi";
-import SearchableSelect from "@/components/common/SearchableSelect";
-import SelectedItemsBar from "@/components/common/SelectedItemsBar";
+import FilterableList from "@/components/common/FilterableList";
 
 const OcpTargetStep: React.FC<{
   busy?: boolean;
@@ -34,6 +25,7 @@ const OcpTargetStep: React.FC<{
   const [tenant, setTenant] = useState("");
 
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
+  const [namespaceMode, setNamespaceMode] = useState<"list" | "free">("list");
   const [namespace, setNamespace] = useState("");
 
   const [namespaces, setNamespaces] = useState<string[]>([]);
@@ -57,15 +49,15 @@ const OcpTargetStep: React.FC<{
       .catch(() => setNamespaceOptions([]));
   }, [env, tenant]);
 
-  // Bu tenant/ortam grubundaki GERÇEK cluster'lar — seçtirmiyoruz (bkz. aşağıdaki bilgi
-  // satırı ve dosya başı notu), ama kullanıcı neyin hedefleneceğini görmeli.
-  const groupClusters = env && tenant ? (tree[env]?.[tenant] || []) : [];
-
   function addNamespace() {
     const ns = namespace.trim();
     if (!ns || namespaces.includes(ns)) return;
     setNamespaces((prev) => [...prev, ns]);
     setNamespace("");
+  }
+
+  function removeNamespace(i: number) {
+    setNamespaces((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   const ready = env && tenant && namespaces.length > 0;
@@ -82,17 +74,6 @@ const OcpTargetStep: React.FC<{
 
   return (
     <div className="space-y-4">
-      {/* Sepet ÜSTTE (LogX/OpsX ile aynı desen): kullanıcı ne topladığını her an görür. */}
-      <SelectedItemsBar
-        title="Eklenen namespace'ler"
-        submitLabel="Devam Et"
-        busy={busy}
-        groups={[{ items: namespaces.map((n) => ({ id: n, label: n })) }]}
-        onRemove={(id) => setNamespaces((prev) => prev.filter((n) => n !== id))}
-        onClear={() => setNamespaces([])}
-        onSubmit={() => onSubmit({ env, tenant, namespaces })}
-      />
-
       <div>
         <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Ortam</label>
         <div className="flex flex-wrap gap-1.5">
@@ -125,32 +106,46 @@ const OcpTargetStep: React.FC<{
         </div>
       )}
 
-      {env && tenant && groupClusters.length > 0 && (
-        /* Cluster SEÇTİRMİYORUZ (bkz. dosya başı notu: AWX `limit`i yutuyor) ama kullanıcı
-           neyin hedefleneceğini görmeli — sessizce "hepsi" demek, üretimde tam olarak bu
-           yanılgıyı yaratmıştı. */
-        <p className="text-[11px] text-[var(--text-muted)]">
-          Hedeflenecek cluster'lar:{" "}
-          <span className="font-mono text-[var(--text-secondary)]">{groupClusters.join(", ")}</span>
-          {groupClusters.length > 1 && " — grubun tamamı hedeflenir."}
-        </p>
-      )}
-
       {env && tenant && (
         <div className="space-y-3 border border-[var(--border)] rounded-xl p-3">
           <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Namespace</label>
-            {/* Serbest yazım korunuyor: envanterde henüz görünmeyen bir namespace de
-                yazılabilsin (eski "Listeden seç / Yaz" ikilisinin yerini combobox aldı). */}
-            <SearchableSelect
-              id="telnet-ns"
-              options={namespaceOptions}
-              value={namespace}
-              onChange={setNamespace}
-              allowFreeText
-              placeholder="Namespace ara veya yaz…"
-              emptyText="Bu tenant için envanterde henüz namespace kaydı yok — bildiğinizi yazabilirsiniz."
-            />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-[var(--text-secondary)]">Namespace</label>
+              {namespaceOptions.length > 0 && (
+                <div className="flex gap-1 text-[10px]">
+                  <button
+                    onClick={() => setNamespaceMode("list")}
+                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === "list" ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+                  >
+                    Listeden seç
+                  </button>
+                  <button
+                    onClick={() => setNamespaceMode("free")}
+                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === "free" ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+                  >
+                    Yaz
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {namespaceMode === "list" && namespaceOptions.length > 0 ? (
+              /* Arama + vurgulama + daha uzun liste (OpsX ile aynı bileşen). "Yaz" kipi
+                 ve serbest yazım kaçış yolu OLDUĞU GİBİ duruyor. */
+              <FilterableList
+                options={namespaceOptions}
+                value={namespace}
+                onChange={setNamespace}
+                placeholder="Namespace ara…"
+              />
+            ) : (
+              <input
+                value={namespace}
+                onChange={(e) => setNamespace(e.target.value)}
+                placeholder="das-trading-management-qa"
+                className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
+              />
+            )}
             {namespaceOptions.length === 0 && (
               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
                 Bu tenant için envanterde henüz namespace kaydı yok — bildiğiniz namespace'i yazabilirsiniz.
@@ -166,6 +161,24 @@ const OcpTargetStep: React.FC<{
             <PlusIcon className="w-3.5 h-3.5" />
             Listeye Ekle
           </button>
+        </div>
+      )}
+
+      {namespaces.length > 0 && (
+        <div>
+          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+            Eklenen Namespace'ler ({namespaces.length})
+          </label>
+          <div className="space-y-1">
+            {namespaces.map((n, i) => (
+              <div key={n} className="flex items-center justify-between gap-2 px-3 py-1.5 border border-[var(--border)] rounded-lg">
+                <span className="text-sm font-mono text-[var(--text-primary)]">{n}</span>
+                <button onClick={() => removeNamespace(i)} disabled={busy} className="text-[var(--text-muted)] hover:text-red-600">
+                  <XMarkIcon className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
