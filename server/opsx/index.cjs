@@ -197,24 +197,6 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user) {
   return { envKey, tenantKey, cleanPairs, clusterNames };
 }
 
-// Client'in gonderdigi cluster alt kumesini, bu tenant/env icin DB'den AZ ONCE cozulmus
-// gercek cluster listesine karsi dogrular (ANTI-TOCTOU). Grup disindaki bir isim ne AWX
-// `limit`ine ne de `ocp_clusters[]`e sizabilir.
-//
-// Bos/gonderilmemis liste = KISITLAMA YOK: cagiran bugunku davranisi (tum cluster'lar)
-// surdurur. Bu, "calisan yapiyi bozma" kuralinin somut hali — alan opsiyoneldir, eski
-// onyuz yeni sunucuyla aynen calisir.
-function pickClusterSubset(requested, clusterNames) {
-  if (!Array.isArray(requested) || requested.length === 0) return clusterNames;
-  const wanted = [...new Set(requested.map((c) => String(c || '').trim()).filter(Boolean))];
-  if (!wanted.length) return clusterNames;
-  const unknown = wanted.filter((c) => !clusterNames.includes(c));
-  if (unknown.length) {
-    throw Object.assign(new Error(`Geçersiz cluster: ${unknown.join(', ')}`), { status: 400 });
-  }
-  return wanted;
-}
-
 // Bir tenant'a BIRDEN FAZLA gercek OCP cluster'i bagli olabilir (getClusterTree()) — pod
 // kesfi/dump eskiden bunlardan yalniz BIRINE (AWX inventory grubundaki run_once ilk host)
 // bagleniyordu, digerlerindeki pod'lar hic gorunmuyordu (bildirilen hata). LogX v2'nin
@@ -490,15 +472,17 @@ function initOpsX(app) {
   //   terminal_host YOK — playbook `hosts: "{{ oc_cluster }}_{{ env }}"` ile hedefi
   //   kendisi cozer. oc_input, tek POST'ta birden fazla namespace/uygulama ciftini
   //   ";" ile tasir (onyuzde birikimli eklenir — bkz. OcpTargetStep.tsx).
-  //   Bir tenant/env grubuna BIRDEN FAZLA gercek cluster bagli olabilir (ör. ark_prod →
-  //   gbocpprod1,gbocpprod2,gbocpprod4) — uygulama sahibi bazen SADECE birini hedeflemek
-  //   ister. Bunun icin oc_cluster/env DEGISTIRILMEZ (harici application_rollout.yaml'in
-  //   `hosts:`/prepare.yaml grup dogrulamasi hala bunlara bagimli) — bunun yerine, Legacy'nin
-  //   zaten kullandigi AYNI mekanizma (AWX'in KENDI `limit` alani) ocClusters[] doluysa
-  //   secili gercek cluster adlariyla doldurulur; Ansible bunu oc_cluster_env grubuyla
-  //   KESISTIRIR. Bos/gonderilmemis ocClusters = kisitlama yok (tum cluster'lar, eski davranis).
+  //   CLUSTER ALT KUMESI DENENDI VE GERI ALINDI (2026-08-12): bir tenant/env grubuna
+  //   birden fazla gercek cluster bagli (ör. ark_prod → gbocpprod1,gbocpprod2,gbocpprod4) ve
+  //   kullanici bazen yalnizca birini hedeflemek istiyor. Secilen adlar AWX'in KENDI `limit`
+  //   alanina konuldu — AMA AWX, job template'inde Limit icin "Prompt on launch" KAPALIYSA
+  //   bu alani SESSIZCE YOK SAYAR. Uretimde portal `limit: "gbocpankqa2"` gonderdi, job
+  //   detayinda limit gorunmedi ve is ark_qa'nin DORT host'unda da kostu; kullanici secim
+  //   yaptigini sandi. Ayni tuzagin extra_vars kardesi icin bkz.
+  //   server/ansible/template-preflight.cjs. Cozum AWX'te bir kutu (Limit > Prompt on
+  //   launch) — kod tarafinda yapilacak bir sey yok, o yuzden limit HIC gonderilmiyor.
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
-    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation, ocClusters } = req.body || {};
+    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation } = req.body || {};
 
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
@@ -520,7 +504,7 @@ function initOpsX(app) {
     }
 
     let extraVars;
-    let limitValue = '';   // Legacy'de HER ZAMAN dolu; Openshift'te SADECE cluster kisitlamasi secildiyse — AWX'in --limit alani
+    let limitValue = '';   // yalniz Legacy'de dolu — AWX'in --limit alani
     let logSummary;
 
     if (plat === 'legacy') {
@@ -561,28 +545,14 @@ function initOpsX(app) {
 
       // Katalog + erisim kisitlamasi dogrulamasi: resolveOpenshiftTargets() (bkz. dosya
       // basi) — dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
-      let envKey, tenantKey, cleanPairs, clusterNames;
+      let envKey, tenantKey, cleanPairs;
       try {
         const user = req.session?.user || {};
-        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(env, tenant, pairs, user));
+        ({ envKey, tenantKey, cleanPairs } = await resolveOpenshiftTargets(env, tenant, pairs, user));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
       const ocInput = cleanPairs.map((p) => p.joined).join(';');
-
-      // ANTI-TOCTOU: client'in gonderdigi ocClusters[], resolveOpenshiftTargets'in bu
-      // tenant/env icin DB'den az once cozdugu gercek cluster listesine (clusterNames)
-      // KARSI dogrulanir — bu grubun disindaki bir isim limit'e asla sizmaz.
-      let ocClusterLimit = '';
-      try {
-        const picked = pickClusterSubset(ocClusters, clusterNames);
-        // Hepsi seciliyse `limit` BOS birakilir — AWX'e gereksiz bir kisit gondermemek
-        // bugunku davranisi birebir korur.
-        if (picked.length < clusterNames.length) ocClusterLimit = picked.join(cfg.separator);
-      } catch (err) {
-        return res.status(err.status || 400).json({ ok: false, message: err.message });
-      }
-      limitValue = ocClusterLimit;
 
       extraVars = {
         ...staticVars,
@@ -594,7 +564,7 @@ function initOpsX(app) {
         openshift_operations: 'openshift_application_rollout',
         choise: true,
       };
-      logSummary = `env=${envKey} oc_cluster=${tenantKey} oc_input=${ocInput}${ocClusterLimit ? ` limit=${ocClusterLimit}` : ''}`;
+      logSummary = `env=${envKey} oc_cluster=${tenantKey} oc_input=${ocInput}`;
     }
 
     try {
@@ -912,11 +882,7 @@ function initOpsX(app) {
   // uygulama adina gore filtrelemiyor) ama HER pair yine de erisim kisitlamasindan
   // (resolveOpenshiftTargets) tek tek gecer.
   app.post('/api/opsx/ocp/pods/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-    // `clusters` OPSIYONEL: gonderilmezse bugunku davranis (tenant'in TUM gercek
-    // cluster'larina paralel baglan) aynen surer. Gonderilirse kesif yalniz o
-    // cluster'lara baglanir — daha az `oc login`, daha hizli sonuc, daha kisa pod listesi
-    // (2026-08-12 kullanici istegi).
-    const { env, tenant, pairs, clusters } = req.body || {};
+    const { env, tenant, pairs } = req.body || {};
     const { templateId, serverId, keyName } = await resolveTarget('openshiftPods');
     if (!templateId) {
       return res.status(501).json({
@@ -935,13 +901,10 @@ function initOpsX(app) {
       ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
         env, tenant, pairs, user
       ));
-      // Kullanicinin sectigi alt kume, DB'den az once cozulen listeye karsi dogrulanir.
-      const targetClusters = pickClusterSubset(clusters, clusterNames);
-      // Bir tenant'a BIRDEN FAZLA gercek cluster bagli olabilir — SECILENLERIN hepsine
-      // paralel baglanip pod'un HANGI cluster'da oldugunu gostermek icin (bkz.
-      // resolveOcpClusterFanout yorumu) fan-out extra_vars'i kurulur; TEK `oc_cluster`
-      // alanina guvenilmez.
-      fanout = await resolveOcpClusterFanout(envKey, tenantKey, targetClusters);
+      // Bir tenant'a BIRDEN FAZLA gercek cluster bagli olabilir — hepsine paralel
+      // baglanip pod'un HANGI cluster'da oldugunu gostermek icin (bkz. resolveOcpClusterFanout
+      // yorumu) fan-out extra_vars'i kurulur; TEK `oc_cluster` alanina guvenilmez.
+      fanout = await resolveOcpClusterFanout(envKey, tenantKey, clusterNames);
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -1269,7 +1232,4 @@ function initOpsX(app) {
 module.exports = {
   initOpsX, hostsForApp, ALLOWED_OPERATIONS, namespacesForCluster,
   extractOpsxDumpResult, extractOpsxPodsResult, extractOpsxJvmResult,
-  // Testler icin: cluster alt kumesi dogrulamasi (anti-TOCTOU) route disinda da
-  // dogrulanabilsin — HTTP katmani olmadan.
-  pickClusterSubset,
 };
