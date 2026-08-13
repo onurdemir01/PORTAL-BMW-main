@@ -1669,6 +1669,15 @@ function initAnsibleRunner(app) {
     console.warn("[Smart] poller başlatılamadı:", e.message);
   }
 
+  // Uzun-suredir-calisan-job izleyicisini BIR KEZ baslat (kullanici istegi: 30 dakikadan
+  // uzun calisan job'lar icin Teams bildirimi). TEAMS_LONGJOB_WEBHOOK_URL bos oldugu
+  // surece izleyici sessizce hicbir sey yapmaz (bkz. long-job-watcher.cjs basi).
+  try {
+    require("./long-job-watcher.cjs").startWatcher();
+  } catch (e) {
+    console.warn("[LongJobWatcher] baslatilamadi:", e.message);
+  }
+
   // GET /api/ansible/ss/items — Self-Service Ansible item listesi
   app.get("/api/ansible/ss/items", requireAuth, (req, res) => {
     res.json({ ok: true, items: readSsItems() });
@@ -2396,9 +2405,44 @@ function clearTokenCache() {
   console.log("[Cache] AWX token onbellegi temizlendi.");
 }
 
+// Tum yapilandirilmis AWX sunucularinda su an GERCEKTEN calisan (status=running) job'lari
+// tek duz listede doner — server/ansible/long-job-watcher.cjs bunu kullanir. `pending`/
+// `waiting` KASITLI DISLANIR: henuz baslamamis bir isin `started` zamani yok, sure asimi
+// kavrami sadece fiilen calisan isler icin anlamlidir. Bir sunucuya erisilemezse o sunucu
+// SESSIZCE atlanir (diger sunuculardaki taramayi dusurmez) — cagiran taraf loglar.
+async function listRunningJobsAcrossServers() {
+  const servers = getServers();
+  const out = [];
+  for (const server of servers) {
+    if (!server.token && !(server.user && server.password)) continue;
+    try {
+      const token = await getTokenForServer(server);
+      const data = await awxRequestToServer(
+        server, token, "GET",
+        "/api/v2/jobs/?status=running&order_by=-started&page_size=200"
+      );
+      for (const j of data.results || []) {
+        if (!j.started) continue; // guvenlik: started yoksa sure hesaplanamaz
+        out.push({
+          serverId: server.id,
+          serverName: server.name,
+          jobId: j.id,
+          jobName: j.summary_fields?.job_template?.name || j.name || `Job #${j.id}`,
+          started: j.started,
+          url: `${String(server.url || "").replace(/\/+$/, "")}/#/jobs/playbook/${j.id}/output`,
+        });
+      }
+    } catch (err) {
+      console.warn(`[Ansible] ${server.name}: calisan job listesi alinamadi:`, err.message);
+    }
+  }
+  return out;
+}
+
 module.exports = {
   initAnsibleRunner, isConfigured, launchJob, getJobStatus, getJobOutput, listTemplates,
   getOcpClusters, getServers, listTemplatesForServer, clearTokenCache,
   // LogX v2 coklu-sunucu sarmalayicilari:
   launchJobOnServer, getJobStatusOnServer, getJobOutputOnServer, cancelJobOnServer, getServerById,
+  listRunningJobsAcrossServers,
 };
