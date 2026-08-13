@@ -336,12 +336,13 @@ export interface FieldCustomization {
   // flowKey ile bir talep açılır (bkz. server/smart/*, server/ansible/runner.cjs
   // POST /launch-ss). Kullanıcı talep onaylanana/reddedilene kadar bekler.
   // "key: value" satırları (parseSimpleYaml ile AYNI format, rawExtraVars gibi) — Smart'a
-  // acilan talebin metadataData.metadatas[] listesini KURAR. SOS02-KL-001-EN'e gore `key`
-  // Smart'in flowKey icin GetMetaDataOperationalRequestByFlowName'in dondurdugu
-  // `ComponentType` degeriyle BIREBIR eslesmeli (ElementName DEGIL) - flowKey'in girdisi
-  // yaninda "Alanlari Getir" ile bu degerler sorgulanabilir. Deger icinde {{username}}/
-  // {{email}}/{{templateName}} yer tutucular sunucu tarafinda cozulur. Bos ise eski
-  // varsayilan (SABIT application/requestedBy) davranisina duser.
+  // acilan talebin metadataData.metadatas[] listesini KURAR. `key`, flowKey icin
+  // GetMetaDataOperationalRequestByFlowName'in dondurdugu `ElementName` degeriyle BIREBIR
+  // eslesmeli (ComponentType DEGIL - o TEKIL degil, ayni flow'da birden fazla TEXTBOX/
+  // PARAMETER_DROPDOWN olabiliyor) - flowKey'in girdisi yaninda "Alanlari Getir" ile bu
+  // degerler sorgulanabilir. Deger icinde {{username}}/{{email}}/{{templateName}} yer
+  // tutucular sunucu tarafinda cozulur. Bos ise eski varsayilan (SABIT application/
+  // requestedBy) davranisina duser.
   smartApproval?: { enabled: boolean; flowKey?: string; metadataFields?: string };
 }
 

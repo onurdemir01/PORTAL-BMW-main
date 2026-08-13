@@ -1996,13 +1996,16 @@ function initAnsibleRunner(app) {
   // "Metadata Service Required to Start Request Flow - REST" ucu (client.cjs.getFlowMetadata,
   // SOS02-KL-001-EN'e karsi DOGRULANDI ama bugune kadar hicbir yerden CAGRILMIYORDU).
   // createTicket()'in metadataData.metadatas[].key alani SABIT {application, requestedBy}
-  // GONDERIYORDU (bkz. smartApproval blogu) — dokuman incelenince gercek kural ortaya cikti:
-  // `key`, bu ucun dondurdugu `ComponentType` degeriyle BIREBIR eslesmeli (ElementName
-  // DEGIL); sabit degerler hicbir gercek flow'un ComponentType'iyla eslesmedigi icin Smart
-  // "Invalid Request" (400) ile reddediyordu (hata govdesi ic SOAP fault'unu icerdigi icin
-  // okunmasi zor). Admin artik metadataFields override'iyla (FieldOverridesModal) gercek
-  // ComponentType degerlerini esleyebilir — bu uc, admin'in bir flowKey icin Smart'in
-  // GERCEKTEN hangi alanlari beklediğini SORGULAYIP gorebilmesini saglar, tahmin yerine.
+  // GONDERIYORDU (bkz. smartApproval blogu) — gercek uretim flow'u sorgulanana kadar `key`'in
+  // `ComponentType` oldugu SANILMISTI (dokumanin TEK ornekte ikisi ayni gorunuyordu), ama
+  // GERCEK bir flow'da ComponentType TEKIL DEGIL (birden fazla TEXTBOX/PARAMETER_DROPDOWN/
+  // CONFIGURATION_SELECT_CMS ayni flow'da olabiliyor) — dogru anahtar bu ucun dondurdugu
+  // BENZERSIZ `ElementName` degeri. Sabit degerler hicbir gercek flow'un ElementName'iyle
+  // eslesmedigi icin Smart "Invalid Request" (400) ile reddediyordu (hata govdesi ic SOAP
+  // fault'unu icerdigi icin okunmasi zor). Admin artik metadataFields override'iyla
+  // (FieldOverridesModal) gercek ElementName degerlerini esleyebilir — bu uc, admin'in bir
+  // flowKey icin Smart'in GERCEKTEN hangi alanlari beklediğini SORGULAYIP gorebilmesini
+  // saglar, tahmin yerine.
   app.get("/api/ansible/ss/smart-flow-metadata/:flowKey", requireAuth, requireAdmin, async (req, res) => {
     const flowKey = String(req.params.flowKey || "").trim();
     if (!flowKey) return res.status(400).json({ ok: false, message: "flowKey zorunlu." });
@@ -2134,13 +2137,15 @@ function initAnsibleRunner(app) {
           return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
         }
         // Smart'in metadataData.metadatas[].key alani, GetMetaDataOperationalRequestByFlowName'in
-        // dondurdugu `ComponentType` degeriyle BIREBIR eslesmeli (SOS02-KL-001-EN, dogrulandi
-        // 2026-08-12 - `ElementName` DEGIL). Sabit {application, requestedBy} hicbir gercek
-        // flow'un ComponentType'iyla eslesmedigi icin Smart bunu "400 Invalid Request" ile
-        // reddediyordu. Admin artik "Alanlari Getir" ile gercek ComponentType'lari gorup
-        // metadataFields'a ("COMPONENT_TYPE: deger", parseSimpleYaml ile AYNI format)
-        // esleyebilir; bos ise ESKI (muhtemelen hicbir flow'da calismayan) varsayilana duser —
-        // davranis SESSIZCE degismez, admin'in NE gonderildigini gormesi FieldOverridesModal'da.
+        // dondurdugu `ElementName` degeriyle BIREBIR eslesmeli (SOS02-KL-001-EN + 2026-08-12
+        // uretim flow'u dogrulandi - `ComponentType` DEGIL, o TEKIL degil: ayni flow'da birden
+        // fazla TEXTBOX/PARAMETER_DROPDOWN/CONFIGURATION_SELECT_CMS olabiliyor). Sabit
+        // {application, requestedBy} hicbir gercek flow'un ElementName'iyla eslesmedigi icin
+        // Smart bunu "400 Invalid Request" ile reddediyordu. Admin artik "Alanlari Getir" ile
+        // gercek ElementName'leri gorup metadataFields'a ("ELEMENT_NAME: deger",
+        // parseSimpleYaml ile AYNI format) esleyebilir; bos ise ESKI (muhtemelen hicbir flow'da
+        // calismayan) varsayilana duser — davranis SESSIZCE degismez, admin'in NE gonderildigini
+        // gormesi FieldOverridesModal'da.
         const metadataFieldsRaw = String(overrides.smartApproval.metadataFields || "").trim();
         let metadata;
         if (metadataFieldsRaw) {
