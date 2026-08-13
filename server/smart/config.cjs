@@ -14,13 +14,26 @@
 // DOGRULANDI. Onemli bulgular:
 //   - Talep ACMA (createoperationalrequest/v1) DOGRULANDI — path + govde + Basic Auth +
 //     RFF-Request-Token header'i BIREBIR eslesiyor (bkz. client.cjs).
-//   - Talep DURUMU SORGULAMA icin dokumanda HICBIR REST endpoint'i YOK. Referans kod
-//     tabanindaki (kardes ekip) durum sorgusu Smart'in kendisinden DEGIL, ayri bir sistemden
-//     ("Servicerepository" adiyla anilan, muhtemelen SMART'in workflow/roadmap API'si,
-//     bu dokumanin kapsami DISINDA) geliyordu. SMART_CHECK_TICKET_PATH bu yuzden BOS
-//     birakildi — doldurulmadigi surece client.cjs.checkTicketStatus() acikca hata
-//     firlatir (poller bunu loglar, talep PENDING kalir, sessizce yanlis "hicbir zaman
-//     onaylanmadi" sonucuna dusmez). Onur'dan bu ayri sistemin dokumani gerekiyor.
+//   - Talep DURUMU SORGULAMA icin dokumanda HICBIR REST endpoint'i YOK.
+//
+// 2026-08-13: kardes ekibin GERCEK Django kaynagi (gar_selfserviceportal_uft paketi,
+// dashboard/servicerepository.py + loadbalancer/tasks.py check_state_all_ticket())
+// incelendi — durum sorgusu GERCEKTEN Smart'in KENDI API'sinden DEGIL, "ServiceRepository"
+// adli TAMAMEN AYRI bir sistemden/host'tan geliyor, PROTOKOLU de FARKLI:
+//   - GET istegi (POST DEGIL), govde yerine query string: ?wfInstanceId=...&languageCode=TR
+//   - Basic Auth/RFF-Request-Token GONDERILMIYOR (referans kodda sadece Content-Type header'i var)
+//   - Cevap zarfi: { LoadRoadmapResult: { ResultCode, Result: { Blocks, WorkflowSLADurationStart,
+//     WorkflowCompleteDate } } } — bizim eski tahminimiz (result.Blocks) YANLISTI.
+//   - Tamamlanma sinyali WorkflowCompleteDate'in DOLU olmasi (workflow bitince Smart bunu
+//     .NET /Date(...)/ formatinda yazar); iptal/red ise Blocks icindeki aktif State'in
+//     adinda "_CANCEL_" gecmesi.
+// Referans kodda base URL ("Servicerepository Address") ve path ("Servicerepository Ticket
+// Check Path") KENDI portallarinin veritabaninda (AppSettings tablosu) tutuluyor — hicbir
+// dosyada, migration'da veya ayar dosyasinda GERCEK deger YOK; sadece o portali isleten
+// ekipte olabilir. SMART_SERVICEREPOSITORY_URL/SMART_CHECK_TICKET_PATH bu yuzden BOS
+// birakildi — doldurulmadigi surece client.cjs.checkTicketStatus() acikca hata firlatir
+// (poller bunu loglar, talep PENDING kalir, sessizce yanlis "hicbir zaman onaylanmadi"
+// sonucuna dusmez).
 function isConfigured() {
   return !!(process.env.SMART_API_URL && process.env.SMART_API_USERNAME && process.env.SMART_API_PASSWORD);
 }
@@ -41,8 +54,13 @@ function getConfig() {
     // — opsiyonel: bir flowKey'in bekledigi metadata alanlarini (ElementName/IsRequired/...)
     // sorgulamak icin. Su an hicbir yerden cagrilmiyor, admin arac-kutusu icin hazir.
     getMetadataPath: process.env.SMART_GET_METADATA_PATH || '/smart/internal/getmetadataoperationalrequestbyflowname/v1',
-    // DOGRULANMADI — dokumanda YOK, bkz. dosya basi notu. Bos oldugu surece
-    // checkTicketStatus() acikca hata firlatir.
+    // ServiceRepository sisteminin KENDI host'u — Smart'in SMART_API_URL'inden AYRI
+    // (bkz. dosya basi 2026-08-13 notu). Bos oldugu surece checkTicketStatus() acikca
+    // hata firlatir.
+    serviceRepositoryUrl: (process.env.SMART_SERVICEREPOSITORY_URL || '').replace(/\/+$/, ''),
+    // DOGRULANMADI (Smart dokumaninda YOK) ama kardes ekibin GERCEK kodundan REVERSE-
+    // ENGINEER edildi — bkz. dosya basi notu. Bos oldugu surece checkTicketStatus()
+    // acikca hata firlatir.
     checkTicketPath: process.env.SMART_CHECK_TICKET_PATH || '',
     // "Login domain information of the user who created the request" — ornek deger
     // dokumanda hep "GARANTI" (kullanicinin KENDI LDAP domain'i degil, sabit bir deger

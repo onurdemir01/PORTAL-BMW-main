@@ -153,31 +153,74 @@ async function getFlowMetadata(flowName) {
   return result?.result?.result || [];
 }
 
-// Talebin GUNCEL durumunu sorgular — DOGRULANMADI, bkz. dosya basi notu. SMART_CHECK_TICKET_PATH
-// (Admin > Sistem > Smart) bos oldugu surece BILEREK hata firlatir: bir Smart API'si
-// TAHMIN edip sessizce yanlis "hicbir zaman onaylanmadi" sonucuna dusmek, hicbir sonuca
-// dusmemekten (poller sadece "henuz kontrol edilemedi" der, talep PENDING kalir) daha
-// tehlikelidir.
+// ServiceRepository'ye (Smart'in KENDI API host'undan AYRI) GET istegi — auth BASLIGI
+// GONDERILMEZ (kardes ekibin referans kodunda da yok, bkz. config.cjs 2026-08-13 notu).
+async function getServiceRepository(path, params) {
+  const cfg = getConfig();
+  const targetUrl = new URL(`${cfg.serviceRepositoryUrl}${path}`);
+  for (const [k, v] of Object.entries(params || {})) targetUrl.searchParams.set(k, String(v));
+  let dispatcher = null;
+  let statusCode, text;
+  try {
+    dispatcher = buildSmartDispatcher(targetUrl.toString());
+    const result = await dispatcher.request({
+      origin: targetUrl.origin,
+      path: targetUrl.pathname + targetUrl.search,
+      method: 'GET',
+      headers: { 'content-type': 'application/json' },
+      headersTimeout: 20_000,
+      bodyTimeout: 20_000,
+    });
+    statusCode = result.statusCode;
+    text = await result.body.text();
+  } finally {
+    if (dispatcher) dispatcher.close().catch(() => {});
+  }
+  let parsed;
+  try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
+  if (statusCode < 200 || statusCode >= 300) {
+    throw Object.assign(new Error(`ServiceRepository hata verdi (HTTP ${statusCode}): ${text.slice(0, 300)}`), { status: 502 });
+  }
+  return parsed;
+}
+
+// Talebin GUNCEL durumunu sorgular. SOS02-KL-001-EN dokumaninda bu ucun REST karsiligi
+// YOK — protokol kardes ekibin GERCEK kaynagindan (gar_selfserviceportal_uft,
+// dashboard/servicerepository.py check_state_ticket() + loadbalancer/tasks.py
+// check_state_all_ticket()) REVERSE-ENGINEER edildi, bkz. config.cjs 2026-08-13 notu:
+//   GET {serviceRepositoryUrl}{checkTicketPath}?wfInstanceId=..&languageCode=TR
+//   -> { LoadRoadmapResult: { ResultCode, Result: { Blocks, WorkflowCompleteDate, ... } } }
+// Tamamlanma sinyali WorkflowCompleteDate'in DOLU olmasi (workflow bitince Smart bunu
+// yazar); iptal/red ise aktif Block'un State'inde "_CANCEL_" gecmesi (referans kod:
+// `if "_CANCEL_" not in ticket_status['StateName']`).
+//
+// SMART_SERVICEREPOSITORY_URL/SMART_CHECK_TICKET_PATH (Admin > Sistem > Smart) bos
+// oldugu surece BILEREK hata firlatir: bir deger TAHMIN edip sessizce yanlis "hicbir
+// zaman onaylanmadi" sonucuna dusmek, hicbir sonuca dusmemekten (poller sadece "henuz
+// kontrol edilemedi" der, talep PENDING kalir) daha tehlikelidir.
 async function checkTicketStatus(ticketId) {
   const cfg = getConfig();
-  if (!cfg.checkTicketPath) {
+  if (!cfg.serviceRepositoryUrl || !cfg.checkTicketPath) {
     throw Object.assign(
-      new Error('Smart talep durumu sorgulama endpoint\'i tanımlı değil (SMART_CHECK_TICKET_PATH) — bu, Smart RFF REST dokümanının kapsamı dışında, ayrı bir sistem olabilir.'),
+      new Error('Smart talep durumu sorgulama yapılandırılmamış (SMART_SERVICEREPOSITORY_URL / SMART_CHECK_TICKET_PATH) — bu, Smart RFF REST dokümanının kapsamı dışında, ayrı bir "ServiceRepository" sistemi.'),
       { status: 501 }
     );
   }
-  if (!isConfigured()) {
-    throw Object.assign(new Error('Smart entegrasyonu yapılandırılmamış.'), { status: 503 });
+  const result = await getServiceRepository(cfg.checkTicketPath, { wfInstanceId: ticketId, languageCode: 'TR' });
+  const roadmap = result?.LoadRoadmapResult;
+  const resultCode = String(roadmap?.ResultCode ?? '');
+  if (resultCode && resultCode !== '1000') {
+    throw Object.assign(new Error(`ServiceRepository durum sorgusu başarısız: resultCode=${resultCode}`), { status: 502 });
   }
-  const result = await post(cfg.checkTicketPath, { wfInstanceId: ticketId, languageCode: 'TR' });
-  const blocks = result?.result?.Blocks || result?.Blocks || [];
+  const detail = roadmap?.Result || {};
+  const blocks = detail?.Blocks || [];
   const currentBlock = Array.isArray(blocks) ? blocks.find((b) => b?.IsCurrentBlock === true) : null;
   const currentState = currentBlock?.States?.find((s) => s?.StateStage) || null;
   const stateName = currentState?.StateName || '';
   const blockName = currentBlock?.Name || '';
   return {
-    completed: blockName === 'FINISH_BLOCK',
-    rejected: /CANCEL/i.test(stateName) || /REJECT/i.test(stateName),
+    completed: !!detail?.WorkflowCompleteDate && !/_CANCEL_/.test(stateName),
+    rejected: /_CANCEL_/.test(stateName),
     stateName,
     blockName,
     raw: result,
