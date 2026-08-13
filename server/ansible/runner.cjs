@@ -2086,6 +2086,16 @@ function initAnsibleRunner(app) {
         extraVars[usernameKey] = req.session?.user?.username || "";
       }
 
+      // AWX'te "Prompt on launch" (Variables) kapaliysa, Survey'in KENDI sorulari disinda
+      // kalan HER extra_vars anahtari (ornegin yukaridaki injectUserInfo'nun email/username'i,
+      // ya da rawExtraVars) SESSIZCE YOK SAYILIR — OpsX/LogX rotalarindaki AYNI kontrol (bkz.
+      // template-preflight.cjs) burada EKSIKTI, bu yuzden bu sinif hata (2026-08-12, lb_suspend_
+      // excludelist: injectUserInfo acildi ama AWX'te "Bilinmiyor"/service-account gorunmeye
+      // devam etti) sessizce gecip gidiyordu. Survey sorularinin KENDISI bu kontrolden
+      // ETKILENMEZ (AWX onlari ayri kabul eder); yalnizca survey-disi ek anahtarlar risk altinda.
+      await require("./template-preflight.cjs")
+        .assertTemplateAcceptsExtraVars(server.id, templateId, extraVars, { label: templateName || String(templateId) });
+
       const resolvedLaunchOptions = resolveLaunchOptions(overrides, { limit, forks, jobTags, skipTags, verbosity, jobType });
 
       // SMART ONAYI: bu template icin admin "Smart onayi gerekli" isaretlediyse (bkz.
