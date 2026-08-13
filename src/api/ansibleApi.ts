@@ -278,6 +278,12 @@ export const ansibleApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }).then(safeJson),
+
+  // Smart RFF'in bir flowKey icin BEKLEDIGI metadata alanlarini (ElementName/IsRequired/
+  // DataType) sorgular — createTicket() su an SABIT {application, requestedBy} govdesi
+  // gonderiyor; flow farkli/ek alan bekliyorsa bu, tahmin yerine GERCEGI gosterir.
+  smartFlowMetadata: (flowKey: string): Promise<{ ok: boolean; fields?: Array<Record<string, unknown>>; message?: string }> =>
+    fetch(`${BASE}/ss/smart-flow-metadata/${encodeURIComponent(flowKey)}`).then(safeJson),
 };
 
 export interface FieldOverride {

@@ -92,6 +92,9 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   // talep açılır, onaylanana kadar kullanıcı "onay bekleniyor" ekranını görür (bkz.
   // server/ansible/runner.cjs POST /launch-ss ve server/smart/poller.cjs).
   const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "" });
+  const [smartMetaLoading, setSmartMetaLoading] = useState(false);
+  const [smartMetaFields, setSmartMetaFields] = useState<Array<Record<string, unknown>> | null>(null);
+  const [smartMetaErr, setSmartMetaErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -233,6 +236,23 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
       if (i !== fieldIndex || !f.dependsOn) return f;
       return { ...f, dependsOn: { ...f.dependsOn, conditions: f.dependsOn.conditions.filter((_, ci) => ci !== condIndex) } };
     }));
+  }
+
+  async function fetchSmartMetadata() {
+    const flowKey = smartApproval.flowKey.trim();
+    if (!flowKey) return;
+    setSmartMetaLoading(true);
+    setSmartMetaErr("");
+    setSmartMetaFields(null);
+    try {
+      const res = await ansibleApi.smartFlowMetadata(flowKey);
+      if (res.ok) setSmartMetaFields(res.fields || []);
+      else setSmartMetaErr(res.message || "Metadata alınamadı.");
+    } catch (e) {
+      setSmartMetaErr(e instanceof Error ? e.message : "Metadata alınamadı.");
+    } finally {
+      setSmartMetaLoading(false);
+    }
   }
 
   // Backend kuralıyla birebir aynı client-side ön-doğrulama: HANGİ ALAN OLURSA OLSUN
@@ -768,13 +788,59 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                 {smartApproval.enabled && (
                   <div>
                     <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Smart Flow Key</label>
-                    <TextInput
-                      className="font-mono text-xs"
-                      error={invalidSmartApproval}
-                      value={smartApproval.flowKey}
-                      placeholder="ör. VIRTUAL_SERVER_TICKET_FLOW"
-                      onChange={(e) => setSmartApproval((s) => ({ ...s, flowKey: e.target.value }))}
-                    />
+                    <div className="flex items-center gap-2">
+                      <TextInput
+                        className="font-mono text-xs flex-1"
+                        error={invalidSmartApproval}
+                        value={smartApproval.flowKey}
+                        placeholder="ör. VIRTUAL_SERVER_TICKET_FLOW"
+                        onChange={(e) => setSmartApproval((s) => ({ ...s, flowKey: e.target.value }))}
+                      />
+                      <button
+                        type="button"
+                        disabled={!smartApproval.flowKey.trim() || smartMetaLoading}
+                        onClick={fetchSmartMetadata}
+                        className="text-xs px-2 py-1.5 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50 flex-shrink-0"
+                        title="Smart'ın bu flow için beklediği metadata alanlarını sorgula"
+                      >
+                        {smartMetaLoading ? "Sorgulanıyor…" : "Alanları Getir"}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                      Talep açma şu an sabit <code className="font-mono">application</code>/
+                      <code className="font-mono">requestedBy</code> metadata'sı gönderir. "400
+                      Invalid Request" alırsanız aşağıdaki listeyle flow'un GERÇEKTEN beklediği
+                      alanları karşılaştırın.
+                    </p>
+                    {smartMetaErr && (
+                      <p className="text-[11px] text-red-500 mt-1">{smartMetaErr}</p>
+                    )}
+                    {smartMetaFields && (
+                      <div className="mt-2 border border-[var(--border)] rounded-lg overflow-x-auto">
+                        {smartMetaFields.length === 0 ? (
+                          <p className="text-[11px] text-[var(--text-muted)] p-2">Smart bu flow için hiçbir alan döndürmedi.</p>
+                        ) : (
+                          <table className="text-[11px] w-full">
+                            <thead>
+                              <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border)]">
+                                <th className="p-1.5">Alan</th>
+                                <th className="p-1.5">Zorunlu</th>
+                                <th className="p-1.5">Tip</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {smartMetaFields.map((f, i) => (
+                                <tr key={i} className="border-b border-[var(--border)] last:border-0">
+                                  <td className="p-1.5 font-mono">{String(f.ElementName ?? f.elementName ?? "-")}</td>
+                                  <td className="p-1.5">{String(f.IsRequired ?? f.isRequired ?? "-")}</td>
+                                  <td className="p-1.5">{String(f.DataType ?? f.dataType ?? "-")}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

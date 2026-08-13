@@ -1992,6 +1992,27 @@ function initAnsibleRunner(app) {
     res.json({ ok: true, customization: readCustom(server.id, req.params.templateId) });
   });
 
+  // GET /api/ansible/ss/smart-flow-metadata/:flowKey — Admin arac-kutusu: Smart RFF'in
+  // "Metadata Service Required to Start Request Flow - REST" ucu (client.cjs.getFlowMetadata,
+  // SOS02-KL-001-EN'e karsi DOGRULANDI ama bugune kadar hicbir yerden CAGRILMIYORDU).
+  // createTicket() su an metadataData.metadatas'i SABIT {application, requestedBy} olarak
+  // gonderiyor (bkz. smartApproval blogu) — bir flowKey FARKLI/EK alan bekliyorsa Smart
+  // SOAP katmani govdeyi "Invalid Request" (400) ile reddeder, hata mesaji ise ic SOAP
+  // fault'unu govdeye gomdugu icin okunmasi zor. Bu uc, admin'in bir flowKey icin Smart'in
+  // GERCEKTEN hangi alanlari (ElementName/IsRequired/DataType) beklediğini SORGULAYIP
+  // gorebilmesini saglar — tahmin yerine.
+  app.get("/api/ansible/ss/smart-flow-metadata/:flowKey", requireAuth, requireAdmin, async (req, res) => {
+    const flowKey = String(req.params.flowKey || "").trim();
+    if (!flowKey) return res.status(400).json({ ok: false, message: "flowKey zorunlu." });
+    try {
+      const smartClient = require("../smart/client.cjs");
+      const fields = await smartClient.getFlowMetadata(flowKey);
+      res.json({ ok: true, fields });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // POST /api/ansible/launch-ss/:serverId/:templateId — Self-Service is baslat (tum authenticated kullanicilar)
   //
   // GUVENLIK: bu endpoint yalnizca admin'in `ansible-ss-items.json`'a KAYITLI VE
