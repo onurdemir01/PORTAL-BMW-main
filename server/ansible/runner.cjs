@@ -1995,12 +1995,14 @@ function initAnsibleRunner(app) {
   // GET /api/ansible/ss/smart-flow-metadata/:flowKey — Admin arac-kutusu: Smart RFF'in
   // "Metadata Service Required to Start Request Flow - REST" ucu (client.cjs.getFlowMetadata,
   // SOS02-KL-001-EN'e karsi DOGRULANDI ama bugune kadar hicbir yerden CAGRILMIYORDU).
-  // createTicket() su an metadataData.metadatas'i SABIT {application, requestedBy} olarak
-  // gonderiyor (bkz. smartApproval blogu) — bir flowKey FARKLI/EK alan bekliyorsa Smart
-  // SOAP katmani govdeyi "Invalid Request" (400) ile reddeder, hata mesaji ise ic SOAP
-  // fault'unu govdeye gomdugu icin okunmasi zor. Bu uc, admin'in bir flowKey icin Smart'in
-  // GERCEKTEN hangi alanlari (ElementName/IsRequired/DataType) beklediğini SORGULAYIP
-  // gorebilmesini saglar — tahmin yerine.
+  // createTicket()'in metadataData.metadatas[].key alani SABIT {application, requestedBy}
+  // GONDERIYORDU (bkz. smartApproval blogu) — dokuman incelenince gercek kural ortaya cikti:
+  // `key`, bu ucun dondurdugu `ComponentType` degeriyle BIREBIR eslesmeli (ElementName
+  // DEGIL); sabit degerler hicbir gercek flow'un ComponentType'iyla eslesmedigi icin Smart
+  // "Invalid Request" (400) ile reddediyordu (hata govdesi ic SOAP fault'unu icerdigi icin
+  // okunmasi zor). Admin artik metadataFields override'iyla (FieldOverridesModal) gercek
+  // ComponentType degerlerini esleyebilir — bu uc, admin'in bir flowKey icin Smart'in
+  // GERCEKTEN hangi alanlari beklediğini SORGULAYIP gorebilmesini saglar, tahmin yerine.
   app.get("/api/ansible/ss/smart-flow-metadata/:flowKey", requireAuth, requireAdmin, async (req, res) => {
     const flowKey = String(req.params.flowKey || "").trim();
     if (!flowKey) return res.status(400).json({ ok: false, message: "flowKey zorunlu." });
@@ -2131,13 +2133,35 @@ function initAnsibleRunner(app) {
         if (!flowKey) {
           return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
         }
+        // Smart'in metadataData.metadatas[].key alani, GetMetaDataOperationalRequestByFlowName'in
+        // dondurdugu `ComponentType` degeriyle BIREBIR eslesmeli (SOS02-KL-001-EN, dogrulandi
+        // 2026-08-12 - `ElementName` DEGIL). Sabit {application, requestedBy} hicbir gercek
+        // flow'un ComponentType'iyla eslesmedigi icin Smart bunu "400 Invalid Request" ile
+        // reddediyordu. Admin artik "Alanlari Getir" ile gercek ComponentType'lari gorup
+        // metadataFields'a ("COMPONENT_TYPE: deger", parseSimpleYaml ile AYNI format)
+        // esleyebilir; bos ise ESKI (muhtemelen hicbir flow'da calismayan) varsayilana duser —
+        // davranis SESSIZCE degismez, admin'in NE gonderildigini gormesi FieldOverridesModal'da.
+        const metadataFieldsRaw = String(overrides.smartApproval.metadataFields || "").trim();
+        let metadata;
+        if (metadataFieldsRaw) {
+          const placeholders = {
+            username,
+            email: req.session?.user?.mail || "",
+            templateName: templateName || String(templateId),
+          };
+          const parsed = parseSimpleYaml(metadataFieldsRaw);
+          metadata = {};
+          for (const [key, rawValue] of Object.entries(parsed)) {
+            metadata[key] = rawValue.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, name) => (
+              Object.prototype.hasOwnProperty.call(placeholders, name) ? placeholders[name] : m
+            ));
+          }
+        } else {
+          metadata = { application: templateName || String(templateId), requestedBy: username };
+        }
         let created;
         try {
-          created = await smartClient.createTicket({
-            flowKey,
-            username,
-            metadata: { application: templateName || String(templateId), requestedBy: username },
-          });
+          created = await smartClient.createTicket({ flowKey, username, metadata });
         } catch (smartErr) {
           return res.status(smartErr.status || 502).json({ ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` });
         }

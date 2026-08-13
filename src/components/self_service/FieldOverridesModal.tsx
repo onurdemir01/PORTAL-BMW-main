@@ -91,7 +91,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   // Etkinse: bu servis çalıştırıldığında AWX job'ı HEMEN tetiklenmez — önce Smart'ta bir
   // talep açılır, onaylanana kadar kullanıcı "onay bekleniyor" ekranını görür (bkz.
   // server/ansible/runner.cjs POST /launch-ss ve server/smart/poller.cjs).
-  const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "" });
+  const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "", metadataFields: "" });
   const [smartMetaLoading, setSmartMetaLoading] = useState(false);
   const [smartMetaFields, setSmartMetaFields] = useState<Array<Record<string, unknown>> | null>(null);
   const [smartMetaErr, setSmartMetaErr] = useState("");
@@ -137,7 +137,11 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
             usernameKey: inj?.usernameKey || "username",
           });
           const smartOv = customRes.customization?.smartApproval;
-          setSmartApproval({ enabled: !!smartOv?.enabled, flowKey: smartOv?.flowKey || "" });
+          setSmartApproval({
+            enabled: !!smartOv?.enabled,
+            flowKey: smartOv?.flowKey || "",
+            metadataFields: smartOv?.metadataFields || "",
+          });
         }
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
@@ -326,6 +330,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
         smartApproval: {
           enabled: smartApproval.enabled,
           flowKey: smartApproval.flowKey.trim(),
+          metadataFields: smartApproval.metadataFields.trim() || undefined,
         },
       });
       if (!r.ok) { setErr(r.message || "Kaydedilemedi."); return; }
@@ -823,7 +828,8 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                           <table className="text-[11px] w-full">
                             <thead>
                               <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border)]">
-                                <th className="p-1.5">Alan</th>
+                                <th className="p-1.5">ComponentType (gönderilecek "key" budur)</th>
+                                <th className="p-1.5">ElementName</th>
                                 <th className="p-1.5">Zorunlu</th>
                                 <th className="p-1.5">Tip</th>
                               </tr>
@@ -831,6 +837,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                             <tbody>
                               {smartMetaFields.map((f, i) => (
                                 <tr key={i} className="border-b border-[var(--border)] last:border-0">
+                                  <td className="p-1.5 font-mono">{String(f.ComponentType ?? f.componentType ?? "-")}</td>
                                   <td className="p-1.5 font-mono">{String(f.ElementName ?? f.elementName ?? "-")}</td>
                                   <td className="p-1.5">{String(f.IsRequired ?? f.isRequired ?? "-")}</td>
                                   <td className="p-1.5">{String(f.DataType ?? f.dataType ?? "-")}</td>
@@ -841,6 +848,22 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                         )}
                       </div>
                     )}
+                    <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mt-3 mb-1">Metadata Eşlemesi</label>
+                    <p className="text-[11px] text-[var(--text-muted)] mb-1">
+                      Her satıra bir tane, <code className="font-mono">ComponentType: değer</code>{" "}
+                      (yukarıdaki tablonun İLK sütunu — Smart bunu <code className="font-mono">ElementName</code>{" "}
+                      ile DEĞİL, bu değerle eşleştirir). Değer içinde <code className="font-mono">{"{{username}}"}</code>,{" "}
+                      <code className="font-mono">{"{{email}}"}</code>, <code className="font-mono">{"{{templateName}}"}</code>{" "}
+                      yer tutucuları kullanılabilir. Boş bırakılırsa eski sabit
+                      (<code className="font-mono">application</code>/<code className="font-mono">requestedBy</code>) gövde gönderilir.
+                    </p>
+                    <Textarea
+                      rows={3}
+                      className="text-xs font-mono"
+                      value={smartApproval.metadataFields}
+                      placeholder={"TEXTBOX: {{username}}\nUSER_CARD: {{username}}"}
+                      onChange={(e) => setSmartApproval((s) => ({ ...s, metadataFields: e.target.value }))}
+                    />
                   </div>
                 )}
               </div>
