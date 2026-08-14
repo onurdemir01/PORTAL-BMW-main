@@ -6,12 +6,15 @@
 // RFF-Request-Token header'i dokumandaki "Request Flow Opening Service - REST" ve
 // "Authentication"/"Integration Key" bolumleriyle BIREBIR eslesiyor.
 //
-// checkTicketStatus() dokuman kapsami DISINDA (talep durumu sorgulayan REST endpoint'i
-// SOS02-KL-001-EN'de YOK) ama artik DOGRULANDI — path + govde sekli hem kardes ekibin
-// referans kodundan (dashboard/servicerepository.py) hem de kullanicinin bulup
-// dogruladigi gercek bir test scriptinden (dashboard/deneme.py) birebir alindi, bkz.
-// config.cjs 2026-08-13 notu. SMART_SERVICEREPOSITORY_URL (ortama gore degisen host)
-// bos oldugu surece bu fonksiyon ACIKCA hata firlatir (bkz. asagisi).
+// checkTicketStatus(): 2026-08-13'te dokuman kapsami DISI kalan bir "ServiceRepository"
+// sistemi reverse-engineer edilmisti (ayri host, GET, auth yok) — 2026-08-14'te kullanici
+// RESMI bir uc buldu: POST {SMART_API_URL}/smart/internal/requestfulfilment/
+// loadwfinstancestatus/v1, govde {wfInstanceId}, cevap { result: { resultCode, statusCode,
+// statusName } }. Bu, createTicket() ile AYNI host/auth (Basic Auth + RFF-Request-Token)
+// deseninde, isim seması da digerleriyle (createoperationalrequest/v1,
+// getmetadataoperationalrequestbyflowname/v1) BIREBIR eslesiyor — ServiceRepository'den
+// cok daha guvenilir. ServiceRepository yaklasimi TAMAMEN KALDIRILDI (ayri host/GET/authsiz
+// protokol, ayri admin alani gerektiriyordu — artik gereksiz).
 'use strict';
 
 const { getConfig, isConfigured } = require('./config.cjs');
@@ -22,18 +25,13 @@ const { getConfig, isConfigured } = require('./config.cjs');
 // HTTPS_PROXY MCP/Splunk/AI gibi diger TUM entegrasyonlari da etkiler.
 const { buildCombinedCa } = require('../ai/ca.cjs');
 
-// `allowProxy=false` (ServiceRepository icin kullanilir): kardes ekibin referans kodu
-// (dashboard/deneme.py) bu host icin ACIKCA `NO_PROXY=servicerepository` ayarliyor —
-// "servicerepository" FQDN olmayan, ic DNS'e ozel bir ad, kurumsal proxy'den (TEKPRXV2)
-// BILEREK muaf. SMART_PROXY_URL Smart'in KENDI API host'u icindir, ServiceRepository'ye
-// UYGULANMAMALI - uygulanirsa muhtemelen baglanti hatasi olur.
-function buildSmartDispatcher(targetUrl, allowProxy = true) {
+function buildSmartDispatcher(targetUrl) {
   const cfg = getConfig();
   const { Agent, ProxyAgent } = require('undici');
   const target = new URL(targetUrl);
   const { ca } = buildCombinedCa();
   const tlsOpts = { ca, rejectUnauthorized: true, servername: target.hostname };
-  if (allowProxy && cfg.proxyUrl) {
+  if (cfg.proxyUrl) {
     console.log(`[Smart] Proxy uzerinden baglanilacak: ${cfg.proxyUrl} -> ${target.hostname}`);
     return new ProxyAgent({ uri: cfg.proxyUrl, requestTls: tlsOpts });
   }
@@ -159,76 +157,33 @@ async function getFlowMetadata(flowName) {
   return result?.result?.result || [];
 }
 
-// ServiceRepository'ye (Smart'in KENDI API host'undan AYRI) GET istegi — auth BASLIGI
-// GONDERILMEZ (kardes ekibin referans kodunda da yok, bkz. config.cjs 2026-08-13 notu).
-async function getServiceRepository(path, params) {
-  const cfg = getConfig();
-  const targetUrl = new URL(`${cfg.serviceRepositoryUrl}${path}`);
-  for (const [k, v] of Object.entries(params || {})) targetUrl.searchParams.set(k, String(v));
-  let dispatcher = null;
-  let statusCode, text;
-  try {
-    dispatcher = buildSmartDispatcher(targetUrl.toString(), false);
-    const result = await dispatcher.request({
-      origin: targetUrl.origin,
-      path: targetUrl.pathname + targetUrl.search,
-      method: 'GET',
-      headers: { 'content-type': 'application/json' },
-      headersTimeout: 20_000,
-      bodyTimeout: 20_000,
-    });
-    statusCode = result.statusCode;
-    text = await result.body.text();
-  } finally {
-    if (dispatcher) dispatcher.close().catch(() => {});
-  }
-  let parsed;
-  try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
-  if (statusCode < 200 || statusCode >= 300) {
-    throw Object.assign(new Error(`ServiceRepository hata verdi (HTTP ${statusCode}): ${text.slice(0, 300)}`), { status: 502 });
-  }
-  return parsed;
-}
-
-// Talebin GUNCEL durumunu sorgular. SOS02-KL-001-EN dokumaninda bu ucun REST karsiligi
-// YOK — protokol kardes ekibin GERCEK kaynagindan (gar_selfserviceportal_uft,
-// dashboard/servicerepository.py check_state_ticket() + loadbalancer/tasks.py
-// check_state_all_ticket()) REVERSE-ENGINEER edildi, bkz. config.cjs 2026-08-13 notu:
-//   GET {serviceRepositoryUrl}{checkTicketPath}?wfInstanceId=..&languageCode=TR
-//   -> { LoadRoadmapResult: { ResultCode, Result: { Blocks, WorkflowCompleteDate, ... } } }
-// Tamamlanma sinyali WorkflowCompleteDate'in DOLU olmasi (workflow bitince Smart bunu
-// yazar); iptal/red ise aktif Block'un State'inde "_CANCEL_" gecmesi (referans kod:
-// `if "_CANCEL_" not in ticket_status['StateName']`).
-//
-// SMART_SERVICEREPOSITORY_URL/SMART_CHECK_TICKET_PATH (Admin > Sistem > Smart) bos
-// oldugu surece BILEREK hata firlatir: bir deger TAHMIN edip sessizce yanlis "hicbir
-// zaman onaylanmadi" sonucuna dusmek, hicbir sonuca dusmemekten (poller sadece "henuz
-// kontrol edilemedi" der, talep PENDING kalir) daha tehlikelidir.
+// Talebin GUNCEL durumunu sorgular — DOGRULANDI (kullanicinin 2026-08-14'te bulup
+// paylastigi resmi uc, ornek govde/cevaplarla test edildi):
+//   POST {SMART_API_URL}/smart/internal/requestfulfilment/loadwfinstancestatus/v1
+//   govde: { wfInstanceId: <ticketId> }
+//   cevap: { result: { resultCode, statusCode, statusName } }
+// Gozlemlenen statusCode degerleri: "50"="Onay Bekliyor", "1000"="Tamamlandı",
+// "2000"="İptal Edildi". Otomasyon (AWX job'i) SADECE statusCode "1000"e (Tamamlandı)
+// ULASINCA tetiklenir (bkz. poller.cjs status.completed kontrolu) — baska HERHANGI bir
+// statusCode (2000 dahil, gelecekte baska red/iptal kodlari olsa bile) job'i TETIKLEMEZ.
+// statusName kullaniciya AYNEN gosterilir (smart_tickets.smart_state_name — bkz.
+// SurveyModal.tsx "Onay bekleniyor" ekrani, MyRequestsModal.tsx "Taleplerim" listesi).
 async function checkTicketStatus(ticketId) {
-  const cfg = getConfig();
-  if (!cfg.serviceRepositoryUrl || !cfg.checkTicketPath) {
-    throw Object.assign(
-      new Error('Smart talep durumu sorgulama yapılandırılmamış (SMART_SERVICEREPOSITORY_URL / SMART_CHECK_TICKET_PATH) — bu, Smart RFF REST dokümanının kapsamı dışında, ayrı bir "ServiceRepository" sistemi.'),
-      { status: 501 }
-    );
+  if (!isConfigured()) {
+    throw Object.assign(new Error('Smart entegrasyonu yapılandırılmamış (SMART_API_URL/SMART_API_USERNAME/SMART_API_PASSWORD eksik).'), { status: 503 });
   }
-  const result = await getServiceRepository(cfg.checkTicketPath, { wfInstanceId: ticketId, languageCode: 'TR' });
-  const roadmap = result?.LoadRoadmapResult;
-  const resultCode = String(roadmap?.ResultCode ?? '');
-  if (resultCode && resultCode !== '1000') {
-    throw Object.assign(new Error(`ServiceRepository durum sorgusu başarısız: resultCode=${resultCode}`), { status: 502 });
+  const result = await post(getConfig().checkTicketPath, { wfInstanceId: Number(ticketId) });
+  const resultCode = String(result?.result?.resultCode ?? '');
+  if (resultCode !== '1000') {
+    throw Object.assign(new Error(`Smart durum sorgusu başarısız: resultCode=${resultCode || 'yok'}`), { status: 502 });
   }
-  const detail = roadmap?.Result || {};
-  const blocks = detail?.Blocks || [];
-  const currentBlock = Array.isArray(blocks) ? blocks.find((b) => b?.IsCurrentBlock === true) : null;
-  const currentState = currentBlock?.States?.find((s) => s?.StateStage) || null;
-  const stateName = currentState?.StateName || '';
-  const blockName = currentBlock?.Name || '';
+  const statusCode = String(result?.result?.statusCode ?? '');
+  const statusName = result?.result?.statusName || '';
   return {
-    completed: !!detail?.WorkflowCompleteDate && !/_CANCEL_/.test(stateName),
-    rejected: /_CANCEL_/.test(stateName),
-    stateName,
-    blockName,
+    completed: statusCode === '1000',
+    rejected: statusCode === '2000',
+    stateName: statusName,
+    statusCode,
     raw: result,
   };
 }

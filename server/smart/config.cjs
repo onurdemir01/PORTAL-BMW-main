@@ -20,34 +20,17 @@
 //
 // 2026-08-13: kardes ekibin GERCEK Django kaynagi (gar_selfserviceportal_uft paketi,
 // dashboard/servicerepository.py + loadbalancer/tasks.py check_state_all_ticket())
-// incelendi — durum sorgusu GERCEKTEN Smart'in KENDI API'sinden DEGIL, "ServiceRepository"
-// adli TAMAMEN AYRI bir sistemden/host'tan geliyor, PROTOKOLU de FARKLI:
-//   - GET istegi (POST DEGIL), govde yerine query string: ?wfInstanceId=...&languageCode=TR
-//   - Basic Auth/RFF-Request-Token GONDERILMIYOR (referans kodda sadece Content-Type header'i var)
-//   - Cevap zarfi: { LoadRoadmapResult: { ResultCode, Result: { Blocks, WorkflowSLADurationStart,
-//     WorkflowCompleteDate } } } — bizim eski tahminimiz (result.Blocks) YANLISTI.
-//   - Tamamlanma sinyali WorkflowCompleteDate'in DOLU olmasi (workflow bitince Smart bunu
-//     .NET /Date(...)/ formatinda yazar); iptal/red ise Blocks icindeki aktif State'in
-//     adinda "_CANCEL_" gecmesi.
-// Referans kodda base URL ("Servicerepository Address") ve path ("Servicerepository Ticket
-// Check Path") KENDI portallarinin veritabaninda (AppSettings tablosu) tutuluyordu — hicbir
-// dosyada, migration'da veya ayar dosyasinda GERCEK deger YOKTU.
+// incelenerek "ServiceRepository" adli AYRI bir sistem/host uzerinden reverse-engineer
+// edilmis bir durum sorgulama protokolu kullanildi (GET, authsiz, ayri host/config).
 //
-// 2026-08-13 (devam): kullanici base URL'i kendisi bulup dogruladi (https://servicerepository/,
-// AYNI referans kaynaktaki test scripti — dashboard/deneme.py — ile ESLESIYOR). O script
-// GERCEK bir cagriyi ACIKCA icerdiginden PATH de artik DOGRULANDI:
-//   GET https://servicerepository/Workflow/WorkflowServiceRepository.svc/Workflow/LoadRoadmap/
-//       ?languageCode=TR&wfInstanceId=<id>
-// checkTicketPath bu yuzden artik varsayilan olarak DOLU (ortamlar arasi sabit oldugu
-// varsayiliyor, SOS02-KL-001-EN'deki path'ler gibi). serviceRepositoryUrl ise ortama gore
-// DEGISEBILECEGI icin (Test/QA/Prod farkli host olabilir, SMART_API_URL ile AYNI mantik)
-// hala BOS - admin Admin > Sistem > Smart'tan girmeli, doldurulmadigi surece
-// client.cjs.checkTicketStatus() acikca hata firlatir.
-//
-// PROXY NOTU: ayni script `NO_PROXY=servicerepository` ayarliyor - bu host FQDN olmayan
-// ic-DNS'e ozel bir ad, kurumsal proxy'den (TEKPRXV2) BILEREK muaf. client.cjs.
-// getServiceRepository() bu yuzden SMART_PROXY_URL'i (Smart'in KENDI API host'u icin)
-// bu cagriya UYGULAMAZ (buildSmartDispatcher'a allowProxy=false gecer).
+// 2026-08-14: kullanici RESMI bir uc buldu — Smart'in KENDI host'unda (SMART_API_URL),
+// createTicket() ile AYNI kimlik dogrulama (Basic Auth + RFF-Request-Token) deseninde:
+//   POST {SMART_API_URL}/smart/internal/requestfulfilment/loadwfinstancestatus/v1
+//   govde: { wfInstanceId: <id> }  ->  cevap: { result: { resultCode, statusCode, statusName } }
+// Ornek statusCode/statusName ciftleri: "50"/"Onay Bekliyor", "1000"/"Tamamlandı",
+// "2000"/"İptal Edildi". ServiceRepository yaklasimi (ayri host, ayri admin alani,
+// authsiz GET) TAMAMEN KALDIRILDI — bu resmi uc hem daha guvenilir hem de ayri bir
+// host/proxy-istisnasi config'i GEREKTIRMIYOR (SMART_API_URL zaten var).
 function isConfigured() {
   return !!(process.env.SMART_API_URL && process.env.SMART_API_USERNAME && process.env.SMART_API_PASSWORD);
 }
@@ -68,13 +51,10 @@ function getConfig() {
     // — opsiyonel: bir flowKey'in bekledigi metadata alanlarini (ElementName/IsRequired/...)
     // sorgulamak icin. Su an hicbir yerden cagrilmiyor, admin arac-kutusu icin hazir.
     getMetadataPath: process.env.SMART_GET_METADATA_PATH || '/smart/internal/getmetadataoperationalrequestbyflowname/v1',
-    // ServiceRepository sisteminin KENDI host'u — Smart'in SMART_API_URL'inden AYRI
-    // (bkz. dosya basi 2026-08-13 notu). Bos oldugu surece checkTicketStatus() acikca
-    // hata firlatir.
-    serviceRepositoryUrl: (process.env.SMART_SERVICEREPOSITORY_URL || '').replace(/\/+$/, ''),
-    // DOGRULANDI - kardes ekibin GERCEK test scriptinden (dashboard/deneme.py) birebir
-    // alindi, bkz. dosya basi 2026-08-13 notu.
-    checkTicketPath: process.env.SMART_CHECK_TICKET_PATH || '/Workflow/WorkflowServiceRepository.svc/Workflow/LoadRoadmap/',
+    // DOGRULANDI (kullanici tarafindan bulunup ornek govde/cevapla test edildi,
+    // bkz. dosya basi 2026-08-14 notu). SMART_API_URL uzerinde, createTicket ile
+    // AYNI auth.
+    checkTicketPath: process.env.SMART_CHECK_TICKET_PATH || '/smart/internal/requestfulfilment/loadwfinstancestatus/v1',
     // "Login domain information of the user who created the request" — ornek deger
     // dokumanda hep "GARANTI" (kullanicinin KENDI LDAP domain'i degil, sabit bir deger
     // gibi gorunuyor). Farkliysa Admin > Sistem > Smart grubundan degistirilebilir.
