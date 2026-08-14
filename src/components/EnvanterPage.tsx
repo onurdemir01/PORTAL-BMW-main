@@ -36,7 +36,7 @@ const ENVANTER_HELP_SECTIONS: HelpSection[] = [
   {
     icon: ArrowDownTrayIcon,
     title: "CSV Dışa Aktarma",
-    body: "\"CSV\" butonu aktif filtrelerle eşleşen sonuçları (yalnızca ekrandaki sayfayı değil) indirir — denetim veya raporlama için kullanılabilir. Tek seferde en fazla 5.000 kayıt alınır; sonuç bu sınıra takılırsa uyarı gösterilir, filtre daraltarak tamamını alabilirsiniz.",
+    body: "\"CSV\" butonu aktif filtrelerle eşleşen TÜM sonuçları (yalnızca ekrandaki sayfayı değil) indirir — denetim veya raporlama için kullanılabilir. Sonuç büyükse arka planda otomatik sayfalanarak toplanır, üst sınır yoktur.",
   },
   {
     icon: BookmarkIcon,
@@ -314,31 +314,37 @@ const EnvanterPage: React.FC = () => {
 
   // E-09: CSV export with all active filters (not just current page)
   const [csvExporting, setCsvExporting] = useState(false);
-  // CSV tek seferde en fazla bu kadar satır çeker. Kullanıcıya "tümünü indirir" denildiği
-  // için, sonuç bu sınırda kesildiyse AÇIKÇA uyarılır — sessizce eksik dosya vermeyiz.
-  const CSV_MAX_ROWS = 5000;
+  // Sunucu tek istekte en fazla 10.000 (Admin) / 1.000 (User) satır dönüyor (bkz.
+  // server/inventory/index.cjs maxLimit) — bu yüzden "tümünü indir" isteği tek istekle
+  // KESILMEZ, bu sayfa boyutuyla arka arkaya sayfalanıp TÜM sonuç birleştirilir. Kullanıcı
+  // "5.000 kayıtla sınırlandı" uyarısını istemedi — artık böyle bir üst sınır YOK.
+  const CSV_PAGE_SIZE = 1000;
   async function handleExportCsv() {
     if (!activeTable || csvExporting) return;
     setCsvExporting(true);
     try {
-      const r = await inventoryApi.data(activeTable, {
-        page: 1,
-        limit: CSV_MAX_ROWS,
-        search,
-        multiFilters,
-        filterGroup: appliedFilterGroup.filters.length > 0 ? appliedFilterGroup : undefined,
-        orderBy: orderBy ?? undefined,
-        orderDir: orderDir ?? undefined,
-      });
-      if (r.ok && r.rows.length > 0) {
-        downloadCsv(visibleCols, r.rows, activeTable);
-        if (r.rows.length >= CSV_MAX_ROWS) {
-          toast.error(
-            `CSV ilk ${CSV_MAX_ROWS.toLocaleString("tr-TR")} kayıtla sınırlandı. ` +
-            `Tamamı için filtre uygulayarak sonucu daraltın.`
-          );
-        }
-      } else if (r.ok) {
+      let allRows: Record<string, unknown>[] = [];
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const r = await inventoryApi.data(activeTable, {
+          page,
+          limit: CSV_PAGE_SIZE,
+          search,
+          multiFilters,
+          filterGroup: appliedFilterGroup.filters.length > 0 ? appliedFilterGroup : undefined,
+          orderBy: orderBy ?? undefined,
+          orderDir: orderDir ?? undefined,
+        });
+        if (!r.ok) throw new Error("Sunucu hatası.");
+        allRows = allRows.concat(r.rows);
+        totalPages = r.pagination.pages;
+        page += 1;
+      } while (page <= totalPages);
+
+      if (allRows.length > 0) {
+        downloadCsv(visibleCols, allRows, activeTable);
+      } else {
         toast.error("Dışa aktarılacak kayıt bulunamadı.");
       }
     } catch (e: unknown) {
