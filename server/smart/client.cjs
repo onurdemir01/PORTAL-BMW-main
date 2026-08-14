@@ -6,11 +6,12 @@
 // RFF-Request-Token header'i dokumandaki "Request Flow Opening Service - REST" ve
 // "Authentication"/"Integration Key" bolumleriyle BIREBIR eslesiyor.
 //
-// checkTicketStatus() ise HALA DOGRULANMADI: dokumanda talep durumu sorgulayan hicbir
-// REST endpoint'i YOK. Referans kod tabanindaki (kardes ekip) durum sorgusu Smart'in
-// kendisinden degil, ayri bir sistemden ("Servicerepository") geliyordu — bu dokumanin
-// kapsami disinda. SMART_CHECK_TICKET_PATH bos oldugu surece bu fonksiyon ACIKCA hata
-// firlatir (bkz. asagisi) — Onur o ayri sistemin dokumanini getirene kadar boyle kalmali.
+// checkTicketStatus() dokuman kapsami DISINDA (talep durumu sorgulayan REST endpoint'i
+// SOS02-KL-001-EN'de YOK) ama artik DOGRULANDI — path + govde sekli hem kardes ekibin
+// referans kodundan (dashboard/servicerepository.py) hem de kullanicinin bulup
+// dogruladigi gercek bir test scriptinden (dashboard/deneme.py) birebir alindi, bkz.
+// config.cjs 2026-08-13 notu. SMART_SERVICEREPOSITORY_URL (ortama gore degisen host)
+// bos oldugu surece bu fonksiyon ACIKCA hata firlatir (bkz. asagisi).
 'use strict';
 
 const { getConfig, isConfigured } = require('./config.cjs');
@@ -21,13 +22,18 @@ const { getConfig, isConfigured } = require('./config.cjs');
 // HTTPS_PROXY MCP/Splunk/AI gibi diger TUM entegrasyonlari da etkiler.
 const { buildCombinedCa } = require('../ai/ca.cjs');
 
-function buildSmartDispatcher(targetUrl) {
+// `allowProxy=false` (ServiceRepository icin kullanilir): kardes ekibin referans kodu
+// (dashboard/deneme.py) bu host icin ACIKCA `NO_PROXY=servicerepository` ayarliyor —
+// "servicerepository" FQDN olmayan, ic DNS'e ozel bir ad, kurumsal proxy'den (TEKPRXV2)
+// BILEREK muaf. SMART_PROXY_URL Smart'in KENDI API host'u icindir, ServiceRepository'ye
+// UYGULANMAMALI - uygulanirsa muhtemelen baglanti hatasi olur.
+function buildSmartDispatcher(targetUrl, allowProxy = true) {
   const cfg = getConfig();
   const { Agent, ProxyAgent } = require('undici');
   const target = new URL(targetUrl);
   const { ca } = buildCombinedCa();
   const tlsOpts = { ca, rejectUnauthorized: true, servername: target.hostname };
-  if (cfg.proxyUrl) {
+  if (allowProxy && cfg.proxyUrl) {
     console.log(`[Smart] Proxy uzerinden baglanilacak: ${cfg.proxyUrl} -> ${target.hostname}`);
     return new ProxyAgent({ uri: cfg.proxyUrl, requestTls: tlsOpts });
   }
@@ -162,7 +168,7 @@ async function getServiceRepository(path, params) {
   let dispatcher = null;
   let statusCode, text;
   try {
-    dispatcher = buildSmartDispatcher(targetUrl.toString());
+    dispatcher = buildSmartDispatcher(targetUrl.toString(), false);
     const result = await dispatcher.request({
       origin: targetUrl.origin,
       path: targetUrl.pathname + targetUrl.search,

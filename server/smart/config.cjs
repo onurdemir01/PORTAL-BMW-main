@@ -8,6 +8,8 @@
 //
 // Deger girilene kadar isConfigured() false doner ve Smart onayi gerektiren Self Service
 // item'lari devre disi kalir (sessizce YANLIS calismaz, acikca "yapilandirilmamis" hatasi doner).
+// NOT: isConfigured() SADECE talep ACMAYI (Smart API) kapsar - talep TAKIBI (ServiceRepository,
+// asagida) ayri bir sistem/ayardir, kendi bos-deger kontrolunu checkTicketStatus() icinde yapar.
 //
 // 2026-08-10: SOS02-KL-001-EN "SMART Request Fulfillment (RFF) Services User Guide"
 // (Onur'un servis ekibinden aldigi resmi dokuman) okunup path/govde sekli buna gore
@@ -28,12 +30,24 @@
 //     .NET /Date(...)/ formatinda yazar); iptal/red ise Blocks icindeki aktif State'in
 //     adinda "_CANCEL_" gecmesi.
 // Referans kodda base URL ("Servicerepository Address") ve path ("Servicerepository Ticket
-// Check Path") KENDI portallarinin veritabaninda (AppSettings tablosu) tutuluyor — hicbir
-// dosyada, migration'da veya ayar dosyasinda GERCEK deger YOK; sadece o portali isleten
-// ekipte olabilir. SMART_SERVICEREPOSITORY_URL/SMART_CHECK_TICKET_PATH bu yuzden BOS
-// birakildi — doldurulmadigi surece client.cjs.checkTicketStatus() acikca hata firlatir
-// (poller bunu loglar, talep PENDING kalir, sessizce yanlis "hicbir zaman onaylanmadi"
-// sonucuna dusmez).
+// Check Path") KENDI portallarinin veritabaninda (AppSettings tablosu) tutuluyordu — hicbir
+// dosyada, migration'da veya ayar dosyasinda GERCEK deger YOKTU.
+//
+// 2026-08-13 (devam): kullanici base URL'i kendisi bulup dogruladi (https://servicerepository/,
+// AYNI referans kaynaktaki test scripti — dashboard/deneme.py — ile ESLESIYOR). O script
+// GERCEK bir cagriyi ACIKCA icerdiginden PATH de artik DOGRULANDI:
+//   GET https://servicerepository/Workflow/WorkflowServiceRepository.svc/Workflow/LoadRoadmap/
+//       ?languageCode=TR&wfInstanceId=<id>
+// checkTicketPath bu yuzden artik varsayilan olarak DOLU (ortamlar arasi sabit oldugu
+// varsayiliyor, SOS02-KL-001-EN'deki path'ler gibi). serviceRepositoryUrl ise ortama gore
+// DEGISEBILECEGI icin (Test/QA/Prod farkli host olabilir, SMART_API_URL ile AYNI mantik)
+// hala BOS - admin Admin > Sistem > Smart'tan girmeli, doldurulmadigi surece
+// client.cjs.checkTicketStatus() acikca hata firlatir.
+//
+// PROXY NOTU: ayni script `NO_PROXY=servicerepository` ayarliyor - bu host FQDN olmayan
+// ic-DNS'e ozel bir ad, kurumsal proxy'den (TEKPRXV2) BILEREK muaf. client.cjs.
+// getServiceRepository() bu yuzden SMART_PROXY_URL'i (Smart'in KENDI API host'u icin)
+// bu cagriya UYGULAMAZ (buildSmartDispatcher'a allowProxy=false gecer).
 function isConfigured() {
   return !!(process.env.SMART_API_URL && process.env.SMART_API_USERNAME && process.env.SMART_API_PASSWORD);
 }
@@ -58,10 +72,9 @@ function getConfig() {
     // (bkz. dosya basi 2026-08-13 notu). Bos oldugu surece checkTicketStatus() acikca
     // hata firlatir.
     serviceRepositoryUrl: (process.env.SMART_SERVICEREPOSITORY_URL || '').replace(/\/+$/, ''),
-    // DOGRULANMADI (Smart dokumaninda YOK) ama kardes ekibin GERCEK kodundan REVERSE-
-    // ENGINEER edildi — bkz. dosya basi notu. Bos oldugu surece checkTicketStatus()
-    // acikca hata firlatir.
-    checkTicketPath: process.env.SMART_CHECK_TICKET_PATH || '',
+    // DOGRULANDI - kardes ekibin GERCEK test scriptinden (dashboard/deneme.py) birebir
+    // alindi, bkz. dosya basi 2026-08-13 notu.
+    checkTicketPath: process.env.SMART_CHECK_TICKET_PATH || '/Workflow/WorkflowServiceRepository.svc/Workflow/LoadRoadmap/',
     // "Login domain information of the user who created the request" — ornek deger
     // dokumanda hep "GARANTI" (kullanicinin KENDI LDAP domain'i degil, sabit bir deger
     // gibi gorunuyor). Farkliysa Admin > Sistem > Smart grubundan degistirilebilir.
