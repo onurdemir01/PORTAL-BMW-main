@@ -2037,6 +2037,89 @@ function initAnsibleRunner(app) {
   // geldigi gibi kullaniliyordu — herhangi bir authenticated kullanici, UI'i hic
   // kullanmadan, o AWX sunucusundaki HERHANGI BIR template'i (curated listede
   // olmasa bile) dogrudan API cagrisiyla tetikleyebilirdi.
+  // /launch-ss VE /ss/test/{validate,run}'in ORTAK cozumleme adimi — hepsi AYNI
+  // sirayla (template detail -> overrides -> survey/custom-survey extraVars ->
+  // rawExtraVars -> injectUserInfo -> preflight -> launch options) calisir; tek
+  // fark test uclarinin SONUNDA gercekten launch/smart-ticket YAPMAMASI. Hata
+  // durumunda (zorunlu alan bos, gecersiz secim vb.) ayni { status, field } sekliyle
+  // firlatir — cagiran taraf (validate: yakalar, run/launch-ss: 400/500'e cevirir).
+  async function resolveSsLaunchPlan(server, templateId, { submittedExtraVars = {}, templateName = "", limit = "", forks, jobTags, skipTags, verbosity, jobType, req }) {
+    const token = await getTokenForServer(server);
+
+    // Launch parametrelerini AWX'e gondermeden ONCE sunucu tarafinda yeniden cozer/dogrular
+    // — client'in gonderdigi extraVars'a asla dogrudan guvenilmez (savunma katmani).
+    const detail = await awxRequestToServer(server, token, "GET", `/api/v2/job_templates/${templateId}/`);
+
+    // Override'lar (field hidden/default, ek serbest degiskenler, launch-option
+    // varsayilanlari) survey olsun olmasin HER ZAMAN okunur — hicbiri survey'e bagimli degil.
+    const overrides = readCustom(server.id, templateId);
+
+    let extraVars = {};
+    let specFields = null;
+    if (detail.survey_enabled === false) {
+      // Survey devre disi. Admin bu template icin bir "Survey Tasarimcisi" tanimladiysa
+      // (overrides.customSurveyFields) o alanlar AYNI AWX-native survey kadar sikica
+      // (zorunlu/tip/min-max/choices, gizli alan icin sunucu-tarafi varsayilan) dogrulanip
+      // extra_vars'a donusturulur. Tanimlanmamissa eskisi gibi hicbir survey degiskeni
+      // kullanicidan gelmez, AWX template'in kendi statik extra_vars'iyla calisir.
+      if (Array.isArray(overrides.customSurveyFields) && overrides.customSurveyFields.length > 0) {
+        extraVars = resolveCustomSurveyExtraVars(overrides.customSurveyFields, submittedExtraVars);
+      } else {
+        extraVars = {};
+      }
+    } else {
+      try {
+        const spec = await awxRequestToServer(server, token, "GET", `/api/v2/job_templates/${templateId}/survey_spec/`);
+        specFields = spec.spec || [];
+      } catch (specErr) {
+        if (specErr.status !== 404) throw specErr;
+      }
+
+      if (specFields && specFields.length > 0) {
+        extraVars = resolveLaunchExtraVars(specFields, overrides, submittedExtraVars);
+      } else {
+        // Gercek bir survey yok (extra_vars fallback senaryosu) — mevcut esnek davranis
+        // korunur: yalnizca dolu degerler gecirilir, kati dogrulama uygulanmaz.
+        for (const [k, v] of Object.entries(submittedExtraVars || {})) {
+          const val = v === undefined || v === null ? "" : String(v).trim();
+          if (val !== "") extraVars[k] = val;
+        }
+      }
+    }
+
+    // Admin'in add-time'da tanimladigi serbest ("degiskenler") blogu — survey'de
+    // karsiligi olmayan ek key:value'lar icin, HANGI YOLDAN GECILIRSE GECILSIN
+    // (survey var/yok, fallback) tek merkezden birlestirilir. Survey/fallback
+    // alanlari cakisan anahtarlarda ONCELIKLIDIR (yapilandirilmis olan kazanir).
+    if (overrides.rawExtraVars) {
+      extraVars = { ...parseSimpleYaml(overrides.rawExtraVars), ...extraVars };
+    }
+
+    // Baslatan kullanicinin e-posta/kullanici adi — EN SON adimda, oturumdan okunarak
+    // enjekte edilir (client'in gonderdigi HICBIR deger bu iki anahtari EZEMEZ — survey/
+    // custom-survey/rawExtraVars her ne uretmis olursa olsun burada ustune yazilir).
+    if (overrides.injectUserInfo?.enabled) {
+      const emailKey = String(overrides.injectUserInfo.emailKey || "").trim() || "email";
+      const usernameKey = String(overrides.injectUserInfo.usernameKey || "").trim() || "username";
+      extraVars[emailKey] = req.session?.user?.mail || "";
+      extraVars[usernameKey] = req.session?.user?.username || "";
+    }
+
+    // AWX'te "Prompt on launch" (Variables) kapaliysa, Survey'in KENDI sorulari disinda
+    // kalan HER extra_vars anahtari (ornegin yukaridaki injectUserInfo'nun email/username'i,
+    // ya da rawExtraVars) SESSIZCE YOK SAYILIR — OpsX/LogX rotalarindaki AYNI kontrol (bkz.
+    // template-preflight.cjs) burada EKSIKTI, bu yuzden bu sinif hata (2026-08-12, lb_suspend_
+    // excludelist: injectUserInfo acildi ama AWX'te "Bilinmiyor"/service-account gorunmeye
+    // devam etti) sessizce gecip gidiyordu. Survey sorularinin KENDISI bu kontrolden
+    // ETKILENMEZ (AWX onlari ayri kabul eder); yalnizca survey-disi ek anahtarlar risk altinda.
+    await require("./template-preflight.cjs")
+      .assertTemplateAcceptsExtraVars(server.id, templateId, extraVars, { label: templateName || String(templateId) });
+
+    const resolvedLaunchOptions = resolveLaunchOptions(overrides, { limit, forks, jobTags, skipTags, verbosity, jobType });
+
+    return { detail, overrides, extraVars, specFields, resolvedLaunchOptions };
+  }
+
   app.post("/api/ansible/launch-ss/:serverId/:templateId", requireAuth, async (req, res) => {
     const server = getServerById(req.params.serverId);
     if (!server) return res.status(404).json({ ok: false, message: "Sunucu bulunamadı." });
@@ -2060,78 +2143,9 @@ function initAnsibleRunner(app) {
     const { extraVars: submittedExtraVars = {}, templateName = "", limit = "", forks, jobTags, skipTags, verbosity, jobType } = req.body || {};
 
     try {
-      const token = await getTokenForServer(server);
-
-      // Launch parametrelerini AWX'e gondermeden ONCE sunucu tarafinda yeniden cozer/dogrular
-      // — client'in gonderdigi extraVars'a asla dogrudan guvenilmez (savunma katmani).
-      const detail = await awxRequestToServer(server, token, "GET", `/api/v2/job_templates/${templateId}/`);
-
-      // Override'lar (field hidden/default, ek serbest degiskenler, launch-option
-      // varsayilanlari) survey olsun olmasin HER ZAMAN okunur — hicbiri survey'e bagimli degil.
-      const overrides = readCustom(server.id, templateId);
-
-      let extraVars = {};
-      let specFields = null;
-      if (detail.survey_enabled === false) {
-        // Survey devre disi. Admin bu template icin bir "Survey Tasarimcisi" tanimladiysa
-        // (overrides.customSurveyFields) o alanlar AYNI AWX-native survey kadar sikica
-        // (zorunlu/tip/min-max/choices, gizli alan icin sunucu-tarafi varsayilan) dogrulanip
-        // extra_vars'a donusturulur. Tanimlanmamissa eskisi gibi hicbir survey degiskeni
-        // kullanicidan gelmez, AWX template'in kendi statik extra_vars'iyla calisir.
-        if (Array.isArray(overrides.customSurveyFields) && overrides.customSurveyFields.length > 0) {
-          extraVars = resolveCustomSurveyExtraVars(overrides.customSurveyFields, submittedExtraVars);
-        } else {
-          extraVars = {};
-        }
-      } else {
-        try {
-          const spec = await awxRequestToServer(server, token, "GET", `/api/v2/job_templates/${templateId}/survey_spec/`);
-          specFields = spec.spec || [];
-        } catch (specErr) {
-          if (specErr.status !== 404) throw specErr;
-        }
-
-        if (specFields && specFields.length > 0) {
-          extraVars = resolveLaunchExtraVars(specFields, overrides, submittedExtraVars);
-        } else {
-          // Gercek bir survey yok (extra_vars fallback senaryosu) — mevcut esnek davranis
-          // korunur: yalnizca dolu degerler gecirilir, kati dogrulama uygulanmaz.
-          for (const [k, v] of Object.entries(submittedExtraVars || {})) {
-            const val = v === undefined || v === null ? "" : String(v).trim();
-            if (val !== "") extraVars[k] = val;
-          }
-        }
-      }
-
-      // Admin'in add-time'da tanimladigi serbest ("degiskenler") blogu — survey'de
-      // karsiligi olmayan ek key:value'lar icin, HANGI YOLDAN GECILIRSE GECILSIN
-      // (survey var/yok, fallback) tek merkezden birlestirilir. Survey/fallback
-      // alanlari cakisan anahtarlarda ONCELIKLIDIR (yapilandirilmis olan kazanir).
-      if (overrides.rawExtraVars) {
-        extraVars = { ...parseSimpleYaml(overrides.rawExtraVars), ...extraVars };
-      }
-
-      // Baslatan kullanicinin e-posta/kullanici adi — EN SON adimda, oturumdan okunarak
-      // enjekte edilir (client'in gonderdigi HICBIR deger bu iki anahtari EZEMEZ — survey/
-      // custom-survey/rawExtraVars her ne uretmis olursa olsun burada ustune yazilir).
-      if (overrides.injectUserInfo?.enabled) {
-        const emailKey = String(overrides.injectUserInfo.emailKey || "").trim() || "email";
-        const usernameKey = String(overrides.injectUserInfo.usernameKey || "").trim() || "username";
-        extraVars[emailKey] = req.session?.user?.mail || "";
-        extraVars[usernameKey] = req.session?.user?.username || "";
-      }
-
-      // AWX'te "Prompt on launch" (Variables) kapaliysa, Survey'in KENDI sorulari disinda
-      // kalan HER extra_vars anahtari (ornegin yukaridaki injectUserInfo'nun email/username'i,
-      // ya da rawExtraVars) SESSIZCE YOK SAYILIR — OpsX/LogX rotalarindaki AYNI kontrol (bkz.
-      // template-preflight.cjs) burada EKSIKTI, bu yuzden bu sinif hata (2026-08-12, lb_suspend_
-      // excludelist: injectUserInfo acildi ama AWX'te "Bilinmiyor"/service-account gorunmeye
-      // devam etti) sessizce gecip gidiyordu. Survey sorularinin KENDISI bu kontrolden
-      // ETKILENMEZ (AWX onlari ayri kabul eder); yalnizca survey-disi ek anahtarlar risk altinda.
-      await require("./template-preflight.cjs")
-        .assertTemplateAcceptsExtraVars(server.id, templateId, extraVars, { label: templateName || String(templateId) });
-
-      const resolvedLaunchOptions = resolveLaunchOptions(overrides, { limit, forks, jobTags, skipTags, verbosity, jobType });
+      const { detail, overrides, extraVars, specFields, resolvedLaunchOptions } = await resolveSsLaunchPlan(
+        server, templateId, { submittedExtraVars, templateName, limit, forks, jobTags, skipTags, verbosity, jobType, req }
+      );
 
       // SMART ONAYI: bu template icin admin "Smart onayi gerekli" isaretlediyse (bkz.
       // FieldOverridesModal.tsx, overrides.smartApproval) AWX job'i HEMEN tetiklenmez —
@@ -2189,6 +2203,107 @@ function initAnsibleRunner(app) {
         });
         require("../audit/index.cjs").auditPortal(req, "selfservice_smart_ticket_open", {
           detail: JSON.stringify({ awxServerId: server.id, templateId, flowKey, ticketId: created.ticketId }),
+        });
+        return res.json({ ok: true, pendingApproval: true, ticketId: ticket.id });
+      }
+
+      const result = await performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req });
+      res.json({ ok: true, jobId: result.jobId, status: result.status });
+    } catch (err) {
+      if (err.field) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message, field: err.field });
+      }
+      const { status, message } = friendlyAwxError(err);
+      res.status(status).json({ ok: false, message });
+    }
+  });
+
+  // POST /api/ansible/ss/test/validate/:serverId/:templateId — Admin arac-kutusu
+  // ("Test Senaryolari" ekrani): resolveSsLaunchPlan'i AYNEN calistirir (template
+  // detail, survey/custom-survey dogrulamasi, template-preflight AWX kontrolu) ama
+  // HICBIR JOB TETIKLEMEZ, Smart bileti ACMAZ — sadece "bu extraVars kombinasyonu
+  // gecerli mi, AWX'e gonderilse ne olurdu" sorusunu YANITLAR. Admin-only.
+  app.post("/api/ansible/ss/test/validate/:serverId/:templateId", requireAuth, requireAdmin, async (req, res) => {
+    const server = getServerById(req.params.serverId);
+    if (!server) return res.status(404).json({ ok: false, message: "Sunucu bulunamadı." });
+    const templateId = Number(req.params.templateId);
+    if (isNaN(templateId) || templateId <= 0) return res.status(400).json({ ok: false, message: "Geçersiz template ID." });
+
+    const { extraVars: submittedExtraVars = {}, templateName = "", limit = "", forks, jobTags, skipTags, verbosity, jobType } = req.body || {};
+    try {
+      const { extraVars, resolvedLaunchOptions } = await resolveSsLaunchPlan(
+        server, templateId, { submittedExtraVars, templateName, limit, forks, jobTags, skipTags, verbosity, jobType, req }
+      );
+      res.json({ ok: true, valid: true, resolvedExtraVars: extraVars, resolvedLaunchOptions });
+    } catch (err) {
+      if (err.field) {
+        return res.json({ ok: true, valid: false, message: err.message, field: err.field });
+      }
+      const { message } = friendlyAwxError(err);
+      res.json({ ok: true, valid: false, message });
+    }
+  });
+
+  // POST /api/ansible/ss/test/run/:serverId/:templateId — AYNI cozumleme, ama bu kez
+  // GERCEKTEN tetikler (ya da Smart onayi acikken normal talep akisina girer) — Admin
+  // arac-kutusundaki "Gerçekten Çalıştır" butonu. GERCEK bir AWX job'i / Smart talebi
+  // olusturur, bu yuzden istemcinin ACIKCA confirm:true gondermesi ZORUNLU (savunma
+  // katmani — UI'da zaten ayri bir onay adimi var, burasi onun ikinci bir garantisi).
+  app.post("/api/ansible/ss/test/run/:serverId/:templateId", requireAuth, requireAdmin, async (req, res) => {
+    const server = getServerById(req.params.serverId);
+    if (!server) return res.status(404).json({ ok: false, message: "Sunucu bulunamadı." });
+    const templateId = Number(req.params.templateId);
+    if (isNaN(templateId) || templateId <= 0) return res.status(400).json({ ok: false, message: "Geçersiz template ID." });
+    if (req.body?.confirm !== true) {
+      return res.status(400).json({ ok: false, message: "confirm:true gönderilmeden gerçek tetikleme yapılmaz." });
+    }
+
+    const username = req.session?.user?.username || "anonymous";
+    const { extraVars: submittedExtraVars = {}, templateName = "", scenarioName = "", limit = "", forks, jobTags, skipTags, verbosity, jobType } = req.body || {};
+
+    try {
+      const { detail, overrides, extraVars, specFields, resolvedLaunchOptions } = await resolveSsLaunchPlan(
+        server, templateId, { submittedExtraVars, templateName, limit, forks, jobTags, skipTags, verbosity, jobType, req }
+      );
+
+      require("../audit/index.cjs").auditPortal(req, "selfservice_test_scenario_run", {
+        detail: JSON.stringify({ awxServerId: server.id, templateId, scenarioName, extraVars }),
+      });
+
+      if (overrides.smartApproval?.enabled) {
+        const smartClient = require("../smart/client.cjs");
+        const smartStore = require("../smart/store.cjs");
+        const flowKey = String(overrides.smartApproval.flowKey || "").trim();
+        if (!flowKey) {
+          return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
+        }
+        const metadataFieldsRaw = String(overrides.smartApproval.metadataFields || "").trim();
+        let metadata;
+        if (metadataFieldsRaw) {
+          const placeholders = { username, email: req.session?.user?.mail || "", templateName: templateName || String(templateId) };
+          const parsed = parseSimpleYaml(metadataFieldsRaw);
+          metadata = {};
+          for (const [key, rawValue] of Object.entries(parsed)) {
+            metadata[key] = rawValue.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, name) => (
+              Object.prototype.hasOwnProperty.call(placeholders, name) ? placeholders[name] : m
+            ));
+          }
+        } else {
+          metadata = { application: templateName || String(templateId), requestedBy: username };
+        }
+        let created;
+        try {
+          created = await smartClient.createTicket({ flowKey, username, metadata });
+        } catch (smartErr) {
+          return res.status(smartErr.status || 502).json({ ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` });
+        }
+        const ticket = await smartStore.createTicket({
+          externalTicketId: created.ticketId,
+          username,
+          awxServerId: server.id,
+          awxTemplateId: templateId,
+          flowKey,
+          pendingLaunch: { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
         });
         return res.json({ ok: true, pendingApproval: true, ticketId: ticket.id });
       }

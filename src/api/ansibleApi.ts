@@ -294,6 +294,35 @@ export const ansibleApi = {
   // eder — yalnizca hala PENDING olan bir talep icin (bkz. server/ansible/runner.cjs).
   cancelSmartTicket: (ticketId: number): Promise<{ ok: boolean; status?: string; message?: string }> =>
     fetch(`${BASE}/ss/smart-ticket/${ticketId}/cancel`, { method: "POST" }).then(safeJson),
+
+  // Admin > Test Senaryoları — dry-run: hicbir job/Smart bileti tetiklenmez, yalnizca
+  // survey/custom-survey dogrulamasi + AWX template-preflight kontrolu calisir.
+  ssTestValidate: (
+    serverId: number,
+    templateId: number,
+    extraVars: Record<string, string>,
+    templateName: string
+  ): Promise<{ ok: boolean; valid?: boolean; resolvedExtraVars?: Record<string, string>; resolvedLaunchOptions?: unknown; message?: string; field?: string }> =>
+    fetch(`${BASE}/ss/test/validate/${serverId}/${templateId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ extraVars, templateName }),
+    }).then(safeJson),
+
+  // GERCEK tetikleme — confirm:true zorunlu (bkz. server/ansible/runner.cjs). Admin'in
+  // "Gerçekten Çalıştır" onayından sonra cagrilir.
+  ssTestRun: (
+    serverId: number,
+    templateId: number,
+    extraVars: Record<string, string>,
+    templateName: string,
+    scenarioName: string
+  ): Promise<{ ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number; message?: string; field?: string }> =>
+    fetch(`${BASE}/ss/test/run/${serverId}/${templateId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ extraVars, templateName, scenarioName, confirm: true }),
+    }).then(safeJson),
 };
 
 export interface SmartTicketSummary {
