@@ -43,6 +43,33 @@ async function listPending() {
   return rows.map(rowToTicket);
 }
 
+// Kullanicinin kendi actigi TUM talepleri (durum farketmeksizin) — "Taleplerim" ekrani icin.
+async function listByUsername(username) {
+  const { rows } = await db.query(
+    `SELECT * FROM smart_tickets WHERE LOWER(username) = LOWER($1) ORDER BY created_at DESC`,
+    [username]
+  );
+  return rows.map(rowToTicket);
+}
+
+// Kullanici, otomasyon (AWX job'i) TETIKLENMEDEN once kendi talebini iptal edebilir.
+// Sadece hala PENDING olan bir talep iptal edilebilir — WHERE kosulunda status='PENDING'
+// olmasi, poller.cjs'in ayni anda talebi onaylayip LAUNCHED yapmasiyla yarisan bir durumda
+// (iki islem ayni satiri ayni anda guncellemeye calisirsa) once davranan kazanir, once
+// LAUNCHED olmus bir talep asla CANCELLED'a geri donmez. Poller sadece status='PENDING'
+// olanlari isledigi icin (bkz. listPending), CANCELLED yapilan bir talep bir sonraki
+// tick'te artik hic islenmez — otomasyon boylece tetiklenmeden durdurulmus olur.
+async function cancelTicket(id, username, isAdmin) {
+  const { rows } = await db.query(
+    `UPDATE smart_tickets
+       SET status = 'CANCELLED', updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
+     OUTPUT INSERTED.*
+     WHERE id = $1 AND status = 'PENDING' ${isAdmin ? '' : 'AND LOWER(username) = LOWER($2)'}`,
+    isAdmin ? [id] : [id, username]
+  );
+  return rows[0] ? rowToTicket(rows[0]) : null;
+}
+
 async function markState(id, { status, smartStateName, awxJobId, errorMessage, resolved }) {
   await db.query(
     `UPDATE smart_tickets
@@ -53,4 +80,4 @@ async function markState(id, { status, smartStateName, awxJobId, errorMessage, r
   );
 }
 
-module.exports = { createTicket, getTicket, listPending, markState };
+module.exports = { createTicket, getTicket, listPending, listByUsername, cancelTicket, markState };

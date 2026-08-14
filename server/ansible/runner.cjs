@@ -2228,6 +2228,68 @@ function initAnsibleRunner(app) {
     }
   });
 
+  // GET /api/ansible/ss/smart-tickets/mine — kullanicinin ACTIGI TUM Smart taleplerini
+  // (durum farketmeksizin: PENDING/LAUNCHED/REJECTED/TIMEOUT/ERROR/CANCELLED) listeler.
+  // "Taleplerim" ekrani icin — /smart-ticket/:id/status'ten farkli olarak tek bir talep
+  // degil, kullanicinin GECMISININ TAMAMINI doner (persisted, oturumdan bagimsiz).
+  app.get("/api/ansible/ss/smart-tickets/mine", requireAuth, async (req, res) => {
+    try {
+      const smartStore = require("../smart/store.cjs");
+      const username = req.session?.user?.username || "";
+      const tickets = await smartStore.listByUsername(username);
+      res.json({
+        ok: true,
+        tickets: tickets.map((t) => ({
+          id: t.id,
+          status: t.status,
+          smartStateName: t.smartStateName,
+          templateName: t.pendingLaunch?.templateName || null,
+          jobId: t.awxJobId,
+          errorMessage: t.errorMessage,
+          createdAt: t.createdAt,
+          resolvedAt: t.resolvedAt,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST /api/ansible/ss/smart-ticket/:id/cancel — kullanici kendi talebini, Smart onayi
+  // gelip OTOMASYON (AWX job'i) TETIKLENMEDEN ONCE iptal edebilir. Smart'in kendisinde bir
+  // "iptal" API'si REVERSE-ENGINEER edilen protokolde (bkz. servicerepository.py) bulunmadi
+  // — bu yuzden Smart tarafindaki kayit acik kalmaya devam edebilir, ama poller.cjs sadece
+  // status='PENDING' olan talepleri isledigi icin (bkz. listPending), CANCELLED yapilan bir
+  // talep bir sonraki tick'te ARTIK HIC islenmez: Smart onaylasa bile bizim tarafimizda
+  // hicbir AWX job'i tetiklenmez. Sadece hala PENDING olan (henuz LAUNCHED/REJECTED/TIMEOUT
+  // olmamis) bir talep iptal edilebilir.
+  app.post("/api/ansible/ss/smart-ticket/:id/cancel", requireAuth, async (req, res) => {
+    try {
+      const smartStore = require("../smart/store.cjs");
+      const ticketId = Number(req.params.id);
+      const reqUser = req.session?.user || {};
+      const isAdmin = reqUser.role === "Admin";
+      const existing = await smartStore.getTicket(ticketId);
+      if (!existing) return res.status(404).json({ ok: false, message: "Talep bulunamadı." });
+      if (!isAdmin && existing.username.toLowerCase() !== String(reqUser.username || "").toLowerCase()) {
+        return res.status(403).json({ ok: false, message: "Bu talep size ait değil." });
+      }
+      if (existing.status !== "PENDING") {
+        return res.status(409).json({ ok: false, message: `Bu talep artık iptal edilemez (durum: ${existing.status}).` });
+      }
+      const cancelled = await smartStore.cancelTicket(ticketId, reqUser.username, isAdmin);
+      if (!cancelled) {
+        return res.status(409).json({ ok: false, message: "Talep bu sırada durum değiştirdi, iptal edilemedi — sayfayı yenileyin." });
+      }
+      require("../audit/index.cjs").auditPortal(req, "selfservice_smart_ticket_cancel", {
+        detail: JSON.stringify({ ticketId, owner: existing.username }),
+      });
+      res.json({ ok: true, status: cancelled.status });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
   // GET /api/ansible/ss/job-status/:serverId/:jobId — Job durumu (tum kullanicilar)
   app.get("/api/ansible/ss/job-status/:serverId/:jobId", requireAuth, async (req, res) => {
     const server = getServerById(req.params.serverId);

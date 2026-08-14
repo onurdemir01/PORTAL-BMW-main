@@ -10,6 +10,7 @@ import { normalizeExternalUrl, openExternalUrl } from "@/utils/url";
 import SelfServiceItemModal from "@/components/self_service/SelfServiceItemModal";
 import SimpleNameModal from "@/components/self_service/SimpleNameModal";
 import FieldOverridesModal from "@/components/self_service/FieldOverridesModal";
+import MyRequestsModal from "@/components/self_service/MyRequestsModal";
 import Collapse from "@/components/common/Collapse";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
@@ -36,6 +37,7 @@ import {
   QuestionMarkCircleIcon,
   ShieldCheckIcon,
   AdjustmentsHorizontalIcon,
+  ClipboardDocumentListIcon,
 } from "@heroicons/react/24/outline";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 
@@ -1162,6 +1164,7 @@ export default function SelfServicePage() {
   const [groups, setGroups] = useState<SelfServiceGroup[]>([]);
   const [activeTop, setActiveTop] = useState<TopTab>("ansible");
   const [showHelp, setShowHelp] = useState(false);
+  const [showMyRequests, setShowMyRequests] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -1216,13 +1219,22 @@ export default function SelfServicePage() {
           <h1 className="page-title">Self Service</h1>
           <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-muted)" }}>Servis kataloğu, Ansible otomasyonu ve kurumsal servisler</p>
         </div>
-        <button
-          onClick={() => setShowHelp(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors flex-shrink-0"
-        >
-          <QuestionMarkCircleIcon className="w-4 h-4" />
-          Yardım
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => setShowMyRequests(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+          >
+            <ClipboardDocumentListIcon className="w-4 h-4" />
+            Taleplerim
+          </button>
+          <button
+            onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+          >
+            <QuestionMarkCircleIcon className="w-4 h-4" />
+            Yardım
+          </button>
+        </div>
       </div>
 
       {err && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{err}</div>}
@@ -1261,6 +1273,8 @@ export default function SelfServicePage() {
         title="Self Service — Nasıl Kullanılır?"
         sections={SELF_SERVICE_HELP_SECTIONS}
       />
+
+      <MyRequestsModal open={showMyRequests} onClose={() => setShowMyRequests(false)} />
     </div>
   );
 }

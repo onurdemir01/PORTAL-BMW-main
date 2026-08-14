@@ -284,7 +284,28 @@ export const ansibleApi = {
   // gonderiyor; flow farkli/ek alan bekliyorsa bu, tahmin yerine GERCEGI gosterir.
   smartFlowMetadata: (flowKey: string): Promise<{ ok: boolean; fields?: Array<Record<string, unknown>>; message?: string }> =>
     fetch(`${BASE}/ss/smart-flow-metadata/${encodeURIComponent(flowKey)}`).then(safeJson),
+
+  // "Taleplerim" ekrani — kullanicinin ACTIGI TUM Smart taleplerinin (durum farketmeksizin)
+  // kalici gecmisi. smartTicketStatus()'tan farkli olarak tek bir ticketId degil, TUMU doner.
+  smartTicketsMine: (): Promise<{ ok: boolean; tickets: SmartTicketSummary[]; message?: string }> =>
+    fetch(`${BASE}/ss/smart-tickets/mine`).then(safeJson),
+
+  // Kullanici, Smart onayi otomasyonu (AWX job'i) TETIKLEMEDEN once kendi talebini iptal
+  // eder — yalnizca hala PENDING olan bir talep icin (bkz. server/ansible/runner.cjs).
+  cancelSmartTicket: (ticketId: number): Promise<{ ok: boolean; status?: string; message?: string }> =>
+    fetch(`${BASE}/ss/smart-ticket/${ticketId}/cancel`, { method: "POST" }).then(safeJson),
 };
+
+export interface SmartTicketSummary {
+  id: number;
+  status: string;
+  smartStateName?: string | null;
+  templateName?: string | null;
+  jobId?: number | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  resolvedAt?: string | null;
+}
 
 export interface FieldOverride {
   fieldName: string;
