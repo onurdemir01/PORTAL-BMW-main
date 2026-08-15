@@ -35,12 +35,19 @@ export function PortalLogo({ className = "h-8 w-8", showText = false, textColor 
   return (
     <span className="flex items-center gap-2 select-none">
       {useCustom ? (
-        <img
-          src="/api/branding/logo"
-          alt="Portal Logo"
-          className={`${className} object-contain`}
-          onError={() => setUseCustom(false)}
-        />
+        // Yuklenen gorselin kenarlarinda sik gorulen sorun: PNG'nin disa export
+        // edilirken tam saydam olmayan (hafif beyaz/gri) kose pikselleri kalmasi —
+        // object-contain bunlari OLDUGU GIBI gosterirdi. overflow-hidden'li bir
+        // cerceve icinde gorseli hafifce buyutup (scale) kirparak bu kenar
+        // artefaktlari gorunmez kilinir; object-cover cerceveyi tam doldurur.
+        <span className={`${className} relative inline-block overflow-hidden rounded-[3px] flex-shrink-0`}>
+          <img
+            src="/api/branding/logo"
+            alt="Portal Logo"
+            className="absolute inset-0 w-full h-full object-cover scale-[1.16]"
+            onError={() => setUseCustom(false)}
+          />
+        </span>
       ) : (
         <svg viewBox="0 0 100 100" className={className} aria-label="BMW Portal" role="img">
           <rect x="0" y="0" width="100" height="100" rx="4" ry="4" fill="#ee0000" />
