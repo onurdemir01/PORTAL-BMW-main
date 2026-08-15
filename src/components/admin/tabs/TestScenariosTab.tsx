@@ -44,6 +44,11 @@ export default function TestScenariosTab() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [surveyCache, setSurveyCache] = useState<Record<string, { fields: SurveyField[]; surveyEnabled: boolean } | "loading" | "error">>({});
   const [scenarioStates, setScenarioStates] = useState<Record<string, ScenarioState>>({});
+  // Otomatik üretilen değerler çoğunlukla boş çıkar (AWX survey alanlarının çoğunda gerçek
+  // bir varsayılan yoktur — host adı, uygulama adı gibi alanlar normalde kullanıcı tarafından
+  // elle girilir). Bu yüzden değerler SALT-OKUNUR değil: admin burada gerçek bir örnek değeri
+  // (ör. gerçek bir host adı) yazıp Doğrula/Gerçekten Çalıştır ile deneyebilir.
+  const [editedVars, setEditedVars] = useState<Record<string, Record<string, string>>>({});
   const { addJob } = useJobTracker();
 
   useEffect(() => {
@@ -78,10 +83,21 @@ export default function TestScenariosTab() {
     }));
   }
 
+  // Bu senaryo için o an ekranda gösterilecek değerler: admin bir alanı elle değiştirdiyse
+  // o değer, aksi halde otomatik üretilen değer.
+  function currentVars(item: AnsibleSsItem, scenario: SsTestScenario): Record<string, string> {
+    return { ...scenario.extraVars, ...(editedVars[keyOf(item.id, scenario.name)] || {}) };
+  }
+
+  function editVar(item: AnsibleSsItem, scenario: SsTestScenario, field: string, value: string) {
+    const k = keyOf(item.id, scenario.name);
+    setEditedVars((prev) => ({ ...prev, [k]: { ...(prev[k] || {}), [field]: value } }));
+  }
+
   async function validate(item: AnsibleSsItem, scenario: SsTestScenario) {
     setState(item, scenario, { status: "validating", message: undefined });
     try {
-      const r = await ansibleApi.ssTestValidate(item.awxServerId, item.awxTemplateId, scenario.extraVars, item.title);
+      const r = await ansibleApi.ssTestValidate(item.awxServerId, item.awxTemplateId, currentVars(item, scenario), item.title);
       if (r.ok && r.valid) {
         setState(item, scenario, { status: "valid", resolvedExtraVars: r.resolvedExtraVars, message: undefined });
       } else {
@@ -93,7 +109,8 @@ export default function TestScenariosTab() {
   }
 
   async function runForReal(item: AnsibleSsItem, scenario: SsTestScenario) {
-    const varsPreview = Object.entries(scenario.extraVars).map(([k, v]) => `${k}=${v || "(boş)"}`).join("\n") || "(parametre yok)";
+    const vars = currentVars(item, scenario);
+    const varsPreview = Object.entries(vars).map(([k, v]) => `${k}=${v || "(boş)"}`).join("\n") || "(parametre yok)";
     const ok = window.confirm(
       `"${item.title}" GERÇEKTEN tetiklenecek (senaryo: ${scenario.name}).\n\n` +
       `Bu gerçek bir AWX job'ı başlatır — geri alınamaz olabilir. Devam edilsin mi?\n\n${varsPreview}`
@@ -102,7 +119,7 @@ export default function TestScenariosTab() {
 
     setState(item, scenario, { status: "running", message: undefined });
     try {
-      const r = await ansibleApi.ssTestRun(item.awxServerId, item.awxTemplateId, scenario.extraVars, item.title, scenario.name);
+      const r = await ansibleApi.ssTestRun(item.awxServerId, item.awxTemplateId, vars, item.title, scenario.name);
       if (r.ok && r.jobId) {
         setState(item, scenario, { status: "ran", jobId: r.jobId });
         addJob({
@@ -142,6 +159,8 @@ export default function TestScenariosTab() {
         <div className="text-sm text-amber-800">
           <div className="font-semibold">Senaryolar bu otomasyonların KENDİ survey alanlarından otomatik türetilir.</div>
           <div className="mt-0.5">
+            Çoğu alanın AWX'te gerçek bir varsayılanı olmadığı için (host adı, uygulama adı vb.) değerler boş
+            gelebilir — alanlar DÜZENLENEBİLİR, gerçek bir örnek değeri elle yazıp deneyebilirsiniz.
             "Doğrula" hiçbir job tetiklemez, sadece geçerliliği kontrol eder. "Gerçekten Çalıştır" ise GERÇEK bir AWX job'ı
             başlatır (yıkıcı otomasyonlarda geri alınamaz olabilir) — her seferinde ayrıca onay ister.
           </div>
@@ -189,15 +208,26 @@ export default function TestScenariosTab() {
                   )}
                   {scenarios.map((scenario) => {
                     const st = scenarioStates[keyOf(item.id, scenario.name)] || { status: "idle" as const };
+                    const vars = currentVars(item, scenario);
                     return (
                       <div key={scenario.name} className="p-3 border border-gray-200 rounded-lg bg-white">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="font-semibold text-sm">{scenario.name}</div>
                             <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{scenario.note}</div>
-                            {Object.keys(scenario.extraVars).length > 0 && (
-                              <div className="mt-1.5 text-[11px] font-mono bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto whitespace-pre">
-                                {Object.entries(scenario.extraVars).map(([k, v]) => `${k}=${v || "(boş)"}`).join("\n")}
+                            {Object.keys(vars).length > 0 && (
+                              <div className="mt-2 space-y-1.5">
+                                {Object.keys(vars).map((field) => (
+                                  <div key={field} className="flex items-center gap-2">
+                                    <label className="text-[11px] font-mono text-gray-500 w-40 flex-shrink-0 truncate" title={field}>{field}</label>
+                                    <input
+                                      value={vars[field]}
+                                      onChange={(e) => editVar(item, scenario, field, e.target.value)}
+                                      placeholder="(boş — gerçek bir değer yazın)"
+                                      className="flex-1 min-w-0 text-xs font-mono border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#0066CC]"
+                                    />
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
