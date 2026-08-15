@@ -103,6 +103,7 @@ async function main() {
     { name: "nobetci", init: () => initNobetci(app), optional: true },
     { name: "systemConfig", init: () => require("./admin/system-config.cjs").initSystemConfig(app), optional: true },
     { name: "branding", init: () => require("./admin/branding.cjs").initBranding(app), optional: true },
+    { name: "dbFullBackup", init: () => require("./db/full-backup.cjs").initDbFullBackup(app), optional: true },
     { name: "ansible", init: () => initAnsible(app), optional: true },
     { name: "selfService", init: () => initSelfService(app), optional: true },
     { name: "logX", init: () => initLogX(app), optional: true },
