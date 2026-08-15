@@ -1,32 +1,35 @@
 // server/admin/branding.cjs — Admin → Marka sekmesi: tarayici sekmesinde gorunen
-// favicon'un yuklenmesi/sunulmasi.
+// favicon'un VE giris/ana ekranda gorunen uygulama logosunun yuklenmesi/sunulmasi.
 //
 // NEDEN DB'DE SAKLANIYOR: deploy/release.sh uygulama agacini `unzip -o` ile ezer
-// (bkz. release.sh:61). Diske yazilan bir logo HER DEPLOY'DA KAYBOLURDU. Gorsel bu
-// yuzden portal_config_blobs tablosunda (name='branding:favicon') base64 olarak
-// tutulur — release/restart/redeploy hayatta kalir.
+// (bkz. release.sh:61). Diske yazilan bir logo HER DEPLOY'DA KAYBOLURDU. Gorseller bu
+// yuzden portal_config_blobs tablosunda (name='branding:favicon' / 'branding:logo')
+// base64 olarak tutulur — release/restart/redeploy hayatta kalir.
 //
-// Uc endpoint:
+// Iki bagimsiz slot, AYNI deseni paylasir (favicon: sekme ikonu; logo: PortalLogo.tsx'in
+// gosterdigi, giris ekrani + ana ekran ust bandindaki marka isareti):
 //   GET    /api/branding/favicon        PUBLIC  — <link rel="icon"> bunu cagirir.
-//                                       Giris ekraninda da gorunmesi gerektigi icin
-//                                       kimlik dogrulamasi ARANMAZ.
-//   GET    /api/admin/branding          Admin   — mevcut logonun ust verisi
-//   PUT    /api/admin/branding/favicon  Admin   — yeni logo yukle (JSON dataUrl)
-//   DELETE /api/admin/branding/favicon  Admin   — varsayilana don
+//   GET    /api/branding/logo           PUBLIC  — PortalLogo.tsx bunu dener, YOKSA (404)
+//                                       kendi gomulu SVG'sine duser (giris ekrani da
+//                                       kimlik dogrulamasi ONCESI gorundugu icin auth ARANMAZ).
+//   GET    /api/branding/meta           PUBLIC  — hangi slotlarin ozellestirildigi (hafif,
+//                                       PortalLogo'nun gereksiz 404 istegi atmasini onler).
+//   GET    /api/admin/branding          Admin   — her iki logonun da ust verisi
+//   PUT    /api/admin/branding/:slot    Admin   — yeni logo yukle (JSON dataUrl), slot=favicon|logo
+//   DELETE /api/admin/branding/:slot    Admin   — varsayilana don
 'use strict';
 
 const express = require('express');
 const crypto = require('crypto');
 
-const BLOB_NAME = 'branding:favicon';
-
 // SVG BILEREK DISARIDA: SVG calistirilabilir <script> icerebilir ve bu dosya
-// portal ile AYNI ORIGIN'den sunulur — kullanici dogrudan /api/branding/favicon
-// adresine giderse script portal oturum cerezi baglaminda calisirdi (depolanmis XSS).
-// Raster formatlarda bu risk yok.
+// portal ile AYNI ORIGIN'den sunulur — kullanici dogrudan gorsel adresine giderse
+// script portal oturum cerezi baglaminda calisirdi (depolanmis XSS). Raster
+// formatlarda bu risk yok.
 // WEBP BILEREK DISARIDA: tarayicilar WebP'yi sayfa icinde destekler ama favicon
 // isleme hatti AYRI bir kod yoludur ve WebP'yi guvenilir sekilde cozmez — dosya
-// basariyla indirilir, sekme ikonu yine de degismez (sessiz basarisizlik).
+// basariyla indirilir, sekme ikonu yine de degismez (sessiz basarisizlik). Logo
+// icin de tutarlilik amaciyla ayni kisitlama uygulanir.
 const ALLOWED_MIME = {
   'image/png': ['89504e47'],
   'image/x-icon': ['00000100'],
@@ -34,31 +37,37 @@ const ALLOWED_MIME = {
   'image/jpeg': ['ffd8ff'],
 };
 
-const MAX_BYTES = 512 * 1024; // 512 KB — favicon icin fazlasiyla yeterli
+const SLOTS = {
+  favicon: { blobName: 'branding:favicon', maxBytes: 512 * 1024 },
+  logo:    { blobName: 'branding:logo',    maxBytes: 1024 * 1024 },
+};
 
-// Logo yuklenmemisken sunulan varsayilan. Kendi yazdigimiz sabit icerik
-// (kullanici yuklemesi degil) — script icermez, XSS riski yoktur.
-const DEFAULT_SVG = Buffer.from(
+// Favicon icin: logo yuklenmemisken sunulan varsayilan. Kendi yazdigimiz sabit
+// icerik (kullanici yuklemesi degil) — script icermez, XSS riski yoktur. Logo
+// slotunun bunun karsiligi YOK — PortalLogo.tsx yuklenmemisse zaten kendi
+// gomulu SVG'sini React icinde render eder, sunucudan ayrica bir varsayilan
+// gorsel COMESI GEREKMEZ.
+const DEFAULT_FAVICON_SVG = Buffer.from(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
   `<rect width="32" height="32" rx="6" fill="#ee0000"/>` +
   `<text x="16" y="22" font-family="sans-serif" font-size="15" font-weight="700" ` +
   `fill="#ffffff" text-anchor="middle">B</text></svg>`,
   'utf-8'
 );
-const DEFAULT_ETAG = `"${crypto.createHash('sha1').update(DEFAULT_SVG).digest('hex').slice(0, 16)}"`;
+const DEFAULT_FAVICON_ETAG = `"${crypto.createHash('sha1').update(DEFAULT_FAVICON_SVG).digest('hex').slice(0, 16)}"`;
 
 // Bellek-ici kopya: her sekme yuklemesinde DB'ye gitmemek icin. Yukleme/silme
 // aninda tazelenir; birden fazla process varsa ETag revalidation yakalar.
-let cache = null; // { mime, buf, etag, updatedAt, updatedBy }
+const cache = { favicon: null, logo: null }; // her biri: { mime, buf, etag, updatedAt, updatedBy } | null
 
 function db() {
   return require('../db/index.cjs');
 }
 
-async function loadFromDb() {
+async function loadFromDb(blobName) {
   const { rows } = await db().query(
     `SELECT data, updated_at FROM portal_config_blobs WHERE name = $1`,
-    [BLOB_NAME]
+    [blobName]
   );
   if (!rows.length) return null;
   let parsed;
@@ -78,10 +87,10 @@ async function loadFromDb() {
   };
 }
 
-async function getFavicon() {
-  if (cache) return cache;
-  cache = await loadFromDb();
-  return cache;
+async function getSlot(slot) {
+  if (cache[slot]) return cache[slot];
+  cache[slot] = await loadFromDb(SLOTS[slot].blobName);
+  return cache[slot];
 }
 
 // Yuklenen baytlarin gercekten iddia edilen turde olup olmadigini dogrular —
@@ -98,7 +107,7 @@ function initBranding(app) {
   app.get('/api/branding/favicon', async (req, res) => {
     let fav = null;
     try {
-      fav = await getFavicon();
+      fav = await getSlot('favicon');
     } catch {
       /* DB erisilemezse varsayilana dus */
     }
@@ -111,11 +120,11 @@ function initBranding(app) {
       res.set('Content-Type', 'image/svg+xml');
       res.set('X-Content-Type-Options', 'nosniff');
       res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
-      res.set('ETag', DEFAULT_ETAG);
+      res.set('ETag', DEFAULT_FAVICON_ETAG);
       res.set('Cache-Control', 'no-cache, must-revalidate');
-      if (req.headers['if-none-match'] === DEFAULT_ETAG) return res.status(304).end();
+      if (req.headers['if-none-match'] === DEFAULT_FAVICON_ETAG) return res.status(304).end();
       // Kendi yazdigimiz sabit SVG — kullanici yuklemesi degil, script icermez.
-      return res.send(DEFAULT_SVG);
+      return res.send(DEFAULT_FAVICON_SVG);
     }
 
     // nosniff + kisitlayici CSP: dosya raster olsa bile tarayicinin icerigi
@@ -132,26 +141,63 @@ function initBranding(app) {
     return res.send(fav.buf);
   });
 
-  // ── ADMIN: mevcut durum ────────────────────────────────────────────────────
+  // ── PUBLIC: uygulama logosu sunumu ─────────────────────────────────────────
+  // Ozellestirilmemisse ACIKCA 404 doner — PortalLogo.tsx bunu meta'dan zaten
+  // ONCEDEN bilir (bkz. asagisi), bu yuzden normal akiste bu 404'e hic dusulmez;
+  // yine de dogrudan URL'e gidilirse dogru HTTP anlami korunur.
+  app.get('/api/branding/logo', async (req, res) => {
+    let logo = null;
+    try {
+      logo = await getSlot('logo');
+    } catch {
+      /* DB erisilemezse 404'e dus */
+    }
+    if (!logo) return res.status(404).end();
+
+    res.set('Content-Type', logo.mime);
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    res.set('ETag', logo.etag);
+    res.set('Cache-Control', 'no-cache, must-revalidate');
+    if (req.headers['if-none-match'] === logo.etag) return res.status(304).end();
+    return res.send(logo.buf);
+  });
+
+  // ── PUBLIC: hafif meta (hangi slotlar ozellestirilmis) ─────────────────────
+  // PortalLogo.tsx, /api/branding/logo'ya kor kor istek atip 404 karsilanmasi
+  // yerine ONCE bunu sorar — boylece varsayilan (ozellestirilmemis) durumda
+  // giris/ana ekranda gereksiz bir 404 istegi + gecici "yanip sonme" olmaz.
+  app.get('/api/branding/meta', async (req, res) => {
+    let hasLogo = false;
+    try {
+      hasLogo = !!(await getSlot('logo'));
+    } catch {
+      /* DB erisilemezse varsayilan (gomulu SVG) kullanilir */
+    }
+    res.set('Cache-Control', 'no-cache, must-revalidate');
+    res.json({ ok: true, hasLogo });
+  });
+
+  // ── ADMIN: mevcut durum (iki slot birden) ──────────────────────────────────
   app.get('/api/admin/branding', async (req, res) => {
     if (req.session?.user?.role !== 'Admin') return res.status(403).json({ ok: false });
     try {
-      const fav = await getFavicon();
+      const [fav, logo] = await Promise.all([getSlot('favicon'), getSlot('logo')]);
+      const toInfo = (x) => x ? {
+        mime: x.mime,
+        sizeBytes: x.buf.length,
+        updatedAt: x.updatedAt,
+        updatedBy: x.updatedBy,
+        // Onizleme icin data URL — admin ekraninda gosterilir.
+        dataUrl: `data:${x.mime};base64,${x.buf.toString('base64')}`,
+      } : null;
       res.json({
         ok: true,
-        favicon: fav
-          ? {
-              mime: fav.mime,
-              sizeBytes: fav.buf.length,
-              updatedAt: fav.updatedAt,
-              updatedBy: fav.updatedBy,
-              // Onizleme icin data URL — admin ekraninda gosterilir.
-              dataUrl: `data:${fav.mime};base64,${fav.buf.toString('base64')}`,
-            }
-          : null,
+        favicon: toInfo(fav),
+        logo: toInfo(logo),
         limits: {
-          maxBytes: MAX_BYTES,
-          allowedMime: Object.keys(ALLOWED_MIME).filter((m) => m !== 'image/vnd.microsoft.icon'),
+          favicon: { maxBytes: SLOTS.favicon.maxBytes, allowedMime: Object.keys(ALLOWED_MIME).filter((m) => m !== 'image/vnd.microsoft.icon') },
+          logo:    { maxBytes: SLOTS.logo.maxBytes,    allowedMime: Object.keys(ALLOWED_MIME).filter((m) => m !== 'image/vnd.microsoft.icon') },
         },
       });
     } catch (err) {
@@ -159,26 +205,28 @@ function initBranding(app) {
     }
   });
 
-  // ── ADMIN: yukleme ─────────────────────────────────────────────────────────
+  // ── ADMIN: yukleme (slot=favicon|logo) ─────────────────────────────────────
   // multer/busboy EKLENMEDI — kapali kurumsal agda yeni bagimlilik riski var.
   // Tarayici dosyayi FileReader ile data URL'e cevirip JSON gonderir; mevcut
-  // express.json({limit:"2mb"}) parser'i yeterli (limit 512 KB'a burada dusurulur).
-  app.put('/api/admin/branding/favicon', express.json({ limit: '2mb' }), async (req, res) => {
+  // express.json({limit:"2mb"}) parser'i yeterli (asil limit slot bazinda asagida dusurulur).
+  app.put('/api/admin/branding/:slot', express.json({ limit: '2mb' }), async (req, res) => {
     if (req.session?.user?.role !== 'Admin') return res.status(403).json({ ok: false });
+    const slot = req.params.slot;
+    if (!SLOTS[slot]) return res.status(404).json({ ok: false, error: 'Bilinmeyen logo alanı.' });
 
     const { dataUrl } = req.body || {};
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
-      return res.status(400).json({ ok: false, error: 'Gecersiz gorsel verisi.' });
+      return res.status(400).json({ ok: false, error: 'Geçersiz görsel verisi.' });
     }
 
     const m = dataUrl.match(/^data:([\w/.+-]+);base64,(.+)$/);
-    if (!m) return res.status(400).json({ ok: false, error: 'Gorsel base64 data URL olmali.' });
+    if (!m) return res.status(400).json({ ok: false, error: 'Görsel base64 data URL olmalı.' });
 
     const mime = m[1].toLowerCase();
     if (!ALLOWED_MIME[mime]) {
       return res.status(400).json({
         ok: false,
-        error: 'Desteklenmeyen format. PNG (onerilen), ICO veya JPEG yukleyin. SVG guvenlik, WEBP ise tarayici uyumsuzlugu nedeniyle kabul edilmez.',
+        error: 'Desteklenmeyen format. PNG (önerilen), ICO veya JPEG yükleyin. SVG güvenlik, WEBP ise tarayıcı uyumsuzluğu nedeniyle kabul edilmez.',
       });
     }
 
@@ -186,18 +234,19 @@ function initBranding(app) {
     try {
       buf = Buffer.from(m[2], 'base64');
     } catch {
-      return res.status(400).json({ ok: false, error: 'Base64 cozulemedi.' });
+      return res.status(400).json({ ok: false, error: 'Base64 çözülemedi.' });
     }
 
-    if (!buf.length) return res.status(400).json({ ok: false, error: 'Dosya bos.' });
-    if (buf.length > MAX_BYTES) {
+    if (!buf.length) return res.status(400).json({ ok: false, error: 'Dosya boş.' });
+    const maxBytes = SLOTS[slot].maxBytes;
+    if (buf.length > maxBytes) {
       return res.status(413).json({
         ok: false,
-        error: `Dosya cok buyuk (${Math.round(buf.length / 1024)} KB). Ust sinir ${MAX_BYTES / 1024} KB.`,
+        error: `Dosya çok büyük (${Math.round(buf.length / 1024)} KB). Üst sınır ${maxBytes / 1024} KB.`,
       });
     }
     if (!magicMatches(mime, buf)) {
-      return res.status(400).json({ ok: false, error: 'Dosya icerigi belirtilen formatla uyusmuyor.' });
+      return res.status(400).json({ ok: false, error: 'Dosya içeriği belirtilen formatla uyuşmuyor.' });
     }
 
     const payload = JSON.stringify({
@@ -210,39 +259,41 @@ function initBranding(app) {
     try {
       const upd = await db().query(
         `UPDATE portal_config_blobs SET data = $1, updated_at = GETUTCDATE() WHERE name = $2`,
-        [payload, BLOB_NAME]
+        [payload, SLOTS[slot].blobName]
       );
       if (!upd.rowCount) {
         await db().query(
           `INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`,
-          [BLOB_NAME, payload]
+          [SLOTS[slot].blobName, payload]
         );
       }
-      cache = null; // bir sonraki istekte DB'den tazelenir
+      cache[slot] = null; // bir sonraki istekte DB'den tazelenir
 
       try {
-        require('../audit/index.cjs').auditPortal(req, 'branding_favicon_update', {
+        require('../audit/index.cjs').auditPortal(req, `branding_${slot}_update`, {
           detail: `mime=${mime} size=${buf.length}`,
         });
       } catch { /* yoksay */ }
 
-      console.log(`[Branding] ${req.session.user.username} -> favicon guncellendi (${mime}, ${buf.length} bayt).`);
+      console.log(`[Branding] ${req.session.user.username} -> ${slot} guncellendi (${mime}, ${buf.length} bayt).`);
       res.json({ ok: true, mime, sizeBytes: buf.length });
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
     }
   });
 
-  // ── ADMIN: varsayilana don ─────────────────────────────────────────────────
-  app.delete('/api/admin/branding/favicon', async (req, res) => {
+  // ── ADMIN: varsayilana don (slot=favicon|logo) ─────────────────────────────
+  app.delete('/api/admin/branding/:slot', async (req, res) => {
     if (req.session?.user?.role !== 'Admin') return res.status(403).json({ ok: false });
+    const slot = req.params.slot;
+    if (!SLOTS[slot]) return res.status(404).json({ ok: false, error: 'Bilinmeyen logo alanı.' });
     try {
-      await db().query(`DELETE FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]);
-      cache = null;
+      await db().query(`DELETE FROM portal_config_blobs WHERE name = $1`, [SLOTS[slot].blobName]);
+      cache[slot] = null;
       try {
-        require('../audit/index.cjs').auditPortal(req, 'branding_favicon_reset', { detail: '' });
+        require('../audit/index.cjs').auditPortal(req, `branding_${slot}_reset`, { detail: '' });
       } catch { /* yoksay */ }
-      console.log(`[Branding] ${req.session.user.username} -> favicon varsayilana dondu.`);
+      console.log(`[Branding] ${req.session.user.username} -> ${slot} varsayilana dondu.`);
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });

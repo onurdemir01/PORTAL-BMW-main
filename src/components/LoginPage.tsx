@@ -54,12 +54,9 @@ const LoginPage: React.FC = () => {
       {/* Ust marka bandi */}
       <div className="flex items-center gap-3 px-6 py-6 lg:px-12">
         <PortalLogo className="h-9 w-9" />
-        <div>
-          <p className="text-white text-lg leading-tight" style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}>
-            BMW Portal
-          </p>
-          <p className="text-[0.8125rem]" style={{ color: "#b8bbbe" }}>Kurumsal Operasyon Merkezi</p>
-        </div>
+        <p className="text-white text-lg leading-tight" style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}>
+          BMW Portal
+        </p>
       </div>
 
       <div className="flex-1 flex items-start justify-center px-4 pb-16 pt-4 lg:pt-10">

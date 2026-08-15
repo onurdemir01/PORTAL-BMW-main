@@ -1,5 +1,7 @@
 // src/components/admin/tabs/BrandingTab.tsx — Admin > Marka: tarayici sekmesinde
-// gorunen logonun (favicon) yuklenmesi.
+// gorunen favicon'un VE giris/ana ekranda gorunen uygulama logosunun (PortalLogo.tsx)
+// yuklenmesi. Iki slot da AYNI ImageAssetEditor bilesenini kullanir (bkz. server/admin/
+// branding.cjs — favicon/logo AYNI desen, farkli endpoint+limit).
 //
 // Yukleme multipart DEGIL: dosya FileReader ile data URL'e cevrilip JSON olarak
 // gonderilir (backend'de multer bagimliligi eklemekten kacinildi — bkz.
@@ -7,7 +9,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowUpTrayIcon, TrashIcon, PhotoIcon } from "@heroicons/react/24/outline";
 
-interface FaviconInfo {
+interface AssetInfo {
   mime: string;
   sizeBytes: number;
   updatedAt: string | null;
@@ -20,39 +22,28 @@ interface Limits {
   allowedMime: string[];
 }
 
-const BrandingTab: React.FC = () => {
-  const [favicon, setFavicon] = useState<FaviconInfo | null>(null);
-  const [limits, setLimits] = useState<Limits | null>(null);
-  const [loading, setLoading] = useState(true);
+interface BrandingState {
+  favicon: AssetInfo | null;
+  logo: AssetInfo | null;
+  limits: { favicon: Limits; logo: Limits } | null;
+}
+
+function ImageAssetEditor({
+  slot, title, description, recommendation, asset, limits, previewBox, onChanged,
+}: {
+  slot: "favicon" | "logo";
+  title: string;
+  description: string;
+  recommendation: string;
+  asset: AssetInfo | null;
+  limits: Limits | null;
+  previewBox: number;
+  onChanged: () => Promise<void>;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/admin/branding");
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Yüklenemedi.");
-      setFavicon(data.favicon);
-      setLimits(data.limits);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Bilinmeyen hata.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); }, []);
-
-  // Tarayicinin sekme ikonunu yeniden cekmesini tetikler — aksi halde
-  // kullanici sayfayi yenileyene kadar eski logoyu gorur.
-  const refreshBrowserFavicon = () => {
-    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (link) link.href = `/api/branding/favicon?v=${Date.now()}`;
-  };
 
   const onPick = async (file: File) => {
     setError(null);
@@ -74,16 +65,15 @@ const BrandingTab: React.FC = () => {
 
     setBusy(true);
     try {
-      const res = await fetch("/api/admin/branding/favicon", {
+      const res = await fetch(`/api/admin/branding/${slot}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dataUrl }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Yükleme başarısız.");
-      setOkMsg("Logo güncellendi. Sekme ikonu birkaç saniye içinde yenilenir.");
-      refreshBrowserFavicon();
-      await load();
+      setOkMsg("Görsel güncellendi.");
+      await onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bilinmeyen hata.");
     } finally {
@@ -93,17 +83,16 @@ const BrandingTab: React.FC = () => {
   };
 
   const onReset = async () => {
-    if (!window.confirm("Logo silinip varsayılana dönülecek. Devam edilsin mi?")) return;
+    if (!window.confirm("Görsel silinip varsayılana dönülecek. Devam edilsin mi?")) return;
     setBusy(true);
     setError(null);
     setOkMsg(null);
     try {
-      const res = await fetch("/api/admin/branding/favicon", { method: "DELETE" });
+      const res = await fetch(`/api/admin/branding/${slot}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Silinemedi.");
-      setOkMsg("Varsayılan logoya dönüldü.");
-      refreshBrowserFavicon();
-      await load();
+      setOkMsg("Varsayılana dönüldü.");
+      await onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bilinmeyen hata.");
     } finally {
@@ -111,60 +100,40 @@ const BrandingTab: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor…</div>;
-
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Sekme Logosu (Favicon)</h2>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-          Tarayıcı sekmesinde ve yer imlerinde görünen simge. Görsel veritabanında saklanır,
-          sürüm yüklemelerinde kaybolmaz.
-        </p>
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>{description}</p>
       </div>
 
-      {error && (
-        <div className="pf-alert pf-alert--danger p-3 text-sm" role="alert">{error}</div>
-      )}
-      {okMsg && (
-        <div className="pf-alert pf-alert--success p-3 text-sm" role="status">{okMsg}</div>
-      )}
+      {error && <div className="pf-alert pf-alert--danger p-3 text-sm" role="alert">{error}</div>}
+      {okMsg && <div className="pf-alert pf-alert--success p-3 text-sm" role="status">{okMsg}</div>}
 
       <div className="flex items-center gap-5 flex-wrap">
-        {/* Onizleme — sekmede gorunecegi olcude (16px) ve buyutulmus halde */}
         <div
           className="flex items-center justify-center rounded-lg"
           style={{ width: 96, height: 96, background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
         >
-          {favicon ? (
-            <img src={favicon.dataUrl} alt="Mevcut logo" style={{ maxWidth: 64, maxHeight: 64 }} />
+          {asset ? (
+            <img src={asset.dataUrl} alt="Mevcut görsel" style={{ maxWidth: previewBox, maxHeight: previewBox }} />
           ) : (
             <PhotoIcon className="w-8 h-8" style={{ color: "var(--text-muted)" }} />
           )}
         </div>
 
         <div className="text-sm space-y-1">
-          {favicon ? (
+          {asset ? (
             <>
-              <div><strong>Format:</strong> {favicon.mime}</div>
-              <div><strong>Boyut:</strong> {Math.round(favicon.sizeBytes / 1024)} KB</div>
-              {favicon.updatedBy && <div><strong>Yükleyen:</strong> {favicon.updatedBy}</div>}
-              {favicon.updatedAt && (
-                <div style={{ color: "var(--text-muted)" }}>
-                  {new Date(favicon.updatedAt).toLocaleString("tr-TR")}
-                </div>
+              <div><strong>Format:</strong> {asset.mime}</div>
+              <div><strong>Boyut:</strong> {Math.round(asset.sizeBytes / 1024)} KB</div>
+              {asset.updatedBy && <div><strong>Yükleyen:</strong> {asset.updatedBy}</div>}
+              {asset.updatedAt && (
+                <div style={{ color: "var(--text-muted)" }}>{new Date(asset.updatedAt).toLocaleString("tr-TR")}</div>
               )}
-              {/* Sekmede gercek olcusunde nasil gorunecegi */}
-              <div className="flex items-center gap-2 pt-1">
-                <span style={{ color: "var(--text-muted)" }}>Sekmede:</span>
-                <img src={favicon.dataUrl} alt="" style={{ width: 16, height: 16 }} />
-                <span>BMW Portal</span>
-              </div>
             </>
           ) : (
-            <div style={{ color: "var(--text-muted)" }}>
-              Henüz logo yüklenmedi — varsayılan simge kullanılıyor.
-            </div>
+            <div style={{ color: "var(--text-muted)" }}>Henüz yüklenmedi — varsayılan kullanılıyor.</div>
           )}
         </div>
       </div>
@@ -183,10 +152,10 @@ const BrandingTab: React.FC = () => {
           onClick={() => fileRef.current?.click()}
         >
           <ArrowUpTrayIcon className="w-4 h-4" />
-          {busy ? "Yükleniyor…" : favicon ? "Yeni Logo Yükle" : "Logo Yükle"}
+          {busy ? "Yükleniyor…" : asset ? "Yeni Görsel Yükle" : "Görsel Yükle"}
         </button>
 
-        {favicon && (
+        {asset && (
           <button
             className="btn-secondary flex items-center gap-2 px-3 py-2 text-sm rounded-lg"
             disabled={busy}
@@ -204,21 +173,70 @@ const BrandingTab: React.FC = () => {
           {limits ? limits.allowedMime.join(", ") : "PNG, ICO, JPEG"}
         </div>
         <div><strong>En büyük dosya:</strong> {limits ? limits.maxBytes / 1024 : 512} KB</div>
-        <div>
-          <strong>Önerilen:</strong> 32×32 veya 64×64 piksel, kare, saydam arka planlı PNG.
-        </div>
-        <div>
-          SVG güvenlik nedeniyle kabul edilmez — çalıştırılabilir kod içerebildiği ve dosya
-          portalla aynı adresten sunulduğu için.
-        </div>
-        <div>
-          WEBP kabul edilmez — tarayıcıların favicon işleme hattı bu formatı güvenilir
-          şekilde çözmez; dosya yüklenir ama sekme ikonu değişmez.
-        </div>
-        <div>
-          Yeni logo bazı tarayıcılarda hemen görünmeyebilir; sekmeyi kapatıp açmak veya
-          Ctrl+Shift+R yeterlidir.
-        </div>
+        <div><strong>Önerilen:</strong> {recommendation}</div>
+        <div>SVG güvenlik nedeniyle kabul edilmez — çalıştırılabilir kod içerebildiği ve dosya portalla aynı adresten sunulduğu için.</div>
+        <div>WEBP kabul edilmez — tarayıcıların işleme hattı bu formatı güvenilir şekilde çözmez; dosya yüklenir ama görsel değişmez.</div>
+      </div>
+    </div>
+  );
+}
+
+const BrandingTab: React.FC = () => {
+  const [state, setState] = useState<BrandingState>({ favicon: null, logo: null, limits: null });
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/branding");
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Yüklenemedi.");
+      setState({ favicon: data.favicon, logo: data.logo, limits: data.limits });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  // Tarayicinin sekme ikonunu / (varsa) mount'lu PortalLogo ornemklerini yeniden
+  // cekmesini tetikler — aksi halde kullanici sayfayi yenileyene kadar eskisini gorur.
+  const refreshAssets = async () => {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (link) link.href = `/api/branding/favicon?v=${Date.now()}`;
+    await load();
+  };
+
+  if (loading) return <div className="text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor…</div>;
+
+  return (
+    <div className="space-y-8">
+      <ImageAssetEditor
+        slot="logo"
+        title="Uygulama Logosu"
+        description="Giriş ekranı ve ana ekranın üst bandındaki marka işareti (PortalLogo). Yüklenmezse varsayılan kırmızı dört-bölme logo kullanılır."
+        recommendation="Kare, saydam arka planlı PNG (ör. 128×128)."
+        asset={state.logo}
+        limits={state.limits?.logo || null}
+        previewBox={72}
+        onChanged={refreshAssets}
+      />
+
+      <hr style={{ borderColor: "var(--border)" }} />
+
+      <ImageAssetEditor
+        slot="favicon"
+        title="Sekme Logosu (Favicon)"
+        description="Tarayıcı sekmesinde ve yer imlerinde görünen simge. Görsel veritabanında saklanır, sürüm yüklemelerinde kaybolmaz."
+        recommendation="32×32 veya 64×64 piksel, kare, saydam arka planlı PNG."
+        asset={state.favicon}
+        limits={state.limits?.favicon || null}
+        previewBox={64}
+        onChanged={refreshAssets}
+      />
+
+      <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+        Yeni görsel bazı tarayıcılarda hemen görünmeyebilir; sekmeyi kapatıp açmak veya Ctrl+Shift+R yeterlidir.
       </div>
     </div>
   );
