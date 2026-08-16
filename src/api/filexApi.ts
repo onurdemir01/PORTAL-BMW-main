@@ -42,6 +42,9 @@ export interface FilexRunResult {
   jobId: number | null;
   status: string | null;
   awxServerId: number;
+  // ok:false ise backend'in ürettiği hata metni (bkz. OpsX/Telnet'teki AYNI desen/opsxApi.ts) —
+  // ÇAĞIRAN BUNU KONTROL ETMELİ, safeJson() 4xx/5xx'te reddetmez.
+  message?: string;
 }
 
 export interface FilexJobStatus {
@@ -50,6 +53,7 @@ export interface FilexJobStatus {
   finished: string | null;
   failed: boolean;
   result: FilexResult | null;
+  message?: string;
 }
 
 export const filexApi = {

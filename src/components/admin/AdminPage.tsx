@@ -30,6 +30,7 @@ import InventoryVisibilityTab from "./tabs/InventoryVisibilityTab";
 import BrandingTab from "./tabs/BrandingTab";
 import TestScenariosTab from "./tabs/TestScenariosTab";
 import DbBackupTab from "./tabs/DbBackupTab";
+import FlowTestsTab from "./tabs/FlowTestsTab";
 
 // Eski port-1111 LogX admin yüzeyleri (Oturumlar, İzinler, LogX Inventory) tamamen
 // kaldırıldı — yeni yapıda log akışı "LogX v2 Yapılandırma" (OCP cluster/terminal
@@ -41,6 +42,7 @@ const DEFAULT_TABS = [
   { id: "selfservice", label: "Self Service",     icon: WrenchScrewdriverIcon },
   { id: "testscenarios", label: "Test Senaryoları", icon: BeakerIcon },
   { id: "dbbackup", label: "DB Yedekleme", icon: ArchiveBoxIcon },
+  { id: "flowtests", label: "Akış Testleri", icon: BeakerIcon },
   { id: "ansible",     label: "Ansible Info",     icon: CommandLineIcon },
   { id: "playbooks",   label: "Playbook Kayıtları", icon: CommandLineIcon },
   { id: "system",      label: "Sistem",           icon: CogIcon },
@@ -199,6 +201,7 @@ const AdminPage: React.FC = () => {
           {activeTab === "selfservice" && <SelfServiceAdminTab />}
           {activeTab === "testscenarios" && <TestScenariosTab />}
           {activeTab === "dbbackup" && <DbBackupTab />}
+          {activeTab === "flowtests" && <FlowTestsTab />}
           {activeTab === "ansible"     && <AnsibleConfigTab />}
           {activeTab === "playbooks"   && <PlaybookRegistryTab />}
           {activeTab === "system"      && <SystemConfigTab />}
