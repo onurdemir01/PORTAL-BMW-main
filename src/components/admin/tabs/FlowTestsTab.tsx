@@ -12,20 +12,47 @@
 // canlı keşif sonucunda bulunup bulunmadığını kontrol eder; "Gerçekten Çalıştır" gerçek
 // run() ucunu çağırır (onay penceresi + iş takip çubuğuna eklenir).
 //
-// KAPSAM (bilinçli): OpsX'in JVM/Pod keşif+dump zincirleri (çok adımlı async akış) ve
-// LogX (request-tabanlı state machine) burada YOK — ayrı bir turda eklenecek.
+// OpsX'in JVM/Pod keşif+dump zincirleri de burada — bunlar FileX/Telnet/OpsX-restart'tan
+// FARKLI bir mimariye sahip: "keşif" adımının kendisi (hangi JVM/pod'ların çalıştığı)
+// zaten GERÇEK bir AWX job'ı gerektirir (searchApps/getHosts gibi bedava bir REST ucu
+// YOK) — bu yüzden bu iki bölüm "Keşfet/Doğrula/Çalıştır" üç-buton desenini DEĞİL, sıralı
+// bir adım zinciri (uygulama/host bul → JVM/Pod keşfet (AWX job, onaylı) → dump al
+// (AWX job, onaylı)) kullanır. LogX (request-tabanlı state machine) ayrı bir turda.
 import React, { useState } from "react";
 import {
   BoltIcon, MagnifyingGlassIcon, ShieldCheckIcon, PlayIcon, ArrowPathIcon,
   CheckCircleIcon, XCircleIcon, FolderIcon, ServerStackIcon, CommandLineIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 import { filexApi } from "@/api/filexApi";
 import { telnetApi } from "@/api/telnetApi";
-import { opsxApi, type OpsxOperation, type OpsxOcpOperation } from "@/api/opsxApi";
+import {
+  opsxApi, type OpsxOperation, type OpsxOcpOperation, type OpsxDumpType,
+  type OpsxJvm, type OpsxPod, type OpsxDumpResultItem, type OpsxPidSelection,
+} from "@/api/opsxApi";
 import { toast } from "@/hooks/useToast";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 
 type RunState = { status: "idle" | "checking" | "ok" | "invalid" | "running" | "ran" | "error"; message?: string };
+
+// AWX job durumlarının terminal (bitmiş) kümesi — JobTrackerContext'teki AYNI liste.
+const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
+
+// Keşif/dump job'larını sonuçlanana kadar bekler — JVM/pod keşfi ve dump job'ları
+// genelde birkaç host/pod üzerinde SSH/oc exec çalıştırdığı için birkaç dakikaya
+// kadar sürebilir, bu yüzden zaman aşımı diğer job'lardan daha geniş tutuldu.
+async function pollUntilTerminal<T extends { status: string }>(
+  fetchFn: () => Promise<T>,
+  { intervalMs = 3000, timeoutMs = 5 * 60_000 }: { intervalMs?: number; timeoutMs?: number } = {}
+): Promise<T> {
+  const start = Date.now();
+  for (;;) {
+    const s = await fetchFn();
+    if (TERMINAL.has(s.status)) return s;
+    if (Date.now() - start > timeoutMs) throw new Error("Zaman aşımı — job çok uzun sürdü.");
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
 
 function StatusBadge({ st }: { st: RunState }) {
   if (st.status === "idle") return null;
@@ -511,6 +538,255 @@ function OpsxOcpSection() {
   );
 }
 
+// ── OpsX — Legacy JVM keşif + Dump zinciri ────────────────────────────────────
+function StepLog({ lines }: { lines: string[] }) {
+  if (!lines.length) return null;
+  return (
+    <div className="text-[11px] font-mono bg-gray-50 border border-gray-100 rounded-lg px-2 py-1.5 space-y-0.5 max-h-32 overflow-y-auto">
+      {lines.map((l, i) => <div key={i}>{l}</div>)}
+    </div>
+  );
+}
+
+function DumpResultsList({ results }: { results: OpsxDumpResultItem[] }) {
+  if (!results.length) return null;
+  return (
+    <div className="space-y-1">
+      {results.map((r, i) => (
+        <div key={i} className="flex items-center justify-between gap-2 text-xs p-2 border border-gray-100 rounded-lg">
+          <span className="truncate">
+            {r.host || `${r.namespace}/${r.pod}`} {r.ok ? "✅" : `❌ ${r.error || ""}`}
+          </span>
+          {r.ok && r.downloadToken && (
+            <a href={opsxApi.dumpDownloadUrl(r.downloadToken)} className="flex items-center gap-1 text-[#0066CC] font-semibold flex-shrink-0">
+              <ArrowDownTrayIcon className="w-3.5 h-3.5" /> İndir
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OpsxLegacyDumpSection() {
+  const [app, setApp] = useState("");
+  const [hosts, setHosts] = useState("");
+  const [dumpType, setDumpType] = useState<OpsxDumpType>("threaddump");
+  const [busy, setBusy] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+  const [jvms, setJvms] = useState<OpsxJvm[]>([]);
+  const [results, setResults] = useState<OpsxDumpResultItem[]>([]);
+  const pushLog = (s: string) => setLog((l) => [...l, s]);
+
+  const findAppHost = async () => {
+    setBusy(true); setLog([]); setJvms([]); setResults([]);
+    try {
+      const apps = await opsxApi.searchApps("");
+      if (!apps.ok || !apps.apps.length) throw new Error("Hiç uygulama bulunamadı.");
+      const foundApp = apps.apps[0];
+      const h = await opsxApi.getHosts(foundApp);
+      if (!h.ok || !h.hosts.length) throw new Error(`"${foundApp}" için sunucu bulunamadı.`);
+      setApp(foundApp);
+      setHosts(csv(h.hosts.slice(0, 1).map((x) => x.host)));
+      pushLog(`Bulundu: ${foundApp} @ ${h.hosts[0].host}`);
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const discoverJvms = async () => {
+    const hostList = parseCsv(hosts);
+    if (!app.trim() || !hostList.length) { toast.error("Önce uygulama/sunucu bulun."); return; }
+    const ok = window.confirm(`JVM keşfi GERÇEK bir AWX job'ı tetikler (salt-okunur listeleme — hiçbir şeyi durdurmaz/başlatmaz).\n\nUygulama: ${app}\nSunucular: ${csv(hostList)}\n\nDevam edilsin mi?`);
+    if (!ok) return;
+    setBusy(true); setJvms([]); setResults([]);
+    pushLog("JVM keşfi tetikleniyor...");
+    try {
+      const launch = await opsxApi.discoverLegacyJvms(app, hostList);
+      if (!launch.ok || !launch.jobId) throw new Error(launch.message || "Tetiklenemedi.");
+      pushLog(`Job #${launch.jobId} çalışıyor, bekleniyor...`);
+      const final = await pollUntilTerminal(() => opsxApi.legacyJvmStatus(launch.awxServerId, launch.jobId as number));
+      if (final.status !== "successful" || !final.jvms?.length) throw new Error(final.message || "JVM bulunamadı.");
+      setJvms(final.jvms);
+      pushLog(`${final.jvms.length} JVM bulundu: ${final.jvms.map((j) => `${j.host}:${j.pid}`).join(", ")}`);
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runDump = async () => {
+    if (!jvms.length) { toast.error("Önce JVM keşfi yapın."); return; }
+    const ok = window.confirm(`"${dumpType}" GERÇEKTEN alınacak.\n\nJVM sayısı: ${jvms.length} (${jvms.map((j) => `${j.host}:${j.pid}`).join(", ")})\n\nDevam edilsin mi?`);
+    if (!ok) return;
+    setBusy(true); setResults([]);
+    pushLog("Dump tetikleniyor...");
+    try {
+      const pidMap: Record<string, OpsxPidSelection[]> = {};
+      for (const j of jvms) {
+        (pidMap[j.host] ||= []).push({ pid: j.pid, jbossMajor: j.jbossMajor });
+      }
+      const launch = await opsxApi.dumpLegacy(app, Object.keys(pidMap), dumpType, pidMap);
+      if (!launch.ok || !launch.jobId) throw new Error(launch.message || "Tetiklenemedi.");
+      pushLog(`Job #${launch.jobId} çalışıyor, bekleniyor...`);
+      const final = await pollUntilTerminal(() => opsxApi.dumpStatus(launch.awxServerId, launch.jobId as number));
+      setResults(final.results || []);
+      pushLog(final.status === "successful" ? "Dump tamamlandı." : `Bitti (${final.status}): ${final.message || ""}`);
+      if (final.status === "successful") toast.success("Dump tamamlandı.");
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SectionCard icon={CommandLineIcon} title="OpsX — Legacy JVM Keşif + Dump" note="Sıralı zincir: uygulama/host bul → JVM keşfet (AWX job, onaylı) → dump al (AWX job, onaylı).">
+      <div className="space-y-1.5">
+        <Field label="application" value={app} onChange={setApp} placeholder="(1. adım)" />
+        <Field label="hosts" value={hosts} onChange={setHosts} placeholder="(1. adım)" />
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] font-mono text-gray-500 w-28 flex-shrink-0">dumpType</label>
+          <select value={dumpType} onChange={(e) => setDumpType(e.target.value as OpsxDumpType)} className="flex-1 min-w-0 text-xs font-mono border border-gray-200 rounded-lg px-2 py-1">
+            <option value="threaddump">threaddump</option>
+            <option value="heapdump">heapdump</option>
+          </select>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button onClick={findAppHost} disabled={busy} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+          <MagnifyingGlassIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 1) Uygulama/Host Bul
+        </button>
+        <button onClick={discoverJvms} disabled={busy || !app} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50">
+          <ShieldCheckIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 2) JVM Keşfet
+        </button>
+        <button onClick={runDump} disabled={busy || !jvms.length} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
+          <PlayIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 3) Dump Al
+        </button>
+      </div>
+      <StepLog lines={log} />
+      <DumpResultsList results={results} />
+    </SectionCard>
+  );
+}
+
+// ── OpsX — OCP Pod keşif + Dump zinciri ───────────────────────────────────────
+function OpsxOcpDumpSection() {
+  const [env, setEnv] = useState("");
+  const [tenant, setTenant] = useState("");
+  const [namespace, setNamespace] = useState("");
+  const [application, setApplication] = useState("");
+  const [dumpType, setDumpType] = useState<OpsxDumpType>("threaddump");
+  const [busy, setBusy] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+  const [pods, setPods] = useState<OpsxPod[]>([]);
+  const [results, setResults] = useState<OpsxDumpResultItem[]>([]);
+  const pushLog = (s: string) => setLog((l) => [...l, s]);
+
+  const findTarget = async () => {
+    setBusy(true); setLog([]); setPods([]); setResults([]);
+    try {
+      const c = await opsxApi.getClusters();
+      const envs = Object.keys(c.tree || {}).sort();
+      if (!envs.length) throw new Error("Hiç ortam (env) bulunamadı.");
+      const foundEnv = envs[0];
+      const tenants = Object.keys(c.tree[foundEnv] || {}).sort();
+      if (!tenants.length) throw new Error(`"${foundEnv}" için tenant bulunamadı.`);
+      const foundTenant = tenants[0];
+      const ns = await opsxApi.getOcpNamespaces(foundEnv, foundTenant);
+      if (!ns.ok || !ns.namespaces.length) throw new Error(`"${foundEnv}/${foundTenant}" için namespace bulunamadı.`);
+      const foundNs = ns.namespaces[0];
+      const apps = await opsxApi.getOcpApps(foundEnv, foundTenant, foundNs);
+      if (!apps.ok || !apps.apps.length) throw new Error(`"${foundNs}" içinde uygulama bulunamadı.`);
+      setEnv(foundEnv); setTenant(foundTenant); setNamespace(foundNs); setApplication(apps.apps[0]);
+      pushLog(`Bulundu: ${foundEnv}/${foundTenant} — ${foundNs}/${apps.apps[0]}`);
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const discoverPods = async () => {
+    if (!env || !tenant || !namespace || !application) { toast.error("Önce hedefi bulun."); return; }
+    const ok = window.confirm(`Pod keşfi GERÇEK bir AWX job'ı tetikler (salt-okunur listeleme).\n\nEnv/Tenant: ${env}/${tenant}\nNamespace/Uygulama: ${namespace}/${application}\n\nDevam edilsin mi?`);
+    if (!ok) return;
+    setBusy(true); setPods([]); setResults([]);
+    pushLog("Pod keşfi tetikleniyor...");
+    try {
+      const pairs = [{ namespace, application }];
+      const launch = await opsxApi.discoverOcpPods(env, tenant, pairs);
+      if (!launch.ok || !launch.jobId) throw new Error(launch.message || "Tetiklenemedi.");
+      pushLog(`Job #${launch.jobId} çalışıyor, bekleniyor...`);
+      const final = await pollUntilTerminal(() => opsxApi.ocpPodsStatus(launch.awxServerId, launch.jobId as number));
+      if (final.status !== "successful" || !final.pods?.length) throw new Error(final.message || "Pod bulunamadı.");
+      setPods(final.pods);
+      pushLog(`${final.pods.length} pod bulundu: ${final.pods.map((p) => p.name).join(", ")}`);
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runDump = async () => {
+    if (!pods.length) { toast.error("Önce pod keşfi yapın."); return; }
+    const target = pods[0];
+    const ok = window.confirm(`"${dumpType}" GERÇEKTEN alınacak.\n\nPod: ${target.cluster}/${target.namespace}/${target.name}\n\nDevam edilsin mi?`);
+    if (!ok) return;
+    setBusy(true); setResults([]);
+    pushLog(`Dump tetikleniyor (${target.name})...`);
+    try {
+      const pairs = [{ namespace, application }];
+      const launch = await opsxApi.dumpOpenshift(env, tenant, pairs, [{ cluster: target.cluster, namespace: target.namespace, pod: target.name }], dumpType);
+      if (!launch.ok || !launch.jobId) throw new Error(launch.message || "Tetiklenemedi.");
+      pushLog(`Job #${launch.jobId} çalışıyor, bekleniyor...`);
+      const final = await pollUntilTerminal(() => opsxApi.dumpStatus(launch.awxServerId, launch.jobId as number));
+      setResults(final.results || []);
+      pushLog(final.status === "successful" ? "Dump tamamlandı." : `Bitti (${final.status}): ${final.message || ""}`);
+      if (final.status === "successful") toast.success("Dump tamamlandı.");
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SectionCard icon={CommandLineIcon} title="OpsX — OpenShift Pod Keşif + Dump" note="Sıralı zincir: hedef bul → pod keşfet (AWX job, onaylı) → dump al (AWX job, onaylı). İlk bulunan pod kullanılır.">
+      <div className="space-y-1.5">
+        <Field label="env" value={env} onChange={setEnv} placeholder="(1. adım)" />
+        <Field label="tenant" value={tenant} onChange={setTenant} placeholder="(1. adım)" />
+        <Field label="namespace" value={namespace} onChange={setNamespace} placeholder="(1. adım)" />
+        <Field label="application" value={application} onChange={setApplication} placeholder="(1. adım)" />
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] font-mono text-gray-500 w-28 flex-shrink-0">dumpType</label>
+          <select value={dumpType} onChange={(e) => setDumpType(e.target.value as OpsxDumpType)} className="flex-1 min-w-0 text-xs font-mono border border-gray-200 rounded-lg px-2 py-1">
+            <option value="threaddump">threaddump</option>
+            <option value="heapdump">heapdump</option>
+          </select>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button onClick={findTarget} disabled={busy} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+          <MagnifyingGlassIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 1) Hedef Bul
+        </button>
+        <button onClick={discoverPods} disabled={busy || !application} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50">
+          <ShieldCheckIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 2) Pod Keşfet
+        </button>
+        <button onClick={runDump} disabled={busy || !pods.length} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
+          <PlayIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 3) Dump Al
+        </button>
+      </div>
+      <StepLog lines={log} />
+      <DumpResultsList results={results} />
+    </SectionCard>
+  );
+}
+
 export default function FlowTestsTab() {
   return (
     <div className="space-y-6">
@@ -525,7 +801,8 @@ export default function FlowTestsTab() {
             bu geri alınamaz olabilir, her seferinde ayrıca onay ister.
           </div>
           <div className="mt-1.5 text-xs">
-            Henüz kapsam dışı (ayrı bir turda eklenecek): OpsX'in JVM/Pod keşif+dump zincirleri ve LogX.
+            OpsX'in JVM/Pod keşif+dump bölümleri sıralı adım butonları kullanır (1-2-3) — 2. adım
+            (keşif) bile GERÇEK bir AWX job'ı tetikler (salt-okunur listeleme). Henüz kapsam dışı: LogX.
           </div>
         </div>
       </div>
@@ -550,6 +827,8 @@ export default function FlowTestsTab() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <OpsxLegacySection />
           <OpsxOcpSection />
+          <OpsxLegacyDumpSection />
+          <OpsxOcpDumpSection />
         </div>
       </div>
     </div>
