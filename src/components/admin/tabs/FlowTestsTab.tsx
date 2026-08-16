@@ -30,6 +30,7 @@ import {
   opsxApi, type OpsxOperation, type OpsxOcpOperation, type OpsxDumpType,
   type OpsxJvm, type OpsxPod, type OpsxDumpResultItem, type OpsxPidSelection,
 } from "@/api/opsxApi";
+import { logxV2Api, type LegacyDiscoveryResult, type OcpNamespaceDiscoveryResult, type DownloadInfo } from "@/api/logxV2Api";
 import { toast } from "@/hooks/useToast";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 
@@ -787,6 +788,271 @@ function OpsxOcpDumpSection() {
   );
 }
 
+// ── LogX ─────────────────────────────────────────────────────────────────────
+// LogX'in AKIŞI diğer üçünden TAMAMEN FARKLI: tek bir run() çağrısı yok — önce bir
+// `requestId` açılır (createRequest), sonra keşif/transfer/çekim adımları bu requestId
+// ÜZERİNDEN sırayla çağrılır ve durum her zaman sunucudan (logx_v2_requests.state)
+// okunur (bkz. LogXWizardPage.tsx dosya başı notu). Burada AYNI sırayı elle yürütüyoruz.
+function DownloadBadge({ d }: { d: DownloadInfo | null }) {
+  if (!d) return null;
+  return (
+    <a href={logxV2Api.downloadUrl(d.token)} className="flex items-center gap-1 text-xs font-semibold text-[#0066CC] w-fit">
+      <ArrowDownTrayIcon className="w-3.5 h-3.5" /> {d.filename} indir
+    </a>
+  );
+}
+
+function LogXLegacySection() {
+  const [app, setApp] = useState("");
+  const [hosts, setHosts] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [pickedFile, setPickedFile] = useState<{ host: string; path: string } | null>(null);
+  const [download, setDownload] = useState<DownloadInfo | null>(null);
+  const pushLog = (s: string) => setLog((l) => [...l, s]);
+
+  const findAppHost = async () => {
+    setBusy(true); setLog([]); setRequestId(null); setPickedFile(null); setDownload(null);
+    try {
+      const apps = await logxV2Api.searchLegacyApps("");
+      if (!apps.ok || !apps.apps.length) throw new Error("Hiç uygulama bulunamadı.");
+      const foundApp = apps.apps[0];
+      const h = await logxV2Api.legacyHosts(foundApp);
+      if (!h.ok || !h.hosts.length) throw new Error(`"${foundApp}" için sunucu bulunamadı.`);
+      setApp(foundApp);
+      setHosts(csv(h.hosts.slice(0, 1).map((x) => x.host)));
+      pushLog(`Bulundu: ${foundApp} @ ${h.hosts[0].host}`);
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const discoverFiles = async () => {
+    const hostList = parseCsv(hosts);
+    if (!app.trim() || !hostList.length) { toast.error("Önce uygulama/sunucu bulun."); return; }
+    const ok = window.confirm(`Log dosyası taraması GERÇEK bir AWX job'ı tetikler (salt-okunur listeleme).\n\nUygulama: ${app}\nSunucular: ${csv(hostList)}\n\nDevam edilsin mi?`);
+    if (!ok) return;
+    setBusy(true); setPickedFile(null); setDownload(null);
+    pushLog("İstek açılıyor...");
+    try {
+      const req = await logxV2Api.createRequest("legacy");
+      if (!req.ok) throw new Error("İstek açılamadı.");
+      setRequestId(req.requestId);
+      pushLog(`İstek #${req.requestId} — dosya taraması tetikleniyor...`);
+      const launch = await logxV2Api.discoverLegacy(req.requestId, app, hostList);
+      if (!launch.ok || !launch.jobId) throw new Error("Tetiklenemedi.");
+      pushLog(`Job #${launch.jobId} çalışıyor, bekleniyor...`);
+      await pollUntilTerminal(() => logxV2Api.jobStatus(launch.jobId));
+      const r = await logxV2Api.getRequest(req.requestId);
+      const result = r.request.discoveryResult as LegacyDiscoveryResult | null;
+      const okHost = result?.hosts?.find((h) => h.status === "ok" && h.files?.length);
+      if (!okHost) throw new Error("Taranabilir dosya bulunamadı.");
+      setPickedFile({ host: okHost.host, path: okHost.files[0].path });
+      pushLog(`Dosya bulundu: ${okHost.host}:${okHost.files[0].path}`);
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const transfer = async () => {
+    if (!requestId || !pickedFile) { toast.error("Önce dosya taraması yapın."); return; }
+    const ok = window.confirm(`Dosya GERÇEKTEN aktarılıp zip'lenecek.\n\n${pickedFile.host}:${pickedFile.path}\n\nDevam edilsin mi?`);
+    if (!ok) return;
+    setBusy(true); setDownload(null);
+    pushLog("Aktarım tetikleniyor...");
+    try {
+      const launch = await logxV2Api.transferLegacy(requestId, [pickedFile]);
+      if (!launch.ok || !launch.jobId) throw new Error("Tetiklenemedi.");
+      pushLog(`Job #${launch.jobId} çalışıyor, bekleniyor...`);
+      await pollUntilTerminal(() => logxV2Api.jobStatus(launch.jobId));
+      const r = await logxV2Api.getRequest(requestId);
+      setDownload(r.download);
+      pushLog(r.download ? "Aktarım tamamlandı." : `Bitti (${r.request.state}): ${r.request.errorMessage || ""}`);
+      if (r.download) toast.success("Aktarım tamamlandı.");
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SectionCard icon={FolderIcon} title="LogX — Legacy" note="Sıralı zincir: uygulama/host bul → dosya tara (AWX job, onaylı) → aktar/zip'le (AWX job, onaylı).">
+      <div className="space-y-1.5">
+        <Field label="application" value={app} onChange={setApp} placeholder="(1. adım)" />
+        <Field label="hosts" value={hosts} onChange={setHosts} placeholder="(1. adım)" />
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button onClick={findAppHost} disabled={busy} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+          <MagnifyingGlassIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 1) Uygulama/Host Bul
+        </button>
+        <button onClick={discoverFiles} disabled={busy || !app} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50">
+          <ShieldCheckIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 2) Dosya Tara
+        </button>
+        <button onClick={transfer} disabled={busy || !pickedFile} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
+          <PlayIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 3) Aktar
+        </button>
+      </div>
+      <StepLog lines={log} />
+      <DownloadBadge d={download} />
+    </SectionCard>
+  );
+}
+
+function LogXOcpSection() {
+  const [env, setEnv] = useState("");
+  const [tenant, setTenant] = useState("");
+  const [cluster, setCluster] = useState("");
+  const [namespace, setNamespace] = useState("");
+  const [application, setApplication] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [download, setDownload] = useState<DownloadInfo | null>(null);
+  const pushLog = (s: string) => setLog((l) => [...l, s]);
+
+  const findTargetAndOpenRequest = async () => {
+    setBusy(true); setLog([]); setNamespace(""); setApplication(""); setDownload(null);
+    try {
+      const c = await logxV2Api.getClusterTree();
+      const envs = Object.keys(c.tree || {}).sort();
+      if (!envs.length) throw new Error("Hiç ortam (env) bulunamadı.");
+      const foundEnv = envs[0];
+      const tenants = Object.keys(c.tree[foundEnv] || {}).sort();
+      if (!tenants.length) throw new Error(`"${foundEnv}" için tenant bulunamadı.`);
+      const foundTenant = tenants[0];
+      const clusters = c.tree[foundEnv][foundTenant] || [];
+      if (!clusters.length) throw new Error(`"${foundEnv}/${foundTenant}" için cluster bulunamadı.`);
+      const foundCluster = clusters[0];
+
+      const req = await logxV2Api.createRequest("openshift");
+      if (!req.ok) throw new Error("İstek açılamadı.");
+      await logxV2Api.selectClusters(req.requestId, foundEnv, foundTenant, [foundCluster]);
+
+      setEnv(foundEnv); setTenant(foundTenant); setCluster(foundCluster); setRequestId(req.requestId);
+      pushLog(`İstek #${req.requestId} — hedef: ${foundEnv}/${foundTenant}/${foundCluster}`);
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const findNamespace = async () => {
+    if (!requestId) { toast.error("Önce hedef bulun."); return; }
+    setBusy(true); setNamespace(""); setApplication("");
+    try {
+      // BİRİNCİL kaynak: zamanlanmış envanter (AWX job TETİKLEMEZ) — LogXWizardPage ile AYNI öncelik.
+      const inv = await logxV2Api.inventoryNamespaces(env, tenant, [cluster]).catch(() => null);
+      if (inv?.cached && inv.items.length) {
+        setNamespace(inv.items[0]);
+        pushLog(`Namespace (envanterden): ${inv.items[0]}`);
+        return;
+      }
+      const ok = window.confirm(`Envanterde kayıt yok — namespace taraması GERÇEK bir AWX job'ı tetikler.\n\nHedef: ${env}/${tenant}/${cluster}\n\nDevam edilsin mi?`);
+      if (!ok) return;
+      pushLog("Namespace taraması tetikleniyor...");
+      const launch = await logxV2Api.discoverNamespaces(requestId);
+      if (!launch.ok || !launch.jobId) throw new Error("Tetiklenemedi.");
+      pushLog(`Job #${launch.jobId} çalışıyor, bekleniyor...`);
+      await pollUntilTerminal(() => logxV2Api.jobStatus(launch.jobId));
+      const r = await logxV2Api.getRequest(requestId);
+      const result = r.request.discoveryResult as OcpNamespaceDiscoveryResult | null;
+      const okCluster = result?.clusters?.find((c) => c.status === "ok" && c.namespaces?.length);
+      if (!okCluster) throw new Error("Namespace bulunamadı.");
+      setNamespace(okCluster.namespaces[0]);
+      pushLog(`Namespace (taramadan): ${okCluster.namespaces[0]}`);
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const findApp = async () => {
+    if (!requestId || !namespace) { toast.error("Önce namespace bulun."); return; }
+    setBusy(true); setApplication("");
+    try {
+      const cached = await logxV2Api.cachedApps(env, tenant, cluster, namespace).catch(() => null);
+      if (cached?.items?.length) {
+        setApplication(cached.items[0].name);
+        pushLog(`Uygulama (önbellekten): ${cached.items[0].name}`);
+        return;
+      }
+      const ok = window.confirm(`Önbellekte kayıt yok — uygulama taraması GERÇEK bir AWX job'ı tetikler.\n\nNamespace: ${namespace}\n\nDevam edilsin mi?`);
+      if (!ok) return;
+      pushLog("Uygulama taraması tetikleniyor...");
+      const launch = await logxV2Api.discoverApps(requestId, [namespace]);
+      if (!launch.ok || !launch.jobId) throw new Error("Tetiklenemedi.");
+      pushLog(`Job #${launch.jobId} çalışıyor, bekleniyor...`);
+      await pollUntilTerminal(() => logxV2Api.jobStatus(launch.jobId));
+      const after = await logxV2Api.cachedApps(env, tenant, cluster, namespace);
+      if (!after.items?.length) throw new Error("Uygulama bulunamadı.");
+      setApplication(after.items[0].name);
+      pushLog(`Uygulama (taramadan): ${after.items[0].name}`);
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fetchLogs = async () => {
+    if (!requestId || !namespace || !application) { toast.error("Önce uygulama bulun."); return; }
+    const ok = window.confirm(`Loglar GERÇEKTEN çekilip zip'lenecek.\n\nNamespace/Uygulama: ${namespace}/${application}\n\nDevam edilsin mi?`);
+    if (!ok) return;
+    setBusy(true); setDownload(null);
+    pushLog("Log çekimi tetikleniyor...");
+    try {
+      const launch = await logxV2Api.discoverFetchOcp(requestId, [{ namespace, appName: application }]);
+      if (!launch.ok || !launch.jobId) throw new Error("Tetiklenemedi.");
+      pushLog(`Job #${launch.jobId} çalışıyor, bekleniyor...`);
+      await pollUntilTerminal(() => logxV2Api.jobStatus(launch.jobId));
+      const r = await logxV2Api.getRequest(requestId);
+      setDownload(r.download);
+      pushLog(r.download ? "Log çekimi tamamlandı." : `Bitti (${r.request.state}): ${r.request.errorMessage || ""}`);
+      if (r.download) toast.success("Log çekimi tamamlandı.");
+    } catch (e) {
+      pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SectionCard icon={ServerStackIcon} title="LogX — OpenShift" note="Sıralı zincir: hedef bul + istek aç → namespace bul (önce envanter, boşsa AWX job) → uygulama bul (önce önbellek, boşsa AWX job) → logları çek (AWX job, onaylı).">
+      <div className="space-y-1.5">
+        <Field label="env" value={env} onChange={setEnv} placeholder="(1. adım)" />
+        <Field label="tenant" value={tenant} onChange={setTenant} placeholder="(1. adım)" />
+        <Field label="cluster" value={cluster} onChange={setCluster} placeholder="(1. adım)" />
+        <Field label="namespace" value={namespace} onChange={setNamespace} placeholder="(2. adım)" />
+        <Field label="application" value={application} onChange={setApplication} placeholder="(3. adım)" />
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button onClick={findTargetAndOpenRequest} disabled={busy} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+          <MagnifyingGlassIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 1) Hedef Bul
+        </button>
+        <button onClick={findNamespace} disabled={busy || !requestId} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+          <MagnifyingGlassIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 2) Namespace Bul
+        </button>
+        <button onClick={findApp} disabled={busy || !namespace} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+          <MagnifyingGlassIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 3) Uygulama Bul
+        </button>
+        <button onClick={fetchLogs} disabled={busy || !application} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
+          <PlayIcon className={`w-3.5 h-3.5 ${busy ? "animate-spin" : ""}`} /> 4) Logları Çek
+        </button>
+      </div>
+      <StepLog lines={log} />
+      <DownloadBadge d={download} />
+    </SectionCard>
+  );
+}
+
 export default function FlowTestsTab() {
   return (
     <div className="space-y-6">
@@ -801,8 +1067,9 @@ export default function FlowTestsTab() {
             bu geri alınamaz olabilir, her seferinde ayrıca onay ister.
           </div>
           <div className="mt-1.5 text-xs">
-            OpsX'in JVM/Pod keşif+dump bölümleri sıralı adım butonları kullanır (1-2-3) — 2. adım
-            (keşif) bile GERÇEK bir AWX job'ı tetikler (salt-okunur listeleme). Henüz kapsam dışı: LogX.
+            OpsX'in JVM/Pod ve LogX'in dosya/namespace/uygulama keşif bölümleri sıralı adım butonları
+            kullanır (1-2-3-4) — bu adımlardan bazıları (JVM/Pod/namespace/dosya taraması) da GERÇEK
+            bir AWX job'ı tetikler (salt-okunur listeleme), bu yüzden onlar da onay ister.
           </div>
         </div>
       </div>
@@ -829,6 +1096,14 @@ export default function FlowTestsTab() {
           <OpsxOcpSection />
           <OpsxLegacyDumpSection />
           <OpsxOcpDumpSection />
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-bold mb-2" style={{ color: "var(--text-muted)" }}>LogX</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <LogXLegacySection />
+          <LogXOcpSection />
         </div>
       </div>
     </div>
