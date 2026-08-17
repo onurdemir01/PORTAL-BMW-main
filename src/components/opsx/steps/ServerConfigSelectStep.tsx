@@ -34,6 +34,17 @@ const OPERATION_QUESTION_VERBS: Record<string, string> = {
   start: "başlatılsın",
 };
 
+// 2026-08-17 (kullanici istegi): zaten durmus bir JVM'e "durdur", zaten calisan bir
+// JVM'e "baslat" tetiklemenin anlami yok (jboss-cli'de muhtemelen no-op olur ama
+// kullaniciyi yanlis bir islemi secebilecegi bir durumda birakmak yerine, ANLAMSIZ
+// secimi en bastan ENGELLEMEK daha net). "restart" HER durumda anlamli kabul edilir
+// (durmus bir JVM'i "restart" etmek "baslat" ile ayni sonucu verir).
+function isEligible(status: string, operation: OpsxOperation): boolean {
+  if (operation === "stop") return status !== "stopped";
+  if (operation === "start") return status !== "running";
+  return true;
+}
+
 const ServerConfigSelectStep: React.FC<{
   application: string;
   hosts: string[];
@@ -75,7 +86,9 @@ const ServerConfigSelectStep: React.FC<{
           }
           const preselected = new Set<string>();
           for (const list of byHost.values()) {
-            if (list.length === 1) preselected.add(cfgKey(list[0].host, list[0].serverConfig));
+            if (list.length === 1 && isEligible(list[0].status, operation)) {
+              preselected.add(cfgKey(list[0].host, list[0].serverConfig));
+            }
           }
           setSelected(preselected);
         } else {
@@ -128,7 +141,7 @@ const ServerConfigSelectStep: React.FC<{
   }
 
   function selectAll() {
-    setSelected(new Set(configs.map((c) => cfgKey(c.host, c.serverConfig))));
+    setSelected(new Set(configs.filter((c) => isEligible(c.status, operation)).map((c) => cfgKey(c.host, c.serverConfig))));
   }
 
   function clearAll() {
@@ -232,19 +245,26 @@ const ServerConfigSelectStep: React.FC<{
             <div className="mt-1 space-y-1 border border-[var(--border)] rounded-xl p-1.5">
               {grouped[host].map((c) => {
                 const running = c.status === "running";
+                const eligible = isEligible(c.status, operation);
                 return (
                   <label
                     key={c.serverConfig}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] cursor-pointer"
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] ${eligible ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
+                    title={eligible ? undefined : (operation === "stop" ? "Zaten durmuş — durdurma işlemi anlamsız, seçilemez." : "Zaten çalışıyor — başlatma işlemi anlamsız, seçilemez.")}
                   >
                     <input
                       type="checkbox"
                       checked={selected.has(cfgKey(c.host, c.serverConfig))}
                       onChange={() => toggle(c.host, c.serverConfig)}
-                      disabled={busy}
+                      disabled={busy || !eligible}
                       className="rounded"
                     />
                     <span className="flex-1 text-sm text-[var(--text-primary)] font-mono truncate" title={c.serverConfig}>{c.serverConfig}</span>
+                    {!eligible && (
+                      <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">
+                        {operation === "stop" ? "zaten durmuş" : "zaten çalışıyor"}
+                      </span>
+                    )}
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 bg-gray-50 text-gray-500 border-gray-200">
                       JBoss {c.jbossMajor}
                     </span>

@@ -91,6 +91,7 @@ const OperationStep: React.FC<{
     () => hosts.some((h) => statuses[h] !== "running" && statuses[h] !== "stopped" && statuses[h] !== "partial"),
     [hosts, statuses]
   );
+  const anyPartial = useMemo(() => hosts.some((h) => statuses[h] === "partial"), [hosts, statuses]);
 
   function disabledReason(op: OpsxOperation): string | null {
     if (statusLoading) return "Sunucu durumu kontrol ediliyor…";
@@ -130,6 +131,18 @@ const OperationStep: React.FC<{
           );
         })}
       </div>
+
+      {!statusLoading && anyPartial && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm text-amber-800">
+          <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            Uygulamanıza bağlı birden fazla JVM bulunmaktadır ve bu JVM'lerin durumları
+            birbirinden farklı ("KARIŞIK" ile işaretli sunucu(lar)da bazı JVM'ler çalışırken
+            bazıları durmuş). Lütfen yapmak istediğiniz işlemi seçin; bir sonraki adımda
+            hangi JVM'(ler)e uygulanacağını tek tek belirleyebileceksiniz.
+          </span>
+        </div>
+      )}
 
       {statusError && (
         <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
