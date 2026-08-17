@@ -37,15 +37,18 @@ function parseRow(row) {
 }
 
 async function listAll() {
+  // Kullanici istegi (2026-08-17): liste alfabetik siralansin - sort_order/category artik
+  // birincil siralama anahtari degil (sort_order alani admin ekranindan hala duzenlenebilir,
+  // ama gorunumu artik etkilemiyor).
   const { rows } = await db.query(
-    `SELECT * FROM ansible_playbook_registry ORDER BY sort_order, category, display_name`
+    `SELECT * FROM ansible_playbook_registry ORDER BY display_name`
   );
   return rows.map(parseRow);
 }
 
 async function listEnabled() {
   const { rows } = await db.query(
-    `SELECT * FROM ansible_playbook_registry WHERE enabled = true ORDER BY sort_order, category, display_name`
+    `SELECT * FROM ansible_playbook_registry WHERE enabled = true ORDER BY display_name`
   );
   return rows.map(parseRow);
 }
