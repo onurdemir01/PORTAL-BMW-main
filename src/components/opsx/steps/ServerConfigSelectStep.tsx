@@ -24,6 +24,16 @@ const OPERATION_LABELS: Record<string, string> = {
   start: "Başlat",
 };
 
+// Buton metni ("Başlat") ile soru cümlesindeki fiil çekimi ("başlatılsın") Türkçe'de
+// farklı — OPERATION_LABELS'ı doğrudan soru cümlesine eklemek "Hangi JVM'(ler) Başlat
+// edilsin?" gibi dilbilgisine aykırı bir cümle üretiyordu. Soru için ayrı, doğru
+// çekimlenmiş metin.
+const OPERATION_QUESTION_VERBS: Record<string, string> = {
+  restart: "yeniden başlatılsın",
+  stop: "durdurulsun",
+  start: "başlatılsın",
+};
+
 const ServerConfigSelectStep: React.FC<{
   application: string;
   hosts: string[];
@@ -180,7 +190,7 @@ const ServerConfigSelectStep: React.FC<{
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-[var(--text-secondary)]">Hangi JVM'(ler) {OPERATION_LABELS[operation] || operation} edilsin?</p>
+          <p className="text-sm text-[var(--text-secondary)]">Hangi JVM'(ler) {OPERATION_QUESTION_VERBS[operation] || `${operation} edilsin`}?</p>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Uygulama: <span className="font-mono text-[var(--text-primary)]">{application}</span>
             {" · "}bir sunucuda birden fazla JVM bulunabilir — hangisinde işlem yapmak istediğinizi seçin, isterseniz tümünü de seçebilirsiniz
