@@ -375,7 +375,15 @@ function initTelnet(app) {
       });
     }
 
-    const limitValue = requested.join(',');
+    // telnet_legacy.yaml'in sonundaki "DB Ops" play'i sabit olarak GBLABT02'yi hedefler
+    // (is calistirmasini denetim icin DB'ye kaydeder) — OpsX Legacy'deki AYNI sorun/cozum
+    // (bkz. server/opsx/index.cjs "limitHosts" notu): AWX --limit PLAYBOOK GENELINDE
+    // gecerli oldugu icin, limit sadece secilen hedef sunucularla sinirlanirsa GBLABT02
+    // bu kumede olmadigindan o play "no hosts matched" ile sessizce atlanir. GBLABT02
+    // HER ZAMAN limit'e eklenir (zaten hedeflerden biriyse tekrar eklenmez).
+    const DB_OPS_HOST = 'GBLABT02';
+    const limitHosts = requested.includes(DB_OPS_HOST) ? requested : [...requested, DB_OPS_HOST];
+    const limitValue = limitHosts.join(',');
     const extraVars = { ip: ipTrim, port: portTrim };
     const logSummary = `app=${String(application).trim()} limit=${limitValue} ip=${ipTrim} port=${portTrim}`;
 
