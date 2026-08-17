@@ -86,8 +86,10 @@ async function resolveTarget(platform) {
 // bilgisi de dondurulur (kullanici hangi ortamdaki/versiyondaki sunucuyu sectigini
 // gormeli — ayni uygulamanin host'lari FARKLI JBoss majör surumlerinde olabiliyor;
 // status ise canli bir Ansible sorgusuyla DEGIL, dogrudan envanterden (MWAppsInventory.status,
-// "running"/"stopped") okunur — daha once bir playbook tetikleyip polling yapan
-// /api/opsx/status-check yaklasimi TERK EDILDI, cunku bu deger zaten envanterde hazir.
+// "running"/"stopped"/"partial" — partial: coklu-JVM'li bir uygulamanin bazi server-config'leri
+// calisirken bazilari durmus, bkz. java_app_ops/operations/tasks/main.yml) okunur — daha once
+// bir playbook tetikleyip polling yapan /api/opsx/status-check yaklasimi TERK EDILDI, cunku bu
+// deger zaten envanterde hazir.
 async function hostsForApp(app) {
   const appName = String(app || '').trim();
   if (!appName) {

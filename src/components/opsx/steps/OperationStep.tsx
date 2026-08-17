@@ -32,6 +32,12 @@ const DISABLED_WHEN_RUNNING = new Set<OpsxOperation>(["start"]);
 const STATUS_META: Record<string, { label: string; className: string }> = {
   running: { label: "ÇALIŞIYOR", className: "bg-emerald-50 text-emerald-700 border-emerald-100" },
   stopped: { label: "DURMUŞ", className: "bg-red-50 text-red-700 border-red-100" },
+  // 2026-08-17: birden fazla JVM'e (server-config) sahip uygulamalarda restart/stop/start
+  // sonrası bazıları çalışırken bazıları durmuş kalabilir — dbo.MWAppsInventory.status artık
+  // bu durumu "partial" olarak yazıyor (bkz. java_app_ops/operations/tasks/main.yml).
+  // "partial" BİLİNMEYEN bir durum DEĞİL, aksine GERÇEK ve GÖZLEMLENMİŞ bir durum — bu yüzden
+  // anyUnknown'a düşmemeli (asağıda), aksi halde tüm işlemler gereksiz yere kilitlenir.
+  partial: { label: "KARIŞIK", className: "bg-amber-50 text-amber-700 border-amber-100" },
 };
 
 const OperationStep: React.FC<{
@@ -76,8 +82,15 @@ const OperationStep: React.FC<{
   const anyStopped = useMemo(() => hosts.some((h) => statuses[h] === "stopped"), [hosts, statuses]);
   // Bir host icin envanterde status bos/beklenmedik bir degerse "running" da "stopped"
   // da DEGILDIR — guvenli varsayilan bilinmiyordur, "serbest birak" degil: TUM islemler
-  // kilitli kalir.
-  const anyUnknown = useMemo(() => hosts.some((h) => statuses[h] !== "running" && statuses[h] !== "stopped"), [hosts, statuses]);
+  // kilitli kalir. "partial" bu kurala DAHIL DEGIL — o BILINMEYEN degil, GERCEKTEN
+  // gozlemlenmis (bazi JVM'ler calisiyor, bazilari durmus) bir durum; ne anyRunning ne
+  // anyStopped'a uyar (asagida strict "===" ile kontrol ediliyor), yani partial-only bir
+  // host'ta HICBIR islem coarse seviyede engellenmez — hangi JVM'e dokunulacagi zaten bir
+  // sonraki adimda (ServerConfigSelectStep) CANLI kesifle tek tek secilir.
+  const anyUnknown = useMemo(
+    () => hosts.some((h) => statuses[h] !== "running" && statuses[h] !== "stopped" && statuses[h] !== "partial"),
+    [hosts, statuses]
+  );
 
   function disabledReason(op: OpsxOperation): string | null {
     if (statusLoading) return "Sunucu durumu kontrol ediliyor…";
