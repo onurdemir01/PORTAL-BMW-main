@@ -234,12 +234,42 @@
             pending_blank_skip = 0
           }
 
-          function strip_comment(s,   t) { t = s; sub(/#.*/, "", t); return t }
+          # Tirnak- ve kelime-siniri-farkinda yorum kirpma. Nginx'in gercek
+          # lexer kurali: "#" yalnizca bir KELIME SINIRINDA (bosluktan hemen
+          # sonra ya da satir basinda) yorum baslatir; halihazirda devam eden
+          # bir tirnaksiz kelimenin ICINDE gecen "#" duz karakterdir (orn.
+          # "location /?a=b#!/ {" -- buradaki "#" location path'inin bir
+          # parcasidir, yorum degildir). Ayrica tirnak icindeki "#" da (orn.
+          # add_header ... "foo#bar";) yorum sayilmaz.
+          function strip_comment(s,   i, ch, out, in_quote, at_boundary, n) {
+            out = ""; in_quote = 0; at_boundary = 1; n = length(s)
+            for (i = 1; i <= n; i++) {
+              ch = substr(s, i, 1)
+              if (ch == "\"") { in_quote = !in_quote; out = out ch; at_boundary = 0; continue }
+              if (!in_quote && ch == "#" && at_boundary) break
+              if (!in_quote && (ch == " " || ch == "\t")) { at_boundary = 1; out = out ch; continue }
+              at_boundary = 0
+              out = out ch
+            }
+            return out
+          }
 
           function count_char(s, c,   n, i) {
             n = 0
             for (i = 1; i <= length(s); i++) if (substr(s, i, 1) == c) n++
             return n
+          }
+
+          # Derinlik sayimi icin blok-disi suslu parantezleri yok sayar:
+          #   - tirnak icindeki { } (orn. CSP header degerleri)
+          #   - regex tekrar sayaclari {n} / {n,} / {n,m} (orn. location ~
+          #     "\.(js|css){1,2}$" ya da map/if regexlerinde)
+          # Boylece bunlar yanlislikla blok acilis/kapanisi sayilmaz.
+          function brace_probe(s,   t) {
+            t = s
+            gsub(/"[^"]*"/, "\"\"", t)
+            gsub(/\{[0-9]+(,[0-9]*)?\}/, "", t)
+            return t
           }
 
           function jesc(s,   t) {
@@ -254,7 +284,10 @@
           function parse_loc_header(h,   t, n, a) {
             t = strip_comment(h)
             sub(/^[ \t]*location[ \t]+/, "", t)
-            sub(/\{.*$/, "", t)
+            # Blogun gercek acilis parantezi satirdaki SON "{" karakteridir;
+            # regex tekrar sayaci ({1,2} gibi) varsa ondan sonra gelir, bu
+            # yuzden ILK "{" degil SON "{" yakalanir.
+            sub(/\{[^{]*$/, "", t)
             gsub(/^[ \t]+/, "", t); gsub(/[ \t]+$/, "", t)
             n = split(t, a, /[ \t]+/)
             if (n >= 2) { g_mod = a[1]; g_path = a[2] } else { g_mod = ""; g_path = a[1] }
@@ -275,22 +308,38 @@
             return ""
           }
 
-          # proxy_pass URL'inden uygulama ve namespace cikarir:
-          #   https://<application ... -vN>.<namespace>....  ->  g_app / g_ns
-          function extract_app(url,   rest, hostpart, after, a, n) {
-            g_app = ""; g_ns = ""
+          # proxy_pass URL'inden uygulama ve namespace cikarir. Gercek OCP route
+          # kalibi: <application>-v<N>-<namespace>[.<router-domain>][/path]
+          # -vN'den hemen sonra NOKTA DEGIL TIRE gelir (orn.
+          # baas-api-portal-sec-app-v0-baas-api-portal-security-ch-dev.apps-t...);
+          # namespace o tireden sonra ilk NOKTAya kadar olan (birden fazla tire
+          # icerebilen) kisimdir. Bazi route'larda domain hic yok (namespace
+          # sondan kadar devam eder), bazilarinda ise -vN'den sonra hicbir sey
+          # yok (orn. sadece "digi-main-container-app-v0") -- bu durumda
+          # namespace tahmin edilmez, "namespace_belirsiz" olarak isaretlenip
+          # elle incelemeye birakilir.
+          function extract_app(url,   rest, hostpart, after, sep, dot_pos) {
+            g_app = ""; g_ns = ""; g_reason = "vN_kalibi_yok"
             if (url !~ /^https?:\/\//) return
             rest = url; sub(/^https?:\/\//, "", rest)
             hostpart = rest
             sub(/[\/:?#].*$/, "", hostpart)
-            if (hostpart == "") return
+            if (hostpart == "") { g_reason = "gecersiz_url"; return }
             if (match(hostpart, /-v[0-9]+/) == 0) return
+
             after = substr(hostpart, RSTART + RLENGTH)
-            # "-vN" host adinin sonunda ya da nokta ile devam eden bir etiketin sonunda olmali
-            if (after != "" && substr(after, 1, 1) != ".") return
+            if (after == "") { g_reason = "namespace_belirsiz"; return }
+
+            sep = substr(after, 1, 1)
+            if (sep != "." && sep != "-") { g_reason = "vN_sonrasi_beklenmeyen_karakter"; return }
+
             g_app = substr(hostpart, 1, RSTART + RLENGTH - 1)
-            sub(/^\./, "", after)
-            if (after != "") { n = split(after, a, "."); g_ns = a[1] }
+            after = substr(after, 2)
+            if (after == "") return
+
+            dot_pos = index(after, ".")
+            if (dot_pos > 0) g_ns = substr(after, 1, dot_pos - 1)
+            else g_ns = after
           }
 
           function close_location(   pp, full, head_rest) {
@@ -299,7 +348,7 @@
             # Tek satirlik "location /x { proxy_pass ...; }" bloklarinda proxy_pass baslik
             # satirinin kendisindedir; acilis suslu parantezinden sonraki kismi da arariz.
             head_rest = loc_header
-            sub(/^[^{]*\{/, "", head_rest)
+            sub(/^.*\{/, "", head_rest)
             pp = find_proxy_pass(head_rest "\n" loc_body)
             extract_app(pp)
 
@@ -347,7 +396,7 @@
                   ",\"modifier\":\"" jesc(g_mod) "\"" \
                   ",\"path\":\"" jesc(g_path) "\"" \
                   ",\"proxy_pass\":\"" jesc(pp) "\"" \
-                  ",\"reason\":\"" (pp == "" ? "proxy_pass_yok" : "vN_kalibi_yok") "\"}"
+                  ",\"reason\":\"" (pp == "" ? "proxy_pass_yok" : g_reason) "\"}"
               } else {
                 printf "%s", full
                 pending_blank_skip = 0
@@ -360,8 +409,9 @@
             raw = $0
             sub(/\r$/, "", raw)
             code = strip_comment(raw)
-            opens = count_char(code, "{")
-            closes = count_char(code, "}")
+            probe = brace_probe(code)
+            opens = count_char(probe, "{")
+            closes = count_char(probe, "}")
 
             if (loc_active == 0) {
               if (code ~ /^[ \t]*server[ \t]*\{/) server_idx++

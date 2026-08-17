@@ -56,6 +56,7 @@ const REGISTRY_KEYS = Object.freeze({
   openshiftDump: 'opsx_openshift_dump',
   openshiftPods: 'opsx_openshift_pods',
   legacyJvmDiscover: 'opsx_legacy_jvm_discover',
+  legacyServerConfigDiscover: 'opsx_legacy_serverconfig_discover',
 });
 
 // Template ID + AWX sunucusu Playbook Kayitlari'ndan cozulur. getEffectiveTemplateId()
@@ -249,6 +250,13 @@ function extractOpsxPodsResult(rawArtifacts) {
 // JVM kesfi playbook'unun (opsx_legacy_jvm_discover.yml) sonucu.
 function extractOpsxJvmResult(rawArtifacts) {
   return extractStatsKey(rawArtifacts, 'opsx_jvm_result');
+}
+
+// Server-config kesfi playbook'unun (java_app_check.yml) sonucu — PID-bazli JVM kesfinden
+// (yukarida) FARKLI: burada JBoss domain-mode server-config adlari + STARTED/STOPPED
+// durumlari listelenir (restart/stop/start sihirbazinin JVM secim adimi icin).
+function extractOpsxServerConfigResult(rawArtifacts) {
+  return extractStatsKey(rawArtifacts, 'opsx_serverconfig_result');
 }
 
 // env+tenant secimine karsilik gelen GERCEK cluster isimleri (ocp_cluster_index'ten,
@@ -489,7 +497,7 @@ function initOpsX(app) {
   //   grubun tamamını hedefleyebilir (bu durumda target_cluster HİÇ gönderilmez, playbook
   //   eski/kanıtlı grup-tabanlı `hosts:`e döner). Bkz. OcpClusterPickStep.tsx.
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
-    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation, cluster } = req.body || {};
+    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation, cluster, serverConfigMap } = req.body || {};
 
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
@@ -528,12 +536,60 @@ function initOpsX(app) {
       }
 
       limitValue = requested.join(cfg.separator);
+
+      // restart/stop/start artik `application`in TEK bir server-config/server-group adi
+      // OLDUGUNU VARSAYMAZ (2026-08-17, kullanici istegi) — kullanici java_app_check.yml
+      // kesfinden HANGI JVM(ler)e (server-config) dokunulacagini acikca seciyor, serverConfigMap
+      // dump'daki pidMap ile AYNI sekil/desen: { HOST: [{name, jbossMajor}, ...] }.
+      // threaddump/heapdump BU DALA GIRMEZ (ayri /dump/legacy route'una gider, ayri pidMap
+      // dogrulamasi zaten var), o yuzden serverConfigMap SADECE restart/stop/start icin zorunlu.
+      let cleanServerConfigMap;
+      if (['restart', 'stop', 'start'].includes(operation)) {
+        if (!serverConfigMap || typeof serverConfigMap !== 'object' || Array.isArray(serverConfigMap) || Object.keys(serverConfigMap).length === 0) {
+          return res.status(400).json({ ok: false, message: 'En az bir JVM (host + server-config) seçilmeli.' });
+        }
+        const allowedHosts = new Set(requested);
+        cleanServerConfigMap = {};
+        for (const [host, items] of Object.entries(serverConfigMap)) {
+          const h = String(host || '').trim().toUpperCase();
+          if (!allowedHosts.has(h)) {
+            return res.status(400).json({ ok: false, message: `Bu host seçilen sunucular arasında değil: ${host}` });
+          }
+          if (!Array.isArray(items) || items.length === 0) continue;
+          const seen = new Set();
+          const cleanItems = [];
+          for (const it of items) {
+            const name = String(it?.name || '').trim();
+            const jbossMajor = String(it?.jbossMajor || '').trim();
+            // Bu deger playbook'ta jboss-cli komutuna DOGRUDAN shell enjekte edilir (bkz.
+            // jboss_serverconfig_ops.yml) — pid_map'teki PID dogrulamasiyla AYNI gerekce,
+            // sadece guvenli karakter kumesine izin verilir (Ansible tarafindaki
+            // "application" assert'iyle AYNI desen).
+            if (!/^[A-Za-z0-9_.-]+$/.test(name)) {
+              return res.status(400).json({ ok: false, message: `Geçersiz server-config adı: ${it?.name}` });
+            }
+            if (jbossMajor !== '7' && jbossMajor !== '8') {
+              return res.status(400).json({ ok: false, message: `Geçersiz JBoss sürümü: ${it?.jbossMajor}` });
+            }
+            const dedupeKey = `${name}:${jbossMajor}`;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+            cleanItems.push({ name, jbossMajor });
+          }
+          if (cleanItems.length) cleanServerConfigMap[h] = cleanItems;
+        }
+        if (Object.keys(cleanServerConfigMap).length === 0) {
+          return res.status(400).json({ ok: false, message: 'En az bir JVM (host + server-config) seçilmeli.' });
+        }
+      }
+
       // limit BURADA extra_vars'a KONMAZ — sartname onu ust seviyede istiyor.
       extraVars = {
         ...staticVars,
         [cfg.applicationKey]: String(application).trim(),
         [cfg.operationKey]: operation,
         ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
+        ...(cleanServerConfigMap ? { server_config_map: cleanServerConfigMap } : {}),
       };
 
       logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ` jboss_version=${jbossVersion}` : ''}`;
@@ -805,6 +861,118 @@ function initOpsX(app) {
         });
       }
       res.json({ ok: true, status: statusInfo.status, jvms: raw.results || [] });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // ── Legacy SERVER-CONFIG KESFI ────────────────────────────────────────────────
+  // restart/stop/start icin AYRI bir kesif — yukaridaki PID-bazli JVM kesfinden (dump
+  // icin) FARKLI olarak burada JBoss domain-mode server-config adlari + o anki
+  // STARTED/STOPPED durumlari listelenir (bkz. bmw_portal/java_app_check/java_app_check.yml).
+  // 2026-08-17 (kullanici istegi): eskiden restart/stop/start `application`'in TEK bir
+  // server-config/server-group adi oldugunu varsayip GRUBUN TAMAMINI hedefliyordu -
+  // artik kullanici HANGI JVM(ler)e dokunacagini bu kesiften seciyor.
+  //
+  // POST /api/opsx/legacy/serverconfig/discover — { application, hosts } → { jobId, awxServerId }
+  app.post('/api/opsx/legacy/serverconfig/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
+    const { application, hosts } = req.body || {};
+    const { templateId, serverId, keyName } = await resolveTarget('legacyServerConfigDiscover');
+    if (!templateId) {
+      return res.status(501).json({
+        ok: false,
+        message: `OpsX Legacy Server-Config keşfi için AWX job template'i henüz tanımlanmadı. `
+               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
+               + `Template ID alanını doldurmalı.`,
+      });
+    }
+
+    // Anti-TOCTOU + jboss_version turetme: resolveLegacyTargets ile AYNI kapi — restart/
+    // stop/start launch'inin (POST /api/opsx/run) kullandigi AYNI dogrulama/turetme.
+    let requested, jbossVersion;
+    try {
+      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts));
+    } catch (err) {
+      return res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+
+    const limitValue = requested.join(',');
+    const extraVars = {
+      application: String(application).trim(),
+      ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
+    };
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      await require('../ansible/template-preflight.cjs')
+        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
+
+      // IDOR korumasi /api/opsx/legacy/serverconfig/:serverId/:jobId/status'ta bu kayda bakar.
+      try {
+        const db = require('../db/index.cjs');
+        await db.query(
+          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            req.session?.user?.username || 'unknown',
+            serverId, templateId, `OpsX: Legacy Server-Config keşfi`,
+            result?.jobId, result?.status || 'pending',
+            JSON.stringify({ platform: 'legacy-serverconfig-discover', limit: limitValue, ...extraVars }),
+          ]
+        );
+      } catch (e) {
+        console.warn('[OpsX] Server-Config kesfi gecmisi kaydedilemedi:', e.message);
+      }
+
+      console.log(`[OpsX] ${req.session?.user?.username} -> serverconfig kesfi app=${application} limit=${limitValue} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/opsx/legacy/serverconfig/:serverId/:jobId/status — is bitince server-config listesini doner.
+  app.get('/api/opsx/legacy/serverconfig/:serverId/:jobId/status', requireAuth, async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
+    }
+
+    const reqUser = req.session?.user || {};
+    try {
+      const db = require('../db/index.cjs');
+      if (reqUser.role !== 'Admin') {
+        const { rows } = await db.query(
+          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+          [jobId, serverId]
+        );
+        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
+        }
+      }
+    } catch { /* DB hiccup -> fail-open, /job-status ile ayni desen */ }
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
+      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+      if (!TERMINAL.has(statusInfo.status)) {
+        return res.json({ ok: true, status: statusInfo.status });
+      }
+      if (statusInfo.status !== 'successful') {
+        return res.json({ ok: true, status: statusInfo.status, message: 'Server-Config listesi alınamadı (iş başarısız oldu).' });
+      }
+
+      const raw = extractOpsxServerConfigResult(statusInfo.artifacts);
+      if (!raw) {
+        return res.json({
+          ok: true,
+          status: statusInfo.status,
+          message: 'İş tamamlandı ancak Server-Config listesi alınamadı — playbook\'un set_stats adımını kontrol edin.',
+        });
+      }
+      res.json({ ok: true, status: statusInfo.status, serverConfigs: raw.results || [] });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -1286,5 +1454,5 @@ function initOpsX(app) {
 
 module.exports = {
   initOpsX, hostsForApp, ALLOWED_OPERATIONS, namespacesForCluster,
-  extractOpsxDumpResult, extractOpsxPodsResult, extractOpsxJvmResult,
+  extractOpsxDumpResult, extractOpsxPodsResult, extractOpsxJvmResult, extractOpsxServerConfigResult,
 };

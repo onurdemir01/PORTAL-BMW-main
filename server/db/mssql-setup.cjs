@@ -1254,6 +1254,11 @@ const PLAYBOOK_REGISTRY_SEED = [
     description: 'Secili sunucularda uygulama adina calisan JVM\'leri (PID + komut satiri) listeler (salt-okunur, ps) - dump sihirbazi kullaniciya JVM sectirmek icin ANLIK tetikler. server/ansible/playbooks/opsx_legacy_jvm_discover.yml',
     playbook_path: 'server/ansible/playbooks/opsx_legacy_jvm_discover.yml', env_var_name: 'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
   },
+  {
+    key_name: 'opsx_legacy_serverconfig_discover', display_name: 'OpsX — Legacy Server-Config (JVM) Keşfi', category: 'opsx', handler: 'opsx_legacy_serverconfig_discover',
+    description: 'Secili sunucularda uygulama adina uyan JBoss domain-mode server-config\'leri (JVM\'leri) VE her birinin STARTED/STOPPED durumunu listeler (salt-okunur, jboss-cli) - restart/stop/start sihirbazi kullaniciya HANGI JVM(ler)e dokunulacagini sectirmek icin ANLIK tetikler. bmw_portal/java_app_check/java_app_check.yml',
+    playbook_path: 'bmw_portal/java_app_check/java_app_check.yml', env_var_name: 'OPSX_LEGACY_SERVERCONFIG_DISCOVER_TEMPLATE_ID',
+  },
   // ── Telnet baglanti testi — OpsX ile AYNI desen (bkz. server/telnet/index.cjs) ────
   {
     key_name: 'telnet_legacy_operation', display_name: 'Telnet — Legacy Baglanti Testi', category: 'telnet', handler: 'telnet_legacy',

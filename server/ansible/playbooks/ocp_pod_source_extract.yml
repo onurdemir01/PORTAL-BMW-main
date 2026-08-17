@@ -1,0 +1,339 @@
+---
+# ocp_pod_source_extract.yml - GBAOCP01 uzerinde elle calistirilan asagidaki script'in
+# Ansible karsiligi. Bir OCP cluster'ina (orn. gbocptest1) login olup, apps listesindeki
+# her (namespace, application) ikilisi icin eslesen pod'u bulur ve pod'un icindeki source
+# klasorunu (varsayilan /opt/app-root/src/) yerel bir staging agacina "oc rsync" ile ceker:
+#
+#   while read i; do
+#     namespace=$(echo $i | awk '{print $3}')
+#     application=$(echo $i | awk '{print $2}')
+#     pod_count=$(oc get pods -n $namespace --no-headers | awk '{print $1}' | grep $application | wc -l)
+#     ...
+#     pod=$(oc get pods -n $namespace --no-headers | awk '{print $1}' | grep -vE "*-deploy" | grep $application)
+#     mkdir -p /sw/WAS_IMAGES/Onur/glomo-nginx-dev/$application
+#     cd /sw/WAS_IMAGES/Onur/glomo-nginx-dev/$application
+#     oc project $namespace
+#     oc rsync $pod:/opt/app-root/src/ .
+#   done < apps.txt
+#
+# Orijinal script'te duzeltilen hata: "pod_count" deploy pod'lari da sayarak bulunabilirlik
+# kontrolu yapiyordu, ama gercek "pod=" atamasi deploy pod'larini disliyordu. Sadece bir
+# deploy pod eslesirse pod_count>0 oldugu icin script "BULUNAMADI" demiyor, ama $pod bos
+# kaldigindan "oc rsync :/opt/app-root/src/ ." bos pod adiyla sessizce basarisiz oluyordu.
+# Bu playbook once deploy-disi pod'lari filtreler, sonra bos/dolu kontrolunu yapar; bu
+# durumu ayri bir "only_deploy_pod" statusu olarak raporlar.
+#
+# Ornek calistirma (kontrol node'undan, apps.yml icinde apps listesiyle):
+#   ansible-playbook server/ansible/playbooks/ocp_pod_source_extract.yml \
+#     -i <inventory> \
+#     -e terminal_host=GBAOCP01 \
+#     -e ocp_url=https://api.gbocptest1.example.corp:6443 \
+#     -e ocp_username=onur.demir \
+#     -e ocp_password="$OCP_PASSWORD" \
+#     -e @apps.yml
+#
+# apps.yml ornegi (apps.txt'nin 2. ve 3. sutunlari = application / namespace):
+#   apps:
+#     - application: ob-consent-public-app-v0
+#       namespace: consent-management-ch-test
+#     - application: ob-transfer-public-app-v0
+#       namespace: domestic-transfer-ch-test
+#
+# apps.txt'yi oldugu gibi kullanmak isterseniz "apps" yerine terminal_host uzerindeki
+# dosya yolunu "apps_file" ile verin (path/application/namespace sutunlu, boslukla ayrik,
+# orijinal script'in okudugu formatin ayni):
+#   -e apps_file=/sw/WAS_IMAGES/Onur/glomo-nginx-dev/apps.txt
+#
+# Gerekli extra_vars:
+#   terminal_host   : GBAOCP01 (varsayilan)
+#   ocp_url         : OCP cluster API adresi (zorunlu)
+#   ocp_username    : Kendi OCP kullanici adiniz (zorunlu)
+#   ocp_password    : Kendi OCP sifreniz (zorunlu, no_log)
+#   apps            : liste [{application, namespace}, ...]   -- apps_file yerine kullanilabilir
+#   apps_file       : terminal_host uzerinde apps.txt yolu    -- apps yerine kullanilabilir
+#
+# Opsiyonel extra_vars:
+#   dest_base_dir          : /sw/WAS_IMAGES/Onur/glomo-nginx-dev (varsayilan)
+#   pod_source_path        : /opt/app-root/src/ (varsayilan)
+#   deploy_exclude_pattern : -deploy (varsayilan; pod adinda bu gecen pod'lar hedeften cikarilir)
+#   oc_binary              : /usr/local/bin/oc (varsayilan)
+#   ocp_insecure_skip_tls_verify : true (varsayilan)
+#
+# Cikti:
+#   artifacts.source_extract_result
+
+- name: "Girdiyi dogrula ve terminal host'u dinamik envantere ekle"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: "Zorunlu degiskenleri dogrula"
+      ansible.builtin.assert:
+        that:
+          - terminal_host | default('GBAOCP01') | string | trim | length > 0
+          - ocp_url is defined
+          - ocp_url | string | trim | length > 0
+          - ocp_username is defined
+          - ocp_username | string | trim | length > 0
+          - ocp_password is defined
+          - ocp_password | string | length > 0
+          - (apps is defined and (apps | default([]) | length) > 0) or (apps_file is defined and apps_file | string | trim | length > 0)
+        fail_msg: >-
+          ocp_url, ocp_username, ocp_password zorunludur; ayrica "apps" listesi veya
+          "apps_file" (terminal_host uzerindeki apps.txt yolu) verilmelidir.
+      no_log: true
+
+    - name: "apps listesi verildiyse her kaydin gecerli oldugunu dogrula"
+      ansible.builtin.assert:
+        that:
+          - item is mapping
+          - item.application is defined
+          - item.application | string | trim | length > 0
+          - item.namespace is defined
+          - item.namespace | string | trim | length > 0
+        fail_msg: "Gecersiz apps kaydi: {{ item }}"
+      loop: "{{ apps | default([]) }}"
+      loop_control:
+        label: "{{ item.application | default('?') }}/{{ item.namespace | default('?') }}"
+      when: apps is defined and (apps | length) > 0
+
+    - name: "Terminal host'u dinamik envantere ekle"
+      ansible.builtin.add_host:
+        name: "{{ terminal_host | default('GBAOCP01') }}"
+        groups: ocp_source_extract_terminal
+      changed_when: false
+
+
+- name: "OCP'de oturum ac ve her uygulama icin pod source'unu cek"
+  hosts: ocp_source_extract_terminal
+  gather_facts: false
+  become: false
+
+  environment:
+    KUBECONFIG: "{{ remote_kubeconfig }}"
+
+  vars:
+    # NOT: Bu degiskenler icin "{{ X | default(...) }}" gibi kendine-referans veren bir
+    # atama YAZILMAZ — Ansible'da bir play var'ini kendi adiyla template'lemek "recursive
+    # loop detected" hatasina yol acabilir. extra_vars zaten play vars'tan once gelir
+    # (daha yuksek onceliklidir), bu yuzden duz literal varsayilan yeterlidir: kullanici
+    # "-e oc_binary=..." verirse bu deger burasini otomatik gecersiz kilar.
+    oc_binary: /usr/local/bin/oc
+    dest_base_dir: /sw/WAS_IMAGES/Onur/glomo-nginx-dev
+    pod_source_path: /opt/app-root/src/
+    deploy_exclude_pattern: -deploy
+    ocp_insecure_skip_tls_verify: true
+    extract_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+    remote_kubeconfig: "/tmp/ocpx-{{ extract_job_id }}.kubeconfig"
+
+  tasks:
+    - name: "Ana akis (her kosulda kubeconfig temizlenir)"
+      block:
+        - name: "oc binary'nin varligini kontrol et"
+          ansible.builtin.stat:
+            path: "{{ oc_binary }}"
+          register: oc_binary_stat
+
+        - name: "oc binary yoksa hata ver"
+          ansible.builtin.assert:
+            that:
+              - oc_binary_stat.stat.exists
+              - oc_binary_stat.stat.executable
+            fail_msg: "oc binary bulunamadi veya calistirilabilir degil: {{ oc_binary }}"
+
+        - name: "Uygulama listesini dogrudan apps degiskeninden al"
+          ansible.builtin.set_fact:
+            resolved_apps: "{{ apps }}"
+          when: apps is defined and (apps | length) > 0
+
+        - name: "apps verilmediyse apps_file'i terminal host'tan oku"
+          ansible.builtin.slurp:
+            src: "{{ apps_file }}"
+          register: apps_file_raw
+          when: resolved_apps is not defined
+
+        - name: "apps_file satirlarini application/namespace alanlarina ayir"
+          ansible.builtin.set_fact:
+            resolved_apps: >-
+              {{
+                resolved_apps | default([]) + (
+                  [{'path': parts[0], 'application': parts[1], 'namespace': parts[2]}]
+                  if (parts | length) >= 3
+                  else []
+                )
+              }}
+          vars:
+            parts: "{{ item.split() }}"
+          # (apps_file_raw | default({})).content ile guvenli erisim: apps_file_raw hic
+          # calismadiysa (apps degiskeni verildiyse slurp task'i "when" ile atlanir) bile
+          # loop ifadesi undefined attribute hatasi vermeden bos listeye duser; asil
+          # calisma kontrolu asagidaki "when" ile yapilir.
+          loop: >-
+            {{
+              ((apps_file_raw | default({})).content | default('') | b64decode).splitlines()
+              | map('trim')
+              | reject('equalto', '')
+              | reject('match', '^#')
+              | list
+            }}
+          loop_control:
+            label: "{{ item }}"
+          when: apps_file_raw is defined and apps_file_raw is not skipped
+
+        - name: "En az bir gecerli uygulama kaydi oldugunu dogrula"
+          ansible.builtin.assert:
+            that:
+              - resolved_apps is defined
+              - resolved_apps | length > 0
+            fail_msg: "Islenecek gecerli bir uygulama kaydi bulunamadi (apps / apps_file kontrol edin)."
+
+        - name: "Eski kubeconfig kalintisini temizle"
+          ansible.builtin.file:
+            path: "{{ remote_kubeconfig }}"
+            state: absent
+          changed_when: false
+
+        - name: "OCP cluster'ina giris yap"
+          ansible.builtin.command:
+            argv:
+              - "{{ oc_binary }}"
+              - login
+              - "--server={{ ocp_url }}"
+              - "--username={{ ocp_username }}"
+              - "--password={{ ocp_password }}"
+              - "--insecure-skip-tls-verify={{ 'true' if (ocp_insecure_skip_tls_verify | bool) else 'false' }}"
+          register: oc_login_result
+          no_log: true
+          changed_when: false
+
+        - name: "Her uygulama icin pod'u bul ve source'u cek"
+          ansible.builtin.shell: |
+            ns={{ app_item.namespace | quote }}
+            app={{ app_item.application | quote }}
+            dest_dir={{ (dest_base_dir ~ '/' ~ app_item.application) | quote }}
+            exclude={{ deploy_exclude_pattern | quote }}
+
+            raw_pods=$("{{ oc_binary }}" get pods -n "$ns" --no-headers -o custom-columns=NAME:.metadata.name 2>&1)
+            oc_rc=$?
+
+            if [ $oc_rc -ne 0 ]; then
+              echo "STATUS=namespace_error"
+              echo "POD="
+              echo "$raw_pods" >&2
+              exit 0
+            fi
+
+            all_matches=$(printf '%s\n' "$raw_pods" | grep -F -- "$app")
+
+            if [ -z "$all_matches" ]; then
+              echo "STATUS=not_found"
+              echo "POD="
+              exit 0
+            fi
+
+            non_deploy=$(printf '%s\n' "$all_matches" | grep -vF -- "$exclude")
+
+            if [ -z "$non_deploy" ]; then
+              echo "STATUS=only_deploy_pod"
+              echo "POD="
+              exit 0
+            fi
+
+            pod=$(printf '%s\n' "$non_deploy" | head -n1)
+
+            mkdir -p -- "$dest_dir"
+
+            rsync_out=$("{{ oc_binary }}" rsync -n "$ns" "${pod}:{{ pod_source_path }}" "$dest_dir/" 2>&1)
+            rsync_rc=$?
+
+            if [ $rsync_rc -ne 0 ]; then
+              echo "STATUS=rsync_error"
+              echo "POD=$pod"
+              echo "$rsync_out" >&2
+              exit 0
+            fi
+
+            echo "STATUS=ok"
+            echo "POD=$pod"
+          args:
+            executable: /bin/bash
+          loop: "{{ resolved_apps }}"
+          loop_control:
+            loop_var: app_item
+            label: "{{ app_item.namespace }}/{{ app_item.application }}"
+          register: extract_result
+          changed_when: false
+          failed_when: false
+
+        - name: "Sonuclari yapilandirilmis listeye donustur"
+          # NOT: regex_search(...) tek grupla cagrildiginda DUZ STRING doner (liste degil);
+          # "| first" o durumda kelimenin ilk karakterini alir. Bu belirsizlikten kacinmak
+          # icin STATUS=/POD= satirlarini regex_replace ile (her zaman string doner) satir
+          # bazinda ayikliyoruz.
+          ansible.builtin.set_fact:
+            extraction_summary: >-
+              {{
+                extraction_summary | default([]) + [{
+                  'path': item.app_item.path | default(''),
+                  'application': item.app_item.application,
+                  'namespace': item.app_item.namespace,
+                  'status': (
+                    item.stdout.splitlines() | map('trim')
+                    | select('match', '^STATUS=') | map('regex_replace', '^STATUS=', '')
+                    | list | first | default('unknown')
+                  ),
+                  'pod': (
+                    item.stdout.splitlines() | map('trim')
+                    | select('match', '^POD=') | map('regex_replace', '^POD=', '')
+                    | list | first | default('')
+                  ),
+                  'error': item.stderr | default(''),
+                  'dest_dir': (dest_base_dir ~ '/' ~ item.app_item.application)
+                }]
+              }}
+          loop: "{{ extract_result.results }}"
+          loop_control:
+            label: "{{ item.app_item.namespace }}/{{ item.app_item.application }}"
+          changed_when: false
+
+        - name: "Sonuc ozetini yazdir"
+          ansible.builtin.debug:
+            msg: >-
+              {{
+                '-------------------------------------------------------------------------------------- '
+                ~ item.namespace ~ ' ' ~ item.application ~ ' ' ~ (
+                  'BULUNAMADI' if item.status == 'not_found'
+                  else ('SADECE DEPLOY POD BULUNDU, ATLANDI' if item.status == 'only_deploy_pod'
+                  else ('NAMESPACE HATASI: ' ~ item.error if item.status == 'namespace_error'
+                  else ('RSYNC HATASI (' ~ item.pod ~ '): ' ~ item.error if item.status == 'rsync_error'
+                  else (item.pod ~ ' EXTRACT EDILDI -> ' ~ item.dest_dir))))
+                )
+              }}
+          loop: "{{ extraction_summary }}"
+          loop_control:
+            label: "{{ item.namespace }}/{{ item.application }}"
+
+        - name: "Sonucu yayinla"
+          ansible.builtin.set_stats:
+            data:
+              source_extract_result:
+                overall_status: >-
+                  {% set ok_count = extraction_summary | selectattr('status', 'equalto', 'ok') | list | length %}
+                  {% set error_count = extraction_summary | selectattr('status', 'in', ['namespace_error', 'rsync_error', 'unknown']) | list | length %}
+                  {{
+                    'failed' if (ok_count == 0 and error_count > 0)
+                    else ('success' if error_count == 0 else 'partial')
+                  }}
+                terminal_host: "{{ inventory_hostname }}"
+                dest_base_dir: "{{ dest_base_dir }}"
+                apps: "{{ extraction_summary }}"
+            per_host: false
+
+      always:
+        - name: "Kubeconfig'i temizle"
+          ansible.builtin.file:
+            path: "{{ remote_kubeconfig }}"
+            state: absent
+          changed_when: false

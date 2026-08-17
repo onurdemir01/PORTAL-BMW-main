@@ -112,7 +112,11 @@ async function post(path, body, extraHeaders) {
 // (smart_tickets.external_ticket_id'ye yazilir). resultCode "1000" DISINDAKI her
 // deger basarisizliktir (dokuman: "if the value is 1000, the operation is successful,
 // if 9000, it is unsuccessful") — resultMessage varsa hataya eklenir.
-async function createTicket({ flowKey, username, domain, metadata }) {
+// `integrationKey`: opsiyonel, servis bazinda override (bkz. FieldOverridesModal.tsx
+// "Integration Key" alani) - farkli Self Service item'lari farkli Smart flow'lara (dolayisiyla
+// FARKLI Designer > "Integration Information" anahtarina) baglanabiliyor. Verilmezse global
+// SMART_RFF_TOKEN (cfg.requestToken) kullanilir - davranis GERIYE DONUK degismez.
+async function createTicket({ flowKey, username, domain, metadata, integrationKey }) {
   if (!isConfigured()) {
     throw Object.assign(new Error('Smart entegrasyonu yapılandırılmamış (SMART_API_URL/SMART_API_USERNAME/SMART_API_PASSWORD eksik).'), { status: 503 });
   }
@@ -126,7 +130,7 @@ async function createTicket({ flowKey, username, domain, metadata }) {
       metadatas: Object.entries(metadata || {}).map(([key, value]) => ({ key, value: String(value) })),
     },
   };
-  const result = await post(cfg.createTicketPath, body);
+  const result = await post(cfg.createTicketPath, body, integrationKey ? { 'rff-request-token': integrationKey } : undefined);
   const resultCode = String(result?.result?.resultCode ?? '');
   if (resultCode !== '1000') {
     const msg = result?.result?.resultMessage || `resultCode=${resultCode || 'yok'}`;

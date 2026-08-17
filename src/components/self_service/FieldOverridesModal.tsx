@@ -91,7 +91,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   // Etkinse: bu servis çalıştırıldığında AWX job'ı HEMEN tetiklenmez — önce Smart'ta bir
   // talep açılır, onaylanana kadar kullanıcı "onay bekleniyor" ekranını görür (bkz.
   // server/ansible/runner.cjs POST /launch-ss ve server/smart/poller.cjs).
-  const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "", metadataFields: "" });
+  const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "", metadataFields: "", integrationKey: "" });
   const [smartMetaLoading, setSmartMetaLoading] = useState(false);
   const [smartMetaFields, setSmartMetaFields] = useState<Array<Record<string, unknown>> | null>(null);
   const [smartMetaErr, setSmartMetaErr] = useState("");
@@ -141,6 +141,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
             enabled: !!smartOv?.enabled,
             flowKey: smartOv?.flowKey || "",
             metadataFields: smartOv?.metadataFields || "",
+            integrationKey: smartOv?.integrationKey || "",
           });
         }
       })
@@ -242,6 +243,49 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
     }));
   }
 
+  // Smart'ın hemen hemen tüm RFF flow'larında tekrar eden bir ElementName seti var (KONU,
+  // ACIKLAMA, SERVERNAME, APPLICATIONURL, IMPORTANCE, ENVIRONMENT, OPERATION, ...) — bu
+  // yüzden "Alanları Getir" sonucundan GENEL, tekrar kullanılabilir bir Metadata Eşlemesi
+  // taslağı üretilebilir. TEXTBOX/EDITOR/ALERT gibi serbest metin tipleri için makul bir
+  // yer tutucu değer YAZILIR; PARAMETER_DROPDOWN/CONFIGURATION_SELECT_CMS gibi Smart'ta
+  // ÖNCEDEN TANIMLI bir seçenek/kayıt adı bekleyen tipler için değer TAHMİN EDİLMEZ (yanlış
+  // bir tahmin, boş bırakmaktan daha kötü bir "400 Invalid Request" yerine SESSİZCE yanlış
+  // bir talep açabilir) — bunun yerine satır "#" ile YORUMA alınır, admin gerçek Smart
+  // değerini yazıp yorumdan çıkarana kadar gönderilmez (parseSimpleYaml "#" satırlarını atlar).
+  function buildMetadataTemplate(fields: Array<Record<string, unknown>>): string {
+    const lines: string[] = [];
+    for (const f of fields) {
+      const name = String(f.ElementName ?? f.elementName ?? "").trim();
+      if (!name) continue;
+      const type = String(f.ComponentType ?? f.componentType ?? "").toUpperCase();
+      const requiredRaw = String(f.IsRequired ?? f.isRequired ?? "").toLowerCase();
+      const isRequired = ["true", "evet", "1", "yes"].includes(requiredRaw);
+      const needsRealValue = /DROPDOWN|SELECT|CMS/.test(type);
+      const reqTag = isRequired ? "ZORUNLU" : "opsiyonel";
+
+      if (needsRealValue) {
+        lines.push(`# ${name}: <${reqTag} — Smart'ta tanımlı GERÇEK bir seçenek/kayıt adı yazıp bu satırı yorumdan çıkarın>`);
+        continue;
+      }
+
+      let value = "";
+      if (/KONU|SUBJECT|TITLE|ACIKLAMA_1|SHORTDEF/i.test(name)) value = "{{templateName}} talebi";
+      else if (/^ACIKLAMA$|DESCRIPTION|EXPLAIN|DETAY/i.test(name)) value = "{{username}} tarafından Portal üzerinden açıldı";
+      else if (/URL/i.test(name)) value = "{{templateName}}";
+      else if (/SERVER|HOST/i.test(name)) value = "{{templateName}}";
+      else if (isRequired) value = "{{templateName}}";
+
+      if (value) lines.push(`${name}: ${value}`);
+      else lines.push(`# ${name}: <${reqTag} — uygun bir değer girin>`);
+    }
+    return lines.join("\n");
+  }
+
+  function applyMetadataTemplate() {
+    if (!smartMetaFields || smartMetaFields.length === 0) return;
+    setSmartApproval((s) => ({ ...s, metadataFields: buildMetadataTemplate(smartMetaFields) }));
+  }
+
   async function fetchSmartMetadata() {
     const flowKey = smartApproval.flowKey.trim();
     if (!flowKey) return;
@@ -331,6 +375,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
           enabled: smartApproval.enabled,
           flowKey: smartApproval.flowKey.trim(),
           metadataFields: smartApproval.metadataFields.trim() || undefined,
+          integrationKey: smartApproval.integrationKey.trim() || undefined,
         },
       });
       if (!r.ok) { setErr(r.message || "Kaydedilemedi."); return; }
@@ -811,6 +856,21 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                         {smartMetaLoading ? "Sorgulanıyor…" : "Alanları Getir"}
                       </button>
                     </div>
+
+                    <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mt-3 mb-1">Integration Key (opsiyonel)</label>
+                    <TextInput
+                      className="font-mono text-xs"
+                      type="password"
+                      value={smartApproval.integrationKey}
+                      placeholder="Boşsa sistem geneli varsayılan (Admin › Sistem › Smart) kullanılır"
+                      onChange={(e) => setSmartApproval((s) => ({ ...s, integrationKey: e.target.value }))}
+                    />
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                      Smart Designer'da her flow ayrı bir "Integration Information" anahtarıyla
+                      (rff-request-token) yayınlanmış olabilir. Bu servisin flow'u sistem geneli
+                      anahtardan FARKLIYSA burayı doldurun — boş bırakılırsa mevcut davranış
+                      (tek, genel anahtar) aynen sürer.
+                    </p>
                     <p className="text-[11px] text-[var(--text-muted)] mt-1">
                       Talep açma şu an sabit <code className="font-mono">application</code>/
                       <code className="font-mono">requestedBy</code> metadata'sı gönderir. "400
@@ -848,14 +908,29 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                         )}
                       </div>
                     )}
-                    <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mt-3 mb-1">Metadata Eşlemesi</label>
+                    <div className="flex items-center justify-between gap-2 mt-3 mb-1">
+                      <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">Metadata Eşlemesi</label>
+                      <button
+                        type="button"
+                        disabled={!smartMetaFields || smartMetaFields.length === 0}
+                        onClick={applyMetadataTemplate}
+                        className="text-[11px] px-2 py-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50 flex-shrink-0"
+                        title="Yukarıdaki alan listesinden genel bir taslak oluştur (serbest metin alanları doldurulur, Smart-tanımlı seçenek gerektiren alanlar yorum satırı olarak bırakılır)"
+                      >
+                        Otomatik Doldur
+                      </button>
+                    </div>
                     <p className="text-[11px] text-[var(--text-muted)] mb-1">
                       Her satıra bir tane, <code className="font-mono">ElementName: değer</code>{" "}
                       (yukarıdaki tablonun İLK sütunu — ComponentType TEKİL değil, aynı tipten
                       birden çok alan olabilir, bu yüzden eşleme ElementName'e göre yapılır).
                       Değer içinde <code className="font-mono">{"{{username}}"}</code>,{" "}
                       <code className="font-mono">{"{{email}}"}</code>, <code className="font-mono">{"{{templateName}}"}</code>{" "}
-                      yer tutucuları kullanılabilir. <strong>PARAMETER_DROPDOWN / CONFIGURATION_SELECT_CMS</strong>{" "}
+                      yer tutucuları kullanılabilir. <code className="font-mono">#</code> ile başlayan
+                      satırlar YOK SAYILIR — "Otomatik Doldur" gerçek bir değer TAHMİN EDEMEDİĞİ
+                      satırları (aşağıya bakın) bilerek yorum satırı bırakır, siz gerçek değeri
+                      yazıp <code className="font-mono">#</code>'i silmeden gönderilmez.{" "}
+                      <strong>PARAMETER_DROPDOWN / CONFIGURATION_SELECT_CMS</strong>{" "}
                       tipindeki alanlar muhtemelen Smart'ta önceden tanımlı bir seçenek/kayıt adı
                       bekler, serbest metin kabul etmeyebilir. Boş bırakılırsa eski sabit
                       (<code className="font-mono">application</code>/<code className="font-mono">requestedBy</code>) gövde gönderilir.

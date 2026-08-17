@@ -13,7 +13,7 @@ import {
   opsxApi,
   type OpsxPlatform, type OpsxOperation, type OpsxOcpOperation, type OpsxOcpPair,
   type OpsxRunResult, type OpsxDumpType, type OpsxDumpLaunchResult, type OpsxDumpStatus,
-  type OpsxPidSelection,
+  type OpsxPidSelection, type OpsxServerConfigSelection,
 } from "@/api/opsxApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
@@ -27,6 +27,7 @@ import OcpOperationStep from "./steps/OcpOperationStep";
 import OcpClusterPickStep from "./steps/OcpClusterPickStep";
 import OcpPodSelectStep from "./steps/OcpPodSelectStep";
 import LegacyJvmSelectStep from "./steps/LegacyJvmSelectStep";
+import ServerConfigSelectStep from "./steps/ServerConfigSelectStep";
 
 type Step =
   | "platform"
@@ -34,6 +35,7 @@ type Step =
   | "legacy_jboss_version"
   | "legacy_hosts"
   | "legacy_jvm"
+  | "legacy_serverconfig"
   | "ocp_target"
   | "operation"
   | "ocp_operation"
@@ -47,6 +49,7 @@ const STEP_TITLES: Record<Step, string> = {
   legacy_jboss_version: "JBoss Sürümü",
   legacy_hosts: "Sunucu Seçimi",
   legacy_jvm: "JVM Seçimi",
+  legacy_serverconfig: "JVM Seçimi",
   ocp_target: "Openshift Hedefi",
   operation: "İşlem Seçimi",
   ocp_operation: "İşlem Seçimi",
@@ -82,6 +85,9 @@ const OpsXWizardPage: React.FC = () => {
   // Openshift'te işlem seçimi ile dump'ın tetiklenmesi arasında bir pod seçim adımı
   // olduğu için, seçilen dump tipi o adım boyunca burada tutulur.
   const [dumpType, setDumpType] = useState<OpsxDumpType | null>(null);
+  // restart/stop/start artık doğrudan tetiklenmez — önce hangi JVM(ler)e (server-config)
+  // dokunulacağı seçilir (dumpType'ın restart/stop/start için AYNI amaçlı karşılığı).
+  const [pendingOperation, setPendingOperation] = useState<OpsxOperation | null>(null);
   const { addJob, jobs } = useJobTracker();
   // Bu sayfa açıkken CANLI çıktıyı kendi içinde (inline) gösterir — takipçiden aynı
   // job'ın güncel verisini okur, kendi polling'ini yapmaz. Sayfadan ayrılınca (ya da
@@ -106,6 +112,7 @@ const OpsXWizardPage: React.FC = () => {
     setDumpJob(null);
     setDumpStatus(null);
     setDumpType(null);
+    setPendingOperation(null);
   }
 
   function trackJob(r: OpsxRunResult | OpsxDumpLaunchResult) {
@@ -159,6 +166,7 @@ const OpsXWizardPage: React.FC = () => {
       case "operation":
         return "legacy_hosts";
       case "legacy_jvm":
+      case "legacy_serverconfig":
         return "operation";
       case "ocp_operation":
         return "ocp_target";
@@ -179,14 +187,16 @@ const OpsXWizardPage: React.FC = () => {
     setStep(target);
   }
 
-  // Legacy: uygulama + sunucular + islem. Openshift: env/oc_cluster + oc_input (bir veya
-  // daha fazla namespace/uygulama cifti) + islem (su an SADECE restart aktif).
-  async function runLegacy(operation: OpsxOperation) {
+  // Legacy: uygulama + sunucular + islem + (restart/stop/start icin) serverConfigMap —
+  // kullanicinin ServerConfigSelectStep'te sectigi {HOST: [{name,jbossMajor}]} eslemesi.
+  // Openshift: env/oc_cluster + oc_input (bir veya daha fazla namespace/uygulama cifti) +
+  // islem (su an SADECE restart aktif).
+  async function runLegacy(operation: OpsxOperation, serverConfigMap?: Record<string, OpsxServerConfigSelection[]>) {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const r = await opsxApi.run({ platform: "legacy", application: app, operation, hosts });
+      const r = await opsxApi.run({ platform: "legacy", application: app, operation, hosts, serverConfigMap });
       // safeJson() 4xx/5xx'te reddetmez (bkz. src/api/http.ts) — backend'in ok:false +
       // message ile döndüğü hatalar burada AÇIKÇA kontrol edilmezse kullanıcıya "İşlem
       // başlatıldı" yeşil onayı gösterilir (job hiç tetiklenmemiş olsa bile).
@@ -234,14 +244,17 @@ const OpsXWizardPage: React.FC = () => {
 
   // OperationStep'in tek onSelect'i restart/stop/start İLE threaddump/heapdump'ı AYNI
   // listede sunar (bkz. server/opsx/index.cjs ALLOWED_OPERATIONS) — burada hangi backend
-  // yoluna gideceğine ayrılır. Dump doğrudan tetiklenmez, önce JVM seçim adımına (canlı
-  // AWX keşfi) gidilir — Openshift'in handleOcpOperation'ıyla AYNI yönlendirme deseni.
+  // yoluna gideceğine ayrılır. HİÇBİRİ doğrudan tetiklenmez — ikisi de önce bir JVM seçim
+  // adımına (canlı AWX keşfi) gider: dump PID bazlı (LegacyJvmSelectStep), restart/stop/
+  // start server-config bazlı (ServerConfigSelectStep) — Openshift'in handleOcpOperation'ıyla
+  // AYNI yönlendirme deseni.
   function handleLegacyOperation(operation: OpsxOperation) {
     if (DUMP_OPERATIONS.has(operation)) {
       setDumpType(operation as OpsxDumpType);
       setStep("legacy_jvm");
     } else {
-      runLegacy(operation);
+      setPendingOperation(operation);
+      setStep("legacy_serverconfig");
     }
   }
 
@@ -414,6 +427,16 @@ const OpsXWizardPage: React.FC = () => {
             hosts={hosts}
             busy={busy}
             onSubmit={(v) => runLegacyDump(dumpType, v.pidMap)}
+          />
+        )}
+
+        {step === "legacy_serverconfig" && pendingOperation && (
+          <ServerConfigSelectStep
+            application={app}
+            hosts={hosts}
+            operation={pendingOperation}
+            busy={busy}
+            onSubmit={(v) => runLegacy(pendingOperation, v.serverConfigMap)}
           />
         )}
 

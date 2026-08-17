@@ -2187,9 +2187,12 @@ function initAnsibleRunner(app) {
         } else {
           metadata = { application: templateName || String(templateId), requestedBy: username };
         }
+        // integrationKey: bkz. FieldOverridesModal.tsx "Integration Key" alani - servis
+        // bazinda override (bos ise createTicket() global SMART_RFF_TOKEN'a duser).
+        const integrationKey = String(overrides.smartApproval.integrationKey || "").trim();
         let created;
         try {
-          created = await smartClient.createTicket({ flowKey, username, metadata });
+          created = await smartClient.createTicket({ flowKey, username, metadata, integrationKey: integrationKey || undefined });
         } catch (smartErr) {
           return res.status(smartErr.status || 502).json({ ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` });
         }
@@ -2291,9 +2294,10 @@ function initAnsibleRunner(app) {
         } else {
           metadata = { application: templateName || String(templateId), requestedBy: username };
         }
+        const integrationKey = String(overrides.smartApproval.integrationKey || "").trim();
         let created;
         try {
-          created = await smartClient.createTicket({ flowKey, username, metadata });
+          created = await smartClient.createTicket({ flowKey, username, metadata, integrationKey: integrationKey || undefined });
         } catch (smartErr) {
           return res.status(smartErr.status || 502).json({ ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` });
         }

@@ -173,6 +173,40 @@ export interface OpsxPidSelection {
   jbossMajor: string;
 }
 
+// restart/stop/start için: aynı uygulamaya birden fazla JVM (server-config) bağlı olabilir —
+// eskiden `application`'ın TEK bir server-config/server-group adı olduğu varsayılıp
+// GRUBUN TAMAMI hedefleniyordu. Artık dump'ın JVM keşfiyle AYNI desen: anlık bir AWX job'ı
+// (bmw_portal/java_app_check/java_app_check.yml) application adına uyan server-config'leri
+// VE her birinin STARTED/STOPPED durumunu host başına listeler, kullanıcı bir/birden
+// fazla/tümünü seçer.
+export interface OpsxServerConfig {
+  host: string;
+  serverConfig: string;
+  status: string; // "running" | "stopped"
+  jbossMajor: string; // "7" | "8"
+}
+
+export interface OpsxServerConfigDiscoveryLaunch {
+  ok: boolean;
+  jobId: number | null;
+  status: string | null;
+  awxServerId: number;
+  message?: string;
+}
+
+export interface OpsxServerConfigDiscoveryStatus {
+  ok: boolean;
+  status: string;
+  message?: string;
+  serverConfigs?: OpsxServerConfig[];
+}
+
+// run()'ın serverConfigMap'inde host başına gönderilen her JVM seçimi.
+export interface OpsxServerConfigSelection {
+  name: string;
+  jbossMajor: string;
+}
+
 export const opsxApi = {
   // Uygulama arama — LogX legacy ile aynı kaynak; DB erişilemezse fallbackMode=true
   // ile son bilinen snapshot döner.
@@ -214,6 +248,10 @@ export const opsxApi = {
     application?: string;
     operation?: OpsxOperation;
     hosts?: string[];
+    // restart/stop/start için ZORUNLU: kullanıcının server-config keşfinden seçtiği
+    // {HOST: [{name,jbossMajor}, ...]} eşlemesi — pidMap ile AYNI desen (bkz.
+    // OpsxServerConfigSelection). threaddump/heapdump'ta kullanılmaz (ayrı route).
+    serverConfigMap?: Record<string, OpsxServerConfigSelection[]>;
     // Openshift alanları
     env?: string;
     tenant?: string;
@@ -251,6 +289,20 @@ export const opsxApi = {
   // Keşif job'ının durumu — terminal + başarılıysa `jvms` dolu döner.
   legacyJvmStatus: (awxServerId: number, jobId: number): Promise<OpsxJvmDiscoveryStatus> =>
     fetch(`${BASE}/legacy/jvm/${awxServerId}/${jobId}/status`).then(safeJson),
+
+  // restart/stop/start için: application adına uyan server-config'leri (JVM'leri) VE
+  // her birinin o anki STARTED/STOPPED durumunu listelemek için anlık bir AWX keşif
+  // job'ı tetikler (bkz. OpsxServerConfig) — PID-bazlı dump keşfinden AYRI bir uç.
+  discoverLegacyServerConfigs: (application: string, hosts: string[]): Promise<OpsxServerConfigDiscoveryLaunch> =>
+    fetch(`${BASE}/legacy/serverconfig/discover`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ application, hosts }),
+    }).then(safeJson),
+
+  // Keşif job'ının durumu — terminal + başarılıysa `serverConfigs` dolu döner.
+  legacyServerConfigStatus: (awxServerId: number, jobId: number): Promise<OpsxServerConfigDiscoveryStatus> =>
+    fetch(`${BASE}/legacy/serverconfig/${awxServerId}/${jobId}/status`).then(safeJson),
 
   // Legacy thread/heap dump başlatır — AYRI bir AWX template'e (opsx_legacy_dump) gider,
   // template tanımlı değilse 501 döner. pidMap: kullanıcının JVM keşfinde seçtiği

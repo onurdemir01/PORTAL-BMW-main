@@ -393,7 +393,11 @@ export interface FieldCustomization {
   // degerler sorgulanabilir. Deger icinde {{username}}/{{email}}/{{templateName}} yer
   // tutucular sunucu tarafinda cozulur. Bos ise eski varsayilan (SABIT application/
   // requestedBy) davranisina duser.
-  smartApproval?: { enabled: boolean; flowKey?: string; metadataFields?: string };
+  // integrationKey: Smart Designer > "Integration Information" anahtari (rff-request-token
+  // header'i) - servis bazinda FARKLI olabilir (farkli flow'lar farkli Designer projesine ait
+  // olabiliyor). Bos ise sistem geneli varsayilan (Admin > Sistem > Smart, SMART_RFF_TOKEN)
+  // kullanilir - davranis GERIYE DONUK degismez.
+  smartApproval?: { enabled: boolean; flowKey?: string; metadataFields?: string; integrationKey?: string };
 }
 
 export interface AnsibleSsItem {
