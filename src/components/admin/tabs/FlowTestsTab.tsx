@@ -124,6 +124,16 @@ function ActionRow({
 
 function csv(list: string[]) { return list.join(", "); }
 function parseCsv(s: string) { return s.split(",").map((x) => x.trim()).filter(Boolean); }
+// "Keşfet" listeleri her zaman alfabetik sıralı geliyor (backend ORDER BY app/host) —
+// hep [0] (ilk sıradaki) seçilirse aynı düğmeye tekrar basmak HER SEFERİNDE AYNI
+// sonucu verir, ekranda hiçbir şey değişmediği için "kendini yenilemiyor" izlenimi
+// yaratır. Rastgele seçim, her tıklamada (birden fazla eleman varsa) farklı bir
+// örnek getirir — hem "yenileniyormuş" gibi görünür hem de gerçekten farklı
+// senaryolar denemeyi kolaylaştırır.
+function pickRandom<T>(list: T[]): T | undefined {
+  if (!list.length) return undefined;
+  return list[Math.floor(Math.random() * list.length)];
+}
 
 // ── FileX ────────────────────────────────────────────────────────────────────
 function FileXSection() {
@@ -139,11 +149,11 @@ function FileXSection() {
     try {
       const apps = await filexApi.searchApps("");
       if (!apps.ok || !apps.apps.length) { setSt({ status: "error", message: "Hiç uygulama bulunamadı." }); return; }
-      const foundApp = apps.apps[0];
+      const foundApp = pickRandom(apps.apps) as string;
       const h = await filexApi.getHosts(foundApp);
       if (!h.ok || !h.hosts.length) { setSt({ status: "error", message: `"${foundApp}" için sunucu bulunamadı.` }); return; }
       setApp(foundApp);
-      setHosts(csv(h.hosts.slice(0, 1).map((x) => x.host)));
+      setHosts(csv([(pickRandom(h.hosts) as typeof h.hosts[number]).host]));
     } catch (e) {
       setSt({ status: "error", message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -213,11 +223,11 @@ function TelnetLegacySection() {
     try {
       const apps = await telnetApi.searchApps("");
       if (!apps.ok || !apps.apps.length) { setSt({ status: "error", message: "Hiç uygulama bulunamadı." }); return; }
-      const foundApp = apps.apps[0];
+      const foundApp = pickRandom(apps.apps) as string;
       const h = await telnetApi.getHosts(foundApp);
       if (!h.ok || !h.hosts.length) { setSt({ status: "error", message: `"${foundApp}" için sunucu bulunamadı.` }); return; }
       setApp(foundApp);
-      setHosts(csv(h.hosts.slice(0, 1).map((x) => x.host)));
+      setHosts(csv([(pickRandom(h.hosts) as typeof h.hosts[number]).host]));
     } catch (e) {
       setSt({ status: "error", message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -290,17 +300,17 @@ function TelnetOcpSection() {
       const c = await telnetApi.getClusters();
       const envs = Object.keys(c.tree || {}).sort();
       if (!envs.length) { setSt({ status: "error", message: "Hiç ortam (env) bulunamadı." }); return; }
-      const foundEnv = envs[0];
+      const foundEnv = pickRandom(envs) as string;
       const tenants = Object.keys(c.tree[foundEnv] || {}).sort();
       if (!tenants.length) { setSt({ status: "error", message: `"${foundEnv}" için tenant bulunamadı.` }); return; }
-      const foundTenant = tenants[0];
+      const foundTenant = pickRandom(tenants) as string;
       const clusters = c.tree[foundEnv][foundTenant] || [];
       const ns = await telnetApi.getOcpNamespaces(foundEnv, foundTenant);
       if (!ns.ok || !ns.namespaces.length) { setSt({ status: "error", message: `"${foundEnv}/${foundTenant}" için namespace bulunamadı.` }); return; }
       setEnv(foundEnv);
       setTenant(foundTenant);
-      setNamespaces(csv(ns.namespaces.slice(0, 1)));
-      setCluster(clusters[0] || "");
+      setNamespaces(csv([pickRandom(ns.namespaces) as string]));
+      setCluster(pickRandom(clusters) || "");
     } catch (e) {
       setSt({ status: "error", message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -375,11 +385,11 @@ function OpsxLegacySection() {
       if (ops.ok && ops.operations.length) setOperations(ops.operations.map((o) => o.key));
       const apps = await opsxApi.searchApps("");
       if (!apps.ok || !apps.apps.length) { setSt({ status: "error", message: "Hiç uygulama bulunamadı." }); return; }
-      const foundApp = apps.apps[0];
+      const foundApp = pickRandom(apps.apps) as string;
       const h = await opsxApi.getHosts(foundApp);
       if (!h.ok || !h.hosts.length) { setSt({ status: "error", message: `"${foundApp}" için sunucu bulunamadı.` }); return; }
       setApp(foundApp);
-      setHosts(csv(h.hosts.slice(0, 1).map((x) => x.host)));
+      setHosts(csv([(pickRandom(h.hosts) as typeof h.hosts[number]).host]));
     } catch (e) {
       setSt({ status: "error", message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -460,23 +470,23 @@ function OpsxOcpSection() {
       const c = await opsxApi.getClusters();
       const envs = Object.keys(c.tree || {}).sort();
       if (!envs.length) { setSt({ status: "error", message: "Hiç ortam (env) bulunamadı." }); return; }
-      const foundEnv = envs[0];
+      const foundEnv = pickRandom(envs) as string;
       const tenants = Object.keys(c.tree[foundEnv] || {}).sort();
       if (!tenants.length) { setSt({ status: "error", message: `"${foundEnv}" için tenant bulunamadı.` }); return; }
-      const foundTenant = tenants[0];
+      const foundTenant = pickRandom(tenants) as string;
       const clusters = c.tree[foundEnv][foundTenant] || [];
       const ns = await opsxApi.getOcpNamespaces(foundEnv, foundTenant);
       if (!ns.ok || !ns.namespaces.length) { setSt({ status: "error", message: `"${foundEnv}/${foundTenant}" için namespace bulunamadı.` }); return; }
-      const foundNs = ns.namespaces[0];
+      const foundNs = pickRandom(ns.namespaces) as string;
       const apps = await opsxApi.getOcpApps(foundEnv, foundTenant, foundNs);
       if (!apps.ok || !apps.apps.length) { setSt({ status: "error", message: `"${foundNs}" içinde uygulama bulunamadı.` }); return; }
       setEnv(foundEnv);
       setTenant(foundTenant);
       setNamespace(foundNs);
-      setApplication(apps.apps[0]);
+      setApplication(pickRandom(apps.apps) as string);
       // Blast radius'u minimumda tutmak icin TEK GERCEK cluster secilir (bos = "tumu" anlamina
       // gelip DAHA GENIS bir hedefe yol acardi, test senaryosu icin GUVENLI DEGIL).
-      setCluster(clusters[0] || "");
+      setCluster(pickRandom(clusters) || "");
     } catch (e) {
       setSt({ status: "error", message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -584,12 +594,13 @@ function OpsxLegacyDumpSection() {
     try {
       const apps = await opsxApi.searchApps("");
       if (!apps.ok || !apps.apps.length) throw new Error("Hiç uygulama bulunamadı.");
-      const foundApp = apps.apps[0];
+      const foundApp = pickRandom(apps.apps) as string;
       const h = await opsxApi.getHosts(foundApp);
       if (!h.ok || !h.hosts.length) throw new Error(`"${foundApp}" için sunucu bulunamadı.`);
+      const foundHost = (pickRandom(h.hosts) as typeof h.hosts[number]).host;
       setApp(foundApp);
-      setHosts(csv(h.hosts.slice(0, 1).map((x) => x.host)));
-      pushLog(`Bulundu: ${foundApp} @ ${h.hosts[0].host}`);
+      setHosts(csv([foundHost]));
+      pushLog(`Bulundu: ${foundApp} @ ${foundHost}`);
     } catch (e) {
       pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -693,17 +704,18 @@ function OpsxOcpDumpSection() {
       const c = await opsxApi.getClusters();
       const envs = Object.keys(c.tree || {}).sort();
       if (!envs.length) throw new Error("Hiç ortam (env) bulunamadı.");
-      const foundEnv = envs[0];
+      const foundEnv = pickRandom(envs) as string;
       const tenants = Object.keys(c.tree[foundEnv] || {}).sort();
       if (!tenants.length) throw new Error(`"${foundEnv}" için tenant bulunamadı.`);
-      const foundTenant = tenants[0];
+      const foundTenant = pickRandom(tenants) as string;
       const ns = await opsxApi.getOcpNamespaces(foundEnv, foundTenant);
       if (!ns.ok || !ns.namespaces.length) throw new Error(`"${foundEnv}/${foundTenant}" için namespace bulunamadı.`);
-      const foundNs = ns.namespaces[0];
+      const foundNs = pickRandom(ns.namespaces) as string;
       const apps = await opsxApi.getOcpApps(foundEnv, foundTenant, foundNs);
       if (!apps.ok || !apps.apps.length) throw new Error(`"${foundNs}" içinde uygulama bulunamadı.`);
-      setEnv(foundEnv); setTenant(foundTenant); setNamespace(foundNs); setApplication(apps.apps[0]);
-      pushLog(`Bulundu: ${foundEnv}/${foundTenant} — ${foundNs}/${apps.apps[0]}`);
+      const foundApp = pickRandom(apps.apps) as string;
+      setEnv(foundEnv); setTenant(foundTenant); setNamespace(foundNs); setApplication(foundApp);
+      pushLog(`Bulundu: ${foundEnv}/${foundTenant} — ${foundNs}/${foundApp}`);
     } catch (e) {
       pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -817,12 +829,13 @@ function LogXLegacySection() {
     try {
       const apps = await logxV2Api.searchLegacyApps("");
       if (!apps.ok || !apps.apps.length) throw new Error("Hiç uygulama bulunamadı.");
-      const foundApp = apps.apps[0];
+      const foundApp = pickRandom(apps.apps) as string;
       const h = await logxV2Api.legacyHosts(foundApp);
       if (!h.ok || !h.hosts.length) throw new Error(`"${foundApp}" için sunucu bulunamadı.`);
+      const foundHost = (pickRandom(h.hosts) as typeof h.hosts[number]).host;
       setApp(foundApp);
-      setHosts(csv(h.hosts.slice(0, 1).map((x) => x.host)));
-      pushLog(`Bulundu: ${foundApp} @ ${h.hosts[0].host}`);
+      setHosts(csv([foundHost]));
+      pushLog(`Bulundu: ${foundApp} @ ${foundHost}`);
     } catch (e) {
       pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -922,13 +935,13 @@ function LogXOcpSection() {
       const c = await logxV2Api.getClusterTree();
       const envs = Object.keys(c.tree || {}).sort();
       if (!envs.length) throw new Error("Hiç ortam (env) bulunamadı.");
-      const foundEnv = envs[0];
+      const foundEnv = pickRandom(envs) as string;
       const tenants = Object.keys(c.tree[foundEnv] || {}).sort();
       if (!tenants.length) throw new Error(`"${foundEnv}" için tenant bulunamadı.`);
-      const foundTenant = tenants[0];
+      const foundTenant = pickRandom(tenants) as string;
       const clusters = c.tree[foundEnv][foundTenant] || [];
       if (!clusters.length) throw new Error(`"${foundEnv}/${foundTenant}" için cluster bulunamadı.`);
-      const foundCluster = clusters[0];
+      const foundCluster = pickRandom(clusters) as string;
 
       const req = await logxV2Api.createRequest("openshift");
       if (!req.ok) throw new Error("İstek açılamadı.");
@@ -950,8 +963,9 @@ function LogXOcpSection() {
       // BİRİNCİL kaynak: zamanlanmış envanter (AWX job TETİKLEMEZ) — LogXWizardPage ile AYNI öncelik.
       const inv = await logxV2Api.inventoryNamespaces(env, tenant, [cluster]).catch(() => null);
       if (inv?.cached && inv.items.length) {
-        setNamespace(inv.items[0]);
-        pushLog(`Namespace (envanterden): ${inv.items[0]}`);
+        const foundNs = pickRandom(inv.items) as string;
+        setNamespace(foundNs);
+        pushLog(`Namespace (envanterden): ${foundNs}`);
         return;
       }
       const ok = window.confirm(`Envanterde kayıt yok — namespace taraması GERÇEK bir AWX job'ı tetikler.\n\nHedef: ${env}/${tenant}/${cluster}\n\nDevam edilsin mi?`);
@@ -965,8 +979,9 @@ function LogXOcpSection() {
       const result = r.request.discoveryResult as OcpNamespaceDiscoveryResult | null;
       const okCluster = result?.clusters?.find((c) => c.status === "ok" && c.namespaces?.length);
       if (!okCluster) throw new Error("Namespace bulunamadı.");
-      setNamespace(okCluster.namespaces[0]);
-      pushLog(`Namespace (taramadan): ${okCluster.namespaces[0]}`);
+      const foundNs2 = pickRandom(okCluster.namespaces) as string;
+      setNamespace(foundNs2);
+      pushLog(`Namespace (taramadan): ${foundNs2}`);
     } catch (e) {
       pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -980,8 +995,9 @@ function LogXOcpSection() {
     try {
       const cached = await logxV2Api.cachedApps(env, tenant, cluster, namespace).catch(() => null);
       if (cached?.items?.length) {
-        setApplication(cached.items[0].name);
-        pushLog(`Uygulama (önbellekten): ${cached.items[0].name}`);
+        const foundApp = (pickRandom(cached.items) as typeof cached.items[number]).name;
+        setApplication(foundApp);
+        pushLog(`Uygulama (önbellekten): ${foundApp}`);
         return;
       }
       const ok = window.confirm(`Önbellekte kayıt yok — uygulama taraması GERÇEK bir AWX job'ı tetikler.\n\nNamespace: ${namespace}\n\nDevam edilsin mi?`);
@@ -993,8 +1009,9 @@ function LogXOcpSection() {
       await pollUntilTerminal(() => logxV2Api.jobStatus(launch.jobId));
       const after = await logxV2Api.cachedApps(env, tenant, cluster, namespace);
       if (!after.items?.length) throw new Error("Uygulama bulunamadı.");
-      setApplication(after.items[0].name);
-      pushLog(`Uygulama (taramadan): ${after.items[0].name}`);
+      const foundApp2 = (pickRandom(after.items) as typeof after.items[number]).name;
+      setApplication(foundApp2);
+      pushLog(`Uygulama (taramadan): ${foundApp2}`);
     } catch (e) {
       pushLog(`Hata: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
