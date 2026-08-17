@@ -49,6 +49,10 @@ const OCP_OPERATIONS = Object.freeze([
   { key: 'tcpdump', label: 'Tcpdump al', enabled: false },
 ]);
 
+// java_app_ops.yml'in sonundaki "DB Ops" play'inin sabit hedefi — Legacy restart/stop/
+// start akisinin AWX --limit'ine HER ZAMAN eklenir (bkz. POST /api/opsx/run, "limitHosts").
+const DB_OPS_HOST = 'GBLABT02';
+
 const REGISTRY_KEYS = Object.freeze({
   legacy: 'opsx_legacy_operation',
   openshift: 'opsx_openshift_operation',
@@ -537,7 +541,15 @@ function initOpsX(app) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
 
-      limitValue = requested.join(cfg.separator);
+      // AWX'in --limit alani PLAYBOOK GENELINDE gecerlidir — sadece ana islem play'ini
+      // degil, java_app_ops.yml'in sonundaki "DB Ops" play'ini de (hosts: GBLABT02, is
+      // calistirmasini denetim icin DB'ye kaydeder) kisitlar. limit sadece secilen hedef
+      // sunucularla sinirlanirsa (ör. "GBCJAP01,GBCJAP03") GBLABT02 bu kumede olmadigi
+      // icin o play "skipping: no hosts matched" ile sessizce atlanir — is'in kendisi
+      // BASARILI olur ama denetim kaydi hic yazilmaz. Bu yuzden GBLABT02 HER ZAMAN limit'e
+      // eklenir (zaten hedeflerden biriyse tekrar eklenmez).
+      const limitHosts = requested.includes(DB_OPS_HOST) ? requested : [...requested, DB_OPS_HOST];
+      limitValue = limitHosts.join(cfg.separator);
 
       // restart/stop/start artik `application`in TEK bir server-config/server-group adi
       // OLDUGUNU VARSAYMAZ (2026-08-17, kullanici istegi) — kullanici java_app_check.yml
