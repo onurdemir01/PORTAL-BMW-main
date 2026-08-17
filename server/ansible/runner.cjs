@@ -1488,7 +1488,10 @@ function initAnsibleRunner(app) {
     function isActive(field) {
       const dep = field.dependsOn;
       if (!dep || !Array.isArray(dep.conditions) || dep.conditions.length === 0) return true;
-      const results = dep.conditions.map((c) => (effective[c.field] ?? "") === (c.equals ?? ""));
+      const results = dep.conditions.map((c) => {
+        const val = effective[c.field] ?? "";
+        return c.operator === "notEmpty" ? val !== "" : val === (c.equals ?? "");
+      });
       // mode="any" → VEYA (herhangi biri yeterli), aksi halde (varsayilan "all") VE (hepsi sart).
       return dep.mode === "any" ? results.some(Boolean) : results.every(Boolean);
     }

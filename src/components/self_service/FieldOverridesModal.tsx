@@ -11,7 +11,7 @@
 // "Ek Değişkenler" bloğu (survey'de karşılığı olmayan, AWX'in ask_variables_on_launch
 // desteklediği ama hiçbir yerde free-form giriş noktası olmayan boşluğu kapatır).
 import React, { useEffect, useState } from "react";
-import { LockClosedIcon, ShieldExclamationIcon, InformationCircleIcon, AdjustmentsHorizontalIcon, PlusIcon, TrashIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { LockClosedIcon, ShieldExclamationIcon, InformationCircleIcon, AdjustmentsHorizontalIcon, PlusIcon, TrashIcon, SparklesIcon, ArrowUpIcon, ArrowDownIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/common/Modal";
 import { TextInput, Textarea, Select } from "@/components/ui/Form";
 import { ansibleApi, type LaunchOptions, type FieldOverride, type LaunchOptionOverride, type OutputFilter, type SurveyField, type FieldCustomization } from "@/api/ansibleApi";
@@ -60,8 +60,12 @@ function normalizeCustomField(f: SurveyField): SurveyField {
   const dep = raw as { mode?: string; conditions?: unknown; field?: string; equals?: string };
   if (Array.isArray(dep.conditions)) {
     const conditions = dep.conditions
-      .filter((c): c is { field: string; equals: string } => !!c && typeof c === "object")
-      .map((c) => ({ field: String((c as { field?: unknown }).field ?? ""), equals: String((c as { equals?: unknown }).equals ?? "") }));
+      .filter((c): c is { field: string; equals: string; operator?: string } => !!c && typeof c === "object")
+      .map((c) => ({
+        field: String((c as { field?: unknown }).field ?? ""),
+        equals: String((c as { equals?: unknown }).equals ?? ""),
+        operator: (c as { operator?: unknown }).operator === "notEmpty" ? "notEmpty" as const : "equals" as const,
+      }));
     return { ...f, dependsOn: { mode: dep.mode === "all" ? "all" : "any", conditions } };
   }
   // Eski tek-kosul bicimi ({field, equals}) — yeni {mode, conditions[]} bicimine tasi.
@@ -166,6 +170,17 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   function removeCustomField(index: number) {
     setCustomFields((prev) => prev.filter((_, i) => i !== index));
   }
+  // Alan sırası aynen render sırası (customFields dizisinin sırası) — sürükle-bırak yerine
+  // basit yukarı/aşağı taşıma, komşu iki elemanı yer değiştirir.
+  function moveCustomField(index: number, direction: -1 | 1) {
+    setCustomFields((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
 
   function addChoice(fieldIndex: number) {
     setCustomFields((prev) => prev.map((f, i) => (i === fieldIndex ? { ...f, choices: [...f.choices, ""] } : f)));
@@ -226,10 +241,10 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   function addCondition(fieldIndex: number) {
     setCustomFields((prev) => prev.map((f, i) => {
       if (i !== fieldIndex || !f.dependsOn) return f;
-      return { ...f, dependsOn: { ...f.dependsOn, conditions: [...f.dependsOn.conditions, { field: "", equals: "" }] } };
+      return { ...f, dependsOn: { ...f.dependsOn, conditions: [...f.dependsOn.conditions, { field: "", equals: "", operator: "equals" as const }] } };
     }));
   }
-  function updateCondition(fieldIndex: number, condIndex: number, patch: Partial<{ field: string; equals: string }>) {
+  function updateCondition(fieldIndex: number, condIndex: number, patch: Partial<{ field: string; equals: string; operator: "equals" | "notEmpty" }>) {
     setCustomFields((prev) => prev.map((f, i) => {
       if (i !== fieldIndex || !f.dependsOn) return f;
       const conditions = f.dependsOn.conditions.map((c, ci) => (ci === condIndex ? { ...c, ...patch } : c));
@@ -448,6 +463,27 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                     const isChoiceType = f.type === "multiplechoice" || f.type === "multiselect";
                     return (
                       <div key={i} className="border border-[var(--border)] rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-[var(--text-muted)]">Alan {i + 1}</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => moveCustomField(i, -1)}
+                              disabled={i === 0}
+                              className="p-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="Yukarı taşı"
+                            >
+                              <ArrowUpIcon className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => moveCustomField(i, 1)}
+                              disabled={i === customFields.length - 1}
+                              className="p-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="Aşağı taşı"
+                            >
+                              <ArrowDownIcon className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Görünen Ad (label)</label>
@@ -562,7 +598,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                               type="checkbox"
                               checked={f.dependsOn !== undefined}
                               onChange={(e) => updateCustomField(i, {
-                                dependsOn: e.target.checked ? { mode: "any", conditions: [{ field: "", equals: "" }] } : undefined,
+                                dependsOn: e.target.checked ? { mode: "any", conditions: [{ field: "", equals: "", operator: "equals" as const }] } : undefined,
                               })}
                             />
                             Koşullu göster (başka alan(lar)ın değerine bağlı)
@@ -590,31 +626,45 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                                 </label>
                               </div>
 
-                              {(Array.isArray(f.dependsOn.conditions) ? f.dependsOn.conditions : []).map((c, ci) => (
-                                <div key={ci} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
-                                  <Select
-                                    value={c.field}
-                                    onChange={(e) => updateCondition(i, ci, { field: e.target.value })}
-                                  >
-                                    <option value="">Alan seçin…</option>
-                                    {customFields.filter((_, oi) => oi !== i).map((other, oi) => (
-                                      <option key={oi} value={other.name}>{other.label || other.name || `Alan ${oi + 1}`}</option>
-                                    ))}
-                                  </Select>
-                                  <TextInput
-                                    value={c.equals}
-                                    placeholder="şu değere eşitse (ör. deactive)"
-                                    onChange={(e) => updateCondition(i, ci, { equals: e.target.value })}
-                                  />
-                                  <button
-                                    onClick={() => removeCondition(i, ci)}
-                                    className="text-red-400 hover:text-red-600 flex-shrink-0"
-                                    title="Koşulu kaldır"
-                                  >
-                                    <TrashIcon className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              ))}
+                              {(Array.isArray(f.dependsOn.conditions) ? f.dependsOn.conditions : []).map((c, ci) => {
+                                const operator = c.operator === "notEmpty" ? "notEmpty" : "equals";
+                                return (
+                                  <div key={ci} className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center">
+                                    <Select
+                                      value={c.field}
+                                      onChange={(e) => updateCondition(i, ci, { field: e.target.value })}
+                                    >
+                                      <option value="">Alan seçin…</option>
+                                      {customFields.filter((_, oi) => oi !== i).map((other, oi) => (
+                                        <option key={oi} value={other.name}>{other.label || other.name || `Alan ${oi + 1}`}</option>
+                                      ))}
+                                    </Select>
+                                    <Select
+                                      value={operator}
+                                      onChange={(e) => updateCondition(i, ci, { operator: e.target.value === "notEmpty" ? "notEmpty" : "equals" })}
+                                    >
+                                      <option value="equals">şu değere eşitse</option>
+                                      <option value="notEmpty">herhangi bir değer seçilirse</option>
+                                    </Select>
+                                    {operator === "equals" ? (
+                                      <TextInput
+                                        value={c.equals}
+                                        placeholder="ör. deactive"
+                                        onChange={(e) => updateCondition(i, ci, { equals: e.target.value })}
+                                      />
+                                    ) : (
+                                      <span className="text-[11px] text-[var(--text-muted)] italic px-1">boş bırakılmadıkça</span>
+                                    )}
+                                    <button
+                                      onClick={() => removeCondition(i, ci)}
+                                      className="text-red-400 hover:text-red-600 flex-shrink-0"
+                                      title="Koşulu kaldır"
+                                    >
+                                      <TrashIcon className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
 
                               <button
                                 onClick={() => addCondition(i)}

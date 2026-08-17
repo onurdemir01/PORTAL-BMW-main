@@ -183,7 +183,7 @@ const ServerConfigSelectStep: React.FC<{
           <p className="text-sm text-[var(--text-secondary)]">Hangi JVM'(ler) {OPERATION_LABELS[operation] || operation} edilsin?</p>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Uygulama: <span className="font-mono text-[var(--text-primary)]">{application}</span>
-            {" · "}birden fazla veya tümü seçilebilir
+            {" · "}bir sunucuda birden fazla JVM bulunabilir — hangisinde işlem yapmak istediğinizi seçin, isterseniz tümünü de seçebilirsiniz
           </p>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -207,9 +207,18 @@ const ServerConfigSelectStep: React.FC<{
       )}
 
       <div className="space-y-3 max-h-80 overflow-y-auto">
-        {Object.keys(grouped).sort().map((host) => (
+        {Object.keys(grouped).sort().map((host) => {
+          const multiple = grouped[host].length > 1;
+          return (
           <div key={host}>
-            <label className="text-xs font-medium text-[var(--text-secondary)]">{host}</label>
+            <div className="flex items-baseline justify-between gap-2">
+              <label className="text-xs font-medium text-[var(--text-secondary)]">{host}</label>
+              {multiple && (
+                <span className="text-[10px] text-[var(--text-muted)]">
+                  {grouped[host].length} JVM bulundu — hangisinde işlem yapmak istediğinizi seçin (tümü de seçilebilir)
+                </span>
+              )}
+            </div>
             <div className="mt-1 space-y-1 border border-[var(--border)] rounded-xl p-1.5">
               {grouped[host].map((c) => {
                 const running = c.status === "running";
@@ -241,7 +250,8 @@ const ServerConfigSelectStep: React.FC<{
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="flex items-center justify-between gap-3">

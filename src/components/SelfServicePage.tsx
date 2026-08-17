@@ -154,7 +154,10 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   function isFieldActive(f: SurveyField): boolean {
     const dep = f.dependsOn;
     if (!dep || !Array.isArray(dep.conditions) || dep.conditions.length === 0) return true;
-    const results = dep.conditions.map((c) => (values[c.field] ?? "").trim() === c.equals);
+    const results = dep.conditions.map((c) => {
+      const val = (values[c.field] ?? "").trim();
+      return c.operator === "notEmpty" ? val !== "" : val === c.equals;
+    });
     return dep.mode === "any" ? results.some(Boolean) : results.every(Boolean);
   }
   const visibleFields = fields.filter(isFieldActive);

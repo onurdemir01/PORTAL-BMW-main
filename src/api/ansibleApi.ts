@@ -434,6 +434,10 @@ export interface SurveyField {
 export interface SurveyFieldCondition {
   field: string;
   equals: string;
+  // "equals" (varsayılan, geriye dönük uyumlu): field === equals ise koşul sağlanır.
+  // "notEmpty": field için HERHANGİ bir değer seçilmiş/girilmişse koşul sağlanır (equals
+  // yok sayılır) — ör. "bir seçim yapıldıysa şu alanı göster".
+  operator?: "equals" | "notEmpty";
 }
 
 export interface JobHistoryRecord {
