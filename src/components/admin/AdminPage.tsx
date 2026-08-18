@@ -5,7 +5,6 @@ import { toast } from "@/hooks/useToast";
 import {
   ServerStackIcon,
   ClipboardDocumentListIcon,
-  WrenchScrewdriverIcon,
   CommandLineIcon,
   CogIcon,
   UsersIcon,
@@ -19,7 +18,6 @@ import {
   ArchiveBoxIcon,
 } from "@heroicons/react/24/outline";
 import AuditLogTab from "./tabs/AuditLogTab";
-import SelfServiceAdminTab from "./tabs/SelfServiceAdminTab";
 import AnsibleConfigTab from "./tabs/AnsibleConfigTab";
 import PlaybookRegistryTab from "./tabs/PlaybookRegistryTab";
 import SystemConfigTab from "./tabs/SystemConfigTab";
@@ -39,7 +37,6 @@ import FlowTestsTab from "./tabs/FlowTestsTab";
 const DEFAULT_TABS = [
   { id: "logxv2",      label: "LogX Yapılandırma", icon: ServerStackIcon },
   { id: "audit",       label: "Denetim Kaydı",     icon: ClipboardDocumentListIcon },
-  { id: "selfservice", label: "Self Service",     icon: WrenchScrewdriverIcon },
   { id: "testscenarios", label: "Test Senaryoları", icon: BeakerIcon },
   { id: "dbbackup", label: "DB Yedekleme", icon: ArchiveBoxIcon },
   { id: "flowtests", label: "Akış Testleri", icon: BeakerIcon },
@@ -198,7 +195,6 @@ const AdminPage: React.FC = () => {
       <div className="card p-5">
         <div key={activeTab} style={{ animation: "fadeIn 0.18s ease" }}>
           {activeTab === "audit"       && <AuditLogTab />}
-          {activeTab === "selfservice" && <SelfServiceAdminTab />}
           {activeTab === "testscenarios" && <TestScenariosTab />}
           {activeTab === "dbbackup" && <DbBackupTab />}
           {activeTab === "flowtests" && <FlowTestsTab />}

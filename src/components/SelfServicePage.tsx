@@ -1,39 +1,23 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { selfServiceApi, type SelfServiceGroup } from "@/api/selfServiceApi";
 import { ansibleApi } from "@/api/ansibleApi";
 import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions } from "@/api/ansibleApi";
-import type { SelfServiceStore, SelfServiceTab, SelfServiceSubTab, SelfServiceItem } from "@/types";
-import { normalizeExternalUrl, openExternalUrl } from "@/utils/url";
-import SelfServiceItemModal from "@/components/self_service/SelfServiceItemModal";
-import SimpleNameModal from "@/components/self_service/SimpleNameModal";
 import FieldOverridesModal from "@/components/self_service/FieldOverridesModal";
 import RequestsSidePanel from "@/components/self_service/RequestsSidePanel";
-import Collapse from "@/components/common/Collapse";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import { useFloatingWindow, ResizeHandle } from "@/hooks/useFloatingWindow";
 import { Field, TextInput, Textarea, Select } from "@/components/ui/Form";
 import {
-  ChevronDownIcon,
-  FolderIcon,
-  FolderOpenIcon,
-  DocumentTextIcon,
   PlusIcon,
-  PencilIcon,
   TrashIcon,
-  ArrowUpIcon,
-  ArrowDownIcon,
   CommandLineIcon,
-  SparklesIcon,
-  EllipsisHorizontalIcon,
   XMarkIcon,
   PlayIcon,
   ClockIcon,
   ArrowLeftIcon,
-  ArrowTopRightOnSquareIcon,
   QuestionMarkCircleIcon,
   ShieldCheckIcon,
   AdjustmentsHorizontalIcon,
@@ -44,9 +28,9 @@ import IpCheckSection from "@/components/self_service/IpCheckSection";
 
 const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   {
-    icon: SparklesIcon,
-    title: "Smart, Ansible ve Diğerleri Sekmeleri",
-    body: "\"Smart\" öne çıkan/önerilen servisleri, \"Ansible\" AWX üzerinden başlatılabilen otomasyon servislerini, \"Diğerleri\" ise kurumsal servis rehberini (dokümantasyon/bağlantı kataloğu) listeler.",
+    icon: CommandLineIcon,
+    title: "Ansible ve Check Sekmeleri",
+    body: "\"Ansible\" AWX üzerinden başlatılabilen otomasyon servislerini, \"Check\" ise yapıştırılan bir IP listesinin envanterde (IPInventory) bulunup bulunmadığını gösterir.",
   },
   {
     icon: PlayIcon,
@@ -56,18 +40,12 @@ const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   {
     icon: ShieldCheckIcon,
     title: "Katalog Yönetimi (Ekle/Düzenle/Sil)",
-    body: "Ansible servislerini AWX şablonlarından kayıt olarak eklemek/düzenlemek/silmek ve \"Diğerleri\" rehberindeki grup/servis kayıtlarını yönetmek yalnızca Admin rolüne açıktır — normal kullanıcılar yalnızca görüntüleyip başlatabilir.",
+    body: "Ansible servislerini AWX şablonlarından kayıt olarak eklemek/düzenlemek/silmek yalnızca Admin rolüne açıktır — normal kullanıcılar yalnızca görüntüleyip başlatabilir.",
     adminOnly: true,
   },
 ];
 
-const emptyStore: SelfServiceStore = { version: 1, tabs: [] };
-
-function sortByOrder<T extends { order: number }>(arr: T[]) {
-  return [...arr].sort((a, b) => (a.order || 0) - (b.order || 0));
-}
-
-type TopTab = "smart" | "ansible" | "others" | "check";
+type TopTab = "ansible" | "check";
 
 // ── Survey Form Modal ─────────────────────────────────────────────────────────
 
@@ -779,383 +757,6 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-// ── Smart / Others Item Detail ────────────────────────────────────────────────
-
-function GuideItemDetail({ item, selectedTab, selectedSub, isAdmin, onEdit, onDelete }: {
-  item: SelfServiceItem;
-  selectedTab?: SelfServiceTab;
-  selectedSub?: SelfServiceSubTab;
-  isAdmin: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const normalizedGo = normalizeExternalUrl(item.goUrl || "");
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-[var(--shadow-md)]">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3 bg-gradient-to-r from-[#0066CC]/[0.03] to-transparent">
-        <div className="min-w-0">
-          <h2 className="font-black text-gray-900 text-xl truncate">{item.title}</h2>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {selectedTab?.name}{selectedSub ? ` › ${selectedSub.name}` : ""}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={() => openExternalUrl(normalizedGo)}
-            disabled={!normalizedGo}
-            className="btn-primary flex items-center gap-1.5 px-4 py-2 text-sm"
-          >
-            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-            Kayıt Aç
-          </button>
-          {isAdmin && (
-            <>
-              <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-[#0066CC] border border-gray-200 rounded-xl transition">
-                <PencilIcon className="w-4 h-4" />
-              </button>
-              <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-500 border border-gray-200 rounded-xl transition">
-                <TrashIcon className="w-4 h-4" />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="p-5 space-y-4">
-        {item.info && (
-          <div className="bg-[#0066CC]/[0.06] border border-[#0066CC]/20 rounded-xl p-4">
-            <p className="text-[11px] font-bold text-[#0066CC] uppercase tracking-widest mb-2">Amaç / Açıklama</p>
-            <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{item.info}</p>
-          </div>
-        )}
-
-        {item.details && (
-          <div className="border border-gray-100 rounded-xl p-4">
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Nasıl Kullanılır / Neden</p>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{item.details}</p>
-          </div>
-        )}
-
-        {item.requestExample && (
-          <div className="border border-gray-100 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Örnek Parametreler</span>
-              <button onClick={() => navigator.clipboard.writeText(item.requestExample)} className="text-xs text-gray-400 hover:text-gray-600 transition">
-                Kopyala
-              </button>
-            </div>
-            <pre className="text-xs p-4 overflow-auto text-gray-800 bg-white leading-relaxed font-mono">
-              <code>{item.requestExample}</code>
-            </pre>
-          </div>
-        )}
-
-        {(item.sample?.type === "text" || item.sample?.type === "link") && item.sample.value && (
-          <div className="border border-gray-100 rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Örnek Kayıt</span>
-            </div>
-            <div className="p-4">
-              {item.sample.type === "link" ? (
-                <button className="text-sm text-[#0066CC] hover:underline break-all" onClick={() => openExternalUrl(item.sample.value)}>
-                  {item.sample.value}
-                </button>
-              ) : (
-                <pre className="text-xs bg-gray-50 border border-gray-100 rounded-lg p-3 overflow-auto text-gray-800 font-mono">
-                  <code>{item.sample.value}</code>
-                </pre>
-              )}
-            </div>
-          </div>
-        )}
-
-        {item.extra && (
-          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
-            <p className="text-[11px] font-bold text-amber-700 uppercase tracking-widest mb-2">⚠ Dikkat / Notlar</p>
-            <p className="text-sm text-amber-800 whitespace-pre-wrap leading-relaxed">{item.extra}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Smart / Others Navigation + Detail ───────────────────────────────────────
-
-function GuideSection({
-  section,
-  store,
-  isAdmin,
-  onStoreChange,
-}: {
-  section: "smart" | "others";
-  store: SelfServiceStore;
-  isAdmin: boolean;
-  onStoreChange: (next: SelfServiceStore) => void;
-}) {
-  const [params, setParams] = useSearchParams();
-  const [tabId, setTabId] = useState(params.get("tab") || "");
-  const [subTabId, setSubTabId] = useState(params.get("subtab") || "");
-  const [itemId, setItemId] = useState(params.get("item") || "");
-  const [openTabs, setOpenTabs] = useState<Set<string>>(new Set());
-  const [openSubTabs, setOpenSubTabs] = useState<Set<string>>(new Set());
-  const [err, setErr] = useState("");
-
-  const [nameModal, setNameModal] = useState<{ open: boolean; kind: "tab" | "subtab"; mode: "create" | "edit"; title: string; value: string; }>({ open: false, kind: "tab", mode: "create", title: "", value: "" });
-  const [itemModal, setItemModal] = useState<{ open: boolean; mode: "create" | "edit"; draft: SelfServiceItem; }>({
-    open: false, mode: "create",
-    draft: { id: "", title: "", order: 0, tabId: "", subTabId: "", info: "", goUrl: "", requestExample: "", details: "", sample: { type: "link", value: "" }, extra: "" },
-  });
-
-  const tabs = useMemo(() => sortByOrder(store.tabs.filter((t) => (t.section || "smart") === section)), [store.tabs, section]);
-
-  const selectedTab = useMemo(() => tabs.find((t) => t.id === tabId) || tabs[0], [tabs, tabId]);
-  const subTabs = useMemo(() => sortByOrder(selectedTab?.subTabs || []), [selectedTab?.subTabs]);
-  const selectedSub = useMemo(() => subTabs.find((s) => s.id === subTabId) || subTabs[0], [subTabs, subTabId]);
-  const items = useMemo(() => sortByOrder(selectedSub?.items || []), [selectedSub?.items]);
-  const selectedItem = useMemo(() => items.find((it) => it.id === itemId) || items[0], [items, itemId]);
-
-  function maxOrder<T extends { order: number }>(list: T[]) {
-    return list.reduce((m, x) => Math.max(m, x.order || 0), 0);
-  }
-
-  const applyStore = (next: SelfServiceStore, keep?: { tabId?: string; subTabId?: string; itemId?: string }) => {
-    onStoreChange(next);
-    const kt = keep?.tabId || tabId;
-    const ks = keep?.subTabId || subTabId;
-    const ki = keep?.itemId || itemId;
-    const t = next.tabs.find((x) => x.id === kt) || sortByOrder(next.tabs.filter((x) => (x.section || "smart") === section))[0];
-    setTabId(t?.id || "");
-    const s = t?.subTabs.find((x) => x.id === ks) || sortByOrder(t?.subTabs || [])[0];
-    setSubTabId(s?.id || "");
-    const it = s?.items.find((x) => x.id === ki) || sortByOrder(s?.items || [])[0];
-    setItemId(it?.id || "");
-  };
-
-  const moveUpDown = async (kind: "tab" | "subTab" | "item", id: string, dir: -1 | 1) => {
-    try {
-      if (kind === "tab") {
-        const list = [...tabs]; const idx = list.findIndex((x) => x.id === id); const sw = idx + dir;
-        if (sw < 0 || sw >= list.length) return;
-        [list[idx], list[sw]] = [list[sw], list[idx]];
-        const r = await selfServiceApi.reorder({ kind: "tab", orderedIds: list.map((x) => x.id) });
-        applyStore(r.store, { tabId });
-      } else if (kind === "subTab" && selectedTab) {
-        const list = [...subTabs]; const idx = list.findIndex((x) => x.id === id); const sw = idx + dir;
-        if (sw < 0 || sw >= list.length) return;
-        [list[idx], list[sw]] = [list[sw], list[idx]];
-        const r = await selfServiceApi.reorder({ kind: "subTab", scope: { tabId: selectedTab.id }, orderedIds: list.map((x) => x.id) });
-        applyStore(r.store, { tabId: selectedTab.id, subTabId });
-      } else if (kind === "item" && selectedTab && selectedSub) {
-        const list = [...items]; const idx = list.findIndex((x) => x.id === id); const sw = idx + dir;
-        if (sw < 0 || sw >= list.length) return;
-        [list[idx], list[sw]] = [list[sw], list[idx]];
-        const r = await selfServiceApi.reorder({ kind: "item", scope: { tabId: selectedTab.id, subTabId: selectedSub.id }, orderedIds: list.map((x) => x.id) });
-        applyStore(r.store, { tabId: selectedTab.id, subTabId: selectedSub.id, itemId });
-      }
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); }
-  };
-
-  const saveNameModal = async (name: string) => {
-    try {
-      setErr("");
-      if (nameModal.kind === "tab") {
-        if (nameModal.mode === "create") {
-          const r = await selfServiceApi.createTab({ name, section });
-          applyStore(r.store, { tabId: r.tab.id });
-          setOpenTabs((s) => new Set([...s, r.tab.id]));
-        } else if (selectedTab) {
-          const r = await selfServiceApi.updateTab(selectedTab.id, { name });
-          applyStore(r.store, { tabId: selectedTab.id });
-        }
-      } else if (selectedTab) {
-        if (nameModal.mode === "create") {
-          const r = await selfServiceApi.createSubTab(selectedTab.id, { name });
-          applyStore(r.store, { tabId: selectedTab.id, subTabId: r.subTab.id });
-          setOpenSubTabs((s) => new Set([...s, r.subTab.id]));
-        } else if (selectedSub) {
-          const r = await selfServiceApi.updateSubTab(selectedTab.id, selectedSub.id, { name });
-          applyStore(r.store, { tabId: selectedTab.id, subTabId: selectedSub.id });
-        }
-      }
-      setNameModal((m) => ({ ...m, open: false }));
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); }
-  };
-
-  const deleteTab = async () => {
-    if (!isAdmin || !selectedTab) return;
-    if (!confirm(`"${selectedTab.name}" tabını sil?`)) return;
-    const r = await selfServiceApi.deleteTab(selectedTab.id).catch((e) => { setErr(e.message); return null; });
-    if (r) applyStore(r.store);
-  };
-
-  const deleteSubTab = async () => {
-    if (!isAdmin || !selectedTab || !selectedSub) return;
-    if (!confirm(`"${selectedSub.name}" alt-tabını sil?`)) return;
-    const r = await selfServiceApi.deleteSubTab(selectedTab.id, selectedSub.id).catch((e) => { setErr(e.message); return null; });
-    if (r) applyStore(r.store, { tabId: selectedTab.id });
-  };
-
-  const saveItem = async (draft: SelfServiceItem) => {
-    if (!isAdmin || !selectedTab || !selectedSub) return;
-    const payload = { title: draft.title, info: draft.info, goUrl: draft.goUrl, requestExample: draft.requestExample, details: draft.details, sample: draft.sample, extra: draft.extra };
-    try {
-      if (itemModal.mode === "create") {
-        const r = await selfServiceApi.createItem(selectedTab.id, selectedSub.id, payload);
-        applyStore(r.store, { tabId: selectedTab.id, subTabId: selectedSub.id, itemId: r.item.id });
-      } else {
-        const r = await selfServiceApi.updateItem(selectedTab.id, selectedSub.id, draft.id, payload);
-        applyStore(r.store, { tabId: selectedTab.id, subTabId: selectedSub.id, itemId: r.item.id });
-      }
-      setItemModal((m) => ({ ...m, open: false }));
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); }
-  };
-
-  const deleteItem = async () => {
-    if (!isAdmin || !selectedTab || !selectedSub || !selectedItem) return;
-    if (!confirm(`"${selectedItem.title}" öğesini sil?`)) return;
-    const r = await selfServiceApi.deleteItem(selectedTab.id, selectedSub.id, selectedItem.id).catch((e) => { setErr(e.message); return null; });
-    if (r) applyStore(r.store, { tabId: selectedTab.id, subTabId: selectedSub.id });
-  };
-
-  const sectionLabel = section === "smart" ? "Servis" : "Diğer";
-
-  return (
-    <div className="space-y-4">
-      {isAdmin && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => setNameModal({ open: true, kind: "tab", mode: "create", title: `Yeni ${sectionLabel} Grubu`, value: "" })}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#060C17] text-white rounded-xl hover:bg-gray-800 transition">
-            <PlusIcon className="w-4 h-4" /> Grup Ekle
-          </button>
-          {selectedTab && (
-            <button onClick={() => setNameModal({ open: true, kind: "subtab", mode: "create", title: "Yeni Alt-Grup", value: "" })}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-700 transition">
-              <PlusIcon className="w-4 h-4" /> Alt-Grup Ekle
-            </button>
-          )}
-          {selectedTab && selectedSub && (
-            <button
-              onClick={() => setItemModal({ open: true, mode: "create", draft: { id: "", title: "", order: maxOrder(items) + 1, tabId: selectedTab.id, subTabId: selectedSub.id, info: "", goUrl: "", requestExample: "", details: "", sample: { type: "link", value: "" }, extra: "" } })}
-              className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-sm">
-              <PlusIcon className="w-4 h-4" /> Servis Ekle
-            </button>
-          )}
-        </div>
-      )}
-
-      {err && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{err}</div>}
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left nav */}
-        <div className="lg:col-span-4 space-y-2">
-          {tabs.length === 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 px-6 py-10 text-center text-sm text-gray-400">
-              {isAdmin ? `${sectionLabel} grubu yok. Ekle butonunu kullanın.` : "Henüz içerik tanımlanmamış."}
-            </div>
-          )}
-          {tabs.map((tab) => {
-            const tabOpen = openTabs.has(tab.id);
-            const sortedSubs = sortByOrder(tab.subTabs);
-            return (
-              <div key={tab.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-[var(--shadow-sm)]">
-                <div className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors">
-                  <button className="flex items-center gap-2 flex-1 text-left min-w-0" onClick={() => setOpenTabs((s) => { const n = new Set(s); n.has(tab.id) ? n.delete(tab.id) : n.add(tab.id); return n; })}>
-                    <ChevronDownIcon className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${tabOpen ? "rotate-0" : "-rotate-90"}`} />
-                    {tabOpen ? <FolderOpenIcon className="w-4 h-4 text-[#0066CC] flex-shrink-0" /> : <FolderIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />}
-                    <span className={`text-sm font-semibold truncate ${tabOpen ? "text-gray-900" : "text-gray-600"}`}>{tab.name}</span>
-                    <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{sortedSubs.length}</span>
-                  </button>
-                  {isAdmin && (
-                    <div className="flex gap-0.5 flex-shrink-0">
-                      <button onClick={() => moveUpDown("tab", tab.id, -1)} className="p-1 text-gray-300 hover:text-gray-600 rounded"><ArrowUpIcon className="w-3 h-3" /></button>
-                      <button onClick={() => moveUpDown("tab", tab.id, 1)} className="p-1 text-gray-300 hover:text-gray-600 rounded"><ArrowDownIcon className="w-3 h-3" /></button>
-                      <button onClick={() => setNameModal({ open: true, kind: "tab", mode: "edit", title: "Grubu Düzenle", value: tab.name })} className="p-1 text-gray-300 hover:text-[#0066CC] rounded"><PencilIcon className="w-3 h-3" /></button>
-                      <button onClick={deleteTab} className="p-1 text-gray-300 hover:text-red-500 rounded"><TrashIcon className="w-3 h-3" /></button>
-                    </div>
-                  )}
-                </div>
-                <Collapse open={tabOpen}>
-                  <div className="border-t border-gray-100 bg-gray-50 px-3 py-2 space-y-1">
-                    {sortedSubs.map((sub) => {
-                      const subOpen = openSubTabs.has(sub.id);
-                      const sortedItems = sortByOrder(sub.items);
-                      if (!isAdmin && sortedItems.length === 0) return null;
-                      return (
-                        <div key={sub.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                          <div className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors">
-                            <button className="flex items-center gap-2 flex-1 text-left min-w-0" onClick={() => setOpenSubTabs((s) => { const n = new Set(s); n.has(sub.id) ? n.delete(sub.id) : n.add(sub.id); return n; })}>
-                              <ChevronDownIcon className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform duration-200 ${subOpen ? "rotate-0" : "-rotate-90"}`} />
-                              <span className={`text-sm truncate ${subOpen ? "font-medium text-gray-800" : "text-gray-600"}`}>{sub.name}</span>
-                              <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{sortedItems.length}</span>
-                            </button>
-                            {isAdmin && (
-                              <div className="flex gap-0.5 flex-shrink-0">
-                                <button onClick={() => moveUpDown("subTab", sub.id, -1)} className="p-1 text-gray-300 hover:text-gray-600 rounded"><ArrowUpIcon className="w-2.5 h-2.5" /></button>
-                                <button onClick={() => moveUpDown("subTab", sub.id, 1)} className="p-1 text-gray-300 hover:text-gray-600 rounded"><ArrowDownIcon className="w-2.5 h-2.5" /></button>
-                                <button onClick={() => setNameModal({ open: true, kind: "subtab", mode: "edit", title: "Alt-Grubu Düzenle", value: sub.name })} className="p-1 text-gray-300 hover:text-[#0066CC] rounded"><PencilIcon className="w-2.5 h-2.5" /></button>
-                                <button onClick={deleteSubTab} className="p-1 text-gray-300 hover:text-red-500 rounded"><TrashIcon className="w-2.5 h-2.5" /></button>
-                              </div>
-                            )}
-                          </div>
-                          <Collapse open={subOpen}>
-                            <div className="border-t border-gray-100 py-1">
-                              {sortedItems.map((it) => {
-                                const active = it.id === selectedItem?.id;
-                                return (
-                                  <div key={it.id} className={`flex items-center gap-2 px-4 py-2 cursor-pointer transition-colors group ${active ? "bg-[#0066CC]/[0.06]" : "hover:bg-gray-50"}`}
-                                    onClick={() => { setTabId(tab.id); setSubTabId(sub.id); setItemId(it.id); setOpenTabs((s) => new Set([...s, tab.id])); setOpenSubTabs((s) => new Set([...s, sub.id])); }}>
-                                    <DocumentTextIcon className={`w-3.5 h-3.5 flex-shrink-0 ${active ? "text-[#0066CC]" : "text-gray-300"}`} />
-                                    <span className={`flex-1 text-sm truncate ${active ? "text-[#0066CC] font-medium" : "text-gray-700"}`}>{it.title}</span>
-                                    {isAdmin && (
-                                      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
-                                        <button onClick={(e) => { e.stopPropagation(); moveUpDown("item", it.id, -1); }} className="p-0.5 text-gray-300 hover:text-gray-600 rounded"><ArrowUpIcon className="w-2.5 h-2.5" /></button>
-                                        <button onClick={(e) => { e.stopPropagation(); moveUpDown("item", it.id, 1); }} className="p-0.5 text-gray-300 hover:text-gray-600 rounded"><ArrowDownIcon className="w-2.5 h-2.5" /></button>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                              {sortedItems.length === 0 && isAdmin && <p className="px-4 py-2 text-xs italic text-gray-400">İçerik yok — sağdan öğe ekleyin.</p>}
-                            </div>
-                          </Collapse>
-                        </div>
-                      );
-                    })}
-                    {sortedSubs.length === 0 && <p className="text-xs text-gray-400 px-2 py-1">Alt-grup yok.</p>}
-                  </div>
-                </Collapse>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Right detail */}
-        <div className="lg:col-span-8">
-          {!selectedItem ? (
-            <div className="bg-white rounded-2xl border border-gray-100 flex items-center justify-center h-48">
-              <p className="text-sm text-gray-400">Soldaki listeden bir servis seçin.</p>
-            </div>
-          ) : (
-            <GuideItemDetail
-              item={selectedItem}
-              selectedTab={selectedTab}
-              selectedSub={selectedSub}
-              isAdmin={isAdmin}
-              onEdit={() => setItemModal({ open: true, mode: "edit", draft: { ...selectedItem } })}
-              onDelete={deleteItem}
-            />
-          )}
-        </div>
-      </div>
-
-      <SimpleNameModal open={nameModal.open} title={nameModal.title} initialValue={nameModal.value} onClose={() => setNameModal((m) => ({ ...m, open: false }))} onSave={saveNameModal} />
-      <SelfServiceItemModal open={itemModal.open} mode={itemModal.mode} draft={itemModal.draft} onClose={() => setItemModal((m) => ({ ...m, open: false }))} onSave={saveItem} />
-    </div>
-  );
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function SelfServicePage() {
@@ -1164,7 +765,6 @@ export default function SelfServicePage() {
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [store, setStore] = useState<SelfServiceStore>(emptyStore);
   const [groups, setGroups] = useState<SelfServiceGroup[]>([]);
   const [activeTop, setActiveTop] = useState<TopTab>("ansible");
   const [showHelp, setShowHelp] = useState(false);
@@ -1175,13 +775,7 @@ export default function SelfServicePage() {
       try {
         setLoading(true);
         const r = await selfServiceApi.get();
-        if (alive) {
-          setStore(r.store);
-          setGroups(r.groups || []);
-          if (r.groups?.length && !r.groups.some((g) => g.groupKey === activeTop)) {
-            setActiveTop(r.groups[0].groupKey);
-          }
-        }
+        if (alive) setGroups(r.groups || []);
       } catch (e: unknown) {
         if (alive) setErr(e instanceof Error ? e.message : String(e));
       } finally {
@@ -1192,24 +786,12 @@ export default function SelfServicePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // actions.md #5 (Bolum D) — eskiden burada sabit bir TOP_TABS dizisi vardi (statik frontend
-  // kodu). Artik grup listesi (etiket/ikon/sira/aktiflik) DB'den (/api/selfservice yaniti)
-  // gelir; yalnizca ikon-adi -> component eslemesi (GROUP_ICONS) frontend'de sabit kalir —
-  // cunku React component referanslarini DB'de saklamak mumkun degildir.
-  const GROUP_ICONS: Record<string, React.ElementType> = {
-    SparklesIcon, CommandLineIcon, EllipsisHorizontalIcon,
-  };
-  // "Check" sekmesi DB-guduml grup mekanizmasinin DISINDA, sabit 4. sekme olarak eklenir
-  // (dbo grup listesi tam olarak 3 satirla sinirli — bkz. server/selfservice/store.cjs).
-  const DB_TOP_TABS: { id: TopTab; label: string; icon: React.ElementType }[] = groups.length
-    ? groups.map((g) => ({ id: g.groupKey, label: g.label, icon: GROUP_ICONS[g.icon] || SparklesIcon }))
-    : [
-        { id: "smart",   label: "Smart",     icon: SparklesIcon },
-        { id: "ansible", label: "Ansible",   icon: CommandLineIcon },
-        { id: "others",  label: "Diğerleri", icon: EllipsisHorizontalIcon },
-      ];
+  // "Ansible" etiket/sira bilgisi hala DB'den (/api/selfservice -> groups) gelir — Smart/
+  // Diğerleri grupları kaldırıldığı icin artik geriye tek DB grubu (ansible) kalıyor. "Check"
+  // sekmesi DB-guduml grup mekanizmasinin DISINDA, sabit 2. sekme olarak eklenir.
+  const ansibleGroup = groups.find((g) => g.groupKey === "ansible");
   const TOP_TABS: { id: TopTab; label: string; icon: React.ElementType }[] = [
-    ...DB_TOP_TABS,
+    { id: "ansible", label: ansibleGroup?.label || "Ansible", icon: CommandLineIcon },
     { id: "check", label: "Check", icon: MagnifyingGlassIcon },
   ];
 
@@ -1227,7 +809,7 @@ export default function SelfServicePage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="page-title">Self Service</h1>
-            <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-muted)" }}>Servis kataloğu, Ansible otomasyonu ve kurumsal servisler</p>
+            <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-muted)" }}>Ansible otomasyonu ve IP envanteri kontrolü</p>
           </div>
           <button
             onClick={() => setShowHelp(true)}
@@ -1240,7 +822,7 @@ export default function SelfServicePage() {
 
         {err && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{err}</div>}
 
-        {/* Top 3 fixed tabs */}
+        {/* Top fixed tabs */}
         <div className="flex items-center gap-1 bg-[#EEF2FF] p-1 rounded-xl w-fit">
           {TOP_TABS.map(({ id, label, icon: Icon }) => (
             <button
@@ -1258,14 +840,8 @@ export default function SelfServicePage() {
           ))}
         </div>
 
-        {activeTop === "smart" && (
-          <GuideSection section="smart" store={store} isAdmin={isAdmin} onStoreChange={setStore} />
-        )}
         {activeTop === "ansible" && (
           <AnsibleSection isAdmin={isAdmin} />
-        )}
-        {activeTop === "others" && (
-          <GuideSection section="others" store={store} isAdmin={isAdmin} onStoreChange={setStore} />
         )}
         {activeTop === "check" && (
           <IpCheckSection />

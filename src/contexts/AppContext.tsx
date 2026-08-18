@@ -1,8 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback, useContext } from "react";
 import { nobetciApi, type NobetciResult } from "@/api/nobetciApi";
 import { dynatraceApi } from "@/api/dynatraceApi";
-import { selfServiceApi } from "@/api/selfServiceApi";
-import type { SelfServiceStore } from "@/types";
+import { ansibleApi } from "@/api/ansibleApi";
 
 interface AppContextType {
   nobetci:          NobetciResult | null;
@@ -12,7 +11,6 @@ interface AppContextType {
   dtHealth:         { ok?: boolean; configured: boolean; reachable?: boolean; mcpConnected?: boolean; environment?: string | null; message?: string } | null;
   dtHealthLoading:  boolean;
 
-  selfSrvStore:     SelfServiceStore | null;
   selfSrvCount:     number;
   selfSrvLoading:   boolean;
 }
@@ -20,21 +18,10 @@ interface AppContextType {
 const AppContext = createContext<AppContextType>({
   nobetci: null, nobetciLoading: true, refreshNobetci: () => {},
   dtHealth: null, dtHealthLoading: true,
-  selfSrvStore: null, selfSrvCount: 0, selfSrvLoading: true,
+  selfSrvCount: 0, selfSrvLoading: true,
 });
 
 export const useAppData = () => useContext(AppContext);
-
-function countSsItems(store: SelfServiceStore | null): number {
-  if (!store) return 0;
-  let n = 0;
-  for (const tab of store.tabs ?? []) {
-    for (const sub of tab.subTabs ?? []) {
-      n += sub.items?.length ?? 0;
-    }
-  }
-  return n;
-}
 
 export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [nobetci, setNobetci]           = useState<NobetciResult | null>(null);
@@ -43,7 +30,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [dtHealth, setDtHealth]         = useState<{ ok?: boolean; configured: boolean; reachable?: boolean; mcpConnected?: boolean; environment?: string | null; message?: string } | null>(null);
   const [dtHealthLoading, setDtHealthL] = useState(true);
 
-  const [selfSrvStore, setSelfSrvStore] = useState<SelfServiceStore | null>(null);
+  // Self Service KPI'si (Dashboard "Durum" karti) — Smart/Diğerleri katalogu kaldirildigi
+  // icin artik Ansible sekmesindeki (AWX'ten kayitli) servis sayisini gosterir.
+  const [selfSrvCount, setSelfSrvCount] = useState(0);
   const [selfSrvLoading, setSelfL]      = useState(true);
 
   const loadNobetci = useCallback(() => {
@@ -62,19 +51,17 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .catch(() => {})
       .finally(() => setDtHealthL(false));
 
-    selfServiceApi.get()
-      .then((d) => setSelfSrvStore(d.store))
+    ansibleApi.ssItems()
+      .then((r) => setSelfSrvCount((r.items || []).length))
       .catch(() => {})
       .finally(() => setSelfL(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const selfSrvCount = countSsItems(selfSrvStore);
 
   return (
     <AppContext.Provider value={{
       nobetci, nobetciLoading, refreshNobetci: loadNobetci,
       dtHealth, dtHealthLoading,
-      selfSrvStore, selfSrvCount, selfSrvLoading,
+      selfSrvCount, selfSrvLoading,
     }}>
       {children}
     </AppContext.Provider>
