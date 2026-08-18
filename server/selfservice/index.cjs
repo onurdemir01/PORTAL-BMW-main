@@ -45,11 +45,18 @@ function initSelfService(app) {
   });
 
   router.use(requireAuth);
+  // "/ip-check" (Check sekmesi) bir POST ama gercek bir MUTASYON DEGIL — salt-okunur bir
+  // sorgu, herhangi bir authenticated kullanici kullanabilmeli (sadece admin degil). Bu
+  // yuzden admin-gate'ten (asagida) ACIKCA MUAF tutuluyor; requireVisiblePrefix (Self
+  // Service sayfa gorunurlugu) ve audit loglama ise NORMAL SEKILDE uygulanmaya devam eder
+  // (asagida route TANIMI o middleware'lerden SONRA).
   router.use((req, res, next) => {
     if (req.method === "GET") return next();
+    if (req.path === "/ip-check") return next();
     return requireAdmin(req, res, next);
   });
-  // Tum mutasyonlar portal_audit_logs'a yazilir (bkz. server/audit/index.cjs).
+  // Tum mutasyonlar portal_audit_logs'a yazilir (bkz. server/audit/index.cjs) — /ip-check
+  // de POST oldugu icin burada denetim kaydina girer (kim hangi IP'leri sorguladi).
   try { router.use(require("../audit/index.cjs").auditMutations("selfservice")); } catch { /* audit yoksa yoksay */ }
 
   // Self Service sayfasi gizliyse gercek 403. /count muaf — dashboard KPI icin tum
@@ -63,6 +70,65 @@ function initSelfService(app) {
   router.get("/count", async (req, res) => {
     const store = readStore();
     res.json({ ok: true, itemCount: countItems(store) });
+  });
+
+  // POST /ip-check — Check sekmesi: yapistirilan IP listesini dbo.IPInventory'de arar.
+  // Genel /api/inventory/data/:table ucu KULLANILMADI (o, tabloya rol-bazli gorunurluk
+  // izni gerektiriyor ve tum tabloyu tarama/sayfalama gibi cok daha genis bir yetki
+  // yuzeyi acar) - bunun yerine kucuk, amaca-ozel, salt-okunur bir sorgu.
+  router.post("/ip-check", async (req, res) => {
+    try {
+      const raw = req.body?.ips;
+      if (!Array.isArray(raw) || raw.length === 0) {
+        return res.status(400).json({ ok: false, message: "En az bir IP girilmeli." });
+      }
+      const seen = new Set();
+      const ips = [];
+      for (const item of raw) {
+        const v = String(item ?? "").trim();
+        if (!v) continue;
+        const key = v.toUpperCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        ips.push(v);
+        if (ips.length >= 1000) break;
+      }
+      if (ips.length === 0) {
+        return res.status(400).json({ ok: false, message: "Geçerli bir IP bulunamadı." });
+      }
+
+      const { query, sql } = require("../inventory/mssql.cjs");
+      const inputs = ips.map((ip, i) => ({ name: `ip${i}`, type: sql.NVarChar(64), value: ip }));
+      const placeholders = ips.map((_, i) => `@ip${i}`).join(", ");
+      const result = await query(
+        `SELECT host, ip, created_at, updated_at, last_seen_at FROM dbo.IPInventory WHERE ip IN (${placeholders})`,
+        inputs
+      );
+      const rows = result.recordset || [];
+
+      // ip -> [dbo.IPInventory satiri, ...] (bir IP birden fazla host'ta gorunmus olabilir,
+      // TRUNCATE+reload tarama modelinde teorik olarak tekrar etmemeli ama garanti degil).
+      const byIp = new Map();
+      for (const r of rows) {
+        const key = String(r.ip || "").trim().toUpperCase();
+        if (!byIp.has(key)) byIp.set(key, []);
+        byIp.get(key).push(r);
+      }
+
+      const results = ips.map((ip) => {
+        const matches = byIp.get(ip.toUpperCase()) || [];
+        return { ip, found: matches.length > 0, matches };
+      });
+
+      res.json({
+        ok: true,
+        results,
+        totalChecked: ips.length,
+        totalFound: results.filter((r) => r.found).length,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || "Sorgulama başarısız." });
+    }
   });
 
   // GET full store — H-05: includes itemCount. actions.md #5 (Bolum D): "groups" artik

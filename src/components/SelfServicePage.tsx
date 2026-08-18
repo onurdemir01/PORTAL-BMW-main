@@ -37,8 +37,10 @@ import {
   QuestionMarkCircleIcon,
   ShieldCheckIcon,
   AdjustmentsHorizontalIcon,
+  MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
+import IpCheckSection from "@/components/self_service/IpCheckSection";
 
 const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   {
@@ -65,7 +67,7 @@ function sortByOrder<T extends { order: number }>(arr: T[]) {
   return [...arr].sort((a, b) => (a.order || 0) - (b.order || 0));
 }
 
-type TopTab = "smart" | "ansible" | "others";
+type TopTab = "smart" | "ansible" | "others" | "check";
 
 // ── Survey Form Modal ─────────────────────────────────────────────────────────
 
@@ -1197,13 +1199,19 @@ export default function SelfServicePage() {
   const GROUP_ICONS: Record<string, React.ElementType> = {
     SparklesIcon, CommandLineIcon, EllipsisHorizontalIcon,
   };
-  const TOP_TABS: { id: TopTab; label: string; icon: React.ElementType }[] = groups.length
+  // "Check" sekmesi DB-guduml grup mekanizmasinin DISINDA, sabit 4. sekme olarak eklenir
+  // (dbo grup listesi tam olarak 3 satirla sinirli — bkz. server/selfservice/store.cjs).
+  const DB_TOP_TABS: { id: TopTab; label: string; icon: React.ElementType }[] = groups.length
     ? groups.map((g) => ({ id: g.groupKey, label: g.label, icon: GROUP_ICONS[g.icon] || SparklesIcon }))
     : [
         { id: "smart",   label: "Smart",     icon: SparklesIcon },
         { id: "ansible", label: "Ansible",   icon: CommandLineIcon },
         { id: "others",  label: "Diğerleri", icon: EllipsisHorizontalIcon },
       ];
+  const TOP_TABS: { id: TopTab; label: string; icon: React.ElementType }[] = [
+    ...DB_TOP_TABS,
+    { id: "check", label: "Check", icon: MagnifyingGlassIcon },
+  ];
 
   if (loading) {
     return (
@@ -1258,6 +1266,9 @@ export default function SelfServicePage() {
         )}
         {activeTop === "others" && (
           <GuideSection section="others" store={store} isAdmin={isAdmin} onStoreChange={setStore} />
+        )}
+        {activeTop === "check" && (
+          <IpCheckSection />
         )}
 
         <HelpModal

@@ -17,9 +17,34 @@ export interface SelfServiceGroup {
   icon: string; sortOrder: number; isActive: boolean;
 }
 
+export interface IpCheckMatch {
+  host: string;
+  ip: string;
+  created_at: string | null;
+  updated_at: string | null;
+  last_seen_at: string | null;
+}
+
+export interface IpCheckResult {
+  ip: string;
+  found: boolean;
+  matches: IpCheckMatch[];
+}
+
 export const selfServiceApi = {
   async get(): Promise<{ ok: true; store: SelfServiceStore; groups: SelfServiceGroup[] }> {
     const r = await fetch(`${BASE}`, { method: "GET" });
+    return json(r);
+  },
+
+  // "Check" sekmesi — yapistirilan IP listesini dbo.IPInventory'de arar (bkz.
+  // server/selfservice/index.cjs POST /ip-check).
+  async ipCheck(ips: string[]): Promise<{ ok: true; results: IpCheckResult[]; totalChecked: number; totalFound: number }> {
+    const r = await fetch(`${BASE}/ip-check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ips }),
+    });
     return json(r);
   },
 
