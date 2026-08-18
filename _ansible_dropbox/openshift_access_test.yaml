@@ -19,8 +19,14 @@
         export KUBECONFIG="/tmp/kubeconfig_accesstest_$$"
         unset https_proxy && unset http_proxy
         oc login --server="{{ url }}" --username="{{ username }}" --password="{{ password }}"
+        login_rc=$?
+        if [ $login_rc -ne 0 ]; then
+          rm -f "$KUBECONFIG"
+          exit $login_rc
+        fi
         oc logout --server="{{ url }}"
         rm -f "$KUBECONFIG"
+        exit 0
       register: oc_login
       when: jump_access is succeeded
       ignore_unreachable: true
