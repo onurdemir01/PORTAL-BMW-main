@@ -97,3 +97,163 @@
           - "❌ Jump server'a erişilemedi: {{ jump_fail_count }}"
           - "⚠️  Jump erişildi ama uxmid login başarısız: {{ login_fail_count }}"
           - "======================================================"
+
+    # Teams karti icin cluster satirlarini biriktiriyoruz — sorunlu olanlar (jump
+    # erisilemedi / login basarisiz) once, tam basarili olanlar sonra listelensin diye
+    # sort key'i once basari durumuna, sonra isme gore.
+    - name: --- [Task] Teams karti icin cluster satirlarini olustur ---
+      ansible.builtin.set_fact:
+        access_rows: >-
+          {{
+            access_rows | default([]) + [{
+              'type': 'TextBlock',
+              'wrap': true,
+              'spacing': 'none',
+              'text': (
+                ((row.jump_ok and row.login_ok) | ternary('✅', (row.jump_ok | ternary('⚠️', '❌'))))
+                ~ ' **' ~ row.cluster_name ~ '** (' ~ row.jump_host ~ ')'
+                ~ '  |  Jump: ' ~ (row.jump_ok | ternary('ERİŞİLEBİLİR', 'ERİŞİLEMEDİ'))
+                ~ '  |  uxmid Login: ' ~ ((row.jump_ok and row.login_ok) | ternary('BAŞARILI', (row.jump_ok | ternary('BAŞARISIZ', 'N/A'))))
+              )
+            }]
+          }}
+      loop: >-
+        {{
+          (report_rows | selectattr('login_ok', 'equalto', false) | sort(attribute='cluster_name') | list)
+          +
+          (report_rows | selectattr('login_ok', 'equalto', true) | sort(attribute='cluster_name') | list)
+        }}
+      loop_control:
+        loop_var: row
+        label: "{{ row.cluster_name }}"
+
+    - name: --- [Task] Send notification to the Teams ---
+      ansible.builtin.uri:
+        url: "https://defaulte2d1902ef9f94297ba327ca093233a.a7.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/10/workflows/f138bf582f1445a2b62a9d22ed250130/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=op9EergLGLOwi5F_gnrhltamqqJOJnVREdEXx1Y65PY"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          type: message
+          attachments:
+            - contentType: application/vnd.microsoft.card.adaptive
+              content:
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+                type: AdaptiveCard
+                version: "1.4"
+                msteams:
+                  width: "Full"
+                body:
+                  - type: Container
+                    style: "{{ 'attention' if (jump_fail_count | int + login_fail_count | int) > 0 else 'good' }}"
+                    bleed: true
+                    items:
+                      - type: ColumnSet
+                        columns:
+                          - type: Column
+                            width: auto
+                            verticalContentAlignment: Center
+                            items:
+                              - type: TextBlock
+                                text: "{{ '⚠️' if (jump_fail_count | int + login_fail_count | int) > 0 else '🔐' }}"
+                                size: ExtraLarge
+                          - type: Column
+                            width: stretch
+                            verticalContentAlignment: Center
+                            items:
+                              - type: TextBlock
+                                text: "OpenShift Erişim Testi"
+                                weight: Bolder
+                                size: Large
+                                wrap: true
+                              - type: TextBlock
+                                text: "Jump server erişimi + uxmid login testi tamamlandı"
+                                isSubtle: true
+                                spacing: none
+                                wrap: true
+                  - type: ColumnSet
+                    spacing: Medium
+                    columns:
+                      - type: Column
+                        width: stretch
+                        style: emphasis
+                        items:
+                          - type: TextBlock
+                            text: "{{ total_count }}"
+                            weight: Bolder
+                            size: ExtraLarge
+                            horizontalAlignment: Center
+                          - type: TextBlock
+                            text: "Toplam Cluster"
+                            horizontalAlignment: Center
+                            isSubtle: true
+                            spacing: none
+                      - type: Column
+                        width: stretch
+                        style: good
+                        items:
+                          - type: TextBlock
+                            text: "{{ ok_count }}"
+                            weight: Bolder
+                            size: ExtraLarge
+                            horizontalAlignment: Center
+                            color: good
+                          - type: TextBlock
+                            text: "Tam Başarılı"
+                            horizontalAlignment: Center
+                            isSubtle: true
+                            spacing: none
+                      - type: Column
+                        width: stretch
+                        style: attention
+                        items:
+                          - type: TextBlock
+                            text: "{{ jump_fail_count }}"
+                            weight: Bolder
+                            size: ExtraLarge
+                            horizontalAlignment: Center
+                            color: attention
+                          - type: TextBlock
+                            text: "Jump Erişilemedi"
+                            horizontalAlignment: Center
+                            isSubtle: true
+                            spacing: none
+                      - type: Column
+                        width: stretch
+                        style: warning
+                        items:
+                          - type: TextBlock
+                            text: "{{ login_fail_count }}"
+                            weight: Bolder
+                            size: ExtraLarge
+                            horizontalAlignment: Center
+                            color: warning
+                          - type: TextBlock
+                            text: "Login Başarısız"
+                            horizontalAlignment: Center
+                            isSubtle: true
+                            spacing: none
+                  - type: TextBlock
+                    text: "Cluster Detayları"
+                    weight: Bolder
+                    size: Medium
+                    spacing: Medium
+                  - type: Container
+                    items: "{{ access_rows | default([]) }}"
+                  - type: TextBlock
+                    text: "{{ now(fmt='%d.%m.%Y %H:%M') }}"
+                    isSubtle: true
+                    size: Small
+                    spacing: Medium
+        status_code:
+          - 200
+          - 202
+      failed_when: false
+      environment:
+        http_proxy: "http://tekprxv2.fw.garanti.com.tr:80"
+        https_proxy: "http://tekprxv2.fw.garanti.com.tr:80"
+        HTTP_PROXY: "http://tekprxv2.fw.garanti.com.tr:80"
+        HTTPS_PROXY: "http://tekprxv2.fw.garanti.com.tr:80"
+        no_proxy: "localhost,127.0.0.1"
+        NO_PROXY: "localhost,127.0.0.1"
