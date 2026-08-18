@@ -681,15 +681,30 @@ async function getJobOutput(jobId) {
 // kullandigi ayni primitifler) LogX v2'nin ihtiyac duydugu serverId-parametreli genel
 // API olarak export eder. Mevcut tek-sunucu fonksiyonlarina dokunmaz.
 
-async function launchJobOnServer(serverId, templateId, extraVars = {}, limit = "") {
+// Bazi playbook'larin Teams bildirimi (Power Automate flow'undaki "Search for users"
+// adimi) bir @mention BEKLIYOR — hicbir tag gelmezse bildirim tamamen basarisiz oluyordu
+// (bkz. gar_bmt_ansible_scripts: openshift_access_test.yaml, indexer_infos.yaml). Bu
+// yuzden AWX'e giden HER job'a, isi tetikleyen Portal kullanicisinin e-postasi/adi
+// requester_email/requester_name olarak enjekte edilir — kullanici bilgisi yoksa
+// (ornegin zamanlanmis/sistem tetiklemesi) varsayilan olarak Onur Demir etiketlenir.
+// Template bu degiskeni "Prompt on launch"ta acmadiysa AWX sessizce yok sayar (zarar vermez).
+const DEFAULT_REQUESTER = { email: "onurdemir3@garantibbva.com.tr", name: "Onur Demir" };
+
+function withRequesterVars(extraVars, user) {
+  const email = String(user?.mail || "").trim() || DEFAULT_REQUESTER.email;
+  const name = String(user?.displayName || user?.username || "").trim() || DEFAULT_REQUESTER.name;
+  return { ...extraVars, requester_email: email, requester_name: name };
+}
+
+async function launchJobOnServer(serverId, templateId, extraVars = {}, limit = "", requester = null) {
   const server = getServerById(serverId);
   if (!server) throw Object.assign(new Error("AWX sunucusu bulunamadı."), { status: 404 });
 
   const id = Number(templateId);
   if (isNaN(id) || id <= 0) throw Object.assign(new Error("Geçersiz template ID."), { status: 400 });
 
-  const payload = {};
-  if (extraVars && Object.keys(extraVars).length > 0) payload.extra_vars = JSON.stringify(extraVars);
+  const finalExtraVars = withRequesterVars(extraVars, requester);
+  const payload = { extra_vars: JSON.stringify(finalExtraVars) };
   if (limit) payload.limit = limit;
 
   const token = await getTokenForServer(server);
@@ -1628,7 +1643,8 @@ function initAnsibleRunner(app) {
   // auditPortal ve username bunu tolere eder (bkz. server/audit/index.cjs).
   async function performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req }) {
     const token = await getTokenForServer(server);
-    const payload = buildAwxLaunchPayload(detail, { extraVars, ...resolvedLaunchOptions });
+    const extraVarsWithRequester = withRequesterVars(extraVars, req?.session?.user);
+    const payload = buildAwxLaunchPayload(detail, { extraVars: extraVarsWithRequester, ...resolvedLaunchOptions });
     const data = await awxRequestToServer(server, token, "POST", `/api/v2/job_templates/${templateId}/launch/`, payload);
     const jobId = data.id;
 

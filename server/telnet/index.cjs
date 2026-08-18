@@ -314,7 +314,7 @@ function initTelnet(app) {
 
       const runner = require('../ansible/runner.cjs');
       try {
-        const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
+        const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
 
         try {
           const db = require('../db/index.cjs');
@@ -389,7 +389,7 @@ function initTelnet(app) {
 
     try {
       const runner = require('../ansible/runner.cjs');
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
 
       // ansible_job_history'ye kayit — OpsX ile AYNI genel-amacli tablo (job-status
       // endpoint'inin IDOR korumasi bu kayda bakar).

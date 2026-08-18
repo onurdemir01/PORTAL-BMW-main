@@ -701,7 +701,7 @@ function initOpsX(app) {
       // launchJobOnServer(serverId, templateId, extraVars, limit) — limit bos string
       // ise payload'a HIC eklenmez (bkz. runner.cjs: `if (limit) payload.limit = limit`),
       // dolayisiyla Openshift govdesinde ust-seviye limit alani olusmaz.
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
 
       // ansible_job_history'ye kayit: Self Service'in kullandigi AYNI genel-amacli
       // tablo. Bu, iki sey saglar: (a) job-status endpoint'i IDOR korumasi icin
@@ -808,7 +808,7 @@ function initOpsX(app) {
       const runner = require('../ansible/runner.cjs');
       await require('../ansible/template-preflight.cjs')
         .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
 
       // IDOR korumasi /api/opsx/legacy/jvm/:serverId/:jobId/status'ta bu kayda bakar.
       try {
@@ -920,7 +920,7 @@ function initOpsX(app) {
       const runner = require('../ansible/runner.cjs');
       await require('../ansible/template-preflight.cjs')
         .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
 
       // IDOR korumasi /api/opsx/legacy/serverconfig/:serverId/:jobId/status'ta bu kayda bakar.
       try {
@@ -1068,7 +1068,7 @@ function initOpsX(app) {
       const runner = require('../ansible/runner.cjs');
       await require('../ansible/template-preflight.cjs')
         .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue);
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
 
       try {
         const db = require('../db/index.cjs');
@@ -1153,7 +1153,7 @@ function initOpsX(app) {
       const runner = require('../ansible/runner.cjs');
       await require('../ansible/template-preflight.cjs')
         .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
 
       // IDOR korumasi /api/opsx/ocp/pods/:serverId/:jobId/status'ta bu kayda bakar.
       try {
@@ -1354,7 +1354,7 @@ function initOpsX(app) {
       const runner = require('../ansible/runner.cjs');
       await require('../ansible/template-preflight.cjs')
         .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
 
       try {
         const db = require('../db/index.cjs');

@@ -129,7 +129,7 @@ function initFileX(app) {
 
     try {
       const runner = require('../ansible/runner.cjs');
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '');
+      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
 
       try {
         const db = require('../db/index.cjs');
