@@ -1,0 +1,93 @@
+- name: --- [Play] Openshift Access Test ---
+  hosts: "{{ cluster }}"
+  gather_facts: no
+  ignore_unreachable: true
+  vars_files:
+    - ../global_variables/credentials.yaml
+    - ../global_variables/openshift_inventory_vars.yaml
+  tasks:
+    # Jump server'a SSH erisimini oc login'den AYRI olcuyoruz — boylece "erisemedim"
+    # ile "eristim ama uxmid login basarisiz" birbirinden net ayirt edilebiliyor.
+    - name: --- [Task] Jump server'a erisim testi (SSH) ---
+      ansible.builtin.command: /bin/true
+      register: jump_access
+      ignore_unreachable: true
+      ignore_errors: true
+
+    - name: --- [Task] uxmid kullanicisi ile Openshift login testi ---
+      ansible.builtin.shell: |
+        export KUBECONFIG="/tmp/kubeconfig_accesstest_$$"
+        unset https_proxy && unset http_proxy
+        oc login --server="{{ url }}" --username="{{ username }}" --password="{{ password }}"
+        oc logout --server="{{ url }}"
+        rm -f "$KUBECONFIG"
+      register: oc_login
+      when: jump_access is succeeded
+      ignore_unreachable: true
+      ignore_errors: true
+
+    - name: --- [Task] Bu cluster'in sonucunu kaydet ---
+      ansible.builtin.set_fact:
+        access_result:
+          cluster_name: "{{ name | default(inventory_hostname) }}"
+          jump_host: "{{ inventory_hostname }}"
+          jump_ok: "{{ jump_access is defined and jump_access is succeeded }}"
+          login_ok: >-
+            {{
+              jump_access is defined and jump_access is succeeded
+              and oc_login is defined and (oc_login.rc | default(1)) == 0
+            }}
+      ignore_unreachable: true
+
+- name: --- [Play] Openshift Access Test - Rapor ---
+  hosts: localhost
+  gather_facts: no
+  vars:
+    tested_hosts: "{{ groups[cluster] | default([]) }}"
+  tasks:
+    # Unreachable / task hic calismamis host'larda access_result set_fact'i hic
+    # calismamis olabilir — bu durumda cluster'i "erisilemedi" olarak varsayiyoruz
+    # (host adini elimizdeki tek bilgi olan inventory adiyla gosteriyoruz).
+    - name: --- [Task] Rapor satirlarini olustur ---
+      ansible.builtin.set_fact:
+        report_rows: >-
+          {{
+            report_rows | default([]) + [
+              hostvars[item].access_result | default({
+                'cluster_name': item, 'jump_host': item,
+                'jump_ok': false, 'login_ok': false
+              })
+            ]
+          }}
+      loop: "{{ tested_hosts }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: --- [Task] Ozet sayaclarini hesapla ---
+      ansible.builtin.set_fact:
+        total_count: "{{ report_rows | length }}"
+        jump_fail_count: "{{ report_rows | selectattr('jump_ok', 'equalto', false) | list | length }}"
+        login_fail_count: "{{ report_rows | selectattr('jump_ok', 'equalto', true) | selectattr('login_ok', 'equalto', false) | list | length }}"
+        ok_count: "{{ report_rows | selectattr('jump_ok', 'equalto', true) | selectattr('login_ok', 'equalto', true) | list | length }}"
+
+    - name: --- [Task] Cluster basina erisim durumu ---
+      ansible.builtin.debug:
+        msg: >-
+          {{ '✅' if (row.jump_ok and row.login_ok) else ('⚠️' if row.jump_ok else '❌') }}
+          {{ row.cluster_name }} ({{ row.jump_host }})
+          | Jump Server: {{ 'ERİŞİLEBİLİR' if row.jump_ok else 'ERİŞİLEMEDİ' }}
+          | uxmid Login: {{ 'BAŞARILI' if (row.jump_ok and row.login_ok) else ('BAŞARISIZ' if row.jump_ok else 'N/A (jump erişilemedi)') }}
+      loop: "{{ report_rows | sort(attribute='cluster_name') }}"
+      loop_control:
+        loop_var: row
+        label: "{{ row.cluster_name }}"
+
+    - name: --- [Task] Genel ozet ---
+      ansible.builtin.debug:
+        msg:
+          - "======================================================"
+          - "TOPLAM: {{ total_count }} cluster test edildi"
+          - "✅ Tam basarili (jump + login): {{ ok_count }}"
+          - "❌ Jump server'a erişilemedi: {{ jump_fail_count }}"
+          - "⚠️  Jump erişildi ama uxmid login başarısız: {{ login_fail_count }}"
+          - "======================================================"
