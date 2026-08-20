@@ -5,9 +5,9 @@
 // worker'i sonsuza dek isgal edebiliyordu (dis periyodik senkron isi calismazsa asla
 // bitmiyordu) hem de o dis senkron isin NEREDE/NASIL zamanlandigi koddan gorunmuyordu
 // (arastirma sirasinda dogrulanamadi). Burada TEK bir zamanlanmis interval, TUM
-// bekleyen taleplere bakar; her talebin ayrica bir SURE SINIRI (SMART_TICKET_TIMEOUT_HOURS)
-// vardir — bu sure asilirsa talep TIMEOUT olarak isaretlenir, is akisi acikca
-// "onay alinamadi" der, sonsuza dek beklemez.
+// bekleyen taleplere bakar; her talebin ayrica bir SURE SINIRI
+// (SMART_TICKET_TIMEOUT_MINUTES, varsayilan 15 DAKIKA) vardir — bu sure asilirsa talep
+// TIMEOUT olarak isaretlenip IPTAL edilir, otomasyon ASLA tetiklenmez, sonsuza dek beklemez.
 'use strict';
 
 const store = require('./store.cjs');
@@ -29,14 +29,19 @@ async function tick() {
   }
 
   for (const ticket of pending) {
-    const ageHours = (Date.now() - new Date(ticket.createdAt).getTime()) / 3600000;
-    if (ageHours > cfg.ticketTimeoutHours) {
+    // SURE SINIRI EN BASTA kontrol edilir: suresi dolmus bir talep, Smart o sirada
+    // "Tamamlandi" donse BILE asagidaki launch blogunа HIC ULASMAZ (continue). TIMEOUT
+    // yazildiktan sonra listPending() yalnizca status='PENDING' dondurdugu icin talep
+    // bir daha hic islenmez - otomasyon ASLA tetiklenmez.
+    const ageMinutes = (Date.now() - new Date(ticket.createdAt).getTime()) / 60000;
+    if (ageMinutes > cfg.ticketTimeoutMinutes) {
       await store.markState(ticket.id, {
         status: 'TIMEOUT',
         smartStateName: ticket.smartStateName,
-        errorMessage: `${cfg.ticketTimeoutHours} saat icinde Smart onayi alinamadi.`,
+        errorMessage: `${cfg.ticketTimeoutMinutes} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
         resolved: true,
       }).catch((e) => console.warn('[Smart] TIMEOUT yazilamadi:', e.message));
+      console.log(`[Smart] ticket #${ticket.id} ZAMAN ASIMI (${cfg.ticketTimeoutMinutes} dk) - otomasyon tetiklenmedi.`);
       continue;
     }
 

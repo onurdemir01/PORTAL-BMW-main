@@ -63,8 +63,19 @@ function getConfig() {
     pollIntervalSeconds: Number(process.env.SMART_POLL_INTERVAL_SECONDS || 30),
     // Referans kod tabanindaki SINIRSIZ "while True: sleep(10)" BILINCLI OLARAK
     // KOPYALANMADI (bkz. arastirma notlari) — bir talep bu sureyi asarsa TIMEOUT
-    // olarak isaretlenir, worker'i sonsuza dek isgal etmez.
-    ticketTimeoutHours: Number(process.env.SMART_TICKET_TIMEOUT_HOURS || 24),
+    // olarak isaretlenir, otomasyon ASLA tetiklenmez, worker sonsuza dek beklemez.
+    //
+    // 2026-08-20: sure 24 SAAT'ten 15 DAKIKA'ya cekildi (kullanici talebi). Birim de
+    // saatten DAKIKA'ya gecti ve degisken adi BILEREK degistirildi
+    // (SMART_TICKET_TIMEOUT_HOURS -> SMART_TICKET_TIMEOUT_MINUTES): eski ad
+    // portal_env_overrides allowlist'indeydi, yani Admin > Sistem ekranindan DB'ye
+    // yazilmis eski bir "24" degeri process.env'e uygulanip KOD VARSAYILANINI EZIYOR
+    // olabilirdi - sadece varsayilani degistirmek 15 dakikayi SESSIZCE uygulamazdi.
+    // Eski ad artik HIC OKUNMUYOR, dolayisiyla bayat bir DB satiri etkisiz.
+    ticketTimeoutMinutes: (() => {
+      const v = Number(process.env.SMART_TICKET_TIMEOUT_MINUTES);
+      return Number.isFinite(v) && v > 0 ? v : 15;
+    })(),
     // Opsiyonel, Smart'a OZEL proxy (global HTTPS_PROXY'den BILEREK bagimsiz — o,
     // MCP/Splunk/AI gibi diger tum entegrasyonlari da etkiler, admin sadece Smart
     // trafigini proxy'lemek istedi). Bos ise dogrudan baglanti kurulur; bkz. client.cjs
