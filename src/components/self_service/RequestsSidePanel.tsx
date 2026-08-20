@@ -3,7 +3,8 @@
 // yerine geçti). Kullanıcı isteğe bağlı daraltabilir (ince bir şerite küçülür, tekrar
 // tıklayınca büyür) — durum localStorage'da tutulur, sayfa yenilense de hatırlanır.
 import React, { useCallback, useEffect, useState } from "react";
-import { ClipboardDocumentListIcon, ChevronDoubleRightIcon, ChevronDoubleLeftIcon, XCircleIcon, ChevronDownIcon, CommandLineIcon } from "@heroicons/react/24/outline";
+import { createPortal } from "react-dom";
+import { ClipboardDocumentListIcon, ChevronDoubleRightIcon, ChevronDoubleLeftIcon, XCircleIcon, ChevronDownIcon, CommandLineIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { ansibleApi, type SmartTicketSummary } from "@/api/ansibleApi";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 
@@ -163,6 +164,7 @@ export default function RequestsSidePanel() {
   }
 
   return (
+    <>
     <div className="flex-shrink-0 w-[340px] sticky top-6 self-start">
       <div className="border border-gray-200 rounded-xl bg-white shadow-[var(--shadow-sm)] overflow-hidden">
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100">
@@ -268,24 +270,8 @@ export default function RequestsSidePanel() {
                                   className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 text-gray-700 hover:bg-white transition-colors"
                                 >
                                   <CommandLineIcon className="w-3.5 h-3.5" />
-                                  {jobOutputOpenId === t.id ? "Job Çıktısını Gizle" : "Job Çıktısını Gör"}
+                                  Job Çıktısını Gör
                                 </button>
-                                {jobOutputOpenId === t.id && (
-                                  <div className="mt-2">
-                                    {jobOutputLoadingId === t.id && !jobOutputCache[t.id] ? (
-                                      <div className="flex items-center justify-center py-3">
-                                        <div className="w-4 h-4 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
-                                      </div>
-                                    ) : jobOutputCache[t.id] ? (
-                                      <AnsibleLogTerminal
-                                        output={jobOutputCache[t.id].output}
-                                        status={jobOutputCache[t.id].status}
-                                        title={`job-${t.jobId}`}
-                                        size="compact"
-                                      />
-                                    ) : null}
-                                  </div>
-                                )}
                               </div>
                             )}
                           </div>
@@ -313,6 +299,54 @@ export default function RequestsSidePanel() {
           )}
         </div>
       </div>
+
+      {jobOutputOpenId != null && typeof document !== "undefined" && createPortal(
+        (() => {
+          const t = tickets.find((x) => x.id === jobOutputOpenId);
+          const out = jobOutputCache[jobOutputOpenId];
+          return (
+            <div
+              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
+              onClick={(e) => { if (e.target === e.currentTarget) setJobOutputOpenId(null); }}
+            >
+              <div className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-5xl h-[80vh] flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-[var(--border)] flex-shrink-0">
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm truncate">{t?.templateName || "Job Çıktısı"}</div>
+                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      Job #{t?.jobId}{t?.externalTicketId ? ` · Smart #${t.externalTicketId}` : ""}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setJobOutputOpenId(null)}
+                    className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors flex-shrink-0"
+                    aria-label="Kapat"
+                  >
+                    <XMarkIcon className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 p-4">
+                  {jobOutputLoadingId === jobOutputOpenId && !out ? (
+                    <div className="h-full flex items-center justify-center">
+                      <div className="w-6 h-6 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : out ? (
+                    <AnsibleLogTerminal
+                      output={out.output}
+                      status={out.status}
+                      title={`job-${t?.jobId ?? ""}`}
+                      size="fill"
+                      className="h-full"
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body
+      )}
     </div>
+    </>
   );
 }
