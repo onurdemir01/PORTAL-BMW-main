@@ -3,14 +3,21 @@
 // yerine geçti). Kullanıcı isteğe bağlı daraltabilir (ince bir şerite küçülür, tekrar
 // tıklayınca büyür) — durum localStorage'da tutulur, sayfa yenilense de hatırlanır.
 import React, { useCallback, useEffect, useState } from "react";
-import { ClipboardDocumentListIcon, ChevronDoubleRightIcon, ChevronDoubleLeftIcon, XCircleIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import { ClipboardDocumentListIcon, ChevronDoubleRightIcon, ChevronDoubleLeftIcon, XCircleIcon, ChevronDownIcon, CommandLineIcon } from "@heroicons/react/24/outline";
 import { ansibleApi, type SmartTicketSummary } from "@/api/ansibleApi";
+import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 
 interface TicketDetail {
   externalTicketId?: string | null;
   flowKey?: string | null;
   templateName?: string | null;
   extraVars?: Record<string, string>;
+  awxServerId?: number | null;
+}
+
+interface JobOutput {
+  status: string;
+  output: string;
 }
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -46,6 +53,12 @@ export default function RequestsSidePanel() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detailCache, setDetailCache] = useState<Record<number, TicketDetail>>({});
   const [detailLoadingId, setDetailLoadingId] = useState<number | null>(null);
+  // Onaylanip calistirilmis (LAUNCHED) bir talebin AWX job stdout'u — istege bagli, ayri
+  // bir tikla-goster (2026-08-20, kullanici talebi): her talep genisletildiginde otomatik
+  // cekilmez, kullanici acikca "Job Çıktısını Gör" demeli (gereksiz AWX cagrisi olmasin).
+  const [jobOutputCache, setJobOutputCache] = useState<Record<number, JobOutput>>({});
+  const [jobOutputLoadingId, setJobOutputLoadingId] = useState<number | null>(null);
+  const [jobOutputOpenId, setJobOutputOpenId] = useState<number | null>(null);
 
   const toggleDetail = async (id: number) => {
     if (expandedId === id) { setExpandedId(null); return; }
@@ -57,11 +70,24 @@ export default function RequestsSidePanel() {
       if (r.ok) {
         setDetailCache((prev) => ({
           ...prev,
-          [id]: { externalTicketId: r.externalTicketId, flowKey: r.flowKey, templateName: r.templateName, extraVars: r.extraVars },
+          [id]: { externalTicketId: r.externalTicketId, flowKey: r.flowKey, templateName: r.templateName, extraVars: r.extraVars, awxServerId: r.awxServerId },
         }));
       }
     } catch { /* detay alinamazsa sessizce yoksay - panel yine de kapatilabilir */ }
     finally { setDetailLoadingId(null); }
+  };
+
+  const loadJobOutput = async (ticketId: number, serverId: number, jobId: number) => {
+    if (jobOutputOpenId === ticketId) { setJobOutputOpenId(null); return; }
+    setJobOutputOpenId(ticketId);
+    setJobOutputLoadingId(ticketId);
+    try {
+      const r = await ansibleApi.ssJobStatus(serverId, jobId);
+      if (r.ok) {
+        setJobOutputCache((prev) => ({ ...prev, [ticketId]: { status: r.status, output: r.output || "" } }));
+      }
+    } catch { /* yoksay - buton tekrar denemeye izin verir */ }
+    finally { setJobOutputLoadingId(null); }
   };
 
   const load = useCallback(async () => {
@@ -232,6 +258,35 @@ export default function RequestsSidePanel() {
                               </div>
                             ) : (
                               <div className="text-gray-500">Bu talepte kullanıcı girdisi (extraVars) yok.</div>
+                            )}
+
+                            {t.status === "LAUNCHED" && t.jobId && detail.awxServerId && (
+                              <div className="pt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => loadJobOutput(t.id, detail.awxServerId!, t.jobId!)}
+                                  className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 text-gray-700 hover:bg-white transition-colors"
+                                >
+                                  <CommandLineIcon className="w-3.5 h-3.5" />
+                                  {jobOutputOpenId === t.id ? "Job Çıktısını Gizle" : "Job Çıktısını Gör"}
+                                </button>
+                                {jobOutputOpenId === t.id && (
+                                  <div className="mt-2">
+                                    {jobOutputLoadingId === t.id && !jobOutputCache[t.id] ? (
+                                      <div className="flex items-center justify-center py-3">
+                                        <div className="w-4 h-4 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+                                      </div>
+                                    ) : jobOutputCache[t.id] ? (
+                                      <AnsibleLogTerminal
+                                        output={jobOutputCache[t.id].output}
+                                        status={jobOutputCache[t.id].status}
+                                        title={`job-${t.jobId}`}
+                                        size="compact"
+                                      />
+                                    ) : null}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}

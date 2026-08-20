@@ -272,7 +272,7 @@ export const ansibleApi = {
   smartTicketDetail: (ticketId: number): Promise<{
     ok: boolean; id?: number; status?: string; smartStateName?: string | null;
     externalTicketId?: string | null; flowKey?: string | null; templateName?: string | null;
-    extraVars?: Record<string, string>; jobId?: number | null; errorMessage?: string | null;
+    extraVars?: Record<string, string>; jobId?: number | null; awxServerId?: number | null; errorMessage?: string | null;
     createdAt?: string; resolvedAt?: string | null; message?: string;
   }> => fetch(`${BASE}/ss/smart-ticket/${ticketId}/detail`).then(safeJson),
 

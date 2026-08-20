@@ -2432,6 +2432,7 @@ function initAnsibleRunner(app) {
         templateName: ticket.pendingLaunch?.templateName || null,
         extraVars: ticket.pendingLaunch?.extraVars || {},
         jobId: ticket.awxJobId,
+        awxServerId: ticket.awxServerId,
         errorMessage: ticket.errorMessage,
         createdAt: ticket.createdAt,
         resolvedAt: ticket.resolvedAt,
