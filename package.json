@@ -35,6 +35,7 @@
     "express-session": "^1.19.0",
     "ldapts": "^8.1.8",
     "mssql": "^12.7.0",
+    "nunjucks": "^3.2.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.11.0",

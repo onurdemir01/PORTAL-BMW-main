@@ -974,29 +974,44 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                       Her satıra bir tane, <code className="font-mono">ElementName: değer</code>{" "}
                       (yukarıdaki tablonun İLK sütunu — ComponentType TEKİL değil, aynı tipten
                       birden çok alan olabilir, bu yüzden eşleme ElementName'e göre yapılır).
-                      Değer içinde <code className="font-mono">{"{{username}}"}</code>,{" "}
-                      <code className="font-mono">{"{{email}}"}</code>, <code className="font-mono">{"{{templateName}}"}</code>{" "}
-                      yer tutucuları kullanılabilir — bunlar talebi açan kişiye/servise göre
-                      sabittir. Kullanıcının o launch'ta survey'e girdiği/seçtiği DEĞERİ istiyorsanız{" "}
-                      <code className="font-mono">{"{{extraVars.ALAN_ADI}}"}</code> kullanın
-                      (<code className="font-mono">ALAN_ADI</code>, survey'deki değişken adı —
-                      "Ek Değişkenler" bölümündeki survey alan adlarıyla aynı). Eşleşmeyen bir yer
-                      tutucu boş geçilmez, olduğu gibi (<code className="font-mono">{"{{...}}"}</code>)
-                      Smart talebine gider — yanlış yapılandırma sessizce kaybolmaz.{" "}
-                      <code className="font-mono">#</code> ile başlayan
-                      satırlar YOK SAYILIR — "Otomatik Doldur" gerçek bir değer TAHMİN EDEMEDİĞİ
-                      satırları (aşağıya bakın) bilerek yorum satırı bırakır, siz gerçek değeri
-                      yazıp <code className="font-mono">#</code>'i silmeden gönderilmez.{" "}
-                      <strong>PARAMETER_DROPDOWN / CONFIGURATION_SELECT_CMS</strong>{" "}
-                      tipindeki alanlar muhtemelen Smart'ta önceden tanımlı bir seçenek/kayıt adı
-                      bekler, serbest metin kabul etmeyebilir. Boş bırakılırsa eski sabit
-                      (<code className="font-mono">application</code>/<code className="font-mono">requestedBy</code>) gövde gönderilir.
+                      Değer, <strong>nunjucks</strong> ile render edilir — Ansible'daki Jinja2 ile
+                      neredeyse aynı sözdizimi: <code className="font-mono">{"{{username}}"}</code>,{" "}
+                      <code className="font-mono">{"{{email}}"}</code>,{" "}
+                      <code className="font-mono">{"{{templateName}}"}</code> (talebi açan
+                      kişiye/servise göre sabit) ve{" "}
+                      <code className="font-mono">{"{{extraVars.ALAN_ADI}}"}</code> (kullanıcının
+                      o launch'ta survey'e girdiği/seçtiği GERÇEK değer —{" "}
+                      <code className="font-mono">ALAN_ADI</code> survey'deki değişken adıyla
+                      birebir aynı olmalı) kullanılabilir.
+                    </p>
+                    <p className="text-[11px] text-[var(--text-muted)] mb-1">
+                      <strong>Koşul gerekiyorsa</strong> (örn. ortam Production ise farklı bir
+                      metin/zorunlu alan) tek satırda{" "}
+                      <code className="font-mono">{'{% if extraVars.env == "Production" %}...{% else %}...{% endif %}'}</code>{" "}
+                      yazabilirsiniz — değer birden fazla satıra bölünemez, tüm koşul TEK satırda
+                      kalmalı. Koşulda kullanılan bir değişken tanımsızsa (o dal hiç çalışmadıysa)
+                      sorun olmaz; ama render sırasında GERÇEKTEN kullanılan bir değişken boşsa
+                      (örn. Production dalına girildi ama <code className="font-mono">extraVars.oco</code>{" "}
+                      hiç gönderilmemiş) <strong>launch net bir hatayla durur, Smart talebi hiç
+                      açılmaz</strong> — yanlış yapılandırılmış bir talebin sessizce açılmasındansa
+                      önce durup söylemek tercih edildi.
+                    </p>
+                    <p className="text-[11px] text-[var(--text-muted)] mb-1">
+                      <code className="font-mono">#</code> ile başlayan satırlar YOK SAYILIR —
+                      "Otomatik Doldur" gerçek bir değer TAHMİN EDEMEDİĞİ satırları (aşağıya
+                      bakın) bilerek yorum satırı bırakır, siz gerçek değeri yazıp{" "}
+                      <code className="font-mono">#</code>'i silmeden gönderilmez.{" "}
+                      <strong>PARAMETER_DROPDOWN / CONFIGURATION_SELECT_CMS</strong> tipindeki
+                      alanlar muhtemelen Smart'ta önceden tanımlı bir seçenek/kayıt adı bekler,
+                      serbest metin kabul etmeyebilir. Boş bırakılırsa eski sabit (
+                      <code className="font-mono">application</code>/
+                      <code className="font-mono">requestedBy</code>) gövde gönderilir.
                     </p>
                     <Textarea
                       rows={4}
                       className="text-xs font-mono"
                       value={smartApproval.metadataFields}
-                      placeholder={"KONU: {{templateName}} - Portal talebi\nAPPLICATIONURL: {{templateName}}\nACIKLAMA: {{username}} tarafından Portal üzerinden açıldı"}
+                      placeholder={'KONU: {{templateName}} - Portal talebi\nINFO: {% if extraVars.env == "Production" %}{{extraVars.oco}} numaralı OCO ile{% else %}(OCO gerekmez){% endif %} {{extraVars.op_selection}} rica ederim.'}
                       onChange={(e) => setSmartApproval((s) => ({ ...s, metadataFields: e.target.value }))}
                     />
                   </div>

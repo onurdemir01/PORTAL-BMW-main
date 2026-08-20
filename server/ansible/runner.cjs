@@ -2150,43 +2150,51 @@ function initAnsibleRunner(app) {
     return { detail, overrides, extraVars, specFields, resolvedLaunchOptions };
   }
 
-  // Smart metadata alanlarindaki {{...}} yer tutucularini cozer. Iki kaynaktan gelir:
-  //   {{username}} / {{email}} / {{templateName}}  -> oturumdan/servis tanimindan, HER
-  //                                                    launch'ta AYNI (talebi acan kisiye gore degisir)
-  //   {{extraVars.ALAN_ADI}}                        -> o SPESIFIK launch'ta kullanicinin survey'e
-  //                                                    girdigi/sectigi DEGER (2026-08-20 eklendi -
-  //                                                    onceden metadata her zaman sabitti, kullanicinin
-  //                                                    o an ne gonderdiginden habersizdi)
-  // Bilinmeyen/eslesmeyen bir yer tutucu OLDUGU GIBI (literal "{{...}}") birakilir - sessizce
-  // bosa dusmez, admin Smart talebinde yanlis yapilandirmayi hemen fark eder (DROPDOWN alanlar
-  // icin "tahmin etme, gorunur birak" prensibiyle AYNI - bkz. FieldOverridesModal.tsx buildMetadataTemplate).
-  function stringifyExtraVarValue(v) {
-    if (v === undefined || v === null) return "";
-    if (Array.isArray(v)) return v.map((x) => stringifyExtraVarValue(x)).join(", ");
-    if (typeof v === "object") return JSON.stringify(v);
-    return String(v);
-  }
+  // Smart metadata alanlari nunjucks (Jinja2'nin JS portu - Ansible'daki AYNI {{ }} / {% if %}
+  // sozdizimi) ile render edilir. Kullanilabilir degiskenler:
+  //   username / email / templateName  -> oturumdan/servis tanimindan, HER launch'ta talebi
+  //                                        acan kisiye gore degisir
+  //   extraVars.ALAN_ADI               -> o SPESIFIK launch'ta kullanicinin survey'e
+  //                                        girdigi/sectigi DEGER (2026-08-20 eklendi)
+  // KOSULLU MANTIK (2026-08-20 eklendi, kullanici talebi): tek satirlik {% if %}...{% else %}
+  // ...{% endif %} desteklenir - orn. "Production ortaminda farkli mesaj/OCO iste" ihtiyaci.
+  // throwOnUndefined:true SADECE bir degisken GERCEKTEN CIKTIYA YAZILMAYA calisilirken
+  // (interpolasyon aninda) hata firlatir - {% if extraVars.env == "Production" %} gibi bir
+  // KARSILASTIRMADA kullanilan tanimsiz degisken hataya SEBEP OLMAZ (once test edildi), yani
+  // "extraVars.oco sadece Production dalinda kullaniliyor" gibi kosullu-opsiyonel alanlar
+  // guvenle yazilabilir. Render HATA verirse (gercekten kullanilan bir alan eksikse) artik
+  // Smart talebi hic ACILMAZ - onceki "literal {{...}} birak" davranisindan BILEREK
+  // degistirildi: kosullu mantik eklenince "yanlis dalin sessizce calismasi" ihtimali
+  // "gorunur ama bozuk metin" ihtimalinden daha tehlikeli hale geldi - launch NET bir
+  // hata mesajiyla durmasi, garip bir Smart talebinin acilmasindan daha guvenli.
+  const nunjucks = require("nunjucks");
+  const smartMetaEnv = new nunjucks.Environment(null, { autoescape: false, throwOnUndefined: true });
 
   function buildSmartMetadata(metadataFieldsRaw, { username, email, templateName, templateId, extraVars }) {
     if (!metadataFieldsRaw) {
       return { application: templateName || String(templateId), requestedBy: username };
     }
-    const placeholders = {
+    const ctx = {
       username,
       email: email || "",
       templateName: templateName || String(templateId),
+      extraVars: extraVars || {},
     };
     const parsed = parseSimpleYaml(metadataFieldsRaw);
     const metadata = {};
     for (const [key, rawValue] of Object.entries(parsed)) {
-      metadata[key] = rawValue.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (m, path) => {
-        if (Object.prototype.hasOwnProperty.call(placeholders, path)) return placeholders[path];
-        const evMatch = /^extraVars\.(.+)$/.exec(path);
-        if (evMatch && extraVars && Object.prototype.hasOwnProperty.call(extraVars, evMatch[1])) {
-          return stringifyExtraVarValue(extraVars[evMatch[1]]);
-        }
-        return m;
-      });
+      try {
+        metadata[key] = smartMetaEnv.renderString(rawValue, ctx);
+      } catch (renderErr) {
+        throw Object.assign(
+          new Error(
+            `Smart metadata alanı "${key}" oluşturulamadı: ${renderErr.message} ` +
+            `(kullanılan bir {{...}}/{% %} ifadesi geçersiz ya da o dalda kullanılan bir ` +
+            `değişken bu launch'ta boş — alanın değerini kontrol edin: "${rawValue}")`
+          ),
+          { status: 400 }
+        );
+      }
     }
     return metadata;
   }
