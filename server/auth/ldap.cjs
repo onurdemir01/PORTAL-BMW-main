@@ -92,6 +92,11 @@ const USER_ATTRS = [
   'memberOf', 'department', 'title', 'telephoneNumber', 'mobile',
   'thumbnailPhoto', 'jpegPhoto',
   'physicalDeliveryOfficeName', 'ou',  // G-05: additional department sources
+  // 'mail' alani bos olan AD hesaplari icin: userPrincipalName cogu kurumsal AD
+  // ortaminda ayni gercek e-posta ile ayni format (sAMAccountName@sirket-domaini).
+  // Bos oldugunda Teams @mention lookup'i (runner.cjs withRequesterVars) sabit bir
+  // varsayilan kullaniciya duser - bu SESSIZCE yanlis kisiyi etiketletir.
+  'userPrincipalName',
 ];
 
 async function authenticateLdap(username, password) {
@@ -152,11 +157,20 @@ async function authenticateLdap(username, password) {
     console.log(`[LDAP] ${username} fotograf: boyut=${len}b, avatarUrl=${avatarUrl ? 'ok' : 'null'}`);
   }
 
+  const mail = String(userEntry.mail || userEntry.userPrincipalName || '');
+  if (!mail) {
+    // Bu, requester_email'in DEFAULT_REQUESTER'a (bkz. runner.cjs withRequesterVars)
+    // dusecegi anlamina gelir - Teams @mention YANLIS bir kisiyi etiketler. Loglanir
+    // ki gercekten fetch edilip edilmedigi (fallback tetiklenmis mi) DOGRULANABILSIN.
+    console.warn(`[LDAP] ${username} icin ne "mail" ne "userPrincipalName" dolu - `
+      + `requester_email varsayilana (DEFAULT_REQUESTER) dusecek.`);
+  }
+
   return {
     username:    normalizeUsername(username),
     dn:          userEntry.dn,
     displayName: String(userEntry.displayName || userEntry.cn || username),
-    mail:        String(userEntry.mail || ''),
+    mail,
     // G-05: fallback to physicalDeliveryOfficeName or ou if department is a raw code
     department:  String(userEntry.department || userEntry.physicalDeliveryOfficeName || userEntry.ou || ''),
     title:       String(userEntry.title || ''),

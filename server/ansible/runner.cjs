@@ -691,8 +691,19 @@ async function getJobOutput(jobId) {
 const DEFAULT_REQUESTER = { email: "onurdemir3@garantibbva.com.tr", name: "Onur Demir" };
 
 function withRequesterVars(extraVars, user) {
-  const email = String(user?.mail || "").trim() || DEFAULT_REQUESTER.email;
-  const name = String(user?.displayName || user?.username || "").trim() || DEFAULT_REQUESTER.name;
+  const rawEmail = String(user?.mail || "").trim();
+  const rawName = String(user?.displayName || user?.username || "").trim();
+  const email = rawEmail || DEFAULT_REQUESTER.email;
+  const name = rawName || DEFAULT_REQUESTER.name;
+  // Varsayilana dusuldugunde logla - aksi halde Teams @mention'in GERCEKTEN o an
+  // tetikleyen kisiye mi cozuldugu, yoksa DEFAULT_REQUESTER'a mi (Onur Demir - kod
+  // deposundaki sabit) dustugu, bildirimin GORUNTUSUNDEN AYIRT EDILEMEZ (DEFAULT_REQUESTER
+  // gercek bir calisanin kimligi oldugu icin, o kisi test ederken kendi ismini gorup
+  // "calisiyor" sanabilir - 2026-08-20 kullanici sorusu tam bu belirsizlikten dogdu).
+  if (!rawEmail || !rawName) {
+    console.warn(`[requesterVars] varsayilana dusuldu (kullanici=${user?.username || "yok"}, `
+      + `mail_bos=${!rawEmail}, ad_bos=${!rawName}) -> Teams'te "${name}" gorunecek.`);
+  }
   return { ...extraVars, requester_email: email, requester_name: name };
 }
 
@@ -2139,6 +2150,47 @@ function initAnsibleRunner(app) {
     return { detail, overrides, extraVars, specFields, resolvedLaunchOptions };
   }
 
+  // Smart metadata alanlarindaki {{...}} yer tutucularini cozer. Iki kaynaktan gelir:
+  //   {{username}} / {{email}} / {{templateName}}  -> oturumdan/servis tanimindan, HER
+  //                                                    launch'ta AYNI (talebi acan kisiye gore degisir)
+  //   {{extraVars.ALAN_ADI}}                        -> o SPESIFIK launch'ta kullanicinin survey'e
+  //                                                    girdigi/sectigi DEGER (2026-08-20 eklendi -
+  //                                                    onceden metadata her zaman sabitti, kullanicinin
+  //                                                    o an ne gonderdiginden habersizdi)
+  // Bilinmeyen/eslesmeyen bir yer tutucu OLDUGU GIBI (literal "{{...}}") birakilir - sessizce
+  // bosa dusmez, admin Smart talebinde yanlis yapilandirmayi hemen fark eder (DROPDOWN alanlar
+  // icin "tahmin etme, gorunur birak" prensibiyle AYNI - bkz. FieldOverridesModal.tsx buildMetadataTemplate).
+  function stringifyExtraVarValue(v) {
+    if (v === undefined || v === null) return "";
+    if (Array.isArray(v)) return v.map((x) => stringifyExtraVarValue(x)).join(", ");
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  function buildSmartMetadata(metadataFieldsRaw, { username, email, templateName, templateId, extraVars }) {
+    if (!metadataFieldsRaw) {
+      return { application: templateName || String(templateId), requestedBy: username };
+    }
+    const placeholders = {
+      username,
+      email: email || "",
+      templateName: templateName || String(templateId),
+    };
+    const parsed = parseSimpleYaml(metadataFieldsRaw);
+    const metadata = {};
+    for (const [key, rawValue] of Object.entries(parsed)) {
+      metadata[key] = rawValue.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (m, path) => {
+        if (Object.prototype.hasOwnProperty.call(placeholders, path)) return placeholders[path];
+        const evMatch = /^extraVars\.(.+)$/.exec(path);
+        if (evMatch && extraVars && Object.prototype.hasOwnProperty.call(extraVars, evMatch[1])) {
+          return stringifyExtraVarValue(extraVars[evMatch[1]]);
+        }
+        return m;
+      });
+    }
+    return metadata;
+  }
+
   app.post("/api/ansible/launch-ss/:serverId/:templateId", requireAuth, async (req, res) => {
     const server = getServerById(req.params.serverId);
     if (!server) return res.status(404).json({ ok: false, message: "Sunucu bulunamadı." });
@@ -2189,23 +2241,9 @@ function initAnsibleRunner(app) {
         // calismayan) varsayilana duser — davranis SESSIZCE degismez, admin'in NE gonderildigini
         // gormesi FieldOverridesModal'da.
         const metadataFieldsRaw = String(overrides.smartApproval.metadataFields || "").trim();
-        let metadata;
-        if (metadataFieldsRaw) {
-          const placeholders = {
-            username,
-            email: req.session?.user?.mail || "",
-            templateName: templateName || String(templateId),
-          };
-          const parsed = parseSimpleYaml(metadataFieldsRaw);
-          metadata = {};
-          for (const [key, rawValue] of Object.entries(parsed)) {
-            metadata[key] = rawValue.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, name) => (
-              Object.prototype.hasOwnProperty.call(placeholders, name) ? placeholders[name] : m
-            ));
-          }
-        } else {
-          metadata = { application: templateName || String(templateId), requestedBy: username };
-        }
+        const metadata = buildSmartMetadata(metadataFieldsRaw, {
+          username, email: req.session?.user?.mail || "", templateName, templateId, extraVars,
+        });
         // integrationKey: bkz. FieldOverridesModal.tsx "Integration Key" alani - servis
         // bazinda override (bos ise createTicket() global SMART_RFF_TOKEN'a duser).
         const integrationKey = String(overrides.smartApproval.integrationKey || "").trim();
@@ -2300,19 +2338,9 @@ function initAnsibleRunner(app) {
           return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
         }
         const metadataFieldsRaw = String(overrides.smartApproval.metadataFields || "").trim();
-        let metadata;
-        if (metadataFieldsRaw) {
-          const placeholders = { username, email: req.session?.user?.mail || "", templateName: templateName || String(templateId) };
-          const parsed = parseSimpleYaml(metadataFieldsRaw);
-          metadata = {};
-          for (const [key, rawValue] of Object.entries(parsed)) {
-            metadata[key] = rawValue.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, name) => (
-              Object.prototype.hasOwnProperty.call(placeholders, name) ? placeholders[name] : m
-            ));
-          }
-        } else {
-          metadata = { application: templateName || String(templateId), requestedBy: username };
-        }
+        const metadata = buildSmartMetadata(metadataFieldsRaw, {
+          username, email: req.session?.user?.mail || "", templateName, templateId, extraVars,
+        });
         const integrationKey = String(overrides.smartApproval.integrationKey || "").trim();
         let created;
         try {

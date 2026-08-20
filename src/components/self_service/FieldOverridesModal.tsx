@@ -279,7 +279,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
       const reqTag = isRequired ? "ZORUNLU" : "opsiyonel";
 
       if (needsRealValue) {
-        lines.push(`# ${name}: <${reqTag} — Smart'ta tanımlı GERÇEK bir seçenek/kayıt adı yazıp bu satırı yorumdan çıkarın>`);
+        lines.push(`# ${name}: <${reqTag} — Smart'ta tanımlı GERÇEK bir seçenek/kayıt adı YA DA {{extraVars.ALAN_ADI}} (survey'deki değişken adı) yazıp bu satırı yorumdan çıkarın>`);
         continue;
       }
 
@@ -976,7 +976,14 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                       birden çok alan olabilir, bu yüzden eşleme ElementName'e göre yapılır).
                       Değer içinde <code className="font-mono">{"{{username}}"}</code>,{" "}
                       <code className="font-mono">{"{{email}}"}</code>, <code className="font-mono">{"{{templateName}}"}</code>{" "}
-                      yer tutucuları kullanılabilir. <code className="font-mono">#</code> ile başlayan
+                      yer tutucuları kullanılabilir — bunlar talebi açan kişiye/servise göre
+                      sabittir. Kullanıcının o launch'ta survey'e girdiği/seçtiği DEĞERİ istiyorsanız{" "}
+                      <code className="font-mono">{"{{extraVars.ALAN_ADI}}"}</code> kullanın
+                      (<code className="font-mono">ALAN_ADI</code>, survey'deki değişken adı —
+                      "Ek Değişkenler" bölümündeki survey alan adlarıyla aynı). Eşleşmeyen bir yer
+                      tutucu boş geçilmez, olduğu gibi (<code className="font-mono">{"{{...}}"}</code>)
+                      Smart talebine gider — yanlış yapılandırma sessizce kaybolmaz.{" "}
+                      <code className="font-mono">#</code> ile başlayan
                       satırlar YOK SAYILIR — "Otomatik Doldur" gerçek bir değer TAHMİN EDEMEDİĞİ
                       satırları (aşağıya bakın) bilerek yorum satırı bırakır, siz gerçek değeri
                       yazıp <code className="font-mono">#</code>'i silmeden gönderilmez.{" "}
