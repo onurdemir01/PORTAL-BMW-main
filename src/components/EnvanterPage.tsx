@@ -45,8 +45,8 @@ const ENVANTER_HELP_SECTIONS: HelpSection[] = [
   },
   {
     icon: ShieldCheckIcon,
-    title: "SQL Sorgu Paneli ve Tüm Tablolar Görünümü",
-    body: "\"SQL\" butonu serbest metin SQL sorguları çalıştırmanızı sağlar; \"Tüm Tablolar (Admin)\" anahtarı, User rolüne tanımlı kısıtlı tablo görünürlüğünü aşıp veritabanındaki tüm tabloları gösterir. İkisi de yalnızca Admin'e görünür.",
+    title: "SQL Sorgu Paneli ve Görünüm Geçişi",
+    body: "\"SQL\" butonu serbest metin SQL sorguları çalıştırmanızı sağlar. Envanter'e girdiğinizde varsayılan olarak Admin > Envanter Görünürlüğü'nde SİZİN İÇİN (Admin rolü) tanımlanan tablo listesini görürsünüz — bu, normal kullanıcılara açtığınız (User rolü) listeden bağımsızdır. \"Kısıtlı Görünüm (User)\" butonuyla kullanıcıların gördüğü listeyi önizleyebilirsiniz. İkisi de yalnızca Admin'e görünür.",
     adminOnly: true,
   },
 ];
@@ -87,10 +87,18 @@ const EnvanterPage: React.FC = () => {
   const [activeTable, setActiveTable] = useState("");
   const [tableAliases, setTableAliases] = useState<Record<string, string>>({});
 
-  // Admin varsayılan olarak "User" için tanımlı tablo görünürlüğünü görür (ekran admin
-  // olduğu için otomatik olarak her şeyi göstermez) — sadece admin'e özel küçük bir
-  // butonla, istenirse "Tüm Tablolar" (kısıtlamasız Admin) görünümüne geçilebilir.
-  const [viewAsRole, setViewAsRole] = useState<"User" | "Admin">("User");
+  // Admin varsayılan olarak KENDİ ("Admin" rolü için Admin > Envanter Görünürlüğü'nde
+  // ayrıca tanımlanan) tablo listesini görür — bu, normal kullanıcılara gösterilen
+  // ("User" rolü) listeden TAMAMEN BAĞIMSIZDIR (backend: filterTablesByRole, iki ayrı
+  // config anahtarı). Eskiden varsayılan "User" idi; bu, admin'in Envanter'e her
+  // girişinde kendi kısıtlamadığı kişisel varsayılan tablo kümesi yerine kullanıcılara
+  // açtığı kısıtlı listeyi görmesine (ve iki listenin fiilen aynı ayar üzerinden
+  // yönetilmesi zorunluluğuna) yol açıyordu (2026-08-20, kullanıcı talebi: "ben
+  // Envanter'e tıkladığımda önüme otomatik istediğim 5-6 tablonun ismi gözüksün ancak
+  // regular user'lar sadece Admin'lerin kısıtladığı envanterleri görüntüleyebilsin").
+  // Admin isterse "Kısıtlı Görünüm (User)" butonuyla kullanıcıların gördüğü listeye
+  // geçip önizleyebilir.
+  const [viewAsRole, setViewAsRole] = useState<"User" | "Admin">("Admin");
 
   useEffect(() => {
     setTablesLoading(true);
@@ -488,7 +496,8 @@ const EnvanterPage: React.FC = () => {
         </div>
       )}
 
-      {/* Admin-only: kısıtlı (User) görünümden tüm tablolara geçiş — normal kullanıcı görmez */}
+      {/* Admin-only: kendi varsayılan (Admin) listesi ile kullanıcıların gördüğü kısıtlı
+          (User) liste arasında önizleme amaçlı geçiş — normal kullanıcı bu butonu görmez */}
       {isAdmin && (
         <div className="flex justify-end">
           <button
@@ -501,7 +510,7 @@ const EnvanterPage: React.FC = () => {
             }
             title="Bu buton yalnızca admin'e görünür"
           >
-            {viewAsRole === "User" ? "Kısıtlı Görünüm (User)" : "Tüm Tablolar (Admin)"}
+            {viewAsRole === "User" ? "Kısıtlı Görünüm (User) — önizleme" : "Kendi Görünümüm (Admin)"}
           </button>
         </div>
       )}

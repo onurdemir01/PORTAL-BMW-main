@@ -121,6 +121,13 @@ export default function InventoryVisibilityTab() {
           User/Admin rolüne göre temel görünürlük. "Detay" ile her tablo için kullanıcı-bazlı
           istisna ve kolon-seviyesi gizleme yönetilir.
         </p>
+        <p className="text-xs text-gray-500 max-w-2xl mt-1">
+          <b>User</b> ve <b>Admin</b> sütunları birbirinden tamamen bağımsızdır: <b>User</b>
+          normal kullanıcıların Envanter'de görebileceği tabloları kısıtlar; <b>Admin</b> ise
+          admin'lerin Envanter'e girdiğinde otomatik olarak karşılarına çıkan varsayılan tablo
+          listesidir. Admin'in kendi listesini daraltması normal kullanıcıların gördüğü listeyi
+          etkilemez.
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-4">
