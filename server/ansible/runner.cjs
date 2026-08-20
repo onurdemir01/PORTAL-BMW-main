@@ -2470,6 +2470,50 @@ function initAnsibleRunner(app) {
     }
   });
 
+  // GET /api/ansible/ss/smart-tickets/all — Admin > Smart Talepleri ekrani (2026-08-20,
+  // kullanici talebi: "kim ne kayit acmis, hangi Smart kaydi tetiklenmis, saat kacta").
+  // /smart-tickets/mine'dan farki: kullanici filtresi YOK, TUM kullanicilarin talepleri.
+  // Admin-only; buyuyen bir tablo oldugu icin sayfalama ve sunucu-tarafi filtre ZORUNLU.
+  app.get("/api/ansible/ss/smart-tickets/all", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const smartStore = require("../smart/store.cjs");
+      const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+      const offset = Math.max(0, Number(req.query.offset) || 0);
+      const status = String(req.query.status || "").trim().toUpperCase();
+      const username = String(req.query.username || "").trim();
+      const q = String(req.query.q || "").trim();
+
+      const [{ total, tickets }, summary] = await Promise.all([
+        smartStore.listAll({ limit, offset, status, username, q }),
+        smartStore.statusSummary(),
+      ]);
+
+      res.json({
+        ok: true, total, limit, offset, summary,
+        tickets: tickets.map((t) => ({
+          id: t.id,
+          externalTicketId: t.externalTicketId,
+          username: t.username,
+          status: t.status,
+          smartStateName: t.smartStateName,
+          flowKey: t.flowKey,
+          templateName: t.pendingLaunch?.templateName || null,
+          // Admin "hangi parametrelerle acilmis" sorusunu da bu ekrandan yanitlayabilsin;
+          // detay ucuna (/detail) gitmeye gerek kalmasin.
+          extraVars: t.pendingLaunch?.extraVars || {},
+          awxServerId: t.awxServerId,
+          awxTemplateId: t.awxTemplateId,
+          jobId: t.awxJobId,
+          errorMessage: t.errorMessage,
+          createdAt: t.createdAt,
+          resolvedAt: t.resolvedAt,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
   // POST /api/ansible/ss/smart-ticket/:id/cancel — kullanici kendi talebini, Smart onayi
   // gelip OTOMASYON (AWX job'i) TETIKLENMEDEN ONCE iptal edebilir. Smart'in kendisinde bir
   // "iptal" API'si REVERSE-ENGINEER edilen protokolde (bkz. servicerepository.py) bulunmadi

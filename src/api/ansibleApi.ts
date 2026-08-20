@@ -300,6 +300,21 @@ export const ansibleApi = {
   smartTicketsMine: (): Promise<{ ok: boolean; tickets: SmartTicketSummary[]; message?: string }> =>
     fetch(`${BASE}/ss/smart-tickets/mine`).then(safeJson),
 
+  // Admin > Smart Talepleri — TUM kullanicilarin talepleri (sayfalanmis + filtreli).
+  // smartTicketsMine()'dan farki: kullanici filtresi yok, admin yetkisi gerektirir.
+  smartTicketsAll: (params: {
+    limit?: number; offset?: number; status?: string; username?: string; q?: string;
+  } = {}): Promise<{
+    ok: boolean; total: number; limit: number; offset: number;
+    summary: Record<string, number>; tickets: AdminSmartTicket[]; message?: string;
+  }> => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && String(v) !== "") qs.set(k, String(v));
+    }
+    return fetch(`${BASE}/ss/smart-tickets/all?${qs.toString()}`).then(safeJson);
+  },
+
   // Kullanici, Smart onayi otomasyonu (AWX job'i) TETIKLEMEDEN once kendi talebini iptal
   // eder — yalnizca hala PENDING olan bir talep icin (bkz. server/ansible/runner.cjs).
   cancelSmartTicket: (ticketId: number): Promise<{ ok: boolean; status?: string; message?: string }> =>
@@ -334,6 +349,23 @@ export const ansibleApi = {
       body: JSON.stringify({ extraVars, templateName, scenarioName, confirm: true }),
     }).then(safeJson),
 };
+
+export interface AdminSmartTicket {
+  id: number;
+  externalTicketId: string | null;
+  username: string;
+  status: string;
+  smartStateName?: string | null;
+  flowKey?: string | null;
+  templateName?: string | null;
+  extraVars?: Record<string, string>;
+  awxServerId?: number | null;
+  awxTemplateId?: number | null;
+  jobId?: number | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  resolvedAt?: string | null;
+}
 
 export interface SmartTicketSummary {
   id: number;

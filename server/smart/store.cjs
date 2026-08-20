@@ -43,6 +43,48 @@ async function listPending() {
   return rows.map(rowToTicket);
 }
 
+// TUM kullanicilarin TUM talepleri — Admin > Smart Talepleri ekrani icin (2026-08-20).
+// listByUsername'den farki: kullanici filtresi YOK. Buyuyen bir tablo oldugu icin
+// (her Self Service Smart launch'i bir satir) sayfalama ZORUNLU; opsiyonel filtreler
+// sunucu tarafinda uygulanir ki 10binlerce satir istemciye tasinmasin.
+async function listAll({ limit = 100, offset = 0, status = '', username = '', q = '' } = {}) {
+  const where = [];
+  const params = [];
+  if (status) { params.push(status); where.push(`status = $${params.length}`); }
+  if (username) { params.push(`%${username}%`); where.push(`username LIKE $${params.length}`); }
+  if (q) {
+    params.push(`%${q}%`);
+    // Talep numarasi ya da pendingLaunch icindeki servis adi/degiskenler icinde arama.
+    where.push(`(external_ticket_id LIKE $${params.length} OR pending_launch_json LIKE $${params.length})`);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const countRes = await db.query(`SELECT COUNT(*) AS n FROM smart_tickets ${whereSql}`, params);
+  const total = Number(countRes.rows[0]?.n || 0);
+
+  // OFFSET/FETCH degerleri parametre yerine DOGRUDAN gomuluyor: mssql surucusunun bu
+  // iki konumda tip cikarimi guvenilmez. Enjeksiyon riski yok — ikisi de Number'a
+  // zorlanip tamsayiya yuvarlaniyor ve sinirlaniyor, string olarak hic gecmiyorlar.
+  const off = Math.max(0, Math.floor(Number(offset) || 0));
+  const lim = Math.min(500, Math.max(1, Math.floor(Number(limit) || 100)));
+  const { rows } = await db.query(
+    `SELECT * FROM smart_tickets ${whereSql}
+      ORDER BY created_at DESC
+      OFFSET ${off} ROWS FETCH NEXT ${lim} ROWS ONLY`,
+    params
+  );
+  return { total, tickets: rows.map(rowToTicket) };
+}
+
+// Durum bazli ozet (Admin ekranindaki rozetler) — sayfalamadan BAGIMSIZ, TUM tabloyu
+// kapsar; aksi halde "3 bekliyor" rozeti yalnizca gorunen sayfayi sayardi.
+async function statusSummary() {
+  const { rows } = await db.query(`SELECT status, COUNT(*) AS n FROM smart_tickets GROUP BY status`);
+  const out = {};
+  for (const r of rows) out[r.status] = Number(r.n);
+  return out;
+}
+
 // Kullanicinin kendi actigi TUM talepleri (durum farketmeksizin) — "Taleplerim" ekrani icin.
 async function listByUsername(username) {
   const { rows } = await db.query(
@@ -80,4 +122,4 @@ async function markState(id, { status, smartStateName, awxJobId, errorMessage, r
   );
 }
 
-module.exports = { createTicket, getTicket, listPending, listByUsername, cancelTicket, markState };
+module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, markState };

@@ -29,6 +29,7 @@ import BrandingTab from "./tabs/BrandingTab";
 import TestScenariosTab from "./tabs/TestScenariosTab";
 import DbBackupTab from "./tabs/DbBackupTab";
 import FlowTestsTab from "./tabs/FlowTestsTab";
+import SmartTicketsTab from "./tabs/SmartTicketsTab";
 
 // Eski port-1111 LogX admin yüzeyleri (Oturumlar, İzinler, LogX Inventory) tamamen
 // kaldırıldı — yeni yapıda log akışı "LogX v2 Yapılandırma" (OCP cluster/terminal
@@ -37,6 +38,7 @@ import FlowTestsTab from "./tabs/FlowTestsTab";
 const DEFAULT_TABS = [
   { id: "logxv2",      label: "LogX Yapılandırma", icon: ServerStackIcon },
   { id: "audit",       label: "Denetim Kaydı",     icon: ClipboardDocumentListIcon },
+  { id: "smarttickets", label: "Smart Talepleri",  icon: ClipboardDocumentListIcon },
   { id: "testscenarios", label: "Test Senaryoları", icon: BeakerIcon },
   { id: "dbbackup", label: "DB Yedekleme", icon: ArchiveBoxIcon },
   { id: "flowtests", label: "Akış Testleri", icon: BeakerIcon },
@@ -195,6 +197,7 @@ const AdminPage: React.FC = () => {
       <div className="card p-5">
         <div key={activeTab} style={{ animation: "fadeIn 0.18s ease" }}>
           {activeTab === "audit"       && <AuditLogTab />}
+          {activeTab === "smarttickets" && <SmartTicketsTab />}
           {activeTab === "testscenarios" && <TestScenariosTab />}
           {activeTab === "dbbackup" && <DbBackupTab />}
           {activeTab === "flowtests" && <FlowTestsTab />}
