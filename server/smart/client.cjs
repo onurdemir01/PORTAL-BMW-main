@@ -130,7 +130,14 @@ async function createTicket({ flowKey, username, domain, metadata, integrationKe
       metadatas: Object.entries(metadata || {}).map(([key, value]) => ({ key, value: String(value) })),
     },
   };
+  // Tani logu: hangi metadata anahtar/degerinin GERCEKTEN Smart'a gittigini goster -
+  // "alanlar bomboş geldi" gibi sikayetlerde kod dogru render etmis mi yoksa sunucu
+  // eski/farkli bir surumle mi calisiyor ayrimini Smart tarafina hic bakmadan yapmak icin
+  // (2026-08-20, kullanici talebi).
+  console.log(`[Smart] createTicket govdesi (flowKey=${flowKey}, logonName=${username}):`,
+    JSON.stringify(body.metadataData.metadatas));
   const result = await post(cfg.createTicketPath, body, integrationKey ? { 'rff-request-token': integrationKey } : undefined);
+  console.log(`[Smart] createTicket yaniti (flowKey=${flowKey}):`, JSON.stringify(result).slice(0, 1000));
   const resultCode = String(result?.result?.resultCode ?? '');
   if (resultCode !== '1000') {
     const msg = result?.result?.resultMessage || `resultCode=${resultCode || 'yok'}`;

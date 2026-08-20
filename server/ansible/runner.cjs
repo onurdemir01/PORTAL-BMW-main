@@ -2186,6 +2186,8 @@ function initAnsibleRunner(app) {
       try {
         metadata[key] = smartMetaEnv.renderString(rawValue, ctx);
       } catch (renderErr) {
+        console.warn(`[SmartMetadata] "${key}" render hatasi - mevcut extraVars anahtarlari:`,
+          JSON.stringify(Object.keys(ctx.extraVars)));
         throw Object.assign(
           new Error(
             `Smart metadata alanı "${key}" oluşturulamadı: ${renderErr.message} ` +
@@ -2196,6 +2198,8 @@ function initAnsibleRunner(app) {
         );
       }
     }
+    console.log(`[SmartMetadata] extraVars anahtarlari:`, JSON.stringify(Object.keys(ctx.extraVars)),
+      `-> render edilen metadata:`, JSON.stringify(metadata));
     return metadata;
   }
 
