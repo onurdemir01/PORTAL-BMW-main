@@ -25,12 +25,13 @@ import {
 } from "@heroicons/react/24/outline";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import IpCheckSection from "@/components/self_service/IpCheckSection";
+import OpenshiftCheckSection from "@/components/self_service/OpenshiftCheckSection";
 
 const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   {
     icon: CommandLineIcon,
     title: "Ansible ve Check Sekmeleri",
-    body: "\"Ansible\" AWX üzerinden başlatılabilen otomasyon servislerini, \"Check\" ise yapıştırılan bir IP listesinin envanterde (IPInventory) bulunup bulunmadığını gösterir.",
+    body: "\"Ansible\" AWX üzerinden başlatılabilen otomasyon servislerini gösterir. \"Check\" içinde iki alt-sekme var: \"IP\" yapıştırılan bir IP listesinin envanterde (IPInventory) bulunup bulunmadığını, \"OpenShift\" ise yapıştırılan bir namespace/uygulama listesinin OpenShift envanterinde hangi sahip grup/e-posta ile kayıtlı olduğunu gösterir.",
   },
   {
     icon: PlayIcon,
@@ -768,6 +769,10 @@ export default function SelfServicePage() {
   const [groups, setGroups] = useState<SelfServiceGroup[]>([]);
   const [activeTop, setActiveTop] = useState<TopTab>("ansible");
   const [showHelp, setShowHelp] = useState(false);
+  // "Check" sekmesinin İÇ sekmesi — IP envanteri mi, OpenShift namespace/uygulama envanteri
+  // mi sorgulanacak. TopTab'dan AYRI tutulur çünkü DB-güdümlü grup mekanizmasının dışında,
+  // sadece bu iki sabit alt-check arasında geçiş yapar (bkz. TOP_TABS notu).
+  const [checkType, setCheckType] = useState<"ip" | "openshift">("ip");
 
   useEffect(() => {
     let alive = true;
@@ -809,7 +814,7 @@ export default function SelfServicePage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="page-title">Self Service</h1>
-            <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-muted)" }}>Ansible otomasyonu ve IP envanteri kontrolü</p>
+            <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-muted)" }}>Ansible otomasyonu, IP ve OpenShift envanteri kontrolü</p>
           </div>
           <button
             onClick={() => setShowHelp(true)}
@@ -844,7 +849,27 @@ export default function SelfServicePage() {
           <AnsibleSection isAdmin={isAdmin} />
         )}
         {activeTop === "check" && (
-          <IpCheckSection />
+          <div className="space-y-4">
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+              {([
+                { id: "ip" as const, label: "IP" },
+                { id: "openshift" as const, label: "OpenShift" },
+              ]).map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setCheckType(id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
+                    checkType === id
+                      ? "bg-white text-[#0066CC] shadow-[var(--shadow-sm)]"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {checkType === "ip" ? <IpCheckSection /> : <OpenshiftCheckSection />}
+          </div>
         )}
 
         <HelpModal

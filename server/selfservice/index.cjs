@@ -22,7 +22,7 @@ function initSelfService(app) {
   // (asagida route TANIMI o middleware'lerden SONRA).
   router.use((req, res, next) => {
     if (req.method === "GET") return next();
-    if (req.path === "/ip-check") return next();
+    if (req.path === "/ip-check" || req.path === "/openshift-check") return next();
     return requireAdmin(req, res, next);
   });
   // Tum mutasyonlar portal_audit_logs'a yazilir (bkz. server/audit/index.cjs) — /ip-check
@@ -88,6 +88,68 @@ function initSelfService(app) {
         results,
         totalChecked: ips.length,
         totalFound: results.filter((r) => r.found).length,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || "Sorgulama başarısız." });
+    }
+  });
+
+  // POST /openshift-check — Check sekmesi: yapistirilan namespace/uygulama listesini
+  // dbo.Openshift_Inventory'de arar. Her girdi ya bir namespace ADI ya da bir uygulama
+  // ADI olabilir (kullanici hangisi oldugunu belirtmez) - bu yuzden HER IKI kolona karsi
+  // da eslestirilir. Sonuc, (namespace, application, owner_group_name, owner_email)
+  // dortlusunun BENZERSIZ satirlari - bir namespace onlarca uygulama barindirabildigi
+  // icin (bkz. openshift_inventory tarama job'u) ham satir sayisi degil, DISTINCT kombinasyon
+  // istendi (kullanici talebi, 2026-08-20). owner_* kolonlari CMDB+Smart uzerinden ayrica
+  // doldurulan sahiplik bilgisi (bkz. bmw_inventory/openshift_inventory namespace_owners
+  // akisi) - bir namespace'in sahibi henuz cozulmemisse NULL gelir, "-" olarak gosterilir.
+  router.post("/openshift-check", async (req, res) => {
+    try {
+      const raw = req.body?.items;
+      if (!Array.isArray(raw) || raw.length === 0) {
+        return res.status(400).json({ ok: false, message: "En az bir namespace veya uygulama adı girilmeli." });
+      }
+      const seen = new Set();
+      const items = [];
+      for (const item of raw) {
+        const v = String(item ?? "").trim();
+        if (!v) continue;
+        const key = v.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push(v);
+        if (items.length >= 1000) break;
+      }
+      if (items.length === 0) {
+        return res.status(400).json({ ok: false, message: "Geçerli bir namespace/uygulama adı bulunamadı." });
+      }
+
+      const { query, sql } = require("../inventory/mssql.cjs");
+      const inputs = items.map((v, i) => ({ name: `v${i}`, type: sql.NVarChar(200), value: v }));
+      const placeholders = items.map((_, i) => `@v${i}`).join(", ");
+      const result = await query(
+        `SELECT DISTINCT namespace, application, owner_group_name, owner_email
+           FROM dbo.Openshift_Inventory
+          WHERE namespace IN (${placeholders}) OR application IN (${placeholders})`,
+        inputs
+      );
+      const rows = result.recordset || [];
+
+      // Hangi girdilerin HICBIR satirda (ne namespace ne application olarak) eslesmedigini
+      // bul - kullanici "yazdigim isim gercekten envanterde var mi" diye de merak eder.
+      const matchedKeys = new Set();
+      for (const r of rows) {
+        if (r.namespace) matchedKeys.add(String(r.namespace).trim().toLowerCase());
+        if (r.application) matchedKeys.add(String(r.application).trim().toLowerCase());
+      }
+      const notFound = items.filter((v) => !matchedKeys.has(v.toLowerCase()));
+
+      res.json({
+        ok: true,
+        rows,
+        notFound,
+        totalChecked: items.length,
+        totalMatchedRows: rows.length,
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || "Sorgulama başarısız." });

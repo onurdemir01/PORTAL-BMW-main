@@ -30,6 +30,13 @@ export interface IpCheckResult {
   matches: IpCheckMatch[];
 }
 
+export interface OpenshiftCheckRow {
+  namespace: string;
+  application: string;
+  owner_group_name: string | null;
+  owner_email: string | null;
+}
+
 export const selfServiceApi = {
   // "Ansible" sekmesinin DB'deki etiket/sira bilgisini dondurur (Smart/Diğerleri katalogu
   // kaldirildigi icin store artik yok — bkz. server/selfservice/store.cjs readGroups).
@@ -45,6 +52,21 @@ export const selfServiceApi = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ips }),
+    });
+    return json(r);
+  },
+
+  // "Check" sekmesi — yapistirilan namespace/uygulama listesini dbo.Openshift_Inventory'de
+  // arar, benzersiz (namespace, application, owner_group_name, owner_email) satirlarini
+  // doner (bkz. server/selfservice/index.cjs POST /openshift-check).
+  async openshiftCheck(items: string[]): Promise<{
+    ok: true; rows: OpenshiftCheckRow[]; notFound: string[];
+    totalChecked: number; totalMatchedRows: number;
+  }> {
+    const r = await fetch(`${BASE}/openshift-check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
     });
     return json(r);
   },
