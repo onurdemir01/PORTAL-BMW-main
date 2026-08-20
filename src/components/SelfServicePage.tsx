@@ -6,7 +6,6 @@ import { ansibleApi } from "@/api/ansibleApi";
 import { nobetciApi, type NobetciResult } from "@/api/nobetciApi";
 import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions } from "@/api/ansibleApi";
 import FieldOverridesModal from "@/components/self_service/FieldOverridesModal";
-import RequestsSidePanel from "@/components/self_service/RequestsSidePanel";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
 import { useFloatingWindow, ResizeHandle } from "@/hooks/useFloatingWindow";
@@ -909,8 +908,6 @@ export default function SelfServicePage() {
           sections={SELF_SERVICE_HELP_SECTIONS}
         />
       </div>
-
-      <RequestsSidePanel />
     </div>
   );
 }

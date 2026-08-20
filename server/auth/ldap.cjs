@@ -279,6 +279,24 @@ function authenticateLocal(username, password) {
   const localAdminPass = process.env.LOCAL_ADMIN_PASS || '';
   const localUserPass  = process.env.LOCAL_USER_PASS  || '';
 
+  // GUVENLIK (2026-08-20, kullanici talebi: "ben aykiri bir sey soyleyene kadar
+  // admin:admin girisini engeller misin"): sifrenin KULLANICI ADIYLA AYNI olmasi
+  // (admin/admin, user/user) - dokumanlarin (docs/SETUP-SIMPLE.md, README) uzun sure
+  // onerdigi ve bircok kurulumda oldugu gibi kalmis olma ihtimali yuksek olan desen -
+  // artik env'de boyle ayarlanmis OLSA BILE reddedilir. Bilincli olarak tekrar acmak
+  // gerekirse ALLOW_WEAK_LOCAL_PASS=true yeterli; varsayilan KAPALI.
+  const allowWeak = String(process.env.ALLOW_WEAK_LOCAL_PASS || '').toLowerCase() === 'true';
+  const isWeak = (u, p) => !!p && p.toLowerCase() === u.toLowerCase();
+  if (!allowWeak && (username === localAdmin || username === localUser)) {
+    const configured = username === localAdmin ? localAdminPass : localUserPass;
+    if (isWeak(username, configured)) {
+      console.warn(`[Auth] "${username}" yerel hesabinin sifresi kullanici adiyla ayni ` +
+        `(${username}:${username}) - giris ENGELLENDI. LOCAL_${username === localAdmin ? 'ADMIN' : 'USER'}_PASS ` +
+        `degerini guclu bir sifreyle degistirin (ya da bilerek acmak icin ALLOW_WEAK_LOCAL_PASS=true).`);
+      throw new Error('Kullanıcı adı veya şifre hatalı');
+    }
+  }
+
   if (username === localAdmin && localAdminPass && password === localAdminPass) {
     return { username, dn: null, displayName: username, mail: '', role: 'Admin', authSource: 'local', avatarUrl: null, photoUrl: null };
   }

@@ -87,9 +87,13 @@ LDAP erişilemediğinde veya geliştirme ortamında kullanılır.
 | Değişken | Açıklama | Varsayılan |
 |----------|----------|------------|
 | `LOCAL_ADMIN_USER` | Admin kullanıcı adı | `admin` |
-| `LOCAL_ADMIN_PASS` | Admin şifre | `admin` |
+| `LOCAL_ADMIN_PASS` | Admin şifre — **boşsa hesap çalışmaz** | _(boş)_ |
 | `LOCAL_USER` | Normal kullanıcı adı | `user` |
-| `LOCAL_USER_PASS` | Normal kullanıcı şifre | `user` |
+| `LOCAL_USER_PASS` | Normal kullanıcı şifre — **boşsa hesap çalışmaz** | _(boş)_ |
+
+> **Güvenlik:** şifreyi kullanıcı adıyla aynı yapmak (`admin`/`admin`, `user`/`user`)
+> sunucu tarafında açıktan engellenir; env'de böyle ayarlansa bile giriş reddedilir.
+> Bilinçli olarak açmak gerekirse `ALLOW_WEAK_LOCAL_PASS=true`.
 
 ### MSSQL (Envanter)
 

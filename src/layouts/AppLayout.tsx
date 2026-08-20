@@ -18,6 +18,7 @@ import { CommandPalette } from "@/components/common/CommandPalette";
 import { AppDataProvider } from "@/contexts/AppContext";
 import { JobTrackerProvider } from "@/contexts/JobTrackerContext";
 import JobTrackerBar from "@/components/common/JobTrackerBar";
+import RequestsSidePanel from "@/components/self_service/RequestsSidePanel";
 
 export default function AppLayout() {
   const location = useLocation();
@@ -78,6 +79,15 @@ export default function AppLayout() {
               </PageErrorBoundary>
             </div>
           </main>
+
+          {/* "Taleplerim" paneli — eskiden yalnizca Self Service sayfasinin icindeydi,
+              2026-08-20'den beri HER sayfada sag kenarda duruyor (kullanici talebi:
+              "hangi sayfaya gidersek gidelim kenarda her zaman gozuksun"). Kullanici
+              daraltirsa ince bir serite kuculur, tercih localStorage'da saklanir.
+              <lg ekranlarda gizli: 340px'lik panel dar ekranda icerigi ezerdi. */}
+          <div className="hidden lg:block flex-shrink-0 overflow-y-auto py-6 pr-4">
+            <RequestsSidePanel />
+          </div>
         </div>
 
         <SessionTimeoutModal

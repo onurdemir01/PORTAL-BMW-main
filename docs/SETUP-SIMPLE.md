@@ -29,8 +29,11 @@ PORT=5055
 NODE_ENV=development
 SESSION_STORE=memory        # yerelde DB yoksa
 LOCAL_ADMIN_USER=admin
-LOCAL_ADMIN_PASS=admin
+LOCAL_ADMIN_PASS=<guclu-bir-sifre-yazin>
 ```
+
+> Sifre bos birakilirsa hesap hic calismaz. Sifreyi kullanici adiyla ayni yapmak
+> (`admin`) da calismaz — bu desen sunucu tarafinda aciktan engellenir.
 
 ## Calistirma
 
