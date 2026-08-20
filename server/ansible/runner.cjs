@@ -2460,6 +2460,8 @@ function initAnsibleRunner(app) {
           templateName: t.pendingLaunch?.templateName || null,
           jobId: t.awxJobId,
           errorMessage: t.errorMessage,
+          cancelNote: t.cancelNote,
+          cancelledBy: t.cancelledBy,
           createdAt: t.createdAt,
           resolvedAt: t.resolvedAt,
           externalTicketId: t.externalTicketId,
@@ -2505,6 +2507,8 @@ function initAnsibleRunner(app) {
           awxTemplateId: t.awxTemplateId,
           jobId: t.awxJobId,
           errorMessage: t.errorMessage,
+          cancelNote: t.cancelNote,
+          cancelledBy: t.cancelledBy,
           createdAt: t.createdAt,
           resolvedAt: t.resolvedAt,
         })),
@@ -2514,10 +2518,22 @@ function initAnsibleRunner(app) {
     }
   });
 
-  // POST /api/ansible/ss/smart-ticket/:id/cancel — kullanici kendi talebini, Smart onayi
-  // gelip OTOMASYON (AWX job'i) TETIKLENMEDEN ONCE iptal edebilir. Smart'in kendisinde bir
-  // "iptal" API'si REVERSE-ENGINEER edilen protokolde (bkz. servicerepository.py) bulunmadi
-  // — bu yuzden Smart tarafindaki kayit acik kalmaya devam edebilir, ama poller.cjs sadece
+  // POST /api/ansible/ss/smart-ticket/:id/cancel — kullanici KENDI talebini, admin ise
+  // HERHANGI BIR talebi, Smart onayi gelip OTOMASYON (AWX job'i) TETIKLENMEDEN ONCE iptal
+  // edebilir. Opsiyonel `note` ile gerekce yazilabilir (2026-08-20).
+  //
+  // SMART TARAFI KAPATILAMIYOR — 2026-08-20'de yeniden arastirildi, sonuc DEGISMEDI:
+  //   1) Resmi dokumanda (SOS02-KL-001-EN) yalnizca create / metadata / status uclari var,
+  //      iptal ucu YOK.
+  //   2) Kardes ekibin Django kodu da Smart'ta iptal ETMIYOR; yalnizca Smart'in KENDI
+  //      ekraninda yapilan iptali ALGILIYOR (loadbalancer/tasks.py: if "_CANCEL_" in
+  //      ticket_status['StateName']).
+  //   3) dashboard/smart.py'de action_rrf_ticket() ("Layer7 Next Action RFF Ticket Path")
+  //      adli bir sarmalayici VAR ama HICBIR YERDEN CAGRILMIYOR (olu kod) ve gercek URL
+  //      path'i onlarin AppSettings tablosunda - govde sekli de bilinmiyor.
+  // Yani Smart'taki kayit ACIK KALIR ve Smart ekranindan elle kapatilmalidir; yanitta
+  // smartRecordStillOpen:true ile istemciye bu ACIKCA bildirilir. Portal tarafinda ise
+  // guvenlik saglanir: poller.cjs sadece
   // status='PENDING' olan talepleri isledigi icin (bkz. listPending), CANCELLED yapilan bir
   // talep bir sonraki tick'te ARTIK HIC islenmez: Smart onaylasa bile bizim tarafimizda
   // hicbir AWX job'i tetiklenmez. Sadece hala PENDING olan (henuz LAUNCHED/REJECTED/TIMEOUT
@@ -2536,14 +2552,25 @@ function initAnsibleRunner(app) {
       if (existing.status !== "PENDING") {
         return res.status(409).json({ ok: false, message: `Bu talep artık iptal edilemez (durum: ${existing.status}).` });
       }
-      const cancelled = await smartStore.cancelTicket(ticketId, reqUser.username, isAdmin);
+      // Iptal notu: admin BASKASININ talebini iptal edebildigi icin "neden" bilgisi
+      // onemli (2026-08-20). Kullanici kendi talebini iptal ederken de yazabilir.
+      const note = String(req.body?.note || "").trim().slice(0, 1000);
+      const cancelled = await smartStore.cancelTicket(ticketId, reqUser.username, isAdmin, note, reqUser.username);
       if (!cancelled) {
         return res.status(409).json({ ok: false, message: "Talep bu sırada durum değiştirdi, iptal edilemedi — sayfayı yenileyin." });
       }
       require("../audit/index.cjs").auditPortal(req, "selfservice_smart_ticket_cancel", {
-        detail: JSON.stringify({ ticketId, owner: existing.username }),
+        detail: JSON.stringify({ ticketId, owner: existing.username, byAdmin: isAdmin, note }),
       });
-      res.json({ ok: true, status: cancelled.status });
+      res.json({
+        ok: true,
+        status: cancelled.status,
+        // Smart tarafinda kaydi KAPATAN bir API ucu bilinmiyor (bkz. route basligindaki
+        // not) - istemci bunu kullaniciya ACIKCA soylesin diye yanitta tasiniyor;
+        // "iptal ettim, her sey bitti" yanilgisi olusmasin.
+        smartRecordStillOpen: true,
+        externalTicketId: cancelled.externalTicketId,
+      });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }

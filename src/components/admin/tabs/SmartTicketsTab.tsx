@@ -5,7 +5,7 @@
 // Tablo buyuyebilecegi icin filtreleme ve sayfalama SUNUCUDA yapilir (bkz.
 // server/ansible/runner.cjs GET /ss/smart-tickets/all).
 import React, { useCallback, useEffect, useState } from "react";
-import { ArrowPathIcon, MagnifyingGlassIcon, ChevronDownIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, MagnifyingGlassIcon, ChevronDownIcon, ArrowDownTrayIcon, XCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { ansibleApi, type AdminSmartTicket } from "@/api/ansibleApi";
 import { toast } from "@/hooks/useToast";
 import { Select } from "@/components/ui/Form";
@@ -58,6 +58,11 @@ export default function SmartTicketsTab() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [expanded, setExpanded] = useState<number | null>(null);
+  // Iptal, gerekce yazilabilmesi icin window.confirm yerine kucuk bir modal uzerinden
+  // yapilir (2026-08-20). cancelTarget = iptal edilecek talep; null ise modal kapali.
+  const [cancelTarget, setCancelTarget] = useState<AdminSmartTicket | null>(null);
+  const [cancelNote, setCancelNote] = useState("");
+  const [cancelling, setCancelling] = useState(false);
 
   const load = useCallback(async (nextOffset = offset) => {
     setLoading(true);
@@ -91,6 +96,32 @@ export default function SmartTicketsTab() {
     const next = Math.max(0, offset + dir * PAGE_SIZE);
     setOffset(next);
     load(next);
+  }
+
+  async function doCancel() {
+    if (!cancelTarget) return;
+    setCancelling(true);
+    try {
+      const r = await ansibleApi.cancelSmartTicket(cancelTarget.id, cancelNote.trim());
+      if (r.ok) {
+        // Smart tarafindaki kaydi kapatan bir API ucu YOK - admin "hepsi bitti"
+        // sanmasin diye bu, basari mesajinda ACIKCA soylenir.
+        toast.success(
+          r.smartRecordStillOpen
+            ? `Talep iptal edildi, otomasyon tetiklenmeyecek. Smart kaydı ${r.externalTicketId ? `#${r.externalTicketId} ` : ""}hâlâ açık — Smart ekranından ayrıca kapatın.`
+            : "Talep iptal edildi."
+        );
+        setCancelTarget(null);
+        setCancelNote("");
+        await load(offset);
+      } else {
+        toast.error(r.message || "İptal edilemedi.");
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCancelling(false);
+    }
   }
 
   function exportCsv() {
@@ -190,14 +221,15 @@ export default function SmartTicketsTab() {
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sonuçlanma</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Süre</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Job</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {loading && rows.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-400">Yükleniyor…</td></tr>
+              <tr><td colSpan={9} className="px-3 py-8 text-center text-sm text-gray-400">Yükleniyor…</td></tr>
             )}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+              <tr><td colSpan={9} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
             )}
             {rows.map((t) => {
               const meta = STATUS_META[t.status] || { label: t.status, className: "bg-gray-100 text-gray-600 border-gray-200" };
@@ -225,10 +257,22 @@ export default function SmartTicketsTab() {
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{fmt(t.resolvedAt)}</td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap tabular-nums">{duration(t.createdAt, t.resolvedAt)}</td>
                     <td className="px-3 py-2 text-xs font-mono text-gray-700">{t.jobId ? `#${t.jobId}` : "—"}</td>
+                    <td className="px-3 py-2 text-right">
+                      {t.status === "PENDING" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setCancelTarget(t); setCancelNote(""); }}
+                          title="Onay beklemeden talebi iptal et — otomasyon tetiklenmez"
+                          className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors whitespace-nowrap"
+                        >
+                          <XCircleIcon className="w-3.5 h-3.5" />
+                          İptal
+                        </button>
+                      )}
+                    </td>
                   </tr>
                   {open && (
                     <tr className="bg-gray-50/50">
-                      <td colSpan={8} className="px-4 py-3">
+                      <td colSpan={9} className="px-4 py-3">
                         <div className="space-y-2 text-xs">
                           <div className="flex flex-wrap gap-x-6 gap-y-1 text-gray-500">
                             <span>Flow: <span className="font-mono text-gray-700">{t.flowKey || "—"}</span></span>
@@ -238,6 +282,13 @@ export default function SmartTicketsTab() {
                           </div>
                           {t.errorMessage && (
                             <div className="text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">{t.errorMessage}</div>
+                          )}
+                          {(t.cancelNote || t.cancelledBy) && (
+                            <div className="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5">
+                              <span className="font-semibold text-gray-700">İptal notu</span>
+                              {t.cancelledBy && <span className="text-gray-400"> · {t.cancelledBy}</span>}
+                              <div className="text-gray-700 mt-0.5">{t.cancelNote || <span className="text-gray-400 italic">not yazılmamış</span>}</div>
+                            </div>
                           )}
                           <div>
                             <div className="font-semibold text-gray-700 mb-1">Gönderilen parametreler</div>
@@ -278,6 +329,66 @@ export default function SmartTicketsTab() {
           </button>
         </div>
       </div>
+
+      {cancelTarget && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={(e) => { if (e.target === e.currentTarget && !cancelling) setCancelTarget(null); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Talebi iptal et</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                <span className="font-mono">{cancelTarget.username}</span> kullanıcısının{" "}
+                <span className="font-semibold">{cancelTarget.templateName || `#${cancelTarget.id}`}</span> talebi.
+                {cancelTarget.externalTicketId && <> Smart kaydı <span className="font-mono">#{cancelTarget.externalTicketId}</span>.</>}
+              </p>
+            </div>
+
+            <div className="flex gap-2 items-start bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+              <ExclamationTriangleIcon className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800">
+                Bu işlem otomasyonun tetiklenmesini <b>kesin olarak</b> engeller — Smart sonradan
+                onaylansa bile iş başlamaz. Ancak <b>Smart tarafındaki kayıt açık kalır</b>;
+                Smart'ta iptal eden bir servis ucu bulunmadığı için o kaydı Smart ekranından
+                ayrıca kapatmanız gerekir.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">İptal notu <span className="font-normal text-gray-400">(opsiyonel)</span></label>
+              <textarea
+                value={cancelNote}
+                onChange={(e) => setCancelNote(e.target.value)}
+                rows={3}
+                maxLength={1000}
+                autoFocus
+                placeholder="Örn: yanlış ortam seçilmiş, talep sahibiyle görüşüldü."
+                className="w-full px-2.5 py-2 text-xs border border-gray-200 rounded-lg resize-y"
+              />
+              <div className="text-[10px] text-gray-400 text-right mt-0.5">{cancelNote.length}/1000</div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setCancelTarget(null)}
+                disabled={cancelling}
+                className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Vazgeç
+              </button>
+              <button
+                onClick={doCancel}
+                disabled={cancelling}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                <XCircleIcon className="w-3.5 h-3.5" />
+                {cancelling ? "İptal ediliyor…" : "Talebi iptal et"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

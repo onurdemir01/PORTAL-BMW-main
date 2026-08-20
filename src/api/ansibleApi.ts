@@ -317,8 +317,17 @@ export const ansibleApi = {
 
   // Kullanici, Smart onayi otomasyonu (AWX job'i) TETIKLEMEDEN once kendi talebini iptal
   // eder — yalnizca hala PENDING olan bir talep icin (bkz. server/ansible/runner.cjs).
-  cancelSmartTicket: (ticketId: number): Promise<{ ok: boolean; status?: string; message?: string }> =>
-    fetch(`${BASE}/ss/smart-ticket/${ticketId}/cancel`, { method: "POST" }).then(safeJson),
+  // `note`: opsiyonel iptal gerekcesi. smartRecordStillOpen — Smart'taki kaydi kapatan bir
+  // API ucu OLMADIGI icin (bkz. runner.cjs route basligi) sunucu bunu her zaman true doner;
+  // istemci kullaniciya "Smart kaydini ayrica kapatin" uyarisini gostermek icin kullanir.
+  cancelSmartTicket: (ticketId: number, note = ""): Promise<{
+    ok: boolean; status?: string; smartRecordStillOpen?: boolean; externalTicketId?: string | null; message?: string;
+  }> =>
+    fetch(`${BASE}/ss/smart-ticket/${ticketId}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note }),
+    }).then(safeJson),
 
   // Admin > Test Senaryoları — dry-run: hicbir job/Smart bileti tetiklenmez, yalnizca
   // survey/custom-survey dogrulamasi + AWX template-preflight kontrolu calisir.
@@ -363,6 +372,8 @@ export interface AdminSmartTicket {
   awxTemplateId?: number | null;
   jobId?: number | null;
   errorMessage?: string | null;
+  cancelNote?: string | null;
+  cancelledBy?: string | null;
   createdAt: string;
   resolvedAt?: string | null;
 }
@@ -377,6 +388,8 @@ export interface SmartTicketSummary {
   createdAt: string;
   resolvedAt?: string | null;
   externalTicketId?: string | null;
+  cancelNote?: string | null;
+  cancelledBy?: string | null;
 }
 
 export interface FieldOverride {

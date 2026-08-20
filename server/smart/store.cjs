@@ -17,6 +17,8 @@ function rowToTicket(r) {
     pendingLaunch: JSON.parse(r.pending_launch_json),
     awxJobId: r.awx_job_id,
     errorMessage: r.error_message,
+    cancelNote: r.cancel_note ?? null,
+    cancelledBy: r.cancelled_by ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     resolvedAt: r.resolved_at,
@@ -101,13 +103,22 @@ async function listByUsername(username) {
 // LAUNCHED olmus bir talep asla CANCELLED'a geri donmez. Poller sadece status='PENDING'
 // olanlari isledigi icin (bkz. listPending), CANCELLED yapilan bir talep bir sonraki
 // tick'te artik hic islenmez — otomasyon boylece tetiklenmeden durdurulmus olur.
-async function cancelTicket(id, username, isAdmin) {
+// `note` opsiyoneldir: admin bir baskasinin talebini iptal ederken GEREKCE yazabilir
+// (2026-08-20). `actor` iptali YAPAN kisidir - talebi ACAN (username) ile ayni olmak
+// zorunda degil, admin baskasinin talebini iptal edebiliyor.
+async function cancelTicket(id, username, isAdmin, note = '', actor = '') {
+  const params = [id];
+  if (!isAdmin) params.push(username);
+  const ownerCond = isAdmin ? '' : `AND LOWER(username) = LOWER($${params.length})`;
+  params.push(note ? String(note).slice(0, 1000) : null); const noteP = `$${params.length}`;
+  params.push(actor || username || null);                 const actorP = `$${params.length}`;
   const { rows } = await db.query(
     `UPDATE smart_tickets
-       SET status = 'CANCELLED', updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
+       SET status = 'CANCELLED', updated_at = GETUTCDATE(), resolved_at = GETUTCDATE(),
+           cancel_note = ${noteP}, cancelled_by = ${actorP}
      OUTPUT INSERTED.*
-     WHERE id = $1 AND status = 'PENDING' ${isAdmin ? '' : 'AND LOWER(username) = LOWER($2)'}`,
-    isAdmin ? [id] : [id, username]
+     WHERE id = $1 AND status = 'PENDING' ${ownerCond}`,
+    params
   );
   return rows[0] ? rowToTicket(rows[0]) : null;
 }

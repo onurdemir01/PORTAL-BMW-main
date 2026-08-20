@@ -1780,6 +1780,20 @@ async function setupTables() {
       table: 'selfservice_items', col: 'permission_info',
       sql: `ALTER TABLE selfservice_items ADD permission_info NVARCHAR(500) NULL`,
     },
+    // Admin, onay bekleyen bir Smart talebini iptal ederken GEREKCE yazabilir
+    // (2026-08-20, kullanici talebi). error_message'a yazilmadi: o alan SISTEM
+    // hatalarini tasiyor, burasi INSANIN yazdigi bir not - ikisini ayni kolonda
+    // birlestirmek "otomasyon mu patladi yoksa biri mi iptal etti" ayrimini kaybettirirdi.
+    // cancelled_by ayrica tutulur: talebi ACAN kullanici (username) ile IPTAL EDEN
+    // admin farkli kisilerdir.
+    {
+      table: 'smart_tickets', col: 'cancel_note',
+      sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,
+    },
+    {
+      table: 'smart_tickets', col: 'cancelled_by',
+      sql: `ALTER TABLE smart_tickets ADD cancelled_by NVARCHAR(200) NULL`,
+    },
   ];
 
   for (const { table, col, sql } of alters) {

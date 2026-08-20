@@ -125,10 +125,18 @@ export default function RequestsSidePanel() {
   };
 
   const cancel = async (id: number) => {
-    if (!window.confirm("Bu talebi iptal etmek istediğinize emin misiniz? Onay gelse bile artık işlem tetiklenmeyecek.")) return;
+    // Gerekce opsiyonel: bos birakilirsa (ya da Iptal'e basilirsa prompt null doner)
+    // yine de iptal edilir - not zorunlu tutulmuyor, sadece imkan taniniyor.
+    const note = window.prompt(
+      "Bu talebi iptal etmek üzeresiniz. Onay gelse bile otomasyon artık tetiklenmeyecek.\n\n" +
+      "NOT: Smart tarafındaki kayıt açık kalır, onu Smart ekranından ayrıca kapatmanız gerekir.\n\n" +
+      "İptal gerekçesi (opsiyonel):",
+      ""
+    );
+    if (note === null) return; // kullanici vazgecti
     setCancellingId(id);
     try {
-      const r = await ansibleApi.cancelSmartTicket(id);
+      const r = await ansibleApi.cancelSmartTicket(id, note.trim());
       if (r.ok) await load();
       else window.alert(r.message || "İptal edilemedi.");
     } catch (e: unknown) {
