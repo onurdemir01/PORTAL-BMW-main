@@ -3,8 +3,15 @@
 // yerine geçti). Kullanıcı isteğe bağlı daraltabilir (ince bir şerite küçülür, tekrar
 // tıklayınca büyür) — durum localStorage'da tutulur, sayfa yenilense de hatırlanır.
 import React, { useCallback, useEffect, useState } from "react";
-import { ClipboardDocumentListIcon, ChevronDoubleRightIcon, ChevronDoubleLeftIcon, XCircleIcon } from "@heroicons/react/24/outline";
+import { ClipboardDocumentListIcon, ChevronDoubleRightIcon, ChevronDoubleLeftIcon, XCircleIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import { ansibleApi, type SmartTicketSummary } from "@/api/ansibleApi";
+
+interface TicketDetail {
+  externalTicketId?: string | null;
+  flowKey?: string | null;
+  templateName?: string | null;
+  extraVars?: Record<string, string>;
+}
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   PENDING:   { label: "Onay Bekliyor", className: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -33,6 +40,29 @@ export default function RequestsSidePanel() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  // Bir talebe tıklandığında hangi otomasyonun hangi extraVars ile tetiklendiğini ve hangi
+  // Smart kaydını açtığını göstermek için — talep sayısı küçük olduğundan lazy-fetch +
+  // basit bir bellek-içi cache yeterli (2026-08-20, kullanıcı talebi).
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [detailCache, setDetailCache] = useState<Record<number, TicketDetail>>({});
+  const [detailLoadingId, setDetailLoadingId] = useState<number | null>(null);
+
+  const toggleDetail = async (id: number) => {
+    if (expandedId === id) { setExpandedId(null); return; }
+    setExpandedId(id);
+    if (detailCache[id]) return;
+    setDetailLoadingId(id);
+    try {
+      const r = await ansibleApi.smartTicketDetail(id);
+      if (r.ok) {
+        setDetailCache((prev) => ({
+          ...prev,
+          [id]: { externalTicketId: r.externalTicketId, flowKey: r.flowKey, templateName: r.templateName, extraVars: r.extraVars },
+        }));
+      }
+    } catch { /* detay alinamazsa sessizce yoksay - panel yine de kapatilabilir */ }
+    finally { setDetailLoadingId(null); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -147,20 +177,69 @@ export default function RequestsSidePanel() {
             <div className="space-y-2">
               {tickets.map((t) => {
                 const meta = STATUS_LABELS[t.status] || { label: t.status, className: "bg-gray-100 text-gray-600 border-gray-200" };
+                const isExpanded = expandedId === t.id;
+                const detail = detailCache[t.id];
                 return (
-                  <div key={t.id} className="p-2.5 border border-gray-100 rounded-lg">
-                    <div className="font-semibold text-sm truncate">{t.templateName || `Talep #${t.id}`}</div>
-                    <div className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                      {formatDate(t.createdAt)}
-                      {t.smartStateName ? ` · ${t.smartStateName}` : ""}
-                      {t.jobId ? ` · Job #${t.jobId}` : ""}
-                    </div>
-                    {t.status === "ERROR" && t.errorMessage && (
-                      <div className="text-[11px] mt-1 text-red-600">{t.errorMessage}</div>
+                  <div key={t.id} className="border border-gray-100 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleDetail(t.id)}
+                      title="Hangi otomasyonun hangi bilgilerle tetiklendiğini gör"
+                      className="w-full text-left p-2.5 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-semibold text-sm truncate">{t.templateName || `Talep #${t.id}`}</div>
+                        <ChevronDownIcon className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-gray-400 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                      </div>
+                      <div className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        {formatDate(t.createdAt)}
+                        {t.externalTicketId ? ` · Smart #${t.externalTicketId}` : ""}
+                        {t.smartStateName ? ` · ${t.smartStateName}` : ""}
+                        {t.jobId ? ` · Job #${t.jobId}` : ""}
+                      </div>
+                      {t.status === "ERROR" && t.errorMessage && (
+                        <div className="text-[11px] mt-1 text-red-600">{t.errorMessage}</div>
+                      )}
+                      <div className="flex items-center justify-between gap-2 mt-2">
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${meta.className}`}>{meta.label}</span>
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="px-2.5 pb-2.5 pt-1 border-t border-gray-100 bg-gray-50/60">
+                        {detailLoadingId === t.id && !detail && (
+                          <div className="flex items-center justify-center py-3">
+                            <div className="w-4 h-4 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+                          </div>
+                        )}
+                        {detail && (
+                          <div className="space-y-1.5 text-[11px]">
+                            {detail.externalTicketId && (
+                              <div><span className="font-semibold text-gray-700">Smart Kayıt No:</span> <span className="font-mono">{detail.externalTicketId}</span></div>
+                            )}
+                            {detail.flowKey && (
+                              <div><span className="font-semibold text-gray-700">Flow:</span> {detail.flowKey}</div>
+                            )}
+                            <div className="font-semibold text-gray-700 pt-1">Girilen Bilgiler:</div>
+                            {detail.extraVars && Object.keys(detail.extraVars).length > 0 ? (
+                              <div className="space-y-0.5">
+                                {Object.entries(detail.extraVars).map(([k, v]) => (
+                                  <div key={k} className="flex gap-1.5">
+                                    <span className="text-gray-500 flex-shrink-0">{k}:</span>
+                                    <span className="text-gray-800 break-all">{String(v)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-gray-500">Bu talepte kullanıcı girdisi (extraVars) yok.</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
-                    <div className="flex items-center justify-between gap-2 mt-2">
-                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${meta.className}`}>{meta.label}</span>
-                      {t.status === "PENDING" && (
+
+                    {t.status === "PENDING" && (
+                      <div className="px-2.5 pb-2.5 flex justify-end">
                         <button
                           onClick={() => cancel(t.id)}
                           disabled={cancellingId === t.id}
@@ -170,8 +249,8 @@ export default function RequestsSidePanel() {
                           <XCircleIcon className="w-3.5 h-3.5" />
                           İptal
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

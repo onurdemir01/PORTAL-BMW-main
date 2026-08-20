@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { selfServiceApi, type SelfServiceGroup } from "@/api/selfServiceApi";
 import { ansibleApi } from "@/api/ansibleApi";
+import { nobetciApi, type NobetciResult } from "@/api/nobetciApi";
 import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions } from "@/api/ansibleApi";
 import FieldOverridesModal from "@/components/self_service/FieldOverridesModal";
 import RequestsSidePanel from "@/components/self_service/RequestsSidePanel";
@@ -74,7 +75,16 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   // Gerekli") launch() jobId yerine bir ticketId döner — AWX job'ı onay gelene kadar
   // TETİKLENMEMİŞTİR. ticketStatus: PENDING (bekliyor) | REJECTED | TIMEOUT | ERROR |
   // LAUNCHED (poller onayladı, jobId artık dolu — normal iş takibine geçilir).
-  const [pendingTicket, setPendingTicket] = useState<{ id: number; status: string; errorMessage?: string | null } | null>(null);
+  const [pendingTicket, setPendingTicket] = useState<{ id: number; status: string; errorMessage?: string | null; externalTicketId?: string | null } | null>(null);
+  // Kapama Onayı'ndan (Smart'ta talep tamamlandıktan) sonra otomasyon tetiklenir ama Teams
+  // bildirimi gecikebilir/gitmeyebilir — kullanıcı "kimseye ulaşamıyorum" durumunda kalmasın
+  // diye günün nöbetçisi (bkz. server/nobetci/index.cjs, halihazırda Dashboard'da da
+  // kullanılan public uç) burada da gösterilir (2026-08-20, kullanıcı talebi).
+  const [onCall, setOnCall] = useState<NobetciResult | null>(null);
+  useEffect(() => {
+    if (!pendingTicket) return;
+    nobetciApi.today().then(setOnCall).catch(() => {});
+  }, [pendingTicket?.id]);
   const { addJob, jobs } = useJobTracker();
   // Modal açıkken CANLI çıktı burada (inline) gösterilir — bkz. OpsXWizardPage.tsx'teki
   // aynı desen. Modal kapatılırsa is arka planda takip edilmeye devam eder (alt çubuk).
@@ -195,7 +205,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
         }
         if (r.status !== "PENDING") {
           clearInterval(timer);
-          setPendingTicket({ id: pendingTicket.id, status: r.status, errorMessage: r.errorMessage });
+          setPendingTicket({ id: pendingTicket.id, status: r.status, errorMessage: r.errorMessage, externalTicketId: r.externalTicketId });
         }
       } catch { /* gecici hata — bir sonraki tick'te tekrar denenir */ }
     }, 4000);
@@ -230,7 +240,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
         jobType: launchOptions?.jobType.enabled ? jobType : undefined,
       });
       if (r.ok && r.pendingApproval && r.ticketId != null) {
-        setPendingTicket({ id: r.ticketId, status: "PENDING" });
+        setPendingTicket({ id: r.ticketId, status: "PENDING", externalTicketId: r.externalTicketId });
       } else if (r.ok && r.jobId != null) {
         setJobId(r.jobId);
         trackJob(r.jobId);
@@ -376,13 +386,33 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
                 <>
                   <div className="mx-auto w-6 h-6 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
                   <p className="text-sm font-medium text-[var(--text-primary)]">Smart üzerinde onay bekleniyor…</p>
-                  <p className="text-xs text-[var(--text-muted)]">Talep #{pendingTicket.id} — onaylanınca iş otomatik başlar, bu pencereyi kapatabilirsiniz.</p>
+                  {pendingTicket.externalTicketId && (
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">
+                      Smart Kayıt No: <span className="font-mono">{pendingTicket.externalTicketId}</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Lütfen ilgili Smart kaydını takip edin — <strong>Kapama Onayı</strong> adımında{" "}
+                    <strong>Tamamla</strong>'ya basmadan otomasyon tetiklenmeyecektir. Onaylanınca iş otomatik başlar,
+                    bu pencereyi kapatabilirsiniz.
+                  </p>
+                  <div className="text-left text-xs bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mx-auto max-w-sm text-amber-800">
+                    Kapama Onayı tamamlandıktan ortalama 5 dakika sonra Teams bildirimi gelmezse{" "}
+                    {onCall?.ok && onCall.name ? (
+                      <>
+                        günün nöbetçisi <strong>{onCall.name}</strong>
+                        {onCall.intercom ? ` (dahili: ${onCall.intercom})` : onCall.phone ? ` (${onCall.phone})` : ""} ile iletişime geçin.
+                      </>
+                    ) : (
+                      <>günün nöbetçisiyle iletişime geçin.</>
+                    )}
+                  </div>
                 </>
               )}
               {pendingTicket.status === "REJECTED" && (
                 <>
                   <p className="text-sm font-medium text-red-600">Smart talebi reddedildi.</p>
-                  <p className="text-xs text-[var(--text-muted)]">İş başlatılmadı. Detay için Smart talep #{pendingTicket.id}'e bakın.</p>
+                  <p className="text-xs text-[var(--text-muted)]">İş başlatılmadı. Detay için Smart talep {pendingTicket.externalTicketId ? `#${pendingTicket.externalTicketId}` : `#${pendingTicket.id}`}'e bakın.</p>
                 </>
               )}
               {pendingTicket.status === "TIMEOUT" && (

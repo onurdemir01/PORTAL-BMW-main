@@ -2276,7 +2276,7 @@ function initAnsibleRunner(app) {
         require("../audit/index.cjs").auditPortal(req, "selfservice_smart_ticket_open", {
           detail: JSON.stringify({ awxServerId: server.id, templateId, flowKey, ticketId: created.ticketId }),
         });
-        return res.json({ ok: true, pendingApproval: true, ticketId: ticket.id });
+        return res.json({ ok: true, pendingApproval: true, ticketId: ticket.id, externalTicketId: created.ticketId });
       }
 
       const result = await performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req });
@@ -2368,7 +2368,7 @@ function initAnsibleRunner(app) {
           flowKey,
           pendingLaunch: { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
         });
-        return res.json({ ok: true, pendingApproval: true, ticketId: ticket.id });
+        return res.json({ ok: true, pendingApproval: true, ticketId: ticket.id, externalTicketId: created.ticketId });
       }
 
       const result = await performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req });
@@ -2400,6 +2400,41 @@ function initAnsibleRunner(app) {
         smartStateName: ticket.smartStateName,
         jobId: ticket.awxJobId,
         errorMessage: ticket.errorMessage,
+        externalTicketId: ticket.externalTicketId,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/ansible/ss/smart-ticket/:id/detail — "Taleplerim" listesinde bir talebe
+  // tiklandiginda: hangi Self Service otomasyonunun, hangi extraVars (kullanicinin girdigi
+  // alan degerleri) ile tetiklendigini ve hangi Smart kaydini actigini gosterir (2026-08-20,
+  // kullanici talebi). pendingLaunch.detail (AWX template'in TAM ham JSON'u) ve
+  // pendingLaunch.overrides (admin yapilandirmasi) BILEREK disarida birakilir — kullaniciya
+  // gereksiz/hacimli/olasi hassas veri sizdirmamak icin yalnizca extraVars + temel alanlar.
+  app.get("/api/ansible/ss/smart-ticket/:id/detail", requireAuth, async (req, res) => {
+    try {
+      const smartStore = require("../smart/store.cjs");
+      const ticket = await smartStore.getTicket(Number(req.params.id));
+      if (!ticket) return res.status(404).json({ ok: false, message: "Talep bulunamadı." });
+      const reqUser = req.session?.user || {};
+      if (reqUser.role !== "Admin" && ticket.username.toLowerCase() !== String(reqUser.username || "").toLowerCase()) {
+        return res.status(403).json({ ok: false, message: "Bu talep size ait değil." });
+      }
+      res.json({
+        ok: true,
+        id: ticket.id,
+        status: ticket.status,
+        smartStateName: ticket.smartStateName,
+        externalTicketId: ticket.externalTicketId,
+        flowKey: ticket.flowKey,
+        templateName: ticket.pendingLaunch?.templateName || null,
+        extraVars: ticket.pendingLaunch?.extraVars || {},
+        jobId: ticket.awxJobId,
+        errorMessage: ticket.errorMessage,
+        createdAt: ticket.createdAt,
+        resolvedAt: ticket.resolvedAt,
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -2426,6 +2461,7 @@ function initAnsibleRunner(app) {
           errorMessage: t.errorMessage,
           createdAt: t.createdAt,
           resolvedAt: t.resolvedAt,
+          externalTicketId: t.externalTicketId,
         })),
       });
     } catch (err) {

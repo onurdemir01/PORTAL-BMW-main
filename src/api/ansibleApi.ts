@@ -250,7 +250,7 @@ export const ansibleApi = {
     extraVars: Record<string, string>,
     templateName: string,
     options: { limit?: string; forks?: number; jobTags?: string; skipTags?: string; verbosity?: number; jobType?: string } = {}
-  ): Promise<{ ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number; message?: string; field?: string }> =>
+  ): Promise<{ ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number; externalTicketId?: string; message?: string; field?: string }> =>
     fetch(`${BASE}/launch-ss/${serverId}/${templateId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -263,8 +263,18 @@ export const ansibleApi = {
   // Smart onayı bekleyen bir talebin durumu. status: PENDING | LAUNCHED | REJECTED |
   // TIMEOUT | ERROR — LAUNCHED olunca jobId dolar ve çağıran normal ssJobStatus
   // takibine geçebilir.
-  smartTicketStatus: (ticketId: number): Promise<{ ok: boolean; status: string; smartStateName?: string; jobId?: number | null; errorMessage?: string | null; message?: string }> =>
+  smartTicketStatus: (ticketId: number): Promise<{ ok: boolean; status: string; smartStateName?: string; jobId?: number | null; errorMessage?: string | null; externalTicketId?: string | null; message?: string }> =>
     fetch(`${BASE}/ss/smart-ticket/${ticketId}/status`).then(safeJson),
+
+  // "Taleplerim" ekraninda bir talebe tiklandiginda: hangi otomasyonun hangi extraVars ile
+  // tetiklendigi ve hangi Smart kaydinin acildigi (bkz. server/ansible/runner.cjs GET
+  // /ss/smart-ticket/:id/detail).
+  smartTicketDetail: (ticketId: number): Promise<{
+    ok: boolean; id?: number; status?: string; smartStateName?: string | null;
+    externalTicketId?: string | null; flowKey?: string | null; templateName?: string | null;
+    extraVars?: Record<string, string>; jobId?: number | null; errorMessage?: string | null;
+    createdAt?: string; resolvedAt?: string | null; message?: string;
+  }> => fetch(`${BASE}/ss/smart-ticket/${ticketId}/detail`).then(safeJson),
 
   history: (days = 30): Promise<{ ok: boolean; history: JobHistoryRecord[] }> =>
     fetch(`${BASE}/history?days=${days}`).then(safeJson),
@@ -317,7 +327,7 @@ export const ansibleApi = {
     extraVars: Record<string, string>,
     templateName: string,
     scenarioName: string
-  ): Promise<{ ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number; message?: string; field?: string }> =>
+  ): Promise<{ ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number; externalTicketId?: string; message?: string; field?: string }> =>
     fetch(`${BASE}/ss/test/run/${serverId}/${templateId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -334,6 +344,7 @@ export interface SmartTicketSummary {
   errorMessage?: string | null;
   createdAt: string;
   resolvedAt?: string | null;
+  externalTicketId?: string | null;
 }
 
 export interface FieldOverride {
