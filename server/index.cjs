@@ -121,6 +121,7 @@ async function main() {
     { name: "aiAnalyst", init: () => initAiAnalyst(app), optional: true },
     { name: "metrics", init: () => require("./metrics.cjs").initMetrics(app), optional: true },
     { name: "portalAudit", init: () => require("./audit/index.cjs").initPortalAudit(app), optional: true },
+    { name: "denetim", init: () => require("./audit/denetim.cjs").initDenetim(app), optional: true },
   ];
   for (const { name, init, optional } of modules) {
     try {

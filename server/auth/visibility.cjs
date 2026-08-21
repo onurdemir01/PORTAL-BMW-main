@@ -33,6 +33,7 @@ const CACHE_TTL_MS = 15000;
 const DEFAULT_VISIBILITY = {
   "Dashboard":    ["Admin", "User"],
   "Envanter":     ["Admin", "User"],
+  "Denetim":      ["Admin", "User"],
   "LogX":         ["Admin", "User"],
   "Self Service": ["Admin", "User"],
   "Ansible":      ["Admin"],

@@ -5,6 +5,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 // ile lazy yüklenir (1.2MB tek bundle → ilk yük belirgin küçülür — Sprint 4/D5).
 import LoginPage from "@/components/LoginPage";
 import DashboardPage from "@/components/DashboardPage";
+import DenetimPage from "@/components/DenetimPage";
 import ForbiddenPage from "@/components/ForbiddenPage";
 
 const EnvanterPage = React.lazy(() => import("@/components/EnvanterPage"));
@@ -53,6 +54,9 @@ export default function App() {
           </Route>
           <Route element={<PageVisibilityRoute pageId="Envanter" />}>
             <Route path="/envanter" element={<EnvanterPage />} />
+          </Route>
+          <Route element={<PageVisibilityRoute pageId="Denetim" />}>
+            <Route path="/denetim" element={<DenetimPage />} />
           </Route>
           <Route element={<PageVisibilityRoute pageId="Linkler" />}>
             <Route path="/important-links" element={<ImportantLinksPage />} />

@@ -28,6 +28,7 @@ export interface TabElement {
 export const PAGES: PageElement[] = [
   { id: "Dashboard",    label: "Dashboard",    route: "/dashboard"       },
   { id: "Envanter",     label: "Envanter",     route: "/envanter"        },
+  { id: "Denetim",      label: "Denetim",      route: "/denetim"         },
   { id: "LogX",         label: "LogX",         route: "/logx"            },
   { id: "OpsX",         label: "OpsX",         route: "/opsx"            },
   { id: "FileX",        label: "FileX",        route: "/filex"           },
@@ -54,7 +55,7 @@ export const PAGES: PageElement[] = [
 // Envanter ayrı bir grup oldu. Her biri direkt açılır.
 export const NAV_GROUPS: NavGroupDef[] = [
   { id: "genel",       label: "Genel",            itemIds: ["Dashboard"] },
-  { id: "envanter",    label: "Envanter",         itemIds: ["Envanter"] },
+  { id: "envanter",    label: "Envanter",         itemIds: ["Envanter", "Denetim"] },
   { id: "performance", label: "Performance",      itemIds: ["Performance"] },
   { id: "operasyon",   label: "Nöbetçiler",       itemIds: ["Nöbet"] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.

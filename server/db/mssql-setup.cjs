@@ -1019,6 +1019,7 @@ async function seedEnvSuffixMap(pool) {
 const PAGE_VISIBILITY_SEED = [
   { page_name: 'Dashboard', roles: 'Admin,User' },
   { page_name: 'Envanter', roles: 'Admin,User' },
+  { page_name: 'Denetim', roles: 'Admin,User' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
   { page_name: 'FileX', roles: 'Admin,User' },
@@ -1072,6 +1073,7 @@ const ELEMENT_SEED = [
   // Sayfalar (mevcut PAGE_VISIBILITY_SEED ile ayni roller)
   { element_key: 'Dashboard',    element_type: 'page', parent_key: 'navgroup:genel',       label: 'Dashboard',    route: '/dashboard',       sort_order: 1,  roles: ['Admin', 'User'] },
   { element_key: 'Envanter',     element_type: 'page', parent_key: 'navgroup:envanter',    label: 'Envanter',     route: '/envanter',        sort_order: 2,  roles: ['Admin', 'User'] },
+  { element_key: 'Denetim',      element_type: 'page', parent_key: 'navgroup:envanter',    label: 'Denetim',      route: '/denetim',         sort_order: 3,  roles: ['Admin', 'User'] },
   { element_key: 'LogX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'LogX',         route: '/logx',            sort_order: 7,  roles: ['Admin', 'User'] },
   { element_key: 'OpsX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'OpsX',         route: '/opsx',            sort_order: 8,  roles: ['Admin', 'User'] },
   { element_key: 'FileX',        element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'FileX',        route: '/filex',           sort_order: 8,  roles: ['Admin', 'User'] },
@@ -1441,7 +1443,7 @@ async function migrateSelfServiceSectionsToGroups(pool) {
 // Yalniz parent_key IS NULL olan (henuz baglanmamis) satirlari etkiler — idempotent.
 async function migratePageParentKeysToNavGroups(pool) {
   const pageToGroup = {
-    'Dashboard': 'navgroup:genel', 'Envanter': 'navgroup:genel',
+    'Dashboard': 'navgroup:genel', 'Envanter': 'navgroup:genel', 'Denetim': 'navgroup:envanter',
     'LogX': 'navgroup:otomasyon', 'OpsX': 'navgroup:otomasyon', 'FileX': 'navgroup:otomasyon',
     'Nöbet': 'navgroup:operasyon',
     'Self Service': 'navgroup:otomasyon', 'Ansible': 'navgroup:otomasyon',
