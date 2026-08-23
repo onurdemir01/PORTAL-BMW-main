@@ -63,6 +63,12 @@ export interface SpaCoverageResult {
   platforms: string[];
   clusters: string[];
   scanDate: string | null;
+  /** SPA ad kalibi (bilgi amacli gosterilir). */
+  spaPatternLabel: string;
+  /** SPA kalibina uymadigi icin karsilastirmaya girmeyen OpenShift uygulamasi sayisi. */
+  ocpNonSpaExcluded: number;
+  /** nginx'e tanimli ama SPA kalibina uymayanlar. */
+  nginxOutsidePattern: string[];
   ocpSkippedNoEnv: number;
   rows: SpaCoverageRow[];
   message?: string;

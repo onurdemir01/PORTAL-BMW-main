@@ -162,9 +162,12 @@ function SpaCoverage() {
             OpenShift SPA’ları ↔ nginx tanımları
           </h3>
           <p className="text-[11px] text-gray-400 mt-0.5 max-w-3xl">
-            Cluster’larda gerçekten duran uygulamalar ile nginx konfiglerinde tanımlı olanlar
-            ortam bazında karşılaştırılır. Ortam bilgisi OpenShift tarafında namespace son
-            ekinden (-dev/-test/-qa/-prod) gelir, cluster’dan değil.
+            Oran <b>yalnızca SPA’lar arasında</b> hesaplanır — OpenShift’teki tüm
+            uygulamalara göre değil. SPA ayrımı ad kalıbından yapılır (adında{" "}
+            <code className="px-1 rounded bg-gray-100">-app-v</code> ya da{" "}
+            <code className="px-1 rounded bg-gray-100">-app-emb-v</code> geçenler), çünkü
+            envanter tablosunda SPA’yı işaretleyen bir sütun yok. Ortam bilgisi OpenShift
+            tarafında namespace son ekinden (-dev/-test/-qa/-prod) gelir, cluster’dan değil.
           </p>
         </div>
         <Select sizeVariant="sm" value={platform} onChange={(e) => setPlatform(e.target.value)}>
@@ -173,7 +176,7 @@ function SpaCoverage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat n={sum("ocpTotal")} l="OpenShift'te uygulama" />
+        <Stat n={sum("ocpTotal")} l="OpenShift'te SPA" />
         <Stat n={sum("bothCount")} l="nginx'e tanımlı" tone="ok" />
         <Stat n={sum("onlyOcpCount")} l="nginx'e tanımsız" tone="warn" />
         <Stat n={sum("onlyNginxCount")} l="yalnızca nginx'te" />
@@ -274,7 +277,7 @@ function SpaCoverage() {
         <span className="flex items-center gap-1"><i className="w-3 h-3 rounded-sm bg-sky-300/70 inline-block" /> yalnızca nginx'te</span>
         <button
           onClick={() => csvDownload("spa_kapsam_" + platform,
-            ["ortam", "openshift_toplam", "nginx_tanimli", "nginx_tanimsiz", "yalnizca_nginx", "kapsam_yuzde"],
+            ["ortam", "openshift_spa", "nginx_tanimli", "nginx_tanimsiz", "yalnizca_nginx", "kapsam_yuzde"],
             data.rows.map((r) => [r.env, r.ocpTotal, r.bothCount, r.onlyOcpCount, r.onlyNginxCount,
               r.coverage === null ? "" : r.coverage]))}
           className="ml-auto flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 rounded-lg hover:bg-gray-50"
@@ -291,6 +294,23 @@ function SpaCoverage() {
           <code className="px-1 rounded bg-white/70 border border-amber-200">location …&#123; include application-confs/…&#125;</code>{" "}
           kalıbını kaydeder; <code className="px-1 rounded bg-white/70 border border-amber-200">proxy_pass</code>{" "}
           ile kurulmuş sunucular bu kalıba uymaz.
+        </p>
+      )}
+
+      {data.nginxOutsidePattern.length > 0 && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          nginx’e tanımlı {data.nginxOutsidePattern.length} uygulama SPA kalıbına{" "}
+          (<code className="px-1 rounded bg-white/70 border border-amber-200">{data.spaPatternLabel}</code>)
+          uymuyor, bu yüzden karşılaştırmaya girmedi:{" "}
+          <span className="font-mono">{data.nginxOutsidePattern.slice(0, 6).join(", ")}</span>
+          {data.nginxOutsidePattern.length > 6 && " …"}
+        </p>
+      )}
+
+      {data.ocpNonSpaExcluded > 0 && (
+        <p className="text-[11px] text-gray-400">
+          {data.ocpNonSpaExcluded.toLocaleString("tr-TR")} OpenShift uygulaması SPA kalıbına
+          uymadığı için sayılmadı — oran yalnızca SPA’lar üzerinden hesaplandı.
         </p>
       )}
 

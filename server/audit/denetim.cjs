@@ -163,6 +163,15 @@ function initDenetim(app) {
   // Ortam bilgisi OpenShift tarafinda NAMESPACE son ekinden gelir (-dev/-test/-qa/-prod),
   // cluster'dan DEGIL: ark_dev ile ark_test ayni cluster'lari paylasir, cluster tek basina
   // ortam bilgisi tasimaz. nginx tarafinda ise env, vhost DOSYA ADINDAN turer.
+  // SPA TANIMI (kullanici tarafindan verildi): uygulama adinda "-app-v" ya da
+  // "-app-emb-v" GECIYORSA o uygulama bir SPA'dir. Ad kalibina bakmak zorundayiz cunku
+  // dbo.Openshift_Inventory yalnizca cluster/namespace/application tutuyor - SPA olup
+  // olmadigini soyleyen bir sutun YOK.
+  // ICERIR (contains) kontrolu, "ile biter" DEGIL: kural boyle verildi ve ornegin
+  // "...-app-emb-v0" gibi adlarda surum sonekinden sonra baska bir sey de gelebilir.
+  const SPA_RE = /-app(-emb)?-v/i;
+  const SPA_LABEL = '-app-v / -app-emb-v';
+
   router.get('/nginx-spa-coverage', async (req, res) => {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
@@ -193,10 +202,15 @@ function initDenetim(app) {
       // ayri job'lar tarafindan yaziliyor ve buyuk/kucuk harf tutarliligi GARANTI DEGIL.
       const ocp = new Map();
       let ocpNoEnv = 0;
+      // Kullanici talebi: oran TUM OpenShift uygulamalarina gore degil, YALNIZCA SPA'lar
+      // arasinda hesaplansin. Suzgecin disinda kalanlar sayilmaz ama sayilari RAPORLANIR -
+      // sessizce dusurmek kapsami oldugundan iyi gosterirdi.
+      const ocpNonSpa = new Set();
       for (const r of ocpRes.recordset || []) {
         const e = envOfNamespace(r.namespace);
         const app = String(r.application || '').trim();
         if (!app) continue;
+        if (!SPA_RE.test(app)) { ocpNonSpa.add(app.toLowerCase()); continue; }
         if (!e) { ocpNoEnv++; continue; }
         const k = e.toUpperCase();
         if (!ocp.has(k)) ocp.set(k, new Map());
@@ -204,13 +218,22 @@ function initDenetim(app) {
       }
 
       const ngx = new Map();
+      // nginx tarafi da AYNI suzgecten gecer; yoksa payda SPA, pay karisik olur ve
+      // "yalnizca nginx'te" kovasi SPA olmayan tanimlarla sisirdi.
+      const ngxNonSpa = new Set();
       for (const r of ngxRes.recordset || []) {
         const e = String(r.env || '').trim().toUpperCase();
         const app = String(r.application || '').trim();
         if (!app || !e) continue;
+        if (!SPA_RE.test(app)) { ngxNonSpa.add(app); continue; }
         if (!ngx.has(e)) ngx.set(e, new Map());
         ngx.get(e).set(app.toLowerCase(), app);
       }
+
+      // nginx'e tanimli olup SPA kalibina UYMAYANLAR. Bu denetim yalnizca SPA/include
+      // kalibini kaydettigi icin boyle kayitlarin varligi kendi basina bir bulgudur -
+      // sessizce dusurmek yerine listelenir.
+      const nginxOutsidePattern = [...ngxNonSpa].sort((a, b) => a.localeCompare(b, 'tr')).slice(0, 40);
 
       const ENV_LIST = [...new Set([...ENVS.map((e) => e.toUpperCase()), ...ocp.keys(), ...ngx.keys()])];
       const CAP = 300;   // listeler ekrani bogmasin; sayilar HER ZAMAN tam
@@ -249,6 +272,11 @@ function initDenetim(app) {
         platforms: Object.keys(PLATFORM_CLUSTERS),
         clusters,
         scanDate,
+        spaPatternLabel: SPA_LABEL,
+        // SPA kalibina uymadigi icin karsilastirmaya HIC girmeyen OpenShift uygulamalari.
+        ocpNonSpaExcluded: ocpNonSpa.size,
+        // nginx'e tanimli ama SPA kalibina uymayanlar.
+        nginxOutsidePattern,
         // Namespace son eki -dev/-test/-qa/-prod'a uymayan kayitlar hicbir ortama
         // atanamaz; sayilari gizlemek yerine ACIKCA raporlanir.
         ocpSkippedNoEnv: ocpNoEnv,
