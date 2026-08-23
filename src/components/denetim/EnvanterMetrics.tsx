@@ -21,6 +21,10 @@ import { Select } from "@/components/ui/Form";
 // "a b"+"c" ile "a"+"b c" ayni anahtari uretirdi.
 const SEP = "\u0001";
 
+// Sunucu tarafinin bos/NULL degerler icin kullandigi etiketle AYNI olmak ZORUNDA
+// (bkz. envanter-metrics.cjs -> NORM). Ayrisirsa filtre sessizce calismaz.
+const EMPTY_LABEL = "(boş)";
+
 const nf = (n: number) => n.toLocaleString("tr-TR");
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
@@ -176,8 +180,18 @@ function Distributions({ sum }: { sum: EnvanterSummary }) {
     if (!sum.dims.some((d) => d.key === dim)) setDim(sum.dims[0]?.key || "");
   }, [sum, dim]);
 
+  // "(bos)" satiri LISTEDEN cikarilir (kullanici talebi): urun surumu boyutlarinda bu
+  // kova cogu zaman en buyuk satir olup gercek surum dagilimini gorunmez kiliyordu.
+  // Sayisi tamamen atilmaz - listenin altinda tek satirlik not olarak durur, cunku
+  // "kac sunucuda bu alan hic yok" gercek bir denetim bilgisi. Yuzdeler artik DOLU
+  // degerler uzerinden hesaplanir, ki asil merak edilen oran budur.
+  const emptyRow = useMemo(
+    () => (sum.distributions[dim] || []).find((r) => r.value === EMPTY_LABEL) || null,
+    [sum, dim],
+  );
+
   const rows = useMemo(() => {
-    const all = sum.distributions[dim] || [];
+    const all = (sum.distributions[dim] || []).filter((r) => r.value !== EMPTY_LABEL);
     const needle = q.trim().toLowerCase();
     return needle ? all.filter((r) => r.value.toLowerCase().includes(needle)) : all;
   }, [sum, dim, q]);
@@ -223,6 +237,12 @@ function Distributions({ sum }: { sum: EnvanterSummary }) {
         ))}
       </div>
       <BarList rows={rows} unit={sum.unit} limit={40} showHosts={sum.source !== "hosts"} />
+      {emptyRow && (
+        <p className="mt-2 text-[11px] text-gray-400">
+          Ayrıca {nf(emptyRow.count)} kayıtta bu alan boş — listede gösterilmiyor, yüzdeler
+          dolu değerler üzerinden hesaplanıyor.
+        </p>
+      )}
     </Section>
   );
 }
@@ -388,7 +408,7 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
                       {c.value}
                     </th>
                   ))}
-                  <th className="px-2 py-2 font-semibold text-gray-500 border-b border-l border-gray-100">Σ</th>
+                  <th className="px-2 py-2 font-semibold text-gray-500 border-b border-l border-gray-100 whitespace-nowrap">Toplam</th>
                 </tr>
               </thead>
               <tbody>
