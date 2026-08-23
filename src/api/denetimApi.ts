@@ -54,10 +54,59 @@ export interface OcpCoverageResult {
   message?: string;
 }
 
+export interface InitScriptVariant {
+  hash: string;
+  count: number;
+  hosts: string[];
+}
+
+export interface InitScriptStat {
+  key: string;
+  label: string;
+  /** startCustom.sh gibi sunucuya OZEL olmasi beklenen dosyalar; sapma sayilmaz. */
+  perServer: boolean;
+  present: number;
+  missing: number;
+  missingHosts: string[];
+  variantCount: number;
+  majorityHash: string | null;
+  majorityCount: number;
+  deviatingCount: number;
+  variants: InitScriptVariant[];
+}
+
+export interface InitScriptHostRow {
+  host: string;
+  deviations: string[];
+  deviationCount: number;
+  missing: string[];
+  missingCount: number;
+  hasCustom: boolean;
+  customHash: string | null;
+}
+
+export interface InitScriptsResult {
+  ok: boolean;
+  root: string;
+  roots: string[];
+  hosts: number;
+  scriptCount: number;
+  identicalHosts: number;
+  totalVariants: number;
+  customHosts: number;
+  missingColumns: string[];
+  scripts: InitScriptStat[];
+  hostRows: InitScriptHostRow[];
+  message?: string;
+}
+
 export const denetimApi = {
   nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
     fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
 
   ocpCoverage: (platform: string): Promise<OcpCoverageResult> =>
     fetch(`${BASE}/ocp-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),
+
+  initScripts: (root: string): Promise<InitScriptsResult> =>
+    fetch(`${BASE}/init-scripts?root=${encodeURIComponent(root)}`).then(safeJson),
 };

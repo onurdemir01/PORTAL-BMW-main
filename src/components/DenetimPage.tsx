@@ -9,9 +9,11 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ShieldCheckIcon, ArrowPathIcon, MagnifyingGlassIcon, ServerStackIcon,
   Squares2X2Icon, QuestionMarkCircleIcon, ArrowDownTrayIcon,
+  DocumentDuplicateIcon, ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 import {
   denetimApi, type NginxSpaResult, type OcpCoverageResult, type NginxSpaEnvCell,
+  type InitScriptsResult, type InitScriptStat,
 } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
@@ -22,6 +24,11 @@ const HELP: HelpSection[] = [
     icon: ServerStackIcon,
     title: "Nginx SPA Audit",
     body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar (DEV/TEST/QA/PROD). Hücre rengi o ortamdaki durumu anlatır: yeşil sorunsuz, kırmızı kırık include ya da eksik dağıtım, sarı OpenShift envanterinde bulunamadı. Üstteki servis sekmeleriyle (GLOMO, WEBFORMS…) tek tek inceleyebilirsiniz.",
+  },
+  {
+    icon: DocumentDuplicateIcon,
+    title: "Init Script Sapması",
+    body: "check_initialize job'ının topladığı sha512 değerlerini karşılaştırır: bir script sunucular arasında kaç ayrı sürümle duruyor, hangi sunucular çoğunluktan ayrılmış, hangilerinde dosya hiç yok. Referans olarak en kalabalık hash alınır — tabloda kanonik sürümü işaretleyen bir alan yok, initialize.yaml da şablonu tüm sunuculara aynı dağıttığı için en kalabalık sürüm pratikte şablonun kendisidir. startCustom.sh bunun bilinen istisnasıdır: sunucuya özel olması tasarım gereğidir (initialize.yaml yeniden kurulumda onu yedekten geri kopyalar), o yüzden sapma sayılmaz, ayrıca listelenir.",
   },
   {
     icon: Squares2X2Icon,
@@ -53,7 +60,7 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 export default function DenetimPage() {
-  const [tab, setTab] = useState<"nginx" | "ocp">("nginx");
+  const [tab, setTab] = useState<"nginx" | "ocp" | "init">("nginx");
   const [showHelp, setShowHelp] = useState(false);
 
   return (
@@ -65,7 +72,8 @@ export default function DenetimPage() {
             <h1 className="text-xl font-bold">Denetim</h1>
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Nginx SPA tanımlarının ve OpenShift ortam kapsamının denetimi.
+            Nginx SPA tanımlarının, OpenShift ortam kapsamının ve sunuculardaki init
+            script'lerinin denetimi.
           </p>
         </div>
         <button
@@ -80,6 +88,7 @@ export default function DenetimPage() {
         {([
           { id: "nginx", label: "Nginx SPA Audit", icon: ServerStackIcon },
           { id: "ocp", label: "OpenShift Kapsam", icon: Squares2X2Icon },
+          { id: "init", label: "Init Script Sapması", icon: DocumentDuplicateIcon },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -93,7 +102,9 @@ export default function DenetimPage() {
         ))}
       </div>
 
-      {tab === "nginx" ? <NginxSpaAudit /> : <OcpCoverage />}
+      {tab === "nginx" && <NginxSpaAudit />}
+      {tab === "ocp" && <OcpCoverage />}
+      {tab === "init" && <InitScriptsAudit />}
 
       <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Denetim — Nasıl Kullanılır?" sections={HELP} />
     </div>
@@ -385,6 +396,301 @@ function OcpCoverage() {
         <p className="text-xs text-gray-400">İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.</p>
       )}
     </div>
+  );
+}
+
+// ── 3) INIT SCRIPT SAPMASI ────────────────────────────────────────────────────────────
+// Iki bakis acisi: SCRIPT bazli (bir dosya kac ayri surumle duruyor) ve SUNUCU bazli
+// (bir host cogunluktan kac dosyada ayriliyor). Ikisi de ayni veriden turer.
+function InitScriptsAudit() {
+  const [root, setRoot] = useState("vhosting");
+  const [data, setData] = useState<InitScriptsResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [view, setView] = useState<"script" | "host">("script");
+  const [q, setQ] = useState("");
+  const [onlyDiff, setOnlyDiff] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+
+  const load = useCallback(async (r: string) => {
+    setLoading(true);
+    try {
+      const res = await denetimApi.initScripts(r);
+      if (res.ok) { setData(res); setErr(""); }
+      else setErr(res.message || "Veri alınamadı.");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(root); }, [root, load]);
+
+  const scripts = useMemo(() => {
+    if (!data) return [];
+    const needle = q.trim().toLowerCase();
+    return data.scripts.filter((sc) => {
+      if (onlyDiff && !sc.perServer && sc.variantCount <= 1 && sc.missing === 0) return false;
+      if (needle && !sc.label.toLowerCase().includes(needle)) return false;
+      return true;
+    });
+  }, [data, q, onlyDiff]);
+
+  const hostRows = useMemo(() => {
+    if (!data) return [];
+    const needle = q.trim().toLowerCase();
+    return data.hostRows
+      .filter((h) => {
+        if (onlyDiff && h.deviationCount === 0 && h.missingCount === 0) return false;
+        if (needle && !h.host.toLowerCase().includes(needle)) return false;
+        return true;
+      })
+      .sort((a, b) => b.deviationCount - a.deviationCount || a.host.localeCompare(b.host));
+  }, [data, q, onlyDiff]);
+
+  if (loading && !data) return <div className="py-10 text-center text-sm text-gray-400">Yükleniyor…</div>;
+  if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Select sizeVariant="sm" value={root} onChange={(e) => setRoot(e.target.value)}>
+          {(data?.roots || ["vhosting"]).map((r) => <option key={r} value={r}>/{r}</option>)}
+        </Select>
+
+        <div className="flex gap-1 rounded-lg p-0.5 bg-gray-100">
+          {([{ id: "script", label: "Script bazlı" }, { id: "host", label: "Sunucu bazlı" }] as const).map((v) => (
+            <button
+              key={v.id}
+              onClick={() => setView(v.id)}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                view === v.id ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative">
+          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder={view === "script" ? "script ara" : "sunucu ara"}
+            className="pl-8 pr-2.5 py-1.5 text-xs border border-gray-200 rounded-lg w-56"
+          />
+        </div>
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+          <input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} />
+          Sadece farkı olanlar
+        </label>
+        <span className="text-xs text-gray-400 tabular-nums">
+          {view === "script" ? `${scripts.length} script` : `${hostRows.length} sunucu`}
+        </span>
+
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => (view === "script"
+              ? csvDownload(`init_script_sapma_${root}`,
+                  ["script", "sunucuya_ozel", "surum_sayisi", "cogunluk_hash", "cogunluk_adet", "sapan_adet", "eksik_adet"],
+                  scripts.map((sc) => [sc.label, sc.perServer ? "EVET" : "HAYIR", sc.variantCount,
+                    sc.majorityHash ? sc.majorityHash.slice(0, 16) : "", sc.majorityCount, sc.deviatingCount, sc.missing]))
+              : csvDownload(`init_sunucu_sapma_${root}`,
+                  ["host", "sapma_adedi", "sapan_scriptler", "eksik_adedi", "eksik_scriptler", "startCustom_var"],
+                  hostRows.map((h) => [h.host, h.deviationCount, h.deviations.join(" "), h.missingCount,
+                    h.missing.join(" "), h.hasCustom ? "EVET" : "HAYIR"])))}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
+          </button>
+          <button onClick={() => load(root)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">
+            <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
+          </button>
+        </div>
+      </div>
+
+      {data && (
+        <div className="grid gap-3 md:grid-cols-4">
+          <Stat n={data.hosts} l="sunucu" />
+          <Stat n={data.identicalHosts} l="çoğunlukla birebir aynı" tone="ok" />
+          <Stat n={data.hosts - data.identicalHosts} l="en az bir script'te farklı" tone="warn" />
+          <Stat n={data.totalVariants} l="toplam farklı sürüm" />
+        </div>
+      )}
+
+      {data && data.missingColumns.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          Şu dosyalar için veritabanında henüz sütun yok: <b>{data.missingColumns.join(", ")}</b>.
+          check_initialize job'ı yeni haliyle bir kez çalıştığında sütun otomatik açılır ve buraya düşer.
+        </div>
+      )}
+
+      {view === "script" ? (
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100 text-left">
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Script</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Farklı sürüm</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Çoğunluk</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sapan</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Yok</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {scripts.length === 0 && (
+                <tr><td colSpan={5} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+              )}
+              {scripts.map((sc) => (
+                <React.Fragment key={sc.key}>
+                  <tr
+                    className="hover:bg-gray-50/60 cursor-pointer"
+                    onClick={() => setOpen(open === sc.key ? null : sc.key)}
+                  >
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <ChevronRightIcon className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open === sc.key ? "rotate-90" : ""}`} />
+                        <span className="font-mono text-xs text-gray-800">{sc.label}</span>
+                        {sc.perServer && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded border bg-violet-50 text-violet-700 border-violet-200">
+                            sunucuya özel
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <VariantBadge sc={sc} />
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-600 tabular-nums">
+                      {sc.majorityHash
+                        ? <span title={sc.majorityHash}><span className="font-mono">{sc.majorityHash.slice(0, 10)}…</span> · {sc.majorityCount}</span>
+                        : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-xs tabular-nums">
+                      {sc.perServer
+                        ? <span className="text-gray-400">—</span>
+                        : sc.deviatingCount > 0
+                          ? <span className="text-amber-700 font-semibold">{sc.deviatingCount}</span>
+                          : <span className="text-gray-400">0</span>}
+                    </td>
+                    <td className="px-3 py-2 text-xs tabular-nums">
+                      {sc.missing > 0 ? <span className="text-gray-700">{sc.missing}</span> : <span className="text-gray-400">0</span>}
+                    </td>
+                  </tr>
+                  {open === sc.key && (
+                    <tr className="bg-gray-50/60">
+                      <td colSpan={5} className="px-3 py-3">
+                        <div className="space-y-2">
+                          {sc.variants.map((v, i) => (
+                            <div key={v.hash} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                  sc.perServer
+                                    ? "bg-violet-50 text-violet-700 border-violet-200"
+                                    : i === 0
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      : "bg-amber-50 text-amber-700 border-amber-200"
+                                }`}>
+                                  {sc.perServer ? `sürüm ${i + 1}` : i === 0 ? "çoğunluk" : `farklı sürüm ${i}`}
+                                </span>
+                                <span className="font-mono text-[11px] text-gray-500 break-all">{v.hash.slice(0, 32)}…</span>
+                                <span className="text-xs text-gray-500 tabular-nums ml-auto">{v.count} sunucu</span>
+                              </div>
+                              <div className="mt-1.5 text-[11px] text-gray-600 font-mono break-words">
+                                {v.hosts.slice(0, 40).join(", ")}
+                                {v.hosts.length > 40 && ` … (+${v.hosts.length - 40})`}
+                              </div>
+                            </div>
+                          ))}
+                          {sc.missing > 0 && (
+                            <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-gray-100 text-gray-600 border-gray-200">dosya yok</span>
+                                <span className="text-xs text-gray-500 tabular-nums ml-auto">{sc.missing} sunucu</span>
+                              </div>
+                              <div className="mt-1.5 text-[11px] text-gray-600 font-mono break-words">
+                                {sc.missingHosts.slice(0, 40).join(", ")}
+                                {sc.missingHosts.length > 40 && ` … (+${sc.missingHosts.length - 40})`}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100 text-left">
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sunucu</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Çoğunluktan sapan</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Eksik</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500">startCustom.sh</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {hostRows.length === 0 && (
+                <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+              )}
+              {hostRows.slice(0, 500).map((h) => (
+                <tr key={h.host} className="hover:bg-gray-50/60 align-top">
+                  <td className="px-3 py-2 font-mono text-xs text-gray-800 whitespace-nowrap">{h.host}</td>
+                  <td className="px-3 py-2">
+                    {h.deviationCount === 0 ? (
+                      <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200">aynı</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {h.deviations.map((d) => (
+                          <span key={d} className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200">{d}</span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {h.missingCount === 0 ? <span className="text-xs text-gray-400">—</span> : (
+                      <div className="flex flex-wrap gap-1">
+                        {h.missing.map((d) => (
+                          <span key={d} className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-gray-100 text-gray-600 border-gray-200">{d}</span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {h.hasCustom
+                      ? <span className="text-[11px] font-mono text-violet-700" title={h.customHash || ""}>{(h.customHash || "").slice(0, 10)}…</span>
+                      : <span className="text-xs text-gray-400">yok</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {view === "host" && hostRows.length > 500 && (
+        <p className="text-xs text-gray-400">İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.</p>
+      )}
+    </div>
+  );
+}
+
+function VariantBadge({ sc }: { sc: InitScriptStat }) {
+  const n = sc.variantCount;
+  const cls = sc.perServer
+    ? "bg-violet-50 text-violet-700 border-violet-200"
+    : n <= 1
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : n <= 3
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : "bg-red-50 text-red-700 border-red-200";
+  return (
+    <span className={`text-[11px] px-2 py-0.5 rounded-lg border tabular-nums ${cls}`}>
+      {n === 0 ? "hiç yok" : `${n} sürüm`}
+    </span>
   );
 }
 
