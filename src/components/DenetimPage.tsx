@@ -13,7 +13,7 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   denetimApi, type NginxSpaResult, type OcpCoverageResult, type NginxSpaEnvCell,
-  type InitScriptsResult, type InitScriptStat,
+  type InitScriptsResult, type InitScriptStat, type SpaCoverageResult,
 } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
@@ -119,6 +119,172 @@ export default function DenetimPage() {
   );
 }
 
+// ── SPA KAPSAMI: OpenShift'te kac SPA var, kaci nginx'e tanimli ───────────────────────
+// Iki bagimsiz kaynak karsilastirilir; bar genisligi ORANI, sayilar mutlak degeri verir.
+// Grafik CSS ile cizilir - projede grafik kutuphanesi yok ve tek bir bar seti icin
+// bagimlilik eklemek paket boyutuna degmez.
+function SpaCoverage() {
+  const [platform, setPlatform] = useState("ark");
+  const [data, setData] = useState<SpaCoverageResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    denetimApi.spaCoverage(platform)
+      .then((r) => {
+        if (!alive) return;
+        if (r.ok) { setData(r); setErr(""); } else setErr(r.message || "Kapsam verisi alınamadı.");
+      })
+      .catch((e) => alive && setErr(e instanceof Error ? e.message : String(e)))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [platform]);
+
+  if (err) return <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
+  if (!data && loading) return <div className="py-6 text-center text-sm text-gray-400">Kapsam yükleniyor…</div>;
+  if (!data) return null;
+
+  const maxTotal = Math.max(1, ...data.rows.map((r) => Math.max(r.ocpTotal, r.nginxTotal)));
+  const sum = (k: "ocpTotal" | "bothCount" | "onlyOcpCount" | "onlyNginxCount") =>
+    data.rows.reduce((a, r) => a + r[k], 0);
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white px-4 py-3.5 space-y-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">
+            OpenShift SPA’ları ↔ nginx tanımları
+          </h3>
+          <p className="text-[11px] text-gray-400 mt-0.5 max-w-3xl">
+            Cluster’larda gerçekten duran uygulamalar ile nginx konfiglerinde tanımlı olanlar
+            ortam bazında karşılaştırılır. Ortam bilgisi OpenShift tarafında namespace son
+            ekinden (-dev/-test/-qa/-prod) gelir, cluster’dan değil.
+          </p>
+        </div>
+        <Select sizeVariant="sm" value={platform} onChange={(e) => setPlatform(e.target.value)}>
+          {data.platforms.map((p) => <option key={p} value={p}>{p}</option>)}
+        </Select>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat n={sum("ocpTotal")} l="OpenShift'te uygulama" />
+        <Stat n={sum("bothCount")} l="nginx'e tanımlı" tone="ok" />
+        <Stat n={sum("onlyOcpCount")} l="nginx'e tanımsız" tone="warn" />
+        <Stat n={sum("onlyNginxCount")} l="yalnızca nginx'te" />
+      </div>
+
+      <div className="space-y-2">
+        {data.rows.map((r) => {
+          const pct = r.ocpTotal ? (r.bothCount / r.ocpTotal) * 100 : 0;
+          return (
+            <div key={r.env} className="rounded-lg border border-gray-100">
+              <button
+                onClick={() => setOpen(open === r.env ? null : r.env)}
+                className="w-full px-3 py-2 hover:bg-gray-50/70 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-14 shrink-0 text-xs font-semibold text-gray-700">{r.env}</span>
+                  <span className="flex-1 h-5 rounded bg-gray-100 overflow-hidden flex">
+                    <span
+                      className="h-full bg-emerald-500/70"
+                      style={{ width: `${(r.bothCount / maxTotal) * 100}%` }}
+                      title={`nginx'e tanımlı: ${r.bothCount}`}
+                    />
+                    <span
+                      className="h-full bg-amber-400/70"
+                      style={{ width: `${(r.onlyOcpCount / maxTotal) * 100}%` }}
+                      title={`nginx'e tanımsız: ${r.onlyOcpCount}`}
+                    />
+                    <span
+                      className="h-full bg-sky-300/70"
+                      style={{ width: `${(r.onlyNginxCount / maxTotal) * 100}%` }}
+                      title={`yalnızca nginx'te: ${r.onlyNginxCount}`}
+                    />
+                  </span>
+                  <span className="w-32 shrink-0 text-right text-xs tabular-nums text-gray-600">
+                    {r.bothCount.toLocaleString("tr-TR")} / {r.ocpTotal.toLocaleString("tr-TR")}
+                  </span>
+                  <span className={`w-14 shrink-0 text-right text-xs tabular-nums font-semibold ${
+                    r.coverage === null ? "text-gray-400"
+                      : r.coverage >= 90 ? "text-emerald-600"
+                      : r.coverage >= 60 ? "text-amber-600" : "text-red-600"
+                  }`}>
+                    {r.coverage === null ? "—" : `%${r.coverage.toFixed(1)}`}
+                  </span>
+                </div>
+              </button>
+              {open === r.env && (
+                <div className="px-3 pb-3 pt-1 border-t border-gray-50 grid gap-3 md:grid-cols-2">
+                  <AppList
+                    title={`nginx'e tanımsız (${r.onlyOcpCount})`}
+                    tone="warn"
+                    apps={r.onlyOcp}
+                    empty="Hepsi tanımlı."
+                  />
+                  <AppList
+                    title={`yalnızca nginx'te (${r.onlyNginxCount})`}
+                    tone="info"
+                    apps={r.onlyNginx}
+                    empty="Fazlalık tanım yok."
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
+        <span className="flex items-center gap-1"><i className="w-3 h-3 rounded-sm bg-emerald-500/70 inline-block" /> nginx'e tanımlı</span>
+        <span className="flex items-center gap-1"><i className="w-3 h-3 rounded-sm bg-amber-400/70 inline-block" /> nginx'e tanımsız</span>
+        <span className="flex items-center gap-1"><i className="w-3 h-3 rounded-sm bg-sky-300/70 inline-block" /> yalnızca nginx'te</span>
+        <button
+          onClick={() => csvDownload("spa_kapsam_" + platform,
+            ["ortam", "openshift_toplam", "nginx_tanimli", "nginx_tanimsiz", "yalnizca_nginx", "kapsam_yuzde"],
+            data.rows.map((r) => [r.env, r.ocpTotal, r.bothCount, r.onlyOcpCount, r.onlyNginxCount,
+              r.coverage === null ? "" : r.coverage]))}
+          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 rounded-lg hover:bg-gray-50"
+        >
+          <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
+        </button>
+      </div>
+
+      {data.ocpSkippedNoEnv > 0 && (
+        <p className="text-[11px] text-gray-400">
+          {data.ocpSkippedNoEnv.toLocaleString("tr-TR")} OpenShift kaydı namespace son eki
+          -dev/-test/-qa/-prod kalıbına uymadığı için hiçbir ortama atanamadı; yukarıdaki
+          sayılara dâhil değil.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AppList({ title, apps, tone, empty }: {
+  title: string; apps: string[]; tone: "warn" | "info"; empty: string;
+}) {
+  const cls = tone === "warn"
+    ? "bg-amber-50 text-amber-800 border-amber-200"
+    : "bg-sky-50 text-sky-800 border-sky-200";
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-gray-600 mb-1">{title}</div>
+      {apps.length === 0 ? (
+        <div className="text-[11px] text-gray-400">{empty}</div>
+      ) : (
+        <div className="flex flex-wrap gap-1 max-h-44 overflow-y-auto">
+          {apps.map((a) => (
+            <span key={a} className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${cls}`}>{a}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 1) NGINX SPA AUDIT ────────────────────────────────────────────────────────────────
 function NginxSpaAudit() {
   const [data, setData] = useState<NginxSpaResult | null>(null);
@@ -166,15 +332,56 @@ function NginxSpaAudit() {
   if (loading && !data) return <div className="py-10 text-center text-sm text-gray-400">Yükleniyor…</div>;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
   if (!data?.scanDate) {
+    // Kapsam paneli nginx taramasi HIC yokken de anlamli: OpenShift tarafi zaten dolu ve
+    // "hicbiri nginx'e tanimli degil" gercek bir bulgudur, bos ekran degil.
     return (
-      <div className="text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-6 text-center">
-        Henüz bir tarama kaydı yok. <code className="font-mono">nginx_config_audit</code> job'ı çalıştıktan sonra burası dolacak.
+      <div className="space-y-3">
+        <SpaCoverage />
+        <div className="text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-6 text-center">
+          Henüz bir nginx tarama kaydı yok. <code className="font-mono">nginx_config_audit</code> job'ı çalıştıktan sonra burası dolacak.
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      <SpaCoverage />
+
+      {/* ENV TESHISI: bir ortam bos gorunuyorsa NEDENI burada gorulur. env degeri vhost
+          DOSYA ADINDAN turer (<SERVIS>-<ORTAM>.conf), taranan SUNUCUDAN degil - bu ayrim
+          "PROD nicin bos" sorusunun cevabi. */}
+      {data.envStats && data.envStats.some((e) => e.rows === 0) && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          <div className="font-semibold mb-1">
+            Bazı ortamlarda hiç kayıt yok:{" "}
+            {data.envStats.filter((e) => e.rows === 0).map((e) => e.env).join(", ")}
+          </div>
+          <p className="text-[11px] leading-relaxed">
+            Ortam bilgisi taranan sunucudan değil, vhost <b>dosya adından</b> türer:{" "}
+            <code className="px-1 rounded bg-white/70 border border-amber-200">&lt;SERVİS&gt;-&lt;ORTAM&gt;.conf</code>{" "}
+            (örnek <code className="px-1 rounded bg-white/70 border border-amber-200">GLOMO-TEST.conf</code> → TEST).
+            Bir ortamın boş görünmesi üç şeyden biri anlamına gelir: o ortamın sunucuları
+            taranamadı, vhost dosyaları bu kalıba uymuyor, ya da adlarındaki ortam eki farklı.
+            Aşağıda hangi etiket altında kaç kayıt olduğu görünüyor — beklenmedik bir etiket
+            varsa sebep odur.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {data.envStats.map((e) => (
+              <span
+                key={e.env}
+                title={e.rows ? `vhost: ${e.vhosts.join(", ")}` : "kayıt yok"}
+                className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${
+                  e.rows ? "bg-white text-gray-700 border-gray-200" : "bg-amber-100 text-amber-800 border-amber-300"
+                }`}
+              >
+                {e.env}: {e.rows.toLocaleString("tr-TR")}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <Select sizeVariant="sm" value={scanDate} onChange={(e) => { setScanDate(e.target.value); load(e.target.value); }}>
           {data.availableDates.map((d) => <option key={d} value={d}>{d}</option>)}

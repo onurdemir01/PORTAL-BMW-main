@@ -22,13 +22,47 @@ export interface NginxSpaRow {
   envs: Record<string, NginxSpaEnvCell>;
 }
 
+export interface NginxEnvStat {
+  env: string;
+  rows: number;
+  hosts: string[];
+  /** Bu env jetonunu ureten vhost dosyalari (env, dosya adindan turer). */
+  vhosts: string[];
+}
+
 export interface NginxSpaResult {
   ok: boolean;
   scanDate: string | null;
   availableDates: string[];
   services: string[];
   envs: string[];
+  envStats?: NginxEnvStat[];
   rows: NginxSpaRow[];
+  message?: string;
+}
+
+export interface SpaCoverageRow {
+  env: string;
+  ocpTotal: number;
+  nginxTotal: number;
+  bothCount: number;
+  onlyOcpCount: number;
+  onlyNginxCount: number;
+  /** OpenShift'tekilerin yuzde kaci nginx'e tanimli. OCP'de hic yoksa null. */
+  coverage: number | null;
+  onlyOcp: string[];
+  onlyNginx: string[];
+  truncated: boolean;
+}
+
+export interface SpaCoverageResult {
+  ok: boolean;
+  platform: string;
+  platforms: string[];
+  clusters: string[];
+  scanDate: string | null;
+  ocpSkippedNoEnv: number;
+  rows: SpaCoverageRow[];
   message?: string;
 }
 
@@ -149,6 +183,9 @@ export interface EnvanterPivot {
 export const denetimApi = {
   nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
     fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+
+  spaCoverage: (platform: string): Promise<SpaCoverageResult> =>
+    fetch(`${BASE}/nginx-spa-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),
 
   ocpCoverage: (platform: string): Promise<OcpCoverageResult> =>
     fetch(`${BASE}/ocp-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),
