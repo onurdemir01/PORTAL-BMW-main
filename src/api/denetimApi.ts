@@ -77,7 +77,7 @@ export interface SpaCoverageResult {
   /** Route envanteri okunamadiysa true: internet/intranet ayrimi yapilamaz. */
   routeTableMissing: boolean;
   /** Route eslesme kalitesi - route adi ile uygulama adi ayni olmayabilir. */
-  routeMatch: { exact: number; ns: number; conflict: number; none: number };
+  routeMatch: { address: number; name: number; ns: number; conflict: number; none: number };
   ocpNonSpaExcluded: number;
   nginxOutsidePattern: string[];
   ocpSkippedNoEnv: number;

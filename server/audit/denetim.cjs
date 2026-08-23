@@ -202,7 +202,7 @@ function initDenetim(app) {
         // kaynaktan (global_variables cluster tanimlari + `oc projects`) uretiyor, bu
         // yuzden bu iki alan uzerinden birlestirmek guvenli.
         query(
-          `SELECT DISTINCT namespace_name, route_name, termination_type
+          `SELECT DISTINCT namespace_name, route_name, route_address, termination_type
              FROM dbo.BMW_Openshift_Route_Inventory
             WHERE cluster_name IN (${placeholders})`,
           clusterParams()
@@ -213,28 +213,51 @@ function initDenetim(app) {
 
       // ── Route tipi haritasi ───────────────────────────────────────────────────────
       // "<namespace>|<route>" -> tip, ve "<namespace>" -> o namespace'teki tum tipler.
-      const routeByName = new Map();
-      const routeByNs = new Map();
+      // ASIL ESLESME ADRESTEN yapilir. route_name ile uygulama adinin ayni oldugu
+      // GARANTI DEGIL (biri route'un, digeri deployment/rollout/dc'nin adi), ama route
+      // ADRESI kurumsal kalibi tasiyor:
+      //   dev/test/qa : <Application>-<Namespace>.apps-t.fw.garanti.com.tr
+      //   prod        : <Application>-<Namespace>.apps.fw.garanti.com.tr
+      // Namespace'i satirdan ZATEN bildigimiz icin ilk etiketin sonundaki "-<namespace>"
+      // TAM OLARAK kesilir; "uygulama adi nerede biter, namespace nerede baslar"
+      // belirsizligi hic dogmaz. Uygulama adinin icinde namespace'e benzeyen bir metin
+      // gecse bile dogru calisir (ornek: follow-up-app-v0 / follow-up-test).
+      // Kaliba uymayan (elle verilmis) adreslerde null doner - TAHMIN EDILMEZ.
+      function appFromAddress(addr, nsLower) {
+        const label = String(addr || '').trim().toLowerCase().split('.')[0];
+        if (!label || !nsLower) return null;
+        const suf = '-' + nsLower;
+        return label.endsWith(suf) ? label.slice(0, -suf.length) : null;
+      }
+
+      const routeByApp = new Map();   // "<ns> <app>"   -> tip  (adresten cozuldu)
+      const routeByName = new Map();  // "<ns> <route>" -> tip  (route adiyla)
+      const routeByNs = new Map();    // "<ns>"         -> o namespace'teki TUM tipler
       for (const r of routeRes.recordset || []) {
         const ns = String(r.namespace_name || '').trim().toLowerCase();
         const rt = String(r.route_name || '').trim().toLowerCase();
         const tt = String(r.termination_type || '').trim().toLowerCase() || 'yok';
-        if (!ns || !rt) continue;
-        routeByName.set(ns + ' ' + rt, tt);
+        if (!ns) continue;
+        const fromAddr = appFromAddress(r.route_address, ns);
+        if (fromAddr) routeByApp.set(ns + ' ' + fromAddr, tt);
+        if (rt) routeByName.set(ns + ' ' + rt, tt);
         if (!routeByNs.has(ns)) routeByNs.set(ns, new Set());
         routeByNs.get(ns).add(tt);
       }
 
-      // Bir uygulamanin route tipini bul. route_name ile application adinin AYNI oldugu
-      // GARANTI DEGIL (biri deployment/rollout/dc adi, digeri route adi), o yuzden
-      // eslesme kalitesi de dondurulur ve raporlanir - sessizce tahmin edilmez.
-      //   exact  : ayni namespace'te ayni adli route var
-      //   ns     : ad tutmadi ama namespace'teki TUM route'lar ayni tipte
-      //   yok    : hic route bilgisi yok ya da namespace'te tipler CELISIYOR
-      const matchStats = { exact: 0, ns: 0, none: 0, conflict: 0 };
+      // Bir uygulamanin route tipini bul. Eslesmenin NASIL kuruldugu da sayilir ve
+      // ekranda gosterilir - siniflandirmanin guvenilirligi buna bagli, gizlenmez.
+      //   address : route ADRESINDEN cozuldu (kurumsal kalip) - EN GUVENILIR
+      //   name    : adres kaliba uymadi ama ayni adli bir route var
+      //   ns      : ikisi de tutmadi, ama namespace'teki TUM route'lar ayni tipte
+      //   conflict: namespace'te tipler CELISIYOR   -> siniflandirilMAZ
+      //   none    : hic route bilgisi yok           -> siniflandirilMAZ
+      const matchStats = { address: 0, name: 0, ns: 0, conflict: 0, none: 0 };
       function terminationOf(nsLower, appLower) {
-        const hit = routeByName.get(nsLower + ' ' + appLower);
-        if (hit) { matchStats.exact++; return { type: hit, how: 'exact' }; }
+        const byAddr = routeByApp.get(nsLower + ' ' + appLower);
+        if (byAddr) { matchStats.address++; return { type: byAddr, how: 'address' }; }
+        const byName = routeByName.get(nsLower + ' ' + appLower);
+        if (byName) { matchStats.name++; return { type: byName, how: 'name' }; }
         const set = routeByNs.get(nsLower);
         if (set && set.size === 1) { matchStats.ns++; return { type: [...set][0], how: 'ns' }; }
         if (set && set.size > 1) { matchStats.conflict++; return { type: null, how: 'conflict' }; }
@@ -307,7 +330,9 @@ function initDenetim(app) {
         for (const [k, v] of n) if (!o.has(k)) onlyNginx.push(v);
 
         return {
-          env,
+          // DIKKAT: map parametresi `e`; burada `env` yazmak ReferenceError uretiyordu
+          // (uctan uca testte yakalandi - duz JS oldugu icin tsc gormuyor).
+          env: e,
           measured,
           // INTERNET (passthrough) = nginx'e cikmasi BEKLENEN kume. Kapsam bunun uzerinden.
           internetTotal: bucket.internet.length,

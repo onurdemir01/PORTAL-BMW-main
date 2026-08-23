@@ -315,12 +315,16 @@ function SpaCoverage() {
       {/* Route eslesme kalitesi: route_name ile application adinin ayni oldugu GARANTI
           degil, bu yuzden nasil eslestigi gizlenmez. */}
       <p className="text-[11px] text-gray-400">
-        Route eşleşmesi — birebir ad: {data.routeMatch.exact.toLocaleString("tr-TR")}, namespace
-        üzerinden: {data.routeMatch.ns.toLocaleString("tr-TR")}, çelişkili:{" "}
+        Route eşleşmesi — adresten: {data.routeMatch.address.toLocaleString("tr-TR")}, route
+        adından: {data.routeMatch.name.toLocaleString("tr-TR")}, namespace üzerinden:{" "}
+        {data.routeMatch.ns.toLocaleString("tr-TR")}, çelişkili:{" "}
         {data.routeMatch.conflict.toLocaleString("tr-TR")}, bulunamadı:{" "}
-        {data.routeMatch.none.toLocaleString("tr-TR")}. Route adı ile uygulama adı her zaman
-        aynı olmadığı için, birebir eşleşmeyenlerde namespace’teki route’lar hepsi aynı tipteyse
-        o tip kullanılır; değilse sınıflandırılmaz.
+        {data.routeMatch.none.toLocaleString("tr-TR")}. Uygulama adı öncelikle route
+        adresinden çıkarılır{" "}
+        (<code className="px-1 rounded bg-gray-100">&lt;Uygulama&gt;-&lt;Namespace&gt;.apps[-t].fw.garanti.com.tr</code>);
+        namespace zaten bilindiği için son ek tam olarak kesilir, belirsizlik doğmaz. Adres bu
+        kalıba uymazsa route adı denenir; o da tutmazsa namespace’teki route’lar hepsi aynı
+        tipteyse o tip kullanılır. Hiçbiri olmazsa sınıflandırılmaz.
       </p>
 
       {unmeasured.length > 0 && (
