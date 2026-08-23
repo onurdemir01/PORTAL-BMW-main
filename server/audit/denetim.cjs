@@ -184,11 +184,13 @@ function initDenetim(app) {
       const scanDate = dateRes.recordset?.[0]?.d || null;
 
       const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
-      const [ocpRes, ngxRes] = await Promise.all([
+      const clusterParams = () => clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(200), value: c }));
+
+      const [ocpRes, ngxRes, routeRes] = await Promise.all([
         query(
           `SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory
             WHERE cluster IN (${placeholders})`,
-          clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(200), value: c }))
+          clusterParams()
         ),
         scanDate
           ? query(
@@ -196,31 +198,83 @@ function initDenetim(app) {
               [{ name: 'd', type: sql.NVarChar(10), value: scanDate }]
             )
           : Promise.resolve({ recordset: [] }),
+        // Route tipi = uygulamanin AGI. Iki tablo da cluster/namespace adlarini AYNI
+        // kaynaktan (global_variables cluster tanimlari + `oc projects`) uretiyor, bu
+        // yuzden bu iki alan uzerinden birlestirmek guvenli.
+        query(
+          `SELECT DISTINCT namespace_name, route_name, termination_type
+             FROM dbo.BMW_Openshift_Route_Inventory
+            WHERE cluster_name IN (${placeholders})`,
+          clusterParams()
+        ).catch(() => ({ recordset: [], _missing: true })),
       ]);
 
-      // env -> uygulama kumeleri. Karsilastirma kucuk harf uzerinden yapilir; iki kaynak
-      // ayri job'lar tarafindan yaziliyor ve buyuk/kucuk harf tutarliligi GARANTI DEGIL.
-      const ocp = new Map();
-      let ocpNoEnv = 0;
-      // Kullanici talebi: oran TUM OpenShift uygulamalarina gore degil, YALNIZCA SPA'lar
-      // arasinda hesaplansin. Suzgecin disinda kalanlar sayilmaz ama sayilari RAPORLANIR -
-      // sessizce dusurmek kapsami oldugundan iyi gosterirdi.
+      const routeTableMissing = !!routeRes._missing;
+
+      // ── Route tipi haritasi ───────────────────────────────────────────────────────
+      // "<namespace>|<route>" -> tip, ve "<namespace>" -> o namespace'teki tum tipler.
+      const routeByName = new Map();
+      const routeByNs = new Map();
+      for (const r of routeRes.recordset || []) {
+        const ns = String(r.namespace_name || '').trim().toLowerCase();
+        const rt = String(r.route_name || '').trim().toLowerCase();
+        const tt = String(r.termination_type || '').trim().toLowerCase() || 'yok';
+        if (!ns || !rt) continue;
+        routeByName.set(ns + ' ' + rt, tt);
+        if (!routeByNs.has(ns)) routeByNs.set(ns, new Set());
+        routeByNs.get(ns).add(tt);
+      }
+
+      // Bir uygulamanin route tipini bul. route_name ile application adinin AYNI oldugu
+      // GARANTI DEGIL (biri deployment/rollout/dc adi, digeri route adi), o yuzden
+      // eslesme kalitesi de dondurulur ve raporlanir - sessizce tahmin edilmez.
+      //   exact  : ayni namespace'te ayni adli route var
+      //   ns     : ad tutmadi ama namespace'teki TUM route'lar ayni tipte
+      //   yok    : hic route bilgisi yok ya da namespace'te tipler CELISIYOR
+      const matchStats = { exact: 0, ns: 0, none: 0, conflict: 0 };
+      function terminationOf(nsLower, appLower) {
+        const hit = routeByName.get(nsLower + ' ' + appLower);
+        if (hit) { matchStats.exact++; return { type: hit, how: 'exact' }; }
+        const set = routeByNs.get(nsLower);
+        if (set && set.size === 1) { matchStats.ns++; return { type: [...set][0], how: 'ns' }; }
+        if (set && set.size > 1) { matchStats.conflict++; return { type: null, how: 'conflict' }; }
+        matchStats.none++;
+        return { type: null, how: 'none' };
+      }
+
+      // ── OpenShift tarafi: SPA suzgeci + ag siniflandirmasi ────────────────────────
       const ocpNonSpa = new Set();
+      let ocpNoEnv = 0;
+      // env -> { app -> { name, net } }   net: 'internet' | 'intranet' | 'diger' | 'bilinmiyor'
+      const ocp = new Map();
       for (const r of ocpRes.recordset || []) {
-        const e = envOfNamespace(r.namespace);
         const app = String(r.application || '').trim();
         if (!app) continue;
         if (!SPA_RE.test(app)) { ocpNonSpa.add(app.toLowerCase()); continue; }
+        const e = envOfNamespace(r.namespace);
         if (!e) { ocpNoEnv++; continue; }
-        const k = e.toUpperCase();
-        if (!ocp.has(k)) ocp.set(k, new Map());
-        ocp.get(k).set(app.toLowerCase(), app);
+        const env = e.toUpperCase();
+        const nsLower = String(r.namespace || '').trim().toLowerCase();
+        const { type } = terminationOf(nsLower, app.toLowerCase());
+        // Kullanicinin verdigi kural: passthrough -> internet (nginx'e cikabilir),
+        // reencrypt -> intranet (nginx'e CIKAMAZ). Diger tipler (edge, tls yok)
+        // bu kuralin disinda; "diger" olarak ayri tutulur, tahmin edilmez.
+        const net = type === 'passthrough' ? 'internet'
+                  : type === 'reencrypt' ? 'intranet'
+                  : type ? 'diger' : 'bilinmiyor';
+        if (!ocp.has(env)) ocp.set(env, new Map());
+        const k = app.toLowerCase();
+        const prev = ocp.get(env).get(k);
+        // Ayni uygulama birden fazla namespace'te olabilir; internet bilgisi baskindir
+        // (bir yerde bile internete acilliyorsa nginx'e cikabilir demektir).
+        if (!prev || (prev.net !== 'internet' && net === 'internet')) {
+          ocp.get(env).set(k, { name: app, net });
+        }
       }
 
-      const ngx = new Map();
-      // nginx tarafi da AYNI suzgecten gecer; yoksa payda SPA, pay karisik olur ve
-      // "yalnizca nginx'te" kovasi SPA olmayan tanimlarla sisirdi.
+      // ── nginx tarafi ──────────────────────────────────────────────────────────────
       const ngxNonSpa = new Set();
+      const ngx = new Map();
       for (const r of ngxRes.recordset || []) {
         const e = String(r.env || '').trim().toUpperCase();
         const app = String(r.application || '').trim();
@@ -229,42 +283,57 @@ function initDenetim(app) {
         if (!ngx.has(e)) ngx.set(e, new Map());
         ngx.get(e).set(app.toLowerCase(), app);
       }
-
-      // nginx'e tanimli olup SPA kalibina UYMAYANLAR. Bu denetim yalnizca SPA/include
-      // kalibini kaydettigi icin boyle kayitlarin varligi kendi basina bir bulgudur -
-      // sessizce dusurmek yerine listelenir.
       const nginxOutsidePattern = [...ngxNonSpa].sort((a, b) => a.localeCompare(b, 'tr')).slice(0, 40);
 
       const ENV_LIST = [...new Set([...ENVS.map((e) => e.toUpperCase()), ...ocp.keys(), ...ngx.keys()])];
-      const CAP = 300;   // listeler ekrani bogmasin; sayilar HER ZAMAN tam
+      const CAP = 300;
+      const sortTr = (a, b) => a.localeCompare(b, 'tr');
+
       const rows = ENV_LIST.map((e) => {
         const o = ocp.get(e) || new Map();
         const n = ngx.get(e) || new Map();
-        const both = [], onlyOcp = [], onlyNgx = [];
-        for (const [k, v] of o) (n.has(k) ? both : onlyOcp).push(v);
-        for (const [k, v] of n) if (!o.has(k)) onlyNgx.push(v);
-        const sortTr = (a, b) => a.localeCompare(b, 'tr');
-        // OLCULEBILIRLIK: nginx tarafinda o ortama ait HIC satir yoksa kapsam
-        // HESAPLANMAZ. Aksi halde "%0 kapsam, N uygulama tanimsiz" gibi felaket gorunumlu
-        // ama YANLIS bir sonuc cikar. Gercek sebep genellikle olcum bosluguydu:
-        // nginx_config_scan.sh yalnizca "location { include application-confs/X.conf; }"
-        // kalibini kaydeder; proxy_pass mimarisindeki sunucularda boyle bir satir YOKTUR,
-        // dolayisiyla o ortam hic olculmemis olur - "tanimsiz" degil, "bilinmiyor".
+        // nginx'te bu ortama ait HIC satir yoksa kapsam OLCULEMEZ (proxy_pass mimarisi
+        // gibi durumlar). "%0 kapsam" demek yaniltici olurdu.
         const measured = n.size > 0;
+
+        const bucket = { internet: [], intranet: [], diger: [], bilinmiyor: [] };
+        const inNginx = { internet: [], intranet: [], diger: [], bilinmiyor: [] };
+        for (const [k, v] of o) {
+          bucket[v.net].push(v.name);
+          if (n.has(k)) inNginx[v.net].push(v.name);
+        }
+        const internetMissing = bucket.internet.filter((a) => !n.has(a.toLowerCase()));
+        const onlyNginx = [];
+        for (const [k, v] of n) if (!o.has(k)) onlyNginx.push(v);
+
         return {
-          env: e,
+          env,
           measured,
-          ocpTotal: o.size,
-          nginxTotal: n.size,
-          bothCount: both.length,
-          onlyOcpCount: onlyOcp.length,
-          onlyNginxCount: onlyNgx.length,
-          coverage: measured && o.size ? Math.round((both.length / o.size) * 1000) / 10 : null,
-          onlyOcp: onlyOcp.sort(sortTr).slice(0, CAP),
-          onlyNginx: onlyNgx.sort(sortTr).slice(0, CAP),
-          truncated: onlyOcp.length > CAP || onlyNgx.length > CAP,
+          // INTERNET (passthrough) = nginx'e cikmasi BEKLENEN kume. Kapsam bunun uzerinden.
+          internetTotal: bucket.internet.length,
+          internetInNginx: inNginx.internet.length,
+          internetMissingCount: internetMissing.length,
+          internetMissing: internetMissing.sort(sortTr).slice(0, CAP),
+          // INTRANET (reencrypt) = nginx'e CIKAMAZ. nginx'te gorunuyorsa BU BIR BULGUDUR.
+          intranetTotal: bucket.intranet.length,
+          intranetInNginx: inNginx.intranet.length,
+          intranetInNginxList: inNginx.intranet.sort(sortTr).slice(0, CAP),
+          // Route tipi passthrough/reencrypt DISINDA olanlar (edge, tls yok).
+          otherTotal: bucket.diger.length,
+          otherInNginx: inNginx.diger.length,
+          // Route bilgisi hic bulunamayanlar - siniflandirilamaz, tahmin YOK.
+          unknownTotal: bucket.bilinmiyor.length,
+          unknownInNginx: inNginx.bilinmiyor.length,
+          // nginx'te var ama OpenShift SPA listesinde yok.
+          onlyNginxCount: onlyNginx.length,
+          onlyNginx: onlyNginx.sort(sortTr).slice(0, CAP),
+          // Kapsam YALNIZCA internet kumesi uzerinden: intranet uygulamalarini paydaya
+          // katmak, cikmasi zaten yasak olanlari "eksik" saymak olurdu.
+          coverage: measured && bucket.internet.length
+            ? Math.round((inNginx.internet.length / bucket.internet.length) * 1000) / 10
+            : null,
         };
-      }).filter((r) => r.ocpTotal || r.nginxTotal);
+      }).filter((r) => r.internetTotal || r.intranetTotal || r.otherTotal || r.unknownTotal || r.onlyNginxCount);
 
       res.json({
         ok: true,
@@ -273,12 +342,12 @@ function initDenetim(app) {
         clusters,
         scanDate,
         spaPatternLabel: SPA_LABEL,
-        // SPA kalibina uymadigi icin karsilastirmaya HIC girmeyen OpenShift uygulamalari.
+        // Route tablosu okunamadiysa ekran bunu SOYLEMELI: aksi halde her sey
+        // "bilinmiyor" kovasina duser ve sebebi anlasilmaz.
+        routeTableMissing,
+        routeMatch: matchStats,
         ocpNonSpaExcluded: ocpNonSpa.size,
-        // nginx'e tanimli ama SPA kalibina uymayanlar.
         nginxOutsidePattern,
-        // Namespace son eki -dev/-test/-qa/-prod'a uymayan kayitlar hicbir ortama
-        // atanamaz; sayilari gizlemek yerine ACIKCA raporlanir.
         ocpSkippedNoEnv: ocpNoEnv,
         rows,
       });

@@ -45,16 +45,26 @@ export interface SpaCoverageRow {
   env: string;
   /** nginx tarafinda bu ortama ait hic satir yoksa false: kapsam OLCULEMEDI. */
   measured: boolean;
-  ocpTotal: number;
-  nginxTotal: number;
-  bothCount: number;
-  onlyOcpCount: number;
+  /** route tipi passthrough = internet; nginx'e CIKMASI BEKLENEN kume. */
+  internetTotal: number;
+  internetInNginx: number;
+  internetMissingCount: number;
+  internetMissing: string[];
+  /** route tipi reencrypt = intranet; nginx'e CIKAMAZ. */
+  intranetTotal: number;
+  /** Intranet oldugu halde nginx'e tanimli olanlar - BULGU. */
+  intranetInNginx: number;
+  intranetInNginxList: string[];
+  /** passthrough/reencrypt disindaki route tipleri (edge, tls yok). */
+  otherTotal: number;
+  otherInNginx: number;
+  /** Route bilgisi bulunamayanlar - siniflandirilamadi. */
+  unknownTotal: number;
+  unknownInNginx: number;
   onlyNginxCount: number;
-  /** OpenShift'tekilerin yuzde kaci nginx'e tanimli. OCP'de hic yoksa null. */
-  coverage: number | null;
-  onlyOcp: string[];
   onlyNginx: string[];
-  truncated: boolean;
+  /** YALNIZCA internet kumesi uzerinden. Olculemediyse null. */
+  coverage: number | null;
 }
 
 export interface SpaCoverageResult {
@@ -63,11 +73,12 @@ export interface SpaCoverageResult {
   platforms: string[];
   clusters: string[];
   scanDate: string | null;
-  /** SPA ad kalibi (bilgi amacli gosterilir). */
   spaPatternLabel: string;
-  /** SPA kalibina uymadigi icin karsilastirmaya girmeyen OpenShift uygulamasi sayisi. */
+  /** Route envanteri okunamadiysa true: internet/intranet ayrimi yapilamaz. */
+  routeTableMissing: boolean;
+  /** Route eslesme kalitesi - route adi ile uygulama adi ayni olmayabilir. */
+  routeMatch: { exact: number; ns: number; conflict: number; none: number };
   ocpNonSpaExcluded: number;
-  /** nginx'e tanimli ama SPA kalibina uymayanlar. */
   nginxOutsidePattern: string[];
   ocpSkippedNoEnv: number;
   rows: SpaCoverageRow[];
