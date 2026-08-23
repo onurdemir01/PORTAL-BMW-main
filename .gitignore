@@ -40,3 +40,7 @@ server/ansible/ocp-clusters.json
 
 # JSON data stores — small deployments only; move to DB in production
 server/data/
+
+# gecici dogrulama sunucusu (repoya girmemeli)
+.mockserver.tmp.cjs
+.test_e2e.tmp.cjs
