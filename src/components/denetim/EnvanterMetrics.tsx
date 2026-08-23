@@ -393,7 +393,10 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
       {data && ys.length > 0 ? (
         <>
           <div className="overflow-x-auto rounded-xl border border-gray-100">
-            <table className="text-xs border-collapse">
+            {/* w-full + min-w-max: sutun sayisi AZ oldugunda tablo kapsayiciyi doldurur
+                (eskiden sagda genis bir bosluk kaliyordu), COK oldugunda min-width
+                kazanir ve tablo yatay kayar. Tek basina w-full ikinci durumu bozardi. */}
+            <table className="w-full min-w-max text-xs border-collapse">
               <thead>
                 <tr className="bg-gray-50">
                   <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-500 border-b border-gray-100 min-w-[180px]">

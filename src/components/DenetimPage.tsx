@@ -24,7 +24,7 @@ const HELP: HelpSection[] = [
   {
     icon: ServerStackIcon,
     title: "Nginx SPA Audit",
-    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar (DEV/TEST/QA/PROD). Hücre rengi o ortamdaki durumu anlatır: yeşil sorunsuz, kırmızı kırık include ya da eksik dağıtım, sarı OpenShift envanterinde bulunamadı. Üstteki servis sekmeleriyle (GLOMO, WEBFORMS…) tek tek inceleyebilirsiniz.",
+    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır. 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz.",
   },
   {
     icon: ChartBarSquareIcon,
@@ -48,7 +48,9 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   DUP_SUFFIX:       { label: "Yinelenen ek",          cls: "bg-sky-50 text-sky-700 border-sky-200" },
   NOT_IN_INVENTORY: { label: "Envanterde yok",        cls: "bg-amber-50 text-amber-700 border-amber-200" },
   NAME_MISMATCH:    { label: "Ad/içerik uyuşmuyor",   cls: "bg-orange-50 text-orange-700 border-orange-200" },
-  NOT_DEPLOYED:     { label: "Dağıtılmamış",          cls: "bg-red-50 text-red-700 border-red-200" },
+  // "Dagitilmamis" NEREDE olmadigini soylemiyordu. Ayni durum Teams kartinda
+  // "Deploy Yok" olarak geciyordu - iki ad tek ada indirildi.
+  NOT_DEPLOYED:     { label: "Paket Nginx'te yok",     cls: "bg-red-50 text-red-700 border-red-200" },
   BROKEN_INCLUDE:   { label: "Kırık include",         cls: "bg-red-100 text-red-800 border-red-300" },
 };
 
@@ -572,6 +574,13 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
         className={`inline-flex flex-col gap-0.5 text-[11px] px-2 py-1 rounded-lg border ${meta.cls}`}
         title={[
           `Durum: ${meta.label}`,
+          cell.status === "NOT_DEPLOYED"
+            ? "Konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications "
+              + "altında bulunamadı — bu adres 404 döner.\nYa hiç dağıtılmamış ya da conf "
+              + "adının işaret ettiğinden BAŞKA bir namespace dizinine dağıtılmış.\n"
+              + "Kontrol birden çok sunucuda ayrı ayrı yapılır; aşağıdaki sunucu listesi "
+              + "eksiğin görüldüğü yerlerdir."
+            : null,
           cell.namespace ? `Namespace: ${cell.namespace}` : null,
           cell.deployMode ? `Dağıtım: ${cell.deployMode}` : null,
           `Context path: ${cell.locationPath}`,
