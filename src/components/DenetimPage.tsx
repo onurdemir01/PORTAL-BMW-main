@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ShieldCheckIcon, ArrowPathIcon, MagnifyingGlassIcon, ServerStackIcon,
   Squares2X2Icon, QuestionMarkCircleIcon, ArrowDownTrayIcon,
-  DocumentDuplicateIcon, ChevronRightIcon, ChartBarSquareIcon, RectangleGroupIcon,
+  DocumentDuplicateIcon, ChevronRightIcon, ChartBarSquareIcon, RectangleGroupIcon, LinkIcon,
 } from "@heroicons/react/24/outline";
 import {
   denetimApi, type NginxSpaResult, type OcpCoverageResult, type NginxSpaEnvCell,
@@ -19,6 +19,7 @@ import { Select } from "@/components/ui/Form";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import EnvanterMetrics from "@/components/denetim/EnvanterMetrics";
 import AppEnvs from "@/components/denetim/AppEnvs";
+import WebApp from "@/components/denetim/WebApp";
 import { toast } from "@/hooks/useToast";
 
 const HELP: HelpSection[] = [
@@ -31,6 +32,11 @@ const HELP: HelpSection[] = [
     icon: ChartBarSquareIcon,
     title: "Envanter Metrikleri",
     body: "Inventory, MWAppsInventory ve WASAppsInventory tablolarının dağılımları. Üstte özet sayaçlar; Sunucular kaynağında ayrıca ürün kapsamı (hangi üründen kaç sunucuda var, kaç ayrı sürümle). Dağılımlar bölümünde boyut seçerek (domain, subnet, OS, sürüm…) oransal kırılımı görürsünüz. En altta çapraz dağılım: satır ve sütunu kendiniz seçip örneğin JBoss sürümlerinin domain'lere göre yayılımını çıkarırsınız; hücre koyulaştıkça sayı büyür. Uygulama tablolarında sayımı 'uygulama' yerine 'sunucu' yapabilirsiniz — aynı sunucuda birden çok uygulama olabildiği için ikisi farklı sorulara cevap verir.",
+  },
+  {
+    icon: LinkIcon,
+    title: "Web-App İlişkisi",
+    body: "Her uygulama satırının önünde onu servis eden web sunucusunu gösterir: host, IP, port, server_name. Kaynak MWAppsInventory/WASAppsInventory ile BMW_Certificates_Inventory'nin çarpıştırılmasıdır. 3-tier sunucularda web sunucusu, uygulama sunucusunun adındaki 5. karakter A→W çevrilerek bulunur (DACRAAP01 → DACRWAP01); 2-tier'de web sunucusu uygulamanın kendi sunucusudur. Doğru vhost'u seçmek için uygulama adı küçük harfle server_name içinde aranır — önce tam ad, tutmazsa ortam son eki atılmış taban ad. Eşleşmenin hangi yolla kurulduğu her satırda yazar; kural tahmine dayalı olduğu için bu bilgi gizlenmez. Hiçbir yol tutmazsa satır 'eşleşmedi' der ve uydurma bir sunucu yazılmaz, yalnızca kurala göre beklenen aday gösterilir.",
   },
   {
     icon: RectangleGroupIcon,
@@ -74,7 +80,7 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 export default function DenetimPage() {
-  const [tab, setTab] = useState<"nginx" | "ocp" | "init" | "envanter" | "appenvs">("nginx");
+  const [tab, setTab] = useState<"nginx" | "ocp" | "init" | "envanter" | "appenvs" | "webapp">("nginx");
   const [showHelp, setShowHelp] = useState(false);
 
   return (
@@ -105,6 +111,7 @@ export default function DenetimPage() {
           { id: "init", label: "Init Script Sapması", icon: DocumentDuplicateIcon },
           { id: "envanter", label: "Envanter Metrikleri", icon: ChartBarSquareIcon },
           { id: "appenvs", label: "Uygulama Ortamları", icon: RectangleGroupIcon },
+          { id: "webapp", label: "Web-App İlişkisi", icon: LinkIcon },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -123,6 +130,7 @@ export default function DenetimPage() {
       {tab === "init" && <InitScriptsAudit />}
       {tab === "envanter" && <EnvanterMetrics />}
       {tab === "appenvs" && <AppEnvs />}
+      {tab === "webapp" && <WebApp />}
 
       <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Denetim — Nasıl Kullanılır?" sections={HELP} />
     </div>

@@ -233,6 +233,46 @@ export interface AppEnvsResult {
   message?: string;
 }
 
+export interface WebAppVhost {
+  host: string;
+  ip: string;
+  port: string;
+  serverName: string;
+  confFile: string;
+  product: string;
+}
+
+export interface WebAppRow {
+  app: string;
+  appHost: string;
+  env: string;
+  domain: string;
+  /** "3-tier" | "2-tier" | "bilinmiyor" - domain'den turer. */
+  tier: string;
+  /** Eslesmenin NASIL kuruldugu; guvenilirlik buna bagli. */
+  how: string;
+  matched: boolean;
+  web: WebAppVhost[];
+  /** Eslesme kurulamadiysa kurala gore BEKLENEN web sunucusu. */
+  webHostCandidate: string;
+  vhostCountOnHost: number;
+}
+
+export interface WebAppResult {
+  ok: boolean;
+  source: string;
+  label: string;
+  sources: { key: string; label: string }[];
+  certMissing: boolean;
+  total: number;
+  shown: number;
+  capped: boolean;
+  matchSummary: { how: string; count: number }[];
+  tierSummary: { tier: string; count: number }[];
+  rows: WebAppRow[];
+  message?: string;
+}
+
 export const denetimApi = {
   nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
     fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
@@ -245,6 +285,11 @@ export const denetimApi = {
 
   initScripts: (root: string): Promise<InitScriptsResult> =>
     fetch(`${BASE}/init-scripts?root=${encodeURIComponent(root)}`).then(safeJson),
+
+  webApp: (source: string, q?: string, onlyUnmatched?: boolean): Promise<WebAppResult> =>
+    fetch(`${BASE}/web-app?source=${encodeURIComponent(source)}`
+      + (q ? `&q=${encodeURIComponent(q)}` : "")
+      + (onlyUnmatched ? "&onlyUnmatched=1" : "")).then(safeJson),
 
   appEnvs: (source: string): Promise<AppEnvsResult> =>
     fetch(`${BASE}/app-envs?source=${encodeURIComponent(source)}`).then(safeJson),

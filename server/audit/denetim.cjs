@@ -604,6 +604,9 @@ function initDenetim(app) {
   // ── 5) UYGULAMA ORTAMLARI (MWApps/WASApps ad kuraliyla ortam matrisi) ──────────────
   require('./app-envs.cjs').registerAppEnvs(router);
 
+  // ── 6) WEB-APP ILISKISI (uygulama <-> onundeki web sunucusu/vhost) ────────────────
+  require('./web-app.cjs').registerWebApp(router);
+
   app.use('/api/denetim', router);
   console.log('[Denetim] module mounted at /api/denetim');
 }
