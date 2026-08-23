@@ -43,6 +43,8 @@ export interface NginxSpaResult {
 
 export interface SpaCoverageRow {
   env: string;
+  /** nginx tarafinda bu ortama ait hic satir yoksa false: kapsam OLCULEMEDI. */
+  measured: boolean;
   ocpTotal: number;
   nginxTotal: number;
   bothCount: number;

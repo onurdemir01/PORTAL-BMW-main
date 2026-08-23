@@ -221,14 +221,22 @@ function initDenetim(app) {
         for (const [k, v] of o) (n.has(k) ? both : onlyOcp).push(v);
         for (const [k, v] of n) if (!o.has(k)) onlyNgx.push(v);
         const sortTr = (a, b) => a.localeCompare(b, 'tr');
+        // OLCULEBILIRLIK: nginx tarafinda o ortama ait HIC satir yoksa kapsam
+        // HESAPLANMAZ. Aksi halde "%0 kapsam, N uygulama tanimsiz" gibi felaket gorunumlu
+        // ama YANLIS bir sonuc cikar. Gercek sebep genellikle olcum bosluguydu:
+        // nginx_config_scan.sh yalnizca "location { include application-confs/X.conf; }"
+        // kalibini kaydeder; proxy_pass mimarisindeki sunucularda boyle bir satir YOKTUR,
+        // dolayisiyla o ortam hic olculmemis olur - "tanimsiz" degil, "bilinmiyor".
+        const measured = n.size > 0;
         return {
           env: e,
+          measured,
           ocpTotal: o.size,
           nginxTotal: n.size,
           bothCount: both.length,
           onlyOcpCount: onlyOcp.length,
           onlyNginxCount: onlyNgx.length,
-          coverage: o.size ? Math.round((both.length / o.size) * 1000) / 10 : null,
+          coverage: measured && o.size ? Math.round((both.length / o.size) * 1000) / 10 : null,
           onlyOcp: onlyOcp.sort(sortTr).slice(0, CAP),
           onlyNginx: onlyNgx.sort(sortTr).slice(0, CAP),
           truncated: onlyOcp.length > CAP || onlyNgx.length > CAP,

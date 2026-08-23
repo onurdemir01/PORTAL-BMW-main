@@ -148,8 +148,11 @@ function SpaCoverage() {
   if (!data) return null;
 
   const maxTotal = Math.max(1, ...data.rows.map((r) => Math.max(r.ocpTotal, r.nginxTotal)));
+  // "nginx'e tanimsiz" toplamina yalnizca OLCULEN ortamlar girer; olculemeyen bir
+  // ortamin tum uygulamalarini "tanimsiz" saymak toplami sisirir ve yanlis alarm uretir.
   const sum = (k: "ocpTotal" | "bothCount" | "onlyOcpCount" | "onlyNginxCount") =>
-    data.rows.reduce((a, r) => a + r[k], 0);
+    data.rows.reduce((a, r) => a + (k === "ocpTotal" || r.measured ? r[k] : 0), 0);
+  const unmeasured = data.rows.filter((r) => !r.measured);
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white px-4 py-3.5 space-y-3">
@@ -178,7 +181,6 @@ function SpaCoverage() {
 
       <div className="space-y-2">
         {data.rows.map((r) => {
-          const pct = r.ocpTotal ? (r.bothCount / r.ocpTotal) * 100 : 0;
           return (
             <div key={r.env} className="rounded-lg border border-gray-100">
               <button
@@ -188,35 +190,64 @@ function SpaCoverage() {
                 <div className="flex items-center gap-3">
                   <span className="w-14 shrink-0 text-xs font-semibold text-gray-700">{r.env}</span>
                   <span className="flex-1 h-5 rounded bg-gray-100 overflow-hidden flex">
-                    <span
-                      className="h-full bg-emerald-500/70"
-                      style={{ width: `${(r.bothCount / maxTotal) * 100}%` }}
-                      title={`nginx'e tanımlı: ${r.bothCount}`}
-                    />
-                    <span
-                      className="h-full bg-amber-400/70"
-                      style={{ width: `${(r.onlyOcpCount / maxTotal) * 100}%` }}
-                      title={`nginx'e tanımsız: ${r.onlyOcpCount}`}
-                    />
-                    <span
-                      className="h-full bg-sky-300/70"
-                      style={{ width: `${(r.onlyNginxCount / maxTotal) * 100}%` }}
-                      title={`yalnızca nginx'te: ${r.onlyNginxCount}`}
-                    />
+                    {r.measured ? (
+                      <>
+                        <span
+                          className="h-full bg-emerald-500/70"
+                          style={{ width: `${(r.bothCount / maxTotal) * 100}%` }}
+                          title={`nginx'e tanımlı: ${r.bothCount}`}
+                        />
+                        <span
+                          className="h-full bg-amber-400/70"
+                          style={{ width: `${(r.onlyOcpCount / maxTotal) * 100}%` }}
+                          title={`nginx'e tanımsız: ${r.onlyOcpCount}`}
+                        />
+                        <span
+                          className="h-full bg-sky-300/70"
+                          style={{ width: `${(r.onlyNginxCount / maxTotal) * 100}%` }}
+                          title={`yalnızca nginx'te: ${r.onlyNginxCount}`}
+                        />
+                      </>
+                    ) : (
+                      // Olculemeyen ortam DOLU bir bar ile gosterilmez: taranmis da hicbiri
+                      // tanimli degilmis gibi okunurdu. Tarali gri = "veri yok".
+                      <span
+                        className="h-full w-full"
+                        title="nginx tarafında bu ortama ait kayıt yok — ölçülemedi"
+                        style={{
+                          backgroundImage:
+                            "repeating-linear-gradient(45deg, rgb(0 0 0 / 0.07) 0 6px, transparent 6px 12px)",
+                        }}
+                      />
+                    )}
                   </span>
                   <span className="w-32 shrink-0 text-right text-xs tabular-nums text-gray-600">
-                    {r.bothCount.toLocaleString("tr-TR")} / {r.ocpTotal.toLocaleString("tr-TR")}
+                    {r.measured
+                      ? `${r.bothCount.toLocaleString("tr-TR")} / ${r.ocpTotal.toLocaleString("tr-TR")}`
+                      : `? / ${r.ocpTotal.toLocaleString("tr-TR")}`}
                   </span>
-                  <span className={`w-14 shrink-0 text-right text-xs tabular-nums font-semibold ${
-                    r.coverage === null ? "text-gray-400"
+                  <span className={`w-24 shrink-0 text-right text-xs tabular-nums font-semibold ${
+                    !r.measured ? "text-gray-400 font-normal"
+                      : r.coverage === null ? "text-gray-400"
                       : r.coverage >= 90 ? "text-emerald-600"
                       : r.coverage >= 60 ? "text-amber-600" : "text-red-600"
                   }`}>
-                    {r.coverage === null ? "—" : `%${r.coverage.toFixed(1)}`}
+                    {!r.measured ? "ölçülemedi" : r.coverage === null ? "—" : `%${r.coverage.toFixed(1)}`}
                   </span>
                 </div>
               </button>
-              {open === r.env && (
+              {open === r.env && !r.measured && (
+                <div className="px-3 pb-3 pt-1 border-t border-gray-50 text-[11px] text-gray-600 leading-relaxed">
+                  Bu ortam için nginx tarafında hiç kayıt yok, dolayısıyla neyin tanımlı
+                  olduğu <b>bilinmiyor</b> — "hiçbiri tanımlı değil" demek değildir.
+                  Denetim yalnızca{" "}
+                  <code className="px-1 rounded bg-gray-100">location …&#123; include application-confs/…&#125;</code>{" "}
+                  kalıbını kaydeder; <code className="px-1 rounded bg-gray-100">proxy_pass</code> ile
+                  kurulmuş sunucularda böyle bir satır bulunmaz. OpenShift tarafındaki{" "}
+                  {r.ocpTotal.toLocaleString("tr-TR")} uygulama sayısı yine de geçerlidir.
+                </div>
+              )}
+              {open === r.env && r.measured && (
                 <div className="px-3 pb-3 pt-1 border-t border-gray-50 grid gap-3 md:grid-cols-2">
                   <AppList
                     title={`nginx'e tanımsız (${r.onlyOcpCount})`}
@@ -251,6 +282,17 @@ function SpaCoverage() {
           <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
         </button>
       </div>
+
+      {unmeasured.length > 0 && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <b>{unmeasured.map((r) => r.env).join(", ")}</b> ortamı için nginx tarafında hiç
+          kayıt yok — kapsam hesaplanmadı ve yukarıdaki "nginx'e tanımlı / tanımsız"
+          toplamlarına dâhil edilmedi. Denetim yalnızca{" "}
+          <code className="px-1 rounded bg-white/70 border border-amber-200">location …&#123; include application-confs/…&#125;</code>{" "}
+          kalıbını kaydeder; <code className="px-1 rounded bg-white/70 border border-amber-200">proxy_pass</code>{" "}
+          ile kurulmuş sunucular bu kalıba uymaz.
+        </p>
+      )}
 
       {data.ocpSkippedNoEnv > 0 && (
         <p className="text-[11px] text-gray-400">
@@ -358,13 +400,18 @@ function NginxSpaAudit() {
             {data.envStats.filter((e) => e.rows === 0).map((e) => e.env).join(", ")}
           </div>
           <p className="text-[11px] leading-relaxed">
-            Ortam bilgisi taranan sunucudan değil, vhost <b>dosya adından</b> türer:{" "}
+            Bu denetim <b>SPA/include mimarisi</b> için yazılmıştır: yalnızca{" "}
+            <code className="px-1 rounded bg-white/70 border border-amber-200">location …&#123; include application-confs/…&#125;</code>{" "}
+            kalıbındaki satırlar kaydedilir. Ortam bilgisi de taranan sunucudan değil, vhost{" "}
+            <b>dosya adından</b> türer:{" "}
             <code className="px-1 rounded bg-white/70 border border-amber-200">&lt;SERVİS&gt;-&lt;ORTAM&gt;.conf</code>{" "}
             (örnek <code className="px-1 rounded bg-white/70 border border-amber-200">GLOMO-TEST.conf</code> → TEST).
-            Bir ortamın boş görünmesi üç şeyden biri anlamına gelir: o ortamın sunucuları
-            taranamadı, vhost dosyaları bu kalıba uymuyor, ya da adlarındaki ortam eki farklı.
-            Aşağıda hangi etiket altında kaç kayıt olduğu görünüyor — beklenmedik bir etiket
-            varsa sebep odur.
+            Bir ortamın boş görünmesi dört şeyden biri anlamına gelir: sunucular hâlâ{" "}
+            <code className="px-1 rounded bg-white/70 border border-amber-200">proxy_pass</code>{" "}
+            mimarisinde (bu kalıp hiç bulunmaz), sunuculara ulaşılamadı, vhost dosya adları
+            kalıba uymuyor, ya da adlarındaki ortam eki farklı. Aşağıda hangi etiket altında
+            kaç kayıt olduğu görünüyor — beklenmedik bir etiket varsa sebep odur; tüm
+            etiketler sıfırsa o ortam bu denetimin kapsamı dışındadır.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {data.envStats.map((e) => (
