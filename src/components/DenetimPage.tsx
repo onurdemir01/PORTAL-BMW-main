@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ShieldCheckIcon, ArrowPathIcon, MagnifyingGlassIcon, ServerStackIcon,
   Squares2X2Icon, QuestionMarkCircleIcon, ArrowDownTrayIcon,
-  DocumentDuplicateIcon, ChevronRightIcon,
+  DocumentDuplicateIcon, ChevronRightIcon, ChartBarSquareIcon,
 } from "@heroicons/react/24/outline";
 import {
   denetimApi, type NginxSpaResult, type OcpCoverageResult, type NginxSpaEnvCell,
@@ -17,6 +17,7 @@ import {
 } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
+import EnvanterMetrics from "@/components/denetim/EnvanterMetrics";
 import { toast } from "@/hooks/useToast";
 
 const HELP: HelpSection[] = [
@@ -24,6 +25,11 @@ const HELP: HelpSection[] = [
     icon: ServerStackIcon,
     title: "Nginx SPA Audit",
     body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar (DEV/TEST/QA/PROD). Hücre rengi o ortamdaki durumu anlatır: yeşil sorunsuz, kırmızı kırık include ya da eksik dağıtım, sarı OpenShift envanterinde bulunamadı. Üstteki servis sekmeleriyle (GLOMO, WEBFORMS…) tek tek inceleyebilirsiniz.",
+  },
+  {
+    icon: ChartBarSquareIcon,
+    title: "Envanter Metrikleri",
+    body: "Inventory, MWAppsInventory ve WASAppsInventory tablolarının dağılımları. Üstte özet sayaçlar; Sunucular kaynağında ayrıca ürün kapsamı (hangi üründen kaç sunucuda var, kaç ayrı sürümle). Dağılımlar bölümünde boyut seçerek (domain, subnet, OS, sürüm…) oransal kırılımı görürsünüz. En altta çapraz dağılım: satır ve sütunu kendiniz seçip örneğin JBoss sürümlerinin domain'lere göre yayılımını çıkarırsınız; hücre koyulaştıkça sayı büyür. Uygulama tablolarında sayımı 'uygulama' yerine 'sunucu' yapabilirsiniz — aynı sunucuda birden çok uygulama olabildiği için ikisi farklı sorulara cevap verir.",
   },
   {
     icon: DocumentDuplicateIcon,
@@ -60,7 +66,7 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 export default function DenetimPage() {
-  const [tab, setTab] = useState<"nginx" | "ocp" | "init">("nginx");
+  const [tab, setTab] = useState<"nginx" | "ocp" | "init" | "envanter">("nginx");
   const [showHelp, setShowHelp] = useState(false);
 
   return (
@@ -72,8 +78,8 @@ export default function DenetimPage() {
             <h1 className="text-xl font-bold">Denetim</h1>
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Nginx SPA tanımlarının, OpenShift ortam kapsamının ve sunuculardaki init
-            script'lerinin denetimi.
+            Nginx SPA tanımlarının, OpenShift ortam kapsamının, init script'lerinin ve
+            envanter dağılımlarının denetimi.
           </p>
         </div>
         <button
@@ -89,6 +95,7 @@ export default function DenetimPage() {
           { id: "nginx", label: "Nginx SPA Audit", icon: ServerStackIcon },
           { id: "ocp", label: "OpenShift Kapsam", icon: Squares2X2Icon },
           { id: "init", label: "Init Script Sapması", icon: DocumentDuplicateIcon },
+          { id: "envanter", label: "Envanter Metrikleri", icon: ChartBarSquareIcon },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -105,6 +112,7 @@ export default function DenetimPage() {
       {tab === "nginx" && <NginxSpaAudit />}
       {tab === "ocp" && <OcpCoverage />}
       {tab === "init" && <InitScriptsAudit />}
+      {tab === "envanter" && <EnvanterMetrics />}
 
       <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Denetim — Nasıl Kullanılır?" sections={HELP} />
     </div>

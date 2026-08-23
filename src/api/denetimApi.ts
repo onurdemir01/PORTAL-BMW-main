@@ -100,6 +100,52 @@ export interface InitScriptsResult {
   message?: string;
 }
 
+export interface EnvanterDistRow {
+  value: string;
+  /** Satir sayisi (Sunucular icin = sunucu, uygulama tablolari icin = uygulama kaydi). */
+  count: number;
+  /** Bu degere sahip FARKLI sunucu sayisi. */
+  hosts: number;
+}
+
+export interface EnvanterProduct {
+  key: string;
+  label: string;
+  /** Surum alani DOLU olan sunucu sayisi. */
+  installed: number;
+  versionCount: number;
+  versions: EnvanterDistRow[];
+}
+
+export interface EnvanterSummary {
+  ok: boolean;
+  source: string;
+  label: string;
+  unit: string;
+  totals: {
+    rows: number;
+    hosts: number;
+    apps: number;
+    numerics: { key: string; label: string; value: number }[];
+  };
+  dims: { key: string; label: string }[];
+  products: EnvanterProduct[];
+  distributions: Record<string, EnvanterDistRow[]>;
+  message?: string;
+}
+
+export interface EnvanterPivot {
+  ok: boolean;
+  source: string;
+  metric: "rows" | "hosts";
+  x: { key: string; label: string; values: { value: string; count: number }[] };
+  y: { key: string; label: string; values: { value: string; count: number }[] };
+  /** Anahtar: `${sutunDegeri}\u0001${satirDegeri}` — ayirici sunucu tarafiyla AYNI. */
+  cells: Record<string, number>;
+  total: number;
+  message?: string;
+}
+
 export const denetimApi = {
   nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
     fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
@@ -109,4 +155,14 @@ export const denetimApi = {
 
   initScripts: (root: string): Promise<InitScriptsResult> =>
     fetch(`${BASE}/init-scripts?root=${encodeURIComponent(root)}`).then(safeJson),
+
+  envanterSummary: (source: string): Promise<EnvanterSummary> =>
+    fetch(`${BASE}/envanter/summary?source=${encodeURIComponent(source)}`).then(safeJson),
+
+  envanterPivot: (p: {
+    source: string; x: string; y: string; metric: string; hideEmpty: boolean;
+  }): Promise<EnvanterPivot> =>
+    fetch(`${BASE}/envanter/pivot?source=${encodeURIComponent(p.source)}`
+      + `&x=${encodeURIComponent(p.x)}&y=${encodeURIComponent(p.y)}`
+      + `&metric=${encodeURIComponent(p.metric)}&hideEmpty=${p.hideEmpty ? "1" : "0"}`).then(safeJson),
 };
