@@ -125,10 +125,16 @@ export const inventoryApi = {
   distinct: (
     table: string,
     col: string,
-    search?: string
+    search?: string,
+    /** Diger kolonlarda AKTIF olan filtreler; secenekler bunlara gore daralir. */
+    multiFilters?: Record<string, string[]>
   ): Promise<{ ok: boolean; values: { value: string; count: number }[] }> => {
     const qs = new URLSearchParams({ limit: "200" });
     if (search) qs.set("search", search);
+    // Kendi kolonu sunucu tarafinda haric tutulur; burada olduğu gibi gonderilir.
+    if (multiFilters && Object.keys(multiFilters).length) {
+      qs.set("multiFilters", JSON.stringify(multiFilters));
+    }
     return fetch(`${BASE}/distinct/${encodeURIComponent(table)}/${encodeURIComponent(col)}?${qs}`).then(safeJson);
   },
 

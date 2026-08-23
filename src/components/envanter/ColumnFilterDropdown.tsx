@@ -6,12 +6,14 @@ interface Props {
   table: string;
   col: string;
   selected: string[];
+  /** Tablodaki TUM aktif kolon filtreleri; secenekler bunlara gore daralir. */
+  activeFilters?: Record<string, string[]>;
   anchorRef: React.RefObject<HTMLElement | null>;
   onApply: (values: string[]) => void;
   onClose: () => void;
 }
 
-export function ColumnFilterDropdown({ table, col, selected, anchorRef, onApply, onClose }: Props) {
+export function ColumnFilterDropdown({ table, col, selected, activeFilters, anchorRef, onApply, onClose }: Props) {
   const [search, setSearch]       = useState("");
   const [values, setValues]       = useState<{ value: string; count: number }[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -39,14 +41,19 @@ export function ColumnFilterDropdown({ table, col, selected, anchorRef, onApply,
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose, anchorRef]);
 
-  // Fetch distinct values
+  // Secenekleri getir. DIGER kolonlardaki aktif filtreler de gonderilir ki liste onlara
+  // gore daralsin (product=IHS secildikten sonra host listesinde nginx sunuculari
+  // gorunmesin). Kendi kolonunun secimi sunucuda haric tutulur - aksi halde listede
+  // yalnizca zaten secili degerler kalir ve secim genisletilemezdi.
+  const filterKey = JSON.stringify(activeFilters || {});
   useEffect(() => {
     setLoading(true);
-    inventoryApi.distinct(table, col, search || undefined)
+    inventoryApi.distinct(table, col, search || undefined, activeFilters)
       .then((r) => { if (r.ok) setValues(r.values); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [table, col, search]);
+    // filterKey: nesne kimligi her render'da degisecegi icin ICERIGE gore bagimlilik.
+  }, [table, col, search, filterKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggle(val: string) {
     setPending((prev) => {

@@ -222,6 +222,7 @@ const DynamicTable: React.FC<Props> = ({
           table={table}
           col={openFilterCol}
           selected={multiFilters[openFilterCol] || []}
+          activeFilters={multiFilters}
           anchorRef={openFilterAnchor as React.RefObject<HTMLElement | null>}
           onApply={(vals) => onApplyColumnFilter(openFilterCol, vals)}
           onClose={() => setOpenFilterCol(null)}

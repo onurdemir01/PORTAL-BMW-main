@@ -1051,16 +1051,45 @@ function initInventory(app) {
     }
     const search = String(req.query.search || "").trim();
     const limitVal = Math.min(300, Math.max(1, parseInt(req.query.limit || "200", 10)));
+
+    // ZINCIRLEME FILTRE: bir kolona filtre uygulandiginda DIGER kolonlarin secenekleri de
+    // daralmali. Onceden bu uc tablonun TAMAMINI tariyordu; kullanici product=IHS sectikten
+    // sonra host listesinde hala nginx sunucularini goruyordu.
+    // Kendi kolonunun secimi BILEREK haric tutulur: aksi halde acilan listede yalnizca
+    // zaten secili degerler kalir ve secim genisletilemez (Excel'in davranisi da budur).
+    let otherFilters = {};
+    if (req.query.multiFilters) {
+      try {
+        const parsed = JSON.parse(String(req.query.multiFilters));
+        if (parsed && typeof parsed === "object") otherFilters = parsed;
+      } catch { /* bozuk parametre yok sayilir; uc calismaya devam eder */ }
+    }
+
     try {
       const pool = await getPool();
       if (!pool) return res.status(503).json({ ok: false, error: "Veritabanı bağlantısı yok." });
       const req2 = pool.request();
       req2.input("limitVal", sql.Int, limitVal);
-      let whereClause = "";
+
+      const parts = [];
       if (search) {
         req2.input("search", sql.NVarChar(256), `%${search}%`);
-        whereClause = `WHERE CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) LIKE @search`;
+        parts.push(`CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) LIKE @search`);
       }
+      // Kolon adlari allCols'a karsi DOGRULANIR; deger'ler parametre olarak baglanir.
+      let mfIdx = 0;
+      for (const [c, vals] of Object.entries(otherFilters)) {
+        if (c === col) continue;                       // kendi kolonu haric
+        if (!allCols.includes(c)) continue;            // beyaz liste disi kolon adi
+        if (!Array.isArray(vals) || vals.length === 0) continue;
+        const ps = vals.map((v) => {
+          const p = `dmf${mfIdx++}`;
+          req2.input(p, sql.NVarChar(512), String(v));
+          return `@${p}`;
+        });
+        parts.push(`CAST(${quoteIdent(c)} AS NVARCHAR(MAX)) IN (${ps.join(",")})`);
+      }
+      const whereClause = parts.length ? `WHERE ${parts.join(" AND ")}` : "";
       const result = await req2.query(
         `SELECT TOP (@limitVal) CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) AS val, COUNT(*) AS cnt
          FROM ${quoteIdent(table)}
