@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ShieldCheckIcon, ArrowPathIcon, MagnifyingGlassIcon, ServerStackIcon,
   Squares2X2Icon, QuestionMarkCircleIcon, ArrowDownTrayIcon,
-  DocumentDuplicateIcon, ChevronRightIcon, ChartBarSquareIcon,
+  DocumentDuplicateIcon, ChevronRightIcon, ChartBarSquareIcon, RectangleGroupIcon,
 } from "@heroicons/react/24/outline";
 import {
   denetimApi, type NginxSpaResult, type OcpCoverageResult, type NginxSpaEnvCell,
@@ -18,6 +18,7 @@ import {
 import { Select } from "@/components/ui/Form";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import EnvanterMetrics from "@/components/denetim/EnvanterMetrics";
+import AppEnvs from "@/components/denetim/AppEnvs";
 import { toast } from "@/hooks/useToast";
 
 const HELP: HelpSection[] = [
@@ -30,6 +31,11 @@ const HELP: HelpSection[] = [
     icon: ChartBarSquareIcon,
     title: "Envanter Metrikleri",
     body: "Inventory, MWAppsInventory ve WASAppsInventory tablolarının dağılımları. Üstte özet sayaçlar; Sunucular kaynağında ayrıca ürün kapsamı (hangi üründen kaç sunucuda var, kaç ayrı sürümle). Dağılımlar bölümünde boyut seçerek (domain, subnet, OS, sürüm…) oransal kırılımı görürsünüz. En altta çapraz dağılım: satır ve sütunu kendiniz seçip örneğin JBoss sürümlerinin domain'lere göre yayılımını çıkarırsınız; hücre koyulaştıkça sayı büyür. Uygulama tablolarında sayımı 'uygulama' yerine 'sunucu' yapabilirsiniz — aynı sunucuda birden çok uygulama olabildiği için ikisi farklı sorulara cevap verir.",
+  },
+  {
+    icon: RectangleGroupIcon,
+    title: "Uygulama Ortamları",
+    body: "MWAppsInventory / WASAppsInventory üzerinden, bir uygulamanın hangi ortamlara dağıtıldığını gösterir. Ortam uygulama adının son ekinden türer: -D geliştirme, -T test, -Q QA, eksiz ad production; satırlar son ek atılmış taban ada göre gruplanır. 'Ad kuralı dışı' sekmesinde bu kalıba uymayan adlar (küçük harfli son ek, tanınmayan tek harf, -DEV/-PROD gibi ortam sözcüğü) sebebiyle birlikte listelenir. 'Çelişki' sekmesinde ise adın söylediği ortam ile envanterdeki env sütunu uyuşmayanlar çıkar — env sütunu sunucu adından türetildiği için bu, uygulamanın başka bir ortamın sunucusunda çalıştığına işaret eder. Sunucu adı geliştirme ile testi ayırt edemediğinden -D uygulamaları bu listeye alınmaz.",
   },
   {
     icon: DocumentDuplicateIcon,
@@ -68,7 +74,7 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 export default function DenetimPage() {
-  const [tab, setTab] = useState<"nginx" | "ocp" | "init" | "envanter">("nginx");
+  const [tab, setTab] = useState<"nginx" | "ocp" | "init" | "envanter" | "appenvs">("nginx");
   const [showHelp, setShowHelp] = useState(false);
 
   return (
@@ -98,6 +104,7 @@ export default function DenetimPage() {
           { id: "ocp", label: "OpenShift Kapsam", icon: Squares2X2Icon },
           { id: "init", label: "Init Script Sapması", icon: DocumentDuplicateIcon },
           { id: "envanter", label: "Envanter Metrikleri", icon: ChartBarSquareIcon },
+          { id: "appenvs", label: "Uygulama Ortamları", icon: RectangleGroupIcon },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -115,6 +122,7 @@ export default function DenetimPage() {
       {tab === "ocp" && <OcpCoverage />}
       {tab === "init" && <InitScriptsAudit />}
       {tab === "envanter" && <EnvanterMetrics />}
+      {tab === "appenvs" && <AppEnvs />}
 
       <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Denetim — Nasıl Kullanılır?" sections={HELP} />
     </div>

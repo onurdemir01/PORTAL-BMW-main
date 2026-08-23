@@ -199,6 +199,40 @@ export interface EnvanterPivot {
   message?: string;
 }
 
+export interface AppEnvCell {
+  hosts: string[];
+  rows: number;
+}
+
+export interface AppEnvRow {
+  /** Son ek atilmis taban ad; matris satirlari buna gore gruplanir. */
+  base: string;
+  envs: Record<string, AppEnvCell | null>;
+  present: string[];
+  missing: string[];
+  missingCount: number;
+}
+
+export interface AppEnvsResult {
+  ok: boolean;
+  source: string;
+  label: string;
+  sources: { key: string; label: string }[];
+  envs: string[];
+  totalRows: number;
+  totalApps: number;
+  completeCount: number;
+  patterns: { missing: string[]; count: number }[];
+  rows: AppEnvRow[];
+  /** Ad kuralina uymayan uygulamalar (kucuk harf, taninmayan son ek, ortam sozcugu). */
+  nonStandard: { app: string; reason: string; hosts: string[]; envColumn: string[] }[];
+  /** Ad kuralinin sordugu ortam ile env sutunu celisen kayitlar. */
+  conflicts: { app: string; base: string; nameEnv: string; envColumn: string; hosts: string[] }[];
+  /** Ad kuralinda karsiligi olmayan env degerleri (Alpha, ODM ...). */
+  outOfScopeEnvColumns: { envColumn: string; appCount: number; known: boolean }[];
+  message?: string;
+}
+
 export const denetimApi = {
   nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
     fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
@@ -211,6 +245,9 @@ export const denetimApi = {
 
   initScripts: (root: string): Promise<InitScriptsResult> =>
     fetch(`${BASE}/init-scripts?root=${encodeURIComponent(root)}`).then(safeJson),
+
+  appEnvs: (source: string): Promise<AppEnvsResult> =>
+    fetch(`${BASE}/app-envs?source=${encodeURIComponent(source)}`).then(safeJson),
 
   envanterSummary: (source: string): Promise<EnvanterSummary> =>
     fetch(`${BASE}/envanter/summary?source=${encodeURIComponent(source)}`).then(safeJson),

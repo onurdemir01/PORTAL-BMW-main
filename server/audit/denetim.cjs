@@ -601,6 +601,9 @@ function initDenetim(app) {
   // yer tutuyor ve bu dosyanin konusuyla karismasin.
   require('./envanter-metrics.cjs').registerEnvanterMetrics(router);
 
+  // ── 5) UYGULAMA ORTAMLARI (MWApps/WASApps ad kuraliyla ortam matrisi) ──────────────
+  require('./app-envs.cjs').registerAppEnvs(router);
+
   app.use('/api/denetim', router);
   console.log('[Denetim] module mounted at /api/denetim');
 }
