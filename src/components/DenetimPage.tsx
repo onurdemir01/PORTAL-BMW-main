@@ -20,6 +20,7 @@ import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import EnvanterMetrics from "@/components/denetim/EnvanterMetrics";
 import AppEnvs from "@/components/denetim/AppEnvs";
 import WebApp from "@/components/denetim/WebApp";
+import NginxLocations from "@/components/denetim/NginxLocations";
 import { toast } from "@/hooks/useToast";
 
 const HELP: HelpSection[] = [
@@ -408,6 +409,8 @@ function AppList({ title, apps, tone, empty }: {
 
 // ── 1) NGINX SPA AUDIT ────────────────────────────────────────────────────────────────
 function NginxSpaAudit() {
+  // Kullanici talebi: matrisin yani sira, her servis icin location bazinda AYRINTI.
+  const [view, setView] = useState<"matris" | "location">("matris");
   const [data, setData] = useState<NginxSpaResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -465,9 +468,30 @@ function NginxSpaAudit() {
     );
   }
 
+  const viewTabs = (
+    <div className="flex gap-1 rounded-lg p-0.5 bg-gray-100 w-fit">
+      {([
+        { id: "matris", label: "Ortam Matrisi" },
+        { id: "location", label: "Location Detayı" },
+      ] as const).map((v) => (
+        <button
+          key={v.id}
+          onClick={() => setView(v.id)}
+          className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+            view === v.id ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          {v.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-3">
       <SpaCoverage />
+      {viewTabs}
+      {view === "location" && <NginxLocations />}
 
       {/* ENV TESHISI: bir ortam bos gorunuyorsa NEDENI burada gorulur. env degeri vhost
           DOSYA ADINDAN turer (<SERVIS>-<ORTAM>.conf), taranan SUNUCUDAN degil - bu ayrim
@@ -508,6 +532,7 @@ function NginxSpaAudit() {
         </div>
       )}
 
+      {view === "matris" && (<>
       <div className="flex flex-wrap items-center gap-2">
         <Select sizeVariant="sm" value={scanDate} onChange={(e) => { setScanDate(e.target.value); load(e.target.value); }}>
           {data.availableDates.map((d) => <option key={d} value={d}>{d}</option>)}
@@ -577,6 +602,7 @@ function NginxSpaAudit() {
           </tbody>
         </table>
       </div>
+      </>)}
     </div>
   );
 }

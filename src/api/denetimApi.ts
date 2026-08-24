@@ -273,6 +273,39 @@ export interface WebAppResult {
   message?: string;
 }
 
+export interface NginxLocationRow {
+  service: string;
+  env: string;
+  locationPath: string;
+  includeName: string;
+  application: string;
+  namespace: string;
+  deployMode: string;
+  includeExists: boolean;
+  appDeployed: boolean;
+  inOcpInventory: boolean;
+  status: string;
+  vhosts: string[];
+  hosts: string[];
+  /** Location yolu uygulama adini iceriyor mu? Damga degil, dikkat cekici isaret. */
+  pathMatchesApp: boolean;
+}
+
+export interface NginxLocationsResult {
+  ok: boolean;
+  scanDate: string | null;
+  services: string[];
+  envs: string[];
+  statusCounts: { status: string; count: number }[];
+  total: number;
+  shown: number;
+  capped: boolean;
+  /** Location blogunun HAM govdesi taraniyor mu (su an hayir). */
+  bodyAvailable: boolean;
+  rows: NginxLocationRow[];
+  message?: string;
+}
+
 export const denetimApi = {
   nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
     fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
@@ -285,6 +318,15 @@ export const denetimApi = {
 
   initScripts: (root: string): Promise<InitScriptsResult> =>
     fetch(`${BASE}/init-scripts?root=${encodeURIComponent(root)}`).then(safeJson),
+
+  nginxLocations: (p: { service?: string; env?: string; status?: string; q?: string }): Promise<NginxLocationsResult> => {
+    const qs = new URLSearchParams();
+    if (p.service) qs.set("service", p.service);
+    if (p.env) qs.set("env", p.env);
+    if (p.status) qs.set("status", p.status);
+    if (p.q) qs.set("q", p.q);
+    return fetch(`${BASE}/nginx-locations?${qs.toString()}`).then(safeJson);
+  },
 
   webApp: (source: string, q?: string, onlyUnmatched?: boolean): Promise<WebAppResult> =>
     fetch(`${BASE}/web-app?source=${encodeURIComponent(source)}`

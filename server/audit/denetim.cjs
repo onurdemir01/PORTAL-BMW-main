@@ -607,6 +607,9 @@ function initDenetim(app) {
   // ── 6) WEB-APP ILISKISI (uygulama <-> onundeki web sunucusu/vhost) ────────────────
   require('./web-app.cjs').registerWebApp(router);
 
+  // ── 7) NGINX LOCATION DETAYI (servis/ortam bazinda location + namespace/app) ──────
+  require('./nginx-locations.cjs').registerNginxLocations(router);
+
   app.use('/api/denetim', router);
   console.log('[Denetim] module mounted at /api/denetim');
 }
