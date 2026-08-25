@@ -1073,7 +1073,7 @@ const ELEMENT_SEED = [
   // Sayfalar (mevcut PAGE_VISIBILITY_SEED ile ayni roller)
   { element_key: 'Dashboard',    element_type: 'page', parent_key: 'navgroup:genel',       label: 'Dashboard',    route: '/dashboard',       sort_order: 1,  roles: ['Admin', 'User'] },
   { element_key: 'Envanter',     element_type: 'page', parent_key: 'navgroup:envanter',    label: 'Envanter',     route: '/envanter',        sort_order: 2,  roles: ['Admin', 'User'] },
-  { element_key: 'Denetim',      element_type: 'page', parent_key: 'navgroup:envanter',    label: 'Denetim',      route: '/denetim',         sort_order: 3,  roles: ['Admin', 'User'] },
+  { element_key: 'Denetim',      element_type: 'page', parent_key: 'navgroup:envanter',    label: 'Middleware İç Denetim', route: '/denetim',    sort_order: 3,  roles: ['Admin', 'User'] },
   { element_key: 'LogX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'LogX',         route: '/logx',            sort_order: 7,  roles: ['Admin', 'User'] },
   { element_key: 'OpsX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'OpsX',         route: '/opsx',            sort_order: 8,  roles: ['Admin', 'User'] },
   { element_key: 'FileX',        element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'FileX',        route: '/filex',           sort_order: 8,  roles: ['Admin', 'User'] },
@@ -1127,6 +1127,19 @@ async function seedPortalElements(pool) {
       console.warn(`[DB] portal_elements seed eklenemedi (${el.element_key}):`, err.message);
     }
   }
+  // 2026-08-25: sayfa adi "Denetim" -> "Middleware Ic Denetim". ELEMENT_SEED yalnizca
+  // EKSIK kaydi ekler (yukarida "if (exists) continue"), bu yuzden mevcut kurulumlarda
+  // etiket eski halinde kalirdi. Asagidaki guncelleme YALNIZCA etiket hala eski
+  // varsayilan ise calisir - admin elle baska bir ad verdiyse ona DOKUNMAZ.
+  try {
+    await pool.request().query(
+      `UPDATE portal_elements SET label = N'Middleware İç Denetim'
+        WHERE element_key = 'Denetim' AND label = N'Denetim'`
+    );
+  } catch (err) {
+    console.warn('[DB] Denetim etiketi guncellenemedi:', err.message);
+  }
+
   // 2) Gorunurluk kurallari — yalnizca tablo TAMAMEN bossa (ilk kurulum/migrasyon). Mevcut
   //    page_visibility (admin duzenlemeleri) varsa oradan tasinir; yoksa ELEMENT_SEED rolleri.
   try {

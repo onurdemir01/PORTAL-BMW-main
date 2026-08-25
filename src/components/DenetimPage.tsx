@@ -1,10 +1,12 @@
-// src/components/DenetimPage.tsx — "Denetim" sayfasi (2026-08-21, kullanici talebi).
-// Iki ayri denetim konusu, ust seviyede iki sekme:
-//   1) Nginx SPA Audit  -> Teams bildirimindeki ozetin AYRINTILI hali; servis bazinda
-//      alt sekmeler, ortam (DEV/TEST/QA/PROD) karsilastirmali uygulama matrisi,
-//      uygulamanin OpenShift envanterinde olup olmadigi.
-//   2) OpenShift Kapsam -> bir uygulamanin bir platformun HANGI ortamlarinda EKSIK
-//      oldugu (ornek: prod'da var, non-prod'da yok).
+// src/components/DenetimPage.tsx — "Middleware Ic Denetim" sayfasi.
+// Alti sekme (2026-08-25'te adlar sadelestirildi; rota ve element_key "denetim"
+// olarak KALDI - gorunurluk kayitlari ve yer imleri kirilmasin diye):
+//   Nginx SPA Audit             -> nginx vhost/location denetimi + SPA kapsami
+//   Openshift Audit             -> uygulama hangi ortamlarda var/eksik
+//   Init Script Audit           -> sunucular arasi init script sha512 sapmasi
+//   Envanter Audit              -> Inventory/MWApps/WASApps dagilimlari
+//   Jboss/WAS Applications Audit-> ad kuralindan ortam matrisi + sapmalar
+//   Web-App Relations           -> uygulamayi servis eden web sunucusu/vhost
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ShieldCheckIcon, ArrowPathIcon, MagnifyingGlassIcon, ServerStackIcon,
@@ -31,27 +33,27 @@ const HELP: HelpSection[] = [
   },
   {
     icon: ChartBarSquareIcon,
-    title: "Envanter Metrikleri",
+    title: "Envanter Audit",
     body: "Inventory, MWAppsInventory ve WASAppsInventory tablolarının dağılımları. Üstte özet sayaçlar; Sunucular kaynağında ayrıca ürün kapsamı (hangi üründen kaç sunucuda var, kaç ayrı sürümle). Dağılımlar bölümünde boyut seçerek (domain, subnet, OS, sürüm…) oransal kırılımı görürsünüz. En altta çapraz dağılım: satır ve sütunu kendiniz seçip örneğin JBoss sürümlerinin domain'lere göre yayılımını çıkarırsınız; hücre koyulaştıkça sayı büyür. Uygulama tablolarında sayımı 'uygulama' yerine 'sunucu' yapabilirsiniz — aynı sunucuda birden çok uygulama olabildiği için ikisi farklı sorulara cevap verir.",
   },
   {
     icon: LinkIcon,
-    title: "Web-App İlişkisi",
+    title: "Web-App Relations",
     body: "Her uygulama satırının önünde onu servis eden web sunucusunu gösterir: host, IP, port, server_name. Kaynak MWAppsInventory/WASAppsInventory ile BMW_Certificates_Inventory'nin çarpıştırılmasıdır. 3-tier sunucularda web sunucusu, uygulama sunucusunun adındaki 5. karakter A→W çevrilerek bulunur (DACRAAP01 → DACRWAP01); 2-tier'de web sunucusu uygulamanın kendi sunucusudur. Doğru vhost'u seçmek için uygulama adı küçük harfle server_name içinde aranır — önce tam ad, tutmazsa ortam son eki atılmış taban ad. Eşleşmenin hangi yolla kurulduğu her satırda yazar; kural tahmine dayalı olduğu için bu bilgi gizlenmez. Hiçbir yol tutmazsa satır 'eşleşmedi' der ve uydurma bir sunucu yazılmaz, yalnızca kurala göre beklenen aday gösterilir.",
   },
   {
     icon: RectangleGroupIcon,
-    title: "Uygulama Ortamları",
+    title: "Jboss/WAS Applications Audit",
     body: "MWAppsInventory / WASAppsInventory üzerinden, bir uygulamanın hangi ortamlara dağıtıldığını gösterir. Ortam uygulama adının son ekinden türer: -D geliştirme, -T test, -Q QA, eksiz ad production; satırlar son ek atılmış taban ada göre gruplanır. 'Ad kuralı dışı' sekmesinde bu kalıba uymayan adlar (küçük harfli son ek, tanınmayan tek harf, -DEV/-PROD gibi ortam sözcüğü) sebebiyle birlikte listelenir. 'Çelişki' sekmesinde ise adın söylediği ortam ile envanterdeki env sütunu uyuşmayanlar çıkar — env sütunu sunucu adından türetildiği için bu, uygulamanın başka bir ortamın sunucusunda çalıştığına işaret eder. Sunucu adı geliştirme ile testi ayırt edemediğinden -D uygulamaları bu listeye alınmaz.",
   },
   {
     icon: DocumentDuplicateIcon,
-    title: "Init Script Sapması",
+    title: "Init Script Audit",
     body: "check_initialize job'ının topladığı sha512 değerlerini karşılaştırır: bir script sunucular arasında kaç ayrı sürümle duruyor, hangi sunucular çoğunluktan ayrılmış, hangilerinde dosya hiç yok. Referans olarak en kalabalık hash alınır — tabloda kanonik sürümü işaretleyen bir alan yok, initialize.yaml da şablonu tüm sunuculara aynı dağıttığı için en kalabalık sürüm pratikte şablonun kendisidir. startCustom.sh bunun bilinen istisnasıdır: sunucuya özel olması tasarım gereğidir (initialize.yaml yeniden kurulumda onu yedekten geri kopyalar), o yüzden sapma sayılmaz, ayrıca listelenir.",
   },
   {
     icon: Squares2X2Icon,
-    title: "OpenShift Kapsam",
+    title: "Openshift Audit",
     body: "Bir uygulamanın bir platformun hangi ortamlarında var, hangilerinde eksik olduğunu gösterir. Ortam bilgisi cluster'dan DEĞİL, namespace son ekinden (-dev/-test/-qa/-prod) gelir — çünkü ark_dev ile ark_test aynı cluster'ları paylaşır, cluster tek başına ortam bilgisi taşımaz.",
   },
 ];
@@ -90,11 +92,11 @@ export default function DenetimPage() {
         <div>
           <div className="flex items-center gap-2">
             <ShieldCheckIcon className="w-6 h-6 text-[var(--accent)]" />
-            <h1 className="text-xl font-bold">Denetim</h1>
+            <h1 className="text-xl font-bold">Middleware İç Denetim</h1>
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Nginx SPA tanımlarının, OpenShift ortam kapsamının, init script'lerinin ve
-            envanter dağılımlarının denetimi.
+            Nginx, OpenShift, init script'leri, envanter dağılımları, JBoss/WAS
+            uygulamaları ve web-uygulama ilişkilerinin iç denetimi.
           </p>
         </div>
         <button
@@ -108,11 +110,11 @@ export default function DenetimPage() {
       <div className="flex gap-1 rounded-xl p-1 bg-gray-100 w-fit">
         {([
           { id: "nginx", label: "Nginx SPA Audit", icon: ServerStackIcon },
-          { id: "ocp", label: "OpenShift Kapsam", icon: Squares2X2Icon },
-          { id: "init", label: "Init Script Sapması", icon: DocumentDuplicateIcon },
-          { id: "envanter", label: "Envanter Metrikleri", icon: ChartBarSquareIcon },
-          { id: "appenvs", label: "Uygulama Ortamları", icon: RectangleGroupIcon },
-          { id: "webapp", label: "Web-App İlişkisi", icon: LinkIcon },
+          { id: "ocp", label: "Openshift Audit", icon: Squares2X2Icon },
+          { id: "init", label: "Init Script Audit", icon: DocumentDuplicateIcon },
+          { id: "envanter", label: "Envanter Audit", icon: ChartBarSquareIcon },
+          { id: "appenvs", label: "Jboss/WAS Applications Audit", icon: RectangleGroupIcon },
+          { id: "webapp", label: "Web-App Relations", icon: LinkIcon },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -133,7 +135,7 @@ export default function DenetimPage() {
       {tab === "appenvs" && <AppEnvs />}
       {tab === "webapp" && <WebApp />}
 
-      <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Denetim — Nasıl Kullanılır?" sections={HELP} />
+      <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Middleware İç Denetim — Nasıl Kullanılır?" sections={HELP} />
     </div>
   );
 }
@@ -785,6 +787,10 @@ function InitScriptsAudit() {
   const [q, setQ] = useState("");
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  // "dosya yok" satirindaki SUNUCU LISTESI varsayilan GIZLI (kullanici talebi):
+  // bu liste yuzlerce host icerebiliyor ve asil bilgi olan surum dagilimini
+  // ekrandan itiyordu. Sayi hep gorunur; adlar istenince aciliyor.
+  const [openMissing, setOpenMissing] = useState<string | null>(null);
 
   const load = useCallback(async (r: string) => {
     setLoading(true);
@@ -980,11 +986,25 @@ function InitScriptsAudit() {
                               <div className="flex items-center gap-2">
                                 <span className="text-[10px] px-1.5 py-0.5 rounded border bg-gray-100 text-gray-600 border-gray-200">dosya yok</span>
                                 <span className="text-xs text-gray-500 tabular-nums ml-auto">{sc.missing} sunucu</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    // Bu blok ACILMIS satirin ICINDE; tiklama yukari
+                                    // yayilirsa ust satir kapanir ve liste hic gorunmez.
+                                    e.stopPropagation();
+                                    setOpenMissing(openMissing === sc.key ? null : sc.key);
+                                  }}
+                                  className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+                                >
+                                  {openMissing === sc.key ? "sunucuları gizle" : "sunucuları göster"}
+                                </button>
                               </div>
-                              <div className="mt-1.5 text-[11px] text-gray-600 font-mono break-words">
-                                {sc.missingHosts.slice(0, 40).join(", ")}
-                                {sc.missingHosts.length > 40 && ` … (+${sc.missingHosts.length - 40})`}
-                              </div>
+                              {openMissing === sc.key && (
+                                <div className="mt-1.5 text-[11px] text-gray-600 font-mono break-words">
+                                  {sc.missingHosts.slice(0, 40).join(", ")}
+                                  {sc.missingHosts.length > 40 && ` … (+${sc.missingHosts.length - 40})`}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
