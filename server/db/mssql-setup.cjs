@@ -747,6 +747,9 @@ const TABLES = [
         smart_state_name    NVARCHAR(200) NULL,
         pending_launch_json NVARCHAR(MAX) NOT NULL,
         awx_job_id          INT NULL,
+        -- AWX'te olusturulan schedule kaydinin ID'si. Dolu ise isi PORTAL DEGIL AWX
+        -- tetikler (status = 'AWX_SCHEDULED'); poller bu satirlara BAKMAZ.
+        awx_schedule_id     INT NULL,
         error_message       NVARCHAR(MAX) NULL,
         created_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         updated_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
@@ -1855,6 +1858,10 @@ async function setupTables() {
     // birlestirmek "otomasyon mu patladi yoksa biri mi iptal etti" ayrimini kaybettirirdi.
     // cancelled_by ayrica tutulur: talebi ACAN kullanici (username) ile IPTAL EDEN
     // admin farkli kisilerdir.
+    {
+      table: 'oco_scheduled_launches', col: 'awx_schedule_id',
+      sql: `ALTER TABLE oco_scheduled_launches ADD awx_schedule_id INT NULL`,
+    },
     {
       table: 'smart_tickets', col: 'cancel_note',
       sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,

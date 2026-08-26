@@ -257,6 +257,10 @@ function awxRequestToServer(server, token, method, pathname, body = null) {
       let data = "";
       res.on("data", (c) => { data += c; });
       res.on("end", () => {
+        // DELETE (ve bazi POST'lar) 204 No Content doner: GOVDE BOSTUR ve JSON.parse("")
+        // hata firlatir. Onceki hal bunu "AWX yaniti JSON degil" diye BASARISIZLIK
+        // sayiyordu - oysa 204 basarinin ta kendisi.
+        if (res.statusCode >= 200 && res.statusCode < 300 && !data.trim()) return resolve(null);
         try {
           const json = JSON.parse(data);
           if (res.statusCode >= 400) {
@@ -1684,6 +1688,67 @@ function initAnsibleRunner(app) {
     return { jobId, status: data.status || "pending" };
   }
 
+  // AWX'te NATIVE bir schedule olusturur: is, kesinti saatinde AWX tarafindan
+  // tetiklenir; Portal'in o anda ayakta olmasi GEREKMEZ.
+  //
+  // NEDEN SESSIZ VERI KAYBINA KARSI DOGRULAMA VAR: AWX, schedule'a verilen
+  // extra_data'nin bir kismini SESSIZCE atabilir - survey'de tanimli OLMAYAN bir
+  // degisken ancak template'te "ask_variables_on_launch" acikken kabul edilir, kapaliysa
+  // hata DONMEZ, alan yok sayilir. Ayni sinif hata AWX'in `limit` alaninda daha once
+  // yasandi (prompt-on-launch kapaliyken gonderilen limit sessizce yok sayiliyordu).
+  // Burada is PROD'a gidiyor ve YANLIS degiskenlerle calisan bir job, hic calismayan
+  // bir job'dan cok daha kotudur. Bu yuzden schedule olusturulduktan SONRA AWX'in
+  // dondurdugu extra_data GERI OKUNUR; eksik anahtar varsa schedule SILINIR ve islem
+  // acik bir hatayla reddedilir.
+  async function createOcoAwxSchedule(server, templateId, detail, { name, runAt, extraVars, resolvedLaunchOptions, requester }) {
+    const { toRRuleStamp } = require("../oco/window.cjs");
+    const token = await getTokenForServer(server);
+    const finalExtraVars = withRequesterVars(extraVars, requester);
+
+    // COUNT=1 -> TEK SEFER calisir. TZID kurum saati; damga YEREL bilesenlerden
+    // uretilir (bkz. toRRuleStamp - toISOString UTC'ye cevirip saati kaydirirdi).
+    const tz = process.env.OCO_SCHEDULE_TZ || "Europe/Istanbul";
+    const rrule = `DTSTART;TZID=${tz}:${toRRuleStamp(runAt)} RRULE:FREQ=DAILY;INTERVAL=1;COUNT=1`;
+
+    const body = {
+      name,
+      unified_job_template: Number(templateId),
+      rrule,
+      enabled: true,
+      extra_data: finalExtraVars,
+    };
+    // Launch secenekleri yalnizca template ilgili prompt'u ACMISSA gonderilir -
+    // buildAwxLaunchPayload ile AYNI kural.
+    const lo = resolvedLaunchOptions || {};
+    if (detail?.ask_limit_on_launch && lo.limit) body.limit = lo.limit;
+    if (detail?.ask_tags_on_launch && lo.jobTags) body.job_tags = lo.jobTags;
+    if (detail?.ask_skip_tags_on_launch && lo.skipTags) body.skip_tags = lo.skipTags;
+    if (detail?.ask_job_type_on_launch && lo.jobType) body.job_type = lo.jobType;
+
+    const created = await awxRequestToServer(server, token, "POST", "/api/v2/schedules/", body);
+
+    const got = created?.extra_data || {};
+    const dropped = Object.keys(finalExtraVars).filter((k) => !(k in got));
+    if (dropped.length > 0) {
+      // Yanlis degiskenlerle calisacak bir schedule BIRAKILMAZ.
+      try {
+        await awxRequestToServer(server, token, "DELETE", `/api/v2/schedules/${created.id}/`);
+      } catch (e) {
+        console.warn(`[OCO] eksik degiskenli schedule ${created.id} silinemedi:`, e.message);
+      }
+      const err = new Error(
+        `AWX zamanlamayi kabul etti ama su degisken(ler)i yok saydi: ${dropped.join(", ")}. `
+        + `Template'te bu alanlar survey'de tanimli degil ve "Prompt on launch > Variables" kapali. `
+        + `Zamanlama iptal edildi (yanlis degiskenlerle calismasindansa hic calismamasi dogru). `
+        + `Yoneticinizden template ayarini acmasini isteyin.`
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    return { scheduleId: created.id, scheduleName: created.name, rrule };
+  }
+
   // Smart poller'i BIR KEZ baslat — onay bekleyen bir talep onaylandiginda cagrilacak
   // callback, o talebin acilis anindaki TAM launch baglamini (pendingLaunch) kullanir.
   // isConfigured() false ise (SMART_API_URL vb. henuz girilmemis) poller yine de kurulur
@@ -2330,16 +2395,56 @@ function initAnsibleRunner(app) {
           if (ocoAction === "later") {
             return res.json({ ok: true, ocoDeferred: true, oco: ocoInfo });
           }
+          const pendingLaunch = { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName };
+
+          // ZAMANLAMA NEREDE TUTULUR?
+          //   * Varsayilan: AWX'te NATIVE bir schedule olusturulur (kullanici talebi,
+          //     2026-08-26). Is, kesinti saatinde AWX tarafindan tetiklenir; Portal'in
+          //     o anda ayakta olmasi GEREKMEZ ve zamanlama AWX arayuzunde de gorunur.
+          //   * ISTISNA: bu servis icin Smart onayi da gerekiyorsa AWX'e devretmek
+          //     ONAY KAPISINI TAMAMEN ATLARDI - AWX schedule'i hicbir onaya bakmadan
+          //     job'i baslatir. O durumda Portal'in kendi zamanlamasi kullanilir; poller
+          //     kesinti saatinde launchOrRequestApproval'i cagirir ve Smart bileti orada
+          //     acilir. Iki mekanizma da ayni tabloda, status ile ayrilir.
+          const smartAlsoRequired = !!overrides.smartApproval?.enabled;
+          if (!smartAlsoRequired) {
+            const schedName = `PORTAL_OCO_${ocoNumber}_${templateId}_${Date.now()}`;
+            let sched;
+            try {
+              sched = await createOcoAwxSchedule(server, templateId, detail, {
+                name: schedName, runAt: w.windowStart, extraVars, resolvedLaunchOptions,
+                requester: req.session?.user,
+              });
+            } catch (schedErr) {
+              const { status, message } = schedErr.status ? schedErr : friendlyAwxError(schedErr);
+              return res.status(status || 502).json({ ok: false, message: `AWX zamanlaması oluşturulamadı: ${message || schedErr.message}` });
+            }
+            const rec = await ocoStore.createAwxScheduled({
+              username, awxServerId: server.id, awxTemplateId: templateId,
+              ocoNumber, ocoSubject: ocoInfo.subject,
+              runAt: w.windowStart, windowEnd: w.windowEnd,
+              awxScheduleId: sched.scheduleId, pendingLaunch,
+            });
+            require("../audit/index.cjs").auditPortal(req, "selfservice_oco_awx_scheduled", {
+              detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id, awxScheduleId: sched.scheduleId, rrule: sched.rrule }),
+            });
+            return res.json({
+              ok: true, ocoScheduled: true, scheduleId: rec.id,
+              awxScheduleId: sched.scheduleId, awxScheduleName: sched.scheduleName,
+              oco: ocoInfo,
+            });
+          }
+
           const rec = await ocoStore.create({
             username, awxServerId: server.id, awxTemplateId: templateId,
             ocoNumber, ocoSubject: ocoInfo.subject,
             runAt: w.windowStart, windowEnd: w.windowEnd,
-            pendingLaunch: { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
+            pendingLaunch,
           });
           require("../audit/index.cjs").auditPortal(req, "selfservice_oco_scheduled", {
-            detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id }),
+            detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id, viaPortalPoller: true }),
           });
-          return res.json({ ok: true, ocoScheduled: true, scheduleId: rec.id, oco: ocoInfo });
+          return res.json({ ok: true, ocoScheduled: true, scheduleId: rec.id, viaSmart: true, oco: ocoInfo });
         }
 
         // phase === "inside": pencere acik, akis normal devam eder (Smart onayi varsa o devreye girer).
@@ -2530,6 +2635,36 @@ function initAnsibleRunner(app) {
       });
     } catch (err) {
       res.status(err.status || 502).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/ansible/ss/oco/scheduled/all — TUM kullanicilarin OCO tetiklemeleri
+  // (Admin > Smart Talepleri ekranindaki "OCO Zamanlamalari" sekmesi). Smart
+  // talepleriyle AYNI sayfalama/filtre sozlesmesi.
+  app.get("/api/ansible/ss/oco/scheduled/all", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { limit, offset, status, username, q } = req.query || {};
+      const r = await require("../oco/store.cjs").listAll({
+        limit: Math.min(Number(limit) || 100, 500),
+        offset: Number(offset) || 0,
+        status: String(status || "").trim(),
+        username: String(username || "").trim(),
+        q: String(q || "").trim(),
+      });
+      res.json({
+        ok: true,
+        total: r.total,
+        items: r.items.map((x) => ({
+          id: x.id, username: x.username, ocoNumber: x.ocoNumber, ocoSubject: x.ocoSubject,
+          runAt: x.runAt, windowEnd: x.windowEnd, status: x.status,
+          awxJobId: x.awxJobId, awxScheduleId: x.awxScheduleId, errorMessage: x.errorMessage,
+          awxServerId: x.awxServerId, awxTemplateId: x.awxTemplateId,
+          templateName: x.pendingLaunch?.templateName || "",
+          createdAt: x.createdAt,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
     }
   });
 

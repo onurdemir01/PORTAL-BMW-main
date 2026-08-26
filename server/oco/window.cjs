@@ -106,4 +106,13 @@ function extractPlannedInterruption(payload) {
   };
 }
 
-module.exports = { parseOcoDate, evaluateWindow, extractPlannedInterruption, fmt, EQUAL_DATE_WINDOW_MS };
+// AWX schedule'inin bekledigi iCalendar DTSTART damgasi: YYYYMMDDTHHMMSS.
+// YEREL saat bilesenleriyle uretilir ve rrule'da TZID ile birlikte kullanilir -
+// toISOString() KULLANILMAZ, o UTC'ye cevirir ve kesinti saati 3 saat kayardi.
+function toRRuleStamp(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`
+       + `T${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+module.exports = { parseOcoDate, evaluateWindow, extractPlannedInterruption, fmt, toRRuleStamp, EQUAL_DATE_WINDOW_MS };

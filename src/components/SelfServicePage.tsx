@@ -278,9 +278,17 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
       if (r.ocoDecisionRequired) { setOcoState({ phase: "decide", info: r.oco, message: r.message }); return; }
       if (r.ocoExpired) { setOcoState(null); setErr(r.message || "OCO kaydınızı kaçırdınız."); return; }
       if (r.ok && r.ocoScheduled) {
+        // İki tetikleyici olabilir; kullanıcıya HANGİSİ olduğunu söylüyoruz çünkü
+        // "Portal kapalıysa ne olur" sorusunun cevabı değişiyor.
         setOcoState({
           phase: "done", info: r.oco,
-          message: `İş, OCO'da belirtilen ${r.oco?.windowStartText} saatinde otomatik olarak tetiklenecek. Bu ekranı kapatabilirsiniz.`,
+          message: r.awxScheduleId
+            ? `İş AWX'te zamanlandı (schedule #${r.awxScheduleId}) ve OCO'da belirtilen `
+              + `${r.oco?.windowStartText} saatinde AWX tarafından tetiklenecek. `
+              + `Bu ekranı kapatabilirsiniz.`
+            : `İş ${r.oco?.windowStartText} saatine zamanlandı. Bu serviste Smart onayı da `
+              + `gerektiği için tetikleme Portal üzerinden yapılacak ve o saatte önce Smart `
+              + `talebi açılacak. Bu ekranı kapatabilirsiniz.`,
         });
         return;
       }

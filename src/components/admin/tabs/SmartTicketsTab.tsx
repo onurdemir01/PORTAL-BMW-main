@@ -9,6 +9,7 @@ import { ArrowPathIcon, MagnifyingGlassIcon, ChevronDownIcon, ArrowDownTrayIcon,
 import { ansibleApi, type AdminSmartTicket } from "@/api/ansibleApi";
 import { toast } from "@/hooks/useToast";
 import { Select } from "@/components/ui/Form";
+import OcoSchedulesPanel from "./OcoSchedulesPanel";
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING:   { label: "Onay Bekliyor",           className: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -48,6 +49,10 @@ function toCsv(rows: AdminSmartTicket[]): string {
 }
 
 export default function SmartTicketsTab() {
+  // 2026-08-26: bu sekme artik IKI listeyi barindiriyor. "OCO Zamanlamalari" ayri bir
+  // AdminPage sekmesi YAPILMADI - ikisi de "bir Self Service talebi neden hemen
+  // calismadi" sorusunun cevabi; yan yana durmalari aramayi kolaylastiriyor.
+  const [panel, setPanel] = useState<"smart" | "oco">("smart");
   const [rows, setRows] = useState<AdminSmartTicket[]>([]);
   const [summary, setSummary] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
@@ -137,8 +142,31 @@ export default function SmartTicketsTab() {
 
   const shown = `${total === 0 ? 0 : offset + 1}–${Math.min(offset + rows.length, total)} / ${total}`;
 
+  const PANELS: { id: "smart" | "oco"; label: string }[] = [
+    { id: "smart", label: "Smart Talepleri" },
+    { id: "oco", label: "OCO Zamanlamaları" },
+  ];
+
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        {PANELS.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setPanel(p.id)}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
+              panel === p.id ? "bg-white text-[#0066CC] shadow-[var(--shadow-sm)]" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {panel === "oco" && <OcoSchedulesPanel />}
+
+      {panel === "smart" && (
+      <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h3 className="text-sm font-semibold text-gray-800 mb-1">Smart Talepleri</h3>
@@ -388,6 +416,8 @@ export default function SmartTicketsTab() {
             </div>
           </div>
         </div>
+      )}
+      </div>
       )}
     </div>
   );

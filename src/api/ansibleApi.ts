@@ -259,6 +259,7 @@ export const ansibleApi = {
     externalTicketId?: string; message?: string; field?: string;
     ocoRequired?: boolean; ocoDecisionRequired?: boolean; ocoExpired?: boolean;
     ocoScheduled?: boolean; ocoDeferred?: boolean; scheduleId?: number; oco?: OcoWindowInfo;
+    awxScheduleId?: number; awxScheduleName?: string; viaSmart?: boolean;
   }> =>
     fetch(`${BASE}/launch-ss/${serverId}/${templateId}`, {
       method: "POST",
@@ -274,6 +275,15 @@ export const ansibleApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ocoNumber }),
     }).then(safeJson),
+
+  // TÜM kullanıcıların OCO tetiklemeleri (Admin). Smart talepleriyle aynı sayfalama
+  // sözleşmesi: limit/offset/status/username/q.
+  ocoScheduledAll: (opts: { limit?: number; offset?: number; status?: string; username?: string; q?: string } = {}):
+    Promise<{ ok: boolean; items?: AdminOcoSchedule[]; total?: number; message?: string }> => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(opts)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return fetch(`${BASE}/ss/oco/scheduled/all?${qs.toString()}`).then(safeJson);
+  },
 
   ocoScheduledMine: (): Promise<{ ok: boolean; items?: OcoScheduledItem[]; message?: string }> =>
     fetch(`${BASE}/ss/oco/scheduled/mine`).then(safeJson),
@@ -512,6 +522,27 @@ export interface OcoScheduledItem {
   awxJobId?: number | null;
   errorMessage?: string | null;
   templateName?: string;
+}
+
+// Admin > Smart Talepleri > "OCO Zamanlamaları" satırı.
+// status: AWX_SCHEDULED (AWX'in kendi schedule'ı tetikleyecek) | SCHEDULED (Portal
+// poller'ı tetikleyecek — yalnızca Smart onayı da gerekiyorsa) | LAUNCHED | FAILED |
+// CANCELLED | EXPIRED
+export interface AdminOcoSchedule {
+  id: number;
+  username: string;
+  ocoNumber: string;
+  ocoSubject?: string | null;
+  runAt: string;
+  windowEnd: string;
+  status: string;
+  awxJobId?: number | null;
+  awxScheduleId?: number | null;
+  errorMessage?: string | null;
+  awxServerId?: number | null;
+  awxTemplateId?: number | null;
+  templateName?: string;
+  createdAt: string;
 }
 
 export interface AnsibleSsItem {

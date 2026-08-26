@@ -24,6 +24,7 @@ function rowToRec(r) {
     status: r.status,
     pendingLaunch: JSON.parse(r.pending_launch_json),
     awxJobId: r.awx_job_id,
+    awxScheduleId: r.awx_schedule_id ?? null,
     errorMessage: r.error_message,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -40,6 +41,42 @@ async function create({ username, awxServerId, awxTemplateId, ocoNumber, ocoSubj
     [username, awxServerId, awxTemplateId, ocoNumber, ocoSubject || null, runAt, windowEnd, JSON.stringify(pendingLaunch)]
   );
   return rowToRec(rows[0]);
+}
+
+// AWX'in KENDI schedule'i olusturuldugunda kullanilir. status = 'AWX_SCHEDULED':
+// listScheduled() yalnizca 'SCHEDULED' dondurdugu icin Portal poller'i bu satirlara
+// DOKUNMAZ - isi AWX tetikler, Portal yalnizca kaydi tutar.
+async function createAwxScheduled({ username, awxServerId, awxTemplateId, ocoNumber, ocoSubject, runAt, windowEnd, awxScheduleId, pendingLaunch }) {
+  const { rows } = await db.query(
+    `INSERT INTO oco_scheduled_launches
+       (username, awx_server_id, awx_template_id, oco_number, oco_subject, run_at, window_end, status, awx_schedule_id, pending_launch_json)
+     OUTPUT INSERTED.*
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'AWX_SCHEDULED', $8, $9)`,
+    [username, awxServerId, awxTemplateId, ocoNumber, ocoSubject || null, runAt, windowEnd, awxScheduleId, JSON.stringify(pendingLaunch)]
+  );
+  return rowToRec(rows[0]);
+}
+
+// Admin ekrani icin: TUM kullanicilarin ileri tarihli/gecmis OCO tetiklemeleri.
+// Buyuyen bir tablo oldugu icin sayfalama ZORUNLU.
+async function listAll({ limit = 100, offset = 0, status = '', username = '', q = '' } = {}) {
+  const where = [];
+  const params = [];
+  if (status) { params.push(status); where.push(`status = $${params.length}`); }
+  if (username) { params.push(`%${username}%`); where.push(`username LIKE $${params.length}`); }
+  if (q) {
+    params.push(`%${q}%`);
+    where.push(`(oco_number LIKE $${params.length} OR oco_subject LIKE $${params.length} OR pending_launch_json LIKE $${params.length})`);
+  }
+  const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const { rows } = await db.query(
+    `SELECT * FROM oco_scheduled_launches ${w}
+      ORDER BY id DESC
+      OFFSET ${Number(offset) || 0} ROWS FETCH NEXT ${Number(limit) || 100} ROWS ONLY`,
+    params
+  );
+  const cnt = await db.query(`SELECT COUNT(*) AS n FROM oco_scheduled_launches ${w}`, params);
+  return { items: rows.map(rowToRec), total: Number(cnt.rows[0]?.n || 0) };
 }
 
 async function get(id) {
@@ -105,4 +142,4 @@ async function cancel(id, username) {
   return rows[0] ? rowToRec(rows[0]) : null;
 }
 
-module.exports = { create, get, listScheduled, listByUsername, markLaunched, markFailed, markExpired, cancel };
+module.exports = { create, createAwxScheduled, get, listScheduled, listAll, listByUsername, markLaunched, markFailed, markExpired, cancel };
