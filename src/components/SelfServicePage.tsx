@@ -25,11 +25,9 @@ import {
   CalendarDaysIcon,
   UserIcon,
   ChevronRightIcon,
-  ClipboardDocumentListIcon,
 } from "@heroicons/react/24/outline";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import IpCheckSection from "@/components/self_service/IpCheckSection";
-import OpsCatalogSection from "@/components/self_service/OpsCatalogSection";
 import OpenshiftCheckSection from "@/components/self_service/OpenshiftCheckSection";
 
 const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
@@ -51,7 +49,7 @@ const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   },
 ];
 
-type TopTab = "ansible" | "check" | "catalog";
+type TopTab = "ansible" | "check";
 
 // ── Survey Form Modal ─────────────────────────────────────────────────────────
 
@@ -1032,9 +1030,6 @@ export default function SelfServicePage() {
   const TOP_TABS: { id: TopTab; label: string; icon: React.ElementType }[] = [
     { id: "ansible", label: ansibleGroup?.label || "Ansible", icon: CommandLineIcon },
     { id: "check", label: "Check", icon: MagnifyingGlassIcon },
-    // "Operasyon Kataloğu": hangi iş, hangi ortamda, hangi onaylardan geçer.
-    // Self Service akışlarını anlattığı için Envanter altında değil BURADA duruyor.
-    { id: "catalog", label: "Operasyon Kataloğu", icon: ClipboardDocumentListIcon },
   ];
 
   if (loading) {
@@ -1051,7 +1046,7 @@ export default function SelfServicePage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="page-title">Self Service</h1>
-            <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-muted)" }}>Ansible otomasyonu, IP/OpenShift envanteri kontrolü ve operasyon kataloğu</p>
+            <p className="mt-1 text-sm font-medium" style={{ color: "var(--text-muted)" }}>Ansible otomasyonu, IP ve OpenShift envanteri kontrolü</p>
           </div>
           <button
             onClick={() => setShowHelp(true)}
@@ -1084,9 +1079,6 @@ export default function SelfServicePage() {
 
         {activeTop === "ansible" && (
           <AnsibleSection isAdmin={isAdmin} />
-        )}
-        {activeTop === "catalog" && (
-          <OpsCatalogSection isAdmin={isAdmin} />
         )}
         {activeTop === "check" && (
           <div className="space-y-4">

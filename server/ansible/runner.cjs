@@ -1705,12 +1705,10 @@ function initAnsibleRunner(app) {
   // zamanlanmis bir is 22:00'de Smart onayini ATLAYARAK calismamali.
   async function launchOrRequestApproval(server, templateId, plan) {
     const { detail, overrides, extraVars, specFields, resolvedLaunchOptions, username, templateName } = plan;
-    // Zamanlanmis (OCO) tetikleme de AYNI kapidan gecer - Smart onayi atlanmaz.
-    if (require("./smart-gate.cjs").isSmartRequired(overrides?.smartApproval, extraVars)) {
+    if (overrides?.smartApproval?.enabled) {
       const smartClient = require("../smart/client.cjs");
       const smartStore = require("../smart/store.cjs");
-      // Ortam bazli flow override'i varsa o kullanilir, yoksa varsayilan flowKey.
-      const flowKey = require("./smart-gate.cjs").resolveFlowKey(overrides.smartApproval, extraVars);
+      const flowKey = String(overrides.smartApproval.flowKey || "").trim();
       if (!flowKey) throw new Error("Bu servis için Smart Flow Key tanımlanmamış.");
       const metadata = buildSmartMetadata(String(overrides.smartApproval.metadataFields || "").trim(), {
         username, email: "", templateName, templateId, extraVars,
@@ -2355,14 +2353,10 @@ function initAnsibleRunner(app) {
       // Smart'ta bir talep acilir, gerekli her sey (extraVars, launch secenekleri) DB'ye
       // yazilir ve onay geldiginde server/smart/poller.cjs bu ayni launch mantigini
       // (performSsLaunch) cagirir. Kullanici "onay bekleniyor" ekranini gorur.
-      // ORTAM DUYARLI: Smart onayi artik yalnizca smartApproval.envs listesindeki
-      // ortamlarda istenir (liste bossa ESKI davranis - her ortamda). Ortam
-      // belirlenemezse GUVENLI tarafa dusulur, bkz. server/ansible/smart-gate.cjs.
-      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, extraVars)) {
+      if (overrides.smartApproval?.enabled) {
         const smartClient = require("../smart/client.cjs");
         const smartStore = require("../smart/store.cjs");
-        // Ortam bazli flow override'i varsa o kullanilir, yoksa varsayilan flowKey.
-      const flowKey = require("./smart-gate.cjs").resolveFlowKey(overrides.smartApproval, extraVars);
+        const flowKey = String(overrides.smartApproval.flowKey || "").trim();
         if (!flowKey) {
           return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
         }
@@ -2466,14 +2460,10 @@ function initAnsibleRunner(app) {
         detail: JSON.stringify({ awxServerId: server.id, templateId, scenarioName, extraVars }),
       });
 
-      // ORTAM DUYARLI: Smart onayi artik yalnizca smartApproval.envs listesindeki
-      // ortamlarda istenir (liste bossa ESKI davranis - her ortamda). Ortam
-      // belirlenemezse GUVENLI tarafa dusulur, bkz. server/ansible/smart-gate.cjs.
-      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, extraVars)) {
+      if (overrides.smartApproval?.enabled) {
         const smartClient = require("../smart/client.cjs");
         const smartStore = require("../smart/store.cjs");
-        // Ortam bazli flow override'i varsa o kullanilir, yoksa varsayilan flowKey.
-      const flowKey = require("./smart-gate.cjs").resolveFlowKey(overrides.smartApproval, extraVars);
+        const flowKey = String(overrides.smartApproval.flowKey || "").trim();
         if (!flowKey) {
           return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
         }
@@ -2574,48 +2564,6 @@ function initAnsibleRunner(app) {
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
-    }
-  });
-
-  // ── OPERASYON KATALOGU ───────────────────────────────────────────────────────────
-  // "Hangi is, hangi ortamda, hangi onaylardan gecer?" raporu. Kapi kararlari CALISMA
-  // ZAMANINDAKI ILE AYNI fonksiyonlardan (smart-gate.cjs) uretilir - rapor ile gercek
-  // davranisin ayrisma ihtimali boylece ortadan kalkar.
-  app.get("/api/ansible/ss/ops-catalog", requireAuth, async (req, res) => {
-    try {
-      const rows = await require("./ops-catalog.cjs").buildCatalog({ readSsItems, readCustom, getServerById });
-      res.json({ ok: true, rows });
-    } catch (err) {
-      res.status(500).json({ ok: false, message: err.message });
-    }
-  });
-
-  // Ayni veri CSV olarak. Excel TR yerelinde noktali virgul bekler; dosya BOM ile
-  // baslar, aksi halde Turkce karakterler bozulur (bkz. ops-catalog.cjs toCsv).
-  app.get("/api/ansible/ss/ops-catalog.csv", requireAuth, async (req, res) => {
-    try {
-      const cat = require("./ops-catalog.cjs");
-      const rows = await cat.buildCatalog({ readSsItems, readCustom, getServerById });
-      const stamp = new Date().toISOString().slice(0, 10);
-      res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="operasyon-katalogu-${stamp}.csv"`);
-      res.send(cat.toCsv(rows));
-    } catch (err) {
-      res.status(500).json({ ok: false, message: err.message });
-    }
-  });
-
-  // Onay mercii eslemesi — YALNIZCA Admin. Katalogdaki "kim onaylayacak" kolonu
-  // buradan gelir; Portal bu bilgiyi Smart'tan OKUYAMAZ (bkz. ops-catalog.cjs basi).
-  app.post("/api/ansible/ss/ops-catalog/approver", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      await require("./ops-catalog.cjs").upsertApprover(req.body || {});
-      require("../audit/index.cjs").auditPortal(req, "ops_catalog_approver_set", {
-        detail: JSON.stringify({ flowKey: req.body?.flowKey, env: req.body?.env, approver: req.body?.approver }),
-      });
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
     }
   });
 
