@@ -42,7 +42,6 @@ interface QuickLink {
 const OTHER_TOOLS: QuickLink[] = [
   { label: "Nöbet çizelgesi", description: "Tüm nöbet takvimini görüntüle",   to: "/duty-roster",     icon: PhoneIcon,                 pageId: "Nöbet" },
   { label: "AI Analist",      description: "Analiz sohbetini aç",             to: "/ai-analyst",      icon: SparklesIcon,              pageId: "AI Analist" },
-  { label: "Önemli linkler",  description: "Kurumsal bağlantı kataloğu",      to: "/important-links", icon: LinkIcon,                  pageId: "Linkler" },
   { label: "Ansible",         description: "Template yönetimi",               to: "/ansible",         icon: CommandLineIcon,           pageId: "Ansible" },
   { label: "Admin",           description: "Sistem yönetimi",                 to: "/admin",           icon: ShieldCheckIcon,           pageId: "Admin" },
 ];

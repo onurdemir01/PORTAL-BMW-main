@@ -16,13 +16,6 @@ export default function ForbiddenPage() {
         >
           Dashboard’a Dön
         </Link>
-
-        <Link
-          to="/important-links"
-          className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200"
-        >
-          Önemli Linkler
-        </Link>
       </div>
     </div>
   );

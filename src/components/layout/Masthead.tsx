@@ -7,7 +7,6 @@ import { NavLink } from "react-router-dom";
 import {
   Bars3Icon,
   MagnifyingGlassIcon,
-  QuestionMarkCircleIcon,
   SunIcon,
   MoonIcon,
   ArrowRightOnRectangleIcon,
@@ -74,10 +73,6 @@ export default function Masthead({ onToggleNav }: Props) {
         >
           {theme === "dark" ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
         </button>
-
-        <NavLink to="/important-links" className="pf-masthead-btn" aria-label="Yardim ve baglantilar" title="Yardim ve baglantilar">
-          <QuestionMarkCircleIcon className="h-5 w-5" />
-        </NavLink>
 
         {/* Kullanici menusu — PF masthead dropdown */}
         <div className="relative" ref={menuRef}>

@@ -9,7 +9,6 @@ import DenetimPage from "@/components/DenetimPage";
 import ForbiddenPage from "@/components/ForbiddenPage";
 
 const EnvanterPage = React.lazy(() => import("@/components/EnvanterPage"));
-const ImportantLinksPage = React.lazy(() => import("@/components/ImportantLinksPage"));
 const DutyRosterPage = React.lazy(() => import("@/components/DutyRosterPage"));
 const DynatracePage = React.lazy(() => import("@/components/dynatrace/DynatracePage"));
 const SelfServicePage = React.lazy(() => import("@/components/SelfServicePage"));
@@ -57,9 +56,6 @@ export default function App() {
           </Route>
           <Route element={<PageVisibilityRoute pageId="Denetim" />}>
             <Route path="/denetim" element={<DenetimPage />} />
-          </Route>
-          <Route element={<PageVisibilityRoute pageId="Linkler" />}>
-            <Route path="/important-links" element={<ImportantLinksPage />} />
           </Route>
           <Route element={<PageVisibilityRoute pageId="Nöbet" />}>
             <Route path="/duty-roster" element={<DutyRosterPage />} />

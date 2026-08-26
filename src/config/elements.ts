@@ -40,10 +40,13 @@ export const PAGES: PageElement[] = [
   { id: "Performance",  label: "Performance",  route: "/performance"     },
   { id: "AI Analist",   label: "AI Analist",   route: "/ai-analyst"      },
   { id: "Nöbet",        label: "Nöbet",        route: "/duty-roster"     },
-  { id: "Linkler",      label: "Linkler",      route: "/important-links" },
   { id: "Admin",        label: "Admin",        route: "/admin"           },
 ];
 
+// 2026-08-26: "Yardımcı Araçlar" grubu ve tek öğesi "Linkler" GEÇİCİ olarak kaldırıldı
+// (kullanıcı talebi). ImportantLinksPage.tsx, server/links/* ve portal_links tablosu
+// YERİNDE bırakıldı — geri açmak bu iki satırı ve App.tsx route'unu geri koymaktan ibaret.
+// DB tarafı: mssql-setup.cjs içindeki removeKaynaklarNavGroup() temizliği de geri alınmalı.
 // ── Navigasyon grupları (Sidebar render'ı) ────────────────────────────────────
 // "Gözlemlenebilirlik" grubu kaldırıldı (actions.md #19) — LogX ve Performance
 // artık kendi tek-öğeli üst-seviye gruplarında, tek bir belirsiz şemsiye altında
@@ -63,7 +66,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
   // (DB'deki nav_group element_key'i ve ona bagli kayitlar korunsun diye).
   { id: "otomasyon",   label: "Self Servis",      itemIds: ["Self Service", "Ansible", "LogX", "OpsX", "FileX", "Telnet"] },
   { id: "ai",          label: "AI Analist",       itemIds: ["AI Analist"] },
-  { id: "kaynaklar",   label: "Yardımcı Araçlar", itemIds: ["Linkler"] },
   { id: "admin",       label: "Admin",            itemIds: ["Admin"] },
 ];
 

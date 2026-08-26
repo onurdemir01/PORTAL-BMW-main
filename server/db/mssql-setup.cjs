@@ -1029,7 +1029,6 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'Performance', roles: 'Admin,User' },
   { page_name: 'AI Analist', roles: 'Admin,User' },
   { page_name: 'Nöbet', roles: 'Admin,User' },
-  { page_name: 'Linkler', roles: 'Admin,User' },
   { page_name: 'Admin', roles: 'Admin' },
 ];
 
@@ -1068,7 +1067,6 @@ const ELEMENT_SEED = [
   { element_key: 'navgroup:operasyon', element_type: 'nav_group', label: 'Nöbetçiler',          sort_order: 5 },
   { element_key: 'navgroup:otomasyon', element_type: 'nav_group', label: 'Self Servis',         sort_order: 6 },
   { element_key: 'navgroup:ai',        element_type: 'nav_group', label: 'AI Analist',          sort_order: 7 },
-  { element_key: 'navgroup:kaynaklar', element_type: 'nav_group', label: 'Yardımcı Araçlar',    sort_order: 8 },
   { element_key: 'navgroup:admin',     element_type: 'nav_group', label: 'Admin',               sort_order: 9 },
   // Sayfalar (mevcut PAGE_VISIBILITY_SEED ile ayni roller)
   { element_key: 'Dashboard',    element_type: 'page', parent_key: 'navgroup:genel',       label: 'Dashboard',    route: '/dashboard',       sort_order: 1,  roles: ['Admin', 'User'] },
@@ -1083,7 +1081,6 @@ const ELEMENT_SEED = [
   { element_key: 'Performance',  element_type: 'page', parent_key: 'navgroup:performance', label: 'Performance',  route: '/performance',     sort_order: 7,  roles: ['Admin', 'User'] },
   { element_key: 'AI Analist',   element_type: 'page', parent_key: 'navgroup:ai',          label: 'AI Analist',   route: '/ai-analyst',      sort_order: 8,  roles: ['Admin', 'User'] },
   { element_key: 'Nöbet',        element_type: 'page', parent_key: 'navgroup:operasyon',   label: 'Nöbet',        route: '/duty-roster',     sort_order: 9,  roles: ['Admin', 'User'] },
-  { element_key: 'Linkler',      element_type: 'page', parent_key: 'navgroup:kaynaklar',   label: 'Linkler',      route: '/important-links', sort_order: 10, roles: ['Admin', 'User'] },
   { element_key: 'Admin',        element_type: 'page', parent_key: 'navgroup:admin',       label: 'Admin',        route: '/admin',           sort_order: 11, roles: ['Admin'] },
   // Performance alt-tab'lari (bugun default-open — koru)
   { element_key: 'Perf:problems', element_type: 'tab', parent_key: 'Performance', label: 'Problems',  sort_order: 1, default_visible: 1 },
@@ -1454,6 +1451,27 @@ async function migrateSelfServiceSectionsToGroups(pool) {
 // gormezden gelir (element_key zaten varsa atlar), bu yuzden mevcut kurulumlarda sayfa
 // elementlerinin parent_key'ini navgroup:*'a baglamak icin AYRI bir migration adimi gerekir.
 // Yalniz parent_key IS NULL olan (henuz baglanmamis) satirlari etkiler — idempotent.
+// 2026-08-26: "Yardimci Araclar" nav grubu ve tek ogesi "Linkler" GECICI olarak
+// kaldirildi (kullanici talebi). Seed'den cikarmak tek basina YETMEZ: ELEMENT_SEED
+// yalnizca EKSIK kaydi ekler, mevcut kurulumlardaki satirlar DB'de kalir ve Sidebar
+// nav gruplarini DB'den cektigi icin grup ekranda gorunmeye devam ederdi.
+//
+// GERI ALMAK ICIN: bu fonksiyonun cagrisini kaldirmak ve seed satirlarini geri koymak
+// yeterli - ELEMENT_SEED bir sonraki aciliste kayitlari yeniden olusturur.
+// portal_links tablosu ve server/links/* API'si HIC ELLENMEDI, link verisi duruyor.
+async function removeKaynaklarNavGroup(pool) {
+  try {
+    for (const key of ['Linkler', 'navgroup:kaynaklar']) {
+      await pool.request().input('k', key)
+        .query(`DELETE FROM portal_element_visibility WHERE element_key = @k`);
+      await pool.request().input('k', key)
+        .query(`DELETE FROM portal_elements WHERE element_key = @k`);
+    }
+  } catch (err) {
+    console.warn('[DB] "Yardimci Araclar" nav grubu temizlenemedi:', err.message);
+  }
+}
+
 async function migratePageParentKeysToNavGroups(pool) {
   const pageToGroup = {
     'Dashboard': 'navgroup:genel', 'Envanter': 'navgroup:genel', 'Denetim': 'navgroup:envanter',
@@ -1462,7 +1480,6 @@ async function migratePageParentKeysToNavGroups(pool) {
     'Self Service': 'navgroup:otomasyon', 'Ansible': 'navgroup:otomasyon',
     'Performance': 'navgroup:performance',
     'AI Analist': 'navgroup:ai',
-    'Linkler': 'navgroup:kaynaklar',
     'Admin': 'navgroup:admin',
   };
   try {
@@ -1507,6 +1524,7 @@ async function setupTables() {
   await seedPageVisibility(pool);
   await seedPortalElements(pool);
   await migratePageParentKeysToNavGroups(pool);
+  await removeKaynaklarNavGroup(pool);
   await seedMaskRules(pool);
   await seedAwxServersFromEnv(pool);
   await seedSplunkProducts(pool);
