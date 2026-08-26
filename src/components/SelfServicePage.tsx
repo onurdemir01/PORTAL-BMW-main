@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { selfServiceApi, type SelfServiceGroup } from "@/api/selfServiceApi";
-import { ansibleApi } from "@/api/ansibleApi";
+import { ansibleApi, type OcoWindowInfo } from "@/api/ansibleApi";
 import { nobetciApi, type NobetciResult } from "@/api/nobetciApi";
 import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions } from "@/api/ansibleApi";
 import FieldOverridesModal from "@/components/self_service/FieldOverridesModal";
@@ -212,7 +212,35 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTicket?.id, pendingTicket?.status]);
 
-  async function launch() {
+  // ── OCO Kontrolu akisi ────────────────────────────────────────────────────────
+  // Sunucu bu servis icin OCO Kontrolu acikken ve talep PRODUCTION iken (extra_vars'ta
+  // env|ortam = prod|production) sirasiyla ocoRequired ve ocoDecisionRequired doner;
+  // burada o iki adim ekrana cikarilir. KARARI SUNUCU VERIR - buradaki alanlar yalnizca
+  // ayni cagriyi tamamlamak icin; launch-ss her seferinde OCO'yu yeniden sorgular.
+  //   'ask'    -> OCO numarasi isteniyor
+  //   'decide' -> pencere bilgisi geldi, kullanici secim yapacak
+  //   'done'   -> zamanlandi ya da "sonra gelecegim" denildi; is baslatilmadi
+  const [ocoState, setOcoState] = useState<{ phase: "ask" | "decide" | "done"; info?: OcoWindowInfo; message?: string } | null>(null);
+  const [ocoNumber, setOcoNumber] = useState("");
+  const [ocoBusy, setOcoBusy] = useState(false);
+
+  async function ocoLookup() {
+    const n = ocoNumber.trim();
+    if (!n) { setErr("OCO numarası girin."); return; }
+    setOcoBusy(true);
+    setErr("");
+    try {
+      const r = await ansibleApi.ocoValidate(n);
+      if (!r.ok || !r.oco) { setErr(r.message || "OCO sorgulanamadı."); return; }
+      setOcoState({ phase: "decide", info: r.oco, message: r.message });
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcoBusy(false);
+    }
+  }
+
+  async function launch(ocoAction?: "schedule" | "later") {
     setSubmitAttempted(true); // tüm alan hatalarını göster
     if (hasAnyFieldError) {
       setErr(missingRequiredLabels.length > 0
@@ -237,7 +265,27 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
         skipTags: launchOptions?.skipTags.enabled ? skipTags : undefined,
         verbosity: launchOptions?.verbosity.enabled ? Number(verbosity) : undefined,
         jobType: launchOptions?.jobType.enabled ? jobType : undefined,
-      });
+      }, { ocoNumber: ocoNumber.trim() || undefined, ocoAction });
+
+      // OCO dallari EN BASTA: bunlarin hicbirinde is baslatilmis DEGILDIR.
+      if (r.ocoRequired) { setOcoState({ phase: "ask", message: r.message }); return; }
+      if (r.ocoDecisionRequired) { setOcoState({ phase: "decide", info: r.oco, message: r.message }); return; }
+      if (r.ocoExpired) { setOcoState(null); setErr(r.message || "OCO kaydınızı kaçırdınız."); return; }
+      if (r.ok && r.ocoScheduled) {
+        setOcoState({
+          phase: "done", info: r.oco,
+          message: `İş, OCO'da belirtilen ${r.oco?.windowStartText} saatinde otomatik olarak tetiklenecek. Bu ekranı kapatabilirsiniz.`,
+        });
+        return;
+      }
+      if (r.ok && r.ocoDeferred) {
+        setOcoState({
+          phase: "done", info: r.oco,
+          message: `İş başlatılmadı. ${r.oco?.windowStartText} — ${r.oco?.windowEndText} aralığında tekrar gelip çalıştırabilirsiniz.`,
+        });
+        return;
+      }
+
       if (r.ok && r.pendingApproval && r.ticketId != null) {
         setPendingTicket({ id: r.ticketId, status: "PENDING", externalTicketId: r.externalTicketId });
       } else if (r.ok && r.jobId != null) {
@@ -293,7 +341,118 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
             </div>
           )}
 
-          {!loading && !jobId && !pendingTicket && (
+          {/* OCO Kontrolu paneli — acikken form alanlari GIZLENIR: kullanicinin bu
+              noktada verecegi tek karar OCO ile ilgili, alanlari tekrar duzenlemesi
+              kafa karistirici olurdu (degerler state'te duruyor, geri donunce kaybolmaz). */}
+          {!loading && !jobId && !pendingTicket && ocoState && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-semibold text-amber-900">Production talebi — OCO kontrolü</p>
+                <p className="text-xs text-amber-800 mt-1">
+                  {ocoState.message || "Bu iş PRODUCTION ortamına yöneliktir; devam etmek için OCO kaydı gerekir."}
+                </p>
+              </div>
+
+              {ocoState.phase === "ask" && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-[var(--text-secondary)]">OCO Numarası</label>
+                  <div className="flex items-center gap-2">
+                    <TextInput
+                      className="font-mono flex-1"
+                      value={ocoNumber}
+                      placeholder="ör. 22502813"
+                      onChange={(e) => setOcoNumber(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={ocoLookup}
+                      disabled={ocoBusy || !ocoNumber.trim()}
+                      className="btn-primary px-4 py-2 text-sm whitespace-nowrap"
+                    >
+                      {ocoBusy ? "Sorgulanıyor…" : "Sorgula"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {ocoState.phase === "decide" && ocoState.info && (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-[var(--border)] p-3 space-y-1 text-xs">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">OCO</span><span className="font-mono">{ocoState.info.ocoNumber}</span></div>
+                    {ocoState.info.subject && (
+                      <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">Konu</span><span className="text-right">{ocoState.info.subject}</span></div>
+                    )}
+                    <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">Kesinti başlangıcı</span><span className="font-mono">{ocoState.info.startText}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">Kesinti bitişi</span><span className="font-mono">{ocoState.info.endText}</span></div>
+                    <div className="flex justify-between gap-3 pt-1 border-t border-[var(--border)]">
+                      <span className="text-[var(--text-muted)]">Tetiklenebilir aralık</span>
+                      <span className="font-mono">{ocoState.info.windowStartText} — {ocoState.info.windowEndText}</span>
+                    </div>
+                    {ocoState.info.equal && (
+                      <p className="text-[11px] text-[var(--text-muted)] pt-1">
+                        OCO'da tek bir an verilmiş; bu nedenle pencere 2 saat olarak uygulandı.
+                      </p>
+                    )}
+                  </div>
+
+                  {ocoState.info.phase === "expired" && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      OCO kaydınızı kaçırdınız. Lütfen yeni bir OCO veya Problem kaydı açarak tekrar işlem deneyiniz.
+                    </div>
+                  )}
+
+                  {ocoState.info.phase === "inside" && (
+                    <button
+                      type="button"
+                      onClick={() => launch()}
+                      disabled={launching}
+                      className="btn-primary w-full px-4 py-2.5 text-sm"
+                    >
+                      Kesinti penceresi açık — işi şimdi başlat
+                    </button>
+                  )}
+
+                  {ocoState.info.phase === "before" && (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => launch("schedule")}
+                        disabled={launching}
+                        className="btn-primary w-full px-4 py-2.5 text-sm text-left"
+                      >
+                        İşlemi OCO'da belirtilen {ocoState.info.windowStartText} saatinde çalışacak şekilde
+                        scheduled olarak tetikle
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => launch("later")}
+                        disabled={launching}
+                        className="w-full px-4 py-2.5 text-sm text-left rounded-xl border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] transition"
+                      >
+                        İşlemi {ocoState.info.windowStartText} saatinde tekrar gelip kendim çalıştıracağım
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => { setOcoState({ phase: "ask" }); }}
+                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition"
+                  >
+                    ← Başka bir OCO numarası gir
+                  </button>
+                </div>
+              )}
+
+              {ocoState.phase === "done" && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                  {ocoState.message}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loading && !jobId && !pendingTicket && !ocoState && (
             <>
               {visibleFields.length === 0 ? (
                 <p className="text-sm text-[var(--text-muted)] text-center py-4">Bu template için ek parametre gerekmez.</p>
@@ -452,11 +611,11 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
 
           <div className="px-5 py-4 border-t border-[var(--border)] flex items-center justify-between gap-3 flex-shrink-0">
             <button onClick={onClose} className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition">
-              {jobId || pendingTicket ? "Kapat" : "İptal"}
+              {jobId || pendingTicket || ocoState?.phase === "done" ? "Kapat" : "İptal"}
             </button>
-            {!jobId && !pendingTicket && (
+            {!jobId && !pendingTicket && !ocoState && (
               <button
-                onClick={launch}
+                onClick={() => launch()}
                 disabled={launching || loading || hasAnyFieldError}
                 title={
                   missingRequiredLabels.length > 0

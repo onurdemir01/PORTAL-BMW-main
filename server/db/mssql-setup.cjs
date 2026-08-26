@@ -754,6 +754,30 @@ const TABLES = [
       )`,
   },
   {
+    // OCO (ChangeManagement) kesinti penceresi icin ZAMANLANMIS Self Service
+    // tetiklemeleri. smart_tickets'tan AYRI tutulur: orada beklenen sey bir INSAN
+    // onayi (suresiz olabilir), burada bir SAAT (penceresi kapaninca gecersiz olur).
+    name: 'oco_scheduled_launches',
+    sql: `
+      CREATE TABLE oco_scheduled_launches (
+        id                  INT IDENTITY(1,1) PRIMARY KEY,
+        username            NVARCHAR(200) NOT NULL,
+        awx_server_id       INT NOT NULL,
+        awx_template_id     INT NOT NULL,
+        oco_number          NVARCHAR(40) NOT NULL,
+        oco_subject         NVARCHAR(500) NULL,
+        run_at              DATETIME2 NOT NULL,
+        window_end          DATETIME2 NOT NULL,
+        status              NVARCHAR(20) NOT NULL DEFAULT 'SCHEDULED',
+        pending_launch_json NVARCHAR(MAX) NOT NULL,
+        awx_job_id          INT NULL,
+        error_message       NVARCHAR(MAX) NULL,
+        created_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        resolved_at         DATETIME2 NULL
+      )`,
+  },
+  {
     // Eskiden server/data/inventory-saved-queries.json — kimlik anahtari 'name'
     // (bkz. server/inventory/index.cjs readSavedQueries/writeSavedQueries).
     name: 'inventory_saved_queries',

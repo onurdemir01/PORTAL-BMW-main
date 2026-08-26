@@ -249,13 +249,37 @@ export const ansibleApi = {
     templateId: number,
     extraVars: Record<string, string>,
     templateName: string,
-    options: { limit?: string; forks?: number; jobTags?: string; skipTags?: string; verbosity?: number; jobType?: string } = {}
-  ): Promise<{ ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number; externalTicketId?: string; message?: string; field?: string }> =>
+    options: { limit?: string; forks?: number; jobTags?: string; skipTags?: string; verbosity?: number; jobType?: string } = {},
+    // OCO Kontrolu acik bir PRODUCTION talebinde sunucu once ocoRequired, sonra
+    // ocoDecisionRequired doner; istemci ayni cagriyi bu iki alani doldurarak
+    // TEKRAR yapar (bkz. server/ansible/runner.cjs "OCO KONTROLU" blogu).
+    oco: { ocoNumber?: string; ocoAction?: "schedule" | "later" } = {}
+  ): Promise<{
+    ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number;
+    externalTicketId?: string; message?: string; field?: string;
+    ocoRequired?: boolean; ocoDecisionRequired?: boolean; ocoExpired?: boolean;
+    ocoScheduled?: boolean; ocoDeferred?: boolean; scheduleId?: number; oco?: OcoWindowInfo;
+  }> =>
     fetch(`${BASE}/launch-ss/${serverId}/${templateId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ extraVars, templateName, ...options }),
+      body: JSON.stringify({ extraVars, templateName, ...options, ...oco }),
     }).then(safeJson),
+
+  // OCO numarasini SORGULAR, hicbir sey tetiklemez — arayuz kullaniciya secenekleri
+  // sunmadan once kesinti penceresini gostermek icin cagirir.
+  ocoValidate: (ocoNumber: string): Promise<{ ok: boolean; oco?: OcoWindowInfo; message?: string }> =>
+    fetch(`${BASE}/ss/oco/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ocoNumber }),
+    }).then(safeJson),
+
+  ocoScheduledMine: (): Promise<{ ok: boolean; items?: OcoScheduledItem[]; message?: string }> =>
+    fetch(`${BASE}/ss/oco/scheduled/mine`).then(safeJson),
+
+  ocoScheduledCancel: (id: number): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/ss/oco/scheduled/${id}/cancel`, { method: "POST" }).then(safeJson),
 
   ssJobStatus: (serverId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; resultTraceback?: string; jobExplanation?: string; finished?: string; failed?: boolean }> =>
     fetch(`${BASE}/ss/job-status/${serverId}/${jobId}`).then(safeJson),
@@ -454,6 +478,40 @@ export interface FieldCustomization {
   // olabiliyor). Bos ise sistem geneli varsayilan (Admin > Sistem > Smart, SMART_RFF_TOKEN)
   // kullanilir - davranis GERIYE DONUK degismez.
   smartApproval?: { enabled: boolean; flowKey?: string; metadataFields?: string; integrationKey?: string };
+  // Etkinse ve talep PRODUCTION ise (extra_vars'ta env|ortam = prod|production) iş
+  // hemen tetiklenmez: kullanıcıdan OCO numarası istenir, OCO'nun planlanan kesinti
+  // penceresi sorgulanır ve pencereye göre karar verilir (bkz. server/oco/*).
+  // Ayar TEK bir anahtardan ibarettir — production tespiti ve 2 saatlik pencere kuralı
+  // KOD İÇİNDE sabittir, yönetici ekranından gevşetilemez.
+  ocoCheck?: { enabled: boolean };
+}
+
+// OCO kesinti penceresi ozeti (server/oco/window.cjs evaluateWindow ciktisi).
+// phase: 'before' -> pencere baslamadi | 'inside' -> acik | 'expired' -> kacirildi
+export interface OcoWindowInfo {
+  ocoNumber: string;
+  subject?: string;
+  environmentText?: string;
+  startText: string;
+  endText: string;
+  windowStartText: string;
+  windowEndText: string;
+  equal: boolean;
+  phase: "before" | "inside" | "expired";
+  canRunNow?: boolean;
+  canSchedule?: boolean;
+}
+
+export interface OcoScheduledItem {
+  id: number;
+  ocoNumber: string;
+  ocoSubject?: string;
+  runAt: string;
+  windowEnd: string;
+  status: "SCHEDULED" | "LAUNCHED" | "FAILED" | "CANCELLED" | "EXPIRED";
+  awxJobId?: number | null;
+  errorMessage?: string | null;
+  templateName?: string;
 }
 
 export interface AnsibleSsItem {

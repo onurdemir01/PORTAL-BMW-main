@@ -1699,6 +1699,44 @@ function initAnsibleRunner(app) {
     console.warn("[Smart] poller başlatılamadı:", e.message);
   }
 
+  // Bir launch planini ya DOGRUDAN calistirir ya da (Smart onayi acikken) once Smart
+  // talebi acar. launch-ss icindeki mevcut satir-ici bloklarla AYNI mantik; ayri bir
+  // fonksiyon olmasinin sebebi OCO poller'inin da AYNI kapidan gecmesi gerekmesi:
+  // zamanlanmis bir is 22:00'de Smart onayini ATLAYARAK calismamali.
+  async function launchOrRequestApproval(server, templateId, plan) {
+    const { detail, overrides, extraVars, specFields, resolvedLaunchOptions, username, templateName } = plan;
+    if (overrides?.smartApproval?.enabled) {
+      const smartClient = require("../smart/client.cjs");
+      const smartStore = require("../smart/store.cjs");
+      const flowKey = String(overrides.smartApproval.flowKey || "").trim();
+      if (!flowKey) throw new Error("Bu servis için Smart Flow Key tanımlanmamış.");
+      const metadata = buildSmartMetadata(String(overrides.smartApproval.metadataFields || "").trim(), {
+        username, email: "", templateName, templateId, extraVars,
+      });
+      const integrationKey = String(overrides.smartApproval.integrationKey || "").trim();
+      const created = await smartClient.createTicket({ flowKey, username, metadata, integrationKey: integrationKey || undefined });
+      const ticket = await smartStore.createTicket({
+        externalTicketId: created.ticketId, username,
+        awxServerId: server.id, awxTemplateId: templateId, flowKey,
+        pendingLaunch: { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
+      });
+      return { pendingApproval: true, ticketId: ticket.id, externalTicketId: created.ticketId };
+    }
+    return performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req: null });
+  }
+
+  // OCO poller'i BIR KEZ baslat — kesinti saati geldiginde zamanlanmis Self Service
+  // isini tetikler. Kayit yoksa her tick sessizce hicbir sey yapmaz.
+  try {
+    require("../oco/poller.cjs").startPoller(async (rec) => {
+      const server = getServerById(rec.awxServerId);
+      if (!server) throw new Error(`AWX sunucusu bulunamadı: ${rec.awxServerId}`);
+      return launchOrRequestApproval(server, rec.awxTemplateId, rec.pendingLaunch);
+    });
+  } catch (e) {
+    console.warn("[OCO] poller başlatılamadı:", e.message);
+  }
+
   // Uzun-suredir-calisan-job izleyicisini BIR KEZ baslat (kullanici istegi: 30 dakikadan
   // uzun calisan job'lar icin Teams bildirimi). TEAMS_LONGJOB_WEBHOOK_URL bos oldugu
   // surece izleyici sessizce hicbir sey yapmaz (bkz. long-job-watcher.cjs basi).
@@ -2230,6 +2268,86 @@ function initAnsibleRunner(app) {
         server, templateId, { submittedExtraVars, templateName, limit, forks, jobTags, skipTags, verbosity, jobType, req }
       );
 
+      // ── OCO KONTROLU ──────────────────────────────────────────────────────────
+      // Admin bu servis icin "OCO Kontrolu"nu actiysa VE talep PRODUCTION ise
+      // (extra_vars'ta env|ortam = prod|production — bkz. server/oco/prod-detect.cjs),
+      // is once OCO kaydinin planlanan kesinti penceresine karsi dogrulanir.
+      //
+      // Smart onayindan ONCE calisir: penceresi gecmis bir OCO icin Smart'ta bosuna
+      // talep acmak, hem gurultu hem de kullaniciyi bekletip sonra reddetmek olurdu.
+      //
+      // ISTEMCI ILE EL SIKISMA (3 adim, hepsi ayni endpoint):
+      //   1) ocoNumber yoksa      -> 400 { ocoRequired: true }
+      //   2) pencere HENUZ baslamadiysa ve ocoAction yoksa
+      //                           -> 400 { ocoDecisionRequired: true, oco: {...} }
+      //   3) ocoAction: 'schedule' -> kayit olusturulur, poller kesinti saatinde tetikler
+      //      ocoAction: 'later'    -> hicbir sey yapilmaz, kullanici o saatte geri gelir
+      //   Pencere ACIKSA hicbir soru sorulmaz, akis normal devam eder.
+      if (overrides.ocoCheck?.enabled && require("../oco/prod-detect.cjs").isProductionRequest(extraVars)) {
+        const ocoClient = require("../oco/client.cjs");
+        const ocoWindow = require("../oco/window.cjs");
+        const ocoStore = require("../oco/store.cjs");
+
+        const ocoNumber = String(req.body?.ocoNumber || "").trim();
+        if (!ocoNumber) {
+          return res.status(400).json({ ok: false, ocoRequired: true, message: "Bu PRODUCTION talebi için OCO numarası gerekli." });
+        }
+
+        let order;
+        try {
+          order = await ocoClient.getChangeOrder(ocoNumber);
+        } catch (ocoErr) {
+          return res.status(ocoErr.status || 502).json({ ok: false, ocoRequired: true, message: ocoErr.message });
+        }
+
+        const pi = ocoWindow.extractPlannedInterruption(order.payload);
+        if (!pi || !pi.startDate) {
+          return res.status(400).json({ ok: false, message: `OCO ${ocoNumber} kaydında planlanan kesinti (PlannedInterruption) bilgisi yok — işlem yapılmadı.` });
+        }
+        const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
+        if (!w.ok) return res.status(400).json({ ok: false, message: w.message });
+
+        const ocoInfo = {
+          ocoNumber,
+          subject: order.result?.OcoWfIdSubject || order.result?.Subject || "",
+          startText: w.startText, endText: w.endText,
+          windowStartText: w.windowStartText, windowEndText: w.windowEndText,
+          equal: w.equal, phase: w.phase,
+        };
+
+        if (w.phase === "expired") {
+          require("../audit/index.cjs").auditPortal(req, "selfservice_oco_expired", {
+            detail: JSON.stringify({ templateId, ocoNumber, windowEnd: w.windowEndText }),
+          });
+          return res.status(400).json({ ok: false, ocoExpired: true, oco: ocoInfo, message: w.message });
+        }
+
+        if (w.phase === "before") {
+          const ocoAction = String(req.body?.ocoAction || "").trim();
+          if (ocoAction !== "schedule" && ocoAction !== "later") {
+            return res.status(400).json({ ok: false, ocoDecisionRequired: true, oco: ocoInfo, message: w.message });
+          }
+          if (ocoAction === "later") {
+            return res.json({ ok: true, ocoDeferred: true, oco: ocoInfo });
+          }
+          const rec = await ocoStore.create({
+            username, awxServerId: server.id, awxTemplateId: templateId,
+            ocoNumber, ocoSubject: ocoInfo.subject,
+            runAt: w.windowStart, windowEnd: w.windowEnd,
+            pendingLaunch: { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
+          });
+          require("../audit/index.cjs").auditPortal(req, "selfservice_oco_scheduled", {
+            detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id }),
+          });
+          return res.json({ ok: true, ocoScheduled: true, scheduleId: rec.id, oco: ocoInfo });
+        }
+
+        // phase === "inside": pencere acik, akis normal devam eder (Smart onayi varsa o devreye girer).
+        require("../audit/index.cjs").auditPortal(req, "selfservice_oco_ok", {
+          detail: JSON.stringify({ templateId, ocoNumber, window: `${w.windowStartText} - ${w.windowEndText}` }),
+        });
+      }
+
       // SMART ONAYI: bu template icin admin "Smart onayi gerekli" isaretlediyse (bkz.
       // FieldOverridesModal.tsx, overrides.smartApproval) AWX job'i HEMEN tetiklenmez —
       // Smart'ta bir talep acilir, gerekli her sey (extraVars, launch secenekleri) DB'ye
@@ -2379,6 +2497,73 @@ function initAnsibleRunner(app) {
       }
       const { status, message } = friendlyAwxError(err);
       res.status(status).json({ ok: false, message });
+    }
+  });
+
+  // POST /api/ansible/ss/oco/validate — OCO numarasini SORGULAR ve kesinti penceresini
+  // hesaplar. HICBIR SEY TETIKLEMEZ, hicbir kayit olusturmaz: arayuz kullaniciya
+  // "scheduled tetikle / o saatte tekrar gel" sorusunu sormadan once bu ucla bilgiyi
+  // ceker. Asil karar yine launch-ss'te dogrulanir (istemciye guvenilmez).
+  app.post("/api/ansible/ss/oco/validate", requireAuth, async (req, res) => {
+    const ocoWindow = require("../oco/window.cjs");
+    const ocoNumber = String(req.body?.ocoNumber || "").trim();
+    try {
+      const order = await require("../oco/client.cjs").getChangeOrder(ocoNumber);
+      const pi = ocoWindow.extractPlannedInterruption(order.payload);
+      if (!pi || !pi.startDate) {
+        return res.status(400).json({ ok: false, message: `OCO ${ocoNumber} kaydında planlanan kesinti (PlannedInterruption) bilgisi yok.` });
+      }
+      const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
+      if (!w.ok) return res.status(400).json({ ok: false, message: w.message });
+      res.json({
+        ok: true,
+        oco: {
+          ocoNumber,
+          subject: order.result?.OcoWfIdSubject || order.result?.Subject || "",
+          environmentText: order.result?.EnvironmentText || "",
+          startText: w.startText, endText: w.endText,
+          windowStartText: w.windowStartText, windowEndText: w.windowEndText,
+          equal: w.equal, phase: w.phase,
+          canRunNow: w.canRunNow, canSchedule: w.canSchedule,
+        },
+        message: w.message,
+      });
+    } catch (err) {
+      res.status(err.status || 502).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/ansible/ss/oco/scheduled/mine — kullanicinin OCO saatine zamanlanmis isleri.
+  app.get("/api/ansible/ss/oco/scheduled/mine", requireAuth, async (req, res) => {
+    try {
+      const username = req.session?.user?.username || "anonymous";
+      const rows = await require("../oco/store.cjs").listByUsername(username);
+      res.json({
+        ok: true,
+        items: rows.map((r) => ({
+          id: r.id, ocoNumber: r.ocoNumber, ocoSubject: r.ocoSubject,
+          runAt: r.runAt, windowEnd: r.windowEnd, status: r.status,
+          awxJobId: r.awxJobId, errorMessage: r.errorMessage,
+          templateName: r.pendingLaunch?.templateName || "",
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST /api/ansible/ss/oco/scheduled/:id/cancel — yalnizca KENDI bekleyen kaydini.
+  app.post("/api/ansible/ss/oco/scheduled/:id/cancel", requireAuth, async (req, res) => {
+    try {
+      const username = req.session?.user?.username || "anonymous";
+      const rec = await require("../oco/store.cjs").cancel(Number(req.params.id), username);
+      if (!rec) return res.status(404).json({ ok: false, message: "Bekleyen kayıt bulunamadı (iptal edilmiş ya da size ait değil olabilir)." });
+      require("../audit/index.cjs").auditPortal(req, "selfservice_oco_cancelled", {
+        detail: JSON.stringify({ scheduleId: rec.id, ocoNumber: rec.ocoNumber }),
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
     }
   });
 

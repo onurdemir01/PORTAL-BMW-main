@@ -96,6 +96,10 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   // talep açılır, onaylanana kadar kullanıcı "onay bekleniyor" ekranını görür (bkz.
   // server/ansible/runner.cjs POST /launch-ss ve server/smart/poller.cjs).
   const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "", metadataFields: "", integrationKey: "" });
+  // OCO Kontrolu: TEK anahtar. Production tespiti (env|ortam = prod|production) ve
+  // 2 saatlik pencere kurali BILEREK kodda sabit - bir guvenlik kapisi admin ekranindan
+  // gevsetilebilir olmamali (bkz. server/oco/prod-detect.cjs).
+  const [ocoCheck, setOcoCheck] = useState({ enabled: false });
   const [smartMetaLoading, setSmartMetaLoading] = useState(false);
   const [smartMetaFields, setSmartMetaFields] = useState<Array<Record<string, unknown>> | null>(null);
   const [smartMetaErr, setSmartMetaErr] = useState("");
@@ -140,6 +144,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
             emailKey: inj?.emailKey || "email",
             usernameKey: inj?.usernameKey || "username",
           });
+          setOcoCheck({ enabled: !!customRes.customization?.ocoCheck?.enabled });
           const smartOv = customRes.customization?.smartApproval;
           setSmartApproval({
             enabled: !!smartOv?.enabled,
@@ -386,6 +391,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
           emailKey: injectUserInfo.emailKey.trim() || "email",
           usernameKey: injectUserInfo.usernameKey.trim() || "username",
         },
+        ocoCheck: { enabled: ocoCheck.enabled },
         smartApproval: {
           enabled: smartApproval.enabled,
           flowKey: smartApproval.flowKey.trim(),
@@ -864,6 +870,35 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {!loading && (
+              <div className="border border-[var(--border)] rounded-xl p-3">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-xs font-semibold text-[var(--text-secondary)]">OCO Kontrolü (opsiyonel)</p>
+                  <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer flex-shrink-0">
+                    Etkin
+                    <input
+                      type="checkbox"
+                      checked={ocoCheck.enabled}
+                      onChange={(e) => setOcoCheck({ enabled: e.target.checked })}
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Etkinse ve talep <strong>PRODUCTION</strong> ise kullanıcıdan bir OCO numarası
+                  istenir; OCO'nun planlanan kesinti penceresi sorgulanır. Pencere açıksa iş normal
+                  akışına devam eder, henüz başlamadıysa kullanıcıya “kesinti saatinde otomatik
+                  tetikle” ya da “o saatte tekrar gel” seçeneği sunulur, pencere kapandıysa iş
+                  başlatılmaz.
+                </p>
+                <p className="text-[11px] text-[var(--text-muted)] mt-1.5">
+                  Production şartı sabittir: extra_vars içinde <code>env</code> veya <code>ortam</code>{" "}
+                  alanının değeri <code>prod</code> ya da <code>production</code> olmalıdır. Başlangıç ve
+                  bitiş saati aynı verilmişse pencere 2 saattir; farklıysa OCO'daki aralık kullanılır.
+                  Non-production talepler bu kontrolden hiç etkilenmez.
+                </p>
               </div>
             )}
 
