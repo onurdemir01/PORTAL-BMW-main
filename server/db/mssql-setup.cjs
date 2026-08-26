@@ -1485,11 +1485,23 @@ async function migrateSelfServiceSectionsToGroups(pool) {
 // portal_links tablosu ve server/links/* API'si HIC ELLENMEDI, link verisi duruyor.
 async function removeKaynaklarNavGroup(pool) {
   try {
+    let removed = 0;
     for (const key of ['Linkler', 'navgroup:kaynaklar']) {
       await pool.request().input('k', key)
         .query(`DELETE FROM portal_element_visibility WHERE element_key = @k`);
-      await pool.request().input('k', key)
+      const r = await pool.request().input('k', key)
         .query(`DELETE FROM portal_elements WHERE element_key = @k`);
+      removed += r.rowsAffected?.[0] || 0;
+    }
+    // Bu grubun altinda BASKA bir sayfa birakilmis olabilir (admin Element CRUD'undan
+    // tasinmis olabilir). Oyle bir sayfa varsa grup menude GORUNMEYE DEVAM EDERDI -
+    // bagi koparilir, sayfanin kendisine DOKUNULMAZ.
+    const orphan = await pool.request().query(
+      `UPDATE portal_elements SET parent_key = NULL WHERE parent_key = 'navgroup:kaynaklar'`
+    );
+    const detached = orphan.rowsAffected?.[0] || 0;
+    if (removed || detached) {
+      console.log(`[DB] "Yardimci Araclar" temizligi: ${removed} element silindi, ${detached} sayfanin bagi koparildi.`);
     }
   } catch (err) {
     console.warn('[DB] "Yardimci Araclar" nav grubu temizlenemedi:', err.message);
