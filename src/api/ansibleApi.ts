@@ -285,6 +285,12 @@ export const ansibleApi = {
     return fetch(`${BASE}/ss/oco/scheduled/all?${qs.toString()}`).then(safeJson);
   },
 
+  // Admin: HERHANGI bir kullanicinin OCO zamanlamasini iptal eder. Sunucu once AWX
+  // tarafini temizler (schedule + varsa calisan job), ancak o basarili olursa kaydi
+  // iptal eder — ters sirada kayit "iptal" gorunup is yine tetiklenebilirdi.
+  ocoScheduledAdminCancel: (id: number): Promise<{ ok: boolean; note?: string; message?: string }> =>
+    fetch(`${BASE}/ss/oco/scheduled/${id}/admin-cancel`, { method: "POST" }).then(safeJson),
+
   ocoScheduledMine: (): Promise<{ ok: boolean; items?: OcoScheduledItem[]; message?: string }> =>
     fetch(`${BASE}/ss/oco/scheduled/mine`).then(safeJson),
 
@@ -542,6 +548,8 @@ export interface AdminOcoSchedule {
   awxServerId?: number | null;
   awxTemplateId?: number | null;
   templateName?: string;
+  cancelledBy?: string | null;
+  cancelNote?: string | null;
   createdAt: string;
 }
 

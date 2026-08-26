@@ -750,6 +750,11 @@ const TABLES = [
         -- AWX'te olusturulan schedule kaydinin ID'si. Dolu ise isi PORTAL DEGIL AWX
         -- tetikler (status = 'AWX_SCHEDULED'); poller bu satirlara BAKMAZ.
         awx_schedule_id     INT NULL,
+        -- Admin iptali: kim iptal etti + AWX tarafinda ne yapildi (schedule silindi mi,
+        -- calisan job iptal edildi mi). Iptal sonrasi "AWX'te hala duruyor mu" sorusu
+        -- kaydin kendisinden yanitlanabilsin.
+        cancelled_by        NVARCHAR(200) NULL,
+        cancel_note         NVARCHAR(1000) NULL,
         error_message       NVARCHAR(MAX) NULL,
         created_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         updated_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
@@ -1858,6 +1863,14 @@ async function setupTables() {
     // birlestirmek "otomasyon mu patladi yoksa biri mi iptal etti" ayrimini kaybettirirdi.
     // cancelled_by ayrica tutulur: talebi ACAN kullanici (username) ile IPTAL EDEN
     // admin farkli kisilerdir.
+    {
+      table: 'oco_scheduled_launches', col: 'cancelled_by',
+      sql: `ALTER TABLE oco_scheduled_launches ADD cancelled_by NVARCHAR(200) NULL`,
+    },
+    {
+      table: 'oco_scheduled_launches', col: 'cancel_note',
+      sql: `ALTER TABLE oco_scheduled_launches ADD cancel_note NVARCHAR(1000) NULL`,
+    },
     {
       table: 'oco_scheduled_launches', col: 'awx_schedule_id',
       sql: `ALTER TABLE oco_scheduled_launches ADD awx_schedule_id INT NULL`,

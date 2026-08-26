@@ -25,6 +25,8 @@ function rowToRec(r) {
     pendingLaunch: JSON.parse(r.pending_launch_json),
     awxJobId: r.awx_job_id,
     awxScheduleId: r.awx_schedule_id ?? null,
+    cancelledBy: r.cancelled_by ?? null,
+    cancelNote: r.cancel_note ?? null,
     errorMessage: r.error_message,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -142,4 +144,20 @@ async function cancel(id, username) {
   return rows[0] ? rowToRec(rows[0]) : null;
 }
 
-module.exports = { create, createAwxScheduled, get, listScheduled, listAll, listByUsername, markLaunched, markFailed, markExpired, cancel };
+// Admin iptali: SAHIP KONTROLU YOK (cancel() kullanicinin kendi kaydi icindi) ve
+// LAUNCHED kayitlar da iptal edilebilir - o durumda AWX'te calisan job durdurulur.
+// Zaten sonuclanmis (CANCELLED/EXPIRED/FAILED) kayitlar tekrar iptal EDILMEZ: cagiran
+// taraf null gorup "bulunamadi/zaten kapali" der.
+async function adminCancel(id, { cancelledBy, note }) {
+  const { rows } = await db.query(
+    `UPDATE oco_scheduled_launches
+        SET status = 'CANCELLED', cancelled_by = $2, cancel_note = $3,
+            updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
+      OUTPUT INSERTED.*
+      WHERE id = $1 AND status IN ('SCHEDULED', 'AWX_SCHEDULED', 'LAUNCHED')`,
+    [id, cancelledBy || null, String(note || '').slice(0, 1000) || null]
+  );
+  return rows[0] ? rowToRec(rows[0]) : null;
+}
+
+module.exports = { create, createAwxScheduled, get, listScheduled, listAll, listByUsername, markLaunched, markFailed, markExpired, cancel, adminCancel };

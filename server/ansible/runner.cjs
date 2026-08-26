@@ -2660,6 +2660,7 @@ function initAnsibleRunner(app) {
           awxJobId: x.awxJobId, awxScheduleId: x.awxScheduleId, errorMessage: x.errorMessage,
           awxServerId: x.awxServerId, awxTemplateId: x.awxTemplateId,
           templateName: x.pendingLaunch?.templateName || "",
+          cancelledBy: x.cancelledBy, cancelNote: x.cancelNote,
           createdAt: x.createdAt,
         })),
       });
@@ -2684,6 +2685,98 @@ function initAnsibleRunner(app) {
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST /api/ansible/ss/oco/scheduled/:id/admin-cancel — Admin, HERHANGI bir
+  // kullanicinin OCO zamanlamasini iptal eder ve AWX tarafini da temizler.
+  //
+  // SIRA ONEMLI: once AWX, sonra DB. Ters sirada, AWX silme basarisiz olursa kayit
+  // "iptal edildi" gorunur ama AWX is'i YINE DE tetikler - prod'da en kotu sonuc.
+  // AWX adimi patlarsa kayda DOKUNULMAZ; admin listede hala aktif gorur ve tekrar dener.
+  //
+  // NE IPTAL EDILIR:
+  //   1) Schedule'in ZATEN BASLATMIS oldugu job'lar (GET /jobs/?schedule=<id>) —
+  //      schedule'i silmek CALISAN bir job'i durdurmaz, bu yuzden once onlar iptal edilir.
+  //   2) AWX schedule kaydinin kendisi (DELETE) — bir daha tetiklenmesin.
+  //   3) Portal'in kendi tetikledigi kayitlarda (status LAUNCHED) awx_job_id.
+  app.post("/api/ansible/ss/oco/scheduled/:id/admin-cancel", requireAuth, requireAdmin, async (req, res) => {
+    const ocoStore = require("../oco/store.cjs");
+    try {
+      const rec = await ocoStore.get(Number(req.params.id));
+      if (!rec) return res.status(404).json({ ok: false, message: "Kayıt bulunamadı." });
+      if (!["SCHEDULED", "AWX_SCHEDULED", "LAUNCHED"].includes(rec.status)) {
+        return res.status(400).json({ ok: false, message: `Bu kayıt zaten sonuçlanmış (${rec.status}) — iptal edilecek bir şey yok.` });
+      }
+
+      const server = getServerById(rec.awxServerId);
+      const notes = [];
+
+      if (rec.awxScheduleId) {
+        if (!server) return res.status(404).json({ ok: false, message: `AWX sunucusu bulunamadı (id=${rec.awxServerId}) — schedule silinemedi, kayıt değiştirilmedi.` });
+        const token = await getTokenForServer(server);
+
+        // 1) Schedule'in dogurdugu job'lari bul ve calisiyorsa iptal et. Bu sorgu
+        // basarisiz olursa iptal DURDURULMAZ - not dusulur, cunku asil amac (bir daha
+        // tetiklenmemesi) schedule silinerek yine saglanir.
+        try {
+          const jr = await awxRequestToServer(server, token, "GET", `/api/v2/jobs/?schedule=${rec.awxScheduleId}&page_size=50`);
+          const spawned = (jr?.results || []).filter((j) => !["successful", "failed", "error", "canceled"].includes(j.status));
+          for (const j of spawned) {
+            try {
+              await cancelJobOnServer(server.id, j.id);
+              notes.push(`AWX job #${j.id} iptal edildi`);
+            } catch (e) {
+              notes.push(`AWX job #${j.id} iptal EDILEMEDI: ${e.message}`);
+            }
+          }
+          if (spawned.length === 0) notes.push("schedule henüz job başlatmamıştı");
+        } catch (e) {
+          notes.push(`schedule'ın başlattığı job'lar sorgulanamadı (${e.message}) — çalışan bir job varsa AWX'ten elle kontrol edin`);
+        }
+
+        // 2) Schedule'in kendisi. 404 = zaten yok, basarili say.
+        try {
+          await awxRequestToServer(server, token, "DELETE", `/api/v2/schedules/${rec.awxScheduleId}/`);
+          notes.push(`AWX schedule #${rec.awxScheduleId} silindi`);
+        } catch (e) {
+          if (e.status === 404) {
+            notes.push(`AWX schedule #${rec.awxScheduleId} zaten yoktu`);
+          } else {
+            return res.status(e.status || 502).json({
+              ok: false,
+              message: `AWX schedule silinemedi: ${e.message}. Kayıt DEĞİŞTİRİLMEDİ — iş hâlâ tetiklenebilir, lütfen tekrar deneyin.`,
+            });
+          }
+        }
+      }
+
+      // 3) Portal'in kendi tetikledigi ve ZATEN BASLAMIS is.
+      if (rec.status === "LAUNCHED" && rec.awxJobId && server) {
+        try {
+          const r = await cancelJobOnServer(server.id, rec.awxJobId);
+          notes.push(r.alreadyTerminal ? `AWX job #${rec.awxJobId} zaten bitmişti` : `AWX job #${rec.awxJobId} iptal edildi`);
+        } catch (e) {
+          return res.status(e.status || 502).json({
+            ok: false,
+            message: `Çalışan AWX job iptal edilemedi: ${e.message}. Kayıt DEĞİŞTİRİLMEDİ.`,
+          });
+        }
+      }
+
+      const note = notes.join("; ");
+      const updated = await ocoStore.adminCancel(rec.id, {
+        cancelledBy: req.session?.user?.username || "admin",
+        note,
+      });
+      if (!updated) return res.status(409).json({ ok: false, message: "Kayıt bu sırada başka bir işlemle sonuçlandı — listeyi yenileyin." });
+
+      require("../audit/index.cjs").auditPortal(req, "selfservice_oco_admin_cancel", {
+        detail: JSON.stringify({ id: rec.id, ocoNumber: rec.ocoNumber, awxScheduleId: rec.awxScheduleId, awxJobId: rec.awxJobId, note }),
+      });
+      res.json({ ok: true, note });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
     }
   });
 

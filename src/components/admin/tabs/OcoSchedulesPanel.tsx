@@ -12,7 +12,8 @@
 //                   gerekiyorsa bu yol kullanılır (AWX schedule'ı onay kapısını
 //                   atlardı). Portal o saatte AYAKTA OLMALI.
 import React, { useCallback, useEffect, useState } from "react";
-import { ArrowPathIcon, MagnifyingGlassIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, MagnifyingGlassIcon, ClockIcon, XCircleIcon } from "@heroicons/react/24/outline";
+import { toast } from "@/hooks/useToast";
 import { ansibleApi, type AdminOcoSchedule } from "@/api/ansibleApi";
 import { Select } from "@/components/ui/Form";
 
@@ -50,6 +51,9 @@ export default function OcoSchedulesPanel() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  // Iptal edilen kaydin id'si — buton bazinda kilitleme icin (tum tabloyu kilitlemek
+  // gereksiz, admin baska bir satirla ilgilenebilir).
+  const [cancelling, setCancelling] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +71,32 @@ export default function OcoSchedulesPanel() {
   }, [offset, status, q]);
 
   useEffect(() => { load(); }, [load]);
+
+  // AWX tarafi sunucuda temizlenir; burada yalnizca ONAY alinir. Onay metni ne
+  // olacagini ACIKCA yaziyor - "iptal" kelimesi tek basina, calisan bir job'in da
+  // durdurulacagini anlatmiyor.
+  async function adminCancel(r: AdminOcoSchedule) {
+    const willStopJob = r.status === "LAUNCHED" || (r.status === "AWX_SCHEDULED" && new Date(r.runAt).getTime() <= Date.now());
+    const msg = [
+      `#${r.id} — ${r.templateName || "servis"} (OCO ${r.ocoNumber}) iptal edilecek.`,
+      r.awxScheduleId ? `AWX schedule #${r.awxScheduleId} SILINECEK.` : "",
+      willStopJob ? "AWX'te ÇALIŞAN bir job varsa DURDURULACAK." : "",
+      "Devam edilsin mi?",
+    ].filter(Boolean).join("\n\n");
+    if (!window.confirm(msg)) return;
+
+    setCancelling(r.id);
+    try {
+      const res = await ansibleApi.ocoScheduledAdminCancel(r.id);
+      if (!res.ok) { toast.error(res.message || "İptal edilemedi."); return; }
+      toast.success(res.note ? `İptal edildi — ${res.note}` : "İptal edildi.");
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCancelling(null);
+    }
+  }
 
   const pending = rows.filter((r) => r.status === "AWX_SCHEDULED" || r.status === "SCHEDULED").length;
 
@@ -124,6 +154,7 @@ export default function OcoSchedulesPanel() {
               <th className="px-3 py-2 font-semibold">Pencere sonu</th>
               <th className="px-3 py-2 font-semibold">Durum</th>
               <th className="px-3 py-2 font-semibold">AWX</th>
+              <th className="px-3 py-2 font-semibold"></th>
             </tr>
           </thead>
           <tbody>
@@ -156,12 +187,32 @@ export default function OcoSchedulesPanel() {
                     {r.awxScheduleId ? <div>schedule #{r.awxScheduleId}</div> : null}
                     {r.awxJobId ? <div>job #{r.awxJobId}</div> : null}
                     {!r.awxScheduleId && !r.awxJobId ? "—" : null}
+                    {r.cancelledBy && (
+                      <div className="mt-0.5 text-[11px]">
+                        iptal: {r.cancelledBy}
+                        {r.cancelNote && <div className="text-[10px] opacity-80">{r.cancelNote}</div>}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {["SCHEDULED", "AWX_SCHEDULED", "LAUNCHED"].includes(r.status) && (
+                      <button
+                        type="button"
+                        disabled={cancelling === r.id}
+                        onClick={() => adminCancel(r)}
+                        className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        title="Zamanlamayı iptal et ve AWX tarafını temizle"
+                      >
+                        <XCircleIcon className="w-3.5 h-3.5" />
+                        {cancelling === r.id ? "İptal ediliyor…" : "İptal et"}
+                      </button>
+                    )}
                   </td>
                 </tr>
               );
             })}
             {rows.length === 0 && !loading && (
-              <tr><td colSpan={8} className="px-3 py-6 text-center text-[var(--text-muted)]">Kayıt yok.</td></tr>
+              <tr><td colSpan={9} className="px-3 py-6 text-center text-[var(--text-muted)]">Kayıt yok.</td></tr>
             )}
           </tbody>
         </table>
