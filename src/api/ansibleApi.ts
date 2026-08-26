@@ -275,6 +275,20 @@ export const ansibleApi = {
       body: JSON.stringify({ ocoNumber }),
     }).then(safeJson),
 
+  opsCatalog: (): Promise<{ ok: boolean; rows?: OpsCatalogRow[]; message?: string }> =>
+    fetch(`${BASE}/ss/ops-catalog`).then(safeJson),
+
+  // Onay mercii yalnızca Admin tarafından girilebilir; Portal bu bilgiyi Smart'tan
+  // okuyamaz (bkz. server/ansible/ops-catalog.cjs başı).
+  opsCatalogSetApprover: (
+    flowKey: string, env: string, approver: string, note?: string
+  ): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/ss/ops-catalog/approver`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flowKey, env, approver, note }),
+    }).then(safeJson),
+
   ocoScheduledMine: (): Promise<{ ok: boolean; items?: OcoScheduledItem[]; message?: string }> =>
     fetch(`${BASE}/ss/oco/scheduled/mine`).then(safeJson),
 
@@ -477,7 +491,14 @@ export interface FieldCustomization {
   // header'i) - servis bazinda FARKLI olabilir (farkli flow'lar farkli Designer projesine ait
   // olabiliyor). Bos ise sistem geneli varsayilan (Admin > Sistem > Smart, SMART_RFF_TOKEN)
   // kullanilir - davranis GERIYE DONUK degismez.
-  smartApproval?: { enabled: boolean; flowKey?: string; metadataFields?: string; integrationKey?: string };
+  // envs: Smart onayının İSTENECEĞİ ortamlar (["prod"] gibi). BOŞ/tanımsız ise TÜM
+  // ortamlarda istenir — eski davranış birebir korunur.
+  // flowKeyByEnv: ortam bazlı flow override'ı; ilgili ortam için değer yoksa flowKey'e
+  // düşer. Karar mantığı server/ansible/smart-gate.cjs içinde, TEK yerde.
+  smartApproval?: {
+    enabled: boolean; flowKey?: string; metadataFields?: string; integrationKey?: string;
+    envs?: string[]; flowKeyByEnv?: Record<string, string>;
+  };
   // Etkinse ve talep PRODUCTION ise (extra_vars'ta env|ortam = prod|production) iş
   // hemen tetiklenmez: kullanıcıdan OCO numarası istenir, OCO'nun planlanan kesinti
   // penceresi sorgulanır ve pencereye göre karar verilir (bkz. server/oco/*).
@@ -512,6 +533,28 @@ export interface OcoScheduledItem {
   awxJobId?: number | null;
   errorMessage?: string | null;
   templateName?: string;
+}
+
+// Operasyon Kataloğu satırı (server/ansible/ops-catalog.cjs buildCatalog).
+// Her servis × her ortam bir satır.
+export interface OpsCatalogRow {
+  module: string;
+  serviceId: string;
+  service: string;
+  awxServerId: number | null;
+  awxServerName: string;
+  awxTemplateId: number | null;
+  enabled: boolean;
+  env: string;
+  envLabel: string;
+  smartRequired: boolean;
+  flowKey: string;
+  ocoRequired: boolean;
+  // "Bu serviste OCO hiç yok" ile "var ama bu ortamda geçerli değil"i ayırır.
+  ocoConfigured: boolean;
+  approver: string;
+  approverNote: string;
+  note: string;
 }
 
 export interface AnsibleSsItem {

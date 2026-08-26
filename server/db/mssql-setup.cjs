@@ -754,6 +754,23 @@ const TABLES = [
       )`,
   },
   {
+    // Operasyon Katalogu icin ONAY MERCII eslemesi. Bu bilgi Portal'da URETILMEZ:
+    // Smart'ta hangi flow'u kimin onayladigi flow TANIMININ icindedir ve elimizdeki
+    // Smart uclari (metadata alanlari, talep durumu) onaylayan kisi/grup DONDURMEZ.
+    // Bu yuzden (flowKey, ortam) -> mercii eslemesi admin tarafindan ELLE tutulur.
+    name: 'approval_approvers',
+    sql: `
+      CREATE TABLE approval_approvers (
+        id         INT IDENTITY(1,1) PRIMARY KEY,
+        flow_key   NVARCHAR(200) NOT NULL,
+        env        NVARCHAR(20)  NOT NULL,
+        approver   NVARCHAR(400) NULL,
+        note       NVARCHAR(1000) NULL,
+        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        CONSTRAINT UQ_approval_approvers UNIQUE (flow_key, env)
+      )`,
+  },
+  {
     // OCO (ChangeManagement) kesinti penceresi icin ZAMANLANMIS Self Service
     // tetiklemeleri. smart_tickets'tan AYRI tutulur: orada beklenen sey bir INSAN
     // onayi (suresiz olabilir), burada bir SAAT (penceresi kapaninca gecersiz olur).

@@ -96,6 +96,11 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   // talep açılır, onaylanana kadar kullanıcı "onay bekleniyor" ekranını görür (bkz.
   // server/ansible/runner.cjs POST /launch-ss ve server/smart/poller.cjs).
   const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "", metadataFields: "", integrationKey: "" });
+  // Smart onayı ARTIK ORTAMA DUYARLI. Boş liste = TÜM ortamlar (eski davranış birebir
+  // korunur). flowKeyByEnv: ortam bazlı flow override'ı; boş bırakılan ortam varsayılan
+  // flowKey'e düşer. Karar mantığı tek yerde: server/ansible/smart-gate.cjs.
+  const [smartEnvs, setSmartEnvs] = useState<string[]>([]);
+  const [smartFlowByEnv, setSmartFlowByEnv] = useState<Record<string, string>>({});
   // OCO Kontrolu: TEK anahtar. Production tespiti (env|ortam = prod|production) ve
   // 2 saatlik pencere kurali BILEREK kodda sabit - bir guvenlik kapisi admin ekranindan
   // gevsetilebilir olmamali (bkz. server/oco/prod-detect.cjs).
@@ -146,6 +151,8 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
           });
           setOcoCheck({ enabled: !!customRes.customization?.ocoCheck?.enabled });
           const smartOv = customRes.customization?.smartApproval;
+          setSmartEnvs(Array.isArray(smartOv?.envs) ? smartOv!.envs! : []);
+          setSmartFlowByEnv(smartOv?.flowKeyByEnv || {});
           setSmartApproval({
             enabled: !!smartOv?.enabled,
             flowKey: smartOv?.flowKey || "",
@@ -397,6 +404,13 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
           flowKey: smartApproval.flowKey.trim(),
           metadataFields: smartApproval.metadataFields.trim() || undefined,
           integrationKey: smartApproval.integrationKey.trim() || undefined,
+          envs: smartEnvs,
+          // Boş değerler GÖNDERİLMEZ: "" bir override sayılıp varsayılan flowKey'i
+          // gölgelerdi (resolveFlowKey boş string'i geçerli kabul etmez ama kaydı
+          // temiz tutmak okunurluk için önemli).
+          flowKeyByEnv: Object.fromEntries(
+            Object.entries(smartFlowByEnv).map(([k, v]) => [k, (v || "").trim()]).filter(([, v]) => v)
+          ),
         },
       });
       if (!r.ok) { setErr(r.message || "Kaydedilemedi."); return; }
@@ -920,6 +934,51 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                   Smart'ta bu Flow Key ile bir talep açılır. Kullanıcı talep onaylanana kadar
                   "onay bekleniyor" ekranını görür; talep reddedilirse iş hiç başlatılmaz.
                 </p>
+                {smartApproval.enabled && (
+                  <div className="mb-3 rounded-lg border border-[var(--border)] p-2.5">
+                    <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                      Hangi ortamlarda onay istensin?
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      {["dev", "test", "qa", "prod"].map((e) => (
+                        <label key={e} className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={smartEnvs.includes(e)}
+                            onChange={(ev) => setSmartEnvs((prev) =>
+                              ev.target.checked ? [...prev, e] : prev.filter((x) => x !== e))}
+                          />
+                          {e.toUpperCase()}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1.5 leading-relaxed">
+                      {smartEnvs.length === 0
+                        ? "Hiçbiri seçili değil → onay TÜM ortamlarda istenir (mevcut davranış)."
+                        : `Onay yalnızca ${smartEnvs.map((e) => e.toUpperCase()).join(", ")} ortamlarında istenir.`}
+                      {" "}Talebin ortamı belirlenemezse (extra_vars'ta <code>env</code>/<code>ortam</code> yoksa)
+                      güvenli tarafta kalınır ve onay yine istenir.
+                    </p>
+                    {smartEnvs.length > 0 && (
+                      <div className="mt-2 space-y-1.5">
+                        <p className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                          Ortama özel Flow Key (boş bırakılırsa aşağıdaki varsayılan kullanılır)
+                        </p>
+                        {smartEnvs.map((e) => (
+                          <div key={e} className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono w-10 flex-shrink-0 text-[var(--text-muted)]">{e.toUpperCase()}</span>
+                            <TextInput
+                              className="font-mono text-xs flex-1"
+                              value={smartFlowByEnv[e] || ""}
+                              placeholder="(varsayılan)"
+                              onChange={(ev) => setSmartFlowByEnv((prev) => ({ ...prev, [e]: ev.target.value }))}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {smartApproval.enabled && (
                   <div>
                     <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Smart Flow Key</label>
