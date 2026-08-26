@@ -22,6 +22,9 @@ import {
   ShieldCheckIcon,
   AdjustmentsHorizontalIcon,
   MagnifyingGlassIcon,
+  CalendarDaysIcon,
+  UserIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import IpCheckSection from "@/components/self_service/IpCheckSection";
@@ -94,7 +97,10 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   // kalmasın diye yükseklik İÇERİĞE göre kendiliğinden ayarlanır; kullanıcı köşeden
   // ELLE büyütürse o andan itibaren sabitlenir ve terminal o boşluğu doldurur (asağıdaki
   // size={floatSize.h === "auto" ? "compact" : "fill"}).
-  const { ref: floatRef, size: floatSize, style: floatStyle, startMove, startResize } = useFloatingWindow({ w: 640, h: 640 }, { w: 420, h: 380 }, { autoHeight: true });
+  const { ref: floatRef, size: floatSize, style: floatStyle, startMove, startResize } = // 2026-08-26: genislik 640 -> 760. OCO kontrolu paneli uzun Turkce cumleler
+  // iceriyor ve 640'ta secenek metinleri kirpiliyordu; ayni genislik normal
+  // survey formlarina da yariyor (uzun etiketler alt satira dusmuyor).
+  useFloatingWindow({ w: 760, h: 640 }, { w: 420, h: 380 }, { autoHeight: true });
   // Satır-içi doğrulama (Faz 5): alan dokunulunca veya submit denenince hata gösterilir.
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -347,8 +353,8 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
           {!loading && !jobId && !pendingTicket && ocoState && (
             <div className="space-y-3">
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="text-sm font-semibold text-amber-900">Production talebi — OCO kontrolü</p>
-                <p className="text-xs text-amber-800 mt-1">
+                <p className="text-[15px] font-bold text-amber-900">Production talebi — OCO kontrolü</p>
+                <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">
                   {ocoState.message || "Bu iş PRODUCTION ortamına yöneliktir; devam etmek için OCO kaydı gerekir."}
                 </p>
               </div>
@@ -377,16 +383,16 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
 
               {ocoState.phase === "decide" && ocoState.info && (
                 <div className="space-y-3">
-                  <div className="rounded-xl border border-[var(--border)] p-3 space-y-1 text-xs">
-                    <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">OCO</span><span className="font-mono">{ocoState.info.ocoNumber}</span></div>
+                  <div className="rounded-xl border border-[var(--border)] p-3.5 space-y-1.5 text-[13px]">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">OCO</span><span className="font-mono tabular-nums font-semibold text-[var(--text-primary)]">{ocoState.info.ocoNumber}</span></div>
                     {ocoState.info.subject && (
                       <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">Konu</span><span className="text-right">{ocoState.info.subject}</span></div>
                     )}
-                    <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">Kesinti başlangıcı</span><span className="font-mono">{ocoState.info.startText}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">Kesinti bitişi</span><span className="font-mono">{ocoState.info.endText}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">Kesinti başlangıcı</span><span className="font-mono tabular-nums">{ocoState.info.startText}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--text-muted)]">Kesinti bitişi</span><span className="font-mono tabular-nums">{ocoState.info.endText}</span></div>
                     <div className="flex justify-between gap-3 pt-1 border-t border-[var(--border)]">
                       <span className="text-[var(--text-muted)]">Tetiklenebilir aralık</span>
-                      <span className="font-mono">{ocoState.info.windowStartText} — {ocoState.info.windowEndText}</span>
+                      <span className="font-mono tabular-nums font-semibold text-[var(--text-primary)]">{ocoState.info.windowStartText} — {ocoState.info.windowEndText}</span>
                     </div>
                     {ocoState.info.equal && (
                       <p className="text-[11px] text-[var(--text-muted)] pt-1">
@@ -413,23 +419,53 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
                   )}
 
                   {ocoState.info.phase === "before" && (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
+                      {/* Bu iki kutu SECENEK; eskiden biri dolu mavi bir dugme, digeri
+                          cizgili bir dugmeydi ve "hangisi secili" izlenimi veriyordu.
+                          Ikisi de AYNI agirlikta kart oldu: solda renkli bir serit,
+                          kalin baslik + acik gri aciklama, sagda ok. Fark rengin
+                          ANLAMINDA: mavi = Portal yapar, gri = siz yaparsiniz. */}
+                      <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
+                        Nasıl ilerlemek istersiniz?
+                      </p>
                       <button
                         type="button"
                         onClick={() => launch("schedule")}
                         disabled={launching}
-                        className="btn-primary w-full px-4 py-2.5 text-sm text-left"
+                        className={ocoOptionCard}
+                        style={{ borderLeft: "4px solid var(--accent)" }}
                       >
-                        İşlemi OCO'da belirtilen {ocoState.info.windowStartText} saatinde çalışacak şekilde
-                        scheduled olarak tetikle
+                        <CalendarDaysIcon className="w-5 h-5 flex-shrink-0 mt-0.5 text-[var(--accent)]" />
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-semibold text-[var(--text-primary)]">
+                            Otomatik tetikle
+                          </span>
+                          <span className="block text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                            Portal işi <b className="font-semibold text-[var(--text-secondary)] tabular-nums">{ocoState.info.windowStartText}</b> saatinde
+                            kendisi başlatır. Bu ekranı kapatabilirsiniz.
+                          </span>
+                        </span>
+                        <ChevronRightIcon className="w-4 h-4 flex-shrink-0 mt-1 text-[var(--text-muted)]" />
                       </button>
                       <button
                         type="button"
                         onClick={() => launch("later")}
                         disabled={launching}
-                        className="w-full px-4 py-2.5 text-sm text-left rounded-xl border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] transition"
+                        className={ocoOptionCard}
+                        style={{ borderLeft: "4px solid var(--text-muted)" }}
                       >
-                        İşlemi {ocoState.info.windowStartText} saatinde tekrar gelip kendim çalıştıracağım
+                        <UserIcon className="w-5 h-5 flex-shrink-0 mt-0.5 text-[var(--text-muted)]" />
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-semibold text-[var(--text-primary)]">
+                            Kendim çalıştıracağım
+                          </span>
+                          <span className="block text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                            Şimdi hiçbir şey başlatılmaz. Pencere açıkken
+                            (<b className="font-semibold text-[var(--text-secondary)] tabular-nums">{ocoState.info.windowStartText} — {ocoState.info.windowEndText}</b>)
+                            tekrar gelip başlatırsınız.
+                          </span>
+                        </span>
+                        <ChevronRightIcon className="w-4 h-4 flex-shrink-0 mt-1 text-[var(--text-muted)]" />
                       </button>
                     </div>
                   )}
@@ -947,6 +983,14 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
+
+// OCO "nasil ilerleyelim" seceneklerinin ortak kart stili. Bilesen disinda duruyor
+// ki her render'da yeni bir string kurulmasin ve iki secenek BIREBIR ayni gorunsun.
+const ocoOptionCard =
+  "w-full flex items-start gap-3 pl-3 pr-3 py-3 rounded-xl border border-[var(--border)] " +
+  "bg-[var(--bg-surface)] text-left transition-colors hover:bg-[var(--bg-elevated)] " +
+  "hover:border-[var(--accent)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] " +
+  "disabled:opacity-50 disabled:cursor-not-allowed";
 
 export default function SelfServicePage() {
   const { user } = useAuth();
