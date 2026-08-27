@@ -13,6 +13,7 @@
 import React, { useState } from "react";
 import { ArrowDownTrayIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { logxV2Api, type DownloadInfo } from "@/api/logxV2Api";
+import { fmtSize } from "@/components/logx_v2/shared/logFileMeta";
 
 function useBlobDownload() {
   const [busy, setBusy] = useState(false);
@@ -56,6 +57,12 @@ const DownloadButton: React.FC<{ item: DownloadInfo; compact?: boolean }> = ({ i
       {compact && (
         <span className="text-xs text-[var(--text-secondary)] truncate flex-1 text-left" title={item.filename}>
           {item.filename}
+          {/* BOYUT (2026-08-28): `sizeBytes` API'de VARDI ama hicbir yerde
+              gosterilmiyordu. Indirme `res.blob()` ile TAMAMEN bellege alindigi icin
+              kullanicinin ne kadarlik bir dosyaya bastigini ONCEDEN bilmesi gerekir. */}
+          {item.sizeBytes ? (
+            <span className="text-[var(--text-muted)] tabular-nums"> · {fmtSize(item.sizeBytes)}</span>
+          ) : null}
         </span>
       )}
       <button
@@ -94,9 +101,16 @@ const DownloadStep: React.FC<{ download: DownloadInfo; downloads?: DownloadInfo[
           <p className="text-xs text-[var(--text-muted)] mt-1">
             Her <strong>cluster / namespace / uygulama</strong> birleşimi için ayrı arşiv oluştu —
             dosya adı hangi arşivin neye ait olduğunu söyler.
+            {(() => {
+              const total = items.reduce((n, it) => n + (it.sizeBytes || 0), 0);
+              return total > 0 ? <> Toplam <strong>{fmtSize(total)}</strong>.</> : null;
+            })()}
           </p>
         ) : (
-          <p className="text-xs text-[var(--text-muted)] mt-1">{items[0]?.filename}</p>
+          <p className="text-xs text-[var(--text-muted)] mt-1">
+            {items[0]?.filename}
+            {items[0]?.sizeBytes ? <span className="tabular-nums"> · {fmtSize(items[0].sizeBytes)}</span> : null}
+          </p>
         )}
       </div>
 

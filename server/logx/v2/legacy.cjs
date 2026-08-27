@@ -12,6 +12,15 @@ const requests = require('./requests.cjs');
 const adminData = require('./admin.cjs');
 const { getAppsTable } = require('../../config/apps-table.cjs');
 
+// Transfer istegindeki `selected` dizisi icin azami govde boyutu.
+// TURETME: global parser `express.json({ limit: "2mb" })` (server/service.cjs).
+// Govdede `selected` disinda da alanlar var, ayrica base64/kacis genislemesi olabilir;
+// bu yuzden parser limitinin YARISI alinir — sinira dayanan bir istek yine de parse
+// EDILEBILIR olmali ki kullanici opak bir 413 yerine anlasilir bir 400 gorsun.
+const EXPRESS_JSON_LIMIT_BYTES = 2 * 1024 * 1024;
+const TRANSFER_SELECTION_MAX_BYTES = Math.floor(EXPRESS_JSON_LIMIT_BYTES / 2);
+
+
 const SNAPSHOT_FILE = path.join(__dirname, '..', '..', 'data', 'logx-legacy-snapshot.json');
 
 function readSnapshot() {
@@ -207,6 +216,29 @@ async function transfer(requestRow, selected) {
   }
   if (selected.length === 0) {
     throw Object.assign(new Error('En az bir dosya seçilmeli.'), { status: 400 });
+  }
+
+  // ── UST SINIR (2026-08-28) ──────────────────────────────────────────────────
+  // Buraya kadar HICBIR ust sinir yoktu (tek kontrol `=== 0`). Oysa gercek bir tavan
+  // VAR ve fark edilmeden carpiliyordu: bu istegin govdesi `express.json({limit:"2mb"})`
+  // parser'indan geciyor (server/service.cjs). Secim buyudugunde istek handler'a HIC
+  // ULASMIYOR, body-parser 413 firlatiyor ve kullanici "transfer basarisiz" disinda
+  // hicbir sey gormuyordu.
+  //
+  // Sinir UYDURULMADI, gercek tavandan TURETILDI: govdenin yalnizca `selected` kismi
+  // olculur ve parser limitinin guvenli bir kesrini asarsa ANLASILIR bir 400 doner.
+  // Istemci ayni hesabi yapip kullaniciyi daha secim ekranindayken uyarir
+  // (bkz. src/components/logx_v2/shared/selectionLimits.ts — AYNI sabitler).
+  const selectedBytes = Buffer.byteLength(JSON.stringify(selected), 'utf8');
+  if (selectedBytes > TRANSFER_SELECTION_MAX_BYTES) {
+    throw Object.assign(
+      new Error(
+        `Seçim çok büyük (${selected.length} dosya, ~${Math.round(selectedBytes / 1024)} KB). ` +
+        `İstek gövdesi sınırı ${Math.round(TRANSFER_SELECTION_MAX_BYTES / 1024)} KB. ` +
+        `Daha az dosya seçin ya da transferi birkaç parçaya bölün.`
+      ),
+      { status: 400, code: 'selection_too_large' }
+    );
   }
 
   const archiveName = `${cryptoRandomId()}.zip`;
