@@ -5,9 +5,12 @@ import { Navigate, Route, Routes } from "react-router-dom";
 // ile lazy yüklenir (1.2MB tek bundle → ilk yük belirgin küçülür — Sprint 4/D5).
 import LoginPage from "@/components/LoginPage";
 import DashboardPage from "@/components/DashboardPage";
-import DenetimPage from "@/components/DenetimPage";
 import ForbiddenPage from "@/components/ForbiddenPage";
 
+// DenetimPage eager kalmisti — oysa ilk boyama icin kritik DEGIL (kendi route'u var,
+// giristen sonra ancak menuden acilir) ve kod tabanindaki en agir sayfalardan biri.
+// Eager oldugu icin tum agirligi giris ekraninin bile indirdigi ana bundle'a giriyordu.
+const DenetimPage = React.lazy(() => import("@/components/DenetimPage"));
 const EnvanterPage = React.lazy(() => import("@/components/EnvanterPage"));
 const DutyRosterPage = React.lazy(() => import("@/components/DutyRosterPage"));
 const DynatracePage = React.lazy(() => import("@/components/dynatrace/DynatracePage"));

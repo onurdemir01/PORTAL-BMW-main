@@ -533,7 +533,9 @@ export interface OcoScheduledItem {
   ocoSubject?: string;
   runAt: string;
   windowEnd: string;
-  status: "SCHEDULED" | "LAUNCHED" | "FAILED" | "CANCELLED" | "EXPIRED";
+  // LAUNCHING: AWX çağrısı uçuşta. PENDING_APPROVAL: saat geldi ama Smart onayı
+  // bekleniyor — iş HENÜZ tetiklenmedi (2026-08-28; eskiden LAUNCHED yazılıyordu).
+  status: "SCHEDULED" | "LAUNCHING" | "PENDING_APPROVAL" | "LAUNCHED" | "FAILED" | "CANCELLED" | "EXPIRED";
   awxJobId?: number | null;
   errorMessage?: string | null;
   templateName?: string;
@@ -541,7 +543,8 @@ export interface OcoScheduledItem {
 
 // Admin > Smart Talepleri > "OCO Zamanlamaları" satırı.
 // status: AWX_SCHEDULED (AWX'in kendi schedule'ı tetikleyecek) | SCHEDULED (Portal
-// poller'ı tetikleyecek — yalnızca Smart onayı da gerekiyorsa) | LAUNCHED | FAILED |
+// poller'ı tetikleyecek — yalnızca Smart onayı da gerekiyorsa) | LAUNCHING |
+// PENDING_APPROVAL (saat geldi, Smart onayı bekleniyor) | LAUNCHED | FAILED |
 // CANCELLED | EXPIRED
 export interface AdminOcoSchedule {
   id: number;

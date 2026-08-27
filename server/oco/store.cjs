@@ -25,6 +25,7 @@ function rowToRec(r) {
     pendingLaunch: JSON.parse(r.pending_launch_json),
     awxJobId: r.awx_job_id,
     awxScheduleId: r.awx_schedule_id ?? null,
+    smartTicketId: r.smart_ticket_id ?? null,
     cancelledBy: r.cancelled_by ?? null,
     cancelNote: r.cancel_note ?? null,
     errorMessage: r.error_message,
@@ -103,22 +104,97 @@ async function listByUsername(username, limit = 50) {
   return rows.map(rowToRec);
 }
 
+// ── CLAIM DESENI (2026-08-28) ───────────────────────────────────────────────────
+// Poller kaydi okur, sonra AWX'i cagirir (AG UZERINDE SANIYELER surer), sonra sonucu
+// yazar. Bu aralikta kullanici "iptal"e basarsa eski kod KOSULSUZ `UPDATE ... WHERE
+// id=$1` yaziyor ve iptali EZIYORDU: kayit CANCELLED'dan LAUNCHED'a geri donuyor,
+// kullanici iptal ettigini saniyor. Ayrica portal birden fazla ornekle kosarsa iki
+// poller AYNI kaydi ayni anda tetikleyebiliyordu.
+//
+// Cozum, `cancel()`in zaten kullandigi desen: durum gecisleri KOSULLU yazilir ve
+// etkilenen satir sayisi dondurulur. Once `claimForLaunch` kaydi SCHEDULED -> LAUNCHING
+// yapar; yalnizca bu gecisi KAZANAN poller AWX'i cagirir.
+async function claimForLaunch(id) {
+  const { rows } = await db.query(
+    `UPDATE oco_scheduled_launches
+        SET status = 'LAUNCHING', updated_at = GETUTCDATE()
+      OUTPUT INSERTED.*
+      WHERE id = $1 AND status = 'SCHEDULED'`,
+    [id]
+  );
+  return rows[0] ? rowToRec(rows[0]) : null;
+}
+
+// Sonuc yazimlari LAUNCHING'e kosullu: arada admin iptali geldiyse (adminCancel
+// LAUNCHING'i de kapsar) 0 satir etkilenir ve cagiran bunu GORUR — sessizce ezmez.
 async function markLaunched(id, awxJobId) {
-  await db.query(
+  const { rows } = await db.query(
     `UPDATE oco_scheduled_launches
         SET status = 'LAUNCHED', awx_job_id = $2, updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
-      WHERE id = $1`,
+      OUTPUT INSERTED.id
+      WHERE id = $1 AND status = 'LAUNCHING'`,
     [id, awxJobId]
   );
+  return rows.length > 0;
+}
+
+// ONAY BEKLIYOR (2026-08-28): Smart onayi acikken zamanlanmis is HEMEN calismaz —
+// once bir Smart bileti acilir. Eski kod bu donusu de `markLaunched` ile yaziyor,
+// `result.jobId` olmadigi icin `awx_job_id = NULL` birakiyordu: panel YESIL "Tetiklendi"
+// gosteriyor ama ortada job YOK. Bilet 15 dk icinde onaylanmazsa sessizce oluyordu ve
+// ekranda hicbir sey degismiyordu. Artik kendi durumu var.
+async function markPendingApproval(id, { smartTicketId, externalTicketId }) {
+  const { rows } = await db.query(
+    `UPDATE oco_scheduled_launches
+        SET status = 'PENDING_APPROVAL', smart_ticket_id = $2,
+            error_message = $3, updated_at = GETUTCDATE()
+      OUTPUT INSERTED.id
+      WHERE id = $1 AND status = 'LAUNCHING'`,
+    [id, smartTicketId ?? null,
+     `Kesinti saati geldi; Smart onay talebi acildi (#${externalTicketId || '?'}). Is, onay gelince tetiklenecek.`]
+  );
+  return rows.length > 0;
+}
+
+// Smart bileti onaylanip AWX job'i gercekten tetiklendiginde cagrilir (bkz.
+// runner.cjs smart poller callback'i). PENDING_APPROVAL -> LAUNCHED.
+async function markApprovedLaunched(id, awxJobId) {
+  const { rows } = await db.query(
+    `UPDATE oco_scheduled_launches
+        SET status = 'LAUNCHED', awx_job_id = $2, error_message = NULL,
+            updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
+      OUTPUT INSERTED.id
+      WHERE id = $1 AND status = 'PENDING_APPROVAL'`,
+    [id, awxJobId ?? null]
+  );
+  return rows.length > 0;
+}
+
+// Smart bileti reddedildi/zaman asimina ugradi/hata verdi: OCO kaydi da kapatilir,
+// yoksa PENDING_APPROVAL'da sonsuza dek asili kalirdi.
+async function markApprovalResolved(id, { status, message }) {
+  const { rows } = await db.query(
+    `UPDATE oco_scheduled_launches
+        SET status = $2, error_message = $3,
+            updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
+      OUTPUT INSERTED.id
+      WHERE id = $1 AND status = 'PENDING_APPROVAL'`,
+    [id, status, String(message || '').slice(0, 4000) || null]
+  );
+  return rows.length > 0;
 }
 
 async function markFailed(id, message) {
-  await db.query(
+  // Kosullu: yalnizca HENUZ SONUCLANMAMIS bir kaydi FAILED yapar. Arada kullanici
+  // iptal ettiyse CANCELLED korunur — "iptal ettim ama basarisiz yaziyor" olmasin.
+  const { rows } = await db.query(
     `UPDATE oco_scheduled_launches
         SET status = 'FAILED', error_message = $2, updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
-      WHERE id = $1`,
+      OUTPUT INSERTED.id
+      WHERE id = $1 AND status IN ('SCHEDULED', 'LAUNCHING', 'PENDING_APPROVAL')`,
     [id, String(message || '').slice(0, 4000)]
   );
+  return rows.length > 0;
 }
 
 // Pencere kapandigi halde hala tetiklenmemis kayit: OCO'nun izin verdigi saat gecti,
@@ -128,7 +204,7 @@ async function markExpired(id) {
     `UPDATE oco_scheduled_launches
         SET status = 'EXPIRED', updated_at = GETUTCDATE(), resolved_at = GETUTCDATE(),
             error_message = N'OCO kesinti penceresi tetikleme yapılmadan kapandı.'
-      WHERE id = $1`,
+      WHERE id = $1 AND status = 'SCHEDULED'`,
     [id]
   );
 }
@@ -138,7 +214,7 @@ async function cancel(id, username) {
     `UPDATE oco_scheduled_launches
         SET status = 'CANCELLED', updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
       OUTPUT INSERTED.*
-      WHERE id = $1 AND status = 'SCHEDULED' AND username = $2`,
+      WHERE id = $1 AND status IN ('SCHEDULED', 'PENDING_APPROVAL') AND username = $2`,
     [id, username]
   );
   return rows[0] ? rowToRec(rows[0]) : null;
@@ -154,10 +230,10 @@ async function adminCancel(id, { cancelledBy, note }) {
         SET status = 'CANCELLED', cancelled_by = $2, cancel_note = $3,
             updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
       OUTPUT INSERTED.*
-      WHERE id = $1 AND status IN ('SCHEDULED', 'AWX_SCHEDULED', 'LAUNCHED')`,
+      WHERE id = $1 AND status IN ('SCHEDULED', 'AWX_SCHEDULED', 'LAUNCHING', 'PENDING_APPROVAL', 'LAUNCHED')`,
     [id, cancelledBy || null, String(note || '').slice(0, 1000) || null]
   );
   return rows[0] ? rowToRec(rows[0]) : null;
 }
 
-module.exports = { create, createAwxScheduled, get, listScheduled, listAll, listByUsername, markLaunched, markFailed, markExpired, cancel, adminCancel };
+module.exports = { create, createAwxScheduled, get, listScheduled, listAll, listByUsername, claimForLaunch, markLaunched, markPendingApproval, markApprovedLaunched, markApprovalResolved, markFailed, markExpired, cancel, adminCancel };

@@ -22,6 +22,11 @@ const PAGE_SIZE = 50;
 const STATUS_META: Record<string, { label: string; className: string }> = {
   AWX_SCHEDULED: { label: "AWX'e zamanlandı", className: "bg-blue-50 text-blue-700 border-blue-200" },
   SCHEDULED:     { label: "Portal zamanladı", className: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  // LAUNCHING: AWX çağrısı uçuşta (saniyeler). PENDING_APPROVAL: kesinti saati geldi
+  // ama Smart onayı bekleniyor — iş HENÜZ tetiklenmedi. Eskiden bu durum da "Tetiklendi"
+  // yazıyordu; panel yeşil görünürken ortada job yoktu.
+  LAUNCHING:        { label: "Tetikleniyor…",   className: "bg-blue-50 text-blue-700 border-blue-200" },
+  PENDING_APPROVAL: { label: "Smart onayı bekleniyor", className: "bg-amber-50 text-amber-700 border-amber-200" },
   LAUNCHED:      { label: "Tetiklendi",       className: "bg-green-50 text-green-700 border-green-200" },
   FAILED:        { label: "Hata",             className: "bg-red-50 text-red-700 border-red-200" },
   CANCELLED:     { label: "İptal edildi",     className: "bg-gray-100 text-gray-600 border-gray-200" },
@@ -195,7 +200,7 @@ export default function OcoSchedulesPanel() {
                     )}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    {["SCHEDULED", "AWX_SCHEDULED", "LAUNCHED"].includes(r.status) && (
+                    {["SCHEDULED", "AWX_SCHEDULED", "PENDING_APPROVAL", "LAUNCHED"].includes(r.status) && (
                       <button
                         type="button"
                         disabled={cancelling === r.id}

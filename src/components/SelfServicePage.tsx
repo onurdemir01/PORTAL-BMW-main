@@ -30,6 +30,11 @@ import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import IpCheckSection from "@/components/self_service/IpCheckSection";
 import OpenshiftCheckSection from "@/components/self_service/OpenshiftCheckSection";
 
+// LAUNCHING ARA DURUMU (2026-08-28): Smart onayı geldi, AWX çağrısı uçuşta. Bu da bir
+// BEKLEME durumudur — sonlanmış gibi davranıp yoklamayı kesersek ekran "başlatılıyor"da
+// donar ve iş gerçekte çalışırken kullanıcı bunu hiç görmez.
+const WAITING_TICKET_STATES = ["PENDING", "LAUNCHING"];
+
 const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   {
     icon: CommandLineIcon,
@@ -196,7 +201,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   // job takibine (trackJob) geçilir — kullanıcı hiçbir ek tıklama yapmadan aynı
   // ekranda "onay bekleniyor" -> "iş çalışıyor" akışını görür.
   useEffect(() => {
-    if (!pendingTicket || pendingTicket.status !== "PENDING") return;
+    if (!pendingTicket || !WAITING_TICKET_STATES.includes(pendingTicket.status)) return;
     const timer = setInterval(async () => {
       try {
         const r = await ansibleApi.smartTicketStatus(pendingTicket.id);
@@ -208,7 +213,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
           trackJob(r.jobId);
           return;
         }
-        if (r.status !== "PENDING") {
+        if (!WAITING_TICKET_STATES.includes(r.status)) {
           clearInterval(timer);
           setPendingTicket({ id: pendingTicket.id, status: r.status, errorMessage: r.errorMessage, externalTicketId: r.externalTicketId });
         }

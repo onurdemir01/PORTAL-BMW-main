@@ -1876,6 +1876,13 @@ async function setupTables() {
       sql: `ALTER TABLE oco_scheduled_launches ADD awx_schedule_id INT NULL`,
     },
     {
+      // Zamanlanmis is Smart onayi gerektirdiginde acilan biletin ID'si
+      // (status = 'PENDING_APPROVAL'). Onay gelince smart poller bu ID uzerinden
+      // OCO kaydini LAUNCHED'a tasir — aksi halde kayit sonsuza dek asili kalirdi.
+      table: 'oco_scheduled_launches', col: 'smart_ticket_id',
+      sql: `ALTER TABLE oco_scheduled_launches ADD smart_ticket_id INT NULL`,
+    },
+    {
       table: 'smart_tickets', col: 'cancel_note',
       sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,
     },

@@ -1768,7 +1768,11 @@ function initAnsibleRunner(app) {
   // talebi acar. launch-ss icindeki mevcut satir-ici bloklarla AYNI mantik; ayri bir
   // fonksiyon olmasinin sebebi OCO poller'inin da AYNI kapidan gecmesi gerekmesi:
   // zamanlanmis bir is 22:00'de Smart onayini ATLAYARAK calismamali.
-  async function launchOrRequestApproval(server, templateId, plan) {
+  // `opts.ocoRecordId`: bu plan bir OCO ZAMANLANMIS kaydindan geliyorsa o kaydin ID'si.
+  // Smart bileti acilirsa ID bilete gomulur; onay/red gelince smart poller bu ID
+  // uzerinden OCO kaydini da sonuclandirir. Olmazsa OCO kaydi PENDING_APPROVAL'da
+  // sonsuza dek asili kalirdi.
+  async function launchOrRequestApproval(server, templateId, plan, opts = {}) {
     const { detail, overrides, extraVars, gateVars, specFields, resolvedLaunchOptions, username, templateName } = plan;
     // Onay TALEP BAZINDA atlanabilir (ornek: op_selection=read). Karar tek yerde:
     // server/ansible/smart-gate.cjs - kural "istisna listesi"dir, varsayilan "gerekli".
@@ -1789,7 +1793,10 @@ function initAnsibleRunner(app) {
       const ticket = await smartStore.createTicket({
         externalTicketId: created.ticketId, username,
         awxServerId: server.id, awxTemplateId: templateId, flowKey,
-        pendingLaunch: { detail, extraVars, gateVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
+        pendingLaunch: {
+          detail, extraVars, gateVars, resolvedLaunchOptions, specFields, overrides, username, templateName,
+          ...(opts.ocoRecordId ? { ocoRecordId: opts.ocoRecordId } : {}),
+        },
       });
       return { pendingApproval: true, ticketId: ticket.id, externalTicketId: created.ticketId };
     }
@@ -1802,7 +1809,7 @@ function initAnsibleRunner(app) {
     require("../oco/poller.cjs").startPoller(async (rec) => {
       const server = getServerById(rec.awxServerId);
       if (!server) throw new Error(`AWX sunucusu bulunamadı: ${rec.awxServerId}`);
-      return launchOrRequestApproval(server, rec.awxTemplateId, rec.pendingLaunch);
+      return launchOrRequestApproval(server, rec.awxTemplateId, rec.pendingLaunch, { ocoRecordId: rec.id });
     });
   } catch (e) {
     console.warn("[OCO] poller başlatılamadı:", e.message);
