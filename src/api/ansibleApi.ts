@@ -493,7 +493,16 @@ export interface FieldCustomization {
   // header'i) - servis bazinda FARKLI olabilir (farkli flow'lar farkli Designer projesine ait
   // olabiliyor). Bos ise sistem geneli varsayilan (Admin > Sistem > Smart, SMART_RFF_TOKEN)
   // kullanilir - davranis GERIYE DONUK degismez.
-  smartApproval?: { enabled: boolean; flowKey?: string; metadataFields?: string; integrationKey?: string };
+  // skipWhen: Smart onayının İSTENMEYECEĞİ durumlar — "istisna listesi", izin listesi
+  // DEĞİL. Her satır bir kural: "<alan>: <değer>[, <değer2>]". Satırlar arası VEYA.
+  // Boş bırakılırsa onay her talepte istenir (eski davranış birebir korunur).
+  // Yön bilinçli: kuraldaki bir yazım hatası, olsa olsa GEREKSİZ bir onay isteğine yol
+  // açar — ters tasarımda (izin listesi) aynı hata prod'u onaysız geçirirdi.
+  // Karar mantığı tek yerde: server/ansible/smart-gate.cjs
+  smartApproval?: {
+    enabled: boolean; flowKey?: string; metadataFields?: string; integrationKey?: string;
+    skipWhen?: string;
+  };
   // Etkinse ve talep PRODUCTION ise (extra_vars'ta env|ortam = prod|production) iş
   // hemen tetiklenmez: kullanıcıdan OCO numarası istenir, OCO'nun planlanan kesinti
   // penceresi sorgulanır ve pencereye göre karar verilir (bkz. server/oco/*).

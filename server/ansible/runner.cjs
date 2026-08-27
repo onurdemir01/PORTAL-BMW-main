@@ -1770,7 +1770,9 @@ function initAnsibleRunner(app) {
   // zamanlanmis bir is 22:00'de Smart onayini ATLAYARAK calismamali.
   async function launchOrRequestApproval(server, templateId, plan) {
     const { detail, overrides, extraVars, specFields, resolvedLaunchOptions, username, templateName } = plan;
-    if (overrides?.smartApproval?.enabled) {
+    // Onay TALEP BAZINDA atlanabilir (ornek: op_selection=read). Karar tek yerde:
+    // server/ansible/smart-gate.cjs - kural "istisna listesi"dir, varsayilan "gerekli".
+    if (require("./smart-gate.cjs").isSmartRequired(overrides?.smartApproval, extraVars)) {
       const smartClient = require("../smart/client.cjs");
       const smartStore = require("../smart/store.cjs");
       const flowKey = String(overrides.smartApproval.flowKey || "").trim();
@@ -2406,7 +2408,10 @@ function initAnsibleRunner(app) {
           //     job'i baslatir. O durumda Portal'in kendi zamanlamasi kullanilir; poller
           //     kesinti saatinde launchOrRequestApproval'i cagirir ve Smart bileti orada
           //     acilir. Iki mekanizma da ayni tabloda, status ile ayrilir.
-          const smartAlsoRequired = !!overrides.smartApproval?.enabled;
+          // Bu TALEP icin onay gercekten gerekiyor mu (alan bazli atlama dahil).
+          // Atlaniyorsa AWX native schedule kullanilabilir - atlanacak bir kapiyi
+          // korumak icin Portal poller'ina dusmek gereksiz olurdu.
+          const smartAlsoRequired = require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, extraVars);
           if (!smartAlsoRequired) {
             const schedName = `PORTAL_OCO_${ocoNumber}_${templateId}_${Date.now()}`;
             let sched;
@@ -2458,7 +2463,8 @@ function initAnsibleRunner(app) {
       // Smart'ta bir talep acilir, gerekli her sey (extraVars, launch secenekleri) DB'ye
       // yazilir ve onay geldiginde server/smart/poller.cjs bu ayni launch mantigini
       // (performSsLaunch) cagirir. Kullanici "onay bekleniyor" ekranini gorur.
-      if (overrides.smartApproval?.enabled) {
+      // Alan degerine gore atlama: bkz. server/ansible/smart-gate.cjs
+      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, extraVars)) {
         const smartClient = require("../smart/client.cjs");
         const smartStore = require("../smart/store.cjs");
         const flowKey = String(overrides.smartApproval.flowKey || "").trim();
@@ -2565,7 +2571,8 @@ function initAnsibleRunner(app) {
         detail: JSON.stringify({ awxServerId: server.id, templateId, scenarioName, extraVars }),
       });
 
-      if (overrides.smartApproval?.enabled) {
+      // Alan degerine gore atlama: bkz. server/ansible/smart-gate.cjs
+      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, extraVars)) {
         const smartClient = require("../smart/client.cjs");
         const smartStore = require("../smart/store.cjs");
         const flowKey = String(overrides.smartApproval.flowKey || "").trim();

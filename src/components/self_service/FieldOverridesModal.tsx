@@ -95,7 +95,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
   // Etkinse: bu servis çalıştırıldığında AWX job'ı HEMEN tetiklenmez — önce Smart'ta bir
   // talep açılır, onaylanana kadar kullanıcı "onay bekleniyor" ekranını görür (bkz.
   // server/ansible/runner.cjs POST /launch-ss ve server/smart/poller.cjs).
-  const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "", metadataFields: "", integrationKey: "" });
+  const [smartApproval, setSmartApproval] = useState({ enabled: false, flowKey: "", metadataFields: "", integrationKey: "", skipWhen: "" });
   // OCO Kontrolu: TEK anahtar. Production tespiti (env|ortam = prod|production) ve
   // 2 saatlik pencere kurali BILEREK kodda sabit - bir guvenlik kapisi admin ekranindan
   // gevsetilebilir olmamali (bkz. server/oco/prod-detect.cjs).
@@ -151,6 +151,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
             flowKey: smartOv?.flowKey || "",
             metadataFields: smartOv?.metadataFields || "",
             integrationKey: smartOv?.integrationKey || "",
+            skipWhen: smartOv?.skipWhen || "",
           });
         }
       })
@@ -397,6 +398,7 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
           flowKey: smartApproval.flowKey.trim(),
           metadataFields: smartApproval.metadataFields.trim() || undefined,
           integrationKey: smartApproval.integrationKey.trim() || undefined,
+          skipWhen: smartApproval.skipWhen.trim() || undefined,
         },
       });
       if (!r.ok) { setErr(r.message || "Kaydedilemedi."); return; }
@@ -1049,6 +1051,33 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
                       placeholder={'KONU: {{templateName}} - Portal talebi\nINFO: {% if extraVars.env == "Production" %}{{extraVars.oco}} numaralı OCO ile{% else %}(OCO gerekmez){% endif %} {{extraVars.op_selection}} rica ederim.'}
                       onChange={(e) => setSmartApproval((s) => ({ ...s, metadataFields: e.target.value }))}
                     />
+                  </div>
+                )}
+
+                {smartApproval.enabled && (
+                  <div className="mt-3 pt-3 border-t border-[var(--border)]">
+                    <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                      Onay hangi durumlarda İSTENMESİN? (opsiyonel)
+                    </label>
+                    <Textarea
+                      rows={3}
+                      className="font-mono text-xs"
+                      value={smartApproval.skipWhen}
+                      placeholder={'op_selection: read\naction: read, list'}
+                      onChange={(e) => setSmartApproval((s) => ({ ...s, skipWhen: e.target.value }))}
+                    />
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1.5 leading-relaxed">
+                      Her satır bir kural: <code>alan: değer</code>. Aynı satırda virgülle
+                      birden fazla değer yazılabilir. Satırlar arasında <b>VEYA</b> —
+                      herhangi biri tutarsa o talep için Smart kaydı <b>açılmaz</b>, iş
+                      doğrudan çalışır. Alan adı ve değer büyük/küçük harf duyarsızdır.
+                    </p>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-relaxed">
+                      Bu bir <b>istisna listesi</b>, izin listesi değil: boş bırakılırsa onay
+                      her talepte istenir. Kuraldaki bir yazım hatası ya da talepte olmayan
+                      bir alan, olsa olsa <b>gereksiz bir onay</b> isteğine yol açar — işi
+                      onaysız geçirmez.
+                    </p>
                   </div>
                 )}
               </div>
