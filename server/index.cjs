@@ -102,7 +102,19 @@ async function main() {
     { name: "dutyRoster", init: () => initDutyRoster(app), optional: true },
     { name: "nobetci", init: () => initNobetci(app), optional: true },
     { name: "systemConfig", init: () => require("./admin/system-config.cjs").initSystemConfig(app), optional: true },
-    { name: "branding", init: () => require("./admin/branding.cjs").initBranding(app), optional: true },
+    {
+      name: "branding",
+      init: () => {
+        const b = require("./admin/branding.cjs");
+        b.initBranding(app);
+        // Favicon surumunu acilista BIR KEZ isit. Yapilmazsa ilk sayfa yuklemesi
+        // varsayilanin surumunu gomer, ikinci yukleme gercek surume gecer - ve o
+        // gecis tam da onlemeye calistigimiz "ikon degisti" anini bir kez daha
+        // yasatirdi. Basarisiz olursa sessizce varsayilanla devam edilir.
+        b.warmFavicon().catch(() => {});
+      },
+      optional: true,
+    },
     { name: "dbFullBackup", init: () => require("./db/full-backup.cjs").initDbFullBackup(app), optional: true },
     { name: "ansible", init: () => initAnsible(app), optional: true },
     { name: "selfService", init: () => initSelfService(app), optional: true },
@@ -148,10 +160,40 @@ async function main() {
   if (process.env.NODE_ENV === "production") {
     const distDir = path.join(__dirname, "../dist");
     if (fs.existsSync(path.join(distDir, "index.html"))) {
-      // Hash'li asset dosyalari degismez — agresif cache
+      // index.html DOGRUDAN gonderilmez: sekme ikonunun adresine icerige bagli bir
+      // surum (?v=<hash>) enjekte edilir. Sabit adres, tarayicinin ONCEKI ikonu
+      // onbellekten boyayip sonra degistirmesine yol aciyordu - acilista bir an
+      // gomulu varsayilan (kirmizi "B") gorunuyordu. Surumlu adres degismedikce
+      // tarayici hic istek atmaz, dolayisiyla degisecek bir goruntu de olusmaz.
+      const indexPath = path.join(distDir, "index.html");
+      let indexRaw = null;
+      const sendIndexHtml = (req, res) => {
+        try {
+          if (indexRaw === null) indexRaw = fs.readFileSync(indexPath, "utf-8");
+          const v = require("./admin/branding.cjs").faviconVersion();
+          const html = indexRaw.replace(
+            'href="/api/branding/favicon"',
+            `href="/api/branding/favicon?v=${encodeURIComponent(v)}"`
+          );
+          // HTML'in KENDISI onbelleklenmemeli: surum degistiginde kullanicinin
+          // yeni adresi gorebilmesi buna bagli.
+          res.setHeader("Cache-Control", "no-cache");
+          res.type("html").send(html);
+        } catch (e) {
+          console.warn("[Server] index.html surumlenemedi, ham dosya gonderiliyor:", e.message);
+          res.sendFile(indexPath);
+        }
+      };
+
+      // Statikten ONCE: "/" ve "/index.html" surumlu halden gecsin.
+      app.get(["/", "/index.html"], sendIndexHtml);
+
+      // Hash'li asset dosyalari degismez — agresif cache. index:false, "/" istegini
+      // yukaridaki handler'a birakmak icin.
       app.use(express.static(distDir, {
         maxAge: "1y",
         immutable: true,
+        index: false,
         setHeaders: (res, filePath) => {
           if (filePath.endsWith("index.html")) {
             res.setHeader("Cache-Control", "no-cache");
@@ -159,9 +201,7 @@ async function main() {
         },
       }));
       // SPA fallback: /api disi tum GET'ler index.html'e (client-side routing)
-      app.get(/^\/(?!api\/).*/, (req, res) => {
-        res.sendFile(path.join(distDir, "index.html"));
-      });
+      app.get(/^\/(?!api\/).*/, sendIndexHtml);
       console.log("[Server] production static serving aktif (dist/)");
     } else {
       console.warn("[Server] NODE_ENV=production ama dist/index.html yok — once `npm run build` calistirin.");

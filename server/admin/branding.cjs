@@ -60,6 +60,40 @@ const DEFAULT_FAVICON_ETAG = `"${crypto.createHash('sha1').update(DEFAULT_FAVICO
 // aninda tazelenir; birden fazla process varsa ETag revalidation yakalar.
 const cache = { favicon: null, logo: null }; // her biri: { mime, buf, etag, updatedAt, updatedBy } | null
 
+// ── FAVICON SURUMU (sekme ikonu "yanip sonme"sini onlemek icin) ───────────────
+// SORUN: index.html sabit bir adrese bakiyordu (/api/branding/favicon). Adres hic
+// degismedigi icin tarayici ONCEKI baytlari onbellekte tutuyor; sayfa acilirken once
+// O ESKI ikonu boyuyor, revalidation cevabi gelince yenisiyle degistiriyor. Sonuc:
+// yuklenmis logo yerine bir an icin gomulu VARSAYILAN (kirmizi "B") gorunuyor.
+//
+// COZUM: adrese icerige bagli bir surum eklemek (?v=<hash>). Icerik degisince adres
+// de degisir; degismedikce tarayici kendi kopyasini kullanir ve HIC istek atmaz -
+// dolayisiyla boyanacak eski/yeni ikili de olusmaz.
+//
+// Surum ETag'den turetilir (ayni hash), tirnaklar URL icin atilir. Baslangic degeri
+// varsayilanin surumudur; DB'den logo yuklendigi anda guncellenir.
+let _faviconVersion = DEFAULT_FAVICON_ETAG.replace(/"/g, '');
+
+function faviconVersion() {
+  return _faviconVersion;
+}
+
+function setFaviconVersion(etag) {
+  _faviconVersion = String(etag || DEFAULT_FAVICON_ETAG).replace(/"/g, '');
+}
+
+// Sunucu acilisinda BIR KEZ cagrilir. Olmazsa ilk sayfa yuklemesi varsayilanin
+// surumunu gomer, ikinci yukleme gercek surume gecer ve o gecis tam da onlemeye
+// calistigimiz degisimi bir kez daha yasatirdi.
+async function warmFavicon() {
+  try {
+    const fav = await getSlot('favicon');
+    setFaviconVersion(fav ? fav.etag : DEFAULT_FAVICON_ETAG);
+  } catch {
+    /* DB yoksa varsayilan surumle devam - ikon yine dogru sunulur */
+  }
+}
+
 function db() {
   return require('../db/index.cjs');
 }
@@ -90,6 +124,9 @@ async function loadFromDb(blobName) {
 async function getSlot(slot) {
   if (cache[slot]) return cache[slot];
   cache[slot] = await loadFromDb(SLOTS[slot].blobName);
+  // Favicon surumu DB'den gelen ETag'e baglanir; yukleme/silme sonrasi cache
+  // sifirlandigi icin bir sonraki okumada burasi tekrar calisir.
+  if (slot === 'favicon') setFaviconVersion(cache[slot] ? cache[slot].etag : DEFAULT_FAVICON_ETAG);
   return cache[slot];
 }
 
@@ -121,7 +158,7 @@ function initBranding(app) {
       res.set('X-Content-Type-Options', 'nosniff');
       res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
       res.set('ETag', DEFAULT_FAVICON_ETAG);
-      res.set('Cache-Control', 'no-cache, must-revalidate');
+      res.set('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache, must-revalidate');
       if (req.headers['if-none-match'] === DEFAULT_FAVICON_ETAG) return res.status(304).end();
       // Kendi yazdigimiz sabit SVG — kullanici yuklemesi degil, script icermez.
       return res.send(DEFAULT_FAVICON_SVG);
@@ -133,9 +170,11 @@ function initBranding(app) {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
     res.set('ETag', fav.etag);
-    // no-cache = "onbellekte tut ama HER SEFERINDE dogrula". Logo degisince
-    // kullanici sert yenileme yapmadan yeni gorseli alir.
-    res.set('Cache-Control', 'no-cache, must-revalidate');
+    // ?v=<surum> ILE gelindiyse adres zaten icerige bagli: icerik degisirse adres de
+    // degisir, dolayisiyla uzun sureli/immutable onbellek GUVENLI ve sekme ikonunun
+    // her acilista yeniden istenmesini (ve eski kopyanin bir an gorunmesini) onler.
+    // ?v YOKSA eski davranis korunur: onbellekte tut ama her seferinde dogrula.
+    res.set('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache, must-revalidate');
 
     if (req.headers['if-none-match'] === fav.etag) return res.status(304).end();
     return res.send(fav.buf);
@@ -303,4 +342,4 @@ function initBranding(app) {
   console.log('[Branding] endpoints mounted at /api/branding + /api/admin/branding');
 }
 
-module.exports = { initBranding };
+module.exports = { initBranding, faviconVersion, warmFavicon };
