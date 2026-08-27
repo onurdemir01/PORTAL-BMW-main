@@ -1769,10 +1769,14 @@ function initAnsibleRunner(app) {
   // fonksiyon olmasinin sebebi OCO poller'inin da AYNI kapidan gecmesi gerekmesi:
   // zamanlanmis bir is 22:00'de Smart onayini ATLAYARAK calismamali.
   async function launchOrRequestApproval(server, templateId, plan) {
-    const { detail, overrides, extraVars, specFields, resolvedLaunchOptions, username, templateName } = plan;
+    const { detail, overrides, extraVars, gateVars, specFields, resolvedLaunchOptions, username, templateName } = plan;
     // Onay TALEP BAZINDA atlanabilir (ornek: op_selection=read). Karar tek yerde:
     // server/ansible/smart-gate.cjs - kural "istisna listesi"dir, varsayilan "gerekli".
-    if (require("./smart-gate.cjs").isSmartRequired(overrides?.smartApproval, extraVars)) {
+    // `gateVars` YOKSA (bu degisiklikten ONCE yazilmis bir pendingLaunch kaydi) bos nesne
+    // gecilir: hicbir kural tutmaz -> onay GEREKLI kalir. Guvenli taraf. `extraVars`'a
+    // dusmek, tam da kapatilan aciktan (dogrulanmamis client verisiyle atlama) eski
+    // kayitlarin gecmesine izin verirdi.
+    if (require("./smart-gate.cjs").isSmartRequired(overrides?.smartApproval, gateVars || {})) {
       const smartClient = require("../smart/client.cjs");
       const smartStore = require("../smart/store.cjs");
       const flowKey = String(overrides.smartApproval.flowKey || "").trim();
@@ -1785,7 +1789,7 @@ function initAnsibleRunner(app) {
       const ticket = await smartStore.createTicket({
         externalTicketId: created.ticketId, username,
         awxServerId: server.id, awxTemplateId: templateId, flowKey,
-        pendingLaunch: { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
+        pendingLaunch: { detail, extraVars, gateVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
       });
       return { pendingApproval: true, ticketId: ticket.id, externalTicketId: created.ticketId };
     }
@@ -2191,6 +2195,9 @@ function initAnsibleRunner(app) {
 
     let extraVars = {};
     let specFields = null;
+    // Sunucu-tarafi dogrulamadan GECMEMIS (yalnizca client'in gonderdigi) anahtarlar.
+    // AWX'e giderler ama ONAY KARARINDA sayilmazlar — bkz. asagidaki `gateVars`.
+    const untrustedKeys = new Set();
     if (detail.survey_enabled === false) {
       // Survey devre disi. Admin bu template icin bir "Survey Tasarimcisi" tanimladiysa
       // (overrides.customSurveyFields) o alanlar AYNI AWX-native survey kadar sikica
@@ -2215,9 +2222,16 @@ function initAnsibleRunner(app) {
       } else {
         // Gercek bir survey yok (extra_vars fallback senaryosu) — mevcut esnek davranis
         // korunur: yalnizca dolu degerler gecirilir, kati dogrulama uygulanmaz.
+        //
+        // GUVENLIK (2026-08-28): bu daldaki anahtarlar HICBIR sunucu-tarafi dogrulamadan
+        // gecmez — client ne gonderirse extraVars'a girer. Bu, AWX payload'i icin kabul
+        // edilmis bir esneklik; AMA onay kapisi (smart-gate) de AYNI nesneyi okuyordu ve
+        // kullanici govdeye `{"extraVars":{"op_selection":"read"}}` ekleyerek Smart onayini
+        // ATLATABILIYORDU. Kapinin girdisi ile AWX'in girdisi artik AYRILIYOR: burada
+        // uretilen anahtarlar GUVENILMEZ olarak isaretlenir ve `gateVars`'a girmez.
         for (const [k, v] of Object.entries(submittedExtraVars || {})) {
           const val = v === undefined || v === null ? "" : String(v).trim();
-          if (val !== "") extraVars[k] = val;
+          if (val !== "") { extraVars[k] = val; untrustedKeys.add(k); }
         }
       }
     }
@@ -2227,7 +2241,14 @@ function initAnsibleRunner(app) {
     // (survey var/yok, fallback) tek merkezden birlestirilir. Survey/fallback
     // alanlari cakisan anahtarlarda ONCELIKLIDIR (yapilandirilmis olan kazanir).
     if (overrides.rawExtraVars) {
-      extraVars = { ...parseSimpleYaml(overrides.rawExtraVars), ...extraVars };
+      const raw = parseSimpleYaml(overrides.rawExtraVars);
+      extraVars = { ...raw, ...extraVars };
+      // Admin'in ACIKCA yazdigi bir anahtari, dogrulanmamis client degeri EZEMEZ. (Survey/
+      // custom-survey ile gelen degerler bu kuraldan etkilenmez — onlar dogrulanmistir ve
+      // "yapilandirilmis olan kazanir" kurali onlar icin gecerli kalir.)
+      for (const k of Object.keys(raw)) {
+        if (untrustedKeys.has(k)) { extraVars[k] = raw[k]; untrustedKeys.delete(k); }
+      }
     }
 
     // Baslatan kullanicinin e-posta/kullanici adi — EN SON adimda, oturumdan okunarak
@@ -2252,7 +2273,18 @@ function initAnsibleRunner(app) {
 
     const resolvedLaunchOptions = resolveLaunchOptions(overrides, { limit, forks, jobTags, skipTags, verbosity, jobType });
 
-    return { detail, overrides, extraVars, specFields, resolvedLaunchOptions };
+    // ONAY KAPISININ GIRDISI: extraVars'in yalnizca GUVENILIR alt kumesi (survey ile
+    // dogrulanmis, custom-survey ile dogrulanmis ya da admin'in rawExtraVars'inda yazili).
+    // smart-gate "istisna listesi" mantigiyla calisiyor (bkz. smart-gate.cjs basligi):
+    // varsayilan "onay gerekli", kural tutarsa atlaniyor. Kuralin okudugu nesneye
+    // dogrulanmamis client verisi girerse o guvenli-varsayilan tersine doner — bu yuzden
+    // kapi AYRI bir nesne uzerinden karar verir.
+    const gateVars = {};
+    for (const [k, v] of Object.entries(extraVars)) {
+      if (!untrustedKeys.has(k)) gateVars[k] = v;
+    }
+
+    return { detail, overrides, extraVars, gateVars, specFields, resolvedLaunchOptions };
   }
 
   // Smart metadata alanlari nunjucks (Jinja2'nin JS portu - Ansible'daki AYNI {{ }} / {% if %}
@@ -2303,8 +2335,19 @@ function initAnsibleRunner(app) {
         );
       }
     }
+    // TESHIS EVET, DEGER HAYIR (2026-08-28): bu log 2026-08-20'de "eslesme dogru mu"
+    // sorusunu Smart tarafina bakmadan cevaplamak icin eklendi ve o degeri koruyoruz —
+    // ama `JSON.stringify(metadata)` render edilmis DEGERLERI de yaziyordu. Metadata
+    // sablonu `{{extraVars.ALAN}}` ile herhangi bir survey alanini cekebiliyor; password
+    // tipli bir alan eslendiginde parola duz metin stdout'a dusuyordu. DB yolunda ayni
+    // veri `redactExtraVarsForHistory` ile maskeleniyor; log yolunda eksikti.
+    // Artik yalnizca ANAHTAR + doldu/bos bilgisi yaziliyor: "hangi alan render edildi mi"
+    // sorusu hala cevaplanabilir, degerin kendisi hicbir yere yazilmaz.
+    const metadataShape = Object.fromEntries(
+      Object.entries(metadata).map(([k, v]) => [k, String(v ?? "").length > 0 ? `<dolu:${String(v).length}>` : "<bos>"])
+    );
     console.log(`[SmartMetadata] extraVars anahtarlari:`, JSON.stringify(Object.keys(ctx.extraVars)),
-      `-> render edilen metadata:`, JSON.stringify(metadata));
+      `-> render edilen metadata (degerler maskeli):`, JSON.stringify(metadataShape));
     return metadata;
   }
 
@@ -2411,7 +2454,7 @@ function initAnsibleRunner(app) {
           // Bu TALEP icin onay gercekten gerekiyor mu (alan bazli atlama dahil).
           // Atlaniyorsa AWX native schedule kullanilabilir - atlanacak bir kapiyi
           // korumak icin Portal poller'ina dusmek gereksiz olurdu.
-          const smartAlsoRequired = require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, extraVars);
+          const smartAlsoRequired = require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, gateVars);
           if (!smartAlsoRequired) {
             const schedName = `PORTAL_OCO_${ocoNumber}_${templateId}_${Date.now()}`;
             let sched;
@@ -2464,7 +2507,7 @@ function initAnsibleRunner(app) {
       // yazilir ve onay geldiginde server/smart/poller.cjs bu ayni launch mantigini
       // (performSsLaunch) cagirir. Kullanici "onay bekleniyor" ekranini gorur.
       // Alan degerine gore atlama: bkz. server/ansible/smart-gate.cjs
-      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, extraVars)) {
+      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, gateVars)) {
         const smartClient = require("../smart/client.cjs");
         const smartStore = require("../smart/store.cjs");
         const flowKey = String(overrides.smartApproval.flowKey || "").trim();
@@ -2572,7 +2615,7 @@ function initAnsibleRunner(app) {
       });
 
       // Alan degerine gore atlama: bkz. server/ansible/smart-gate.cjs
-      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, extraVars)) {
+      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, gateVars)) {
         const smartClient = require("../smart/client.cjs");
         const smartStore = require("../smart/store.cjs");
         const flowKey = String(overrides.smartApproval.flowKey || "").trim();
@@ -2850,7 +2893,17 @@ function initAnsibleRunner(app) {
         externalTicketId: ticket.externalTicketId,
         flowKey: ticket.flowKey,
         templateName: ticket.pendingLaunch?.templateName || null,
-        extraVars: ticket.pendingLaunch?.extraVars || {},
+        // REDAKSIYON (2026-08-28): `hidden` alanlarin varsayilani resolveLaunchExtraVars
+        // ile extraVars'a ENJEKTE ediliyor ve o mekanizmanin amaci (bkz. ilgili yorum)
+        // "hassas/credential niteligindeki alanlarin kullanicidan SAKLANABILMESI". Bu uc
+        // onlari kullaniciya oldugu gibi geri veriyordu — kullanici kendi talebine tiklayip
+        // admin'in sakladigi credential'i duz metin okuyabiliyordu. Gecmis kaydi yolunda
+        // AYNI maskeleme zaten uygulaniyor; burada eksikti.
+        extraVars: redactExtraVarsForHistory(
+          ticket.pendingLaunch?.extraVars || {},
+          ticket.pendingLaunch?.specFields,
+          ticket.pendingLaunch?.overrides,
+        ),
         jobId: ticket.awxJobId,
         awxServerId: ticket.awxServerId,
         errorMessage: ticket.errorMessage,
@@ -2922,7 +2975,12 @@ function initAnsibleRunner(app) {
           templateName: t.pendingLaunch?.templateName || null,
           // Admin "hangi parametrelerle acilmis" sorusunu da bu ekrandan yanitlayabilsin;
           // detay ucuna (/detail) gitmeye gerek kalmasin.
-          extraVars: t.pendingLaunch?.extraVars || {},
+          // Ayni redaksiyon admin listesinde de gecerli — bkz. /smart-ticket/:id/detail.
+          extraVars: redactExtraVarsForHistory(
+            t.pendingLaunch?.extraVars || {},
+            t.pendingLaunch?.specFields,
+            t.pendingLaunch?.overrides,
+          ),
           awxServerId: t.awxServerId,
           awxTemplateId: t.awxTemplateId,
           jobId: t.awxJobId,

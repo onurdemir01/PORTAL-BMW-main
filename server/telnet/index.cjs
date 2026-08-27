@@ -245,6 +245,30 @@ function initTelnet(app) {
         return res.status(400).json({ ok: false, message: `Geçersiz namespace adı: ${badNs}` });
       }
 
+      // YETKI KONTROLU (2026-08-28): buraya kadar namespace icin TEK kontrol "bos degil +
+      // ayrac icermiyor"du; `restrictions.isAllowed` HIC cagrilmiyordu. Yani LogX/OpsX'te
+      // kisitlanmis bir namespace'e Telnet modulunden erisilebiliyor, kullanici listede
+      // gormedigi bir namespace adini govdeye elle yazabiliyordu. OpsX'teki AYNI kapi
+      // (server/opsx/index.cjs resolveOpenshiftTargets) burada da uygulanir: gruptaki
+      // HERHANGI bir gercek cluster icin kisitlama varsa TUM istek reddedilir (fail-safe).
+      {
+        const restrictions = require('../logx/v2/restrictions.cjs');
+        const user = req.session?.user || {};
+        const groupClusters = tree[envKey][tenantKey] || [];
+        for (const ns of cleanNamespaces) {
+          for (const clusterName of groupClusters) {
+            const resourceKey = `${tenantKey}/${envKey}/${clusterName}/${ns}`;
+            const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, user).catch(() => false);
+            if (!allowed) {
+              return res.status(403).json({
+                ok: false,
+                message: `"${ns}" namespace'i için erişim yetkiniz yok — ekibiniz bu kaynağı kısıtlamış olabilir.`,
+              });
+            }
+          }
+        }
+      }
+
       // ── LOGX MODELI (2026-08-12 kullanici karari) ──────────────────────────────
       // Playbook artik `{{ cluster }}_{{ env }}` envanter GRUBUNU hedeflemiyor; hedef
       // JUMP SERVER'lardir ve cluster'lar VERI olarak gider — LogX'in uretimde kanitlanmis

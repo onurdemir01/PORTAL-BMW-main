@@ -134,8 +134,15 @@ async function createTicket({ flowKey, username, domain, metadata, integrationKe
   // "alanlar bomboş geldi" gibi sikayetlerde kod dogru render etmis mi yoksa sunucu
   // eski/farkli bir surumle mi calisiyor ayrimini Smart tarafina hic bakmadan yapmak icin
   // (2026-08-20, kullanici talebi).
+  // TESHIS EVET, DEGER HAYIR (2026-08-28): govdenin SEKLI (hangi key'ler gitti, doldu mu)
+  // teshis icin gerekli ve korunuyor; DEGERLER yazilmiyor. Metadata `{{extraVars.ALAN}}`
+  // ile herhangi bir survey alanini tasiyabiliyor — password tipli bir alan eslendiginde
+  // parola bu satirda duz metin stdout'a dusuyordu.
   console.log(`[Smart] createTicket govdesi (flowKey=${flowKey}, logonName=${username}):`,
-    JSON.stringify(body.metadataData.metadatas));
+    JSON.stringify((body.metadataData.metadatas || []).map((m) => ({
+      key: m.key,
+      value: String(m.value ?? '').length > 0 ? `<dolu:${String(m.value).length}>` : '<bos>',
+    }))));
   const result = await post(cfg.createTicketPath, body, integrationKey ? { 'rff-request-token': integrationKey } : undefined);
   console.log(`[Smart] createTicket yaniti (flowKey=${flowKey}):`, JSON.stringify(result).slice(0, 1000));
   const resultCode = String(result?.result?.resultCode ?? '');

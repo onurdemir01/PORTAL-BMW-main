@@ -17,16 +17,28 @@ const { getPool, sql } = require('./portal-mssql.cjs');
 
 const BLOB_NAME = 'db_full_backup:last_run';
 
+// SAYISAL ENV DOGRULAMASI (2026-08-28): `Number('abc')` NaN doner ve
+// `setInterval(fn, NaN)` Node'da **1 ms'de bir** tick demektir — yanlis yazilmis tek bir
+// env degeri portali kilitlerdi. Ayrica sinirlar makul araliga kelepcelenir: tick araligi
+// 60 dk'yi ASARSA `getHours() === cfg.hour` penceresi hic yakalanamaz ve yedek SESSIZCE
+// hic alinmaz (bu, hatadan daha kotudur — kimse fark etmez).
+function numEnv(raw, fallback, { min, max }) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(n)));
+}
+
 function getConfig() {
   return {
     dir: process.env.DB_FULL_BACKUP_DIR || '/sw/WAS_IMAGES/Ansible/Middleware_Inventory/backup/daily_full',
     // Ana backup/ klasoru zaten diger job'larin (mwapps_backup.py, inventory_backup.py, ...)
     // TEK tablo yedekleriyle dolu — bilerek bir alt klasorde tutulur, hangi dosyanin
     // hangi ise ait oldugu KARISMASIN.
-    retentionDays: Number(process.env.DB_FULL_BACKUP_RETENTION_DAYS || 14),
+    retentionDays: numEnv(process.env.DB_FULL_BACKUP_RETENTION_DAYS, 14, { min: 1, max: 3650 }),
     // 0-23 arasi, gunun hangi SAATINDE (sunucu yerel saati) calisilsin.
-    hour: Number(process.env.DB_FULL_BACKUP_HOUR ?? 2),
-    checkIntervalMinutes: Number(process.env.DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES || 15),
+    hour: numEnv(process.env.DB_FULL_BACKUP_HOUR, 2, { min: 0, max: 23 }),
+    // Ust sinir 60: tick saatlik pencereyi HER ZAMAN yakalayabilmeli.
+    checkIntervalMinutes: numEnv(process.env.DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES, 15, { min: 1, max: 60 }),
   };
 }
 
@@ -61,6 +73,20 @@ function timestampStr(d) {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}.${pad(d.getMinutes())}.${pad(d.getSeconds())}`;
 }
 
+// SIR TASIYAN KOLONLAR (2026-08-28). Yedek `INFORMATION_SCHEMA` uzerinden ISTISNASIZ her
+// tabloyu `SELECT *` edip PAYLASIMLI NFS'e duz metin CSV yaziyor ve dosyalar 14 gun orada
+// duruyordu. Icinde: `ansible_awx_servers.token/password/client_secret` (AWX'i tam yetkiyle
+// kullanmaya yeter), `ocp_cluster_index.token`, `session_token` (oturum calmaya yeter) ve
+// `pending_launch_json` (ham extraVars — survey'deki password alanlari dahil).
+//
+// Repo kurali "parolalar DB'ye yazilmaz, yalnizca vault degiskeninin ADI tutulur" — ama
+// DB'de zaten duran bu sirlar mount'a erisen herkese aciliyordu. Tablo bazli bir allowlist
+// yerine KOLON ADI bazli maskeleme secildi: yeni bir tablo eklendiginde de otomatik
+// kapsanir (allowlist'i guncellemeyi unutmak sessiz bir sizinti olurdu) ve yedek YINE
+// eksiksiz kalir — yalnizca hassas HUCRELER maskelenir.
+const SECRET_COLUMN_RE = /(^|_)(token|password|passwd|secret|credential|api_key|apikey)($|_)|pending_launch_json/i;
+const MASK = '***maskelendi***';
+
 // node-mssql'in streaming Request API'si — buyuk tablolarda TUM sonucu belleğe
 // yuklemek yerine satir satir diske yazar.
 function backupTable(pool, schema, table, dir, tsStr) {
@@ -69,23 +95,40 @@ function backupTable(pool, schema, table, dir, tsStr) {
     const ws = fs.createWriteStream(outFile, { encoding: 'utf-8' });
     let rowCount = 0;
     let settled = false;
+    let maskedCols = new Set();
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      ws.end();
+      reject(err);
+    };
+
+    // DISK DOLARSA/NFS DUSERSE SUREC COKMESIN: 'error' dinleyicisi olmayan bir
+    // WriteStream'de Node `unhandled 'error' event` ile process'i dusurur — gece calisan
+    // bir yedek isinin portali komple indirmesi kabul edilemez.
+    ws.on('error', fail);
 
     const request = new sql.Request(pool);
     request.stream = true;
 
     request.on('recordset', (columns) => {
-      ws.write(Object.keys(columns).map(csvEscape).join('~') + '\n');
+      const names = Object.keys(columns);
+      maskedCols = new Set(names.filter((n) => SECRET_COLUMN_RE.test(n)));
+      if (maskedCols.size > 0) {
+        console.log(`[DBFullBackup] ${table}: maskelenen kolon(lar) — ${[...maskedCols].join(', ')}`);
+      }
+      ws.write(names.map(csvEscape).join('~') + '\n');
     });
     request.on('row', (row) => {
-      ws.write(Object.values(row).map(csvEscape).join('~') + '\n');
+      const cells = Object.entries(row).map(([k, v]) => (
+        // NULL maskelenmez: "deger yok" bilgisi sir degil ve yedegin butunlugu icin anlamli.
+        maskedCols.has(k) && v !== null && v !== undefined ? MASK : csvEscape(v)
+      ));
+      ws.write(cells.join('~') + '\n');
       rowCount++;
     });
-    request.on('error', (err) => {
-      if (settled) return;
-      settled = true;
-      ws.end();
-      reject(err);
-    });
+    request.on('error', fail);
     request.on('done', () => {
       if (settled) return;
       settled = true;
