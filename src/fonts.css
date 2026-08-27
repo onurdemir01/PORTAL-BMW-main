@@ -1,0 +1,123 @@
+/* src/fonts.css — Red Hat tipografisi, KENDI SUNUCUMUZDAN.
+ *
+ * NEDEN SELF-HOST (2026-08-28):
+ *   1. index.html `fonts.googleapis.com`'a gidiyordu. Kurumsal ag disariya kapali
+ *      oldugunda istek SESSIZCE dusuyor ve portal, tasarim dilinin temeli olan Red Hat
+ *      tipografisini HIC kullanmiyordu — sistem fontuna dusuyordu. Yani PatternFly
+ *      turevi tasarim, uretimde muhtemelen hic gorunmuyordu.
+ *   2. Gorundugu durumda ise ucuncu-taraf istek ilk boyamadan sonra tamamlaniyor,
+ *      metin once sistem fontuyla cizilip sonra DEGISIYORDU (FOUT). Satir yuksekligi
+ *      ve harf genisligi degistigi icin bu yalnizca "yanip sonme" degil, LAYOUT
+ *      KAYMASIydi.
+ *
+ * METRIK ESLEME (asagidaki `...Fallback` yuzleri): fallback yuzu, gercek font
+ * yuklenene kadar AYNI YERI KAPLASIN diye olceklenir. Degerler UYDURULMADI; gercek
+ * dosyalardan olculdu (fontTools):
+ *   Red Hat Text/Display/Mono : upm 1000, hheaAsc 1018, hheaDesc -305, gap 0,
+ *                               xHeight 488 / 501 / 488
+ *   Arial (Win + macOS)       : upm 2048, hheaAsc 1854, hheaDesc -434, xHeight 1062
+ *   Courier New (Win + macOS) : upm 2048, hheaAsc 1705, hheaDesc -615, xHeight  866
+ * size-adjust = (hedef xHeight/upm) / (fallback xHeight/upm); ascent/descent override
+ * de ayni olcekle bolunur. Sonuc: `font-display: swap` gecisi metni DEGISTIRIR ama
+ * satirlari KAYDIRMAZ.
+ *
+ * Fallback ailesi olarak Arial/Courier New secildi cunku HEM Windows'ta HEM macOS'ta
+ * kurulu — kurumsal masaustlerinde (Windows) tahmin degil, kesin.
+ *
+ * Dosyalar `public/fonts/` altinda; Google'in kendi alt kumeleri (latin + latin-ext)
+ * korundu. latin-ext ZORUNLU: Turkce'nin s/g/i harfleri orada.
+ */
+
+/* ── Red Hat Display ─────────────────────────────────────────────────────────── */
+@font-face {
+  font-family: "Red Hat Display";
+  font-style: normal;
+  font-weight: 400 700;         /* degisken eksen — ayri agirlik dosyasi yok */
+  font-display: swap;
+  src: url("/fonts/red-hat-display-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+                 U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+                 U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Red Hat Display";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/red-hat-display-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+                 U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+                 U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ── Red Hat Text ────────────────────────────────────────────────────────────── */
+@font-face {
+  font-family: "Red Hat Text";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/red-hat-text-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+                 U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+                 U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Red Hat Text";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/red-hat-text-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+                 U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+                 U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ── Red Hat Mono ────────────────────────────────────────────────────────────── */
+@font-face {
+  font-family: "Red Hat Mono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/red-hat-mono-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+                 U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+                 U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Red Hat Mono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/red-hat-mono-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+                 U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+                 U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ── METRIK ESLENMIS FALLBACK YUZLERI ────────────────────────────────────────── */
+/* Bunlar dosya INDIRMEZ (`local()`), yalnizca zaten kurulu bir fontu Red Hat'in
+   metriklerine gore olcekler. `swap` gecisinde satir kaymasini bu onler. */
+@font-face {
+  font-family: "Red Hat Display Fallback";
+  src: local("Arial"), local("Helvetica"), local("Liberation Sans");
+  size-adjust: 96.61%;
+  ascent-override: 105.37%;
+  descent-override: 31.57%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Red Hat Text Fallback";
+  src: local("Arial"), local("Helvetica"), local("Liberation Sans");
+  size-adjust: 94.11%;
+  ascent-override: 108.17%;
+  descent-override: 32.41%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Red Hat Mono Fallback";
+  src: local("Courier New"), local("Liberation Mono");
+  size-adjust: 115.41%;
+  ascent-override: 88.21%;
+  descent-override: 26.43%;
+  line-gap-override: 0%;
+}

@@ -22,7 +22,7 @@ const SOLID_CLASSES: Record<StatusLevel, string> = {
   critical: "bg-[#c9190b] text-white border-[#c9190b]",
   error:    "bg-[#c9190b] text-white border-[#c9190b]",
   warning:  "bg-[#f0ab00] text-[#151515] border-[#f0ab00]",
-  info:     "bg-[#0066cc] text-white border-[#0066cc]",
+  info:     "bg-[var(--accent)] text-white border-[var(--accent)]",
   success:  "bg-[#3e8635] text-white border-[#3e8635]",
   neutral:  "bg-[#6a6e73] text-white border-[#6a6e73]",
 };

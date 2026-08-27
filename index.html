@@ -10,28 +10,67 @@
          TEK <link> girdisi bilincli: birden fazla rel="icon" verildiginde tarayici
          hangisini kullanacagina KENDI karar verir (Chrome olceklenebilir SVG'yi
          tercih edebilir) ve yuklenen logo yok sayilir. Logo yuklenmemisse endpoint
-         404 DEGIL, gomulu varsayilan gorseli doner — fallback sunucu tarafinda. -->
+         404 DEGIL, gomulu varsayilan gorseli doner — fallback sunucu tarafinda.
+         Prod'da bu adrese sunucu ?v=<hash> enjekte eder (server/index.cjs). -->
     <link rel="icon" href="/api/branding/favicon" />
 
-    <!-- Red Hat font ailesi (PatternFly / OpenShift Console ile ayni).
-         Kurumsal ag disariya kapaliysa istek sessizce basarisiz olur ve
-         index.css'teki sistem-font fallback zinciri devreye girer. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Text:wght@400;500;700&family=Red+Hat+Mono:wght@400;500&display=swap"
-    />
+    <!-- Red Hat font ailesi KENDI SUNUCUMUZDAN (bkz. src/fonts.css).
+         Eskiden fonts.googleapis.com'a gidiliyordu: kurumsal ag disariya kapaliysa
+         istek sessizce dusuyor ve portal Red Hat tipografisini HIC kullanmiyordu.
+         Ilk ekranda kesin lazim olan iki yuz preload edilir; digerleri (mono,
+         latin-ext) ihtiyac aninda cekilir. crossorigin ZORUNLU: font istekleri
+         CORS modunda yapilir, bayrak olmadan preload ONBELLEKTE ESLESMEZ ve dosya
+         IKI KEZ indirilir. -->
+    <link rel="preload" href="/fonts/red-hat-text-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/red-hat-display-latin.woff2" as="font" type="font/woff2" crossorigin />
 
-    <!-- Tema baslatma (FOUC onlemek icin ilk boyamadan ONCE senkron calisir):
-         kayitli tercih (localStorage 'bmw-theme') > isletim sistemi tercihi. -->
+    <!-- ILK BOYAMA ZEMINI (2026-08-28). Uygulama CSS'i yuklenene kadar tarayici
+         KENDI varsayilan beyazini boyuyordu; koyu temada bu, sayfa acilirken tam
+         ekran BEYAZ bir flas demekti. Degerler index.css'teki --bg-base ile
+         birebir aynidir (light #f0f0f0, dark #0f1214); burada token
+         KULLANILAMAZ cunku token'lari tanimlayan CSS henuz gelmemistir.
+         `color-scheme` ayrica tarayicinin kendi kaydirma cubugunu/form
+         kontrollerini dogru tarafa ayarlar — o da bir flas kaynagiydi. -->
+    <style>
+      html { background-color: #f0f0f0; color-scheme: light; }
+      html[data-theme="dark"] { background-color: #0f1214; color-scheme: dark; }
+      body { margin: 0; background-color: inherit; }
+    </style>
+
+    <!-- SUNUCU TARAFINDAN DOLDURULAN ACILIS DURUMU.
+         Prod'da server/index.cjs bu SATIRI oldugu gibi bulup gercek degerlerle
+         degistirir (tema tercihi + marka logosu durumu). Gelistirmede (Vite dev
+         sunucusu) oldugu gibi kalir ve her sey eski davranisa —
+         localStorage/OS tercihi, logo icin /api/branding/meta— duser.
+         DIKKAT: asagidaki tema script'inden ONCE gelmeli. -->
+    <script>window.__BMW_BOOT__ = {};</script>
+
+    <!-- Tema baslatma (FOUC onlemek icin ilk boyamadan ONCE senkron calisir).
+         ONCELIK SIRASI: sunucu tercihi (ilk HTML'e gomulu) > localStorage >
+         isletim sistemi. Sunucu tercihi eskiden ancak /api/auth/prefs yaniti
+         gelince uygulaniyordu; yani baska bir tarayicidan giren kullanici sayfayi
+         ONCE yanlis temada goruyor, sonra ekran TEMA DEGISTIRIYORDU. Artik
+         sunucu, kullanicinin tercihini HTML'e gomuyor (server/index.cjs) ve
+         gecis hic yasanmiyor. -->
     <script>
       (function () {
         try {
-          var stored = localStorage.getItem("bmw-theme");
+          var boot = window.__BMW_BOOT__ || {};
+          var stored = null;
+          try { stored = localStorage.getItem("bmw-theme"); } catch (e) {}
           var sysDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var theme = stored === "light" || stored === "dark" ? stored : (sysDark ? "dark" : "light");
+          var theme =
+            (boot.theme === "light" || boot.theme === "dark") ? boot.theme :
+            (stored === "light" || stored === "dark") ? stored :
+            (sysDark ? "dark" : "light");
           document.documentElement.setAttribute("data-theme", theme);
+          // Sunucu tercihi localStorage'a da yazilir: bir sonraki acilista, HTML
+          // gomulemese bile (or. nginx statigi dogrudan servis ederse) dogru tema.
+          if (boot.theme) { try { localStorage.setItem("bmw-theme", boot.theme); } catch (e) {} }
+          // Mobil tarayici cubugu da temayla uyumlu olsun — sabit koyu deger,
+          // acik temada yanlis bir seride cikiyordu.
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", theme === "dark" ? "#030303" : "#f0f0f0");
         } catch (e) {
           document.documentElement.setAttribute("data-theme", "light");
         }

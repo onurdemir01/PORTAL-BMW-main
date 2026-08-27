@@ -119,7 +119,7 @@ export default function OcpRuntimeSettings() {
             onKeyDown={(e) => { if (e.key === "Enter") addCandidate(); }}
             placeholder="/usr/local/bin/oc"
             aria-label="Yeni oc yolu"
-            className="flex-1 px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[#0066CC]"
+            className="flex-1 px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[var(--accent)]"
           />
           <button onClick={addCandidate} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:text-gray-900">
             <PlusIcon className="w-3.5 h-3.5" /> Ekle
@@ -134,7 +134,7 @@ export default function OcpRuntimeSettings() {
           value={cfg.ocBinary}
           onChange={(e) => patch({ ocBinary: e.target.value })}
           placeholder="boş = otomatik ara (önerilen)"
-          className="w-full px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[#0066CC]"
+          className="w-full px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[var(--accent)]"
         />
         <p className="mt-1 text-[11px] text-gray-400">
           Doldurulursa <strong>ilk sırada denenir</strong> — sunucuda varsa otomatik aramanın önüne geçer.
@@ -151,7 +151,7 @@ export default function OcpRuntimeSettings() {
           value={cfg.defaultOcpUsername}
           onChange={(e) => patch({ defaultOcpUsername: e.target.value })}
           placeholder="uxmid"
-          className="w-full px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[#0066CC]"
+          className="w-full px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[var(--accent)]"
         />
         {/* Bu alan olmadığında playbook `username` değerini yalnızca AWX'teki
             openshift_inventory_vars.yaml dosyasından okuyabiliyordu; o dosya AWX'te
@@ -173,7 +173,7 @@ export default function OcpRuntimeSettings() {
               type="number" min={10} max={3600}
               value={cfg[key] as number}
               onChange={(e) => patch({ [key]: Number(e.target.value) } as Partial<OcpRuntimeConfig>)}
-              className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-[#0066CC]"
+              className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-[var(--accent)]"
             />
             <p className="mt-1 text-[11px] text-gray-400">{help}</p>
           </div>

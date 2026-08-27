@@ -62,7 +62,7 @@ function parseVarsText(text: string, format: "yaml" | "json"): { obj: Record<str
 // ── Job status helpers ────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
   successful: "#22c55e", failed: "#ef4444", error: "#ef4444",
-  canceled: "#f97316", running: "#0066CC", waiting: "#94a3b8", pending: "#94a3b8",
+  canceled: "#f97316", running: "var(--accent)", waiting: "#94a3b8", pending: "#94a3b8",
 };
 const STATUS_LABEL: Record<string, string> = {
   successful: "Başarılı", failed: "Başarısız", error: "Hata",
@@ -901,7 +901,7 @@ const AnsiblePage: React.FC = () => {
                 onClick={() => setActiveServerId(s.id)}
                 className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all ${
                   activeServerId === s.id
-                    ? "bg-white text-[#0066CC]"
+                    ? "bg-white text-[var(--accent)]"
                     : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
                 style={activeServerId === s.id ? { boxShadow: "var(--shadow-sm)" } : {}}

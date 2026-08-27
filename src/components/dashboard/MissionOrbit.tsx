@@ -9,6 +9,8 @@ import {
 } from "@heroicons/react/24/outline";
 
 const ORBIT_ITEMS = [
+  // NOT: buradaki degerler HEX kalmali — asagida `${item.color}1a` ile
+  // hex-alfa birlestirmesi yapiliyor, `var(--accent)1a` gecersiz CSS olurdu.
   { icon: ServerStackIcon, color: "#0066CC", label: "Envanter" },
   { icon: DocumentMagnifyingGlassIcon, color: "#a78bfa", label: "LogX" },
   { icon: ChartBarIcon, color: "#fb923c", label: "Performance" },

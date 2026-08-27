@@ -6,7 +6,7 @@
 //
 // Nav, >=lg ekranlarda sabit acik; kucuk ekranlarda masthead'deki toggle ile
 // acilan bir overlay (PF "drawer" davranisi).
-import React, { useContext, useEffect, useState } from "react";
+import React, { Suspense, useContext, useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Masthead from "@/components/layout/Masthead";
 import PageNav from "@/components/layout/PageNav";
@@ -19,6 +19,23 @@ import { AppDataProvider } from "@/contexts/AppContext";
 import { JobTrackerProvider } from "@/contexts/JobTrackerContext";
 import JobTrackerBar from "@/components/common/JobTrackerBar";
 import RequestsSidePanel from "@/components/self_service/RequestsSidePanel";
+
+// Sayfa yuklenirken icerik alanini dolduran iskelet. Spinner yerine iskelet:
+// gelecek icerigin KABA HATLARINI gosterdigi icin gecis "yukleniyor -> icerik"
+// siciramasi gibi degil, ayni yerin dolmasi gibi hissettirir.
+function PageSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4" aria-busy="true" aria-label="Sayfa yükleniyor">
+      <div className="h-7 w-64 rounded-md" style={{ background: "var(--bg-elevated)" }} />
+      <div className="h-4 w-96 max-w-full rounded" style={{ background: "var(--bg-elevated)" }} />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 pt-2">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-28 rounded-xl border" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function AppLayout() {
   const location = useLocation();
@@ -75,7 +92,16 @@ export default function AppLayout() {
                   `key` olarak yol verilir: başka bir sayfaya geçince sınır sıfırlanır,
                   aksi halde hata kartı yeni sayfada da takılı kalırdı. */}
               <PageErrorBoundary key={location.pathname}>
-                <Outlet />
+                {/* SUSPENSE SINIRI BURADA (2026-08-28). Eskiden App.tsx'te TUM
+                    <Routes>'u sariyordu: lazy bir sayfaya hard reload yapildiginda
+                    masthead ve menu de dahil HICBIR SEY cizilmiyor, ekranda yalnizca
+                    ortada bir spinner duruyordu — sonra kabuk aniden beliriyordu.
+                    Sinir Outlet'in etrafina alininca kabuk AYAKTA KALIR, yalnizca
+                    icerik alani yuklenir. Iskelet, PageErrorBoundary ile ayni yerde
+                    olmali: ikisi de "yalnizca sayfa" kapsaminda. */}
+                <Suspense fallback={<PageSkeleton />}>
+                  <Outlet />
+                </Suspense>
               </PageErrorBoundary>
             </div>
           </main>

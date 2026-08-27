@@ -356,7 +356,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
 
           {loading && (
             <div className="flex items-center justify-center h-20">
-              <div className="w-5 h-5 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             </div>
           )}
 
@@ -591,7 +591,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
             <div className="space-y-3 animate-fade-in text-center py-6">
               {pendingTicket.status === "PENDING" && (
                 <>
-                  <div className="mx-auto w-6 h-6 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+                  <div className="mx-auto w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
                   <p className="text-sm font-medium text-[var(--text-primary)]">Smart üzerinde onay bekleniyor…</p>
                   {pendingTicket.externalTicketId && (
                     <p className="text-sm font-semibold text-[var(--text-primary)]">
@@ -736,11 +736,11 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
             {selected ? (
-              <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-[#0066CC] hover:text-[#3a75e0]">
+              <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-[var(--accent)] hover:text-[var(--accent-dark)]">
                 <ArrowLeftIcon className="w-4 h-4" /> Geçmiş
               </button>
             ) : (
-              <><ClockIcon className="w-5 h-5 text-[#0066CC]" /> İş Geçmişi (Son 30 Gün)</>
+              <><ClockIcon className="w-5 h-5 text-[var(--accent)]" /> İş Geçmişi (Son 30 Gün)</>
             )}
           </h2>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-lg transition">
@@ -762,7 +762,7 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
               {logErr && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{logErr}</div>}
               {logLoading ? (
                 <div className="flex items-center justify-center h-20">
-                  <div className="w-5 h-5 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : (
                 <AnsibleLogTerminal
@@ -779,7 +779,7 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : loading ? (
             <div className="flex items-center justify-center h-20">
-              <div className="w-5 h-5 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             </div>
           ) : history.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-10">Son 30 günde iş yok.</p>
@@ -811,7 +811,7 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
                     </td>
                     <td className="px-4 py-3 text-gray-500">{new Date(h.started_at).toLocaleString("tr-TR")}</td>
                     <td className="px-4 py-3 text-right">
-                      {h.job_id ? <span className="text-xs text-[#0066CC] font-medium">Log →</span> : null}
+                      {h.job_id ? <span className="text-xs text-[var(--accent)] font-medium">Log →</span> : null}
                     </td>
                   </tr>
                 ))}
@@ -880,7 +880,7 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center h-32"><div className="w-5 h-5 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex items-center justify-center h-32"><div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" /></div>;
 
   // enabled=false yalnizca NORMAL kullanicilardan gizlenir (Admin > Self Service'teki
   // gorunurluk anahtari) — admin her zaman TUM kayitlari gorur ve calistirabilir,
@@ -912,22 +912,22 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="text-xs font-semibold text-gray-500 block mb-1">Servis Adı</label>
-              <input className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0066CC]"
+              <input className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} placeholder="Ör: Sunucu Yeniden Başlatma" />
             </div>
             <div className="col-span-2">
               <label className="text-xs font-semibold text-gray-500 block mb-1">Açıklama</label>
-              <input className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0066CC]"
+              <input className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))} placeholder="Kısa açıklama" />
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 block mb-1">AWX Sunucu ID</label>
-              <input type="number" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0066CC]"
+              <input type="number" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 value={draft.awxServerId} onChange={(e) => setDraft((d) => ({ ...d, awxServerId: Number(e.target.value) }))} min={1} />
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 block mb-1">Template ID</label>
-              <input type="number" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0066CC]"
+              <input type="number" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 value={draft.awxTemplateId || ""} onChange={(e) => setDraft((d) => ({ ...d, awxTemplateId: Number(e.target.value) }))} placeholder="AWX template ID" />
             </div>
           </div>
@@ -962,7 +962,7 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
                   </div>
                   {isAdmin && (
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
-                      <button onClick={() => setFieldsItem(item)} title="Alanları Yönet" className="p-1 text-gray-300 hover:text-[#0066CC] rounded">
+                      <button onClick={() => setFieldsItem(item)} title="Alanları Yönet" className="p-1 text-gray-300 hover:text-[var(--accent)] rounded">
                         <AdjustmentsHorizontalIcon className="w-4 h-4" />
                       </button>
                       <button onClick={() => deleteItem(item.id)} title="Sil" className="p-1 text-gray-300 hover:text-red-500 rounded">
@@ -1048,7 +1048,7 @@ export default function SelfServicePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-40">
-        <div className="w-6 h-6 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -1080,7 +1080,7 @@ export default function SelfServicePage() {
               onClick={() => setActiveTop(id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
                 activeTop === id
-                  ? "bg-white text-[#0066CC] shadow-[var(--shadow-sm)]"
+                  ? "bg-white text-[var(--accent)] shadow-[var(--shadow-sm)]"
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -1105,7 +1105,7 @@ export default function SelfServicePage() {
                   onClick={() => setCheckType(id)}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
                     checkType === id
-                      ? "bg-white text-[#0066CC] shadow-[var(--shadow-sm)]"
+                      ? "bg-white text-[var(--accent)] shadow-[var(--shadow-sm)]"
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >

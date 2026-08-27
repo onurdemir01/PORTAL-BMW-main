@@ -124,7 +124,7 @@ const LoginPage: React.FC = () => {
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="h-4 w-4"
-                  style={{ accentColor: "#0066cc" }}
+                  style={{ accentColor: "var(--accent)" }}
                 />
                 <label htmlFor="remember-me" className="text-[0.875rem]" style={{ color: "#151515" }}>
                   Oturumumu açık tut

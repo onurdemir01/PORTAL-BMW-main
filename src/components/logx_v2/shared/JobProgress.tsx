@@ -99,11 +99,11 @@ const JobProgress: React.FC<Props> = ({ jobId, discoveringLabel = "Dosyalar tara
   return (
     <div className="py-6">
       <div className="flex flex-col items-center justify-center gap-4">
-        <div className="w-10 h-10 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-center text-[var(--text-secondary)]">{cancelling ? "İptal ediliyor…" : phaseText(status, elapsedSec, discoveringLabel)}</p>
         <div className="w-full max-w-xs h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
           <div
-            className="h-full rounded-full bg-[#0066CC] transition-[width] duration-700 ease-out"
+            className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-700 ease-out"
             style={{ width: `${cancelling ? 100 : pseudoProgress(status, elapsedSec)}%` }}
           />
         </div>
