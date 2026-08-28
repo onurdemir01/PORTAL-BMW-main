@@ -54,7 +54,10 @@ export default function PageNav({ onNavigate }: Props) {
           kullanicinin hangi rolun gorunum kapsaminda oldugunu gosterir. */}
       <div
         className="flex items-center gap-2 px-4 h-12 text-[0.875rem]"
-        style={{ borderBottom: "1px solid #3c3f42", color: "#e0e0e0" }}
+        /* Sabit renkler token'a (2026-08-28): sol menu artik temayi izliyor
+           (PF6 page.css sidebar = floating--secondary), acik temada #e0e0e0 metin
+           beyazimsi zeminde okunmazdi. */
+        style={{ borderBottom: "1px solid var(--masthead-border)", color: "var(--nav-text)" }}
       >
         <span className="h-2 w-2 rounded-full" style={{ background: user?.role === "Admin" ? "var(--rh-red)" : "var(--accent)" }} />
         {user?.role === "Admin" ? "Yönetici görünümü" : "Kullanıcı görünümü"}
@@ -97,7 +100,7 @@ export default function PageNav({ onNavigate }: Props) {
                   aria-expanded={isOpen}
                   onClick={() => setCollapsed((c) => ({ ...c, [group.id]: !c[group.id] }))}
                 >
-                  <span style={{ fontWeight: groupActive ? 700 : 400, color: groupActive ? "#fff" : undefined }}>
+                  <span style={{ fontWeight: groupActive ? 700 : 400, color: groupActive ? "var(--nav-text)" : undefined }}>
                     {group.label}
                   </span>
                   {isOpen ? <ChevronDownIcon className="h-3.5 w-3.5" /> : <ChevronRightIcon className="h-3.5 w-3.5" />}

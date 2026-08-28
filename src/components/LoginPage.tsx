@@ -49,11 +49,14 @@ const LoginPage: React.FC = () => {
   return (
     <div
       className="min-h-screen flex flex-col"
-      style={{ background: "linear-gradient(150deg, #151515 0%, #1b1d21 45%, #0f1214 100%)" }}
+      /* Giris ekrani BILEREK koyu kalir — ayri bir marka ekranidir, uygulama kabugu
+         degildir. Gradyan duraklari yalnizca PF6 notr grilerine tasindi
+         (#1b1d21/#0f1214 PF5'in mavi-yesil calan tonlariydi). */
+      style={{ background: "linear-gradient(150deg, #151515 0%, #292929 45%, #1f1f1f 100%)" }}
     >
       {/* Ust marka bandi */}
       <div className="flex items-center gap-3 px-6 py-6 lg:px-12">
-        <PortalLogo className="h-9 w-9" />
+        <PortalLogo className="h-12 w-12" />
         <p className="text-white text-lg leading-tight" style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}>
           BMW Portal
         </p>

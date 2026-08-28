@@ -93,8 +93,11 @@ test('C2: preload crossorigin tasir (yoksa dosya IKI KEZ inilir)', () => {
 
 // ── C3: ilk boyama zemini ───────────────────────────────────────────────────
 test('C3: ilk boyama zemini HTML’de, iki tema icin de', () => {
-  assert.match(INDEX_HTML, /html \{ background-color: #f0f0f0; color-scheme: light; \}/);
-  assert.match(INDEX_HTML, /html\[data-theme="dark"\] \{ background-color: #0f1214; color-scheme: dark; \}/);
+  // Degerler PF6 gecisinde guncellendi (gray-10 / gray-95). Asagidaki "token ile
+  // ayni mi" testi zaten kendi kendini ayarliyor; burasi ise gomulu stilin HIC
+  // kaybolmadigini kilitler.
+  assert.match(INDEX_HTML, /html \{ background-color: #f2f2f2; color-scheme: light; \}/);
+  assert.match(INDEX_HTML, /html\[data-theme="dark"\] \{ background-color: #151515; color-scheme: dark; \}/);
 });
 
 test('C3: gomulu zemin degerleri --bg-base token’lariyla AYNI', () => {
