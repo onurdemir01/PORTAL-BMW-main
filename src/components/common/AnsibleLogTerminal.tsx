@@ -32,7 +32,13 @@ type Props = {
 const RUNNING = new Set(["pending", "waiting", "running", ""]);
 
 // Terminal durum renkleri. `color` DOGRUDAN kullanilabilen bir CSS degeridir;
-// `rgb` ise SAYISAL uclu ("63, 185, 80") — saydamlik gereken yerler icin.
+// `rgb` ise SAYISAL uclu ("63 185 80") — saydamlik gereken yerler icin.
+//
+// BOSLUKLU, VIRGULLU DEGIL: CSS `rgb()` eski virgullu ve modern bosluklu dilbilgisini
+// AYRI AYRI tanir, KARISTIRILAMAZ. Virgullu yazilirsa `rgb(63, 185, 80 / 0.33)` cikar
+// ve bu GECERSIZDIR — tarayici bildirimi sessizce atar. Ilk yazimda tam olarak bu oldu:
+// terminalin calisirken gorunen kenarligi, parildamasi ve tarama efekti URETIMDE
+// hicbir sey cizmiyordu, hata da vermiyordu.
 //
 // NEDEN IKI ALAN: bu degerler eskiden ham hex'ti ve `${meta.color}55` gibi
 // HEX-ALFA BIRLESTIRMESIYLE saydam kenarlik/parilti uretiliyordu. Token'a
@@ -45,14 +51,14 @@ function statusMeta(status: string): TermStatus {
   const of = (token: string, rgb: string, label: string): TermStatus =>
     ({ label, color: `var(${token})`, dot: `var(${token})`, rgb });
   switch (status) {
-    case "successful": return of("--term-success", "63, 185, 80", "başarılı");
+    case "successful": return of("--term-success", "63 185 80", "başarılı");
     case "failed":
-    case "error":      return of("--term-danger", "248, 81, 73", status === "error" ? "hata" : "başarısız");
-    case "canceled":   return of("--term-warning", "210, 153, 34", "iptal edildi");
-    case "running":    return of("--term-info", "88, 166, 255", "çalışıyor");
+    case "error":      return of("--term-danger", "248 81 73", status === "error" ? "hata" : "başarısız");
+    case "canceled":   return of("--term-warning", "210 153 34", "iptal edildi");
+    case "running":    return of("--term-info", "88 166 255", "çalışıyor");
     case "pending":
-    case "waiting":    return of("--term-muted", "139, 148, 158", "kuyrukta");
-    default:           return of("--term-muted", "139, 148, 158", "başlatılıyor");
+    case "waiting":    return of("--term-muted", "139 148 158", "kuyrukta");
+    default:           return of("--term-muted", "139 148 158", "başlatılıyor");
   }
 }
 

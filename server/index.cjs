@@ -168,6 +168,42 @@ async function main() {
       const indexPath = path.join(distDir, "index.html");
       let indexRaw = null;
 
+      // ── TEMA TERCIHI ONBELLEGI ───────────────────────────────────────────────
+      // ILK YAZIMDA GOZDEN KACAN MALIYET: tema tercihi HER HTML istegi icin DB'den
+      // okunuyordu. Bu route SPA yedegidir (`/api/` disindaki TUM yollar) — yani her
+      // derin baglanti, her yenileme, her sekme acilisi bir SELECT demekti. Islevsel
+      // olarak dogruydu ama ilk bayta gereksiz gecikme ve DB'ye gereksiz yuk ekliyordu.
+      //
+      // Kullanici basina kisa omurlu bir onbellek yeterli: tema tercihi nadiren
+      // degisir ve degistiginde istemci ZATEN kendi uyguluyor (localStorage + DOM),
+      // yani onbellegin bayat kalmasinin tek sonucu "bir sonraki TAM SAYFA
+      // yuklemesinde eski tema bir an gorunebilir" olurdu — TTL bunu 30 sn'ye
+      // sinirlar. Tercih yazildiginda ayrica ACIKCA dusurulur (bkz. auth/index.cjs).
+      const THEME_CACHE_TTL_MS = 30_000;
+      const themeCache = new Map();   // username -> { value, at }
+
+      async function readThemePrefCached(username) {
+        const key = String(username).toLowerCase();
+        const hit = themeCache.get(key);
+        if (hit && Date.now() - hit.at < THEME_CACHE_TTL_MS) return hit.value;
+        let value = null;
+        try {
+          const prefs = await require("./auth/users.cjs").getPrefs(username);
+          const t = prefs["bmw-theme"];
+          value = t === "light" || t === "dark" ? t : null;
+        } catch {
+          /* tercih okunamadi — istemci localStorage/OS tercihine duser */
+          return null;   // BASARISIZLIGI ONBELLEKLEME: gecici bir DB hatasi 30 sn boyunca
+                         // tercihi "yok" saydirmasin.
+        }
+        // Sinirsiz buyume olmasin (uzun omurlu surecte binlerce kullanici).
+        if (themeCache.size > 500) themeCache.clear();
+        themeCache.set(key, { value, at: Date.now() });
+        return value;
+      }
+      // Tercih yazma yolu bunu dusurebilsin diye disari acilir.
+      app.locals.invalidateThemePref = (u) => themeCache.delete(String(u || "").toLowerCase());
+
       // ── ACILIS DURUMU ILK HTML'E GOMULUR (2026-08-28) ────────────────────────
       // Favicon icin zaten uygulanan "surumu HTML'e goem" fikri iki yere daha
       // tasindi, cunku ayni sinif hatayi uretiyorlardi:
@@ -207,13 +243,8 @@ async function main() {
 
           const username = req.session?.user?.username;
           if (username) {
-            try {
-              const prefs = await require("./auth/users.cjs").getPrefs(username);
-              const t = prefs["bmw-theme"];
-              if (t === "light" || t === "dark") boot.theme = t;
-            } catch {
-              /* tercih okunamadi — istemci localStorage/OS tercihine duser */
-            }
+            const t = await readThemePrefCached(username);
+            if (t === "light" || t === "dark") boot.theme = t;
           }
 
           html = html.replace(

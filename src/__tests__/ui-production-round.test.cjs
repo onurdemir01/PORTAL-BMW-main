@@ -68,14 +68,25 @@ test('G5: panel BOSKEN daralir ama kullanicinin ACIK tercihi kazanir', () => {
   assert.match(src, /userPref === null && !loading && tickets\.length === 0/);
 });
 
-test('G5: OTOMATIK daralmis panel YOKLAMAYA devam eder (kendini kilitlemesin)', () => {
-  // Eskiden `if (collapsed) return;` vardi. Otomatik daraltma ile bu, kendini
-  // kilitleyen bir durum uretirdi: bos -> daralir -> yoklama durur -> yeni talep
-  // hic ogrenilmez -> panel BIR DAHA acilmaz.
+test('G5: bos panel yeni talebi GERCEKTEN ogrenebiliyor', () => {
+  // ONCEKI HALI YETERSIZDI: yalnizca `if (collapsed) return;` kaldirilmis mi diye
+  // bakiyordu. Ama bir alt satirdaki "PENDING talep yoksa dur" kosulu, panel BOSKEN
+  // yoklamayi zaten hic baslatmiyordu — panel bir daha acilamiyordu. Test kalibi
+  // dogruluyordu, DAVRANISI degil.
   const src = stripComments(read('components/self_service/RequestsSidePanel.tsx'));
   assert.match(src, /if \(userPref === true\) return;/,
     'yoklama yalnizca KULLANICI acikca kapattiginda durmali');
   assert.ok(!/if \(collapsed\) return;/.test(src), 'kendini kilitleyen guard duruyor');
+
+  // 1) Bos panel (tickets.length === 0) yoklamadan DISLANMAMALI.
+  assert.match(src, /if \(!hasPending && tickets\.length > 0\) return;/,
+    'bos panel yoklamadan disaniyor — yeni talebi asla ogrenemez');
+  // 2) Ayni sekmede acilan talep icin ANLIK kanal olmali (panel Outlet DISINDA
+  //    mount edildigi icin gezinmede yenilenmiyor).
+  assert.match(src, /addEventListener\("portal:smart-ticket-created"/);
+  const ss = stripComments(read('components/SelfServicePage.tsx'));
+  assert.match(ss, /dispatchEvent\(new CustomEvent\("portal:smart-ticket-created"\)\)/,
+    'talep acilinca olay yayinlanmiyor — panel haberdar olmuyor');
 });
 
 // ── G9: koyu temada gorunmeyen desen ────────────────────────────────────────
@@ -103,8 +114,10 @@ test('G14: eski aksan (#4F8EFF) yalnizca giris dekoratiflerinde', () => {
 
 test('G14: --accent-rgb her iki temada tanimli', () => {
   // Farkli saydamliklar gerektigi icin tek bir tint token'i yetmiyor.
-  assert.match(CSS, /--accent-rgb:\s*0, 102, 204;/);
-  assert.match(CSS, /--accent-rgb:\s*185, 218, 252;/);
+  // BOSLUKLU yazilir — virgullu olsa uretilen `rgb(...)` GECERSIZ olurdu
+  // (ayrintili gerekce ve bekci: src/__tests__/color-syntax.test.cjs).
+  assert.match(CSS, /--accent-rgb:\s*0 102 204;/);
+  assert.match(CSS, /--accent-rgb:\s*185 218 252;/);
 });
 
 // ── G17: yaricap celiskisi ──────────────────────────────────────────────────
