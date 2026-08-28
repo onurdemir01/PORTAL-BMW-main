@@ -47,11 +47,35 @@ const SLOTS = {
 // slotunun bunun karsiligi YOK — PortalLogo.tsx yuklenmemisse zaten kendi
 // gomulu SVG'sini React icinde render eder, sunucudan ayrica bir varsayilan
 // gorsel COMESI GEREKMEZ.
+// Sekme ikonu = uygulama marka isaretinin AYNISI (bkz. src/components/common/
+// PortalLogo.tsx `mark` varyanti). Eskiden kirmizi bir "B" harfiydi ve portalin
+// kendi logosuyla hicbir iliskisi yoktu.
+//
+// METIN YOK, YALNIZCA SEKIL: favicon bagimsiz bir SVG olarak servis edilir ve
+// sayfanin fontlarina ERISEMEZ; `<text>` kullanilsaydi sistem fontuna duserdi.
+// Zaten 16-32px'te bir wordmark okunmaz — bulut + veri mozaigi dogru secim.
 const DEFAULT_FAVICON_SVG = Buffer.from(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
-  `<rect width="32" height="32" rx="6" fill="#ee0000"/>` +
-  `<text x="16" y="22" font-family="sans-serif" font-size="15" font-weight="700" ` +
-  `fill="#ffffff" text-anchor="middle">B</text></svg>`,
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+  `<defs>` +
+  `<linearGradient id="t" x1="0" y1="0" x2="1" y2="1">` +
+  `<stop offset="0" stop-color="#00204a"/><stop offset=".45" stop-color="#002351"/>` +
+  `<stop offset="1" stop-color="#000c22"/></linearGradient>` +
+  `<linearGradient id="a" x1="0" y1="1" x2="1" y2="0">` +
+  `<stop offset="0" stop-color="#00dba4"/><stop offset=".45" stop-color="#00f4d1"/>` +
+  `<stop offset="1" stop-color="#0085fd"/></linearGradient>` +
+  `</defs>` +
+  `<rect width="64" height="64" rx="13.5" fill="url(#t)"/>` +
+  `<rect x="5.5" y="35" width="7.2" height="7.2" rx="1.6" fill="url(#a)"/>` +
+  `<rect x="14.8" y="36.6" width="4.7" height="4.7" rx="1.3" fill="url(#a)" opacity=".92"/>` +
+  `<rect x="7.4" y="44.8" width="5.8" height="5.8" rx="1.6" fill="url(#a)" opacity=".85"/>` +
+  `<rect x="15.6" y="46" width="3.4" height="3.4" rx=".94" fill="url(#a)" opacity=".75"/>` +
+  `<rect x="22" y="40" width="2.6" height="2.6" rx=".72" fill="url(#a)" opacity=".65"/>` +
+  `<rect x="6" y="53.4" width="3.6" height="3.6" rx="1" fill="url(#a)" opacity=".6"/>` +
+  `<rect x="13.4" y="53.2" width="2.3" height="2.3" rx=".64" fill="url(#a)" opacity=".5"/>` +
+  `<g transform="translate(14.5 2.5) scale(2)">` +
+  `<path d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 ` +
+  `5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" fill="none" stroke="url(#a)" ` +
+  `stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round"/></g></svg>`,
   'utf-8'
 );
 const DEFAULT_FAVICON_ETAG = `"${crypto.createHash('sha1').update(DEFAULT_FAVICON_SVG).digest('hex').slice(0, 16)}"`;

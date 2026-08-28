@@ -34,10 +34,19 @@ const LOGO = stripComments(read('components/common/PortalLogo.tsx'));
 const MASTHEAD = read('components/layout/Masthead.tsx');
 const LOGIN = read('components/LoginPage.tsx');
 
-test('BOYUT: masthead 36px, giris 48px', () => {
+test('BOYUT: masthead 36px (sade isaret), giris 56px (wordmark ile)', () => {
   assert.match(MASTHEAD, /<PortalLogo className="h-9 w-9" \/>/,
     'masthead logosu buyutulmemis (PF6 bu alana 38px kadar yer ayiriyor)');
-  assert.match(LOGIN, /<PortalLogo className="h-12 w-12" \/>/);
+  // Giris ekraninda logo TEK BASINA ve buyuk durur; wordmark'in okunabildigi en
+  // kucuk boyut 56px.
+  assert.match(LOGIN, /<PortalLogo className="h-14 w-14" withWordmark \/>/);
+});
+
+test('WORDMARK yalnizca BUYUK ve TEK BASINA kullanimda', () => {
+  // Masthead'de logonun HEMEN YANINDA zaten "BMW Portal" yaziyor; ikonda tekrar
+  // etmek 36px'te ~7px'lik okunmaz bir yazi uretirdi.
+  assert.ok(!/withWordmark/.test(MASTHEAD), 'masthead sade isaret kullanmali');
+  assert.match(LOGIN, /withWordmark/);
 });
 
 test('KIRPMA YOK: yuklenen logo tamami gorunur', () => {
@@ -47,14 +56,37 @@ test('KIRPMA YOK: yuklenen logo tamami gorunur', () => {
   assert.match(LOGO, /object-contain/, 'logo en-boy orani korunarak sigdirilmali');
 });
 
-test('GOMULU VARSAYILAN kucuk boyutta okunur', () => {
-  const opacities = [...LOGO.matchAll(/opacity="([\d.]+)"/g)].map((m) => Number(m[1]));
-  assert.equal(opacities.length, 2, 'dort-bolme motifi iki soluk ceyrek icermeli');
-  for (const o of opacities) {
-    assert.ok(o >= 0.55, `ceyrek opakligi ${o} — 28-36px'te motif bulaniklasir`);
-    // 1.0 yapmak motifi tek duz beyaz pencereye cevirirdi; donusumlu desen korunmali.
-    assert.ok(o < 1, 'karsit ceyrekler duz beyaz olmamali, desen kaybolur');
+test('GOMULU ISARET: referansin ogeleri (kutu + bulut + mozaik) yerinde', () => {
+  // Tasarim kaynagi: action_list/logos.md (kullanici USTTEKI referansi sectti).
+  assert.match(LOGO, /rx="13\.5"/, 'yuvarlak kose kutu yok');
+  assert.match(LOGO, /CLOUD_D/, 'bulut konturu yok');
+  assert.match(LOGO, /PIXELS_MARK/, 'veri mozaigi yok');
+});
+
+test('RENKLER referanstan ORNEKLENDI (uydurulmadi)', () => {
+  // Referans goruntunun pikselleri orneklendi; degerler degistirilirse marka
+  // kimligi kayar.
+  for (const hex of ['#002351', '#000c22', '#00dba4', '#00f4d1', '#0085fd']) {
+    assert.ok(LOGO.includes(hex), `referans rengi kayip: ${hex}`);
   }
+});
+
+test('GRADYAN ID’leri BENZERSIZ (ayni sayfada iki logo cakismasin)', () => {
+  // Sabit id kullanilsaydi ayni sayfada iki logo ayni id'yi tanimlar, tarayici
+  // ILKINI kullanir ve ikinci logo yanlis renkte cizilirdi.
+  assert.match(LOGO, /React\.useId\(\)/);
+  assert.match(LOGO, /id=\{`tile\$\{uid\}`\}/);
+});
+
+test('FAVICON ayni isareti kullanir ve METIN icermez', () => {
+  const fav = fs.readFileSync(
+    path.join(ROOT, '..', 'server', 'admin', 'branding.cjs'), 'utf8');
+  const block = fav.slice(fav.indexOf('const DEFAULT_FAVICON_SVG'), fav.indexOf("'utf-8'"));
+  assert.ok(!/<text/.test(block),
+    'favicon bagimsiz servis edilir ve sayfanin fontlarina ERISEMEZ — <text> sistem fontuna duser');
+  assert.ok(!/#ee0000/.test(block), 'eski kirmizi "B" favicon’u duruyor');
+  assert.match(block, /#00dba4/, 'marka gradyani favicon’a tasinmamis');
+  assert.match(block, /M2\.25 15a4\.5/, 'ayni bulut yolu kullanilmali');
 });
 
 test('AYIRICI: marka blogu araclardan gorsel olarak ayrisiyor', () => {

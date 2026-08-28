@@ -56,7 +56,11 @@ const LoginPage: React.FC = () => {
     >
       {/* Ust marka bandi */}
       <div className="flex items-center gap-3 px-6 py-6 lg:px-12">
-        <PortalLogo className="h-12 w-12" />
+        {/* Giris ekraninda logo TEK BASINA ve buyuk duruyor — referansin birebir
+            karsiligi (bulut + mozaik + BMW wordmark) burada kullanilir. 56px:
+            wordmark'in okunabildigi en kucuk boyut. Masthead'de ise yaninda zaten
+            "BMW Portal" yazdigi icin sade `mark` varyanti kullanilir. */}
+        <PortalLogo className="h-14 w-14" withWordmark />
         <p className="text-white text-lg leading-tight" style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}>
           BMW Portal
         </p>
