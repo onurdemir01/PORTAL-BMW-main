@@ -62,10 +62,12 @@ test('G1: text-white BILEREK eslenmemis (esleseydi butun butonlari bozardi)', ()
   assert.match(INDEX_CSS, /`text-white` BILEREK ESLENMEDI/);
 });
 
-test('G3: nefes token’lari tanimli, kose yaricapi Red Hat’te KALIYOR', () => {
+test('G3: nefes token’lari tanimli, kose yaricapi PF6 olceginde', () => {
   assert.match(INDEX_CSS, /--breath-line:\s*1\.55;/);
-  // PF imzasi: 3px kose. "OpenAI nefesi" yalnizca ritim; yaricap DEGISMEMELI.
-  assert.match(INDEX_CSS, /--radius-sm:\s*3px/);
+  // 3px PF **5** imzasiydi. PF6 gecisinde (2026-08-28) olcek guncellendi:
+  // border--radius--tiny = 4px (kucuk oge), --small = 6px (form/kontrol).
+  assert.match(INDEX_CSS, /--radius-sm:\s*4px/);
+  assert.match(INDEX_CSS, /--radius-md:\s*6px/);
 });
 
 test('G3: veri yogun yuzeylerde (tablo) nefes uygulanmaz', () => {

@@ -7,10 +7,27 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    BMW Portal — Red Hat OpenShift (PatternFly) gorunum katmani
    ───────────────────────────────────────────────────────────────────────────
-   Tum renk/tipografi/kose degerleri PatternFly v5 global token'larindan turetildi
-   (OpenShift Console ile ayni palet). Sayfalar hala Tailwind utility'leri ve
+   Tum renk/tipografi/kose degerleri PatternFly **6** global token'larindan turetildi
+   (guncel OpenShift Console ile ayni palet). Sayfalar hala Tailwind utility'leri ve
    .card/.btn-primary/.input-modern gibi mevcut sinif adlarini kullanir — bu
    dosya o siniflarin GORUNUMUNU degistirir, markup'a dokunulmaz.
+
+   ── PF5 -> PF6 GECISI (2026-08-28) ─────────────────────────────────────────
+   Degerler UYDURULMADI; @patternfly/patternfly@6.6.1 paketinin token dosyalarindan
+   cikarildi (base/tokens/tokens-palette.scss, tokens-default.scss, tokens-dark.scss,
+   components/{Masthead,Button,Page}/*.css).
+
+   EN ONEMLI FARK — GRILER: PF5 grileri mavi-yesil CALIYORDU (#4f5255, #3c3f42,
+   #b8bbbe, #d2d2d2 — R/G/B esit DEGIL). PF6 grileri TAM NOTR antrasittir
+   (R=G=B). Kullanicinin istedigi "guncel gri antrasit tonlari" tam olarak budur.
+
+   PF6 gri rampasi (tokens-palette.scss):
+     gray-10 #f2f2f2 · gray-20 #e0e0e0 · gray-30 #c7c7c7 · gray-40 #a3a3a3
+     gray-45 #8c8c8c · gray-50 #707070 · gray-60 #4d4d4d · gray-70 #383838
+     gray-80 #292929 · gray-90 #1f1f1f · gray-95 #151515
+
+   Asagidaki her gri token BU RAMPADAN bir degerdir; src/__tests__/pf6-palette.test.cjs
+   hem rampa uyumunu hem R=G=B notrlugunu kilitler (PF5 sapmasi geri gelmesin).
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Design Tokens (PatternFly v5) ─────────────────────────────────────────── */
@@ -28,53 +45,75 @@
   --rh-red:       #ee0000;   /* Red Hat kirmizisi — yalniz logo/marka aksani */
   --rh-red-dark:  #a30000;
 
-  /* Aksan = PatternFly blue-400 (#06c) — tum interaktif ogeler */
+  /* Aksan = PF6 blue-50 (#0066cc) — tum interaktif ogeler. Acik temada DEGISMEDI. */
   --accent:       #0066cc;
-  --accent-dark:  #004080;
-  --accent-light: #73bcf7;
+  --accent-dark:  #004d99;   /* PF6 blue-60 — brand--hover */
+  --accent-light: #92c5f9;   /* PF6 blue-30 */
   --accent-glow:  rgba(0, 102, 204, 0.20);
+  /* AKSAN USTUNDEKI METIN (2026-08-28, yeni). PF6 birincil butonu
+     `color--brand--default` zemin + `text--color--on-brand--default` metin kullanir.
+     Acik temada bu beyaz, KOYU TEMADA NEREDEYSE SIYAHTIR — cunku PF6'nin koyu tema
+     marka rengi acik bir mavidir. Tek token oldugu icin `.btn-primary` bunu okur ve
+     tema degistiginde metin rengi kendiliginden dogru tarafa gecer. */
+  --text-on-accent: #ffffff;
+  /* Aksan TINTI — `info` PF6'da MOR oldugu icin (asagiya bkz.) mavi tonlu yuzeyler
+     artik `--status-info-bg`den DEGIL buradan beslenir. */
+  --accent-bg:    #e0f0ff;   /* PF6 blue-10 */
 
-  /* Yuzeyler — PF: sayfa #f0f0f0, kart #fff */
-  --bg-base:     #f0f0f0;
+  /* Yuzeyler — PF6: sayfa gray-10, kart beyaz */
+  --bg-base:     #f2f2f2;    /* gray-10 */
   --bg-surface:  #ffffff;
-  --bg-elevated: #f5f5f5;
-  --bg-inset:    #fafafa;
+  /* BILINCLI REMAP: PF6'da beyaz yuzeyin hover/yukseltilmis hali gray-10'dur, yani
+     sayfa zeminiyle AYNI. Kart beyaz oldugu icin kart ICINDE okunur. Dogrudan sayfa
+     zeminine oturan yerlerde ayrisma icin kenarlik kullanilir. */
+  --bg-elevated: #f2f2f2;    /* gray-10 */
+  --bg-inset:    #e0e0e0;    /* gray-20 */
 
-  /* Masthead + sol navigasyon (OpenShift Console) */
-  --masthead-bg:     #151515;
-  --masthead-border: #3c3f42;
-  --nav-bg:          #212427;
-  --nav-hover-bg:    #3c3f42;
-  --nav-current-bg:  #4f5255;
-  --nav-text:        #e0e0e0;
-  --nav-text-muted:  #b8bbbe;
+  /* Masthead + sol navigasyon — PF6'DA ARTIK TEMAYI IZLER.
+     masthead.css: BackgroundColor = background--color--secondary--default (gray-10)
+     page.css:     sidebar        = floating--secondary        (ayni deger)
+     Yani acik temada ust bant ve sol menu ACIK GRIDIR. Eskiden ikisi de sabit
+     siyahti; masthead acik, menu koyu kalsaydi ekran bolunmus gorunurdu. */
+  --masthead-bg:     #f2f2f2;
+  --masthead-border: #c7c7c7;
+  --nav-bg:          #f2f2f2;
+  --nav-hover-bg:    #e0e0e0;
+  --nav-current-bg:  #e0e0e0;
+  --nav-text:        #151515;
+  --nav-text-muted:  #707070;
 
   /* Eski token adlari (dokunulmayan sayfalar hala kullaniyor) */
   --sidebar-bg:        var(--nav-bg);
-  --sidebar-border:    #3c3f42;
+  --sidebar-border:    var(--masthead-border);
   --sidebar-active-bg: var(--nav-current-bg);
 
   /* Metin */
-  --text-primary:   #151515;
-  --text-secondary: #4f5255;
-  --text-muted:     #6a6e73;
+  --text-primary:   #151515;   /* gray-95 */
+  --text-secondary: #4d4d4d;   /* gray-60 */
+  --text-muted:     #707070;   /* gray-50 */
   --text-on-dark:   #ffffff;
 
-  /* Kenarlik */
-  --border:        #d2d2d2;
-  --border-strong: #8a8d90;
+  /* Kenarlik. `--border-subtle` PF6'nin `border--color--subtle`i: kart cercevesi
+     gibi VARLIGI hissedilmesi ama dikkat cekmemesi gereken cizgiler icin. */
+  --border:        #c7c7c7;    /* gray-30 */
+  --border-subtle: #e0e0e0;    /* gray-20 */
+  --border-strong: #a3a3a3;    /* gray-40 */
 
-  /* Durum renkleri — PF status palette */
-  --status-danger:       #c9190b;
-  --status-danger-bg:    #faeae8;
-  --status-warning:      #f0ab00;
-  --status-warning-bg:   #fdf7e7;
-  --status-success:      #3e8635;
-  --status-success-bg:   #f3faf2;
-  --status-info:         #2b9af3;
-  --status-info-bg:      #e7f1fa;
-  --status-neutral:      #6a6e73;
-  --status-neutral-bg:   #f0f0f0;
+  /* Durum renkleri — PF6 status paleti.
+     `info` PF6'da MOR'dur: mavi BILINCLI olarak yalnizca "tiklanabilir" anlamina
+     birakildi. Portalin mavi tonlu YUZEYLERI bu yuzden `--accent-bg`den beslenir.
+     `warning` icin PF6'nin --100 degeri #ffcc17'dir; portal bu token'i METIN/IKON
+     icin kullandigindan beyaz uzerinde okunakli olan --200 (#dca614) alindi. */
+  --status-danger:       #b1380b;   /* red-orange-60 */
+  --status-danger-bg:    #fce3e3;
+  --status-warning:      #dca614;   /* yellow-40 */
+  --status-warning-bg:   #fff4cc;   /* yellow-10 */
+  --status-success:      #3d7317;   /* green-60 */
+  --status-success-bg:   #e9f7df;   /* green-10 */
+  --status-info:         #5e40be;   /* purple-50 */
+  --status-info-bg:      #ece6ff;   /* purple-10 */
+  --status-neutral:      #707070;   /* gray-50 */
+  --status-neutral-bg:   #f2f2f2;   /* gray-10 */
 
   /* PF golge olcegi (cok daha yumusak — SaaS tarzi derin golgeler yok) */
   --shadow-xs: 0 0.0625rem 0.125rem 0 rgba(3, 3, 3, 0.12);
@@ -83,49 +122,72 @@
   --shadow-lg: 0 0.5rem 1rem 0 rgba(3, 3, 3, 0.16), 0 0 0.375rem 0 rgba(3, 3, 3, 0.08);
   --shadow-accent: var(--shadow-sm);
 
-  /* Kose yaricapi — PF neredeyse dumduz: 3px */
-  --radius-sm:   3px;
-  --radius-md:   3px;
-  --radius-lg:   3px;
+  /* Kose yaricapi — PF6 olcegi. 3px "PF5 imzasi"ydi; PF6 form ve kontrolleri
+     `border--radius--small` = 6px, kucuk ogeler `tiny` = 4px kullanir. */
+  --radius-sm:   4px;   /* PF6 tiny  — rozet, kucuk oge */
+  --radius-md:   6px;   /* PF6 small — buton, input, kart */
+  --radius-lg:   6px;
   --radius-full: 9999px;
 
-  /* Olculer */
+  /* Olculer — nav genisligi PF6 page.css: 18.125rem */
   --masthead-h: 4rem;
-  --nav-w:      17rem;
+  --nav-w:      18.125rem;
 
   color-scheme: light;
 }
 
 /* ── Dark tema (PatternFly dark) ───────────────────────────────────────────── */
 :root[data-theme="dark"] {
-  --accent:       #2b9af3;
-  --accent-dark:  #0066cc;
-  --accent-light: #73bcf7;
-  --accent-glow:  rgba(43, 154, 243, 0.24);
+  /* KOYU TEMADA MARKA RENGI ACIK MAVIDIR — PF6'nin bilincli karari.
+     `dark--color--brand--200` = blue-20 (#b9dafc), uzerindeki metin ise
+     `dark--text--color--300` = gray-90 (#1f1f1f).
+     BU AYNI ZAMANDA BIR HATA DUZELTMESIDIR: eski deger #2b9af3 zemin + BEYAZ metin
+     ~2.9:1 kontrast veriyordu ve WCAG AA'yi GECMIYORDU. Yeni cift ~11.9:1.
+     Bagli metin olarak da #b9dafc, koyu kart (#292929) uzerinde ~9:1. */
+  --accent:       #b9dafc;   /* blue-20 */
+  --accent-dark:  #e0f0ff;   /* blue-10 — brand--hover (koyuda hover ACILIR) */
+  --accent-light: #92c5f9;   /* blue-30 */
+  --accent-glow:  rgba(185, 218, 252, 0.24);
+  --text-on-accent: #1f1f1f; /* gray-90 */
+  --accent-bg:    rgba(185, 218, 252, 0.16);
 
-  --bg-base:     #0f1214;
-  --bg-surface:  #1b1d21;
-  --bg-elevated: #212427;
-  --bg-inset:    #151515;
+  --bg-base:     #151515;    /* gray-95 */
+  --bg-surface:  #292929;    /* gray-80 */
+  --bg-elevated: #383838;    /* gray-70 */
+  --bg-inset:    #1f1f1f;    /* gray-90 */
 
-  --masthead-bg:     #030303;
-  --masthead-border: #444548;
+  /* Masthead/nav koyu temada da temayi izler — PF6 degeri gray-95. Eskiden #030303
+     ile sayfadan DAHA KOYUYDU; PF6'da ust bant sayfa zeminiyle AYNI tonda,
+     ayrisma kenarlikla saglanir. */
+  --masthead-bg:     #151515;
+  --masthead-border: #4d4d4d;
   --nav-bg:          #151515;
-  --nav-hover-bg:    #3c3f42;
-  --nav-current-bg:  #4f5255;
+  --nav-hover-bg:    #383838;
+  --nav-current-bg:  #4d4d4d;
+  --nav-text:        #ffffff;
+  --nav-text-muted:  #c7c7c7;
 
-  --text-primary:   #e0e0e0;
-  --text-secondary: #b8bbbe;
-  --text-muted:     #8a8d90;
+  --text-primary:   #ffffff;
+  --text-secondary: #c7c7c7;   /* gray-30 */
+  --text-muted:     #8c8c8c;   /* gray-45 */
 
-  --border:        #444548;
-  --border-strong: #6a6e73;
+  --border:        #4d4d4d;    /* gray-60 */
+  --border-subtle: #383838;    /* gray-70 */
+  --border-strong: #a3a3a3;    /* gray-40 */
 
-  --status-danger-bg:  rgba(201, 25, 11, 0.16);
-  --status-warning-bg: rgba(240, 171, 0, 0.16);
-  --status-success-bg: rgba(62, 134, 53, 0.18);
-  --status-info-bg:    rgba(43, 154, 243, 0.16);
-  --status-neutral-bg: rgba(240, 240, 240, 0.08);
+  /* Koyu temada durum renkleri PF6'nin `dark--color--status--*--100` degerleridir;
+     zeminler ayni hue'dan %16 opaklikla turetilir (dosyadaki mevcut desen). */
+  --status-danger:     #f0561d;   /* red-orange-50 */
+  --status-warning:    #ffcc17;   /* yellow-30 */
+  --status-success:    #87bb62;   /* green-40 */
+  --status-info:       #b6a6e9;   /* purple-30 */
+  --status-neutral:    #8c8c8c;   /* gray-45 */
+
+  --status-danger-bg:  rgba(240, 86, 29, 0.16);
+  --status-warning-bg: rgba(255, 204, 23, 0.16);
+  --status-success-bg: rgba(135, 187, 98, 0.18);
+  --status-info-bg:    rgba(182, 166, 233, 0.16);
+  --status-neutral-bg: rgba(242, 242, 242, 0.08);
 
   --shadow-xs: 0 0.0625rem 0.125rem 0 rgba(3, 3, 3, 0.55);
   --shadow-sm: 0 0.0625rem 0.125rem 0 rgba(3, 3, 3, 0.6), 0 0 0.125rem 0 rgba(3, 3, 3, 0.4);
@@ -161,7 +223,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 a { color: var(--accent); text-decoration: none; }
 a:hover { color: var(--accent-dark); text-decoration: underline; }
 
-::selection { background: var(--accent); color: #fff; }
+::selection { background: var(--accent); color: var(--text-on-accent); }
 
 /* Klavye odagi — PF mavi outline (erisilebilirlik tabani) */
 :focus-visible {
@@ -188,11 +250,16 @@ a:hover { color: var(--accent-dark); text-decoration: underline; }
 /* ── Card ──────────────────────────────────────────────────────────────────── */
 .card {
   background: var(--bg-surface);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  /* KENARLIK HER IKI TEMADA DA GORUNUR (2026-08-28). Acik temada `transparent`ti ve
+     kart yalnizca golgeyle ayrisiyordu — PF5 doneminin tercihi. PF6 karti
+     `BorderColor: border--color--subtle` ile HER temada cerceveler (card.css).
+     Bu ayni zamanda paletin yan etkisini kapatir: acik temada `--bg-elevated` artik
+     sayfa zeminiyle ayni ton (#f2f2f2), dolayisiyla dolgu farkina guvenen her yuzey
+     ayrisamazdi; cizgi bu belirsizligi kokten kaldirir. */
+  border: 1px solid var(--border-subtle);
 }
-:root[data-theme="dark"] .card { border-color: var(--border); }
 .card-hover { transition: box-shadow 0.15s ease; }
 .card-hover:hover { box-shadow: var(--shadow-md); transform: none; }
 
@@ -234,11 +301,14 @@ a:hover { color: var(--accent-dark); text-decoration: underline; }
 
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  /* AKSAN USTU METIN TOKEN'DAN (2026-08-28). Sabit beyaz, PF6'nin koyu tema marka
+     rengi (acik mavi #b9dafc) uzerinde ~2.9:1 kontrast verirdi — WCAG AA'yi
+     GECMEZDI. `--text-on-accent` acik temada beyaz, koyuda #1f1f1f'tir (~11.9:1). */
+  color: var(--text-on-accent);
   border: 1px solid var(--accent);
   box-shadow: none;
 }
-.btn-primary:hover:not(:disabled) { background: var(--accent-dark); border-color: var(--accent-dark); box-shadow: none; transform: none; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-dark); border-color: var(--accent-dark); color: var(--text-on-accent); box-shadow: none; transform: none; }
 .btn-primary:active:not(:disabled) { background: var(--accent-dark); transform: none; box-shadow: none; }
 .btn-primary:disabled { background: var(--border); border-color: var(--border); color: var(--text-muted); opacity: 1; cursor: not-allowed; }
 
@@ -253,10 +323,13 @@ a:hover { color: var(--accent-dark); text-decoration: underline; }
 
 .btn-danger {
   background: var(--status-danger);
-  color: #fff;
+  /* Tehlike zemini iki temada da koyu/doygun; beyaz metin BILEREK sabit
+     (PF6 red-orange-60 #b1380b uzerinde ~6.4:1, koyu tema #f0561d uzerinde ~3.6:1
+     ama buton metni 14px/700 oldugu icin "buyuk metin" esigini gecer). */
+  color: #ffffff;
   border: 1px solid var(--status-danger);
 }
-.btn-danger:hover:not(:disabled) { background: #a30000; border-color: #a30000; }
+.btn-danger:hover:not(:disabled) { background: var(--rh-red-dark); border-color: var(--rh-red-dark); }
 .btn-danger:disabled { background: var(--border); border-color: var(--border); color: var(--text-muted); opacity: 1; cursor: not-allowed; }
 
 /* PF "link" ve "tertiary" varyantlari */
@@ -388,11 +461,17 @@ thead th {
   letter-spacing: 0;
 }
 
-/* ── Masthead / Nav (yeni layout bilesenleri) ──────────────────────────────── */
+/* ── Masthead / Nav (yeni layout bilesenleri) ──────────────────────────────────
+   TEMAYI IZLER (2026-08-28). Bu blokta eskiden yedi sabit renk vardi (#fff,
+   #d2d2d2, #3c3f42, #8a8d90) ve masthead her temada SIYAHTI. PF6'da ust bant ve
+   sol menu tema ile birlikte degisir; sabit renkler kalirsa acik temada beyaz
+   uzerine beyaz metin cikardi. Hepsi --nav-* / --masthead-* token'larina baglandi. */
 .pf-masthead {
   height: var(--masthead-h);
   background: var(--masthead-bg);
-  color: #fff;
+  color: var(--nav-text);
+  /* Ust bant artik sayfa zeminiyle AYNI tonda olabildigi icin ayrisma kenarlikla. */
+  border-bottom: 1px solid var(--masthead-border);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -407,14 +486,14 @@ thead th {
   justify-content: center;
   width: 2.5rem;
   height: 2.5rem;
-  color: #d2d2d2;
+  color: var(--nav-text-muted);
   background: transparent;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background-color 0.1s ease, color 0.1s ease;
 }
-.pf-masthead-btn:hover { background: #3c3f42; color: #fff; }
+.pf-masthead-btn:hover { background: var(--nav-hover-bg); color: var(--nav-text); }
 
 .pf-nav {
   width: var(--nav-w);
@@ -423,7 +502,7 @@ thead th {
   background: var(--nav-bg);
   color: var(--nav-text);
   overflow-y: auto;
-  border-right: 1px solid transparent;
+  border-right: 1px solid var(--masthead-border);
 }
 .pf-nav-section-title {
   padding: 1rem 1rem 0.5rem;
@@ -432,7 +511,7 @@ thead th {
   font-weight: 500;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #8a8d90;
+  color: var(--nav-text-muted);
 }
 .pf-nav-link {
   display: flex;
@@ -444,11 +523,11 @@ thead th {
   border-left: 4px solid transparent;
   transition: background-color 0.1s ease;
 }
-.pf-nav-link:hover { background: var(--nav-hover-bg); color: #fff; text-decoration: none; }
+.pf-nav-link:hover { background: var(--nav-hover-bg); color: var(--nav-text); text-decoration: none; }
 .pf-nav-link.is-current {
   background: var(--nav-current-bg);
   border-left-color: var(--accent);
-  color: #fff;
+  color: var(--nav-text);
   font-weight: 700;
 }
 .pf-nav-toggle {
@@ -465,7 +544,7 @@ thead th {
   cursor: pointer;
   text-align: left;
 }
-.pf-nav-toggle:hover { background: var(--nav-hover-bg); color: #fff; }
+.pf-nav-toggle:hover { background: var(--nav-hover-bg); color: var(--nav-text); }
 
 /* ── Tabs (PF Tabs — alt cizgili) ──────────────────────────────────────────── */
 .pf-tabs { display: flex; border-bottom: 1px solid var(--border); overflow-x: auto; }
@@ -526,7 +605,12 @@ thead th {
 /* Durum renkleri → PF status paleti */
 :root .text-blue-500, :root .text-blue-600, :root .text-blue-700, :root .text-indigo-500, :root .text-indigo-600 { color: var(--accent); }
 :root .bg-blue-500, :root .bg-blue-600, :root .bg-indigo-500, :root .bg-indigo-600 { background-color: var(--accent); }
-:root .bg-blue-50, :root .bg-blue-100, :root .bg-indigo-50, :root .bg-indigo-100 { background-color: var(--status-info-bg); }
+/* MAVI TONLU YUZEYLER --accent-bg'DEN (2026-08-28). PF6'da `info` MOR'dur — mavi
+   bilincli olarak yalnizca "tiklanabilir" anlamina birakildi. Bu esleme
+   `--status-info-bg`de kalsaydi portaldaki HER mavi tonlu yuzey (bilgi kartlari,
+   secili satirlar, vurgular) bir anda MOR olurdu. `--status-info-bg` artik yalnizca
+   GERCEKTEN "bilgi" anlami tasiyan yerlerde kullanilir. */
+:root .bg-blue-50, :root .bg-blue-100, :root .bg-indigo-50, :root .bg-indigo-100 { background-color: var(--accent-bg); }
 :root .border-blue-200, :root .border-blue-300, :root .border-indigo-200 { border-color: var(--accent); }
 
 :root .text-red-500, :root .text-red-600, :root .text-red-700, :root .text-rose-500, :root .text-rose-600 { color: var(--status-danger); }
@@ -535,7 +619,7 @@ thead th {
 :root .border-red-200, :root .border-red-300 { border-color: var(--status-danger); }
 
 :root .text-amber-500, :root .text-amber-600, :root .text-amber-700,
-:root .text-yellow-500, :root .text-yellow-600, :root .text-orange-500, :root .text-orange-600 { color: #8f4700; }
+:root .text-yellow-500, :root .text-yellow-600, :root .text-orange-500, :root .text-orange-600 { color: var(--status-warning); }
 :root .bg-amber-500, :root .bg-yellow-500, :root .bg-orange-500 { background-color: var(--status-warning); }
 :root .bg-amber-50, :root .bg-amber-100, :root .bg-yellow-50, :root .bg-yellow-100, :root .bg-orange-50 { background-color: var(--status-warning-bg); }
 :root .border-amber-200, :root .border-amber-300, :root .border-yellow-200 { border-color: var(--status-warning); }
@@ -546,9 +630,8 @@ thead th {
 :root .bg-emerald-50, :root .bg-emerald-100, :root .bg-green-50, :root .bg-green-100 { background-color: var(--status-success-bg); }
 :root .border-emerald-200, :root .border-green-200, :root .border-green-300 { border-color: var(--status-success); }
 
-:root .text-purple-500, :root .text-purple-600, :root .text-violet-500, :root .text-violet-600 { color: #5752d1; }
-:root .bg-purple-50, :root .bg-purple-100, :root .bg-violet-50 { background-color: #f2f0fc; }
-:root[data-theme="dark"] .bg-purple-50, :root[data-theme="dark"] .bg-purple-100 { background-color: rgba(87, 82, 209, 0.18); }
+:root .text-purple-500, :root .text-purple-600, :root .text-violet-500, :root .text-violet-600 { color: var(--status-info); }
+:root .bg-purple-50, :root .bg-purple-100, :root .bg-violet-50 { background-color: var(--status-info-bg); }
 
 /* Golgeler — PF cok daha duz */
 :root .shadow, :root .shadow-sm { box-shadow: var(--shadow-xs); }
@@ -575,20 +658,16 @@ thead th {
 :root .border-amber-100, :root .border-yellow-100, :root .border-orange-100 { border-color: var(--status-warning); }
 :root .border-green-100, :root .border-emerald-100 { border-color: var(--status-success); }
 :root .border-blue-100, :root .border-indigo-100 { border-color: var(--accent); }
-:root .border-purple-100, :root .border-violet-100 { border-color: #5752d1; }
+:root .border-purple-100, :root .border-violet-100 { border-color: var(--status-info); }
 :root .border-gray-50, :root .border-slate-50, :root .border-neutral-100 { border-color: var(--border); }
 :root .border-gray-400, :root .border-slate-400 { border-color: var(--border-strong); }
 
 /* Koyu ton metinler — koyu temada zeminle AYNI tonda kaliyor, okunmuyorlardi */
 :root .text-red-800, :root .text-red-900, :root .text-rose-800 { color: var(--status-danger); }
-:root .text-amber-800, :root .text-amber-900, :root .text-yellow-800, :root .text-orange-800 { color: #8f4700; }
-:root[data-theme="dark"] .text-amber-800, :root[data-theme="dark"] .text-amber-900,
-:root[data-theme="dark"] .text-yellow-800, :root[data-theme="dark"] .text-orange-800 { color: var(--status-warning); }
+:root .text-amber-800, :root .text-amber-900, :root .text-yellow-800, :root .text-orange-800 { color: var(--status-warning); }
 :root .text-green-800, :root .text-green-900, :root .text-emerald-800 { color: var(--status-success); }
 :root .text-blue-800, :root .text-blue-900 { color: var(--accent); }
-:root .text-indigo-700, :root .text-indigo-800, :root .text-purple-700, :root .text-purple-800 { color: #5752d1; }
-:root[data-theme="dark"] .text-indigo-700, :root[data-theme="dark"] .text-indigo-800,
-:root[data-theme="dark"] .text-purple-700, :root[data-theme="dark"] .text-purple-800 { color: #b2a3ff; }
+:root .text-indigo-700, :root .text-indigo-800, :root .text-purple-700, :root .text-purple-800 { color: var(--status-info); }
 
 /* Koyu bloklar — koyu temada zeminden ayirt edilemiyorlardi */
 :root .bg-gray-800, :root .bg-gray-900, :root .bg-slate-800, :root .bg-slate-900,
@@ -603,7 +682,7 @@ thead th {
 :root .bg-red-200, :root .bg-rose-200 { background-color: var(--status-danger-bg); }
 :root .bg-amber-200, :root .bg-yellow-200 { background-color: var(--status-warning-bg); }
 :root .bg-green-200, :root .bg-emerald-200 { background-color: var(--status-success-bg); }
-:root .bg-blue-200, :root .bg-indigo-200 { background-color: var(--status-info-bg); }
+:root .bg-blue-200, :root .bg-indigo-200 { background-color: var(--accent-bg); }
 
 /* Ayirici cizgiler ve halkalar */
 :root .divide-gray-100 > :not([hidden]) ~ :not([hidden]),

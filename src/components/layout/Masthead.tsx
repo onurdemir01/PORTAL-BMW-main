@@ -1,7 +1,13 @@
 // src/components/layout/Masthead.tsx — PatternFly Masthead (OpenShift Console ust bandi).
 //
-// Yapi (soldan saga): nav toggle | logo + urun adi | ... | araclar (arama, yardim,
-// tema, kullanici menusu). Renk/olculer index.css'teki --masthead-* token'larindan gelir.
+// Yapi (soldan saga): nav toggle | logo + urun adi | AYIRICI | ... | araclar (arama,
+// tema, kullanici menusu). Renk/olculer index.css'teki --masthead-*/--nav-* token'larindan
+// gelir.
+//
+// TEMAYI IZLER (2026-08-28): PF6'da masthead artik sabit siyah DEGIL, tema ile birlikte
+// degisir (acik #f2f2f2, koyu #151515 — masthead.css: background--color--secondary).
+// Bu yuzden buradaki sabit renkler (text-white, #b8bbbe, #3c3f42, #4f5255) token'a
+// cevrildi; kalsalardi acik temada beyaz uzerine beyaz metin cikardi.
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
@@ -48,15 +54,20 @@ export default function Masthead({ onToggleNav }: Props) {
         <Bars3Icon className="h-5 w-5" />
       </button>
 
-      <NavLink to="/dashboard" className="flex items-center gap-2 pl-1 pr-4 no-underline">
-        <PortalLogo className="h-7 w-7" />
+      {/* MARKA BLOGU. Logo 28px -> 36px (PF6 masthead__logo--MaxHeight = 38px, sinir
+          icinde) ve saginda ince bir dikey AYIRICI var (OpenShift Console deseni):
+          marka alani arac ikonlarindan gorsel olarak ayrisir, logo kalabalikta
+          kaybolmaz. */}
+      <NavLink to="/dashboard" className="flex items-center gap-2.5 pl-1 pr-4 no-underline">
+        <PortalLogo className="h-9 w-9" />
         <span
-          className="hidden sm:block text-[1.0625rem] text-white"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+          className="hidden sm:block text-[1.0625rem]"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500, color: "var(--nav-text)" }}
         >
-          BMW <span style={{ color: "#b8bbbe" }}>Portal</span>
+          BMW <span style={{ color: "var(--nav-text-muted)" }}>Portal</span>
         </span>
       </NavLink>
+      <span aria-hidden="true" className="hidden sm:block h-8 w-px" style={{ background: "var(--masthead-border)" }} />
 
       <div className="flex-1" />
 
@@ -78,13 +89,17 @@ export default function Masthead({ onToggleNav }: Props) {
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((v) => !v)}
-            className="flex items-center gap-2 h-10 px-3 text-[0.875rem] text-white/90 hover:bg-[#3c3f42] transition-colors"
+            className="flex items-center gap-2 h-10 px-3 text-[0.875rem] transition-colors hover:bg-[var(--nav-hover-bg)]"
+            style={{ color: "var(--nav-text)", borderRadius: "var(--radius-sm)" }}
             aria-expanded={menuOpen}
           >
             {user?.photoUrl ? (
               <img src={user.photoUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
             ) : (
-              <span className="h-6 w-6 rounded-full bg-[#4f5255] text-white text-[0.6875rem] flex items-center justify-center">
+              <span
+                className="h-6 w-6 rounded-full text-[0.6875rem] flex items-center justify-center"
+                style={{ background: "var(--accent)", color: "var(--text-on-accent)" }}
+              >
                 {initial}
               </span>
             )}

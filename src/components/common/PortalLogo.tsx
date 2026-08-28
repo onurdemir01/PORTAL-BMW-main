@@ -66,26 +66,35 @@ export function PortalLogo({ className = "h-8 w-8", showText = false, textColor 
   return (
     <span className="flex items-center gap-2 select-none">
       {useCustom ? (
-        // Yuklenen gorselin kenarlarinda sik gorulen sorun: PNG'nin disa export
-        // edilirken tam saydam olmayan (hafif beyaz/gri) kose pikselleri kalmasi —
-        // object-contain bunlari OLDUGU GIBI gosterirdi. overflow-hidden'li bir
-        // cerceve icinde gorseli hafifce buyutup (scale) kirparak bu kenar
-        // artefaktlari gorunmez kilinir; object-cover cerceveyi tam doldurur.
-        <span className={`${className} relative inline-block overflow-hidden rounded-[3px] flex-shrink-0`}>
+        // KIRPMA KALDIRILDI (2026-08-28). Eskiden `object-cover scale-[1.16]` ile gorsel
+        // buyutulup KIRPILIYORDU; gerekce PNG'lerin tam saydam olmayan kose piksellerini
+        // gizlemekti. Ama bu, KARE OLMAYAN her logoyu bozuyordu: geniS bir wordmark'in
+        // (ornegin "BMW Group IT") sol ve sag kenarlari tamamen kesiliyor, ekranda
+        // ortasindan bir serit kaliyordu. Artik `object-contain`: logo NE ISE O
+        // gorunur, en-boy orani korunur. Kose artefakti riski, iceriden ufak bir
+        // padding ile karsilanir — bir logoyu kirpmaktansa 1px cerceve kaybi yeglenir.
+        <span className={`${className} relative inline-block overflow-hidden flex-shrink-0`}
+              style={{ borderRadius: "var(--radius-sm)" }}>
           <img
             src={logoSrc!}
             alt="Portal Logo"
-            className="absolute inset-0 w-full h-full object-cover scale-[1.16]"
+            className="absolute inset-0 w-full h-full object-contain p-px"
             onError={() => setLogoSrc(null)}
           />
         </span>
       ) : (
+        // GOMULU VARSAYILAN. Karsit ceyreklerin opakligi 0.35'ti; 28px'te dort-bolme
+        // motifi bulanik bir kirmizi kareye donusuyordu. 0.60'a cikarildi: motif kucuk
+        // boyutta da OKUNUR, ama iki ton arasindaki fark korunur (duz beyaz yapmak
+        // BMW'nin donusumlu deseni yerine bir pencere izlenimi verirdi).
+        // Bosluklar da 12/32'den 10/36'ya genisletildi — daha az bosluk, daha buyuk
+        // bolmeler, kucuk boyutta daha net kenar.
         <svg viewBox="0 0 100 100" className={className} aria-label="BMW Portal" role="img">
-          <rect x="0" y="0" width="100" height="100" rx="4" ry="4" fill="#ee0000" />
-          <rect x="12" y="12" width="32" height="32" fill="#ffffff" />
-          <rect x="56" y="12" width="32" height="32" fill="#ffffff" opacity="0.35" />
-          <rect x="12" y="56" width="32" height="32" fill="#ffffff" opacity="0.35" />
-          <rect x="56" y="56" width="32" height="32" fill="#ffffff" />
+          <rect x="0" y="0" width="100" height="100" rx="6" ry="6" fill="#ee0000" />
+          <rect x="10" y="10" width="36" height="36" fill="#ffffff" />
+          <rect x="54" y="10" width="36" height="36" fill="#ffffff" opacity="0.6" />
+          <rect x="10" y="54" width="36" height="36" fill="#ffffff" opacity="0.6" />
+          <rect x="54" y="54" width="36" height="36" fill="#ffffff" />
         </svg>
       )}
 
