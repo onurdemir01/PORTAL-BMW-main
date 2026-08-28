@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { nobetciApi, type NobetciResult, type NobetRecord, type QuickLink } from "@/api/nobetciApi";
 import { QuestionMarkCircleIcon, PhoneIcon, CalendarIcon, LinkIcon } from "@heroicons/react/24/outline";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
+import { fmtDate as formatDate } from "@/utils/datetime";
 
 const DUTY_ROSTER_HELP_SECTIONS: HelpSection[] = [
   {
@@ -22,11 +23,7 @@ const DUTY_ROSTER_HELP_SECTIONS: HelpSection[] = [
 ];
 
 // ---------- helpers ----------
-function formatDate(iso: string | null): string {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
+
 
 function getYearMonth(iso: string | null): string {
   if (!iso) return "";

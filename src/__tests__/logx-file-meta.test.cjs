@@ -70,14 +70,8 @@ test('D1: gecersiz ay/gun kabul edilmez', () => {
   assert.equal(L.parseDateFromFilename('/logs/app-2026-13-45.log'), null);
 });
 
-test('D1: goreli zaman metni', () => {
-  const now = Date.now();
-  assert.equal(L.relativeTime(now - 30 * 1000), 'az önce');
-  assert.equal(L.relativeTime(now - 5 * 60000), '5 dk önce');
-  assert.equal(L.relativeTime(now - 2 * 3600000), '2 saat önce');
-  assert.equal(L.relativeTime(now - 3 * 86400000), '3 gün önce');
-  assert.equal(L.relativeTime(null), '');
-});
+// NOT: goreli zaman metninin testi src/__tests__/datetime.test.cjs'e TASINDI —
+// fonksiyon artik LogX'e ozel degil, ortak `src/utils/datetime.ts` icinde.
 
 // ── Log tipi ────────────────────────────────────────────────────────────────
 test('log tipi dosya adindan cikarilir', () => {

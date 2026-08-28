@@ -19,6 +19,7 @@ import { AppDataProvider } from "@/contexts/AppContext";
 import { JobTrackerProvider } from "@/contexts/JobTrackerContext";
 import JobTrackerBar from "@/components/common/JobTrackerBar";
 import RequestsSidePanel from "@/components/self_service/RequestsSidePanel";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 // Sayfa yuklenirken icerik alanini dolduran iskelet. Spinner yerine iskelet:
 // gelecek icerigin KABA HATLARINI gosterdigi icin gecis "yukleniyor -> icerik"
@@ -40,6 +41,10 @@ function PageSkeleton() {
 export default function AppLayout() {
   const location = useLocation();
   const { showTimeoutModal, extendSession, logout, countdown } = useContext(AuthContext);
+
+  // Sekme basligi yol degistikce guncellenir (bkz. useDocumentTitle: etiketler
+  // menuyle AYNI kaynaktan gelir, ayri bir liste tutulmaz).
+  useDocumentTitle();
 
   const [navOpen, setNavOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 1024);

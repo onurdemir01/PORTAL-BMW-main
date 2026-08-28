@@ -10,17 +10,12 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "@heroicons/react/24/outline";
+import { fmtDateTimeSeconds as formatDate } from "@/utils/datetime";
 
 const PAGE_SIZE = 50;
 
 // K-03: Show Turkey local time (UTC+3)
-function formatDate(d: string): string {
-  return new Date(d).toLocaleString("tr-TR", {
-    timeZone: "Europe/Istanbul",
-    dateStyle: "short",
-    timeStyle: "medium",
-  });
-}
+
 
 function resultBadge(result?: string) {
   if (!result) return "bg-gray-100 text-gray-500";

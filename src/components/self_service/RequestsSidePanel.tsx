@@ -7,6 +7,8 @@ import { createPortal } from "react-dom";
 import { ClipboardDocumentListIcon, ChevronDoubleRightIcon, ChevronDoubleLeftIcon, XCircleIcon, ChevronDownIcon, CommandLineIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { ansibleApi, type SmartTicketSummary } from "@/api/ansibleApi";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
+import { fmtDateTime as formatDate } from "@/utils/datetime";
+import { SkeletonList } from "@/components/common/Skeleton";
 
 interface TicketDetail {
   externalTicketId?: string | null;
@@ -33,13 +35,7 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 
 const COLLAPSE_KEY = "portal.selfService.myRequestsPanel.collapsed";
 
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleString("tr-TR");
-  } catch {
-    return iso;
-  }
-}
+
 
 export default function RequestsSidePanel() {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -195,9 +191,7 @@ export default function RequestsSidePanel() {
 
         <div className="p-3 max-h-[70vh] overflow-y-auto">
           {loading && (
-            <div className="flex items-center justify-center py-8">
-              <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-            </div>
+            <SkeletonList rows={3} />
           )}
 
           {!loading && err && (

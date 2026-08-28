@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArchiveBoxIcon, PlayIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ClockIcon } from "@heroicons/react/24/outline";
 import { toast } from "@/hooks/useToast";
+import { fmtDateTime as fmt } from "@/utils/datetime";
 
 interface BackupState {
   status: "idle" | "running" | "done" | "error";
@@ -33,10 +34,7 @@ const STATUS_META: Record<BackupState["status"], { label: string; className: str
   error:   { label: "Hata", className: "bg-red-50 text-red-700 border-red-200", icon: XCircleIcon },
 };
 
-function fmt(iso: string | null) {
-  if (!iso) return "—";
-  try { return new Date(iso).toLocaleString("tr-TR"); } catch { return iso; }
-}
+
 
 const DbBackupTab: React.FC = () => {
   const [state, setState] = useState<BackupState | null>(null);
