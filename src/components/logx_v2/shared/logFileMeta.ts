@@ -68,27 +68,11 @@ function safeUtc(y: number, mo: number, d: number): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-// "2 saat önce" — mutlak tarihten daha hizli okunur, "en güncel hangisi" sorusunu
-// tek bakista cevaplar. Mutlak tarih `title` olarak kalir.
-export function relativeTime(ms: number | null): string {
-  if (ms === null) return "";
-  const diff = Date.now() - ms;
-  if (diff < 0) return "az sonra";
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "az önce";
-  if (min < 60) return `${min} dk önce`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} saat önce`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day} gün önce`;
-  const mo = Math.floor(day / 30);
-  if (mo < 12) return `${mo} ay önce`;
-  return `${Math.floor(mo / 12)} yıl önce`;
-}
-
-export function absoluteTime(ms: number | null): string {
-  return ms === null ? "tarih bilinmiyor" : new Date(ms).toLocaleString("tr-TR");
-}
+// ZAMAN METNI ORTAK MODULDE (2026-08-28): `fmtRelative` / `fmtDateTime`
+// src/utils/datetime.ts icindedir. Burada YENIDEN yazilmasi, repodaki alti ayri
+// tarih bicimlendirme kopyasindan biri olmak demekti; o kopyalar birbirinden
+// sessizce ayrilmisti (bos deger isareti, gecersiz tarih davranisi, SAAT DILIMI).
+// Bu dosya artik yalnizca LOG'A OZEL olani tutar: mtime normalize etme ve log tipi.
 
 // ── LOG TIPI ─────────────────────────────────────────────────────────────────
 // Dosya adindan kaba bir tip cikarilir. Amac siniflandirma degil, GOZLE TARAMA:

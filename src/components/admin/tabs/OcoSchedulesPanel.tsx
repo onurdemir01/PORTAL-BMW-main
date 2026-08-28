@@ -16,6 +16,7 @@ import { ArrowPathIcon, MagnifyingGlassIcon, ClockIcon, XCircleIcon } from "@her
 import { toast } from "@/hooks/useToast";
 import { ansibleApi, type AdminOcoSchedule } from "@/api/ansibleApi";
 import { Select } from "@/components/ui/Form";
+import { fmtDateTime as fmt } from "@/utils/datetime";
 
 const PAGE_SIZE = 50;
 
@@ -33,10 +34,7 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
   EXPIRED:       { label: "Pencere kaçtı",    className: "bg-amber-50 text-amber-700 border-amber-200" },
 };
 
-function fmt(iso?: string | null) {
-  if (!iso) return "—";
-  try { return new Date(iso).toLocaleString("tr-TR"); } catch { return iso; }
-}
+
 
 // "Ne kadar kaldı / ne kadar geçti" — admin tabloya bakınca sırayı görebilsin.
 function relative(iso: string) {

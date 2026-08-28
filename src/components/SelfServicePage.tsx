@@ -29,6 +29,7 @@ import {
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import IpCheckSection from "@/components/self_service/IpCheckSection";
 import OpenshiftCheckSection from "@/components/self_service/OpenshiftCheckSection";
+import { SkeletonList } from "@/components/common/Skeleton";
 
 // LAUNCHING ARA DURUMU (2026-08-28): Smart onayı geldi, AWX çağrısı uçuşta. Bu da bir
 // BEKLEME durumudur — sonlanmış gibi davranıp yoklamayı kesersek ekran "başlatılıyor"da
@@ -364,9 +365,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
           {err && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>}
 
           {loading && (
-            <div className="flex items-center justify-center h-20">
-              <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-            </div>
+            <SkeletonList rows={4} />
           )}
 
           {/* OCO Kontrolu paneli — acikken form alanlari GIZLENIR: kullanicinin bu
@@ -787,9 +786,7 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
           ) : loading ? (
-            <div className="flex items-center justify-center h-20">
-              <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-            </div>
+            <SkeletonList rows={4} />
           ) : history.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-10">Son 30 günde iş yok.</p>
           ) : (

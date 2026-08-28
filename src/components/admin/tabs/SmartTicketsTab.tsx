@@ -11,6 +11,7 @@ import { toast } from "@/hooks/useToast";
 import { Select } from "@/components/ui/Form";
 import OcoSchedulesPanel from "./OcoSchedulesPanel";
 import { TableEmptyRow } from "@/components/common/EmptyState";
+import { fmtDateTime as fmt } from "@/utils/datetime";
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING:   { label: "Onay Bekliyor",           className: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -26,10 +27,7 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
 
 const PAGE_SIZE = 50;
 
-function fmt(iso?: string | null) {
-  if (!iso) return "—";
-  try { return new Date(iso).toLocaleString("tr-TR"); } catch { return iso; }
-}
+
 
 // Acilis -> sonuclanma arasi gecen sure. Admin "onay ne kadar surmus" ya da
 // "zaman asimina mi dusmus" sorusunu tabloya bakarak yanitlayabilsin.

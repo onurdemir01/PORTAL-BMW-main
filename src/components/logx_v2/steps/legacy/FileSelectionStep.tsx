@@ -34,9 +34,10 @@ import {
 } from "@heroicons/react/24/outline";
 import type { LegacyDiscoveryResult } from "@/api/logxV2Api";
 import {
-  normalizeMtime, relativeTime, absoluteTime, logKind, KIND_LABEL, KIND_CLASS,
+  normalizeMtime, logKind, KIND_LABEL, KIND_CLASS,
   selectionPayloadBytes, selectionPressure, SELECTION_MAX_BYTES, fmtSize,
 } from "@/components/logx_v2/shared/logFileMeta";
+import { fmtRelative, fmtDateTime } from "@/utils/datetime";
 
 interface Props {
   result: LegacyDiscoveryResult;
@@ -453,8 +454,8 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
                         {sel.on > 0 ? ` · ${sel.on} seçili` : ""}
                       </span>
                     </button>
-                    <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0" title={absoluteTime(row.newest)}>
-                      {relativeTime(row.newest)}
+                    <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0" title={fmtDateTime(row.newest)}>
+                      {fmtRelative(row.newest)}
                     </span>
                   </div>
                 );
@@ -505,8 +506,8 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
                     {KIND_LABEL[f.kind]}
                   </span>
                   <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 tabular-nums w-20 text-right"
-                        title={absoluteTime(f.at)}>
-                    {relativeTime(f.at) || "—"}
+                        title={fmtDateTime(f.at)}>
+                    {fmtRelative(f.at) || "—"}
                   </span>
                   {f.size ? (
                     <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 tabular-nums w-14 text-right">{fmtSize(f.size)}</span>
