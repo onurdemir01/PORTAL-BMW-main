@@ -2381,7 +2381,7 @@ function initAnsibleRunner(app) {
     const { extraVars: submittedExtraVars = {}, templateName = "", limit = "", forks, jobTags, skipTags, verbosity, jobType } = req.body || {};
 
     try {
-      const { detail, overrides, extraVars, specFields, resolvedLaunchOptions } = await resolveSsLaunchPlan(
+      const { detail, overrides, extraVars, gateVars, specFields, resolvedLaunchOptions } = await resolveSsLaunchPlan(
         server, templateId, { submittedExtraVars, templateName, limit, forks, jobTags, skipTags, verbosity, jobType, req }
       );
 
@@ -2613,7 +2613,7 @@ function initAnsibleRunner(app) {
     const { extraVars: submittedExtraVars = {}, templateName = "", scenarioName = "", limit = "", forks, jobTags, skipTags, verbosity, jobType } = req.body || {};
 
     try {
-      const { detail, overrides, extraVars, specFields, resolvedLaunchOptions } = await resolveSsLaunchPlan(
+      const { detail, overrides, extraVars, gateVars, specFields, resolvedLaunchOptions } = await resolveSsLaunchPlan(
         server, templateId, { submittedExtraVars, templateName, limit, forks, jobTags, skipTags, verbosity, jobType, req }
       );
 
