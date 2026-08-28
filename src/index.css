@@ -62,9 +62,16 @@
   /* Aksanin SAYISAL uclusu. Repoda 13 yerde `rgba(79,142,255,X)` yaziliydi — bu
      #4F8EFF, yani portalin aksani (#0066cc) bile DEGIL; ucuncu bir maviydi ve tema
      degisince hic degismiyordu. Farkli saydamliklar gerektigi icin tek bir tint
-     token'i yetmiyor; `rgb(var(--accent-rgb) / 0.08)` her oranda calisir ve temayi
-     izler. (Ayni teknik --term-* renkleri icin de kullanildi.) */
-  --accent-rgb:   0, 102, 204;
+     token'i yetmiyor; `rgb(var(--accent-rgb) / 0.08)` her oranda calisir ve temayi izler.
+
+     BOSLUKLU YAZILIR, VIRGULLU DEGIL — ve bu bir bicim tercihi DEGIL, zorunluluk:
+     CSS `rgb()` iki AYRI dilbilgisi tanir; eski virgullu (`rgb(r, g, b)` /
+     `rgba(r, g, b, a)`) ve modern bosluklu (`rgb(r g b / a)`). IKISI KARISTIRILAMAZ.
+     `--accent-rgb: 0, 102, 204` ile yazilsaydi `rgb(0, 102, 204 / 0.08)` uretilir,
+     bu GECERSIZ bir degerdir ve tarayici BILDIRIMI TUMDEN ATAR — hata vermeden,
+     sessizce. (Ilk yazimda tam olarak bu oldu; spec-uyumlu bir renk ayristiricisiyla
+     dogrulanip duzeltildi. Bkz. src/__tests__/color-syntax.test.cjs) */
+  --accent-rgb:   0 102 204;
 
   /* Yuzeyler — PF6: sayfa gray-10, kart beyaz */
   --bg-base:     #f2f2f2;    /* gray-10 */
@@ -174,7 +181,7 @@
   --accent-glow:  rgba(185, 218, 252, 0.24);
   --text-on-accent: #1f1f1f; /* gray-90 */
   --accent-bg:    rgba(185, 218, 252, 0.16);
-  --accent-rgb:   185, 218, 252;
+  --accent-rgb:   185 218 252;
 
   --bg-base:     #151515;    /* gray-95 */
   --bg-surface:  #292929;    /* gray-80 */
@@ -509,8 +516,9 @@ thead th {
    ZATEN satir ici `tabular-nums` ile cozuyor; bu kural yeni eklenen ya da atlanan
    sayisal hucreler icin bir emniyet agi. Tablonun TAMAMINA uygulanmaz — metin
    kolonlarinda tablo rakamlari gereksizce seyrek durur.
-   `.num` sinifi tasiyan ve saga yaslanmis hucreler sayisal kabul edilir. */
-.pf-table-sticky td.num, .pf-table-sticky th.num,
+   Hedef: SAGA YASLANMIS hucreler (sayisal kolonlarin yerlesik isareti). Once bir de
+   `.num` sinifi eslenmisti ama repoda HIC kullanilmiyordu — kullanilmayan bir secici
+   ileride "var sanilan" bir sozlesme uretir, kaldirildi. */
 .pf-table-sticky td.text-right, .pf-table-sticky th.text-right {
   font-variant-numeric: tabular-nums;
 }

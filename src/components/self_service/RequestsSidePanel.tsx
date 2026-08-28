@@ -123,18 +123,40 @@ export default function RequestsSidePanel() {
   // Panel açıkken ve hâlâ PENDING bir talep varken hafifçe otomatik yenilenir — kullanıcı
   // manuel sayfa yenilemeden onay/red durumunu görsün.
   //
-  // DIKKAT — OTOMATIK DARALTMANIN TUZAGI: burada eskiden `if (collapsed) return;`
-  // vardi. Otomatik daraltma ile birlikte bu, KENDINI KILITLEYEN bir durum uretirdi:
-  // panel bos oldugu icin daralir, daraldigi icin yoklama durur, yoklama durdugu icin
-  // yeni talep hic ogrenilmez ve panel BIR DAHA acilmaz. Bu yuzden yoklama artik
-  // KULLANICININ ACIKCA daralttigi durumda durur; otomatik daralmis panel yoklamaya
-  // devam eder ki talep gelince kendiliginden acilabilsin.
+  // DIKKAT — OTOMATIK DARALTMANIN TUZAGI. Bu blok bir kez YANLIS yazildi ve dersi
+  // burada duruyor:
+  //
+  // Ilk yazimda yalnizca `if (collapsed) return;` kaldirilmisti ve yoruma "otomatik
+  // daralmis panel yoklamaya devam eder" yazilmisti. AMA bir alt satirdaki
+  // `if (!tickets.some(PENDING)) return;` kosulu bunu gecersiz kiliyordu: panel bos
+  // oldugu icin daralir, bos oldugu icin ORTADA PENDING TALEP YOKTUR, dolayisiyla
+  // yoklama HIC BASLAMAZ ve panel bir daha acilmaz. Yorum, kodun yapmadigi bir seyi
+  // iddia ediyordu.
+  //
+  // Dogru cozum yoklamayi siklastirmak DEGIL — panel zaten Outlet'in DISINDA mount
+  // edilir ve sayfa gezinmesinde yenilenmez, yani "yeni talep" bilgisi ona hicbir
+  // yoldan ulasmiyordu. Iki kanal eklendi:
+  //   1) OLAY: Self Servis bir talep acinca `portal:smart-ticket-created` yayinlar —
+  //      anlik, maliyetsiz, ayni sekmede kesin.
+  //   2) BOSTA YAVAS YOKLAMA: baska bir sekmede/cihazda acilan talep icin emniyet
+  //      agi. Bekleyen talep varken 30 sn (durum degisimi hizli gorunsun), hicbir
+  //      talep yokken 120 sn (yalnizca "yeni talep var mi" sorusu).
   useEffect(() => {
-    if (userPref === true) return;          // kullanici ACIKCA kapatti
-    if (!tickets.some((t) => t.status === "PENDING")) return;
-    const timer = setInterval(load, 30_000);
+    if (userPref === true) return;                       // kullanici ACIKCA kapatti
+    const hasPending = tickets.some((t) => t.status === "PENDING");
+    // Talep VAR ama hicbiri beklemede degilse yoklamaya gerek yok: sonuclanmis
+    // talepler kendiliginden degismez.
+    if (!hasPending && tickets.length > 0) return;
+    const timer = setInterval(load, hasPending ? 30_000 : 120_000);
     return () => clearInterval(timer);
   }, [userPref, tickets, load]);
+
+  // Ayni sekmede acilan talebi ANINDA yakala (yukaridaki 1. kanal).
+  useEffect(() => {
+    const onCreated = () => { load(); };
+    window.addEventListener("portal:smart-ticket-created", onCreated);
+    return () => window.removeEventListener("portal:smart-ticket-created", onCreated);
+  }, [load]);
 
   // Kullanici bir kez dokununca ACIK TERCIH kaydedilir ve otomatik mod devre disi kalir.
   const toggle = () => {

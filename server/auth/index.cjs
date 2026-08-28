@@ -187,6 +187,11 @@ function initAuth(app) {
     }
     try {
       const written = await usersDb.setPrefs(me.username, prefs);
+      // Tema tercihi ILK HTML'e gomuluyor ve orada kisa omurlu bir onbellekten
+      // okunuyor (bkz. server/index.cjs readThemePrefCached). Yazdiktan sonra
+      // onbellegi ACIKCA dusur — aksi halde kullanici temayi degistirip TAM SAYFA
+      // yenilerse 30 sn boyunca eski tema bir an gorunurdu.
+      try { req.app?.locals?.invalidateThemePref?.(me.username); } catch { /* yoksay */ }
       res.json({ ok: true, written });
     } catch (e) {
       res.status(500).json({ ok: false, error: `Tercih kaydedilemedi: ${e.message}` });

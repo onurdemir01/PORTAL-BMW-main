@@ -317,6 +317,11 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
 
       if (r.ok && r.pendingApproval && r.ticketId != null) {
         setPendingTicket({ id: r.ticketId, status: "PENDING", externalTicketId: r.externalTicketId });
+        // "Taleplerim" paneline HABER VER. Panel AppLayout'ta, Outlet'in DISINDA
+        // mount edilir; sayfa gezinmesinde yeniden mount OLMAZ ve kendiliginden
+        // yeni talebi ogrenemez. Bu olay olmadan panel — ozellikle bos oldugu icin
+        // serite dusmusken — talep acilsa bile kapali kalirdi.
+        window.dispatchEvent(new CustomEvent("portal:smart-ticket-created"));
       } else if (r.ok && r.jobId != null) {
         setJobId(r.jobId);
         trackJob(r.jobId);
