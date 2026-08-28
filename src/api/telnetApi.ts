@@ -28,12 +28,40 @@ export interface TelnetRunResult {
   message?: string;
 }
 
+/** Playbook'un `set_stats` ile yayinladigi SONUC SOZLESMESI (bkz.
+ *  server/ansible/playbooks/ocp_telnet_control.yml son play'i).
+ *
+ *  NEDEN VAR: playbook AÇIK/KAPALI satirlarini yalnizca `debug` mesaji olarak
+ *  uretiyordu ve portal bunlari HIC okumuyordu. Sonuc: tum portlar KAPALI olsa bile
+ *  AWX job'i `successful` dondugu icin ekranda YESIL TIK cikiyordu — "sonuc yok"tan
+ *  kotu, cunku aktif olarak YANLIS bilgi veriyordu. */
+export interface TelnetTargetResult {
+  cluster: string;
+  bastion: string;
+  namespace: string;
+  ip: string;
+  port: string;
+  /** `error` = test YAPILAMADI (pod acilamadi/hazir olmadi). `closed` ile AYNI SEY DEGIL. */
+  state: "open" | "closed" | "error";
+  rc: number;
+  detail: string;
+}
+
+export interface TelnetResult {
+  overallStatus: "open" | "partial" | "closed" | "error";
+  target: { host: string; port: string };
+  counts: { total: number; open: number; closed: number; error: number };
+  targets: TelnetTargetResult[];
+}
+
 export interface TelnetJobStatus {
   ok: boolean;
   status: string;
   output: string;
   finished?: string;
   failed?: boolean;
+  /** Playbook AWX'e henuz kopyalanmadiysa ya da is bitmediyse null. */
+  result?: TelnetResult | null;
 }
 
 export const telnetApi = {
@@ -81,4 +109,10 @@ export const telnetApi = {
 
   jobStatus: (serverId: number, jobId: number): Promise<TelnetJobStatus> =>
     fetch(`${BASE}/job-status/${serverId}/${jobId}`).then(safeJson),
+
+  // Calisan testi durdurur. Telnet OCP cluster'inda GECICI POD actigi icin yanlis bir
+  // IP/port girildiginde iptal edebilmek gercek bir ihtiyac (is, her birim icin 60 sn
+  // pod bekleme + 10 sn telnet timeout suresince surer).
+  cancel: (serverId: number, jobId: number): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/cancel/${serverId}/${jobId}`, { method: "POST" }).then(safeJson),
 };

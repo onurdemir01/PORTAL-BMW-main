@@ -8,10 +8,14 @@ const IP_PORT_RE = /^[A-Za-z0-9.\-:_]{1,255}$/;
 const TelnetInputStep: React.FC<{
   summary: React.ReactNode;
   busy?: boolean;
+  /** "Aynı hedeflerle tekrar" akışında önceki değerlerle dolu gelir — kullanıcı
+   *  genellikle YALNIZCA portu değiştirmek ister ve IP'yi yeniden yazmak zorunda
+   *  kalması bu akışın anlamını yok ederdi. */
+  initial?: { ip: string; port: string } | null;
   onSubmit: (v: { ip: string; port: string }) => void;
-}> = ({ summary, busy, onSubmit }) => {
-  const [ip, setIp] = useState("");
-  const [port, setPort] = useState("");
+}> = ({ summary, busy, initial, onSubmit }) => {
+  const [ip, setIp] = useState(initial?.ip ?? "");
+  const [port, setPort] = useState(initial?.port ?? "");
 
   const ipTrim = ip.trim();
   const portTrim = port.trim();

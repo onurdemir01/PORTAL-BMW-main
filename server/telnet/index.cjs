@@ -94,6 +94,97 @@ function telnetTemplateName(namespaces) {
   return `${base}(${inner})`.slice(0, TEMPLATE_NAME_MAX);
 }
 
+// ── SONUC OKUMA (2026-08-28) ────────────────────────────────────────────────────
+// ONCE: playbook AÇIK/KAPALI satirlarini yalnizca `debug` mesaji olarak uretiyordu,
+// portal bunlari HIC okumuyordu — backend `artifacts`i eline alip ATIYORDU. Sonuc:
+// TUM portlar KAPALI olsa bile AWX job'i `successful` dondugu icin ekranda YESIL TIK
+// cikiyordu. Bu, "sonuc yok"tan kotudur: aktif olarak YANLIS bilgi veriyordu.
+//
+// SIMDI: playbook `set_stats` ile `telnet_result` yayinliyor (bkz.
+// ocp_telnet_control.yml son play'i) ve burada okunuyor. Anahtar cozumu ESNEK —
+// AWX surumune gore `artifacts.X`, `artifacts.data.X` ya da
+// `artifacts.ansible_stats.data.X` altinda gelebiliyor (LogX'te uretimde her uc sekil
+// de gorulduğu icin jobs.cjs ayni deseni tasiyor).
+function extractTelnetResult(rawArtifacts) {
+  const a = rawArtifacts || {};
+  const candidates = [
+    a.telnet_result,
+    a.data && a.data.telnet_result,
+    a.ansible_stats && a.ansible_stats.data && a.ansible_stats.data.telnet_result,
+  ];
+  for (const c of candidates) {
+    if (c && typeof c === 'object') return normalizeTelnetResult(c);
+  }
+  // Son care: bazi kurulumlar degeri JSON METIN olarak yayinliyor.
+  for (const key of ['telnet_result', 'telnet_result_json']) {
+    if (typeof a[key] === 'string') {
+      try {
+        const parsed = JSON.parse(a[key]);
+        if (parsed && typeof parsed === 'object') return normalizeTelnetResult(parsed);
+      } catch { /* gecersiz JSON — yok say */ }
+    }
+  }
+  return null;
+}
+
+// Jinja `set_stats` her seyi METIN olarak yayinlayabilir (`counts.open` -> "2").
+// Ekran sayi bekliyor; donusum TEK yerde yapilir ki bilesenler bunu bilmek zorunda
+// kalmasin. Bilinmeyen `state` degerleri 'error'a duser — uydurma bir "acik" URETILMEZ.
+function normalizeTelnetResult(r) {
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const targets = Array.isArray(r.targets) ? r.targets : [];
+  const STATES = new Set(['open', 'closed', 'error']);
+  return {
+    overallStatus: ['open', 'partial', 'closed', 'error'].includes(String(r.overall_status || '').trim())
+      ? String(r.overall_status).trim() : 'error',
+    target: {
+      host: String(r.target?.host ?? ''),
+      port: String(r.target?.port ?? ''),
+    },
+    counts: {
+      total: num(r.counts?.total ?? targets.length),
+      open: num(r.counts?.open),
+      closed: num(r.counts?.closed),
+      error: num(r.counts?.error),
+    },
+    targets: targets.map((t) => ({
+      cluster: String(t?.cluster ?? ''),
+      bastion: String(t?.bastion ?? ''),
+      namespace: String(t?.namespace ?? ''),
+      ip: String(t?.ip ?? ''),
+      port: String(t?.port ?? ''),
+      state: STATES.has(String(t?.state)) ? String(t.state) : 'error',
+      rc: num(t?.rc),
+      detail: String(t?.detail ?? '').slice(0, 500),
+    })),
+  };
+}
+
+// Sahiplik kapisi — hem job-status hem CANCEL ucu ayni kapidan gecer. Iki yerde
+// kopyalanmis bir guvenlik kontrolu, birinin unutulmasi demektir.
+// Reddediliyorsa { status, message } doner; gecerse null.
+async function denyIfNotOwner(req, serverId, jobId) {
+  const reqUser = req.session?.user || {};
+  if (reqUser.role === 'Admin') return null;
+  const me = String(reqUser.username || '').toLowerCase();
+  let owner = JOB_OWNER_CACHE.get(`${serverId}:${jobId}`) || null;
+  if (!owner) {
+    try {
+      const db = require('../db/index.cjs');
+      const { rows } = await db.query(
+        `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+        [jobId, serverId]
+      );
+      owner = rows.length && rows[0].username ? String(rows[0].username).toLowerCase() : null;
+    } catch (e) {
+      console.warn('[Telnet] sahiplik sorgusu basarisiz — erisim reddedildi:', e.message);
+      return { status: 503, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' };
+    }
+  }
+  if (!owner || owner !== me) return { status: 403, message: 'Bu iş size ait değil.' };
+  return null;
+}
+
 function initTelnet(app) {
   const express = require('express');
 
@@ -171,30 +262,8 @@ function initTelnet(app) {
     // telnetTemplateName notu) koruma tamamen devre disi kaliyordu. Artik sahiplik
     // KANITLANMADIKCA erisim yok. Kanit iki kaynaktan gelebilir: DB gecmisi (birincil)
     // ya da bu surecte launch aninda tutulan bellek-ici yedek.
-    {
-      const reqUser = req.session?.user || {};
-      if (reqUser.role !== 'Admin') {
-        const me = String(reqUser.username || '').toLowerCase();
-        const cached = JOB_OWNER_CACHE.get(`${serverId}:${jobId}`);
-        let owner = cached || null;
-        if (!owner) {
-          try {
-            const db = require('../db/index.cjs');
-            const { rows } = await db.query(
-              `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-              [jobId, serverId]
-            );
-            owner = rows.length && rows[0].username ? String(rows[0].username).toLowerCase() : null;
-          } catch (e) {
-            console.warn('[Telnet] sahiplik sorgusu basarisiz — erisim reddedildi:', e.message);
-            return res.status(503).json({ ok: false, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' });
-          }
-        }
-        if (!owner || owner !== me) {
-          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
-        }
-      }
-    }
+    const denied = await denyIfNotOwner(req, serverId, jobId);
+    if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -208,7 +277,41 @@ function initTelnet(app) {
         output: outputInfo.output || '',
         finished: statusInfo.finished,
         failed: statusInfo.failed,
+        // Yapilandirilmis sonuc — ham stdout parse EDILMEZ, playbook'un `set_stats`
+        // ile yayinladigi sozlesme okunur. Playbook henuz AWX'e kopyalanmadiysa
+        // (ya da is daha bitmediyse) null doner ve ekran eski davranisa duser.
+        result: extractTelnetResult(statusInfo.artifacts),
       });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST /api/telnet/cancel/:serverId/:jobId — calisan testi durdurur.
+  //
+  // NEDEN GEREKLI (2026-08-28): Telnet testi OCP cluster'inda GECICI POD aciyor. Yanlis
+  // IP/port girildiginde ya da hedef yanit vermediginde is, her (cluster x namespace)
+  // birimi icin 60 sn pod bekleme + 10 sn telnet timeout suresince suruyor ve kullanicinin
+  // bunu durdurmasinin HICBIR yolu yoktu. Playbook'un `always` blogu pod'u yine temizler.
+  app.post('/api/telnet/cancel/:serverId/:jobId', requireAuth, async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
+    }
+    const denied = await denyIfNotOwner(req, serverId, jobId);
+    if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
+
+    try {
+      const runner = require('../ansible/runner.cjs');
+      await runner.cancelJobOnServer(serverId, jobId);
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'telnet_cancel', {
+          detail: JSON.stringify({ awxServerId: serverId, jobId }),
+        });
+      } catch { /* denetim kaydi best-effort */ }
+      console.log(`[Telnet] ${req.session?.user?.username} -> job ${jobId} IPTAL edildi.`);
+      res.json({ ok: true });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
