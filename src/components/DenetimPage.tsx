@@ -24,6 +24,7 @@ import AppEnvs from "@/components/denetim/AppEnvs";
 import WebApp from "@/components/denetim/WebApp";
 import NginxLocations from "@/components/denetim/NginxLocations";
 import { toast } from "@/hooks/useToast";
+import { TableEmptyRow } from "@/components/common/EmptyState";
 
 const HELP: HelpSection[] = [
   {
@@ -584,7 +585,7 @@ function NginxSpaAudit() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-gray-100">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm pf-table-sticky">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100 text-left">
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Uygulama</th>
@@ -593,7 +594,7 @@ function NginxSpaAudit() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {rows.length === 0 && (
-              <tr><td colSpan={envs.length + 1} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+              <TableEmptyRow colSpan={envs.length + 1} />
             )}
             {rows.map((r) => (
               <tr key={r.service + r.application} className="hover:bg-gray-50/60">
@@ -732,7 +733,7 @@ function OcpCoverage() {
       )}
 
       <div className="overflow-x-auto rounded-xl border border-gray-100">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm pf-table-sticky">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100 text-left">
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Uygulama</th>
@@ -741,7 +742,7 @@ function OcpCoverage() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {rows.length === 0 && (
-              <tr><td colSpan={envs.length + 1} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+              <TableEmptyRow colSpan={envs.length + 1} />
             )}
             {rows.slice(0, 500).map((r) => (
               <tr key={r.application} className="hover:bg-gray-50/60">
@@ -906,7 +907,7 @@ function InitScriptsAudit() {
 
       {view === "script" ? (
         <div className="overflow-x-auto rounded-xl border border-gray-100">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm pf-table-sticky">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-left">
                 <th className="px-3 py-2 text-xs font-semibold text-gray-500">Script</th>
@@ -918,7 +919,7 @@ function InitScriptsAudit() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {scripts.length === 0 && (
-                <tr><td colSpan={5} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+                <TableEmptyRow colSpan={5} />
               )}
               {scripts.map((sc) => (
                 <React.Fragment key={sc.key}>
@@ -1018,7 +1019,7 @@ function InitScriptsAudit() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-100">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm pf-table-sticky">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-left">
                 <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sunucu</th>
@@ -1029,7 +1030,7 @@ function InitScriptsAudit() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {hostRows.length === 0 && (
-                <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+                <TableEmptyRow colSpan={4} />
               )}
               {hostRows.slice(0, 500).map((h) => (
                 <tr key={h.host} className="hover:bg-gray-50/60 align-top">

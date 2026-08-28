@@ -31,16 +31,28 @@ type Props = {
 
 const RUNNING = new Set(["pending", "waiting", "running", ""]);
 
-function statusMeta(status: string): { label: string; color: string; dot: string } {
+// Terminal durum renkleri. `color` DOGRUDAN kullanilabilen bir CSS degeridir;
+// `rgb` ise SAYISAL uclu ("63, 185, 80") — saydamlik gereken yerler icin.
+//
+// NEDEN IKI ALAN: bu degerler eskiden ham hex'ti ve `${meta.color}55` gibi
+// HEX-ALFA BIRLESTIRMESIYLE saydam kenarlik/parilti uretiliyordu. Token'a
+// gecerken bu kalip SESSIZCE BOZULURDU — `var(--term-success)55` gecerli CSS
+// degildir ve tarayici kurali tumden atar (kenarlik ve parilti kaybolur, hata
+// da vermez). `rgb` ucluleri `rgb(R G B / A)` ile ayni gorunumu tasir.
+interface TermStatus { label: string; color: string; dot: string; rgb: string }
+
+function statusMeta(status: string): TermStatus {
+  const of = (token: string, rgb: string, label: string): TermStatus =>
+    ({ label, color: `var(${token})`, dot: `var(${token})`, rgb });
   switch (status) {
-    case "successful": return { label: "başarılı", color: "#3fb950", dot: "#3fb950" };
+    case "successful": return of("--term-success", "63, 185, 80", "başarılı");
     case "failed":
-    case "error":      return { label: status === "error" ? "hata" : "başarısız", color: "#f85149", dot: "#f85149" };
-    case "canceled":   return { label: "iptal edildi", color: "#d29922", dot: "#d29922" };
-    case "running":    return { label: "çalışıyor", color: "#58a6ff", dot: "#58a6ff" };
+    case "error":      return of("--term-danger", "248, 81, 73", status === "error" ? "hata" : "başarısız");
+    case "canceled":   return of("--term-warning", "210, 153, 34", "iptal edildi");
+    case "running":    return of("--term-info", "88, 166, 255", "çalışıyor");
     case "pending":
-    case "waiting":    return { label: "kuyrukta", color: "#8b949e", dot: "#8b949e" };
-    default:           return { label: "başlatılıyor", color: "#8b949e", dot: "#8b949e" };
+    case "waiting":    return of("--term-muted", "139, 148, 158", "kuyrukta");
+    default:           return of("--term-muted", "139, 148, 158", "başlatılıyor");
   }
 }
 
@@ -89,13 +101,13 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
   return (
     <div
       className={`rounded-xl overflow-hidden border transition-shadow ${flash ? "animate-term-flash" : ""} ${size === "fill" ? "h-full flex flex-col" : ""} ${className}`}
-      style={{ background: "#0d1117", borderColor: running ? `${meta.color}55` : "rgba(255,255,255,0.08)", boxShadow: running ? `0 0 0 1px ${meta.color}22, 0 8px 30px -12px ${meta.color}55` : undefined }}
+      style={{ background: "var(--term-bg)", borderColor: running ? `rgb(${meta.rgb} / 0.33)` : "rgba(255,255,255,0.08)", boxShadow: running ? `0 0 0 1px rgb(${meta.rgb} / 0.13), 0 8px 30px -12px rgb(${meta.rgb} / 0.33)` : undefined }}
     >
       {/* Başlık çubuğu — başlık + durum pili + satır sayısı + kopyala (+ varsa sürükle-taşı) */}
       <div
         onPointerDown={onHeaderPointerDown}
         className={`relative flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] ${onHeaderPointerDown ? "cursor-move select-none" : ""}`}
-        style={{ background: "#060c17" }}
+        style={{ background: "var(--term-bg-header)" }}
       >
         <span className="text-[11px] font-mono text-white/40 truncate">{title}</span>
 
@@ -132,7 +144,7 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
         {/* Çalışırken soldan sağa süzülen tarama parıltısı */}
         {running && (
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="animate-term-scan absolute top-0 bottom-0 w-1/3" style={{ background: `linear-gradient(90deg, transparent, ${meta.color}22, transparent)` }} />
+            <div className="animate-term-scan absolute top-0 bottom-0 w-1/3" style={{ background: `linear-gradient(90deg, transparent, rgb(${meta.rgb} / 0.13), transparent)` }} />
           </div>
         )}
       </div>

@@ -67,7 +67,7 @@ function RawText({ text }: { text?: string }) {
         {open ? "Ham çıktıyı gizle" : "Ham çıktıyı göster"}
       </button>
       {open && (
-        <pre className="mt-2 text-xs font-mono rounded-xl p-3 overflow-auto max-h-72 whitespace-pre-wrap" style={{ background: "#0d1117", color: "#c9d1d9" }}>
+        <pre className="mt-2 text-xs font-mono rounded-xl p-3 overflow-auto max-h-72 whitespace-pre-wrap" style={{ background: "var(--term-bg)", color: "var(--term-fg)" }}>
           {text}
         </pre>
       )}
@@ -353,7 +353,7 @@ function ProblemsTab({ env }: { env: string }) {
                     onClick={() => seedAiAnalystChat(navigate,
                       `Dynatrace problemi "${detail.title}" (ID: ${detail.id}) için kök neden analizi yap — problem detayını ve ilişkili event/metrikleri incele.`)}
                     className="text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
-                    style={{ background: "#5752d11a", color: "#3c3d99" }}>
+                    style={{ background: "var(--status-info-bg)", color: "var(--status-info)" }}>
                     <SparklesIcon className="w-3.5 h-3.5" /> AI ile kök neden analizi
                   </button>
                   <button onClick={() => setDetail(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none px-2">×</button>
@@ -592,7 +592,7 @@ function EntitiesTab({ env }: { env: string }) {
               <button
                 onClick={() => seedAiAnalystChat(navigate, `"${e.displayName}" (${e.type}, ID: ${e.entityId}) entity'sini analiz et — güncel durumu, ilişkili problem/event'leri özetle.`)}
                 className="text-xs px-2 py-1 rounded-lg flex items-center gap-1"
-                style={{ background: "#5752d11a", color: "#3c3d99" }}>
+                style={{ background: "var(--status-info-bg)", color: "var(--status-info)" }}>
                 <SparklesIcon className="w-3 h-3" /> AI
               </button>
             </Card>
@@ -658,7 +658,7 @@ function MetricsTab({ env }: { env: string }) {
       </div>
 
       {listResult && (
-        <pre className="text-xs font-mono rounded-xl p-4 overflow-auto max-h-64 whitespace-pre-wrap" style={{ background: "#0d1117", color: "#c9d1d9" }}>
+        <pre className="text-xs font-mono rounded-xl p-4 overflow-auto max-h-64 whitespace-pre-wrap" style={{ background: "var(--term-bg)", color: "var(--term-fg)" }}>
           {listResult}
         </pre>
       )}
@@ -676,7 +676,7 @@ function MetricsTab({ env }: { env: string }) {
 
       {error && <ErrorBox msg={error} />}
       {queryResult && (
-        <pre className="text-xs font-mono rounded-xl p-4 overflow-auto max-h-[24rem] whitespace-pre-wrap" style={{ background: "#0d1117", color: "#c9d1d9" }}>
+        <pre className="text-xs font-mono rounded-xl p-4 overflow-auto max-h-[24rem] whitespace-pre-wrap" style={{ background: "var(--term-bg)", color: "var(--term-fg)" }}>
           {queryResult}
         </pre>
       )}
@@ -719,7 +719,7 @@ function InstanaItemCard({ item, onAskAi }: { item: InstanaItem; onAskAi: (title
         )}
         <button onClick={() => onAskAi(title)}
           className="text-xs px-2 py-1 rounded-lg flex items-center gap-1 flex-shrink-0"
-          style={{ background: "#5752d11a", color: "#3c3d99" }}>
+          style={{ background: "var(--status-info-bg)", color: "var(--status-info)" }}>
           <SparklesIcon className="w-3 h-3" /> AI
         </button>
         <button onClick={() => setOpen((v) => !v)} className="text-xs text-slate-400 hover:text-slate-600 underline flex-shrink-0">
@@ -727,7 +727,7 @@ function InstanaItemCard({ item, onAskAi }: { item: InstanaItem; onAskAi: (title
         </button>
       </div>
       {open && (
-        <pre className="mt-2 text-xs font-mono rounded-lg p-3 overflow-auto max-h-56 whitespace-pre-wrap" style={{ background: "#0d1117", color: "#c9d1d9" }}>
+        <pre className="mt-2 text-xs font-mono rounded-lg p-3 overflow-auto max-h-56 whitespace-pre-wrap" style={{ background: "var(--term-bg)", color: "var(--term-fg)" }}>
           {JSON.stringify(item, null, 1)}
         </pre>
       )}
@@ -807,7 +807,7 @@ function InstanaTab() {
         <button
           onClick={() => seedAiAnalystChat(navigate, `Instana (${env}) ortamındaki açık issue'ları özetle ve önceliklendir.`)}
           className="text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5 ml-auto"
-          style={{ background: "#5752d11a", color: "#3c3d99" }}>
+          style={{ background: "var(--status-info-bg)", color: "var(--status-info)" }}>
           <SparklesIcon className="w-3.5 h-3.5" /> AI ile analiz et
         </button>
       </div>
@@ -907,7 +907,7 @@ function SplunkTab() {
         <button
           onClick={() => seedAiAnalystChat(navigate, `Splunk'ta "${product}" ürünü için son ${windowMinutes} dakikadaki logları/hataları özetle.`)}
           className="text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5 ml-auto"
-          style={{ background: "#5752d11a", color: "#3c3d99" }}>
+          style={{ background: "var(--status-info-bg)", color: "var(--status-info)" }}>
           <SparklesIcon className="w-3.5 h-3.5" /> AI ile analiz et
         </button>
       </div>
@@ -1020,14 +1020,14 @@ const DynatracePage: React.FC = () => {
       <button onClick={() => navigate("/ai-analyst")}
         className="w-full card card-hover p-4 flex items-center gap-3 text-left"
         style={{ borderLeft: "4px solid #5752d155" }}>
-        <SparklesIcon className="w-5 h-5 flex-shrink-0" style={{ color: "#5752d1" }} />
+        <SparklesIcon className="w-5 h-5 flex-shrink-0" style={{ color: "var(--status-info)" }} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>AI Analist ile analiz et</p>
           <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
             Doğal dilde sorun — AI, Dynatrace ve Instana araçlarını zincirleme çağırarak kök neden analizi yapar.
           </p>
         </div>
-        <ArrowRightIcon className="w-4 h-4 flex-shrink-0" style={{ color: "#5752d1" }} />
+        <ArrowRightIcon className="w-4 h-4 flex-shrink-0" style={{ color: "var(--status-info)" }} />
       </button>
 
       {/* Tab bar — yalnızca role görünür sekmeler (Perf:<id> page-visibility anahtarı) */}

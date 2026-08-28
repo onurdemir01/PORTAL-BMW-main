@@ -288,7 +288,7 @@ export default function PageVisibilityTab() {
       )}
 
       <div className="border border-gray-100 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm pf-table-sticky">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
               <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500">Öğe</th>
@@ -343,7 +343,7 @@ function VisibilityHelpModal({ onClose }: { onClose: () => void }) {
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Örnek: Element tablosu (portal_elements)</p>
             <div className="overflow-x-auto rounded-lg border border-gray-100">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs pf-table-sticky">
                 <thead><tr className="bg-gray-50 text-left text-gray-500">
                   <th className="px-2 py-1.5">element_key</th><th className="px-2 py-1.5">type</th>
                   <th className="px-2 py-1.5">parent_key</th><th className="px-2 py-1.5">enabled</th><th className="px-2 py-1.5">default_visible</th>
@@ -360,7 +360,7 @@ function VisibilityHelpModal({ onClose }: { onClose: () => void }) {
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Örnek: Kullanıcı-bazlı override (portal_element_visibility, principal_type=user)</p>
             <div className="overflow-x-auto rounded-lg border border-gray-100">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs pf-table-sticky">
                 <thead><tr className="bg-gray-50 text-left text-gray-500">
                   <th className="px-2 py-1.5">element_key</th><th className="px-2 py-1.5">principal_id (kullanıcı)</th><th className="px-2 py-1.5">allow</th>
                 </tr></thead>
@@ -375,7 +375,7 @@ function VisibilityHelpModal({ onClose }: { onClose: () => void }) {
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Örnek: Rol-bazlı kural (portal_element_visibility, principal_type=role)</p>
             <div className="overflow-x-auto rounded-lg border border-gray-100">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs pf-table-sticky">
                 <thead><tr className="bg-gray-50 text-left text-gray-500">
                   <th className="px-2 py-1.5">element_key</th><th className="px-2 py-1.5">principal_id (rol)</th><th className="px-2 py-1.5">allow</th>
                 </tr></thead>

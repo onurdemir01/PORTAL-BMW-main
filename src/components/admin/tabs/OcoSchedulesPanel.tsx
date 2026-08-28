@@ -148,7 +148,7 @@ export default function OcoSchedulesPanel() {
       {err && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{err}</div>}
 
       <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm pf-table-sticky">
           <thead>
             <tr className="bg-[var(--bg-elevated)] text-left">
               <th className="px-3 py-2 font-semibold">#</th>

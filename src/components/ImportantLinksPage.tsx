@@ -212,7 +212,7 @@ const ImportantLinksPage: React.FC = () => {
               className="px-3 py-1.5 text-xs font-semibold rounded-full border transition-all"
               style={
                 activeCategory === cat
-                  ? { background: "var(--accent)", color: "#fff", borderColor: "var(--accent)" }
+                  ? { background: "var(--accent)", color: "var(--text-on-accent)", borderColor: "var(--accent)" }
                   : { background: "var(--bg-surface)", color: "var(--text-secondary)", borderColor: "var(--border)" }
               }
             >

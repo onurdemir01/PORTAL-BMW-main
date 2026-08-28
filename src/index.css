@@ -115,6 +115,24 @@
   --status-neutral:      #707070;   /* gray-50 */
   --status-neutral-bg:   #f2f2f2;   /* gray-10 */
 
+  /* ── TERMINAL / LOG YUZEYLERI ───────────────────────────────────────────────
+     BILEREK TEMADAN BAGIMSIZ. Bir terminal, acik temada da koyudur — AWX job
+     ciktisi, Ansible log'u ve Dynatrace sorgu sonucu birer TERMINAL taklididir;
+     acik zemine cevirmek okunurlugu bozar ve alisilmis anlami kirar. Renkler de
+     rastgele degil, terminal ANSI karsiliklaridir (yesil=basari, kirmizi=hata,
+     sari=iptal, mavi=calisiyor, gri=bekliyor).
+     Token olmalarinin sebebi TEMA DEGIL, MERKEZILESTIRME: bu degerler dort ayri
+     dosyaya (AnsibleLogTerminal, AnsiblePage, DynatracePage, LogAnalysisPanel)
+     elle kopyalanmisti ve biri degistiginde digerleri geride kaliyordu. */
+  --term-bg:        #0d1117;
+  --term-bg-header: #060c17;
+  --term-fg:        #c9d1d9;
+  --term-success:   #3fb950;
+  --term-danger:    #f85149;
+  --term-warning:   #d29922;
+  --term-info:      #58a6ff;
+  --term-muted:     #8b949e;
+
   /* PF golge olcegi (cok daha yumusak — SaaS tarzi derin golgeler yok) */
   --shadow-xs: 0 0.0625rem 0.125rem 0 rgba(3, 3, 3, 0.12);
   --shadow-sm: 0 0.0625rem 0.125rem 0 rgba(3, 3, 3, 0.12), 0 0 0.125rem 0 rgba(3, 3, 3, 0.06);
@@ -459,6 +477,24 @@ thead th {
   color: var(--text-primary);
   text-transform: none;
   letter-spacing: 0;
+}
+
+/* ── YAPISKAN TABLO BASLIGI ────────────────────────────────────────────────────
+   Repoda tek bir yerde vardi (envanter/DynamicTable) ve orada da zemin SABIT bir
+   acik maviydi (`rgba(242,246,255,.95)`) — koyu temada parlak bir bant olarak
+   patliyordu. Denetim matrisi, Nobet listesi ve Admin tablolarinda ise HIC yoktu:
+   50+ satir kaydirilinca baslik ekrandan cikiyor ve kullanici hangi kolona
+   baktigini unutuyordu.
+
+   `backdrop-filter` BILEREK YOK: yari saydam + bulanik bir baslik, altindan gecen
+   satirlarin uzerinde titrek gorunuyor ve yogun tablolarda okumayi zorlastiriyor.
+   Tam opak zemin + alt cizgi daha sakin ve her temada guvenli. */
+.pf-table-sticky thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-surface);
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 
 /* ── Masthead / Nav (yeni layout bilesenleri) ──────────────────────────────────
