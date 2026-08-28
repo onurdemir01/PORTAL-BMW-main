@@ -39,6 +39,8 @@ function clusterColumns(
   // bir anahtar (ör. uxmid_gohas) hiçbir zaman önerilmiyordu. Katalog okunamazsa
   // kullanımdaki değerlere düşülür — öneri listesi boş kalmasın.
   const fromCatalog = vaultRows.filter((r) => r.is_active !== false).map((r) => r.key_name);
+  // Sunucudaki `assertVaultKeysKnownOrThrow` ile AYNI küme: yalnızca AKTİF anahtarlar.
+  const catalogNames = new Set(fromCatalog.map((k) => String(k || "").trim()).filter(Boolean));
   const inUse = clusterRows.map((r) => r.vault_credential_key).filter(Boolean) as string[];
   const vaultKeys = [...new Set([...fromCatalog, ...inUse])].sort();
   return [
@@ -73,6 +75,16 @@ function clusterColumns(
       // PAROLA DEĞİL: credentials.yaml içindeki değişkenin ADI. Parola hiçbir zaman
       // portal veritabanına yazılmaz.
       emptyHint: () => "envanter dosyasından",
+      // 2026-08-28 üretim arızası: bu alanda katalogda kayıtlı olmayan bir ad vardı;
+      // portal işi başlattı, AWX 12 saniye sonra "vault parolası çözülemedi" ile düştü.
+      // Artık çalıştırma sunucu tarafında 400 ile kesiliyor — bu rozet de sorunun
+      // KAYNAĞINI, yani hangi satırın düzeltilmesi gerektiğini gösterir.
+      // Katalog boşsa (istek düştü / henüz hiç anahtar tanımlanmadı) UYARI VERİLMEZ:
+      // yoksa yüklenememiş bir liste yüzünden her satır yanlışlıkla kırmızıya boyanırdı.
+      valueWarning: (row) =>
+        catalogNames.size > 0 && !catalogNames.has(String(row.vault_credential_key || "").trim())
+          ? "katalogda yok"
+          : null,
     },
     {
       key: "ocp_username",
@@ -100,6 +112,35 @@ const VAULT_KEY_COLUMNS: ColumnDef<OcpVaultKeyRow>[] = [
 ];
 const VAULT_KEY_EMPTY: Partial<OcpVaultKeyRow> = {
   key_name: "", default_username: "", description: "", is_active: true,
+};
+
+// Cluster satırlarındaki vault anahtarı katalogda yoksa, o cluster'ı seçen HER çalıştırma
+// (LogX OCP ve Telnet) sunucuda 400 ile reddedilir. Rozet tek satırı işaretler; bu bant
+// toplamı ve ne yapılacağını söyler — rozeti fark etmeyen admin de görsün.
+const UnknownVaultKeyBanner: React.FC<{
+  clusterRows: OcpClusterIndexRow[];
+  vaultRows: OcpVaultKeyRow[];
+}> = ({ clusterRows, vaultRows }) => {
+  const known = new Set(
+    vaultRows.filter((r) => r.is_active !== false).map((r) => String(r.key_name || "").trim()).filter(Boolean)
+  );
+  // Katalog yüklenemediyse sessiz kal (bkz. valueWarning'deki aynı gerekçe).
+  if (known.size === 0) return null;
+  const bad = clusterRows.filter((r) => {
+    const key = String(r.vault_credential_key || "").trim();
+    return key !== "" && !known.has(key);
+  });
+  if (bad.length === 0) return null;
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
+      <strong>{bad.length} cluster satırında katalogda olmayan vault anahtarı var:</strong>{" "}
+      {bad.map((r) => `${r.cluster_name} → "${r.vault_credential_key}"`).join(", ")}.
+      Bu cluster'lar seçildiğinde işlem <strong>başlatılmadan</strong> reddedilir. Anahtarı
+      <strong> Vault Anahtarları</strong> sekmesinden ekleyin — ve AWX'teki
+      <code className="mx-1 px-1 rounded bg-amber-100">credentials.yaml</code>
+      içinde de tanımlı olduğundan emin olun (portal AWX vault'unun gerçeğini göremez).
+    </div>
+  );
 };
 
 // Hem cluster hem de vault sekmesinde gösterilir: "Vault Anahtarı" başlığını gören bir
@@ -571,6 +612,7 @@ const LogXv2AdminTab: React.FC = () => {
             diğer cluster'lar çalışmaya devam eder.
           </div>
           <VaultKeyWarning />
+          <UnknownVaultKeyBanner clusterRows={clusters.rows} vaultRows={vaultKeys.rows} />
           <PlaybookReadinessPanel />
           <BootstrapSeedPanel onSeeded={clusters.reload} />
           <SimpleCrudTable columns={clusterCols} rows={clusters.rows} emptyRow={CLUSTER_EMPTY}

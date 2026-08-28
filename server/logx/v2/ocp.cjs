@@ -80,9 +80,62 @@ function buildOcpRuntimeVars(cfg) {
 // Bastion + cluster metadata'sini (api_url, vault anahtari) BIRLIKTE cozer.
 // Bastion eksikse 400 firlatir; api_url/credential_key eksikse HATA DEGIL — o cluster icin
 // alanlar gonderilmez ve playbook eski inventory yoluna duser (asamali gecis).
+// ── VAULT ANAHTARI ON KONTROLU (2026-08-28) ──────────────────────────────────
+// URETIMDE NE OLDU: Telnet `gbocpcicd2` icin `credential_key: "uxmid_gar"` gonderdi,
+// AWX vault'unda o ad cozulemedi ve playbook "vault parolasi cozulemedi" ile dustu.
+// Kullanici 12 saniye bekleyip ham AWX log'u okumak zorunda kaldi. Oysa portalda
+// `ocp_vault_key_catalog` tablosu ZATEN VAR — yalnizca admin CRUD'unda kullaniliyor,
+// hicbir yerde DOGRULAMA icin okunmuyordu.
+//
+// SINIR ACIKCA: katalog portalin BEYANIDIR; AWX vault'unun gercegini goremez.
+// Katalogda OLAN ama vault'ta olmayan bir anahtar burada gecer ve yine playbook'ta
+// yakalanir — ama artik duzgun bir sonuc ekraniyla (bkz. playbook'lardaki
+// rescue + toplayici duzeltmesi). Bu kontrol, KESIN hatalarin bir kismini erken
+// keser; hepsini degil.
+//
+// BOS ANAHTAR HATA DEGILDIR — BILEREK. `resolveClusterContextOrThrow`'un mevcut
+// sozlesmesi "api_url/credential_key eksikse o cluster icin alanlar gonderilmez ve
+// playbook eski inventory yoluna duser (asamali gecis)". Bu kademeli gecis yolunu
+// bozmamak icin yalnizca DOLU AMA KATALOGDA OLMAYAN anahtar reddedilir.
+async function assertVaultKeysKnownOrThrow(meta) {
+  const declared = [];
+  for (const [clusterName, m] of Object.entries(meta || {})) {
+    const key = String(m?.vault_credential_key || '').trim();
+    if (key) declared.push({ clusterName, key });
+  }
+  if (declared.length === 0) return;
+
+  let known;
+  try {
+    known = new Set(await adminData.listActiveVaultKeyNames());
+  } catch (e) {
+    // Katalog okunamadiysa ISI ENGELLEME: bu bir kolaylik kontrolu, bir guvenlik
+    // kapisi degil. DB tokezlemesi yuzunden calisan bir akisi durdurmak, cozdugu
+    // sorundan daha buyuk bir sorun olurdu.
+    console.warn('[OCP] vault anahtar katalogu okunamadi, on kontrol atlandi:', e.message);
+    return;
+  }
+
+  const unknown = declared.filter((d) => !known.has(d.key));
+  if (unknown.length === 0) return;
+
+  const list = unknown.map((u) => `${u.clusterName} → "${u.key}"`).join(', ');
+  throw Object.assign(
+    new Error(
+      `Vault anahtarı katalogda kayıtlı değil: ${list}. ` +
+      `Bu haliyle iş AWX'te "vault parolası çözülemedi" ile düşer. ` +
+      `Admin > LogX Yapılandırma > Vault Anahtarları ekranından anahtarı ekleyin ` +
+      `(ve AWX'teki credentials.yaml içinde de tanımlı olduğundan emin olun).`
+    ),
+    { status: 400, code: 'vault_key_unknown' }
+  );
+}
+
 async function resolveClusterContextOrThrow(env, tenant, clusters) {
   const hosts = await resolveHostsOrThrow(env, tenant, clusters);
   const meta = await adminData.resolveClusterMeta(env, tenant, clusters).catch(() => ({}));
+  // Doomed bir job'i HIC baslatma (bkz. playbook-readiness.cjs'teki ayni ilke).
+  await assertVaultKeysKnownOrThrow(meta);
   return { hosts, meta };
 }
 
@@ -362,4 +415,5 @@ module.exports = {
   getClusterTree, selectClusters, discoverNamespaces, finalizeNamespaceDiscovery, discoverFetch,
   discoverApps, finalizeAppDiscovery,
   buildOcpExtraVars, buildOcpRuntimeVars, normalizeTargets, slugPart, MAX_TARGETS,
+  assertVaultKeysKnownOrThrow,
 };

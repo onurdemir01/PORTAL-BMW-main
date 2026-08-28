@@ -36,7 +36,10 @@ interface QuickLink {
   label: string;
   description: string;
   to: string;
-  icon: React.ComponentType<{ className?: string }>;
+  // Heroicons bilesenleri tum SVG proplarini kabul eder. Tip yalnizca `className` derse
+  // asagidaki `style={{ color: ... }}` KULLANIMI TS2769 verir (tema degiskenlerini inline
+  // stille veriyoruz) — bu yuzden imza SVGProps'a genisletildi.
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   pageId: string;
 }
 
