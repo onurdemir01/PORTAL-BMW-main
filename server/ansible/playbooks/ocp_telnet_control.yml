@@ -37,9 +37,28 @@
 # ── PORTALIN GÖNDERDİĞİ extra_vars ─────────────────────────────────────────────────────
 #   terminal_hosts : ["GBARKAP82", ...]           ← jump server'lar (hedef host'lar)
 #   ocp_clusters   : [{ cluster_name, terminal_host, api_url, credential_key }, ...]
-#   namespace      : hedef namespace
+#   namespaces     : hedef namespace LİSTESİ (ÇOĞUL — bkz. aşağıdaki not)
 #   ip / port      : telnet hedefi (target_host / target_port ile AYNI değerler)
 #   env / cluster  : geriye uyum (eski playbook grubu bunlardan kuruyordu)
+#
+# ── ÇOĞUL `namespaces` (2026-08-28 senkronu) ───────────────────────────────────────────
+# Portal 2026-08-20'den beri `namespaces` (DİZİ) gönderiyor ve tek job'da (cluster ×
+# namespace) çapraz çarpımını playbook'un kurmasını bekliyor. Repo'daki bu kopya ise hâlâ
+# TEKİL `namespace` assert ediyordu; commit 9ee0699 "Ansible tarafı ayrıca teslim edildi"
+# diyor ama repo kopyası güncellenmemiş. Dosya başlığı "AWX'e kopyalanacak metin budur"
+# dediği için bu hâliyle kopyalayan Telnet'i KIRARDI. Artık çoğul; tekil `namespace` yalnız
+# GERİYE UYUM için kabul edilir.
+#
+# ── SONUÇ SÖZLEŞMESİ: `telnet_result` (2026-08-28) ─────────────────────────────────────
+# Playbook AÇIK/KAPALI satırlarını yalnızca `debug` mesajı olarak üretiyordu; portal bunları
+# HİÇ okumuyordu (backend `artifacts`i eline alıp atıyordu). Sonuç: tüm portlar KAPALI olsa
+# bile job `successful` döndüğü için ekranda YEŞİL TİK çıkıyordu — aktif olarak yanıltıcı.
+# Artık LogX'in `logx_result` deseniyle birebir aynı şekilde `set_stats` ile yayınlanır:
+#   telnet_result:
+#     overall_status : open | partial | closed | error
+#     target         : { host, port }
+#     targets: [ { cluster, bastion, namespace, ip, port,
+#                  state: open|closed|error, rc, detail } ]
 #
 # PAROLA: extra_vars'ta ASLA taşınmaz. `credential_key` yalnızca vault değişkeninin ADIdır;
 # değeri `credentials.yaml` (vault) içinden `lookup('vars', ...)` ile çözülür — LogX ile aynı.
@@ -57,12 +76,12 @@
           - terminal_hosts | length > 0
           - ocp_clusters is defined
           - ocp_clusters | length > 0
-          - namespace is defined
-          - (namespace | string | length) > 0
+          # ÇOĞUL birincil, TEKİL geriye uyum. İkisi de yoksa hata.
+          - (namespaces | default(namespace | default('') | ternary([namespace | default('')], []))) | length > 0
         fail_msg: >-
           Zorunlu değişkenler eksik → bastion: {{ terminal_hosts | default([]) | length }},
           cluster: {{ ocp_clusters | default([]) | length }},
-          namespace: {{ namespace | default('(yok)') }}.
+          namespace(ler): {{ namespaces | default([namespace | default('(yok)')]) }}.
           Tümü boşsa AWX job template'inde "Prompt on launch" (Variables) kapalı olabilir.
 
     - name: "--- [Task] Add every jump server to dynamic inventory ---"
@@ -95,7 +114,10 @@
   vars:
     # REZERVE ADLARDAN KAÇIN: `namespace` ve `port` Ansible'ın kendi ad alanında; doğrudan
     # kullanmak "Found variable using reserved name" uyarısı üretir ve sessiz çakışmaya açıktır.
-    ns_name: "{{ namespace }}"
+    # ÇOĞUL birincil; tekil `namespace` yalnız geriye uyum için. Boş/yinelenen adlar düşer.
+    ns_list: >-
+      {{ (namespaces | default([namespace | default('')]))
+         | map('string') | map('trim') | select('!=', '') | unique | list }}
     telnet_host: "{{ target_host | default(ip) }}"
     telnet_port: "{{ target_port | default(port) }}"
     image: nicolaka/netshoot
@@ -222,18 +244,44 @@
               rc/stderr sebebi söyler.
           when: (ok_units | default([])) | length == 0
 
+        - name: "--- [Task] Build (cluster x namespace) work units ---"
+          # ÇAPRAZ ÇARPIM BURADA (2026-08-28). Portal tek job'da BİRDEN ÇOK namespace
+          # gönderiyor; her (cluster, namespace) çifti ayrı bir pod + ayrı bir telnet
+          # denemesidir. `product()` filtresi Ansible'ın kendi çapraz çarpımıdır — iç içe
+          # loop kurmaya gerek yok. Pod adı namespace'e göre ayrışmak ZORUNDA değil
+          # (pod'lar zaten namespace'e kapsanır) ama `oc` komutları `-n` ile ayrılır.
+          # Filtre zinciri yerine DÜZ BİR DÖNGÜ: `product()` çiftleri üretir, her çift
+          # okunur bir sözlüğe çevrilir. Zincirle tek satırda yazmak mümkündü ama bu
+          # playbook'un okunması hata ayıklamadan daha önemli — repo'daki tuzakların
+          # çoğu tek satıra sıkıştırılmış Jinja'dan çıktı.
+          ansible.builtin.set_fact:
+            work_units: "{{ work_units | default([]) + [ { 'unit': item.0, 'ns': item.1 } ] }}"
+          loop: "{{ ok_units | product(ns_list) | list }}"
+          loop_control:
+            label: "{{ item.0.cluster_name }}/{{ item.1 }}"
+          no_log: true
+          changed_when: false
+
+        - name: "--- [Task] Show planned work units ---"
+          # Parola taşımayan ÖZET — kaç birim çalışacağı görünsün (yukarıdaki görev
+          # `no_log` olduğu için orada hiçbir şey yazmaz).
+          ansible.builtin.debug:
+            msg: >-
+              {{ inventory_hostname }}: {{ work_units | length }} birim =
+              {{ ok_units | map(attribute='cluster_name') | list }} x {{ ns_list }}
+
         - name: "--- [Task] Create temporary pod ---"
           ansible.builtin.shell: |
-            oc run {{ item.pod_name | quote }} \
-              -n {{ ns_name | quote }} \
+            oc run {{ item.unit.pod_name | quote }} \
+              -n {{ item.ns | quote }} \
               --image={{ image | quote }} \
               --restart=Never \
               --command -- sleep 3600
           environment:
-            KUBECONFIG: "{{ item.kubeconfig }}"
-          loop: "{{ ok_units }}"
+            KUBECONFIG: "{{ item.unit.kubeconfig }}"
+          loop: "{{ work_units }}"
           loop_control:
-            label: "{{ item.cluster_name }}"
+            label: "{{ item.unit.cluster_name }}/{{ item.ns }}"
           register: create_results
           changed_when: true
           # Bir cluster'da pod açılamazsa diğerleri denenmeye devam etsin; karar aşağıda
@@ -243,42 +291,66 @@
         - name: "--- [Task] Wait until pod is Ready ---"
           ansible.builtin.shell: |
             oc wait --for=condition=Ready \
-              pod/{{ item.pod_name }} \
-              -n {{ ns_name | quote }} \
+              pod/{{ item.unit.pod_name }} \
+              -n {{ item.ns | quote }} \
               --timeout=60s
           environment:
-            KUBECONFIG: "{{ item.kubeconfig }}"
-          loop: "{{ ok_units }}"
+            KUBECONFIG: "{{ item.unit.kubeconfig }}"
+          loop: "{{ work_units }}"
           loop_control:
-            label: "{{ item.cluster_name }}"
+            label: "{{ item.unit.cluster_name }}/{{ item.ns }}"
           register: wait_results
           changed_when: false
           failed_when: false
 
         - name: "--- [Task] Run telnet test ---"
           ansible.builtin.shell: |
-            oc exec -n {{ ns_name | quote }} {{ item.pod_name | quote }} -- \
+            oc exec -n {{ item.ns | quote }} {{ item.unit.pod_name | quote }} -- \
               sh -c "timeout 10 telnet {{ telnet_host }} {{ telnet_port }}"
           environment:
-            KUBECONFIG: "{{ item.kubeconfig }}"
-          loop: "{{ ok_units }}"
+            KUBECONFIG: "{{ item.unit.kubeconfig }}"
+          loop: "{{ work_units }}"
           loop_control:
-            label: "{{ item.cluster_name }}"
+            label: "{{ item.unit.cluster_name }}/{{ item.ns }}"
           register: telnet_results
           # Bağlantı kurulamaması BAŞARISIZLIK DEĞİL, testin SONUCUDUR.
           failed_when: false
           changed_when: false
 
-        - name: "--- [Task] Show telnet outcome per cluster ---"
+        - name: "--- [Task] Show telnet outcome per (cluster, namespace) ---"
           ansible.builtin.debug:
             msg: >-
-              {{ item.item.cluster_name }} ({{ inventory_hostname }}) →
+              {{ item.item.unit.cluster_name }}/{{ item.item.ns }} ({{ inventory_hostname }}) →
               {{ telnet_host }}:{{ telnet_port }} =
               {{ 'ACIK' if (item.rc | default(1)) == 0 else 'KAPALI/ERISILEMEDI' }}
               | {{ (item.stdout_lines | default([])) + (item.stderr_lines | default([])) }}
           loop: "{{ telnet_results.results | default([]) }}"
           loop_control:
-            label: "{{ item.item.cluster_name }}"
+            label: "{{ item.item.unit.cluster_name }}/{{ item.item.ns }}"
+
+        - name: "--- [Task] Record this bastion's structured results ---"
+          # SONUÇ SÖZLEŞMESİ (E1). Ekranda gösterilecek olan BUDUR; `debug` mesajları
+          # yalnızca insan içindir. Pod hiç açılamadıysa (wait/create düştü) sonuç
+          # "closed" DEĞİL "error"dur — "port kapalı" ile "test yapılamadı" aynı şey
+          # değildir ve kullanıcıyı yanlış yönlendirirdi.
+          ansible.builtin.set_fact:
+            bastion_telnet_results: >-
+              {{ bastion_telnet_results | default([]) + [ {
+                   'cluster': item.item.unit.cluster_name,
+                   'bastion': inventory_hostname,
+                   'namespace': item.item.ns,
+                   'ip': telnet_host | string,
+                   'port': telnet_port | string,
+                   'state': ('open' if (item.rc | default(1)) == 0
+                             else ('error' if item.skipped | default(false) else 'closed')),
+                   'rc': item.rc | default(-1),
+                   'detail': ((item.stdout | default('')) ~ ' ' ~ (item.stderr | default('')))
+                              | trim | truncate(300, true, '…')
+                 } ] }}
+          loop: "{{ telnet_results.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.unit.cluster_name }}/{{ item.item.ns }}"
+          changed_when: false
 
       when: (telnet_units | default([])) | length > 0
 
@@ -286,15 +358,18 @@
         # Geçici pod ve kubeconfig HER DURUMDA temizlenir — akış ortada düşse bile cluster'da
         # pod, bastion'da dosya kalmaz.
         - name: "--- [Task] Delete temporary pod ---"
+          # TÜM (cluster × namespace) çiftleri üzerinden — akış ortada düşse bile hiçbir
+          # namespace'te pod kalmaz. `work_units` henüz kurulmamış olabileceği için
+          # (login'den önce düşülmüşse) çarpım burada yeniden hesaplanır.
           ansible.builtin.shell: |
-            oc delete pod {{ item.pod_name | quote }} \
-              -n {{ ns_name | quote }} \
+            oc delete pod {{ item.0.pod_name | quote }} \
+              -n {{ item.1 | quote }} \
               --ignore-not-found=true
           environment:
-            KUBECONFIG: "{{ item.kubeconfig }}"
-          loop: "{{ telnet_units | default([]) }}"
+            KUBECONFIG: "{{ item.0.kubeconfig }}"
+          loop: "{{ (telnet_units | default([])) | product(ns_list) | list }}"
           loop_control:
-            label: "{{ item.cluster_name }}"
+            label: "{{ item.0.cluster_name }}/{{ item.1 }}"
           changed_when: true
           failed_when: false
 
@@ -306,3 +381,54 @@
           loop_control:
             label: "{{ item.cluster_name }}"
           failed_when: false
+
+
+- name: "--- [Play] Publish structured Telnet result ---"
+  # TEK YAZAR: `set_stats` bir DICT uzerinde `aggregate: true` ile yayilirsa son gelen host
+  # oncekini EZER — LogX'te bu tam olarak uretimde yasandi ve bes sunuculu bir kesifte
+  # yalniz bir sunucu gorunmesine yol acti (bkz. logx_legacy_discovery.yml notu). Bu yuzden
+  # sonuc TEK bir localhost play'inde, tum bastion'larin hostvars'i toplanarak yayinlanir.
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    all_targets: >-
+      {{ groups['telnet_terminal'] | default([])
+         | map('extract', hostvars, 'bastion_telnet_results')
+         | select('defined') | select('!=', None) | list | flatten }}
+
+  tasks:
+    - name: "--- [Task] Publish telnet_result ---"
+      ansible.builtin.set_stats:
+        data:
+          telnet_result:
+            # `{%- ... -%}` SART: YAML katlamali skalerde satir sonlari BOSLUGA doner ve
+            # `{% set %}` etiketleri arasindaki bosluklar ciktiya SIZAR. `| trim` yalniz
+            # ifadenin SONUCUNU kirpar, etiketlerden gelen bosluklari DEGIL — LogX'te bu
+            # deger uretimde "      failed" olarak yayinlanmisti. Bosluk denetimi tek cozum.
+            overall_status: >-
+              {%- set total = all_targets | length -%}
+              {%- set open_n = all_targets | selectattr('state', 'equalto', 'open') | list | length -%}
+              {%- set err_n = all_targets | selectattr('state', 'equalto', 'error') | list | length -%}
+              {%- if total == 0 -%}error
+              {%- elif open_n == total -%}open
+              {%- elif open_n > 0 -%}partial
+              {%- elif err_n == total -%}error
+              {%- else -%}closed
+              {%- endif -%}
+            target:
+              host: "{{ target_host | default(ip) | string }}"
+              port: "{{ target_port | default(port) | string }}"
+            counts:
+              total: "{{ all_targets | length }}"
+              open: "{{ all_targets | selectattr('state', 'equalto', 'open') | list | length }}"
+              closed: "{{ all_targets | selectattr('state', 'equalto', 'closed') | list | length }}"
+              error: "{{ all_targets | selectattr('state', 'equalto', 'error') | list | length }}"
+            targets: "{{ all_targets }}"
+
+    - name: "--- [Task] Summary line for the AWX log ---"
+      ansible.builtin.debug:
+        msg: >-
+          {{ all_targets | selectattr('state', 'equalto', 'open') | list | length }} /
+          {{ all_targets | length }} hedefte {{ target_host | default(ip) }}:{{ target_port | default(port) }} ACIK.

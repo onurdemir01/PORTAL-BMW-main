@@ -13,10 +13,14 @@
 //
 // Güvenlik OpsX ile AYNI: son POST /api/telnet/run çağrısında sunucu uygulama-host
 // eşleşmesini ve namespace/tenant'ı envanterden YENİDEN doğrular.
-import React, { useState } from "react";
-import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import { telnetApi, type TelnetPlatform, type TelnetRunResult } from "@/api/telnetApi";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import {
+  ArrowLeftIcon, ExclamationTriangleIcon, ArrowPathIcon, StopCircleIcon, ClockIcon,
+} from "@heroicons/react/24/outline";
+import { telnetApi, type TelnetPlatform, type TelnetRunResult, type TelnetResult } from "@/api/telnetApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
+import { AuthContext } from "@/contexts/AuthContext";
+import TelnetResultPanel from "./steps/TelnetResultPanel";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import PlatformStep from "./steps/PlatformStep";
 import AppSearchStep from "./steps/AppSearchStep";
@@ -44,8 +48,16 @@ const STEP_TITLES: Record<Step, string> = {
   ocp_target: "Openshift Hedefi",
   ocp_cluster: "Cluster Seçimi",
   telnet_input: "Telnet Hedefi",
-  done: "Test Başlatıldı",
+  done: "Test Sonucu",
 };
+
+// Geçen süre "2:07" biçiminde — saniye cinsinden ham sayı okunmuyor.
+function fmtElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
 
 const TelnetWizardPage: React.FC = () => {
   const [step, setStep] = useState<Step>("platform");
@@ -59,7 +71,15 @@ const TelnetWizardPage: React.FC = () => {
   // Openshift: OpsX Openshift Rollout ile AYNI UX (OcpClusterPickStep) — "" = tüm cluster'lar.
   const [cluster, setCluster] = useState("");
   const [busy, setBusy] = useState(false);
+  // ÇİFT TIKLAMA KORUMASI (H1). `busy` bir React state'idir ve render'da yakalanır;
+  // aynı tick'te gelen iki tık ikisi de `busy === false` görüp İKİ AWX JOB'I açabilir.
+  // LogX'te bu bilinçli olarak ref'e çevrilmişti (LogXWizardPage.tsx); desen buraya
+  // taşındı — Telnet her job'da OCP cluster'ında geçici pod açtığı için maliyeti gerçek.
+  const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  // "Takıldı mı?" sorusu için geçen süre. Kullanıcı bunu görmek için AWX'e gitmesin.
+  const [elapsed, setElapsed] = useState(0);
 
   // Legacy ve Openshift AYNI: tek job/sonuç (bkz. dosya başı notu).
   const [result, setResult] = useState<TelnetRunResult | null>(null);
@@ -67,11 +87,25 @@ const TelnetWizardPage: React.FC = () => {
 
   const { addJob, jobs } = useJobTracker();
   const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
+
+  // Geçen süre sayacı. İş BİTİNCE durur — bitmiş bir işin "süresi" artmaya devam
+  // ederse ekran yalan söyler. Başlangıç anı JobTracker'ın kaydettiği `startedAt`tir.
+  const jobStartedAt = trackedJob?.startedAt;
+  const jobFinished = !!trackedJob?.done;
+  useEffect(() => {
+    if (!jobStartedAt) return;
+    setElapsed(Date.now() - jobStartedAt);
+    if (jobFinished) return;
+    const t = setInterval(() => setElapsed(Date.now() - jobStartedAt), 1000);
+    return () => clearInterval(t);
+  }, [jobStartedAt, jobFinished]);
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [filterPrefix, setFilterPrefix] = useState("");
 
   function restart() {
     setStep("platform");
+    setCancelling(false);
+    setElapsed(0);
     setPlatform(null);
     setApp("");
     setJbossVersions([]);
@@ -124,7 +158,8 @@ const TelnetWizardPage: React.FC = () => {
   }
 
   async function runTelnet(ip: string, port: string) {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -138,16 +173,51 @@ const TelnetWizardPage: React.FC = () => {
         return;
       }
       setResult(r);
+      setLastTarget({ ip, port });
       setStep("done");
       trackJob(r);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
 
+  // E7 · "Aynı hedeflerle tekrar çalıştır". Eskiden tek buton `restart()` ile HER ŞEYİ
+  // sıfırlıyordu: yalnızca portu değiştirmek için altı adım baştan yapılıyordu.
+  const [lastTarget, setLastTarget] = useState<{ ip: string; port: string } | null>(null);
+
+  function rerunSameTargets() {
+    if (!lastTarget) return;
+    setResult(null);
+    setTrackedJobId(null);
+    setElapsed(0);
+    setStep("telnet_input");
+  }
+
+  async function cancelJob() {
+    if (!result || result.jobId == null || cancelling) return;
+    setCancelling(true);
+    try {
+      const r = await telnetApi.cancel(result.awxServerId, result.jobId);
+      if (!r.ok) setError(r.message || "İş iptal edilemedi.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   const canGoBack = backTargetFor(step) !== null;
+
+  // JobTracker `result`i YORUMLAMAZ, yalnızca taşır (bkz. JobTrackerContext notu) —
+  // tipe burada, tüketen tarafta indirgenir.
+  const telnetResult = (trackedJob?.result as TelnetResult | undefined) ?? null;
+  const jobDone = !!trackedJob?.done;
+
+  const { user } = useContext(AuthContext);
+  const isAdmin = user?.role === "Admin";
 
   const inputSummary = platform === "openshift" ? (
     <>
@@ -267,19 +337,53 @@ const TelnetWizardPage: React.FC = () => {
         )}
 
         {step === "telnet_input" && (
-          <TelnetInputStep summary={inputSummary} busy={busy} onSubmit={(v) => runTelnet(v.ip, v.port)} />
+          <TelnetInputStep summary={inputSummary} busy={busy} initial={lastTarget} onSubmit={(v) => runTelnet(v.ip, v.port)} />
         )}
 
         {step === "done" && result && (
-          <div className="flex flex-col items-center gap-4 py-6 text-center">
-            <CheckCircleIcon className="w-10 h-10 text-green-600" />
-            <div>
-              <p className="text-sm font-medium text-[var(--text-primary)]">Telnet testi başlatıldı.</p>
-              {result.jobId != null && (
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  AWX Job: <span className="font-mono">#{result.jobId}</span>
-                </p>
-              )}
+          <div className="flex flex-col items-center gap-4 py-2">
+            {/* E4 · YANILTICI YEŞİL TİK KALDIRILDI. Eskiden burada koşulsuz bir yeşil
+                CheckCircle + "Telnet testi başlatıldı." vardı: iş HENÜZ BİTMEMİŞKEN de,
+                tüm portlar KAPALI çıktığında da aynı yeşil tik görünüyordu. Artık durum
+                gerçekten ne ise o gösterilir. */}
+            {telnetResult ? (
+              <TelnetResultPanel result={telnetResult} />
+            ) : (
+              <div className="w-full flex items-center gap-2.5">
+                {jobDone ? (
+                  <ExclamationTriangleIcon aria-hidden="true" className="w-5 h-5 flex-shrink-0 text-[var(--status-warning)]" />
+                ) : (
+                  <span aria-hidden="true" className="w-5 h-5 flex-shrink-0 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-[var(--text-primary)]">
+                    {jobDone ? "İş bitti ama yapılandırılmış sonuç gelmedi." : "Test çalışıyor…"}
+                  </p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    {jobDone
+                      ? "Playbook'un güncel sürümü AWX'e kopyalanmamış olabilir (sonuç `set_stats` ile yayınlanır). Aşağıdaki ham log yine de okunabilir."
+                      : "Her (cluster × namespace) birimi için pod açılıyor ve telnet deneniyor."}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* E6 · GİRDİ ÖZETİ sonuç ekranında da görünür. Zaten üretiliyordu ama
+                yalnızca "telnet_input" adımında gösteriliyordu; sonuca bakan kullanıcı
+                "hangi namespace'lerdi?" sorusunu cevaplayamıyordu. */}
+            <div className="w-full text-xs text-[var(--text-muted)] border-t border-[var(--border)] pt-3">
+              {inputSummary}
+            </div>
+
+            <div className="w-full flex items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
+              <span>
+                {result.jobId != null && <>AWX Job: <span className="font-mono">#{result.jobId}</span></>}
+              </span>
+              <span className="inline-flex items-center gap-1 tabular-nums">
+                <ClockIcon aria-hidden="true" className="w-3.5 h-3.5" />
+                {fmtElapsed(elapsed)}
+                {trackedJob?.status ? ` · ${trackedJob.status}` : ""}
+              </span>
             </div>
 
             {trackedJob && (
@@ -296,16 +400,43 @@ const TelnetWizardPage: React.FC = () => {
               </div>
             )}
 
-            <div className="w-full text-left bg-[var(--bg-elevated)] rounded-xl p-3">
-              <div className="text-xs mb-1 text-[var(--text-muted)]">AWX'e gönderilen gövde:</div>
-              <pre className="text-xs font-mono whitespace-pre-wrap break-all">
-                {JSON.stringify(result.sentBody, null, 2)}
-              </pre>
+            {/* E5 · "AWX'e gönderilen gövde" son kullanıcıdan KALDIRILDI, yalnızca
+                yöneticide. Normal kullanıcı için hata ayıklama gürültüsüydü ve ekranın
+                yarısını kaplıyordu; yönetici için hâlâ en hızlı teşhis aracı. */}
+            {isAdmin && (
+              <details className="w-full text-left bg-[var(--bg-elevated)] rounded-xl p-3">
+                <summary className="text-xs text-[var(--text-muted)] cursor-pointer">
+                  AWX'e gönderilen gövde (yönetici)
+                </summary>
+                <pre className="mt-2 text-xs font-mono whitespace-pre-wrap break-all">
+                  {JSON.stringify(result.sentBody, null, 2)}
+                </pre>
+              </details>
+            )}
+
+            <div className="flex items-center gap-2 flex-wrap justify-center">
+              {/* E8 · İPTAL. Telnet OCP cluster'ında GEÇİCİ POD açıyor; yanlış bir IP
+                  girildiğinde iş, her birim için 60 sn pod bekleme + 10 sn telnet
+                  timeout süresince sürüyordu ve durdurmanın HİÇBİR yolu yoktu. */}
+              {!jobDone && result.jobId != null && (
+                <button onClick={cancelJob} disabled={cancelling} className="btn-secondary">
+                  <StopCircleIcon className="w-4 h-4" />
+                  {cancelling ? "İptal ediliyor…" : "Testi durdur"}
+                </button>
+              )}
+              {/* E7 · Aynı hedeflerle tekrar — yalnızca portu değiştirmek için altı adım
+                  baştan yapılmasın. */}
+              {jobDone && lastTarget && (
+                <button onClick={rerunSameTargets} className="btn-secondary">
+                  <ArrowPathIcon className="w-4 h-4" />
+                  Aynı hedeflerle tekrar
+                </button>
+              )}
+              <button onClick={restart} className="btn-primary">
+                <ArrowPathIcon className="w-4 h-4" />
+                Yeni Test
+              </button>
             </div>
-            <button onClick={restart} className="btn-primary">
-              <ArrowPathIcon className="w-4 h-4" />
-              Yeni Test
-            </button>
           </div>
         )}
       </div>

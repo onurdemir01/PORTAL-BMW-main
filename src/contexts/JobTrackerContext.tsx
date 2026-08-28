@@ -14,6 +14,10 @@ import React, { createContext, useCallback, useContext, useRef, useState } from 
 export interface TrackedJobResult {
   status: string;
   output: string;
+  /** Modul-ozel YAPILANDIRILMIS sonuc (ornegin Telnet'in `set_stats` sozlesmesi).
+   *  Context bunu YORUMLAMAZ, yalnizca TASIR — aksi halde her yeni modul icin
+   *  paylasilan context'e ozel alan eklemek gerekirdi. */
+  result?: unknown;
 }
 
 export interface TrackedJob {
@@ -27,6 +31,11 @@ export interface TrackedJob {
   /** Telnet gibi bazı akışlarda: "sadece şu karakterle başlayan satırları göster"
    * filtresi JobTrackerBar'da gösterilsin mi (bkz. TelnetWizardPage.tsx). */
   filterable?: boolean;
+  /** fetchStatus'un döndürdüğü modül-özel yapılandırılmış sonuç (yorumlanmaz, taşınır). */
+  result?: unknown;
+  /** İşin eklendiği an — geçen süreyi göstermek için (kullanıcı "takıldı mı" diye
+   *  AWX'e bakmak zorunda kalmasın). */
+  startedAt: number;
 }
 
 interface AddJobInput {
@@ -50,6 +59,9 @@ const RUN_MS = 1500;   // stdout akıyor → hızlı tazele
 const IDLE_MS = 3000;  // koşuyor ama henüz çıktı yok
 const MAX_ERRORS = 12; // geçici hataya tolerans (backoff ile ~50sn) — OpsX/Telnet/SS'teki AYNI desen
 
+// `Date.now()` tek yerde: test/zaman donduran ortamlarda degistirilebilir olsun.
+const nowMs = () => Date.now();
+
 export function JobTrackerProvider({ children }: { children: React.ReactNode }) {
   const [jobs, setJobs] = useState<TrackedJob[]>([]);
   // Kaldırılan/tamamlanan islerin zamanlayicilarini durdurmak icin — component unmount
@@ -67,7 +79,7 @@ export function JobTrackerProvider({ children }: { children: React.ReactNode }) 
     // ayni anda IKI pencere birden gorunmez.
     setJobs((prev) => [
       ...prev,
-      { id, title: input.title, status: "", output: "", pollErr: "", minimized: true, done: false, filterable: input.filterable },
+      { id, title: input.title, status: "", output: "", pollErr: "", minimized: true, done: false, filterable: input.filterable, startedAt: nowMs() },
     ]);
 
     const tick = (errCount: number) => {
@@ -79,6 +91,9 @@ export function JobTrackerProvider({ children }: { children: React.ReactNode }) 
           ...j,
           status: r.status,
           output: r.output || j.output,
+          // Sonuc yalnizca DOLU geldiginde yazilir: is bitmeden once null donen
+          // yoklamalar, daha once alinmis bir sonucu SILMEMELI.
+          result: r.result ?? j.result,
           pollErr: "",
           done: terminal,
         } : j)));
