@@ -83,7 +83,7 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="flex-1 min-w-0 text-xs font-mono border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#0066CC]"
+        className="flex-1 min-w-0 text-xs font-mono border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
       />
     </div>
   );
@@ -95,7 +95,7 @@ function SectionCard({
   return (
     <div className="p-4 border border-gray-200 rounded-xl bg-white space-y-3">
       <div className="flex items-center gap-2">
-        <Icon className="w-4 h-4 text-[#0066CC] flex-shrink-0" />
+        <Icon className="w-4 h-4 text-[var(--accent)] flex-shrink-0" />
         <div className="font-semibold text-sm">{title}</div>
       </div>
       <div className="text-xs" style={{ color: "var(--text-muted)" }}>{note}</div>
@@ -569,7 +569,7 @@ function DumpResultsList({ results }: { results: OpsxDumpResultItem[] }) {
             {r.host || `${r.namespace}/${r.pod}`} {r.ok ? "✅" : `❌ ${r.error || ""}`}
           </span>
           {r.ok && r.downloadToken && (
-            <a href={opsxApi.dumpDownloadUrl(r.downloadToken)} className="flex items-center gap-1 text-[#0066CC] font-semibold flex-shrink-0">
+            <a href={opsxApi.dumpDownloadUrl(r.downloadToken)} className="flex items-center gap-1 text-[var(--accent)] font-semibold flex-shrink-0">
               <ArrowDownTrayIcon className="w-3.5 h-3.5" /> İndir
             </a>
           )}
@@ -808,7 +808,7 @@ function OpsxOcpDumpSection() {
 function DownloadBadge({ d }: { d: DownloadInfo | null }) {
   if (!d) return null;
   return (
-    <a href={logxV2Api.downloadUrl(d.token)} className="flex items-center gap-1 text-xs font-semibold text-[#0066CC] w-fit">
+    <a href={logxV2Api.downloadUrl(d.token)} className="flex items-center gap-1 text-xs font-semibold text-[var(--accent)] w-fit">
       <ArrowDownTrayIcon className="w-3.5 h-3.5" /> {d.filename} indir
     </a>
   );

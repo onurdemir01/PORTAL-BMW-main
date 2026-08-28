@@ -163,7 +163,7 @@ export default function RequestsSidePanel() {
             </span>
           )}
           <ChevronDoubleLeftIcon className="w-4 h-4 text-gray-400" />
-          <ClipboardDocumentListIcon className="w-5 h-5 text-[#0066CC]" />
+          <ClipboardDocumentListIcon className="w-5 h-5 text-[var(--accent)]" />
           <span className="text-[11px] font-semibold text-gray-600" style={{ writingMode: "vertical-rl" }}>
             Taleplerim
           </span>
@@ -178,7 +178,7 @@ export default function RequestsSidePanel() {
       <div className="border border-gray-200 rounded-xl bg-white shadow-[var(--shadow-sm)] overflow-hidden">
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100">
           <div className="flex items-center gap-2 min-w-0">
-            <ClipboardDocumentListIcon className="w-5 h-5 text-[#0066CC] flex-shrink-0" />
+            <ClipboardDocumentListIcon className="w-5 h-5 text-[var(--accent)] flex-shrink-0" />
             <div className="min-w-0">
               <div className="font-bold text-sm">Taleplerim</div>
               <div className="text-xs" style={{ color: "var(--text-muted)" }}>Açtığınız Smart talepleri</div>
@@ -196,7 +196,7 @@ export default function RequestsSidePanel() {
         <div className="p-3 max-h-[70vh] overflow-y-auto">
           {loading && (
             <div className="flex items-center justify-center py-8">
-              <div className="w-5 h-5 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             </div>
           )}
 
@@ -246,7 +246,7 @@ export default function RequestsSidePanel() {
                       <div className="px-2.5 pb-2.5 pt-1 border-t border-gray-100 bg-gray-50/60">
                         {detailLoadingId === t.id && !detail && (
                           <div className="flex items-center justify-center py-3">
-                            <div className="w-4 h-4 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+                            <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
                           </div>
                         )}
                         {detail && (
@@ -337,7 +337,7 @@ export default function RequestsSidePanel() {
                 <div className="flex-1 min-h-0 p-4">
                   {jobOutputLoadingId === jobOutputOpenId && !out ? (
                     <div className="h-full flex items-center justify-center">
-                      <div className="w-6 h-6 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+                      <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
                     </div>
                   ) : out ? (
                     <AnsibleLogTerminal

@@ -147,7 +147,7 @@ export default function TestScenariosTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-40">
-        <div className="w-6 h-6 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -186,7 +186,7 @@ export default function TestScenariosTab() {
                 className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-white hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <BeakerIcon className="w-4 h-4 text-[#0066CC] flex-shrink-0" />
+                  <BeakerIcon className="w-4 h-4 text-[var(--accent)] flex-shrink-0" />
                   <span className="font-semibold text-sm truncate">{item.title}</span>
                   <span className="text-xs flex-shrink-0" style={{ color: "var(--text-muted)" }}>
                     (server #{item.awxServerId} · template #{item.awxTemplateId}{!item.enabled ? " · pasif" : ""})
@@ -199,7 +199,7 @@ export default function TestScenariosTab() {
                 <div className="p-4 border-t border-gray-100 bg-gray-50/50 space-y-3">
                   {survey === "loading" && (
                     <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <div className="w-4 h-4 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
                       Survey alanları yükleniyor...
                     </div>
                   )}
@@ -224,7 +224,7 @@ export default function TestScenariosTab() {
                                       value={vars[field]}
                                       onChange={(e) => editVar(item, scenario, field, e.target.value)}
                                       placeholder="(boş — gerçek bir değer yazın)"
-                                      className="flex-1 min-w-0 text-xs font-mono border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#0066CC]"
+                                      className="flex-1 min-w-0 text-xs font-mono border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                                     />
                                   </div>
                                 ))}

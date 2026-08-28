@@ -167,17 +167,65 @@ async function main() {
       // tarayici hic istek atmaz, dolayisiyla degisecek bir goruntu de olusmaz.
       const indexPath = path.join(distDir, "index.html");
       let indexRaw = null;
-      const sendIndexHtml = (req, res) => {
+
+      // ── ACILIS DURUMU ILK HTML'E GOMULUR (2026-08-28) ────────────────────────
+      // Favicon icin zaten uygulanan "surumu HTML'e goem" fikri iki yere daha
+      // tasindi, cunku ayni sinif hatayi uretiyorlardi:
+      //
+      //   * TEMA: kullanicinin sunucudaki tercihi ancak /api/auth/prefs yaniti
+      //     gelince uygulaniyordu. Baska bir tarayicidan giren kullanici sayfayi
+      //     ONCE yanlis temada goruyor, sonra ekran komple TEMA DEGISTIRIYORDU.
+      //   * LOGO: PortalLogo.tsx once GOMULU kirmizi BMW SVG'sini cizip
+      //     /api/branding/meta yaniti gelince yuklenen logoyla degistiriyordu —
+      //     ozel logo yuklemis her kurulumda her acilista gorunur bir flas.
+      //
+      // Ikisi de artik ILK boyamada dogru. Tema tercihi oturum sahibinin kaydidir;
+      // oturum yoksa (giris ekrani) hic sorgulanmaz.
+      const escapeForScript = (json) =>
+        // </script> ve HTML yorum acilislari script blogunu erken kapatabilir.
+        json.replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
+
+      const sendIndexHtml = async (req, res) => {
         try {
           if (indexRaw === null) indexRaw = fs.readFileSync(indexPath, "utf-8");
-          const v = require("./admin/branding.cjs").faviconVersion();
-          const html = indexRaw.replace(
+          const branding = require("./admin/branding.cjs");
+          const v = branding.faviconVersion();
+          let html = indexRaw.replace(
             'href="/api/branding/favicon"',
             `href="/api/branding/favicon?v=${encodeURIComponent(v)}"`
           );
-          // HTML'in KENDISI onbelleklenmemeli: surum degistiginde kullanicinin
-          // yeni adresi gorebilmesi buna bagli.
-          res.setHeader("Cache-Control", "no-cache");
+
+          const boot = {};
+          const logo = branding.logoState();
+          if (logo && logo.hasLogo) {
+            // Surumlu adres: icerik degismedikce tarayici HIC istek atmaz, dolayisiyla
+            // boyanacak eski/yeni ikili de olusmaz (favicon ile ayni gerekce).
+            boot.logoUrl = `/api/branding/logo?v=${encodeURIComponent(logo.version)}`;
+          } else {
+            boot.logoUrl = null;   // acikca "gomulu varsayilani ciz" — istek bekleme
+          }
+
+          const username = req.session?.user?.username;
+          if (username) {
+            try {
+              const prefs = await require("./auth/users.cjs").getPrefs(username);
+              const t = prefs["bmw-theme"];
+              if (t === "light" || t === "dark") boot.theme = t;
+            } catch {
+              /* tercih okunamadi — istemci localStorage/OS tercihine duser */
+            }
+          }
+
+          html = html.replace(
+            "window.__BMW_BOOT__ = {};",
+            `window.__BMW_BOOT__ = ${escapeForScript(JSON.stringify(boot))};`
+          );
+
+          // HTML'in KENDISI onbeleklenmemeli: surum degistiginde kullanicinin
+          // yeni adresi gorebilmesi buna bagli. Ustelik artik KULLANICIYA OZEL
+          // (tema tercihi) — paylasimli bir ara onbellege dusmesi yanlis olurdu.
+          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("Vary", "Cookie");
           res.type("html").send(html);
         } catch (e) {
           console.warn("[Server] index.html surumlenemedi, ham dosya gonderiliyor:", e.message);

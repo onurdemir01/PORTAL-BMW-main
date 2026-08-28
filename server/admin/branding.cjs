@@ -82,6 +82,26 @@ function setFaviconVersion(etag) {
   _faviconVersion = String(etag || DEFAULT_FAVICON_ETAG).replace(/"/g, '');
 }
 
+// ── UYGULAMA LOGOSU SURUMU (2026-08-28) ──────────────────────────────────────
+// AYNI SORUN, IKINCI YERDE. Favicon icin yukarida cozulen sey masthead/giris
+// ekranindaki logo icin cozulmemisti: PortalLogo.tsx once GOMULU kirmizi BMW SVG'sini
+// ciziyor, `/api/branding/meta` yaniti gelince yuklenen logoyla DEGISTIRIYORDU. Yani
+// ozel logo yuklemis her kurulumda, her sayfa acilisinda gozle gorulur bir "yanlis
+// logo -> dogru logo" flasi vardi. Favicon'daki cozumun aynisi: durum ILK HTML'e
+// gomulur, istemci ilk render'da dogrusunu cizer, arkasindan istek beklemez.
+let _logoState = { hasLogo: false, version: '' };
+
+function logoState() {
+  return _logoState;
+}
+
+function setLogoState(logo) {
+  _logoState = {
+    hasLogo: !!logo,
+    version: logo ? String(logo.etag).replace(/"/g, '') : '',
+  };
+}
+
 // Sunucu acilisinda BIR KEZ cagrilir. Olmazsa ilk sayfa yuklemesi varsayilanin
 // surumunu gomer, ikinci yukleme gercek surume gecer ve o gecis tam da onlemeye
 // calistigimiz degisimi bir kez daha yasatirdi.
@@ -91,6 +111,11 @@ async function warmFavicon() {
     setFaviconVersion(fav ? fav.etag : DEFAULT_FAVICON_ETAG);
   } catch {
     /* DB yoksa varsayilan surumle devam - ikon yine dogru sunulur */
+  }
+  try {
+    setLogoState(await getSlot('logo'));
+  } catch {
+    /* DB yoksa gomulu varsayilan logo kullanilir */
   }
 }
 
@@ -127,6 +152,7 @@ async function getSlot(slot) {
   // Favicon surumu DB'den gelen ETag'e baglanir; yukleme/silme sonrasi cache
   // sifirlandigi icin bir sonraki okumada burasi tekrar calisir.
   if (slot === 'favicon') setFaviconVersion(cache[slot] ? cache[slot].etag : DEFAULT_FAVICON_ETAG);
+  if (slot === 'logo') setLogoState(cache[slot]);
   return cache[slot];
 }
 
@@ -197,7 +223,10 @@ function initBranding(app) {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
     res.set('ETag', logo.etag);
-    res.set('Cache-Control', 'no-cache, must-revalidate');
+    // Favicon ile AYNI kural: ?v=<surum> ile gelindiyse adres zaten icerige bagli,
+    // uzun sureli onbellek GUVENLI ve logonun her acilista yeniden istenmesini
+    // (dolayisiyla bir an gomulu varsayilanin gorunmesini) onler.
+    res.set('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache, must-revalidate');
     if (req.headers['if-none-match'] === logo.etag) return res.status(304).end();
     return res.send(logo.buf);
   });
@@ -307,6 +336,10 @@ function initBranding(app) {
         );
       }
       cache[slot] = null; // bir sonraki istekte DB'den tazelenir
+      // HEMEN tazele: `faviconVersion()`/`logoState()` ILK HTML'e gomulur. Tazelemeyi
+      // "bir sonraki istege" birakirsak, yukleme ile o istek arasinda gonderilen HTML
+      // ESKI surumu tasir ve tam da onlemeye calistigimiz flas bir kez daha yasanir.
+      await getSlot(slot).catch(() => {});
 
       try {
         require('../audit/index.cjs').auditPortal(req, `branding_${slot}_update`, {
@@ -329,6 +362,7 @@ function initBranding(app) {
     try {
       await db().query(`DELETE FROM portal_config_blobs WHERE name = $1`, [SLOTS[slot].blobName]);
       cache[slot] = null;
+      await getSlot(slot).catch(() => {});   // surum bilgisi hemen varsayilana donsun
       try {
         require('../audit/index.cjs').auditPortal(req, `branding_${slot}_reset`, { detail: '' });
       } catch { /* yoksay */ }
@@ -342,4 +376,4 @@ function initBranding(app) {
   console.log('[Branding] endpoints mounted at /api/branding + /api/admin/branding');
 }
 
-module.exports = { initBranding, faviconVersion, warmFavicon };
+module.exports = { initBranding, faviconVersion, logoState, warmFavicon };

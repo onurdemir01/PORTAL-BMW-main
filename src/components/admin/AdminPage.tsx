@@ -137,7 +137,7 @@ const AdminPage: React.FC = () => {
         <button
           onClick={() => setReordering((v) => !v)}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-colors flex-shrink-0 ${
-            reordering ? "bg-[#0066CC] text-white border-[#0066CC]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            reordering ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           }`}
           style={reordering ? {} : { borderColor: "var(--border)" }}
         >
@@ -172,7 +172,7 @@ const AdminPage: React.FC = () => {
               <button
                 onClick={() => !reordering && setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg
-                  ${!reordering && active ? "text-[#0066CC]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"}
+                  ${!reordering && active ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"}
                   ${reordering ? "cursor-default" : ""}`}
               >
                 <Icon className="w-4 h-4" />

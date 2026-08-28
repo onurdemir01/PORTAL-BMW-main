@@ -28,10 +28,17 @@ import AdminRoute from "./routes/AdminRoute";
 import PageVisibilityRoute from "./routes/PageVisibilityRoute";
 import AppLayout from "./layouts/AppLayout";
 
+// DIS SUSPENSE — yalnizca AppLayout'un KENDISI (ve login gibi kabuksuz rotalar)
+// lazy olsaydi diye duruyor. Sayfa iceriginin sinirini AppLayout kendi icinde,
+// <Outlet/> etrafinda tutar (bkz. AppLayout PageSkeleton notu): boylece lazy bir
+// sayfaya hard reload'da masthead ve menu AYAKTA KALIR.
+//
+// Renk hardcoded #0066CC degil: koyu temada --accent #2b9af3'tur ve sabit hex,
+// spinner'i temanin disinda birakiyordu.
 function PageFallback() {
   return (
     <div className="flex items-center justify-center py-24">
-      <div className="w-8 h-8 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
+      <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }

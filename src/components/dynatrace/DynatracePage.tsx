@@ -551,7 +551,7 @@ function EntitiesTab({ env }: { env: string }) {
         <input value={mz} onChange={(e) => setMz(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()}
           placeholder="Mgmt Zone" className="text-xs border rounded-lg px-2 py-2 outline-none w-28 focus:ring-2 focus:ring-blue-200" />
         <button onClick={search} disabled={loading || !name.trim()}
-          className="text-xs px-4 py-2 rounded-lg bg-[#0066CC] text-white font-medium disabled:opacity-50">
+          className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)] text-white font-medium disabled:opacity-50">
           {loading ? "Aranıyor…" : "Ara"}
         </button>
       </div>
@@ -669,7 +669,7 @@ function MetricsTab({ env }: { env: string }) {
           placeholder='Metric selector (örn: builtin:host.cpu.usage:avg) — son 1 saat sorgulanır'
           className="flex-1 min-w-64 text-sm font-mono border rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-200" />
         <button onClick={runQuery} disabled={loading || !selector.trim()}
-          className="text-xs px-4 py-2 rounded-lg bg-[#0066CC] text-white font-medium disabled:opacity-50">
+          className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)] text-white font-medium disabled:opacity-50">
           Sorgula
         </button>
       </div>

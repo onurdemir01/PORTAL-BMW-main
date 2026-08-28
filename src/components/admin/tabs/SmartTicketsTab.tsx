@@ -158,7 +158,7 @@ export default function SmartTicketsTab() {
             key={p.id}
             onClick={() => setPanel(p.id)}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
-              panel === p.id ? "bg-white text-[#0066CC] shadow-[var(--shadow-sm)]" : "text-gray-500 hover:text-gray-700"
+              panel === p.id ? "bg-white text-[var(--accent)] shadow-[var(--shadow-sm)]" : "text-gray-500 hover:text-gray-700"
             }`}
           >
             {p.label}
