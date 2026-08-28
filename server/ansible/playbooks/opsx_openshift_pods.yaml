@@ -61,6 +61,11 @@
 
 - name: "OpsX Openshift - Pod Discovery (multi-cluster)"
   hosts: opsx_terminal
+  # `rescue` YALNIZCA GOREV hatalarini yakalar; SSH/DNS kesintisini (unreachable)
+  # YAKALAMAZ. O durumda host "unreachable" isaretlenir ve TUM host'lar boyle
+  # duserse Ansible "NO MORE HOSTS LEFT" ile SONRAKI PLAY'LERI ATLAR — toplayici
+  # play hic calismaz. Ikisi BIRLIKTE gerekir.
+  ignore_unreachable: true
   any_errors_fatal: false
   gather_facts: false
   become: false
@@ -85,160 +90,173 @@
       }}
 
   tasks:
-    # Cok-bastion: her bastion YALNIZ kendi cluster'larini toplar (logx_ocp_discover_fetch.
-    # yml'deki AYNI desen) — terminal_host'u tanimsiz kalan (sahipsiz) cluster'lar sessiz
-    # kaybolmasin diye ilk (alfabetik) bastion'a dusurulur.
-    - name: "Select the cluster subset that belongs to this bastion"
-      ansible.builtin.set_fact:
-        my_ocp_clusters: >-
-          {{
-            (ocp_clusters | selectattr('terminal_host', 'defined')
-                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
-            +
-            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
-             if inventory_hostname == ((groups['opsx_terminal'] | default([])) | sort | first)
-             else [])
-          }}
-      changed_when: false
+    - block:
+      # Cok-bastion: her bastion YALNIZ kendi cluster'larini toplar (logx_ocp_discover_fetch.
+      # yml'deki AYNI desen) — terminal_host'u tanimsiz kalan (sahipsiz) cluster'lar sessiz
+      # kaybolmasin diye ilk (alfabetik) bastion'a dusurulur.
+      - name: "Select the cluster subset that belongs to this bastion"
+        ansible.builtin.set_fact:
+          my_ocp_clusters: >-
+            {{
+              (ocp_clusters | selectattr('terminal_host', 'defined')
+                            | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+              +
+              ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+               if inventory_hostname == ((groups['opsx_terminal'] | default([])) | sort | first)
+               else [])
+            }}
+        changed_when: false
 
-    - name: "Probe candidate oc paths"
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop: "{{ oc_probe_paths }}"
-      register: oc_stats
-      changed_when: false
-      failed_when: false
-      when: my_ocp_clusters | length > 0
+      - name: "Probe candidate oc paths"
+        ansible.builtin.stat:
+          path: "{{ item }}"
+        loop: "{{ oc_probe_paths }}"
+        register: oc_stats
+        changed_when: false
+        failed_when: false
+        when: my_ocp_clusters | length > 0
 
-    - name: "Collect usable oc paths"
-      ansible.builtin.set_fact:
-        oc_stat_hits: >-
-          {{
-            oc_stats.results | default([])
-            | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
-            | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
-            | map(attribute='stat.path') | list
-          }}
-      when: my_ocp_clusters | length > 0
-      changed_when: false
+      - name: "Collect usable oc paths"
+        ansible.builtin.set_fact:
+          oc_stat_hits: >-
+            {{
+              oc_stats.results | default([])
+              | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+              | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+              | map(attribute='stat.path') | list
+            }}
+        when: my_ocp_clusters | length > 0
+        changed_when: false
 
-    # PATH araması REMOTE bastion'da calismali (lookup('pipe', ...) YANLIŞ olurdu — o
-    # AWX'in KENDI execution node'unda calışır, bastion'da degil).
-    - name: "Fall back to PATH lookup when no candidate matched"
-      ansible.builtin.shell: command -v oc || true
-      args:
-        executable: /bin/bash
-      register: oc_which
-      when: (my_ocp_clusters | length > 0) and (oc_stat_hits | default([]) | length == 0)
-      changed_when: false
-      failed_when: false
+      # PATH araması REMOTE bastion'da calismali (lookup('pipe', ...) YANLIŞ olurdu — o
+      # AWX'in KENDI execution node'unda calışır, bastion'da degil).
+      - name: "Fall back to PATH lookup when no candidate matched"
+        ansible.builtin.shell: command -v oc || true
+        args:
+          executable: /bin/bash
+        register: oc_which
+        when: (my_ocp_clusters | length > 0) and (oc_stat_hits | default([]) | length == 0)
+        changed_when: false
+        failed_when: false
 
-    - name: "Resolve the oc binary for this bastion"
-      ansible.builtin.set_fact:
-        oc_bin: >-
-          {{
-            oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
-            else (oc_which.stdout | default('', true) | trim)
-          }}
-      when: my_ocp_clusters | length > 0
-      changed_when: false
+      - name: "Resolve the oc binary for this bastion"
+        ansible.builtin.set_fact:
+          oc_bin: >-
+            {{
+              oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
+              else (oc_which.stdout | default('', true) | trim)
+            }}
+        when: my_ocp_clusters | length > 0
+        changed_when: false
 
-    # Her cluster icin baglanti bilgisi (url/username/password) TEK bir dongude cozulur —
-    # portal metadata'si (api_url+credential_key) VARSA o, yoksa openshift_inventory_vars.
-    # yaml'daki eski `clusters[tenant_env][cluster_name]` yoluna dusulur (GERIYE UYUM).
-    - name: "Resolve connection details for each owned cluster"
-      ansible.builtin.set_fact:
-        resolved_clusters: >-
-          {{
-            (resolved_clusters | default([])) + [{
-              'cluster_name': item.cluster_name,
-              'url': resolved_url, 'username': resolved_username, 'password': resolved_password
-            }]
-          }}
-      vars:
-        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
-        inv_row: >-
-          {{ (clusters[inventory_key][item.cluster_name])
-             if (clusters is defined and clusters[inventory_key] is defined
-                 and clusters[inventory_key][item.cluster_name] is defined)
-             else {} }}
-        resolved_url: "{{ item.api_url | default('') | trim or (inv_row.url | default('')) }}"
-        resolved_username: "{{ item.username | default('') | trim or (username | default('')) }}"
-        resolved_password: >-
-          {{ (lookup('vars', item.credential_key, default=''))
-             if (item.credential_key | default('') | trim | length > 0)
-             else (inv_row.password | default('')) }}
-      loop: "{{ my_ocp_clusters }}"
-      loop_control:
-        label: "{{ item.cluster_name }}"
-      no_log: true
-      changed_when: false
-      when: my_ocp_clusters | length > 0
+      # Her cluster icin baglanti bilgisi (url/username/password) TEK bir dongude cozulur —
+      # portal metadata'si (api_url+credential_key) VARSA o, yoksa openshift_inventory_vars.
+      # yaml'daki eski `clusters[tenant_env][cluster_name]` yoluna dusulur (GERIYE UYUM).
+      - name: "Resolve connection details for each owned cluster"
+        ansible.builtin.set_fact:
+          resolved_clusters: >-
+            {{
+              (resolved_clusters | default([])) + [{
+                'cluster_name': item.cluster_name,
+                'url': resolved_url, 'username': resolved_username, 'password': resolved_password
+              }]
+            }}
+        vars:
+          inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+          inv_row: >-
+            {{ (clusters[inventory_key][item.cluster_name])
+               if (clusters is defined and clusters[inventory_key] is defined
+                   and clusters[inventory_key][item.cluster_name] is defined)
+               else {} }}
+          resolved_url: "{{ item.api_url | default('') | trim or (inv_row.url | default('')) }}"
+          resolved_username: "{{ item.username | default('') | trim or (username | default('')) }}"
+          resolved_password: >-
+            {{ (lookup('vars', item.credential_key, default=''))
+               if (item.credential_key | default('') | trim | length > 0)
+               else (inv_row.password | default('')) }}
+        loop: "{{ my_ocp_clusters }}"
+        loop_control:
+          label: "{{ item.cluster_name }}"
+        no_log: true
+        changed_when: false
+        when: my_ocp_clusters | length > 0
 
-    # oc login + get pods — HER (cluster,namespace) cifti icin izole (register +
-    # failed_when:false, bu repodaki opsx_legacy_dump.yml/opsx_openshift_dump.yaml'daki
-    # AYNI desen): biri patlarsa digerleri devam eder. `product()` cluster × namespace
-    # capraz carpimini kurar (logx_ocp_discover_fetch.yml'deki "cluster × hedef" AYNI
-    # desen) — item.0 = cluster kaydi, item.1 = namespace string'i.
-    - name: "Login and list namespace pods per cluster"
-      ansible.builtin.shell: |
-        set -o pipefail
-        umask 077
-        export KUBECONFIG="/tmp/opsx-pods-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.0.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.1 | regex_replace('[^A-Za-z0-9._-]', '-') }}.kubeconfig"
-        trap 'rm -f "${KUBECONFIG}"' EXIT
-        if [ -z "{{ item.0.url }}" ]; then
-          echo "Cluster için API URL/kimlik bilgisi çözülemedi." >&2
-          exit 1
-        fi
-        "{{ oc_bin }}" login \
-          --server={{ item.0.url | quote }} \
-          --username={{ item.0.username | quote }} \
-          --password={{ item.0.password | quote }} \
-          --insecure-skip-tls-verify=true >/dev/null
-        "{{ oc_bin }}" get pods -n {{ item.1 | quote }} --no-headers
-      args:
-        executable: /bin/bash
-      loop: "{{ resolved_clusters | default([]) | product(namespaces | default([])) | list }}"
-      loop_control:
-        label: "{{ item.0.cluster_name }}/{{ item.1 }}"
-      register: pod_list_jobs
-      no_log: true
-      changed_when: false
-      failed_when: false
-      when: (my_ocp_clusters | length > 0) and (oc_bin | default('') | trim | length > 0)
+      # oc login + get pods — HER (cluster,namespace) cifti icin izole (register +
+      # failed_when:false, bu repodaki opsx_legacy_dump.yml/opsx_openshift_dump.yaml'daki
+      # AYNI desen): biri patlarsa digerleri devam eder. `product()` cluster × namespace
+      # capraz carpimini kurar (logx_ocp_discover_fetch.yml'deki "cluster × hedef" AYNI
+      # desen) — item.0 = cluster kaydi, item.1 = namespace string'i.
+      - name: "Login and list namespace pods per cluster"
+        ansible.builtin.shell: |
+          set -o pipefail
+          umask 077
+          export KUBECONFIG="/tmp/opsx-pods-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.0.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.1 | regex_replace('[^A-Za-z0-9._-]', '-') }}.kubeconfig"
+          trap 'rm -f "${KUBECONFIG}"' EXIT
+          if [ -z "{{ item.0.url }}" ]; then
+            echo "Cluster için API URL/kimlik bilgisi çözülemedi." >&2
+            exit 1
+          fi
+          "{{ oc_bin }}" login \
+            --server={{ item.0.url | quote }} \
+            --username={{ item.0.username | quote }} \
+            --password={{ item.0.password | quote }} \
+            --insecure-skip-tls-verify=true >/dev/null
+          "{{ oc_bin }}" get pods -n {{ item.1 | quote }} --no-headers
+        args:
+          executable: /bin/bash
+        loop: "{{ resolved_clusters | default([]) | product(namespaces | default([])) | list }}"
+        loop_control:
+          label: "{{ item.0.cluster_name }}/{{ item.1 }}"
+        register: pod_list_jobs
+        no_log: true
+        changed_when: false
+        failed_when: false
+        when: (my_ocp_clusters | length > 0) and (oc_bin | default('') | trim | length > 0)
 
-    - name: "Collect per-cluster results for this bastion"
-      ansible.builtin.set_fact:
-        cluster_fetch_results: >-
-          {{
-            (cluster_fetch_results | default([])) + [
-              ({'cluster': item.item.0.cluster_name, 'namespace': item.item.1, 'ok': true,
-                'lines': (item.stdout_lines | default([]))}
-               if (item.rc | default(1)) == 0
-               else {'cluster': item.item.0.cluster_name, 'namespace': item.item.1, 'ok': false,
-                     'error': (item.stderr | default('') | trim) | default('oc login veya pod listeleme başarısız oldu.', true)})
-            ]
-          }}
-      loop: "{{ pod_list_jobs.results | default([]) }}"
-      loop_control:
-        label: "{{ item.item.0.cluster_name }}/{{ item.item.1 }}"
-      when: my_ocp_clusters | length > 0
-      changed_when: false
+      - name: "Collect per-cluster results for this bastion"
+        ansible.builtin.set_fact:
+          cluster_fetch_results: >-
+            {{
+              (cluster_fetch_results | default([])) + [
+                ({'cluster': item.item.0.cluster_name, 'namespace': item.item.1, 'ok': true,
+                  'lines': (item.stdout_lines | default([]))}
+                 if (item.rc | default(1)) == 0
+                 else {'cluster': item.item.0.cluster_name, 'namespace': item.item.1, 'ok': false,
+                       'error': (item.stderr | default('') | trim) | default('oc login veya pod listeleme başarısız oldu.', true)})
+              ]
+            }}
+        loop: "{{ pod_list_jobs.results | default([]) }}"
+        loop_control:
+          label: "{{ item.item.0.cluster_name }}/{{ item.item.1 }}"
+        when: my_ocp_clusters | length > 0
+        changed_when: false
 
-    - name: "Report oc binary missing as a per (cluster,namespace) error"
-      ansible.builtin.set_fact:
-        cluster_fetch_results: >-
-          {{
-            (cluster_fetch_results | default([])) + [{
-              'cluster': item.0.cluster_name, 'namespace': item.1, 'ok': false,
-              'error': "Bu sunucuda 'oc' bulunamadı: " ~ (oc_probe_paths | join(', '))
-            }]
-          }}
-      loop: "{{ my_ocp_clusters | product(namespaces | default([])) | list }}"
-      loop_control:
-        label: "{{ item.0.cluster_name }}/{{ item.1 }}"
-      when: (my_ocp_clusters | length > 0) and ((oc_bin | default('') | trim | length) == 0)
-      changed_when: false
+      - name: "Report oc binary missing as a per (cluster,namespace) error"
+        ansible.builtin.set_fact:
+          cluster_fetch_results: >-
+            {{
+              (cluster_fetch_results | default([])) + [{
+                'cluster': item.0.cluster_name, 'namespace': item.1, 'ok': false,
+                'error': "Bu sunucuda 'oc' bulunamadı: " ~ (oc_probe_paths | join(', '))
+              }]
+            }}
+        loop: "{{ my_ocp_clusters | product(namespaces | default([])) | list }}"
+        loop_control:
+          label: "{{ item.0.cluster_name }}/{{ item.1 }}"
+        when: (my_ocp_clusters | length > 0) and ((oc_bin | default('') | trim | length) == 0)
+        changed_when: false
+
+      # RESCUE (2026-08-28): bir gorev duserse host OLMEZ; sebep kaydedilir.
+      # Neden sart: bu play'deki TUM host'lar duserse Ansible "NO MORE HOSTS
+      # LEFT" ile SONRAKI PLAY'LERI ATLAR ve `set_stats`'in TEK yazari olan
+      # toplayici play HIC calismaz — sonuc sozlesmesi yayinlanmaz, portal
+      # "sonuc gelmedi" der. Uretimde Telnet'te yasandi.
+      # BILEREK yeniden `fail` ETMEZ: amaci host'u ayakta tutmak.
+      rescue:
+        - name: "Hata kaydedilir (host ayakta kalir)"
+          ansible.builtin.set_fact:
+            host_blocked_reason: >-
+              {{ ansible_failed_result.msg | default('Bu host uzerinde is tamamlanamadi.') }}
 
 - name: "Aggregate per-bastion results and publish opsx_pods_result"
   hosts: localhost
@@ -292,3 +310,14 @@
               }}
             results: "{{ merged_results }}"
         per_host: false
+
+    # AWX ISI KIRMIZI KALSIN (2026-08-28). Yukaridaki `rescue` host'u ayakta tutuyor;
+    # bu gorev olmasaydi hicbir sey calismadigi halde is "successful" gorunurdu —
+    # mevcut durumdan DAHA KOTU olurdu. `set_stats` BU GOREVDEN ONCE calistigi icin
+    # artifact zaten yayinlanmistir: portal duzgun sonucu alir, AWX dogru sekilde
+    # "failed" der.
+    - name: "Hicbir sonuc uretilemediyse isi BASARISIZ yap"
+      ansible.builtin.fail:
+        msg: "Pod listeleme tamamlanamadi — hicbir cluster sonuc bildirmedi."
+      when: (merged_results | length) == 0
+            or (merged_results | selectattr('ok', 'equalto', true) | list | length) == 0

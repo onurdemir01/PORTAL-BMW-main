@@ -75,6 +75,11 @@
 
 - name: "OpsX Openshift - Pod Dump (multi-cluster)"
   hosts: opsx_terminal
+  # `rescue` YALNIZCA GOREV hatalarini yakalar; SSH/DNS kesintisini (unreachable)
+  # YAKALAMAZ. O durumda host "unreachable" isaretlenir ve TUM host'lar boyle
+  # duserse Ansible "NO MORE HOSTS LEFT" ile SONRAKI PLAY'LERI ATLAR — toplayici
+  # play hic calismaz. Ikisi BIRLIKTE gerekir.
+  ignore_unreachable: true
   any_errors_fatal: false
   gather_facts: false
   become: false
@@ -98,282 +103,295 @@
     work_dir: "/tmp/opsx-ocp-dump-{{ job_id }}"
 
   tasks:
-    # ── Bu bastion'un sahip olduğu cluster'lar + baglanti bilgileri — opsx_openshift_pods.
-    # yaml'daki AYNI 4 task (my_ocp_clusters / oc_bin / resolved_clusters) ────────────────
-    - name: "Select the cluster subset that belongs to this bastion"
-      ansible.builtin.set_fact:
-        my_ocp_clusters: >-
-          {{
-            (ocp_clusters | selectattr('terminal_host', 'defined')
-                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
-            +
-            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
-             if inventory_hostname == ((groups['opsx_terminal'] | default([])) | sort | first)
-             else [])
-          }}
-      changed_when: false
+    - block:
+      # ── Bu bastion'un sahip olduğu cluster'lar + baglanti bilgileri — opsx_openshift_pods.
+      # yaml'daki AYNI 4 task (my_ocp_clusters / oc_bin / resolved_clusters) ────────────────
+      - name: "Select the cluster subset that belongs to this bastion"
+        ansible.builtin.set_fact:
+          my_ocp_clusters: >-
+            {{
+              (ocp_clusters | selectattr('terminal_host', 'defined')
+                            | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+              +
+              ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+               if inventory_hostname == ((groups['opsx_terminal'] | default([])) | sort | first)
+               else [])
+            }}
+        changed_when: false
 
-    - name: "Probe candidate oc paths"
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop: "{{ oc_probe_paths }}"
-      register: oc_stats
-      changed_when: false
-      failed_when: false
-      when: my_ocp_clusters | length > 0
+      - name: "Probe candidate oc paths"
+        ansible.builtin.stat:
+          path: "{{ item }}"
+        loop: "{{ oc_probe_paths }}"
+        register: oc_stats
+        changed_when: false
+        failed_when: false
+        when: my_ocp_clusters | length > 0
 
-    - name: "Collect usable oc paths"
-      ansible.builtin.set_fact:
-        oc_stat_hits: >-
-          {{
-            oc_stats.results | default([])
-            | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
-            | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
-            | map(attribute='stat.path') | list
-          }}
-      when: my_ocp_clusters | length > 0
-      changed_when: false
+      - name: "Collect usable oc paths"
+        ansible.builtin.set_fact:
+          oc_stat_hits: >-
+            {{
+              oc_stats.results | default([])
+              | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+              | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+              | map(attribute='stat.path') | list
+            }}
+        when: my_ocp_clusters | length > 0
+        changed_when: false
 
-    - name: "Fall back to PATH lookup when no candidate matched"
-      ansible.builtin.shell: command -v oc || true
-      args:
-        executable: /bin/bash
-      register: oc_which
-      when: (my_ocp_clusters | length > 0) and (oc_stat_hits | default([]) | length == 0)
-      changed_when: false
-      failed_when: false
+      - name: "Fall back to PATH lookup when no candidate matched"
+        ansible.builtin.shell: command -v oc || true
+        args:
+          executable: /bin/bash
+        register: oc_which
+        when: (my_ocp_clusters | length > 0) and (oc_stat_hits | default([]) | length == 0)
+        changed_when: false
+        failed_when: false
 
-    - name: "Resolve the oc binary for this bastion"
-      ansible.builtin.set_fact:
-        oc_bin: >-
-          {{
-            oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
-            else (oc_which.stdout | default('', true) | trim)
-          }}
-      when: my_ocp_clusters | length > 0
-      changed_when: false
+      - name: "Resolve the oc binary for this bastion"
+        ansible.builtin.set_fact:
+          oc_bin: >-
+            {{
+              oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
+              else (oc_which.stdout | default('', true) | trim)
+            }}
+        when: my_ocp_clusters | length > 0
+        changed_when: false
 
-    - name: "Resolve connection details for each owned cluster"
-      ansible.builtin.set_fact:
-        resolved_clusters: >-
-          {{
-            (resolved_clusters | default([])) + [{
-              'cluster_name': item.cluster_name,
-              'url': resolved_url, 'username': resolved_username, 'password': resolved_password
-            }]
-          }}
-      vars:
-        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
-        inv_row: >-
-          {{ (clusters[inventory_key][item.cluster_name])
-             if (clusters is defined and clusters[inventory_key] is defined
-                 and clusters[inventory_key][item.cluster_name] is defined)
-             else {} }}
-        resolved_url: "{{ item.api_url | default('') | trim or (inv_row.url | default('')) }}"
-        resolved_username: "{{ item.username | default('') | trim or (username | default('')) }}"
-        resolved_password: >-
-          {{ (lookup('vars', item.credential_key, default=''))
-             if (item.credential_key | default('') | trim | length > 0)
-             else (inv_row.password | default('')) }}
-      loop: "{{ my_ocp_clusters }}"
-      loop_control:
-        label: "{{ item.cluster_name }}"
-      no_log: true
-      changed_when: false
-      when: my_ocp_clusters | length > 0
+      - name: "Resolve connection details for each owned cluster"
+        ansible.builtin.set_fact:
+          resolved_clusters: >-
+            {{
+              (resolved_clusters | default([])) + [{
+                'cluster_name': item.cluster_name,
+                'url': resolved_url, 'username': resolved_username, 'password': resolved_password
+              }]
+            }}
+        vars:
+          inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+          inv_row: >-
+            {{ (clusters[inventory_key][item.cluster_name])
+               if (clusters is defined and clusters[inventory_key] is defined
+                   and clusters[inventory_key][item.cluster_name] is defined)
+               else {} }}
+          resolved_url: "{{ item.api_url | default('') | trim or (inv_row.url | default('')) }}"
+          resolved_username: "{{ item.username | default('') | trim or (username | default('')) }}"
+          resolved_password: >-
+            {{ (lookup('vars', item.credential_key, default=''))
+               if (item.credential_key | default('') | trim | length > 0)
+               else (inv_row.password | default('')) }}
+        loop: "{{ my_ocp_clusters }}"
+        loop_control:
+          label: "{{ item.cluster_name }}"
+        no_log: true
+        changed_when: false
+        when: my_ocp_clusters | length > 0
 
-    # Bu bastion'a düşen HER (cluster, pod) çifti — Python tarzı liste içi liste (list
-    # comprehension) Jinja2'nin `{{ }}` ifade sözdiziminde DESTEKLENMİYOR ("expected
-    # token ',', got 'for'", gerçek job hatası 2026-08-12) — Ansible'ın Jinja'sı sadece
-    # filtre zincirlerini (map/select/selectattr) destekler. Bunun yerine `ocp_pod_targets`
-    # üzerinde döngü kurup her pod'un sahibi cluster'ı `resolved_clusters`'tan filtre ile
-    # bulan, bu dosyadaki diğer tüm biriktirme task'larıyla AYNI desen kullanılır.
-    - name: "Build per-pod dump units owned by this bastion"
-      ansible.builtin.set_fact:
-        pod_dump_units: >-
-          {{
-            (pod_dump_units | default([])) + (
-              [{'cluster_name': item.cluster_name, 'namespace': item.namespace, 'url': owning_cluster[0].url,
-                'username': owning_cluster[0].username, 'password': owning_cluster[0].password,
-                'pod': item.pod}]
-              if (owning_cluster | length) > 0 else []
-            )
-          }}
-      vars:
-        owning_cluster: "{{ resolved_clusters | default([]) | selectattr('cluster_name', 'equalto', item.cluster_name) | list }}"
-      loop: "{{ ocp_pod_targets }}"
-      loop_control:
-        label: "{{ item.cluster_name }}/{{ item.pod }}"
-      when: my_ocp_clusters | length > 0
-      changed_when: false
-      no_log: true
+      # Bu bastion'a düşen HER (cluster, pod) çifti — Python tarzı liste içi liste (list
+      # comprehension) Jinja2'nin `{{ }}` ifade sözdiziminde DESTEKLENMİYOR ("expected
+      # token ',', got 'for'", gerçek job hatası 2026-08-12) — Ansible'ın Jinja'sı sadece
+      # filtre zincirlerini (map/select/selectattr) destekler. Bunun yerine `ocp_pod_targets`
+      # üzerinde döngü kurup her pod'un sahibi cluster'ı `resolved_clusters`'tan filtre ile
+      # bulan, bu dosyadaki diğer tüm biriktirme task'larıyla AYNI desen kullanılır.
+      - name: "Build per-pod dump units owned by this bastion"
+        ansible.builtin.set_fact:
+          pod_dump_units: >-
+            {{
+              (pod_dump_units | default([])) + (
+                [{'cluster_name': item.cluster_name, 'namespace': item.namespace, 'url': owning_cluster[0].url,
+                  'username': owning_cluster[0].username, 'password': owning_cluster[0].password,
+                  'pod': item.pod}]
+                if (owning_cluster | length) > 0 else []
+              )
+            }}
+        vars:
+          owning_cluster: "{{ resolved_clusters | default([]) | selectattr('cluster_name', 'equalto', item.cluster_name) | list }}"
+        loop: "{{ ocp_pod_targets }}"
+        loop_control:
+          label: "{{ item.cluster_name }}/{{ item.pod }}"
+        when: my_ocp_clusters | length > 0
+        changed_when: false
+        no_log: true
 
-    - name: "Yerel çalışma dizinini oluştur"
-      ansible.builtin.file:
-        path: "{{ work_dir }}"
-        state: directory
-        mode: "0700"
-      when: (pod_dump_units | default([]) | length) > 0
+      - name: "Yerel çalışma dizinini oluştur"
+        ansible.builtin.file:
+          path: "{{ work_dir }}"
+          state: directory
+          mode: "0700"
+        when: (pod_dump_units | default([]) | length) > 0
 
-    # Her pod için: KENDİ cluster'ına login ol (KUBECONFIG izole), konteyner adını
-    # KESIN olarak oku, dump'ı al, work_dir'e çek. failed_when:false — bir pod patlarsa
-    # diğerleri (farklı cluster'da olsalar bile) devam eder.
-    - name: "Login and dump each pod owned by this bastion"
-      ansible.builtin.shell: |
-        set -eu
+      # Her pod için: KENDİ cluster'ına login ol (KUBECONFIG izole), konteyner adını
+      # KESIN olarak oku, dump'ı al, work_dir'e çek. failed_when:false — bir pod patlarsa
+      # diğerleri (farklı cluster'da olsalar bile) devam eder.
+      - name: "Login and dump each pod owned by this bastion"
+        ansible.builtin.shell: |
+          set -eu
 
-        export KUBECONFIG="/tmp/opsx-dump-{{ job_id }}-{{ item.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.namespace | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.pod }}.kubeconfig"
-        trap 'rm -f "${KUBECONFIG}"' EXIT
+          export KUBECONFIG="/tmp/opsx-dump-{{ job_id }}-{{ item.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.namespace | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.pod }}.kubeconfig"
+          trap 'rm -f "${KUBECONFIG}"' EXIT
 
-        if [ -z "{{ item.url }}" ]; then
-          echo "Cluster için API URL/kimlik bilgisi çözülemedi: {{ item.cluster_name }}" >&2
-          exit 1
-        fi
-        "{{ oc_bin }}" login \
-          --server={{ item.url | quote }} \
-          --username={{ item.username | quote }} \
-          --password={{ item.password | quote }} \
-          --insecure-skip-tls-verify=true >/dev/null
-
-        POD="{{ item.pod }}"
-        NS="{{ item.namespace }}"
-        WORK="{{ work_dir }}"
-        CHOOSE="{{ choose }}"
-        COUNT="{{ dump_count | default(1) | int }}"
-        INTERVAL="{{ dump_interval | default(0) | int }}"
-
-        CONTAINER="$("{{ oc_bin }}" get pod "$POD" -n "$NS" -o jsonpath='{.spec.containers[0].name}')"
-        if [ -z "$CONTAINER" ]; then
-          echo "Konteyner adı çözülemedi: $POD" >&2
-          exit 1
-        fi
-
-        if [ "$CHOOSE" = "memory" ]; then
-          PID="$("{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- ps -f | grep java | grep -v grep | head -n 1 | awk '{print $2}')"
-          if [ -z "$PID" ]; then
-            echo "Pod içinde çalışan java prosesi bulunamadı: $POD" >&2
+          if [ -z "{{ item.url }}" ]; then
+            echo "Cluster için API URL/kimlik bilgisi çözülemedi: {{ item.cluster_name }}" >&2
             exit 1
           fi
-          FILE="${POD}-$(date +%Y%m%d_%H%M%S)-heap.hprof"
-          "{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- jcmd "$PID" GC.heap_dump "/tmp/${FILE}"
-          "{{ oc_bin }}" -n "$NS" rsync "${POD}:/tmp/${FILE}" "${WORK}/" -c "$CONTAINER"
-          "{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- rm -f "/tmp/${FILE}" || true
-          echo "Heap dump alındı: ${FILE}"
-        else
-          i=1
-          while [ "$i" -le "$COUNT" ]; do
-            SEQ="$(printf '%03d' "$i")"
-            FILE="${POD}-$(date +%Y%m%d_%H%M%S)-${SEQ}-thread.txt"
-            "{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- jcmd 1 Thread.print > "${WORK}/${FILE}"
-            if [ ! -s "${WORK}/${FILE}" ]; then
-              echo "Thread dump boş üretildi: ${FILE}" >&2
+          "{{ oc_bin }}" login \
+            --server={{ item.url | quote }} \
+            --username={{ item.username | quote }} \
+            --password={{ item.password | quote }} \
+            --insecure-skip-tls-verify=true >/dev/null
+
+          POD="{{ item.pod }}"
+          NS="{{ item.namespace }}"
+          WORK="{{ work_dir }}"
+          CHOOSE="{{ choose }}"
+          COUNT="{{ dump_count | default(1) | int }}"
+          INTERVAL="{{ dump_interval | default(0) | int }}"
+
+          CONTAINER="$("{{ oc_bin }}" get pod "$POD" -n "$NS" -o jsonpath='{.spec.containers[0].name}')"
+          if [ -z "$CONTAINER" ]; then
+            echo "Konteyner adı çözülemedi: $POD" >&2
+            exit 1
+          fi
+
+          if [ "$CHOOSE" = "memory" ]; then
+            PID="$("{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- ps -f | grep java | grep -v grep | head -n 1 | awk '{print $2}')"
+            if [ -z "$PID" ]; then
+              echo "Pod içinde çalışan java prosesi bulunamadı: $POD" >&2
               exit 1
             fi
-            echo "Thread dump alındı (${i}/${COUNT}): ${FILE}"
-            if [ "$i" -lt "$COUNT" ] && [ "$INTERVAL" -gt 0 ]; then
-              sleep "$INTERVAL"
-            fi
-            i=$((i + 1))
-          done
-        fi
-      args:
-        executable: /bin/bash
-      loop: "{{ pod_dump_units | default([]) }}"
-      loop_control:
-        label: "{{ item.cluster_name }}/{{ item.namespace }}/{{ item.pod }}"
-      register: pod_dump_results
-      no_log: true
-      changed_when: true
-      failed_when: false
-      when: (pod_dump_units | default([]) | length) > 0
+            FILE="${POD}-$(date +%Y%m%d_%H%M%S)-heap.hprof"
+            "{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- jcmd "$PID" GC.heap_dump "/tmp/${FILE}"
+            "{{ oc_bin }}" -n "$NS" rsync "${POD}:/tmp/${FILE}" "${WORK}/" -c "$CONTAINER"
+            "{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- rm -f "/tmp/${FILE}" || true
+            echo "Heap dump alındı: ${FILE}"
+          else
+            i=1
+            while [ "$i" -le "$COUNT" ]; do
+              SEQ="$(printf '%03d' "$i")"
+              FILE="${POD}-$(date +%Y%m%d_%H%M%S)-${SEQ}-thread.txt"
+              "{{ oc_bin }}" exec "$POD" -c "$CONTAINER" -n "$NS" -- jcmd 1 Thread.print > "${WORK}/${FILE}"
+              if [ ! -s "${WORK}/${FILE}" ]; then
+                echo "Thread dump boş üretildi: ${FILE}" >&2
+                exit 1
+              fi
+              echo "Thread dump alındı (${i}/${COUNT}): ${FILE}"
+              if [ "$i" -lt "$COUNT" ] && [ "$INTERVAL" -gt 0 ]; then
+                sleep "$INTERVAL"
+              fi
+              i=$((i + 1))
+            done
+          fi
+        args:
+          executable: /bin/bash
+        loop: "{{ pod_dump_units | default([]) }}"
+        loop_control:
+          label: "{{ item.cluster_name }}/{{ item.namespace }}/{{ item.pod }}"
+        register: pod_dump_results
+        no_log: true
+        changed_when: true
+        failed_when: false
+        when: (pod_dump_units | default([]) | length) > 0
 
-    # Başarısız pod'lar okunabilir bir döngüyle toplanır (opsx_legacy_dump.yml'deki AYNI
-    # desen) — bu bastion'un ürettiği archive'a hiç girmeyecekler.
-    - name: "Başarısız pod'ları topla"
-      ansible.builtin.set_fact:
-        failed_pod_results: >-
-          {{
-            (failed_pod_results | default([])) + [{
-              'cluster': item.item.cluster_name,
-              'pod': item.item.pod,
-              'ok': false,
-              'error': (item.stderr | default('') | trim) | default('Dump alınamadı', true)
-            }]
-          }}
-      loop: "{{ pod_dump_results.results | default([]) }}"
-      loop_control:
-        label: "{{ item.item.cluster_name }}/{{ item.item.pod }}"
-      when: (item.rc | default(1)) != 0
-      changed_when: false
+      # Başarısız pod'lar okunabilir bir döngüyle toplanır (opsx_legacy_dump.yml'deki AYNI
+      # desen) — bu bastion'un ürettiği archive'a hiç girmeyecekler.
+      - name: "Başarısız pod'ları topla"
+        ansible.builtin.set_fact:
+          failed_pod_results: >-
+            {{
+              (failed_pod_results | default([])) + [{
+                'cluster': item.item.cluster_name,
+                'pod': item.item.pod,
+                'ok': false,
+                'error': (item.stderr | default('') | trim) | default('Dump alınamadı', true)
+              }]
+            }}
+        loop: "{{ pod_dump_results.results | default([]) }}"
+        loop_control:
+          label: "{{ item.item.cluster_name }}/{{ item.item.pod }}"
+        when: (item.rc | default(1)) != 0
+        changed_when: false
 
-    # Bu bastion'un BAŞARIYLA aldığı TÜM dump'lar TEK bir arşivde toplanıp paylaşılan
-    # staging_dir'e yazılır — `zip` varsa zip, yoksa tar.gz.
-    - name: "Dump'ları tek arşivde topla"
-      ansible.builtin.shell: |
-        set -eu
-        cd "{{ work_dir }}"
-        if [ -z "$(ls -A . 2>/dev/null)" ]; then
-          echo "ARSIVLENECEK_DOSYA_YOK" >&2
-          exit 1
-        fi
-        BASE="opsx-{{ 'heap' if choose == 'memory' else 'thread' }}-dump-{{ pod_dump_units | map(attribute='namespace') | unique | join('_') }}-{{ inventory_hostname }}-job{{ job_id }}-$(date +%Y%m%d_%H%M%S)"
-        if command -v zip >/dev/null 2>&1; then
-          zip -r -q "{{ staging_dir }}/${BASE}.zip" .
-          echo "{{ staging_dir }}/${BASE}.zip"
-        else
-          tar -czf "{{ staging_dir }}/${BASE}.tar.gz" .
-          echo "{{ staging_dir }}/${BASE}.tar.gz"
-        fi
-      args:
-        executable: /bin/bash
-      register: archive_result
-      changed_when: true
-      failed_when: false
-      when: (pod_dump_units | default([]) | length) > 0
+      # Bu bastion'un BAŞARIYLA aldığı TÜM dump'lar TEK bir arşivde toplanıp paylaşılan
+      # staging_dir'e yazılır — `zip` varsa zip, yoksa tar.gz.
+      - name: "Dump'ları tek arşivde topla"
+        ansible.builtin.shell: |
+          set -eu
+          cd "{{ work_dir }}"
+          if [ -z "$(ls -A . 2>/dev/null)" ]; then
+            echo "ARSIVLENECEK_DOSYA_YOK" >&2
+            exit 1
+          fi
+          BASE="opsx-{{ 'heap' if choose == 'memory' else 'thread' }}-dump-{{ pod_dump_units | map(attribute='namespace') | unique | join('_') }}-{{ inventory_hostname }}-job{{ job_id }}-$(date +%Y%m%d_%H%M%S)"
+          if command -v zip >/dev/null 2>&1; then
+            zip -r -q "{{ staging_dir }}/${BASE}.zip" .
+            echo "{{ staging_dir }}/${BASE}.zip"
+          else
+            tar -czf "{{ staging_dir }}/${BASE}.tar.gz" .
+            echo "{{ staging_dir }}/${BASE}.tar.gz"
+          fi
+        args:
+          executable: /bin/bash
+        register: archive_result
+        changed_when: true
+        failed_when: false
+        when: (pod_dump_units | default([]) | length) > 0
 
-    - name: "Arşivin bilgisini al"
-      ansible.builtin.stat:
-        path: "{{ archive_result.stdout | trim }}"
-        follow: true
-        get_checksum: false
-        get_mime: false
-        get_attributes: false
-      register: archive_stat
-      when: (pod_dump_units | default([]) | length) > 0 and (archive_result.rc | default(1)) == 0
-      changed_when: false
-      failed_when: false
+      - name: "Arşivin bilgisini al"
+        ansible.builtin.stat:
+          path: "{{ archive_result.stdout | trim }}"
+          follow: true
+          get_checksum: false
+          get_mime: false
+          get_attributes: false
+        register: archive_stat
+        when: (pod_dump_units | default([]) | length) > 0 and (archive_result.rc | default(1)) == 0
+        changed_when: false
+        failed_when: false
 
-    - name: "Bu bastion'un sonucunu yayınla (bastion_dump_result)"
-      ansible.builtin.set_fact:
-        bastion_dump_result: >-
-          {{
-            ([{
-              'cluster': (pod_dump_units | map(attribute='cluster_name') | unique | list | join(',')),
-              'namespaces': (pod_dump_units | map(attribute='namespace') | unique | list),
-              'pods': (pod_dump_units | map(attribute='pod') | list
-                       | difference(failed_pod_results | default([]) | map(attribute='pod') | list)),
-              'ok': true,
-              'staged_path': archive_path,
-              'filename': (archive_path | basename),
-              'size_bytes': (archive_stat.stat.size | default(0) | int)
-            }] if archive_ok else []) + (failed_pod_results | default([]))
-          }}
-      vars:
-        archive_path: "{{ archive_stat.stat.path | default('') }}"
-        archive_ok: >-
-          {{ archive_stat is defined and archive_stat.stat is defined
-             and (archive_stat.stat.exists | default(false))
-             and (archive_stat.stat.size | default(0) | int) > 0 }}
-      when: (pod_dump_units | default([]) | length) > 0
-      changed_when: false
+      - name: "Bu bastion'un sonucunu yayınla (bastion_dump_result)"
+        ansible.builtin.set_fact:
+          bastion_dump_result: >-
+            {{
+              ([{
+                'cluster': (pod_dump_units | map(attribute='cluster_name') | unique | list | join(',')),
+                'namespaces': (pod_dump_units | map(attribute='namespace') | unique | list),
+                'pods': (pod_dump_units | map(attribute='pod') | list
+                         | difference(failed_pod_results | default([]) | map(attribute='pod') | list)),
+                'ok': true,
+                'staged_path': archive_path,
+                'filename': (archive_path | basename),
+                'size_bytes': (archive_stat.stat.size | default(0) | int)
+              }] if archive_ok else []) + (failed_pod_results | default([]))
+            }}
+        vars:
+          archive_path: "{{ archive_stat.stat.path | default('') }}"
+          archive_ok: >-
+            {{ archive_stat is defined and archive_stat.stat is defined
+               and (archive_stat.stat.exists | default(false))
+               and (archive_stat.stat.size | default(0) | int) > 0 }}
+        when: (pod_dump_units | default([]) | length) > 0
+        changed_when: false
 
-    - name: "Yerel çalışma dizinini temizle (best-effort)"
-      ansible.builtin.file:
-        path: "{{ work_dir }}"
-        state: absent
-      when: (pod_dump_units | default([]) | length) > 0
-      failed_when: false
-      changed_when: false
+      - name: "Yerel çalışma dizinini temizle (best-effort)"
+        ansible.builtin.file:
+          path: "{{ work_dir }}"
+          state: absent
+        when: (pod_dump_units | default([]) | length) > 0
+        failed_when: false
+        changed_when: false
+
+      # RESCUE (2026-08-28): bir gorev duserse host OLMEZ; sebep kaydedilir.
+      # Neden sart: bu play'deki TUM host'lar duserse Ansible "NO MORE HOSTS
+      # LEFT" ile SONRAKI PLAY'LERI ATLAR ve `set_stats`'in TEK yazari olan
+      # toplayici play HIC calismaz — sonuc sozlesmesi yayinlanmaz, portal
+      # "sonuc gelmedi" der. Uretimde Telnet'te yasandi.
+      # BILEREK yeniden `fail` ETMEZ: amaci host'u ayakta tutmak.
+      rescue:
+        - name: "Hata kaydedilir (host ayakta kalir)"
+          ansible.builtin.set_fact:
+            host_blocked_reason: >-
+              {{ ansible_failed_result.msg | default('Bu host uzerinde is tamamlanamadi.') }}
 
 - name: "Aggregate per-bastion results and publish opsx_dump_result"
   hosts: localhost
@@ -411,3 +429,14 @@
               }}
             results: "{{ flat_results }}"
         per_host: false
+
+    # AWX ISI KIRMIZI KALSIN (2026-08-28). Yukaridaki `rescue` host'u ayakta tutuyor;
+    # bu gorev olmasaydi hicbir sey calismadigi halde is "successful" gorunurdu —
+    # mevcut durumdan DAHA KOTU olurdu. `set_stats` BU GOREVDEN ONCE calistigi icin
+    # artifact zaten yayinlanmistir: portal duzgun sonucu alir, AWX dogru sekilde
+    # "failed" der.
+    - name: "Hicbir sonuc uretilemediyse isi BASARISIZ yap"
+      ansible.builtin.fail:
+        msg: "Dump tamamlanamadi — hicbir cluster sonuc bildirmedi."
+      when: (flat_results | length) == 0
+            or (flat_results | selectattr('ok', 'equalto', true) | list | length) == 0
