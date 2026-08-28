@@ -49,7 +49,11 @@ export const Field: React.FC<{
       </label>
       {!required && <span className="text-[11px] text-[var(--text-muted)]">opsiyonel</span>}
     </div>
-    {hint && <p className="text-[11px] leading-snug text-[var(--text-muted)]">{hint}</p>}
+    {/* whitespace-pre-line: Survey Tasarımcısı'nda açıklamaya alt alta örnek yazılabiliyor.
+        HTML normalde satır sonlarını boşluğa çevirip hepsini tek satıra dizerdi. `pre-line`
+        satır sonlarını KORUR ama girinti/arka arkaya boşlukları yine sadeleştirir — tek
+        satırlık mevcut hint'lerin görünümü değişmez. */}
+    {hint && <p className="text-[11px] leading-snug text-[var(--text-muted)] whitespace-pre-line">{hint}</p>}
     {children}
     {error && (
       <p className="flex items-center gap-1 text-[11px] text-red-600" role="alert">

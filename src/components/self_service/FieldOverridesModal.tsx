@@ -593,10 +593,15 @@ export default function FieldOverridesModal({ item, onClose }: { item: FieldOver
 
                         <div>
                           <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">Açıklama (opsiyonel)</label>
-                          <TextInput
+                          {/* ÇOK SATIRLI: tek satırlık <input> iken alt alta örnek yazmak
+                              mümkün değildi (Enter formu gönderiyordu). Satır sonları
+                              olduğu gibi saklanır ve kullanıcıya Field'ın hint'inde
+                              `whitespace-pre-line` ile aynen gösterilir. */}
+                          <Textarea
+                            rows={3}
                             value={f.description}
                             onChange={(e) => updateCustomField(i, { description: e.target.value })}
-                            placeholder="Kullanıcıya gösterilecek kısa ipucu"
+                            placeholder={"Kullanıcıya gösterilecek ipucu. Alt alta örnek yazabilirsiniz:\nörn. /contract-management/lifecycle/v0\nörn. GFY.CST.REST.CONTRACT-MANAGEMENT_LIFECYCLE_V0"}
                           />
                         </div>
 
