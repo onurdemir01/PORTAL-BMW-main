@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback, useRef, useContext } from "react";
 import { User } from "@/types";
 import { pageVisibilityApi, visibilityApi } from "@/api/adminApi";
+import { fetchSessionWithRetry } from "./sessionRestore";
 
 interface AuthContextType {
   user: User | null;
@@ -97,23 +98,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Restore session from backend on mount
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.ok && data.user) {
-          setUser({
-            username:    data.user.username,
-            role:        data.user.role,
-            displayName: data.user.displayName || data.user.username,
-            mail:        data.user.mail || "",
-            photoUrl:    data.user.photoUrl || null,
-            authSource:  data.user.authSource || "local",
-          });
-          resetSessionTimeout();
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    // Oturum geri yukleme GECICI hatalarda YENIDEN DENER. Eskiden tek istek atiliyor
+    // ve `r.ok` degilse sonuc "oturum yok" sayiliyordu; release sirasinda backend
+    // birkac saniye kapali oldugu icin o pencerede sayfayi acan/yenileyen herkes,
+    // cerezi ve DB'deki oturumu GECERLI oldugu halde login ekranina dusuyordu.
+    // Ayrim sunucuda zaten var: 401 = oturum yok (kesin), 5xx/ag hatasi = gecici.
+    // Denemeler surerken `loading` true kaldigi icin kullanici login ekrani GORMEZ.
+    let cancelled = false;
+    (async () => {
+      const data = await fetchSessionWithRetry({
+        cancelled: () => cancelled,
+        onGiveUp: (attempts) =>
+          console.warn(`[Auth] /api/auth/me ${attempts} denemede yanit vermedi — ` +
+            "sunucu erisilemiyor olabilir; oturum acilmamis sayildi."),
+      });
+      if (cancelled) return;
+      if (data?.ok && data.user) {
+        setUser({
+          username:    data.user.username,
+          role:        data.user.role,
+          displayName: data.user.displayName || data.user.username,
+          mail:        data.user.mail || "",
+          photoUrl:    data.user.photoUrl || null,
+          authSource:  data.user.authSource || "local",
+        });
+        resetSessionTimeout();
+      }
+      setLoading(false);
+    })();
 
     pageVisibilityApi.get()
       .then(setPageVisibility)
@@ -122,6 +134,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Yeni element-bazlı çözülmüş görünürlük — canViewPage/canSee bunun üzerine kurulu.
     refreshVisibility();
+
+    // Unmount sonrasi setState'i onler (StrictMode cift-mount dahil).
+    return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Çözülmüş görünürlük haritasını (element→bool) sunucudan tazeler + versiyonu kaydeder.
