@@ -7,7 +7,7 @@
 // kısa ve tek bir tetiklemeyle bitiyor, dolayısıyla adım durumu client'ta tutulur.
 // Güvenlik buna dayanmaz: son POST /api/opsx/run çağrısında sunucu uygulama-host
 // eşleşmesini ve cluster'ı envanterden YENİDEN doğrular.
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 import {
   opsxApi,
@@ -73,6 +73,14 @@ const OpsXWizardPage: React.FC = () => {
   // adimi girdigi icin secim burada bekletilir (dump'in dumpType'i ile AYNI desen).
   const [ocOperationPending, setOcOperationPending] = useState<OpsxOcpOperation | null>(null);
   const [busy, setBusy] = useState(false);
+  // ÇİFT TIKLAMA KORUMASI (2026-08-28). `busy` bir React STATE'idir: değeri render
+  // sırasında yakalanır, `setBusy(true)` ise ASENKRON uygulanır. Aynı tick içindeki iki
+  // tık (çift tıklama, yavaş ağda sabırsız kullanıcı, tuş+fare) ikisi de `busy === false`
+  // görür ve İKİ AWX JOB'I birden açılabilir. LogX'te bu bilinçli olarak ref'e
+  // çevrilmişti (LogXWizardPage.tsx); desen buraya da taşındı — bu sayfalar da gerçek
+  // altyapı işleri (restart/dump/dosya taraması) tetikliyor.
+  const busyRef = useRef(false);
+
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OpsxRunResult | OpsxDumpLaunchResult | null>(null);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
@@ -192,7 +200,8 @@ const OpsXWizardPage: React.FC = () => {
   // Openshift: env/oc_cluster + oc_input (bir veya daha fazla namespace/uygulama cifti) +
   // islem (su an SADECE restart aktif).
   async function runLegacy(operation: OpsxOperation, serverConfigMap?: Record<string, OpsxServerConfigSelection[]>) {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -210,6 +219,7 @@ const OpsXWizardPage: React.FC = () => {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -220,7 +230,8 @@ const OpsXWizardPage: React.FC = () => {
   // {HOST: [pid,...]} eşlemesi — aynı uygulamaya ait bir host'ta birden fazla JVM varsa
   // birden fazla PID seçilmiş olabilir.
   async function runLegacyDump(dumpType: OpsxDumpType, pidMap: Record<string, OpsxPidSelection[]>) {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -238,6 +249,7 @@ const OpsXWizardPage: React.FC = () => {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -264,7 +276,8 @@ const OpsXWizardPage: React.FC = () => {
   }
 
   async function runOpenshift(ocOperation: OpsxOcpOperation, cluster: string) {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -279,6 +292,7 @@ const OpsXWizardPage: React.FC = () => {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -292,7 +306,8 @@ const OpsXWizardPage: React.FC = () => {
     threadDumpCount: number,
     threadDumpInterval: number,
   ) {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -314,6 +329,7 @@ const OpsXWizardPage: React.FC = () => {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }

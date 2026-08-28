@@ -20,7 +20,7 @@ export default function OpenshiftCheckSection() {
   const [error, setError] = useState("");
   const [rows, setRows] = useState<OpenshiftCheckRow[] | null>(null);
   const [notFound, setNotFound] = useState<string[]>([]);
-  const [summary, setSummary] = useState<{ totalChecked: number; totalMatchedRows: number } | null>(null);
+  const [summary, setSummary] = useState<{ totalChecked: number; totalMatchedRows: number ; truncated?: number; maxItems?: number } | null>(null);
 
   const items = parseItems(raw);
 
@@ -37,7 +37,7 @@ export default function OpenshiftCheckSection() {
       const r = await selfServiceApi.openshiftCheck(items);
       setRows(r.rows);
       setNotFound(r.notFound);
-      setSummary({ totalChecked: r.totalChecked, totalMatchedRows: r.totalMatchedRows });
+      setSummary({ totalChecked: r.totalChecked, totalMatchedRows: r.totalMatchedRows, truncated: r.truncated, maxItems: r.maxItems });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -85,6 +85,12 @@ export default function OpenshiftCheckSection() {
             {summary && (
               <span className="text-xs text-[--text-muted]">
                 {summary.totalChecked} girdi kontrol edildi, {summary.totalMatchedRows} benzersiz satır bulundu
+                {/* Bkz. IpCheckSection'daki aynı not — sessiz kesme artık görünür. */}
+                {summary.truncated ? (
+                  <span className="text-[var(--status-danger)] font-semibold">
+                    {" "}— son {summary.truncated} girdi DEĞERLENDİRİLMEDİ (tek seferde en fazla {summary.maxItems})
+                  </span>
+                ) : null}
               </span>
             )}
           </div>

@@ -47,7 +47,12 @@ export const selfServiceApi = {
 
   // "Check" sekmesi — yapistirilan IP listesini dbo.IPInventory'de arar (bkz.
   // server/selfservice/index.cjs POST /ip-check).
-  async ipCheck(ips: string[]): Promise<{ ok: true; results: IpCheckResult[]; totalChecked: number; totalFound: number }> {
+  async ipCheck(ips: string[]): Promise<{
+    ok: true; results: IpCheckResult[]; totalChecked: number; totalFound: number;
+    /** Sunucunun DEGERLENDIRMEDIGI girdi sayisi. Eskiden fazlasi sessizce dusuyordu
+     *  ve kullanici bunu hicbir yerde goremiyordu (bkz. server/selfservice/index.cjs). */
+    truncated?: number; maxItems?: number;
+  }> {
     const r = await fetch(`${BASE}/ip-check`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -61,7 +66,7 @@ export const selfServiceApi = {
   // doner (bkz. server/selfservice/index.cjs POST /openshift-check).
   async openshiftCheck(items: string[]): Promise<{
     ok: true; rows: OpenshiftCheckRow[]; notFound: string[];
-    totalChecked: number; totalMatchedRows: number;
+    totalChecked: number; totalMatchedRows: number; truncated?: number; maxItems?: number;
   }> {
     const r = await fetch(`${BASE}/openshift-check`, {
       method: "POST",

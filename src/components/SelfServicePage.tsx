@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { selfServiceApi, type SelfServiceGroup } from "@/api/selfServiceApi";
@@ -75,6 +75,12 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   const [jobType, setJobType] = useState("run");
   const [loading, setLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
+  // ÇİFT TIKLAMA KORUMASI (2026-08-28). `launching` bir React STATE'idir: değeri render
+  // sırasında yakalanır, `setLaunching(true)` ise ASENKRON uygulanır. Aynı tick içindeki
+  // iki tık ikisi de `launching === false` görür ve İKİ AWX JOB'I birden açılabilir —
+  // Self Service'te bu, prod'da AYNI işlemin iki kez koşması demektir (ve Smart onayı
+  // açıksa iki ayrı bilet). LogX'teki ref deseni (LogXWizardPage.tsx) buraya da taşındı.
+  const launchingRef = useRef(false);
   const [jobId, setJobId] = useState<number | null>(null);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const [err, setErr] = useState("");
@@ -259,6 +265,8 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
         : "Bazı alanlar geçersiz — lütfen kırmızı uyarıları düzeltin.");
       return;
     }
+    if (launchingRef.current) return;
+    launchingRef.current = true;
     setLaunching(true);
     setErr("");
     try {
@@ -316,6 +324,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
+      launchingRef.current = false;
       setLaunching(false);
     }
   }

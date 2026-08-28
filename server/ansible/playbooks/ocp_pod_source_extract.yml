@@ -319,13 +319,21 @@
           ansible.builtin.set_stats:
             data:
               source_extract_result:
+                # `{%- ... -%}` SART (2026-08-28): bu tuzak repoda ZATEN BELGELENMISTI
+                # (bkz. logx_ocp_namespace_discovery.yml: "deger uretimde `'      failed'`
+                # olarak yayinlanmisti") ama burada aynen tekrarlanmisti. YAML katlamali
+                # skalerde (`>-`) satir sonlari BOSLUGA doner ve `{% set %}` etiketleri
+                # arasindaki bosluklar CIKTIYA SIZAR. `| trim` yalniz IFADENIN SONUCUNU
+                # kirpar, etiketlerden gelen bu bosluklari DEGIL — yani portal
+                # `"      failed"` gorur, `"failed"` ile karsilastirir ve eslesmez.
+                # Bosluk denetimi TEK cozumdur.
                 overall_status: >-
-                  {% set ok_count = extraction_summary | selectattr('status', 'equalto', 'ok') | list | length %}
-                  {% set error_count = extraction_summary | selectattr('status', 'in', ['namespace_error', 'rsync_error', 'unknown']) | list | length %}
-                  {{
+                  {%- set ok_count = extraction_summary | selectattr('status', 'equalto', 'ok') | list | length -%}
+                  {%- set error_count = extraction_summary | selectattr('status', 'in', ['namespace_error', 'rsync_error', 'unknown']) | list | length -%}
+                  {{-
                     'failed' if (ok_count == 0 and error_count > 0)
                     else ('success' if error_count == 0 else 'partial')
-                  }}
+                  -}}
                 terminal_host: "{{ inventory_hostname }}"
                 dest_base_dir: "{{ dest_base_dir }}"
                 apps: "{{ extraction_summary }}"
