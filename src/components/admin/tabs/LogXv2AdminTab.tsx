@@ -355,7 +355,7 @@ const RestrictionsSection: React.FC = () => {
                   className="px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-black flex-1"
                 />
                 <button onClick={() => saveDescription(r.id)} className="text-xs text-black hover:underline">Kaydet</button>
-                <button onClick={() => setEditingDescId(null)} className="text-xs text-gray-400 hover:underline">Vazgeç</button>
+                <button onClick={() => setEditingDescId(null)} className="text-xs text-gray-400 hover:underline">İptal</button>
               </div>
             )}
             <div className="mt-2 flex flex-wrap items-center gap-1.5">

@@ -11,6 +11,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ClipboardDocumentIcon, CheckIcon, ExclamationTriangleIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import type { FilexResult, FilexHostResult, FilexFileEntry } from "@/api/filexApi";
+import { fmtDateTime } from "@/utils/datetime";
 
 const ROW_HEIGHT = 32;
 const GRID_COLUMNS = "1fr 70px 130px 90px 160px 200px";
@@ -25,7 +26,7 @@ function formatSize(bytes: number): string {
 
 function formatMtime(epochSeconds: number): string {
   if (!Number.isFinite(epochSeconds)) return "-";
-  return new Date(epochSeconds * 1000).toLocaleString("tr-TR");
+  return fmtDateTime(epochSeconds * 1000);
 }
 
 const CopyButton: React.FC<{ value: string }> = ({ value }) => {

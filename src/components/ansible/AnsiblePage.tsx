@@ -4,6 +4,8 @@ import { XMarkIcon, PlayIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, Clock
 import { ansibleApi, type AwxServer, type AwxTemplate, type AwxTemplateDetail, type JobStatus, type AnsibleSsItem } from "@/api/ansibleApi";
 import { toast } from "@/hooks/useToast";
 import FieldOverridesModal from "@/components/self_service/FieldOverridesModal";
+import CodeChip from "@/components/common/CodeChip";
+import { fmtDateTime, fmtDateTimeSeconds } from "@/utils/datetime";
 
 // ── Simple YAML key:value parser (no external deps) ──────────────────────────
 function parseSimpleYaml(src: string): Record<string, string> {
@@ -460,7 +462,7 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
                     detail.askInventory && "Inventory sorar",
                   ].filter(Boolean).join(" · ") || "Sormadan çalışır"}
                 />
-                {detail.modified && <InfoRow label="Son Değişiklik" value={new Date(detail.modified).toLocaleString("tr-TR")} />}
+                {detail.modified && <InfoRow label="Son Değişiklik" value={fmtDateTime(detail.modified)} />}
               </section>
 
               {/* Survey soruları */}
@@ -545,7 +547,7 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
                         <span className="text-xs font-medium" style={{ color: STATUS_COLOR[j.status] ?? "#94a3b8" }}>
                           {STATUS_LABEL[j.status] ?? j.status}
                         </span>
-                        {j.finished && <span className="text-xs text-slate-400">{new Date(j.finished).toLocaleString("tr-TR")}</span>}
+                        {j.finished && <span className="text-xs text-slate-400">{fmtDateTime(j.finished)}</span>}
                       </div>
                     ))}
                   </div>
@@ -630,10 +632,24 @@ interface TemplateCardProps {
 
 function TemplateCard({ t, onLaunch, onInfo }: TemplateCardProps) {
   return (
-    <div className="rounded-xl border bg-white p-4 flex flex-col gap-2 hover:shadow-sm transition-shadow">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="font-semibold text-slate-800 text-sm leading-snug">{t.name}</div>
+    // `h-full` + `flex-col`: karti izgara hucresinin TAMAMINA yay. Onceden kartlar
+    // icerige gore buyuyordu ve ayni satirdaki kartlarin footer'lari FARKLI
+    // yuksekliklerde duruyordu (uretim ekran goruntusu). Artik footer `mt-auto` ile
+    // her kartta AYNI hizada.
+    <div className="rounded-xl border bg-white p-4 h-full flex flex-col gap-2 hover:shadow-sm transition-shadow">
+      {/* `min-w-0` SART: bu bir flex cocugu ve icindeki uzun yol/ad token'lari
+          varsayilan `min-width:auto` yuzunden karti disariya dogru sisiriyordu. */}
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="min-w-0">
+          {/* Baslik IKI SATIRA sabit: 1↔2 satir arasi degisince altindaki her sey
+              kayiyor ve izgara raggedlesiyordu. `line-clamp-2` + `min-h` ile ayni yer
+              her kartta ayrilir; tam ad `title`da kalir. */}
+          <div
+            className="font-semibold text-slate-800 text-sm leading-snug line-clamp-2 min-h-[2.5rem]"
+            title={t.name}
+          >
+            {t.name}
+          </div>
           <div className="text-[10px] font-mono text-slate-400 mt-0.5">ID: {t.id}</div>
         </div>
         <div className="flex gap-1 flex-shrink-0">
@@ -651,53 +667,51 @@ function TemplateCard({ t, onLaunch, onInfo }: TemplateCardProps) {
       </div>
 
       {t.description && (
-        <p className="text-xs text-slate-500 leading-snug">{t.description}</p>
+        <p className="text-xs text-slate-500 leading-snug line-clamp-2" title={t.description}>
+          {t.description}
+        </p>
       )}
 
-      <div className="flex flex-wrap gap-1.5">
-        {t.playbook && (
-          <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-            {t.playbook}
-          </span>
-        )}
-        {t.inventory && (
-          <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
-            {t.inventory}
-          </span>
-        )}
+      {/* TASMA DUZELTMESI: playbook yolu tek parca bir token ve `flex-wrap` kelimenin
+          ICINDEN kiramaz — kart disina tasiyordu. `CodeChip` `min-w-0 + break-all`
+          tasir ve tam degeri `title`da tutar. */}
+      <div className="flex flex-wrap gap-1.5 min-w-0">
+        {t.playbook && <CodeChip value={t.playbook} />}
+        {t.inventory && <CodeChip value={t.inventory} tone="accent" />}
         {t.labels?.map((l) => (
-          <span key={l} className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">
-            {l}
-          </span>
+          <CodeChip key={l} value={l} tone="muted" />
         ))}
       </div>
 
-      <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-50">
+      <div className="flex items-center justify-between gap-2 mt-auto pt-2 border-t border-slate-50">
         {t.lastLaunch ? (
-          <p className="text-[10px] text-slate-400">
-            Son: {new Date(t.lastLaunch).toLocaleString("tr-TR")}
+          <p className="text-[10px] text-slate-400 tabular-nums min-w-0 truncate" title={fmtDateTimeSeconds(t.lastLaunch)}>
+            Son: {fmtDateTime(t.lastLaunch)}
           </p>
         ) : (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 inline-block">
-            Hiç Çalıştırılmadı
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 inline-block flex-shrink-0">
+            Hiç çalıştırılmadı
           </span>
         )}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* EYLEM HIYERARSISI: "Bilgi" ikincil bir bakis, "Başlat" ise GERCEK bir
+              altyapi isi tetikliyor. Ikisi de cerceveli/tint gorunumdeydi ve ayni
+              agirliktaydi. Artik Bilgi sade metin, Başlat DOLU birincil. */}
           <button
             onClick={() => onInfo(t)}
             title="Template detayları"
-            className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-all hover:bg-slate-50"
-            style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+            className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1.5 rounded-lg transition-colors hover:bg-[var(--bg-elevated)]"
+            style={{ color: "var(--text-secondary)" }}
           >
-            <InformationCircleIcon className="w-3.5 h-3.5" />
+            <InformationCircleIcon aria-hidden="true" className="w-3.5 h-3.5" />
             Bilgi
           </button>
           <button
             onClick={() => onLaunch(t)}
-            className="flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-all"
-            style={{ background: "rgba(79,142,255,0.1)", color: "var(--accent)" }}
+            className="flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            style={{ background: "var(--accent)", color: "var(--text-on-accent)" }}
           >
-            <PlayIcon className="w-3 h-3" />
+            <PlayIcon aria-hidden="true" className="w-3 h-3" />
             Başlat
           </button>
         </div>
@@ -899,12 +913,10 @@ const AnsiblePage: React.FC = () => {
               <button
                 key={s.id}
                 onClick={() => setActiveServerId(s.id)}
-                className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                  activeServerId === s.id
-                    ? "bg-white text-[var(--accent)]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                }`}
-                style={activeServerId === s.id ? { boxShadow: "var(--shadow-sm)" } : {}}
+                /* Ortak `.pf-segment` (bkz. index.css): aktif segment artik kenarlik
+                   da tasiyor — eskiden yalnizca `bg-white` + golgeydi ve hangi
+                   segmentin secili oldugu zor seciliyordu. */
+                className={`relative pf-segment ${activeServerId === s.id ? "is-active" : ""}`}
               >
                 {s.name}
                 {!s.configured && (

@@ -4,6 +4,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { ColumnFilterDropdown } from "./ColumnFilterDropdown";
 import { TableEmptyRow } from "@/components/common/EmptyState";
+import { fmtDate } from "@/utils/datetime";
 
 interface Props {
   table: string;
@@ -22,7 +23,7 @@ type SortDir = "asc" | "desc" | null;
 
 function cellValue(v: unknown): string {
   if (v === null || v === undefined) return "";
-  if (v instanceof Date) return v.toLocaleDateString("tr-TR");
+  if (v instanceof Date) return fmtDate(v);
   return String(v);
 }
 
@@ -165,8 +166,8 @@ const DynamicTable: React.FC<Props> = ({
                       onClick={(e) => { e.stopPropagation(); setOpenFilterCol(openFilterCol === col ? null : col); }}
                       className={`ml-1 p-0.5 rounded transition-colors ${
                         isFiltered
-                          ? "bg-[rgba(79,142,255,0.12)]"
-                          : "hover:bg-[rgba(79,142,255,0.08)]"
+                          ? "bg-[rgb(var(--accent-rgb)_/_0.12)]"
+                          : ""   /* hover ortak `.pf-table-sticky tbody tr:hover`tan */
                       }`}
                       style={{ color: isFiltered ? "var(--accent)" : "var(--text-muted)" }}
                       title={isFiltered ? `${activeVals.length} filtre aktif` : "Filtrele"}
@@ -191,10 +192,11 @@ const DynamicTable: React.FC<Props> = ({
             sorted.map((row, ri) => (
               <tr
                 key={ri}
-                className="transition-colors duration-100"
+                /* Satir hover'i ARTIK CSS yapiyor (`.pf-table-sticky tbody tr:hover`).
+                   Eskiden JS `onMouseEnter` ile INLINE yaziliyordu; inline stil CSS
+                   kurallarini EZDIGI icin ortak sinif eklense bile hicbir etkisi
+                   olmazdi. Ustelik her satirda iki olay dinleyicisi demekti. */
                 style={{ borderBottom: "1px solid var(--border)" }}
-                onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = "rgba(79,142,255,0.03)"}
-                onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = ""}
               >
                 {displayed.map((col) => {
                   const val = cellValue(row[col]);

@@ -18,6 +18,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { logxV2Api, type OcpAppItem } from "@/api/logxV2Api";
 import CacheBadge from "../../shared/CacheBadge";
+import { fmtDateShort } from "@/utils/datetime";
 
 interface Props {
   /** Devam butonunun metni. Varsayılan "Seçilenleri Listeye Ekle". */
@@ -120,13 +121,9 @@ const NOT_READY_TEXT: Record<string, string> = {
 };
 
 // Tarih → "10 Ağu 12:34" (rozetlerde yer kaplamasın diye kısa).
-function shortDate(value: string | null): string {
-  if (!value) return "";
-  const d = new Date(value);
-  return Number.isFinite(d.getTime())
-    ? d.toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
-    : "";
-}
+// Ortak modulden — bicim AYNI kaldi, yalnizca saat dilimi artik portal genelinde
+// tutarli (bkz. src/utils/datetime.ts PORTAL_TZ).
+const shortDate = fmtDateShort;
 
 const SECTION_META: Record<OcpRole, { title: string; hint: string; selectable: boolean }> = {
   app: {
@@ -330,7 +327,7 @@ const AppNameStep: React.FC<Props> = ({
       )}
 
       <p className="text-sm text-[var(--text-secondary)]">
-        <span className="font-mono text-[var(--text-primary)]">{namespace}</span> içinden
+        <span className="font-mono text-[var(--text-primary)] break-all" title={namespace}>{namespace}</span> içinden
         {" "}<strong>birden fazla</strong> uygulama seçebilirsiniz — her biri ayrı bir arşiv olur.
       </p>
 

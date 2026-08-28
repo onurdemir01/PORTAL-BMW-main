@@ -28,6 +28,7 @@ import { seedAiAnalystChat } from "@/utils/aiHandoff";
 import { AuthContext } from "@/contexts/AuthContext";
 import { useAppData } from "@/contexts/AppContext";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
+import { fmtDateLong } from "@/utils/datetime";
 
 // ─── Kisayollar ────────────────────────────────────────────
 
@@ -207,9 +208,7 @@ const DashboardPage: React.FC = () => {
 
   const visibleTools = OTHER_TOOLS.filter((l) => canViewPage(l.pageId));
 
-  const today = new Date().toLocaleDateString("tr-TR", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-  });
+  const today = fmtDateLong(new Date());
 
   return (
     <div className="space-y-6 pb-6">

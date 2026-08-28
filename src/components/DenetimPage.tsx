@@ -25,6 +25,8 @@ import WebApp from "@/components/denetim/WebApp";
 import NginxLocations from "@/components/denetim/NginxLocations";
 import { toast } from "@/hooks/useToast";
 import { TableEmptyRow } from "@/components/common/EmptyState";
+import CodeChip from "@/components/common/CodeChip";
+import { fmtNumber } from "@/utils/datetime";
 
 const HELP: HelpSection[] = [
   {
@@ -254,16 +256,21 @@ function SpaCoverage() {
                       className="h-full w-full"
                       title="nginx tarafında bu ortama ait kayıt yok — ölçülemedi"
                       style={{
+                        // Cizgi rengi SABIT SIYAHTI (rgb(0 0 0 / 0.07)); koyu temada
+                        // koyu zemin uzerinde GORUNMUYORDU ve "olculemedi" satiri bos
+                        // gri bir bar gibi okunuyordu — yani "%0" ile ayirt edilemiyordu
+                        // (uretim ekran goruntusu, koyu tema). Token'a baglandi:
+                        // --border acik temada #c7c7c7, koyuda #4d4d4d — ikisinde de gorunur.
                         backgroundImage:
-                          "repeating-linear-gradient(45deg, rgb(0 0 0 / 0.07) 0 6px, transparent 6px 12px)",
+                          "repeating-linear-gradient(45deg, var(--border) 0 6px, transparent 6px 12px)",
                       }}
                     />
                   )}
                 </span>
                 <span className="w-28 shrink-0 text-right text-xs tabular-nums text-gray-600">
                   {r.measured
-                    ? `${r.internetInNginx.toLocaleString("tr-TR")} / ${r.internetTotal.toLocaleString("tr-TR")}`
-                    : `? / ${r.internetTotal.toLocaleString("tr-TR")}`}
+                    ? `${fmtNumber(r.internetInNginx)} / ${fmtNumber(r.internetTotal)}`
+                    : `? / ${fmtNumber(r.internetTotal)}`}
                 </span>
                 <span className={`w-24 shrink-0 text-right text-xs tabular-nums font-semibold ${
                   !r.measured ? "text-gray-400 font-normal"
@@ -337,11 +344,11 @@ function SpaCoverage() {
       {/* Route eslesme kalitesi: route_name ile application adinin ayni oldugu GARANTI
           degil, bu yuzden nasil eslestigi gizlenmez. */}
       <p className="text-[11px] text-gray-400">
-        Route eşleşmesi — adresten: {data.routeMatch.address.toLocaleString("tr-TR")}, route
-        adından: {data.routeMatch.name.toLocaleString("tr-TR")}, namespace üzerinden:{" "}
-        {data.routeMatch.ns.toLocaleString("tr-TR")}, çelişkili:{" "}
-        {data.routeMatch.conflict.toLocaleString("tr-TR")}, bulunamadı:{" "}
-        {data.routeMatch.none.toLocaleString("tr-TR")}. Uygulama adı öncelikle route
+        Route eşleşmesi — adresten: {fmtNumber(data.routeMatch.address)}, route
+        adından: {fmtNumber(data.routeMatch.name)}, namespace üzerinden:{" "}
+        {fmtNumber(data.routeMatch.ns)}, çelişkili:{" "}
+        {fmtNumber(data.routeMatch.conflict)}, bulunamadı:{" "}
+        {fmtNumber(data.routeMatch.none)}. Uygulama adı öncelikle route
         adresinden çıkarılır{" "}
         (<code className="px-1 rounded bg-gray-100">&lt;Uygulama&gt;-&lt;Namespace&gt;.apps[-t].fw.garanti.com.tr</code>);
         namespace zaten bilindiği için son ek tam olarak kesilir, belirsizlik doğmaz. Adres bu
@@ -370,9 +377,9 @@ function SpaCoverage() {
 
       {data.ocpNonSpaExcluded > 0 && (
         <p className="text-[11px] text-gray-400">
-          {data.ocpNonSpaExcluded.toLocaleString("tr-TR")} OpenShift uygulaması SPA kalıbına
+          {fmtNumber(data.ocpNonSpaExcluded)} OpenShift uygulaması SPA kalıbına
           uymadığı için sayılmadı. {data.ocpSkippedNoEnv > 0 && (
-            <>Ayrıca {data.ocpSkippedNoEnv.toLocaleString("tr-TR")} kayıt namespace son eki
+            <>Ayrıca {fmtNumber(data.ocpSkippedNoEnv)} kayıt namespace son eki
             kalıba uymadığı için hiçbir ortama atanamadı.</>
           )}
         </p>
@@ -528,7 +535,7 @@ function NginxSpaAudit() {
                   e.rows ? "bg-white text-gray-700 border-gray-200" : "bg-amber-100 text-amber-800 border-amber-300"
                 }`}
               >
-                {e.env}: {e.rows.toLocaleString("tr-TR")}
+                {e.env}: {fmtNumber(e.rows)}
               </span>
             ))}
           </div>
@@ -943,7 +950,13 @@ function InitScriptsAudit() {
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-600 tabular-nums">
                       {sc.majorityHash
-                        ? <span title={sc.majorityHash}><span className="font-mono">{sc.majorityHash.slice(0, 10)}…</span> · {sc.majorityCount}</span>
+                        // Kirpilmis hash okunabiliyordu ama KOPYALANAMIYORDU; oysa
+                        // bu degerin tek isi baska bir yerdeki hash ile karsilastirilmak.
+                        // CodeChip tam degeri `title`da tutar ve tiklayinca panoya yazar.
+                        ? <span className="inline-flex items-center gap-1 min-w-0">
+                            <CodeChip value={sc.majorityHash} label={`${sc.majorityHash.slice(0, 10)}…`} wrap="truncate" copyable />
+                            <span className="tabular-nums flex-shrink-0">· {sc.majorityCount}</span>
+                          </span>
                         : <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-3 py-2 text-xs tabular-nums">
@@ -1093,7 +1106,7 @@ function Stat({ n, l, tone }: { n: number; l: string; tone?: "ok" | "warn" }) {
   const color = tone === "ok" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-gray-900";
   return (
     <div className="rounded-xl border border-gray-100 bg-white px-4 py-3">
-      <div className={`text-2xl font-bold tabular-nums ${color}`}>{n.toLocaleString("tr-TR")}</div>
+      <div className={`text-2xl font-bold tabular-nums ${color}`}>{fmtNumber(n)}</div>
       <div className="text-xs text-gray-500 mt-0.5">{l}</div>
     </div>
   );

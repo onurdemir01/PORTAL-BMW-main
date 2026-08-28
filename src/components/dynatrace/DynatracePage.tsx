@@ -20,6 +20,7 @@ import SectionHeader from "@/components/common/SectionHeader";
 import StatTile from "@/components/common/StatTile";
 import { SparklesIcon, ArrowRightIcon, ArrowPathIcon, QuestionMarkCircleIcon, ChartBarIcon } from "@heroicons/react/24/outline";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
+import { fmtDateTime } from "@/utils/datetime";
 
 const PERFORMANCE_HELP_SECTIONS: HelpSection[] = [
   {
@@ -109,7 +110,7 @@ function extractDtUrl(text: string | undefined, problemId: string): string | nul
 function fmtEpoch(ms: unknown): string {
   const n = Number(ms);
   if (!n || n < 0) return "—";
-  try { return new Date(n).toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" }); }
+  try { return fmtDateTime(n); }
   catch { return "—"; }
 }
 

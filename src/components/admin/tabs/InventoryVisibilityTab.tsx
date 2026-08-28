@@ -241,7 +241,7 @@ export default function InventoryVisibilityTab() {
                       {editId === row.id ? (
                         <>
                           <button onClick={() => saveEdit(row)} className="text-xs text-emerald-600 hover:underline">Kaydet</button>
-                          <button onClick={() => setEditId(null)} className="text-xs text-gray-400 hover:underline ml-1">Vazgeç</button>
+                          <button onClick={() => setEditId(null)} className="text-xs text-gray-400 hover:underline ml-1">İptal</button>
                         </>
                       ) : (
                         <>

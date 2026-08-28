@@ -171,8 +171,10 @@ const OcpTargetStep: React.FC<{
           </label>
           <div className="space-y-1">
             {namespaces.map((n, i) => (
-              <div key={n} className="flex items-center justify-between gap-2 px-3 py-1.5 border border-[var(--border)] rounded-lg">
-                <span className="text-sm font-mono text-[var(--text-primary)]">{n}</span>
+              /* `min-w-0`: namespace adlari uzun olabiliyor ve flex cocugunun
+                 varsayilan `min-width:auto` degeri satiri disari tasiriyordu. */
+              <div key={n} className="flex items-center justify-between gap-2 px-3 py-1.5 border border-[var(--border)] rounded-lg min-w-0">
+                <span className="text-sm font-mono text-[var(--text-primary)] min-w-0 truncate" title={n}>{n}</span>
                 <button onClick={() => removeNamespace(i)} disabled={busy} className="text-[var(--text-muted)] hover:text-red-600">
                   <XMarkIcon className="w-4 h-4" />
                 </button>

@@ -6,7 +6,12 @@ import React, { useEffect, useRef } from "react";
 // (harici animasyon kütüphanesi/video dosyası gerektirmez).
 const NODE_COUNT = 46;
 const LINK_DIST = 130;
-const ACCENT_RGB = "79, 142, 255"; // --accent (#0066CC)
+// DEKORATIF — BILEREK SABIT. Giris ekrani temayi izlemez (her zaman koyu zemin), bu
+// yuzden buradaki renk `--accent`e baglanmaz: acik temanin aksani (#0066cc) koyu
+// zeminde soner, koyu temaninki (#b9dafc) ise fazla parlak kalirdi.
+// NOT: eski yorum bu degeri "--accent (#0066CC)" diye tanitiyordu — YANLISTI.
+// #4F8EFF portalin hicbir aksani degil; yalnizca bu tuvale ait dekoratif bir ton.
+const ACCENT_RGB = "79, 142, 255"; // #4F8EFF — yalnizca giris tuvali
 
 interface Node {
   x: number;

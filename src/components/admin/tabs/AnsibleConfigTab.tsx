@@ -3,6 +3,7 @@ import {
   CheckCircleIcon, XCircleIcon, ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import { ansibleApi, type AwxTemplate } from "@/api/ansibleApi";
+import { fmtDate } from "@/utils/datetime";
 
 interface ServerHealth {
   id: number; name: string; url: string; configured: boolean;
@@ -134,7 +135,7 @@ export default function AnsibleConfigTab() {
                             <td className="px-4 py-2 text-xs font-mono text-[#1A56DB]">{t.playbook}</td>
                             <td className="px-4 py-2 text-xs text-gray-500">{t.project || "—"}</td>
                             <td className="px-4 py-2 text-xs text-gray-500">{t.jobType || "—"}</td>
-                            <td className="px-4 py-2 text-xs text-gray-400">{t.modified ? new Date(t.modified).toLocaleDateString("tr-TR") : "—"}</td>
+                            <td className="px-4 py-2 text-xs text-gray-400">{fmtDate(t.modified)}</td>
                           </tr>
                         ))}
                       </tbody>

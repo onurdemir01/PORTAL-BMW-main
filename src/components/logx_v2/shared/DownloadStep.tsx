@@ -14,6 +14,7 @@ import React, { useState } from "react";
 import { ArrowDownTrayIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { logxV2Api, type DownloadInfo } from "@/api/logxV2Api";
 import { fmtSize } from "@/components/logx_v2/shared/logFileMeta";
+import { fmtTime } from "@/utils/datetime";
 
 function useBlobDownload() {
   const [busy, setBusy] = useState(false);
@@ -141,7 +142,7 @@ const DownloadStep: React.FC<{ download: DownloadInfo; downloads?: DownloadInfo[
       )}
 
       <p className="text-xs text-[var(--text-muted)]">
-        Bu bağlantı {new Date(items[0]?.expiresAt).toLocaleTimeString("tr-TR")} itibarıyla sona erecek.
+        Bu bağlantı {fmtTime(items[0]?.expiresAt)} itibarıyla sona erecek.
       </p>
       <button onClick={onRestart} className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline mt-2">
         Yeni bir istek başlat

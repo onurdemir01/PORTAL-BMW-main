@@ -58,9 +58,14 @@ const SelectedTargetsBar: React.FC<Props> = ({ targets, max, busy, onRemove, onC
               {entries.map(({ target, index }) => (
                 <span
                   key={`${target.namespace}/${target.appName}`}
-                  className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full border border-[var(--border)] bg-[var(--bg)] text-[11px] font-mono text-[var(--text-primary)]"
+                  /* `min-w-0` + `max-w` + `truncate`: uygulama adlari uzun olabiliyor
+                     ve rozet seridi yatayda tasiyordu. Tam ad `title`da. */
+                  className="inline-flex items-center gap-1 min-w-0 max-w-[16rem] pl-2 pr-1 py-0.5 rounded-full border border-[var(--border)] bg-[var(--bg)] text-[11px] font-mono text-[var(--text-primary)]"
                 >
-                  {target.appName}
+                  {/* `title` KIRPILAN ogenin kendisinde olmali — ebeveyne koymak
+                     dogru gorunuyordu ama ipucu, metnin uzerinde degil rozetin
+                     bosluklarinda da cikardi. (D7 test bekcisi bunu yakaladi.) */}
+                  <span className="min-w-0 truncate" title={`${target.namespace}/${target.appName}`}>{target.appName}</span>
                   <button
                     onClick={() => onRemove(index)}
                     disabled={busy}

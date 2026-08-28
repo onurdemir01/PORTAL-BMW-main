@@ -59,6 +59,12 @@
   /* Aksan TINTI — `info` PF6'da MOR oldugu icin (asagiya bkz.) mavi tonlu yuzeyler
      artik `--status-info-bg`den DEGIL buradan beslenir. */
   --accent-bg:    #e0f0ff;   /* PF6 blue-10 */
+  /* Aksanin SAYISAL uclusu. Repoda 13 yerde `rgba(79,142,255,X)` yaziliydi — bu
+     #4F8EFF, yani portalin aksani (#0066cc) bile DEGIL; ucuncu bir maviydi ve tema
+     degisince hic degismiyordu. Farkli saydamliklar gerektigi icin tek bir tint
+     token'i yetmiyor; `rgb(var(--accent-rgb) / 0.08)` her oranda calisir ve temayi
+     izler. (Ayni teknik --term-* renkleri icin de kullanildi.) */
+  --accent-rgb:   0, 102, 204;
 
   /* Yuzeyler — PF6: sayfa gray-10, kart beyaz */
   --bg-base:     #f2f2f2;    /* gray-10 */
@@ -168,6 +174,7 @@
   --accent-glow:  rgba(185, 218, 252, 0.24);
   --text-on-accent: #1f1f1f; /* gray-90 */
   --accent-bg:    rgba(185, 218, 252, 0.16);
+  --accent-rgb:   185, 218, 252;
 
   --bg-base:     #151515;    /* gray-95 */
   --bg-surface:  #292929;    /* gray-80 */
@@ -497,6 +504,29 @@ thead th {
   box-shadow: inset 0 -1px 0 var(--border);
 }
 
+/* SAYISAL HIZA — YEDEK KURAL. Rakamlar orantili genislikte cizildiginde (1 dar,
+   0 genis) alt alta duran sayilarin basamaklari kayar. Mevcut tablolarin cogu bunu
+   ZATEN satir ici `tabular-nums` ile cozuyor; bu kural yeni eklenen ya da atlanan
+   sayisal hucreler icin bir emniyet agi. Tablonun TAMAMINA uygulanmaz — metin
+   kolonlarinda tablo rakamlari gereksizce seyrek durur.
+   `.num` sinifi tasiyan ve saga yaslanmis hucreler sayisal kabul edilir. */
+.pf-table-sticky td.num, .pf-table-sticky th.num,
+.pf-table-sticky td.text-right, .pf-table-sticky th.text-right {
+  font-variant-numeric: tabular-nums;
+}
+
+/* SATIR HOVER. 1.750 satirlik Init Script tablosunda (uretim ekran goruntusu) goz
+   satiri kaybediyor; yatayda bes kolon var ve hangi satirda oldugunu izlemek icin
+   gorsel bir cipa gerekiyor. Zebra yerine HOVER secildi: zebra her satiri kalici
+   olarak boyar ve zaten renkli olan rozetlerle yarisir, hover ise yalnizca bakilan
+   satiri isaretler. */
+.pf-table-sticky tbody tr {
+  transition: background-color 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.pf-table-sticky tbody tr:hover {
+  background-color: rgb(var(--accent-rgb) / 0.06);
+}
+
 /* ── Masthead / Nav (yeni layout bilesenleri) ──────────────────────────────────
    TEMAYI IZLER (2026-08-28). Bu blokta eskiden yedi sabit renk vardi (#fff,
    #d2d2d2, #3c3f42, #8a8d90) ve masthead her temada SIYAHTI. PF6'da ust bant ve
@@ -604,6 +634,35 @@ thead th {
   background: var(--accent);
 }
 
+/* ── Segment kontrol (Ansible sunucu sekmeleri, Denetim alt sekmeleri) ─────────
+   Aktif durum yalnizca `bg-white` + hafif golgeyle anlatiliyordu; uretim ekran
+   goruntulerinde hangi segmentin secili oldugu zor secilir haldeydi (ozellikle koyu
+   temada, cunku orada "beyaz" zaten kart rengine esitleniyor). Ince bir KENARLIK
+   eklendi: renk degil, KENAR bilgisi tasidigi icin her iki temada da calisir. */
+.pf-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.16s cubic-bezier(0.32, 0.72, 0, 1), color 0.16s;
+}
+.pf-segment:hover:not(.is-active) { color: var(--text-primary); background: var(--bg-elevated); }
+.pf-segment.is-active {
+  color: var(--accent);
+  font-weight: 700;
+  background: var(--bg-surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow-xs);
+}
+
 /* ═══ Tailwind uyumluluk katmani ════════════════════════════════════════════
    Henuz PF bilesenlerine gecirilmemis ~30 sayfa hala ham Tailwind utility'leri
    kullaniyor. Katmansiz (unlayered) CSS, Tailwind'in @layer utilities kurallarini
@@ -611,11 +670,19 @@ thead th {
    sayfalari OpenShift paletine tasir.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Kose yaricapi: SaaS tarzi 12-16px yuvarlaklar → PF 3px (rounded-full korunur) */
-:root .rounded-sm, :root .rounded, :root .rounded-md,
-:root .rounded-lg, :root .rounded-xl, :root .rounded-2xl, :root .rounded-3xl { border-radius: var(--radius-sm); }
-:root .rounded-t-lg, :root .rounded-t-xl, :root .rounded-t-2xl { border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
-:root .rounded-b-lg, :root .rounded-b-xl, :root .rounded-b-2xl { border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
+/* Kose yaricapi: SaaS tarzi 12-16px yuvarlaklar → PF6 olcegi (rounded-full korunur).
+   ONCEKI HAL VE CELISKI (2026-08-28): burada TUM `rounded-*` siniflari tek bir degere
+   (`--radius-sm`) eziliyordu. PF6 gecisinde `--radius-sm` 4px, `--radius-md` 6px oldu
+   ve `.card` `--radius-md` kullanmaya basladi — sonuc: 350 kadar `rounded-xl` ogesi
+   4px, kartlar 6px cizildi. Ayni ekranda IKI FARKLI yuvarlaklik goruonuyordu.
+   PF6 olcegi zaten iki basamakli oldugu icin esleme de iki basamakli yapildi:
+     rounded-sm/rounded/rounded-md  -> tiny  (4px)  — rozet, kucuk oge
+     rounded-lg/xl/2xl/3xl          -> small (6px)  — buton, input, kart, panel
+   (Ustteki yorum "PF 3px" diyordu; o PF **5** degeriydi.) */
+:root .rounded-sm, :root .rounded, :root .rounded-md { border-radius: var(--radius-sm); }
+:root .rounded-lg, :root .rounded-xl, :root .rounded-2xl, :root .rounded-3xl { border-radius: var(--radius-md); }
+:root .rounded-t-lg, :root .rounded-t-xl, :root .rounded-t-2xl { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+:root .rounded-b-lg, :root .rounded-b-xl, :root .rounded-b-2xl { border-radius: 0 0 var(--radius-md) var(--radius-md); }
 
 /* Font agirligi: PF'te 800/900 yok */
 :root .font-black, :root .font-extrabold { font-weight: 700; }
@@ -708,7 +775,13 @@ thead th {
 /* Koyu bloklar — koyu temada zeminden ayirt edilemiyorlardi */
 :root .bg-gray-800, :root .bg-gray-900, :root .bg-slate-800, :root .bg-slate-900,
 :root .bg-neutral-800, :root .bg-neutral-900 { background-color: var(--bg-inset); }
-:root .hover\:bg-gray-800:hover, :root .hover\:bg-gray-900:hover { background-color: var(--bg-inset); }
+:root .hover\:bg-gray-800:hover, :root .hover\:bg-gray-900:hover,
+:root .hover\:bg-slate-800:hover, :root .hover\:bg-slate-900:hover {
+  /* Koyu ton HOVER'lar: acik temada koyu bir hover dogru, KOYU temada ise zaten koyu
+     olan zemine yakin bir ton — hicbir sey degismis gibi gorunuyordu. `--bg-elevated`
+     her iki temada da "bir tik yukari" anlamini tasir. */
+  background-color: var(--bg-elevated);
+}
 :root .bg-black { background-color: var(--masthead-bg); }
 :root .text-black { color: var(--text-primary); }
 :root .bg-gray-300, :root .bg-gray-400, :root .bg-slate-300 { background-color: var(--border-strong); }

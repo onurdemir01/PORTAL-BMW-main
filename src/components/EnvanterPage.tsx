@@ -26,6 +26,7 @@ import QueryPanel from "./envanter/QueryPanel";
 import { FilterBar } from "./envanter/FilterBar";
 import InventoryRefreshModal from "./envanter/InventoryRefreshModal";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
+import { fmtNumber } from "@/utils/datetime";
 
 const ENVANTER_HELP_SECTIONS: HelpSection[] = [
   {
@@ -370,7 +371,7 @@ const EnvanterPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Envanter</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            TBMWANS veritabanı — {pagination.total.toLocaleString("tr-TR")} kayıt
+            TBMWANS veritabanı — {fmtNumber(pagination.total)} kayıt
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -506,7 +507,7 @@ const EnvanterPage: React.FC = () => {
             style={
               viewAsRole === "User"
                 ? { background: "var(--bg-elevated)", color: "var(--text-muted)", borderColor: "var(--border)" }
-                : { background: "rgba(79,142,255,0.08)", color: "var(--accent)", borderColor: "rgba(79,142,255,0.25)" }
+                : { background: "rgb(var(--accent-rgb) / 0.08)", color: "var(--accent)", borderColor: "rgb(var(--accent-rgb) / 0.25)" }
             }
             title="Bu buton yalnızca admin'e görünür"
           >
@@ -641,7 +642,7 @@ const EnvanterPage: React.FC = () => {
         )}
 
         <span className="text-xs text-gray-400 ml-auto">
-          Toplam: {pagination.total.toLocaleString("tr-TR")} | Sayfa {pagination.page}/{pagination.pages} | {limit} satır/sayfa
+          Toplam: {fmtNumber(pagination.total)} | Sayfa {pagination.page}/{pagination.pages} | {limit} satır/sayfa
         </span>
       </div>
 

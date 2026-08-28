@@ -6,6 +6,7 @@
 // Bayat veriyi GİZLEMİYORUZ — göstermek + tazeleme düğmesi sunmak, boş ekrandan iyidir.
 import React from "react";
 import { ArrowPathIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { fmtDateTime } from "@/utils/datetime";
 
 interface Props {
   fetchedAt: string | null;
@@ -39,7 +40,7 @@ export function formatAge(iso: string | null): string {
 const CacheBadge: React.FC<Props> = ({
   fetchedAt, stale, onRediscover, busy, actionLabel = "Burada keşfet", source, discoveredCount = 0,
 }) => {
-  const absolute = fetchedAt ? new Date(fetchedAt).toLocaleString("tr-TR") : "";
+  const absolute = fetchedAt ? fmtDateTime(fetchedAt) : "";
   const originLabel = source === "openshift_inventory" ? "Envanterden" : "Envanter + tarama";
 
   return (

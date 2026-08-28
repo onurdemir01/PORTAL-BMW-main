@@ -17,6 +17,7 @@ import { toast } from "@/hooks/useToast";
 import { ansibleApi, type AdminOcoSchedule } from "@/api/ansibleApi";
 import { Select } from "@/components/ui/Form";
 import { fmtDateTime as fmt } from "@/utils/datetime";
+import { TableEmptyRow } from "@/components/common/EmptyState";
 
 const PAGE_SIZE = 50;
 
@@ -215,7 +216,7 @@ export default function OcoSchedulesPanel() {
               );
             })}
             {rows.length === 0 && !loading && (
-              <tr><td colSpan={9} className="px-3 py-6 text-center text-[var(--text-muted)]">Kayıt yok.</td></tr>
+              <TableEmptyRow colSpan={9} title="Zamanlanmış iş yok." description="OCO penceresine zamanlanan işler burada listelenir." />
             )}
           </tbody>
         </table>
