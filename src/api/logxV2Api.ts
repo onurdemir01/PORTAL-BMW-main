@@ -67,7 +67,14 @@ export type RequestState =
   | "app_discovering" | "apps_discovered"
   | "transferring" | "ready" | "failed" | "expired";
 
-export interface DiscoveredFile { path: string; size?: number; mtime?: string; environment?: string }
+/** `mtime` TIPI (2026-08-28 duzeltmesi): burada `string` yaziyordu ama gercek kaynak
+ *  `ansible.builtin.find`'dir ve o epoch **sayi** dondurur (FileX ayni alani dogru
+ *  yazmis — src/api/filexApi.ts). Yanlis tip, alanin yillarca HIC kullanilmamasinin
+ *  sebeplerinden biriydi. Uretimde iki bicim de gorulebilecegi ve eski keşif
+ *  kayitlari DB'de durdugu icin ikisi de kabul edilir; normalize etme isi
+ *  `logFileMeta.normalizeMtime` icindedir (saniye/milisaniye epoch, ISO metin,
+ *  hicbiri yoksa dosya adindaki tarih). */
+export interface DiscoveredFile { path: string; size?: number; mtime?: number | string; environment?: string }
 export interface DiscoveredHost { host: string; status: string; error?: string; files: DiscoveredFile[] }
 export interface LegacyDiscoveryResult { overall_status: string; hosts: DiscoveredHost[] }
 
