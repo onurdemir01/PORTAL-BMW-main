@@ -35,6 +35,15 @@ function initSelfService(app) {
     router.use(requireVisiblePrefix("Self Service"));
   } catch { /* motor yoksa yoksay */ }
 
+  // ── SESSIZ KESME (2026-08-28) ────────────────────────────────────────────────
+  // Asagidaki iki uc de girdiyi 1000'de kesiyordu ve bunu SOYLEMIYORDU. Kullanici
+  // Excel'den 1500 satir yapistirdiginda 500'u hicbir yerde gorunmuyordu: ne sonucta,
+  // ne "bulunamadi" listesinde. `totalChecked` 1000 diyor, kullanici 1500 yapistirdigini
+  // biliyor ama arayuzde hicbir uyari yok — "demek ki hepsi bulundu" diye okunuyor.
+  // Sinirin KENDISI dogru (MSSQL tek ifadede 2100 parametre kabul eder), sorun sessiz
+  // olmasiydi. Artik kac girdinin degerlendirilmedigi yanitta DONER.
+  const MAX_CHECK_ITEMS = 1000;
+
   // POST /ip-check — Check sekmesi: yapistirilan IP listesini dbo.IPInventory'de arar.
   // Genel /api/inventory/data/:table ucu KULLANILMADI (o, tabloya rol-bazli gorunurluk
   // izni gerektiriyor ve tum tabloyu tarama/sayfalama gibi cok daha genis bir yetki
@@ -54,8 +63,9 @@ function initSelfService(app) {
         if (seen.has(key)) continue;
         seen.add(key);
         ips.push(v);
-        if (ips.length >= 1000) break;
       }
+      const ipsTruncated = Math.max(0, ips.length - MAX_CHECK_ITEMS);
+      if (ipsTruncated > 0) ips.length = MAX_CHECK_ITEMS;
       if (ips.length === 0) {
         return res.status(400).json({ ok: false, message: "Geçerli bir IP bulunamadı." });
       }
@@ -88,6 +98,9 @@ function initSelfService(app) {
         results,
         totalChecked: ips.length,
         totalFound: results.filter((r) => r.found).length,
+        // Degerlendirilmeyen girdi sayisi — 0 degilse arayuz UYARIR (bkz. yukaridaki not).
+        truncated: ipsTruncated,
+        maxItems: MAX_CHECK_ITEMS,
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || "Sorgulama başarısız." });
@@ -118,8 +131,9 @@ function initSelfService(app) {
         if (seen.has(key)) continue;
         seen.add(key);
         items.push(v);
-        if (items.length >= 1000) break;
       }
+      const itemsTruncated = Math.max(0, items.length - MAX_CHECK_ITEMS);
+      if (itemsTruncated > 0) items.length = MAX_CHECK_ITEMS;
       if (items.length === 0) {
         return res.status(400).json({ ok: false, message: "Geçerli bir namespace/uygulama adı bulunamadı." });
       }
@@ -150,6 +164,8 @@ function initSelfService(app) {
         notFound,
         totalChecked: items.length,
         totalMatchedRows: rows.length,
+        truncated: itemsTruncated,
+        maxItems: MAX_CHECK_ITEMS,
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || "Sorgulama başarısız." });

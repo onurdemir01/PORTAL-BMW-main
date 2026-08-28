@@ -24,7 +24,7 @@ export default function IpCheckSection() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<IpCheckResult[] | null>(null);
-  const [summary, setSummary] = useState<{ totalChecked: number; totalFound: number } | null>(null);
+  const [summary, setSummary] = useState<{ totalChecked: number; totalFound: number ; truncated?: number; maxItems?: number } | null>(null);
 
   const ips = parseIps(raw);
 
@@ -39,7 +39,7 @@ export default function IpCheckSection() {
     try {
       const r = await selfServiceApi.ipCheck(ips);
       setResults(r.results);
-      setSummary({ totalChecked: r.totalChecked, totalFound: r.totalFound });
+      setSummary({ totalChecked: r.totalChecked, totalFound: r.totalFound, truncated: r.truncated, maxItems: r.maxItems });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -86,6 +86,14 @@ export default function IpCheckSection() {
             {summary && (
               <span className="text-xs text-[--text-muted]">
                 {summary.totalChecked} IP kontrol edildi, {summary.totalFound} tanesi bulundu
+                {/* SESSIZ KESME ARTIK GORUNUR: sunucu girdiyi bir ust sinirda kesiyor;
+                    eskiden fazlasi ne sonucta ne "bulunamadi" listesinde yer aliyordu ve
+                    kullanici bunu HICBIR yerde goremiyordu. */}
+                {summary.truncated ? (
+                  <span className="text-[var(--status-danger)] font-semibold">
+                    {" "}— son {summary.truncated} girdi DEĞERLENDİRİLMEDİ (tek seferde en fazla {summary.maxItems})
+                  </span>
+                ) : null}
               </span>
             )}
           </div>

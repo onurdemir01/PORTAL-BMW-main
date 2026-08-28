@@ -32,19 +32,41 @@ const FileXWizardPage: React.FC = () => {
   const [jbossVersions, setJbossVersions] = useState<string[]>([]);
   const [hosts, setHosts] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  // ÇİFT TIKLAMA KORUMASI (2026-08-28). `busy` bir React STATE'idir: değeri render
+  // sırasında yakalanır, `setBusy(true)` ise ASENKRON uygulanır. Aynı tick içindeki iki
+  // tık (çift tıklama, yavaş ağda sabırsız kullanıcı, tuş+fare) ikisi de `busy === false`
+  // görür ve İKİ AWX JOB'I birden açılabilir. LogX'te bu bilinçli olarak ref'e
+  // çevrilmişti (LogXWizardPage.tsx); desen buraya da taşındı — bu sayfalar da gerçek
+  // altyapı işleri (restart/dump/dosya taraması) tetikliyor.
+  const busyRef = useRef(false);
+
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<FilexResult | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // ÇALIŞTIRMA KUŞAĞI (2026-08-28). `clearInterval` yalnızca GELECEK tick'leri durdurur;
+  // O ANDA UÇUŞTA olan `jobStatus` isteği ağdan dönmeye devam eder ve `.then` gövdesi
+  // yine çalışır. İki somut sonuç:
+  //   * Kullanıcı sayfadan ayrılırsa (component unmount) unmount SONRASI setState —
+  //     React uyarısı ve sızıntı.
+  //   * Kullanıcı "Yeni sorgu"ya basıp yeni bir akışa girerse, ESKİ isteğin geç gelen
+  //     yanıtı taze ekranı EZER (kullanıcı bambaşka bir sonuç görür).
+  // Her çalıştırma bir kuşak numarası alır; geri dönen yanıt kendi kuşağı hâlâ güncel
+  // değilse SESSİZCE atılır.
+  const runIdRef = useRef(0);
 
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+  useEffect(() => () => {
+    runIdRef.current += 1;                                  // uçuştaki yanıtları geçersiz kıl
+    if (pollRef.current) clearInterval(pollRef.current);
+  }, []);
 
   function restart() {
+    runIdRef.current += 1;   // eski akışın geç gelen yanıtı yeni ekranı ezmesin
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setStep("app");
     setApp("");
     setJbossVersions([]);
     setHosts([]);
-    setBusy(false);
+    busyRef.current = false; setBusy(false);
     setError(null);
     setResult(null);
   }
@@ -63,23 +85,28 @@ const FileXWizardPage: React.FC = () => {
   }
 
   async function runQuery(selectedHosts: string[]) {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
       const r = await filexApi.run(app, selectedHosts);
       if (!r.ok || r.jobId == null) {
         setError("İş başlatılamadı.");
-        setBusy(false);
+        busyRef.current = false; setBusy(false);
         return;
       }
       setStep("running");
+      const myRun = ++runIdRef.current;
       pollRef.current = setInterval(async () => {
         try {
           const s = await filexApi.jobStatus(r.awxServerId, r.jobId as number);
+          // Yanıt ağdan dönene kadar kullanıcı sayfadan ayrılmış ya da yeni bir sorgu
+          // başlatmış olabilir — o durumda bu yanıt ARTIK geçersizdir.
+          if (myRun !== runIdRef.current) return;
           if (!s.finished) return;
           if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-          setBusy(false);
+          busyRef.current = false; setBusy(false);
           if (s.failed || !s.result) {
             setError("İşlem tamamlanamadı — sonuç okunamadı. Lütfen sistem yöneticinize başvurun.");
             setStep("hosts");
@@ -88,15 +115,16 @@ const FileXWizardPage: React.FC = () => {
           setResult(s.result);
           setStep("result");
         } catch (err: unknown) {
+          if (myRun !== runIdRef.current) return;
           if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-          setBusy(false);
+          busyRef.current = false; setBusy(false);
           setError(err instanceof Error ? err.message : String(err));
           setStep("hosts");
         }
       }, POLL_INTERVAL_MS);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
-      setBusy(false);
+      busyRef.current = false; setBusy(false);
     }
   }
 
