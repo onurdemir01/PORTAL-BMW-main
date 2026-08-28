@@ -34,8 +34,11 @@ import {
 } from "@heroicons/react/24/outline";
 import type { LegacyDiscoveryResult } from "@/api/logxV2Api";
 import {
+  // `toNumericSize` Onur'un uretim duzeltmesinden gelir (boyutlar tipte number,
+  // calisma zamaninda string). `relativeTime`/`absoluteTime` ise buradan CIKTI:
+  // artik ortak `@/utils/datetime` icindeler (asagidaki import).
   normalizeMtime, logKind, KIND_LABEL, KIND_CLASS,
-  selectionPayloadBytes, selectionPressure, SELECTION_MAX_BYTES, fmtSize,
+  selectionPayloadBytes, selectionPressure, SELECTION_MAX_BYTES, fmtSize, toNumericSize,
 } from "@/components/logx_v2/shared/logFileMeta";
 import { fmtRelative, fmtDateTime } from "@/utils/datetime";
 
@@ -137,7 +140,11 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
         const enriched: EnrichedFile[] = (h.files || []).map((f) => ({
           path: f.path,
           base: baseOf(f.path),
-          size: f.size,
+          // TEK NORMALIZASYON NOKTASI: boyut string gelebiliyor (bkz. logFileMeta.ts).
+          // Burada sayiya cevrildigi icin asagidaki BES ayri toplama noktasi da
+          // guvenli olur - string'lerde `+` TOPLAMA degil BIRLESTIRME yapardi
+          // (0 + "512" -> "0512") ve ozet boyut cokme olmadan da yanlis cikardi.
+          size: toNumericSize(f.size),
           environment: f.environment,
           at: normalizeMtime(f.mtime, f.path),
           kind: logKind(f.path),
