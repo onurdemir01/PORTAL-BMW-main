@@ -160,10 +160,27 @@ export function selectionPressure(bytes: number): SelectionPressure {
   return "ok";
 }
 
+// Boyut degerleri TIPTE `number` ama CALISMA ZAMANINDA string gelebiliyor: kesif
+// sonucu playbook'un set_stats ciktisindan uretiliyor ve orada sayilar Jinja string'i
+// olarak emit ediliyor. Ayni tuzak sunucu tarafinda da yasanmisti; orada
+// server/logx/v2/downloads.cjs "nvarchar to bigint" hatasi aldigi icin Number()'a
+// zorluyor. TypeScript bunu YAKALAYAMAZ - tip bir soz, calisma zamani garantisi degil.
+export function toNumericSize(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// ONCEKI HAL NEDEN COKUYORDU (uretim: "a.toFixed is not a function", JBoss8 akisi):
+// `let n = bytes` string kaliyordu. 1024'ten BUYUK degerlerde dongu `n /= 1024` ile
+// n'i sayiya cevirdigi icin sorun GORUNMUYORDU; 1024'ten KUCUK bir dosyada dongu hic
+// calismiyor ve toFixed patliyordu. Kucuk/bos log dosyasi iceren her liste sayfayi
+// dusuruyordu. Cagiranlar normalize etse bile burasi kendi basina dayanikli olmali:
+// bu fonksiyon paylasilan bir moduldedir ve yeni cagiranlar ham deger gecebilir.
 export function fmtSize(bytes?: number): string {
-  if (!bytes || bytes <= 0) return "";
+  const start = toNumericSize(bytes);
+  if (start <= 0) return "";
   const u = ["B", "KB", "MB", "GB", "TB"];
-  let n = bytes, i = 0;
+  let n = start, i = 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
 }
