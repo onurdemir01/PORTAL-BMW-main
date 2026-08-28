@@ -109,7 +109,7 @@ const AnsibleLogTerminal: React.FC<Props> = ({ output, status, title = "ansible-
         className={`relative flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] ${onHeaderPointerDown ? "cursor-move select-none" : ""}`}
         style={{ background: "var(--term-bg-header)" }}
       >
-        <span className="text-[11px] font-mono text-white/40 truncate">{title}</span>
+        <span className="text-[11px] font-mono text-white/40 truncate" title={title}>{title}</span>
 
         <div className="ml-auto flex items-center gap-3">
           {lineCount > 0 && <span className="text-[10px] font-mono text-white/30">{lineCount} satır</span>}

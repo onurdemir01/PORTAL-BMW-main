@@ -103,7 +103,7 @@ export default function Masthead({ onToggleNav }: Props) {
                 {initial}
               </span>
             )}
-            <span className="hidden md:inline max-w-[11rem] truncate">{displayName}</span>
+            <span className="hidden md:inline max-w-[11rem] truncate" title={displayName}>{displayName}</span>
             <ChevronDownIcon className="h-3.5 w-3.5 opacity-70" />
           </button>
 

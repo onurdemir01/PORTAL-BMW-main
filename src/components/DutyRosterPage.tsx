@@ -149,7 +149,7 @@ export default function DutyRosterPage() {
                   {nobetci.email && (
                     <span className="flex items-center gap-1.5">
                       <span className="text-slate-400">@</span>
-                      <span className="truncate">{nobetci.email}</span>
+                      <span className="truncate" title={nobetci.email}>{nobetci.email}</span>
                     </span>
                   )}
                 </div>
@@ -259,7 +259,7 @@ export default function DutyRosterPage() {
                     <td className="px-4 py-3.5 font-semibold" style={{ color: "var(--text-primary)" }}>{r.asNobetci?.name ?? "-"}</td>
                     <td className="px-4 py-3.5" style={{ color: "var(--text-secondary)" }}>{r.asNobetci?.intercom ?? "-"}</td>
                     <td className="px-4 py-3.5" style={{ color: "var(--text-secondary)" }}>{r.asNobetci?.phone ?? "-"}</td>
-                    <td className="px-4 py-3.5 max-w-[180px] truncate" style={{ color: "var(--text-muted)" }}>{r.asNobetci?.email ?? "-"}</td>
+                    <td className="px-4 py-3.5 max-w-[180px] truncate" style={{ color: "var(--text-muted)" }} title={r.asNobetci?.email ?? "-"}>{r.asNobetci?.email ?? "-"}</td>
                     <td className="px-4 py-3.5">
                       {r.yedekNobetci?.name
                         ? <span style={{ color: "var(--text-muted)" }}>{r.yedekNobetci.name}</span>

@@ -36,7 +36,10 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: strin
   return (
     <div
       className={`pf-alert ${VARIANT_CLASS[item.type]} w-80 max-w-full ${item.exiting ? "animate-toast-out" : "animate-toast-in"}`}
-      role="alert"
+      /* Hatalar KESER (assertive), digerleri sirasini bekler (status/polite).
+         Her bildirimi kesici yapmak, ekran okuyucu kullanicisinin okudugu cumleyi
+         "kaydedildi" gibi onemsiz bir mesaj icin yarida birakmasi demektir. */
+      role={item.type === "error" ? "alert" : "status"}
     >
       <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: ICON_COLOR[item.type] }} />
       <p className="flex-1 leading-snug">{item.message}</p>
@@ -59,15 +62,22 @@ export function ToastContainer() {
     setGlobalToast(toast);
   }, [toast]);
 
-  if (toasts.length === 0) return null;
-
+  // KAP HER ZAMAN DOM'DA (2026-08-28). Eskiden `toasts.length === 0` iken `null`
+  // donuluyordu; yani canli bolge, ICINE mesaj eklenecegi ANDA olusuyordu. Ekran
+  // okuyucular bir bolgeyi "canli" olarak izlemeye BASLAMAK icin onun DOM'da
+  // ONCEDEN bulunmasini bekler — bu yuzden bildirimlerin cogu hic duyurulmuyordu.
+  // Bos kap gorunmez (pointer-events yok, icerik yok) ama izlenebilir durumda.
   return (
     <div
-      className="fixed right-4 z-[9999] flex flex-col gap-2 items-end"
+      className="fixed right-4 z-[9999] flex flex-col gap-2 items-end pointer-events-none"
       style={{ top: "calc(var(--masthead-h) + 1rem)" }}
+      aria-live="polite"
+      aria-atomic="false"
     >
       {toasts.map((item) => (
-        <ToastCard key={item.id} item={item} onDismiss={dismiss} />
+        <div key={item.id} className="pointer-events-auto">
+          <ToastCard item={item} onDismiss={dismiss} />
+        </div>
       ))}
     </div>
   );

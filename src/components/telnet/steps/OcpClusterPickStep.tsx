@@ -95,7 +95,7 @@ const OcpClusterPickStep: React.FC<{
               className="rounded-full"
             />
             <ServerStackIcon aria-hidden="true" className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
-            <span className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate">{name}</span>
+            <span className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate" title={name}>{name}</span>
           </label>
         ))}
       </div>

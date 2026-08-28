@@ -64,6 +64,19 @@ export default function AppLayout() {
     <AppDataProvider>
     <JobTrackerProvider>
       <div className="flex flex-col h-screen overflow-hidden" style={{ background: "var(--bg-base)" }}>
+        {/* ICERIGE ATLA (2026-08-28). Klavye kullanicisi HER sayfada once masthead'i
+            (menu ac/kapa, arama, tema, kullanici menusu) sonra sol menudeki ~15
+            baglantiyi geciyordu — yani asil icerige ulasmak icin her seferinde 20'ye
+            yakin Tab. `:focus-visible` tabani zaten vardi (index.css); eksik olan tek
+            parca buydu.
+            Gorunmez ama ODAKLANINCA gorunur: `sr-only` + `focus:not-sr-only`. */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-3 focus:py-2 focus:rounded-md focus:no-underline"
+          style={{ background: "var(--accent)", color: "var(--text-on-accent)" }}
+        >
+          İçeriğe atla
+        </a>
         <Masthead onToggleNav={() => setNavOpen((v) => !v)} />
 
         <div className="flex flex-1 min-h-0 relative">
@@ -85,7 +98,11 @@ export default function AppLayout() {
             </>
           )}
 
-          <main className="flex-1 min-w-0 overflow-y-auto">
+          {/* `id` skip-link'in hedefi; `tabIndex={-1}` olmadan bazi tarayicilar
+              atlamadan sonra odagi GERCEKTEN buraya tasimaz ve bir sonraki Tab yine
+              masthead'e doner — yani baglanti gorsel olarak calisir, klavye icin
+              calismaz. */}
+          <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 overflow-y-auto">
             <div className="px-4 py-5 lg:px-6 lg:py-6">
               {/* Bir sayfa render sırasında patlarsa masthead ve menü ayakta kalsın,
                   kullanıcı BEYAZ EKRAN yerine hata mesajı görsün (bkz. PageErrorBoundary).

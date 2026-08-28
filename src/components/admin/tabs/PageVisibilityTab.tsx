@@ -172,7 +172,7 @@ export default function PageVisibilityTab() {
               <span className="font-medium text-gray-700">{el.label || el.key}</span>
               <code className="text-[10px] text-gray-400">{el.key}</code>
               <span className="text-[10px] px-1.5 rounded bg-gray-100 text-gray-500">{el.type}</span>
-              {el.description && <span className="text-[10px] text-gray-400 italic truncate max-w-[240px]">{el.description}</span>}
+              {el.description && <span className="text-[10px] text-gray-400 italic truncate max-w-[240px]" title={el.description}>{el.description}</span>}
             </div>
           </td>
           {/* Kill-switch */}

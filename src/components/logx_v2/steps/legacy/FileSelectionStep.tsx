@@ -446,7 +446,7 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
                       <ChevronRightIcon aria-hidden="true"
                         className={`w-4 h-4 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
                       <ServerIcon aria-hidden="true" className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
-                      <span className="text-sm font-semibold text-[var(--text-primary)] truncate">{row.host}</span>
+                      <span className="text-sm font-semibold text-[var(--text-primary)] truncate" title={row.host}>{row.host}</span>
                       <span className="text-xs text-[var(--text-muted)] flex-shrink-0 tabular-nums">
                         {row.shown}{row.shown !== row.total && ` / ${row.total}`} dosya
                         {row.bytes > 0 && ` · ${fmtSize(row.bytes)}`}
@@ -481,7 +481,7 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
                       <ChevronRightIcon aria-hidden="true"
                         className={`w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
                       <FolderIcon aria-hidden="true" className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" />
-                      <span className="text-[11px] text-[var(--text-secondary)] font-mono truncate flex-1">{row.dir}</span>
+                      <span className="text-[11px] text-[var(--text-secondary)] font-mono truncate flex-1" title={row.dir}>{row.dir}</span>
                       {/* Grup toplamı: "bu dizini komple seçersem ne kadar iner" sorusu
                           eskiden ancak seçtikten sonra cevaplanıyordu. */}
                       <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 tabular-nums">

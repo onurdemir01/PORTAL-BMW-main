@@ -53,7 +53,7 @@ const SelectedTargetsBar: React.FC<Props> = ({ targets, max, busy, onRemove, onC
       <div className="max-h-40 overflow-y-auto space-y-1.5">
         {[...byNamespace.entries()].map(([namespace, entries]) => (
           <div key={namespace}>
-            <p className="text-[11px] font-mono text-[var(--text-muted)] truncate">{namespace}</p>
+            <p className="text-[11px] font-mono text-[var(--text-muted)] truncate" title={namespace}>{namespace}</p>
             <div className="flex flex-wrap gap-1.5 mt-0.5">
               {entries.map(({ target, index }) => (
                 <span

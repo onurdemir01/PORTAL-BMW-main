@@ -321,7 +321,7 @@ export default function RequestsSidePanel() {
               <div className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-5xl h-[80vh] flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-[var(--border)] flex-shrink-0">
                   <div className="min-w-0">
-                    <div className="font-bold text-sm truncate">{t?.templateName || "Job Çıktısı"}</div>
+                    <div className="font-bold text-sm truncate" title={t?.templateName || "Job Çıktısı"}>{t?.templateName || "Job Çıktısı"}</div>
                     <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                       Job #{t?.jobId}{t?.externalTicketId ? ` · Smart #${t.externalTicketId}` : ""}
                     </div>

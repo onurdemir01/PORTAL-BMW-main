@@ -198,7 +198,7 @@ const OcpTargetStep: React.FC<{
                    Adı" bloğuyla ikisi birden tam açıkken oluşan "alt alta yığılma" görünümü
                    böyle önlenir. */
                 <div className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-xl bg-[var(--bg-elevated)]">
-                  <span className="text-sm font-mono text-[var(--text-primary)] truncate">{namespace}</span>
+                  <span className="text-sm font-mono text-[var(--text-primary)] truncate" title={namespace}>{namespace}</span>
                   <button
                     onClick={() => setNamespaceLocked(false)}
                     className="text-xs text-[var(--accent)] hover:underline flex-shrink-0"
@@ -242,7 +242,7 @@ const OcpTargetStep: React.FC<{
                 </p>
               ) : applicationLocked && application.trim() ? (
                 <div className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-xl bg-[var(--bg-elevated)]">
-                  <span className="text-sm font-mono text-[var(--text-primary)] truncate">{application}</span>
+                  <span className="text-sm font-mono text-[var(--text-primary)] truncate" title={application}>{application}</span>
                   <button
                     onClick={() => setApplicationLocked(false)}
                     className="text-xs text-[var(--accent)] hover:underline flex-shrink-0"

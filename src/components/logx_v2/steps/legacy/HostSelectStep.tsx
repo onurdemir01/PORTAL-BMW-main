@@ -157,7 +157,7 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
                   className="rounded"
                 />
                 <ServerIcon aria-hidden="true" className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
-                <span className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate">{h.host}</span>
+                <span className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate" title={h.host}>{h.host}</span>
                 {h.env && <span className="text-xs text-[var(--text-muted)]">{h.env}</span>}
                 {h.jbossVersion && <span className="text-xs text-[var(--text-muted)]">{h.jbossVersion}</span>}
                 {meta ? (

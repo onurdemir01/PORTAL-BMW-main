@@ -187,7 +187,7 @@ export default function TestScenariosTab() {
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <BeakerIcon className="w-4 h-4 text-[var(--accent)] flex-shrink-0" />
-                  <span className="font-semibold text-sm truncate">{item.title}</span>
+                  <span className="font-semibold text-sm truncate" title={item.title}>{item.title}</span>
                   <span className="text-xs flex-shrink-0" style={{ color: "var(--text-muted)" }}>
                     (server #{item.awxServerId} · template #{item.awxTemplateId}{!item.enabled ? " · pasif" : ""})
                   </span>
