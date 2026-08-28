@@ -123,14 +123,42 @@ async function cancelTicket(id, username, isAdmin, note = '', actor = '') {
   return rows[0] ? rowToTicket(rows[0]) : null;
 }
 
-async function markState(id, { status, smartStateName, awxJobId, errorMessage, resolved }) {
-  await db.query(
+// AWX'i tetiklemeden ONCE bileti sahiplen (2026-08-28). Poller `checkTicketStatus`te
+// AG UZERINDE bekler; o sirada kullanici "iptal"e basarsa bilet CANCELLED olur. Eski
+// kod bunu gormeden `_onApproved`i cagirip isi TETIKLIYOR, sonra kosulsuz `markState`
+// ile iptali EZIP LAUNCHED yaziyordu — kullanici iptal ettigini sanirken is calisiyordu.
+// `cancelTicket` zaten bu deseni kullaniyordu; simdi karsi taraf da ayni kapidan geciyor.
+// PENDING -> LAUNCHING gecisini KAZANAN taraf tetikler; kaybeden hicbir sey yapmaz.
+async function claimForLaunch(id) {
+  const { rows } = await db.query(
+    `UPDATE smart_tickets
+       SET status = 'LAUNCHING', updated_at = GETUTCDATE()
+     OUTPUT INSERTED.*
+     WHERE id = $1 AND status = 'PENDING'`,
+    [id]
+  );
+  return rows[0] ? rowToTicket(rows[0]) : null;
+}
+
+// KOSULLU durum yazimi. `expected` verilirse yalnizca bilet O DURUMDAYKEN yazar ve
+// yazip yazmadigini DONDURUR. Kosulsuz `UPDATE ... WHERE id=$1` iptal/zaman asimi gibi
+// arada olusan sonuclari sessizce eziyordu.
+async function markState(id, { status, smartStateName, awxJobId, errorMessage, resolved, expected }) {
+  const params = [status, smartStateName || null, awxJobId || null, errorMessage || null, id];
+  let cond = '';
+  if (expected) {
+    const list = Array.isArray(expected) ? expected : [expected];
+    cond = ' AND status IN (' + list.map((st) => { params.push(st); return `$${params.length}`; }).join(', ') + ')';
+  }
+  const { rows } = await db.query(
     `UPDATE smart_tickets
        SET status = $1, smart_state_name = $2, awx_job_id = $3, error_message = $4,
            updated_at = GETUTCDATE(), resolved_at = ${resolved ? 'GETUTCDATE()' : 'resolved_at'}
-     WHERE id = $5`,
-    [status, smartStateName || null, awxJobId || null, errorMessage || null, id]
+     OUTPUT INSERTED.id
+     WHERE id = $5${cond}`,
+    params
   );
+  return rows.length > 0;
 }
 
-module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, markState };
+module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, claimForLaunch, markState };

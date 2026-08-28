@@ -49,6 +49,51 @@ async function resolveTarget(platform) {
 // karakterler elenir.
 const SAFE_HOST_RE = /^[A-Za-z0-9.\-:_]{1,255}$/;
 
+// ── IS SAHIPLIGI: BELLEK-ICI YEDEK (2026-08-28) ─────────────────────────────────
+// job-status ucunun IDOR korumasi `ansible_job_history` satirina bakiyor. O satir
+// YAZILAMAZSA (asagidaki `template_name` tasmasinda uretimde tam olarak bu oldu) kontrol
+// "kayit yok" durumuna dusuyor ve eski kod BU DURUMDA GECIRIYORDU (fail-open): baska
+// birinin job cikitisi okunabiliyordu. Kontrol artik fail-CLOSED.
+//
+// Ama fail-closed tek basina isin sahibini de disarida birakirdi (DB bir an tokezlerse
+// kendi job'unun ciktisini goremezdi). Bu yuzden launch aninda sahiplik AYRICA burada,
+// bellekte tutulur. Yalnizca YEDEK: kalici degil, surec yeniden baslayinca silinir ve
+// birincil kaynak yine DB'dir.
+const JOB_OWNER_CACHE = new Map();      // "serverId:jobId" -> username (lowercase)
+const JOB_OWNER_CACHE_MAX = 2000;       // sinirsiz buyume olmasin
+
+function rememberJobOwner(serverId, jobId, username) {
+  if (!jobId || !username) return;
+  if (JOB_OWNER_CACHE.size >= JOB_OWNER_CACHE_MAX) {
+    // En eski girdiyi at (Map ekleme sirasini korur) — LRU'ya gerek yok, kayit
+    // yalnizca is calisirken (dakikalar) lazim.
+    JOB_OWNER_CACHE.delete(JOB_OWNER_CACHE.keys().next().value);
+  }
+  JOB_OWNER_CACHE.set(`${serverId}:${jobId}`, String(username).toLowerCase());
+}
+
+// `ansible_job_history.template_name` NVARCHAR(500). Coklu namespace secildiginde
+// "Telnet: openshift (ns1,ns2,...)" bu siniri asiyor, MSSQL INSERT'i REDDEDIYOR ve hata
+// `console.warn` ile yutuluyordu: gecmis satiri hic olusmuyor, IDOR kontrolu de o satira
+// bakiyordu. Ad artik sinira gore kirpilir — kac tanesinin gizlendigi de yazilir.
+const TEMPLATE_NAME_MAX = 500;
+
+function telnetTemplateName(namespaces) {
+  const base = 'Telnet: openshift ';
+  const parts = [];
+  let used = base.length + 2; // parantezler
+  for (let i = 0; i < namespaces.length; i++) {
+    const piece = namespaces[i];
+    const suffix = namespaces.length - i - 1 > 0 ? ` +${namespaces.length - i - 1}` : '';
+    if (used + piece.length + 1 + suffix.length > TEMPLATE_NAME_MAX) break;
+    parts.push(piece);
+    used += piece.length + 1;
+  }
+  const hidden = namespaces.length - parts.length;
+  const inner = parts.join(',') + (hidden > 0 ? ` +${hidden}` : '');
+  return `${base}(${inner})`.slice(0, TEMPLATE_NAME_MAX);
+}
+
 function initTelnet(app) {
   const express = require('express');
 
@@ -121,20 +166,35 @@ function initTelnet(app) {
       return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
     }
 
-    // IDOR korumasi: OpsX ile AYNI kontrol. Kayit yoksa/DB hatasi varsa fail-open.
-    try {
-      const db = require('../db/index.cjs');
+    // IDOR korumasi — FAIL-CLOSED (2026-08-28). Eskiden "kayit yok" ve "DB hatasi"
+    // durumlarinda GECIRIYORDU; gecmis satirinin yazilamadigi her senaryoda (bkz.
+    // telnetTemplateName notu) koruma tamamen devre disi kaliyordu. Artik sahiplik
+    // KANITLANMADIKCA erisim yok. Kanit iki kaynaktan gelebilir: DB gecmisi (birincil)
+    // ya da bu surecte launch aninda tutulan bellek-ici yedek.
+    {
       const reqUser = req.session?.user || {};
       if (reqUser.role !== 'Admin') {
-        const { rows } = await db.query(
-          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, serverId]
-        );
-        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+        const me = String(reqUser.username || '').toLowerCase();
+        const cached = JOB_OWNER_CACHE.get(`${serverId}:${jobId}`);
+        let owner = cached || null;
+        if (!owner) {
+          try {
+            const db = require('../db/index.cjs');
+            const { rows } = await db.query(
+              `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+              [jobId, serverId]
+            );
+            owner = rows.length && rows[0].username ? String(rows[0].username).toLowerCase() : null;
+          } catch (e) {
+            console.warn('[Telnet] sahiplik sorgusu basarisiz — erisim reddedildi:', e.message);
+            return res.status(503).json({ ok: false, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' });
+          }
+        }
+        if (!owner || owner !== me) {
           return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
         }
       }
-    } catch { /* DB hiccup -> fail-open */ }
+    }
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -339,6 +399,7 @@ function initTelnet(app) {
       const runner = require('../ansible/runner.cjs');
       try {
         const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
+        rememberJobOwner(serverId, result?.jobId, req.session?.user?.username);
 
         try {
           const db = require('../db/index.cjs');
@@ -346,13 +407,16 @@ function initTelnet(app) {
             `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
             [
               req.session?.user?.username || 'unknown',
-              serverId, templateId, `Telnet: openshift (${cleanNamespaces.join(',')})`,
+              serverId, templateId, telnetTemplateName(cleanNamespaces),
               result?.jobId, result?.status || 'pending',
               JSON.stringify({ platform: 'openshift', ...extraVars }),
             ]
           );
         } catch (e) {
-          console.warn('[Telnet] Gecmis kaydedilemedi:', e.message);
+          // Gecmis satiri IDOR korumasinin BIRINCIL kanitidir — sessiz bir uyari degil,
+          // acikca hata seviyesinde loglanir. Kullanicinin isi yine de calisir: sahiplik
+          // bellek-ici yedekten dogrulanir (bkz. rememberJobOwner).
+          console.error('[Telnet] Gecmis YAZILAMADI (IDOR kaniti DB\'de yok, bellek yedegi devrede):', e.message);
         }
 
         try {
@@ -414,6 +478,7 @@ function initTelnet(app) {
     try {
       const runner = require('../ansible/runner.cjs');
       const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
+      rememberJobOwner(serverId, result?.jobId, req.session?.user?.username);
 
       // ansible_job_history'ye kayit — OpsX ile AYNI genel-amacli tablo (job-status
       // endpoint'inin IDOR korumasi bu kayda bakar).
@@ -429,7 +494,7 @@ function initTelnet(app) {
           ]
         );
       } catch (e) {
-        console.warn('[Telnet] Gecmis kaydedilemedi:', e.message);
+        console.error('[Telnet] Gecmis YAZILAMADI (IDOR kaniti DB\'de yok, bellek yedegi devrede):', e.message);
       }
 
       try {

@@ -69,11 +69,18 @@ function initDenetim(app) {
       // ENV LISTESI VERIDEN TURETILIR. Kanonik dortlu her zaman gosterilir (bir ortam
       // hic taranmadiysa "bos" olarak GORUNMESI gerekir, sessizce kaybolmasi degil);
       // veride gecen baska jetonlar da eklenir, yoksa o satirlar hicbir sutuna dusmez.
+      // ENV NORMALIZE TEK YERDE (2026-08-28). Ayni deger UC yerde normalize ediliyordu
+      // ve biri FARKLIYDI: env listesi/istatistikler `.trim().toUpperCase() || '(bos)'`
+      // kullanirken hucre anahtari yalnizca `.toUpperCase()` yapiyordu. Sonuc: env'i
+      // bos ya da bosluklu (`" qa "`) olan satirlar `''` / `' QA '` anahtari uretiyor,
+      // bu anahtarlar `envList`te olmadigi icin hucre HICBIR SUTUNA dusmuyor ve veri
+      // ekranda SESSIZCE kayboluyordu. Artik uc cagri da bu fonksiyondan geciyor.
+      const normEnv = (v) => String(v || '').trim().toUpperCase() || '(bos)';
+
       const CANON = ['DEV', 'TEST', 'QA', 'PROD'];
       const seenEnvs = new Set();
       for (const r of raw) {
-        const e = String(r.env || '').trim().toUpperCase();
-        seenEnvs.add(e || '(bos)');
+        seenEnvs.add(normEnv(r.env));
       }
       const envList = [...CANON, ...[...seenEnvs].filter((e) => !CANON.includes(e)).sort()];
 
@@ -81,7 +88,7 @@ function initDenetim(app) {
       // "PROD nicin bos" gibi sorular bu tabloya bakilarak cevaplanir.
       const statMap = new Map();
       for (const r of raw) {
-        const e = String(r.env || '').trim().toUpperCase() || '(bos)';
+        const e = normEnv(r.env);
         if (!statMap.has(e)) statMap.set(e, { env: e, rows: 0, hosts: new Set(), vhosts: new Set() });
         const st = statMap.get(e);
         st.rows++;
@@ -106,7 +113,7 @@ function initDenetim(app) {
       for (const r of raw) {
         const service = r.service || '(bilinmiyor)';
         const application = r.application || r.include_name || '(bilinmiyor)';
-        const env = String(r.env || '').toUpperCase();
+        const env = normEnv(r.env);
         // Ayirici olarak U+0000: servis/uygulama adlarinda gecemeyecek tek karakter.
         // (Kaynakta HAM kontrol karakteri degil, KACIS DIZISI olarak yazilir.)
         const key = service + '\u0000' + application;

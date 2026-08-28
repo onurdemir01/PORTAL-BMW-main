@@ -30,7 +30,7 @@ function withEnv(vars, fn) {
 
 // poller.cjs'in require ettigi store/client'i, gercek modulleri diske dokunmadan
 // degistirmek icin require cache'ine sahte modul yerlestirilir.
-function loadPollerWith({ tickets, statusFor }) {
+function loadPollerWith({ tickets, statusFor, claimResult }) {
   const storePath = require.resolve('../store.cjs');
   const clientPath = require.resolve('../client.cjs');
   const configPath = require.resolve('../config.cjs');
@@ -40,9 +40,18 @@ function loadPollerWith({ tickets, statusFor }) {
   const savedPoller = require.cache[pollerPath];
 
   const marks = [];
+  const claims = [];
   const fakeStore = {
     listPending: async () => tickets,
-    markState: async (id, patch) => { marks.push({ id, ...patch }); },
+    // CLAIM DESENI (2026-08-28): poller artik AWX'i tetiklemeden ONCE bileti
+    // PENDING -> LAUNCHING yapip sahipleniyor. Sahte store bunu taklit eder;
+    // `claimResult` veren testler "iptal edilmis bilet" senaryosunu kurabilir.
+    claimForLaunch: async (id) => {
+      claims.push(id);
+      const r = typeof claimResult === 'function' ? claimResult(id) : claimResult;
+      return r === undefined ? { id } : r;
+    },
+    markState: async (id, patch) => { marks.push({ id, ...patch }); return true; },
   };
   const fakeClient = { checkTicketStatus: async (extId) => statusFor(extId) };
 
@@ -62,7 +71,7 @@ function loadPollerWith({ tickets, statusFor }) {
     if (savedPoller) require.cache[pollerPath] = savedPoller; else delete require.cache[pollerPath];
     delete require.cache[configPath];
   };
-  return { poller, marks, restore };
+  return { poller, marks, claims, restore };
 }
 
 const SMART_ENV = {
