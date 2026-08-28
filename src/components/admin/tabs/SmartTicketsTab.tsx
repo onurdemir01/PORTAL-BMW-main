@@ -405,7 +405,7 @@ export default function SmartTicketsTab() {
                 disabled={cancelling}
                 className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
-                Vazgeç
+                İptal
               </button>
               <button
                 onClick={doCancel}

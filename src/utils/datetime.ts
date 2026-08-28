@@ -60,6 +60,33 @@ export function fmtDateTimeSeconds(value: string | number | Date | null | undefi
   });
 }
 
+/** Uzun bicim: "28 Ağustos 2026 Cuma". Sayfa alt basliklarinda kullanilir; tabloda
+ *  yer kaplar. */
+export function fmtDateLong(value: string | number | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return EMPTY_MARK;
+  return d.toLocaleDateString(LOCALE, {
+    timeZone: PORTAL_TZ, weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+}
+
+/** Kisa bicim: "10 Ağu 12:34". Rozet/etiket gibi dar yerlerde. */
+export function fmtDateShort(value: string | number | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return "";
+  return d.toLocaleString(LOCALE, {
+    timeZone: PORTAL_TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+/** Yalnizca saat: "14:30". Ayni gun icindeki bir an anlatilirken (or. "… itibarıyla
+ *  sona erecek") tarihi tekrarlamak gurultu olur. */
+export function fmtTime(value: string | number | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return EMPTY_MARK;
+  return d.toLocaleTimeString(LOCALE, { timeZone: PORTAL_TZ, hour: "2-digit", minute: "2-digit" });
+}
+
 /** "2 saat önce" — mutlak tarihten daha hizli okunur, "en guncel hangisi" sorusunu
  *  tek bakista cevaplar. Mutlak deger `title` olarak verilmeli. */
 export function fmtRelative(value: string | number | Date | null | undefined): string {
@@ -77,4 +104,14 @@ export function fmtRelative(value: string | number | Date | null | undefined): s
   const mo = Math.floor(day / 30);
   if (mo < 12) return `${mo} ay önce`;
   return `${Math.floor(mo / 12)} yıl önce`;
+}
+
+// ── SAYI ─────────────────────────────────────────────────────────────────────
+// Binlik ayrac 21 ayri yerde `deger.toLocaleString("tr-TR")` diye yaziliydi. Tarih
+// kadar tehlikeli degil ama ayni sorun: yerel ayar 21 yere dagilmis durumda ve
+// bir gun degismesi gerekirse 21 yer aranacak. Ayrica `null`/`undefined` gecen bir
+// cagri "Invalid Date" degil ama "0" ya da cokme uretebiliyordu.
+export function fmtNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return EMPTY_MARK;
+  return Number(value).toLocaleString(LOCALE);
 }

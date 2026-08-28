@@ -245,7 +245,7 @@ const ImportantLinksPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <span
                   className="px-2.5 py-0.5 text-xs font-semibold rounded-full border flex items-center gap-1"
-                  style={{ background: "rgba(79,142,255,0.08)", color: "var(--accent)", borderColor: "rgba(79,142,255,0.15)" }}
+                  style={{ background: "rgb(var(--accent-rgb) / 0.08)", color: "var(--accent)", borderColor: "rgb(var(--accent-rgb) / 0.15)" }}
                 >
                   {link.category}
                 </span>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { selfServiceApi, type IpCheckResult } from "@/api/selfServiceApi";
 import { Field, Textarea } from "@/components/ui/Form";
 import { MagnifyingGlassIcon, CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/outline";
+import { fmtNumber, fmtDateTime } from "@/utils/datetime";
 
 function parseIps(raw: string): string[] {
   return raw
@@ -12,12 +13,10 @@ function parseIps(raw: string): string[] {
     .filter(Boolean);
 }
 
-function formatTs(v: string | null): string {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return v;
-  return d.toLocaleString("tr-TR");
-}
+// Gozden kacmis YEDINCI kopya bicimlendirici (onceki turda alti tanesi bulunmustu).
+// Kendi bos-deger isareti ("-") ve kendi gecersiz-tarih davranisi (ham metni geri ver)
+// vardi — ikisi de ortak moduldekinden farkliydi.
+const formatTs = fmtDateTime;
 
 export default function IpCheckSection() {
   const [raw, setRaw] = useState("");

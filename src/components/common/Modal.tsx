@@ -24,14 +24,59 @@ const SIZE_MAP = {
 // sag ustte kapat butonu, altta SOLA hizali aksiyon barı (PF konvansiyonu).
 export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size = "md", children }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Modal acilmadan ONCE odakta olan oge — kapaninca odak buraya GERI verilir.
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
+  // ── ODAK TUZAGI (2026-08-28) ─────────────────────────────────────────────────
+  // ESC zaten vardi ama odak yonetimi HIC yoktu. Iki somut sonuc:
+  //   * Modal acilinca odak SAYFADA kaliyordu; klavye kullanicisi Tab'a basinca
+  //     modalin ARKASINDAKI ogelerde geziniyor, gorunmeyen bir dugmeye basabiliyordu.
+  //   * Modal kapaninca odak <body>'ye dusuyor ve bir sonraki Tab sayfanin EN
+  //     BASINDAN basliyordu — kullanici kaldigi yeri kaybediyordu.
+  // `aria-modal="true"` bunu KENDILIGINDEN yapmaz; yalnizca yardimci teknolojiye
+  // "arkasi gizli" der, Tab sirasini degistirmez.
   useEffect(() => {
     if (!open) return;
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
+
+    // Acilista odagi panele tasi. Odaklanabilir bir oge varsa ONA, yoksa panelin
+    // kendisine (panel `tabIndex={-1}` tasir).
+    const focusables = () => Array.from(
+      panelRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) ?? []
+    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+
+    const first = focusables()[0];
+    (first ?? panelRef.current)?.focus();
+
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab") return;
+      const list = focusables();
+      if (list.length === 0) { e.preventDefault(); panelRef.current?.focus(); return; }
+      const firstEl = list[0];
+      const lastEl = list[list.length - 1];
+      const active = document.activeElement;
+      // Uc noktalarda dongu: son ogeden Tab basa, ilk ogeden Shift+Tab sona.
+      if (!e.shiftKey && active === lastEl) { e.preventDefault(); firstEl.focus(); }
+      else if (e.shiftKey && active === firstEl) { e.preventDefault(); lastEl.focus(); }
+      else if (panelRef.current && active && !panelRef.current.contains(active)) {
+        // Odak bir sekilde disari kactiysa (or. tarayici adres cubugundan donus) geri al.
+        e.preventDefault();
+        (e.shiftKey ? lastEl : firstEl).focus();
+      }
     }
+
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      // Odagi TETIKLEYEN ogeye geri ver. Oge bu arada DOM'dan kalktiysa (or. silme
+      // onayindan sonra satir gitti) sessizce gec — hataya donusturme.
+      const target = returnFocusRef.current;
+      if (target && document.contains(target)) target.focus();
+    };
   }, [open, onClose]);
 
   useEffect(() => {
@@ -55,8 +100,10 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
         onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
       >
         <div
-          className={`relative w-full ${SIZE_MAP[size]} flex flex-col max-h-[calc(100dvh-2rem)] my-4`}
-          style={{ background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)", borderRadius: "var(--radius-sm)" }}
+          ref={panelRef}
+          tabIndex={-1}
+          className={`relative w-full ${SIZE_MAP[size]} flex flex-col max-h-[calc(100dvh-2rem)] my-4 outline-none`}
+          style={{ background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)", borderRadius: "var(--radius-md)" }}
         >
           <div className="flex items-start gap-3 px-6 pt-6 pb-4 flex-shrink-0">
             {Icon && (

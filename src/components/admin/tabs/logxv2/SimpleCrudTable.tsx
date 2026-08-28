@@ -4,6 +4,7 @@
 // düşük-trafikli admin config ekranları için kasıtlı olarak daha kompakttır.
 import React, { useState } from "react";
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { TableEmptyRow } from "@/components/common/EmptyState";
 
 export interface ColumnDef<T> {
   key: keyof T;
@@ -187,7 +188,7 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                         >
                           Emin misin?
                         </button>
-                        <button onClick={() => setConfirmDelete(null)} aria-label="Silmeyi iptal et" title="Vazgeç"
+                        <button onClick={() => setConfirmDelete(null)} aria-label="Silmeyi iptal et" title="İptal"
                           className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
                           <XMarkIcon className="w-3.5 h-3.5" />
                         </button>
@@ -203,9 +204,7 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
               )
             )}
             {rows.length === 0 && !adding && (
-              <tr>
-                <td colSpan={columns.length + 1} className="px-3 py-6 text-center text-gray-400 text-sm">Kayıt yok.</td>
-              </tr>
+              <TableEmptyRow colSpan={columns.length + 1} title="Kayıt yok." />
             )}
           </tbody>
         </table>

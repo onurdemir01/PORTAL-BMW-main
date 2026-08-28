@@ -9,8 +9,10 @@ import {
 } from "@heroicons/react/24/outline";
 import { denetimApi, type WebAppResult } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
+import { fmtNumber } from "@/utils/datetime";
+import { TableEmptyRow } from "@/components/common/EmptyState";
 
-const nf = (n: number) => n.toLocaleString("tr-TR");
+const nf = (n: number) => fmtNumber(n);
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
   const body = [header, ...rows]
@@ -148,7 +150,7 @@ export default function WebApp() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {data.rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+              <TableEmptyRow colSpan={6} />
             )}
             {data.rows.map((r) => (
               <tr key={`${r.app}|${r.appHost}`} className="hover:bg-gray-50/60 align-top">

@@ -100,8 +100,8 @@ export default function DutyRosterPage() {
           <div
             className="rounded-2xl px-6 py-5 border"
             style={{
-              background: "linear-gradient(135deg, rgba(79,142,255,0.06) 0%, rgba(139,92,246,0.04) 100%)",
-              borderColor: "rgba(79,142,255,0.15)",
+              background: "linear-gradient(135deg, rgb(var(--accent-rgb) / 0.06) 0%, rgba(139,92,246,0.04) 100%)",
+              borderColor: "rgb(var(--accent-rgb) / 0.15)",
               boxShadow: "var(--shadow-md)"
             }}
           >
@@ -239,12 +239,14 @@ export default function DutyRosterPage() {
                     style={{
                       borderBottom: "1px solid var(--border)",
                       ...(r.isToday
-                        ? { background: "rgba(79,142,255,0.06)", borderLeft: "4px solid var(--accent)" }
+                        ? { background: "rgb(var(--accent-rgb) / 0.06)", borderLeft: "4px solid var(--accent)" }
                         : {}
                       )
                     }}
-                    onMouseEnter={e => { if (!r.isToday) (e.currentTarget as HTMLTableRowElement).style.background = "rgba(79,142,255,0.03)"; }}
-                    onMouseLeave={e => { if (!r.isToday) (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
+                    /* Hover ortak `.pf-table-sticky tbody tr:hover` kuralindan gelir;
+                       JS ile inline yazmak hem CSS'i ezerdi hem her satira iki olay
+                       dinleyicisi eklerdi. "Bugün" satiri inline arka plan tasidigi icin
+                       zaten hover'in ustunde kalir — ayrica kontrol gerekmiyor. */
                   >
                     <td className="px-4 py-3.5 whitespace-nowrap" style={{ color: "var(--text-secondary)" }}>
                       {r.isToday && (

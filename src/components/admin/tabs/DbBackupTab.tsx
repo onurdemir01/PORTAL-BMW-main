@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArchiveBoxIcon, PlayIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ClockIcon } from "@heroicons/react/24/outline";
 import { toast } from "@/hooks/useToast";
-import { fmtDateTime as fmt } from "@/utils/datetime";
+import { fmtDateTime as fmt, fmtNumber } from "@/utils/datetime";
 
 interface BackupState {
   status: "idle" | "running" | "done" | "error";
@@ -89,7 +89,7 @@ const DbBackupTab: React.FC = () => {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-lg font-semibold">Veritabanı Tam Yedekleme</h2>
+        <h2 className="section-label">Veritabanı Tam Yedekleme</h2>
         <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
           TBMWANS'taki her tablo, her gün ayrı bir CSV dosyasına yedeklenir (tablo listesi otomatik keşfedilir,
           yeni bir tablo eklendiğinde ayrıca bir şey yapmanız gerekmez). Ansible/AWX kullanılmaz — Portal
@@ -153,7 +153,7 @@ const DbBackupTab: React.FC = () => {
             </div>
             <div>
               <div className="text-xs" style={{ color: "var(--text-muted)" }}>Toplam Satır</div>
-              <div className="mt-0.5">{state.totalRows.toLocaleString("tr-TR")}</div>
+              <div className="mt-0.5">{fmtNumber(state.totalRows)}</div>
             </div>
             <div>
               <div className="text-xs" style={{ color: "var(--text-muted)" }}>Silinen Eski Dosya</div>

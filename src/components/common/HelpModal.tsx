@@ -57,7 +57,7 @@ export default function HelpModal({ open, onClose, title, sections, steps, admin
       <div className="min-h-full flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
         <div className="rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100dvh-2rem)] my-4 overflow-hidden animate-modal-pop" style={{ background: "var(--bg-surface)" }}>
           <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
-            <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h2>
+            <h2 className="section-label">{title}</h2>
             <button
               onClick={onClose}
               className="rounded-lg p-1.5 transition-colors"
@@ -91,7 +91,7 @@ export default function HelpModal({ open, onClose, title, sections, steps, admin
           )}
 
           {visibleAdminSteps.length > 0 && (
-            <div className="rounded-xl p-4 text-sm space-y-1" style={{ background: "rgba(79,142,255,0.08)", color: "var(--text-secondary)" }}>
+            <div className="rounded-xl p-4 text-sm space-y-1" style={{ background: "rgb(var(--accent-rgb) / 0.08)", color: "var(--text-secondary)" }}>
               <p className="font-medium mb-2 flex items-center gap-1.5" style={{ color: "var(--accent)" }}>
                 <ShieldCheckIcon className="w-4 h-4" /> Yalnızca Admin:
               </p>

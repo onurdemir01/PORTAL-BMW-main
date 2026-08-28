@@ -12,6 +12,7 @@ export default function ArtisticBackdrop() {
         className="absolute animate-blob-a"
         style={{
           top: "-16%", right: "-14%", width: "58%", height: "58%",
+          // DEKORATIF, giris ekranina ozel — bkz. LoginBackgroundCanvas notu.
           background: "radial-gradient(circle at 35% 35%, rgba(79,142,255,0.55), rgba(79,142,255,0.14) 55%, transparent 75%)",
           filter: "blur(38px)",
         }}

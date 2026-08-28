@@ -12,8 +12,10 @@ import {
 } from "@heroicons/react/24/outline";
 import { denetimApi, type NginxLocationsResult } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
+import { fmtNumber } from "@/utils/datetime";
+import { TableEmptyRow } from "@/components/common/EmptyState";
 
-const nf = (n: number) => n.toLocaleString("tr-TR");
+const nf = (n: number) => fmtNumber(n);
 
 const STATUS_TR: Record<string, { label: string; cls: string }> = {
   OK:               { label: "Sorunsuz",            cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
@@ -174,7 +176,7 @@ export default function NginxLocations() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {data.rows.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+              <TableEmptyRow colSpan={8} />
             )}
             {data.rows.map((r, i) => {
               const meta = STATUS_TR[r.status] || { label: r.status, cls: "bg-gray-100 text-gray-600 border-gray-200" };

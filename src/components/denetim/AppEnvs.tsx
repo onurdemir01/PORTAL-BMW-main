@@ -11,8 +11,10 @@ import {
 } from "@heroicons/react/24/outline";
 import { denetimApi, type AppEnvsResult } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
+import { fmtNumber } from "@/utils/datetime";
+import { TableEmptyRow } from "@/components/common/EmptyState";
 
-const nf = (n: number) => n.toLocaleString("tr-TR");
+const nf = (n: number) => fmtNumber(n);
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
   const body = [header, ...rows]
@@ -183,7 +185,7 @@ export default function AppEnvs() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.length === 0 && (
-                  <tr><td colSpan={envs.length + 1} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+                  <TableEmptyRow colSpan={envs.length + 1} />
                 )}
                 {rows.slice(0, 500).map((r) => (
                   <tr key={r.base} className="hover:bg-gray-50/60">
@@ -274,7 +276,7 @@ export default function AppEnvs() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {celiski.length === 0 && (
-                  <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400">Çelişki bulunamadı.</td></tr>
+                  <TableEmptyRow colSpan={4} title="Çelişki bulunamadı." description="Bu tarama turunda ortamlar arasında ad çakışması saptanmadı." />
                 )}
                 {celiski.slice(0, 500).map((c) => (
                   <tr key={c.app} className="hover:bg-gray-50/60 align-top">

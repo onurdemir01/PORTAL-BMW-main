@@ -16,6 +16,7 @@ import {
   denetimApi, type EnvanterSummary, type EnvanterPivot,
 } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
+import { fmtNumber } from "@/utils/datetime";
 
 // Sunucu tarafiyla AYNI ayirici (bkz. envanter-metrics.cjs). Bosluk kullanilsaydi
 // "a b"+"c" ile "a"+"b c" ayni anahtari uretirdi.
@@ -25,7 +26,7 @@ const SEP = "\u0001";
 // (bkz. envanter-metrics.cjs -> NORM). Ayrisirsa filtre sessizce calismaz.
 const EMPTY_LABEL = "(boş)";
 
-const nf = (n: number) => n.toLocaleString("tr-TR");
+const nf = (n: number) => fmtNumber(n);
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
   const body = [header, ...rows]

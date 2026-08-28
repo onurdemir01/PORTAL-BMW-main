@@ -30,6 +30,7 @@ import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import IpCheckSection from "@/components/self_service/IpCheckSection";
 import OpenshiftCheckSection from "@/components/self_service/OpenshiftCheckSection";
 import { SkeletonList } from "@/components/common/Skeleton";
+import { fmtDateTime } from "@/utils/datetime";
 
 // LAUNCHING ARA DURUMU (2026-08-28): Smart onayı geldi, AWX çağrısı uçuşta. Bu da bir
 // BEKLEME durumudur — sonlanmış gibi davranıp yoklamayı kesersek ekran "başlatılıyor"da
@@ -762,7 +763,7 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">{selected.template_name}</p>
-                  <p className="text-xs text-gray-500">{selected.username} · {new Date(selected.started_at).toLocaleString("tr-TR")} · job #{selected.job_id}</p>
+                  <p className="text-xs text-gray-500">{selected.username} · {fmtDateTime(selected.started_at)} · job #{selected.job_id}</p>
                 </div>
                 {/* CANLI durum (kayıttaki stale 'pending' değil) — AWX'ten çekilen gerçek durum. */}
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge[logStatus || selected.status] || "bg-gray-100 text-gray-600"}`}>{logStatus || selected.status}</span>
@@ -815,7 +816,7 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
                         {h.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{new Date(h.started_at).toLocaleString("tr-TR")}</td>
+                    <td className="px-4 py-3 text-gray-500">{fmtDateTime(h.started_at)}</td>
                     <td className="px-4 py-3 text-right">
                       {h.job_id ? <span className="text-xs text-[var(--accent)] font-medium">Log →</span> : null}
                     </td>

@@ -8,6 +8,7 @@
 // server/admin/branding.cjs). Sunucu formati, boyutu ve dosya imzasini dogrular.
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowUpTrayIcon, TrashIcon, PhotoIcon } from "@heroicons/react/24/outline";
+import { fmtDateTime } from "@/utils/datetime";
 
 interface AssetInfo {
   mime: string;
@@ -103,7 +104,7 @@ function ImageAssetEditor({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">{title}</h2>
+        <h2 className="section-label">{title}</h2>
         <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>{description}</p>
       </div>
 
@@ -129,7 +130,7 @@ function ImageAssetEditor({
               <div><strong>Boyut:</strong> {Math.round(asset.sizeBytes / 1024)} KB</div>
               {asset.updatedBy && <div><strong>Yükleyen:</strong> {asset.updatedBy}</div>}
               {asset.updatedAt && (
-                <div style={{ color: "var(--text-muted)" }}>{new Date(asset.updatedAt).toLocaleString("tr-TR")}</div>
+                <div style={{ color: "var(--text-muted)" }}>{fmtDateTime(asset.updatedAt)}</div>
               )}
             </>
           ) : (

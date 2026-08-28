@@ -9,6 +9,8 @@ import { ansibleApi, type SmartTicketSummary } from "@/api/ansibleApi";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import { fmtDateTime as formatDate } from "@/utils/datetime";
 import { SkeletonList } from "@/components/common/Skeleton";
+import EmptyState from "@/components/common/EmptyState";
+import { NavLink } from "react-router-dom";
 
 interface TicketDetail {
   externalTicketId?: string | null;
@@ -38,13 +40,29 @@ const COLLAPSE_KEY = "portal.selfService.myRequestsPanel.collapsed";
 
 
 export default function RequestsSidePanel() {
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try { return window.localStorage.getItem(COLLAPSE_KEY) === "1"; } catch { return false; }
+  // ── BOSKEN KENDILIGINDEN DARALIR (2026-08-28) ────────────────────────────────
+  // Panel HER SAYFADA kenarda durur (kullanici karari, 2026-08-20) ama talep yokken
+  // 340px'i "Henüz açtığınız bir Smart talebi yok." tek satiri icin harciyordu —
+  // uretim ekran goruntulerinin DORDUNDE de boyle.
+  //
+  // Kullanicinin ACIK tercihi HER ZAMAN kazanir. localStorage bos ise (kullanici hic
+  // dokunmamis) OTOMATIK mod devreye girer: talep yoksa serit, talep gelince acilir.
+  // Bir kez daraltip/genisleten kullanici artik otomatige donmez.
+  const [userPref, setUserPref] = useState<boolean | null>(() => {
+    try {
+      const v = window.localStorage.getItem(COLLAPSE_KEY);
+      return v === "1" ? true : v === "0" ? false : null;
+    } catch { return null; }
   });
   const [tickets, setTickets] = useState<SmartTicketSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  // Ilk yukleme bitmeden daraltma KARARI VERILMEZ: aksi halde panel her sayfa
+  // acilisinda bir an serit olarak cizilip sonra genisler — tam da onlemeye
+  // calistigimiz turden bir sicrama olurdu.
+  const autoCollapsed = userPref === null && !loading && tickets.length === 0;
+  const collapsed = userPref ?? autoCollapsed;
   // Bir talebe tıklandığında hangi otomasyonun hangi extraVars ile tetiklendiğini ve hangi
   // Smart kaydını açtığını göstermek için — talep sayısı küçük olduğundan lazy-fetch +
   // basit bir bellek-içi cache yeterli (2026-08-20, kullanıcı talebi).
@@ -103,22 +121,27 @@ export default function RequestsSidePanel() {
   useEffect(() => { load(); }, [load]);
 
   // Panel açıkken ve hâlâ PENDING bir talep varken hafifçe otomatik yenilenir — kullanıcı
-  // manuel sayfa yenilemeden onay/red durumunu görsün. Kapalıyken (collapsed) veya bekleyen
-  // talep yokken gereksiz istek atılmaz.
+  // manuel sayfa yenilemeden onay/red durumunu görsün.
+  //
+  // DIKKAT — OTOMATIK DARALTMANIN TUZAGI: burada eskiden `if (collapsed) return;`
+  // vardi. Otomatik daraltma ile birlikte bu, KENDINI KILITLEYEN bir durum uretirdi:
+  // panel bos oldugu icin daralir, daraldigi icin yoklama durur, yoklama durdugu icin
+  // yeni talep hic ogrenilmez ve panel BIR DAHA acilmaz. Bu yuzden yoklama artik
+  // KULLANICININ ACIKCA daralttigi durumda durur; otomatik daralmis panel yoklamaya
+  // devam eder ki talep gelince kendiliginden acilabilsin.
   useEffect(() => {
-    if (collapsed) return;
+    if (userPref === true) return;          // kullanici ACIKCA kapatti
     if (!tickets.some((t) => t.status === "PENDING")) return;
     const timer = setInterval(load, 30_000);
     return () => clearInterval(timer);
-  }, [collapsed, tickets, load]);
+  }, [userPref, tickets, load]);
 
+  // Kullanici bir kez dokununca ACIK TERCIH kaydedilir ve otomatik mod devre disi kalir.
   const toggle = () => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try { window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0"); } catch { /* yoksay */ }
-      if (!next) load();
-      return next;
-    });
+    const next = !collapsed;
+    setUserPref(next);
+    try { window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0"); } catch { /* yoksay */ }
+    if (!next) load();
   };
 
   const cancel = async (id: number) => {
@@ -198,10 +221,20 @@ export default function RequestsSidePanel() {
             <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>
           )}
 
+          {/* Bos durum artik duz bir cumle degil: ne oldugunu SOYLER ve bir sonraki
+              adimi ONERIR. (Otomatik daraltma sayesinde bu genelde yalnizca kullanici
+              paneli ELIYLE actiginda gorunur.) */}
           {!loading && !err && tickets.length === 0 && (
-            <div className="text-sm text-center py-6" style={{ color: "var(--text-muted)" }}>
-              Henüz açtığınız bir Smart talebi yok.
-            </div>
+            <EmptyState
+              icon={<ClipboardDocumentListIcon className="w-8 h-8" />}
+              title="Henüz talebiniz yok"
+              description="Self Servis'ten bir iş başlattığınızda, onay durumu burada görünür."
+              action={
+                <NavLink to="/self-service" className="btn-secondary text-xs no-underline">
+                  Self Servis'e git
+                </NavLink>
+              }
+            />
           )}
 
           {!loading && !err && tickets.length > 0 && (
