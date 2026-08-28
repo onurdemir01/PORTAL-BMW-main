@@ -64,11 +64,16 @@ const LoginPage: React.FC = () => {
 
       <div className="flex-1 flex items-start justify-center px-4 pb-16 pt-4 lg:pt-10">
         <div className="w-full max-w-[26rem]">
-          <div className="px-8 py-8" style={{ background: "#ffffff", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-lg)" }}>
+          {/* GIRIS KARTI BILEREK SABIT ACIK: bu ekran temayi izlemez, her zaman koyu
+              bir zemin uzerinde beyaz bir karttir. Token'a baglamak koyu temada karti
+              da koyulastirir ve okunurlugu bozardi — burasi uygulama kabugu degil,
+              ayri bir marka ekrani. Metin renkleri de bu yuzden sabit; yalnizca PF5
+              grilerinden PF6 notrlerine tasindilar (#6a6e73 -> #707070 vb.). */}
+          <div className="px-8 py-8" style={{ background: "#ffffff", borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-lg)" }}>
             <h1 style={{ fontFamily: "var(--font-display)", fontSize: "1.5rem", fontWeight: 500, color: "#151515" }}>
               Hesabınızla oturum açın
             </h1>
-            <p className="mt-1 text-[0.875rem]" style={{ color: "#6a6e73" }}>
+            <p className="mt-1 text-[0.875rem]" style={{ color: "#707070" }}>
               Kurumsal dizin (LDAP) kimlik bilgilerinizi kullanın.
             </p>
 
@@ -112,7 +117,7 @@ const LoginPage: React.FC = () => {
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
                     className="absolute inset-y-0 right-0 px-3 flex items-center"
-                    style={{ color: "#6a6e73" }}
+                    style={{ color: "#707070" }}
                   >
                     {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                   </button>
@@ -147,10 +152,10 @@ const LoginPage: React.FC = () => {
             </form>
           </div>
 
-          <p className="mt-6 text-[0.75rem] leading-relaxed" style={{ color: "#8a8d90" }}>
+          <p className="mt-6 text-[0.75rem] leading-relaxed" style={{ color: "#8c8c8c" }}>
             Bu sistem yalnızca yetkili kullanıcılar içindir. Tüm oturum açma girişimleri kayıt altına alınır.
           </p>
-          <p className="mt-2 text-[0.75rem]" style={{ color: "#6a6e73" }}>
+          <p className="mt-2 text-[0.75rem]" style={{ color: "#707070" }}>
             © {new Date().getFullYear()} BMW Portal
           </p>
         </div>

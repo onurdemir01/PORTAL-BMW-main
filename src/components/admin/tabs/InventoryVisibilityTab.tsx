@@ -145,7 +145,7 @@ export default function InventoryVisibilityTab() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-gray-100">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm pf-table-sticky">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100 text-left">
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Aktif</th>

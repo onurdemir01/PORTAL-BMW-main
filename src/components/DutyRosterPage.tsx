@@ -224,7 +224,7 @@ export default function DutyRosterPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm min-w-[640px]" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+            <table className="w-full text-left text-sm min-w-[640px] pf-table-sticky" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
               <thead>
                 <tr style={{ background: "var(--bg-base)", borderBottom: "1px solid var(--border)" }}>
                   {["Başlangıç", "Bitiş", "Nöbetçi", "Dahili", "Telefon", "E-posta", "Yedek"].map(h => (

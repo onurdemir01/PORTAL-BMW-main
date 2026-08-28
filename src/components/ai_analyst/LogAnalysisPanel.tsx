@@ -78,9 +78,9 @@ export default function LogAnalysisPanel({ initialText, autorun, disabled, hostH
   return (
     <div className="space-y-4">
       {/* Güvenlik notu */}
-      <div className="flex items-start gap-3 rounded-xl px-4 py-3 border" style={{ background: "#5752d114", borderColor: "#5752d133" }}>
-        <ShieldCheckIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#3c3d99" }} />
-        <p className="text-xs" style={{ color: "#5b4a9e" }}>
+      <div className="flex items-start gap-3 rounded-xl px-4 py-3 border" style={{ background: "var(--status-info-bg)", borderColor: "var(--status-info)" }}>
+        <ShieldCheckIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "var(--status-info)" }} />
+        <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
           <strong>AI yalnızca öneri verir, hiçbir değişiklik yapmaz.</strong>{" "}
           Log satırları gönderilmeden önce otomatik olarak PII maskeleme uygulanır
           (TCKN, kart no, IBAN, e-posta, telefon, token).
@@ -123,7 +123,7 @@ export default function LogAnalysisPanel({ initialText, autorun, disabled, hostH
         onClick={() => analyze()}
         disabled={loading || lineCount === 0 || disabled}
         className="flex items-center gap-2 px-4 py-2 text-sm text-white rounded-xl disabled:opacity-40 transition font-medium"
-        style={{ background: "#3c3d99" }}
+        style={{ background: "var(--status-info)" }}
       >
         {loading ? (
           <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Analiz ediliyor...</>
@@ -189,7 +189,7 @@ export default function LogAnalysisPanel({ initialText, autorun, disabled, hostH
               <ul className="space-y-1.5">
                 {result.recommendations.map((r, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                    <span className="w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "#5752d122", color: "#3c3d99" }}>
+                    <span className="w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "var(--status-info-bg)", color: "var(--status-info)" }}>
                       {i + 1}
                     </span>
                     {r}
@@ -240,7 +240,7 @@ export default function LogAnalysisPanel({ initialText, autorun, disabled, hostH
                     onDeepDive(parts.join("\n"));
                   }}
                   className="flex items-center gap-1 font-medium transition"
-                  style={{ color: "#3c3d99" }}
+                  style={{ color: "var(--status-info)" }}
                 >
                   <ChatBubbleLeftRightIcon className="w-3.5 h-3.5" />
                   Bu bulguları sohbette derinleştir

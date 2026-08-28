@@ -9,13 +9,15 @@ import {
 } from "@heroicons/react/24/outline";
 
 const ORBIT_ITEMS = [
-  // NOT: buradaki degerler HEX kalmali — asagida `${item.color}1a` ile
-  // hex-alfa birlestirmesi yapiliyor, `var(--accent)1a` gecersiz CSS olurdu.
+  // NOT: buradaki degerler HEX KALMALI — asagida `${item.color}1a` ile hex-alfa
+  // birlestirmesi yapiliyor, `var(--accent)1a` gecersiz CSS olurdu (tarayici kurali
+  // tumden atar, hata da vermez). Tonlar yine de PF6 paletinden secildi:
+  // blue-50 / purple-40 / orange-40 / green-40 / blue-40.
   { icon: ServerStackIcon, color: "#0066CC", label: "Envanter" },
-  { icon: DocumentMagnifyingGlassIcon, color: "#a78bfa", label: "LogX" },
-  { icon: ChartBarIcon, color: "#fb923c", label: "Performance" },
-  { icon: WrenchScrewdriverIcon, color: "#34d399", label: "Self Service" },
-  { icon: SparklesIcon, color: "#818cf8", label: "AI Analist" },
+  { icon: DocumentMagnifyingGlassIcon, color: "#876fd4", label: "LogX" },
+  { icon: ChartBarIcon, color: "#f5921b", label: "Performance" },
+  { icon: WrenchScrewdriverIcon, color: "#87bb62", label: "Self Service" },
+  { icon: SparklesIcon, color: "#4394e5", label: "AI Analist" },
 ];
 
 const RADIUS = 46; // merkeze göre yüzde (container'ın yarısına oranla)

@@ -234,7 +234,7 @@ const AiAnalystPage: React.FC = () => {
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
           <h1 className="page-title flex items-center gap-2">
-            <SparklesIcon className="w-6 h-6" style={{ color: "#5752d1" }} />
+            <SparklesIcon className="w-6 h-6" style={{ color: "var(--status-info)" }} />
             AI Analist
           </h1>
           <p className="text-sm font-medium mt-1" style={{ color: "var(--text-muted)" }}>
@@ -340,7 +340,7 @@ const AiAnalystPage: React.FC = () => {
       <div className="flex-1 overflow-y-auto card p-5 space-y-3">
         {!hasChat && (
           <div className="h-full flex flex-col items-center justify-center gap-4">
-            <SparklesIcon className="w-10 h-10 opacity-20" style={{ color: "#5752d1" }} />
+            <SparklesIcon className="w-10 h-10 opacity-20" style={{ color: "var(--status-info)" }} />
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>
               Bir soru sorun ya da hazır analizlerden birini seçin:
             </p>

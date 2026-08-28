@@ -558,8 +558,8 @@ const EnvanterPage: React.FC = () => {
       {activeTable === "Inventory" && (
         <button
           onClick={() => setShowRefreshModal(true)}
-          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm font-medium text-white rounded-xl transition-colors"
-          style={{ background: "#1C69D4" }}
+          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-colors"
+          style={{ background: "var(--accent)", color: "var(--text-on-accent)" }}
         >
           <ArrowPathIcon className="w-4 h-4" />
           Envanteri Yenile

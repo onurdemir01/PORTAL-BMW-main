@@ -10,6 +10,7 @@ import { ansibleApi, type AdminSmartTicket } from "@/api/ansibleApi";
 import { toast } from "@/hooks/useToast";
 import { Select } from "@/components/ui/Form";
 import OcoSchedulesPanel from "./OcoSchedulesPanel";
+import { TableEmptyRow } from "@/components/common/EmptyState";
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING:   { label: "Onay Bekliyor",           className: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -241,7 +242,7 @@ export default function SmartTicketsTab() {
       {err && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>}
 
       <div className="overflow-x-auto rounded-xl border border-gray-100">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm pf-table-sticky">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100 text-left">
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Açılış</th>
@@ -260,7 +261,7 @@ export default function SmartTicketsTab() {
               <tr><td colSpan={9} className="px-3 py-8 text-center text-sm text-gray-400">Yükleniyor…</td></tr>
             )}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-8 text-center text-sm text-gray-400">Kayıt bulunamadı.</td></tr>
+              <TableEmptyRow colSpan={9} />
             )}
             {rows.map((t) => {
               const meta = STATUS_META[t.status] || { label: t.status, className: "bg-gray-100 text-gray-600 border-gray-200" };

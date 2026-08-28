@@ -3,6 +3,7 @@ import {
   ChevronUpDownIcon, ChevronUpIcon, ChevronDownIcon, FunnelIcon,
 } from "@heroicons/react/24/outline";
 import { ColumnFilterDropdown } from "./ColumnFilterDropdown";
+import { TableEmptyRow } from "@/components/common/EmptyState";
 
 interface Props {
   table: string;
@@ -135,8 +136,11 @@ const DynamicTable: React.FC<Props> = ({
 
   return (
     <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--border)" }}>
-      <table className="w-full text-sm" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
-        <thead className="sticky top-0" style={{ background: "rgba(242,246,255,0.95)", backdropFilter: "blur(8px)" }}>
+      {/* Yapiskan baslik artik ortak `.pf-table-sticky` sinifindan (bkz. index.css).
+          Eskiden buradaki zemin SABIT bir acik maviydi (rgba(242,246,255,.95)) ve
+          koyu temada parlak bir bant olarak patliyordu. */}
+      <table className="w-full text-sm pf-table-sticky" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+        <thead>
           <tr>
             {displayed.map((col) => {
               const activeVals = multiFilters[col] || [];
@@ -182,11 +186,7 @@ const DynamicTable: React.FC<Props> = ({
         </thead>
         <tbody>
           {sorted.length === 0 ? (
-            <tr>
-              <td colSpan={displayed.length} className="text-center py-10 text-sm" style={{ color: "var(--text-muted)" }}>
-                Kayıt bulunamadı.
-              </td>
-            </tr>
+<TableEmptyRow colSpan={displayed.length} />
           ) : (
             sorted.map((row, ri) => (
               <tr

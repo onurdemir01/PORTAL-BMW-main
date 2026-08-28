@@ -141,7 +141,7 @@ function JobOutputModal({ jobId, templateName, onClose }: JobOutputModalProps) {
 
           {/* Changed warning */}
           {changed && (
-            <div className="mx-6 mt-3 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0" style={{ background: "#fef3c7", color: "#92400e" }}>
+            <div className="mx-6 mt-3 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0" style={{ background: "var(--status-warning-bg)", color: "var(--status-warning)" }}>
               ⚠ Playbook'ta değişiklik (changed) tespit edildi — üretim ortamında onaylayın.
             </div>
           )}
@@ -150,7 +150,7 @@ function JobOutputModal({ jobId, templateName, onClose }: JobOutputModalProps) {
           <pre
             ref={outputRef}
             className="flex-1 overflow-auto px-6 py-4 text-xs leading-relaxed font-mono"
-            style={{ background: "#0d1117", color: "#c9d1d9", minHeight: "200px" }}
+            style={{ background: "var(--term-bg)", color: "var(--term-fg)", minHeight: "200px" }}
           >
             {output || (isRunning ? "Çıktı bekleniyor…" : "Çıktı yok.")}
           </pre>
@@ -268,7 +268,7 @@ function LaunchModal({ template, onClose, onLaunched }: LaunchModalProps) {
             </div>
             <textarea
               className="w-full rounded-xl border px-3 py-2 text-xs font-mono outline-none transition-colors resize-y"
-              style={{ borderColor: parsed.error ? "#fca5a5" : "var(--border)", minHeight: "140px", background: "#0d1117", color: "#c9d1d9" }}
+              style={{ borderColor: parsed.error ? "#fca5a5" : "var(--border)", minHeight: "140px", background: "var(--term-bg)", color: "var(--term-fg)" }}
               value={varsText}
               onChange={(e) => setVarsText(e.target.value)}
               spellCheck={false}
@@ -297,7 +297,7 @@ function LaunchModal({ template, onClose, onLaunched }: LaunchModalProps) {
           </div>
 
           {error && (
-            <div className="rounded-xl px-3 py-2 text-sm" style={{ background: "#fee2e2", color: "#991b1b" }}>
+            <div className="rounded-xl px-3 py-2 text-sm" style={{ background: "var(--status-danger-bg)", color: "var(--status-danger)" }}>
               {error}
             </div>
           )}
@@ -437,7 +437,7 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
             </div>
           )}
           {error && (
-            <div className="rounded-xl px-3 py-2 text-sm" style={{ background: "#fee2e2", color: "#991b1b" }}>{error}</div>
+            <div className="rounded-xl px-3 py-2 text-sm" style={{ background: "var(--status-danger-bg)", color: "var(--status-danger)" }}>{error}</div>
           )}
 
           {detail && (
@@ -513,7 +513,7 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
               {detail.extraVars && (
                 <section className="space-y-2">
                   <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Extra Vars {extraVarKeys.length > 0 ? `(${extraVarKeys.length} değişken)` : ""}</p>
-                  <pre className="text-xs font-mono rounded-xl p-3 overflow-auto max-h-48" style={{ background: "#0d1117", color: "#c9d1d9" }}>
+                  <pre className="text-xs font-mono rounded-xl p-3 overflow-auto max-h-48" style={{ background: "var(--term-bg)", color: "var(--term-fg)" }}>
                     {detail.extraVars}
                   </pre>
                 </section>
@@ -815,7 +815,7 @@ function ServerPanel({ server, onLaunch, onInfo }: ServerPanelProps) {
                   className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors"
                   style={
                     p === safePage
-                      ? { background: "var(--accent)", color: "#fff" }
+                      ? { background: "var(--accent)", color: "var(--text-on-accent)" }
                       : { border: "1px solid var(--border)", color: "var(--text-secondary)" }
                   }
                 >
