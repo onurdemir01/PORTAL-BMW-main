@@ -660,6 +660,42 @@ async function collectJobEventsStdout(requestJson, jobId) {
   return chunks.join("\n");
 }
 
+// ── CIKTI FILTRESI (saf fonksiyon) ───────────────────────────────────────────
+// Admin bir SS item icin "Cikti Filtresi" tanimlarsa ham AWX stdout'undan yalnizca
+// belirtilen alt-diziyi ICEREN satirlar kullaniciya gosterilir.
+//
+// NEDEN AYRI BIR FONKSIYON (2026-08-28): bu mantik route handler'inin icinde,
+// AWX ve DB cagrilarinin arasinda gomuluydu — yani "kullaniciya log gozukmuyor"
+// senaryosu ancak CANLI bir AWX + DB ile denenebiliyordu, pratikte hic test
+// edilmiyordu. Oysa loglarin SESSIZCE bosalabilecegi TEK yer burasi: needle
+// hicbir satirla eslesmezse ekran bombos kalir ve hata da vermez.
+//
+// SOZLESME: filtre YOKSA/KAPALIYSA ya da needle bossa cikti AYNEN doner. Yalnizca
+// acik ve dolu bir needle varken suzulur. `null`/`undefined` stdout bos metne duser
+// (cagiran taraf `data.output` bekliyor, `undefined` gondermek istemci tarafinda
+// "Çıktı yok." yerine bozuk gorunum uretirdi).
+function applyOutputFilter(stdoutText, overrides) {
+  const text = typeof stdoutText === "string" ? stdoutText : "";
+  const filt = overrides?.outputFilter;
+  const needle = String(filt?.contains ?? "").trim();
+  if (!filt?.enabled || !needle) return { output: text, filtered: false, totalLines: 0, matchedLines: 0 };
+
+  const lines = text ? text.split("\n") : [];
+  // .trim() — eslesen satirlarin bastaki/sondaki bosluklarini kaldirir. Ham stdout'ta
+  // playbook ciktisi girintili (TASK altinda birkac bosluk) veya CRLF kalintili (\r)
+  // gelebilir; filtre EKRANA yalniz ozet satirlari koydugu icin bu girinti
+  // anlamsizlasiyor ve satirlar "kaymis" gorunuyordu. Filtresiz goruntude playbook'un
+  // orijinal bicimi DOKUNULMADAN kalir.
+  const kept = lines.filter((line) => line.includes(needle)).map((line) => line.trim());
+  return {
+    output: kept.join("\n"),
+    filtered: true,
+    totalLines: lines.length,
+    matchedLines: kept.filter(Boolean).length,
+    needle,
+  };
+}
+
 async function getJobOutput(jobId) {
   const id = Number(jobId);
   if (isNaN(id) || id <= 0) throw new Error("Geçersiz job ID.");
@@ -3160,25 +3196,18 @@ function initAnsibleRunner(app) {
       if (jobTemplateId) {
         try {
           const overrides = readCustom(Number(req.params.serverId), jobTemplateId);
-          const filt = overrides?.outputFilter;
-          if (filt?.enabled && String(filt.contains || "").trim()) {
-            const needle = String(filt.contains).trim();
-            const totalLines = stdoutText ? stdoutText.split("\n").length : 0;
-            displayOutput = stdoutText
-              // .trim() — eslesen satirlarin bastaki/sondaki bosluklarini kaldirir.
-              // Ham stdout'ta playbook cikti girintili (TASK altinda birkac bosluk)
-              // veya CRLF kalintili (\r) gelebilir; filtre EKRANA yalniz ozet satirlari
-              // koydugu icin bu girinti anlamsizlasiyor ve satirlar "kaymis" gorunuyordu.
-              // NOT: bu yalniz FILTRE ACIKKEN uygulanir — ham (filtresiz) goruntude
-              // playbook'un orijinal bicimi/girintisi DOKUNULMADAN kalir.
-              ? stdoutText.split("\n").filter((line) => line.includes(needle)).map((line) => line.trim()).join("\n")
-              : stdoutText;
-            const matchedLines = displayOutput ? displayOutput.split("\n").filter(Boolean).length : 0;
-            // TESHIS LOGU: filtre GERCEKTEN okundu mu (overrides bos degil), ve NEEDLE
-            // kac satirla eslesti. matchedLines=0 ama totalLines>0 ise sebep ya karakter
-            // uyusmazligi (needle stdout'ta hic gecmiyor) ya da yanlis needle. Bu satir
-            // gecici degildir — dusuk hacimli bir uc nokta (polling), kalici birakilabilir.
-            console.log(`[SS-Filter] server=${req.params.serverId} template=${jobTemplateId} needle=${JSON.stringify(needle)} totalLines=${totalLines} matchedLines=${matchedLines}`);
+          const filtered = applyOutputFilter(stdoutText, overrides);
+          if (filtered.filtered) {
+            displayOutput = filtered.output;
+            // TESHIS LOGU: filtre GERCEKTEN okundu mu, ve NEEDLE kac satirla eslesti.
+            // matchedLines=0 ama totalLines>0 ise sebep ya karakter uyusmazligi ya da
+            // yanlis needle — "log gozukmuyor" sikayetinin ilk bakilacak yeri BURASI.
+            console.log(`[SS-Filter] server=${req.params.serverId} template=${jobTemplateId} needle=${JSON.stringify(filtered.needle)} totalLines=${filtered.totalLines} matchedLines=${filtered.matchedLines}`);
+            if (filtered.totalLines > 0 && filtered.matchedLines === 0) {
+              // Kullanici ekranda BOMBOS bir konsol gorur ve sebebini bilemez. Bu,
+              // sessiz bir veri kaybidir — uyari seviyesinde loglanir.
+              console.warn(`[SS-Filter] UYARI: cikti filtresi HICBIR satirla eslesmedi — kullaniciya BOS log gorunuyor (server=${req.params.serverId} template=${jobTemplateId}).`);
+            }
           } else if (overrides && Object.keys(overrides).length > 0) {
             // Ozellestirme kaydi VAR ama outputFilter yok/kapali — beklenen: tam cikti donuyor.
             console.log(`[SS-Filter] server=${req.params.serverId} template=${jobTemplateId} outputFilter tanimli degil/kapali — tam cikti donuyor.`);
@@ -3278,4 +3307,7 @@ module.exports = {
   // LogX v2 coklu-sunucu sarmalayicilari:
   launchJobOnServer, getJobStatusOnServer, getJobOutputOnServer, cancelJobOnServer, getServerById,
   listRunningJobsAcrossServers,
+  // Saf yardimci — "kullaniciya log gozukmuyor" senaryosunun test edilebilmesi icin
+  // disari acildi (bkz. server/ansible/__tests__/output-filter.test.cjs).
+  applyOutputFilter,
 };

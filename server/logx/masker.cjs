@@ -74,7 +74,7 @@ function activeRules() {
 
 /**
  * Mask a single string.
- * @returns { masked: string, counts: Record<string, number> }
+ * @returns {{ masked: string, counts: Record<string, number> }}
  */
 function maskString(input) {
   if (typeof input !== 'string') return { masked: String(input), counts: {} };
@@ -96,7 +96,7 @@ function maskString(input) {
 /**
  * Mask an array of log lines.
  * @param {string[]} lines
- * @returns { maskedLines: string[], totalMasked: number, countsByRule: Record<string, number> }
+ * @returns {{ maskedLines: string[], totalMasked: number, countsByRule: Record<string, number> }}
  */
 function maskLines(lines) {
   if (!Array.isArray(lines)) return { maskedLines: [], totalMasked: 0, countsByRule: {} };
