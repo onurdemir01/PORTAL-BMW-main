@@ -711,7 +711,7 @@ function InstanaItemCard({ item, onAskAi }: { item: InstanaItem; onAskAi: (title
     <Card padding="sm">
       <div className="flex flex-wrap items-center gap-3">
         {status && <Badge className="bg-indigo-50 text-indigo-700">{status}</Badge>}
-        <div className="flex-1 min-w-0 font-medium text-sm text-slate-800 truncate">{title}</div>
+        <div className="flex-1 min-w-0 font-medium text-sm text-slate-800 truncate" title={title}>{title}</div>
         {item.owningTeam ? (
           <Badge className="bg-emerald-50 text-emerald-700">{item.owningTeam}</Badge>
         ) : (

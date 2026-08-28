@@ -347,7 +347,7 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
             <PlayIcon className="w-5 h-5 text-[var(--accent)]" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-[15px] font-bold text-[var(--text-primary)] truncate">{item.title}</h2>
+            <h2 className="text-[15px] font-bold text-[var(--text-primary)] truncate" title={item.title}>{item.title}</h2>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">Parametreleri doldurup işi başlatın.</p>
           </div>
           <button

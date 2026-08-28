@@ -137,7 +137,7 @@ export function CommandPalette() {
                   <p className={`text-sm font-medium ${idx === activeIdx ? "text-[#1A56DB]" : "text-gray-900"}`}>
                     {item.label}
                   </p>
-                  <p className="text-xs text-gray-400 truncate">{item.description}</p>
+                  <p className="text-xs text-gray-400 truncate" title={item.description}>{item.description}</p>
                 </div>
                 <ArrowRightIcon className={`w-3.5 h-3.5 flex-shrink-0 ${idx === activeIdx ? "text-[#1A56DB]" : "text-gray-300"}`} />
               </button>

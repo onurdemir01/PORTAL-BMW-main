@@ -78,7 +78,7 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
-        <span className="text-xs font-semibold text-gray-700 truncate max-w-[180px]">{col}</span>
+        <span className="text-xs font-semibold text-gray-700 truncate max-w-[180px]" title={col}>{col}</span>
         <button onClick={onClose} className="p-0.5 text-gray-400 hover:text-gray-700 rounded">
           <XMarkIcon className="w-3.5 h-3.5" />
         </button>

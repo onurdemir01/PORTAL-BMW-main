@@ -261,9 +261,9 @@ const AuditLogTab: React.FC = () => {
                         }}
                       >
                         <div className="px-4 flex items-center text-xs text-gray-500 whitespace-nowrap">{formatDate(log.created_at)}</div>
-                        <div className="px-4 flex items-center font-medium text-gray-900 text-sm truncate">{log.username}</div>
-                        <div className="px-4 flex items-center text-gray-600 text-sm truncate">{log.target_host || "—"}</div>
-                        <div className="px-4 flex items-center text-gray-600 font-mono text-xs truncate">{log.action}</div>
+                        <div className="px-4 flex items-center font-medium text-gray-900 text-sm truncate" title={log.username}>{log.username}</div>
+                        <div className="px-4 flex items-center text-gray-600 text-sm truncate" title={log.target_host || "—"}>{log.target_host || "—"}</div>
+                        <div className="px-4 flex items-center text-gray-600 font-mono text-xs truncate" title={log.action}>{log.action}</div>
                         <div className="px-4 flex items-center">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${resultBadge(log.result)}`}>
                             {log.result || "—"}

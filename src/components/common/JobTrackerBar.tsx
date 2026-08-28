@@ -12,14 +12,27 @@ import { useJobTracker } from "@/contexts/JobTrackerContext";
 import { useFloatingWindow, ResizeHandle } from "@/hooks/useFloatingWindow";
 import AnsibleLogTerminal from "./AnsibleLogTerminal";
 
+// Durum noktalari terminal paletinden (bkz. index.css --term-*): alt cubuk, AWX
+// job ciktisinin ozeti oldugu icin ayni renk dilini konusur.
 const STATUS_DOT: Record<string, string> = {
-  successful: "#3fb950",
-  failed: "#f85149",
-  error: "#f85149",
-  canceled: "#d29922",
-  running: "#58a6ff",
-  pending: "#8b949e",
-  waiting: "#8b949e",
+  successful: "var(--term-success)",
+  failed: "var(--term-danger)",
+  error: "var(--term-danger)",
+  canceled: "var(--term-warning)",
+  running: "var(--term-info)",
+  pending: "var(--term-muted)",
+  waiting: "var(--term-muted)",
+};
+
+// Ekran okuyucuya okunacak metin. Renkli bir nokta gormeyene durum ADIYLA soylenir.
+const STATUS_LABEL: Record<string, string> = {
+  successful: "başarılı",
+  failed: "başarısız",
+  error: "hata",
+  canceled: "iptal edildi",
+  running: "çalışıyor",
+  pending: "kuyrukta",
+  waiting: "kuyrukta",
 };
 
 const DEFAULT_SIZE = { w: 760, h: 560 };
@@ -33,6 +46,25 @@ export default function JobTrackerBar() {
   const expanded = jobs.find((j) => !j.minimized);
   const prevExpandedIdRef = useRef<string | null>(null);
 
+  // ── EKRAN OKUYUCU DUYURUSU (2026-08-28) ──────────────────────────────────────
+  // Repoda `aria-live` HIC kullanilmiyordu. Bir isin bitmesi TAMAMEN gorsel bir
+  // olaydi: alt cubuktaki nokta renk degistiriyor, baska hicbir sey olmuyordu.
+  // Ekrani goremeyen bir kullanici, isinin bitip bitmedigini anlamak icin sekmeye
+  // tekrar tekrar odaklanmak zorundaydi.
+  //
+  // Yalnizca SONUCLANAN isler duyurulur — her yoklamada "calisiyor" demek gurultu
+  // olurdu. Duyurulanlar `announcedRef`te tutulur ki ayni is iki kez okunmasin.
+  const [announcement, setAnnouncement] = useState("");
+  const announcedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const justDone = jobs.filter((j) => j.done && !announcedRef.current.has(j.id));
+    if (justDone.length === 0) return;
+    for (const j of justDone) announcedRef.current.add(j.id);
+    setAnnouncement(
+      justDone.map((j) => `${j.title}: ${STATUS_LABEL[j.status] || j.status}`).join(". ")
+    );
+  }, [jobs]);
+
   // Yeni bir iş "büyütülmüş" duruma geçince (yeni tetiklenen job ya da alt çubuktan
   // farklı bir sekme açılınca) pencereyi HER ZAMAN ortala — önceki job'ın nereye
   // sürüklendiği yeni job'ı etkilemesin.
@@ -42,7 +74,17 @@ export default function JobTrackerBar() {
     prevExpandedIdRef.current = id;
   }, [expanded?.id, recenter]);
 
-  if (jobs.length === 0) return null;
+  // CANLI BOLGE HER ZAMAN DOM'DA. Ekran okuyucular bir bolgeyi izlemeye BASLAMAK
+  // icin onun ONCEDEN var olmasini bekler; mesajla birlikte olusan bir bolge
+  // genellikle hic okunmaz. Bu yuzden `jobs.length === 0` erken donusunden ONCE
+  // ve ondan BAGIMSIZ olarak render edilir.
+  const liveRegion = (
+    <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      {announcement}
+    </div>
+  );
+
+  if (jobs.length === 0) return liveRegion;
 
   const minimized = jobs.filter((j) => j.minimized);
   const filter = expanded ? (filters[expanded.id] || { enabled: false, prefix: "" }) : { enabled: false, prefix: "" };
@@ -57,6 +99,7 @@ export default function JobTrackerBar() {
 
   return (
     <>
+      {liveRegion}
       {expanded && (
         <div
           ref={ref}
@@ -115,9 +158,9 @@ export default function JobTrackerBar() {
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${j.done ? "" : "animate-status-pulse"}`}
-                style={{ background: STATUS_DOT[j.status] || "#8b949e" }}
+                style={{ background: STATUS_DOT[j.status] || "var(--term-muted)" }}
               />
-              <span className="truncate max-w-[180px] font-mono">{j.title}</span>
+              <span className="truncate max-w-[180px] font-mono" title={j.title}>{j.title}</span>
             </button>
           ))}
         </div>

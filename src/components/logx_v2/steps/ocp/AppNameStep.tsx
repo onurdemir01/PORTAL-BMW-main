@@ -443,7 +443,7 @@ const AppNameStep: React.FC<Props> = ({
                                 className="rounded"
                               />
                             )}
-                            <span className="text-sm font-mono text-[var(--text-primary)] truncate flex-1">{g.name}</span>
+                            <span className="text-sm font-mono text-[var(--text-primary)] truncate flex-1" title={g.name}>{g.name}</span>
                             {g.kinds.filter((k) => k !== "Unknown").map((k) => (
                               <span
                                 key={k}
