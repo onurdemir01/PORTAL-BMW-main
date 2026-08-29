@@ -84,4 +84,25 @@ async function assertClustersExist({ env, tenant, clusters }) {
   }
 }
 
-module.exports = { nsKey, appKey, getClusterTree, getNamespaces, assertNamespaceAllowed, assertAppsAllowed, assertClustersExist };
+// "Su an durdurulmus" listesini kullanicinin yetkisine gore suzer.
+//
+// NEDEN GEREKLI: `/stopped` yalnizca env+tenant aliyor, namespace ALMIYOR — yani
+// resolveScope'tan gecmiyor. Suzgec olmadan, kisitli bir namespace'in ADI ve orada
+// durdurulmus uygulamalar, o namespace'i GOREMEYEN bir kullaniciya listeleniyordu.
+// Namespace listesinde adin sizmasini onlemek icin ozenle ugrasip (bkz. getNamespaces'teki
+// `pick`) burada sizdirmak tutarsizlik olurdu.
+//
+// TEK sorgu: `filterAllowed` tum kisitlama satirlarini bir kerede okur (dongude
+// `isAllowed` cagirmak 500 kayitta 500 sorgu demekti).
+async function filterStoppedForUser(rows, { env, tenant, user }) {
+  const keys = [...new Set(rows.map((r) => nsKey(tenant, env, r.clusterName, r.namespace)))];
+  if (keys.length === 0) return rows;
+  const allowed = new Set(await restrictions.filterAllowed('ocp_namespace', keys, user));
+  return rows.filter((r) => allowed.has(nsKey(tenant, env, r.clusterName, r.namespace)));
+}
+
+module.exports = {
+  nsKey, appKey, getClusterTree, getNamespaces,
+  assertNamespaceAllowed, assertAppsAllowed, assertClustersExist,
+  filterStoppedForUser,
+};

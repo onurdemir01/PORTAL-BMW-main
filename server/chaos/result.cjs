@@ -34,6 +34,17 @@ function normalizeStatus(value) {
   return String(value ?? '').trim().toUpperCase();
 }
 
+// Jinja/`set_stats` bir bool'u JSON `true` OLARAK DA, `"True"` STRING'I OLARAK DA
+// gonderebilir (AWX controller surumune ve `| bool` filtresinin nerede uygulandigina
+// gore degisiyor). `=== true` karsilastirmasi ikincisini SESSIZCE kacirir: kirpilmis
+// bir sonuc "kirpilmadi" gorunur ve kullanici eksik listeye tam liste sanip bakar.
+// TEK yardimci — her bool alan bundan gecer.
+function toBool(value) {
+  if (value === true) return true;
+  if (typeof value === 'string') return ['true', 'yes', '1'].includes(value.trim().toLowerCase());
+  return false;
+}
+
 function toInt(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -64,7 +75,7 @@ function extractChaosResult(rawArtifacts) {
     // `strict_blocked` FAIL'DEN AYRI gosterilmeli: hicbir sey uygulanmadi cunku on
     // kontrol dustu ve kismi calistirma kapaliydi — cluster'da HICBIR degisiklik yok.
     // Bu, kullanici icin kotu degil IYI haber ve oyle sunulmali.
-    strictBlocked: raw.strict_blocked === true || raw.strict_blocked === 'True' || raw.strict_blocked === 'true',
+    strictBlocked: toBool(raw.strict_blocked),
     counts: {
       planned: toInt(counts.planned), ok: toInt(counts.ok),
       warn: toInt(counts.warn), fail: toInt(counts.fail),
@@ -77,10 +88,10 @@ function extractChaosResult(rawArtifacts) {
       kind: String(t.kind || '-'), status: normalizeStatus(t.status),
       detail: String(t.detail || ''),
     })),
-    targetsTruncated: raw.targets_truncated === true,
+    targetsTruncated: toBool(raw.targets_truncated),
     targetsTotal: toInt(raw.targets_total),
     rows: Array.isArray(raw.rows) ? raw.rows : [],
-    rowsTruncated: raw.rows_truncated === true,
+    rowsTruncated: toBool(raw.rows_truncated),
     rowsTotal: toInt(raw.rows_total),
     validationError: raw.validation_error ? String(raw.validation_error) : null,
     failedTask: raw.failed_task ? String(raw.failed_task) : null,
@@ -173,4 +184,4 @@ function extractDiscoveryResult(rawArtifacts) {
   return base;
 }
 
-module.exports = { extractStatsKey, extractChaosResult, extractDiscoveryResult, parseDetailPairs, normalizeStatus };
+module.exports = { extractStatsKey, extractChaosResult, extractDiscoveryResult, parseDetailPairs, normalizeStatus, toBool };

@@ -364,8 +364,12 @@ function initChaos(app) {
     const tenant = String(req.query.tenant || '').trim();
     const clusterName = String(req.query.cluster || '').trim() || null;
     if (!env || !tenant) throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
-    const rows = await state.listMirror({ env, tenant, clusterName });
-    res.json({ ok: true, items: rows });
+    const all = await state.listMirror({ env, tenant, clusterName });
+    // Bu uc `resolveScope`tan GECMEZ (namespace almiyor), bu yuzden yetki suzgeci
+    // BURADA uygulanmali — aksi halde kisitli bir namespace'in adi ve orada durdurulmus
+    // uygulamalar, o namespace'i goremeyen kullaniciya listelenirdi.
+    const rows = await catalog.filterStoppedForUser(all, { env, tenant, user: currentUser(req) });
+    res.json({ ok: true, items: rows, hiddenCount: all.length - rows.length });
   }));
 
   router.post('/adopt', asyncRoute(async (req, res) => {
