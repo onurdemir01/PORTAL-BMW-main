@@ -624,6 +624,21 @@ function initLogXv2(app) {
     res.json({ ok: await restrictions.removeGrant(req.params.id, req.params.username) });
   }));
 
+  // GRUP GRANT'LARI. `addGroupGrant`/`removeGroupGrant` uzun sure yazilmis ama HICBIR
+  // ROUTE'TAN cagrilmiyordu: yetki bir AD grubuna verilebiliyor "gibi" gorunuyor, ama
+  // portal uzerinden verilmesinin bir yolu YOKTU — ozellik bastan sona olu kodu.
+  //
+  // DN YOL PARAMETRESINDE DEGIL GOVDEDE: bir AD DN'i virgul, esittir ve bosluk icerir
+  // ("CN=odeme-ekibi,OU=Groups,DC=..."); URL'e komak hem kacis sorunlari cikarir hem de
+  // grup adlarini erisim loglarina yazardi.
+  router.post('/admin/restrictions/:id/group-grants', requireAdmin, asyncRoute(async (req, res) => {
+    const grant = await restrictions.addGroupGrant(req.params.id, req.body?.groupDn, currentUser(req).username);
+    res.json({ ok: true, grant });
+  }));
+  router.delete('/admin/restrictions/:id/group-grants', requireAdmin, asyncRoute(async (req, res) => {
+    res.json({ ok: await restrictions.removeGroupGrant(req.params.id, req.body?.groupDn) });
+  }));
+
   // ── Admin: izleme ────────────────────────────────────────────────────────────
   router.get('/admin/requests', requireAdmin, asyncRoute(async (req, res) => {
     const { state, platform, limit = 100 } = req.query;

@@ -55,6 +55,9 @@ const ScaleXPage: React.FC = () => {
   const [namespace, setNamespace] = useState("");
   const [apps, setApps] = useState<string[]>([]);
   const [workloads, setWorkloads] = useState<ScaleXWorkload[]>([]);
+  // Kullanici ISLEM adimini bir kez doldurdu mu? Doldurduysa geri donusde kendi
+  // secimleri geri yuklenir; doldurmadiysa adim NOTR acilir (bkz. OperationStep).
+  const [operationTouched, setOperationTouched] = useState(false);
   const [action, setAction] = useState<ScaleXAction>("stop");
   const [executionMode, setExecutionMode] = useState<ScaleXMode>("dry_run");
   const [targetReplicas, setTargetReplicas] = useState<string | undefined>(undefined);
@@ -142,6 +145,7 @@ const ScaleXPage: React.FC = () => {
     setVerificationTimeout("60"); setAllowPartial(true); setMailCc(""); setHpaPin(false);
     setError(null); setNotice(null); setJob(null); setRunResult(null);
     setCatalogWarning(null); setTrackedJobId(null); setCancelling(false); setElapsed(0);
+    setOperationTouched(false);
     setHealth(null); healthStartedRef.current = false;
   }
 
@@ -262,6 +266,13 @@ const ScaleXPage: React.FC = () => {
     setAction("restore");
     setExecutionMode("apply");
     setHpaPin(false);
+    // Geri donuste BOS FORM cikmasin: kullanici "Geri Al"a basarak bu kararlari
+    // vermis sayilir, geri tusu onlari gostermeli.
+    setOperationTouched(true);
+    // ONCEKI ISLEMDEN KALAN BANNER'LARI TEMIZLE: adim degisimi `error`/`notice`
+    // temizlemiyordu ve bir onceki denemenin hata mesaji, yeni geri alma
+    // onizlemesinin USTUNDE durmaya devam ediyordu.
+    setError(null); setNotice(null);
     setStep("preview");
   }
 
@@ -314,10 +325,14 @@ const ScaleXPage: React.FC = () => {
 
         {step === "operation" && (
           <OperationStep apps={apps} workloads={workloads} clusterCount={clusters.length} busy={busy}
+            previous={operationTouched ? {
+              action, executionMode, targetReplicas, verificationTimeout, allowPartial, mailCc, hpaPin,
+            } : undefined}
             onSubmit={(v) => {
               setAction(v.action); setExecutionMode(v.executionMode);
               setTargetReplicas(v.targetReplicas); setVerificationTimeout(v.verificationTimeout);
               setAllowPartial(v.allowPartial); setMailCc(v.mailCc); setHpaPin(v.hpaPin);
+              setOperationTouched(true);
               setStep("preview");
             }} />
         )}
@@ -392,6 +407,19 @@ const ScaleXPage: React.FC = () => {
             )}
 
             <div className="flex justify-end border-t border-[var(--border)] pt-4">
+              {/* DOGRULAMA HATASINDA DUZELTME YOLU. `done` adimindan geri donus yok
+                  (`backTargetFor` null doner) ve tek cikis `Yeni işlem` → tum sihirbaz
+                  bastan, KESIF DAHIL. Oysa portal girdiyi zaten `assertValidTargets`
+                  ile dogruladigi icin buraya dusen hatalar playbook kaynaklidir: ayni
+                  girdiyi tekrar girip ayni hatayi alma ihtimali yuksek. Kapsam ve
+                  uygulama secimi duruyorken islem adimina donmek, yeni bir kesif isi
+                  baslatmadan denemeyi mumkun kiliyor. */}
+              {runResult?.stage === "validation" && workloads.length > 0 && (
+                <button type="button" className="btn-secondary"
+                  onClick={() => { setError(null); setNotice(null); setRunResult(null); setJob(null); setStep("operation"); }}>
+                  İşlem adımına dön
+                </button>
+              )}
               <button type="button" className="btn-secondary" onClick={restart}>Yeni işlem</button>
             </div>
           </div>

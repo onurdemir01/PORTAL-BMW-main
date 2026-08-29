@@ -134,9 +134,23 @@ test('U10 "Onerilen" etiketi ve on-secim YOK', () => {
   // bu depoda tam olarak bu hata birkac kez yapildi.
   const visible = OPERATION.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.ok(!/Önerilen|Onerilen|recommended/i.test(visible), 'nötr sunum bozulmus');
-  assert.match(codeOnly(OPERATION), /useState<ScaleXMode \| null>\(null\)/,
+  // KURAL: "ILK SUNUM NOTR". Bunu artik literal `useState(null)` ile degil, kullanicinin
+  // KENDI onceki secimini geri yukleyen bir prop ile ifade ediyoruz — geri donunce bos
+  // form gostermek de bir tur veri kaybiydi. Kural iki parcali:
+  //   1) OperationStep hicbir LITERAL islem/mod ile baslamaz,
+  //   2) `previous` YALNIZCA kullanici adimi doldurduktan sonra gecilir.
+  const code = codeOnly(OPERATION);
+  assert.match(code, /useState<ScaleXMode \| null>\(previous\?\.executionMode \?\? null\)/,
     'calistirma modu ONCEDEN secili gelmemeli');
-  assert.match(codeOnly(OPERATION), /useState<ScaleXAction \| null>\(null\)/);
+  assert.match(code, /useState<ScaleXAction \| null>\(previous\?\.action \?\? null\)/);
+  assert.ok(!/useState<ScaleXMode \| null>\("(dry_run|apply)"\)/.test(code), 'literal mod on-secimi YOK');
+  assert.ok(!/useState<ScaleXAction \| null>\("(stop|restore|scale)"\)/.test(code), 'literal islem on-secimi YOK');
+
+  const page = codeOnly(PAGE);
+  assert.match(page, /previous=\{operationTouched \? \{/,
+    '`previous` kosulsuz gecilirse ilk sunum on-secili olurdu');
+  assert.match(page, /const \[operationTouched, setOperationTouched\] = useState\(false\)/,
+    'bayrak FALSE baslamali — ilk gelisde notr');
 });
 
 test('U11 iki mod kartinin sinif dizesi AYNI', () => {
@@ -307,8 +321,12 @@ test('U30 sonsuz yoklama dongusunde hata siniri var', () => {
 
 test('V1 HPA sabitleme kutusu ONCEDEN SECILI DEGIL', () => {
   // HPA'ya dokunmak mevcut politikanin tersi — kullanici BILINCLI olarak istemeli.
-  assert.match(codeOnly(OPERATION), /useState\(false\)[^\n]*\n?/);
-  assert.match(codeOnly(OPERATION), /const \[hpaPin, setHpaPin\] = useState\(false\)/);
+  // Kullanicinin onceki secimi geri yuklenebilir, ama VARSAYILAN daima `false`:
+  // `previous` yoksa kutu isaretsiz gelir.
+  const code = codeOnly(OPERATION);
+  assert.match(code, /const \[hpaPin, setHpaPin\] = useState\(previous\?\.hpaPin \?\? false\)/);
+  assert.ok(!/const \[hpaPin, setHpaPin\] = useState\((true|previous\?\.hpaPin \?\? true)\)/.test(code),
+    'HPA sabitleme varsayilan olarak ACIK olamaz');
 });
 
 test('V2 HPA sabitleme `Durdur`da HIC sunulmuyor', () => {

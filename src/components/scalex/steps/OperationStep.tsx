@@ -23,6 +23,15 @@ interface Props {
     targetReplicas?: string; verificationTimeout: string;
     allowPartial: boolean; mailCc: string; hpaPin: boolean;
   }) => void;
+  /**
+   * Kullanicinin DAHA ONCE bu adimda verdigi kararlar. Ilk gelisinde `undefined`
+   * olmalidir — dolu gelirse ekran on-secili gorunur ve notr sunum bozulurdu.
+   */
+  previous?: {
+    action: ScaleXAction | null; executionMode: ScaleXMode | null;
+    targetReplicas?: string; verificationTimeout: string;
+    allowPartial: boolean; mailCc: string; hpaPin: boolean;
+  };
 }
 
 // Her işlem TEK CÜMLEYLE ne yaptığını söyler — kullanıcı adını okuyup tahmin etmesin.
@@ -47,17 +56,22 @@ const TIMEOUTS: { value: string; label: string }[] = [
   { value: "120", label: "2 dakika" },
 ];
 
-const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, onSubmit }) => {
-  const [action, setAction] = useState<ScaleXAction | null>(null);
+const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, onSubmit, previous }) => {
+  // ILK SUNUM NOTR KALIR: `previous` YALNIZCA kullanici bu adimi bir kez doldurup
+  // ilerledikten sonra dolar; ilk gelisinde `undefined`tir ve hicbir sey secili gelmez.
+  // Kendi verdigi karari geri donunce hatirlamak yonlendirme DEGILDIR — tersine, bos
+  // bir form gosterip "Önizle"ye basmasini istemek, `hpaPin`/`allowPartial` gibi
+  // ayarlarini sessizce sifirliyordu.
+  const [action, setAction] = useState<ScaleXAction | null>(previous?.action ?? null);
   // Önceden seçili DEĞİL — kullanıcı bilinçli olarak seçsin (bkz. dosya başı, kural 2).
-  const [mode, setMode] = useState<ScaleXMode | null>(null);
-  const [replicas, setReplicas] = useState("");
-  const [timeout, setTimeoutValue] = useState("60");
-  const [allowPartial, setAllowPartial] = useState(true);
-  const [mailCc, setMailCc] = useState("");
+  const [mode, setMode] = useState<ScaleXMode | null>(previous?.executionMode ?? null);
+  const [replicas, setReplicas] = useState(previous?.targetReplicas ?? "");
+  const [timeout, setTimeoutValue] = useState(previous?.verificationTimeout ?? "60");
+  const [allowPartial, setAllowPartial] = useState(previous?.allowPartial ?? true);
+  const [mailCc, setMailCc] = useState(previous?.mailCc ?? "");
   // HPA sabitleme ONCEDEN SECILI DEGIL: HPA'ya dokunmak politikanin tersi, kullanici
   // bilinçli olarak istemeli.
-  const [hpaPin, setHpaPin] = useState(false);
+  const [hpaPin, setHpaPin] = useState(previous?.hpaPin ?? false);
 
   const picked = useMemo(
     () => workloads.filter((w) => apps.includes(w.name)),

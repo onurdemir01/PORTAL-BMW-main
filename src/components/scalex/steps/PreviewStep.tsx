@@ -92,7 +92,13 @@ const PreviewStep: React.FC<Props> = ({
             </span>
           </p>
           {r.isProd && <span className="pf-label pf-label--red">PROD ortamı</span>}
-          {executionMode === "dry_run" && <span className="pf-label pf-label--blue">Sadece kontrol — değişiklik yok</span>}
+          {/* HER IKI MOD DA ACIKCA ETIKETLENIR. Eskiden yalnizca `dry_run` rozet
+              tasiyordu; `apply` modunda ekranda hicbir isaret yoktu. Panelden tek
+              tikla gelen "Geri Al" akisi kullaniciyi dogrudan `apply`a soktugu icin,
+              modu KENDISININ secmedigi durumda bunu fark etmeyebilirdi. */}
+          {executionMode === "dry_run"
+            ? <span className="pf-label pf-label--blue">Sadece kontrol — değişiklik yok</span>
+            : <span className="pf-label pf-label--orange">Uygulanacak — değişiklik yapılır</span>}
         </div>
         {heavy && (
           <p className="mt-2 text-xs text-red-800">

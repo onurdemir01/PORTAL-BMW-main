@@ -33,7 +33,11 @@ const ScaleXResultPanel: React.FC<{ result: ScaleXRunResult; catalogWarning?: st
           <ShieldExclamationIcon aria-hidden="true" className="w-5 h-5 flex-shrink-0 text-amber-700 mt-0.5" />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-amber-900">Girdi doğrulaması başarısız — cluster'a hiç dokunulmadı.</p>
-            <p className="mt-1 text-xs text-amber-900 break-words">{result.validationError}</p>
+            {/* `validationError` null OLABILIR (tip: string | null) ve o durumda ekranda
+                BOS BIR PARAGRAF kaliyordu — kullanici sebebi hic ogrenemiyordu. */}
+            <p className="mt-1 text-xs text-amber-900 break-words">
+              {result.validationError || "Playbook bir sebep bildirmedi — ayrıntı için aşağıdaki AWX çıktısına bakın."}
+            </p>
             {result.failedTask && (
               <p className="mt-1 text-xs text-amber-800">Düşen adım: <span className="font-mono">{result.failedTask}</span></p>
             )}

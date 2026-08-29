@@ -411,3 +411,54 @@ test('UI: kesif asilirsa gecen sure, AWX is numarasi ve CIKIS yolu var', () => {
   assert.match(W, /onBack\(\)/, 'vazgecme yolu olmali');
   assert.match(W, /elapsed >= 90/, 'uzun surerse aciklama');
 });
+
+// ── GRUP GRANT'I: ozellik artik UCTAN UCA calisir ───────────────────────────
+
+test('INFRA: grup grant\'i olusturma/silme ucu VAR (yoksa ozellik kullanilamazdi)', () => {
+  // `addGroupGrant`/`removeGroupGrant` yazilmis ve test edilmisti ama HICBIR route
+  // cagirmiyordu: yetki bir AD grubuna verilebiliyor "gibi" gorunuyor, verilmesinin
+  // yolu yoktu. Oturum `groups` tasimasi (S3) ve `ocp_app` tipi (S4) ile birlikte
+  // zincirin ucuncu kopuk halkasi buydu.
+  const LOGX = codeOnly(read('server/logx/v2/index.cjs'));
+  assert.match(LOGX, /router\.post\('\/admin\/restrictions\/:id\/group-grants'/);
+  assert.match(LOGX, /router\.delete\('\/admin\/restrictions\/:id\/group-grants'/);
+  assert.match(LOGX, /restrictions\.addGroupGrant\(/);
+  assert.match(LOGX, /restrictions\.removeGroupGrant\(/);
+});
+
+test('INFRA: grup DN\'i URL\'e DEGIL govdeye konur', () => {
+  // DN virgul/esittir/bosluk icerir; URL'e koymak hem kacis sorunu cikarir hem de
+  // grup adlarini erisim loglarina yazardi.
+  const LOGX = codeOnly(read('server/logx/v2/index.cjs'));
+  assert.match(LOGX, /group-grants'[\s\S]{0,200}?req\.body\?\.groupDn/);
+  assert.ok(!/group-grants\/:groupDn/.test(LOGX), 'DN yol parametresi olmamali');
+});
+
+// ── CIKMAZDAN CIKIS ─────────────────────────────────────────────────────────
+
+test('UI: dogrulama hatasindan ISLEM adimina donulebilir', () => {
+  // `done`dan geri donus yoktu; tek cikis tum sihirbazi (KESIF DAHIL) bastan
+  // yapmakti. Portal girdiyi zaten dogruladigi icin buraya dusen hatalar playbook
+  // kaynaklidir — kullanici ayni girdiyi tekrar girip ayni hatayi alirdi.
+  const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
+  assert.match(PAGE, /runResult\?\.stage === "validation"/);
+  assert.match(PAGE, /İşlem adımına dön/);
+});
+
+test('UI: bos dogrulama hatasi bos paragraf birakmiyor', () => {
+  const PANEL = codeOnly(read('src/components/scalex/steps/ScaleXResultPanel.tsx'));
+  assert.match(PANEL, /result\.validationError \|\|/, 'null durumunda bir sey yazmali');
+});
+
+test('UI: `apply` modu da ACIKCA etiketleniyor (yalnizca dry_run rozet tasiyordu)', () => {
+  const PREVIEW = codeOnly(read('src/components/scalex/steps/PreviewStep.tsx'));
+  assert.match(PREVIEW, /Uygulanacak — değişiklik yapılır/);
+});
+
+test('UI: panelden geri alma onceki islemin BANNER\'ini temizler', () => {
+  const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
+  const fn = PAGE.slice(PAGE.indexOf('function restoreFromPanel'));
+  const body = fn.slice(0, fn.indexOf('setStep("preview")'));
+  assert.match(body, /setError\(null\); setNotice\(null\)/);
+  assert.match(body, /setOperationTouched\(true\)/, 'geri tusu bos form gostermemeli');
+});
