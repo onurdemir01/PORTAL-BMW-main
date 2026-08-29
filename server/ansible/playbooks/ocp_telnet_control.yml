@@ -101,6 +101,12 @@
   hosts: telnet_terminal
   # Bir bastion çökse bile diğerleri devam etsin (varsayılan; niyet açık olsun diye yazılı).
   any_errors_fatal: false
+  # `rescue` YALNIZCA GÖREV hatalarını yakalar; SSH/DNS kesintisini (unreachable)
+  # YAKALAMAZ. O durumda host "unreachable" işaretlenir ve TÜM bastion'lar böyle
+  # düşerse Ansible "NO MORE HOSTS LEFT" ile SONRAKİ PLAY'LERİ ATLAR — yani sonuç
+  # sözleşmesini yayınlayan toplayıcı play hiç çalışmaz. (Bu tuzak LogX'te
+  # yaşandı ve orada belgelendi: logx_ocp_discover_fetch.yml.)
+  ignore_unreachable: true
   gather_facts: false
   become: false
 
@@ -176,13 +182,19 @@
       when: (telnet_units | default([])) | length > 0
       changed_when: false
 
-    - name: "--- [Task] Fail with the actual reason when an input is missing ---"
-      ansible.builtin.assert:
-        that:
-          - units_missing_username | length == 0
-          - units_missing_password | length == 0
-          - units_missing_url | length == 0
-        fail_msg: >-
+    # ESKIDEN BURADA `assert` VARDI VE HOST'U OLDURUYORDU (2026-08-28 duzeltmesi).
+    # Uretimde tam olarak bu yasandi: `gbocpcicd2` icin vault parolasi cozulemedi,
+    # assert dustu, TEK bastion oldugu icin play'de ayakta host kalmadi ve Ansible
+    # "NO MORE HOSTS LEFT" ile toplayici play'i ATLADI. Sonuc: `telnet_result` HIC
+    # yayinlanmadi ve portal "yapilandirilmis sonuc gelmedi" deyip ham log gosterdi —
+    # oysa sebep buradaki mesajin TA KENDISIYDI.
+    #
+    # Artik sebep bir FACT'e yazilir, host ayakta kalir, asagidaki is blogu atlanir ve
+    # toplayici play bu sebebi DUZGUN sonuc ekraninda gosterir. AWX isi yine "failed"
+    # doner (bkz. toplayici play'in sonundaki `fail`).
+    - name: "--- [Task] Record the actual reason when an input is missing ---"
+      ansible.builtin.set_fact:
+        bastion_blocked_reason: >-
           Bağlantı bilgisi eksik →
           kullanıcı adı yok: {{ units_missing_username | default([]) | join(', ') | default('-', true) }} |
           vault parolası çözülemedi: {{ units_missing_password | default([]) | join(', ') | default('-', true) }} |
@@ -190,7 +202,16 @@
           Kullanıcı adı cluster satırından (Admin > LogX Yapılandırma > OCP Cluster Hiyerarşisi)
           ya da genel varsayılandan (OCP Çalıştırma Ayarları) gelir; parola `credentials.yaml`
           içindeki vault anahtarından çözülür.
-      when: (telnet_units | default([])) | length > 0
+      when:
+        - (telnet_units | default([])) | length > 0
+        - (units_missing_username | default([]) | length > 0)
+          or (units_missing_password | default([]) | length > 0)
+          or (units_missing_url | default([]) | length > 0)
+
+    - name: "--- [Task] Show the blocking reason (human-readable) ---"
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ bastion_blocked_reason }}"
+      when: bastion_blocked_reason is defined
 
     - block:
         # PAROLA yalnız BU görevde geçiyor; `no_log` sadece burada. Diğer adımların hataları
@@ -352,7 +373,18 @@
             label: "{{ item.item.unit.cluster_name }}/{{ item.item.ns }}"
           changed_when: false
 
-      when: (telnet_units | default([])) | length > 0
+      when:
+        - (telnet_units | default([])) | length > 0
+        - bastion_blocked_reason is not defined
+
+      # RESCUE: blok icindeki bir gorev duserse (ornegin "hicbir cluster'a giris
+      # yapilamadi") host OLMEZ; sebep kaydedilir ve toplayici play calisir.
+      # BILEREK yeniden `fail` ETMEZ — amaci tam da host'u ayakta tutmak.
+      rescue:
+        - name: "--- [Task] Record the failure instead of killing the host ---"
+          ansible.builtin.set_fact:
+            bastion_blocked_reason: >-
+              {{ ansible_failed_result.msg | default('Bu jump server üzerinde iş tamamlanamadı.') }}
 
       always:
         # Geçici pod ve kubeconfig HER DURUMDA temizlenir — akış ortada düşse bile cluster'da
@@ -397,6 +429,36 @@
       {{ groups['telnet_terminal'] | default([])
          | map('extract', hostvars, 'bastion_telnet_results')
          | select('defined') | select('!=', None) | list | flatten }}
+    # ENGELLENEN BASTION'LAR. Bir jump server hic is yapamadiysa (vault parolasi
+    # cozulemedi, oc login dustu, SSH kesildi...) `bastion_telnet_results` HIC
+    # olusmaz ve o bastion sonuctan SESSIZCE kaybolurdu. Artik sebebiyle birlikte
+    # `error` olarak listeye girer — kullanici bos bir ekran degil, NEDEN'i gorur.
+    # PLAY VARS PLAY'LER ARASINDA TASINMAZ. `ns_list` 2. play'in `vars:` blogundadir;
+    # burada (3. play) TANIMSIZDIR. Ayni ifade bilerek tekrarlaniyor — `set_fact` ile
+    # tasimak da olurdu ama o zaman 2. play hic calisamadiginda (tam da duzeltmeye
+    # calistigimiz durum) yine tanimsiz kalirdi. extra_vars her play'de gorunur.
+    ns_list_agg: >-
+      {{ (namespaces | default([namespace | default('')]))
+         | map('string') | map('trim') | select('!=', '') | unique | list }}
+    blocked_targets: >-
+      {%- set out = [] -%}
+      {%- for h in (groups['telnet_terminal'] | default([])) -%}
+        {%- set hv = hostvars[h] | default({}, true) -%}
+        {%- if hv.bastion_blocked_reason is defined -%}
+          {%- set _ = out.append({
+            'cluster': (hv.my_ocp_clusters | default([]) | map(attribute='cluster_name') | join(', ')) or '-',
+            'bastion': h,
+            'namespace': (ns_list_agg | join(', ')),
+            'ip': (target_host | default(ip)) | string,
+            'port': (target_port | default(port)) | string,
+            'state': 'error',
+            'rc': -1,
+            'detail': hv.bastion_blocked_reason,
+          }) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
+    combined_targets: "{{ (all_targets | default([])) + (blocked_targets | default([])) }}"
 
   tasks:
     - name: "--- [Task] Publish telnet_result ---"
@@ -408,9 +470,9 @@
             # ifadenin SONUCUNU kirpar, etiketlerden gelen bosluklari DEGIL — LogX'te bu
             # deger uretimde "      failed" olarak yayinlanmisti. Bosluk denetimi tek cozum.
             overall_status: >-
-              {%- set total = all_targets | length -%}
-              {%- set open_n = all_targets | selectattr('state', 'equalto', 'open') | list | length -%}
-              {%- set err_n = all_targets | selectattr('state', 'equalto', 'error') | list | length -%}
+              {%- set total = combined_targets | length -%}
+              {%- set open_n = combined_targets | selectattr('state', 'equalto', 'open') | list | length -%}
+              {%- set err_n = combined_targets | selectattr('state', 'equalto', 'error') | list | length -%}
               {%- if total == 0 -%}error
               {%- elif open_n == total -%}open
               {%- elif open_n > 0 -%}partial
@@ -421,14 +483,26 @@
               host: "{{ target_host | default(ip) | string }}"
               port: "{{ target_port | default(port) | string }}"
             counts:
-              total: "{{ all_targets | length }}"
-              open: "{{ all_targets | selectattr('state', 'equalto', 'open') | list | length }}"
-              closed: "{{ all_targets | selectattr('state', 'equalto', 'closed') | list | length }}"
-              error: "{{ all_targets | selectattr('state', 'equalto', 'error') | list | length }}"
-            targets: "{{ all_targets }}"
+              total: "{{ combined_targets | length }}"
+              open: "{{ combined_targets | selectattr('state', 'equalto', 'open') | list | length }}"
+              closed: "{{ combined_targets | selectattr('state', 'equalto', 'closed') | list | length }}"
+              error: "{{ combined_targets | selectattr('state', 'equalto', 'error') | list | length }}"
+            targets: "{{ combined_targets }}"
 
     - name: "--- [Task] Summary line for the AWX log ---"
       ansible.builtin.debug:
         msg: >-
-          {{ all_targets | selectattr('state', 'equalto', 'open') | list | length }} /
-          {{ all_targets | length }} hedefte {{ target_host | default(ip) }}:{{ target_port | default(port) }} ACIK.
+          {{ combined_targets | selectattr('state', 'equalto', 'open') | list | length }} /
+          {{ combined_targets | length }} hedefte {{ target_host | default(ip) }}:{{ target_port | default(port) }} ACIK.
+
+    # AWX ISI KIRMIZI KALSIN. Yukaridaki `rescue` host'u ayakta tutuyor; bu olmasaydi
+    # hicbir sey calismadigi halde is "successful" gorunurdu — mevcut durumdan DAHA
+    # KOTU olurdu. `set_stats` BU GOREVDEN ONCE calistigi icin artifact zaten
+    # yayinlanmistir: portal duzgun sonucu alir, AWX ise dogru sekilde "failed" der.
+    - name: "--- [Task] Fail the job when nothing could be tested ---"
+      ansible.builtin.fail:
+        msg: >-
+          Telnet testi tamamlanamadi —
+          {{ combined_targets | selectattr('state', 'equalto', 'error') | map(attribute='detail') | list | join(' | ') }}
+      when: (combined_targets | length) == 0
+            or (combined_targets | selectattr('state', 'equalto', 'error') | list | length) == (combined_targets | length)

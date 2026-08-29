@@ -41,6 +41,11 @@
   gather_facts: false
   become: false
   strategy: free
+  # `rescue` YALNIZCA GOREV hatalarini yakalar; SSH/DNS kesintisini (unreachable)
+  # YAKALAMAZ. O durumda host "unreachable" isaretlenir ve TUM host'lar boyle
+  # duserse Ansible "NO MORE HOSTS LEFT" ile SONRAKI PLAY'LERI ATLAR — toplayici
+  # play hic calismaz. Ikisi BIRLIKTE gerekir.
+  ignore_unreachable: true
 
   vars:
     legacy_log_roots:
@@ -48,105 +53,118 @@
       - /vhosting8
 
   tasks:
-    - name: "Önce app'a ait EAR klasörlerini bul (daraltılmış keşif)"
-      ansible.builtin.find:
-        paths: "{{ legacy_log_roots }}"
-        recurse: true
-        file_type: directory
-        patterns: "{{ app_name }}*.ear"
-        use_regex: false
-        follow: false
-      register: found_ear_dirs
-      ignore_errors: true
-      changed_when: false
+    - block:
+      - name: "Önce app'a ait EAR klasörlerini bul (daraltılmış keşif)"
+        ansible.builtin.find:
+          paths: "{{ legacy_log_roots }}"
+          recurse: true
+          file_type: directory
+          patterns: "{{ app_name }}*.ear"
+          use_regex: false
+          follow: false
+        register: found_ear_dirs
+        ignore_errors: true
+        changed_when: false
 
-    - name: "EAR altındaki mevcut log/logs dizinlerini bul (stat döngüsü olmadan)"
-      ansible.builtin.find:
-        paths: "{{ found_ear_dirs.files | default([]) | map(attribute='path') | unique | list }}"
-        recurse: false
-        file_type: directory
-        patterns:
-          - log
-          - logs
-        use_regex: false
-        follow: false
-      register: found_log_dirs
-      when: (found_ear_dirs.files | default([]) | length) > 0
-      ignore_errors: true
-      changed_when: false
+      - name: "EAR altındaki mevcut log/logs dizinlerini bul (stat döngüsü olmadan)"
+        ansible.builtin.find:
+          paths: "{{ found_ear_dirs.files | default([]) | map(attribute='path') | unique | list }}"
+          recurse: false
+          file_type: directory
+          patterns:
+            - log
+            - logs
+          use_regex: false
+          follow: false
+        register: found_log_dirs
+        when: (found_ear_dirs.files | default([]) | length) > 0
+        ignore_errors: true
+        changed_when: false
 
-    - name: "EAR bulunamadıysa boş log dizin listesi oluştur"
-      ansible.builtin.set_fact:
-        found_log_dirs:
-          failed: false
-          files: []
-      when: (found_ear_dirs.files | default([]) | length) == 0
+      - name: "EAR bulunamadıysa boş log dizin listesi oluştur"
+        ansible.builtin.set_fact:
+          found_log_dirs:
+            failed: false
+            files: []
+        when: (found_ear_dirs.files | default([]) | length) == 0
 
-    - name: "Var olan log dizinlerini listele"
-      ansible.builtin.set_fact:
-        existing_log_dirs: >-
-          {{
-            found_log_dirs.files
-            | default([])
-            | map(attribute='path')
-            | unique
-            | list
-          }}
+      - name: "Var olan log dizinlerini listele"
+        ansible.builtin.set_fact:
+          existing_log_dirs: >-
+            {{
+              found_log_dirs.files
+              | default([])
+              | map(attribute='path')
+              | unique
+              | list
+            }}
 
-    - name: "Sadece ilgili log dizinlerinde dosyaları bul"
-      ansible.builtin.find:
-        paths: "{{ existing_log_dirs }}"
-        recurse: true
-        file_type: file
-        patterns: "*"
-        follow: false
-      register: found_files
-      when: (existing_log_dirs | default([]) | length) > 0
-      ignore_errors: true
-      changed_when: false
+      - name: "Sadece ilgili log dizinlerinde dosyaları bul"
+        ansible.builtin.find:
+          paths: "{{ existing_log_dirs }}"
+          recurse: true
+          file_type: file
+          patterns: "*"
+          follow: false
+        register: found_files
+        when: (existing_log_dirs | default([]) | length) > 0
+        ignore_errors: true
+        changed_when: false
 
-    - name: "Hiç log dizini yoksa boş sonuç oluştur"
-      ansible.builtin.set_fact:
-        found_files:
-          failed: false
-          files: []
-      when: (existing_log_dirs | default([]) | length) == 0
+      - name: "Hiç log dizini yoksa boş sonuç oluştur"
+        ansible.builtin.set_fact:
+          found_files:
+            failed: false
+            files: []
+        when: (existing_log_dirs | default([]) | length) == 0
 
-    - name: "Sonuçları uygulama adına ve log/logs path segmentine göre filtrele (find'ın kendi path/size/mtime dict'leri korunur)"
-      ansible.builtin.set_fact:
-        matched_files: >-
-          {{
-            found_files.files | default([])
-            | selectattr('path', 'search', '/(log|logs)/')
-            | selectattr('path', 'search', app_name)
-            | list
-          }}
-    # files: [{path,size,mtime}, ...] — find modülünün ham dict'i; gerçek implementasyon
-    # yalnızca bu 3 anahtarı seçecek şekilde daraltmalı.
-    - name: "Sonucu bu host için yapılandır"
-      ansible.builtin.set_fact:
-        host_result:
-          host: "{{ inventory_hostname | upper }}"
-          status: "{{ 'ok' if (found_files is not failed) else 'error' }}"
-          error: "{{ found_files.msg | default('') if (found_files is failed) else '' }}"
-          files: "{{ matched_files | default([]) }}"
+      - name: "Sonuçları uygulama adına ve log/logs path segmentine göre filtrele (find'ın kendi path/size/mtime dict'leri korunur)"
+        ansible.builtin.set_fact:
+          matched_files: >-
+            {{
+              found_files.files | default([])
+              | selectattr('path', 'search', '/(log|logs)/')
+              | selectattr('path', 'search', app_name)
+              | list
+            }}
+      # files: [{path,size,mtime}, ...] — find modülünün ham dict'i; gerçek implementasyon
+      # yalnızca bu 3 anahtarı seçecek şekilde daraltmalı.
+      - name: "Sonucu bu host için yapılandır"
+        ansible.builtin.set_fact:
+          host_result:
+            host: "{{ inventory_hostname | upper }}"
+            status: "{{ 'ok' if (found_files is not failed) else 'error' }}"
+            error: "{{ found_files.msg | default('') if (found_files is failed) else '' }}"
+            files: "{{ matched_files | default([]) }}"
 
-    # ÖNEMLİ (çoklu-host düzeltmesi): Burada per-host `set_stats` ÇAĞIRMIYORUZ. Eskiden her
-    # host `logx_result.hosts: [<yalnızca kendisi>]`'i `aggregate: true` ile yayıyordu; bir
-    # DICT üzerinde aggregate son gelen host'un öncekini EZMESİNE yol açıyor → birleşik
-    # artifact tek host kalıyordu (5 sunuculu app'te yalnız 1 sunucu görünme kök nedeni).
-    # Çözüm: her host'u bir gruba ekle; birleştirmeyi AŞAĞIDAKİ ayrı localhost play'inde,
-    # tüm hostvars'tan `host_result` toplayıp TEK KEZ yayınlayarak yap.
-    - name: "Bu host'u sonuç grubuna ekle (aggregation için)"
-      ansible.builtin.group_by:
-        key: logx_discovered
-      changed_when: false
+      # ÖNEMLİ (çoklu-host düzeltmesi): Burada per-host `set_stats` ÇAĞIRMIYORUZ. Eskiden her
+      # host `logx_result.hosts: [<yalnızca kendisi>]`'i `aggregate: true` ile yayıyordu; bir
+      # DICT üzerinde aggregate son gelen host'un öncekini EZMESİNE yol açıyor → birleşik
+      # artifact tek host kalıyordu (5 sunuculu app'te yalnız 1 sunucu görünme kök nedeni).
+      # Çözüm: her host'u bir gruba ekle; birleştirmeyi AŞAĞIDAKİ ayrı localhost play'inde,
+      # tüm hostvars'tan `host_result` toplayıp TEK KEZ yayınlayarak yap.
+      - name: "Bu host'u sonuç grubuna ekle (aggregation için)"
+        ansible.builtin.group_by:
+          key: logx_discovered
+        changed_when: false
 
-# ── Tüm host sonuçlarını TEK artifact'te birleştir (localhost, run_once) ───────────────
-# `strategy: free` altında in-play `run_once` güvenilmez olduğundan aggregation AYRI bir
-# localhost play'inde yapılır. Her host'un `host_result` fact'i hostvars'ta durur; buradan
-# map('extract', ...) ile TÜM host'lar toplanıp set_stats ile BİR KEZ (aggregate: false)
-# yayılır. Tek-host durumunda da doğru çalışır (grup 1 host içerir) → mevcut akış korunur.
+  # ── Tüm host sonuçlarını TEK artifact'te birleştir (localhost, run_once) ───────────────
+  # `strategy: free` altında in-play `run_once` güvenilmez olduğundan aggregation AYRI bir
+  # localhost play'inde yapılır. Her host'un `host_result` fact'i hostvars'ta durur; buradan
+  # map('extract', ...) ile TÜM host'lar toplanıp set_stats ile BİR KEZ (aggregate: false)
+  # yayılır. Tek-host durumunda da doğru çalışır (grup 1 host içerir) → mevcut akış korunur.
+
+      # RESCUE (2026-08-28): bir gorev duserse host OLMEZ; sebep kaydedilir.
+      # Neden sart: bu play'deki TUM host'lar duserse Ansible "NO MORE HOSTS
+      # LEFT" ile SONRAKI PLAY'LERI ATLAR ve `set_stats`'in TEK yazari olan
+      # toplayici play HIC calismaz — sonuc sozlesmesi yayinlanmaz, portal
+      # "sonuc gelmedi" der. Uretimde Telnet'te yasandi.
+      # BILEREK yeniden `fail` ETMEZ: amaci host'u ayakta tutmak.
+      rescue:
+        - name: "Hata kaydedilir (host ayakta kalir)"
+          ansible.builtin.set_fact:
+            host_blocked_reason: >-
+              {{ ansible_failed_result.msg | default('Bu host uzerinde is tamamlanamadi.') }}
 - name: "LogX v2 — Legacy keşif sonuçlarını birleştir (tek artifact)"
   hosts: localhost
   connection: local
@@ -181,3 +199,16 @@
             hosts: "{{ aggregated_hosts }}"
         per_host: false
         aggregate: false
+
+    # AWX ISI KIRMIZI KALSIN (2026-08-28). Yukaridaki `rescue` host'u ayakta tutuyor;
+    # bu gorev olmasaydi hicbir sey calismadigi halde is "successful" gorunurdu —
+    # mevcut durumdan DAHA KOTU olurdu. `set_stats` BU GOREVDEN ONCE calistigi icin
+    # artifact zaten yayinlanmistir: portal duzgun sonucu alir, AWX dogru sekilde
+    # "failed" der.
+    - name: "Hicbir host sonuc bildirmediyse isi BASARISIZ yap"
+      ansible.builtin.fail:
+        msg: >-
+          Kesif tamamlanamadi — hicbir host sonuc bildirmedi.
+          Sebep icin yukaridaki "Hata kaydedilir" gorevine ve host'larin
+          erisilebilirligine bakin.
+      when: (aggregated_hosts | length) == 0

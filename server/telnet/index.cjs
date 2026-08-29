@@ -462,6 +462,11 @@ function initTelnet(app) {
         }
         const meta = await adminData.resolveClusterMeta(envKey, tenantKey, clusterNames).catch(() => ({}));
         const ocpMod = require('../logx/v2/ocp.cjs');
+        // DOOMED JOB'I HIC BASLATMA (2026-08-28). Uretimde `gbocpcicd2` icin vault
+        // anahtari AWX'te cozulemedi; kullanici 12 saniye bekleyip ham log okudu.
+        // Portal bunu ONCEDEN biliyordu — `ocp_vault_key_catalog` tablosu vardi ama
+        // dogrulama icin hic okunmuyordu. LogX'in ayni ilkesi: playbook-readiness.cjs.
+        await ocpMod.assertVaultKeysKnownOrThrow(meta);
         // RUNTIME AYARLARI DA GONDERILMELI (2026-08-12, uretim job 3218799/3218800):
         // `oc login --username` degeri once cluster satirindan (`ocp_username` kolonu),
         // O YOKSA portalin GENEL varsayilanindan gelir — ve genel varsayilan yalnizca

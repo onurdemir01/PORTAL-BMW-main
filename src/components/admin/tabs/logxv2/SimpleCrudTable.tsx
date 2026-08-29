@@ -3,7 +3,7 @@
 // InventoryTab.tsx'in form deseninden (rounded-lg border, black focus ring) esinlenir ama
 // düşük-trafikli admin config ekranları için kasıtlı olarak daha kompakttır.
 import React, { useState } from "react";
-import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, CheckIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { TableEmptyRow } from "@/components/common/EmptyState";
 
 export interface ColumnDef<T> {
@@ -14,6 +14,12 @@ export interface ColumnDef<T> {
   // Hücre BOŞ olduğunda okuma modunda gösterilecek açıklama (ör. devreye girecek fallback
   // değeri). Boş string dönerse "—" gösterilir. Yalnızca görüntüdür, kayda etki etmez.
   emptyHint?: (row: T) => string;
+  // Hücre DOLU ama değer şüpheliyse okuma modunda gösterilecek uyarı. `emptyHint`in aynası:
+  // o "boşsa ne olacak"ı, bu "doluysa neyin yanlış olduğunu" söyler. Vault anahtarı
+  // katalogda kayıtlı değilse iş AWX'te "vault parolası çözülemedi" ile düşer; sorunun
+  // kaynağı olan satır burada görünsün diye eklendi. Yalnızca görüntüdür, kayda etki etmez.
+  // Döndürülen kısa metin rozet içinde gösterilir (ör. "katalogda yok").
+  valueWarning?: (row: T) => string | null;
   // Yazarken açılan öneri listesi (datalist). Değerler MEVCUT satırlardan türetilir —
   // sabit bir liste gömmek istemiyoruz, yeni bir vault anahtarı/URL kalıbı çıktığında
   // kod değişmesin. Serbest metin girişi engellenmez, yalnızca yazım hatası azaltılır.
@@ -151,6 +157,7 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                   {columns.map((col) => {
                     const raw = row[col.key];
                     const isEmpty = raw === null || raw === undefined || raw === "";
+                    const warning = isEmpty ? null : col.valueWarning?.(row);
                     return (
                       <td
                         key={String(col.key)}
@@ -161,7 +168,19 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                           ? (raw ? "✓" : "—")
                           : isEmpty && col.emptyHint
                             ? <span className="text-gray-400 italic">{col.emptyHint(row) || "—"}</span>
-                            : String(raw ?? "")}
+                            : <>
+                                {String(raw ?? "")}
+                                {!isEmpty && warning && (
+                                  <span
+                                    className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5
+                                               text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200
+                                               align-middle whitespace-nowrap"
+                                  >
+                                    <ExclamationTriangleIcon className="w-3 h-3 shrink-0" aria-hidden="true" />
+                                    {warning}
+                                  </span>
+                                )}
+                              </>}
                       </td>
                     );
                   })}
