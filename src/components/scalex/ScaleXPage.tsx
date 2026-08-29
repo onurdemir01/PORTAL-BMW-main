@@ -156,7 +156,16 @@ const ScaleXPage: React.FC = () => {
     return guarded(async () => {
       const r = await scalexApi.run({
         env, tenant, namespace, clusters, apps,
-        action, executionMode, targetReplicas, verificationTimeout, allowPartial, mailCc, hpaPin, ...extra,
+        action, executionMode, targetReplicas, verificationTimeout, allowPartial, mailCc, hpaPin,
+        // GERI ALMA HEDEFLERI: sunucu bu sayilari kendisi bilmiyor (deger cluster'daki
+        // durum kaydinda) ve HPA sabitlemesine izin verip vermeyecegine bunlara bakarak
+        // karar veriyor. Liste yalnizca KISITLAYICI yonde is gorur: hedeflerden biri 0
+        // ya da bilinmiyorsa sabitleme reddedilir — cunku `minReplicas: 0` ya API
+        // tarafindan reddedilir ya da uygulamayi 0'da kilitler.
+        ...(action === "restore"
+          ? { restoreTargets: workloads.filter((w) => apps.includes(w.name)).map((w) => w.previousReplicas) }
+          : {}),
+        ...extra,
       });
       if (!r.ok) {
         // KAPI YANITLARI HATA DEGIL, bir EL SIKISMA adimidir. Yalnizca `setError`
@@ -388,9 +397,13 @@ const ScaleXPage: React.FC = () => {
         )}
       </div>
 
-      {/* "Şu an durdurulmuş" her adımda görünür: kullanıcı bir uygulamayı ikinci kez
-          durdurmadan önce zaten durdurulmuş olanları görsün. */}
-      {env && tenant && step !== "done" && (
+      {/* "Şu an durdurulmuş" GERÇEKTEN her adımda görünür — SONUÇ EKRANI DAHİL.
+          Eskiden `step !== "done"` ile sonuç ekranında gizleniyordu; oysa panele en çok
+          orada ihtiyaç var: 6 hedeften 4'ü başarılı, 2'si başarısız olduğunda kullanıcı
+          "şimdi ne yapmalıyım?" sorusunun cevabını ekranda bulamıyordu ve geri almak
+          için tüm sihirbazı (kapsam → namespace → keşif → işlem → önizleme) baştan
+          doldurmak, üstelik yeni bir keşif işi başlatmak zorunda kalıyordu. */}
+      {env && tenant && (
         <div className="card p-5">
           <StoppedPanel env={env} tenant={tenant} onRestore={restoreFromPanel} />
         </div>

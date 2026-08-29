@@ -192,6 +192,8 @@ export const scalexApi = {
     action: ScaleXAction; executionMode: ScaleXMode;
     targetReplicas?: number | string; verificationTimeout?: string;
     allowPartial?: boolean; reason?: string; mailCc?: string; hpaPin?: boolean;
+    /** Geri almada hedef replica sayilari — HPA sabitlemesini yalnizca KISITLAR. */
+    restoreTargets?: (number | null)[];
     // `ocoAction` BILEREK YOK: ScaleX zamanlama yapmaz, sunucu tek gecerli cevabi
     // ('later') kendisi verir. Alani burada tutmak, ekranin dolduramadigi bir
     // sozlesme alani birakmak olurdu (bkz. server/scalex/index.cjs kapi blogu).

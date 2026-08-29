@@ -73,7 +73,16 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
   // HPA SABITLEME yalnizca `Ölçekle`/`Geri Al` ve hedef >= 1 icin anlamli:
   //   * `Durdur`da gereksiz — replica 0'da HPA kendiliğinden devre dışı kalır
   //     (`ScalingActive=False`), üstelik `minReplicas` 0 olamaz.
-  const pinRelevant = (action === "scale" && /^[1-9][0-9]*$/.test(replicas)) || action === "restore";
+  //   * `Geri Al`da hedef, durdurma sırasında saklanan sayıdır ve 0 OLABİLİR
+  //     (zaten 0 replikadayken durdurulmuş uygulamalar). Hedefi 0 ya da bilinmeyen bir
+  //     geri almada sabitleme ya API tarafından reddedilir ya da uygulamayı 0'da
+  //     KİLİTLER — yani "geri al" hiçbir şeyi ayağa kaldırmaz. O yüzden sabitleme
+  //     yalnızca hedefi BİLİNEN ve >= 1 olan geri almalarda sunulur.
+  const restoreTargets = picked.map((w) => w.previousReplicas);
+  const restoreTargetsKnown = restoreTargets.length > 0
+    && restoreTargets.every((n) => typeof n === "number" && n >= 1);
+  const pinRelevant = (action === "scale" && /^[1-9][0-9]*$/.test(replicas))
+    || (action === "restore" && restoreTargetsKnown);
   const pinOffered = pinRelevant && withHpa.length > 0 && mode === "apply";
   // `Ölçekle` ile 0, geri alınacak kayıt BIRAKMAZ (playbook durumu yalnızca `Durdur`
   // dalında saklar). İki yol da 0'a götürürken birinin hafızası olması, diğerinin

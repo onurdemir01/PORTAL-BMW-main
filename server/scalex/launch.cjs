@@ -205,10 +205,29 @@ async function ocpResolveHosts(env, tenant, clusters) {
 //   * `stop` DEGIL — 0'da HPA zaten devre disi, ustelik minReplicas 0 olamaz
 //   * hedef >= 1
 // Ekran bu kurali uygular, sunucu da AYRICA uygular (client'a guvenilmez).
-function isHpaPinAllowed({ action, targetReplicas }) {
+// HPA SABITLEME NE ZAMAN SUNULABILIR?
+//
+// Sabitleme HPA'nin `minReplicas`/`maxReplicas` degerlerini hedefe esitler. Hedef 0 ise
+// bu YAPILAMAZ: `HPAScaleToZero` ozellik kapisi kapaliyken (varsayilan) API
+// `minReplicas: 0`i reddeder; acikken de uygulamayi 0'da SABITLER — yani "geri al"
+// islemi hicbir seyi ayaga kaldirmaz.
+//
+// `restore` uzun sure KOSULSUZ izinliydi ve yorumu varsayimi itiraf ediyordu
+// ("hedef >= 1 VARSAYILIR"). Varsayim yanlis: `previous_replicas = 0` BILEREK gecerli
+// bir geri alma hedefi (bkz. result.cjs `restorable: prev !== null` ve A25 bekcisi) —
+// zaten 0 replikadayken durdurulmus ya da once 0'a olceklenmis uygulamalar boyle.
+//
+// Portal `restore` hedefini kendisi BILMIYOR (deger cluster'daki ConfigMap'te). Bu
+// yuzden kural: hedefler ACIKCA bildirilmediyse sabitleme SUNULMAZ. Bilgi yoklugu
+// "izin ver"e degil "izin verme"ye cozunur. Bildirim client'tan gelir ama yalnizca
+// KISITLAYICI yonde is gorur — uydurulmus bir liste en kotu ihtimalle eski davranisi
+// verir, hicbir sey ACMAZ.
+function isHpaPinAllowed({ action, targetReplicas, restoreTargets }) {
   if (action === 'stop') return false;
   if (action === 'scale') return /^[0-9]+$/.test(String(targetReplicas ?? '')) && Number(targetReplicas) >= 1;
-  return action === 'restore';   // hedef kayitli durumdan gelir, >= 1 varsayilir
+  if (action !== 'restore') return false;
+  if (!Array.isArray(restoreTargets) || restoreTargets.length === 0) return false;
+  return restoreTargets.every((n) => Number.isInteger(Number(n)) && Number(n) >= 1);
 }
 
 function gatePolicyFor({ action, executionMode }) {

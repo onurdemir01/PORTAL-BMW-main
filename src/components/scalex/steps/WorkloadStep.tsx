@@ -129,9 +129,24 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit }) => {
     );
   }
 
+  // Taranamayan cluster sayisi secilen cluster sayisina esitse ortada "kismi basari"
+  // yoktur — hicbir sey taranmamistir.
+  const allClustersFailed = failedClusters.length > 0
+    && failedClusters.length >= scope.clusters.length;
+
   return (
     <div className="space-y-4">
-      {!!failedClusters.length && (
+      {allClustersFailed && (
+        <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            Seçilen cluster'ların <strong>hiçbiri</strong> taranamadı — aşağıdaki liste
+            boş olduğu için değil, tarama yapılamadığı için boş.
+          </span>
+        </div>
+      )}
+
+      {!allClustersFailed && !!failedClusters.length && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
@@ -200,9 +215,28 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit }) => {
         {list.length === 0 && (
           <div className="px-3 py-10 text-center">
             <BoltSlashIcon aria-hidden="true" className="w-6 h-6 mx-auto text-[var(--text-muted)]" />
+            {/* "HİÇBİRİ TARANAMADI" ile "NAMESPACE BOŞ" AYNI EKRAN DEĞİLDİR.
+                Tüm cluster'lar düştüğünde `workloads` boş gelir ve akış yine "done"
+                olur; ayırt edilmezse kullanıcı doğru namespace'i seçtiği halde yanlış
+                seçtiğini sanıp oradan ayrılabilir. */}
             <p className="mt-2 text-sm text-[var(--text-muted)]">
-              {query ? "Aramanla eşleşen uygulama yok." : "Bu namespace'te dc/deploy/sts/rollout bulunamadı."}
+              {query
+                ? "Aramanla eşleşen uygulama yok."
+                : allClustersFailed
+                  ? "Hiçbir cluster taranamadı — bu, namespace'in boş olduğu anlamına GELMEZ."
+                  : "Bu namespace'te dc/deploy/sts/rollout bulunamadı."}
             </p>
+            {!query && !allClustersFailed && (
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Liste yalnızca dc/deploy/sts/rollout türlerini kapsar. Namespace adını ve
+                bu namespace için yetkinizi de kontrol edin.
+              </p>
+            )}
+            {!query && allClustersFailed && (
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Yukarıdaki hata ayrıntısına bakın; bağlantı düzeldiğinde tekrar deneyin.
+              </p>
+            )}
           </div>
         )}
       </div>

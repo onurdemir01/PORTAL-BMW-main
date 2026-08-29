@@ -340,3 +340,19 @@ test('UI: "durdurulmus kaydi yok" derken gizlenen kayitlari SOYLER', () => {
   assert.match(PANEL, /hiddenCount/);
   assert.match(PANEL, /yetki kısıtı nedeniyle görünmüyor/);
 });
+
+// ── /cancel KAPSAMI ─────────────────────────────────────────────────────────
+
+test('S14: /cancel yalnizca ScaleX islerine dokunur', () => {
+  // Sahiplik kontrolu `ansible_job_history` uzerinden yapiliyor ve MODUL AYRIMI YOK —
+  // bu uc, kullanicinin LogX/OpsX/Telnet uzerinden baslattigi kendi islerini de iptal
+  // edebilirdi ve `UPDATE scalex_operations` her durumda kosuyordu.
+  const cancel = INDEX.slice(INDEX.indexOf("router.post('/cancel"));
+  const body = cancel.slice(0, cancel.indexOf('res.json'));
+  assert.match(body, /FROM scalex_operations WHERE awx_server_id = \$1 AND awx_job_id = \$2/);
+  assert.match(body, /if \(!own\.length\)/);
+  // Kapsam kontrolu IPTALDEN ONCE olmali: once iptal edip sonra "bu bizim isimiz
+  // degilmis" demek, isi zaten durdurmus olurdu.
+  assert.ok(body.indexOf('if (!own.length)') < body.indexOf('cancelJobOnServer'),
+    'kapsam kontrolu cancelJobOnServer cagrisindan ONCE gelmeli');
+});

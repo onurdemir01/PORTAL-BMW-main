@@ -41,6 +41,22 @@ pipeline {
       steps { sh 'node --version && npm ci --no-audit --no-fund' }
     }
 
+    // TESTLER CI'DA KOSMALI. Uzun sure kosmuyorlardi: boru hatti tsc + lint + build
+    // yapiyor ama `npm test` hic cagrilmiyordu — 900+ bekci yalnizca gelistirici
+    // makinesinde calisiyordu ve "yesil CI" kosmayan testlerle de yesildi.
+    //
+    // `npm test` bir kosucuya (scripts/run-tests.cjs) baglidir: Node 22.3+ ise tum
+    // suiti, daha eskiyse `mock.module` gerektiren dosyalari ATLAYARAK kalanini
+    // kosar ve atladiklarini adiyla yazdirir. Boylece "node20" araciyla da calisir
+    // ama neyin kosmadigi ciktida GORUNUR.
+    // SIRA BILEREK: testler KALITE KAPISINDAN ONCE. `lint:ascii` bu depoda su an
+    // 50 mevcut ihlalle kirmizi (benim degil, HEAD'de de oyle) ve o asama duserse
+    // sonraki asamalar HIC kosmaz — testleri arkasina koymak, onlari yine kosmaz
+    // hale getirirdi. Davranis dogrulugu, yorum karakterlerinden once gelir.
+    stage('Testler') {
+      steps { sh 'npm test' }
+    }
+
     stage('Kalite Kapısı') {
       steps {
         sh 'npx tsc --noEmit'

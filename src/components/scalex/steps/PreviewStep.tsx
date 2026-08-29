@@ -167,10 +167,15 @@ const PreviewStep: React.FC<Props> = ({
           <CheckCircleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0" />
           {g.smart === "require" ? "SMART kaydı açılacak ve onay beklenecek." : "SMART kaydı açılmayacak."}
         </p>
+        {/* METIN GERCEGI SOYLER. Eskiden "ikinci kişi onayı gerekiyor" yaziyordu ama
+            sunucuda `requiresSecondPerson` HIC OKUNMUYOR — kullaniciya var olmayan bir
+            guvenlik katmani vaat ediliyordu. Bu durumda gercekten devreye giren sey
+            SMART onayidir (prod + apply → `policy.smart === 'require'`), ve onu zaten
+            yukaridaki satir soyluyor. Burada yalnizca patlama yaricapini vurguluyoruz. */}
         {r.requiresSecondPerson && (
           <p className="flex items-center gap-1.5 text-[var(--text-secondary)]">
             <ClockIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0" />
-            Prod + birden fazla cluster: ikinci kişi onayı gerekiyor.
+            Prod ortamında birden fazla cluster etkileniyor — onay SMART kaydı üzerinden alınacak.
           </p>
         )}
         {picked.some((w) => w.gitops) && (

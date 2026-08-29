@@ -705,8 +705,16 @@ test('I4 HPA sabitleme hedef 0 olan `scale`de reddedilir', () => {
   assert.equal(launch.isHpaPinAllowed({ action: 'scale', targetReplicas: 3 }), true);
 });
 
-test('I5 HPA sabitleme `restore`de sunulur', () => {
-  assert.equal(launch.isHpaPinAllowed({ action: 'restore' }), true);
+test('I5 HPA sabitleme `restore`de YALNIZCA hedef bilinip >= 1 iken sunulur', () => {
+  // ESKIDEN kosulsuz `true` idi ve bu YANLISTI: `previous_replicas = 0` bilerek gecerli
+  // bir geri alma hedefi (bkz. A25). Hedef 0 iken sabitleme ya API tarafindan reddedilir
+  // (HPAScaleToZero kapali) ya da uygulamayi 0'da KILITLER — "geri al" hicbir seyi
+  // ayaga kaldirmaz. Bilgi yoklugu artik "izin verme"ye cozunuyor.
+  assert.equal(launch.isHpaPinAllowed({ action: 'restore', restoreTargets: [3, 2] }), true);
+  assert.equal(launch.isHpaPinAllowed({ action: 'restore' }), false, 'hedef bildirilmediyse HAYIR');
+  assert.equal(launch.isHpaPinAllowed({ action: 'restore', restoreTargets: [] }), false);
+  assert.equal(launch.isHpaPinAllowed({ action: 'restore', restoreTargets: [3, 0] }), false, 'tek bir 0 yeter');
+  assert.equal(launch.isHpaPinAllowed({ action: 'restore', restoreTargets: [null] }), false, 'bilinmeyen hedef');
 });
 
 test('I6 `hpa_pin` extra_var yalnizca izinli durumda gonderilir', () => {
@@ -716,7 +724,11 @@ test('I6 `hpa_pin` extra_var yalnizca izinli durumda gonderilir', () => {
 });
 
 test('I7 client `hpaPin` gonderse bile kural SUNUCUDA uygulanir', () => {
-  assert.match(codeOnly(INDEX), /req\.body\?\.hpaPin === true && launch\.isHpaPinAllowed\(/,
+  // KURALI olcer, SATIR DUZENINI degil: eski hali `=== true && launch.` ifadesinin
+  // ayni satirda olmasini sarta bagliyordu ve kural aynen dururken bir satir kaydirmasi
+  // yuzunden kirmizi oluyordu.
+  const code = codeOnly(INDEX).replace(/\s+/g, ' ');
+  assert.match(code, /req\.body\?\.hpaPin === true && launch\.isHpaPinAllowed\(/,
     'client kendi kapisini yapilandiramamali');
 });
 

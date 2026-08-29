@@ -245,7 +245,7 @@ function initScaleX(app) {
     const policy = launch.gatePolicyFor({ action, executionMode });
     res.json({
       ok: true, blastRadius: radius, gatePolicy: policy,
-      hpaPinAllowed: launch.isHpaPinAllowed({ action, targetReplicas }),
+      hpaPinAllowed: launch.isHpaPinAllowed({ action, targetReplicas, restoreTargets: req.body?.restoreTargets }),
       targets: { env, tenant, namespace, clusters, apps },
     });
   }));
@@ -263,7 +263,8 @@ function initScaleX(app) {
     // gecerse SMTP baslik enjeksiyonu mumkun olurdu.
     const mailCc = launch.sanitizeMailCc(req.body?.mailCc);
     // Client `hpaPin: true` gonderse bile kurallar SUNUCUDA uygulanir.
-    const hpaPin = req.body?.hpaPin === true && launch.isHpaPinAllowed({ action, targetReplicas });
+    const hpaPin = req.body?.hpaPin === true
+      && launch.isHpaPinAllowed({ action, targetReplicas, restoreTargets: req.body?.restoreTargets });
 
     launch.assertValidTargets({ namespace, apps, action, targetReplicas, executionMode, verificationTimeout });
 
@@ -447,6 +448,18 @@ function initScaleX(app) {
     const jobId = Number(req.params.jobId);
     const denied = await denyIfNotOwner(req, serverId, jobId);
     if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
+    // KAPSAM: sahiplik kontrolu `ansible_job_history` uzerinden yapiliyor ve MODUL
+    // AYRIMI YOK — bu uc, kullanicinin LogX/OpsX/Telnet uzerinden baslattigi kendi
+    // islerini de iptal edebilirdi. Yetki yukselmesi degil (is zaten onun), ama ScaleX
+    // ucunun ScaleX DISI islere dokunmasi icin bir sebep yok ve `UPDATE` de her
+    // durumda kosuyordu. Isin gercekten bir ScaleX islemi oldugunu dogruluyoruz.
+    const { rows: own } = await db.query(
+      `SELECT TOP 1 id FROM scalex_operations WHERE awx_server_id = $1 AND awx_job_id = $2`,
+      [serverId, jobId]
+    );
+    if (!own.length) {
+      return res.status(404).json({ ok: false, message: 'Bu iş bir ScaleX işlemi değil.' });
+    }
     const out = await runner.cancelJobOnServer(serverId, jobId);
     await db.query(
       `UPDATE scalex_operations SET status = 'CANCELLED', updated_at = GETUTCDATE()
