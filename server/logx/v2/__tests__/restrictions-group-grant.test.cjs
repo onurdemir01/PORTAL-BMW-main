@@ -4,7 +4,7 @@
 // AD'de yonetilir, portalda ikinci bir kopya tutulmaz ve kisi ekipten cikinca erisimi
 // kendiliginden biter.
 //
-// BU TABLO PAYLASILIYOR: LogX, OpsX, Telnet ve Chaos Scale ayni `logx_v2_restrictions`
+// BU TABLO PAYLASILIYOR: LogX, OpsX, Telnet ve ScaleX ayni `logx_v2_restrictions`
 // satirlarini okuyor. Dolayisiyla buradaki her degisiklik CALISAN uc modulu etkiler.
 // Bu testin ASIL ISI, degisikligin YALNIZCA GENISLETICI oldugunu kilitlemek: bugun
 // izin verilen hicbir durum kapanmamali.

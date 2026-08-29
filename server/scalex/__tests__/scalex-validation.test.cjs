@@ -1,6 +1,6 @@
-// server/chaos/__tests__/chaos-validation.test.cjs — MERGE ONCESI DOGRULAMA SUITI.
+// server/scalex/__tests__/scalex-validation.test.cjs — MERGE ONCESI DOGRULAMA SUITI.
 //
-// Amac: `server/chaos/*` ve ona bagli degisikliklerde, "calisiyor gibi gorunup sessizce
+// Amac: `server/scalex/*` ve ona bagli degisikliklerde, "calisiyor gibi gorunup sessizce
 // yanlis davranan" seyleri yakalamak. Her test bir SORU sorar ve cevabini kaynaktan ya da
 // gercek fonksiyondan alir — hicbiri "kod boyle yazilmis" demez.
 //
@@ -40,84 +40,84 @@ function withDb(handler, fn) {
 // ── A. SONUC SOZLESMESI ─────────────────────────────────────────────────────
 
 test('A1 artifact: dogrudan anahtar', () => {
-  assert.equal(result.extractChaosResult({ chaos_scale_result: { overall_status: 'OK' } }).overallStatus, 'OK');
+  assert.equal(result.extractScaleXResult({ scalex_result: { overall_status: 'OK' } }).overallStatus, 'OK');
 });
 test('A2 artifact: data.<key>', () => {
-  assert.equal(result.extractChaosResult({ data: { chaos_scale_result: { overall_status: 'OK' } } }).overallStatus, 'OK');
+  assert.equal(result.extractScaleXResult({ data: { scalex_result: { overall_status: 'OK' } } }).overallStatus, 'OK');
 });
 test('A3 artifact: ansible_stats.data.<key>', () => {
-  assert.equal(result.extractChaosResult({ ansible_stats: { data: { chaos_scale_result: { overall_status: 'OK' } } } }).overallStatus, 'OK');
+  assert.equal(result.extractScaleXResult({ ansible_stats: { data: { scalex_result: { overall_status: 'OK' } } } }).overallStatus, 'OK');
 });
 test('A4 artifact: JSON string', () => {
-  assert.equal(result.extractChaosResult({ chaos_scale_result: '{"overall_status":"WARN"}' }).overallStatus, 'WARN');
+  assert.equal(result.extractScaleXResult({ scalex_result: '{"overall_status":"WARN"}' }).overallStatus, 'WARN');
 });
 test('A5 artifact: <key>_json alani', () => {
-  assert.equal(result.extractChaosResult({ chaos_scale_result_json: '{"overall_status":"FAIL"}' }).overallStatus, 'FAIL');
+  assert.equal(result.extractScaleXResult({ scalex_result_json: '{"overall_status":"FAIL"}' }).overallStatus, 'FAIL');
 });
 test('A6 artifact: bozuk JSON null doner, patlamaz', () => {
-  assert.equal(result.extractChaosResult({ chaos_scale_result: '{bozuk' }), null);
+  assert.equal(result.extractScaleXResult({ scalex_result: '{bozuk' }), null);
 });
 test('A7 artifact: bos string null doner', () => {
-  assert.equal(result.extractChaosResult({ chaos_scale_result: '   ' }), null);
+  assert.equal(result.extractScaleXResult({ scalex_result: '   ' }), null);
 });
 test('A8 artifact: null/undefined girdi', () => {
-  assert.equal(result.extractChaosResult(null), null);
-  assert.equal(result.extractChaosResult(undefined), null);
+  assert.equal(result.extractScaleXResult(null), null);
+  assert.equal(result.extractScaleXResult(undefined), null);
 });
 test('A9 overall_status bosluklu + kucuk harf normalize', () => {
-  assert.equal(result.extractChaosResult({ chaos_scale_result: { overall_status: '  warn ' } }).overallStatus, 'WARN');
+  assert.equal(result.extractScaleXResult({ scalex_result: { overall_status: '  warn ' } }).overallStatus, 'WARN');
 });
 test('A10 hedef durumlari da normalize', () => {
-  const r = result.extractChaosResult({ chaos_scale_result: { targets: [{ status: ' fail ' }] } });
+  const r = result.extractScaleXResult({ scalex_result: { targets: [{ status: ' fail ' }] } });
   assert.equal(r.targets[0].status, 'FAIL');
 });
 test('A11 sayaclar Jinja STRING gelse de sayiya cevrilir', () => {
-  const r = result.extractChaosResult({ chaos_scale_result: { counts: { planned: '6', ok: '5', fail: '1' } } });
+  const r = result.extractScaleXResult({ scalex_result: { counts: { planned: '6', ok: '5', fail: '1' } } });
   assert.deepEqual([r.counts.planned, r.counts.ok, r.counts.fail], [6, 5, 1]);
 });
 test('A12 sayac eksikse 0, NaN degil', () => {
-  const r = result.extractChaosResult({ chaos_scale_result: {} });
+  const r = result.extractScaleXResult({ scalex_result: {} });
   for (const [k, v] of Object.entries(r.counts)) assert.equal(v, 0, k);
 });
 test('A13 strict_blocked Jinja True/true/boolean ucu de tanini', () => {
   for (const v of [true, 'True', 'true']) {
-    assert.equal(result.extractChaosResult({ chaos_scale_result: { strict_blocked: v } }).strictBlocked, true, String(v));
+    assert.equal(result.extractScaleXResult({ scalex_result: { strict_blocked: v } }).strictBlocked, true, String(v));
   }
 });
 test('A14 strict_blocked False/false/eksik → false', () => {
   for (const v of [false, 'False', 'false', undefined]) {
-    assert.equal(result.extractChaosResult({ chaos_scale_result: { strict_blocked: v } }).strictBlocked, false, String(v));
+    assert.equal(result.extractScaleXResult({ scalex_result: { strict_blocked: v } }).strictBlocked, false, String(v));
   }
 });
 test('A15 truncated bayraklari Jinja True stringini de tanimali', () => {
   // Jinja bool'u `set_stats` uzerinden "True" olarak gelebilir; `=== true` bunu KACIRIR.
-  const r = result.extractChaosResult({ chaos_scale_result: { rows_truncated: 'True', targets_truncated: 'True' } });
+  const r = result.extractScaleXResult({ scalex_result: { rows_truncated: 'True', targets_truncated: 'True' } });
   assert.equal(r.rowsTruncated, true, 'rows_truncated "True" tanninmali');
   assert.equal(r.targetsTruncated, true, 'targets_truncated "True" tanninmali');
 });
 test('A16 validation bicimi ayni sekle indirgenir', () => {
-  const r = result.extractChaosResult({ chaos_scale_result: { stage: 'validation', validation_error: 'x', failed_task: 't' } });
+  const r = result.extractScaleXResult({ scalex_result: { stage: 'validation', validation_error: 'x', failed_task: 't' } });
   assert.equal(r.stage, 'validation');
   assert.equal(r.validationError, 'x');
   assert.equal(r.failedTask, 't');
 });
 test('A17 stage yoksa varsayilan execution', () => {
-  assert.equal(result.extractChaosResult({ chaos_scale_result: {} }).stage, 'execution');
+  assert.equal(result.extractScaleXResult({ scalex_result: {} }).stage, 'execution');
 });
 test('A18 catalog_source varsayilani file (guvenli taraf)', () => {
-  assert.equal(result.extractChaosResult({ chaos_scale_result: {} }).catalogSource, 'file');
+  assert.equal(result.extractScaleXResult({ scalex_result: {} }).catalogSource, 'file');
 });
 test('A19 target_replicas bos string null olur', () => {
-  assert.equal(result.extractChaosResult({ chaos_scale_result: { target_replicas: '' } }).targetReplicas, null);
+  assert.equal(result.extractScaleXResult({ scalex_result: { target_replicas: '' } }).targetReplicas, null);
 });
 test('A20 diziler dizi olmayan degerle gelirse bos diziye duser', () => {
-  const r = result.extractChaosResult({ chaos_scale_result: { clusters: 'x', apps: null, targets: 'y', rows: 5 } });
+  const r = result.extractScaleXResult({ scalex_result: { clusters: 'x', apps: null, targets: 'y', rows: 5 } });
   assert.deepEqual([r.clusters, r.apps, r.targets, r.rows], [[], [], [], []]);
 });
 
 // ── Kesif sozlesmesi ────────────────────────────────────────────────────────
 
-const disc = (o) => result.extractDiscoveryResult({ chaos_discovery_result: o });
+const disc = (o) => result.extractDiscoveryResult({ scalex_discovery_result: o });
 
 test('A21 kesif: workload alanlari ayrisir', () => {
   const r = disc({ mode: 'workloads', items: [{ app: 'a', kind: 'Deployment', step: 'WORKLOAD', status: 'OK',
@@ -163,7 +163,7 @@ test('A27 kesif: problems FAIL ve WARN satirlarini toplar', () => {
 });
 test('A28 kesif: state modu alanlari', () => {
   const r = disc({ mode: 'state', items: [{ app: 'a', kind: 'Deployment', step: 'STATE', status: 'OK',
-    detail: 'cm=chaos-scale-state-a previous_replicas=2 phase=scaled_down created_at=2026-08-28T10:00:00Z created_by=ali job_id=5' }] });
+    detail: 'cm=scalex-state-a previous_replicas=2 phase=scaled_down created_at=2026-08-28T10:00:00Z created_by=ali job_id=5' }] });
   assert.deepEqual(
     [r.states[0].previousReplicas, r.states[0].phase, r.states[0].createdBy, r.states[0].jobId],
     [2, 'scaled_down', 'ali', '5']
@@ -206,7 +206,7 @@ test('B3 denyIfNotOwner DB hatasinda FAIL-CLOSED (503)', () => {
 test('B4 router requireAuth ve gorunurluk kapisi tasiyor', () => {
   const code = codeOnly(INDEX);
   assert.match(code, /router\.use\(requireAuth\)/);
-  assert.match(code, /requireVisiblePrefix\('Chaos Scale'\)/);
+  assert.match(code, /requireVisiblePrefix\('ScaleX'\)/);
 });
 
 test('B5 auth modulu yuklenemezse varsayilan DENY', () => {
@@ -250,7 +250,7 @@ test('B10 mail adresi oturumdan, client\'tan DEGIL', () => {
 });
 
 test('B11 katalogda PAROLA yok, yalnizca vault degisken ADI', () => {
-  const cat = launch.buildChaosClusterCatalog({
+  const cat = launch.buildScaleXClusterCatalog({
     env: 'prod', tenant: 'ark', clusters: ['c1'], hosts: { c1: 'j1' },
     meta: { c1: { api_url: 'https://a:6443', vault_credential_key: 'uxmid_gar' } },
   });
@@ -280,9 +280,9 @@ function maxParam(sql) {
   return m.reduce((a, x) => Math.max(a, Number(x.slice(1))), 0);
 }
 
-test('C1 chaos_scale_operations INSERT: yer tutucu sayisi = parametre sayisi', () => {
+test('C1 scalex_operations INSERT: yer tutucu sayisi = parametre sayisi', () => {
   const code = codeOnly(INDEX);
-  const i = code.indexOf('INSERT INTO chaos_scale_operations');
+  const i = code.indexOf('INSERT INTO scalex_operations');
   assert.ok(i > 0);
   const stmt = code.slice(i, code.indexOf(');', i));
   const cols = (stmt.match(/\(([^)]*)\)\s*\n?\s*VALUES/) || [])[1] || '';
@@ -397,7 +397,7 @@ test('D7 gateVars client anahtari TASIMAZ', () => {
 test('D8 restore gerekcesiz calistirilamaz', () => {
   assert.match(codeOnly(INDEX), /policy\.oco === 'warn' && !reason[\s\S]{0,300}reasonRequired/);
 });
-test('D9 OCO zamanlama Chaos icin KAPALI (schedule hook throw eder)', () => {
+test('D9 OCO zamanlama ScaleX icin KAPALI (schedule hook throw eder)', () => {
   assert.match(codeOnly(INDEX), /createOcoAwxSchedule:\s*async \(\) => \{[\s\S]{0,220}throw/);
 });
 
@@ -533,8 +533,8 @@ test('H1 calistirma extra_vars anahtar kumesi SABIT', () => {
   const block = code.slice(i, code.indexOf('\n}', i));
   const keys = [...block.matchAll(/^\s{4}([a-z_]+):/gm)].map((m) => m[1]);
   assert.deepEqual(keys.sort(), [
-    'allow_partial_execution', 'bulk_change_confirmation', 'chaos_clusters_override',
-    'chaos_target_clusters', 'change_confirmation', 'cluster_selection_mode',
+    'allow_partial_execution', 'bulk_change_confirmation', 'scalex_clusters_override',
+    'scalex_target_clusters', 'change_confirmation', 'cluster_selection_mode',
     'execution_mode', 'mail_to', 'operation_action', 'target_app_names', 'target_cluster_name',
     'target_environment', 'target_namespace', 'target_platform', 'verification_timeout',
   ].sort(), 'extra_vars kumesi degisti — scale/PORTAL.md ve playbook ile birlikte guncelle');
@@ -544,13 +544,13 @@ test('H2 kesif extra_vars anahtar kumesi SABIT', () => {
   const code = codeOnly(INDEX);
   const i = code.indexOf('const extraVars = {');
   const block = code.slice(i, code.indexOf('};', i));
-  for (const k of ['chaos_clusters_override', 'target_platform', 'target_environment', 'target_namespace', 'chaos_target_clusters', 'discovery_mode']) {
+  for (const k of ['scalex_clusters_override', 'target_platform', 'target_environment', 'target_namespace', 'scalex_target_clusters', 'discovery_mode']) {
     assert.ok(block.includes(`${k}:`), `kesif ${k} gondermiyor`);
   }
 });
 
 test('H3 katalog playbook assert\'inin istedigi TUM alanlari tasir', () => {
-  const c = launch.buildChaosClusterCatalog({
+  const c = launch.buildScaleXClusterCatalog({
     env: 'prod', tenant: 'ark', clusters: ['c1'], hosts: { c1: 'j1' },
     meta: { c1: { api_url: 'https://api.x:6443', vault_credential_key: 'k' } },
   }).clusters.c1;
@@ -563,7 +563,7 @@ test('H3 katalog playbook assert\'inin istedigi TUM alanlari tasir', () => {
 
 test('H4 api_url playbook regex\'ini saglar', () => {
   const RE = /^https:\/\/[^/]+:[0-9]+\/?$/;   // 02_select_targets.yml ile AYNI
-  const c = launch.buildChaosClusterCatalog({
+  const c = launch.buildScaleXClusterCatalog({
     env: 'e', tenant: 't', clusters: ['c1'], hosts: { c1: 'j' },
     meta: { c1: { api_url: 'https://api.gbocpprod1.fw.garanti.com.tr:6443', vault_credential_key: 'k' } },
   }).clusters.c1;
@@ -571,11 +571,11 @@ test('H4 api_url playbook regex\'ini saglar', () => {
 });
 
 test('H5 katalog version 1 (playbook bunu assert ediyor)', () => {
-  assert.equal(launch.buildChaosClusterCatalog({ env: 'e', tenant: 't', clusters: [], hosts: {}, meta: {} }).version, 1);
+  assert.equal(launch.buildScaleXClusterCatalog({ env: 'e', tenant: 't', clusters: [], hosts: {}, meta: {} }).version, 1);
 });
 
 test('H6 environments DIZI (playbook `in` operatoru kullaniyor)', () => {
-  const c = launch.buildChaosClusterCatalog({ env: 'prod', tenant: 'ark', clusters: ['c'], hosts: { c: 'j' }, meta: { c: {} } }).clusters.c;
+  const c = launch.buildScaleXClusterCatalog({ env: 'prod', tenant: 'ark', clusters: ['c'], hosts: { c: 'j' }, meta: { c: {} } }).clusters.c;
   assert.ok(Array.isArray(c.environments));
   assert.deepEqual(c.environments, ['prod']);
 });
@@ -614,7 +614,7 @@ test('H11 kesif sonuc okuyucusu playbook alanlariyla eslesir', () => {
 
 test('H12 playbook registry anahtarlari kodda ve seed\'de AYNI', () => {
   const setup = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
-  for (const key of ['chaos_scale_portal', 'chaos_scale_discovery']) {
+  for (const key of ['scalex_run', 'scalex_discovery']) {
     assert.ok(INDEX.includes(`'${key}'`), `index.cjs ${key} kullanmiyor`);
     assert.ok(setup.includes(`key_name: '${key}'`), `seed'de ${key} yok`);
   }
@@ -623,14 +623,14 @@ test('H12 playbook registry anahtarlari kodda ve seed\'de AYNI', () => {
 test('H13 element anahtari ekran/route/seed uclusunde AYNI', () => {
   const setup = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
   const elements = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'config', 'elements.ts'), 'utf8');
-  assert.ok(setup.includes("element_key: 'Chaos Scale'"));
-  assert.ok(elements.includes('id: "Chaos Scale"'));
-  assert.ok(INDEX.includes("requireVisiblePrefix('Chaos Scale')"));
+  assert.ok(setup.includes("element_key: 'ScaleX'"));
+  assert.ok(elements.includes('id: "ScaleX"'));
+  assert.ok(INDEX.includes("requireVisiblePrefix('ScaleX')"));
 });
 
 test('H14 tablolar semada tanimli', () => {
   const setup = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
-  for (const t of ['chaos_scale_operations', 'chaos_scale_state_mirror', 'logx_v2_restriction_group_grants']) {
+  for (const t of ['scalex_operations', 'scalex_state_mirror', 'logx_v2_restriction_group_grants']) {
     assert.ok(setup.includes(`name: '${t}'`), `${t} semada yok`);
     assert.ok(setup.includes(`CREATE TABLE ${t}`), `${t} CREATE TABLE yok`);
   }
@@ -638,10 +638,139 @@ test('H14 tablolar semada tanimli', () => {
 
 test('H15 kodun yazdigi her sutun semada VAR', () => {
   const setup = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
-  const ddl = setup.slice(setup.indexOf('CREATE TABLE chaos_scale_operations'), setup.indexOf(')`', setup.indexOf('CREATE TABLE chaos_scale_operations')));
-  const i = codeOnly(INDEX).indexOf('INSERT INTO chaos_scale_operations');
+  const ddl = setup.slice(setup.indexOf('CREATE TABLE scalex_operations'), setup.indexOf(')`', setup.indexOf('CREATE TABLE scalex_operations')));
+  const i = codeOnly(INDEX).indexOf('INSERT INTO scalex_operations');
   const cols = (codeOnly(INDEX).slice(i, i + 500).match(/\(([^)]*)\)\s*\n?\s*VALUES/) || [])[1] || '';
   for (const c of cols.split(',').map((x) => x.trim()).filter(Boolean)) {
-    assert.ok(new RegExp(`\\b${c}\\s`).test(ddl), `chaos_scale_operations.${c} semada yok`);
+    assert.ok(new RegExp(`\\b${c}\\s`).test(ddl), `scalex_operations.${c} semada yok`);
   }
+});
+
+// ═══ I. YENIDEN ADLANDIRMA + YENI DAVRANIS (merge oncesi ikinci tur) ═══════
+
+const RENAME_GUARD_FILES = ['scalex-validation.test.cjs', 'scalex-ui-validation.test.cjs'];
+
+test('I1 portal kaynaginda HIC "chaos" kalmadi (yorumlar dahil)', () => {
+  // Ad degisikligi mekanikti; unutulan tek bir gecis, calisma aninda 404 ya da
+  // "tablo yok" olarak ortaya cikardi. Yorumlar da taranir: yanlis ad tasiyan bir
+  // yorum, sonraki okuyucuyu yanlis yere gonderir.
+  const roots = [path.join(SRC_DIR, '..'), path.join(SRC_DIR, '..', '..', 'src')];
+  const offenders = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      if (['node_modules', '.git', 'dist'].includes(e.name)) continue;
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) { walk(full); continue; }
+      if (!/\.(cjs|ts|tsx)$/.test(e.name)) continue;
+      // ADI ARAYAN BEKCILER kendileri o kelimeyi zorunlu olarak icerir (arama deseni,
+      // eski onek ornekleri). Kendi metniyle eslesen test bu depoda birkac kez yapilan
+      // bir hata; iki bekci dosyasi ACIKCA ve gerekcesiyle disarida birakiliyor.
+      // Baska hicbir dosya muaf DEGIL.
+      if (RENAME_GUARD_FILES.includes(e.name)) continue;
+      const txt = fs.readFileSync(full, 'utf8');
+      // ESKI ONEK (`chaos-scale-state-`) BILEREK duruyor: cift-okuma tasimasi onu
+      // okumak zorunda. Aramadan cikariliyor ki mesru kullanim yanlis alarm vermesin.
+      const cleaned = txt.replace(/chaos-scale-state-/g, '');
+      if (/chaos/i.test(cleaned)) offenders.push(path.relative(process.cwd(), full));
+    }
+  };
+  for (const r of roots) walk(r);
+  assert.deepEqual(offenders, [], `eski ad kalmis:\n${offenders.join('\n')}`);
+});
+
+test('I2 route / element / registry / tablo adlari DORT yerde de tutarli', () => {
+  const setup = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  const elements = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'config', 'elements.ts'), 'utf8');
+  const app = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'App.tsx'), 'utf8');
+  assert.ok(setup.includes("element_key: 'ScaleX'"));
+  assert.ok(elements.includes('id: "ScaleX"') && elements.includes('route: "/scalex"'));
+  assert.ok(app.includes('pageId="ScaleX"') && app.includes('path="/scalex"'));
+  assert.ok(INDEX.includes("requireVisiblePrefix('ScaleX')"));
+  assert.ok(INDEX.includes("'/api/scalex'"));
+  for (const t of ['scalex_operations', 'scalex_state_mirror']) assert.ok(setup.includes(`CREATE TABLE ${t}`), t);
+  for (const k of ['scalex_run', 'scalex_discovery']) assert.ok(setup.includes(`key_name: '${k}'`), k);
+});
+
+// ── HPA sabitleme kurallari ─────────────────────────────────────────────────
+
+test('I3 HPA sabitleme `stop`ta ASLA sunulmaz', () => {
+  // Replica 0'da HPA kendiliginden devre disi kalir; ustelik `minReplicas` 0 olamaz.
+  assert.equal(launch.isHpaPinAllowed({ action: 'stop', targetReplicas: '0' }), false);
+  assert.equal(launch.isHpaPinAllowed({ action: 'stop', targetReplicas: '5' }), false);
+});
+
+test('I4 HPA sabitleme hedef 0 olan `scale`de reddedilir', () => {
+  assert.equal(launch.isHpaPinAllowed({ action: 'scale', targetReplicas: '0' }), false);
+  assert.equal(launch.isHpaPinAllowed({ action: 'scale', targetReplicas: '1' }), true);
+  assert.equal(launch.isHpaPinAllowed({ action: 'scale', targetReplicas: 3 }), true);
+});
+
+test('I5 HPA sabitleme `restore`de sunulur', () => {
+  assert.equal(launch.isHpaPinAllowed({ action: 'restore' }), true);
+});
+
+test('I6 `hpa_pin` extra_var yalnizca izinli durumda gonderilir', () => {
+  const code = codeOnly(LAUNCH);
+  assert.match(code, /hpaPin && action !== 'stop'[\s\S]{0,80}hpa_pin: 'true'/,
+    "`stop`ta hpa_pin gonderilirse playbook minReplicas=0 denemeye calisir");
+});
+
+test('I7 client `hpaPin` gonderse bile kural SUNUCUDA uygulanir', () => {
+  assert.match(codeOnly(INDEX), /req\.body\?\.hpaPin === true && launch\.isHpaPinAllowed\(/,
+    'client kendi kapisini yapilandiramamali');
+});
+
+test('I8 HPA sabitleme denetim kaydina yaziliyor', () => {
+  // HPA'ya dokunmak mevcut politikanin tersi — izinin kalmasi sart.
+  assert.match(codeOnly(INDEX), /'scalex_operation'[\s\S]{0,400}hpaPin/);
+});
+
+// ── SMART/OCO kaynagi ───────────────────────────────────────────────────────
+
+test('I9 SMART ayarlari URETIMDEKI tablodan okunuyor, env degiskeninden DEGIL', () => {
+  const code = codeOnly(INDEX);
+  assert.match(code, /ss-customizations\.cjs'\)\.readCustom\(/,
+    'ayarlar ansible_ss_customizations tablosundan gelmeli (nginx isleriyle ayni yapi)');
+  assert.ok(!/SCALEX_SMART_FLOW_KEY|process\.env\.[A-Z_]*SMART/.test(code),
+    'SMART ayari icin ikinci bir yapilandirma yuzeyi (env) olmamali');
+  assert.ok(!/smartApproval:\s*req\.body/.test(code),
+    'client kendi SMART ayarini gonderemez');
+});
+
+test('I10 ayar okuyucusu DB hatasinda BOS nesne doner (onay GEREKLI kalir)', async () => {
+  const mod = require('../../ansible/ss-customizations.cjs');
+  mod.invalidate();
+  const orig = db.query;
+  db.query = async () => { throw new Error('DB dustu'); };
+  try {
+    assert.deepEqual(await mod.readCustom(1, 2), {},
+      'bos smartApproval → smart-gate istisna listesinde hicbir kural tutmaz → onay gerekli');
+  } finally { db.query = orig; mod.invalidate(); }
+});
+
+// ── Kesif sozlesmesinin yeni alanlari ───────────────────────────────────────
+
+test('I11 GitOps etiketi ayrisiyor ve `no` null\'a cevriliyor', () => {
+  const withGit = disc({ mode: 'workloads', items: [{ app: 'a', step: 'WORKLOAD', status: 'OK', detail: 'gitops=argocd:odeme-app' }] });
+  const without = disc({ mode: 'workloads', items: [{ app: 'b', step: 'WORKLOAD', status: 'OK', detail: 'gitops=no' }] });
+  assert.equal(withGit.workloads[0].gitops, 'argocd:odeme-app');
+  assert.equal(without.workloads[0].gitops, null, "'no' bir uyari DEGIL — rozet gosterilmemeli");
+});
+
+test('I12 PDB uyarisi namespace duzeyinde tasiniyor', () => {
+  const r = disc({ mode: 'workloads', items: [{ cluster: 'c', step: 'PDB', status: 'WARN', detail: 'PDB var: x(1/)' }] });
+  assert.match(r.pdbWarning, /PDB var/);
+  const none = disc({ mode: 'workloads', items: [] });
+  assert.equal(none.pdbWarning, null);
+});
+
+test('I13 eski onekli durum kaydi `legacy` bayragiyla geliyor', () => {
+  const r = disc({ mode: 'state', items: [
+    { app: 'a', step: 'STATE', status: 'OK', detail: 'cm=scalex-state-a legacy=no previous_replicas=1' },
+    { app: 'b', step: 'STATE', status: 'OK', detail: 'cm=chaos-scale-state-b legacy=yes previous_replicas=2' },
+  ] });
+  assert.equal(r.states[0].legacy, false);
+  assert.equal(r.states[1].legacy, true);
+  // ESKI kayit da geri alinabilir olmali — tasimanin tum amaci bu.
+  assert.equal(r.states[1].previousReplicas, 2);
 });

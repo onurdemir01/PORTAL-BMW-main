@@ -2421,7 +2421,7 @@ function initAnsibleRunner(app) {
       // ── DEGISIKLIK KAPILARI (OCO penceresi + Smart onayi) ────────────────────
       // Mantik server/ansible/change-gates.cjs'e TASINDI — davranis AYNI. Cikarilma
       // sebebi: bu kapilar Self Service disinda HICBIR akista yoktu (OpsX/LogX/Telnet
-      // dogrudan launchJobOnServer cagiriyor) ve Chaos Scale ayni kapidan gecmek
+      // dogrudan launchJobOnServer cagiriyor) ve ScaleX ayni kapidan gecmek
       // zorunda. Ikinci bir kopya, biri duzelince digerinin sessizce eski kalmasi
       // demekti. Sozlesme ve parity testi icin bkz. change-gates.cjs basi.
       const gateDecision = await require("./change-gates.cjs").runChangeGates({

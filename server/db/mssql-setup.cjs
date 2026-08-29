@@ -380,11 +380,11 @@ const TABLES = [
       )`,
   },
   {
-    // Chaos Scale — her (cluster x calistirma) icin BIR satir. Bes cluster'dan biri
+    // ScaleX — her (cluster x calistirma) icin BIR satir. Bes cluster'dan biri
     // dustugunde hangisinin geri alinmasi gerektigi ancak boyle belli olur.
-    name: 'chaos_scale_operations',
+    name: 'scalex_operations',
     sql: `
-      CREATE TABLE chaos_scale_operations (
+      CREATE TABLE scalex_operations (
         id               INT IDENTITY(1,1) PRIMARY KEY,
         request_key      NVARCHAR(64) NOT NULL,
         username         NVARCHAR(255) NOT NULL,
@@ -414,12 +414,12 @@ const TABLES = [
   },
   {
     // ConfigMap'in AYNASI — GERCEGIN KAYNAGI DEGIL. Gercek kaynak namespace icindeki
-    // `chaos-scale-state-<app>` ConfigMap'idir; bu tablo "kim, ne zaman, hangi isle"
+    // `scalex-state-<app>` ConfigMap'idir; bu tablo "kim, ne zaman, hangi isle"
     // sorusunu cevaplar ve cluster gercegiyle ayrisirsa `drift_status` ile ISARETLENIR.
     // Ekran sapmayi GIZLEMEZ, gosterir.
-    name: 'chaos_scale_state_mirror',
+    name: 'scalex_state_mirror',
     sql: `
-      CREATE TABLE chaos_scale_state_mirror (
+      CREATE TABLE scalex_state_mirror (
         id                INT IDENTITY(1,1) PRIMARY KEY,
         env               NVARCHAR(50) NOT NULL,
         tenant            NVARCHAR(100) NOT NULL,
@@ -1189,7 +1189,7 @@ const ELEMENT_SEED = [
   { element_key: 'Telnet',       element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Telnet',       route: '/telnet',          sort_order: 9,  roles: ['Admin', 'User'] },
   // OpsX/LogX ile AYNI varsayilan (kullanici karari): Admin + User, varsayilan ACIK.
   // Kisitlama kaynak bazinda yapilir (namespace/uygulama), sayfa bazinda degil.
-  { element_key: 'Chaos Scale',  element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Chaos Scale',  route: '/chaos-scale',     sort_order: 10, roles: ['Admin', 'User'] },
+  { element_key: 'ScaleX',  element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'ScaleX',  route: '/scalex',     sort_order: 10, roles: ['Admin', 'User'] },
   { element_key: 'Self Service', element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Otomasyon',    route: '/self-service',    sort_order: 5,  roles: ['Admin', 'User'] },
   { element_key: 'Ansible',      element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Ansible',      route: '/ansible',         sort_order: 6,  roles: ['Admin'] },
   { element_key: 'Performance',  element_type: 'page', parent_key: 'navgroup:performance', label: 'Performance',  route: '/performance',     sort_order: 7,  roles: ['Admin', 'User'] },
@@ -1400,7 +1400,7 @@ const PLAYBOOK_REGISTRY_SEED = [
   // awx_server_id doldurur. Playbook'un kendisi bu repo'nun DISINDA tutulur
   // (middleware_inventory.yml/openshift_inventory.yml ile ayni konvansiyon) — bu yuzden
   // playbook_path null (OpsX/Telnet gibi).
-  // ── Chaos Scale — OCP replica durdurma / geri alma / olcekleme ──────────────
+  // ── ScaleX — OCP replica durdurma / geri alma / olcekleme ──────────────
   // Playbook'lar bu repo'nun DISINDA (hknisci/garanti_tasks/scale) tutulur ve AWX'e
   // oradan kopyalanir — OpsX/Telnet/FileX ile ayni konvansiyon, o yuzden playbook_path
   // null. Admin yalnizca awx_template_id + awx_server_id doldurur.
@@ -1409,14 +1409,14 @@ const PLAYBOOK_REGISTRY_SEED = [
   // "Prompt on launch > Variables" ACIK olmali; kapaliysa AWX gonderilen extra_vars'i
   // SESSIZCE yutar (bu tuzak uretimde yasandi). Portal launch oncesi bunu kontrol eder.
   {
-    key_name: 'chaos_scale_portal', display_name: 'Chaos Scale — Replica Islemi (OCP)', category: 'chaos', handler: 'chaos_scale_run',
+    key_name: 'scalex_run', display_name: 'ScaleX — Replica Islemi (OCP)', category: 'scalex', handler: 'scalex_operation',
     description: 'OpenShift uygulamalarinda replica durdurma/geri alma/olcekleme. Survey KAPALI, Prompt on launch ACIK olmali.',
-    playbook_path: null, env_var_name: 'CHAOS_SCALE_TEMPLATE_ID',
+    playbook_path: null, env_var_name: 'SCALEX_TEMPLATE_ID',
   },
   {
-    key_name: 'chaos_scale_discovery', display_name: 'Chaos Scale — Kesif (salt okunur)', category: 'chaos', handler: 'chaos_scale_discovery',
+    key_name: 'scalex_discovery', display_name: 'ScaleX — Kesif (salt okunur)', category: 'scalex', handler: 'scalex_discovery',
     description: 'Workload/durum/saglik kesfi. Hicbir mutasyon yapmaz; ekranin uygulama secim listesini ve sapma tespitini besler.',
-    playbook_path: null, env_var_name: 'CHAOS_SCALE_DISCOVERY_TEMPLATE_ID',
+    playbook_path: null, env_var_name: 'SCALEX_DISCOVERY_TEMPLATE_ID',
   },
   {
     key_name: 'filex_list_files', display_name: 'FileX — Dosya Listeleme (Legacy)', category: 'filex', handler: 'filex_list_files',
@@ -2040,10 +2040,10 @@ async function setupTables() {
     { name: 'IX_dl_token',            table: 'logx_v2_downloads', cols: 'token' },
     { name: 'IX_dl_request',          table: 'logx_v2_downloads', cols: 'request_id' },
     { name: 'IX_opsxdl_expires',      table: 'opsx_dump_downloads', cols: 'expires_at' },
-    // Chaos Scale: "kendi islemlerim" ve "su an durdurulmus" ekranlarinin ana sorgulari.
-    { name: 'IX_chaosop_user',        table: 'chaos_scale_operations',   cols: 'username, created_at' },
-    { name: 'IX_chaosop_job',         table: 'chaos_scale_operations',   cols: 'awx_server_id, awx_job_id' },
-    { name: 'IX_chaosmirror_scope',   table: 'chaos_scale_state_mirror', cols: 'env, tenant, cluster_name' },
+    // ScaleX: "kendi islemlerim" ve "su an durdurulmus" ekranlarinin ana sorgulari.
+    { name: 'IX_scalexop_user',        table: 'scalex_operations',   cols: 'username, created_at' },
+    { name: 'IX_scalexop_job',         table: 'scalex_operations',   cols: 'awx_server_id, awx_job_id' },
+    { name: 'IX_scalexmirror_scope',   table: 'scalex_state_mirror', cols: 'env, tenant, cluster_name' },
     { name: 'IX_opsxdl_token',        table: 'opsx_dump_downloads', cols: 'token' },
     { name: 'IX_jobs_request',        table: 'logx_v2_jobs',      cols: 'request_id' },
     { name: 'IX_req_state',           table: 'logx_v2_requests',  cols: 'state' },

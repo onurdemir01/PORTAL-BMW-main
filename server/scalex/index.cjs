@@ -1,13 +1,13 @@
-// server/chaos/index.cjs — Chaos Scale: OCP replica durdurma / geri alma / olcekleme.
+// server/scalex/index.cjs — ScaleX: OCP replica durdurma / geri alma / olcekleme.
 //
 // TASARIM NOTLARI
 // * Hafif yol (Telnet deseni): `ansible_job_history` + `getJobStatusOnServer`. LogX'in
 //   agir `logx_v2_requests` durum makinesi KURULMUYOR — burada cok adimli, yarida
 //   kalabilen bir sihirbaz durumu yok; her calistirma tek bir AWX isi.
-// * Kalici iz `chaos_scale_operations` tablosunda: CLUSTER BASINA BIR SATIR. Bes
+// * Kalici iz `scalex_operations` tablosunda: CLUSTER BASINA BIR SATIR. Bes
 //   cluster'dan biri dustugunde hangisinin geri alinmasi gerektigi ancak boyle belli olur.
 // * Emniyet kapilari `server/ansible/change-gates.cjs` ile PAYLASILIYOR (Self Service ile
-//   ayni kod). Chaos'a ozel olan yalnizca hangi durumda cagrildigi (bkz. launch.gatePolicyFor).
+//   ayni kod). ScaleX'a ozel olan yalnizca hangi durumda cagrildigi (bkz. launch.gatePolicyFor).
 'use strict';
 
 const db = require('../db/index.cjs');
@@ -21,8 +21,8 @@ const launch = require('./launch.cjs');
 const state = require('./state.cjs');
 const result = require('./result.cjs');
 
-const RUN_KEY = 'chaos_scale_portal';
-const DISCOVERY_KEY = 'chaos_scale_discovery';
+const RUN_KEY = 'scalex_run';
+const DISCOVERY_KEY = 'scalex_discovery';
 
 // Sahiplik icin bellek-ici yedek (Telnet ile ayni): DB tokezlerse bile kullanici kendi
 // isini gorebilsin. Sinirli boyut — sinirsiz bir Map bellek sizintisi olurdu.
@@ -50,7 +50,7 @@ async function denyIfNotOwner(req, serverId, jobId) {
       );
       owner = rows.length && rows[0].username ? String(rows[0].username).toLowerCase() : null;
     } catch (e) {
-      console.warn('[Chaos] sahiplik sorgusu basarisiz — erisim reddedildi:', e.message);
+      console.warn('[ScaleX] sahiplik sorgusu basarisiz — erisim reddedildi:', e.message);
       return { status: 503, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' };
     }
   }
@@ -73,7 +73,7 @@ function resolveByKey(keyName) {
       { status: 501 }
     );
   }
-  const serverId = Number(row.awxServerId || process.env.CHAOS_AWX_SERVER_ID || 1);
+  const serverId = Number(row.awxServerId || process.env.SCALEX_AWX_SERVER_ID || 1);
   return { templateId: Number(templateId), serverId, keyName };
 }
 
@@ -84,7 +84,7 @@ function currentUser(req) {
 function asyncRoute(fn) {
   return (req, res) => fn(req, res).catch((err) => {
     const status = err.status || 500;
-    if (status >= 500) console.error('[Chaos]', err);
+    if (status >= 500) console.error('[ScaleX]', err);
     res.status(status).json({ ok: false, message: err.message, code: err.code });
   });
 }
@@ -129,12 +129,12 @@ async function launchOnAwx({ keyName, extraVars, req, label }) {
   } catch (e) {
     // Gecmis kaydi yazilamadi — is ZATEN BASLADI, geri alinamaz. Sessizce yutmak yerine
     // logluyoruz; sahiplik kontrolu bellek-ici yedege duser.
-    console.warn('[Chaos] ansible_job_history yazilamadi:', e.message);
+    console.warn('[ScaleX] ansible_job_history yazilamadi:', e.message);
   }
   return { serverId, templateId, jobId: job.jobId, status: job.status };
 }
 
-function initChaos(app) {
+function initScaleX(app) {
   const express = require('express');
   const router = express.Router();
 
@@ -147,7 +147,7 @@ function initChaos(app) {
   router.use(express.json({ limit: '512kb' }));
   router.use(requireAuth);
   try {
-    router.use(require('../auth/visibility.cjs').requireVisiblePrefix('Chaos Scale'));
+    router.use(require('../auth/visibility.cjs').requireVisiblePrefix('ScaleX'));
   } catch { /* gorunurluk motoru yoksa auth tek basina korur */ }
 
   // ── Katalog ───────────────────────────────────────────────────────────────
@@ -170,16 +170,16 @@ function initChaos(app) {
     const mode = ['workloads', 'state', 'health'].includes(req.body?.mode) ? req.body.mode : 'workloads';
     const { env, tenant, namespace, clusters, apps } = await resolveScope(req, { requireApps: mode === 'health' });
     const extraVars = {
-      chaos_clusters_override: launch.buildChaosClusterCatalog({
+      scalex_clusters_override: launch.buildScaleXClusterCatalog({
         env, tenant, clusters,
         hosts: (await require('../logx/v2/admin.cjs').resolveTerminalHosts(env, tenant, clusters)).hosts,
         meta: await require('../logx/v2/admin.cjs').resolveClusterMeta(env, tenant, clusters),
       }),
       target_platform: tenant, target_environment: env, target_namespace: namespace,
-      chaos_target_clusters: clusters, discovery_mode: mode,
+      scalex_target_clusters: clusters, discovery_mode: mode,
       ...(apps.length ? { target_app_names: apps.join(',') } : {}),
     };
-    const job = await launchOnAwx({ keyName: DISCOVERY_KEY, extraVars, req, label: `Chaos keşif (${mode}) — ${namespace}` });
+    const job = await launchOnAwx({ keyName: DISCOVERY_KEY, extraVars, req, label: `ScaleX keşif (${mode}) — ${namespace}` });
     res.json({ ok: true, mode, ...job });
   }));
 
@@ -211,7 +211,11 @@ function initChaos(app) {
     });
     const radius = launch.computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
     const policy = launch.gatePolicyFor({ action, executionMode });
-    res.json({ ok: true, blastRadius: radius, gatePolicy: policy, targets: { env, tenant, namespace, clusters, apps } });
+    res.json({
+      ok: true, blastRadius: radius, gatePolicy: policy,
+      hpaPinAllowed: launch.isHpaPinAllowed({ action, targetReplicas }),
+      targets: { env, tenant, namespace, clusters, apps },
+    });
   }));
 
   // ── Calistirma ────────────────────────────────────────────────────────────
@@ -224,6 +228,8 @@ function initChaos(app) {
     const allowPartial = req.body?.allowPartial !== false;
     const reason = String(req.body?.reason || '').trim();
     const mailCc = String(req.body?.mailCc || '').trim();
+    // Client `hpaPin: true` gonderse bile kurallar SUNUCUDA uygulanir.
+    const hpaPin = req.body?.hpaPin === true && launch.isHpaPinAllowed({ action, targetReplicas });
 
     launch.assertValidTargets({ namespace, apps, action, targetReplicas, executionMode, verificationTimeout });
 
@@ -264,48 +270,58 @@ function initChaos(app) {
 
     const extraVars = await launch.buildRunExtraVars({
       env, tenant, clusters, namespace, apps, action, executionMode,
-      targetReplicas, verificationTimeout, allowPartial, mailTo, mailCc,
+      targetReplicas, verificationTimeout, allowPartial, mailTo, mailCc, hpaPin,
     });
 
     // ── KAPILAR ─────────────────────────────────────────────────────────────
     if (policy.smart === 'require' || policy.oco === 'require') {
       const gateVars = launch.buildGateVars({ env, tenant, action, executionMode, clusters, namespace });
+      // SMART/OCO AYARLARI URETIMDEKI YAPIDAN GELIR. Self Service'teki nginx isleri
+      // gibi, ayarlar `ansible_ss_customizations` tablosunda ScaleX'in KENDI
+      // (awxServerId, templateId) satirinda durur ve admin bunlari `FieldOverridesModal`
+      // ekranindan — nginx isi icin kullandigi ekranin AYNISINDAN — yonetir.
+      // Env degiskeni ya da client'tan gelen deger KULLANILMAZ: birincisi ikinci bir
+      // ayar yuzeyi olurdu, ikincisi kullanicinin kendi kapisini yapilandirmasi demekti.
+      const { templateId: runTemplateId, serverId: runServerId } = resolveByKey(RUN_KEY);
+      const svcConfig = await require('../ansible/ss-customizations.cjs').readCustom(runServerId, runTemplateId);
       const overrides = {
-        // `restore` icin OCO UYARIR ama ENGELLEMEZ → kapiyi hic acmiyoruz, gerekce
+        // `restore` icin OCO UYARIR ama ENGELLEMEZ → kapiyi hic acmiyoruz; gerekce
         // zaten yukarida zorunlu kilindi ve asagida kayda + SMART'a gidiyor.
+        // Admin OCO'yu kapatmis olsa bile prod'da acik tutuyoruz — bu sayfa bir
+        // kesinti araci, kapinin varsayilani "acik" olmali.
         ocoCheck: { enabled: policy.oco === 'require' },
-        smartApproval: req.body?.smartApproval || { flowKey: process.env.CHAOS_SMART_FLOW_KEY || '' },
+        smartApproval: svcConfig.smartApproval || {},
       };
       const decision = await launch.gates.runChangeGates({
         server: { id: 0 }, templateId: 0, username: user.username, req,
         overrides, extraVars, gateVars, detail: {}, resolvedLaunchOptions: {}, specFields: [],
-        templateName: 'Chaos Scale',
+        templateName: 'ScaleX',
         ocoNumber: req.body?.ocoNumber, ocoAction: req.body?.ocoAction,
         createOcoAwxSchedule: async () => {
-          throw Object.assign(new Error('Chaos Scale işlemleri zamanlanamaz — pencere açıkken tekrar deneyin.'), { status: 400 });
+          throw Object.assign(new Error('ScaleX işlemleri zamanlanamaz — pencere açıkken tekrar deneyin.'), { status: 400 });
         },
         friendlyAwxError: (e) => ({ status: e.status || 502, message: e.message }),
-        buildSmartMetadata: () => buildChaosSmartMetadata({ user, env, tenant, clusters, namespace, apps, action, radius, reason, ocoNumber: req.body?.ocoNumber }),
+        buildSmartMetadata: () => buildScaleXSmartMetadata({ user, env, tenant, clusters, namespace, apps, action, radius, reason, ocoNumber: req.body?.ocoNumber }),
       });
       // FAIL-CLOSED — `proceed` disindaki her sey burada tuketilir (bkz. change-gates.cjs).
       if (decision?.outcome === 'error') return res.status(decision.status).json(decision.body);
       if (decision?.outcome === 'respond') return res.json(decision.body);
       if (decision?.outcome !== 'proceed') {
-        console.error('[Chaos] taninmayan kapi karari — is BASLATILMADI:', JSON.stringify(decision));
+        console.error('[ScaleX] taninmayan kapi karari — is BASLATILMADI:', JSON.stringify(decision));
         return res.status(500).json({ ok: false, message: 'Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.' });
       }
     }
 
     const job = await launchOnAwx({
       keyName: RUN_KEY, extraVars, req,
-      label: `Chaos ${action} (${executionMode}) — ${namespace} @ ${clusters.join(',')}`,
+      label: `ScaleX ${action} (${executionMode}) — ${namespace} @ ${clusters.join(',')}`,
     });
 
     // CLUSTER BASINA BIR SATIR.
     const requestKey = `${job.serverId}:${job.jobId}`;
     for (const cluster of clusters) {
       await db.query(
-        `INSERT INTO chaos_scale_operations
+        `INSERT INTO scalex_operations
            (request_key, username, env, tenant, cluster_name, namespace, action, execution_mode,
             target_replicas, app_names_json, awx_server_id, awx_job_id, status, oco_number, reason)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'RUNNING',$13,$14)`,
@@ -315,8 +331,9 @@ function initChaos(app) {
       );
     }
 
-    auditPortal(req, 'chaos_scale_run', {
-      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, action, executionMode, targets: radius.targets, jobId: job.jobId }),
+    auditPortal(req, 'scalex_operation', {
+      // HPA'ya dokunmak politikanin tersi — denetim kaydinda ACIKCA gorunmeli.
+      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, action, executionMode, targets: radius.targets, jobId: job.jobId, hpaPin }),
     });
     res.json({ ok: true, ...job, blastRadius: radius });
   }));
@@ -330,7 +347,7 @@ function initChaos(app) {
       runner.getJobStatusOnServer(serverId, jobId),
       runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' })),
     ]);
-    const parsed = result.extractChaosResult(status.artifacts);
+    const parsed = result.extractScaleXResult(status.artifacts);
     if (status.finished) await finalizeOperation({ serverId, jobId, status, parsed });
     res.json({
       ok: true, status: status.status, finished: !!status.finished, failed: !!status.failed,
@@ -350,11 +367,11 @@ function initChaos(app) {
     if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
     const out = await runner.cancelJobOnServer(serverId, jobId);
     await db.query(
-      `UPDATE chaos_scale_operations SET status = 'CANCELLED', updated_at = GETUTCDATE()
+      `UPDATE scalex_operations SET status = 'CANCELLED', updated_at = GETUTCDATE()
         WHERE awx_server_id = $1 AND awx_job_id = $2 AND status = 'RUNNING'`,
       [serverId, jobId]
     );
-    auditPortal(req, 'chaos_scale_cancel', { detail: JSON.stringify({ serverId, jobId }) });
+    auditPortal(req, 'scalex_cancel', { detail: JSON.stringify({ serverId, jobId }) });
     res.json({ ok: true, ...out });
   }));
 
@@ -385,7 +402,7 @@ function initChaos(app) {
       stoppedBy: req.body?.stoppedBy || null,
       adoptedBy: user.username,
     });
-    auditPortal(req, 'chaos_scale_adopt', { detail: JSON.stringify({ env, tenant, cluster: clusters[0], namespace, appName }) });
+    auditPortal(req, 'scalex_adopt', { detail: JSON.stringify({ env, tenant, cluster: clusters[0], namespace, appName }) });
     res.json({ ok: true, item: row });
   }));
 
@@ -394,20 +411,20 @@ function initChaos(app) {
     const isAdmin = user.role === 'Admin';
     const { rows } = await db.query(
       isAdmin
-        ? `SELECT TOP 200 * FROM chaos_scale_operations ORDER BY created_at DESC`
-        : `SELECT TOP 200 * FROM chaos_scale_operations WHERE username = $1 ORDER BY created_at DESC`,
+        ? `SELECT TOP 200 * FROM scalex_operations ORDER BY created_at DESC`
+        : `SELECT TOP 200 * FROM scalex_operations WHERE username = $1 ORDER BY created_at DESC`,
       isAdmin ? [] : [user.username]
     );
     res.json({ ok: true, items: rows });
   }));
 
-  app.use('/api/chaos', router);
-  console.log('[Chaos] Chaos Scale API hazir (/api/chaos)');
+  app.use('/api/scalex', router);
+  console.log('[ScaleX] ScaleX API hazir (/api/scalex)');
 }
 
 // SMART metadata'si. `reason` ve patlama yaricapi BILEREK iceride: onay veren kisi
 // "kac hedefe dokunuluyor" ve "neden" sorularinin cevabini gormeli.
-function buildChaosSmartMetadata({ user, env, tenant, clusters, namespace, apps, action, radius, reason, ocoNumber }) {
+function buildScaleXSmartMetadata({ user, env, tenant, clusters, namespace, apps, action, radius, reason, ocoNumber }) {
   return [
     { key: 'requestedBy', value: user.username },
     { key: 'environment', value: env },
@@ -429,13 +446,13 @@ function buildChaosSmartMetadata({ user, env, tenant, clusters, namespace, apps,
 async function finalizeOperation({ serverId, jobId, status, parsed }) {
   try {
     const { rows } = await db.query(
-      `SELECT * FROM chaos_scale_operations WHERE awx_server_id = $1 AND awx_job_id = $2`,
+      `SELECT * FROM scalex_operations WHERE awx_server_id = $1 AND awx_job_id = $2`,
       [serverId, jobId]
     );
     if (!rows.length || rows.every((r) => r.status !== 'RUNNING')) return;
 
     await db.query(
-      `UPDATE chaos_scale_operations
+      `UPDATE scalex_operations
           SET status = 'FINISHED', overall_status = $3, result_json = $4, updated_at = GETUTCDATE()
         WHERE awx_server_id = $1 AND awx_job_id = $2 AND status = 'RUNNING'`,
       [serverId, jobId, parsed ? parsed.overallStatus : String(status.status || '').toUpperCase(),
@@ -466,8 +483,8 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
     // Sonuc gosterimini BLOKLAMA: ayna guncellenemedi diye kullanicinin isinin sonucunu
     // gizlemek, cozdugu sorundan buyuk bir sorun olurdu. Sapma zaten `[Durumu Tazele]`
     // ile yakalanir.
-    console.warn('[Chaos] islem sonuclandirilamadi:', e.message);
+    console.warn('[ScaleX] islem sonuclandirilamadi:', e.message);
   }
 }
 
-module.exports = { initChaos, denyIfNotOwner, resolveByKey, buildChaosSmartMetadata, finalizeOperation };
+module.exports = { initScaleX, denyIfNotOwner, resolveByKey, buildScaleXSmartMetadata, finalizeOperation };

@@ -2,7 +2,7 @@
 //
 // NEDEN AYRI BIR MODUL: bu mantik `runner.cjs` icinde `launch-ss` handler'inin GOVDESINE
 // gomuluydu. Sonucu: Self Service disindaki hicbir akista kapi YOKTU — OpsX, LogX ve
-// Telnet dogrudan `runner.launchJobOnServer()` cagiriyor. Chaos Scale (OCP replica
+// Telnet dogrudan `runner.launchJobOnServer()` cagiriyor. ScaleX (OCP replica
 // durdurma) ayni kapilardan gecmek zorunda ve mantigi ikinci kez yazmak, biri duzelince
 // digerinin sessizce eski kalmasi demekti.
 //
@@ -13,7 +13,7 @@
 // ── DAVRANIS SOZLESMESI ─────────────────────────────────────────────────────────
 // Bu cikarma bir DAVRANIS DEGISIKLIGI DEGILDIR. Kod satir satir tasindi; tek fark
 // `res.status().json()` cagrilarinin yerine KARAR NESNESI donulmesi (modul Express'e
-// bagli kalmasin, Chaos Scale de ayni kapiyi kullanabilsin diye).
+// bagli kalmasin, ScaleX de ayni kapiyi kullanabilsin diye).
 //
 // Karar nesnesi UC bicimde doner ve BASKASI OLAMAZ:
 //   { outcome: 'proceed' }                      → cagiran akisa devam eder

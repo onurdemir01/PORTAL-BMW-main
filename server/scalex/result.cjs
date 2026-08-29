@@ -1,4 +1,4 @@
-// server/chaos/result.cjs — playbook'un `set_stats` ile yayinladigi artifact'i okur.
+// server/scalex/result.cjs — playbook'un `set_stats` ile yayinladigi artifact'i okur.
 //
 // AWX'in artifact'i UC farkli sekilde sunabildigi uretimde GORULDU (controller surumune
 // gore degisiyor). OpsX'teki `extractStatsKey` toleransinin (server/opsx/index.cjs:234)
@@ -54,8 +54,8 @@ function toInt(value) {
 //   * tam sonuc          — rapor asamasina gelinebilen calistirmalar
 //   * `stage: validation` — girdi dogrulamasi dustugunde (portalin en sik gordugu sinif)
 // Ikisini de AYNI sekle indirger; ekran tek bir bicim okur.
-function extractChaosResult(rawArtifacts) {
-  const raw = extractStatsKey(rawArtifacts, 'chaos_scale_result');
+function extractScaleXResult(rawArtifacts) {
+  const raw = extractStatsKey(rawArtifacts, 'scalex_result');
   if (!raw || typeof raw !== 'object') return null;
 
   const counts = raw.counts || {};
@@ -100,7 +100,7 @@ function extractChaosResult(rawArtifacts) {
 }
 
 // Kesif satirlarindaki `detail` alani `anahtar=deger` ciftleri tasir (bkz.
-// chaos_discovery.sh). Bosluk ayrac; DEGERLER bosluk icermez (imaj/ad/sayilar).
+// scalex_discovery.sh). Bosluk ayrac; DEGERLER bosluk icermez (imaj/ad/sayilar).
 function parseDetailPairs(detail) {
   const out = {};
   for (const part of String(detail || '').split(' ')) {
@@ -112,7 +112,7 @@ function parseDetailPairs(detail) {
 
 // Kesif isinin sonucu. Ham satirlari ekranin dogrudan kullanabilecegi nesnelere cevirir.
 function extractDiscoveryResult(rawArtifacts) {
-  const raw = extractStatsKey(rawArtifacts, 'chaos_discovery_result');
+  const raw = extractStatsKey(rawArtifacts, 'scalex_discovery_result');
   if (!raw || typeof raw !== 'object') return null;
 
   const items = Array.isArray(raw.items) ? raw.items : [];
@@ -129,6 +129,8 @@ function extractDiscoveryResult(rawArtifacts) {
     clusters: Array.isArray(raw.clusters) ? raw.clusters : [],
     failedClusters: Array.isArray(raw.failed_clusters) ? raw.failed_clusters : [],
     counts: { ok: toInt(counts.ok), warn: toInt(counts.warn), fail: toInt(counts.fail) },
+    // PDB namespace duzeyinde bildirilir (hangi workload'u kapsadigi ucuza kanitlanamaz).
+    pdbWarning: (items.find((i) => String(i.step) === 'PDB') || {}).detail || null,
     problems: items
       .filter((i) => normalizeStatus(i.status) === 'FAIL' || normalizeStatus(i.status) === 'WARN')
       .map((i) => ({ cluster: String(i.cluster || ''), step: String(i.step || ''), status: normalizeStatus(i.status), detail: String(i.detail || '') })),
@@ -151,6 +153,10 @@ function extractDiscoveryResult(rawArtifacts) {
           statePhase: d.state_phase && d.state_phase !== '-' ? d.state_phase : null,
           previousReplicas: prev,
           restorable: prev !== null,
+          // GitOps: `argocd:<app>` ya da `managed_by:<x>`; `no` ise bos birakilir.
+          // ArgoCD auto-sync acikken replica 0 birkac DAKIKADA sessizce geri alinir —
+          // dogrula-ve-tut penceresi (15 sn) bunu yakalayamaz, o yuzden ONCEDEN uyariyoruz.
+          gitops: d.gitops && d.gitops !== 'no' ? d.gitops : null,
         };
       });
   }
@@ -163,6 +169,9 @@ function extractDiscoveryResult(rawArtifacts) {
         return {
           cluster: String(i.cluster || ''), appName: String(i.app || ''), kind: String(i.kind || '-'),
           configMap: d.cm || '',
+          // Eski onekli (`chaos-scale-state-`) kayit — ilk basarili geri almadan sonra
+          // kendiliginden yok olur. Ekran kucuk bir "eski bicim" rozetiyle gosterir.
+          legacy: d.legacy === 'yes',
           previousReplicas: /^[0-9]+$/.test(d.previous_replicas || '') ? Number(d.previous_replicas) : null,
           phase: d.phase && d.phase !== '-' ? d.phase : null,
           createdAt: d.created_at && d.created_at !== '-' ? d.created_at : null,
@@ -184,4 +193,4 @@ function extractDiscoveryResult(rawArtifacts) {
   return base;
 }
 
-module.exports = { extractStatsKey, extractChaosResult, extractDiscoveryResult, parseDetailPairs, normalizeStatus, toBool };
+module.exports = { extractStatsKey, extractScaleXResult, extractDiscoveryResult, parseDetailPairs, normalizeStatus, toBool };

@@ -1,8 +1,8 @@
-// server/chaos/catalog.cjs — cluster agaci, namespace listesi ve yetki suzgeci.
+// server/scalex/catalog.cjs — cluster agaci, namespace listesi ve yetki suzgeci.
 //
 // YENI KOD YAZILMIYOR: cluster agaci LogX'in `ocp_cluster_index` okuyucusundan,
 // namespace listesi `ocp-catalog` (dbo.Openshift_Inventory ∪ tarama onbellegi)
-// birlesiminden geliyor. Chaos'a ozel olan tek sey YETKI SUZGECI'nin uygulanma yeri.
+// birlesiminden geliyor. ScaleX'a ozel olan tek sey YETKI SUZGECI'nin uygulanma yeri.
 'use strict';
 
 const adminData = require('../logx/v2/admin.cjs');

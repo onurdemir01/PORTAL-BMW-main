@@ -1,4 +1,4 @@
-// server/chaos/launch.cjs — extra_vars uretimi, patlama yaricapi ve degisiklik kapilari.
+// server/scalex/launch.cjs — extra_vars uretimi, patlama yaricapi ve degisiklik kapilari.
 'use strict';
 
 const adminData = require('../logx/v2/admin.cjs');
@@ -52,7 +52,7 @@ function computeBlastRadius({ clusters = [], apps = [], environment, action, exe
 // `ansible_host` BILEREK jump_server ile AYNI: portal tarafinda ikisi tek bir alanda
 // (`terminal_host`) tutuluyor. Playbook `ansible_host | default(jump_server)` yaptigi
 // icin ikisini de yazmak gereksiz — yalnizca `jump_server` gonderiliyor.
-function buildChaosClusterCatalog({ env, tenant, clusters, hosts, meta }) {
+function buildScaleXClusterCatalog({ env, tenant, clusters, hosts, meta }) {
   const out = {};
   for (const name of clusters) {
     const m = meta[name] || {};
@@ -88,7 +88,7 @@ function assertValidTargets({ namespace, apps, action, targetReplicas, execution
 
 async function buildRunExtraVars({
   env, tenant, clusters, namespace, apps, action, executionMode,
-  targetReplicas, verificationTimeout, allowPartial, mailTo, mailCc,
+  targetReplicas, verificationTimeout, allowPartial, mailTo, mailCc, hpaPin = false,
 }) {
   const hosts = await ocpResolveHosts(env, tenant, clusters);
   const meta = await adminData.resolveClusterMeta(env, tenant, clusters);
@@ -99,9 +99,9 @@ async function buildRunExtraVars({
   const radius = computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
 
   return {
-    // Katalog portal DB'sinden; playbook `chaos_clusters_override` yoksa kendi
+    // Katalog portal DB'sinden; playbook `scalex_clusters_override` yoksa kendi
     // dosyasina duser (AWX'ten elle calistirma bozulmaz).
-    chaos_clusters_override: buildChaosClusterCatalog({ env, tenant, clusters, hosts, meta }),
+    scalex_clusters_override: buildScaleXClusterCatalog({ env, tenant, clusters, hosts, meta }),
     execution_mode: executionMode,
     target_platform: tenant,
     target_environment: env,
@@ -109,7 +109,7 @@ async function buildRunExtraVars({
     // bu kurumda sessizce yutuluyordu). Tek cluster de coklu da ayni yoldan gider.
     cluster_selection_mode: clusters.length > 1 ? 'all' : 'single',
     target_cluster_name: clusters.length > 1 ? 'all' : clusters[0],
-    chaos_target_clusters: clusters,
+    scalex_target_clusters: clusters,
     target_namespace: namespace,
     target_app_names: apps.join(','),
     operation_action: action,
@@ -121,6 +121,11 @@ async function buildRunExtraVars({
     // gondermesi hicbir kapiyi acmaz.
     change_confirmation: executionMode === 'apply' ? 'true' : 'false',
     bulk_change_confirmation: radius.multiCluster && executionMode === 'apply' ? 'true' : 'false',
+    // HPA SABITLEME — yalnizca kullanici EKRANDA acikca isaretlerse ve yalnizca
+    // scale/restore icin. `stop`ta hic gonderilmez: replica 0'da HPA kendiliginden
+    // devre disi kalir (ScalingActive=False), sabitlemeye gerek yok ve `minReplicas`
+    // zaten 0 olamaz.
+    ...(hpaPin && action !== 'stop' ? { hpa_pin: 'true' } : {}),
     mail_to: mailTo,
     ...(mailCc ? { mail_cc: mailCc } : {}),
   };
@@ -140,7 +145,7 @@ async function ocpResolveHosts(env, tenant, clusters) {
   return hosts;
 }
 
-// Chaos'a ozel kapi kurallari. Ortak kapi modulu (`change-gates.cjs`) Self Service ile
+// ScaleX'a ozel kapi kurallari. Ortak kapi modulu (`change-gates.cjs`) Self Service ile
 // PAYLASILIR; burada yalnizca hangi durumda cagrilacagina karar veriliyor.
 //
 //   * `dry_run`  → HICBIR kapi. Hicbir sey degistirmiyor; kapi koymak, kullaniciyi
@@ -150,6 +155,16 @@ async function ocpResolveHosts(env, tenant, clusters) {
 //                  ayaga kaldiramamak, kapinin cozdugu sorundan buyuk olur. Pencere
 //                  disindaysa GEREKCE zorunlu ve gerekce hem kayda hem SMART'a gider.
 //   * digerleri  → tam kapi (prod'da OCO + her apply'da SMART).
+// HPA sabitleme yalnizca su kosullarda ANLAMLI ve GUVENLI:
+//   * `stop` DEGIL — 0'da HPA zaten devre disi, ustelik minReplicas 0 olamaz
+//   * hedef >= 1
+// Ekran bu kurali uygular, sunucu da AYRICA uygular (client'a guvenilmez).
+function isHpaPinAllowed({ action, targetReplicas }) {
+  if (action === 'stop') return false;
+  if (action === 'scale') return /^[0-9]+$/.test(String(targetReplicas ?? '')) && Number(targetReplicas) >= 1;
+  return action === 'restore';   // hedef kayitli durumdan gelir, >= 1 varsayilir
+}
+
 function gatePolicyFor({ action, executionMode }) {
   if (executionMode !== 'apply') return { oco: 'skip', smart: 'skip', reason: 'dry_run hicbir sey degistirmez' };
   if (action === 'restore') return { oco: 'warn', smart: 'require', reason: 'geri alma bir onarim islemidir' };
@@ -158,7 +173,7 @@ function gatePolicyFor({ action, executionMode }) {
 
 // `gateVars` TAMAMEN SUNUCUDA uretilir — client'tan hicbir anahtar kapiya girmez.
 // Self Service'te bu ayrim bir guvenlik acigini kapatmisti (kullanici govdeye bir alan
-// ekleyerek onayi atlatabiliyordu); Chaos'ta client zaten hic extra_vars gondermiyor.
+// ekleyerek onayi atlatabiliyordu); ScaleX'ta client zaten hic extra_vars gondermiyor.
 function buildGateVars({ env, tenant, action, executionMode, clusters, namespace }) {
   return {
     env, ortam: env, tenant, action, execution_mode: executionMode,
@@ -168,6 +183,6 @@ function buildGateVars({ env, tenant, action, executionMode, clusters, namespace
 
 module.exports = {
   ACTIONS, MODES, VERIFICATION_TIMEOUTS, MAX_TARGETS, PROD_WRITTEN_CONFIRM_THRESHOLD,
-  isProdEnv, computeBlastRadius, buildChaosClusterCatalog, assertValidTargets,
+  isProdEnv, computeBlastRadius, isHpaPinAllowed, buildScaleXClusterCatalog, assertValidTargets,
   buildRunExtraVars, gatePolicyFor, buildGateVars, gates,
 };

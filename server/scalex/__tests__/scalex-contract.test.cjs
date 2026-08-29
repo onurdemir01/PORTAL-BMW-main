@@ -1,4 +1,4 @@
-// server/chaos/__tests__/chaos-contract.test.cjs — sonuc sozlesmesi + patlama yaricapi
+// server/scalex/__tests__/scalex-contract.test.cjs — sonuc sozlesmesi + patlama yaricapi
 // + kapi politikasi. Hepsi SAF fonksiyon; DB/AWX/ag gerektirmez.
 'use strict';
 
@@ -14,16 +14,16 @@ const state = require('../state.cjs');
 test('artifact UC farkli konumdan da okunur (AWX controller surumune gore degisiyor)', () => {
   const payload = { overall_status: 'OK', counts: {}, targets: [] };
   for (const shape of [
-    { chaos_scale_result: payload },
-    { data: { chaos_scale_result: payload } },
-    { ansible_stats: { data: { chaos_scale_result: payload } } },
+    { scalex_result: payload },
+    { data: { scalex_result: payload } },
+    { ansible_stats: { data: { scalex_result: payload } } },
   ]) {
-    assert.equal(result.extractChaosResult(shape)?.overallStatus, 'OK', JSON.stringify(shape));
+    assert.equal(result.extractScaleXResult(shape)?.overallStatus, 'OK', JSON.stringify(shape));
   }
 });
 
 test('artifact JSON STRING olarak geldiyse de okunur', () => {
-  const r = result.extractChaosResult({ chaos_scale_result: JSON.stringify({ overall_status: 'FAIL', counts: {}, targets: [] }) });
+  const r = result.extractScaleXResult({ scalex_result: JSON.stringify({ overall_status: 'FAIL', counts: {}, targets: [] }) });
   assert.equal(r.overallStatus, 'FAIL');
 });
 
@@ -32,25 +32,25 @@ test('overall_status BOSLUKLU gelirse yine dogru okunur', () => {
   // bosluklar ciktiya sizdi ve deger "      failed" olarak yayinlandi. Playbook
   // tarafinda `| trim` var ama portal ona GUVENMEZ — sozlesmenin iki ucu da ayni
   // anda yanlis olabilir ve sonucu kullanici oder.
-  const r = result.extractChaosResult({ chaos_scale_result: { overall_status: '   fail  ', counts: {}, targets: [] } });
+  const r = result.extractScaleXResult({ scalex_result: { overall_status: '   fail  ', counts: {}, targets: [] } });
   assert.equal(r.overallStatus, 'FAIL');
 });
 
 test('hedef satirlarindaki durumlar da normalize edilir', () => {
-  const r = result.extractChaosResult({
-    chaos_scale_result: { overall_status: 'WARN', counts: {}, targets: [{ cluster: 'c1', app: 'a', kind: 'Deployment', status: ' ok ', detail: 'x' }] },
+  const r = result.extractScaleXResult({
+    scalex_result: { overall_status: 'WARN', counts: {}, targets: [{ cluster: 'c1', app: 'a', kind: 'Deployment', status: ' ok ', detail: 'x' }] },
   });
   assert.equal(r.targets[0].status, 'OK');
 });
 
 test('strict_blocked FAIL\'den AYRI tasinir (cluster\'da hicbir degisiklik YOK)', () => {
-  const r = result.extractChaosResult({ chaos_scale_result: { overall_status: 'FAIL', strict_blocked: true, counts: {}, targets: [] } });
+  const r = result.extractScaleXResult({ scalex_result: { overall_status: 'FAIL', strict_blocked: true, counts: {}, targets: [] } });
   assert.equal(r.strictBlocked, true, 'ekran bunu FAIL ile ayni gostermemeli — kullanici icin IYI haber');
 });
 
 test('dogrulama hatasi bicimi de AYNI sekle indirgenir', () => {
-  const r = result.extractChaosResult({
-    chaos_scale_result: {
+  const r = result.extractScaleXResult({
+    scalex_result: {
       overall_status: 'FAIL', stage: 'validation',
       validation_error: 'namespace gecersiz', failed_task: 'Validate inputs',
       counts: { fail: 1 }, targets: [], rows: [],
@@ -62,16 +62,16 @@ test('dogrulama hatasi bicimi de AYNI sekle indirgenir', () => {
 });
 
 test('artifact YOKSA null doner (ekran "sonuc gelmedi" diyebilsin)', () => {
-  assert.equal(result.extractChaosResult({}), null);
-  assert.equal(result.extractChaosResult(null), null);
-  assert.equal(result.extractChaosResult({ chaos_scale_result: 'bozuk-json{' }), null);
+  assert.equal(result.extractScaleXResult({}), null);
+  assert.equal(result.extractScaleXResult(null), null);
+  assert.equal(result.extractScaleXResult({ scalex_result: 'bozuk-json{' }), null);
 });
 
 // ── Kesif sonucu ─────────────────────────────────────────────────────────────
 
 test('workloads kesfi: geri alinabilirlik ekranin karar girdisidir', () => {
   const r = result.extractDiscoveryResult({
-    chaos_discovery_result: {
+    scalex_discovery_result: {
       overall_status: 'ok', mode: 'workloads', counts: {}, clusters: ['c1'],
       items: [
         { cluster: 'c1', app: 'batch', kind: 'Deployment', step: 'WORKLOAD', status: 'OK',
@@ -94,7 +94,7 @@ test('workloads kesfi: geri alinabilirlik ekranin karar girdisidir', () => {
 
 test('kesifte kismi basari AYRI bir durum (bir cluster dustu, digerleri gosterilmeli)', () => {
   const r = result.extractDiscoveryResult({
-    chaos_discovery_result: {
+    scalex_discovery_result: {
       overall_status: 'partial', mode: 'workloads', clusters: ['c1', 'c2'],
       failed_clusters: ['c2'], counts: { fail: 1 },
       items: [{ cluster: 'c2', app: '-', kind: '-', step: 'RUNNER', status: 'FAIL', detail: 'SSH hatasi' }],
@@ -185,7 +185,7 @@ test('scale icin hedef replica ZORUNLU ve tam sayi', () => {
 // ── Katalog eslemesi ─────────────────────────────────────────────────────────
 
 test('portal cluster satiri playbook katalogu seklinde uretiliyor', () => {
-  const cat = launch.buildChaosClusterCatalog({
+  const cat = launch.buildScaleXClusterCatalog({
     env: 'prod', tenant: 'ark', clusters: ['gbocpprod1'],
     hosts: { gbocpprod1: 'gbjump1' },
     meta: { gbocpprod1: { api_url: 'https://api.x:6443', vault_credential_key: 'uxmid_gar' } },
