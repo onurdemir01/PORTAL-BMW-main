@@ -17,12 +17,14 @@ interface Props {
   busy: boolean;
   initial?: string[];
   onSubmit: (v: { apps: string[]; workloads: ScaleXWorkload[] }) => void;
+  /** Kesif asilirsa kullaniciya bir CIKIS yolu vermek icin (bkz. bekleme ekrani). */
+  onBack: () => void;
 }
 
 const POLL_MS = 3000;
 const MAX_POLL_ERRORS = 5;
 
-const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit }) => {
+const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack }) => {
   const [phase, setPhase] = useState<"idle" | "running" | "done" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [workloads, setWorkloads] = useState<ScaleXWorkload[]>([]);
@@ -42,14 +44,29 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit }) => {
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
 
+  // KESIF ASILIRSA KULLANICI CIKMAZDA KALMASIN. `poll()` bir `for(;;)` dongusu ve
+  // `MAX_POLL_ERRORS` yalnizca HTTP hatalarini sayiyor — AWX isi `pending`/`running`da
+  // asili kalirsa `finished` hic true olmaz ve dongu SONSUZA DEK doner. Ekranda ise
+  // yalnizca bir spinner vardi: gecen sure yok, AWX is numarasi yok, vazgecme yolu yok.
+  // Tek cikis sayfayi yenilemekti ve o da sihirbazi bastan baslatiyordu.
+  const [job, setJob] = useState<{ serverId: number; jobId: number } | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (phase !== "running") return;
+    const t = setInterval(() => setElapsed((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [phase]);
+
   async function startDiscovery() {
     if (startingRef.current) return;
     startingRef.current = true;
     setPhase("running"); setMessage(null); setProblems([]); setFailedClusters([]);
+    setJob(null); setElapsed(0);
     try {
       const launched = await scalexApi.discover(scope, "workloads");
       if (!aliveRef.current) return;
       if (!launched.ok) { setPhase("error"); setMessage(launched.message || "Keşif başlatılamadı."); return; }
+      setJob({ serverId: launched.serverId, jobId: launched.jobId });
       await poll(launched.serverId, launched.jobId);
     } catch (e) {
       setPhase("error"); setMessage((e as Error).message);
@@ -112,6 +129,21 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit }) => {
         <p className="text-xs text-[var(--text-muted)]">
           {scope.clusters.length} cluster · <span className="font-mono">{scope.namespace}</span> — salt okunur, hiçbir şey değiştirilmiyor.
         </p>
+        <p className="text-xs text-[var(--text-muted)] tabular-nums">
+          {Math.floor(elapsed / 60)} dk {String(elapsed % 60).padStart(2, "0")} sn
+          {job && <> · AWX işi <span className="font-mono">#{job.jobId}</span></>}
+        </p>
+        {elapsed >= 90 && (
+          <p role="status" className="max-w-md text-center text-xs text-amber-700">
+            Beklenenden uzun sürüyor — AWX kuyruğunda bekliyor olabilir. Keşif salt okunur
+            olduğu için vazgeçmek hiçbir şeyi bozmaz.
+          </p>
+        )}
+        {elapsed >= 30 && (
+          <button type="button" className="btn-secondary" onClick={() => { aliveRef.current = false; onBack(); }}>
+            İptal et ve geri dön
+          </button>
+        )}
       </div>
     );
   }

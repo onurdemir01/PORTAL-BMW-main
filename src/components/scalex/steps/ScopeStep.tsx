@@ -61,7 +61,10 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
         <p className="text-xs font-medium text-[var(--text-muted)] mb-2">Ortam</p>
         <div className="flex flex-wrap gap-2">
           {envs.map((e) => (
+            // Secim yalnizca renkle anlatiliyordu; ekran okuyucu hangi ortamin secili
+            // oldugunu anlayamiyordu (bkz. OperationStep'teki ayni duzeltme).
             <button key={e} type="button" disabled={busy} className={chip(env === e)}
+              aria-pressed={env === e}
               onClick={() => { setEnv(e); setTenant(""); setSelected([]); }}>
               {e}
             </button>
@@ -75,6 +78,7 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
           <div className="flex flex-wrap gap-2">
             {tenants.map((t) => (
               <button key={t} type="button" disabled={busy} className={chip(tenant === t)}
+                aria-pressed={tenant === t}
                 onClick={() => { setTenant(t); setSelected([]); }}>
                 {t}
               </button>

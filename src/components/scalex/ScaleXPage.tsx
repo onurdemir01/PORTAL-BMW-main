@@ -308,6 +308,7 @@ const ScaleXPage: React.FC = () => {
 
         {step === "workloads" && (
           <WorkloadStep scope={{ env, tenant, namespace, clusters }} busy={busy} initial={apps}
+            onBack={() => setStep("namespace")}
             onSubmit={(v) => { setApps(v.apps); setWorkloads(v.workloads); setStep("operation"); }} />
         )}
 

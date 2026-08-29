@@ -140,7 +140,12 @@ test('U10 "Onerilen" etiketi ve on-secim YOK', () => {
 });
 
 test('U11 iki mod kartinin sinif dizesi AYNI', () => {
-  const cards = [...OPERATION.matchAll(/onClick=\{\(\) => setMode\("(dry_run|apply)"\)\}\s*\n\s*className=\{`([^`]+)`\}/g)];
+  // ARAYA OZNITELIK GIREBILIR (orn. `aria-pressed`): desen `onClick`ten sonra
+  // DOGRUDAN `className` bekliyordu ve bir oznitelik eklenince kural aynen dururken
+  // bekci "iki mod karti bulunamadi" ile kirmizi oluyordu. Kurali olcuyoruz, duzeni
+  // degil — `[^`]` sinifi geri-tirnak icermedigi icin arada baska bir sablon dizesi
+  // yakalanmasi mumkun degil.
+  const cards = [...OPERATION.matchAll(/onClick=\{\(\) => setMode\("(dry_run|apply)"\)\}[^`]*?className=\{`([^`]+)`\}/g)];
   assert.equal(cards.length, 2, 'iki mod karti bulunamadi');
   const norm = (s) => s.replace(/mode === "\w+"/, 'MODE').replace(/\s+/g, ' ').trim();
   assert.equal(norm(cards[0][2]), norm(cards[1][2]), 'iki secenek gorsel olarak esit agirlikta DEGIL');

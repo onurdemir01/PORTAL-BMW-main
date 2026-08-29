@@ -65,10 +65,24 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
   );
   // `Geri Al` YALNIZCA kayıtlı durumu olan uygulamalarda seçilebilir. Bugün bu, iş
   // çalıştıktan SONRA `STATE;FAIL` ("Run stop first") olarak öğreniliyor.
-  const notRestorable = picked.filter((w) => !w.restorable).map((w) => w.name);
+  // TEKILLESTIRME SART: `picked` (cluster × uygulama) satirlarindan geliyor, yani ayni
+  // uygulama uc cluster'da bulunuyorsa listede UC KEZ cikiyordu — "api, api, api için
+  // HPA tanımlı" gibi. Ad bazinda tekillestirip, gerektiginde HANGI cluster oldugunu
+  // ayrica soyluyoruz.
+  const uniq = (ws: typeof picked) => [...new Set(ws.map((w) => w.name))];
+
+  const notRestorable = uniq(picked.filter((w) => !w.restorable));
   const restoreBlocked = notRestorable.length > 0;
-  const alreadyStopped = picked.filter((w) => w.specReplicas === 0).map((w) => w.name);
-  const withHpa = picked.filter((w) => w.hasHpa).map((w) => w.name);
+  // KISMEN geri alinabilir uygulamalar: A cluster'inda kayit var, B'de yok. Kesif
+  // listesinde mavi "geri alınabilir" rozeti gorunurken burada "geri alınamaz" yazmasi
+  // kullaniciyi iki ekran arasinda birakiyordu; hangi cluster oldugunu SOYLUYORUZ.
+  const partiallyRestorable = notRestorable.filter((n) =>
+    picked.some((w) => w.name === n && w.restorable));
+  const blockingClusters = [...new Set(
+    picked.filter((w) => !w.restorable).map((w) => w.cluster)
+  )];
+  const alreadyStopped = uniq(picked.filter((w) => w.specReplicas === 0));
+  const withHpa = uniq(picked.filter((w) => w.hasHpa));
 
   // HPA SABITLEME yalnizca `Ölçekle`/`Geri Al` ve hedef >= 1 icin anlamli:
   //   * `Durdur`da gereksiz — replica 0'da HPA kendiliğinden devre dışı kalır
@@ -102,6 +116,10 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
             return (
               <button
                 key={a} type="button" disabled={disabled} onClick={() => setAction(a)}
+                // SECILI DURUM EKRAN OKUYUCUYA ILETILMELI: secim yalnizca kenarlik ve
+                // arka plan RENGIYLE anlatiliyordu. Yikici bir araçta "hangi işlem
+                // seçili" bilgisini göremeyen kullanıcı, kör bir onaya sürüklenir.
+                aria-pressed={active}
                 className={`text-left rounded-xl border p-3 transition-colors ${
                   active ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border)] hover:border-[var(--border-strong)]"
                 } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
@@ -112,11 +130,24 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
             );
           })}
         </div>
+        {/* Devre disi birakilan kartin ACIKLAMASI ekranin en soluk metni olmamali —
+            amber cerceve. Ayrica NE YAPILACAGINI da soyluyor: eskiden yalnizca
+            "seçilemiyor" yaziyordu ve kullanici geri gidip elle desecmesi gerektigini
+            kendi bulmak zorundaydi. */}
         {restoreBlocked && (
-          <p className="mt-2 text-xs text-[var(--text-muted)]">
-            <strong>Geri Al</strong> seçilemiyor: {notRestorable.join(", ")} portaldan durdurulmamış —
-            geri alınacak kayıtlı durum yok.
-          </p>
+          <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>
+              <strong>Geri Al</strong> seçilemiyor: <strong>{notRestorable.join(", ")}</strong> için
+              portalda kayıtlı durum yok
+              {blockingClusters.length > 0 && <> (<span className="font-mono">{blockingClusters.join(", ")}</span>)</>}.
+              {partiallyRestorable.length > 0 && (
+                <> <strong>{partiallyRestorable.join(", ")}</strong> bazı cluster'larda geri
+                alınabilir, hepsinde değil — bu yüzden işlem tümü için kapalı.</>
+              )}
+              {" "}Geri almak için bir önceki adıma dönüp bu uygulamaları seçimden çıkarın.
+            </span>
+          </div>
         )}
       </div>
 
@@ -186,19 +217,25 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
       <div>
         <p className="text-xs font-medium text-[var(--text-muted)] mb-2">Nasıl çalıştırılsın?</p>
         <div className="grid gap-2 sm:grid-cols-2">
+          {/* `aria-pressed`: bu ekrandaki EN TEHLIKELI bilgi hangi modun secili
+              oldugudur ("Önce kontrol et" mi, "Uygula" mı) ve yalnizca renkle
+              anlatiliyordu. `disabled` gorunumu de islem kartlariyla ayni tutuldu —
+              ayni ekranda iki farkli devre disi gorunumu vardi. */}
           <button type="button" disabled={busy} onClick={() => setMode("dry_run")}
+            aria-pressed={mode === "dry_run"}
             className={`text-left rounded-xl border p-3 transition-colors ${
               mode === "dry_run" ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border)] hover:border-[var(--border-strong)]"
-            }`}>
+            } ${busy ? "opacity-50 cursor-not-allowed" : ""}`}>
             <span className="block text-sm font-semibold text-[var(--text-primary)]">Önce kontrol et</span>
             <span className="block mt-1 text-xs text-[var(--text-muted)]">
               Bağlantı, yetki ve hedefler denetlenir. Hiçbir şey değiştirilmez.
             </span>
           </button>
           <button type="button" disabled={busy} onClick={() => setMode("apply")}
+            aria-pressed={mode === "apply"}
             className={`text-left rounded-xl border p-3 transition-colors ${
               mode === "apply" ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border)] hover:border-[var(--border-strong)]"
-            }`}>
+            } ${busy ? "opacity-50 cursor-not-allowed" : ""}`}>
             <span className="block text-sm font-semibold text-[var(--text-primary)]">Uygula</span>
             <span className="block mt-1 text-xs text-[var(--text-muted)]">
               Değişiklik gerçekten yapılır. Prod ortamında onay adımları devreye girer.

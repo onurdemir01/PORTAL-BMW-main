@@ -362,3 +362,52 @@ test('S14: /cancel yalnizca ScaleX islerine dokunur', () => {
   assert.ok(body.indexOf('if (!own.length)') < body.indexOf('cancelJobOnServer'),
     'kapsam kontrolu cancelJobOnServer cagrisindan ONCE gelmeli');
 });
+
+// ── ERISILEBILIRLIK VE EKRAN CIKMAZLARI (2. tur UX bulgulari) ───────────────
+
+test('UI: secili durum ekran okuyucuya iletiliyor (renk tek basina yetmiyordu)', () => {
+  const OP = codeOnly(read('src/components/scalex/steps/OperationStep.tsx'));
+  const SCOPE = codeOnly(read('src/components/scalex/steps/ScopeStep.tsx'));
+  // Bu ekranda EN TEHLIKELI bilgi hangi modun secili oldugudur.
+  assert.match(OP, /aria-pressed=\{mode === "dry_run"\}/);
+  assert.match(OP, /aria-pressed=\{mode === "apply"\}/);
+  assert.match(OP, /aria-pressed=\{active\}/, 'islem kartlari da');
+  assert.match(SCOPE, /aria-pressed=\{env === e\}/);
+  assert.match(SCOPE, /aria-pressed=\{tenant === t\}/);
+});
+
+test('UI: mod kartlarinin devre disi gorunumu islem kartlariyla AYNI', () => {
+  // Ayni ekranda iki farkli "devre disi" gorunumu vardi: islem kartlari
+  // `opacity-50 cursor-not-allowed` aliyor, mod kartlari yalnizca `disabled` idi.
+  const OP = codeOnly(read('src/components/scalex/steps/OperationStep.tsx'));
+  const modeCards = [...OP.matchAll(/setMode\("(?:dry_run|apply)"\)\}[\s\S]{0,400}?`\}/g)].map((m) => m[0]);
+  assert.equal(modeCards.length, 2, 'iki mod karti bulunamadi');
+  for (const c of modeCards) assert.match(c, /opacity-50 cursor-not-allowed/);
+});
+
+test('UI: uygulama adlari listelerde TEKILLESTIRILIYOR', () => {
+  // `picked` (cluster × uygulama) satirlarindan geliyor; tekillestirilmezse ayni
+  // uygulama uc cluster'da "api, api, api" olarak gorunuyordu.
+  const OP = codeOnly(read('src/components/scalex/steps/OperationStep.tsx'));
+  assert.match(OP, /const uniq = \(ws: typeof picked\) => \[\.\.\.new Set\(ws\.map\(\(w\) => w\.name\)\)\]/);
+  for (const list of ['notRestorable', 'alreadyStopped', 'withHpa']) {
+    assert.match(OP, new RegExp(`const ${list} = uniq\\(`), `${list} tekillestirilmeli`);
+  }
+});
+
+test('UI: kismen geri alinabilir uygulama ve engelleyen cluster SOYLENIYOR', () => {
+  // Kesif listesinde "geri alınabilir" rozeti gorunurken sonraki adimda "geri
+  // alınamaz" yazmasi, kullaniciyi iki ekran arasinda birakiyordu.
+  const OP = codeOnly(read('src/components/scalex/steps/OperationStep.tsx'));
+  assert.match(OP, /partiallyRestorable/);
+  assert.match(OP, /blockingClusters/);
+  assert.match(OP, /seçimden çıkarın/, 'ne yapilacagi da yazmali');
+});
+
+test('UI: kesif asilirsa gecen sure, AWX is numarasi ve CIKIS yolu var', () => {
+  const W = codeOnly(read('src/components/scalex/steps/WorkloadStep.tsx'));
+  assert.match(W, /setElapsed/, 'gecen sure gosterilmeli');
+  assert.match(W, /AWX işi/, 'is numarasi gosterilmeli');
+  assert.match(W, /onBack\(\)/, 'vazgecme yolu olmali');
+  assert.match(W, /elapsed >= 90/, 'uzun surerse aciklama');
+});
