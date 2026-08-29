@@ -75,7 +75,11 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
   //     (`ScalingActive=False`), üstelik `minReplicas` 0 olamaz.
   const pinRelevant = (action === "scale" && /^[1-9][0-9]*$/.test(replicas)) || action === "restore";
   const pinOffered = pinRelevant && withHpa.length > 0 && mode === "apply";
-  const replicasValid = action !== "scale" || /^[0-9]+$/.test(replicas);
+  // `Ölçekle` ile 0, geri alınacak kayıt BIRAKMAZ (playbook durumu yalnızca `Durdur`
+  // dalında saklar). İki yol da 0'a götürürken birinin hafızası olması, diğerinin
+  // olmaması bir tuzaktı — sunucu da ayrıca reddediyor.
+  const scaleToZero = action === "scale" && replicas.trim() === "0";
+  const replicasValid = action !== "scale" || (/^[0-9]+$/.test(replicas) && !scaleToZero);
   const canSubmit = !!action && !!mode && replicasValid && !(action === "restore" && restoreBlocked);
 
   return (
@@ -118,8 +122,14 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
             className="w-40 px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
                        text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
           />
-          {!replicasValid && replicas !== "" && (
-            <p className="mt-1 text-xs text-red-600">0 veya daha büyük bir tam sayı girin.</p>
+          {scaleToZero && (
+            <p className="mt-1.5 text-xs text-red-600">
+              0 için <strong>Durdur</strong> işlemini kullanın — önceki değer saklanır ve geri
+              alabilirsiniz. "Ölçekle" ile 0 verildiğinde geri alınacak bir kayıt oluşmaz.
+            </p>
+          )}
+          {!replicasValid && !scaleToZero && replicas !== "" && (
+            <p className="mt-1 text-xs text-red-600">1 veya daha büyük bir tam sayı girin.</p>
           )}
         </div>
       )}

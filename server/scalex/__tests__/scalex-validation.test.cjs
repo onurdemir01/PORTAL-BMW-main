@@ -774,3 +774,88 @@ test('I13 eski onekli durum kaydi `legacy` bayragiyla geliyor', () => {
   // ESKI kayit da geri alinabilir olmali — tasimanin tum amaci bu.
   assert.equal(r.states[1].previousReplicas, 2);
 });
+
+// ═══ J. OLU KOD — "test edildi ama HICBIR YERDEN CAGRILMIYOR" ═════════════
+//
+// GERCEK OLAY: sapma tespiti (`classifyDrift` + `refreshDrift`) yazildi, birim testleri
+// yesil geciyordu ve HICBIR UCTAN CAGRILMIYORDU. Ekran `driftStatus` gosteriyor ama
+// deger asla `in_sync` disina cikamiyordu — "biri elle geri almis" mesaji ULASILAMAZ
+// koddu. Birim testi saf fonksiyonu dogruluyor, onu KIMSENIN CAGIRMADIGINI gormuyor.
+//
+// Bu, bu oturumda ucuncu kez ayni sinif: fail-open kapi sozlesmesi, korlesen bekci ve
+// simdi olu ozellik. Uc kez tekrarlanan bir hata mekanik olarak yakalanmali.
+
+test('J1 scalex modullerinin disa actigi HER fonksiyon en az bir yerden cagriliyor', () => {
+  const files = fs.readdirSync(SRC_DIR).filter((f) => f.endsWith('.cjs'));
+  // TANIMLAYAN DOSYA HARIC tarama. Ilk yazimda tum dosyalar tek metinde birlestiriliyor
+  // ve "1'den fazla gecis" araniyordu; ama tanim dosyasi zaten IKI gecis uretir
+  // (`function X` + `module.exports = { X }`), yani gercekten olu bir export 2 sayip
+  // bekciden GECIYORDU. Nitekim `refreshDrift` tam olarak boyle kacmisti.
+  const byFile = new Map();
+  const collect = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', '.git', 'dist', '__tests__'].includes(e.name)) continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { collect(full); continue; }
+      // YORUMLAR ELENIR. Aksi halde bir sembolun ADINI yalnizca ANLATAN bir yorum
+      // (ornegin "refreshDrift yazildi ama cagrilmiyordu" notu) kullanim sayilir ve
+      // bekci kendi aciklamasini kanit sanar. Bu oturumda ayni tuzaga ucuncu dususum.
+      if (/\.(cjs|ts|tsx)$/.test(e.name)) byFile.set(full, codeOnly(fs.readFileSync(full, 'utf8')));
+    }
+  };
+  collect(path.join(SRC_DIR, '..'));
+  collect(path.join(SRC_DIR, '..', '..', 'src'));
+
+  // ASIL KURAL: bir sembol YALNIZCA tanimi ve export satirinda geciyorsa OLUDUR.
+  // "Kendi dosyasi disinda kullanilmali" demek fazla kati olurdu — `nsKey`,
+  // `classifyDrift` gibi ic yardimcilar kendi modullerinde kullanilip test icin
+  // disa aciliyor; onlar olu DEGIL. `refreshDrift` ise hicbir yerde, kendi dosyasinda
+  // bile cagrilmiyordu — yakalanmasi gereken tam olarak bu.
+  const dead = [];
+  for (const f of files) {
+    const defPath = path.join(SRC_DIR, f);
+    const mod = require(defPath);
+    const own = byFile.get(defPath) || '';
+    const others = [...byFile.entries()].filter(([q]) => q !== defPath).map(([, t]) => t).join('\n');
+    for (const name of Object.keys(mod)) {
+      if (typeof mod[name] !== 'function') continue;
+      const re = new RegExp(`\\b${name}\\b`);
+      if (re.test(others)) continue;                       // baska dosya kullaniyor
+      const stripped = own
+        .split('\n')
+        .filter((l) => !new RegExp(`^\\s*(async\\s+)?function\\s+${name}\\b`).test(l))
+        .join('\n')
+        .replace(/module\.exports\s*=\s*\{[\s\S]*?\};?/g, '');
+      if (!re.test(stripped)) dead.push(`${f} → ${name}`);  // yalnizca tanim + export
+    }
+  }
+  assert.deepEqual(dead, [],
+    `disa acilmis ama HICBIR YERDEN cagrilmiyor (test disinda):\n${dead.join('\n')}`);
+});
+
+test('J2 sapma tazeleme GERCEKTEN bir uctan cagriliyor', () => {
+  // J1 genel; bu ozel. Sapma, bu araciun "portal disindan is yapilmis" sinyalini veren
+  // TEK mekanizmasi — kaybolursa ekran sessizce yalan soyler.
+  assert.match(codeOnly(INDEX), /state\.refreshDrift\(\{/,
+    'refreshDrift hicbir uctan cagrilmiyorsa drift_status asla in_sync disina cikmaz');
+  assert.match(codeOnly(INDEX), /parsed\.mode === 'state'/,
+    'tazeleme `state` kesfinin bitisine bagli olmali');
+});
+
+test('J3 `Olcekle` ile hedef 0 SUNUCUDA reddediliyor', () => {
+  // Playbook durumu YALNIZCA `stop` dalinda saklar; "Olcekle -> 0" geri alinacak kayit
+  // birakmaz ve uygulama portal icinden geri getirilemez hale gelir.
+  assert.match(codeOnly(INDEX), /action === 'scale' && Number\(targetReplicas\) === 0[\s\S]{0,400}status: 400/);
+  assert.match(INDEX, /use_stop_for_zero/);
+});
+
+test('J4 toplu geri alma: gerekce ZORUNLU ve yetki suzgecinden geciyor', () => {
+  const code = codeOnly(INDEX);
+  const i = code.indexOf("'/restore-all'");
+  assert.ok(i > 0, '/restore-all ucu yok');
+  const body = code.slice(i, i + 2600);
+  assert.match(body, /reasonRequired/, 'gerekcesiz toplu geri alma yapilabiliyor');
+  assert.match(body, /filterStoppedForUser/, 'kullanicinin goremedigi namespace geri alinabiliyor');
+  assert.match(body, /driftStatus === 'in_sync'/,
+    'sapmis kayit geri alinmaya calisilirsa STATE;FAIL ile duser — kullaniciya yalanci bir "denendi" verir');
+});

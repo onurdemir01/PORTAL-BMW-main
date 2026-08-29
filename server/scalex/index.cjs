@@ -169,6 +169,9 @@ function initScaleX(app) {
   router.post('/discover', asyncRoute(async (req, res) => {
     const mode = ['workloads', 'state', 'health'].includes(req.body?.mode) ? req.body.mode : 'workloads';
     const { env, tenant, namespace, clusters, apps } = await resolveScope(req, { requireApps: mode === 'health' });
+    // Kesif de bu degerleri playbook'a, oradan `oc` komut satirina tasiyor — `/preview`
+    // ve `/run` ile AYNI format kurallari burada da gecerli (bkz. launch.cjs basligi).
+    launch.assertValidDiscoveryTargets({ namespace, apps });
     const extraVars = {
       scalex_clusters_override: launch.buildScaleXClusterCatalog({
         env, tenant, clusters,
@@ -192,9 +195,38 @@ function initScaleX(app) {
       runner.getJobStatusOnServer(serverId, jobId),
       runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' })),
     ]);
+    const parsed = result.extractDiscoveryResult(status.artifacts);
+
+    // SAPMA TAZELEME BURADA. `state` kesfi bittiginde portal aynasini cluster gercegiyle
+    // karsilastirip `drift_status`u guncelliyoruz.
+    //
+    // NEDEN AYRI BIR UC DEGIL: `/run/:s/:j/status` de ayni sekilde `finalizeOperation`
+    // cagiriyor. Istemciye "kesif bitti, simdi de sapmayi tazele" diye ikinci bir cagri
+    // yaptirmak, o cagriyi unutan/sekmesini kapatan her kullanicida sapmanin SESSIZCE
+    // guncellenmemesi demekti — ki bu ozelligin ilk halinde tam olarak boyle oldu:
+    // `refreshDrift` yazildi, test edildi ve HICBIR YERDEN CAGRILMADI.
+    if (status.finished && parsed && parsed.mode === 'state') {
+      try {
+        await state.refreshDrift({
+          env: parsed.environment, tenant: parsed.platform,
+          scannedClusters: parsed.clusters || [],
+          clusterStates: (parsed.states || []).map((st) => ({
+            env: parsed.environment, tenant: parsed.platform,
+            clusterName: st.cluster, namespace: parsed.namespace, appName: st.appName,
+            previousReplicas: st.previousReplicas, phase: st.phase,
+            stoppedBy: st.createdBy, workloadKind: st.kind, legacy: st.legacy,
+          })),
+        });
+      } catch (e) {
+        // Sapma tazelenemedi — kesif sonucunu GIZLEME. Kullanici listeyi yine gorur,
+        // yalnizca sapma isaretleri bir onceki taramadan kalir.
+        console.warn('[ScaleX] sapma tazelenemedi:', e.message);
+      }
+    }
+
     res.json({
       ok: true, status: status.status, finished: !!status.finished, failed: !!status.failed,
-      output: output.output || '', result: result.extractDiscoveryResult(status.artifacts),
+      output: output.output || '', result: parsed,
     });
   }));
 
@@ -227,11 +259,28 @@ function initScaleX(app) {
     const verificationTimeout = req.body?.verificationTimeout ?? '60';
     const allowPartial = req.body?.allowPartial !== false;
     const reason = String(req.body?.reason || '').trim();
-    const mailCc = String(req.body?.mailCc || '').trim();
+    // CC kullanicidan gelir ve mail gorevine ulasir — satir sonu/format dogrulanmadan
+    // gecerse SMTP baslik enjeksiyonu mumkun olurdu.
+    const mailCc = launch.sanitizeMailCc(req.body?.mailCc);
     // Client `hpaPin: true` gonderse bile kurallar SUNUCUDA uygulanir.
     const hpaPin = req.body?.hpaPin === true && launch.isHpaPinAllowed({ action, targetReplicas });
 
     launch.assertValidTargets({ namespace, apps, action, targetReplicas, executionMode, verificationTimeout });
+
+    // `Olcekle` ile 0 SESSIZ BIR TUZAKTI: playbook yalnizca `stop` dalinda geri alma
+    // durumunu kaydeder. Yani "Olcekle -> 0" uygulamayi durdurur ama ConfigMap kaydi
+    // OLUSMAZ, portal aynasina satir DUSMEZ, "Su an durdurulmus" listesinde GORUNMEZ
+    // ve `Geri Al` "Run stop first" ile duser. Kullanici uygulamayi kapatir ve geri
+    // getirmenin portal icinde bir yolu KALMAZ.
+    //
+    // Iki yol da 0'a gotururken birinin hafizasi olmasi, digerinin olmamasi bir
+    // tasarim hatasiydi. `Durdur` zaten "hafizali 0" demek.
+    if (action === 'scale' && Number(targetReplicas) === 0) {
+      throw Object.assign(
+        new Error('Replica sayısını 0 yapmak için "Durdur" işlemini kullanın — önceki değer saklanır ve geri alabilirsiniz. "Ölçekle" ile 0 verildiğinde geri alınacak bir kayıt oluşmaz.'),
+        { status: 400, code: 'use_stop_for_zero' }
+      );
+    }
 
     const radius = launch.computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
     if (radius.exceedsMaxTargets) {
@@ -284,6 +333,23 @@ function initScaleX(app) {
       // ayar yuzeyi olurdu, ikincisi kullanicinin kendi kapisini yapilandirmasi demekti.
       const { templateId: runTemplateId, serverId: runServerId } = resolveByKey(RUN_KEY);
       const svcConfig = await require('../ansible/ss-customizations.cjs').readCustom(runServerId, runTemplateId);
+      // FAIL-CLOSED: SMART "gerekli" iken AYAR YOKSA is BASLATILMAZ.
+      //
+      // `smart-gate.isSmartRequired` bos ayarda `false` doner (`!smartApproval.enabled`).
+      // Bu, Self Service icin dogru varsayilan — orada SMART opsiyonel bir eklenti. Ama
+      // ScaleX'te `policy.smart === 'require'` demek "bu islem onaysiz yapilmamali"
+      // demek; ayar satiri yoksa sessizce onaysiz gecmek, kapiyi HIC KOYMAMAKLA ayni
+      // sey olurdu. Ustelik ekran kullaniciya "SMART kaydi acilacak" YAZIYOR — sessiz
+      // gecis, kullaniciya YALAN soylenmesi anlamina gelirdi.
+      if (policy.smart === 'require' && !svcConfig.smartApproval?.enabled) {
+        return res.status(503).json({
+          ok: false, code: 'smart_not_configured',
+          message: 'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. '
+            + 'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için '
+            + 'SMART onayını (flowKey ve metadata alanları) tanımlayın. '
+            + 'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
+        });
+      }
       const overrides = {
         // `restore` icin OCO UYARIR ama ENGELLEMEZ → kapiyi hic acmiyoruz; gerekce
         // zaten yukarida zorunlu kilindi ve asagida kayda + SMART'a gidiyor.
@@ -293,10 +359,26 @@ function initScaleX(app) {
         smartApproval: svcConfig.smartApproval || {},
       };
       const decision = await launch.gates.runChangeGates({
-        server: { id: 0 }, templateId: 0, username: user.username, req,
+        // GERCEK sunucu/template kimligi — 0 DEGIL. SMART onayi geldiginde bilet
+        // `runner.cjs` tarafindan oynatiliyor ve orada `getServerById(ticket.awxServerId)`
+        // cagriliyor; 0 yazilsaydi onaylanmis bir prod islemi "AWX sunucusu bulunamadi"
+        // ile SESSIZCE olur, kullanici onayladigi isin hic calismadigini yalnizca hata
+        // logundan ogrenebilirdi. Template kimligi de gercek olmali, yoksa oynatma
+        // YANLIS sablonu tetiklerdi.
+        server: { id: runServerId }, templateId: runTemplateId, username: user.username, req,
         overrides, extraVars, gateVars, detail: {}, resolvedLaunchOptions: {}, specFields: [],
         templateName: 'ScaleX',
-        ocoNumber: req.body?.ocoNumber, ocoAction: req.body?.ocoAction,
+        ocoNumber: req.body?.ocoNumber,
+        // OCO PENCERESI HENUZ ACILMADIYSA: ortak kapi normalde kullaniciya
+        // "zamanla mi, sonra mi?" diye sorar (400 `ocoDecisionRequired`). ScaleX icin
+        // ZAMANLAMA YOK — asagidaki `createOcoAwxSchedule` bilerek hata firlatiyor
+        // (bir kesinti araci, kendiliginden ateslenen ertelenmis is birakmamali).
+        // Dolayisiyla sorulan iki secenekten biri HER ZAMAN patlardi ve ekranda o
+        // secimi yapacak alan da yok: kullanici "Calistir"a basar, ayni mesaji alir,
+        // tekrar basar — kapali dongu. Var olmayan secimi sormak yerine tek gecerli
+        // cevabi veriyoruz: `later` → is BASLATILMAZ, kullanici pencere acildiginda
+        // geri gelir. Ekran bunu `ocoDeferred` ile net bir mesaj olarak gosterir.
+        ocoAction: 'later',
         createOcoAwxSchedule: async () => {
           throw Object.assign(new Error('ScaleX işlemleri zamanlanamaz — pencere açıkken tekrar deneyin.'), { status: 400 });
         },
@@ -386,7 +468,13 @@ function initScaleX(app) {
     // BURADA uygulanmali — aksi halde kisitli bir namespace'in adi ve orada durdurulmus
     // uygulamalar, o namespace'i goremeyen kullaniciya listelenirdi.
     const rows = await catalog.filterStoppedForUser(all, { env, tenant, user: currentUser(req) });
-    res.json({ ok: true, items: rows, hiddenCount: all.length - rows.length });
+    // `truncated` FILTRELEMEDEN ONCE okunur: `filterStoppedForUser` yeni bir dizi
+    // dondugu icin bayrak orada kaybolur.
+    res.json({
+      ok: true, items: rows,
+      hiddenCount: all.length - rows.length,
+      truncated: all.truncated === true, limit: state.MIRROR_LIMIT,
+    });
   }));
 
   router.post('/adopt', asyncRoute(async (req, res) => {
@@ -395,24 +483,124 @@ function initScaleX(app) {
     const appName = String(req.body?.appName || '').trim();
     if (!appName) throw Object.assign(new Error('appName zorunlu.'), { status: 400 });
     if (clusters.length !== 1) throw Object.assign(new Error('Portala alma tek cluster için yapılır.'), { status: 400 });
+    // `appName` `apps` dizisine GIRMEDIGI icin `resolveScope` icindeki uygulama bazli
+    // yetki kontrolunden gecmiyordu ve formati hic dogrulanmiyordu. Ikisi de burada.
+    launch.assertValidDiscoveryTargets({ namespace, apps: [appName] });
+    await catalog.assertAppsAllowed({ env, tenant, clusters, namespace, apps: [appName], user });
+
+    // `previousReplicas` KULLANICIDAN GELIR ve "geri alinca kac replica olacak"
+    // sorusunun cevabidir — uydurma bir sayi, geri almayi sessizce YANLIS yapardi.
+    // Sinirli ve tam sayi olmasi sart; makul bir ust sinirin disi reddedilir.
+    const prevRaw = req.body?.previousReplicas;
+    const prev = Number(prevRaw);
+    if (!Number.isInteger(prev) || prev < 0 || prev > 1000) {
+      throw Object.assign(new Error('previousReplicas 0-1000 arası tam sayı olmalı.'), { status: 400 });
+    }
     const row = await state.adopt({
       env, tenant, clusterName: clusters[0], namespace, appName,
       workloadKind: req.body?.workloadKind || null,
-      previousReplicas: Number(req.body?.previousReplicas),
-      stoppedBy: req.body?.stoppedBy || null,
+      previousReplicas: prev,
+      // KAYDI ALAN KISI OTURUMDAN. Client'in `stoppedBy` gondermesine izin vermek,
+      // denetim izine BASKASININ adini yazdirmak demekti — panel bu alani "durduran
+      // kisi" olarak gosteriyor.
+      stoppedBy: user.username,
       adoptedBy: user.username,
     });
     auditPortal(req, 'scalex_adopt', { detail: JSON.stringify({ env, tenant, cluster: clusters[0], namespace, appName }) });
     res.json({ ok: true, item: row });
   }));
 
+  // TOPLU GERI ALMA. Bir olay sirasinda 6 uygulamayi tek tek geri almak 6 ayri
+  // is + 6 ayri onay demek; kurtarma sirasinda bu gercek bir maliyet.
+  //
+  // Gerekce ZORUNLU: bu uc, `Geri Al`in kapi politikasini (OCO uyarir-engellemez)
+  // devralir ve gerekce hem portal kaydina hem SMART metadata'sina gider.
+  router.post('/restore-all', asyncRoute(async (req, res) => {
+    const user = currentUser(req);
+    const env = String(req.body?.env || '').trim();
+    const tenant = String(req.body?.tenant || '').trim();
+    const reason = String(req.body?.reason || '').trim();
+    if (!env || !tenant) throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
+    if (!reason) {
+      return res.status(400).json({
+        ok: false, reasonRequired: true,
+        message: 'Toplu geri alma için gerekçe zorunlu (örn. olay/kayıt numarası).',
+      });
+    }
+
+    // YETKI SUZGECI ONCE: kullanicinin goremedigi bir namespace'i geri almasi
+    // mumkun olmamali. `/stopped` ile AYNI suzgec.
+    const all = await state.listMirror({ env, tenant });
+    const visible = await catalog.filterStoppedForUser(all, { env, tenant, user });
+    // Yalnizca cluster gercegiyle UYUMLU kayitlar: sapmis bir kaydi geri almaya
+    // calismak `STATE;FAIL` ile duserdi ve kullaniciya yalanci bir "denendi" verirdi.
+    const targets = visible.filter((r) => r.driftStatus === 'in_sync');
+    if (!targets.length) {
+      return res.json({ ok: true, launched: [], message: 'Geri alınabilecek kayıt yok.' });
+    }
+
+    // (cluster, namespace) basina TEK is: playbook (cluster x uygulama) carpimini
+    // kendi yapiyor, ayni namespace icin tek is yeterli.
+    const groups = new Map();
+    for (const r of targets) {
+      const k = `${r.clusterName}|${r.namespace}`;
+      if (!groups.has(k)) groups.set(k, { cluster: r.clusterName, namespace: r.namespace, apps: [] });
+      groups.get(k).apps.push(r.appName);
+    }
+
+    const launched = [];
+    for (const g of groups.values()) {
+      const extraVars = await launch.buildRunExtraVars({
+        env, tenant, clusters: [g.cluster], namespace: g.namespace, apps: g.apps,
+        action: 'restore', executionMode: 'apply', targetReplicas: undefined,
+        verificationTimeout: '60', allowPartial: true,
+        mailTo: String(user.mail || '').trim(), mailCc: '',
+      });
+      const job = await launchOnAwx({
+        keyName: RUN_KEY, extraVars, req,
+        label: `ScaleX toplu geri alma — ${g.namespace} @ ${g.cluster}`,
+      });
+      await db.query(
+        `INSERT INTO scalex_operations
+           (request_key, username, env, tenant, cluster_name, namespace, action, execution_mode,
+            target_replicas, app_names_json, awx_server_id, awx_job_id, status, reason)
+         VALUES ($1,$2,$3,$4,$5,$6,'restore','apply',NULL,$7,$8,$9,'RUNNING',$10)`,
+        [`${job.serverId}:${job.jobId}`, user.username, env, tenant, g.cluster, g.namespace,
+          JSON.stringify(g.apps), job.serverId, job.jobId, reason]
+      );
+      launched.push({ ...job, cluster: g.cluster, namespace: g.namespace, apps: g.apps });
+    }
+
+    auditPortal(req, 'scalex_restore_all', {
+      detail: JSON.stringify({ env, tenant, groups: launched.length, apps: targets.length, reason }),
+    });
+    res.json({ ok: true, launched });
+  }));
+
   router.get('/history', asyncRoute(async (req, res) => {
     const user = currentUser(req);
     const isAdmin = user.role === 'Admin';
+    // `SELECT *` DEGIL: `result_json` ve `error_message` NVARCHAR(MAX) ve tek bir isin
+    // sonucu yuz binlerce karakter olabiliyor (hedef basina satirlar). 200 satirla
+    // carpilinca liste yaniti onlarca MB'a cikabilirdi — oysa gecmis LISTESI bu iki
+    // alani hic gostermiyor. Ayrinti gerektiginde is durumu ucundan okunuyor.
+    // Kolonlar her iki sorguda da ELLE yazili: SQL metnine sablon degiskeni koymak
+    // (`${...}`) bu modulde bir bekci tarafindan yasak — sabit bile olsa, enjeksiyon
+    // incelemesini "bu deger nereden geliyor?" sorusuna mahkum ediyor.
     const { rows } = await db.query(
       isAdmin
-        ? `SELECT TOP 200 * FROM scalex_operations ORDER BY created_at DESC`
-        : `SELECT TOP 200 * FROM scalex_operations WHERE username = $1 ORDER BY created_at DESC`,
+        ? `SELECT TOP 200 id, request_key, username, env, tenant, cluster_name, namespace,
+                  action, execution_mode, target_replicas, app_names_json,
+                  awx_server_id, awx_job_id, status, overall_status,
+                  smart_ticket_id, oco_number, approval_state, approved_by, approved_at,
+                  reason, created_at, updated_at
+             FROM scalex_operations ORDER BY created_at DESC`
+        : `SELECT TOP 200 id, request_key, username, env, tenant, cluster_name, namespace,
+                  action, execution_mode, target_replicas, app_names_json,
+                  awx_server_id, awx_job_id, status, overall_status,
+                  smart_ticket_id, oco_number, approval_state, approved_by, approved_at,
+                  reason, created_at, updated_at
+             FROM scalex_operations WHERE username = $1 ORDER BY created_at DESC`,
       isAdmin ? [] : [user.username]
     );
     res.json({ ok: true, items: rows });

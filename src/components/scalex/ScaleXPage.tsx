@@ -180,8 +180,23 @@ const ScaleXPage: React.FC = () => {
       }
       // OCO penceresi henuz acilmadiysa sunucu 200 + `ocoDeferred` doner: is
       // BASLATILMADI ve bu bir hata degil.
-      if ((r as { ocoDeferred?: boolean }).ocoDeferred) {
-        setNotice("OCO penceresi henüz açılmadı — işlem başlatılmadı. Pencere açıldığında tekrar deneyin.");
+      if (r.ocoDeferred) {
+        // Pencere bilgisini METINDE veriyoruz: "tekrar deneyin" demek, NE ZAMAN
+        // denenecegini soylemedigi surece kullaniciyi tahmine birakir.
+        const w = r.oco?.windowStartText;
+        setNotice(
+          `OCO penceresi henüz açılmadı — işlem başlatılmadı, cluster'a dokunulmadı.`
+          + (w ? ` Pencere ${w} tarihinde açılıyor; o saatten sonra tekrar deneyin.` : " Pencere açıldığında tekrar deneyin.")
+        );
+        setStep("done");
+        return;
+      }
+      // SAVUNMA: ortak kapi zamanlama yaptiysa ortada AWX job'i YOKTUR. Bu dal
+      // ScaleX'te olusmamali (zamanlama kapali) ama olusursa asagidaki `setJob`
+      // `serverId: undefined` yazar ve ekran sonsuza dek "calisiyor" spinner'i
+      // gosterirdi — sessiz bir kilitlenme yerine net bir mesaj.
+      if (r.ocoScheduled || r.jobId == null || r.serverId == null) {
+        setNotice(r.message || "İşlem başlatılmadı — AWX iş numarası dönmedi. Lütfen tekrar deneyin.");
         setStep("done");
         return;
       }
@@ -207,7 +222,16 @@ const ScaleXPage: React.FC = () => {
     if (!job) return;
     return guarded(async () => {
       setCancelling(true);
-      await scalexApi.cancel(job.serverId, job.jobId);
+      try {
+        await scalexApi.cancel(job.serverId, job.jobId);
+      } catch (e) {
+        // BAYRAK GERI ALINMALI: `guarded` hatayi yakalayip `setError` yapiyor ama
+        // `cancelling` true kaliyordu — buton sonsuza dek "Durduruluyor…" ve pasif
+        // olur, kullanici iptali BIR DAHA deneyemezdi. Ustelik iptalin gerceklesip
+        // gerceklesmedigini de anlayamazdi.
+        setCancelling(false);
+        throw e;
+      }
     });
   }
 
@@ -250,8 +274,13 @@ const ScaleXPage: React.FC = () => {
         </div>
       </div>
 
+      {/* role="alert" + aria-live: kapi yanitlari (OCO/gerekce/yazili onay) bu banner'a
+          dusuyor ve banner sayfanin EN USTUNDE. Uzun bir onizlemede `Çalıştır` ekranin
+          altindadir; duyurulmazsa kullanici hicbir sey olmamis gibi butona tekrar tekrar
+          basar. */}
       {error && (
-        <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
+        <div role="alert" aria-live="assertive"
+             className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>

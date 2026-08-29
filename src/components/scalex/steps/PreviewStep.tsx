@@ -57,9 +57,27 @@ const PreviewStep: React.FC<Props> = ({
   // Prod'da eşik aşıldığında patlama yarıçapı görsel olarak da ağırlaşır — sayı tek
   // başına küçük görünebilir, etkilenen cluster'ları TEK TEK göstermek gerçeği taşır.
   const heavy = r.requiresWrittenConfirm;
+  // Cluster adi YALNIZCA birden fazla cluster varken gosterilir: tek cluster'da her
+  // satira ayni adi yazmak gurultu olurdu.
+  const multiCluster = new Set(picked.map((w) => w.cluster)).size > 1;
+  // Geri almada hedefi BILINMEYEN satir varsa listenin altinda bir kez aciklanir.
+  const anyUnknownTarget = action === "restore" && picked.some((w) => w.previousReplicas == null);
 
   const writtenOk = !r.requiresWrittenConfirm || written.trim() === scope.namespace;
   const reasonOk = g.oco !== "warn" || reason.trim().length > 0;
+  // OCO "gerekli" iken numara BOSKEN buton aktifti: kullanici basiyor, sunucu 400
+  // donuyor, ekran onizlemeye geri donuyordu — garantili bos bir gidis-donus.
+  const ocoOk = g.oco !== "require" || ocoNumber.trim().length > 0;
+  const blocked = r.exceedsMaxTargets;
+  // BUTON NEDEN PASIF? Sessizce olu bir buton, namespace'i bir harf yanlis yazan
+  // kullaniciyi hicbir geri bildirim olmadan birakiyordu.
+  const blockReason = blocked
+    ? "Hedef sayısı sınırın üzerinde — kapsamı daraltın."
+    : !writtenOk
+      ? (written.trim() ? "Yazdığınız namespace adı eşleşmiyor." : "Onaylamak için namespace adını yazın.")
+      : !reasonOk ? "Gerekçe zorunlu."
+      : !ocoOk ? "OCO numarası zorunlu."
+      : "";
 
   return (
     <div className="space-y-4">
@@ -86,11 +104,27 @@ const PreviewStep: React.FC<Props> = ({
       <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border-subtle)]">
         {picked.map((w) => {
           const to = action === "stop" ? 0 : action === "restore" ? w.previousReplicas : Number(targetReplicas);
+          // GERI ALMADA hedef BILINMEYEBILIR: portal, durdururken uydurma bir sayi
+          // yazmiyor (yanlis sayi geri almayi sessizce bozardi) — gercek deger
+          // cluster'daki durum ConfigMap'inde. Bunu "?" ile gecistirmek, kullaniciyi
+          // prod'da ne olacagini bilmeden onaylamaya birakirdi; ACIKCA yaziyoruz.
+          const unknownTarget = action === "restore" && w.previousReplicas == null;
           return (
-            <div key={w.name} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-              <span className="font-mono truncate text-[var(--text-primary)]" title={w.name}>{w.name}</span>
+            // ANAHTAR CLUSTER'I DA ICERIR: ayni uygulama birden cok cluster'da
+            // bulunabilir ve `key={w.name}` o satirlari cakistirirdi (React uyarisi +
+            // ekranda ayni ad birden cok kez, farkli sayilarla, HANGI cluster oldugu
+            // yazmadan — dogrulama ekraninda dogrudan yaniltici).
+            <div key={`${w.cluster}/${w.name}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <span className="flex min-w-0 items-baseline gap-2">
+                <span className="font-mono truncate text-[var(--text-primary)]" title={w.name}>{w.name}</span>
+                {multiCluster && (
+                  <span className="font-mono truncate text-xs text-[var(--text-secondary)]" title={w.cluster}>{w.cluster}</span>
+                )}
+              </span>
               <span className="flex items-center gap-2 whitespace-nowrap text-[var(--text-muted)] tabular-nums">
-                <span>{w.specReplicas} → {to ?? "?"}</span>
+                <span>
+                  {w.specReplicas} → {unknownTarget ? "kayıtlı değer" : to}
+                </span>
                 {w.hasHpa && (
                   <span className="pf-label pf-label--gold">
                     {hpaPin ? "HPA sabitlenecek" : action === "stop" ? "HPA devre dışı kalacak" : "HPA devralabilir"}
@@ -102,6 +136,24 @@ const PreviewStep: React.FC<Props> = ({
           );
         })}
       </div>
+
+      {anyUnknownTarget && (
+        <p className="text-xs text-[var(--text-secondary)]">
+          "kayıtlı değer": geri alınacak replica sayısı, durdurma sırasında cluster'daki durum
+          kaydına yazılan sayıdır ve iş çalışırken oradan okunur. Portal bu sayıyı kopyalamaz —
+          kopyalasaydı, arada elle yapılmış bir değişiklik sessizce yanlış değere dönülmesine yol açardı.
+        </p>
+      )}
+
+      {/* SINIR ONIZLEMEDE SOYLENIR. Sunucu bunu zaten hesaplayip yaniyla gonderiyordu ama
+          ekran okumuyordu: kullanici sihirbazi sonuna kadar doldurup `Çalıştır`a basiyor ve
+          ancak o zaman ham bir hata aliyordu. */}
+      {r.exceedsMaxTargets && (
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          Bu seçim {r.targets} hedef üretiyor ve tek işlemde izin verilen sınırın üzerinde.
+          Çalıştırma reddedilecek — kapsamı daraltın (daha az cluster ya da daha az uygulama).
+        </p>
+      )}
 
       {/* KAPI DURUMU. Kullanıcı ne isteneceğini ÖNCEDEN bilsin — ortada sürpriz olmasın. */}
       <div className="rounded-xl border border-[var(--border)] p-3 space-y-1.5 text-xs">
@@ -184,8 +236,11 @@ const PreviewStep: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="flex justify-end border-t border-[var(--border)] pt-4">
-        <button type="button" className="btn-primary" disabled={busy || !writtenOk || !reasonOk}
+      <div className="flex items-center justify-end gap-3 border-t border-[var(--border)] pt-4">
+        {blockReason && (
+          <span className="text-xs text-[var(--text-secondary)]" role="status">{blockReason}</span>
+        )}
+        <button type="button" className="btn-primary" disabled={busy || blocked || !writtenOk || !reasonOk || !ocoOk}
           onClick={() => onConfirm({
             ...(r.requiresWrittenConfirm ? { writtenConfirm: written.trim() } : {}),
             ...(reason.trim() ? { reason: reason.trim() } : {}),

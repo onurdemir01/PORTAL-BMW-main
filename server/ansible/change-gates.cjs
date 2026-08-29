@@ -163,9 +163,23 @@ async function openSmartTicket({
 //   3) ocoAction 'schedule'  → kayit olusturulur, kesinti saatinde tetiklenir
 //      ocoAction 'later'     → hicbir sey yapilmaz, kullanici o saatte geri gelir
 //   Pencere ACIKSA hicbir soru sorulmaz, akis normal devam eder.
-function isOcoGateApplicable(overrides, extraVars) {
-  return !!(overrides.ocoCheck?.enabled
-    && require('../oco/prod-detect.cjs').isProductionRequest(extraVars));
+// PROD TESPITI IKI KAYNAKTAN OKUNUR — `extraVars` VE `gateVars`.
+//
+// NEDEN: `prod-detect` yalnizca `env`/`ortam` anahtarlarina bakar (bilerek sabit, bkz.
+// o dosyanin basligi). Self Service bu anahtarlari `extraVars`ta tasir, ama HER cagiran
+// tasimak zorunda degil: ScaleX ortami `target_environment` adiyla gonderiyor ve
+// `env`/`ortam` yalnizca `gateVars`inda var. Tek kaynak okundugu surece ScaleX'in prod
+// islemleri OCO kapisini SESSIZCE atliyordu — kapi kodda duruyor, hic ateslenmiyordu.
+//
+// IKI KAYNAGI BIRLIKTE OKUMAK GUVENLI: bu bir GENISLETME. Ek kaynak kapiyi yalnizca
+// daha SIK acturabilir, asla kapatamaz — yani yeni bir acik uretemez. `gateVars` ayrica
+// SMART tarafinda zaten GUVENILIR kaynak sayiliyor (yalnizca dogrulanmis alanlardan
+// dolar, kullanici govdeye yazamaz), dolayisiyla prod tespiti icin de en az `extraVars`
+// kadar saglam.
+function isOcoGateApplicable(overrides, extraVars, gateVars) {
+  if (!overrides.ocoCheck?.enabled) return false;
+  const { isProductionRequest } = require('../oco/prod-detect.cjs');
+  return isProductionRequest(extraVars) || isProductionRequest(gateVars);
 }
 
 async function evaluateOcoGate({
@@ -296,7 +310,7 @@ async function runChangeGates(ctx) {
     smartAuditAction = 'selfservice_smart_ticket_open',
   } = ctx;
 
-  if (isOcoGateApplicable(overrides, extraVars)) {
+  if (isOcoGateApplicable(overrides, extraVars, gateVars)) {
     const ocoDecision = await evaluateOcoGate({
       server, templateId, username, req,
       overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,

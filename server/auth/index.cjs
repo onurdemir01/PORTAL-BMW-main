@@ -113,6 +113,13 @@ function initAuth(app) {
           role:       user.role,
           authSource: user.authSource,
           photoUrl:   user.photoUrl || null,
+          // AD GRUP UYELIKLERI (`memberOf`, normalize + 200 ile sinirli — bkz. ldap.cjs).
+          // Yetki katmani (`logx/v2/restrictions.cjs`) grup grant'larini BURADAN okur;
+          // oturuma yazilmadigi surece `normalizedGroups` her istekte bos Set doner ve
+          // hicbir grup grant'i eslesmezdi — ozellik bastan sona olu kalirdi.
+          // LDAP kapaliysa / yerel kullanicida bos dizi: kullanici adi grant'lari
+          // etkilenmez, mevcut davranis birebir korunur.
+          groups:     Array.isArray(user.groups) ? user.groups : [],
           loginAt:    new Date().toISOString(),
         };
         req.session.save((saveErr) => {

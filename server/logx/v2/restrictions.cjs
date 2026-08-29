@@ -41,6 +41,53 @@ function grantMatches(row, username, groups) {
   const dn = row.group_dn ? String(row.group_dn).trim().toLowerCase() : '';
   return !!dn && groups.has(dn);
 }
+// ── GRUP GRANT TABLOSU: DAYANIKLILIK KATMANI ────────────────────────────────
+//
+// Bu modul LogX, OpsX, Telnet ve ScaleX tarafindan PAYLASILIYOR. `logx_v2_restriction_
+// group_grants` yeni bir tablo ve `mssql-setup.cjs` tablo olusturma hatalarini
+// `console.warn` ile YUTUYOR. Sorguya kosulsuz konsaydi, tablo herhangi bir sebeple
+// olusmadiginda (izin, bayat sema, elle mudahale) dort modulun de yetki sorgusu
+// "Invalid object name" ile patlar ve LogX/OpsX/Telnet 500 verirdi — ScaleX'in
+// getirdigi bir degisiklik, ONUNLA ILGISI OLMAYAN uc uretim modulunu dusururdu.
+//
+// Cozum: tabloyu ilk hatada bir kez isaretle ve grup grant'i OLMADAN devam et.
+// YON ONEMLI — bu fail-CLOSED bir gerileme: grup uzerinden yetkilenmis kullanici
+// erisimini KAYBEDER, kimse fazladan erisim KAZANMAZ. Kullanici adi grant'lari ve
+// varsayilan-acik semantigi aynen calismaya devam eder.
+let _groupGrantsAvailable = true;
+
+function isMissingTableError(err) {
+  // MSSQL 208 = "Invalid object name". Surucuye gore `number` ya da metin gelebiliyor.
+  return err?.number === 208 || /invalid object name/i.test(String(err?.message || ''));
+}
+
+// Grant kaynagini uretir. `_groupGrantsAvailable` false ise grup tablosu SQL'e HIC
+// girmez — boylece her istekte tekrar patlayip loglari doldurmaz.
+function grantsSource() {
+  const userPart = `SELECT restriction_id, username, CAST(NULL AS NVARCHAR(500)) AS group_dn
+         FROM logx_v2_restriction_grants`;
+  if (!_groupGrantsAvailable) return userPart;
+  return `${userPart}
+       UNION ALL
+       SELECT restriction_id, CAST(NULL AS NVARCHAR(255)) AS username, group_dn
+         FROM logx_v2_restriction_group_grants`;
+}
+
+// Sorguyu calistirir; grup tablosu yoksa bir kez uyarir, bayragi indirir ve grup
+// tablosu OLMADAN yeniden dener.
+async function queryWithGrants(buildSql, params) {
+  try {
+    return await db.query(buildSql(grantsSource()), params);
+  } catch (err) {
+    if (!_groupGrantsAvailable || !isMissingTableError(err)) throw err;
+    console.warn('[restrictions] logx_v2_restriction_group_grants bulunamadi — '
+      + 'grup grant\'lari DEVRE DISI, kullanici adi grant\'lari calismaya devam ediyor. '
+      + 'Tabloyu olusturmak icin sunucuyu yeniden baslatin veya deploy/sql betigini calistirin.');
+    _groupGrantsAvailable = false;
+    return db.query(buildSql(grantsSource()), params);
+  }
+}
+
 // Iki sirali sorgu yerine tek LEFT JOIN — kisitlama satiri yoksa r.id NULL doner (yani
 // hic satir donmez, varsayilan-acik); satir varsa grant eslesmesi ayni sorguda gelir
 // (kurumsal AI kod incelemesi, review.md #11).
@@ -50,19 +97,14 @@ async function isAllowed(resourceType, resourceKey, user) {
   // Eslesme artik SQL'de degil JS'te yapiliyor: grup listesi degisken uzunlukta ve
   // MSSQL'de degisken uzunlukta IN listesini parametrelemek STRING_SPLIT'e (uyumluluk
   // seviyesi 130+) bagimlilik yaratirdi. Bir kisitlamaya bagli grant sayisi kucuk.
-  const { rows } = await db.query(
+  const { rows } = await queryWithGrants((grants) =>
     `SELECT r.id, x.username, x.group_dn
      FROM logx_v2_restrictions r
      LEFT JOIN (
-       SELECT restriction_id, username, CAST(NULL AS NVARCHAR(500)) AS group_dn
-         FROM logx_v2_restriction_grants
-       UNION ALL
-       SELECT restriction_id, CAST(NULL AS NVARCHAR(255)) AS username, group_dn
-         FROM logx_v2_restriction_group_grants
+       ${grants}
      ) x ON x.restriction_id = r.id
      WHERE r.resource_type = $1 AND r.resource_key = $2`,
-    [resourceType, resourceKey]
-  );
+  [resourceType, resourceKey]);
   if (rows.length === 0) return true; // kisitlama satiri yok → varsayilan acik
   const groups = normalizedGroups(user);
   return rows.some((r) => grantMatches(r, user.username, groups));
@@ -75,19 +117,14 @@ async function filterAllowed(resourceType, resourceKeys, user) {
   const keys = Array.isArray(resourceKeys) ? resourceKeys : [];
   if (user.role === 'Admin' || keys.length === 0) return keys;
 
-  const { rows } = await db.query(
+  const { rows } = await queryWithGrants((grants) =>
     `SELECT r.resource_key, x.username, x.group_dn
      FROM logx_v2_restrictions r
      LEFT JOIN (
-       SELECT restriction_id, username, CAST(NULL AS NVARCHAR(500)) AS group_dn
-         FROM logx_v2_restriction_grants
-       UNION ALL
-       SELECT restriction_id, CAST(NULL AS NVARCHAR(255)) AS username, group_dn
-         FROM logx_v2_restriction_group_grants
+       ${grants}
      ) x ON x.restriction_id = r.id
      WHERE r.resource_type = $1`,
-    [resourceType]
-  );
+  [resourceType]);
   // key → bu kullaniciya acik mi. Satiri OLMAYAN key hic haritada gorunmez → acik.
   const groups = normalizedGroups(user);
   const grantedByKey = new Map();
@@ -141,9 +178,15 @@ async function listRestrictions() {
   return [...byId.values()];
 }
 
+// Tanimli kaynak tipleri TEK YERDE. `ocp_app` uzun sure bu listede DEGILDI: okuma yolu
+// (`isAllowed`) tipi taniyordu ama YAZMA yolu reddediyordu — yani uygulama bazli kisit
+// hicbir zaman OLUSTURULAMIYORDU ve `catalog.assertAppsAllowed` her cagrisinda
+// varsayilan-acik donuyordu. Kapi kodda vardi, yurulukte yoktu.
+const RESOURCE_TYPES = ['legacy_app', 'ocp_namespace', 'ocp_app'];
+
 async function createRestriction({ resourceType, resourceKey, description }, createdBy) {
-  if (resourceType !== 'legacy_app' && resourceType !== 'ocp_namespace') {
-    throw Object.assign(new Error('Geçersiz resourceType.'), { status: 400 });
+  if (!RESOURCE_TYPES.includes(resourceType)) {
+    throw Object.assign(new Error(`Geçersiz resourceType: ${resourceType}`), { status: 400 });
   }
   if (!resourceKey || !String(resourceKey).trim()) {
     throw Object.assign(new Error('resourceKey zorunlu.'), { status: 400 });
@@ -215,6 +258,7 @@ async function removeGrant(restrictionId, username) {
 }
 
 module.exports = {
+  RESOURCE_TYPES,
   isAllowed, assertAllowed, filterAllowed,
   listRestrictions, createRestriction, updateRestriction, deleteRestriction,
   addGrant, removeGrant, addGroupGrant, removeGroupGrant,

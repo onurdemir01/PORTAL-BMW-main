@@ -192,13 +192,17 @@ export const scalexApi = {
     action: ScaleXAction; executionMode: ScaleXMode;
     targetReplicas?: number | string; verificationTimeout?: string;
     allowPartial?: boolean; reason?: string; mailCc?: string; hpaPin?: boolean;
-    ocoNumber?: string; ocoAction?: "schedule" | "later";
+    // `ocoAction` BILEREK YOK: ScaleX zamanlama yapmaz, sunucu tek gecerli cevabi
+    // ('later') kendisi verir. Alani burada tutmak, ekranin dolduramadigi bir
+    // sozlesme alani birakmak olurdu (bkz. server/scalex/index.cjs kapi blogu).
+    ocoNumber?: string;
     writtenConfirm?: string;
   }) {
     return post<ScaleXJobRef & {
       ok: boolean; message?: string; blastRadius?: ScaleXBlastRadius;
       writtenConfirmRequired?: boolean; reasonRequired?: boolean;
       ocoRequired?: boolean; ocoExpired?: boolean; ocoDecisionRequired?: boolean;
+      ocoDeferred?: boolean; ocoScheduled?: boolean;
       pendingApproval?: boolean; ticketId?: number; externalTicketId?: string;
       oco?: { ocoNumber: string; subject: string; windowStartText: string; windowEndText: string; phase: string };
     }>("/run", body);
@@ -217,7 +221,16 @@ export const scalexApi = {
 
   async stopped(env: string, tenant: string, cluster?: string) {
     const q = new URLSearchParams({ env, tenant, ...(cluster ? { cluster } : {}) });
-    return safeJson(await fetch(`${BASE}/stopped?${q}`)) as Promise<{ ok: boolean; items: ScaleXStoppedItem[]; message?: string }>;
+    return safeJson(await fetch(`${BASE}/stopped?${q}`)) as Promise<{ ok: boolean; items: ScaleXStoppedItem[]; message?: string;
+      /** Yetki nedeniyle gizlenen kayit sayisi — panel bunu SOYLEMELI, yoksa "kayit yok" yalan olur. */
+      hiddenCount?: number; truncated?: boolean; limit?: number }>;
+  },
+
+  restoreAll(body: { env: string; tenant: string; reason: string }) {
+    return post<{
+      ok: boolean; message?: string; reasonRequired?: boolean;
+      launched?: { serverId: number; jobId: number; cluster: string; namespace: string; apps: string[] }[];
+    }>("/restore-all", body);
   },
 
   adopt(body: ScaleXScope & { appName: string; workloadKind?: string; previousReplicas?: number; stoppedBy?: string }) {

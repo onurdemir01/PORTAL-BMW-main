@@ -1251,18 +1251,31 @@ async function seedPortalElements(pool) {
     console.warn('[DB] Denetim etiketi guncellenemedi:', err.message);
   }
 
-  // 2) Gorunurluk kurallari — yalnizca tablo TAMAMEN bossa (ilk kurulum/migrasyon). Mevcut
-  //    page_visibility (admin duzenlemeleri) varsa oradan tasinir; yoksa ELEMENT_SEED rolleri.
+  // 2) Gorunurluk kurallari — ELEMENT BAZINDA idempotent ("bu elementin HIC kurali yoksa ekle").
+  //
+  // ESKIDEN "tablo TAMAMEN bossa" idi ve bu, YENI EKLENEN her sayfayi URETIMDE gorunmez
+  // birakiyordu: `roles` tasiyan bir element `default_visible = 0` ile eklenir ve
+  // gorunurlugunu YALNIZCA bu tablodaki satirlardan alir. Mevcut bir kurulumda tablo
+  // dolu oldugu icin blok bastan donuyor, satirlar hic yazilmiyor ve sayfa `User`
+  // rolune ACILMIYORDU. Ilk kurulumda dogru calistigi icin de fark edilmiyordu.
+  //
+  // Element bazina inmek admin duzenlemelerini KORUR: bir elementin en az bir kurali
+  // varsa ona DOKUNULMAZ. Yalnizca hic kurali olmayan (= hic seed edilmemis) elementler
+  // varsayilanlarini alir.
   try {
-    const any = await pool.request().query(`SELECT TOP 1 1 AS x FROM portal_element_visibility`);
-    if (any.recordset.length) return;
+    const existing = await pool.request().query(
+      `SELECT DISTINCT element_key FROM portal_element_visibility`
+    );
+    const hasRules = new Set(existing.recordset.map((r) => r.element_key));
     const pv = await pool.request().query(`SELECT page_name, roles FROM page_visibility`);
     const pvMap = {};
     for (const r of pv.recordset) {
       pvMap[r.page_name] = String(r.roles).split(',').map((s) => s.trim()).filter(Boolean);
     }
+    const seeded = [];
     for (const el of ELEMENT_SEED) {
       if (!Array.isArray(el.roles)) continue; // yalnizca kisitli elementler rol kurali alir
+      if (hasRules.has(el.element_key)) continue; // admin duzenlemesi olabilir — DOKUNMA
       const roles = pvMap[el.element_key] || el.roles;
       for (const role of roles) {
         await pool.request()
@@ -1270,8 +1283,9 @@ async function seedPortalElements(pool) {
           .query(`INSERT INTO portal_element_visibility (element_key, principal_type, principal_id, allow)
                   VALUES (@k, @pt, @pid, @a)`);
       }
+      seeded.push(el.element_key);
     }
-    console.log('[DB] portal_element_visibility ilk kez seed edildi (page_visibility tasindi).');
+    if (seeded.length) console.log(`[DB] portal_element_visibility seed edildi: ${seeded.join(', ')}`);
   } catch (err) {
     console.warn('[DB] portal_element_visibility seed hata:', err.message);
   }
