@@ -24,6 +24,7 @@ Node.js + Express backend, React 19 + TypeScript + Vite frontend'den oluşan por
 | [docs/SETUP-SIMPLE.md](docs/SETUP-SIMPLE.md) | Yerel gelistirme kurulumu |
 | [docs/MCP-SETUP.md](docs/MCP-SETUP.md) | Dynatrace/Instana MCP bağlantı kurulumu + TLS |
 | [docs/SCALABILITY.md](docs/SCALABILITY.md) | 3.000 kullanıcı ölçekleme analizi |
+| [docs/SCALEX.md](docs/SCALEX.md) | **ScaleX** — OCP replica durdurma/geri alma/ölçekleme; kapılar, yetki, tuzaklar |
 | [Jenkinsfile](Jenkinsfile) | CI/CD pipeline (build → paket → onaylı deploy → health/rollback) |
 
 ---

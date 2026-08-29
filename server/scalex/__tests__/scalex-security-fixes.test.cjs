@@ -279,8 +279,14 @@ test('GORUNURLUK: elle calistirilabilir deploy betigi var ve idempotent', () => 
 
 test('ENV: kodun okudugu her SCALEX_* degiskeni .env.example\'da belgeli', () => {
   const envExample = read('.env.example');
+  // TUM `server/scalex/*` taranir, elle sayilan iki dosya DEGIL: liste elle tutuldugu
+  // surece yeni bir dosyanin (orn. reconciler.cjs) degiskenleri sessizce belgesiz
+  // kalir — nitekim tam olarak bu oldu.
+  const fsx = require('node:fs');
+  const dir = path.join(__dirname, '..');
+  const files = fsx.readdirSync(dir).filter((f) => f.endsWith('.cjs')).map((f) => `server/scalex/${f}`);
   const used = new Set();
-  for (const f of ['server/scalex/index.cjs', 'server/db/mssql-setup.cjs']) {
+  for (const f of [...files, 'server/db/mssql-setup.cjs']) {
     for (const m of read(f).matchAll(/\bSCALEX_[A-Z_]+\b/g)) used.add(m[0]);
   }
   assert.ok(used.size >= 3, 'en az uc degisken bulunmali');

@@ -620,7 +620,14 @@ function initScaleX(app) {
   }));
 
   app.use('/api/scalex', router);
-  console.log('[ScaleX] ScaleX API hazir (/api/scalex)');
+
+  // EMNIYET AGI: islemleri sunucu tarafinda da sonuclandir. Bu cagri olmadan
+  // `finalizeOperation` YALNIZCA tarayicinin yoklamasindan calisir ve kullanici
+  // sekmeyi kapatirsa islem sonsuza dek RUNNING kalir, ayna hic yazilmaz ve
+  // "Su an durdurulmus" paneli yanlis bilgi verir (bkz. reconciler.cjs basligi).
+  require('./reconciler.cjs').startReconciler();
+
+  console.log('[ScaleX] ScaleX API hazir (/api/scalex) + uzlastirici acik');
 }
 
 // SMART metadata'si. `reason` ve patlama yaricapi BILEREK iceride: onay veren kisi
@@ -661,7 +668,12 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
     );
 
     if (!parsed || parsed.mode !== 'apply') return;
+    // Ortak alanlar (env/tenant/namespace/username) TUM satirlarda ayni — ayni
+    // istekten uretiliyorlar. Farkli olan tek sey `cluster_name`, ve `operation_id`
+    // o cluster'in KENDI satirina baglanmali: `rows[0].id` yazmak, bes cluster'lik
+    // bir istekte "hangi cluster'i geri alacagim" sorusunun cevabini bozardi.
     const op = rows[0];
+    const idByCluster = new Map(rows.map((r) => [r.cluster_name, r.id]));
     for (const t of parsed.targets) {
       if (t.status !== 'OK') continue;
       if (parsed.action === 'stop') {
@@ -671,7 +683,7 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
         await state.upsertStopped({
           env: op.env, tenant: op.tenant, clusterName: t.cluster, namespace: op.namespace,
           appName: t.app, workloadKind: t.kind, previousReplicas: null,
-          stoppedBy: op.username, operationId: op.id,
+          stoppedBy: op.username, operationId: idByCluster.get(t.cluster) ?? op.id,
         });
       } else if (parsed.action === 'restore') {
         await state.clearRestored({
