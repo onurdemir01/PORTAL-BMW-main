@@ -2430,8 +2430,20 @@ function initAnsibleRunner(app) {
         ocoNumber: req.body?.ocoNumber, ocoAction: req.body?.ocoAction,
         createOcoAwxSchedule, friendlyAwxError, buildSmartMetadata,
       });
-      if (gateDecision.outcome === "error") return res.status(gateDecision.status).json(gateDecision.body);
-      if (gateDecision.outcome === "respond") return res.json(gateDecision.body);
+      // FAIL-CLOSED. `proceed` disindaki HER sey burada tuketilir. Onceki hali
+      // `error`/`respond` disinda kalan her seyi akisa birakiyordu — yani `outcome`
+      // yazimi bozulsa, yeni bir cikis turu eklenip burada ele alinmasa ya da
+      // `runChangeGates` bir dalda `undefined` donse IS SESSIZCE CALISIRDI. Kapi
+      // satir-iciyken bu sinif mumkun degildi.
+      if (gateDecision?.outcome === "error") return res.status(gateDecision.status).json(gateDecision.body);
+      if (gateDecision?.outcome === "respond") return res.json(gateDecision.body);
+      if (gateDecision?.outcome !== "proceed") {
+        console.error("[change-gates] taninmayan karar — is BASLATILMADI:", JSON.stringify(gateDecision));
+        return res.status(500).json({
+          ok: false,
+          message: "Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.",
+        });
+      }
 
       const result = await performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req });
       res.json({ ok: true, jobId: result.jobId, status: result.status });
@@ -2513,6 +2525,11 @@ function initAnsibleRunner(app) {
         } catch (smartErr) {
           if (smartErr.code === "smart_flow_key_missing") {
             return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
+          }
+          // Bilet ACILDI ama yerel kayit dustuyse mesaj "acilamadi" DEMEMELI —
+          // kullanici yetim bir Smart kaydiyla kalmasin, numarasini gorsun.
+          if (smartErr.code === "smart_ticket_store_failed") {
+            return res.status(smartErr.status || 500).json({ ok: false, message: smartErr.message, externalTicketId: smartErr.externalTicketId });
           }
           return res.status(smartErr.status || 502).json({ ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` });
         }

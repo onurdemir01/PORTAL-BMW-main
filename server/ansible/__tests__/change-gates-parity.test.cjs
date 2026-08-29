@@ -62,7 +62,10 @@ async function withMocks(overrides, fn) {
     smartClient: { createTicket: async (a) => { calls.push(['smart.createTicket', a]); return { ticketId: 'WF-1', raw: {} }; } },
     smartStore: { createTicket: async (a) => { calls.push(['smart.storeTicket', a]); return { id: 42 }; } },
     audit: { auditPortal: (req, action, o) => { calls.push(['audit', action, o]); } },
-    smartGate: { isSmartRequired: () => false },
+    // Argumanlari KAYDEDEN mock. Onceki hali `() => false` idi ve argumanlara hic
+    // bakmiyordu — yani "kapi gateVars mi extraVars mi okuyor" sorusu parity testinde
+    // SIFIR kapsamdaydi; tek koruma metin tabanli bekciydi.
+    smartGate: { isSmartRequired: (a, b) => { calls.push(['gate.isSmartRequired', a, b]); return false; } },
   };
 
   for (const [k, p] of Object.entries(paths)) {
@@ -383,4 +386,90 @@ test('openSmartTicket: auditAction verilmezse denetim kaydi YAZILMAZ', async () 
     assert.equal(calls.filter((c) => c[0] === 'audit').length, 0,
       'ss/test/run ve poller yolu bu denetimi yazMAZ — eski davranis');
   });
+});
+
+
+// ── Denetim sonrasi eklenen bekciler ─────────────────────────────────────────
+
+test('kapi gerçekten `gateVars` ile cagriliyor (mock argumani kaydeder)', async () => {
+  await withMocks({}, async (gates, calls) => {
+    const ctx = baseCtx({ ocoNumber: '123' });
+    ctx.extraVars = { env: 'prod', op_selection: 'read' };   // client'in "atlatma" denemesi
+    ctx.gateVars = { env: 'prod' };                           // dogrulanmis kume
+    await gates.runChangeGates(ctx);
+    const gateCall = calls.find((c) => c[0] === 'gate.isSmartRequired');
+    assert.ok(gateCall, 'kapi hic cagrilmadi');
+    assert.deepStrictEqual(gateCall[2], { env: 'prod' },
+      'kapi ham extraVars ile cagrilmis — `op_selection` ile onay atlatilabilirdi');
+  });
+});
+
+test('yanit govdeleri BIREBIR (eklenen alan da hatadir)', async () => {
+  await withMocks({}, async (gates) => {
+    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '   ' }));
+    // `deepStrictEqual`: onceki testler alan alan bakiyordu, yani yanita EKLENEN bir
+    // alan hicbir testi kirmazdi — denetimin kor nokta olarak isaret ettigi sey.
+    assert.deepStrictEqual(d, {
+      outcome: 'error', status: 400,
+      body: { ok: false, ocoRequired: true, message: 'Bu PRODUCTION talebi için OCO numarası gerekli.' },
+    });
+  });
+});
+
+test('Smart bileti yaniti BIREBIR', async () => {
+  await withMocks({ smartGate: { isSmartRequired: () => true } }, async (gates) => {
+    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
+    assert.deepStrictEqual(d, {
+      outcome: 'respond',
+      body: { ok: true, pendingApproval: true, ticketId: 42, externalTicketId: 'WF-1' },
+    });
+  });
+});
+
+test('enjekte fonksiyon EKSIKSE acik hata (catch blogunun kendisi patlamasin)', async () => {
+  await withMocks({}, async (gates) => {
+    const ctx = baseCtx({ ocoNumber: '123' });
+    delete ctx.friendlyAwxError;
+    await assert.rejects(
+      () => gates.runChangeGates(ctx),
+      (err) => {
+        assert.equal(err.code, 'change_gates_missing_hook');
+        assert.match(err.message, /friendlyAwxError/);
+        return true;
+      }
+    );
+  });
+});
+
+test('sonuc turu KAPALI bir kume — bilinmeyen bir deger uretilemez', async () => {
+  await withMocks({ smartGate: { isSmartRequired: () => true } }, async (gates) => {
+    const seen = new Set();
+    for (const ocoNumber of ['', '123']) {
+      const d = await gates.runChangeGates(baseCtx({ ocoNumber }));
+      seen.add(d.outcome);
+    }
+    for (const o of seen) {
+      assert.ok(gates.OUTCOMES.includes(o), `beyaz listede olmayan sonuc turu: ${o}`);
+    }
+  });
+});
+
+// Parity testi `runner.cjs`i YUKLEMIYOR: `launch-ss`ten `runChangeGates` cagrisi komple
+// silinse 21 testin hepsi gecerdi. Asagidakiler bu bosluğu kaynak uzerinden kapatir.
+const fs = require('node:fs');
+const path = require('node:path');
+const RUNNER_SRC = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
+
+test('launch-ss GERCEKTEN kapidan geciyor ve `proceed` disi her sonucu tuketiyor', () => {
+  assert.match(RUNNER_SRC, /runChangeGates\(\{/, 'launch-ss kapiyi hic cagirmiyor');
+  assert.match(RUNNER_SRC, /gateDecision\?\.outcome === "error"/);
+  assert.match(RUNNER_SRC, /gateDecision\?\.outcome === "respond"/);
+  // FAIL-CLOSED varsayilan: `proceed` disinda kalan her sey burada durdurulmali.
+  assert.match(RUNNER_SRC, /gateDecision\?\.outcome !== "proceed"[\s\S]{0,400}res\.status\(500\)/,
+    'taninmayan sonuc akisa birakiliyor — is sessizce calisir (fail-open)');
+});
+
+test('ocoNumber/ocoAction `req.body`den bagli', () => {
+  assert.match(RUNNER_SRC, /ocoNumber: req\.body\?\.ocoNumber/);
+  assert.match(RUNNER_SRC, /ocoAction: req\.body\?\.ocoAction/);
 });

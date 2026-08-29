@@ -60,20 +60,65 @@ test('smart-gate yalnizca change-gates uzerinden cagriliyor (tek kapi)', () => {
     `smart-gate.cjs dogrudan require ediliyor — kapi change-gates.cjs uzerinden gecmeli:\n${offenders.join('\n')}`);
 });
 
-test('kapi extraVars DEGIL gateVars okur (dort cagri yerinin hepsi)', () => {
-  const calls = SRC.match(/isSmartRequired\([^)]*\)/g) || [];
-  assert.ok(calls.length >= 4, `beklenen 4+ kapi cagrisi, bulunan ${calls.length}`);
-  for (const c of calls) {
-    assert.ok(
-      /gateVars/.test(c),
-      `kapi ham extraVars ile cagriliyor — bypass geri gelmis: ${c}`
-    );
+// GERCEK CAGRI YERI = bir nesne uzerinden cagri (`gates.isSmartRequired(...)`) ya da
+// modul icinden dogrudan cagri. FONKSIYON BILDIRIMI ve `require(...).isSmartRequired`
+// delegasyonu SAYILMAZ.
+//
+// NEDEN: ilk yazimda desen duz `isSmartRequired\(...\)` idi ve tum kaynaklar tek bir
+// metinde birlestiriliyordu. Kod change-gates.cjs'e tasininca O DOSYA TEK BASINA
+// 4 eslesme uretmeye basladi (bildirim + delegasyon + iki gercek cagri) — yani
+// runner.cjs'teki IKI GERCEK KAPI CAGRISI DA SILINSE sayac 4'te kalir ve bekci
+// YESIL kalirdi. Somut senaryo: ss/test/run'daki guard silinse her admin "Gercekten
+// Calistir" Smart onayini atlayarak is tetikler, test gecerdi. Artik sayim DOSYA
+// BAZINDA ve bildirim/delegasyon haric.
+function realCallSites(src) {
+  // Eleme BURADA yapilir, cagiranda DEGIL: filtreyi cagirana birakmak, yeni bir
+  // cagiran eklendiginde sessizce atlanmasina yol acardi.
+  const code = src
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*)/.test(l))                 // yorumlar
+    .filter((l) => !/^\s*function\s+isSmartRequired\s*\(/.test(l))  // BILDIRIM
+    .filter((l) => !/require\([^)]*smart-gate\.cjs[^)]*\)\s*\.isSmartRequired/.test(l)) // DELEGASYON
+    .join('\n');
+  return code.match(/(?:\w+\.)?isSmartRequired\([^)]*\)/g) || [];
+}
+
+test('kapi extraVars DEGIL gateVars okur (her cagri yerinde, her dosyada)', () => {
+  const runnerCalls = realCallSites(RUNNER);
+  const gatesCalls = realCallSites(GATES);
+  // Iki dosya AYRI AYRI denetlenir; birinin fazlaligi digerinin eksigini ORTEMEZ.
+  assert.ok(runnerCalls.length >= 2,
+    `runner.cjs'te beklenen 2+ kapi cagrisi (launchOrRequestApproval + ss/test/run), bulunan ${runnerCalls.length}`);
+  assert.ok(gatesCalls.length >= 2,
+    `change-gates.cjs'te beklenen 2+ kapi cagrisi (evaluateOcoGate + runChangeGates), bulunan ${gatesCalls.length}`);
+  for (const c of [...runnerCalls, ...gatesCalls]) {
+    assert.ok(/gateVars/.test(c), `kapi ham extraVars ile cagriliyor — bypass geri gelmis: ${c}`);
   }
   // Ham nesneye geri dusen bir yedek OLMAMALI.
   assert.ok(
     !/isSmartRequired\([^)]*gateVars \|\| extraVars/.test(SRC),
     "gateVars yoksa extraVars'a dusmek, kapatilan acigi eski kayitlar icin geri acar"
   );
+});
+
+test('bekci KOR DEGIL: gercek bir kapi cagrisi silinirse kirmizi olur', () => {
+  // Once mevcut kaynagin esigi GECTIGINI dogrula — aksi halde asagidaki sabotaj
+  // testi "zaten sifirdi" diye anlamsiz gecerdi.
+  assert.ok(realCallSites(RUNNER).length >= 2, 'baslangic durumu yanlis: runner.cjs 2 cagri tasimali');
+
+  // ss/test/run'daki guard'i sil (her admin "Gercekten Calistir" Smart onayini
+  // atlayarak is tetikleyebilir hale gelirdi) — sayac esigin ALTINA dusmeli.
+  const sabotaged = RUNNER.replace(/if \(gates\.isSmartRequired\(overrides\.smartApproval, gateVars\)\)/, 'if (false)');
+  assert.notEqual(sabotaged, RUNNER, 'sabotaj deseni tutmadi — bekci guncellenmeli');
+  assert.ok(realCallSites(sabotaged).length < 2,
+    'gercek bir kapi cagrisi silindigi halde sayac esigin ustunde kaldi — bekci KOR');
+
+  // change-gates.cjs tarafi: bildirim ve delegasyon SAYILMAMALI, yoksa o dosya tek
+  // basina esigi doldurur ve runner.cjs'teki silmeler gorunmez olurdu (asil hata buydu).
+  const declOnly = 'function isSmartRequired(smartApproval, gateVars) {\n'
+    + "  return require('./smart-gate.cjs').isSmartRequired(smartApproval, gateVars || {});\n}";
+  assert.equal(realCallSites(declOnly).length, 0,
+    'bildirim + delegasyon cagri yeri olarak sayiliyor — bekci yine korlesir');
 });
 
 test('gateVars YOKSA guvenli tarafa dusulur (bos nesne -> onay gerekli)', () => {

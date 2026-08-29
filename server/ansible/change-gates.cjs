@@ -15,14 +15,36 @@
 // `res.status().json()` cagrilarinin yerine KARAR NESNESI donulmesi (modul Express'e
 // bagli kalmasin, Chaos Scale de ayni kapiyi kullanabilsin diye).
 //
-// Karar nesnesi uc bicimde doner:
+// Karar nesnesi UC bicimde doner ve BASKASI OLAMAZ:
 //   { outcome: 'proceed' }                      → cagiran akisa devam eder
 //   { outcome: 'error',   status, body }        → cagiran `res.status(status).json(body)`
 //   { outcome: 'respond', body }                → cagiran `res.json(body)`  (HTTP 200)
 //
+// SET KAPALI OLMAK ZORUNDA. Kapinin karari artik modul sinirini bir STRING olarak
+// geciyor; cagiran tarafta `proceed` disinda ele alinmayan her deger sessizce ISI
+// CALISTIRIR. Kapi satir-iciyken bu sinif mumkun degildi (`return res...` ya vardi ya
+// yoktu). Bu yuzden hem burada hem cagiranda beyaz liste var: `OUTCOMES` disinda bir
+// deger uretilirse ya da cagirana ulasirsa FAIL-CLOSED davranilir.
+//
 // `change-gates-parity.test.cjs` bu sozlesmenin eski davranisla birebir ayni oldugunu
 // kilitler. Degistirmeden once o testi oku.
 'use strict';
+
+// Kapinin uretebilecegi TUM sonuc turleri. Cagiran taraf da bu listeyi okur.
+const OUTCOMES = Object.freeze(['proceed', 'error', 'respond']);
+
+// Enjekte edilen fonksiyonlar EKSIKSE erken ve ACIK hata ver. Aksi halde hata ancak
+// `catch` blogunun ICINDE ortaya cikardi — orada `friendlyAwxError` de tanimsiz
+// oldugu icin catch blogunun KENDISI patlar ve teshis tamamen kaybolurdu.
+function assertHooks(ctx, names) {
+  const missing = names.filter((n) => typeof ctx[n] !== 'function');
+  if (missing.length) {
+    throw Object.assign(
+      new Error(`change-gates: zorunlu fonksiyon(lar) gecilmemis: ${missing.join(', ')}`),
+      { status: 500, code: 'change_gates_missing_hook' }
+    );
+  }
+}
 
 // ── SMART ─────────────────────────────────────────────────────────────────────
 // Karar TEK yerde: server/ansible/smart-gate.cjs. Kural bir ISTISNA LISTESIDIR,
@@ -55,7 +77,10 @@ function isSmartRequired(smartApproval, gateVars) {
 //   * `auditAction`      yalnizca launch-ss denetim kaydi yazar. ss/test/run zaten
 //                        `selfservice_test_scenario_run` yazmis olur; poller yolunda
 //                        istek (req) yoktur.
-//   * `onMissingFlowKey` launch-ss/ss-test 400 doner, poller yolu THROW eder.
+//   * flowKey eksikligi: bu fonksiyon HER ZAMAN `code: 'smart_flow_key_missing'` tasiyan
+//     bir hata FIRLATIR. Cagiran onu yakalayip kendi sozlesmesine cevirir —
+//     launch-ss/ss-test 400 doner, poller yolu hatayi oldugu gibi yukari birakir.
+//     (Burada `onMissingFlowKey` gibi bir parametre YOKTUR.)
 async function openSmartTicket({
   server, templateId, username, email = '', templateName = '',
   overrides, extraVars, detail, resolvedLaunchOptions, specFields,
@@ -88,17 +113,30 @@ async function openSmartTicket({
   const created = await smartClient.createTicket({
     flowKey, username, metadata, integrationKey: integrationKey || undefined,
   });
-  const ticket = await smartStore.createTicket({
-    externalTicketId: created.ticketId,
-    username,
-    awxServerId: server.id,
-    awxTemplateId: templateId,
-    flowKey,
-    pendingLaunch: {
-      detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName,
-      ...pendingLaunchExtras,
-    },
-  });
+
+  // BURADAN SONRASI KRITIK: Smart bileti DIS SISTEMDE ARTIK ACILDI. Yerel kayit
+  // duserse kullaniciya "Smart talebi acilamadi" demek YANLIS olur — bilet ortada
+  // duruyor ve numarasi kaybolursa yetim kalir. Hatayi ayirip bilet numarasini
+  // mesaja koyuyoruz.
+  let ticket;
+  try {
+    ticket = await smartStore.createTicket({
+      externalTicketId: created.ticketId,
+      username,
+      awxServerId: server.id,
+      awxTemplateId: templateId,
+      flowKey,
+      pendingLaunch: {
+        detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName,
+        ...pendingLaunchExtras,
+      },
+    });
+  } catch (storeErr) {
+    throw Object.assign(
+      new Error(`Smart talebi AÇILDI (kayıt no: ${created.ticketId}) ancak portal kaydı yazılamadı: ${storeErr.message}`),
+      { status: 500, code: 'smart_ticket_store_failed', externalTicketId: created.ticketId }
+    );
+  }
 
   if (auditAction) {
     require('../audit/index.cjs').auditPortal(req, auditAction, {
@@ -136,6 +174,7 @@ async function evaluateOcoGate({
   ocoNumber: rawOcoNumber, ocoAction: rawOcoAction,
   createOcoAwxSchedule, friendlyAwxError,
 }) {
+  assertHooks({ createOcoAwxSchedule, friendlyAwxError }, ['createOcoAwxSchedule', 'friendlyAwxError']);
   const ocoClient = require('../oco/client.cjs');
   const ocoWindow = require('../oco/window.cjs');
   const ocoStore = require('../oco/store.cjs');
@@ -248,6 +287,7 @@ async function evaluateOcoGate({
 // ── BIRLESIK KAPI ─────────────────────────────────────────────────────────────
 // `launch-ss`'in kapi bolumunun tamami. Sira DEGISTIRILEMEZ: once OCO, sonra Smart.
 async function runChangeGates(ctx) {
+  assertHooks(ctx, ['createOcoAwxSchedule', 'friendlyAwxError', 'buildSmartMetadata']);
   const {
     server, templateId, username, req,
     overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
@@ -279,6 +319,9 @@ async function runChangeGates(ctx) {
     if (smartErr.code === 'smart_flow_key_missing') {
       return { outcome: 'error', status: 400, body: { ok: false, message: 'Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun.' } };
     }
+    if (smartErr.code === 'smart_ticket_store_failed') {
+      return { outcome: 'error', status: smartErr.status || 500, body: { ok: false, message: smartErr.message, externalTicketId: smartErr.externalTicketId } };
+    }
     return { outcome: 'error', status: smartErr.status || 502, body: { ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` } };
   }
   return {
@@ -288,6 +331,7 @@ async function runChangeGates(ctx) {
 }
 
 module.exports = {
+  OUTCOMES,
   isSmartRequired,
   isOcoGateApplicable,
   evaluateOcoGate,
