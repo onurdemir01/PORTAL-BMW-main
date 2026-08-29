@@ -56,7 +56,15 @@ test('filterAllowed(): 500 anahtar icin TEK sorgu yapilir (N+1 yok)', async () =
   await withDb([], async (calls) => {
     await restrictions.filterAllowed('ocp_namespace', many, { username: 'ali', role: 'User' });
     assert.equal(calls.length, 1, 'anahtar sayisindan bagimsiz tek sorgu');
-    assert.equal(calls[0].params.length, 2, 'anahtarlar parametre olarak gonderilmemeli');
+    // ASIL KURAL: anahtarlar parametreye KONMAZ (MSSQL'de 2100 parametre siniri var ve
+    // 500 namespace'lik bir cluster o siniri zorlar). Onceki hali `params.length === 2`
+    // diye SIHIRLI BIR SAYIYA baglanmisti; grup grant'i eklendiginde kullanici adi
+    // SQL'den cikip JS'e tasindigi icin sayi 1'e dustu ve test, kural hala saglanirken
+    // kirmizi verdi. Artik kuralin KENDISI olculuyor.
+    assert.ok(calls[0].params.length <= 2, `parametre sayisi anahtar sayisiyla buyumemeli: ${calls[0].params.length}`);
+    for (const key of many) {
+      assert.ok(!calls[0].params.includes(key), `anahtar parametre olarak gonderilmis: ${key}`);
+    }
   });
 });
 

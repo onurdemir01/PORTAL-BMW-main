@@ -123,6 +123,7 @@ async function main() {
     { name: "opsX", init: () => require("./opsx/index.cjs").initOpsX(app), optional: true },
     { name: "fileX", init: () => require("./filex/index.cjs").initFileX(app), optional: true },
     { name: "telnet", init: () => require("./telnet/index.cjs").initTelnet(app), optional: true },
+    { name: "chaos", init: () => require("./chaos/index.cjs").initChaos(app), optional: true },
     { name: "inventory", init: () => initInventory(app), optional: true },
     { name: "links", init: () => initLinks(app), optional: true },
     { name: "dynatrace", init: () => initDynatrace(app), optional: true },
