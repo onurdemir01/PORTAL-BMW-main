@@ -19,7 +19,13 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
+const RUNNER = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
+// 2026-08-29: kapi mantigi change-gates.cjs'e tasindi (Chaos Scale de ayni kapidan
+// gececek). Bekci KODU TAKIP EDER: `isSmartRequired` cagrilari artik iki dosyaya
+// dagilmis durumda, ikisi de taranmali. Yalnizca runner.cjs'e bakan bir bekci,
+// change-gates.cjs'te acilacak bir bypass'i GORMEZDI.
+const GATES = fs.readFileSync(path.join(__dirname, '..', 'change-gates.cjs'), 'utf8');
+const SRC = RUNNER + '\n' + GATES;
 
 test('fallback dalindaki client anahtarlari GUVENILMEZ olarak isaretlenir', () => {
   // Dogrulamadan gecmeyen tek dal bu; oradan gelen her anahtar untrustedKeys'e girmeli.
@@ -28,6 +34,30 @@ test('fallback dalindaki client anahtarlari GUVENILMEZ olarak isaretlenir', () =
     /if \(val !== ""\) \{ extraVars\[k\] = val; untrustedKeys\.add\(k\); \}/,
     'fallback dali client anahtarlarini isaretlemiyor — kapi yine ham girdiyi okur'
   );
+});
+
+// Bu bekci CIKARMADAN SONRA EKLENDI ve oncekinden DAHA GUCLU: `smart-gate.cjs`i
+// dogrudan require eden tek uretim modulu `change-gates.cjs` olmali. Baska bir modul
+// dogrudan cagirirsa, `gateVars`/`extraVars` ayrimini bilmeden yanlis nesneyi gecirip
+// kapiyi sessizce atlatabilir — tam da kapatilan acik.
+test('smart-gate yalnizca change-gates uzerinden cagriliyor (tek kapi)', () => {
+  const dir = path.join(__dirname, '..', '..');
+  const offenders = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '__tests__') continue;
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) { walk(full); continue; }
+      if (!/\.cjs$/.test(e.name)) continue;
+      if (full.endsWith(path.join('ansible', 'change-gates.cjs'))) continue;
+      if (full.endsWith(path.join('ansible', 'smart-gate.cjs'))) continue;
+      const code = fs.readFileSync(full, 'utf8')
+        .split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+      if (/require\([^)]*smart-gate\.cjs[^)]*\)/.test(code)) offenders.push(path.relative(dir, full));
+    }
+  })(dir);
+  assert.deepStrictEqual(offenders, [],
+    `smart-gate.cjs dogrudan require ediliyor — kapi change-gates.cjs uzerinden gecmeli:\n${offenders.join('\n')}`);
 });
 
 test('kapi extraVars DEGIL gateVars okur (dort cagri yerinin hepsi)', () => {
