@@ -2,7 +2,7 @@
 //
 // NEDEN AYRI BIR MODUL: bu mantik `runner.cjs` icinde `launch-ss` handler'inin GOVDESINE
 // gomuluydu. Sonucu: Self Service disindaki hicbir akista kapi YOKTU — OpsX, LogX ve
-// Telnet dogrudan `runner.launchJobOnServer()` cagiriyor. Chaos Scale (OCP replica
+// Telnet dogrudan `runner.launchJobOnServer()` cagiriyor. ScaleX (OCP replica
 // durdurma) ayni kapilardan gecmek zorunda ve mantigi ikinci kez yazmak, biri duzelince
 // digerinin sessizce eski kalmasi demekti.
 //
@@ -13,7 +13,7 @@
 // ── DAVRANIS SOZLESMESI ─────────────────────────────────────────────────────────
 // Bu cikarma bir DAVRANIS DEGISIKLIGI DEGILDIR. Kod satir satir tasindi; tek fark
 // `res.status().json()` cagrilarinin yerine KARAR NESNESI donulmesi (modul Express'e
-// bagli kalmasin, Chaos Scale de ayni kapiyi kullanabilsin diye).
+// bagli kalmasin, ScaleX de ayni kapiyi kullanabilsin diye).
 //
 // Karar nesnesi UC bicimde doner ve BASKASI OLAMAZ:
 //   { outcome: 'proceed' }                      → cagiran akisa devam eder
@@ -163,9 +163,23 @@ async function openSmartTicket({
 //   3) ocoAction 'schedule'  → kayit olusturulur, kesinti saatinde tetiklenir
 //      ocoAction 'later'     → hicbir sey yapilmaz, kullanici o saatte geri gelir
 //   Pencere ACIKSA hicbir soru sorulmaz, akis normal devam eder.
-function isOcoGateApplicable(overrides, extraVars) {
-  return !!(overrides.ocoCheck?.enabled
-    && require('../oco/prod-detect.cjs').isProductionRequest(extraVars));
+// PROD TESPITI IKI KAYNAKTAN OKUNUR — `extraVars` VE `gateVars`.
+//
+// NEDEN: `prod-detect` yalnizca `env`/`ortam` anahtarlarina bakar (bilerek sabit, bkz.
+// o dosyanin basligi). Self Service bu anahtarlari `extraVars`ta tasir, ama HER cagiran
+// tasimak zorunda degil: ScaleX ortami `target_environment` adiyla gonderiyor ve
+// `env`/`ortam` yalnizca `gateVars`inda var. Tek kaynak okundugu surece ScaleX'in prod
+// islemleri OCO kapisini SESSIZCE atliyordu — kapi kodda duruyor, hic ateslenmiyordu.
+//
+// IKI KAYNAGI BIRLIKTE OKUMAK GUVENLI: bu bir GENISLETME. Ek kaynak kapiyi yalnizca
+// daha SIK acturabilir, asla kapatamaz — yani yeni bir acik uretemez. `gateVars` ayrica
+// SMART tarafinda zaten GUVENILIR kaynak sayiliyor (yalnizca dogrulanmis alanlardan
+// dolar, kullanici govdeye yazamaz), dolayisiyla prod tespiti icin de en az `extraVars`
+// kadar saglam.
+function isOcoGateApplicable(overrides, extraVars, gateVars) {
+  if (!overrides.ocoCheck?.enabled) return false;
+  const { isProductionRequest } = require('../oco/prod-detect.cjs');
+  return isProductionRequest(extraVars) || isProductionRequest(gateVars);
 }
 
 async function evaluateOcoGate({
@@ -296,7 +310,7 @@ async function runChangeGates(ctx) {
     smartAuditAction = 'selfservice_smart_ticket_open',
   } = ctx;
 
-  if (isOcoGateApplicable(overrides, extraVars)) {
+  if (isOcoGateApplicable(overrides, extraVars, gateVars)) {
     const ocoDecision = await evaluateOcoGate({
       server, templateId, username, req,
       overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,

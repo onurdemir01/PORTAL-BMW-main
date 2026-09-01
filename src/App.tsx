@@ -18,6 +18,7 @@ const SelfServicePage = React.lazy(() => import("@/components/SelfServicePage"))
 const AnsiblePage = React.lazy(() => import("@/components/ansible/AnsiblePage"));
 const LogXWizardPage = React.lazy(() => import("@/components/logx_v2/LogXWizardPage"));
 const OpsXWizardPage = React.lazy(() => import("@/components/opsx/OpsXWizardPage"));
+const ScaleXPage = React.lazy(() => import("@/components/scalex/ScaleXPage"));
 const FileXWizardPage = React.lazy(() => import("@/components/filex/FileXWizardPage"));
 const TelnetWizardPage = React.lazy(() => import("@/components/telnet/TelnetWizardPage"));
 const AdminPage = React.lazy(() => import("@/components/admin/AdminPage"));
@@ -81,6 +82,9 @@ export default function App() {
           </Route>
           <Route element={<PageVisibilityRoute pageId="LogX" />}>
             <Route path="/logx" element={<LogXWizardPage />} />
+          </Route>
+          <Route element={<PageVisibilityRoute pageId="ScaleX" />}>
+            <Route path="/scalex" element={<ScaleXPage />} />
           </Route>
           <Route element={<PageVisibilityRoute pageId="OpsX" />}>
             <Route path="/opsx" element={<OpsXWizardPage />} />

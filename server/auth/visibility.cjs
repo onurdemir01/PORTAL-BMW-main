@@ -40,6 +40,7 @@ const DEFAULT_VISIBILITY = {
   "OpsX":         ["Admin", "User"],
   "FileX":        ["Admin", "User"],
   "Telnet":       ["Admin", "User"],
+  "ScaleX":       ["Admin", "User"],
   "Performance":  ["Admin", "User"],
   "AI Analist":   ["Admin", "User"],
   "Nöbet":        ["Admin", "User"],

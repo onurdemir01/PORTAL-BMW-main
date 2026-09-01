@@ -166,9 +166,31 @@ async function authenticateLdap(username, password) {
       + `requester_email varsayilana (DEFAULT_REQUESTER) dusecek.`);
   }
 
+  // AD GRUPLARI OTURUMA (2026-08-29). `memberOf` zaten cekiliyordu ama YALNIZCA rol
+  // turetmek icin okunup ATILIYORDU. Kaynak-bazli yetkilendirme (bkz.
+  // server/logx/v2/restrictions.cjs) artik bir kisitlamayi bir GRUBA verebiliyor:
+  // uyelik AD'de yonetilir, portalda ikinci bir kopya tutulmaz ve kisi ekipten
+  // cikinca erisimi kendiliginden biter.
+  //
+  // OTURUM BOYUTU: `memberOf` bazi kullanicilarda cok uzun olabilir. Deger normalize
+  // edilip TEKILLESTIRILIYOR ve makul bir ust sinira kirpiliyor; asilirsa uyari
+  // loglaniyor — sessizce eksik grup listesiyle calisip "neden erisemiyorum"
+  // sorusuna yol acmasin.
+  const MAX_GROUPS = 200;
+  const rawGroups = Array.isArray(userEntry.memberOf)
+    ? userEntry.memberOf
+    : (userEntry.memberOf ? [userEntry.memberOf] : []);
+  const allGroups = [...new Set(rawGroups.map((g) => String(g || '').trim()).filter(Boolean))];
+  if (allGroups.length > MAX_GROUPS) {
+    console.warn(`[LDAP] ${username} icin ${allGroups.length} grup bulundu, ilk ${MAX_GROUPS} tanesi oturuma yazildi — `
+      + `grup bazli yetkilendirme eksik calisabilir.`);
+  }
+  const groups = allGroups.slice(0, MAX_GROUPS);
+
   return {
     username:    normalizeUsername(username),
     dn:          userEntry.dn,
+    groups,
     displayName: String(userEntry.displayName || userEntry.cn || username),
     mail,
     // G-05: fallback to physicalDeliveryOfficeName or ou if department is a raw code
