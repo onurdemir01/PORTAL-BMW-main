@@ -1816,25 +1816,22 @@ function initAnsibleRunner(app) {
     // gecilir: hicbir kural tutmaz -> onay GEREKLI kalir. Guvenli taraf. `extraVars`'a
     // dusmek, tam da kapatilan aciktan (dogrulanmamis client verisiyle atlama) eski
     // kayitlarin gecmesine izin verirdi.
-    if (require("./smart-gate.cjs").isSmartRequired(overrides?.smartApproval, gateVars || {})) {
-      const smartClient = require("../smart/client.cjs");
-      const smartStore = require("../smart/store.cjs");
-      const flowKey = String(overrides.smartApproval.flowKey || "").trim();
-      if (!flowKey) throw new Error("Bu servis için Smart Flow Key tanımlanmamış.");
-      const metadata = buildSmartMetadata(String(overrides.smartApproval.metadataFields || "").trim(), {
-        username, email: "", templateName, templateId, extraVars,
-      });
-      const integrationKey = String(overrides.smartApproval.integrationKey || "").trim();
-      const created = await smartClient.createTicket({ flowKey, username, metadata, integrationKey: integrationKey || undefined });
-      const ticket = await smartStore.createTicket({
-        externalTicketId: created.ticketId, username,
-        awxServerId: server.id, awxTemplateId: templateId, flowKey,
-        pendingLaunch: {
-          detail, extraVars, gateVars, resolvedLaunchOptions, specFields, overrides, username, templateName,
+    const gates = require("./change-gates.cjs");
+    if (gates.isSmartRequired(overrides?.smartApproval, gateVars || {})) {
+      // `pendingLaunchExtras` YALNIZCA bu cagirma yerinde dolu: bu paket ileride yine
+      // launchOrRequestApproval ile oynatilir, yani kapi YENIDEN calisir ve `gateVars`
+      // olmadan bos nesneye duserdi. Diger iki cagirma yerinin paketi Smart poller'i
+      // tarafindan DOGRUDAN performSsLaunch ile oynatilir (kapi tekrar calismaz).
+      const opened = await gates.openSmartTicket({
+        server, templateId, username, email: "", templateName,
+        overrides, extraVars, detail, resolvedLaunchOptions, specFields,
+        buildSmartMetadata,
+        pendingLaunchExtras: {
+          gateVars,
           ...(opts.ocoRecordId ? { ocoRecordId: opts.ocoRecordId } : {}),
         },
       });
-      return { pendingApproval: true, ticketId: ticket.id, externalTicketId: created.ticketId };
+      return { pendingApproval: true, ticketId: opened.ticketId, externalTicketId: opened.externalTicketId };
     }
     return performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req: null });
   }
@@ -2421,177 +2418,31 @@ function initAnsibleRunner(app) {
         server, templateId, { submittedExtraVars, templateName, limit, forks, jobTags, skipTags, verbosity, jobType, req }
       );
 
-      // ── OCO KONTROLU ──────────────────────────────────────────────────────────
-      // Admin bu servis icin "OCO Kontrolu"nu actiysa VE talep PRODUCTION ise
-      // (extra_vars'ta env|ortam = prod|production — bkz. server/oco/prod-detect.cjs),
-      // is once OCO kaydinin planlanan kesinti penceresine karsi dogrulanir.
-      //
-      // Smart onayindan ONCE calisir: penceresi gecmis bir OCO icin Smart'ta bosuna
-      // talep acmak, hem gurultu hem de kullaniciyi bekletip sonra reddetmek olurdu.
-      //
-      // ISTEMCI ILE EL SIKISMA (3 adim, hepsi ayni endpoint):
-      //   1) ocoNumber yoksa      -> 400 { ocoRequired: true }
-      //   2) pencere HENUZ baslamadiysa ve ocoAction yoksa
-      //                           -> 400 { ocoDecisionRequired: true, oco: {...} }
-      //   3) ocoAction: 'schedule' -> kayit olusturulur, poller kesinti saatinde tetikler
-      //      ocoAction: 'later'    -> hicbir sey yapilmaz, kullanici o saatte geri gelir
-      //   Pencere ACIKSA hicbir soru sorulmaz, akis normal devam eder.
-      if (overrides.ocoCheck?.enabled && require("../oco/prod-detect.cjs").isProductionRequest(extraVars)) {
-        const ocoClient = require("../oco/client.cjs");
-        const ocoWindow = require("../oco/window.cjs");
-        const ocoStore = require("../oco/store.cjs");
-
-        const ocoNumber = String(req.body?.ocoNumber || "").trim();
-        if (!ocoNumber) {
-          return res.status(400).json({ ok: false, ocoRequired: true, message: "Bu PRODUCTION talebi için OCO numarası gerekli." });
-        }
-
-        let order;
-        try {
-          order = await ocoClient.getChangeOrder(ocoNumber);
-        } catch (ocoErr) {
-          return res.status(ocoErr.status || 502).json({ ok: false, ocoRequired: true, message: ocoErr.message });
-        }
-
-        const pi = ocoWindow.extractPlannedInterruption(order.payload);
-        if (!pi || !pi.startDate) {
-          return res.status(400).json({ ok: false, message: `OCO ${ocoNumber} kaydında planlanan kesinti (PlannedInterruption) bilgisi yok — işlem yapılmadı.` });
-        }
-        const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
-        if (!w.ok) return res.status(400).json({ ok: false, message: w.message });
-
-        const ocoInfo = {
-          ocoNumber,
-          subject: order.result?.OcoWfIdSubject || order.result?.Subject || "",
-          startText: w.startText, endText: w.endText,
-          windowStartText: w.windowStartText, windowEndText: w.windowEndText,
-          equal: w.equal, phase: w.phase,
-        };
-
-        if (w.phase === "expired") {
-          require("../audit/index.cjs").auditPortal(req, "selfservice_oco_expired", {
-            detail: JSON.stringify({ templateId, ocoNumber, windowEnd: w.windowEndText }),
-          });
-          return res.status(400).json({ ok: false, ocoExpired: true, oco: ocoInfo, message: w.message });
-        }
-
-        if (w.phase === "before") {
-          const ocoAction = String(req.body?.ocoAction || "").trim();
-          if (ocoAction !== "schedule" && ocoAction !== "later") {
-            return res.status(400).json({ ok: false, ocoDecisionRequired: true, oco: ocoInfo, message: w.message });
-          }
-          if (ocoAction === "later") {
-            return res.json({ ok: true, ocoDeferred: true, oco: ocoInfo });
-          }
-          const pendingLaunch = { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName };
-
-          // ZAMANLAMA NEREDE TUTULUR?
-          //   * Varsayilan: AWX'te NATIVE bir schedule olusturulur (kullanici talebi,
-          //     2026-08-26). Is, kesinti saatinde AWX tarafindan tetiklenir; Portal'in
-          //     o anda ayakta olmasi GEREKMEZ ve zamanlama AWX arayuzunde de gorunur.
-          //   * ISTISNA: bu servis icin Smart onayi da gerekiyorsa AWX'e devretmek
-          //     ONAY KAPISINI TAMAMEN ATLARDI - AWX schedule'i hicbir onaya bakmadan
-          //     job'i baslatir. O durumda Portal'in kendi zamanlamasi kullanilir; poller
-          //     kesinti saatinde launchOrRequestApproval'i cagirir ve Smart bileti orada
-          //     acilir. Iki mekanizma da ayni tabloda, status ile ayrilir.
-          // Bu TALEP icin onay gercekten gerekiyor mu (alan bazli atlama dahil).
-          // Atlaniyorsa AWX native schedule kullanilabilir - atlanacak bir kapiyi
-          // korumak icin Portal poller'ina dusmek gereksiz olurdu.
-          const smartAlsoRequired = require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, gateVars);
-          if (!smartAlsoRequired) {
-            const schedName = `PORTAL_OCO_${ocoNumber}_${templateId}_${Date.now()}`;
-            let sched;
-            try {
-              sched = await createOcoAwxSchedule(server, templateId, detail, {
-                name: schedName, runAt: w.windowStart, extraVars, resolvedLaunchOptions,
-                requester: req.session?.user,
-              });
-            } catch (schedErr) {
-              const { status, message } = schedErr.status ? schedErr : friendlyAwxError(schedErr);
-              return res.status(status || 502).json({ ok: false, message: `AWX zamanlaması oluşturulamadı: ${message || schedErr.message}` });
-            }
-            const rec = await ocoStore.createAwxScheduled({
-              username, awxServerId: server.id, awxTemplateId: templateId,
-              ocoNumber, ocoSubject: ocoInfo.subject,
-              runAt: w.windowStart, windowEnd: w.windowEnd,
-              awxScheduleId: sched.scheduleId, pendingLaunch,
-            });
-            require("../audit/index.cjs").auditPortal(req, "selfservice_oco_awx_scheduled", {
-              detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id, awxScheduleId: sched.scheduleId, rrule: sched.rrule }),
-            });
-            return res.json({
-              ok: true, ocoScheduled: true, scheduleId: rec.id,
-              awxScheduleId: sched.scheduleId, awxScheduleName: sched.scheduleName,
-              oco: ocoInfo,
-            });
-          }
-
-          const rec = await ocoStore.create({
-            username, awxServerId: server.id, awxTemplateId: templateId,
-            ocoNumber, ocoSubject: ocoInfo.subject,
-            runAt: w.windowStart, windowEnd: w.windowEnd,
-            pendingLaunch,
-          });
-          require("../audit/index.cjs").auditPortal(req, "selfservice_oco_scheduled", {
-            detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id, viaPortalPoller: true }),
-          });
-          return res.json({ ok: true, ocoScheduled: true, scheduleId: rec.id, viaSmart: true, oco: ocoInfo });
-        }
-
-        // phase === "inside": pencere acik, akis normal devam eder (Smart onayi varsa o devreye girer).
-        require("../audit/index.cjs").auditPortal(req, "selfservice_oco_ok", {
-          detail: JSON.stringify({ templateId, ocoNumber, window: `${w.windowStartText} - ${w.windowEndText}` }),
+      // ── DEGISIKLIK KAPILARI (OCO penceresi + Smart onayi) ────────────────────
+      // Mantik server/ansible/change-gates.cjs'e TASINDI — davranis AYNI. Cikarilma
+      // sebebi: bu kapilar Self Service disinda HICBIR akista yoktu (OpsX/LogX/Telnet
+      // dogrudan launchJobOnServer cagiriyor) ve Chaos Scale ayni kapidan gecmek
+      // zorunda. Ikinci bir kopya, biri duzelince digerinin sessizce eski kalmasi
+      // demekti. Sozlesme ve parity testi icin bkz. change-gates.cjs basi.
+      const gateDecision = await require("./change-gates.cjs").runChangeGates({
+        server, templateId, username, req,
+        overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
+        ocoNumber: req.body?.ocoNumber, ocoAction: req.body?.ocoAction,
+        createOcoAwxSchedule, friendlyAwxError, buildSmartMetadata,
+      });
+      // FAIL-CLOSED. `proceed` disindaki HER sey burada tuketilir. Onceki hali
+      // `error`/`respond` disinda kalan her seyi akisa birakiyordu — yani `outcome`
+      // yazimi bozulsa, yeni bir cikis turu eklenip burada ele alinmasa ya da
+      // `runChangeGates` bir dalda `undefined` donse IS SESSIZCE CALISIRDI. Kapi
+      // satir-iciyken bu sinif mumkun degildi.
+      if (gateDecision?.outcome === "error") return res.status(gateDecision.status).json(gateDecision.body);
+      if (gateDecision?.outcome === "respond") return res.json(gateDecision.body);
+      if (gateDecision?.outcome !== "proceed") {
+        console.error("[change-gates] taninmayan karar — is BASLATILMADI:", JSON.stringify(gateDecision));
+        return res.status(500).json({
+          ok: false,
+          message: "Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.",
         });
-      }
-
-      // SMART ONAYI: bu template icin admin "Smart onayi gerekli" isaretlediyse (bkz.
-      // FieldOverridesModal.tsx, overrides.smartApproval) AWX job'i HEMEN tetiklenmez —
-      // Smart'ta bir talep acilir, gerekli her sey (extraVars, launch secenekleri) DB'ye
-      // yazilir ve onay geldiginde server/smart/poller.cjs bu ayni launch mantigini
-      // (performSsLaunch) cagirir. Kullanici "onay bekleniyor" ekranini gorur.
-      // Alan degerine gore atlama: bkz. server/ansible/smart-gate.cjs
-      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, gateVars)) {
-        const smartClient = require("../smart/client.cjs");
-        const smartStore = require("../smart/store.cjs");
-        const flowKey = String(overrides.smartApproval.flowKey || "").trim();
-        if (!flowKey) {
-          return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
-        }
-        // Smart'in metadataData.metadatas[].key alani, GetMetaDataOperationalRequestByFlowName'in
-        // dondurdugu `ElementName` degeriyle BIREBIR eslesmeli (SOS02-KL-001-EN + 2026-08-12
-        // uretim flow'u dogrulandi - `ComponentType` DEGIL, o TEKIL degil: ayni flow'da birden
-        // fazla TEXTBOX/PARAMETER_DROPDOWN/CONFIGURATION_SELECT_CMS olabiliyor). Sabit
-        // {application, requestedBy} hicbir gercek flow'un ElementName'iyla eslesmedigi icin
-        // Smart bunu "400 Invalid Request" ile reddediyordu. Admin artik "Alanlari Getir" ile
-        // gercek ElementName'leri gorup metadataFields'a ("ELEMENT_NAME: deger",
-        // parseSimpleYaml ile AYNI format) esleyebilir; bos ise ESKI (muhtemelen hicbir flow'da
-        // calismayan) varsayilana duser — davranis SESSIZCE degismez, admin'in NE gonderildigini
-        // gormesi FieldOverridesModal'da.
-        const metadataFieldsRaw = String(overrides.smartApproval.metadataFields || "").trim();
-        const metadata = buildSmartMetadata(metadataFieldsRaw, {
-          username, email: req.session?.user?.mail || "", templateName, templateId, extraVars,
-        });
-        // integrationKey: bkz. FieldOverridesModal.tsx "Integration Key" alani - servis
-        // bazinda override (bos ise createTicket() global SMART_RFF_TOKEN'a duser).
-        const integrationKey = String(overrides.smartApproval.integrationKey || "").trim();
-        let created;
-        try {
-          created = await smartClient.createTicket({ flowKey, username, metadata, integrationKey: integrationKey || undefined });
-        } catch (smartErr) {
-          return res.status(smartErr.status || 502).json({ ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` });
-        }
-        const ticket = await smartStore.createTicket({
-          externalTicketId: created.ticketId,
-          username,
-          awxServerId: server.id,
-          awxTemplateId: templateId,
-          flowKey,
-          pendingLaunch: { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
-        });
-        require("../audit/index.cjs").auditPortal(req, "selfservice_smart_ticket_open", {
-          detail: JSON.stringify({ awxServerId: server.id, templateId, flowKey, ticketId: created.ticketId }),
-        });
-        return res.json({ ok: true, pendingApproval: true, ticketId: ticket.id, externalTicketId: created.ticketId });
       }
 
       const result = await performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req });
@@ -2658,33 +2509,31 @@ function initAnsibleRunner(app) {
       });
 
       // Alan degerine gore atlama: bkz. server/ansible/smart-gate.cjs
-      if (require("./smart-gate.cjs").isSmartRequired(overrides.smartApproval, gateVars)) {
-        const smartClient = require("../smart/client.cjs");
-        const smartStore = require("../smart/store.cjs");
-        const flowKey = String(overrides.smartApproval.flowKey || "").trim();
-        if (!flowKey) {
-          return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
-        }
-        const metadataFieldsRaw = String(overrides.smartApproval.metadataFields || "").trim();
-        const metadata = buildSmartMetadata(metadataFieldsRaw, {
-          username, email: req.session?.user?.mail || "", templateName, templateId, extraVars,
-        });
-        const integrationKey = String(overrides.smartApproval.integrationKey || "").trim();
-        let created;
+      // NOT: burada OCO kapisi BILEREK yok — bu uc admin arac-kutusudur ve test
+      // senaryosunu OCO penceresine bagli kilmak aracin amacini bozardi. Smart onayi
+      // ise aynen gecerli: gercek bir job tetiklenecegi icin iz birakmali.
+      const gates = require("./change-gates.cjs");
+      if (gates.isSmartRequired(overrides.smartApproval, gateVars)) {
+        let opened;
         try {
-          created = await smartClient.createTicket({ flowKey, username, metadata, integrationKey: integrationKey || undefined });
+          opened = await gates.openSmartTicket({
+            server, templateId, username,
+            email: req.session?.user?.mail || "",
+            templateName, overrides, extraVars, detail, resolvedLaunchOptions, specFields,
+            buildSmartMetadata,
+          });
         } catch (smartErr) {
+          if (smartErr.code === "smart_flow_key_missing") {
+            return res.status(400).json({ ok: false, message: "Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun." });
+          }
+          // Bilet ACILDI ama yerel kayit dustuyse mesaj "acilamadi" DEMEMELI —
+          // kullanici yetim bir Smart kaydiyla kalmasin, numarasini gorsun.
+          if (smartErr.code === "smart_ticket_store_failed") {
+            return res.status(smartErr.status || 500).json({ ok: false, message: smartErr.message, externalTicketId: smartErr.externalTicketId });
+          }
           return res.status(smartErr.status || 502).json({ ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` });
         }
-        const ticket = await smartStore.createTicket({
-          externalTicketId: created.ticketId,
-          username,
-          awxServerId: server.id,
-          awxTemplateId: templateId,
-          flowKey,
-          pendingLaunch: { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName },
-        });
-        return res.json({ ok: true, pendingApproval: true, ticketId: ticket.id, externalTicketId: created.ticketId });
+        return res.json({ ok: true, pendingApproval: true, ticketId: opened.ticketId, externalTicketId: opened.externalTicketId });
       }
 
       const result = await performSsLaunch(server, templateId, { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName, req });
