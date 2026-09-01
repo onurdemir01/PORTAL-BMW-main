@@ -1,0 +1,117 @@
+{
+  "name": "ScaleX | Kesif (salt okunur)",
+  "description": "OpenShift workload/durum/saglik kesfi. HICBIR MUTASYON YAPMAZ. TUM SORULAR OPSIYONEL — gerekcesi icin scalex_run survey aciklamasina bakin.",
+  "spec": [
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "workloads",
+        "state",
+        "health"
+      ],
+      "default": "workloads",
+      "required": false,
+      "variable": "discovery_mode",
+      "new_question": true,
+      "question_name": "Kesif Modu",
+      "question_description": "workloads: namespace'teki workload'lari, HPA/GitOps/PDB bilgisiyle listeler. state: geri alinabilir durum kayitlarini (ConfigMap) listeler. health: secilen uygulamalarin pod ve uyari olaylarini gosterir."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "ark",
+        "hosting",
+        "istirak-hosting",
+        "wyden",
+        "metaco_gar",
+        "metaco_das",
+        "cicd",
+        "instana",
+        "cds",
+        "ai",
+        "ark_ai"
+      ],
+      "default": "ark",
+      "required": false,
+      "variable": "target_platform",
+      "new_question": true,
+      "question_name": "Platform (tenant)",
+      "question_description": "Cluster katalogundaki `platform` alaniyla eslesir."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "dev",
+        "test",
+        "qa",
+        "prod",
+        "lab",
+        "edu",
+        "cicd"
+      ],
+      "default": "lab",
+      "required": false,
+      "variable": "target_environment",
+      "new_question": true,
+      "question_name": "Ortam",
+      "question_description": "Cluster katalogundaki `environments` listesiyle eslesir."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "single",
+        "all"
+      ],
+      "default": "all",
+      "required": false,
+      "variable": "cluster_selection_mode",
+      "new_question": true,
+      "question_name": "Cluster Kapsami",
+      "question_description": "Portal `scalex_target_clusters` listesini ACIKCA gonderdiginde bu alan kullanilmaz."
+    },
+    {
+      "max": 253,
+      "min": 0,
+      "type": "text",
+      "choices": "",
+      "default": "all",
+      "required": false,
+      "variable": "target_cluster_name",
+      "new_question": true,
+      "question_name": "Hedef Cluster",
+      "question_description": "Tek cluster adi ya da `all`. Serbest metin — gerekcesi scalex_run survey'inde."
+    },
+    {
+      "max": 63,
+      "min": 0,
+      "type": "text",
+      "choices": "",
+      "default": "",
+      "required": false,
+      "variable": "target_namespace",
+      "new_question": true,
+      "question_name": "Namespace",
+      "question_description": "Kubernetes namespace adi (en fazla 63 karakter)."
+    },
+    {
+      "max": 4096,
+      "min": 0,
+      "type": "textarea",
+      "choices": "",
+      "default": "",
+      "required": false,
+      "variable": "target_app_names",
+      "new_question": true,
+      "question_name": "Uygulama Adlari",
+      "question_description": "Virgulle ayrilmis liste. `workloads` ve `state` modunda BOS BIRAKILABILIR — bos birakildiginda namespace'in TAMAMI listelenir (ekran uygulama adini ezberden bilmek zorunda kalmasin). `health` modunda ZORUNLUDUR."
+    }
+  ]
+}

@@ -230,8 +230,16 @@ export const scalexApi = {
 
   restoreAll(body: { env: string; tenant: string; reason: string }) {
     return post<{
-      ok: boolean; message?: string; reasonRequired?: boolean;
+      ok: boolean; message?: string; reasonRequired?: boolean; code?: string;
       launched?: { serverId: number; jobId: number; cluster: string; namespace: string; apps: string[] }[];
+      /**
+       * Prod'da toplu geri alma da SMART onayindan gecer (tekil `Geri Al` ile ayni
+       * politika). Bu gruplar icin AWX'te HENUZ IS YOKTUR — onay geldiginde sunucu
+       * tarafi baslatir. Panel bunu `launched` ile KARISTIRMAMALI.
+       */
+      pendingApproval?: { cluster: string; namespace: string; apps: string[]; ticketId?: number; externalTicketId?: string }[];
+      /** Kapinin reddettigi ya da baslatilamayan gruplar — sessizce yutulmamali. */
+      blocked?: { cluster: string; namespace: string; message: string }[];
     }>("/restore-all", body);
   },
 

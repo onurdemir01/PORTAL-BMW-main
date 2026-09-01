@@ -1,0 +1,379 @@
+---
+# Cluster kataloğu.
+# Aktif/pasif: enabled: true|false
+# Grup: platform + environments (ör. ark_dev, hosting_qa)
+# SSH hedefi farklıysa ansible_host kullan.
+# credential, ../global_variables/credentials.yaml içindeki variable adıdır.
+# oc yolu farklıysa defaults.oc_paths listesine ekle.
+#
+# Örnek:
+# mycluster:
+#   enabled: true
+#   platform: ark
+#   environments: [test]
+#   jump_server: myjump01
+#   ansible_host: GBAOCP01
+#   api_url: https://api.mycluster.example:6443
+#   credential: uxmid_gar
+#
+version: 1
+defaults:
+  tls_verify: false
+  # oc client bu sırayla aranır; bulunamazsa PATH son fallback olarak kontrol edilir.
+  # Ortamda farklı bir konum varsa yalnızca bu listeye mutlak yolu ekleyin.
+  oc_paths:
+    - /bin/oc
+    - /usr/local/bin/oc
+    - /usr/bin/oc
+clusters:
+  gbocpdrcprod1:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: gbdrcp51
+    api_url: https://api.gbocpdrcprod1.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpcicd2:
+    enabled: true
+    platform: cicd
+    environments: [cicd]
+    jump_server: gbocpcicd2
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocpcicd2.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpcicd3:
+    enabled: true
+    platform: cicd
+    environments: [cicd]
+    jump_server: gbocpcicd3
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocpcicd3.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocp3rdprod1:
+    enabled: true
+    platform: hosting
+    environments: [prod]
+    jump_server: gbhstp51
+    api_url: https://api.gbocp3rdprod1.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocp3rdprod2:
+    enabled: true
+    platform: hosting
+    environments: [prod]
+    jump_server: gbhstp52
+    api_url: https://api.gbocp3rdprod2.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpank3rdprod2:
+    enabled: true
+    platform: hosting
+    environments: [prod]
+    jump_server: gbhstap81
+    api_url: https://api.gbocpank3rdprod2.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  giocp3rdprod1:
+    enabled: true
+    platform: istirak-hosting
+    environments: [prod]
+    jump_server: gihstp51
+    api_url: https://api.giocp3rdprod1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gtek
+  giocp3rdprod2:
+    enabled: true
+    platform: istirak-hosting
+    environments: [prod]
+    jump_server: gihstp52
+    api_url: https://api.giocp3rdprod2.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gtek
+  giocpank3rdprod2:
+    enabled: true
+    platform: istirak-hosting
+    environments: [prod]
+    jump_server: gihstap81
+    api_url: https://api.giocpank3rdprod2.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gtek
+  daocpprod1:
+    enabled: true
+    platform: metaco_das
+    environments: [prod]
+    jump_server: daocpprod1
+    ansible_host: GBAOCP01
+    api_url: https://api.daocpprod1.fw.dijitalvarlik.com.tr:6443
+    credential: uxmid_das
+  gbocp3rdcwprod1:
+    enabled: true
+    platform: metaco_gar
+    environments: [prod]
+    jump_server: gbocp3rdcwprod1
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocp3rdcwprod1.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  giocp3rdwyprod1:
+    enabled: true
+    platform: wyden
+    environments: [prod]
+    jump_server: gbwydp51
+    api_url: https://api.giocp3rdwyprod1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  giocp3rdwyprod2:
+    enabled: true
+    platform: wyden
+    environments: [prod]
+    jump_server: gbwydp52
+    api_url: https://api.giocp3rdwyprod2.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  giocpank3rdwyprod1:
+    enabled: true
+    platform: wyden
+    environments: [prod]
+    jump_server: giocpank3rdwyprod1
+    ansible_host: GBAOCP01
+    api_url: https://api.giocpank3rdwyprod1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocpprod1:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: gbarkp51
+    api_url: https://api.gbocpprod1.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpprod2:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: gbarkp52
+    api_url: https://api.gbocpprod2.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpankprod2:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: gbarkap82
+    api_url: https://api.gbocpankprod2.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpprod4:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: gbarkp54
+    api_url: https://api.gbocpprod4.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocplab1:
+    enabled: true
+    platform: ark
+    environments: [lab]
+    jump_server: gbocplab1
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocplab1.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocplab2:
+    enabled: true
+    platform: ark
+    environments: [lab]
+    jump_server: gbocplab2
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocplab2.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpedu1:
+    enabled: true
+    platform: ark
+    environments: [edu]
+    jump_server: gbocpedu1
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocpedu1.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocptest1:
+    enabled: true
+    platform: ark
+    environments: [dev, test]
+    jump_server: gbocptest1
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocptest1.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocptest2:
+    enabled: true
+    platform: ark
+    environments: [dev, test]
+    jump_server: gbocptest2
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocptest2.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocptest4:
+    enabled: true
+    platform: ark
+    environments: [dev, test, qa]
+    jump_server: gbocptest4
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocptest4.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpqa1:
+    enabled: true
+    platform: ark
+    environments: [qa]
+    jump_server: gbocpqa1
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocpqa1.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpqa2:
+    enabled: true
+    platform: ark
+    environments: [qa]
+    jump_server: gbocpqa2
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocpqa2.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocpankqa2:
+    enabled: true
+    platform: ark
+    environments: [qa]
+    jump_server: gbocpankqa2
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocpankqa2.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocp3rdtest3:
+    enabled: true
+    platform: hosting
+    environments: [dev, test, qa]
+    jump_server: gbocp3rdtest3
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocp3rdtest3.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  gbocp3rdtest4:
+    enabled: true
+    platform: hosting
+    environments: [dev, test, qa]
+    jump_server: gbocp3rdtest4
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocp3rdtest4.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  giocp3rdtest3:
+    enabled: true
+    platform: istirak-hosting
+    environments: [dev, test, qa]
+    jump_server: giocp3rdtest3
+    ansible_host: GBAOCP01
+    api_url: https://api.giocp3rdtest3.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  giocp3rdtest4:
+    enabled: true
+    platform: istirak-hosting
+    environments: [dev, test, qa]
+    jump_server: giocp3rdtest4
+    ansible_host: GBAOCP01
+    api_url: https://api.giocp3rdtest4.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  daocptest1:
+    enabled: true
+    platform: metaco_das
+    environments: [dev, test, qa]
+    jump_server: daocptest1
+    ansible_host: GBAOCP01
+    api_url: https://api.daocptest1.fw.dijitalvarlik.com.tr:6443
+    credential: uxmid_das
+  gbocp3rdcwtest1:
+    enabled: true
+    platform: metaco_gar
+    environments: [dev, test, qa]
+    jump_server: gbocp3rdcwtest1
+    ansible_host: GBAOCP01
+    api_url: https://api.gbocp3rdcwtest1.fw.garanti.com.tr:6443
+    credential: uxmid_gar
+  giocp3rdwytest1:
+    enabled: true
+    platform: wyden
+    environments: [dev, test, qa]
+    jump_server: giocp3rdwytest1
+    ansible_host: GBAOCP01
+    api_url: https://api.giocp3rdwytest1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  giocp3rdwytest2:
+    enabled: true
+    platform: wyden
+    environments: [dev, test, qa]
+    jump_server: giocp3rdwytest2
+    ansible_host: GBAOCP01
+    api_url: https://api.giocp3rdwytest2.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocpinsprod2:
+    enabled: false
+    platform: instana
+    environments: [prod]
+    jump_server: gbinsp52
+    api_url: https://api.gbocpinsprod2.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  daocpprod2:
+    enabled: false
+    platform: metaco_das
+    environments: [prod]
+    jump_server: damtcp52
+    api_url: https://api.daocpprod2.fw.dijitalvarlik.com.tr:6443
+    credential: uxmid_das
+  daocpankprod1:
+    enabled: false
+    platform: metaco_das
+    environments: [prod]
+    jump_server: damtcap81
+    api_url: https://api.daocpankprod1.fw.dijitalvarlik.com.tr:6443
+    credential: uxmid_das
+  gbocpcdsprod1:
+    enabled: false
+    platform: cds
+    environments: [prod]
+    jump_server: gbcdsp51
+    api_url: https://api.gbocpcdsprod1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocp3rdcwprod2:
+    enabled: false
+    platform: metaco_gar
+    environments: [prod]
+    jump_server: gbmtcp52
+    api_url: https://api.gbocp3rdcwprod2.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocpank3rdcwprod1:
+    enabled: false
+    platform: metaco_gar
+    environments: [prod]
+    jump_server: gbmtcap81
+    api_url: https://api.gbocpank3rdcwprod1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocp3rdaicprod1:
+    enabled: false
+    platform: ai
+    environments: [prod]
+    jump_server: gboaip51
+    api_url: https://api.gbocp3rdaicprod1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocpank3rdaiprod1:
+    enabled: false
+    platform: ai
+    environments: [prod]
+    jump_server: gboaiap81
+    api_url: https://api.gbocpank3rdaiprod1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocparkaiprod1:
+    enabled: false
+    platform: ark_ai
+    environments: [prod]
+    jump_server: gbaaip51
+    api_url: https://api.gbocparkaiprod1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocparkaiprod2:
+    enabled: false
+    platform: ark_ai
+    environments: [prod]
+    jump_server: gbaaip52
+    api_url: https://api.gbocparkaiprod2.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocpankarkaiprod1:
+    enabled: false
+    platform: ark_ai
+    environments: [prod]
+    jump_server: gbaaiap81
+    api_url: https://api.gbocpankarkaiprod1.fw.gteknoloji.com.tr:6443
+    credential: uxmid_gar
+  gbocpprod3:
+    enabled: false
+    platform: ark
+    environments: [prod]
+    jump_server: gbarkp53
+    api_url: https://api.gbocpprod3.fw.garanti.com.tr:6443
+    credential: uxmid_gar

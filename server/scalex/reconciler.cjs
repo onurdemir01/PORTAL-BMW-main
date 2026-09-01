@@ -70,10 +70,117 @@ async function markStale(serverId, jobId, reason) {
   );
 }
 
+
+// ── SMART ONAYI BEKLEYEN SATIRLAR ───────────────────────────────────────────
+//
+// Onay bekleyen bir ScaleX istegi icin `scalex_operations`ta `PENDING_APPROVAL`
+// satirlari vardir ama AWX'te henuz is YOKTUR. Onay gelince isi SMART poller'i
+// `runner.performSsLaunch` ile baslatir — ve o yol ScaleX'i BILMEZ, yalnizca
+// `ansible_job_history`ye yazar. Yani satiri RUNNING'e cekecek kimse yoktu:
+// uzlastirici `RUNNING` sorgusuna takilmadigi icin `finalizeOperation` hic calismaz,
+// `scalex_state_mirror` guncellenmez ve GERI ALMA YOLU KAPANIR.
+//
+// NEDEN BURADA, `smart/poller.cjs` ICINDE DEGIL: poller ve `performSsLaunch` ortak
+// Self Service yolu; oraya ScaleX bilgisi koymak, kapinin cikarilma gerekcesinin
+// (tek govde, modul basina kopya yok) tersi olurdu. Uzlastirici zaten tam da bu is
+// icin var — "kimse bakmadi" durumunu sunucu tarafinda toplamak — ve portal yeniden
+// baslasa bile calisir.
+//
+// IDEMPOTENT: her UPDATE `WHERE status = 'PENDING_APPROVAL'` kosuluyla yazar.
+async function pendingApprovalTickets(limit) {
+  const { rows } = await db.query(
+    `SELECT TOP 50 smart_ticket_id, MIN(created_at) AS created_at
+       FROM scalex_operations
+      WHERE status = 'PENDING_APPROVAL' AND smart_ticket_id IS NOT NULL
+      GROUP BY smart_ticket_id
+      ORDER BY MIN(created_at) ASC`
+  );
+  return rows.slice(0, Math.min(limit, HARD_TOP));
+}
+
+// Bilet cozulmusse (onaylandi / reddedildi / zaman asimi) satirlari ilerlet.
+// Bilet HALA bekliyorsa hicbir sey yapilmaz — 15 dakikalik SMART timeout'u
+// poller'in isi, burada tekrar karar verilmez.
+async function adoptApprovedTickets(cfg) {
+  const tickets = await pendingApprovalTickets(cfg.batchSize);
+  if (!tickets.length) return { adopted: 0, cancelled: 0 };
+
+  const smartStore = require('../smart/store.cjs');
+  let adopted = 0, cancelled = 0;
+
+  for (const t of tickets) {
+    const ticketId = Number(t.smart_ticket_id);
+    let ticket = null;
+    try {
+      ticket = await smartStore.getTicket(ticketId);
+    } catch (e) {
+      console.warn(`[ScaleX] uzlastirici: Smart bileti #${ticketId} okunamadi:`, e.message);
+      continue;
+    }
+
+    // Bilet YOK (silinmis / hic yazilamamis). Sonsuza dek PENDING_APPROVAL'da
+    // asili kalmasin — ama yalnizca yeterince eskiyse; taze bir satir, biletin
+    // yazilmasiyla ayni tick'e denk gelmis olabilir.
+    if (!ticket) {
+      const ageHours = t.created_at ? (Date.now() - new Date(t.created_at).getTime()) / 3600000 : 0;
+      if (ageHours >= cfg.staleHours) {
+        await resolveApproval(ticketId, 'CANCELLED', 'ORPHANED',
+          'Smart bileti bulunamadi; onay durumu ogrenilemedi.');
+        cancelled++;
+      }
+      continue;
+    }
+
+    if (ticket.status === 'LAUNCHED' && ticket.awxJobId) {
+      await db.query(
+        `UPDATE scalex_operations
+            SET status = 'RUNNING', awx_job_id = $2, awx_server_id = COALESCE(awx_server_id, $3),
+                request_key = CONCAT(CAST(COALESCE(awx_server_id, $3) AS NVARCHAR(20)), ':', CAST($2 AS NVARCHAR(20))),
+                approval_state = 'APPROVED', approved_at = GETUTCDATE(), updated_at = GETUTCDATE()
+          WHERE smart_ticket_id = $1 AND status = 'PENDING_APPROVAL'`,
+        [ticketId, Number(ticket.awxJobId), Number(ticket.awxServerId)]
+      );
+      adopted++;
+      continue;
+    }
+
+    if (['REJECTED', 'TIMEOUT', 'CANCELLED', 'ERROR'].includes(ticket.status)) {
+      await resolveApproval(ticketId, 'CANCELLED', ticket.status,
+        ticket.errorMessage || `Smart bileti ${ticket.status} — is tetiklenmedi.`);
+      cancelled++;
+    }
+    // PENDING / LAUNCHING → hala bekliyor, dokunma.
+  }
+  return { adopted, cancelled };
+}
+
+async function resolveApproval(ticketId, status, approvalState, message) {
+  await db.query(
+    `UPDATE scalex_operations
+        SET status = $2, approval_state = $3, error_message = $4, updated_at = GETUTCDATE()
+      WHERE smart_ticket_id = $1 AND status = 'PENDING_APPROVAL'`,
+    [ticketId, status, approvalState, String(message).slice(0, 500)]
+  );
+}
+
 async function tick() {
   const cfg = getConfig();
+
+  // ONCE onay bekleyen satirlar: onaylanmis bir bilet bu turda RUNNING'e cekilirse
+  // ayni tick'in ilerleyen kisminda zaten sonuclandirilabilir hale gelir.
+  // Bu tur PATLASA BILE asagidaki sonuclandirma calismali — ikisi bagimsiz.
+  let approval = { adopted: 0, cancelled: 0 };
+  try {
+    approval = await adoptApprovedTickets(cfg);
+  } catch (e) {
+    console.warn('[ScaleX] uzlastirici: onay turu basarisiz:', e.message);
+  }
+  if (approval.adopted || approval.cancelled) {
+    console.log(`[ScaleX] uzlastirici: ${approval.adopted} onayli is devralindi, ${approval.cancelled} onay kaydi kapatildi.`);
+  }
+
   const jobs = await pendingJobs(cfg.batchSize);
-  if (!jobs.length) return { checked: 0, finalized: 0, stale: 0 };
+  if (!jobs.length) return { checked: 0, finalized: 0, stale: 0, ...approval };
 
   // Gec require: modul yuklenme sirasi dongusune girmemek icin (index.cjs bu dosyayi
   // cagiriyor, bu dosya da index.cjs'in `finalizeOperation`ini kullaniyor).
@@ -105,7 +212,7 @@ async function tick() {
   if (finalized || stale) {
     console.log(`[ScaleX] uzlastirici: ${finalized} is sonuclandirildi, ${stale} is "bilinmiyor" isaretlendi.`);
   }
-  return { checked: jobs.length, finalized, stale };
+  return { checked: jobs.length, finalized, stale, ...approval };
 }
 
 let _timer = null;
@@ -125,4 +232,4 @@ function startReconciler() {
 // engellemiyor ve depoda cagrilacagi bir kapanis yolu da yok. Cagrilmayan bir
 // "temizlik" fonksiyonu birakmak, ileride birinin onun gercekten kullanildigini
 // sanmasina yol acardi (J1 bekcisi bu spekulatif olu kodu zaten reddediyor).
-module.exports = { tick, startReconciler, getConfig, pendingJobs, HARD_TOP };
+module.exports = { tick, startReconciler, getConfig, pendingJobs, pendingApprovalTickets, adoptApprovedTickets, HARD_TOP };

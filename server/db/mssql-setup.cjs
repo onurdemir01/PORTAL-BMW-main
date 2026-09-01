@@ -1415,16 +1415,26 @@ const PLAYBOOK_REGISTRY_SEED = [
   // (middleware_inventory.yml/openshift_inventory.yml ile ayni konvansiyon) — bu yuzden
   // playbook_path null (OpsX/Telnet gibi).
   // ── ScaleX — OCP replica durdurma / geri alma / olcekleme ──────────────
-  // Playbook'lar bu repo'nun DISINDA (hknisci/garanti_tasks/scale) tutulur ve AWX'e
-  // oradan kopyalanir — OpsX/Telnet/FileX ile ayni konvansiyon, o yuzden playbook_path
-  // null. Admin yalnizca awx_template_id + awx_server_id doldurur.
+  // Playbook'lar AWX projesinde calisir; bu deponun icindeki kaynak kopya
+  // `server/ansible/scalex_file/` altindadir (LogX ile ayni duzen: depoda referans,
+  // AWX'te calisan kopya). `playbook_path` yine de null — dogrulama LogX'teki gibi
+  // dosya adi eslemesiyle DEGIL, portal/playbook sozlesme testleriyle yapiliyor
+  // (server/ansible/__tests__/scalex-awx-package.test.cjs).
+  // Admin yalnizca awx_template_id + awx_server_id doldurur.
   //
-  // IKI AYRI TEMPLATE, TEK PLAYBOOK KLASORU. Mutasyon template'i survey'siz ve
-  // "Prompt on launch > Variables" ACIK olmali; kapaliysa AWX gonderilen extra_vars'i
-  // SESSIZCE yutar (bu tuzak uretimde yasandi). Portal launch oncesi bunu kontrol eder.
+  // IKI AYRI TEMPLATE, TEK PLAYBOOK KLASORU. Her ikisinde de "Prompt on launch >
+  // Variables" ACIK olmali; kapaliysa AWX gonderilen extra_vars'i SESSIZCE yutar
+  // (bu tuzak uretimde yasandi) ve playbook kendi katalog dosyasina duser. Portal
+  // launch oncesi bunu kontrol edip 409 ile keser.
+  //
+  // SURVEY ARTIK ACIK ama HER SORUSU OPSIYONEL. Zorunlu bir survey sorusu, portalin
+  // API launch'ini `400 variables_needed_to_start` ile duserirdi; ayrica survey
+  // degisken adlari portalin gonderdigi extra_var adlariyla BIREBIR ayni olmak
+  // zorunda (uretimdeki eski survey uygulama alanini `oc_app` diye tanimliyordu,
+  // portal ise `target_app_names` gonderiyor). Bkz. scalex_file/SCALEX_AWX_SETUP.md.
   {
     key_name: 'scalex_run', display_name: 'ScaleX — Replica Islemi (OCP)', category: 'scalex', handler: 'scalex_operation',
-    description: 'OpenShift uygulamalarinda replica durdurma/geri alma/olcekleme. Survey KAPALI, Prompt on launch ACIK olmali.',
+    description: 'OpenShift uygulamalarinda replica durdurma/geri alma/olcekleme. Prompt on launch ACIK, survey sorulari OPSIYONEL olmali.',
     playbook_path: null, env_var_name: 'SCALEX_TEMPLATE_ID',
   },
   {

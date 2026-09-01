@@ -1,0 +1,163 @@
+---
+# SCALEX | OpenShift replica durdurma / geri alma / olcekleme
+#
+# AWX konumu:
+#   bmw_openshift_jobs/scalex_app/main.yml
+# Global degiskenler (AWX projesinde, bu klasorun BIR USTUNDE):
+#   bmw_openshift_jobs/global_variables/credentials.yaml   (vault: OCP servis kullanicisi)
+#   bmw_openshift_jobs/global_variables/mail_vars.yml      (SMTP varsayilanlari)
+#
+# ── PORTAL SOZLESMESI ───────────────────────────────────────────────────────
+# Portal (BMW Portal > ScaleX) bu template'i AWX API'siyle baslatir ve sonucu
+# YALNIZCA `set_stats` ile yayinlanan `scalex_result` artifact'indan okur — ham
+# stdout AYRISTIRILMAZ. Yayin `tasks/25_publish_result.yml` icinde yapilir; o gorev
+# calismazsa portal "sonuc bulunamadi" der ve is yesil donse bile ekran bos kalir.
+#
+# Portalin gonderdigi extra_vars (tam liste `server/scalex/launch.cjs`):
+#   scalex_clusters_override, execution_mode, target_platform, target_environment,
+#   cluster_selection_mode, target_cluster_name, scalex_target_clusters,
+#   target_namespace, target_app_names, operation_action, verification_timeout,
+#   allow_partial_execution, change_confirmation, bulk_change_confirmation,
+#   mail_to  (+ kosullu: target_replicas, hpa_pin, mail_cc)
+#
+# AWX'ten ELLE calistirma bozulmaz: survey degisken adlari bu liste ile birebir
+# aynidir ve katalog gonderilmediginde playbook kendi dosyasina duser.
+- name: "SCALEX | Safe OpenShift replica management"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  # Runtime dependencies kept intentionally small:
+  # - credentials.yaml: vaulted OpenShift service-user secrets
+  # - mail_vars.yml: corporate SMTP defaults and CC list
+  # Cluster/jump/API catalog: portal `scalex_clusters_override` gonderir; gelmezse
+  # bu klasordeki openshift_inventory_scalex.yaml kullanilir (tasks/01_prepare.yml).
+  vars_files:
+    - "../global_variables/credentials.yaml"
+    - "../global_variables/mail_vars.yml"
+
+  tasks:
+    # KOSULSUZ ILKLEME. Bu bayrak `rescue` dalinda okunuyor; `when:` ile korunan bir
+    # `set_fact`e birakilsaydi hata erken olustugunda TANIMSIZ kalir ve rescue'nun
+    # KENDISI `'_result_published' is undefined` ile duserdi — yani hata yolunda
+    # portal yine hicbir sonuc goremezdi.
+    - name: "Initialize publication flag"
+      ansible.builtin.set_fact:
+        _result_published: false
+      changed_when: false
+
+    # ── ASIL AKIS ───────────────────────────────────────────────────────────
+    # Govdenin tamami block/rescue icinde: girdi dogrulamasi duserse (portalin EN SIK
+    # gordugu sinif) playbook eskiden `set_stats`a HIC ULASMIYORDU ve portal "sonuc
+    # bulunamadi" diyordu — kullanici neyin yanlis oldugunu yalnizca AWX arayuzunden
+    # ogrenebiliyordu. Artik rescue `stage: validation` yayinlar.
+    - name: "ScaleX operation"
+      block:
+        - name: "Prepare and validate inputs"
+          ansible.builtin.include_tasks: tasks/01_prepare.yml
+
+        - name: "Select clusters and resolve jump servers"
+          ansible.builtin.include_tasks: tasks/02_select_targets.yml
+
+        - name: "Initialize execution buffers"
+          ansible.builtin.set_fact:
+            _precheck_rows: []
+            _execute_rows: []
+            _strict_blocked: false
+            _notification_failed: false
+            _notification_error: ""
+            _input_row: >-
+              GLOBAL;-;{{ target_app_list | join(',') }};-;INPUT;INFO;NS={{ oc_namespace }} ACTION={{ operation_action_effective }}
+              TARGET={{ target_replicas_effective if target_replicas_effective | length > 0 else 'auto-from-state' }}
+              KIND={{ workload_kind_effective }} MODE={{ execution_mode_effective }} ALLOW_PARTIAL={{ allow_partial_execution_effective | string | lower }}
+              GROUP={{ scope_key_effective }} CLUSTER_MODE={{ oc_cluster_mode }} CLUSTERS={{ cluster_list | join(',') }}
+              CATALOG={{ catalog_source }} CLUSTER_SOURCE={{ _cluster_source }} HPA_PIN={{ hpa_pin_effective | string | lower }}
+
+        - name: "PRECHECK | Validate every target before mutation"
+          ansible.builtin.include_tasks: tasks/10_run_phase.yml
+          loop: "{{ target_matrix }}"
+          loop_control:
+            loop_var: scalex_target
+            label: "{{ scalex_target.cluster }} via {{ scalex_target.physical_host }}"
+          vars:
+            scalex_phase: precheck
+
+        - name: "Count precheck failures"
+          ansible.builtin.set_fact:
+            _precheck_fail_count: "{{ _precheck_rows | select('search', ';FAIL;') | list | length }}"
+
+        - name: "DRY RUN | Record no-mutation result"
+          ansible.builtin.set_fact:
+            _execute_rows: >-
+              {{ _execute_rows + [
+                'GLOBAL;-;-;-;DRY_RUN;' ~ ('OK' if (_precheck_fail_count | int == 0) else 'FAIL') ~ ';' ~
+                ('All prechecks passed. No workload or HPA mutation was executed.'
+                 if (_precheck_fail_count | int == 0)
+                 else 'Dry-run precheck completed with failures. No workload or HPA mutation was executed. Precheck failures=' ~ (_precheck_fail_count | string))
+              ] }}
+          when: execution_mode_effective == 'dry_run'
+
+        - name: "STRICT MODE | Block all mutations when any precheck fails"
+          ansible.builtin.set_fact:
+            _strict_blocked: true
+            _execute_rows: >-
+              {{ _execute_rows + [
+                'GLOBAL;-;-;-;BLOCKED;FAIL;Global guard blocked all workload mutations because partial execution is disabled and precheck failures=' ~ (_precheck_fail_count | string)
+              ] }}
+          when:
+            - execution_mode_effective == 'apply'
+            - not allow_partial_execution_effective
+            - _precheck_fail_count | int > 0
+
+        - name: "EXECUTE | Apply verified operations serially"
+          ansible.builtin.include_tasks: tasks/10_run_phase.yml
+          loop: "{{ target_matrix }}"
+          loop_control:
+            loop_var: scalex_target
+            label: "{{ scalex_target.cluster }} via {{ scalex_target.physical_host }}"
+          vars:
+            scalex_phase: execute
+          when:
+            - execution_mode_effective == 'apply'
+            - not _strict_blocked
+
+        - name: "Build consolidated report"
+          ansible.builtin.include_tasks: tasks/20_build_report.yml
+
+        # PORTALA SONUC: mail'den ONCE. Mail SMTP yuzunden duserse bile portal
+        # sonucu gormeli — aksi halde is gercekten calismisken ekranda "sonuc
+        # bulunamadi" yazardi.
+        - name: "Publish result for the portal"
+          ansible.builtin.include_tasks: tasks/25_publish_result.yml
+
+        - name: "Send result mail"
+          ansible.builtin.include_tasks: tasks/30_send_mail.yml
+
+      rescue:
+        # Sonuc ZATEN yayinlandiysa (hata rapor/mail asamasindan sonra olustu)
+        # onun uzerine `validation` yazmak, calisan bir islemi "girdi hatasi" gibi
+        # gostermek olurdu. O durumda yalnizca hatayi yukari birak.
+        - name: "Publish validation failure for the portal"
+          ansible.builtin.include_tasks: tasks/26_publish_validation.yml
+          when: not (_result_published | default(false) | bool)
+
+        - name: "Re-raise the original failure"
+          ansible.builtin.fail:
+            msg: >-
+              SCALEX durdu: {{ ansible_failed_task.name | default('bilinmeyen gorev') }} —
+              {{ ansible_failed_result.msg | default('ayrinti yok') }}
+
+    - name: "Fail AAP job when operation status is FAIL"
+      ansible.builtin.fail:
+        msg: >-
+          SCALEX completed with FAIL. Job ID={{ job_id }}.
+          Notification={{ 'FAILED' if _notification_failed else 'sent/accepted' }}.
+      when: overall_status == 'FAIL'
+
+    - name: "Fail AAP job when notification delivery fails"
+      ansible.builtin.fail:
+        msg: "SCALEX operation status={{ overall_status }}, but mail notification failed. Job ID={{ job_id }}."
+      when:
+        - overall_status != 'FAIL'
+        - _notification_failed

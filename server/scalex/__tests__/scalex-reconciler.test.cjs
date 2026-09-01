@@ -90,7 +90,9 @@ test('bekleyen is YOKSA AWX hic sorgulanmaz', async () => {
   await withFakeDb(async () => {
     await withFakeAwx(async () => { asked++; return finishedStopJob(); }, async () => {
       const out = await reconciler.tick();
-      assert.deepEqual(out, { checked: 0, finalized: 0, stale: 0 });
+      // Onay turu de bos: `adopted`/`cancelled` tick sozlesmesinin parcasi
+      // (bkz. reconciler.adoptApprovedTickets).
+      assert.deepEqual(out, { checked: 0, finalized: 0, stale: 0, adopted: 0, cancelled: 0 });
     });
   }, { rows: [] });
   assert.equal(asked, 0, 'bos listede AWX dovulmemeli');
@@ -138,4 +140,119 @@ test('sonuc ayristirmasi gercek sozlesmeyi kullaniyor (uzlastirici kendi kopyasi
   const parsed = result.extractScaleXResult(finishedStopJob().artifacts);
   assert.equal(parsed.action, 'stop');
   assert.equal(parsed.mode, 'apply');
+});
+
+
+// ── SMART ONAYI SONRASI DEVRALMA ────────────────────────────────────────────
+//
+// Bu bekçiler bir GERI ALMA KAYBINI kilitliyor. Kapi `pendingApproval` ile donunce
+// `/run` erken cikiyor ve isi onay geldiginde SMART poller'i `performSsLaunch` ile
+// baslatiyor — o yol `scalex_operations`i BILMEZ. Satir devralinmazsa uzlastirici
+// isi hic gormez, ayna guncellenmez ve uygulama "Su an durdurulmus" listesine
+// dusmez: prod'da durdurulan uygulama GERI ALINAMAZ hale gelir.
+
+const smartStore = require('../../smart/store.cjs');
+
+// Onay bekleyen satiri donduren sahte DB. `withFakeDb`den ayri: oradaki sahte,
+// RUNNING sorgusuna cevap veriyor; burada PENDING_APPROVAL turunu olcuyoruz.
+function withApprovalDb(fn, { pendingRows, ticket }) {
+  const origQuery = db.query;
+  const origGet = smartStore.getTicket;
+  const calls = [];
+  db.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/status = 'PENDING_APPROVAL' AND smart_ticket_id/.test(sql)) return { rows: pendingRows };
+    return { rows: [], rowCount: 0 };
+  };
+  smartStore.getTicket = async () => ticket;
+  return Promise.resolve(fn(calls)).finally(() => {
+    db.query = origQuery;
+    smartStore.getTicket = origGet;
+  });
+}
+
+test('onay GELDIGINDE satir RUNNING olur ve gercek jobId yazilir', async () => {
+  await withApprovalDb(async (calls) => {
+    const out = await reconciler.adoptApprovedTickets(reconciler.getConfig());
+    assert.equal(out.adopted, 1, 'onaylanmis bilet devralinmadi');
+    const upd = calls.find((c) => /UPDATE scalex_operations/.test(c.sql) && /status = 'RUNNING'/.test(c.sql));
+    assert.ok(upd, 'satir RUNNING\'e cekilmeli — yoksa uzlastirici isi HIC gormez');
+    assert.ok(/WHERE smart_ticket_id = \$1 AND status = 'PENDING_APPROVAL'/.test(upd.sql),
+      'guncelleme idempotent olmali (yalnizca PENDING_APPROVAL satirlarina dokunmali)');
+    assert.equal(upd.params[1], 4242, 'gercek AWX job kimligi yazilmali');
+  }, {
+    pendingRows: [{ smart_ticket_id: 9, created_at: new Date() }],
+    ticket: { id: 9, status: 'LAUNCHED', awxJobId: 4242, awxServerId: 2 },
+  });
+});
+
+test('bilet HALA bekliyorsa satira DOKUNULMAZ', async () => {
+  await withApprovalDb(async (calls) => {
+    const out = await reconciler.adoptApprovedTickets(reconciler.getConfig());
+    assert.deepEqual([out.adopted, out.cancelled], [0, 0]);
+    assert.ok(!calls.some((c) => /UPDATE scalex_operations/.test(c.sql)),
+      'onay beklerken satir degistirilmemeli');
+  }, {
+    pendingRows: [{ smart_ticket_id: 9, created_at: new Date() }],
+    ticket: { id: 9, status: 'PENDING', awxJobId: null, awxServerId: 2 },
+  });
+});
+
+test('bilet REDDEDILDI/ZAMAN ASIMI ise satir kapatilir (sonsuza dek asili kalmasin)', async () => {
+  for (const st of ['REJECTED', 'TIMEOUT', 'CANCELLED', 'ERROR']) {
+    await withApprovalDb(async (calls) => {
+      const out = await reconciler.adoptApprovedTickets(reconciler.getConfig());
+      assert.equal(out.cancelled, 1, `${st}: satir kapatilmadi`);
+      const upd = calls.find((c) => /UPDATE scalex_operations/.test(c.sql));
+      assert.ok(upd, `${st}: guncelleme yok`);
+      assert.equal(upd.params[1], 'CANCELLED');
+      assert.equal(upd.params[2], st, 'onay durumu kayitta gorunmeli');
+    }, {
+      pendingRows: [{ smart_ticket_id: 9, created_at: new Date() }],
+      ticket: { id: 9, status: st, awxJobId: null, awxServerId: 2 },
+    });
+  }
+});
+
+test('LAUNCHED ama jobId YOKSA devralinmaz (yalanci RUNNING yazilmaz)', async () => {
+  await withApprovalDb(async (calls) => {
+    const out = await reconciler.adoptApprovedTickets(reconciler.getConfig());
+    assert.equal(out.adopted, 0, 'jobId olmadan RUNNING yazmak isi kayip eder');
+    assert.ok(!calls.some((c) => /status = 'RUNNING'/.test(c.sql)));
+  }, {
+    pendingRows: [{ smart_ticket_id: 9, created_at: new Date() }],
+    ticket: { id: 9, status: 'LAUNCHED', awxJobId: null, awxServerId: 2 },
+  });
+});
+
+test('bilet YOK: TAZE satir beklemeye devam eder, ESKI satir kapatilir', async () => {
+  await withApprovalDb(async (calls) => {
+    const out = await reconciler.adoptApprovedTickets(reconciler.getConfig());
+    assert.equal(out.cancelled, 0, 'taze satir hemen kapatilmamali');
+    assert.ok(!calls.some((c) => /UPDATE scalex_operations/.test(c.sql)));
+  }, { pendingRows: [{ smart_ticket_id: 9, created_at: new Date() }], ticket: null });
+
+  const eski = new Date(Date.now() - 48 * 3600 * 1000);
+  await withApprovalDb(async (calls) => {
+    const out = await reconciler.adoptApprovedTickets(reconciler.getConfig());
+    assert.equal(out.cancelled, 1, 'yetim kalmis eski satir kapatilmali');
+    const upd = calls.find((c) => /UPDATE scalex_operations/.test(c.sql));
+    assert.equal(upd.params[2], 'ORPHANED');
+  }, { pendingRows: [{ smart_ticket_id: 9, created_at: eski }], ticket: null });
+});
+
+test('onay turu PATLASA BILE sonuclandirma turu calisir (iki tur bagimsiz)', async () => {
+  const origGet = smartStore.getTicket;
+  smartStore.getTicket = async () => { throw new Error('smart store coktu'); };
+  try {
+    await withFakeDb(async (calls) => {
+      await withFakeAwx(async () => finishedStopJob(), async () => {
+        const out = await reconciler.tick();
+        assert.equal(out.finalized, 1, 'onay turu coktugunde sonuclandirma da durdu');
+      });
+      assert.ok(calls.some((c) => /status = 'FINISHED'/.test(c.sql)));
+    });
+  } finally {
+    smartStore.getTicket = origGet;
+  }
 });

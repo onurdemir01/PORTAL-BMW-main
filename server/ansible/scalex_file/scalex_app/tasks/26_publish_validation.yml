@@ -1,0 +1,60 @@
+---
+# GIRDI DOGRULAMASI DUSTUGUNDE PORTALA SONUC — `scalex_result` (stage: validation).
+#
+# Bu dosya `main.yml`in `rescue` dalindan cagrilir. Onceden boyle bir yol YOKTU:
+# `01_prepare.yml`deki bir `assert` dustugunde playbook `set_stats`a HIC ULASMIYOR,
+# portal "sonuc bulunamadi" diyordu ve kullanici neyin yanlis oldugunu yalnizca AWX
+# arayuzunden ogrenebiliyordu. Oysa portalin EN SIK gordugu hata sinifi budur
+# (bkz. server/scalex/result.cjs — `stage: 'validation'` bicimi bilerek destekleniyor).
+#
+# BURADAKI HER DEGER `default()` ILE KORUNMALI. Hata `01_prepare.yml`in ILK
+# gorevinde de olusmus olabilir; o durumda `oc_namespace`, `cluster_list` gibi
+# fact'lerin HICBIRI tanimli degildir ve korumasiz bir ifade, hata yolunu RAPORLAYAN
+# gorevin KENDISINI dusururdu — yani portal yine hicbir sey goremezdi.
+- name: "Publish validation failure for the portal"
+  ansible.builtin.set_stats:
+    data:
+      scalex_result:
+        overall_status: "FAIL"
+        stage: "validation"
+        mode: "{{ execution_mode_effective | default(execution_mode | default('')) }}"
+        action: "{{ operation_action_effective | default(operation_action | default('')) }}"
+        namespace: "{{ oc_namespace | default(target_namespace | default('')) }}"
+        platform: "{{ oc_platform | default(target_platform | default('')) }}"
+        environment: "{{ oc_environment | default(target_environment | default('')) }}"
+        catalog_source: "{{ catalog_source | default('file') }}"
+        cluster_mode: "{{ oc_cluster_mode | default(cluster_selection_mode | default('')) }}"
+        clusters: "{{ cluster_list | default([]) }}"
+        apps: "{{ target_app_list | default([]) }}"
+        target_replicas: "{{ target_replicas_effective | default('') }}"
+        # Girdi dogrulamasi asamasinda cluster'a HIC DOKUNULMADI. `strict_blocked`
+        # de bunu soyler ve ekran bunu FAIL'den ayri, sakinlestirici bir mesajla
+        # gosterir: "hicbir degisiklik yapilmadi".
+        strict_blocked: true
+        counts:
+          planned: 0
+          ok: 0
+          warn: 0
+          fail: 0
+          precheck_fail: 0
+          verify_ok: 0
+          verify_fail: 0
+          blocked: 0
+          hpa_seen: 0
+        targets: []
+        targets_truncated: false
+        targets_total: 0
+        rows: []
+        rows_truncated: false
+        rows_total: 0
+        # Kullaniciya gosterilecek ASIL bilgi bu iki alan. `ansible_failed_*`
+        # yalnizca `rescue` icinde tanimlidir; yine de `default()` ile korunuyor.
+        validation_error: "{{ ansible_failed_result.msg | default('Girdi doğrulaması başarısız oldu.') | string }}"
+        failed_task: "{{ ansible_failed_task.name | default('bilinmeyen görev') | string }}"
+        job_id: "{{ job_id | default(lookup('env', 'AWX_JOB_ID') | default('N/A', true)) | string }}"
+    per_host: false
+
+- name: "Mark result as published"
+  ansible.builtin.set_fact:
+    _result_published: true
+  changed_when: false

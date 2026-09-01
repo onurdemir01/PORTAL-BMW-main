@@ -1,0 +1,34 @@
+---
+- name: "Normalize mail recipients"
+  ansible.builtin.set_fact:
+    _mail_to: >-
+      {{ ((mail_to | join(',')) if (mail_to is iterable and mail_to is not string) else (mail_to | string))
+         | regex_replace('[;\s]+', ',') | regex_replace(',+', ',') | regex_replace('^,|,$', '') }}
+    _mail_cc: >-
+      {{ ((mail_cc | default([]) | join(',')) if (mail_cc | default([]) is iterable and mail_cc | default([]) is not string)
+          else (mail_cc | default('') | string))
+         | regex_replace('[;\s]+', ',') | regex_replace(',+', ',') | regex_replace('^,|,$', '') }}
+
+- name: "Validate report recipient"
+  ansible.builtin.assert:
+    that:
+      - _mail_to | length > 0
+    fail_msg: "Rapor e-posta adresi boş olamaz."
+
+- name: "Send Chaos Scale report"
+  block:
+    - name: "SMTP | Send report"
+      community.general.mail:
+        host: "{{ smtp_host }}"
+        port: "{{ smtp_port }}"
+        subject: "{{ mail_subject_prefix }} CHAOS-SCALE | {{ overall_status }} | {{ scope_key_effective }} | {{ operation_action_effective }} | Job {{ job_id }}"
+        body: "{{ report_html }}"
+        from: "{{ mail_from }}"
+        to: "{{ _mail_to }}"
+        cc: "{{ _mail_cc }}"
+        subtype: html
+  rescue:
+    - name: "Record notification failure"
+      ansible.builtin.set_fact:
+        _notification_failed: true
+        _notification_error: "SMTP delivery failed for Chaos Scale report"

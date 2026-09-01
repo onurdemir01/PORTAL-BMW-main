@@ -100,7 +100,16 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore }) => {
       const r = await scalexApi.restoreAll({ env, tenant, reason: bulkReason.trim() });
       if (!r.ok) { setError(r.message || "Toplu geri alma başlatılamadı."); return; }
       setShowBulk(false); setBulkReason("");
-      setAuditNote(`${r.launched?.length || 0} iş başlatıldı — sonuçlar “İşlerim” panelinde.`);
+      // UC AYRI SONUC, UC AYRI CUMLE. Prod'da toplu geri alma da SMART onayindan
+      // geciyor: o gruplar icin AWX'te HENUZ IS YOK. Hepsini "baslatildi" diye
+      // ozetlemek, kullaniciya calismayan bir isi calisiyor gostermek olurdu.
+      const parts: string[] = [];
+      if (r.launched?.length) parts.push(`${r.launched.length} iş başlatıldı`);
+      if (r.pendingApproval?.length) parts.push(`${r.pendingApproval.length} grup için SMART onayı bekleniyor (onay gelince otomatik başlar)`);
+      if (r.blocked?.length) parts.push(`${r.blocked.length} grup başlatılamadı: ${r.blocked.map((b) => `${b.namespace}@${b.cluster} — ${b.message}`).join(" · ")}`);
+      setAuditNote(parts.length
+        ? `${parts.join(" · ")} — sonuçlar “İşlerim” panelinde.`
+        : "Geri alınacak kayıt bulunamadı.");
       await load();
     } catch (e) {
       setError((e as Error).message);

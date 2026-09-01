@@ -1,0 +1,44 @@
+---
+# KESIF GIRDI DOGRULAMASI DUSTUGUNDE PORTALA SONUC.
+#
+# `discovery.yml`in `rescue` dalindan cagrilir. Bu yol olmadan bir `assert` hatasi
+# playbook'u `set_stats`a hic ulastirmadan dusururdu ve ekran "sonuc bulunamadi"
+# derdi — kullanici neyin yanlis oldugunu yalnizca AWX arayuzunden ogrenebilirdi.
+#
+# HER DEGER `default()` ILE KORUNMALI: hata `01_prepare.yml`in ILK gorevinde de
+# olusmus olabilir ve o durumda fact'lerin hicbiri tanimli degildir. Korumasiz bir
+# ifade, hatayi RAPORLAYAN gorevin kendisini dusururdu.
+- name: "Publish discovery failure for the portal"
+  ansible.builtin.set_stats:
+    data:
+      scalex_discovery_result:
+        overall_status: "error"
+        mode: "{{ discovery_mode_effective | default(discovery_mode | default('workloads')) }}"
+        namespace: "{{ oc_namespace | default(target_namespace | default('')) }}"
+        platform: "{{ oc_platform | default(target_platform | default('')) }}"
+        environment: "{{ oc_environment | default(target_environment | default('')) }}"
+        catalog_source: "{{ catalog_source | default('file') }}"
+        clusters: "{{ cluster_list | default([]) }}"
+        failed_clusters: "{{ cluster_list | default([]) }}"
+        counts:
+          ok: 0
+          warn: 0
+          fail: 1
+        # Kullaniciya gosterilecek ASIL bilgi burada. Portal FAIL/WARN satirlarini
+        # `problems` listesine topluyor ve ekranda oyle gosteriyor.
+        items:
+          - cluster: "-"
+            app: "-"
+            kind: "-"
+            step: "RUNNER"
+            status: "FAIL"
+            detail: >-
+              {{ (ansible_failed_task.name | default('bilinmeyen görev') | string)
+                 ~ ': '
+                 ~ (ansible_failed_result.msg | default('Keşif girdileri doğrulanamadı.') | string) }}
+    per_host: false
+
+- name: "Mark result as published"
+  ansible.builtin.set_fact:
+    _result_published: true
+  changed_when: false

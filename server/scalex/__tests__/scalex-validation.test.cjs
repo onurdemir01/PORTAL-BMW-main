@@ -366,24 +366,34 @@ test('D1 dry_run hicbir kapidan gecmez', () => {
   const p = launch.gatePolicyFor({ action: 'stop', executionMode: 'dry_run' });
   assert.deepEqual([p.oco, p.smart], ['skip', 'skip']);
 });
-test('D2 restore: oco warn, smart require', () => {
-  const p = launch.gatePolicyFor({ action: 'restore', executionMode: 'apply' });
+test('D2 restore: oco warn, smart require (prod)', () => {
+  const p = launch.gatePolicyFor({ action: 'restore', executionMode: 'apply', environment: 'prod' });
   assert.deepEqual([p.oco, p.smart], ['warn', 'require']);
 });
-test('D3 stop/scale tam kapi', () => {
+test('D3 stop/scale tam kapi (prod)', () => {
   for (const a of ['stop', 'scale']) {
-    const p = launch.gatePolicyFor({ action: a, executionMode: 'apply' });
+    const p = launch.gatePolicyFor({ action: a, executionMode: 'apply', environment: 'prod' });
     assert.deepEqual([p.oco, p.smart], ['require', 'require'], a);
   }
 });
 test('D4 bilinmeyen islem TAM kapiya duser (guvenli taraf)', () => {
-  const p = launch.gatePolicyFor({ action: 'her-neyse', executionMode: 'apply' });
+  const p = launch.gatePolicyFor({ action: 'her-neyse', executionMode: 'apply', environment: 'prod' });
   assert.deepEqual([p.oco, p.smart], ['require', 'require']);
 });
 test('D5 kapi karari FAIL-CLOSED tuketiliyor', () => {
   const code = codeOnly(INDEX);
-  assert.match(code, /decision\?\.outcome !== 'proceed'[\s\S]{0,400}status\(500\)/,
+  // 1) Ortak kapi govdesi taninmayan karari 500'e cevirir.
+  assert.match(code, /decision\?\.outcome !== 'proceed'[\s\S]{0,400}status: 500/,
     'taninmayan kapi karari akisa birakiliyorsa is sessizce calisir');
+  // 2) HER cagiran `error` ve `respond` dallarini tuketmek ZORUNDA. Kapi artik
+  //    `res`e dokunmayan bir karar nesnesi donduruyor; bir cagiran dallardan
+  //    birini ele almazsa is SESSIZCE calisir (kapinin cikarilmasindaki asil risk).
+  const callers = code.match(/await runScaleXGates\(\{[\s\S]{0,600}?\}\);([\s\S]{0,400})/g) || [];
+  assert.ok(callers.length >= 2, `runScaleXGates cagirani sayisi beklenenden az: ${callers.length}`);
+  for (const c of callers) {
+    assert.match(c, /outcome === 'error'/, `kapi 'error' dali tuketilmemis:\n${c}`);
+    assert.match(c, /outcome === 'respond'/, `kapi 'respond' dali tuketilmemis:\n${c}`);
+  }
 });
 test('D6 gateVars prod tespiti icin env VE ortam tasiyor', () => {
   const g = launch.buildGateVars({ env: 'prod', tenant: 'ark', action: 'stop', executionMode: 'apply', clusters: ['c'], namespace: 'n' });
@@ -936,4 +946,222 @@ test('K3 birlesim kapiyi yalnizca ACAR: prod olmayan istek etkilenmez', () => {
   assert.equal(
     gates.isOcoGateApplicable({ ocoCheck: { enabled: false } }, { env: 'prod' }, gateVars),
     false, 'kapali OCO ayari gorusmezden geliniyor');
+});
+
+
+// ── L. KAPI ORTAMA BAGLI (2026-09-01 kullanici karari) ──────────────────────
+//
+// KURAL: onay kapilari (OCO + SMART) YALNIZCA production'da. Prod disinda hicbir
+// onay istenmez — ama degisiklik IZI gevsemez (audit + `scalex_operations`).
+//
+// Bu bekçiler bir EKRAN hatasini kilitliyor: sunucu tarafi zaten dogruydu
+// (`change-gates.isOcoGateApplicable` prod degilse kapiyi hic acmiyordu, bkz. K3),
+// ama `gatePolicyFor` ortami GORMEDIGI icin `/preview` test ortaminda da
+// `oco: 'require'` donuyor, `PreviewStep.tsx` OCO numarasi isteyip "Calistir"
+// butonunu kilitliyordu. Kullanici sunucunun HIC KULLANMAYACAGI bir numara
+// yazmaya zorlaniyordu.
+
+test('L1 prod disi apply: HICBIR kapi (oco ve smart skip)', () => {
+  for (const env of ['test', 'dev', 'qa', 'lab', 'edu', 'cicd']) {
+    for (const a of ['stop', 'scale', 'restore']) {
+      const p = launch.gatePolicyFor({ action: a, executionMode: 'apply', environment: env });
+      assert.deepEqual([p.oco, p.smart], ['skip', 'skip'],
+        `${env}/${a}: prod disi ortamda onay kapisi aciliyor`);
+    }
+  }
+});
+
+test('L2 prod apply: kapilar AYNEN duruyor (gevsememeli)', () => {
+  const stop = launch.gatePolicyFor({ action: 'stop', executionMode: 'apply', environment: 'prod' });
+  assert.deepEqual([stop.oco, stop.smart], ['require', 'require'], 'prod stop kapisi gevsemis');
+  const rest = launch.gatePolicyFor({ action: 'restore', executionMode: 'apply', environment: 'production' });
+  assert.deepEqual([rest.oco, rest.smart], ['warn', 'require'], 'prod restore kapisi gevsemis');
+  // Buyuk harf / bosluk: `isProdEnv` normalize eder. Etmezse prod korumasi kacar.
+  const upper = launch.gatePolicyFor({ action: 'stop', executionMode: 'apply', environment: '  PROD ' });
+  assert.deepEqual([upper.oco, upper.smart], ['require', 'require'], 'PROD buyuk harfle prod sayilmiyor');
+});
+
+test('L3 ORTAM BILINMIYORSA prod sayilir (bilgi yoklugu kapiyi ACAR)', () => {
+  // Yeni bir cagiran `environment` gecirmeyi unutursa prod korumasi SESSIZCE
+  // kaybolmamali. `isProdEnv(undefined)` false doner — o yola dusulurse kapi kapanirdi.
+  for (const env of [undefined, null, '', '   ']) {
+    const p = launch.gatePolicyFor({ action: 'stop', executionMode: 'apply', environment: env });
+    assert.deepEqual([p.oco, p.smart], ['require', 'require'],
+      `environment=${JSON.stringify(env)}: bilinmeyen ortamda kapi kapanmis`);
+  }
+});
+
+test('L4 dry_run her ortamda kapisiz (prod dahil)', () => {
+  for (const env of ['prod', 'test', undefined]) {
+    const p = launch.gatePolicyFor({ action: 'stop', executionMode: 'dry_run', environment: env });
+    assert.deepEqual([p.oco, p.smart], ['skip', 'skip'], String(env));
+  }
+});
+
+test('L5 kapi politikasini soran HER uc ortami GERCEKTEN geciriyor', () => {
+  // Saf fonksiyon dogru olsa bile cagiran `environment`i gecirmezse o uc yine
+  // yanlis kapi uygular (`gatePolicyFor` ortam bilinmiyorken prod'a duser, yani
+  // prod disi bir istekte gereksiz onay ISTER). `/preview`, `/run` ve
+  // `/restore-all` — ucu de.
+  const code = codeOnly(INDEX);
+  const calls = code.match(/gatePolicyFor\(\{[^}]*\}\)/g) || [];
+  assert.equal(calls.length, 3, `gatePolicyFor cagrisi sayisi degismis: ${calls.length}`);
+  for (const c of calls) {
+    assert.match(c, /environment:\s*env/, `ortam gecirilmeyen gatePolicyFor cagrisi: ${c}`);
+  }
+});
+
+
+// ── M. PLAYBOOK KAYDI COZUMLEME (2026-09-01) ────────────────────────────────
+//
+// `resolveByKey` uzun sure `async` DEGILDI ve `playbookRegistry.getByKey()`i
+// `await` ETMIYORDU. `getByKey` bir Promise doner:
+//   * Promise TRUTHY'dir → `!row` kontrolu gecer
+//   * `row.enabled` `undefined`'dir → `=== false` DEGIL, o kontrol de gecer
+//   * `getEffectiveTemplateId(promise)` hem `awxTemplateId` hem `envVarName` icin
+//     `undefined` gorur → HER ZAMAN `null` doner
+// Sonuc: Admin > Playbook Kayitlari'ndan Template ID girilse de, `.env` doldurulsa
+// da HER `/run` ve `/discover` cagrisi 501 "Template ID girilmemis" ile duserdi —
+// yani ScaleX hic calismiyordu. Dogru desen OpsX'te zaten var
+// (`server/opsx/index.cjs` `async resolveByKey` + `await getByKey`).
+
+const REGISTRY_PATH = require.resolve('../../ansible/playbook-registry.cjs');
+const SCALEX_INDEX_PATH = require.resolve('../index.cjs');
+
+// Registry'yi PROMISE DONEN sahte bir modulle degistirip index.cjs'i tazeden yukler.
+async function withStubbedRegistry(row, fn) {
+  const savedReg = require.cache[REGISTRY_PATH];
+  const savedIdx = require.cache[SCALEX_INDEX_PATH];
+  const real = require('../../ansible/playbook-registry.cjs');
+
+  const mod = new Module(REGISTRY_PATH, null);
+  mod.exports = {
+    ...real,
+    // GERCEK IMZA: `async` — yani Promise doner. Testin degeri burada.
+    getByKey: async (keyName) => (row && row.keyName === keyName ? row : null),
+  };
+  mod.loaded = true;
+  require.cache[REGISTRY_PATH] = mod;
+  delete require.cache[SCALEX_INDEX_PATH];
+  const scalex = require(SCALEX_INDEX_PATH);
+  try {
+    return await fn(scalex);
+  } finally {
+    if (savedReg) require.cache[REGISTRY_PATH] = savedReg; else delete require.cache[REGISTRY_PATH];
+    delete require.cache[SCALEX_INDEX_PATH];
+    if (savedIdx) require.cache[SCALEX_INDEX_PATH] = savedIdx;
+  }
+}
+
+test('M1 resolveByKey DB satirindaki Template ID ile cozuluyor (await eksikse 501 duser)', async () => {
+  await withStubbedRegistry(
+    { keyName: 'scalex_run', enabled: true, awxTemplateId: 4711, awxServerId: 2, envVarName: 'SCALEX_TEMPLATE_ID' },
+    async (scalex) => {
+      const out = await scalex.resolveByKey('scalex_run');
+      assert.deepEqual(out, { templateId: 4711, serverId: 2, keyName: 'scalex_run' },
+        'Template ID cozulemedi — `getByKey` await edilmiyor olabilir (ScaleX hic calismaz)');
+    });
+});
+
+test('M2 DB bos ise .env yedegine duser', async () => {
+  const saved = process.env.SCALEX_TEMPLATE_ID;
+  const savedSrv = process.env.SCALEX_AWX_SERVER_ID;
+  process.env.SCALEX_TEMPLATE_ID = '9090';
+  delete process.env.SCALEX_AWX_SERVER_ID;
+  try {
+    await withStubbedRegistry(
+      { keyName: 'scalex_run', enabled: true, awxTemplateId: null, awxServerId: null, envVarName: 'SCALEX_TEMPLATE_ID' },
+      async (scalex) => {
+        const out = await scalex.resolveByKey('scalex_run');
+        assert.equal(out.templateId, 9090, 'env yedegi okunmuyor');
+        assert.equal(out.serverId, 1, 'sunucu yedegi 1 olmali');
+      });
+  } finally {
+    if (saved === undefined) delete process.env.SCALEX_TEMPLATE_ID; else process.env.SCALEX_TEMPLATE_ID = saved;
+    if (savedSrv !== undefined) process.env.SCALEX_AWX_SERVER_ID = savedSrv;
+  }
+});
+
+test('M3 kayit yok / pasif / ID bos → 501 (fail-closed, sessizce calismaz)', async () => {
+  const cases = [
+    [null, 'kayit yok'],
+    [{ keyName: 'scalex_run', enabled: false, awxTemplateId: 5 }, 'pasif kayit'],
+    [{ keyName: 'scalex_run', enabled: true, awxTemplateId: null, envVarName: 'SCALEX_YOK_BOYLE_BIR_DEGISKEN' }, 'ID bos'],
+  ];
+  for (const [row, label] of cases) {
+    await withStubbedRegistry(row, async (scalex) => {
+      await assert.rejects(
+        () => scalex.resolveByKey('scalex_run'),
+        (e) => e.status === 501,
+        `${label}: 501 beklenirken baska sonuc dondu`);
+    });
+  }
+});
+
+test('M4 resolveByKey ASYNC olmali (imza bekcisi)', () => {
+  const code = codeOnly(INDEX);
+  assert.match(code, /async function resolveByKey\(/,
+    'resolveByKey async degil — getByKey Promise doner, senkron okumak templateId\'yi hep null yapar');
+  // Her cagirma yeri de await almali; biri unutulursa o yol yine 501 doner.
+  for (const m of code.match(/[^\n]*resolveByKey\([A-Za-z_]/g) || []) {
+    if (/function resolveByKey/.test(m)) continue;
+    assert.match(m, /await resolveByKey\(/, `await'siz resolveByKey cagrisi: ${m.trim()}`);
+  }
+});
+
+
+// ── N. TOPLU GERI ALMA DA KAPIDAN GECER (2026-09-01) ────────────────────────
+//
+// `/restore-all` uzun sure kapisizdi: yorumu "`Geri Al`in kapi politikasini
+// devralir" DIYORDU ama kod dogrudan `launchOnAwx` cagiriyordu. Prod'da tekil
+// geri alma SMART kaydi acarken toplu geri alma hicbir onay olmadan calisiyordu —
+// yani kapi tek bir dugmeyle atlanabiliyordu.
+
+test('N1 `/restore-all` ortak kapi govdesinden geciyor', () => {
+  const code = codeOnly(INDEX);
+  const bulk = code.slice(code.indexOf("router.post('/restore-all'"));
+  assert.ok(bulk.length > 0, "/restore-all ucu bulunamadi");
+  const body = bulk.slice(0, bulk.indexOf("router.post(", 10) >= 0 ? bulk.indexOf("router.post(", 10) : bulk.length);
+  assert.match(body, /await runScaleXGates\(/, 'toplu geri alma kapiyi HIC cagirmiyor');
+  assert.match(body, /gatePolicyFor\(\{[^}]*action: 'restore'/, 'toplu geri alma kendi politikasini uretmiyor');
+});
+
+test('N2 kapi govdesi TEK — ikinci bir kopya yazilmamis', () => {
+  const code = codeOnly(INDEX);
+  // `runChangeGates` (ortak modul) yalnizca ORTAK govdeden cagrilmali. Ikinci bir
+  // cagri, iki kapinin zamanla ayrismasi demek — `/restore-all` tam boyle kalmisti.
+  const n = (code.match(/gates\.runChangeGates\(/g) || []).length;
+  assert.equal(n, 1, `runChangeGates ${n} yerden cagriliyor — kapi govdesi cogalmis`);
+});
+
+test('N3 onay bekleyen is icin `scalex_operations` satiri YAZILIYOR', () => {
+  const code = codeOnly(INDEX);
+  assert.match(code, /pendingApproval && decision\.body\?\.ticketId[\s\S]{0,500}status: 'PENDING_APPROVAL'/,
+    'SMART bileti acildiginda kayit yazilmiyor — onay gelince is calisir ama portal ogrenemez, '
+    + 'ayna guncellenmez ve GERI ALMA YOLU KAPANIR');
+  assert.match(code, /smartTicketId: Number\(decision\.body\.ticketId\)/,
+    'kayit bilete baglanmamis — uzlastirici onay sonucunu satira yazamaz');
+});
+
+test('N4 kapi karari her durumda denetime yaziliyor (iz her ortamda)', () => {
+  const code = codeOnly(INDEX);
+  assert.match(code, /decision\?\.outcome !== 'proceed'[\s\S]{0,300}scalex_gate_decision/,
+    'kapida duran calistirma ScaleX adina audit satiri birakmiyor');
+});
+
+
+test('N5 admin kategori listesi seed ile AYRISMIYOR', () => {
+  // Kategorisi ekrandaki listede olmayan bir registry satirini admin duzenleyip
+  // kaydettiginde Select mevcut degeri gosteremez ve kategori SESSIZCE "genel"e
+  // duser. `scalex_run`/`scalex_discovery` satirlari `category: 'scalex'` ile
+  // seed ediliyor ve liste onu tanimiyordu.
+  const setup = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  const tab = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'tabs', 'PlaybookRegistryTab.tsx'), 'utf8');
+
+  const seeded = new Set((setup.match(/category: '([a-z_]+)'/g) || []).map((m) => m.slice(11, -1)));
+  const listed = new Set(JSON.parse((tab.match(/const CATEGORIES = (\[[^\]]*\])/) || [])[1].replace(/"/g, '"')));
+
+  const missing = [...seeded].filter((c) => !listed.has(c)).sort();
+  assert.deepEqual(missing, [],
+    `Playbook Kayitlari ekranindaki kategori listesi eksik: ${missing.join(', ')} — bu satirlari duzenleyen admin kategoriyi "genel"e dusurur`);
 });

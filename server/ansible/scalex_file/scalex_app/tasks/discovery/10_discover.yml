@@ -1,0 +1,79 @@
+---
+# Tek cluster icin kesif. `files/scalex_runner.sh` betigini `SCALEX_PHASE=discover`
+# ile calistirir — mutasyon yolundaki oturum acma / `oc` yolu bulma / kubeconfig
+# mantiginin AYNISI kullanilir, ikinci bir kopya yoktur.
+
+- name: "DISCOVER | Read cluster {{ scalex_target.cluster }}"
+  ansible.builtin.script:
+    cmd: "{{ playbook_dir }}/files/scalex_runner.sh"
+    executable: /bin/bash
+  environment:
+    SCALEX_PHASE: "discover"
+    DISCOVERY_MODE: "{{ discovery_mode_effective }}"
+    CLUSTER: "{{ scalex_target.cluster }}"
+    JUMP_SERVER: >-
+      {{ scalex_target.jump_label ~ (' -> ' ~ scalex_target.physical_host if scalex_target.physical_host != scalex_target.jump_label else '') }}
+    API_URL: "{{ scalex_target.api_url }}"
+    OCP_USERNAME: "{{ username }}"
+    OCP_PASSWORD: "{{ lookup('ansible.builtin.vars', scalex_target.credential) }}"
+    OCP_OC_PATHS: "{{ scalex_target.oc_paths | join(':') }}"
+    TLS_VERIFY: "{{ scalex_target.tls_verify | bool | string | lower }}"
+    NS: "{{ oc_namespace }}"
+    APP_RAW: "{{ target_app_list | join(',') }}"
+    # Kesifte islem YOK. Betik `discover` fazinda `ACTION` aramaz; yine de bos
+    # gecmek, degiskenin tanimsiz kalmasindan iyidir (`set -u` ile calisiyor).
+    ACTION: ""
+    WORKLOAD_KIND: "auto"
+    JOB_ID: "{{ job_id }}"
+    CREATED_BY: "{{ username }}"
+  delegate_to: "{{ scalex_target.runtime_host }}"
+  register: _discovery_result
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+  no_log: true
+
+- name: "DISCOVER | Collect sanitized rows"
+  ansible.builtin.set_fact:
+    _cluster_rows: >-
+      {{ (_discovery_result.stdout_lines | default([]))
+         | select('match', '^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$')
+         | list }}
+
+# `rescue` ULASILAMAYAN HOST'U YAKALAMAZ; `ignore_unreachable` + burada acik
+# kontrol sart. Bu tuzak bu depoda uretimde yasandi.
+- name: "DISCOVER | Record transport/runtime failure"
+  ansible.builtin.set_fact:
+    _cluster_rows: >-
+      {{ _cluster_rows + [
+        scalex_target.cluster ~ ';' ~ scalex_target.jump_label ~ ';-;-;RUNNER;FAIL;Discovery could not complete because of SSH/transport/shell/runtime failure'
+      ] }}
+    _failed_clusters: "{{ _failed_clusters + [scalex_target.cluster] }}"
+  when:
+    - (_discovery_result.unreachable | default(false)) or ((_discovery_result.rc | default(0) | int) != 0)
+
+- name: "DISCOVER | Record empty runner response"
+  ansible.builtin.set_fact:
+    _cluster_rows: >-
+      {{ _cluster_rows + [
+        scalex_target.cluster ~ ';' ~ scalex_target.jump_label ~ ';-;-;RUNNER;FAIL;Discovery returned no structured result rows'
+      ] }}
+    _failed_clusters: "{{ _failed_clusters + [scalex_target.cluster] }}"
+  when:
+    - not (_discovery_result.unreachable | default(false))
+    - (_discovery_result.rc | default(0) | int) == 0
+    - _cluster_rows | length == 0
+
+# Betik icinde FAIL uretmis (or. RBAC reddi) bir cluster da BASARISIZ sayilir:
+# portal `failed_clusters` listesini kullanicinin "hangi cluster okunamadi"
+# sorusunu yanitlamak icin kullaniyor.
+- name: "DISCOVER | Mark cluster failed when the runner reported a FAIL row"
+  ansible.builtin.set_fact:
+    _failed_clusters: "{{ _failed_clusters + [scalex_target.cluster] }}"
+  when:
+    - scalex_target.cluster not in _failed_clusters
+    - _cluster_rows | select('search', ';FAIL;') | list | length > 0
+
+- name: "DISCOVER | Append cluster rows"
+  ansible.builtin.set_fact:
+    _discovery_rows: "{{ _discovery_rows + _cluster_rows }}"

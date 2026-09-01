@@ -1,0 +1,85 @@
+---
+# SCALEX | Kesif (SALT OKUNUR)
+#
+# AWX konumu:
+#   bmw_openshift_jobs/scalex_app/discovery.yml
+#
+# HICBIR MUTASYON YAPMAZ. Yalnizca `oc get` ve `oc auth can-i` calisir; ayni
+# `files/scalex_runner.sh` betigi `SCALEX_PHASE=discover` ile cagrilir.
+#
+# NEDEN AYRI BETIK YAZILMADI: oturum acma, `oc` yolu bulma, kubeconfig hazirlama
+# ve satir bicimi o dosyada zaten var. Ikinci bir kopya, birinde yapilan
+# duzeltmenin digerinde sessizce eskimesi demekti — bu depoda tam olarak bu
+# yasandi (bkz. server/ansible/change-gates.cjs basligi).
+#
+# ── PORTAL SOZLESMESI ───────────────────────────────────────────────────────
+# Portalin gonderdigi extra_vars (`server/scalex/index.cjs` `/discover`):
+#   scalex_clusters_override, target_platform, target_environment,
+#   target_namespace, scalex_target_clusters, discovery_mode
+#   (+ kosullu: target_app_names — `health` modunda ZORUNLU, digerlerinde opsiyonel)
+#
+# Portal sonucu YALNIZCA `set_stats` ile yayinlanan `scalex_discovery_result`
+# artifact'indan okur (`server/scalex/result.cjs`).
+#
+# UC MOD:
+#   workloads → ekranin uygulama secim listesi + HPA/GitOps/PDB rozetleri
+#   state     → "Su an durdurulmus" paneli + sapma (drift) tespiti
+#   health    → apply sonrasi saglik kontrolu (PODS/EVENTS)
+- name: "SCALEX | Discovery (read-only)"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars_files:
+    - "../global_variables/credentials.yaml"
+
+  tasks:
+    - name: "Initialize publication flag"
+      ansible.builtin.set_fact:
+        _result_published: false
+      changed_when: false
+
+    - name: "ScaleX discovery"
+      block:
+        - name: "Prepare and validate inputs"
+          ansible.builtin.include_tasks: tasks/discovery/01_prepare.yml
+
+        - name: "Select clusters and resolve jump servers"
+          ansible.builtin.include_tasks: tasks/02_select_targets.yml
+
+        - name: "Initialize discovery buffers"
+          ansible.builtin.set_fact:
+            _discovery_rows: []
+            _failed_clusters: []
+
+        - name: "DISCOVER | Read every selected cluster"
+          ansible.builtin.include_tasks: tasks/discovery/10_discover.yml
+          loop: "{{ target_matrix }}"
+          loop_control:
+            loop_var: scalex_target
+            label: "{{ scalex_target.cluster }} via {{ scalex_target.physical_host }}"
+
+        - name: "Publish discovery result for the portal"
+          ansible.builtin.include_tasks: tasks/discovery/25_publish_result.yml
+
+      rescue:
+        - name: "Publish discovery failure for the portal"
+          ansible.builtin.include_tasks: tasks/discovery/26_publish_validation.yml
+          when: not (_result_published | default(false) | bool)
+
+        - name: "Re-raise the original failure"
+          ansible.builtin.fail:
+            msg: >-
+              SCALEX kesfi durdu: {{ ansible_failed_task.name | default('bilinmeyen gorev') }} —
+              {{ ansible_failed_result.msg | default('ayrinti yok') }}
+
+    # KESIF ISI, BIR CLUSTER OKUNAMASA BILE "failed" DONMEZ.
+    # Sonuc `overall_status: partial` olarak yayinlanir ve ekran hangi cluster'in
+    # okunamadigini soyler. Isi kirmizi dusurmek, calisan cluster'lardan gelen
+    # listeyi de kullanilamaz hale getirirdi (bu depoda ayni hata yasandi:
+    # tek tip patlayinca basarili tiplerin ciktisi da atiliyordu).
+    - name: "Fail only when NO cluster could be read"
+      ansible.builtin.fail:
+        msg: "SCALEX kesfi hicbir cluster'dan sonuc alamadi. Job ID={{ job_id }}."
+      when: discovery_overall_status == 'error'
