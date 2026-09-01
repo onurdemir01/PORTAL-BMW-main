@@ -26,7 +26,10 @@
     # HPA sabitleme: portal YALNIZCA kullanici ekranda acikca isaretlediginde
     # ve yalnizca `stop` DISI islemlerde gonderir. Gelmediginde betik HPA'ya
     # DOKUNMAZ — bu otomasyonun kurucu ilkesi.
-    HPA_PIN: "{{ hpa_pin | default('false') | string | lower }}"
+    # `01_prepare.yml`in NORMALIZE ETTIGI degeri kullanir, ham `hpa_pin`i DEGIL.
+    # Ayni karar icin iki kaynak tutmak, birinin degisip digerinin sessizce
+    # eskimesi demekti — bu depoda tekrar eden hata sinifi.
+    HPA_PIN: "{{ hpa_pin_effective | default(false) | string | lower }}"
   delegate_to: "{{ scalex_target.runtime_host }}"
   register: _runner_result
   changed_when: false

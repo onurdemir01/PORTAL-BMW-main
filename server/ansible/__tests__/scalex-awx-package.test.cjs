@@ -180,6 +180,23 @@ test('P4 katalogda PORTAL kazaniyor, dosya yedek — ve hangisi oldugu raporlani
   }
 });
 
+test('P4b HPA sabitleme TEK kaynaktan okunur ve varsayilani KAPALI', () => {
+  // Ayni karar icin iki kaynak (ham `hpa_pin` + normalize `hpa_pin_effective`)
+  // tutmak, birinin degisip digerinin sessizce eskimesi demekti.
+  const phase = read(path.join(APP, 'tasks', '10_run_phase.yml'));
+  assert.match(phase, /HPA_PIN: "\{\{ hpa_pin_effective/,
+    'runner ham `hpa_pin` okuyor — 01_prepare.yml\'in normalize ettigi deger kullanilmali');
+  const prep = read(path.join(APP, 'tasks', '01_prepare.yml'));
+  assert.match(prep, /hpa_pin_effective: "\{\{ hpa_pin \| default\(false\)/,
+    'hpa_pin varsayilani KAPALI olmali — HPA\'ya dokunmak bu otomasyonun ilkesinin tersi');
+
+  // Betik tarafi da AYRICA uygular (AWX\'ten elle calistirmada portal yok).
+  const runner = read(RUNNER);
+  assert.match(runner, /HPA_PIN="\$\{HPA_PIN:-false\}"/, 'betikte varsayilan kapali degil');
+  assert.match(runner, /\[ "\$ACTION" != "stop" \] \|\| return 1/,
+    '`stop` isleminde HPA sabitleme engellenmiyor');
+});
+
 test('P5 durum kaydi yeni onekle yazilir ama ESKI onek OKUNMAYA devam eder', () => {
   const src = read(RUNNER);
   assert.match(src, /STATE_CM_PREFIX="scalex-state-"/, 'yeni onek tanimli degil');
