@@ -163,19 +163,22 @@ async function openSmartTicket({
 //   3) ocoAction 'schedule'  → kayit olusturulur, kesinti saatinde tetiklenir
 //      ocoAction 'later'     → hicbir sey yapilmaz, kullanici o saatte geri gelir
 //   Pencere ACIKSA hicbir soru sorulmaz, akis normal devam eder.
-// PROD TESPITI IKI KAYNAKTAN OKUNUR — `extraVars` VE `gateVars`.
+// PROD TESPITI IKI KAYNAKTAN da okunur — `extraVars` VE `gateVars`.
 //
-// NEDEN: `prod-detect` yalnizca `env`/`ortam` anahtarlarina bakar (bilerek sabit, bkz.
-// o dosyanin basligi). Self Service bu anahtarlari `extraVars`ta tasir, ama HER cagiran
-// tasimak zorunda degil: ScaleX ortami `target_environment` adiyla gonderiyor ve
-// `env`/`ortam` yalnizca `gateVars`inda var. Tek kaynak okundugu surece ScaleX'in prod
-// islemleri OCO kapisini SESSIZCE atliyordu — kapi kodda duruyor, hic ateslenmiyordu.
+// NEDEN: `isProductionRequest` yalnizca `env` / `ortam` anahtarlarina bakar. Self
+// Service'te bu dogru calisir, cunku orada `gateVars` `extraVars`in SUZULMUS ALT
+// KUMESIDIR (runner.cjs: guvenilmez anahtarlar atilir) — yani `env` her iki yerde de
+// ayni degerle bulunur. Ama ScaleX ortami playbook sozlesmesi geregi
+// `target_environment` adiyla gonderiyor; `env`/`ortam` YALNIZCA `gateVars`ta var.
+// Sonuc: `extraVars`e tek basina bakildiginda `env=prod` bir ScaleX stop islemi
+// PRODUCTION SAYILMIYOR ve OCO kapisi hic ateslenmiyordu — kesinti penceresi
+// dogrulanmadan prod'da replica 0'a inilebiliyordu.
 //
-// IKI KAYNAGI BIRLIKTE OKUMAK GUVENLI: bu bir GENISLETME. Ek kaynak kapiyi yalnizca
-// daha SIK acturabilir, asla kapatamaz — yani yeni bir acik uretemez. `gateVars` ayrica
-// SMART tarafinda zaten GUVENILIR kaynak sayiliyor (yalnizca dogrulanmis alanlardan
-// dolar, kullanici govdeye yazamaz), dolayisiyla prod tespiti icin de en az `extraVars`
-// kadar saglam.
+// BIRLESIM (VEYA), kesisim degil: kapinin yalnizca ACILMASI yonunde etki eder,
+// hicbir yerde KAPANMASINI saglamaz. `gateVars`e gecmek (extraVars yerine) yanlis
+// olurdu — Self Service'te guvenilmez kaynaktan gelen `env: prod` `gateVars`ten
+// atiliyor ama `extraVars`te kaliyor; bugun OCO onun icin de calisiyor ve bu
+// davranisin ZAYIFLAMAMASI gerekiyor.
 function isOcoGateApplicable(overrides, extraVars, gateVars) {
   if (!overrides.ocoCheck?.enabled) return false;
   const { isProductionRequest } = require('../oco/prod-detect.cjs');

@@ -871,3 +871,69 @@ test('J4 toplu geri alma: gerekce ZORUNLU ve yetki suzgecinden geciyor', () => {
   assert.match(body, /driftStatus === 'in_sync'/,
     'sapmis kayit geri alinmaya calisilirsa STATE;FAIL ile duser — kullaniciya yalanci bir "denendi" verir');
 });
+
+// ── K: OCO kapisi ScaleX'te GERCEKTEN atesleniyor mu ────────────────────────
+//
+// Bu bolum, denetimde bulunan en ciddi acigi kilitler: kapi KODDA vardi, testte
+// "gerekli" gorunuyordu, ama ScaleX icin HIC calismiyordu. `gatePolicyFor`in
+// 'require' dondugunu dogrulamak yeterli DEGIL — kapinin uygulanabilir sayilmasi
+// ayri bir kosula bagli ve kirilan yer orasiydi.
+
+test('K1 ScaleX prod istegi PRODUCTION olarak taninir (extraVars `env` TASIMAZ)', () => {
+  const { isProductionRequest } = require('../../oco/prod-detect.cjs');
+
+  // ScaleX'in playbook sozlesmesi: ortam `target_environment` adiyla gider.
+  // `env`/`ortam` YOK — prod tespiti tek basina buna bakarsa KOR kalir.
+  const scalexExtraVars = {
+    target_platform: 'ocp', target_environment: 'prod', target_namespace: 'ns',
+    target_app_names: 'api', scalex_action: 'stop', execution_mode: 'apply',
+  };
+  assert.equal(isProductionRequest(scalexExtraVars), false,
+    'sozlesme degismis: bu test artik korudugu seyi olcmuyor, K2 ile birlikte gozden gecir');
+
+  const gateVars = launch.buildGateVars({
+    env: 'prod', tenant: 'ocp', action: 'stop',
+    executionMode: 'apply', clusters: [{}], namespace: 'ns',
+  });
+  assert.equal(isProductionRequest(gateVars), true,
+    'buildGateVars `env`/`ortam` tasimali — OCO prod tespitinin TEK kaynagi bu');
+});
+
+test('K2 OCO kapisi ScaleX prod istegi icin UYGULANABILIR sayilir', () => {
+  const gates = require('../../ansible/change-gates.cjs');
+  const scalexExtraVars = { target_environment: 'prod', scalex_action: 'stop' };
+  const gateVars = launch.buildGateVars({
+    env: 'prod', tenant: 'ocp', action: 'stop',
+    executionMode: 'apply', clusters: [{}], namespace: 'ns',
+  });
+
+  // ESKI KOD BURADA DUSER: `isOcoGateApplicable(overrides, extraVars)` yalnizca
+  // extraVars'e bakiyordu ve ScaleX'te false donuyordu → prod'da kesinti penceresi
+  // dogrulanmadan replica 0'a inilebiliyordu.
+  assert.equal(
+    gates.isOcoGateApplicable({ ocoCheck: { enabled: true } }, scalexExtraVars, gateVars),
+    true,
+    'OCO kapisi ScaleX prod isteginde ATESLENMIYOR — kesinti penceresi hic dogrulanmaz');
+});
+
+test('K3 birlesim kapiyi yalnizca ACAR: prod olmayan istek etkilenmez', () => {
+  const gates = require('../../ansible/change-gates.cjs');
+  const gateVars = launch.buildGateVars({
+    env: 'test', tenant: 'ocp', action: 'stop',
+    executionMode: 'apply', clusters: [{}], namespace: 'ns',
+  });
+  assert.equal(
+    gates.isOcoGateApplicable({ ocoCheck: { enabled: true } }, { target_environment: 'test' }, gateVars),
+    false, 'prod olmayan istek OCO kapisina takiliyor');
+
+  // Self Service davranisi KORUNUR: `extraVars`te prod varsa, `gateVars` bos olsa
+  // bile kapi calismali (guvenilmez kaynaktan gelen env `gateVars`ten atiliyor).
+  assert.equal(
+    gates.isOcoGateApplicable({ ocoCheck: { enabled: true } }, { env: 'prod' }, {}),
+    true, 'Self Service OCO davranisi ZAYIFLADI — extraVars prod yolu kapanmis');
+
+  // Admin kapiyi kapattiysa hicbir kaynak onu acmaz.
+  assert.equal(
+    gates.isOcoGateApplicable({ ocoCheck: { enabled: false } }, { env: 'prod' }, gateVars),
+    false, 'kapali OCO ayari gorusmezden geliniyor');
+});
