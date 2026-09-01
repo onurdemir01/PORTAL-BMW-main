@@ -1,0 +1,186 @@
+---
+- name: "Initialize target selection"
+  ansible.builtin.set_fact:
+    cluster_list: []
+    target_matrix: []
+    # KOSULSUZ ILKLEME. `when:` ile korunan bir `set_fact` kosul saglanmadiginda
+    # degiskeni TANIMSIZ birakir ve onu okuyan gorev `'x' is undefined` ile duser.
+    # Bu tuzak bu depoda uretimde yasandi (bkz. playbook-jinja-traps testleri).
+    _cluster_source: "survey"
+    scope_platform_report: "{{ oc_platform }}"
+    scope_environment_report: "{{ oc_environment }}"
+
+# ── PORTALIN ACIK LISTESI HER SEYIN ONUNDE ─────────────────────────────────
+#
+# Portal, kullanicinin gorebildigi ve sectigi cluster'lari `scalex_target_clusters`
+# ile ACIKCA gonderir. Bu liste geldiginde `single`/`all` turetmesi KULLANILMAZ:
+# `all`, katalogdaki (platform, environment) esleyen HER cluster'i secer — yani
+# kullanicinin yetkisi olmayan bir cluster'i geri getirebilirdi. Portal listesi
+# yalnizca KISITLAYICI yonde is gorur.
+#
+# Liste yine de katalogla dogrulanir (asagidaki "Validate selected cluster records"):
+# katalogda olmayan bir ad gelirse is baslamaz.
+- name: "Select clusters explicitly requested by the portal"
+  ansible.builtin.set_fact:
+    cluster_list: "{{ scalex_target_clusters_effective }}"
+    _cluster_source: "portal"
+  when: scalex_target_clusters_effective | length > 0
+
+- name: "Validate portal-selected clusters exist and match the scope"
+  ansible.builtin.assert:
+    that:
+      - scalex_clusters[item] is defined
+      - scalex_clusters[item].enabled | default(false) | bool
+      - scalex_clusters[item].platform | default('') == oc_platform
+      - oc_environment in (scalex_clusters[item].environments | default([]))
+    fail_msg: >-
+      Portalin istedigi cluster katalogda yok, pasif ya da {{ scope_key_effective }}
+      grubuna ait degil: {{ item }}
+  loop: "{{ scalex_target_clusters_effective }}"
+  loop_control:
+    label: "{{ item }}"
+  when: scalex_target_clusters_effective | length > 0
+
+- name: "Validate single cluster"
+  ansible.builtin.assert:
+    that:
+      - oc_cluster_name not in ['', 'select', 'all']
+      - scalex_clusters[oc_cluster_name] is defined
+      - scalex_clusters[oc_cluster_name].enabled | default(false) | bool
+      - scalex_clusters[oc_cluster_name].platform | default('') == oc_platform
+      - oc_environment in (scalex_clusters[oc_cluster_name].environments | default([]))
+    fail_msg: >-
+      Hedef cluster geçersiz, pasif veya {{ scope_key_effective }} grubuna ait değil: {{ oc_cluster_name }}.
+  when:
+    - scalex_target_clusters_effective | length == 0
+    - oc_cluster_mode == 'single'
+
+- name: "Select single cluster"
+  ansible.builtin.set_fact:
+    cluster_list: ["{{ oc_cluster_name }}"]
+    _cluster_source: "survey"
+  when:
+    - scalex_target_clusters_effective | length == 0
+    - oc_cluster_mode == 'single'
+
+- name: "Validate all-cluster selection"
+  ansible.builtin.assert:
+    that:
+      - oc_cluster_name == 'all'
+    fail_msg: "Kapsam=all seçildiğinde Hedef Cluster alanı all olmalıdır."
+  when:
+    - scalex_target_clusters_effective | length == 0
+    - oc_cluster_mode == 'all'
+
+- name: "Select all clusters in scope"
+  ansible.builtin.set_fact:
+    _cluster_source: "survey"
+    cluster_list: >-
+      {%- set ns = namespace(items=[]) -%}
+      {%- for cname, cdata in scalex_clusters.items() -%}
+        {%- if (cdata.enabled | default(false) | bool)
+              and (cdata.platform | default('') == oc_platform)
+              and (oc_environment in (cdata.environments | default([]))) -%}
+          {%- set ns.items = ns.items + [cname] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.items }}
+  when:
+    - scalex_target_clusters_effective | length == 0
+    - oc_cluster_mode == 'all'
+
+- name: "Validate target list"
+  ansible.builtin.assert:
+    that:
+      - cluster_list | length > 0
+    fail_msg: "{{ scope_key_effective }} grubunda aktif cluster bulunamadı."
+
+- name: "Validate change confirmation"
+  ansible.builtin.assert:
+    that:
+      - change_confirmation_effective | bool
+    fail_msg: "apply için change_confirmation=true olmalıdır."
+  when: execution_mode_effective == 'apply'
+
+- name: "Validate bulk confirmation"
+  ansible.builtin.assert:
+    that:
+      - bulk_change_confirmation_effective | bool
+    fail_msg: "Birden fazla cluster üzerinde apply için bulk_change_confirmation=true olmalıdır."
+  when:
+    - execution_mode_effective == 'apply'
+    - oc_cluster_mode == 'all'
+    - cluster_list | length > 1
+
+- name: "Validate selected cluster records"
+  ansible.builtin.assert:
+    that:
+      - scalex_clusters[item] is mapping
+      - scalex_clusters[item].enabled | default(false) | bool
+      - scalex_clusters[item].jump_server | default('') | string | trim | length > 0
+      - scalex_clusters[item].api_url | default('') | string | trim is match('^https://[^/]+:[0-9]+/?$')
+      - scalex_clusters[item].credential | default('') | string | trim | length > 0
+      - (scalex_clusters[item].oc_paths | default(scalex_default_oc_paths)) is sequence
+      - (scalex_clusters[item].oc_paths | default(scalex_default_oc_paths)) is not string
+      - (scalex_clusters[item].oc_paths | default(scalex_default_oc_paths)) | length > 0
+    fail_msg: "Cluster kaydı eksik/geçersiz: {{ item }}"
+  loop: "{{ cluster_list }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: "Build execution matrix"
+  ansible.builtin.set_fact:
+    target_matrix: >-
+      {%- set physical = scalex_clusters[item].ansible_host | default(scalex_clusters[item].jump_server) -%}
+      {%- set runtime = 'scalex_jump_' ~ (physical | regex_replace('[^A-Za-z0-9_]', '_')) -%}
+      {{ target_matrix + [ {
+        'cluster': item,
+        'jump_label': scalex_clusters[item].jump_server,
+        'physical_host': physical,
+        'runtime_host': runtime,
+        'api_url': scalex_clusters[item].api_url,
+        'credential': scalex_clusters[item].credential,
+        'tls_verify': scalex_clusters[item].tls_verify | default(scalex_default_tls_verify) | bool,
+        'oc_paths': scalex_clusters[item].oc_paths | default(scalex_default_oc_paths)
+      } ] }}
+  loop: "{{ cluster_list }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: "Create isolated runtime SSH hosts"
+  ansible.builtin.add_host:
+    name: "{{ item.runtime_host }}"
+    groups: scalex_runtime_jump_hosts
+    ansible_host: "{{ item.physical_host }}"
+    ansible_connection: ssh
+    ansible_user: "{{ username }}"
+    ansible_become: false
+  loop: "{{ target_matrix }}"
+  loop_control:
+    label: "{{ item.cluster }} -> {{ item.physical_host }}"
+  changed_when: false
+
+- name: "Validate runtime SSH host definitions"
+  ansible.builtin.assert:
+    that:
+      - item.runtime_host in hostvars
+      - hostvars[item.runtime_host].ansible_host | default('') == item.physical_host
+      - hostvars[item.runtime_host].ansible_connection | default('') == 'ssh'
+      - hostvars[item.runtime_host].ansible_user | default('') == username
+      - not (hostvars[item.runtime_host].ansible_become | default(false) | bool)
+    fail_msg: "Runtime SSH host oluşturulamadı: {{ item.cluster }} -> {{ item.physical_host }}"
+  loop: "{{ target_matrix }}"
+  loop_control:
+    label: "{{ item.cluster }} -> {{ item.runtime_host }}"
+
+- name: "Validate OpenShift credentials"
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item.credential, default='') | string | length > 0
+    fail_msg: "Cluster credential değişkeni credentials.yaml içinde bulunamadı."
+  loop: "{{ target_matrix }}"
+  no_log: true
+
+- name: "Show target"
+  ansible.builtin.debug:
+    msg: "Group={{ scope_key_effective }} | Mode={{ oc_cluster_mode }} | Clusters={{ cluster_list | join(', ') }}"

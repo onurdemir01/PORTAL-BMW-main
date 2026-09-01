@@ -1,0 +1,92 @@
+---
+# PORTALA SONUC YAYINI — `scalex_result`.
+#
+# Portal ham stdout'u AYRISTIRMAZ; sonucu YALNIZCA AWX `job.artifacts` icindeki bu
+# anahtardan okur (`server/scalex/result.cjs`). Bu gorev calismazsa is yesil donse
+# bile ekranda "sonuc bulunamadi" yazar.
+#
+# ── UC TUZAK, UCU DE BU DEPODA URETIMDE YASANDI ────────────────────────────
+#
+# 1. `set_stats` TEK YAZARDAN yayinlanmali. Birden cok host ayni anahtari yazarsa
+#    Ansible listeleri BIRLESTIRMEZ, sonuncu yazan ezer. Bu play `localhost`ta
+#    calisiyor ve `per_host: false` ile yayinliyor.
+#
+# 2. `>-` KATLAMALI SKALER + `{% set %}` = SIZAN BOSLUK. Katlamali skalerde satir
+#    sonlari BOSLUGA doner ve etiketler arasindaki bosluk cikti ya sizar; `overall_status`
+#    uretimde "      failed" olarak yayinlanmisti. Bu dosyada katlamali skaler
+#    KULLANILMIYOR — degerler duz `"{{ ... }}"` ifadeleri. (Portal ayrica `trim`
+#    ediyor ama sozlesmenin iki ucu da ayni anda yanlis olabilir.)
+#
+# 3. TAM-STRING sablon NESNE doner. `"{{ mail_result_rows }}"` bir LISTE dondurur,
+#    listenin metin hali DEGIL — ifade tum degeri kapladigi surece. Ifadeyi metne
+#    gomerseniz (or. "x{{ liste }}") string'e duser ve portal `Array.isArray`
+#    kontrolunden gecemeyip BOS listeye duser.
+#
+# `targets[].status == "OK"` PORTALIN DURUM AYNASININ TEK GIRDISIDIR: dogrulanmamis
+# bir hedefi OK yazmak, kullaniciya "durduruldu" yalani soylemek ve geri alma
+# listesine sahte kayit dusurmek demektir.
+
+# Portalin ust sinirlari: MAX_TARGETS=200 (server/scalex/launch.cjs). Ham satirlar
+# cok daha kalabalik olabildigi icin ayri bir tavan uygulanir; ikisi de kirpilma
+# BAYRAGI ve GERCEK TOPLAM ile birlikte yayinlanir — kirpilmis bir listeyi "tam liste"
+# sanmak, eksik sonuca bakip is bitti demek olurdu.
+- name: "Compute publication limits"
+  ansible.builtin.set_fact:
+    _targets_all: "{{ mail_result_rows | default([]) }}"
+    _rows_all: "{{ result_rows | default([]) }}"
+    _targets_cap: 200
+    _rows_cap: 500
+  changed_when: false
+
+- name: "Publish ScaleX result for the portal"
+  ansible.builtin.set_stats:
+    data:
+      scalex_result:
+        # OK | WARN | FAIL
+        overall_status: "{{ overall_status | trim }}"
+        # Bu yol her zaman gercek calistirma; girdi dogrulamasi dustugunde
+        # 26_publish_validation.yml `validation` yayinlar.
+        stage: "execution"
+        mode: "{{ execution_mode_effective }}"
+        action: "{{ operation_action_effective }}"
+        namespace: "{{ oc_namespace }}"
+        platform: "{{ oc_platform }}"
+        environment: "{{ oc_environment }}"
+        # portal | file — `file` gorunuyorsa AWX gonderilen extra_vars'i yutmustur
+        # ("Prompt on launch > Variables" kapali). Ekran bunu uyari olarak gosterir.
+        catalog_source: "{{ catalog_source | default('file') }}"
+        cluster_mode: "{{ oc_cluster_mode }}"
+        clusters: "{{ cluster_list }}"
+        apps: "{{ target_app_list }}"
+        target_replicas: "{{ target_replicas_effective | default('') }}"
+        # FAIL'DEN AYRI bir durum: on kontrol dustu ve kismi calistirma kapaliydi,
+        # yani cluster'da HICBIR degisiklik yok. Kullanici icin kotu degil IYI haber.
+        strict_blocked: "{{ _strict_blocked | default(false) | bool }}"
+        counts:
+          planned: "{{ planned_target_count | default(0) | int }}"
+          ok: "{{ mail_ok_count | default(0) | int }}"
+          warn: "{{ mail_warn_count | default(0) | int }}"
+          fail: "{{ mail_fail_count | default(0) | int }}"
+          precheck_fail: "{{ precheck_fail_count | default(0) | int }}"
+          verify_ok: "{{ verify_ok_count | default(0) | int }}"
+          verify_fail: "{{ verify_fail_count | default(0) | int }}"
+          blocked: "{{ blocked_count | default(0) | int }}"
+          hpa_seen: "{{ hpa_info_count | default(0) | int }}"
+        targets: "{{ _targets_all[:_targets_cap | int] }}"
+        targets_truncated: "{{ (_targets_all | length) > (_targets_cap | int) }}"
+        targets_total: "{{ _targets_all | length }}"
+        rows: "{{ _rows_all[:_rows_cap | int] }}"
+        rows_truncated: "{{ (_rows_all | length) > (_rows_cap | int) }}"
+        rows_total: "{{ _rows_all | length }}"
+        validation_error: ""
+        failed_task: ""
+        job_id: "{{ job_id | string }}"
+    per_host: false
+
+# Rescue dali bu bayragi okur: sonuc ZATEN yayinlandiysa (hata mail asamasinda
+# olustuysa) uzerine `validation` yazmak, calismis bir islemi "girdi hatasi" gibi
+# gostermek olurdu.
+- name: "Mark result as published"
+  ansible.builtin.set_fact:
+    _result_published: true
+  changed_when: false

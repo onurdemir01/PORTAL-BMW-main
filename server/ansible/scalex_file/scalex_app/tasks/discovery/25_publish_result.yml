@@ -1,0 +1,87 @@
+---
+# PORTALA KESIF SONUCU — `scalex_discovery_result`.
+#
+# Portal bu artifact'i `server/scalex/result.cjs` `extractDiscoveryResult` ile okur.
+#
+# ── IKI HARF DUZENI, BILEREK FARKLI ────────────────────────────────────────
+#   overall_status → KUCUK harf: ok | warning | partial | error
+#   items[].status → BUYUK harf: OK | WARN | FAIL
+# Portal ikisini FARKLI normalize ediyor; karistirmak, ekranin satirlari
+# tanimamasina (bos liste) yol acar.
+#
+# `detail` alani `anahtar=deger` ciftleri tasir; ayrac BOSLUK, degerlerde bosluk
+# YOK, bilinmeyen deger `-`. Bu kural betikte `disc_val` ile TEK yerden uygulanir.
+
+- name: "Parse discovery rows into structured items"
+  ansible.builtin.set_fact:
+    _discovery_items: >-
+      {%- set ns = namespace(items=[]) -%}
+      {%- for line in _discovery_rows -%}
+        {%- set p = line.split(';') -%}
+        {%- if p | length >= 7 -%}
+          {%- set ns.items = ns.items + [{
+            'cluster': p[0],
+            'app': p[2],
+            'kind': p[3],
+            'step': p[4],
+            'status': p[5],
+            'detail': p[6:] | join(';')
+          }] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.items }}
+  changed_when: false
+
+- name: "Calculate discovery counters"
+  ansible.builtin.set_fact:
+    _disc_ok: "{{ _discovery_items | selectattr('status', 'equalto', 'OK') | list | length }}"
+    _disc_warn: "{{ _discovery_items | selectattr('status', 'equalto', 'WARN') | list | length }}"
+    _disc_fail: "{{ _discovery_items | selectattr('status', 'equalto', 'FAIL') | list | length }}"
+    _disc_failed_clusters: "{{ _failed_clusters | unique | list }}"
+  changed_when: false
+
+# `{%- -%}` BOSLUK DENETIMI SART. Katlamali skalerde satir sonlari BOSLUGA doner ve
+# etiketler arasindaki bosluklar degere sizar; bu depoda `overall_status` uretimde
+# "      failed" olarak yayinlanmis ve karsilastirmalar tutmamisti.
+- name: "Determine discovery overall status"
+  ansible.builtin.set_fact:
+    discovery_overall_status: >-
+      {%- set total = cluster_list | length -%}
+      {%- set failed = _disc_failed_clusters | length -%}
+      {%- if total > 0 and failed >= total -%}
+      {{- 'error' -}}
+      {%- elif failed > 0 -%}
+      {{- 'partial' -}}
+      {%- elif _disc_warn | int > 0 -%}
+      {{- 'warning' -}}
+      {%- else -%}
+      {{- 'ok' -}}
+      {%- endif -%}
+  changed_when: false
+
+- name: "Publish ScaleX discovery result for the portal"
+  ansible.builtin.set_stats:
+    data:
+      scalex_discovery_result:
+        overall_status: "{{ discovery_overall_status | trim }}"
+        mode: "{{ discovery_mode_effective }}"
+        namespace: "{{ oc_namespace }}"
+        platform: "{{ oc_platform }}"
+        environment: "{{ oc_environment }}"
+        catalog_source: "{{ catalog_source | default('file') }}"
+        # TARANAN CLUSTER'LARIN TAMAMI. Eksik liste, `state` modunda portalin
+        # taranmayan cluster kayitlari hakkinda YANLIS sapma karari uretmesine yol
+        # acar (bkz. server/scalex/state.cjs refreshDrift).
+        clusters: "{{ cluster_list }}"
+        failed_clusters: "{{ _disc_failed_clusters }}"
+        counts:
+          ok: "{{ _disc_ok | int }}"
+          warn: "{{ _disc_warn | int }}"
+          fail: "{{ _disc_fail | int }}"
+        items: "{{ _discovery_items }}"
+    per_host: false
+
+- name: "Mark result as published"
+  ansible.builtin.set_fact:
+    _result_published: true
+  changed_when: false

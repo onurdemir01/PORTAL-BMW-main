@@ -1,0 +1,72 @@
+---
+- name: "{{ scalex_phase | upper }} | Run cluster checks/operation"
+  ansible.builtin.script:
+    cmd: "{{ playbook_dir }}/files/scalex_runner.sh"
+    executable: /bin/bash
+  environment:
+    SCALEX_PHASE: "{{ scalex_phase }}"
+    CLUSTER: "{{ scalex_target.cluster }}"
+    JUMP_SERVER: >-
+      {{ scalex_target.jump_label ~ (' -> ' ~ scalex_target.physical_host if scalex_target.physical_host != scalex_target.jump_label else '') }}
+    API_URL: "{{ scalex_target.api_url }}"
+    OCP_USERNAME: "{{ username }}"
+    OCP_PASSWORD: "{{ lookup('ansible.builtin.vars', scalex_target.credential) }}"
+    OCP_OC_PATHS: "{{ scalex_target.oc_paths | join(':') }}"
+    TLS_VERIFY: "{{ scalex_target.tls_verify | bool | string | lower }}"
+    NS: "{{ oc_namespace }}"
+    APP_RAW: "{{ target_app_list | join(',') }}"
+    ACTION: "{{ operation_action_effective }}"
+    TARGET: "{{ target_replicas_effective }}"
+    WORKLOAD_KIND: "{{ workload_kind_effective }}"
+    WAIT_ATTEMPTS: "{{ wait_attempts }}"
+    WAIT_SECONDS: "{{ wait_seconds }}"
+    JOB_ID: "{{ job_id }}"
+    CREATED_BY: "{{ username }}"
+    SCALE_WARN_THRESHOLD: "100"
+    # HPA sabitleme: portal YALNIZCA kullanici ekranda acikca isaretlediginde
+    # ve yalnizca `stop` DISI islemlerde gonderir. Gelmediginde betik HPA'ya
+    # DOKUNMAZ — bu otomasyonun kurucu ilkesi.
+    HPA_PIN: "{{ hpa_pin | default('false') | string | lower }}"
+  delegate_to: "{{ scalex_target.runtime_host }}"
+  register: _runner_result
+  changed_when: false
+  failed_when: false
+  ignore_unreachable: true
+  no_log: true
+
+- name: "{{ scalex_phase | upper }} | Build sanitized result rows"
+  ansible.builtin.set_fact:
+    _phase_rows: >-
+      {{ (_runner_result.stdout_lines | default([]))
+         | select('match', '^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$')
+         | list }}
+
+- name: "{{ scalex_phase | upper }} | Record transport/runtime failure"
+  ansible.builtin.set_fact:
+    _phase_rows: >-
+      {{ _phase_rows + [
+        scalex_target.cluster ~ ';' ~ scalex_target.jump_label ~ ';-;-;RUNNER;FAIL;Runner could not complete because of SSH/transport/shell/runtime failure'
+      ] }}
+  when:
+    - (_runner_result.unreachable | default(false)) or ((_runner_result.rc | default(0) | int) != 0)
+
+- name: "{{ scalex_phase | upper }} | Record empty runner response"
+  ansible.builtin.set_fact:
+    _phase_rows: >-
+      {{ _phase_rows + [
+        scalex_target.cluster ~ ';' ~ scalex_target.jump_label ~ ';-;-;RUNNER;FAIL;Runner returned no structured result rows'
+      ] }}
+  when:
+    - not (_runner_result.unreachable | default(false))
+    - (_runner_result.rc | default(0) | int) == 0
+    - _phase_rows | length == 0
+
+- name: "{{ scalex_phase | upper }} | Append precheck rows"
+  ansible.builtin.set_fact:
+    _precheck_rows: "{{ _precheck_rows + _phase_rows }}"
+  when: scalex_phase == 'precheck'
+
+- name: "{{ scalex_phase | upper }} | Append execution rows"
+  ansible.builtin.set_fact:
+    _execute_rows: "{{ _execute_rows + _phase_rows }}"
+  when: scalex_phase == 'execute'

@@ -1,0 +1,131 @@
+---
+# ── KATALOG: PORTAL KAZANIR, DOSYA YEDEKTIR ─────────────────────────────────
+#
+# Portal cluster katalogunu `scalex_clusters_override` extra_var'i ile gonderir ve
+# icerigi Admin > LogX Yapilandirma'dan gelir (jump_server, api_url, vault anahtar
+# ADI). Yani cluster/bastion/vault bilgisi TEK yerden yonetilir ve ScaleX onu miras
+# alir; bu dosyadaki katalog yalnizca AWX'ten ELLE calistirma icin yedektir.
+#
+# HANGISININ KULLANILDIGI RAPORLANIR (`catalog_source`). Portal `file` gorurse
+# ekranda uyari basar — cunku bu, AWX template'inde "Prompt on launch > Variables"
+# kapali oldugunun isaretidir: o durumda AWX gonderilen extra_vars'i SESSIZCE yutar,
+# HTTP 201 doner ve playbook bos girdiyle calisir. Bu tuzak bu kurumda uretimde
+# yasandi ve teshisi pahaliydi.
+- name: "Load cluster catalog (portal override wins, file is the fallback)"
+  ansible.builtin.set_fact:
+    scalex_inventory: >-
+      {{ scalex_clusters_override
+         if (scalex_clusters_override is defined and scalex_clusters_override is mapping
+             and (scalex_clusters_override.clusters | default({}) | length) > 0)
+         else (lookup('ansible.builtin.file', playbook_dir ~ '/openshift_inventory_scalex.yaml') | from_yaml) }}
+    catalog_source: >-
+      {{ 'portal'
+         if (scalex_clusters_override is defined and scalex_clusters_override is mapping
+             and (scalex_clusters_override.clusters | default({}) | length) > 0)
+         else 'file' }}
+
+- name: "Validate cluster catalog"
+  ansible.builtin.assert:
+    that:
+      - scalex_inventory is mapping
+      - scalex_inventory.version | default(0) | int == 1
+      - scalex_inventory.clusters is defined
+      - scalex_inventory.clusters is mapping
+      - scalex_inventory.clusters | length > 0
+      - scalex_inventory.defaults | default({}) is mapping
+    fail_msg: >-
+      Cluster katalogu gecersiz (kaynak={{ catalog_source }}).
+      Kaynak 'file' ise openshift_inventory_scalex.yaml bozuk demektir;
+      'portal' ise portalin gonderdigi scalex_clusters_override bozuk.
+
+- name: "Load catalog defaults"
+  ansible.builtin.set_fact:
+    scalex_clusters: "{{ scalex_inventory.clusters }}"
+    scalex_default_tls_verify: "{{ scalex_inventory.defaults.tls_verify | default(false) | bool }}"
+    scalex_default_oc_paths: >-
+      {{ scalex_inventory.defaults.oc_paths | default(['/bin/oc', '/usr/local/bin/oc', '/usr/bin/oc']) }}
+
+- name: "Validate oc paths"
+  ansible.builtin.assert:
+    that:
+      - scalex_default_oc_paths is sequence
+      - scalex_default_oc_paths is not string
+      - scalex_default_oc_paths | length > 0
+      - (scalex_default_oc_paths | select('match', '^/[A-Za-z0-9._/-]+$') | list | length) == (scalex_default_oc_paths | length)
+    fail_msg: "defaults.oc_paths yalnızca mutlak ve güvenli dosya yolları içermelidir."
+
+- name: "Prepare inputs"
+  ansible.builtin.set_fact:
+    execution_mode_effective: "{{ execution_mode | default('dry_run') | string | trim | lower }}"
+    oc_platform: "{{ target_platform | default('ark') | string | trim | lower }}"
+    oc_environment: "{{ target_environment | default('dev') | string | trim | lower }}"
+    oc_cluster_mode: "{{ cluster_selection_mode | default('single') | string | trim | lower }}"
+    oc_cluster_name: "{{ target_cluster_name | default('select') | string | trim | lower }}"
+    oc_namespace: "{{ target_namespace | default('') | string | trim }}"
+    target_app_names: "{{ target_app_names | default(oc_app | default('')) | string | trim }}"
+    workload_kind_effective: "auto"
+    operation_action_effective: "{{ operation_action | default('stop') | string | trim | lower }}"
+    verification_timeout_effective: "{{ verification_timeout | default('60') | string | trim }}"
+    allow_partial_execution_effective: "{{ allow_partial_execution | default(false) | bool }}"
+    change_confirmation_effective: "{{ change_confirmation | default(false) | bool }}"
+    bulk_change_confirmation_effective: "{{ bulk_change_confirmation | default(false) | bool }}"
+    _target_replicas_input: "{{ target_replicas | default('') | string | trim }}"
+    # HPA sabitleme: portal bu degiskeni YALNIZCA kullanici ekranda acikca
+    # isaretlediginde gonderir; gelmediginde HPA'ya DOKUNULMAZ (kurucu ilke).
+    hpa_pin_effective: "{{ hpa_pin | default(false) | bool }}"
+    # Portalin ACIKCA gonderdigi cluster listesi. Portal bu listeyi kullanicinin
+    # YETKI SUZGECINDEN gecirerek uretiyor; katalogdan yeniden turetmek, kullanicinin
+    # goremedigi bir cluster'i geri getirebilirdi.
+    scalex_target_clusters_effective: >-
+      {{ scalex_target_clusters | default([]) | map('trim') | reject('equalto', '') | unique | list }}
+
+- name: "Prepare runtime values"
+  ansible.builtin.set_fact:
+    scope_key_effective: "{{ (oc_platform | replace('-', '_')) ~ '_' ~ oc_environment }}"
+    target_replicas_effective: >-
+      {{ '0' if operation_action_effective == 'stop' else
+         _target_replicas_input if operation_action_effective == 'scale' else '' }}
+    wait_seconds: "2"
+    wait_attempts: "{{ ((verification_timeout_effective | int) / 2) | round(0, 'ceil') | int | string }}"
+    job_id: "{{ lookup('env', 'AWX_JOB_ID') | default(lookup('env', 'JOB_ID'), true) | default('N/A', true) }}"
+    target_app_list: >-
+      {{ (target_app_names | regex_replace('[;\r\n]+', ',')).split(',')
+         | map('trim') | reject('equalto', '') | unique | list }}
+
+- name: "Validate inputs"
+  ansible.builtin.assert:
+    that:
+      - execution_mode_effective in ['dry_run', 'apply']
+      - oc_platform in ['ark', 'hosting', 'istirak-hosting', 'wyden', 'metaco_gar', 'metaco_das', 'cicd', 'instana', 'cds', 'ai', 'ark_ai']
+      - oc_environment in ['dev', 'test', 'qa', 'prod', 'lab', 'edu', 'cicd']
+      - oc_cluster_mode in ['single', 'all']
+      - operation_action_effective in ['stop', 'restore', 'scale']
+      - verification_timeout_effective in ['30', '60', '120']
+      - oc_namespace | length > 0
+      - oc_namespace | length <= 63
+      - oc_namespace is match('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+      - target_app_list | length > 0
+      - username | default('') | string | length > 0
+      - smtp_host | default('') | string | length > 0
+      - smtp_port | default(0) | int > 0
+      - mail_from | default('') | string | length > 0
+      - mail_subject_prefix | default('') | string | length > 0
+      - mail_to | default('') | length > 0
+    fail_msg: "Survey, credential veya mail ayarları eksik/geçersiz."
+
+- name: "Validate application names"
+  ansible.builtin.assert:
+    that:
+      - item | length <= 253
+      - item is match('^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$')
+    fail_msg: "Geçersiz uygulama adı: {{ item }}"
+  loop: "{{ target_app_list }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: "Validate scale target"
+  ansible.builtin.assert:
+    that:
+      - target_replicas_effective | string is match('^[0-9]+$')
+    fail_msg: "scale işleminde target_replicas 0 veya daha büyük tam sayı olmalıdır."
+  when: operation_action_effective == 'scale'

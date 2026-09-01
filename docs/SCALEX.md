@@ -25,7 +25,8 @@ Ekran (src/components/scalex)
              ↓
         AWX (scalex_run / scalex_discovery şablonları)
              ↓
-        garanti_tasks/scalex/*  (playbook — bu repoda DEĞİL)
+        server/ansible/scalex_file/scalex_app/*
+        (playbook kaynağı — AWX'e kopyalanır; LogX ile aynı düzen)
 ```
 
 ### Neden bir uzlaştırıcı var
@@ -81,15 +82,23 @@ grup üyeliği oturumdaki `user.groups`'tan okunur). Bu tablo LogX/OpsX/Telnet i
 
 ## Kurulum
 
-1. **AWX**: `bmw_openshift_jobs/scalex_app/` klasörü + iki şablon (`scalex_run`,
-   `scalex_discovery`). Her ikisinde de **survey KAPALI**, **Prompt on launch >
-   Variables AÇIK** olmalı — kapalıysa `extra_vars` sessizce yutulur ve playbook kendi
-   katalog dosyasına düşer (ekran bunu `catalogWarning` ile söyler).
+Ayrıntılı adımlar (AWX template alanları, survey'in API ile yüklenmesi, sık hatalar):
+**`server/ansible/scalex_file/SCALEX_AWX_SETUP.md`**. Özet:
+
+1. **AWX**: `server/ansible/scalex_file/scalex_app/` klasörünü AWX projesinde
+   `bmw_openshift_jobs/scalex_app/` altına kopyalayın; iki şablon oluşturun
+   (`main.yml` ve `discovery.yml`). Her ikisinde de **Prompt on launch > Variables
+   AÇIK** olmalı — kapalıysa `extra_vars` sessizce yutulur ve playbook kendi katalog
+   dosyasına düşer (ekran bunu `catalogWarning` ile söyler).
+   Survey **açık** olabilir ama **hiçbir sorusu zorunlu olmamalı**: zorunlu bir soru,
+   portalın API launch'ını `400 variables_needed_to_start` ile düşürür. Hazır
+   tanımlar `scalex_file/awx/*.survey.json`.
 2. **Portal**: Admin > Playbook Kayıtları'nda `scalex_run` / `scalex_discovery`
    satırlarına AWX şablon ve sunucu kimliğini girin (ya da `.env`'deki
    `SCALEX_TEMPLATE_ID` / `SCALEX_DISCOVERY_TEMPLATE_ID` / `SCALEX_AWX_SERVER_ID`).
 3. **SMART/OCO**: Admin > Ansible > FieldOverridesModal ile ScaleX şablonu için
-   `flowKey`, `metadataFields` ve `ocoCheck` tanımlayın.
+   `flowKey`, `metadataFields` ve `ocoCheck` tanımlayın. Prod `apply` için SMART
+   yapılandırması **zorunludur** (fail-closed).
 4. **Görünürlük**: sunucu açılışında element bazında otomatik seed edilir. Yeniden
    başlatmadan yapmak için `deploy/sql/2026-08-30-scalex-gorunurluk.sql`.
 
@@ -117,7 +126,13 @@ npm test          # scripts/run-tests.cjs — Node sürümüne göre bayrak seç
 ```
 
 ScaleX bekçileri: `server/scalex/__tests__/` (doğrulama, sözleşme, güvenlik
-düzeltmeleri, uzlaştırıcı) + `src/__tests__/scalex-ui-validation.test.cjs`.
+düzeltmeleri, uzlaştırıcı) + `src/__tests__/scalex-ui-validation.test.cjs` +
+`server/ansible/__tests__/scalex-awx-package.test.cjs`.
+
+Sonuncusu **gerçek `scalex_runner.sh`'i sahte bir `oc` ile çalıştırır** ve çıktısını
+portalın gerçek ayrıştırıcısından (`result.cjs`) geçirir; ayrıca survey ↔ `extra_vars`
+eşleşmesini ve `set_stats` alan listesini kilitler. Playbook ayrı bir depoda çalıştığı
+için bu sözleşme aksi halde ancak üretimde ("sonuç bulunamadı") görünürdü.
 
 > Bekçi yazarken kural: her yeni bekçi, **kasıtlı bir mutasyonla** kör olmadığı
 > kanıtlanır. Bu depoda birden çok kez, testin kendi açıklamasıyla eşleşip her zaman

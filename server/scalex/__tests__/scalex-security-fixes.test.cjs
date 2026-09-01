@@ -285,9 +285,15 @@ test('ENV: kodun okudugu her SCALEX_* degiskeni .env.example\'da belgeli', () =>
   const fsx = require('node:fs');
   const dir = path.join(__dirname, '..');
   const files = fsx.readdirSync(dir).filter((f) => f.endsWith('.cjs')).map((f) => `server/scalex/${f}`);
+  // `process.env.X` VE `env_var_name: 'X'` (registry seed'i) — yani GERCEKTEN
+  // okunan degiskenler. Ham `SCALEX_[A-Z_]+` taramasi yorumlardaki dosya adlarini
+  // da (or. scalex_file/SCALEX_AWX_SETUP.md) degisken sanip yanlis kirmizi veriyordu.
   const used = new Set();
   for (const f of [...files, 'server/db/mssql-setup.cjs']) {
-    for (const m of read(f).matchAll(/\bSCALEX_[A-Z_]+\b/g)) used.add(m[0]);
+    const src = read(f);
+    for (const m of src.matchAll(/process\.env\.(SCALEX_[A-Z_]+)\b/g)) used.add(m[1]);
+    for (const m of src.matchAll(/process\.env\[['"`](SCALEX_[A-Z_]+)['"`]\]/g)) used.add(m[1]);
+    for (const m of src.matchAll(/env_var_name:\s*['"`](SCALEX_[A-Z_]+)['"`]/g)) used.add(m[1]);
   }
   assert.ok(used.size >= 3, 'en az uc degisken bulunmali');
   const missing = [...used].filter((v) => !envExample.includes(v));

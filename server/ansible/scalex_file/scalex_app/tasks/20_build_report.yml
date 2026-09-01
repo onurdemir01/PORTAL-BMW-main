@@ -1,0 +1,259 @@
+---
+- name: "Assemble final result rows"
+  ansible.builtin.set_fact:
+    result_rows: "{{ [_input_row] + _precheck_rows + _execute_rows }}"
+
+- name: "Calculate technical report counters"
+  ansible.builtin.set_fact:
+    total_rows: "{{ result_rows | length }}"
+    fail_count: "{{ result_rows | select('search', ';FAIL;') | list | length }}"
+    warn_count: "{{ result_rows | select('search', ';WARN;') | list | length }}"
+    ok_count: "{{ result_rows | select('search', ';OK;') | list | length }}"
+    info_count: "{{ result_rows | select('search', ';INFO;') | list | length }}"
+    verify_ok_count: "{{ result_rows | select('search', ';VERIFY;OK;') | list | length }}"
+    verify_fail_count: "{{ result_rows | select('search', ';VERIFY;FAIL;') | list | length }}"
+    precheck_fail_count: "{{ _precheck_rows | select('search', ';FAIL;') | list | length }}"
+    blocked_count: "{{ result_rows | select('search', ';BLOCKED;FAIL;') | list | length }}"
+    hpa_info_count: "{{ result_rows | select('search', ';HPA;INFO;') | list | length }}"
+
+- name: "Determine overall operation status"
+  ansible.builtin.set_fact:
+    overall_status: >-
+      {%- if fail_count | int > 0 and allow_partial_execution_effective | bool and execution_mode_effective == 'apply' and verify_ok_count | int > 0 -%}
+      WARN
+      {%- elif fail_count | int > 0 -%}
+      FAIL
+      {%- elif warn_count | int > 0 -%}
+      WARN
+      {%- else -%}
+      OK
+      {%- endif -%}
+
+- name: "Build user-facing target results"
+  ansible.builtin.set_fact:
+    mail_result_rows: >-
+      {%- set ns = namespace(rows=[]) -%}
+      {%- for cluster in cluster_list -%}
+        {%- for app in target_app_list -%}
+          {%- set pair = namespace(pre=[], exe=[], cluster_fail=[]) -%}
+          {%- for line in _precheck_rows -%}
+            {%- set p = line.split(';') -%}
+            {%- if p | length >= 7 and p[0] == cluster -%}
+              {%- if p[2] == app -%}
+                {%- set pair.pre = pair.pre + [p] -%}
+              {%- elif p[2] == '-' and p[5] == 'FAIL' -%}
+                {%- set pair.cluster_fail = pair.cluster_fail + [p] -%}
+              {%- endif -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {%- for line in _execute_rows -%}
+            {%- set p = line.split(';') -%}
+            {%- if p | length >= 7 and p[0] == cluster and p[2] == app -%}
+              {%- set pair.exe = pair.exe + [p] -%}
+            {%- endif -%}
+          {%- endfor -%}
+
+          {%- set calc = namespace(status='WARN', detail='Sonuç kaydı bulunamadı.', kind='-') -%}
+          {%- set pre_fail = pair.pre | selectattr('5', 'equalto', 'FAIL') | list -%}
+          {%- set pre_warn = pair.pre | selectattr('5', 'equalto', 'WARN') | list -%}
+          {%- set exe_fail = pair.exe | selectattr('5', 'equalto', 'FAIL') | list -%}
+          {%- set exe_warn = pair.exe | selectattr('5', 'equalto', 'WARN') | list -%}
+          {%- set verify_ok = namespace(items=[]) -%}
+          {%- set verify_fail = namespace(items=[]) -%}
+          {%- for p in pair.exe -%}
+            {%- if p[4] == 'VERIFY' and p[5] == 'OK' -%}
+              {%- set verify_ok.items = verify_ok.items + [p] -%}
+            {%- elif p[4] == 'VERIFY' and p[5] == 'FAIL' -%}
+              {%- set verify_fail.items = verify_fail.items + [p] -%}
+            {%- endif -%}
+            {%- if calc.kind == '-' and p[3] != '-' -%}
+              {%- set calc.kind = p[3] -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {%- if calc.kind == '-' -%}
+            {%- for p in pair.pre -%}
+              {%- if calc.kind == '-' and p[3] != '-' -%}
+                {%- set calc.kind = p[3] -%}
+              {%- endif -%}
+            {%- endfor -%}
+          {%- endif -%}
+
+          {%- if execution_mode_effective == 'dry_run' -%}
+            {%- if pair.cluster_fail | length > 0 -%}
+              {%- set calc.status = 'FAIL' -%}
+              {%- set calc.detail = pair.cluster_fail[0][6:] | join(';') -%}
+            {%- elif pre_fail | length > 0 -%}
+              {%- set calc.status = 'FAIL' -%}
+              {%- set calc.detail = pre_fail[0][6:] | join(';') -%}
+            {%- elif pre_warn | length > 0 -%}
+              {%- set calc.status = 'WARN' -%}
+              {%- set calc.detail = 'Ön kontrol tamamlandı. Uyarı: ' ~ (pre_warn[0][6:] | join(';')) -%}
+            {%- else -%}
+              {%- set calc.status = 'OK' -%}
+              {%- set calc.detail = 'Ön kontrol başarılı. Değişiklik yapılmadı.' -%}
+            {%- endif -%}
+          {%- else -%}
+            {%- if pair.cluster_fail | length > 0 -%}
+              {%- set calc.status = 'FAIL' -%}
+              {%- set calc.detail = pair.cluster_fail[0][6:] | join(';') -%}
+            {%- elif pre_fail | length > 0 -%}
+              {%- set calc.status = 'FAIL' -%}
+              {%- set calc.detail = pre_fail[0][6:] | join(';') -%}
+            {%- elif verify_fail.items | length > 0 -%}
+              {%- set calc.status = 'FAIL' -%}
+              {%- set calc.detail = verify_fail.items[0][6:] | join(';') -%}
+            {%- elif exe_fail | length > 0 -%}
+              {%- set calc.status = 'FAIL' -%}
+              {%- set calc.detail = exe_fail[0][6:] | join(';') -%}
+            {%- elif verify_ok.items | length > 0 and (exe_warn | length > 0 or pre_warn | length > 0) -%}
+              {%- set calc.status = 'WARN' -%}
+              {%- set warning_row = (exe_warn[0] if exe_warn | length > 0 else pre_warn[0]) -%}
+              {%- set calc.detail = 'İşlem tamamlandı ve doğrulandı. Uyarı: ' ~ (warning_row[6:] | join(';')) -%}
+            {%- elif verify_ok.items | length > 0 -%}
+              {%- set calc.status = 'OK' -%}
+              {%- set calc.detail = 'İşlem tamamlandı ve doğrulandı.' -%}
+            {%- elif _strict_blocked | bool -%}
+              {%- set calc.status = 'FAIL' -%}
+              {%- set calc.detail = 'Genel ön kontrol hatası nedeniyle işlem uygulanmadı.' -%}
+            {%- elif exe_warn | length > 0 or pre_warn | length > 0 -%}
+              {%- set calc.status = 'WARN' -%}
+              {%- set warning_row = (exe_warn[0] if exe_warn | length > 0 else pre_warn[0]) -%}
+              {%- set calc.detail = warning_row[6:] | join(';') -%}
+            {%- endif -%}
+          {%- endif -%}
+
+          {%- set ns.rows = ns.rows + [{
+            'cluster': cluster,
+            'app': app,
+            'kind': calc.kind,
+            'status': calc.status,
+            'detail': calc.detail
+          }] -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.rows }}
+
+- name: "Calculate user-facing summary"
+  ansible.builtin.set_fact:
+    planned_target_count: "{{ (cluster_list | length) * (target_app_list | length) }}"
+    mail_ok_count: "{{ mail_result_rows | selectattr('status', 'equalto', 'OK') | list | length }}"
+    mail_warn_count: "{{ mail_result_rows | selectattr('status', 'equalto', 'WARN') | list | length }}"
+    mail_fail_count: "{{ mail_result_rows | selectattr('status', 'equalto', 'FAIL') | list | length }}"
+    precheck_summary: "{{ 'Başarılı' if precheck_fail_count | int == 0 else (precheck_fail_count | string) ~ ' hata' }}"
+    verification_summary: "{{ (verify_ok_count | string) ~ ' başarılı / ' ~ (verify_fail_count | string) ~ ' başarısız' }}"
+    blocked_summary: "{{ 'Yok' if blocked_count | int == 0 else (blocked_count | string) ~ ' işlem engellendi' }}"
+    hpa_summary: >-
+      {{ 'Yok' if hpa_info_count | int == 0 else (hpa_info_count | string) ~ ' hedefte görüldü; HPA üzerinde değişiklik yapılmadı' }}
+
+- name: "Prepare user-facing report values"
+  ansible.builtin.set_fact:
+    overall_status: "{{ overall_status | trim }}"
+    status_label: "{{ 'BAŞARILI' if overall_status | trim == 'OK' else ('UYARI' if overall_status | trim == 'WARN' else 'BAŞARISIZ') }}"
+    status_color: "{{ '#166534' if overall_status | trim == 'OK' else ('#92400e' if overall_status | trim == 'WARN' else '#991b1b') }}"
+    status_bg: "{{ '#dcfce7' if overall_status | trim == 'OK' else ('#fef3c7' if overall_status | trim == 'WARN' else '#fee2e2') }}"
+    target_replicas_report: "{{ target_replicas_effective if target_replicas_effective | length > 0 else 'state üzerinden otomatik' }}"
+    report_summary_text: >-
+      {{ cluster_list | length }} cluster üzerinde {{ target_app_list | length }} uygulama için toplam {{ planned_target_count }} hedef planlandı.
+      Sonuç: {{ mail_ok_count }} başarılı, {{ mail_warn_count }} uyarı, {{ mail_fail_count }} başarısız.
+
+- name: "Build compact HTML report"
+  ansible.builtin.set_fact:
+    report_html: |
+      <html>
+      <head>
+        <meta charset="utf-8">
+      </head>
+      <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f4f6;padding:20px 0;">
+          <tr>
+            <td align="center">
+              <table role="presentation" width="760" cellspacing="0" cellpadding="0" border="0" style="width:760px;max-width:96%;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+                <tr>
+                  <td style="padding:22px 26px;background:#111827;color:#ffffff;">
+                    <div style="font-size:21px;font-weight:bold;">Ansible Chaos Scale</div>
+                    <div style="font-size:13px;color:#d1d5db;margin-top:5px;">Job {{ job_id }} · {{ scope_key_effective | e }}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:20px 26px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td style="padding:14px 16px;background:{{ status_bg }};border-left:5px solid {{ status_color }};border-radius:6px;">
+                          <div style="font-size:12px;color:#4b5563;">SONUÇ</div>
+                          <div style="font-size:20px;font-weight:bold;color:{{ status_color }};margin-top:3px;">{{ status_label }}</div>
+                          <div style="font-size:14px;margin-top:7px;">{{ report_summary_text }}</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <h3 style="margin:24px 0 10px;font-size:16px;color:#111827;">📥 Parametreler</h3>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;border-collapse:collapse;">
+                      <tr><td style="padding:5px 0;width:165px;color:#6b7280;">Job ID</td><td style="padding:5px 0;font-weight:bold;">{{ job_id }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Mod</td><td style="padding:5px 0;">{{ execution_mode_effective }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">İşlem</td><td style="padding:5px 0;">{{ operation_action_effective }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Namespace</td><td style="padding:5px 0;">{{ oc_namespace | e }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Uygulamalar</td><td style="padding:5px 0;">{{ target_app_list | join(', ') | e }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Workload</td><td style="padding:5px 0;">{{ workload_kind_effective }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Hedef Replica</td><td style="padding:5px 0;">{{ target_replicas_report }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Cluster Modu</td><td style="padding:5px 0;">{{ oc_cluster_mode }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Platform / Ortam</td><td style="padding:5px 0;">{{ scope_platform_report | e }} / {{ scope_environment_report | e }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Hedef Grup</td><td style="padding:5px 0;">{{ scope_key_effective | e }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Clusterlar</td><td style="padding:5px 0;">{{ cluster_list | join(', ') | e }}</td></tr>
+                      <tr><td style="padding:5px 0;color:#6b7280;">Partial</td><td style="padding:5px 0;">{{ allow_partial_execution_effective }}</td></tr>
+                    </table>
+
+                    <h3 style="margin:24px 0 10px;font-size:16px;color:#111827;">📊 Özet</h3>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;border:1px solid #e5e7eb;border-collapse:collapse;">
+                      <tr>
+                        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;width:190px;">Planlanan hedef</td>
+                        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">{{ planned_target_count }} ({{ cluster_list | length }} cluster × {{ target_app_list | length }} uygulama)</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">Ön kontrol</td>
+                        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">{{ precheck_summary }}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">Sonuç doğrulama</td>
+                        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">{{ verification_summary }}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">Engellenen işlem</td>
+                        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;">{{ blocked_summary }}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 12px;color:#6b7280;">HPA</td>
+                        <td style="padding:10px 12px;">{{ hpa_summary }}</td>
+                      </tr>
+                    </table>
+
+                    <h3 style="margin:24px 0 10px;font-size:16px;color:#111827;">⚙️ İşlem Sonuçları</h3>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;border:1px solid #e5e7eb;border-collapse:collapse;">
+                      <tr style="background:#f9fafb;">
+                        <th style="padding:9px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">Cluster</th>
+                        <th style="padding:9px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">Uygulama</th>
+                        <th style="padding:9px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">Sonuç</th>
+                        <th style="padding:9px 10px;border-bottom:1px solid #e5e7eb;text-align:left;">Açıklama</th>
+                      </tr>
+                      {% for row in mail_result_rows %}
+                      {% set row_color = '#166534' if row.status == 'OK' else ('#92400e' if row.status == 'WARN' else '#991b1b') %}
+                      {% set row_bg = '#f0fdf4' if row.status == 'OK' else ('#fffbeb' if row.status == 'WARN' else '#fef2f2') %}
+                      <tr style="background:{{ row_bg }};">
+                        <td style="padding:9px 10px;border-bottom:1px solid #e5e7eb;">{{ row.cluster | e }}</td>
+                        <td style="padding:9px 10px;border-bottom:1px solid #e5e7eb;">{{ row.app | e }}</td>
+                        <td style="padding:9px 10px;border-bottom:1px solid #e5e7eb;font-weight:bold;color:{{ row_color }};">{{ 'BAŞARILI' if row.status == 'OK' else ('UYARI' if row.status == 'WARN' else 'BAŞARISIZ') }}</td>
+                        <td style="padding:9px 10px;border-bottom:1px solid #e5e7eb;">{{ row.detail | e }}</td>
+                      </tr>
+                      {% endfor %}
+                    </table>
+
+                    <div style="margin-top:20px;padding:12px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;color:#4b5563;">
+                      HPA yalnızca kontrol edilir ve raporlanır; HPA üzerinde değişiklik yapılmaz. Teknik ayrıntılar AAP job logunda tutulur.
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>

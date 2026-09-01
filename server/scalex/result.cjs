@@ -99,8 +99,9 @@ function extractScaleXResult(rawArtifacts) {
   };
 }
 
-// Kesif satirlarindaki `detail` alani `anahtar=deger` ciftleri tasir (bkz.
-// scalex_discovery.sh). Bosluk ayrac; DEGERLER bosluk icermez (imaj/ad/sayilar).
+// Kesif satirlarindaki `detail` alani `anahtar=deger` ciftleri tasir. Bosluk ayrac;
+// DEGERLER bosluk ICERMEZ — playbook tarafinda `disc_val` her degeri temizler
+// (server/ansible/scalex_file/scalex_app/files/scalex_runner.sh, `discover` fazi).
 function parseDetailPairs(detail) {
   const out = {};
   for (const part of String(detail || '').split(' ')) {

@@ -1,0 +1,244 @@
+{
+  "name": "ScaleX | Replica Islemi",
+  "description": "OpenShift replica durdurma / geri alma / olcekleme. TUM SORULAR OPSIYONEL: portal bu template'i AWX API'siyle baslatir ve zorunlu bir survey sorusu gonderilmediginde AWX launch'i 400 variables_needed_to_start ile REDDEDER.",
+  "spec": [
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "dry_run",
+        "apply"
+      ],
+      "default": "dry_run",
+      "required": false,
+      "variable": "execution_mode",
+      "new_question": true,
+      "question_name": "Calisma Modu",
+      "question_description": "dry_run yalnizca on kontrol yapar, hicbir sey degistirmez. apply gercek degisiklik uygular. Portal her zaman gonderir; elle calistirmada bos birakilirsa playbook dry_run varsayar."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "ark",
+        "hosting",
+        "istirak-hosting",
+        "wyden",
+        "metaco_gar",
+        "metaco_das",
+        "cicd",
+        "instana",
+        "cds",
+        "ai",
+        "ark_ai"
+      ],
+      "default": "ark",
+      "required": false,
+      "variable": "target_platform",
+      "new_question": true,
+      "question_name": "Platform (tenant)",
+      "question_description": "Cluster katalogundaki `platform` alaniyla eslesir."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "dev",
+        "test",
+        "qa",
+        "prod",
+        "lab",
+        "edu",
+        "cicd"
+      ],
+      "default": "lab",
+      "required": false,
+      "variable": "target_environment",
+      "new_question": true,
+      "question_name": "Ortam",
+      "question_description": "Cluster katalogundaki `environments` listesiyle eslesir. PROD SECIMI ONAY KAPILARINI ACAR (portal tarafinda OCO + SMART)."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "single",
+        "all"
+      ],
+      "default": "single",
+      "required": false,
+      "variable": "cluster_selection_mode",
+      "new_question": true,
+      "question_name": "Cluster Kapsami",
+      "question_description": "single: tek cluster. all: kapsamdaki tum cluster'lar. Portal cluster'lari ayrica `scalex_target_clusters` listesiyle ACIKCA gonderir; o liste geldiginde bu alan KULLANILMAZ."
+    },
+    {
+      "max": 253,
+      "min": 0,
+      "type": "text",
+      "choices": "",
+      "default": "select",
+      "required": false,
+      "variable": "target_cluster_name",
+      "new_question": true,
+      "question_name": "Hedef Cluster",
+      "question_description": "Tek cluster adi ya da `all`. BILEREK SERBEST METIN: coktan secmeli olsaydi katalogda yeni bir cluster tanimlandiginda survey guncellenene kadar portalin her launch'i 400 ile reddedilirdi. Deger yine de katalogla dogrulanir (02_select_targets.yml)."
+    },
+    {
+      "max": 63,
+      "min": 0,
+      "type": "text",
+      "choices": "",
+      "default": "",
+      "required": false,
+      "variable": "target_namespace",
+      "new_question": true,
+      "question_name": "Namespace",
+      "question_description": "Kubernetes namespace adi. Regex: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ (en fazla 63 karakter)."
+    },
+    {
+      "max": 4096,
+      "min": 0,
+      "type": "textarea",
+      "choices": "",
+      "default": "",
+      "required": false,
+      "variable": "target_app_names",
+      "new_question": true,
+      "question_name": "Uygulama Adlari",
+      "question_description": "Virgulle ayrilmis uygulama/workload adlari (or. odeme-api,batch-worker). DEGISKEN ADI `oc_app` DEGIL `target_app_names`: portal bu adla gonderiyor. Playbook geriye uyum icin `oc_app`i de kabul eder."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "stop",
+        "restore",
+        "scale"
+      ],
+      "default": "stop",
+      "required": false,
+      "variable": "operation_action",
+      "new_question": true,
+      "question_name": "Islem",
+      "question_description": "stop: replica 0, onceki deger cluster'daki ConfigMap'e yazilir (geri alinabilir). restore: saklanan degere doner ve kaydi siler. scale: verilen sayiya ceker, KAYIT BIRAKMAZ."
+    },
+    {
+      "max": 2147483647,
+      "min": 0,
+      "type": "integer",
+      "choices": "",
+      "default": "",
+      "required": false,
+      "variable": "target_replicas",
+      "new_question": true,
+      "question_name": "Hedef Replica",
+      "question_description": "YALNIZCA `scale` isleminde kullanilir. VARSAYILANI YOK: portal bu alani yalnizca scale isleminde gonderir; bir varsayilan tanimlansaydi AWX onu diger islemlere de enjekte ederdi."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "30",
+        "60",
+        "120"
+      ],
+      "default": "60",
+      "required": false,
+      "variable": "verification_timeout",
+      "new_question": true,
+      "question_name": "Sonuc Kontrol Suresi (sn)",
+      "question_description": "Degisiklik uygulandiktan sonra sonucun dogrulanmasi icin beklenecek sure."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "false",
+        "true"
+      ],
+      "default": "true",
+      "required": false,
+      "variable": "allow_partial_execution",
+      "new_question": true,
+      "question_name": "Kismi Calistirmaya Izin Ver",
+      "question_description": "false: herhangi bir on kontrol duserse HICBIR degisiklik uygulanmaz (strict). true: on kontrolu gecen hedefler uygulanir."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "false",
+        "true"
+      ],
+      "default": "false",
+      "required": false,
+      "variable": "change_confirmation",
+      "new_question": true,
+      "question_name": "Degisiklik Onayi",
+      "question_description": "apply icin true olmali. Portal bunu SUNUCUDA uretir; kullanicidan gelmez."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "false",
+        "true"
+      ],
+      "default": "false",
+      "required": false,
+      "variable": "bulk_change_confirmation",
+      "new_question": true,
+      "question_name": "Toplu Degisiklik Onayi",
+      "question_description": "Birden fazla cluster uzerinde apply icin true olmali. Portal bunu da sunucuda uretir."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "multiplechoice",
+      "choices": [
+        "false",
+        "true"
+      ],
+      "default": "",
+      "required": false,
+      "variable": "hpa_pin",
+      "new_question": true,
+      "question_name": "HPA Sabitleme",
+      "question_description": "VARSAYILANI YOK ve VARSAYILAN DAVRANIS KAPALI. Bu otomasyonun kurucu ilkesi 'HPA okunur, ASLA degistirilmez'. true verildiginde HPA min/max hedefe esitlenir; `stop` isleminde ve hedef 0 iken UYGULANMAZ (minReplicas 0 reddedilir ya da uygulamayi 0'da kilitler)."
+    },
+    {
+      "max": 320,
+      "min": 0,
+      "type": "text",
+      "choices": "",
+      "default": "",
+      "required": false,
+      "variable": "mail_to",
+      "new_question": true,
+      "question_name": "Rapor E-postasi",
+      "question_description": "Sonuc raporunun gonderilecegi adres. Portal oturumdaki kullanicinin adresini gonderir."
+    },
+    {
+      "max": 1024,
+      "min": 0,
+      "type": "text",
+      "choices": "",
+      "default": "",
+      "required": false,
+      "variable": "mail_cc",
+      "new_question": true,
+      "question_name": "Rapor CC",
+      "question_description": "Virgulle ayrilmis ek adresler. VARSAYILANI YOK: portal yalnizca kullanici girerse gonderir."
+    }
+  ]
+}
