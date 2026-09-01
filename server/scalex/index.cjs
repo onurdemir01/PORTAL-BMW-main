@@ -58,8 +58,15 @@ async function denyIfNotOwner(req, serverId, jobId) {
   return null;
 }
 
-function resolveByKey(keyName) {
-  const row = playbookRegistry.getByKey(keyName);
+// ASYNC OLMAK ZORUNDA. `playbookRegistry.getByKey` bir Promise doner; `await`siz
+// cagrildiginda `row` bir Promise olur, `row.enabled` `undefined` kalir (=== false
+// DEGIL, yani ilk kontrolden gecer) ve `getEffectiveTemplateId` hem `awxTemplateId`
+// hem `envVarName` icin `undefined` gorup HER ZAMAN `null` doner. Sonuc: admin
+// ekranindan Template ID girilse de, .env doldurulsa da HER ScaleX cagrisi
+// 501 "Template ID girilmemis" ile duser — yani ScaleX hic calismaz.
+// Dogru desen LogX'te: server/logx/v2/jobs.cjs `await playbookRegistry.getByKey(...)`.
+async function resolveByKey(keyName) {
+  const row = await playbookRegistry.getByKey(keyName);
   if (!row || row.enabled === false) {
     throw Object.assign(
       new Error(`"${keyName}" playbook kaydı tanımlı/etkin değil — Admin > Playbook Kayıtları ekranından tanımlayın.`),
@@ -75,6 +82,162 @@ function resolveByKey(keyName) {
   }
   const serverId = Number(row.awxServerId || process.env.SCALEX_AWX_SERVER_ID || 1);
   return { templateId: Number(templateId), serverId, keyName };
+}
+
+// CLUSTER BASINA BIR SATIR. Iki cagirandan da kullanilir: isi HEMEN baslatan yol
+// (`status: 'RUNNING'`) ve SMART onayi bekleyen yol (`status: 'PENDING_APPROVAL'`,
+// `jobId` henuz YOK).
+//
+// NEDEN ONAY BEKLERKEN DE YAZIYORUZ: kapi `pendingApproval` ile donunce `/run` erken
+// cikiyordu ve bu INSERT hic calismiyordu. Onay gelince isi SMART poller'i
+// `runner.performSsLaunch` ile baslatir; o yol yalnizca `ansible_job_history`ye yazar,
+// `scalex_operations`i BILMEZ. Sonuc zinciri: uzlastirici RUNNING satir bulamaz →
+// `finalizeOperation` hic calismaz → `scalex_state_mirror` guncellenmez → uygulama
+// "Su an durdurulmus" listesine DUSMEZ → GERI ALMA YOLU KAPANIR. Yani prod'daki her
+// onayli durdurma, portalin geri alinabilirlik vaadini kiriyordu.
+//
+// `request_key` onay yolunda `smart:<ticketId>` olur; is baslayinca uzlastirici onu
+// gercek `<serverId>:<jobId>` ile degistirir (bkz. reconciler.adoptApprovedTickets).
+async function insertOperationRows({
+  requestKey, username, env, tenant, clusters, namespace, action, executionMode,
+  targetReplicas, apps, serverId, jobId, status, ocoNumber, reason, smartTicketId = null,
+}) {
+  for (const cluster of clusters) {
+    await db.query(
+      `INSERT INTO scalex_operations
+         (request_key, username, env, tenant, cluster_name, namespace, action, execution_mode,
+          target_replicas, app_names_json, awx_server_id, awx_job_id, status, oco_number, reason,
+          smart_ticket_id, approval_state)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      [requestKey, username, env, tenant, cluster, namespace, action, executionMode,
+        action === 'scale' ? Number(targetReplicas) : null, JSON.stringify(apps),
+        serverId ?? null, jobId ?? null, status, String(ocoNumber || '') || null, reason || null,
+        smartTicketId, smartTicketId ? 'PENDING' : null]
+    );
+  }
+}
+
+// ScaleX'in DEGISIKLIK KAPISI — `/run` ve `/restore-all` icin TEK govde.
+//
+// `res`e DOKUNMAZ: karar nesnesi doner ({ outcome: 'proceed' | 'error' | 'respond' }),
+// cagiran onu kendi sozlesmesine cevirir. Ortak kapi modulunun (`change-gates.cjs`)
+// Express'ten kopartilma gerekcesinin aynisi — burada da ikinci bir cagiran cikti.
+//
+// SET KAPALI: `proceed` disindaki her deger cagiranda tuketilmek ZORUNDA; taninmayan
+// bir deger FAIL-CLOSED ele alinir (bkz. change-gates.cjs sozlesmesi).
+async function runScaleXGates({
+  req, user, policy, env, tenant, clusters, namespace, apps, action, executionMode,
+  targetReplicas, extraVars, reason, ocoNumber,
+}) {
+  if (policy.smart !== 'require' && policy.oco !== 'require') return { outcome: 'proceed' };
+
+  const gateVars = launch.buildGateVars({ env, tenant, action, executionMode, clusters, namespace });
+  // SMART/OCO AYARLARI URETIMDEKI YAPIDAN GELIR. Self Service'teki nginx isleri
+  // gibi, ayarlar `ansible_ss_customizations` tablosunda ScaleX'in KENDI
+  // (awxServerId, templateId) satirinda durur ve admin bunlari `FieldOverridesModal`
+  // ekranindan — nginx isi icin kullandigi ekranin AYNISINDAN — yonetir.
+  // Env degiskeni ya da client'tan gelen deger KULLANILMAZ: birincisi ikinci bir
+  // ayar yuzeyi olurdu, ikincisi kullanicinin kendi kapisini yapilandirmasi demekti.
+  const { templateId: runTemplateId, serverId: runServerId } = await resolveByKey(RUN_KEY);
+  const svcConfig = await require('../ansible/ss-customizations.cjs').readCustom(runServerId, runTemplateId);
+  // FAIL-CLOSED: SMART "gerekli" iken AYAR YOKSA is BASLATILMAZ.
+  //
+  // `smart-gate.isSmartRequired` bos ayarda `false` doner (`!smartApproval.enabled`).
+  // Bu, Self Service icin dogru varsayilan — orada SMART opsiyonel bir eklenti. Ama
+  // ScaleX'te `policy.smart === 'require'` demek "bu islem onaysiz yapilmamali"
+  // demek; ayar satiri yoksa sessizce onaysiz gecmek, kapiyi HIC KOYMAMAKLA ayni
+  // sey olurdu. Ustelik ekran kullaniciya "SMART kaydi acilacak" YAZIYOR — sessiz
+  // gecis, kullaniciya YALAN soylenmesi anlamina gelirdi.
+  if (policy.smart === 'require' && !svcConfig.smartApproval?.enabled) {
+    return {
+      outcome: 'error', status: 503,
+      body: {
+        ok: false, code: 'smart_not_configured',
+        message: 'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. '
+          + 'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için '
+          + 'SMART onayını (flowKey ve metadata alanları) tanımlayın. '
+          + 'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
+      },
+    };
+  }
+  const overrides = {
+    // `restore` icin OCO UYARIR ama ENGELLEMEZ → kapiyi hic acmiyoruz; gerekce
+    // zaten cagiranda zorunlu kilindi ve kayda + SMART'a gidiyor.
+    // Admin OCO'yu kapatmis olsa bile prod'da acik tutuyoruz — bu sayfa bir
+    // kesinti araci, kapinin varsayilani "acik" olmali.
+    ocoCheck: { enabled: policy.oco === 'require' },
+    smartApproval: svcConfig.smartApproval || {},
+  };
+  const radius = launch.computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
+  const decision = await launch.gates.runChangeGates({
+    // GERCEK sunucu/template kimligi — 0 DEGIL. SMART onayi geldiginde bilet
+    // `runner.cjs` tarafindan oynatiliyor ve orada `getServerById(ticket.awxServerId)`
+    // cagriliyor; 0 yazilsaydi onaylanmis bir prod islemi "AWX sunucusu bulunamadi"
+    // ile SESSIZCE olur, kullanici onayladigi isin hic calismadigini yalnizca hata
+    // logundan ogrenebilirdi. Template kimligi de gercek olmali, yoksa oynatma
+    // YANLIS sablonu tetiklerdi.
+    server: { id: runServerId }, templateId: runTemplateId, username: user.username, req,
+    overrides, extraVars, gateVars, detail: {}, resolvedLaunchOptions: {}, specFields: [],
+    templateName: 'ScaleX',
+    ocoNumber,
+    // OCO PENCERESI HENUZ ACILMADIYSA: ortak kapi normalde kullaniciya
+    // "zamanla mi, sonra mi?" diye sorar (400 `ocoDecisionRequired`). ScaleX icin
+    // ZAMANLAMA YOK — asagidaki `createOcoAwxSchedule` bilerek hata firlatiyor
+    // (bir kesinti araci, kendiliginden ateslenen ertelenmis is birakmamali).
+    // Dolayisiyla sorulan iki secenekten biri HER ZAMAN patlardi ve ekranda o
+    // secimi yapacak alan da yok: kullanici "Calistir"a basar, ayni mesaji alir,
+    // tekrar basar — kapali dongu. Var olmayan secimi sormak yerine tek gecerli
+    // cevabi veriyoruz: `later` → is BASLATILMAZ, kullanici pencere acildiginda
+    // geri gelir. Ekran bunu `ocoDeferred` ile net bir mesaj olarak gosterir.
+    ocoAction: 'later',
+    createOcoAwxSchedule: async () => {
+      throw Object.assign(new Error('ScaleX işlemleri zamanlanamaz — pencere açıkken tekrar deneyin.'), { status: 400 });
+    },
+    friendlyAwxError: (e) => ({ status: e.status || 502, message: e.message }),
+    buildSmartMetadata: () => buildScaleXSmartMetadata({ user, env, tenant, clusters, namespace, apps, action, radius, reason, ocoNumber }),
+  });
+
+  // IZ: kapinin her karari — is baslamamis olsa bile — denetime yazilir. Kapida
+  // duran calistirmalar uzun sure ScaleX adina HICBIR audit satiri birakmiyordu;
+  // yalnizca `selfservice_*` kayitlari kaliyordu ve hangi ScaleX istegine ait
+  // olduklari kayitlardan okunamiyordu.
+  if (decision?.outcome !== 'proceed') {
+    auditPortal(req, 'scalex_gate_decision', {
+      detail: JSON.stringify({
+        env, tenant, clusters, namespace, apps, action, executionMode,
+        outcome: decision?.outcome ?? 'bilinmiyor', policy,
+        ocoRequired: decision?.body?.ocoRequired ?? false,
+        ocoDeferred: decision?.body?.ocoDeferred ?? false,
+        ocoExpired: decision?.body?.ocoExpired ?? false,
+        pendingApproval: decision?.body?.pendingApproval ?? false,
+        ticketId: decision?.body?.ticketId ?? null,
+      }),
+    });
+  }
+
+  if (decision?.outcome === 'error') return { outcome: 'error', status: decision.status, body: decision.body };
+  if (decision?.outcome === 'respond') {
+    // SMART bileti ACILDI: is AWX'te henuz YOK, ama portal kaydi SIMDI yazilmali.
+    // Yazilmazsa onay geldiginde is calisir ve portal bunu hic ogrenemez —
+    // ayna guncellenmez, geri alma yolu kapanir (bkz. insertOperationRows).
+    if (decision.body?.pendingApproval && decision.body?.ticketId) {
+      await insertOperationRows({
+        requestKey: `smart:${decision.body.ticketId}`,
+        username: user.username, env, tenant, clusters, namespace, action, executionMode,
+        targetReplicas, apps, serverId: runServerId, jobId: null, status: 'PENDING_APPROVAL',
+        ocoNumber, reason, smartTicketId: Number(decision.body.ticketId),
+      });
+    }
+    return { outcome: 'respond', body: decision.body };
+  }
+  if (decision?.outcome !== 'proceed') {
+    console.error('[ScaleX] taninmayan kapi karari — is BASLATILMADI:', JSON.stringify(decision));
+    return {
+      outcome: 'error', status: 500,
+      body: { ok: false, message: 'Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.' },
+    };
+  }
+  return { outcome: 'proceed' };
 }
 
 function currentUser(req) {
@@ -112,7 +275,7 @@ async function resolveScope(req, { requireApps = true } = {}) {
 }
 
 async function launchOnAwx({ keyName, extraVars, req, label }) {
-  const { templateId, serverId } = resolveByKey(keyName);
+  const { templateId, serverId } = await resolveByKey(keyName);
   // "Prompt on launch > Variables" kapaliysa AWX gonderdigimiz her seyi SESSIZCE yutar,
   // HTTP 201 doner ve playbook survey varsayilanlariyla calisir. Bu tuzak bu kurumda
   // uretimde yasandi; is BASLATILMADAN once kesiliyor.
@@ -183,6 +346,12 @@ function initScaleX(app) {
       ...(apps.length ? { target_app_names: apps.join(',') } : {}),
     };
     const job = await launchOnAwx({ keyName: DISCOVERY_KEY, extraVars, req, label: `ScaleX keşif (${mode}) — ${namespace}` });
+    // IZ: kesif salt-okunur ama YINE DE kullanici girdisini (`namespace`,
+    // `target_app_names`) AWX uzerinden `oc` komut satirina tasiyor. Denetim kaydi
+    // olmadan "bu namespace'i kim tarattı" sorusu yanitlanamiyordu.
+    auditPortal(req, 'scalex_discovery', {
+      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, mode, jobId: job.jobId }),
+    });
     res.json({ ok: true, mode, ...job });
   }));
 
@@ -242,7 +411,7 @@ function initScaleX(app) {
       verificationTimeout: req.body?.verificationTimeout ?? '60',
     });
     const radius = launch.computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
-    const policy = launch.gatePolicyFor({ action, executionMode });
+    const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
     res.json({
       ok: true, blastRadius: radius, gatePolicy: policy,
       hpaPinAllowed: launch.isHpaPinAllowed({ action, targetReplicas, restoreTargets: req.body?.restoreTargets }),
@@ -299,7 +468,7 @@ function initScaleX(app) {
       });
     }
 
-    const policy = launch.gatePolicyFor({ action, executionMode });
+    const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
     // Geri alma OCO penceresi disinda da calisabilir ama GEREKCESIZ calisamaz —
     // iz kalmali ve gerekce hem portal kaydina hem SMART metadata'sina gitmeli.
     if (policy.oco === 'warn' && !reason) {
@@ -324,95 +493,27 @@ function initScaleX(app) {
     });
 
     // ── KAPILAR ─────────────────────────────────────────────────────────────
-    if (policy.smart === 'require' || policy.oco === 'require') {
-      const gateVars = launch.buildGateVars({ env, tenant, action, executionMode, clusters, namespace });
-      // SMART/OCO AYARLARI URETIMDEKI YAPIDAN GELIR. Self Service'teki nginx isleri
-      // gibi, ayarlar `ansible_ss_customizations` tablosunda ScaleX'in KENDI
-      // (awxServerId, templateId) satirinda durur ve admin bunlari `FieldOverridesModal`
-      // ekranindan — nginx isi icin kullandigi ekranin AYNISINDAN — yonetir.
-      // Env degiskeni ya da client'tan gelen deger KULLANILMAZ: birincisi ikinci bir
-      // ayar yuzeyi olurdu, ikincisi kullanicinin kendi kapisini yapilandirmasi demekti.
-      const { templateId: runTemplateId, serverId: runServerId } = resolveByKey(RUN_KEY);
-      const svcConfig = await require('../ansible/ss-customizations.cjs').readCustom(runServerId, runTemplateId);
-      // FAIL-CLOSED: SMART "gerekli" iken AYAR YOKSA is BASLATILMAZ.
-      //
-      // `smart-gate.isSmartRequired` bos ayarda `false` doner (`!smartApproval.enabled`).
-      // Bu, Self Service icin dogru varsayilan — orada SMART opsiyonel bir eklenti. Ama
-      // ScaleX'te `policy.smart === 'require'` demek "bu islem onaysiz yapilmamali"
-      // demek; ayar satiri yoksa sessizce onaysiz gecmek, kapiyi HIC KOYMAMAKLA ayni
-      // sey olurdu. Ustelik ekran kullaniciya "SMART kaydi acilacak" YAZIYOR — sessiz
-      // gecis, kullaniciya YALAN soylenmesi anlamina gelirdi.
-      if (policy.smart === 'require' && !svcConfig.smartApproval?.enabled) {
-        return res.status(503).json({
-          ok: false, code: 'smart_not_configured',
-          message: 'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. '
-            + 'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için '
-            + 'SMART onayını (flowKey ve metadata alanları) tanımlayın. '
-            + 'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
-        });
-      }
-      const overrides = {
-        // `restore` icin OCO UYARIR ama ENGELLEMEZ → kapiyi hic acmiyoruz; gerekce
-        // zaten yukarida zorunlu kilindi ve asagida kayda + SMART'a gidiyor.
-        // Admin OCO'yu kapatmis olsa bile prod'da acik tutuyoruz — bu sayfa bir
-        // kesinti araci, kapinin varsayilani "acik" olmali.
-        ocoCheck: { enabled: policy.oco === 'require' },
-        smartApproval: svcConfig.smartApproval || {},
-      };
-      const decision = await launch.gates.runChangeGates({
-        // GERCEK sunucu/template kimligi — 0 DEGIL. SMART onayi geldiginde bilet
-        // `runner.cjs` tarafindan oynatiliyor ve orada `getServerById(ticket.awxServerId)`
-        // cagriliyor; 0 yazilsaydi onaylanmis bir prod islemi "AWX sunucusu bulunamadi"
-        // ile SESSIZCE olur, kullanici onayladigi isin hic calismadigini yalnizca hata
-        // logundan ogrenebilirdi. Template kimligi de gercek olmali, yoksa oynatma
-        // YANLIS sablonu tetiklerdi.
-        server: { id: runServerId }, templateId: runTemplateId, username: user.username, req,
-        overrides, extraVars, gateVars, detail: {}, resolvedLaunchOptions: {}, specFields: [],
-        templateName: 'ScaleX',
-        ocoNumber: req.body?.ocoNumber,
-        // OCO PENCERESI HENUZ ACILMADIYSA: ortak kapi normalde kullaniciya
-        // "zamanla mi, sonra mi?" diye sorar (400 `ocoDecisionRequired`). ScaleX icin
-        // ZAMANLAMA YOK — asagidaki `createOcoAwxSchedule` bilerek hata firlatiyor
-        // (bir kesinti araci, kendiliginden ateslenen ertelenmis is birakmamali).
-        // Dolayisiyla sorulan iki secenekten biri HER ZAMAN patlardi ve ekranda o
-        // secimi yapacak alan da yok: kullanici "Calistir"a basar, ayni mesaji alir,
-        // tekrar basar — kapali dongu. Var olmayan secimi sormak yerine tek gecerli
-        // cevabi veriyoruz: `later` → is BASLATILMAZ, kullanici pencere acildiginda
-        // geri gelir. Ekran bunu `ocoDeferred` ile net bir mesaj olarak gosterir.
-        ocoAction: 'later',
-        createOcoAwxSchedule: async () => {
-          throw Object.assign(new Error('ScaleX işlemleri zamanlanamaz — pencere açıkken tekrar deneyin.'), { status: 400 });
-        },
-        friendlyAwxError: (e) => ({ status: e.status || 502, message: e.message }),
-        buildSmartMetadata: () => buildScaleXSmartMetadata({ user, env, tenant, clusters, namespace, apps, action, radius, reason, ocoNumber: req.body?.ocoNumber }),
-      });
-      // FAIL-CLOSED — `proceed` disindaki her sey burada tuketilir (bkz. change-gates.cjs).
-      if (decision?.outcome === 'error') return res.status(decision.status).json(decision.body);
-      if (decision?.outcome === 'respond') return res.json(decision.body);
-      if (decision?.outcome !== 'proceed') {
-        console.error('[ScaleX] taninmayan kapi karari — is BASLATILMADI:', JSON.stringify(decision));
-        return res.status(500).json({ ok: false, message: 'Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.' });
-      }
-    }
-
+    // Govde ORTAK: `/run` ve `/restore-all` AYNI kapidan gecer. Iki kopya tutmak,
+    // birinde yapilan duzeltmenin digerinde sessizce eskimesi demekti — `/restore-all`
+    // tam olarak boyle kapisiz kalmisti (yorumu "Geri Al'in kapi politikasini
+    // devralir" DIYORDU, kod devralmiyordu).
+    const gate = await runScaleXGates({
+      req, user, policy, env, tenant, clusters, namespace, apps, action, executionMode,
+      targetReplicas, extraVars, reason, ocoNumber: req.body?.ocoNumber,
+    });
+    if (gate.outcome === 'error') return res.status(gate.status).json(gate.body);
+    if (gate.outcome === 'respond') return res.json(gate.body);
     const job = await launchOnAwx({
       keyName: RUN_KEY, extraVars, req,
       label: `ScaleX ${action} (${executionMode}) — ${namespace} @ ${clusters.join(',')}`,
     });
 
-    // CLUSTER BASINA BIR SATIR.
-    const requestKey = `${job.serverId}:${job.jobId}`;
-    for (const cluster of clusters) {
-      await db.query(
-        `INSERT INTO scalex_operations
-           (request_key, username, env, tenant, cluster_name, namespace, action, execution_mode,
-            target_replicas, app_names_json, awx_server_id, awx_job_id, status, oco_number, reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'RUNNING',$13,$14)`,
-        [requestKey, user.username, env, tenant, cluster, namespace, action, executionMode,
-          action === 'scale' ? Number(targetReplicas) : null, JSON.stringify(apps),
-          job.serverId, job.jobId, String(req.body?.ocoNumber || '') || null, reason || null]
-      );
-    }
+    await insertOperationRows({
+      requestKey: `${job.serverId}:${job.jobId}`,
+      username: user.username, env, tenant, clusters, namespace, action, executionMode,
+      targetReplicas, apps, serverId: job.serverId, jobId: job.jobId, status: 'RUNNING',
+      ocoNumber: req.body?.ocoNumber, reason,
+    });
 
     auditPortal(req, 'scalex_operation', {
       // HPA'ya dokunmak politikanin tersi — denetim kaydinda ACIKCA gorunmeli.
@@ -561,7 +662,16 @@ function initScaleX(app) {
       groups.get(k).apps.push(r.appName);
     }
 
+    // KAPI: toplu geri alma da TEKIL `Geri Al` ile AYNI politikadan gecer.
+    // Bu blok uzun sure YOKTU: yorum "Geri Al'in kapi politikasini devralir" diyordu
+    // ama kod dogrudan `launchOnAwx` cagiriyordu. Yani prod'da tekil geri alma SMART
+    // kaydi acarken TOPLU geri alma hicbir onay olmadan calisiyordu — kapiyi bir
+    // dugmeyle atlamak mumkundu.
+    const policy = launch.gatePolicyFor({ action: 'restore', executionMode: 'apply', environment: env });
+
     const launched = [];
+    const pendingApproval = [];
+    const blocked = [];
     for (const g of groups.values()) {
       const extraVars = await launch.buildRunExtraVars({
         env, tenant, clusters: [g.cluster], namespace: g.namespace, apps: g.apps,
@@ -569,25 +679,52 @@ function initScaleX(app) {
         verificationTimeout: '60', allowPartial: true,
         mailTo: String(user.mail || '').trim(), mailCc: '',
       });
+
+      const gate = await runScaleXGates({
+        req, user, policy, env, tenant, clusters: [g.cluster], namespace: g.namespace,
+        apps: g.apps, action: 'restore', executionMode: 'apply', targetReplicas: undefined,
+        extraVars, reason, ocoNumber: undefined,
+      });
+      if (gate.outcome === 'error') {
+        // HICBIR grup henuz baslamadiysa hata YAPILANDIRMA duzeyindedir (or.
+        // `smart_not_configured`) ve her grup icin ayni sekilde duserdi — kullaniciyi
+        // N kez ayni mesajla ugrastirmak yerine dogrudan don.
+        if (!launched.length && !pendingApproval.length) return res.status(gate.status).json(gate.body);
+        blocked.push({ cluster: g.cluster, namespace: g.namespace, message: gate.body?.message || 'Kapı reddetti.' });
+        continue;
+      }
+      if (gate.outcome === 'respond') {
+        if (gate.body?.pendingApproval) {
+          pendingApproval.push({
+            cluster: g.cluster, namespace: g.namespace, apps: g.apps,
+            ticketId: gate.body.ticketId, externalTicketId: gate.body.externalTicketId,
+          });
+        } else {
+          blocked.push({ cluster: g.cluster, namespace: g.namespace, message: gate.body?.message || 'İş başlatılmadı.' });
+        }
+        continue;
+      }
+
       const job = await launchOnAwx({
         keyName: RUN_KEY, extraVars, req,
         label: `ScaleX toplu geri alma — ${g.namespace} @ ${g.cluster}`,
       });
-      await db.query(
-        `INSERT INTO scalex_operations
-           (request_key, username, env, tenant, cluster_name, namespace, action, execution_mode,
-            target_replicas, app_names_json, awx_server_id, awx_job_id, status, reason)
-         VALUES ($1,$2,$3,$4,$5,$6,'restore','apply',NULL,$7,$8,$9,'RUNNING',$10)`,
-        [`${job.serverId}:${job.jobId}`, user.username, env, tenant, g.cluster, g.namespace,
-          JSON.stringify(g.apps), job.serverId, job.jobId, reason]
-      );
+      await insertOperationRows({
+        requestKey: `${job.serverId}:${job.jobId}`,
+        username: user.username, env, tenant, clusters: [g.cluster], namespace: g.namespace,
+        action: 'restore', executionMode: 'apply', targetReplicas: undefined, apps: g.apps,
+        serverId: job.serverId, jobId: job.jobId, status: 'RUNNING', ocoNumber: null, reason,
+      });
       launched.push({ ...job, cluster: g.cluster, namespace: g.namespace, apps: g.apps });
     }
 
     auditPortal(req, 'scalex_restore_all', {
-      detail: JSON.stringify({ env, tenant, groups: launched.length, apps: targets.length, reason }),
+      detail: JSON.stringify({
+        env, tenant, groups: groups.size, apps: targets.length, reason,
+        launched: launched.length, pendingApproval: pendingApproval.length, blocked: blocked.length,
+      }),
     });
-    res.json({ ok: true, launched });
+    res.json({ ok: true, launched, pendingApproval, blocked });
   }));
 
   router.get('/history', asyncRoute(async (req, res) => {

@@ -9,7 +9,12 @@ import Button from "@/components/common/Button";
 import EmptyState from "@/components/common/EmptyState";
 import { Select } from "@/components/ui/Form";
 
-const CATEGORIES = ["genel", "jvm", "network", "system", "openshift", "logx"];
+// SEED'DEKI HER KATEGORI BURADA OLMAK ZORUNDA. Liste `mssql-setup.cjs`
+// PLAYBOOK_REGISTRY_SEED ile ayrisirsa, kategorisi listede olmayan bir satiri admin
+// duzenleyip kaydettiginde Select mevcut degeri gosteremez ve kategori SESSIZCE
+// "genel"e duser — kayit bozulur, kimse fark etmez. `opsx`, `telnet`, `filex` ve
+// `scalex` tam olarak bu durumdaydi.
+const CATEGORIES = ["genel", "jvm", "network", "system", "openshift", "logx", "opsx", "telnet", "filex", "scalex"];
 const SOURCE_TYPES = ["awx_template", "repo_file", "external_script"];
 
 type FormState = {

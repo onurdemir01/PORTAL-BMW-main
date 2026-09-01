@@ -196,11 +196,17 @@ async function ocpResolveHosts(env, tenant, clusters) {
 //
 //   * `dry_run`  → HICBIR kapi. Hicbir sey degistirmiyor; kapi koymak, kullaniciyi
 //                  guvenli yolu secmekten CAYDIRIRDI.
+//   * PROD DISI  → HICBIR kapi. Kullanici karari (2026-09-01). OCO bir "planlanan
+//                  kesinti penceresi" kaydidir ve yalnizca production icin acilir;
+//                  test/dev'de OCO numarasi ISTEMEK, kullaniciyi var olmayan bir kaydi
+//                  uydurmaya zorlamak demekti. SMART de ayni gerekceyle prod'a baglandi.
+//                  Degisiklik IZI gevsemez: her calistirma ortamdan bagimsiz olarak
+//                  audit'e ve `scalex_operations` tablosuna yazilir.
 //   * `restore`  → SMART kaydi acilir, OCO UYARIR ama ENGELLEMEZ. Geri alma bir ONARIM
 //                  islemidir; bir olay sirasinda OCO penceresi kapali diye sistemi
 //                  ayaga kaldiramamak, kapinin cozdugu sorundan buyuk olur. Pencere
 //                  disindaysa GEREKCE zorunlu ve gerekce hem kayda hem SMART'a gider.
-//   * digerleri  → tam kapi (prod'da OCO + her apply'da SMART).
+//   * digerleri  → prod'da tam kapi (OCO + SMART).
 // HPA sabitleme yalnizca su kosullarda ANLAMLI ve GUVENLI:
 //   * `stop` DEGIL — 0'da HPA zaten devre disi, ustelik minReplicas 0 olamaz
 //   * hedef >= 1
@@ -230,8 +236,24 @@ function isHpaPinAllowed({ action, targetReplicas, restoreTargets }) {
   return restoreTargets.every((n) => Number.isInteger(Number(n)) && Number(n) >= 1);
 }
 
-function gatePolicyFor({ action, executionMode }) {
+// KAPI POLITIKASI — kurallarin gerekcesi icin yukaridaki blok.
+//
+// ORTAM BILINMIYORSA PROD SAYILIR. `environment` bos/tanimsiz geldiginde `isProdEnv`
+// `false` donerdi ve kapilar SESSIZCE kapanirdi — yani yeni bir cagiran alani gecirmeyi
+// unutursa prod korumasi kaybolurdu. Bilgi yoklugu "izin ver"e degil "kapiyi ac"a
+// cozunur.
+//
+// SUNUCU DAVRANISI DEGISMIYOR, EKRAN GERCEKLE HIZALANIYOR: `change-gates.isOcoGateApplicable`
+// zaten prod degilse kapiyi hic acmiyordu (prod-detect.cjs). Ama bu fonksiyon ortami
+// gormedigi icin `/preview` test ortaminda da `oco: 'require'` donuyor, PreviewStep
+// OCO numarasi isteyip "Calistir" butonunu kilitliyordu. Sunucu o numarayi HIC
+// KULLANMIYORDU.
+function gatePolicyFor({ action, executionMode, environment }) {
   if (executionMode !== 'apply') return { oco: 'skip', smart: 'skip', reason: 'dry_run hicbir sey degistirmez' };
+  const envKnown = typeof environment === 'string' && environment.trim() !== '';
+  if (envKnown && !isProdEnv(environment)) {
+    return { oco: 'skip', smart: 'skip', reason: 'prod disi ortam — onay kapilari yalnizca production icin' };
+  }
   if (action === 'restore') return { oco: 'warn', smart: 'require', reason: 'geri alma bir onarim islemidir' };
   return { oco: 'require', smart: 'require', reason: null };
 }
