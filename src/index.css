@@ -435,6 +435,11 @@ a:hover { color: var(--accent-dark); text-decoration: underline; }
 .pf-label--grey   { background: var(--status-neutral-bg); border-color: var(--border-strong);  color: var(--text-secondary); }
 
 :root[data-theme="dark"] .pf-label--red   { color: #f0788c; }
+/* --orange KOYU TEMA KARSILIGI EKSIKTI: acik temadaki #8f4700 (koyu kahve) koyu
+   zeminde neredeyse siyah kaliyordu. Bu rozet "GitOps ile yonetiliyor" uyarisinda
+   kullaniliyor — yani "bu degisiklik ArgoCD tarafindan geri alinabilir" bilgisi koyu
+   temada OKUNAMIYORDU. PatternFly orange-200. */
+:root[data-theme="dark"] .pf-label--orange { color: #ef9234; }
 :root[data-theme="dark"] .pf-label--gold  { color: #f4c145; }
 :root[data-theme="dark"] .pf-label--green { color: #5ba352; }
 :root[data-theme="dark"] .pf-label--blue  { color: var(--accent-light); }

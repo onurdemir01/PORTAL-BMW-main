@@ -20,7 +20,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const RUNNER = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
-// 2026-08-29: kapi mantigi change-gates.cjs'e tasindi (Chaos Scale de ayni kapidan
+// 2026-08-29: kapi mantigi change-gates.cjs'e tasindi (ScaleX de ayni kapidan
 // gececek). Bekci KODU TAKIP EDER: `isSmartRequired` cagrilari artik iki dosyaya
 // dagilmis durumda, ikisi de taranmali. Yalnizca runner.cjs'e bakan bir bekci,
 // change-gates.cjs'te acilacak bir bypass'i GORMEZDI.
