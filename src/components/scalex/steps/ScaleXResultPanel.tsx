@@ -9,7 +9,8 @@
 //   3. `stage: validation` ayrı bir ekran: iş cluster'a hiç dokunmadı, sebebi de belli.
 import React from "react";
 import {
-  CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon, ShieldExclamationIcon, InformationCircleIcon,
+  CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon, ShieldExclamationIcon,
+  InformationCircleIcon, ArrowUturnLeftIcon,
 } from "@heroicons/react/24/outline";
 import type { ScaleXRunResult } from "@/api/scalexApi";
 
@@ -22,7 +23,12 @@ const ROW: Record<string, string> = {
   OK: "pf-label pf-label--green", WARN: "pf-label pf-label--gold", FAIL: "pf-label pf-label--red",
 };
 
-const ScaleXResultPanel: React.FC<{ result: ScaleXRunResult; catalogWarning?: string | null }> = ({ result, catalogWarning }) => {
+const ScaleXResultPanel: React.FC<{
+  result: ScaleXRunResult;
+  catalogWarning?: string | null;
+  /** Verilirse `Durdur` sonucunda "Hemen geri al" kisayolu gosterilir. */
+  onUndo?: (targets: { cluster: string; app: string; kind: string }[]) => void;
+}> = ({ result, catalogWarning, onUndo }) => {
   const meta = OVERALL[result.overallStatus] || { title: result.overallStatus || "Bilinmiyor", cls: "pf-label pf-label--grey", Icon: InformationCircleIcon };
   const { Icon } = meta;
 
@@ -120,6 +126,35 @@ const ScaleXResultPanel: React.FC<{ result: ScaleXRunResult; catalogWarning?: st
           Liste kırpıldı: {result.targets.length}/{result.targetsTotal} hedef gösteriliyor. Tamamı AWX job log'unda.
         </p>
       )}
+
+      {/* HIZLI GERI ALMA — yalnizca GERCEKTEN geri alinabilir bir sonucta.
+          Kosullar birlikte gecerli olmali:
+            * `stop`  — `scale` kayit BIRAKMAZ, geri alinacak bir durum yok
+            * `apply` — `dry_run` cluster'a hic dokunmadi
+            * en az bir OK hedef — portal aynasina yalnizca OK satirlar yaziliyor
+              (bkz. finalizeOperation), yani yalnizca onlar geri alinabilir.
+          Kirpilmis listede buton YINE gosterilir ama yalnizca GORUNEN OK hedefleri
+          kapsar; asagidaki not bunu acikca soyler — sessizce eksik geri almak,
+          kullaniciya "hepsi geri alindi" yalani soylemek olurdu. */}
+      {(() => {
+        if (!onUndo || result.action !== "stop" || result.mode !== "apply") return null;
+        const okTargets = result.targets.filter((t) => t.status === "OK");
+        if (!okTargets.length) return null;
+        return (
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-inset)] p-3">
+            <p className="text-xs text-[var(--text-muted)]">
+              Durdurulan <strong>{okTargets.length}</strong> uygulamayı saklanan replica sayısına
+              döndürebilirsiniz. Önizleme ekranı açılır; onay adımları geçerlidir.
+              {result.targetsTruncated && " Liste kırpıldığı için yalnızca yukarıda görünen hedefler kapsanır."}
+            </p>
+            <button type="button" className="btn-secondary whitespace-nowrap"
+              onClick={() => onUndo(okTargets.map((t) => ({ cluster: t.cluster, app: t.app, kind: t.kind })))}>
+              <ArrowUturnLeftIcon aria-hidden="true" className="w-4 h-4 inline mr-1.5" />
+              Hemen geri al
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 };

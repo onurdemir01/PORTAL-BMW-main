@@ -12,6 +12,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon, ClockIcon, ExclamationTriangleIcon, StopCircleIcon } from "@heroicons/react/24/outline";
 import { scalexApi, type ScaleXAction, type ScaleXMode, type ScaleXRunResult, type ScaleXWorkload, type ScaleXStoppedItem } from "@/api/scalexApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
+import { humanizeHealth } from "@/utils/scalexHealth";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import ScopeStep from "./steps/ScopeStep";
 import NamespaceStep from "./steps/NamespaceStep";
@@ -315,6 +316,35 @@ const ScaleXPage: React.FC = () => {
     setStep("preview");
   }
 
+  // SONUC EKRANINDAN HIZLI GERI ALMA. `restoreFromPanel`in cok-hedefli kardesi:
+  // ayni islemin OK donen hedeflerini tek adimda geri alma onizlemesine tasir.
+  //
+  // `previousReplicas: null` BILEREK: portal onceki replica sayisini BILMIYOR (deger
+  // cluster'daki durum kaydinda) ve sonuc satiri onu tasimiyor. Uydurulmus bir sayi
+  // geri almayi BOZARDI; `null` "kayitli deger kullanilacak" demek ve onizleme bunu
+  // zaten oyle gosteriyor. Ayni sebeple HPA sabitleme de KAPALI kalir — hedef
+  // bilinmiyorken sabitleme sunulamaz (bkz. launch.isHpaPinAllowed).
+  function restoreFromResult(targets: { cluster: string; app: string; kind: string }[]) {
+    if (!targets.length) return;
+    resetRunState();
+    setClusters([...new Set(targets.map((t) => t.cluster))]);
+    setApps([...new Set(targets.map((t) => t.app))]);
+    setWorkloads(targets.map((t) => ({
+      cluster: t.cluster, name: t.app, kind: t.kind || "-",
+      resource: "", specReplicas: 0, statusReplicas: 0, readyReplicas: 0,
+      hasHpa: false, image: null, statePhase: "scaled_down",
+      previousReplicas: null, restorable: true, gitops: null,
+    })));
+    setAction("restore");
+    setExecutionMode("apply");
+    setHpaPin(false);
+    setOperationTouched(true);
+    setStep("preview");
+  }
+
+  // Turetilmis deger — hook DEGIL (U4: hook'lar erken `return`lerin ustunde kalmali).
+  const healthView = health && health.length ? humanizeHealth(health, namespace) : null;
+
   const back = backTargetFor(step);
   const scope = { env, tenant, namespace, clusters, apps };
 
@@ -391,7 +421,7 @@ const ScaleXPage: React.FC = () => {
             )}
 
             {runResult ? (
-              <ScaleXResultPanel result={runResult} catalogWarning={catalogWarning} />
+              <ScaleXResultPanel result={runResult} catalogWarning={catalogWarning} onUndo={restoreFromResult} />
             ) : !notice ? (
               <div className="flex items-center gap-2.5">
                 {finished ? (
@@ -430,13 +460,24 @@ const ScaleXPage: React.FC = () => {
               </div>
             )}
 
-            {health && health.length > 0 && (
+            {/* İŞLEM SONRASI SAĞLIK — ham playbook çıktısı DEĞİL, çevrilmiş cümleler.
+                Eskiden ekranda "merchant-info-27-qkjbw 0/1 ContainerCreating 0 22s" ve
+                "Missing list events permission" yazıyordu; ikincisi üstelik kehribar
+                renkte, yani bir YETKİ YOKLUĞU HATA gibi duruyordu. */}
+            {healthView && (healthView.hasContent || healthView.asks.length > 0) && (
               <div className="rounded-xl border border-[var(--border)] p-3 space-y-1.5">
                 <p className="text-xs font-semibold text-[var(--text-primary)]">İşlem sonrası sağlık</p>
-                {health.map((h, i) => (
-                  <p key={i} className={`text-xs ${h.status === "OK" ? "text-[var(--text-muted)]" : "text-amber-800"}`}>
-                    <span className="font-mono">{h.app}</span> · {h.step} · {h.detail}
-                  </p>
+                {healthView.hasContent && healthView.lines
+                  .filter((l) => l.tone !== "info")
+                  .map((l, i) => (
+                    <p key={i} className={`text-xs ${l.tone === "ok" ? "text-[var(--text-muted)]" : "text-amber-800"}`}>
+                      <span className="font-mono">{l.app}</span> · {l.text}
+                    </p>
+                  ))}
+                {/* Eksik yetkiler AYRI ve SAKIN: bir sorun değil, bir eksik — ve
+                    kullanıcının ne isteyeceğini bilmesi gerekiyor. */}
+                {healthView.asks.map((a, i) => (
+                  <p key={`ask-${i}`} className="text-xs text-[var(--text-muted)]">{a}</p>
                 ))}
               </div>
             )}

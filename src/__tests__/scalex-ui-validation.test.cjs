@@ -429,3 +429,32 @@ test('V14 ekranda "chaos" gecmiyor', () => {
     assert.ok(!/chaos/i.test(ALL_TSX[i]), `${NAMES[i]}: eski ad kalmis`);
   }
 });
+
+
+// ── W. SONUC EKRANINDAN HIZLI GERI ALMA (2026-09-02) ───────────────────────
+
+test('W1 hizli geri alma YALNIZCA gercekten geri alinabilir sonucta cikar', () => {
+  const code = codeOnly(RESULT);
+  // `scale` kayit BIRAKMAZ, `dry_run` cluster'a hic dokunmadi, OK olmayan hedef
+  // aynaya yazilmadi — ucunde de geri alinacak bir sey yok. Butonu yine de
+  // gostermek, kullaniciyi kesin dusecek bir ise gondermek olurdu.
+  assert.match(code, /result\.action !== "stop"/, 'stop disinda buton gizlenmiyor');
+  assert.match(code, /result\.mode !== "apply"/, 'dry_run sonrasi buton gizlenmiyor');
+  assert.match(code, /status === "OK"/, 'yalnizca OK hedefler kapsanmali');
+});
+
+test('W2 kirpilmis listede kapsam ACIKCA soyleniyor', () => {
+  // Kirpilmis bir listede buton yalnizca GORUNEN hedefleri kapsar. Bunu
+  // soylememek, "hepsi geri alindi" yalani olurdu.
+  assert.match(codeOnly(RESULT), /targetsTruncated[\s\S]{0,120}yalnızca yukarıda görünen/,
+    'kirpilmis listede kapsam uyarisi yok');
+});
+
+test('W3 hizli geri alma UYDURMA replica sayisi tasimiyor', () => {
+  // Portal onceki replica sayisini BILMIYOR (deger cluster'daki durum kaydinda) ve
+  // sonuc satiri onu tasimiyor. Uydurulmus bir sayi geri almayi BOZARDI.
+  const body = PAGE.slice(PAGE.indexOf('function restoreFromResult'), PAGE.indexOf('const back ='));
+  assert.match(body, /previousReplicas:\s*null/, 'uydurulmus previousReplicas yazilmis');
+  assert.match(body, /setHpaPin\(false\)/, 'hedef bilinmiyorken HPA sabitleme kapali olmali');
+  assert.match(body, /resetRunState\(\)/, 'onceki islemin izleri temizlenmiyor');
+});
