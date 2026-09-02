@@ -1262,3 +1262,178 @@ test('O5 kapsamsiz listeleme DENETIME yaziliyor', () => {
   assert.match(codeOnly(INDEX), /scalex_stopped_global/,
     'kapsamsiz listeleme iz birakmiyor');
 });
+
+
+// ═══ P. IZ DUSUMU (2026-09-02) ════════════════════════════════════════════
+//
+// ScaleX yalnizca BASLATMA ANINI denetliyordu. Isin gercekten calisip calismadigi,
+// uzlastiricinin verdigi kararlar, aynanin degismesi, sapma tespiti, kesfin sonucu
+// ve baskasinin isine erisim denemesi denetim kaydinda HIC YOKTU.
+
+test('P1 isin GERCEK SONUCU denetime yaziliyor', () => {
+  const code = codeOnly(INDEX);
+  assert.match(code, /scalex_finalize/, 'is sonucu iz birakmiyor');
+  // `apply` kontrolunden ONCE olmali: "on kontrol kostu ve ne dedi" de denetlenebilir
+  // olmali. Sonra yazilsaydi dry_run calistirmalari hic iz birakmazdi.
+  const fin = code.slice(code.indexOf('async function finalizeOperation'));
+  assert.ok(fin.indexOf('scalex_finalize') < fin.indexOf("parsed.mode !== 'apply'"),
+    'sonuc izi `apply` kontrolunden SONRA — dry_run calistirmalari iz birakmaz');
+});
+
+test('P2 ayna degisikligi, kesif sonucu ve yetkisiz erisim denemesi denetime yaziliyor', () => {
+  const code = codeOnly(INDEX);
+  for (const a of ['scalex_mirror_update', 'scalex_discovery_result', 'scalex_access_denied']) {
+    assert.match(code, new RegExp(a), `${a} izi yok`);
+  }
+  // 403 donen yol iz BIRAKMALI: baskasinin prod kesinti isini gormeye calismak,
+  // denetim kaydinda gorunmesi gereken tam olarak bu tur bir olay.
+  const deny = code.slice(code.indexOf('async function denyIfNotOwner'), code.indexOf('async function resolveByKey'));
+  assert.match(deny, /scalex_access_denied/, 'yetkisiz erisim denemesi iz birakmiyor');
+});
+
+test('P3 uzlastiricinin KARARLARI denetime yaziliyor', () => {
+  const rec = codeOnly(fs.readFileSync(path.join(SRC_DIR, 'reconciler.cjs'), 'utf8'));
+  for (const a of ['scalex_reconcile_stale', 'scalex_approval_adopted',
+    'scalex_approval_resolved', 'scalex_lock_released']) {
+    assert.match(rec, new RegExp(a), `${a} izi yok`);
+  }
+  // Uzlastirici HTTP baglamı olmadan calisir; `auditPortal(null, ...)` desteklenir ve
+  // kullanici adi acikca verilmeli, yoksa kayit 'system' olarak duser ve kimin isi
+  // oldugu kaybolur.
+  assert.match(rec, /username: 'system:scalex-reconciler'/, 'sistem aktoru isaretlenmemis');
+});
+
+test('P4 SAPMA yalnizca GERCEKTEN DEGISTIGINDE denetime yaziliyor', () => {
+  const st = codeOnly(STATE);
+  assert.match(st, /scalex_drift_detected/, 'sapma tespiti iz birakmiyor');
+  // Her taramada ayni durumu tekrar yazmak, gercek degisimi gurultunun icinde
+  // kaybederdi. `UPDATE ... AND drift_status <> $1` bunu SQL'de saglar.
+  assert.match(st, /drift_status <> \$1/, 'degismeyen satirlar da yaziliyor');
+});
+
+test('P5 `result_json` 1 MB\'i asinca da GECERLI JSON kalir', async () => {
+  // Onceki hali `JSON.stringify(parsed).slice(0, 1_000_000)` idi: kirpma JSON-farkinda
+  // DEGILDI, yani 1 MB'i asan bir sonucta alan `JSON.parse` edilemez hale geliyordu ve
+  // bu SESSIZDI. Bu test GERCEK yolu kosturur ve DB'ye NE YAZILDIGINI olcer.
+  const scalex = require('../index.cjs');
+
+  // 1 MB'i acik ara asan bir sonuc: ~4000 satir x ~300 karakter.
+  const parsed = {
+    overallStatus: 'OK', stage: 'execution', mode: 'apply', action: 'stop',
+    namespace: 'odeme', jobId: '1', counts: { ok: 1 },
+    targets: Array.from({ length: 200 }, (_, i) => ({
+      cluster: 'c1', app: `app-${i}`, kind: 'Deployment', status: 'OK', detail: 'x'.repeat(300),
+    })),
+    rows: Array.from({ length: 4000 }, (_, i) => `c1;j1;app-${i};Deployment;VERIFY;OK;${'y'.repeat(300)}`),
+  };
+
+  const orig = db.query;
+  const writes = [];
+  db.query = async (sql, params) => {
+    writes.push({ sql, params });
+    if (/^\s*SELECT \* FROM scalex_operations/.test(sql)) {
+      return { rows: [{ id: 1, env: 'test', tenant: 'ark', namespace: 'odeme',
+        username: 'u', cluster_name: 'c1', status: 'RUNNING', action: 'stop',
+        execution_mode: 'apply' }] };
+    }
+    return { rows: [], rowCount: 0 };
+  };
+  try {
+    await scalex.finalizeOperation({ serverId: 1, jobId: 42, status: { status: 'successful' }, parsed });
+  } finally {
+    db.query = orig;
+  }
+
+  const upd = writes.find((w) => /UPDATE scalex_operations/.test(w.sql) && /result_json/.test(w.sql));
+  assert.ok(upd, 'sonuc kaydi hic yazilmadi');
+  const stored = upd.params[3];
+  assert.ok(stored.length <= 1000000, `kayit sinirin ustunde: ${stored.length}`);
+
+  // ASIL OLCUT: gecerli JSON mu?
+  const back = JSON.parse(stored);   // eski kod BURADA patlardi
+  assert.equal(back.overallStatus, 'OK', 'ozet alanlar kaybolmus');
+  // Neyin atildigi SOYLENMELI — sessiz eksiklik, eksik veriden kotu.
+  assert.equal(back.rowsDroppedForStorage, true, 'atilan alan bildirilmemis');
+  assert.deepEqual(back.rows, [], 'ham satirlar hala icinde');
+});
+
+test('P5b sinirin ALTINDAKI sonuc oldugu gibi saklanir', async () => {
+  const scalex = require('../index.cjs');
+  const parsed = { overallStatus: 'OK', mode: 'dry_run', action: 'stop', rows: ['a'], targets: [] };
+  const orig = db.query;
+  const writes = [];
+  db.query = async (sql, params) => {
+    writes.push({ sql, params });
+    if (/^\s*SELECT \* FROM scalex_operations/.test(sql)) {
+      return { rows: [{ id: 1, env: 'test', tenant: 'ark', namespace: 'n', username: 'u',
+        cluster_name: 'c1', status: 'RUNNING', action: 'stop', execution_mode: 'dry_run' }] };
+    }
+    return { rows: [], rowCount: 0 };
+  };
+  try {
+    await scalex.finalizeOperation({ serverId: 1, jobId: 7, status: { status: 'successful' }, parsed });
+  } finally { db.query = orig; }
+  const upd = writes.find((w) => /result_json/.test(w.sql));
+  const back = JSON.parse(upd.params[3]);
+  assert.deepEqual(back.rows, ['a'], 'kucuk sonuc gereksiz yere kirpilmis');
+  assert.equal(back.rowsDroppedForStorage, undefined, 'gereksiz bayrak eklenmis');
+});
+
+test('P6 denetim sorgusu MODUL izini getirebiliyor', () => {
+  // Onceden yalnizca TAM ESITLIK vardi: bir modulun izine bakmak icin aksiyon
+  // adlarini tek tek ve ezberden yazmak gerekiyordu.
+  const audit = codeOnly(fs.readFileSync(path.join(SRC_DIR, '..', 'audit', 'index.cjs'), 'utf8'));
+  assert.match(audit, /actionPrefix/, 'modul izi filtresi yok');
+  assert.match(audit, /action LIKE \$/, 'LIKE parametreli kullanilmiyor');
+  assert.match(audit, /dateFrom/, 'tarih araligi filtresi yok');
+  // Ekranda kutu vardi ama uc tarafinda HIC OKUNMUYORDU — olu bir filtre.
+  assert.match(audit, /targetHost: req\.query\.targetHost/, 'targetHost filtresi hala olu');
+});
+
+
+// ═══ R. UYGULAMA LISTESI: ONCE DB, CANLI VERI SONRA (2026-09-02) ══════════
+
+test('R1 uygulama listesi paylasilan katalogdan geliyor (AWX job\'i ACMADAN)', () => {
+  const cat = codeOnly(CATALOG);
+  assert.match(cat, /async function listApps/, 'anlik uygulama listesi yok');
+  assert.match(cat, /ocpCatalog\.getApps/,
+    'katalog okunmuyor — liste yine canli kesfi bekler');
+  // `docs/OCP-NAMESPACE-KATALOGU-KARARI.md`: mimari ONUR'un karari. Bu degisiklik
+  // onu DEGISTIRMIYOR, ScaleX'i ona BAGLIYOR — yani ScaleX kendi AWX kesfini
+  // katalogun yerine koymuyor.
+  const idx = codeOnly(INDEX);
+  const ep = idx.slice(idx.indexOf("router.get('/apps'"), idx.indexOf("router.post('/discover'"));
+  assert.doesNotMatch(ep, /launchOnAwx/, 'liste ucu AWX isi aciyor — anlik olmaz');
+});
+
+test('R2 CANLI veri onbelleklenmiyor', () => {
+  // Bayat bir `restorable` "Geri Al"i ACAR ve is `STATE;FAIL` ile duser; bayat bir
+  // `specReplicas` geri almayi YANLIS sayiya dondurur. Liste ucu yalnizca ad/tip
+  // dondurmeli.
+  const api = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'api', 'scalexApi.ts'), 'utf8');
+  const block = api.slice(api.indexOf('async apps('), api.indexOf('async stopped('));
+  for (const alan of ['specReplicas', 'readyReplicas', 'hasHpa', 'gitops', 'restorable', 'previousReplicas']) {
+    assert.ok(!block.includes(alan), `liste ucu CANLI alan donduruyor: ${alan}`);
+  }
+});
+
+test('R3 `ocp_app` kisiti LISTE yolunda da uygulaniyor', () => {
+  // Bugune kadar uygulama bazli yetki yalnizca `resolveScope` ve `/adopt` yolunda
+  // calisiyordu: kullanici goremedigi bir uygulamayi LISTEDE goruyor, yalnizca
+  // calistiramiyordu.
+  const cat = codeOnly(CATALOG);
+  const fn = cat.slice(cat.indexOf('async function listApps'), cat.indexOf('async function assertClustersExist'));
+  assert.match(fn, /filterAllowed\('ocp_app'/, 'uygulama bazli yetki suzgeci yok');
+  // Gizlenen sayisi SOYLENMELI: soylemeden "uygulama yok" demek yanlis bilgi olurdu.
+  assert.match(fn, /hiddenCount/, 'gizlenen kayit sayisi bildirilmiyor');
+});
+
+test('R4 liste ucu namespace yetkisini ONCE dogruluyor', () => {
+  // Goremedigi bir namespace'in uygulama ADLARINI listelemek, adlarin kendisini
+  // sizdirmak olurdu.
+  const idx = codeOnly(INDEX);
+  const ep = idx.slice(idx.indexOf("router.get('/apps'"), idx.indexOf("router.post('/discover'"));
+  assert.match(ep, /assertNamespaceAllowed/, 'namespace yetkisi dogrulanmiyor');
+  assert.ok(ep.indexOf('assertNamespaceAllowed') < ep.indexOf('listApps'),
+    'yetki kontrolu listeden SONRA — adlar once uretiliyor');
+});

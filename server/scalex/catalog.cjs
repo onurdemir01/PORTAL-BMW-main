@@ -55,6 +55,67 @@ async function getNamespaces({ env, tenant, clusterNames, user }) {
   };
 }
 
+// ── UYGULAMA LISTESI: ONCE DB, CANLI VERI SONRA ─────────────────────────────
+//
+// ScaleX bu katmanin YARISINI zaten kullaniyordu: namespace listesi
+// `ocpCatalog.getNamespaces` ile ANINDA DB'den geliyor. Uygulama listesi ise tek
+// yoldan, canli AWX kesfinden geliyordu ve `WorkloadStep` HER MOUNT'ta kosulsuz bir
+// kesif isi aciyordu — sihirbazda ileri-geri gidildikce tekrar tekrar. Olcum: cluster
+// basina ~10+3N `oc` cagrisi ve cluster'lar SIRALI, yani 3 cluster'li bir namespace'te
+// 1.5-3 dakika.
+//
+// Artik ad/tip listesi ANINDA doner (`dbo.Openshift_Inventory` ∪ `ocp_app_cache` —
+// bkz. docs/OCP-NAMESPACE-KATALOGU-KARARI.md, mimari ONUR'UN KARARI ve bu degisiklik
+// onu DEGISTIRMIYOR, ScaleX'i ona BAGLIYOR). Replica/HPA/GitOps/durum gibi CANLI veri
+// ONBELLEKLENMEZ: bayat bir `restorable` "Geri Al"i acar ve is `STATE;FAIL` ile duser,
+// bayat bir `specReplicas` geri almayi yanlis sayiya dondurur. Onlari ekran canli
+// kesiften bekler.
+//
+// YETKI: `ocp_app` kisiti LISTE yolunda da uygulanir — bugun yalnizca `resolveScope`
+// ve `/adopt` yolunda calisiyordu, yani kullanici goremedigi bir uygulamayi listede
+// GORUYOR, yalnizca calistiramiyordu.
+async function listApps({ env, tenant, clusterNames, namespace, user }) {
+  const cat = await ocpCatalog.getApps({ env, tenant, clusterNames, namespace });
+  const items = Array.isArray(cat.items) ? cat.items : [];
+  if (!items.length) {
+    return { items: [], clusters: {}, sources: {}, hiddenCount: 0,
+      cached: cat.cached, fetchedAt: cat.fetchedAt, stale: cat.stale,
+      scannedAt: cat.scannedAt, scannedEmpty: cat.scannedEmpty, source: cat.source };
+  }
+
+  const clustersOf = (name) => {
+    const c = cat.clusters && cat.clusters[name];
+    return Array.isArray(c) && c.length ? c : clusterNames;
+  };
+  const keys = [];
+  for (const it of items) {
+    for (const c of clustersOf(it.name)) keys.push(appKey(tenant, env, c, namespace, it.name));
+  }
+  const allowed = new Set(await restrictions.filterAllowed('ocp_app', [...new Set(keys)], user));
+  // Bir uygulama, gruptaki cluster'lardan HERHANGI BIRINDE aciksa listede kalir;
+  // calistirma aninda her (cluster, uygulama) cifti AYRICA denetlenir
+  // (bkz. assertAppsAllowed). Liste daha genis olabilir, kapi asla daha gevsek olamaz.
+  const visible = items.filter((it) =>
+    clustersOf(it.name).some((c) => allowed.has(appKey(tenant, env, c, namespace, it.name))));
+
+  const pick = (obj) => {
+    if (!obj || typeof obj !== 'object') return {};
+    const out = {};
+    for (const it of visible) if (it.name in obj) out[it.name] = obj[it.name];
+    return out;
+  };
+  return {
+    items: visible,
+    clusters: pick(cat.clusters),
+    sources: pick(cat.sources),
+    // GIZLENEN SAYISI SOYLENIR: soylemeden "uygulama yok" demek yanlis bilgi olurdu
+    // (ayni gerekce: getNamespaces).
+    hiddenCount: items.length - visible.length,
+    cached: cat.cached, fetchedAt: cat.fetchedAt, stale: cat.stale,
+    scannedAt: cat.scannedAt, scannedEmpty: cat.scannedEmpty, source: cat.source,
+  };
+}
+
 // Calistirma kapisi. Her (cluster x namespace) cifti icin ayri ayri; gruptaki TEK bir
 // cluster'da kisit varsa istegin TAMAMI reddedilir (fail-safe — kismi calistirmak,
 // kullanicinin yetkisi olmadigi bir yere dokunmasi demek olurdu).
@@ -114,6 +175,7 @@ async function filterStoppedForUser(rows, { env, tenant, user } = {}) {
 }
 
 module.exports = {
+  listApps,
   nsKey, appKey, getClusterTree, getNamespaces,
   assertNamespaceAllowed, assertAppsAllowed, assertClustersExist,
   filterStoppedForUser,

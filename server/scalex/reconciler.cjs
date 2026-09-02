@@ -28,6 +28,7 @@
 'use strict';
 
 const db = require('../db/index.cjs');
+const { auditPortal } = require('../audit/index.cjs');
 
 const HARD_TOP = 50;
 
@@ -62,6 +63,13 @@ async function pendingJobs(limit) {
 }
 
 async function markStale(serverId, jobId, reason) {
+  // IZ: bir isin "bilinmiyor" isaretlenmesi kullanicinin gorecegi son durumdur ve
+  // sunucu tarafinda, kimse bakmadan olur. Denetim kaydinda gorunmezse "bu is neden
+  // UNKNOWN?" sorusunun cevabi hicbir yerde olmaz.
+  auditPortal(null, 'scalex_reconcile_stale', {
+    username: 'system:scalex-reconciler', result: 'fail',
+    detail: JSON.stringify({ serverId, jobId, reason: String(reason).slice(0, 400) }),
+  });
   await db.query(
     `UPDATE scalex_operations
         SET status = 'UNKNOWN', error_message = $3, updated_at = GETUTCDATE()
@@ -140,6 +148,13 @@ async function adoptApprovedTickets(cfg) {
           WHERE smart_ticket_id = $1 AND status = 'PENDING_APPROVAL'`,
         [ticketId, Number(ticket.awxJobId), Number(ticket.awxServerId)]
       );
+      // IZ: onaylanmis bir prod islemi TAM BURADA baslamis sayilir — kullanicinin
+      // "Calistir"a bastigi andan saatler sonra olabilir. Denetim kaydinda bu gecis
+      // yoksa, isin ne zaman gercekten calistigi hicbir yerden okunamaz.
+      auditPortal(null, 'scalex_approval_adopted', {
+        username: ticket.username || 'system:scalex-reconciler',
+        detail: JSON.stringify({ ticketId, awxServerId: ticket.awxServerId, awxJobId: ticket.awxJobId }),
+      });
       adopted++;
       continue;
     }
@@ -147,6 +162,10 @@ async function adoptApprovedTickets(cfg) {
     if (['REJECTED', 'TIMEOUT', 'CANCELLED', 'ERROR'].includes(ticket.status)) {
       await resolveApproval(ticketId, 'CANCELLED', ticket.status,
         ticket.errorMessage || `Smart bileti ${ticket.status} — is tetiklenmedi.`);
+      auditPortal(null, 'scalex_approval_resolved', {
+        username: ticket.username || 'system:scalex-reconciler', result: 'fail',
+        detail: JSON.stringify({ ticketId, smartStatus: ticket.status }),
+      });
       cancelled++;
     }
     // PENDING / LAUNCHING → hala bekliyor, dokunma.
@@ -208,6 +227,10 @@ async function releaseOrphanRestoreLocks() {
   }
   if (releasedLocks) {
     console.log(`[ScaleX] uzlastirici: ${releasedLocks} yetim geri alma kilidi birakildi.`);
+    auditPortal(null, 'scalex_lock_released', {
+      username: 'system:scalex-reconciler',
+      detail: JSON.stringify({ released: releasedLocks }),
+    });
   }
   return { releasedLocks };
 }

@@ -54,7 +54,16 @@ async function denyIfNotOwner(req, serverId, jobId) {
       return { status: 503, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' };
     }
   }
-  if (!owner || owner !== me) return { status: 403, message: 'Bu iş size ait değil.' };
+  if (!owner || owner !== me) {
+    // BASKASININ ISINE ERISIM DENEMESI DENETIME. 403 donuyordu ama HICBIR iz
+    // birakmiyordu: bir kullanicinin baska birinin prod kesinti isini gormeye
+    // calismasi, denetim kaydinda gorunmesi gereken tam olarak bu tur bir olay.
+    auditPortal(req, 'scalex_access_denied', {
+      result: 'fail',
+      detail: JSON.stringify({ serverId, jobId, owner: owner || null }),
+    });
+    return { status: 403, message: 'Bu iş size ait değil.' };
+  }
   return null;
 }
 
@@ -372,6 +381,31 @@ function initScaleX(app) {
     res.json({ ok: true, ...(await catalog.getNamespaces({ env, tenant, clusterNames: clusters, user: currentUser(req) })) });
   }));
 
+  // UYGULAMA LISTESI — ANINDA, AWX'e HIC DOKUNMADAN.
+  //
+  // Ad/tip listesi paylasilan katalogdan (`dbo.Openshift_Inventory` ∪ `ocp_app_cache`)
+  // geliyor; ekran bunu beklemeden aciyor. CANLI veri (replica, HPA, GitOps, durum)
+  // BU UCTAN GELMEZ — onlar icin `/discover` calisir ve ekran sutunlari sonradan
+  // doldurur. Bayat bir replica sayisi ya da `restorable` bayragi YANLIS ISLEM demek.
+  router.get('/apps', asyncRoute(async (req, res) => {
+    const env = String(req.query.env || '').trim();
+    const tenant = String(req.query.tenant || '').trim();
+    const namespace = String(req.query.namespace || '').trim();
+    const clusters = String(req.query.clusters || '').split(',').map((c) => c.trim()).filter(Boolean);
+    if (!env || !tenant || !namespace || !clusters.length) {
+      throw Object.assign(new Error('env, tenant, namespace ve clusters zorunlu.'), { status: 400 });
+    }
+    // Namespace adi `oc` komut satirina GITMIYOR ama katalog sorgusuna giriyor;
+    // yine de calistirma yoluyla AYNI format kurallarindan gecsin.
+    launch.assertValidDiscoveryTargets({ namespace });
+    const user = currentUser(req);
+    // Namespace yetkisi ONCE: goremedigi bir namespace'in uygulama adlarini
+    // listelemek, adlarin kendisini sizdirmak olurdu.
+    await catalog.assertClustersExist({ env, tenant, clusters });
+    await catalog.assertNamespaceAllowed({ env, tenant, clusters, namespace, user });
+    res.json({ ok: true, ...(await catalog.listApps({ env, tenant, clusterNames: clusters, namespace, user })) });
+  }));
+
   // ── Kesif (salt okunur) ───────────────────────────────────────────────────
   router.post('/discover', asyncRoute(async (req, res) => {
     const mode = ['workloads', 'state', 'health'].includes(req.body?.mode) ? req.body.mode : 'workloads';
@@ -409,6 +443,27 @@ function initScaleX(app) {
       runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' })),
     ]);
     const parsed = result.extractDiscoveryResult(status.artifacts);
+
+    // KESIF SONUCU DENETIME. Baslatma ani zaten yaziliyordu (`scalex_discovery`) ama
+    // NE KESFEDILDIGI hicbir yere yazilmiyordu: is bittikten sonra AWX retention'i
+    // dolunca sonuc tamamen kayboluyordu. Ozet yeterli — ham satirlar denetim
+    // kaydinin 2000 karakterlik `detail` sinirini zaten asardi.
+    if (status.finished) {
+      auditPortal(req, 'scalex_discovery_result', {
+        result: parsed && parsed.overallStatus === 'error' ? 'fail' : 'ok',
+        detail: JSON.stringify({
+          serverId, jobId,
+          mode: parsed ? parsed.mode : null,
+          overallStatus: parsed ? parsed.overallStatus : null,
+          namespace: parsed ? parsed.namespace : null,
+          clusters: parsed ? parsed.clusters : [],
+          failedClusters: parsed ? parsed.failedClusters : [],
+          counts: parsed ? parsed.counts : null,
+          workloads: parsed && parsed.workloads ? parsed.workloads.length : undefined,
+          states: parsed && parsed.states ? parsed.states.length : undefined,
+        }),
+      });
+    }
 
     // SAPMA TAZELEME BURADA. `state` kesfi bittiginde portal aynasini cluster gercegiyle
     // karsilastirip `drift_status`u guncelliyoruz.
@@ -902,6 +957,41 @@ function buildScaleXSmartMetadata({ user, env, tenant, clusters, namespace, apps
 //
 // AYNA YALNIZCA DOGRULANMIS hedefler icin guncellenir: playbook `VERIFY;OK` demedigi
 // bir uygulama icin "durduruldu" yazmak, ekranin YALAN soylemesi olurdu.
+// `result_json` icin GUVENLI serilestirme.
+//
+// Onceki hali `JSON.stringify(parsed).slice(0, 1_000_000)` idi — kirpma JSON-FARKINDA
+// DEGIL: 1 MB'i asan bir sonucta alan JSON olarak AYRISTIRILAMAZ hale geliyor ve bu
+// SESSIZ oluyordu. Playbook kendi kirpmasini bayrakla bildiriyor (`rows_truncated`);
+// sunucu tarafindaki bu kirpma hicbir iz birakmiyordu.
+//
+// Cozum: VERI duzeyinde kucult. Once `rows` (acik ara en buyuk alan), sonra `targets`
+// atilir ve her adimda bir bayrak birakilir. Kayit her zaman GECERLI JSON kalir ve
+// okuyan taraf neyin eksik oldugunu BILIR.
+const RESULT_JSON_MAX = 1000000;
+
+function storableResult(parsed) {
+  if (!parsed) return null;
+  let out = parsed;
+  let json = JSON.stringify(out);
+  if (json.length <= RESULT_JSON_MAX) return json;
+
+  out = { ...out, rows: [], rowsDroppedForStorage: true };
+  json = JSON.stringify(out);
+  if (json.length <= RESULT_JSON_MAX) return json;
+
+  out = { ...out, targets: [], targetsDroppedForStorage: true };
+  json = JSON.stringify(out);
+  if (json.length <= RESULT_JSON_MAX) return json;
+
+  // Buraya dusmek icin ozet alanlarin TEK BASINA 1 MB'i asmasi gerekir — pratikte
+  // imkansiz. Yine de sessiz bozuk JSON birakmaktansa ACIK bir isaret birakilir.
+  return JSON.stringify({
+    overallStatus: out.overallStatus, stage: out.stage, mode: out.mode,
+    action: out.action, namespace: out.namespace, jobId: out.jobId,
+    storageError: 'sonuc kaydi 1 MB sinirini asti; ayrintilar AWX job logunda',
+  });
+}
+
 async function finalizeOperation({ serverId, jobId, status, parsed }) {
   try {
     const { rows } = await db.query(
@@ -915,16 +1005,41 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
           SET status = 'FINISHED', overall_status = $3, result_json = $4, updated_at = GETUTCDATE()
         WHERE awx_server_id = $1 AND awx_job_id = $2 AND status = 'RUNNING'`,
       [serverId, jobId, parsed ? parsed.overallStatus : String(status.status || '').toUpperCase(),
-        parsed ? JSON.stringify(parsed).slice(0, 1000000) : null]
+        storableResult(parsed)]
     );
 
-    if (!parsed || parsed.mode !== 'apply') return;
     // Ortak alanlar (env/tenant/namespace/username) TUM satirlarda ayni — ayni
     // istekten uretiliyorlar. Farkli olan tek sey `cluster_name`, ve `operation_id`
     // o cluster'in KENDI satirina baglanmali: `rows[0].id` yazmak, bes cluster'lik
     // bir istekte "hangi cluster'i geri alacagim" sorusunun cevabini bozardi.
     const op = rows[0];
+
+    // ISIN GERCEK SONUCU DENETIME — `apply` kontrolunden ONCE.
+    // Buraya kadar denetim kaydinda yalnizca "X kullanicisi stop BASLATTI" vardi;
+    // isin gercekten calisip calismadigi, kac hedefin dustugu HIC YOKTU. `dry_run` da
+    // yazilir: "on kontrol kostu ve ne dedi" sorusu da denetlenebilir olmali.
+    //
+    // `req` YOK — bu fonksiyon uzlastiricidan da cagriliyor. `auditPortal` bunu
+    // destekler; kullanici islem satirindan alinir.
+    //
+    // `detail` 2000 KARAKTERDE KIRPILIYOR (hash'ten ONCE, bkz. server/audit/index.cjs):
+    // ham `rows`/`targets` buraya KONMAZ. Denetime OZET, ham cikti `result_json`a.
+    auditPortal(null, 'scalex_finalize', {
+      username: op.username,
+      result: parsed && parsed.overallStatus === 'FAIL' ? 'fail' : 'ok',
+      detail: JSON.stringify({
+        serverId, jobId, env: op.env, tenant: op.tenant, namespace: op.namespace,
+        action: parsed ? parsed.action : op.action,
+        mode: parsed ? parsed.mode : op.execution_mode,
+        overallStatus: parsed ? parsed.overallStatus : null,
+        counts: parsed ? parsed.counts : null,
+      }),
+    });
+
+    if (!parsed || parsed.mode !== 'apply') return;
     const idByCluster = new Map(rows.map((r) => [r.cluster_name, r.id]));
+    // Aynaya NE YAZILDIGI da ayri bir iz — asagida bkz. `scalex_mirror_update`.
+    const mirror = { stopped: [], restored: [], unlocked: [] };
     for (const t of parsed.targets) {
       if (t.status !== 'OK') {
         // BASARISIZ GERI ALMA: kilit BIZDE kalmamali. Basarili yolda satir zaten
@@ -936,7 +1051,8 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
           await state.unlockRestore({
             env: op.env, tenant: op.tenant, clusterName: t.cluster,
             namespace: op.namespace, appName: t.app,
-          }).catch((e) => console.warn('[ScaleX] kilit birakilamadi:', e.message));
+          }).then(() => { mirror.unlocked.push(`${t.cluster}/${t.app}`); })
+            .catch((e) => console.warn('[ScaleX] kilit birakilamadi:', e.message));
         }
         continue;
       }
@@ -949,12 +1065,26 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
           appName: t.app, workloadKind: t.kind, previousReplicas: null,
           stoppedBy: op.username, operationId: idByCluster.get(t.cluster) ?? op.id,
         });
+        mirror.stopped.push(`${t.cluster}/${t.app}`);
       } else if (parsed.action === 'restore') {
         await state.clearRestored({
           env: op.env, tenant: op.tenant, clusterName: t.cluster,
           namespace: op.namespace, appName: t.app,
         });
+        mirror.restored.push(`${t.cluster}/${t.app}`);
       }
+    }
+    // AYNA DEGISIKLIGI AYRI BIR IZ. Sapma tespitinin ("biri portal disindan is
+    // yapmis") ve geri alma yolunun dayandigi tablo bu; ne zaman ve hangi islemle
+    // degistigi denetlenebilir olmali.
+    if (mirror.stopped.length || mirror.restored.length || mirror.unlocked.length) {
+      auditPortal(null, 'scalex_mirror_update', {
+        username: op.username,
+        detail: JSON.stringify({
+          serverId, jobId, env: op.env, tenant: op.tenant, namespace: op.namespace,
+          stopped: mirror.stopped, restored: mirror.restored, unlocked: mirror.unlocked,
+        }),
+      });
     }
   } catch (e) {
     // Sonuc gosterimini BLOKLAMA: ayna guncellenemedi diye kullanicinin isinin sonucunu
