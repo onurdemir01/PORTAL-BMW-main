@@ -1165,3 +1165,88 @@ test('N5 admin kategori listesi seed ile AYRISMIYOR', () => {
   assert.deepEqual(missing, [],
     `Playbook Kayitlari ekranindaki kategori listesi eksik: ${missing.join(', ')} — bu satirlari duzenleyen admin kategoriyi "genel"e dusurur`);
 });
+
+
+// ═══ O. KAPSAMSIZ "HIZLI AKSIYON" LISTESI (2026-09-02) ═════════════════════
+//
+// Panel artik sihirbazin ILK adiminda da gorunuyor, yani kapsam secilmeden TUM
+// durdurulmus kayitlar listeleniyor. Yetki suzgeci bu yuzden anahtarlari SATIRIN
+// KENDISINDEN kurmak zorunda; parametreden kurmak, farkli kapsamlardan gelen
+// satirlarin hepsini tek bir kapsamin anahtariyla sorgulamak demekti ve
+// `filterAllowed` VARSAYILAN-ACIK oldugu icin hicbiri eslesmeyince HEPSI gorunurdu.
+// Sessiz bir fail-open; bu yuzden davranis testi sart.
+
+const restrictionsMod = require('../../logx/v2/restrictions.cjs');
+const catalogMod = require('../catalog.cjs');
+
+async function withFilterAllowed(impl, fn) {
+  const orig = restrictionsMod.filterAllowed;
+  restrictionsMod.filterAllowed = impl;
+  try { return await fn(); } finally { restrictionsMod.filterAllowed = orig; }
+}
+
+const mirrorRow = (over = {}) => ({
+  id: 1, env: 'prod', tenant: 'ark', clusterName: 'c1',
+  namespace: 'odeme', appName: 'odeme-api', driftStatus: 'in_sync', phase: 'scaled_down',
+  ...over,
+});
+
+test('O1 anahtar SATIRIN kendi env/tenant degerinden kuruluyor', async () => {
+  let seen = null;
+  await withFilterAllowed(async (_t, keys) => { seen = keys; return keys; }, async () => {
+    await catalogMod.filterStoppedForUser(
+      [mirrorRow({ env: 'prod', tenant: 'ark' }), mirrorRow({ id: 2, env: 'test', tenant: 'wyden', namespace: 'kart' })],
+      { user: { role: 'User', username: 'u' } }   // KAPSAM PARAMETRESI YOK
+    );
+  });
+  // `nsKey(tenant, env, cluster, ns)` — tenant ONCE. Ters sira da sessiz bir
+  // fail-open uretirdi (uretilen anahtar hicbir kisit satiriyla eslesmez).
+  assert.deepEqual(seen.sort(), ['ark/prod/c1/odeme', 'wyden/test/c1/kart'].sort());
+});
+
+test('O2 KISITLI bir satir GERCEKTEN suzuluyor (fail-open degil)', async () => {
+  // `filterAllowed` yalnizca izinli anahtarlari geri dondurur. Suzgec anahtari
+  // yanlis kurarsa donen liste bos olur ama satir yine de ekranda kalirdi.
+  const rows = [
+    mirrorRow({ id: 1, namespace: 'odeme' }),
+    mirrorRow({ id: 2, namespace: 'gizli' }),
+  ];
+  const out = await withFilterAllowed(
+    async (_t, keys) => keys.filter((k) => !k.endsWith('/gizli')),
+    () => catalogMod.filterStoppedForUser(rows, { user: { role: 'User', username: 'u' } })
+  );
+  assert.deepEqual(out.map((r) => r.namespace), ['odeme'],
+    'kisitli namespace listede kaldi — yetki suzgeci anahtari yanlis kuruyor');
+});
+
+test('O3 kapsam VERILDIGINDE eski davranis korunuyor', async () => {
+  let seen = null;
+  await withFilterAllowed(async (_t, keys) => { seen = keys; return keys; }, async () => {
+    // Satirda env/tenant OLMASA bile parametre yedek olarak kullanilir.
+    await catalogMod.filterStoppedForUser(
+      [{ clusterName: 'c1', namespace: 'odeme' }],
+      { env: 'prod', tenant: 'ark', user: { role: 'User', username: 'u' } }
+    );
+  });
+  assert.deepEqual(seen, ['ark/prod/c1/odeme']);
+});
+
+test('O4 kapsamsiz liste AYRI ve SABIT bir SQL kullaniyor', () => {
+  // `listMirror`a opsiyonel parametre eklemek hem C5 bekcisini bozar hem
+  // `(($1 = '') OR env = $1)` gibi SARGable olmayan bir kosul uretirdi
+  // (IX_scalexmirror_scope kullanilamaz).
+  const code = codeOnly(STATE);
+  assert.match(code, /async function listMirrorAll\(\)/, 'kapsamsiz okuyucu yok');
+  const fn = code.slice(code.indexOf('async function listMirrorAll()'));
+  assert.doesNotMatch(fn.slice(0, 400), /\$\{/, 'SQL icinde template interpolasyonu');
+  assert.doesNotMatch(fn.slice(0, 400), /\$1/, 'kapsamsiz sorgu parametre almamali');
+  // Tavan yetki suzgecinden ONCE uygulaniyor; siralama env/tenant ile baslamazsa
+  // kullanicinin kaydi alfabetik olarak listeden dusebilir.
+  assert.match(fn.slice(0, 400), /ORDER BY env, tenant/, 'kapsamsiz listede siralama env/tenant ile baslamali');
+});
+
+test('O5 kapsamsiz listeleme DENETIME yaziliyor', () => {
+  // Varsayilan gorunurluk kapsaminin genislemesi bir politika karari — izlenmeli.
+  assert.match(codeOnly(INDEX), /scalex_stopped_global/,
+    'kapsamsiz listeleme iz birakmiyor');
+});

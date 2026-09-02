@@ -13,7 +13,8 @@ import { useJobTracker } from "@/contexts/JobTrackerContext";
 import { fmtRelative } from "@/utils/datetime";
 
 interface Props {
-  env: string; tenant: string;
+  /** Bos birakilirsa kullanicinin gorebildigi TUM kapsamlar listelenir. */
+  env?: string; tenant?: string;
   onRestore?: (item: ScaleXStoppedItem) => void;
   /** Degeri her degistiginde liste sessizce tazelenir (is bitiminde sayfa artirir). */
   reloadKey?: number;
@@ -39,7 +40,7 @@ const DRIFT_TEXT: Record<string, string> = {
   unknown_to_portal: "Cluster'da durdurulmuş ama portal kaydı yok — AWX'ten elle durdurulmuş.",
 };
 
-const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore, reloadKey = 0 }) => {
+const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloadKey = 0 }) => {
   const [items, setItems] = useState<ScaleXStoppedItem[]>([]);
   // Yetki nedeniyle gizlenen ve sinir nedeniyle kirpilan kayit sayilari. Bunlari
   // SOYLEMEDEN "kayit yok" demek, kullaniciya YANLIS bilgi vermek olurdu — aynen
@@ -86,14 +87,15 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore, reloadKey = 0 }
     return () => { aliveRef.current = false; };
   }, []);
 
-  useEffect(() => { if (env && tenant) load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [env, tenant]);
+  // Kapsam SECILMEDEN de yuklenir: panel ilk ekranda da gorunuyor.
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [env, tenant]);
 
   // DIS TETIKLEYICI: bir ScaleX isi bitince sayfa bu sayaci artirir ve liste
   // KENDILIGINDEN tazelenir. Once yalnizca `env`/`tenant` degisiminde yukleniyordu,
   // yani bir geri alma bittiginde panel ESKI halini gostermeye devam ediyordu ve
   // kullanici ayni satira tekrar basabiliyordu.
   useEffect(() => {
-    if (!reloadKey || !env || !tenant) return;
+    if (!reloadKey) return;
     load({ silent: true });
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [reloadKey]);
@@ -104,7 +106,7 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore, reloadKey = 0 }
   // "Islerim" yoklamasindan ya da uzlastiricidan geliyor.
   const hasRestoring = items.some((i) => i.phase === "restoring");
   useEffect(() => {
-    if (!hasRestoring || !env || !tenant) return;
+    if (!hasRestoring) return;
     const t = setInterval(() => { load({ silent: true }); }, 20_000);
     return () => clearInterval(t);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
@@ -192,7 +194,6 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore, reloadKey = 0 }
     }
   }
 
-  if (!env || !tenant) return null;
   if (loading) return <p className="text-sm text-[var(--text-muted)]">Durdurulmuş uygulamalar yükleniyor…</p>;
   if (error) {
     return (
@@ -204,7 +205,9 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore, reloadKey = 0 }
   if (!items.length) {
     return (
       <p className="text-sm text-[var(--text-muted)]">
-        Bu ortam/tenant için portalda durdurulmuş uygulama kaydı yok.
+        {env && tenant
+          ? "Bu ortam/tenant için portalda durdurulmuş uygulama kaydı yok."
+          : "Portalda durdurulmuş uygulama kaydı yok."}
         {hiddenCount > 0 && ` (${hiddenCount} kayıt yetki kısıtı nedeniyle görünmüyor.)`}
       </p>
     );
@@ -229,7 +232,8 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore, reloadKey = 0 }
           )}
         </p>
         <span className="flex items-center gap-3">
-          {items.some((i) => i.driftStatus === "in_sync" && i.phase !== "restoring") && (
+          {/* Toplu geri alma ucu kapsam ZORUNLU istiyor; kapsamsiz listede tek tek geri alinir. */}
+          {env && tenant && items.some((i) => i.driftStatus === "in_sync" && i.phase !== "restoring") && (
             <button type="button" onClick={() => setShowBulk((v) => !v)} disabled={auditing || bulkBusy}
               className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline">
               <ArrowUturnLeftIcon aria-hidden="true" className="w-3.5 h-3.5" /> Tümünü geri al
@@ -281,8 +285,22 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore, reloadKey = 0 }
               <span className="min-w-0 flex items-center gap-2">
                 <span className="font-mono truncate text-[var(--text-primary)]" title={it.appName}>{it.appName}</span>
                 {/* `title` KESILEN OGENIN KENDISINDE (bkz. D7 bekcisi). */}
-                <span className="text-xs text-[var(--text-muted)] truncate"
-                  title={`${it.clusterName}/${it.namespace}`}>{it.clusterName}/{it.namespace}</span>
+                {/* KAPSAMSIZ listede satirlar farkli ortam/tenant'lardan gelir —
+                    yalnizca cluster/namespace yazmak, hangi ORTAMDA oldugunu
+                    gizlerdi ve prod ile test kaydi ayirt edilemezdi. */}
+                {(() => {
+                  const scopeText = env && tenant
+                    ? `${it.clusterName}/${it.namespace}`
+                    : `${it.env}/${it.tenant}/${it.clusterName}/${it.namespace}`;
+                  return (
+                    <span className="text-xs text-[var(--text-muted)] truncate" title={scopeText}>
+                      {scopeText}
+                    </span>
+                  );
+                })()}
+                {!(env && tenant) && it.env === "prod" && (
+                  <span className="pf-label pf-label--red">prod</span>
+                )}
               </span>
               <span className="flex items-center gap-2 text-xs text-[var(--text-muted)] whitespace-nowrap">
                 {(() => {

@@ -221,8 +221,16 @@ export const scalexApi = {
     return post<{ ok: boolean; canceled?: boolean; message?: string }>(`/cancel/${serverId}/${jobId}`, {});
   },
 
-  async stopped(env: string, tenant: string, cluster?: string) {
-    const q = new URLSearchParams({ env, tenant, ...(cluster ? { cluster } : {}) });
+  /**
+   * Kapsam OPSIYONEL: verilmezse kullanicinin gorebildigi TUM durdurulmus kayitlar
+   * doner ("hizli aksiyon" paneli sihirbazin ilk adiminda da gorunuyor).
+   */
+  async stopped(env?: string, tenant?: string, cluster?: string) {
+    const scoped = !!(env && tenant);
+    const q = new URLSearchParams({
+      ...(scoped ? { env: env as string, tenant: tenant as string } : {}),
+      ...(scoped && cluster ? { cluster } : {}),
+    });
     return safeJson(await fetch(`${BASE}/stopped?${q}`)) as Promise<{ ok: boolean; items: ScaleXStoppedItem[]; message?: string;
       /** Yetki nedeniyle gizlenen kayit sayisi — panel bunu SOYLEMELI, yoksa "kayit yok" yalan olur. */
       hiddenCount?: number; truncated?: boolean; limit?: number }>;

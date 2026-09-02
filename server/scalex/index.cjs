@@ -653,8 +653,22 @@ function initScaleX(app) {
     const env = String(req.query.env || '').trim();
     const tenant = String(req.query.tenant || '').trim();
     const clusterName = String(req.query.cluster || '').trim() || null;
-    if (!env || !tenant) throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
-    const all = await state.listMirror({ env, tenant, clusterName });
+    // KAPSAM OPSIYONEL. "Hizli aksiyon" paneli sihirbazin ILK adiminda da gorunuyor ve
+    // orada henuz secilmis bir env/tenant yok. Kapsam verilirse liste ona daralir.
+    //
+    // BU BIR POLITIKA KARARI: kapsamsiz listede kullanicinin GOREBILDIGI tum
+    // namespace adlari (prod dahil) gorunur hale gelir. Yetki suzgeci aynen
+    // uygulaniyor — yalnizca gorunurlugun VARSAYILAN kapsami genisliyor — ama bu
+    // genisleme denetim kaydina yaziliyor.
+    const scoped = !!(env && tenant);
+    const all = scoped
+      ? await state.listMirror({ env, tenant, clusterName })
+      : await state.listMirrorAll();
+    if (!scoped) {
+      auditPortal(req, 'scalex_stopped_global', {
+        detail: JSON.stringify({ rows: all.length, truncated: all.truncated === true }),
+      });
+    }
     // Bu uc `resolveScope`tan GECMEZ (namespace almiyor), bu yuzden yetki suzgeci
     // BURADA uygulanmali — aksi halde kisitli bir namespace'in adi ve orada durdurulmus
     // uygulamalar, o namespace'i goremeyen kullaniciya listelenirdi.

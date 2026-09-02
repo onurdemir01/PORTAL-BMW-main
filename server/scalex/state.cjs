@@ -196,6 +196,27 @@ async function clearRestored({ env, tenant, clusterName, namespace, appName }) {
   return rowCount > 0;
 }
 
+// KAPSAMSIZ liste: kullanicinin gorebildigi TUM durdurulmus kayitlar. "Hizli aksiyon"
+// paneli sihirbazin ILK adiminda da gorunuyor ve orada henuz secilmis bir env/tenant
+// yok.
+//
+// NEDEN AYRI FONKSIYON, `listMirror`a opsiyonel parametre DEGIL: `(($1 = '') OR env = $1)`
+// gibi bir numara hem SARGable degildir (yani `IX_scalexmirror_scope` indeksi
+// kullanilamaz) hem de `listMirror`in parametre sayisini kilitleyen C5 bekcisini
+// bozardi. Iki sabit SQL, tek dinamik SQL'den iyidir.
+//
+// SIRALAMA env/tenant ILE BASLAR: kapsamsiz listede tavan (`TOP 501`) yetki
+// suzgecinden ONCE uygulaniyor; cluster adina gore siralamak, kullanicinin kendi
+// kaydini alfabetik olarak sona atip listeden dusurebilirdi.
+async function listMirrorAll() {
+  const { rows } = await db.query(
+    `SELECT TOP 501 * FROM scalex_state_mirror
+      ORDER BY env, tenant, cluster_name, namespace, app_name`
+  );
+  const truncated = rows.length > MIRROR_LIMIT;
+  return Object.assign(rows.slice(0, MIRROR_LIMIT).map(normalizeRow), { truncated });
+}
+
 // `scalex_state_audit` kesfinden sonra sapma durumlarini tazeler. Taranmayan cluster'lara
 // DOKUNMAZ (bkz. classifyDrift gerekcesi).
 async function refreshDrift({ env, tenant, scannedClusters, clusterStates }) {
@@ -230,5 +251,5 @@ async function adopt({ env, tenant, clusterName, namespace, appName, workloadKin
 }
 
 module.exports = {
-  tryLockRestore, unlockRestore, listLockedRestores,
+  tryLockRestore, unlockRestore, listLockedRestores, listMirrorAll,
   MIRROR_LIMIT, DRIFT, classifyDrift, listMirror, upsertStopped, clearRestored, refreshDrift, adopt };

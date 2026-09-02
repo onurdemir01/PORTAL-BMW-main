@@ -94,11 +94,23 @@ async function assertClustersExist({ env, tenant, clusters }) {
 //
 // TEK sorgu: `filterAllowed` tum kisitlama satirlarini bir kerede okur (dongude
 // `isAllowed` cagirmak 500 kayitta 500 sorgu demekti).
-async function filterStoppedForUser(rows, { env, tenant, user }) {
-  const keys = [...new Set(rows.map((r) => nsKey(tenant, env, r.clusterName, r.namespace)))];
+// ANAHTAR SATIRIN KENDISINDEN kurulur, parametreden DEGIL. Kapsamsiz listede
+// (hizli aksiyon paneli) satirlar farkli env/tenant'lardan gelir; parametreden kurmak
+// hepsini tek bir kapsamin anahtariyla sorgular ve `filterAllowed` VARSAYILAN-ACIK
+// oldugu icin hicbiri eslesmeyince HEPSI GORUNURDU — sessiz bir fail-open.
+//
+// ARGUMAN SIRASI: `nsKey(tenant, env, ...)` — tenant ONCE. Ters yazmak da ayni sessiz
+// fail-open'i uretir (uretilen anahtar hicbir kisit satiriyla eslesmez), o yuzden
+// kisitli bir satirin GERCEKTEN suzuldugunu dogrulayan bir test var.
+function stoppedKey(r, fallback = {}) {
+  return nsKey(r.tenant ?? fallback.tenant, r.env ?? fallback.env, r.clusterName, r.namespace);
+}
+
+async function filterStoppedForUser(rows, { env, tenant, user } = {}) {
+  const keys = [...new Set(rows.map((r) => stoppedKey(r, { env, tenant })))];
   if (keys.length === 0) return rows;
   const allowed = new Set(await restrictions.filterAllowed('ocp_namespace', keys, user));
-  return rows.filter((r) => allowed.has(nsKey(tenant, env, r.clusterName, r.namespace)));
+  return rows.filter((r) => allowed.has(stoppedKey(r, { env, tenant })));
 }
 
 module.exports = {

@@ -288,6 +288,11 @@ const ScaleXPage: React.FC = () => {
     // ONCE temizle, SONRA yeni degerleri yaz — ters sirada `resetRunState` asagida
     // set edilenleri ezerdi.
     resetRunState();
+    // ORTAM/TENANT DA KAYITTAN GELIR. Panel artik ilk ekranda, kapsam SECILMEDEN de
+    // gorunuyor ve farkli kapsamlardan satirlar listeliyor; sayfa durumundaki
+    // `env`/`tenant` bos ya da BASKA bir kapsam olabilir. Kayittan almazsak istek
+    // yanlis kapsamla gider.
+    setEnv(item.env); setTenant(item.tenant);
     setClusters([item.clusterName]);
     setNamespace(item.namespace);
     setApps([item.appName]);
@@ -460,17 +465,17 @@ const ScaleXPage: React.FC = () => {
         )}
       </div>
 
-      {/* "Şu an durdurulmuş" GERÇEKTEN her adımda görünür — SONUÇ EKRANI DAHİL.
-          Eskiden `step !== "done"` ile sonuç ekranında gizleniyordu; oysa panele en çok
-          orada ihtiyaç var: 6 hedeften 4'ü başarılı, 2'si başarısız olduğunda kullanıcı
-          "şimdi ne yapmalıyım?" sorusunun cevabını ekranda bulamıyordu ve geri almak
-          için tüm sihirbazı (kapsam → namespace → keşif → işlem → önizleme) baştan
-          doldurmak, üstelik yeni bir keşif işi başlatmak zorunda kalıyordu. */}
-      {env && tenant && (
-        <div className="card p-5">
-          <StoppedPanel env={env} tenant={tenant} onRestore={restoreFromPanel} reloadKey={stoppedReloadKey} />
-        </div>
-      )}
+      {/* HIZLI AKSIYON — HER ADIMDA, KAPSAM SECILMEDEN DE.
+          Eskiden `step !== "done"` ile sonuc ekraninda gizleniyordu; sonra `env && tenant`
+          kosuluyla ILK EKRANDA hic gorunmuyordu. Oysa panele en cok o iki yerde ihtiyac
+          var: sayfaya "neyi kapatmisim?" diye giren kullanici, ve 6 hedeften 2'si
+          basarisiz olup "simdi ne yapmaliyim?" diye bakan kullanici. Ikisi de cevabi
+          ekranda bulamiyor, geri almak icin sihirbazi bastan doldurmak (ve yeni bir
+          kesif isi baslatmak) zorunda kaliyordu.
+          Kapsam secilmediginde panel TUM kapsamlari listeler; secilince ona daralir. */}
+      <div className="card p-5">
+        <StoppedPanel env={env} tenant={tenant} onRestore={restoreFromPanel} reloadKey={stoppedReloadKey} />
+      </div>
     </div>
   );
 };
