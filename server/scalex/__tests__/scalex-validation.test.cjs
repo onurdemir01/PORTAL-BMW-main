@@ -678,9 +678,14 @@ test('I1 portal kaynaginda HIC "chaos" kalmadi (yorumlar dahil)', () => {
       // Baska hicbir dosya muaf DEGIL.
       if (RENAME_GUARD_FILES.includes(e.name)) continue;
       const txt = fs.readFileSync(full, 'utf8');
-      // ESKI ONEK (`chaos-scale-state-`) BILEREK duruyor: cift-okuma tasimasi onu
-      // okumak zorunda. Aramadan cikariliyor ki mesru kullanim yanlis alarm vermesin.
-      const cleaned = txt.replace(/chaos-scale-state-/g, '');
+      // IKI ESKI AD BILEREK duruyor; aramadan cikariliyor ki mesru kullanim yanlis
+      // alarm vermesin:
+      //   * `chaos-scale-state-` — durum kaydinin eski oneki. Cift-okuma tasimasi onu
+      //     okumak ZORUNDA, yoksa bugun durdurulmus uygulamalar geri alinamaz.
+      //   * `chaos-scale-job`    — bastion'daki gecici calisma dizini. Yeniden
+      //     adlandirmak, ust dizinde yazma izni olmayan bir host'ta isi dusururdu
+      //     (bkz. scalex_file/README.md). Sozlesmenin parcasi degil, gecici alan.
+      const cleaned = txt.replace(/chaos-scale-state-|chaos-scale-job/g, '');
       if (/chaos/i.test(cleaned)) offenders.push(path.relative(process.cwd(), full));
     }
   };

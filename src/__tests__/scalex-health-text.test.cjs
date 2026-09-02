@@ -30,6 +30,7 @@ function load(rel) {
 }
 
 const { humanizeHealth } = load('utils/scalexHealth.ts');
+const { humanizeRunLog } = load('utils/scalexLog.ts');
 
 const row = (over) => ({ app: 'odeme-api', cluster: 'c1', step: 'PODS', status: 'OK', detail: '', ...over });
 
@@ -135,4 +136,86 @@ test('H10 bos girdi patlamaz', () => {
     const out = humanizeHealth(v);
     assert.deepEqual([out.lines.length, out.asks.length, out.hasContent], [0, 0, false]);
   }
+});
+
+
+// ── L. ISLEM GUNLUGU (rows[]) ───────────────────────────────────────────────
+//
+// `rows` uzun suredir sonuca dahildi ve `result_json`a yaziliyordu ama EKRANDA HIC
+// gosterilmiyordu: kullanici "ne oldu?" sorusunun cevabini ancak AWX job log'unun
+// 360 satirini acarak bulabiliyordu. Asagidaki satirlar GERCEK bir uretim
+// calistirmasindan (AWX job #3280511) alinmistir.
+
+const REAL_ROWS = [
+  'GLOBAL;-;odeme-api;-;INPUT;INFO;NS=odeme ACTION=restore TARGET=auto-from-state',
+  'c1;j1;-;-;WORKDIR;INFO;Selected writable workdir=/sw/openshift/chaos-scale-job',
+  'c1;j1;-;-;CLIENT;OK;oc_path=/usr/local/bin/oc Client Version: 4.7.4',
+  'c1;j1;-;-;LOGIN;OK;Login success',
+  'c1;j1;-;-;NAMESPACE;OK;Using project odeme',
+  'c1;j1;-;-;RBAC;OK;HPA read permission available HPA will remain untouched',
+  'c1;j1;odeme-api;DeploymentConfig;DISCOVERY;OK;Detected resource=dc current_spec_replicas=0',
+  'c1;j1;odeme-api;DeploymentConfig;OBJECT;INFO;odeme-api 27 0 0 ',
+  'c1;j1;odeme-api;DeploymentConfig;HPA;INFO;No HPA found for application/scaleTargetRef',
+  'c1;j1;odeme-api;DeploymentConfig;STATE;OK;Restore target from state: previous_replicas=1 cm=scalex-state-odeme-api version=2',
+  'c1;j1;odeme-api;DeploymentConfig;GERI_AL;OK;Patch accepted replicas=1. HPA was not changed.',
+  'c1;j1;odeme-api;DeploymentConfig;VERIFY;OK;desired=1 current=1 ready=0 target=1',
+  'c1;j1;odeme-api;DeploymentConfig;READINESS;INFO;Replica change succeeded pod readiness is still converging ready=0 target=1',
+];
+
+test('L1 altyapi gurultusu ELENIYOR, olaylar kaliyor', () => {
+  const out = humanizeRunLog(REAL_ROWS);
+  const steps = out.map((e) => e.step);
+  // "Hangi dizine yazdim" ve ham `oc get` ciktisi kullaniciya bir sey soylemez ve
+  // asil olaylari gorunmez kilar. Ham hallerı AWX log'unda duruyor.
+  for (const gizli of ['Çalışma dizini', 'oc istemcisi', 'Nesne', 'Girdi']) {
+    assert.ok(!steps.includes(gizli), `${gizli} elenmemis`);
+  }
+  assert.ok(steps.includes('Geri alma'), 'asil olay elenmis');
+  assert.ok(steps.includes('Doğrulama'));
+});
+
+test('L2 EN DEGERLI satir okunur: replica geldi ama pod hazir degil', () => {
+  // Playbook yalnizca `spec.replicas` esitligine bakiyor ve bu durumu BASARILI
+  // sayiyor. Kullanicinin gormesi gereken tek satir bu olabilir.
+  const e = humanizeRunLog(REAL_ROWS).find((x) => x.step === 'Hazırlık');
+  assert.ok(e, 'hazirlik satiri kaybolmus');
+  assert.match(e.text, /pod'lar henüz hazır değil \(hazır 0\/1\)/);
+});
+
+test('L3 olgular cumleye giriyor (uydurma yok)', () => {
+  const out = humanizeRunLog(REAL_ROWS);
+  assert.match(out.find((e) => e.step === 'Tespit').text, /şu anki replica: 0/);
+  assert.match(out.find((e) => e.step === 'Durum kaydı').text, /önceki replica: 1/);
+  assert.match(out.find((e) => e.step === 'Doğrulama').text, /replica 1 oldu/);
+  // "HPA yok" ile "HPA var" ayirt edilmeli — ekran bu konuda bir kez yalan soyledi.
+  assert.equal(out.find((e) => e.step === 'HPA').text, 'HPA yok.');
+  assert.equal(
+    humanizeRunLog(['c;j;a;k;HPA;INFO;HPA_PRESENT read-only policy left untouched'])[0].text,
+    'HPA var; üzerinde değişiklik yapılmadı.');
+});
+
+test('L4 HAM metin kaybolmuyor', () => {
+  // Cevirinin eksik kaldigi yerde teknik ayrinti hala elde olmali.
+  const e = humanizeRunLog(REAL_ROWS).find((x) => x.step === 'Doğrulama');
+  assert.match(e.raw, /desired=1 current=1 ready=0 target=1/);
+});
+
+test('L5 BILINMEYEN adim sessizce ATILMAZ', () => {
+  const out = humanizeRunLog(['c;j;a;k;YEPYENI_ADIM;WARN;bir sey oldu']);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].text, 'bir sey oldu', 'taninmayan adim kayboldu — kullanici yine AWX log\'una gider');
+  assert.equal(out[0].tone, 'warn');
+});
+
+test('L6 bozuk satir ve bos girdi patlamaz', () => {
+  assert.deepEqual(humanizeRunLog(null), []);
+  assert.deepEqual(humanizeRunLog(['eksik;alan']), []);
+  // `detail` icinde `;` olabilir — son alan BIRLESTIRILMELI.
+  const out = humanizeRunLog(['c;j;a;k;RUNNER;FAIL;a; b; c']);
+  assert.equal(out[0].raw, 'a; b; c');
+});
+
+test('L7 durum → ton eslemesi', () => {
+  const rows = ['c;j;a;k;PRECHECK;OK;x', 'c;j;a;k;PRECHECK;WARN;x', 'c;j;a;k;PRECHECK;FAIL;x', 'c;j;a;k;PRECHECK;INFO;x'];
+  assert.deepEqual(humanizeRunLog(rows).map((e) => e.tone), ['ok', 'warn', 'fail', 'info']);
 });

@@ -13,11 +13,16 @@ import {
   InformationCircleIcon, ArrowUturnLeftIcon,
 } from "@heroicons/react/24/outline";
 import type { ScaleXRunResult } from "@/api/scalexApi";
+import { humanizeRunLog } from "@/utils/scalexLog";
 
 const OVERALL: Record<string, { title: string; cls: string; Icon: typeof CheckCircleIcon }> = {
   OK:   { title: "Başarılı",  cls: "pf-label pf-label--green",  Icon: CheckCircleIcon },
   WARN: { title: "Uyarı",     cls: "pf-label pf-label--gold",   Icon: ExclamationTriangleIcon },
   FAIL: { title: "Başarısız", cls: "pf-label pf-label--red",    Icon: XCircleIcon },
+};
+const LOG_TONE: Record<string, string> = {
+  ok: "pf-label pf-label--green", warn: "pf-label pf-label--gold",
+  fail: "pf-label pf-label--red", info: "pf-label pf-label--grey",
 };
 const ROW: Record<string, string> = {
   OK: "pf-label pf-label--green", WARN: "pf-label pf-label--gold", FAIL: "pf-label pf-label--red",
@@ -126,6 +131,41 @@ const ScaleXResultPanel: React.FC<{
           Liste kırpıldı: {result.targets.length}/{result.targetsTotal} hedef gösteriliyor. Tamamı AWX job log'unda.
         </p>
       )}
+
+      {/* ISLEM GUNLUGU — playbook'un adim satirlari, Turkce.
+          `rows` uzun suredir sonuca dahildi ve `result_json`'a yaziliyordu ama EKRANDA
+          HIC gosterilmiyordu: kullanici "ne oldu?" sorusunun cevabini ancak AWX job
+          log'unun 360 satirini acarak bulabiliyordu. Kapali baslar — gurultu olmasin. */}
+      {(() => {
+        const entries = humanizeRunLog(result.rows);
+        if (!entries.length) return null;
+        return (
+          <details className="rounded-xl border border-[var(--border)]">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-[var(--text-secondary)]">
+              İşlem günlüğü ({entries.length} adım)
+            </summary>
+            <div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
+              {entries.map((e, i) => (
+                <div key={i} className="px-3 py-1.5 text-xs">
+                  <div className="flex items-start gap-2">
+                    <span className={LOG_TONE[e.tone]}>{e.step}</span>
+                    <span className="min-w-0 flex-1 text-[var(--text-secondary)] break-words">
+                      {e.app && <span className="font-mono text-[var(--text-primary)]">{e.app} · </span>}
+                      {e.text}
+                    </span>
+                    <span className="whitespace-nowrap text-[var(--text-muted)]" title={e.cluster}>{e.cluster}</span>
+                  </div>
+                  {/* Ham metin KAYBOLMAZ: cevirinin eksik kaldigi yerde teknik ayrinti
+                      hala elde olsun. */}
+                  {e.raw && e.raw !== e.text && (
+                    <p className="mt-0.5 font-mono text-[10px] text-[var(--text-muted)] break-all">{e.raw}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        );
+      })()}
 
       {/* HIZLI GERI ALMA — yalnizca GERCEKTEN geri alinabilir bir sonucta.
           Kosullar birlikte gecerli olmali:
