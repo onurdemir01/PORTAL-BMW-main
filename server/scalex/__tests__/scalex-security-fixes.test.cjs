@@ -465,6 +465,12 @@ test('UI: panelden geri alma onceki islemin BANNER\'ini temizler', () => {
   const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
   const fn = PAGE.slice(PAGE.indexOf('function restoreFromPanel'));
   const body = fn.slice(0, fn.indexOf('setStep("preview")'));
-  assert.match(body, /setError\(null\); setNotice\(null\)/);
+  // Banner temizligi `resetRunState()`e tasindi — orada onceki calistirmanin TUM
+  // izleri (sonuc paneli, saglik satirlari, is takibi) birlikte temizleniyor.
+  // Yalnizca banner'i temizlemek yetmiyordu: eski `runResult` ve `health` ekranda
+  // kaliyordu (bkz. U13b).
+  assert.match(body, /resetRunState\(\)/, 'onceki islemin izleri temizlenmiyor');
+  const reset = PAGE.slice(PAGE.indexOf('function resetRunState()'), PAGE.indexOf('function restart()'));
+  assert.match(reset, /setError\(null\); setNotice\(null\)/, 'banner temizligi kaybolmus');
   assert.match(body, /setOperationTouched\(true\)/, 'geri tusu bos form gostermemeli');
 });

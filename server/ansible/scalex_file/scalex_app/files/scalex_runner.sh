@@ -971,31 +971,59 @@ EOF_DISC_STATE
   fi
 }
 
+# ── SAGLIK KESFI ────────────────────────────────────────────────────────────
+#
+# CIKTI MAKINE-OKUNUR. Onceki hali ham `oc get` satirlarini oldugu gibi basiyordu ve
+# ekran onlari birebir gosteriyordu: kullanici "merchant-info-27-qkjbw 0/1
+# ContainerCreating 0 22s" ve "Missing list events permission" goruyordu. Ikincisi
+# ustelik WARN seviyesindeydi, yani bir YETKI YOKLUGU ekranda HATA gibi duruyordu.
+#
+# Artik her satir `anahtar=deger` ciftleri tasiyor (WORKLOAD/STATE ile ayni sozlesme)
+# ve portal bunlari Turkce cumleye ceviriyor. Coklu pod'lar TEK satirda birlestirilmiyor
+# — her pod kendi satirini aliyor, cunku bosluklarla birlestirilmis bir liste
+# ayristirilamaz.
+#
+# YETKI YOKLUGU `INFO`: bir uyari degil, bir bilgi. `WARN` olsaydi portalin `problems`
+# listesine duser ve gercek sorunlarla ayni yerde gorunurdu.
 discover_health() {
-  local app pods events display
+  local app display line pod ready st restarts age reason object seen
   while IFS= read -r app; do
     [ -z "$app" ] && continue
     display="-"
     if detect_workload "$app"; then display="$(kind_to_display "$DETECTED_KIND")"; fi
+
     if oc auth can-i list pods -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
-      pods="$(oc get pods -n "$NS" --no-headers 2>/dev/null | grep -F "$app" | head -20 || true)"
-      if [ -z "$pods" ]; then
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "PODS" "OK" "No pod visible for this application"
-      else
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "PODS" "OK" "$(printf '%s' "$pods" | tr '\n' ' ')"
-      fi
+      seen=0
+      # `oc get pods --no-headers` kolonlari: NAME READY STATUS RESTARTS AGE
+      while read -r pod ready st restarts age; do
+        [ -z "$pod" ] && continue
+        seen=$((seen + 1))
+        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "PODS" "OK" \
+          "pod=$(disc_val "$pod") ready=$(disc_val "$ready") status=$(disc_val "$st") restarts=$(disc_val "$restarts") age=$(disc_val "$age")"
+      done <<EOF_PODS
+$(oc get pods -n "$NS" --no-headers 2>/dev/null | grep -F "$app" | head -20 || true)
+EOF_PODS
+      [ "$seen" -eq 0 ] && log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "PODS" "OK" "pods=0"
     else
-      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "PODS" "WARN" "Missing list pods permission"
+      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "PODS" "INFO" "permission_missing=yes verb=list resource=pods"
     fi
+
     if oc auth can-i list events -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
-      events="$(oc get events -n "$NS" --field-selector type=Warning --sort-by=.lastTimestamp --no-headers 2>/dev/null | grep -F "$app" | tail -5 || true)"
-      if [ -z "$events" ]; then
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "EVENTS" "OK" "No warning event"
-      else
-        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "EVENTS" "WARN" "$(printf '%s' "$events" | tr '\n' ' ')"
-      fi
+      seen=0
+      # `oc get events --no-headers` kolonlari: LAST-SEEN TYPE REASON OBJECT MESSAGE.
+      # MESSAGE serbest metin ve bosluk icerir — ALINMAZ; `reason`/`object` zaten
+      # "ne oldu" sorusunu cevapliyor ve ayrintiya AWX log'undan bakilir.
+      while read -r age _type reason object _rest; do
+        [ -z "$reason" ] && continue
+        seen=$((seen + 1))
+        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "EVENTS" "WARN" \
+          "reason=$(disc_val "$reason") object=$(disc_val "$object") age=$(disc_val "$age")"
+      done <<EOF_EVENTS
+$(oc get events -n "$NS" --field-selector type=Warning --sort-by=.lastTimestamp --no-headers 2>/dev/null | grep -F "$app" | tail -5 || true)
+EOF_EVENTS
+      [ "$seen" -eq 0 ] && log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "EVENTS" "OK" "events=0"
     else
-      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "EVENTS" "WARN" "Missing list events permission"
+      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "EVENTS" "INFO" "permission_missing=yes verb=list resource=events"
     fi
   done <<EOF_DISC_HEALTH
 $APPS_TEXT

@@ -240,6 +240,50 @@ async function runScaleXGates({
   return { outcome: 'proceed' };
 }
 
+// ── GERI ALMA KILIDI (ortak) ────────────────────────────────────────────────
+//
+// Ayni hedefe ikinci bir geri alma islemini engeller. Kilit AYNANIN KENDISINDE,
+// tek ifadelik compare-and-set (`scaled_down` → `restoring`, bkz. state.cjs).
+// `absent` bir CAKISMA DEGILDIR: AWX'ten elle durdurulmus bir uygulamanin portal
+// kaydi yoktur ve onu reddetmek bugun calisan bir yolu kapatirdi.
+//
+// TUMU YA DA HICBIRI: bir hedef bile mesgulse alinan kilitler geri birakilir ve is
+// hic baslatilmaz. Kismi kilitle calistirmak, kullaniciya "6 hedefin 4'u gitti"
+// demek olurdu ve kalan iki hedefin kilidi de bizde asili kalirdi.
+async function acquireRestoreLocks({ env, tenant, clusters, namespace, apps }) {
+  const acquired = [];
+  const busy = [];
+  for (const cluster of clusters) {
+    for (const app of apps) {
+      const target = { env, tenant, clusterName: cluster, namespace, appName: app };
+      const outcome = await state.tryLockRestore(target);
+      if (outcome === 'locked') acquired.push(target);
+      else if (outcome === 'busy') busy.push({ cluster, app });
+    }
+  }
+  if (busy.length) {
+    await releaseRestoreLocks(acquired);
+    return { ok: false, busy };
+  }
+  return { ok: true, acquired };
+}
+
+async function releaseRestoreLocks(targets) {
+  for (const t of targets || []) {
+    try { await state.unlockRestore(t); }
+    catch (e) { console.warn('[ScaleX] geri alma kilidi birakilamadi:', e.message); }
+  }
+}
+
+function restoreConflictBody(busy) {
+  const list = busy.map((b) => `${b.app} (${b.cluster})`).join(', ');
+  return {
+    ok: false, code: 'restore_in_progress', busy,
+    message: `Bu uygulamalar için zaten bir geri alma işlemi sürüyor: ${list}. `
+      + 'İş bitince “Şu an durdurulmuş” listesi kendiliğinden güncellenir.',
+  };
+}
+
 function currentUser(req) {
   return req.session?.user || { username: 'anonymous', role: 'User' };
 }
@@ -492,21 +536,54 @@ function initScaleX(app) {
       targetReplicas, verificationTimeout, allowPartial, mailTo, mailCc, hpaPin,
     });
 
+    // ── GERI ALMA KILIDI ────────────────────────────────────────────────────
+    // KAPIDAN ONCE alinir: kapi SMART onayi icin beklemeye gecerse (`pendingApproval`)
+    // is AWX'te henuz yoktur ama kilit TUTULMALI — aksi halde onay beklenirken ikinci
+    // bir geri alma baslatilabilirdi. Kapi reddederse kilit birakilir.
+    const locking = action === 'restore' && executionMode === 'apply'
+      ? await acquireRestoreLocks({ env, tenant, clusters, namespace, apps })
+      : { ok: true, acquired: [] };
+    if (!locking.ok) return res.status(409).json(restoreConflictBody(locking.busy));
+
     // ── KAPILAR ─────────────────────────────────────────────────────────────
     // Govde ORTAK: `/run` ve `/restore-all` AYNI kapidan gecer. Iki kopya tutmak,
     // birinde yapilan duzeltmenin digerinde sessizce eskimesi demekti — `/restore-all`
     // tam olarak boyle kapisiz kalmisti (yorumu "Geri Al'in kapi politikasini
     // devralir" DIYORDU, kod devralmiyordu).
-    const gate = await runScaleXGates({
-      req, user, policy, env, tenant, clusters, namespace, apps, action, executionMode,
-      targetReplicas, extraVars, reason, ocoNumber: req.body?.ocoNumber,
-    });
-    if (gate.outcome === 'error') return res.status(gate.status).json(gate.body);
-    if (gate.outcome === 'respond') return res.json(gate.body);
-    const job = await launchOnAwx({
-      keyName: RUN_KEY, extraVars, req,
-      label: `ScaleX ${action} (${executionMode}) — ${namespace} @ ${clusters.join(',')}`,
-    });
+    let gate;
+    try {
+      gate = await runScaleXGates({
+        req, user, policy, env, tenant, clusters, namespace, apps, action, executionMode,
+        targetReplicas, extraVars, reason, ocoNumber: req.body?.ocoNumber,
+      });
+    } catch (e) {
+      await releaseRestoreLocks(locking.acquired);
+      throw e;
+    }
+    if (gate.outcome === 'error') {
+      await releaseRestoreLocks(locking.acquired);
+      return res.status(gate.status).json(gate.body);
+    }
+    if (gate.outcome === 'respond') {
+      // `pendingApproval` DISINDA is hic baslamayacak (or. `ocoDeferred`) — kilit
+      // birakilmali. Onay bekleyen yolda kilit TUTULUR; bilet cozuldugunde
+      // uzlastirici ya isi baslatir ya kilidi birakir.
+      if (!gate.body?.pendingApproval) await releaseRestoreLocks(locking.acquired);
+      return res.json(gate.body);
+    }
+
+    // AWX baslatma patlarsa kilit BIZDE kalmamali — kullanici bir daha hic
+    // deneyemezdi.
+    let job;
+    try {
+      job = await launchOnAwx({
+        keyName: RUN_KEY, extraVars, req,
+        label: `ScaleX ${action} (${executionMode}) — ${namespace} @ ${clusters.join(',')}`,
+      });
+    } catch (e) {
+      await releaseRestoreLocks(locking.acquired);
+      throw e;
+    }
 
     await insertOperationRows({
       requestKey: `${job.serverId}:${job.jobId}`,
@@ -576,8 +653,22 @@ function initScaleX(app) {
     const env = String(req.query.env || '').trim();
     const tenant = String(req.query.tenant || '').trim();
     const clusterName = String(req.query.cluster || '').trim() || null;
-    if (!env || !tenant) throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
-    const all = await state.listMirror({ env, tenant, clusterName });
+    // KAPSAM OPSIYONEL. "Hizli aksiyon" paneli sihirbazin ILK adiminda da gorunuyor ve
+    // orada henuz secilmis bir env/tenant yok. Kapsam verilirse liste ona daralir.
+    //
+    // BU BIR POLITIKA KARARI: kapsamsiz listede kullanicinin GOREBILDIGI tum
+    // namespace adlari (prod dahil) gorunur hale gelir. Yetki suzgeci aynen
+    // uygulaniyor — yalnizca gorunurlugun VARSAYILAN kapsami genisliyor — ama bu
+    // genisleme denetim kaydina yaziliyor.
+    const scoped = !!(env && tenant);
+    const all = scoped
+      ? await state.listMirror({ env, tenant, clusterName })
+      : await state.listMirrorAll();
+    if (!scoped) {
+      auditPortal(req, 'scalex_stopped_global', {
+        detail: JSON.stringify({ rows: all.length, truncated: all.truncated === true }),
+      });
+    }
     // Bu uc `resolveScope`tan GECMEZ (namespace almiyor), bu yuzden yetki suzgeci
     // BURADA uygulanmali — aksi halde kisitli bir namespace'in adi ve orada durdurulmus
     // uygulamalar, o namespace'i goremeyen kullaniciya listelenirdi.
@@ -680,12 +771,27 @@ function initScaleX(app) {
         mailTo: String(user.mail || '').trim(), mailCc: '',
       });
 
+      // KILIT: grup basina. Mesgul bir grup TUM istegi dusurmez — `blocked`a duser
+      // ve digerleri denenmeye devam eder. Bir kesinti sirasinda tek bir cakisma
+      // yuzunden kalan bes grubu hic denememek en pahali hata olurdu.
+      const groupLock = await acquireRestoreLocks({
+        env, tenant, clusters: [g.cluster], namespace: g.namespace, apps: g.apps,
+      });
+      if (!groupLock.ok) {
+        blocked.push({
+          cluster: g.cluster, namespace: g.namespace,
+          message: restoreConflictBody(groupLock.busy).message,
+        });
+        continue;
+      }
+
       const gate = await runScaleXGates({
         req, user, policy, env, tenant, clusters: [g.cluster], namespace: g.namespace,
         apps: g.apps, action: 'restore', executionMode: 'apply', targetReplicas: undefined,
         extraVars, reason, ocoNumber: undefined,
-      });
+      }).catch(async (e) => { await releaseRestoreLocks(groupLock.acquired); throw e; });
       if (gate.outcome === 'error') {
+        await releaseRestoreLocks(groupLock.acquired);
         // HICBIR grup henuz baslamadiysa hata YAPILANDIRMA duzeyindedir (or.
         // `smart_not_configured`) ve her grup icin ayni sekilde duserdi — kullaniciyi
         // N kez ayni mesajla ugrastirmak yerine dogrudan don.
@@ -694,6 +800,8 @@ function initScaleX(app) {
         continue;
       }
       if (gate.outcome === 'respond') {
+        // Onay bekleyen grubun kilidi TUTULUR; diger her yolda birakilir.
+        if (!gate.body?.pendingApproval) await releaseRestoreLocks(groupLock.acquired);
         if (gate.body?.pendingApproval) {
           pendingApproval.push({
             cluster: g.cluster, namespace: g.namespace, apps: g.apps,
@@ -705,10 +813,16 @@ function initScaleX(app) {
         continue;
       }
 
-      const job = await launchOnAwx({
-        keyName: RUN_KEY, extraVars, req,
-        label: `ScaleX toplu geri alma — ${g.namespace} @ ${g.cluster}`,
-      });
+      let job;
+      try {
+        job = await launchOnAwx({
+          keyName: RUN_KEY, extraVars, req,
+          label: `ScaleX toplu geri alma — ${g.namespace} @ ${g.cluster}`,
+        });
+      } catch (e) {
+        await releaseRestoreLocks(groupLock.acquired);
+        throw e;
+      }
       await insertOperationRows({
         requestKey: `${job.serverId}:${job.jobId}`,
         username: user.username, env, tenant, clusters: [g.cluster], namespace: g.namespace,
@@ -812,7 +926,20 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
     const op = rows[0];
     const idByCluster = new Map(rows.map((r) => [r.cluster_name, r.id]));
     for (const t of parsed.targets) {
-      if (t.status !== 'OK') continue;
+      if (t.status !== 'OK') {
+        // BASARISIZ GERI ALMA: kilit BIZDE kalmamali. Basarili yolda satir zaten
+        // siliniyor (`clearRestored`), ama FAIL/WARN donen bir hedefin ayna satiri
+        // `restoring` fazinda asili kalirdi ve kullanici o uygulamayi bir daha hic
+        // geri alamazdi. Uzlastiricinin yetim kilit turu bunu nihayetinde toplar;
+        // burada ANINDA birakiyoruz ki kullanici hemen tekrar deneyebilsin.
+        if (parsed.action === 'restore') {
+          await state.unlockRestore({
+            env: op.env, tenant: op.tenant, clusterName: t.cluster,
+            namespace: op.namespace, appName: t.app,
+          }).catch((e) => console.warn('[ScaleX] kilit birakilamadi:', e.message));
+        }
+        continue;
+      }
       if (parsed.action === 'stop') {
         // `previous_replicas` sonuc satirinda YOK — kesif/durum denetimi onu getirir.
         // Burada yalnizca "durduruldu" gercegi kaydedilir; `[Durumu Tazele]` ayrintiyi

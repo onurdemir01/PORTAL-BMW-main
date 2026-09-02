@@ -163,6 +163,55 @@ async function resolveApproval(ticketId, status, approvalState, message) {
   );
 }
 
+// ── YETIM GERI ALMA KILITLERI ───────────────────────────────────────────────
+//
+// Geri alma baslatilirken ayna satiri `restoring` fazina cekilir (bkz.
+// state.tryLockRestore). Kilit normalde ya basarili geri almada satirin SILINMESIYLE
+// ya da `finalizeOperation`/kapi reddi yollarinda ACIKCA birakilir. Ama portal tam o
+// anda yeniden baslarsa ya da bir yol atlanirsa satir kilitli kalir ve kullanici o
+// uygulamayi BIR DAHA HIC geri alamaz.
+//
+// ZAMAN PENCERESI KULLANILMAZ — kaynak `scalex_operations.status`tur: kilitli bir
+// satirin karsiliginda calisan (RUNNING ya da PENDING_APPROVAL) bir geri alma islemi
+// yoksa kilit yetimdir. Bir zaman esigi ya uzun bir isi erken serbest birakir ya da
+// asili kalmis bir kilidi gereksiz yere tutar.
+//
+// Kesisim SQL'de DEGIL JS'te: `app_names_json` bir JSON dizi ve `OPENJSON` hem
+// uyumluluk seviyesi 130+ ister hem SARGable degildir (ayni gerekce:
+// server/logx/v2/restrictions.cjs).
+async function releaseOrphanRestoreLocks() {
+  const state = require('./state.cjs');
+  const locked = await state.listLockedRestores();
+  if (!locked.length) return { releasedLocks: 0 };
+
+  const { rows } = await db.query(
+    `SELECT env, tenant, cluster_name, namespace, app_names_json
+       FROM scalex_operations
+      WHERE action = 'restore' AND status IN ('RUNNING', 'PENDING_APPROVAL')`
+  );
+  const active = new Set();
+  for (const r of rows) {
+    let apps = [];
+    // Bozuk JSON tum turu dusurmemeli: o satir icin "aktif is yok" varsaymak,
+    // kilidi birakmak demek — guvenli taraf (kullanici tekrar deneyebilir).
+    try { apps = JSON.parse(r.app_names_json || '[]'); } catch { apps = []; }
+    for (const app of Array.isArray(apps) ? apps : []) {
+      active.add([r.env, r.tenant, r.cluster_name, r.namespace, app].join('\u001f'));
+    }
+  }
+
+  let releasedLocks = 0;
+  for (const l of locked) {
+    const key = [l.env, l.tenant, l.clusterName, l.namespace, l.appName].join('\u001f');
+    if (active.has(key)) continue;
+    if (await state.unlockRestore(l)) releasedLocks++;
+  }
+  if (releasedLocks) {
+    console.log(`[ScaleX] uzlastirici: ${releasedLocks} yetim geri alma kilidi birakildi.`);
+  }
+  return { releasedLocks };
+}
+
 async function tick() {
   const cfg = getConfig();
 
@@ -179,8 +228,16 @@ async function tick() {
     console.log(`[ScaleX] uzlastirici: ${approval.adopted} onayli is devralindi, ${approval.cancelled} onay kaydi kapatildi.`);
   }
 
+  // Yetim kilitler: bu tur PATLASA BILE asagidaki sonuclandirma calismali.
+  let locks = { releasedLocks: 0 };
+  try {
+    locks = await releaseOrphanRestoreLocks();
+  } catch (e) {
+    console.warn('[ScaleX] uzlastirici: kilit turu basarisiz:', e.message);
+  }
+
   const jobs = await pendingJobs(cfg.batchSize);
-  if (!jobs.length) return { checked: 0, finalized: 0, stale: 0, ...approval };
+  if (!jobs.length) return { checked: 0, finalized: 0, stale: 0, ...approval, ...locks };
 
   // Gec require: modul yuklenme sirasi dongusune girmemek icin (index.cjs bu dosyayi
   // cagiriyor, bu dosya da index.cjs'in `finalizeOperation`ini kullaniyor).
@@ -212,7 +269,7 @@ async function tick() {
   if (finalized || stale) {
     console.log(`[ScaleX] uzlastirici: ${finalized} is sonuclandirildi, ${stale} is "bilinmiyor" isaretlendi.`);
   }
-  return { checked: jobs.length, finalized, stale, ...approval };
+  return { checked: jobs.length, finalized, stale, ...approval, ...locks };
 }
 
 let _timer = null;
@@ -232,4 +289,4 @@ function startReconciler() {
 // engellemiyor ve depoda cagrilacagi bir kapanis yolu da yok. Cagrilmayan bir
 // "temizlik" fonksiyonu birakmak, ileride birinin onun gercekten kullanildigini
 // sanmasina yol acardi (J1 bekcisi bu spekulatif olu kodu zaten reddediyor).
-module.exports = { tick, startReconciler, getConfig, pendingJobs, pendingApprovalTickets, adoptApprovedTickets, HARD_TOP };
+module.exports = { tick, startReconciler, getConfig, pendingJobs, pendingApprovalTickets, adoptApprovedTickets, releaseOrphanRestoreLocks, HARD_TOP };

@@ -177,16 +177,37 @@ test('U12 playbook degisken adlari ekranda GORUNMUYOR', () => {
 
 // ── U13 Durum sizintisi ─────────────────────────────────────────────────────
 
-test('U13 restart() calistirmaya ozel TUM alanlari sifirliyor', () => {
+test('U13 calistirmaya ozel TUM alanlar sifirlaniyor (HER iki yolda)', () => {
+  // Bir onceki calistirmanin izleri `resetRunState()`te temizlenir; sihirbaz SECIMLERI
+  // `restart()`ta. Ikisi ayri, cunku panelden gelen "Geri Al" kisayolu izleri temizler
+  // ama secimleri KENDISI belirler.
+  const reset = PAGE.slice(PAGE.indexOf('function resetRunState()'), PAGE.indexOf('function restart()'));
+  for (const f of ['setJob', 'setRunResult', 'setTrackedJobId', 'setCatalogWarning',
+    'setNotice', 'setError', 'setCancelling', 'setElapsed']) {
+    assert.ok(reset.includes(f), `resetRunState() ${f} cagirmiyor — onceki islemin izi ekranda kalir`);
+  }
+
   const body = PAGE.slice(PAGE.indexOf('function restart()'), PAGE.indexOf('async function guarded'));
   // `env`/`tenant`/`clusters` BILEREK korunuyor (kullanici ayni kapsamda ikinci bir
   // islem yapacak). Ama calistirmaya ozel her alan sifirlanmali; kalan bir deger
   // sonraki isleme SESSIZCE tasinir.
   for (const f of ['setNamespace', 'setApps', 'setWorkloads', 'setAction', 'setExecutionMode',
-    'setTargetReplicas', 'setVerificationTimeout', 'setAllowPartial', 'setMailCc',
-    'setJob', 'setRunResult', 'setTrackedJobId', 'setCatalogWarning', 'setNotice', 'setError']) {
+    'setTargetReplicas', 'setVerificationTimeout', 'setAllowPartial', 'setMailCc']) {
     assert.ok(body.includes(f), `restart() ${f} cagirmiyor — deger sonraki isleme tasinir`);
   }
+  assert.ok(body.includes('resetRunState()'), 'restart() onceki calistirmanin izlerini temizlemiyor');
+});
+
+test('U13b panelden gelen "Geri Al" da onceki calistirmanin izlerini TEMIZLIYOR', () => {
+  // Bu yol uzun sure HICBIR sey sifirlamiyordu: onceki islemin sonuc paneli ve BASKA
+  // BIR UYGULAMANIN saglik satirlari yeni islemin ekraninda duruyordu, ustelik
+  // `healthStartedRef` hala true oldugu icin saglik kontrolu bir daha hic kosmuyordu.
+  const body = PAGE.slice(PAGE.indexOf('function restoreFromPanel'), PAGE.indexOf('const back ='));
+  assert.ok(body.includes('resetRunState()'),
+    'restoreFromPanel onceki calistirmanin izlerini temizlemiyor');
+  // Temizlik, yeni degerler yazilmadan ONCE olmali; sonra cagrilirsa onlari ezer.
+  assert.ok(body.indexOf('resetRunState()') < body.indexOf('setClusters('),
+    'resetRunState() yeni degerlerden SONRA cagriliyor — onlari ezer');
 });
 
 test('U14 restoreFromPanel geri alma icin gerekli alanlari SET ediyor', () => {
@@ -265,9 +286,16 @@ test('U24 uc sapma durumunun ikisi kullaniciya ACIKLANIYOR', () => {
   assert.match(STOPPED, /elle geri almış|elle durdurulmuş/);
 });
 
-test('U25 sapmali kayitta "Geri Al" GOSTERILMIYOR', () => {
+test('U25 sapmali kayitta ve SUREN islemde "Geri Al" GOSTERILMIYOR', () => {
+  const code = codeOnly(STOPPED);
   // Cluster'da ConfigMap yokken geri alma denemek `STATE;FAIL` ile duserdi.
-  assert.match(codeOnly(STOPPED), /driftStatus === "in_sync" && onRestore/);
+  assert.match(code, /driftStatus === "in_sync"[\s\S]{0,60}onRestore/,
+    'sapmali kayitta buton hala gosteriliyor');
+  // Suren bir geri alma varken sunucu ikinci istegi 409 ile reddediyor (ayna kilidi).
+  // Butonu acik birakmak, kullaniciyi reddedilecek bir istege gondermek olurdu.
+  assert.match(code, /phase !== "restoring"[\s\S]{0,60}onRestore/,
+    'geri alma surerken buton hala tiklanabiliyor');
+  assert.match(code, /Geri alma sürüyor/, 'suren islem kullaniciya SOYLENMIYOR');
 });
 
 // ── U26 Kayit / yonlendirme ─────────────────────────────────────────────────
@@ -381,10 +409,13 @@ test('V11 saglik kontrolu bir kez kosar (ref ile kilitli)', () => {
   assert.match(codeOnly(PAGE), /healthStartedRef\s*=\s*useRef\(false\)/);
 });
 
-test('V12 restart() saglik durumunu ve kilidini de sifirliyor', () => {
+test('V12 saglik durumu ve kilidi de sifirlaniyor', () => {
+  // Saglik izi `resetRunState()`te — boylece panelden gelen geri alma yolunda da
+  // temizleniyor (eskiden yalnizca `restart()`ta vardi ve o yol onu hic cagirmiyordu).
+  const reset = PAGE.slice(PAGE.indexOf('function resetRunState()'), PAGE.indexOf('function restart()'));
+  assert.ok(reset.includes('setHealth(null)'), 'onceki islemin saglik sonucu ekranda kalirdi');
+  assert.ok(reset.includes('healthStartedRef.current = false'), 'ikinci islem icin saglik hic kosmazdi');
   const body = PAGE.slice(PAGE.indexOf('function restart()'), PAGE.indexOf('async function guarded'));
-  assert.ok(body.includes('setHealth(null)'), 'onceki islemin saglik sonucu ekranda kalirdi');
-  assert.ok(body.includes('healthStartedRef.current = false'), 'ikinci islem icin saglik hic kosmazdi');
   assert.ok(body.includes('setHpaPin(false)'), 'HPA sabitleme tercihi sonraki isleme tasinirdi');
 });
 
@@ -397,4 +428,77 @@ test('V14 ekranda "chaos" gecmiyor', () => {
   for (let i = 0; i < ALL_TSX.length; i++) {
     assert.ok(!/chaos/i.test(ALL_TSX[i]), `${NAMES[i]}: eski ad kalmis`);
   }
+});
+
+
+// ── W. SONUC EKRANINDAN HIZLI GERI ALMA (2026-09-02) ───────────────────────
+
+test('W1 hizli geri alma YALNIZCA gercekten geri alinabilir sonucta cikar', () => {
+  const code = codeOnly(RESULT);
+  // `scale` kayit BIRAKMAZ, `dry_run` cluster'a hic dokunmadi, OK olmayan hedef
+  // aynaya yazilmadi — ucunde de geri alinacak bir sey yok. Butonu yine de
+  // gostermek, kullaniciyi kesin dusecek bir ise gondermek olurdu.
+  assert.match(code, /result\.action !== "stop"/, 'stop disinda buton gizlenmiyor');
+  assert.match(code, /result\.mode !== "apply"/, 'dry_run sonrasi buton gizlenmiyor');
+  assert.match(code, /status === "OK"/, 'yalnizca OK hedefler kapsanmali');
+});
+
+test('W2 kirpilmis listede kapsam ACIKCA soyleniyor', () => {
+  // Kirpilmis bir listede buton yalnizca GORUNEN hedefleri kapsar. Bunu
+  // soylememek, "hepsi geri alindi" yalani olurdu.
+  assert.match(codeOnly(RESULT), /targetsTruncated[\s\S]{0,120}yalnızca yukarıda görünen/,
+    'kirpilmis listede kapsam uyarisi yok');
+});
+
+test('W3 hizli geri alma UYDURMA replica sayisi tasimiyor', () => {
+  // Portal onceki replica sayisini BILMIYOR (deger cluster'daki durum kaydinda) ve
+  // sonuc satiri onu tasimiyor. Uydurulmus bir sayi geri almayi BOZARDI.
+  const body = PAGE.slice(PAGE.indexOf('function restoreFromResult'), PAGE.indexOf('const back ='));
+  assert.match(body, /previousReplicas:\s*null/, 'uydurulmus previousReplicas yazilmis');
+  assert.match(body, /setHpaPin\(false\)/, 'hedef bilinmiyorken HPA sabitleme kapali olmali');
+  assert.match(body, /resetRunState\(\)/, 'onceki islemin izleri temizlenmiyor');
+});
+
+
+// ── X. ONIZLEMEDE CANLI BILGI (2026-09-02) ─────────────────────────────────
+
+test('X1 UYDURMA metrik gosterilmiyor: canli ayrinti yalnizca KESIF satirlarinda', () => {
+  // Panelden/sonuctan gelen kisayolda satirlar AYNADAN turetiliyor ve
+  // `specReplicas`/`readyReplicas`/`image` 0/null oluyor. Bunlari gostermek,
+  // prod'da tek tikla apply'a giden akista "0/0 hazir, imaj yok" diye
+  // UYDURULMUS bir gerceklik sunmak olurdu.
+  const code = codeOnly(PREVIEW);
+  assert.match(code, /w\.source === "discovery"/, 'kaynak ayrimi yapilmiyor');
+  assert.match(code, /\{live &&/, 'canli ayrinti kaynak ayrimindan GECMIYOR');
+  // Mevcut replica sayisi da kaynaga bagli olmali.
+  assert.match(code, /live \? w\.specReplicas : "\?"/, 'mevcut replica sentetik satirda uydurma gosteriliyor');
+});
+
+test('X2 sentetik satirlar `source: "mirror"` ile isaretleniyor', () => {
+  // `source` ZORUNLU bir alan; opsiyonel olsaydi yeni bir sentetik yol eklendiginde
+  // unutulur ve uydurma metrikler sessizce ekrana duserdi.
+  const api = read('api/scalexApi.ts');
+  assert.match(api, /source:\s*"discovery"\s*\|\s*"mirror";/, 'kaynak alani opsiyonel ya da yok');
+  const page = codeOnly(PAGE);
+  const synthetic = (page.match(/source:\s*"mirror"/g) || []).length;
+  assert.equal(synthetic, 2, `sentetik kurulum sayisi degismis (${synthetic}) — yeni yol isaretlenmemis olabilir`);
+});
+
+test('X3 "zaten durdurulmus" rozeti YALNIZCA `stop` dalinda', () => {
+  // Bir GERI ALMA onizlemesinde bu rozet, kullaniciya yanlis islem yaptigini
+  // dusundururdu — geri alinan uygulama zaten durdurulmus olmali.
+  assert.match(codeOnly(PREVIEW), /action === "stop" && w\.statePhase === "scaled_down"/,
+    'rozet islemden bagimsiz gosteriliyor');
+});
+
+test('X4 calistirma ayarlari ve VERI TAZELIGI onizlemede', () => {
+  const code = codeOnly(PREVIEW);
+  // Bu uc deger `İşlem` adiminda toplaniyor ve dogrudan calistirmaya gidiyordu ama
+  // onizlemede hic gorunmuyordu.
+  assert.match(code, /allowPartial \?/, '"hepsi ya da hicbiri" karari onizlemede yok');
+  assert.match(code, /Sonuç kontrolü/, 'dogrulama suresi onizlemede yok');
+  assert.match(code, /Rapor CC/, 'CC adresleri onizlemede yok');
+  // Onizleme yeniden kesif YAPMIYOR: damga olmadan dakikalar once alinmis bir
+  // replica sayisi "su anki durum" sanilirdi.
+  assert.match(code, /fetchedAt[\s\S]{0,120}alındı/, 'veri tazeligi damgasi yok');
 });

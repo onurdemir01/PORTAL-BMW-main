@@ -12,6 +12,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon, ClockIcon, ExclamationTriangleIcon, StopCircleIcon } from "@heroicons/react/24/outline";
 import { scalexApi, type ScaleXAction, type ScaleXMode, type ScaleXRunResult, type ScaleXWorkload, type ScaleXStoppedItem } from "@/api/scalexApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
+import { humanizeHealth } from "@/utils/scalexHealth";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 import ScopeStep from "./steps/ScopeStep";
 import NamespaceStep from "./steps/NamespaceStep";
@@ -55,6 +56,10 @@ const ScaleXPage: React.FC = () => {
   const [namespace, setNamespace] = useState("");
   const [apps, setApps] = useState<string[]>([]);
   const [workloads, setWorkloads] = useState<ScaleXWorkload[]>([]);
+  // Kesif verisinin alindigi an. Onizleme yeniden kesif YAPMIYOR; damgayi
+  // gostermemek, dakikalar once alinmis bir replica sayisini "su anki durum"
+  // sanmaya yol acardi. Sentetik (ayna) satirlarda `null`.
+  const [workloadsFetchedAt, setWorkloadsFetchedAt] = useState<number | null>(null);
   // Kullanici ISLEM adimini bir kez doldurdu mu? Doldurduysa geri donusde kendi
   // secimleri geri yuklenir; doldurmadiysa adim NOTR acilir (bkz. OperationStep).
   const [operationTouched, setOperationTouched] = useState(false);
@@ -86,6 +91,14 @@ const ScaleXPage: React.FC = () => {
 
   const { addJob, jobs } = useJobTracker();
   const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
+
+  // "Su an durdurulmus" panelini tazeleyen JETON. Bir is BITINCE artar; panel bunu
+  // gorup listeyi sessizce yeniler. Onceden panel yalnizca `env`/`tenant` degisiminde
+  // yukleniyordu, yani bir geri alma bittiginde ESKI halini gostermeye devam ediyor ve
+  // kullanici ayni satira tekrar basabiliyordu.
+  //
+  // `restart()` bunu SIFIRLAMAZ: monoton bir jeton, calistirma durumu degil.
+  const [stoppedReloadKey, setStoppedReloadKey] = useState(0);
 
   // Geçen süre sayacı. İş BİTİNCE durur — bitmiş bir işin süresi artmaya devam ederse
   // ekran yalan söyler.
@@ -124,6 +137,16 @@ const ScaleXPage: React.FC = () => {
     return () => { alive = false; };
   }, [finished, runResult, env, tenant, namespace, clusters, apps]);
 
+  // Is bitince paneli tazele. YOKLAMA HATASINDA ARTIRMA: `JobTrackerContext` yoklama
+  // patladiginda da `done: true` yapiyor ve o durumda `finalizeOperation` HIC kosmamis
+  // olur — ayna guncellenmemisken listeyi yenilemek, kullaniciya "hicbir sey degismedi"
+  // diye yanlis bir kesinlik verirdi.
+  const pollFailed = !!trackedJob?.pollErr;
+  useEffect(() => {
+    if (!finished || pollFailed) return;
+    setStoppedReloadKey((k) => k + 1);
+  }, [finished, pollFailed]);
+
   // İş bitince yapılandırılmış sonucu bir kez çek.
   useEffect(() => {
     if (!job || !finished) return;
@@ -134,19 +157,36 @@ const ScaleXPage: React.FC = () => {
     return () => { alive = false; };
   }, [job, finished]);
 
+  // BIR ONCEKI CALISTIRMANIN IZLERI. Yeni bir islem baslatan HER yol bunu cagirmak
+  // zorunda — yalnizca `restart()` degil, panelden gelen "Geri Al" kisayolu da.
+  //
+  // NEDEN AYRI FONKSIYON: `restoreFromPanel` bu alanlarin HICBIRINI sifirlamiyordu.
+  // Panel her adimda gorunur hale gelince o yol ANA AKIS oluyor ve sonuclari
+  // gorunur hale geliyor:
+  //   * `runResult` eski degerde kaldigi icin ekran ONCEKI islemin sonuc panelini
+  //     gosteriyordu (yeni is daha calisirken).
+  //   * `health` eski degerde kaldigi icin BASKA BIR UYGULAMANIN saglik satirlari
+  //     yeni islemin ekraninda duruyordu.
+  //   * `healthStartedRef` hala `true` oldugu icin geri alma sonrasi saglik kontrolu
+  //     HIC KOSMUYORDU — V9-V11'in kurdugu koruma sessizce devre disi kaliyordu.
+  function resetRunState() {
+    setError(null); setNotice(null);
+    setJob(null); setRunResult(null); setCatalogWarning(null);
+    setTrackedJobId(null); setCancelling(false); setElapsed(0);
+    setHealth(null); healthStartedRef.current = false;
+  }
+
   // `env`/`tenant`/`clusters` BILEREK korunur: kullanici genellikle ayni kapsamda ikinci
   // bir islem yapar. Ama CALISTIRMAYA OZEL her alan sifirlanmali — kalan bir deger
   // (or. onceki islemin "hepsi ya da hicbiri" secimi ya da CC adresi) sonraki isleme
   // SESSIZCE tasinir ve kullanici bunu fark etmez.
   function restart() {
+    resetRunState();
     setStep("scope");
-    setNamespace(""); setApps([]); setWorkloads([]);
+    setNamespace(""); setApps([]); setWorkloads([]); setWorkloadsFetchedAt(null);
     setAction("stop"); setExecutionMode("dry_run"); setTargetReplicas(undefined);
     setVerificationTimeout("60"); setAllowPartial(true); setMailCc(""); setHpaPin(false);
-    setError(null); setNotice(null); setJob(null); setRunResult(null);
-    setCatalogWarning(null); setTrackedJobId(null); setCancelling(false); setElapsed(0);
     setOperationTouched(false);
-    setHealth(null); healthStartedRef.current = false;
   }
 
   async function guarded(fn: () => Promise<void>) {
@@ -250,6 +290,14 @@ const ScaleXPage: React.FC = () => {
 
   // "Geri Al" kısayolu: durdurulmuş bir kaydı doğrudan geri alma akışına taşır.
   function restoreFromPanel(item: ScaleXStoppedItem) {
+    // ONCE temizle, SONRA yeni degerleri yaz — ters sirada `resetRunState` asagida
+    // set edilenleri ezerdi.
+    resetRunState();
+    // ORTAM/TENANT DA KAYITTAN GELIR. Panel artik ilk ekranda, kapsam SECILMEDEN de
+    // gorunuyor ve farkli kapsamlardan satirlar listeliyor; sayfa durumundaki
+    // `env`/`tenant` bos ya da BASKA bir kapsam olabilir. Kayittan almazsak istek
+    // yanlis kapsamla gider.
+    setEnv(item.env); setTenant(item.tenant);
     setClusters([item.clusterName]);
     setNamespace(item.namespace);
     setApps([item.appName]);
@@ -258,6 +306,9 @@ const ScaleXPage: React.FC = () => {
       resource: "", specReplicas: 0, statusReplicas: 0, readyReplicas: 0,
       hasHpa: false, image: null, statePhase: item.phase,
       previousReplicas: item.previousReplicas, restorable: true,
+      // AYNADAN turetilmis sentetik satir: yukaridaki replica/imaj alanlari GERCEK
+      // DEGIL. Onizleme bu isareti gorup onlari gostermez.
+      source: "mirror",
       // "Şu an durdurulmuş" listesinde GitOps bilgisi yok (o keşif `state` modundan
       // geliyor, `workloads`tan değil). `null` = bilinmiyor; önizleme bu yüzden
       // GitOps uyarısı göstermez — yanlış bir "temiz" iddiası yerine sessizlik.
@@ -269,12 +320,39 @@ const ScaleXPage: React.FC = () => {
     // Geri donuste BOS FORM cikmasin: kullanici "Geri Al"a basarak bu kararlari
     // vermis sayilir, geri tusu onlari gostermeli.
     setOperationTouched(true);
-    // ONCEKI ISLEMDEN KALAN BANNER'LARI TEMIZLE: adim degisimi `error`/`notice`
-    // temizlemiyordu ve bir onceki denemenin hata mesaji, yeni geri alma
-    // onizlemesinin USTUNDE durmaya devam ediyordu.
-    setError(null); setNotice(null);
     setStep("preview");
   }
+
+  // SONUC EKRANINDAN HIZLI GERI ALMA. `restoreFromPanel`in cok-hedefli kardesi:
+  // ayni islemin OK donen hedeflerini tek adimda geri alma onizlemesine tasir.
+  //
+  // `previousReplicas: null` BILEREK: portal onceki replica sayisini BILMIYOR (deger
+  // cluster'daki durum kaydinda) ve sonuc satiri onu tasimiyor. Uydurulmus bir sayi
+  // geri almayi BOZARDI; `null` "kayitli deger kullanilacak" demek ve onizleme bunu
+  // zaten oyle gosteriyor. Ayni sebeple HPA sabitleme de KAPALI kalir — hedef
+  // bilinmiyorken sabitleme sunulamaz (bkz. launch.isHpaPinAllowed).
+  function restoreFromResult(targets: { cluster: string; app: string; kind: string }[]) {
+    if (!targets.length) return;
+    resetRunState();
+    setClusters([...new Set(targets.map((t) => t.cluster))]);
+    setApps([...new Set(targets.map((t) => t.app))]);
+    setWorkloads(targets.map((t) => ({
+      cluster: t.cluster, name: t.app, kind: t.kind || "-",
+      resource: "", specReplicas: 0, statusReplicas: 0, readyReplicas: 0,
+      hasHpa: false, image: null, statePhase: "scaled_down",
+      previousReplicas: null, restorable: true, gitops: null,
+      source: "mirror",
+    })));
+    setWorkloadsFetchedAt(null);
+    setAction("restore");
+    setExecutionMode("apply");
+    setHpaPin(false);
+    setOperationTouched(true);
+    setStep("preview");
+  }
+
+  // Turetilmis deger — hook DEGIL (U4: hook'lar erken `return`lerin ustunde kalmali).
+  const healthView = health && health.length ? humanizeHealth(health, namespace) : null;
 
   const back = backTargetFor(step);
   const scope = { env, tenant, namespace, clusters, apps };
@@ -320,7 +398,7 @@ const ScaleXPage: React.FC = () => {
         {step === "workloads" && (
           <WorkloadStep scope={{ env, tenant, namespace, clusters }} busy={busy} initial={apps}
             onBack={() => setStep("namespace")}
-            onSubmit={(v) => { setApps(v.apps); setWorkloads(v.workloads); setStep("operation"); }} />
+            onSubmit={(v) => { setApps(v.apps); setWorkloads(v.workloads); setWorkloadsFetchedAt(v.fetchedAt); setStep("operation"); }} />
         )}
 
         {step === "operation" && (
@@ -340,7 +418,8 @@ const ScaleXPage: React.FC = () => {
         {step === "preview" && (
           <PreviewStep scope={scope} action={action} executionMode={executionMode}
             targetReplicas={targetReplicas} verificationTimeout={verificationTimeout}
-            workloads={workloads} hpaPin={hpaPin} busy={busy} onConfirm={run} />
+            workloads={workloads} hpaPin={hpaPin} allowPartial={allowPartial} mailCc={mailCc}
+            fetchedAt={workloadsFetchedAt} busy={busy} onConfirm={run} />
         )}
 
         {step === "done" && (
@@ -352,7 +431,7 @@ const ScaleXPage: React.FC = () => {
             )}
 
             {runResult ? (
-              <ScaleXResultPanel result={runResult} catalogWarning={catalogWarning} />
+              <ScaleXResultPanel result={runResult} catalogWarning={catalogWarning} onUndo={restoreFromResult} />
             ) : !notice ? (
               <div className="flex items-center gap-2.5">
                 {finished ? (
@@ -391,13 +470,24 @@ const ScaleXPage: React.FC = () => {
               </div>
             )}
 
-            {health && health.length > 0 && (
+            {/* İŞLEM SONRASI SAĞLIK — ham playbook çıktısı DEĞİL, çevrilmiş cümleler.
+                Eskiden ekranda "merchant-info-27-qkjbw 0/1 ContainerCreating 0 22s" ve
+                "Missing list events permission" yazıyordu; ikincisi üstelik kehribar
+                renkte, yani bir YETKİ YOKLUĞU HATA gibi duruyordu. */}
+            {healthView && (healthView.hasContent || healthView.asks.length > 0) && (
               <div className="rounded-xl border border-[var(--border)] p-3 space-y-1.5">
                 <p className="text-xs font-semibold text-[var(--text-primary)]">İşlem sonrası sağlık</p>
-                {health.map((h, i) => (
-                  <p key={i} className={`text-xs ${h.status === "OK" ? "text-[var(--text-muted)]" : "text-amber-800"}`}>
-                    <span className="font-mono">{h.app}</span> · {h.step} · {h.detail}
-                  </p>
+                {healthView.hasContent && healthView.lines
+                  .filter((l) => l.tone !== "info")
+                  .map((l, i) => (
+                    <p key={i} className={`text-xs ${l.tone === "ok" ? "text-[var(--text-muted)]" : "text-amber-800"}`}>
+                      <span className="font-mono">{l.app}</span> · {l.text}
+                    </p>
+                  ))}
+                {/* Eksik yetkiler AYRI ve SAKIN: bir sorun değil, bir eksik — ve
+                    kullanıcının ne isteyeceğini bilmesi gerekiyor. */}
+                {healthView.asks.map((a, i) => (
+                  <p key={`ask-${i}`} className="text-xs text-[var(--text-muted)]">{a}</p>
                 ))}
               </div>
             )}
@@ -426,17 +516,17 @@ const ScaleXPage: React.FC = () => {
         )}
       </div>
 
-      {/* "Şu an durdurulmuş" GERÇEKTEN her adımda görünür — SONUÇ EKRANI DAHİL.
-          Eskiden `step !== "done"` ile sonuç ekranında gizleniyordu; oysa panele en çok
-          orada ihtiyaç var: 6 hedeften 4'ü başarılı, 2'si başarısız olduğunda kullanıcı
-          "şimdi ne yapmalıyım?" sorusunun cevabını ekranda bulamıyordu ve geri almak
-          için tüm sihirbazı (kapsam → namespace → keşif → işlem → önizleme) baştan
-          doldurmak, üstelik yeni bir keşif işi başlatmak zorunda kalıyordu. */}
-      {env && tenant && (
-        <div className="card p-5">
-          <StoppedPanel env={env} tenant={tenant} onRestore={restoreFromPanel} />
-        </div>
-      )}
+      {/* HIZLI AKSIYON — HER ADIMDA, KAPSAM SECILMEDEN DE.
+          Eskiden `step !== "done"` ile sonuc ekraninda gizleniyordu; sonra `env && tenant`
+          kosuluyla ILK EKRANDA hic gorunmuyordu. Oysa panele en cok o iki yerde ihtiyac
+          var: sayfaya "neyi kapatmisim?" diye giren kullanici, ve 6 hedeften 2'si
+          basarisiz olup "simdi ne yapmaliyim?" diye bakan kullanici. Ikisi de cevabi
+          ekranda bulamiyor, geri almak icin sihirbazi bastan doldurmak (ve yeni bir
+          kesif isi baslatmak) zorunda kaliyordu.
+          Kapsam secilmediginde panel TUM kapsamlari listeler; secilince ona daralir. */}
+      <div className="card p-5">
+        <StoppedPanel env={env} tenant={tenant} onRestore={restoreFromPanel} reloadKey={stoppedReloadKey} />
+      </div>
     </div>
   );
 };

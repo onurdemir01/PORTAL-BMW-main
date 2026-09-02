@@ -92,7 +92,7 @@ test('bekleyen is YOKSA AWX hic sorgulanmaz', async () => {
       const out = await reconciler.tick();
       // Onay turu de bos: `adopted`/`cancelled` tick sozlesmesinin parcasi
       // (bkz. reconciler.adoptApprovedTickets).
-      assert.deepEqual(out, { checked: 0, finalized: 0, stale: 0, adopted: 0, cancelled: 0 });
+      assert.deepEqual(out, { checked: 0, finalized: 0, stale: 0, adopted: 0, cancelled: 0, releasedLocks: 0 });
     });
   }, { rows: [] });
   assert.equal(asked, 0, 'bos listede AWX dovulmemeli');
@@ -125,7 +125,13 @@ test('yalnizca `apply` aynaya yazar — `dry_run` cluster\'a dokunmadigi icin ka
     const dry = finishedStopJob();
     dry.artifacts.scalex_result.mode = 'dry_run';
     await withFakeAwx(async () => dry, async () => { await reconciler.tick(); });
-    assert.ok(!calls.some((c) => /scalex_state_mirror/.test(c.sql)),
+    // AYNAYA YAZILMAMALI. Uzlastirici aynayi OKUYOR (yetim kilit turu) — olcut
+    // "aynadan hic soz edilmemesi" degil, "aynanin DEGISTIRILMEMESI" olmali.
+    // Fiil IFADENIN BASINDA aranir: `updated_at` kolon adi "UPDATE" iceriyor ve
+    // serbest arama her SELECT'i yazma sanardi.
+    const mirrorWrites = calls.filter((c) => /scalex_state_mirror/.test(c.sql)
+      && /^\s*(UPDATE|MERGE|DELETE|INSERT)\b/i.test(c.sql));
+    assert.deepEqual(mirrorWrites.map((c) => c.sql.trim().split('\n')[0]), [],
       'dry_run hicbir sey degistirmez, ayna da degismemeli');
   });
 });
@@ -255,4 +261,88 @@ test('onay turu PATLASA BILE sonuclandirma turu calisir (iki tur bagimsiz)', asy
   } finally {
     smartStore.getTicket = origGet;
   }
+});
+
+
+// ── YETIM GERI ALMA KILITLERI ───────────────────────────────────────────────
+//
+// Kilit, geri alma baslatilirken ayna satirini `restoring` fazina ceker. Birakma
+// yollarindan biri atlanirsa (portal tam o anda yeniden baslarsa) satir kilitli
+// kalir ve kullanici o uygulamayi BIR DAHA HIC geri alamaz. Uzlastirici bu yetim
+// kilitleri ZAMAN PENCERESIYLE DEGIL, calisan islem kaydina bakarak birakir.
+
+function withLockDb(fn, { locked, activeOps }) {
+  const orig = db.query;
+  const calls = [];
+  db.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/FROM scalex_state_mirror WHERE phase = 'restoring'/.test(sql.replace(/\s+/g, ' '))) {
+      return { rows: locked };
+    }
+    if (/FROM scalex_operations\s+WHERE action = 'restore'/.test(sql)) {
+      return { rows: activeOps };
+    }
+    return { rows: [], rowCount: 1 };
+  };
+  return Promise.resolve(fn(calls)).finally(() => { db.query = orig; });
+}
+
+const lockedRow = (app) => ({
+  env: 'prod', tenant: 'ark', cluster_name: 'c1',
+  namespace: 'odeme', app_name: app, updated_at: new Date(),
+});
+
+test('kilit: CALISAN bir geri alma isi varsa satira DOKUNULMAZ', async () => {
+  await withLockDb(async (calls) => {
+    const out = await reconciler.releaseOrphanRestoreLocks();
+    assert.equal(out.releasedLocks, 0, 'calisan isin kilidi birakildi — is yarida kalirdi');
+    assert.ok(!calls.some((c) => /SET phase = 'scaled_down'/.test(c.sql)));
+  }, {
+    locked: [lockedRow('odeme-api')],
+    activeOps: [{ env: 'prod', tenant: 'ark', cluster_name: 'c1', namespace: 'odeme',
+      app_names_json: JSON.stringify(['odeme-api']) }],
+  });
+});
+
+test('kilit: karsiliginda is YOKSA yetim sayilip birakilir', async () => {
+  await withLockDb(async (calls) => {
+    const out = await reconciler.releaseOrphanRestoreLocks();
+    assert.equal(out.releasedLocks, 1, 'yetim kilit birakilmadi — uygulama bir daha geri alinamaz');
+    assert.ok(calls.some((c) => /SET phase = 'scaled_down'/.test(c.sql)));
+  }, { locked: [lockedRow('odeme-api')], activeOps: [] });
+});
+
+test('kilit: ayni namespace\'te BASKA bir uygulamanin isi kilidi korumaz', async () => {
+  // Kesisim UYGULAMA bazinda olmali; namespace bazinda olsaydi yetim bir kilit,
+  // komsu uygulamanin isi yuzunden sonsuza dek tutulurdu.
+  await withLockDb(async () => {
+    const out = await reconciler.releaseOrphanRestoreLocks();
+    assert.equal(out.releasedLocks, 1);
+  }, {
+    locked: [lockedRow('odeme-api')],
+    activeOps: [{ env: 'prod', tenant: 'ark', cluster_name: 'c1', namespace: 'odeme',
+      app_names_json: JSON.stringify(['batch-worker']) }],
+  });
+});
+
+test('kilit: BOZUK app_names_json turu dusurmez, guvenli tarafa duser', async () => {
+  await withLockDb(async () => {
+    const out = await reconciler.releaseOrphanRestoreLocks();
+    // Bozuk kayit "aktif is yok" sayilir → kilit birakilir. Kullanici tekrar
+    // deneyebilir; ters karar onu kalici olarak kilitlerdi.
+    assert.equal(out.releasedLocks, 1);
+  }, {
+    locked: [lockedRow('odeme-api')],
+    activeOps: [{ env: 'prod', tenant: 'ark', cluster_name: 'c1', namespace: 'odeme',
+      app_names_json: '{bozuk' }],
+  });
+});
+
+test('kilit: hic kilitli satir yoksa `scalex_operations` HIC sorgulanmaz', async () => {
+  await withLockDb(async (calls) => {
+    const out = await reconciler.releaseOrphanRestoreLocks();
+    assert.equal(out.releasedLocks, 0);
+    assert.ok(!calls.some((c) => /FROM scalex_operations/.test(c.sql)),
+      'bos listede ikinci sorgu bosa gidiyor');
+  }, { locked: [], activeOps: [] });
 });
