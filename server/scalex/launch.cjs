@@ -159,7 +159,13 @@ async function buildRunExtraVars({
     target_namespace: namespace,
     target_app_names: apps.join(','),
     operation_action: action,
-    ...(action === 'scale' ? { target_replicas: String(targetReplicas) } : {}),
+    // SAYI OLARAK gonderilir, string DEGIL. AWX survey'inde bu soru `integer` tipinde
+    // ve AWX tipi DOGRULUYOR: string gonderildiginde launch
+    // `400: Value 2 for 'target_replicas' expected to be an integer.` ile REDDEDILIR —
+    // yani `Olcekle` islemi hic calismiyordu (2026-09-01 uretim tespiti).
+    // Playbook tarafi etkilenmez: `01_prepare.yml` degeri `| string | trim` ile
+    // normalize edip regexle dogruluyor.
+    ...(action === 'scale' ? { target_replicas: Number(targetReplicas) } : {}),
     verification_timeout: String(verificationTimeout),
     allow_partial_execution: allowPartial ? 'true' : 'false',
     // ONAY KUTULARI SUNUCUDA URETILIR, client'tan GELMEZ. Kullanici ekranda

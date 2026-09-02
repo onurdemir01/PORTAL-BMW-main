@@ -96,15 +96,58 @@ test('S4 kosullu alanlarin VARSAYILANI YOK (AWX gonderilmeyen alana varsayilan e
   }
 });
 
-test('S5 cluster adi SERBEST METIN (coktan secmeli liste katalogla bayatlar)', () => {
-  // Coktan secmeli olsaydi katalogda yeni bir cluster tanimlandiginda survey
-  // guncellenene kadar portalin her launch'i `400` ile reddedilirdi (AWX secim
-  // uyelugunu dogrular). Ortam/platform listeleri playbook assert'iyle AYNI
-  // oldugu icin onlar coktan secmeli kalabilir.
+// KATALOGDAN beslenen alanlar: degerleri `ocp_cluster_index` tablosundan, yani ADMIN
+// EKRANINDAN gelir. Bunlar coktan secmeli OLAMAZ — AWX secim uyeligini dogrular ve
+// katalogda yeni bir deger tanimlandiginda survey guncellenene kadar portalin HER
+// launch'i 400 ile reddedilir. 2026-09-01'de tam olarak bu yasandi: `digital_assets_wyden`,
+// `digital_assets_metaco` ve `ark-ai` gercek tenant'lardi ama survey listesinde yoklardi.
+const KATALOGDAN_GELEN = ['target_cluster_name', 'target_platform', 'target_environment'];
+
+test('S5 katalogdan beslenen alanlar SERBEST METIN (coktan secmeli liste bayatlar)', () => {
   for (const f of ['scalex_run.survey.json', 'scalex_discovery.survey.json']) {
-    const q = survey(f).spec.find((x) => x.variable === 'target_cluster_name');
-    assert.ok(q, `${f}: target_cluster_name yok`);
-    assert.equal(q.type, 'text', `${f}: target_cluster_name coktan secmeli — katalogla bayatlar`);
+    for (const v of KATALOGDAN_GELEN) {
+      const q = survey(f).spec.find((x) => x.variable === v);
+      assert.ok(q, `${f}: ${v} yok`);
+      assert.equal(q.type, 'text',
+        `${f}: ${v} coktan secmeli — katalogda yeni bir deger tanimlandiginda portal 400 alir`);
+    }
+  }
+});
+
+test('S5b playbook da sabit platform/ortam beyaz listesi TASIMAMALI', () => {
+  // Ikinci bir dogruluk kaynagi. Gercek dogrulama katalog uyeligiyle yapilir
+  // (02_select_targets.yml); sabit liste yalnizca bayatlar ve isi dusurur.
+  for (const f of ['tasks/01_prepare.yml', 'tasks/discovery/01_prepare.yml']) {
+    const src = read(path.join(APP, f));
+    assert.doesNotMatch(src, /oc_platform in \[/,
+      `${f}: sabit platform beyaz listesi geri gelmis`);
+    assert.doesNotMatch(src, /oc_environment in \[/,
+      `${f}: sabit ortam beyaz listesi geri gelmis`);
+    // Bicim kontrolu KALMALI — deger `oc` komut satirina gidiyor.
+    assert.match(src, /oc_platform is match/, `${f}: platform bicim kontrolu kaybolmus`);
+    assert.match(src, /oc_environment is match/, `${f}: ortam bicim kontrolu kaybolmus`);
+  }
+  // Katalog uyeligi gercekten dogrulaniyor mu?
+  const sel = read(path.join(APP, 'tasks', '02_select_targets.yml'));
+  assert.match(sel, /platform \| default\(''\) == oc_platform/, 'katalog platform kontrolu yok');
+  assert.match(sel, /oc_environment in \(scalex_clusters\[item\]\.environments/, 'katalog ortam kontrolu yok');
+});
+
+test('S7 `integer` survey sorusuna portal STRING gondermemeli', () => {
+  // AWX survey tipini DOGRULAR: `integer` bir soruya string gonderildiginde launch
+  // `400: Value 2 for 'target_replicas' expected to be an integer.` ile reddedilir —
+  // yani `Olcekle` islemi hic calismiyordu (2026-09-01 uretim tespiti).
+  const intVars = survey('scalex_run.survey.json').spec
+    .filter((q) => q.type === 'integer').map((q) => q.variable);
+  assert.ok(intVars.includes('target_replicas'), 'target_replicas artik integer degil — test kendi olctugu seyi kaybetti');
+
+  const i = LAUNCH.indexOf('return {', LAUNCH.indexOf('async function buildRunExtraVars'));
+  const block = LAUNCH.slice(i, LAUNCH.indexOf('\n}', i));
+  for (const v of intVars) {
+    assert.doesNotMatch(block, new RegExp(`${v}:\\s*String\\(`),
+      `${v} String() ile gonderiliyor ama survey tipi integer — AWX launch'i 400 ile duserir`);
+    assert.match(block, new RegExp(`${v}:\\s*Number\\(`),
+      `${v} sayi olarak gonderilmiyor`);
   }
 });
 
@@ -378,5 +421,37 @@ test('D4 keşif HICBIR MUTASYON komutu calistirmiyor', () => {
   for (const c of calls) {
     assert.ok(!/^(patch|delete|create|apply|scale|replace|edit)\b/.test(c.trim()),
       `kesif MUTASYON komutu calistirdi: ${c}`);
+  }
+});
+
+
+test('P6 HPA sayaci yalnizca GERCEKTEN HPA bulunan hedefleri sayar', () => {
+  // Onceki hali `;HPA;INFO;` gecen HER satiri sayiyordu; "No HPA found" da INFO.
+  // Sonuc: HPA'si OLMAYAN bir uygulamada ekran "1 hedefte HPA goruldu" yaziyordu
+  // (2026-09-01 uretim tespiti) — ekran kullaniciya YALAN soyluyordu.
+  const rep = read(path.join(APP, 'tasks', '20_build_report.yml'));
+  assert.match(rep, /hpa_info_count:[^\n]*HPA_PRESENT/,
+    'HPA sayaci ayirt edici belirteci kullanmiyor — "No HPA found" satiri da sayiliyor');
+
+  // Betik gercekten o belirteci basiyor mu? (Sozlesmenin iki ucu.)
+  const runner = read(RUNNER);
+  assert.match(runner, /"HPA" "INFO" "HPA_PRESENT/, 'betik HPA_PRESENT belirtecini basmiyor');
+  assert.match(runner, /"HPA" "INFO" "No HPA found/, 'betikte "HPA yok" satiri kaybolmus');
+});
+
+test('P7 bos CC bir ALICI olarak gonderilmez', () => {
+  // `cc: ""` verildiginde community.general.mail bos dizgiyi bir alici sanip SMTP'ye
+  // yolluyor, sunucu `501 #5.1.1 bad address` donuyor ve modul bunu "en az bir aliciya
+  // gonderilemedi" sayarak rescue'ya dusuyor: CC bos olan HER calistirmada RAPOR HIC
+  // GITMIYORDU (2026-09-01 uretim tespiti).
+  const mail = read(path.join(APP, 'tasks', '30_send_mail.yml'));
+  assert.match(mail, /cc:[^\n]*else omit/,
+    'bos CC `omit` ile kaldirilmiyor — rapor maili hic gitmez');
+});
+
+test('P8 rapor ScaleX kimligini tasiyor (eski "Chaos Scale" kalmamis)', () => {
+  for (const f of ['tasks/20_build_report.yml', 'tasks/30_send_mail.yml']) {
+    const src = read(path.join(APP, f));
+    assert.doesNotMatch(src, /Chaos Scale|CHAOS-SCALE/i, `${f}: eski urun adi duruyor`);
   }
 });

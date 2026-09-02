@@ -14,7 +14,12 @@
     verify_fail_count: "{{ result_rows | select('search', ';VERIFY;FAIL;') | list | length }}"
     precheck_fail_count: "{{ _precheck_rows | select('search', ';FAIL;') | list | length }}"
     blocked_count: "{{ result_rows | select('search', ';BLOCKED;FAIL;') | list | length }}"
-    hpa_info_count: "{{ result_rows | select('search', ';HPA;INFO;') | list | length }}"
+    # `HPA_PRESENT` BELIRTECI SART. Onceki hali `;HPA;INFO;` gecen HER satiri sayiyordu
+    # ve "No HPA found for application/scaleTargetRef" satiri da INFO seviyesinde. Sonuc:
+    # HPA'si OLMAYAN bir uygulamada ekran "1 hedefte HPA goruldu" yaziyordu
+    # (2026-09-01 uretim tespiti). Betik zaten ayirt edici belirteci basiyor —
+    # bkz. files/scalex_runner.sh `log_hpa_state`.
+    hpa_info_count: "{{ result_rows | select('search', ';HPA;INFO;HPA_PRESENT') | list | length }}"
 
 - name: "Determine overall operation status"
   ansible.builtin.set_fact:
@@ -170,7 +175,7 @@
               <table role="presentation" width="760" cellspacing="0" cellpadding="0" border="0" style="width:760px;max-width:96%;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
                 <tr>
                   <td style="padding:22px 26px;background:#111827;color:#ffffff;">
-                    <div style="font-size:21px;font-weight:bold;">Ansible Chaos Scale</div>
+                    <div style="font-size:21px;font-weight:bold;">ScaleX — OpenShift Replica Yonetimi</div>
                     <div style="font-size:13px;color:#d1d5db;margin-top:5px;">Job {{ job_id }} · {{ scope_key_effective | e }}</div>
                   </td>
                 </tr>

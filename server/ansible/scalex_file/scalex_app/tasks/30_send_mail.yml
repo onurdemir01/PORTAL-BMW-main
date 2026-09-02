@@ -15,20 +15,25 @@
       - _mail_to | length > 0
     fail_msg: "Rapor e-posta adresi boş olamaz."
 
-- name: "Send Chaos Scale report"
+- name: "Send ScaleX report"
   block:
     - name: "SMTP | Send report"
       community.general.mail:
         host: "{{ smtp_host }}"
         port: "{{ smtp_port }}"
-        subject: "{{ mail_subject_prefix }} CHAOS-SCALE | {{ overall_status }} | {{ scope_key_effective }} | {{ operation_action_effective }} | Job {{ job_id }}"
+        subject: "{{ mail_subject_prefix }} SCALEX | {{ overall_status }} | {{ scope_key_effective }} | {{ operation_action_effective }} | Job {{ job_id }}"
         body: "{{ report_html }}"
         from: "{{ mail_from }}"
         to: "{{ _mail_to }}"
-        cc: "{{ _mail_cc }}"
+        # BOS CC GONDERILMEZ. `cc: ""` verildiginde community.general.mail bos
+        # dizgiyi BIR ALICI sanip SMTP'ye yolluyor ve sunucu `501 #5.1.1 bad address`
+        # donuyor; modul bunu "en az bir aliciya gonderilemedi" sayarak rescue'ya
+        # dusuyor ve RAPOR HIC GITMIYOR — CC bos olan HER calistirmada
+        # (2026-09-01 uretim tespiti). `omit` alani tamamen kaldirir.
+        cc: "{{ _mail_cc if (_mail_cc | length > 0) else omit }}"
         subtype: html
   rescue:
     - name: "Record notification failure"
       ansible.builtin.set_fact:
         _notification_failed: true
-        _notification_error: "SMTP delivery failed for Chaos Scale report"
+        _notification_error: "SMTP delivery failed for ScaleX report"

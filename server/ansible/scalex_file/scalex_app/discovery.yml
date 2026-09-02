@@ -1,8 +1,8 @@
 ---
 # SCALEX | Kesif (SALT OKUNUR)
 #
-# AWX konumu:
-#   bmw_openshift_jobs/scalex_app/discovery.yml
+# AWX konumu: <klasor>/scalex_app/discovery.yml — klasor SERBEST, tek sart
+# `global_variables/` ile KARDES olmasi (uretimde bmw_portal/scalex/scalex_app/).
 #
 # HICBIR MUTASYON YAPMAZ. Yalnizca `oc get` ve `oc auth can-i` calisir; ayni
 # `files/scalex_runner.sh` betigi `SCALEX_PHASE=discover` ile cagrilir.
