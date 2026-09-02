@@ -1498,3 +1498,38 @@ test('S5 denetim ekrani modul izi, tarih araligi ve CSV tasiyor', () => {
   // Bitis GUNUN SONUNU kapsamali: "2 Eylul" diyen kullanici o gunun kayitlarini ister.
   assert.match(tab, /T23:59:59/, 'bitis tarihi gunun sonunu kapsamiyor');
 });
+
+
+test('S6 SMART/OCO ekranlari modulu AYIRT EDIYOR', () => {
+  // Iki tabloda da modulu ayirt eden bir KOLON YOK; ayirt edici
+  // `(awx_server_id, awx_template_id)` cifti. Sunucu bunu playbook kayit
+  // tablosundan cozuyor — `pendingLaunch.templateName` de bir ipucu ama STRING
+  // ESLESMESI kirilgan.
+  const runner = fs.readFileSync(path.join(SRC_DIR, '..', 'ansible', 'runner.cjs'), 'utf8');
+  assert.match(runner, /async function resolveModuleTagger/, 'modul cozumleyicisi yok');
+  assert.match(runner, /playbookRegistry\.getByKey/, 'kaynak playbook kayit tablosu degil');
+  // HER IKI ekran da etiketlenmeli.
+  const tickets = runner.slice(runner.indexOf('/api/ansible/ss/smart-tickets/all'));
+  assert.match(tickets.slice(0, 3000), /module: moduleOf\(/, 'Smart Talepleri etiketlenmiyor');
+  const oco = runner.slice(runner.indexOf('/api/ansible/ss/oco/scheduled/all'));
+  assert.match(oco.slice(0, 2000), /module: moduleOf\(/, 'OCO Zamanlamalari etiketlenmiyor');
+
+  // YENI KOLON EKLENMEDI: sema degismemeli.
+  const setup = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  const smart = setup.slice(setup.indexOf("name: 'smart_tickets'"), setup.indexOf("name: 'smart_tickets'") + 1600);
+  assert.ok(!/\bmodule\s+NVARCHAR/i.test(smart), 'smart_tickets tablosuna gereksiz kolon eklenmis');
+});
+
+test('S7 ortak CRUD tablosu ARANABILIR', () => {
+  // ~60 satirlik cluster listesinde filtre OLMAMASI en cok acitan eksikti.
+  const t = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'tabs', 'logxv2', 'SimpleCrudTable.tsx'), 'utf8');
+  assert.match(t, /searchable/, 'arama destegi yok');
+  // Arama TUM kolonlarda: kullanici aradiginin hangi kolonda oldugunu bilmek
+  // zorunda kalmamali.
+  assert.match(t, /columns\.some\(\(c\) => String\(r\[c\.key\]/, 'arama tum kolonlarda calismiyor');
+  // Kisa listede kutu gosterilmemeli.
+  assert.match(t, /rows\.length >= SEARCH_MIN_ROWS/, 'kisa listede de arama kutusu cikiyor');
+  // Bos sonucta "kayit yok" demek yaniltici olurdu — arama yuzunden bos oldugu
+  // SOYLENMELI.
+  assert.match(t, /Aramaya uyan kayıt yok/, 'bos arama sonucu "kayit yok" gibi gosteriliyor');
+});

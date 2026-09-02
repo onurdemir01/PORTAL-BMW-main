@@ -407,6 +407,13 @@ export interface AdminSmartTicket {
   smartStateName?: string | null;
   flowKey?: string | null;
   templateName?: string | null;
+  /**
+   * Talebi HANGI MODUL actı. Tabloda modul kolonu YOK — ayirt edici
+   * `(awxServerId, awxTemplateId)` cifti ve sunucu bunu playbook kayit tablosundan
+   * cozuyor. Ekranlar Self Service varsayimiyla yazilmisti; ScaleX talepleri ayni
+   * listede, ayirt edilmeden goruntyordu.
+   */
+  module?: string | null;
   extraVars?: Record<string, string>;
   awxServerId?: number | null;
   awxTemplateId?: number | null;
@@ -539,6 +546,8 @@ export interface OcoScheduledItem {
   awxJobId?: number | null;
   errorMessage?: string | null;
   templateName?: string;
+  /** Kaydi hangi modul olusturdu — sunucu `(awxServerId, awxTemplateId)`ten cozer. */
+  module?: string | null;
 }
 
 // Admin > Smart Talepleri > "OCO Zamanlamaları" satırı.
@@ -563,6 +572,8 @@ export interface AdminOcoSchedule {
   cancelledBy?: string | null;
   cancelNote?: string | null;
   createdAt: string;
+  /** Kaydi hangi modul olusturdu — sunucu `(awxServerId, awxTemplateId)`ten cozer. */
+  module?: string | null;
 }
 
 export interface AnsibleSsItem {

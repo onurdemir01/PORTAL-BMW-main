@@ -2586,13 +2586,16 @@ function initAnsibleRunner(app) {
   app.get("/api/ansible/ss/oco/scheduled/all", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { limit, offset, status, username, q } = req.query || {};
-      const r = await require("../oco/store.cjs").listAll({
-        limit: Math.min(Number(limit) || 100, 500),
-        offset: Number(offset) || 0,
-        status: String(status || "").trim(),
-        username: String(username || "").trim(),
-        q: String(q || "").trim(),
-      });
+      const [r, moduleOf] = await Promise.all([
+        require("../oco/store.cjs").listAll({
+          limit: Math.min(Number(limit) || 100, 500),
+          offset: Number(offset) || 0,
+          status: String(status || "").trim(),
+          username: String(username || "").trim(),
+          q: String(q || "").trim(),
+        }),
+        resolveModuleTagger(),
+      ]);
       res.json({
         ok: true,
         total: r.total,
@@ -2601,6 +2604,7 @@ function initAnsibleRunner(app) {
           runAt: x.runAt, windowEnd: x.windowEnd, status: x.status,
           awxJobId: x.awxJobId, awxScheduleId: x.awxScheduleId, errorMessage: x.errorMessage,
           awxServerId: x.awxServerId, awxTemplateId: x.awxTemplateId,
+          module: moduleOf(x.awxServerId, x.awxTemplateId),
           templateName: x.pendingLaunch?.templateName || "",
           cancelledBy: x.cancelledBy, cancelNote: x.cancelNote,
           createdAt: x.createdAt,
@@ -2837,6 +2841,34 @@ function initAnsibleRunner(app) {
     }
   });
 
+  // ── MODUL ETIKETI ──────────────────────────────────────────────────────────
+  //
+  // `smart_tickets` ve `oco_scheduled_launches` tablolarinda modulu ayirt eden bir
+  // KOLON YOK — ayirt edici `(awx_server_id, awx_template_id)` cifti. Bu ekranlar
+  // Self Service varsayimiyla yazilmisti; ScaleX de ayni tablolari kullaniyor ve
+  // talepleri "Nginx - RVP Operations" gibi baska bir otomasyonla ayni listede,
+  // ayirt edilmeden goruntyor.
+  //
+  // YENI KOLON EKLENMEDI: kimlik zaten satirlarda var, yalnizca ADI cozuluyor.
+  // `pendingLaunch.templateName` de bir ipucu ama STRING ESLESMESI kirilgan — kaynak
+  // playbook kayit tablosu olmali.
+  async function resolveModuleTagger() {
+    const playbookRegistry = require("./playbook-registry.cjs");
+    const byTemplate = new Map();
+    for (const [key, label] of [["scalex_run", "ScaleX"], ["scalex_discovery", "ScaleX"]]) {
+      try {
+        const row = await playbookRegistry.getByKey(key);
+        if (!row) continue;
+        const tid = playbookRegistry.getEffectiveTemplateId(row);
+        if (tid) byTemplate.set(`${Number(row.awxServerId || 1)}:${Number(tid)}`, label);
+      } catch { /* kayit okunamazsa etiket YOK — liste yine calisir */ }
+    }
+    // Bilinmeyen her sey "Self Service": bu ekranlarin tarihsel varsayimi ve
+    // bugun de dogru (ScaleX disindaki tek yazar orasi).
+    return (serverId, templateId) =>
+      byTemplate.get(`${Number(serverId || 1)}:${Number(templateId)}`) || "Self Service";
+  }
+
   // GET /api/ansible/ss/smart-tickets/all — Admin > Smart Talepleri ekrani (2026-08-20,
   // kullanici talebi: "kim ne kayit acmis, hangi Smart kaydi tetiklenmis, saat kacta").
   // /smart-tickets/mine'dan farki: kullanici filtresi YOK, TUM kullanicilarin talepleri.
@@ -2850,9 +2882,10 @@ function initAnsibleRunner(app) {
       const username = String(req.query.username || "").trim();
       const q = String(req.query.q || "").trim();
 
-      const [{ total, tickets }, summary] = await Promise.all([
+      const [{ total, tickets }, summary, moduleOf] = await Promise.all([
         smartStore.listAll({ limit, offset, status, username, q }),
         smartStore.statusSummary(),
+        resolveModuleTagger(),
       ]);
 
       res.json({
@@ -2875,6 +2908,7 @@ function initAnsibleRunner(app) {
           ),
           awxServerId: t.awxServerId,
           awxTemplateId: t.awxTemplateId,
+          module: moduleOf(t.awxServerId, t.awxTemplateId),
           jobId: t.awxJobId,
           errorMessage: t.errorMessage,
           cancelNote: t.cancelNote,
