@@ -1204,8 +1204,18 @@ const ELEMENT_SEED = [
   { element_key: 'Perf:instana',  element_type: 'tab', parent_key: 'Performance', label: 'Instana',   sort_order: 5, default_visible: 1 },
   { element_key: 'Perf:splunk',   element_type: 'tab', parent_key: 'Performance', label: 'Splunk',    sort_order: 6, default_visible: 1 },
   // Admin sekmeleri (yeni sema; Admin zaten hepsini gorur — default-open yeterli)
-  { element_key: 'admintab:logxv2',      element_type: 'admin_tab', parent_key: 'Admin', label: 'LogX Yapılandırma',  sort_order: 1,  default_visible: 1 },
-  { element_key: 'admintab:audit',       element_type: 'admin_tab', parent_key: 'Admin', label: 'Denetim Kaydı',      sort_order: 2,  default_visible: 1 },
+  // ORTAK SEKME: cluster / vault / bastion / kisitlama tablolari LogX'e ozel degil,
+  // LogX + OpsX + Telnet + ScaleX tarafindan PAYLASILIYOR. Anahtar (`logxv2`)
+  // BILEREK korunuyor — kayitli gorunurluk kurallari ve sekme sirasi bozulmasin.
+  { element_key: 'admintab:logxv2',      element_type: 'admin_tab', parent_key: 'Admin', label: 'OCP Yapılandırma',   sort_order: 1,  default_visible: 1 },
+  { element_key: 'admintab:scalex',      element_type: 'admin_tab', parent_key: 'Admin', label: 'ScaleX Yönetimi',    sort_order: 2,  default_visible: 1 },
+  { element_key: 'admintab:audit',       element_type: 'admin_tab', parent_key: 'Admin', label: 'Denetim Kaydı',      sort_order: 3,  default_visible: 1 },
+  // Bu dordu `AdminPage`te VARDI ama seed'de YOKTU: sekmeler goruntyor ama Sayfa
+  // Erisimi ekranindan YONETILEMIYORDU (kayitsiz anahtar varsayilan-gorunur sayilir).
+  { element_key: 'admintab:smarttickets', element_type: 'admin_tab', parent_key: 'Admin', label: 'Smart Talepleri',   sort_order: 4,  default_visible: 1 },
+  { element_key: 'admintab:testscenarios', element_type: 'admin_tab', parent_key: 'Admin', label: 'Test Senaryoları', sort_order: 5,  default_visible: 1 },
+  { element_key: 'admintab:dbbackup',    element_type: 'admin_tab', parent_key: 'Admin', label: 'DB Yedekleme',       sort_order: 12, default_visible: 1 },
+  { element_key: 'admintab:flowtests',   element_type: 'admin_tab', parent_key: 'Admin', label: 'Akış Testleri',      sort_order: 14, default_visible: 1 },
   { element_key: 'admintab:ansible',     element_type: 'admin_tab', parent_key: 'Admin', label: 'Ansible Info',       sort_order: 6,  default_visible: 1 },
   { element_key: 'admintab:playbooks',   element_type: 'admin_tab', parent_key: 'Admin', label: 'Playbook Kayıtları', sort_order: 7,  default_visible: 1 },
   { element_key: 'admintab:system',      element_type: 'admin_tab', parent_key: 'Admin', label: 'Sistem',             sort_order: 8,  default_visible: 1 },

@@ -85,8 +85,15 @@ export const PERF_TABS: TabElement[] = [
 // canSee(`admintab:<id>`) ile filtreleniyor, eksik/eskimiş bir kayıt yönetilemeyen
 // sekme demek. (Etiketler de AdminPage ile eşitlendi.)
 export const ADMIN_TABS: TabElement[] = [
-  { id: "admintab:logxv2",       label: "LogX Yapılandırma" },
+  { id: "admintab:logxv2",       label: "OCP Yapılandırma" },
+  { id: "admintab:scalex",       label: "ScaleX Yönetimi" },
   { id: "admintab:audit",        label: "Denetim Kaydı" },
+  // Bu dordu AdminPage'te VARDI ama burada ve seed'de YOKTU: sekme goruntyor ama
+  // Sayfa Erisimi ekranindan YONETILEMIYORDU (kayitsiz anahtar → varsayilan gorunur).
+  { id: "admintab:smarttickets", label: "Smart Talepleri" },
+  { id: "admintab:testscenarios", label: "Test Senaryoları" },
+  { id: "admintab:dbbackup",     label: "DB Yedekleme" },
+  { id: "admintab:flowtests",    label: "Akış Testleri" },
   { id: "admintab:ansible",      label: "Ansible Info" },
   { id: "admintab:playbooks",    label: "Playbook Kayıtları" },
   { id: "admintab:system",       label: "Sistem" },

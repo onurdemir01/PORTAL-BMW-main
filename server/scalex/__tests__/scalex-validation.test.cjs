@@ -1437,3 +1437,64 @@ test('R4 liste ucu namespace yetkisini ONCE dogruluyor', () => {
   assert.ok(ep.indexOf('assertNamespaceAllowed') < ep.indexOf('listApps'),
     'yetki kontrolu listeden SONRA — adlar once uretiliyor');
 });
+
+
+// ═══ S. ADMIN EKRANI (2026-09-02) ═════════════════════════════════════════
+
+test('S1 ScaleX SMART/OCO ayari KENDI sayfasindan yonetilebiliyor', () => {
+  // Bugune kadar admin, ScaleX'in SMART ayarini yapabilmek icin ScaleX'in AWX
+  // template'ini SELF SERVICE KATALOGUNA item olarak eklemek zorundaydi —
+  // `FieldOverridesModal` yalnizca oradan ve Ansible sayfasindan aciliyordu.
+  const tab = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'tabs', 'ScaleXAdminTab.tsx'), 'utf8');
+  assert.match(tab, /FieldOverridesModal/, 'ayar modali acilmiyor');
+  // YENI TABLO YOK: ayni `(awx_server_id, template_id)` satiri, template kimligi
+  // `scalex_run` kaydindan cozuluyor.
+  assert.match(tab, /scalex_run/, 'template kimligi registry kaydindan cozulmuyor');
+  assert.match(tab, /awxServerId.*awxTemplateId/s, 'modal dogru satira baglanmamis');
+});
+
+test('S2 ScaleX sayfasi cluster/vault/bastion tablolarini KOPYALAMIYOR', () => {
+  // Ikinci bir dogruluk kaynagi acmak, ayni prod cluster'in jump server'inin iki
+  // yerde tutulmasi ve biri guncellenip digeri unutuldugunda ScaleX'in sessizce
+  // yanlis bastion'a gitmesi demek olurdu.
+  const tab = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'tabs', 'ScaleXAdminTab.tsx'), 'utf8');
+  for (const t of ['ocp_cluster_index', 'ocp_vault_key_catalog', 'ocp_terminal_host_map']) {
+    assert.ok(!tab.includes(t), `ScaleX sayfasi ${t} tablosuna dokunuyor`);
+  }
+});
+
+test('S3 admin sekmeleri elements/seed ile AYRISMIYOR', () => {
+  // Kayitsiz bir anahtar VARSAYILAN-GORUNUR sayilir: sekme goruntyor ama Sayfa
+  // Erisimi ekranindan yonetilemiyor. `smarttickets`/`testscenarios`/`dbbackup`/
+  // `flowtests` tam olarak bu durumdaydi.
+  const page = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'AdminPage.tsx'), 'utf8');
+  const elements = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'config', 'elements.ts'), 'utf8');
+  const seed = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
+
+  const tabIds = [...page.matchAll(/\{ id: "([a-z]+)",\s+label:/g)].map((m) => m[1]);
+  assert.ok(tabIds.length >= 12, `sekme listesi okunamadi (${tabIds.length})`);
+  const eksikElements = tabIds.filter((id) => !elements.includes(`admintab:${id}`));
+  const eksikSeed = tabIds.filter((id) => !seed.includes(`admintab:${id}`));
+  assert.deepEqual(eksikElements, [], `elements.ts'te eksik sekme(ler): ${eksikElements.join(', ')}`);
+  assert.deepEqual(eksikSeed, [], `seed'de eksik sekme(ler): ${eksikSeed.join(', ')}`);
+});
+
+test('S4 ortak sekmenin ANAHTARI korunmus, yalnizca ETIKETI degismis', () => {
+  // Anahtar degisseydi kayitli gorunurluk kurallari ve kullanicinin sekme sirasi
+  // tercihi sessizce gecersiz olurdu.
+  const page = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'AdminPage.tsx'), 'utf8');
+  assert.match(page, /\{ id: "logxv2",\s+label: "OCP Yapılandırma"/, 'ortak sekme adlandirilmamis');
+  const seed = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  assert.match(seed, /admintab:logxv2/, 'gorunurluk anahtari degismis — kayitli kurallar gecersiz olur');
+});
+
+test('S5 denetim ekrani modul izi, tarih araligi ve CSV tasiyor', () => {
+  const tab = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'tabs', 'AuditLogTab.tsx'), 'utf8');
+  assert.match(tab, /actionPrefix/, 'modul izi filtresi gonderilmiyor');
+  assert.match(tab, /dateFrom/, 'tarih araligi yok');
+  assert.match(tab, /exportCsv/, 'CSV disari verme yok');
+  // Kutu ekranda vardi ama deger sorguya HIC girmiyordu.
+  assert.match(tab, /qs\.set\("targetHost"/, 'targetHost filtresi hala olu');
+  // Bitis GUNUN SONUNU kapsamali: "2 Eylul" diyen kullanici o gunun kayitlarini ister.
+  assert.match(tab, /T23:59:59/, 'bitis tarihi gunun sonunu kapsamiyor');
+});

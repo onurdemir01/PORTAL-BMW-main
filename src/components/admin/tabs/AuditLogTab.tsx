@@ -42,6 +42,18 @@ interface ChainResult {
 
 const ROW_HEIGHT = 44;
 
+// Aksiyon adlari `<modul>_<olay>` deseninde. Onek bazli filtre, bir modulun TUM izini
+// aksiyon adlarini ezberlemeden getirir.
+const MODULE_PREFIXES = [
+  { prefix: "scalex_", label: "ScaleX" },
+  { prefix: "logx_", label: "LogX" },
+  { prefix: "opsx_", label: "OpsX" },
+  { prefix: "telnet_", label: "Telnet" },
+  { prefix: "filex_", label: "FileX" },
+  { prefix: "selfservice_", label: "Self Service" },
+  { prefix: "auth_", label: "Oturum" },
+];
+
 // Iki denetim kaynagi: LogX akis kayitlari (logx_audit_logs) ve portal geneli
 // admin/CRUD/login kayitlari (portal_audit_logs) — ayni tablo gorunumuyle gosterilir.
 type AuditSource = "logx" | "portal";
@@ -51,7 +63,13 @@ const AuditLogTab: React.FC = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState({ username: "", targetHost: "", action: "" });
+  // `module` bir aksiyon ONEKIDIR (`scalex_` → tum ScaleX izi). Onceden yalnizca TAM
+  // ESITLIK vardi: bir modulun izine bakmak icin aksiyon adlarini tek tek ve ezberden
+  // yazmak gerekiyordu. `dateFrom`/`dateTo` da yoktu — olayin gununu bilen kullanici
+  // 50'serlik sayfalari geriye dogru cevirmek zorundaydi.
+  const [filters, setFilters] = useState({
+    username: "", targetHost: "", action: "", module: "", dateFrom: "", dateTo: "",
+  });
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -84,6 +102,14 @@ const AuditLogTab: React.FC = () => {
         const qs = new URLSearchParams();
         if (params.username) qs.set("username", params.username);
         if (params.action) qs.set("action", params.action);
+        // `targetHost` UZUN SURE GONDERILMIYORDU: kutu ekranda vardi, yazilan deger
+        // sorguya hic girmiyordu — olu bir filtre.
+        if (params.targetHost) qs.set("targetHost", params.targetHost);
+        if (filters.module) qs.set("actionPrefix", filters.module);
+        if (filters.dateFrom) qs.set("dateFrom", filters.dateFrom);
+        // Bitis GUNUN SONUNU kapsamali: kullanici "2 Eylul" dediginde 2 Eylul'un
+        // kayitlarini gormek ister, gun basina kadar olanlari degil.
+        if (filters.dateTo) qs.set("dateTo", `${filters.dateTo}T23:59:59.999`);
         qs.set("limit", String(params.limit));
         qs.set("offset", String(params.offset));
         const r = await fetch(`/api/portal-audit?${qs.toString()}`);
@@ -119,6 +145,25 @@ const AuditLogTab: React.FC = () => {
   useEffect(() => { setPage(1); setChainResult(null); load(1); }, [source]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function applyFilters() { setPage(1); load(1); }
+
+  // CSV: GORUNEN SAYFAYI disari verir — "tumunu indir" demek, 200 bin satirlik bir
+  // sorguyu tarayiciya yuklemek olurdu. Filtreleri daraltip indirmek dogru yol.
+  // Desen `SmartTicketsTab`ten; ayni kacis kurallari (tirnak ikilenir).
+  function exportCsv() {
+    const head = ["zaman", "kullanici", "rol", "aksiyon", "sonuc", "hedef", "istemci_ip", "detay"];
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const body = logs.map((l) => [
+      formatDate(l.created_at), l.username, l.role, l.action,
+      l.result, l.target_host, l.client_ip, l.detail,
+    ].map(esc).join(","));
+    const blob = new Blob([`\uFEFF${[head.join(","), ...body].join("\n")}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `denetim-${source}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   function goPage(p: number) { setPage(p); load(p); }
 
   const virtualItems = rowVirtualizer.getVirtualItems();
@@ -211,7 +256,34 @@ const AuditLogTab: React.FC = () => {
               />
             </div>
           ))}
-          <div className="col-span-3 flex justify-end">
+          {/* MODUL IZI: bir aksiyon ONEKI. Portal kaynaginda calisir — LogX kaynaginda
+              aksiyonlar zaten tek bir modulun. */}
+          {source === "portal" && (
+            <div>
+              <label htmlFor="audit-module" className="block text-xs font-medium text-gray-600 mb-1">Modül</label>
+              <select id="audit-module" value={filters.module}
+                onChange={(e) => setFilters((prev) => ({ ...prev, module: e.target.value }))}
+                className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black transition">
+                <option value="">Tümü</option>
+                {MODULE_PREFIXES.map((m) => <option key={m.prefix} value={m.prefix}>{m.label}</option>)}
+              </select>
+            </div>
+          )}
+          {source === "portal" && (["dateFrom", "dateTo"] as const).map((key) => (
+            <div key={key}>
+              <label htmlFor={`audit-${key}`} className="block text-xs font-medium text-gray-600 mb-1">
+                {key === "dateFrom" ? "Başlangıç" : "Bitiş"}
+              </label>
+              <input id={`audit-${key}`} type="date" value={filters[key]}
+                onChange={(e) => setFilters((prev) => ({ ...prev, [key]: e.target.value }))}
+                className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black transition" />
+            </div>
+          ))}
+          <div className="col-span-3 flex justify-end gap-2">
+            <button onClick={exportCsv} disabled={!logs.length}
+              className="px-4 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors disabled:opacity-50">
+              CSV indir
+            </button>
             <button onClick={applyFilters} className="px-4 py-1.5 bg-black text-white text-sm rounded-lg hover:bg-gray-800 transition-colors">
               Uygula
             </button>
