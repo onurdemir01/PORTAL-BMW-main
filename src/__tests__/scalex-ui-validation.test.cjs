@@ -177,16 +177,37 @@ test('U12 playbook degisken adlari ekranda GORUNMUYOR', () => {
 
 // ── U13 Durum sizintisi ─────────────────────────────────────────────────────
 
-test('U13 restart() calistirmaya ozel TUM alanlari sifirliyor', () => {
+test('U13 calistirmaya ozel TUM alanlar sifirlaniyor (HER iki yolda)', () => {
+  // Bir onceki calistirmanin izleri `resetRunState()`te temizlenir; sihirbaz SECIMLERI
+  // `restart()`ta. Ikisi ayri, cunku panelden gelen "Geri Al" kisayolu izleri temizler
+  // ama secimleri KENDISI belirler.
+  const reset = PAGE.slice(PAGE.indexOf('function resetRunState()'), PAGE.indexOf('function restart()'));
+  for (const f of ['setJob', 'setRunResult', 'setTrackedJobId', 'setCatalogWarning',
+    'setNotice', 'setError', 'setCancelling', 'setElapsed']) {
+    assert.ok(reset.includes(f), `resetRunState() ${f} cagirmiyor — onceki islemin izi ekranda kalir`);
+  }
+
   const body = PAGE.slice(PAGE.indexOf('function restart()'), PAGE.indexOf('async function guarded'));
   // `env`/`tenant`/`clusters` BILEREK korunuyor (kullanici ayni kapsamda ikinci bir
   // islem yapacak). Ama calistirmaya ozel her alan sifirlanmali; kalan bir deger
   // sonraki isleme SESSIZCE tasinir.
   for (const f of ['setNamespace', 'setApps', 'setWorkloads', 'setAction', 'setExecutionMode',
-    'setTargetReplicas', 'setVerificationTimeout', 'setAllowPartial', 'setMailCc',
-    'setJob', 'setRunResult', 'setTrackedJobId', 'setCatalogWarning', 'setNotice', 'setError']) {
+    'setTargetReplicas', 'setVerificationTimeout', 'setAllowPartial', 'setMailCc']) {
     assert.ok(body.includes(f), `restart() ${f} cagirmiyor — deger sonraki isleme tasinir`);
   }
+  assert.ok(body.includes('resetRunState()'), 'restart() onceki calistirmanin izlerini temizlemiyor');
+});
+
+test('U13b panelden gelen "Geri Al" da onceki calistirmanin izlerini TEMIZLIYOR', () => {
+  // Bu yol uzun sure HICBIR sey sifirlamiyordu: onceki islemin sonuc paneli ve BASKA
+  // BIR UYGULAMANIN saglik satirlari yeni islemin ekraninda duruyordu, ustelik
+  // `healthStartedRef` hala true oldugu icin saglik kontrolu bir daha hic kosmuyordu.
+  const body = PAGE.slice(PAGE.indexOf('function restoreFromPanel'), PAGE.indexOf('const back ='));
+  assert.ok(body.includes('resetRunState()'),
+    'restoreFromPanel onceki calistirmanin izlerini temizlemiyor');
+  // Temizlik, yeni degerler yazilmadan ONCE olmali; sonra cagrilirsa onlari ezer.
+  assert.ok(body.indexOf('resetRunState()') < body.indexOf('setClusters('),
+    'resetRunState() yeni degerlerden SONRA cagriliyor — onlari ezer');
 });
 
 test('U14 restoreFromPanel geri alma icin gerekli alanlari SET ediyor', () => {
@@ -265,9 +286,16 @@ test('U24 uc sapma durumunun ikisi kullaniciya ACIKLANIYOR', () => {
   assert.match(STOPPED, /elle geri almış|elle durdurulmuş/);
 });
 
-test('U25 sapmali kayitta "Geri Al" GOSTERILMIYOR', () => {
+test('U25 sapmali kayitta ve SUREN islemde "Geri Al" GOSTERILMIYOR', () => {
+  const code = codeOnly(STOPPED);
   // Cluster'da ConfigMap yokken geri alma denemek `STATE;FAIL` ile duserdi.
-  assert.match(codeOnly(STOPPED), /driftStatus === "in_sync" && onRestore/);
+  assert.match(code, /driftStatus === "in_sync"[\s\S]{0,60}onRestore/,
+    'sapmali kayitta buton hala gosteriliyor');
+  // Suren bir geri alma varken sunucu ikinci istegi 409 ile reddediyor (ayna kilidi).
+  // Butonu acik birakmak, kullaniciyi reddedilecek bir istege gondermek olurdu.
+  assert.match(code, /phase !== "restoring"[\s\S]{0,60}onRestore/,
+    'geri alma surerken buton hala tiklanabiliyor');
+  assert.match(code, /Geri alma sürüyor/, 'suren islem kullaniciya SOYLENMIYOR');
 });
 
 // ── U26 Kayit / yonlendirme ─────────────────────────────────────────────────
@@ -381,10 +409,13 @@ test('V11 saglik kontrolu bir kez kosar (ref ile kilitli)', () => {
   assert.match(codeOnly(PAGE), /healthStartedRef\s*=\s*useRef\(false\)/);
 });
 
-test('V12 restart() saglik durumunu ve kilidini de sifirliyor', () => {
+test('V12 saglik durumu ve kilidi de sifirlaniyor', () => {
+  // Saglik izi `resetRunState()`te — boylece panelden gelen geri alma yolunda da
+  // temizleniyor (eskiden yalnizca `restart()`ta vardi ve o yol onu hic cagirmiyordu).
+  const reset = PAGE.slice(PAGE.indexOf('function resetRunState()'), PAGE.indexOf('function restart()'));
+  assert.ok(reset.includes('setHealth(null)'), 'onceki islemin saglik sonucu ekranda kalirdi');
+  assert.ok(reset.includes('healthStartedRef.current = false'), 'ikinci islem icin saglik hic kosmazdi');
   const body = PAGE.slice(PAGE.indexOf('function restart()'), PAGE.indexOf('async function guarded'));
-  assert.ok(body.includes('setHealth(null)'), 'onceki islemin saglik sonucu ekranda kalirdi');
-  assert.ok(body.includes('healthStartedRef.current = false'), 'ikinci islem icin saglik hic kosmazdi');
   assert.ok(body.includes('setHpaPin(false)'), 'HPA sabitleme tercihi sonraki isleme tasinirdi');
 });
 

@@ -9,16 +9,23 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowPathIcon, ExclamationTriangleIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import { scalexApi, type ScaleXStoppedItem } from "@/api/scalexApi";
+import { useJobTracker } from "@/contexts/JobTrackerContext";
 import { fmtRelative } from "@/utils/datetime";
 
 interface Props {
   env: string; tenant: string;
   onRestore?: (item: ScaleXStoppedItem) => void;
+  /** Degeri her degistiginde liste sessizce tazelenir (is bitiminde sayfa artirir). */
+  reloadKey?: number;
 }
 
 // Bu esigi asan bir durdurma "unutulmus" olabilir. Sert bir kural degil, bir hatirlatma:
 // kimse bir uygulamayi haftalarca kapali birakmayi planlamaz, ama olur.
 const STALE_DAYS = 7;
+
+// Ardisik hata siniri: sapma taramasi yoklamasi bir ucta kalici olarak patliyorsa
+// sekme sonsuza dek istek atmasin (WorkloadStep ile AYNI kural).
+const MAX_POLL_ERRORS = 3;
 
 function daysSince(iso: string | null): number | null {
   if (!iso) return null;
@@ -32,7 +39,7 @@ const DRIFT_TEXT: Record<string, string> = {
   unknown_to_portal: "Cluster'da durdurulmuş ama portal kaydı yok — AWX'ten elle durdurulmuş.",
 };
 
-const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore }) => {
+const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore, reloadKey = 0 }) => {
   const [items, setItems] = useState<ScaleXStoppedItem[]>([]);
   // Yetki nedeniyle gizlenen ve sinir nedeniyle kirpilan kayit sayilari. Bunlari
   // SOYLEMEDEN "kayit yok" demek, kullaniciya YANLIS bilgi vermek olurdu — aynen
@@ -50,20 +57,58 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore }) => {
   const [bulkReason, setBulkReason] = useState("");
   const [showBulk, setShowBulk] = useState(false);
   const busyRef = useRef(false);
+  const aliveRef = useRef(true);
+  const { addJob } = useJobTracker();
 
-  async function load() {
-    setLoading(true); setError(null);
+  // `silent` OLMADAN her tazeleme paneli DOM'DAN KALDIRIYORDU: `loading` true olunca
+  // asagidaki erken `return` tum govdeyi "yukleniyor…" ile degistiriyor. Sonuc, toplu
+  // gerekce yazarken input'un REMOUNT olmasi ve kullanicinin IMLECI KAYBETMESI olurdu.
+  // Bu yuzden `loading` yalnizca ILK yuklemede kullanilir; sonraki tazelemeler sessiz.
+  async function load(opts: { silent?: boolean } = {}) {
+    if (!opts.silent) setLoading(true);
+    setError(null);
     try {
       const r = await scalexApi.stopped(env, tenant);
+      if (!aliveRef.current) return;
       if (r.ok) {
         setItems(r.items || []);
         setHiddenCount(r.hiddenCount || 0);
         setTruncated(r.truncated === true);
       } else setError(r.message || "Liste alınamadı.");
-    } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
+    } catch (e) { if (aliveRef.current) setError((e as Error).message); }
+    finally { if (aliveRef.current && !opts.silent) setLoading(false); }
   }
 
+  // Bilesen sokuldukten sonra `setState` yapmayalim: hem React uyarisi hem de
+  // sokulmus bir panelin istegi bosa gider.
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
+
   useEffect(() => { if (env && tenant) load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [env, tenant]);
+
+  // DIS TETIKLEYICI: bir ScaleX isi bitince sayfa bu sayaci artirir ve liste
+  // KENDILIGINDEN tazelenir. Once yalnizca `env`/`tenant` degisiminde yukleniyordu,
+  // yani bir geri alma bittiginde panel ESKI halini gostermeye devam ediyordu ve
+  // kullanici ayni satira tekrar basabiliyordu.
+  useEffect(() => {
+    if (!reloadKey || !env || !tenant) return;
+    load({ silent: true });
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [reloadKey]);
+
+  // SUREN ISLEM VARKEN yoklama. Yalnizca kilitli satir varken kosar; yoksa hic
+  // istek atilmaz — degismesi beklenmeyen bir listeyi surekli yoklamak bosa trafik.
+  // Aralik uzun (20 sn) cunku durumu degistiren sey `finalizeOperation` ve o da
+  // "Islerim" yoklamasindan ya da uzlastiricidan geliyor.
+  const hasRestoring = items.some((i) => i.phase === "restoring");
+  useEffect(() => {
+    if (!hasRestoring || !env || !tenant) return;
+    const t = setInterval(() => { load({ silent: true }); }, 20_000);
+    return () => clearInterval(t);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [hasRestoring, env, tenant]);
 
   // GERCEK sapma taramasi: her cluster/namespace icin `state` keşfi koşar, sunucu iş
   // bitince aynayı cluster gerçeğiyle karşılaştırıp `drift_status`u günceller.
@@ -78,13 +123,24 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore }) => {
           { env, tenant, namespace: g.namespace, clusters: [g.cluster] }, "state"
         );
         if (!launched.ok) continue;
+        let pollErrors = 0;
         for (let i = 0; i < 20; i++) {
           await new Promise((r) => setTimeout(r, 3000));
-          const st = await scalexApi.discoverStatus(launched.serverId, launched.jobId);
-          if (st.finished) break;
+          // Panel sokulduyse dongu SUSMALI — yoksa her 3 saniyede bir bosa istek.
+          if (!aliveRef.current) return;
+          try {
+            const st = await scalexApi.discoverStatus(launched.serverId, launched.jobId);
+            pollErrors = 0;
+            if (st.finished) break;
+          } catch {
+            // Gecici bir hata dongulu yoklamayi bitirmemeli, ama KALICI bir hata da
+            // sonsuza dek istek attirmamali.
+            if (++pollErrors >= MAX_POLL_ERRORS) break;
+          }
         }
       }
-      await load();
+      if (!aliveRef.current) return;
+      await load({ silent: true });
       setAuditNote("Cluster'lar tarandı, sapma durumu güncellendi.");
     } catch (e) {
       setError(`Sapma taraması tamamlanamadı: ${(e as Error).message}`);
@@ -103,6 +159,21 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore }) => {
       // UC AYRI SONUC, UC AYRI CUMLE. Prod'da toplu geri alma da SMART onayindan
       // geciyor: o gruplar icin AWX'te HENUZ IS YOK. Hepsini "baslatildi" diye
       // ozetlemek, kullaniciya calismayan bir isi calisiyor gostermek olurdu.
+      // ISLERIM'E KAYDET. Bu yol uzun sure `addJob` cagirmiyordu ve asagidaki
+      // "sonuclar Islerim panelinde" cumlesi YANLIStI: isler o panelde hic
+      // gorunmuyordu. Daha kotusu, `finalizeOperation` yalnizca uzlastiricidan
+      // (120 sn) tetikleniyordu — ayna o kadar gecikmeyle guncelleniyor, panel de
+      // "hala durdurulmus" gostermeye devam ediyordu.
+      for (const j of r.launched || []) {
+        addJob({
+          title: `ScaleX geri alma — ${j.namespace} @ ${j.cluster}`,
+          fetchStatus: async () => {
+            const st = await scalexApi.runStatus(j.serverId, j.jobId);
+            return { status: st.status, output: st.output, result: st.result };
+          },
+        });
+      }
+
       const parts: string[] = [];
       if (r.launched?.length) parts.push(`${r.launched.length} iş başlatıldı`);
       if (r.pendingApproval?.length) parts.push(`${r.pendingApproval.length} grup için SMART onayı bekleniyor (onay gelince otomatik başlar)`);
@@ -110,7 +181,10 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore }) => {
       setAuditNote(parts.length
         ? `${parts.join(" · ")} — sonuçlar “İşlerim” panelinde.`
         : "Geri alınacak kayıt bulunamadı.");
-      await load();
+      // Liste, isler AWX'te HALA CALISIRKEN okunuyor: ayna ancak `finalizeOperation`
+      // ile temizlenir. Bu cagri "islem surüyor" rozetini getirmek icin; listenin
+      // gercekten kisalmasi is bitince `reloadKey` ile olur.
+      await load({ silent: true });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -155,7 +229,7 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore }) => {
           )}
         </p>
         <span className="flex items-center gap-3">
-          {items.some((i) => i.driftStatus === "in_sync") && (
+          {items.some((i) => i.driftStatus === "in_sync" && i.phase !== "restoring") && (
             <button type="button" onClick={() => setShowBulk((v) => !v)} disabled={auditing || bulkBusy}
               className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline">
               <ArrowUturnLeftIcon aria-hidden="true" className="w-3.5 h-3.5" /> Tümünü geri al
@@ -175,7 +249,7 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore }) => {
       {showBulk && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
           <p className="text-xs text-amber-900">
-            Cluster gerçeğiyle uyumlu <strong>{items.filter((i) => i.driftStatus === "in_sync").length}</strong> kayıt
+            Cluster gerçeğiyle uyumlu <strong>{items.filter((i) => i.driftStatus === "in_sync" && i.phase !== "restoring").length}</strong> kayıt
             geri alınacak. Geri alma bir <strong>onarım</strong> işlemidir: OCO penceresi dışında da çalışır,
             ama gerekçe zorunludur ve SMART kaydına da yazılır.
           </p>
@@ -220,7 +294,13 @@ const StoppedPanel: React.FC<Props> = ({ env, tenant, onRestore }) => {
                 {it.previousReplicas != null && <span className="tabular-nums">{it.previousReplicas} → 0</span>}
                 {it.stoppedBy && <span>· {it.stoppedBy}</span>}
                 {it.stoppedAt && <span>· {fmtRelative(it.stoppedAt)}</span>}
-                {it.driftStatus === "in_sync" && onRestore && (
+                {/* SUREN ISLEM: sunucu ayni hedefe ikinci bir geri almayi 409 ile
+                    reddediyor (ayna kilidi). Butonu acik birakmak, kullaniciyi
+                    reddedilecek bir istege gondermek olurdu. */}
+                {it.phase === "restoring" && (
+                  <span className="pf-label pf-label--blue">Geri alma sürüyor…</span>
+                )}
+                {it.driftStatus === "in_sync" && it.phase !== "restoring" && onRestore && (
                   <button type="button" onClick={() => onRestore(it)}
                     className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline">
                     <ArrowUturnLeftIcon aria-hidden="true" className="w-3.5 h-3.5" /> Geri Al

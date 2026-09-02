@@ -87,6 +87,14 @@ const ScaleXPage: React.FC = () => {
   const { addJob, jobs } = useJobTracker();
   const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
 
+  // "Su an durdurulmus" panelini tazeleyen JETON. Bir is BITINCE artar; panel bunu
+  // gorup listeyi sessizce yeniler. Onceden panel yalnizca `env`/`tenant` degisiminde
+  // yukleniyordu, yani bir geri alma bittiginde ESKI halini gostermeye devam ediyor ve
+  // kullanici ayni satira tekrar basabiliyordu.
+  //
+  // `restart()` bunu SIFIRLAMAZ: monoton bir jeton, calistirma durumu degil.
+  const [stoppedReloadKey, setStoppedReloadKey] = useState(0);
+
   // Geçen süre sayacı. İş BİTİNCE durur — bitmiş bir işin süresi artmaya devam ederse
   // ekran yalan söyler.
   const startedAt = trackedJob?.startedAt;
@@ -124,6 +132,16 @@ const ScaleXPage: React.FC = () => {
     return () => { alive = false; };
   }, [finished, runResult, env, tenant, namespace, clusters, apps]);
 
+  // Is bitince paneli tazele. YOKLAMA HATASINDA ARTIRMA: `JobTrackerContext` yoklama
+  // patladiginda da `done: true` yapiyor ve o durumda `finalizeOperation` HIC kosmamis
+  // olur — ayna guncellenmemisken listeyi yenilemek, kullaniciya "hicbir sey degismedi"
+  // diye yanlis bir kesinlik verirdi.
+  const pollFailed = !!trackedJob?.pollErr;
+  useEffect(() => {
+    if (!finished || pollFailed) return;
+    setStoppedReloadKey((k) => k + 1);
+  }, [finished, pollFailed]);
+
   // İş bitince yapılandırılmış sonucu bir kez çek.
   useEffect(() => {
     if (!job || !finished) return;
@@ -134,19 +152,36 @@ const ScaleXPage: React.FC = () => {
     return () => { alive = false; };
   }, [job, finished]);
 
+  // BIR ONCEKI CALISTIRMANIN IZLERI. Yeni bir islem baslatan HER yol bunu cagirmak
+  // zorunda — yalnizca `restart()` degil, panelden gelen "Geri Al" kisayolu da.
+  //
+  // NEDEN AYRI FONKSIYON: `restoreFromPanel` bu alanlarin HICBIRINI sifirlamiyordu.
+  // Panel her adimda gorunur hale gelince o yol ANA AKIS oluyor ve sonuclari
+  // gorunur hale geliyor:
+  //   * `runResult` eski degerde kaldigi icin ekran ONCEKI islemin sonuc panelini
+  //     gosteriyordu (yeni is daha calisirken).
+  //   * `health` eski degerde kaldigi icin BASKA BIR UYGULAMANIN saglik satirlari
+  //     yeni islemin ekraninda duruyordu.
+  //   * `healthStartedRef` hala `true` oldugu icin geri alma sonrasi saglik kontrolu
+  //     HIC KOSMUYORDU — V9-V11'in kurdugu koruma sessizce devre disi kaliyordu.
+  function resetRunState() {
+    setError(null); setNotice(null);
+    setJob(null); setRunResult(null); setCatalogWarning(null);
+    setTrackedJobId(null); setCancelling(false); setElapsed(0);
+    setHealth(null); healthStartedRef.current = false;
+  }
+
   // `env`/`tenant`/`clusters` BILEREK korunur: kullanici genellikle ayni kapsamda ikinci
   // bir islem yapar. Ama CALISTIRMAYA OZEL her alan sifirlanmali — kalan bir deger
   // (or. onceki islemin "hepsi ya da hicbiri" secimi ya da CC adresi) sonraki isleme
   // SESSIZCE tasinir ve kullanici bunu fark etmez.
   function restart() {
+    resetRunState();
     setStep("scope");
     setNamespace(""); setApps([]); setWorkloads([]);
     setAction("stop"); setExecutionMode("dry_run"); setTargetReplicas(undefined);
     setVerificationTimeout("60"); setAllowPartial(true); setMailCc(""); setHpaPin(false);
-    setError(null); setNotice(null); setJob(null); setRunResult(null);
-    setCatalogWarning(null); setTrackedJobId(null); setCancelling(false); setElapsed(0);
     setOperationTouched(false);
-    setHealth(null); healthStartedRef.current = false;
   }
 
   async function guarded(fn: () => Promise<void>) {
@@ -250,6 +285,9 @@ const ScaleXPage: React.FC = () => {
 
   // "Geri Al" kısayolu: durdurulmuş bir kaydı doğrudan geri alma akışına taşır.
   function restoreFromPanel(item: ScaleXStoppedItem) {
+    // ONCE temizle, SONRA yeni degerleri yaz — ters sirada `resetRunState` asagida
+    // set edilenleri ezerdi.
+    resetRunState();
     setClusters([item.clusterName]);
     setNamespace(item.namespace);
     setApps([item.appName]);
@@ -269,10 +307,6 @@ const ScaleXPage: React.FC = () => {
     // Geri donuste BOS FORM cikmasin: kullanici "Geri Al"a basarak bu kararlari
     // vermis sayilir, geri tusu onlari gostermeli.
     setOperationTouched(true);
-    // ONCEKI ISLEMDEN KALAN BANNER'LARI TEMIZLE: adim degisimi `error`/`notice`
-    // temizlemiyordu ve bir onceki denemenin hata mesaji, yeni geri alma
-    // onizlemesinin USTUNDE durmaya devam ediyordu.
-    setError(null); setNotice(null);
     setStep("preview");
   }
 
@@ -434,7 +468,7 @@ const ScaleXPage: React.FC = () => {
           doldurmak, üstelik yeni bir keşif işi başlatmak zorunda kalıyordu. */}
       {env && tenant && (
         <div className="card p-5">
-          <StoppedPanel env={env} tenant={tenant} onRestore={restoreFromPanel} />
+          <StoppedPanel env={env} tenant={tenant} onRestore={restoreFromPanel} reloadKey={stoppedReloadKey} />
         </div>
       )}
     </div>
