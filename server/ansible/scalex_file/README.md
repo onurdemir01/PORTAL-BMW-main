@@ -18,7 +18,7 @@ aynı commit'te ve aynı testlerle birlikte doğrulanabilsin. LogX'te de aynı d
 
 | Buradaki yol | AWX projesindeki yol |
 |---|---|
-| `scalex_app/` (tamamı) | `bmw_openshift_jobs/scalex_app/` |
+| `scalex_app/` (tamamı) | `<proje>/<klasör>/scalex_app/` — konum serbest |
 | `awx/*.survey.json` | Kopyalanmaz — AWX API'siyle template'e yüklenir (bkz. `SCALEX_AWX_SETUP.md`) |
 
 ```
@@ -40,9 +40,13 @@ bmw_openshift_jobs/
         └── scalex_runner.sh     (cluster üzerindeki tüm `oc` işi — tek dosya)
 ```
 
-`main.yml` ve `discovery.yml`, `../global_variables/` yolunu kullanır. Yani
-`scalex_app/` klasörü **`global_variables/` ile kardeş** olmalıdır; başka bir yere
-konursa `vars_files` çözülemez ve iş açılışta düşer.
+**Tek şart — klasörün mutlak yolu değil, göreli konumu:** `main.yml` ve `discovery.yml`
+`../global_variables/` yolunu kullanır, yani `scalex_app/` klasörü **`global_variables/`
+ile kardeş** olmalıdır. Başka bir yere konursa `vars_files` çözülemez ve iş açılışta düşer.
+
+Üretimdeki kurulum bu koşulu sağlayan `bmw_portal/scalex/scalex_app/` yolunda duruyor
+(AWX job #3280508). Aşağıdaki ağaç `bmw_openshift_jobs/` örneğiyle çizilmiştir; kendi
+projenizdeki klasör adı farklı olabilir.
 
 ---
 

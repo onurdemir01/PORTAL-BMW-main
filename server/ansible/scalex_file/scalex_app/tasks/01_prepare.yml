@@ -96,8 +96,17 @@
   ansible.builtin.assert:
     that:
       - execution_mode_effective in ['dry_run', 'apply']
-      - oc_platform in ['ark', 'hosting', 'istirak-hosting', 'wyden', 'metaco_gar', 'metaco_das', 'cicd', 'instana', 'cds', 'ai', 'ark_ai']
-      - oc_environment in ['dev', 'test', 'qa', 'prod', 'lab', 'edu', 'cicd']
+      # PLATFORM/ORTAM ICIN SABIT BEYAZ LISTE YOK — BILEREK.
+      # Tenant ve ortam listesi portalin `ocp_cluster_index` tablosundan gelir ve
+      # ADMIN EKRANINDAN buyur. Buradaki sabit liste IKINCI ve BAYATLAYAN bir
+      # dogruluk kaynagiydi: 2026-09-01'de `digital_assets_wyden`,
+      # `digital_assets_metaco` ve `ark-ai` gercek tenant'lar oldugu halde listede
+      # olmadigi icin o tenant'larda ScaleX HIC calismiyordu.
+      # Burada yalnizca BICIM dogrulanir; GERCEK dogrulama katalog uyeligiyle
+      # yapilir (02_select_targets.yml "Validate ... clusters ... match the scope"):
+      # cluster katalogda var mi, `platform` esitleniyor mu, `environments` iceriyor mu.
+      - oc_platform is match('^[a-z0-9][a-z0-9_-]*$')
+      - oc_environment is match('^[a-z0-9][a-z0-9_-]*$')
       - oc_cluster_mode in ['single', 'all']
       - operation_action_effective in ['stop', 'restore', 'scale']
       - verification_timeout_effective in ['30', '60', '120']

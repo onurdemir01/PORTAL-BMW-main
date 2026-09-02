@@ -1,8 +1,8 @@
 ---
 # SCALEX | OpenShift replica durdurma / geri alma / olcekleme
 #
-# AWX konumu:
-#   bmw_openshift_jobs/scalex_app/main.yml
+# AWX konumu: <klasor>/scalex_app/main.yml — klasor SERBEST, tek sart
+# `global_variables/` ile KARDES olmasi (uretimde bmw_portal/scalex/scalex_app/).
 # Global degiskenler (AWX projesinde, bu klasorun BIR USTUNDE):
 #   bmw_openshift_jobs/global_variables/credentials.yaml   (vault: OCP servis kullanicisi)
 #   bmw_openshift_jobs/global_variables/mail_vars.yml      (SMTP varsayilanlari)
