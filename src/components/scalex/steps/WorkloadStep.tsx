@@ -16,7 +16,7 @@ interface Props {
   scope: ScaleXScope;
   busy: boolean;
   initial?: string[];
-  onSubmit: (v: { apps: string[]; workloads: ScaleXWorkload[] }) => void;
+  onSubmit: (v: { apps: string[]; workloads: ScaleXWorkload[]; fetchedAt: number }) => void;
   /** Kesif asilirsa kullaniciya bir CIKIS yolu vermek icin (bkz. bekleme ekrani). */
   onBack: () => void;
 }
@@ -28,6 +28,8 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   const [phase, setPhase] = useState<"idle" | "running" | "done" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [workloads, setWorkloads] = useState<ScaleXWorkload[]>([]);
+  // Kesfin TAMAMLANDIGI an — onizlemedeki tazelik damgasi buradan gelir.
+  const fetchedAtRef = useRef<number | null>(null);
   const [failedClusters, setFailedClusters] = useState<string[]>([]);
   const [problems, setProblems] = useState<{ cluster: string; detail: string }[]>([]);
   const [pdbWarning, setPdbWarning] = useState<string | null>(null);
@@ -85,7 +87,12 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
         errors = 0;
         if (!s.finished) continue;
         if (s.result) {
-          setWorkloads(s.result.workloads || []);
+          // KAYNAK ISARETLENIYOR: bu satirlar CANLI kesiften geliyor, yani
+          // `specReplicas`/`readyReplicas`/`image`/`hasHpa` gercek degerler ve
+          // onizlemede gosterilebilir. Aynadan turetilen sentetik satirlarda
+          // (`mirror`) o alanlar uydurma olur.
+          setWorkloads((s.result.workloads || []).map((w) => ({ ...w, source: "discovery" as const })));
+          fetchedAtRef.current = Date.now();
           setFailedClusters(s.result.failedClusters || []);
           setProblems((s.result.problems || []).map((p) => ({ cluster: p.cluster, detail: p.detail })));
           setPdbWarning(s.result.pdbWarning || null);
@@ -279,7 +286,7 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
           <strong className="text-[var(--text-primary)]">{selected.length * scope.clusters.length} hedef</strong>
         </span>
         <button type="button" className="btn-primary" disabled={busy || !selected.length}
-          onClick={() => onSubmit({ apps: selected, workloads })}>
+          onClick={() => onSubmit({ apps: selected, workloads, fetchedAt: fetchedAtRef.current || Date.now() })}>
           Devam
         </button>
       </div>

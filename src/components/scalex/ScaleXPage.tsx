@@ -56,6 +56,10 @@ const ScaleXPage: React.FC = () => {
   const [namespace, setNamespace] = useState("");
   const [apps, setApps] = useState<string[]>([]);
   const [workloads, setWorkloads] = useState<ScaleXWorkload[]>([]);
+  // Kesif verisinin alindigi an. Onizleme yeniden kesif YAPMIYOR; damgayi
+  // gostermemek, dakikalar once alinmis bir replica sayisini "su anki durum"
+  // sanmaya yol acardi. Sentetik (ayna) satirlarda `null`.
+  const [workloadsFetchedAt, setWorkloadsFetchedAt] = useState<number | null>(null);
   // Kullanici ISLEM adimini bir kez doldurdu mu? Doldurduysa geri donusde kendi
   // secimleri geri yuklenir; doldurmadiysa adim NOTR acilir (bkz. OperationStep).
   const [operationTouched, setOperationTouched] = useState(false);
@@ -179,7 +183,7 @@ const ScaleXPage: React.FC = () => {
   function restart() {
     resetRunState();
     setStep("scope");
-    setNamespace(""); setApps([]); setWorkloads([]);
+    setNamespace(""); setApps([]); setWorkloads([]); setWorkloadsFetchedAt(null);
     setAction("stop"); setExecutionMode("dry_run"); setTargetReplicas(undefined);
     setVerificationTimeout("60"); setAllowPartial(true); setMailCc(""); setHpaPin(false);
     setOperationTouched(false);
@@ -302,6 +306,9 @@ const ScaleXPage: React.FC = () => {
       resource: "", specReplicas: 0, statusReplicas: 0, readyReplicas: 0,
       hasHpa: false, image: null, statePhase: item.phase,
       previousReplicas: item.previousReplicas, restorable: true,
+      // AYNADAN turetilmis sentetik satir: yukaridaki replica/imaj alanlari GERCEK
+      // DEGIL. Onizleme bu isareti gorup onlari gostermez.
+      source: "mirror",
       // "Şu an durdurulmuş" listesinde GitOps bilgisi yok (o keşif `state` modundan
       // geliyor, `workloads`tan değil). `null` = bilinmiyor; önizleme bu yüzden
       // GitOps uyarısı göstermez — yanlış bir "temiz" iddiası yerine sessizlik.
@@ -334,7 +341,9 @@ const ScaleXPage: React.FC = () => {
       resource: "", specReplicas: 0, statusReplicas: 0, readyReplicas: 0,
       hasHpa: false, image: null, statePhase: "scaled_down",
       previousReplicas: null, restorable: true, gitops: null,
+      source: "mirror",
     })));
+    setWorkloadsFetchedAt(null);
     setAction("restore");
     setExecutionMode("apply");
     setHpaPin(false);
@@ -389,7 +398,7 @@ const ScaleXPage: React.FC = () => {
         {step === "workloads" && (
           <WorkloadStep scope={{ env, tenant, namespace, clusters }} busy={busy} initial={apps}
             onBack={() => setStep("namespace")}
-            onSubmit={(v) => { setApps(v.apps); setWorkloads(v.workloads); setStep("operation"); }} />
+            onSubmit={(v) => { setApps(v.apps); setWorkloads(v.workloads); setWorkloadsFetchedAt(v.fetchedAt); setStep("operation"); }} />
         )}
 
         {step === "operation" && (
@@ -409,7 +418,8 @@ const ScaleXPage: React.FC = () => {
         {step === "preview" && (
           <PreviewStep scope={scope} action={action} executionMode={executionMode}
             targetReplicas={targetReplicas} verificationTimeout={verificationTimeout}
-            workloads={workloads} hpaPin={hpaPin} busy={busy} onConfirm={run} />
+            workloads={workloads} hpaPin={hpaPin} allowPartial={allowPartial} mailCc={mailCc}
+            fetchedAt={workloadsFetchedAt} busy={busy} onConfirm={run} />
         )}
 
         {step === "done" && (

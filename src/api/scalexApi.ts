@@ -44,6 +44,21 @@ export interface ScaleXWorkload {
   restorable: boolean;
   /** `argocd:<app>` ya da `managed_by:<x>`; GitOps yönetimindeyse dolu. */
   gitops: string | null;
+  /**
+   * Bu satır NEREDEN geldi?
+   *   `discovery` — canlı keşiften; `specReplicas`/`readyReplicas`/`image`/`hasHpa`
+   *                 GERÇEK değerler ve ekranda gösterilebilir.
+   *   `mirror`    — portal aynasından türetilmiş sentetik satır (panelden ya da
+   *                 sonuç ekranından gelen "Geri Al" kısayolu). O alanlar UYDURMA
+   *                 (0/null) ve ASLA gösterilmemeli — prod'da tek tıkla apply'a
+   *                 giden akışta ekran "0/0 hazır, imaj yok" diye yanlış bir
+   *                 gerçeklik sunardı.
+   *
+   * ZORUNLU alan: opsiyonel olsaydı yeni bir sentetik yol eklendiğinde unutulur ve
+   * uydurma metrikler sessizce ekrana düşerdi. TypeScript her kurulum yerini
+   * karar vermeye zorlasın.
+   */
+  source: "discovery" | "mirror";
 }
 
 export interface ScaleXStateItem {

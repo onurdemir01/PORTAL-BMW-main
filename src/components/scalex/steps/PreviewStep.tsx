@@ -10,6 +10,7 @@ import {
 import {
   scalexApi, type ScaleXAction, type ScaleXMode, type ScaleXPreview, type ScaleXScope, type ScaleXWorkload,
 } from "@/api/scalexApi";
+import { fmtDateTime, fmtRelative } from "@/utils/datetime";
 
 interface Props {
   scope: ScaleXScope;
@@ -19,6 +20,11 @@ interface Props {
   verificationTimeout: string;
   workloads: ScaleXWorkload[];
   hpaPin: boolean;
+  /** `false` ise ön kontrol düşen hedef olduğunda HİÇBİR şey uygulanmaz. */
+  allowPartial: boolean;
+  mailCc: string;
+  /** Keşif verisinin alındığı an; `null` ise satırlar aynadan türetilmiştir. */
+  fetchedAt: number | null;
   busy: boolean;
   onConfirm: (v: { writtenConfirm?: string; reason?: string; ocoNumber?: string }) => void;
 }
@@ -26,7 +32,8 @@ interface Props {
 const ACTION_LABEL: Record<ScaleXAction, string> = { stop: "DURDUR", restore: "GERİ AL", scale: "ÖLÇEKLE" };
 
 const PreviewStep: React.FC<Props> = ({
-  scope, action, executionMode, targetReplicas, verificationTimeout, workloads, hpaPin, busy, onConfirm,
+  scope, action, executionMode, targetReplicas, verificationTimeout, workloads, hpaPin,
+  allowPartial, mailCc, fetchedAt, busy, onConfirm,
 }) => {
   const [preview, setPreview] = useState<ScaleXPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +61,10 @@ const PreviewStep: React.FC<Props> = ({
   const r = preview.blastRadius;
   const g = preview.gatePolicy;
   const picked = workloads.filter((w) => (scope.apps || []).includes(w.name));
+  // Satirlarin hepsi CANLI kesiften mi geliyor? Panelden/sonuctan gelen kisayol
+  // yolunda satirlar AYNADAN turetiliyor ve replica/imaj alanlari UYDURMA olur —
+  // o durumda canli ayrinti gosterilmez.
+  const live = picked.length > 0 && picked.every((w) => w.source === "discovery");
   // Prod'da eşik aşıldığında patlama yarıçapı görsel olarak da ağırlaşır — sayı tek
   // başına küçük görünebilir, etkilenen cluster'ları TEK TEK göstermek gerçeği taşır.
   const heavy = r.requiresWrittenConfirm;
@@ -120,16 +131,21 @@ const PreviewStep: React.FC<Props> = ({
             // bulunabilir ve `key={w.name}` o satirlari cakistirirdi (React uyarisi +
             // ekranda ayni ad birden cok kez, farkli sayilarla, HANGI cluster oldugu
             // yazmadan — dogrulama ekraninda dogrudan yaniltici).
-            <div key={`${w.cluster}/${w.name}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+            <div key={`${w.cluster}/${w.name}`} className="px-3 py-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="font-mono truncate text-[var(--text-primary)]" title={w.name}>{w.name}</span>
                 {multiCluster && (
                   <span className="font-mono truncate text-xs text-[var(--text-secondary)]" title={w.cluster}>{w.cluster}</span>
                 )}
+                {/* WORKLOAD TIPI: ayni ada sahip bir Deployment ile DeploymentConfig
+                    farkli seylerdir; kullanici NEYE dokundugunu onaylamadan once
+                    gormeli. */}
+                {w.kind && w.kind !== "-" && <span className="pf-label pf-label--grey">{w.kind}</span>}
               </span>
               <span className="flex items-center gap-2 whitespace-nowrap text-[var(--text-muted)] tabular-nums">
                 <span>
-                  {w.specReplicas} → {unknownTarget ? "kayıtlı değer" : to}
+                  {live ? w.specReplicas : "?"} → {unknownTarget ? "kayıtlı değer" : to}
                 </span>
                 {w.hasHpa && (
                   <span className="pf-label pf-label--gold">
@@ -138,9 +154,52 @@ const PreviewStep: React.FC<Props> = ({
                 )}
                 {w.gitops && <span className="pf-label pf-label--orange">GitOps</span>}
               </span>
+              </div>
+
+              {/* CANLI AYRINTI — YALNIZCA KESIFTEN GELEN satirlarda.
+                  Panelden/sonuctan gelen sentetik satirlarda bu alanlar 0/null'dur
+                  (aynadan turetildiler, kesiften degil); gostermek prod'da tek tikla
+                  apply'a giden akista UYDURULMUS bir gerceklik sunmak olurdu. */}
+              {live && (
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--text-muted)]">
+                  <span className="tabular-nums">hazır {w.readyReplicas}/{w.statusReplicas}</span>
+                  {/* "Zaten durdurulmus" YALNIZCA `stop` dalinda anlamli: bir GERI ALMA
+                      onizlemesinde bu rozet kullaniciya yanlis islem yaptigini
+                      dusundururdu. */}
+                  {action === "stop" && w.statePhase === "scaled_down" && (
+                    <span className="pf-label pf-label--blue">zaten durdurulmuş</span>
+                  )}
+                  {w.image && (
+                    <span className="font-mono truncate max-w-[22rem]" title={w.image}>{w.image}</span>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
+      </div>
+
+      {/* CALISTIRMA AYARLARI ONIZLEMEDE. Bu uc deger `İşlem` adiminda toplaniyor ve
+          dogrudan calistirmaya gidiyordu ama onizlemede HIC gorunmuyordu — kullanici
+          "hepsi ya da hicbiri" kararini ve rapor adreslerini onaylamadan once
+          dogrulayamiyordu. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--text-muted)]">
+        <span>
+          Ön kontrol düşerse:{" "}
+          <strong className="text-[var(--text-secondary)]">
+            {allowPartial ? "geçen hedefler uygulanır" : "hiçbir şey uygulanmaz"}
+          </strong>
+        </span>
+        <span>Sonuç kontrolü: <strong className="text-[var(--text-secondary)]">{verificationTimeout} sn</strong></span>
+        {mailCc && <span className="truncate max-w-[20rem]" title={mailCc}>Rapor CC: {mailCc}</span>}
+        {/* VERI TAZELIGI: kesif `Uygulamalar` adiminda donuyor ve onizleme yeniden
+            kesif YAPMIYOR. Damgayi gostermemek, dakikalar once alinmis bir replica
+            sayisini "su anki durum" sanmaya yol acardi. */}
+        {live && fetchedAt && (
+          <span title={fmtDateTime(new Date(fetchedAt).toISOString())}>
+            Veriler {fmtRelative(new Date(fetchedAt).toISOString())} alındı
+          </span>
+        )}
       </div>
 
       {anyUnknownTarget && (

@@ -458,3 +458,47 @@ test('W3 hizli geri alma UYDURMA replica sayisi tasimiyor', () => {
   assert.match(body, /setHpaPin\(false\)/, 'hedef bilinmiyorken HPA sabitleme kapali olmali');
   assert.match(body, /resetRunState\(\)/, 'onceki islemin izleri temizlenmiyor');
 });
+
+
+// ── X. ONIZLEMEDE CANLI BILGI (2026-09-02) ─────────────────────────────────
+
+test('X1 UYDURMA metrik gosterilmiyor: canli ayrinti yalnizca KESIF satirlarinda', () => {
+  // Panelden/sonuctan gelen kisayolda satirlar AYNADAN turetiliyor ve
+  // `specReplicas`/`readyReplicas`/`image` 0/null oluyor. Bunlari gostermek,
+  // prod'da tek tikla apply'a giden akista "0/0 hazir, imaj yok" diye
+  // UYDURULMUS bir gerceklik sunmak olurdu.
+  const code = codeOnly(PREVIEW);
+  assert.match(code, /w\.source === "discovery"/, 'kaynak ayrimi yapilmiyor');
+  assert.match(code, /\{live &&/, 'canli ayrinti kaynak ayrimindan GECMIYOR');
+  // Mevcut replica sayisi da kaynaga bagli olmali.
+  assert.match(code, /live \? w\.specReplicas : "\?"/, 'mevcut replica sentetik satirda uydurma gosteriliyor');
+});
+
+test('X2 sentetik satirlar `source: "mirror"` ile isaretleniyor', () => {
+  // `source` ZORUNLU bir alan; opsiyonel olsaydi yeni bir sentetik yol eklendiginde
+  // unutulur ve uydurma metrikler sessizce ekrana duserdi.
+  const api = read('api/scalexApi.ts');
+  assert.match(api, /source:\s*"discovery"\s*\|\s*"mirror";/, 'kaynak alani opsiyonel ya da yok');
+  const page = codeOnly(PAGE);
+  const synthetic = (page.match(/source:\s*"mirror"/g) || []).length;
+  assert.equal(synthetic, 2, `sentetik kurulum sayisi degismis (${synthetic}) — yeni yol isaretlenmemis olabilir`);
+});
+
+test('X3 "zaten durdurulmus" rozeti YALNIZCA `stop` dalinda', () => {
+  // Bir GERI ALMA onizlemesinde bu rozet, kullaniciya yanlis islem yaptigini
+  // dusundururdu — geri alinan uygulama zaten durdurulmus olmali.
+  assert.match(codeOnly(PREVIEW), /action === "stop" && w\.statePhase === "scaled_down"/,
+    'rozet islemden bagimsiz gosteriliyor');
+});
+
+test('X4 calistirma ayarlari ve VERI TAZELIGI onizlemede', () => {
+  const code = codeOnly(PREVIEW);
+  // Bu uc deger `İşlem` adiminda toplaniyor ve dogrudan calistirmaya gidiyordu ama
+  // onizlemede hic gorunmuyordu.
+  assert.match(code, /allowPartial \?/, '"hepsi ya da hicbiri" karari onizlemede yok');
+  assert.match(code, /Sonuç kontrolü/, 'dogrulama suresi onizlemede yok');
+  assert.match(code, /Rapor CC/, 'CC adresleri onizlemede yok');
+  // Onizleme yeniden kesif YAPMIYOR: damga olmadan dakikalar once alinmis bir
+  // replica sayisi "su anki durum" sanilirdi.
+  assert.match(code, /fetchedAt[\s\S]{0,120}alındı/, 'veri tazeligi damgasi yok');
+});
