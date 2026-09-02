@@ -18,48 +18,28 @@
       "question_description": "dry_run yalnizca on kontrol yapar, hicbir sey degistirmez. apply gercek degisiklik uygular. Portal her zaman gonderir; elle calistirmada bos birakilirsa playbook dry_run varsayar."
     },
     {
-      "max": 1024,
+      "max": 253,
       "min": 0,
-      "type": "multiplechoice",
-      "choices": [
-        "ark",
-        "hosting",
-        "istirak-hosting",
-        "wyden",
-        "metaco_gar",
-        "metaco_das",
-        "cicd",
-        "instana",
-        "cds",
-        "ai",
-        "ark_ai"
-      ],
+      "type": "text",
+      "choices": "",
       "default": "ark",
       "required": false,
       "variable": "target_platform",
       "new_question": true,
       "question_name": "Platform (tenant)",
-      "question_description": "Cluster katalogundaki `platform` alaniyla eslesir."
+      "question_description": "Cluster katalogundaki `platform` alaniyla eslesir. BILEREK SERBEST METIN: tenant/ortam listesi portalin cluster katalogundan gelir ve admin ekranindan buyur. Coktan secmeli olsaydi katalogda yeni bir tenant/ortam tanimlandiginda survey guncellenene kadar portalin her launch'i 400 ile reddedilirdi (2026-09-01'de tam olarak bu yasandi). Deger yine de katalogla dogrulanir (02_select_targets.yml)."
     },
     {
-      "max": 1024,
+      "max": 253,
       "min": 0,
-      "type": "multiplechoice",
-      "choices": [
-        "dev",
-        "test",
-        "qa",
-        "prod",
-        "lab",
-        "edu",
-        "cicd"
-      ],
+      "type": "text",
+      "choices": "",
       "default": "lab",
       "required": false,
       "variable": "target_environment",
       "new_question": true,
       "question_name": "Ortam",
-      "question_description": "Cluster katalogundaki `environments` listesiyle eslesir. PROD SECIMI ONAY KAPILARINI ACAR (portal tarafinda OCO + SMART)."
+      "question_description": "Cluster katalogundaki `environments` listesiyle eslesir. PROD SECIMI ONAY KAPILARINI ACAR (portal tarafinda OCO + SMART). BILEREK SERBEST METIN: tenant/ortam listesi portalin cluster katalogundan gelir ve admin ekranindan buyur. Coktan secmeli olsaydi katalogda yeni bir tenant/ortam tanimlandiginda survey guncellenene kadar portalin her launch'i 400 ile reddedilirdi (2026-09-01'de tam olarak bu yasandi). Deger yine de katalogla dogrulanir (02_select_targets.yml)."
     },
     {
       "max": 1024,

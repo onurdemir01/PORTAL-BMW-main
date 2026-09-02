@@ -658,7 +658,14 @@ test('H15 kodun yazdigi her sutun semada VAR', () => {
 
 // ═══ I. YENIDEN ADLANDIRMA + YENI DAVRANIS (merge oncesi ikinci tur) ═══════
 
-const RENAME_GUARD_FILES = ['scalex-validation.test.cjs', 'scalex-ui-validation.test.cjs'];
+// Bu UC dosya eski adi ARAMAK zorunda oldugu icin muaf; baska hicbir dosya degil.
+// `scalex-awx-package.test.cjs` P8 bekcisi raporun eski urun adini tasimadigini
+// dogruluyor — bunu yapabilmek icin metni icermek ZORUNDA.
+const RENAME_GUARD_FILES = [
+  'scalex-validation.test.cjs',
+  'scalex-ui-validation.test.cjs',
+  'scalex-awx-package.test.cjs',
+];
 
 test('I1 portal kaynaginda HIC "chaos" kalmadi (yorumlar dahil)', () => {
   // Ad degisikligi mekanikti; unutulan tek bir gecis, calisma aninda 404 ya da

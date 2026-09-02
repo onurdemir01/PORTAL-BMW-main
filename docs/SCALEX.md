@@ -86,7 +86,8 @@ Ayrıntılı adımlar (AWX template alanları, survey'in API ile yüklenmesi, s�
 **`server/ansible/scalex_file/SCALEX_AWX_SETUP.md`**. Özet:
 
 1. **AWX**: `server/ansible/scalex_file/scalex_app/` klasörünü AWX projesinde
-   `bmw_openshift_jobs/scalex_app/` altına kopyalayın; iki şablon oluşturun
+   AWX projenizde `global_variables/` ile **kardeş** bir klasöre kopyalayın
+   (üretimde `bmw_portal/scalex/scalex_app/`); iki şablon oluşturun
    (`main.yml` ve `discovery.yml`). Her ikisinde de **Prompt on launch > Variables
    AÇIK** olmalı — kapalıysa `extra_vars` sessizce yutulur ve playbook kendi katalog
    dosyasına düşer (ekran bunu `catalogWarning` ile söyler).

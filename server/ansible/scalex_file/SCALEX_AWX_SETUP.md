@@ -11,13 +11,16 @@ Admin > Playbook Kayıtları'na Template ID gir → SMART/OCO ayarını tanımla
 ## 1. Klasörü AWX projesine kopyala
 
 ```bash
-# Portal reposundan AWX proje reposuna
-cp -r server/ansible/scalex_file/scalex_app  <awx-projesi>/bmw_openshift_jobs/
+# Portal reposundan AWX proje reposuna. HEDEF KLASOR SERBEST; tek sart
+# `global_variables/` ile KARDES olmasi.
+cp -r server/ansible/scalex_file/scalex_app  <awx-projesi>/<klasör>/
 ```
 
 `scalex_app/`, `global_variables/` ile **kardeş** olmalı — playbook'lar
 `../global_variables/credentials.yaml` ve `../global_variables/mail_vars.yml`
-dosyalarını bu göreli yoldan okur.
+dosyalarını bu göreli yoldan okur. Üretimdeki kurulum
+`bmw_portal/scalex/scalex_app/` yolunda (AWX job #3280508 ile doğrulandı);
+template'in **Playbook** alanına o projedeki gerçek yolu yazın.
 
 AWX'te **Projects > (proje) > Sync** ile yeni dosyaları çek.
 
@@ -32,7 +35,7 @@ AWX'te **Projects > (proje) > Sync** ile yeni dosyaları çek.
 | **Job Type** | `run` | `run` |
 | **Inventory** | BMW - Openshift Jump Server Inventory | (aynı) |
 | **Project** | ANSIBLE_6203 | (aynı) |
-| **Playbook** | `bmw_openshift_jobs/scalex_app/main.yml` | `bmw_openshift_jobs/scalex_app/discovery.yml` |
+| **Playbook** | `<klasör>/scalex_app/main.yml` | `<klasör>/scalex_app/discovery.yml` |
 | **Credentials** | `application_was_credentials` (ssh) + `uxmid_all_credentials_vault` (vault) | (aynı) |
 | **Verbosity** | 2 | 1 |
 | **Variables → Prompt on launch** | ✅ **AÇIK** | ✅ **AÇIK** |
