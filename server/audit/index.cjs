@@ -64,12 +64,29 @@ function createAuditChain(tableName) {
     return task;
   }
 
-  async function getLogs({ limit = 200, offset = 0, username, targetHost, action } = {}) {
+  // `action` TAM ESITLIKLE aranir; `actionPrefix` ise bir MODULUN tum izini getirir
+  // (or. `scalex_` → `scalex_operation`, `scalex_gate_decision`, `scalex_finalize`…).
+  // Onceden yalnizca tam esitlik vardi: bir modulun izine bakmak icin aksiyon adlarini
+  // TEK TEK ve EZBERDEN yazmak gerekiyordu, ekranda liste de yoktu.
+  //
+  // `LIKE` deseni PARAMETRE olarak gecirilir ve `%` SONA eklenir — kullanicinin
+  // girdisi desene donusturulmez (`%` ve `_` icerse bile yalnizca kendi anlamlarini
+  // tasir; burada risk enjeksiyon degil, yanlislikla genis eslesme).
+  //
+  // `dateFrom`/`dateTo`: denetim kaydinda tarih araligi HIC YOKTU — bir olayin
+  // gununu bilen kullanici 50'serlik sayfalari geriye dogru cevirmek zorundaydi.
+  async function getLogs({ limit = 200, offset = 0, username, targetHost, action, actionPrefix, dateFrom, dateTo } = {}) {
     const conditions = [];
     const params = [];
     if (username)   { params.push(username);   conditions.push(`username = $${params.length}`);    }
     if (targetHost) { params.push(targetHost); conditions.push(`target_host = $${params.length}`); }
     if (action)     { params.push(action);     conditions.push(`action = $${params.length}`);      }
+    if (actionPrefix) {
+      params.push(`${String(actionPrefix).replace(/[%_[]/g, '')}%`);
+      conditions.push(`action LIKE $${params.length}`);
+    }
+    if (dateFrom)   { params.push(dateFrom);   conditions.push(`created_at >= $${params.length}`); }
+    if (dateTo)     { params.push(dateTo);     conditions.push(`created_at < $${params.length}`);  }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     params.push(offset, limit);
     const { rows } = await db.query(
@@ -173,7 +190,8 @@ function auditMutations(prefix, { exclude = [] } = {}) {
 }
 
 // ── Admin okuma endpoint'leri ────────────────────────────────────────────────
-// GET /api/portal-audit         → portal geneli denetim kayitlari (filtre: username/action)
+// GET /api/portal-audit         → portal geneli denetim kayitlari
+//   filtreler: username · targetHost · action (tam) · actionPrefix (modul izi) · dateFrom/dateTo
 // GET /api/portal-audit/verify  → hash zinciri dogrulama ozeti
 function initPortalAudit(app) {
   let requireAuth, requireAdmin;
@@ -190,7 +208,13 @@ function initPortalAudit(app) {
         limit: Math.min(Number(req.query.limit) || 200, 1000),
         offset: Number(req.query.offset) || 0,
         username: req.query.username || undefined,
+        // `targetHost` uc tarafinda HIC OKUNMUYORDU: ekranda kutu vardi, yazilan deger
+        // sorguya girmiyordu — olu bir filtre.
+        targetHost: req.query.targetHost || undefined,
         action: req.query.action || undefined,
+        actionPrefix: req.query.actionPrefix || undefined,
+        dateFrom: req.query.dateFrom || undefined,
+        dateTo: req.query.dateTo || undefined,
       });
       res.json({ ok: true, logs: rows });
     } catch (e) {

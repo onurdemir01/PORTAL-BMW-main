@@ -240,6 +240,29 @@ export const scalexApi = {
    * Kapsam OPSIYONEL: verilmezse kullanicinin gorebildigi TUM durdurulmus kayitlar
    * doner ("hizli aksiyon" paneli sihirbazin ilk adiminda da gorunuyor).
    */
+  /**
+   * Uygulama ADI/TIPI listesi — ANINDA, AWX'e hiç dokunmadan (paylaşılan katalog).
+   * CANLI veri (replica, HPA, GitOps, durum) BU UÇTAN GELMEZ; onlar `discover` ile
+   * gelir ve ekran sütunları sonradan doldurur. Bayat bir replica sayısı ya da
+   * `restorable` bayrağı YANLIŞ İŞLEM demek olurdu.
+   */
+  async apps(scope: { env: string; tenant: string; namespace: string; clusters: string[] }) {
+    const q = new URLSearchParams({
+      env: scope.env, tenant: scope.tenant, namespace: scope.namespace,
+      clusters: scope.clusters.join(","),
+    });
+    return safeJson(await fetch(`${BASE}/apps?${q}`)) as Promise<{
+      ok: boolean; message?: string;
+      items: { name: string; kind?: string | null }[];
+      clusters: Record<string, string[]>;
+      sources: Record<string, string>;
+      /** Yetki nedeniyle gizlenen uygulama sayısı — söylenmeden "yok" demek yalan olur. */
+      hiddenCount?: number;
+      cached?: boolean; fetchedAt?: string | null; stale?: boolean;
+      scannedAt?: string | null; scannedEmpty?: boolean; source?: string;
+    }>;
+  },
+
   async stopped(env?: string, tenant?: string, cluster?: string) {
     const scoped = !!(env && tenant);
     const q = new URLSearchParams({

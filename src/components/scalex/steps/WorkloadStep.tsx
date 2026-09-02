@@ -28,6 +28,11 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   const [phase, setPhase] = useState<"idle" | "running" | "done" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [workloads, setWorkloads] = useState<ScaleXWorkload[]>([]);
+  // ON-LISTE: paylasilan katalogdan gelen ad/tip listesi. Ekran bunu ANINDA acar;
+  // canli sutunlar (replica, HPA, GitOps) kesif bitince dolar. Ad listesi yavas
+  // degisir, canli veri degismez sayilamaz — bu yuzden yalnizca ADLAR onbellekten.
+  const [preview, setPreview] = useState<{ name: string; clusters: string[] }[]>([]);
+  const [previewHidden, setPreviewHidden] = useState(0);
   // Kesfin TAMAMLANDIGI an — onizlemedeki tazelik damgasi buradan gelir.
   const fetchedAtRef = useRef<number | null>(null);
   const [failedClusters, setFailedClusters] = useState<string[]>([]);
@@ -64,6 +69,16 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
     startingRef.current = true;
     setPhase("running"); setMessage(null); setProblems([]); setFailedClusters([]);
     setJob(null); setElapsed(0);
+    // ON-LISTE ONCE ve BEKLETMEDEN: AWX'e dokunmayan bir DB okumasi. Basarisiz
+    // olursa akis etkilenmez — yalnizca ekran kesfi bekler (eski davranis).
+    scalexApi.apps({ env: scope.env, tenant: scope.tenant, namespace: scope.namespace, clusters: scope.clusters })
+      .then((r) => {
+        if (!aliveRef.current || !r.ok) return;
+        setPreview((r.items || []).map((it) => ({ name: it.name, clusters: r.clusters?.[it.name] || scope.clusters })));
+        setPreviewHidden(r.hiddenCount || 0);
+      })
+      .catch(() => { /* on-liste BEST-EFFORT: kesif zaten gercegi getirecek */ });
+
     try {
       const launched = await scalexApi.discover(scope, "workloads");
       if (!aliveRef.current) return;
@@ -131,8 +146,32 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   if (phase === "running") {
     return (
       <div className="py-10 flex flex-col items-center gap-3">
+        {/* ON-LISTE: paylasilan katalogdan gelen adlar, AWX'e dokunmadan. Kullanici
+            bos bir spinner'a degil, namespace'te NE OLDUGUNA bakarak bekliyor.
+            SECIM ACILMAZ: replica/HPA/geri alinabilirlik gibi karar girdileri henuz
+            gelmedi ve onlarsiz secim yaptirmak, kullaniciyi bilmedigi bir islemi
+            onaylamaya birakmak olurdu. */}
+        {preview.length > 0 && (
+          <div className="w-full max-w-md rounded-xl border border-[var(--border)] p-3">
+            <p className="text-xs font-medium text-[var(--text-secondary)]">
+              Bu namespace'te {preview.length} uygulama kayıtlı
+              {previewHidden > 0 && ` · ${previewHidden} tanesi yetki kısıtı nedeniyle gizli`}
+            </p>
+            <p className="mt-1 flex flex-wrap gap-1.5">
+              {preview.slice(0, 24).map((a) => (
+                <span key={a.name} className="font-mono text-xs text-[var(--text-muted)] truncate max-w-[14rem]"
+                  title={`${a.name} — ${a.clusters.join(", ")}`}>{a.name}</span>
+              ))}
+              {preview.length > 24 && (
+                <span className="text-xs text-[var(--text-muted)]">+{preview.length - 24}</span>
+              )}
+            </p>
+          </div>
+        )}
         <span aria-hidden="true" className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm font-medium text-[var(--text-primary)]">Uygulamalar keşfediliyor…</p>
+        <p className="text-sm font-medium text-[var(--text-primary)]">
+          {preview.length > 0 ? "Canlı durum okunuyor…" : "Uygulamalar keşfediliyor…"}
+        </p>
         <p className="text-xs text-[var(--text-muted)]">
           {scope.clusters.length} cluster · <span className="font-mono">{scope.namespace}</span> — salt okunur, hiçbir şey değiştirilmiyor.
         </p>

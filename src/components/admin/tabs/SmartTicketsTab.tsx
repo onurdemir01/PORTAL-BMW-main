@@ -42,7 +42,7 @@ function duration(a: string, b?: string | null) {
 }
 
 function toCsv(rows: AdminSmartTicket[]): string {
-  const cols = ["id", "externalTicketId", "username", "status", "smartStateName", "templateName", "flowKey", "jobId", "createdAt", "resolvedAt", "errorMessage"];
+  const cols = ["id", "externalTicketId", "username", "status", "smartStateName", "module", "templateName", "flowKey", "jobId", "createdAt", "resolvedAt", "errorMessage"];
   const head = cols.join(",");
   const body = rows.map((r) =>
     cols.map((c) => `"${String((r as unknown as Record<string, unknown>)[c] ?? "").replace(/"/g, '""')}"`).join(",")
@@ -173,7 +173,7 @@ export default function SmartTicketsTab() {
         <div>
           <h3 className="text-sm font-semibold text-gray-800 mb-1">Smart Talepleri</h3>
           <p className="text-xs text-gray-500 max-w-2xl">
-            Self Service üzerinden açılan tüm Smart onay taleplerinin kalıcı kaydı: kim açtı,
+            Portal üzerinden açılan tüm Smart onay taleplerinin kalıcı kaydı (Self Service, ScaleX…): kim açtı,
             hangi otomasyon için, hangi Smart kaydı oluştu, ne zaman ve sonucu ne oldu.
             Bir satıra tıklayınca o talebin gönderilen parametreleri açılır.
           </p>
@@ -245,6 +245,7 @@ export default function SmartTicketsTab() {
             <tr className="bg-gray-50 border-b border-gray-100 text-left">
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Açılış</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Kullanıcı</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Modül</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Otomasyon</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Smart Kayıt</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Durum</th>
@@ -256,10 +257,10 @@ export default function SmartTicketsTab() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {loading && rows.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-8 text-center text-sm text-gray-400">Yükleniyor…</td></tr>
+              <tr><td colSpan={10} className="px-3 py-8 text-center text-sm text-gray-400">Yükleniyor…</td></tr>
             )}
             {!loading && rows.length === 0 && (
-              <TableEmptyRow colSpan={9} />
+              <TableEmptyRow colSpan={10} />
             )}
             {rows.map((t) => {
               const meta = STATUS_META[t.status] || { label: t.status, className: "bg-gray-100 text-gray-600 border-gray-200" };
@@ -273,6 +274,16 @@ export default function SmartTicketsTab() {
                   >
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{fmt(t.createdAt)}</td>
                     <td className="px-3 py-2 text-xs font-mono text-gray-800">{t.username}</td>
+                    {/* MODUL: talebi hangi modulun actigi. Ekran Self Service
+                        varsayimiyla yazilmisti; ScaleX talepleri ayni listede,
+                        ayirt edilmeden goruntyordu. */}
+                    <td className="px-3 py-2 text-xs whitespace-nowrap">
+                      <span className={t.module === "ScaleX"
+                        ? "text-[11px] font-semibold px-2 py-0.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800"
+                        : "text-[11px] px-2 py-0.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-600"}>
+                        {t.module || "—"}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 text-xs text-gray-800">
                       <div className="flex items-center gap-1.5">
                         <ChevronDownIcon className={`w-3 h-3 text-gray-300 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -302,7 +313,7 @@ export default function SmartTicketsTab() {
                   </tr>
                   {open && (
                     <tr className="bg-gray-50/50">
-                      <td colSpan={9} className="px-4 py-3">
+                      <td colSpan={10} className="px-4 py-3">
                         <div className="space-y-2 text-xs">
                           <div className="flex flex-wrap gap-x-6 gap-y-1 text-gray-500">
                             <span>Flow: <span className="font-mono text-gray-700">{t.flowKey || "—"}</span></span>

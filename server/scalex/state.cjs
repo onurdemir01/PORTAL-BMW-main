@@ -223,14 +223,39 @@ async function refreshDrift({ env, tenant, scannedClusters, clusterStates }) {
   const mirrorRows = await listMirror({ env, tenant });
   const classified = classifyDrift({ mirrorRows, clusterStates, scannedClusters });
 
+  // SAPMA DEGISIMLERI DENETIME. `missing_on_cluster` / `unknown_to_portal`, "birisi
+  // portal disindan is yapmis" tespitidir — kullanicinin bilmesi gereken sey ve
+  // denetlenmesi gereken olay. Eskiden yalnizca bir kolon degeri degisiyordu; NE ZAMAN
+  // ve HANGI taramayla degistigi hicbir yerde kayitli degildi.
+  //
+  // YALNIZCA GERCEKTEN DEGISENLER yazilir: her taramada ayni durumu tekrar tekrar
+  // denetime yazmak, gercek degisimi gurultunun icinde kaybederdi.
+  const changes = [];
   for (const row of classified) {
     if (row.source !== 'portal' || row.drift === null) continue;
-    await db.query(
+    const { rowCount } = await db.query(
       `UPDATE scalex_state_mirror
           SET drift_status = $1, last_seen_at = GETUTCDATE(), updated_at = GETUTCDATE()
-        WHERE id = $2`,
+        WHERE id = $2 AND drift_status <> $1`,
       [row.drift, row.id]
     );
+    if (rowCount > 0 && row.drift !== DRIFT.IN_SYNC) {
+      changes.push({ cluster: row.clusterName, namespace: row.namespace, app: row.appName, drift: row.drift });
+    }
+    // `last_seen_at` DEGISMEYEN satirlarda da tazelenmeli: "en son ne zaman goruldu"
+    // bilgisi sapma durumundan bagimsiz.
+    if (rowCount === 0) {
+      await db.query(
+        `UPDATE scalex_state_mirror SET last_seen_at = GETUTCDATE() WHERE id = $1`,
+        [row.id]
+      );
+    }
+  }
+  if (changes.length) {
+    require('../audit/index.cjs').auditPortal(null, 'scalex_drift_detected', {
+      username: 'system:scalex-discovery', result: 'fail',
+      detail: JSON.stringify({ env, tenant, scannedClusters, changes: changes.slice(0, 20), total: changes.length }),
+    });
   }
   return classified;
 }

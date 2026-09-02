@@ -16,6 +16,7 @@ import {
   CheckIcon,
   BeakerIcon,
   ArchiveBoxIcon,
+  ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
 import AuditLogTab from "./tabs/AuditLogTab";
 import AnsibleConfigTab from "./tabs/AnsibleConfigTab";
@@ -24,6 +25,7 @@ import SystemConfigTab from "./tabs/SystemConfigTab";
 import UserManagementTab from "./tabs/UserManagementTab";
 import PageVisibilityTab from "./tabs/PageVisibilityTab";
 import LogXv2AdminTab from "./tabs/LogXv2AdminTab";
+import ScaleXAdminTab from "./tabs/ScaleXAdminTab";
 import InventoryVisibilityTab from "./tabs/InventoryVisibilityTab";
 import BrandingTab from "./tabs/BrandingTab";
 import TestScenariosTab from "./tabs/TestScenariosTab";
@@ -36,7 +38,12 @@ import SmartTicketsTab from "./tabs/SmartTicketsTab";
 // haritası, Legacy ortam eşlemesi, erişim kısıtı) üzerinden yönetilir. "Linkler" sekmesi
 // de kaldırıldı (Yardımcı Araçlar sayfası zaten inline admin CRUD sağlıyor).
 const DEFAULT_TABS = [
-  { id: "logxv2",      label: "LogX Yapılandırma", icon: ServerStackIcon },
+  // ORTAK SEKME: cluster / vault / bastion / kisitlama tablolari LogX'e ozel degil,
+  // LogX + OpsX + Telnet + ScaleX tarafindan PAYLASILIYOR. Ad bunu yansitiyor.
+  // Sekme KIMLIGI (`logxv2`) BILEREK korunuyor: kayitli sekme sirasi ve
+  // `admintab:logxv2` gorunurluk anahtari bozulmasin.
+  { id: "logxv2",      label: "OCP Yapılandırma", icon: ServerStackIcon },
+  { id: "scalex",      label: "ScaleX Yönetimi",  icon: ShieldCheckIcon },
   { id: "audit",       label: "Denetim Kaydı",     icon: ClipboardDocumentListIcon },
   { id: "smarttickets", label: "Smart Talepleri",  icon: ClipboardDocumentListIcon },
   { id: "testscenarios", label: "Test Senaryoları", icon: BeakerIcon },
@@ -207,6 +214,7 @@ const AdminPage: React.FC = () => {
           {activeTab === "users"       && <UserManagementTab />}
           {activeTab === "visibility"  && <PageVisibilityTab />}
           {activeTab === "logxv2"      && <LogXv2AdminTab />}
+          {activeTab === "scalex"      && <ScaleXAdminTab />}
           {activeTab === "inventoryvis" && <InventoryVisibilityTab />}
           {activeTab === "branding"    && <BrandingTab />}
         </div>

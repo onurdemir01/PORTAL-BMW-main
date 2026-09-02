@@ -108,7 +108,7 @@ export default function OcoSchedulesPanel() {
     <div className="space-y-4">
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
         <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-          OCO kesinti saatine zamanlanmış Self Service işleri. <b>AWX'e zamanlandı</b> olanları
+          OCO kesinti saatine zamanlanmış işler (Self Service, ScaleX…). <b>AWX'e zamanlandı</b> olanları
           AWX'in kendi schedule'ı tetikler — Portal o anda kapalı olsa bile çalışırlar.
           <b> Portal zamanladı</b> olanlar yalnızca serviste Smart onayı da gerektiğinde
           oluşur; onları Portal'ın poller'ı tetikler, yani Portal o saatte ayakta olmalıdır.
@@ -152,6 +152,7 @@ export default function OcoSchedulesPanel() {
             <tr className="bg-[var(--bg-elevated)] text-left">
               <th className="px-3 py-2 font-semibold">#</th>
               <th className="px-3 py-2 font-semibold">Kullanıcı</th>
+              <th className="px-3 py-2 font-semibold">Modül</th>
               <th className="px-3 py-2 font-semibold">Servis</th>
               <th className="px-3 py-2 font-semibold">OCO</th>
               <th className="px-3 py-2 font-semibold">Çalışma zamanı</th>
@@ -169,6 +170,13 @@ export default function OcoSchedulesPanel() {
                 <tr key={r.id} className="border-t border-[var(--border)] hover:bg-[var(--bg-elevated)] align-top">
                   <td className="px-3 py-2 tabular-nums text-[var(--text-muted)]">{r.id}</td>
                   <td className="px-3 py-2">{r.username}</td>
+                  {/* MODUL: ekran Self Service varsayimiyla yazilmisti; ScaleX
+                      kayitlari ayni listede, ayirt edilmeden goruntyordu. */}
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <span className={r.module === "ScaleX" ? "pf-label pf-label--blue" : "pf-label pf-label--grey"}>
+                      {r.module || "—"}
+                    </span>
+                  </td>
                   <td className="px-3 py-2">
                     {r.templateName || `template ${r.awxTemplateId}`}
                     {r.errorMessage && <div className="text-xs text-red-600 mt-0.5">{r.errorMessage}</div>}
@@ -216,7 +224,7 @@ export default function OcoSchedulesPanel() {
               );
             })}
             {rows.length === 0 && !loading && (
-              <TableEmptyRow colSpan={9} title="Zamanlanmış iş yok." description="OCO penceresine zamanlanan işler burada listelenir." />
+              <TableEmptyRow colSpan={10} title="Zamanlanmış iş yok." description="OCO penceresine zamanlanan işler burada listelenir." />
             )}
           </tbody>
         </table>

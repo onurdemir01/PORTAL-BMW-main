@@ -1262,3 +1262,274 @@ test('O5 kapsamsiz listeleme DENETIME yaziliyor', () => {
   assert.match(codeOnly(INDEX), /scalex_stopped_global/,
     'kapsamsiz listeleme iz birakmiyor');
 });
+
+
+// ═══ P. IZ DUSUMU (2026-09-02) ════════════════════════════════════════════
+//
+// ScaleX yalnizca BASLATMA ANINI denetliyordu. Isin gercekten calisip calismadigi,
+// uzlastiricinin verdigi kararlar, aynanin degismesi, sapma tespiti, kesfin sonucu
+// ve baskasinin isine erisim denemesi denetim kaydinda HIC YOKTU.
+
+test('P1 isin GERCEK SONUCU denetime yaziliyor', () => {
+  const code = codeOnly(INDEX);
+  assert.match(code, /scalex_finalize/, 'is sonucu iz birakmiyor');
+  // `apply` kontrolunden ONCE olmali: "on kontrol kostu ve ne dedi" de denetlenebilir
+  // olmali. Sonra yazilsaydi dry_run calistirmalari hic iz birakmazdi.
+  const fin = code.slice(code.indexOf('async function finalizeOperation'));
+  assert.ok(fin.indexOf('scalex_finalize') < fin.indexOf("parsed.mode !== 'apply'"),
+    'sonuc izi `apply` kontrolunden SONRA — dry_run calistirmalari iz birakmaz');
+});
+
+test('P2 ayna degisikligi, kesif sonucu ve yetkisiz erisim denemesi denetime yaziliyor', () => {
+  const code = codeOnly(INDEX);
+  for (const a of ['scalex_mirror_update', 'scalex_discovery_result', 'scalex_access_denied']) {
+    assert.match(code, new RegExp(a), `${a} izi yok`);
+  }
+  // 403 donen yol iz BIRAKMALI: baskasinin prod kesinti isini gormeye calismak,
+  // denetim kaydinda gorunmesi gereken tam olarak bu tur bir olay.
+  const deny = code.slice(code.indexOf('async function denyIfNotOwner'), code.indexOf('async function resolveByKey'));
+  assert.match(deny, /scalex_access_denied/, 'yetkisiz erisim denemesi iz birakmiyor');
+});
+
+test('P3 uzlastiricinin KARARLARI denetime yaziliyor', () => {
+  const rec = codeOnly(fs.readFileSync(path.join(SRC_DIR, 'reconciler.cjs'), 'utf8'));
+  for (const a of ['scalex_reconcile_stale', 'scalex_approval_adopted',
+    'scalex_approval_resolved', 'scalex_lock_released']) {
+    assert.match(rec, new RegExp(a), `${a} izi yok`);
+  }
+  // Uzlastirici HTTP baglamı olmadan calisir; `auditPortal(null, ...)` desteklenir ve
+  // kullanici adi acikca verilmeli, yoksa kayit 'system' olarak duser ve kimin isi
+  // oldugu kaybolur.
+  assert.match(rec, /username: 'system:scalex-reconciler'/, 'sistem aktoru isaretlenmemis');
+});
+
+test('P4 SAPMA yalnizca GERCEKTEN DEGISTIGINDE denetime yaziliyor', () => {
+  const st = codeOnly(STATE);
+  assert.match(st, /scalex_drift_detected/, 'sapma tespiti iz birakmiyor');
+  // Her taramada ayni durumu tekrar yazmak, gercek degisimi gurultunun icinde
+  // kaybederdi. `UPDATE ... AND drift_status <> $1` bunu SQL'de saglar.
+  assert.match(st, /drift_status <> \$1/, 'degismeyen satirlar da yaziliyor');
+});
+
+test('P5 `result_json` 1 MB\'i asinca da GECERLI JSON kalir', async () => {
+  // Onceki hali `JSON.stringify(parsed).slice(0, 1_000_000)` idi: kirpma JSON-farkinda
+  // DEGILDI, yani 1 MB'i asan bir sonucta alan `JSON.parse` edilemez hale geliyordu ve
+  // bu SESSIZDI. Bu test GERCEK yolu kosturur ve DB'ye NE YAZILDIGINI olcer.
+  const scalex = require('../index.cjs');
+
+  // 1 MB'i acik ara asan bir sonuc: ~4000 satir x ~300 karakter.
+  const parsed = {
+    overallStatus: 'OK', stage: 'execution', mode: 'apply', action: 'stop',
+    namespace: 'odeme', jobId: '1', counts: { ok: 1 },
+    targets: Array.from({ length: 200 }, (_, i) => ({
+      cluster: 'c1', app: `app-${i}`, kind: 'Deployment', status: 'OK', detail: 'x'.repeat(300),
+    })),
+    rows: Array.from({ length: 4000 }, (_, i) => `c1;j1;app-${i};Deployment;VERIFY;OK;${'y'.repeat(300)}`),
+  };
+
+  const orig = db.query;
+  const writes = [];
+  db.query = async (sql, params) => {
+    writes.push({ sql, params });
+    if (/^\s*SELECT \* FROM scalex_operations/.test(sql)) {
+      return { rows: [{ id: 1, env: 'test', tenant: 'ark', namespace: 'odeme',
+        username: 'u', cluster_name: 'c1', status: 'RUNNING', action: 'stop',
+        execution_mode: 'apply' }] };
+    }
+    return { rows: [], rowCount: 0 };
+  };
+  try {
+    await scalex.finalizeOperation({ serverId: 1, jobId: 42, status: { status: 'successful' }, parsed });
+  } finally {
+    db.query = orig;
+  }
+
+  const upd = writes.find((w) => /UPDATE scalex_operations/.test(w.sql) && /result_json/.test(w.sql));
+  assert.ok(upd, 'sonuc kaydi hic yazilmadi');
+  const stored = upd.params[3];
+  assert.ok(stored.length <= 1000000, `kayit sinirin ustunde: ${stored.length}`);
+
+  // ASIL OLCUT: gecerli JSON mu?
+  const back = JSON.parse(stored);   // eski kod BURADA patlardi
+  assert.equal(back.overallStatus, 'OK', 'ozet alanlar kaybolmus');
+  // Neyin atildigi SOYLENMELI — sessiz eksiklik, eksik veriden kotu.
+  assert.equal(back.rowsDroppedForStorage, true, 'atilan alan bildirilmemis');
+  assert.deepEqual(back.rows, [], 'ham satirlar hala icinde');
+});
+
+test('P5b sinirin ALTINDAKI sonuc oldugu gibi saklanir', async () => {
+  const scalex = require('../index.cjs');
+  const parsed = { overallStatus: 'OK', mode: 'dry_run', action: 'stop', rows: ['a'], targets: [] };
+  const orig = db.query;
+  const writes = [];
+  db.query = async (sql, params) => {
+    writes.push({ sql, params });
+    if (/^\s*SELECT \* FROM scalex_operations/.test(sql)) {
+      return { rows: [{ id: 1, env: 'test', tenant: 'ark', namespace: 'n', username: 'u',
+        cluster_name: 'c1', status: 'RUNNING', action: 'stop', execution_mode: 'dry_run' }] };
+    }
+    return { rows: [], rowCount: 0 };
+  };
+  try {
+    await scalex.finalizeOperation({ serverId: 1, jobId: 7, status: { status: 'successful' }, parsed });
+  } finally { db.query = orig; }
+  const upd = writes.find((w) => /result_json/.test(w.sql));
+  const back = JSON.parse(upd.params[3]);
+  assert.deepEqual(back.rows, ['a'], 'kucuk sonuc gereksiz yere kirpilmis');
+  assert.equal(back.rowsDroppedForStorage, undefined, 'gereksiz bayrak eklenmis');
+});
+
+test('P6 denetim sorgusu MODUL izini getirebiliyor', () => {
+  // Onceden yalnizca TAM ESITLIK vardi: bir modulun izine bakmak icin aksiyon
+  // adlarini tek tek ve ezberden yazmak gerekiyordu.
+  const audit = codeOnly(fs.readFileSync(path.join(SRC_DIR, '..', 'audit', 'index.cjs'), 'utf8'));
+  assert.match(audit, /actionPrefix/, 'modul izi filtresi yok');
+  assert.match(audit, /action LIKE \$/, 'LIKE parametreli kullanilmiyor');
+  assert.match(audit, /dateFrom/, 'tarih araligi filtresi yok');
+  // Ekranda kutu vardi ama uc tarafinda HIC OKUNMUYORDU — olu bir filtre.
+  assert.match(audit, /targetHost: req\.query\.targetHost/, 'targetHost filtresi hala olu');
+});
+
+
+// ═══ R. UYGULAMA LISTESI: ONCE DB, CANLI VERI SONRA (2026-09-02) ══════════
+
+test('R1 uygulama listesi paylasilan katalogdan geliyor (AWX job\'i ACMADAN)', () => {
+  const cat = codeOnly(CATALOG);
+  assert.match(cat, /async function listApps/, 'anlik uygulama listesi yok');
+  assert.match(cat, /ocpCatalog\.getApps/,
+    'katalog okunmuyor — liste yine canli kesfi bekler');
+  // `docs/OCP-NAMESPACE-KATALOGU-KARARI.md`: mimari ONUR'un karari. Bu degisiklik
+  // onu DEGISTIRMIYOR, ScaleX'i ona BAGLIYOR — yani ScaleX kendi AWX kesfini
+  // katalogun yerine koymuyor.
+  const idx = codeOnly(INDEX);
+  const ep = idx.slice(idx.indexOf("router.get('/apps'"), idx.indexOf("router.post('/discover'"));
+  assert.doesNotMatch(ep, /launchOnAwx/, 'liste ucu AWX isi aciyor — anlik olmaz');
+});
+
+test('R2 CANLI veri onbelleklenmiyor', () => {
+  // Bayat bir `restorable` "Geri Al"i ACAR ve is `STATE;FAIL` ile duser; bayat bir
+  // `specReplicas` geri almayi YANLIS sayiya dondurur. Liste ucu yalnizca ad/tip
+  // dondurmeli.
+  const api = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'api', 'scalexApi.ts'), 'utf8');
+  const block = api.slice(api.indexOf('async apps('), api.indexOf('async stopped('));
+  for (const alan of ['specReplicas', 'readyReplicas', 'hasHpa', 'gitops', 'restorable', 'previousReplicas']) {
+    assert.ok(!block.includes(alan), `liste ucu CANLI alan donduruyor: ${alan}`);
+  }
+});
+
+test('R3 `ocp_app` kisiti LISTE yolunda da uygulaniyor', () => {
+  // Bugune kadar uygulama bazli yetki yalnizca `resolveScope` ve `/adopt` yolunda
+  // calisiyordu: kullanici goremedigi bir uygulamayi LISTEDE goruyor, yalnizca
+  // calistiramiyordu.
+  const cat = codeOnly(CATALOG);
+  const fn = cat.slice(cat.indexOf('async function listApps'), cat.indexOf('async function assertClustersExist'));
+  assert.match(fn, /filterAllowed\('ocp_app'/, 'uygulama bazli yetki suzgeci yok');
+  // Gizlenen sayisi SOYLENMELI: soylemeden "uygulama yok" demek yanlis bilgi olurdu.
+  assert.match(fn, /hiddenCount/, 'gizlenen kayit sayisi bildirilmiyor');
+});
+
+test('R4 liste ucu namespace yetkisini ONCE dogruluyor', () => {
+  // Goremedigi bir namespace'in uygulama ADLARINI listelemek, adlarin kendisini
+  // sizdirmak olurdu.
+  const idx = codeOnly(INDEX);
+  const ep = idx.slice(idx.indexOf("router.get('/apps'"), idx.indexOf("router.post('/discover'"));
+  assert.match(ep, /assertNamespaceAllowed/, 'namespace yetkisi dogrulanmiyor');
+  assert.ok(ep.indexOf('assertNamespaceAllowed') < ep.indexOf('listApps'),
+    'yetki kontrolu listeden SONRA — adlar once uretiliyor');
+});
+
+
+// ═══ S. ADMIN EKRANI (2026-09-02) ═════════════════════════════════════════
+
+test('S1 ScaleX SMART/OCO ayari KENDI sayfasindan yonetilebiliyor', () => {
+  // Bugune kadar admin, ScaleX'in SMART ayarini yapabilmek icin ScaleX'in AWX
+  // template'ini SELF SERVICE KATALOGUNA item olarak eklemek zorundaydi —
+  // `FieldOverridesModal` yalnizca oradan ve Ansible sayfasindan aciliyordu.
+  const tab = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'tabs', 'ScaleXAdminTab.tsx'), 'utf8');
+  assert.match(tab, /FieldOverridesModal/, 'ayar modali acilmiyor');
+  // YENI TABLO YOK: ayni `(awx_server_id, template_id)` satiri, template kimligi
+  // `scalex_run` kaydindan cozuluyor.
+  assert.match(tab, /scalex_run/, 'template kimligi registry kaydindan cozulmuyor');
+  assert.match(tab, /awxServerId.*awxTemplateId/s, 'modal dogru satira baglanmamis');
+});
+
+test('S2 ScaleX sayfasi cluster/vault/bastion tablolarini KOPYALAMIYOR', () => {
+  // Ikinci bir dogruluk kaynagi acmak, ayni prod cluster'in jump server'inin iki
+  // yerde tutulmasi ve biri guncellenip digeri unutuldugunda ScaleX'in sessizce
+  // yanlis bastion'a gitmesi demek olurdu.
+  const tab = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'tabs', 'ScaleXAdminTab.tsx'), 'utf8');
+  for (const t of ['ocp_cluster_index', 'ocp_vault_key_catalog', 'ocp_terminal_host_map']) {
+    assert.ok(!tab.includes(t), `ScaleX sayfasi ${t} tablosuna dokunuyor`);
+  }
+});
+
+test('S3 admin sekmeleri elements/seed ile AYRISMIYOR', () => {
+  // Kayitsiz bir anahtar VARSAYILAN-GORUNUR sayilir: sekme goruntyor ama Sayfa
+  // Erisimi ekranindan yonetilemiyor. `smarttickets`/`testscenarios`/`dbbackup`/
+  // `flowtests` tam olarak bu durumdaydi.
+  const page = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'AdminPage.tsx'), 'utf8');
+  const elements = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'config', 'elements.ts'), 'utf8');
+  const seed = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
+
+  const tabIds = [...page.matchAll(/\{ id: "([a-z]+)",\s+label:/g)].map((m) => m[1]);
+  assert.ok(tabIds.length >= 12, `sekme listesi okunamadi (${tabIds.length})`);
+  const eksikElements = tabIds.filter((id) => !elements.includes(`admintab:${id}`));
+  const eksikSeed = tabIds.filter((id) => !seed.includes(`admintab:${id}`));
+  assert.deepEqual(eksikElements, [], `elements.ts'te eksik sekme(ler): ${eksikElements.join(', ')}`);
+  assert.deepEqual(eksikSeed, [], `seed'de eksik sekme(ler): ${eksikSeed.join(', ')}`);
+});
+
+test('S4 ortak sekmenin ANAHTARI korunmus, yalnizca ETIKETI degismis', () => {
+  // Anahtar degisseydi kayitli gorunurluk kurallari ve kullanicinin sekme sirasi
+  // tercihi sessizce gecersiz olurdu.
+  const page = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'AdminPage.tsx'), 'utf8');
+  assert.match(page, /\{ id: "logxv2",\s+label: "OCP Yapılandırma"/, 'ortak sekme adlandirilmamis');
+  const seed = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  assert.match(seed, /admintab:logxv2/, 'gorunurluk anahtari degismis — kayitli kurallar gecersiz olur');
+});
+
+test('S5 denetim ekrani modul izi, tarih araligi ve CSV tasiyor', () => {
+  const tab = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'tabs', 'AuditLogTab.tsx'), 'utf8');
+  assert.match(tab, /actionPrefix/, 'modul izi filtresi gonderilmiyor');
+  assert.match(tab, /dateFrom/, 'tarih araligi yok');
+  assert.match(tab, /exportCsv/, 'CSV disari verme yok');
+  // Kutu ekranda vardi ama deger sorguya HIC girmiyordu.
+  assert.match(tab, /qs\.set\("targetHost"/, 'targetHost filtresi hala olu');
+  // Bitis GUNUN SONUNU kapsamali: "2 Eylul" diyen kullanici o gunun kayitlarini ister.
+  assert.match(tab, /T23:59:59/, 'bitis tarihi gunun sonunu kapsamiyor');
+});
+
+
+test('S6 SMART/OCO ekranlari modulu AYIRT EDIYOR', () => {
+  // Iki tabloda da modulu ayirt eden bir KOLON YOK; ayirt edici
+  // `(awx_server_id, awx_template_id)` cifti. Sunucu bunu playbook kayit
+  // tablosundan cozuyor — `pendingLaunch.templateName` de bir ipucu ama STRING
+  // ESLESMESI kirilgan.
+  const runner = fs.readFileSync(path.join(SRC_DIR, '..', 'ansible', 'runner.cjs'), 'utf8');
+  assert.match(runner, /async function resolveModuleTagger/, 'modul cozumleyicisi yok');
+  assert.match(runner, /playbookRegistry\.getByKey/, 'kaynak playbook kayit tablosu degil');
+  // HER IKI ekran da etiketlenmeli.
+  const tickets = runner.slice(runner.indexOf('/api/ansible/ss/smart-tickets/all'));
+  assert.match(tickets.slice(0, 3000), /module: moduleOf\(/, 'Smart Talepleri etiketlenmiyor');
+  const oco = runner.slice(runner.indexOf('/api/ansible/ss/oco/scheduled/all'));
+  assert.match(oco.slice(0, 2000), /module: moduleOf\(/, 'OCO Zamanlamalari etiketlenmiyor');
+
+  // YENI KOLON EKLENMEDI: sema degismemeli.
+  const setup = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  const smart = setup.slice(setup.indexOf("name: 'smart_tickets'"), setup.indexOf("name: 'smart_tickets'") + 1600);
+  assert.ok(!/\bmodule\s+NVARCHAR/i.test(smart), 'smart_tickets tablosuna gereksiz kolon eklenmis');
+});
+
+test('S7 ortak CRUD tablosu ARANABILIR', () => {
+  // ~60 satirlik cluster listesinde filtre OLMAMASI en cok acitan eksikti.
+  const t = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'tabs', 'logxv2', 'SimpleCrudTable.tsx'), 'utf8');
+  assert.match(t, /searchable/, 'arama destegi yok');
+  // Arama TUM kolonlarda: kullanici aradiginin hangi kolonda oldugunu bilmek
+  // zorunda kalmamali.
+  assert.match(t, /columns\.some\(\(c\) => String\(r\[c\.key\]/, 'arama tum kolonlarda calismiyor');
+  // Kisa listede kutu gosterilmemeli.
+  assert.match(t, /rows\.length >= SEARCH_MIN_ROWS/, 'kisa listede de arama kutusu cikiyor');
+  // Bos sonucta "kayit yok" demek yaniltici olurdu — arama yuzunden bos oldugu
+  // SOYLENMELI.
+  assert.match(t, /Aramaya uyan kayıt yok/, 'bos arama sonucu "kayit yok" gibi gosteriliyor');
+});

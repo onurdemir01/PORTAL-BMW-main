@@ -2,8 +2,8 @@
 // (cluster-index, terminal-host-map, env-suffix-map) için ortak, jenerik satır-CRUD tablosu.
 // InventoryTab.tsx'in form deseninden (rounded-lg border, black focus ring) esinlenir ama
 // düşük-trafikli admin config ekranları için kasıtlı olarak daha kompakttır.
-import React, { useState } from "react";
-import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, CheckIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import React, { useMemo, useState } from "react";
+import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, CheckIcon, ExclamationTriangleIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { TableEmptyRow } from "@/components/common/EmptyState";
 
 export interface ColumnDef<T> {
@@ -39,14 +39,33 @@ interface Props<T extends { id: number }> {
   // yalnızca okuma modundaki satırlarda gösterilir — düzenleme sırasında yan etkili bir
   // işlem tetiklemek kaydedilmemiş değişiklikleri kaybettirirdi.
   rowActions?: (row: T) => React.ReactNode;
+  /**
+   * Arama kutusunu gosterir. ~60 satirlik cluster listesinde filtre OLMAMASI en cok
+   * acitan eksikti: admin aradigi cluster'i gozle taramak zorundaydi.
+   * Esik: satir sayisi bunun altindaysa kutu gosterilmez (uc satirlik bir tabloda
+   * arama, ekrani doldurup hicbir sey kazandirmaz).
+   */
+  searchable?: boolean;
 }
 
-export default function SimpleCrudTable<T extends { id: number }>({ columns, rows, emptyRow, onCreate, onUpdate, onDelete, rowActions }: Props<T>) {
+const SEARCH_MIN_ROWS = 8;
+
+export default function SimpleCrudTable<T extends { id: number }>({ columns, rows, emptyRow, onCreate, onUpdate, onDelete, rowActions, searchable = true }: Props<T>) {
+  const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<Partial<T>>(emptyRow);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+
+  // Arama TUM kolonlarda calisir: admin "gbocpprod2" da yazabilir "uxmid_das" da.
+  // Kolon secmek zorunda birakmak, aradiginin hangi kolonda oldugunu bilmesini
+  // gerektirirdi.
+  const visibleRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => columns.some((c) => String(r[c.key] ?? "").toLowerCase().includes(q)));
+  }, [rows, columns, query]);
 
   function startEdit(row: T) {
     setEditingId(row.id);
@@ -126,7 +145,18 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        {/* ARAMA: yalnizca liste gercekten uzunsa. Uc satirlik bir tabloda arama
+            kutusu ekrani doldurup hicbir sey kazandirmaz. */}
+        {searchable && rows.length >= SEARCH_MIN_ROWS ? (
+          <span className="relative flex-1 max-w-xs">
+            <MagnifyingGlassIcon aria-hidden="true"
+              className="pointer-events-none absolute left-2.5 top-1/2 w-4 h-4 -translate-y-1/2 text-gray-400" />
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+              aria-label="Tabloda ara" placeholder={`${rows.length} kayıt içinde ara…`}
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black transition" />
+          </span>
+        ) : <span />}
         {!adding && editingId === null && (
           <button
             onClick={startAdd}
@@ -149,7 +179,7 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
           </thead>
           <tbody className="divide-y divide-gray-50">
             {adding && renderFormRow()}
-            {rows.map((row) =>
+            {visibleRows.map((row) =>
               editingId === row.id ? (
                 <React.Fragment key={row.id}>{renderFormRow()}</React.Fragment>
               ) : (
@@ -222,8 +252,10 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                 </tr>
               )
             )}
-            {rows.length === 0 && !adding && (
-              <TableEmptyRow colSpan={columns.length + 1} title="Kayıt yok." />
+            {visibleRows.length === 0 && !adding && (
+              <TableEmptyRow colSpan={columns.length + 1}
+                title={query.trim() ? "Aramaya uyan kayıt yok." : "Kayıt yok."}
+                description={query.trim() ? `“${query.trim()}” için eşleşme bulunamadı.` : undefined} />
             )}
           </tbody>
         </table>
