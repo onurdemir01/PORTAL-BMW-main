@@ -66,6 +66,10 @@ const OpsXWizardPage: React.FC = () => {
   const [app, setApp] = useState("");
   const [jbossVersions, setJbossVersions] = useState<string[]>([]);
   const [hosts, setHosts] = useState<string[]>([]);
+  // KULLANICININ FIILEN ISARETLEDIGI JBoss MAJORLERI. Backend eskiden bunu envanterden
+  // TURETIYORDU; ayni host hem 7 hem 8 satiriyla gelince turetme keyfi bir sonuc veriyordu
+  // (bkz. server/opsx/index.cjs resolveLegacyTargets). Artik secim dogrudan tasiniyor.
+  const [hostMajors, setHostMajors] = useState<string[]>([]);
   const [env, setEnv] = useState("");
   const [tenant, setTenant] = useState("");
   const [pairs, setPairs] = useState<OpsxOcpPair[]>([]);
@@ -205,7 +209,7 @@ const OpsXWizardPage: React.FC = () => {
     setBusy(true);
     setError(null);
     try {
-      const r = await opsxApi.run({ platform: "legacy", application: app, operation, hosts, serverConfigMap });
+      const r = await opsxApi.run({ platform: "legacy", application: app, operation, hosts, hostMajors, serverConfigMap });
       // safeJson() 4xx/5xx'te reddetmez (bkz. src/api/http.ts) — backend'in ok:false +
       // message ile döndüğü hatalar burada AÇIKÇA kontrol edilmezse kullanıcıya "İşlem
       // başlatıldı" yeşil onayı gösterilir (job hiç tetiklenmemiş olsa bile).
@@ -235,7 +239,7 @@ const OpsXWizardPage: React.FC = () => {
     setBusy(true);
     setError(null);
     try {
-      const r = await opsxApi.dumpLegacy(app, hosts, dumpType, pidMap);
+      const r = await opsxApi.dumpLegacy(app, hosts, dumpType, pidMap, hostMajors);
       if (!r.ok) {
         setError(r.message || "Dump işi başlatılamadı.");
         return;
@@ -416,7 +420,7 @@ const OpsXWizardPage: React.FC = () => {
           <JbossVersionStep
             app={app}
             busy={busy}
-            onSubmit={(v) => { setJbossVersions(v); setHosts([]); setStep("legacy_hosts"); }}
+            onSubmit={(v) => { setJbossVersions(v); setHosts([]); setHostMajors([]); setStep("legacy_hosts"); }}
           />
         )}
 
@@ -425,7 +429,7 @@ const OpsXWizardPage: React.FC = () => {
             app={app}
             jbossVersions={jbossVersions}
             busy={busy}
-            onSubmit={(h) => { setHosts(h); setStep("operation"); }}
+            onSubmit={(v) => { setHosts(v.hosts); setHostMajors(v.hostMajors); setStep("operation"); }}
           />
         )}
 
@@ -441,6 +445,7 @@ const OpsXWizardPage: React.FC = () => {
           <LegacyJvmSelectStep
             application={app}
             hosts={hosts}
+            hostMajors={hostMajors}
             busy={busy}
             onSubmit={(v) => runLegacyDump(dumpType, v.pidMap)}
           />
@@ -450,6 +455,7 @@ const OpsXWizardPage: React.FC = () => {
           <ServerConfigSelectStep
             application={app}
             hosts={hosts}
+            hostMajors={hostMajors}
             operation={pendingOperation}
             busy={busy}
             onSubmit={(v) => runLegacy(pendingOperation, v.serverConfigMap)}

@@ -248,6 +248,10 @@ export const opsxApi = {
     application?: string;
     operation?: OpsxOperation;
     hosts?: string[];
+    // Kullanicinin sunucu secim ekraninda ISARETLEDIGI JBoss majorleri ("7" / "8").
+    // Backend `jboss_version` extra_var'ini bundan turetir. Gonderilmezse eski
+    // davranis (envanterden turetme) surer — eski istemci kirilmaz.
+    hostMajors?: string[];
     // restart/stop/start için ZORUNLU: kullanıcının server-config keşfinden seçtiği
     // {HOST: [{name,jbossMajor}, ...]} eşlemesi — pidMap ile AYNI desen (bkz.
     // OpsxServerConfigSelection). threaddump/heapdump'ta kullanılmaz (ayrı route).
@@ -279,11 +283,11 @@ export const opsxApi = {
 
   // application adına host başında çalışan JVM'leri listelemek için anlık bir AWX
   // keşif job'ı tetikler (bkz. OpsxJvm) — OCP pod keşfiyle AYNI desen.
-  discoverLegacyJvms: (application: string, hosts: string[]): Promise<OpsxJvmDiscoveryLaunch> =>
+  discoverLegacyJvms: (application: string, hosts: string[], hostMajors?: string[]): Promise<OpsxJvmDiscoveryLaunch> =>
     fetch(`${BASE}/legacy/jvm/discover`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ application, hosts }),
+      body: JSON.stringify({ application, hosts, hostMajors }),
     }).then(safeJson),
 
   // Keşif job'ının durumu — terminal + başarılıysa `jvms` dolu döner.
@@ -293,11 +297,11 @@ export const opsxApi = {
   // restart/stop/start için: application adına uyan server-config'leri (JVM'leri) VE
   // her birinin o anki STARTED/STOPPED durumunu listelemek için anlık bir AWX keşif
   // job'ı tetikler (bkz. OpsxServerConfig) — PID-bazlı dump keşfinden AYRI bir uç.
-  discoverLegacyServerConfigs: (application: string, hosts: string[]): Promise<OpsxServerConfigDiscoveryLaunch> =>
+  discoverLegacyServerConfigs: (application: string, hosts: string[], hostMajors?: string[]): Promise<OpsxServerConfigDiscoveryLaunch> =>
     fetch(`${BASE}/legacy/serverconfig/discover`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ application, hosts }),
+      body: JSON.stringify({ application, hosts, hostMajors }),
     }).then(safeJson),
 
   // Keşif job'ının durumu — terminal + başarılıysa `serverConfigs` dolu döner.
@@ -311,11 +315,12 @@ export const opsxApi = {
   // (/usr/jboss/ | /usr/jboss8/) kullanacağını belirler.
   dumpLegacy: (
     application: string, hosts: string[], dumpType: OpsxDumpType, pidMap: Record<string, OpsxPidSelection[]>,
+    hostMajors?: string[],
   ): Promise<OpsxDumpLaunchResult> =>
     fetch(`${BASE}/dump/legacy`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ application, hosts, dumpType, pidMap }),
+      body: JSON.stringify({ application, hosts, dumpType, pidMap, hostMajors }),
     }).then(safeJson),
 
   // Seçili namespace'lerdeki (birden fazla olabilir) pod'ları listelemek için anlık bir

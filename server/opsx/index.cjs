@@ -118,11 +118,84 @@ async function hostsForApp(app) {
     }));
 }
 
-// Legacy sunucu listesini anti-TOCTOU ile dogrular ve secilen sunucularin ORTAK JBoss
-// majör surumunu (varsa) turetir. Hem POST /api/opsx/run (restart/stop/start) hem
-// POST /api/opsx/dump/legacy tarafindan kullanilir — ikisi de AYNI dogrulama/türetme
-// kurallarina tabi olmali.
-async function resolveLegacyTargets(application, hosts) {
+// AWX'e gidecek `jboss_version` degerini uretir — SAF fonksiyon, DB'ye dokunmaz.
+//
+// Ayri durmasinin sebebi test edilebilirlik degil, HATANIN BURADA YASAMIS OLMASI:
+// bu turetme eskiden host adiyla ANAHTARLI bir Map uzerinden yapiliyordu
+//     const versionByHost = new Map(appHosts.map((h) => [h.host, h.jbossVersion]));
+// ve envanter ayni sunucu icin hem JBoss 7 hem JBoss 8 satiri donduruyor. Cift
+// kurulumlu bir host'ta IKINCI satir birincisini eziyor, turetilen major
+// `ORDER BY host` siralamasinin rastgele sonucu oluyordu.
+//
+// `claimedMajors` — kullanicinin sunucu secim ekraninda FIILEN isaretledigi majorler.
+// Verildiginde turetme degil, DOGRULAMA yapilir; verilmezse (eski istemci) envanterden
+// turetilir ama artik bir host'un TUM majorleri sayilir.
+function deriveJbossVersion(appHosts, requestedHosts, claimedMajors) {
+  // Bir host birden fazla majorde olabildigi icin Map degil, coklu kume.
+  const majorsByHost = new Map();
+  for (const h of appHosts) {
+    const major = String(h.jbossVersion || '').match(/^(\d+)/)?.[1];
+    if (major !== '7' && major !== '8') continue;
+    const key = String(h.host || '').toUpperCase();
+    if (!majorsByHost.has(key)) majorsByHost.set(key, new Set());
+    majorsByHost.get(key).add(major);
+  }
+
+  const availableInSelection = new Set();
+  for (const h of requestedHosts) {
+    for (const m of (majorsByHost.get(h) || [])) availableInSelection.add(m);
+  }
+
+  const claimed = Array.isArray(claimedMajors)
+    ? [...new Set(claimedMajors.map((m) => String(m || '').trim()).filter(Boolean))]
+    : null;
+
+  let jbossMajors;
+  if (claimed && claimed.length) {
+    // ANTI-TOCTOU: istemcinin iddia ettigi her major, secilen sunuculardan EN AZ
+    // BIRINDE gercekten kurulu olmali. Aksi halde kullanici envanterde hic olmayan
+    // bir majore islem yaptirabilirdi.
+    const bogus = claimed.filter((m) => !availableInSelection.has(m));
+    if (bogus.length) {
+      throw Object.assign(
+        new Error(`Seçilen sunucularda bulunmayan JBoss sürümü: ${bogus.map((m) => `JBoss ${m}`).join(', ')}`),
+        { status: 400 }
+      );
+    }
+    jbossMajors = new Set(claimed);
+  } else {
+    // ESKI DAVRANIS (cift gondermeyen istemci): secilen host'larda gorulen TUM
+    // majorler. Eski Map'in birini sessizce dusurmesi bir hataydi, korunmaz.
+    jbossMajors = availableInSelection;
+  }
+
+  // "8.0.7" -> jboss8, "7.3.10" -> jboss7. WAS gibi JBoss olmayan uygulamalarda
+  // bos/tanimsiz surum HATA sayilmaz (null doner, cagiran extra_vars'a hic eklemez).
+  // Karisik 7.X/8.X secimi REDDEDILMEZ (kullanici karari) — "all" gonderilir,
+  // playbook'un kendisi hangi majorlerin gercekten var oldugunu
+  // (jboss_existence/jboss8_existence) zaten ayrica kontrol ediyor.
+  if (jbossMajors.size > 1) return 'all';
+  if (jbossMajors.size === 1) return `jboss${[...jbossMajors][0]}`;
+  return null;
+}
+
+// Legacy sunucu listesini anti-TOCTOU ile dogrular ve islemin gidecegi JBoss majör
+// surumunu belirler. Hem POST /api/opsx/run (restart/stop/start) hem POST
+// /api/opsx/dump/legacy hem de JVM/server-config kesifleri tarafindan kullanilir —
+// hepsi AYNI dogrulama/turetme kurallarina tabi olmali.
+//
+// ── AYNI HOST IKI JBOSS SATIRIYLA GELEBILIR ─────────────────────────────────
+// Envanter (`MWAppsInventory`) bir sunucu icin hem JBoss 7 hem JBoss 8 satiri
+// dondurebiliyor. Bu fonksiyon majoru eskiden host adiyla ANAHTARLI bir Map'ten
+// turetiyordu:
+//     const versionByHost = new Map(appHosts.map((h) => [h.host, h.jbossVersion]));
+// Cift kurulumlu bir host'ta IKINCI satir birincisini eziyor, dolayisiyla turetilen
+// major `ORDER BY host` siralamasinin rastgele sonucu oluyordu. Kullanicinin "yalnizca
+// bu sunucunun JBoss 8 kurulumu" demesinin de bir yolu yoktu.
+//
+// COZUM: ekran kullanicinin ISARETLEDIGI majorleri (`hostMajors`) ayrica gonderiyor.
+// Gonderilmediginde (eski istemci) envanterden turetme davranisi AYNEN korunur.
+async function resolveLegacyTargets(application, hosts, hostMajors) {
   if (!String(application || '').trim()) {
     throw Object.assign(new Error('Uygulama adı gerekli.'), { status: 400 });
   }
@@ -136,20 +209,8 @@ async function resolveLegacyTargets(application, hosts) {
   if (notMine.length) {
     throw Object.assign(new Error(`Bu sunucular seçilen uygulamaya ait değil: ${notMine.join(', ')}`), { status: 400 });
   }
-  // jboss_version: "8.0.7" -> jboss8, "7.3.10" -> jboss7. WAS gibi JBoss olmayan
-  // uygulamalarda bos/tanimsiz surum HATA sayilmaz (null doner, cagiran extra_vars'a
-  // hic eklemez). Karisik 7.X/8.X secimi ARTIK REDDEDILMEZ (kullanici karari) —
-  // "all" gonderilir, playbook'un kendisi hangi majorlerin gercekten var oldugunu
-  // (jboss_existence/jboss8_existence, bkz. bmw_portal/java_app_ops/operations/tasks/
-  // main.yml) zaten ayrica kontrol ediyor.
-  const versionByHost = new Map(appHosts.map((h) => [h.host.toUpperCase(), h.jbossVersion]));
-  const jbossMajors = new Set();
-  for (const h of requested) {
-    const major = (versionByHost.get(h) || '').match(/^(\d+)/)?.[1];
-    if (major === '7' || major === '8') jbossMajors.add(major);
-  }
-  const jbossVersion = jbossMajors.size > 1 ? 'all' : (jbossMajors.size === 1 ? `jboss${[...jbossMajors][0]}` : null);
-  return { requested, jbossVersion };
+
+  return { requested, jbossVersion: deriveJbossVersion(appHosts, requested, hostMajors) };
 }
 
 // Openshift namespace/uygulama ciftlerini cluster katalogu + erisim kisitlamalarina
@@ -503,7 +564,7 @@ function initOpsX(app) {
   //   grubun tamamını hedefleyebilir (bu durumda target_cluster HİÇ gönderilmez, playbook
   //   eski/kanıtlı grup-tabanlı `hosts:`e döner). Bkz. OcpClusterPickStep.tsx.
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
-    const { platform, application, hosts, operation, env, tenant, pairs, ocOperation, cluster, serverConfigMap } = req.body || {};
+    const { platform, application, hosts, hostMajors, operation, env, tenant, pairs, ocOperation, cluster, serverConfigMap } = req.body || {};
 
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
@@ -536,7 +597,7 @@ function initOpsX(app) {
       // dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
       let requested, jbossVersion;
       try {
-        ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts));
+        ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
@@ -777,7 +838,7 @@ function initOpsX(app) {
   //
   // POST /api/opsx/legacy/jvm/discover — { application, hosts } → { jobId, awxServerId }
   app.post('/api/opsx/legacy/jvm/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-    const { application, hosts } = req.body || {};
+    const { application, hosts, hostMajors } = req.body || {};
     const { templateId, serverId, keyName } = await resolveTarget('legacyJvmDiscover');
     if (!templateId) {
       return res.status(501).json({
@@ -793,7 +854,7 @@ function initOpsX(app) {
     // launch'inin zaten kullandigi AYNI kapi, ayni turetme.
     let requested, jbossVersion;
     try {
-      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts));
+      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -890,7 +951,7 @@ function initOpsX(app) {
   //
   // POST /api/opsx/legacy/serverconfig/discover — { application, hosts } → { jobId, awxServerId }
   app.post('/api/opsx/legacy/serverconfig/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-    const { application, hosts } = req.body || {};
+    const { application, hosts, hostMajors } = req.body || {};
     const { templateId, serverId, keyName } = await resolveTarget('legacyServerConfigDiscover');
     if (!templateId) {
       return res.status(501).json({
@@ -905,7 +966,7 @@ function initOpsX(app) {
     // stop/start launch'inin (POST /api/opsx/run) kullandigi AYNI dogrulama/turetme.
     let requested, jbossVersion;
     try {
-      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts));
+      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -994,7 +1055,7 @@ function initOpsX(app) {
 
   // POST /api/opsx/dump/legacy — { application, hosts, dumpType, pidMap }
   app.post('/api/opsx/dump/legacy', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { application, hosts, dumpType, pidMap } = req.body || {};
+    const { application, hosts, hostMajors, dumpType, pidMap } = req.body || {};
     if (!DUMP_TYPES.has(dumpType)) {
       return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
     }
@@ -1010,7 +1071,7 @@ function initOpsX(app) {
 
     let requested, jbossVersion;
     try {
-      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts));
+      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -1467,6 +1528,6 @@ function initOpsX(app) {
 }
 
 module.exports = {
-  initOpsX, hostsForApp, ALLOWED_OPERATIONS, namespacesForCluster,
+  initOpsX, hostsForApp, ALLOWED_OPERATIONS, namespacesForCluster, deriveJbossVersion,
   extractOpsxDumpResult, extractOpsxPodsResult, extractOpsxJvmResult, extractOpsxServerConfigResult,
 };

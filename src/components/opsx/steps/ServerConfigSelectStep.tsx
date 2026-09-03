@@ -48,10 +48,13 @@ function isEligible(status: string, operation: OpsxOperation): boolean {
 const ServerConfigSelectStep: React.FC<{
   application: string;
   hosts: string[];
+  /** Kullanicinin isaretledigi JBoss majorleri — kesif YALNIZCA bu
+   *  majorlerin kurulum yollarina bakar (bkz. server/opsx jbossMajorsFor). */
+  hostMajors?: string[];
   operation: OpsxOperation;
   busy?: boolean;
   onSubmit: (v: { serverConfigMap: Record<string, OpsxServerConfigSelection[]> }) => void;
-}> = ({ application, hosts, operation, busy, onSubmit }) => {
+}> = ({ application, hosts, hostMajors, operation, busy, onSubmit }) => {
   const [configs, setConfigs] = useState<OpsxServerConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +105,7 @@ const ServerConfigSelectStep: React.FC<{
       }
     }
 
-    opsxApi.discoverLegacyServerConfigs(application, hosts)
+    opsxApi.discoverLegacyServerConfigs(application, hosts, hostMajors)
       .then((r) => {
         if (cancelled) return;
         if (r.jobId == null) {

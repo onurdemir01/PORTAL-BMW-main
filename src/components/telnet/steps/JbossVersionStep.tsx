@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { telnetApi, type TelnetHost } from "@/api/telnetApi";
-import { jbossMajorOf } from "@/components/opsx/steps/JbossVersionStep";
+import { majorOfHost, normalizeJbossVersion } from "@/utils/jboss";
 
 const UNKNOWN_LABEL = "Bilinmiyor";
 
@@ -36,8 +36,8 @@ const JbossVersionStep: React.FC<{
   const versions = useMemo(() => {
     const buckets = new Map<string, { count: number; actual: Set<string> }>();
     for (const h of hosts) {
-      const raw = h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "";
-      const major = jbossMajorOf(raw);
+      const raw = normalizeJbossVersion(h.jbossVersion);
+      const major = majorOfHost(h);
       const b = buckets.get(major) || { count: 0, actual: new Set<string>() };
       b.count += 1;
       if (raw) b.actual.add(raw);
