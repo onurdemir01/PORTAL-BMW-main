@@ -29,9 +29,12 @@ function isKnownMajor(j: OpsxJvm): boolean {
 const LegacyJvmSelectStep: React.FC<{
   application: string;
   hosts: string[];
+  /** Kullanicinin isaretledigi JBoss majorleri — kesif YALNIZCA bu
+   *  majorlerin kurulum yollarina bakar (bkz. server/opsx jbossMajorsFor). */
+  hostMajors?: string[];
   busy?: boolean;
   onSubmit: (v: { pidMap: Record<string, OpsxPidSelection[]> }) => void;
-}> = ({ application, hosts, busy, onSubmit }) => {
+}> = ({ application, hosts, hostMajors, busy, onSubmit }) => {
   const [jvms, setJvms] = useState<OpsxJvm[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +83,7 @@ const LegacyJvmSelectStep: React.FC<{
       }
     }
 
-    opsxApi.discoverLegacyJvms(application, hosts)
+    opsxApi.discoverLegacyJvms(application, hosts, hostMajors)
       .then((r) => {
         if (cancelled) return;
         if (r.jobId == null) {

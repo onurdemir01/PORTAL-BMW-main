@@ -12,17 +12,16 @@
 // listelenmedi"). Artık tek bir "JBoss 8.X" seçeneği o majör sürümdeki TÜM host'ları
 // kapsar — server/opsx/index.cjs.resolveLegacyTargets zaten majör sürüm bazında
 // çalışıyordu, önyüz de aynı granülariteye getirildi.
+//
+// `jbossMajorOf` ARTIK BURADA DEĞİL: aynı yardımcıyı Telnet bu dosyadan import
+// ediyordu — bir modülün sihirbaz adımı başka bir modülün adımına bağımlıydı.
+// Ortak yer: src/utils/jboss.ts (LogX, OpsX, Telnet ve FileX birlikte kullanır).
 import React, { useEffect, useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxHost } from "@/api/opsxApi";
+import { majorOfHost, normalizeJbossVersion } from "@/utils/jboss";
 
 const UNKNOWN_LABEL = "Bilinmiyor";
-
-// Envanterdeki tam sürüm string'inden ("8.1.2" -> "8") majör sürümü çıkarır.
-// Tanınmayan/bilinmeyen bir biçimse boş string döner ("Bilinmiyor" grubuna girer).
-export function jbossMajorOf(version: string): string {
-  return /^(\d+)/.exec(version || '')?.[1] || '';
-}
 
 const JbossVersionStep: React.FC<{
   app: string;
@@ -53,8 +52,8 @@ const JbossVersionStep: React.FC<{
   const versions = useMemo(() => {
     const buckets = new Map<string, { count: number; actual: Set<string> }>();
     for (const h of hosts) {
-      const raw = h.jbossVersion && h.jbossVersion.toUpperCase() !== "NF" ? h.jbossVersion : "";
-      const major = jbossMajorOf(raw);
+      const raw = normalizeJbossVersion(h.jbossVersion);
+      const major = majorOfHost(h);
       const b = buckets.get(major) || { count: 0, actual: new Set<string>() };
       b.count += 1;
       if (raw) b.actual.add(raw);
