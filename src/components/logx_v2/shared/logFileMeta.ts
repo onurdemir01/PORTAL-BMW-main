@@ -19,16 +19,16 @@ export function normalizeMtime(mtime: unknown, path?: string): number | null {
 }
 
 function parseMtimeValue(mtime: unknown): number | null {
-  if (mtime === null || mtime === undefined || mtime === "") return null;
+  if (mtime === null || mtime === undefined || mtime === '') return null;
 
-  if (typeof mtime === "number" && Number.isFinite(mtime)) return epochToMs(mtime);
+  if (typeof mtime === 'number' && Number.isFinite(mtime)) return epochToMs(mtime);
 
-  if (typeof mtime === "string") {
+  if (typeof mtime === 'string') {
     const t = mtime.trim();
     if (!t) return null;
     // Saf sayi metni: "1756300000" ya da "1756300000.5" — epoch, ISO degil.
     if (/^-?\d+(\.\d+)?$/.test(t)) return epochToMs(Number(t));
-    const parsed = Date.parse(t);           // ISO 8601 ve benzerleri
+    const parsed = Date.parse(t); // ISO 8601 ve benzerleri
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
@@ -49,7 +49,7 @@ function epochToMs(n: number): number | null {
 //   server.log.20260827           -> YYYYAAGG
 //   audit_2026_08_27_14.log       -> YYYY_AA_GG
 export function parseDateFromFilename(path: string): number | null {
-  const name = path.slice(path.lastIndexOf("/") + 1);
+  const name = path.slice(path.lastIndexOf('/') + 1);
 
   let m = name.match(/(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})/);
   if (m) return safeUtc(Number(m[1]), Number(m[2]), Number(m[3]));
@@ -79,39 +79,46 @@ function safeUtc(y: number, mo: number, d: number): number | null {
 // 200 dosyalik bir listede "hangisi hata logu" sorusunun cevabi renkli bir rozetle
 // bir bakista gorulsun. (Yoldan sinyal turetmenin calisan ornegi zaten var —
 // server/logx/v2/legacy.cjs ortam cikarimi.)
-export type LogKind = "error" | "access" | "gc" | "audit" | "output" | "trace" | "archive" | "other";
+export type LogKind =
+  'error' | 'access' | 'gc' | 'audit' | 'output' | 'trace' | 'archive' | 'other';
 
 const KIND_RULES: { kind: LogKind; re: RegExp }[] = [
-  { kind: "archive", re: /\.(gz|zip|bz2|xz|[0-9]+)$/i },
-  { kind: "error",   re: /(err|error|stderr|systemerr|fatal|exception)/i },
-  { kind: "gc",      re: /(^|[^a-z])gc([^a-z]|$)|garbage/i },
-  { kind: "access",  re: /(access|request|http)/i },
-  { kind: "audit",   re: /(audit|security|auth)/i },
-  { kind: "trace",   re: /(trace|debug|verbose)/i },
-  { kind: "output",  re: /(systemout|stdout|server|console|app|out)/i },
+  { kind: 'archive', re: /\.(gz|zip|bz2|xz|[0-9]+)$/i },
+  { kind: 'error', re: /(err|error|stderr|systemerr|fatal|exception)/i },
+  { kind: 'gc', re: /(^|[^a-z])gc([^a-z]|$)|garbage/i },
+  { kind: 'access', re: /(access|request|http)/i },
+  { kind: 'audit', re: /(audit|security|auth)/i },
+  { kind: 'trace', re: /(trace|debug|verbose)/i },
+  { kind: 'output', re: /(systemout|stdout|server|console|app|out)/i },
 ];
 
 export function logKind(path: string): LogKind {
-  const name = path.slice(path.lastIndexOf("/") + 1);
+  const name = path.slice(path.lastIndexOf('/') + 1);
   for (const r of KIND_RULES) if (r.re.test(name)) return r.kind;
-  return "other";
+  return 'other';
 }
 
 export const KIND_LABEL: Record<LogKind, string> = {
-  error: "hata", access: "erişim", gc: "GC", audit: "denetim",
-  output: "çıktı", trace: "izleme", archive: "arşiv", other: "diğer",
+  error: 'hata',
+  access: 'erişim',
+  gc: 'GC',
+  audit: 'denetim',
+  output: 'çıktı',
+  trace: 'izleme',
+  archive: 'arşiv',
+  other: 'diğer',
 };
 
 // Rozet renkleri token uzerinden: koyu temada da dogru calisir.
 export const KIND_CLASS: Record<LogKind, string> = {
-  error:   "bg-[var(--status-danger-bg)] text-[var(--status-danger)]",
-  access:  "bg-[var(--status-info-bg)] text-[var(--accent)]",
-  gc:      "bg-[var(--bg-elevated)] text-[var(--text-secondary)]",
-  audit:   "bg-[var(--status-warning-bg)] text-[var(--status-warning)]",
-  output:  "bg-[var(--bg-elevated)] text-[var(--text-secondary)]",
-  trace:   "bg-[var(--bg-elevated)] text-[var(--text-muted)]",
-  archive: "bg-[var(--bg-elevated)] text-[var(--text-muted)]",
-  other:   "bg-[var(--bg-elevated)] text-[var(--text-muted)]",
+  error: 'bg-[var(--status-danger-bg)] text-[var(--status-danger)]',
+  access: 'bg-[var(--status-info-bg)] text-[var(--accent)]',
+  gc: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]',
+  audit: 'bg-[var(--status-warning-bg)] text-[var(--status-warning)]',
+  output: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]',
+  trace: 'bg-[var(--bg-elevated)] text-[var(--text-muted)]',
+  archive: 'bg-[var(--bg-elevated)] text-[var(--text-muted)]',
+  other: 'bg-[var(--bg-elevated)] text-[var(--text-muted)]',
 };
 
 // ── SECIM SINIRI (D3) ────────────────────────────────────────────────────────
@@ -131,17 +138,17 @@ export function selectionPayloadBytes(selected: { host: string; path: string }[]
   return new Blob([JSON.stringify(selected)]).size;
 }
 
-export type SelectionPressure = "ok" | "warn" | "danger" | "over";
+export type SelectionPressure = 'ok' | 'warn' | 'danger' | 'over';
 
 // Kademeli uyari: sessizce sinira dayanip 400 yemek yerine kullanici yaklastigini
 // GORUR. Esikler sinirin kesirleridir — sabit dosya sayisi degil, cunku dosya
 // yollarinin uzunlugu kuruluma gore cok degisir.
 export function selectionPressure(bytes: number): SelectionPressure {
   const r = bytes / SELECTION_MAX_BYTES;
-  if (r > 1) return "over";
-  if (r > 0.9) return "danger";
-  if (r > 0.6) return "warn";
-  return "ok";
+  if (r > 1) return 'over';
+  if (r > 0.9) return 'danger';
+  if (r > 0.6) return 'warn';
+  return 'ok';
 }
 
 // Boyut degerleri TIPTE `number` ama CALISMA ZAMANINDA string gelebiliyor: kesif
@@ -150,7 +157,7 @@ export function selectionPressure(bytes: number): SelectionPressure {
 // server/logx/v2/downloads.cjs "nvarchar to bigint" hatasi aldigi icin Number()'a
 // zorluyor. TypeScript bunu YAKALAYAMAZ - tip bir soz, calisma zamani garantisi degil.
 export function toNumericSize(v: unknown): number {
-  const n = typeof v === "number" ? v : Number(v);
+  const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
@@ -162,9 +169,13 @@ export function toNumericSize(v: unknown): number {
 // bu fonksiyon paylasilan bir moduldedir ve yeni cagiranlar ham deger gecebilir.
 export function fmtSize(bytes?: number): string {
   const start = toNumericSize(bytes);
-  if (start <= 0) return "";
-  const u = ["B", "KB", "MB", "GB", "TB"];
-  let n = start, i = 0;
-  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  if (start <= 0) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let n = start,
+    i = 0;
+  while (n >= 1024 && i < u.length - 1) {
+    n /= 1024;
+    i++;
+  }
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
 }

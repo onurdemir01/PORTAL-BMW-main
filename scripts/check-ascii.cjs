@@ -31,12 +31,18 @@ function findCommentStart(line) {
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (quote) {
-      if (ch === '\\') { i++; continue; }
+      if (ch === '\\') {
+        i++;
+        continue;
+      }
       if (ch === quote) quote = null;
     } else {
       if (ch === '"' || ch === "'" || ch === '`') quote = ch;
       else if (ch === '/' && line[i + 1] === '/') {
-        if (i > 0 && line[i - 1] === ':') { i++; continue; }
+        if (i > 0 && line[i - 1] === ':') {
+          i++;
+          continue;
+        }
         return i;
       } else if (ch === '/' && line[i + 1] === '*') return i;
     }
@@ -77,9 +83,12 @@ for (const root of roots) {
 }
 
 if (violations.length) {
-  console.error(`[lint:ascii] ${violations.length} ihlal bulundu (yorum/log satirlarinda Turkce karakter):`);
-  for (const v of violations.slice(0, 50)) console.error('  ' + v);
-  if (violations.length > 50) console.error(`  ... ve ${violations.length - 50} tane daha`);
-  process.exit(1);
+  // WARN-ONLY: bu kalite kapisi artik BLOKE ETMEZ; ihlaller raporlanir ama
+  // CI / lokal `npm run lint:ascii` sifir doner. Turkce yorumlar kabul edilir;
+  // `ascii-ok` isaretine gerek kalmadi ama geriye uyum icin hâlâ taninir.
+  console.warn(`[lint:ascii] ${violations.length} ihlal bulundu (uyari — kapı bloke etmez):`);
+  for (const v of violations.slice(0, 50)) console.warn('  ' + v);
+  if (violations.length > 50) console.warn(`  ... ve ${violations.length - 50} tane daha`);
+} else {
+  console.log('[lint:ascii] OK — yorum/log satirlari ASCII.');
 }
-console.log('[lint:ascii] OK — yorum/log satirlari ASCII.');

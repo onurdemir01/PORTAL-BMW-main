@@ -26,21 +26,33 @@
 //      gövde GERÇEKTEN ölçülüp aynı sınırla karşılaştırılıyor ve kademeli uyarı veriliyor.
 //
 // D4 · ARAMA. Her tuş vuruşunda tüm ağaç yeniden süzülüyordu; debounce eklendi.
-import React, { useDeferredValue, useMemo, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import React, { useDeferredValue, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
-  DocumentIcon, ServerIcon, FolderIcon, MagnifyingGlassIcon, ChevronRightIcon,
-  ExclamationTriangleIcon, ClockIcon,
-} from "@heroicons/react/24/outline";
-import type { LegacyDiscoveryResult } from "@/api/logxV2Api";
+  DocumentIcon,
+  ServerIcon,
+  FolderIcon,
+  MagnifyingGlassIcon,
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+  ClockIcon,
+} from '@heroicons/react/24/outline';
+import type { LegacyDiscoveryResult } from '@/api/logxV2Api';
 import {
   // `toNumericSize` Onur'un uretim duzeltmesinden gelir (boyutlar tipte number,
   // calisma zamaninda string). `relativeTime`/`absoluteTime` ise buradan CIKTI:
   // artik ortak `@/utils/datetime` icindeler (asagidaki import).
-  normalizeMtime, logKind, KIND_LABEL, KIND_CLASS,
-  selectionPayloadBytes, selectionPressure, SELECTION_MAX_BYTES, fmtSize, toNumericSize,
-} from "@/components/logx_v2/shared/logFileMeta";
-import { fmtRelative, fmtDateTime } from "@/utils/datetime";
+  normalizeMtime,
+  logKind,
+  KIND_LABEL,
+  KIND_CLASS,
+  selectionPayloadBytes,
+  selectionPressure,
+  SELECTION_MAX_BYTES,
+  fmtSize,
+  toNumericSize,
+} from '@/components/logx_v2/shared/logFileMeta';
+import { fmtRelative, fmtDateTime } from '@/utils/datetime';
 
 interface Props {
   result: LegacyDiscoveryResult;
@@ -48,25 +60,25 @@ interface Props {
   busy?: boolean;
 }
 
-const ROW_HEIGHT = 34;      // dosya satırı
-const GROUP_HEIGHT = 42;    // host / dizin başlığı
+const ROW_HEIGHT = 34; // dosya satırı
+const GROUP_HEIGHT = 42; // host / dizin başlığı
 const LIST_HEIGHT = 420;
 
 function envBadgeClass(env?: string) {
   const map: Record<string, string> = {
-    PROD: "bg-red-50 text-red-700",
-    TEST: "bg-yellow-50 text-yellow-700",
-    DEV: "bg-green-50 text-green-700",
+    PROD: 'bg-red-50 text-red-700',
+    TEST: 'bg-yellow-50 text-yellow-700',
+    DEV: 'bg-green-50 text-green-700',
   };
-  return map[env || ""] || "bg-[var(--bg-elevated)] text-[var(--text-secondary)]";
+  return map[env || ''] || 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]';
 }
 
 function dirOf(path: string) {
-  const i = path.lastIndexOf("/");
-  return i > 0 ? path.slice(0, i) : "/";
+  const i = path.lastIndexOf('/');
+  return i > 0 ? path.slice(0, i) : '/';
 }
 function baseOf(path: string) {
-  const i = path.lastIndexOf("/");
+  const i = path.lastIndexOf('/');
   return i >= 0 ? path.slice(i + 1) : path;
 }
 
@@ -75,13 +87,22 @@ const TriCheckbox: React.FC<{
   checked: boolean;
   indeterminate: boolean;
   onChange: () => void;
-  "aria-label"?: string;
+  'aria-label'?: string;
 }> = ({ checked, indeterminate, onChange, ...rest }) => {
   const ref = useRef<HTMLInputElement>(null);
   React.useEffect(() => {
     if (ref.current) ref.current.indeterminate = indeterminate && !checked;
   }, [indeterminate, checked]);
-  return <input ref={ref} type="checkbox" checked={checked} onChange={onChange} className="rounded" {...rest} />;
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      className="rounded"
+      {...rest}
+    />
+  );
 };
 
 /** Zenginleştirilmiş dosya kaydı — mtime bir KEZ normalize edilir, her render'da değil. */
@@ -90,23 +111,38 @@ interface EnrichedFile {
   base: string;
   size?: number;
   environment?: string;
-  at: number | null;      // normalize edilmiş mtime (ms) ya da null
+  at: number | null; // normalize edilmiş mtime (ms) ya da null
   kind: ReturnType<typeof logKind>;
 }
 
 /** Düz listeye çevrilmiş satır — sanallaştırma tek bir düz dizi ister. */
 type Row =
-  | { t: "host"; host: string; files: EnrichedFile[]; shown: number; total: number; bytes: number; newest: number | null }
-  | { t: "dir"; host: string; dir: string; files: EnrichedFile[]; bytes: number; newest: number | null }
-  | { t: "file"; host: string; f: EnrichedFile };
+  | {
+      t: 'host';
+      host: string;
+      files: EnrichedFile[];
+      shown: number;
+      total: number;
+      bytes: number;
+      newest: number | null;
+    }
+  | {
+      t: 'dir';
+      host: string;
+      dir: string;
+      files: EnrichedFile[];
+      bytes: number;
+      newest: number | null;
+    }
+  | { t: 'file'; host: string; f: EnrichedFile };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [onlySelected, setOnlySelected] = useState(false);
-  const [onlyRecent, setOnlyRecent] = useState(false);   // "son 24 saat"
+  const [onlyRecent, setOnlyRecent] = useState(false); // "son 24 saat"
   const [openHosts, setOpenHosts] = useState<Set<string>>(new Set());
   const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -120,8 +156,11 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
 
   const key = (host: string, path: string) => `${host}::${path}`;
 
-  const failedHosts = (result.hosts || []).filter((h) => h.status !== "ok");
-  const okHosts = useMemo(() => (result.hosts || []).filter((h) => h.status === "ok"), [result.hosts]);
+  const failedHosts = (result.hosts || []).filter((h) => h.status !== 'ok');
+  const okHosts = useMemo(
+    () => (result.hosts || []).filter((h) => h.status === 'ok'),
+    [result.hosts],
+  );
 
   // D1 · Zenginleştirme + SIRALAMA. Her düzeyde EN YENİ ÜSTTE:
   // dosyalar mtime'a göre, dizinler içindeki en yeni dosyaya göre, sunucular da öyle.
@@ -159,7 +198,9 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
 
         const dirs = Array.from(dirMap.entries())
           .map(([dir, files]) => {
-            const sorted = [...files].sort((a, b) => byNewestDesc({ newest: a.at }, { newest: b.at }));
+            const sorted = [...files].sort((a, b) =>
+              byNewestDesc({ newest: a.at }, { newest: b.at }),
+            );
             return {
               dir,
               files: sorted,
@@ -179,6 +220,15 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
       })
       .sort(byNewestDesc);
   }, [okHosts]);
+
+  // BOS LOG DOSYALARI (0 B): indirilecek icerik yok. Secilemez ve indirme butonu
+  // bunlari gormezden gelir. Ekranda "log yok" rozetiyle isaretlenir ki kullanici
+  // dosyanin neden secilemedigini ANLASIN (bos checkbox tek basina belirsizdi).
+  const emptyFileKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const h of grouped) for (const f of h.files) if (f.size === 0) s.add(key(h.host, f.path));
+    return s;
+  }, [grouped]);
 
   const filtering = query.length > 0 || onlySelected || onlyRecent;
   const singleHost = grouped.length === 1;
@@ -200,7 +250,9 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
           .map((d) => ({ ...d, bytes: d.files.reduce((n, f) => n + (f.size || 0), 0) }));
         const files = dirs.flatMap((d) => d.files);
         return {
-          host: h.host, dirs, files,
+          host: h.host,
+          dirs,
+          files,
           totalFiles: h.files.length,
           bytes: files.reduce((n, f) => n + (f.size || 0), 0),
           newest: h.newest,
@@ -222,14 +274,26 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
     const out: Row[] = [];
     for (const h of visible) {
       out.push({
-        t: "host", host: h.host, files: h.files, shown: h.files.length,
-        total: h.totalFiles, bytes: h.bytes, newest: h.newest,
+        t: 'host',
+        host: h.host,
+        files: h.files,
+        shown: h.files.length,
+        total: h.totalFiles,
+        bytes: h.bytes,
+        newest: h.newest,
       });
       if (!isHostOpen(h.host)) continue;
       for (const d of h.dirs) {
-        out.push({ t: "dir", host: h.host, dir: d.dir, files: d.files, bytes: d.bytes, newest: d.newest });
+        out.push({
+          t: 'dir',
+          host: h.host,
+          dir: d.dir,
+          files: d.files,
+          bytes: d.bytes,
+          newest: d.newest,
+        });
         if (!isDirOpen(h.host, d.dir)) continue;
-        for (const f of d.files) out.push({ t: "file", host: h.host, f });
+        for (const f of d.files) out.push({ t: 'file', host: h.host, f });
       }
     }
     return out;
@@ -239,14 +303,15 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => (rows[i].t === "file" ? ROW_HEIGHT : GROUP_HEIGHT),
+    estimateSize: (i) => (rows[i].t === 'file' ? ROW_HEIGHT : GROUP_HEIGHT),
     overscan: 12,
   });
 
   function toggleSet(setter: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) {
     setter((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -256,7 +321,10 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
       const next = new Set(prev);
       for (const p of paths) {
         const k = key(p.host, p.path);
-        if (on) next.add(k); else next.delete(k);
+        // Bos dosyalar secilemez — ama once secilmis olanlarin iptaline izin ver.
+        if (on && emptyFileKeys.has(k)) continue;
+        if (on) next.add(k);
+        else next.delete(k);
       }
       return next;
     });
@@ -290,28 +358,28 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
   // D3 · Gerçek gövde ölçümü + kademeli basınç.
   const payloadBytes = useMemo(() => selectionPayloadBytes(chosen), [chosen]);
   const pressure = selectionPressure(payloadBytes);
-  const overLimit = pressure === "over";
+  const overLimit = pressure === 'over';
 
   const totalFiles = grouped.reduce((n, h) => n + h.files.length, 0);
   const shownFiles = visible.reduce((n, h) => n + h.files.length, 0);
 
   const pressureStyle = {
-    ok: "",
-    warn: "border-[var(--status-warning)] bg-[var(--status-warning-bg)] text-amber-800",
-    danger: "border-[var(--status-warning)] bg-[var(--status-warning-bg)] text-amber-800",
-    over: "border-[var(--status-danger)] bg-[var(--status-danger-bg)] text-red-700",
+    ok: '',
+    warn: 'border-[var(--status-warning)] bg-[var(--status-warning-bg)] text-amber-800',
+    danger: 'border-[var(--status-warning)] bg-[var(--status-warning-bg)] text-amber-800',
+    over: 'border-[var(--status-danger)] bg-[var(--status-danger-bg)] text-red-700',
   }[pressure];
 
   return (
     <div className="space-y-3">
-      {result.overall_status === "partial" && (
+      {result.overall_status === 'partial' && (
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           Bazı sunuculara erişilemedi — aşağıda yalnızca başarıyla taranan sunucular gösteriliyor.
         </div>
       )}
       {failedHosts.length > 0 && (
         <div className="text-xs text-[var(--text-muted)]">
-          Erişilemeyen sunucular: {failedHosts.map((h) => h.host).join(", ")}
+          Erişilemeyen sunucular: {failedHosts.map((h) => h.host).join(', ')}
         </div>
       )}
 
@@ -338,8 +406,8 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
             disabled={summary.files === 0}
             className={`px-2.5 py-1 rounded-full border transition-colors disabled:opacity-40 ${
               onlySelected
-                ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"
+                ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
             }`}
           >
             Yalnızca seçilenler
@@ -350,8 +418,8 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
             onClick={() => setOnlyRecent((v) => !v)}
             className={`px-2.5 py-1 rounded-full border transition-colors inline-flex items-center gap-1 ${
               onlyRecent
-                ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"
+                ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
             }`}
           >
             <ClockIcon aria-hidden="true" className="w-3.5 h-3.5" />
@@ -359,10 +427,14 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
           </button>
           {!filtering && grouped.length > 1 && (
             <button
-              onClick={() => setOpenHosts((prev) => (prev.size ? new Set() : new Set(grouped.map((h) => h.host))))}
+              onClick={() =>
+                setOpenHosts((prev) =>
+                  prev.size ? new Set() : new Set(grouped.map((h) => h.host)),
+                )
+              }
               className="px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)] transition-colors"
             >
-              {openHosts.size ? "Tümünü kapat" : "Tümünü aç"}
+              {openHosts.size ? 'Tümünü kapat' : 'Tümünü aç'}
             </button>
           )}
         </div>
@@ -373,10 +445,12 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
 
       {/* Seçim özeti — süzgeçten bağımsız, her zaman GERÇEK seçimi gösterir. */}
       {summary.files > 0 && (
-        <div className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs ${
-          pressure === "ok" ? "border-[var(--accent)]/30 bg-[var(--bg-elevated)]" : pressureStyle
-        }`}>
-          <span className={pressure === "ok" ? "text-[var(--text-primary)]" : ""}>
+        <div
+          className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs ${
+            pressure === 'ok' ? 'border-[var(--accent)]/30 bg-[var(--bg-elevated)]' : pressureStyle
+          }`}
+        >
+          <span className={pressure === 'ok' ? 'text-[var(--text-primary)]' : ''}>
             <strong>{summary.hosts}</strong> sunucu · <strong>{summary.files}</strong> dosya
             {summary.bytes > 0 && <> · {fmtSize(summary.bytes)}</>}
           </span>
@@ -391,22 +465,22 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
 
       {/* D3 · Kademeli uyarı. Sessizce sınıra dayanıp opak bir hata almak yerine
           kullanıcı yaklaştığını GÖRÜR. Ölçü gerçek gövde boyutudur. */}
-      {pressure !== "ok" && (
+      {pressure !== 'ok' && (
         <div className={`flex items-start gap-2 rounded-xl border p-3 text-xs ${pressureStyle}`}>
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
             {overLimit ? (
               <>
-                Seçim, tek bir istekte gönderilebilecek sınırı <strong>aştı</strong>{" "}
-                ({fmtSize(payloadBytes)} / {fmtSize(SELECTION_MAX_BYTES)}). Bu haliyle gönderilirse
-                istek sunucuya <strong>hiç ulaşmaz</strong>. Seçimi azaltın ya da transferi
-                birkaç parçaya bölün.
+                Seçim, tek bir istekte gönderilebilecek sınırı <strong>aştı</strong> (
+                {fmtSize(payloadBytes)} / {fmtSize(SELECTION_MAX_BYTES)}). Bu haliyle gönderilirse
+                istek sunucuya <strong>hiç ulaşmaz</strong>. Seçimi azaltın ya da transferi birkaç
+                parçaya bölün.
               </>
             ) : (
               <>
-                Seçim istek sınırına yaklaşıyor ({fmtSize(payloadBytes)} / {fmtSize(SELECTION_MAX_BYTES)}).
-                Sınır dosya <em>sayısı</em> değil, dosya <em>yollarının</em> toplam uzunluğudur —
-                uzun yollu dizinlerde daha erken dolar.
+                Seçim istek sınırına yaklaşıyor ({fmtSize(payloadBytes)} /{' '}
+                {fmtSize(SELECTION_MAX_BYTES)}). Sınır dosya <em>sayısı</em> değil, dosya{' '}
+                <em>yollarının</em> toplam uzunluğudur — uzun yollu dizinlerde daha erken dolar.
               </>
             )}
           </span>
@@ -421,28 +495,40 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
       >
         {rows.length === 0 ? (
           <p className="text-sm text-[var(--text-muted)] text-center py-8">
-            {filtering ? "Eşleşen dosya yok." : "Taranan sunucularda dosya bulunamadı."}
+            {filtering ? 'Eşleşen dosya yok.' : 'Taranan sunucularda dosya bulunamadı.'}
           </p>
         ) : (
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
+          <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
             {virtualizer.getVirtualItems().map((v) => {
               const row = rows[v.index];
               const common = {
-                position: "absolute" as const,
-                top: 0, left: 0, width: "100%",
+                position: 'absolute' as const,
+                top: 0,
+                left: 0,
+                width: '100%',
                 transform: `translateY(${v.start}px)`,
               };
 
-              if (row.t === "host") {
+              if (row.t === 'host') {
                 const sel = selState(row.host, row.files);
                 const open = isHostOpen(row.host);
                 return (
-                  <div key={v.key} ref={virtualizer.measureElement} data-index={v.index} style={common}
-                       className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] border-b border-[var(--border)]">
+                  <div
+                    key={v.key}
+                    ref={virtualizer.measureElement}
+                    data-index={v.index}
+                    style={common}
+                    className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-surface)] border-b border-[var(--border)]"
+                  >
                     <TriCheckbox
                       checked={sel.all}
                       indeterminate={sel.some}
-                      onChange={() => setMany(row.files.map((f) => ({ host: row.host, path: f.path })), !sel.all)}
+                      onChange={() =>
+                        setMany(
+                          row.files.map((f) => ({ host: row.host, path: f.path })),
+                          !sel.all,
+                        )
+                      }
                       aria-label={`${row.host} görünen dosyaların tümünü seç`}
                     />
                     <button
@@ -451,33 +537,57 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
                       aria-expanded={open}
                       className="flex items-center gap-2 flex-1 min-w-0 text-left disabled:cursor-default"
                     >
-                      <ChevronRightIcon aria-hidden="true"
-                        className={`w-4 h-4 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
-                      <ServerIcon aria-hidden="true" className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
-                      <span className="text-sm font-semibold text-[var(--text-primary)] truncate" title={row.host}>{row.host}</span>
+                      <ChevronRightIcon
+                        aria-hidden="true"
+                        className={`w-4 h-4 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+                      />
+                      <ServerIcon
+                        aria-hidden="true"
+                        className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0"
+                      />
+                      <span
+                        className="text-sm font-semibold text-[var(--text-primary)] truncate"
+                        title={row.host}
+                      >
+                        {row.host}
+                      </span>
                       <span className="text-xs text-[var(--text-muted)] flex-shrink-0 tabular-nums">
-                        {row.shown}{row.shown !== row.total && ` / ${row.total}`} dosya
+                        {row.shown}
+                        {row.shown !== row.total && ` / ${row.total}`} dosya
                         {row.bytes > 0 && ` · ${fmtSize(row.bytes)}`}
-                        {sel.on > 0 ? ` · ${sel.on} seçili` : ""}
+                        {sel.on > 0 ? ` · ${sel.on} seçili` : ''}
                       </span>
                     </button>
-                    <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0" title={fmtDateTime(row.newest)}>
+                    <span
+                      className="text-[10px] text-[var(--text-muted)] flex-shrink-0"
+                      title={fmtDateTime(row.newest)}
+                    >
                       {fmtRelative(row.newest)}
                     </span>
                   </div>
                 );
               }
 
-              if (row.t === "dir") {
+              if (row.t === 'dir') {
                 const sel = selState(row.host, row.files);
                 const open = isDirOpen(row.host, row.dir);
                 return (
-                  <div key={v.key} ref={virtualizer.measureElement} data-index={v.index} style={common}
-                       className="flex items-center gap-2 pl-6 pr-3 py-1.5 bg-[var(--bg-elevated)]/50 border-b border-[var(--border)]/60">
+                  <div
+                    key={v.key}
+                    ref={virtualizer.measureElement}
+                    data-index={v.index}
+                    style={common}
+                    className="flex items-center gap-2 pl-6 pr-3 py-1.5 bg-[var(--bg-elevated)]/50 border-b border-[var(--border)]/60"
+                  >
                     <TriCheckbox
                       checked={sel.all}
                       indeterminate={sel.some}
-                      onChange={() => setMany(row.files.map((f) => ({ host: row.host, path: f.path })), !sel.all)}
+                      onChange={() =>
+                        setMany(
+                          row.files.map((f) => ({ host: row.host, path: f.path })),
+                          !sel.all,
+                        )
+                      }
                       aria-label={`${row.dir} dizinini seç`}
                     />
                     <button
@@ -486,14 +596,26 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
                       aria-expanded={open}
                       className="flex items-center gap-2 flex-1 min-w-0 text-left disabled:cursor-default"
                     >
-                      <ChevronRightIcon aria-hidden="true"
-                        className={`w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
-                      <FolderIcon aria-hidden="true" className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" />
-                      <span className="text-[11px] text-[var(--text-secondary)] font-mono truncate flex-1" title={row.dir}>{row.dir}</span>
+                      <ChevronRightIcon
+                        aria-hidden="true"
+                        className={`w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+                      />
+                      <FolderIcon
+                        aria-hidden="true"
+                        className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0"
+                      />
+                      <span
+                        className="text-[11px] text-[var(--text-secondary)] font-mono truncate flex-1"
+                        title={row.dir}
+                      >
+                        {row.dir}
+                      </span>
                       {/* Grup toplamı: "bu dizini komple seçersem ne kadar iner" sorusu
                           eskiden ancak seçtikten sonra cevaplanıyordu. */}
                       <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 tabular-nums">
-                        {row.files.length}{row.bytes > 0 && ` · ${fmtSize(row.bytes)}`}{sel.on > 0 ? ` · ${sel.on}` : ""}
+                        {row.files.length}
+                        {row.bytes > 0 && ` · ${fmtSize(row.bytes)}`}
+                        {sel.on > 0 ? ` · ${sel.on}` : ''}
                       </span>
                     </button>
                   </div>
@@ -502,25 +624,63 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
 
               const f = row.f;
               const isSel = selected.has(key(row.host, f.path));
+              const isEmpty = f.size === 0;
               return (
-                <label key={v.key} ref={virtualizer.measureElement} data-index={v.index} style={common}
-                       className="flex items-center gap-2 pl-10 pr-3 py-1.5 hover:bg-[var(--bg-elevated)] cursor-pointer">
-                  <input type="checkbox" checked={isSel} onChange={() => toggleFile(row.host, f.path)} className="rounded" />
-                  <DocumentIcon aria-hidden="true" className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" />
-                  <span className="text-xs text-[var(--text-primary)] font-mono truncate flex-1" title={f.path}>{f.base}</span>
+                <label
+                  key={v.key}
+                  ref={virtualizer.measureElement}
+                  data-index={v.index}
+                  style={common}
+                  className={`flex items-center gap-2 pl-10 pr-3 py-1.5 ${isEmpty ? 'opacity-60' : 'hover:bg-[var(--bg-elevated)] cursor-pointer'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSel}
+                    onChange={() => toggleFile(row.host, f.path)}
+                    disabled={isEmpty}
+                    className="rounded"
+                    title={isEmpty ? 'İçerik yok — indirilemez' : undefined}
+                  />
+                  <DocumentIcon
+                    aria-hidden="true"
+                    className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0"
+                  />
+                  <span
+                    className="text-xs text-[var(--text-primary)] font-mono truncate flex-1"
+                    title={f.path}
+                  >
+                    {f.base}
+                  </span>
                   {/* Log tipi rozeti: 200 dosyalık listede "hangisi hata logu" tek bakışta. */}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${KIND_CLASS[f.kind]}`}>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${KIND_CLASS[f.kind]}`}
+                  >
                     {KIND_LABEL[f.kind]}
                   </span>
-                  <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 tabular-nums w-20 text-right"
-                        title={fmtDateTime(f.at)}>
-                    {fmtRelative(f.at) || "—"}
+                  {isEmpty ? (
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 bg-amber-100 text-amber-700 font-medium"
+                      title="Dosya boyutu 0 — sunucuda log içeriği yok"
+                    >
+                      log yok
+                    </span>
+                  ) : (
+                    <span
+                      className="text-[10px] text-[var(--text-muted)] flex-shrink-0 tabular-nums w-14 text-right"
+                      title={fmtDateTime(f.at)}
+                    >
+                      {fmtRelative(f.at) || '—'}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 tabular-nums w-14 text-right">
+                    {fmtSize(f.size)}
                   </span>
-                  {f.size ? (
-                    <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 tabular-nums w-14 text-right">{fmtSize(f.size)}</span>
-                  ) : <span className="w-14 flex-shrink-0" />}
                   {f.environment && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${envBadgeClass(f.environment)}`}>{f.environment}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${envBadgeClass(f.environment)}`}
+                    >
+                      {f.environment}
+                    </span>
                   )}
                 </label>
               );
@@ -534,10 +694,13 @@ const FileSelectionStep: React.FC<Props> = ({ result, onSubmit, busy }) => {
         disabled={selected.size === 0 || busy || overLimit}
         className="btn-primary w-full"
       >
-        {busy ? "Hazırlanıyor…"
-          : selected.size === 0 ? "En az bir dosya seçin"
-          : overLimit ? "Seçim çok büyük — azaltın"
-          : `${selected.size} dosyayı indirmeye hazırla`}
+        {busy
+          ? 'Hazırlanıyor…'
+          : selected.size === 0
+            ? 'En az bir dosya seçin'
+            : overLimit
+              ? 'Seçim çok büyük — azaltın'
+              : `${selected.size} dosyayı indirmeye hazırla`}
       </button>
     </div>
   );

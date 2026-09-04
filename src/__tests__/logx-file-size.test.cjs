@@ -22,22 +22,33 @@ function loadFns() {
   const grab = (name) => {
     const start = src.indexOf(`export function ${name}(`);
     if (start < 0) throw new Error(`${name} bulunamadi (tasinmis olabilir - testi guncelleyin)`);
-    let depth = 0, end = -1;
+    let depth = 0,
+      end = -1;
     for (let k = src.indexOf('{', start); k < src.length; k++) {
       if (src[k] === '{') depth++;
-      else if (src[k] === '}') { depth--; if (depth === 0) { end = k + 1; break; } }
+      else if (src[k] === '}') {
+        depth--;
+        if (depth === 0) {
+          end = k + 1;
+          break;
+        }
+      }
     }
     return src.slice(start, end).replace(/^export\s+/, '');
   };
   // TS tip notasyonlarini soy - Node ham TS calistiramaz.
-  const strip = (code) => code
-    .replace(/:\s*unknown/g, '')
-    .replace(/\)\s*:\s*string\s*\{/, ') {')
-    .replace(/\)\s*:\s*number\s*\{/, ') {')
-    .replace(/bytes\?\s*:\s*number/g, 'bytes')
-    .replace(/(\w)\s*:\s*number\b/g, '$1');
-  const code = strip(grab('toNumericSize')) + '\n' + strip(grab('fmtSize'))
-    + '\nreturn { toNumericSize, fmtSize };';
+  const strip = (code) =>
+    code
+      .replace(/:\s*unknown/g, '')
+      .replace(/\)\s*:\s*string\s*\{/, ') {')
+      .replace(/\)\s*:\s*number\s*\{/, ') {')
+      .replace(/bytes\?\s*:\s*number/g, 'bytes')
+      .replace(/(\w)\s*:\s*number\b/g, '$1');
+  const code =
+    strip(grab('toNumericSize')) +
+    '\n' +
+    strip(grab('fmtSize')) +
+    '\nreturn { toNumericSize, fmtSize };';
   // eslint-disable-next-line no-new-func
   return new Function(code)();
 }
@@ -60,9 +71,9 @@ test('STRING boyutlar cokmez (uretimdeki hata)', () => {
   assert.strictEqual(fmtSize('1048576'), '1.0 MB');
 });
 
-test('bos/sifir/gecersiz degerler bos dize doner, patlamaz', () => {
+test('bos/sifir/gecersiz degerler "0 B" doner, patlamaz', () => {
   for (const v of [0, '0', null, undefined, '', 'abc', NaN, -5, '-5', {}, []]) {
-    assert.strictEqual(fmtSize(v), '', JSON.stringify(v));
+    assert.strictEqual(fmtSize(v), '0 B', JSON.stringify(v));
   }
 });
 

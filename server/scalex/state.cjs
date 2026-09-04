@@ -16,12 +16,18 @@ const db = require('../db/index.cjs');
 
 const DRIFT = Object.freeze({
   IN_SYNC: 'in_sync',
-  MISSING_ON_CLUSTER: 'missing_on_cluster',   // portalda var, cluster'da yok
-  UNKNOWN_TO_PORTAL: 'unknown_to_portal',     // cluster'da var, portalda yok
+  MISSING_ON_CLUSTER: 'missing_on_cluster', // portalda var, cluster'da yok
+  UNKNOWN_TO_PORTAL: 'unknown_to_portal', // cluster'da var, portalda yok
 });
 
 function keyOf(r) {
-  return [r.env, r.tenant, r.clusterName ?? r.cluster_name, r.namespace, r.appName ?? r.app_name].join('\u001f');
+  return [
+    r.env,
+    r.tenant,
+    r.clusterName ?? r.cluster_name,
+    r.namespace,
+    r.appName ?? r.app_name,
+  ].join('\u001f');
 }
 
 // SAF FONKSIYON — DB gerektirmez, bu yuzden dogrudan test edilir.
@@ -42,7 +48,7 @@ function classifyDrift({ mirrorRows = [], clusterStates = [], scannedClusters = 
     let drift;
     if (onCluster) drift = DRIFT.IN_SYNC;
     else if (scanned.has(clusterName)) drift = DRIFT.MISSING_ON_CLUSTER;
-    else drift = null;   // taranmadi → KARAR VERME, eski durumu koru
+    else drift = null; // taranmadi → KARAR VERME, eski durumu koru
     out.push({ ...m, source: 'portal', onCluster: !!onCluster, drift });
   }
 
@@ -65,7 +71,10 @@ const MIRROR_LIMIT = 500;
 async function listMirror({ env, tenant, clusterName = null }) {
   const params = [env, tenant];
   let sql = `SELECT TOP 501 * FROM scalex_state_mirror WHERE env = $1 AND tenant = $2`;
-  if (clusterName) { params.push(clusterName); sql += ` AND cluster_name = $3`; }
+  if (clusterName) {
+    params.push(clusterName);
+    sql += ` AND cluster_name = $3`;
+  }
   const { rows } = await db.query(`${sql} ORDER BY cluster_name, namespace, app_name`, params);
   // Bir fazla cekip kirpiyoruz: "daha var mi" sorusunu ikinci bir COUNT sorgusu
   // olmadan cevaplamanin en ucuz yolu.
@@ -75,16 +84,35 @@ async function listMirror({ env, tenant, clusterName = null }) {
 
 function normalizeRow(r) {
   return {
-    id: r.id, env: r.env, tenant: r.tenant, clusterName: r.cluster_name,
-    namespace: r.namespace, appName: r.app_name, workloadKind: r.workload_kind,
-    previousReplicas: r.previous_replicas, phase: r.phase,
-    stoppedBy: r.stopped_by, stoppedAt: r.stopped_at, operationId: r.operation_id,
-    lastSeenAt: r.last_seen_at, driftStatus: r.drift_status,
+    id: r.id,
+    env: r.env,
+    tenant: r.tenant,
+    clusterName: r.cluster_name,
+    namespace: r.namespace,
+    appName: r.app_name,
+    workloadKind: r.workload_kind,
+    previousReplicas: r.previous_replicas,
+    phase: r.phase,
+    stoppedBy: r.stopped_by,
+    stoppedAt: r.stopped_at,
+    operationId: r.operation_id,
+    lastSeenAt: r.last_seen_at,
+    driftStatus: r.drift_status,
   };
 }
 
 // Bir `stop` islemi basariyla dogrulandiginda cagrilir.
-async function upsertStopped({ env, tenant, clusterName, namespace, appName, workloadKind, previousReplicas, stoppedBy, operationId }) {
+async function upsertStopped({
+  env,
+  tenant,
+  clusterName,
+  namespace,
+  appName,
+  workloadKind,
+  previousReplicas,
+  stoppedBy,
+  operationId,
+}) {
   const { rows } = await db.query(
     `MERGE scalex_state_mirror AS t
      USING (SELECT $1 AS env, $2 AS tenant, $3 AS cluster_name, $4 AS namespace, $5 AS app_name) AS s
@@ -99,8 +127,17 @@ async function upsertStopped({ env, tenant, clusterName, namespace, appName, wor
         phase, stopped_by, stopped_at, operation_id, last_seen_at, drift_status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'scaled_down',$8,GETUTCDATE(),$9,GETUTCDATE(),'in_sync')
      OUTPUT INSERTED.*;`,
-    [env, tenant, clusterName, namespace, appName, workloadKind || null,
-      Number.isFinite(previousReplicas) ? previousReplicas : null, stoppedBy, operationId || null]
+    [
+      env,
+      tenant,
+      clusterName,
+      namespace,
+      appName,
+      workloadKind || null,
+      Number.isFinite(previousReplicas) ? previousReplicas : null,
+      stoppedBy,
+      operationId || null,
+    ],
   );
   return rows[0] ? normalizeRow(rows[0]) : null;
 }
@@ -142,13 +179,13 @@ async function tryLockRestore({ env, tenant, clusterName, namespace, appName }) 
         SET phase = 'restoring', updated_at = GETUTCDATE()
       WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND app_name=$5
         AND phase = 'scaled_down'`,
-    params
+    params,
   );
   if (rowCount > 0) return 'locked';
   const { rows } = await db.query(
     `SELECT TOP 1 phase FROM scalex_state_mirror
       WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND app_name=$5`,
-    params
+    params,
   );
   return rows.length ? 'busy' : 'absent';
 }
@@ -163,7 +200,7 @@ async function unlockRestore({ env, tenant, clusterName, namespace, appName }) {
         SET phase = 'scaled_down', updated_at = GETUTCDATE()
       WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND app_name=$5
         AND phase = 'restoring'`,
-    [env, tenant, clusterName, namespace, appName]
+    [env, tenant, clusterName, namespace, appName],
   );
   return rowCount > 0;
 }
@@ -176,11 +213,15 @@ async function unlockRestore({ env, tenant, clusterName, namespace, appName }) {
 async function listLockedRestores() {
   const { rows } = await db.query(
     `SELECT TOP 500 env, tenant, cluster_name, namespace, app_name, updated_at
-       FROM scalex_state_mirror WHERE phase = 'restoring'`
+       FROM scalex_state_mirror WHERE phase = 'restoring'`,
   );
   return rows.map((r) => ({
-    env: r.env, tenant: r.tenant, clusterName: r.cluster_name,
-    namespace: r.namespace, appName: r.app_name, updatedAt: r.updated_at,
+    env: r.env,
+    tenant: r.tenant,
+    clusterName: r.cluster_name,
+    namespace: r.namespace,
+    appName: r.app_name,
+    updatedAt: r.updated_at,
   }));
 }
 
@@ -191,7 +232,7 @@ async function clearRestored({ env, tenant, clusterName, namespace, appName }) {
   const { rowCount } = await db.query(
     `DELETE FROM scalex_state_mirror
       WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND app_name=$5`,
-    [env, tenant, clusterName, namespace, appName]
+    [env, tenant, clusterName, namespace, appName],
   );
   return rowCount > 0;
 }
@@ -211,7 +252,7 @@ async function clearRestored({ env, tenant, clusterName, namespace, appName }) {
 async function listMirrorAll() {
   const { rows } = await db.query(
     `SELECT TOP 501 * FROM scalex_state_mirror
-      ORDER BY env, tenant, cluster_name, namespace, app_name`
+      ORDER BY env, tenant, cluster_name, namespace, app_name`,
   );
   const truncated = rows.length > MIRROR_LIMIT;
   return Object.assign(rows.slice(0, MIRROR_LIMIT).map(normalizeRow), { truncated });
@@ -232,29 +273,55 @@ async function refreshDrift({ env, tenant, scannedClusters, clusterStates }) {
   // denetime yazmak, gercek degisimi gurultunun icinde kaybederdi.
   const changes = [];
   for (const row of classified) {
-    if (row.source !== 'portal' || row.drift === null) continue;
-    const { rowCount } = await db.query(
-      `UPDATE scalex_state_mirror
-          SET drift_status = $1, last_seen_at = GETUTCDATE(), updated_at = GETUTCDATE()
-        WHERE id = $2 AND drift_status <> $1`,
-      [row.drift, row.id]
-    );
-    if (rowCount > 0 && row.drift !== DRIFT.IN_SYNC) {
-      changes.push({ cluster: row.clusterName, namespace: row.namespace, app: row.appName, drift: row.drift });
+    // ── PORTAL KAYNAKLI: drift_status + last_seen_at ───────────────────
+    if (row.source === 'portal' && row.drift !== null) {
+      const { rowCount } = await db.query(
+        `UPDATE scalex_state_mirror
+            SET drift_status = $1, last_seen_at = GETUTCDATE(), updated_at = GETUTCDATE()
+          WHERE id = $2 AND drift_status <> $1`,
+        [row.drift, row.id],
+      );
+      if (rowCount > 0 && row.drift !== DRIFT.IN_SYNC) {
+        changes.push({
+          cluster: row.clusterName,
+          namespace: row.namespace,
+          app: row.appName,
+          drift: row.drift,
+        });
+      }
+      // `last_seen_at` DEGISMEYEN satirlarda da tazelenmeli: "en son ne zaman goruldu"
+      // bilgisi sapma durumundan bagimsiz.
+      if (rowCount === 0) {
+        await db.query(`UPDATE scalex_state_mirror SET last_seen_at = GETUTCDATE() WHERE id = $1`, [
+          row.id,
+        ]);
+      }
     }
-    // `last_seen_at` DEGISMEYEN satirlarda da tazelenmeli: "en son ne zaman goruldu"
-    // bilgisi sapma durumundan bagimsiz.
-    if (rowCount === 0) {
+
+    // ── CLUSTER KAYNAKLI: last_seen_at (dogal anahtarla) ──────────────
+    // `unknown_to_portal` satirlarinin aynada `id`'si olmayabilir, ama cluster
+    // hâlâ bu is ykn raporluyorsa `last_seen_at` gncel kalmali. Aksi halde
+    // StoppedPanel'in 7 gnlk "eski" eii bu satirlari haksiz yere yakalar.
+    if (row.source === 'cluster' && row.onCluster) {
       await db.query(
-        `UPDATE scalex_state_mirror SET last_seen_at = GETUTCDATE() WHERE id = $1`,
-        [row.id]
+        `UPDATE scalex_state_mirror SET last_seen_at = GETUTCDATE()
+         WHERE env = $1 AND tenant = $2 AND cluster_name = $3
+           AND namespace = $4 AND app_name = $5`,
+        [row.env, row.tenant, row.clusterName, row.namespace, row.appName],
       );
     }
   }
   if (changes.length) {
     require('../audit/index.cjs').auditPortal(null, 'scalex_drift_detected', {
-      username: 'system:scalex-discovery', result: 'fail',
-      detail: JSON.stringify({ env, tenant, scannedClusters, changes: changes.slice(0, 20), total: changes.length }),
+      username: 'system:scalex-discovery',
+      result: 'fail',
+      detail: JSON.stringify({
+        env,
+        tenant,
+        scannedClusters,
+        changes: changes.slice(0, 20),
+        total: changes.length,
+      }),
     });
   }
   return classified;
@@ -263,18 +330,46 @@ async function refreshDrift({ env, tenant, scannedClusters, clusterStates }) {
 // Cluster'da durdurulmus ama portalda kaydi olmayan bir uygulamayi portala alir
 // ("Portala Al"). Kullaniciyi kaydin SAHIBI yapmaz — `stopped_by` bilinmiyorsa
 // ConfigMap'teki `created_by` yazilir, o da yoksa acikca 'bilinmiyor'.
-async function adopt({ env, tenant, clusterName, namespace, appName, workloadKind, previousReplicas, stoppedBy, adoptedBy }) {
+async function adopt({
+  env,
+  tenant,
+  clusterName,
+  namespace,
+  appName,
+  workloadKind,
+  previousReplicas,
+  stoppedBy,
+  adoptedBy,
+}) {
   const row = await upsertStopped({
-    env, tenant, clusterName, namespace, appName, workloadKind, previousReplicas,
-    stoppedBy: stoppedBy || 'bilinmiyor', operationId: null,
+    env,
+    tenant,
+    clusterName,
+    namespace,
+    appName,
+    workloadKind,
+    previousReplicas,
+    stoppedBy: stoppedBy || 'bilinmiyor',
+    operationId: null,
   });
   await db.query(
     `UPDATE scalex_state_mirror SET drift_status = 'in_sync', updated_at = GETUTCDATE() WHERE id = $1`,
-    [row.id]
+    [row.id],
   );
   return { ...row, adoptedBy };
 }
 
 module.exports = {
-  tryLockRestore, unlockRestore, listLockedRestores, listMirrorAll,
-  MIRROR_LIMIT, DRIFT, classifyDrift, listMirror, upsertStopped, clearRestored, refreshDrift, adopt };
+  tryLockRestore,
+  unlockRestore,
+  listLockedRestores,
+  listMirrorAll,
+  MIRROR_LIMIT,
+  DRIFT,
+  classifyDrift,
+  listMirror,
+  upsertStopped,
+  clearRestored,
+  refreshDrift,
+  adopt,
+};

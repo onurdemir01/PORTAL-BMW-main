@@ -42,7 +42,7 @@ function portalRunKeys() {
   return keys;
 }
 
-test('S1 HICBIR survey sorusu zorunlu DEGIL (zorunlu soru portalin launch\'ini 400 ile duserir)', () => {
+test("S1 HICBIR survey sorusu zorunlu DEGIL (zorunlu soru portalin launch'ini 400 ile duserir)", () => {
   // AWX, `survey_enabled: true` iken API launch'inda zorunlu survey sorularini
   // dogrular ve eksik olan icin `400 variables_needed_to_start` doner. Uretimdeki
   // eski survey'de 14 sorunun 13'u zorunluydu ve uygulama alani `oc_app` adiyla
@@ -50,8 +50,11 @@ test('S1 HICBIR survey sorusu zorunlu DEGIL (zorunlu soru portalin launch\'ini 4
   // portalin HER launch'i reddedilirdi.
   for (const f of ['scalex_run.survey.json', 'scalex_discovery.survey.json']) {
     for (const q of survey(f).spec) {
-      assert.equal(q.required, false,
-        `${f}: "${q.variable}" zorunlu — portalin API launch'i 400 alir`);
+      assert.equal(
+        q.required,
+        false,
+        `${f}: "${q.variable}" zorunlu — portalin API launch'i 400 alir`,
+      );
     }
   }
 });
@@ -62,26 +65,30 @@ test('S2 survey degisken adlari portalin GONDERDIGI adlarla birebir', () => {
 
   // `oc_app` TUZAGI: uretimdeki survey uygulama alanini bu adla tanimliyordu,
   // portal ise `target_app_names` gonderiyor.
-  assert.ok(!vars.includes('oc_app'),
-    'survey hala `oc_app` kullaniyor — portal `target_app_names` gonderiyor');
+  assert.ok(
+    !vars.includes('oc_app'),
+    'survey hala `oc_app` kullaniyor — portal `target_app_names` gonderiyor',
+  );
   assert.ok(vars.includes('target_app_names'), 'survey `target_app_names` sorusunu tasimali');
 
   // Survey'deki her degisken portalin gonderdigi bir anahtar olmali; olmayan bir ad
   // elle calistirmada playbook'un okumadigi bir alan yaratirdi.
   const bilinmeyen = vars.filter((v) => !portal.has(v));
-  assert.deepEqual(bilinmeyen, [],
-    `survey'de portalin gondermedigi degisken(ler) var: ${bilinmeyen.join(', ')}`);
+  assert.deepEqual(
+    bilinmeyen,
+    [],
+    `survey'de portalin gondermedigi degisken(ler) var: ${bilinmeyen.join(', ')}`,
+  );
 });
 
-test('S3 portalin SKALER anahtarlarinin hepsi survey\'de (elle calistirma bozulmasin)', () => {
+test("S3 portalin SKALER anahtarlarinin hepsi survey'de (elle calistirma bozulmasin)", () => {
   // Dict/list tasiyanlar survey'e KONULAMAZ (AWX survey tipleri skaler); onlar
   // "Prompt on launch > Variables" ile gelir. Gerisi survey'de olmali, yoksa
   // AWX arayuzunden elle calistiran kisi o alani hic giremez.
   const YAPISAL = new Set(['scalex_clusters_override', 'scalex_target_clusters']);
   const vars = new Set(survey('scalex_run.survey.json').spec.map((q) => q.variable));
   const eksik = [...portalRunKeys()].filter((k) => !YAPISAL.has(k) && !vars.has(k));
-  assert.deepEqual(eksik.sort(), [],
-    `portal gonderiyor ama survey'de yok: ${eksik.join(', ')}`);
+  assert.deepEqual(eksik.sort(), [], `portal gonderiyor ama survey'de yok: ${eksik.join(', ')}`);
 });
 
 test('S4 kosullu alanlarin VARSAYILANI YOK (AWX gonderilmeyen alana varsayilan enjekte eder)', () => {
@@ -89,7 +96,9 @@ test('S4 kosullu alanlarin VARSAYILANI YOK (AWX gonderilmeyen alana varsayilan e
   // durumlarda gonderilir. Bir varsayilan tanimlanirsa AWX onu diger tum
   // calistirmalara da enjekte eder: or. `hpa_pin: true` varsayilani, kullanici
   // hic istemedigi halde HER islemde HPA'ya dokunulmasi demek olurdu.
-  const spec = Object.fromEntries(survey('scalex_run.survey.json').spec.map((q) => [q.variable, q]));
+  const spec = Object.fromEntries(
+    survey('scalex_run.survey.json').spec.map((q) => [q.variable, q]),
+  );
   for (const v of ['target_replicas', 'hpa_pin', 'mail_cc']) {
     assert.ok(spec[v], `${v} survey'de yok`);
     assert.equal(spec[v].default, '', `${v} varsayilani "${spec[v].default}" — bos olmali`);
@@ -108,8 +117,11 @@ test('S5 katalogdan beslenen alanlar SERBEST METIN (coktan secmeli liste bayatla
     for (const v of KATALOGDAN_GELEN) {
       const q = survey(f).spec.find((x) => x.variable === v);
       assert.ok(q, `${f}: ${v} yok`);
-      assert.equal(q.type, 'text',
-        `${f}: ${v} coktan secmeli — katalogda yeni bir deger tanimlandiginda portal 400 alir`);
+      assert.equal(
+        q.type,
+        'text',
+        `${f}: ${v} coktan secmeli — katalogda yeni bir deger tanimlandiginda portal 400 alir`,
+      );
     }
   }
 });
@@ -119,10 +131,8 @@ test('S5b playbook da sabit platform/ortam beyaz listesi TASIMAMALI', () => {
   // (02_select_targets.yml); sabit liste yalnizca bayatlar ve isi dusurur.
   for (const f of ['tasks/01_prepare.yml', 'tasks/discovery/01_prepare.yml']) {
     const src = read(path.join(APP, f));
-    assert.doesNotMatch(src, /oc_platform in \[/,
-      `${f}: sabit platform beyaz listesi geri gelmis`);
-    assert.doesNotMatch(src, /oc_environment in \[/,
-      `${f}: sabit ortam beyaz listesi geri gelmis`);
+    assert.doesNotMatch(src, /oc_platform in \[/, `${f}: sabit platform beyaz listesi geri gelmis`);
+    assert.doesNotMatch(src, /oc_environment in \[/, `${f}: sabit ortam beyaz listesi geri gelmis`);
     // Bicim kontrolu KALMALI — deger `oc` komut satirina gidiyor.
     assert.match(src, /oc_platform is match/, `${f}: platform bicim kontrolu kaybolmus`);
     assert.match(src, /oc_environment is match/, `${f}: ortam bicim kontrolu kaybolmus`);
@@ -130,34 +140,52 @@ test('S5b playbook da sabit platform/ortam beyaz listesi TASIMAMALI', () => {
   // Katalog uyeligi gercekten dogrulaniyor mu?
   const sel = read(path.join(APP, 'tasks', '02_select_targets.yml'));
   assert.match(sel, /platform \| default\(''\) == oc_platform/, 'katalog platform kontrolu yok');
-  assert.match(sel, /oc_environment in \(scalex_clusters\[item\]\.environments/, 'katalog ortam kontrolu yok');
+  assert.match(
+    sel,
+    /oc_environment in \(scalex_clusters\[item\]\.environments/,
+    'katalog ortam kontrolu yok',
+  );
 });
 
 test('S7 `integer` survey sorusuna portal STRING gondermemeli', () => {
   // AWX survey tipini DOGRULAR: `integer` bir soruya string gonderildiginde launch
   // `400: Value 2 for 'target_replicas' expected to be an integer.` ile reddedilir —
   // yani `Olcekle` islemi hic calismiyordu (2026-09-01 uretim tespiti).
-  const intVars = survey('scalex_run.survey.json').spec
-    .filter((q) => q.type === 'integer').map((q) => q.variable);
-  assert.ok(intVars.includes('target_replicas'), 'target_replicas artik integer degil — test kendi olctugu seyi kaybetti');
+  const intVars = survey('scalex_run.survey.json')
+    .spec.filter((q) => q.type === 'integer')
+    .map((q) => q.variable);
+  assert.ok(
+    intVars.includes('target_replicas'),
+    'target_replicas artik integer degil — test kendi olctugu seyi kaybetti',
+  );
 
   const i = LAUNCH.indexOf('return {', LAUNCH.indexOf('async function buildRunExtraVars'));
   const block = LAUNCH.slice(i, LAUNCH.indexOf('\n}', i));
   for (const v of intVars) {
-    assert.doesNotMatch(block, new RegExp(`${v}:\\s*String\\(`),
-      `${v} String() ile gonderiliyor ama survey tipi integer — AWX launch'i 400 ile duserir`);
-    assert.match(block, new RegExp(`${v}:\\s*Number\\(`),
-      `${v} sayi olarak gonderilmiyor`);
+    assert.doesNotMatch(
+      block,
+      new RegExp(`${v}:\\s*String\\(`),
+      `${v} String() ile gonderiliyor ama survey tipi integer — AWX launch'i 400 ile duserir`,
+    );
+    assert.match(block, new RegExp(`${v}:\\s*Number\\(`), `${v} sayi olarak gonderilmiyor`);
   }
 });
 
-test('S6 kesif survey\'i portalin `/discover` anahtarlariyla uyumlu', () => {
+test("S6 kesif survey'i portalin `/discover` anahtarlariyla uyumlu", () => {
   const vars = new Set(survey('scalex_discovery.survey.json').spec.map((q) => q.variable));
   const i = SCALEX_INDEX.indexOf('const extraVars = {');
   const block = SCALEX_INDEX.slice(i, SCALEX_INDEX.indexOf('};', i));
   const YAPISAL = new Set(['scalex_clusters_override', 'scalex_target_clusters']);
   for (const k of [...block.matchAll(/([a-z_]+):/g)].map((m) => m[1])) {
-    if (YAPISAL.has(k) || k === 'hosts' || k === 'meta' || k === 'env' || k === 'tenant' || k === 'clusters') continue;
+    if (
+      YAPISAL.has(k) ||
+      k === 'hosts' ||
+      k === 'meta' ||
+      k === 'env' ||
+      k === 'tenant' ||
+      k === 'clusters'
+    )
+      continue;
     assert.ok(vars.has(k), `kesif survey'inde eksik: ${k}`);
   }
 });
@@ -178,20 +206,60 @@ test('P2 portalin OKUDUGU her ust seviye alan yayinlaniyor', () => {
   // `result.cjs` bu alanlari okuyor; biri yayinlanmazsa ekranda sessizce bos/0
   // gorunur — is yesil donse bile kullanici yanlis bilgiye bakar.
   const run = read(path.join(APP, 'tasks', '25_publish_result.yml'));
-  for (const f of ['overall_status', 'stage', 'mode', 'action', 'namespace', 'platform',
-    'environment', 'catalog_source', 'cluster_mode', 'clusters', 'apps', 'target_replicas',
-    'strict_blocked', 'counts', 'targets', 'targets_truncated', 'targets_total',
-    'rows', 'rows_truncated', 'rows_total', 'validation_error', 'failed_task', 'job_id']) {
+  for (const f of [
+    'overall_status',
+    'stage',
+    'mode',
+    'action',
+    'namespace',
+    'platform',
+    'environment',
+    'catalog_source',
+    'cluster_mode',
+    'clusters',
+    'apps',
+    'target_replicas',
+    'strict_blocked',
+    'counts',
+    'targets',
+    'targets_truncated',
+    'targets_total',
+    'rows',
+    'rows_truncated',
+    'rows_total',
+    'validation_error',
+    'failed_task',
+    'job_id',
+  ]) {
     assert.match(run, new RegExp(`^\\s+${f}:`, 'm'), `scalex_result.${f} yayinlanmiyor`);
   }
-  for (const c of ['planned', 'ok', 'warn', 'fail', 'precheck_fail', 'verify_ok',
-    'verify_fail', 'blocked', 'hpa_seen']) {
+  for (const c of [
+    'planned',
+    'ok',
+    'warn',
+    'fail',
+    'precheck_fail',
+    'verify_ok',
+    'verify_fail',
+    'blocked',
+    'hpa_seen',
+  ]) {
     assert.match(run, new RegExp(`^\\s+${c}:`, 'm'), `scalex_result.counts.${c} yayinlanmiyor`);
   }
 
   const disc = read(path.join(APP, 'tasks', 'discovery', '25_publish_result.yml'));
-  for (const f of ['overall_status', 'mode', 'namespace', 'platform', 'environment',
-    'catalog_source', 'clusters', 'failed_clusters', 'counts', 'items']) {
+  for (const f of [
+    'overall_status',
+    'mode',
+    'namespace',
+    'platform',
+    'environment',
+    'catalog_source',
+    'clusters',
+    'failed_clusters',
+    'counts',
+    'items',
+  ]) {
     assert.match(disc, new RegExp(`^\\s+${f}:`, 'm'), `scalex_discovery_result.${f} yayinlanmiyor`);
   }
 });
@@ -200,8 +268,10 @@ test('P3 girdi dogrulamasi dustugunde de sonuc yayinlaniyor (rescue yolu)', () =
   // Eskiden `01_prepare.yml`deki bir assert dustugunde playbook `set_stats`a HIC
   // ulasmiyordu ve portal "sonuc bulunamadi" diyordu — kullanici neyin yanlis
   // oldugunu yalnizca AWX arayuzunden ogrenebiliyordu.
-  for (const [pb, tasks] of [['main.yml', '26_publish_validation.yml'],
-    ['discovery.yml', 'discovery/26_publish_validation.yml']]) {
+  for (const [pb, tasks] of [
+    ['main.yml', '26_publish_validation.yml'],
+    ['discovery.yml', 'discovery/26_publish_validation.yml'],
+  ]) {
     const src = read(path.join(APP, pb));
     assert.match(src, /rescue:/, `${pb}: rescue dali yok`);
     assert.match(src, new RegExp(tasks.replace('/', '\\/')), `${pb}: dogrulama yayini cagrilmiyor`);
@@ -213,13 +283,21 @@ test('P3 girdi dogrulamasi dustugunde de sonuc yayinlaniyor (rescue yolu)', () =
 });
 
 test('P4 katalogda PORTAL kazaniyor, dosya yedek — ve hangisi oldugu raporlaniyor', () => {
-  for (const p of [path.join(APP, 'tasks', '01_prepare.yml'),
-    path.join(APP, 'tasks', 'discovery', '01_prepare.yml')]) {
+  for (const p of [
+    path.join(APP, 'tasks', '01_prepare.yml'),
+    path.join(APP, 'tasks', 'discovery', '01_prepare.yml'),
+  ]) {
     const src = read(p);
-    assert.match(src, /scalex_clusters_override/,
-      `${p}: portalin gonderdigi katalog HIC okunmuyor — is her zaman dosyaya duser`);
-    assert.match(src, /catalog_source:/,
-      `${p}: hangi katalogun kullanildigi raporlanmiyor (portal bunu uyari icin okuyor)`);
+    assert.match(
+      src,
+      /scalex_clusters_override/,
+      `${p}: portalin gonderdigi katalog HIC okunmuyor — is her zaman dosyaya duser`,
+    );
+    assert.match(
+      src,
+      /catalog_source:/,
+      `${p}: hangi katalogun kullanildigi raporlanmiyor (portal bunu uyari icin okuyor)`,
+    );
   }
 });
 
@@ -227,24 +305,36 @@ test('P4b HPA sabitleme TEK kaynaktan okunur ve varsayilani KAPALI', () => {
   // Ayni karar icin iki kaynak (ham `hpa_pin` + normalize `hpa_pin_effective`)
   // tutmak, birinin degisip digerinin sessizce eskimesi demekti.
   const phase = read(path.join(APP, 'tasks', '10_run_phase.yml'));
-  assert.match(phase, /HPA_PIN: "\{\{ hpa_pin_effective/,
-    'runner ham `hpa_pin` okuyor — 01_prepare.yml\'in normalize ettigi deger kullanilmali');
+  assert.match(
+    phase,
+    /HPA_PIN: "\{\{ hpa_pin_effective/,
+    "runner ham `hpa_pin` okuyor — 01_prepare.yml'in normalize ettigi deger kullanilmali",
+  );
   const prep = read(path.join(APP, 'tasks', '01_prepare.yml'));
-  assert.match(prep, /hpa_pin_effective: "\{\{ hpa_pin \| default\(false\)/,
-    'hpa_pin varsayilani KAPALI olmali — HPA\'ya dokunmak bu otomasyonun ilkesinin tersi');
+  assert.match(
+    prep,
+    /hpa_pin_effective: "\{\{ hpa_pin \| default\(false\)/,
+    "hpa_pin varsayilani KAPALI olmali — HPA'ya dokunmak bu otomasyonun ilkesinin tersi",
+  );
 
   // Betik tarafi da AYRICA uygular (AWX\'ten elle calistirmada portal yok).
   const runner = read(RUNNER);
   assert.match(runner, /HPA_PIN="\$\{HPA_PIN:-false\}"/, 'betikte varsayilan kapali degil');
-  assert.match(runner, /\[ "\$ACTION" != "stop" \] \|\| return 1/,
-    '`stop` isleminde HPA sabitleme engellenmiyor');
+  assert.match(
+    runner,
+    /\[ "\$ACTION" != "stop" \] \|\| return 1/,
+    '`stop` isleminde HPA sabitleme engellenmiyor',
+  );
 });
 
 test('P5 durum kaydi yeni onekle yazilir ama ESKI onek OKUNMAYA devam eder', () => {
   const src = read(RUNNER);
   assert.match(src, /STATE_CM_PREFIX="scalex-state-"/, 'yeni onek tanimli degil');
-  assert.match(src, /STATE_CM_PREFIX_LEGACY="chaos-scale-state-"/,
-    'eski onek okunmuyor — bugun durdurulmus uygulamalar GERI ALINAMAZ hale gelir');
+  assert.match(
+    src,
+    /STATE_CM_PREFIX_LEGACY="chaos-scale-state-"/,
+    'eski onek okunmuyor — bugun durdurulmus uygulamalar GERI ALINAMAZ hale gelir',
+  );
 });
 
 // ── DAVRANIS: GERCEK BETIK, SAHTE `oc`, GERCEK AYRISTIRICI ──────────────────
@@ -255,6 +345,14 @@ const OC_STUB = `#!/bin/bash
 case "$1 $2" in "version --client") echo "Client Version: 4.14.0"; exit 0 ;; esac
 case "$1" in
   login|project) exit 0 ;;
+  # CLUSTER'IN KAYNAK ENVANTERI. Bu dal uzun sure YOKTU: betik envanteri okuyamayinca
+  # yedek yola dusuyor ve "API yok" ile "yetki yok" ayrimi HIC SINANMIYORDU -- yani
+  # ayrimi tersine ceviren bir hata testlerden gecerdi (uretimde tam olarak bu oldu).
+  # deploymentconfigs BILEREK YOK: OpenShift 4.14+ o API'yi kaldirdi.
+  # (Ters tirnak kullanilamaz -- bu blok bir JS sablon dizesinin ICINDE.)
+  api-resources)
+    printf 'deployments.apps\nstatefulsets.apps\ndaemonsets.apps\ncronjobs.batch\nrollouts.argoproj.io\nreplicasets.apps\n'
+    exit 0 ;;
   auth)
     # "oc auth can-i list <kind>" -- rollout icin HAYIR. Boylece kesfin
     # "bakilamadi" nedenini no_permission olarak ayirt edip etmedigi test
@@ -270,6 +368,7 @@ case "$1" in
     esac ;;
   get)
     case "$2" in
+      --raw) exit 1 ;;
       hpa) printf 'odeme-api\\n'; exit 0 ;;
       pdb) printf 'odeme-pdb   1   N/A   0   3d\\n'; exit 0 ;;
       deploy|deployment|deployments.apps)
@@ -332,18 +431,34 @@ function runDiscovery(mode, apps = '') {
     env: {
       ...process.env,
       PATH: `${dir}:${process.env.PATH}`,
-      SCALEX_PHASE: 'discover', DISCOVERY_MODE: mode,
-      CLUSTER: 'gbocplab2', JUMP_SERVER: 'gbjump1',
-      API_URL: 'https://api.lab:6443', OCP_USERNAME: 'uxmid', OCP_PASSWORD: 'x',
+      SCALEX_PHASE: 'discover',
+      DISCOVERY_MODE: mode,
+      CLUSTER: 'gbocplab2',
+      JUMP_SERVER: 'gbjump1',
+      API_URL: 'https://api.lab:6443',
+      OCP_USERNAME: 'uxmid',
+      OCP_PASSWORD: 'x',
       OCP_OC_PATHS: path.join(dir, 'oc'),
-      NS: 'odeme-lab', APP_RAW: apps, ACTION: '', TLS_VERIFY: 'false', JOB_ID: '999',
+      NS: 'odeme-lab',
+      APP_RAW: apps,
+      ACTION: '',
+      TLS_VERIFY: 'false',
+      JOB_ID: '999',
     },
   });
-  const items = out.split('\n')
+  const items = out
+    .split('\n')
     .filter((l) => /^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$/.test(l))
     .map((l) => {
       const p = l.split(';');
-      return { cluster: p[0], app: p[2], kind: p[3], step: p[4], status: p[5], detail: p.slice(6).join(';') };
+      return {
+        cluster: p[0],
+        app: p[2],
+        kind: p[3],
+        step: p[4],
+        status: p[5],
+        detail: p.slice(6).join(';'),
+      };
     });
   return items;
 }
@@ -352,9 +467,15 @@ test('D1 kesif `workloads` ciktisi portalin ayristiricisindan GECIYOR', () => {
   const items = runDiscovery('workloads');
   const parsed = result.extractDiscoveryResult({
     scalex_discovery_result: {
-      overall_status: 'ok', mode: 'workloads', namespace: 'odeme-lab',
-      platform: 'ark', environment: 'lab', catalog_source: 'portal',
-      clusters: ['gbocplab2'], failed_clusters: [], counts: { ok: items.length, warn: 0, fail: 0 },
+      overall_status: 'ok',
+      mode: 'workloads',
+      namespace: 'odeme-lab',
+      platform: 'ark',
+      environment: 'lab',
+      catalog_source: 'portal',
+      clusters: ['gbocplab2'],
+      failed_clusters: [],
+      counts: { ok: items.length, warn: 0, fail: 0 },
       items,
     },
   });
@@ -384,8 +505,13 @@ test('D2 kesif `state` ciktisi ESKI ONEKLI kaydi da tasiyor', () => {
   const items = runDiscovery('state');
   const parsed = result.extractDiscoveryResult({
     scalex_discovery_result: {
-      overall_status: 'ok', mode: 'state', namespace: 'odeme-lab',
-      clusters: ['gbocplab2'], failed_clusters: [], counts: {}, items,
+      overall_status: 'ok',
+      mode: 'state',
+      namespace: 'odeme-lab',
+      clusters: ['gbocplab2'],
+      failed_clusters: [],
+      counts: {},
+      items,
     },
   });
 
@@ -393,7 +519,11 @@ test('D2 kesif `state` ciktisi ESKI ONEKLI kaydi da tasiyor', () => {
   assert.ok(yeni, 'yeni onekli durum kaydi okunamadi');
   assert.equal(yeni.legacy, false);
   assert.equal(yeni.previousReplicas, 3);
-  assert.equal(yeni.createdBy, 'Hakan_Isci', 'bosluklu `created_by` temizlenmemis — detail ayristirmasi bozulur');
+  assert.equal(
+    yeni.createdBy,
+    'Hakan_Isci',
+    'bosluklu `created_by` temizlenmemis — detail ayristirmasi bozulur',
+  );
   assert.equal(yeni.jobId, '31337');
 
   // ESKI ONEK: bugun durdurulmus uygulamalar. Gorunmezse GERI ALINAMAZLAR.
@@ -403,8 +533,10 @@ test('D2 kesif `state` ciktisi ESKI ONEKLI kaydi da tasiyor', () => {
   assert.equal(eski.previousReplicas, 2);
 
   // Onekle ilgisi olmayan ConfigMap'ler listeye SIZMAMALI.
-  assert.ok(!parsed.states.some((s) => s.appName === 'alakasiz-cm'),
-    'namespace\'teki alakasiz ConfigMap durum kaydi sanildi');
+  assert.ok(
+    !parsed.states.some((s) => s.appName === 'alakasiz-cm'),
+    "namespace'teki alakasiz ConfigMap durum kaydi sanildi",
+  );
 });
 
 test('D3 `detail` degerlerinde BOSLUK yok (ayristirici bosluga gore boluyor)', () => {
@@ -412,7 +544,10 @@ test('D3 `detail` degerlerinde BOSLUK yok (ayristirici bosluga gore boluyor)', (
     for (const it of runDiscovery(mode)) {
       if (!['WORKLOAD', 'STATE'].includes(it.step)) continue;
       for (const part of it.detail.split(' ')) {
-        assert.ok(part.includes('='), `${mode}/${it.step}: "${part}" bir anahtar=deger cifti degil`);
+        assert.ok(
+          part.includes('='),
+          `${mode}/${it.step}: "${part}" bir anahtar=deger cifti degil`,
+        );
         const [, ...rest] = part.split('=');
         assert.ok(rest.join('=').length > 0, `${mode}/${it.step}: bos deger — "-" yazilmali`);
       }
@@ -425,39 +560,57 @@ test('D4 keşif HICBIR MUTASYON komutu calistirmiyor', () => {
   // denememesi gerekir. Kayit tutan bir sahte istemciyle dogruluyoruz.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-ocaudit-'));
   const logFile = path.join(dir, 'calls.log');
-  fs.writeFileSync(path.join(dir, 'oc'),
-    OC_STUB.replace('case "$1" in\n  login|project)',
-      `printf '%s\\n' "$*" >> ${logFile}\ncase "$1" in\n  login|project)`),
-    { mode: 0o755 });
+  fs.writeFileSync(
+    path.join(dir, 'oc'),
+    OC_STUB.replace(
+      'case "$1" in\n  login|project)',
+      `printf '%s\\n' "$*" >> ${logFile}\ncase "$1" in\n  login|project)`,
+    ),
+    { mode: 0o755 },
+  );
   fs.writeFileSync(path.join(dir, 'curl'), CURL_STUB, { mode: 0o755 });
 
   execFileSync('bash', [RUNNER], {
     encoding: 'utf8',
     env: {
-      ...process.env, PATH: `${dir}:${process.env.PATH}`,
-      SCALEX_PHASE: 'discover', DISCOVERY_MODE: 'workloads',
-      CLUSTER: 'c', JUMP_SERVER: 'j', API_URL: 'https://api.lab:6443',
-      OCP_USERNAME: 'u', OCP_PASSWORD: 'p', OCP_OC_PATHS: path.join(dir, 'oc'),
-      NS: 'odeme-lab', APP_RAW: '', ACTION: '', TLS_VERIFY: 'false', JOB_ID: '1',
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      SCALEX_PHASE: 'discover',
+      DISCOVERY_MODE: 'workloads',
+      CLUSTER: 'c',
+      JUMP_SERVER: 'j',
+      API_URL: 'https://api.lab:6443',
+      OCP_USERNAME: 'u',
+      OCP_PASSWORD: 'p',
+      OCP_OC_PATHS: path.join(dir, 'oc'),
+      NS: 'odeme-lab',
+      APP_RAW: '',
+      ACTION: '',
+      TLS_VERIFY: 'false',
+      JOB_ID: '1',
     },
   });
 
   const calls = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').split('\n') : [];
   assert.ok(calls.length > 1, 'sahte istemci hic cagrilmadi — test kendi olctugu seyi kaybetti');
   for (const c of calls) {
-    assert.ok(!/^(patch|delete|create|apply|scale|replace|edit)\b/.test(c.trim()),
-      `kesif MUTASYON komutu calistirdi: ${c}`);
+    assert.ok(
+      !/^(patch|delete|create|apply|scale|replace|edit)\b/.test(c.trim()),
+      `kesif MUTASYON komutu calistirdi: ${c}`,
+    );
   }
 });
-
 
 test('P6 HPA sayaci yalnizca GERCEKTEN HPA bulunan hedefleri sayar', () => {
   // Onceki hali `;HPA;INFO;` gecen HER satiri sayiyordu; "No HPA found" da INFO.
   // Sonuc: HPA'si OLMAYAN bir uygulamada ekran "1 hedefte HPA goruldu" yaziyordu
   // (2026-09-01 uretim tespiti) — ekran kullaniciya YALAN soyluyordu.
   const rep = read(path.join(APP, 'tasks', '20_build_report.yml'));
-  assert.match(rep, /hpa_info_count:[^\n]*HPA_PRESENT/,
-    'HPA sayaci ayirt edici belirteci kullanmiyor — "No HPA found" satiri da sayiliyor');
+  assert.match(
+    rep,
+    /hpa_info_count:[^\n]*HPA_PRESENT/,
+    'HPA sayaci ayirt edici belirteci kullanmiyor — "No HPA found" satiri da sayiliyor',
+  );
 
   // Betik gercekten o belirteci basiyor mu? (Sozlesmenin iki ucu.)
   const runner = read(RUNNER);
@@ -471,8 +624,11 @@ test('P7 bos CC bir ALICI olarak gonderilmez', () => {
   // gonderilemedi" sayarak rescue'ya dusuyor: CC bos olan HER calistirmada RAPOR HIC
   // GITMIYORDU (2026-09-01 uretim tespiti).
   const mail = read(path.join(APP, 'tasks', '30_send_mail.yml'));
-  assert.match(mail, /cc:[^\n]*else omit/,
-    'bos CC `omit` ile kaldirilmiyor — rapor maili hic gitmez');
+  assert.match(
+    mail,
+    /cc:[^\n]*else omit/,
+    'bos CC `omit` ile kaldirilmiyor — rapor maili hic gitmez',
+  );
 });
 
 test('P8 rapor ScaleX kimligini tasiyor (eski "Chaos Scale" kalmamis)', () => {
@@ -553,10 +709,16 @@ test('C3 VERSION, PACKAGE_VERSION ve EXPECTED_PACKAGE_VERSION ayni surumde', () 
   assert.ok(pkgMatch, 'scalex_runner.sh icinde PACKAGE_VERSION tanimli degil');
   const packageVersion = pkgMatch[1];
   const expectedVersion = String(result.EXPECTED_PACKAGE_VERSION);
-  assert.equal(packageVersion, version,
-    `PACKAGE_VERSION (${packageVersion}) != VERSION (${version})`);
-  assert.equal(expectedVersion, version,
-    `EXPECTED_PACKAGE_VERSION (${expectedVersion}) != VERSION (${version})`);
+  assert.equal(
+    packageVersion,
+    version,
+    `PACKAGE_VERSION (${packageVersion}) != VERSION (${version})`,
+  );
+  assert.equal(
+    expectedVersion,
+    version,
+    `EXPECTED_PACKAGE_VERSION (${expectedVersion}) != VERSION (${version})`,
+  );
 });
 
 // ── D5..D9: HER TIP KESIFTE GORUNUYOR MU, GORUNMUYORSA NEDENI YAZILIYOR MU ───
@@ -570,9 +732,15 @@ function discoveryWorkloads() {
   const items = runDiscovery('workloads');
   return result.extractDiscoveryResult({
     scalex_discovery_result: {
-      overall_status: 'ok', mode: 'workloads', namespace: 'odeme-lab',
-      platform: 'ark', environment: 'lab', catalog_source: 'portal',
-      clusters: ['gbocplab2'], failed_clusters: [], counts: { ok: items.length, warn: 0, fail: 0 },
+      overall_status: 'ok',
+      mode: 'workloads',
+      namespace: 'odeme-lab',
+      platform: 'ark',
+      environment: 'lab',
+      catalog_source: 'portal',
+      clusters: ['gbocplab2'],
+      failed_clusters: [],
+      counts: { ok: items.length, warn: 0, fail: 0 },
       items,
     },
   });
@@ -585,7 +753,11 @@ test('D5 dort OLCEKLENEBILIR tipin hepsi kesif listesine giriyor', () => {
   // Deployment zaten test ediliyordu; asil bosluk digerleriydi.
   assert.equal(byName.get('kafka')?.kind, 'StatefulSet', 'StatefulSet kesifte cikmadi');
   assert.equal(byName.get('kafka')?.specReplicas, 3);
-  assert.equal(byName.get('eski-app')?.kind, 'DeploymentConfig', 'DeploymentConfig kesifte cikmadi');
+  assert.equal(
+    byName.get('eski-app')?.kind,
+    'DeploymentConfig',
+    'DeploymentConfig kesifte cikmadi',
+  );
   assert.equal(byName.get('eski-app')?.specReplicas, 2);
 
   // Hepsi olceklenebilir isaretlenmeli — ekran bunlari SECTIRMELI.
@@ -599,7 +771,10 @@ test('D6 OLCEKLENEMEYEN tipler listede ama `scalable=no` ile', () => {
   const byName = new Map(parsed.workloads.map((w) => [w.name, w]));
 
   const ds = byName.get('log-agent');
-  assert.ok(ds, 'DaemonSet listeye hic girmedi — kullanici "namespace\'imde var ama ScaleX gormuyor" der');
+  assert.ok(
+    ds,
+    'DaemonSet listeye hic girmedi — kullanici "namespace\'imde var ama ScaleX gormuyor" der',
+  );
   assert.equal(ds.kind, 'DaemonSet');
   assert.equal(ds.scalable, false, 'DaemonSet olceklenebilir sayildi — replica ile olceklenemez');
   assert.equal(ds.notScalableReason, 'node_scheduled');
@@ -615,17 +790,158 @@ test('D6 OLCEKLENEMEYEN tipler listede ama `scalable=no` ile', () => {
   assert.equal(cj.schedule, '0 2 * * *', 'cron ifadesi bosluklariyla geri gelmedi');
 });
 
-test('D7 BAKILAMAYAN tip sessizce atlanmaz — nedeni bildirilir', () => {
+test('D7a BAKILAMAYAN tip sessizce atlanmaz — YETKI eksikligi', () => {
   const parsed = discoveryWorkloads();
   const rollout = parsed.kindReports.find((k) => k.kind === 'rollout');
 
-  assert.ok(rollout, 'okunamayan tip icin HIC satir yok — ekran "yok" ile "bakamadim"i ayirt edemez');
+  assert.ok(
+    rollout,
+    'okunamayan tip icin HIC satir yok — ekran "yok" ile "bakamadim"i ayirt edemez',
+  );
   assert.equal(rollout.readable, false);
-  // Sahte `oc auth can-i` rollout icin "no" donuyor: neden YETKI olmali, API yoklugu DEGIL.
-  // Ikisi kullanici icin tamamen farkli: biri platformdan istenebilir, digeri olgu.
-  assert.equal(rollout.reason, 'no_permission',
-    'yetki eksikligi ile API yoklugu ayirt edilmiyor');
+  // Rollout cluster'in kaynak envanterinde VAR ama `oc get` dusuyor -> YETKI.
+  assert.equal(
+    rollout.reason,
+    'no_permission',
+    'envanterde var ama okunamiyor: yetki eksikligi olmali',
+  );
   assert.equal(rollout.verb, 'list');
+});
+
+// Bir tipin OKUNAMADIGI iki AYRI sebep var ve ayni kutukte kurulamazlar: ana kutukte
+// `dc` OKUNABILIR olmali (D5 tam da onun gorunurlugunu kilitliyor). Bu yuzden "API yok"
+// senaryosu VARYANT bir sahte istemciyle kurulur — D4'teki desenin aynisi.
+function runDiscoveryWithStub(mutate) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-ocvar-'));
+  fs.writeFileSync(path.join(dir, 'oc'), mutate(OC_STUB), { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'curl'), CURL_STUB, { mode: 0o755 });
+  const out = execFileSync('bash', [RUNNER], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      SCALEX_PHASE: 'discover',
+      DISCOVERY_MODE: 'workloads',
+      CLUSTER: 'c',
+      JUMP_SERVER: 'j',
+      API_URL: 'https://api.lab:6443',
+      OCP_USERNAME: 'u',
+      OCP_PASSWORD: 'p',
+      OCP_OC_PATHS: path.join(dir, 'oc'),
+      NS: 'odeme-lab',
+      APP_RAW: '',
+      ACTION: '',
+      TLS_VERIFY: 'false',
+      JOB_ID: '1',
+    },
+  });
+  return out
+    .split('\n')
+    .filter((l) => /^[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;[^;]*;.*$/.test(l))
+    .map((l) => {
+      const q = l.split(';');
+      return {
+        cluster: q[0],
+        app: q[2],
+        kind: q[3],
+        step: q[4],
+        status: q[5],
+        detail: q.slice(6).join(';'),
+      };
+    });
+}
+
+test('D7b API YOKLUGU yetki eksikligiyle KARISTIRILMAZ', () => {
+  // ASIL REGRESYON. Karar eskiden `oc auth can-i`nin BASARISINA dayaniyordu ve
+  // `can-i`nin KENDISI hata verdiginde (kaldirilmis DeploymentConfig API'si, kurulu
+  // olmayan Rollout CRD'si) sonuc TERSINE doniyordu: ekran, API'si hic olmayan bir tip
+  // icin "platform ekibinden yetki isteyin" diyordu ve kullanici asla cozulmeyecek bir
+  // talep aciyordu.
+  //
+  // Bu varyantta `deploymentconfigs` cluster'in kaynak envanterinde YOK ve `oc get dc`
+  // dusuyor; `oc auth can-i` ise HER SEYE "yes" diyor. Yani `can-i`ye bakan HERHANGI
+  // bir mantik bu testi GECEMEZ.
+  const items = runDiscoveryWithStub((stub) =>
+    stub
+      .replace(
+        /^      dc\|deploymentconfig\|deploymentconfigs\.apps\.openshift\.io\)[\s\S]*?exit 0 ;;$/m,
+        '      dc|deploymentconfig|deploymentconfigs.apps.openshift.io) exit 1 ;;',
+      )
+      .replace('  auth)', '  auth) echo yes; exit 0 ;;\n  _unused_auth)'),
+  );
+
+  const dcRow = items.find((i) => i.step === 'WORKLOAD_KIND' && /kind=dc\b/.test(i.detail));
+  assert.ok(dcRow, 'API`si olmayan tip icin de rapor satiri olmali');
+  assert.equal(dcRow.status, 'WARN');
+  assert.match(
+    dcRow.detail,
+    /reason=api_absent/,
+    'API kaldirilmis tip "yetki yok" diye raporlaniyor — kullanici asla cozulmeyecek bir talep acar',
+  );
+});
+
+test('D7c istenecek RBAC TAM KAYNAK ADIYLA yazilir', () => {
+  // `oc auth can-i list sts` kisa adi guvenilir cozmez ve RBAC kurallari TAM adla
+  // yazilir. Kullaniciya `sts` demek, platform ekibine yanlis metin goturmesi demek.
+  const items = runDiscoveryWithStub((stub) =>
+    stub.replace(
+      /^      sts\|statefulset\|statefulsets\.apps\)[\s\S]*?exit 0 ;;$/m,
+      '      sts|statefulset|statefulsets.apps) exit 1 ;;',
+    ),
+  );
+  const row = items.find((i) => i.step === 'WORKLOAD_KIND' && /kind=sts\b/.test(i.detail));
+  assert.ok(row, 'sts icin rapor satiri yok');
+  assert.match(
+    row.detail,
+    /resource=statefulsets\.apps/,
+    'RBAC cumlesi kisa ad tasiyor — tam kaynak adi olmali',
+  );
+  assert.match(
+    row.detail,
+    /reason=no_permission/,
+    'envanterde VAR ama okunamiyor: yetki eksikligi olmali',
+  );
+});
+
+test('D10 cluster`da olup LISTEMIZDE OLMAYAN olceklenebilir tip de gorunur', () => {
+  // KULLANICININ ASIL ISTEGI: "oc get deploy gibi on cesit varsa onunu da denesin."
+  // Sabit alti tiplik liste, cluster'a operator ile gelen (scale alt kaynagi olan) hicbir
+  // nesneyi goremiyordu. Bu varyantta envantere bir CRD eklenir, grup kesif belgesi
+  // `kafkas/scale` bildirir ve nesnenin listede CIKMASI beklenir.
+  const items = runDiscoveryWithStub((stub) =>
+    stub
+      .replace(
+        /^    printf 'deployments\.apps.*$/m,
+        "    printf 'deployments.apps\\nstatefulsets.apps\\ndaemonsets.apps\\ncronjobs.batch\\nrollouts.argoproj.io\\nreplicasets.apps\\nkafkas.kafka.strimzi.io\\n'",
+      )
+      .replace(
+        '      --raw) exit 1 ;;',
+        [
+          '      --raw)',
+          '        case "$3" in',
+          '          /apis/kafka.strimzi.io) echo \'{"groupVersion":"kafka.strimzi.io/v1beta2"}\'; exit 0 ;;',
+          '          /apis/kafka.strimzi.io/v1beta2) echo \'{"resources":[{"name":"kafkas"},{"name":"kafkas/scale"}]}\'; exit 0 ;;',
+          '          *) exit 1 ;;',
+          '        esac ;;',
+          "      kafkas|kafkas.kafka.strimzi.io) printf 'ana-kafka|3|3|3|reg/kafka:3.6||\\n'; exit 0 ;;",
+        ].join('\n'),
+      ),
+  );
+
+  const row = items.find((i) => i.step === 'WORKLOAD' && i.app === 'ana-kafka');
+  assert.ok(
+    row,
+    'cluster`da bulunan olceklenebilir CRD listede HIC gorunmedi — sabit tip listesi geri gelmis',
+  );
+
+  // GORUNUR AMA SECILEMEZ: islem yolu bu tip icin uctan uca denenmedi. `scalable=yes`
+  // demek, calisacagini kanitlamadigimiz bir dugme sunmak olurdu.
+  assert.match(row.detail, /scalable=no/, 'denenmemis bir tip olceklenebilir isaretlendi');
+  assert.match(row.detail, /reason=unsupported_kind/, 'neden secilemedigi yazmiyor');
+
+  const report = items.find((i) => i.step === 'WORKLOAD_KIND' && /kind=kafkas\./.test(i.detail));
+  assert.ok(report, 'kesfedilen tip icin rapor satiri yok');
+  assert.match(report.detail, /discovered=yes/, 'kesifle geldigi isaretlenmemis');
 });
 
 test('D8 OKUNABILEN her tip icin de rapor satiri var (kac tane bulundu)', () => {
@@ -643,23 +959,28 @@ test('D8 OKUNABILEN her tip icin de rapor satiri var (kac tane bulundu)', () => 
   assert.equal(byKind.get('ds').scalable, false);
 });
 
-test('D9 kesif surumu yayinliyor — portal AWX\'teki paketi TAHMIN etmiyor', () => {
+test("D9 kesif surumu yayinliyor — portal AWX'teki paketi TAHMIN etmiyor", () => {
   const items = runDiscovery('workloads');
   const runner = items.find((i) => i.step === 'RUNNER');
   assert.ok(runner, 'RUNNER satiri yok — portal kosan surumu goremez');
-  assert.match(runner.detail, /package_version=\d+/,
-    'surum damgasi yok; paket AWX\'e ELLE kopyalaniyor ve tek kanit bu');
+  assert.match(
+    runner.detail,
+    /package_version=\d+/,
+    "surum damgasi yok; paket AWX'e ELLE kopyalaniyor ve tek kanit bu",
+  );
 });
 
 // ── S8: yeni survey alani DOGRU TIPTE ───────────────────────────────────────
-test('S8 `workload_kinds` survey\'de SERBEST METIN ve opsiyonel', () => {
+test("S8 `workload_kinds` survey'de SERBEST METIN ve opsiyonel", () => {
   const spec = survey('scalex_run.survey.json').spec;
   const q = spec.find((x) => x.variable === 'workload_kinds');
-  assert.ok(q, 'workload_kinds survey\'de yok — playbook degiskeni AWX tarafindan yutulur');
+  assert.ok(q, "workload_kinds survey'de yok — playbook degiskeni AWX tarafindan yutulur");
   // `target_replicas` survey'de `integer` iken portal string gonderdigi icin AWX her
   // calistirmayi `400 ... expected to be an integer` ile reddediyordu (PR #40).
-  assert.ok(['text', 'textarea'].includes(q.type),
-    `workload_kinds tipi "${q.type}" — serbest metin olmali, aksi halde AWX tip dogrulamasi 400 doner`);
+  assert.ok(
+    ['text', 'textarea'].includes(q.type),
+    `workload_kinds tipi "${q.type}" — serbest metin olmali, aksi halde AWX tip dogrulamasi 400 doner`,
+  );
   assert.equal(q.required, false, 'zorunlu olursa portalin GONDERMEDIGI her launch 400 alir');
   assert.equal(q.default, '', 'varsayilani olursa AWX gonderilmeyen alana deger enjekte eder');
 });

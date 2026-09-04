@@ -26,12 +26,26 @@ const ROOT = path.join(__dirname, '..');
 // npm script'indeki desenlerle AYNI kapsam. Yeni bir modul eklendiginde burasi da
 // guncellenmeli — `TEST_DIRS` bekcisi bunu kilitler.
 const TEST_DIRS = [
-  'server/logx/v2/__tests__', 'server/auth/__tests__', 'server/db/__tests__',
-  'server/ai-analyst/__tests__', 'server/ai/__tests__', 'server/inventory/__tests__',
-  'server/ansible/__tests__', 'server/admin/__tests__', 'server/opsx/__tests__',
-  'server/filex/__tests__', 'server/smart/__tests__', 'server/oco/__tests__',
-  'server/telnet/__tests__', 'server/scalex/__tests__', 'server/audit/__tests__',
-  'server/selfservice/__tests__', 'server/__tests__', 'src/__tests__',
+  'server/logx/v2/__tests__',
+  'server/logx/__tests__',
+  'server/auth/__tests__',
+  'server/db/__tests__',
+  'server/ai-analyst/__tests__',
+  'server/ai/__tests__',
+  'server/inventory/__tests__',
+  'server/ansible/__tests__',
+  'server/admin/__tests__',
+  'server/opsx/__tests__',
+  'server/filex/__tests__',
+  'server/smart/__tests__',
+  'server/oco/__tests__',
+  'server/telnet/__tests__',
+  'server/scalex/__tests__',
+  'server/audit/__tests__',
+  'server/selfservice/__tests__',
+  'server/__tests__',
+  'src/__tests__',
+  'src/components/scalex/__tests__',
 ];
 
 function collect() {
@@ -57,7 +71,9 @@ if (!all.length) {
   process.exit(1);
 }
 
-const needsMocks = all.filter((f) => /mock\.module/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+const needsMocks = all.filter((f) =>
+  /mock\.module/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')),
+);
 const canMock = supportsModuleMocks();
 
 let files = all;
@@ -67,10 +83,10 @@ if (canMock) {
 } else if (needsMocks.length) {
   files = all.filter((f) => !needsMocks.includes(f));
   console.warn(
-    `[test] Node ${process.versions.node} \`--experimental-test-module-mocks\` desteklemiyor `
-    + `(22.3+ gerekli). ATLANAN ${needsMocks.length} dosya:\n`
-    + needsMocks.map((f) => `  - ${f}`).join('\n')
-    + '\n[test] Kalan suit KOSUYOR; tam kapsam icin Node 22.3+ kullanin.'
+    `[test] Node ${process.versions.node} \`--experimental-test-module-mocks\` desteklemiyor ` +
+      `(22.3+ gerekli). ATLANAN ${needsMocks.length} dosya:\n` +
+      needsMocks.map((f) => `  - ${f}`).join('\n') +
+      '\n[test] Kalan suit KOSUYOR; tam kapsam icin Node 22.3+ kullanin.',
   );
 }
 
