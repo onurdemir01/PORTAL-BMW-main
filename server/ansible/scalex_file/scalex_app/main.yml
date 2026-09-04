@@ -33,9 +33,12 @@
   # - mail_vars.yml: corporate SMTP defaults and CC list
   # Cluster/jump/API catalog: portal `scalex_clusters_override` gonderir; gelmezse
   # bu klasordeki openshift_inventory_scalex.yaml kullanilir (tasks/01_prepare.yml).
+
+  
+  # bu playbook bmw_portal\scalex\scalex_app\main.yml altında bu yüzden credantials ve mail_vars bu şekilde eklenmeli
   vars_files:
-    - "../global_variables/credentials.yaml"
-    - "../global_variables/mail_vars.yml"
+    - "{{ playbook_dir }}/../../../bmw_openshift_jobs/global_variables/credentials.yaml"
+    - "{{ playbook_dir }}/../../../bmw_openshift_jobs/global_variables/mail_vars.yml"
 
   tasks:
     # KOSULSUZ ILKLEME. Bu bayrak `rescue` dalinda okunuyor; `when:` ile korunan bir
