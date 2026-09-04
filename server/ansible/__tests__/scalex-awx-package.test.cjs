@@ -351,7 +351,7 @@ case "$1" in
   # deploymentconfigs BILEREK YOK: OpenShift 4.14+ o API'yi kaldirdi.
   # (Ters tirnak kullanilamaz -- bu blok bir JS sablon dizesinin ICINDE.)
   api-resources)
-    printf 'deployments.apps\nstatefulsets.apps\ndaemonsets.apps\ncronjobs.batch\nrollouts.argoproj.io\nreplicasets.apps\n'
+    printf 'deployments.apps\\nstatefulsets.apps\\ndaemonsets.apps\\ncronjobs.batch\\nrollouts.argoproj.io\\nreplicasets.apps\\n'
     exit 0 ;;
   auth)
     # "oc auth can-i list <kind>" -- rollout icin HAYIR. Boylece kesfin
