@@ -31,8 +31,11 @@
   gather_facts: false
   become: false
 
+  
+  # bu playbook bmw_portal\scalex\scalex_app\main.yml altında bu yüzden credantials ve mail_vars bu şekilde eklenmeli
   vars_files:
-    - "../global_variables/credentials.yaml"
+    - "{{ playbook_dir }}/../../../bmw_openshift_jobs/global_variables/credentials.yaml"
+    - "{{ playbook_dir }}/../../../bmw_openshift_jobs/global_variables/mail_vars.yml"
 
   tasks:
     - name: "Initialize publication flag"
