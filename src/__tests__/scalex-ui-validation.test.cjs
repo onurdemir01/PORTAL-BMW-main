@@ -14,7 +14,10 @@ const codeOnly = (s) =>
   s
     .split('\n')
     .filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l))
-    .join('\n');
+    .join('\n')
+    // PRETTIER UYUMLULUGU: kaynak-doğrulama testleri TIRNAK stiline bagimli kalmamali.
+    // Prettier tek/çift tırnak arasında geçiş yapabilir; regex'ler hep çift tırnak bekler.
+    .replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
 
 const PAGE = read('components/scalex/ScaleXPage.tsx');
 const WORKLOAD = read('components/scalex/steps/WorkloadStep.tsx');
@@ -178,9 +181,11 @@ test('U10 "Onerilen" etiketi ve on-secim YOK', () => {
   );
 
   const page = codeOnly(PAGE);
+  // Prettier `previous={` sonrasinda satir kiriyor. Kural KOSULLU GECIS; satir duzeni
+  // degil. Bosluga toleransli desen, `previous={{` (kosulsuz) halini hala yakalar.
   assert.match(
     page,
-    /previous=\{operationTouched \? \{/,
+    /previous=\{\s*operationTouched\s*\?\s*\{/,
     '`previous` kosulsuz gecilirse ilk sunum on-secili olurdu',
   );
   assert.match(
@@ -534,15 +539,15 @@ test('V9 saglik kontrolu YALNIZCA gercek degisiklikten sonra kosar', () => {
     PAGE.indexOf('healthStartedRef.current) return'),
     PAGE.indexOf('// İş bitince yapılandırılmış'),
   );
-  assert.match(body, /mode !== "apply"/, 'dry_run sonrasi saglik kontrolu anlamsiz');
+  assert.match(body, /mode !== ["']apply["']/, 'dry_run sonrasi saglik kontrolu anlamsiz');
   assert.match(
     body,
-    /action === "stop"/,
+    /action === ["']stop["']/,
     'Durdur sonrasi 0 pod bekleniyor — saglik kontrolu anlamsiz',
   );
   assert.match(
     body,
-    /overallStatus === "FAIL"/,
+    /overallStatus === ["']FAIL["']/,
     'zaten basarisiz bir iste saglik sormanin anlami yok',
   );
 });
@@ -650,7 +655,7 @@ test('X2 sentetik satirlar `source: "mirror"` ile isaretleniyor', () => {
   const api = read('api/scalexApi.ts');
   assert.match(api, /source:\s*"discovery"\s*\|\s*"mirror";/, 'kaynak alani opsiyonel ya da yok');
   const page = codeOnly(PAGE);
-  const synthetic = (page.match(/source:\s*"mirror"/g) || []).length;
+  const synthetic = (page.match(/source:\s*["']mirror["']/g) || []).length;
   assert.equal(
     synthetic,
     2,

