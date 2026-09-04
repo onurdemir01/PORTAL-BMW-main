@@ -1533,3 +1533,26 @@ test('S7 ortak CRUD tablosu ARANABILIR', () => {
   // SOYLENMELI.
   assert.match(t, /Aramaya uyan kayıt yok/, 'bos arama sonucu "kayit yok" gibi gosteriliyor');
 });
+
+// ── I. TOPLU GERI ALMA SOZLESMESI ───────────────────────────────────────────
+
+test('I1 /restore-all buildRunExtraVars cagrisi hpaPin ve workloadKinds geciriyor', () => {
+  // /run endpoint'i bu iki parametreyi GECIRIYORDU ama /restore-all UZUN SURE
+  // atlamisti: toplu geri almada HPA pin uygulanmasi ve tip haritasi gonderilmesi
+  // unutulmustu. Sonuc: bulk restore'da HPA minReplicas sabitlenmiyordu (risk) ve
+  // "ayni ad iki tipte var" belirsizligi isi dusuruyordu (2026-09 TUR 1 tespiti).
+  // Source-assertion: /restore-all handler blogunu bul ve icindeki buildRunExtraVars
+  // cagrisinin her iki parametreyi de icerdigini dogrula.
+  const restoreAllStart = INDEX.indexOf("router.post('/restore-all'");
+  assert.ok(restoreAllStart >= 0, '/restore-all route bulunamadi');
+  // Handler blogunun sonu: bir sonraki router.* tanimina kadar.
+  const nextRoute = INDEX.indexOf('router.', restoreAllStart + 30);
+  const block = INDEX.slice(restoreAllStart, nextRoute > 0 ? nextRoute : restoreAllStart + 5000);
+
+  assert.match(block, /buildRunExtraVars/,
+    '/restore-all buildRunExtraVars cagirmiyor — extra_vars hic olusmuyor');
+  assert.match(block, /hpaPin/,
+    '/restore-all hpaPin gecirmiyor — toplu geri almada HPA pin uygulanmiyor');
+  assert.match(block, /workloadKinds/,
+    '/restore-all workloadKinds gecirmiyor — tip haritasi eksik, auto belirsizligi riski');
+});

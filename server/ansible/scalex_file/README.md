@@ -81,6 +81,48 @@ parçası değil, yalnızca geçici alan.
 
 ---
 
+## Hangi workload tipleri
+
+Keşif **altı** tipe bakar; işlem yalnızca **dördüne** dokunur.
+
+| Tip | Keşifte | İşlem | Neden |
+|---|---|---|---|
+| Deployment | ✅ | ✅ | |
+| StatefulSet | ✅ | ✅ | |
+| DeploymentConfig | ✅ | ✅ | |
+| Argo Rollout | ✅ | ✅ | |
+| DaemonSet | ✅ | ❌ | `spec.replicas` yoktur; düğüm sayısıyla ölçeklenir |
+| CronJob | ✅ | ❌ | `spec.suspend` ile durdurulur; replica semantiği taşımaz |
+
+ReplicaSet / ReplicationController / Pod **bilerek dışarıdadır**: bunlar
+Deployment ve DeploymentConfig'in sahip olduğu nesnelerdir. Listelemek her
+uygulamayı iki kez gösterir ve kullanıcıya denetleyicinin saniyeler içinde geri
+alacağı bir "ölçekle" düğmesi sunardı.
+
+**Bakılamayan tip sessizce atlanmaz.** Bir tipin `oc get`'i düşerse (yetki yok,
+DeploymentConfig API'si kapalı, Rollout CRD'si kurulu değil) keşif bunu ayrıca
+bildirir ve nedenini ayırır:
+
+```
+;-;DeploymentConfig;WORKLOAD_KIND;WARN;kind=dc reason=api_absent verb=list ...
+;-;ArgoRollout;WORKLOAD_KIND;WARN;kind=rollout reason=no_permission verb=list ...
+```
+
+`no_permission` kullanıcının platform ekibinden isteyebileceği bir şeydir;
+`api_absent` hakkında yapacak bir şey olmayan bir olgudur. Bu ayrım olmadan ekran
+"StatefulSet yok" ile "StatefulSet'e bakamadım"ı ayırt edemiyordu.
+
+## Tip tespiti: `workload_kinds`
+
+İşlem tarafında tip `auto` ile tespit edilir. Aynı ad birden fazla tipte varsa
+(bir Deployment ile aynı adlı bir DeploymentConfig) otomatik tespit işi durdurur —
+doğru davranış, ama kullanıcının çıkış yolu yoktu.
+
+Portal keşifte tipi zaten gördüğü için artık söylüyor: opsiyonel `workload_kinds`
+survey alanı `uygulama=tip` çiftlerini taşır (`odeme-api=deploy,kafka=sts`).
+Geçerli tipler `deploy`, `sts`, `dc`, `rollout`. Boş bırakılırsa bugünkü `auto`
+davranışı aynen sürer, yani elle çalıştırma bozulmaz.
+
 ## Sırada ne var
 
 Kurulum adımları, AWX template alanları, survey'in API ile yüklenmesi ve portalda

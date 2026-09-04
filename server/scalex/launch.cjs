@@ -132,9 +132,55 @@ function assertValidTargets({ namespace, apps, action, targetReplicas, execution
   }
 }
 
+// UYGULAMA BASINA TIP HARITASI: "kafka=sts,odeme-api=deploy".
+//
+// NEDEN: playbook tipi `auto` ile tespit ediyordu ve ayni ad birden fazla tipte
+// varsa (bir Deployment ile ayni adli bir DeploymentConfig) `ambiguous` deyip isi
+// DUSURUYORDU — kullanicinin cikis yolu yoktu. Portal ise tipi kesifte ZATEN
+// gormustu; tahmin ettirmek yerine soyluyoruz. Kullaniciya yeni bir adim eklenmez.
+//
+// YALNIZCA KESIFTEN GELEN satirlar gonderilir (ekran `source === 'discovery'`
+// suzgecini uygular): aynadan turetilen sentetik satirlarda tip alani ESKI bir
+// kayittan gelir ve bayat olabilir; bayat bir tiple islem yapmak yanlis nesneye
+// dokunmak demektir. Haritaya girmeyen uygulamalar icin playbook bugunku `auto`
+// taramasini yapar — davranis degismez.
+const SCALABLE_KINDS = new Set(['deploy', 'sts', 'dc', 'rollout']);
+const KIND_ALIASES = new Map([
+  ['deployment', 'deploy'], ['deploy', 'deploy'],
+  ['statefulset', 'sts'], ['sts', 'sts'],
+  ['deploymentconfig', 'dc'], ['dc', 'dc'],
+  ['argorollout', 'rollout'], ['rollout', 'rollout'],
+]);
+
+function buildWorkloadKindMap(entries, allowedApps) {
+  if (!Array.isArray(entries) || !entries.length) return '';
+  // ISTEMCIDEN GELEN VERI DOGRULANIR. Guvenlik siniri degil (playbook nesnenin
+  // gercekten var oldugunu ayrica dogruluyor) ama bir yazim hatasi ya da bozuk
+  // istemci yuzunden `oc` komut satirina cop girmesin: yalnizca BILINEN tipler ve
+  // yalnizca bu istekte zaten dogrulanmis uygulama adlari haritaya girer.
+  const allowed = new Set(allowedApps || []);
+  const byApp = new Map();
+  for (const e of entries) {
+    const name = String(e?.name || '').trim();
+    if (!allowed.has(name)) continue;
+    const kind = KIND_ALIASES.get(String(e?.kind || '').trim().toLowerCase());
+    if (!kind || !SCALABLE_KINDS.has(kind)) continue;
+    // AYNI AD IKI TIPTE GELDIYSE HARITAYA HIC GIRMEZ. Birini secmek, kullanicinin
+    // vermedigi bir karari onun adina vermek olurdu; playbook o uygulama icin
+    // `ambiguous` diyerek DURUR ve bu DOGRU sonuctur.
+    if (byApp.has(name) && byApp.get(name) !== kind) { byApp.set(name, null); continue; }
+    if (!byApp.has(name)) byApp.set(name, kind);
+  }
+  return [...byApp.entries()]
+    .filter(([, k]) => k)
+    .map(([name, k]) => `${name}=${k}`)
+    .join(',');
+}
+
 async function buildRunExtraVars({
   env, tenant, clusters, namespace, apps, action, executionMode,
   targetReplicas, verificationTimeout, allowPartial, mailTo, mailCc, hpaPin = false,
+  workloadKinds = null,
 }) {
   const hosts = await ocpResolveHosts(env, tenant, clusters);
   const meta = await adminData.resolveClusterMeta(env, tenant, clusters);
@@ -158,6 +204,9 @@ async function buildRunExtraVars({
     scalex_target_clusters: clusters,
     target_namespace: namespace,
     target_app_names: apps.join(','),
+    // Bos string GONDERILMEZ: survey alani opsiyonel ve bos deger playbook'ta
+    // `auto`ya duser — ayni sonuc, ama gereksiz bir extra_var is kaydini kirletirdi.
+    ...(((m) => (m ? { workload_kinds: m } : {}))(buildWorkloadKindMap(workloadKinds, apps))),
     operation_action: action,
     // SAYI OLARAK gonderilir, string DEGIL. AWX survey'inde bu soru `integer` tipinde
     // ve AWX tipi DOGRULUYOR: string gonderildiginde launch
@@ -278,5 +327,5 @@ module.exports = {
   ACTIONS, MODES, VERIFICATION_TIMEOUTS, MAX_TARGETS, PROD_WRITTEN_CONFIRM_THRESHOLD,
   isProdEnv, computeBlastRadius, isHpaPinAllowed, buildScaleXClusterCatalog, assertValidTargets,
   assertValidDiscoveryTargets, sanitizeMailCc,
-  buildRunExtraVars, gatePolicyFor, buildGateVars, gates,
+  buildRunExtraVars, buildWorkloadKindMap, gatePolicyFor, buildGateVars, gates,
 };

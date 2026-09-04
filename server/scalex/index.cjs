@@ -589,6 +589,11 @@ function initScaleX(app) {
     const extraVars = await launch.buildRunExtraVars({
       env, tenant, clusters, namespace, apps, action, executionMode,
       targetReplicas, verificationTimeout, allowPartial, mailTo, mailCc, hpaPin,
+      // TIP HARITASI: ekranin KESIFTE gordugu tipler. Playbook boylece tahmin
+      // etmek zorunda kalmiyor ve "ayni ad iki tipte var" belirsizligi isi
+      // dusurmuyor. `buildWorkloadKindMap` gelen veriyi `apps` listesine ve bilinen
+      // tiplere karsi suzer — istemciden gelen hicbir sey dogrudan gecmez.
+      workloadKinds: req.body?.workloadKinds,
     });
 
     // ── GERI ALMA KILIDI ────────────────────────────────────────────────────
@@ -819,11 +824,19 @@ function initScaleX(app) {
     const pendingApproval = [];
     const blocked = [];
     for (const g of groups.values()) {
+      // TOPLU GERI ALMA: HPA pin UYGULANMAZ (her uygulama icin ayri pin ayari
+      // tekil geri almada mumkun ama toplu islemde guvenli degil — HPA minReplicas
+      // uygulama bazli degisir ve toplu sabitleme yanlis uygulamayi etkileyebilir).
+      // TIP HARITASI: /run ile AYNI. `targets` her satirda `workloadKind` tasir
+      // (state.cjs:79); grup bazinda harita uretilir ve playbook "ayni ad iki
+      // tipte var" belirsizligini otomatik cozer.
+      const groupTargets = targets.filter((r) => r.clusterName === g.cluster && r.namespace === g.namespace);
       const extraVars = await launch.buildRunExtraVars({
         env, tenant, clusters: [g.cluster], namespace: g.namespace, apps: g.apps,
         action: 'restore', executionMode: 'apply', targetReplicas: undefined,
         verificationTimeout: '60', allowPartial: true,
-        mailTo: String(user.mail || '').trim(), mailCc: '',
+        mailTo: String(user.mail || '').trim(), mailCc: '', hpaPin: false,
+        workloadKinds: groupTargets.map((r) => ({ name: r.appName, kind: r.workloadKind })),
       });
 
       // KILIT: grup basina. Mesgul bir grup TUM istegi dusurmez — `blocked`a duser

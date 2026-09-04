@@ -63,7 +63,14 @@
     oc_cluster_name: "{{ target_cluster_name | default('select') | string | trim | lower }}"
     oc_namespace: "{{ target_namespace | default('') | string | trim }}"
     target_app_names: "{{ target_app_names | default(oc_app | default('')) | string | trim }}"
-    workload_kind_effective: "auto"
+    # TIP TESPITI OTOMATIK KALIR. Sabit "auto" degil, survey'den gelebilen bir deger:
+    # elle calistirmada operatorun tek bir tipe kilitlemesine izin verir. Portal bunu
+    # GONDERMEZ — portal, uygulama basina `workload_kinds` haritasini gonderir ki
+    # farkli tiplerdeki uygulamalar TEK iste birlikte islenebilsin.
+    workload_kind_effective: "{{ workload_kind | default('auto') | string | trim | lower }}"
+    # "app=kind,app=kind". Portalin kesiften bildigi tipler. Bos birakilirsa
+    # `workload_kind_effective` (yani `auto`) gecerlidir.
+    workload_kinds_effective: "{{ workload_kinds | default('') | string | trim }}"
     operation_action_effective: "{{ operation_action | default('stop') | string | trim | lower }}"
     verification_timeout_effective: "{{ verification_timeout | default('60') | string | trim }}"
     allow_partial_execution_effective: "{{ allow_partial_execution | default(false) | bool }}"

@@ -93,6 +93,18 @@
       "question_description": "Virgulle ayrilmis uygulama/workload adlari (or. odeme-api,batch-worker). DEGISKEN ADI `oc_app` DEGIL `target_app_names`: portal bu adla gonderiyor. Playbook geriye uyum icin `oc_app`i de kabul eder."
     },
     {
+      "max": 4096,
+      "min": 0,
+      "type": "textarea",
+      "choices": "",
+      "default": "",
+      "required": false,
+      "variable": "workload_kinds",
+      "new_question": true,
+      "question_name": "Workload Tipleri (uygulama basina)",
+      "question_description": "OPSIYONEL. 'uygulama=tip' ciftleri, virgulle: odeme-api=deploy,kafka=sts. Gecerli tipler: deploy, sts, dc, rollout. Portal bu alani KESIFTEN doldurur; elle calistirmada bos birakilabilir. Bos ise tip otomatik tespit edilir — ama ayni ad birden fazla tipte varsa otomatik tespit is'i durdurur, bu alan o belirsizligi cozer. DaemonSet/CronJob kabul EDILMEZ: replica ile olceklenemezler."
+    },
+    {
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",

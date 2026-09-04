@@ -28,6 +28,22 @@ export interface ScaleXNamespaceList {
   hiddenCount: number;
 }
 
+/** Keşfin bir workload tipi hakkında bildirdiği sonuç. */
+export interface ScaleXKindReport {
+  cluster: string;
+  /** Kısa ad: deploy | sts | dc | rollout | ds | cronjob */
+  kind: string;
+  /** Kullanıcıya gösterilen ad: Deployment, StatefulSet, ... */
+  display: string;
+  /** Bu tipe BAKILABİLDİ mi? */
+  readable: boolean;
+  found: number;
+  scalable: boolean;
+  /** `no_permission` — platformdan istenebilir; `api_absent` — bu cluster'da yok. */
+  reason: string | null;
+  verb: string | null;
+}
+
 export interface ScaleXWorkload {
   cluster: string;
   name: string;
@@ -44,6 +60,22 @@ export interface ScaleXWorkload {
   restorable: boolean;
   /** `argocd:<app>` ya da `managed_by:<x>`; GitOps yönetimindeyse dolu. */
   gitops: string | null;
+  /**
+   * REPLICA İLE ÖLÇEKLENEBİLİR Mİ? DaemonSet düğüm sayısıyla ölçeklenir, CronJob
+   * `spec.suspend` ile durdurulur — ikisi de replica semantiği TAŞIMAZ. Listede
+   * görünürler (kullanıcı "namespace'imde var ama ScaleX'te yok" demesin) ama
+   * SEÇİLEMEZLER. Sürüm bildirmeyen eski bir paket bu alanı hiç göndermez; o
+   * paket zaten yalnızca ölçeklenebilir tipleri listeliyordu, `undefined` =
+   * ölçeklenebilir sayılır.
+   */
+  scalable?: boolean;
+  /** `node_scheduled` | `suspend_not_replicas` — neden ölçeklenemediği. */
+  notScalableReason?: string | null;
+  /** CronJob'a özgü: cron ifadesi ve askıya alınmış olup olmadığı. */
+  schedule?: string | null;
+  suspended?: boolean | null;
+  /** DaemonSet'e özgü: kaç düğümde çalışması bekleniyor. */
+  desired?: number | null;
   /**
    * Bu satır NEREDEN geldi?
    *   `discovery` — canlı keşiften; `specReplicas`/`readyReplicas`/`image`/`hasHpa`
@@ -86,6 +118,14 @@ export interface ScaleXDiscoveryResult {
   /** Namespace düzeyinde PDB uyarısı (hangi workload'u kapsadığı ucuza kanıtlanamaz). */
   pdbWarning: string | null;
   workloads?: ScaleXWorkload[];
+  /** Keşfin BAKTIĞI her tip için ne olduğu: kaç tane bulundu, ya da neden
+   *  bakılamadı. Bu ayrım olmadan ekran "StatefulSet yok" ile "StatefulSet'e
+   *  bakamadım"ı ayırt edemiyordu. */
+  kindReports?: ScaleXKindReport[];
+  /** AWX'te KOŞAN paketin sürümü ("0" = sürüm bildirmeyen eski paket). */
+  packageVersion?: string;
+  /** Portalın BEKLEDİĞİ sürüm — uyuşmazlıkta ekran tahmin etmez, söyler. */
+  expectedPackageVersion?: string;
   states?: ScaleXStateItem[];
   health?: { cluster: string; app: string; step: string; status: string; detail: string }[];
 }
@@ -209,6 +249,11 @@ export const scalexApi = {
     allowPartial?: boolean; reason?: string; mailCc?: string; hpaPin?: boolean;
     /** Geri almada hedef replica sayilari — HPA sabitlemesini yalnizca KISITLAR. */
     restoreTargets?: (number | null)[];
+    /** KESIFTE gorulen workload tipleri. Playbook tipi tahmin etmek yerine bunu
+     *  kullanir; "ayni ad hem Deployment hem DeploymentConfig" belirsizligi isi
+     *  dusurmez. Sunucu listeyi `apps` ve bilinen tiplere karsi suzer. Aynadan
+     *  turetilen (bayat) satirlar GONDERILMEZ. */
+    workloadKinds?: { name: string; kind: string }[];
     // `ocoAction` BILEREK YOK: ScaleX zamanlama yapmaz, sunucu tek gecerli cevabi
     // ('later') kendisi verir. Alani burada tutmak, ekranin dolduramadigi bir
     // sozlesme alani birakmak olurdu (bkz. server/scalex/index.cjs kapi blogu).
