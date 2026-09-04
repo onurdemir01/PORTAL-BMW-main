@@ -10,10 +10,14 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-const codeOnly = (s) => s
-  .split('\n')
-  .filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l))
-  .join('\n');
+const codeOnly = (s) =>
+  s
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l))
+    .join('\n')
+    // PRETTIER UYUMLULUGU: kaynak-doğrulama testleri TIRNAK stiline bagimli kalmamali.
+    // Prettier tek/çift tırnak arasında geçiş yapabilir; regex'ler hep çift tırnak bekler.
+    .replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
 
 const PAGE = read('components/scalex/ScaleXPage.tsx');
 const WORKLOAD = read('components/scalex/steps/WorkloadStep.tsx');
@@ -25,7 +29,16 @@ const SCOPE = read('components/scalex/steps/ScopeStep.tsx');
 const NS = read('components/scalex/steps/NamespaceStep.tsx');
 const API = read('api/scalexApi.ts');
 const ALL_TSX = [PAGE, WORKLOAD, OPERATION, PREVIEW, RESULT, STOPPED, SCOPE, NS];
-const NAMES = ['ScaleXPage', 'WorkloadStep', 'OperationStep', 'PreviewStep', 'ScaleXResultPanel', 'StoppedPanel', 'ScopeStep', 'NamespaceStep'];
+const NAMES = [
+  'ScaleXPage',
+  'WorkloadStep',
+  'OperationStep',
+  'PreviewStep',
+  'ScaleXResultPanel',
+  'StoppedPanel',
+  'ScopeStep',
+  'NamespaceStep',
+];
 
 // ── U1 Cift tik / cift is korumasi ──────────────────────────────────────────
 
@@ -48,13 +61,16 @@ test('U3 kesif yoklamasi unmount olunca DURUYOR', () => {
   // bir gereksiz istek, (b) unmount sonrasi setState. `key={step}` ile adim degisince
   // bilesen remount oldugu icin bu gercek bir sizinti yolu.
   const code = codeOnly(WORKLOAD);
-  assert.match(code, /aliveRef|cancelled|abort/i,
-    'yoklama dongusunde unmount kontrolu yok — istek ve setState sizar');
+  assert.match(
+    code,
+    /aliveRef|cancelled|abort/i,
+    'yoklama dongusunde unmount kontrolu yok — istek ve setState sizar',
+  );
 });
 
 // ── U4 Hook sirasi ──────────────────────────────────────────────────────────
 
-test('U4 hicbir bilesende hook\'lardan ONCE erken return yok', () => {
+test("U4 hicbir bilesende hook'lardan ONCE erken return yok", () => {
   // "Rendered more hooks than during the previous render" — sayfa bembeyaz acilir.
   for (let i = 0; i < ALL_TSX.length; i++) {
     const full = codeOnly(ALL_TSX[i]);
@@ -65,12 +81,16 @@ test('U4 hicbir bilesende hook\'lardan ONCE erken return yok', () => {
     const code = full.slice(bodyStart);
     const firstReturn = code.search(/^\s{2}(if \([^)]*\)\s*)?return\s/m);
     const lastHook = Math.max(
-      code.lastIndexOf('useState('), code.lastIndexOf('useEffect('),
-      code.lastIndexOf('useMemo('), code.lastIndexOf('useRef(')
+      code.lastIndexOf('useState('),
+      code.lastIndexOf('useEffect('),
+      code.lastIndexOf('useMemo('),
+      code.lastIndexOf('useRef('),
     );
     if (firstReturn < 0 || lastHook < 0) continue;
-    assert.ok(firstReturn > lastHook,
-      `${NAMES[i]}: erken return hook'lardan ONCE — hook sirasi kirilir`);
+    assert.ok(
+      firstReturn > lastHook,
+      `${NAMES[i]}: erken return hook'lardan ONCE — hook sirasi kirilir`,
+    );
   }
 });
 
@@ -81,8 +101,10 @@ test('U5 koyu temada kirilan SABIT renk yok', () => {
   // esliyor, ama `bg-white` BILEREK eslenmedi (renkli zemin ustunde kullanilsin diye).
   // Koyu temada beyaz bir girdi kutusu okunamaz hale gelir.
   for (let i = 0; i < ALL_TSX.length; i++) {
-    assert.ok(!/\bbg-white\b/.test(codeOnly(ALL_TSX[i])),
-      `${NAMES[i]}: bg-white koyu temada kirilir — token kullan`);
+    assert.ok(
+      !/\bbg-white\b/.test(codeOnly(ALL_TSX[i])),
+      `${NAMES[i]}: bg-white koyu temada kirilir — token kullan`,
+    );
   }
 });
 
@@ -91,7 +113,8 @@ test('U6 rozetler ortak pf-label sinifini kullaniyor', () => {
   const used = new Set();
   for (const code of ALL_TSX) for (const m of code.matchAll(/pf-label--(\w+)/g)) used.add(m[1]);
   assert.ok(used.size > 0, 'hic pf-label kullanilmamis');
-  for (const v of used) assert.ok(css.includes(`pf-label--${v}`), `pf-label--${v} CSS'te tanimli degil`);
+  for (const v of used)
+    assert.ok(css.includes(`pf-label--${v}`), `pf-label--${v} CSS'te tanimli degil`);
 });
 
 // ── U7 Erisilebilirlik ──────────────────────────────────────────────────────
@@ -100,8 +123,10 @@ test('U7 kesilen (truncate) her oge title tasiyor', () => {
   for (let i = 0; i < ALL_TSX.length; i++) {
     const code = ALL_TSX[i];
     for (const m of code.matchAll(/<span[^>]*\btruncate\b[^>]*>/g)) {
-      assert.ok(/title=/.test(m[0]),
-        `${NAMES[i]}: kesilen deger okunamiyor (title yok) → ${m[0].slice(0, 90)}`);
+      assert.ok(
+        /title=/.test(m[0]),
+        `${NAMES[i]}: kesilen deger okunamiyor (title yok) → ${m[0].slice(0, 90)}`,
+      );
     }
   }
 });
@@ -120,7 +145,7 @@ test('U9 her girdi bir etiketle iliskili', () => {
     // erken bitirir. Etiketi bir sonraki `<` ya da `/>` gorene kadar al.
     for (const m of codeOnly(ALL_TSX[i]).matchAll(/<input\b([\s\S]*?)\/>/g)) {
       const a = m[1];
-      if (/type="(checkbox|radio)"/.test(a)) continue;   // <label> icinde sarili
+      if (/type="(checkbox|radio)"/.test(a)) continue; // <label> icinde sarili
       assert.ok(/\bid=|aria-label=/.test(a), `${NAMES[i]}: etiketsiz girdi → ${m[0].slice(0, 80)}`);
     }
   }
@@ -140,17 +165,34 @@ test('U10 "Onerilen" etiketi ve on-secim YOK', () => {
   //   1) OperationStep hicbir LITERAL islem/mod ile baslamaz,
   //   2) `previous` YALNIZCA kullanici adimi doldurduktan sonra gecilir.
   const code = codeOnly(OPERATION);
-  assert.match(code, /useState<ScaleXMode \| null>\(previous\?\.executionMode \?\? null\)/,
-    'calistirma modu ONCEDEN secili gelmemeli');
+  assert.match(
+    code,
+    /useState<ScaleXMode \| null>\(previous\?\.executionMode \?\? null\)/,
+    'calistirma modu ONCEDEN secili gelmemeli',
+  );
   assert.match(code, /useState<ScaleXAction \| null>\(previous\?\.action \?\? null\)/);
-  assert.ok(!/useState<ScaleXMode \| null>\("(dry_run|apply)"\)/.test(code), 'literal mod on-secimi YOK');
-  assert.ok(!/useState<ScaleXAction \| null>\("(stop|restore|scale)"\)/.test(code), 'literal islem on-secimi YOK');
+  assert.ok(
+    !/useState<ScaleXMode \| null>\("(dry_run|apply)"\)/.test(code),
+    'literal mod on-secimi YOK',
+  );
+  assert.ok(
+    !/useState<ScaleXAction \| null>\("(stop|restore|scale)"\)/.test(code),
+    'literal islem on-secimi YOK',
+  );
 
   const page = codeOnly(PAGE);
-  assert.match(page, /previous=\{operationTouched \? \{/,
-    '`previous` kosulsuz gecilirse ilk sunum on-secili olurdu');
-  assert.match(page, /const \[operationTouched, setOperationTouched\] = useState\(false\)/,
-    'bayrak FALSE baslamali — ilk gelisde notr');
+  // Prettier `previous={` sonrasinda satir kiriyor. Kural KOSULLU GECIS; satir duzeni
+  // degil. Bosluga toleransli desen, `previous={{` (kosulsuz) halini hala yakalar.
+  assert.match(
+    page,
+    /previous=\{\s*operationTouched\s*\?\s*\{/,
+    '`previous` kosulsuz gecilirse ilk sunum on-secili olurdu',
+  );
+  assert.match(
+    page,
+    /const \[operationTouched, setOperationTouched\] = useState\(false\)/,
+    'bayrak FALSE baslamali — ilk gelisde notr',
+  );
 });
 
 test('U11 iki mod kartinin sinif dizesi AYNI', () => {
@@ -159,18 +201,37 @@ test('U11 iki mod kartinin sinif dizesi AYNI', () => {
   // bekci "iki mod karti bulunamadi" ile kirmizi oluyordu. Kurali olcuyoruz, duzeni
   // degil — `[^`]` sinifi geri-tirnak icermedigi icin arada baska bir sablon dizesi
   // yakalanmasi mumkun degil.
-  const cards = [...OPERATION.matchAll(/onClick=\{\(\) => setMode\("(dry_run|apply)"\)\}[^`]*?className=\{`([^`]+)`\}/g)];
+  const cards = [
+    ...OPERATION.matchAll(
+      /onClick=\{\(\) => setMode\("(dry_run|apply)"\)\}[^`]*?className=\{`([^`]+)`\}/g,
+    ),
+  ];
   assert.equal(cards.length, 2, 'iki mod karti bulunamadi');
-  const norm = (s) => s.replace(/mode === "\w+"/, 'MODE').replace(/\s+/g, ' ').trim();
-  assert.equal(norm(cards[0][2]), norm(cards[1][2]), 'iki secenek gorsel olarak esit agirlikta DEGIL');
+  const norm = (s) =>
+    s
+      .replace(/mode === "\w+"/, 'MODE')
+      .replace(/\s+/g, ' ')
+      .trim();
+  assert.equal(
+    norm(cards[0][2]),
+    norm(cards[1][2]),
+    'iki secenek gorsel olarak esit agirlikta DEGIL',
+  );
 });
 
 test('U12 playbook degisken adlari ekranda GORUNMUYOR', () => {
   for (let i = 0; i < ALL_TSX.length; i++) {
     const visible = ALL_TSX[i].replace(/^\s*(\/\/|\*).*$/gm, '');
-    for (const v of ['allow_partial_execution', 'bulk_change_confirmation', 'change_confirmation', 'verification_timeout']) {
-      assert.ok(!visible.includes(`>${v}`) && !new RegExp(`"[^"]*${v}[^"]*"\\s*[},]`).test(visible),
-        `${NAMES[i]}: playbook degiskeni "${v}" kullaniciya gosteriliyor`);
+    for (const v of [
+      'allow_partial_execution',
+      'bulk_change_confirmation',
+      'change_confirmation',
+      'verification_timeout',
+    ]) {
+      assert.ok(
+        !visible.includes(`>${v}`) && !new RegExp(`"[^"]*${v}[^"]*"\\s*[},]`).test(visible),
+        `${NAMES[i]}: playbook degiskeni "${v}" kullaniciya gosteriliyor`,
+      );
     }
   }
 });
@@ -181,21 +242,50 @@ test('U13 calistirmaya ozel TUM alanlar sifirlaniyor (HER iki yolda)', () => {
   // Bir onceki calistirmanin izleri `resetRunState()`te temizlenir; sihirbaz SECIMLERI
   // `restart()`ta. Ikisi ayri, cunku panelden gelen "Geri Al" kisayolu izleri temizler
   // ama secimleri KENDISI belirler.
-  const reset = PAGE.slice(PAGE.indexOf('function resetRunState()'), PAGE.indexOf('function restart()'));
-  for (const f of ['setJob', 'setRunResult', 'setTrackedJobId', 'setCatalogWarning',
-    'setNotice', 'setError', 'setCancelling', 'setElapsed']) {
-    assert.ok(reset.includes(f), `resetRunState() ${f} cagirmiyor — onceki islemin izi ekranda kalir`);
+  const reset = PAGE.slice(
+    PAGE.indexOf('function resetRunState()'),
+    PAGE.indexOf('function restart()'),
+  );
+  for (const f of [
+    'setJob',
+    'setRunResult',
+    'setTrackedJobId',
+    'setCatalogWarning',
+    'setNotice',
+    'setError',
+    'setCancelling',
+    'setElapsed',
+  ]) {
+    assert.ok(
+      reset.includes(f),
+      `resetRunState() ${f} cagirmiyor — onceki islemin izi ekranda kalir`,
+    );
   }
 
-  const body = PAGE.slice(PAGE.indexOf('function restart()'), PAGE.indexOf('async function guarded'));
+  const body = PAGE.slice(
+    PAGE.indexOf('function restart()'),
+    PAGE.indexOf('async function guarded'),
+  );
   // `env`/`tenant`/`clusters` BILEREK korunuyor (kullanici ayni kapsamda ikinci bir
   // islem yapacak). Ama calistirmaya ozel her alan sifirlanmali; kalan bir deger
   // sonraki isleme SESSIZCE tasinir.
-  for (const f of ['setNamespace', 'setApps', 'setWorkloads', 'setAction', 'setExecutionMode',
-    'setTargetReplicas', 'setVerificationTimeout', 'setAllowPartial', 'setMailCc']) {
+  for (const f of [
+    'setNamespace',
+    'setApps',
+    'setWorkloads',
+    'setAction',
+    'setExecutionMode',
+    'setTargetReplicas',
+    'setVerificationTimeout',
+    'setAllowPartial',
+    'setMailCc',
+  ]) {
     assert.ok(body.includes(f), `restart() ${f} cagirmiyor — deger sonraki isleme tasinir`);
   }
-  assert.ok(body.includes('resetRunState()'), 'restart() onceki calistirmanin izlerini temizlemiyor');
+  assert.ok(
+    body.includes('resetRunState()'),
+    'restart() onceki calistirmanin izlerini temizlemiyor',
+  );
 });
 
 test('U13b panelden gelen "Geri Al" da onceki calistirmanin izlerini TEMIZLIYOR', () => {
@@ -203,16 +293,28 @@ test('U13b panelden gelen "Geri Al" da onceki calistirmanin izlerini TEMIZLIYOR'
   // BIR UYGULAMANIN saglik satirlari yeni islemin ekraninda duruyordu, ustelik
   // `healthStartedRef` hala true oldugu icin saglik kontrolu bir daha hic kosmuyordu.
   const body = PAGE.slice(PAGE.indexOf('function restoreFromPanel'), PAGE.indexOf('const back ='));
-  assert.ok(body.includes('resetRunState()'),
-    'restoreFromPanel onceki calistirmanin izlerini temizlemiyor');
+  assert.ok(
+    body.includes('resetRunState()'),
+    'restoreFromPanel onceki calistirmanin izlerini temizlemiyor',
+  );
   // Temizlik, yeni degerler yazilmadan ONCE olmali; sonra cagrilirsa onlari ezer.
-  assert.ok(body.indexOf('resetRunState()') < body.indexOf('setClusters('),
-    'resetRunState() yeni degerlerden SONRA cagriliyor — onlari ezer');
+  assert.ok(
+    body.indexOf('resetRunState()') < body.indexOf('setClusters('),
+    'resetRunState() yeni degerlerden SONRA cagriliyor — onlari ezer',
+  );
 });
 
 test('U14 restoreFromPanel geri alma icin gerekli alanlari SET ediyor', () => {
   const body = PAGE.slice(PAGE.indexOf('function restoreFromPanel'), PAGE.indexOf('const back ='));
-  for (const f of ['setClusters', 'setNamespace', 'setApps', 'setWorkloads', 'setAction', 'setExecutionMode', 'setStep']) {
+  for (const f of [
+    'setClusters',
+    'setNamespace',
+    'setApps',
+    'setWorkloads',
+    'setAction',
+    'setExecutionMode',
+    'setStep',
+  ]) {
     assert.ok(body.includes(f), `restoreFromPanel ${f} cagirmiyor`);
   }
   assert.match(body, /restorable:\s*true/, 'geri alinabilirlik isaretlenmemis');
@@ -225,8 +327,11 @@ test('U15 kullanici kapi yanitinda KILITLENMIYOR', () => {
   // `reasonRequired` donebilir. Bunlar HATA DEGIL, bir el sikisma adimidir; ekran
   // yalnizca `setError` yapip birakirsa kullanici ne yapacagini bilemez.
   const body = PAGE.slice(PAGE.indexOf('function run('), PAGE.indexOf('function cancel('));
-  assert.match(body, /ocoDecisionRequired|ocoExpired|writtenConfirmRequired|reasonRequired/,
-    'kapi el sikisma yanitlari ele alinmiyor — kullanici cikmaza duser');
+  assert.match(
+    body,
+    /ocoDecisionRequired|ocoExpired|writtenConfirmRequired|reasonRequired/,
+    'kapi el sikisma yanitlari ele alinmiyor — kullanici cikmaza duser',
+  );
 });
 
 test('U16 pendingApproval ayri ele aliniyor (hata degil)', () => {
@@ -256,7 +361,7 @@ test('U18 API tum uclari BASE onekiyle cagiriyor', () => {
 
 // ── U19 Sonuc sunumu ────────────────────────────────────────────────────────
 
-test('U19 strict_blocked FAIL\'den AYRI gosteriliyor', () => {
+test("U19 strict_blocked FAIL'den AYRI gosteriliyor", () => {
   assert.match(codeOnly(RESULT), /result\.strictBlocked/);
   assert.match(RESULT, /Hiçbir değişiklik uygulanmadı/);
 });
@@ -289,12 +394,18 @@ test('U24 uc sapma durumunun ikisi kullaniciya ACIKLANIYOR', () => {
 test('U25 sapmali kayitta ve SUREN islemde "Geri Al" GOSTERILMIYOR', () => {
   const code = codeOnly(STOPPED);
   // Cluster'da ConfigMap yokken geri alma denemek `STATE;FAIL` ile duserdi.
-  assert.match(code, /driftStatus === "in_sync"[\s\S]{0,60}onRestore/,
-    'sapmali kayitta buton hala gosteriliyor');
+  assert.match(
+    code,
+    /driftStatus === "in_sync"[\s\S]{0,60}onRestore/,
+    'sapmali kayitta buton hala gosteriliyor',
+  );
   // Suren bir geri alma varken sunucu ikinci istegi 409 ile reddediyor (ayna kilidi).
   // Butonu acik birakmak, kullaniciyi reddedilecek bir istege gondermek olurdu.
-  assert.match(code, /phase !== "restoring"[\s\S]{0,60}onRestore/,
-    'geri alma surerken buton hala tiklanabiliyor');
+  assert.match(
+    code,
+    /phase !== "restoring"[\s\S]{0,60}onRestore/,
+    'geri alma surerken buton hala tiklanabiliyor',
+  );
   assert.match(code, /Geri alma sürüyor/, 'suren islem kullaniciya SOYLENMIYOR');
 });
 
@@ -307,18 +418,34 @@ test('U26 sayfa uc yerde de AYNI anahtarla kayitli', () => {
   assert.match(app, /path="\/scalex"/);
   assert.match(elements, /id: "ScaleX"/);
   assert.match(elements, /route: "\/scalex"/);
-  assert.ok(elements.includes('"ScaleX"') && /itemIds:.*ScaleX/.test(elements), 'nav grubuna eklenmemis');
+  assert.ok(
+    elements.includes('"ScaleX"') && /itemIds:.*ScaleX/.test(elements),
+    'nav grubuna eklenmemis',
+  );
 });
 
 test('U27 sayfa route bazli code-splitting ile yukleniyor', () => {
-  assert.match(read('App.tsx'), /React\.lazy\(\(\) => import\("@\/components\/scalex\/ScaleXPage"\)\)/);
+  assert.match(
+    read('App.tsx'),
+    /React\.lazy\(\(\) => import\("@\/components\/scalex\/ScaleXPage"\)\)/,
+  );
 });
 
 // ── U28 Kullanilmayan/olu kod ───────────────────────────────────────────────
 
-test('U28 OperationStep\'in topladigi HER alan calistirmaya gidiyor', () => {
-  const runBody = PAGE.slice(PAGE.indexOf('const r = await scalexApi.run('), PAGE.indexOf('if (!r.ok)'));
-  for (const f of ['action', 'executionMode', 'targetReplicas', 'verificationTimeout', 'allowPartial', 'mailCc']) {
+test("U28 OperationStep'in topladigi HER alan calistirmaya gidiyor", () => {
+  const runBody = PAGE.slice(
+    PAGE.indexOf('const r = await scalexApi.run('),
+    PAGE.indexOf('if (!r.ok)'),
+  );
+  for (const f of [
+    'action',
+    'executionMode',
+    'targetReplicas',
+    'verificationTimeout',
+    'allowPartial',
+    'mailCc',
+  ]) {
     assert.ok(runBody.includes(f), `${f} toplaniyor ama calistirmaya GONDERILMIYOR`);
   }
 });
@@ -328,22 +455,34 @@ test('U29 kullanilmayan import yok', () => {
     const code = ALL_TSX[i];
     const imports = [...code.matchAll(/import\s+(?:\{([^}]*)\}|(\w+))\s+from/g)];
     for (const m of imports) {
-      const names = (m[1] || m[2] || '').split(',').map((x) => x.trim().split(/\s+as\s+/).pop()).filter(Boolean);
+      const names = (m[1] || m[2] || '')
+        .split(',')
+        .map((x) =>
+          x
+            .trim()
+            .split(/\s+as\s+/)
+            .pop(),
+        )
+        .filter(Boolean);
       for (const n of names) {
         if (n.startsWith('type ')) continue;
         const body = code.slice(code.indexOf('\n', m.index));
-        assert.ok(new RegExp(`\\b${n.replace('type ', '')}\\b`).test(body),
-          `${NAMES[i]}: kullanilmayan import → ${n}`);
+        assert.ok(
+          new RegExp(`\\b${n.replace('type ', '')}\\b`).test(body),
+          `${NAMES[i]}: kullanilmayan import → ${n}`,
+        );
       }
     }
   }
 });
 
 test('U30 sonsuz yoklama dongusunde hata siniri var', () => {
-  assert.match(codeOnly(WORKLOAD), /MAX_POLL_ERRORS/,
-    'ardisik hatada donguden cikilmazsa sekme sonsuza dek istek atar');
+  assert.match(
+    codeOnly(WORKLOAD),
+    /MAX_POLL_ERRORS/,
+    'ardisik hatada donguden cikilmazsa sekme sonsuza dek istek atar',
+  );
 });
-
 
 // ═══ V. YENI DAVRANISLAR (HPA / GitOps / yas / saglik / tasima) ════════════
 
@@ -353,8 +492,10 @@ test('V1 HPA sabitleme kutusu ONCEDEN SECILI DEGIL', () => {
   // `previous` yoksa kutu isaretsiz gelir.
   const code = codeOnly(OPERATION);
   assert.match(code, /const \[hpaPin, setHpaPin\] = useState\(previous\?\.hpaPin \?\? false\)/);
-  assert.ok(!/const \[hpaPin, setHpaPin\] = useState\((true|previous\?\.hpaPin \?\? true)\)/.test(code),
-    'HPA sabitleme varsayilan olarak ACIK olamaz');
+  assert.ok(
+    !/const \[hpaPin, setHpaPin\] = useState\((true|previous\?\.hpaPin \?\? true)\)/.test(code),
+    'HPA sabitleme varsayilan olarak ACIK olamaz',
+  );
 });
 
 test('V2 HPA sabitleme `Durdur`da HIC sunulmuyor', () => {
@@ -394,14 +535,28 @@ test('V8 durdurma yasi esigi hesaplaniyor', () => {
 });
 
 test('V9 saglik kontrolu YALNIZCA gercek degisiklikten sonra kosar', () => {
-  const body = PAGE.slice(PAGE.indexOf('healthStartedRef.current) return'), PAGE.indexOf('// İş bitince yapılandırılmış'));
-  assert.match(body, /mode !== "apply"/, 'dry_run sonrasi saglik kontrolu anlamsiz');
-  assert.match(body, /action === "stop"/, 'Durdur sonrasi 0 pod bekleniyor — saglik kontrolu anlamsiz');
-  assert.match(body, /overallStatus === "FAIL"/, 'zaten basarisiz bir iste saglik sormanin anlami yok');
+  const body = PAGE.slice(
+    PAGE.indexOf('healthStartedRef.current) return'),
+    PAGE.indexOf('// İş bitince yapılandırılmış'),
+  );
+  assert.match(body, /mode !== ["']apply["']/, 'dry_run sonrasi saglik kontrolu anlamsiz');
+  assert.match(
+    body,
+    /action === ["']stop["']/,
+    'Durdur sonrasi 0 pod bekleniyor — saglik kontrolu anlamsiz',
+  );
+  assert.match(
+    body,
+    /overallStatus === ["']FAIL["']/,
+    'zaten basarisiz bir iste saglik sormanin anlami yok',
+  );
 });
 
 test('V10 saglik kontrolu BEST-EFFORT — asil sonucu gizlemiyor', () => {
-  const body = PAGE.slice(PAGE.indexOf('healthStartedRef.current = true'), PAGE.indexOf('// İş bitince yapılandırılmış'));
+  const body = PAGE.slice(
+    PAGE.indexOf('healthStartedRef.current = true'),
+    PAGE.indexOf('// İş bitince yapılandırılmış'),
+  );
   // Yetki hatasi (401/403) donguyu DURDURUR — gereksiz yeniden deneme yapilmaz.
   assert.match(body, /401.*403|403.*401/, 'saglik yoklamasi 401/403 hatasinda durmali');
   // Diger hatalar BEST-EFFORT: asil sonucu gizlememeli.
@@ -415,15 +570,27 @@ test('V11 saglik kontrolu bir kez kosar (ref ile kilitli)', () => {
 test('V12 saglik durumu ve kilidi de sifirlaniyor', () => {
   // Saglik izi `resetRunState()`te — boylece panelden gelen geri alma yolunda da
   // temizleniyor (eskiden yalnizca `restart()`ta vardi ve o yol onu hic cagirmiyordu).
-  const reset = PAGE.slice(PAGE.indexOf('function resetRunState()'), PAGE.indexOf('function restart()'));
+  const reset = PAGE.slice(
+    PAGE.indexOf('function resetRunState()'),
+    PAGE.indexOf('function restart()'),
+  );
   assert.ok(reset.includes('setHealth(null)'), 'onceki islemin saglik sonucu ekranda kalirdi');
-  assert.ok(reset.includes('healthStartedRef.current = false'), 'ikinci islem icin saglik hic kosmazdi');
-  const body = PAGE.slice(PAGE.indexOf('function restart()'), PAGE.indexOf('async function guarded'));
+  assert.ok(
+    reset.includes('healthStartedRef.current = false'),
+    'ikinci islem icin saglik hic kosmazdi',
+  );
+  const body = PAGE.slice(
+    PAGE.indexOf('function restart()'),
+    PAGE.indexOf('async function guarded'),
+  );
   assert.ok(body.includes('setHpaPin(false)'), 'HPA sabitleme tercihi sonraki isleme tasinirdi');
 });
 
 test('V13 hpaPin calistirmaya GERCEKTEN gonderiliyor', () => {
-  const runBody = PAGE.slice(PAGE.indexOf('const r = await scalexApi.run('), PAGE.indexOf('if (!r.ok)'));
+  const runBody = PAGE.slice(
+    PAGE.indexOf('const r = await scalexApi.run('),
+    PAGE.indexOf('if (!r.ok)'),
+  );
   assert.ok(runBody.includes('hpaPin'), 'kutu isaretlense de sunucuya gitmezdi');
 });
 
@@ -432,7 +599,6 @@ test('V14 ekranda "chaos" gecmiyor', () => {
     assert.ok(!/chaos/i.test(ALL_TSX[i]), `${NAMES[i]}: eski ad kalmis`);
   }
 });
-
 
 // ── W. SONUC EKRANINDAN HIZLI GERI ALMA (2026-09-02) ───────────────────────
 
@@ -449,8 +615,11 @@ test('W1 hizli geri alma YALNIZCA gercekten geri alinabilir sonucta cikar', () =
 test('W2 kirpilmis listede kapsam ACIKCA soyleniyor', () => {
   // Kirpilmis bir listede buton yalnizca GORUNEN hedefleri kapsar. Bunu
   // soylememek, "hepsi geri alindi" yalani olurdu.
-  assert.match(codeOnly(RESULT), /targetsTruncated[\s\S]{0,120}yalnızca yukarıda görünen/,
-    'kirpilmis listede kapsam uyarisi yok');
+  assert.match(
+    codeOnly(RESULT),
+    /targetsTruncated[\s\S]{0,120}yalnızca yukarıda görünen/,
+    'kirpilmis listede kapsam uyarisi yok',
+  );
 });
 
 test('W3 hizli geri alma UYDURMA replica sayisi tasimiyor', () => {
@@ -461,7 +630,6 @@ test('W3 hizli geri alma UYDURMA replica sayisi tasimiyor', () => {
   assert.match(body, /setHpaPin\(false\)/, 'hedef bilinmiyorken HPA sabitleme kapali olmali');
   assert.match(body, /resetRunState\(\)/, 'onceki islemin izleri temizlenmiyor');
 });
-
 
 // ── X. ONIZLEMEDE CANLI BILGI (2026-09-02) ─────────────────────────────────
 
@@ -474,7 +642,11 @@ test('X1 UYDURMA metrik gosterilmiyor: canli ayrinti yalnizca KESIF satirlarinda
   assert.match(code, /w\.source === "discovery"/, 'kaynak ayrimi yapilmiyor');
   assert.match(code, /\{live &&/, 'canli ayrinti kaynak ayrimindan GECMIYOR');
   // Mevcut replica sayisi da kaynaga bagli olmali.
-  assert.match(code, /live \? w\.specReplicas : "\?"/, 'mevcut replica sentetik satirda uydurma gosteriliyor');
+  assert.match(
+    code,
+    /live \? w\.specReplicas : "\?"/,
+    'mevcut replica sentetik satirda uydurma gosteriliyor',
+  );
 });
 
 test('X2 sentetik satirlar `source: "mirror"` ile isaretleniyor', () => {
@@ -483,15 +655,22 @@ test('X2 sentetik satirlar `source: "mirror"` ile isaretleniyor', () => {
   const api = read('api/scalexApi.ts');
   assert.match(api, /source:\s*"discovery"\s*\|\s*"mirror";/, 'kaynak alani opsiyonel ya da yok');
   const page = codeOnly(PAGE);
-  const synthetic = (page.match(/source:\s*"mirror"/g) || []).length;
-  assert.equal(synthetic, 2, `sentetik kurulum sayisi degismis (${synthetic}) — yeni yol isaretlenmemis olabilir`);
+  const synthetic = (page.match(/source:\s*["']mirror["']/g) || []).length;
+  assert.equal(
+    synthetic,
+    2,
+    `sentetik kurulum sayisi degismis (${synthetic}) — yeni yol isaretlenmemis olabilir`,
+  );
 });
 
 test('X3 "zaten durdurulmus" rozeti YALNIZCA `stop` dalinda', () => {
   // Bir GERI ALMA onizlemesinde bu rozet, kullaniciya yanlis islem yaptigini
   // dusundururdu — geri alinan uygulama zaten durdurulmus olmali.
-  assert.match(codeOnly(PREVIEW), /action === "stop" && w\.statePhase === "scaled_down"/,
-    'rozet islemden bagimsiz gosteriliyor');
+  assert.match(
+    codeOnly(PREVIEW),
+    /action === "stop" && w\.statePhase === "scaled_down"/,
+    'rozet islemden bagimsiz gosteriliyor',
+  );
 });
 
 test('X4 calistirma ayarlari ve VERI TAZELIGI onizlemede', () => {
@@ -517,17 +696,22 @@ test('Y1 tekillestirme ad+TIP bazinda — ayni ad iki tipte varsa ikisi de gorun
   // Eskiden anahtar yalnizca `w.name` idi ve ILK satir tutuluyordu: ayni ada sahip
   // bir Deployment ile bir DeploymentConfig varsa IKINCISI ekranda hic gorunmuyor,
   // sonra is `ambiguous` ile dusuyordu. Kullanici cakismayi goremiyordu bile.
-  assert.doesNotMatch(code, /byName\.set\(w\.name,\s*w\)/,
-    'tekillestirme hala yalnizca ada gore — ikinci tipteki nesne ekranda kaybolur');
-  assert.match(code, /\$\{w\.name\}\\u0000\$\{w\.kind\}/,
-    'satir anahtari ad+tip degil');
+  assert.doesNotMatch(
+    code,
+    /byName\.set\(w\.name,\s*w\)/,
+    'tekillestirme hala yalnizca ada gore — ikinci tipteki nesne ekranda kaybolur',
+  );
+  assert.match(code, /\$\{w\.name\}\\u0000\$\{w\.kind\}/, 'satir anahtari ad+tip degil');
 });
 
 test('Y2 ayni ad birden fazla tipte ise EKRAN SOYLER', () => {
   const code = codeOnly(WORKLOAD);
   assert.match(code, /ambiguousNames/, 'cakisma hesaplanmiyor');
-  assert.match(code, /aynı ad birden fazla tipte/,
-    'kullaniciya cakisma soylenmiyor — is `ambiguous` ile dusunce sebebi anlasilmaz');
+  assert.match(
+    code,
+    /aynı ad birden fazla tipte/,
+    'kullaniciya cakisma soylenmiyor — is `ambiguous` ile dusunce sebebi anlasilmaz',
+  );
 });
 
 test('Y3 olceklenemeyen tipler LISTEDE ama SECILEMEZ', () => {
@@ -536,12 +720,18 @@ test('Y3 olceklenemeyen tipler LISTEDE ama SECILEMEZ', () => {
   // bu dosyada baska yerde de geciyor (cakisma hesabinda) ve yalnizca adini aramak,
   // satir kilidi tamamen kaldirildiginda bile bekciyi YESIL birakiyordu (mutasyonla
   // dogrulandi).
-  assert.match(code, /const locked = w\.scalable === false/,
-    'satir kilidi olceklenebilirlikten TURETILMIYOR');
+  assert.match(
+    code,
+    /const locked = w\.scalable === false/,
+    'satir kilidi olceklenebilirlikten TURETILMIYOR',
+  );
   // Harfi harfine bir ifade DEGIL, `locked`in secimi gercekten kapattigi aranir:
   // ekran daha sonra baska kilit kosullari da ekleyebilir (ekledi de).
-  assert.match(code, /disabled=\{[^}]*\blocked\b[^}]*\}/,
-    'DaemonSet/CronJob secilebilir kaliyor — replica ile olceklenemezler');
+  assert.match(
+    code,
+    /disabled=\{[^}]*\blocked\b[^}]*\}/,
+    'DaemonSet/CronJob secilebilir kaliyor — replica ile olceklenemezler',
+  );
   assert.match(code, /checked=\{!locked/, 'kilitli satir yine de isaretli gorunebilir');
   assert.match(code, /ölçeklenemez/, 'neden secilemedigi yazmiyor');
   // Neden'i de yazmali: "olceklenemez" tek basina kullaniciyi AWX log'una gonderir.
@@ -552,8 +742,11 @@ test('Y3 olceklenemeyen tipler LISTEDE ama SECILEMEZ', () => {
 test('Y4 BAKILAMAYAN tip ekranda gorunur ve nedeni AYRISTIRILIR', () => {
   const code = codeOnly(WORKLOAD);
   // Hesaplanmasi yetmez; RENDER edilmesi gerekir (ayni kor nokta).
-  assert.match(code, /\{unreadableKinds\.length > 0 && \(/,
-    'bakilamayan tipler hesaplaniyor ama EKRANA hic basilmiyor');
+  assert.match(
+    code,
+    /\{unreadableKinds\.length > 0 && \(/,
+    'bakilamayan tipler hesaplaniyor ama EKRANA hic basilmiyor',
+  );
   // Iki neden kullanici icin tamamen farkli: biri platformdan ISTENEBILIR,
   // digeri hakkinda yapacak bir sey olmayan bir olgu. Ayni cumleye sokmak,
   // kullaniciyi bos yere platform ekibine gondermek olurdu.
@@ -573,15 +766,69 @@ test('Y6 tip haritasi YALNIZCA kesiften gelen satirlardan uretilir', () => {
   assert.match(page, /workloadKinds/, 'tip haritasi hic gonderilmiyor');
   // Aynadan turetilen satirlarda tip alani ESKI bir kayittan gelir; bayat bir
   // tiple islem yapmak yanlis nesneye dokunmak demektir.
-  assert.match(page, /w\.source === "discovery"[\s\S]{0,120}workloadKinds|workloadKinds[\s\S]{0,200}w\.source === "discovery"/,
-    'bayat (ayna kaynakli) tipler de haritaya giriyor olabilir');
+  assert.match(
+    page,
+    /w\.source === ["']discovery["'][\s\S]{0,120}workloadKinds|workloadKinds[\s\S]{0,200}w\.source === ["']discovery["']/,
+    'bayat (ayna kaynakli) tipler de haritaya giriyor olabilir',
+  );
 });
 
 test('Y7 ayni adin IKI tipi birden secilemez', () => {
   const code = codeOnly(WORKLOAD);
   // Ikisi birden secilirse playbook o uygulama icin `ambiguous` deyip isi durdurur.
   // Bunu calistirma zamaninda ogrenmek yerine ekranda ONLEMEK dogru olan.
-  assert.match(code, /const kindBlocked = isKindBlocked\(w\)/,
-    'ayni adin diger tipi kilitlenmiyor (yalnizca fonksiyon TANIMLI olmasi yetmez)');
+  assert.match(
+    code,
+    /const kindBlocked = isKindBlocked\(w\)/,
+    'ayni adin diger tipi kilitlenmiyor (yalnizca fonksiyon TANIMLI olmasi yetmez)',
+  );
   assert.match(code, /farklı bir tip seçildi/, 'kullaniciya NEDEN secemedigi soylenmiyor');
+});
+
+// ── Z: SECIM TURU VE SECILEMEZ LISTE (denetim bulgulari B2 / B3) ─────────────
+
+test('Z1 secim kimligi KOSULSUZ ad+tip — geri donuste secim kaybolmaz', () => {
+  const code = codeOnly(WORKLOAD);
+  // Anahtar KOSULLU idi (yalniz belirsiz adlarda ad+tip, digerlerinde duz ad) ve
+  // gonderim her zaman duz ad yapiyordu; `ScaleXPage` o duz adi `initial` olarak geri
+  // veriyordu. Sonuc: "Geri" ile donuldugunde belirsiz uygulamanin kutusu BOS gorunuyor
+  // ama alt bardaki sayac "1 secili" diyor, karsilikli kilit cozuluyor ve iki tip birden
+  // isaretlenebiliyordu — ozelligin ortadan kaldirdigi cikmaz geri geliyordu.
+  assert.doesNotMatch(
+    code,
+    /ambiguousNames\.has\(w\.name\) \? `\$\{w\.name\}/,
+    'secim kimligi hala KOSULLU — belirsiz adda geri donus secimi kaybeder',
+  );
+  assert.match(code, /const keyOf = \(w: ScaleXWorkload\) =>/, 'tek kimlik fonksiyonu yok');
+  assert.match(
+    code,
+    /const isSelected = \(w: ScaleXWorkload\) => selected\.includes\(keyOf\(w\)\)/,
+    'secim kontrolu keyOf uzerinden gitmiyor',
+  );
+});
+
+test('Z2 secim anahtarlari ekrana GERI VERILIR', () => {
+  const code = codeOnly(WORKLOAD);
+  const page = codeOnly(PAGE);
+  assert.match(code, /selectedKeys: selected/, 'anahtarlar onSubmit ile donmuyor');
+  assert.match(page, /setWorkloadKeys\(v\.selectedKeys\)/, 'anahtarlar saklanmiyor');
+  assert.match(
+    page,
+    /initial=\{workloadKeys\}/,
+    '`initial` hala duz ad listesi — geri donuste secim eslesmez',
+  );
+  // Yeni namespace/yeniden baslatma eski secimi TASIMAMALI.
+  assert.match(page, /setWorkloadKeys\(\[\]\)/, 'sifirlama yollarinda anahtarlar temizlenmiyor');
+});
+
+test('Z3 liste dolu ama hicbiri secilemiyorsa SEBEBI yazilir', () => {
+  const code = codeOnly(WORKLOAD);
+  // "Bulunamadi" bloku ateslenmez (liste bos degil), `Devam` pasiftir ve sebep
+  // hicbir yerde yazmazdi — ekranin sustugu sinifin ta kendisi.
+  assert.match(
+    code,
+    /list\.length > 0 && list\.every\(\(w\) => w\.scalable === false\)/,
+    'yalnizca secilemez satir kalan durum hic ele alinmiyor',
+  );
+  assert.match(code, /replica ile ölçeklenemeyen/, 'kullaniciya sebep yazilmiyor');
 });

@@ -16,11 +16,22 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+// ── BICIM DUYARSIZ OKUMA ────────────────────────────────────────────────────
+// Bu bekciler bir KURALI kilitler ("su cagri su argumanlarla yapiliyor"), satir
+// duzenini degil. Depoya prettier girdiginde cagrilar cok satira yayildi ve tirnak
+// bicimi degisti; kural aynen dururken bekciler KIRMIZI oldu.
+//
+// `norm()` yalnizca iki seyi normalize eder: ardisik bosluklari tek boslugua indirir
+// ve tek tirnagi cift tirnaga cevirir. ANLAM tasiyan hicbir sey silinmez — yanlis
+// argumanla yapilan bir cagri hala yakalanir (mutasyonla dogrulandi).
+const norm = (s) => s.replace(/\s+/g, ' ').replace(/'/g, '"');
 
 // telnetTemplateName saf bir fonksiyon — dosyadan cikarip DAVRANISINI test ediyoruz
 // (index.cjs'i require etmek express/DB yuklerdi).
 function loadTemplateNamer() {
-  const m = SRC.match(/const TEMPLATE_NAME_MAX = \d+;[\s\S]*?\nfunction telnetTemplateName\(namespaces\) \{[\s\S]*?\n\}/);
+  const m = SRC.match(
+    /const TEMPLATE_NAME_MAX = \d+;[\s\S]*?\nfunction telnetTemplateName\(namespaces\) \{[\s\S]*?\n\}/,
+  );
   assert.ok(m, 'telnetTemplateName bulunamadi — kirpma yok, tasma geri gelmis olabilir');
   // eslint-disable-next-line no-new-func
   return new Function(`${m[0]}; return telnetTemplateName;`)();
@@ -49,29 +60,39 @@ test('B3: IDOR kontrolu FAIL-CLOSED (kayit yoksa gecirmez)', () => {
   // Hatayi yutup devam eden bos catch: DB tokezlerse koruma tamamen devre disi kalirdi.
   assert.ok(
     !/\} catch \{ \/\* DB hiccup -> fail-open \*\/ \}/.test(SRC),
-    'hatayi yutup geciren bos catch duruyor'
+    'hatayi yutup geciren bos catch duruyor',
   );
   // Sahip DOGRULANAMADIYSA reddedilmeli; "rows.length && ..." kalibi kayit yoksa
   // hicbir sey yapmadan gecirir.
   assert.ok(
     !/if \(rows\.length && rows\[0\]\.username &&/.test(SRC),
-    'kayit yoksa gecirenen eski kalip duruyor'
+    'kayit yoksa gecirenen eski kalip duruyor',
   );
-  assert.match(SRC, /if \(!owner \|\| owner !== me\)/, 'sahiplik kanitlanmadikca reddeden kontrol yok');
+  assert.match(
+    SRC,
+    /if \(!owner \|\| owner !== me\)/,
+    'sahiplik kanitlanmadikca reddeden kontrol yok',
+  );
 });
 
 test('B3: DB hatasi da REDDE dusurur (503), sessizce gecirmez', () => {
-  assert.match(SRC, /sahiplik sorgusu basarisiz — erisim reddedildi/);
-  assert.match(SRC, /res\.status\(503\)/);
+  assert.match(norm(SRC), /sahiplik sorgusu basarisiz — erisim reddedildi/);
+  assert.match(norm(SRC), /\.status\(503\)/);
 });
 
 test('B3: sahiplik launch aninda bellege de yazilir (fail-closed isin sahibini kilitlemesin)', () => {
-  const hits = SRC.match(/rememberJobOwner\(serverId, result\?\.jobId, req\.session\?\.user\?\.username\)/g) || [];
+  const hits =
+    norm(SRC).match(
+      /rememberJobOwner\( ?serverId, ?result\?\.jobId, ?req\.session\?\.user\?\.username,? ?\)/g,
+    ) || [];
   assert.equal(hits.length, 2, 'her iki dalda (openshift + legacy) sahiplik kaydedilmeli');
   assert.match(SRC, /JOB_OWNER_CACHE_MAX/, 'onbellek sinirsiz buyuyemez');
 });
 
 test('B3: gecmis yazilamazsa artik sessiz uyari degil, HATA loglanir', () => {
-  assert.ok(!/console\.warn\('\[Telnet\] Gecmis kaydedilemedi/.test(SRC), 'sessiz warn duruyor');
-  assert.match(SRC, /console\.error\('\[Telnet\] Gecmis YAZILAMADI/);
+  assert.ok(
+    !/console\.warn\( ?"\[Telnet\] Gecmis kaydedilemedi/.test(norm(SRC)),
+    'sessiz warn duruyor',
+  );
+  assert.match(norm(SRC), /console\.error\( ?"\[Telnet\] Gecmis YAZILAMADI/);
 });

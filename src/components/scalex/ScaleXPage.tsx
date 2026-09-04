@@ -8,53 +8,74 @@
 // İskelet TelnetWizardPage'ten: `STEP_TITLES`, `backTargetFor`, `busyRef` (state DEĞİL —
 // aynı tick'teki iki tık iki AWX işi açardı), `<div key={step}>` ile adım sıfırlama.
 // ERKEN `return` TÜM HOOK'LARIN ALTINDA olmak zorunda (bkz. src/__tests__/hook-order.test.cjs).
-import React, { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon, ClockIcon, ExclamationTriangleIcon, StopCircleIcon } from "@heroicons/react/24/outline";
-import { scalexApi, type ScaleXAction, type ScaleXMode, type ScaleXRunResult, type ScaleXWorkload, type ScaleXStoppedItem } from "@/api/scalexApi";
-import { useJobTracker } from "@/contexts/JobTrackerContext";
-import { humanizeHealth } from "@/utils/scalexHealth";
-import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
-import ScopeStep from "./steps/ScopeStep";
-import NamespaceStep from "./steps/NamespaceStep";
-import WorkloadStep from "./steps/WorkloadStep";
-import OperationStep from "./steps/OperationStep";
-import PreviewStep from "./steps/PreviewStep";
-import ScaleXResultPanel from "./steps/ScaleXResultPanel";
-import StoppedPanel from "./StoppedPanel";
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeftIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  StopCircleIcon,
+} from '@heroicons/react/24/outline';
+import {
+  scalexApi,
+  type ScaleXAction,
+  type ScaleXMode,
+  type ScaleXRunResult,
+  type ScaleXWorkload,
+  type ScaleXStoppedItem,
+} from '@/api/scalexApi';
+import { useJobTracker } from '@/contexts/JobTrackerContext';
+import { humanizeHealth } from '@/utils/scalexHealth';
+import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
+import ScopeStep from './steps/ScopeStep';
+import NamespaceStep from './steps/NamespaceStep';
+import WorkloadStep from './steps/WorkloadStep';
+import OperationStep from './steps/OperationStep';
+import PreviewStep from './steps/PreviewStep';
+import ScaleXResultPanel from './steps/ScaleXResultPanel';
+import StoppedPanel from './StoppedPanel';
 
-type Step = "scope" | "namespace" | "workloads" | "operation" | "preview" | "done";
+type Step = 'scope' | 'namespace' | 'workloads' | 'operation' | 'preview' | 'done';
 
 const STEP_TITLES: Record<Step, string> = {
-  scope: "Kapsam",
-  namespace: "Namespace",
-  workloads: "Uygulamalar",
-  operation: "İşlem",
-  preview: "Önizleme",
-  done: "Sonuç",
+  scope: 'Kapsam',
+  namespace: 'Namespace',
+  workloads: 'Uygulamalar',
+  operation: 'İşlem',
+  preview: 'Önizleme',
+  done: 'Sonuç',
 };
 
 function backTargetFor(s: Step): Step | null {
   switch (s) {
-    case "namespace": return "scope";
-    case "workloads": return "namespace";
-    case "operation": return "workloads";
-    case "preview": return "operation";
-    default: return null;   // `scope` ilk adım, `done`dan geri dönülmez (yeni işlem başlatılır)
+    case 'namespace':
+      return 'scope';
+    case 'workloads':
+      return 'namespace';
+    case 'operation':
+      return 'workloads';
+    case 'preview':
+      return 'operation';
+    default:
+      return null; // `scope` ilk adım, `done`dan geri dönülmez (yeni işlem başlatılır)
   }
 }
 
 function fmtElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
 const ScaleXPage: React.FC = () => {
-  const [step, setStep] = useState<Step>("scope");
-  const [env, setEnv] = useState("");
-  const [tenant, setTenant] = useState("");
+  const [step, setStep] = useState<Step>('scope');
+  const [env, setEnv] = useState('');
+  const [tenant, setTenant] = useState('');
   const [clusters, setClusters] = useState<string[]>([]);
-  const [namespace, setNamespace] = useState("");
+  const [namespace, setNamespace] = useState('');
   const [apps, setApps] = useState<string[]>([]);
+  // SECIM ANAHTARLARI (ad+tip). `apps` sunucuya giden ADLARDIR; ekranin secim durumu
+  // ise tipi de tasimak ZORUNDA — aksi halde ayni ada sahip iki nesneden hangisinin
+  // secildigi geri donuste kayboluyor (bkz. WorkloadStep keyOf notu).
+  const [workloadKeys, setWorkloadKeys] = useState<string[]>([]);
   const [workloads, setWorkloads] = useState<ScaleXWorkload[]>([]);
   // Kesif verisinin alindigi an. Onizleme yeniden kesif YAPMIYOR; damgayi
   // gostermemek, dakikalar once alinmis bir replica sayisini "su anki durum"
@@ -63,12 +84,12 @@ const ScaleXPage: React.FC = () => {
   // Kullanici ISLEM adimini bir kez doldurdu mu? Doldurduysa geri donusde kendi
   // secimleri geri yuklenir; doldurmadiysa adim NOTR acilir (bkz. OperationStep).
   const [operationTouched, setOperationTouched] = useState(false);
-  const [action, setAction] = useState<ScaleXAction>("stop");
-  const [executionMode, setExecutionMode] = useState<ScaleXMode>("dry_run");
+  const [action, setAction] = useState<ScaleXAction>('stop');
+  const [executionMode, setExecutionMode] = useState<ScaleXMode>('dry_run');
   const [targetReplicas, setTargetReplicas] = useState<string | undefined>(undefined);
-  const [verificationTimeout, setVerificationTimeout] = useState("60");
+  const [verificationTimeout, setVerificationTimeout] = useState('60');
   const [allowPartial, setAllowPartial] = useState(true);
-  const [mailCc, setMailCc] = useState("");
+  const [mailCc, setMailCc] = useState('');
   const [hpaPin, setHpaPin] = useState(false);
 
   const [busy, setBusy] = useState(false);
@@ -86,7 +107,9 @@ const ScaleXPage: React.FC = () => {
   // "replica geldi ama pod CrashLoopBackOff" durumunu BAŞARILI sayar. Bu boşluğu
   // `health` keşfi kapatıyor; `Durdur`da anlamsız (0 pod bekleniyor), o yüzden
   // yalnızca `Geri Al`/`Ölçekle` sonrası koşar.
-  const [health, setHealth] = useState<{ app: string; step: string; status: string; detail: string }[] | null>(null);
+  const [health, setHealth] = useState<
+    { app: string; step: string; status: string; detail: string }[] | null
+  >(null);
   const healthStartedRef = useRef(false);
 
   const { addJob, jobs } = useJobTracker();
@@ -116,13 +139,16 @@ const ScaleXPage: React.FC = () => {
   // uygulama ayağa kalkması bekleniyorsa.
   useEffect(() => {
     if (!finished || !runResult || healthStartedRef.current) return;
-    if (runResult.mode !== "apply" || runResult.action === "stop") return;
-    if (runResult.overallStatus === "FAIL") return;   // zaten başarısız, sağlık sormanın anlamı yok
+    if (runResult.mode !== 'apply' || runResult.action === 'stop') return;
+    if (runResult.overallStatus === 'FAIL') return; // zaten başarısız, sağlık sormanın anlamı yok
     healthStartedRef.current = true;
     let alive = true;
     (async () => {
       try {
-        const launched = await scalexApi.discover({ env, tenant, namespace, clusters, apps }, "health");
+        const launched = await scalexApi.discover(
+          { env, tenant, namespace, clusters, apps },
+          'health',
+        );
         if (!launched.ok) return;
         for (let i = 0; i < 20; i++) {
           await new Promise((r) => setTimeout(r, 3000));
@@ -140,7 +166,9 @@ const ScaleXPage: React.FC = () => {
         /* sağlık kontrolü BEST-EFFORT: başarısız olması asıl sonucu gizlemez */
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [finished, runResult, env, tenant, namespace, clusters, apps]);
 
   // Is bitince paneli tazele. YOKLAMA HATASINDA ARTIRMA: `JobTrackerContext` yoklama
@@ -157,10 +185,19 @@ const ScaleXPage: React.FC = () => {
   useEffect(() => {
     if (!job || !finished) return;
     let alive = true;
-    scalexApi.runStatus(job.serverId, job.jobId)
-      .then((s) => { if (!alive) return; setRunResult(s.result); setCatalogWarning(s.catalogWarning); })
-      .catch(() => { /* ham log yine görünür */ });
-    return () => { alive = false; };
+    scalexApi
+      .runStatus(job.serverId, job.jobId)
+      .then((s) => {
+        if (!alive) return;
+        setRunResult(s.result);
+        setCatalogWarning(s.catalogWarning);
+      })
+      .catch(() => {
+        /* ham log yine görünür */
+      });
+    return () => {
+      alive = false;
+    };
   }, [job, finished]);
 
   // BIR ONCEKI CALISTIRMANIN IZLERI. Yeni bir islem baslatan HER yol bunu cagirmak
@@ -176,10 +213,16 @@ const ScaleXPage: React.FC = () => {
   //   * `healthStartedRef` hala `true` oldugu icin geri alma sonrasi saglik kontrolu
   //     HIC KOSMUYORDU — V9-V11'in kurdugu koruma sessizce devre disi kaliyordu.
   function resetRunState() {
-    setError(null); setNotice(null);
-    setJob(null); setRunResult(null); setCatalogWarning(null);
-    setTrackedJobId(null); setCancelling(false); setElapsed(0);
-    setHealth(null); healthStartedRef.current = false;
+    setError(null);
+    setNotice(null);
+    setJob(null);
+    setRunResult(null);
+    setCatalogWarning(null);
+    setTrackedJobId(null);
+    setCancelling(false);
+    setElapsed(0);
+    setHealth(null);
+    healthStartedRef.current = false;
   }
 
   // `env`/`tenant`/`clusters` BILEREK korunur: kullanici genellikle ayni kapsamda ikinci
@@ -188,39 +231,70 @@ const ScaleXPage: React.FC = () => {
   // SESSIZCE tasinir ve kullanici bunu fark etmez.
   function restart() {
     resetRunState();
-    setStep("scope");
-    setNamespace(""); setApps([]); setWorkloads([]); setWorkloadsFetchedAt(null);
-    setAction("stop"); setExecutionMode("dry_run"); setTargetReplicas(undefined);
-    setVerificationTimeout("60"); setAllowPartial(true); setMailCc(""); setHpaPin(false);
+    setStep('scope');
+    setNamespace('');
+    setApps([]);
+    setWorkloadKeys([]);
+    setWorkloads([]);
+    setWorkloadsFetchedAt(null);
+    setAction('stop');
+    setExecutionMode('dry_run');
+    setTargetReplicas(undefined);
+    setVerificationTimeout('60');
+    setAllowPartial(true);
+    setMailCc('');
+    setHpaPin(false);
     setOperationTouched(false);
   }
 
   async function guarded(fn: () => Promise<void>) {
     if (busyRef.current) return;
-    busyRef.current = true; setBusy(true); setError(null);
-    try { await fn(); } catch (e) { setError((e as Error).message); }
-    finally { busyRef.current = false; setBusy(false); }
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   }
 
   function run(extra: { writtenConfirm?: string; reason?: string; ocoNumber?: string }) {
     return guarded(async () => {
       const r = await scalexApi.run({
-        env, tenant, namespace, clusters, apps,
-        action, executionMode, targetReplicas, verificationTimeout, allowPartial, mailCc, hpaPin,
+        env,
+        tenant,
+        namespace,
+        clusters,
+        apps,
+        action,
+        executionMode,
+        targetReplicas,
+        verificationTimeout,
+        allowPartial,
+        mailCc,
+        hpaPin,
         // GERI ALMA HEDEFLERI: sunucu bu sayilari kendisi bilmiyor (deger cluster'daki
         // durum kaydinda) ve HPA sabitlemesine izin verip vermeyecegine bunlara bakarak
         // karar veriyor. Liste yalnizca KISITLAYICI yonde is gorur: hedeflerden biri 0
         // ya da bilinmiyorsa sabitleme reddedilir — cunku `minReplicas: 0` ya API
         // tarafindan reddedilir ya da uygulamayi 0'da kilitler.
-        ...(action === "restore"
-          ? { restoreTargets: workloads.filter((w) => apps.includes(w.name)).map((w) => w.previousReplicas) }
+        ...(action === 'restore'
+          ? {
+              restoreTargets: workloads
+                .filter((w) => apps.includes(w.name))
+                .map((w) => w.previousReplicas),
+            }
           : {}),
         // TIP HARITASI — YALNIZCA KESIFTEN gelen satirlar. Aynadan turetilen
         // satirlarda (`source: "mirror"`) tip alani eski bir kayittan gelir ve bayat
         // olabilir; bayat bir tiple islem yapmak yanlis nesneye dokunmak demektir.
         // Gonderilmeyen uygulamalar icin playbook bugunku otomatik tespiti yapar.
         workloadKinds: workloads
-          .filter((w) => w.source === "discovery" && apps.includes(w.name) && w.scalable !== false)
+          .filter((w) => w.source === 'discovery' && apps.includes(w.name) && w.scalable !== false)
           .map((w) => ({ name: w.name, kind: w.kind })),
         ...extra,
       });
@@ -230,18 +304,22 @@ const ScaleXPage: React.FC = () => {
         // numara girecegi alan onizleme ekraninda kalir ve kullanici oraya nasil
         // donecegini bilemez. Bu yuzden kapi yanitlarinda ONIZLEMEYE geri donuyoruz —
         // gerekli alanlar (OCO numarasi, gerekce, yazili onay) orada zaten var.
-        const handshake = r.ocoRequired || r.ocoDecisionRequired || r.ocoExpired
-          || r.writtenConfirmRequired || r.reasonRequired;
+        const handshake =
+          r.ocoRequired ||
+          r.ocoDecisionRequired ||
+          r.ocoExpired ||
+          r.writtenConfirmRequired ||
+          r.reasonRequired;
         if (handshake) {
-          setStep("preview");
+          setStep('preview');
           setError(
             r.ocoExpired
-              ? `${r.message || "OCO penceresi kapandı."} Yeni bir OCO kaydı girin ya da pencere açıldığında tekrar deneyin.`
-              : r.message || "İşlem için ek bilgi gerekiyor — aşağıdaki alanı doldurun."
+              ? `${r.message || 'OCO penceresi kapandı.'} Yeni bir OCO kaydı girin ya da pencere açıldığında tekrar deneyin.`
+              : r.message || 'İşlem için ek bilgi gerekiyor — aşağıdaki alanı doldurun.',
           );
           return;
         }
-        setError(r.message || "İşlem başlatılamadı.");
+        setError(r.message || 'İşlem başlatılamadı.');
         return;
       }
       // OCO penceresi henuz acilmadiysa sunucu 200 + `ocoDeferred` doner: is
@@ -251,10 +329,12 @@ const ScaleXPage: React.FC = () => {
         // denenecegini soylemedigi surece kullaniciyi tahmine birakir.
         const w = r.oco?.windowStartText;
         setNotice(
-          `OCO penceresi henüz açılmadı — işlem başlatılmadı, cluster'a dokunulmadı.`
-          + (w ? ` Pencere ${w} tarihinde açılıyor; o saatten sonra tekrar deneyin.` : " Pencere açıldığında tekrar deneyin.")
+          `OCO penceresi henüz açılmadı — işlem başlatılmadı, cluster'a dokunulmadı.` +
+            (w
+              ? ` Pencere ${w} tarihinde açılıyor; o saatten sonra tekrar deneyin.`
+              : ' Pencere açıldığında tekrar deneyin.'),
         );
-        setStep("done");
+        setStep('done');
         return;
       }
       // SAVUNMA: ortak kapi zamanlama yaptiysa ortada AWX job'i YOKTUR. Bu dal
@@ -262,13 +342,17 @@ const ScaleXPage: React.FC = () => {
       // `serverId: undefined` yazar ve ekran sonsuza dek "calisiyor" spinner'i
       // gosterirdi — sessiz bir kilitlenme yerine net bir mesaj.
       if (r.ocoScheduled || r.jobId == null || r.serverId == null) {
-        setNotice(r.message || "İşlem başlatılmadı — AWX iş numarası dönmedi. Lütfen tekrar deneyin.");
-        setStep("done");
+        setNotice(
+          r.message || 'İşlem başlatılmadı — AWX iş numarası dönmedi. Lütfen tekrar deneyin.',
+        );
+        setStep('done');
         return;
       }
       if (r.pendingApproval) {
-        setNotice(`SMART kaydı açıldı (${r.externalTicketId}). Onay geldiğinde iş otomatik başlayacak.`);
-        setStep("done");
+        setNotice(
+          `SMART kaydı açıldı (${r.externalTicketId}). Onay geldiğinde iş otomatik başlayacak.`,
+        );
+        setStep('done');
         return;
       }
       setJob({ serverId: r.serverId, jobId: r.jobId });
@@ -280,7 +364,7 @@ const ScaleXPage: React.FC = () => {
         },
       });
       setTrackedJobId(id);
-      setStep("done");
+      setStep('done');
     });
   }
 
@@ -310,30 +394,41 @@ const ScaleXPage: React.FC = () => {
     // gorunuyor ve farkli kapsamlardan satirlar listeliyor; sayfa durumundaki
     // `env`/`tenant` bos ya da BASKA bir kapsam olabilir. Kayittan almazsak istek
     // yanlis kapsamla gider.
-    setEnv(item.env); setTenant(item.tenant);
+    setEnv(item.env);
+    setTenant(item.tenant);
     setClusters([item.clusterName]);
     setNamespace(item.namespace);
     setApps([item.appName]);
-    setWorkloads([{
-      cluster: item.clusterName, name: item.appName, kind: item.workloadKind || "-",
-      resource: "", specReplicas: 0, statusReplicas: 0, readyReplicas: 0,
-      hasHpa: false, image: null, statePhase: item.phase,
-      previousReplicas: item.previousReplicas, restorable: true,
-      // AYNADAN turetilmis sentetik satir: yukaridaki replica/imaj alanlari GERCEK
-      // DEGIL. Onizleme bu isareti gorup onlari gostermez.
-      source: "mirror",
-      // "Şu an durdurulmuş" listesinde GitOps bilgisi yok (o keşif `state` modundan
-      // geliyor, `workloads`tan değil). `null` = bilinmiyor; önizleme bu yüzden
-      // GitOps uyarısı göstermez — yanlış bir "temiz" iddiası yerine sessizlik.
-      gitops: null,
-    }]);
-    setAction("restore");
-    setExecutionMode("apply");
+    setWorkloads([
+      {
+        cluster: item.clusterName,
+        name: item.appName,
+        kind: item.workloadKind || '-',
+        resource: '',
+        specReplicas: 0,
+        statusReplicas: 0,
+        readyReplicas: 0,
+        hasHpa: false,
+        image: null,
+        statePhase: item.phase,
+        previousReplicas: item.previousReplicas,
+        restorable: true,
+        // AYNADAN turetilmis sentetik satir: yukaridaki replica/imaj alanlari GERCEK
+        // DEGIL. Onizleme bu isareti gorup onlari gostermez.
+        source: 'mirror',
+        // "Şu an durdurulmuş" listesinde GitOps bilgisi yok (o keşif `state` modundan
+        // geliyor, `workloads`tan değil). `null` = bilinmiyor; önizleme bu yüzden
+        // GitOps uyarısı göstermez — yanlış bir "temiz" iddiası yerine sessizlik.
+        gitops: null,
+      },
+    ]);
+    setAction('restore');
+    setExecutionMode('apply');
     setHpaPin(false);
     // Geri donuste BOS FORM cikmasin: kullanici "Geri Al"a basarak bu kararlari
     // vermis sayilir, geri tusu onlari gostermeli.
     setOperationTouched(true);
-    setStep("preview");
+    setStep('preview');
   }
 
   // SONUC EKRANINDAN HIZLI GERI ALMA. `restoreFromPanel`in cok-hedefli kardesi:
@@ -349,19 +444,30 @@ const ScaleXPage: React.FC = () => {
     resetRunState();
     setClusters([...new Set(targets.map((t) => t.cluster))]);
     setApps([...new Set(targets.map((t) => t.app))]);
-    setWorkloads(targets.map((t) => ({
-      cluster: t.cluster, name: t.app, kind: t.kind || "-",
-      resource: "", specReplicas: 0, statusReplicas: 0, readyReplicas: 0,
-      hasHpa: false, image: null, statePhase: "scaled_down",
-      previousReplicas: null, restorable: true, gitops: null,
-      source: "mirror",
-    })));
+    setWorkloads(
+      targets.map((t) => ({
+        cluster: t.cluster,
+        name: t.app,
+        kind: t.kind || '-',
+        resource: '',
+        specReplicas: 0,
+        statusReplicas: 0,
+        readyReplicas: 0,
+        hasHpa: false,
+        image: null,
+        statePhase: 'scaled_down',
+        previousReplicas: null,
+        restorable: true,
+        gitops: null,
+        source: 'mirror',
+      })),
+    );
     setWorkloadsFetchedAt(null);
-    setAction("restore");
-    setExecutionMode("apply");
+    setAction('restore');
+    setExecutionMode('apply');
     setHpaPin(false);
     setOperationTouched(true);
-    setStep("preview");
+    setStep('preview');
   }
 
   // Turetilmis deger — hook DEGIL (U4: hook'lar erken `return`lerin ustunde kalmali).
@@ -374,8 +480,13 @@ const ScaleXPage: React.FC = () => {
     <div className="max-w-3xl mx-auto space-y-5">
       <div className="flex items-start gap-3">
         {back && (
-          <button type="button" onClick={() => setStep(back)} disabled={busy} aria-label="Geri"
-            className="mt-1 p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-inset)]">
+          <button
+            type="button"
+            onClick={() => setStep(back)}
+            disabled={busy}
+            aria-label="Geri"
+            className="mt-1 p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-inset)]"
+          >
             <ArrowLeftIcon aria-hidden="true" className="w-4 h-4" />
           </button>
         )}
@@ -390,71 +501,145 @@ const ScaleXPage: React.FC = () => {
           altindadir; duyurulmazsa kullanici hicbir sey olmamis gibi butona tekrar tekrar
           basar. */}
       {error && (
-        <div role="alert" aria-live="assertive"
-             className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700"
+        >
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
 
       <div key={step} className="card p-5 animate-slide-up">
-        {step === "scope" && (
-          <ScopeStep busy={busy} initial={{ env, tenant, clusters }}
-            onSubmit={(v) => { setEnv(v.env); setTenant(v.tenant); setClusters(v.clusters); setStep("namespace"); }} />
-        )}
-
-        {step === "namespace" && (
-          <NamespaceStep env={env} tenant={tenant} clusters={clusters} busy={busy} initial={namespace}
-            onSubmit={(ns) => { setNamespace(ns); setApps([]); setStep("workloads"); }} />
-        )}
-
-        {step === "workloads" && (
-          <WorkloadStep scope={{ env, tenant, namespace, clusters }} busy={busy} initial={apps}
-            onBack={() => setStep("namespace")}
-            onSubmit={(v) => { setApps(v.apps); setWorkloads(v.workloads); setWorkloadsFetchedAt(v.fetchedAt); setStep("operation"); }} />
-        )}
-
-        {step === "operation" && (
-          <OperationStep apps={apps} workloads={workloads} clusterCount={clusters.length} busy={busy}
-            previous={operationTouched ? {
-              action, executionMode, targetReplicas, verificationTimeout, allowPartial, mailCc, hpaPin,
-            } : undefined}
+        {step === 'scope' && (
+          <ScopeStep
+            busy={busy}
+            initial={{ env, tenant, clusters }}
             onSubmit={(v) => {
-              setAction(v.action); setExecutionMode(v.executionMode);
-              setTargetReplicas(v.targetReplicas); setVerificationTimeout(v.verificationTimeout);
-              setAllowPartial(v.allowPartial); setMailCc(v.mailCc); setHpaPin(v.hpaPin);
+              setEnv(v.env);
+              setTenant(v.tenant);
+              setClusters(v.clusters);
+              setStep('namespace');
+            }}
+          />
+        )}
+
+        {step === 'namespace' && (
+          <NamespaceStep
+            env={env}
+            tenant={tenant}
+            clusters={clusters}
+            busy={busy}
+            initial={namespace}
+            onSubmit={(ns) => {
+              setNamespace(ns);
+              setApps([]);
+              setWorkloadKeys([]);
+              setStep('workloads');
+            }}
+          />
+        )}
+
+        {/* `initial` AD+TIP ANAHTARI: duz ad veriliyordu ve belirsiz bir uygulamada
+            geri donuste secim kaybolup karsilikli kilit cozuluyordu. */}
+        {step === 'workloads' && (
+          <WorkloadStep
+            scope={{ env, tenant, namespace, clusters }}
+            busy={busy}
+            initial={workloadKeys}
+            onBack={() => setStep('namespace')}
+            onSubmit={(v) => {
+              setApps(v.apps);
+              setWorkloadKeys(v.selectedKeys);
+              setWorkloads(v.workloads);
+              setWorkloadsFetchedAt(v.fetchedAt);
+              setStep('operation');
+            }}
+          />
+        )}
+
+        {step === 'operation' && (
+          <OperationStep
+            apps={apps}
+            workloads={workloads}
+            clusterCount={clusters.length}
+            busy={busy}
+            previous={
+              operationTouched
+                ? {
+                    action,
+                    executionMode,
+                    targetReplicas,
+                    verificationTimeout,
+                    allowPartial,
+                    mailCc,
+                    hpaPin,
+                  }
+                : undefined
+            }
+            onSubmit={(v) => {
+              setAction(v.action);
+              setExecutionMode(v.executionMode);
+              setTargetReplicas(v.targetReplicas);
+              setVerificationTimeout(v.verificationTimeout);
+              setAllowPartial(v.allowPartial);
+              setMailCc(v.mailCc);
+              setHpaPin(v.hpaPin);
               setOperationTouched(true);
-              setStep("preview");
-            }} />
+              setStep('preview');
+            }}
+          />
         )}
 
-        {step === "preview" && (
-          <PreviewStep scope={scope} action={action} executionMode={executionMode}
-            targetReplicas={targetReplicas} verificationTimeout={verificationTimeout}
-            workloads={workloads} hpaPin={hpaPin} allowPartial={allowPartial} mailCc={mailCc}
-            fetchedAt={workloadsFetchedAt} busy={busy} onConfirm={run} />
+        {step === 'preview' && (
+          <PreviewStep
+            scope={scope}
+            action={action}
+            executionMode={executionMode}
+            targetReplicas={targetReplicas}
+            verificationTimeout={verificationTimeout}
+            workloads={workloads}
+            hpaPin={hpaPin}
+            allowPartial={allowPartial}
+            mailCc={mailCc}
+            fetchedAt={workloadsFetchedAt}
+            busy={busy}
+            onConfirm={run}
+          />
         )}
 
-        {step === "done" && (
+        {step === 'done' && (
           <div className="space-y-4">
             {notice && (
               <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-                <ClockIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" /><span>{notice}</span>
+                <ClockIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>{notice}</span>
               </div>
             )}
 
             {runResult ? (
-              <ScaleXResultPanel result={runResult} catalogWarning={catalogWarning} onUndo={restoreFromResult} />
+              <ScaleXResultPanel
+                result={runResult}
+                catalogWarning={catalogWarning}
+                onUndo={restoreFromResult}
+              />
             ) : !notice ? (
               <div className="flex items-center gap-2.5">
                 {finished ? (
-                  <ExclamationTriangleIcon aria-hidden="true" className="w-5 h-5 flex-shrink-0 text-[var(--status-warning)]" />
+                  <ExclamationTriangleIcon
+                    aria-hidden="true"
+                    className="w-5 h-5 flex-shrink-0 text-[var(--status-warning)]"
+                  />
                 ) : (
-                  <span aria-hidden="true" className="w-5 h-5 flex-shrink-0 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                  <span
+                    aria-hidden="true"
+                    className="w-5 h-5 flex-shrink-0 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin"
+                  />
                 )}
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-[var(--text-primary)]">
-                    {finished ? "İş bitti ama yapılandırılmış sonuç gelmedi." : "İşlem çalışıyor…"}
+                    {finished ? 'İş bitti ama yapılandırılmış sonuç gelmedi.' : 'İşlem çalışıyor…'}
                   </p>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
                     {finished
@@ -467,16 +652,23 @@ const ScaleXPage: React.FC = () => {
 
             {job && (
               <div className="flex items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
-                <span>AWX Job: <span className="font-mono">#{job.jobId}</span></span>
+                <span>
+                  AWX Job: <span className="font-mono">#{job.jobId}</span>
+                </span>
                 <span className="inline-flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 tabular-nums">
-                    <ClockIcon aria-hidden="true" className="w-3.5 h-3.5" />{fmtElapsed(elapsed)}
+                    <ClockIcon aria-hidden="true" className="w-3.5 h-3.5" />
+                    {fmtElapsed(elapsed)}
                   </span>
                   {!finished && (
-                    <button type="button" onClick={cancel} disabled={busy || cancelling}
-                      className="inline-flex items-center gap-1 text-[var(--status-danger)] hover:underline">
+                    <button
+                      type="button"
+                      onClick={cancel}
+                      disabled={busy || cancelling}
+                      className="inline-flex items-center gap-1 text-[var(--status-danger)] hover:underline"
+                    >
                       <StopCircleIcon aria-hidden="true" className="w-3.5 h-3.5" />
-                      {cancelling ? "Durduruluyor…" : "İşlemi durdur"}
+                      {cancelling ? 'Durduruluyor…' : 'İşlemi durdur'}
                     </button>
                   )}
                 </span>
@@ -489,24 +681,36 @@ const ScaleXPage: React.FC = () => {
                 renkte, yani bir YETKİ YOKLUĞU HATA gibi duruyordu. */}
             {healthView && (healthView.hasContent || healthView.asks.length > 0) && (
               <div className="rounded-xl border border-[var(--border)] p-3 space-y-1.5">
-                <p className="text-xs font-semibold text-[var(--text-primary)]">İşlem sonrası sağlık</p>
-                {healthView.hasContent && healthView.lines
-                  .filter((l) => l.tone !== "info")
-                  .map((l, i) => (
-                    <p key={i} className={`text-xs ${l.tone === "ok" ? "text-[var(--text-muted)]" : "text-amber-800"}`}>
-                      <span className="font-mono">{l.app}</span> · {l.text}
-                    </p>
-                  ))}
+                <p className="text-xs font-semibold text-[var(--text-primary)]">
+                  İşlem sonrası sağlık
+                </p>
+                {healthView.hasContent &&
+                  healthView.lines
+                    .filter((l) => l.tone !== 'info')
+                    .map((l, i) => (
+                      <p
+                        key={i}
+                        className={`text-xs ${l.tone === 'ok' ? 'text-[var(--text-muted)]' : 'text-amber-800'}`}
+                      >
+                        <span className="font-mono">{l.app}</span> · {l.text}
+                      </p>
+                    ))}
                 {/* Eksik yetkiler AYRI ve SAKIN: bir sorun değil, bir eksik — ve
                     kullanıcının ne isteyeceğini bilmesi gerekiyor. */}
                 {healthView.asks.map((a, i) => (
-                  <p key={`ask-${i}`} className="text-xs text-[var(--text-muted)]">{a}</p>
+                  <p key={`ask-${i}`} className="text-xs text-[var(--text-muted)]">
+                    {a}
+                  </p>
                 ))}
               </div>
             )}
 
             {trackedJob && (
-              <AnsibleLogTerminal output={trackedJob.output} status={trackedJob.status || "pending"} title={trackedJob.title} />
+              <AnsibleLogTerminal
+                output={trackedJob.output}
+                status={trackedJob.status || 'pending'}
+                title={trackedJob.title}
+              />
             )}
 
             <div className="flex justify-end border-t border-[var(--border)] pt-4">
@@ -517,13 +721,24 @@ const ScaleXPage: React.FC = () => {
                   girdiyi tekrar girip ayni hatayi alma ihtimali yuksek. Kapsam ve
                   uygulama secimi duruyorken islem adimina donmek, yeni bir kesif isi
                   baslatmadan denemeyi mumkun kiliyor. */}
-              {runResult?.stage === "validation" && workloads.length > 0 && (
-                <button type="button" className="btn-secondary"
-                  onClick={() => { setError(null); setNotice(null); setRunResult(null); setJob(null); setStep("operation"); }}>
+              {runResult?.stage === 'validation' && workloads.length > 0 && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setError(null);
+                    setNotice(null);
+                    setRunResult(null);
+                    setJob(null);
+                    setStep('operation');
+                  }}
+                >
                   İşlem adımına dön
                 </button>
               )}
-              <button type="button" className="btn-secondary" onClick={restart}>Yeni işlem</button>
+              <button type="button" className="btn-secondary" onClick={restart}>
+                Yeni işlem
+              </button>
             </div>
           </div>
         )}
@@ -538,7 +753,12 @@ const ScaleXPage: React.FC = () => {
           kesif isi baslatmak) zorunda kaliyordu.
           Kapsam secilmediginde panel TUM kapsamlari listeler; secilince ona daralir. */}
       <div className="card p-5">
-        <StoppedPanel env={env} tenant={tenant} onRestore={restoreFromPanel} reloadKey={stoppedReloadKey} />
+        <StoppedPanel
+          env={env}
+          tenant={tenant}
+          onRestore={restoreFromPanel}
+          reloadKey={stoppedReloadKey}
+        />
       </div>
     </div>
   );
