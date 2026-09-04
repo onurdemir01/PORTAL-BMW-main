@@ -1,0 +1,13 @@
+# Paket kimligi — SURUM SESSIZCE AYRISMASIN DIYE VAR.
+#
+# NE OLDU: 2026-09-04'te runner'a dinamik tip kesfi eklendi (oc api-resources, WARN
+# satirina resource= alani, api_absent/no_permission ayriminin yeniden tanimlanmasi)
+# ama VERSION 3'te kaldi. Sonuc: IKI FARKLI paket ayni surum numarasini tasidi.
+# AWX'te eski v3 kosarken portal da 3 bekledigi icin uyusmazlik uyarisi CIKMAZDI —
+# damganin var olus sebebi ilk gercek sinavinda islemiyordu.
+#
+# KURAL: runner degistiyse VERSION artar ve asagidaki ozet guncellenir. Bekci
+# (scalex-awx-package.test.cjs, S9) ikisini birden kilitler; ozeti guncelleyip
+# surumu artirmayi unutmak da kirmizi doner.
+version=4
+runner_sha256=516e2b799fac8bce489154ca5906280923619c21ac06bcf431d3185f651c6dc3

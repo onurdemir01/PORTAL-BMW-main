@@ -105,10 +105,18 @@ Ayrıntılı adımlar (AWX template alanları, survey'in API ile yüklenmesi, s�
 
 ## Workload tipleri
 
-Keşif altı tipe bakar (Deployment, StatefulSet, DeploymentConfig, Argo Rollout,
-DaemonSet, CronJob); işlem yalnızca ilk dördüne dokunur. DaemonSet düğüm sayısıyla
+Keşif tip listesini **cluster'ın kendisinden** alır (`oc api-resources`, yetki
+gerektirmez); bilinen tipler Deployment, StatefulSet, DeploymentConfig, Argo Rollout,
+DaemonSet ve CronJob'dur ve işlem yalnızca ilk dördüne dokunur. Cluster'da `scale` alt
+kaynağı olan başka bir tip (operator CRD'si) bulunursa **listelenir ama seçilemez**
+(`reason=unsupported_kind`) — işlem yolu o tipler için uçtan uca denenmedi. DaemonSet düğüm sayısıyla
 ölçeklenir, CronJob `spec.suspend` ile durdurulur — ikisi de replica semantiği
 taşımaz, listede `ölçeklenemez` rozetiyle görünür ve **seçilemez**.
+
+**Neden `api-resources`?** Karar eskiden `oc auth can-i`nin başarısına dayanıyordu ve
+`can-i`nin *kendisi* hata verdiğinde (kaldırılmış DeploymentConfig API'si, kurulu olmayan
+Rollout CRD'si) sonuç tersine dönüyor, ekran API'si olmayan bir tip için "platform
+ekibinden yetki isteyin" diyordu. Artık ölçüt cluster'ın kaynak envanteri.
 
 **Bakılamayan tip sessizce atlanmaz.** Bu, üretimde "StatefulSet keşifte çıkmıyor"
 olarak bildirilen sorunun kök nedeniydi: bir tipin `oc get`'i düştüğünde hiçbir iz

@@ -81,6 +81,15 @@ kopyalanmadığında eskiden ortada hiçbir işaret olmuyordu; ekran yalnızca
 **Sürümü artıran her değişiklikten sonra klasörü yeniden kopyalayın ve
 survey'i yeniden yükleyin.**
 
+> **Sürüm 4 (2026-09-04):** keşif artık tip listesini `oc api-resources` ile cluster'dan
+> alıyor, `api_absent` / `no_permission` ayrımı bu envantere dayanıyor ve `WORKLOAD_KIND`
+> satırı **tam kaynak adını** (`resource=statefulsets.apps`) taşıyor. Portal bu alanı
+> ekranda RBAC cümlesinde kullanıyor. `scalex_app/` yeniden kopyalanmalı.
+>
+> Sürüm ile paket içeriği bir daha sessizce ayrışmasın diye `scalex_app/PACKAGE_MANIFEST`
+> runner'ın sha256'sını tutar; `scalex_runner.sh` değişip sürüm artmazsa test kırmızı olur
+> (`scalex-awx-package.test.cjs`, S9).
+
 ## 3. Survey'i API ile yükle
 
 > **Neden API:** survey 17 soru taşıyor ve her sorunun `required: false` olması

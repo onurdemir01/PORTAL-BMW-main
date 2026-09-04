@@ -340,3 +340,55 @@ test('downloads.cleanupExpiredDownloads(): hic suresi dolmus indirme yoksa DELET
   assert.equal(count, 0);
   assert.equal(queryMock.mock.callCount(), 1);
 });
+
+// ── legacy.cjs transfer() — BOS DOSYA KAPISI ───────────────────────────────────
+//
+// EKRAN BIR SINIR DEGIL. `FileSelectionStep` 0 byte dosyalari `log yok` rozetiyle
+// gosterip secimi kapatiyor, ama istemci yolu DOGRUDAN gonderirse anti-TOCTOU
+// suzgeci bunu GECIRIR (cift kesif sonucunda gercekten var) ve portal iceriksiz bir
+// dosya icin AWX isi acardi. Kapinin sunucuda da olmasi gerekiyor.
+
+test('legacy.transfer(): 0 byte dosya reddedilir, HICBIR job launch edilmez', async (t) => {
+  const launchMock = t.mock.method(jobs, 'launchJob', async () => {
+    throw new Error('launchJob CAGRILMAMALIYDI');
+  });
+
+  const discoveryResult = {
+    overall_status: 'success',
+    hosts: [{
+      host: 'GBJBOT22', status: 'ok',
+      files: [
+        { path: '/vhosting8/APP-T.ear/logs/bos.log', size: 0 },
+        { path: '/vhosting8/APP-T.ear/logs/dolu.log', size: 1234 },
+      ],
+    }],
+  };
+  const requestRow = { request_id: 'req-empty', discovery_result_json: JSON.stringify(discoveryResult) };
+
+  await assert.rejects(
+    () => legacy.transfer(requestRow, [{ host: 'GBJBOT22', path: '/vhosting8/APP-T.ear/logs/bos.log' }]),
+    (err) => {
+      assert.equal(err.status, 400);
+      assert.equal(err.code, 'empty_file');
+      return true;
+    }
+  );
+  assert.equal(launchMock.mock.callCount(), 0, 'bos dosyada launchJob asla cagrilmamali');
+});
+
+test('legacy.transfer(): boyutu BILINMEYEN dosya engellenmez (eski kesif ciktisi kirilmaz)', async (t) => {
+  // `size` alani gelmiyorsa bunu "bos" saymak, calisan bir akisi kirardi: eski kesif
+  // sonuclari boyut tasimiyor olabilir. Bilinmeyen boyut GECER.
+  let launched = 0;
+  t.mock.method(jobs, 'launchJob', async () => { launched += 1; return { id: 1 }; });
+  t.mock.method(requests, 'updateRequest', async () => {});
+
+  const discoveryResult = {
+    overall_status: 'success',
+    hosts: [{ host: 'GBJBOT22', status: 'ok', files: [{ path: '/vhosting/APP.ear/logs/eski.log' }] }],
+  };
+  const requestRow = { request_id: 'req-nosize', discovery_result_json: JSON.stringify(discoveryResult) };
+
+  await legacy.transfer(requestRow, [{ host: 'GBJBOT22', path: '/vhosting/APP.ear/logs/eski.log' }]);
+  assert.equal(launched, 1, 'boyutu bilinmeyen dosya haksiz yere engellendi');
+});

@@ -202,9 +202,18 @@ async function transfer(requestRow, selected) {
     throw Object.assign(new Error('Önce keşif tamamlanmalı.'), { status: 400 });
   }
   const validPairs = new Set();
+  // BOS DOSYALAR (0 byte) transferi: bunlarda indirilecek bir sey YOK. Ekran onlari
+  // `log yok` rozetiyle gosterip secimi kapatiyor ama EKRAN BIR SINIR DEGIL — istemci
+  // yolu dogrudan gonderirse anti-TOCTOU suzgeci gecer (cift kesifte GERCEKTEN var) ve
+  // portal bos bir dosya icin AWX isi acardi. Boyut kesif sonucundan okunur; alan
+  // gelmiyorsa (eski kesif ciktisi) ENGELLENMEZ — bilinmeyen boyutu "bos" saymak
+  // calisan bir akisi kirardi.
+  const emptyPaths = new Set();
   for (const hostEntry of discoveryResult.hosts || []) {
     for (const file of hostEntry.files || []) {
       validPairs.add(`${hostEntry.host}::${file.path}`);
+      const size = Number(file.size);
+      if (Number.isFinite(size) && size <= 0) emptyPaths.add(`${hostEntry.host}::${file.path}`);
     }
   }
   const invalid = (selected || []).filter((s) => !validPairs.has(`${s.host}::${s.path}`));
@@ -216,6 +225,17 @@ async function transfer(requestRow, selected) {
   }
   if (selected.length === 0) {
     throw Object.assign(new Error('En az bir dosya seçilmeli.'), { status: 400 });
+  }
+
+  const empty = (selected || []).filter((s) => emptyPaths.has(`${s.host}::${s.path}`));
+  if (empty.length > 0) {
+    throw Object.assign(
+      new Error(
+        'Boş (0 byte) dosya indirilemez — içinde log yok: '
+        + empty.map((e) => `${e.host}:${e.path}`).join(', ')
+      ),
+      { status: 400, code: 'empty_file', empty }
+    );
   }
 
   // ── UST SINIR (2026-08-28) ──────────────────────────────────────────────────

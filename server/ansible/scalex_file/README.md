@@ -83,7 +83,13 @@ parçası değil, yalnızca geçici alan.
 
 ## Hangi workload tipleri
 
-Keşif **altı** tipe bakar; işlem yalnızca **dördüne** dokunur.
+Keşif tip listesini **cluster'ın kendisinden** alır:
+`oc api-resources --namespaced=true --verbs=list` — bu çağrı yetki gerektirmez
+(discovery her kimliğe açıktır) ve iki soruyu birbirinden ayırır: *"bu tip burada var mı"*
+ve *"listeleyebiliyor muyum"*. Envanter okunamazsa aşağıdaki sabit listeye düşülür,
+davranış gerilemez.
+
+Bilinen tipler şunlar; işlem yalnızca **ölçeklenebilir** olanlara dokunur.
 
 | Tip | Keşifte | İşlem | Neden |
 |---|---|---|---|
@@ -98,6 +104,12 @@ ReplicaSet / ReplicationController / Pod **bilerek dışarıdadır**: bunlar
 Deployment ve DeploymentConfig'in sahip olduğu nesnelerdir. Listelemek her
 uygulamayı iki kez gösterir ve kullanıcıya denetleyicinin saniyeler içinde geri
 alacağı bir "ölçekle" düğmesi sunardı.
+
+**Listede olmayan tipler de görünür.** Cluster'da `scale` alt kaynağı olan bir CRD
+(operator ile gelen `kafkas.kafka.strimzi.io` gibi) keşifte listelenir ve
+`scalable=no reason=unsupported_kind` ile gelir: **görünür ama seçilemez.** İşlem yolu bu
+tipler için uçtan uca denenmedi; `scalable=yes` demek, çalışacağını kanıtlamadığımız bir
+düğme sunmak olurdu.
 
 **Bakılamayan tip sessizce atlanmaz.** Bir tipin `oc get`'i düşerse (yetki yok,
 DeploymentConfig API'si kapalı, Rollout CRD'si kurulu değil) keşif bunu ayrıca

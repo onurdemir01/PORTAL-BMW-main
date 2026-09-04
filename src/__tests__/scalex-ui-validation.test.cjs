@@ -832,3 +832,34 @@ test('Z3 liste dolu ama hicbiri secilemiyorsa SEBEBI yazilir', () => {
   );
   assert.match(code, /replica ile ölçeklenemeyen/, 'kullaniciya sebep yazilmiyor');
 });
+
+// ── W: DENETIM BULGULARI B2 / B3 ────────────────────────────────────────────
+
+test('W1 RBAC cumlesi TAM KAYNAK ADINI yazar (kisa ad platform ekibine yanlis metin goturur)', () => {
+  const code = codeOnly(WORKLOAD);
+  // Runner `resource=statefulsets.apps` basiyordu ama portal alani DUSURUYOR, ekran da
+  // `list sts` yaziyordu. `oc auth can-i list sts` kisa adi guvenilir cozmez ve RBAC
+  // kurallari tam adla yazilir — kullanici platform ekibine calismayacak bir metin
+  // goturuyordu. Runner tarafini D7c kilitliyor; bu, sozlesmenin EKRAN ucu.
+  assert.match(
+    code,
+    /\{k\.verb \|\| ['"]list['"]\} \{k\.resource \|\| k\.kind\}/,
+    'ekran hala kisa adi yaziyor — tam kaynak adi kullanilmali',
+  );
+});
+
+test('W2 keşfedilen CRD, DaemonSet metniyle ANLATILMAZ', () => {
+  const code = codeOnly(WORKLOAD);
+  // `unsupported_kind` tek bir `else` daline dusuyordu ve o dal DaemonSet'e ozgudur:
+  // uc replicali bir Kafka icin "0 dugumde calisiyor · dugum sayisiyla olceklenir"
+  // yaziyordu — iki olgu da yanlis (`desired` bos oldugu icin sayi 0 gorunuyordu).
+  assert.match(
+    code,
+    /notScalableReason === ['"]unsupported_kind['"]/,
+    'kesfedilen CRD icin ayri dal yok — DaemonSet metnine duser',
+  );
+  assert.match(code, /bu nesne tipini henüz işleyemiyor/, 'kullaniciya dogru sebep yazilmiyor');
+  // Uc dal da AYRI kalmali: suspend (CronJob) · unsupported_kind (CRD) · dugum (DaemonSet).
+  assert.match(code, /düğüm sayısıyla ölçeklenir/, 'DaemonSet dali kaybolmus');
+  assert.match(code, /suspend gerekir/, 'CronJob dali kaybolmus');
+});
