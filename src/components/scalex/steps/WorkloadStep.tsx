@@ -220,7 +220,7 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
     // neyin çakıştığını da anlayamıyordu.
     const byKey = new Map<string, ScaleXWorkload>();
     for (const w of filtered) {
-      const key = `${w.name}\u0000${w.kind}`; // keyOf ile AYNI bicim
+      const key = `${w.name}\u0000${w.kind}`;
       if (!byKey.has(key)) byKey.set(key, w);
     }
     return [...byKey.values()].sort(
@@ -254,11 +254,11 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   }, [kindReports]);
 
   // SECIM KIMLIGI HER ZAMAN ad+tip. Eskiden KOSULLU idi (yalniz belirsiz adlarda
-  // `ad\0tip`, digerlerinde duz ad) ve gonderim her zaman duz ad yapiyordu; `ScaleXPage`
-  // o duz adi `initial` olarak geri veriyordu. Sonuc: "Geri" deyip adima donuldugunde
-  // belirsiz bir uygulamanin kutusu BOS gorunuyor ama alt bardaki sayac "1 secili"
-  // diyordu, karsilikli kilit cozuluyor ve iki tip birden isaretlenebiliyordu —
-  // ozelligin ortadan kaldirdigi `ambiguous` cikmazi geri geliyordu.
+  // `ad\0tip`, digerlerinde duz ad) ama gonderim her zaman duz ad yapiyordu ve
+  // `ScaleXPage` o duz adi `initial` olarak geri veriyordu. Sonuc: "Geri" deyip adima
+  // donuldugunde belirsiz bir uygulamanin kutusu BOS gorunuyor, alt bardaki sayac ise
+  // "1 secili" diyordu; karsilikli kilit cozuluyor ve iki tip birden isaretlenebiliyordu
+  // — ozelligin ortadan kaldirdigi `ambiguous` cikmazi geri geliyordu.
   const keyOf = (w: ScaleXWorkload) => `${w.name}\u0000${w.kind}`;
 
   const toggle = (w: ScaleXWorkload) => {
@@ -528,7 +528,7 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
 
       {/* LISTE DOLU AMA HICBIRI SECILEMIYOR. "Bulunamadi" bloku ateslenmez (liste bos
           degil), `Devam` pasiftir ve sebep hicbir yerde yazmazdi — kullanici neden
-          ilerleyemedigini goremiyordu. Bu, ekranin sustugu sinifin ta kendisi. */}
+          ilerleyemedigini goremiyordu. Ekranin sustugu sinifin ta kendisi. */}
       {list.length > 0 && list.every((w) => w.scalable === false) && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />

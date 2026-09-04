@@ -541,8 +541,8 @@ const ScaleXPage: React.FC = () => {
           />
         )}
 
-        {/* `initial` ARTIK AD+TIP ANAHTARI. Duz ad veriliyordu ve belirsiz bir uygulamada
-            geri donuste secim kaybolup karsilikli kilit cozuluyordu (bkz. WorkloadStep keyOf). */}
+        {/* `initial` AD+TIP ANAHTARI: duz ad veriliyordu ve belirsiz bir uygulamada
+            geri donuste secim kaybolup karsilikli kilit cozuluyordu. */}
         {step === 'workloads' && (
           <WorkloadStep
             scope={{ env, tenant, namespace, clusters }}
