@@ -111,6 +111,7 @@
   become: false
 
   vars_files:
+  # bu playbook bmw_portal\telnet_openshift\telnet_openshift.yaml credentials de bmw_portal\telnet_openshift\telnet_openshift.yaml 
     # Parolalar (vault) BURADAN gelir; portal yalnızca anahtarın ADINI taşır.
     - "{{ playbook_dir }}/../../bmw_openshift_jobs/global_variables/credentials.yaml"
     # OPSİYONEL FALLBACK: portal `api_url` ve `credential_key`'i extra_vars ile gönderiyor.
@@ -159,9 +160,15 @@
           {{ (enriched | default([])) + [{
             'cluster_name': item.cluster_name,
             'terminal_host': item.terminal_host | default(''),
-            'api_url': (item.api_url | default('')) or ((clusters[item.cluster_name] | default({})).api_url | default('')),
-            'credential_key': (item.credential_key | default('')) or ((clusters[item.cluster_name] | default({})).credential | default('')),
-            'username': item.username | default('')
+            'api_url':
+              (item.api_url | default('') | trim)
+              or ((clusters[item.cluster_name] | default({})).api_url | default('') | trim),
+            'credential_key':
+              (item.credential_key | default('') | trim)
+              or ((clusters[item.cluster_name] | default({})).credential | default('') | trim),
+            'username':
+              (item.username | default('') | trim)
+              or (ocp_username | default('') | trim)
           }] }}
       loop: "{{ my_ocp_clusters }}"
       loop_control:
@@ -185,11 +192,20 @@
           {{
             telnet_units | default([]) + [{
               'cluster_name': item.cluster_name,
-              'url': item.api_url,
-              'username': item.username | default(ocp_username | default('')),
-              'password': lookup('vars', item.credential_key, default=''),
-              'kubeconfig': '/tmp/kubeconfig-telnet-' ~ job_tag ~ '-' ~ item.cluster_name,
-              'pod_name': 'telnet-test-' ~ job_tag
+              'url': item.api_url | default('') | trim,
+              'username':
+                (item.username | default('') | trim)
+                or (ocp_username | default('') | trim),
+              'password':
+                lookup(
+                  'vars',
+                  item.credential_key | default(''),
+                  default=''
+                ),
+              'kubeconfig':
+                '/tmp/kubeconfig-telnet-' ~ job_tag ~ '-' ~ item.cluster_name,
+              'pod_name':
+                'telnet-test-' ~ job_tag
             }]
           }}
       loop: "{{ my_ocp_clusters }}"
