@@ -61,9 +61,29 @@ Template ID'yi URL'den not alın: `/templates/job_template/**123**/details`
 
 ---
 
+## Paket sürümü — kopyalamayı unutmadığınızı nasıl anlarsınız
+
+`scalex_app/VERSION` bir sayı taşır ve `files/scalex_runner.sh` içindeki
+`PACKAGE_VERSION` ile aynıdır. Çalıştırıcı her işte ilk satırda bunu bildirir:
+
+```
+<cluster>;<jump>;-;-;RUNNER;INFO;package_version=3 phase=discover
+```
+
+Portal kendi beklediği sürümü biliyor (`server/scalex/result.cjs`
+`EXPECTED_PACKAGE_VERSION`) ve uyuşmazlıkta keşif ekranında **söyler**:
+"AWX'te 3 numaralı paket koşuyor, portal 5 bekliyor."
+
+Bu paket AWX'e **elle** kopyalandığı için, portal güncellenip `scalex_app/`
+kopyalanmadığında eskiden ortada hiçbir işaret olmuyordu; ekran yalnızca
+"güncel sürüm kopyalanmamış olabilir" diye tahmin ediyordu.
+
+**Sürümü artıran her değişiklikten sonra klasörü yeniden kopyalayın ve
+survey'i yeniden yükleyin.**
+
 ## 3. Survey'i API ile yükle
 
-> **Neden API:** survey 16 soru taşıyor ve her sorunun `required: false` olması
+> **Neden API:** survey 17 soru taşıyor ve her sorunun `required: false` olması
 > ZORUNLU (gerekçe aşağıda). Arayüzden tek tek girmek hem yavaş hem hataya açık;
 > JSON dosyası ayrıca depoda versiyonlanıyor ve testlerle doğrulanıyor.
 

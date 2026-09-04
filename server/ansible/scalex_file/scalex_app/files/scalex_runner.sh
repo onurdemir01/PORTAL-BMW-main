@@ -4,6 +4,13 @@ set -o pipefail
 set +x
 umask 077
 
+# ── PAKET SURUMU ────────────────────────────────────────────────────────────
+# Bu paket AWX'e ELLE kopyalaniyor ve portal calisan surumu goremiyordu. Ekran
+# "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
+# calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
+# SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
+PACKAGE_VERSION="3"
+
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
 JUMP_SERVER="${JUMP_SERVER:-}"
@@ -16,6 +23,12 @@ APP_RAW="${APP_RAW:-}"
 ACTION="${ACTION:-}"
 TARGET="${TARGET:-}"
 REQUESTED_KIND="${WORKLOAD_KIND:-auto}"
+# UYGULAMA BASINA TIP HARITASI: "kafka=sts,odeme-api=deploy".
+# Portal kesifte her uygulamanin tipini ZATEN biliyor; artik gonderiyor. Boylece
+# `auto` taramasinin "ayni ad hem Deployment hem DeploymentConfig olarak var" halinde
+# `ambiguous` deyip isi dusurmesi ortadan kalkiyor — kullaniciya yeni bir adim
+# eklemeden. Bos birakilirsa bugunku `auto` davranisi AYNEN surer.
+WORKLOAD_KINDS_MAP="${WORKLOAD_KINDS:-}"
 WAIT_ATTEMPTS="${WAIT_ATTEMPTS:-30}"
 WAIT_SECONDS="${WAIT_SECONDS:-2}"
 JOB_ID="${JOB_ID:-N/A}"
@@ -114,6 +127,12 @@ if [ "$PHASE" != "discover" ]; then
 fi
 case "$REQUESTED_KIND" in
   auto|dc|deploy|sts|rollout) ;;
+  ds|daemonset)
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" \
+      "DaemonSet cannot be scaled by replicas; it follows node scheduling (kind=$REQUESTED_KIND)"; exit 0 ;;
+  cronjob|cronjobs)
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" \
+      "CronJob is stopped with spec.suspend, not replicas; unsupported operation (kind=$REQUESTED_KIND)"; exit 0 ;;
   *) log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" "Unsupported workload kind=$REQUESTED_KIND"; exit 0 ;;
 esac
 if [ "$ACTION" = "scale" ] && ! printf '%s' "$TARGET" | grep -Eq '^[0-9]+$'; then
@@ -264,6 +283,11 @@ oc() {
   "$OC_BIN" "$@"
 }
 
+# PAKET SURUMU HER FAZDA BILDIRILIR. Portal bunu okuyup kendi bekledigi surumle
+# karsilastiriyor; uyusmazlikta ekran "guncel olmayabilir" diye tahmin etmek yerine
+# hangi surumun kostugunu SOYLUYOR. AWX'e elle kopyalanan bir pakette tek kanit bu.
+log "$CLUSTER" "$JUMP_SERVER" "-" "-" "RUNNER" "INFO" "package_version=$PACKAGE_VERSION phase=$PHASE"
+
 if [ "$PHASE" = "precheck" ]; then
   OC_VERSION="$(oc version --client 2>/dev/null | head -n 1 || true)"
   [ -z "$OC_VERSION" ] && OC_VERSION="version output unavailable"
@@ -355,8 +379,28 @@ kind_to_display() {
     deploy) echo "Deployment" ;;
     sts) echo "StatefulSet" ;;
     rollout) echo "ArgoRollout" ;;
+    ds) echo "DaemonSet" ;;
+    cronjob) echo "CronJob" ;;
     *) echo "$1" ;;
   esac
+}
+
+# OLCEKLENEBILIR TIPLER — replica ile durdurulup geri alinabilenler. Operasyon
+# YALNIZCA bunlara dokunur.
+SCALABLE_KINDS="dc deploy sts rollout"
+# KESIFTE LISTELENEN TIPLER. DaemonSet ve CronJob replica semantigi TASIMAZ
+# (DaemonSet dugum sayisiyla olceklenir, CronJob `spec.suspend` ile durdurulur) —
+# listelenirler ki kullanici "namespace'imde bu da var ama ScaleX'te gormuyorum"
+# demesin, ama `scalable=no` ile gelir ve ekran onlari SECTIRMEZ.
+#
+# ReplicaSet / ReplicationController / Pod BILEREK DISARIDA: bunlar Deployment ve
+# DeploymentConfig'in SAHIP OLDUGU nesneler. Listelemek her uygulamayi iki kez
+# gosterir ve kullaniciya denetleyicinin saniyeler icinde geri alacagi bir
+# "olcekle" dugmesi sunardi.
+DISCOVERY_KINDS="deploy sts dc rollout ds cronjob"
+
+kind_is_scalable() {
+  case " $SCALABLE_KINDS " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
 resource_candidates() {
@@ -365,6 +409,8 @@ resource_candidates() {
     deploy) printf '%s\n' "deploy" "deployment" "deployments.apps" ;;
     sts) printf '%s\n' "sts" "statefulset" "statefulsets.apps" ;;
     rollout) printf '%s\n' "rollout" "rollouts" "rollouts.argoproj.io" ;;
+    ds) printf '%s\n' "ds" "daemonset" "daemonsets.apps" ;;
+    cronjob) printf '%s\n' "cronjob" "cronjobs" "cronjobs.batch" ;;
     *) printf '%s\n' "$1" ;;
   esac
 }
@@ -375,8 +421,27 @@ canonical_kind_from_resource() {
     deploy|deployment|deployments.apps) echo "deploy" ;;
     sts|statefulset|statefulsets.apps) echo "sts" ;;
     rollout|rollouts|rollouts.argoproj.io) echo "rollout" ;;
+    ds|daemonset|daemonsets.apps) echo "ds" ;;
+    cronjob|cronjobs|cronjobs.batch) echo "cronjob" ;;
     *) echo "" ;;
   esac
+}
+
+# Portalin gonderdigi "app=kind,app=kind" haritasindan bu uygulamanin tipini okur.
+# Bos doner: harita yok ya da bu uygulama haritada degil -> `auto` taramasi.
+kind_from_map() {
+  local app="$1" pair k
+  [ -z "$WORKLOAD_KINDS_MAP" ] && return 0
+  # SON SATIR NEWLINE ILE BITMELI. `printf '%s'` kullanildiginda `tr` ciktisinin son
+  # satiri sonlandirilmamis kaliyor, `read` 1 donuyor ve dongu govdesi O SATIR ICIN
+  # HIC CALISMIYOR. Tek ciftlik bir haritada ("kafka=sts") sonuc her zaman bos
+  # oluyordu — yani ozellik sessizce hic calismiyordu.
+  printf '%s\n' "$WORKLOAD_KINDS_MAP" | tr ',' '\n' | while IFS= read -r pair; do
+    [ -z "$pair" ] && continue
+    case "$pair" in
+      "$app="*) k="${pair#*=}"; printf '%s' "$(normalize_lower "$k")"; break ;;
+    esac
+  done
 }
 
 first_working_resource() {
@@ -397,8 +462,28 @@ DETECTED_KIND=""
 DETECTED_RESOURCE=""
 DETECT_ERROR=""
 detect_workload() {
-  local app="$1" kind res found found_count
+  local app="$1" kind res found found_count mapped
   DETECTED_KIND=""; DETECTED_RESOURCE=""; DETECT_ERROR=""; found=""
+
+  # ONCE PORTALIN SOYLEDIGI TIP. Portal kesifte bu uygulamanin tipini zaten gordu;
+  # tahmin etmek yerine onu kullanmak `auto`'nun "ayni ad iki tipte var" halinde
+  # isi dusurmesini ortadan kaldirir. Harita yanlissa (uygulama o tipte YOK) sessizce
+  # kabul edilmez — `auto` taramasina DUSULMEZ, cunku bu bir yazim hatasi degil,
+  # portalin kesfiyle cluster'in gercekliginin ayrismasidir ve sessizce baska bir
+  # nesneye islem yapmak en tehlikeli sonuc olurdu.
+  mapped="$(kind_from_map "$app")"
+  if [ -n "$mapped" ]; then
+    if ! kind_is_scalable "$mapped"; then
+      DETECT_ERROR="not_scalable:$mapped"; return 1
+    fi
+    res="$(first_working_resource "$mapped" "$app" || true)"
+    if [ -n "$res" ]; then
+      DETECTED_KIND="$mapped"; DETECTED_RESOURCE="$res"; return 0
+    fi
+    DETECT_ERROR="not_found_as_portal_kind:$mapped"
+    return 1
+  fi
+
   if [ "$REQUESTED_KIND" != "auto" ]; then
     res="$(first_working_resource "$REQUESTED_KIND" "$app" || true)"
     if [ -n "$res" ]; then
@@ -418,7 +503,9 @@ detect_workload() {
     return 0
   fi
   if [ "$found_count" -gt 1 ]; then
-    DETECT_ERROR="ambiguous:$(printf '%b' "$found" | awk -F'|' 'NF{print $1}' | paste -sd ',' -)"
+    # Ayni ad birden fazla tipte var. Portal tip haritasini gonderdiginde bu dala
+    # HIC girilmez; elle calistirmada kullaniciya ne yapacagi soylenir.
+    DETECT_ERROR="ambiguous:$(printf '%b' "$found" | awk -F'|' 'NF{print $1}' | paste -sd ',' -):rerun_discovery_or_set_workload_kind"
     return 1
   fi
   # Last-resort combined scan retained for compatibility with older oc discovery behavior.
@@ -905,35 +992,90 @@ disc_app_wanted() {
   printf '%s\n' "$APPS_TEXT" | grep -qx -- "$1"
 }
 
+# Her tip icin replica/durum alanlarini veren jsonpath. Alanlar SIRAYLA:
+#   ad | istenen | mevcut | hazir | image | argocd-etiketi | managed-by-etiketi
+# DaemonSet ve CronJob'un replica'si YOKTUR; onlarin karsiliklari kullanilir
+# (DaemonSet: desired/ready dugum sayisi, CronJob: suspend durumu).
+disc_jsonpath() {
+  local argo='{.metadata.labels['"'"'argocd\.argoproj\.io/instance'"'"']}' 
+  local mgd='{.metadata.labels['"'"'app\.kubernetes\.io/managed-by'"'"']}'
+  case "$1" in
+    ds)
+      printf '%s' '{range .items[*]}{.metadata.name}{"|"}{.status.desiredNumberScheduled}{"|"}{.status.currentNumberScheduled}{"|"}{.status.numberReady}{"|"}{.spec.template.spec.containers[0].image}{"|"}'"$argo"'{"|"}'"$mgd"'{"\n"}{end}' ;;
+    cronjob)
+      # CronJob'un container'i `jobTemplate` altinda — digerlerinden FARKLI yol.
+      printf '%s' '{range .items[*]}{.metadata.name}{"|"}{.spec.suspend}{"|"}{.spec.schedule}{"|"}{.status.active}{"|"}{.spec.jobTemplate.spec.template.spec.containers[0].image}{"|"}'"$argo"'{"|"}'"$mgd"'{"\n"}{end}' ;;
+    *)
+      printf '%s' '{range .items[*]}{.metadata.name}{"|"}{.spec.replicas}{"|"}{.status.replicas}{"|"}{.status.readyReplicas}{"|"}{.spec.template.spec.containers[0].image}{"|"}'"$argo"'{"|"}'"$mgd"'{"\n"}{end}' ;;
+  esac
+}
+
 discover_workloads() {
-  local kind res line name spec st ready image argo managed found_any=0
+  local kind res candidate name f2 f3 f4 image argo managed found_any=0 kind_count reason verb
   disc_load_hpa
   disc_pdb
-  for kind in deploy sts dc rollout; do
+  for kind in $DISCOVERY_KINDS; do
     res=""
-    # Tek tip patlayabilir (kapali DeploymentConfig API'si, RBAC reddi). OLCUT
-    # "satir geldi mi" olmali; rc'ye bakmak, calisan tiplerin ciktisini da atardi.
+    # Tek tip patlayabilir (kapali DeploymentConfig API'si, kurulu olmayan Rollout
+    # CRD'si, RBAC reddi). OLCUT "satir geldi mi" olmali; rc'ye bakmak, calisan
+    # tiplerin ciktisini da atardi.
     while IFS= read -r candidate; do
       [ -z "$candidate" ] && continue
       if oc get "$candidate" -n "$NS" >/dev/null 2>&1; then res="$candidate"; break; fi
     done <<EOF_DISC_CAND
 $(resource_candidates "$kind")
 EOF_DISC_CAND
-    [ -z "$res" ] && continue
 
-    while IFS='|' read -r name spec st ready image argo managed; do
+    # ── SESSIZ ATLAMA BITTI ─────────────────────────────────────────────────
+    # Okunamayan bir tip eskiden hicbir iz birakmadan atlaniyordu: ekran
+    # "StatefulSet yok" ile "StatefulSet'e bakamadim"i AYIRT EDEMIYORDU ve
+    # uretimde hangisinin yasandigini kimse soyleyemiyordu. Artik her tip icin
+    # bir satir cikar ve nedeni AYRILIR: yetki eksikligi kullanicinin platformdan
+    # isteyecegi bir sey, API/CRD yoklugu ise hakkinda yapilacak bir sey olmayan
+    # bir olgu.
+    if [ -z "$res" ]; then
+      verb="list"
+      if oc auth can-i "$verb" "$kind" -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
+        reason="api_absent"
+      else
+        reason="no_permission"
+      fi
+      log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "WARN" \
+        "kind=$(disc_val "$kind") reason=$(disc_val "$reason") verb=$(disc_val "$verb") namespace=$(disc_val "$NS")"
+      continue
+    fi
+
+    kind_count=0
+    while IFS='|' read -r name f2 f3 f4 image argo managed; do
       [ -z "$name" ] && continue
       disc_app_wanted "$name" || continue
       found_any=1
+      kind_count=$((kind_count + 1))
       disc_read_state "$name"
-      [ -z "$spec" ] && spec=0
-      [ -z "$st" ] && st=0
-      [ -z "$ready" ] && ready=0
-      log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
-        "resource=$(disc_val "$res") spec=$(disc_val "$spec") status=$(disc_val "$st") ready=$(disc_val "$ready") hpa=$(disc_has_hpa "$name") state_phase=$(disc_val "$DISC_STATE_PHASE") previous_replicas=$(disc_val "$DISC_STATE_PREV") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+      if kind_is_scalable "$kind"; then
+        [ -z "$f2" ] && f2=0
+        [ -z "$f3" ] && f3=0
+        [ -z "$f4" ] && f4=0
+        log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
+          "resource=$(disc_val "$res") scalable=yes spec=$(disc_val "$f2") status=$(disc_val "$f3") ready=$(disc_val "$f4") hpa=$(disc_has_hpa "$name") state_phase=$(disc_val "$DISC_STATE_PHASE") previous_replicas=$(disc_val "$DISC_STATE_PREV") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+      elif [ "$kind" = "cronjob" ]; then
+        # `spec.suspend` bos gelebilir (alan hic yazilmamissa) — o durumda CronJob
+        # AKTIFTIR, "bilinmiyor" degil.
+        [ -z "$f2" ] && f2="false"
+        log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
+          "resource=$(disc_val "$res") scalable=no reason=suspend_not_replicas suspended=$(disc_val "$f2") schedule=$(disc_val "$f3") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+      else
+        [ -z "$f2" ] && f2=0
+        [ -z "$f4" ] && f4=0
+        log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
+          "resource=$(disc_val "$res") scalable=no reason=node_scheduled desired=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+      fi
     done <<EOF_DISC_ITEMS
-$(oc get "$res" -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.spec.replicas}{"|"}{.status.replicas}{"|"}{.status.readyReplicas}{"|"}{.spec.template.spec.containers[0].image}{"|"}{.metadata.labels['"'"'argocd\.argoproj\.io/instance'"'"']}{"|"}{.metadata.labels['"'"'app\.kubernetes\.io/managed-by'"'"']}{"\n"}{end}' 2>/dev/null || true)
+$(oc get "$res" -n "$NS" -o jsonpath="$(disc_jsonpath "$kind")" 2>/dev/null || true)
 EOF_DISC_ITEMS
+
+    log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "OK" \
+      "kind=$(disc_val "$kind") resource=$(disc_val "$res") found=$(disc_val "$kind_count") scalable=$(kind_is_scalable "$kind" && echo yes || echo no)"
   done
   if [ "$found_any" -eq 0 ]; then
     log "$CLUSTER" "$JUMP_SERVER" "-" "-" "WORKLOAD" "WARN" "No workload matched in namespace $(disc_val "$NS")"

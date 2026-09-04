@@ -59,6 +59,22 @@
       {%- endif -%}
   changed_when: false
 
+# `RUNNER;INFO;package_version=3 phase=discover` satirindan surumu ayikla.
+# `_discovery_items` zaten ayristirilmis; `detail` icinden ilk `package_version=`
+# degeri alinir. Bulunmazsa "0" — surum bildirmeyen ESKI bir paket kosuyor demektir
+# ve portalin bunu soyleyebilmesi asil amac.
+- name: "Extract runner package version"
+  ansible.builtin.set_fact:
+    _disc_package_version: >-
+      {%- set ns = namespace(v='0') -%}
+      {%- for it in _discovery_items -%}
+        {%- if it.step == 'RUNNER' and 'package_version=' in it.detail and ns.v == '0' -%}
+          {%- set ns.v = it.detail.split('package_version=')[1].split(' ')[0] | trim -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{- ns.v -}}
+  changed_when: false
+
 - name: "Publish ScaleX discovery result for the portal"
   ansible.builtin.set_stats:
     data:
@@ -69,6 +85,12 @@
         platform: "{{ oc_platform }}"
         environment: "{{ oc_environment }}"
         catalog_source: "{{ catalog_source | default('file') }}"
+        # AWX'TE KOSAN PAKETIN SURUMU. Bu paket AWX'e ELLE kopyalaniyor ve portal
+        # calisan surumu goremiyordu; ekran "guncel surum kopyalanmamis olabilir"
+        # diye TAHMIN ediyordu. Betik her fazda `RUNNER;INFO;package_version=N`
+        # basiyor, burasi onu ayikliyor ve portal kendi bekledigi surumle
+        # karsilastirip SOYLUYOR. Satir hic yoksa "0" = surum bildirmeyen eski paket.
+        package_version: "{{ _disc_package_version }}"
         # TARANAN CLUSTER'LARIN TAMAMI. Eksik liste, `state` modunda portalin
         # taranmayan cluster kayitlari hakkinda YANLIS sapma karari uretmesine yol
         # acar (bkz. server/scalex/state.cjs refreshDrift).

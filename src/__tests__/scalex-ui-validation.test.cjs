@@ -402,7 +402,10 @@ test('V9 saglik kontrolu YALNIZCA gercek degisiklikten sonra kosar', () => {
 
 test('V10 saglik kontrolu BEST-EFFORT — asil sonucu gizlemiyor', () => {
   const body = PAGE.slice(PAGE.indexOf('healthStartedRef.current = true'), PAGE.indexOf('// İş bitince yapılandırılmış'));
-  assert.match(body, /catch\s*\{/, 'saglik kontrolu hatasi asil sonuc ekranini bozmamali');
+  // Yetki hatasi (401/403) donguyu DURDURUR — gereksiz yeniden deneme yapilmaz.
+  assert.match(body, /401.*403|403.*401/, 'saglik yoklamasi 401/403 hatasinda durmali');
+  // Diger hatalar BEST-EFFORT: asil sonucu gizlememeli.
+  assert.match(body, /catch\s*\(/, 'saglik kontrolu hatasi asil sonuc ekranini bozmamali');
 });
 
 test('V11 saglik kontrolu bir kez kosar (ref ile kilitli)', () => {
@@ -501,4 +504,84 @@ test('X4 calistirma ayarlari ve VERI TAZELIGI onizlemede', () => {
   // Onizleme yeniden kesif YAPMIYOR: damga olmadan dakikalar once alinmis bir
   // replica sayisi "su anki durum" sanilirdi.
   assert.match(code, /fetchedAt[\s\S]{0,120}alındı/, 'veri tazeligi damgasi yok');
+});
+
+// ── Y: HER WORKLOAD TIPI EKRANDA ─────────────────────────────────────────────
+//
+// Uretimde bildirilen "StatefulSet kesifte cikmiyor" sorununun ekran tarafi.
+// Kesif artik alti tipe bakiyor ve bakamadigi tipi de bildiriyor; ekranin bunlari
+// GOSTERDIGINI ve olceklenemeyenleri SECTIRMEDIGINI kilitler.
+
+test('Y1 tekillestirme ad+TIP bazinda — ayni ad iki tipte varsa ikisi de gorunur', () => {
+  const code = codeOnly(WORKLOAD);
+  // Eskiden anahtar yalnizca `w.name` idi ve ILK satir tutuluyordu: ayni ada sahip
+  // bir Deployment ile bir DeploymentConfig varsa IKINCISI ekranda hic gorunmuyor,
+  // sonra is `ambiguous` ile dusuyordu. Kullanici cakismayi goremiyordu bile.
+  assert.doesNotMatch(code, /byName\.set\(w\.name,\s*w\)/,
+    'tekillestirme hala yalnizca ada gore — ikinci tipteki nesne ekranda kaybolur');
+  assert.match(code, /\$\{w\.name\}\\u0000\$\{w\.kind\}/,
+    'satir anahtari ad+tip degil');
+});
+
+test('Y2 ayni ad birden fazla tipte ise EKRAN SOYLER', () => {
+  const code = codeOnly(WORKLOAD);
+  assert.match(code, /ambiguousNames/, 'cakisma hesaplanmiyor');
+  assert.match(code, /aynı ad birden fazla tipte/,
+    'kullaniciya cakisma soylenmiyor — is `ambiguous` ile dusunce sebebi anlasilmaz');
+});
+
+test('Y3 olceklenemeyen tipler LISTEDE ama SECILEMEZ', () => {
+  const code = codeOnly(WORKLOAD);
+  // TANIMLAYICININ VARLIGI DEGIL, KARAR NOKTASINDAKI KULLANIMI aranir: `scalable`
+  // bu dosyada baska yerde de geciyor (cakisma hesabinda) ve yalnizca adini aramak,
+  // satir kilidi tamamen kaldirildiginda bile bekciyi YESIL birakiyordu (mutasyonla
+  // dogrulandi).
+  assert.match(code, /const locked = w\.scalable === false/,
+    'satir kilidi olceklenebilirlikten TURETILMIYOR');
+  // Harfi harfine bir ifade DEGIL, `locked`in secimi gercekten kapattigi aranir:
+  // ekran daha sonra baska kilit kosullari da ekleyebilir (ekledi de).
+  assert.match(code, /disabled=\{[^}]*\blocked\b[^}]*\}/,
+    'DaemonSet/CronJob secilebilir kaliyor — replica ile olceklenemezler');
+  assert.match(code, /checked=\{!locked/, 'kilitli satir yine de isaretli gorunebilir');
+  assert.match(code, /ölçeklenemez/, 'neden secilemedigi yazmiyor');
+  // Neden'i de yazmali: "olceklenemez" tek basina kullaniciyi AWX log'una gonderir.
+  assert.match(code, /suspend gerekir/, 'CronJob icin suspend aciklamasi yok');
+  assert.match(code, /düğüm sayısıyla ölçeklenir/, 'DaemonSet icin dugum aciklamasi yok');
+});
+
+test('Y4 BAKILAMAYAN tip ekranda gorunur ve nedeni AYRISTIRILIR', () => {
+  const code = codeOnly(WORKLOAD);
+  // Hesaplanmasi yetmez; RENDER edilmesi gerekir (ayni kor nokta).
+  assert.match(code, /\{unreadableKinds\.length > 0 && \(/,
+    'bakilamayan tipler hesaplaniyor ama EKRANA hic basilmiyor');
+  // Iki neden kullanici icin tamamen farkli: biri platformdan ISTENEBILIR,
+  // digeri hakkinda yapacak bir sey olmayan bir olgu. Ayni cumleye sokmak,
+  // kullaniciyi bos yere platform ekibine gondermek olurdu.
+  assert.match(code, /no_permission/, 'yetki eksikligi ayirt edilmiyor');
+  assert.match(code, /ClusterRole/, 'platformdan NE isteneceği yazmiyor');
+  assert.match(code, /API\/CRD yok/, 'API yoklugu icin "yapacak bir sey yok" denmiyor');
+});
+
+test('Y5 paket surumu uyusmazliginda ekran TAHMIN ETMEZ, soyler', () => {
+  const code = codeOnly(WORKLOAD);
+  assert.match(code, /pkg\.running !== pkg\.expected/, 'surum karsilastirmasi yok');
+  assert.match(code, /scalex_app\//, 'ne yapilmasi gerektigi (yeniden kopyalama) yazmiyor');
+});
+
+test('Y6 tip haritasi YALNIZCA kesiften gelen satirlardan uretilir', () => {
+  const page = codeOnly(PAGE);
+  assert.match(page, /workloadKinds/, 'tip haritasi hic gonderilmiyor');
+  // Aynadan turetilen satirlarda tip alani ESKI bir kayittan gelir; bayat bir
+  // tiple islem yapmak yanlis nesneye dokunmak demektir.
+  assert.match(page, /w\.source === "discovery"[\s\S]{0,120}workloadKinds|workloadKinds[\s\S]{0,200}w\.source === "discovery"/,
+    'bayat (ayna kaynakli) tipler de haritaya giriyor olabilir');
+});
+
+test('Y7 ayni adin IKI tipi birden secilemez', () => {
+  const code = codeOnly(WORKLOAD);
+  // Ikisi birden secilirse playbook o uygulama icin `ambiguous` deyip isi durdurur.
+  // Bunu calistirma zamaninda ogrenmek yerine ekranda ONLEMEK dogru olan.
+  assert.match(code, /const kindBlocked = isKindBlocked\(w\)/,
+    'ayni adin diger tipi kilitlenmiyor (yalnizca fonksiyon TANIMLI olmasi yetmez)');
+  assert.match(code, /farklı bir tip seçildi/, 'kullaniciya NEDEN secemedigi soylenmiyor');
 });

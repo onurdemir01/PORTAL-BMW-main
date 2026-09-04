@@ -10,7 +10,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowPathIcon, ExclamationTriangleIcon, MagnifyingGlassIcon, BoltSlashIcon,
 } from "@heroicons/react/24/outline";
-import { scalexApi, type ScaleXWorkload, type ScaleXScope } from "@/api/scalexApi";
+import { scalexApi, type ScaleXWorkload, type ScaleXScope, type ScaleXKindReport } from "@/api/scalexApi";
 
 interface Props {
   scope: ScaleXScope;
@@ -38,6 +38,11 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   const [failedClusters, setFailedClusters] = useState<string[]>([]);
   const [problems, setProblems] = useState<{ cluster: string; detail: string }[]>([]);
   const [pdbWarning, setPdbWarning] = useState<string | null>(null);
+  // KESFIN BAKTIGI HER TIP icin sonuc: kac tane bulundu, ya da NEDEN bakilamadi.
+  const [kindReports, setKindReports] = useState<ScaleXKindReport[]>([]);
+  // AWX'te kosan paket surumu vs. portalin bekledigi surum.
+  const [pkg, setPkg] = useState<{ running: string; expected: string } | null>(null);
+  const [pkgCopied, setPkgCopied] = useState(false);
   const [selected, setSelected] = useState<string[]>(initial || []);
   const [query, setQuery] = useState("");
   // ÇİFT TIK KORUMASI ref ile — `busy` state'i render'da yakalanır ve aynı tick'teki
@@ -111,6 +116,10 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
           setFailedClusters(s.result.failedClusters || []);
           setProblems((s.result.problems || []).map((p) => ({ cluster: p.cluster, detail: p.detail })));
           setPdbWarning(s.result.pdbWarning || null);
+          setKindReports(s.result.kindReports || []);
+          setPkg(s.result.expectedPackageVersion
+            ? { running: s.result.packageVersion || "0", expected: s.result.expectedPackageVersion }
+            : null);
           // Kısmi başarı GERÇEKTİR: üç cluster'dan biri düştüyse diğer ikisinin
           // uygulamaları gösterilir ama sorun da söylenir.
           setPhase("done");
@@ -120,6 +129,17 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
         }
         return;
       } catch (e) {
+        // YETKI HATASI KALICIDIR: 401/403'te yeniden denemek kullaniciyi 15 sn
+        // bekletir ve sunucuda gereksiz log biriktirir. safeJson artik `status`
+        // property'si ekliyor; bunu okuyup hemen dur.
+        const httpStatus = (e as Error & { status?: number }).status;
+        if (httpStatus === 401 || httpStatus === 403) {
+          setPhase("error");
+          setMessage(httpStatus === 403
+            ? "Bu keşif için yetkiniz yok — yöneticinize başvurun."
+            : "Oturumunuz sonlanmış; lütfen yeniden giriş yapın.");
+          return;
+        }
         if (++errors >= MAX_POLL_ERRORS) {
           setPhase("error"); setMessage(`Keşif durumu okunamadı: ${(e as Error).message}`);
           return;
@@ -133,15 +153,66 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = q ? workloads.filter((w) => w.name.toLowerCase().includes(q)) : workloads;
-    // Aynı uygulama birden çok cluster'da olabilir — ada göre TEKİLLEŞTİRİLİR, çünkü
-    // seçim uygulama adı bazındadır ve playbook (cluster × uygulama) çarpımını kendi yapar.
-    const byName = new Map<string, ScaleXWorkload>();
-    for (const w of filtered) if (!byName.has(w.name)) byName.set(w.name, w);
-    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "tr"));
+    // Aynı uygulama birden çok cluster'da olabilir — cluster boyutunda TEKİLLEŞTİRİLİR,
+    // çünkü seçim uygulama adı bazındadır ve playbook (cluster × uygulama) çarpımını
+    // kendi yapar.
+    //
+    // ANAHTAR AD + TİP. Eskiden yalnızca addı ve İLK satır tutuluyordu: aynı ada sahip
+    // bir Deployment ile bir DeploymentConfig varsa ikincisi ekranda HİÇ görünmüyor,
+    // sonra iş `ambiguous` ile düşüyordu. Kullanıcı ekranda tek satır gördüğü için
+    // neyin çakıştığını da anlayamıyordu.
+    const byKey = new Map<string, ScaleXWorkload>();
+    for (const w of filtered) {
+      const key = `${w.name}\u0000${w.kind}`;
+      if (!byKey.has(key)) byKey.set(key, w);
+    }
+    return [...byKey.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, "tr") || a.kind.localeCompare(b.kind, "tr"));
   }, [workloads, query]);
 
-  const toggle = (name: string) =>
-    setSelected((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]));
+  // Aynı ad birden fazla tipte görüldü mü? Görüldüyse ekran bunu SÖYLER — iki satırın
+  // neden yan yana durduğu ve neden ikisini birden seçmenin işi durduracağı belli olsun.
+  const ambiguousNames = useMemo(() => {
+    const kindsByName = new Map<string, Set<string>>();
+    for (const w of workloads) {
+      if (w.scalable === false) continue;
+      if (!kindsByName.has(w.name)) kindsByName.set(w.name, new Set());
+      kindsByName.get(w.name)!.add(w.kind);
+    }
+    return new Set([...kindsByName.entries()].filter(([, k]) => k.size > 1).map(([n]) => n));
+  }, [workloads]);
+
+  // BAKILAMAYAN TIPLER. Cluster basina ayni tip birden fazla kez bildirilebilir
+  // (her cluster kendi satirini basar) — tip bazinda tekillestirilir; bir tip HERHANGI
+  // bir cluster'da okunabildiyse "bakilamadi" denmez.
+  const unreadableKinds = useMemo(() => {
+    const readable = new Set(kindReports.filter((k) => k.readable).map((k) => k.kind));
+    const out = new Map<string, ScaleXKindReport>();
+    for (const k of kindReports) {
+      if (k.readable || readable.has(k.kind) || out.has(k.kind)) continue;
+      out.set(k.kind, k);
+    }
+    return [...out.values()];
+  }, [kindReports]);
+
+  const toggle = (w: ScaleXWorkload) => {
+    const key = ambiguousNames.has(w.name) ? `${w.name}\u0000${w.kind}` : w.name;
+    setSelected((prev) => prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]);
+  };
+
+  const isSelected = (w: ScaleXWorkload) =>
+    selected.includes(ambiguousNames.has(w.name) ? `${w.name}\u0000${w.kind}` : w.name);
+
+  // Belirsiz adda bir tip secildiginde diger tip devre disi kalir — kullanici
+  // ikisini birden secemez cunku playbook (cluster × uygulama) carpiminda
+  // hangisinin islenecegini bilemezdi.
+  const isKindBlocked = (w: ScaleXWorkload) => {
+    if (!ambiguousNames.has(w.name)) return false;
+    return selected.some((s) => {
+      const idx = s.indexOf("\u0000");
+      return idx >= 0 && s.slice(0, idx) === w.name && s.slice(idx + 1) !== w.kind;
+    });
+  };
 
   if (phase === "running") {
     return (
@@ -197,7 +268,7 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   if (phase === "error") {
     return (
       <div className="space-y-4">
-        <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
+        <div role="alert" className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" /><span>{message}</span>
         </div>
         <button type="button" className="btn-secondary inline-flex items-center gap-1.5" onClick={startDiscovery}>
@@ -234,6 +305,72 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
         </div>
       )}
 
+      {/* ── BAKILAMAYAN TIPLER ────────────────────────────────────────────────
+          Bir tip okunamadiginda eskiden HICBIR iz kalmiyordu: ekran "StatefulSet
+          yok" ile "StatefulSet'e bakamadim"i ayirt edemiyordu ve uretimde
+          hangisinin yasandigini kimse soyleyemiyordu. Iki neden kullanici icin
+          tamamen farkli: biri platformdan ISTENEBILIR, digeri hakkinda yapacak
+          bir sey olmayan bir olgu. */}
+      {unreadableKinds.length > 0 && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            <strong>{unreadableKinds.map((k) => k.display).join(", ")}</strong>
+            {" nesnelerine bakılamadı — bu tipler listede YOK, ama gerçekten olmadıkları anlamına gelmiyor."}
+            <span className="mt-1.5 block space-y-0.5">
+              {unreadableKinds.map((k) => (
+                <span key={k.kind} className="block">
+                  <span className="font-mono">{k.display}</span>
+                  {k.reason === "no_permission" ? (
+                    <> — portalın OCP kullanıcısının bu namespace'te <span className="font-mono">
+                      {k.verb || "list"} {k.kind}</span> yetkisi yok. Platform ekibinden isteyin
+                      (genellikle <span className="font-mono">view</span> ClusterRole binding'i yeterli).</>
+                  ) : (
+                    <> — bu cluster'da o nesne türü kurulu değil (API/CRD yok). Yapılacak bir şey yok.</>
+                  )}
+                </span>
+              ))}
+            </span>
+          </span>
+        </div>
+      )}
+
+      {/* ── PAKET SURUMU ─────────────────────────────────────────────────────
+          Paket AWX'e ELLE kopyalaniyor. Ekran bunu bugune kadar TAHMIN ediyordu
+          ("guncel surum kopyalanmamis olabilir"); artik kosan surumu biliyor. */}
+      {pkg && pkg.running !== pkg.expected && (
+        <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 space-y-1.5">
+            <span>
+              AWX'te <strong>{pkg.running === "0" ? "sürüm bildirmeyen eski bir paket" : `${pkg.running} numaralı paket`}</strong> koşuyor,
+              portal <strong>{pkg.expected}</strong> bekliyor. Sonuçlar eksik ya da eski biçimde olabilir —
+              <span className="font-mono"> scalex_app/</span> klasörünün güncel hâli AWX projesine yeniden kopyalanmalı.
+            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <code className="font-mono text-[11px] bg-amber-100 rounded px-1.5 py-0.5 select-all">
+                running:&nbsp;{pkg.running} → expected:&nbsp;{pkg.expected}
+              </code>
+              <button
+                type="button"
+                data-testid="pkg-copy-btn"
+                className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-200 transition-colors"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    "cp -r server/ansible/scalex_file/scalex_app/ <AWX_PROJECT_DIR>/"
+                  ).then(() => {
+                    setPkgCopied(true);
+                    setTimeout(() => setPkgCopied(false), 2000);
+                  });
+                }}
+              >
+                {pkgCopied ? "Kopyalandı" : "Komutu kopyala"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {pdbWarning && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -260,14 +397,35 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
       </div>
 
       <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border-subtle)] max-h-96 overflow-y-auto">
-        {list.map((w) => (
-          <label key={w.name} className="flex items-start gap-3 px-3 py-2.5 text-sm cursor-pointer hover:bg-[var(--bg-inset)]">
-            <input type="checkbox" className="mt-1" disabled={busy}
-              checked={selected.includes(w.name)} onChange={() => toggle(w.name)} />
+        {list.map((w) => {
+          // ÖLÇEKLENEMEYEN TİPLER SEÇİLEMEZ. DaemonSet düğüm sayısıyla ölçeklenir,
+          // CronJob `spec.suspend` ile durdurulur — replica ile bir şey yapılamaz.
+          // Listede DURURLAR: kullanıcı "namespace'imde var ama ScaleX görmüyor"
+          // demesin, ama neden dokunulamadığı yazsın.
+          const locked = w.scalable === false;
+          const kindBlocked = isKindBlocked(w);
+          return (
+          <label key={`${w.name}\u0000${w.kind}`}
+            className={`flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-[var(--bg-inset)] ${
+              locked || kindBlocked ? "cursor-default opacity-70" : "cursor-pointer"}`}
+            {...(kindBlocked ? { title: "Aynı ada sahip farklı bir tip seçildi — ikisi birden seçilemez." } : {})}>
+            <input type="checkbox" className="mt-1" disabled={busy || locked || kindBlocked}
+              checked={!locked && isSelected(w)} onChange={() => !locked && !kindBlocked && toggle(w)} />
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-2 flex-wrap">
                 <span className="font-mono text-[var(--text-primary)] truncate" title={w.name}>{w.name}</span>
                 <span className="pf-label pf-label--grey">{w.kind}</span>
+                {locked && <span className="pf-label pf-label--grey">ölçeklenemez</span>}
+                {/* Aynı ad iki tipte: kullanıcı hangisini seçtiğini görmeli ve
+                    ikisini birden seçerse işin duracağını ÖNCEDEN bilmeli. */}
+                {ambiguousNames.has(w.name) && (
+                  <span className={`pf-label ${kindBlocked ? "pf-label--orange" : "pf-label--gold"}`}
+                    title={kindBlocked
+                      ? "Farklı tip seçildi — bu satır seçilemez"
+                      : "Bu ad birden fazla nesne tipinde var — yalnızca birini seçin"}>
+                    {kindBlocked ? "farklı tip seçildi" : "aynı ad birden fazla tipte"}
+                  </span>
+                )}
                 {/* HPA bir GÜVENLİK SİNYALİ: kullanıcı "bu uygulamayı durdurursam
                     otomatik ölçekleyici ne yapar?" sorusunu sormadan geçmemeli.
                     Playbook HPA'ya dokunmuyor — bunu açıkça yazıyoruz. */}
@@ -284,12 +442,28 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
                 )}
               </span>
               <span className="block mt-0.5 text-xs text-[var(--text-muted)] tabular-nums">
-                replica {w.specReplicas} · hazır {w.readyReplicas}/{w.statusReplicas}
+                {locked ? (
+                  w.notScalableReason === "suspend_not_replicas" ? (
+                    <>
+                      {w.suspended ? "askıya alınmış" : "etkin"}
+                      {w.schedule ? <> · <span className="font-mono">{w.schedule}</span></> : null}
+                      {" · durdurmak için suspend gerekir, replica ile yapılamaz"}
+                    </>
+                  ) : (
+                    <>
+                      {w.desired ?? 0} düğümde çalışıyor · hazır {w.readyReplicas}
+                      {" · düğüm sayısıyla ölçeklenir, replica ile yapılamaz"}
+                    </>
+                  )
+                ) : (
+                  <>replica {w.specReplicas} · hazır {w.readyReplicas}/{w.statusReplicas}</>
+                )}
                 {w.image ? <> · <span className="font-mono">{w.image}</span></> : null}
               </span>
             </span>
           </label>
-        ))}
+          );
+        })}
         {list.length === 0 && (
           <div className="px-3 py-10 text-center">
             <BoltSlashIcon aria-hidden="true" className="w-6 h-6 mx-auto text-[var(--text-muted)]" />
@@ -325,7 +499,13 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
           <strong className="text-[var(--text-primary)]">{selected.length * scope.clusters.length} hedef</strong>
         </span>
         <button type="button" className="btn-primary" disabled={busy || !selected.length}
-          onClick={() => onSubmit({ apps: selected, workloads, fetchedAt: fetchedAtRef.current || Date.now() })}>
+          onClick={() => {
+            const appNames = selected.map((s) => {
+              const i = s.indexOf("\u0000");
+              return i >= 0 ? s.slice(0, i) : s;
+            });
+            onSubmit({ apps: appNames, workloads, fetchedAt: fetchedAtRef.current || Date.now() });
+          }}>
           Devam
         </button>
       </div>

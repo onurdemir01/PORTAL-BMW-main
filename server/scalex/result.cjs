@@ -5,6 +5,12 @@
 // aynisi — yeni bir tolerans icat etmiyoruz, calisan deseni kullaniyoruz.
 'use strict';
 
+// ── PAKET SURUM SOZLESMESI ──────────────────────────────────────────────────
+// `server/ansible/scalex_file/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
+// Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
+// durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
+const EXPECTED_PACKAGE_VERSION = '3';
+
 function extractStatsKey(rawArtifacts, key) {
   const a = rawArtifacts || {};
   const direct = a[key] ?? a.data?.[key] ?? a.ansible_stats?.data?.[key];
@@ -68,6 +74,13 @@ function extractScaleXResult(rawArtifacts) {
     platform: String(raw.platform || ''),
     environment: String(raw.environment || ''),
     catalogSource: String(raw.catalog_source || 'file'),
+    // AWX'te KOSAN paketin surumu. Paket AWX'e elle kopyalaniyor; ekran bugune kadar
+    // "guncel surum kopyalanmamis olabilir" diye TAHMIN ediyordu. "0" = surum
+    // bildirmeyen eski bir paket kosuyor.
+    packageVersion: String(raw.package_version || '0').trim() || '0',
+    // PORTALIN BEKLEDIGI surum — karsilastirmayi ekran degil sunucu soyler ki tek
+    // yerden guncellensin.
+    expectedPackageVersion: EXPECTED_PACKAGE_VERSION,
     clusterMode: String(raw.cluster_mode || ''),
     clusters: Array.isArray(raw.clusters) ? raw.clusters : [],
     apps: Array.isArray(raw.apps) ? raw.apps : [],
@@ -138,6 +151,27 @@ function extractDiscoveryResult(rawArtifacts) {
   };
 
   if (base.mode === 'workloads') {
+    // TIP BASINA RAPOR: "baktim, N tane buldum" / "bakamadim, cunku ...".
+    // Bu ayrim olmadan ekran "StatefulSet yok" ile "StatefulSet'e bakamadim"i
+    // ayirt edemiyordu ve uretimde hangisinin yasandigini kimse soyleyemiyordu.
+    base.kindReports = items
+      .filter((i) => String(i.step) === 'WORKLOAD_KIND')
+      .map((i) => {
+        const d = parseDetailPairs(i.detail);
+        return {
+          cluster: String(i.cluster || ''),
+          kind: String(d.kind || ''),
+          display: String(i.kind || d.kind || ''),
+          readable: normalizeStatus(i.status) === 'OK',
+          found: toInt(d.found),
+          scalable: d.scalable !== 'no',
+          // 'no_permission' kullanicinin platformdan ISTEYEBILECEGI bir sey;
+          // 'api_absent' ise hakkinda yapacak bir sey olmayan bir olgu.
+          reason: d.reason || null,
+          verb: d.verb || null,
+        };
+      });
+
     base.workloads = items
       .filter((i) => String(i.step) === 'WORKLOAD' && normalizeStatus(i.status) === 'OK')
       .map((i) => {
@@ -145,6 +179,19 @@ function extractDiscoveryResult(rawArtifacts) {
         const prev = /^[0-9]+$/.test(d.previous_replicas || '') ? Number(d.previous_replicas) : null;
         return {
           cluster: String(i.cluster || ''), name: String(i.app || ''), kind: String(i.kind || '-'),
+          // OLCEKLENEBILIRLIK. DaemonSet dugum sayisiyla olceklenir, CronJob
+          // `spec.suspend` ile durdurulur — ikisi de replica semantigi TASIMAZ ve
+          // ekran onlari SECTIRMEZ. Alan gelmiyorsa (surum bildirmeyen eski paket)
+          // `true` varsayilir: eski paket zaten yalnizca olceklenebilir tipleri
+          // listeliyordu.
+          scalable: d.scalable !== 'no',
+          notScalableReason: d.scalable === 'no' ? (d.reason || null) : null,
+          // CronJob'a ozgu; digerlerinde null. `disc_val` bosluklari alt cizgiye
+          // cevirdigi icin cron ifadesi geri cevrilir ("0_2_*_*_*" -> "0 2 * * *").
+          schedule: d.schedule ? String(d.schedule).replace(/_/g, ' ') : null,
+          suspended: d.suspended === 'true' ? true : (d.suspended === 'false' ? false : null),
+          // DaemonSet'e ozgu: dugum sayisi.
+          desired: d.desired != null ? toInt(d.desired) : null,
           resource: d.resource || '', specReplicas: toInt(d.spec),
           statusReplicas: toInt(d.status), readyReplicas: toInt(d.ready),
           hasHpa: d.hpa === 'yes', image: d.image && d.image !== '-' ? d.image : null,
@@ -194,4 +241,7 @@ function extractDiscoveryResult(rawArtifacts) {
   return base;
 }
 
-module.exports = { extractStatsKey, extractScaleXResult, extractDiscoveryResult, parseDetailPairs, normalizeStatus, toBool };
+module.exports = {
+  extractStatsKey, extractScaleXResult, extractDiscoveryResult, parseDetailPairs,
+  normalizeStatus, toBool, EXPECTED_PACKAGE_VERSION,
+};

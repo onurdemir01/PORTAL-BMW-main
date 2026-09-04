@@ -128,11 +128,17 @@ const ScaleXPage: React.FC = () => {
           await new Promise((r) => setTimeout(r, 3000));
           if (!alive) return;
           const st = await scalexApi.discoverStatus(launched.serverId, launched.jobId);
+          const httpStatus = (st as any)?._httpStatus;
+          if (httpStatus === 401 || httpStatus === 403) return;
           if (!st.finished) continue;
           if (alive) setHealth(st.result?.health || []);
           return;
         }
-      } catch { /* sağlık kontrolü BEST-EFFORT: başarısız olması asıl sonucu gizlemez */ }
+      } catch (e) {
+        const httpStatus = (e as Error & { status?: number }).status;
+        if (httpStatus === 401 || httpStatus === 403) return;
+        /* sağlık kontrolü BEST-EFFORT: başarısız olması asıl sonucu gizlemez */
+      }
     })();
     return () => { alive = false; };
   }, [finished, runResult, env, tenant, namespace, clusters, apps]);
@@ -209,6 +215,13 @@ const ScaleXPage: React.FC = () => {
         ...(action === "restore"
           ? { restoreTargets: workloads.filter((w) => apps.includes(w.name)).map((w) => w.previousReplicas) }
           : {}),
+        // TIP HARITASI — YALNIZCA KESIFTEN gelen satirlar. Aynadan turetilen
+        // satirlarda (`source: "mirror"`) tip alani eski bir kayittan gelir ve bayat
+        // olabilir; bayat bir tiple islem yapmak yanlis nesneye dokunmak demektir.
+        // Gonderilmeyen uygulamalar icin playbook bugunku otomatik tespiti yapar.
+        workloadKinds: workloads
+          .filter((w) => w.source === "discovery" && apps.includes(w.name) && w.scalable !== false)
+          .map((w) => ({ name: w.name, kind: w.kind })),
         ...extra,
       });
       if (!r.ok) {

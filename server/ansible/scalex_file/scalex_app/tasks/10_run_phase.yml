@@ -18,6 +18,12 @@
     ACTION: "{{ operation_action_effective }}"
     TARGET: "{{ target_replicas_effective }}"
     WORKLOAD_KIND: "{{ workload_kind_effective }}"
+    # UYGULAMA BASINA TIP HARITASI ("kafka=sts,odeme-api=deploy"). Portal kesifte
+    # her uygulamanin tipini zaten gordu; tahmin ettirmek yerine soyluyor. Boylece
+    # `auto` taramasinin "ayni ad hem Deployment hem DeploymentConfig" halinde
+    # `ambiguous` deyip isi dusurmesi ortadan kalkiyor. Bos gelirse betik bugunku
+    # `auto` davranisini surdurur.
+    WORKLOAD_KINDS: "{{ workload_kinds_effective | default('') }}"
     WAIT_ATTEMPTS: "{{ wait_attempts }}"
     WAIT_SECONDS: "{{ wait_seconds }}"
     JOB_ID: "{{ job_id }}"

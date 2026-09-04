@@ -103,6 +103,32 @@ Ayrıntılı adımlar (AWX template alanları, survey'in API ile yüklenmesi, s�
 4. **Görünürlük**: sunucu açılışında element bazında otomatik seed edilir. Yeniden
    başlatmadan yapmak için `deploy/sql/2026-08-30-scalex-gorunurluk.sql`.
 
+## Workload tipleri
+
+Keşif altı tipe bakar (Deployment, StatefulSet, DeploymentConfig, Argo Rollout,
+DaemonSet, CronJob); işlem yalnızca ilk dördüne dokunur. DaemonSet düğüm sayısıyla
+ölçeklenir, CronJob `spec.suspend` ile durdurulur — ikisi de replica semantiği
+taşımaz, listede `ölçeklenemez` rozetiyle görünür ve **seçilemez**.
+
+**Bakılamayan tip sessizce atlanmaz.** Bu, üretimde "StatefulSet keşifte çıkmıyor"
+olarak bildirilen sorunun kök nedeniydi: bir tipin `oc get`'i düştüğünde hiçbir iz
+kalmıyor, ekran "yok" ile "bakamadım"ı ayırt edemiyordu. Artık her tip için bir
+rapor satırı çıkar ve neden ayrılır — `no_permission` platformdan istenebilir,
+`api_absent` hakkında yapacak bir şey olmayan bir olgudur.
+
+**Aynı ad birden fazla tipte.** Otomatik tespit bu durumda işi durdurur (doğru
+davranış). Ekran bunu artık önceden gösterir ve bir tipi seçince diğerini kilitler;
+ayrıca portal keşifte gördüğü tipleri `workload_kinds` extra_var'ıyla playbook'a
+taşır, böylece belirsizlik çalıştırma anında hiç oluşmaz.
+
+## Paket sürümü
+
+`scalex_app/` AWX'e **elle** kopyalanıyor. Çalıştırıcı her işte
+`RUNNER;INFO;package_version=N` basar; portal kendi beklediği sürümle karşılaştırır
+(`server/scalex/result.cjs` `EXPECTED_PACKAGE_VERSION`, `scalex_app/VERSION` ve
+`PACKAGE_VERSION` bir testle aynı sayıda tutulur). Uyuşmazlıkta ekran tahmin etmez,
+hangi sürümün koştuğunu söyler.
+
 ## Sessiz geri alma tuzakları
 
 Bu ekran, "iş yeşil döndü ama değişiklik birkaç dakika sonra geri alındı" sınıfındaki

@@ -255,7 +255,19 @@ const OC_STUB = `#!/bin/bash
 case "$1 $2" in "version --client") echo "Client Version: 4.14.0"; exit 0 ;; esac
 case "$1" in
   login|project) exit 0 ;;
-  auth) echo yes; exit 0 ;;
+  auth)
+    # "oc auth can-i list <kind>" -- rollout icin HAYIR. Boylece kesfin
+    # "bakilamadi" nedenini no_permission olarak ayirt edip etmedigi test
+    # edilebiliyor (api_absent ile ayni sey DEGIL).
+    #
+    # NOT: bu blok bir JS sablon dizesinin ICINDE. Ters tirnak kullanilamaz ve
+    # kabuk degisken genislemeleri MUTLAKA ters bolu ile kacirilmalidir --
+    # kacirilmazsa JS onlari kendi interpolasyonu sanar ve dosya hic derlenmez.
+    # (Bu yorumun kendisi de once o tuzaga dustu.)
+    case "\${4:-}" in
+      rollout|rollouts|rollouts.argoproj.io) echo no; exit 0 ;;
+      *) echo yes; exit 0 ;;
+    esac ;;
   get)
     case "$2" in
       hpa) printf 'odeme-api\\n'; exit 0 ;;
@@ -264,6 +276,20 @@ case "$1" in
         printf 'odeme-api|3|3|3|registry.gar/odeme:1.4.2|odeme-prod-app|\\n'
         printf 'batch-worker|0|0|0|registry.gar/batch:2.0||argo cd\\n'
         exit 0 ;;
+      # BU UC TIP UZUN SURE "exit 1" DONUYORDU: sahte oc yalnizca deploy
+      # cevapladigi icin StatefulSet/DeploymentConfig/Rollout kesfi TAMAMEN
+      # silinse bile hicbir test kizarmiyordu. Uretimde bildirilen "StatefulSet
+      # kesifte cikmiyor" sorununun bekcisi hic yoktu.
+      sts|statefulset|statefulsets.apps)
+        printf 'kafka|3|3|3|registry.gar/kafka:3.6||\\n'; exit 0 ;;
+      dc|deploymentconfig|deploymentconfigs.apps.openshift.io)
+        printf 'eski-app|2|2|2|registry.gar/eski:1.0||\\n'; exit 0 ;;
+      ds|daemonset|daemonsets.apps)
+        printf 'log-agent|12|12|11|registry.gar/agent:2.1||\\n'; exit 0 ;;
+      cronjob|cronjobs|cronjobs.batch)
+        printf 'gece-batch|true|0 2 * * *||registry.gar/batch:9||\\n'; exit 0 ;;
+      # Rollout BILEREK okunamaz birakildi: "bakilamadi" yolunun da bir bekcisi olsun.
+      rollout|rollouts|rollouts.argoproj.io) exit 1 ;;
       cm)
         if [ "$3" != "-n" ]; then
           if [ "$3" = "scalex-state-odeme-api" ]; then
@@ -454,4 +480,186 @@ test('P8 rapor ScaleX kimligini tasiyor (eski "Chaos Scale" kalmamis)', () => {
     const src = read(path.join(APP, f));
     assert.doesNotMatch(src, /Chaos Scale|CHAOS-SCALE/i, `${f}: eski urun adi duruyor`);
   }
+});
+
+// ── C2: kind_from_map KABUK FONKSIYONU ───────────────────────────────────────
+//
+// `kind_from_map` betigin icinde tanimli; disaridan cagrilamaz. Testler fonksiyonu
+// ve bagimliligini (`normalize_lower`) GERCEK betikten cikarip bir alt kabukta
+// calistirir. Boylece betigin tamami degil, yalnizca ilgili fonksiyon test edilir
+// ve betik degistiginde test kendiliginden guncel kalir.
+
+// Betikten yalnizca `normalize_lower` + `kind_from_map` fonksiyonlarini cikarir.
+function extractKindFromMap() {
+  const src = read(RUNNER);
+  // normalize_lower fonksiyonunu cikar.
+  const nlStart = src.indexOf('normalize_lower() {');
+  const nlEnd = src.indexOf('\n}', nlStart) + 2;
+  const normalizeLower = src.slice(nlStart, nlEnd);
+  // kind_from_map fonksiyonunu cikar.
+  const kfmStart = src.indexOf('kind_from_map() {');
+  const kfmEnd = src.indexOf('\n}', kfmStart) + 2;
+  const kindFromMap = src.slice(kfmStart, kfmEnd);
+  return `${normalizeLower}\n${kindFromMap}`;
+}
+
+// `kind_from_map` fonksiyonunu belirli bir WORKLOAD_KINDS_MAP ve uygulama adiyla
+// calistirip stdout ciktisini doner.
+function runKindFromMap(mapValue, appName) {
+  const preamble = extractKindFromMap();
+  const script = `WORKLOAD_KINDS_MAP="${mapValue}"\n${preamble}\nkind_from_map "${appName}"`;
+  return execFileSync('bash', ['-c', script], { encoding: 'utf8' });
+}
+
+test('C2a kind_from_map: bos harita bos doner', () => {
+  const out = runKindFromMap('', 'kafka');
+  assert.equal(out, '', 'bos haritada fonksiyon bir sey donmeli degil');
+});
+
+test('C2b kind_from_map: tek cift dogru cozumlenir', () => {
+  const out = runKindFromMap('kafka=sts', 'kafka');
+  assert.equal(out, 'sts', 'tek cift haritada kafka -> sts bekleniyordu');
+});
+
+test('C2c kind_from_map: birden fazla cift hepsi cozumlenir', () => {
+  assert.equal(runKindFromMap('kafka=sts,odeme-api=deploy,batch=dc', 'kafka'), 'sts');
+  assert.equal(runKindFromMap('kafka=sts,odeme-api=deploy,batch=dc', 'odeme-api'), 'deploy');
+  assert.equal(runKindFromMap('kafka=sts,odeme-api=deploy,batch=dc', 'batch'), 'dc');
+});
+
+test('C2d kind_from_map: bilinmeyen uygulama bos doner', () => {
+  const out = runKindFromMap('kafka=sts,odeme-api=deploy', 'bilinmeyen-app');
+  assert.equal(out, '', 'haritada olmayan uygulama bos donmeli');
+});
+
+test('C2e kind_from_map: buyuk harf kucuk harfe donusur (normalize_lower)', () => {
+  const out = runKindFromMap('kafka=StatefulSet', 'kafka');
+  assert.equal(out, 'statefulset', 'buyuk harfli deger normalize edilmeli');
+});
+
+test('C2f kind_from_map: son satir sonundaki newline bozulma yaratmaz', () => {
+  // Tek ciftlik harita `\n` ile biter; `read` son satiri atlamamali (betikteki
+  // `printf '%s\\n'` duzeltmesi tam olarak bunu sagliyor).
+  const out = runKindFromMap('kafka=sts\n', 'kafka');
+  assert.equal(out, 'sts', 'son newline yuzunden son cift kayboldu');
+});
+
+// ── C3: VERSION / PACKAGE_VERSION / EXPECTED_PACKAGE_VERSION KILIT ───────────
+
+test('C3 VERSION, PACKAGE_VERSION ve EXPECTED_PACKAGE_VERSION ayni surumde', () => {
+  const version = read(path.join(APP, 'VERSION')).trim();
+  const runnerSrc = read(RUNNER);
+  const pkgMatch = runnerSrc.match(/^PACKAGE_VERSION="([^"]+)"/m);
+  assert.ok(pkgMatch, 'scalex_runner.sh icinde PACKAGE_VERSION tanimli degil');
+  const packageVersion = pkgMatch[1];
+  const expectedVersion = String(result.EXPECTED_PACKAGE_VERSION);
+  assert.equal(packageVersion, version,
+    `PACKAGE_VERSION (${packageVersion}) != VERSION (${version})`);
+  assert.equal(expectedVersion, version,
+    `EXPECTED_PACKAGE_VERSION (${expectedVersion}) != VERSION (${version})`);
+});
+
+// ── D5..D9: HER TIP KESIFTE GORUNUYOR MU, GORUNMUYORSA NEDENI YAZILIYOR MU ───
+//
+// BU BOLUM O KOR NOKTANIN KENDISI ICIN VAR. Sahte `oc` uzun sure yalnizca `deploy`
+// cevapliyordu; `sts`/`dc`/`rollout` icin `exit 1` donuyordu. Yani bu uc tipin
+// kesfi TAMAMEN silinse hicbir test kizarmazdi — uretimde bildirilen "StatefulSet
+// kesifte cikmiyor" sorununun bekcisi hic yoktu.
+
+function discoveryWorkloads() {
+  const items = runDiscovery('workloads');
+  return result.extractDiscoveryResult({
+    scalex_discovery_result: {
+      overall_status: 'ok', mode: 'workloads', namespace: 'odeme-lab',
+      platform: 'ark', environment: 'lab', catalog_source: 'portal',
+      clusters: ['gbocplab2'], failed_clusters: [], counts: { ok: items.length, warn: 0, fail: 0 },
+      items,
+    },
+  });
+}
+
+test('D5 dort OLCEKLENEBILIR tipin hepsi kesif listesine giriyor', () => {
+  const parsed = discoveryWorkloads();
+  const byName = new Map(parsed.workloads.map((w) => [w.name, w]));
+
+  // Deployment zaten test ediliyordu; asil bosluk digerleriydi.
+  assert.equal(byName.get('kafka')?.kind, 'StatefulSet', 'StatefulSet kesifte cikmadi');
+  assert.equal(byName.get('kafka')?.specReplicas, 3);
+  assert.equal(byName.get('eski-app')?.kind, 'DeploymentConfig', 'DeploymentConfig kesifte cikmadi');
+  assert.equal(byName.get('eski-app')?.specReplicas, 2);
+
+  // Hepsi olceklenebilir isaretlenmeli — ekran bunlari SECTIRMELI.
+  for (const n of ['odeme-api', 'kafka', 'eski-app']) {
+    assert.equal(byName.get(n)?.scalable, true, `${n} olceklenemez isaretlendi`);
+  }
+});
+
+test('D6 OLCEKLENEMEYEN tipler listede ama `scalable=no` ile', () => {
+  const parsed = discoveryWorkloads();
+  const byName = new Map(parsed.workloads.map((w) => [w.name, w]));
+
+  const ds = byName.get('log-agent');
+  assert.ok(ds, 'DaemonSet listeye hic girmedi — kullanici "namespace\'imde var ama ScaleX gormuyor" der');
+  assert.equal(ds.kind, 'DaemonSet');
+  assert.equal(ds.scalable, false, 'DaemonSet olceklenebilir sayildi — replica ile olceklenemez');
+  assert.equal(ds.notScalableReason, 'node_scheduled');
+  assert.equal(ds.desired, 12, 'dugum sayisi okunamadi');
+
+  const cj = byName.get('gece-batch');
+  assert.ok(cj, 'CronJob listeye hic girmedi');
+  assert.equal(cj.kind, 'CronJob');
+  assert.equal(cj.scalable, false);
+  assert.equal(cj.notScalableReason, 'suspend_not_replicas');
+  assert.equal(cj.suspended, true, 'suspend durumu okunamadi');
+  // `disc_val` bosluklari alt cizgiye ceviriyor; portal cron ifadesini geri cevirmeli.
+  assert.equal(cj.schedule, '0 2 * * *', 'cron ifadesi bosluklariyla geri gelmedi');
+});
+
+test('D7 BAKILAMAYAN tip sessizce atlanmaz — nedeni bildirilir', () => {
+  const parsed = discoveryWorkloads();
+  const rollout = parsed.kindReports.find((k) => k.kind === 'rollout');
+
+  assert.ok(rollout, 'okunamayan tip icin HIC satir yok — ekran "yok" ile "bakamadim"i ayirt edemez');
+  assert.equal(rollout.readable, false);
+  // Sahte `oc auth can-i` rollout icin "no" donuyor: neden YETKI olmali, API yoklugu DEGIL.
+  // Ikisi kullanici icin tamamen farkli: biri platformdan istenebilir, digeri olgu.
+  assert.equal(rollout.reason, 'no_permission',
+    'yetki eksikligi ile API yoklugu ayirt edilmiyor');
+  assert.equal(rollout.verb, 'list');
+});
+
+test('D8 OKUNABILEN her tip icin de rapor satiri var (kac tane bulundu)', () => {
+  const parsed = discoveryWorkloads();
+  const byKind = new Map(parsed.kindReports.map((k) => [k.kind, k]));
+
+  for (const kind of ['deploy', 'sts', 'dc', 'ds', 'cronjob']) {
+    const r = byKind.get(kind);
+    assert.ok(r, `${kind} icin rapor satiri yok`);
+    assert.equal(r.readable, true, `${kind} okunabildi ama okunamadi bildirildi`);
+  }
+  assert.equal(byKind.get('deploy').found, 2, 'deploy sayaci yanlis');
+  assert.equal(byKind.get('sts').found, 1, 'sts sayaci yanlis');
+  assert.equal(byKind.get('deploy').scalable, true);
+  assert.equal(byKind.get('ds').scalable, false);
+});
+
+test('D9 kesif surumu yayinliyor — portal AWX\'teki paketi TAHMIN etmiyor', () => {
+  const items = runDiscovery('workloads');
+  const runner = items.find((i) => i.step === 'RUNNER');
+  assert.ok(runner, 'RUNNER satiri yok — portal kosan surumu goremez');
+  assert.match(runner.detail, /package_version=\d+/,
+    'surum damgasi yok; paket AWX\'e ELLE kopyalaniyor ve tek kanit bu');
+});
+
+// ── S8: yeni survey alani DOGRU TIPTE ───────────────────────────────────────
+test('S8 `workload_kinds` survey\'de SERBEST METIN ve opsiyonel', () => {
+  const spec = survey('scalex_run.survey.json').spec;
+  const q = spec.find((x) => x.variable === 'workload_kinds');
+  assert.ok(q, 'workload_kinds survey\'de yok — playbook degiskeni AWX tarafindan yutulur');
+  // `target_replicas` survey'de `integer` iken portal string gonderdigi icin AWX her
+  // calistirmayi `400 ... expected to be an integer` ile reddediyordu (PR #40).
+  assert.ok(['text', 'textarea'].includes(q.type),
+    `workload_kinds tipi "${q.type}" — serbest metin olmali, aksi halde AWX tip dogrulamasi 400 doner`);
+  assert.equal(q.required, false, 'zorunlu olursa portalin GONDERMEDIGI her launch 400 alir');
+  assert.equal(q.default, '', 'varsayilani olursa AWX gonderilmeyen alana deger enjekte eder');
 });
