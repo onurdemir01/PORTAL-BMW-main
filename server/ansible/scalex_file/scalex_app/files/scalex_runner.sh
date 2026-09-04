@@ -381,6 +381,9 @@ kind_to_display() {
     rollout) echo "ArgoRollout" ;;
     ds) echo "DaemonSet" ;;
     cronjob) echo "CronJob" ;;
+    # Cluster'dan KESFEDILEN tip ("kafkas.kafka.strimzi.io"). Kaynak adi okunur hale
+    # getirilir: "Kafka (kafka.strimzi.io)". Ad zaten `disc_val`den geciyor.
+    *.*) printf '%s (%s)\n' "$(printf '%s' "${1%%.*}" | sed 's/s$//')" "${1#*.}" ;;
     *) echo "$1" ;;
   esac
 }
@@ -401,6 +404,95 @@ DISCOVERY_KINDS="deploy sts dc rollout ds cronjob"
 
 kind_is_scalable() {
   case " $SCALABLE_KINDS " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
+# ── KESFEDILEN CRD'LER: GORUNUR AMA HENUZ ISLENEMEZ ─────────────────────────
+# `scale` alt kaynagi olan bir CRD teknik olarak `oc patch ... spec.replicas` ile
+# olceklenebilir. Yine de `scalable=no` ile listeleniyorlar, cunku islem yolu bu
+# tipler icin UCTAN UCA denenmedi: portalin tip haritasi (buildWorkloadKindMap)
+# yalnizca bilinen dort tipi taniyor ve `detect_workload`un `auto` taramasi da
+# oyle. `scalable=yes` demek, kullaniciya calisacagini KANITLAMADIGIMIZ bir dugme
+# sunmak olurdu — bu depoda tam olarak bu sinif hata pahaliya mal oldu.
+# Kullanicinin istegi ("on cesit varsa onunu da denesin") GORUNURLUK; islem
+# destegi ayri ve kanitlanmasi gereken bir adim.
+kind_is_discovered_crd() {
+  case "$1" in
+    deploy|sts|dc|rollout|ds|cronjob) return 1 ;;
+    *.*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# ── CLUSTER'IN KENDI KAYNAK ENVANTERI ───────────────────────────────────────
+# Sabit bir tip listesi iki soruyu birden CEVAPLAYAMIYOR: "bu tip bu cluster'da
+# VAR MI" ve "listeleyebiliyor muyum". `oc api-resources` ilkini kesin cevaplar ve
+# YETKI GEREKTIRMEZ (discovery her kimlige aciktir) — yani `oc get` dustugunde
+# nedenin API yoklugu mu yetki eksikligi mi oldugu artik TAHMIN degil.
+#
+# Ayrica cluster'da olup listemizde olmayan olceklenebilir tipler (operator CRD'leri)
+# bu yolla gorunur hale gelir: kullanicinin "on cesit varsa onunu da denesin" istegi.
+CLUSTER_RESOURCES=""
+CLUSTER_RESOURCES_OK="no"
+load_cluster_resources() {
+  CLUSTER_RESOURCES="$(oc api-resources --namespaced=true --verbs=list -o name 2>/dev/null | awk 'NF' | sort -u)"
+  if [ -n "$CLUSTER_RESOURCES" ]; then CLUSTER_RESOURCES_OK="yes"; fi
+}
+
+# Tam ad ("statefulsets.apps") ya da grupsuz ad ("statefulsets") ile eslesir.
+resource_exists() {
+  [ "$CLUSTER_RESOURCES_OK" = "yes" ] || return 0   # envanter okunamadiysa ENGELLEME
+  printf '%s\n' "$CLUSTER_RESOURCES" | grep -qx -- "$1" && return 0
+  printf '%s\n' "$CLUSTER_RESOURCES" | grep -q "^$1\." && return 0
+  return 1
+}
+
+# Bir kanonik tipin bu cluster'daki TAM kaynak adi. `oc auth can-i` kisa adlari
+# (sts/ds/cronjob) GUVENILIR cozmez; RBAC kurallari tam adla yazilir. Bu yuzden
+# yetki sorusu da, kullaniciya verilen RBAC cumlesi de tam adi kullanmali.
+full_resource_name() {
+  local kind="$1" candidate
+  while IFS= read -r candidate; do
+    [ -z "$candidate" ] && continue
+    case "$candidate" in
+      *.*) if resource_exists "$candidate"; then printf '%s' "$candidate"; return 0; fi ;;
+    esac
+  done <<EOF_FULLNAME
+$(resource_candidates "$kind")
+EOF_FULLNAME
+  # Envanterde bulunamadi: en spesifik adayi (tam adi) yine de dondur ki mesaj bos kalmasin.
+  resource_candidates "$kind" | tail -n 1
+}
+
+# Listemizde OLMAYAN ama cluster'da bulunan olceklenebilir tipler.
+# Olceklenebilirligin kesin olcutu `scale` alt kaynagidir. Grup keşif belgesi
+# duz metin olarak taranir — jump sunucularinda `jq` OLMAYABILIR.
+EXTRA_SCALABLE_RESOURCES=""
+load_extra_scalable_resources() {
+  local res group seen_groups="" gv
+  [ "$CLUSTER_RESOURCES_OK" = "yes" ] || return 0
+  while IFS= read -r res; do
+    [ -z "$res" ] && continue
+    case "$res" in
+      # Zaten bildigimiz tipler ve BILEREK disarida biraktiklarimiz.
+      deployments.apps|statefulsets.apps|daemonsets.apps|cronjobs.batch) continue ;;
+      deploymentconfigs.apps.openshift.io|rollouts.argoproj.io) continue ;;
+      # SAHIP OLUNAN nesneler: denetleyici saniyeler icinde geri alir.
+      replicasets.apps|replicationcontrollers|pods|jobs.batch) continue ;;
+      *.*) group="${res#*.}" ;;
+      *) continue ;;
+    esac
+    case " $seen_groups " in *" $group "*) continue ;; esac
+    seen_groups="$seen_groups $group"
+    gv="$(oc get --raw "/apis/$group" 2>/dev/null | tr ',' '\n' | grep -o '"groupVersion":"[^"]*"' | head -n 1 | sed 's/.*:"//;s/"//')"
+    [ -z "$gv" ] && continue
+    oc get --raw "/apis/$gv" 2>/dev/null | tr ',' '\n' | grep -o '"name":"[^"]*/scale"' \
+      | sed 's/.*:"//;s|/scale"||' | while IFS= read -r parent; do
+        [ -z "$parent" ] && continue
+        printf '%s.%s\n' "$parent" "$group"
+      done
+  done <<EOF_EXTRA
+$CLUSTER_RESOURCES
+EOF_EXTRA
 }
 
 resource_candidates() {
@@ -1012,10 +1104,29 @@ disc_jsonpath() {
 
 discover_workloads() {
   local kind res candidate name f2 f3 f4 image argo managed found_any=0 kind_count reason verb
+  local full_name kinds_to_scan extra
   disc_load_hpa
   disc_pdb
-  for kind in $DISCOVERY_KINDS; do
+
+  # CLUSTER NE DIYORSA O. Sabit liste iki soruyu birden cevaplayamiyordu ("bu tip
+  # var mi" / "listeleyebiliyor muyum") ve cluster'da olup listemizde olmayan hicbir
+  # sey gorunmuyordu. `oc api-resources` ikisini de kesinlestirir ve YETKI GEREKTIRMEZ.
+  load_cluster_resources
+
+  # Bilinen alti tip + cluster'da bulunan, `scale` alt kaynagi olan diger tipler
+  # (operator CRD'leri). Ikinci kume envanter okunamadiginda BOS kalir; davranis
+  # bugunku sabit listeye duser, gerilemez.
+  kinds_to_scan="$DISCOVERY_KINDS"
+  extra="$(load_extra_scalable_resources 2>/dev/null | awk 'NF' | sort -u || true)"
+  if [ -n "$extra" ]; then
+    kinds_to_scan="$kinds_to_scan $(printf '%s' "$extra" | tr '\n' ' ')"
+  fi
+
+  for kind in $kinds_to_scan; do
     res=""
+    # RBAC kurallari TAM ADLA yazilir; `sts` gibi kisa adlar `oc auth can-i` tarafindan
+    # guvenilir cozulmez. Hem yetki sorusu hem kullaniciya verilen cumle tam adi kullanir.
+    full_name="$(full_resource_name "$kind")"
     # Tek tip patlayabilir (kapali DeploymentConfig API'si, kurulu olmayan Rollout
     # CRD'si, RBAC reddi). OLCUT "satir geldi mi" olmali; rc'ye bakmak, calisan
     # tiplerin ciktisini da atardi.
@@ -1035,13 +1146,20 @@ EOF_DISC_CAND
     # bir olgu.
     if [ -z "$res" ]; then
       verb="list"
-      if oc auth can-i "$verb" "$kind" -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
+      # ── NEDEN ARTIK TAHMIN DEGIL ───────────────────────────────────────────
+      # Eskiden karar `oc auth can-i`nin BASARISINA dayaniyordu: "yes" derse
+      # `api_absent`, aksi halde `no_permission`. `can-i`nin KENDISI hata verdiginde
+      # (kaldirilmis DeploymentConfig API'si, kurulu olmayan Rollout CRD'si) sonuc
+      # TERSINE doniyordu ve ekran kullaniciyi ASLA cozulmeyecek bir RBAC talebine
+      # gonderiyordu. Artik olcut cluster'in kaynak envanteri: tip orada YOKSA
+      # `api_absent`, VARSA ama okunamiyorsa `no_permission`.
+      if [ "$CLUSTER_RESOURCES_OK" = "yes" ] && ! resource_exists "$full_name"; then
         reason="api_absent"
       else
         reason="no_permission"
       fi
       log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "WARN" \
-        "kind=$(disc_val "$kind") reason=$(disc_val "$reason") verb=$(disc_val "$verb") namespace=$(disc_val "$NS")"
+        "kind=$(disc_val "$kind") resource=$(disc_val "$full_name") reason=$(disc_val "$reason") verb=$(disc_val "$verb") namespace=$(disc_val "$NS")"
       continue
     fi
 
@@ -1058,6 +1176,13 @@ EOF_DISC_CAND
         [ -z "$f4" ] && f4=0
         log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
           "resource=$(disc_val "$res") scalable=yes spec=$(disc_val "$f2") status=$(disc_val "$f3") ready=$(disc_val "$f4") hpa=$(disc_has_hpa "$name") state_phase=$(disc_val "$DISC_STATE_PHASE") previous_replicas=$(disc_val "$DISC_STATE_PREV") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
+      elif kind_is_discovered_crd "$kind"; then
+        # Cluster'dan kesfedildi, `scale` alt kaynagi var — ama islem yolu bu tip icin
+        # kanitlanmadi (bkz. kind_is_discovered_crd). Gorunur, secilemez.
+        [ -z "$f2" ] && f2=0
+        [ -z "$f4" ] && f4=0
+        log "$CLUSTER" "$JUMP_SERVER" "$name" "$(kind_to_display "$kind")" "WORKLOAD" "OK" \
+          "resource=$(disc_val "$res") scalable=no reason=unsupported_kind spec=$(disc_val "$f2") ready=$(disc_val "$f4") image=$(disc_val "$image") gitops=$(disc_gitops "$argo" "$managed")"
       elif [ "$kind" = "cronjob" ]; then
         # `spec.suspend` bos gelebilir (alan hic yazilmamissa) — o durumda CronJob
         # AKTIFTIR, "bilinmiyor" degil.
@@ -1075,7 +1200,7 @@ $(oc get "$res" -n "$NS" -o jsonpath="$(disc_jsonpath "$kind")" 2>/dev/null || t
 EOF_DISC_ITEMS
 
     log "$CLUSTER" "$JUMP_SERVER" "-" "$(kind_to_display "$kind")" "WORKLOAD_KIND" "OK" \
-      "kind=$(disc_val "$kind") resource=$(disc_val "$res") found=$(disc_val "$kind_count") scalable=$(kind_is_scalable "$kind" && echo yes || echo no)"
+      "kind=$(disc_val "$kind") resource=$(disc_val "$res") found=$(disc_val "$kind_count") scalable=$(kind_is_scalable "$kind" && echo yes || echo no)$(kind_is_discovered_crd "$kind" && printf ' %s' 'discovered=yes' || true)"
   done
   if [ "$found_any" -eq 0 ]; then
     log "$CLUSTER" "$JUMP_SERVER" "-" "-" "WORKLOAD" "WARN" "No workload matched in namespace $(disc_val "$NS")"

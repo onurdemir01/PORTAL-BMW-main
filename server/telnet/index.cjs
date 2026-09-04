@@ -37,9 +37,12 @@ async function resolveTarget(platform) {
   }
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   const envServer = Number(String(process.env.TELNET_AWX_SERVER_ID || '').trim());
-  const serverId = row.awxServerId != null
-    ? Number(row.awxServerId)
-    : (Number.isInteger(envServer) && envServer >= 0 ? envServer : 0);
+  const serverId =
+    row.awxServerId != null
+      ? Number(row.awxServerId)
+      : Number.isInteger(envServer) && envServer >= 0
+        ? envServer
+        : 0;
   return { templateId: templateId || null, serverId, keyName };
 }
 
@@ -59,8 +62,8 @@ const SAFE_HOST_RE = /^[A-Za-z0-9.\-:_]{1,255}$/;
 // kendi job'unun ciktisini goremezdi). Bu yuzden launch aninda sahiplik AYRICA burada,
 // bellekte tutulur. Yalnizca YEDEK: kalici degil, surec yeniden baslayinca silinir ve
 // birincil kaynak yine DB'dir.
-const JOB_OWNER_CACHE = new Map();      // "serverId:jobId" -> username (lowercase)
-const JOB_OWNER_CACHE_MAX = 2000;       // sinirsiz buyume olmasin
+const JOB_OWNER_CACHE = new Map(); // "serverId:jobId" -> username (lowercase)
+const JOB_OWNER_CACHE_MAX = 2000; // sinirsiz buyume olmasin
 
 function rememberJobOwner(serverId, jobId, username) {
   if (!jobId || !username) return;
@@ -121,7 +124,9 @@ function extractTelnetResult(rawArtifacts) {
       try {
         const parsed = JSON.parse(a[key]);
         if (parsed && typeof parsed === 'object') return normalizeTelnetResult(parsed);
-      } catch { /* gecersiz JSON — yok say */ }
+      } catch {
+        /* gecersiz JSON — yok say */
+      }
     }
   }
   return null;
@@ -131,12 +136,18 @@ function extractTelnetResult(rawArtifacts) {
 // Ekran sayi bekliyor; donusum TEK yerde yapilir ki bilesenler bunu bilmek zorunda
 // kalmasin. Bilinmeyen `state` degerleri 'error'a duser — uydurma bir "acik" URETILMEZ.
 function normalizeTelnetResult(r) {
-  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
   const targets = Array.isArray(r.targets) ? r.targets : [];
   const STATES = new Set(['open', 'closed', 'error']);
   return {
-    overallStatus: ['open', 'partial', 'closed', 'error'].includes(String(r.overall_status || '').trim())
-      ? String(r.overall_status).trim() : 'error',
+    overallStatus: ['open', 'partial', 'closed', 'error'].includes(
+      String(r.overall_status || '').trim(),
+    )
+      ? String(r.overall_status).trim()
+      : 'error',
     target: {
       host: String(r.target?.host ?? ''),
       port: String(r.target?.port ?? ''),
@@ -173,7 +184,7 @@ async function denyIfNotOwner(req, serverId, jobId) {
       const db = require('../db/index.cjs');
       const { rows } = await db.query(
         `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-        [jobId, serverId]
+        [jobId, serverId],
       );
       owner = rows.length && rows[0].username ? String(rows[0].username).toLowerCase() : null;
     } catch (e) {
@@ -189,17 +200,22 @@ function initTelnet(app) {
   const express = require('express');
 
   // Paylasilan auth guard'i (OpsX/LogX v2 ile ayni desen).
-  let requireAuth = (req, res, next) => res.status(401).json({ ok: false, message: 'Auth modülü yok.' });
+  let requireAuth = (req, res, next) =>
+    res.status(401).json({ ok: false, message: 'Auth modülü yok.' });
   try {
     const authMod = require('../auth/index.cjs');
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
-  } catch { /* auth modulu yoksa deny kalir */ }
+  } catch {
+    /* auth modulu yoksa deny kalir */
+  }
 
   // Telnet sayfasi kullaniciya kapaliysa GERCEK 403 (OpsX/LogX v2 ile ayni desen).
   try {
     const { requireVisiblePrefix } = require('../auth/visibility.cjs');
     app.use('/api/telnet', requireVisiblePrefix('Telnet'));
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // GET /api/telnet/apps?search= — OpsX ile AYNI kaynak.
   app.get('/api/telnet/apps', requireAuth, async (req, res) => {
@@ -240,7 +256,8 @@ function initTelnet(app) {
     try {
       const env = String(req.query.env || '').trim();
       const tenant = String(req.query.tenant || '').trim();
-      if (!env || !tenant) return res.status(400).json({ ok: false, message: 'env ve tenant gerekli.' });
+      if (!env || !tenant)
+        return res.status(400).json({ ok: false, message: 'env ve tenant gerekli.' });
       const user = req.session?.user || {};
       const namespaces = await namespacesForCluster(env, tenant, user);
       res.json({ ok: true, namespaces });
@@ -309,7 +326,9 @@ function initTelnet(app) {
         require('../audit/index.cjs').auditPortal(req, 'telnet_cancel', {
           detail: JSON.stringify({ awxServerId: serverId, jobId }),
         });
-      } catch { /* denetim kaydi best-effort */ }
+      } catch {
+        /* denetim kaydi best-effort */
+      }
       console.log(`[Telnet] ${req.session?.user?.username} -> job ${jobId} IPTAL edildi.`);
       res.json({ ok: true });
     } catch (err) {
@@ -342,16 +361,18 @@ function initTelnet(app) {
   // Not: `application` yalniz sunucu-tarafi anti-TOCTOU dogrulamasi icindir, extra_vars'a
   // KONMAZ (kullanici sartnamesi).
   app.post('/api/telnet/run', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { platform, application, hosts, env, tenant, namespaces, cluster, ip, port } = req.body || {};
+    const { platform, application, hosts, env, tenant, namespaces, cluster, ip, port } =
+      req.body || {};
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
     const { templateId, serverId, keyName } = await resolveTarget(plat);
     if (!templateId) {
       return res.status(501).json({
         ok: false,
-        message: `Telnet ${plat} testi için AWX job template'i henüz tanımlanmadı. `
-               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
-               + `Template ID alanını doldurmalı.`,
+        message:
+          `Telnet ${plat} testi için AWX job template'i henüz tanımlanmadı. ` +
+          `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının ` +
+          `Template ID alanını doldurmalı.`,
       });
     }
 
@@ -378,10 +399,16 @@ function initTelnet(app) {
       try {
         tree = await adminData.getClusterTree();
       } catch (err) {
-        return res.status(503).json({ ok: false, message: `Cluster kataloğu okunamadı: ${err.message}` });
+        return res
+          .status(503)
+          .json({ ok: false, message: `Cluster kataloğu okunamadı: ${err.message}` });
       }
-      if (!tree[envKey]) return res.status(400).json({ ok: false, message: `Ortam tanımlı değil: ${envKey}` });
-      if (!tree[envKey][tenantKey]) return res.status(400).json({ ok: false, message: `Tenant/İş birimi tanımlı değil: ${tenantKey}` });
+      if (!tree[envKey])
+        return res.status(400).json({ ok: false, message: `Ortam tanımlı değil: ${envKey}` });
+      if (!tree[envKey][tenantKey])
+        return res
+          .status(400)
+          .json({ ok: false, message: `Tenant/İş birimi tanımlı değil: ${tenantKey}` });
 
       // TEK CLUSTER OPSIYONEL (OpsX Openshift Rollout ile AYNI UX — bkz. server/opsx/index.cjs
       // OcpClusterPickStep notu): kullanici "Tum cluster'lar"i secerse `cluster` HIC
@@ -399,7 +426,9 @@ function initTelnet(app) {
       if (!Array.isArray(namespaces) || namespaces.length === 0) {
         return res.status(400).json({ ok: false, message: 'En az bir namespace seçilmeli.' });
       }
-      const cleanNamespaces = [...new Set(namespaces.map((n) => String(n || '').trim()).filter(Boolean))];
+      const cleanNamespaces = [
+        ...new Set(namespaces.map((n) => String(n || '').trim()).filter(Boolean)),
+      ];
       if (cleanNamespaces.length === 0) {
         return res.status(400).json({ ok: false, message: 'En az bir namespace seçilmeli.' });
       }
@@ -421,7 +450,9 @@ function initTelnet(app) {
         for (const ns of cleanNamespaces) {
           for (const clusterName of groupClusters) {
             const resourceKey = `${tenantKey}/${envKey}/${clusterName}/${ns}`;
-            const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, user).catch(() => false);
+            const allowed = await restrictions
+              .isAllowed('ocp_namespace', resourceKey, user)
+              .catch(() => false);
             if (!allowed) {
               return res.status(403).json({
                 ok: false,
@@ -452,21 +483,34 @@ function initTelnet(app) {
       const clusterNames = targetCluster ? [targetCluster] : tree[envKey][tenantKey];
       let fanout;
       try {
-        const { hosts, missing } = await adminData.resolveTerminalHosts(envKey, tenantKey, clusterNames);
+        const { hosts, missing } = await adminData.resolveTerminalHosts(
+          envKey,
+          tenantKey,
+          clusterNames,
+        );
         if (missing.length) {
           return res.status(400).json({
             ok: false,
-            message: `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — `
-                   + `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`,
+            message:
+              `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — ` +
+              `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`,
           });
         }
-        const meta = await adminData.resolveClusterMeta(envKey, tenantKey, clusterNames).catch(() => ({}));
+        const meta = await adminData
+          .resolveClusterMeta(envKey, tenantKey, clusterNames)
+          .catch(() => ({}));
         const ocpMod = require('../logx/v2/ocp.cjs');
-        // DOOMED JOB'I HIC BASLATMA (2026-08-28). Uretimde `gbocpcicd2` icin vault
-        // anahtari AWX'te cozulemedi; kullanici 12 saniye bekleyip ham log okudu.
-        // Portal bunu ONCEDEN biliyordu — `ocp_vault_key_catalog` tablosu vardi ama
-        // dogrulama icin hic okunmuyordu. LogX'in ayni ilkesi: playbook-readiness.cjs.
-        await ocpMod.assertVaultKeysKnownOrThrow(meta);
+        // VAULT ON KONTROL: Telnet icin YUMUSAK — uyari log'lar ama job'i DURDURMAZ.
+        // LogX/ScaleX bu kontrolu SERT yapar ("doomed job'i baslatma") ama Telnet'in
+        // playbook'u zaten eksik kimlik bilgilerini `bastion_blocked_reason` ile
+        // GRACEFUL raporlar; ayrica playbook statik inventory'den FALLBACK yapabilir
+        // (bkz. ocp_telnet_control.yml openshift_inventory_vars.yaml yuklemesi).
+        // Job'i onceden durdurmak, bu fallback yolunu da kapatirdi.
+        try {
+          await ocpMod.assertVaultKeysKnownOrThrow(meta);
+        } catch (e) {
+          console.warn('[Telnet] vault on-kontrol uyari (job yine baslatilir):', e.message);
+        }
         // RUNTIME AYARLARI DA GONDERILMELI (2026-08-12, uretim job 3218799/3218800):
         // `oc login --username` degeri once cluster satirindan (`ocp_username` kolonu),
         // O YOKSA portalin GENEL varsayilanindan gelir — ve genel varsayilan yalnizca
@@ -474,10 +518,18 @@ function initTelnet(app) {
         // kaldi ve UC cluster'da da login dustu; hata `no_log` altinda gorunmuyordu.
         // LogX'in uc job'i da bu ikiliyi (extra + runtime) BIRLIKTE gonderiyor — ayni
         // dersin ikinci kez ogrenilmemesi icin burada da oyle.
-        const runtimeCfg = await require('../logx/v2/ocp-runtime-config.cjs').getConfig().catch(() => ({}));
+        const runtimeCfg = await require('../logx/v2/ocp-runtime-config.cjs')
+          .getConfig()
+          .catch(() => ({}));
         // LogX ve OpsX ile AYNI yardimci — payload sekli tek yerde tanimli.
         fanout = {
-          ...ocpMod.buildOcpExtraVars({ env: envKey, tenant: tenantKey, clusters: clusterNames, hosts, meta }),
+          ...ocpMod.buildOcpExtraVars({
+            env: envKey,
+            tenant: tenantKey,
+            clusters: clusterNames,
+            hosts,
+            meta,
+          }),
           ...ocpMod.buildOcpRuntimeVars(runtimeCfg),
         };
       } catch (err) {
@@ -506,7 +558,13 @@ function initTelnet(app) {
 
       const runner = require('../ansible/runner.cjs');
       try {
-        const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
+        const result = await runner.launchJobOnServer(
+          serverId,
+          templateId,
+          extraVars,
+          '',
+          req.session?.user,
+        );
         rememberJobOwner(serverId, result?.jobId, req.session?.user?.username);
 
         try {
@@ -515,25 +573,39 @@ function initTelnet(app) {
             `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
             [
               req.session?.user?.username || 'unknown',
-              serverId, templateId, telnetTemplateName(cleanNamespaces),
-              result?.jobId, result?.status || 'pending',
+              serverId,
+              templateId,
+              telnetTemplateName(cleanNamespaces),
+              result?.jobId,
+              result?.status || 'pending',
               JSON.stringify({ platform: 'openshift', ...extraVars }),
-            ]
+            ],
           );
         } catch (e) {
           // Gecmis satiri IDOR korumasinin BIRINCIL kanitidir — sessiz bir uyari degil,
           // acikca hata seviyesinde loglanir. Kullanicinin isi yine de calisir: sahiplik
           // bellek-ici yedekten dogrulanir (bkz. rememberJobOwner).
-          console.error('[Telnet] Gecmis YAZILAMADI (IDOR kaniti DB\'de yok, bellek yedegi devrede):', e.message);
+          console.error(
+            "[Telnet] Gecmis YAZILAMADI (IDOR kaniti DB'de yok, bellek yedegi devrede):",
+            e.message,
+          );
         }
 
         try {
           require('../audit/index.cjs').auditPortal(req, 'telnet_operation', {
-            detail: JSON.stringify({ platform: 'openshift', extraVars, jobId: result?.jobId ?? null }),
+            detail: JSON.stringify({
+              platform: 'openshift',
+              extraVars,
+              jobId: result?.jobId ?? null,
+            }),
           });
-        } catch { /* denetim kaydi best-effort */ }
+        } catch {
+          /* denetim kaydi best-effort */
+        }
 
-        console.log(`[Telnet] ${req.session?.user?.username} -> openshift env=${envKey} tenant=${tenantKey} target_cluster=${targetCluster || '(tümü)'} namespaces=${cleanNamespaces.join(',')} ip=${ipTrim} port=${portTrim} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+        console.log(
+          `[Telnet] ${req.session?.user?.username} -> openshift env=${envKey} tenant=${tenantKey} target_cluster=${targetCluster || '(tümü)'} namespaces=${cleanNamespaces.join(',')} ip=${ipTrim} port=${portTrim} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+        );
         return res.json({
           ok: true,
           jobId: result?.jobId ?? null,
@@ -562,7 +634,13 @@ function initTelnet(app) {
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
-    const requested = hosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean);
+    const requested = hosts
+      .map((h) =>
+        String(h || '')
+          .trim()
+          .toUpperCase(),
+      )
+      .filter(Boolean);
     const notMine = requested.filter((h) => !allowed.has(h));
     if (notMine.length) {
       return res.status(400).json({
@@ -585,7 +663,13 @@ function initTelnet(app) {
 
     try {
       const runner = require('../ansible/runner.cjs');
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
+      const result = await runner.launchJobOnServer(
+        serverId,
+        templateId,
+        extraVars,
+        limitValue,
+        req.session?.user,
+      );
       rememberJobOwner(serverId, result?.jobId, req.session?.user?.username);
 
       // ansible_job_history'ye kayit — OpsX ile AYNI genel-amacli tablo (job-status
@@ -596,22 +680,37 @@ function initTelnet(app) {
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
             req.session?.user?.username || 'unknown',
-            serverId, templateId, `Telnet: legacy`,
-            result?.jobId, result?.status || 'pending',
+            serverId,
+            templateId,
+            `Telnet: legacy`,
+            result?.jobId,
+            result?.status || 'pending',
             JSON.stringify({ platform: 'legacy', limit: limitValue, ...extraVars }),
-          ]
+          ],
         );
       } catch (e) {
-        console.error('[Telnet] Gecmis YAZILAMADI (IDOR kaniti DB\'de yok, bellek yedegi devrede):', e.message);
+        console.error(
+          "[Telnet] Gecmis YAZILAMADI (IDOR kaniti DB'de yok, bellek yedegi devrede):",
+          e.message,
+        );
       }
 
       try {
         require('../audit/index.cjs').auditPortal(req, 'telnet_operation', {
-          detail: JSON.stringify({ platform: 'legacy', limit: limitValue, extraVars, jobId: result?.jobId ?? null }),
+          detail: JSON.stringify({
+            platform: 'legacy',
+            limit: limitValue,
+            extraVars,
+            jobId: result?.jobId ?? null,
+          }),
         });
-      } catch { /* denetim kaydi best-effort */ }
+      } catch {
+        /* denetim kaydi best-effort */
+      }
 
-      console.log(`[Telnet] ${req.session?.user?.username} -> legacy ${logSummary} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      console.log(
+        `[Telnet] ${req.session?.user?.username} -> legacy ${logSummary} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+      );
       res.json({
         ok: true,
         jobId: result?.jobId ?? null,

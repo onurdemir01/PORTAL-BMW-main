@@ -28,7 +28,9 @@ const ROW = {
 test('promptOnLaunch=false → ready:false + sebep', () => {
   const [out] = readiness.toPublic([{ ...ROW, promptOnLaunch: false }]);
   assert.deepEqual(out, {
-    keyName: 'logx_ocp_app_discovery', ready: false, reason: 'prompt_on_launch_disabled',
+    keyName: 'logx_ocp_app_discovery',
+    ready: false,
+    reason: 'prompt_on_launch_disabled',
   });
 });
 
@@ -53,7 +55,37 @@ test('sihirbaz yaniti altyapi ayrintisi SIZDIRMAZ', () => {
 
 test('LogX bagimliligi olan bes playbook da kapsanir', () => {
   assert.deepEqual(readiness.LOGX_KEYS, [
-    'logx_legacy_discovery', 'logx_legacy_transfer',
-    'logx_ocp_namespace_discovery', 'logx_ocp_app_discovery', 'logx_ocp_discover_fetch',
+    'logx_legacy_discovery',
+    'logx_legacy_transfer',
+    'logx_ocp_namespace_discovery',
+    'logx_ocp_app_discovery',
+    'logx_ocp_discover_fetch',
   ]);
+});
+
+test('LOGX_KEYS bir dizi ve tam 5 kayit icerir', () => {
+  assert.ok(Array.isArray(readiness.LOGX_KEYS));
+  assert.equal(readiness.LOGX_KEYS.length, 5);
+});
+
+test('toPublic: birden fazla satir bagimsiz degerlendirilir', () => {
+  const rows = [
+    { keyName: 'a', enabled: true, templateId: 1, promptOnLaunch: true },
+    { keyName: 'b', enabled: false, templateId: 2, promptOnLaunch: true },
+    { keyName: 'c', enabled: true, templateId: null, promptOnLaunch: null },
+    { keyName: 'd', enabled: true, templateId: 4, promptOnLaunch: false },
+  ];
+  const out = readiness.toPublic(rows);
+  assert.equal(out.length, 4);
+  assert.equal(out[0].ready, true);
+  assert.equal(out[1].ready, false);
+  assert.equal(out[1].reason, 'disabled');
+  assert.equal(out[2].ready, false);
+  assert.equal(out[2].reason, 'template_missing');
+  assert.equal(out[3].ready, false);
+  assert.equal(out[3].reason, 'prompt_on_launch_disabled');
+});
+
+test('toPublic: bos dizi bos sonuc doner', () => {
+  assert.deepEqual(readiness.toPublic([]), []);
 });

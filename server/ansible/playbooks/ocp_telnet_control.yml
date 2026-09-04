@@ -113,9 +113,10 @@
   vars_files:
     # Parolalar (vault) BURADAN gelir; portal yalnızca anahtarın ADINI taşır.
     - ./global_variables/credentials.yaml
-    # OPSİYONEL: portal `api_url`i extra_vars ile gönderiyor. Dosya ileride kaldırılırsa
-    # playbook ÇALIŞMAYA DEVAM EDER; yalnızca metadata göndermeyen eski çağrılar için durur.
-    - "{{ lookup('first_found', ['./global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
+    # OPSİYONEL FALLBACK: portal `api_url` ve `credential_key`'i extra_vars ile gönderiyor.
+    # DB'de eksik veri varsa playbook bu dosyalardan TAMAMLAR. İlki yoksa ikincisi denenir;
+    # ikisi de yoksa playbook ÇALIŞMAYA DEVAM EDER (yalnızca portal verisiyle).
+    - "{{ lookup('first_found', ['./global_variables/openshift_inventory_vars.yaml', './global_variables/openshift_inventory_scalex.yaml'], errors='ignore') | default('/dev/null', true) }}"
 
   vars:
     # REZERVE ADLARDAN KAÇIN: `namespace` ve `port` Ansible'ın kendi ad alanında; doğrudan
@@ -142,6 +143,37 @@
             (ocp_clusters | rejectattr('terminal_host', 'defined') | list
              if inventory_hostname == (terminal_hosts | sort | first) else [])
           }}
+      changed_when: false
+
+    - name: "--- [Task] Enrich cluster metadata from static inventory fallback ---"
+      # FALLBACK (2026-09-04): Portal DB'de api_url veya credential_key NULL olabilir.
+      # Bu durumda buildOcpExtraVars ilgili alani HIC GONDERMEZ ve playbook bos degerle
+      # kalir. Artik yuklenen statik inventory dosyasindan (openshift_inventory_vars.yaml
+      # veya openshift_inventory_scalex.yaml) EKSIK ALANLAR tamamlanir. Portal verisi
+      # VARSA korunur (portal-first); yoksa statik dosyadan alinir (inventory-fallback).
+      # Dosya hic yuklenmediyse (first_found errors='ignore') `clusters` tanimsiz kalir
+      # ve gorev sessizce atlanir — eski davranis korunur.
+      ansible.builtin.set_fact:
+        enriched: >-
+          {{ (enriched | default([])) + [{
+            'cluster_name': item.cluster_name,
+            'terminal_host': item.terminal_host | default(''),
+            'api_url': (item.api_url | default('')) or ((clusters[item.cluster_name] | default({})).api_url | default('')),
+            'credential_key': (item.credential_key | default('')) or ((clusters[item.cluster_name] | default({})).credential | default('')),
+            'username': item.username | default('')
+          }] }}
+      loop: "{{ my_ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name }}"
+      when:
+        - (my_ocp_clusters | default([])) | length > 0
+        - clusters is defined
+      changed_when: false
+
+    - name: "--- [Task] Apply enriched cluster metadata ---"
+      ansible.builtin.set_fact:
+        my_ocp_clusters: "{{ enriched }}"
+      when: enriched is defined
       changed_when: false
 
     - name: "--- [Task] Build per-cluster work units ---"
