@@ -984,3 +984,36 @@ test("S8 `workload_kinds` survey'de SERBEST METIN ve opsiyonel", () => {
   assert.equal(q.required, false, 'zorunlu olursa portalin GONDERMEDIGI her launch 400 alir');
   assert.equal(q.default, '', 'varsayilani olursa AWX gonderilmeyen alana deger enjekte eder');
 });
+
+// ── S9: PAKET DEGISTIYSE SURUM DE ARTAR ─────────────────────────────────────
+//
+// C3 uc sayinin BIRBIRIYLE esit oldugunu kilitliyordu ama hepsi ayni anda YANLIS
+// olabilir: 2026-09-04'te runner'a dinamik tip kesfi eklendi (oc api-resources, WARN
+// satirina `resource=` alani, api_absent/no_permission ayriminin yeniden tanimlanmasi)
+// ve VERSION 3'te kaldi. Uc sayi da 3 oldugu icin C3 YESILDI — ama iki farkli paket
+// ayni surumu tasiyordu ve AWX'te eski v3 kosarken portal uyusmazlik goremiyordu.
+//
+// Bu bekci runner'in ICERIGINI surume baglar: dosya degistiyse ozet tutmaz, test
+// kizarir ve tek cikis yolu surumu artirip ozeti tazelemektir.
+test('S9 runner degistiyse VERSION artmis ve manifest tazelenmis olmali', () => {
+  const crypto = require('node:crypto');
+  const manifestPath = path.join(APP, 'PACKAGE_MANIFEST');
+  assert.ok(fs.existsSync(manifestPath), 'PACKAGE_MANIFEST yok — surum ayrismasi yine sessiz kalir');
+
+  const manifest = read(manifestPath);
+  const declaredVersion = /^version=(.+)$/m.exec(manifest)?.[1]?.trim();
+  const declaredSha = /^runner_sha256=([0-9a-f]{64})$/m.exec(manifest)?.[1];
+  assert.ok(declaredVersion, 'manifest`te version yok');
+  assert.ok(declaredSha, 'manifest`te runner_sha256 yok');
+
+  assert.equal(declaredVersion, read(path.join(APP, 'VERSION')).trim(),
+    'manifest surumu VERSION dosyasiyla ayrismis');
+
+  const actualSha = crypto.createHash('sha256')
+    .update(fs.readFileSync(RUNNER)).digest('hex');
+  assert.equal(actualSha, declaredSha,
+    'scalex_runner.sh DEGISTI ama paket kimligi tazelenmedi. Yapilacak: '
+    + 'VERSION / PACKAGE_VERSION / EXPECTED_PACKAGE_VERSION uclusunu ARTIR, '
+    + 'sonra PACKAGE_MANIFEST icindeki runner_sha256`i yeni ozetle guncelle. '
+    + 'Aksi halde AWX`teki bayat kopya ayni surumu bildirir ve uyusmazlik gorunmez.');
+});

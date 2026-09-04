@@ -426,7 +426,10 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
                       {' '}
                       — portalın OCP kullanıcısının bu namespace'te{' '}
                       <span className="font-mono">
-                        {k.verb || 'list'} {k.kind}
+                        {/* TAM KAYNAK ADI: RBAC kurallari tam adla yazilir. `sts` demek,
+                            kullanicinin platform ekibine yanlis metin goturmesi demek.
+                            Surum bildirmeyen eski paket `resource` gondermez -> kisa ada duser. */}
+                        {k.verb || 'list'} {k.resource || k.kind}
                       </span>{' '}
                       yetkisi yok. Platform ekibinden isteyin (genellikle{' '}
                       <span className="font-mono">view</span> ClusterRole binding'i yeterli).
@@ -620,6 +623,16 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
                           </>
                         ) : null}
                         {' · durdurmak için suspend gerekir, replica ile yapılamaz'}
+                      </>
+                    ) : w.notScalableReason === 'unsupported_kind' ? (
+                      <>
+                        {/* CLUSTER'DAN KESFEDILEN TIP (operator CRD'si). DaemonSet dalina
+                            dusuyordu ve "0 dugumde calisiyor · dugum sayisiyla olceklenir"
+                            yaziyordu — uc replicali bir Kafka icin IKI OLGU DA YANLIS:
+                            dugum zamanlamasiyla ilgisi yok ve `desired` bos oldugu icin
+                            sayi 0 gorunuyordu. */}
+                        replica {w.specReplicas} · hazır {w.readyReplicas}
+                        {' · ScaleX bu nesne tipini henüz işleyemiyor'}
                       </>
                     ) : (
                       <>

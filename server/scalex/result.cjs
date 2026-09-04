@@ -9,7 +9,7 @@
 // `server/ansible/scalex_file/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
-const EXPECTED_PACKAGE_VERSION = '3';
+const EXPECTED_PACKAGE_VERSION = '4';
 
 function extractStatsKey(rawArtifacts, key) {
   const a = rawArtifacts || {};
@@ -162,6 +162,11 @@ function extractDiscoveryResult(rawArtifacts) {
           cluster: String(i.cluster || ''),
           kind: String(d.kind || ''),
           display: String(i.kind || d.kind || ''),
+          // TAM KAYNAK ADI ("statefulsets.apps"). RBAC kurallari tam adla yazilir ve
+          // `oc auth can-i list sts` kisa adi guvenilir cozmez; kullaniciya `sts`
+          // demek, platform ekibine YANLIS metin goturmesi demektir. Runner bu alani
+          // basiyordu ama portal DUSURUYORDU: ekran yine kisa adi yaziyordu.
+          resource: d.resource || null,
           readable: normalizeStatus(i.status) === 'OK',
           found: toInt(d.found),
           scalable: d.scalable !== 'no',

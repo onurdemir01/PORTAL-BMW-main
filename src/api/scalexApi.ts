@@ -33,6 +33,9 @@ export interface ScaleXKindReport {
   cluster: string;
   /** Kısa ad: deploy | sts | dc | rollout | ds | cronjob */
   kind: string;
+  /** Cluster'daki TAM kaynak adı (`statefulsets.apps`). RBAC cümlesi bunu kullanır —
+   *  kısa ad platform ekibine yanlış metin götürür. Sürüm bildirmeyen eski pakette null. */
+  resource: string | null;
   /** Kullanıcıya gösterilen ad: Deployment, StatefulSet, ... */
   display: string;
   /** Bu tipe BAKILABİLDİ mi? */
