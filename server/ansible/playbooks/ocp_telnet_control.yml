@@ -112,11 +112,12 @@
 
   vars_files:
     # Parolalar (vault) BURADAN gelir; portal yalnızca anahtarın ADINI taşır.
-    - ./global_variables/credentials.yaml
+    - "{{ playbook_dir }}/../../bmw_openshift_jobs/global_variables/credentials.yaml"
     # OPSİYONEL FALLBACK: portal `api_url` ve `credential_key`'i extra_vars ile gönderiyor.
     # DB'de eksik veri varsa playbook bu dosyalardan TAMAMLAR. İlki yoksa ikincisi denenir;
     # ikisi de yoksa playbook ÇALIŞMAYA DEVAM EDER (yalnızca portal verisiyle).
-    - "{{ lookup('first_found', ['./global_variables/openshift_inventory_vars.yaml', './global_variables/openshift_inventory_scalex.yaml'], errors='ignore') | default('/dev/null', true) }}"
+    # bmw_portal\telnet_openshift\telnet_openshift.yaml bizim playbook bmw_portal\scalex\scalex_app\openshift_inventory_scalex.yaml scalex envanteri burada bmw_openshift_jobs\global_variables\openshift_inventory_vars.yaml ortak global envanter.
+    - "{{ lookup('first_found', ['./../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml', './../scalex/scalex_appopenshift_inventory_scalex.yaml'], errors='ignore') | default('/dev/null', true) }}"
 
   vars:
     # REZERVE ADLARDAN KAÇIN: `namespace` ve `port` Ansible'ın kendi ad alanında; doğrudan
