@@ -53,18 +53,25 @@ function isStale(expiresAt) {
 // bkz. server/nobetci/index.cjs). Transaction API'si olmadigi icin toplu yazim
 // satir-satir yapilir; UNIQUE kisiti es zamanli yazimlarda son sozu soyler.
 async function upsertNamespace({ env, tenant, clusterName, namespace, source, ttl }) {
-  const params = [String(env), String(tenant), String(clusterName), String(namespace), String(source || 'discovery'), Number(ttl)];
+  const params = [
+    String(env),
+    String(tenant),
+    String(clusterName),
+    String(namespace),
+    String(source || 'discovery'),
+    Number(ttl),
+  ];
   const upd = await db.query(
     `UPDATE ocp_namespace_cache
        SET source=$5, fetched_at=GETUTCDATE(), expires_at=DATEADD(HOUR, $6, GETUTCDATE()), is_deleted=0
      WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4`,
-    params
+    params,
   );
   if (!upd.rowCount) {
     await db.query(
       `INSERT INTO ocp_namespace_cache (env, tenant, cluster_name, namespace, source, expires_at)
        VALUES ($1,$2,$3,$4,$5, DATEADD(HOUR, $6, GETUTCDATE()))`,
-      params
+      params,
     );
   }
 }
@@ -89,7 +96,7 @@ async function putNamespaces({ env, tenant, clusterName, namespaces, source = 'd
   await db.query(
     `UPDATE ocp_namespace_cache SET is_deleted=1
      WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND is_deleted=0 AND fetched_at < $4`,
-    [String(env), String(tenant), String(clusterName), runStart]
+    [String(env), String(tenant), String(clusterName), runStart],
   );
   return { written: list.length };
 }
@@ -99,10 +106,16 @@ async function getNamespaces({ env, tenant, clusterName }) {
     `SELECT namespace, source, fetched_at, expires_at FROM ocp_namespace_cache
      WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND is_deleted=0
      ORDER BY namespace`,
-    [String(env), String(tenant), String(clusterName)]
+    [String(env), String(tenant), String(clusterName)],
   );
-  const newest = rows.reduce((acc, r) => (!acc || new Date(r.fetched_at) > new Date(acc) ? r.fetched_at : acc), null);
-  const oldestExpiry = rows.reduce((acc, r) => (!acc || new Date(r.expires_at) < new Date(acc) ? r.expires_at : acc), null);
+  const newest = rows.reduce(
+    (acc, r) => (!acc || new Date(r.fetched_at) > new Date(acc) ? r.fetched_at : acc),
+    null,
+  );
+  const oldestExpiry = rows.reduce(
+    (acc, r) => (!acc || new Date(r.expires_at) < new Date(acc) ? r.expires_at : acc),
+    null,
+  );
   return {
     items: rows.map((r) => r.namespace),
     cached: rows.length > 0,
@@ -127,21 +140,31 @@ async function putApps({ env, tenant, entries, source = 'discovery' }) {
 
     for (const o of e.objects || []) {
       const name = String(o.name || '');
-      if (!name || name.length > APP_NAME_MAX) { skipped++; continue; }
+      if (!name || name.length > APP_NAME_MAX) {
+        skipped++;
+        continue;
+      }
 
       const params = [
-        String(env), String(tenant), String(e.clusterName), String(e.namespace),
-        String(o.kind || 'Unknown'), name,
+        String(env),
+        String(tenant),
+        String(e.clusterName),
+        String(e.namespace),
+        String(o.kind || 'Unknown'),
+        name,
         o.replicas == null ? null : Number(o.replicas),
-        o.image || null, o.labelApp || null, toDateOrNull(o.created),
-        String(source), Number(ttl),
+        o.image || null,
+        o.labelApp || null,
+        toDateOrNull(o.created),
+        String(source),
+        Number(ttl),
       ];
       const upd = await db.query(
         `UPDATE ocp_app_cache
            SET replicas=$7, image=$8, label_app=$9, created_at_k8s=$10, source=$11,
                fetched_at=GETUTCDATE(), expires_at=DATEADD(HOUR, $12, GETUTCDATE()), is_deleted=0
          WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND kind=$5 AND app_name=$6`,
-        params
+        params,
       );
       if (!upd.rowCount) {
         await db.query(
@@ -149,7 +172,7 @@ async function putApps({ env, tenant, entries, source = 'discovery' }) {
              (env, tenant, cluster_name, namespace, kind, app_name, replicas, image, label_app,
               created_at_k8s, source, expires_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, DATEADD(HOUR, $12, GETUTCDATE()))`,
-          params
+          params,
         );
       }
       written++;
@@ -163,10 +186,11 @@ async function putApps({ env, tenant, entries, source = 'discovery' }) {
       `UPDATE ocp_app_cache SET is_deleted=1
        WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4
          AND is_deleted=0 AND fetched_at < $5`,
-      [String(env), String(tenant), String(e.clusterName), String(e.namespace), runStart]
+      [String(env), String(tenant), String(e.clusterName), String(e.namespace), runStart],
     );
   }
-  if (skipped) console.warn(`[OcpCache] ${skipped} obje atlandi (ad ${APP_NAME_MAX} karakterden uzun).`);
+  if (skipped)
+    console.warn(`[OcpCache] ${skipped} obje atlandi (ad ${APP_NAME_MAX} karakterden uzun).`);
   return { written, skipped };
 }
 
@@ -176,18 +200,27 @@ async function getApps({ env, tenant, clusterName, namespace }) {
      FROM ocp_app_cache
      WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND is_deleted=0
      ORDER BY app_name, kind`,
-    [String(env), String(tenant), String(clusterName), String(namespace)]
+    [String(env), String(tenant), String(clusterName), String(namespace)],
   );
-  const newest = rows.reduce((acc, r) => (!acc || new Date(r.fetched_at) > new Date(acc) ? r.fetched_at : acc), null);
-  const oldestExpiry = rows.reduce((acc, r) => (!acc || new Date(r.expires_at) < new Date(acc) ? r.expires_at : acc), null);
+  const newest = rows.reduce(
+    (acc, r) => (!acc || new Date(r.fetched_at) > new Date(acc) ? r.fetched_at : acc),
+    null,
+  );
+  const oldestExpiry = rows.reduce(
+    (acc, r) => (!acc || new Date(r.expires_at) < new Date(acc) ? r.expires_at : acc),
+    null,
+  );
   // TARAMANIN KENDISI ayri tutulur: bos bir namespace hicbir satir uretmez, dolayisiyla
   // `rows.length` "hic taranmadi" ile "tarandi, bos cikti"yi AYIRT EDEMEZ. Bu ayrim
   // olmadan sihirbaz her girişte yeniden ~1 dk'lik bir AWX job'i aciyordu.
   const scan = await getAppScan({ env, tenant, clusterName, namespace });
   return {
     items: rows.map((r) => ({
-      kind: r.kind, name: r.app_name, replicas: r.replicas,
-      image: r.image, labelApp: r.label_app,
+      kind: r.kind,
+      name: r.app_name,
+      replicas: r.replicas,
+      image: r.image,
+      labelApp: r.label_app,
     })),
     cached: rows.length > 0,
     fetchedAt: newest,
@@ -195,7 +228,12 @@ async function getApps({ env, tenant, clusterName, namespace }) {
     source: rows[0]?.source || null,
     scannedAt: scan?.scannedAt || null,
     // "Tarandi ve GERCEKTEN bos cikti" — sihirbaz bu durumda otomatik tarama yapmaz.
-    scannedEmpty: Boolean(scan && scan.appCount === 0 && rows.length === 0),
+    // `unknown` (tarama kaydi OKUNAMADI) bu sayilmaz: tarandigini bilmiyoruz.
+    scannedEmpty: Boolean(scan && !scan.unknown && scan.appCount === 0 && rows.length === 0),
+    // TARAMA KAYDI OKUNAMADI. Sihirbaz bu durumda OTOMATIK tarama YAPMAMALI: kayit
+    // okunamadigi icin tarama sonrasi da ayni belirsizlik surer ve her giriş yeni bir
+    // AWX job'i acar (sonsuz dongu). Elle tarama yolu acik kalir.
+    scanUnknown: Boolean(scan && scan.unknown),
   };
 }
 
@@ -205,14 +243,21 @@ async function getAppScan({ env, tenant, clusterName, namespace }) {
     const { rows } = await db.query(
       `SELECT app_count, scanned_at FROM ocp_app_scan_log
         WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4`,
-      [String(env), String(tenant), String(clusterName), String(namespace)]
+      [String(env), String(tenant), String(clusterName), String(namespace)],
     );
     if (!rows.length) return null;
     return { appCount: Number(rows[0].app_count || 0), scannedAt: rows[0].scanned_at };
   } catch (e) {
-    // Tablo henuz olusmamis olabilir (eski kurulum) — tarama kaydi YOKMUS gibi davran.
+    // "SATIR YOK" ile "OKUYAMADIM" AYNI SEY DEGIL.
+    //
+    // Eskiden ikisi de `null` donuyordu. Tablo yoksa/DB hicciklarsa sihirbaz bunu
+    // "hic taranmamis" diye okuyup OTOMATIK tarama baslatiyordu; kayit yine
+    // okunamadigi icin bir sonraki girişte ayni sey oluyordu — okunamayan bir tablo
+    // sonsuz tarama dongusu uretiyordu. Artik ayirt edilebilir bir isaret donuyor:
+    // cagiran "bilmiyorum" durumunda OTOMATIK tarama YAPMAZ, elle tarama yolunu acik
+    // birakir (kullanicinin kacis yolu korunur).
     console.warn('[OcpCache] tarama kaydi okunamadi:', e.message);
-    return null;
+    return { unknown: true, appCount: 0, scannedAt: null };
   }
 }
 
@@ -223,18 +268,23 @@ async function putAppScan({ env, tenant, entries }) {
   for (const e of entries || []) {
     // Basarisiz tarama kaydedilmez: "bos" demek yaniltici olurdu.
     if (!e || e.status !== 'ok' || !e.clusterName || !e.namespace) continue;
-    const params = [String(env), String(tenant), String(e.clusterName), String(e.namespace),
-                    Number((e.objects || []).length)];
+    const params = [
+      String(env),
+      String(tenant),
+      String(e.clusterName),
+      String(e.namespace),
+      Number((e.objects || []).length),
+    ];
     const upd = await db.query(
       `UPDATE ocp_app_scan_log SET app_count=$5, scanned_at=GETUTCDATE()
         WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4`,
-      params
+      params,
     );
     if (!upd.rowCount) {
       await db.query(
         `INSERT INTO ocp_app_scan_log (env, tenant, cluster_name, namespace, app_count)
          VALUES ($1, $2, $3, $4, $5)`,
-        params
+        params,
       );
     }
     written++;
@@ -242,4 +292,12 @@ async function putAppScan({ env, tenant, entries }) {
   return { written };
 }
 
-module.exports = { getNamespaces, putNamespaces, getApps, putApps, getAppScan, putAppScan, isStale };
+module.exports = {
+  getNamespaces,
+  putNamespaces,
+  getApps,
+  putApps,
+  getAppScan,
+  putAppScan,
+  isStale,
+};

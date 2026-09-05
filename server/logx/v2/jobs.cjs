@@ -28,7 +28,9 @@ function isAwx404Error(err) {
 // Yanlis server secimi durumunda (ozellikle varsayilan id=1) 404'u otomatik telafi eder.
 async function findServerIdsContainingTemplate(templateId, preferredServerId) {
   const targetId = Number(templateId);
-  const servers = (runner.getServers?.() || []).filter((s) => s && (s.token || (s.user && s.password)));
+  const servers = (runner.getServers?.() || []).filter(
+    (s) => s && (s.token || (s.user && s.password)),
+  );
   if (servers.length === 0) return [];
 
   const ordered = [...servers].sort((a, b) => {
@@ -60,13 +62,21 @@ function extractLogxResultFromArtifacts(rawArtifacts) {
   }
 
   // Common AWX set_stats shape: artifacts.data.logx_result
-  if (artifacts.data && artifacts.data.logx_result && typeof artifacts.data.logx_result === 'object') {
+  if (
+    artifacts.data &&
+    artifacts.data.logx_result &&
+    typeof artifacts.data.logx_result === 'object'
+  ) {
     return artifacts.data.logx_result;
   }
 
   // Some controller versions may nest stats payload under ansible_stats.data
-  if (artifacts.ansible_stats && artifacts.ansible_stats.data && artifacts.ansible_stats.data.logx_result
-      && typeof artifacts.ansible_stats.data.logx_result === 'object') {
+  if (
+    artifacts.ansible_stats &&
+    artifacts.ansible_stats.data &&
+    artifacts.ansible_stats.data.logx_result &&
+    typeof artifacts.ansible_stats.data.logx_result === 'object'
+  ) {
     return artifacts.ansible_stats.data.logx_result;
   }
 
@@ -88,10 +98,14 @@ function extractLogxResultFromArtifacts(rawArtifacts) {
 function summarizeArtifactKeys(rawArtifacts) {
   const artifacts = rawArtifacts || {};
   const top = Object.keys(artifacts);
-  const dataKeys = artifacts.data && typeof artifacts.data === 'object' ? Object.keys(artifacts.data) : [];
-  const statsDataKeys = artifacts.ansible_stats && artifacts.ansible_stats.data && typeof artifacts.ansible_stats.data === 'object'
-    ? Object.keys(artifacts.ansible_stats.data)
-    : [];
+  const dataKeys =
+    artifacts.data && typeof artifacts.data === 'object' ? Object.keys(artifacts.data) : [];
+  const statsDataKeys =
+    artifacts.ansible_stats &&
+    artifacts.ansible_stats.data &&
+    typeof artifacts.ansible_stats.data === 'object'
+      ? Object.keys(artifacts.ansible_stats.data)
+      : [];
 
   return {
     top,
@@ -114,24 +128,48 @@ async function findTemplateOnServer(serverId, templateId) {
 }
 
 async function assertTemplateMatchesRegistry(serverId, templateId, expectedPlaybookPath) {
-  const expectedFile = path.basename(String(expectedPlaybookPath || '')).trim().toLowerCase();
+  const expectedFile = path
+    .basename(String(expectedPlaybookPath || ''))
+    .trim()
+    .toLowerCase();
   if (!expectedFile) return;
 
   const tpl = await findTemplateOnServer(serverId, templateId);
   if (!tpl) return; // Template metadata alinamazsa launch'i bloklamayalim.
 
-  const actualFile = path.basename(String(tpl.playbook || '')).trim().toLowerCase();
+  const actualFile = path
+    .basename(String(tpl.playbook || ''))
+    .trim()
+    .toLowerCase();
   if (!actualFile) return;
 
   if (actualFile !== expectedFile) {
     throw Object.assign(
       new Error(
-        `Playbook Registry eşleşme hatası: templateId=${templateId} (AWX ${serverId}) playbook='${actualFile}', `
-        + `beklenen='${expectedFile}'. Admin > Playbook Registry'de template ID veya awx_server_id yanlış olabilir.`
+        `Playbook Registry eşleşme hatası: templateId=${templateId} (AWX ${serverId}) playbook='${actualFile}', ` +
+          `beklenen='${expectedFile}'. Admin > Playbook Registry'de template ID veya awx_server_id yanlış olabilir.`,
       ),
-      { status: 409 }
+      { status: 409 },
     );
   }
+}
+
+// Ayni (istek, tip) icin iki launch arasinda beklenecek EN AZ sure. Kesif isleri
+// ~1 dk suruyor; 60 sn, "kullanici bilerek yeniden denedi"yi engellemeyecek kadar
+// kisa ama otomatik bir yeniden-tetiklemeyi kesecek kadar uzun.
+const LAUNCH_COOLDOWN_MS = 60_000;
+
+// Saf fonksiyon (birim testi icin disa acilir): son TERMINAL is soguma penceresi
+// icinde mi? `finishedAt` yoksa pencere UYGULANMAZ — zamani bilinmeyen bir isi
+// gerekcesiz engellemek, kullaniciyi calisan bir yoldan mahrum birakirdi.
+function isWithinCooldown(lastTerminalJob, now = Date.now()) {
+  if (!lastTerminalJob || !lastTerminalJob.finishedAt) return false;
+  const finished = new Date(lastTerminalJob.finishedAt).getTime();
+  if (!Number.isFinite(finished)) return false;
+  const age = now - finished;
+  // Gelecek tarihli damga (sunucu saati kaymasi) pencereyi SONSUZ yapmamali.
+  if (age < 0) return false;
+  return age < LAUNCH_COOLDOWN_MS;
 }
 
 // Bir job tipini launch eder, logx_v2_jobs'a bir satir yazar, {id, awxJobId, status} doner.
@@ -144,18 +182,39 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
   // varsa yeni job acma — mevcut olani dondur. Frontend busy-kilidi ile birlikte, ag
   // gecikmesinde art arda tiklamanin ust uste job acmasini backend seviyesinde de keser.
   const existing = await listJobsForRequest(requestId);
-  const inFlight = [...existing].reverse().find(
-    (j) => j.jobType === jobType && !TERMINAL_STATUSES.has(j.status)
-  );
+  const inFlight = [...existing]
+    .reverse()
+    .find((j) => j.jobType === jobType && !TERMINAL_STATUSES.has(j.status));
   if (inFlight) return inFlight;
+
+  // SOGUMA PENCERESI. Yukaridaki idempotency yalnizca UCUSTAKI isi yakaliyordu: is
+  // `successful` olur olmaz ayni istek+tip icin yeni bir launch serbest kaliyordu,
+  // soguma suresi de yoktu. Ekran tarafinda bir yeniden-tetikleme (adim degisince
+  // AppNameStep'in remount olmasi gibi) saniyeler icinde IKINCI bir ~1 dk'lik AWX
+  // job'i aciyordu; kullanici "tariyor ama bitmiyor" goruyordu cunku her tur bir
+  // oncekinin sonucunu isleyemeden yenisi basliyordu.
+  //
+  // Bu, ekran tarafindaki duzeltmenin YEDEGIDIR: baska bir cagiran (ya da ileride
+  // eklenecek bir ekran) ayni dongunun icine duserse sunucu onu burada keser.
+  const lastTerminal = [...existing]
+    .reverse()
+    .find((j) => j.jobType === jobType && TERMINAL_STATUSES.has(j.status));
+  if (isWithinCooldown(lastTerminal)) return lastTerminal;
 
   const registryRow = await playbookRegistry.getByKey(keyName);
   if (!registryRow || !registryRow.enabled) {
-    throw Object.assign(new Error(`"${keyName}" playbook kaydı bulunamadı veya devre dışı — admin panelinden yapılandırılmalı.`), { status: 503 });
+    throw Object.assign(
+      new Error(
+        `"${keyName}" playbook kaydı bulunamadı veya devre dışı — admin panelinden yapılandırılmalı.`,
+      ),
+      { status: 503 },
+    );
   }
   const templateId = playbookRegistry.getEffectiveTemplateId(registryRow);
   if (!templateId) {
-    throw Object.assign(new Error(`"${keyName}" için AWX template ID yapılandırılmamış.`), { status: 503 });
+    throw Object.assign(new Error(`"${keyName}" için AWX template ID yapılandırılmamış.`), {
+      status: 503,
+    });
   }
   // Hangi AWX sunucusunda calisacagi: admin panelinden set edilmis awx_server_id
   // once; yoksa .env'deki AWX_LOGX_SERVER_ID (4 template'in de bulundugu tek sunucu);
@@ -169,34 +228,58 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
     await assertTemplateMatchesRegistry(awxServerId, templateId, registryRow.playbookPath);
     // AWX, "Prompt on launch" kapali template'lerde extra_vars'i SESSIZCE yok sayar —
     // is baslar ama playbook bos girdiyle calisir (2026-08-09'da app-discovery boyle dustu).
-    await require('../../ansible/template-preflight.cjs')
-      .assertTemplateAcceptsExtraVars(awxServerId, templateId, extraVars, { label: keyName });
+    await require('../../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+      awxServerId,
+      templateId,
+      extraVars,
+      { label: keyName },
+    );
     launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit);
   } catch (err) {
     if (!isAwx404Error(err)) throw err;
 
-    const candidateServerIds = await findServerIdsContainingTemplate(templateId, configuredServerId);
+    const candidateServerIds = await findServerIdsContainingTemplate(
+      templateId,
+      configuredServerId,
+    );
     const alternative = candidateServerIds.find((id) => id !== Number(configuredServerId));
 
     if (alternative) {
-      console.warn(`[LogXv2] Template ${templateId} AWX ${configuredServerId} uzerinde bulunamadi, AWX ${alternative} ile yeniden deneniyor.`);
+      console.warn(
+        `[LogXv2] Template ${templateId} AWX ${configuredServerId} uzerinde bulunamadi, AWX ${alternative} ile yeniden deneniyor.`,
+      );
       awxServerId = alternative;
       await assertTemplateMatchesRegistry(awxServerId, templateId, registryRow.playbookPath);
-      await require('../../ansible/template-preflight.cjs')
-        .assertTemplateAcceptsExtraVars(awxServerId, templateId, extraVars, { label: keyName });
+      await require('../../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+        awxServerId,
+        templateId,
+        extraVars,
+        { label: keyName },
+      );
       launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit);
       // Otomatik-iyilestirme: dogru sunucuyu kalici yaz → sonraki launch'lar ~7sn telafi
       // taramasini atlar. Best-effort; yazamazsa job yine de basladi, sadece hiz kaybi olur.
-      playbookRegistry.updateServerId(keyName, alternative)
-        .then((ok) => { if (ok) console.warn(`[LogXv2] "${keyName}" registry awx_server_id → ${alternative} olarak kalıcı güncellendi (otomatik-iyileştirme).`); })
-        .catch((e) => console.warn(`[LogXv2] awx_server_id otomatik-iyileştirme yazılamadı: ${e.message}`));
+      playbookRegistry
+        .updateServerId(keyName, alternative)
+        .then((ok) => {
+          if (ok)
+            console.warn(
+              `[LogXv2] "${keyName}" registry awx_server_id → ${alternative} olarak kalıcı güncellendi (otomatik-iyileştirme).`,
+            );
+        })
+        .catch((e) =>
+          console.warn(`[LogXv2] awx_server_id otomatik-iyileştirme yazılamadı: ${e.message}`),
+        );
     } else {
-      const hint = candidateServerIds.length > 0
-        ? `Template ${templateId} yalnızca AWX ${candidateServerIds.join(',')} üzerinde bulundu.`
-        : `Template ${templateId} erişilebilen AWX sunucularında bulunamadı.`;
+      const hint =
+        candidateServerIds.length > 0
+          ? `Template ${templateId} yalnızca AWX ${candidateServerIds.join(',')} üzerinde bulundu.`
+          : `Template ${templateId} erişilebilen AWX sunucularında bulunamadı.`;
       throw Object.assign(
-        new Error(`AWX HTTP 404: job template bulunamadı (templateId=${templateId}, awxServerId=${configuredServerId}). ${hint} Admin > Playbook Registry'de awx_server_id alanını veya AWX_LOGX_SERVER_ID değerini kontrol edin.`),
-        { status: 404 }
+        new Error(
+          `AWX HTTP 404: job template bulunamadı (templateId=${templateId}, awxServerId=${configuredServerId}). ${hint} Admin > Playbook Registry'de awx_server_id alanını veya AWX_LOGX_SERVER_ID değerini kontrol edin.`,
+        ),
+        { status: 404 },
       );
     }
   }
@@ -207,7 +290,7 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
     `INSERT INTO logx_v2_jobs (request_id, job_type, awx_server_id, awx_job_id, status, extra_vars_redacted, started_at)
      OUTPUT INSERTED.*
      VALUES ($1,$2,$3,$4,$5,$6,GETUTCDATE())`,
-    [requestId, jobType, awxServerId, awxJobId, status || 'pending', JSON.stringify(extraVars)]
+    [requestId, jobType, awxServerId, awxJobId, status || 'pending', JSON.stringify(extraVars)],
   );
   return normalizeJob(rows[0]);
 }
@@ -219,7 +302,8 @@ async function getJobById(jobDbId) {
 
 async function listJobsForRequest(requestId) {
   const { rows } = await db.query(
-    `SELECT * FROM logx_v2_jobs WHERE request_id = $1 ORDER BY id ASC`, [requestId]
+    `SELECT * FROM logx_v2_jobs WHERE request_id = $1 ORDER BY id ASC`,
+    [requestId],
   );
   return rows.map(normalizeJob);
 }
@@ -232,26 +316,32 @@ async function listJobsForRequest(requestId) {
 function buildUserFacingJobError(job, live) {
   const jobNo = job.awxJobId;
   if (live.status === 'failed' || live.status === 'error') {
-    return `İşlem tamamlanamadı (İş No: ${jobNo}). Otomasyon tarafında beklenmeyen bir hata oluştu. `
-         + `Lütfen bu iş numarasıyla birlikte sistem yöneticinize başvurun. `
-         + `Teknik ayrıntılar aşağıdaki çıktı panelindedir.`;
+    return (
+      `İşlem tamamlanamadı (İş No: ${jobNo}). Otomasyon tarafında beklenmeyen bir hata oluştu. ` +
+      `Lütfen bu iş numarasıyla birlikte sistem yöneticinize başvurun. ` +
+      `Teknik ayrıntılar aşağıdaki çıktı panelindedir.`
+    );
   }
   if (live.status === 'canceled') {
     return `İşlem iptal edildi (İş No: ${jobNo}).`;
   }
   // Terminal ama beklenen sonucu uretmemis (ornegin playbook set_stats adimina hic ulasmamis).
-  return `İşlem tamamlandı ancak sonuç alınamadı (İş No: ${jobNo}). `
-       + `Lütfen bu iş numarasıyla birlikte sistem yöneticinize başvurun. `
-       + `Teknik ayrıntılar aşağıdaki çıktı panelindedir.`;
+  return (
+    `İşlem tamamlandı ancak sonuç alınamadı (İş No: ${jobNo}). ` +
+    `Lütfen bu iş numarasıyla birlikte sistem yöneticinize başvurun. ` +
+    `Teknik ayrıntılar aşağıdaki çıktı panelindedir.`
+  );
 }
 
 // YONETICI/destek icin teknik ayrinti. Kullaniciya gosterilmez; audit'e yazilir ve
 // /jobs/:id/status yanitinda YALNIZCA Admin rolune eklenir.
 function buildTechnicalJobDetail(job, live, keyInfo) {
-  return `Yapılandırılmış çıktı bulunamadı (beklenen: artifacts.logx_result veya artifacts.data.logx_result). `
-       + `Mevcut anahtarlar: top=[${keyInfo.top.join(', ')}], data=[${keyInfo.data.join(', ')}], ansible_stats.data=[${keyInfo.ansibleStatsData.join(', ')}]. `
-       + `AWX ayrıntısı: jobId=${job.awxJobId}, serverId=${job.awxServerId}, status=${live.status}, playbook=${live.playbook || '-'}, inventory=${live.inventory || '-'}. `
-       + `Job başarısızsa ham Ansible çıktısına bakın; başarılı görünüyorsa playbook'un set_stats adımını ve AWX template'in doğru playbook'a bağlı olduğunu kontrol edin.`;
+  return (
+    `Yapılandırılmış çıktı bulunamadı (beklenen: artifacts.logx_result veya artifacts.data.logx_result). ` +
+    `Mevcut anahtarlar: top=[${keyInfo.top.join(', ')}], data=[${keyInfo.data.join(', ')}], ansible_stats.data=[${keyInfo.ansibleStatsData.join(', ')}]. ` +
+    `AWX ayrıntısı: jobId=${job.awxJobId}, serverId=${job.awxServerId}, status=${live.status}, playbook=${live.playbook || '-'}, inventory=${live.inventory || '-'}. ` +
+    `Job başarısızsa ham Ansible çıktısına bakın; başarılı görünüyorsa playbook'un set_stats adımını ve AWX template'in doğru playbook'a bağlı olduğunu kontrol edin.`
+  );
 }
 
 // AWX'ten guncel durumu ceker, terminal durumdaysa logx_v2_jobs'i artifacts ile gunceller.
@@ -275,12 +365,14 @@ async function pollJob(job) {
   if (technicalDetail) {
     // Teknik ayrinti DB semasina EKLENMEZ (yeni kolon yok); kalici iz audit'te ve
     // asil kaynak olan AWX stdout'unda kalir (bkz. getJobOutput).
-    audit.log({
-      username: 'system',
-      action: 'v2_job_failed',
-      result: live.status,
-      detail: technicalDetail,
-    }).catch(() => {});
+    audit
+      .log({
+        username: 'system',
+        action: 'v2_job_failed',
+        result: live.status,
+        detail: technicalDetail,
+      })
+      .catch(() => {});
   }
 
   const { rows } = await db.query(
@@ -288,7 +380,7 @@ async function pollJob(job) {
        SET status = $1, artifacts_json = $2, finished_at = GETUTCDATE(), error_message = $3
      OUTPUT INSERTED.*
      WHERE id = $4`,
-    [live.status, artifacts ? JSON.stringify(artifacts) : null, errorMessage, job.id]
+    [live.status, artifacts ? JSON.stringify(artifacts) : null, errorMessage, job.id],
   );
   return { ...normalizeJob(rows[0]), technicalDetail };
 }
@@ -306,7 +398,7 @@ async function cancelJob(job) {
            error_message = COALESCE(error_message, 'Kullanıcı tarafından iptal edildi.')
      OUTPUT INSERTED.*
      WHERE id = $1`,
-    [job.id]
+    [job.id],
   );
   return normalizeJob(rows[0]);
 }
@@ -335,7 +427,16 @@ function normalizeJob(row) {
 }
 
 module.exports = {
-  launchJob, getJobById, listJobsForRequest, pollJob, cancelJob, getJobOutput, TERMINAL_STATUSES,
+  launchJob,
+  getJobById,
+  listJobsForRequest,
+  pollJob,
+  cancelJob,
+  getJobOutput,
+  TERMINAL_STATUSES,
   // saf yardimcilar — birim testleri icin acildi (DB/AWX gerektirmez)
-  buildUserFacingJobError, buildTechnicalJobDetail,
+  buildUserFacingJobError,
+  buildTechnicalJobDetail,
+  isWithinCooldown,
+  LAUNCH_COOLDOWN_MS,
 };

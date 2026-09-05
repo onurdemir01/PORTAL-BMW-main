@@ -2,29 +2,35 @@
 // Legacy/OpenShift akışı → indirme. Durum HER ZAMAN server'daki logx_v2_requests.state'ten
 // senkronize edilir (client kendi gerçeğini icat etmez) — sayfa yenilemesi sonrası
 // `?logxRequest=<id>` üzerinden kaldığı yerden devam eder (bkz. plan dosyası I. bölümü).
-import React, { useCallback, useEffect, useState } from "react";
-import { ExclamationTriangleIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ExclamationTriangleIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import {
-  logxV2Api, type Platform, type LogXv2Request, type LogXv2Job, type DownloadInfo,
-  type LegacyDiscoveryResult, type OcpNamespaceDiscoveryResult, type OcpFetchTarget,
-} from "@/api/logxV2Api";
-import PlatformStep from "./steps/PlatformStep";
-import AppSearchStep from "./steps/legacy/AppSearchStep";
-import HostSelectStep from "./steps/legacy/HostSelectStep";
-import FileSelectionStep from "./steps/legacy/FileSelectionStep";
-import ClusterSelectStep from "./steps/ocp/ClusterSelectStep";
-import NamespacePickerStep from "./steps/ocp/NamespacePickerStep";
-import AppNameStep from "./steps/ocp/AppNameStep";
-import SelectedTargetsBar from "./steps/ocp/SelectedTargetsBar";
-import JobProgress from "./shared/JobProgress";
-import DownloadStep from "./shared/DownloadStep";
-import FailedStep from "./shared/FailedStep";
+  logxV2Api,
+  type Platform,
+  type LogXv2Request,
+  type LogXv2Job,
+  type DownloadInfo,
+  type LegacyDiscoveryResult,
+  type OcpNamespaceDiscoveryResult,
+  type OcpFetchTarget,
+} from '@/api/logxV2Api';
+import PlatformStep from './steps/PlatformStep';
+import AppSearchStep from './steps/legacy/AppSearchStep';
+import HostSelectStep from './steps/legacy/HostSelectStep';
+import FileSelectionStep from './steps/legacy/FileSelectionStep';
+import ClusterSelectStep from './steps/ocp/ClusterSelectStep';
+import NamespacePickerStep from './steps/ocp/NamespacePickerStep';
+import AppNameStep from './steps/ocp/AppNameStep';
+import SelectedTargetsBar from './steps/ocp/SelectedTargetsBar';
+import JobProgress from './shared/JobProgress';
+import DownloadStep from './shared/DownloadStep';
+import FailedStep from './shared/FailedStep';
 
 function setUrlParam(id: string | null) {
   const url = new URL(window.location.href);
-  if (id) url.searchParams.set("logxRequest", id);
-  else url.searchParams.delete("logxRequest");
-  window.history.replaceState({}, "", url.toString());
+  if (id) url.searchParams.set('logxRequest', id);
+  else url.searchParams.delete('logxRequest');
+  window.history.replaceState({}, '', url.toString());
 }
 
 function jobOfType(jobs: LogXv2Job[], jobType: string): LogXv2Job | undefined {
@@ -54,7 +60,12 @@ interface NamespaceList {
   clusters?: Record<string, string[]>;
 }
 
-interface OcpInput { env?: string; tenant?: string; clusters?: string[]; appDiscoveryNamespaces?: string[] }
+interface OcpInput {
+  env?: string;
+  tenant?: string;
+  clusters?: string[];
+  appDiscoveryNamespaces?: string[];
+}
 
 // BİRİNCİL kaynak: dbo.Openshift_Inventory (portaldan bağımsız, zamanlanmış Ansible
 // job'ı besler — bkz. server/logx/v2/ocp-inventory.cjs başlığı). Tek bir senkron DB
@@ -72,11 +83,12 @@ async function loadNamespaceCache(input: OcpInput | undefined): Promise<Namespac
   try {
     out = await logxV2Api.inventoryNamespaces(env, tenant, clusters);
   } catch {
-    return null;   // envanter okunamadi -> canlı keşif fallback'ine düş
+    return null; // envanter okunamadi -> canlı keşif fallback'ine düş
   }
   if (!out.cached) return null;
   return {
-    items: out.items, failed: [],
+    items: out.items,
+    failed: [],
     cache: { fetchedAt: out.fetchedAt, stale: out.stale, source: out.source },
     sources: out.sources,
     counts: out.counts,
@@ -85,27 +97,59 @@ async function loadNamespaceCache(input: OcpInput | undefined): Promise<Namespac
 }
 
 const STEP_TITLES: Record<string, string> = {
-  platform: "",
-  legacy_app: "Uygulama Seçimi",
-  legacy_hosts: "Sunucu Seçimi",
-  legacy_discovering: "Log Dosyaları Taranıyor",
-  legacy_file_select: "Dosya Seçimi",
-  legacy_transferring: "Dosyalar Hazırlanıyor",
-  ocp_cluster_select: "Cluster Seçimi",
-  ocp_namespace_resolving: "Namespace Hazırlanıyor",
+  platform: '',
+  legacy_app: 'Uygulama Seçimi',
+  legacy_hosts: 'Sunucu Seçimi',
+  legacy_discovering: 'Log Dosyaları Taranıyor',
+  legacy_file_select: 'Dosya Seçimi',
+  legacy_transferring: 'Dosyalar Hazırlanıyor',
+  ocp_cluster_select: 'Cluster Seçimi',
+  ocp_namespace_resolving: 'Namespace Hazırlanıyor',
   ocp_namespace_discovering: "Namespace'ler Taranıyor",
-  ocp_namespace_picker: "Namespace Seçimi",
-  ocp_app_name: "Uygulama Seçimi",
-  ocp_app_discovering: "Uygulamalar Taranıyor",
-  ocp_transferring: "Loglar Toplanıyor",
-  ready: "İndirmeye Hazır",
-  failed: "Hata",
+  ocp_namespace_picker: 'Namespace Seçimi',
+  ocp_app_name: 'Uygulama Seçimi',
+  ocp_app_discovering: 'Uygulamalar Taranıyor',
+  ocp_transferring: 'Loglar Toplanıyor',
+  ready: 'İndirmeye Hazır',
+  failed: 'Hata',
 };
 
 // Tek calistirmada izin verilen azami (namespace, uygulama) cifti. SUNUCU da ayni siniri
 // uygular (server/logx/v2/ocp.cjs MAX_TARGETS) — buradaki deger yalnizca kullaniciyi
 // gereksiz bir 400'e dusurmemek icin.
 const MAX_OCP_TARGETS = 20;
+
+// İŞ KAYDI BULUNAMADIĞINDA GÖSTERİLEN KURTARMA EKRANI.
+//
+// Bu beş "…discovering/transferring" dalının hepsi eskiden `if (!job) return null;`
+// diyordu. `null` dönmek kartı BOŞ bırakır: kullanıcı sonsuza kadar boş bir kutuya
+// bakar, ne olduğunu anlamaz, geri dönemez. Durum nadir ama gerçek — istek satırı
+// `..._discovering` state'inde kalıp iş satırı yazılamazsa (arka plan senkronu
+// isteği silerse, iş kaydı yazılamazsa) tam olarak bu olur.
+//
+// Sessiz bir boş ekran yerine ne olduğunu söyleyip ÇIKIŞ YOLU veriyoruz.
+const MissingJobCard: React.FC<{ label: string; onRetry: () => void; onRestart: () => void }> = ({
+  label,
+  onRetry,
+  onRestart,
+}) => (
+  <div className="py-8 flex flex-col items-center gap-3 text-center">
+    <ExclamationTriangleIcon aria-hidden="true" className="w-6 h-6 text-[var(--status-warning)]" />
+    <p className="text-sm text-[var(--text-primary)]">{label} işinin kaydı bulunamadı.</p>
+    <p className="text-xs text-[var(--text-muted)] max-w-md">
+      İş başlatılmış olabilir ama portal kaydını göremiyor. Durumu yenilemeyi deneyin; sorun sürerse
+      baştan başlayın. Hiçbir şey silinmez — bu adım salt okunurdur.
+    </p>
+    <div className="flex gap-2">
+      <button type="button" onClick={onRetry} className="btn-secondary text-xs">
+        Durumu yenile
+      </button>
+      <button type="button" onClick={onRestart} className="btn-secondary text-xs">
+        Baştan başla
+      </button>
+    </div>
+  </div>
+);
 
 const LogXWizardPage: React.FC = () => {
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -136,6 +180,23 @@ const LogXWizardPage: React.FC = () => {
   // (Bugün `key={step}` zaten remount ediyor; bu, o davranışa bağımlı kalmamak için.)
   const [appCacheToken, setAppCacheToken] = useState(0);
 
+  // OTOMATİK TARAMA HAFIZASI — REMOUNT SINIRININ ÜSTÜNDE DURMAK ZORUNDA.
+  //
+  // ÜRETİMDEKİ SONSUZ DÖNGÜ BUYDU. Hafıza eskiden `AppNameStep` içinde bir
+  // `useRef`ti, ama aşağıdaki `<div key={step}>` adım her değiştiğinde o bileşeni
+  // UNMOUNT/REMOUNT ediyor. Tarama akışı adımı zorunlu olarak değiştiriyor:
+  //   ocp_app_name → ocp_app_discovering → ocp_app_name
+  // yani tarama biter bitmez bileşen yeniden kuruluyor ve ref `null`'a dönüyordu.
+  // "Bu (cluster, namespace) için bir kez tara" koruması böylece HİÇ çalışmıyordu:
+  // sonuç önbelleğe yazılamadıysa (uzun uygulama adı, DB hatası, kısmi başarısız
+  // cluster) sihirbaz aynı taramayı sonsuza kadar yeniden başlatıyor, kullanıcı da
+  // "tarıyor ama bitmiyor" görüyordu — her tur bir öncekinin sonucunu işleyemeden.
+  //
+  // Sihirbazın kendi ömrü boyunca yaşayan bir Map bunu keser. `key={step}` bilerek
+  // korunuyor: adım değişiminde state sıfırlamak İSTENEN davranış, sorun hafızanın
+  // yanlış tarafta durmasıydı.
+  const autoScanMemoRef = useRef<Map<string, number>>(new Map());
+
   const refresh = useCallback(async (id: string) => {
     const r = await logxV2Api.getRequest(id);
     setRequest(r.request);
@@ -147,11 +208,17 @@ const LogXWizardPage: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const existing = params.get("logxRequest");
-    if (!existing) { setLoading(false); return; }
+    const existing = params.get('logxRequest');
+    if (!existing) {
+      setLoading(false);
+      return;
+    }
     setRequestId(existing);
     refresh(existing)
-      .catch(() => { setUrlParam(null); setRequestId(null); })
+      .catch(() => {
+        setUrlParam(null);
+        setRequestId(null);
+      })
       .finally(() => setLoading(false));
   }, [refresh]);
 
@@ -168,11 +235,14 @@ const LogXWizardPage: React.FC = () => {
     for (const c of result.clusters) {
       if (!Array.isArray(c?.namespaces)) continue;
       looksLikeNamespaces = true;
-      if (c.status === "ok") { items.push(...c.namespaces.filter((n) => typeof n === "string")); continue; }
+      if (c.status === 'ok') {
+        items.push(...c.namespaces.filter((n) => typeof n === 'string'));
+        continue;
+      }
       failed.push(c.cluster_name);
       // Playbook hata metnini cluster başına döndürüyor; eskiden okunmuyordu.
-      const detail = String((c as { error?: string }).error || "").trim();
-      failedDetails.push({ cluster: c.cluster_name, error: detail || "Bilinmeyen hata." });
+      const detail = String((c as { error?: string }).error || '').trim();
+      failedDetails.push({ cluster: c.cluster_name, error: detail || 'Bilinmeyen hata.' });
     }
     return looksLikeNamespaces ? { items, failed, failedDetails, cache: null } : null;
   }, [request?.discoveryResult]);
@@ -183,7 +253,8 @@ const LogXWizardPage: React.FC = () => {
   // Sayfa yenilendiğinde `chosenNamespace` kaybolur; uygulama keşfi başlatılmışsa hangi
   // namespace için başlatıldığı sunucuda duruyor (`input.appDiscoveryNamespaces`). Onu geri
   // kurmazsak kullanıcı keşif bittikten sonra boş bir "namespace seçin" ekranına düşerdi.
-  const serverNamespace = (request?.input as OcpInput | undefined)?.appDiscoveryNamespaces?.[0] ?? null;
+  const serverNamespace =
+    (request?.input as OcpInput | undefined)?.appDiscoveryNamespaces?.[0] ?? null;
   const activeNamespace = chosenNamespace ?? serverNamespace;
 
   async function startPlatform(platform: Platform) {
@@ -205,9 +276,14 @@ const LogXWizardPage: React.FC = () => {
     busyRef.current = true;
     setBusy(true);
     setBusyError(null);
-    try { await fn(); }
-    catch (err: unknown) { setBusyError(err instanceof Error ? err.message : String(err)); }
-    finally { busyRef.current = false; setBusy(false); }
+    try {
+      await fn();
+    } catch (err: unknown) {
+      setBusyError(err instanceof Error ? err.message : String(err));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   }
 
   function restart() {
@@ -225,22 +301,24 @@ const LogXWizardPage: React.FC = () => {
   // Adıma göre "← Geri": client-state adımları anında geri alınır; sunucu-durumlu adımlar
   // reset endpoint'iyle bir önceki seçim adımına sarılır. İlk seçim adımından geri = platform
   // seçimine dönüş (restart). Bir back hedefi olmayan adımlarda buton hiç render edilmez.
-  function backTargetFor(s: string): "restart" | "client" | "legacy_app" | "ocp_cluster_select" | null {
+  function backTargetFor(
+    s: string,
+  ): 'restart' | 'client' | 'legacy_app' | 'ocp_cluster_select' | null {
     switch (s) {
-      case "legacy_app":
-      case "ocp_cluster_select":
-        return "restart";
-      case "legacy_hosts":
-        return "client";   // uygulama seçimine dön (keşif henüz başlamadı)
-      case "ocp_app_name":
-        return "client"; // namespace seçimine dön; sepet KORUNUR
-      case "legacy_file_select":
-        return "legacy_app";
-      case "ocp_namespace_resolving":
-        return "ocp_cluster_select";
-      case "ocp_namespace_picker":
-        return "ocp_cluster_select";
-      case "ocp_app_discovering":
+      case 'legacy_app':
+      case 'ocp_cluster_select':
+        return 'restart';
+      case 'legacy_hosts':
+        return 'client'; // uygulama seçimine dön (keşif henüz başlamadı)
+      case 'ocp_app_name':
+        return 'client'; // namespace seçimine dön; sepet KORUNUR
+      case 'legacy_file_select':
+        return 'legacy_app';
+      case 'ocp_namespace_resolving':
+        return 'ocp_cluster_select';
+      case 'ocp_namespace_picker':
+        return 'ocp_cluster_select';
+      case 'ocp_app_discovering':
         return null; // job çalışırken geri yok (iptal ayrı bir aksiyon)
       default:
         return null;
@@ -251,10 +329,16 @@ const LogXWizardPage: React.FC = () => {
     if (busy) return;
     const target = backTargetFor(currentStep);
     if (!target) return;
-    if (target === "restart") { restart(); return; }
-    if (target === "client") {
+    if (target === 'restart') {
+      restart();
+      return;
+    }
+    if (target === 'client') {
       // Legacy sunucu adımından geri = uygulama seçimine dön.
-      if (currentStep === "legacy_hosts") { setLegacyApp(null); return; }
+      if (currentStep === 'legacy_hosts') {
+        setLegacyApp(null);
+        return;
+      }
       // Uygulama adımından geri = namespace seçimi. Sepet (targets) korunur: kullanıcı
       // topladıklarını kaybetmeden başka bir namespace'e geçebilsin.
       setChosenNamespace(null);
@@ -262,7 +346,10 @@ const LogXWizardPage: React.FC = () => {
     }
     // Liste ÖNBELLEKTEN geldiyse sunucuda geri sarılacak bir durum yok (state hâlâ 'draft'):
     // client listesini temizlemek yeter, gereksiz reset çağrısı yapılmaz.
-    if (currentStep === "ocp_namespace_picker" && request?.state === "draft") { setNsList(null); return; }
+    if (currentStep === 'ocp_namespace_picker' && request?.state === 'draft') {
+      setNsList(null);
+      return;
+    }
     if (!requestId) return;
     await guarded(async () => {
       await logxV2Api.resetRequest(requestId, target);
@@ -273,32 +360,38 @@ const LogXWizardPage: React.FC = () => {
   }
 
   // ── Adım türetme: her zaman server state'inden, client kendi gerçeğini icat etmez ──
-  let step = "platform";
+  let step = 'platform';
   if (request) {
-    if (request.state === "failed") step = "failed";
-    else if (request.state === "ready" && download) step = "ready";
-    else if (request.platform === "legacy") {
-      if (request.state === "draft") step = legacyApp ? "legacy_hosts" : "legacy_app";
-      else if (request.state === "discovering") step = "legacy_discovering";
-      else if (request.state === "discovered") step = "legacy_file_select";
-      else if (request.state === "transferring") step = "legacy_transferring";
-    } else if (request.platform === "openshift") {
-      if (request.state === "draft") {
+    if (request.state === 'failed') step = 'failed';
+    else if (request.state === 'ready' && download) step = 'ready';
+    else if (request.platform === 'legacy') {
+      if (request.state === 'draft') step = legacyApp ? 'legacy_hosts' : 'legacy_app';
+      else if (request.state === 'discovering') step = 'legacy_discovering';
+      else if (request.state === 'discovered') step = 'legacy_file_select';
+      else if (request.state === 'transferring') step = 'legacy_transferring';
+    } else if (request.platform === 'openshift') {
+      if (request.state === 'draft') {
         // Önbellekten liste geldiyse (nsList) sunucu durumu 'draft' kalsa da picker gösterilir.
         step = request.input?.clusters
-          ? (activeNamespace ? "ocp_app_name" : (namespaceList ? "ocp_namespace_picker" : "ocp_namespace_resolving"))
-          : "ocp_cluster_select";
-      } else if (request.state === "namespace_discovering") step = "ocp_namespace_discovering";
+          ? activeNamespace
+            ? 'ocp_app_name'
+            : namespaceList
+              ? 'ocp_namespace_picker'
+              : 'ocp_namespace_resolving'
+          : 'ocp_cluster_select';
+      } else if (request.state === 'namespace_discovering') step = 'ocp_namespace_discovering';
       // Namespace listesi geldiğinde picker gösterilir; kullanıcı bir namespace SEÇİNCE
       // (chosenNamespace set) app_name adımına ilerler. Önceden state hâlâ
       // "namespaces_discovered" olduğu için picker'da takılıp kalıyordu (seçim ilerlemiyordu).
-      else if (request.state === "namespaces_discovered") step = activeNamespace ? "ocp_app_name" : "ocp_namespace_picker";
+      else if (request.state === 'namespaces_discovered')
+        step = activeNamespace ? 'ocp_app_name' : 'ocp_namespace_picker';
       // Uygulama keşfi namespace SEÇİLDİKTEN sonra çalışır; bitince aynı adıma dönülür
       // (liste artık önbellekte dolu). Namespace listesi client'ta (nsList) korunduğu için
       // "← Geri" ile picker'a dönüş bu durumlarda da çalışır.
-      else if (request.state === "app_discovering") step = "ocp_app_discovering";
-      else if (request.state === "apps_discovered") step = activeNamespace ? "ocp_app_name" : "ocp_namespace_picker";
-      else if (request.state === "transferring") step = "ocp_transferring";
+      else if (request.state === 'app_discovering') step = 'ocp_app_discovering';
+      else if (request.state === 'apps_discovered')
+        step = activeNamespace ? 'ocp_app_name' : 'ocp_namespace_picker';
+      else if (request.state === 'transferring') step = 'ocp_transferring';
     }
   }
 
@@ -306,12 +399,12 @@ const LogXWizardPage: React.FC = () => {
   // düşen ama listesi olmayan bir durumda kart bomboş kalırdı; bunun yerine çözümleme
   // adımına indiriyoruz — orası listeyi kendiliğinden geri getirir.
   // (Kural: render edemeyeceğimiz bir adımı asla seçme.)
-  if (step === "ocp_namespace_picker" && !namespaceList) step = "ocp_namespace_resolving";
+  if (step === 'ocp_namespace_picker' && !namespaceList) step = 'ocp_namespace_resolving';
 
   // Sepet (biriken hedefler) SEÇİM adımlarının üstünde şerit olarak durur — ayrı bir
   // "Toplanacak Uygulamalar" adımı YOK. Kullanıcı ekle → namespace seç → ekle döngüsünü
   // ekran değiştirmeden sürdürür (2026-08-10 kullanıcı kararı).
-  const SELECTION_STEPS = ["ocp_namespace_resolving", "ocp_namespace_picker", "ocp_app_name"];
+  const SELECTION_STEPS = ['ocp_namespace_resolving', 'ocp_namespace_picker', 'ocp_app_name'];
   const showBasket = SELECTION_STEPS.includes(step);
 
   // Namespace çözümlemesi KULLANICIYA SORULMADAN yapılır: önce paylaşımlı katalog
@@ -323,18 +416,21 @@ const LogXWizardPage: React.FC = () => {
   const nsResolveRef = React.useRef<string | null>(null);
   useEffect(() => {
     // `loading` sırasında hiçbir şey tetiklenmez: istek henüz sunucudan okunmadı.
-    if (loading || step !== "ocp_namespace_resolving" || !requestId || busy) return;
+    if (loading || step !== 'ocp_namespace_resolving' || !requestId || busy) return;
     const input = request?.input as OcpInput | undefined;
-    const key = `${requestId}|${(input?.clusters || []).join(",")}`;
+    const key = `${requestId}|${(input?.clusters || []).join(',')}`;
     if (nsResolveRef.current === key) return;
     nsResolveRef.current = key;
     guarded(async () => {
       const cached = await loadNamespaceCache(input);
-      if (cached) { setNsList(cached); return; }
+      if (cached) {
+        setNsList(cached);
+        return;
+      }
       await logxV2Api.discoverNamespaces(requestId);
       await refresh(requestId);
     });
-  }, [loading, step, requestId, request?.input, busy]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, step, requestId, request?.input, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ERKEN ÇIKIŞ BURADA — TÜM hook'ların ALTINDA. Yukarı taşımayın.
   //
@@ -344,7 +440,11 @@ const LogXWizardPage: React.FC = () => {
   // ağaç unmount oldu, /logx BEMBEYAZ açıldı. TypeScript de build de bunu yakalamaz;
   // src/__tests__/hook-order.test.cjs yakalar.
   if (loading) {
-    return <div className="max-w-2xl mx-auto py-16 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
+    return (
+      <div className="max-w-2xl mx-auto py-16 text-center text-sm text-[var(--text-muted)]">
+        Yükleniyor...
+      </div>
+    );
   }
 
   const canGoBack = backTargetFor(step) !== null;
@@ -365,7 +465,9 @@ const LogXWizardPage: React.FC = () => {
         )}
         <div className="flex-1">
           <h1 className="page-title">LogX v2 — Güvenli Log İndirme</h1>
-          {STEP_TITLES[step] && <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>}
+          {STEP_TITLES[step] && (
+            <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>
+          )}
         </div>
       </div>
 
@@ -383,17 +485,19 @@ const LogXWizardPage: React.FC = () => {
           busy={busy}
           onRemove={(i) => setTargets((prev) => prev.filter((_, idx) => idx !== i))}
           onClear={() => setTargets([])}
-          onSubmit={() => guarded(async () => {
-            await logxV2Api.discoverFetchOcp(requestId, targets);
-            await refresh(requestId);
-          })}
+          onSubmit={() =>
+            guarded(async () => {
+              await logxV2Api.discoverFetchOcp(requestId, targets);
+              await refresh(requestId);
+            })
+          }
         />
       )}
 
       <div key={step} className="card p-5 animate-slide-up">
-        {step === "platform" && <PlatformStep busy={busy} onSelect={startPlatform} />}
+        {step === 'platform' && <PlatformStep busy={busy} onSelect={startPlatform} />}
 
-        {step === "legacy_app" && requestId && (
+        {step === 'legacy_app' && requestId && (
           <AppSearchStep
             busy={busy}
             // Uygulama seçimi artık DOĞRUDAN tarama başlatmaz: araya sunucu seçimi girer.
@@ -402,53 +506,95 @@ const LogXWizardPage: React.FC = () => {
           />
         )}
 
-        {step === "legacy_hosts" && requestId && legacyApp && (
+        {step === 'legacy_hosts' && requestId && legacyApp && (
           <HostSelectStep
             app={legacyApp}
             busy={busy}
-            onSubmit={(hosts) => guarded(async () => {
-              await logxV2Api.discoverLegacy(requestId, legacyApp, hosts);
-              await refresh(requestId);
-            })}
+            onSubmit={(hosts) =>
+              guarded(async () => {
+                await logxV2Api.discoverLegacy(requestId, legacyApp, hosts);
+                await refresh(requestId);
+              })
+            }
           />
         )}
 
-        {step === "legacy_discovering" && requestId && (() => {
-          const job = jobOfType(jobs, "legacy_discovery");
-          if (!job) return null;
-          return (
-            <JobProgress
-              jobId={job.id}
-              discoveringLabel="Dosyalar taranıyor…"
-              onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }}
-            />
-          );
-        })()}
+        {step === 'legacy_discovering' &&
+          requestId &&
+          (() => {
+            const job = jobOfType(jobs, 'legacy_discovery');
+            // BOŞ KART DEĞİL: `null` dönmek kullanıcıyı sonsuza kadar boş bir
+            // kutuya bakar hâlde bırakıyordu (çıkış yolu bile yoktu).
+            if (!job) {
+              return (
+                <MissingJobCard
+                  label="Log dosyası tarama"
+                  onRetry={() => refresh(requestId)}
+                  onRestart={restart}
+                />
+              );
+            }
+            return (
+              <JobProgress
+                jobId={job.id}
+                discoveringLabel="Dosyalar taranıyor…"
+                onDone={(r) => {
+                  setTechnicalDetail(r.technicalDetail ?? null);
+                  refresh(requestId);
+                }}
+              />
+            );
+          })()}
 
-        {step === "legacy_file_select" && requestId && request?.discoveryResult && (
+        {step === 'legacy_file_select' && requestId && request?.discoveryResult && (
           <FileSelectionStep
             busy={busy}
             result={request.discoveryResult as LegacyDiscoveryResult}
-            onSubmit={(selected) => guarded(async () => {
-              await logxV2Api.transferLegacy(requestId, selected);
-              await refresh(requestId);
-            })}
+            onSubmit={(selected) =>
+              guarded(async () => {
+                await logxV2Api.transferLegacy(requestId, selected);
+                await refresh(requestId);
+              })
+            }
           />
         )}
 
-        {step === "legacy_transferring" && requestId && (() => {
-          const job = jobOfType(jobs, "legacy_transfer");
-          if (!job) return null;
-          return <JobProgress jobId={job.id} discoveringLabel="Dosyalar aktarılıyor ve zip'leniyor…" onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }} />;
-        })()}
+        {step === 'legacy_transferring' &&
+          requestId &&
+          (() => {
+            const job = jobOfType(jobs, 'legacy_transfer');
+            // BOŞ KART DEĞİL: `null` dönmek kullanıcıyı sonsuza kadar boş bir
+            // kutuya bakar hâlde bırakıyordu (çıkış yolu bile yoktu).
+            if (!job) {
+              return (
+                <MissingJobCard
+                  label="Dosya aktarma"
+                  onRetry={() => refresh(requestId)}
+                  onRestart={restart}
+                />
+              );
+            }
+            return (
+              <JobProgress
+                jobId={job.id}
+                discoveringLabel="Dosyalar aktarılıyor ve zip'leniyor…"
+                onDone={(r) => {
+                  setTechnicalDetail(r.technicalDetail ?? null);
+                  refresh(requestId);
+                }}
+              />
+            );
+          })()}
 
-        {step === "ocp_cluster_select" && requestId && (
+        {step === 'ocp_cluster_select' && requestId && (
           <ClusterSelectStep
             busy={busy}
-            onSubmit={(env, tenant, clusters) => guarded(async () => {
-              await logxV2Api.selectClusters(requestId, env, tenant, clusters);
-              await refresh(requestId);
-            })}
+            onSubmit={(env, tenant, clusters) =>
+              guarded(async () => {
+                await logxV2Api.selectClusters(requestId, env, tenant, clusters);
+                await refresh(requestId);
+              })
+            }
           />
         )}
 
@@ -456,7 +602,7 @@ const LogXWizardPage: React.FC = () => {
             kendi ilerler: DB'de kayıt varsa liste anında gelir, yoksa tarama kullanıcıya
             sorulmadan başlar. Bu adım yalnızca o kararın verildiği kısa aradır (sayfa
             yenilendiğinde de aynı yoldan geçilir). */}
-        {step === "ocp_namespace_resolving" && requestId && (
+        {step === 'ocp_namespace_resolving' && requestId && (
           <div className="py-10 flex flex-col items-center gap-3 text-center">
             <div className="w-6 h-6 border-2 border-[var(--border)] border-t-[var(--accent)] rounded-full animate-spin" />
             <p className="text-sm text-[var(--text-secondary)]">Namespace listesi hazırlanıyor…</p>
@@ -467,18 +613,39 @@ const LogXWizardPage: React.FC = () => {
           </div>
         )}
 
-        {step === "ocp_namespace_discovering" && requestId && (() => {
-          const job = jobOfType(jobs, "ocp_namespace_discovery");
-          if (!job) return null;
-          return <JobProgress jobId={job.id} discoveringLabel="Namespace'ler taranıyor…" onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }} />;
-        })()}
+        {step === 'ocp_namespace_discovering' &&
+          requestId &&
+          (() => {
+            const job = jobOfType(jobs, 'ocp_namespace_discovery');
+            // BOŞ KART DEĞİL: `null` dönmek kullanıcıyı sonsuza kadar boş bir
+            // kutuya bakar hâlde bırakıyordu (çıkış yolu bile yoktu).
+            if (!job) {
+              return (
+                <MissingJobCard
+                  label="Namespace tarama"
+                  onRetry={() => refresh(requestId)}
+                  onRestart={restart}
+                />
+              );
+            }
+            return (
+              <JobProgress
+                jobId={job.id}
+                discoveringLabel="Namespace'ler taranıyor…"
+                onDone={(r) => {
+                  setTechnicalDetail(r.technicalDetail ?? null);
+                  refresh(requestId);
+                }}
+              />
+            );
+          })()}
 
         {/* `namespaceList` = önbellek (nsList) ?? CANLI keşif sonucu (nsFromServer).
             Burada eskiden yalnızca `nsList` vardı: canlı keşiften dönen kullanıcı adım
             olarak picker'a geçiyor ama koşul sağlanmadığı için ekranda HİÇBİR ŞEY
             görmüyordu (üretimde "boş ekran" olarak raporlandı). Adım seçimi zaten
             `namespaceList` üzerinden yapılıyordu — ikisi artık aynı kaynağa bakıyor. */}
-        {step === "ocp_namespace_picker" && requestId && namespaceList && (
+        {step === 'ocp_namespace_picker' && requestId && namespaceList && (
           <NamespacePickerStep
             namespaces={namespaceList.items}
             failedClusters={namespaceList.failed}
@@ -489,79 +656,130 @@ const LogXWizardPage: React.FC = () => {
             clusterMembership={namespaceList.clusters}
             selectedClusters={(request?.input as OcpInput | undefined)?.clusters || []}
             busy={busy}
-            onRediscover={() => guarded(async () => {
-              await logxV2Api.discoverNamespaces(requestId);
-              await refresh(requestId);
-              // Önbellek listesini SONRA bırak: önce bıraksaydık arada bir render'da
-              // ne önbellek ne sunucu sonucu olurdu ve kullanıcı bir an önceki adımı görürdü.
-              setNsList(null);
-            })}
+            onRediscover={() =>
+              guarded(async () => {
+                await logxV2Api.discoverNamespaces(requestId);
+                await refresh(requestId);
+                // Önbellek listesini SONRA bırak: önce bıraksaydık arada bir render'da
+                // ne önbellek ne sunucu sonucu olurdu ve kullanıcı bir an önceki adımı görürdü.
+                setNsList(null);
+              })
+            }
             onSelect={(ns) => setChosenNamespace(ns)}
           />
         )}
 
-        {step === "ocp_app_name" && requestId && activeNamespace && (() => {
-          const input = request?.input as OcpInput | undefined;
-          return (
-            <AppNameStep
-              busy={busy}
-              env={input?.env}
-              tenant={input?.tenant}
-              clusters={input?.clusters}
-              namespace={activeNamespace}
-              reloadToken={appCacheToken}
-              onDiscover={() => guarded(async () => {
-                await logxV2Api.discoverApps(requestId, [activeNamespace]);
-                await refresh(requestId);
-              })}
-              // Sepette kalan yer: kullanıcı sunucudan 400 almadan önce ekranda görsün.
-              remainingSlots={MAX_OCP_TARGETS - targets.length}
-              // Seçim JOB BAŞLATMAZ: çiftler sepete eklenir ve NAMESPACE EKRANINA dönülür —
-              // kullanıcı başka bir namespace'ten de ekleyebilsin (2026-08-10 kullanıcı kararı).
-              onSubmit={(appNames) => {
-                setTargets((prev) => {
-                  const next = [...prev];
-                  for (const appName of appNames) {
-                    if (next.length >= MAX_OCP_TARGETS) break;
-                    if (next.some((t) => t.namespace === activeNamespace && t.appName === appName)) continue;
-                    next.push({ namespace: activeNamespace, appName });
-                  }
-                  return next;
-                });
-                setChosenNamespace(null);
-              }}
-            />
-          );
-        })()}
+        {step === 'ocp_app_name' &&
+          requestId &&
+          activeNamespace &&
+          (() => {
+            const input = request?.input as OcpInput | undefined;
+            return (
+              <AppNameStep
+                busy={busy}
+                env={input?.env}
+                tenant={input?.tenant}
+                clusters={input?.clusters}
+                namespace={activeNamespace}
+                reloadToken={appCacheToken}
+                // Otomatik tarama hafızası SAYFA seviyesinde tutulur — `key={step}`
+                // AppNameStep'i her adım değişiminde remount ettiği için bileşen içindeki
+                // bir ref sonsuz döngüyü engelleyemiyordu (bkz. autoScanMemoRef başlığı).
+                autoScanMemo={autoScanMemoRef.current}
+                onDiscover={() =>
+                  guarded(async () => {
+                    await logxV2Api.discoverApps(requestId, [activeNamespace]);
+                    await refresh(requestId);
+                  })
+                }
+                // Sepette kalan yer: kullanıcı sunucudan 400 almadan önce ekranda görsün.
+                remainingSlots={MAX_OCP_TARGETS - targets.length}
+                // Seçim JOB BAŞLATMAZ: çiftler sepete eklenir ve NAMESPACE EKRANINA dönülür —
+                // kullanıcı başka bir namespace'ten de ekleyebilsin (2026-08-10 kullanıcı kararı).
+                onSubmit={(appNames) => {
+                  setTargets((prev) => {
+                    const next = [...prev];
+                    for (const appName of appNames) {
+                      if (next.length >= MAX_OCP_TARGETS) break;
+                      if (
+                        next.some((t) => t.namespace === activeNamespace && t.appName === appName)
+                      )
+                        continue;
+                      next.push({ namespace: activeNamespace, appName });
+                    }
+                    return next;
+                  });
+                  setChosenNamespace(null);
+                }}
+              />
+            );
+          })()}
 
-        {step === "ocp_app_discovering" && requestId && (() => {
-          const job = jobOfType(jobs, "ocp_app_discovery");
-          if (!job) return null;
-          return (
-            <JobProgress
-              jobId={job.id}
-              discoveringLabel="Namespace içindeki uygulamalar taranıyor…"
-              onDone={(r) => {
-                setTechnicalDetail(r.technicalDetail ?? null);
-                setAppCacheToken((t) => t + 1);   // AppNameStep önbelleği yeniden okusun
-                refresh(requestId);
-              }}
-            />
-          );
-        })()}
+        {step === 'ocp_app_discovering' &&
+          requestId &&
+          (() => {
+            const job = jobOfType(jobs, 'ocp_app_discovery');
+            // BOŞ KART DEĞİL: `null` dönmek kullanıcıyı sonsuza kadar boş bir
+            // kutuya bakar hâlde bırakıyordu (çıkış yolu bile yoktu).
+            if (!job) {
+              return (
+                <MissingJobCard
+                  label="Uygulama tarama"
+                  onRetry={() => refresh(requestId)}
+                  onRestart={restart}
+                />
+              );
+            }
+            return (
+              <JobProgress
+                jobId={job.id}
+                discoveringLabel="Namespace içindeki uygulamalar taranıyor…"
+                onDone={(r) => {
+                  setTechnicalDetail(r.technicalDetail ?? null);
+                  setAppCacheToken((t) => t + 1); // AppNameStep önbelleği yeniden okusun
+                  refresh(requestId);
+                }}
+              />
+            );
+          })()}
 
-        {step === "ocp_transferring" && requestId && (() => {
-          const job = jobOfType(jobs, "ocp_discover_fetch");
-          if (!job) return null;
-          return <JobProgress jobId={job.id} discoveringLabel="Pod'lar taranıyor ve loglar toplanıyor…" onDone={(r) => { setTechnicalDetail(r.technicalDetail ?? null); refresh(requestId); }} />;
-        })()}
+        {step === 'ocp_transferring' &&
+          requestId &&
+          (() => {
+            const job = jobOfType(jobs, 'ocp_discover_fetch');
+            // BOŞ KART DEĞİL: `null` dönmek kullanıcıyı sonsuza kadar boş bir
+            // kutuya bakar hâlde bırakıyordu (çıkış yolu bile yoktu).
+            if (!job) {
+              return (
+                <MissingJobCard
+                  label="Log toplama"
+                  onRetry={() => refresh(requestId)}
+                  onRestart={restart}
+                />
+              );
+            }
+            return (
+              <JobProgress
+                jobId={job.id}
+                discoveringLabel="Pod'lar taranıyor ve loglar toplanıyor…"
+                onDone={(r) => {
+                  setTechnicalDetail(r.technicalDetail ?? null);
+                  refresh(requestId);
+                }}
+              />
+            );
+          })()}
 
-        {step === "ready" && download && <DownloadStep download={download} downloads={downloadList} onRestart={restart} />}
+        {step === 'ready' && download && (
+          <DownloadStep download={download} downloads={downloadList} onRestart={restart} />
+        )}
 
-        {step === "failed" && (
+        {step === 'failed' && (
           <FailedStep
             jobId={lastJob(jobs)?.id}
-            message={request?.errorMessage || "İşlem tamamlanamadı. Lütfen sistem yöneticinize başvurun."}
+            message={
+              request?.errorMessage || 'İşlem tamamlanamadı. Lütfen sistem yöneticinize başvurun.'
+            }
             technicalDetail={technicalDetail ?? undefined}
             onRestart={restart}
           />
