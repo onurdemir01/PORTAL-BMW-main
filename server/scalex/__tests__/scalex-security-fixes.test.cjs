@@ -34,6 +34,26 @@ const read = (p) => fs.readFileSync(path.join(__dirname, '..', '..', '..', p), '
 const norm = (s) => s.replace(/\s+/g, ' ').replace(/'/g, '"');
 const INDEX = codeOnly(read('server/scalex/index.cjs'));
 
+// ROUTE DILIMLEYICI — BICIMDEN BAGIMSIZ ve FAIL-CLOSED.
+//
+// Prettier `router.post('/discover', h)` cagrisini cok satira boluyor
+// (`router.post(\n  '/discover',`). Eski `INDEX.indexOf("router.post('/discover'")`
+// bu durumda -1 donuyordu ve `slice(-1)` HATA VERMIYOR: metnin SON KARAKTERINI
+// donduruyor. Sonuc: bekci neredeyse bos bir metni tariyor; olumsuz assert'ler
+// (`assert.ok(!/x/.test(body))`) BOS metinde HER ZAMAN gecerdi — yani bekci
+// sessizce FAIL-OPEN oluyordu. Artik yol bulunamazsa test DUSER.
+function routeSlice(src, method, routePath) {
+  // Yol sonu SINIRI sart: `/adopt` deseni `'/adopt-renamed'` ile ESLESMEMELI,
+  // ama `/cancel` deseni `'/cancel/:serverId/:jobId'` ile ESLESMELI. Bu yuzden
+  // yoldan sonra ya kapanis tirnagi ya da `/` gelmeli.
+  const re = new RegExp(
+    `router\\.${method}\\(\\s*['"]${routePath.replace(/[/]/g, '\\/')}(?=['"]|\\/)`,
+  );
+  const m = re.exec(src);
+  assert.ok(m, `route bulunamadi (bicim mi degisti?): router.${method}('${routePath}')`);
+  return src.slice(m.index);
+}
+
 // ── S1. OCO KAPISI: prod tespiti gateVars'tan da okunmali ───────────────────
 // BULGU: `isProductionRequest` yalnizca `env`/`ortam` anahtarlarina bakiyor; ScaleX
 // ortami `target_environment` adiyla gonderiyor. Tek kaynak okundugu icin ScaleX'in
@@ -97,15 +117,17 @@ test("S2a: bos ayarin smart-gate'te GERCEKTEN onay gerektirmedigi (fail-closed s
 test('S2b: SMART bileti GERCEK sunucu/template kimligiyle acilir (0 degil)', () => {
   // `server: {id: 0}` yazilsaydi onay geldiginde `getServerById(0)` bulunamaz ve
   // ONAYLANMIS bir prod islemi sessizce hic calismazdi.
-  assert.match(INDEX, /server: \{ id: runServerId \}, templateId: runTemplateId/);
-  assert.doesNotMatch(INDEX, /server: \{ id: 0 \}/, 'sifir kimlik kalmamali');
-  assert.doesNotMatch(INDEX, /templateId: 0\b/, 'sifir template kimligi kalmamali');
+  // Bosluk NORMALIZE edilir: prettier bu iki alani ayri satirlara boluyor, kural
+  // aynen duruyor (bkz. bekci-korlugu-desenleri #2b).
+  assert.match(norm(INDEX), /server: \{ id: runServerId \}, templateId: runTemplateId/);
+  assert.doesNotMatch(norm(INDEX), /server: \{ id: 0 \}/, 'sifir kimlik kalmamali');
+  assert.doesNotMatch(norm(INDEX), /templateId: 0\b/, 'sifir template kimligi kalmamali');
 });
 
 // ── S5. /discover girdi dogrulamasi ─────────────────────────────────────────
 
 test("S5: /discover de format dogrulamasindan gecer (namespace playbook'a ham gidiyordu)", () => {
-  const discover = INDEX.slice(INDEX.indexOf("router.post('/discover'"));
+  const discover = routeSlice(INDEX, 'post', '/discover');
   const body = discover.slice(0, discover.indexOf('launchOnAwx'));
   assert.match(body, /assertValidDiscoveryTargets/);
 });
@@ -177,7 +199,7 @@ test('S11: route ham mailCc DEGIL, temizlenmis degeri kullanir', () => {
 // ── S6. /adopt — uydurma kayit ──────────────────────────────────────────────
 
 test("S6: /adopt kaydin SAHIBINI oturumdan alir, client'tan DEGIL", () => {
-  const adopt = INDEX.slice(INDEX.indexOf("router.post('/adopt'"));
+  const adopt = routeSlice(INDEX, 'post', '/adopt');
   const body = adopt.slice(0, adopt.indexOf('res.json'));
   assert.match(body, /stoppedBy: user\.username/);
   assert.doesNotMatch(
@@ -188,14 +210,14 @@ test("S6: /adopt kaydin SAHIBINI oturumdan alir, client'tan DEGIL", () => {
 });
 
 test('S6: /adopt uygulama adini dogrular ve uygulama bazli yetkiyi UYGULAR', () => {
-  const adopt = INDEX.slice(INDEX.indexOf("router.post('/adopt'"));
+  const adopt = routeSlice(INDEX, 'post', '/adopt');
   const body = adopt.slice(0, adopt.indexOf('res.json'));
   assert.match(body, /assertValidDiscoveryTargets/);
   assert.match(body, /assertAppsAllowed/);
 });
 
 test('S6: /adopt previousReplicas sinirli tam sayi olmali', () => {
-  const adopt = INDEX.slice(INDEX.indexOf("router.post('/adopt'"));
+  const adopt = routeSlice(INDEX, 'post', '/adopt');
   assert.match(adopt, /Number\.isInteger\(prev\)/);
   assert.match(adopt, /prev > 1000/);
 });
@@ -292,7 +314,7 @@ test('LIMIT: /stopped kirpilmayi ve gizlenen kayit sayisini SOYLER', () => {
 });
 
 test('LIMIT: /history NVARCHAR(MAX) alanlarini cekmez', () => {
-  const hist = INDEX.slice(INDEX.indexOf("router.get('/history'"));
+  const hist = routeSlice(INDEX, 'get', '/history');
   const body = hist.slice(0, hist.indexOf('res.json'));
   assert.doesNotMatch(body, /SELECT TOP 200 \*/, 'SELECT * result_json/error_message getirirdi');
   assert.doesNotMatch(body, /result_json/);
@@ -419,7 +441,7 @@ test('S14: /cancel yalnizca ScaleX islerine dokunur', () => {
   // Sahiplik kontrolu `ansible_job_history` uzerinden yapiliyor ve MODUL AYRIMI YOK —
   // bu uc, kullanicinin LogX/OpsX/Telnet uzerinden baslattigi kendi islerini de iptal
   // edebilirdi ve `UPDATE scalex_operations` her durumda kosuyordu.
-  const cancel = INDEX.slice(INDEX.indexOf("router.post('/cancel"));
+  const cancel = routeSlice(INDEX, 'post', '/cancel');
   const body = cancel.slice(0, cancel.indexOf('res.json'));
   assert.match(body, /FROM scalex_operations WHERE awx_server_id = \$1 AND awx_job_id = \$2/);
   assert.match(body, /if \(!own\.length\)/);

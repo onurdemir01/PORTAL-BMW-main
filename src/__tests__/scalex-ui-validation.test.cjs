@@ -653,7 +653,12 @@ test('X2 sentetik satirlar `source: "mirror"` ile isaretleniyor', () => {
   // `source` ZORUNLU bir alan; opsiyonel olsaydi yeni bir sentetik yol eklendiginde
   // unutulur ve uydurma metrikler sessizce ekrana duserdi.
   const api = read('api/scalexApi.ts');
-  assert.match(api, /source:\s*"discovery"\s*\|\s*"mirror";/, 'kaynak alani opsiyonel ya da yok');
+  // TIRNAK BAGIMSIZ: prettier tek/cift tirnagi degistiriyor, kural degismiyor.
+  assert.match(
+    api,
+    /source:\s*["']discovery["']\s*\|\s*["']mirror["'];/,
+    'kaynak alani opsiyonel ya da yok',
+  );
   const page = codeOnly(PAGE);
   const synthetic = (page.match(/source:\s*["']mirror["']/g) || []).length;
   assert.equal(
