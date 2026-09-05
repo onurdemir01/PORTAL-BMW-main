@@ -65,10 +65,18 @@ test('CD5 launchJob soguma penceresini GERCEKTEN uyguluyor (karar noktasi)', () 
     /if \(isWithinCooldown\(lastTerminal\)\) return lastTerminal;/,
     'launchJob soguma penceresini uygulamiyor — terminal is biter bitmez yeni launch serbest',
   );
+  // ZINCIR KIRILMASINA IZIN VER: prettier `[...existing].reverse().find(` zincirini
+  // satirlara boluyor ve `norm` bunlari BOSLUGA cevirdigi icin bitisik desen tutmuyor.
+  // Olculen kural: son TERMINAL is, mevcut isler arasindan aranıyor mu?
   assert.match(
     src,
-    /const lastTerminal = \[\.\.\.existing\]\.reverse\(\)\.find\(/,
+    /const lastTerminal = \[\.\.\.existing\] ?\.reverse\(\) ?\.find\(/,
     'son terminal is hic aranmiyor',
+  );
+  assert.match(
+    src,
+    /lastTerminal[\s\S]{0,160}TERMINAL_STATUSES\.has\(j\.status\)/,
+    'son terminal is TERMINAL_STATUSES ile suzulmuyor',
   );
 });
 
