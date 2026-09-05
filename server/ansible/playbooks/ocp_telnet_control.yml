@@ -137,9 +137,32 @@
     telnet_host: "{{ target_host | default(ip) }}"
     telnet_port: "{{ target_port | default(port) }}"
     image: nicolaka/netshoot
-    job_tag: "{{ tower_job_id | default('local') }}"
+    # NOT: `job_tag` burada TANIMLANMAZ — aşağıda `set_fact` ile BİR KEZ hesaplanır.
+    # Sebep: `vars:` girdileri her referansta YENİDEN değerlendirilir; rastgele bir
+    # bileşen içerseydi pod BİR adla oluşturulup BAŞKA bir adla silinmeye çalışılır ve
+    # cluster'da artık pod kalırdı.
 
   tasks:
+    - name: "--- [Task] Resolve a collision-free job tag ---"
+      # POD ADI ÇAKIŞMASI = BAŞKASININ POD'UNU SİLMEK.
+      #
+      # Pod adı `telnet-test-<job_tag>`. `tower_job_id` tanımsızken (AWX dışı elle
+      # çalıştırma, değişkeni enjekte etmeyen sürümler, workflow job template'i) eski
+      # sabit `'local'` değeri TÜM eşzamanlı çalıştırmaları AYNI pod adına indiriyordu:
+      # A çalıştırmasının `always` bloğundaki "Delete temporary pod" görevi, B'nin
+      # `oc exec`i sürerken B'nin pod'unu siliyor, B ise `rc=143` (SIGTERM) alıyordu —
+      # yani SAHTE bir "KAPALI" sonucu. Bu, başlıktaki 5. maddede sabit `telnet-test`
+      # adıyla yaşanan üretim olayının aynısıdır; yalnızca daha dar bir kapıdan.
+      #
+      # `set_fact` BİR KEZ değerlendirilip saklanır — bu yüzden rastgele bileşen burada
+      # güvenlidir. Aynı ifadeyi `vars:` içine koymak pod'u bir adla oluşturup başka bir
+      # adla silmeye çalışmak demekti.
+      ansible.builtin.set_fact:
+        job_tag: >-
+          {{ (tower_job_id | default('') | string | trim)
+             or ('local-' ~ (99999999 | random | string)) }}
+      changed_when: false
+
     - name: "--- [Task] Select the cluster subset that belongs to this jump server ---"
       # Her bastion YALNIZCA kendi cluster'larına bağlanır. `terminal_host` taşımayan (eski
       # payload) kayıtlar sahipsiz kalmasın diye ilk bastion'a düşürülür — sessiz kayıp olmaz.
@@ -389,17 +412,33 @@
           loop: "{{ work_units }}"
           loop_control:
             label: "{{ item.unit.cluster_name }}/{{ item.ns }}"
+            index_var: wu_idx
           register: telnet_results
           # Bağlantı kurulamaması BAŞARISIZLIK DEĞİL, testin SONUCUDUR.
           failed_when: false
           changed_when: false
+          # POD HAZIR DEĞİLSE TELNET HİÇ DENENMEZ.
+          #
+          # ÜRETİMDE NE OLUYORDU (job 3291766, gbocptest4): `create`/`wait` görevlerinin
+          # ikisi de `failed_when: false` olduğu için pod hiç ayağa kalkmasa bile bu görev
+          # yine çalışıyor ve `oc exec` şunu döndürüyordu:
+          #     error: unable to upgrade connection: container not found ("telnet-test-...")
+          # Aşağıdaki sonuç eşlemesi bunu `state: 'closed'` diye etiketliyordu — yani
+          # "test pod'u ayağa kalkmadı", kullanıcıya "PORT KAPALI" olarak gösteriliyordu.
+          # İki tamamen farklı sonuç aynı görünüyordu.
+          #
+          # `when:` sayesinde bu birim artık SKIPPED olur; aşağıdaki eşlemede zaten var
+          # olan ama BUGÜNE KADAR HİÇ ÇALIŞMAYAN `item.skipped` dalı devreye girer ve
+          # sonuç `error` (TEST YAPILAMADI) olarak raporlanır.
+          when: (wait_results.results[wu_idx].rc | default(1) | int) == 0
 
         - name: "--- [Task] Show telnet outcome per (cluster, namespace) ---"
           ansible.builtin.debug:
             msg: >-
               {{ item.item.unit.cluster_name }}/{{ item.item.ns }} ({{ inventory_hostname }}) →
               {{ telnet_host }}:{{ telnet_port }} =
-              {{ 'ACIK' if (item.rc | default(1)) == 0 else 'KAPALI/ERISILEMEDI' }}
+              {{ 'TEST YAPILAMADI (pod hazir degil)' if (item.skipped | default(false))
+                 else ('ACIK' if (item.rc | default(1)) == 0 else 'KAPALI') }}
               | {{ (item.stdout_lines | default([])) + (item.stderr_lines | default([])) }}
           loop: "{{ telnet_results.results | default([]) }}"
           loop_control:
@@ -410,6 +449,16 @@
           # yalnızca insan içindir. Pod hiç açılamadıysa (wait/create düştü) sonuç
           # "closed" DEĞİL "error"dur — "port kapalı" ile "test yapılamadı" aynı şey
           # değildir ve kullanıcıyı yanlış yönlendirirdi.
+          vars:
+            # Bu birim hiç denenmedi mi (pod hazır değildi)?
+            _skipped: "{{ item.skipped | default(false) | bool }}"
+            _create_rc: "{{ create_results.results[res_idx].rc | default(1) | int }}"
+            _wait_rc: "{{ wait_results.results[res_idx].rc | default(1) | int }}"
+            # Telnet KOŞTU ama pod altından kayboldu (eşzamanlı temizlik / tahliye).
+            # Bu da bir "kapalı port" DEĞİL, testin yapılamamasıdır.
+            _err_text: "{{ ((item.stderr | default('')) ~ ' ' ~ (item.stdout | default(''))) | lower }}"
+            _pod_missing: >-
+              {{ ('not found' in _err_text) or ('unable to upgrade connection' in _err_text) }}
           ansible.builtin.set_fact:
             bastion_telnet_results: >-
               {{ bastion_telnet_results | default([]) + [ {
@@ -418,15 +467,23 @@
                    'namespace': item.item.ns,
                    'ip': telnet_host | string,
                    'port': telnet_port | string,
-                   'state': ('open' if (item.rc | default(1)) == 0
-                             else ('error' if item.skipped | default(false) else 'closed')),
+                   'state': ('error' if (_skipped or (_pod_missing | bool))
+                             else ('open' if (item.rc | default(1)) == 0 else 'closed')),
                    'rc': item.rc | default(-1),
-                   'detail': ((item.stdout | default('')) ~ ' ' ~ (item.stderr | default('')))
-                              | trim | truncate(300, true, '…')
+                   'detail': (
+                       ('Pod olusturulamadi: ' ~ (create_results.results[res_idx].stderr | default('') | trim))
+                       if (_create_rc | int) != 0
+                       else (('Pod 60 saniyede hazir olmadi: ' ~ (wait_results.results[res_idx].stderr | default('') | trim))
+                             if (_wait_rc | int) != 0
+                             else (('Test pod bulunamadi (silinmis ya da tahliye edilmis): ' ~ (item.stderr | default('') | trim))
+                                   if (_pod_missing | bool)
+                                   else ((item.stdout | default('')) ~ ' ' ~ (item.stderr | default('')))))
+                     ) | trim | truncate(300, true, '…')
                  } ] }}
           loop: "{{ telnet_results.results | default([]) }}"
           loop_control:
             label: "{{ item.item.unit.cluster_name }}/{{ item.item.ns }}"
+            index_var: res_idx
           changed_when: false
 
       when:
