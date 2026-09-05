@@ -609,6 +609,66 @@ test('WKM35 bos nesne ATLANIR', () => {
   assert.equal(bwm(entries, ['a']), 'a=deploy');
 });
 
+// ═══ buildClusterWorkloadKindMap — CLUSTER BASINA TIP HARITASI ═════════════
+
+const bckm = (entries, allowed) => launch.buildClusterWorkloadKindMap(entries, allowed);
+
+test('CKM1 tek cluster, tek uygulama → o cluster icin harita', () => {
+  assert.deepEqual(bckm([{ cluster: 'c1', name: 'odeme', kind: 'Deployment' }], ['odeme']), {
+    c1: 'odeme=deploy',
+  });
+});
+
+test('CKM2 farkli clusterlarda ayni ad farkli tip → her cluster kendi tipi', () => {
+  const entries = [
+    { cluster: 'test1', name: 'app-X', kind: 'DeploymentConfig' },
+    { cluster: 'test2', name: 'app-X', kind: 'Deployment' },
+    { cluster: 'test3', name: 'app-X', kind: 'ArgoRollout' },
+  ];
+  assert.deepEqual(bckm(entries, ['app-X']), {
+    test1: 'app-X=dc',
+    test2: 'app-X=deploy',
+    test3: 'app-X=rollout',
+  });
+});
+
+test('CKM3 ayni cluster icinde ayni ad FARKLI tip → belirsiz, o cluster haritasi bos kalir', () => {
+  const entries = [
+    { cluster: 'c1', name: 'app', kind: 'Deployment' },
+    { cluster: 'c1', name: 'app', kind: 'StatefulSet' },
+    { cluster: 'c2', name: 'app', kind: 'Deployment' },
+  ];
+  assert.deepEqual(bckm(entries, ['app']), {
+    c1: '',
+    c2: 'app=deploy',
+  });
+});
+
+test('CKM4 allowedApps disindaki ad DISLANIR', () => {
+  assert.deepEqual(bckm([{ cluster: 'c1', name: 'gizli', kind: 'Deployment' }], ['baska']), {});
+});
+
+test('CKM5 olceklenemez tip (DaemonSet) DISLANIR', () => {
+  assert.deepEqual(bckm([{ cluster: 'c1', name: 'fluentd', kind: 'DaemonSet' }], ['fluentd']), {});
+});
+
+test('CKM6 nesne seklinde gelen clusterWorkloadKinds de normalize edilir', () => {
+  const input = {
+    c1: [{ name: 'a', kind: 'Deployment' }],
+    c2: [{ name: 'a', kind: 'StatefulSet' }],
+  };
+  assert.deepEqual(bckm(input, ['a']), {
+    c1: 'a=deploy',
+    c2: 'a=sts',
+  });
+});
+
+test('CKM7 bos girdi → bos nesne', () => {
+  assert.deepEqual(bckm(null, ['a']), {});
+  assert.deepEqual(bckm([], ['a']), {});
+  assert.deepEqual(bckm({}, ['a']), {});
+});
+
 // ═══ classifyDrift — KAPSAMLI MATRIS TESTLERI ══════════════════════════════
 //
 // `classifyDrift({ mirrorRows, clusterStates, scannedClusters })` siniflamasini

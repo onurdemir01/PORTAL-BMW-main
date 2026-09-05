@@ -46,7 +46,7 @@ async function denyIfNotOwner(req, serverId, jobId) {
     try {
       const { rows } = await db.query(
         `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-        [jobId, serverId]
+        [jobId, serverId],
       );
       owner = rows.length && rows[0].username ? String(rows[0].username).toLowerCase() : null;
     } catch (e) {
@@ -78,15 +78,17 @@ async function resolveByKey(keyName) {
   const row = await playbookRegistry.getByKey(keyName);
   if (!row || row.enabled === false) {
     throw Object.assign(
-      new Error(`"${keyName}" playbook kaydı tanımlı/etkin değil — Admin > Playbook Kayıtları ekranından tanımlayın.`),
-      { status: 501 }
+      new Error(
+        `"${keyName}" playbook kaydı tanımlı/etkin değil — Admin > Playbook Kayıtları ekranından tanımlayın.`,
+      ),
+      { status: 501 },
     );
   }
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   if (!templateId) {
     throw Object.assign(
       new Error(`"${keyName}" için AWX Template ID girilmemiş — Admin > Playbook Kayıtları.`),
-      { status: 501 }
+      { status: 501 },
     );
   }
   const serverId = Number(row.awxServerId || process.env.SCALEX_AWX_SERVER_ID || 1);
@@ -108,8 +110,22 @@ async function resolveByKey(keyName) {
 // `request_key` onay yolunda `smart:<ticketId>` olur; is baslayinca uzlastirici onu
 // gercek `<serverId>:<jobId>` ile degistirir (bkz. reconciler.adoptApprovedTickets).
 async function insertOperationRows({
-  requestKey, username, env, tenant, clusters, namespace, action, executionMode,
-  targetReplicas, apps, serverId, jobId, status, ocoNumber, reason, smartTicketId = null,
+  requestKey,
+  username,
+  env,
+  tenant,
+  clusters,
+  namespace,
+  action,
+  executionMode,
+  targetReplicas,
+  apps,
+  serverId,
+  jobId,
+  status,
+  ocoNumber,
+  reason,
+  smartTicketId = null,
 }) {
   for (const cluster of clusters) {
     await db.query(
@@ -118,10 +134,25 @@ async function insertOperationRows({
           target_replicas, app_names_json, awx_server_id, awx_job_id, status, oco_number, reason,
           smart_ticket_id, approval_state)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-      [requestKey, username, env, tenant, cluster, namespace, action, executionMode,
-        action === 'scale' ? Number(targetReplicas) : null, JSON.stringify(apps),
-        serverId ?? null, jobId ?? null, status, String(ocoNumber || '') || null, reason || null,
-        smartTicketId, smartTicketId ? 'PENDING' : null]
+      [
+        requestKey,
+        username,
+        env,
+        tenant,
+        cluster,
+        namespace,
+        action,
+        executionMode,
+        action === 'scale' ? Number(targetReplicas) : null,
+        JSON.stringify(apps),
+        serverId ?? null,
+        jobId ?? null,
+        status,
+        String(ocoNumber || '') || null,
+        reason || null,
+        smartTicketId,
+        smartTicketId ? 'PENDING' : null,
+      ],
     );
   }
 }
@@ -135,12 +166,31 @@ async function insertOperationRows({
 // SET KAPALI: `proceed` disindaki her deger cagiranda tuketilmek ZORUNDA; taninmayan
 // bir deger FAIL-CLOSED ele alinir (bkz. change-gates.cjs sozlesmesi).
 async function runScaleXGates({
-  req, user, policy, env, tenant, clusters, namespace, apps, action, executionMode,
-  targetReplicas, extraVars, reason, ocoNumber,
+  req,
+  user,
+  policy,
+  env,
+  tenant,
+  clusters,
+  namespace,
+  apps,
+  action,
+  executionMode,
+  targetReplicas,
+  extraVars,
+  reason,
+  ocoNumber,
 }) {
   if (policy.smart !== 'require' && policy.oco !== 'require') return { outcome: 'proceed' };
 
-  const gateVars = launch.buildGateVars({ env, tenant, action, executionMode, clusters, namespace });
+  const gateVars = launch.buildGateVars({
+    env,
+    tenant,
+    action,
+    executionMode,
+    clusters,
+    namespace,
+  });
   // SMART/OCO AYARLARI URETIMDEKI YAPIDAN GELIR. Self Service'teki nginx isleri
   // gibi, ayarlar `ansible_ss_customizations` tablosunda ScaleX'in KENDI
   // (awxServerId, templateId) satirinda durur ve admin bunlari `FieldOverridesModal`
@@ -148,7 +198,10 @@ async function runScaleXGates({
   // Env degiskeni ya da client'tan gelen deger KULLANILMAZ: birincisi ikinci bir
   // ayar yuzeyi olurdu, ikincisi kullanicinin kendi kapisini yapilandirmasi demekti.
   const { templateId: runTemplateId, serverId: runServerId } = await resolveByKey(RUN_KEY);
-  const svcConfig = await require('../ansible/ss-customizations.cjs').readCustom(runServerId, runTemplateId);
+  const svcConfig = await require('../ansible/ss-customizations.cjs').readCustom(
+    runServerId,
+    runTemplateId,
+  );
   // FAIL-CLOSED: SMART "gerekli" iken AYAR YOKSA is BASLATILMAZ.
   //
   // `smart-gate.isSmartRequired` bos ayarda `false` doner (`!smartApproval.enabled`).
@@ -159,13 +212,16 @@ async function runScaleXGates({
   // gecis, kullaniciya YALAN soylenmesi anlamina gelirdi.
   if (policy.smart === 'require' && !svcConfig.smartApproval?.enabled) {
     return {
-      outcome: 'error', status: 503,
+      outcome: 'error',
+      status: 503,
       body: {
-        ok: false, code: 'smart_not_configured',
-        message: 'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. '
-          + 'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için '
-          + 'SMART onayını (flowKey ve metadata alanları) tanımlayın. '
-          + 'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
+        ok: false,
+        code: 'smart_not_configured',
+        message:
+          'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. ' +
+          'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için ' +
+          'SMART onayını (flowKey ve metadata alanları) tanımlayın. ' +
+          'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
       },
     };
   }
@@ -177,7 +233,13 @@ async function runScaleXGates({
     ocoCheck: { enabled: policy.oco === 'require' },
     smartApproval: svcConfig.smartApproval || {},
   };
-  const radius = launch.computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
+  const radius = launch.computeBlastRadius({
+    clusters,
+    apps,
+    environment: env,
+    action,
+    executionMode,
+  });
   const decision = await launch.gates.runChangeGates({
     // GERCEK sunucu/template kimligi — 0 DEGIL. SMART onayi geldiginde bilet
     // `runner.cjs` tarafindan oynatiliyor ve orada `getServerById(ticket.awxServerId)`
@@ -185,8 +247,16 @@ async function runScaleXGates({
     // ile SESSIZCE olur, kullanici onayladigi isin hic calismadigini yalnizca hata
     // logundan ogrenebilirdi. Template kimligi de gercek olmali, yoksa oynatma
     // YANLIS sablonu tetiklerdi.
-    server: { id: runServerId }, templateId: runTemplateId, username: user.username, req,
-    overrides, extraVars, gateVars, detail: {}, resolvedLaunchOptions: {}, specFields: [],
+    server: { id: runServerId },
+    templateId: runTemplateId,
+    username: user.username,
+    req,
+    overrides,
+    extraVars,
+    gateVars,
+    detail: {},
+    resolvedLaunchOptions: {},
+    specFields: [],
     templateName: 'ScaleX',
     ocoNumber,
     // OCO PENCERESI HENUZ ACILMADIYSA: ortak kapi normalde kullaniciya
@@ -200,10 +270,25 @@ async function runScaleXGates({
     // geri gelir. Ekran bunu `ocoDeferred` ile net bir mesaj olarak gosterir.
     ocoAction: 'later',
     createOcoAwxSchedule: async () => {
-      throw Object.assign(new Error('ScaleX işlemleri zamanlanamaz — pencere açıkken tekrar deneyin.'), { status: 400 });
+      throw Object.assign(
+        new Error('ScaleX işlemleri zamanlanamaz — pencere açıkken tekrar deneyin.'),
+        { status: 400 },
+      );
     },
     friendlyAwxError: (e) => ({ status: e.status || 502, message: e.message }),
-    buildSmartMetadata: () => buildScaleXSmartMetadata({ user, env, tenant, clusters, namespace, apps, action, radius, reason, ocoNumber }),
+    buildSmartMetadata: () =>
+      buildScaleXSmartMetadata({
+        user,
+        env,
+        tenant,
+        clusters,
+        namespace,
+        apps,
+        action,
+        radius,
+        reason,
+        ocoNumber,
+      }),
   });
 
   // IZ: kapinin her karari — is baslamamis olsa bile — denetime yazilir. Kapida
@@ -213,8 +298,15 @@ async function runScaleXGates({
   if (decision?.outcome !== 'proceed') {
     auditPortal(req, 'scalex_gate_decision', {
       detail: JSON.stringify({
-        env, tenant, clusters, namespace, apps, action, executionMode,
-        outcome: decision?.outcome ?? 'bilinmiyor', policy,
+        env,
+        tenant,
+        clusters,
+        namespace,
+        apps,
+        action,
+        executionMode,
+        outcome: decision?.outcome ?? 'bilinmiyor',
+        policy,
         ocoRequired: decision?.body?.ocoRequired ?? false,
         ocoDeferred: decision?.body?.ocoDeferred ?? false,
         ocoExpired: decision?.body?.ocoExpired ?? false,
@@ -224,7 +316,8 @@ async function runScaleXGates({
     });
   }
 
-  if (decision?.outcome === 'error') return { outcome: 'error', status: decision.status, body: decision.body };
+  if (decision?.outcome === 'error')
+    return { outcome: 'error', status: decision.status, body: decision.body };
   if (decision?.outcome === 'respond') {
     // SMART bileti ACILDI: is AWX'te henuz YOK, ama portal kaydi SIMDI yazilmali.
     // Yazilmazsa onay geldiginde is calisir ve portal bunu hic ogrenemez —
@@ -232,9 +325,21 @@ async function runScaleXGates({
     if (decision.body?.pendingApproval && decision.body?.ticketId) {
       await insertOperationRows({
         requestKey: `smart:${decision.body.ticketId}`,
-        username: user.username, env, tenant, clusters, namespace, action, executionMode,
-        targetReplicas, apps, serverId: runServerId, jobId: null, status: 'PENDING_APPROVAL',
-        ocoNumber, reason, smartTicketId: Number(decision.body.ticketId),
+        username: user.username,
+        env,
+        tenant,
+        clusters,
+        namespace,
+        action,
+        executionMode,
+        targetReplicas,
+        apps,
+        serverId: runServerId,
+        jobId: null,
+        status: 'PENDING_APPROVAL',
+        ocoNumber,
+        reason,
+        smartTicketId: Number(decision.body.ticketId),
       });
     }
     return { outcome: 'respond', body: decision.body };
@@ -242,8 +347,13 @@ async function runScaleXGates({
   if (decision?.outcome !== 'proceed') {
     console.error('[ScaleX] taninmayan kapi karari — is BASLATILMADI:', JSON.stringify(decision));
     return {
-      outcome: 'error', status: 500,
-      body: { ok: false, message: 'Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.' },
+      outcome: 'error',
+      status: 500,
+      body: {
+        ok: false,
+        message:
+          'Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.',
+      },
     };
   }
   return { outcome: 'proceed' };
@@ -279,17 +389,23 @@ async function acquireRestoreLocks({ env, tenant, clusters, namespace, apps }) {
 
 async function releaseRestoreLocks(targets) {
   for (const t of targets || []) {
-    try { await state.unlockRestore(t); }
-    catch (e) { console.warn('[ScaleX] geri alma kilidi birakilamadi:', e.message); }
+    try {
+      await state.unlockRestore(t);
+    } catch (e) {
+      console.warn('[ScaleX] geri alma kilidi birakilamadi:', e.message);
+    }
   }
 }
 
 function restoreConflictBody(busy) {
   const list = busy.map((b) => `${b.app} (${b.cluster})`).join(', ');
   return {
-    ok: false, code: 'restore_in_progress', busy,
-    message: `Bu uygulamalar için zaten bir geri alma işlemi sürüyor: ${list}. `
-      + 'İş bitince “Şu an durdurulmuş” listesi kendiliğinden güncellenir.',
+    ok: false,
+    code: 'restore_in_progress',
+    busy,
+    message:
+      `Bu uygulamalar için zaten bir geri alma işlemi sürüyor: ${list}. ` +
+      'İş bitince “Şu an durdurulmuş” listesi kendiliğinden güncellenir.',
   };
 }
 
@@ -298,11 +414,12 @@ function currentUser(req) {
 }
 
 function asyncRoute(fn) {
-  return (req, res) => fn(req, res).catch((err) => {
-    const status = err.status || 500;
-    if (status >= 500) console.error('[ScaleX]', err);
-    res.status(status).json({ ok: false, message: err.message, code: err.code });
-  });
+  return (req, res) =>
+    fn(req, res).catch((err) => {
+      const status = err.status || 500;
+      if (status >= 500) console.error('[ScaleX]', err);
+      res.status(status).json({ ok: false, message: err.message, code: err.code });
+    });
 }
 
 // Ortak girdi cozumleme + anti-TOCTOU dogrulama. HER calistirmada bastan kosar;
@@ -313,16 +430,25 @@ async function resolveScope(req, { requireApps = true } = {}) {
   const env = String(b.env || '').trim();
   const tenant = String(b.tenant || '').trim();
   const namespace = String(b.namespace || '').trim();
-  const clusters = [...new Set((Array.isArray(b.clusters) ? b.clusters : []).map((c) => String(c).trim()).filter(Boolean))];
-  const apps = [...new Set((Array.isArray(b.apps) ? b.apps : []).map((a) => String(a).trim()).filter(Boolean))];
+  const clusters = [
+    ...new Set(
+      (Array.isArray(b.clusters) ? b.clusters : []).map((c) => String(c).trim()).filter(Boolean),
+    ),
+  ];
+  const apps = [
+    ...new Set((Array.isArray(b.apps) ? b.apps : []).map((a) => String(a).trim()).filter(Boolean)),
+  ];
 
   if (!env || !tenant) throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
-  if (!clusters.length) throw Object.assign(new Error('En az bir cluster seçilmeli.'), { status: 400 });
-  if (requireApps && !apps.length) throw Object.assign(new Error('En az bir uygulama seçilmeli.'), { status: 400 });
+  if (!clusters.length)
+    throw Object.assign(new Error('En az bir cluster seçilmeli.'), { status: 400 });
+  if (requireApps && !apps.length)
+    throw Object.assign(new Error('En az bir uygulama seçilmeli.'), { status: 400 });
 
   await catalog.assertClustersExist({ env, tenant, clusters });
   await catalog.assertNamespaceAllowed({ env, tenant, clusters, namespace, user });
-  if (apps.length) await catalog.assertAppsAllowed({ env, tenant, clusters, namespace, apps, user });
+  if (apps.length)
+    await catalog.assertAppsAllowed({ env, tenant, clusters, namespace, apps, user });
 
   return { user, env, tenant, namespace, clusters, apps };
 }
@@ -332,15 +458,30 @@ async function launchOnAwx({ keyName, extraVars, req, label }) {
   // "Prompt on launch > Variables" kapaliysa AWX gonderdigimiz her seyi SESSIZCE yutar,
   // HTTP 201 doner ve playbook survey varsayilanlariyla calisir. Bu tuzak bu kurumda
   // uretimde yasandi; is BASLATILMADAN once kesiliyor.
-  await templatePreflight.assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label });
-  const job = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
+  await templatePreflight.assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, {
+    label,
+  });
+  const job = await runner.launchJobOnServer(
+    serverId,
+    templateId,
+    extraVars,
+    '',
+    req.session?.user,
+  );
   rememberJobOwner(serverId, job.jobId, currentUser(req).username);
   try {
     await db.query(
       `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, started_at, params)
        VALUES ($1,$2,$3,$4,$5,$6,GETUTCDATE(),$7)`,
-      [currentUser(req).username, serverId, templateId, label.slice(0, 500), job.jobId, job.status,
-        JSON.stringify({ label })]
+      [
+        currentUser(req).username,
+        serverId,
+        templateId,
+        label.slice(0, 500),
+        job.jobId,
+        job.status,
+        JSON.stringify({ label }),
+      ],
     );
   } catch (e) {
     // Gecmis kaydi yazilamadi — is ZATEN BASLADI, geri alinamaz. Sessizce yutmak yerine
@@ -358,28 +499,49 @@ function initScaleX(app) {
   try {
     const authMod = require('../auth/index.cjs');
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
-  } catch { /* auth yoksa deny kalir */ }
+  } catch {
+    /* auth yoksa deny kalir */
+  }
 
   router.use(express.json({ limit: '512kb' }));
   router.use(requireAuth);
   try {
     router.use(require('../auth/visibility.cjs').requireVisiblePrefix('ScaleX'));
-  } catch { /* gorunurluk motoru yoksa auth tek basina korur */ }
+  } catch {
+    /* gorunurluk motoru yoksa auth tek basina korur */
+  }
 
   // ── Katalog ───────────────────────────────────────────────────────────────
-  router.get('/clusters', asyncRoute(async (req, res) => {
-    res.json({ ok: true, tree: await catalog.getClusterTree() });
-  }));
+  router.get(
+    '/clusters',
+    asyncRoute(async (req, res) => {
+      res.json({ ok: true, tree: await catalog.getClusterTree() });
+    }),
+  );
 
-  router.get('/namespaces', asyncRoute(async (req, res) => {
-    const env = String(req.query.env || '').trim();
-    const tenant = String(req.query.tenant || '').trim();
-    const clusters = String(req.query.clusters || '').split(',').map((c) => c.trim()).filter(Boolean);
-    if (!env || !tenant || !clusters.length) {
-      throw Object.assign(new Error('env, tenant ve clusters zorunlu.'), { status: 400 });
-    }
-    res.json({ ok: true, ...(await catalog.getNamespaces({ env, tenant, clusterNames: clusters, user: currentUser(req) })) });
-  }));
+  router.get(
+    '/namespaces',
+    asyncRoute(async (req, res) => {
+      const env = String(req.query.env || '').trim();
+      const tenant = String(req.query.tenant || '').trim();
+      const clusters = String(req.query.clusters || '')
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (!env || !tenant || !clusters.length) {
+        throw Object.assign(new Error('env, tenant ve clusters zorunlu.'), { status: 400 });
+      }
+      res.json({
+        ok: true,
+        ...(await catalog.getNamespaces({
+          env,
+          tenant,
+          clusterNames: clusters,
+          user: currentUser(req),
+        })),
+      });
+    }),
+  );
 
   // UYGULAMA LISTESI — ANINDA, AWX'e HIC DOKUNMADAN.
   //
@@ -387,556 +549,803 @@ function initScaleX(app) {
   // geliyor; ekran bunu beklemeden aciyor. CANLI veri (replica, HPA, GitOps, durum)
   // BU UCTAN GELMEZ — onlar icin `/discover` calisir ve ekran sutunlari sonradan
   // doldurur. Bayat bir replica sayisi ya da `restorable` bayragi YANLIS ISLEM demek.
-  router.get('/apps', asyncRoute(async (req, res) => {
-    const env = String(req.query.env || '').trim();
-    const tenant = String(req.query.tenant || '').trim();
-    const namespace = String(req.query.namespace || '').trim();
-    const clusters = String(req.query.clusters || '').split(',').map((c) => c.trim()).filter(Boolean);
-    if (!env || !tenant || !namespace || !clusters.length) {
-      throw Object.assign(new Error('env, tenant, namespace ve clusters zorunlu.'), { status: 400 });
-    }
-    // Namespace adi `oc` komut satirina GITMIYOR ama katalog sorgusuna giriyor;
-    // yine de calistirma yoluyla AYNI format kurallarindan gecsin.
-    launch.assertValidDiscoveryTargets({ namespace });
-    const user = currentUser(req);
-    // Namespace yetkisi ONCE: goremedigi bir namespace'in uygulama adlarini
-    // listelemek, adlarin kendisini sizdirmak olurdu.
-    await catalog.assertClustersExist({ env, tenant, clusters });
-    await catalog.assertNamespaceAllowed({ env, tenant, clusters, namespace, user });
-    res.json({ ok: true, ...(await catalog.listApps({ env, tenant, clusterNames: clusters, namespace, user })) });
-  }));
+  router.get(
+    '/apps',
+    asyncRoute(async (req, res) => {
+      const env = String(req.query.env || '').trim();
+      const tenant = String(req.query.tenant || '').trim();
+      const namespace = String(req.query.namespace || '').trim();
+      const clusters = String(req.query.clusters || '')
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (!env || !tenant || !namespace || !clusters.length) {
+        throw Object.assign(new Error('env, tenant, namespace ve clusters zorunlu.'), {
+          status: 400,
+        });
+      }
+      // Namespace adi `oc` komut satirina GITMIYOR ama katalog sorgusuna giriyor;
+      // yine de calistirma yoluyla AYNI format kurallarindan gecsin.
+      launch.assertValidDiscoveryTargets({ namespace });
+      const user = currentUser(req);
+      // Namespace yetkisi ONCE: goremedigi bir namespace'in uygulama adlarini
+      // listelemek, adlarin kendisini sizdirmak olurdu.
+      await catalog.assertClustersExist({ env, tenant, clusters });
+      await catalog.assertNamespaceAllowed({ env, tenant, clusters, namespace, user });
+      res.json({
+        ok: true,
+        ...(await catalog.listApps({ env, tenant, clusterNames: clusters, namespace, user })),
+      });
+    }),
+  );
 
   // ── Kesif (salt okunur) ───────────────────────────────────────────────────
-  router.post('/discover', asyncRoute(async (req, res) => {
-    const mode = ['workloads', 'state', 'health'].includes(req.body?.mode) ? req.body.mode : 'workloads';
-    const { env, tenant, namespace, clusters, apps } = await resolveScope(req, { requireApps: mode === 'health' });
-    // Kesif de bu degerleri playbook'a, oradan `oc` komut satirina tasiyor — `/preview`
-    // ve `/run` ile AYNI format kurallari burada da gecerli (bkz. launch.cjs basligi).
-    launch.assertValidDiscoveryTargets({ namespace, apps });
-    const extraVars = {
-      scalex_clusters_override: launch.buildScaleXClusterCatalog({
-        env, tenant, clusters,
-        hosts: (await require('../logx/v2/admin.cjs').resolveTerminalHosts(env, tenant, clusters)).hosts,
-        meta: await require('../logx/v2/admin.cjs').resolveClusterMeta(env, tenant, clusters),
-      }),
-      target_platform: tenant, target_environment: env, target_namespace: namespace,
-      scalex_target_clusters: clusters, discovery_mode: mode,
-      ...(apps.length ? { target_app_names: apps.join(',') } : {}),
-    };
-    const job = await launchOnAwx({ keyName: DISCOVERY_KEY, extraVars, req, label: `ScaleX keşif (${mode}) — ${namespace}` });
-    // IZ: kesif salt-okunur ama YINE DE kullanici girdisini (`namespace`,
-    // `target_app_names`) AWX uzerinden `oc` komut satirina tasiyor. Denetim kaydi
-    // olmadan "bu namespace'i kim tarattı" sorusu yanitlanamiyordu.
-    auditPortal(req, 'scalex_discovery', {
-      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, mode, jobId: job.jobId }),
-    });
-    res.json({ ok: true, mode, ...job });
-  }));
-
-  router.get('/discover/:serverId/:jobId/status', asyncRoute(async (req, res) => {
-    const serverId = Number(req.params.serverId);
-    const jobId = Number(req.params.jobId);
-    const denied = await denyIfNotOwner(req, serverId, jobId);
-    if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
-    const [status, output] = await Promise.all([
-      runner.getJobStatusOnServer(serverId, jobId),
-      runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' })),
-    ]);
-    const parsed = result.extractDiscoveryResult(status.artifacts);
-
-    // KESIF SONUCU DENETIME. Baslatma ani zaten yaziliyordu (`scalex_discovery`) ama
-    // NE KESFEDILDIGI hicbir yere yazilmiyordu: is bittikten sonra AWX retention'i
-    // dolunca sonuc tamamen kayboluyordu. Ozet yeterli — ham satirlar denetim
-    // kaydinin 2000 karakterlik `detail` sinirini zaten asardi.
-    if (status.finished) {
-      auditPortal(req, 'scalex_discovery_result', {
-        result: parsed && parsed.overallStatus === 'error' ? 'fail' : 'ok',
-        detail: JSON.stringify({
-          serverId, jobId,
-          mode: parsed ? parsed.mode : null,
-          overallStatus: parsed ? parsed.overallStatus : null,
-          namespace: parsed ? parsed.namespace : null,
-          clusters: parsed ? parsed.clusters : [],
-          failedClusters: parsed ? parsed.failedClusters : [],
-          counts: parsed ? parsed.counts : null,
-          workloads: parsed && parsed.workloads ? parsed.workloads.length : undefined,
-          states: parsed && parsed.states ? parsed.states.length : undefined,
-        }),
+  router.post(
+    '/discover',
+    asyncRoute(async (req, res) => {
+      const mode = ['workloads', 'state', 'health'].includes(req.body?.mode)
+        ? req.body.mode
+        : 'workloads';
+      const { env, tenant, namespace, clusters, apps } = await resolveScope(req, {
+        requireApps: mode === 'health',
       });
-    }
+      // Kesif de bu degerleri playbook'a, oradan `oc` komut satirina tasiyor — `/preview`
+      // ve `/run` ile AYNI format kurallari burada da gecerli (bkz. launch.cjs basligi).
+      launch.assertValidDiscoveryTargets({ namespace, apps });
+      const extraVars = {
+        scalex_clusters_override: launch.buildScaleXClusterCatalog({
+          env,
+          tenant,
+          clusters,
+          hosts: (await require('../logx/v2/admin.cjs').resolveTerminalHosts(env, tenant, clusters))
+            .hosts,
+          meta: await require('../logx/v2/admin.cjs').resolveClusterMeta(env, tenant, clusters),
+        }),
+        target_platform: tenant,
+        target_environment: env,
+        target_namespace: namespace,
+        scalex_target_clusters: clusters,
+        discovery_mode: mode,
+        ...(apps.length ? { target_app_names: apps.join(',') } : {}),
+      };
+      const job = await launchOnAwx({
+        keyName: DISCOVERY_KEY,
+        extraVars,
+        req,
+        label: `ScaleX keşif (${mode}) — ${namespace}`,
+      });
+      // IZ: kesif salt-okunur ama YINE DE kullanici girdisini (`namespace`,
+      // `target_app_names`) AWX uzerinden `oc` komut satirina tasiyor. Denetim kaydi
+      // olmadan "bu namespace'i kim tarattı" sorusu yanitlanamiyordu.
+      auditPortal(req, 'scalex_discovery', {
+        detail: JSON.stringify({ env, tenant, clusters, namespace, apps, mode, jobId: job.jobId }),
+      });
+      res.json({ ok: true, mode, ...job });
+    }),
+  );
 
-    // SAPMA TAZELEME BURADA. `state` kesfi bittiginde portal aynasini cluster gercegiyle
-    // karsilastirip `drift_status`u guncelliyoruz.
-    //
-    // NEDEN AYRI BIR UC DEGIL: `/run/:s/:j/status` de ayni sekilde `finalizeOperation`
-    // cagiriyor. Istemciye "kesif bitti, simdi de sapmayi tazele" diye ikinci bir cagri
-    // yaptirmak, o cagriyi unutan/sekmesini kapatan her kullanicida sapmanin SESSIZCE
-    // guncellenmemesi demekti — ki bu ozelligin ilk halinde tam olarak boyle oldu:
-    // `refreshDrift` yazildi, test edildi ve HICBIR YERDEN CAGRILMADI.
-    if (status.finished && parsed && parsed.mode === 'state') {
-      try {
-        await state.refreshDrift({
-          env: parsed.environment, tenant: parsed.platform,
-          scannedClusters: parsed.clusters || [],
-          clusterStates: (parsed.states || []).map((st) => ({
-            env: parsed.environment, tenant: parsed.platform,
-            clusterName: st.cluster, namespace: parsed.namespace, appName: st.appName,
-            previousReplicas: st.previousReplicas, phase: st.phase,
-            stoppedBy: st.createdBy, workloadKind: st.kind, legacy: st.legacy,
-          })),
+  router.get(
+    '/discover/:serverId/:jobId/status',
+    asyncRoute(async (req, res) => {
+      const serverId = Number(req.params.serverId);
+      const jobId = Number(req.params.jobId);
+      const denied = await denyIfNotOwner(req, serverId, jobId);
+      if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
+      const [status, output] = await Promise.all([
+        runner.getJobStatusOnServer(serverId, jobId),
+        runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' })),
+      ]);
+      const parsed = result.extractDiscoveryResult(status.artifacts);
+
+      // KESIF SONUCU DENETIME. Baslatma ani zaten yaziliyordu (`scalex_discovery`) ama
+      // NE KESFEDILDIGI hicbir yere yazilmiyordu: is bittikten sonra AWX retention'i
+      // dolunca sonuc tamamen kayboluyordu. Ozet yeterli — ham satirlar denetim
+      // kaydinin 2000 karakterlik `detail` sinirini zaten asardi.
+      if (status.finished) {
+        auditPortal(req, 'scalex_discovery_result', {
+          result: parsed && parsed.overallStatus === 'error' ? 'fail' : 'ok',
+          detail: JSON.stringify({
+            serverId,
+            jobId,
+            mode: parsed ? parsed.mode : null,
+            overallStatus: parsed ? parsed.overallStatus : null,
+            namespace: parsed ? parsed.namespace : null,
+            clusters: parsed ? parsed.clusters : [],
+            failedClusters: parsed ? parsed.failedClusters : [],
+            counts: parsed ? parsed.counts : null,
+            workloads: parsed && parsed.workloads ? parsed.workloads.length : undefined,
+            states: parsed && parsed.states ? parsed.states.length : undefined,
+          }),
         });
-      } catch (e) {
-        // Sapma tazelenemedi — kesif sonucunu GIZLEME. Kullanici listeyi yine gorur,
-        // yalnizca sapma isaretleri bir onceki taramadan kalir.
-        console.warn('[ScaleX] sapma tazelenemedi:', e.message);
       }
-    }
 
-    res.json({
-      ok: true, status: status.status, finished: !!status.finished, failed: !!status.failed,
-      output: output.output || '', result: parsed,
-    });
-  }));
+      // SAPMA TAZELEME BURADA. `state` kesfi bittiginde portal aynasini cluster gercegiyle
+      // karsilastirip `drift_status`u guncelliyoruz.
+      //
+      // NEDEN AYRI BIR UC DEGIL: `/run/:s/:j/status` de ayni sekilde `finalizeOperation`
+      // cagiriyor. Istemciye "kesif bitti, simdi de sapmayi tazele" diye ikinci bir cagri
+      // yaptirmak, o cagriyi unutan/sekmesini kapatan her kullanicida sapmanin SESSIZCE
+      // guncellenmemesi demekti — ki bu ozelligin ilk halinde tam olarak boyle oldu:
+      // `refreshDrift` yazildi, test edildi ve HICBIR YERDEN CAGRILMADI.
+      if (status.finished && parsed && parsed.mode === 'state') {
+        try {
+          await state.refreshDrift({
+            env: parsed.environment,
+            tenant: parsed.platform,
+            scannedClusters: parsed.clusters || [],
+            clusterStates: (parsed.states || []).map((st) => ({
+              env: parsed.environment,
+              tenant: parsed.platform,
+              clusterName: st.cluster,
+              namespace: parsed.namespace,
+              appName: st.appName,
+              previousReplicas: st.previousReplicas,
+              phase: st.phase,
+              stoppedBy: st.createdBy,
+              workloadKind: st.kind,
+              legacy: st.legacy,
+            })),
+          });
+        } catch (e) {
+          // Sapma tazelenemedi — kesif sonucunu GIZLEME. Kullanici listeyi yine gorur,
+          // yalnizca sapma isaretleri bir onceki taramadan kalir.
+          console.warn('[ScaleX] sapma tazelenemedi:', e.message);
+        }
+      }
+
+      res.json({
+        ok: true,
+        status: status.status,
+        finished: !!status.finished,
+        failed: !!status.failed,
+        output: output.output || '',
+        result: parsed,
+      });
+    }),
+  );
 
   // ── Onizleme — HICBIR SEY TETIKLEMEZ, HICBIR SEY KAYDETMEZ ────────────────
   // Asil karar `/run`da YENIDEN verilir; bu uc yalnizca ekrani besler.
-  router.post('/preview', asyncRoute(async (req, res) => {
-    const { env, tenant, namespace, clusters, apps } = await resolveScope(req);
-    const action = String(req.body?.action || 'stop');
-    const executionMode = String(req.body?.executionMode || 'dry_run');
-    const targetReplicas = req.body?.targetReplicas;
-    launch.assertValidTargets({
-      namespace, apps, action, targetReplicas, executionMode,
-      verificationTimeout: req.body?.verificationTimeout ?? '60',
-    });
-    const radius = launch.computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
-    const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
-    res.json({
-      ok: true, blastRadius: radius, gatePolicy: policy,
-      hpaPinAllowed: launch.isHpaPinAllowed({ action, targetReplicas, restoreTargets: req.body?.restoreTargets }),
-      targets: { env, tenant, namespace, clusters, apps },
-    });
-  }));
+  router.post(
+    '/preview',
+    asyncRoute(async (req, res) => {
+      const { env, tenant, namespace, clusters, apps } = await resolveScope(req);
+      const action = String(req.body?.action || 'stop');
+      const executionMode = String(req.body?.executionMode || 'dry_run');
+      const targetReplicas = req.body?.targetReplicas;
+      launch.assertValidTargets({
+        namespace,
+        apps,
+        action,
+        targetReplicas,
+        executionMode,
+        verificationTimeout: req.body?.verificationTimeout ?? '60',
+      });
+      const radius = launch.computeBlastRadius({
+        clusters,
+        apps,
+        environment: env,
+        action,
+        executionMode,
+      });
+      const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
+      res.json({
+        ok: true,
+        blastRadius: radius,
+        gatePolicy: policy,
+        hpaPinAllowed: launch.isHpaPinAllowed({
+          action,
+          targetReplicas,
+          restoreTargets: req.body?.restoreTargets,
+        }),
+        targets: { env, tenant, namespace, clusters, apps },
+      });
+    }),
+  );
 
   // ── Calistirma ────────────────────────────────────────────────────────────
-  router.post('/run', asyncRoute(async (req, res) => {
-    const { user, env, tenant, namespace, clusters, apps } = await resolveScope(req);
-    const action = String(req.body?.action || '');
-    const executionMode = String(req.body?.executionMode || '');
-    const targetReplicas = req.body?.targetReplicas;
-    const verificationTimeout = req.body?.verificationTimeout ?? '60';
-    const allowPartial = req.body?.allowPartial !== false;
-    const reason = String(req.body?.reason || '').trim();
-    // CC kullanicidan gelir ve mail gorevine ulasir — satir sonu/format dogrulanmadan
-    // gecerse SMTP baslik enjeksiyonu mumkun olurdu.
-    const mailCc = launch.sanitizeMailCc(req.body?.mailCc);
-    // Client `hpaPin: true` gonderse bile kurallar SUNUCUDA uygulanir.
-    const hpaPin = req.body?.hpaPin === true
-      && launch.isHpaPinAllowed({ action, targetReplicas, restoreTargets: req.body?.restoreTargets });
+  router.post(
+    '/run',
+    asyncRoute(async (req, res) => {
+      const { user, env, tenant, namespace, clusters, apps } = await resolveScope(req);
+      const action = String(req.body?.action || '');
+      const executionMode = String(req.body?.executionMode || '');
+      const targetReplicas = req.body?.targetReplicas;
+      const verificationTimeout = req.body?.verificationTimeout ?? '60';
+      const allowPartial = req.body?.allowPartial !== false;
+      const reason = String(req.body?.reason || '').trim();
+      // CC kullanicidan gelir ve mail gorevine ulasir — satir sonu/format dogrulanmadan
+      // gecerse SMTP baslik enjeksiyonu mumkun olurdu.
+      const mailCc = launch.sanitizeMailCc(req.body?.mailCc);
+      // Client `hpaPin: true` gonderse bile kurallar SUNUCUDA uygulanir.
+      const hpaPin =
+        req.body?.hpaPin === true &&
+        launch.isHpaPinAllowed({
+          action,
+          targetReplicas,
+          restoreTargets: req.body?.restoreTargets,
+        });
 
-    launch.assertValidTargets({ namespace, apps, action, targetReplicas, executionMode, verificationTimeout });
+      launch.assertValidTargets({
+        namespace,
+        apps,
+        action,
+        targetReplicas,
+        executionMode,
+        verificationTimeout,
+      });
 
-    // `Olcekle` ile 0 SESSIZ BIR TUZAKTI: playbook yalnizca `stop` dalinda geri alma
-    // durumunu kaydeder. Yani "Olcekle -> 0" uygulamayi durdurur ama ConfigMap kaydi
-    // OLUSMAZ, portal aynasina satir DUSMEZ, "Su an durdurulmus" listesinde GORUNMEZ
-    // ve `Geri Al` "Run stop first" ile duser. Kullanici uygulamayi kapatir ve geri
-    // getirmenin portal icinde bir yolu KALMAZ.
-    //
-    // Iki yol da 0'a gotururken birinin hafizasi olmasi, digerinin olmamasi bir
-    // tasarim hatasiydi. `Durdur` zaten "hafizali 0" demek.
-    if (action === 'scale' && Number(targetReplicas) === 0) {
-      throw Object.assign(
-        new Error('Replica sayısını 0 yapmak için "Durdur" işlemini kullanın — önceki değer saklanır ve geri alabilirsiniz. "Ölçekle" ile 0 verildiğinde geri alınacak bir kayıt oluşmaz.'),
-        { status: 400, code: 'use_stop_for_zero' }
+      // `Olcekle` ile 0 SESSIZ BIR TUZAKTI: playbook yalnizca `stop` dalinda geri alma
+      // durumunu kaydeder. Yani "Olcekle -> 0" uygulamayi durdurur ama ConfigMap kaydi
+      // OLUSMAZ, portal aynasina satir DUSMEZ, "Su an durdurulmus" listesinde GORUNMEZ
+      // ve `Geri Al` "Run stop first" ile duser. Kullanici uygulamayi kapatir ve geri
+      // getirmenin portal icinde bir yolu KALMAZ.
+      //
+      // Iki yol da 0'a gotururken birinin hafizasi olmasi, digerinin olmamasi bir
+      // tasarim hatasiydi. `Durdur` zaten "hafizali 0" demek.
+      if (action === 'scale' && Number(targetReplicas) === 0) {
+        throw Object.assign(
+          new Error(
+            'Replica sayısını 0 yapmak için "Durdur" işlemini kullanın — önceki değer saklanır ve geri alabilirsiniz. "Ölçekle" ile 0 verildiğinde geri alınacak bir kayıt oluşmaz.',
+          ),
+          { status: 400, code: 'use_stop_for_zero' },
+        );
+      }
+
+      const radius = launch.computeBlastRadius({
+        clusters,
+        apps,
+        environment: env,
+        action,
+        executionMode,
+      });
+      if (radius.exceedsMaxTargets) {
+        throw Object.assign(
+          new Error(
+            `Tek işlemde en fazla ${launch.MAX_TARGETS} hedef: ${radius.targets} seçildi (${radius.clusterCount} cluster × ${radius.appCount} uygulama).`,
+          ),
+          { status: 400 },
+        );
+      }
+      // YAZILI ONAY: kullanici namespace adini ELLE yazar. Client'in `writtenConfirm`
+      // alanini uydurmasi ise yaramaz — deger namespace ile BIREBIR eslesmek zorunda.
+      if (
+        radius.requiresWrittenConfirm &&
+        String(req.body?.writtenConfirm || '').trim() !== namespace
+      ) {
+        return res.status(400).json({
+          ok: false,
+          writtenConfirmRequired: true,
+          blastRadius: radius,
+          message: `Bu işlem ${radius.targets} hedefi etkiliyor ve ortam prod. Onaylamak için namespace adını yazın: ${namespace}`,
+        });
+      }
+
+      const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
+      // Geri alma OCO penceresi disinda da calisabilir ama GEREKCESIZ calisamaz —
+      // iz kalmali ve gerekce hem portal kaydina hem SMART metadata'sina gitmeli.
+      if (policy.oco === 'warn' && !reason) {
+        return res.status(400).json({
+          ok: false,
+          reasonRequired: true,
+          message: 'Geri alma işlemi için gerekçe zorunlu (örn. olay/kayıt numarası).',
+        });
+      }
+
+      // Mail: oturumdaki kullanicinin adresi. CC istege bagli.
+      const mailTo = String(user.mail || '').trim();
+      if (!mailTo) {
+        throw Object.assign(
+          new Error('Oturumunuzda e-posta adresi yok; rapor gönderilemez. Yöneticinize başvurun.'),
+          { status: 400 },
+        );
+      }
+
+      const extraVars = await launch.buildRunExtraVars({
+        env,
+        tenant,
+        clusters,
+        namespace,
+        apps,
+        action,
+        executionMode,
+        targetReplicas,
+        verificationTimeout,
+        allowPartial,
+        mailTo,
+        mailCc,
+        hpaPin,
+        // TIP HARITASI: ekranin KESIFTE gordugu tipler. Playbook boylece tahmin
+        // etmek zorunda kalmiyor ve "ayni ad iki tipte var" belirsizligi isi
+        // dusurmuyor. `buildWorkloadKindMap` gelen veriyi `apps` listesine ve bilinen
+        // tiplere karsi suzer — istemciden gelen hicbir sey dogrudan gecmez.
+        workloadKinds: req.body?.workloadKinds,
+        // CLUSTER BASINA TIP HARITASI: ayni uygulama farkli cluster'larda farkli
+        // tipte olabilir; her cluster kendi haritasini alir.
+        clusterWorkloadKinds: req.body?.clusterWorkloadKinds,
+      });
+
+      // ── GERI ALMA KILIDI ────────────────────────────────────────────────────
+      // KAPIDAN ONCE alinir: kapi SMART onayi icin beklemeye gecerse (`pendingApproval`)
+      // is AWX'te henuz yoktur ama kilit TUTULMALI — aksi halde onay beklenirken ikinci
+      // bir geri alma baslatilabilirdi. Kapi reddederse kilit birakilir.
+      const locking =
+        action === 'restore' && executionMode === 'apply'
+          ? await acquireRestoreLocks({ env, tenant, clusters, namespace, apps })
+          : { ok: true, acquired: [] };
+      if (!locking.ok) return res.status(409).json(restoreConflictBody(locking.busy));
+
+      // ── KAPILAR ─────────────────────────────────────────────────────────────
+      // Govde ORTAK: `/run` ve `/restore-all` AYNI kapidan gecer. Iki kopya tutmak,
+      // birinde yapilan duzeltmenin digerinde sessizce eskimesi demekti — `/restore-all`
+      // tam olarak boyle kapisiz kalmisti (yorumu "Geri Al'in kapi politikasini
+      // devralir" DIYORDU, kod devralmiyordu).
+      let gate;
+      try {
+        gate = await runScaleXGates({
+          req,
+          user,
+          policy,
+          env,
+          tenant,
+          clusters,
+          namespace,
+          apps,
+          action,
+          executionMode,
+          targetReplicas,
+          extraVars,
+          reason,
+          ocoNumber: req.body?.ocoNumber,
+        });
+      } catch (e) {
+        await releaseRestoreLocks(locking.acquired);
+        throw e;
+      }
+      if (gate.outcome === 'error') {
+        await releaseRestoreLocks(locking.acquired);
+        return res.status(gate.status).json(gate.body);
+      }
+      if (gate.outcome === 'respond') {
+        // `pendingApproval` DISINDA is hic baslamayacak (or. `ocoDeferred`) — kilit
+        // birakilmali. Onay bekleyen yolda kilit TUTULUR; bilet cozuldugunde
+        // uzlastirici ya isi baslatir ya kilidi birakir.
+        if (!gate.body?.pendingApproval) await releaseRestoreLocks(locking.acquired);
+        return res.json(gate.body);
+      }
+
+      // AWX baslatma patlarsa kilit BIZDE kalmamali — kullanici bir daha hic
+      // deneyemezdi.
+      let job;
+      try {
+        job = await launchOnAwx({
+          keyName: RUN_KEY,
+          extraVars,
+          req,
+          label: `ScaleX ${action} (${executionMode}) — ${namespace} @ ${clusters.join(',')}`,
+        });
+      } catch (e) {
+        await releaseRestoreLocks(locking.acquired);
+        throw e;
+      }
+
+      await insertOperationRows({
+        requestKey: `${job.serverId}:${job.jobId}`,
+        username: user.username,
+        env,
+        tenant,
+        clusters,
+        namespace,
+        action,
+        executionMode,
+        targetReplicas,
+        apps,
+        serverId: job.serverId,
+        jobId: job.jobId,
+        status: 'RUNNING',
+        ocoNumber: req.body?.ocoNumber,
+        reason,
+      });
+
+      auditPortal(req, 'scalex_operation', {
+        // HPA'ya dokunmak politikanin tersi — denetim kaydinda ACIKCA gorunmeli.
+        detail: JSON.stringify({
+          env,
+          tenant,
+          clusters,
+          namespace,
+          apps,
+          action,
+          executionMode,
+          targets: radius.targets,
+          jobId: job.jobId,
+          hpaPin,
+        }),
+      });
+      res.json({ ok: true, ...job, blastRadius: radius });
+    }),
+  );
+
+  router.get(
+    '/run/:serverId/:jobId/status',
+    asyncRoute(async (req, res) => {
+      const serverId = Number(req.params.serverId);
+      const jobId = Number(req.params.jobId);
+      const denied = await denyIfNotOwner(req, serverId, jobId);
+      if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
+      const [status, output] = await Promise.all([
+        runner.getJobStatusOnServer(serverId, jobId),
+        runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' })),
+      ]);
+      const parsed = result.extractScaleXResult(status.artifacts);
+      if (status.finished) await finalizeOperation({ serverId, jobId, status, parsed });
+      res.json({
+        ok: true,
+        status: status.status,
+        finished: !!status.finished,
+        failed: !!status.failed,
+        output: output.output || '',
+        result: parsed,
+        // Portal katalogu gonderdigi halde playbook DOSYAYA dustuyse AWX template'inde
+        // "Prompt on launch > Variables" kapali demektir — kullanici bunu bilmeli.
+        catalogWarning:
+          parsed && parsed.catalogSource === 'file'
+            ? 'Playbook cluster kataloğunu portaldan DEĞİL kendi dosyasından okudu — AWX template ayarını kontrol edin (Prompt on launch > Variables).'
+            : null,
+      });
+    }),
+  );
+
+  router.post(
+    '/cancel/:serverId/:jobId',
+    asyncRoute(async (req, res) => {
+      const serverId = Number(req.params.serverId);
+      const jobId = Number(req.params.jobId);
+      const denied = await denyIfNotOwner(req, serverId, jobId);
+      if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
+      // KAPSAM: sahiplik kontrolu `ansible_job_history` uzerinden yapiliyor ve MODUL
+      // AYRIMI YOK — bu uc, kullanicinin LogX/OpsX/Telnet uzerinden baslattigi kendi
+      // islerini de iptal edebilirdi. Yetki yukselmesi degil (is zaten onun), ama ScaleX
+      // ucunun ScaleX DISI islere dokunmasi icin bir sebep yok ve `UPDATE` de her
+      // durumda kosuyordu. Isin gercekten bir ScaleX islemi oldugunu dogruluyoruz.
+      const { rows: own } = await db.query(
+        `SELECT TOP 1 id FROM scalex_operations WHERE awx_server_id = $1 AND awx_job_id = $2`,
+        [serverId, jobId],
       );
-    }
-
-    const radius = launch.computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
-    if (radius.exceedsMaxTargets) {
-      throw Object.assign(
-        new Error(`Tek işlemde en fazla ${launch.MAX_TARGETS} hedef: ${radius.targets} seçildi (${radius.clusterCount} cluster × ${radius.appCount} uygulama).`),
-        { status: 400 }
-      );
-    }
-    // YAZILI ONAY: kullanici namespace adini ELLE yazar. Client'in `writtenConfirm`
-    // alanini uydurmasi ise yaramaz — deger namespace ile BIREBIR eslesmek zorunda.
-    if (radius.requiresWrittenConfirm && String(req.body?.writtenConfirm || '').trim() !== namespace) {
-      return res.status(400).json({
-        ok: false, writtenConfirmRequired: true, blastRadius: radius,
-        message: `Bu işlem ${radius.targets} hedefi etkiliyor ve ortam prod. Onaylamak için namespace adını yazın: ${namespace}`,
-      });
-    }
-
-    const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
-    // Geri alma OCO penceresi disinda da calisabilir ama GEREKCESIZ calisamaz —
-    // iz kalmali ve gerekce hem portal kaydina hem SMART metadata'sina gitmeli.
-    if (policy.oco === 'warn' && !reason) {
-      return res.status(400).json({
-        ok: false, reasonRequired: true,
-        message: 'Geri alma işlemi için gerekçe zorunlu (örn. olay/kayıt numarası).',
-      });
-    }
-
-    // Mail: oturumdaki kullanicinin adresi. CC istege bagli.
-    const mailTo = String(user.mail || '').trim();
-    if (!mailTo) {
-      throw Object.assign(
-        new Error('Oturumunuzda e-posta adresi yok; rapor gönderilemez. Yöneticinize başvurun.'),
-        { status: 400 }
-      );
-    }
-
-    const extraVars = await launch.buildRunExtraVars({
-      env, tenant, clusters, namespace, apps, action, executionMode,
-      targetReplicas, verificationTimeout, allowPartial, mailTo, mailCc, hpaPin,
-      // TIP HARITASI: ekranin KESIFTE gordugu tipler. Playbook boylece tahmin
-      // etmek zorunda kalmiyor ve "ayni ad iki tipte var" belirsizligi isi
-      // dusurmuyor. `buildWorkloadKindMap` gelen veriyi `apps` listesine ve bilinen
-      // tiplere karsi suzer — istemciden gelen hicbir sey dogrudan gecmez.
-      workloadKinds: req.body?.workloadKinds,
-    });
-
-    // ── GERI ALMA KILIDI ────────────────────────────────────────────────────
-    // KAPIDAN ONCE alinir: kapi SMART onayi icin beklemeye gecerse (`pendingApproval`)
-    // is AWX'te henuz yoktur ama kilit TUTULMALI — aksi halde onay beklenirken ikinci
-    // bir geri alma baslatilabilirdi. Kapi reddederse kilit birakilir.
-    const locking = action === 'restore' && executionMode === 'apply'
-      ? await acquireRestoreLocks({ env, tenant, clusters, namespace, apps })
-      : { ok: true, acquired: [] };
-    if (!locking.ok) return res.status(409).json(restoreConflictBody(locking.busy));
-
-    // ── KAPILAR ─────────────────────────────────────────────────────────────
-    // Govde ORTAK: `/run` ve `/restore-all` AYNI kapidan gecer. Iki kopya tutmak,
-    // birinde yapilan duzeltmenin digerinde sessizce eskimesi demekti — `/restore-all`
-    // tam olarak boyle kapisiz kalmisti (yorumu "Geri Al'in kapi politikasini
-    // devralir" DIYORDU, kod devralmiyordu).
-    let gate;
-    try {
-      gate = await runScaleXGates({
-        req, user, policy, env, tenant, clusters, namespace, apps, action, executionMode,
-        targetReplicas, extraVars, reason, ocoNumber: req.body?.ocoNumber,
-      });
-    } catch (e) {
-      await releaseRestoreLocks(locking.acquired);
-      throw e;
-    }
-    if (gate.outcome === 'error') {
-      await releaseRestoreLocks(locking.acquired);
-      return res.status(gate.status).json(gate.body);
-    }
-    if (gate.outcome === 'respond') {
-      // `pendingApproval` DISINDA is hic baslamayacak (or. `ocoDeferred`) — kilit
-      // birakilmali. Onay bekleyen yolda kilit TUTULUR; bilet cozuldugunde
-      // uzlastirici ya isi baslatir ya kilidi birakir.
-      if (!gate.body?.pendingApproval) await releaseRestoreLocks(locking.acquired);
-      return res.json(gate.body);
-    }
-
-    // AWX baslatma patlarsa kilit BIZDE kalmamali — kullanici bir daha hic
-    // deneyemezdi.
-    let job;
-    try {
-      job = await launchOnAwx({
-        keyName: RUN_KEY, extraVars, req,
-        label: `ScaleX ${action} (${executionMode}) — ${namespace} @ ${clusters.join(',')}`,
-      });
-    } catch (e) {
-      await releaseRestoreLocks(locking.acquired);
-      throw e;
-    }
-
-    await insertOperationRows({
-      requestKey: `${job.serverId}:${job.jobId}`,
-      username: user.username, env, tenant, clusters, namespace, action, executionMode,
-      targetReplicas, apps, serverId: job.serverId, jobId: job.jobId, status: 'RUNNING',
-      ocoNumber: req.body?.ocoNumber, reason,
-    });
-
-    auditPortal(req, 'scalex_operation', {
-      // HPA'ya dokunmak politikanin tersi — denetim kaydinda ACIKCA gorunmeli.
-      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, action, executionMode, targets: radius.targets, jobId: job.jobId, hpaPin }),
-    });
-    res.json({ ok: true, ...job, blastRadius: radius });
-  }));
-
-  router.get('/run/:serverId/:jobId/status', asyncRoute(async (req, res) => {
-    const serverId = Number(req.params.serverId);
-    const jobId = Number(req.params.jobId);
-    const denied = await denyIfNotOwner(req, serverId, jobId);
-    if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
-    const [status, output] = await Promise.all([
-      runner.getJobStatusOnServer(serverId, jobId),
-      runner.getJobOutputOnServer(serverId, jobId).catch(() => ({ output: '' })),
-    ]);
-    const parsed = result.extractScaleXResult(status.artifacts);
-    if (status.finished) await finalizeOperation({ serverId, jobId, status, parsed });
-    res.json({
-      ok: true, status: status.status, finished: !!status.finished, failed: !!status.failed,
-      output: output.output || '', result: parsed,
-      // Portal katalogu gonderdigi halde playbook DOSYAYA dustuyse AWX template'inde
-      // "Prompt on launch > Variables" kapali demektir — kullanici bunu bilmeli.
-      catalogWarning: parsed && parsed.catalogSource === 'file'
-        ? 'Playbook cluster kataloğunu portaldan DEĞİL kendi dosyasından okudu — AWX template ayarını kontrol edin (Prompt on launch > Variables).'
-        : null,
-    });
-  }));
-
-  router.post('/cancel/:serverId/:jobId', asyncRoute(async (req, res) => {
-    const serverId = Number(req.params.serverId);
-    const jobId = Number(req.params.jobId);
-    const denied = await denyIfNotOwner(req, serverId, jobId);
-    if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
-    // KAPSAM: sahiplik kontrolu `ansible_job_history` uzerinden yapiliyor ve MODUL
-    // AYRIMI YOK — bu uc, kullanicinin LogX/OpsX/Telnet uzerinden baslattigi kendi
-    // islerini de iptal edebilirdi. Yetki yukselmesi degil (is zaten onun), ama ScaleX
-    // ucunun ScaleX DISI islere dokunmasi icin bir sebep yok ve `UPDATE` de her
-    // durumda kosuyordu. Isin gercekten bir ScaleX islemi oldugunu dogruluyoruz.
-    const { rows: own } = await db.query(
-      `SELECT TOP 1 id FROM scalex_operations WHERE awx_server_id = $1 AND awx_job_id = $2`,
-      [serverId, jobId]
-    );
-    if (!own.length) {
-      return res.status(404).json({ ok: false, message: 'Bu iş bir ScaleX işlemi değil.' });
-    }
-    const out = await runner.cancelJobOnServer(serverId, jobId);
-    await db.query(
-      `UPDATE scalex_operations SET status = 'CANCELLED', updated_at = GETUTCDATE()
+      if (!own.length) {
+        return res.status(404).json({ ok: false, message: 'Bu iş bir ScaleX işlemi değil.' });
+      }
+      const out = await runner.cancelJobOnServer(serverId, jobId);
+      await db.query(
+        `UPDATE scalex_operations SET status = 'CANCELLED', updated_at = GETUTCDATE()
         WHERE awx_server_id = $1 AND awx_job_id = $2 AND status = 'RUNNING'`,
-      [serverId, jobId]
-    );
-    auditPortal(req, 'scalex_cancel', { detail: JSON.stringify({ serverId, jobId }) });
-    res.json({ ok: true, ...out });
-  }));
+        [serverId, jobId],
+      );
+      auditPortal(req, 'scalex_cancel', { detail: JSON.stringify({ serverId, jobId }) });
+      res.json({ ok: true, ...out });
+    }),
+  );
 
   // ── "Su an durdurulmus" + sapma ───────────────────────────────────────────
-  router.get('/stopped', asyncRoute(async (req, res) => {
-    const env = String(req.query.env || '').trim();
-    const tenant = String(req.query.tenant || '').trim();
-    const clusterName = String(req.query.cluster || '').trim() || null;
-    // KAPSAM OPSIYONEL. "Hizli aksiyon" paneli sihirbazin ILK adiminda da gorunuyor ve
-    // orada henuz secilmis bir env/tenant yok. Kapsam verilirse liste ona daralir.
-    //
-    // BU BIR POLITIKA KARARI: kapsamsiz listede kullanicinin GOREBILDIGI tum
-    // namespace adlari (prod dahil) gorunur hale gelir. Yetki suzgeci aynen
-    // uygulaniyor — yalnizca gorunurlugun VARSAYILAN kapsami genisliyor — ama bu
-    // genisleme denetim kaydina yaziliyor.
-    const scoped = !!(env && tenant);
-    const all = scoped
-      ? await state.listMirror({ env, tenant, clusterName })
-      : await state.listMirrorAll();
-    if (!scoped) {
-      auditPortal(req, 'scalex_stopped_global', {
-        detail: JSON.stringify({ rows: all.length, truncated: all.truncated === true }),
+  router.get(
+    '/stopped',
+    asyncRoute(async (req, res) => {
+      const env = String(req.query.env || '').trim();
+      const tenant = String(req.query.tenant || '').trim();
+      const clusterName = String(req.query.cluster || '').trim() || null;
+      // KAPSAM OPSIYONEL. "Hizli aksiyon" paneli sihirbazin ILK adiminda da gorunuyor ve
+      // orada henuz secilmis bir env/tenant yok. Kapsam verilirse liste ona daralir.
+      //
+      // BU BIR POLITIKA KARARI: kapsamsiz listede kullanicinin GOREBILDIGI tum
+      // namespace adlari (prod dahil) gorunur hale gelir. Yetki suzgeci aynen
+      // uygulaniyor — yalnizca gorunurlugun VARSAYILAN kapsami genisliyor — ama bu
+      // genisleme denetim kaydina yaziliyor.
+      const scoped = !!(env && tenant);
+      const all = scoped
+        ? await state.listMirror({ env, tenant, clusterName })
+        : await state.listMirrorAll();
+      if (!scoped) {
+        auditPortal(req, 'scalex_stopped_global', {
+          detail: JSON.stringify({ rows: all.length, truncated: all.truncated === true }),
+        });
+      }
+      // Bu uc `resolveScope`tan GECMEZ (namespace almiyor), bu yuzden yetki suzgeci
+      // BURADA uygulanmali — aksi halde kisitli bir namespace'in adi ve orada durdurulmus
+      // uygulamalar, o namespace'i goremeyen kullaniciya listelenirdi.
+      const rows = await catalog.filterStoppedForUser(all, { env, tenant, user: currentUser(req) });
+      // `truncated` FILTRELEMEDEN ONCE okunur: `filterStoppedForUser` yeni bir dizi
+      // dondugu icin bayrak orada kaybolur.
+      res.json({
+        ok: true,
+        items: rows,
+        hiddenCount: all.length - rows.length,
+        truncated: all.truncated === true,
+        limit: state.MIRROR_LIMIT,
       });
-    }
-    // Bu uc `resolveScope`tan GECMEZ (namespace almiyor), bu yuzden yetki suzgeci
-    // BURADA uygulanmali — aksi halde kisitli bir namespace'in adi ve orada durdurulmus
-    // uygulamalar, o namespace'i goremeyen kullaniciya listelenirdi.
-    const rows = await catalog.filterStoppedForUser(all, { env, tenant, user: currentUser(req) });
-    // `truncated` FILTRELEMEDEN ONCE okunur: `filterStoppedForUser` yeni bir dizi
-    // dondugu icin bayrak orada kaybolur.
-    res.json({
-      ok: true, items: rows,
-      hiddenCount: all.length - rows.length,
-      truncated: all.truncated === true, limit: state.MIRROR_LIMIT,
-    });
-  }));
+    }),
+  );
 
-  router.post('/adopt', asyncRoute(async (req, res) => {
-    const user = currentUser(req);
-    const { env, tenant, namespace, clusters } = await resolveScope(req, { requireApps: false });
-    const appName = String(req.body?.appName || '').trim();
-    if (!appName) throw Object.assign(new Error('appName zorunlu.'), { status: 400 });
-    if (clusters.length !== 1) throw Object.assign(new Error('Portala alma tek cluster için yapılır.'), { status: 400 });
-    // `appName` `apps` dizisine GIRMEDIGI icin `resolveScope` icindeki uygulama bazli
-    // yetki kontrolunden gecmiyordu ve formati hic dogrulanmiyordu. Ikisi de burada.
-    launch.assertValidDiscoveryTargets({ namespace, apps: [appName] });
-    await catalog.assertAppsAllowed({ env, tenant, clusters, namespace, apps: [appName], user });
+  router.post(
+    '/adopt',
+    asyncRoute(async (req, res) => {
+      const user = currentUser(req);
+      const { env, tenant, namespace, clusters } = await resolveScope(req, { requireApps: false });
+      const appName = String(req.body?.appName || '').trim();
+      if (!appName) throw Object.assign(new Error('appName zorunlu.'), { status: 400 });
+      if (clusters.length !== 1)
+        throw Object.assign(new Error('Portala alma tek cluster için yapılır.'), { status: 400 });
+      // `appName` `apps` dizisine GIRMEDIGI icin `resolveScope` icindeki uygulama bazli
+      // yetki kontrolunden gecmiyordu ve formati hic dogrulanmiyordu. Ikisi de burada.
+      launch.assertValidDiscoveryTargets({ namespace, apps: [appName] });
+      await catalog.assertAppsAllowed({ env, tenant, clusters, namespace, apps: [appName], user });
 
-    // `previousReplicas` KULLANICIDAN GELIR ve "geri alinca kac replica olacak"
-    // sorusunun cevabidir — uydurma bir sayi, geri almayi sessizce YANLIS yapardi.
-    // Sinirli ve tam sayi olmasi sart; makul bir ust sinirin disi reddedilir.
-    const prevRaw = req.body?.previousReplicas;
-    const prev = Number(prevRaw);
-    if (!Number.isInteger(prev) || prev < 0 || prev > 1000) {
-      throw Object.assign(new Error('previousReplicas 0-1000 arası tam sayı olmalı.'), { status: 400 });
-    }
-    const row = await state.adopt({
-      env, tenant, clusterName: clusters[0], namespace, appName,
-      workloadKind: req.body?.workloadKind || null,
-      previousReplicas: prev,
-      // KAYDI ALAN KISI OTURUMDAN. Client'in `stoppedBy` gondermesine izin vermek,
-      // denetim izine BASKASININ adini yazdirmak demekti — panel bu alani "durduran
-      // kisi" olarak gosteriyor.
-      stoppedBy: user.username,
-      adoptedBy: user.username,
-    });
-    auditPortal(req, 'scalex_adopt', { detail: JSON.stringify({ env, tenant, cluster: clusters[0], namespace, appName }) });
-    res.json({ ok: true, item: row });
-  }));
+      // `previousReplicas` KULLANICIDAN GELIR ve "geri alinca kac replica olacak"
+      // sorusunun cevabidir — uydurma bir sayi, geri almayi sessizce YANLIS yapardi.
+      // Sinirli ve tam sayi olmasi sart; makul bir ust sinirin disi reddedilir.
+      const prevRaw = req.body?.previousReplicas;
+      const prev = Number(prevRaw);
+      if (!Number.isInteger(prev) || prev < 0 || prev > 1000) {
+        throw Object.assign(new Error('previousReplicas 0-1000 arası tam sayı olmalı.'), {
+          status: 400,
+        });
+      }
+      const row = await state.adopt({
+        env,
+        tenant,
+        clusterName: clusters[0],
+        namespace,
+        appName,
+        workloadKind: req.body?.workloadKind || null,
+        previousReplicas: prev,
+        // KAYDI ALAN KISI OTURUMDAN. Client'in `stoppedBy` gondermesine izin vermek,
+        // denetim izine BASKASININ adini yazdirmak demekti — panel bu alani "durduran
+        // kisi" olarak gosteriyor.
+        stoppedBy: user.username,
+        adoptedBy: user.username,
+      });
+      auditPortal(req, 'scalex_adopt', {
+        detail: JSON.stringify({ env, tenant, cluster: clusters[0], namespace, appName }),
+      });
+      res.json({ ok: true, item: row });
+    }),
+  );
 
   // TOPLU GERI ALMA. Bir olay sirasinda 6 uygulamayi tek tek geri almak 6 ayri
   // is + 6 ayri onay demek; kurtarma sirasinda bu gercek bir maliyet.
   //
   // Gerekce ZORUNLU: bu uc, `Geri Al`in kapi politikasini (OCO uyarir-engellemez)
   // devralir ve gerekce hem portal kaydina hem SMART metadata'sina gider.
-  router.post('/restore-all', asyncRoute(async (req, res) => {
-    const user = currentUser(req);
-    const env = String(req.body?.env || '').trim();
-    const tenant = String(req.body?.tenant || '').trim();
-    const reason = String(req.body?.reason || '').trim();
-    if (!env || !tenant) throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
-    if (!reason) {
-      return res.status(400).json({
-        ok: false, reasonRequired: true,
-        message: 'Toplu geri alma için gerekçe zorunlu (örn. olay/kayıt numarası).',
-      });
-    }
-
-    // YETKI SUZGECI ONCE: kullanicinin goremedigi bir namespace'i geri almasi
-    // mumkun olmamali. `/stopped` ile AYNI suzgec.
-    const all = await state.listMirror({ env, tenant });
-    const visible = await catalog.filterStoppedForUser(all, { env, tenant, user });
-    // Yalnizca cluster gercegiyle UYUMLU kayitlar: sapmis bir kaydi geri almaya
-    // calismak `STATE;FAIL` ile duserdi ve kullaniciya yalanci bir "denendi" verirdi.
-    const targets = visible.filter((r) => r.driftStatus === 'in_sync');
-    if (!targets.length) {
-      return res.json({ ok: true, launched: [], message: 'Geri alınabilecek kayıt yok.' });
-    }
-
-    // (cluster, namespace) basina TEK is: playbook (cluster x uygulama) carpimini
-    // kendi yapiyor, ayni namespace icin tek is yeterli.
-    const groups = new Map();
-    for (const r of targets) {
-      const k = `${r.clusterName}|${r.namespace}`;
-      if (!groups.has(k)) groups.set(k, { cluster: r.clusterName, namespace: r.namespace, apps: [] });
-      groups.get(k).apps.push(r.appName);
-    }
-
-    // KAPI: toplu geri alma da TEKIL `Geri Al` ile AYNI politikadan gecer.
-    // Bu blok uzun sure YOKTU: yorum "Geri Al'in kapi politikasini devralir" diyordu
-    // ama kod dogrudan `launchOnAwx` cagiriyordu. Yani prod'da tekil geri alma SMART
-    // kaydi acarken TOPLU geri alma hicbir onay olmadan calisiyordu — kapiyi bir
-    // dugmeyle atlamak mumkundu.
-    const policy = launch.gatePolicyFor({ action: 'restore', executionMode: 'apply', environment: env });
-
-    const launched = [];
-    const pendingApproval = [];
-    const blocked = [];
-    for (const g of groups.values()) {
-      // TOPLU GERI ALMA: HPA pin UYGULANMAZ (her uygulama icin ayri pin ayari
-      // tekil geri almada mumkun ama toplu islemde guvenli degil — HPA minReplicas
-      // uygulama bazli degisir ve toplu sabitleme yanlis uygulamayi etkileyebilir).
-      // TIP HARITASI: /run ile AYNI. `targets` her satirda `workloadKind` tasir
-      // (state.cjs:79); grup bazinda harita uretilir ve playbook "ayni ad iki
-      // tipte var" belirsizligini otomatik cozer.
-      const groupTargets = targets.filter((r) => r.clusterName === g.cluster && r.namespace === g.namespace);
-      const extraVars = await launch.buildRunExtraVars({
-        env, tenant, clusters: [g.cluster], namespace: g.namespace, apps: g.apps,
-        action: 'restore', executionMode: 'apply', targetReplicas: undefined,
-        verificationTimeout: '60', allowPartial: true,
-        mailTo: String(user.mail || '').trim(), mailCc: '', hpaPin: false,
-        workloadKinds: groupTargets.map((r) => ({ name: r.appName, kind: r.workloadKind })),
-      });
-
-      // KILIT: grup basina. Mesgul bir grup TUM istegi dusurmez — `blocked`a duser
-      // ve digerleri denenmeye devam eder. Bir kesinti sirasinda tek bir cakisma
-      // yuzunden kalan bes grubu hic denememek en pahali hata olurdu.
-      const groupLock = await acquireRestoreLocks({
-        env, tenant, clusters: [g.cluster], namespace: g.namespace, apps: g.apps,
-      });
-      if (!groupLock.ok) {
-        blocked.push({
-          cluster: g.cluster, namespace: g.namespace,
-          message: restoreConflictBody(groupLock.busy).message,
+  router.post(
+    '/restore-all',
+    asyncRoute(async (req, res) => {
+      const user = currentUser(req);
+      const env = String(req.body?.env || '').trim();
+      const tenant = String(req.body?.tenant || '').trim();
+      const reason = String(req.body?.reason || '').trim();
+      if (!env || !tenant)
+        throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
+      if (!reason) {
+        return res.status(400).json({
+          ok: false,
+          reasonRequired: true,
+          message: 'Toplu geri alma için gerekçe zorunlu (örn. olay/kayıt numarası).',
         });
-        continue;
       }
 
-      const gate = await runScaleXGates({
-        req, user, policy, env, tenant, clusters: [g.cluster], namespace: g.namespace,
-        apps: g.apps, action: 'restore', executionMode: 'apply', targetReplicas: undefined,
-        extraVars, reason, ocoNumber: undefined,
-      }).catch(async (e) => { await releaseRestoreLocks(groupLock.acquired); throw e; });
-      if (gate.outcome === 'error') {
-        await releaseRestoreLocks(groupLock.acquired);
-        // HICBIR grup henuz baslamadiysa hata YAPILANDIRMA duzeyindedir (or.
-        // `smart_not_configured`) ve her grup icin ayni sekilde duserdi — kullaniciyi
-        // N kez ayni mesajla ugrastirmak yerine dogrudan don.
-        if (!launched.length && !pendingApproval.length) return res.status(gate.status).json(gate.body);
-        blocked.push({ cluster: g.cluster, namespace: g.namespace, message: gate.body?.message || 'Kapı reddetti.' });
-        continue;
+      // YETKI SUZGECI ONCE: kullanicinin goremedigi bir namespace'i geri almasi
+      // mumkun olmamali. `/stopped` ile AYNI suzgec.
+      const all = await state.listMirror({ env, tenant });
+      const visible = await catalog.filterStoppedForUser(all, { env, tenant, user });
+      // Yalnizca cluster gercegiyle UYUMLU kayitlar: sapmis bir kaydi geri almaya
+      // calismak `STATE;FAIL` ile duserdi ve kullaniciya yalanci bir "denendi" verirdi.
+      const targets = visible.filter((r) => r.driftStatus === 'in_sync');
+      if (!targets.length) {
+        return res.json({ ok: true, launched: [], message: 'Geri alınabilecek kayıt yok.' });
       }
-      if (gate.outcome === 'respond') {
-        // Onay bekleyen grubun kilidi TUTULUR; diger her yolda birakilir.
-        if (!gate.body?.pendingApproval) await releaseRestoreLocks(groupLock.acquired);
-        if (gate.body?.pendingApproval) {
-          pendingApproval.push({
-            cluster: g.cluster, namespace: g.namespace, apps: g.apps,
-            ticketId: gate.body.ticketId, externalTicketId: gate.body.externalTicketId,
+
+      // (cluster, namespace) basina TEK is: playbook (cluster x uygulama) carpimini
+      // kendi yapiyor, ayni namespace icin tek is yeterli.
+      const groups = new Map();
+      for (const r of targets) {
+        const k = `${r.clusterName}|${r.namespace}`;
+        if (!groups.has(k))
+          groups.set(k, { cluster: r.clusterName, namespace: r.namespace, apps: [] });
+        groups.get(k).apps.push(r.appName);
+      }
+
+      // KAPI: toplu geri alma da TEKIL `Geri Al` ile AYNI politikadan gecer.
+      // Bu blok uzun sure YOKTU: yorum "Geri Al'in kapi politikasini devralir" diyordu
+      // ama kod dogrudan `launchOnAwx` cagiriyordu. Yani prod'da tekil geri alma SMART
+      // kaydi acarken TOPLU geri alma hicbir onay olmadan calisiyordu — kapiyi bir
+      // dugmeyle atlamak mumkundu.
+      const policy = launch.gatePolicyFor({
+        action: 'restore',
+        executionMode: 'apply',
+        environment: env,
+      });
+
+      const launched = [];
+      const pendingApproval = [];
+      const blocked = [];
+      for (const g of groups.values()) {
+        // TOPLU GERI ALMA: HPA pin UYGULANMAZ (her uygulama icin ayri pin ayari
+        // tekil geri almada mumkun ama toplu islemde guvenli degil — HPA minReplicas
+        // uygulama bazli degisir ve toplu sabitleme yanlis uygulamayi etkileyebilir).
+        // TIP HARITASI: /run ile AYNI. `targets` her satirda `workloadKind` tasir
+        // (state.cjs:79); grup bazinda harita uretilir ve playbook "ayni ad iki
+        // tipte var" belirsizligini otomatik cozer.
+        const groupTargets = targets.filter(
+          (r) => r.clusterName === g.cluster && r.namespace === g.namespace,
+        );
+        const extraVars = await launch.buildRunExtraVars({
+          env,
+          tenant,
+          clusters: [g.cluster],
+          namespace: g.namespace,
+          apps: g.apps,
+          action: 'restore',
+          executionMode: 'apply',
+          targetReplicas: undefined,
+          verificationTimeout: '60',
+          allowPartial: true,
+          mailTo: String(user.mail || '').trim(),
+          mailCc: '',
+          hpaPin: false,
+          workloadKinds: groupTargets.map((r) => ({ name: r.appName, kind: r.workloadKind })),
+        });
+
+        // KILIT: grup basina. Mesgul bir grup TUM istegi dusurmez — `blocked`a duser
+        // ve digerleri denenmeye devam eder. Bir kesinti sirasinda tek bir cakisma
+        // yuzunden kalan bes grubu hic denememek en pahali hata olurdu.
+        const groupLock = await acquireRestoreLocks({
+          env,
+          tenant,
+          clusters: [g.cluster],
+          namespace: g.namespace,
+          apps: g.apps,
+        });
+        if (!groupLock.ok) {
+          blocked.push({
+            cluster: g.cluster,
+            namespace: g.namespace,
+            message: restoreConflictBody(groupLock.busy).message,
           });
-        } else {
-          blocked.push({ cluster: g.cluster, namespace: g.namespace, message: gate.body?.message || 'İş başlatılmadı.' });
+          continue;
         }
-        continue;
-      }
 
-      let job;
-      try {
-        job = await launchOnAwx({
-          keyName: RUN_KEY, extraVars, req,
-          label: `ScaleX toplu geri alma — ${g.namespace} @ ${g.cluster}`,
+        const gate = await runScaleXGates({
+          req,
+          user,
+          policy,
+          env,
+          tenant,
+          clusters: [g.cluster],
+          namespace: g.namespace,
+          apps: g.apps,
+          action: 'restore',
+          executionMode: 'apply',
+          targetReplicas: undefined,
+          extraVars,
+          reason,
+          ocoNumber: undefined,
+        }).catch(async (e) => {
+          await releaseRestoreLocks(groupLock.acquired);
+          throw e;
         });
-      } catch (e) {
-        await releaseRestoreLocks(groupLock.acquired);
-        throw e;
+        if (gate.outcome === 'error') {
+          await releaseRestoreLocks(groupLock.acquired);
+          // HICBIR grup henuz baslamadiysa hata YAPILANDIRMA duzeyindedir (or.
+          // `smart_not_configured`) ve her grup icin ayni sekilde duserdi — kullaniciyi
+          // N kez ayni mesajla ugrastirmak yerine dogrudan don.
+          if (!launched.length && !pendingApproval.length)
+            return res.status(gate.status).json(gate.body);
+          blocked.push({
+            cluster: g.cluster,
+            namespace: g.namespace,
+            message: gate.body?.message || 'Kapı reddetti.',
+          });
+          continue;
+        }
+        if (gate.outcome === 'respond') {
+          // Onay bekleyen grubun kilidi TUTULUR; diger her yolda birakilir.
+          if (!gate.body?.pendingApproval) await releaseRestoreLocks(groupLock.acquired);
+          if (gate.body?.pendingApproval) {
+            pendingApproval.push({
+              cluster: g.cluster,
+              namespace: g.namespace,
+              apps: g.apps,
+              ticketId: gate.body.ticketId,
+              externalTicketId: gate.body.externalTicketId,
+            });
+          } else {
+            blocked.push({
+              cluster: g.cluster,
+              namespace: g.namespace,
+              message: gate.body?.message || 'İş başlatılmadı.',
+            });
+          }
+          continue;
+        }
+
+        let job;
+        try {
+          job = await launchOnAwx({
+            keyName: RUN_KEY,
+            extraVars,
+            req,
+            label: `ScaleX toplu geri alma — ${g.namespace} @ ${g.cluster}`,
+          });
+        } catch (e) {
+          await releaseRestoreLocks(groupLock.acquired);
+          throw e;
+        }
+        await insertOperationRows({
+          requestKey: `${job.serverId}:${job.jobId}`,
+          username: user.username,
+          env,
+          tenant,
+          clusters: [g.cluster],
+          namespace: g.namespace,
+          action: 'restore',
+          executionMode: 'apply',
+          targetReplicas: undefined,
+          apps: g.apps,
+          serverId: job.serverId,
+          jobId: job.jobId,
+          status: 'RUNNING',
+          ocoNumber: null,
+          reason,
+        });
+        launched.push({ ...job, cluster: g.cluster, namespace: g.namespace, apps: g.apps });
       }
-      await insertOperationRows({
-        requestKey: `${job.serverId}:${job.jobId}`,
-        username: user.username, env, tenant, clusters: [g.cluster], namespace: g.namespace,
-        action: 'restore', executionMode: 'apply', targetReplicas: undefined, apps: g.apps,
-        serverId: job.serverId, jobId: job.jobId, status: 'RUNNING', ocoNumber: null, reason,
+
+      auditPortal(req, 'scalex_restore_all', {
+        detail: JSON.stringify({
+          env,
+          tenant,
+          groups: groups.size,
+          apps: targets.length,
+          reason,
+          launched: launched.length,
+          pendingApproval: pendingApproval.length,
+          blocked: blocked.length,
+        }),
       });
-      launched.push({ ...job, cluster: g.cluster, namespace: g.namespace, apps: g.apps });
-    }
+      res.json({ ok: true, launched, pendingApproval, blocked });
+    }),
+  );
 
-    auditPortal(req, 'scalex_restore_all', {
-      detail: JSON.stringify({
-        env, tenant, groups: groups.size, apps: targets.length, reason,
-        launched: launched.length, pendingApproval: pendingApproval.length, blocked: blocked.length,
-      }),
-    });
-    res.json({ ok: true, launched, pendingApproval, blocked });
-  }));
-
-  router.get('/history', asyncRoute(async (req, res) => {
-    const user = currentUser(req);
-    const isAdmin = user.role === 'Admin';
-    // `SELECT *` DEGIL: `result_json` ve `error_message` NVARCHAR(MAX) ve tek bir isin
-    // sonucu yuz binlerce karakter olabiliyor (hedef basina satirlar). 200 satirla
-    // carpilinca liste yaniti onlarca MB'a cikabilirdi — oysa gecmis LISTESI bu iki
-    // alani hic gostermiyor. Ayrinti gerektiginde is durumu ucundan okunuyor.
-    // Kolonlar her iki sorguda da ELLE yazili: SQL metnine sablon degiskeni koymak
-    // (`${...}`) bu modulde bir bekci tarafindan yasak — sabit bile olsa, enjeksiyon
-    // incelemesini "bu deger nereden geliyor?" sorusuna mahkum ediyor.
-    const { rows } = await db.query(
-      isAdmin
-        ? `SELECT TOP 200 id, request_key, username, env, tenant, cluster_name, namespace,
+  router.get(
+    '/history',
+    asyncRoute(async (req, res) => {
+      const user = currentUser(req);
+      const isAdmin = user.role === 'Admin';
+      // `SELECT *` DEGIL: `result_json` ve `error_message` NVARCHAR(MAX) ve tek bir isin
+      // sonucu yuz binlerce karakter olabiliyor (hedef basina satirlar). 200 satirla
+      // carpilinca liste yaniti onlarca MB'a cikabilirdi — oysa gecmis LISTESI bu iki
+      // alani hic gostermiyor. Ayrinti gerektiginde is durumu ucundan okunuyor.
+      // Kolonlar her iki sorguda da ELLE yazili: SQL metnine sablon degiskeni koymak
+      // (`${...}`) bu modulde bir bekci tarafindan yasak — sabit bile olsa, enjeksiyon
+      // incelemesini "bu deger nereden geliyor?" sorusuna mahkum ediyor.
+      const { rows } = await db.query(
+        isAdmin
+          ? `SELECT TOP 200 id, request_key, username, env, tenant, cluster_name, namespace,
                   action, execution_mode, target_replicas, app_names_json,
                   awx_server_id, awx_job_id, status, overall_status,
                   smart_ticket_id, oco_number, approval_state, approved_by, approved_at,
                   reason, created_at, updated_at
              FROM scalex_operations ORDER BY created_at DESC`
-        : `SELECT TOP 200 id, request_key, username, env, tenant, cluster_name, namespace,
+          : `SELECT TOP 200 id, request_key, username, env, tenant, cluster_name, namespace,
                   action, execution_mode, target_replicas, app_names_json,
                   awx_server_id, awx_job_id, status, overall_status,
                   smart_ticket_id, oco_number, approval_state, approved_by, approved_at,
                   reason, created_at, updated_at
              FROM scalex_operations WHERE username = $1 ORDER BY created_at DESC`,
-      isAdmin ? [] : [user.username]
-    );
-    res.json({ ok: true, items: rows });
-  }));
+        isAdmin ? [] : [user.username],
+      );
+      res.json({ ok: true, items: rows });
+    }),
+  );
 
   app.use('/api/scalex', router);
 
@@ -951,7 +1360,18 @@ function initScaleX(app) {
 
 // SMART metadata'si. `reason` ve patlama yaricapi BILEREK iceride: onay veren kisi
 // "kac hedefe dokunuluyor" ve "neden" sorularinin cevabini gormeli.
-function buildScaleXSmartMetadata({ user, env, tenant, clusters, namespace, apps, action, radius, reason, ocoNumber }) {
+function buildScaleXSmartMetadata({
+  user,
+  env,
+  tenant,
+  clusters,
+  namespace,
+  apps,
+  action,
+  radius,
+  reason,
+  ocoNumber,
+}) {
   return [
     { key: 'requestedBy', value: user.username },
     { key: 'environment', value: env },
@@ -999,8 +1419,12 @@ function storableResult(parsed) {
   // Buraya dusmek icin ozet alanlarin TEK BASINA 1 MB'i asmasi gerekir — pratikte
   // imkansiz. Yine de sessiz bozuk JSON birakmaktansa ACIK bir isaret birakilir.
   return JSON.stringify({
-    overallStatus: out.overallStatus, stage: out.stage, mode: out.mode,
-    action: out.action, namespace: out.namespace, jobId: out.jobId,
+    overallStatus: out.overallStatus,
+    stage: out.stage,
+    mode: out.mode,
+    action: out.action,
+    namespace: out.namespace,
+    jobId: out.jobId,
     storageError: 'sonuc kaydi 1 MB sinirini asti; ayrintilar AWX job logunda',
   });
 }
@@ -1009,7 +1433,7 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
   try {
     const { rows } = await db.query(
       `SELECT * FROM scalex_operations WHERE awx_server_id = $1 AND awx_job_id = $2`,
-      [serverId, jobId]
+      [serverId, jobId],
     );
     if (!rows.length || rows.every((r) => r.status !== 'RUNNING')) return;
 
@@ -1017,8 +1441,12 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
       `UPDATE scalex_operations
           SET status = 'FINISHED', overall_status = $3, result_json = $4, updated_at = GETUTCDATE()
         WHERE awx_server_id = $1 AND awx_job_id = $2 AND status = 'RUNNING'`,
-      [serverId, jobId, parsed ? parsed.overallStatus : String(status.status || '').toUpperCase(),
-        storableResult(parsed)]
+      [
+        serverId,
+        jobId,
+        parsed ? parsed.overallStatus : String(status.status || '').toUpperCase(),
+        storableResult(parsed),
+      ],
     );
 
     // Ortak alanlar (env/tenant/namespace/username) TUM satirlarda ayni — ayni
@@ -1041,7 +1469,11 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
       username: op.username,
       result: parsed && parsed.overallStatus === 'FAIL' ? 'fail' : 'ok',
       detail: JSON.stringify({
-        serverId, jobId, env: op.env, tenant: op.tenant, namespace: op.namespace,
+        serverId,
+        jobId,
+        env: op.env,
+        tenant: op.tenant,
+        namespace: op.namespace,
         action: parsed ? parsed.action : op.action,
         mode: parsed ? parsed.mode : op.execution_mode,
         overallStatus: parsed ? parsed.overallStatus : null,
@@ -1061,10 +1493,17 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
         // geri alamazdi. Uzlastiricinin yetim kilit turu bunu nihayetinde toplar;
         // burada ANINDA birakiyoruz ki kullanici hemen tekrar deneyebilsin.
         if (parsed.action === 'restore') {
-          await state.unlockRestore({
-            env: op.env, tenant: op.tenant, clusterName: t.cluster,
-            namespace: op.namespace, appName: t.app,
-          }).then(() => { mirror.unlocked.push(`${t.cluster}/${t.app}`); })
+          await state
+            .unlockRestore({
+              env: op.env,
+              tenant: op.tenant,
+              clusterName: t.cluster,
+              namespace: op.namespace,
+              appName: t.app,
+            })
+            .then(() => {
+              mirror.unlocked.push(`${t.cluster}/${t.app}`);
+            })
             .catch((e) => console.warn('[ScaleX] kilit birakilamadi:', e.message));
         }
         continue;
@@ -1074,15 +1513,24 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
         // Burada yalnizca "durduruldu" gercegi kaydedilir; `[Durumu Tazele]` ayrintiyi
         // cluster'dan alir. Uydurulmus bir sayi yazmak, geri almayi BOZARDI.
         await state.upsertStopped({
-          env: op.env, tenant: op.tenant, clusterName: t.cluster, namespace: op.namespace,
-          appName: t.app, workloadKind: t.kind, previousReplicas: null,
-          stoppedBy: op.username, operationId: idByCluster.get(t.cluster) ?? op.id,
+          env: op.env,
+          tenant: op.tenant,
+          clusterName: t.cluster,
+          namespace: op.namespace,
+          appName: t.app,
+          workloadKind: t.kind,
+          previousReplicas: null,
+          stoppedBy: op.username,
+          operationId: idByCluster.get(t.cluster) ?? op.id,
         });
         mirror.stopped.push(`${t.cluster}/${t.app}`);
       } else if (parsed.action === 'restore') {
         await state.clearRestored({
-          env: op.env, tenant: op.tenant, clusterName: t.cluster,
-          namespace: op.namespace, appName: t.app,
+          env: op.env,
+          tenant: op.tenant,
+          clusterName: t.cluster,
+          namespace: op.namespace,
+          appName: t.app,
         });
         mirror.restored.push(`${t.cluster}/${t.app}`);
       }
@@ -1094,8 +1542,14 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
       auditPortal(null, 'scalex_mirror_update', {
         username: op.username,
         detail: JSON.stringify({
-          serverId, jobId, env: op.env, tenant: op.tenant, namespace: op.namespace,
-          stopped: mirror.stopped, restored: mirror.restored, unlocked: mirror.unlocked,
+          serverId,
+          jobId,
+          env: op.env,
+          tenant: op.tenant,
+          namespace: op.namespace,
+          stopped: mirror.stopped,
+          restored: mirror.restored,
+          unlocked: mirror.unlocked,
         }),
       });
     }
@@ -1107,4 +1561,10 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
   }
 }
 
-module.exports = { initScaleX, denyIfNotOwner, resolveByKey, buildScaleXSmartMetadata, finalizeOperation };
+module.exports = {
+  initScaleX,
+  denyIfNotOwner,
+  resolveByKey,
+  buildScaleXSmartMetadata,
+  finalizeOperation,
+};

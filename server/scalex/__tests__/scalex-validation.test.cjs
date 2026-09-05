@@ -26,6 +26,64 @@ const CATALOG = src('catalog.cjs');
 const LAUNCH = src('launch.cjs');
 const STATE = src('state.cjs');
 
+// `fromIndex`ten SONRAKI ilk dizi literalini DENGELI parantez sayarak cikarir.
+// Bicimden bagimsizdir: dizinin tek satir mi cok satir mi oldugu onemli degil.
+function extractArrayLiteral(sourceText, fromIndex) {
+  const start = sourceText.indexOf('[', fromIndex);
+  assert.ok(start > 0, 'parametre dizisi bulunamadi');
+  let depth = 0;
+  for (let i = start; i < sourceText.length; i += 1) {
+    const ch = sourceText[i];
+    if (ch === '[' || ch === '(' || ch === '{') depth += 1;
+    else if (ch === ']' || ch === ')' || ch === '}') {
+      depth -= 1;
+      if (depth === 0) return sourceText.slice(start + 1, i);
+    }
+  }
+  assert.fail('parametre dizisi kapanmiyor');
+}
+
+// Yalnizca DERINLIK 0'daki virgulleri ayirir: `f(a, b)` TEK ogedir.
+function countTopLevelItems(inner) {
+  let depth = 0;
+  const items = [];
+  let buf = '';
+  for (const ch of inner) {
+    if (ch === '[' || ch === '(' || ch === '{') depth += 1;
+    if (ch === ']' || ch === ')' || ch === '}') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      items.push(buf);
+      buf = '';
+    } else buf += ch;
+  }
+  items.push(buf);
+  return items.filter((x) => x.trim()).length;
+}
+
+// ROUTE KONUMU — BICIMDEN BAGIMSIZ ve FAIL-CLOSED. Prettier
+// `router.post('/restore-all', h)` cagrisini cok satira boluyor; eski
+// `indexOf("router.post('/restore-all'")` -1 donuyor, `slice(-1)` ise HATA
+// VERMEDEN son karakteri donduruyordu. Olumsuz assert'ler bos metinde her zaman
+// gectigi icin bekci sessizce FAIL-OPEN oluyordu. Bulunamazsa artik DUSER.
+function routeIndex(sourceText, method, routePath) {
+  // Yol sonu SINIRI sart: `/adopt` deseni `'/adopt-renamed'` ile ESLESMEMELI,
+  // ama `/cancel` deseni `'/cancel/:serverId/:jobId'` ile ESLESMELI.
+  const re = new RegExp(
+    `router\\.${method}\\(\\s*['"]${routePath.replace(/[/]/g, '\\/')}(?=['"]|\\/)`,
+  );
+  const m = re.exec(sourceText);
+  assert.ok(m, `route bulunamadi (bicim mi degisti?): router.${method}('${routePath}')`);
+  return m.index;
+}
+
+// Bir sonraki route'un basi (verilen konumdan sonra). Yoksa metnin sonu.
+function nextRouteIndex(sourceText, fromIndex) {
+  const re = /router\.(get|post|put|delete|patch)\(\s*['"]/g;
+  re.lastIndex = fromIndex;
+  const m = re.exec(sourceText);
+  return m ? m.index : sourceText.length;
+}
+
 // Yorum satirlarini at: testler kendi ACIKLAMALARIYLA eslesmemeli (bu depoda daha once
 // tam olarak bu hata yapildi).
 const codeOnly = (s) =>
@@ -273,11 +331,7 @@ test("B1 her mutasyon ucu resolveScope'tan geciyor", () => {
   // onu atlarsa, client istedigi namespace'i gonderip yetki kapisini bypass eder.
   const code = codeOnly(INDEX);
   for (const route of ['/discover', '/preview', '/run', '/adopt']) {
-    const i =
-      code.indexOf(`router.post('${route}'`) >= 0
-        ? code.indexOf(`router.post('${route}'`)
-        : code.indexOf(`router.post("${route}"`);
-    assert.ok(i > 0, `${route} bulunamadi`);
+    const i = routeIndex(code, 'post', route);
     const body = code.slice(i, i + 1800);
     assert.match(
       body,
@@ -417,11 +471,11 @@ test('C1 scalex_operations INSERT: yer tutucu sayisi = parametre sayisi', () => 
   // Yer tutucular kesintisiz 1..N ve N = parametre dizisi uzunlugu olmali.
   const ph = maxParam(stmt);
   assert.equal(paramCount(stmt), ph, 'yer tutucular kesintisiz degil');
-  const argsBlock = code.slice(
-    code.indexOf('[requestKey', i),
-    code.indexOf(']\n', code.indexOf('[requestKey', i)),
-  );
-  const argCount = argsBlock.split(',').filter((x) => x.trim()).length;
+  // PARAMETRE DIZISI DENGELI PARANTEZLE cikarilir. Eskiden `indexOf('[requestKey')`
+  // + `indexOf(']\\n')` kullaniliyordu; prettier diziyi satir basina bir oge olacak
+  // sekilde acinca (`[\\n  requestKey,`) desen tutmadi ve bekci kirmiziya dondu.
+  // Virguller de DERINLIK-FARKINDA sayilir: `f(a, b)` gibi bir arguman tek ogedir.
+  const argCount = countTopLevelItems(extractArrayLiteral(code, i));
   assert.equal(argCount, ph, `${ph} yer tutucu ama ${argCount} parametre`);
 });
 
@@ -586,7 +640,11 @@ test('D5 kapi karari FAIL-CLOSED tuketiliyor', () => {
   // 2) HER cagiran `error` ve `respond` dallarini tuketmek ZORUNDA. Kapi artik
   //    `res`e dokunmayan bir karar nesnesi donduruyor; bir cagiran dallardan
   //    birini ele almazsa is SESSIZCE calisir (kapinin cikarilmasindaki asil risk).
-  const callers = code.match(/await runScaleXGates\(\{[\s\S]{0,600}?\}\);([\s\S]{0,400})/g) || [];
+  // PENCERE NORMALIZE METINDE olculur. Ham metinde olculunce prettier'in cok
+  // satira yaydigi cagri govdesi pencereyi tasiriyor ve kural aynen dururken
+  // bekci kirmiziya donuyordu (bkz. bekci-korlugu-desenleri #2b).
+  const flat = code.replace(/\s+/g, ' ');
+  const callers = flat.match(/await runScaleXGates\(\{[\s\S]{0,600}?\}\);([\s\S]{0,800})/g) || [];
   assert.ok(
     callers.length >= 2,
     `runScaleXGates cagirani sayisi beklenenden az: ${callers.length}`,
@@ -1717,12 +1775,9 @@ test('M4 resolveByKey ASYNC olmali (imza bekcisi)', () => {
 
 test('N1 `/restore-all` ortak kapi govdesinden geciyor', () => {
   const code = codeOnly(INDEX);
-  const bulk = code.slice(code.indexOf("router.post('/restore-all'"));
-  assert.ok(bulk.length > 0, '/restore-all ucu bulunamadi');
-  const body = bulk.slice(
-    0,
-    bulk.indexOf('router.post(', 10) >= 0 ? bulk.indexOf('router.post(', 10) : bulk.length,
-  );
+  const start = routeIndex(code, 'post', '/restore-all');
+  const body = code.slice(start, nextRouteIndex(code, start + 20));
+  assert.ok(body.length > 0, '/restore-all ucu bulunamadi');
   assert.match(body, /await runScaleXGates\(/, 'toplu geri alma kapiyi HIC cagirmiyor');
   assert.match(
     body,
@@ -2096,7 +2151,7 @@ test("R1 uygulama listesi paylasilan katalogdan geliyor (AWX job'i ACMADAN)", ()
   // onu DEGISTIRMIYOR, ScaleX'i ona BAGLIYOR — yani ScaleX kendi AWX kesfini
   // katalogun yerine koymuyor.
   const idx = codeOnly(INDEX);
-  const ep = idx.slice(idx.indexOf("router.get('/apps'"), idx.indexOf("router.post('/discover'"));
+  const ep = idx.slice(routeIndex(idx, 'get', '/apps'), routeIndex(idx, 'post', '/discover'));
   assert.doesNotMatch(ep, /launchOnAwx/, 'liste ucu AWX isi aciyor — anlik olmaz');
 });
 
@@ -2136,7 +2191,7 @@ test('R4 liste ucu namespace yetkisini ONCE dogruluyor', () => {
   // Goremedigi bir namespace'in uygulama ADLARINI listelemek, adlarin kendisini
   // sizdirmak olurdu.
   const idx = codeOnly(INDEX);
-  const ep = idx.slice(idx.indexOf("router.get('/apps'"), idx.indexOf("router.post('/discover'"));
+  const ep = idx.slice(routeIndex(idx, 'get', '/apps'), routeIndex(idx, 'post', '/discover'));
   assert.match(ep, /assertNamespaceAllowed/, 'namespace yetkisi dogrulanmiyor');
   assert.ok(
     ep.indexOf('assertNamespaceAllowed') < ep.indexOf('listApps'),
@@ -2289,11 +2344,9 @@ test('I1 /restore-all buildRunExtraVars cagrisi hpaPin ve workloadKinds geciriyo
   // "ayni ad iki tipte var" belirsizligi isi dusuruyordu (2026-09 TUR 1 tespiti).
   // Source-assertion: /restore-all handler blogunu bul ve icindeki buildRunExtraVars
   // cagrisinin her iki parametreyi de icerdigini dogrula.
-  const restoreAllStart = INDEX.indexOf("router.post('/restore-all'");
-  assert.ok(restoreAllStart >= 0, '/restore-all route bulunamadi');
-  // Handler blogunun sonu: bir sonraki router.* tanimina kadar.
-  const nextRoute = INDEX.indexOf('router.', restoreAllStart + 30);
-  const block = INDEX.slice(restoreAllStart, nextRoute > 0 ? nextRoute : restoreAllStart + 5000);
+  const restoreAllStart = routeIndex(INDEX, 'post', '/restore-all');
+  // Handler blogunun sonu: bir sonraki route tanimina kadar.
+  const block = INDEX.slice(restoreAllStart, nextRouteIndex(INDEX, restoreAllStart + 20));
 
   assert.match(
     block,

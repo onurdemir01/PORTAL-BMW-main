@@ -653,7 +653,12 @@ test('X2 sentetik satirlar `source: "mirror"` ile isaretleniyor', () => {
   // `source` ZORUNLU bir alan; opsiyonel olsaydi yeni bir sentetik yol eklendiginde
   // unutulur ve uydurma metrikler sessizce ekrana duserdi.
   const api = read('api/scalexApi.ts');
-  assert.match(api, /source:\s*"discovery"\s*\|\s*"mirror";/, 'kaynak alani opsiyonel ya da yok');
+  // TIRNAK BAGIMSIZ: prettier tek/cift tirnagi degistiriyor, kural degismiyor.
+  assert.match(
+    api,
+    /source:\s*["']discovery["']\s*\|\s*["']mirror["'];/,
+    'kaynak alani opsiyonel ya da yok',
+  );
   const page = codeOnly(PAGE);
   const synthetic = (page.match(/source:\s*["']mirror["']/g) || []).length;
   assert.equal(
@@ -691,26 +696,28 @@ test('X4 calistirma ayarlari ve VERI TAZELIGI onizlemede', () => {
 // Kesif artik alti tipe bakiyor ve bakamadigi tipi de bildiriyor; ekranin bunlari
 // GOSTERDIGINI ve olceklenemeyenleri SECTIRMEDIGINI kilitler.
 
-test('Y1 tekillestirme ad+TIP bazinda — ayni ad iki tipte varsa ikisi de gorunur', () => {
+test('Y1 tekillestirme ADA bazinda — ayni ad farkli tipte bile tek satir', () => {
   const code = codeOnly(WORKLOAD);
-  // Eskiden anahtar yalnizca `w.name` idi ve ILK satir tutuluyordu: ayni ada sahip
-  // bir Deployment ile bir DeploymentConfig varsa IKINCISI ekranda hic gorunmuyor,
-  // sonra is `ambiguous` ile dusuyordu. Kullanici cakismayi goremiyordu bile.
+  // Secim artik uygulama adi bazinda; ayni ad farkli cluster'larda farkli
+  // tipte olabilir ve tek tikla hepsi secilir. Tip ozeti satirda gosterilir.
+  assert.match(code, /byName\.set\(w\.name,\s*w\)/, 'tekillestirme ada gore yapilmiyor');
   assert.doesNotMatch(
     code,
-    /byName\.set\(w\.name,\s*w\)/,
-    'tekillestirme hala yalnizca ada gore — ikinci tipteki nesne ekranda kaybolur',
+    /\$\{w\.name\}\\u0000\$\{w\.kind\}/,
+    'satir anahtari hala ad+tip — name-only secim bozulur',
   );
-  assert.match(code, /\$\{w\.name\}\\u0000\$\{w\.kind\}/, 'satir anahtari ad+tip degil');
 });
 
-test('Y2 ayni ad birden fazla tipte ise EKRAN SOYLER', () => {
+test('Y2 ayni ad farkli tipte ise ekran TIP OZETI ve UYARI gosterir', () => {
   const code = codeOnly(WORKLOAD);
-  assert.match(code, /ambiguousNames/, 'cakisma hesaplanmiyor');
+  // Ayni adin farkli cluster'larda farkli tipi olabilir; ekran bunu
+  // `kindSummaryByName` ile hesaplar ve "cluster'a gore degisir" uyarisiyla
+  // kullaniciya bildirir.
+  assert.match(code, /kindSummaryByName/, 'tip ozeti hesaplanmiyor');
   assert.match(
     code,
-    /aynı ad birden fazla tipte/,
-    'kullaniciya cakisma soylenmiyor — is `ambiguous` ile dusunce sebebi anlasilmaz',
+    /cluster[’']a göre değişir/,
+    'kullaniciya farkli clusterlarda farkli tip oldugu soylenmiyor',
   );
 });
 
@@ -773,33 +780,42 @@ test('Y6 tip haritasi YALNIZCA kesiften gelen satirlardan uretilir', () => {
   );
 });
 
-test('Y7 ayni adin IKI tipi birden secilemez', () => {
+test('Y7 ayni ad farkli tipte oldugunda secim IZIN VERILIR; her cluster kendi tipiyle gider', () => {
   const code = codeOnly(WORKLOAD);
-  // Ikisi birden secilirse playbook o uygulama icin `ambiguous` deyip isi durdurur.
-  // Bunu calistirma zamaninda ogrenmek yerine ekranda ONLEMEK dogru olan.
+  const page = codeOnly(PAGE);
+  // Yeni sozlesme: UI name-only secer; cluster basina kind haritasi AWX'e gider.
+  // Playbook ayni cluster icindeki belirsizligi `auto` taramasiyla cozer.
+  assert.doesNotMatch(code, /const kindBlocked = isKindBlocked\(w\)/, 'eski tip kilidi hala var');
+  assert.doesNotMatch(
+    code,
+    /farklı bir tip seçildi/,
+    'kullanici artik farkli tip yuzunden engellenmiyor',
+  );
   assert.match(
     code,
-    /const kindBlocked = isKindBlocked\(w\)/,
-    'ayni adin diger tipi kilitlenmiyor (yalnizca fonksiyon TANIMLI olmasi yetmez)',
+    /clusterWorkloadKinds/,
+    'per-cluster tip haritasi WorkloadStep icinde uretilmiyor',
   );
-  assert.match(code, /farklı bir tip seçildi/, 'kullaniciya NEDEN secemedigi soylenmiyor');
+  assert.match(page, /clusterWorkloadKinds/, 'per-cluster tip haritasi calistirmaya gitmiyor');
 });
 
 // ── Z: SECIM TURU VE SECILEMEZ LISTE (denetim bulgulari B2 / B3) ─────────────
 
-test('Z1 secim kimligi KOSULSUZ ad+tip — geri donuste secim kaybolmaz', () => {
+test('Z1 secim kimligi KOSULSUZ AD — geri donuste secim kaybolmaz', () => {
   const code = codeOnly(WORKLOAD);
-  // Anahtar KOSULLU idi (yalniz belirsiz adlarda ad+tip, digerlerinde duz ad) ve
-  // gonderim her zaman duz ad yapiyordu; `ScaleXPage` o duz adi `initial` olarak geri
-  // veriyordu. Sonuc: "Geri" ile donuldugunde belirsiz uygulamanin kutusu BOS gorunuyor
-  // ama alt bardaki sayac "1 secili" diyor, karsilikli kilit cozuluyor ve iki tip birden
-  // isaretlenebiliyordu — ozelligin ortadan kaldirdigi cikmaz geri geliyordu.
+  // Anahtar yalnizca uygulama adidir; `ScaleXPage` bu adi `initial` olarak geri verir.
+  // Eski kosullu ad+tip anahtari "Geri" donusunde kutu bos gorunup sayac "1 secili"
+  // diyen tutarsizliga yol aciyordu.
   assert.doesNotMatch(
     code,
     /ambiguousNames\.has\(w\.name\) \? `\$\{w\.name\}/,
-    'secim kimligi hala KOSULLU — belirsiz adda geri donus secimi kaybeder',
+    'secim kimligi hala KOSULLU',
   );
-  assert.match(code, /const keyOf = \(w: ScaleXWorkload\) =>/, 'tek kimlik fonksiyonu yok');
+  assert.match(
+    code,
+    /const keyOf = \(w: ScaleXWorkload\) => w\.name/,
+    'tek kimlik fonksiyonu name donmuyor',
+  );
   assert.match(
     code,
     /const isSelected = \(w: ScaleXWorkload\) => selected\.includes\(keyOf\(w\)\)/,

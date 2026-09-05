@@ -81,6 +81,10 @@ const ScaleXPage: React.FC = () => {
   // gostermemek, dakikalar once alinmis bir replica sayisini "su anki durum"
   // sanmaya yol acardi. Sentetik (ayna) satirlarda `null`.
   const [workloadsFetchedAt, setWorkloadsFetchedAt] = useState<number | null>(null);
+  // Secili uygulamalarin cluster basina tip haritasi (PBI-S1-01).
+  const [clusterWorkloadKinds, setClusterWorkloadKinds] = useState<
+    { cluster: string; name: string; kind: string }[]
+  >([]);
   // Kullanici ISLEM adimini bir kez doldurdu mu? Doldurduysa geri donusde kendi
   // secimleri geri yuklenir; doldurmadiysa adim NOTR acilir (bkz. OperationStep).
   const [operationTouched, setOperationTouched] = useState(false);
@@ -237,6 +241,7 @@ const ScaleXPage: React.FC = () => {
     setWorkloadKeys([]);
     setWorkloads([]);
     setWorkloadsFetchedAt(null);
+    setClusterWorkloadKinds([]);
     setAction('stop');
     setExecutionMode('dry_run');
     setTargetReplicas(undefined);
@@ -296,6 +301,7 @@ const ScaleXPage: React.FC = () => {
         workloadKinds: workloads
           .filter((w) => w.source === 'discovery' && apps.includes(w.name) && w.scalable !== false)
           .map((w) => ({ name: w.name, kind: w.kind })),
+        clusterWorkloadKinds,
         ...extra,
       });
       if (!r.ok) {
@@ -554,6 +560,7 @@ const ScaleXPage: React.FC = () => {
               setWorkloadKeys(v.selectedKeys);
               setWorkloads(v.workloads);
               setWorkloadsFetchedAt(v.fetchedAt);
+              setClusterWorkloadKinds(v.clusterWorkloadKinds);
               setStep('operation');
             }}
           />

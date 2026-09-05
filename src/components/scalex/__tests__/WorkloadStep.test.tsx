@@ -179,10 +179,11 @@ describe('WorkloadStep - discovery', () => {
     expect(devamBtn).toBeDisabled();
   });
 
-  it('same-name-two-kind shows two rows with independent checkboxes', async () => {
+  it('same-name-different-kind in the same cluster renders one row and shows the kind summary', async () => {
     const w1 = makeWorkload({
       name: 'my-app',
       kind: 'Deployment',
+      cluster: 'cluster-a',
       specReplicas: 3,
       readyReplicas: 3,
       statusReplicas: 3,
@@ -190,6 +191,7 @@ describe('WorkloadStep - discovery', () => {
     const w2 = makeWorkload({
       name: 'my-app',
       kind: 'DeploymentConfig',
+      cluster: 'cluster-a',
       specReplicas: 1,
       readyReplicas: 1,
       statusReplicas: 1,
@@ -199,25 +201,70 @@ describe('WorkloadStep - discovery', () => {
 
     await renderAndPoll(<WorkloadStep {...defaultProps} />);
 
-    // Two rows with the same name
-    const nameElements = screen.getAllByText('my-app');
-    expect(nameElements).toHaveLength(2);
+    // A single row represents the shared app name.
+    expect(screen.getAllByText('my-app')).toHaveLength(1);
 
-    // Both kinds are displayed
-    expect(screen.getByText('Deployment')).toBeInTheDocument();
-    expect(screen.getByText('DeploymentConfig')).toBeInTheDocument();
+    // Both kinds are summarized on the single row.
+    expect(screen.getByText('Deployment / DeploymentConfig')).toBeInTheDocument();
+    expect(screen.getByText('cluster’a göre değişir')).toBeInTheDocument();
 
-    // Two checkboxes, both initially unchecked and enabled
-    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
-    expect(checkboxes).toHaveLength(2);
-    expect(checkboxes[0]).not.toBeChecked();
-    expect(checkboxes[1]).not.toBeChecked();
-    expect(checkboxes[0]).not.toBeDisabled();
-    expect(checkboxes[1]).not.toBeDisabled();
+    // One checkbox, initially unchecked and enabled.
+    const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).not.toBeDisabled();
+  });
 
-    // Both rows show the ambiguous-name label
-    const ambigLabels = screen.getAllByText('aynı ad birden fazla tipte');
-    expect(ambigLabels.length).toBeGreaterThanOrEqual(2);
+  it('same-name-different-kind across clusters selects once and sends per-cluster workload kinds', async () => {
+    const w1 = makeWorkload({
+      name: 'my-app',
+      kind: 'Deployment',
+      cluster: 'cluster-a',
+    });
+    const w2 = makeWorkload({
+      name: 'my-app',
+      kind: 'StatefulSet',
+      cluster: 'cluster-b',
+    });
+    const crossScope: ScaleXScope = {
+      ...defaultScope,
+      clusters: ['cluster-a', 'cluster-b'],
+    };
+
+    mockDiscoverStatus.mockResolvedValue(
+      makeStatusResponse([w1, w2], { clusters: ['cluster-a', 'cluster-b'] }),
+    );
+
+    await renderAndPoll(<WorkloadStep {...defaultProps} scope={crossScope} />);
+
+    // One row for the shared name, with a cross-cluster kind summary.
+    expect(screen.getAllByText('my-app')).toHaveLength(1);
+    expect(screen.getByText('Deployment / StatefulSet')).toBeInTheDocument();
+
+    const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(checkbox);
+    });
+
+    const devamBtn = screen.getByText('Devam');
+    await act(async () => {
+      fireEvent.click(devamBtn);
+    });
+
+    expect(defaultProps.onSubmit).toHaveBeenCalledTimes(1);
+    const args = defaultProps.onSubmit.mock.calls[0][0];
+    expect(args.apps).toEqual(['my-app']);
+    expect(args.selectedKeys).toEqual(['my-app']);
+    expect(args.clusterWorkloadKinds).toHaveLength(2);
+    expect(args.clusterWorkloadKinds).toContainEqual({
+      cluster: 'cluster-a',
+      name: 'my-app',
+      kind: 'Deployment',
+    });
+    expect(args.clusterWorkloadKinds).toContainEqual({
+      cluster: 'cluster-b',
+      name: 'my-app',
+      kind: 'StatefulSet',
+    });
   });
 
   it('403 polling stops immediately without waiting for MAX_POLL_ERRORS', async () => {

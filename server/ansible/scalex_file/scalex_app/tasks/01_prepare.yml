@@ -71,6 +71,10 @@
     # "app=kind,app=kind". Portalin kesiften bildigi tipler. Bos birakilirsa
     # `workload_kind_effective` (yani `auto`) gecerlidir.
     workload_kinds_effective: "{{ workload_kinds | default('') | string | trim }}"
+    # CLUSTER BASINA TIP HARITASI: {cluster: "app=kind,app=kind", ...}.
+    # Eski istemciler gondermezse bos sozluk; playbook `workload_kinds_effective`
+    # degerine duser.
+    cluster_workload_kinds_effective: "{{ cluster_workload_kinds | default({}) }}"
     operation_action_effective: "{{ operation_action | default('stop') | string | trim | lower }}"
     verification_timeout_effective: "{{ verification_timeout | default('60') | string | trim }}"
     allow_partial_execution_effective: "{{ allow_partial_execution | default(false) | bool }}"

@@ -85,7 +85,13 @@ test("S3 portalin SKALER anahtarlarinin hepsi survey'de (elle calistirma bozulma
   // Dict/list tasiyanlar survey'e KONULAMAZ (AWX survey tipleri skaler); onlar
   // "Prompt on launch > Variables" ile gelir. Gerisi survey'de olmali, yoksa
   // AWX arayuzunden elle calistiran kisi o alani hic giremez.
-  const YAPISAL = new Set(['scalex_clusters_override', 'scalex_target_clusters']);
+  const YAPISAL = new Set([
+    'scalex_clusters_override',
+    'scalex_target_clusters',
+    // Cluster başına workload-kind haritası (dict); AWX survey skaler alır,
+    // bu anahtar "Prompt on launch > Variables" ile API gövdesinden gelir.
+    'cluster_workload_kinds',
+  ]);
   const vars = new Set(survey('scalex_run.survey.json').spec.map((q) => q.variable));
   const eksik = [...portalRunKeys()].filter((k) => !YAPISAL.has(k) && !vars.has(k));
   assert.deepEqual(eksik.sort(), [], `portal gonderiyor ama survey'de yok: ${eksik.join(', ')}`);
@@ -299,6 +305,28 @@ test('P4 katalogda PORTAL kazaniyor, dosya yedek — ve hangisi oldugu raporlani
       `${p}: hangi katalogun kullanildigi raporlanmiyor (portal bunu uyari icin okuyor)`,
     );
   }
+});
+
+test('P4c cluster tip haritasindaki KASITLI bos deger duz haritaya DUSMEZ', () => {
+  // `buildClusterWorkloadKindMap`, bir cluster'da ayni ad iki farkli tipteyse o
+  // cluster'i KASITLI olarak '' yapar: "bu cluster icin `auto` taramasina dus".
+  // Jinja'nin BOOLEAN default'u (`default(x, true)`) falsy degerleri de x'e
+  // dusurdugu icin bu kasitli '' tam da ezmek istedigi duz `workload_kinds`
+  // haritasina geri duserdi ve belirsiz cluster YANLIS tiple islenirdi.
+  // Yalnizca anahtar YOKSA (undefined) geriye dusulmeli.
+  const phase = read(path.join(APP, 'tasks', '10_run_phase.yml'));
+  const line = phase.split('\n').find((l) => /^\s*WORKLOAD_KINDS:/.test(l));
+  assert.ok(line, 'WORKLOAD_KINDS satiri bulunamadi');
+  assert.match(
+    line,
+    /cluster_workload_kinds_effective\[scalex_target\.cluster\]/,
+    'cluster basina harita okunmuyor',
+  );
+  assert.ok(
+    !/default\(\s*workload_kinds_effective\s*,\s*true\s*\)/.test(line),
+    'BOOLEAN default kullanilmis — kasitli bos deger duz haritaya duser, ' +
+      'belirsiz cluster yanlis tiple islenir',
+  );
 });
 
 test('P4b HPA sabitleme TEK kaynaktan okunur ve varsayilani KAPALI', () => {
@@ -998,7 +1026,10 @@ test("S8 `workload_kinds` survey'de SERBEST METIN ve opsiyonel", () => {
 test('S9 runner degistiyse VERSION artmis ve manifest tazelenmis olmali', () => {
   const crypto = require('node:crypto');
   const manifestPath = path.join(APP, 'PACKAGE_MANIFEST');
-  assert.ok(fs.existsSync(manifestPath), 'PACKAGE_MANIFEST yok — surum ayrismasi yine sessiz kalir');
+  assert.ok(
+    fs.existsSync(manifestPath),
+    'PACKAGE_MANIFEST yok — surum ayrismasi yine sessiz kalir',
+  );
 
   const manifest = read(manifestPath);
   const declaredVersion = /^version=(.+)$/m.exec(manifest)?.[1]?.trim();
@@ -1006,14 +1037,19 @@ test('S9 runner degistiyse VERSION artmis ve manifest tazelenmis olmali', () => 
   assert.ok(declaredVersion, 'manifest`te version yok');
   assert.ok(declaredSha, 'manifest`te runner_sha256 yok');
 
-  assert.equal(declaredVersion, read(path.join(APP, 'VERSION')).trim(),
-    'manifest surumu VERSION dosyasiyla ayrismis');
+  assert.equal(
+    declaredVersion,
+    read(path.join(APP, 'VERSION')).trim(),
+    'manifest surumu VERSION dosyasiyla ayrismis',
+  );
 
-  const actualSha = crypto.createHash('sha256')
-    .update(fs.readFileSync(RUNNER)).digest('hex');
-  assert.equal(actualSha, declaredSha,
-    'scalex_runner.sh DEGISTI ama paket kimligi tazelenmedi. Yapilacak: '
-    + 'VERSION / PACKAGE_VERSION / EXPECTED_PACKAGE_VERSION uclusunu ARTIR, '
-    + 'sonra PACKAGE_MANIFEST icindeki runner_sha256`i yeni ozetle guncelle. '
-    + 'Aksi halde AWX`teki bayat kopya ayni surumu bildirir ve uyusmazlik gorunmez.');
+  const actualSha = crypto.createHash('sha256').update(fs.readFileSync(RUNNER)).digest('hex');
+  assert.equal(
+    actualSha,
+    declaredSha,
+    'scalex_runner.sh DEGISTI ama paket kimligi tazelenmedi. Yapilacak: ' +
+      'VERSION / PACKAGE_VERSION / EXPECTED_PACKAGE_VERSION uclusunu ARTIR, ' +
+      'sonra PACKAGE_MANIFEST icindeki runner_sha256`i yeni ozetle guncelle. ' +
+      'Aksi halde AWX`teki bayat kopya ayni surumu bildirir ve uyusmazlik gorunmez.',
+  );
 });

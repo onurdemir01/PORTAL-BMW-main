@@ -23,7 +23,17 @@
     # `auto` taramasinin "ayni ad hem Deployment hem DeploymentConfig" halinde
     # `ambiguous` deyip isi dusurmesi ortadan kalkiyor. Bos gelirse betik bugunku
     # `auto` davranisini surdurur.
-    WORKLOAD_KINDS: "{{ workload_kinds_effective | default('') }}"
+    # CLUSTER BASINA: ayni uygulama farkli cluster'larda farkli tipte olabilir.
+    # Oncelik bu cluster'in kendi haritasindadir; yoksa eski duz `workload_kinds`
+    # geriye uyumluluk icin kullanilir.
+    #
+    # `default(x)` BILEREK BOOLEAN DEGIL. Boolean bicimi (`default(x, true)`) degeri
+    # FALSY oldugunda da x'e duser; oysa `buildClusterWorkloadKindMap` bir cluster'da
+    # ayni ad iki farkli tipteyse o cluster'i KASITLI olarak `''` yapar ve bu "bu
+    # cluster icin `auto` taramasina dus" demektir. Boolean default o kasitli `''`i
+    # "tanimsiz" sayip tam da ezmek istedigi duz haritaya geri duserdi — belirsiz
+    # cluster yanlis tiple islenirdi. Sadece ANAHTAR YOKSA (undefined) geriye dusulur.
+    WORKLOAD_KINDS: "{{ cluster_workload_kinds_effective[scalex_target.cluster] | default(workload_kinds_effective) | default('') }}"
     WAIT_ATTEMPTS: "{{ wait_attempts }}"
     WAIT_SECONDS: "{{ wait_seconds }}"
     JOB_ID: "{{ job_id }}"
