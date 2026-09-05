@@ -118,7 +118,14 @@
     # DB'de eksik veri varsa playbook bu dosyalardan TAMAMLAR. İlki yoksa ikincisi denenir;
     # ikisi de yoksa playbook ÇALIŞMAYA DEVAM EDER (yalnızca portal verisiyle).
     # bmw_portal\telnet_openshift\telnet_openshift.yaml bizim playbook bmw_portal\scalex\scalex_app\openshift_inventory_scalex.yaml scalex envanteri burada bmw_openshift_jobs\global_variables\openshift_inventory_vars.yaml ortak global envanter.
-    - "{{ lookup('first_found', ['./../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml', './../scalex/scalex_appopenshift_inventory_scalex.yaml'], errors='ignore') | default('/dev/null', true) }}"
+    # YOL TABANI `playbook_dir` OLMALI (yukaridaki credentials satiriyla AYNI): `./`
+    # calisma dizinine gore cozulur ve AWX'te calisma dizini playbook'un dizini
+    # OLMAYABILIR. Ayrica ikinci adaydaki `scalex_app` ile dosya adi arasinda `/`
+    # eksikti (`scalex_appopenshift_inventory_scalex.yaml`). Iki hata da
+    # `errors='ignore'` yuzunden SESSIZ kalirdi: dosya bulunamaz, `clusters`
+    # tanimsiz kalir, "Enrich cluster metadata" gorevi sessizce atlanir ve
+    # inventory-fallback yolu hic calismaz.
+    - "{{ lookup('first_found', [playbook_dir ~ '/../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml', playbook_dir ~ '/../scalex/scalex_app/openshift_inventory_scalex.yaml'], errors='ignore') | default('/dev/null', true) }}"
 
   vars:
     # REZERVE ADLARDAN KAÇIN: `namespace` ve `port` Ansible'ın kendi ad alanında; doğrudan

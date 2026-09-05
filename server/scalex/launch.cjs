@@ -22,7 +22,11 @@ const NS_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 const APP_RE = /^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/;
 
 function isProdEnv(env) {
-  return ['prod', 'production'].includes(String(env || '').trim().toLowerCase());
+  return ['prod', 'production'].includes(
+    String(env || '')
+      .trim()
+      .toLowerCase(),
+  );
 }
 
 // SAF — dogrudan test edilir. Ekran bunu `/preview` uzerinden okur ve kullaniciya
@@ -35,7 +39,11 @@ function computeBlastRadius({ clusters = [], apps = [], environment, action, exe
   // `dry_run` hicbir sey degistirmez; yazili onay istemek anlamsiz surtunme olurdu.
   const mutating = executionMode === 'apply';
   return {
-    clusterCount, appCount, targets, isProd: prod, action,
+    clusterCount,
+    appCount,
+    targets,
+    isProd: prod,
+    action,
     multiCluster: clusterCount > 1,
     requiresWrittenConfirm: mutating && prod && targets > PROD_WRITTEN_CONFIRM_THRESHOLD,
     // Prod + cok cluster = ikinci kisi onayi (kullanici karari). Playbook tarafindaki
@@ -80,8 +88,11 @@ function buildScaleXClusterCatalog({ env, tenant, clusters, hosts, meta }) {
 // Kesifte `apps` OPSIYONEL (namespace'i tarayip listeyi ogrenmek icin cagriliyor) —
 // tek fark bu; format kurallari BIREBIR ayni ve tek yerden geliyor.
 function assertValidDiscoveryTargets({ namespace, apps = [] }) {
-  const bad = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
-  if (!namespace || namespace.length > 63 || !NS_RE.test(namespace)) bad(`Geçersiz namespace: ${namespace}`);
+  const bad = (msg) => {
+    throw Object.assign(new Error(msg), { status: 400 });
+  };
+  if (!namespace || namespace.length > 63 || !NS_RE.test(namespace))
+    bad(`Geçersiz namespace: ${namespace}`);
   for (const a of apps) {
     if (!a || a.length > 253 || !APP_RE.test(a)) bad(`Geçersiz uygulama adı: ${a}`);
   }
@@ -100,35 +111,53 @@ const MAX_CC = 10;
 function sanitizeMailCc(raw) {
   const value = String(raw ?? '').trim();
   if (!value) return '';
-  const bad = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
+  const bad = (msg) => {
+    throw Object.assign(new Error(msg), { status: 400 });
+  };
   // Kontrol karakterlerini adres ayristirmasindan ONCE reddet: virgulle bolup her parcayi
   // ayri dogrulamak, `\r\n` tasiyan bir parcayi format hatasi olarak zaten yakalardi —
   // ama hatayi ACIKCA soylemek, kullanicinin kopyala-yapistir sirasinda ne oldugunu
   // anlamasini sagliyor.
   if (/[\r\n\t\0]/.test(value)) bad('CC adresinde satır sonu veya kontrol karakteri olamaz.');
-  const parts = value.split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+  const parts = value
+    .split(/[,;]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
   if (!parts.length) bad('CC adresi okunamadı.');
-  if (parts.length > MAX_CC) bad(`En fazla ${MAX_CC} CC adresi verilebilir (${parts.length} girildi).`);
+  if (parts.length > MAX_CC)
+    bad(`En fazla ${MAX_CC} CC adresi verilebilir (${parts.length} girildi).`);
   for (const a of parts) {
     if (a.length > 320 || !MAIL_RE.test(a)) bad(`Geçersiz CC adresi: ${a}`);
   }
   return parts.join(',');
 }
 
-function assertValidTargets({ namespace, apps, action, targetReplicas, executionMode, verificationTimeout }) {
-  const bad = (msg) => { throw Object.assign(new Error(msg), { status: 400 }); };
+function assertValidTargets({
+  namespace,
+  apps,
+  action,
+  targetReplicas,
+  executionMode,
+  verificationTimeout,
+}) {
+  const bad = (msg) => {
+    throw Object.assign(new Error(msg), { status: 400 });
+  };
   if (!ACTIONS.includes(action)) bad(`Geçersiz işlem: ${action}`);
   if (!MODES.includes(executionMode)) bad(`Geçersiz çalıştırma modu: ${executionMode}`);
-  if (!VERIFICATION_TIMEOUTS.includes(String(verificationTimeout))) bad('Geçersiz sonuç kontrol süresi.');
+  if (!VERIFICATION_TIMEOUTS.includes(String(verificationTimeout)))
+    bad('Geçersiz sonuç kontrol süresi.');
   // Bu degerler `oc` komut satirina gidiyor — playbook ve kabuk tarafinda da ayni
   // dogrulama var; portal ISI HIC BASLATMADAN kesiyor.
-  if (!namespace || namespace.length > 63 || !NS_RE.test(namespace)) bad(`Geçersiz namespace: ${namespace}`);
+  if (!namespace || namespace.length > 63 || !NS_RE.test(namespace))
+    bad(`Geçersiz namespace: ${namespace}`);
   if (!apps.length) bad('En az bir uygulama seçilmeli.');
   for (const a of apps) {
     if (a.length > 253 || !APP_RE.test(a)) bad(`Geçersiz uygulama adı: ${a}`);
   }
   if (action === 'scale') {
-    if (!/^[0-9]+$/.test(String(targetReplicas ?? ''))) bad('Ölçekleme için hedef replica 0 veya daha büyük tam sayı olmalı.');
+    if (!/^[0-9]+$/.test(String(targetReplicas ?? '')))
+      bad('Ölçekleme için hedef replica 0 veya daha büyük tam sayı olmalı.');
   }
 }
 
@@ -146,10 +175,14 @@ function assertValidTargets({ namespace, apps, action, targetReplicas, execution
 // taramasini yapar — davranis degismez.
 const SCALABLE_KINDS = new Set(['deploy', 'sts', 'dc', 'rollout']);
 const KIND_ALIASES = new Map([
-  ['deployment', 'deploy'], ['deploy', 'deploy'],
-  ['statefulset', 'sts'], ['sts', 'sts'],
-  ['deploymentconfig', 'dc'], ['dc', 'dc'],
-  ['argorollout', 'rollout'], ['rollout', 'rollout'],
+  ['deployment', 'deploy'],
+  ['deploy', 'deploy'],
+  ['statefulset', 'sts'],
+  ['sts', 'sts'],
+  ['deploymentconfig', 'dc'],
+  ['dc', 'dc'],
+  ['argorollout', 'rollout'],
+  ['rollout', 'rollout'],
 ]);
 
 function buildWorkloadKindMap(entries, allowedApps) {
@@ -163,12 +196,19 @@ function buildWorkloadKindMap(entries, allowedApps) {
   for (const e of entries) {
     const name = String(e?.name || '').trim();
     if (!allowed.has(name)) continue;
-    const kind = KIND_ALIASES.get(String(e?.kind || '').trim().toLowerCase());
+    const kind = KIND_ALIASES.get(
+      String(e?.kind || '')
+        .trim()
+        .toLowerCase(),
+    );
     if (!kind || !SCALABLE_KINDS.has(kind)) continue;
     // AYNI AD IKI TIPTE GELDIYSE HARITAYA HIC GIRMEZ. Birini secmek, kullanicinin
     // vermedigi bir karari onun adina vermek olurdu; playbook o uygulama icin
     // `ambiguous` diyerek DURUR ve bu DOGRU sonuctur.
-    if (byApp.has(name) && byApp.get(name) !== kind) { byApp.set(name, null); continue; }
+    if (byApp.has(name) && byApp.get(name) !== kind) {
+      byApp.set(name, null);
+      continue;
+    }
     if (!byApp.has(name)) byApp.set(name, kind);
   }
   return [...byApp.entries()]
@@ -177,10 +217,74 @@ function buildWorkloadKindMap(entries, allowedApps) {
     .join(',');
 }
 
+// CLUSTER BASINA TIP HARITASI: { "cluster1": "app=deploy,app2=sts", ... }.
+//
+// Ayni uygulama adi FARKLI cluster'larda FARKLI tipte olabilir (or. test
+// cluster'inda Deployment, prod cluster'inda StatefulSet). Eski duz `workload_kinds`
+// haritasi bunu tek bir `app=kind` ciftine indirgedigi icin bu durumda is
+// `ambiguous` olarak dusuyordu. Yeni sozlesme cluster'a gore ayri haritalar gonderir;
+// ayni cluster icinde ayni adi iki farkli tip hala belirsizdir (null) ve playbook
+// o cluster icin `auto` taramasina duser.
+function buildClusterWorkloadKindMap(entries, allowedApps) {
+  // ISTEMCIDEN gelen veri DUZ DIZI de olabilir, cluster bazinda gruplu nesne de.
+  // Her iki sekil normalize edilerek ayni givenlik/tip suzgecinden gecirilir.
+  let flat = entries;
+  if (entries && typeof entries === 'object' && !Array.isArray(entries)) {
+    flat = Object.entries(entries).flatMap(([cluster, arr]) =>
+      Array.isArray(arr) ? arr.map((e) => ({ ...e, cluster })) : [],
+    );
+  }
+  if (!Array.isArray(flat) || !flat.length) return {};
+  const allowed = new Set(allowedApps || []);
+  const byCluster = new Map();
+  for (const e of flat) {
+    const cluster = String(e?.cluster || '').trim();
+    const name = String(e?.name || '').trim();
+    if (!cluster || !allowed.has(name)) continue;
+    const kind = KIND_ALIASES.get(
+      String(e?.kind || '')
+        .trim()
+        .toLowerCase(),
+    );
+    if (!kind || !SCALABLE_KINDS.has(kind)) continue;
+    if (!byCluster.has(cluster)) byCluster.set(cluster, new Map());
+    const byApp = byCluster.get(cluster);
+    if (byApp.has(name) && byApp.get(name) !== kind) {
+      byApp.set(name, null);
+      continue;
+    }
+    if (!byApp.has(name)) byApp.set(name, kind);
+  }
+  const out = {};
+  for (const [cluster, byApp] of byCluster) {
+    const pairs = [...byApp.entries()]
+      .filter(([, k]) => k)
+      .map(([name, k]) => `${name}=${k}`)
+      .join(',');
+    // Haritaya giren bir kayit olup da hepsi belirsiz ciktiysa cluster
+    // acikca bos harita olarak doner; playbook bu cluster icin `auto`
+    // taramasina duser. Hic gecerli kayit yoksa cluster hic yazilmaz.
+    if (pairs || byApp.size > 0) out[cluster] = pairs;
+  }
+  return out;
+}
+
 async function buildRunExtraVars({
-  env, tenant, clusters, namespace, apps, action, executionMode,
-  targetReplicas, verificationTimeout, allowPartial, mailTo, mailCc, hpaPin = false,
+  env,
+  tenant,
+  clusters,
+  namespace,
+  apps,
+  action,
+  executionMode,
+  targetReplicas,
+  verificationTimeout,
+  allowPartial,
+  mailTo,
+  mailCc,
+  hpaPin = false,
   workloadKinds = null,
+  clusterWorkloadKinds = null,
 }) {
   const hosts = await ocpResolveHosts(env, tenant, clusters);
   const meta = await adminData.resolveClusterMeta(env, tenant, clusters);
@@ -206,7 +310,13 @@ async function buildRunExtraVars({
     target_app_names: apps.join(','),
     // Bos string GONDERILMEZ: survey alani opsiyonel ve bos deger playbook'ta
     // `auto`ya duser — ayni sonuc, ama gereksiz bir extra_var is kaydini kirletirdi.
-    ...(((m) => (m ? { workload_kinds: m } : {}))(buildWorkloadKindMap(workloadKinds, apps))),
+    ...((m) => (m ? { workload_kinds: m } : {}))(buildWorkloadKindMap(workloadKinds, apps)),
+    // CLUSTER BASINA TIP HARITASI: ayni uygulama adi farkli cluster'larda farkli
+    // tipte olabilir. Bos nesne GONDERILMEZ; eski istemciler icin `workload_kinds`
+    // hala gecerli ve playbook o degeri kullanir.
+    ...((m) => (m && Object.keys(m).length ? { cluster_workload_kinds: m } : {}))(
+      buildClusterWorkloadKindMap(clusterWorkloadKinds, apps),
+    ),
     operation_action: action,
     // SAYI OLARAK gonderilir, string DEGIL. AWX survey'inde bu soru `integer` tipinde
     // ve AWX tipi DOGRULUYOR: string gonderildiginde launch
@@ -238,9 +348,9 @@ async function ocpResolveHosts(env, tenant, clusters) {
     throw Object.assign(
       new Error(
         `Şu cluster'lar için Jump Server tanımlı değil: ${missing.join(', ')} — ` +
-        `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`
+          `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`,
       ),
-      { status: 400 }
+      { status: 400 },
     );
   }
   return hosts;
@@ -285,7 +395,8 @@ async function ocpResolveHosts(env, tenant, clusters) {
 // verir, hicbir sey ACMAZ.
 function isHpaPinAllowed({ action, targetReplicas, restoreTargets }) {
   if (action === 'stop') return false;
-  if (action === 'scale') return /^[0-9]+$/.test(String(targetReplicas ?? '')) && Number(targetReplicas) >= 1;
+  if (action === 'scale')
+    return /^[0-9]+$/.test(String(targetReplicas ?? '')) && Number(targetReplicas) >= 1;
   if (action !== 'restore') return false;
   if (!Array.isArray(restoreTargets) || restoreTargets.length === 0) return false;
   return restoreTargets.every((n) => Number.isInteger(Number(n)) && Number(n) >= 1);
@@ -304,12 +415,18 @@ function isHpaPinAllowed({ action, targetReplicas, restoreTargets }) {
 // OCO numarasi isteyip "Calistir" butonunu kilitliyordu. Sunucu o numarayi HIC
 // KULLANMIYORDU.
 function gatePolicyFor({ action, executionMode, environment }) {
-  if (executionMode !== 'apply') return { oco: 'skip', smart: 'skip', reason: 'dry_run hicbir sey degistirmez' };
+  if (executionMode !== 'apply')
+    return { oco: 'skip', smart: 'skip', reason: 'dry_run hicbir sey degistirmez' };
   const envKnown = typeof environment === 'string' && environment.trim() !== '';
   if (envKnown && !isProdEnv(environment)) {
-    return { oco: 'skip', smart: 'skip', reason: 'prod disi ortam — onay kapilari yalnizca production icin' };
+    return {
+      oco: 'skip',
+      smart: 'skip',
+      reason: 'prod disi ortam — onay kapilari yalnizca production icin',
+    };
   }
-  if (action === 'restore') return { oco: 'warn', smart: 'require', reason: 'geri alma bir onarim islemidir' };
+  if (action === 'restore')
+    return { oco: 'warn', smart: 'require', reason: 'geri alma bir onarim islemidir' };
   return { oco: 'require', smart: 'require', reason: null };
 }
 
@@ -318,14 +435,33 @@ function gatePolicyFor({ action, executionMode, environment }) {
 // ekleyerek onayi atlatabiliyordu); ScaleX'ta client zaten hic extra_vars gondermiyor.
 function buildGateVars({ env, tenant, action, executionMode, clusters, namespace }) {
   return {
-    env, ortam: env, tenant, action, execution_mode: executionMode,
-    cluster_count: String(clusters.length), namespace,
+    env,
+    ortam: env,
+    tenant,
+    action,
+    execution_mode: executionMode,
+    cluster_count: String(clusters.length),
+    namespace,
   };
 }
 
 module.exports = {
-  ACTIONS, MODES, VERIFICATION_TIMEOUTS, MAX_TARGETS, PROD_WRITTEN_CONFIRM_THRESHOLD,
-  isProdEnv, computeBlastRadius, isHpaPinAllowed, buildScaleXClusterCatalog, assertValidTargets,
-  assertValidDiscoveryTargets, sanitizeMailCc,
-  buildRunExtraVars, buildWorkloadKindMap, gatePolicyFor, buildGateVars, gates,
+  ACTIONS,
+  MODES,
+  VERIFICATION_TIMEOUTS,
+  MAX_TARGETS,
+  PROD_WRITTEN_CONFIRM_THRESHOLD,
+  isProdEnv,
+  computeBlastRadius,
+  isHpaPinAllowed,
+  buildScaleXClusterCatalog,
+  assertValidTargets,
+  assertValidDiscoveryTargets,
+  sanitizeMailCc,
+  buildRunExtraVars,
+  buildWorkloadKindMap,
+  buildClusterWorkloadKindMap,
+  gatePolicyFor,
+  buildGateVars,
+  gates,
 };

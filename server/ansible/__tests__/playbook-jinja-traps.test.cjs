@@ -38,9 +38,19 @@ function read(f) {
   return fs.readFileSync(path.join(DIR, f), 'utf8');
 }
 
+// BICIM NORMALIZASYONU. Bekci KURALI olcmeli, SATIR DUZENINI degil: playbook
+// yeniden bicimlendirilince (satir kaydirma, tek->cift tirnak) kural aynen dururken
+// bekci kirmiziya donuyordu. Bu depoda tek oturumda yedi bekci boyle kirildi.
+function norm(src) {
+  return src.replace(/\s+/g, ' ').replace(/'/g, '"');
+}
+
 // Yorum satirlari haric: aciklamalar tuzagi ANLATMAK icin ondan alinti yapiyor.
 function codeOnly(src) {
-  return src.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  return src
+    .split('\n')
+    .filter((l) => !/^\s*#/.test(l))
+    .join('\n');
 }
 
 test('playbook dizini bos degil (test yanlis yere bakiyor olmasin)', () => {
@@ -65,8 +75,12 @@ test('TUZAK 1: katlamali skalerde `{% set %}` bosluk denetimi ZORUNLU', () => {
       }
     }
   }
-  assert.deepEqual(offenders, [],
-    'katlamali skalerde bosluk denetimsiz Jinja etiketi — deger basinda bosluklarla yayinlanir:\n' + offenders.join('\n'));
+  assert.deepEqual(
+    offenders,
+    [],
+    'katlamali skalerde bosluk denetimsiz Jinja etiketi — deger basinda bosluklarla yayinlanir:\n' +
+      offenders.join('\n'),
+  );
 });
 
 test('TUZAK 2: parola tasiyan gorevde `no_log` var', () => {
@@ -94,8 +108,11 @@ test('TUZAK 2b: `no_log` gorevi mumkun oldugunca DAR — sonuc ayri gorevde okun
   for (const f of FILES) {
     const src = read(f);
     if (!/--password=/.test(src)) continue;
-    assert.match(src, /(register:\s*login_results|sanitized|stderr)/i,
-      `${f}: parola tasiyan login var ama sonucu sanitize edip basan bir gorev yok — hata "censored" kalir`);
+    assert.match(
+      src,
+      /(register:\s*login_results|sanitized|stderr)/i,
+      `${f}: parola tasiyan login var ama sonucu sanitize edip basan bir gorev yok — hata "censored" kalir`,
+    );
   }
 });
 
@@ -105,8 +122,16 @@ test('vault parolalari yalnizca DEGISKEN ADI uzerinden cozuluyor', () => {
   for (const f of FILES) {
     const src = read(f);
     if (!/credential_key/.test(src)) continue;
-    assert.match(src, /lookup\('vars',\s*item\.credential_key/,
-      `${f}: credential_key kullaniliyor ama lookup('vars', ...) ile cozulmuyor`);
+    // BICIM DEGIL KURAL olculur. Playbook `lookup(` ile `'vars'` arasina satir
+    // sonu koyabilir ve anahtara `| default('')` gibi bir suzgec ekleyebilir;
+    // ikisi de kurali DEGISTIRMEZ. Onceki desen `lookup('vars'` bitisikligini
+    // sart kosuyordu ve 2026-09-05'te playbook yeniden bicimlendirilince
+    // haksiz yere kirmiziya dondu (bkz. bekci-korlugu-desenleri #2/#2b).
+    assert.match(
+      norm(src),
+      /lookup\( ?"vars", ?item\.credential_key\b/,
+      `${f}: credential_key kullaniliyor ama lookup('vars', ...) ile cozulmuyor`,
+    );
   }
 });
 
@@ -129,8 +154,10 @@ function parsePlays(src) {
   const plays = [];
   let cur = null;
   for (const line of src.split('\n')) {
-    if (/^- /.test(line)) { cur = { lines: [line] }; plays.push(cur); }
-    else if (cur) cur.lines.push(line);
+    if (/^- /.test(line)) {
+      cur = { lines: [line] };
+      plays.push(cur);
+    } else if (cur) cur.lines.push(line);
   }
   return plays.map((p) => {
     const text = p.lines.join('\n');
@@ -154,22 +181,27 @@ function playVarNames(play) {
   return [...m[1].matchAll(/^    ([A-Za-z_][A-Za-z0-9_]*):/gm)].map((x) => x[1]);
 }
 
-test('TUZAK 3: ayri toplayici play varsa, oncesindeki host play\'leri rescue + ignore_unreachable tasir', () => {
+test("TUZAK 3: ayri toplayici play varsa, oncesindeki host play'leri rescue + ignore_unreachable tasir", () => {
   const offenders = [];
   for (const f of FILES) {
     const plays = parsePlays(read(f));
     const aggIdx = plays.findIndex((p) => p.isLocal && p.hasSetStats);
-    if (aggIdx < 1) continue;                       // ayri toplayici yok -> tuzak yok
+    if (aggIdx < 1) continue; // ayri toplayici yok -> tuzak yok
     if (FAIL_GUARD_EXEMPT.has(f)) continue;
     for (let i = 0; i < aggIdx; i++) {
       const p = plays[i];
-      if (p.isLocal || !p.hosts) continue;          // hazirlik play'leri host calistirmaz
-      if (!p.hasRescue) offenders.push(`${f} play#${i} (hosts: ${p.hosts.slice(0, 30)}): rescue YOK`);
+      if (p.isLocal || !p.hosts) continue; // hazirlik play'leri host calistirmaz
+      if (!p.hasRescue)
+        offenders.push(`${f} play#${i} (hosts: ${p.hosts.slice(0, 30)}): rescue YOK`);
       if (!p.hasIgnoreUnreachable) offenders.push(`${f} play#${i}: ignore_unreachable YOK`);
     }
   }
-  assert.deepEqual(offenders, [],
-    'bu play\'ler duserse toplayici play ATLANIR ve sonuc sozlesmesi HIC yayinlanmaz:\n' + offenders.join('\n'));
+  assert.deepEqual(
+    offenders,
+    [],
+    "bu play'ler duserse toplayici play ATLANIR ve sonuc sozlesmesi HIC yayinlanmaz:\n" +
+      offenders.join('\n'),
+  );
 });
 
 // BILINCLI ISTISNALAR — gerekceleriyle. Bunlar "unutuldu" degil, KARAR:
@@ -183,7 +215,9 @@ test('TUZAK 3: ayri toplayici play varsa, oncesindeki host play\'leri rescue + i
 //     gorevleri BOZDU (16 gorev 3'e dustu), geri alindi. Elle ve dikkatli bir
 //     calisma gerektiriyor.
 const FAIL_GUARD_EXEMPT = new Set([
-  'logx_ocp_app_discovery.yml', 'logx_ocp_discover_fetch.yml', 'logx_ocp_namespace_discovery.yml',
+  'logx_ocp_app_discovery.yml',
+  'logx_ocp_discover_fetch.yml',
+  'logx_ocp_namespace_discovery.yml',
   'nginx_config_migration.yml',
 ]);
 
@@ -197,7 +231,7 @@ test('TUZAK 3: toplayici play, hicbir sonuc yoksa isi BASARISIZ yapar', () => {
     const agg = plays.find((p) => p.isLocal && p.hasSetStats);
     if (!agg) continue;
     const idx = plays.indexOf(agg);
-    if (idx < 1) continue;                          // ayri toplayici degil
+    if (idx < 1) continue; // ayri toplayici degil
     // Basarisizlik mekanizmasi `fail` VEYA `assert` olabilir — ikisi de isi kirmizi
     // yapar. ASIL KURAL SIRA: once `set_stats` (artifact yayinlansin), SONRA
     // basarisizlik. Ters sirada olursa is dogru sekilde kirmizi doner ama sonuc
@@ -205,14 +239,20 @@ test('TUZAK 3: toplayici play, hicbir sonuc yoksa isi BASARISIZ yapar', () => {
     // logx_legacy_transfer.yml'de tam olarak bu vardi.
     const ssIdx = agg.text.indexOf('ansible.builtin.set_stats:');
     const failIdx = Math.min(
-      ...['ansible.builtin.fail:', 'ansible.builtin.assert:']
-        .map((k) => { const i = agg.text.indexOf(k); return i < 0 ? Infinity : i; })
+      ...['ansible.builtin.fail:', 'ansible.builtin.assert:'].map((k) => {
+        const i = agg.text.indexOf(k);
+        return i < 0 ? Infinity : i;
+      }),
     );
     if (!Number.isFinite(failIdx)) offenders.push(`${f}: basarisizlik mekanizmasi yok`);
-    else if (failIdx < ssIdx) offenders.push(`${f}: basarisizlik set_stats'ten ONCE — sonuc yayinlanmaz`);
+    else if (failIdx < ssIdx)
+      offenders.push(`${f}: basarisizlik set_stats'ten ONCE — sonuc yayinlanmaz`);
   }
-  assert.deepEqual(offenders, [],
-    'toplayici play sonuc yokken `fail` etmiyor — AWX isi yesil gorunur:\n' + offenders.join('\n'));
+  assert.deepEqual(
+    offenders,
+    [],
+    'toplayici play sonuc yokken `fail` etmiyor — AWX isi yesil gorunur:\n' + offenders.join('\n'),
+  );
 });
 
 test('TUZAK 3 bekcisi KOR DEGIL: sentetik ihlali yakalar', () => {
@@ -272,8 +312,10 @@ test('TUZAK 4: bir play, onceki play’in `vars:` blogundaki degiskene basvurmuy
         // Mesru tasima yollari: set_fact, add_host host var'i, ya da bu play'in kendi vars'i
         const carried = plays.slice(0, i).some((prev) => {
           const t = prev.text;
-          return new RegExp(`set_fact:[\\s\\S]*?^\\s+${name}:`, 'm').test(t)
-              || new RegExp(`add_host:[\\s\\S]*?^\\s+${name}:`, 'm').test(t);
+          return (
+            new RegExp(`set_fact:[\\s\\S]*?^\\s+${name}:`, 'm').test(t) ||
+            new RegExp(`add_host:[\\s\\S]*?^\\s+${name}:`, 'm').test(t)
+          );
         });
         if (!carried && !playVarNames(play).includes(name)) {
           offenders.push(`${f} play#${i + 1} → "${name}" (play#${j + 1} vars'inda, tasinmamis)`);
@@ -282,8 +324,11 @@ test('TUZAK 4: bir play, onceki play’in `vars:` blogundaki degiskene basvurmuy
       for (const name of playVarNames(play)) if (!definedIn.has(name)) definedIn.set(name, i);
     });
   }
-  assert.deepEqual(offenders, [],
-    `play vars'i sonraki play'e TASINMAZ — bu basvurular calisma aninda tanimsiz olur:\n${offenders.join('\n')}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    `play vars'i sonraki play'e TASINMAZ — bu basvurular calisma aninda tanimsiz olur:\n${offenders.join('\n')}`,
+  );
 });
 
 test('TUZAK 4 bekcisi KOR DEGIL: sentetik ihlali yakalar', () => {
@@ -305,6 +350,8 @@ test('TUZAK 4 bekcisi KOR DEGIL: sentetik ihlali yakalar', () => {
   const plays = parsePlays(bad);
   assert.equal(plays.length, 2, 'sentetik ornek iki play olarak ayrismali');
   assert.deepEqual(playVarNames(plays[0]), ['benim_degiskenim']);
-  assert.ok(/(?<![\w.])benim_degiskenim(?![\w])/.test(plays[1].text),
-    'bekcinin arama deseni ikinci play’deki basvuruyu gormeli');
+  assert.ok(
+    /(?<![\w.])benim_degiskenim(?![\w])/.test(plays[1].text),
+    'bekcinin arama deseni ikinci play’deki basvuruyu gormeli',
+  );
 });

@@ -18,6 +18,12 @@ const PLAYBOOK = fs.readFileSync(
   'utf8',
 );
 
+// BICIM NORMALIZASYONU. Bekci KURALI olcmeli, SATIR DUZENINI degil (bkz.
+// bekci-korlugu-desenleri #2/#2b): 2026-09-05'te playbook yeniden bicimlendirildi
+// (`lookup(` ile `'vars'` arasina satir sonu girdi, anahtara `| default('')` eklendi)
+// ve kural aynen dururken iki bekci birden kirmiziya dondu.
+const NORM_PLAYBOOK = PLAYBOOK.replace(/\s+/g, ' ').replace(/'/g, '"');
+
 // `extractTelnetResult` + `normalizeTelnetResult` saf fonksiyonlar — dosyadan cikarilip
 // GERCEK davranislariyla test edilir (index.cjs'i require etmek express/DB yuklerdi).
 function loadExtractor() {
@@ -186,9 +192,12 @@ test('F1: temizlik TUM (cluster x namespace) ciftlerini kapsiyor', () => {
 
 test('guvenlik: no_log korunuyor, parola hala yalniz login gorevinde', () => {
   assert.match(PLAYBOOK, /no_log: true/);
+  // Anahtara suzgec eklenmesine izin verilir (`item.credential_key | default('')`),
+  // ama parolanin vault'tan ANAHTAR ADIYLA cozulmesi ve `default=''` ile guvenli
+  // bosa dusmesi sarttir.
   assert.match(
-    PLAYBOOK,
-    /lookup\('vars', item\.credential_key, default=''\)/,
+    NORM_PLAYBOOK,
+    /lookup\( ?"vars", ?item\.credential_key\b.*?default="" ?\)/,
     'parola vault degisken ADI uzerinden cozulmeli — asla extra_vars’ta tasinmaz',
   );
 });

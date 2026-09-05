@@ -30,6 +30,8 @@ interface Props {
     selectedKeys: string[];
     workloads: ScaleXWorkload[];
     fetchedAt: number;
+    /** Cluster basina secili uygulamalarin tip haritasi. */
+    clusterWorkloadKinds: { cluster: string; name: string; kind: string }[];
   }) => void;
   /** Kesif asilirsa kullaniciya bir CIKIS yolu vermek icin (bkz. bekleme ekrani). */
   onBack: () => void;
@@ -37,6 +39,13 @@ interface Props {
 
 const POLL_MS = 3000;
 const MAX_POLL_ERRORS = 5;
+
+// Geri donuste eski `name\0kind` anahtarlardan yalnizca adi cikar.
+// Yeni modelde secim YALNIZCA uygulama adidir; tip her cluster icin ayri haritada gider.
+const nameFromKey = (s: string) => {
+  const i = s.indexOf('\u0000');
+  return i >= 0 ? s.slice(0, i) : s;
+};
 
 const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack }) => {
   const [phase, setPhase] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
@@ -57,7 +66,7 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   // AWX'te kosan paket surumu vs. portalin bekledigi surum.
   const [pkg, setPkg] = useState<{ running: string; expected: string } | null>(null);
   const [pkgCopied, setPkgCopied] = useState(false);
-  const [selected, setSelected] = useState<string[]>(initial || []);
+  const [selected, setSelected] = useState<string[]>(initial?.map(nameFromKey) || []);
   const [query, setQuery] = useState('');
   // ÇİFT TIK KORUMASI ref ile — `busy` state'i render'da yakalanır ve aynı tick'teki
   // iki tık iki AWX işi açabilirdi (LogX/Telnet'te bu bilinçli olarak ref).
@@ -210,34 +219,31 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = q ? workloads.filter((w) => w.name.toLowerCase().includes(q)) : workloads;
-    // Aynı uygulama birden çok cluster'da olabilir — cluster boyutunda TEKİLLEŞTİRİLİR,
+    // Aynı uygulama birden çok cluster'da olabilir — AD bazında TEKİLLEŞTİRİLİR,
     // çünkü seçim uygulama adı bazındadır ve playbook (cluster × uygulama) çarpımını
-    // kendi yapar.
-    //
-    // ANAHTAR AD + TİP. Eskiden yalnızca addı ve İLK satır tutuluyordu: aynı ada sahip
-    // bir Deployment ile bir DeploymentConfig varsa ikincisi ekranda HİÇ görünmüyor,
-    // sonra iş `ambiguous` ile düşüyordu. Kullanıcı ekranda tek satır gördüğü için
-    // neyin çakıştığını da anlayamıyordu.
-    const byKey = new Map<string, ScaleXWorkload>();
+    // kendi yapar. Satırda birden fazla tip varsa bunu belirtir; hangi cluster'da
+    // hangi tip olduğu ise cluster bazlı haritayla AWX'e gider.
+    const byName = new Map<string, ScaleXWorkload>();
     for (const w of filtered) {
-      const key = `${w.name}\u0000${w.kind}`;
-      if (!byKey.has(key)) byKey.set(key, w);
+      if (!byName.has(w.name)) byName.set(w.name, w);
     }
-    return [...byKey.values()].sort(
-      (a, b) => a.name.localeCompare(b.name, 'tr') || a.kind.localeCompare(b.kind, 'tr'),
-    );
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
   }, [workloads, query]);
 
-  // Aynı ad birden fazla tipte görüldü mü? Görüldüyse ekran bunu SÖYLER — iki satırın
-  // neden yan yana durduğu ve neden ikisini birden seçmenin işi durduracağı belli olsun.
-  const ambiguousNames = useMemo(() => {
-    const kindsByName = new Map<string, Set<string>>();
+  // Her adın clusterlar arasındaki kind dağılımı — satırda "Deployment / StatefulSet"
+  // gibi bir özet göstermek ve farklı tipte olduğunu söylemek için.
+  const kindSummaryByName = useMemo(() => {
+    const map = new Map<string, { kinds: string[]; clusterCount: number }>();
     for (const w of workloads) {
-      if (w.scalable === false) continue;
-      if (!kindsByName.has(w.name)) kindsByName.set(w.name, new Set());
-      kindsByName.get(w.name)!.add(w.kind);
+      const entry = map.get(w.name);
+      if (!entry) {
+        map.set(w.name, { kinds: [w.kind], clusterCount: 1 });
+        continue;
+      }
+      if (!entry.kinds.includes(w.kind)) entry.kinds.push(w.kind);
+      entry.clusterCount += 1;
     }
-    return new Set([...kindsByName.entries()].filter(([, k]) => k.size > 1).map(([n]) => n));
+    return map;
   }, [workloads]);
 
   // BAKILAMAYAN TIPLER. Cluster basina ayni tip birden fazla kez bildirilebilir
@@ -253,31 +259,17 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
     return [...out.values()];
   }, [kindReports]);
 
-  // SECIM KIMLIGI HER ZAMAN ad+tip. Eskiden KOSULLU idi (yalniz belirsiz adlarda
-  // `ad\0tip`, digerlerinde duz ad) ama gonderim her zaman duz ad yapiyordu ve
-  // `ScaleXPage` o duz adi `initial` olarak geri veriyordu. Sonuc: "Geri" deyip adima
-  // donuldugunde belirsiz bir uygulamanin kutusu BOS gorunuyor, alt bardaki sayac ise
-  // "1 secili" diyordu; karsilikli kilit cozuluyor ve iki tip birden isaretlenebiliyordu
-  // — ozelligin ortadan kaldirdigi `ambiguous` cikmazi geri geliyordu.
-  const keyOf = (w: ScaleXWorkload) => `${w.name}\u0000${w.kind}`;
+  // SECIM KIMLIGI YALNIZCA uygulama adidir. Tip bilgisi cluster bazlı haritayla
+  // AWX'e gider; aynı ad farklı cluster'larda farklı tipte olabilir ve tek tıkla
+  // hepsi seçilir.
+  const keyOf = (w: ScaleXWorkload) => w.name;
 
   const toggle = (w: ScaleXWorkload) => {
-    const key = keyOf(w);
-    setSelected((prev) => (prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]));
+    const name = keyOf(w);
+    setSelected((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]));
   };
 
   const isSelected = (w: ScaleXWorkload) => selected.includes(keyOf(w));
-
-  // Belirsiz adda bir tip secildiginde diger tip devre disi kalir — kullanici
-  // ikisini birden secemez cunku playbook (cluster × uygulama) carpiminda
-  // hangisinin islenecegini bilemezdi.
-  const isKindBlocked = (w: ScaleXWorkload) => {
-    if (!ambiguousNames.has(w.name)) return false;
-    return selected.some((s) => {
-      const idx = s.indexOf('\u0000');
-      return idx >= 0 && s.slice(0, idx) === w.name && s.slice(idx + 1) !== w.kind;
-    });
-  };
 
   if (phase === 'running') {
     return (
@@ -551,43 +543,42 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
           // Listede DURURLAR: kullanıcı "namespace'imde var ama ScaleX görmüyor"
           // demesin, ama neden dokunulamadığı yazsın.
           const locked = w.scalable === false;
-          const kindBlocked = isKindBlocked(w);
+          const summary = kindSummaryByName.get(w.name);
+          const multiKind = summary && summary.kinds.length > 1;
           return (
             <label
               key={keyOf(w)}
               className={`flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-[var(--bg-inset)] ${
-                locked || kindBlocked ? 'cursor-default opacity-70' : 'cursor-pointer'
+                locked ? 'cursor-default opacity-70' : 'cursor-pointer'
               }`}
-              {...(kindBlocked
-                ? { title: 'Aynı ada sahip farklı bir tip seçildi — ikisi birden seçilemez.' }
-                : {})}
             >
               <input
                 type="checkbox"
                 className="mt-1"
-                disabled={busy || locked || kindBlocked}
+                disabled={busy || locked}
                 checked={!locked && isSelected(w)}
-                onChange={() => !locked && !kindBlocked && toggle(w)}
+                onChange={() => !locked && toggle(w)}
               />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-[var(--text-primary)] truncate" title={w.name}>
                     {w.name}
                   </span>
-                  <span className="pf-label pf-label--grey">{w.kind}</span>
+                  <span
+                    className="pf-label pf-label--grey"
+                    title={multiKind ? 'cluster’a göre değişir' : undefined}
+                  >
+                    {multiKind ? summary.kinds.join(' / ') : w.kind}
+                  </span>
                   {locked && <span className="pf-label pf-label--grey">ölçeklenemez</span>}
-                  {/* Aynı ad iki tipte: kullanıcı hangisini seçtiğini görmeli ve
-                    ikisini birden seçerse işin duracağını ÖNCEDEN bilmeli. */}
-                  {ambiguousNames.has(w.name) && (
+                  {/* Aynı ad farklı cluster'larda farklı tipte: kullanıcı bunu
+                     bilerek seçmeli; her cluster'daki tip haritası AWX'e ayrı gider. */}
+                  {multiKind && (
                     <span
-                      className={`pf-label ${kindBlocked ? 'pf-label--orange' : 'pf-label--gold'}`}
-                      title={
-                        kindBlocked
-                          ? 'Farklı tip seçildi — bu satır seçilemez'
-                          : 'Bu ad birden fazla nesne tipinde var — yalnızca birini seçin'
-                      }
+                      className="pf-label pf-label--gold"
+                      title="Bu ad farklı cluster'larda farklı tipte — her cluster kendi tipiyle işlenir"
                     >
-                      {kindBlocked ? 'farklı tip seçildi' : 'aynı ad birden fazla tipte'}
+                      cluster’a göre değişir
                     </span>
                   )}
                   {/* HPA bir GÜVENLİK SİNYALİ: kullanıcı "bu uygulamayı durdurursam
@@ -700,21 +691,19 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
           className="btn-primary"
           disabled={busy || !selected.length}
           onClick={() => {
-            // Sunucu uygulama ADI bekliyor; ekran ise ad+tip anahtarini SAKLAMALI ki
-            // "Geri" ile donuldugunde secim aynen geri yuklensin (bkz. keyOf notu).
-            const appNames = [
-              ...new Set(
-                selected.map((s) => {
-                  const i = s.indexOf('\u0000');
-                  return i >= 0 ? s.slice(0, i) : s;
-                }),
-              ),
-            ];
+            // Secim YALNIZCA uygulama adidir; her cluster icin tip haritasi ayri gider.
+            const clusterWorkloadKinds = workloads
+              .filter(
+                (w) =>
+                  w.source === 'discovery' && selected.includes(w.name) && w.scalable !== false,
+              )
+              .map((w) => ({ cluster: w.cluster, name: w.name, kind: w.kind }));
             onSubmit({
-              apps: appNames,
+              apps: selected,
               selectedKeys: selected,
               workloads,
               fetchedAt: fetchedAtRef.current || Date.now(),
+              clusterWorkloadKinds,
             });
           }}
         >
