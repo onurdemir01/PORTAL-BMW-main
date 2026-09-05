@@ -12,12 +12,20 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
 
 // ── normalizeTelnetResult ─────────────────────────────────────────────────────
 function loadNormalizer() {
-  const a = SRC.indexOf('function normalizeTelnetResult(');
-  assert.ok(a > 0, 'normalizeTelnetResult bulunamadi');
-  // Fonksiyonun govdesini sonraki function/const'a kadar al.
+  // DILIM `extractTelnetResult`TEN BASLAR, `normalizeTelnetResult`ten DEGIL.
+  // `normalizeTelnetResult` artik modul duzeyindeki yardimcilara (RC_HINTS,
+  // DETAIL_HINTS, explainTelnetRow) dayaniyor; dar dilim onlari disarida birakip
+  // ReferenceError uretiyordu. Kardes bekci (result-contract.test.cjs) da ayni
+  // araligi kullaniyor — iki testin ayni siniri paylasmasi kaymayi da onler.
+  const a = SRC.indexOf('function extractTelnetResult(');
+  assert.ok(a > 0, 'extractTelnetResult bulunamadi');
   const b = SRC.indexOf('\n// Sahiplik kapisi');
   assert.ok(b > a, 'normalizeTelnetResult siniri bulunamadi');
   const body = SRC.slice(a, b);
+  assert.ok(
+    body.includes('function normalizeTelnetResult('),
+    'dilim normalizeTelnetResult`i icermiyor — sinirlar kaymis',
+  );
   // eslint-disable-next-line no-new-func
   return new Function(`${body}; return normalizeTelnetResult;`)();
 }

@@ -9,26 +9,55 @@
 //
 // Sonuç artık `set_stats` sözleşmesinden okunur (bkz. ocp_telnet_control.yml son play'i)
 // ve hedef başına satır olarak gösterilir. KISMİ başarı görünür: "3 hedeften 1'i açık".
-import React from "react";
+import React from 'react';
 import {
-  CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, QuestionMarkCircleIcon,
-} from "@heroicons/react/24/outline";
-import type { TelnetResult, TelnetTargetResult } from "@/api/telnetApi";
+  CheckCircleIcon,
+  XCircleIcon,
+  ExclamationTriangleIcon,
+  QuestionMarkCircleIcon,
+} from '@heroicons/react/24/outline';
+import type { TelnetResult, TelnetTargetResult } from '@/api/telnetApi';
 
-const STATE_META: Record<TelnetTargetResult["state"], { label: string; cls: string; Icon: typeof CheckCircleIcon }> = {
-  open:   { label: "AÇIK",         cls: "text-[var(--status-success)]", Icon: CheckCircleIcon },
-  closed: { label: "KAPALI",       cls: "text-[var(--status-danger)]",  Icon: XCircleIcon },
+const STATE_META: Record<
+  TelnetTargetResult['state'],
+  { label: string; cls: string; Icon: typeof CheckCircleIcon }
+> = {
+  open: { label: 'AÇIK', cls: 'text-[var(--status-success)]', Icon: CheckCircleIcon },
+  closed: { label: 'KAPALI', cls: 'text-[var(--status-danger)]', Icon: XCircleIcon },
   // "error" ile "closed" AYNI ŞEY DEĞİL: biri "port kapalı", diğeri "test yapılamadı".
   // Aynı renge boyamak kullanıcıyı yanlış yönlendirir — bir ağ kuralı sanıp saatlerce
   // yanlış yerde arayabilir.
-  error:  { label: "TEST YAPILAMADI", cls: "text-[var(--status-warning)]", Icon: ExclamationTriangleIcon },
+  error: {
+    label: 'TEST YAPILAMADI',
+    cls: 'text-[var(--status-warning)]',
+    Icon: ExclamationTriangleIcon,
+  },
 };
 
-const OVERALL_META: Record<TelnetResult["overallStatus"], { title: string; cls: string; Icon: typeof CheckCircleIcon }> = {
-  open:    { title: "Tüm hedeflerde bağlantı AÇIK", cls: "text-[var(--status-success)]", Icon: CheckCircleIcon },
-  partial: { title: "Kısmi — bazı hedeflerde açık", cls: "text-[var(--status-warning)]", Icon: ExclamationTriangleIcon },
-  closed:  { title: "Hiçbir hedeften bağlantı kurulamadı", cls: "text-[var(--status-danger)]", Icon: XCircleIcon },
-  error:   { title: "Test tamamlanamadı", cls: "text-[var(--status-warning)]", Icon: ExclamationTriangleIcon },
+const OVERALL_META: Record<
+  TelnetResult['overallStatus'],
+  { title: string; cls: string; Icon: typeof CheckCircleIcon }
+> = {
+  open: {
+    title: 'Tüm hedeflerde bağlantı AÇIK',
+    cls: 'text-[var(--status-success)]',
+    Icon: CheckCircleIcon,
+  },
+  partial: {
+    title: 'Kısmi — bazı hedeflerde açık',
+    cls: 'text-[var(--status-warning)]',
+    Icon: ExclamationTriangleIcon,
+  },
+  closed: {
+    title: 'Hiçbir hedeften bağlantı kurulamadı',
+    cls: 'text-[var(--status-danger)]',
+    Icon: XCircleIcon,
+  },
+  error: {
+    title: 'Test tamamlanamadı',
+    cls: 'text-[var(--status-warning)]',
+    Icon: ExclamationTriangleIcon,
+  },
 };
 
 const TelnetResultPanel: React.FC<{ result: TelnetResult }> = ({ result }) => {
@@ -42,13 +71,14 @@ const TelnetResultPanel: React.FC<{ result: TelnetResult }> = ({ result }) => {
         <div className="min-w-0">
           <p className={`text-sm font-semibold ${meta.cls}`}>{meta.title}</p>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Hedef:{" "}
+            Hedef:{' '}
             <span className="font-mono text-[var(--text-secondary)]">
               {result.target.host}:{result.target.port}
             </span>
-            {" · "}
+            {' · '}
             {/* KISMİ BAŞARI GÖRÜNÜR: eskiden "3 hedeften 1'i açık" bilgisi hiçbir yerde yoktu. */}
-            <strong className="text-[var(--text-primary)]">{counts.open}</strong> / {counts.total} hedefte açık
+            <strong className="text-[var(--text-primary)]">{counts.open}</strong> / {counts.total}{' '}
+            hedefte açık
             {counts.error > 0 && <> · {counts.error} hedefte test yapılamadı</>}
           </p>
         </div>
@@ -58,9 +88,9 @@ const TelnetResultPanel: React.FC<{ result: TelnetResult }> = ({ result }) => {
         <div className="flex items-start gap-2 rounded-xl border border-[var(--status-warning)] bg-[var(--status-warning-bg)] p-3 text-xs text-amber-800">
           <QuestionMarkCircleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
-            İş tamamlandı ama hiçbir hedef sonucu yayınlanmadı. Genellikle bu, hiçbir
-            cluster'a giriş yapılamadığı anlamına gelir — aşağıdaki AWX log'unda
-            "login outcome" satırları sebebi söyler.
+            İş tamamlandı ama hiçbir hedef sonucu yayınlanmadı. Genellikle bu, hiçbir cluster'a
+            giriş yapılamadığı anlamına gelir — aşağıdaki AWX log'unda "login outcome" satırları
+            sebebi söyler.
           </span>
         </div>
       ) : (
@@ -86,10 +116,24 @@ const TelnetResultPanel: React.FC<{ result: TelnetResult }> = ({ result }) => {
                 </div>
                 {/* Ayrıntı yalnızca sorunlu satırlarda: açık bağlantıda telnet çıktısı
                     gürültüden ibaret, kapalı/hatalı olanda ise TEK ipucu odur. */}
-                {t.state !== "open" && t.detail && (
-                  <p className="mt-1 pl-6 text-[10px] font-mono text-[var(--text-muted)] break-all line-clamp-2">
-                    rc={t.rc} · {t.detail}
-                  </p>
+                {t.state !== 'open' && (t.hint || t.detail) && (
+                  <div className="mt-1 pl-6">
+                    {/* ÖNCE İNSAN DİLİ. Ekranda daha önce yalnızca
+                        `rc=143 · command terminated with exit code 143` yazıyordu ve bu
+                        hiçbir şey anlatmıyordu — üstelik 143 aslında "10 sn'de yanıt yok"
+                        demek (netshoot Alpine tabanlı, busybox `timeout` 124 değil 143
+                        döndürür). Ham değerler teşhis için DURUYOR, ama artık ikinci planda. */}
+                    {t.hint && (
+                      <p className="text-[11px] text-[var(--text-secondary)] line-clamp-2">
+                        {t.hint}
+                      </p>
+                    )}
+                    {t.detail && (
+                      <p className="text-[10px] font-mono text-[var(--text-muted)] break-all line-clamp-2">
+                        rc={t.rc} · {t.detail}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             );

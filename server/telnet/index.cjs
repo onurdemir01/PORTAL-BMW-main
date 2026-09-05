@@ -135,6 +135,46 @@ function extractTelnetResult(rawArtifacts) {
 // Jinja `set_stats` her seyi METIN olarak yayinlayabilir (`counts.open` -> "2").
 // Ekran sayi bekliyor; donusum TEK yerde yapilir ki bilesenler bunu bilmek zorunda
 // kalmasin. Bilinmeyen `state` degerleri 'error'a duser — uydurma bir "acik" URETILMEZ.
+// HAM `rc` INSAN DILINE CEVRILIR — CEVIRI PORTAL TARAFINDA KALIR.
+//
+// Ekranda kullaniciya `rc=143 · command terminated with exit code 143` yaziyordu; bu
+// cumle hicbir sey anlatmiyor. Ceviriyi playbook'a koymak yanlis olurdu: AWX job
+// log'unu operasyon okuyor, orada Ingilizce kalmasi DOGRU, ayrica her metin degisikligi
+// playbook'un AWX'e yeniden kopyalanmasini gerektirirdi (ScaleX'te de ayni karar —
+// bkz. src/utils/scalexLog.ts).
+//
+// 143 NEDEN "ZAMAN ASIMI": test pod'u `nicolaka/netshoot` (Alpine) ve oradaki `timeout`
+// BUSYBOX surumudur — zaman asiminda GNU coreutils gibi 124 degil, 128+SIGTERM=143
+// dondurur. Yani `rc=143` "10 saniyede yanit yok" demektir; dogru bir KAPALI sonucudur,
+// yalnizca okunaksiz gorunuyordu.
+const RC_HINTS = new Map([
+  [143, '10 saniyede yanit alinamadi (zaman asimi) — port kapali ya da filtreli'],
+  [124, '10 saniyede yanit alinamadi (zaman asimi) — port kapali ya da filtreli'],
+  [1, 'baglanti reddedildi'],
+]);
+
+// Metinden taninan durumlar; `rc`den daha guclu bir isarettir cunku sebebi soyler.
+const DETAIL_HINTS = [
+  [
+    /unable to upgrade connection|container not found|not found/i,
+    'test pod’u ayaga kalkmadi ya da kayboldu — port hakkinda bir sey soylenemez',
+  ],
+  [/pod olusturulamadi/i, 'test pod’u olusturulamadi (kota/SCC/imaj cekme olabilir)'],
+  [/hazir olmadi/i, 'test pod’u 60 saniyede hazir olmadi'],
+];
+
+// Saf fonksiyon — birim testleri icin disa acilir.
+function explainTelnetRow({ state, rc, detail }) {
+  const text = String(detail || '');
+  for (const [re, hint] of DETAIL_HINTS) {
+    if (re.test(text)) return hint;
+  }
+  // `open` icin aciklamaya gerek yok: sonucun kendisi zaten net.
+  if (state === 'open') return '';
+  const byRc = RC_HINTS.get(Number(rc));
+  return byRc || '';
+}
+
 function normalizeTelnetResult(r) {
   const num = (v) => {
     const n = Number(v);
@@ -158,16 +198,24 @@ function normalizeTelnetResult(r) {
       closed: num(r.counts?.closed),
       error: num(r.counts?.error),
     },
-    targets: targets.map((t) => ({
-      cluster: String(t?.cluster ?? ''),
-      bastion: String(t?.bastion ?? ''),
-      namespace: String(t?.namespace ?? ''),
-      ip: String(t?.ip ?? ''),
-      port: String(t?.port ?? ''),
-      state: STATES.has(String(t?.state)) ? String(t.state) : 'error',
-      rc: num(t?.rc),
-      detail: String(t?.detail ?? '').slice(0, 500),
-    })),
+    targets: targets.map((t) => {
+      const state = STATES.has(String(t?.state)) ? String(t.state) : 'error';
+      const rc = num(t?.rc);
+      const detail = String(t?.detail ?? '').slice(0, 500);
+      return {
+        cluster: String(t?.cluster ?? ''),
+        bastion: String(t?.bastion ?? ''),
+        namespace: String(t?.namespace ?? ''),
+        ip: String(t?.ip ?? ''),
+        port: String(t?.port ?? ''),
+        state,
+        rc,
+        detail,
+        // Ekranda HAM `rc` yerine bu gosterilir; ham deger yaninda kucuk puntoda kalir.
+        // Bos string "aciklanacak bir sey yok" demektir (or. basarili baglanti).
+        hint: explainTelnetRow({ state, rc, detail }),
+      };
+    }),
   };
 }
 

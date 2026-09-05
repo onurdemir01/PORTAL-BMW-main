@@ -3,11 +3,11 @@
 // OpsX'in aynı Legacy/Openshift + uygulama/sunucu seçim akışının birebir kopyası —
 // uygulama listesi/host listesi/cluster kataloğu OpsX/LogX ile AYNI kaynaktan gelir
 // (backend server/telnet/index.cjs OpsX'in hostsForApp'ini yeniden kullanır).
-import { safeJson } from "./http";
+import { safeJson } from './http';
 
-const BASE = "/api/telnet";
+const BASE = '/api/telnet';
 
-export type TelnetPlatform = "legacy" | "openshift";
+export type TelnetPlatform = 'legacy' | 'openshift';
 
 export interface TelnetHost {
   host: string;
@@ -42,13 +42,19 @@ export interface TelnetTargetResult {
   ip: string;
   port: string;
   /** `error` = test YAPILAMADI (pod acilamadi/hazir olmadi). `closed` ile AYNI SEY DEGIL. */
-  state: "open" | "closed" | "error";
+  state: 'open' | 'closed' | 'error';
   rc: number;
   detail: string;
+  /** Ham `rc`/`detail`in İNSAN DİLİNDEKİ karşılığı — sunucu üretir (server/telnet/index.cjs
+   *  `explainTelnetRow`). Ekranda BU gösterilir, ham değerler yanında küçük puntoda kalır.
+   *  Boş string "açıklanacak bir şey yok" demektir (ör. başarılı bağlantı).
+   *  Çeviri bilerek portal tarafındadır: AWX job log'u operasyonun okuduğu yer, orada
+   *  İngilizce kalmalı; ayrıca metin değişikliği playbook'u yeniden deploy ettirmemeli. */
+  hint?: string;
 }
 
 export interface TelnetResult {
-  overallStatus: "open" | "partial" | "closed" | "error";
+  overallStatus: 'open' | 'partial' | 'closed' | 'error';
   target: { host: string; port: string };
   counts: { total: number; open: number; closed: number; error: number };
   targets: TelnetTargetResult[];
@@ -78,7 +84,9 @@ export const telnetApi = {
   // (erişim kısıtlamaları uygulanmış) — OpsX'in AYNI kaynağı (server/opsx/index.cjs
   // namespacesForCluster, doğrudan yeniden kullanılır).
   getOcpNamespaces: (env: string, tenant: string): Promise<{ ok: boolean; namespaces: string[] }> =>
-    fetch(`${BASE}/ocp/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}`).then(safeJson),
+    fetch(
+      `${BASE}/ocp/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}`,
+    ).then(safeJson),
 
   // Testi tetikler. AWX job template'i tanımlı değilse sunucu 501 + açıklayıcı mesaj döner.
   // Legacy ve Openshift AYNI şekli döner (TelnetRunResult, tek job) — Openshift'te birden
@@ -102,8 +110,8 @@ export const telnetApi = {
     port: string;
   }): Promise<TelnetRunResult> =>
     fetch(`${BASE}/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
 
@@ -114,5 +122,5 @@ export const telnetApi = {
   // IP/port girildiginde iptal edebilmek gercek bir ihtiyac (is, her birim icin 60 sn
   // pod bekleme + 10 sn telnet timeout suresince surer).
   cancel: (serverId: number, jobId: number): Promise<{ ok: boolean; message?: string }> =>
-    fetch(`${BASE}/cancel/${serverId}/${jobId}`, { method: "POST" }).then(safeJson),
+    fetch(`${BASE}/cancel/${serverId}/${jobId}`, { method: 'POST' }).then(safeJson),
 };
