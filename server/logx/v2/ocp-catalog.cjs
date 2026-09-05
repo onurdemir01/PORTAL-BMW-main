@@ -53,12 +53,14 @@ const EMPTY = { items: [], cached: false, fetchedAt: null, stale: false };
 // Donus: { items[], sources: { [ad]: 'inventory'|'discovery' }, cached, fetchedAt, stale }
 // `sources` onyuzun her satirin nereden geldigini rozetleyebilmesi icindir.
 async function getNamespaces({ env, tenant, clusterNames }) {
-  const clusters = [...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean))];
+  const clusters = [
+    ...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean)),
+  ];
   if (!clusters.length) return { ...EMPTY, items: [], sources: {} };
 
   const inv = await safe(inventory.getNamespaces({ clusterNames: clusters }), EMPTY);
   const cachedPerCluster = await Promise.all(
-    clusters.map((clusterName) => safe(cache.getNamespaces({ env, tenant, clusterName }), EMPTY))
+    clusters.map((clusterName) => safe(cache.getNamespaces({ env, tenant, clusterName }), EMPTY)),
   );
 
   const sources = {};
@@ -79,7 +81,7 @@ async function getNamespaces({ env, tenant, clusterNames }) {
   cachedPerCluster.forEach((out, i) => {
     for (const ns of out.items || []) {
       if (!sources[ns]) sources[ns] = 'discovery';
-      addCluster(ns, clusters[i]);   // onbellek cluster BASINA okunur; indis = cluster
+      addCluster(ns, clusters[i]); // onbellek cluster BASINA okunur; indis = cluster
     }
   });
 
@@ -98,7 +100,8 @@ async function getNamespaces({ env, tenant, clusterNames }) {
     cached: Boolean(inv.cached || cachedPerCluster.some((c) => c.cached)),
     ...freshness,
     // Onyuz rozeti icin: liste tamamen envanterden mi geliyor, karisik mi?
-    source: inv.cached && cachedPerCluster.every((c) => !c.cached) ? 'openshift_inventory' : 'mixed',
+    source:
+      inv.cached && cachedPerCluster.every((c) => !c.cached) ? 'openshift_inventory' : 'mixed',
   };
 }
 
@@ -107,12 +110,16 @@ async function getNamespaces({ env, tenant, clusterNames }) {
 // tasir — daha zengin kaydi atmak kullaniciyi bilgisiz birakirdi.
 async function getApps({ env, tenant, clusterNames, namespace }) {
   const ns = String(namespace || '').trim();
-  const clusters = [...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean))];
+  const clusters = [
+    ...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean)),
+  ];
   if (!ns || !clusters.length) return { ...EMPTY, items: [], sources: {} };
 
   const inv = await safe(inventory.getApps({ clusterNames: clusters, namespace: ns }), EMPTY);
   const cachedPerCluster = await Promise.all(
-    clusters.map((clusterName) => safe(cache.getApps({ env, tenant, clusterName, namespace: ns }), EMPTY))
+    clusters.map((clusterName) =>
+      safe(cache.getApps({ env, tenant, clusterName, namespace: ns }), EMPTY),
+    ),
   );
 
   const byName = new Map();
@@ -156,11 +163,18 @@ async function getApps({ env, tenant, clusterNames, namespace }) {
     sources,
     clusters: clusterMap,
     scannedAt,
-    scannedEmpty: Boolean(scannedAt) && cachedPerCluster.every((c) => c.scannedEmpty !== false)
-      && [...byName.values()].length === 0,
+    scannedEmpty:
+      Boolean(scannedAt) &&
+      cachedPerCluster.every((c) => c.scannedEmpty !== false) &&
+      [...byName.values()].length === 0,
+    // Cluster'lardan HERHANGI birinin tarama kaydi OKUNAMADIYSA sihirbaz otomatik
+    // tarama yapmaz: kayit okunamadigi surece tarama sonrasi da ayni belirsizlik
+    // surer ve her giriş yeni bir AWX job'i acardi (sonsuz dongu).
+    scanUnknown: cachedPerCluster.some((c) => c.scanUnknown),
     cached: Boolean(inv.cached || cachedPerCluster.some((c) => c.cached)),
     ...freshness,
-    source: inv.cached && cachedPerCluster.every((c) => !c.cached) ? 'openshift_inventory' : 'mixed',
+    source:
+      inv.cached && cachedPerCluster.every((c) => !c.cached) ? 'openshift_inventory' : 'mixed',
   };
 }
 

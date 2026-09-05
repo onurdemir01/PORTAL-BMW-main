@@ -12,13 +12,16 @@
 // göndermek de geçerlidir — o zaman yalnızca o pod gelir (pod bölümünün var olma sebebi).
 //
 // Serbest metin girişi HER ZAMAN durur: listede olmayan/yeni bir uygulama adı yazılabilir.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  MagnifyingGlassIcon, MagnifyingGlassCircleIcon, ChevronRightIcon, PlusIcon,
-} from "@heroicons/react/24/outline";
-import { logxV2Api, type OcpAppItem } from "@/api/logxV2Api";
-import CacheBadge from "../../shared/CacheBadge";
-import { fmtDateShort } from "@/utils/datetime";
+  MagnifyingGlassIcon,
+  MagnifyingGlassCircleIcon,
+  ChevronRightIcon,
+  PlusIcon,
+} from '@heroicons/react/24/outline';
+import { logxV2Api, type OcpAppItem } from '@/api/logxV2Api';
+import CacheBadge from '../../shared/CacheBadge';
+import { fmtDateShort } from '@/utils/datetime';
 
 interface Props {
   /** Devam butonunun metni. Varsayılan "Seçilenleri Listeye Ekle". */
@@ -35,6 +38,13 @@ interface Props {
   onSubmit: (appNames: string[]) => void;
   /** Canlı uygulama keşfini tetikler (AWX job'ı). */
   onDiscover?: () => void;
+  /** OTOMATİK TARAMA HAFIZASI — sihirbaz sayfası tarafından verilir ve o sayfanın
+   *  ömrü boyunca yaşar. Bileşen içinde tutulamaz: üst sayfadaki `key={step}` bu
+   *  bileşeni her adım değişiminde remount ediyor ve tarama akışı adımı zorunlu
+   *  olarak değiştiriyor (`ocp_app_name → ocp_app_discovering → ocp_app_name`),
+   *  yani bileşen içi bir ref her turda sıfırlanıp korumayı ETKİSİZ bırakıyordu.
+   *  Anahtar `<clusterKey>|<namespace>`, değer tarama zamanı. */
+  autoScanMemo?: Map<string, number>;
   busy?: boolean;
 }
 
@@ -42,16 +52,16 @@ interface Props {
 // `Unknown`, envanterden (dbo.Openshift_Inventory) gelen kayıtların tipidir: o tablo
 // yalnızca UYGULAMA ADI tutar, obje tipi canlı taramadan gelir. Bilinmeyen yeni bir tip
 // çıkarsa "uygulama" sayılır — listeden düşüp kaybolmasın.
-export type OcpRole = "app" | "pod" | "network";
+export type OcpRole = 'app' | 'pod' | 'network';
 
-const POD_KINDS = new Set(["pod"]);
-const NETWORK_KINDS = new Set(["service", "route", "ingress"]);
+const POD_KINDS = new Set(['pod']);
+const NETWORK_KINDS = new Set(['service', 'route', 'ingress']);
 
 export function roleOfKind(kind: string): OcpRole {
-  const k = String(kind || "").toLowerCase();
-  if (POD_KINDS.has(k)) return "pod";
-  if (NETWORK_KINDS.has(k)) return "network";
-  return "app";
+  const k = String(kind || '').toLowerCase();
+  if (POD_KINDS.has(k)) return 'pod';
+  if (NETWORK_KINDS.has(k)) return 'network';
+  return 'app';
 }
 
 export interface AppGroup {
@@ -66,23 +76,27 @@ export interface AppGroup {
 // bir ad hem Deployment hem Route ise o bir UYGULAMADIR; ağ objesi olarak ikinci kez
 // listelenmesi kullanıcıyı şaşırtırdı.
 export function groupApps(items: OcpAppItem[]): AppGroup[] {
-  const byName = new Map<string, { name: string; kinds: Set<string>; replicas: number | null; roles: Set<OcpRole> }>();
+  const byName = new Map<
+    string,
+    { name: string; kinds: Set<string>; replicas: number | null; roles: Set<OcpRole> }
+  >();
   for (const it of items || []) {
-    const name = String(it?.name || "").trim();
+    const name = String(it?.name || '').trim();
     if (!name) continue;
-    if (!byName.has(name)) byName.set(name, { name, kinds: new Set(), replicas: null, roles: new Set() });
+    if (!byName.has(name))
+      byName.set(name, { name, kinds: new Set(), replicas: null, roles: new Set() });
     const g = byName.get(name)!;
     if (it.kind) g.kinds.add(it.kind);
     g.roles.add(roleOfKind(it.kind));
     // Replica sayısı yalnız iş yüklerinde anlamlı; ilk dolu değeri koru.
-    if (g.replicas === null && typeof it.replicas === "number") g.replicas = it.replicas;
+    if (g.replicas === null && typeof it.replicas === 'number') g.replicas = it.replicas;
   }
   return [...byName.values()]
     .map((g) => ({
       name: g.name,
       kinds: [...g.kinds].sort(),
       replicas: g.replicas,
-      role: (g.roles.has("app") ? "app" : g.roles.has("pod") ? "pod" : "network") as OcpRole,
+      role: (g.roles.has('app') ? 'app' : g.roles.has('pod') ? 'pod' : 'network') as OcpRole,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -98,10 +112,10 @@ export function groupApps(items: OcpAppItem[]): AppGroup[] {
 async function checkReadiness(): Promise<string | null> {
   try {
     const out = await logxV2Api.playbookReadiness();
-    const row = (out.rows || []).find((r) => r.keyName === "logx_ocp_app_discovery");
+    const row = (out.rows || []).find((r) => r.keyName === 'logx_ocp_app_discovery');
     // Bilinmiyor/hazır → engelleme yok (fail-open: meşru bir işi metadata eksikliği
     // yüzünden durdurmak, çözdüğü problemden büyük olurdu).
-    return row && row.ready === false ? (row.reason || "unknown") : null;
+    return row && row.ready === false ? row.reason || 'unknown' : null;
   } catch {
     return null;
   }
@@ -110,14 +124,14 @@ async function checkReadiness(): Promise<string | null> {
 const NOT_READY_TEXT: Record<string, string> = {
   prompt_on_launch_disabled:
     'AWX\'te uygulama keşfi job template\'i üzerinde Variables > "Prompt on launch" kapalı. ' +
-    "O kutu kapalıyken AWX, portalın gönderdiği değişkenleri sessizce yok sayar ve tarama " +
-    "boş girdiyle çalışıp hata verir — bu yüzden iş hiç başlatılmadı. Bir yönetici kutuyu " +
-    "işaretleyip kaydettikten sonra tarama çalışacak.",
+    'O kutu kapalıyken AWX, portalın gönderdiği değişkenleri sessizce yok sayar ve tarama ' +
+    'boş girdiyle çalışıp hata verir — bu yüzden iş hiç başlatılmadı. Bir yönetici kutuyu ' +
+    'işaretleyip kaydettikten sonra tarama çalışacak.',
   template_missing:
     "Uygulama keşfi için AWX job template'i tanımlı değil. Yönetici Admin > Ansible " +
     "Yapılandırma ekranından template'i eşleştirmeli.",
   disabled: "Uygulama keşfi playbook'u yönetici tarafından devre dışı bırakılmış.",
-  unknown: "Uygulama keşfi şu anda çalıştırılamıyor. Yöneticiye bildirin.",
+  unknown: 'Uygulama keşfi şu anda çalıştırılamıyor. Yöneticiye bildirin.',
 };
 
 // Tarih → "10 Ağu 12:34" (rozetlerde yer kaplamasın diye kısa).
@@ -127,28 +141,42 @@ const shortDate = fmtDateShort;
 
 const SECTION_META: Record<OcpRole, { title: string; hint: string; selectable: boolean }> = {
   app: {
-    title: "Uygulamalar",
+    title: 'Uygulamalar',
     hint: "Seçilen her uygulamanın eşleşen TÜM pod'larının logu tek arşivde toplanır.",
     selectable: true,
   },
   pod: {
-    title: "Tek pod seç (ileri düzey)",
+    title: 'Tek pod seç (ileri düzey)',
     hint: "Yalnızca tek bir pod'un logu gerekiyorsa. Uygulamayı seçerseniz zaten tüm pod'ları gelir.",
     selectable: true,
   },
   network: {
-    title: "Ağ objeleri",
-    hint: "Service/Route log üretmez — yalnızca namespace içeriğini göstermek için listelenir.",
+    title: 'Ağ objeleri',
+    hint: 'Service/Route log üretmez — yalnızca namespace içeriğini göstermek için listelenir.',
     selectable: false,
   },
 };
 
 const AppNameStep: React.FC<Props> = ({
-  env, tenant, clusters, namespace, reloadToken, remainingSlots, onSubmit, onDiscover, busy, submitLabel,
+  env,
+  tenant,
+  clusters,
+  namespace,
+  reloadToken,
+  remainingSlots,
+  onSubmit,
+  onDiscover,
+  busy,
+  submitLabel,
+  autoScanMemo,
 }) => {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [items, setItems] = useState<OcpAppItem[]>([]);
-  const [cache, setCache] = useState<{ fetchedAt: string | null; stale: boolean; source?: string | null } | null>(null);
+  const [cache, setCache] = useState<{
+    fetchedAt: string | null;
+    stale: boolean;
+    source?: string | null;
+  } | null>(null);
   // Ad → kaynak. Envanterde olmayan (kullanıcı taramasıyla gelen) uygulamalar rozetlenir;
   // kullanıcı listede bir adı NEDEN gördüğünü/göremediğini anlasın.
   const [sources, setSources] = useState<Record<string, string>>({});
@@ -157,7 +185,12 @@ const AppNameStep: React.FC<Props> = ({
   // cluster'a göre farklı olduğu için bu ayrım özellikle pod bölümünde işe yarar.
   const [membership, setMembership] = useState<Record<string, string[]>>({});
   // Otomatik taramanın aynı seçim için tekrar tetiklenmesini engeller.
-  const autoScanRef = React.useRef<string | null>(null);
+  //
+  // Üst sayfa bir hafıza verdiyse ONU kullan: bileşen içi ref, `key={step}` remount'u
+  // yüzünden her tarama turunda sıfırlanıyor ve sonsuz döngüyü engelleyemiyordu.
+  // Yerel ref yalnızca prop verilmediği durumda (izole kullanım/test) devreye girer.
+  const localScanRef = React.useRef<Map<string, number>>(new Map());
+  const scanMemo = autoScanMemo ?? localScanRef.current;
   const [loadingCache, setLoadingCache] = useState(false);
   // "Kayit yok" ile "yetkin yok" AYRI seyler. Eskiden ikisi de ayni bos ekrani gosteriyordu;
   // kullanici "tara" deyip ancak o zaman 403 goruyordu.
@@ -172,11 +205,15 @@ const AppNameStep: React.FC<Props> = ({
   // Çoklu seçim: sepete TEK SEFERDE eklenecek adlar.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Pod ve ağ bölümleri varsayılan KAPALI: liste onlarla birlikte okunamaz hâle geliyordu.
-  const [openRoles, setOpenRoles] = useState<Record<OcpRole, boolean>>({ app: true, pod: false, network: false });
+  const [openRoles, setOpenRoles] = useState<Record<OcpRole, boolean>>({
+    app: true,
+    pod: false,
+    network: false,
+  });
   // Cluster süzgeci — yalnızca birden çok cluster seçiliyken anlamlı.
   const [clusterFilter, setClusterFilter] = useState<string | null>(null);
 
-  const clusterKey = (clusters || []).join(",");
+  const clusterKey = (clusters || []).join(',');
   const clusterList = useMemo(() => clusters || [], [clusters]);
   const multiCluster = clusterList.length > 1;
 
@@ -191,7 +228,9 @@ const AppNameStep: React.FC<Props> = ({
     setSelected(new Set());
     (async () => {
       try {
-        const r = await logxV2Api.inventoryApps(env, tenant, clusterKey.split(","), namespace).catch(() => null);
+        const r = await logxV2Api
+          .inventoryApps(env, tenant, clusterKey.split(','), namespace)
+          .catch(() => null);
         if (cancelled) return;
         if (!r || !r.cached) {
           setItems([]);
@@ -205,16 +244,24 @@ const AppNameStep: React.FC<Props> = ({
           // Kullanıcı isterse elle tazeler. Bu kontrol olmadan boş bir namespace her
           // girişte (ve her kullanıcı için) ~1 dk'lık bir AWX job'ı açıyordu.
           if (r?.scannedEmpty) return;
+          // TARAMA KAYDI OKUNAMADIYSA da otomatik tarama YAPMA. "Hiç taranmadı" ile
+          // "kaydı okuyamadım" aynı şey değil: kayıt okunamıyorsa taradıktan sonra da
+          // okunamayacak, yani otomatik tarama sonsuza kadar tekrarlanırdı. Elle
+          // tarama düğmesi açık kalır — kullanıcının kaçış yolu korunur.
+          if (r?.scanUnknown) return;
           // KAYIT YOKSA KULLANICIYA SORMA, TARA. Aynı (cluster, namespace) için yalnız BİR
-          // kez — ref olmadan her render yeni bir AWX job'ı açabilirdi. Kullanıcı yine de
-          // uygulama adını elle yazıp devam edebilir (kaçış yolu korunur).
+          // kez. Hafıza SAYFA seviyesindedir: bileşen içi bir ref, adım değişimindeki
+          // remount'ta sıfırlanıp korumayı etkisiz bırakıyordu (üretimdeki sonsuz döngü).
           const key = `${clusterKey}|${namespace}`;
-          if (onDiscover && autoScanRef.current !== key) {
-            autoScanRef.current = key;
+          if (onDiscover && !scanMemo.has(key)) {
+            scanMemo.set(key, Date.now());
             // BAŞARISIZ OLACAĞI BELLİ BİR JOB'I HİÇ AÇMA (bkz. checkReadiness başlığı).
             const blocked = await checkReadiness();
             if (cancelled) return;
-            if (blocked) { setNotReady(blocked); return; }
+            if (blocked) {
+              setNotReady(blocked);
+              return;
+            }
             onDiscover();
           }
           return;
@@ -230,7 +277,9 @@ const AppNameStep: React.FC<Props> = ({
         if (!cancelled) setLoadingCache(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [env, tenant, clusterKey, namespace, reloadToken]);
 
   // Elle tetiklenen taramalar da aynı kapıdan geçer: hazır değilse job açmak yerine
@@ -238,7 +287,10 @@ const AppNameStep: React.FC<Props> = ({
   async function handleDiscover() {
     if (!onDiscover) return;
     const blocked = await checkReadiness();
-    if (blocked) { setNotReady(blocked); return; }
+    if (blocked) {
+      setNotReady(blocked);
+      return;
+    }
     setNotReady(null);
     onDiscover();
   }
@@ -249,17 +301,18 @@ const AppNameStep: React.FC<Props> = ({
   // Rol bölümleri. Ağ objeleri arasında, adı bir UYGULAMAYLA aynı olanlar gösterilmez —
   // aynı ad iki bölümde birden çıkınca kullanıcı hangisini seçeceğini bilemiyordu.
   const sections = useMemo(() => {
-    const appNames = new Set(groups.filter((g) => g.role === "app").map((g) => g.name));
-    const keep = (g: AppGroup) => !(g.role === "network" && appNames.has(g.name));
+    const appNames = new Set(groups.filter((g) => g.role === 'app').map((g) => g.name));
+    const keep = (g: AppGroup) => !(g.role === 'network' && appNames.has(g.name));
     const inCluster = (name: string) => {
       if (!clusterFilter) return true;
       const owners = membership[name];
       // Üyelik bilgisi YOKSA gizleme: bilgisizlik, yokluk değildir.
       return !owners || owners.includes(clusterFilter);
     };
-    const matches = (g: AppGroup) => (!query || g.name.toLowerCase().includes(query)) && inCluster(g.name);
+    const matches = (g: AppGroup) =>
+      (!query || g.name.toLowerCase().includes(query)) && inCluster(g.name);
 
-    return (["app", "pod", "network"] as OcpRole[]).map((role) => {
+    return (['app', 'pod', 'network'] as OcpRole[]).map((role) => {
       const all = groups.filter((g) => g.role === role && keep(g));
       return { role, rows: all.filter(matches), total: all.length };
     });
@@ -268,7 +321,7 @@ const AppNameStep: React.FC<Props> = ({
   const hasAnyRow = sections.some((s) => s.total > 0);
   // Sınır: sepette kalan yer kadar seçilebilir. Sunucu da aynı sınırı uygular
   // (server/logx/v2/ocp.cjs MAX_TARGETS); buradaki amaç 400'e düşmeden söylemek.
-  const limit = typeof remainingSlots === "number" ? remainingSlots : Infinity;
+  const limit = typeof remainingSlots === 'number' ? remainingSlots : Infinity;
   const atLimit = selected.size >= limit;
 
   function toggle(name: string) {
@@ -311,7 +364,7 @@ const AppNameStep: React.FC<Props> = ({
       )}
       {failed.length > 0 && (
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
-          Bu liste eksik olabilir — şu cluster'lardan yanıt alınamadı: {failed.join(", ")}
+          Bu liste eksik olabilir — şu cluster'lardan yanıt alınamadı: {failed.join(', ')}
         </div>
       )}
       {cache && (
@@ -319,7 +372,7 @@ const AppNameStep: React.FC<Props> = ({
           fetchedAt={cache.fetchedAt}
           stale={cache.stale}
           source={cache.source}
-          discoveredCount={Object.values(sources).filter((v) => v === "discovery").length}
+          discoveredCount={Object.values(sources).filter((v) => v === 'discovery').length}
           onRediscover={handleDiscover}
           busy={busy}
           actionLabel="Yeniden tara"
@@ -327,8 +380,11 @@ const AppNameStep: React.FC<Props> = ({
       )}
 
       <p className="text-sm text-[var(--text-secondary)]">
-        <span className="font-mono text-[var(--text-primary)] break-all" title={namespace}>{namespace}</span> içinden
-        {" "}<strong>birden fazla</strong> uygulama seçebilirsiniz — her biri ayrı bir arşiv olur.
+        <span className="font-mono text-[var(--text-primary)] break-all" title={namespace}>
+          {namespace}
+        </span>{' '}
+        içinden <strong>birden fazla</strong> uygulama seçebilirsiniz — her biri ayrı bir arşiv
+        olur.
       </p>
 
       <div className="relative">
@@ -344,7 +400,10 @@ const AppNameStep: React.FC<Props> = ({
 
       {canAddFreeText && (
         <button
-          onClick={() => { toggle(search.trim()); setSearch(""); }}
+          onClick={() => {
+            toggle(search.trim());
+            setSearch('');
+          }}
           disabled={atLimit}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-dashed border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--bg-elevated)] transition-colors disabled:opacity-50 disabled:pointer-events-none"
         >
@@ -359,15 +418,15 @@ const AppNameStep: React.FC<Props> = ({
           <span className="text-xs text-[var(--text-muted)]">Cluster:</span>
           {[null, ...clusterList].map((c) => (
             <button
-              key={c ?? "__all__"}
+              key={c ?? '__all__'}
               onClick={() => setClusterFilter(c)}
               className={`px-2.5 py-1 text-xs rounded-full border transition-colors font-mono ${
                 clusterFilter === c
-                  ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                  : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"
+                  ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                  : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
               }`}
             >
-              {c ?? "Tümü"}
+              {c ?? 'Tümü'}
             </button>
           ))}
         </div>
@@ -395,13 +454,15 @@ const AppNameStep: React.FC<Props> = ({
                 >
                   <ChevronRightIcon
                     aria-hidden="true"
-                    className={`w-4 h-4 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+                    className={`w-4 h-4 text-[var(--text-muted)] flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
                   />
-                  <span className="text-sm font-semibold text-[var(--text-primary)]">{meta.title}</span>
+                  <span className="text-sm font-semibold text-[var(--text-primary)]">
+                    {meta.title}
+                  </span>
                   <span className="text-xs text-[var(--text-muted)]">
                     {rows.length}
                     {rows.length !== total && ` / ${total}`}
-                    {selectedHere > 0 ? ` · ${selectedHere} seçili` : ""}
+                    {selectedHere > 0 ? ` · ${selectedHere} seçili` : ''}
                   </span>
                 </button>
 
@@ -421,15 +482,18 @@ const AppNameStep: React.FC<Props> = ({
                         const owners = membership[g.name];
                         // Rozet YALNIZCA fark varsa: her cluster'da olan adı rozetlemek
                         // listeyi gürültüye boğardı.
-                        const partial = multiCluster && owners && owners.length < clusterList.length;
+                        const partial =
+                          multiCluster && owners && owners.length < clusterList.length;
                         const checked = selected.has(g.name);
                         const disabled = !meta.selectable || (!checked && atLimit);
                         return (
                           <label
                             key={g.name}
                             className={`flex items-center gap-2 px-3 py-2 ${
-                              meta.selectable ? "cursor-pointer hover:bg-[var(--bg-elevated)]" : "opacity-70"
-                            } ${disabled && meta.selectable ? "opacity-50" : ""}`}
+                              meta.selectable
+                                ? 'cursor-pointer hover:bg-[var(--bg-elevated)]'
+                                : 'opacity-70'
+                            } ${disabled && meta.selectable ? 'opacity-50' : ''}`}
                           >
                             {meta.selectable && (
                               <input
@@ -440,28 +504,38 @@ const AppNameStep: React.FC<Props> = ({
                                 className="rounded"
                               />
                             )}
-                            <span className="text-sm font-mono text-[var(--text-primary)] truncate flex-1" title={g.name}>{g.name}</span>
-                            {g.kinds.filter((k) => k !== "Unknown").map((k) => (
-                              <span
-                                key={k}
-                                className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text-muted)] flex-shrink-0"
-                              >
-                                {k}
-                              </span>
-                            ))}
+                            <span
+                              className="text-sm font-mono text-[var(--text-primary)] truncate flex-1"
+                              title={g.name}
+                            >
+                              {g.name}
+                            </span>
+                            {g.kinds
+                              .filter((k) => k !== 'Unknown')
+                              .map((k) => (
+                                <span
+                                  key={k}
+                                  className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text-muted)] flex-shrink-0"
+                                >
+                                  {k}
+                                </span>
+                              ))}
                             {g.replicas !== null && (
-                              <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">{g.replicas} replika</span>
-                            )}
-                            {partial && owners.map((c) => (
-                              <span
-                                key={c}
-                                title={`Yalnızca ${c} cluster'ında var`}
-                                className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)] font-mono flex-shrink-0"
-                              >
-                                {c}
+                              <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">
+                                {g.replicas} replika
                               </span>
-                            ))}
-                            {sources[g.name] === "discovery" && (
+                            )}
+                            {partial &&
+                              owners.map((c) => (
+                                <span
+                                  key={c}
+                                  title={`Yalnızca ${c} cluster'ında var`}
+                                  className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)] font-mono flex-shrink-0"
+                                >
+                                  {c}
+                                </span>
+                              ))}
+                            {sources[g.name] === 'discovery' && (
                               <span
                                 className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text-muted)] flex-shrink-0"
                                 title="Zamanlanmış envanterde henüz yok — bir kullanıcının taramasıyla geldi."
@@ -473,7 +547,9 @@ const AppNameStep: React.FC<Props> = ({
                         );
                       })}
                       {rows.length === 0 && (
-                        <p className="text-xs text-[var(--text-muted)] text-center py-3">Bu bölümde eşleşme yok.</p>
+                        <p className="text-xs text-[var(--text-muted)] text-center py-3">
+                          Bu bölümde eşleşme yok.
+                        </p>
                       )}
                     </div>
                   </div>
@@ -492,7 +568,7 @@ const AppNameStep: React.FC<Props> = ({
                 ? "Bu namespace'in uygulama listesini görme yetkiniz yok. Uygulama adını biliyorsanız yukarıya yazabilirsiniz."
                 : scannedAt
                   ? `Bu namespace ${shortDate(scannedAt)} tarihinde tarandı ve çalışan bir uygulama bulunamadı — namespace boş görünüyor.`
-                  : "Bu namespace için kayıtlı uygulama listesi yok. Adını biliyorsanız yukarıya yazın."}
+                  : 'Bu namespace için kayıtlı uygulama listesi yok. Adını biliyorsanız yukarıya yazın.'}
             </p>
             {onDiscover && !denied && (
               <button
@@ -502,7 +578,7 @@ const AppNameStep: React.FC<Props> = ({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] transition-colors active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
               >
                 <MagnifyingGlassCircleIcon aria-hidden="true" className="w-4 h-4" />
-                {busy ? "Başlatılıyor…" : scannedAt ? "Yine de tekrar tara" : "Bu namespace'i tara"}
+                {busy ? 'Başlatılıyor…' : scannedAt ? 'Yine de tekrar tara' : "Bu namespace'i tara"}
               </button>
             )}
           </div>
@@ -511,21 +587,25 @@ const AppNameStep: React.FC<Props> = ({
 
       {atLimit && Number.isFinite(limit) && (
         <p className="text-xs text-[var(--text-muted)]">
-          Sepette kalan yer doldu ({limit}). Her hedef ayrı bir <span className="font-mono">oc login</span> +
-          pod taraması demek; devam etmek için önce mevcut seçimi çalıştırın.
+          Sepette kalan yer doldu ({limit}). Her hedef ayrı bir{' '}
+          <span className="font-mono">oc login</span> + pod taraması demek; devam etmek için önce
+          mevcut seçimi çalıştırın.
         </p>
       )}
 
       <button
-        onClick={() => { onSubmit([...selected]); setSelected(new Set()); }}
+        onClick={() => {
+          onSubmit([...selected]);
+          setSelected(new Set());
+        }}
         disabled={selected.size === 0 || busy}
         className="btn-primary w-full"
       >
         {busy
-          ? "Ekleniyor…"
+          ? 'Ekleniyor…'
           : selected.size === 0
-            ? "En az bir uygulama seçin"
-            : `${submitLabel ?? "Seçilenleri Listeye Ekle"} (${selected.size})`}
+            ? 'En az bir uygulama seçin'
+            : `${submitLabel ?? 'Seçilenleri Listeye Ekle'} (${selected.size})`}
       </button>
     </div>
   );

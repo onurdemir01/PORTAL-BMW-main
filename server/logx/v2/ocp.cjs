@@ -38,7 +38,10 @@ function buildOcpExtraVars({ env, tenant, clusters, hosts, meta }) {
   const items = names.map((name) => {
     const m = (meta && meta[name]) || {};
     return {
-      env, tenant, cluster_name: name, terminal_host: hosts[name],
+      env,
+      tenant,
+      cluster_name: name,
+      terminal_host: hosts[name],
       // v3: cluster metadata'si DB'den gelir. Bos olan alan HIC gonderilmez —
       // playbook o zaman eski inventory yoluna (clusters[tenant_env][ad]) duser.
       ...(m.api_url ? { api_url: m.api_url } : {}),
@@ -123,11 +126,11 @@ async function assertVaultKeysKnownOrThrow(meta) {
   throw Object.assign(
     new Error(
       `Vault anahtarı katalogda kayıtlı değil: ${list}. ` +
-      `Bu haliyle iş AWX'te "vault parolası çözülemedi" ile düşer. ` +
-      `Admin > LogX Yapılandırma > Vault Anahtarları ekranından anahtarı ekleyin ` +
-      `(ve AWX'teki credentials.yaml içinde de tanımlı olduğundan emin olun).`
+        `Bu haliyle iş AWX'te "vault parolası çözülemedi" ile düşer. ` +
+        `Admin > LogX Yapılandırma > Vault Anahtarları ekranından anahtarı ekleyin ` +
+        `(ve AWX'teki credentials.yaml içinde de tanımlı olduğundan emin olun).`,
     ),
-    { status: 400, code: 'vault_key_unknown' }
+    { status: 400, code: 'vault_key_unknown' },
   );
 }
 
@@ -145,10 +148,10 @@ async function resolveHostsOrThrow(env, tenant, clusters) {
     throw Object.assign(
       new Error(
         `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — ` +
-        `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin ` +
-        `veya "${tenant}/${env}" için yedek eşleme tanımlayın.`
+          `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin ` +
+          `veya "${tenant}/${env}" için yedek eşleme tanımlayın.`,
       ),
-      { status: 400 }
+      { status: 400 },
     );
   }
   return hosts;
@@ -162,7 +165,9 @@ async function selectClusters(requestRow, env, tenant, clusters) {
   for (const clusterName of clusters) {
     const exists = await adminData.clusterExists(env, tenant, clusterName);
     if (!exists) {
-      throw Object.assign(new Error(`Cluster tanımlı/aktif değil: ${clusterName}`), { status: 400 });
+      throw Object.assign(new Error(`Cluster tanımlı/aktif değil: ${clusterName}`), {
+        status: 400,
+      });
     }
   }
   const hosts = await resolveHostsOrThrow(env, tenant, clusters);
@@ -183,16 +188,24 @@ async function discoverNamespaces(requestRow) {
   if (!Array.isArray(input?.clusters) || !input.clusters.length) {
     throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
   }
-  const { hosts, meta } = await resolveClusterContextOrThrow(input.env, input.tenant, input.clusters);
-  const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
-  const job = await jobs.launchJob(
-    requestRow.request_id,
-    'ocp_namespace_discovery',
-    {
-      ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta }),
-      ...buildOcpRuntimeVars(runtimeCfg),
-    }
+  const { hosts, meta } = await resolveClusterContextOrThrow(
+    input.env,
+    input.tenant,
+    input.clusters,
   );
+  const runtimeCfg = await require('./ocp-runtime-config.cjs')
+    .getConfig()
+    .catch(() => ({}));
+  const job = await jobs.launchJob(requestRow.request_id, 'ocp_namespace_discovery', {
+    ...buildOcpExtraVars({
+      env: input.env,
+      tenant: input.tenant,
+      clusters: input.clusters,
+      hosts,
+      meta,
+    }),
+    ...buildOcpRuntimeVars(runtimeCfg),
+  });
   await requests.updateRequest(requestRow.request_id, { state: 'namespace_discovering' });
   return job;
 }
@@ -205,15 +218,27 @@ async function discoverApps(requestRow, namespaces) {
   if (!Array.isArray(input?.clusters) || !input.clusters.length) {
     throw Object.assign(new Error('Önce cluster seçimi tamamlanmalı.'), { status: 400 });
   }
-  const nsList = [...new Set((namespaces || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  const nsList = [
+    ...new Set((namespaces || []).map((n) => String(n || '').trim()).filter(Boolean)),
+  ];
   if (!nsList.length) {
     throw Object.assign(new Error('En az bir namespace gerekli.'), { status: 400 });
   }
 
-  const { hosts, meta } = await resolveClusterContextOrThrow(input.env, input.tenant, input.clusters);
-  const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
+  const { hosts, meta } = await resolveClusterContextOrThrow(
+    input.env,
+    input.tenant,
+    input.clusters,
+  );
+  const runtimeCfg = await require('./ocp-runtime-config.cjs')
+    .getConfig()
+    .catch(() => ({}));
   const base = buildOcpExtraVars({
-    env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta,
+    env: input.env,
+    tenant: input.tenant,
+    clusters: input.clusters,
+    hosts,
+    meta,
   });
   // Her cluster ayni namespace kumesini tarar; playbook cluster-basina `namespaces`
   // alanini okur (yoksa genel `ocp_namespaces` listesine duser).
@@ -242,19 +267,37 @@ async function finalizeAppDiscovery(requestRow, job) {
 
   // Onbellege yaz — kesif sonucu artik kullanicilar arasi paylasilir (best-effort:
   // onbellek yazimi basarisiz olsa da sihirbaz akisi durmamali).
+  // IKI YAZIM AYRI `try` ICINDE — BILEREK.
+  //
+  // Eskiden ikisi TEK bir `try` icindeydi ve `putApps` patlarsa (or. MSSQL'de
+  // `app_name` NVARCHAR(150) sinirini asan bir ad, gecici DB hatasi) `putAppScan`
+  // HIC calismiyordu. Sonuc: state `apps_discovered` olur, ekran "islendi" sanir,
+  // ama tarama kaydi yazilmadigi icin `scannedEmpty` false kalir ve sihirbaz ayni
+  // namespace'e her girişte YENIDEN ~1 dk'lik bir AWX job'i acar. Yani bir uygulama
+  // adinin uzun olmasi, o namespace'i SONSUZ tarama dongusune sokuyordu.
+  //
+  // Tarama KAYDI, uygulama listesinden daha kritiktir: listeyi kaybetmek kullaniciyi
+  // "yeniden tara" demeye zorlar, kaydi kaybetmek DONGU uretir.
+  const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : {};
+  const cache = require('./ocp-cache.cjs');
   try {
-    const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : {};
-    const cache = require('./ocp-cache.cjs');
     await cache.putApps({
-      env: input.env, tenant: input.tenant, entries: parsed.entries, source: 'discovery',
+      env: input.env,
+      tenant: input.tenant,
+      entries: parsed.entries,
+      source: 'discovery',
     });
+  } catch (e) {
+    console.warn('[LogXv2] uygulama onbellegi yazilamadi:', e.message);
+  }
+  try {
     // TARAMANIN KENDISI de kaydedilir — sonuc BOS olsa bile. `putApps` yalnizca bulunan
     // uygulamalari yazar; gercekten bos bir namespace hicbir satir uretmez ve "hic
     // taranmamis" ile ayirt edilemezdi. Sihirbaz o yuzden ayni namespace'e her girişte
     // yeniden ~1 dk'lik bir AWX job'i aciyordu (2026-08-10 kullanici geri bildirimi).
     await cache.putAppScan({ env: input.env, tenant: input.tenant, entries: parsed.entries });
   } catch (e) {
-    console.warn('[LogXv2] uygulama onbellegi yazilamadi:', e.message);
+    console.warn('[LogXv2] tarama kaydi yazilamadi (dongu riski):', e.message);
   }
 
   // `discovery_result_json` BILEREK YAZILMAZ: o sutun namespace kesfinin sonucunu tutar ve
@@ -270,7 +313,9 @@ async function finalizeAppDiscovery(requestRow, job) {
 // atip tekillestiririz. (Playbook'u degistirmeden portal tarafinda normalize — kuruma
 // ozgu playbook'a dokunmadan temiz gorunum + dogru `-n <namespace>` degeri.)
 function cleanNamespaceName(ns) {
-  return String(ns == null ? '' : ns).replace(/^.*\//, '').trim();
+  return String(ns == null ? '' : ns)
+    .replace(/^.*\//, '')
+    .trim();
 }
 
 function normalizeDiscoveryResult(artifacts) {
@@ -284,7 +329,10 @@ function normalizeDiscoveryResult(artifacts) {
 
 async function finalizeNamespaceDiscovery(requestRow, job) {
   if (!job.artifacts) {
-    await requests.updateRequest(requestRow.request_id, { state: 'failed', errorMessage: job.errorMessage || 'Namespace keşfi başarısız oldu.' });
+    await requests.updateRequest(requestRow.request_id, {
+      state: 'failed',
+      errorMessage: job.errorMessage || 'Namespace keşfi başarısız oldu.',
+    });
     return;
   }
   const normalized = normalizeDiscoveryResult(job.artifacts);
@@ -299,8 +347,11 @@ async function finalizeNamespaceDiscovery(requestRow, job) {
       // kullaniciyi yanlis yonlendirirdi.
       if (c.status !== 'ok') continue;
       await cache.putNamespaces({
-        env: input.env, tenant: input.tenant, clusterName: c.cluster_name,
-        namespaces: c.namespaces, source: 'discovery',
+        env: input.env,
+        tenant: input.tenant,
+        clusterName: c.cluster_name,
+        namespaces: c.namespaces,
+        source: 'discovery',
       });
     }
   } catch (e) {
@@ -342,12 +393,14 @@ function normalizeTargets(targets) {
 // de daha bastan guvenli olmasi (assert'e takilip is yarida kalmasin).
 const ARCHIVE_PART_MAX = 60;
 function slugPart(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, ARCHIVE_PART_MAX) || 'x';
+  return (
+    String(value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, ARCHIVE_PART_MAX) || 'x'
+  );
 }
 
 // POST /ocp/:requestId/discover-fetch — { targets: [{namespace, appName}, ...] }.
@@ -363,17 +416,25 @@ async function discoverFetch(requestRow, targets) {
   }
   const list = normalizeTargets(targets);
   if (!list.length) {
-    throw Object.assign(new Error('En az bir (namespace, uygulama) çifti gerekli.'), { status: 400 });
+    throw Object.assign(new Error('En az bir (namespace, uygulama) çifti gerekli.'), {
+      status: 400,
+    });
   }
   if (list.length > MAX_TARGETS) {
     throw Object.assign(
-      new Error(`Tek çalıştırmada en fazla ${MAX_TARGETS} (namespace, uygulama) çifti seçilebilir.`),
-      { status: 400 }
+      new Error(
+        `Tek çalıştırmada en fazla ${MAX_TARGETS} (namespace, uygulama) çifti seçilebilir.`,
+      ),
+      { status: 400 },
     );
   }
   // Bastion'lar client input'undan degil, taze bir DB sorgusuyla yeniden cozulur
   // (client'in gonderdigi input_json'a degil, admin verisine guveniriz).
-  const { hosts, meta } = await resolveClusterContextOrThrow(input.env, input.tenant, input.clusters);
+  const { hosts, meta } = await resolveClusterContextOrThrow(
+    input.env,
+    input.tenant,
+    input.clusters,
+  );
 
   // Arsiv ADINI artik playbook kurar (cluster/ns/app bilgisi orada). Portal yalnizca
   // calistirmayi benzersizlestiren kisa bir kimlik uretir.
@@ -384,9 +445,17 @@ async function discoverFetch(requestRow, targets) {
   // token + DB satiri uretiliyordu ve uretilen URL portalin KENDI localhost'unu isaret
   // ettigi icin bastion'dan zaten erisilemezdi. Teslim yolu legacy ile ayni: arsiv
   // paylasimli staging dizinine (NFS) yazilir, portal oradan okur.
-  const runtimeCfg = await require('./ocp-runtime-config.cjs').getConfig().catch(() => ({}));
+  const runtimeCfg = await require('./ocp-runtime-config.cjs')
+    .getConfig()
+    .catch(() => ({}));
   const job = await jobs.launchJob(requestRow.request_id, 'ocp_discover_fetch', {
-    ...buildOcpExtraVars({ env: input.env, tenant: input.tenant, clusters: input.clusters, hosts, meta }),
+    ...buildOcpExtraVars({
+      env: input.env,
+      tenant: input.tenant,
+      clusters: input.clusters,
+      hosts,
+      meta,
+    }),
     ...buildOcpRuntimeVars(runtimeCfg),
     // Coklu hedef sozlesmesi.
     ocp_targets: list.map((t) => ({ namespace: t.namespace, app_name: t.appName })),
@@ -412,8 +481,17 @@ async function discoverFetch(requestRow, targets) {
 }
 
 module.exports = {
-  getClusterTree, selectClusters, discoverNamespaces, finalizeNamespaceDiscovery, discoverFetch,
-  discoverApps, finalizeAppDiscovery,
-  buildOcpExtraVars, buildOcpRuntimeVars, normalizeTargets, slugPart, MAX_TARGETS,
+  getClusterTree,
+  selectClusters,
+  discoverNamespaces,
+  finalizeNamespaceDiscovery,
+  discoverFetch,
+  discoverApps,
+  finalizeAppDiscovery,
+  buildOcpExtraVars,
+  buildOcpRuntimeVars,
+  normalizeTargets,
+  slugPart,
+  MAX_TARGETS,
   assertVaultKeysKnownOrThrow,
 };
