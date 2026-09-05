@@ -12,8 +12,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-const PAGE = fs.readFileSync(path.join(ROOT, 'components', 'telnet', 'TelnetWizardPage.tsx'), 'utf8');
-const PANEL = fs.readFileSync(path.join(ROOT, 'components', 'telnet', 'steps', 'TelnetResultPanel.tsx'), 'utf8');
+const PAGE = fs.readFileSync(
+  path.join(ROOT, 'components', 'telnet', 'TelnetWizardPage.tsx'),
+  'utf8',
+);
+const PANEL = fs.readFileSync(
+  path.join(ROOT, 'components', 'telnet', 'steps', 'TelnetResultPanel.tsx'),
+  'utf8',
+);
+
+// BICIM DEGIL KURAL. Prettier tek/cift tirnagi degistiriyor ve JSX metnini
+// satirlara boluyor (`{counts.total}{' '}` + yeni satir); iki bekci bu yuzden
+// kural aynen dururken kirmiziya dondu (bkz. bekci-korlugu-desenleri #2b).
+const norm = (s) => s.replace(/\s+/g, ' ').replace(/'/g, '"');
+const PANEL_N = norm(PANEL);
 const API = fs.readFileSync(path.join(ROOT, 'api', 'telnetApi.ts'), 'utf8');
 const TRACKER = fs.readFileSync(path.join(ROOT, 'contexts', 'JobTrackerContext.tsx'), 'utf8');
 
@@ -21,17 +33,23 @@ const TRACKER = fs.readFileSync(path.join(ROOT, 'contexts', 'JobTrackerContext.t
 // alinti yapiyor; "hala duruyor mu" taramasi gercek KODA bakmali.
 function stripComments(src) {
   return src
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')   // JSX yorumlari
-    .replace(/\/\*[\s\S]*?\*\//g, '')         // blok yorumlar
-    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '') // JSX yorumlari
+    .replace(/\/\*[\s\S]*?\*\//g, '') // blok yorumlar
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
 }
 const PAGE_CODE = stripComments(PAGE);
 
 test('E4: kosulsuz yesil tik KALDIRILDI', () => {
-  assert.ok(!/CheckCircleIcon className="w-10 h-10 text-green-600"/.test(PAGE_CODE),
-    'yaniltici yesil tik duruyor');
-  assert.ok(!/Telnet testi başlatıldı\./.test(PAGE_CODE),
-    '"baslatildi" metni sonuc ekraninda — is bitmeden sonuc gibi okunuyor');
+  assert.ok(
+    !/CheckCircleIcon className="w-10 h-10 text-green-600"/.test(PAGE_CODE),
+    'yaniltici yesil tik duruyor',
+  );
+  assert.ok(
+    !/Telnet testi başlatıldı\./.test(PAGE_CODE),
+    '"baslatildi" metni sonuc ekraninda — is bitmeden sonuc gibi okunuyor',
+  );
 });
 
 test('E3: hedef basina satir gosteriliyor', () => {
@@ -42,15 +60,24 @@ test('E3: hedef basina satir gosteriliyor', () => {
 });
 
 test('E3: KISMI basari gorunur ("3 hedeften 1’i acik")', () => {
-  assert.match(PANEL, /\{counts\.open\}<\/strong> \/ \{counts\.total\} hedefte açık/);
+  // `{counts.total}` ile "hedefte açık" arasina prettier `{" "}` + satir sonu
+  // sokabiliyor; olculen sey ikisinin AYNI cumlede olmasi.
+  assert.match(PANEL_N, /\{counts\.open\}<\/strong> \/ \{counts\.total\}.{0,12}hedefte açık/);
 });
 
 test('E3: "test yapilamadi" ile "kapali" AYRI gosteriliyor', () => {
   // Ikisini ayni renge boyamak kullaniciyi bir ag kurali sanip saatlerce yanlis yerde
   // aratabilirdi.
-  assert.match(PANEL, /error:\s*\{ label: "TEST YAPILAMADI"/);
-  assert.match(PANEL, /closed: \{ label: "KAPALI"/);
-  assert.ok(!/error:.*status-danger/.test(PANEL), 'hata durumu "kapali" ile ayni renge boyanmis');
+  assert.match(PANEL_N, /error: \{ label: "TEST YAPILAMADI"/);
+  assert.match(PANEL_N, /closed: \{ label: "KAPALI"/);
+  // NORMALIZE METINDE ve SINIRLI: ham metinde `.` satir sonunu gecmez, prettier
+  // nesneyi satirlara acinca `error:` ile rengi ayri satirlara dusuyor ve OLUMSUZ
+  // assert her zaman geciyordu — yani bekci sessizce FAIL-OPEN oluyordu (mutasyonla
+  // yakalandi: error rengi status-danger yapildiginda kirmizi donmedi).
+  assert.ok(
+    !/error: \{[^}]*status-danger/.test(PANEL_N),
+    'hata durumu "kapali" ile ayni renge boyanmis',
+  );
 });
 
 test('E5: AWX govdesi yalnizca YONETICIDE', () => {
@@ -61,7 +88,11 @@ test('E5: AWX govdesi yalnizca YONETICIDE', () => {
 
 test('E6: girdi ozeti SONUC ekraninda da var', () => {
   const done = PAGE.slice(PAGE.indexOf('{step === "done"'));
-  assert.match(done, /\{inputSummary\}/, 'sonuca bakan kullanici hangi namespace’lerdi sorusunu cevaplayamaz');
+  assert.match(
+    done,
+    /\{inputSummary\}/,
+    'sonuca bakan kullanici hangi namespace’lerdi sorusunu cevaplayamaz',
+  );
 });
 
 test('E7: "ayni hedeflerle tekrar" var (alti adim bastan yapilmasin)', () => {
@@ -73,14 +104,21 @@ test('E7: "ayni hedeflerle tekrar" var (alti adim bastan yapilmasin)', () => {
 test('E8: IPTAL — is bitmeden durdurulabiliyor', () => {
   assert.match(PAGE, /async function cancelJob\(\)/);
   assert.match(PAGE, /Testi durdur/);
-  assert.match(PAGE, /\{!jobDone && result\.jobId != null && \(/, 'iptal butonu bitmis iste de gorunuyor');
+  assert.match(
+    PAGE,
+    /\{!jobDone && result\.jobId != null && \(/,
+    'iptal butonu bitmis iste de gorunuyor',
+  );
   assert.match(API, /cancel: \(serverId: number, jobId: number\)/);
 });
 
 test('E8: gecen sure gosteriliyor ve is bitince DURUYOR', () => {
   assert.match(PAGE, /function fmtElapsed/);
-  assert.match(PAGE, /if \(jobFinished\) return;/,
-    'bitmis isin suresi artmaya devam ederse ekran yalan soyler');
+  assert.match(
+    PAGE,
+    /if \(jobFinished\) return;/,
+    'bitmis isin suresi artmaya devam ederse ekran yalan soyler',
+  );
 });
 
 test('H1: cift tiklama korumasi busyRef ile (busy state’i yeterli DEGIL)', () => {
@@ -89,15 +127,22 @@ test('H1: cift tiklama korumasi busyRef ile (busy state’i yeterli DEGIL)', () 
   // gecici pod actigi icin maliyeti gercek.
   assert.match(PAGE, /const busyRef = useRef\(false\);/);
   assert.match(PAGE, /if \(busyRef\.current\) return;\s*\n\s*busyRef\.current = true;/);
-  assert.ok(!/async function runTelnet\(ip: string, port: string\) \{\s*\n\s*if \(busy\) return;/.test(PAGE),
-    'eski state tabanli guard duruyor');
+  assert.ok(
+    !/async function runTelnet\(ip: string, port: string\) \{\s*\n\s*if \(busy\) return;/.test(
+      PAGE,
+    ),
+    'eski state tabanli guard duruyor',
+  );
 });
 
 test('JobTracker sonucu TASIR ama YORUMLAMAZ', () => {
   // Aksi halde her yeni modul icin paylasilan context'e ozel alan eklemek gerekirdi.
   assert.match(TRACKER, /result\?: unknown;/);
-  assert.match(TRACKER, /result: r\.result \?\? j\.result,/,
-    'is bitmeden null donen yoklama, daha once alinmis sonucu SILMEMELI');
+  assert.match(
+    TRACKER,
+    /result: r\.result \?\? j\.result,/,
+    'is bitmeden null donen yoklama, daha once alinmis sonucu SILMEMELI',
+  );
   assert.ok(!/TelnetResult/.test(TRACKER), 'paylasilan context modul-ozel tipe baglanmis');
 });
 
