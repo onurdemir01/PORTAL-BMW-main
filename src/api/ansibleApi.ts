@@ -1,11 +1,11 @@
-import { safeJson } from "./http";
+import { safeJson } from './http';
 // src/api/ansibleApi.ts — AWX runner API client
 
-const BASE = "/api/ansible";
+const BASE = '/api/ansible';
 
 async function json<T>(r: Response): Promise<T> {
   if (!r.ok) {
-    const text = await r.text().catch(() => "");
+    const text = await r.text().catch(() => '');
     throw new Error(text || `HTTP ${r.status}`);
   }
   return safeJson(r);
@@ -70,8 +70,13 @@ export interface AwxTemplateDetail {
   modified: string | null;
   recentJobs: { id: number; status: string; finished: string | null }[];
   surveyFields: {
-    name: string; label: string; type: string; required: boolean;
-    default: string; choices: string[]; description: string;
+    name: string;
+    label: string;
+    type: string;
+    required: boolean;
+    default: string;
+    choices: string[];
+    description: string;
   }[];
 }
 
@@ -79,7 +84,7 @@ export interface OcpCluster {
   id: string;
   name: string;
   display: string;
-  env: "prod" | "test" | "qa" | "dev";
+  env: 'prod' | 'test' | 'qa' | 'dev';
   apiUrl: string;
   consoleUrl?: string;
   token?: string;
@@ -100,7 +105,7 @@ export interface OcpCluster {
 
 export interface JobStatus {
   jobId: number;
-  status: "pending" | "waiting" | "running" | "successful" | "failed" | "error" | "canceled";
+  status: 'pending' | 'waiting' | 'running' | 'successful' | 'failed' | 'error' | 'canceled';
   started?: string;
   finished?: string;
   elapsed?: number;
@@ -123,10 +128,17 @@ export interface AwxServer {
 }
 
 export interface AwxServerHealth {
-  id: number; name: string; url: string; configured: boolean;
-  reachable: boolean; authOk: boolean; checkedAt: string;
-  responseTimeMs: number | null; awxVersion: string | null; error: string | null;
-  connectionType?: "token" | "user_pass";
+  id: number;
+  name: string;
+  url: string;
+  configured: boolean;
+  reachable: boolean;
+  authOk: boolean;
+  checkedAt: string;
+  responseTimeMs: number | null;
+  awxVersion: string | null;
+  error: string | null;
+  connectionType?: 'token' | 'user_pass';
 }
 
 export interface RecentAwxJob {
@@ -148,21 +160,37 @@ export interface RecentAwxJobsServer {
 export const ansibleApi = {
   // Gercek AWX /api/v2/ping/ sonucu (actions.md #8) — her yapilandirilmis sunucu icin.
   health: (): Promise<{
-    ok: boolean; configured: boolean; serverCount: number; servers: AwxServerHealth[];
-    url?: string; version?: string; message?: string;
+    ok: boolean;
+    configured: boolean;
+    serverCount: number;
+    servers: AwxServerHealth[];
+    url?: string;
+    version?: string;
+    message?: string;
   }> => fetch(`${BASE}/awx/health`).then(safeJson),
 
   servers: (): Promise<{ ok: boolean; servers: AwxServer[] }> =>
     fetch(`${BASE}/servers`).then(safeJson),
 
-  templates: (serverId: number): Promise<{ ok: boolean; templates: AwxTemplate[]; message?: string }> =>
+  templates: (
+    serverId: number,
+  ): Promise<{ ok: boolean; templates: AwxTemplate[]; message?: string }> =>
     fetch(`${BASE}/templates/${serverId}`).then(safeJson),
 
   awxTemplates: (): Promise<{ ok: boolean; templates: AwxTemplate[]; message?: string }> =>
     fetch(`${BASE}/awx/templates`).then(safeJson),
 
-  awxTemplatesAll: (): Promise<{ ok: boolean; total: number; summary: { serverId: number; serverName: string; ok: boolean; templates: AwxTemplate[]; error?: string }[] }> =>
-    fetch(`${BASE}/awx/templates/all`).then(safeJson),
+  awxTemplatesAll: (): Promise<{
+    ok: boolean;
+    total: number;
+    summary: {
+      serverId: number;
+      serverName: string;
+      ok: boolean;
+      templates: AwxTemplate[];
+      error?: string;
+    }[];
+  }> => fetch(`${BASE}/awx/templates/all`).then(safeJson),
 
   clusters: (): Promise<{ ok: boolean; clusters: OcpCluster[] }> =>
     fetch(`${BASE}/clusters`).then(safeJson),
@@ -172,39 +200,54 @@ export const ansibleApi = {
   recentJobs: (): Promise<{ ok: boolean; servers: RecentAwxJobsServer[] }> =>
     fetch(`${BASE}/awx/recent-jobs`).then(safeJson),
 
-  addCluster: (data: Omit<OcpCluster, "id">): Promise<{ ok: boolean; cluster: OcpCluster; message?: string }> =>
+  addCluster: (
+    data: Omit<OcpCluster, 'id'>,
+  ): Promise<{ ok: boolean; cluster: OcpCluster; message?: string }> =>
     fetch(`${BASE}/clusters`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(safeJson),
 
-  updateCluster: (id: string, data: Partial<Omit<OcpCluster, "id">>): Promise<{ ok: boolean; cluster: OcpCluster; message?: string }> =>
+  updateCluster: (
+    id: string,
+    data: Partial<Omit<OcpCluster, 'id'>>,
+  ): Promise<{ ok: boolean; cluster: OcpCluster; message?: string }> =>
     fetch(`${BASE}/clusters/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(safeJson),
 
   deleteCluster: (id: string): Promise<{ ok: boolean; clusters: OcpCluster[]; message?: string }> =>
-    fetch(`${BASE}/clusters/${id}`, { method: "DELETE" }).then(safeJson),
+    fetch(`${BASE}/clusters/${id}`, { method: 'DELETE' }).then(safeJson),
 
   // Hafif erişilebilirlik testi (jump-host GEREKMEZ, "Pod Durumu"ndan bağımsız) — bkz. actions.md #9
-  testClusterConnection: (id: string): Promise<{ ok: boolean; message?: string; responseTimeMs?: number; status?: string }> =>
-    fetch(`${BASE}/clusters/${id}/test-connection`, { method: "POST" }).then(safeJson),
+  testClusterConnection: (
+    id: string,
+  ): Promise<{ ok: boolean; message?: string; responseTimeMs?: number; status?: string }> =>
+    fetch(`${BASE}/clusters/${id}/test-connection`, { method: 'POST' }).then(safeJson),
 
   // Canlı pod/node durumu (salt-okunur `oc get`, jump host üzerinden) — bkz. OcpCluster.jumpHost
-  clusterPodStatus: (id: string, namespace?: string, labelSelector?: string): Promise<{ ok: boolean; output?: string; message?: string; jobId?: number }> =>
+  clusterPodStatus: (
+    id: string,
+    namespace?: string,
+    labelSelector?: string,
+  ): Promise<{ ok: boolean; output?: string; message?: string; jobId?: number }> =>
     fetch(`${BASE}/clusters/${id}/pod-status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ namespace, labelSelector }),
     }).then(safeJson),
 
-  run: (templateId: number, extraVars: Record<string, string> = {}, limit = ""): Promise<{ ok: boolean; jobId: number; status: string; message?: string }> =>
+  run: (
+    templateId: number,
+    extraVars: Record<string, string> = {},
+    limit = '',
+  ): Promise<{ ok: boolean; jobId: number; status: string; message?: string }> =>
     fetch(`${BASE}/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ templateId, extraVars, limit }),
     }).then(safeJson),
 
@@ -218,26 +261,49 @@ export const ansibleApi = {
   ssItems: (): Promise<{ ok: boolean; items: AnsibleSsItem[] }> =>
     fetch(`${BASE}/ss/items`).then(safeJson),
 
-  saveSsItem: (item: Partial<AnsibleSsItem>): Promise<{ ok: boolean; item?: AnsibleSsItem; items: AnsibleSsItem[]; message?: string }> =>
+  saveSsItem: (
+    item: Partial<AnsibleSsItem>,
+  ): Promise<{ ok: boolean; item?: AnsibleSsItem; items: AnsibleSsItem[]; message?: string }> =>
     fetch(`${BASE}/ss/items`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(item),
     }).then(safeJson),
 
   deleteSsItem: (id: string): Promise<{ ok: boolean; items: AnsibleSsItem[] }> =>
-    fetch(`${BASE}/ss/items/${id}`, { method: "DELETE" }).then(safeJson),
+    fetch(`${BASE}/ss/items/${id}`, { method: 'DELETE' }).then(safeJson),
 
-  surveySpec: (serverId: number, templateId: number): Promise<{ ok: boolean; fields: SurveyField[]; surveyEnabled: boolean; launchOptions: LaunchOptions; askVariables: boolean; message?: string }> =>
-    fetch(`${BASE}/survey/${serverId}/${templateId}`).then(safeJson),
+  surveySpec: (
+    serverId: number,
+    templateId: number,
+  ): Promise<{
+    ok: boolean;
+    fields: SurveyField[];
+    surveyEnabled: boolean;
+    launchOptions: LaunchOptions;
+    askVariables: boolean;
+    message?: string;
+  }> => fetch(`${BASE}/survey/${serverId}/${templateId}`).then(safeJson),
 
   // Admin-only: gizlenmiş (hidden) alanlar dahil TÜM survey alanlarını döner —
   // "Alanları Yönet" panelinin veri kaynağı. Sunucu, ?admin=1'i yalnızca gerçekten
   // Admin rolündeki oturumlarda onurlandırır (client bayrağına güvenilmez).
-  surveySpecAdmin: (serverId: number, templateId: number): Promise<{ ok: boolean; fields: SurveyField[]; surveyEnabled: boolean; launchOptions: LaunchOptions; askVariables: boolean; message?: string }> =>
-    fetch(`${BASE}/survey/${serverId}/${templateId}?admin=1`).then(safeJson),
+  surveySpecAdmin: (
+    serverId: number,
+    templateId: number,
+  ): Promise<{
+    ok: boolean;
+    fields: SurveyField[];
+    surveyEnabled: boolean;
+    launchOptions: LaunchOptions;
+    askVariables: boolean;
+    message?: string;
+  }> => fetch(`${BASE}/survey/${serverId}/${templateId}?admin=1`).then(safeJson),
 
-  templateDetail: (serverId: number, templateId: number): Promise<{ ok: boolean; template?: AwxTemplateDetail; message?: string }> =>
+  templateDetail: (
+    serverId: number,
+    templateId: number,
+  ): Promise<{ ok: boolean; template?: AwxTemplateDetail; message?: string }> =>
     fetch(`${BASE}/template-detail/${serverId}/${templateId}`).then(safeJson),
 
   // pendingApproval=true ise iş HENÜZ tetiklenmedi — Smart'ta bir talep açıldı, jobId
@@ -249,90 +315,156 @@ export const ansibleApi = {
     templateId: number,
     extraVars: Record<string, string>,
     templateName: string,
-    options: { limit?: string; forks?: number; jobTags?: string; skipTags?: string; verbosity?: number; jobType?: string } = {},
+    options: {
+      limit?: string;
+      forks?: number;
+      jobTags?: string;
+      skipTags?: string;
+      verbosity?: number;
+      jobType?: string;
+    } = {},
     // OCO Kontrolu acik bir PRODUCTION talebinde sunucu once ocoRequired, sonra
     // ocoDecisionRequired doner; istemci ayni cagriyi bu iki alani doldurarak
     // TEKRAR yapar (bkz. server/ansible/runner.cjs "OCO KONTROLU" blogu).
-    oco: { ocoNumber?: string; ocoAction?: "schedule" | "later" } = {}
+    oco: { ocoNumber?: string; ocoAction?: 'schedule' | 'later' } = {},
   ): Promise<{
-    ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number;
-    externalTicketId?: string; message?: string; field?: string;
-    ocoRequired?: boolean; ocoDecisionRequired?: boolean; ocoExpired?: boolean;
-    ocoScheduled?: boolean; ocoDeferred?: boolean; scheduleId?: number; oco?: OcoWindowInfo;
-    awxScheduleId?: number; awxScheduleName?: string; viaSmart?: boolean;
+    ok: boolean;
+    jobId?: number;
+    status?: string;
+    pendingApproval?: boolean;
+    ticketId?: number;
+    externalTicketId?: string;
+    message?: string;
+    field?: string;
+    ocoRequired?: boolean;
+    ocoDecisionRequired?: boolean;
+    ocoExpired?: boolean;
+    ocoScheduled?: boolean;
+    ocoDeferred?: boolean;
+    scheduleId?: number;
+    oco?: OcoWindowInfo;
+    awxScheduleId?: number;
+    awxScheduleName?: string;
+    viaSmart?: boolean;
   }> =>
     fetch(`${BASE}/launch-ss/${serverId}/${templateId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ extraVars, templateName, ...options, ...oco }),
     }).then(safeJson),
 
   // OCO numarasini SORGULAR, hicbir sey tetiklemez — arayuz kullaniciya secenekleri
   // sunmadan once kesinti penceresini gostermek icin cagirir.
-  ocoValidate: (ocoNumber: string): Promise<{ ok: boolean; oco?: OcoWindowInfo; message?: string }> =>
+  ocoValidate: (
+    ocoNumber: string,
+  ): Promise<{ ok: boolean; oco?: OcoWindowInfo; message?: string }> =>
     fetch(`${BASE}/ss/oco/validate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ocoNumber }),
     }).then(safeJson),
 
   // TÜM kullanıcıların OCO tetiklemeleri (Admin). Smart talepleriyle aynı sayfalama
   // sözleşmesi: limit/offset/status/username/q.
-  ocoScheduledAll: (opts: { limit?: number; offset?: number; status?: string; username?: string; q?: string } = {}):
-    Promise<{ ok: boolean; items?: AdminOcoSchedule[]; total?: number; message?: string }> => {
+  ocoScheduledAll: (
+    opts: { limit?: number; offset?: number; status?: string; username?: string; q?: string } = {},
+  ): Promise<{ ok: boolean; items?: AdminOcoSchedule[]; total?: number; message?: string }> => {
     const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(opts)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    for (const [k, v] of Object.entries(opts))
+      if (v !== undefined && v !== '') qs.set(k, String(v));
     return fetch(`${BASE}/ss/oco/scheduled/all?${qs.toString()}`).then(safeJson);
   },
 
   // Admin: HERHANGI bir kullanicinin OCO zamanlamasini iptal eder. Sunucu once AWX
   // tarafini temizler (schedule + varsa calisan job), ancak o basarili olursa kaydi
   // iptal eder — ters sirada kayit "iptal" gorunup is yine tetiklenebilirdi.
-  ocoScheduledAdminCancel: (id: number): Promise<{ ok: boolean; note?: string; message?: string }> =>
-    fetch(`${BASE}/ss/oco/scheduled/${id}/admin-cancel`, { method: "POST" }).then(safeJson),
+  ocoScheduledAdminCancel: (
+    id: number,
+  ): Promise<{ ok: boolean; note?: string; message?: string }> =>
+    fetch(`${BASE}/ss/oco/scheduled/${id}/admin-cancel`, { method: 'POST' }).then(safeJson),
 
   ocoScheduledMine: (): Promise<{ ok: boolean; items?: OcoScheduledItem[]; message?: string }> =>
     fetch(`${BASE}/ss/oco/scheduled/mine`).then(safeJson),
 
   ocoScheduledCancel: (id: number): Promise<{ ok: boolean; message?: string }> =>
-    fetch(`${BASE}/ss/oco/scheduled/${id}/cancel`, { method: "POST" }).then(safeJson),
+    fetch(`${BASE}/ss/oco/scheduled/${id}/cancel`, { method: 'POST' }).then(safeJson),
 
-  ssJobStatus: (serverId: number, jobId: number): Promise<{ ok: boolean; status: string; output: string; resultTraceback?: string; jobExplanation?: string; finished?: string; failed?: boolean }> =>
-    fetch(`${BASE}/ss/job-status/${serverId}/${jobId}`).then(safeJson),
+  ssJobStatus: (
+    serverId: number,
+    jobId: number,
+  ): Promise<{
+    ok: boolean;
+    status: string;
+    output: string;
+    resultTraceback?: string;
+    jobExplanation?: string;
+    finished?: string;
+    failed?: boolean;
+  }> => fetch(`${BASE}/ss/job-status/${serverId}/${jobId}`).then(safeJson),
 
   // Smart onayı bekleyen bir talebin durumu. status: PENDING | LAUNCHED | REJECTED |
   // TIMEOUT | ERROR — LAUNCHED olunca jobId dolar ve çağıran normal ssJobStatus
   // takibine geçebilir.
-  smartTicketStatus: (ticketId: number): Promise<{ ok: boolean; status: string; smartStateName?: string; jobId?: number | null; errorMessage?: string | null; externalTicketId?: string | null; message?: string }> =>
-    fetch(`${BASE}/ss/smart-ticket/${ticketId}/status`).then(safeJson),
+  smartTicketStatus: (
+    ticketId: number,
+  ): Promise<{
+    ok: boolean;
+    status: string;
+    smartStateName?: string;
+    jobId?: number | null;
+    errorMessage?: string | null;
+    externalTicketId?: string | null;
+    message?: string;
+  }> => fetch(`${BASE}/ss/smart-ticket/${ticketId}/status`).then(safeJson),
 
   // "Taleplerim" ekraninda bir talebe tiklandiginda: hangi otomasyonun hangi extraVars ile
   // tetiklendigi ve hangi Smart kaydinin acildigi (bkz. server/ansible/runner.cjs GET
   // /ss/smart-ticket/:id/detail).
-  smartTicketDetail: (ticketId: number): Promise<{
-    ok: boolean; id?: number; status?: string; smartStateName?: string | null;
-    externalTicketId?: string | null; flowKey?: string | null; templateName?: string | null;
-    extraVars?: Record<string, string>; jobId?: number | null; awxServerId?: number | null; errorMessage?: string | null;
-    createdAt?: string; resolvedAt?: string | null; message?: string;
+  smartTicketDetail: (
+    ticketId: number,
+  ): Promise<{
+    ok: boolean;
+    id?: number;
+    status?: string;
+    smartStateName?: string | null;
+    externalTicketId?: string | null;
+    flowKey?: string | null;
+    templateName?: string | null;
+    extraVars?: Record<string, string>;
+    jobId?: number | null;
+    awxServerId?: number | null;
+    errorMessage?: string | null;
+    createdAt?: string;
+    resolvedAt?: string | null;
+    message?: string;
   }> => fetch(`${BASE}/ss/smart-ticket/${ticketId}/detail`).then(safeJson),
 
   history: (days = 30): Promise<{ ok: boolean; history: JobHistoryRecord[] }> =>
     fetch(`${BASE}/history?days=${days}`).then(safeJson),
 
-  getCustomization: (serverId: number, templateId: number): Promise<{ ok: boolean; customization: FieldCustomization }> =>
+  getCustomization: (
+    serverId: number,
+    templateId: number,
+  ): Promise<{ ok: boolean; customization: FieldCustomization }> =>
     fetch(`${BASE}/ss/custom/${serverId}/${templateId}`).then(safeJson),
 
-  saveCustomization: (serverId: number, templateId: number, data: FieldCustomization): Promise<{ ok: boolean; message?: string }> =>
+  saveCustomization: (
+    serverId: number,
+    templateId: number,
+    data: FieldCustomization,
+  ): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/ss/custom/${serverId}/${templateId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(safeJson),
 
   // Smart RFF'in bir flowKey icin BEKLEDIGI metadata alanlarini (ElementName/IsRequired/
   // DataType) sorgular — createTicket() su an SABIT {application, requestedBy} govdesi
   // gonderiyor; flow farkli/ek alan bekliyorsa bu, tahmin yerine GERCEGI gosterir.
-  smartFlowMetadata: (flowKey: string): Promise<{ ok: boolean; fields?: Array<Record<string, unknown>>; message?: string }> =>
+  smartFlowMetadata: (
+    flowKey: string,
+  ): Promise<{ ok: boolean; fields?: Array<Record<string, unknown>>; message?: string }> =>
     fetch(`${BASE}/ss/smart-flow-metadata/${encodeURIComponent(flowKey)}`).then(safeJson),
 
   // "Taleplerim" ekrani — kullanicinin ACTIGI TUM Smart taleplerinin (durum farketmeksizin)
@@ -342,15 +474,26 @@ export const ansibleApi = {
 
   // Admin > Smart Talepleri — TUM kullanicilarin talepleri (sayfalanmis + filtreli).
   // smartTicketsMine()'dan farki: kullanici filtresi yok, admin yetkisi gerektirir.
-  smartTicketsAll: (params: {
-    limit?: number; offset?: number; status?: string; username?: string; q?: string;
-  } = {}): Promise<{
-    ok: boolean; total: number; limit: number; offset: number;
-    summary: Record<string, number>; tickets: AdminSmartTicket[]; message?: string;
+  smartTicketsAll: (
+    params: {
+      limit?: number;
+      offset?: number;
+      status?: string;
+      username?: string;
+      q?: string;
+    } = {},
+  ): Promise<{
+    ok: boolean;
+    total: number;
+    limit: number;
+    offset: number;
+    summary: Record<string, number>;
+    tickets: AdminSmartTicket[];
+    message?: string;
   }> => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== null && String(v) !== "") qs.set(k, String(v));
+      if (v !== undefined && v !== null && String(v) !== '') qs.set(k, String(v));
     }
     return fetch(`${BASE}/ss/smart-tickets/all?${qs.toString()}`).then(safeJson);
   },
@@ -360,12 +503,19 @@ export const ansibleApi = {
   // `note`: opsiyonel iptal gerekcesi. smartRecordStillOpen — Smart'taki kaydi kapatan bir
   // API ucu OLMADIGI icin (bkz. runner.cjs route basligi) sunucu bunu her zaman true doner;
   // istemci kullaniciya "Smart kaydini ayrica kapatin" uyarisini gostermek icin kullanir.
-  cancelSmartTicket: (ticketId: number, note = ""): Promise<{
-    ok: boolean; status?: string; smartRecordStillOpen?: boolean; externalTicketId?: string | null; message?: string;
+  cancelSmartTicket: (
+    ticketId: number,
+    note = '',
+  ): Promise<{
+    ok: boolean;
+    status?: string;
+    smartRecordStillOpen?: boolean;
+    externalTicketId?: string | null;
+    message?: string;
   }> =>
     fetch(`${BASE}/ss/smart-ticket/${ticketId}/cancel`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ note }),
     }).then(safeJson),
 
@@ -375,11 +525,18 @@ export const ansibleApi = {
     serverId: number,
     templateId: number,
     extraVars: Record<string, string>,
-    templateName: string
-  ): Promise<{ ok: boolean; valid?: boolean; resolvedExtraVars?: Record<string, string>; resolvedLaunchOptions?: unknown; message?: string; field?: string }> =>
+    templateName: string,
+  ): Promise<{
+    ok: boolean;
+    valid?: boolean;
+    resolvedExtraVars?: Record<string, string>;
+    resolvedLaunchOptions?: unknown;
+    message?: string;
+    field?: string;
+  }> =>
     fetch(`${BASE}/ss/test/validate/${serverId}/${templateId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ extraVars, templateName }),
     }).then(safeJson),
 
@@ -390,11 +547,20 @@ export const ansibleApi = {
     templateId: number,
     extraVars: Record<string, string>,
     templateName: string,
-    scenarioName: string
-  ): Promise<{ ok: boolean; jobId?: number; status?: string; pendingApproval?: boolean; ticketId?: number; externalTicketId?: string; message?: string; field?: string }> =>
+    scenarioName: string,
+  ): Promise<{
+    ok: boolean;
+    jobId?: number;
+    status?: string;
+    pendingApproval?: boolean;
+    ticketId?: number;
+    externalTicketId?: string;
+    message?: string;
+    field?: string;
+  }> =>
     fetch(`${BASE}/ss/test/run/${serverId}/${templateId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ extraVars, templateName, scenarioName, confirm: true }),
     }).then(safeJson),
 };
@@ -467,11 +633,23 @@ export interface OutputFilter {
 
 export interface FieldCustomization {
   fieldOverrides: FieldOverride[];
+  /** Yöneticinin REDDETTİĞİ yapılandırma önerilerinin kimlikleri
+   *  (bkz. `src/utils/surveySuggestions.ts`). Aynı öneriyi her açılışta tekrar
+   *  göstermek, yöneticinin bilinçli kararını görmezden gelmek olurdu.
+   *
+   *  ŞEMA DEĞİŞİKLİĞİ GEREKMEDİ: sunucu `ansible_ss_customizations.data` sütununa
+   *  gövdenin TAMAMINI JSON olarak yazıyor (`writeCustom`), alan beyaz listesi yok. */
+  dismissedSuggestions?: string[];
   // Survey/extra_vars fallback alanlarında karşılığı olmayan ek key:value'lar (YAML
   // satır formatı, "key: value" — bkz. server/ansible/runner.cjs parseSimpleYaml).
   // Kullanıcıya ASLA gösterilmez, her launch'a otomatik enjekte edilir.
   rawExtraVars?: string;
-  launchOptionOverrides?: Partial<Record<"limit" | "forks" | "jobTags" | "skipTags" | "verbosity" | "jobType", LaunchOptionOverride>>;
+  launchOptionOverrides?: Partial<
+    Record<
+      'limit' | 'forks' | 'jobTags' | 'skipTags' | 'verbosity' | 'jobType',
+      LaunchOptionOverride
+    >
+  >;
   outputFilter?: OutputFilter;
   // AWX'te Survey KAPALIYSA (survey_enabled=false) admin'in portal arayüzünden
   // baştan tasarladığı "sahte" survey — SurveyField ile AYNI şekli kullanır ki
@@ -507,7 +685,10 @@ export interface FieldCustomization {
   // açar — ters tasarımda (izin listesi) aynı hata prod'u onaysız geçirirdi.
   // Karar mantığı tek yerde: server/ansible/smart-gate.cjs
   smartApproval?: {
-    enabled: boolean; flowKey?: string; metadataFields?: string; integrationKey?: string;
+    enabled: boolean;
+    flowKey?: string;
+    metadataFields?: string;
+    integrationKey?: string;
     skipWhen?: string;
   };
   // Etkinse ve talep PRODUCTION ise (extra_vars'ta env|ortam = prod|production) iş
@@ -529,7 +710,7 @@ export interface OcoWindowInfo {
   windowStartText: string;
   windowEndText: string;
   equal: boolean;
-  phase: "before" | "inside" | "expired";
+  phase: 'before' | 'inside' | 'expired';
   canRunNow?: boolean;
   canSchedule?: boolean;
 }
@@ -542,7 +723,14 @@ export interface OcoScheduledItem {
   windowEnd: string;
   // LAUNCHING: AWX çağrısı uçuşta. PENDING_APPROVAL: saat geldi ama Smart onayı
   // bekleniyor — iş HENÜZ tetiklenmedi (2026-08-28; eskiden LAUNCHED yazılıyordu).
-  status: "SCHEDULED" | "LAUNCHING" | "PENDING_APPROVAL" | "LAUNCHED" | "FAILED" | "CANCELLED" | "EXPIRED";
+  status:
+    | 'SCHEDULED'
+    | 'LAUNCHING'
+    | 'PENDING_APPROVAL'
+    | 'LAUNCHED'
+    | 'FAILED'
+    | 'CANCELLED'
+    | 'EXPIRED';
   awxJobId?: number | null;
   errorMessage?: string | null;
   templateName?: string;
@@ -604,7 +792,7 @@ export interface SurveyField {
   // kullanıcıya sorulur (koşullu alan). mode="any" → koşullardan HERHANGİ BİRİ yeterli
   // (VEYA — ör. op_selection=deactive VEYA op_selection=activate); mode="all" → koşulların
   // TÜMÜ sağlanmalı (VE — farklı alanlar üzerinde birden fazla şart).
-  dependsOn?: { mode: "all" | "any"; conditions: SurveyFieldCondition[] };
+  dependsOn?: { mode: 'all' | 'any'; conditions: SurveyFieldCondition[] };
 }
 
 export interface SurveyFieldCondition {
@@ -613,7 +801,7 @@ export interface SurveyFieldCondition {
   // "equals" (varsayılan, geriye dönük uyumlu): field === equals ise koşul sağlanır.
   // "notEmpty": field için HERHANGİ bir değer seçilmiş/girilmişse koşul sağlanır (equals
   // yok sayılır) — ör. "bir seçim yapıldıysa şu alanı göster".
-  operator?: "equals" | "notEmpty";
+  operator?: 'equals' | 'notEmpty';
 }
 
 export interface JobHistoryRecord {
