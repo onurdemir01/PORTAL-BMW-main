@@ -626,7 +626,11 @@ test('sonuc turu KAPALI bir kume — bilinmeyen bir deger uretilemez', async () 
 // silinse 21 testin hepsi gecerdi. Asagidakiler bu boslugu kaynak uzerinden kapatir.
 const fs = require('node:fs');
 const path = require('node:path');
-const RUNNER_SRC = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
+// TIRNAK BAGIMSIZ: prettier tek/cift tirnagi degistiriyor, kural degismiyor
+// (bkz. bekci-korlugu-desenleri #2b).
+const RUNNER_SRC = fs
+  .readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8')
+  .replace(/'/g, '"');
 
 test('launch-ss GERCEKTEN kapidan geciyor ve `proceed` disi her sonucu tuketiyor', () => {
   assert.match(RUNNER_SRC, /runChangeGates\(\{/, 'launch-ss kapiyi hic cagirmiyor');
