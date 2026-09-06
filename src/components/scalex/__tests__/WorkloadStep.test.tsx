@@ -129,6 +129,97 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+// -- Sanallastirma (150+ uygulamali namespace) --------------------------------
+//
+// jsdom her ogeye 0 yukseklik verir; sanallastirici o zaman HIC satir cizmez ve
+// test "az satir var" diye YANLIS YERE yesile doner. Olculeri once sabitliyoruz.
+function stubLayout(viewport = 600, row = 64) {
+  const origRect = Element.prototype.getBoundingClientRect;
+  const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+  const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+  const isScroller = (el: Element) =>
+    typeof el.className === 'string' && el.className.includes('overflow-y-auto');
+
+  // Sanallastirici GORUS ALANINI `offsetHeight`ten okur (getBoundingClientRect'ten
+  // degil); jsdom ikisini de 0 dondurur. Yalnizca birini sabitlemek, hic satir
+  // cizilmemesine ve testin bos DOM uzerinde YANLIS YERE yesile donmesine yol acar.
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get() {
+      return isScroller(this) ? viewport : row;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 800 });
+
+  // `measureElement` gercek yuksekligi buradan alir.
+  Element.prototype.getBoundingClientRect = function () {
+    const height = isScroller(this) ? viewport : row;
+    return {
+      width: 800,
+      height,
+      top: 0,
+      left: 0,
+      bottom: height,
+      right: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect;
+  };
+
+  return () => {
+    Element.prototype.getBoundingClientRect = origRect;
+    if (origH) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', origH);
+    if (origW) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', origW);
+  };
+}
+
+describe('WorkloadStep - 150+ uygulama', () => {
+  it('esik ustunde listeyi sanallastirir ama SECIM tum satirlari kapsar', async () => {
+    const restore = stubLayout();
+    try {
+      const many = Array.from({ length: 200 }, (_, i) =>
+        makeWorkload({ name: `app-${String(i).padStart(3, '0')}` }),
+      );
+      mockDiscoverStatus.mockResolvedValue(makeStatusResponse(many));
+      const onSubmit = vi.fn();
+      await renderAndPoll(<WorkloadStep {...defaultProps} onSubmit={onSubmit} />);
+
+      // 1) DOM'a 200 satir CIZILMEDI — sanallastirma gercekten devrede.
+      const checkboxes = screen.getAllByRole('checkbox');
+      expect(checkboxes.length).toBeGreaterThan(0);
+      expect(checkboxes.length).toBeLessThan(200);
+
+      // 2) Ama SAYAC 200 diyor: secim DOM'dan degil, suzulmus diziden geliyor.
+      expect(screen.getByText('Görünenlerin hepsini seç (200)')).toBeInTheDocument();
+
+      // 3) Ve "hepsini sec" GERCEKTEN 200'unu birden gonderiyor. Sanallastirmanin
+      //    en sinsi hatasi tam burada olurdu: yalnizca cizilmis satirlar secilir,
+      //    kullanici 200 sanir, 12 uygulama olceklenir.
+      fireEvent.click(screen.getByText('Görünenlerin hepsini seç (200)'));
+      fireEvent.click(screen.getByText('Devam'));
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      expect(onSubmit.mock.calls[0][0].apps).toHaveLength(200);
+    } finally {
+      restore();
+    }
+  });
+
+  it('esik ALTINDA duz DOM korunur (sanallastirma bedava degil)', async () => {
+    const restore = stubLayout();
+    try {
+      const few = Array.from({ length: 12 }, (_, i) => makeWorkload({ name: `app-${i}` }));
+      mockDiscoverStatus.mockResolvedValue(makeStatusResponse(few));
+      await renderAndPoll(<WorkloadStep {...defaultProps} />);
+      // 12 satirin HEPSI cizilmis olmali — esik altinda davranis degismedi.
+      expect(screen.getAllByRole('checkbox')).toHaveLength(12);
+      expect(screen.getByText('app-11')).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+});
+
 // ── D3: Functional tests ────────────────────────────────────────────────────
 
 describe('WorkloadStep - discovery', () => {

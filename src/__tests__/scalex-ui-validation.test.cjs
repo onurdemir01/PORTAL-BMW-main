@@ -839,7 +839,55 @@ test('L4 gruplama VARSAYILAN KAPALI (bugunku davranis degismez)', () => {
     /useState<"none" \| "kind" \| "status">\("none"\)/,
     'gruplama varsayilani kapali degil — mevcut akis sessizce degisir',
   );
-  assert.match(code, /\{groups\.map\(\(g\) => \(/, 'gruplar RENDER edilmiyor');
+  // BICIM DEGIL KURAL. Onceki desen `{groups.map(` idi — acilis suslu parantezi
+  // biciminin bir parcasiydi ve liste iki render yoluna ayrilinca (duz /
+  // sanallastirilmis) gruplama CALISIR HALDEYKEN kirmizi dondu. Olcut: `groups`
+  // HER IKI yolda da tuketiliyor mu.
+  assert.match(code, /groups\.map\(\(g\) =>/, 'duz render yolunda gruplar RENDER edilmiyor');
+  assert.match(
+    code,
+    /for \(const g of groups\)/,
+    'sanallastirilmis yolu besleyen duz dizi gruplardan uretilmiyor — ' +
+      'esik ustunde grup basliklari SESSIZCE kaybolur',
+  );
+});
+
+test('L7 satir govdesi TEK yerde (iki render yolu AYRISAMAZ)', () => {
+  const code = codeOnly(WORKLOAD);
+  // Liste esik ustunde sanallastirilir, altinda duz cizilir. Satir JSX'i
+  // KOPYALANIRSA ikisi zamanla ayrisir: kullanicinin gordugu rozet listede
+  // 60 uygulamada bir turlu, 61'de baska turlu olur. Tek tanim, iki kullanim.
+  const defs = code.match(/function renderRow\(/g) || [];
+  assert.equal(defs.length, 1, `renderRow ${defs.length} kez tanimli — govde kopyalanmis`);
+  const uses = code.match(/renderRow\(/g) || [];
+  assert.ok(
+    uses.length >= 3,
+    `renderRow ${uses.length - 1} yerde kullaniliyor — her iki render yolu da onu cagirmali`,
+  );
+  // Ve satiri ayakta tutan alan gercekten GOVDENIN ICINDE olmali.
+  //
+  // BU BEKCI BIR KEZ KOR CIKTI: govde `slice(idx, idx + 4000)` ile aliniyordu.
+  // renderRow bosaltilip gercek govde hemen ARKASINA `renderRowOld` diye
+  // konuldugunda pencere o fonksiyonun icine tasiyor ve bekci yesil kaliyordu.
+  // Govde artik SUSLU PARANTEZ ESLESTIRILEREK cikarilir; pencere fonksiyonda biter.
+  const at = code.indexOf('function renderRow(');
+  const open = code.indexOf('{', at);
+  let depth = 0;
+  let close = -1;
+  for (let i = open; i < code.length; i++) {
+    if (code[i] === '{') depth++;
+    else if (code[i] === '}' && --depth === 0) {
+      close = i;
+      break;
+    }
+  }
+  assert.ok(close > open, 'renderRow govdesi ayristirilamadi');
+  const body = code.slice(open, close);
+  assert.match(
+    body,
+    /isLockedName\(w\.name\)/,
+    'renderRow govdesi kilit kararini icermiyor — satir mantigi baska yere kacmis',
+  );
 });
 
 test('L5 secim cubugu YAPISKAN (uzun listede sayac kaybolmaz)', () => {
