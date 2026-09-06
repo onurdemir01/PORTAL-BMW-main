@@ -25,6 +25,8 @@ import SelectedTargetsBar from './steps/ocp/SelectedTargetsBar';
 import JobProgress from './shared/JobProgress';
 import DownloadStep from './shared/DownloadStep';
 import FailedStep from './shared/FailedStep';
+import ContextChips from '@/components/common/ContextChips';
+import { isProdEnv } from '@/utils/env';
 
 function setUrlParam(id: string | null) {
   const url = new URL(window.location.href);
@@ -468,6 +470,38 @@ const LogXWizardPage: React.FC = () => {
           {STEP_TITLES[step] && (
             <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>
           )}
+          {/* KÜNYE HER ADIMDA. LogX sekiz adımlı ve dördüncü adımda kullanıcının
+              hangi cluster'ları seçtiği ekranda HİÇBİR YERDE yazmıyordu — özellikle
+              çoklu cluster + çoklu namespace sepetinde "ben neyi indiriyorum?"
+              sorusunun cevabı yoktu. Değerler `request.input`tan okunur: sunucudaki
+              durumun ta kendisi, ekranın kendi hatırladığı değil. */}
+          <ContextChips
+            className="mt-1"
+            items={(() => {
+              const i = (request?.input as OcpInput | undefined) || {};
+              if (request?.platform === 'legacy') {
+                return [
+                  { label: 'Platform', value: 'Legacy' },
+                  { label: 'Uygulama', value: legacyApp || '' },
+                ];
+              }
+              const cl = i.clusters || [];
+              return [
+                {
+                  label: 'Ortam',
+                  value: i.env,
+                  tone: isProdEnv(i.env) ? ('danger' as const) : ('neutral' as const),
+                },
+                { label: 'Tenant', value: i.tenant },
+                {
+                  label: 'Cluster',
+                  value: cl.length ? (cl.length > 2 ? `${cl.length} cluster` : cl.join(', ')) : '',
+                  title: cl.join(', '),
+                },
+                { label: 'Namespace', value: activeNamespace || '' },
+              ];
+            })()}
+          />
         </div>
       </div>
 

@@ -37,12 +37,62 @@ const TSX = walk(ROOT);
 //    `var(--accent)1a` gecersiz CSS'tir; tarayici kurali tumden atar ve HATA DA VERMEZ.
 const ALLOWED = new Set(['LoginPage.tsx', 'MissionOrbit.tsx']);
 
+// ── UYUM KATMANININ KAPSAMI ─────────────────────────────────────────────────
+//
+// Uyum katmani her renk ailesinden yalnizca BIRKAC tonu esliyordu (50/100/200/500/
+// 600/700). Bilesenler 300/400/800/900 tonlarini da kullaniyordu ve o siniflar
+// katmanin DISINDA kaliyordu: Tailwind'in ham rengi geciyor, koyu temada acik
+// zeminli kartlar (`bg-orange-100`, `bg-teal-50`) ve solgun metinler (`text-red-400`)
+// okunmaz hale geliyordu. 26 sinif boyle kacmisti.
+//
+// MARKUP DEGISTIRILMEDI — BILEREK: 85 dosyada ~59 siniflik donusum sifir gorsel
+// etkisi olan dev bir diff uretir ve kaynak tarayan bekcileri kirardi. Eksik olan
+// markup degil ESLEMEYDI. Bu bekci yeni bir tonun sessizce sizmasini engeller.
+const COLOR_FAMILIES = 'red|rose|amber|yellow|orange|green|emerald|teal|blue|indigo';
+
+function coveredClasses() {
+  const css = fs.readFileSync(path.join(ROOT, 'index.css'), 'utf8');
+  return new Set(
+    [...css.matchAll(new RegExp(`:root \\.([a-z-]+-(?:${COLOR_FAMILIES})-[0-9]{2,3})`, 'g'))].map(
+      (m) => m[1],
+    ),
+  );
+}
+
+test('ham Tailwind renk sinifi uyum katmaninin DISINDA kalmiyor', () => {
+  const covered = coveredClasses();
+  assert.ok(covered.size > 20, 'uyum katmani okunamadi — test yanlis yere bakiyor');
+
+  const escaped = new Map();
+  for (const f of TSX) {
+    const src = fs.readFileSync(f, 'utf8');
+    const re = new RegExp(`\\b((?:bg|text|border)-(?:${COLOR_FAMILIES})-[0-9]{2,3})\\b`, 'g');
+    for (const m of src.matchAll(re)) {
+      if (covered.has(m[1])) continue;
+      if (!escaped.has(m[1])) escaped.set(m[1], []);
+      escaped.get(m[1]).push(path.relative(ROOT, f));
+    }
+  }
+  const lines = [...escaped.entries()].map(
+    ([cls, files]) => `${cls} → ${[...new Set(files)].slice(0, 3).join(', ')}`,
+  );
+  assert.deepEqual(
+    lines,
+    [],
+    'Bu siniflar uyum katmaninda ESLENMIYOR; koyu temada ham Tailwind rengi basar.\n' +
+      'Cozum markup degistirmek DEGIL, index.css uyum katmanina esleme eklemek:\n' +
+      lines.join('\n'),
+  );
+});
+
 test('style={{}} icinde sabit hex renk kalmadi (istisnalar haric)', () => {
   const offenders = [];
   for (const f of TSX) {
     if (ALLOWED.has(path.basename(f))) continue;
     const src = fs.readFileSync(f, 'utf8');
-    for (const m of src.matchAll(/(background|backgroundColor|color|borderColor)\s*:\s*"#[0-9a-fA-F]{3,8}"/g)) {
+    for (const m of src.matchAll(
+      /(background|backgroundColor|color|borderColor)\s*:\s*"#[0-9a-fA-F]{3,8}"/g,
+    )) {
       offenders.push(`${path.relative(ROOT, f)}: ${m[0]}`);
     }
   }
@@ -54,31 +104,49 @@ test('aksan zemini uzerinde SABIT beyaz metin kalmadi', () => {
   const offenders = [];
   for (const f of TSX) {
     const src = fs.readFileSync(f, 'utf8');
-    if (/background: "var\(--accent\)", color: "#fff"/.test(src)) offenders.push(path.relative(ROOT, f));
+    if (/background: "var\(--accent\)", color: "#fff"/.test(src))
+      offenders.push(path.relative(ROOT, f));
   }
   assert.deepEqual(offenders, [], `aksan ustunde sabit beyaz metin: ${offenders.join(', ')}`);
 });
 
 test('terminal renkleri TOKEN’DA ama TEMADAN BAGIMSIZ (bilincli)', () => {
   const css = fs.readFileSync(path.join(ROOT, 'index.css'), 'utf8');
-  for (const t of ['--term-bg', '--term-fg', '--term-success', '--term-danger', '--term-warning', '--term-info', '--term-muted']) {
+  for (const t of [
+    '--term-bg',
+    '--term-fg',
+    '--term-success',
+    '--term-danger',
+    '--term-warning',
+    '--term-info',
+    '--term-muted',
+  ]) {
     assert.ok(css.includes(`${t}:`), `terminal token eksik: ${t}`);
   }
   // Koyu tema blogunda YENIDEN TANIMLANMAMALI: bir terminal acik temada da koyudur.
   const darkBlock = css.slice(css.indexOf(':root[data-theme="dark"] {'));
   const end = darkBlock.indexOf('\n}');
-  assert.ok(!/--term-/.test(darkBlock.slice(0, end)),
-    'terminal renkleri koyu temada yeniden tanimlanmis — terminal her temada koyu kalmali');
+  assert.ok(
+    !/--term-/.test(darkBlock.slice(0, end)),
+    'terminal renkleri koyu temada yeniden tanimlanmis — terminal her temada koyu kalmali',
+  );
 });
 
 test('terminal saydamliklari HEX-ALFA birlestirmesiyle URETILMIYOR', () => {
   // `${meta.color}55` kalibi token'a gecerken SESSIZCE bozulurdu:
   // `var(--term-success)55` gecerli CSS degildir, tarayici kurali tumden atar
   // (kenarlik ve parilti kaybolur, konsolda hata gorunmez).
-  const src = fs.readFileSync(path.join(ROOT, 'components/common/AnsibleLogTerminal.tsx'), 'utf8')
-    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const src = fs
+    .readFileSync(path.join(ROOT, 'components/common/AnsibleLogTerminal.tsx'), 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
   assert.ok(!/\$\{meta\.color\}[0-9a-fA-F]{2}/.test(src), 'hex-alfa birlestirmesi duruyor');
-  assert.match(src, /rgb\(\$\{meta\.rgb\} \/ 0\.\d+\)/, 'saydamlik icin rgb(R G B / A) kullanilmali');
+  assert.match(
+    src,
+    /rgb\(\$\{meta\.rgb\} \/ 0\.\d+\)/,
+    'saydamlik icin rgb(R G B / A) kullanilmali',
+  );
 });
 
 test('yapiskan tablo basligi ORTAK siniftan, sabit renksiz', () => {
@@ -88,16 +156,25 @@ test('yapiskan tablo basligi ORTAK siniftan, sabit renksiz', () => {
   const cssCode = css.replace(/\/\*[\s\S]*?\*\//g, '');
   assert.ok(!/rgba\(242,\s*246,\s*255/.test(cssCode), 'eski acik mavi yapiskan zemin duruyor');
 
-  const dyn = fs.readFileSync(path.join(ROOT, 'components/envanter/DynamicTable.tsx'), 'utf8')
+  const dyn = fs
+    .readFileSync(path.join(ROOT, 'components/envanter/DynamicTable.tsx'), 'utf8')
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
   assert.ok(!/backdropFilter: "blur\(8px\)"/.test(dyn), 'yari saydam+bulanik baslik duruyor');
   assert.match(dyn, /pf-table-sticky/);
 
   // Uzun tablosu olan ekranlarin hepsinde olmali.
-  for (const f of ['DenetimPage.tsx', 'DutyRosterPage.tsx',
-                   'admin/tabs/SmartTicketsTab.tsx', 'admin/tabs/OcoSchedulesPanel.tsx']) {
+  for (const f of [
+    'DenetimPage.tsx',
+    'DutyRosterPage.tsx',
+    'admin/tabs/SmartTicketsTab.tsx',
+    'admin/tabs/OcoSchedulesPanel.tsx',
+  ]) {
     const src = fs.readFileSync(path.join(ROOT, 'components', f), 'utf8');
-    assert.match(src, /pf-table-sticky/, `${f}: yapiskan baslik yok, 50+ satirda baslik kayboluyor`);
+    assert.match(
+      src,
+      /pf-table-sticky/,
+      `${f}: yapiskan baslik yok, 50+ satirda baslik kayboluyor`,
+    );
   }
 });
 
@@ -106,7 +183,11 @@ test('tablo bos-durum satiri ORTAK bilesenden', () => {
   assert.match(es, /export function TableEmptyRow/);
   assert.match(es, /colSpan: number/, 'colSpan zorunlu olmali — eksikse hucre tek kolona sikisir');
 
-  for (const f of ['DenetimPage.tsx', 'envanter/DynamicTable.tsx', 'admin/tabs/SmartTicketsTab.tsx']) {
+  for (const f of [
+    'DenetimPage.tsx',
+    'envanter/DynamicTable.tsx',
+    'admin/tabs/SmartTicketsTab.tsx',
+  ]) {
     const src = fs.readFileSync(path.join(ROOT, 'components', f), 'utf8');
     assert.match(src, /<TableEmptyRow colSpan=/, `${f}: hala elle yazilmis bos-durum satiri`);
   }
