@@ -133,3 +133,56 @@ test('DEP3 `express-rate-limit` bildirimi DURUYOR (gerileme bekcisi)', () => {
     'kullanim kayboldu — bekci artik anlamsiz',
   );
 });
+
+// ── ISTEMCI TARAFI TIP BAGIMLILIKLARI ───────────────────────────────────────
+//
+// `@types/react` HIC BILDIRILMEMISTI: yalnizca `@types/react-router-dom@5`in
+// (react-router-dom v7 kendi tiplerini getirdigi icin ZATEN gereksiz olan bir
+// paket) altindan geliyordu. Yani bir TypeScript projesi, tip tanimlarini YANLIS
+// surumlu bir paketin tesadufune borcluydu — `express-rate-limit` ile AYNI SINIF:
+// `npm ci` gecer, kurulum calisir, ta ki o paket kaldirilana kadar.
+//
+// Kaldirildiginda `tsc` hemen dustu (`children` ButtonProps'ta yok...) — yani
+// eksiklik sessiz DEGILDI, ama sebebi de gorunmuyordu.
+test('DEP4 React tip paketleri ACIKCA bildirilmis', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const declared = { ...pkg.dependencies, ...pkg.devDependencies };
+  for (const name of ['@types/react', '@types/react-dom']) {
+    assert.ok(
+      declared[name],
+      `${name} bildirilmemis — tip cozumu baska bir paketin hoist'ine bagli kalir`,
+    );
+  }
+});
+
+test('DEP5 React tip paketleri React ile AYNI ana surumde', () => {
+  // `@types/react@18` + `react@19` sessizce yanlis tipler uretir: kod derlenir ama
+  // tipler gercegi anlatmaz (React 19'da `children` artik ortuk DEGIL).
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const major = (v) =>
+    String(v)
+      .replace(/^[^0-9]*/, '')
+      .split('.')[0];
+  assert.equal(
+    major(pkg.devDependencies['@types/react']),
+    major(pkg.dependencies.react),
+    '@types/react ile react ana surumleri ayrismis',
+  );
+});
+
+test('DEP6 kendi tiplerini getiren pakete AYRI bir @types EKLENMEMIS', () => {
+  // `react-router-dom` v7 kendi tiplerini getiriyor; `@types/react-router-dom@5`
+  // hem GEREKSIZ hem de v5 API'sini tarif ettigi icin CAKISMA riskiydi.
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const declared = { ...pkg.dependencies, ...pkg.devDependencies };
+  const offenders = [];
+  for (const name of Object.keys(declared)) {
+    if (!name.startsWith('@types/')) continue;
+    const target = name.slice('@types/'.length).replace(/^([^_]+)__(.+)$/, '@$1/$2');
+    const targetPkg = path.join(ROOT, 'node_modules', target, 'package.json');
+    if (!fs.existsSync(targetPkg)) continue;
+    const meta = JSON.parse(fs.readFileSync(targetPkg, 'utf8'));
+    if (meta.types || meta.typings) offenders.push(`${name} (${target} kendi tiplerini getiriyor)`);
+  }
+  assert.deepEqual(offenders, [], `Gereksiz @types paketi:\n${offenders.join('\n')}`);
+});
