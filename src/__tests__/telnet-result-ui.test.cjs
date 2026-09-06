@@ -40,6 +40,10 @@ function stripComments(src) {
     .join('\n');
 }
 const PAGE_CODE = stripComments(PAGE);
+// TIRNAK/BOSLUK BAGIMSIZ SURUM. Prettier bu dosyayi bicimlendirdiginde tek tirnaklar
+// cifte donuyor ve `"Admin"` / `"telnet_input"` bekleyen desenler kural aynen
+// dururken kirmiziya donuyordu (bkz. bekci-korlugu-desenleri #2b).
+const PAGE_N = norm(PAGE);
 
 test('E4: kosulsuz yesil tik KALDIRILDI', () => {
   assert.ok(
@@ -83,11 +87,11 @@ test('E3: "test yapilamadi" ile "kapali" AYRI gosteriliyor', () => {
 test('E5: AWX govdesi yalnizca YONETICIDE', () => {
   assert.match(PAGE, /\{isAdmin && \(/);
   assert.match(PAGE, /AWX'e gönderilen gövde \(yönetici\)/);
-  assert.match(PAGE, /const isAdmin = user\?\.role === "Admin";/);
+  assert.match(PAGE_N, /const isAdmin = user\?\.role === "Admin";/);
 });
 
 test('E6: girdi ozeti SONUC ekraninda da var', () => {
-  const done = PAGE.slice(PAGE.indexOf('{step === "done"'));
+  const done = PAGE_N.slice(PAGE_N.indexOf('{step === "done"'));
   assert.match(
     done,
     /\{inputSummary\}/,
@@ -98,7 +102,21 @@ test('E6: girdi ozeti SONUC ekraninda da var', () => {
 test('E7: "ayni hedeflerle tekrar" var (alti adim bastan yapilmasin)', () => {
   assert.match(PAGE, /function rerunSameTargets\(\)/);
   assert.match(PAGE, /Aynı hedeflerle tekrar/);
-  assert.match(PAGE, /setStep\("telnet_input"\)/);
+  // ADIM HEDEFI FONKSIYONUN ICINDE aranir. Onceki desen dosyanin HERHANGI bir
+  // yerindeki `setStep("telnet_input")` ile tatmin oluyordu — `rerunSameTargets`
+  // kullaniciyi bastan basa gonderse bile bekci YESIL kaliyordu (mutasyonla
+  // yakalandi: govdedeki cagri `platform`a cevrildi, test kirmizi DONMEDI).
+  const rerunAt = PAGE_N.indexOf('function rerunSameTargets()');
+  assert.ok(rerunAt > 0, 'rerunSameTargets bulunamadi');
+  const rerunBody = PAGE_N.slice(rerunAt, PAGE_N.indexOf('}', PAGE_N.indexOf('{', rerunAt)));
+  assert.match(
+    rerunBody,
+    /setStep\("telnet_input"\)/,
+    '"ayni hedeflerle tekrar" kullaniciyi girdi adimina DEGIL baska bir adima goturuyor',
+  );
+  // Onceki sonuc da temizlenmeli: aksi halde yeni testin sonucu beklenirken ESKI
+  // sonuc ekranda durur ve kullanici onu yeni sanir.
+  assert.match(rerunBody, /setResult\(null\)/, 'onceki sonuc temizlenmiyor');
 });
 
 test('E8: IPTAL — is bitmeden durdurulabiliyor', () => {
