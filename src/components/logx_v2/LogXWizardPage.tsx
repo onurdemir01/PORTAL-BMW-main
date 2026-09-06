@@ -60,6 +60,11 @@ interface NamespaceList {
   counts?: Record<string, number>;
   /** Ad → hangi cluster'larda var. Çoklu cluster seçiminde rozet ve süzgeç bunu kullanır. */
   clusters?: Record<string, string[]>;
+  /** OKUNAMAYAN katalog kaynakları. `failed` bunu KARŞILAMAZ: o canlı taramanın
+   *  düşen cluster'larını sayar, katalog DB okumasını değil. Katalog bir kaynak
+   *  patladığında diğeriyle devam eder ve istek `ok: true` döner — eksik liste,
+   *  tam liste gibi görünürdü. */
+  unreadableSources?: string[];
 }
 
 interface OcpInput {
@@ -95,6 +100,7 @@ async function loadNamespaceCache(input: OcpInput | undefined): Promise<Namespac
     sources: out.sources,
     counts: out.counts,
     clusters: out.clusters,
+    unreadableSources: out.unreadableSources,
   };
 }
 
@@ -691,6 +697,7 @@ const LogXWizardPage: React.FC = () => {
             sources={namespaceList.sources}
             counts={namespaceList.counts}
             clusterMembership={namespaceList.clusters}
+            unreadableSources={namespaceList.unreadableSources}
             selectedClusters={(request?.input as OcpInput | undefined)?.clusters || []}
             busy={busy}
             onRediscover={() =>

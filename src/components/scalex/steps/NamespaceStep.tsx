@@ -3,12 +3,15 @@
 // Liste `ocp-catalog`tan gelir: dbo.Openshift_Inventory ∪ tarama önbelleği. Yetki
 // kısıtıyla düşen namespace'ler GİZLENİR ama SAYISI söylenir — "neden göremiyorum?"
 // sorusu cevapsız kalmasın.
-import React, { useEffect, useMemo, useState } from "react";
-import { ExclamationTriangleIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { scalexApi, type ScaleXNamespaceList } from "@/api/scalexApi";
+import React, { useEffect, useMemo, useState } from 'react';
+import { ExclamationTriangleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { scalexApi, type ScaleXNamespaceList } from '@/api/scalexApi';
 
 interface Props {
-  env: string; tenant: string; clusters: string[]; busy: boolean;
+  env: string;
+  tenant: string;
+  clusters: string[];
+  busy: boolean;
   initial?: string;
   onSubmit: (namespace: string) => void;
 }
@@ -20,18 +23,25 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
   const [data, setData] = useState<ScaleXNamespaceList | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [picked, setPicked] = useState(initial || "");
+  const [query, setQuery] = useState('');
+  const [picked, setPicked] = useState(initial || '');
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    scalexApi.namespaces(env, tenant, clusters)
-      .then((r) => { if (!alive) return; if (r.ok) setData(r); else setError(r.message || "Namespace listesi alınamadı."); })
+    scalexApi
+      .namespaces(env, tenant, clusters)
+      .then((r) => {
+        if (!alive) return;
+        if (r.ok) setData(r);
+        else setError(r.message || 'Namespace listesi alınamadı.');
+      })
       .catch((e) => alive && setError(e.message))
       .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [env, tenant, clusters.join(",")]);
+    return () => {
+      alive = false;
+    };
+  }, [env, tenant, clusters.join(',')]);
 
   const list = useMemo(() => {
     const items = data?.items || [];
@@ -40,26 +50,57 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
     return [...filtered].sort((a, b) => {
       const sa = SYSTEM_RE.test(a) ? 1 : 0;
       const sb = SYSTEM_RE.test(b) ? 1 : 0;
-      return sa !== sb ? sa - sb : a.localeCompare(b, "tr");
+      return sa !== sb ? sa - sb : a.localeCompare(b, 'tr');
     });
   }, [data, query]);
 
-  if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Namespace listesi yükleniyor…</div>;
+  if (loading)
+    return (
+      <div className="py-8 text-center text-sm text-[var(--text-muted)]">
+        Namespace listesi yükleniyor…
+      </div>
+    );
   if (error) {
     return (
       <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
-        <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" /><span>{error}</span>
+        <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <span>{error}</span>
       </div>
     );
   }
 
+  // Liste BOS olmasa bile eksik olabilir: bir kaynak okunamadiysa oradaki
+  // namespace'ler hic gelmemis olur ve kullanici aradigini bulamaz.
+  const unreadable = data?.unreadableSources || [];
+
   return (
     <div className="space-y-4">
+      {unreadable.length > 0 && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
+        >
+          <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            {unreadable.includes('inventory')
+              ? 'Envanter tablosu okunamadı'
+              : 'Tarama önbelleği okunamadı'}
+            {' — liste eksik olabilir. Aradığın namespace görünmüyorsa yok demek değildir.'}
+          </span>
+        </div>
+      )}
       <div className="relative">
-        <MagnifyingGlassIcon aria-hidden="true" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+        <MagnifyingGlassIcon
+          aria-hidden="true"
+          className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+        />
         <input
-          type="text" value={query} onChange={(e) => setQuery(e.target.value)} disabled={busy}
-          placeholder="Namespace ara…" aria-label="Namespace ara"
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          disabled={busy}
+          placeholder="Namespace ara…"
+          aria-label="Namespace ara"
           className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
                      text-[var(--text-primary)] placeholder-[var(--text-muted)]
                      focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
@@ -69,21 +110,68 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
       <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border-subtle)] max-h-80 overflow-y-auto">
         {list.map((ns) => {
           const count = data?.counts?.[ns];
+          // UC DURUM, UC CUMLE. Ekran bu ayrimi yapmiyordu: `count` tanimsizken
+          // "uygulama kaydi yok" yaziyordu — YANI SAYILMAMIS bir namespace icin
+          // SIFIR IDDIA EDIYORDU. Kullanici bos sanip atlayabilirdi.
+          //
+          // Sunucu sozlesmesi bunu acikca soyluyor (ocp-catalog.cjs): "onbellekten
+          // gelen namespace'ler icin sayi bilinmez — undefined kalir ve onyuz
+          // 'bilinmiyor' gosterir; 0 ile karistirilmamalidir". LogX'in ayni ekrani
+          // (NamespacePickerStep) bunu dogru yapiyordu, ScaleX yapmiyordu.
+          const countLabel =
+            typeof count === 'number'
+              ? count === 0
+                ? 'uygulama kaydı yok'
+                : `${count} uygulama`
+              : 'sayı bilinmiyor';
+          const countTitle =
+            typeof count === 'number'
+              ? count === 0
+                ? 'Envanterde bu namespace için uygulama kaydı yok — boş olabilir.'
+                : 'Envanterdeki uygulama sayısı'
+              : data?.sources?.[ns] === 'discovery'
+                ? 'Bu namespace canlı taramadan geldi; envanterde kaydı yok, uygulamaları sayılmadı. Boş olduğu anlamına GELMEZ.'
+                : 'Uygulama sayısı bu namespace için okunamadı — boş olduğu anlamına gelmez.';
           return (
-            <label key={ns} className="flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--bg-inset)]">
+            <label
+              key={ns}
+              className="flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--bg-inset)]"
+            >
               <span className="flex items-center gap-2.5 min-w-0">
-                <input type="radio" name="scalex-ns" disabled={busy} checked={picked === ns} onChange={() => setPicked(ns)} />
-                <span className="font-mono truncate text-[var(--text-primary)]" title={ns}>{ns}</span>
+                <input
+                  type="radio"
+                  name="scalex-ns"
+                  disabled={busy}
+                  checked={picked === ns}
+                  onChange={() => setPicked(ns)}
+                />
+                <span className="font-mono truncate text-[var(--text-primary)]" title={ns}>
+                  {ns}
+                </span>
               </span>
               <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
-                {typeof count === "number" ? `${count} uygulama` : "uygulama kaydı yok"}
+                <span
+                  className={typeof count === 'number' ? undefined : 'italic'}
+                  title={countTitle}
+                >
+                  {countLabel}
+                </span>
               </span>
             </label>
           );
         })}
         {list.length === 0 && (
           <p className="px-3 py-8 text-center text-sm text-[var(--text-muted)]">
-            {query ? "Aramanla eşleşen namespace yok." : "Bu cluster grubunda namespace bulunamadı."}
+            {/* "OKUNAMADI" ile "YOK" AYNI EKRAN DEGILDIR. Katalog iki kaynaktan
+                okur ve biri patlarsa digeriyle devam eder; liste o zaman bos
+                donebilir ama `ok: true` gelir. Eskiden ekran bu durumda
+                "namespace bulunamadi" yaziyordu — kullanici dogru cluster'i
+                sectigi halde yanlis sectigini sanip oradan ayrilabiliyordu. */}
+            {query
+              ? 'Aramanla eşleşen namespace yok.'
+              : unreadable.length > 0
+                ? 'Namespace kataloğu okunamadı — bu, cluster grubunun boş olduğu anlamına GELMEZ.'
+                : 'Bu cluster grubunda namespace bulunamadı.'}
           </p>
         )}
       </div>
@@ -95,7 +183,12 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
       )}
 
       <div className="flex justify-end border-t border-[var(--border)] pt-4">
-        <button type="button" className="btn-primary" disabled={busy || !picked} onClick={() => onSubmit(picked)}>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={busy || !picked}
+          onClick={() => onSubmit(picked)}
+        >
           Devam
         </button>
       </div>
