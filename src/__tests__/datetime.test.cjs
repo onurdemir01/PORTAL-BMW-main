@@ -42,13 +42,17 @@ const DT = load('utils/datetime.ts');
 test('D8: saat dilimi SABIT — ekrandan ekrana kaymaz', () => {
   assert.equal(DT.PORTAL_TZ, 'Europe/Istanbul');
   // Ayni an, makinenin dilimi ne olursa olsun AYNI metni uretmeli.
-  const iso = '2026-08-27T09:00:00Z';   // 12:00 Istanbul (UTC+3)
+  const iso = '2026-08-27T09:00:00Z'; // 12:00 Istanbul (UTC+3)
   assert.match(DT.fmtDateTime(iso), /27\.08\.2026 12:00/);
 });
 
 test('D8: bos ve gecersiz degerler TEK bir isaretle', () => {
   for (const v of [null, undefined, '', 'gecersiz', NaN]) {
-    assert.equal(DT.fmtDateTime(v), DT.EMPTY_MARK, `bos/gecersiz deger isareti tutarsiz: ${String(v)}`);
+    assert.equal(
+      DT.fmtDateTime(v),
+      DT.EMPTY_MARK,
+      `bos/gecersiz deger isareti tutarsiz: ${String(v)}`,
+    );
     assert.equal(DT.fmtDate(v), DT.EMPTY_MARK);
   }
   // Eski kopyalarin bir kismi gecersiz tarihte HAM ISO metnini geri veriyordu;
@@ -80,15 +84,21 @@ test('D8: goreli zaman (LogX’ten ORTAK module tasindi)', () => {
 
 test('D8: kopya bicimlendiriciler KALMADI', () => {
   const copies = [
-    'DutyRosterPage.tsx', 'admin/tabs/AuditLogTab.tsx', 'admin/tabs/SmartTicketsTab.tsx',
-    'admin/tabs/OcoSchedulesPanel.tsx', 'admin/tabs/DbBackupTab.tsx',
+    'DutyRosterPage.tsx',
+    'admin/tabs/AuditLogTab.tsx',
+    'admin/tabs/SmartTicketsTab.tsx',
+    'admin/tabs/OcoSchedulesPanel.tsx',
+    'admin/tabs/DbBackupTab.tsx',
     'self_service/RequestsSidePanel.tsx',
   ];
   const offenders = [];
   for (const f of copies) {
     const src = read(`components/${f}`);
     if (/^function (formatDate|fmt)\s*\(/m.test(src)) offenders.push(f);
-    if (!/from "@\/utils\/datetime"/.test(src)) offenders.push(`${f} (ortak modulu kullanmiyor)`);
+    // TIRNAK BAGIMSIZ: prettier tek/cift tirnagi degistiriyor ve bu depoda iki
+    // stil de var; kural "ortak modul kullaniliyor mu", tirnagin turu degil.
+    if (!/from ["']@\/utils\/datetime["']/.test(src))
+      offenders.push(`${f} (ortak modulu kullanmiyor)`);
   }
   assert.deepEqual(offenders, [], `kopya bicimlendirici:\n${offenders.join('\n')}`);
 });
@@ -96,9 +106,14 @@ test('D8: kopya bicimlendiriciler KALMADI', () => {
 test('D8: sabitlenen saat dilimi TEK yerde', () => {
   // Yorumlar KARARI anlatmak icin dilimden bahsediyor — gercek KODA bak.
   const src = read('utils/datetime.ts')
-    .split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
-  assert.equal((src.match(/Europe\/Istanbul/g) || []).length, 1,
-    'saat dilimi birden fazla yerde yazili — degistirmek icin tek satir olmali');
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
+  assert.equal(
+    (src.match(/Europe\/Istanbul/g) || []).length,
+    1,
+    'saat dilimi birden fazla yerde yazili — degistirmek icin tek satir olmali',
+  );
   // Baska hicbir dosyada elle yazilmamis olmali.
   function walk(dir, out = []) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -110,9 +125,15 @@ test('D8: sabitlenen saat dilimi TEK yerde', () => {
   }
   const leaks = walk(ROOT)
     .filter((f) => !f.endsWith('utils/datetime.ts'))
-    .filter((f) => /Europe\/Istanbul/.test(
-      fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
-    ))
+    .filter((f) =>
+      /Europe\/Istanbul/.test(
+        fs
+          .readFileSync(f, 'utf8')
+          .split('\n')
+          .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+          .join('\n'),
+      ),
+    )
     .map((f) => path.relative(ROOT, f));
   assert.deepEqual(leaks, [], `saat dilimi elle yazilmis: ${leaks.join(', ')}`);
 });
@@ -120,19 +141,25 @@ test('D8: sabitlenen saat dilimi TEK yerde', () => {
 // ── D5: sekme basligi ───────────────────────────────────────────────────────
 test('D5: baslik menuyle AYNI kaynaktan turetilir (liste kopyalanmaz)', () => {
   const src = read('hooks/useDocumentTitle.ts');
-  assert.match(src, /from "@\/config\/elements"/,
-    'ayri bir yol->baslik eslemesi tutulursa yeni sayfa eklendiginde guncellemek unutulur');
+  assert.match(
+    src,
+    /from "@\/config\/elements"/,
+    'ayri bir yol->baslik eslemesi tutulursa yeni sayfa eklendiginde guncellemek unutulur',
+  );
 });
 
 test('D5: yol -> baslik esleme davranisi', () => {
   const title = load('hooks/useDocumentTitle.ts', (out) =>
-    out.replace('require("@/config/elements")',
-      `({ PAGES: [
+    out
+      .replace(
+        'require("@/config/elements")',
+        `({ PAGES: [
         { id: 'Dashboard', label: 'Dashboard', route: '/dashboard' },
         { id: 'Admin', label: 'Yönetim', route: '/admin' },
-      ] })`)
-    .replace('require("react")', '({ useEffect: () => {} })')
-    .replace('require("react-router-dom")', '({ useLocation: () => ({ pathname: "/" }) })')
+      ] })`,
+      )
+      .replace('require("react")', '({ useEffect: () => {} })')
+      .replace('require("react-router-dom")', '({ useLocation: () => ({ pathname: "/" }) })'),
   ).titleForPath;
 
   assert.equal(title('/dashboard'), 'Dashboard · BMW Portal');
@@ -154,7 +181,10 @@ test('D3: BUTON ICI spinner’lara DOKUNULMADI (orada dogru olan spinner)', () =
   // Bu test bir REGRESYON bekcisi degil, bir KARARIN kaydi: buton spinner'larini
   // iskelete cevirmek yanlis olurdu ve sonradan "eksik kalmis" diye yapilmasin.
   const denetim = read('components/DenetimPage.tsx');
-  assert.match(denetim, /ArrowPathIcon className=\{`w-3\.5 h-3\.5 \$\{loading \? "animate-spin" : ""\}`\} \/> Yenile/);
+  assert.match(
+    denetim,
+    /ArrowPathIcon className=\{`w-3\.5 h-3\.5 \$\{loading \? "animate-spin" : ""\}`\} \/> Yenile/,
+  );
 });
 
 test('D3: bolum duzeyi yuklemeler iskelete gecti', () => {

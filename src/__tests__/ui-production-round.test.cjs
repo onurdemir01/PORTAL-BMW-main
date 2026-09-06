@@ -23,9 +23,13 @@ function walk(dir, out = []) {
   return out;
 }
 const SRC_FILES = walk(ROOT);
-const stripComments = (s) => s
-  .replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+const stripComments = (s) =>
+  s
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
 
 // ── G1/G10/G11: tasma ───────────────────────────────────────────────────────
 test('G1: Ansible kartindaki playbook yolu artik CodeChip ile ciziliyor', () => {
@@ -38,7 +42,11 @@ test('G1: Ansible kartindaki playbook yolu artik CodeChip ile ciziliyor', () => 
 
 test('G10/G11: CodeChip min-w-0 + kirilma + title tasiyor', () => {
   const src = read('components/common/CodeChip.tsx');
-  assert.match(src, /min-w-0/, 'min-w-0 YOK — flex cocugunun varsayilan min-width:auto tasmanin KOK NEDENI');
+  assert.match(
+    src,
+    /min-w-0/,
+    'min-w-0 YOK — flex cocugunun varsayilan min-width:auto tasmanin KOK NEDENI',
+  );
   assert.match(src, /break-all/);
   assert.match(src, /truncate/);
   assert.match(src, /title=\{value\}/, 'tam deger fare ustunde okunabilmeli');
@@ -54,8 +62,11 @@ test('G13: kirpilmis hash KOPYALANABILIR', () => {
 // ── G2/G3: eylem hiyerarsisi ────────────────────────────────────────────────
 test('G2/G3: Başlat DOLU birincil, Bilgi sade', () => {
   const src = stripComments(read('components/ansible/AnsiblePage.tsx'));
-  assert.match(src, /background: "var\(--accent\)", color: "var\(--text-on-accent\)"/,
-    'Başlat dolu birincil degil');
+  assert.match(
+    src,
+    /background: "var\(--accent\)", color: "var\(--text-on-accent\)"/,
+    'Başlat dolu birincil degil',
+  );
   assert.ok(!/background: "rgba\(79,142,255,0\.1\)"/.test(src), 'eski tint duruyor');
 });
 
@@ -74,19 +85,29 @@ test('G5: bos panel yeni talebi GERCEKTEN ogrenebiliyor', () => {
   // yoklamayi zaten hic baslatmiyordu — panel bir daha acilamiyordu. Test kalibi
   // dogruluyordu, DAVRANISI degil.
   const src = stripComments(read('components/self_service/RequestsSidePanel.tsx'));
-  assert.match(src, /if \(userPref === true\) return;/,
-    'yoklama yalnizca KULLANICI acikca kapattiginda durmali');
+  assert.match(
+    src,
+    /if \(userPref === true\) return;/,
+    'yoklama yalnizca KULLANICI acikca kapattiginda durmali',
+  );
   assert.ok(!/if \(collapsed\) return;/.test(src), 'kendini kilitleyen guard duruyor');
 
   // 1) Bos panel (tickets.length === 0) yoklamadan DISLANMAMALI.
-  assert.match(src, /if \(!hasPending && tickets\.length > 0\) return;/,
-    'bos panel yoklamadan disaniyor — yeni talebi asla ogrenemez');
+  assert.match(
+    src,
+    /if \(!hasPending && tickets\.length > 0\) return;/,
+    'bos panel yoklamadan disaniyor — yeni talebi asla ogrenemez',
+  );
   // 2) Ayni sekmede acilan talep icin ANLIK kanal olmali (panel Outlet DISINDA
   //    mount edildigi icin gezinmede yenilenmiyor).
-  assert.match(src, /addEventListener\("portal:smart-ticket-created"/);
+  // TIRNAK BAGIMSIZ (bkz. bekci-korlugu-desenleri #2b).
+  assert.match(src, /addEventListener\(["']portal:smart-ticket-created["']/);
   const ss = stripComments(read('components/SelfServicePage.tsx'));
-  assert.match(ss, /dispatchEvent\(new CustomEvent\("portal:smart-ticket-created"\)\)/,
-    'talep acilinca olay yayinlanmiyor — panel haberdar olmuyor');
+  assert.match(
+    ss,
+    /dispatchEvent\(new CustomEvent\(["']portal:smart-ticket-created["']\)\)/,
+    'talep acilinca olay yayinlanmiyor — panel haberdar olmuyor',
+  );
 });
 
 // ── G9: koyu temada gorunmeyen desen ────────────────────────────────────────
@@ -125,7 +146,10 @@ test('G17: rounded-lg/xl ile .card AYNI token’dan', () => {
   // PF6 gecisinde `--radius-sm` 4px, `--radius-md` 6px oldu ve `.card` md kullanmaya
   // basladi; ama uyum katmani TUM rounded-*'i sm'e eziyordu. Sonuc: 350 oge 4px,
   // kartlar 6px — ayni ekranda iki farkli yuvarlaklik.
-  assert.match(CSS, /:root \.rounded-lg, :root \.rounded-xl, :root \.rounded-2xl, :root \.rounded-3xl \{ border-radius: var\(--radius-md\); \}/);
+  assert.match(
+    CSS,
+    /:root \.rounded-lg, :root \.rounded-xl, :root \.rounded-2xl, :root \.rounded-3xl \{ border-radius: var\(--radius-md\); \}/,
+  );
   const cardRule = CSS.slice(CSS.indexOf('.card {'), CSS.indexOf('}', CSS.indexOf('.card {')));
   assert.match(cardRule, /border-radius: var\(--radius-md\)/);
 });
@@ -198,9 +222,9 @@ test('G23: tablo bos-durumlari ortak bilesenden', () => {
 
 // ── G29: metin ──────────────────────────────────────────────────────────────
 test('G29: ayni eylem icin tek fiil ("Vazgeç" kalmadi)', () => {
-  const bad = SRC_FILES
-    .filter((f) => /Vazgeç/.test(stripComments(fs.readFileSync(f, 'utf8'))))
-    .map((f) => path.relative(ROOT, f));
+  const bad = SRC_FILES.filter((f) => /Vazgeç/.test(stripComments(fs.readFileSync(f, 'utf8')))).map(
+    (f) => path.relative(ROOT, f),
+  );
   assert.deepEqual(bad, [], `"İptal" ile ayni eylem: ${bad.join(', ')}`);
 });
 

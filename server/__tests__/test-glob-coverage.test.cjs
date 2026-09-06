@@ -14,6 +14,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..');
 
@@ -138,4 +139,46 @@ test('`lint:ascii` kapisi GERCEKTEN bloke ediyor (belge ile davranis ayrismasin)
 test('glob’da var olmayan dizin YOK (bayat girdi kalmasin)', () => {
   const stale = TEST_DIRS.filter((d) => !fs.existsSync(path.join(ROOT, d)));
   assert.deepEqual(stale, [], `TEST_DIRS'te var olmayan dizinler: ${stale.join(', ')}`);
+});
+
+// ── ESLINT UYARI CIRCIRI ────────────────────────────────────────────────────
+//
+// 127 uyarinin 121'i `react-hooks` kurallari; en buyugu (74) `set-state-in-effect`.
+// Bunlarin COGU MESRU veri-cekme deseni (React 19'un kurali agresif) — 74 effect'i
+// refactor etmek CALISAN kodu riske atmak olurdu ve bu oturumdaki en pahali hata
+// sinifi tam olarak "calisan bir seyi kurcalamak" degil, "kurcalarken sessizce
+// bozmak"tir.
+//
+// SECILEN YOL: sayiyi DONDUR. Yeni kod uyari EKLEYEMEZ; mevcut olanlar zamanla
+// azaltilir. `--max-warnings N` bunu eslint'in kendisiyle zorlar.
+//
+// BU BEKCI NE ISE YARAR: `N`in sessizce YUKARI kaymasini engeller. Biri uyari
+// ekleyip siniri buyutur ve kimse fark etmezse cirCir anlamsizlasir — `lint:ascii`
+// kapisinin basina gelenin aynisi.
+test('RT1 `--max-warnings` siniri GERCEK uyari sayisiyla AYNI', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const declared = Number((pkg.scripts.lint.match(/--max-warnings\s+(\d+)/) || [])[1]);
+  assert.ok(Number.isInteger(declared), '`lint` scripti --max-warnings tasimiyor');
+
+  let out = '';
+  try {
+    out = execFileSync('npx', ['eslint', 'src/', 'server/', '-f', 'json'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch (err) {
+    // eslint uyari varken de 0 doner (hata yoksa); yine de savunmaci okuyoruz.
+    out = String(err.stdout || '');
+  }
+  const actual = JSON.parse(out).reduce((n, f) => n + f.warningCount, 0);
+
+  assert.equal(
+    declared,
+    actual,
+    `Sinir ${declared}, gercek uyari ${actual}.\n` +
+      (actual < declared
+        ? `Uyari AZALMIS — sinirI ${actual} yapin ki kazanim KILITLENSIN.`
+        : `Uyari ARTMIS — yeni uyari eklenmis. Ya duzeltin ya da bilerek siniri yukseltin.`),
+  );
 });

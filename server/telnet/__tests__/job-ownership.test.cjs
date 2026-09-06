@@ -33,7 +33,7 @@ function loadTemplateNamer() {
     /const TEMPLATE_NAME_MAX = \d+;[\s\S]*?\nfunction telnetTemplateName\(namespaces\) \{[\s\S]*?\n\}/,
   );
   assert.ok(m, 'telnetTemplateName bulunamadi — kirpma yok, tasma geri gelmis olabilir');
-  // eslint-disable-next-line no-new-func
+
   return new Function(`${m[0]}; return telnetTemplateName;`)();
 }
 

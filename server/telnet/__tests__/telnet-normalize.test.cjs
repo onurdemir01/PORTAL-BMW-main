@@ -26,7 +26,7 @@ function loadNormalizer() {
     body.includes('function normalizeTelnetResult('),
     'dilim normalizeTelnetResult`i icermiyor — sinirlar kaymis',
   );
-  // eslint-disable-next-line no-new-func
+
   return new Function(`${body}; return normalizeTelnetResult;`)();
 }
 const normalize = loadNormalizer();
@@ -95,7 +95,7 @@ function loadRememberJobOwner() {
     /const JOB_OWNER_CACHE = new Map\(\);[\s\S]*?const JOB_OWNER_CACHE_MAX = \d+;[\s\S]*?\nfunction rememberJobOwner\([\s\S]*?\n\}/,
   );
   assert.ok(m, 'rememberJobOwner bulunamadi');
-  // eslint-disable-next-line no-new-func
+
   return new Function(
     `${m[0]}; return { rememberJobOwner, JOB_OWNER_CACHE, JOB_OWNER_CACHE_MAX };`,
   )();

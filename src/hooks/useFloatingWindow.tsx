@@ -14,15 +14,21 @@
 // resize, sadece tasima degil) o andan itibaren sabit bir piksel degerine gecer;
 // cagiran taraf bunu (size.h === "auto" mi degil mi) kullanarak icerideki terminali
 // "compact" (sabit) ya da "fill" (kalan alani doldur) modunda gosterebilir.
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-export interface FloatingSize { w: number; h: number | "auto" }
-export interface FloatingPos { x: number; y: number }
+export interface FloatingSize {
+  w: number;
+  h: number | 'auto';
+}
+export interface FloatingPos {
+  x: number;
+  y: number;
+}
 
 const MARGIN = 16;
 
 export function centeredPos(w: number, h: number): FloatingPos {
-  if (typeof window === "undefined") return { x: 0, y: 0 };
+  if (typeof window === 'undefined') return { x: 0, y: 0 };
   return {
     x: Math.max(MARGIN, Math.round((window.innerWidth - w) / 2)),
     y: Math.max(MARGIN, Math.round((window.innerHeight - h) / 2)),
@@ -32,14 +38,26 @@ export function centeredPos(w: number, h: number): FloatingPos {
 export function useFloatingWindow(
   defaultSize: { w: number; h: number },
   minSize: { w: number; h: number } = { w: 380, h: 240 },
-  opts: { autoHeight?: boolean } = {}
+  opts: { autoHeight?: boolean } = {},
 ) {
   const autoHeight = !!opts.autoHeight;
-  const initialH: number | "auto" = autoHeight ? "auto" : defaultSize.h;
-  const [pos, setPos] = useState<FloatingPos>(() => centeredPos(defaultSize.w, autoHeight ? defaultSize.h : defaultSize.h));
+  const initialH: number | 'auto' = autoHeight ? 'auto' : defaultSize.h;
+  const [pos, setPos] = useState<FloatingPos>(() =>
+    centeredPos(defaultSize.w, autoHeight ? defaultSize.h : defaultSize.h),
+  );
   const [size, setSize] = useState<FloatingSize>({ w: defaultSize.w, h: initialH });
   const ref = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ mode: "move" | "resize"; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number; effMinW: number; effMinH: number } | null>(null);
+  const dragRef = useRef<{
+    mode: 'move' | 'resize';
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    origW: number;
+    origH: number;
+    effMinW: number;
+    effMinH: number;
+  } | null>(null);
 
   const onPointerMove = useCallback((e: PointerEvent) => {
     const d = dragRef.current;
@@ -47,7 +65,7 @@ export function useFloatingWindow(
     if (!d || !el) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
-    if (d.mode === "move") {
+    if (d.mode === 'move') {
       const maxX = window.innerWidth - 120;
       const maxY = window.innerHeight - 40;
       const nx = Math.min(maxX, Math.max(-d.origW + 120, d.origX + dx));
@@ -72,7 +90,7 @@ export function useFloatingWindow(
     const el = ref.current;
     if (d && el) {
       const rect = el.getBoundingClientRect();
-      if (d.mode === "move") {
+      if (d.mode === 'move') {
         // Sadece tasima — boyut NE ISE (auto ya da sabit) OYLE kalir.
         setPos({ x: rect.left, y: rect.top });
       } else {
@@ -82,47 +100,75 @@ export function useFloatingWindow(
       }
     }
     dragRef.current = null;
-    document.body.style.userSelect = "";
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
+    document.body.style.userSelect = '';
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
   }, [onPointerMove]);
 
-  const startMove = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    const el = ref.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top, origW: rect.width, origH: rect.height, effMinW: minSize.w, effMinH: minSize.h };
-    document.body.style.userSelect = "none";
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-  }, [onPointerMove, onPointerUp, minSize.w, minSize.h]);
+  const startMove = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      const el = ref.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      dragRef.current = {
+        mode: 'move',
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: rect.left,
+        origY: rect.top,
+        origW: rect.width,
+        origH: rect.height,
+        effMinW: minSize.w,
+        effMinH: minSize.h,
+      };
+      document.body.style.userSelect = 'none';
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    },
+    [onPointerMove, onPointerUp, minSize.w, minSize.h],
+  );
 
-  const startResize = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const el = ref.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const effMinW = Math.min(minSize.w, rect.width);
-    const effMinH = Math.min(minSize.h, rect.height);
-    dragRef.current = { mode: "resize", startX: e.clientX, startY: e.clientY, origX: rect.left, origY: rect.top, origW: rect.width, origH: rect.height, effMinW, effMinH };
-    document.body.style.userSelect = "none";
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-  }, [onPointerMove, onPointerUp, minSize.w, minSize.h]);
+  const startResize = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const el = ref.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const effMinW = Math.min(minSize.w, rect.width);
+      const effMinH = Math.min(minSize.h, rect.height);
+      dragRef.current = {
+        mode: 'resize',
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: rect.left,
+        origY: rect.top,
+        origW: rect.width,
+        origH: rect.height,
+        effMinW,
+        effMinH,
+      };
+      document.body.style.userSelect = 'none';
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    },
+    [onPointerMove, onPointerUp, minSize.w, minSize.h],
+  );
 
   const recenter = useCallback(() => {
     setSize({ w: defaultSize.w, h: initialH });
     setPos(centeredPos(defaultSize.w, autoHeight ? minSize.h : defaultSize.h));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultSize.w, defaultSize.h, initialH, autoHeight, minSize.h]);
 
-  useEffect(() => () => {
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
-    document.body.style.userSelect = "";
-  }, [onPointerMove, onPointerUp]);
+  useEffect(
+    () => () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      document.body.style.userSelect = '';
+    },
+    [onPointerMove, onPointerUp],
+  );
 
   // autoHeight'ta icerik degistikce (ör. form alanlari yuklenince cok satirli hale
   // gelmesi) kutunun GERCEK yuksekligi degisir; pos.y ise BASLANGICTA sabit bir
@@ -131,15 +177,17 @@ export function useFloatingWindow(
   // olarak yeniden ortala/kelepcele — aksi halde tasan alt kisim (ör. "Baslat" butonu)
   // position:fixed oldugu icin sayfa kaydirilarak da erisilemez hale gelir.
   const sizeRef = useRef(size);
-  useEffect(() => { sizeRef.current = size; }, [size]);
+  useEffect(() => {
+    sizeRef.current = size;
+  }, [size]);
 
   useEffect(() => {
     if (!autoHeight) return;
     const el = ref.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (!el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => {
       if (dragRef.current) return; // aktif surukleme/boyutlandirma sirasinda mudahale etme
-      if (sizeRef.current.h !== "auto") return; // kullanici zaten elle boyutlandirdi
+      if (sizeRef.current.h !== 'auto') return; // kullanici zaten elle boyutlandirdi
       const rect = el.getBoundingClientRect();
       const maxTop = window.innerHeight - MARGIN - rect.height;
       const idealTop = Math.round((window.innerHeight - rect.height) / 2);
@@ -161,32 +209,37 @@ export function useFloatingWindow(
   // (dragRef.current dolu) stil, state yerine ref'in O ANKI DOM stilinden okunur.
   const dragging = !!dragRef.current;
   const liveEl = ref.current;
-  const style: React.CSSProperties = dragging && liveEl
-    ? {
-        position: "fixed",
-        left: liveEl.style.left,
-        top: liveEl.style.top,
-        width: liveEl.style.width,
-        height: liveEl.style.height,
-        maxWidth: "calc(100vw - 2rem)",
-        maxHeight: "calc(100vh - 2rem)",
-      }
-    : {
-        position: "fixed",
-        left: pos.x,
-        top: pos.y,
-        width: size.w,
-        height: size.h,
-        maxWidth: "calc(100vw - 2rem)",
-        maxHeight: "calc(100vh - 2rem)",
-      };
+  const style: React.CSSProperties =
+    dragging && liveEl
+      ? {
+          position: 'fixed',
+          left: liveEl.style.left,
+          top: liveEl.style.top,
+          width: liveEl.style.width,
+          height: liveEl.style.height,
+          maxWidth: 'calc(100vw - 2rem)',
+          maxHeight: 'calc(100vh - 2rem)',
+        }
+      : {
+          position: 'fixed',
+          left: pos.x,
+          top: pos.y,
+          width: size.w,
+          height: size.h,
+          maxWidth: 'calc(100vw - 2rem)',
+          maxHeight: 'calc(100vh - 2rem)',
+        };
 
   return { ref, pos, size, style, startMove, startResize, recenter };
 }
 
 // Sağ-alt köşe için görünür, ortak boyutlandırma tutamacı JSX'i — hem JobTrackerBar
 // hem SurveyModal aynı görseli kullanır.
-export function ResizeHandle({ onPointerDown }: { onPointerDown: (e: React.PointerEvent) => void }) {
+export function ResizeHandle({
+  onPointerDown,
+}: {
+  onPointerDown: (e: React.PointerEvent) => void;
+}) {
   return (
     <div
       onPointerDown={onPointerDown}
