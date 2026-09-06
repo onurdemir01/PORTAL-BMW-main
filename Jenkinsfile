@@ -76,6 +76,11 @@ pipeline {
         // (`--max-warnings 0`) AYRI ve olculebilir bir is; sessizce dayatmak,
         // ilgisiz bir PR'i bloke etmek olurdu.
         sh 'npm run lint'
+        // DEVREYE ALMA ON KONTROLU. Yerel tutarliligi (surum ucluSU, runner ozeti,
+        // .env.example butunlugu, CI adimlari) dogrular ve AWX'e ELLE kopyalanmasi
+        // gereken paketleri ciktiya yazar. Elle adimlar cikis kodunu DUSURMEZ —
+        // ama artik her yapida GORUNUR: "kopyalandi mi" sorusu varsayima kalmaz.
+        sh 'npm run preflight'
         // Backend dosyaları TS derlemesine girmez — sözdizimi kontrolü:
         sh '''
           for f in $(find server -name "*.cjs"); do
