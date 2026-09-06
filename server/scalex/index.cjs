@@ -19,6 +19,7 @@ const { auditPortal } = require('../audit/index.cjs');
 const catalog = require('./catalog.cjs');
 const launch = require('./launch.cjs');
 const state = require('./state.cjs');
+const rbacFindings = require('./rbac-findings.cjs');
 const result = require('./result.cjs');
 
 const RUN_KEY = 'scalex_run';
@@ -657,6 +658,26 @@ function initScaleX(app) {
             states: parsed && parsed.states ? parsed.states.length : undefined,
           }),
         });
+      }
+
+      // OKUNAMAYAN TIPLER BIRIKTIRILIR. Kesif bunlari zaten raporluyordu ama rapor
+      // yalnizca O ANKI kullanicinin ekraninda kaliyordu: ayni talep platform ekibine
+      // tekrar tekrar aciliyor, hangi namespace'te neyin eksik oldugu hicbir yerde
+      // toplu durmuyordu. `refreshDrift` ile AYNI gerekce: istemciye ikinci bir cagri
+      // yaptirmak, sekmesini kapatan her kullanicida kaydin sessizce dusmesi demekti.
+      if (status.finished && parsed && parsed.mode === 'workloads') {
+        try {
+          await rbacFindings.record({
+            env: parsed.environment,
+            tenant: parsed.platform,
+            namespace: parsed.namespace,
+            kindReports: parsed.kindReports || [],
+          });
+        } catch (e) {
+          // Birikim BEST-EFFORT: yazilamadiysa kesif sonucu GIZLENMEZ. Bu bir denetim
+          // kaydi degil, bir kolaylik; DB tokezlemesi calisan bir kesfi dusurmemeli.
+          console.warn('[ScaleX] RBAC bulgulari kaydedilemedi:', e.message);
+        }
       }
 
       // SAPMA TAZELEME BURADA. `state` kesfi bittiginde portal aynasini cluster gercegiyle
@@ -1312,6 +1333,37 @@ function initScaleX(app) {
         }),
       });
       res.json({ ok: true, launched, pendingApproval, blocked });
+    }),
+  );
+
+  // ── ADMIN: OKUNAMAYAN TIPLER (RBAC BULGULARI) ─────────────────────────────
+  //
+  // Kullanici ekraninda artik TEK SATIR ozet var; tam liste burada birikiyor.
+  // Yalnizca Admin: bu, platform ekibine goturulecek bir is listesi, son
+  // kullanicinin gunluk akisinin parcasi degil.
+  router.get(
+    '/admin/rbac-findings',
+    asyncRoute(async (req, res) => {
+      if (currentUser(req).role !== 'Admin') {
+        return res.status(403).json({ ok: false, message: 'Bu liste yalnizca yoneticilere acik.' });
+      }
+      const findings = await rbacFindings.list({ reason: req.query?.reason });
+      res.json({ ok: true, findings, limit: rbacFindings.LIST_LIMIT });
+    }),
+  );
+
+  // Cozulen bir eksigi listeden dusurmek icin. SILME BILEREK VAR: platform ekibi
+  // yetkiyi verdiginde satir bir sonraki kesife kadar "cozulmemis" gorunurdu ve
+  // ekran guvenilirligini yitirirdi.
+  router.delete(
+    '/admin/rbac-findings/:id',
+    asyncRoute(async (req, res) => {
+      if (currentUser(req).role !== 'Admin') {
+        return res.status(403).json({ ok: false, message: 'Bu islem yalnizca yoneticilere acik.' });
+      }
+      await rbacFindings.remove(req.params.id);
+      auditPortal(req, 'scalex_rbac_finding_cleared', { detail: String(req.params.id) });
+      res.json({ ok: true });
     }),
   );
 

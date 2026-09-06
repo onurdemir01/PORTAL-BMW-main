@@ -540,44 +540,54 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
           hangisinin yasandigini kimse soyleyemiyordu. Iki neden kullanici icin
           tamamen farkli: biri platformdan ISTENEBILIR, digeri hakkinda yapacak
           bir sey olmayan bir olgu. */}
-      {unreadableKinds.length > 0 && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>
-            <strong>{unreadableKinds.map((k) => k.display).join(', ')}</strong>
-            {
-              ' nesnelerine bakılamadı — bu tipler listede YOK, ama gerçekten olmadıkları anlamına gelmiyor.'
-            }
-            <span className="mt-1.5 block space-y-0.5">
-              {unreadableKinds.map((k) => (
-                <span key={k.kind} className="block">
-                  <span className="font-mono">{k.display}</span>
-                  {k.reason === 'no_permission' ? (
-                    <>
-                      {' '}
-                      — portalın OCP kullanıcısının bu namespace'te{' '}
-                      <span className="font-mono">
-                        {/* TAM KAYNAK ADI: RBAC kurallari tam adla yazilir. `sts` demek,
-                            kullanicinin platform ekibine yanlis metin goturmesi demek.
-                            Surum bildirmeyen eski paket `resource` gondermez -> kisa ada duser. */}
-                        {k.verb || 'list'} {k.resource || k.kind}
-                      </span>{' '}
-                      yetkisi yok. Platform ekibinden isteyin (genellikle{' '}
-                      <span className="font-mono">view</span> ClusterRole binding'i yeterli).
-                    </>
-                  ) : (
-                    <>
-                      {' '}
-                      — bu cluster'da o nesne türü kurulu değil (API/CRD yok). Yapılacak bir şey
-                      yok.
-                    </>
-                  )}
+      {/* ── OKUNAMAYAN TIPLER: TEK SATIR OZET ────────────────────────────────
+          ONCE BURADA BIR DUVAR VARDI: 12 tipin her biri icin iki-uc satirlik RBAC
+          metni, her kullaniciya, her keside. Kullanicinin o an yapabilecegi bir sey
+          yoktu (yetkiyi platform ekibi verir) ama metin uygulama listesini ekranin
+          disina itiyordu.
+          Uyari KAYBOLMADI — yeri degisti: tam liste artik Admin > ScaleX Yonetimi
+          altinda BIRIKIYOR, cunku bu bir kullanici gorevi degil bir platform talebi.
+
+          `api_absent` KULLANICIYA HIC SAYILMAZ: o tip cluster'da kurulu degil,
+          yapilacak bir sey yok. Sayaca katmak, cozulemeyecek bir eksik varmis
+          izlenimi verirdi. */}
+      {unreadableKinds.length > 0 &&
+        (() => {
+          const askable = unreadableKinds.filter((k) => k.reason === 'no_permission');
+          if (askable.length === 0) return null;
+          return (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <ExclamationTriangleIcon
+                aria-hidden="true"
+                className="w-4 h-4 flex-shrink-0 mt-0.5"
+              />
+              <div className="min-w-0">
+                <span>
+                  <strong>{askable.length} nesne tipi</strong> okunamadı — bu tipler listede YOK,
+                  ama gerçekten olmadıkları anlamına gelmiyor. Kayıt yöneticiye iletildi.
                 </span>
-              ))}
-            </span>
-          </span>
-        </div>
-      )}
+                <details className="mt-1">
+                  <summary className="cursor-pointer select-none underline">Hangi tipler?</summary>
+                  <span className="mt-1.5 block space-y-0.5">
+                    {askable.map((k) => (
+                      <span key={k.kind} className="block">
+                        <span className="font-mono">{k.display}</span>
+                        {' — '}
+                        <span className="font-mono">
+                          {/* TAM KAYNAK ADI: RBAC kurallari tam adla yazilir. `sts` demek,
+                              kullanicinin platform ekibine yanlis metin goturmesi demek.
+                              Surum bildirmeyen eski paket `resource` gondermez -> kisa ada duser. */}
+                          {k.verb || 'list'} {k.resource || k.kind}
+                        </span>{' '}
+                        yetkisi yok.
+                      </span>
+                    ))}
+                  </span>
+                </details>
+              </div>
+            </div>
+          );
+        })()}
 
       {/* ── PAKET SURUMU ─────────────────────────────────────────────────────
           Paket AWX'e ELLE kopyalaniyor. Ekran bunu bugune kadar TAHMIN ediyordu

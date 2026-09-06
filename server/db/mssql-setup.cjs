@@ -330,6 +330,36 @@ const TABLES = [
       )`,
   },
   {
+    // ScaleX kesfinde OKUNAMAYAN nesne tipleri. Kesif her tip icin bir rapor satiri
+    // uretiyor (WORKLOAD_KIND;WARN) ama bu satirlar hicbir yerde BIRIKMIYORDU: her
+    // kullanici ayni duvari kendi ekraninda goruyor, platform ekibine ayni talep
+    // tekrar tekrar aciliyor ve hangi namespace'te neyin eksik oldugu kimsede toplu
+    // halde durmuyordu.
+    //
+    // `reason` iki degerden biri: `no_permission` (platformdan ISTENEBILIR) ya da
+    // `api_absent` (o tip cluster'da kurulu degil — YAPILACAK BIR SEY YOK). Ikisini
+    // ayirmak sart: ikincisi icin acilan bir RBAC talebi asla cozulmez.
+    //
+    // `first_seen_at` KORUNUR, `last_seen_at` her kesifte tazelenir: bir eksigin ne
+    // zamandir durdugu, ne kadar siklikla karsilasildigindan daha cok sey anlatir.
+    name: 'scalex_rbac_findings',
+    sql: `
+      CREATE TABLE scalex_rbac_findings (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        env            NVARCHAR(30) NOT NULL,
+        tenant         NVARCHAR(64) NOT NULL,
+        cluster_name   NVARCHAR(64) NOT NULL,
+        namespace      NVARCHAR(100) NOT NULL,
+        kind           NVARCHAR(64) NOT NULL,
+        resource_name  NVARCHAR(200),
+        reason         NVARCHAR(32) NOT NULL,
+        verb           NVARCHAR(32),
+        first_seen_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        last_seen_at   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UNIQUE(env, tenant, cluster_name, namespace, kind)
+      )`,
+  },
+  {
     // Legacy EAR-klasor-son-eki ('-T','-D', son-ek-yok) → ortam etiketi — EnvanterApps.env
     // sutunu guvenilmez oldugu icin ortam etiketi BURADAN turetilir (admin duzeltebilir).
     name: 'logx_env_suffix_map',
@@ -1105,15 +1135,16 @@ const ENV_SUFFIX_SEED = [
 async function seedEnvSuffixMap(pool) {
   for (const row of ENV_SUFFIX_SEED) {
     try {
-      const exists = await pool.request()
+      const exists = await pool
+        .request()
         .input('suffix', row.suffix)
         .query(`SELECT 1 FROM logx_env_suffix_map WHERE suffix = @suffix`);
       if (exists.recordset.length) continue;
-      await pool.request()
+      await pool
+        .request()
         .input('suffix', row.suffix)
         .input('env_label', row.env_label)
-        .input('sort_order', row.sort_order)
-        .query(`
+        .input('sort_order', row.sort_order).query(`
           INSERT INTO logx_env_suffix_map (suffix, env_label, sort_order)
           VALUES (@suffix, @env_label, @sort_order)
         `);
@@ -1146,11 +1177,13 @@ const PAGE_VISIBILITY_SEED = [
 async function seedPageVisibility(pool) {
   for (const row of PAGE_VISIBILITY_SEED) {
     try {
-      const exists = await pool.request()
+      const exists = await pool
+        .request()
         .input('page_name', row.page_name)
         .query(`SELECT 1 FROM page_visibility WHERE page_name = @page_name`);
       if (exists.recordset.length) continue;
-      await pool.request()
+      await pool
+        .request()
         .input('page_name', row.page_name)
         .input('roles', row.roles)
         .query(`INSERT INTO page_visibility (page_name, roles) VALUES (@page_name, @roles)`);
@@ -1172,75 +1205,361 @@ const ELEMENT_SEED = [
   // eder (mevcut kurulumlarda parent_key UPDATE'i icin bkz. migratePageParentKeysToNavGroups —
   // idempotent seed INSERT deseni VAR OLAN satirlari GUNCELLEMEZ, bu yuzden ayri bir migration
   // adimi gerekiyor).
-  { element_key: 'navgroup:genel',     element_type: 'nav_group', label: 'Genel',              sort_order: 1 },
-  { element_key: 'navgroup:envanter',  element_type: 'nav_group', label: 'Envanter',            sort_order: 2 },
-  { element_key: 'navgroup:performance', element_type: 'nav_group', label: 'Performance',       sort_order: 4 },
-  { element_key: 'navgroup:operasyon', element_type: 'nav_group', label: 'Nöbetçiler',          sort_order: 5 },
-  { element_key: 'navgroup:otomasyon', element_type: 'nav_group', label: 'Self Servis',         sort_order: 6 },
-  { element_key: 'navgroup:ai',        element_type: 'nav_group', label: 'AI Analist',          sort_order: 7 },
-  { element_key: 'navgroup:admin',     element_type: 'nav_group', label: 'Admin',               sort_order: 9 },
+  { element_key: 'navgroup:genel', element_type: 'nav_group', label: 'Genel', sort_order: 1 },
+  { element_key: 'navgroup:envanter', element_type: 'nav_group', label: 'Envanter', sort_order: 2 },
+  {
+    element_key: 'navgroup:performance',
+    element_type: 'nav_group',
+    label: 'Performance',
+    sort_order: 4,
+  },
+  {
+    element_key: 'navgroup:operasyon',
+    element_type: 'nav_group',
+    label: 'Nöbetçiler',
+    sort_order: 5,
+  },
+  {
+    element_key: 'navgroup:otomasyon',
+    element_type: 'nav_group',
+    label: 'Self Servis',
+    sort_order: 6,
+  },
+  { element_key: 'navgroup:ai', element_type: 'nav_group', label: 'AI Analist', sort_order: 7 },
+  { element_key: 'navgroup:admin', element_type: 'nav_group', label: 'Admin', sort_order: 9 },
   // Sayfalar (mevcut PAGE_VISIBILITY_SEED ile ayni roller)
-  { element_key: 'Dashboard',    element_type: 'page', parent_key: 'navgroup:genel',       label: 'Dashboard',    route: '/dashboard',       sort_order: 1,  roles: ['Admin', 'User'] },
-  { element_key: 'Envanter',     element_type: 'page', parent_key: 'navgroup:envanter',    label: 'Envanter',     route: '/envanter',        sort_order: 2,  roles: ['Admin', 'User'] },
-  { element_key: 'Denetim',      element_type: 'page', parent_key: 'navgroup:envanter',    label: 'Middleware İç Denetim', route: '/denetim',    sort_order: 3,  roles: ['Admin', 'User'] },
-  { element_key: 'LogX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'LogX',         route: '/logx',            sort_order: 7,  roles: ['Admin', 'User'] },
-  { element_key: 'OpsX',         element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'OpsX',         route: '/opsx',            sort_order: 8,  roles: ['Admin', 'User'] },
-  { element_key: 'FileX',        element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'FileX',        route: '/filex',           sort_order: 8,  roles: ['Admin', 'User'] },
-  { element_key: 'Telnet',       element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Telnet',       route: '/telnet',          sort_order: 9,  roles: ['Admin', 'User'] },
+  {
+    element_key: 'Dashboard',
+    element_type: 'page',
+    parent_key: 'navgroup:genel',
+    label: 'Dashboard',
+    route: '/dashboard',
+    sort_order: 1,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'Envanter',
+    element_type: 'page',
+    parent_key: 'navgroup:envanter',
+    label: 'Envanter',
+    route: '/envanter',
+    sort_order: 2,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'Denetim',
+    element_type: 'page',
+    parent_key: 'navgroup:envanter',
+    label: 'Middleware İç Denetim',
+    route: '/denetim',
+    sort_order: 3,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'LogX',
+    element_type: 'page',
+    parent_key: 'navgroup:otomasyon',
+    label: 'LogX',
+    route: '/logx',
+    sort_order: 7,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'OpsX',
+    element_type: 'page',
+    parent_key: 'navgroup:otomasyon',
+    label: 'OpsX',
+    route: '/opsx',
+    sort_order: 8,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'FileX',
+    element_type: 'page',
+    parent_key: 'navgroup:otomasyon',
+    label: 'FileX',
+    route: '/filex',
+    sort_order: 8,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'Telnet',
+    element_type: 'page',
+    parent_key: 'navgroup:otomasyon',
+    label: 'Telnet',
+    route: '/telnet',
+    sort_order: 9,
+    roles: ['Admin', 'User'],
+  },
   // OpsX/LogX ile AYNI varsayilan (kullanici karari): Admin + User, varsayilan ACIK.
   // Kisitlama kaynak bazinda yapilir (namespace/uygulama), sayfa bazinda degil.
-  { element_key: 'ScaleX',  element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'ScaleX',  route: '/scalex',     sort_order: 10, roles: ['Admin', 'User'] },
-  { element_key: 'Self Service', element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Otomasyon',    route: '/self-service',    sort_order: 5,  roles: ['Admin', 'User'] },
-  { element_key: 'Ansible',      element_type: 'page', parent_key: 'navgroup:otomasyon',   label: 'Ansible',      route: '/ansible',         sort_order: 6,  roles: ['Admin'] },
-  { element_key: 'Performance',  element_type: 'page', parent_key: 'navgroup:performance', label: 'Performance',  route: '/performance',     sort_order: 7,  roles: ['Admin', 'User'] },
-  { element_key: 'AI Analist',   element_type: 'page', parent_key: 'navgroup:ai',          label: 'AI Analist',   route: '/ai-analyst',      sort_order: 8,  roles: ['Admin', 'User'] },
-  { element_key: 'Nöbet',        element_type: 'page', parent_key: 'navgroup:operasyon',   label: 'Nöbet',        route: '/duty-roster',     sort_order: 9,  roles: ['Admin', 'User'] },
-  { element_key: 'Admin',        element_type: 'page', parent_key: 'navgroup:admin',       label: 'Admin',        route: '/admin',           sort_order: 11, roles: ['Admin'] },
+  {
+    element_key: 'ScaleX',
+    element_type: 'page',
+    parent_key: 'navgroup:otomasyon',
+    label: 'ScaleX',
+    route: '/scalex',
+    sort_order: 10,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'Self Service',
+    element_type: 'page',
+    parent_key: 'navgroup:otomasyon',
+    label: 'Otomasyon',
+    route: '/self-service',
+    sort_order: 5,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'Ansible',
+    element_type: 'page',
+    parent_key: 'navgroup:otomasyon',
+    label: 'Ansible',
+    route: '/ansible',
+    sort_order: 6,
+    roles: ['Admin'],
+  },
+  {
+    element_key: 'Performance',
+    element_type: 'page',
+    parent_key: 'navgroup:performance',
+    label: 'Performance',
+    route: '/performance',
+    sort_order: 7,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'AI Analist',
+    element_type: 'page',
+    parent_key: 'navgroup:ai',
+    label: 'AI Analist',
+    route: '/ai-analyst',
+    sort_order: 8,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'Nöbet',
+    element_type: 'page',
+    parent_key: 'navgroup:operasyon',
+    label: 'Nöbet',
+    route: '/duty-roster',
+    sort_order: 9,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'Admin',
+    element_type: 'page',
+    parent_key: 'navgroup:admin',
+    label: 'Admin',
+    route: '/admin',
+    sort_order: 11,
+    roles: ['Admin'],
+  },
   // Performance alt-tab'lari (bugun default-open — koru)
-  { element_key: 'Perf:problems', element_type: 'tab', parent_key: 'Performance', label: 'Problems',  sort_order: 1, default_visible: 1 },
-  { element_key: 'Perf:events',   element_type: 'tab', parent_key: 'Performance', label: 'Events',    sort_order: 2, default_visible: 1 },
-  { element_key: 'Perf:entities', element_type: 'tab', parent_key: 'Performance', label: 'Entities',  sort_order: 3, default_visible: 1 },
-  { element_key: 'Perf:metrics',  element_type: 'tab', parent_key: 'Performance', label: 'Metrics',   sort_order: 4, default_visible: 1 },
-  { element_key: 'Perf:instana',  element_type: 'tab', parent_key: 'Performance', label: 'Instana',   sort_order: 5, default_visible: 1 },
-  { element_key: 'Perf:splunk',   element_type: 'tab', parent_key: 'Performance', label: 'Splunk',    sort_order: 6, default_visible: 1 },
+  {
+    element_key: 'Perf:problems',
+    element_type: 'tab',
+    parent_key: 'Performance',
+    label: 'Problems',
+    sort_order: 1,
+    default_visible: 1,
+  },
+  {
+    element_key: 'Perf:events',
+    element_type: 'tab',
+    parent_key: 'Performance',
+    label: 'Events',
+    sort_order: 2,
+    default_visible: 1,
+  },
+  {
+    element_key: 'Perf:entities',
+    element_type: 'tab',
+    parent_key: 'Performance',
+    label: 'Entities',
+    sort_order: 3,
+    default_visible: 1,
+  },
+  {
+    element_key: 'Perf:metrics',
+    element_type: 'tab',
+    parent_key: 'Performance',
+    label: 'Metrics',
+    sort_order: 4,
+    default_visible: 1,
+  },
+  {
+    element_key: 'Perf:instana',
+    element_type: 'tab',
+    parent_key: 'Performance',
+    label: 'Instana',
+    sort_order: 5,
+    default_visible: 1,
+  },
+  {
+    element_key: 'Perf:splunk',
+    element_type: 'tab',
+    parent_key: 'Performance',
+    label: 'Splunk',
+    sort_order: 6,
+    default_visible: 1,
+  },
   // Admin sekmeleri (yeni sema; Admin zaten hepsini gorur — default-open yeterli)
   // ORTAK SEKME: cluster / vault / bastion / kisitlama tablolari LogX'e ozel degil,
   // LogX + OpsX + Telnet + ScaleX tarafindan PAYLASILIYOR. Anahtar (`logxv2`)
   // BILEREK korunuyor — kayitli gorunurluk kurallari ve sekme sirasi bozulmasin.
-  { element_key: 'admintab:logxv2',      element_type: 'admin_tab', parent_key: 'Admin', label: 'OCP Yapılandırma',   sort_order: 1,  default_visible: 1 },
-  { element_key: 'admintab:scalex',      element_type: 'admin_tab', parent_key: 'Admin', label: 'ScaleX Yönetimi',    sort_order: 2,  default_visible: 1 },
-  { element_key: 'admintab:audit',       element_type: 'admin_tab', parent_key: 'Admin', label: 'Denetim Kaydı',      sort_order: 3,  default_visible: 1 },
+  {
+    element_key: 'admintab:logxv2',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'OCP Yapılandırma',
+    sort_order: 1,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:scalex',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'ScaleX Yönetimi',
+    sort_order: 2,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:audit',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Denetim Kaydı',
+    sort_order: 3,
+    default_visible: 1,
+  },
   // Bu dordu `AdminPage`te VARDI ama seed'de YOKTU: sekmeler goruntyor ama Sayfa
   // Erisimi ekranindan YONETILEMIYORDU (kayitsiz anahtar varsayilan-gorunur sayilir).
-  { element_key: 'admintab:smarttickets', element_type: 'admin_tab', parent_key: 'Admin', label: 'Smart Talepleri',   sort_order: 4,  default_visible: 1 },
-  { element_key: 'admintab:testscenarios', element_type: 'admin_tab', parent_key: 'Admin', label: 'Test Senaryoları', sort_order: 5,  default_visible: 1 },
-  { element_key: 'admintab:dbbackup',    element_type: 'admin_tab', parent_key: 'Admin', label: 'DB Yedekleme',       sort_order: 12, default_visible: 1 },
-  { element_key: 'admintab:flowtests',   element_type: 'admin_tab', parent_key: 'Admin', label: 'Akış Testleri',      sort_order: 14, default_visible: 1 },
-  { element_key: 'admintab:ansible',     element_type: 'admin_tab', parent_key: 'Admin', label: 'Ansible Info',       sort_order: 6,  default_visible: 1 },
-  { element_key: 'admintab:playbooks',   element_type: 'admin_tab', parent_key: 'Admin', label: 'Playbook Kayıtları', sort_order: 7,  default_visible: 1 },
-  { element_key: 'admintab:system',      element_type: 'admin_tab', parent_key: 'Admin', label: 'Sistem',             sort_order: 8,  default_visible: 1 },
-  { element_key: 'admintab:users',       element_type: 'admin_tab', parent_key: 'Admin', label: 'Kullanıcılar',       sort_order: 9,  default_visible: 1 },
-  { element_key: 'admintab:visibility',  element_type: 'admin_tab', parent_key: 'Admin', label: 'Görünürlük',         sort_order: 10, default_visible: 1 },
-  { element_key: 'admintab:inventoryvis', element_type: 'admin_tab', parent_key: 'Admin', label: 'Envanter Görünürlüğü', sort_order: 11, default_visible: 1 },
-  { element_key: 'admintab:branding',     element_type: 'admin_tab', parent_key: 'Admin', label: 'Marka',              sort_order: 13, default_visible: 1 },
+  {
+    element_key: 'admintab:smarttickets',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Smart Talepleri',
+    sort_order: 4,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:testscenarios',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Test Senaryoları',
+    sort_order: 5,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:dbbackup',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'DB Yedekleme',
+    sort_order: 12,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:flowtests',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Akış Testleri',
+    sort_order: 14,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:ansible',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Ansible Info',
+    sort_order: 6,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:playbooks',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Playbook Kayıtları',
+    sort_order: 7,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:system',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Sistem',
+    sort_order: 8,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:users',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Kullanıcılar',
+    sort_order: 9,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:visibility',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Görünürlük',
+    sort_order: 10,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:inventoryvis',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Envanter Görünürlüğü',
+    sort_order: 11,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:branding',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Marka',
+    sort_order: 13,
+    default_visible: 1,
+  },
   // AI-tetiklemeli altyapi launch kill-switch'i (guvenlik-hassas). Kapatinca AI, altyapi
   // job'i baslatamaz (bkz. server/ai-analyst/portal-tools.cjs feature:ai_infra_launch).
-  { element_key: 'feature:ai_infra_launch', element_type: 'feature', parent_key: 'AI Analist', label: 'AI → Altyapı Job Başlatma', sort_order: 1, default_visible: 1 },
+  {
+    element_key: 'feature:ai_infra_launch',
+    element_type: 'feature',
+    parent_key: 'AI Analist',
+    label: 'AI → Altyapı Job Başlatma',
+    sort_order: 1,
+    default_visible: 1,
+  },
 ];
 
 async function seedPortalElements(pool) {
   // 1) Element satirlari — idempotent
   for (const el of ELEMENT_SEED) {
     try {
-      const exists = await pool.request().input('k', el.element_key)
+      const exists = await pool
+        .request()
+        .input('k', el.element_key)
         .query(`SELECT 1 FROM portal_elements WHERE element_key = @k`);
       if (exists.recordset.length) continue;
       const restricted = Array.isArray(el.roles);
-      const defaultVisible = restricted ? 0 : (el.default_visible != null ? (el.default_visible ? 1 : 0) : 1);
-      await pool.request()
-        .input('k', el.element_key).input('t', el.element_type)
-        .input('p', el.parent_key || null).input('l', el.label || null)
-        .input('r', el.route || null).input('o', el.sort_order || 0)
+      const defaultVisible = restricted
+        ? 0
+        : el.default_visible != null
+          ? el.default_visible
+            ? 1
+            : 0
+          : 1;
+      await pool
+        .request()
+        .input('k', el.element_key)
+        .input('t', el.element_type)
+        .input('p', el.parent_key || null)
+        .input('l', el.label || null)
+        .input('r', el.route || null)
+        .input('o', el.sort_order || 0)
         .input('dv', defaultVisible)
         .query(`INSERT INTO portal_elements (element_key, element_type, parent_key, label, route, sort_order, enabled, default_visible)
                 VALUES (@k, @t, @p, @l, @r, @o, 1, @dv)`);
@@ -1255,7 +1574,7 @@ async function seedPortalElements(pool) {
   try {
     await pool.request().query(
       `UPDATE portal_elements SET label = N'Middleware İç Denetim'
-        WHERE element_key = 'Denetim' AND label = N'Denetim'`
+        WHERE element_key = 'Denetim' AND label = N'Denetim'`,
     );
   } catch (err) {
     console.warn('[DB] Denetim etiketi guncellenemedi:', err.message);
@@ -1273,14 +1592,17 @@ async function seedPortalElements(pool) {
   // varsa ona DOKUNULMAZ. Yalnizca hic kurali olmayan (= hic seed edilmemis) elementler
   // varsayilanlarini alir.
   try {
-    const existing = await pool.request().query(
-      `SELECT DISTINCT element_key FROM portal_element_visibility`
-    );
+    const existing = await pool
+      .request()
+      .query(`SELECT DISTINCT element_key FROM portal_element_visibility`);
     const hasRules = new Set(existing.recordset.map((r) => r.element_key));
     const pv = await pool.request().query(`SELECT page_name, roles FROM page_visibility`);
     const pvMap = {};
     for (const r of pv.recordset) {
-      pvMap[r.page_name] = String(r.roles).split(',').map((s) => s.trim()).filter(Boolean);
+      pvMap[r.page_name] = String(r.roles)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
     }
     const seeded = [];
     for (const el of ELEMENT_SEED) {
@@ -1288,14 +1610,19 @@ async function seedPortalElements(pool) {
       if (hasRules.has(el.element_key)) continue; // admin duzenlemesi olabilir — DOKUNMA
       const roles = pvMap[el.element_key] || el.roles;
       for (const role of roles) {
-        await pool.request()
-          .input('k', el.element_key).input('pt', 'role').input('pid', role).input('a', 1)
+        await pool
+          .request()
+          .input('k', el.element_key)
+          .input('pt', 'role')
+          .input('pid', role)
+          .input('a', 1)
           .query(`INSERT INTO portal_element_visibility (element_key, principal_type, principal_id, allow)
                   VALUES (@k, @pt, @pid, @a)`);
       }
       seeded.push(el.element_key);
     }
-    if (seeded.length) console.log(`[DB] portal_element_visibility seed edildi: ${seeded.join(', ')}`);
+    if (seeded.length)
+      console.log(`[DB] portal_element_visibility seed edildi: ${seeded.join(', ')}`);
   } catch (err) {
     console.warn('[DB] portal_element_visibility seed hata:', err.message);
   }
@@ -1306,118 +1633,217 @@ async function seedPortalElements(pool) {
 // (.env) ile doldurulur — ikisi de desteklenir (bkz. getEffectiveTemplateId).
 const PLAYBOOK_REGISTRY_SEED = [
   {
-    key_name: 'jvm_heap_status', display_name: 'JVM Heap/GC Durumu', category: 'jvm', handler: 'host_target',
-    description: 'JBoss/WildFly/EAP JVM prosesinin heap/GC istatistiklerini ve başlangıç bayraklarını (jstat/jmap, salt-okunur) getirir.',
-    playbook_path: 'server/ansible/playbooks/jvm_heap_status.yml', env_var_name: 'AWX_JVM_HEAP_TEMPLATE_ID',
+    key_name: 'jvm_heap_status',
+    display_name: 'JVM Heap/GC Durumu',
+    category: 'jvm',
+    handler: 'host_target',
+    description:
+      'JBoss/WildFly/EAP JVM prosesinin heap/GC istatistiklerini ve başlangıç bayraklarını (jstat/jmap, salt-okunur) getirir.',
+    playbook_path: 'server/ansible/playbooks/jvm_heap_status.yml',
+    env_var_name: 'AWX_JVM_HEAP_TEMPLATE_ID',
   },
   {
-    key_name: 'ocp_pod_status', display_name: 'OpenShift Pod Durumu', category: 'openshift', handler: 'ocp_cluster',
-    description: 'Kayıtlı bir OpenShift cluster\'ının pod/node/cluster-operator durumunu (oc get, salt-okunur) getirir.',
-    playbook_path: 'server/ansible/playbooks/ocp_pod_status.yml', env_var_name: 'AWX_OCP_POD_STATUS_TEMPLATE_ID',
+    key_name: 'ocp_pod_status',
+    display_name: 'OpenShift Pod Durumu',
+    category: 'openshift',
+    handler: 'ocp_cluster',
+    description:
+      "Kayıtlı bir OpenShift cluster'ının pod/node/cluster-operator durumunu (oc get, salt-okunur) getirir.",
+    playbook_path: 'server/ansible/playbooks/ocp_pod_status.yml',
+    env_var_name: 'AWX_OCP_POD_STATUS_TEMPLATE_ID',
   },
   {
-    key_name: 'network_connectivity_check', display_name: 'Network Bağlantı Durumu', category: 'network', handler: 'host_target',
+    key_name: 'network_connectivity_check',
+    display_name: 'Network Bağlantı Durumu',
+    category: 'network',
+    handler: 'host_target',
     description: 'Ağ arayüzleri, route, DNS çözümleme ve dinleyen portları (salt-okunur) getirir.',
-    playbook_path: 'server/ansible/playbooks/network_connectivity_check.yml', env_var_name: 'AWX_NETWORK_CHECK_TEMPLATE_ID',
+    playbook_path: 'server/ansible/playbooks/network_connectivity_check.yml',
+    env_var_name: 'AWX_NETWORK_CHECK_TEMPLATE_ID',
   },
   {
-    key_name: 'disk_usage_status', display_name: 'Disk Kullanım Durumu', category: 'system', handler: 'host_target',
+    key_name: 'disk_usage_status',
+    display_name: 'Disk Kullanım Durumu',
+    category: 'system',
+    handler: 'host_target',
     description: 'Disk/inode kullanımı ve en büyük dizinleri (salt-okunur) getirir.',
-    playbook_path: 'server/ansible/playbooks/disk_usage_status.yml', env_var_name: 'AWX_DISK_USAGE_TEMPLATE_ID',
+    playbook_path: 'server/ansible/playbooks/disk_usage_status.yml',
+    env_var_name: 'AWX_DISK_USAGE_TEMPLATE_ID',
   },
   {
-    key_name: 'system_health_overview', display_name: 'Sistem Sağlığı Genel Görünüm', category: 'system', handler: 'host_target',
+    key_name: 'system_health_overview',
+    display_name: 'Sistem Sağlığı Genel Görünüm',
+    category: 'system',
+    handler: 'host_target',
     description: 'Uptime, bellek, CPU ve en yoğun prosesleri (salt-okunur) getirir.',
-    playbook_path: 'server/ansible/playbooks/system_health_overview.yml', env_var_name: 'AWX_SYSTEM_HEALTH_TEMPLATE_ID',
+    playbook_path: 'server/ansible/playbooks/system_health_overview.yml',
+    env_var_name: 'AWX_SYSTEM_HEALTH_TEMPLATE_ID',
   },
   {
-    key_name: 'web_server_status', display_name: 'Web Sunucu Durumu', category: 'network', handler: 'host_target',
-    description: 'Nginx/Apache/Tomcat proses ve config durumunu, 80/443 bağlantılarını (salt-okunur) getirir.',
-    playbook_path: 'server/ansible/playbooks/web_server_status.yml', env_var_name: 'AWX_WEB_SERVER_STATUS_TEMPLATE_ID',
+    key_name: 'web_server_status',
+    display_name: 'Web Sunucu Durumu',
+    category: 'network',
+    handler: 'host_target',
+    description:
+      'Nginx/Apache/Tomcat proses ve config durumunu, 80/443 bağlantılarını (salt-okunur) getirir.',
+    playbook_path: 'server/ansible/playbooks/web_server_status.yml',
+    env_var_name: 'AWX_WEB_SERVER_STATUS_TEMPLATE_ID',
   },
   {
-    key_name: 'service_status_check', display_name: 'Servis Durumu Kontrolü', category: 'system', handler: 'host_target',
-    description: 'Yaygın servislerin (nginx/httpd/docker/podman/jbossas/tomcat) durumunu (salt-okunur) getirir.',
-    playbook_path: 'server/ansible/playbooks/service_status_check.yml', env_var_name: 'AWX_SERVICE_STATUS_TEMPLATE_ID',
+    key_name: 'service_status_check',
+    display_name: 'Servis Durumu Kontrolü',
+    category: 'system',
+    handler: 'host_target',
+    description:
+      'Yaygın servislerin (nginx/httpd/docker/podman/jbossas/tomcat) durumunu (salt-okunur) getirir.',
+    playbook_path: 'server/ansible/playbooks/service_status_check.yml',
+    env_var_name: 'AWX_SERVICE_STATUS_TEMPLATE_ID',
   },
   // ── LogX v2 job tipleri — kilitli (admin UI'dan yeni satir olusturulamaz, yalnizca
   // template ID + awx_server_id duzenlenebilir), ocp_pod_status ile ayni "locked" desen.
   {
-    key_name: 'logx_legacy_discovery', display_name: 'LogX — Legacy Log Keşfi', category: 'logx', handler: 'legacy_discovery',
-    description: 'Bir uygulamanın /vhosting ve /vhosting8 altındaki log dosyalarını (salt-okunur, find) keşfeder.',
-    playbook_path: 'server/ansible/playbooks/logx_legacy_discovery.yml', env_var_name: 'AWX_LOGX_LEGACY_DISCOVERY_TEMPLATE_ID',
+    key_name: 'logx_legacy_discovery',
+    display_name: 'LogX — Legacy Log Keşfi',
+    category: 'logx',
+    handler: 'legacy_discovery',
+    description:
+      'Bir uygulamanın /vhosting ve /vhosting8 altındaki log dosyalarını (salt-okunur, find) keşfeder.',
+    playbook_path: 'server/ansible/playbooks/logx_legacy_discovery.yml',
+    env_var_name: 'AWX_LOGX_LEGACY_DISCOVERY_TEMPLATE_ID',
   },
   {
-    key_name: 'logx_legacy_transfer', display_name: 'LogX — Legacy Log Transferi', category: 'logx', handler: 'legacy_transfer',
-    description: 'Seçilen log dosyalarını zip\'leyip portalın okuyabildiği staging dizinine bırakır.',
-    playbook_path: 'server/ansible/playbooks/logx_legacy_transfer.yml', env_var_name: 'AWX_LOGX_LEGACY_TRANSFER_TEMPLATE_ID',
+    key_name: 'logx_legacy_transfer',
+    display_name: 'LogX — Legacy Log Transferi',
+    category: 'logx',
+    handler: 'legacy_transfer',
+    description:
+      "Seçilen log dosyalarını zip'leyip portalın okuyabildiği staging dizinine bırakır.",
+    playbook_path: 'server/ansible/playbooks/logx_legacy_transfer.yml',
+    env_var_name: 'AWX_LOGX_LEGACY_TRANSFER_TEMPLATE_ID',
   },
   {
-    key_name: 'logx_ocp_namespace_discovery', display_name: 'LogX — OCP Namespace Keşfi', category: 'logx', handler: 'ocp_namespace_discovery',
-    description: 'Seçilen cluster(lar)da kullanıcının erişebildiği namespace/proje listesini (oc get projects, salt-okunur) getirir.',
-    playbook_path: 'server/ansible/playbooks/logx_ocp_namespace_discovery.yml', env_var_name: 'AWX_LOGX_OCP_NAMESPACE_DISCOVERY_TEMPLATE_ID',
+    key_name: 'logx_ocp_namespace_discovery',
+    display_name: 'LogX — OCP Namespace Keşfi',
+    category: 'logx',
+    handler: 'ocp_namespace_discovery',
+    description:
+      'Seçilen cluster(lar)da kullanıcının erişebildiği namespace/proje listesini (oc get projects, salt-okunur) getirir.',
+    playbook_path: 'server/ansible/playbooks/logx_ocp_namespace_discovery.yml',
+    env_var_name: 'AWX_LOGX_OCP_NAMESPACE_DISCOVERY_TEMPLATE_ID',
   },
   {
-    key_name: 'logx_ocp_app_discovery', display_name: 'LogX — OCP Uygulama/Obje Keşfi', category: 'logx', handler: 'ocp_app_discovery',
-    description: 'Seçilen namespace(ler)de çalışan uygulama ve objeleri (deployment, statefulset, pod, service, route…) salt-okunur listeler; sonuç portalda önbelleğe alınır.',
-    playbook_path: 'server/ansible/playbooks/logx_ocp_app_discovery.yml', env_var_name: 'AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID',
+    key_name: 'logx_ocp_app_discovery',
+    display_name: 'LogX — OCP Uygulama/Obje Keşfi',
+    category: 'logx',
+    handler: 'ocp_app_discovery',
+    description:
+      'Seçilen namespace(ler)de çalışan uygulama ve objeleri (deployment, statefulset, pod, service, route…) salt-okunur listeler; sonuç portalda önbelleğe alınır.',
+    playbook_path: 'server/ansible/playbooks/logx_ocp_app_discovery.yml',
+    env_var_name: 'AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID',
   },
   {
-    key_name: 'logx_ocp_discover_fetch', display_name: 'LogX — OCP Pod Log Keşfi+Çekme', category: 'logx', handler: 'ocp_discover_fetch',
-    description: 'Seçilen cluster(lar)da uygulama adına eşleşen tüm pod\'ların loglarını çeker, zip\'ler, staging dizinine bırakır.',
-    playbook_path: 'server/ansible/playbooks/logx_ocp_discover_fetch.yml', env_var_name: 'AWX_LOGX_OCP_DISCOVER_FETCH_TEMPLATE_ID',
+    key_name: 'logx_ocp_discover_fetch',
+    display_name: 'LogX — OCP Pod Log Keşfi+Çekme',
+    category: 'logx',
+    handler: 'ocp_discover_fetch',
+    description:
+      "Seçilen cluster(lar)da uygulama adına eşleşen tüm pod'ların loglarını çeker, zip'ler, staging dizinine bırakır.",
+    playbook_path: 'server/ansible/playbooks/logx_ocp_discover_fetch.yml',
+    env_var_name: 'AWX_LOGX_OCP_DISCOVER_FETCH_TEMPLATE_ID',
   },
   // ── OpsX islem tipleri — LogX ile AYNI desen: satirlar seed'den gelir, admin
   // yalnizca awx_template_id + awx_server_id degerlerini duzenler (Admin > Playbook
   // Kayitlari). Template ID bos oldugu surece OpsX ilgili platformda calismaz ve
   // kullaniciya "yonetici tanimlamali" mesaji doner.
   {
-    key_name: 'opsx_legacy_operation', display_name: 'OpsX — Legacy Uygulama Operasyonu', category: 'opsx', handler: 'opsx_legacy',
-    description: 'JBoss/WAS geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.',
-    playbook_path: null, env_var_name: 'OPSX_LEGACY_TEMPLATE_ID',
+    key_name: 'opsx_legacy_operation',
+    display_name: 'OpsX — Legacy Uygulama Operasyonu',
+    category: 'opsx',
+    handler: 'opsx_legacy',
+    description:
+      'JBoss/WAS geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.',
+    playbook_path: null,
+    env_var_name: 'OPSX_LEGACY_TEMPLATE_ID',
   },
   {
-    key_name: 'opsx_openshift_operation', display_name: 'OpsX — Openshift Uygulama Operasyonu', category: 'opsx', handler: 'opsx_openshift',
+    key_name: 'opsx_openshift_operation',
+    display_name: 'OpsX — Openshift Uygulama Operasyonu',
+    category: 'opsx',
+    handler: 'opsx_openshift',
     description: 'ARK/Non-ARK container uygulamalarinda restart/stop/start islemi.',
-    playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_TEMPLATE_ID',
+    playbook_path: null,
+    env_var_name: 'OPSX_OPENSHIFT_TEMPLATE_ID',
   },
   // ── OpsX Thread/Heap Dump — restart/stop/start'tan AYRI template'ler (dosya
   // staging/indirme gerektirdigi icin mimari olarak farkli, bkz. server/opsx/downloads.cjs).
   {
-    key_name: 'opsx_legacy_dump', display_name: 'OpsX — Legacy Thread/Heap Dump', category: 'opsx', handler: 'opsx_legacy_dump',
-    description: 'JBoss7/8 sunucularda jmap/jstack ile heap/thread dump alir, paylasilan staging dizinine birakir.',
-    playbook_path: 'server/ansible/playbooks/opsx_legacy_dump.yml', env_var_name: 'OPSX_LEGACY_DUMP_TEMPLATE_ID',
+    key_name: 'opsx_legacy_dump',
+    display_name: 'OpsX — Legacy Thread/Heap Dump',
+    category: 'opsx',
+    handler: 'opsx_legacy_dump',
+    description:
+      'JBoss7/8 sunucularda jmap/jstack ile heap/thread dump alir, paylasilan staging dizinine birakir.',
+    playbook_path: 'server/ansible/playbooks/opsx_legacy_dump.yml',
+    env_var_name: 'OPSX_LEGACY_DUMP_TEMPLATE_ID',
   },
   {
-    key_name: 'opsx_openshift_dump', display_name: 'OpsX — Openshift Thread/Heap Dump', category: 'opsx', handler: 'opsx_openshift_dump',
-    description: 'Secilen pod\'lardan heap/thread dump alir (bmw_portal/opsx_openshift_dump/opsx_openshift_dump.yaml) - dump\'lar tek arsivde toplanip portalin staging dizinine birakilir, kullanici portaldan indirir.',
-    playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID',
+    key_name: 'opsx_openshift_dump',
+    display_name: 'OpsX — Openshift Thread/Heap Dump',
+    category: 'opsx',
+    handler: 'opsx_openshift_dump',
+    description:
+      "Secilen pod'lardan heap/thread dump alir (bmw_portal/opsx_openshift_dump/opsx_openshift_dump.yaml) - dump'lar tek arsivde toplanip portalin staging dizinine birakilir, kullanici portaldan indirir.",
+    playbook_path: null,
+    env_var_name: 'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID',
   },
   {
-    key_name: 'opsx_openshift_pods', display_name: 'OpsX — Openshift Pod Keşfi', category: 'opsx', handler: 'opsx_openshift_pods',
-    description: 'Bir namespace\'teki pod\'lari listeler (salt-okunur, oc get pods) - dump sihirbazi kullaniciya pod sectirmek icin ANLIK tetikler. bmw_portal/opsx_openshift_dump/opsx_openshift_pods.yaml',
-    playbook_path: null, env_var_name: 'OPSX_OPENSHIFT_PODS_TEMPLATE_ID',
+    key_name: 'opsx_openshift_pods',
+    display_name: 'OpsX — Openshift Pod Keşfi',
+    category: 'opsx',
+    handler: 'opsx_openshift_pods',
+    description:
+      "Bir namespace'teki pod'lari listeler (salt-okunur, oc get pods) - dump sihirbazi kullaniciya pod sectirmek icin ANLIK tetikler. bmw_portal/opsx_openshift_dump/opsx_openshift_pods.yaml",
+    playbook_path: null,
+    env_var_name: 'OPSX_OPENSHIFT_PODS_TEMPLATE_ID',
   },
   {
-    key_name: 'opsx_legacy_jvm_discover', display_name: 'OpsX — Legacy JVM Keşfi', category: 'opsx', handler: 'opsx_legacy_jvm_discover',
-    description: 'Secili sunucularda uygulama adina calisan JVM\'leri (PID + komut satiri) listeler (salt-okunur, ps) - dump sihirbazi kullaniciya JVM sectirmek icin ANLIK tetikler. server/ansible/playbooks/opsx_legacy_jvm_discover.yml',
-    playbook_path: 'server/ansible/playbooks/opsx_legacy_jvm_discover.yml', env_var_name: 'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
+    key_name: 'opsx_legacy_jvm_discover',
+    display_name: 'OpsX — Legacy JVM Keşfi',
+    category: 'opsx',
+    handler: 'opsx_legacy_jvm_discover',
+    description:
+      "Secili sunucularda uygulama adina calisan JVM'leri (PID + komut satiri) listeler (salt-okunur, ps) - dump sihirbazi kullaniciya JVM sectirmek icin ANLIK tetikler. server/ansible/playbooks/opsx_legacy_jvm_discover.yml",
+    playbook_path: 'server/ansible/playbooks/opsx_legacy_jvm_discover.yml',
+    env_var_name: 'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
   },
   {
-    key_name: 'opsx_legacy_serverconfig_discover', display_name: 'OpsX — Legacy Server-Config (JVM) Keşfi', category: 'opsx', handler: 'opsx_legacy_svrcfg_discover',
-    description: 'Secili sunucularda uygulama adina uyan JBoss domain-mode server-config\'leri (JVM\'leri) VE her birinin STARTED/STOPPED durumunu listeler (salt-okunur, jboss-cli) - restart/stop/start sihirbazi kullaniciya HANGI JVM(ler)e dokunulacagini sectirmek icin ANLIK tetikler. bmw_portal/java_app_check/java_app_check.yml',
-    playbook_path: 'bmw_portal/java_app_check/java_app_check.yml', env_var_name: 'OPSX_LEGACY_SERVERCONFIG_DISCOVER_TEMPLATE_ID',
+    key_name: 'opsx_legacy_serverconfig_discover',
+    display_name: 'OpsX — Legacy Server-Config (JVM) Keşfi',
+    category: 'opsx',
+    handler: 'opsx_legacy_svrcfg_discover',
+    description:
+      "Secili sunucularda uygulama adina uyan JBoss domain-mode server-config'leri (JVM'leri) VE her birinin STARTED/STOPPED durumunu listeler (salt-okunur, jboss-cli) - restart/stop/start sihirbazi kullaniciya HANGI JVM(ler)e dokunulacagini sectirmek icin ANLIK tetikler. bmw_portal/java_app_check/java_app_check.yml",
+    playbook_path: 'bmw_portal/java_app_check/java_app_check.yml',
+    env_var_name: 'OPSX_LEGACY_SERVERCONFIG_DISCOVER_TEMPLATE_ID',
   },
   // ── Telnet baglanti testi — OpsX ile AYNI desen (bkz. server/telnet/index.cjs) ────
   {
-    key_name: 'telnet_legacy_operation', display_name: 'Telnet — Legacy Baglanti Testi', category: 'telnet', handler: 'telnet_legacy',
-    description: 'JBoss/WAS sunucularindan verilen IP/Port\'a Telnet baglanti testi.',
-    playbook_path: null, env_var_name: 'TELNET_LEGACY_TEMPLATE_ID',
+    key_name: 'telnet_legacy_operation',
+    display_name: 'Telnet — Legacy Baglanti Testi',
+    category: 'telnet',
+    handler: 'telnet_legacy',
+    description: "JBoss/WAS sunucularindan verilen IP/Port'a Telnet baglanti testi.",
+    playbook_path: null,
+    env_var_name: 'TELNET_LEGACY_TEMPLATE_ID',
   },
   {
-    key_name: 'telnet_openshift_operation', display_name: 'Telnet — Openshift Baglanti Testi', category: 'telnet', handler: 'telnet_openshift',
-    description: 'ARK/Non-ARK container ortamlarindan verilen IP/Port\'a Telnet baglanti testi.',
-    playbook_path: null, env_var_name: 'TELNET_OPENSHIFT_TEMPLATE_ID',
+    key_name: 'telnet_openshift_operation',
+    display_name: 'Telnet — Openshift Baglanti Testi',
+    category: 'telnet',
+    handler: 'telnet_openshift',
+    description: "ARK/Non-ARK container ortamlarindan verilen IP/Port'a Telnet baglanti testi.",
+    playbook_path: null,
+    env_var_name: 'TELNET_OPENSHIFT_TEMPLATE_ID',
   },
   // ── FileX — Self Servis dosya listeleme (SADECE Legacy) ──────────────────────
   // OpsX/Telnet ile AYNI desen: satir seed'den gelir, admin yalniz awx_template_id +
@@ -1443,38 +1869,54 @@ const PLAYBOOK_REGISTRY_SEED = [
   // zorunda (uretimdeki eski survey uygulama alanini `oc_app` diye tanimliyordu,
   // portal ise `target_app_names` gonderiyor). Bkz. scalex_file/SCALEX_AWX_SETUP.md.
   {
-    key_name: 'scalex_run', display_name: 'ScaleX — Replica Islemi (OCP)', category: 'scalex', handler: 'scalex_operation',
-    description: 'OpenShift uygulamalarinda replica durdurma/geri alma/olcekleme. Prompt on launch ACIK, survey sorulari OPSIYONEL olmali.',
-    playbook_path: null, env_var_name: 'SCALEX_TEMPLATE_ID',
+    key_name: 'scalex_run',
+    display_name: 'ScaleX — Replica Islemi (OCP)',
+    category: 'scalex',
+    handler: 'scalex_operation',
+    description:
+      'OpenShift uygulamalarinda replica durdurma/geri alma/olcekleme. Prompt on launch ACIK, survey sorulari OPSIYONEL olmali.',
+    playbook_path: null,
+    env_var_name: 'SCALEX_TEMPLATE_ID',
   },
   {
-    key_name: 'scalex_discovery', display_name: 'ScaleX — Kesif (salt okunur)', category: 'scalex', handler: 'scalex_discovery',
-    description: 'Workload/durum/saglik kesfi. Hicbir mutasyon yapmaz; ekranin uygulama secim listesini ve sapma tespitini besler.',
-    playbook_path: null, env_var_name: 'SCALEX_DISCOVERY_TEMPLATE_ID',
+    key_name: 'scalex_discovery',
+    display_name: 'ScaleX — Kesif (salt okunur)',
+    category: 'scalex',
+    handler: 'scalex_discovery',
+    description:
+      'Workload/durum/saglik kesfi. Hicbir mutasyon yapmaz; ekranin uygulama secim listesini ve sapma tespitini besler.',
+    playbook_path: null,
+    env_var_name: 'SCALEX_DISCOVERY_TEMPLATE_ID',
   },
   {
-    key_name: 'filex_list_files', display_name: 'FileX — Dosya Listeleme (Legacy)', category: 'filex', handler: 'filex_list_files',
-    description: 'Secilen uygulamanin .ear dizinindeki (logs haric) tum dosyalari ls -la + sha512sum bilgisiyle salt-okunur listeler.',
-    playbook_path: null, env_var_name: 'FILEX_LIST_FILES_TEMPLATE_ID',
+    key_name: 'filex_list_files',
+    display_name: 'FileX — Dosya Listeleme (Legacy)',
+    category: 'filex',
+    handler: 'filex_list_files',
+    description:
+      'Secilen uygulamanin .ear dizinindeki (logs haric) tum dosyalari ls -la + sha512sum bilgisiyle salt-okunur listeler.',
+    playbook_path: null,
+    env_var_name: 'FILEX_LIST_FILES_TEMPLATE_ID',
   },
 ];
 
 async function seedPlaybookRegistry(pool) {
   for (const row of PLAYBOOK_REGISTRY_SEED) {
     try {
-      const exists = await pool.request()
+      const exists = await pool
+        .request()
         .input('key_name', row.key_name)
         .query(`SELECT 1 FROM ansible_playbook_registry WHERE key_name = @key_name`);
       if (exists.recordset.length) continue;
-      await pool.request()
+      await pool
+        .request()
         .input('key_name', row.key_name)
         .input('display_name', row.display_name)
         .input('description', row.description)
         .input('category', row.category)
         .input('handler', row.handler)
         .input('playbook_path', row.playbook_path)
-        .input('env_var_name', row.env_var_name)
-        .query(`
+        .input('env_var_name', row.env_var_name).query(`
           INSERT INTO ansible_playbook_registry
             (key_name, display_name, description, category, handler, playbook_path, env_var_name)
           VALUES (@key_name, @display_name, @description, @category, @handler, @playbook_path, @env_var_name)
@@ -1490,30 +1932,101 @@ async function seedPlaybookRegistry(pool) {
 // Regex kaynaklari string olarak saklanir; masker bunlari new RegExp(pattern, flags) ile
 // derler. sort_order regex calisma sirasidir (PHONE_GEN en sonda kalmali).
 const MASK_RULES_SEED = [
-  { name: 'TCKN',      pattern: '\\b[1-9]\\d{10}\\b',                                                              flags: 'g',  replacement: '[TCKN]',                     sort_order: 1 },
-  { name: 'IBAN',      pattern: '\\bTR\\d{2}(?:[ -]?\\d{4}){5}[ -]?\\d{2}\\b',                                     flags: 'gi', replacement: '[IBAN]',                     sort_order: 2 },
-  { name: 'IBAN_INTL', pattern: '\\b[A-Z]{2}\\d{2}[0-9A-Z]{11,30}\\b',                                             flags: 'g',  replacement: '[IBAN]',                     sort_order: 3 },
-  { name: 'CARD',      pattern: '\\b(?:\\d[ -]?){13,16}\\b',                                                       flags: 'g',  replacement: '[CARD]',                     sort_order: 4 },
-  { name: 'BEARER',    pattern: 'Bearer\\s+[A-Za-z0-9\\-._~+/]+=*',                                                flags: 'gi', replacement: 'Bearer [TOKEN]',             sort_order: 5 },
-  { name: 'JWT',       pattern: 'eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*',                             flags: 'g',  replacement: '[JWT]',                      sort_order: 6 },
-  { name: 'AUTH_HDR',  pattern: 'Authorization:\\s*\\S+',                                                          flags: 'gi', replacement: 'Authorization: [REDACTED]',  sort_order: 7 },
-  { name: 'PASSWORD',  pattern: '("password"\\s*:\\s*)"[^"]*"',                                                    flags: 'gi', replacement: '$1"[REDACTED]"',             sort_order: 8 },
-  { name: 'PASSWORD2', pattern: '(password=)[^&\\s]+',                                                             flags: 'gi', replacement: '$1[REDACTED]',               sort_order: 9 },
-  { name: 'EMAIL',     pattern: '\\b[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}\\b',                       flags: 'g',  replacement: '[EMAIL]',                    sort_order: 10 },
-  { name: 'PHONE_TR',  pattern: '(\\+90|0)[\\s-]?(5\\d{2})[\\s\\-]?(\\d{3})[\\s\\-]?(\\d{2})[\\s\\-]?(\\d{2})\\b', flags: 'g',  replacement: '[PHONE]',                    sort_order: 11 },
-  { name: 'PHONE_GEN', pattern: '(?<!\\d)\\d{10,12}(?!\\d)',                                                       flags: 'g',  replacement: '[PHONE]',                    sort_order: 12 },
+  { name: 'TCKN', pattern: '\\b[1-9]\\d{10}\\b', flags: 'g', replacement: '[TCKN]', sort_order: 1 },
+  {
+    name: 'IBAN',
+    pattern: '\\bTR\\d{2}(?:[ -]?\\d{4}){5}[ -]?\\d{2}\\b',
+    flags: 'gi',
+    replacement: '[IBAN]',
+    sort_order: 2,
+  },
+  {
+    name: 'IBAN_INTL',
+    pattern: '\\b[A-Z]{2}\\d{2}[0-9A-Z]{11,30}\\b',
+    flags: 'g',
+    replacement: '[IBAN]',
+    sort_order: 3,
+  },
+  {
+    name: 'CARD',
+    pattern: '\\b(?:\\d[ -]?){13,16}\\b',
+    flags: 'g',
+    replacement: '[CARD]',
+    sort_order: 4,
+  },
+  {
+    name: 'BEARER',
+    pattern: 'Bearer\\s+[A-Za-z0-9\\-._~+/]+=*',
+    flags: 'gi',
+    replacement: 'Bearer [TOKEN]',
+    sort_order: 5,
+  },
+  {
+    name: 'JWT',
+    pattern: 'eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*',
+    flags: 'g',
+    replacement: '[JWT]',
+    sort_order: 6,
+  },
+  {
+    name: 'AUTH_HDR',
+    pattern: 'Authorization:\\s*\\S+',
+    flags: 'gi',
+    replacement: 'Authorization: [REDACTED]',
+    sort_order: 7,
+  },
+  {
+    name: 'PASSWORD',
+    pattern: '("password"\\s*:\\s*)"[^"]*"',
+    flags: 'gi',
+    replacement: '$1"[REDACTED]"',
+    sort_order: 8,
+  },
+  {
+    name: 'PASSWORD2',
+    pattern: '(password=)[^&\\s]+',
+    flags: 'gi',
+    replacement: '$1[REDACTED]',
+    sort_order: 9,
+  },
+  {
+    name: 'EMAIL',
+    pattern: '\\b[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}\\b',
+    flags: 'g',
+    replacement: '[EMAIL]',
+    sort_order: 10,
+  },
+  {
+    name: 'PHONE_TR',
+    pattern: '(\\+90|0)[\\s-]?(5\\d{2})[\\s\\-]?(\\d{3})[\\s\\-]?(\\d{2})[\\s\\-]?(\\d{2})\\b',
+    flags: 'g',
+    replacement: '[PHONE]',
+    sort_order: 11,
+  },
+  {
+    name: 'PHONE_GEN',
+    pattern: '(?<!\\d)\\d{10,12}(?!\\d)',
+    flags: 'g',
+    replacement: '[PHONE]',
+    sort_order: 12,
+  },
 ];
 
 async function seedMaskRules(pool) {
   for (const row of MASK_RULES_SEED) {
     try {
-      const exists = await pool.request().input('name', row.name)
+      const exists = await pool
+        .request()
+        .input('name', row.name)
         .query(`SELECT 1 FROM logx_mask_rules WHERE name = @name`);
       if (exists.recordset.length) continue;
-      await pool.request()
-        .input('name', row.name).input('pattern', row.pattern).input('flags', row.flags)
-        .input('replacement', row.replacement).input('sort_order', row.sort_order)
-        .query(`
+      await pool
+        .request()
+        .input('name', row.name)
+        .input('pattern', row.pattern)
+        .input('flags', row.flags)
+        .input('replacement', row.replacement)
+        .input('sort_order', row.sort_order).query(`
           INSERT INTO logx_mask_rules (name, pattern, flags, replacement, sort_order)
           VALUES (@name, @pattern, @flags, @replacement, @sort_order)
         `);
@@ -1531,10 +2044,13 @@ async function seedAwxServersFromEnv(pool) {
     const url = (process.env[`AWX_${i}_URL`] || '').trim();
     if (!url) continue;
     try {
-      const exists = await pool.request().input('no', i)
+      const exists = await pool
+        .request()
+        .input('no', i)
         .query(`SELECT 1 FROM ansible_awx_servers WHERE server_no = @no`);
       if (exists.recordset.length) continue;
-      await pool.request()
+      await pool
+        .request()
         .input('no', i)
         .input('name', (process.env[`AWX_${i}_NAME`] || `AWX ${i}`).trim())
         .input('url', url)
@@ -1560,10 +2076,15 @@ async function seedSplunkProducts(pool) {
     const any = await pool.request().query(`SELECT TOP 1 1 AS x FROM splunk_products`);
     if (any.recordset.length) return;
     const products = String(process.env.SPLUNK_PRODUCTS || 'httpd,nginx,tomcat,jboss')
-      .split(',').map((s) => s.trim()).filter(Boolean);
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     let order = 1;
     for (const product of products) {
-      await pool.request().input('product', product).input('sort_order', order++)
+      await pool
+        .request()
+        .input('product', product)
+        .input('sort_order', order++)
         .query(`INSERT INTO splunk_products (product, sort_order) VALUES (@product, @sort_order)`);
     }
     if (products.length) console.log(`[DB] Splunk urunleri seed edildi (${products.length})`);
@@ -1581,12 +2102,25 @@ async function seedSelfServiceGroups(pool) {
     const groups = [
       { id: 'grp-smart', key: 'smart', label: 'Smart', icon: 'SparklesIcon', sort: 1 },
       { id: 'grp-ansible', key: 'ansible', label: 'Ansible', icon: 'CommandLineIcon', sort: 2 },
-      { id: 'grp-others', key: 'others', label: 'Diğerleri', icon: 'EllipsisHorizontalIcon', sort: 3 },
+      {
+        id: 'grp-others',
+        key: 'others',
+        label: 'Diğerleri',
+        icon: 'EllipsisHorizontalIcon',
+        sort: 3,
+      },
     ];
     for (const g of groups) {
-      await pool.request()
-        .input('id', g.id).input('key', g.key).input('label', g.label).input('icon', g.icon).input('sort', g.sort)
-        .query(`INSERT INTO selfservice_groups (id, group_key, label, icon, sort_order) VALUES (@id, @key, @label, @icon, @sort)`);
+      await pool
+        .request()
+        .input('id', g.id)
+        .input('key', g.key)
+        .input('label', g.label)
+        .input('icon', g.icon)
+        .input('sort', g.sort)
+        .query(
+          `INSERT INTO selfservice_groups (id, group_key, label, icon, sort_order) VALUES (@id, @key, @label, @icon, @sort)`,
+        );
     }
     console.log('[DB] selfservice_groups seed edildi (3 varsayilan grup).');
   } catch (err) {
@@ -1599,13 +2133,15 @@ async function seedSelfServiceGroups(pool) {
 // selfservice_groups satirina baglar. Idempotent: yalniz group_id IS NULL satirlari etkiler.
 async function migrateSelfServiceSectionsToGroups(pool) {
   try {
-    const pending = await pool.request().query(`SELECT COUNT(*) AS n FROM selfservice_tabs WHERE group_id IS NULL`);
+    const pending = await pool
+      .request()
+      .query(`SELECT COUNT(*) AS n FROM selfservice_tabs WHERE group_id IS NULL`);
     if (!Number(pending.recordset[0]?.n || 0)) return;
     await pool.request().query(
       `UPDATE t SET t.group_id = g.id
          FROM selfservice_tabs t
          JOIN selfservice_groups g ON g.group_key = t.section
-        WHERE t.group_id IS NULL`
+        WHERE t.group_id IS NULL`,
     );
     console.log('[DB] selfservice_tabs.section -> group_id gocuruldu.');
   } catch (err) {
@@ -1629,21 +2165,29 @@ async function removeKaynaklarNavGroup(pool) {
   try {
     let removed = 0;
     for (const key of ['Linkler', 'navgroup:kaynaklar']) {
-      await pool.request().input('k', key)
+      await pool
+        .request()
+        .input('k', key)
         .query(`DELETE FROM portal_element_visibility WHERE element_key = @k`);
-      const r = await pool.request().input('k', key)
+      const r = await pool
+        .request()
+        .input('k', key)
         .query(`DELETE FROM portal_elements WHERE element_key = @k`);
       removed += r.rowsAffected?.[0] || 0;
     }
     // Bu grubun altinda BASKA bir sayfa birakilmis olabilir (admin Element CRUD'undan
     // tasinmis olabilir). Oyle bir sayfa varsa grup menude GORUNMEYE DEVAM EDERDI -
     // bagi koparilir, sayfanin kendisine DOKUNULMAZ.
-    const orphan = await pool.request().query(
-      `UPDATE portal_elements SET parent_key = NULL WHERE parent_key = 'navgroup:kaynaklar'`
-    );
+    const orphan = await pool
+      .request()
+      .query(
+        `UPDATE portal_elements SET parent_key = NULL WHERE parent_key = 'navgroup:kaynaklar'`,
+      );
     const detached = orphan.rowsAffected?.[0] || 0;
     if (removed || detached) {
-      console.log(`[DB] "Yardimci Araclar" temizligi: ${removed} element silindi, ${detached} sayfanin bagi koparildi.`);
+      console.log(
+        `[DB] "Yardimci Araclar" temizligi: ${removed} element silindi, ${detached} sayfanin bagi koparildi.`,
+      );
     }
   } catch (err) {
     console.warn('[DB] "Yardimci Araclar" nav grubu temizlenemedi:', err.message);
@@ -1652,18 +2196,28 @@ async function removeKaynaklarNavGroup(pool) {
 
 async function migratePageParentKeysToNavGroups(pool) {
   const pageToGroup = {
-    'Dashboard': 'navgroup:genel', 'Envanter': 'navgroup:genel', 'Denetim': 'navgroup:envanter',
-    'LogX': 'navgroup:otomasyon', 'OpsX': 'navgroup:otomasyon', 'FileX': 'navgroup:otomasyon',
-    'Nöbet': 'navgroup:operasyon',
-    'Self Service': 'navgroup:otomasyon', 'Ansible': 'navgroup:otomasyon',
-    'Performance': 'navgroup:performance',
+    Dashboard: 'navgroup:genel',
+    Envanter: 'navgroup:genel',
+    Denetim: 'navgroup:envanter',
+    LogX: 'navgroup:otomasyon',
+    OpsX: 'navgroup:otomasyon',
+    FileX: 'navgroup:otomasyon',
+    Nöbet: 'navgroup:operasyon',
+    'Self Service': 'navgroup:otomasyon',
+    Ansible: 'navgroup:otomasyon',
+    Performance: 'navgroup:performance',
     'AI Analist': 'navgroup:ai',
-    'Admin': 'navgroup:admin',
+    Admin: 'navgroup:admin',
   };
   try {
     for (const [pageKey, groupKey] of Object.entries(pageToGroup)) {
-      await pool.request().input('p', pageKey).input('g', groupKey)
-        .query(`UPDATE portal_elements SET parent_key = @g WHERE element_key = @p AND parent_key IS NULL`);
+      await pool
+        .request()
+        .input('p', pageKey)
+        .input('g', groupKey)
+        .query(
+          `UPDATE portal_elements SET parent_key = @g WHERE element_key = @p AND parent_key IS NULL`,
+        );
     }
   } catch (err) {
     console.warn('[DB] Sayfa -> nav-grup parent_key gocurulemedi:', err.message);
@@ -1685,9 +2239,9 @@ async function setupTables() {
 
   for (const { name, sql } of TABLES) {
     try {
-      const exists = await pool.request().query(
-        `SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${name}'`
-      );
+      const exists = await pool
+        .request()
+        .query(`SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${name}'`);
       if (!exists.recordset.length) {
         await pool.request().query(sql);
         console.log(`[DB] Tablo olusturuldu: ${name}`);
@@ -1727,9 +2281,9 @@ async function setupTables() {
   // dusurulurler. DROP idempotent: tablo yoksa sessizce atlanir.
   for (const deadTable of ['logx_sessions', 'logx_permissions']) {
     try {
-      const exists = await pool.request().query(
-        `SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${deadTable}'`
-      );
+      const exists = await pool
+        .request()
+        .query(`SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${deadTable}'`);
       if (exists.recordset.length) {
         await pool.request().query(`DROP TABLE ${deadTable}`);
         console.log(`[DB] Olu tablo dusuruldu: ${deadTable} (eski LogX proxy kalintisi)`);
@@ -1742,90 +2296,108 @@ async function setupTables() {
   // Alter existing tables to add missing columns
   const alters = [
     {
-      table: 'inventory_hosts', col: 'server_type',
+      table: 'inventory_hosts',
+      col: 'server_type',
       sql: `ALTER TABLE inventory_hosts ADD server_type NVARCHAR(50) DEFAULT 'generic'`,
     },
     {
       // Job-tipi basina hangi AWX sunucusunun (1..9 yapilandirilmis) kullanilacagini
       // belirler — NULL ise mevcut tek-legacy-AWX davranisi korunur (geriye uyumlu).
-      table: 'ansible_playbook_registry', col: 'awx_server_id',
+      table: 'ansible_playbook_registry',
+      col: 'awx_server_id',
       sql: `ALTER TABLE ansible_playbook_registry ADD awx_server_id INT NULL`,
     },
     {
-      table: 'logx_audit_logs', col: 'prev_hash',
+      table: 'logx_audit_logs',
+      col: 'prev_hash',
       sql: `ALTER TABLE logx_audit_logs ADD prev_hash NVARCHAR(64)`,
     },
     {
-      table: 'logx_audit_logs', col: 'entry_hash',
+      table: 'logx_audit_logs',
+      col: 'entry_hash',
       sql: `ALTER TABLE logx_audit_logs ADD entry_hash NVARCHAR(64)`,
     },
     {
       // actions.md #3 (Bolum C) — soft-delete/aktiflik icin, DELETE yerine toggle.
-      table: 'logx_env_suffix_map', col: 'is_active',
+      table: 'logx_env_suffix_map',
+      col: 'is_active',
       sql: `ALTER TABLE logx_env_suffix_map ADD is_active BIT NOT NULL DEFAULT 1`,
     },
     {
       // actions.md #11 (Bolum J) — kaynak tipi (playbook nereden geliyor: AWX template'i /
       // repo dosyasi / harici script). Serbest metin, admin ekraninda bir Select ile sunulur.
-      table: 'ansible_playbook_registry', col: 'source_type',
+      table: 'ansible_playbook_registry',
+      col: 'source_type',
       sql: `ALTER TABLE ansible_playbook_registry ADD source_type NVARCHAR(50) NOT NULL DEFAULT 'awx_template'`,
     },
     {
       // Onceden yalniz dosya basindaki yorumda belgeleniyordu ("salt-okunur tanilama
       // playbook'lari") — artik gercek, admin tarafindan gorulebilir/duzenlenebilir bir alan.
-      table: 'ansible_playbook_registry', col: 'is_readonly',
+      table: 'ansible_playbook_registry',
+      col: 'is_readonly',
       sql: `ALTER TABLE ansible_playbook_registry ADD is_readonly BIT NOT NULL DEFAULT 1`,
     },
     {
       // page_visibility.roles ile ayni CSV-rol deseni ('User,Admin' | 'Admin') — ayri bir
       // tabloya cikarmayi gerektirmeyecek kadar basit bir gorunurluk ihtiyaci.
-      table: 'ansible_playbook_registry', col: 'visibility',
+      table: 'ansible_playbook_registry',
+      col: 'visibility',
       sql: `ALTER TABLE ansible_playbook_registry ADD visibility NVARCHAR(200) NOT NULL DEFAULT 'User,Admin'`,
     },
     {
-      table: 'ansible_playbook_registry', col: 'sort_order',
+      table: 'ansible_playbook_registry',
+      col: 'sort_order',
       sql: `ALTER TABLE ansible_playbook_registry ADD sort_order INT NOT NULL DEFAULT 0`,
     },
     {
       // actions.md #8 (Bolum G) — gercek /api/v2/ping/ sonucu kalici hale getirilir, boylece
       // "son kontrol zamani" restart sonrasi da (bir sonraki canli kontrole kadar) gosterilebilir.
-      table: 'ansible_awx_servers', col: 'last_checked_at',
+      table: 'ansible_awx_servers',
+      col: 'last_checked_at',
       sql: `ALTER TABLE ansible_awx_servers ADD last_checked_at DATETIME2 NULL`,
     },
     {
-      table: 'ansible_awx_servers', col: 'last_status',
+      table: 'ansible_awx_servers',
+      col: 'last_status',
       sql: `ALTER TABLE ansible_awx_servers ADD last_status NVARCHAR(20) NULL`,
     },
     {
-      table: 'ansible_awx_servers', col: 'last_response_ms',
+      table: 'ansible_awx_servers',
+      col: 'last_response_ms',
       sql: `ALTER TABLE ansible_awx_servers ADD last_response_ms INT NULL`,
     },
     {
       // actions.md #9 (Bolum H) — soft-delete + kim/ne zaman olusturdu + gercek baglanti testi sonucu.
-      table: 'ansible_ocp_clusters', col: 'is_active',
+      table: 'ansible_ocp_clusters',
+      col: 'is_active',
       sql: `ALTER TABLE ansible_ocp_clusters ADD is_active BIT NOT NULL DEFAULT 1`,
     },
     {
-      table: 'ansible_ocp_clusters', col: 'created_at',
+      table: 'ansible_ocp_clusters',
+      col: 'created_at',
       sql: `ALTER TABLE ansible_ocp_clusters ADD created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()`,
     },
     {
-      table: 'ansible_ocp_clusters', col: 'created_by',
+      table: 'ansible_ocp_clusters',
+      col: 'created_by',
       sql: `ALTER TABLE ansible_ocp_clusters ADD created_by NVARCHAR(255) NULL`,
     },
     {
-      table: 'ansible_ocp_clusters', col: 'last_checked_at',
+      table: 'ansible_ocp_clusters',
+      col: 'last_checked_at',
       sql: `ALTER TABLE ansible_ocp_clusters ADD last_checked_at DATETIME2 NULL`,
     },
     {
-      table: 'ansible_ocp_clusters', col: 'connection_status',
+      table: 'ansible_ocp_clusters',
+      col: 'connection_status',
       sql: `ALTER TABLE ansible_ocp_clusters ADD connection_status NVARCHAR(20) NULL`,
     },
     {
       // OCP dinamik yapi: bastion artik CLUSTER seviyesinde tanimlanabilir. NULL ise
       // ocp_terminal_host_map(tenant,env) fallback'i gecerlidir (bkz. logx/v2/admin.cjs
       // resolveTerminalHosts) — mevcut kurulumlar hicbir davranis degisikligi gormez.
-      table: 'ocp_cluster_index', col: 'terminal_host',
+      table: 'ocp_cluster_index',
+      col: 'terminal_host',
       sql: `ALTER TABLE ocp_cluster_index ADD terminal_host NVARCHAR(255) NULL`,
     },
     // ── Katalog birlestirme: ansible_ocp_clusters alanlari ocp_cluster_index'e tasinir ──
@@ -1834,161 +2406,259 @@ async function setupTables() {
     // Info ekrani + AI pod-status). Ortak anahtarlari yoktu. Asagidaki kolonlar ikinciyi
     // birincinin icinde temsil edebilmek icindir; hepsi NULL'lanabilir, mevcut satirlar
     // etkilenmez. `legacy_id` goc idempotentligini saglar (ayni satir iki kez tasinmaz).
-    { table: 'ocp_cluster_index', col: 'display',           sql: `ALTER TABLE ocp_cluster_index ADD display NVARCHAR(150) NULL` },
-    { table: 'ocp_cluster_index', col: 'api_url',           sql: `ALTER TABLE ocp_cluster_index ADD api_url NVARCHAR(500) NULL` },
-    { table: 'ocp_cluster_index', col: 'console_url',       sql: `ALTER TABLE ocp_cluster_index ADD console_url NVARCHAR(500) NULL` },
-    { table: 'ocp_cluster_index', col: 'token',             sql: `ALTER TABLE ocp_cluster_index ADD token NVARCHAR(MAX) NULL` },
-    { table: 'ocp_cluster_index', col: 'description',       sql: `ALTER TABLE ocp_cluster_index ADD description NVARCHAR(MAX) NULL` },
-    { table: 'ocp_cluster_index', col: 'default_namespace', sql: `ALTER TABLE ocp_cluster_index ADD default_namespace NVARCHAR(150) NULL` },
-    { table: 'ocp_cluster_index', col: 'created_by',        sql: `ALTER TABLE ocp_cluster_index ADD created_by NVARCHAR(255) NULL` },
-    { table: 'ocp_cluster_index', col: 'last_checked_at',   sql: `ALTER TABLE ocp_cluster_index ADD last_checked_at DATETIME2 NULL` },
-    { table: 'ocp_cluster_index', col: 'connection_status', sql: `ALTER TABLE ocp_cluster_index ADD connection_status NVARCHAR(20) NULL` },
-    { table: 'ocp_cluster_index', col: 'legacy_id',         sql: `ALTER TABLE ocp_cluster_index ADD legacy_id NVARCHAR(64) NULL` },
+    {
+      table: 'ocp_cluster_index',
+      col: 'display',
+      sql: `ALTER TABLE ocp_cluster_index ADD display NVARCHAR(150) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'api_url',
+      sql: `ALTER TABLE ocp_cluster_index ADD api_url NVARCHAR(500) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'console_url',
+      sql: `ALTER TABLE ocp_cluster_index ADD console_url NVARCHAR(500) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'token',
+      sql: `ALTER TABLE ocp_cluster_index ADD token NVARCHAR(MAX) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'description',
+      sql: `ALTER TABLE ocp_cluster_index ADD description NVARCHAR(MAX) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'default_namespace',
+      sql: `ALTER TABLE ocp_cluster_index ADD default_namespace NVARCHAR(150) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'created_by',
+      sql: `ALTER TABLE ocp_cluster_index ADD created_by NVARCHAR(255) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'last_checked_at',
+      sql: `ALTER TABLE ocp_cluster_index ADD last_checked_at DATETIME2 NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'connection_status',
+      sql: `ALTER TABLE ocp_cluster_index ADD connection_status NVARCHAR(20) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'legacy_id',
+      sql: `ALTER TABLE ocp_cluster_index ADD legacy_id NVARCHAR(64) NULL`,
+    },
     // Ansible katalogunda tenant (platform) kavrami yoktu; ortak agacta yerini bulabilmesi
     // icin eklendi. Bos birakilirsa kayit '_atanmadi' tenant'i ile PASIF aynalanir.
-    { table: 'ansible_ocp_clusters', col: 'tenant',         sql: `ALTER TABLE ansible_ocp_clusters ADD tenant NVARCHAR(100) NULL` },
-    { table: 'ocp_cluster_index', col: 'source',            sql: `ALTER TABLE ocp_cluster_index ADD source NVARCHAR(20) NULL` },
+    {
+      table: 'ansible_ocp_clusters',
+      col: 'tenant',
+      sql: `ALTER TABLE ansible_ocp_clusters ADD tenant NVARCHAR(100) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'source',
+      sql: `ALTER TABLE ocp_cluster_index ADD source NVARCHAR(20) NULL`,
+    },
     // ── OCP katalogunun AWX inventory dosyasindan bagimsizlastirilmasi ──────────
     // Playbook'lar cluster URL/parolasini AWX'teki openshift_inventory_vars.yaml'dan
     // okuyordu; artik URL portaldan gelir. PAROLA ASLA DB'YE GIRMEZ — yalnizca hangi
     // vault anahtarinin (credentials.yaml icindeki uxmid_gar / uxmid_das / uxmid_gtek ...)
     // kullanilacaginin ADI tutulur; playbook parolayi lookup('vars', <ad>) ile cozer.
-    { table: 'ocp_cluster_index', col: 'vault_credential_key', sql: `ALTER TABLE ocp_cluster_index ADD vault_credential_key NVARCHAR(128) NULL` },
+    {
+      table: 'ocp_cluster_index',
+      col: 'vault_credential_key',
+      sql: `ALTER TABLE ocp_cluster_index ADD vault_credential_key NVARCHAR(128) NULL`,
+    },
     // `oc login --username=...` degeri. Playbook'lar bunu AWX'teki
     // openshift_inventory_vars.yaml icindeki `username` degiskeninden okuyordu; o dosya
     // AWX'te YOK ve uretimde TUM cluster'lar "'username' is undefined" ile dustu
     // (2026-08-09). Artik cluster satirinin kendi degeri kullanilir; bos ise
     // Admin > OCP Calistirma Ayarlari'ndaki genel varsayilan devreye girer.
-    { table: 'ocp_cluster_index', col: 'ocp_username',       sql: `ALTER TABLE ocp_cluster_index ADD ocp_username NVARCHAR(128) NULL` },
+    {
+      table: 'ocp_cluster_index',
+      col: 'ocp_username',
+      sql: `ALTER TABLE ocp_cluster_index ADD ocp_username NVARCHAR(128) NULL`,
+    },
     // Periyodik besleme job'inin cluster basina son durumu (tanilama icin).
-    { table: 'ocp_cluster_index', col: 'last_synced_at',     sql: `ALTER TABLE ocp_cluster_index ADD last_synced_at DATETIME2 NULL` },
-    { table: 'ocp_cluster_index', col: 'sync_status',        sql: `ALTER TABLE ocp_cluster_index ADD sync_status NVARCHAR(32) NULL` },
-    { table: 'ocp_cluster_index', col: 'sync_error',         sql: `ALTER TABLE ocp_cluster_index ADD sync_error NVARCHAR(1000) NULL` },
+    {
+      table: 'ocp_cluster_index',
+      col: 'last_synced_at',
+      sql: `ALTER TABLE ocp_cluster_index ADD last_synced_at DATETIME2 NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'sync_status',
+      sql: `ALTER TABLE ocp_cluster_index ADD sync_status NVARCHAR(32) NULL`,
+    },
+    {
+      table: 'ocp_cluster_index',
+      col: 'sync_error',
+      sql: `ALTER TABLE ocp_cluster_index ADD sync_error NVARCHAR(1000) NULL`,
+    },
     // actions.md #13 (Bolum L) — Tablo Takma Adlari eksik alanlar.
     {
-      table: 'inventory_table_aliases', col: 'schema_name',
+      table: 'inventory_table_aliases',
+      col: 'schema_name',
       sql: `ALTER TABLE inventory_table_aliases ADD schema_name NVARCHAR(128) NULL`,
     },
     {
-      table: 'inventory_table_aliases', col: 'description',
+      table: 'inventory_table_aliases',
+      col: 'description',
       sql: `ALTER TABLE inventory_table_aliases ADD description NVARCHAR(500) NULL`,
     },
     {
-      table: 'inventory_table_aliases', col: 'is_active',
+      table: 'inventory_table_aliases',
+      col: 'is_active',
       sql: `ALTER TABLE inventory_table_aliases ADD is_active BIT NOT NULL DEFAULT 1`,
     },
     {
-      table: 'inventory_table_aliases', col: 'language',
+      table: 'inventory_table_aliases',
+      col: 'language',
       sql: `ALTER TABLE inventory_table_aliases ADD language NVARCHAR(10) NOT NULL DEFAULT 'tr'`,
     },
     {
-      table: 'inventory_table_aliases', col: 'sort_order',
+      table: 'inventory_table_aliases',
+      col: 'sort_order',
       sql: `ALTER TABLE inventory_table_aliases ADD sort_order INT NOT NULL DEFAULT 0`,
     },
     // actions.md #14 (Bolum M) — rol override kaynagi/aciklamasi + soft-delete + denetim izi.
     {
-      table: 'user_role_overrides', col: 'source_type',
+      table: 'user_role_overrides',
+      col: 'source_type',
       sql: `ALTER TABLE user_role_overrides ADD source_type NVARCHAR(20) NOT NULL DEFAULT 'manual'`,
     },
     {
-      table: 'user_role_overrides', col: 'ldap_role',
+      table: 'user_role_overrides',
+      col: 'ldap_role',
       sql: `ALTER TABLE user_role_overrides ADD ldap_role NVARCHAR(50) NULL`,
     },
     {
-      table: 'user_role_overrides', col: 'is_active',
+      table: 'user_role_overrides',
+      col: 'is_active',
       sql: `ALTER TABLE user_role_overrides ADD is_active BIT NOT NULL DEFAULT 1`,
     },
     {
-      table: 'user_role_overrides', col: 'created_by',
+      table: 'user_role_overrides',
+      col: 'created_by',
       sql: `ALTER TABLE user_role_overrides ADD created_by NVARCHAR(255) NULL`,
     },
     {
-      table: 'user_role_overrides', col: 'created_at',
+      table: 'user_role_overrides',
+      col: 'created_at',
       sql: `ALTER TABLE user_role_overrides ADD created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()`,
     },
     {
-      table: 'user_role_overrides', col: 'description',
+      table: 'user_role_overrides',
+      col: 'description',
       sql: `ALTER TABLE user_role_overrides ADD description NVARCHAR(500) NULL`,
     },
     {
-      table: 'user_role_overrides', col: 'last_applied_at',
+      table: 'user_role_overrides',
+      col: 'last_applied_at',
       sql: `ALTER TABLE user_role_overrides ADD last_applied_at DATETIME2 NULL`,
     },
     // actions.md #15 (Bolum N) — kullanilmayan metadata JSON blob'u yerine gercek alanlar.
     {
-      table: 'portal_elements', col: 'description',
+      table: 'portal_elements',
+      col: 'description',
       sql: `ALTER TABLE portal_elements ADD description NVARCHAR(500) NULL`,
     },
     {
-      table: 'portal_elements', col: 'created_at',
+      table: 'portal_elements',
+      col: 'created_at',
       sql: `ALTER TABLE portal_elements ADD created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()`,
     },
     // actions.md #6 (Bolum E) — Nobet: dinamik kaynak + restart-hayatta-kalan kalici cache.
     {
-      table: 'duty_roster', col: 'duty_group',
+      table: 'duty_roster',
+      col: 'duty_group',
       sql: `ALTER TABLE duty_roster ADD duty_group NVARCHAR(100) NULL`,
     },
     {
-      table: 'duty_roster', col: 'team',
+      table: 'duty_roster',
+      col: 'team',
       sql: `ALTER TABLE duty_roster ADD team NVARCHAR(100) NULL`,
     },
     {
-      table: 'duty_roster', col: 'service',
+      table: 'duty_roster',
+      col: 'service',
       sql: `ALTER TABLE duty_roster ADD service NVARCHAR(100) NULL`,
     },
     {
-      table: 'duty_roster', col: 'is_active',
+      table: 'duty_roster',
+      col: 'is_active',
       sql: `ALTER TABLE duty_roster ADD is_active BIT NOT NULL DEFAULT 1`,
     },
     {
-      table: 'duty_roster', col: 'data_source',
+      table: 'duty_roster',
+      col: 'data_source',
       sql: `ALTER TABLE duty_roster ADD data_source NVARCHAR(20) NOT NULL DEFAULT 'manual'`,
     },
     // actions.md #5 (Bolum D) — selfservice_tabs artik sabit 'section' string'i yerine
     // gercek bir selfservice_groups satirina baglanir (bkz. server/selfservice/store.cjs
     // migrateSectionsToGroupsIfNeeded). 'section' kolonu SILINMEZ (geriye-donuk okuma icin).
     {
-      table: 'selfservice_tabs', col: 'group_id',
+      table: 'selfservice_tabs',
+      col: 'group_id',
       sql: `ALTER TABLE selfservice_tabs ADD group_id NVARCHAR(64) NULL`,
     },
     {
-      table: 'selfservice_tabs', col: 'is_active',
+      table: 'selfservice_tabs',
+      col: 'is_active',
       sql: `ALTER TABLE selfservice_tabs ADD is_active BIT NOT NULL DEFAULT 1`,
     },
     {
-      table: 'selfservice_tabs', col: 'icon',
+      table: 'selfservice_tabs',
+      col: 'icon',
       sql: `ALTER TABLE selfservice_tabs ADD icon NVARCHAR(50) NULL`,
     },
     {
-      table: 'selfservice_subtabs', col: 'is_active',
+      table: 'selfservice_subtabs',
+      col: 'is_active',
       sql: `ALTER TABLE selfservice_subtabs ADD is_active BIT NOT NULL DEFAULT 1`,
     },
     {
-      table: 'selfservice_items', col: 'service_type',
+      table: 'selfservice_items',
+      col: 'service_type',
       sql: `ALTER TABLE selfservice_items ADD service_type NVARCHAR(50) NULL`,
     },
     {
-      table: 'selfservice_items', col: 'visibility',
+      table: 'selfservice_items',
+      col: 'visibility',
       sql: `ALTER TABLE selfservice_items ADD visibility NVARCHAR(200) NOT NULL DEFAULT 'User,Admin'`,
     },
     {
-      table: 'selfservice_items', col: 'is_active',
+      table: 'selfservice_items',
+      col: 'is_active',
       sql: `ALTER TABLE selfservice_items ADD is_active BIT NOT NULL DEFAULT 1`,
     },
     {
-      table: 'selfservice_items', col: 'awx_template_ref',
+      table: 'selfservice_items',
+      col: 'awx_template_ref',
       sql: `ALTER TABLE selfservice_items ADD awx_template_ref INT NULL`,
     },
     {
-      table: 'selfservice_items', col: 'awx_server_ref',
+      table: 'selfservice_items',
+      col: 'awx_server_ref',
       sql: `ALTER TABLE selfservice_items ADD awx_server_ref INT NULL`,
     },
     {
-      table: 'selfservice_items', col: 'form_schema_ref',
+      table: 'selfservice_items',
+      col: 'form_schema_ref',
       sql: `ALTER TABLE selfservice_items ADD form_schema_ref NVARCHAR(255) NULL`,
     },
     {
-      table: 'selfservice_items', col: 'permission_info',
+      table: 'selfservice_items',
+      col: 'permission_info',
       sql: `ALTER TABLE selfservice_items ADD permission_info NVARCHAR(500) NULL`,
     },
     // Admin, onay bekleyen bir Smart talebini iptal ederken GEREKCE yazabilir
@@ -1998,39 +2668,47 @@ async function setupTables() {
     // cancelled_by ayrica tutulur: talebi ACAN kullanici (username) ile IPTAL EDEN
     // admin farkli kisilerdir.
     {
-      table: 'oco_scheduled_launches', col: 'cancelled_by',
+      table: 'oco_scheduled_launches',
+      col: 'cancelled_by',
       sql: `ALTER TABLE oco_scheduled_launches ADD cancelled_by NVARCHAR(200) NULL`,
     },
     {
-      table: 'oco_scheduled_launches', col: 'cancel_note',
+      table: 'oco_scheduled_launches',
+      col: 'cancel_note',
       sql: `ALTER TABLE oco_scheduled_launches ADD cancel_note NVARCHAR(1000) NULL`,
     },
     {
-      table: 'oco_scheduled_launches', col: 'awx_schedule_id',
+      table: 'oco_scheduled_launches',
+      col: 'awx_schedule_id',
       sql: `ALTER TABLE oco_scheduled_launches ADD awx_schedule_id INT NULL`,
     },
     {
       // Zamanlanmis is Smart onayi gerektirdiginde acilan biletin ID'si
       // (status = 'PENDING_APPROVAL'). Onay gelince smart poller bu ID uzerinden
       // OCO kaydini LAUNCHED'a tasir — aksi halde kayit sonsuza dek asili kalirdi.
-      table: 'oco_scheduled_launches', col: 'smart_ticket_id',
+      table: 'oco_scheduled_launches',
+      col: 'smart_ticket_id',
       sql: `ALTER TABLE oco_scheduled_launches ADD smart_ticket_id INT NULL`,
     },
     {
-      table: 'smart_tickets', col: 'cancel_note',
+      table: 'smart_tickets',
+      col: 'cancel_note',
       sql: `ALTER TABLE smart_tickets ADD cancel_note NVARCHAR(1000) NULL`,
     },
     {
-      table: 'smart_tickets', col: 'cancelled_by',
+      table: 'smart_tickets',
+      col: 'cancelled_by',
       sql: `ALTER TABLE smart_tickets ADD cancelled_by NVARCHAR(200) NULL`,
     },
   ];
 
   for (const { table, col, sql } of alters) {
     try {
-      const has = await pool.request().query(
-        `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='${table}' AND COLUMN_NAME='${col}'`
-      );
+      const has = await pool
+        .request()
+        .query(
+          `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='${table}' AND COLUMN_NAME='${col}'`,
+        );
       if (!has.recordset.length) {
         await pool.request().query(sql);
         console.log(`[DB] Sutun eklendi: ${table}.${col}`);
@@ -2046,14 +2724,14 @@ async function setupTables() {
   // Column widening: audit hash sutunlari 'v2:' oneki + 64 hex = 67 karakter gerektirir
   // (v2 hash semasi — bkz. server/logx/audit.cjs)
   const widenings = [
-    { table: 'logx_audit_logs', col: 'prev_hash',  minLen: 80 },
+    { table: 'logx_audit_logs', col: 'prev_hash', minLen: 80 },
     { table: 'logx_audit_logs', col: 'entry_hash', minLen: 80 },
   ];
   for (const { table, col, minLen } of widenings) {
     try {
       const info = await pool.request().query(
         `SELECT CHARACTER_MAXIMUM_LENGTH AS len FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_NAME='${table}' AND COLUMN_NAME='${col}'`
+         WHERE TABLE_NAME='${table}' AND COLUMN_NAME='${col}'`,
       );
       const len = info.recordset[0]?.len;
       if (len != null && len > 0 && len < minLen) {
@@ -2068,34 +2746,44 @@ async function setupTables() {
   // ── Performans index'leri (olcek — Sprint 4/D3) — idempotent (yoksa olustur) ────
   // Sik filtrelenen/siralanan sutunlar; tablo buyudukce (audit, download, job) sorgulari hizlandirir.
   const indexes = [
-    { name: 'IX_audit_created',       table: 'logx_audit_logs',   cols: 'created_at DESC' },
-    { name: 'IX_audit_user_created',  table: 'logx_audit_logs',   cols: 'username, created_at DESC' },
-    { name: 'IX_dl_expires',          table: 'logx_v2_downloads', cols: 'expires_at' },
-    { name: 'IX_dl_token',            table: 'logx_v2_downloads', cols: 'token' },
-    { name: 'IX_dl_request',          table: 'logx_v2_downloads', cols: 'request_id' },
-    { name: 'IX_opsxdl_expires',      table: 'opsx_dump_downloads', cols: 'expires_at' },
+    { name: 'IX_audit_created', table: 'logx_audit_logs', cols: 'created_at DESC' },
+    { name: 'IX_audit_user_created', table: 'logx_audit_logs', cols: 'username, created_at DESC' },
+    { name: 'IX_dl_expires', table: 'logx_v2_downloads', cols: 'expires_at' },
+    { name: 'IX_dl_token', table: 'logx_v2_downloads', cols: 'token' },
+    { name: 'IX_dl_request', table: 'logx_v2_downloads', cols: 'request_id' },
+    { name: 'IX_opsxdl_expires', table: 'opsx_dump_downloads', cols: 'expires_at' },
     // ScaleX: "kendi islemlerim" ve "su an durdurulmus" ekranlarinin ana sorgulari.
-    { name: 'IX_scalexop_user',        table: 'scalex_operations',   cols: 'username, created_at' },
-    { name: 'IX_scalexop_job',         table: 'scalex_operations',   cols: 'awx_server_id, awx_job_id' },
-    { name: 'IX_scalexmirror_scope',   table: 'scalex_state_mirror', cols: 'env, tenant, cluster_name' },
-    { name: 'IX_opsxdl_token',        table: 'opsx_dump_downloads', cols: 'token' },
-    { name: 'IX_jobs_request',        table: 'logx_v2_jobs',      cols: 'request_id' },
-    { name: 'IX_req_state',           table: 'logx_v2_requests',  cols: 'state' },
-    { name: 'IX_req_expires',         table: 'logx_v2_requests',  cols: 'expires_at' },
-    { name: 'IX_paudit_created',      table: 'portal_audit_logs', cols: 'created_at DESC' },
-    { name: 'IX_paudit_user_created', table: 'portal_audit_logs', cols: 'username, created_at DESC' },
-    { name: 'IX_aimsg_conv',          table: 'ai_messages',       cols: 'conversation_id, id' },
-    { name: 'IX_aiconv_user',         table: 'ai_conversations',  cols: 'username, updated_at DESC' },
-    { name: 'IX_aiusage_created',     table: 'ai_usage_log',      cols: 'created_at DESC' },
-    { name: 'IX_prefs_user',          table: 'portal_user_preferences', cols: 'username' },
-    { name: 'IX_duty_date',           table: 'duty_roster',       cols: 'duty_date' },
-    { name: 'IX_metrics_captured',    table: 'metrics_snapshots', cols: 'captured_at DESC' },
+    { name: 'IX_scalexop_user', table: 'scalex_operations', cols: 'username, created_at' },
+    { name: 'IX_scalexop_job', table: 'scalex_operations', cols: 'awx_server_id, awx_job_id' },
+    {
+      name: 'IX_scalexmirror_scope',
+      table: 'scalex_state_mirror',
+      cols: 'env, tenant, cluster_name',
+    },
+    { name: 'IX_opsxdl_token', table: 'opsx_dump_downloads', cols: 'token' },
+    { name: 'IX_jobs_request', table: 'logx_v2_jobs', cols: 'request_id' },
+    { name: 'IX_req_state', table: 'logx_v2_requests', cols: 'state' },
+    { name: 'IX_req_expires', table: 'logx_v2_requests', cols: 'expires_at' },
+    { name: 'IX_paudit_created', table: 'portal_audit_logs', cols: 'created_at DESC' },
+    {
+      name: 'IX_paudit_user_created',
+      table: 'portal_audit_logs',
+      cols: 'username, created_at DESC',
+    },
+    { name: 'IX_aimsg_conv', table: 'ai_messages', cols: 'conversation_id, id' },
+    { name: 'IX_aiconv_user', table: 'ai_conversations', cols: 'username, updated_at DESC' },
+    { name: 'IX_aiusage_created', table: 'ai_usage_log', cols: 'created_at DESC' },
+    { name: 'IX_prefs_user', table: 'portal_user_preferences', cols: 'username' },
+    { name: 'IX_duty_date', table: 'duty_roster', cols: 'duty_date' },
+    { name: 'IX_metrics_captured', table: 'metrics_snapshots', cols: 'captured_at DESC' },
   ];
   for (const { name, table, cols } of indexes) {
     try {
-      const exists = await pool.request().query(
-        `SELECT 1 FROM sys.indexes WHERE name = '${name}' AND object_id = OBJECT_ID('${table}')`
-      );
+      const exists = await pool
+        .request()
+        .query(
+          `SELECT 1 FROM sys.indexes WHERE name = '${name}' AND object_id = OBJECT_ID('${table}')`,
+        );
       if (!exists.recordset.length) {
         await pool.request().query(`CREATE INDEX ${name} ON ${table} (${cols})`);
         console.log(`[DB] Index olusturuldu: ${name} ON ${table} (${cols})`);
