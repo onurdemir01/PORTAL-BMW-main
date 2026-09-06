@@ -9,7 +9,7 @@
 // `server/ansible/scalex_file/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
-const EXPECTED_PACKAGE_VERSION = '4';
+const EXPECTED_PACKAGE_VERSION = '5';
 
 function extractStatsKey(rawArtifacts, key) {
   const a = rawArtifacts || {};
@@ -21,13 +21,21 @@ function extractStatsKey(rawArtifacts, key) {
   if (typeof direct === 'string') {
     const t = direct.trim();
     if (!t) return null;
-    try { return JSON.parse(t); } catch { return null; }
+    try {
+      return JSON.parse(t);
+    } catch {
+      return null;
+    }
   }
   if (direct !== undefined && direct !== null) return direct;
   // Bazi kurulumlar degeri ayri bir `<key>_json` alaninda sunuyor.
   for (const candidate of [a[`${key}_json`], a.data?.[`${key}_json`]]) {
     if (typeof candidate === 'string' && candidate.trim()) {
-      try { return JSON.parse(candidate); } catch { /* bozuksa yok say */ }
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        /* bozuksa yok say */
+      }
     }
   }
   return null;
@@ -37,7 +45,9 @@ function extractStatsKey(rawArtifacts, key) {
 // olarak yayinlandigi GORULDU. Playbook tarafinda `| trim` var ama portal ona GUVENMEZ:
 // sozlesmenin iki ucu da ayni anda yanlis olabilir ve sonucu kullanici oder.
 function normalizeStatus(value) {
-  return String(value ?? '').trim().toUpperCase();
+  return String(value ?? '')
+    .trim()
+    .toUpperCase();
 }
 
 // Jinja/`set_stats` bir bool'u JSON `true` OLARAK DA, `"True"` STRING'I OLARAK DA
@@ -84,21 +94,30 @@ function extractScaleXResult(rawArtifacts) {
     clusterMode: String(raw.cluster_mode || ''),
     clusters: Array.isArray(raw.clusters) ? raw.clusters : [],
     apps: Array.isArray(raw.apps) ? raw.apps : [],
-    targetReplicas: raw.target_replicas === '' || raw.target_replicas == null ? null : String(raw.target_replicas),
+    targetReplicas:
+      raw.target_replicas === '' || raw.target_replicas == null
+        ? null
+        : String(raw.target_replicas),
     // `strict_blocked` FAIL'DEN AYRI gosterilmeli: hicbir sey uygulanmadi cunku on
     // kontrol dustu ve kismi calistirma kapaliydi — cluster'da HICBIR degisiklik yok.
     // Bu, kullanici icin kotu degil IYI haber ve oyle sunulmali.
     strictBlocked: toBool(raw.strict_blocked),
     counts: {
-      planned: toInt(counts.planned), ok: toInt(counts.ok),
-      warn: toInt(counts.warn), fail: toInt(counts.fail),
-      precheckFail: toInt(counts.precheck_fail), verifyOk: toInt(counts.verify_ok),
-      verifyFail: toInt(counts.verify_fail), blocked: toInt(counts.blocked),
+      planned: toInt(counts.planned),
+      ok: toInt(counts.ok),
+      warn: toInt(counts.warn),
+      fail: toInt(counts.fail),
+      precheckFail: toInt(counts.precheck_fail),
+      verifyOk: toInt(counts.verify_ok),
+      verifyFail: toInt(counts.verify_fail),
+      blocked: toInt(counts.blocked),
       hpaSeen: toInt(counts.hpa_seen),
     },
     targets: (Array.isArray(raw.targets) ? raw.targets : []).map((t) => ({
-      cluster: String(t.cluster || ''), app: String(t.app || ''),
-      kind: String(t.kind || '-'), status: normalizeStatus(t.status),
+      cluster: String(t.cluster || ''),
+      app: String(t.app || ''),
+      kind: String(t.kind || '-'),
+      status: normalizeStatus(t.status),
       detail: String(t.detail || ''),
     })),
     targetsTruncated: toBool(raw.targets_truncated),
@@ -134,7 +153,9 @@ function extractDiscoveryResult(rawArtifacts) {
   const base = {
     // Kesifte durumlar KUCUK harf ('ok'|'warning'|'partial'|'error') — mutasyon
     // sonucundan (OK/WARN/FAIL) BILEREK farkli, ikisi karistirilmasin.
-    overallStatus: String(raw.overall_status ?? '').trim().toLowerCase(),
+    overallStatus: String(raw.overall_status ?? '')
+      .trim()
+      .toLowerCase(),
     mode: String(raw.mode || ''),
     namespace: String(raw.namespace || ''),
     platform: String(raw.platform || ''),
@@ -147,7 +168,12 @@ function extractDiscoveryResult(rawArtifacts) {
     pdbWarning: (items.find((i) => String(i.step) === 'PDB') || {}).detail || null,
     problems: items
       .filter((i) => normalizeStatus(i.status) === 'FAIL' || normalizeStatus(i.status) === 'WARN')
-      .map((i) => ({ cluster: String(i.cluster || ''), step: String(i.step || ''), status: normalizeStatus(i.status), detail: String(i.detail || '') })),
+      .map((i) => ({
+        cluster: String(i.cluster || ''),
+        step: String(i.step || ''),
+        status: normalizeStatus(i.status),
+        detail: String(i.detail || ''),
+      })),
   };
 
   if (base.mode === 'workloads') {
@@ -181,25 +207,32 @@ function extractDiscoveryResult(rawArtifacts) {
       .filter((i) => String(i.step) === 'WORKLOAD' && normalizeStatus(i.status) === 'OK')
       .map((i) => {
         const d = parseDetailPairs(i.detail);
-        const prev = /^[0-9]+$/.test(d.previous_replicas || '') ? Number(d.previous_replicas) : null;
+        const prev = /^[0-9]+$/.test(d.previous_replicas || '')
+          ? Number(d.previous_replicas)
+          : null;
         return {
-          cluster: String(i.cluster || ''), name: String(i.app || ''), kind: String(i.kind || '-'),
+          cluster: String(i.cluster || ''),
+          name: String(i.app || ''),
+          kind: String(i.kind || '-'),
           // OLCEKLENEBILIRLIK. DaemonSet dugum sayisiyla olceklenir, CronJob
           // `spec.suspend` ile durdurulur — ikisi de replica semantigi TASIMAZ ve
           // ekran onlari SECTIRMEZ. Alan gelmiyorsa (surum bildirmeyen eski paket)
           // `true` varsayilir: eski paket zaten yalnizca olceklenebilir tipleri
           // listeliyordu.
           scalable: d.scalable !== 'no',
-          notScalableReason: d.scalable === 'no' ? (d.reason || null) : null,
+          notScalableReason: d.scalable === 'no' ? d.reason || null : null,
           // CronJob'a ozgu; digerlerinde null. `disc_val` bosluklari alt cizgiye
           // cevirdigi icin cron ifadesi geri cevrilir ("0_2_*_*_*" -> "0 2 * * *").
           schedule: d.schedule ? String(d.schedule).replace(/_/g, ' ') : null,
-          suspended: d.suspended === 'true' ? true : (d.suspended === 'false' ? false : null),
+          suspended: d.suspended === 'true' ? true : d.suspended === 'false' ? false : null,
           // DaemonSet'e ozgu: dugum sayisi.
           desired: d.desired != null ? toInt(d.desired) : null,
-          resource: d.resource || '', specReplicas: toInt(d.spec),
-          statusReplicas: toInt(d.status), readyReplicas: toInt(d.ready),
-          hasHpa: d.hpa === 'yes', image: d.image && d.image !== '-' ? d.image : null,
+          resource: d.resource || '',
+          specReplicas: toInt(d.spec),
+          statusReplicas: toInt(d.status),
+          readyReplicas: toInt(d.ready),
+          hasHpa: d.hpa === 'yes',
+          image: d.image && d.image !== '-' ? d.image : null,
           // EKRANIN ASIL KARAR GIRDISI: geri alinabilir bir durum var mi?
           // `Geri Al` yalnizca burasi doluyken secilebilir olacak — bugun bu,
           // is calistiktan SONRA `STATE;FAIL` olarak ogreniliyor.
@@ -220,12 +253,16 @@ function extractDiscoveryResult(rawArtifacts) {
       .map((i) => {
         const d = parseDetailPairs(i.detail);
         return {
-          cluster: String(i.cluster || ''), appName: String(i.app || ''), kind: String(i.kind || '-'),
+          cluster: String(i.cluster || ''),
+          appName: String(i.app || ''),
+          kind: String(i.kind || '-'),
           configMap: d.cm || '',
           // Eski onekli (`chaos-scale-state-`) kayit — ilk basarili geri almadan sonra
           // kendiliginden yok olur. Ekran kucuk bir "eski bicim" rozetiyle gosterir.
           legacy: d.legacy === 'yes',
-          previousReplicas: /^[0-9]+$/.test(d.previous_replicas || '') ? Number(d.previous_replicas) : null,
+          previousReplicas: /^[0-9]+$/.test(d.previous_replicas || '')
+            ? Number(d.previous_replicas)
+            : null,
           phase: d.phase && d.phase !== '-' ? d.phase : null,
           createdAt: d.created_at && d.created_at !== '-' ? d.created_at : null,
           createdBy: d.created_by && d.created_by !== '-' ? d.created_by : null,
@@ -238,8 +275,11 @@ function extractDiscoveryResult(rawArtifacts) {
     base.health = items
       .filter((i) => ['PODS', 'EVENTS'].includes(String(i.step)))
       .map((i) => ({
-        cluster: String(i.cluster || ''), app: String(i.app || ''),
-        step: String(i.step), status: normalizeStatus(i.status), detail: String(i.detail || ''),
+        cluster: String(i.cluster || ''),
+        app: String(i.app || ''),
+        step: String(i.step),
+        status: normalizeStatus(i.status),
+        detail: String(i.detail || ''),
       }));
   }
 
@@ -247,6 +287,11 @@ function extractDiscoveryResult(rawArtifacts) {
 }
 
 module.exports = {
-  extractStatsKey, extractScaleXResult, extractDiscoveryResult, parseDetailPairs,
-  normalizeStatus, toBool, EXPECTED_PACKAGE_VERSION,
+  extractStatsKey,
+  extractScaleXResult,
+  extractDiscoveryResult,
+  parseDetailPairs,
+  normalizeStatus,
+  toBool,
+  EXPECTED_PACKAGE_VERSION,
 };

@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="4"
+PACKAGE_VERSION="5"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -1056,13 +1056,59 @@ disc_pdb() {
 # eski oneki de tanidigi icin bugun durdurulmus uygulamalar da gorunur.
 DISC_STATE_PHASE="-"
 DISC_STATE_PREV="-"
+# ── DURUM KAYITLARI: NAMESPACE BASINA TEK CAGRI ──────────────────────────────
+#
+# OLCULEN DARBOGAZ. `disc_read_state` uygulama BASINA 5'e kadar `oc` calistiriyordu:
+# `state_cm_name` yeni oneki dener (1), legacy oneki dener (2), sonra varlik
+# kontrolu (3) ve iki `jsonpath` okumasi (4-5). Her biri bastion uzerinden tam bir
+# API gidis-donusu.
+#
+# `backend-architecture-test` olcegi: 22 uygulama x 2 tip = ~44 satir x 3 cluster
+# = 132 satir x 5 = ~660 `oc` cagrisi. ~150 ms'den ~100 sn — kullanicinin
+# bildirdigi "1 dk 36 sn" ile ortusuyor.
+#
+# `discover_state` ZATEN dogru deseni kullaniyordu (namespace basina TEK toplu
+# okuma). Ayni cagri burada da kullanilir; sonuc bellekte aranir. 660 -> 1.
+#
+# NOT: `disc_load_hpa` ve `disc_pdb` namespace basina BIRER cagridir (uygulama
+# basina degil) — onlar darbogaz DEGILDI, dokunulmadi.
+DISC_STATES=""
+DISC_STATES_LOADED="no"
+
+disc_load_states() {
+  [ "$DISC_STATES_LOADED" = "yes" ] && return 0
+  DISC_STATES_LOADED="yes"
+  # Yetki yoksa toplu okuma da yapilmaz; durum alanlari "-" kalir. Kesif bundan
+  # dolayi DUSMEZ: durum kaydi bir zenginlestirmedir, listenin kendisi degil.
+  if ! oc auth can-i list configmaps -n "$NS" 2>/dev/null | grep -qi '^yes$'; then
+    return 0
+  fi
+  # `discover_state` ile BIREBIR AYNI cagri ve alan duzeni:
+  #   name|app|kind|previous_replicas|phase|created_at|created_by|job_id
+  # Iki yerin ayni sozlesmeyi paylasmasi, birinin sessizce eskimesini onler.
+  DISC_STATES="$(oc get cm -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.data.app}{"|"}{.data.kind}{"|"}{.data.previous_replicas}{"|"}{.data.phase}{"|"}{.data.created_at}{"|"}{.data.created_by}{"|"}{.data.job_id}{"\n"}{end}' 2>/dev/null || true)"
+}
+
 disc_read_state() {
-  local app="$1" cm
+  local app="$1" n l line
   DISC_STATE_PHASE="-"; DISC_STATE_PREV="-"
-  cm="$(state_cm_name "$app")"
-  oc get cm "$cm" -n "$NS" >/dev/null 2>&1 || return 0
-  DISC_STATE_PHASE="$(get_cm_data "$cm" phase)"
-  DISC_STATE_PREV="$(get_cm_data "$cm" previous_replicas)"
+  [ -z "$DISC_STATES" ] && return 0
+  n="${STATE_CM_PREFIX}$(safe_name "$app")"
+  l="${STATE_CM_PREFIX_LEGACY}$(safe_name "$app")"
+  # ONCELIK YENI ONEKTE. Iki kayit birden varsa (gecis donemi) yeni olan gecerlidir;
+  # `oc`nin listeleme sirasina birakmak, ayni namespace'te iki farkli sonuc uretirdi.
+  line="$(printf '%s\n' "$DISC_STATES" | awk -F'|' -v n="$n" '$1==n {print; exit}')"
+  if [ -z "$line" ]; then
+    line="$(printf '%s\n' "$DISC_STATES" | awk -F'|' -v l="$l" '$1==l {print; exit}')"
+  fi
+  # `data.app` dolu olan kayitlar icin ad eslesmesi de kabul edilir: eski kayitlarda
+  # CM adi uygulamanin `safe_name`inden farkli olabiliyor.
+  if [ -z "$line" ]; then
+    line="$(printf '%s\n' "$DISC_STATES" | awk -F'|' -v a="$app" '$2==a {print; exit}')"
+  fi
+  [ -z "$line" ] && return 0
+  DISC_STATE_PREV="$(printf '%s' "$line" | cut -d'|' -f4)"
+  DISC_STATE_PHASE="$(printf '%s' "$line" | cut -d'|' -f5)"
   [ -z "$DISC_STATE_PHASE" ] && DISC_STATE_PHASE="-"
   printf '%s' "$DISC_STATE_PREV" | grep -Eq '^[0-9]+$' || DISC_STATE_PREV="-"
 }
@@ -1107,6 +1153,8 @@ discover_workloads() {
   local full_name kinds_to_scan extra
   disc_load_hpa
   disc_pdb
+  # Durum kayitlari da namespace basina TEK cagriyla yuklenir (bkz. disc_load_states).
+  disc_load_states
 
   # CLUSTER NE DIYORSA O. Sabit liste iki soruyu birden cevaplayamiyordu ("bu tip
   # var mi" / "listeleyebiliyor muyum") ve cluster'da olup listemizde olmayan hicbir
@@ -1130,6 +1178,15 @@ discover_workloads() {
     # Tek tip patlayabilir (kapali DeploymentConfig API'si, kurulu olmayan Rollout
     # CRD'si, RBAC reddi). OLCUT "satir geldi mi" olmali; rc'ye bakmak, calisan
     # tiplerin ciktisini da atardi.
+    # PROBE DONGUSU BILEREK DURUYOR.
+    #
+    # Denendi ve GERI ALINDI: "envanterde yoksa hic deneme" kisa devresi tip basina
+    # 3'e kadar `oc get` kazandiriyordu, ama `oc api-resources` KISMI donebilir
+    # (bir aggregated APIService gecici olarak hatali oldugunda o grubun tipleri
+    # listeden duser). O anda kisa devre, GERCEKTEN VAR OLAN ve okunabilen bir tipi
+    # "api_absent" diye raporlar ve o namespace'in is yuklerini SESSIZCE dusururdu.
+    # Kazanc (~3 cagri/tip) bu riski karsilamiyor; asil kazanc zaten durum
+    # kayitlarinin toplu okunmasinda (bkz. disc_load_states, ~660 -> 1).
     while IFS= read -r candidate; do
       [ -z "$candidate" ] && continue
       if oc get "$candidate" -n "$NS" >/dev/null 2>&1; then res="$candidate"; break; fi
