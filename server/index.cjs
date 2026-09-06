@@ -21,6 +21,22 @@ if (APP_ENV) {
 require('dotenv').config({ path: path0.resolve(__dirname, '../.env.local') });
 require('dotenv').config({ path: path0.resolve(__dirname, '../.env') });
 
+// SUREC ICI LOG ROTASYONU — dotenv'den HEMEN SONRA, her seyden ONCE.
+//
+// Yukaridaki dotenv siralamasinin ardindan kurulur cunku `LOG_DIR`/`LOG_MAX_BYTES`
+// gibi ayarlar `.env` dosyalarindan gelir. Bundan SONRAKI her `console.*` cagrisi
+// (348 tanesi) rotasyonlu dosyaya da yazilir; oncekiler yalnizca stdout'a gider ve
+// `deploy/run.sh`in `<env>.out` dosyasinda kalir.
+//
+// NEDEN BURADA: rotasyon eskiden yalnizca surec BASLARKEN calisiyordu (`run.sh`
+// icinde bir kabuk fonksiyonu) ve haftalarca ayakta kalan bir prod sureci log
+// dosyasini sinirsiz buyutuyordu. Kabuktan cozulemez: fd'yi surec tutar, disaridan
+// `mv` yapmak surecin yazdigi inode'u degistirmez.
+//
+// KURULUM BASARISIZ OLURSA UYGULAMA YINE ACILIR: modul kendini kapatir, bir kez
+// uyarir ve `console.*` dokunulmamis kalir. Log kaybi, hizmet kaybindan iyidir.
+require('./log.cjs').install({ root: path0.resolve(__dirname, '..'), envName: APP_ENV });
+
 const express = require('express');
 const fs = require('fs');
 const path = require('path');

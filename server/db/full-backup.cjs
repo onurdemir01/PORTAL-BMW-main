@@ -22,8 +22,16 @@ const BLOB_NAME = 'db_full_backup:last_run';
 // env degeri portali kilitlerdi. Ayrica sinirlar makul araliga kelepcelenir: tick araligi
 // 60 dk'yi ASARSA `getHours() === cfg.hour` penceresi hic yakalanamaz ve yedek SESSIZCE
 // hic alinmaz (bu, hatadan daha kotudur — kimse fark etmez).
+// BOS DEGER "0" DEGILDIR. `Number(undefined)` NaN verip `fallback`e duser ama
+// `Number('')` **0** verir ve 0 SONLUDUR: `.env` dosyasinda
+// `DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES=` (degersiz) yazmak dotenv tarafindan bos
+// string olarak okunur ve aralik 15 dakika yerine ALT SINIRA, yani 1 dakikaya
+// duserdi — DB yoklamasi 15 KATINA cikar. Ayni hata `server/log.cjs`te de vardi ve
+// orada bir bekci (LR8) tarafindan yakalandi; bu ikiz de ayni sekilde duzeltildi.
 function numEnv(raw, fallback, { min, max }) {
-  const n = Number(raw);
+  const text = String(raw ?? '').trim();
+  if (text === '') return fallback;
+  const n = Number(text);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(n)));
 }
