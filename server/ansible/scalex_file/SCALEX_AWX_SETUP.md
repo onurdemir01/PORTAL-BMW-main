@@ -28,18 +28,18 @@ AWX'te **Projects > (proje) > Sync** ile yeni dosyaları çek.
 
 ## 2. İki job template oluştur
 
-| Alan | `scalex_run` | `scalex_discovery` |
-|---|---|---|
-| **Name** | ScaleX — Replica İşlemi | ScaleX — Keşif |
-| **Description** | OpenShift replica durdurma / geri alma / ölçekleme | Workload / durum / sağlık keşfi (salt okunur) |
-| **Job Type** | `run` | `run` |
-| **Inventory** | BMW - Openshift Jump Server Inventory | (aynı) |
-| **Project** | ANSIBLE_6203 | (aynı) |
-| **Playbook** | `<klasör>/scalex_app/main.yml` | `<klasör>/scalex_app/discovery.yml` |
-| **Credentials** | `application_was_credentials` (ssh) + `uxmid_all_credentials_vault` (vault) | (aynı) |
-| **Verbosity** | 2 | 1 |
-| **Variables → Prompt on launch** | ✅ **AÇIK** | ✅ **AÇIK** |
-| **Survey** | Adım 3'te API ile yüklenir, `survey_enabled: true` | (aynı) |
+| Alan                             | `scalex_run`                                                                | `scalex_discovery`                            |
+| -------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------- |
+| **Name**                         | ScaleX — Replica İşlemi                                                     | ScaleX — Keşif                                |
+| **Description**                  | OpenShift replica durdurma / geri alma / ölçekleme                          | Workload / durum / sağlık keşfi (salt okunur) |
+| **Job Type**                     | `run`                                                                       | `run`                                         |
+| **Inventory**                    | BMW - Openshift Jump Server Inventory                                       | (aynı)                                        |
+| **Project**                      | ANSIBLE_6203                                                                | (aynı)                                        |
+| **Playbook**                     | `<klasör>/scalex_app/main.yml`                                              | `<klasör>/scalex_app/discovery.yml`           |
+| **Credentials**                  | `application_was_credentials` (ssh) + `uxmid_all_credentials_vault` (vault) | (aynı)                                        |
+| **Verbosity**                    | 2                                                                           | 1                                             |
+| **Variables → Prompt on launch** | ✅ **AÇIK**                                                                 | ✅ **AÇIK**                                   |
+| **Survey**                       | Adım 3'te API ile yüklenir, `survey_enabled: true`                          | (aynı)                                        |
 
 ### ⚠️ "Prompt on launch → Variables" kapalıysa
 
@@ -48,6 +48,7 @@ playbook boş girdiyle çalışır. Hata mesajı yoktur. Bu tuzak bu kurumda ür
 yaşandı ve teşhisi pahalıydı.
 
 İki koruma var:
+
 - Portal launch'tan **önce** kontrol eder (`server/ansible/template-preflight.cjs`)
   ve kapalıysa **409** ile reddeder, işi hiç başlatmaz.
 - Playbook kendi kataloğuna düştüğünde bunu `catalog_source: file` olarak raporlar;
@@ -72,7 +73,7 @@ Template ID'yi URL'den not alın: `/templates/job_template/**123**/details`
 
 Portal kendi beklediği sürümü biliyor (`server/scalex/result.cjs`
 `EXPECTED_PACKAGE_VERSION`) ve uyuşmazlıkta keşif ekranında **söyler**:
-"AWX'te 3 numaralı paket koşuyor, portal 5 bekliyor."
+"AWX'te 3 numaralı paket koşuyor, portal 6 bekliyor."
 
 Bu paket AWX'e **elle** kopyalandığı için, portal güncellenip `scalex_app/`
 kopyalanmadığında eskiden ortada hiçbir işaret olmuyordu; ekran yalnızca
@@ -148,6 +149,7 @@ değişken adı `oc_app` idi — portal ise `target_app_names` gönderiyor. O su
 aynen açılsaydı **portalın her launch'ı 400 alırdı**.
 
 Bu yüzden bu paketteki survey'lerde:
+
 - Her sorunun `variable` adı portalın gönderdiği `extra_var` adıyla **birebir** aynı.
 - Hiçbir soru zorunlu **değil**.
 - Portalın **koşullu** gönderdiği alanların (`target_replicas`, `hpa_pin`,
@@ -166,10 +168,10 @@ tarafından kilitlenmiştir.
 
 Bu adım olmadan ScaleX ekranı **çalışmaz** (`501 "Template ID girilmemiş"`).
 
-| Anahtar | Görünen ad | Doldurulacak |
-|---|---|---|
-| `scalex_run` | ScaleX — Replica İşlemi (OCP) | **AWX Template ID** + **AWX Sunucusu**, *Etkin* işaretli |
-| `scalex_discovery` | ScaleX — Keşif (salt okunur) | (aynı) |
+| Anahtar            | Görünen ad                    | Doldurulacak                                             |
+| ------------------ | ----------------------------- | -------------------------------------------------------- |
+| `scalex_run`       | ScaleX — Replica İşlemi (OCP) | **AWX Template ID** + **AWX Sunucusu**, _Etkin_ işaretli |
+| `scalex_discovery` | ScaleX — Keşif (salt okunur)  | (aynı)                                                   |
 
 Satırlar sunucu açılışında otomatik seed edilir; admin yalnızca bu iki alanı
 doldurur. Ekrandaki rozet ID'nin nereden geldiğini söyler:
@@ -193,28 +195,28 @@ SCALEX_AWX_SERVER_ID=          # boş = 1
 **Admin > Ansible > Self Servis Özelleştirmeleri (FieldOverridesModal)** →
 ScaleX'in `(awx_server_id, template_id)` satırı:
 
-| Alan | Not |
-|---|---|
-| `smartApproval.enabled` | Prod `apply` için **zorunlu** |
-| `smartApproval.flowKey` | SMART akış anahtarı |
+| Alan                           | Not                                                                                                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `smartApproval.enabled`        | Prod `apply` için **zorunlu**                                                                                                                                            |
+| `smartApproval.flowKey`        | SMART akış anahtarı                                                                                                                                                      |
 | `smartApproval.metadataFields` | **"Alanları Getir"** ile gerçek `ElementName`'leri çekip eşleyin — sabit `{application, requestedBy}` hiçbir gerçek akışla eşleşmez ve SMART `400 Invalid Request` döner |
-| `smartApproval.integrationKey` | Servis bazında RFF token override'ı (boşsa global) |
-| `ocoCheck.enabled` | ScaleX prod'da kapıyı politikadan zaten açık tutar |
+| `smartApproval.integrationKey` | Servis bazında RFF token override'ı (boşsa global)                                                                                                                       |
+| `ocoCheck.enabled`             | ScaleX prod'da kapıyı politikadan zaten açık tutar                                                                                                                       |
 
 ### Kapı politikası (2026-09-01)
 
-| Durum | OCO | SMART |
-|---|---|---|
-| `dry_run` (her ortam) | yok | yok |
-| **prod dışı** `apply` | **yok** | **yok** |
-| prod `restore` + apply | uyarır, engellemez (gerekçe **zorunlu**) | gerekli |
-| prod `stop` / `scale` + apply | gerekli | gerekli |
+| Durum                         | OCO                                      | SMART   |
+| ----------------------------- | ---------------------------------------- | ------- |
+| `dry_run` (her ortam)         | yok                                      | yok     |
+| **prod dışı** `apply`         | **yok**                                  | **yok** |
+| prod `restore` + apply        | uyarır, engellemez (gerekçe **zorunlu**) | gerekli |
+| prod `stop` / `scale` + apply | gerekli                                  | gerekli |
 
 Ortam bilinmiyorsa **prod sayılır** (kapı açılır). Değişiklik izi ortamdan
 bağımsız olarak her zaman tutulur: `scalex_operations` tablosu + denetim kaydı.
 
 > **SMART yapılandırılmadan prod'da `apply` çalışmaz.** Sunucu `503
-> smart_not_configured` ile reddeder — bilinçli fail-closed karar. Bu arada
+smart_not_configured` ile reddeder — bilinçli fail-closed karar. Bu arada
 > "Önce kontrol et" (`dry_run`) modu çalışmaya devam eder.
 
 **SMART onayı beklerken AWX'te iş YOKTUR.** İstek portal DB'sinde bekler
@@ -244,19 +246,19 @@ yapmak için: `deploy/sql/2026-08-30-scalex-gorunurluk.sql`.
 
 ## 8. Sık karşılaşılan hatalar
 
-| Hata / belirti | Sebep | Çözüm |
-|---|---|---|
-| `501 "scalex_run" için AWX Template ID girilmemiş` | Admin > Playbook Kayıtları satırı boş ya da pasif | Template ID + AWX Sunucusu gir, *Etkin* işaretle |
-| `409 awx_prompt_on_launch_disabled` | Template'te **Variables → Prompt on launch** kapalı | Aç (Adım 2). Portal işi hiç başlatmadan keser |
-| `400 variables_needed_to_start` | Survey'de **zorunlu** bir soru var; portal onu göndermiyor | Survey'i bu paketteki JSON ile yeniden yükle (hepsi opsiyonel) |
-| `AWX HTTP 404` | Template başka bir AWX sunucusunda aranıyor | Playbook Kayıtları satırındaki **AWX Sunucusu**'nu düzelt |
-| "Sonuç bulunamadı" (iş yeşil) | `set_stats` adımı çalışmamış | `tasks/25_publish_result.yml` çalıştığını doğrula; `main.yml` onu `20_build_report`'tan **sonra**, mail'den **önce** çağırır |
-| Ekranda `catalog_source: file` uyarısı | AWX `extra_vars`'ı yutmuş (Prompt on launch kapalı) ya da portal katalog gönderemedi | Adım 2'yi kontrol et |
-| `503 smart_not_configured` | Prod `apply` isteniyor ama SMART ayarı yok | Adım 5 |
-| `skipping: no hosts matched` | Bastion (`jump_server`) AWX inventory'sinde yok | Playbook bastion'ı `add_host` ile dinamik ekler; yine de SSH ile erişilebilir ve credential doğru olmalı |
-| `Forbidden: User "system:anonymous" cannot list …` | Bastion hedef cluster'a `oc login` değil | Vault cluster kimliği (`uxmid_*`) ve RBAC'i kontrol et; playbook bunu cluster başına `FAIL` satırı olarak raporlar |
-| Geri alma `state ConfigMap not found` diyor | Uygulama eski önekle (`chaos-scale-state-`) durdurulmuş ve okuma kaybolmuş | `scalex_runner.sh` her iki öneki de okur; `STATE_CM_PREFIX_LEGACY` sabitinin durduğunu doğrula |
-| `'x' is undefined` ile düşüyor | `when:` ile korunan bir `set_fact` ilklenmemiş | Play başında koşulsuz ilkle (bu paketteki `_cluster_source` / `_result_published` örnekleri) |
+| Hata / belirti                                     | Sebep                                                                                | Çözüm                                                                                                                        |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `501 "scalex_run" için AWX Template ID girilmemiş` | Admin > Playbook Kayıtları satırı boş ya da pasif                                    | Template ID + AWX Sunucusu gir, _Etkin_ işaretle                                                                             |
+| `409 awx_prompt_on_launch_disabled`                | Template'te **Variables → Prompt on launch** kapalı                                  | Aç (Adım 2). Portal işi hiç başlatmadan keser                                                                                |
+| `400 variables_needed_to_start`                    | Survey'de **zorunlu** bir soru var; portal onu göndermiyor                           | Survey'i bu paketteki JSON ile yeniden yükle (hepsi opsiyonel)                                                               |
+| `AWX HTTP 404`                                     | Template başka bir AWX sunucusunda aranıyor                                          | Playbook Kayıtları satırındaki **AWX Sunucusu**'nu düzelt                                                                    |
+| "Sonuç bulunamadı" (iş yeşil)                      | `set_stats` adımı çalışmamış                                                         | `tasks/25_publish_result.yml` çalıştığını doğrula; `main.yml` onu `20_build_report`'tan **sonra**, mail'den **önce** çağırır |
+| Ekranda `catalog_source: file` uyarısı             | AWX `extra_vars`'ı yutmuş (Prompt on launch kapalı) ya da portal katalog gönderemedi | Adım 2'yi kontrol et                                                                                                         |
+| `503 smart_not_configured`                         | Prod `apply` isteniyor ama SMART ayarı yok                                           | Adım 5                                                                                                                       |
+| `skipping: no hosts matched`                       | Bastion (`jump_server`) AWX inventory'sinde yok                                      | Playbook bastion'ı `add_host` ile dinamik ekler; yine de SSH ile erişilebilir ve credential doğru olmalı                     |
+| `Forbidden: User "system:anonymous" cannot list …` | Bastion hedef cluster'a `oc login` değil                                             | Vault cluster kimliği (`uxmid_*`) ve RBAC'i kontrol et; playbook bunu cluster başına `FAIL` satırı olarak raporlar           |
+| Geri alma `state ConfigMap not found` diyor        | Uygulama eski önekle (`chaos-scale-state-`) durdurulmuş ve okuma kaybolmuş           | `scalex_runner.sh` her iki öneki de okur; `STATE_CM_PREFIX_LEGACY` sabitinin durduğunu doğrula                               |
+| `'x' is undefined` ile düşüyor                     | `when:` ile korunan bir `set_fact` ilklenmemiş                                       | Play başında koşulsuz ilkle (bu paketteki `_cluster_source` / `_result_published` örnekleri)                                 |
 
 ---
 

@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="5"
+PACKAGE_VERSION="6"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -467,9 +467,44 @@ EOF_FULLNAME
 # Olceklenebilirligin kesin olcutu `scale` alt kaynagidir. Grup keşif belgesi
 # duz metin olarak taranir — jump sunucularinda `jq` OLMAYABILIR.
 EXTRA_SCALABLE_RESOURCES=""
+# TERCIH EDILEN GRUP SURUMLERI — TEK CAGRIDA.
+#
+# OLCULEN DARBOGAZ: `load_extra_scalable_resources` her API GRUBU icin IKI
+# `oc get --raw` yapiyordu (once `/apis/<group>` ile tercih edilen surumu ogren,
+# sonra `/apis/<gv>` ile kaynaklari listele). Gercek bir OpenShift'te ~50 namespace'li
+# API grubu var: 100 API gidis-donusu, CLUSTER BASINA, HER KESIFTE.
+#
+# Sahte `oc` `--raw`a `exit 1` dondurdugu icin bu maliyet olcumlerde HIC gorunmuyordu
+# (bkz. D12 bekcisi: artik `--raw`a CEVAP VEREN bir fixture ile sayiliyor).
+#
+# `/apis` TEK cagrida tum gruplarin `preferredVersion`unu doner; ilk cagri grup
+# basina degil, KESIF BASINA bir kez yapilir. 2N -> 1+N.
+#
+# FAIL-SAFE: `/apis` okunamazsa liste bos kalir ve asagidaki dongu ESKI yola
+# (grup basina sorgu) duser — davranis gerilemez, yalnizca yavaslar.
+_APIS_PREFERRED=""
+_APIS_PREFERRED_LOADED="no"
+
+load_preferred_group_versions() {
+  [ "$_APIS_PREFERRED_LOADED" = "yes" ] && return 0
+  _APIS_PREFERRED_LOADED="yes"
+  # `"preferredVersion":{"groupVersion":"apps/v1"` — aralarinda virgul YOK, bu yuzden
+  # `tr ','` sonrasi ayni parcada kalirlar ve tercih edilmeyen surumlerle karismazlar.
+  _APIS_PREFERRED="$(oc get --raw /apis 2>/dev/null \
+    | tr ',' '\n' \
+    | grep -o '"preferredVersion":{"groupVersion":"[^"]*"' \
+    | sed 's/.*groupVersion":"//; s/"$//' || true)"
+}
+
+preferred_gv() {
+  [ -z "$_APIS_PREFERRED" ] && return 1
+  printf '%s\n' "$_APIS_PREFERRED" | grep -m1 "^$1/" 2>/dev/null || return 1
+}
+
 load_extra_scalable_resources() {
   local res group seen_groups="" gv
   [ "$CLUSTER_RESOURCES_OK" = "yes" ] || return 0
+  load_preferred_group_versions
   while IFS= read -r res; do
     [ -z "$res" ] && continue
     case "$res" in
@@ -483,7 +518,11 @@ load_extra_scalable_resources() {
     esac
     case " $seen_groups " in *" $group "*) continue ;; esac
     seen_groups="$seen_groups $group"
-    gv="$(oc get --raw "/apis/$group" 2>/dev/null | tr ',' '\n' | grep -o '"groupVersion":"[^"]*"' | head -n 1 | sed 's/.*:"//;s/"//')"
+    # ONCE toplu listeden; yoksa (eski yol) grup basina sorgu.
+    gv="$(preferred_gv "$group" || true)"
+    if [ -z "$gv" ]; then
+      gv="$(oc get --raw "/apis/$group" 2>/dev/null | tr ',' '\n' | grep -o '"groupVersion":"[^"]*"' | head -n 1 | sed 's/.*:"//;s/"//')"
+    fi
     [ -z "$gv" ] && continue
     oc get --raw "/apis/$gv" 2>/dev/null | tr ',' '\n' | grep -o '"name":"[^"]*/scale"' \
       | sed 's/.*:"//;s|/scale"||' | while IFS= read -r parent; do
