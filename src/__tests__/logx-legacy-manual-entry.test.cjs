@@ -40,7 +40,10 @@ test('ME1 bayrak YALNIZCA elle giris varken gonderilir (kapi bos yere acilmaz)',
   // anti-TOCTOU kapisi tam gucuyle calismali.
   assert.match(
     norm(PAGE),
-    /discoverLegacy\( requestId, legacyApp, hosts, opts\.manual\.length > 0, \)/,
+    // Prettier cagriyi tek satira toplayabilir ya da satirlara bolebilir; sondaki
+    // virgul de bicime gore gelir/gider. Olculen KURAL: bayrak, elle giris olup
+    // olmadigina BAGLI.
+    /discoverLegacy\(\s*requestId,\s*legacyApp,\s*hosts,\s*opts\.manual\.length > 0,?\s*\)/,
     'bayrak kosulsuz gonderiliyor ya da hic gonderilmiyor',
   );
 });
