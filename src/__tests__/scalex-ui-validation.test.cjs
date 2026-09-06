@@ -700,7 +700,17 @@ test('Y1 tekillestirme ADA bazinda — ayni ad farkli tipte bile tek satir', () 
   const code = codeOnly(WORKLOAD);
   // Secim artik uygulama adi bazinda; ayni ad farkli cluster'larda farkli
   // tipte olabilir ve tek tikla hepsi secilir. Tip ozeti satirda gosterilir.
-  assert.match(code, /byName\.set\(w\.name,\s*w\)/, 'tekillestirme ada gore yapilmiyor');
+  // KURAL: liste AD BASINA TEK satir uretir. Onceki desen (`byName.set(w.name, w)`)
+  // belirli bir UYGULAMAYI kilitliyordu; satirlar ad basina bir DIZIDE toplanacak
+  // sekilde yeniden yazilinca kural aynen dururken bekci kirmiziya dondu
+  // (bkz. bekci-korlugu-desenleri #3). Artik olculen sey: gruplama anahtari `w.name`
+  // ve listenin BENZERSIZ ADLAR uzerinden kurulmasi.
+  assert.match(code, /\.set\(w\.name,/, 'gruplama anahtari uygulama adi degil');
+  assert.match(
+    code,
+    /\[\.\.\.rowsByName\.keys\(\)\]/,
+    'liste benzersiz adlardan kurulmuyor — ayni ad birden fazla satir uretebilir',
+  );
   assert.doesNotMatch(
     code,
     /\$\{w\.name\}\\u0000\$\{w\.kind\}/,
@@ -727,11 +737,23 @@ test('Y3 olceklenemeyen tipler LISTEDE ama SECILEMEZ', () => {
   // bu dosyada baska yerde de geciyor (cakisma hesabinda) ve yalnizca adini aramak,
   // satir kilidi tamamen kaldirildiginda bile bekciyi YESIL birakiyordu (mutasyonla
   // dogrulandi).
+  // Kilit OLCEKLENEBILIRLIKTEN turetilmeli. Iki bicim de kabul edilir: temsilci
+  // satira bakan eski bicim ve ad duzeyinde "HICBIR cluster'da olceklenemiyor"
+  // diyen yeni bicim. Olculen sey KURAL; hangi ifadeyle yazildigi degil.
   assert.match(
     code,
-    /const locked = w\.scalable === false/,
+    /const locked = (isLockedName\(w\.name\)|w\.scalable === false)/,
     'satir kilidi olceklenebilirlikten TURETILMIYOR',
   );
+  // Yeni bicim kullaniliyorsa kaynagi da olceklenebilirlik OLMALI — yoksa
+  // `isLockedName` her seye `false` dondurup kilidi sessizce kaldirabilirdi.
+  if (/const locked = isLockedName/.test(code)) {
+    assert.match(
+      code,
+      /isLockedName = useCallback\([\s\S]{0,200}w\.scalable === false/,
+      'isLockedName olceklenebilirlige bakmiyor — kilit sahte',
+    );
+  }
   // Harfi harfine bir ifade DEGIL, `locked`in secimi gercekten kapattigi aranir:
   // ekran daha sonra baska kilit kosullari da ekleyebilir (ekledi de).
   assert.match(
@@ -744,6 +766,79 @@ test('Y3 olceklenemeyen tipler LISTEDE ama SECILEMEZ', () => {
   // Neden'i de yazmali: "olceklenemez" tek basina kullaniciyi AWX log'una gonderir.
   assert.match(code, /suspend gerekir/, 'CronJob icin suspend aciklamasi yok');
   assert.match(code, /düğüm sayısıyla ölçeklenir/, 'DaemonSet icin dugum aciklamasi yok');
+});
+
+// ── L: 150 UYGULAMALIK LISTE ────────────────────────────────────────────────
+// 22 uygulamali bir namespace ekranda ~44 satir uretiyordu (her ad iki tipte); ad
+// bazinda tekillestirme bunu yariya indirdi ama 150 uygulamali bir namespace hala tek
+// tek taranamaz. Arama bir ADI bulmak icin iyi, bir DURUMU bulmak icin degil.
+
+test('L1 hizli suzgecler AD duzeyinde ve HERHANGI bir cluster kosuluyla calisir', () => {
+  const code = codeOnly(WORKLOAD);
+  assert.match(code, /const WORKLOAD_FILTERS/, 'hizli suzgec tanimi yok');
+  // KARAR NOKTASI: suzgec listeyi gercekten daraltmali (tanim yetmez).
+  assert.match(
+    code,
+    /if \(filters\.has\(f\.key\) && !rows\.some\(f\.test\)\) return false;/,
+    'suzgecler listeyi daraltmiyor — cipler suslemeye donusur',
+  );
+  // Kosul AD duzeyinde `some` ile sorulmali: secim ad bazinda oldugu icin tek bir
+  // cluster'daki durum da kullaniciyi ilgilendirir.
+  assert.match(code, /rows\.some\(f\.test\)/, 'suzgec yalnizca temsilci satira bakiyor');
+});
+
+test('L2 suzgec cipleri KAC uygulama birakacagini yaziyor', () => {
+  // Sayi olmadan kullanici bos bir listeye tiklayip "bozuk" saniyordu.
+  const code = codeOnly(WORKLOAD);
+  assert.match(code, /const filterCounts = useMemo/, 'cip sayaci hesaplanmiyor');
+  assert.match(code, /\{f\.label\}[\s\S]{0,80}\{count\}/, 'sayi ekrana basilmiyor');
+});
+
+test('L3 toplu secim YALNIZCA gorunen ve secilebilir satirlara dokunur', () => {
+  const code = codeOnly(WORKLOAD);
+  // Gizli bir satiri kazara secmek, patlama yaricapini kullanicinin GORMEDIGI kadar
+  // buyutmek demekti — bu ekranda en pahali hata sinifi.
+  assert.match(
+    code,
+    /selectableVisible = useMemo\([\s\S]{0,200}list\.filter\(\(w\) => !isLockedName\(w\.name\)\)/,
+    'toplu secim gorunen+secilebilir kumesinden turetilmiyor',
+  );
+  assert.match(
+    code,
+    /setSelected\(\(prev\) => \[\.\.\.new Set\(\[\.\.\.prev, \.\.\.selectableVisible\]\)\]\)/,
+    'toplu secim mevcut secimi korumuyor ya da gorunen kumeyi kullanmiyor',
+  );
+});
+
+test('L4 gruplama VARSAYILAN KAPALI (bugunku davranis degismez)', () => {
+  const code = codeOnly(WORKLOAD);
+  assert.match(
+    code,
+    // Bu dosyanin `codeOnly`si tek tirnaklari CIFTE cevirir (prettier uyumlulugu) —
+    // desen de cift tirnakla yazilmali.
+    /useState<"none" \| "kind" \| "status">\("none"\)/,
+    'gruplama varsayilani kapali degil — mevcut akis sessizce degisir',
+  );
+  assert.match(code, /\{groups\.map\(\(g\) => \(/, 'gruplar RENDER edilmiyor');
+});
+
+test('L5 secim cubugu YAPISKAN (uzun listede sayac kaybolmaz)', () => {
+  const code = codeOnly(WORKLOAD);
+  assert.match(
+    code,
+    /sticky bottom-0[^"]*/,
+    'patlama yaricapi sayaci uzun listede ekranin altinda kaliyor',
+  );
+});
+
+test('L6 bos sonuc SUZGECTEN mi aramadan mi geldigini soyluyor', () => {
+  const code = codeOnly(WORKLOAD);
+  assert.match(
+    code,
+    /query \|\| filters\.size > 0/,
+    'bos liste mesaji suzgecleri hesaba katmiyor — kullanici namespace bos saniyor',
+  );
+  assert.match(code, /Süzgeçleri temizle/, 'bos ekranda cikis yolu yok');
 });
 
 test('Y4 BAKILAMAYAN tip ekranda gorunur ve nedeni AYRISTIRILIR', () => {

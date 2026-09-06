@@ -267,6 +267,111 @@ describe('WorkloadStep - discovery', () => {
     });
   });
 
+  // ── 150 UYGULAMALIK LISTE: DAVRANIS TESTLERI ──────────────────────────────
+  // Kaynak tarayan bekciler (scalex-ui-validation L1-L6) kurallarin KODDA durdugunu
+  // dogruluyor; buradakiler gercekten CALISTIGINI dogrular.
+
+  it('quick filter narrows the list and the chip shows how many remain', async () => {
+    const running = makeWorkload({ name: 'calisan-app', specReplicas: 2 });
+    const zero = makeWorkload({
+      name: 'sifir-app',
+      specReplicas: 0,
+      readyReplicas: 0,
+      statusReplicas: 0,
+    });
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([running, zero]));
+
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+    expect(screen.getByText('calisan-app')).toBeInTheDocument();
+    expect(screen.getByText('sifir-app')).toBeInTheDocument();
+
+    // Cip sayaci: yalnizca BIR uygulama replica 0.
+    const chip = screen.getByRole('button', { name: /replica 0 \(1\)/ });
+    await act(async () => {
+      fireEvent.click(chip);
+    });
+
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('sifir-app')).toBeInTheDocument();
+    expect(screen.queryByText('calisan-app')).not.toBeInTheDocument();
+  });
+
+  it('select-all only picks visible rows, never hidden or unscalable ones', async () => {
+    const a = makeWorkload({ name: 'app-a' });
+    const b = makeWorkload({ name: 'app-b' });
+    const ds = makeWorkload({ name: 'log-agent', kind: 'DaemonSet', scalable: false });
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([a, b, ds]));
+
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+
+    // Aramayla daralt: yalnizca app-a gorunur kalsin.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Uygulama ara'), { target: { value: 'app-a' } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Görünenlerin hepsini seç \(1\)/ }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Devam'));
+    });
+
+    // Gizli satirlar SECILMEZ: patlama yaricapi kullanicinin GORMEDIGI kadar buyuyemez.
+    expect(defaultProps.onSubmit).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onSubmit.mock.calls[0][0].apps).toEqual(['app-a']);
+  });
+
+  it('grouping is off by default and shows section headers once enabled', async () => {
+    const running = makeWorkload({ name: 'calisan-app', specReplicas: 2 });
+    const zero = makeWorkload({
+      name: 'sifir-app',
+      specReplicas: 0,
+      readyReplicas: 0,
+      statusReplicas: 0,
+    });
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([running, zero]));
+
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+    // VARSAYILAN KAPALI: grup basligi yok, bugunku duz liste.
+    expect(screen.queryByText('Replica 0 (1)')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Listeyi grupla'), { target: { value: 'status' } });
+    });
+    expect(screen.getByText('Replica 0 (1)')).toBeInTheDocument();
+    expect(screen.getByText('Çalışıyor (1)')).toBeInTheDocument();
+  });
+
+  it('an app scalable in one cluster stays selectable even if unscalable in another', async () => {
+    // Temsilci satira bakmak, satir sirasina gore KEYFI bir kilit uretirdi.
+    //
+    // BU DAVRANIS IKI MEKANIZMAYLA BIRDEN saglaniyor (bilincli yedeklilik):
+    //   1) temsilci satir olceklenebilir olani TERCIH eder,
+    //   2) `isLockedName` ad duzeyinde "HICBIR cluster'da olceklenemiyor" sorar.
+    // Mutasyonla dogrulandi: ikisinden BIRI geri alindiginda test yesil kalir,
+    // IKISI BIRDEN geri alindiginda kirmizi doner. Yani bu test bir uygulamayi
+    // degil DAVRANISI kilitliyor; kaynak duzeyindeki karsiligi Y3 bekcisidir.
+    const unscalable = makeWorkload({
+      name: 'karma-app',
+      cluster: 'cluster-a',
+      kind: 'DaemonSet',
+      scalable: false,
+    });
+    const scalable = makeWorkload({ name: 'karma-app', cluster: 'cluster-b', kind: 'Deployment' });
+    mockDiscoverStatus.mockResolvedValue(
+      makeStatusResponse([unscalable, scalable], { clusters: ['cluster-a', 'cluster-b'] }),
+    );
+
+    await renderAndPoll(
+      <WorkloadStep
+        {...defaultProps}
+        scope={{ ...defaultScope, clusters: ['cluster-a', 'cluster-b'] }}
+      />,
+    );
+    expect(screen.getByRole('checkbox')).not.toBeDisabled();
+  });
+
   it('403 polling stops immediately without waiting for MAX_POLL_ERRORS', async () => {
     const err = Object.assign(new Error('Forbidden'), { status: 403 });
     mockDiscoverStatus.mockRejectedValue(err);
