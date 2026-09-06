@@ -21,32 +21,19 @@ const path = require('node:path');
 
 const SRC = path.join(__dirname, '..', 'contexts', 'sessionRestore.ts');
 
-function loadFn() {
-  const src = fs.readFileSync(SRC, 'utf-8');
-  const start = src.indexOf('export async function fetchSessionWithRetry');
-  if (start < 0) throw new Error('fetchSessionWithRetry bulunamadi (tasinmis olabilir)');
-  // Govde parantezi IMZA SATIRININ SONUNDAKI '{' - `= {}` gibi varsayilan parametreler
-  // ilk '{' oldugu icin naif arama fonksiyonu bir satirda "kapatiyor" sanip bozuk kod
-  // cikariyordu (ilk yazimda tam bunu yaptim, test "Unexpected token 'return'" verdi).
-  const sigEnd = src.indexOf(String.fromCharCode(10), start);
-  let depth = 0, end = -1;
-  for (let k = src.lastIndexOf('{', sigEnd); k < src.length; k++) {
-    if (src[k] === '{') depth++;
-    else if (src[k] === '}') { depth--; if (depth === 0) { end = k + 1; break; } }
-  }
-  const constStart = src.indexOf('const DEFAULT_DELAYS');
-  const constLine = src.slice(constStart, src.indexOf('\n', constStart) + 1);
-  // TS tip notasyonlarini soy.
-  const body = src.slice(start, end)
-    .replace(/^export\s+/, '')
-    .replace(/:\s*SessionRestoreDeps\s*=\s*\{\}/, ' = {}')
-    .replace(/:\s*Promise<MeResponse \| null>/, '')
-    .replace(/\(u:\s*string\)/g, '(u)')
-    .replace(/\(ms:\s*number\)/g, '(ms)')
-    .replace(/new Promise<void>/g, 'new Promise')
-    .replace(/\s+as MeResponse/g, '');
-  // eslint-disable-next-line no-new-func
-  return new Function(constLine + body + '\nreturn fetchSessionWithRetry;')();
+function loadFn(timers = { setTimeout, clearTimeout }) {
+  // Gercek TS modulunu derle: timeout govdesi ve yardimcilari regex ile kaybolmasin.
+  const ts = require('typescript');
+  const js = ts.transpileModule(fs.readFileSync(SRC, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const exports = {};
+  new Function('exports', 'setTimeout', 'clearTimeout', js)(
+    exports,
+    timers.setTimeout,
+    timers.clearTimeout,
+  );
+  return exports.fetchSessionWithRetry;
 }
 
 const fetchSessionWithRetry = loadFn();
@@ -57,7 +44,10 @@ const res = (status, body) => ({ status, json: async () => body });
 test('200 -> oturum doner, TEK istek yeter', async () => {
   let calls = 0;
   const out = await fetchSessionWithRetry({
-    fetchFn: async () => { calls++; return res(200, { ok: true, user: { username: 'x', role: 'User' } }); },
+    fetchFn: async () => {
+      calls++;
+      return res(200, { ok: true, user: { username: 'x', role: 'User' } });
+    },
     sleep: noSleep,
   });
   assert.strictEqual(calls, 1);
@@ -67,7 +57,10 @@ test('200 -> oturum doner, TEK istek yeter', async () => {
 test('401 KESINDIR: yeniden DENENMEZ (gercekten cikmis kullanici bekletilmez)', async () => {
   let calls = 0;
   const out = await fetchSessionWithRetry({
-    fetchFn: async () => { calls++; return res(401, { ok: false }); },
+    fetchFn: async () => {
+      calls++;
+      return res(401, { ok: false });
+    },
     sleep: noSleep,
   });
   assert.strictEqual(out, null);
@@ -78,7 +71,11 @@ test('403/400 gibi diger 4xx de kesin sayilir', async () => {
   for (const st of [400, 403, 404]) {
     let calls = 0;
     const out = await fetchSessionWithRetry({
-      fetchFn: async () => { calls++; return res(st, {}); }, sleep: noSleep,
+      fetchFn: async () => {
+        calls++;
+        return res(st, {});
+      },
+      sleep: noSleep,
     });
     assert.strictEqual(out, null, String(st));
     assert.strictEqual(calls, 1, String(st));
@@ -103,7 +100,12 @@ test('AG HATASI gecicidir: yeniden denenir ve sunucu gelince oturum KURTARILIR',
 test('502/503 de gecicidir (nginx ayakta, backend restart ediyor)', async () => {
   let calls = 0;
   const out = await fetchSessionWithRetry({
-    fetchFn: async () => { calls++; return calls <= 2 ? res(502, {}) : res(200, { ok: true, user: { username: 'y', role: 'User' } }); },
+    fetchFn: async () => {
+      calls++;
+      return calls <= 2
+        ? res(502, {})
+        : res(200, { ok: true, user: { username: 'y', role: 'User' } });
+    },
     sleep: noSleep,
   });
   assert.strictEqual(calls, 3);
@@ -111,12 +113,18 @@ test('502/503 de gecicidir (nginx ayakta, backend restart ediyor)', async () => 
 });
 
 test('sunucu hic gelmezse SINIRLI sayida denenir ve pes edilir', async () => {
-  let calls = 0, gaveUp = 0;
+  let calls = 0,
+    gaveUp = 0;
   const out = await fetchSessionWithRetry({
-    fetchFn: async () => { calls++; throw new Error('down'); },
+    fetchFn: async () => {
+      calls++;
+      throw new Error('down');
+    },
     sleep: noSleep,
     delays: [1, 1, 1],
-    onGiveUp: () => { gaveUp++; },
+    onGiveUp: () => {
+      gaveUp++;
+    },
   });
   assert.strictEqual(out, null);
   assert.strictEqual(calls, 4, 'ilk deneme + 3 tekrar');
@@ -124,13 +132,107 @@ test('sunucu hic gelmezse SINIRLI sayida denenir ve pes edilir', async () => {
 });
 
 test('iptal edilirse (unmount) denemeye devam edilmez', async () => {
-  let calls = 0, cancelled = false;
+  let calls = 0,
+    cancelled = false;
   const out = await fetchSessionWithRetry({
-    fetchFn: async () => { calls++; cancelled = true; throw new Error('down'); },
+    fetchFn: async () => {
+      calls++;
+      cancelled = true;
+      throw new Error('down');
+    },
     sleep: noSleep,
     cancelled: () => cancelled,
     delays: [1, 1, 1, 1, 1],
   });
   assert.strictEqual(out, null);
   assert.strictEqual(calls, 1, 'iptalden sonra yeni istek atilmamali');
+});
+
+function clock() {
+  const pending = new Map();
+  let id = 0;
+  return {
+    pending,
+    setTimeout(fn, ms) {
+      pending.set(++id, { fn, ms });
+      return id;
+    },
+    clearTimeout(key) {
+      pending.delete(key);
+    },
+    fire() {
+      assert.strictEqual(pending.size, 1, 'denemenin bir timeout timeri olmali');
+      const [key, entry] = pending.entries().next().value;
+      pending.delete(key);
+      entry.fn();
+    },
+  };
+}
+
+for (const phase of ['headers', 'body']) {
+  test(
+    `yanit ${phase} beklemesi timeout ile biter ve istek iptal edilir`,
+    { timeout: 1000 },
+    async () => {
+      const timers = clock();
+      const restore = loadFn(timers);
+      let signal,
+        gaveUp = 0;
+      const never = new Promise(() => {});
+      const task = restore({
+        fetchFn: async (_, options) => {
+          signal = options?.signal;
+          return phase === 'headers' ? never : { status: 200, json: () => never };
+        },
+        delays: [],
+        timeoutMs: 10,
+        onGiveUp: (attempts) => {
+          gaveUp = attempts;
+        },
+      });
+      await Promise.resolve();
+      assert.strictEqual(timers.pending.size, 1);
+      timers.fire();
+      assert.strictEqual(await task, null);
+      assert.strictEqual(signal.aborted, true);
+      assert.strictEqual(gaveUp, 1);
+      assert.strictEqual(timers.pending.size, 0);
+    },
+  );
+}
+
+test('timeout sonrasi yeni signal ile retry oturumu kurtarir', { timeout: 1000 }, async () => {
+  const timers = clock();
+  const signals = [];
+  const task = loadFn(timers)({
+    fetchFn: async (_, options) => {
+      signals.push(options.signal);
+      return signals.length === 1 ? new Promise(() => {}) : res(200, { ok: true });
+    },
+    sleep: noSleep,
+    delays: [0],
+  });
+  timers.fire();
+  assert.strictEqual((await task).ok, true);
+  assert.strictEqual(signals.length, 2);
+  assert.strictEqual(signals[0].aborted, true);
+  assert.strictEqual(signals[1].aborted, false);
+  assert.strictEqual(timers.pending.size, 0);
+});
+
+test('basari, kesin HTTP hata ve JSON hatasi timer birakmaz', async () => {
+  for (const response of [
+    res(200, { ok: true }),
+    res(401, {}),
+    {
+      status: 200,
+      json: async () => {
+        throw new Error('bad json');
+      },
+    },
+  ]) {
+    const timers = clock();
+    await loadFn(timers)({ fetchFn: async () => response, delays: [] });
+    assert.strictEqual(timers.pending.size, 0);
+  }
 });

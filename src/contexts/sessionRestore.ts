@@ -22,7 +22,7 @@
 // `role` gibi bir alan daraldığında iki tarafın sessizce ayrışması demek olurdu
 // (nitekim ilk yazımda `role: string` denmiş ve tsc "Admin"|"User" ile uyuşmadığını
 // yakalamıştı — kopya tanım o hatayı gizleyebilirdi).
-import type { User } from "@/types";
+import type { User } from '@/types';
 
 export interface MeResponse {
   ok: boolean;
@@ -30,7 +30,9 @@ export interface MeResponse {
 }
 
 export interface SessionRestoreDeps {
-  fetchFn?: (input: string) => Promise<Response>;
+  fetchFn?: (input: string, init?: RequestInit) => Promise<Response>;
+  /** Header ve JSON govdesi dahil tek denemenin ust siniri (ms). */
+  timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   /** Yeniden deneme aralıkları (ms). Uzunluğu = ek deneme sayısı. */
   delays?: number[];
@@ -39,12 +41,15 @@ export interface SessionRestoreDeps {
   onGiveUp?: (attempts: number) => void;
 }
 
-// Toplam ~11 saniye. Tipik bir Node restart'ı bunun altında tamamlanıyor; daha uzun
-// beklemek, gerçekten çıkmış bir kullanıcıyı boş ekranda tutmak olurdu.
+// Bekleme araliklari toplam ~11 saniye; buna en fazla alti adet 10 saniyelik
+// istek eklenir. Yanit/govde gelmeyen baglanti da artik sinirli surede biter.
 const DEFAULT_DELAYS = [400, 800, 1600, 3000, 5000];
 
-export async function fetchSessionWithRetry(deps: SessionRestoreDeps = {}): Promise<MeResponse | null> {
-  const doFetch = deps.fetchFn ?? ((u: string) => fetch(u));
+export async function fetchSessionWithRetry(
+  deps: SessionRestoreDeps = {},
+): Promise<MeResponse | null> {
+  const doFetch = deps.fetchFn ?? fetch;
+  const timeoutMs = deps.timeoutMs ?? 10_000;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const delays = deps.delays ?? DEFAULT_DELAYS;
   const cancelled = deps.cancelled ?? (() => false);
@@ -52,18 +57,33 @@ export async function fetchSessionWithRetry(deps: SessionRestoreDeps = {}): Prom
   for (let attempt = 0; ; attempt++) {
     if (cancelled()) return null;
     let transient = false;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    // Yalniz headers degil r.json() da bu sureye dahil. Promise.race, abort'u
+    // dikkate almayan bir istemcinin bile restore islemini askida tutmasini onler.
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error('Session restore timed out'));
+        controller.abort();
+      }, timeoutMs);
+    });
     try {
-      const r = await doFetch("/api/auth/me");
-      if (r.status >= 200 && r.status < 300) {
-        return (await r.json()) as MeResponse;
-      }
-      // 4xx KESİNDİR: 401 oturum yok, 400/403 de yeniden denemekle düzelmez.
-      // Yalnızca 5xx sunucunun geçici durumunu anlatır.
-      if (r.status < 500) return null;
-      transient = true;
+      return await Promise.race([
+        (async () => {
+          const r = await doFetch('/api/auth/me', { signal: controller.signal });
+          if (r.status >= 200 && r.status < 300) {
+            return (await r.json()) as MeResponse;
+          }
+          // 4xx kesindir; 5xx ve timeout gecici hata olarak yeniden denenir.
+          if (r.status < 500) return null;
+          throw new Error('Session restore temporarily unavailable');
+        })(),
+        deadline,
+      ]);
     } catch {
-      // Ağ hatası: sunucu kapalı/yeniden başlıyor ya da proxy cevap vermiyor.
       transient = true;
+    } finally {
+      clearTimeout(timer!);
     }
 
     if (!transient || attempt >= delays.length) {
