@@ -578,6 +578,130 @@ test('D11 ConfigMap okumasi uygulama sayisiyla OLCEKLENMEZ (namespace basina sab
   );
 });
 
+// -- D12: API GRUBU BASINA IKI DEGIL BIR `--raw` -----------------------------
+//
+// OLCULEN DARBOGAZ: `load_extra_scalable_resources` her API grubu icin once
+// `/apis/<group>` (tercih edilen surumu ogren), sonra `/apis/<gv>` (kaynaklari
+// listele) cagiriyordu. Gercek bir OpenShift'te ~50 namespace'li API grubu var:
+// 50 grup icin 100 `--raw`, CLUSTER BASINA, HER KESIFTE. Uc cluster'da 300.
+//
+// BU MALIYET D11'DE GORUNMUYORDU: oradaki sahte `oc` `--raw`a `exit 1` donuyor,
+// yani dongu ilk cagrida kesiliyordu. Bu bekcinin sahte `oc`si `--raw`a GERCEKTEN
+// CEVAP VERIR; olcum ancak oyle anlamli olur.
+//
+// `/apis` TEK cagrida tum gruplarin `preferredVersion`unu doner -> 2N yerine 1+N.
+function runRawCounting(groupCount) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-rawcount-'));
+  const log = path.join(dir, 'calls.log');
+  const groups = Array.from({ length: groupCount }, (_, i) => `grp${i}.example.io`);
+  // Her grupta bir namespace'li CRD; bilinen alti tip disinda oldugu icin hepsi
+  // "ekstra olceklenebilir tip" adayi.
+  const apiRes = ['deployments.apps', ...groups.map((g, i) => `widget${i}s.${g}`)].join('\\n');
+  // Gercek apiserver ciktisi: kararli surum dizide ONCE, ayrica preferredVersion alani.
+  const apisJson =
+    '{"kind":"APIGroupList","groups":[' +
+    groups
+      .map(
+        (g) =>
+          `{"name":"${g}","versions":[{"groupVersion":"${g}/v1","version":"v1"},` +
+          `{"groupVersion":"${g}/v1alpha1","version":"v1alpha1"}],` +
+          `"preferredVersion":{"groupVersion":"${g}/v1","version":"v1"}}`,
+      )
+      .join(',') +
+    ']}';
+  const stub = [
+    '#!/bin/bash',
+    `echo "$@" >> ${JSON.stringify(log)}`,
+    'case "$1 $2" in "version --client") echo "Client Version: 4.14.0"; exit 0 ;; esac',
+    'case "$1" in',
+    '  login|project) exit 0 ;;',
+    `  api-resources) printf '${apiRes}\\n'; exit 0 ;;`,
+    '  auth) echo yes; exit 0 ;;',
+    '  get)',
+    '    case "$2" in',
+    '      --raw)',
+    '        case "$3" in',
+    `          /apis) printf '%s' ${JSON.stringify(apisJson)}; exit 0 ;;`,
+    // /apis/<group>/v1 -> kaynak listesi, `scale` alt kaynagi ILE.
+    '          /apis/*/v1)',
+    '            gv="${3#/apis/}"; g="${gv%/v1}"; n="${g#grp}"; n="${n%%.*}"',
+    '            printf \'{"kind":"APIResourceList","groupVersion":"%s","resources":' +
+      '[{"name":"widget%ss","namespaced":true},{"name":"widget%ss/scale","namespaced":true}]}\'' +
+      ' "$gv" "$n" "$n"; exit 0 ;;',
+    '          /apis/*/*) exit 1 ;;',
+    '          /apis/*)',
+    '            g="${3#/apis/}"',
+    '            printf \'{"kind":"APIGroup","name":"%s","versions":[{"groupVersion":"%s/v1",' +
+      '"version":"v1"}],"preferredVersion":{"groupVersion":"%s/v1","version":"v1"}}\'' +
+      ' "$g" "$g" "$g"; exit 0 ;;',
+    '        esac',
+    '        exit 1 ;;',
+    '      hpa) exit 0 ;;',
+    '      pdb) exit 0 ;;',
+    "      deploy|deployment|deployments.apps) printf 'app-0|1|1|1|registry/img:1||\\n'; exit 0 ;;",
+    '      cm) exit 0 ;;',
+    '      *) exit 1 ;;',
+    '    esac ;;',
+    'esac',
+    'exit 0',
+  ].join('\n');
+  fs.writeFileSync(path.join(dir, 'oc'), stub, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'curl'), CURL_STUB, { mode: 0o755 });
+  const out = execFileSync('bash', [RUNNER], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      SCALEX_PHASE: 'discover',
+      DISCOVERY_MODE: 'workloads',
+      CLUSTER: 'c1',
+      JUMP_SERVER: 'j1',
+      API_URL: 'https://api.lab:6443',
+      OCP_USERNAME: 'u',
+      OCP_PASSWORD: 'x',
+      OCP_OC_PATHS: path.join(dir, 'oc'),
+      NS: 'ns1',
+      APP_RAW: '',
+      ACTION: '',
+      TLS_VERIFY: 'false',
+      JOB_ID: '1',
+    },
+  });
+  const lines = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean);
+  return {
+    groups: groupCount,
+    raw: lines.filter((l) => /^get --raw\b/.test(l)).length,
+    // Ekstra tiplerin GERCEKTEN kesfedildiginin kaniti. Bu olmadan bekci,
+    // ozelligi tamamen SILEREK de yesile donerdi.
+    discovered: new Set(out.match(/widget\d+s\.grp\d+\.example\.io/g) || []).size,
+  };
+}
+
+test('D12 API grubu basina IKI degil BIR `--raw` (tercih edilen surumler toplu okunur)', () => {
+  const small = runRawCounting(6);
+  const large = runRawCounting(30);
+
+  // Once: ozellik hala calisiyor mu? Her grubun CRD'si kesfedilmis olmali.
+  assert.equal(small.discovered, 6, `6 gruptan ${small.discovered} ekstra tip kesfedildi`);
+  assert.equal(large.discovered, 30, `30 gruptan ${large.discovered} ekstra tip kesfedildi`);
+
+  // Grup basina `--raw` maliyeti 2 degil ~1 olmali. Ust sinir 1.34: 1 + (1 toplu
+  // /apis) + kesifin kendi birkac cagrisi kucuk N'de orani biraz yukari ceker.
+  const perGroup = large.raw / large.groups;
+  assert.ok(
+    perGroup <= 1.34,
+    `grup basina ${perGroup.toFixed(2)} adet "oc get --raw" — tercih edilen surumler ` +
+      `toplu okunmuyor (30 grup -> ${large.raw} cagri). /apis TEK cagrida hepsini doner.`,
+  );
+
+  // Ve gruplar 5 KATINA ciktiginda cagri 5 katindan az artmali (sabit bir toplu
+  // cagri + grup basina bir tane). 2N olsaydi bu da tutardi; asil olcut yukaridaki.
+  assert.ok(
+    large.raw < small.raw * 5,
+    `cagri sayisi grup sayisiyla tam orantili buyuyor: ${small.raw} -> ${large.raw}`,
+  );
+});
+
 test('D1 kesif `workloads` ciktisi portalin ayristiricisindan GECIYOR', () => {
   const items = runDiscovery('workloads');
   const parsed = result.extractDiscoveryResult({

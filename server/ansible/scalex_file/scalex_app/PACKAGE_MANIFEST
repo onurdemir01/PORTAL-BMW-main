@@ -9,5 +9,5 @@
 # KURAL: runner degistiyse VERSION artar ve asagidaki ozet guncellenir. Bekci
 # (scalex-awx-package.test.cjs, S9) ikisini birden kilitler; ozeti guncelleyip
 # surumu artirmayi unutmak da kirmizi doner.
-version=5
-runner_sha256=2b44f4f6c7f12eee93b5d91860346038a8aeaab750624ca9b835b8536a2c4293
+version=6
+runner_sha256=9e5f94bc23b658525eaa804869130a84286ef4cca3aa62da063e6d34372e3979
