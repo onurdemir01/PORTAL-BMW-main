@@ -841,20 +841,49 @@ test('L6 bos sonuc SUZGECTEN mi aramadan mi geldigini soyluyor', () => {
   assert.match(code, /Süzgeçleri temizle/, 'bos ekranda cikis yolu yok');
 });
 
-test('Y4 BAKILAMAYAN tip ekranda gorunur ve nedeni AYRISTIRILIR', () => {
+test('Y4 BAKILAMAYAN tip kullaniciya OZET, yoneticiye TAM LISTE', () => {
   const code = codeOnly(WORKLOAD);
   // Hesaplanmasi yetmez; RENDER edilmesi gerekir (ayni kor nokta).
   assert.match(
     code,
-    /\{unreadableKinds\.length > 0 && \(/,
+    /\{unreadableKinds\.length > 0 &&/,
     'bakilamayan tipler hesaplaniyor ama EKRANA hic basilmiyor',
   );
-  // Iki neden kullanici icin tamamen farkli: biri platformdan ISTENEBILIR,
-  // digeri hakkinda yapacak bir sey olmayan bir olgu. Ayni cumleye sokmak,
-  // kullaniciyi bos yere platform ekibine gondermek olurdu.
-  assert.match(code, /no_permission/, 'yetki eksikligi ayirt edilmiyor');
-  assert.match(code, /ClusterRole/, 'platformdan NE isteneceği yazmiyor');
-  assert.match(code, /API\/CRD yok/, 'API yoklugu icin "yapacak bir sey yok" denmiyor');
+  // KULLANICI EKRANINDA `api_absent` SAYILMAZ. O tip cluster'da kurulu degil;
+  // yapilacak bir sey yok. Sayaca katmak, cozulemeyecek bir eksik varmis
+  // izlenimi verirdi. (Onceki surumde 12 tiplik bir duvar her kullaniciya
+  // her keside gosteriliyordu — uygulama listesi ekranin disina itiliyordu.)
+  assert.match(
+    code,
+    /filter\(\(k\) => k\.reason === "no_permission"\)/,
+    'kullanici ekraninda api_absent de sayiliyor — cozulemeyecek eksik gosteriliyor',
+  );
+  assert.match(
+    code,
+    /if \(askable\.length === 0\) return null;/,
+    'yalnizca api_absent varken bile kullaniciya uyari gosteriliyor',
+  );
+  // TAM KAYNAK ADI kullanici ekraninda da korunur: kullanici ayrintiyi acarsa
+  // platform ekibine goturecegi metni dogru gormeli.
+  assert.match(code, /k\.verb \|\| "list"/, 'fiil bilgisi kayboldu');
+  assert.match(code, /k\.resource \|\| k\.kind/, 'TAM kaynak adi yerine kisa ad kullanilmis');
+});
+
+test('Y4b yonetici ekrani TAM metni ve IKI NEDENI ayri tutuyor', () => {
+  // Duvar kullanici ekranindan KALKTI ama bilgi KAYBOLMADI — yeri degisti.
+  // Bu bekci, tasimanin "silme"ye donusmedigini kanitlar.
+  const admin = codeOnly(read('components/admin/tabs/ScaleXAdminTab.tsx'));
+  assert.match(admin, /RbacFindings/, 'yonetici ekraninda bulgu bolumu yok');
+  assert.match(admin, /<RbacFindings \/>/, 'bolum tanimli ama RENDER EDILMIYOR');
+  assert.match(admin, /ClusterRole/, 'platformdan NE isteneceği yazmiyor');
+  assert.match(admin, /Yapılacak bir şey yok/, 'API yoklugu icin "yapacak bir sey yok" denmiyor');
+  // Talep metni TAM KAYNAK ADIYLA uretilmeli: `sts` demek, platform ekibine
+  // yanlis metin goturmek demek (ayni kural kullanici ekraninda da gecerli).
+  assert.match(
+    admin,
+    /it\.verb \|\| "list"\} \$\{it\.resource \|\| it\.kind\}/,
+    'talep metni tam kaynak adini kullanmiyor',
+  );
 });
 
 test('Y5 paket surumu uyusmazliginda ekran TAHMIN ETMEZ, soyler', () => {

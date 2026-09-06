@@ -47,6 +47,25 @@ export interface ScaleXKindReport {
   verb: string | null;
 }
 
+/** Kesifte OKUNAMAYAN bir nesne tipinin BIRIKMIS kaydi (yalnizca Admin).
+ *  `reason` iki degerden biri ve ayrim KRITIK:
+ *    `no_permission` → platformdan ISTENEBILIR (genellikle `view` ClusterRole binding)
+ *    `api_absent`    → o tip cluster'da kurulu DEGIL; yapilacak bir sey YOK.
+ *  Ikisini karistirmak, asla cozulmeyecek bir RBAC talebi acmak demektir. */
+export interface ScaleXRbacFinding {
+  id: number;
+  env: string;
+  tenant: string;
+  cluster: string;
+  namespace: string;
+  kind: string;
+  resource: string | null;
+  reason: 'no_permission' | 'api_absent';
+  verb: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
 export interface ScaleXWorkload {
   cluster: string;
   name: string;
@@ -459,5 +478,25 @@ export const scalexApi = {
       items: Record<string, unknown>[];
       message?: string;
     }>;
+  },
+
+  /** Admin: kesifte OKUNAMAYAN tiplerin birikmis listesi. Kullanici ekraninda yalnizca
+   *  tek satirlik bir ozet var; platform ekibine goturulecek tam liste BURADA. */
+  async rbacFindings(reason?: 'no_permission' | 'api_absent') {
+    const qs = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+    return safeJson(await fetch(`${BASE}/admin/rbac-findings${qs}`)) as Promise<{
+      ok: boolean;
+      findings: ScaleXRbacFinding[];
+      limit: number;
+      message?: string;
+    }>;
+  },
+
+  /** Admin: cozulen bir eksigi listeden dusur. Silme BILEREK var — platform ekibi
+   *  yetkiyi verdiginde satir bir sonraki kesife kadar "cozulmemis" gorunurdu. */
+  async clearRbacFinding(id: number) {
+    return safeJson(
+      await fetch(`${BASE}/admin/rbac-findings/${id}`, { method: 'DELETE' }),
+    ) as Promise<{ ok: boolean; message?: string }>;
   },
 };
