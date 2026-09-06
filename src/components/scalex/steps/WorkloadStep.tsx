@@ -6,7 +6,7 @@
 // olarak ortaya çıkıyor.
 //
 // Keşif SALT OKUNUR bir AWX işidir (`discovery_mode: workloads`) — hiçbir mutasyon yapmaz.
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
   ExclamationTriangleIcon,
@@ -35,6 +35,62 @@ interface Props {
   }) => void;
   /** Kesif asilirsa kullaniciya bir CIKIS yolu vermek icin (bkz. bekleme ekrani). */
   onBack: () => void;
+}
+
+// HIZLI SUZGECLER. 150 uygulamali bir namespace'te arama tek basina yetmiyor:
+// kullanici cogu zaman bir ADI degil bir DURUMU ariyor ("hangileri zaten 0?",
+// "hangilerinde HPA var?"). Her cip bagimsiz bir DARALTMADIR (VE ile birlesir) ve
+// yanlarinda kac uygulama birakacaklari yazar — tiklamadan once gorunsun.
+//
+// Kosullar AD duzeyinde "HERHANGI bir cluster'da saglaniyor mu" diye sorulur; secim
+// ad bazinda oldugu icin tek bir cluster'daki durum da kullaniciyi ilgilendirir.
+const WORKLOAD_FILTERS: {
+  key: string;
+  label: string;
+  title: string;
+  test: (w: ScaleXWorkload) => boolean;
+}[] = [
+  {
+    key: 'zero',
+    label: 'replica 0',
+    title: 'Şu an sıfır replica ile çalışanlar',
+    test: (w) => w.specReplicas === 0,
+  },
+  {
+    key: 'hpa',
+    label: 'HPA var',
+    title: 'Otomatik ölçekleyicisi olanlar — replica ≥ 1 iken HPA devralabilir',
+    test: (w) => w.hasHpa === true,
+  },
+  {
+    key: 'gitops',
+    label: 'GitOps',
+    title: 'ArgoCD/operator yönetiminde — değişiklik geri alınabilir',
+    test: (w) => Boolean(w.gitops),
+  },
+  {
+    key: 'stopped',
+    label: 'durdurulmuş',
+    title: 'ScaleX ile durdurulmuş, geri alınabilir kaydı olanlar',
+    test: (w) => w.restorable === true,
+  },
+  {
+    key: 'unscalable',
+    label: 'ölçeklenemez',
+    title: 'DaemonSet/CronJob gibi replica semantiği taşımayanlar',
+    test: (w) => w.scalable === false,
+  },
+];
+
+// Durum gruplamasi icin tek bir etiket. Sira ONEMLI: bir uygulama birden fazla
+// gruba girebilir, en KARAR VERDIRICI olan kazanir.
+function statusGroupOf(rows: ScaleXWorkload[]): string {
+  if (rows.every((w) => w.scalable === false)) return 'Ölçeklenemez';
+  if (rows.some((w) => w.restorable)) return 'Durdurulmuş (geri alınabilir)';
+  if (rows.some((w) => w.specReplicas === 0)) return 'Replica 0';
+  if (rows.some((w) => w.hasHpa)) return 'HPA var';
+  if (rows.some((w) => w.gitops)) return 'GitOps yönetiminde';
+  return 'Çalışıyor';
 }
 
 const POLL_MS = 3000;
@@ -68,6 +124,10 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   const [pkgCopied, setPkgCopied] = useState(false);
   const [selected, setSelected] = useState<string[]>(initial?.map(nameFromKey) || []);
   const [query, setQuery] = useState('');
+  // Etkin hizli suzgecler ve gruplama kipi. Ikisi de VARSAYILAN KAPALI: bu adimin
+  // bugunku davranisi degismesin, ozellikler isteyene acilsin.
+  const [filters, setFilters] = useState<Set<string>>(new Set());
+  const [groupMode, setGroupMode] = useState<'none' | 'kind' | 'status'>('none');
   // ÇİFT TIK KORUMASI ref ile — `busy` state'i render'da yakalanır ve aynı tick'teki
   // iki tık iki AWX işi açabilirdi (LogX/Telnet'te bu bilinçli olarak ref).
   const startingRef = useRef(false);
@@ -216,19 +276,25 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
     startDiscovery(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, []);
 
-  const list = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const filtered = q ? workloads.filter((w) => w.name.toLowerCase().includes(q)) : workloads;
-    // Aynı uygulama birden çok cluster'da olabilir — AD bazında TEKİLLEŞTİRİLİR,
-    // çünkü seçim uygulama adı bazındadır ve playbook (cluster × uygulama) çarpımını
-    // kendi yapar. Satırda birden fazla tip varsa bunu belirtir; hangi cluster'da
-    // hangi tip olduğu ise cluster bazlı haritayla AWX'e gider.
-    const byName = new Map<string, ScaleXWorkload>();
-    for (const w of filtered) {
-      if (!byName.has(w.name)) byName.set(w.name, w);
+  // AD BASINA TUM CLUSTER SATIRLARI. Suzgecler ve rozetler bu satirlarin BIRLESIMINE
+  // bakar: bir uygulama bir cluster'da HPA'liysa "HPA var" suzgecinde gorunmelidir —
+  // yalnizca temsilci satira bakmak, secim ad bazinda oldugu icin YANLIS olurdu.
+  const rowsByName = useMemo(() => {
+    const m = new Map<string, ScaleXWorkload[]>();
+    for (const w of workloads) {
+      const arr = m.get(w.name);
+      if (arr) arr.push(w);
+      else m.set(w.name, [w]);
     }
-    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-  }, [workloads, query]);
+    return m;
+  }, [workloads]);
+
+  // Bir ad, HICBIR cluster'da olceklenemiyorsa kilitlidir. Tek bir cluster'da bile
+  // olceklenebiliyorsa secilebilir olmali — islem o cluster'da anlamli.
+  const isLockedName = useCallback(
+    (name: string) => (rowsByName.get(name) || []).every((w) => w.scalable === false),
+    [rowsByName],
+  );
 
   // Her adın clusterlar arasındaki kind dağılımı — satırda "Deployment / StatefulSet"
   // gibi bir özet göstermek ve farklı tipte olduğunu söylemek için.
@@ -245,6 +311,79 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
     }
     return map;
   }, [workloads]);
+
+  const list = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    // Aynı uygulama birden çok cluster'da olabilir — AD bazında TEKİLLEŞTİRİLİR,
+    // çünkü seçim uygulama adı bazındadır ve playbook (cluster × uygulama) çarpımını
+    // kendi yapar. Satırda birden fazla tip varsa bunu belirtir; hangi cluster'da
+    // hangi tip olduğu ise cluster bazlı haritayla AWX'e gider.
+    //
+    // TEMSILCI SATIR olceklenebilir olani TERCIH EDER: aksi halde bir cluster'da
+    // DaemonSet, digerinde Deployment olan bir ad, hangi satirin once geldigine gore
+    // "olceklenemez" gorunup secilemez hale gelebilirdi.
+    const names = [...rowsByName.keys()]
+      .filter((name) => (q ? name.toLowerCase().includes(q) : true))
+      .filter((name) => {
+        const rows = rowsByName.get(name) || [];
+        // Suzgecler DARALTIR (VE): her etkin cip bir kosul ekler. Kosul ad
+        // duzeyinde "HERHANGI bir cluster'da saglaniyor mu" diye sorulur.
+        for (const f of WORKLOAD_FILTERS) {
+          if (filters.has(f.key) && !rows.some(f.test)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => a.localeCompare(b, 'tr'));
+    return names.map((name) => {
+      const rows = rowsByName.get(name) || [];
+      return rows.find((w) => w.scalable !== false) || rows[0];
+    });
+  }, [rowsByName, query, filters]);
+
+  // Her suzgecin KAC uygulamayi birakacagi — kullanici tiklamadan once gorsun.
+  // Sayim DIGER etkin suzgecleri de hesaba katar, yoksa rakamlar yanilticidir.
+  const filterCounts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const out: Record<string, number> = {};
+    for (const f of WORKLOAD_FILTERS) {
+      let n = 0;
+      for (const [name, rows] of rowsByName) {
+        if (q && !name.toLowerCase().includes(q)) continue;
+        if (!rows.some(f.test)) continue;
+        const others = WORKLOAD_FILTERS.every(
+          (o) => o.key === f.key || !filters.has(o.key) || rows.some(o.test),
+        );
+        if (others) n++;
+      }
+      out[f.key] = n;
+    }
+    return out;
+  }, [rowsByName, query, filters]);
+
+  // GORUNEN ve SECILEBILIR adlar — toplu secim yalnizca bunlara dokunur.
+  const selectableVisible = useMemo(
+    () => list.filter((w) => !isLockedName(w.name)).map((w) => w.name),
+    [list, isLockedName],
+  );
+
+  // GRUPLAMA. Varsayilan KAPALI — bugunku davranis degismesin; kullanici isterse acar.
+  const groups = useMemo(() => {
+    if (groupMode === 'none') return [{ title: '', items: list }];
+    const m = new Map<string, ScaleXWorkload[]>();
+    for (const w of list) {
+      const key =
+        groupMode === 'kind'
+          ? (kindSummaryByName.get(w.name)?.kinds || [w.kind]).join(' / ')
+          : statusGroupOf(rowsByName.get(w.name) || [w]);
+      const arr = m.get(key);
+      if (arr) arr.push(w);
+      else m.set(key, [w]);
+    }
+    return [...m.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+      .map(([title, items]) => ({ title, items }));
+    // `kindSummaryByName` asagida tanimli; gruplama yalnizca render aninda kullanilir.
+  }, [list, groupMode, rowsByName, kindSummaryByName]);
 
   // BAKILAMAYAN TIPLER. Cluster basina ayni tip birden fazla kez bildirilebilir
   // (her cluster kendi satirini basar) — tip bazinda tekillestirilir; bir tip HERHANGI
@@ -521,6 +660,99 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
         </button>
       </div>
 
+      {/* HIZLI SUZGECLER + GRUPLAMA + TOPLU SECIM.
+          22 uygulamali bir namespace ekranda ~44 satir uretiyordu (her ad iki tipte);
+          ad bazinda tekillestirme bunu yariya indirdi ama 150 uygulamali bir namespace
+          hala tek tek taranamaz. Arama bir ADI bulmak icin iyi, bir DURUMU bulmak icin
+          degil — "hangileri zaten 0?" sorusunun cevabi yoktu. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {WORKLOAD_FILTERS.map((f) => {
+          const active = filters.has(f.key);
+          const count = filterCounts[f.key] ?? 0;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              disabled={busy || (!active && count === 0)}
+              aria-pressed={active}
+              title={f.title}
+              onClick={() =>
+                setFilters((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(f.key)) next.delete(f.key);
+                  else next.add(f.key);
+                  return next;
+                })
+              }
+              className={`px-2.5 py-1 text-xs rounded-lg border transition-colors disabled:opacity-40 ${
+                active
+                  ? 'bg-[var(--accent)] text-[var(--text-on-accent)] border-[var(--accent)]'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--border-strong)]'
+              }`}
+            >
+              {/* TEK METIN DUGUMU: `{f.label} ({count})` seklinde yazmak "HPA var"i
+                  ayri bir metin dugumu yapiyor ve satirdaki ayni adli rozetle
+                  cakisiyordu (testte "Found multiple elements" olarak yakalandi). */}
+              {`${f.label} (${count})`}
+            </button>
+          );
+        })}
+        {filters.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setFilters(new Set())}
+            disabled={busy}
+            className="text-xs text-[var(--accent)] hover:underline"
+          >
+            Süzgeçleri temizle
+          </button>
+        )}
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+          Grupla
+          <select
+            value={groupMode}
+            disabled={busy}
+            onChange={(e) => setGroupMode(e.target.value as 'none' | 'kind' | 'status')}
+            aria-label="Listeyi grupla"
+            className="pf-input text-xs py-1"
+          >
+            <option value="none">Yok</option>
+            <option value="kind">Tipe göre</option>
+            <option value="status">Duruma göre</option>
+          </select>
+        </label>
+      </div>
+
+      {/* TOPLU SECIM. Kullanici "ark test'te sunlari kapat" derken tek tek 40 kutu
+          isaretlemek zorunda kalmamali. Islem GORUNEN (suzulmus) satirlara uygulanir —
+          gizli bir satiri kazara secmek, patlama yaricapini kullanicinin gormedigi
+          kadar buyutmek demekti. */}
+      {list.length > 0 && (
+        <div className="flex items-center gap-3 text-xs">
+          <button
+            type="button"
+            disabled={busy || selectableVisible.length === 0}
+            onClick={() => setSelected((prev) => [...new Set([...prev, ...selectableVisible])])}
+            className="text-[var(--accent)] hover:underline disabled:opacity-40 disabled:no-underline"
+          >
+            Görünenlerin hepsini seç ({selectableVisible.length})
+          </button>
+          {selected.length > 0 && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setSelected([])}
+              className="text-[var(--text-muted)] hover:underline"
+            >
+              Seçimi temizle ({selected.length})
+            </button>
+          )}
+          <span className="ml-auto text-[var(--text-muted)]">
+            {list.length} / {rowsByName.size} uygulama
+          </span>
+        </div>
+      )}
+
       {/* LISTE DOLU AMA HICBIRI SECILEMIYOR. "Bulunamadi" bloku ateslenmez (liste bos
           degil), `Devam` pasiftir ve sebep hicbir yerde yazmazdi — kullanici neden
           ilerleyemedigini goremiyordu. Ekranin sustugu sinifin ta kendisi. */}
@@ -537,116 +769,134 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
       )}
 
       <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border-subtle)] max-h-96 overflow-y-auto">
-        {list.map((w) => {
-          // ÖLÇEKLENEMEYEN TİPLER SEÇİLEMEZ. DaemonSet düğüm sayısıyla ölçeklenir,
-          // CronJob `spec.suspend` ile durdurulur — replica ile bir şey yapılamaz.
-          // Listede DURURLAR: kullanıcı "namespace'imde var ama ScaleX görmüyor"
-          // demesin, ama neden dokunulamadığı yazsın.
-          const locked = w.scalable === false;
-          const summary = kindSummaryByName.get(w.name);
-          const multiKind = summary && summary.kinds.length > 1;
-          return (
-            <label
-              key={keyOf(w)}
-              className={`flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-[var(--bg-inset)] ${
-                locked ? 'cursor-default opacity-70' : 'cursor-pointer'
-              }`}
-            >
-              <input
-                type="checkbox"
-                className="mt-1"
-                disabled={busy || locked}
-                checked={!locked && isSelected(w)}
-                onChange={() => !locked && toggle(w)}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-[var(--text-primary)] truncate" title={w.name}>
-                    {w.name}
-                  </span>
-                  <span
-                    className="pf-label pf-label--grey"
-                    title={multiKind ? 'cluster’a göre değişir' : undefined}
-                  >
-                    {multiKind ? summary.kinds.join(' / ') : w.kind}
-                  </span>
-                  {locked && <span className="pf-label pf-label--grey">ölçeklenemez</span>}
-                  {/* Aynı ad farklı cluster'larda farklı tipte: kullanıcı bunu
+        {groups.map((g) => (
+          <React.Fragment key={g.title || '_tek'}>
+            {/* Gruplama kapaliyken tek bir baslikisiz grup vardir — bugunku duz liste. */}
+            {g.title ? (
+              <div className="px-3 py-1.5 bg-[var(--bg-inset)] text-xs font-medium text-[var(--text-secondary)] sticky top-0 z-10">
+                {`${g.title} (${g.items.length})`}
+              </div>
+            ) : null}
+            {g.items.map((w) => {
+              // ÖLÇEKLENEMEYEN TİPLER SEÇİLEMEZ. DaemonSet düğüm sayısıyla ölçeklenir,
+              // CronJob `spec.suspend` ile durdurulur — replica ile bir şey yapılamaz.
+              // Listede DURURLAR: kullanıcı "namespace'imde var ama ScaleX görmüyor"
+              // demesin, ama neden dokunulamadığı yazsın.
+              //
+              // KILIT AD DUZEYINDEDIR: bir ad yalnizca HICBIR cluster'da olceklenemiyorsa
+              // kilitlidir. Tek bir cluster'da bile olceklenebiliyorsa islem orada
+              // anlamlidir; temsilci satira bakmak, satir sirasina gore keyfi bir kilit
+              // uretirdi.
+              const locked = isLockedName(w.name);
+              const summary = kindSummaryByName.get(w.name);
+              const multiKind = summary && summary.kinds.length > 1;
+              return (
+                <label
+                  key={keyOf(w)}
+                  className={`flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-[var(--bg-inset)] ${
+                    locked ? 'cursor-default opacity-70' : 'cursor-pointer'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    disabled={busy || locked}
+                    checked={!locked && isSelected(w)}
+                    onChange={() => !locked && toggle(w)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className="font-mono text-[var(--text-primary)] truncate"
+                        title={w.name}
+                      >
+                        {w.name}
+                      </span>
+                      <span
+                        className="pf-label pf-label--grey"
+                        title={multiKind ? 'cluster’a göre değişir' : undefined}
+                      >
+                        {multiKind ? summary.kinds.join(' / ') : w.kind}
+                      </span>
+                      {locked && <span className="pf-label pf-label--grey">ölçeklenemez</span>}
+                      {/* Aynı ad farklı cluster'larda farklı tipte: kullanıcı bunu
                      bilerek seçmeli; her cluster'daki tip haritası AWX'e ayrı gider. */}
-                  {multiKind && (
-                    <span
-                      className="pf-label pf-label--gold"
-                      title="Bu ad farklı cluster'larda farklı tipte — her cluster kendi tipiyle işlenir"
-                    >
-                      cluster’a göre değişir
-                    </span>
-                  )}
-                  {/* HPA bir GÜVENLİK SİNYALİ: kullanıcı "bu uygulamayı durdurursam
+                      {multiKind && (
+                        <span
+                          className="pf-label pf-label--gold"
+                          title="Bu ad farklı cluster'larda farklı tipte — her cluster kendi tipiyle işlenir"
+                        >
+                          cluster’a göre değişir
+                        </span>
+                      )}
+                      {/* HPA bir GÜVENLİK SİNYALİ: kullanıcı "bu uygulamayı durdurursam
                     otomatik ölçekleyici ne yapar?" sorusunu sormadan geçmemeli.
                     Playbook HPA'ya dokunmuyor — bunu açıkça yazıyoruz. */}
-                  {w.hasHpa && <span className="pf-label pf-label--gold">HPA var</span>}
-                  {/* GitOps: ArgoCD auto-sync acikken replica 0 birkac DAKIKADA sessizce
+                      {w.hasHpa && <span className="pf-label pf-label--gold">HPA var</span>}
+                      {/* GitOps: ArgoCD auto-sync acikken replica 0 birkac DAKIKADA sessizce
                     geri alinir. Dogrula-ve-tut penceresi (15 sn) bunu genellikle
                     yakalayamaz — o yuzden ONCEDEN uyariyoruz. */}
-                  {w.gitops && (
-                    <span className="pf-label pf-label--orange" title={w.gitops}>
-                      GitOps ile yönetiliyor
+                      {w.gitops && (
+                        <span className="pf-label pf-label--orange" title={w.gitops}>
+                          GitOps ile yönetiliyor
+                        </span>
+                      )}
+                      {w.specReplicas === 0 && w.restorable && (
+                        <span className="pf-label pf-label--blue">
+                          durdurulmuş · geri alınabilir ({w.previousReplicas})
+                        </span>
+                      )}
+                      {w.specReplicas === 0 && !w.restorable && (
+                        <span className="pf-label pf-label--grey">replica 0</span>
+                      )}
                     </span>
-                  )}
-                  {w.specReplicas === 0 && w.restorable && (
-                    <span className="pf-label pf-label--blue">
-                      durdurulmuş · geri alınabilir ({w.previousReplicas})
-                    </span>
-                  )}
-                  {w.specReplicas === 0 && !w.restorable && (
-                    <span className="pf-label pf-label--grey">replica 0</span>
-                  )}
-                </span>
-                <span className="block mt-0.5 text-xs text-[var(--text-muted)] tabular-nums">
-                  {locked ? (
-                    w.notScalableReason === 'suspend_not_replicas' ? (
-                      <>
-                        {w.suspended ? 'askıya alınmış' : 'etkin'}
-                        {w.schedule ? (
+                    <span className="block mt-0.5 text-xs text-[var(--text-muted)] tabular-nums">
+                      {locked ? (
+                        w.notScalableReason === 'suspend_not_replicas' ? (
                           <>
-                            {' '}
-                            · <span className="font-mono">{w.schedule}</span>
+                            {w.suspended ? 'askıya alınmış' : 'etkin'}
+                            {w.schedule ? (
+                              <>
+                                {' '}
+                                · <span className="font-mono">{w.schedule}</span>
+                              </>
+                            ) : null}
+                            {' · durdurmak için suspend gerekir, replica ile yapılamaz'}
                           </>
-                        ) : null}
-                        {' · durdurmak için suspend gerekir, replica ile yapılamaz'}
-                      </>
-                    ) : w.notScalableReason === 'unsupported_kind' ? (
-                      <>
-                        {/* CLUSTER'DAN KESFEDILEN TIP (operator CRD'si). DaemonSet dalina
+                        ) : w.notScalableReason === 'unsupported_kind' ? (
+                          <>
+                            {/* CLUSTER'DAN KESFEDILEN TIP (operator CRD'si). DaemonSet dalina
                             dusuyordu ve "0 dugumde calisiyor · dugum sayisiyla olceklenir"
                             yaziyordu — uc replicali bir Kafka icin IKI OLGU DA YANLIS:
                             dugum zamanlamasiyla ilgisi yok ve `desired` bos oldugu icin
                             sayi 0 gorunuyordu. */}
-                        replica {w.specReplicas} · hazır {w.readyReplicas}
-                        {' · ScaleX bu nesne tipini henüz işleyemiyor'}
-                      </>
-                    ) : (
-                      <>
-                        {w.desired ?? 0} düğümde çalışıyor · hazır {w.readyReplicas}
-                        {' · düğüm sayısıyla ölçeklenir, replica ile yapılamaz'}
-                      </>
-                    )
-                  ) : (
-                    <>
-                      replica {w.specReplicas} · hazır {w.readyReplicas}/{w.statusReplicas}
-                    </>
-                  )}
-                  {w.image ? (
-                    <>
-                      {' '}
-                      · <span className="font-mono">{w.image}</span>
-                    </>
-                  ) : null}
-                </span>
-              </span>
-            </label>
-          );
-        })}
+                            replica {w.specReplicas} · hazır {w.readyReplicas}
+                            {' · ScaleX bu nesne tipini henüz işleyemiyor'}
+                          </>
+                        ) : (
+                          <>
+                            {w.desired ?? 0} düğümde çalışıyor · hazır {w.readyReplicas}
+                            {' · düğüm sayısıyla ölçeklenir, replica ile yapılamaz'}
+                          </>
+                        )
+                      ) : (
+                        <>
+                          replica {w.specReplicas} · hazır {w.readyReplicas}/{w.statusReplicas}
+                        </>
+                      )}
+                      {w.image ? (
+                        <>
+                          {' '}
+                          · <span className="font-mono">{w.image}</span>
+                        </>
+                      ) : null}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </React.Fragment>
+        ))}
         {list.length === 0 && (
           <div className="px-3 py-10 text-center">
             <BoltSlashIcon
@@ -658,13 +908,22 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
                 olur; ayırt edilmezse kullanıcı doğru namespace'i seçtiği halde yanlış
                 seçtiğini sanıp oradan ayrılabilir. */}
             <p className="mt-2 text-sm text-[var(--text-muted)]">
-              {query
-                ? 'Aramanla eşleşen uygulama yok.'
+              {query || filters.size > 0
+                ? 'Arama ya da süzgeçlerinle eşleşen uygulama yok.'
                 : allClustersFailed
                   ? "Hiçbir cluster taranamadı — bu, namespace'in boş olduğu anlamına GELMEZ."
                   : "Bu namespace'te dc/deploy/sts/rollout bulunamadı."}
             </p>
-            {!query && !allClustersFailed && (
+            {filters.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilters(new Set())}
+                className="mt-2 text-xs text-[var(--accent)] hover:underline"
+              >
+                Süzgeçleri temizle
+              </button>
+            )}
+            {!query && filters.size === 0 && !allClustersFailed && (
               <p className="mt-1 text-xs text-[var(--text-muted)]">
                 Liste yalnızca dc/deploy/sts/rollout türlerini kapsar. Namespace adını ve bu
                 namespace için yetkinizi de kontrol edin.
@@ -679,7 +938,10 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
+      {/* YAPISKAN SECIM CUBUGU. Uzun listede sayac ekranin altinda kaliyordu:
+          kullanici 40 kutu isaretledikten sonra patlama yaricapini gormek icin
+          asagi kaydirmak zorundaydi. Karar rakami HER ZAMAN gorunur olmali. */}
+      <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-surface)] pt-4 pb-1">
         <span className="text-xs text-[var(--text-muted)]">
           {selected.length} uygulama × {scope.clusters.length} cluster ={' '}
           <strong className="text-[var(--text-primary)]">
