@@ -515,8 +515,10 @@ test("INFRA: grup grant'i olusturma/silme ucu VAR (yoksa ozellik kullanilamazdi)
   // yolu yoktu. Oturum `groups` tasimasi (S3) ve `ocp_app` tipi (S4) ile birlikte
   // zincirin ucuncu kopuk halkasi buydu.
   const LOGX = codeOnly(read('server/logx/v2/index.cjs'));
-  assert.match(LOGX, /router\.post\('\/admin\/restrictions\/:id\/group-grants'/);
-  assert.match(LOGX, /router\.delete\('\/admin\/restrictions\/:id\/group-grants'/);
+  // Prettier `router.post(` cagrisini cok satira boluyor; desen bosluga toleransli
+  // olmali (bkz. bekci-korlugu-desenleri #2b).
+  assert.match(LOGX, /router\.post\(\s*'\/admin\/restrictions\/:id\/group-grants'/);
+  assert.match(LOGX, /router\.delete\(\s*'\/admin\/restrictions\/:id\/group-grants'/);
   assert.match(LOGX, /restrictions\.addGroupGrant\(/);
   assert.match(LOGX, /restrictions\.removeGroupGrant\(/);
 });

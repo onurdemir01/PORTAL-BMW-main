@@ -17,9 +17,22 @@ const path = require('node:path');
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
 
+// ROUTE DILIMLEYICI — BICIMDEN BAGIMSIZ ve FAIL-CLOSED. Prettier
+// `router.post('/x', h)` cagrisini cok satira boluyor; `indexOf` -1 donunce
+// `slice(-1)` HATA VERMEDEN tek karakter dondurur ve bekci anlamsiz bir metni
+// tarar. Bulunamazsa artik testi DUSURUR.
+function routeSlice(src, method, routePath) {
+  const re = new RegExp(`router\\.${method}\\(\\s*['"]${routePath.replace(/[/]/g, '\\/')}['"]`);
+  const hit = re.exec(src);
+  assert.ok(hit, `route bulunamadi (bicim mi degisti?): router.${method}('${routePath}')`);
+  return src.slice(hit.index);
+}
+
 // Yorum satirlari ayiklanir: acigi ANLATAN yorum (index.cjs'te bilerek duruyor, tekrar
 // edilmesin diye) desenin kendisini icerir ve testi yanlis yere dusururdu.
-const CODE = SRC.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+const CODE = SRC.split('\n')
+  .filter((l) => !l.trim().startsWith('//'))
+  .join('\n');
 
 test('namespace yetki anahtarinda BIRLESTIRILMIS cluster listesi kullanilmaz', () => {
   // `clusters.join('+')` deseninin herhangi bir bicimi geri gelirse acik da geri gelir.
@@ -34,20 +47,29 @@ test('hem log cekme hem uygulama kesfi AYNI yetki kapisindan gecer', () => {
   const cagrilar = SRC.match(/assertNamespaceAllowed\(/g) || [];
   assert.ok(cagrilar.length >= 3, `tanim + en az iki cagri beklenir, bulunan: ${cagrilar.length}`);
 
-  const fetchRoute = SRC.slice(SRC.indexOf("router.post('/ocp/:requestId/discover-fetch'"));
-  assert.match(fetchRoute.slice(0, 600), /assertNamespaceAllowed\(/,
-    'log cekme ucu yetki kapisindan gecmeli');
+  const fetchRoute = routeSlice(SRC, 'post', '/ocp/:requestId/discover-fetch');
+  assert.match(
+    fetchRoute.slice(0, 600),
+    /assertNamespaceAllowed\(/,
+    'log cekme ucu yetki kapisindan gecmeli',
+  );
 
-  const appsRoute = SRC.slice(SRC.indexOf("router.post('/ocp/:requestId/apps/discover'"));
-  assert.match(appsRoute.slice(0, 900), /assertNamespaceAllowed\(/,
-    'uygulama kesfi ucu yetki kapisindan gecmeli');
+  const appsRoute = routeSlice(SRC, 'post', '/ocp/:requestId/apps/discover');
+  assert.match(
+    appsRoute.slice(0, 900),
+    /assertNamespaceAllowed\(/,
+    'uygulama kesfi ucu yetki kapisindan gecmeli',
+  );
 });
 
 test('canlı kesif sonucu da kisitlamalardan gecirilir', () => {
   // Onbellek ucu filtreliyordu ama AWX kesfinin sonucu ham donuyordu; kullanici
   // "listele" diyerek kisitli namespace'leri gorebiliyordu.
   assert.match(SRC, /async function filterDiscoveryResult\(/);
-  const getRoute = SRC.slice(SRC.indexOf("router.get('/requests/:requestId'"));
-  assert.match(getRoute.slice(0, 1400), /filterDiscoveryResult\(/,
-    'istek okuma ucu kesif sonucunu suzmeli');
+  const getRoute = routeSlice(SRC, 'get', '/requests/:requestId');
+  assert.match(
+    getRoute.slice(0, 1400),
+    /filterDiscoveryResult\(/,
+    'istek okuma ucu kesif sonucunu suzmeli',
+  );
 });
