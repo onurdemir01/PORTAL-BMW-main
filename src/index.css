@@ -729,6 +729,43 @@ thead th {
 :root .bg-blue-50, :root .bg-blue-100, :root .bg-indigo-50, :root .bg-indigo-100 { background-color: var(--accent-bg); }
 :root .border-blue-200, :root .border-blue-300, :root .border-indigo-200 { border-color: var(--accent); }
 
+/* ── KATMANIN GOZDEN KACIRDIGI TONLAR (2026-09-06) ────────────────────────────
+   Uyum katmani her renk ailesinden yalnizca BIRKAC tonu esliyordu (50/100/200/
+   500/600/700). Bileşenler ise 300/400/800/900 tonlarini da kullaniyor ve bu
+   siniflar katmanin DISINDA kaliyordu: Tailwind'in ham rengi geciyor, koyu temada
+   acik zeminli kartlar (`bg-orange-100`, `bg-teal-50`, `bg-amber-400`) ve solgun
+   metinler (`text-red-400`) okunmaz hale geliyordu.
+
+   MARKUP DEGISTIRILMEDI — BILEREK. 85 dosyada ~59 siniflik bir donusum, sifir
+   gorsel etkisi olan dev bir diff uretir ve kaynak tarayan bekcileri kirardi.
+   Eksik olan sey markup degil, ESLEMEYDI. Yeni bir tonun sessizce sizmasini
+   `src/__tests__/inline-color-leaks.test.cjs` icindeki bekci engelliyor. */
+:root .text-red-300, :root .text-red-400, :root .text-red-800, :root .text-red-900,
+:root .text-rose-400, :root .text-rose-700, :root .text-rose-800 { color: var(--status-danger); }
+:root .bg-red-700, :root .bg-red-800 { background-color: var(--status-danger); }
+:root .border-red-400, :root .border-red-500 { border-color: var(--status-danger); }
+
+:root .text-amber-300, :root .text-amber-400, :root .text-amber-800, :root .text-amber-900,
+:root .text-yellow-700, :root .text-yellow-800, :root .text-orange-700,
+:root .text-orange-800 { color: var(--status-warning); }
+:root .bg-amber-300, :root .bg-amber-400, :root .bg-orange-100,
+:root .bg-orange-200 { background-color: var(--status-warning-bg); }
+:root .border-orange-200, :root .border-orange-300,
+:root .border-amber-400 { border-color: var(--status-warning); }
+
+:root .text-emerald-300, :root .text-emerald-400, :root .text-emerald-800,
+:root .text-green-800, :root .text-teal-700 { color: var(--status-success); }
+:root .bg-emerald-600, :root .bg-green-400, :root .bg-green-700,
+:root .bg-teal-50 { background-color: var(--status-success-bg); }
+:root .border-emerald-300, :root .border-emerald-600,
+:root .border-green-400 { border-color: var(--status-success); }
+
+:root .text-blue-300, :root .text-blue-400, :root .text-blue-800,
+:root .text-indigo-300, :root .text-indigo-400 { color: var(--accent); }
+:root .bg-blue-400, :root .bg-blue-700, :root .bg-blue-800 { background-color: var(--accent); }
+:root .border-blue-400, :root .border-blue-600,
+:root .border-indigo-400 { border-color: var(--accent); }
+
 :root .text-red-500, :root .text-red-600, :root .text-red-700, :root .text-rose-500, :root .text-rose-600 { color: var(--status-danger); }
 :root .bg-red-500, :root .bg-red-600, :root .bg-rose-500 { background-color: var(--status-danger); }
 :root .bg-red-50, :root .bg-red-100, :root .bg-rose-50 { background-color: var(--status-danger-bg); }

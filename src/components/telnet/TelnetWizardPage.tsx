@@ -13,42 +13,53 @@
 //
 // Güvenlik OpsX ile AYNI: son POST /api/telnet/run çağrısında sunucu uygulama-host
 // eşleşmesini ve namespace/tenant'ı envanterden YENİDEN doğrular.
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeftIcon, ExclamationTriangleIcon, ArrowPathIcon, StopCircleIcon, ClockIcon,
-} from "@heroicons/react/24/outline";
-import { telnetApi, type TelnetPlatform, type TelnetRunResult, type TelnetResult } from "@/api/telnetApi";
-import { useJobTracker } from "@/contexts/JobTrackerContext";
-import { AuthContext } from "@/contexts/AuthContext";
-import TelnetResultPanel from "./steps/TelnetResultPanel";
-import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
-import PlatformStep from "./steps/PlatformStep";
-import AppSearchStep from "./steps/AppSearchStep";
-import JbossVersionStep from "./steps/JbossVersionStep";
-import HostSelectStep from "./steps/HostSelectStep";
-import OcpTargetStep from "./steps/OcpTargetStep";
-import OcpClusterPickStep from "./steps/OcpClusterPickStep";
-import TelnetInputStep from "./steps/TelnetInputStep";
+  ArrowLeftIcon,
+  ExclamationTriangleIcon,
+  ArrowPathIcon,
+  StopCircleIcon,
+  ClockIcon,
+} from '@heroicons/react/24/outline';
+import {
+  telnetApi,
+  type TelnetPlatform,
+  type TelnetRunResult,
+  type TelnetResult,
+} from '@/api/telnetApi';
+import { useJobTracker } from '@/contexts/JobTrackerContext';
+import { AuthContext } from '@/contexts/AuthContext';
+import TelnetResultPanel from './steps/TelnetResultPanel';
+import ContextChips from '@/components/common/ContextChips';
+import { isProdEnv } from '@/utils/env';
+import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
+import PlatformStep from './steps/PlatformStep';
+import AppSearchStep from './steps/AppSearchStep';
+import JbossVersionStep from './steps/JbossVersionStep';
+import HostSelectStep from './steps/HostSelectStep';
+import OcpTargetStep from './steps/OcpTargetStep';
+import OcpClusterPickStep from './steps/OcpClusterPickStep';
+import TelnetInputStep from './steps/TelnetInputStep';
 
 type Step =
-  | "platform"
-  | "legacy_app"
-  | "legacy_jboss_version"
-  | "legacy_hosts"
-  | "ocp_target"
-  | "ocp_cluster"
-  | "telnet_input"
-  | "done";
+  | 'platform'
+  | 'legacy_app'
+  | 'legacy_jboss_version'
+  | 'legacy_hosts'
+  | 'ocp_target'
+  | 'ocp_cluster'
+  | 'telnet_input'
+  | 'done';
 
 const STEP_TITLES: Record<Step, string> = {
-  platform: "",
-  legacy_app: "Uygulama Seçimi",
-  legacy_jboss_version: "JBoss Sürümü",
-  legacy_hosts: "Sunucu Seçimi",
-  ocp_target: "Openshift Hedefi",
-  ocp_cluster: "Cluster Seçimi",
-  telnet_input: "Telnet Hedefi",
-  done: "Test Sonucu",
+  platform: '',
+  legacy_app: 'Uygulama Seçimi',
+  legacy_jboss_version: 'JBoss Sürümü',
+  legacy_hosts: 'Sunucu Seçimi',
+  ocp_target: 'Openshift Hedefi',
+  ocp_cluster: 'Cluster Seçimi',
+  telnet_input: 'Telnet Hedefi',
+  done: 'Test Sonucu',
 };
 
 // Geçen süre "2:07" biçiminde — saniye cinsinden ham sayı okunmuyor.
@@ -56,20 +67,20 @@ function fmtElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(total / 60);
   const sec = total % 60;
-  return `${m}:${String(sec).padStart(2, "0")}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 const TelnetWizardPage: React.FC = () => {
-  const [step, setStep] = useState<Step>("platform");
+  const [step, setStep] = useState<Step>('platform');
   const [platform, setPlatform] = useState<TelnetPlatform | null>(null);
-  const [app, setApp] = useState("");
+  const [app, setApp] = useState('');
   const [jbossVersions, setJbossVersions] = useState<string[]>([]);
   const [hosts, setHosts] = useState<string[]>([]);
-  const [env, setEnv] = useState("");
-  const [tenant, setTenant] = useState("");
+  const [env, setEnv] = useState('');
+  const [tenant, setTenant] = useState('');
   const [namespaces, setNamespaces] = useState<string[]>([]);
   // Openshift: OpsX Openshift Rollout ile AYNI UX (OcpClusterPickStep) — "" = tüm cluster'lar.
-  const [cluster, setCluster] = useState("");
+  const [cluster, setCluster] = useState('');
   const [busy, setBusy] = useState(false);
   // ÇİFT TIKLAMA KORUMASI (H1). `busy` bir React state'idir ve render'da yakalanır;
   // aynı tick'te gelen iki tık ikisi de `busy === false` görüp İKİ AWX JOB'I açabilir.
@@ -100,25 +111,25 @@ const TelnetWizardPage: React.FC = () => {
     return () => clearInterval(t);
   }, [jobStartedAt, jobFinished]);
   const [filterEnabled, setFilterEnabled] = useState(false);
-  const [filterPrefix, setFilterPrefix] = useState("");
+  const [filterPrefix, setFilterPrefix] = useState('');
 
   function restart() {
-    setStep("platform");
+    setStep('platform');
     setCancelling(false);
     setElapsed(0);
     setPlatform(null);
-    setApp("");
+    setApp('');
     setJbossVersions([]);
     setHosts([]);
-    setEnv("");
-    setTenant("");
+    setEnv('');
+    setTenant('');
     setNamespaces([]);
-    setCluster("");
+    setCluster('');
     setError(null);
     setResult(null);
     setTrackedJobId(null);
     setFilterEnabled(false);
-    setFilterPrefix("");
+    setFilterPrefix('');
   }
 
   function trackJob(r: TelnetRunResult) {
@@ -133,17 +144,17 @@ const TelnetWizardPage: React.FC = () => {
 
   function backTargetFor(s: Step): Step | null {
     switch (s) {
-      case "legacy_app":
-      case "ocp_target":
-        return "platform";
-      case "legacy_jboss_version":
-        return "legacy_app";
-      case "legacy_hosts":
-        return "legacy_jboss_version";
-      case "ocp_cluster":
-        return "ocp_target";
-      case "telnet_input":
-        return platform === "openshift" ? "ocp_cluster" : "legacy_hosts";
+      case 'legacy_app':
+      case 'ocp_target':
+        return 'platform';
+      case 'legacy_jboss_version':
+        return 'legacy_app';
+      case 'legacy_hosts':
+        return 'legacy_jboss_version';
+      case 'ocp_cluster':
+        return 'ocp_target';
+      case 'telnet_input':
+        return platform === 'openshift' ? 'ocp_cluster' : 'legacy_hosts';
       default:
         return null;
     }
@@ -153,7 +164,10 @@ const TelnetWizardPage: React.FC = () => {
     const target = backTargetFor(step);
     if (!target) return;
     setError(null);
-    if (target === "platform") { restart(); return; }
+    if (target === 'platform') {
+      restart();
+      return;
+    }
     setStep(target);
   }
 
@@ -163,18 +177,27 @@ const TelnetWizardPage: React.FC = () => {
     setBusy(true);
     setError(null);
     try {
-      const r = platform === "openshift"
-        ? await telnetApi.run({ platform: "openshift", env, tenant, namespaces, cluster, ip, port })
-        : await telnetApi.run({ platform: "legacy", application: app, hosts, ip, port });
+      const r =
+        platform === 'openshift'
+          ? await telnetApi.run({
+              platform: 'openshift',
+              env,
+              tenant,
+              namespaces,
+              cluster,
+              ip,
+              port,
+            })
+          : await telnetApi.run({ platform: 'legacy', application: app, hosts, ip, port });
       // safeJson() 4xx/5xx'te reddetmez — backend'in ok:false + message ile döndüğü
       // hatalar burada kontrol edilmezse kullanıcıya sahte bir "başlatıldı" ekranı gösterilir.
       if (!r.ok) {
-        setError(r.message || "İşlem başlatılamadı.");
+        setError(r.message || 'İşlem başlatılamadı.');
         return;
       }
       setResult(r);
       setLastTarget({ ip, port });
-      setStep("done");
+      setStep('done');
       trackJob(r);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -193,7 +216,7 @@ const TelnetWizardPage: React.FC = () => {
     setResult(null);
     setTrackedJobId(null);
     setElapsed(0);
-    setStep("telnet_input");
+    setStep('telnet_input');
   }
 
   async function cancelJob() {
@@ -201,7 +224,7 @@ const TelnetWizardPage: React.FC = () => {
     setCancelling(true);
     try {
       const r = await telnetApi.cancel(result.awxServerId, result.jobId);
-      if (!r.ok) setError(r.message || "İş iptal edilemedi.");
+      if (!r.ok) setError(r.message || 'İş iptal edilemedi.');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -217,25 +240,34 @@ const TelnetWizardPage: React.FC = () => {
   const jobDone = !!trackedJob?.done;
 
   const { user } = useContext(AuthContext);
-  const isAdmin = user?.role === "Admin";
+  const isAdmin = user?.role === 'Admin';
 
-  const inputSummary = platform === "openshift" ? (
-    <>
-      Ortam: <span className="font-mono text-[var(--text-primary)]">{env}</span>
-      {" · "}
-      Tenant: <span className="font-mono text-[var(--text-primary)]">{tenant}</span>
-      {" · "}
-      Cluster: <span className="font-mono text-[var(--text-primary)]">{cluster || "tümü"}</span>
-      {" · "}
-      {namespaces.length} namespace: <span className="font-mono">{namespaces.join(", ")}</span>
-    </>
-  ) : (
-    <>
-      Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span>
-      {" · "}
-      {hosts.length} sunucu: <span className="font-mono">{hosts.join(", ")}</span>
-    </>
-  );
+  // KÜNYE ORTAK BİLEŞENDEN. Bu blok elle yazılmıştı ve portalda künyesi olan TEK
+  // ekran burasıydı; artık ScaleX/LogX de aynı bileşeni kullanıyor, biçim tek yerde.
+  const inputSummary =
+    platform === 'openshift' ? (
+      <ContextChips
+        items={[
+          { label: 'Ortam', value: env, tone: isProdEnv(env) ? 'danger' : 'neutral' },
+          { label: 'Tenant', value: tenant },
+          // Boş cluster = tenant/ortamdaki TÜMÜ. Bu ayrım kullanıcıya söylenmeli:
+          // "tümü" seçimi patlama yarıçapını sessizce büyütür.
+          { label: 'Cluster', value: cluster || 'tümü' },
+          {
+            label: `${namespaces.length} namespace`,
+            value: namespaces.join(', '),
+            title: namespaces.join(', '),
+          },
+        ]}
+      />
+    ) : (
+      <ContextChips
+        items={[
+          { label: 'Uygulama', value: app },
+          { label: `${hosts.length} sunucu`, value: hosts.join(', '), title: hosts.join(', ') },
+        ]}
+      />
+    );
 
   const filterLine = (
     <div className="flex items-center gap-2 flex-wrap">
@@ -274,7 +306,9 @@ const TelnetWizardPage: React.FC = () => {
         )}
         <div className="flex-1">
           <h1 className="page-title">Telnet - Bağlantı Testi</h1>
-          {STEP_TITLES[step] && <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>}
+          {STEP_TITLES[step] && (
+            <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>
+          )}
         </div>
       </div>
 
@@ -286,61 +320,86 @@ const TelnetWizardPage: React.FC = () => {
       )}
 
       <div key={step} className="card p-5 animate-slide-up">
-        {step === "platform" && (
+        {step === 'platform' && (
           <PlatformStep
             busy={busy}
             onSelect={(p) => {
               setPlatform(p);
-              setStep(p === "legacy" ? "legacy_app" : "ocp_target");
+              setStep(p === 'legacy' ? 'legacy_app' : 'ocp_target');
             }}
           />
         )}
 
-        {step === "legacy_app" && (
+        {step === 'legacy_app' && (
           <AppSearchStep
             busy={busy}
-            onSelect={(a) => { setApp(a); setJbossVersions([]); setHosts([]); setStep("legacy_jboss_version"); }}
+            onSelect={(a) => {
+              setApp(a);
+              setJbossVersions([]);
+              setHosts([]);
+              setStep('legacy_jboss_version');
+            }}
           />
         )}
 
-        {step === "legacy_jboss_version" && (
+        {step === 'legacy_jboss_version' && (
           <JbossVersionStep
             app={app}
             busy={busy}
-            onSubmit={(v) => { setJbossVersions(v); setHosts([]); setStep("legacy_hosts"); }}
+            onSubmit={(v) => {
+              setJbossVersions(v);
+              setHosts([]);
+              setStep('legacy_hosts');
+            }}
           />
         )}
 
-        {step === "legacy_hosts" && (
+        {step === 'legacy_hosts' && (
           <HostSelectStep
             app={app}
             jbossVersions={jbossVersions}
             busy={busy}
-            onSubmit={(h) => { setHosts(h); setStep("telnet_input"); }}
+            onSubmit={(h) => {
+              setHosts(h);
+              setStep('telnet_input');
+            }}
           />
         )}
 
-        {step === "ocp_target" && (
+        {step === 'ocp_target' && (
           <OcpTargetStep
             busy={busy}
-            onSubmit={(v) => { setEnv(v.env); setTenant(v.tenant); setNamespaces(v.namespaces); setStep("ocp_cluster"); }}
+            onSubmit={(v) => {
+              setEnv(v.env);
+              setTenant(v.tenant);
+              setNamespaces(v.namespaces);
+              setStep('ocp_cluster');
+            }}
           />
         )}
 
-        {step === "ocp_cluster" && (
+        {step === 'ocp_cluster' && (
           <OcpClusterPickStep
             env={env}
             tenant={tenant}
             busy={busy}
-            onSubmit={(c) => { setCluster(c); setStep("telnet_input"); }}
+            onSubmit={(c) => {
+              setCluster(c);
+              setStep('telnet_input');
+            }}
           />
         )}
 
-        {step === "telnet_input" && (
-          <TelnetInputStep summary={inputSummary} busy={busy} initial={lastTarget} onSubmit={(v) => runTelnet(v.ip, v.port)} />
+        {step === 'telnet_input' && (
+          <TelnetInputStep
+            summary={inputSummary}
+            busy={busy}
+            initial={lastTarget}
+            onSubmit={(v) => runTelnet(v.ip, v.port)}
+          />
         )}
 
-        {step === "done" && result && (
+        {step === 'done' && result && (
           <div className="flex flex-col items-center gap-4 py-2">
             {/* E4 · YANILTICI YEŞİL TİK KALDIRILDI. Eskiden burada koşulsuz bir yeşil
                 CheckCircle + "Telnet testi başlatıldı." vardı: iş HENÜZ BİTMEMİŞKEN de,
@@ -351,18 +410,24 @@ const TelnetWizardPage: React.FC = () => {
             ) : (
               <div className="w-full flex items-center gap-2.5">
                 {jobDone ? (
-                  <ExclamationTriangleIcon aria-hidden="true" className="w-5 h-5 flex-shrink-0 text-[var(--status-warning)]" />
+                  <ExclamationTriangleIcon
+                    aria-hidden="true"
+                    className="w-5 h-5 flex-shrink-0 text-[var(--status-warning)]"
+                  />
                 ) : (
-                  <span aria-hidden="true" className="w-5 h-5 flex-shrink-0 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                  <span
+                    aria-hidden="true"
+                    className="w-5 h-5 flex-shrink-0 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin"
+                  />
                 )}
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-[var(--text-primary)]">
-                    {jobDone ? "İş bitti ama yapılandırılmış sonuç gelmedi." : "Test çalışıyor…"}
+                    {jobDone ? 'İş bitti ama yapılandırılmış sonuç gelmedi.' : 'Test çalışıyor…'}
                   </p>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
                     {jobDone
                       ? "Playbook'un güncel sürümü AWX'e kopyalanmamış olabilir (sonuç `set_stats` ile yayınlanır). Aşağıdaki ham log yine de okunabilir."
-                      : "Her (cluster × namespace) birimi için pod açılıyor ve telnet deneniyor."}
+                      : 'Her (cluster × namespace) birimi için pod açılıyor ve telnet deneniyor.'}
                   </p>
                 </div>
               </div>
@@ -377,12 +442,16 @@ const TelnetWizardPage: React.FC = () => {
 
             <div className="w-full flex items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
               <span>
-                {result.jobId != null && <>AWX Job: <span className="font-mono">#{result.jobId}</span></>}
+                {result.jobId != null && (
+                  <>
+                    AWX Job: <span className="font-mono">#{result.jobId}</span>
+                  </>
+                )}
               </span>
               <span className="inline-flex items-center gap-1 tabular-nums">
                 <ClockIcon aria-hidden="true" className="w-3.5 h-3.5" />
                 {fmtElapsed(elapsed)}
-                {trackedJob?.status ? ` · ${trackedJob.status}` : ""}
+                {trackedJob?.status ? ` · ${trackedJob.status}` : ''}
               </span>
             </div>
 
@@ -390,13 +459,20 @@ const TelnetWizardPage: React.FC = () => {
               <div className="w-full text-left space-y-2">
                 {filterLine}
                 <AnsibleLogTerminal
-                  output={filterEnabled && filterPrefix
-                    ? trackedJob.output.split("\n").filter((l) => l.startsWith(filterPrefix)).join("\n")
-                    : trackedJob.output}
-                  status={trackedJob.status || result.status || "pending"}
+                  output={
+                    filterEnabled && filterPrefix
+                      ? trackedJob.output
+                          .split('\n')
+                          .filter((l) => l.startsWith(filterPrefix))
+                          .join('\n')
+                      : trackedJob.output
+                  }
+                  status={trackedJob.status || result.status || 'pending'}
                   title={trackedJob.title}
                 />
-                {trackedJob.pollErr && <p className="mt-1.5 text-xs text-amber-600">{trackedJob.pollErr}</p>}
+                {trackedJob.pollErr && (
+                  <p className="mt-1.5 text-xs text-amber-600">{trackedJob.pollErr}</p>
+                )}
               </div>
             )}
 
@@ -421,7 +497,7 @@ const TelnetWizardPage: React.FC = () => {
               {!jobDone && result.jobId != null && (
                 <button onClick={cancelJob} disabled={cancelling} className="btn-secondary">
                   <StopCircleIcon className="w-4 h-4" />
-                  {cancelling ? "İptal ediliyor…" : "Testi durdur"}
+                  {cancelling ? 'İptal ediliyor…' : 'Testi durdur'}
                 </button>
               )}
               {/* E7 · Aynı hedeflerle tekrar — yalnızca portu değiştirmek için altı adım

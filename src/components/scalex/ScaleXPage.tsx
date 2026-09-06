@@ -26,6 +26,8 @@ import {
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { humanizeHealth } from '@/utils/scalexHealth';
 import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
+import ContextChips from '@/components/common/ContextChips';
+import { isProdEnv } from '@/utils/env';
 import ScopeStep from './steps/ScopeStep';
 import NamespaceStep from './steps/NamespaceStep';
 import WorkloadStep from './steps/WorkloadStep';
@@ -499,6 +501,29 @@ const ScaleXPage: React.FC = () => {
         <div className="min-w-0">
           <h1 className="page-title">ScaleX</h1>
           <p className="text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>
+          {/* KUNYE HER ADIMDA. Bu sihirbazin sonu bir PROD kesintisi olabilir ve
+              "hangi ortamdayim" sorusu kullanicinin KAZARA ogrenmemesi gereken bir
+              bilgidir. `ScopeStep` prod'u zaten vurguluyordu ama YALNIZCA kendi
+              adiminda; sonraki dort adimda o vurgu kayboluyordu. */}
+          <ContextChips
+            className="mt-1"
+            items={[
+              { label: 'Ortam', value: env, tone: isProdEnv(env) ? 'danger' : 'neutral' },
+              { label: 'Tenant', value: tenant },
+              {
+                // Cok cluster'da ADLARI degil SAYIYI goster: kunye tek satirda
+                // kalmali, tam liste `title`da duruyor.
+                label: 'Cluster',
+                value: clusters.length
+                  ? clusters.length > 2
+                    ? `${clusters.length} cluster`
+                    : clusters.join(', ')
+                  : '',
+                title: clusters.join(', '),
+              },
+              { label: 'Namespace', value: namespace },
+            ]}
+          />
         </div>
       </div>
 
