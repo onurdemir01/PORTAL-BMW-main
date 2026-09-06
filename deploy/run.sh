@@ -102,7 +102,20 @@ stop_env() { # $1=env — o ortami durdur (best-effort, TERM → KILL)
   echo "[$env] durduruldu."
 }
 
-# ── Log rotasyonu: $OUT_FILE 20MB'i gecerse timestamp'li kopyaya tasi, eskileri sil ──
+# ── Log rotasyonu ────────────────────────────────────────────────────────────
+#
+# ASIL ROTASYON ARTIK SUREC ICINDE: `server/log.cjs` kendi dosyasini
+# (`logs/<env>.app.log`) acar ve boyut esigini asinca DONDURUR. Bu fonksiyon yalnizca
+# baslangicta calisiyordu ve haftalarca ayakta kalan bir surecte log dosyasi bir
+# sonraki yeniden baslatmaya kadar SINIRSIZ buyuyordu.
+#
+# NEDEN KABUKTAN COZULEMEZ: `$OUT_FILE`i kabuk yonlendirmesi aciyor ve fd'yi SUREC
+# tutuyor; disaridan `mv` yapmak surecin yazdigi inode'u degistirmez — yeni dosya bos
+# kalir, eski buyumeye devam eder ve rotasyon SESSIZCE hicbir sey yapmamis olur.
+#
+# BU FONKSIYON YINE DE DURUYOR: `$OUT_FILE` artik yalnizca logger KURULMADAN ONCEKI
+# ciktiyi ve sert cokme izlerini tutar (kendiliginden kucuk kalir), ama bir cokme
+# donguSU o dosyayi da buyutebilir — baslangicta bir kez budamak ucuz bir emniyet.
 rotate_log_if_needed() {
   [[ -f "$OUT_FILE" ]] || return 0
   local size
@@ -195,7 +208,7 @@ start_env() {
   sleep 1
   if is_alive "$pid"; then
     touch "$ENABLED_FILE"
-    echo "[$ENV_NAME] calisiyor (PID $pid) · log: $OUT_FILE"
+    echo "[$ENV_NAME] calisiyor (PID $pid) · uygulama logu: $LOG_DIR/$ENV_NAME.app.log (surec ici rotasyon) · acilis/cokme: $OUT_FILE"
   else
     echo "HATA: [$ENV_NAME] baslatilamadi — son loglar:" >&2
     tail -n 20 "$OUT_FILE" >&2 || true

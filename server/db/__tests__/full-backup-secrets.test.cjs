@@ -58,6 +58,22 @@ test("WriteStream 'error' dinleyicisi var (disk dolarsa surec cokmez)", () => {
   );
 });
 
+test('BOS env degeri "0" sayilmaz — varsayilana duser', () => {
+  // `.env`de `DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES=` (degersiz) yazmak dotenv
+  // tarafindan BOS STRING olarak okunur. `Number('')` **0** verir ve 0 SONLUDUR:
+  // eski kod `fallback` dalina hic girmeyip ALT SINIRA kelepceliyordu, yani aralik
+  // 15 dakika yerine 1 dakika oluyor ve DB yoklamasi 15 KATINA cikiyordu.
+  const m = SRC_RAW.match(/function numEnv\([\s\S]*?\n\}/);
+  assert.ok(m, 'numEnv bulunamadi');
+  const numEnv = new Function(`${m[0]}; return numEnv;`)();
+  assert.equal(numEnv('', 15, { min: 1, max: 60 }), 15, 'bos deger alt sinira dusuyor');
+  assert.equal(numEnv('   ', 15, { min: 1, max: 60 }), 15, 'bosluklu deger alt sinira dusuyor');
+  assert.equal(numEnv(undefined, 15, { min: 1, max: 60 }), 15);
+  // Gercek bir 0 YINE kelepcelenir: bu bir "ayarsiz" degil, gecersiz bir AYAR.
+  assert.equal(numEnv('0', 15, { min: 1, max: 60 }), 1);
+  assert.equal(numEnv('999', 15, { min: 1, max: 60 }), 60);
+});
+
 test('sayisal env degerleri dogrulanir ve kelepcelenir', () => {
   assert.match(SRC, /function numEnv\(/, 'numEnv yok');
   // `[^)]*` KULLANILAMAZ: `numEnv(process.env.X, 15, { min: 1, max: 60 })` ifadesi
