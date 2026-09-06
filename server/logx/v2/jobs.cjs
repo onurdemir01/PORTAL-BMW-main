@@ -268,7 +268,7 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
             );
         })
         .catch((e) =>
-          console.warn(`[LogXv2] awx_server_id otomatik-iyileştirme yazılamadı: ${e.message}`),
+          console.warn(`[LogXv2] awx_server_id otomatik-iyilestirme yazilamadi: ${e.message}`),
         );
     } else {
       const hint =

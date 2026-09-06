@@ -212,7 +212,7 @@ async function getApps({ env, tenant, clusterName, namespace }) {
   );
   // TARAMANIN KENDISI ayri tutulur: bos bir namespace hicbir satir uretmez, dolayisiyla
   // `rows.length` "hic taranmadi" ile "tarandi, bos cikti"yi AYIRT EDEMEZ. Bu ayrim
-  // olmadan sihirbaz her girişte yeniden ~1 dk'lik bir AWX job'i aciyordu.
+  // olmadan sihirbaz her giriste yeniden ~1 dk'lik bir AWX job'i aciyordu.
   const scan = await getAppScan({ env, tenant, clusterName, namespace });
   return {
     items: rows.map((r) => ({
@@ -231,7 +231,7 @@ async function getApps({ env, tenant, clusterName, namespace }) {
     // `unknown` (tarama kaydi OKUNAMADI) bu sayilmaz: tarandigini bilmiyoruz.
     scannedEmpty: Boolean(scan && !scan.unknown && scan.appCount === 0 && rows.length === 0),
     // TARAMA KAYDI OKUNAMADI. Sihirbaz bu durumda OTOMATIK tarama YAPMAMALI: kayit
-    // okunamadigi icin tarama sonrasi da ayni belirsizlik surer ve her giriş yeni bir
+    // okunamadigi icin tarama sonrasi da ayni belirsizlik surer ve her giris yeni bir
     // AWX job'i acar (sonsuz dongu). Elle tarama yolu acik kalir.
     scanUnknown: Boolean(scan && scan.unknown),
   };
@@ -252,7 +252,7 @@ async function getAppScan({ env, tenant, clusterName, namespace }) {
     //
     // Eskiden ikisi de `null` donuyordu. Tablo yoksa/DB hicciklarsa sihirbaz bunu
     // "hic taranmamis" diye okuyup OTOMATIK tarama baslatiyordu; kayit yine
-    // okunamadigi icin bir sonraki girişte ayni sey oluyordu — okunamayan bir tablo
+    // okunamadigi icin bir sonraki giriste ayni sey oluyordu — okunamayan bir tablo
     // sonsuz tarama dongusu uretiyordu. Artik ayirt edilebilir bir isaret donuyor:
     // cagiran "bilmiyorum" durumunda OTOMATIK tarama YAPMAZ, elle tarama yolunu acik
     // birakir (kullanicinin kacis yolu korunur).

@@ -1,10 +1,10 @@
-// server/logx/v2/__tests__/legacy-host-selection.test.cjs — legacy keşfinde SUNUCU SEÇİMİ.
+// server/logx/v2/__tests__/legacy-host-selection.test.cjs — legacy kesfinde SUNUCU SECIMI.
 //
-// NEDEN VAR: bir uygulamanın 30 sunucusu olabiliyor ve keşif bugüne kadar HEPSİNİ
-// tarıyordu (dakikalarca süren job + kullanılamaz uzunlukta dosya listesi). Artık
-// kullanıcı sunucu seçiyor. Seçim istemciden geldiği için ENVANTERDEN YENIDEN
-// DOGRULANIR — aksi halde kullanıcı, yetkisi olmayan bir uygulamanın sunucusunu
-// istek gövdesine yazıp orada log tarayabilirdi (anti-TOCTOU deseni, transfer() ile ayni).
+// NEDEN VAR: bir uygulamanin 30 sunucusu olabiliyor ve kesif bugune kadar HEPSINI
+// tariyordu (dakikalarca suren job + kullanilamaz uzunlukta dosya listesi). Artik
+// kullanici sunucu seciyor. Secim istemciden geldigi icin ENVANTERDEN YENIDEN
+// DOGRULANIR — aksi halde kullanici, yetkisi olmayan bir uygulamanin sunucusunu
+// istek govdesine yazip orada log tarayabilirdi (anti-TOCTOU deseni, transfer() ile ayni).
 'use strict';
 
 const { test } = require('node:test');
@@ -20,7 +20,9 @@ const REQUEST = { request_id: 'req-1' };
 function fakePool(hosts) {
   return {
     request: () => ({
-      input() { return this; },
+      input() {
+        return this;
+      },
       query: async () => ({ recordset: hosts.map((h) => ({ host: h })) }),
     }),
   };
@@ -32,7 +34,10 @@ async function withStubs(hosts, fn) {
   const oldUpdate = requests.updateRequest;
   const launched = [];
   inventoryDb.getPool = async () => fakePool(hosts);
-  jobs.launchJob = async (requestId, type, vars) => { launched.push({ type, vars }); return { jobId: 1 }; };
+  jobs.launchJob = async (requestId, type, vars) => {
+    launched.push({ type, vars });
+    return { jobId: 1 };
+  };
   requests.updateRequest = async () => {};
   try {
     return await fn(launched);
@@ -55,7 +60,7 @@ test('envanterde OLMAYAN sunucu REDDEDILIR (istemciye guvenilmez)', async () => 
   await withStubs(['GBCJAP01'], async (launched) => {
     await assert.rejects(
       () => legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'BASKA-UYGULAMANIN-SUNUCUSU']),
-      (e) => e.status === 400 && /ait değil/.test(e.message)
+      (e) => e.status === 400 && /ait değil/.test(e.message),
     );
     assert.equal(launched.length, 0, 'doğrulama başarısızsa job HIC baslamamali');
   });
@@ -72,7 +77,9 @@ test('listHostsForApp(): sunucu seçim ekranı için env/sürüm/durum da döner
   const oldPool = inventoryDb.getPool;
   inventoryDb.getPool = async () => ({
     request: () => ({
-      input() { return this; },
+      input() {
+        return this;
+      },
       query: async () => ({
         recordset: [{ host: 'GBCJAP01', env: 'PROD', jboss_version: 'EAP7', status: 'running' }],
       }),
@@ -80,7 +87,9 @@ test('listHostsForApp(): sunucu seçim ekranı için env/sürüm/durum da döner
   });
   try {
     const rows = await legacy.listHostsForApp('APP1');
-    assert.deepEqual(rows, [{ host: 'GBCJAP01', env: 'PROD', jbossVersion: 'EAP7', status: 'running' }]);
+    assert.deepEqual(rows, [
+      { host: 'GBCJAP01', env: 'PROD', jbossVersion: 'EAP7', status: 'running' },
+    ]);
   } finally {
     inventoryDb.getPool = oldPool;
   }

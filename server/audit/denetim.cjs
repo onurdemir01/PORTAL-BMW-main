@@ -26,7 +26,9 @@ function initDenetim(app) {
   try {
     const { requireVisiblePrefix } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('Denetim'));
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // ── 1) NGINX SPA AUDIT ──────────────────────────────────────────────────────────────
   // Nginx_Config_Audit gunluk satir tutar; HER ZAMAN en son scan_date okunur (tarih
@@ -42,7 +44,7 @@ function initDenetim(app) {
         scanDate
           ? `SELECT CONVERT(varchar(10), CAST(@d AS DATE), 23) AS d`
           : `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`,
-        scanDate ? [{ name: 'd', type: sql.NVarChar(10), value: scanDate }] : []
+        scanDate ? [{ name: 'd', type: sql.NVarChar(10), value: scanDate }] : [],
       );
       const effectiveDate = dateRes.recordset?.[0]?.d || null;
       if (!effectiveDate) {
@@ -56,11 +58,11 @@ function initDenetim(app) {
                   in_ocp_inventory, status
              FROM dbo.Nginx_Config_Audit
             WHERE scan_date = @d`,
-          [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }]
+          [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
         ),
         query(
           `SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d
-             FROM dbo.Nginx_Config_Audit ORDER BY d DESC`
+             FROM dbo.Nginx_Config_Audit ORDER BY d DESC`,
         ),
       ]);
 
@@ -75,7 +77,10 @@ function initDenetim(app) {
       // bos ya da bosluklu (`" qa "`) olan satirlar `''` / `' QA '` anahtari uretiyor,
       // bu anahtarlar `envList`te olmadigi icin hucre HICBIR SUTUNA dusmuyor ve veri
       // ekranda SESSIZCE kayboluyordu. Artik uc cagri da bu fonksiyondan geciyor.
-      const normEnv = (v) => String(v || '').trim().toUpperCase() || '(bos)';
+      const normEnv = (v) =>
+        String(v || '')
+          .trim()
+          .toUpperCase() || '(bos)';
 
       const CANON = ['DEV', 'TEST', 'QA', 'PROD'];
       const seenEnvs = new Set();
@@ -89,7 +94,8 @@ function initDenetim(app) {
       const statMap = new Map();
       for (const r of raw) {
         const e = normEnv(r.env);
-        if (!statMap.has(e)) statMap.set(e, { env: e, rows: 0, hosts: new Set(), vhosts: new Set() });
+        if (!statMap.has(e))
+          statMap.set(e, { env: e, rows: 0, hosts: new Set(), vhosts: new Set() });
         const st = statMap.get(e);
         st.rows++;
         if (r.host) st.hosts.add(String(r.host));
@@ -108,7 +114,14 @@ function initDenetim(app) {
       // (service, application) -> ortam bazli durum. Ayni uygulama ayni ortamda birden
       // fazla host/location'da olabilir; ortam hucresi "en kotu" duruma gore ozetlenir
       // (BROKEN_INCLUDE/NOT_DEPLOYED gibi bir sorun varsa OK ile gizlenmesin).
-      const SEVERITY = { OK: 0, DUP_SUFFIX: 1, NOT_IN_INVENTORY: 2, NAME_MISMATCH: 3, NOT_DEPLOYED: 4, BROKEN_INCLUDE: 5 };
+      const SEVERITY = {
+        OK: 0,
+        DUP_SUFFIX: 1,
+        NOT_IN_INVENTORY: 2,
+        NAME_MISMATCH: 3,
+        NOT_DEPLOYED: 4,
+        BROKEN_INCLUDE: 5,
+      };
       const map = new Map();
       for (const r of raw) {
         const service = r.service || '(bilinmiyor)';
@@ -142,7 +155,7 @@ function initDenetim(app) {
       }
 
       const rows = [...map.values()].sort(
-        (a, b) => a.service.localeCompare(b.service) || a.application.localeCompare(b.application)
+        (a, b) => a.service.localeCompare(b.service) || a.application.localeCompare(b.application),
       );
       const services = [...new Set(rows.map((r) => r.service))].sort();
 
@@ -156,7 +169,9 @@ function initDenetim(app) {
         rows,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, message: err.message || 'Nginx denetim verisi alınamadı.' });
+      res
+        .status(500)
+        .json({ ok: false, message: err.message || 'Nginx denetim verisi alınamadı.' });
     }
   });
 
@@ -182,27 +197,30 @@ function initDenetim(app) {
   router.get('/nginx-spa-coverage', async (req, res) => {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
-      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')] ? String(req.query.platform) : 'ark';
+      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
+        ? String(req.query.platform)
+        : 'ark';
       const clusters = PLATFORM_CLUSTERS[platform];
 
       const dateRes = await query(
-        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`
+        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`,
       );
       const scanDate = dateRes.recordset?.[0]?.d || null;
 
       const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
-      const clusterParams = () => clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(200), value: c }));
+      const clusterParams = () =>
+        clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(200), value: c }));
 
       const [ocpRes, ngxRes, routeRes] = await Promise.all([
         query(
           `SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory
             WHERE cluster IN (${placeholders})`,
-          clusterParams()
+          clusterParams(),
         ),
         scanDate
           ? query(
               `SELECT DISTINCT env, application FROM dbo.Nginx_Config_Audit WHERE scan_date = @d`,
-              [{ name: 'd', type: sql.NVarChar(10), value: scanDate }]
+              [{ name: 'd', type: sql.NVarChar(10), value: scanDate }],
             )
           : Promise.resolve({ recordset: [] }),
         // Route tipi = uygulamanin AGI. Iki tablo da cluster/namespace adlarini AYNI
@@ -212,7 +230,7 @@ function initDenetim(app) {
           `SELECT DISTINCT namespace_name, route_name, route_address, termination_type
              FROM dbo.BMW_Openshift_Route_Inventory
             WHERE cluster_name IN (${placeholders})`,
-          clusterParams()
+          clusterParams(),
         ).catch(() => ({ recordset: [], _missing: true })),
       ]);
 
@@ -231,19 +249,29 @@ function initDenetim(app) {
       // gecse bile dogru calisir (ornek: follow-up-app-v0 / follow-up-test).
       // Kaliba uymayan (elle verilmis) adreslerde null doner - TAHMIN EDILMEZ.
       function appFromAddress(addr, nsLower) {
-        const label = String(addr || '').trim().toLowerCase().split('.')[0];
+        const label = String(addr || '')
+          .trim()
+          .toLowerCase()
+          .split('.')[0];
         if (!label || !nsLower) return null;
         const suf = '-' + nsLower;
         return label.endsWith(suf) ? label.slice(0, -suf.length) : null;
       }
 
-      const routeByApp = new Map();   // "<ns> <app>"   -> tip  (adresten cozuldu)
-      const routeByName = new Map();  // "<ns> <route>" -> tip  (route adiyla)
-      const routeByNs = new Map();    // "<ns>"         -> o namespace'teki TUM tipler
+      const routeByApp = new Map(); // "<ns> <app>"   -> tip  (adresten cozuldu)
+      const routeByName = new Map(); // "<ns> <route>" -> tip  (route adiyla)
+      const routeByNs = new Map(); // "<ns>"         -> o namespace'teki TUM tipler
       for (const r of routeRes.recordset || []) {
-        const ns = String(r.namespace_name || '').trim().toLowerCase();
-        const rt = String(r.route_name || '').trim().toLowerCase();
-        const tt = String(r.termination_type || '').trim().toLowerCase() || 'yok';
+        const ns = String(r.namespace_name || '')
+          .trim()
+          .toLowerCase();
+        const rt = String(r.route_name || '')
+          .trim()
+          .toLowerCase();
+        const tt =
+          String(r.termination_type || '')
+            .trim()
+            .toLowerCase() || 'yok';
         if (!ns) continue;
         const fromAddr = appFromAddress(r.route_address, ns);
         if (fromAddr) routeByApp.set(ns + ' ' + fromAddr, tt);
@@ -262,12 +290,24 @@ function initDenetim(app) {
       const matchStats = { address: 0, name: 0, ns: 0, conflict: 0, none: 0 };
       function terminationOf(nsLower, appLower) {
         const byAddr = routeByApp.get(nsLower + ' ' + appLower);
-        if (byAddr) { matchStats.address++; return { type: byAddr, how: 'address' }; }
+        if (byAddr) {
+          matchStats.address++;
+          return { type: byAddr, how: 'address' };
+        }
         const byName = routeByName.get(nsLower + ' ' + appLower);
-        if (byName) { matchStats.name++; return { type: byName, how: 'name' }; }
+        if (byName) {
+          matchStats.name++;
+          return { type: byName, how: 'name' };
+        }
         const set = routeByNs.get(nsLower);
-        if (set && set.size === 1) { matchStats.ns++; return { type: [...set][0], how: 'ns' }; }
-        if (set && set.size > 1) { matchStats.conflict++; return { type: null, how: 'conflict' }; }
+        if (set && set.size === 1) {
+          matchStats.ns++;
+          return { type: [...set][0], how: 'ns' };
+        }
+        if (set && set.size > 1) {
+          matchStats.conflict++;
+          return { type: null, how: 'conflict' };
+        }
         matchStats.none++;
         return { type: null, how: 'none' };
       }
@@ -280,18 +320,31 @@ function initDenetim(app) {
       for (const r of ocpRes.recordset || []) {
         const app = String(r.application || '').trim();
         if (!app) continue;
-        if (!SPA_RE.test(app)) { ocpNonSpa.add(app.toLowerCase()); continue; }
+        if (!SPA_RE.test(app)) {
+          ocpNonSpa.add(app.toLowerCase());
+          continue;
+        }
         const e = envOfNamespace(r.namespace);
-        if (!e) { ocpNoEnv++; continue; }
+        if (!e) {
+          ocpNoEnv++;
+          continue;
+        }
         const env = e.toUpperCase();
-        const nsLower = String(r.namespace || '').trim().toLowerCase();
+        const nsLower = String(r.namespace || '')
+          .trim()
+          .toLowerCase();
         const { type } = terminationOf(nsLower, app.toLowerCase());
         // Kullanicinin verdigi kural: passthrough -> internet (nginx'e cikabilir),
         // reencrypt -> intranet (nginx'e CIKAMAZ). Diger tipler (edge, tls yok)
         // bu kuralin disinda; "diger" olarak ayri tutulur, tahmin edilmez.
-        const net = type === 'passthrough' ? 'internet'
-                  : type === 'reencrypt' ? 'intranet'
-                  : type ? 'diger' : 'bilinmiyor';
+        const net =
+          type === 'passthrough'
+            ? 'internet'
+            : type === 'reencrypt'
+              ? 'intranet'
+              : type
+                ? 'diger'
+                : 'bilinmiyor';
         if (!ocp.has(env)) ocp.set(env, new Map());
         const k = app.toLowerCase();
         const prev = ocp.get(env).get(k);
@@ -306,16 +359,25 @@ function initDenetim(app) {
       const ngxNonSpa = new Set();
       const ngx = new Map();
       for (const r of ngxRes.recordset || []) {
-        const e = String(r.env || '').trim().toUpperCase();
+        const e = String(r.env || '')
+          .trim()
+          .toUpperCase();
         const app = String(r.application || '').trim();
         if (!app || !e) continue;
-        if (!SPA_RE.test(app)) { ngxNonSpa.add(app); continue; }
+        if (!SPA_RE.test(app)) {
+          ngxNonSpa.add(app);
+          continue;
+        }
         if (!ngx.has(e)) ngx.set(e, new Map());
         ngx.get(e).set(app.toLowerCase(), app);
       }
-      const nginxOutsidePattern = [...ngxNonSpa].sort((a, b) => a.localeCompare(b, 'tr')).slice(0, 40);
+      const nginxOutsidePattern = [...ngxNonSpa]
+        .sort((a, b) => a.localeCompare(b, 'tr'))
+        .slice(0, 40);
 
-      const ENV_LIST = [...new Set([...ENVS.map((e) => e.toUpperCase()), ...ocp.keys(), ...ngx.keys()])];
+      const ENV_LIST = [
+        ...new Set([...ENVS.map((e) => e.toUpperCase()), ...ocp.keys(), ...ngx.keys()]),
+      ];
       const CAP = 300;
       const sortTr = (a, b) => a.localeCompare(b, 'tr');
 
@@ -361,11 +423,15 @@ function initDenetim(app) {
           onlyNginx: onlyNginx.sort(sortTr).slice(0, CAP),
           // Kapsam YALNIZCA internet kumesi uzerinden: intranet uygulamalarini paydaya
           // katmak, cikmasi zaten yasak olanlari "eksik" saymak olurdu.
-          coverage: measured && bucket.internet.length
-            ? Math.round((inNginx.internet.length / bucket.internet.length) * 1000) / 10
-            : null,
+          coverage:
+            measured && bucket.internet.length
+              ? Math.round((inNginx.internet.length / bucket.internet.length) * 1000) / 10
+              : null,
         };
-      }).filter((r) => r.internetTotal || r.intranetTotal || r.otherTotal || r.unknownTotal || r.onlyNginxCount);
+      }).filter(
+        (r) =>
+          r.internetTotal || r.intranetTotal || r.otherTotal || r.unknownTotal || r.onlyNginxCount,
+      );
 
       res.json({
         ok: true,
@@ -410,7 +476,7 @@ function initDenetim(app) {
         `SELECT DISTINCT cluster, namespace, application
            FROM dbo.Openshift_Inventory
           WHERE cluster IN (${placeholders})`,
-        inputs
+        inputs,
       );
 
       // application -> { env -> [{cluster, namespace}] }
@@ -418,8 +484,12 @@ function initDenetim(app) {
       let skippedNoEnv = 0;
       for (const r of result.recordset || []) {
         const env = envOfNamespace(r.namespace);
-        if (!env) { skippedNoEnv++; continue; }   // altyapi/operator namespace'i - uygulama degil
-        if (!apps.has(r.application)) apps.set(r.application, { application: r.application, envs: {} });
+        if (!env) {
+          skippedNoEnv++;
+          continue;
+        } // altyapi/operator namespace'i - uygulama degil
+        if (!apps.has(r.application))
+          apps.set(r.application, { application: r.application, envs: {} });
         const e = apps.get(r.application).envs;
         if (!e[env]) e[env] = [];
         e[env].push({ cluster: r.cluster, namespace: r.namespace });
@@ -433,7 +503,7 @@ function initDenetim(app) {
         })
         .sort((a, b) => a.application.localeCompare(b.application));
 
-      // Ozet: hangi "eksik ortam" deseni kac uygulamada gorulüyor (en sik 10).
+      // Ozet: hangi "eksik ortam" deseni kac uygulamada goruluyor (en sik 10).
       const patternCount = new Map();
       for (const r of rows) {
         if (!r.missing.length) continue;
@@ -458,7 +528,9 @@ function initDenetim(app) {
         rows,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, message: err.message || 'OpenShift kapsam verisi alınamadı.' });
+      res
+        .status(500)
+        .json({ ok: false, message: err.message || 'OpenShift kapsam verisi alınamadı.' });
     }
   });
 
@@ -479,24 +551,24 @@ function initDenetim(app) {
   // kurulumda yedekten geri kopyalar). O yuzden ayrica isaretlenir ve sapma sayimina
   // KATILMAZ; yoksa neredeyse her sunucu yanlislikla "sapkin" gorunurdu.
   const INIT_SCRIPTS = [
-    { key: 'appdomain_service',          label: 'appdomain.service' },
-    { key: 'start_sh',                   label: 'start.sh' },
-    { key: 'functions_sh',               label: 'functions.sh' },
-    { key: 'startCTG_sh',                label: 'startCTG.sh' },
-    { key: 'startWAS_sh',                label: 'startWAS.sh' },
-    { key: 'startWEB_sh',                label: 'startWEB.sh' },
-    { key: 'startJboss_sh',              label: 'startJboss.sh' },
-    { key: 'startJboss8_sh',             label: 'startJboss8.sh' },
-    { key: 'startNginx_sh',              label: 'startNginx.sh' },
-    { key: 'startIHS_sh',                label: 'startIHS.sh' },
-    { key: 'exceptionList_ini',          label: 'exceptionList.ini' },
+    { key: 'appdomain_service', label: 'appdomain.service' },
+    { key: 'start_sh', label: 'start.sh' },
+    { key: 'functions_sh', label: 'functions.sh' },
+    { key: 'startCTG_sh', label: 'startCTG.sh' },
+    { key: 'startWAS_sh', label: 'startWAS.sh' },
+    { key: 'startWEB_sh', label: 'startWEB.sh' },
+    { key: 'startJboss_sh', label: 'startJboss.sh' },
+    { key: 'startJboss8_sh', label: 'startJboss8.sh' },
+    { key: 'startNginx_sh', label: 'startNginx.sh' },
+    { key: 'startIHS_sh', label: 'startIHS.sh' },
+    { key: 'exceptionList_ini', label: 'exceptionList.ini' },
     { key: 'startApplicationServers_jy', label: 'startApplicationServers.jy' },
-    { key: 'stopApplicationServers_jy',  label: 'stopApplicationServers.jy' },
-    { key: 'startCustom_sh',             label: 'startCustom.sh', perServer: true },
+    { key: 'stopApplicationServers_jy', label: 'stopApplicationServers.jy' },
+    { key: 'startCustom_sh', label: 'startCustom.sh', perServer: true },
   ];
 
   const INIT_TABLES = {
-    vhosting:  'dbo.InitScriptsInventory',
+    vhosting: 'dbo.InitScriptsInventory',
     vhosting8: 'dbo.InitScriptsInventory8',
   };
 
@@ -512,7 +584,7 @@ function initDenetim(app) {
       // yalnizca var olan sutunlardan kurulur. Sutun adlari INIT_SCRIPTS'teki SABIT
       // liste ile kesistirilir - disaridan gelen hicbir metin SQL'e girmez.
       const colRes = await query(
-        `SELECT c.name FROM sys.columns c WHERE c.object_id = OBJECT_ID('${table}')`
+        `SELECT c.name FROM sys.columns c WHERE c.object_id = OBJECT_ID('${table}')`,
       );
       const have = new Set((colRes.recordset || []).map((r) => String(r.name)));
       const scripts = INIT_SCRIPTS.filter((sc) => have.has(sc.key));
@@ -520,14 +592,22 @@ function initDenetim(app) {
 
       if (!have.has('host') || scripts.length === 0) {
         return res.json({
-          ok: true, root, roots: Object.keys(INIT_TABLES), hosts: 0, scriptCount: 0,
-          identicalHosts: 0, totalVariants: 0, customHosts: 0,
-          missingColumns, scripts: [], hostRows: [],
+          ok: true,
+          root,
+          roots: Object.keys(INIT_TABLES),
+          hosts: 0,
+          scriptCount: 0,
+          identicalHosts: 0,
+          totalVariants: 0,
+          customHosts: 0,
+          missingColumns,
+          scripts: [],
+          hostRows: [],
         });
       }
 
       const rowsRes = await query(
-        `SELECT host, ${scripts.map((sc) => sc.key).join(', ')} FROM ${table} ORDER BY host`
+        `SELECT host, ${scripts.map((sc) => sc.key).join(', ')} FROM ${table} ORDER BY host`,
       );
       const raw = (rowsRes.recordset || []).filter((r) => String(r.host || '').trim());
       const hostCount = raw.length;
@@ -539,7 +619,10 @@ function initDenetim(app) {
         for (const r of raw) {
           const host = String(r.host).trim();
           const h = r[sc.key] ? String(r[sc.key]).trim() : '';
-          if (!h) { absent.push(host); continue; }
+          if (!h) {
+            absent.push(host);
+            continue;
+          }
           if (!byHash.has(h)) byHash.set(h, []);
           byHash.get(h).push(host);
         }
@@ -570,16 +653,25 @@ function initDenetim(app) {
         let customHash = null;
         for (const sc of scripts) {
           const val = r[sc.key] ? String(r[sc.key]).trim() : '';
-          if (sc.perServer) { customHash = val || null; continue; }
-          if (!val) { missing.push(sc.label); continue; }
+          if (sc.perServer) {
+            customHash = val || null;
+            continue;
+          }
+          if (!val) {
+            missing.push(sc.label);
+            continue;
+          }
           const maj = majorityOf.get(sc.key);
           if (maj && val !== maj) deviations.push(sc.label);
         }
         return {
           host: String(r.host).trim(),
-          deviations, deviationCount: deviations.length,
-          missing, missingCount: missing.length,
-          hasCustom: !!customHash, customHash,
+          deviations,
+          deviationCount: deviations.length,
+          missing,
+          missingCount: missing.length,
+          hasCustom: !!customHash,
+          customHash,
         };
       });
 
@@ -590,15 +682,20 @@ function initDenetim(app) {
         hosts: hostCount,
         scriptCount: scripts.length,
         // "tam uyumlu" = perServer disindaki HER script'te cogunlukla ayni hash, hicbiri eksik degil
-        identicalHosts: hostRows.filter((r) => r.deviationCount === 0 && r.missingCount === 0).length,
-        totalVariants: scriptStats.filter((sc) => !sc.perServer).reduce((a, sc) => a + sc.variantCount, 0),
+        identicalHosts: hostRows.filter((r) => r.deviationCount === 0 && r.missingCount === 0)
+          .length,
+        totalVariants: scriptStats
+          .filter((sc) => !sc.perServer)
+          .reduce((a, sc) => a + sc.variantCount, 0),
         customHosts: hostRows.filter((r) => r.hasCustom).length,
         missingColumns,
         scripts: scriptStats,
         hostRows,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, message: err.message || 'Init script denetim verisi alinamadi.' });
+      res
+        .status(500)
+        .json({ ok: false, message: err.message || 'Init script denetim verisi alinamadi.' });
     }
   });
 

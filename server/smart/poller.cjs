@@ -36,12 +36,18 @@ async function syncOcoRecord(ticket, outcome) {
     if (outcome.launched) {
       await ocoStore.markApprovedLaunched(ocoId, outcome.jobId ?? null);
     } else {
-      await ocoStore.markApprovalResolved(ocoId, { status: outcome.status, message: outcome.message });
+      await ocoStore.markApprovalResolved(ocoId, {
+        status: outcome.status,
+        message: outcome.message,
+      });
     }
   } catch (e) {
     // OCO kaydi guncellenemezse BILET yine dogru sonuclanmistir — tetikleme karari
     // bilete bagli. Burasi yalnizca gorunurluk; sessizce yutmak yerine uyar.
-    console.warn(`[Smart] ticket #${ticket.id} sonucu OCO #${ocoId} kaydina yazilamadi:`, e.message);
+    console.warn(
+      `[Smart] ticket #${ticket.id} sonucu OCO #${ocoId} kaydina yazilamadi:`,
+      e.message,
+    );
   }
 }
 
@@ -76,15 +82,22 @@ async function _tickBody() {
     // bir daha hic islenmez - otomasyon ASLA tetiklenmez.
     const ageMinutes = (Date.now() - new Date(ticket.createdAt).getTime()) / 60000;
     if (ageMinutes > cfg.ticketTimeoutMinutes) {
-      await store.markState(ticket.id, {
-        status: 'TIMEOUT',
-        smartStateName: ticket.smartStateName,
-        errorMessage: `${cfg.ticketTimeoutMinutes} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
-        resolved: true,
-        expected: 'PENDING',   // arada iptal edildiyse CANCELLED korunur
-      }).catch((e) => console.warn('[Smart] TIMEOUT yazilamadi:', e.message));
-      await syncOcoRecord(ticket, { status: 'FAILED', message: `Smart onayi ${cfg.ticketTimeoutMinutes} dakikada gelmedi — is tetiklenmedi.` });
-      console.log(`[Smart] ticket #${ticket.id} ZAMAN ASIMI (${cfg.ticketTimeoutMinutes} dk) - otomasyon tetiklenmedi.`);
+      await store
+        .markState(ticket.id, {
+          status: 'TIMEOUT',
+          smartStateName: ticket.smartStateName,
+          errorMessage: `${cfg.ticketTimeoutMinutes} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
+          resolved: true,
+          expected: 'PENDING', // arada iptal edildiyse CANCELLED korunur
+        })
+        .catch((e) => console.warn('[Smart] TIMEOUT yazilamadi:', e.message));
+      await syncOcoRecord(ticket, {
+        status: 'FAILED',
+        message: `Smart onayi ${cfg.ticketTimeoutMinutes} dakikada gelmedi — is tetiklenmedi.`,
+      });
+      console.log(
+        `[Smart] ticket #${ticket.id} ZAMAN ASIMI (${cfg.ticketTimeoutMinutes} dk) - otomasyon tetiklenmedi.`,
+      );
       continue;
     }
 
@@ -99,13 +112,18 @@ async function _tickBody() {
     }
 
     if (status.rejected) {
-      await store.markState(ticket.id, {
-        status: 'REJECTED',
-        smartStateName: status.stateName,
-        resolved: true,
-        expected: 'PENDING',
-      }).catch((e) => console.warn('[Smart] REJECTED yazilamadi:', e.message));
-      await syncOcoRecord(ticket, { status: 'FAILED', message: 'Smart onayi REDDEDILDI — is tetiklenmedi.' });
+      await store
+        .markState(ticket.id, {
+          status: 'REJECTED',
+          smartStateName: status.stateName,
+          resolved: true,
+          expected: 'PENDING',
+        })
+        .catch((e) => console.warn('[Smart] REJECTED yazilamadi:', e.message));
+      await syncOcoRecord(ticket, {
+        status: 'FAILED',
+        message: 'Smart onayi REDDEDILDI — is tetiklenmedi.',
+      });
       continue;
     }
 
@@ -121,8 +139,13 @@ async function _tickBody() {
         return null;
       });
       if (!claimed) {
-        await syncOcoRecord(ticket, { status: 'CANCELLED', message: 'Onay geldi ama talep bu arada iptal edilmisti — is tetiklenmedi.' });
-        console.log(`[Smart] ticket #${ticket.id} onaylandi ama artik PENDING degil (iptal edilmis olabilir) — TETIKLENMEDI.`);
+        await syncOcoRecord(ticket, {
+          status: 'CANCELLED',
+          message: 'Onay geldi ama talep bu arada iptal edilmisti — is tetiklenmedi.',
+        });
+        console.log(
+          `[Smart] ticket #${ticket.id} onaylandi ama artik PENDING degil (iptal edilmis olabilir) — TETIKLENMEDI.`,
+        );
         continue;
       }
 
@@ -138,14 +161,19 @@ async function _tickBody() {
         await syncOcoRecord(ticket, { launched: true, jobId });
         console.log(`[Smart] ticket #${ticket.id} onaylandi -> AWX job #${jobId} tetiklendi.`);
       } catch (e) {
-        await store.markState(ticket.id, {
-          status: 'ERROR',
-          smartStateName: status.stateName,
-          errorMessage: e.message,
-          resolved: true,
-          expected: 'LAUNCHING',
-        }).catch(() => {});
-        await syncOcoRecord(ticket, { status: 'FAILED', message: `Onay alindi ama AWX tetiklenemedi: ${e.message}` });
+        await store
+          .markState(ticket.id, {
+            status: 'ERROR',
+            smartStateName: status.stateName,
+            errorMessage: e.message,
+            resolved: true,
+            expected: 'LAUNCHING',
+          })
+          .catch(() => {});
+        await syncOcoRecord(ticket, {
+          status: 'FAILED',
+          message: `Onay alindi ama AWX tetiklenemedi: ${e.message}`,
+        });
         console.warn(`[Smart] ticket #${ticket.id} onaylandi ama launch basarisiz:`, e.message);
       }
       continue;
@@ -153,7 +181,12 @@ async function _tickBody() {
 
     // Hala bekliyor — sadece guncel durum adini yaz (teshis icin), status PENDING kalir.
     if (status.stateName && status.stateName !== ticket.smartStateName) {
-      await store.markState(ticket.id, { status: 'PENDING', smartStateName: status.stateName, expected: 'PENDING' })
+      await store
+        .markState(ticket.id, {
+          status: 'PENDING',
+          smartStateName: status.stateName,
+          expected: 'PENDING',
+        })
         .catch(() => {});
     }
   }
@@ -163,14 +196,19 @@ async function _tickBody() {
 // dongusel require'dan kacinmak icin runner.cjs disaridan enjekte eder.
 function startPoller(onApproved) {
   _onApproved = onApproved;
-  if (_timer) return; // zaten calisiyor (ör. hot-reload/test ortami) — ikinci kez baslatma
+  if (_timer) return; // zaten calisiyor (or. hot-reload/test ortami) — ikinci kez baslatma
   const cfg = getConfig();
-  _timer = setInterval(() => { tick().catch((e) => console.warn('[Smart] poller tick hatasi:', e.message)); }, cfg.pollIntervalSeconds * 1000);
+  _timer = setInterval(() => {
+    tick().catch((e) => console.warn('[Smart] poller tick hatasi:', e.message));
+  }, cfg.pollIntervalSeconds * 1000);
   _timer.unref?.(); // process'in kapanmasini engellemesin
 }
 
 function stopPoller() {
-  if (_timer) { clearInterval(_timer); _timer = null; }
+  if (_timer) {
+    clearInterval(_timer);
+    _timer = null;
+  }
 }
 
 module.exports = { startPoller, stopPoller, tick };

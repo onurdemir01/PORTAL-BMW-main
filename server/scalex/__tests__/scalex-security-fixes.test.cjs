@@ -491,8 +491,8 @@ test('UI: uygulama adlari listelerde TEKILLESTIRILIYOR', () => {
 });
 
 test('UI: kismen geri alinabilir uygulama ve engelleyen cluster SOYLENIYOR', () => {
-  // Kesif listesinde "geri alınabilir" rozeti gorunurken sonraki adimda "geri
-  // alınamaz" yazmasi, kullaniciyi iki ekran arasinda birakiyordu.
+  // Kesif listesinde "geri alinabilir" rozeti gorunurken sonraki adimda "geri
+  // alinamaz" yazmasi, kullaniciyi iki ekran arasinda birakiyordu.
   const OP = codeOnly(read('src/components/scalex/steps/OperationStep.tsx'));
   assert.match(OP, /partiallyRestorable/);
   assert.match(OP, /blockingClusters/);

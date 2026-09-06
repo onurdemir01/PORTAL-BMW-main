@@ -1559,7 +1559,7 @@ test('K3 birlesim kapiyi yalnizca ACAR: prod olmayan istek etkilenmez', () => {
 // KURAL: onay kapilari (OCO + SMART) YALNIZCA production'da. Prod disinda hicbir
 // onay istenmez — ama degisiklik IZI gevsemez (audit + `scalex_operations`).
 //
-// Bu bekçiler bir EKRAN hatasini kilitliyor: sunucu tarafi zaten dogruydu
+// Bu bekciler bir EKRAN hatasini kilitliyor: sunucu tarafi zaten dogruydu
 // (`change-gates.isOcoGateApplicable` prod degilse kapiyi hic acmiyordu, bkz. K3),
 // ama `gatePolicyFor` ortami GORMEDIGI icin `/preview` test ortaminda da
 // `oco: 'require'` donuyor, `PreviewStep.tsx` OCO numarasi isteyip "Calistir"
@@ -1997,7 +1997,7 @@ test('P3 uzlastiricinin KARARLARI denetime yaziliyor', () => {
   ]) {
     assert.match(rec, new RegExp(a), `${a} izi yok`);
   }
-  // Uzlastirici HTTP baglamı olmadan calisir; `auditPortal(null, ...)` desteklenir ve
+  // Uzlastirici HTTP baglami olmadan calisir; `auditPortal(null, ...)` desteklenir ve
   // kullanici adi acikca verilmeli, yoksa kayit 'system' olarak duser ve kimin isi
   // oldugu kaybolur.
   assert.match(rec, /username: 'system:scalex-reconciler'/, 'sistem aktoru isaretlenmemis');
@@ -2411,7 +2411,7 @@ test('T1 refreshDrift: cluster-only satirlar icin last_seen_at UPDATE atesi', as
       if (/SELECT.*scalex_state_mirror/i.test(sql)) {
         return { rows: [portalRow], rowCount: 1 };
       }
-      // Tum UPDATE'ler basariyla donsun (rowCount önemli degil, sorgu ATESI onemli).
+      // Tum UPDATE'ler basariyla donsun (rowCount onemli degil, sorgu ATESI onemli).
       return { rows: [], rowCount: 0 };
     },
     async (calls) => {

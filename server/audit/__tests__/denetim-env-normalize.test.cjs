@@ -22,8 +22,16 @@ const DENETIM = path.join(__dirname, '..', 'denetim.cjs');
 const NGINX_LOC = path.join(__dirname, '..', 'nginx-locations.cjs');
 const SRC = fs.readFileSync(DENETIM, 'utf8');
 
+// BICIM DEGIL KURAL. Prettier zinciri satirlara boluyor
+// (`String(v || '')\n  .trim()\n  .toUpperCase()`); bitisiklik varsayan desen kural
+// aynen dururken kirmiziya donuyordu (bkz. bekci-korlugu-desenleri #2b).
+const norm = (t) => t.replace(/\s+/g, ' ').replace(/'/g, '"');
+
 test('B4: env normalize TEK bir fonksiyondan gecer', () => {
-  assert.match(SRC, /const normEnv = \(v\) => String\(v \|\| ''\)\.trim\(\)\.toUpperCase\(\) \|\| '\(bos\)';/);
+  assert.match(
+    norm(SRC),
+    /const normEnv = \(v\) => String\(v \|\| ""\) ?\.trim\(\) ?\.toUpperCase\(\) \|\| "\(bos\)";/,
+  );
 });
 
 test('B4: hucre anahtari artik trimsiz normalize EDILMIYOR', () => {
@@ -32,13 +40,16 @@ test('B4: hucre anahtari artik trimsiz normalize EDILMIYOR', () => {
   const matrix = SRC.slice(SRC.indexOf('const SEVERITY'), SRC.indexOf('const SEVERITY') + 2000);
   assert.ok(
     !/String\(r\.env \|\| ''\)\.toUpperCase\(\)/.test(matrix),
-    'hucre anahtari hala trimsiz normalize ediliyor — bosluklu env satirlari kaybolur'
+    'hucre anahtari hala trimsiz normalize ediliyor — bosluklu env satirlari kaybolur',
   );
   assert.ok((matrix.match(/normEnv\(/g) || []).length >= 1, 'matris blogu normEnv kullanmiyor');
 });
 
 test('B4: normalize davranisi — bosluklu ve bos degerler sutunla ESLESIR', () => {
-  const m = SRC.match(/const normEnv = .*;/);
+  // COK SATIRA YAYILMIS TANIMI da yakalar: `.` satir sonunu GECMEZ ve prettier
+  // zinciri boldugunde eski desen YARIM bir parca cikariyordu (gecersiz JS).
+  // Bu test fonksiyonu GERCEKTEN CALISTIRDIGI icin yarim parca ReferenceError verirdi.
+  const m = SRC.match(/const normEnv = [\s\S]*?;\n/);
   assert.ok(m, 'normEnv bulunamadi');
   const normEnv = new Function(`${m[0]}; return normEnv;`)();
   assert.equal(normEnv(' qa '), 'QA', 'bosluklu env kanonik sutuna dusmeli');
@@ -50,8 +61,11 @@ test('B4: normalize davranisi — bosluklu ve bos degerler sutunla ESLESIR', () 
 test('B5: denetim kaynak dosyalarinda HAM NUL bayti yok', () => {
   for (const f of [DENETIM, NGINX_LOC]) {
     const buf = fs.readFileSync(f);
-    assert.equal(buf.includes(0), false,
-      `${path.basename(f)} ham NUL iceriyor — git dosyayi binary sayar, diff/blame calismaz`);
+    assert.equal(
+      buf.includes(0),
+      false,
+      `${path.basename(f)} ham NUL iceriyor — git dosyayi binary sayar, diff/blame calismaz`,
+    );
   }
 });
 
@@ -60,6 +74,9 @@ test('B5: ayirici hala U+0000 (davranis degismedi, yalnizca yazimi degisti)', ()
   const m = ngx.match(/\.map\(\(x\) => String\(x \|\| ''\)\)\.join\('(.*?)'\);/);
   assert.ok(m, 'keyOf ayiricisi bulunamadi');
   assert.equal(m[1], '\\u0000', 'ayirici kacis dizisiyle yazilmali');
-  assert.equal(new Function(`return '${m[1]}';`)(), String.fromCharCode(0),
-    'kacis dizisi gercekten NUL uretmeli — ayirici davranisi degismemeli');
+  assert.equal(
+    new Function(`return '${m[1]}';`)(),
+    String.fromCharCode(0),
+    'kacis dizisi gercekten NUL uretmeli — ayirici davranisi degismemeli',
+  );
 });

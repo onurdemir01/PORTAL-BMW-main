@@ -98,7 +98,7 @@ function telnetTemplateName(namespaces) {
 }
 
 // ── SONUC OKUMA (2026-08-28) ────────────────────────────────────────────────────
-// ONCE: playbook AÇIK/KAPALI satirlarini yalnizca `debug` mesaji olarak uretiyordu,
+// ONCE: playbook ACIK/KAPALI satirlarini yalnizca `debug` mesaji olarak uretiyordu,
 // portal bunlari HIC okumuyordu — backend `artifacts`i eline alip ATIYORDU. Sonuc:
 // TUM portlar KAPALI olsa bile AWX job'i `successful` dondugu icin ekranda YESIL TIK
 // cikiyordu. Bu, "sonuc yok"tan kotudur: aktif olarak YANLIS bilgi veriyordu.
@@ -107,7 +107,7 @@ function telnetTemplateName(namespaces) {
 // ocp_telnet_control.yml son play'i) ve burada okunuyor. Anahtar cozumu ESNEK —
 // AWX surumune gore `artifacts.X`, `artifacts.data.X` ya da
 // `artifacts.ansible_stats.data.X` altinda gelebiliyor (LogX'te uretimde her uc sekil
-// de gorulduğu icin jobs.cjs ayni deseni tasiyor).
+// de goruldugu icin jobs.cjs ayni deseni tasiyor).
 function extractTelnetResult(rawArtifacts) {
   const a = rawArtifacts || {};
   const candidates = [
@@ -401,7 +401,7 @@ function initTelnet(app) {
   //   islediginden buna gerek kalmadi.
   //
   // CLUSTER SECIMI (OpsX Openshift Rollout ile AYNI UX): govdedeki `cluster` (tekil, GERCEK
-  // cluster adi, ör. "gbocptest1") OPSIYONEL — bosşa/gonderilmezse tenant/env grubunun TUM
+  // cluster adi, or. "gbocptest1") OPSIYONEL — bossa/gonderilmezse tenant/env grubunun TUM
   // cluster'lari hedeflenir (eski davranis). Openshift Rollout'tan FARKLI olarak burada AWX
   // `limit`e HIC ihtiyac YOK: bastion fan-out modeli zaten `ocp_clusters[]` VERISINI (asagida)
   // kisitlayarak calisir, playbook'a hic dokunulmadi.

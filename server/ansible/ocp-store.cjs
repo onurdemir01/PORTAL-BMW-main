@@ -15,23 +15,23 @@ const LEGACY_OCP_FILE = path.join(__dirname, 'ocp-clusters.json');
 function normalizeCluster(raw) {
   return {
     id: raw.id || randomUUID(),
-    name:        String(raw.name        || '').trim(),
-    display:     String(raw.display     || raw.name || '').trim(),
-    env:         ['prod', 'test', 'qa', 'dev'].includes(raw.env) ? raw.env : 'prod',
-    apiUrl:      String(raw.apiUrl      || '').trim(),
-    consoleUrl:  String(raw.consoleUrl  || '').trim(),
-    token:       String(raw.token       || '').trim(),
+    name: String(raw.name || '').trim(),
+    display: String(raw.display || raw.name || '').trim(),
+    env: ['prod', 'test', 'qa', 'dev'].includes(raw.env) ? raw.env : 'prod',
+    apiUrl: String(raw.apiUrl || '').trim(),
+    consoleUrl: String(raw.consoleUrl || '').trim(),
+    token: String(raw.token || '').trim(),
     description: String(raw.description || '').trim(),
-    namespace:   String(raw.namespace   || '').trim(),
+    namespace: String(raw.namespace || '').trim(),
     // AWX inventory'de zaten "oc login" yapilmis bastion/jump host — canli pod/node
     // durumu sorgulari (ocp_pod_status.yml) bunun uzerinden calisir.
-    jumpHost:    String(raw.jumpHost    || '').trim(),
-    isActive:    raw.isActive !== false,
-    createdBy:   raw.createdBy ? String(raw.createdBy).trim() : null,
+    jumpHost: String(raw.jumpHost || '').trim(),
+    isActive: raw.isActive !== false,
+    createdBy: raw.createdBy ? String(raw.createdBy).trim() : null,
     // Katalog birlestirme: LogX/OpsX/Telnet sihirbazlarinin cluster agaci
     // (ocp_cluster_index) env+tenant+cluster_name ile anahtarlanir; bu katalogda
     // `tenant` yoktu. Admin bunu doldurdukca kayit ortak agacta da gorunur hale gelir.
-    tenant:      String(raw.tenant      || '').trim(),
+    tenant: String(raw.tenant || '').trim(),
   };
 }
 
@@ -60,7 +60,21 @@ async function insertClusterRow(c) {
   await db.query(
     `INSERT INTO ansible_ocp_clusters (id, name, display, env, api_url, console_url, token, description, namespace, jump_host, is_active, created_by, tenant)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-    [c.id, c.name, c.display, c.env, c.apiUrl, c.consoleUrl, c.token, c.description, c.namespace, c.jumpHost, c.isActive !== false, c.createdBy || null, c.tenant || null]
+    [
+      c.id,
+      c.name,
+      c.display,
+      c.env,
+      c.apiUrl,
+      c.consoleUrl,
+      c.token,
+      c.description,
+      c.namespace,
+      c.jumpHost,
+      c.isActive !== false,
+      c.createdBy || null,
+      c.tenant || null,
+    ],
   );
 }
 
@@ -69,7 +83,7 @@ async function insertClusterRow(c) {
 // Portalda iki ayri OCP katalogu vardi ve ortak anahtarlari yoktu:
 //   ansible_ocp_clusters : id/name/env/api_url/token/jump_host  (Ansible Info + AI)
 //   ocp_cluster_index    : env/tenant/cluster_name              (LogX/OpsX/Telnet)
-// Birlestirme AŞAMALI yapilir; bu surumde YAZMA iki tarafa da gider (dual-write),
+// Birlestirme ASAMALI yapilir; bu surumde YAZMA iki tarafa da gider (dual-write),
 // OKUMA hala eski tablodadir. Boylece her an eski davranisa donulebilir ve veri
 // kaybi olmaz. Bir sonraki surumde okuma birlesik tabloya alinabilir.
 //
@@ -82,17 +96,26 @@ const UNASSIGNED_TENANT = process.env.OCP_CATALOG_DEFAULT_TENANT || '_atanmadi';
 async function mirrorToIndex(c) {
   const tenant = c.tenant || UNASSIGNED_TENANT;
   const isPlaceholderTenant = tenant === UNASSIGNED_TENANT;
-  const { rows } = await db.query(
-    `SELECT id FROM ocp_cluster_index WHERE legacy_id = $1`, [c.id]
-  );
+  const { rows } = await db.query(`SELECT id FROM ocp_cluster_index WHERE legacy_id = $1`, [c.id]);
   if (rows.length) {
     await db.query(
       `UPDATE ocp_cluster_index SET env=$1, tenant=$2, cluster_name=$3, terminal_host=$4,
          display=$5, api_url=$6, console_url=$7, token=$8, description=$9,
          default_namespace=$10, updated_at=GETUTCDATE()
        WHERE legacy_id=$11`,
-      [c.env, tenant, c.name, c.jumpHost || null, c.display, c.apiUrl, c.consoleUrl,
-       c.token, c.description, c.namespace, c.id]
+      [
+        c.env,
+        tenant,
+        c.name,
+        c.jumpHost || null,
+        c.display,
+        c.apiUrl,
+        c.consoleUrl,
+        c.token,
+        c.description,
+        c.namespace,
+        c.id,
+      ],
     );
     return;
   }
@@ -101,10 +124,22 @@ async function mirrorToIndex(c) {
        (env, tenant, cluster_name, terminal_host, display, api_url, console_url, token,
         description, default_namespace, created_by, legacy_id, source, is_active)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'ansible',$13)`,
-    [c.env, tenant, c.name, c.jumpHost || null, c.display, c.apiUrl, c.consoleUrl, c.token,
-     c.description, c.namespace, c.createdBy || null, c.id,
-     // Tenant atanmamissa PASIF gelir (sihirbaz agacina sizmasin).
-     isPlaceholderTenant ? 0 : (c.isActive !== false ? 1 : 0)]
+    [
+      c.env,
+      tenant,
+      c.name,
+      c.jumpHost || null,
+      c.display,
+      c.apiUrl,
+      c.consoleUrl,
+      c.token,
+      c.description,
+      c.namespace,
+      c.createdBy || null,
+      c.id,
+      // Tenant atanmamissa PASIF gelir (sihirbaz agacina sizmasin).
+      isPlaceholderTenant ? 0 : c.isActive !== false ? 1 : 0,
+    ],
   );
 }
 
@@ -113,7 +148,10 @@ async function mirrorSafe(c, action) {
   try {
     await mirrorToIndex(c);
   } catch (e) {
-    console.warn(`[OcpStore] ocp_cluster_index aynasi guncellenemedi (${action} ${c?.name}):`, e.message);
+    console.warn(
+      `[OcpStore] ocp_cluster_index aynasi guncellenemedi (${action} ${c?.name}):`,
+      e.message,
+    );
   }
 }
 
@@ -133,11 +171,17 @@ async function syncClustersIntoIndex() {
   let n = 0;
   for (const r of rows) {
     const c = rowToCluster(r);
-    try { await mirrorToIndex(c); n++; } catch (e) {
+    try {
+      await mirrorToIndex(c);
+      n++;
+    } catch (e) {
       console.warn(`[OcpStore] '${c.name}' ocp_cluster_index'e tasinamadi:`, e.message);
     }
   }
-  if (n) console.log(`[OcpStore] ${n} cluster ocp_cluster_index ile senkronlandi (katalog birlestirme).`);
+  if (n)
+    console.log(
+      `[OcpStore] ${n} cluster ocp_cluster_index ile senkronlandi (katalog birlestirme).`,
+    );
 }
 
 // ── Bellek cache + yukleme ───────────────────────────────────────────────────
@@ -149,7 +193,9 @@ function readFallback() {
       const parsed = JSON.parse(fs.readFileSync(LEGACY_OCP_FILE, 'utf-8'));
       if (Array.isArray(parsed?.clusters)) return parsed.clusters.map(normalizeCluster);
     }
-  } catch { /* dosya bozuksa bos liste */ }
+  } catch {
+    /* dosya bozuksa bos liste */
+  }
   return [];
 }
 
@@ -173,21 +219,30 @@ async function importLegacyIfEmpty() {
       const parsed = JSON.parse(fs.readFileSync(LEGACY_OCP_FILE, 'utf-8'));
       if (Array.isArray(parsed?.clusters) && parsed.clusters.length) source = parsed.clusters;
     }
-  } catch { /* dosya bozuk → blob dene */ }
+  } catch {
+    /* dosya bozuk → blob dene */
+  }
   if (!source) {
     try {
-      const blob = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, ['ocp-clusters']);
+      const blob = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [
+        'ocp-clusters',
+      ]);
       if (blob.rows.length) {
         const parsed = JSON.parse(blob.rows[0].data);
         if (Array.isArray(parsed?.clusters) && parsed.clusters.length) source = parsed.clusters;
       }
-    } catch { /* blob yok */ }
+    } catch {
+      /* blob yok */
+    }
   }
   if (!source) return;
 
   let count = 0;
   for (const raw of source) {
-    try { await insertClusterRow(normalizeCluster(raw)); count++; } catch (e) {
+    try {
+      await insertClusterRow(normalizeCluster(raw));
+      count++;
+    } catch (e) {
       console.warn(`[OcpStore] import satiri eklenemedi (${raw?.name}):`, e.message);
     }
   }
@@ -199,7 +254,9 @@ async function loadOcpStore() {
     await importLegacyIfEmpty();
     await reloadCache();
     // Katalog birlestirme: mevcut satirlari ortak indekse aynala (idempotent).
-    await syncClustersIntoIndex().catch((e) => console.warn("[OcpStore] indeks senkronu atlandi:", e.message));
+    await syncClustersIntoIndex().catch((e) =>
+      console.warn('[OcpStore] indeks senkronu atlandi:', e.message),
+    );
     console.log(`[OcpStore] ${_clusters.length} cluster DB'den yuklendi.`);
   } catch (e) {
     console.warn('[OcpStore] DB yuklenemedi, dosya fallback aktif:', e.message);
@@ -210,7 +267,7 @@ async function loadOcpStore() {
 async function addOcpCluster(cluster) {
   const newCluster = normalizeCluster({ ...cluster, id: randomUUID() });
   await insertClusterRow(newCluster);
-  await mirrorSafe(newCluster, "add");   // dual-write: birlesik katalog aynasi
+  await mirrorSafe(newCluster, 'add'); // dual-write: birlesik katalog aynasi
   await reloadCache();
   return newCluster;
 }
@@ -220,27 +277,39 @@ async function updateOcpCluster(id, fields) {
   if (!existing) return null;
   const merged = normalizeCluster({
     ...existing,
-    ...(fields.name        !== undefined ? { name:        fields.name }        : {}),
-    ...(fields.display     !== undefined ? { display:     fields.display }     : {}),
-    ...(fields.env         !== undefined ? { env:         fields.env }         : {}),
-    ...(fields.apiUrl      !== undefined ? { apiUrl:      fields.apiUrl }      : {}),
-    ...(fields.consoleUrl  !== undefined ? { consoleUrl:  fields.consoleUrl }  : {}),
-    ...(fields.token       !== undefined ? { token:       fields.token }       : {}),
+    ...(fields.name !== undefined ? { name: fields.name } : {}),
+    ...(fields.display !== undefined ? { display: fields.display } : {}),
+    ...(fields.env !== undefined ? { env: fields.env } : {}),
+    ...(fields.apiUrl !== undefined ? { apiUrl: fields.apiUrl } : {}),
+    ...(fields.consoleUrl !== undefined ? { consoleUrl: fields.consoleUrl } : {}),
+    ...(fields.token !== undefined ? { token: fields.token } : {}),
     ...(fields.description !== undefined ? { description: fields.description } : {}),
-    ...(fields.namespace   !== undefined ? { namespace:   fields.namespace }   : {}),
-    ...(fields.jumpHost    !== undefined ? { jumpHost:    fields.jumpHost }    : {}),
-    ...(fields.isActive    !== undefined ? { isActive:    fields.isActive }    : {}),
-    ...(fields.tenant      !== undefined ? { tenant:      fields.tenant }      : {}),
+    ...(fields.namespace !== undefined ? { namespace: fields.namespace } : {}),
+    ...(fields.jumpHost !== undefined ? { jumpHost: fields.jumpHost } : {}),
+    ...(fields.isActive !== undefined ? { isActive: fields.isActive } : {}),
+    ...(fields.tenant !== undefined ? { tenant: fields.tenant } : {}),
     id,
   });
   await db.query(
     `UPDATE ansible_ocp_clusters SET name=$1, display=$2, env=$3, api_url=$4, console_url=$5,
        token=$6, description=$7, namespace=$8, jump_host=$9, is_active=$10, tenant=$11, updated_at=GETUTCDATE()
      WHERE id=$12`,
-    [merged.name, merged.display, merged.env, merged.apiUrl, merged.consoleUrl,
-     merged.token, merged.description, merged.namespace, merged.jumpHost, merged.isActive !== false, merged.tenant || null, id]
+    [
+      merged.name,
+      merged.display,
+      merged.env,
+      merged.apiUrl,
+      merged.consoleUrl,
+      merged.token,
+      merged.description,
+      merged.namespace,
+      merged.jumpHost,
+      merged.isActive !== false,
+      merged.tenant || null,
+      id,
+    ],
   );
-  await mirrorSafe(merged, "update");
+  await mirrorSafe(merged, 'update');
   await reloadCache();
   return merged;
 }
@@ -259,12 +328,19 @@ async function deleteOcpCluster(id) {
 async function setClusterConnectionStatus(id, status) {
   await db.query(
     `UPDATE ansible_ocp_clusters SET connection_status=$1, last_checked_at=GETUTCDATE() WHERE id=$2`,
-    [status, id]
+    [status, id],
   );
   await reloadCache();
 }
 
 module.exports = {
-  getOcpClusters, addOcpCluster, updateOcpCluster, deleteOcpCluster, loadOcpStore, setClusterConnectionStatus,
-  syncClustersIntoIndex, _mirrorToIndex: mirrorToIndex, UNASSIGNED_TENANT,
+  getOcpClusters,
+  addOcpCluster,
+  updateOcpCluster,
+  deleteOcpCluster,
+  loadOcpStore,
+  setClusterConnectionStatus,
+  syncClustersIntoIndex,
+  _mirrorToIndex: mirrorToIndex,
+  UNASSIGNED_TENANT,
 };

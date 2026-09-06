@@ -30,19 +30,28 @@ const FONTS_CSS = read('src/fonts.css');
 const INDEX_CSS = read('src/index.css');
 const LOGO_TSX = read('src/components/common/PortalLogo.tsx');
 const LAYOUT_TSX = read('src/layouts/AppLayout.tsx');
-const SERVER = read('server/index.cjs');
+// BICIM DEGIL KURAL. Prettier tek/cift tirnagi degistiriyor ve zincirleri satirlara
+// boluyor; tirnak/bitisiklik varsayan desenler kural aynen dururken kirmiziya
+// donuyordu (bkz. bekci-korlugu-desenleri #2b).
+const SERVER = read('server/index.cjs').replace(/\s+/g, ' ').replace(/'/g, '"');
 
 // ── C1: logo ────────────────────────────────────────────────────────────────
 test('C1: logo durumu ILK HTML’e gomulur, istek beklenmez', () => {
   assert.match(INDEX_HTML, /window\.__BMW_BOOT__ = \{\};/, 'sunucunun dolduracagi yer tutucu yok');
-  assert.match(SERVER, /boot\.logoUrl = `\/api\/branding\/logo\?v=\$\{encodeURIComponent\(logo\.version\)\}`/,
-    'logo adresi surumlenmiyor — tarayici her acilista yeniden ister, eski goruntu bir an cikar');
+  assert.match(
+    SERVER,
+    /boot\.logoUrl = `\/api\/branding\/logo\?v=\$\{encodeURIComponent\(logo\.version\)\}`/,
+    'logo adresi surumlenmiyor — tarayici her acilista yeniden ister, eski goruntu bir an cikar',
+  );
   assert.match(LOGO_TSX, /const BOOT_LOGO/, 'istemci gomulu durumu okumuyor');
   assert.match(LOGO_TSX, /if \(BOOT_KNOWS\) return;/, 'sunucu soyledigi halde yine istek atiliyor');
 });
 
 test('C1: baslangic durumu SENKRON belirlenir (ilk render dogru gorseli cizer)', () => {
-  assert.match(LOGO_TSX, /useState<string \| null>\(BOOT_KNOWS \? \(BOOT_LOGO \?\? null\) : null\)/);
+  assert.match(
+    LOGO_TSX,
+    /useState<string \| null>\(BOOT_KNOWS \? \(BOOT_LOGO \?\? null\) : null\)/,
+  );
 });
 
 // ── C2: font ────────────────────────────────────────────────────────────────
@@ -53,9 +62,12 @@ test('C2: disariya font istegi YOK', () => {
 
 test('C2: font dosyalari repoda ve @font-face onlari gosteriyor', () => {
   for (const f of [
-    'red-hat-text-latin.woff2', 'red-hat-text-latin-ext.woff2',
-    'red-hat-display-latin.woff2', 'red-hat-display-latin-ext.woff2',
-    'red-hat-mono-latin.woff2', 'red-hat-mono-latin-ext.woff2',
+    'red-hat-text-latin.woff2',
+    'red-hat-text-latin-ext.woff2',
+    'red-hat-display-latin.woff2',
+    'red-hat-display-latin-ext.woff2',
+    'red-hat-mono-latin.woff2',
+    'red-hat-mono-latin-ext.woff2',
   ]) {
     const p = path.join(ROOT, 'public', 'fonts', f);
     assert.ok(fs.existsSync(p), `eksik font dosyasi: ${f}`);
@@ -72,10 +84,14 @@ test('C2: Turkce icin latin-ext ZORUNLU olarak taniml', () => {
 });
 
 test('C2: metrik eslenmis fallback yuzleri var (swap layout KAYDIRMASIN)', () => {
-  for (const fam of ['Red Hat Text Fallback', 'Red Hat Display Fallback', 'Red Hat Mono Fallback']) {
+  for (const fam of [
+    'Red Hat Text Fallback',
+    'Red Hat Display Fallback',
+    'Red Hat Mono Fallback',
+  ]) {
     assert.ok(FONTS_CSS.includes(fam), `${fam} tanimli degil`);
   }
-  assert.match(FONTS_CSS, /size-adjust: 94\.11%/,  'Red Hat Text -> Arial olcegi degismis');
+  assert.match(FONTS_CSS, /size-adjust: 94\.11%/, 'Red Hat Text -> Arial olcegi degismis');
   assert.match(FONTS_CSS, /ascent-override: 108\.17%/);
   // Fallback yuzu gercek aileden HEMEN SONRA gelmeli; arada eslenmemis bir ad
   // olursa tarayici ona duser ve kayma geri gelir.
@@ -97,7 +113,10 @@ test('C3: ilk boyama zemini HTML’de, iki tema icin de', () => {
   // ayni mi" testi zaten kendi kendini ayarliyor; burasi ise gomulu stilin HIC
   // kaybolmadigini kilitler.
   assert.match(INDEX_HTML, /html \{ background-color: #f2f2f2; color-scheme: light; \}/);
-  assert.match(INDEX_HTML, /html\[data-theme="dark"\] \{ background-color: #151515; color-scheme: dark; \}/);
+  assert.match(
+    INDEX_HTML,
+    /html\[data-theme="dark"\] \{ background-color: #151515; color-scheme: dark; \}/,
+  );
 });
 
 test('C3: gomulu zemin degerleri --bg-base token’lariyla AYNI', () => {
@@ -112,8 +131,11 @@ test('C3: gomulu zemin degerleri --bg-base token’lariyla AYNI', () => {
 
 // ── C4: Suspense siniri ─────────────────────────────────────────────────────
 test('C4: sayfa Suspense siniri kabugun ICINDE (Outlet etrafinda)', () => {
-  assert.match(LAYOUT_TSX, /<Suspense fallback=\{<PageSkeleton \/>\}>\s*\n\s*<Outlet \/>/,
-    'sinir Outlet etrafinda degil — lazy sayfada masthead+menu de kaybolur');
+  assert.match(
+    LAYOUT_TSX,
+    /<Suspense fallback=\{<PageSkeleton \/>\}>\s*\n\s*<Outlet \/>/,
+    'sinir Outlet etrafinda degil — lazy sayfada masthead+menu de kaybolur',
+  );
   assert.match(LAYOUT_TSX, /function PageSkeleton/);
 });
 
@@ -124,8 +146,11 @@ test('C5: tema tercihi ilk boyamadan ONCE uygulanir ve sunucu tercihi ONCELIKLI'
   const storedIdx = script.indexOf('stored === "light"');
   assert.ok(bootIdx >= 0 && storedIdx >= 0, 'oncelik zinciri bulunamadi');
   assert.ok(bootIdx < storedIdx, 'sunucu tercihi localStorage’dan SONRA degerlendiriliyor');
-  assert.match(SERVER, /if \(t === "light" \|\| t === "dark"\) boot\.theme = t;/,
-    'sunucu tema tercihini HTML’e gomuyor');
+  assert.match(
+    SERVER,
+    /if \(t === "light" \|\| t === "dark"\) boot\.theme = t;/,
+    'sunucu tema tercihini HTML’e gomuyor',
+  );
 });
 
 test('C5: kullaniciya ozel HTML paylasimli onbellege dusmez', () => {

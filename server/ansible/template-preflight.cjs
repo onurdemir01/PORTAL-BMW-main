@@ -40,25 +40,30 @@ async function findTemplate(serverId, templateId) {
 // 401 JSON'u sag salim geldigine gore 4xx yutulmuyor. Anlamca da 409 dogru: sunucu ayakta,
 // hedef kaynagin (AWX template) durumu istegi kabul etmeye uygun degil.
 //
-// `label` yalnizca mesaja girer (ör. "logx_ocp_app_discovery") — admin hangi template'i
+// `label` yalnizca mesaja girer (or. "logx_ocp_app_discovery") — admin hangi template'i
 // duzeltecegini bilsin diye.
-async function assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label = '' } = {}) {
+async function assertTemplateAcceptsExtraVars(
+  serverId,
+  templateId,
+  extraVars,
+  { label = '' } = {},
+) {
   if (!extraVars || typeof extraVars !== 'object' || Object.keys(extraVars).length === 0) return;
 
   const tpl = await findTemplate(serverId, templateId);
-  if (!tpl) return;                          // metadata yok → fail-open
-  if (tpl.ask_variables !== false) return;   // acik ya da bilinmiyor → sorun yok
+  if (!tpl) return; // metadata yok → fail-open
+  if (tpl.ask_variables !== false) return; // acik ya da bilinmiyor → sorun yok
 
   const who = label ? `"${label}" (template ${templateId})` : `template ${templateId}`;
   throw Object.assign(
     new Error(
       `AWX ${who} üzerinde "Prompt on launch" (Variables) kapalı. ` +
-      `Bu durumda AWX, portalın gönderdiği ${Object.keys(extraVars).length} değişkeni ` +
-      `sessizce yok sayar ve playbook boş girdiyle çalışıp hata verir. ` +
-      `AWX > Job Templates > ${tpl.name || templateId} > Variables bölümündeki ` +
-      `"Prompt on launch" kutusunu işaretleyip kaydedin.`
+        `Bu durumda AWX, portalın gönderdiği ${Object.keys(extraVars).length} değişkeni ` +
+        `sessizce yok sayar ve playbook boş girdiyle çalışıp hata verir. ` +
+        `AWX > Job Templates > ${tpl.name || templateId} > Variables bölümündeki ` +
+        `"Prompt on launch" kutusunu işaretleyip kaydedin.`,
     ),
-    { status: 409, code: 'awx_prompt_on_launch_disabled' }
+    { status: 409, code: 'awx_prompt_on_launch_disabled' },
   );
 }
 

@@ -11,7 +11,7 @@
 // RESMI bir uc buldu: POST {SMART_API_URL}/smart/internal/requestfulfilment/
 // loadwfinstancestatus/v1, govde {wfInstanceId}, cevap { result: { resultCode, statusCode,
 // statusName } }. Bu, createTicket() ile AYNI host/auth (Basic Auth + RFF-Request-Token)
-// deseninde, isim seması da digerleriyle (createoperationalrequest/v1,
+// deseninde, isim semasi da digerleriyle (createoperationalrequest/v1,
 // getmetadataoperationalrequestbyflowname/v1) BIREBIR eslesiyor — ServiceRepository'den
 // cok daha guvenilir. ServiceRepository yaklasimi TAMAMEN KALDIRILDI (ayri host/GET/authsiz
 // protokol, ayri admin alani gerektiriyordu — artik gereksiz).
@@ -74,7 +74,11 @@ async function post(path, body, extraHeaders) {
     // "webidl.util.markAsUncloneable is not a function" gibi ic-kutuphane hatalarinda
     // hangi dosya/satirdan geldigini gormeden kaynagi bulmak imkansiz.
     let undiciVersion = 'bilinmiyor';
-    try { undiciVersion = require('undici/package.json').version; } catch { /* yoksay */ }
+    try {
+      undiciVersion = require('undici/package.json').version;
+    } catch {
+      /* yoksay */
+    }
     console.error('[Smart] Baglanti hatasi:', {
       url: targetUrl.toString(),
       nodeVersion: process.version,
@@ -93,9 +97,16 @@ async function post(path, body, extraHeaders) {
     if (dispatcher) dispatcher.close().catch(() => {});
   }
   let parsed;
-  try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    parsed = { raw: text };
+  }
   if (statusCode < 200 || statusCode >= 300) {
-    throw Object.assign(new Error(`Smart API hata verdi (HTTP ${statusCode}): ${text.slice(0, 300)}`), { status: 502 });
+    throw Object.assign(
+      new Error(`Smart API hata verdi (HTTP ${statusCode}): ${text.slice(0, 300)}`),
+      { status: 502 },
+    );
   }
   return parsed;
 }
@@ -105,7 +116,7 @@ async function post(path, body, extraHeaders) {
 // Flow Key" alanindan girer — dokumandaki Designer > "Integration Information" ile
 // alinan deger, bkz. FieldOverridesModal.tsx). `metadata` dokumandaki
 // "metadataData.metadatas" dizisine karsilik gelir: talebe eklenecek serbest
-// key/value cift listesi (ör. uygulama adi, sunucu listesi, islem) — hangi key'lerin
+// key/value cift listesi (or. uygulama adi, sunucu listesi, islem) — hangi key'lerin
 // beklendigini ogrenmek icin bkz. getFlowMetadata().
 //
 // DONUS: { ticketId, stateInstanceId, raw }. ticketId = dokumandaki wfInstanceId
@@ -118,7 +129,12 @@ async function post(path, body, extraHeaders) {
 // SMART_RFF_TOKEN (cfg.requestToken) kullanilir - davranis GERIYE DONUK degismez.
 async function createTicket({ flowKey, username, domain, metadata, integrationKey }) {
   if (!isConfigured()) {
-    throw Object.assign(new Error('Smart entegrasyonu yapılandırılmamış (SMART_API_URL/SMART_API_USERNAME/SMART_API_PASSWORD eksik).'), { status: 503 });
+    throw Object.assign(
+      new Error(
+        'Smart entegrasyonu yapılandırılmamış (SMART_API_URL/SMART_API_USERNAME/SMART_API_PASSWORD eksik).',
+      ),
+      { status: 503 },
+    );
   }
   const cfg = getConfig();
   const body = {
@@ -127,24 +143,38 @@ async function createTicket({ flowKey, username, domain, metadata, integrationKe
     flowKey,
     metaAttachmentsData: {},
     metadataData: {
-      metadatas: Object.entries(metadata || {}).map(([key, value]) => ({ key, value: String(value) })),
+      metadatas: Object.entries(metadata || {}).map(([key, value]) => ({
+        key,
+        value: String(value),
+      })),
     },
   };
   // Tani logu: hangi metadata anahtar/degerinin GERCEKTEN Smart'a gittigini goster -
-  // "alanlar bomboş geldi" gibi sikayetlerde kod dogru render etmis mi yoksa sunucu
+  // "alanlar bombos geldi" gibi sikayetlerde kod dogru render etmis mi yoksa sunucu
   // eski/farkli bir surumle mi calisiyor ayrimini Smart tarafina hic bakmadan yapmak icin
   // (2026-08-20, kullanici talebi).
   // TESHIS EVET, DEGER HAYIR (2026-08-28): govdenin SEKLI (hangi key'ler gitti, doldu mu)
   // teshis icin gerekli ve korunuyor; DEGERLER yazilmiyor. Metadata `{{extraVars.ALAN}}`
   // ile herhangi bir survey alanini tasiyabiliyor — password tipli bir alan eslendiginde
   // parola bu satirda duz metin stdout'a dusuyordu.
-  console.log(`[Smart] createTicket govdesi (flowKey=${flowKey}, logonName=${username}):`,
-    JSON.stringify((body.metadataData.metadatas || []).map((m) => ({
-      key: m.key,
-      value: String(m.value ?? '').length > 0 ? `<dolu:${String(m.value).length}>` : '<bos>',
-    }))));
-  const result = await post(cfg.createTicketPath, body, integrationKey ? { 'rff-request-token': integrationKey } : undefined);
-  console.log(`[Smart] createTicket yaniti (flowKey=${flowKey}):`, JSON.stringify(result).slice(0, 1000));
+  console.log(
+    `[Smart] createTicket govdesi (flowKey=${flowKey}, logonName=${username}):`,
+    JSON.stringify(
+      (body.metadataData.metadatas || []).map((m) => ({
+        key: m.key,
+        value: String(m.value ?? '').length > 0 ? `<dolu:${String(m.value).length}>` : '<bos>',
+      })),
+    ),
+  );
+  const result = await post(
+    cfg.createTicketPath,
+    body,
+    integrationKey ? { 'rff-request-token': integrationKey } : undefined,
+  );
+  console.log(
+    `[Smart] createTicket yaniti (flowKey=${flowKey}):`,
+    JSON.stringify(result).slice(0, 1000),
+  );
   const resultCode = String(result?.result?.resultCode ?? '');
   if (resultCode !== '1000') {
     const msg = result?.result?.resultMessage || `resultCode=${resultCode || 'yok'}`;
@@ -152,9 +182,16 @@ async function createTicket({ flowKey, username, domain, metadata, integrationKe
   }
   const ticketId = result?.result?.wfInstanceId;
   if (!ticketId) {
-    throw Object.assign(new Error(`Smart yanıtında wfInstanceId bulunamadı: ${JSON.stringify(result).slice(0, 300)}`), { status: 502 });
+    throw Object.assign(
+      new Error(`Smart yanıtında wfInstanceId bulunamadı: ${JSON.stringify(result).slice(0, 300)}`),
+      { status: 502 },
+    );
   }
-  return { ticketId: String(ticketId), stateInstanceId: result?.result?.stateInstanceId ?? null, raw: result };
+  return {
+    ticketId: String(ticketId),
+    stateInstanceId: result?.result?.stateInstanceId ?? null,
+    raw: result,
+  };
 }
 
 // Bir flowKey'in bekledigi metadata alanlarini (ElementName/IsRequired/DataType/...)
@@ -170,7 +207,12 @@ async function getFlowMetadata(flowName) {
   const result = await post(cfg.getMetadataPath, { flowName });
   const resultCode = String(result?.result?.resultCode ?? '');
   if (resultCode !== '1000') {
-    throw Object.assign(new Error(`Smart metadata sorgusu başarısız: ${result?.result?.resultMessage || `resultCode=${resultCode || 'yok'}`}`), { status: 502 });
+    throw Object.assign(
+      new Error(
+        `Smart metadata sorgusu başarısız: ${result?.result?.resultMessage || `resultCode=${resultCode || 'yok'}`}`,
+      ),
+      { status: 502 },
+    );
   }
   return result?.result?.result || [];
 }
@@ -180,20 +222,28 @@ async function getFlowMetadata(flowName) {
 //   POST {SMART_API_URL}/smart/internal/requestfulfilment/loadwfinstancestatus/v1
 //   govde: { wfInstanceId: <ticketId> }
 //   cevap: { result: { resultCode, statusCode, statusName } }
-// Gozlemlenen statusCode degerleri: "50"="Onay Bekliyor", "1000"="Tamamlandı",
-// "2000"="İptal Edildi". Otomasyon (AWX job'i) SADECE statusCode "1000"e (Tamamlandı)
+// Gozlemlenen statusCode degerleri: "50"="Onay Bekliyor", "1000"="Tamamlandi",
+// "2000"="Iptal Edildi". Otomasyon (AWX job'i) SADECE statusCode "1000"e (Tamamlandi)
 // ULASINCA tetiklenir (bkz. poller.cjs status.completed kontrolu) — baska HERHANGI bir
 // statusCode (2000 dahil, gelecekte baska red/iptal kodlari olsa bile) job'i TETIKLEMEZ.
 // statusName kullaniciya AYNEN gosterilir (smart_tickets.smart_state_name — bkz.
 // SurveyModal.tsx "Onay bekleniyor" ekrani, MyRequestsModal.tsx "Taleplerim" listesi).
 async function checkTicketStatus(ticketId) {
   if (!isConfigured()) {
-    throw Object.assign(new Error('Smart entegrasyonu yapılandırılmamış (SMART_API_URL/SMART_API_USERNAME/SMART_API_PASSWORD eksik).'), { status: 503 });
+    throw Object.assign(
+      new Error(
+        'Smart entegrasyonu yapılandırılmamış (SMART_API_URL/SMART_API_USERNAME/SMART_API_PASSWORD eksik).',
+      ),
+      { status: 503 },
+    );
   }
   const result = await post(getConfig().checkTicketPath, { wfInstanceId: Number(ticketId) });
   const resultCode = String(result?.result?.resultCode ?? '');
   if (resultCode !== '1000') {
-    throw Object.assign(new Error(`Smart durum sorgusu başarısız: resultCode=${resultCode || 'yok'}`), { status: 502 });
+    throw Object.assign(
+      new Error(`Smart durum sorgusu başarısız: resultCode=${resultCode || 'yok'}`),
+      { status: 502 },
+    );
   }
   const statusCode = String(result?.result?.statusCode ?? '');
   const statusName = result?.result?.statusName || '';

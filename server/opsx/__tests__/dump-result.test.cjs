@@ -1,6 +1,6 @@
 // server/opsx/__tests__/dump-result.test.cjs — extractOpsxDumpResult(): AWX artifacts'ten
-// dump playbook'unun set_stats ile yayınladığı opsx_dump_result'ı okur. LogX'in
-// extractLogxResultFromArtifacts'iyle AYNI şekil-toleransı (top-level / data / ansible_stats.data).
+// dump playbook'unun set_stats ile yayinladigi opsx_dump_result'i okur. LogX'in
+// extractLogxResultFromArtifacts'iyle AYNI sekil-toleransi (top-level / data / ansible_stats.data).
 'use strict';
 
 const { test } = require('node:test');
@@ -9,7 +9,9 @@ const { extractOpsxDumpResult, extractOpsxJvmResult } = require('../index.cjs');
 
 const SAMPLE = {
   overall_status: 'ok',
-  results: [{ host: 'GBJBOQ01', ok: true, staged_path: '/x/y.hprof', filename: 'y.hprof', size_bytes: 123 }],
+  results: [
+    { host: 'GBJBOQ01', ok: true, staged_path: '/x/y.hprof', filename: 'y.hprof', size_bytes: 123 },
+  ],
 };
 
 test('artifacts.opsx_dump_result (top-level) doğrudan okunur', () => {
@@ -37,8 +39,8 @@ test('opsx_dump_result nesne değilse (ör. string/number) yok sayılır', () =>
   assert.equal(extractOpsxDumpResult({ opsx_dump_result: 'not-an-object' }), null);
 });
 
-// extractOpsxJvmResult — opsx_legacy_jvm_discover.yml'in set_stats çıktısı, AYNI
-// extractStatsKey() toleransını kullanır (bkz. yukarısı) — tek fark anahtar adı.
+// extractOpsxJvmResult — opsx_legacy_jvm_discover.yml'in set_stats ciktisi, AYNI
+// extractStatsKey() toleransini kullanir (bkz. yukarisi) — tek fark anahtar adi.
 const JVM_SAMPLE = {
   overall_status: 'ok',
   results: [{ host: 'GBJBOQ01', pid: '1234', cmd: 'java -jar app.jar' }],

@@ -617,7 +617,7 @@ function initScaleX(app) {
       });
       // IZ: kesif salt-okunur ama YINE DE kullanici girdisini (`namespace`,
       // `target_app_names`) AWX uzerinden `oc` komut satirina tasiyor. Denetim kaydi
-      // olmadan "bu namespace'i kim tarattı" sorusu yanitlanamiyordu.
+      // olmadan "bu namespace'i kim taratti" sorusu yanitlanamiyordu.
       auditPortal(req, 'scalex_discovery', {
         detail: JSON.stringify({ env, tenant, clusters, namespace, apps, mode, jobId: job.jobId }),
       });

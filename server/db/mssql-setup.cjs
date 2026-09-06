@@ -311,7 +311,7 @@ const TABLES = [
     // NEDEN VAR (2026-08-10): `ocp_app_cache` yalnizca BULUNAN uygulamalari tutuyordu ve
     // `getApps` "onbellekte var mi"yi `rows.length > 0` ile olcuyordu. Gercekten BOS bir
     // namespace tarandiginda hicbir satir yazilmadigi icin sonuc "hic taranmamis"tan
-    // ayirt edilemiyordu: sihirbaz her girişte ~1 dk'lik AWX job'ini yeniden aciyordu ve
+    // ayirt edilemiyordu: sihirbaz her giriste ~1 dk'lik AWX job'ini yeniden aciyordu ve
     // kullaniciya hep ayni "kayit yok" cumlesi gosteriliyordu.
     //
     // Burada BOS sonuc da bir kayittir (app_count = 0) — "tarandi, bos cikti" artik

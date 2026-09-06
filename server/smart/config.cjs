@@ -3,7 +3,7 @@
 // ile AYNI desen: gercek deger Admin > Sistem ekranindan girilip DB'ye (portal_env_overrides,
 // AES-256-GCM ile sifreli — bkz. server/db/env-overrides.cjs) yazilir, boot'ta process.env'e
 // UYGULANIR. Yani "env var" ile "DB'den admin panelinden girilen deger" burada CELISMEZ —
-// ikincisi birincisini besler. .env dosyasina elle yazmak da hala calisir (ör. dev ortami),
+// ikincisi birincisini besler. .env dosyasina elle yazmak da hala calisir (or. dev ortami),
 // DB override'i varsa o kazanir.
 //
 // Deger girilene kadar isConfigured() false doner ve Smart onayi gerektiren Self Service
@@ -27,12 +27,16 @@
 // createTicket() ile AYNI kimlik dogrulama (Basic Auth + RFF-Request-Token) deseninde:
 //   POST {SMART_API_URL}/smart/internal/requestfulfilment/loadwfinstancestatus/v1
 //   govde: { wfInstanceId: <id> }  ->  cevap: { result: { resultCode, statusCode, statusName } }
-// Ornek statusCode/statusName ciftleri: "50"/"Onay Bekliyor", "1000"/"Tamamlandı",
-// "2000"/"İptal Edildi". ServiceRepository yaklasimi (ayri host, ayri admin alani,
+// Ornek statusCode/statusName ciftleri: "50"/"Onay Bekliyor", "1000"/"Tamamlandi",
+// "2000"/"Iptal Edildi". ServiceRepository yaklasimi (ayri host, ayri admin alani,
 // authsiz GET) TAMAMEN KALDIRILDI — bu resmi uc hem daha guvenilir hem de ayri bir
 // host/proxy-istisnasi config'i GEREKTIRMIYOR (SMART_API_URL zaten var).
 function isConfigured() {
-  return !!(process.env.SMART_API_URL && process.env.SMART_API_USERNAME && process.env.SMART_API_PASSWORD);
+  return !!(
+    process.env.SMART_API_URL &&
+    process.env.SMART_API_USERNAME &&
+    process.env.SMART_API_PASSWORD
+  );
 }
 
 function getConfig() {
@@ -46,15 +50,21 @@ function getConfig() {
     password: process.env.SMART_API_PASSWORD || '',
     requestToken: process.env.SMART_RFF_TOKEN || '',
     // DOGRULANDI (SOS02-KL-001-EN, "Request Flow Opening Service - REST").
-    createTicketPath: process.env.SMART_CREATE_TICKET_PATH || '/smart/internal/requestfulfilment/createoperationalrequest/v1',
+    createTicketPath:
+      process.env.SMART_CREATE_TICKET_PATH ||
+      '/smart/internal/requestfulfilment/createoperationalrequest/v1',
     // DOGRULANDI (SOS02-KL-001-EN, "Metadata Service Required to Start Request Flow - REST")
     // — opsiyonel: bir flowKey'in bekledigi metadata alanlarini (ElementName/IsRequired/...)
     // sorgulamak icin. Su an hicbir yerden cagrilmiyor, admin arac-kutusu icin hazir.
-    getMetadataPath: process.env.SMART_GET_METADATA_PATH || '/smart/internal/getmetadataoperationalrequestbyflowname/v1',
+    getMetadataPath:
+      process.env.SMART_GET_METADATA_PATH ||
+      '/smart/internal/getmetadataoperationalrequestbyflowname/v1',
     // DOGRULANDI (kullanici tarafindan bulunup ornek govde/cevapla test edildi,
     // bkz. dosya basi 2026-08-14 notu). SMART_API_URL uzerinde, createTicket ile
     // AYNI auth.
-    checkTicketPath: process.env.SMART_CHECK_TICKET_PATH || '/smart/internal/requestfulfilment/loadwfinstancestatus/v1',
+    checkTicketPath:
+      process.env.SMART_CHECK_TICKET_PATH ||
+      '/smart/internal/requestfulfilment/loadwfinstancestatus/v1',
     // "Login domain information of the user who created the request" — ornek deger
     // dokumanda hep "GARANTI" (kullanicinin KENDI LDAP domain'i degil, sabit bir deger
     // gibi gorunuyor). Farkliysa Admin > Sistem > Smart grubundan degistirilebilir.

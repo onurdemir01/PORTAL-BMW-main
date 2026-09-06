@@ -178,7 +178,7 @@ test('RB8 admin uclari yalnizca YONETICIYE acik', () => {
   const idx = norm(codeOnly(read('index.cjs')));
   // SINIRLAR SART. Ilk surum listeyi yalnizca BASLANGICTAN itibaren 400 karakter
   // kesiyordu; liste kapisi silindiginde pencere SILME ucunun kapisina ulasip
-  // esleşiyor ve bekci YESIL kaliyordu (mutasyonla yakalandi). Her route KENDI
+  // eslesiyor ve bekci YESIL kaliyordu (mutasyonla yakalandi). Her route KENDI
   // araliginda olculmeli.
   const listAt = idx.indexOf('"/admin/rbac-findings"');
   const delAt = idx.indexOf('"/admin/rbac-findings/:id"');

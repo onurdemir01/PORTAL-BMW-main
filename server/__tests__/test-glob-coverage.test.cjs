@@ -33,7 +33,10 @@ function findTestDirs(dir, out = []) {
     if (!e.isDirectory()) continue;
     if (e.name === 'node_modules' || e.name === '.git') continue;
     const p = path.join(dir, e.name);
-    if (e.name === '__tests__') { out.push(path.relative(ROOT, p)); continue; }
+    if (e.name === '__tests__') {
+      out.push(path.relative(ROOT, p));
+      continue;
+    }
     findTestDirs(p, out);
   }
   return out;
@@ -47,8 +50,11 @@ test('npm test glob’u TUM test dizinlerini kapsiyor', () => {
   assert.ok(dirs.length > 5, `test dizini taramasi suphesiz az sonuc verdi: ${dirs.length}`);
 
   const missing = dirs.filter((d) => !TEST_DIRS.includes(d.split(path.sep).join('/')));
-  assert.deepEqual(missing, [],
-    `bu dizinlerdeki testler HIC KOSMUYOR — scripts/run-tests.cjs TEST_DIRS'e ekle:\n${missing.join('\n')}`);
+  assert.deepEqual(
+    missing,
+    [],
+    `bu dizinlerdeki testler HIC KOSMUYOR — scripts/run-tests.cjs TEST_DIRS'e ekle:\n${missing.join('\n')}`,
+  );
 });
 
 test('npm test GERCEKTEN kosucuyu cagiriyor', () => {
@@ -63,8 +69,11 @@ test('CI testleri KOSUYOR (yesil ama kosmayan suit tuzagi)', () => {
   // YORUMLAR ELENIR: Jenkinsfile'daki aciklama satiri da "npm test" ifadesini
   // iceriyor ve bekci KENDI ACIKLAMASIYLA eslesip kor kaliyordu — asama tamamen
   // silinse bile yesil donuyordu. Yalnizca `sh '...'` adimlarina bakiyoruz.
-  const jenkins = fs.readFileSync(path.join(ROOT, 'Jenkinsfile'), 'utf8')
-    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const jenkins = fs
+    .readFileSync(path.join(ROOT, 'Jenkinsfile'), 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
   // Once UCLU tirnakli bloklar, sonra TEK tirnakli adimlar. (Ilk yazimda desen
   // `'''?` idi ve bu "en az IKI tirnak" demek — tek tirnakli `sh 'npm test'` adimlari
   // hic gorunmuyordu; bekci ters yonde de kordu.)
@@ -72,6 +81,58 @@ test('CI testleri KOSUYOR (yesil ama kosmayan suit tuzagi)', () => {
   const single = [...jenkins.matchAll(/sh\s+'([^'\n]*)'/g)].map((m) => m[1]);
   const shSteps = [...triple, ...single].join('\n');
   assert.match(shSteps, /npm (run )?test\b/, 'Jenkinsfile bir adimda `npm test` calistirmali');
+});
+
+// `sh '...'` adimlarinin metnini toplar. YORUMLAR ELENIR: aciklama satirlari da
+// "npm test" gibi ifadeler iceriyor ve bekci KENDI ACIKLAMASIYLA eslesip kor
+// kaliyordu (bu dosyada bir kez tam olarak bu oldu).
+function jenkinsShSteps() {
+  const jenkins = fs
+    .readFileSync(path.join(ROOT, 'Jenkinsfile'), 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
+  const triple = [...jenkins.matchAll(/sh\s+'''([\s\S]*?)'''/g)].map((m) => m[1]);
+  const single = [...jenkins.matchAll(/sh\s+'([^'\n]*)'/g)].map((m) => m[1]);
+  return [...triple, ...single].join('\n');
+}
+
+test('CI VITEST de kosuyor (React bilesen testleri kosmayan suit olmasin)', () => {
+  // `npm test` node:test kosucusudur ve `src/**/__tests__/*.tsx` dosyalarini
+  // GORMEZ. Yani WorkloadStep dahil tum bilesen testleri, `npm test`in bir zamanlar
+  // dustugu duruma dusmustu: yazilmis, yesil sanilan, HIC kosmayan testler.
+  assert.match(
+    jenkinsShSteps(),
+    /npm run test:ui\b/,
+    'Jenkinsfile bir adimda `npm run test:ui` calistirmali — bilesen testleri CI da kosmuyor',
+  );
+});
+
+test('CI ESLINT kosuyor (kurulmus ama cagrilmayan kapi olmasin)', () => {
+  // ESLint 2026-09-04'te kuruldu ama boru hattinda HIC cagrilmiyordu.
+  assert.match(
+    jenkinsShSteps(),
+    /npm run lint\b(?!:)/,
+    'Jenkinsfile bir adimda `npm run lint` calistirmali',
+  );
+});
+
+test('`lint:ascii` kapisi GERCEKTEN bloke ediyor (belge ile davranis ayrismasin)', () => {
+  // 2026-09-04'te kapi bilerek gevsetildi (blok yerine uyari) ama betigin KENDI
+  // BASLIGI hala "exit 1 doner (CI guard)" diyordu: kapi ACIKTI, belge KAPALI
+  // diyordu. Bir kapinin en tehlikeli hali, kapali sanilan acik halidir.
+  const src = fs.readFileSync(path.join(ROOT, 'scripts', 'check-ascii.cjs'), 'utf8');
+  const code = src
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
+  assert.match(code, /process\.exit\(1\)/, 'ihlal bulundugunda cikis kodu 1 DONMUYOR');
+  assert.match(jenkinsShSteps(), /npm run lint:ascii\b/, 'Jenkinsfile `lint:ascii` calistirmali');
+  // Otomatik duzeltme yolu OLMALI: bir kalite kapisi ancak duzeltmesi ucuzsa
+  // kalici olur. 122 satiri elle duzeltmek zorunda kalan gelistirici kapiyi
+  // ilk firsatta tekrar gevsetir — nitekim oyle oldu.
+  const pkgJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  assert.ok(pkgJson.scripts['fix:ascii'], 'otomatik duzeltme scripti (`fix:ascii`) yok');
 });
 
 test('glob’da var olmayan dizin YOK (bayat girdi kalmasin)', () => {
