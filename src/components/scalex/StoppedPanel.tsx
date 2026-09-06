@@ -6,15 +6,20 @@
 //   * biri AWX'ten elle durdurmuştur  → cluster'da var, portalda yok
 // Ekran bunu GİZLEMEZ. Gizlemek "portal yanılıyor" demek olurdu; göstermek "birisi portal
 // dışından iş yapmış" demek — ikincisi kullanıcının bilmesi gereken şey.
-import React, { useEffect, useRef, useState } from "react";
-import { ArrowPathIcon, ExclamationTriangleIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
-import { scalexApi, type ScaleXStoppedItem } from "@/api/scalexApi";
-import { useJobTracker } from "@/contexts/JobTrackerContext";
-import { fmtRelative } from "@/utils/datetime";
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowPathIcon,
+  ExclamationTriangleIcon,
+  ArrowUturnLeftIcon,
+} from '@heroicons/react/24/outline';
+import { scalexApi, type ScaleXStoppedItem } from '@/api/scalexApi';
+import { useJobTracker } from '@/contexts/JobTrackerContext';
+import { fmtRelative } from '@/utils/datetime';
 
 interface Props {
   /** Bos birakilirsa kullanicinin gorebildigi TUM kapsamlar listelenir. */
-  env?: string; tenant?: string;
+  env?: string;
+  tenant?: string;
   onRestore?: (item: ScaleXStoppedItem) => void;
   /** Degeri her degistiginde liste sessizce tazelenir (is bitiminde sayfa artirir). */
   reloadKey?: number;
@@ -40,7 +45,7 @@ const DRIFT_TEXT: Record<string, string> = {
   unknown_to_portal: "Cluster'da durdurulmuş ama portal kaydı yok — AWX'ten elle durdurulmuş.",
 };
 
-const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloadKey = 0 }) => {
+const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloadKey = 0 }) => {
   const [items, setItems] = useState<ScaleXStoppedItem[]>([]);
   // Yetki nedeniyle gizlenen ve sinir nedeniyle kirpilan kayit sayilari. Bunlari
   // SOYLEMEDEN "kayit yok" demek, kullaniciya YANLIS bilgi vermek olurdu — aynen
@@ -55,7 +60,7 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
   const [auditing, setAuditing] = useState(false);
   const [auditNote, setAuditNote] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkReason, setBulkReason] = useState("");
+  const [bulkReason, setBulkReason] = useState('');
   const [showBulk, setShowBulk] = useState(false);
   const busyRef = useRef(false);
   const aliveRef = useRef(true);
@@ -75,20 +80,27 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
         setItems(r.items || []);
         setHiddenCount(r.hiddenCount || 0);
         setTruncated(r.truncated === true);
-      } else setError(r.message || "Liste alınamadı.");
-    } catch (e) { if (aliveRef.current) setError((e as Error).message); }
-    finally { if (aliveRef.current && !opts.silent) setLoading(false); }
+      } else setError(r.message || 'Liste alınamadı.');
+    } catch (e) {
+      if (aliveRef.current) setError((e as Error).message);
+    } finally {
+      if (aliveRef.current && !opts.silent) setLoading(false);
+    }
   }
 
   // Bilesen sokuldukten sonra `setState` yapmayalim: hem React uyarisi hem de
   // sokulmus bir panelin istegi bosa gider.
   useEffect(() => {
     aliveRef.current = true;
-    return () => { aliveRef.current = false; };
+    return () => {
+      aliveRef.current = false;
+    };
   }, []);
 
   // Kapsam SECILMEDEN de yuklenir: panel ilk ekranda da gorunuyor.
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [env, tenant]);
+  useEffect(() => {
+    load();
+  }, [env, tenant]);
 
   // DIS TETIKLEYICI: bir ScaleX isi bitince sayfa bu sayaci artirir ve liste
   // KENDILIGINDEN tazelenir. Once yalnizca `env`/`tenant` degisiminde yukleniyordu,
@@ -104,10 +116,12 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
   // istek atilmaz — degismesi beklenmeyen bir listeyi surekli yoklamak bosa trafik.
   // Aralik uzun (20 sn) cunku durumu degistiren sey `finalizeOperation` ve o da
   // "Islerim" yoklamasindan ya da uzlastiricidan geliyor.
-  const hasRestoring = items.some((i) => i.phase === "restoring");
+  const hasRestoring = items.some((i) => i.phase === 'restoring');
   useEffect(() => {
     if (!hasRestoring) return;
-    const t = setInterval(() => { load({ silent: true }); }, 20_000);
+    const t = setInterval(() => {
+      load({ silent: true });
+    }, 20_000);
     return () => clearInterval(t);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [hasRestoring, env, tenant]);
@@ -116,13 +130,21 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
   // bitince aynayı cluster gerçeğiyle karşılaştırıp `drift_status`u günceller.
   async function runAudit() {
     if (busyRef.current || !items.length) return;
-    busyRef.current = true; setAuditing(true); setAuditNote(null); setError(null);
+    busyRef.current = true;
+    setAuditing(true);
+    setAuditNote(null);
+    setError(null);
     try {
       const groups = new Map<string, { cluster: string; namespace: string }>();
-      for (const it of items) groups.set(`${it.clusterName}|${it.namespace}`, { cluster: it.clusterName, namespace: it.namespace });
+      for (const it of items)
+        groups.set(`${it.clusterName}|${it.namespace}`, {
+          cluster: it.clusterName,
+          namespace: it.namespace,
+        });
       for (const g of groups.values()) {
         const launched = await scalexApi.discover(
-          { env, tenant, namespace: g.namespace, clusters: [g.cluster] }, "state"
+          { env, tenant, namespace: g.namespace, clusters: [g.cluster] },
+          'state',
         );
         if (!launched.ok) continue;
         let pollErrors = 0;
@@ -147,17 +169,24 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
     } catch (e) {
       setError(`Sapma taraması tamamlanamadı: ${(e as Error).message}`);
     } finally {
-      busyRef.current = false; setAuditing(false);
+      busyRef.current = false;
+      setAuditing(false);
     }
   }
 
   async function runRestoreAll() {
     if (busyRef.current) return;
-    busyRef.current = true; setBulkBusy(true); setError(null);
+    busyRef.current = true;
+    setBulkBusy(true);
+    setError(null);
     try {
       const r = await scalexApi.restoreAll({ env, tenant, reason: bulkReason.trim() });
-      if (!r.ok) { setError(r.message || "Toplu geri alma başlatılamadı."); return; }
-      setShowBulk(false); setBulkReason("");
+      if (!r.ok) {
+        setError(r.message || 'Toplu geri alma başlatılamadı.');
+        return;
+      }
+      setShowBulk(false);
+      setBulkReason('');
       // UC AYRI SONUC, UC AYRI CUMLE. Prod'da toplu geri alma da SMART onayindan
       // geciyor: o gruplar icin AWX'te HENUZ IS YOK. Hepsini "baslatildi" diye
       // ozetlemek, kullaniciya calismayan bir isi calisiyor gostermek olurdu.
@@ -178,11 +207,19 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
 
       const parts: string[] = [];
       if (r.launched?.length) parts.push(`${r.launched.length} iş başlatıldı`);
-      if (r.pendingApproval?.length) parts.push(`${r.pendingApproval.length} grup için SMART onayı bekleniyor (onay gelince otomatik başlar)`);
-      if (r.blocked?.length) parts.push(`${r.blocked.length} grup başlatılamadı: ${r.blocked.map((b) => `${b.namespace}@${b.cluster} — ${b.message}`).join(" · ")}`);
-      setAuditNote(parts.length
-        ? `${parts.join(" · ")} — sonuçlar “İşlerim” panelinde.`
-        : "Geri alınacak kayıt bulunamadı.");
+      if (r.pendingApproval?.length)
+        parts.push(
+          `${r.pendingApproval.length} grup için SMART onayı bekleniyor (onay gelince otomatik başlar)`,
+        );
+      if (r.blocked?.length)
+        parts.push(
+          `${r.blocked.length} grup başlatılamadı: ${r.blocked.map((b) => `${b.namespace}@${b.cluster} — ${b.message}`).join(' · ')}`,
+        );
+      setAuditNote(
+        parts.length
+          ? `${parts.join(' · ')} — sonuçlar “İşlerim” panelinde.`
+          : 'Geri alınacak kayıt bulunamadı.',
+      );
       // Liste, isler AWX'te HALA CALISIRKEN okunuyor: ayna ancak `finalizeOperation`
       // ile temizlenir. Bu cagri "islem surüyor" rozetini getirmek icin; listenin
       // gercekten kisalmasi is bitince `reloadKey` ile olur.
@@ -190,15 +227,18 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      busyRef.current = false; setBulkBusy(false);
+      busyRef.current = false;
+      setBulkBusy(false);
     }
   }
 
-  if (loading) return <p className="text-sm text-[var(--text-muted)]">Durdurulmuş uygulamalar yükleniyor…</p>;
+  if (loading)
+    return <p className="text-sm text-[var(--text-muted)]">Durdurulmuş uygulamalar yükleniyor…</p>;
   if (error) {
     return (
       <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
-        <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" /><span>{error}</span>
+        <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <span>{error}</span>
       </div>
     );
   }
@@ -206,20 +246,21 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
     return (
       <p className="text-sm text-[var(--text-muted)]">
         {env && tenant
-          ? "Bu ortam/tenant için portalda durdurulmuş uygulama kaydı yok."
-          : "Portalda durdurulmuş uygulama kaydı yok."}
+          ? 'Bu ortam/tenant için portalda durdurulmuş uygulama kaydı yok.'
+          : 'Portalda durdurulmuş uygulama kaydı yok.'}
         {hiddenCount > 0 && ` (${hiddenCount} kayıt yetki kısıtı nedeniyle görünmüyor.)`}
       </p>
     );
   }
 
-  const drifted = items.filter((i) => i.driftStatus !== "in_sync");
+  const drifted = items.filter((i) => i.driftStatus !== 'in_sync');
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-[var(--text-primary)]">
-          Şu an durdurulmuş <span className="text-xs font-normal text-[var(--text-muted)]">({items.length})</span>
+          Şu an durdurulmuş{' '}
+          <span className="text-xs font-normal text-[var(--text-muted)]">({items.length})</span>
           {hiddenCount > 0 && (
             <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">
               · {hiddenCount} kayıt yetki kısıtı nedeniyle görünmüyor
@@ -233,17 +274,30 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
         </p>
         <span className="flex items-center gap-3">
           {/* Toplu geri alma ucu kapsam ZORUNLU istiyor; kapsamsiz listede tek tek geri alinir. */}
-          {env && tenant && items.some((i) => i.driftStatus === "in_sync" && i.phase !== "restoring") && (
-            <button type="button" onClick={() => setShowBulk((v) => !v)} disabled={auditing || bulkBusy}
-              className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline">
-              <ArrowUturnLeftIcon aria-hidden="true" className="w-3.5 h-3.5" /> Tümünü geri al
-            </button>
-          )}
-          <button type="button" onClick={runAudit} disabled={auditing || bulkBusy || !items.length}
+          {env &&
+            tenant &&
+            items.some((i) => i.driftStatus === 'in_sync' && i.phase !== 'restoring') && (
+              <button
+                type="button"
+                onClick={() => setShowBulk((v) => !v)}
+                disabled={auditing || bulkBusy}
+                className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline"
+              >
+                <ArrowUturnLeftIcon aria-hidden="true" className="w-3.5 h-3.5" /> Tümünü geri al
+              </button>
+            )}
+          <button
+            type="button"
+            onClick={runAudit}
+            disabled={auditing || bulkBusy || !items.length}
             title="Cluster'ları tarayıp portal kaydıyla karşılaştırır"
-            className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline disabled:opacity-50">
-            <ArrowPathIcon aria-hidden="true" className={`w-3.5 h-3.5 ${auditing ? "animate-spin" : ""}`} />
-            {auditing ? "Taranıyor…" : "Durumu tazele"}
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline disabled:opacity-50"
+          >
+            <ArrowPathIcon
+              aria-hidden="true"
+              className={`w-3.5 h-3.5 ${auditing ? 'animate-spin' : ''}`}
+            />
+            {auditing ? 'Taranıyor…' : 'Durumu tazele'}
           </button>
         </span>
       </div>
@@ -253,21 +307,44 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
       {showBulk && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
           <p className="text-xs text-amber-900">
-            Cluster gerçeğiyle uyumlu <strong>{items.filter((i) => i.driftStatus === "in_sync" && i.phase !== "restoring").length}</strong> kayıt
-            geri alınacak. Geri alma bir <strong>onarım</strong> işlemidir: OCO penceresi dışında da çalışır,
-            ama gerekçe zorunludur ve SMART kaydına da yazılır.
+            Cluster gerçeğiyle uyumlu{' '}
+            <strong>
+              {items.filter((i) => i.driftStatus === 'in_sync' && i.phase !== 'restoring').length}
+            </strong>{' '}
+            kayıt geri alınacak. Geri alma bir <strong>onarım</strong> işlemidir: OCO penceresi
+            dışında da çalışır, ama gerekçe zorunludur ve SMART kaydına da yazılır.
           </p>
-          <input type="text" value={bulkReason} onChange={(e) => setBulkReason(e.target.value)}
-            disabled={bulkBusy} aria-label="Toplu geri alma gerekçesi"
+          <input
+            type="text"
+            value={bulkReason}
+            onChange={(e) => setBulkReason(e.target.value)}
+            disabled={bulkBusy}
+            aria-label="Toplu geri alma gerekçesi"
             placeholder="INC0042311 — ödeme servisi kesintisi"
             className="w-full px-3 py-2 text-sm rounded-lg border border-amber-300 bg-[var(--bg-surface)]
                        text-[var(--text-primary)] placeholder-[var(--text-muted)]
-                       focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                       focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
           <div className="flex justify-end gap-2">
-            <button type="button" className="btn-secondary" disabled={bulkBusy}
-              onClick={() => { setShowBulk(false); setBulkReason(""); }}>İptal</button>
-            <button type="button" className="btn-primary" disabled={bulkBusy || !bulkReason.trim()}
-              onClick={runRestoreAll}>{bulkBusy ? "Başlatılıyor…" : "Tümünü geri al"}</button>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={bulkBusy}
+              onClick={() => {
+                setShowBulk(false);
+                setBulkReason('');
+              }}
+            >
+              İptal
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={bulkBusy || !bulkReason.trim()}
+              onClick={runRestoreAll}
+            >
+              {bulkBusy ? 'Başlatılıyor…' : 'Tümünü geri al'}
+            </button>
           </div>
         </div>
       )}
@@ -283,44 +360,52 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
           <div key={it.id} className="px-3 py-2.5 text-sm">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <span className="min-w-0 flex items-center gap-2">
-                <span className="font-mono truncate text-[var(--text-primary)]" title={it.appName}>{it.appName}</span>
+                <span className="font-mono truncate text-[var(--text-primary)]" title={it.appName}>
+                  {it.appName}
+                </span>
                 {/* `title` KESILEN OGENIN KENDISINDE (bkz. D7 bekcisi). */}
                 {/* KAPSAMSIZ listede satirlar farkli ortam/tenant'lardan gelir —
                     yalnizca cluster/namespace yazmak, hangi ORTAMDA oldugunu
                     gizlerdi ve prod ile test kaydi ayirt edilemezdi. */}
                 {(() => {
-                  const scopeText = env && tenant
-                    ? `${it.clusterName}/${it.namespace}`
-                    : `${it.env}/${it.tenant}/${it.clusterName}/${it.namespace}`;
+                  const scopeText =
+                    env && tenant
+                      ? `${it.clusterName}/${it.namespace}`
+                      : `${it.env}/${it.tenant}/${it.clusterName}/${it.namespace}`;
                   return (
                     <span className="text-xs text-[var(--text-muted)] truncate" title={scopeText}>
                       {scopeText}
                     </span>
                   );
                 })()}
-                {!(env && tenant) && it.env === "prod" && (
+                {!(env && tenant) && it.env === 'prod' && (
                   <span className="pf-label pf-label--red">prod</span>
                 )}
               </span>
               <span className="flex items-center gap-2 text-xs text-[var(--text-muted)] whitespace-nowrap">
                 {(() => {
                   const d = daysSince(it.stoppedAt);
-                  return d != null && d >= STALE_DAYS
-                    ? <span className="pf-label pf-label--gold">{d} gündür durdurulmuş</span>
-                    : null;
+                  return d != null && d >= STALE_DAYS ? (
+                    <span className="pf-label pf-label--gold">{d} gündür durdurulmuş</span>
+                  ) : null;
                 })()}
-                {it.previousReplicas != null && <span className="tabular-nums">{it.previousReplicas} → 0</span>}
+                {it.previousReplicas != null && (
+                  <span className="tabular-nums">{it.previousReplicas} → 0</span>
+                )}
                 {it.stoppedBy && <span>· {it.stoppedBy}</span>}
                 {it.stoppedAt && <span>· {fmtRelative(it.stoppedAt)}</span>}
                 {/* SUREN ISLEM: sunucu ayni hedefe ikinci bir geri almayi 409 ile
                     reddediyor (ayna kilidi). Butonu acik birakmak, kullaniciyi
                     reddedilecek bir istege gondermek olurdu. */}
-                {it.phase === "restoring" && (
+                {it.phase === 'restoring' && (
                   <span className="pf-label pf-label--blue">Geri alma sürüyor…</span>
                 )}
-                {it.driftStatus === "in_sync" && it.phase !== "restoring" && onRestore && (
-                  <button type="button" onClick={() => onRestore(it)}
-                    className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline">
+                {it.driftStatus === 'in_sync' && it.phase !== 'restoring' && onRestore && (
+                  <button
+                    type="button"
+                    onClick={() => onRestore(it)}
+                    className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline"
+                  >
                     <ArrowUturnLeftIcon aria-hidden="true" className="w-3.5 h-3.5" /> Geri Al
                   </button>
                 )}
@@ -328,7 +413,10 @@ const StoppedPanel: React.FC<Props> = ({ env = "", tenant = "", onRestore, reloa
             </div>
             {DRIFT_TEXT[it.driftStatus] && (
               <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-800">
-                <ExclamationTriangleIcon aria-hidden="true" className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <ExclamationTriangleIcon
+                  aria-hidden="true"
+                  className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
+                />
                 {DRIFT_TEXT[it.driftStatus]}
               </p>
             )}

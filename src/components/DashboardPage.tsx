@@ -2,8 +2,8 @@
 // Durum (Status) karti + Envanter (Inventory) listesi + Etkinlik (Activity) akisi +
 // Baslangic kaynaklari (Getting started resources). Veri akisi ve API cagrilari
 // onceki surumle BIREBIR AYNI; degisen yalnizca sunum katmani.
-import React, { useEffect, useState, useContext } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ShieldCheckIcon,
   CommandLineIcon,
@@ -13,22 +13,22 @@ import {
   QuestionMarkCircleIcon,
   ServerStackIcon,
   ChartBarIcon,
-} from "@heroicons/react/24/outline";
+} from '@heroicons/react/24/outline';
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
   MinusCircleIcon,
-} from "@heroicons/react/24/solid";
-import { dynatraceApi, type DtProblem } from "@/api/dynatraceApi";
-import { linksApi, type PortalLink } from "@/api/linksApi";
-import { ansibleApi, type RecentAwxJobsServer } from "@/api/ansibleApi";
-import { openExternalUrl } from "@/utils/url";
-import { seedAiAnalystChat } from "@/utils/aiHandoff";
-import { AuthContext } from "@/contexts/AuthContext";
-import { useAppData } from "@/contexts/AppContext";
-import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
-import { fmtDateLong } from "@/utils/datetime";
+} from '@heroicons/react/24/solid';
+import { dynatraceApi, type DtProblem } from '@/api/dynatraceApi';
+import { linksApi, type PortalLink } from '@/api/linksApi';
+import { ansibleApi, type RecentAwxJobsServer } from '@/api/ansibleApi';
+import { openExternalUrl } from '@/utils/url';
+import { seedAiAnalystChat } from '@/utils/aiHandoff';
+import { AuthContext } from '@/contexts/AuthContext';
+import { useAppData } from '@/contexts/AppContext';
+import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
+import { fmtDateLong } from '@/utils/datetime';
 
 // ─── Kisayollar ────────────────────────────────────────────
 
@@ -44,32 +44,56 @@ interface QuickLink {
 }
 
 const OTHER_TOOLS: QuickLink[] = [
-  { label: "Nöbet çizelgesi", description: "Tüm nöbet takvimini görüntüle",   to: "/duty-roster",     icon: PhoneIcon,                 pageId: "Nöbet" },
-  { label: "AI Analist",      description: "Analiz sohbetini aç",             to: "/ai-analyst",      icon: SparklesIcon,              pageId: "AI Analist" },
-  { label: "Ansible",         description: "Template yönetimi",               to: "/ansible",         icon: CommandLineIcon,           pageId: "Ansible" },
-  { label: "Admin",           description: "Sistem yönetimi",                 to: "/admin",           icon: ShieldCheckIcon,           pageId: "Admin" },
+  {
+    label: 'Nöbet çizelgesi',
+    description: 'Tüm nöbet takvimini görüntüle',
+    to: '/duty-roster',
+    icon: PhoneIcon,
+    pageId: 'Nöbet',
+  },
+  {
+    label: 'AI Analist',
+    description: 'Analiz sohbetini aç',
+    to: '/ai-analyst',
+    icon: SparklesIcon,
+    pageId: 'AI Analist',
+  },
+  {
+    label: 'Ansible',
+    description: 'Template yönetimi',
+    to: '/ansible',
+    icon: CommandLineIcon,
+    pageId: 'Ansible',
+  },
+  {
+    label: 'Admin',
+    description: 'Sistem yönetimi',
+    to: '/admin',
+    icon: ShieldCheckIcon,
+    pageId: 'Admin',
+  },
 ];
 
 const HELP_SECTIONS: HelpSection[] = [
   {
     icon: ChartBarIcon,
-    title: "Durum kartı",
-    body: "Portalın bağlı olduğu dış sistemlerin (Dynatrace, envanter veritabanı, self service kataloğu) o anki erişilebilirliğini gösterir. Kırmızı veya sarı bir satır, ilgili sayfada veri eksik gelebileceği anlamına gelir.",
+    title: 'Durum kartı',
+    body: 'Portalın bağlı olduğu dış sistemlerin (Dynatrace, envanter veritabanı, self service kataloğu) o anki erişilebilirliğini gösterir. Kırmızı veya sarı bir satır, ilgili sayfada veri eksik gelebileceği anlamına gelir.',
   },
   {
     icon: ServerStackIcon,
-    title: "Envanter özeti",
-    body: "Açık performans sorunu, yayındaki self service sayısı ve LogX kısayolu. Her satır ilgili sayfayı açar; ayrıntılı envanter için ayrı Envanter sayfası kullanılır.",
+    title: 'Envanter özeti',
+    body: 'Açık performans sorunu, yayındaki self service sayısı ve LogX kısayolu. Her satır ilgili sayfayı açar; ayrıntılı envanter için ayrı Envanter sayfası kullanılır.',
   },
   {
     icon: LinkIcon,
-    title: "Başlangıç kaynakları",
-    body: "En sık kullanılan sayfaların kısayolları ve Önemli Linkler kataloğunda favori olarak işaretlenmiş bağlantılar.",
+    title: 'Başlangıç kaynakları',
+    body: 'En sık kullanılan sayfaların kısayolları ve Önemli Linkler kataloğunda favori olarak işaretlenmiş bağlantılar.',
   },
   {
     icon: ShieldCheckIcon,
-    title: "Yalnızca yöneticilere görünen bölümler",
-    body: "Ansible ve Admin kısayolları ile bazı istatistikler Admin rolüne sahip kullanıcılara gösterilir.",
+    title: 'Yalnızca yöneticilere görünen bölümler',
+    body: 'Ansible ve Admin kısayolları ile bazı istatistikler Admin rolüne sahip kullanıcılara gösterilir.',
     adminOnly: true,
   },
 ];
@@ -78,18 +102,40 @@ const HELP_SECTIONS: HelpSection[] = [
 
 // Kuyruktaki/çalışan bir job'ı görsel olarak vurgulamak için dönen kum saati —
 // yalnızca dekoratif, sürekli "animate-spin" ile döner.
-function SpinningHourglassIcon({ className = "", style = {} }: { className?: string; style?: React.CSSProperties }) {
+function SpinningHourglassIcon({
+  className = '',
+  style = {},
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={`animate-spin ${className}`} style={{ animationDuration: "1.6s", ...style }}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={`animate-spin ${className}`}
+      style={{ animationDuration: '1.6s', ...style }}
+    >
       <path
         d="M6 3h12M6 21h12M7 3c0 4 3.5 6 5 8-1.5 2-5 4-5 8M17 3c0 4-3.5 6-5 8 1.5 2 5 4 5 8"
-        stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
 }
 
-function CardShell({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+function CardShell({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="card flex flex-col">
       <div className="flex items-center justify-between gap-2 px-6 pt-5 pb-3">
@@ -102,30 +148,39 @@ function CardShell({ title, action, children }: { title: string; action?: React.
 }
 
 function StatusRow({
-  state, label, detail, onClick,
+  state,
+  label,
+  detail,
+  onClick,
 }: {
-  state: "ok" | "warn" | "error" | "unknown";
+  state: 'ok' | 'warn' | 'error' | 'unknown';
   label: string;
   detail?: string;
   onClick?: () => void;
 }) {
   const MAP = {
-    ok:      { Icon: CheckCircleIcon,       color: "var(--status-success)" },
-    warn:    { Icon: ExclamationTriangleIcon, color: "var(--status-warning)" },
-    error:   { Icon: ExclamationCircleIcon, color: "var(--status-danger)" },
-    unknown: { Icon: MinusCircleIcon,       color: "var(--status-neutral)" },
+    ok: { Icon: CheckCircleIcon, color: 'var(--status-success)' },
+    warn: { Icon: ExclamationTriangleIcon, color: 'var(--status-warning)' },
+    error: { Icon: ExclamationCircleIcon, color: 'var(--status-danger)' },
+    unknown: { Icon: MinusCircleIcon, color: 'var(--status-neutral)' },
   } as const;
   const { Icon, color } = MAP[state];
   return (
     <div
-      className={`flex items-start gap-2 py-2 ${onClick ? "cursor-pointer" : ""}`}
+      className={`flex items-start gap-2 py-2 ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
-      style={{ borderBottom: "1px solid var(--border)" }}
+      style={{ borderBottom: '1px solid var(--border)' }}
     >
       <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color }} />
       <div className="min-w-0">
-        <p className="text-[0.875rem]" style={{ color: "var(--text-primary)" }}>{label}</p>
-        {detail && <p className="text-[0.8125rem] mt-0.5" style={{ color: "var(--text-muted)" }}>{detail}</p>}
+        <p className="text-[0.875rem]" style={{ color: 'var(--text-primary)' }}>
+          {label}
+        </p>
+        {detail && (
+          <p className="text-[0.8125rem] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            {detail}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -136,25 +191,32 @@ function StatusRow({
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, canViewPage, visibilityReady } = useContext(AuthContext);
-  const isAdmin = user?.role === "Admin";
-  const displayName = (user as { displayName?: string })?.displayName || user?.username || "—";
+  const isAdmin = user?.role === 'Admin';
+  const displayName = (user as { displayName?: string })?.displayName || user?.username || '—';
 
   const [showHelp, setShowHelp] = useState(false);
 
   const { nobetci, dtHealth, selfSrvCount, selfSrvLoading } = useAppData();
 
   const [dtProblems, setDtProblems] = useState<DtProblem[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<{ username: string; displayName: string; hasAvatar: boolean }[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<
+    { username: string; displayName: string; hasAvatar: boolean }[]
+  >([]);
   const [spotlightLinks, setSpotlightLinks] = useState<PortalLink[]>([]);
   const [awxJobServers, setAwxJobServers] = useState<RecentAwxJobsServer[]>([]);
   const [awxJobsLoaded, setAwxJobsLoaded] = useState(false);
   const [awxJobsFetchError, setAwxJobsFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    linksApi.list()
+    linksApi
+      .list()
       .then((r) => {
         if (!r.ok) return;
-        setSpotlightLinks((r.links || []).filter((l) => l.isActive && l.isFavorite).sort((a, b) => a.order - b.order));
+        setSpotlightLinks(
+          (r.links || [])
+            .filter((l) => l.isActive && l.isFavorite)
+            .sort((a, b) => a.order - b.order),
+        );
       })
       .catch(() => {});
   }, []);
@@ -162,29 +224,38 @@ const DashboardPage: React.FC = () => {
   useEffect(() => {
     let alive = true;
     const load = () =>
-      fetch("/api/users/online")
+      fetch('/api/users/online')
         .then((r) => r.json())
-        .then((d: { ok?: boolean; users?: { username: string; displayName: string; hasAvatar: boolean }[] }) => {
-          if (alive && d.ok) setOnlineUsers(d.users ?? []);
-        })
+        .then(
+          (d: {
+            ok?: boolean;
+            users?: { username: string; displayName: string; hasAvatar: boolean }[];
+          }) => {
+            if (alive && d.ok) setOnlineUsers(d.users ?? []);
+          },
+        )
         .catch(() => {});
     load();
     const iv = setInterval(load, 25_000);
-    return () => { alive = false; clearInterval(iv); };
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
   }, []);
 
   useEffect(() => {
     // Gorunurluk sunucudan yuklenene kadar gated uc'lara istek atma (403 cascade onlemi).
     if (!visibilityReady) return;
-  }, [isAdmin, canViewPage, visibilityReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAdmin, canViewPage, visibilityReady]);
 
   // "Kuyruktaki Ansible İşleri" — Maestro/Maestro2'de pending/waiting/running job'lar,
   // sayfa yenilenmeden kendiliğinden güncellensin diye periyodik olarak yeniden çekilir.
   useEffect(() => {
-    if (!visibilityReady || !canViewPage("Ansible")) return;
+    if (!visibilityReady || !canViewPage('Ansible')) return;
     let alive = true;
     const load = () =>
-      ansibleApi.recentJobs()
+      ansibleApi
+        .recentJobs()
         .then((r) => {
           if (!alive) return;
           setAwxJobsFetchError(null);
@@ -194,16 +265,22 @@ const DashboardPage: React.FC = () => {
         .catch((e: unknown) => {
           if (!alive) return;
           setAwxJobsLoaded(true);
-          setAwxJobsFetchError(e instanceof Error ? e.message : "İstek başarısız.");
+          setAwxJobsFetchError(e instanceof Error ? e.message : 'İstek başarısız.');
         });
     load();
     const iv = setInterval(load, 15_000);
-    return () => { alive = false; clearInterval(iv); };
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
   }, [visibilityReady, canViewPage]);
 
   useEffect(() => {
-    if (dtHealth?.mcpConnected && canViewPage("Performance")) {
-      dynatraceApi.problems().then((p) => setDtProblems(p.problems ?? [])).catch(() => {});
+    if (dtHealth?.mcpConnected && canViewPage('Performance')) {
+      dynatraceApi
+        .problems()
+        .then((p) => setDtProblems(p.problems ?? []))
+        .catch(() => {});
     } else {
       setDtProblems([]);
     }
@@ -215,17 +292,18 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-6">
-
       {/* ── Sayfa basligi (PF PageSection header) ───────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="page-title">Genel bakış</h1>
-          <p className="text-[0.875rem] mt-1" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[0.875rem] mt-1" style={{ color: 'var(--text-muted)' }}>
             {displayName} · {today}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`badge ${isAdmin ? "pf-label--red" : "pf-label--blue"}`}>{user?.role}</span>
+          <span className={`badge ${isAdmin ? 'pf-label--red' : 'pf-label--blue'}`}>
+            {user?.role}
+          </span>
           <button className="pf-btn-link" onClick={() => setShowHelp(true)}>
             <QuestionMarkCircleIcon className="w-4 h-4" />
             Bu sayfa nasıl kullanılır?
@@ -235,59 +313,86 @@ const DashboardPage: React.FC = () => {
 
       {/* ── Durum + Bugunun nobetcisi ─────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
         {/* Durum */}
         <CardShell title="Durum">
-          <div style={{ borderTop: "1px solid var(--border)" }}>
-            {canViewPage("Performance") && (
-              dtHealth === null ? (
+          <div style={{ borderTop: '1px solid var(--border)' }}>
+            {canViewPage('Performance') &&
+              (dtHealth === null ? (
                 <StatusRow state="unknown" label="Dynatrace" detail="Bağlantı kontrol ediliyor" />
               ) : dtHealth.mcpConnected ? (
                 <StatusRow
-                  state={dtProblems.length > 0 ? "warn" : "ok"}
+                  state={dtProblems.length > 0 ? 'warn' : 'ok'}
                   label="Dynatrace"
-                  detail={dtProblems.length > 0 ? `${dtProblems.length} açık sorun` : "Açık sorun yok"}
-                  onClick={() => navigate("/performance")}
+                  detail={
+                    dtProblems.length > 0 ? `${dtProblems.length} açık sorun` : 'Açık sorun yok'
+                  }
+                  onClick={() => navigate('/performance')}
                 />
               ) : (
                 <StatusRow
                   state="error"
                   label="Dynatrace"
-                  detail={dtHealth.message || "MCP sunucusuna ulaşılamıyor"}
-                  onClick={() => navigate("/performance")}
+                  detail={dtHealth.message || 'MCP sunucusuna ulaşılamıyor'}
+                  onClick={() => navigate('/performance')}
                 />
-              )
-            )}
+              ))}
 
-            {canViewPage("Self Service") && (
-              selfSrvLoading ? (
+            {canViewPage('Self Service') &&
+              (selfSrvLoading ? (
                 <StatusRow state="unknown" label="Self service kataloğu" detail="Yükleniyor" />
               ) : selfSrvCount === null ? (
-                <StatusRow state="error" label="Self service kataloğu" detail="Katalog okunamadı" onClick={() => navigate("/self-service")} />
+                <StatusRow
+                  state="error"
+                  label="Self service kataloğu"
+                  detail="Katalog okunamadı"
+                  onClick={() => navigate('/self-service')}
+                />
               ) : selfSrvCount === 0 ? (
-                <StatusRow state="warn" label="Self service kataloğu" detail="Yayında servis yok" onClick={() => navigate("/self-service")} />
+                <StatusRow
+                  state="warn"
+                  label="Self service kataloğu"
+                  detail="Yayında servis yok"
+                  onClick={() => navigate('/self-service')}
+                />
               ) : (
-                <StatusRow state="ok" label="Self service kataloğu" detail={`${selfSrvCount} servis yayında`} onClick={() => navigate("/self-service")} />
-              )
-            )}
+                <StatusRow
+                  state="ok"
+                  label="Self service kataloğu"
+                  detail={`${selfSrvCount} servis yayında`}
+                  onClick={() => navigate('/self-service')}
+                />
+              ))}
 
-            {canViewPage("Nöbet") && (
-              !nobetci ? (
+            {canViewPage('Nöbet') &&
+              (!nobetci ? (
                 <StatusRow state="unknown" label="Nöbet servisi" detail="Sorgulanıyor" />
               ) : nobetci.ok ? (
-                <StatusRow state="ok" label="Nöbet servisi" detail={`Bugün: ${nobetci.name ?? "—"}`} onClick={() => navigate("/duty-roster")} />
+                <StatusRow
+                  state="ok"
+                  label="Nöbet servisi"
+                  detail={`Bugün: ${nobetci.name ?? '—'}`}
+                  onClick={() => navigate('/duty-roster')}
+                />
               ) : (
-                <StatusRow state="warn" label="Nöbet servisi" detail={nobetci.message || "Bilgi alınamadı"} onClick={() => navigate("/duty-roster")} />
-              )
-            )}
+                <StatusRow
+                  state="warn"
+                  label="Nöbet servisi"
+                  detail={nobetci.message || 'Bilgi alınamadı'}
+                  onClick={() => navigate('/duty-roster')}
+                />
+              ))}
           </div>
         </CardShell>
 
         {/* Bugunun nobetcisi */}
-        {canViewPage("Nöbet") && (
+        {canViewPage('Nöbet') && (
           <CardShell
             title="Bugünün nöbetçisi"
-            action={<button className="pf-btn-link" onClick={() => navigate("/duty-roster")}>Takvim</button>}
+            action={
+              <button className="pf-btn-link" onClick={() => navigate('/duty-roster')}>
+                Takvim
+              </button>
+            }
           >
             {!nobetci ? (
               <div className="space-y-2">
@@ -298,30 +403,51 @@ const DashboardPage: React.FC = () => {
             ) : nobetci.ok ? (
               <div className="flex items-center gap-3">
                 {nobetci.avatarUrl ? (
-                  <img src={nobetci.avatarUrl} alt="" className="h-12 w-12 rounded-full object-cover" />
+                  <img
+                    src={nobetci.avatarUrl}
+                    alt=""
+                    className="h-12 w-12 rounded-full object-cover"
+                  />
                 ) : (
                   <div
                     className="h-12 w-12 rounded-full flex items-center justify-center text-white"
-                    style={{ background: "var(--accent)", fontFamily: "var(--font-display)", fontSize: "1.125rem" }}
+                    style={{
+                      background: 'var(--accent)',
+                      fontFamily: 'var(--font-display)',
+                      fontSize: '1.125rem',
+                    }}
                   >
-                    {nobetci.name?.[0]?.toUpperCase() ?? "?"}
+                    {nobetci.name?.[0]?.toUpperCase() ?? '?'}
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p style={{ fontFamily: "var(--font-display)", fontSize: "1rem", color: "var(--text-primary)" }}>
+                  <p
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: '1rem',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
                     {nobetci.name}
                   </p>
-                  {nobetci.title && <p className="text-[0.8125rem]" style={{ color: "var(--text-muted)" }}>{nobetci.title}</p>}
+                  {nobetci.title && (
+                    <p className="text-[0.8125rem]" style={{ color: 'var(--text-muted)' }}>
+                      {nobetci.title}
+                    </p>
+                  )}
                   {nobetci.intercom && (
-                    <p className="text-[0.875rem] mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                    <p
+                      className="text-[0.875rem] mt-0.5"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
                       Dahili: {nobetci.intercom}
                     </p>
                   )}
                 </div>
               </div>
             ) : (
-              <p className="text-[0.875rem]" style={{ color: "var(--text-muted)" }}>
-                {nobetci.message || "Bilgi alınamadı"}
+              <p className="text-[0.875rem]" style={{ color: 'var(--text-muted)' }}>
+                {nobetci.message || 'Bilgi alınamadı'}
               </p>
             )}
           </CardShell>
@@ -329,17 +455,17 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {/* ── Etkinlik: acik Dynatrace sorunlari ───────────────────── */}
-      {canViewPage("Performance") && dtHealth?.mcpConnected && dtProblems.length > 0 && (
+      {canViewPage('Performance') && dtHealth?.mcpConnected && dtProblems.length > 0 && (
         <CardShell
           title="Açık performans sorunları"
           action={
-            canViewPage("AI Analist") ? (
+            canViewPage('AI Analist') ? (
               <button
                 className="pf-btn-link"
                 onClick={() =>
                   seedAiAnalystChat(
                     navigate,
-                    `Açık Dynatrace problemlerini (${dtProblems.map((p) => p.title).join("; ")}) önceliklendir ve kısa bir özet çıkar.`
+                    `Açık Dynatrace problemlerini (${dtProblems.map((p) => p.title).join('; ')}) önceliklendir ve kısa bir özet çıkar.`,
                   )
                 }
               >
@@ -348,18 +474,29 @@ const DashboardPage: React.FC = () => {
             ) : undefined
           }
         >
-          <ul style={{ borderTop: "1px solid var(--border)" }}>
+          <ul style={{ borderTop: '1px solid var(--border)' }}>
             {dtProblems.slice(0, 5).map((p, i) => (
-              <li key={i} className="flex items-start gap-2 py-2" style={{ borderBottom: "1px solid var(--border)" }}>
-                <ExclamationCircleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "var(--status-danger)" }} />
-                <button className="text-left text-[0.875rem]" style={{ color: "var(--accent)" }} onClick={() => navigate("/performance")}>
+              <li
+                key={i}
+                className="flex items-start gap-2 py-2"
+                style={{ borderBottom: '1px solid var(--border)' }}
+              >
+                <ExclamationCircleIcon
+                  className="w-4 h-4 flex-shrink-0 mt-0.5"
+                  style={{ color: 'var(--status-danger)' }}
+                />
+                <button
+                  className="text-left text-[0.875rem]"
+                  style={{ color: 'var(--accent)' }}
+                  onClick={() => navigate('/performance')}
+                >
                   {p.title}
                 </button>
               </li>
             ))}
           </ul>
           {dtProblems.length > 5 && (
-            <button className="pf-btn-link mt-2 px-0" onClick={() => navigate("/performance")}>
+            <button className="pf-btn-link mt-2 px-0" onClick={() => navigate('/performance')}>
               Tümünü görüntüle ({dtProblems.length})
             </button>
           )}
@@ -378,24 +515,33 @@ const DashboardPage: React.FC = () => {
                 key={u.username}
                 title={u.displayName}
                 className="flex items-center gap-2 px-2 py-1"
-                style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-full)" }}
+                style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-full)' }}
               >
                 {u.hasAvatar ? (
                   <img
                     src={`/api/users/avatar/${encodeURIComponent(u.username)}`}
                     alt=""
                     className="h-6 w-6 rounded-full object-cover"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    }}
                   />
                 ) : (
                   <span
                     className="h-6 w-6 rounded-full flex items-center justify-center text-white text-[0.6875rem]"
-                    style={{ background: "var(--status-neutral)" }}
+                    style={{ background: 'var(--status-neutral)' }}
                   >
-                    {u.displayName.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
+                    {u.displayName
+                      .split(' ')
+                      .map((p) => p[0])
+                      .slice(0, 2)
+                      .join('')
+                      .toUpperCase()}
                   </span>
                 )}
-                <span className="text-[0.8125rem]" style={{ color: "var(--text-primary)" }}>{u.displayName}</span>
+                <span className="text-[0.8125rem]" style={{ color: 'var(--text-primary)' }}>
+                  {u.displayName}
+                </span>
               </span>
             ))}
           </div>
@@ -403,46 +549,92 @@ const DashboardPage: React.FC = () => {
       )}
 
       {/* ── Kuyruktaki Ansible İşleri (Maestro/Maestro2, canlı) ─────────── */}
-      {canViewPage("Ansible") && (
+      {canViewPage('Ansible') && (
         <CardShell title="Kuyruktaki Ansible İşleri">
           {awxJobsFetchError && (
-            <p className="text-[0.8125rem] mb-2" style={{ color: "var(--status-danger)" }}>
+            <p className="text-[0.8125rem] mb-2" style={{ color: 'var(--status-danger)' }}>
               Liste alınamadı: {awxJobsFetchError}
             </p>
           )}
           {awxJobServers.some((s) => !s.ok) && (
-            <p className="text-[0.8125rem] mb-2" style={{ color: "var(--status-warning)" }}>
-              {awxJobServers.filter((s) => !s.ok).map((s) => `${s.serverName}: ${s.error || "erişilemedi"}`).join(" · ")}
+            <p className="text-[0.8125rem] mb-2" style={{ color: 'var(--status-warning)' }}>
+              {awxJobServers
+                .filter((s) => !s.ok)
+                .map((s) => `${s.serverName}: ${s.error || 'erişilemedi'}`)
+                .join(' · ')}
             </p>
           )}
           {!awxJobsLoaded ? (
-            <p className="text-[0.875rem] py-4 text-center" style={{ color: "var(--text-muted)" }}>Yükleniyor…</p>
+            <p className="text-[0.875rem] py-4 text-center" style={{ color: 'var(--text-muted)' }}>
+              Yükleniyor…
+            </p>
           ) : awxJobServers.every((s) => s.jobs.length === 0) ? (
-            <p className="text-[0.875rem] py-4 text-center" style={{ color: "var(--text-muted)" }}>Kuyrukta iş yok.</p>
+            <p className="text-[0.875rem] py-4 text-center" style={{ color: 'var(--text-muted)' }}>
+              Kuyrukta iş yok.
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-[0.8125rem]">
                 <thead>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
                     <th className="w-8 py-2" />
-                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Ansible Server</th>
-                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job ID</th>
-                    <th className="text-left py-2 pr-4 font-medium" style={{ color: "var(--text-muted)" }}>Job Template</th>
-                    <th className="text-left py-2 font-medium" style={{ color: "var(--text-muted)" }}>Tetikleyen</th>
+                    <th
+                      className="text-left py-2 pr-4 font-medium"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Ansible Server
+                    </th>
+                    <th
+                      className="text-left py-2 pr-4 font-medium"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Job ID
+                    </th>
+                    <th
+                      className="text-left py-2 pr-4 font-medium"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Job Template
+                    </th>
+                    <th
+                      className="text-left py-2 font-medium"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Tetikleyen
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {awxJobServers.flatMap((s) => s.jobs.map((j) => (
-                    <tr key={`${s.serverId}-${j.jobId}`} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td className="py-2 pr-2">
-                        <SpinningHourglassIcon className="w-4 h-4" style={{ color: "var(--accent)" }} />
-                      </td>
-                      <td className="py-2 pr-4" style={{ color: "var(--text-primary)" }}>{s.serverName}</td>
-                      <td className="py-2 pr-4 font-mono" style={{ color: "var(--text-primary)" }}>#{j.jobId}</td>
-                      <td className="py-2 pr-4" style={{ color: "var(--text-primary)" }}>{j.jobTemplate}</td>
-                      <td className="py-2" style={{ color: "var(--text-muted)" }}>{j.executer}</td>
-                    </tr>
-                  )))}
+                  {awxJobServers.flatMap((s) =>
+                    s.jobs.map((j) => (
+                      <tr
+                        key={`${s.serverId}-${j.jobId}`}
+                        style={{ borderBottom: '1px solid var(--border)' }}
+                      >
+                        <td className="py-2 pr-2">
+                          <SpinningHourglassIcon
+                            className="w-4 h-4"
+                            style={{ color: 'var(--accent)' }}
+                          />
+                        </td>
+                        <td className="py-2 pr-4" style={{ color: 'var(--text-primary)' }}>
+                          {s.serverName}
+                        </td>
+                        <td
+                          className="py-2 pr-4 font-mono"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          #{j.jobId}
+                        </td>
+                        <td className="py-2 pr-4" style={{ color: 'var(--text-primary)' }}>
+                          {j.jobTemplate}
+                        </td>
+                        <td className="py-2" style={{ color: 'var(--text-muted)' }}>
+                          {j.executer}
+                        </td>
+                      </tr>
+                    )),
+                  )}
                 </tbody>
               </table>
             </div>
@@ -452,7 +644,10 @@ const DashboardPage: React.FC = () => {
 
       {/* ── Baslangic kaynaklari (en altta) ─────────────────────────────── */}
       <CardShell title="Başlangıç kaynakları">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8" style={{ borderTop: "1px solid var(--border)" }}>
+        <div
+          className="grid grid-cols-1 md:grid-cols-2 gap-x-8"
+          style={{ borderTop: '1px solid var(--border)' }}
+        >
           {visibleTools.map((link) => {
             const Icon = link.icon;
             return (
@@ -460,12 +655,16 @@ const DashboardPage: React.FC = () => {
                 key={link.to}
                 onClick={() => navigate(link.to)}
                 className="flex items-center gap-3 py-3 text-left"
-                style={{ borderBottom: "1px solid var(--border)" }}
+                style={{ borderBottom: '1px solid var(--border)' }}
               >
-                <Icon className="w-5 h-5 flex-shrink-0" style={{ color: "var(--text-muted)" }} />
+                <Icon className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
                 <span className="min-w-0">
-                  <span className="block text-[0.875rem]" style={{ color: "var(--accent)" }}>{link.label}</span>
-                  <span className="block text-[0.8125rem]" style={{ color: "var(--text-muted)" }}>{link.description}</span>
+                  <span className="block text-[0.875rem]" style={{ color: 'var(--accent)' }}>
+                    {link.label}
+                  </span>
+                  <span className="block text-[0.8125rem]" style={{ color: 'var(--text-muted)' }}>
+                    {link.description}
+                  </span>
                 </span>
               </button>
             );
@@ -474,14 +673,20 @@ const DashboardPage: React.FC = () => {
 
         {spotlightLinks.length > 0 && (
           <div className="mt-4">
-            <p className="text-[0.8125rem] mb-2" style={{ color: "var(--text-muted)" }}>Favori bağlantılar</p>
+            <p className="text-[0.8125rem] mb-2" style={{ color: 'var(--text-muted)' }}>
+              Favori bağlantılar
+            </p>
             <div className="flex flex-wrap gap-2">
               {spotlightLinks.slice(0, 8).map((l) => (
                 <button
                   key={l.id}
                   onClick={() => openExternalUrl(l.url)}
                   className="flex items-center gap-1.5 px-3 py-1 text-[0.875rem]"
-                  style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--accent)" }}
+                  style={{
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--accent)',
+                  }}
                   title={l.description || l.url}
                 >
                   <LinkIcon className="w-3.5 h-3.5" />

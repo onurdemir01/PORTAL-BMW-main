@@ -23,7 +23,7 @@ function loadExtractor() {
     "const { parseFilexResult } = require('./filex-parse.cjs');",
     '/* parseFilexResult enjekte edildi */',
   );
-  // eslint-disable-next-line no-new-func
+
   return new Function('parseFilexResult', `${body}; return extractFilexResult;`)(parseFilexResult);
 }
 const extract = loadExtractor();

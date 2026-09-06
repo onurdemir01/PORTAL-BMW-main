@@ -20,6 +20,11 @@ const codeOnly = (s) =>
     .replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
 
 const PAGE = read('components/scalex/ScaleXPage.tsx');
+// Bosluk normalize eder: JSX satirlara acildiginda pencere-tabanli desenler
+// patliyordu (prettier bir dosyayi ILK KEZ bicimlendirdiginde mesafe 60'tan
+// 5413 karaktere cikti). `codeOnly` zaten tirnaklari cifte cevirdi.
+const flat = (s) => s.replace(/\s+/g, ' ');
+
 const WORKLOAD = read('components/scalex/steps/WorkloadStep.tsx');
 const OPERATION = read('components/scalex/steps/OperationStep.tsx');
 const PREVIEW = read('components/scalex/steps/PreviewStep.tsx');
@@ -394,16 +399,31 @@ test('U24 uc sapma durumunun ikisi kullaniciya ACIKLANIYOR', () => {
 test('U25 sapmali kayitta ve SUREN islemde "Geri Al" GOSTERILMIYOR', () => {
   const code = codeOnly(STOPPED);
   // Cluster'da ConfigMap yokken geri alma denemek `STATE;FAIL` ile duserdi.
-  assert.match(
-    code,
-    /driftStatus === "in_sync"[\s\S]{0,60}onRestore/,
-    'sapmali kayitta buton hala gosteriliyor',
+  // TEK IFADEDE OLCULUR, PENCEREYLE DEGIL.
+  //
+  // Onceki desen `driftStatus === "in_sync"` ile `onRestore` arasinda 60 KARAKTER
+  // pencere kullaniyordu. Prettier dosyayi ilk kez bicimlendirip JSX'i satirlara
+  // acinca mesafe 5413 karaktere cikti ve bekci kural aynen dururken kirmiziya
+  // dondu. Oysa kural tek bir kosul zincirinde: sapma yoksa VE geri alma surmuyorsa
+  // VE `onRestore` verilmisse buton cizilir. Zinciri butun olarak ariyoruz.
+  // HAM KAYNAKTA ve TIRNAK-AGNOSTIK olculur.
+  //
+  // `codeOnly`nin tirnak cevirisi bu dosyada GUVENILMEZ: cift tirnakli metinlerin
+  // icindeki Turkce kesme isaretleri (`Cluster'da`, `AWX'ten`) naif regex tarafindan
+  // tirnak cifti sanilip sonraki eslemeyi KAYDIRIYOR — sonucta `!== "restoring'`
+  // gibi karisik tirnakli bir metin cikiyor. Bu yuzden ham kaynakta `["']` ile
+  // ariyoruz; kural zaten tirnagin turuyle ilgili degil.
+  const restoreGate = flat(STOPPED).match(
+    /driftStatus === ["']in_sync["'] && [^&]*phase !== ["']restoring["'] && onRestore && \(/,
   );
+  assert.ok(restoreGate, 'geri alma butonu sapma + suren islem + onRestore zincirine BAGLI degil');
   // Suren bir geri alma varken sunucu ikinci istegi 409 ile reddediyor (ayna kilidi).
   // Butonu acik birakmak, kullaniciyi reddedilecek bir istege gondermek olurdu.
+  // Yukaridaki zincir `phase !== "restoring"` kosulunu ZATEN iceriyor; ayrica
+  // ekranda suren islemin SOYLENDIGI de asagida olculuyor.
   assert.match(
-    code,
-    /phase !== "restoring"[\s\S]{0,60}onRestore/,
+    flat(STOPPED),
+    /phase !== ["']restoring["'] && onRestore/,
     'geri alma surerken buton hala tiklanabiliyor',
   );
   assert.match(code, /Geri alma sürüyor/, 'suren islem kullaniciya SOYLENMIYOR');

@@ -13,9 +13,16 @@
 //   - Herhangi bir sunucu RUNNING ise: "başlat" seçilemez.
 // Durum bilgisi eksik/beklenmedik bir değerse (envanterde status boşsa) fail-open
 // DAVRANILMAZ — hangi işlemin güvenli olduğunu bilmeden hiçbir işlem seçilemez.
-import React, { useEffect, useMemo, useState } from "react";
-import { ArrowPathIcon, StopCircleIcon, PlayCircleIcon, DocumentMagnifyingGlassIcon, CircleStackIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { opsxApi, type OpsxOperation, type OpsxOperationDef } from "@/api/opsxApi";
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowPathIcon,
+  StopCircleIcon,
+  PlayCircleIcon,
+  DocumentMagnifyingGlassIcon,
+  CircleStackIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/react/24/outline';
+import { opsxApi, type OpsxOperation, type OpsxOperationDef } from '@/api/opsxApi';
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   restart: ArrowPathIcon,
@@ -26,18 +33,18 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 // Bu işlemler, ilgili sunucu(lar) o durumdayken anlamsız/uygulanamaz.
-const DISABLED_WHEN_STOPPED = new Set<OpsxOperation>(["restart", "stop", "threaddump", "heapdump"]);
-const DISABLED_WHEN_RUNNING = new Set<OpsxOperation>(["start"]);
+const DISABLED_WHEN_STOPPED = new Set<OpsxOperation>(['restart', 'stop', 'threaddump', 'heapdump']);
+const DISABLED_WHEN_RUNNING = new Set<OpsxOperation>(['start']);
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
-  running: { label: "ÇALIŞIYOR", className: "bg-emerald-50 text-emerald-700 border-emerald-100" },
-  stopped: { label: "DURMUŞ", className: "bg-red-50 text-red-700 border-red-100" },
+  running: { label: 'ÇALIŞIYOR', className: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+  stopped: { label: 'DURMUŞ', className: 'bg-red-50 text-red-700 border-red-100' },
   // 2026-08-17: birden fazla JVM'e (server-config) sahip uygulamalarda restart/stop/start
   // sonrası bazıları çalışırken bazıları durmuş kalabilir — dbo.MWAppsInventory.status artık
   // bu durumu "partial" olarak yazıyor (bkz. java_app_ops/operations/tasks/main.yml).
   // "partial" BİLİNMEYEN bir durum DEĞİL, aksine GERÇEK ve GÖZLEMLENMİŞ bir durum — bu yüzden
   // anyUnknown'a düşmemeli (asağıda), aksi halde tüm işlemler gereksiz yere kilitlenir.
-  partial: { label: "KARIŞIK", className: "bg-amber-50 text-amber-700 border-amber-100" },
+  partial: { label: 'KARIŞIK', className: 'bg-amber-50 text-amber-700 border-amber-100' },
 };
 
 const OperationStep: React.FC<{
@@ -57,7 +64,8 @@ const OperationStep: React.FC<{
   const [checkNonce, setCheckNonce] = useState(0);
 
   useEffect(() => {
-    opsxApi.getOperations()
+    opsxApi
+      .getOperations()
       .then((r) => setOps(r.operations))
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
@@ -66,20 +74,23 @@ const OperationStep: React.FC<{
   useEffect(() => {
     setStatusLoading(true);
     setStatusError(null);
-    opsxApi.getHosts(application)
+    opsxApi
+      .getHosts(application)
       .then((r) => {
-        if (!r.ok) { setStatusError("Sunucu durumu alınamadı."); return; }
+        if (!r.ok) {
+          setStatusError('Sunucu durumu alınamadı.');
+          return;
+        }
         const map: Record<string, string> = {};
         for (const h of r.hosts) map[h.host] = h.status;
         setStatuses(map);
       })
       .catch((err) => setStatusError(err instanceof Error ? err.message : String(err)))
       .finally(() => setStatusLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [application, checkNonce]);
 
-  const anyRunning = useMemo(() => hosts.some((h) => statuses[h] === "running"), [hosts, statuses]);
-  const anyStopped = useMemo(() => hosts.some((h) => statuses[h] === "stopped"), [hosts, statuses]);
+  const anyRunning = useMemo(() => hosts.some((h) => statuses[h] === 'running'), [hosts, statuses]);
+  const anyStopped = useMemo(() => hosts.some((h) => statuses[h] === 'stopped'), [hosts, statuses]);
   // Bir host icin envanterde status bos/beklenmedik bir degerse "running" da "stopped"
   // da DEGILDIR — guvenli varsayilan bilinmiyordur, "serbest birak" degil: TUM islemler
   // kilitli kalir. "partial" bu kurala DAHIL DEGIL — o BILINMEYEN degil, GERCEKTEN
@@ -88,22 +99,33 @@ const OperationStep: React.FC<{
   // host'ta HICBIR islem coarse seviyede engellenmez — hangi JVM'e dokunulacagi zaten bir
   // sonraki adimda (ServerConfigSelectStep) CANLI kesifle tek tek secilir.
   const anyUnknown = useMemo(
-    () => hosts.some((h) => statuses[h] !== "running" && statuses[h] !== "stopped" && statuses[h] !== "partial"),
-    [hosts, statuses]
+    () =>
+      hosts.some(
+        (h) => statuses[h] !== 'running' && statuses[h] !== 'stopped' && statuses[h] !== 'partial',
+      ),
+    [hosts, statuses],
   );
-  const anyPartial = useMemo(() => hosts.some((h) => statuses[h] === "partial"), [hosts, statuses]);
+  const anyPartial = useMemo(() => hosts.some((h) => statuses[h] === 'partial'), [hosts, statuses]);
 
   function disabledReason(op: OpsxOperation): string | null {
-    if (statusLoading) return "Sunucu durumu kontrol ediliyor…";
-    if (statusError) return "Durum kontrolü başarısız — işlem seçilemez.";
-    if (anyUnknown) return "Seçili sunucu(lar)dan en az birinin durumu belirlenemedi.";
-    if (DISABLED_WHEN_STOPPED.has(op) && anyStopped) return "Seçili sunucu(lar)dan en az biri durmuş durumda.";
-    if (DISABLED_WHEN_RUNNING.has(op) && anyRunning) return "Seçili sunucu(lar)dan en az biri zaten çalışıyor.";
+    if (statusLoading) return 'Sunucu durumu kontrol ediliyor…';
+    if (statusError) return 'Durum kontrolü başarısız — işlem seçilemez.';
+    if (anyUnknown) return 'Seçili sunucu(lar)dan en az birinin durumu belirlenemedi.';
+    if (DISABLED_WHEN_STOPPED.has(op) && anyStopped)
+      return 'Seçili sunucu(lar)dan en az biri durmuş durumda.';
+    if (DISABLED_WHEN_RUNNING.has(op) && anyRunning)
+      return 'Seçili sunucu(lar)dan en az biri zaten çalışıyor.';
     return null;
   }
 
-  if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
-  if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
+  if (loading)
+    return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
+  if (error)
+    return (
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
+        {error}
+      </div>
+    );
 
   return (
     <div className="space-y-4">
@@ -118,14 +140,23 @@ const OperationStep: React.FC<{
           const s = statuses[h];
           const meta = STATUS_META[s];
           return (
-            <div key={h} className="flex items-center justify-between gap-2 px-3 py-1.5 border border-[var(--border)] rounded-lg">
+            <div
+              key={h}
+              className="flex items-center justify-between gap-2 px-3 py-1.5 border border-[var(--border)] rounded-lg"
+            >
               <span className="text-sm font-mono text-[var(--text-primary)]">{h}</span>
               {statusLoading ? (
                 <span className="text-xs text-[var(--text-muted)]">kontrol ediliyor…</span>
               ) : meta ? (
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.className}`}>{meta.label}</span>
+                <span
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.className}`}
+                >
+                  {meta.label}
+                </span>
               ) : (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-gray-50 text-gray-500 border-gray-200">BİLİNMİYOR</span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-gray-50 text-gray-500 border-gray-200">
+                  BİLİNMİYOR
+                </span>
               )}
             </div>
           );
@@ -136,10 +167,10 @@ const OperationStep: React.FC<{
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm text-amber-800">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
-            Uygulamanıza bağlı birden fazla JVM bulunmaktadır ve bu JVM'lerin durumları
-            birbirinden farklı ("KARIŞIK" ile işaretli sunucu(lar)da bazı JVM'ler çalışırken
-            bazıları durmuş). Lütfen yapmak istediğiniz işlemi seçin; bir sonraki adımda
-            hangi JVM'(ler)e uygulanacağını tek tek belirleyebileceksiniz.
+            Uygulamanıza bağlı birden fazla JVM bulunmaktadır ve bu JVM'lerin durumları birbirinden
+            farklı ("KARIŞIK" ile işaretli sunucu(lar)da bazı JVM'ler çalışırken bazıları durmuş).
+            Lütfen yapmak istediğiniz işlemi seçin; bir sonraki adımda hangi JVM'(ler)e
+            uygulanacağını tek tek belirleyebileceksiniz.
           </span>
         </div>
       )}

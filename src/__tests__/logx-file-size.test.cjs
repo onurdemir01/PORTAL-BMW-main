@@ -49,7 +49,7 @@ function loadFns() {
     '\n' +
     strip(grab('fmtSize')) +
     '\nreturn { toNumericSize, fmtSize };';
-  // eslint-disable-next-line no-new-func
+
   return new Function(code)();
 }
 

@@ -42,7 +42,7 @@ function loadExplainer() {
   const a = SRC.indexOf('const RC_HINTS');
   const b = SRC.indexOf('\n// Sahiplik kapisi');
   assert.ok(a > 0 && b > a, 'explainTelnetRow siniri bulunamadi');
-  // eslint-disable-next-line no-new-func
+
   return new Function(`${SRC.slice(a, b)}; return explainTelnetRow;`)();
 }
 const explain = loadExplainer();
