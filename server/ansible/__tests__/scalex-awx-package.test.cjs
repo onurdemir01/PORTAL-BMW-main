@@ -491,6 +491,93 @@ function runDiscovery(mode, apps = '') {
   return items;
 }
 
+// ── D11: KESIF MALIYETI UYGULAMA SAYISIYLA OLCEKLENMEMELI ───────────────────
+//
+// OLCULEN DARBOGAZ (uretim, backend-architecture-test): `disc_read_state` uygulama
+// BASINA 5'e kadar `oc` calistiriyordu — 132 satir x 5 = ~660 cagri, ~100 sn.
+// Kullanicinin gordugu sure 1 dk 36 sn idi.
+//
+// Bu bekci sahte `oc`ye bir SAYAC takar ve namespace'teki uygulama sayisi ARTTIGINDA
+// ConfigMap cagrisinin artmadigini dogrular. "Toplu okuma var mi" diye kaynak
+// taramak yetmezdi: cagri yine uygulama basina yapilabilirdi.
+function runDiscoveryCounting(appCount) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-occount-'));
+  const log = path.join(dir, 'calls.log');
+  // Uygulama sayisi parametrik: ayni stub, N tane deployment dondurur.
+  const names = Array.from({ length: appCount }, (_, i) => `app-${i}`);
+  const deployRows = names.map((n) => `${n}|1|1|1|registry/img:1||`).join('\\n');
+  const stub = [
+    '#!/bin/bash',
+    `echo "$@" >> ${JSON.stringify(log)}`,
+    'case "$1 $2" in "version --client") echo "Client Version: 4.14.0"; exit 0 ;; esac',
+    'case "$1" in',
+    '  login|project) exit 0 ;;',
+    "  api-resources) printf 'deployments.apps\\n'; exit 0 ;;",
+    '  auth) echo yes; exit 0 ;;',
+    '  get)',
+    '    case "$2" in',
+    '      --raw) exit 1 ;;',
+    '      hpa) exit 0 ;;',
+    '      pdb) exit 0 ;;',
+    `      deploy|deployment|deployments.apps) printf '${deployRows}\\n'; exit 0 ;;`,
+    '      cm) exit 0 ;;',
+    '      *) exit 1 ;;',
+    '    esac ;;',
+    'esac',
+    'exit 0',
+  ].join('\n');
+  fs.writeFileSync(path.join(dir, 'oc'), stub, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'curl'), CURL_STUB, { mode: 0o755 });
+  execFileSync('bash', [RUNNER], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      SCALEX_PHASE: 'discover',
+      DISCOVERY_MODE: 'workloads',
+      CLUSTER: 'c1',
+      JUMP_SERVER: 'j1',
+      API_URL: 'https://api.lab:6443',
+      OCP_USERNAME: 'u',
+      OCP_PASSWORD: 'x',
+      OCP_OC_PATHS: path.join(dir, 'oc'),
+      NS: 'ns1',
+      APP_RAW: '',
+      ACTION: '',
+      TLS_VERIFY: 'false',
+      JOB_ID: '1',
+    },
+  });
+  const lines = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean);
+  return {
+    total: lines.length,
+    cm: lines.filter((l) => /^get cm\b/.test(l)).length,
+    apps: appCount,
+  };
+}
+
+test('D11 ConfigMap okumasi uygulama sayisiyla OLCEKLENMEZ (namespace basina sabit)', () => {
+  const small = runDiscoveryCounting(2);
+  const large = runDiscoveryCounting(20);
+
+  // Uygulama sayisi 10 KATINA ciktiginda ConfigMap cagrisi ARTMAMALI.
+  assert.equal(
+    small.cm,
+    large.cm,
+    `ConfigMap cagrisi uygulama sayisiyla artiyor: 2 uygulama -> ${small.cm}, ` +
+      `20 uygulama -> ${large.cm}. Durum kayitlari namespace basina TEK cagriyla okunmali.`,
+  );
+  // Ve gercekten KUCUK olmali — "0" da gecerdi ama o zaman durum hic okunmuyor demektir.
+  assert.ok(large.cm >= 1, 'durum kayitlari hic okunmuyor');
+  assert.ok(large.cm <= 3, `namespace basina ${large.cm} ConfigMap cagrisi — toplu okuma yok`);
+
+  // Toplam cagri sayisi da uygulama sayisiyla dogru orantili BUYUMEMELI.
+  assert.ok(
+    large.total < small.total + large.apps,
+    `toplam cagri uygulama basina buyuyor: ${small.total} -> ${large.total}`,
+  );
+});
+
 test('D1 kesif `workloads` ciktisi portalin ayristiricisindan GECIYOR', () => {
   const items = runDiscovery('workloads');
   const parsed = result.extractDiscoveryResult({
@@ -522,7 +609,25 @@ test('D1 kesif `workloads` ciktisi portalin ayristiricisindan GECIYOR', () => {
   const batch = parsed.workloads.find((w) => w.name === 'batch-worker');
   // Bosluk `_` ile degistirilir: `detail` ayraci bosluk oldugu icin sart.
   assert.equal(batch.gitops, 'managed_by:argo_cd', 'bosluklu etiket degeri temizlenmemis');
-  assert.equal(batch.restorable, false, 'durum kaydi olmayan uygulama geri alinabilir gorunuyor');
+  // ESKI ONEKLI (`chaos-scale-state-`) KAYIT ARTIK KESIF LISTESINDE DE GORUNUR.
+  //
+  // Eskiden `false` bekleniyordu, ama bu SAHTE `oc`nin kendi tutarsizligiydi: toplu
+  // listeleme (`oc get cm -n <ns>`) bu kaydi donduruyor, adli okuma
+  // (`oc get cm chaos-scale-state-batch-worker`) ise reddediyordu. Gercek bir
+  // cluster'da iki yol AYNI ConfigMap'leri gorur.
+  //
+  // Sonuc: durum kayitlari artik namespace basina TEK toplu cagriyla okundugu icin
+  // `state` modunun coktan gordugu bu kayit `workloads` modunda da goruluyor. Bu bir
+  // DUZELTMEDIR: eski chaos-scale araciyla durdurulmus bir uygulama, uygulama
+  // listesinde "geri alinamaz" gorunuyordu.
+  assert.equal(batch.restorable, true, 'eski onekli durum kaydi kesif listesinde gorunmuyor');
+  assert.equal(batch.previousReplicas, 2, 'eski onekli kayittan onceki replica okunamadi');
+
+  // GERCEKTEN durum kaydi OLMAYAN bir uygulama: `kafka` icin sahte `oc` hicbir
+  // ConfigMap dondurmuyor. "Kayit yok" durumunun bekcisi artik BU.
+  const kafka = parsed.workloads.find((w) => w.name === 'kafka');
+  assert.ok(kafka, 'kafka workload listesine girmedi');
+  assert.equal(kafka.restorable, false, 'durum kaydi olmayan uygulama geri alinabilir gorunuyor');
 
   // PDB namespace duzeyinde bir UYARI olarak gelmeli.
   assert.ok(parsed.pdbWarning, 'PDB uyarisi portalda gorunmuyor');
