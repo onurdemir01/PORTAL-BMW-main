@@ -21,33 +21,52 @@
 // host'un iki kurulumunun log dizinlerini de (`/vhosting`, `/vhosting8`) tarıyor ve bu
 // DOĞRU davranış. Yani buradaki ayrıştırma bir ekran doğruluğu meselesidir; seçim
 // gönderilirken host adları tekilleştirilir.
-import React, { useEffect, useMemo, useState } from "react";
-import { MagnifyingGlassIcon, ServerIcon } from "@heroicons/react/24/outline";
-import { logxV2Api, type LegacyHost } from "@/api/logxV2Api";
-import { hostKey, jbossLabel, majorOfHost, normalizeJbossVersion, parseHostKey } from "@/utils/jboss";
-import JbossTag from "@/components/common/JbossTag";
+import React, { useEffect, useMemo, useState } from 'react';
+import { MagnifyingGlassIcon, ServerIcon } from '@heroicons/react/24/outline';
+import { logxV2Api, type LegacyHost } from '@/api/logxV2Api';
+import {
+  hostKey,
+  jbossLabel,
+  majorOfHost,
+  normalizeJbossVersion,
+  parseHostKey,
+} from '@/utils/jboss';
+import JbossTag from '@/components/common/JbossTag';
 
 interface Props {
   app: string;
   busy?: boolean;
-  onSubmit: (hosts: string[]) => void;
+  /** `manual` = envanterde OLMAYAN, kullanicinin ELLE yazdigi sunucular.
+   *  Sayfa bunu gorup sunucuya `allowManual` bayragini gonderir; bayrak
+   *  gonderilmezse sunucu envanter disi her adi 400 ile REDDEDER (anti-TOCTOU
+   *  kapisi BILEREK varsayilan-kapali). */
+  onSubmit: (hosts: string[], opts: { manual: string[] }) => void;
 }
 
+// Sunucu tarafindaki `SAFE_MANUAL_HOST_RE`nin AYNISI. Deger AWX'te `--limit`
+// argumanina donusuyor; kullanici 400 almadan ONCE ekranda gorsun diye burada da
+// denetlenir. SUNUCU YINE DE KENDI KAPISINI UYGULAR — bu yalnizca geri bildirim.
+const SAFE_MANUAL_HOST_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
 const STATUS_META: Record<string, { label: string; className: string }> = {
-  running: { label: "ÇALIŞIYOR", className: "bg-emerald-50 text-emerald-700 border-emerald-100" },
-  stopped: { label: "DURMUŞ", className: "bg-red-50 text-red-700 border-red-100" },
+  running: { label: 'ÇALIŞIYOR', className: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+  stopped: { label: 'DURMUŞ', className: 'bg-red-50 text-red-700 border-red-100' },
 };
 
 const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
   const [hosts, setHosts] = useState<LegacyHost[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Aktif hızlı filtreler (ortam veya JBoss sürümü). Boşsa filtre yok.
   const [facet, setFacet] = useState<string | null>(null);
+  // ELLE GIRILEN sunucular ve o an yazilmakta olan ad.
+  const [manual, setManual] = useState<string[]>([]);
+  const [manualInput, setManualInput] = useState('');
 
   useEffect(() => {
-    logxV2Api.legacyHosts(app)
+    logxV2Api
+      .legacyHosts(app)
       .then((r) => setHosts(r.hosts))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [app]);
@@ -62,30 +81,35 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
   // imkânsızlaşıyordu.
   const majorFacets = useMemo(() => {
     const found = new Set((hosts || []).map(majorOfHost));
-    return [...found].sort((a, b) => {
-      if (!a) return 1;
-      if (!b) return -1;
-      return a.localeCompare(b, undefined, { numeric: true });
-    }).map((m) => ({ key: `major:${m}`, label: jbossLabel(m) }));
+    return [...found]
+      .sort((a, b) => {
+        if (!a) return 1;
+        if (!b) return -1;
+        return a.localeCompare(b, undefined, { numeric: true });
+      })
+      .map((m) => ({ key: `major:${m}`, label: jbossLabel(m) }));
   }, [hosts]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (hosts || []).filter((h) => {
       if (facet) {
-        if (facet.startsWith("major:")) {
+        if (facet.startsWith('major:')) {
           if (majorOfHost(h) !== facet.slice(6)) return false;
         } else if (h.env !== facet) return false;
       }
       if (!q) return true;
-      return `${h.host} ${h.env} ${h.jbossVersion} ${jbossLabel(majorOfHost(h))}`.toLowerCase().includes(q);
+      return `${h.host} ${h.env} ${h.jbossVersion} ${jbossLabel(majorOfHost(h))}`
+        .toLowerCase()
+        .includes(q);
     });
   }, [hosts, search, facet]);
 
   function toggle(key: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -98,7 +122,8 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
     setSelected((prev) => {
       const next = new Set(prev);
       for (const k of keys) {
-        if (allVisibleSelected) next.delete(k); else next.add(k);
+        if (allVisibleSelected) next.delete(k);
+        else next.add(k);
       }
       return next;
     });
@@ -111,29 +136,146 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
     [selected],
   );
 
+  // ELLE GIRIS — turetilmis durum. Hepsi RENDER sirasinda hesaplanir ki geri
+  // bildirim kullanici yazarken ANINDA guncellensin (bir `useEffect` gecikmesi,
+  // "yazdim ama bir sey olmadi" hissi verirdi).
+  const manualTyped = manualInput.trim().toUpperCase();
+  const manualFormatBad = manualTyped.length > 0 && !SAFE_MANUAL_HOST_RE.test(manualTyped);
+  const manualInInventory = (hosts || []).some((h) => h.host.toUpperCase() === manualTyped);
+  const manualAlreadyAdded = manual.includes(manualTyped);
+  const manualCanAdd =
+    manualTyped.length >= 2 && !manualFormatBad && !manualInInventory && !manualAlreadyAdded;
+
+  function addManual() {
+    if (!manualCanAdd) return;
+    setManual((prev) => [...prev, manualTyped]);
+    setManualInput('');
+  }
+
+  // Elle giris blogu IKI yerde kullaniliyor: normal listede ve envanterde HIC
+  // sunucu olmadigi durumda. Tek tanim, iki kullanim — ikisi ayrisamaz.
+  // ── LISTEDE OLMAYAN SUNUCU ────────────────────────────────────────────
+  // Sunucu SADECE envanter listesinden secilebiliyordu; envantere henuz
+  // girmemis bir sunucu icin kullanicinin hicbir yolu yoktu.
+  //
+  // DORT SART BIRDEN KARSILANIR:
+  // KONTROLLU  — sunucu tarafi kapisi varsayilan KAPALI; bu blok yalnizca
+  // `allowManual` bayragini tetikler, kapiyi kaldirmaz.
+  // ONGORULUR  — ne gonderilecegi (BUYUK HARF hali) yazmadan once gorunur.
+  // ANLASILIR  — envanterde olmamanin ne demek oldugu acikca yazar.
+  // GERI BILDIRIM — bicim hatasi ANINDA soylenir; kullanici 400 beklemez.
+  const manualEntryBlock = (
+    <div className="rounded-xl border border-dashed border-[var(--border-strong)] p-3 space-y-2">
+      <p className="text-xs font-medium text-[var(--text-secondary)]">
+        Sunucu listede yok mu? Elle ekleyin
+      </p>
+      <div className="flex gap-2">
+        <input
+          value={manualInput}
+          onChange={(e) => setManualInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && manualCanAdd) {
+              e.preventDefault();
+              addManual();
+            }
+          }}
+          placeholder="ör. GBCJAP07"
+          aria-label="Sunucu adını elle girin"
+          disabled={busy}
+          className="pf-input flex-1 text-sm font-mono"
+        />
+        <button
+          type="button"
+          onClick={addManual}
+          disabled={busy || !manualCanAdd}
+          className="btn-secondary text-sm"
+        >
+          Ekle
+        </button>
+      </div>
+
+      {/* CANLI GERI BILDIRIM — yazarken. Once HATA, sonra BILGI. */}
+      {manualTyped && manualFormatBad && (
+        <p className="text-xs text-[var(--status-danger)]">
+          Geçersiz karakter. Yalnızca harf, rakam, nokta, tire ve alt çizgi kullanılabilir — bu
+          değer sunucuda da reddedilir.
+        </p>
+      )}
+      {manualTyped && !manualFormatBad && manualInInventory && (
+        <p className="text-xs text-[var(--text-muted)]">
+          <span className="font-mono">{manualTyped}</span> zaten listede — yukarıdan işaretleyin,
+          elle eklemeye gerek yok.
+        </p>
+      )}
+      {manualTyped && !manualFormatBad && !manualInInventory && !manualAlreadyAdded && (
+        <p className="text-xs text-[var(--text-muted)]">
+          <span className="font-mono font-semibold text-[var(--text-primary)]">{manualTyped}</span>{' '}
+          olarak eklenecek. Bu ad <strong>{app}</strong> için envanterde yok; ortamı da bilinmiyor.
+          Sunucu gerçekten yoksa tarama o ad için sonuç döndürmez.
+        </p>
+      )}
+
+      {manual.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {manual.map((h) => (
+            <span
+              key={h}
+              className="inline-flex items-center gap-1 rounded-lg border border-[var(--status-warning)] bg-[var(--status-warning-bg)] px-2 py-0.5 text-xs"
+            >
+              <span className="font-mono">{h}</span>
+              <span className="text-[10px] text-[var(--text-muted)]">envanterde yok</span>
+              <button
+                type="button"
+                onClick={() => setManual((prev) => prev.filter((x) => x !== h))}
+                disabled={busy}
+                aria-label={`${h} kaldır`}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   if (error) {
-    return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
+    return (
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
+        {error}
+      </div>
+    );
   }
   if (!hosts) {
-    return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Sunucular yükleniyor…</div>;
-  }
-  if (hosts.length === 0) {
     return (
-      <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
-        <span className="font-mono">{app}</span> için envanterde sunucu bulunamadı.
+      <div className="py-8 text-center text-sm text-[var(--text-muted)]">Sunucular yükleniyor…</div>
+    );
+  }
+  // ENVANTERDE HIC SUNUCU YOKSA AKIS BURADA BITIYORDU: ekran "bulunamadi" deyip
+  // KAPANIYOR, kullaniciya hicbir cikis yolu birakmiyordu. Ozellikle elle girilen
+  // (envantere hic kayitli olmayan) bir uygulamada bu durum KESIN olusur — yani
+  // uygulama adini elle girme ozelligi tek basina ise yaramazdi.
+  // Artik ayni ekranda elle sunucu eklenebiliyor.
+  if (hosts.length === 0 && manual.length === 0) {
+    return (
+      <div className="space-y-3">
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
+          <span className="font-mono">{app}</span> için envanterde sunucu bulunamadı. Aşağıdan elle
+          ekleyebilirsiniz.
+        </div>
+        {manualEntryBlock}
       </div>
     );
   }
 
-  const allVisibleSelected = visible.length > 0
-    && visible.every((h) => selected.has(hostKey(h.host, majorOfHost(h))));
+  const allVisibleSelected =
+    visible.length > 0 && visible.every((h) => selected.has(hostKey(h.host, majorOfHost(h))));
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-[var(--text-secondary)]">
-          Hangi sunucularda log aranacak?
-        </p>
+        <p className="text-sm text-[var(--text-secondary)]">Hangi sunucularda log aranacak?</p>
         <span className="text-xs text-[var(--text-muted)]">
           {selected.size} / {hosts.length} seçili
         </span>
@@ -156,7 +298,9 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
           disabled={busy || visible.length === 0}
           className="px-3 py-1 text-xs rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] transition-colors disabled:opacity-50"
         >
-          {allVisibleSelected ? "Görünenlerin seçimini kaldır" : `Görünenleri seç (${visible.length})`}
+          {allVisibleSelected
+            ? 'Görünenlerin seçimini kaldır'
+            : `Görünenleri seç (${visible.length})`}
         </button>
         {[...envs.map((e) => ({ key: e, label: e })), ...majorFacets].map((f) => (
           <button
@@ -164,8 +308,8 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
             onClick={() => setFacet((cur) => (cur === f.key ? null : f.key))}
             className={`px-3 py-1 text-xs rounded-full border transition-colors ${
               facet === f.key
-                ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"
+                ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
             }`}
           >
             {f.label}
@@ -192,12 +336,22 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
                   onChange={() => toggle(key)}
                   className="rounded"
                 />
-                <ServerIcon aria-hidden="true" className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
-                <span className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate" title={h.host}>{h.host}</span>
+                <ServerIcon
+                  aria-hidden="true"
+                  className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0"
+                />
+                <span
+                  className="text-sm font-mono text-[var(--text-primary)] flex-1 truncate"
+                  title={h.host}
+                >
+                  {h.host}
+                </span>
                 {h.env && <span className="text-xs text-[var(--text-muted)]">{h.env}</span>}
                 <JbossTag major={major} version={normalizeJbossVersion(h.jbossVersion)} />
                 {meta ? (
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.className}`}>
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.className}`}
+                  >
                     {meta.label}
                   </span>
                 ) : (
@@ -211,23 +365,28 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
         )}
       </div>
 
+      {manualEntryBlock}
+
       <p className="text-xs text-[var(--text-muted)]">
         Yalnızca seçtiğiniz sunucular taranır — az sunucu, hızlı sonuç ve daha kısa liste.
         {/* Aynı host'un iki JBoss kurulumu da işaretlendiğinde sayıların neden
             farklı olduğunu SÖYLE — sessiz bir tekilleştirme kullanıcıya "iki
             seçtim ama biri gitti" hissi verirdi. */}
         {selectedHostNames.length !== selected.size && (
-          <> Aynı sunucunun iki JBoss kurulumunu da seçtiniz; sunucu bir kez taranır ve
-            log dizinlerinin ikisine de bakılır.</>
+          <>
+            {' '}
+            Aynı sunucunun iki JBoss kurulumunu da seçtiniz; sunucu bir kez taranır ve log
+            dizinlerinin ikisine de bakılır.
+          </>
         )}
       </p>
 
       <button
-        onClick={() => onSubmit(selectedHostNames)}
+        onClick={() => onSubmit([...selectedHostNames, ...manual], { manual })}
         disabled={busy || selectedHostNames.length === 0}
         className="btn-primary w-full"
       >
-        {busy ? "Başlatılıyor…" : `Seçilenleri Tara (${selectedHostNames.length})`}
+        {busy ? 'Başlatılıyor…' : `Seçilenleri Tara (${selectedHostNames.length})`}
       </button>
     </div>
   );

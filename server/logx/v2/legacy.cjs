@@ -20,7 +20,6 @@ const { getAppsTable } = require('../../config/apps-table.cjs');
 const EXPRESS_JSON_LIMIT_BYTES = 2 * 1024 * 1024;
 const TRANSFER_SELECTION_MAX_BYTES = Math.floor(EXPRESS_JSON_LIMIT_BYTES / 2);
 
-
 const SNAPSHOT_FILE = path.join(__dirname, '..', '..', 'data', 'logx-legacy-snapshot.json');
 
 function readSnapshot() {
@@ -37,7 +36,11 @@ function readSnapshot() {
 function writeSnapshotAsync(apps, appHosts) {
   try {
     fs.mkdirSync(path.dirname(SNAPSHOT_FILE), { recursive: true });
-    fs.writeFileSync(SNAPSHOT_FILE, JSON.stringify({ apps, appHosts, generatedAt: new Date().toISOString() }, null, 2), 'utf-8');
+    fs.writeFileSync(
+      SNAPSHOT_FILE,
+      JSON.stringify({ apps, appHosts, generatedAt: new Date().toISOString() }, null, 2),
+      'utf-8',
+    );
   } catch (err) {
     console.warn('[LogXv2] Legacy snapshot yazilamadi:', err.message);
   }
@@ -52,7 +55,7 @@ async function searchApps(search) {
     const req = pool.request();
     req.input('q', `%${term}%`);
     const result = await req.query(
-      `SELECT DISTINCT app FROM ${getAppsTable()} WHERE app LIKE @q ORDER BY app`
+      `SELECT DISTINCT app FROM ${getAppsTable()} WHERE app LIKE @q ORDER BY app`,
     );
     const apps = result.recordset.map((r) => r.app);
 
@@ -63,7 +66,10 @@ async function searchApps(search) {
     }
     return { apps, fallbackMode: false };
   } catch (err) {
-    console.warn(`[LogXv2] ${getAppsTable()} sorgusu basarisiz, snapshot fallback kullaniliyor:`, err.message);
+    console.warn(
+      `[LogXv2] ${getAppsTable()} sorgusu basarisiz, snapshot fallback kullaniliyor:`,
+      err.message,
+    );
     const snap = readSnapshot();
     const apps = term
       ? snap.apps.filter((a) => a.toUpperCase().includes(term.toUpperCase()))
@@ -73,14 +79,21 @@ async function searchApps(search) {
 }
 
 async function refreshFullSnapshot(pool) {
-  const allApps = await pool.request().query(`SELECT DISTINCT app FROM ${getAppsTable()} ORDER BY app`);
-  const allHosts = await pool.request().query(`SELECT app, UPPER(host) AS host FROM ${getAppsTable()}`);
+  const allApps = await pool
+    .request()
+    .query(`SELECT DISTINCT app FROM ${getAppsTable()} ORDER BY app`);
+  const allHosts = await pool
+    .request()
+    .query(`SELECT app, UPPER(host) AS host FROM ${getAppsTable()}`);
   const appHosts = {};
   for (const row of allHosts.recordset) {
     appHosts[row.app] ??= [];
     if (!appHosts[row.app].includes(row.host)) appHosts[row.app].push(row.host);
   }
-  writeSnapshotAsync(allApps.recordset.map((r) => r.app), appHosts);
+  writeSnapshotAsync(
+    allApps.recordset.map((r) => r.app),
+    appHosts,
+  );
 }
 
 // Bir app icin TUM host satirlarini (buyuk harf) doner — EnvanterApps.env sutunu
@@ -94,7 +107,9 @@ async function resolveHostsForApp(app, fallbackMode) {
   if (!pool) throw Object.assign(new Error('Envanter DB bağlantısı yok.'), { status: 503 });
   const req = pool.request();
   req.input('app', app);
-  const result = await req.query(`SELECT DISTINCT UPPER(host) AS host FROM ${getAppsTable()} WHERE app = @app`);
+  const result = await req.query(
+    `SELECT DISTINCT UPPER(host) AS host FROM ${getAppsTable()} WHERE app = @app`,
+  );
   return result.recordset.map((r) => r.host);
 }
 
@@ -111,7 +126,7 @@ async function listHostsForApp(app) {
   req.input('app', appName);
   const result = await req.query(
     `SELECT DISTINCT UPPER(host) AS host, env, jboss_version, status
-     FROM ${getAppsTable()} WHERE app = @app ORDER BY host`
+     FROM ${getAppsTable()} WHERE app = @app ORDER BY host`,
   );
   return result.recordset
     .filter((r) => r.host)
@@ -119,7 +134,9 @@ async function listHostsForApp(app) {
       host: String(r.host).trim(),
       env: String(r.env || '').trim(),
       jbossVersion: String(r.jboss_version || '').trim(),
-      status: String(r.status || '').trim().toLowerCase(),
+      status: String(r.status || '')
+        .trim()
+        .toLowerCase(),
     }));
 }
 
@@ -132,22 +149,64 @@ async function listHostsForApp(app) {
 // ANTI-TOCTOU: client'in gonderdigi listeye guvenilmez; secim envanterden yeniden cozulen
 // host kumesine karsi suzulur. Aksi halde kullanici bu uygulamaya ait OLMAYAN bir sunucuda
 // log taratabilirdi.
-async function discover(requestRow, app, selectedHosts) {
+// ELLE GIRILEN SUNUCU ADI ICIN BICIM KAPISI.
+//
+// Deger `target_hosts` olarak AWX'e gider ve orada `--limit` argumanina donusur.
+// Envanter dogrulamasi bir sunucunun VAR OLDUGUNU garanti ederken ayni zamanda
+// bicimini de garanti ediyordu; elle giris o garantiyi kaldirdigi icin bicim
+// AYRICA denetlenmeli. Kabul edilen: harf, rakam, nokta, tire, alt cizgi.
+// Bosluk/noktali virgul/tirnak/backtick REDDEDILIR — `--limit` bir kabuk
+// argumani olarak tasindigi icin bunlar enjeksiyon yuzeyidir.
+// (Ayni sezgisel `server/telnet/index.cjs` SAFE_HOST_RE ile tutarli.)
+const SAFE_MANUAL_HOST_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
+async function discover(requestRow, app, selectedHosts, options = {}) {
+  const allowManual = options.allowManual === true;
   const inventoryHosts = await resolveHostsForApp(app, false).catch(() => []);
   const allowed = new Set(inventoryHosts.map((h) => String(h).toUpperCase()));
 
   const requested = Array.isArray(selectedHosts)
-    ? [...new Set(selectedHosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean))]
+    ? [
+        ...new Set(
+          selectedHosts
+            .map((h) =>
+              String(h || '')
+                .trim()
+                .toUpperCase(),
+            )
+            .filter(Boolean),
+        ),
+      ]
     : [];
 
   let hosts;
+  let manualHosts = [];
   if (requested.length) {
     const notMine = requested.filter((h) => !allowed.has(h));
-    if (notMine.length) {
+
+    // KAPI GEVSEMEDI — YENI BIR YOL ACILDI. Varsayilan davranis AYNEN duruyor:
+    // `allowManual` gonderilmedigi surece envanter disi her ad 400 ile reddedilir
+    // (anti-TOCTOU). Elle giris ancak cagiran bunu ACIKCA istediginde mumkun ve o
+    // zaman da bicim kapisindan gecmek zorunda.
+    if (notMine.length && !allowManual) {
       throw Object.assign(
         new Error(`Bu sunucular seçilen uygulamaya ait değil: ${notMine.join(', ')}`),
-        { status: 400 }
+        { status: 400 },
       );
+    }
+
+    if (notMine.length) {
+      const malformed = notMine.filter((h) => !SAFE_MANUAL_HOST_RE.test(h));
+      if (malformed.length) {
+        throw Object.assign(
+          new Error(
+            `Sunucu adı biçimi geçersiz: ${malformed.join(', ')}. ` +
+              `Yalnızca harf, rakam, nokta, tire ve alt çizgi kullanılabilir.`,
+          ),
+          { status: 400, code: 'manual_host_format' },
+        );
+      }
+      manualHosts = notMine;
     }
     hosts = requested;
   } else {
@@ -166,16 +225,22 @@ async function discover(requestRow, app, selectedHosts) {
 
   await requests.updateRequest(requestRow.request_id, {
     state: 'discovering',
-    input: { app, hosts },
+    // IZLENEBILIRLIK: hangi sunucularin ENVANTERDE OLMADIGI istek kaydinda durur.
+    // Ekran bunu sonradan da gosterebilsin, denetim de "bu is elle girilen bir
+    // sunucuya gitti mi" sorusunu kayittan cevaplayabilsin.
+    input: { app, hosts, ...(manualHosts.length ? { manualHosts } : {}) },
   });
-  return job;
+  return { job, manualHosts };
 }
 
 // Discovery job'i terminal duruma ulastiginda (jobs.pollJob tarafindan cagrilir) — artifacts'i
 // discovery_result_json'a yazar, ortam etiketlerini logx_env_suffix_map ile turetir.
 async function finalizeDiscovery(requestRow, job) {
   if (!job.artifacts) {
-    await requests.updateRequest(requestRow.request_id, { state: 'failed', errorMessage: job.errorMessage || 'Keşif başarısız oldu.' });
+    await requests.updateRequest(requestRow.request_id, {
+      state: 'failed',
+      errorMessage: job.errorMessage || 'Keşif başarısız oldu.',
+    });
     return;
   }
   const suffixRows = await adminData.listEnvSuffixMap();
@@ -190,14 +255,17 @@ async function finalizeDiscovery(requestRow, job) {
   await requests.updateRequest(requestRow.request_id, {
     state: job.artifacts.overall_status === 'failed' ? 'failed' : 'discovered',
     discoveryResult: job.artifacts,
-    errorMessage: job.artifacts.overall_status === 'failed' ? 'Tüm sunucularda keşif başarısız oldu.' : null,
+    errorMessage:
+      job.artifacts.overall_status === 'failed' ? 'Tüm sunucularda keşif başarısız oldu.' : null,
   });
 }
 
 // POST /legacy/:requestId/transfer — Anti-TOCTOU: her (host,path) cifti discovery_result_json'a
 // BIREBIR eslesmelidir; aksi halde HICBIR job launch edilmez.
 async function transfer(requestRow, selected) {
-  const discoveryResult = requestRow.discovery_result_json ? JSON.parse(requestRow.discovery_result_json) : null;
+  const discoveryResult = requestRow.discovery_result_json
+    ? JSON.parse(requestRow.discovery_result_json)
+    : null;
   if (!discoveryResult) {
     throw Object.assign(new Error('Önce keşif tamamlanmalı.'), { status: 400 });
   }
@@ -220,7 +288,7 @@ async function transfer(requestRow, selected) {
   if (invalid.length > 0) {
     throw Object.assign(
       new Error('Seçilen dosyalardan bazıları keşif sonucuyla eşleşmiyor — işlem reddedildi.'),
-      { status: 400, code: 'toctou_mismatch', invalid }
+      { status: 400, code: 'toctou_mismatch', invalid },
     );
   }
   if (selected.length === 0) {
@@ -231,10 +299,10 @@ async function transfer(requestRow, selected) {
   if (empty.length > 0) {
     throw Object.assign(
       new Error(
-        'Boş (0 byte) dosya indirilemez — içinde log yok: '
-        + empty.map((e) => `${e.host}:${e.path}`).join(', ')
+        'Boş (0 byte) dosya indirilemez — içinde log yok: ' +
+          empty.map((e) => `${e.host}:${e.path}`).join(', '),
       ),
-      { status: 400, code: 'empty_file', empty }
+      { status: 400, code: 'empty_file', empty },
     );
   }
 
@@ -254,10 +322,10 @@ async function transfer(requestRow, selected) {
     throw Object.assign(
       new Error(
         `Seçim çok büyük (${selected.length} dosya, ~${Math.round(selectedBytes / 1024)} KB). ` +
-        `İstek gövdesi sınırı ${Math.round(TRANSFER_SELECTION_MAX_BYTES / 1024)} KB. ` +
-        `Daha az dosya seçin ya da transferi birkaç parçaya bölün.`
+          `İstek gövdesi sınırı ${Math.round(TRANSFER_SELECTION_MAX_BYTES / 1024)} KB. ` +
+          `Daha az dosya seçin ya da transferi birkaç parçaya bölün.`,
       ),
-      { status: 400, code: 'selection_too_large' }
+      { status: 400, code: 'selection_too_large' },
     );
   }
 
@@ -289,4 +357,11 @@ function cryptoRandomId() {
   return require('crypto').randomBytes(16).toString('hex');
 }
 
-module.exports = { searchApps, resolveHostsForApp, listHostsForApp, discover, finalizeDiscovery, transfer };
+module.exports = {
+  searchApps,
+  resolveHostsForApp,
+  listHostsForApp,
+  discover,
+  finalizeDiscovery,
+  transfer,
+};

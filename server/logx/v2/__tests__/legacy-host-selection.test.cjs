@@ -8,6 +8,8 @@
 'use strict';
 
 const { test } = require('node:test');
+const fs = require('node:fs');
+const path = require('node:path');
 const assert = require('node:assert/strict');
 const inventoryDb = require('../../../inventory/mssql.cjs');
 const jobs = require('../jobs.cjs');
@@ -93,4 +95,166 @@ test('listHostsForApp(): sunucu seçim ekranı için env/sürüm/durum da döner
   } finally {
     inventoryDb.getPool = oldPool;
   }
+});
+
+// ── ELLE SUNUCU GIRISI (kontrollu, izlenebilir, ongorulur) ──────────────────
+//
+// Kullanici istegi: listede olmayan bir uygulama/sunucu icin de kesif yapilabilsin.
+// Ama envanter dogrulamasi bir sunucunun VAR OLDUGUNU garanti ederken ayni zamanda
+// BICIMINI de garanti ediyordu; elle giris o garantiyi kaldirir. Deger
+// `target_hosts` olarak AWX'e gidip `--limit` argumanina donustugu icin bicim
+// AYRICA denetlenmeli.
+
+test('EG1 KAPI GEVSEMEDI: bayrak YOKSA envanter disi host hala REDDEDILIR', async () => {
+  // Varsayilan davranis AYNEN eskisi gibi. Yeni yol ancak cagiran ACIKCA isterse acilir.
+  await withStubs(['GBCJAP01'], async (launched) => {
+    await assert.rejects(
+      () => legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'ELLE-YAZILAN']),
+      (e) => e.status === 400 && /ait değil/.test(e.message),
+    );
+    assert.equal(launched.length, 0, 'dogrulama basarisizsa job HIC baslamamali');
+  });
+});
+
+test('EG2 bayrak VARSA envanter disi host kabul edilir ve AYRICA raporlanir', async () => {
+  await withStubs(['GBCJAP01'], async (launched) => {
+    const r = await legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'yeni-sunucu-01'], {
+      allowManual: true,
+    });
+    assert.equal(launched.length, 1, 'job baslamali');
+    assert.equal(launched[0].vars.target_hosts, 'GBCJAP01,YENI-SUNUCU-01');
+    // IZLENEBILIRLIK: hangi adlarin envanter disi oldugu cagirana DONER.
+    assert.deepEqual(r.manualHosts, ['YENI-SUNUCU-01']);
+  });
+});
+
+test('EG3 envanterdeki host `manualHosts`a GIRMEZ (gurultu uretmesin)', async () => {
+  await withStubs(['GBCJAP01', 'GBCJAP02'], async () => {
+    const r = await legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'GBCJAP02'], {
+      allowManual: true,
+    });
+    assert.deepEqual(r.manualHosts, [], 'envanterdeki hostlar elle girilmis sayiliyor');
+  });
+});
+
+test('EG4 BICIM KAPISI: kabuk metakarakterli ad bayrakla bile REDDEDILIR', async () => {
+  // `--limit` bir kabuk argumani olarak tasiniyor; bunlar enjeksiyon yuzeyi.
+  const kotu = [
+    'host; rm -rf /',
+    'host$(whoami)',
+    'host`id`',
+    "host' OR 1=1 --",
+    'bosluklu ad',
+    'host|pipe',
+    'host&arka',
+  ];
+  for (const bad of kotu) {
+    await withStubs(['GBCJAP01'], async (launched) => {
+      await assert.rejects(
+        () => legacy.discover(REQUEST, 'APP1', ['GBCJAP01', bad], { allowManual: true }),
+        (e) => e.status === 400 && e.code === 'manual_host_format',
+        `bicim kapisi gecirdi: ${bad}`,
+      );
+      assert.equal(launched.length, 0, `job baslamamaliydi: ${bad}`);
+    });
+  }
+});
+
+test('EG5 gecerli bicimler kabul edilir (harf/rakam/nokta/tire/alt cizgi)', async () => {
+  for (const ok of ['GBCJAP99', 'app-server-01', 'host.example.com', 'a_b-c.d1']) {
+    await withStubs(['GBCJAP01'], async (launched) => {
+      await legacy.discover(REQUEST, 'APP1', [ok], { allowManual: true });
+      assert.equal(launched.length, 1, `gecerli ad reddedildi: ${ok}`);
+    });
+  }
+});
+
+test('EG6 elle girilen ad BUYUK HARFE cevrilir (envanterle ayni bicim)', async () => {
+  await withStubs(['GBCJAP01'], async (launched) => {
+    const r = await legacy.discover(REQUEST, 'APP1', ['yeni-sunucu'], { allowManual: true });
+    assert.equal(launched[0].vars.target_hosts, 'YENI-SUNUCU');
+    assert.deepEqual(r.manualHosts, ['YENI-SUNUCU']);
+  });
+});
+
+// `withStubs` kendi `updateRequest` stub'ini KURUYOR; yakalayiciyi ICERIDE kurmak
+// gerekiyor, yoksa disaridaki stub onun tarafindan eziliyor.
+async function captureRequestWrites(hosts, fn) {
+  const writes = [];
+  await withStubs(hosts, async () => {
+    requests.updateRequest = async (id, patch) => {
+      writes.push(patch);
+    };
+    await fn();
+  });
+  return writes;
+}
+
+test('EG7 elle girilen sunucular ISTEK KAYDINA yazilir (sonradan gorulebilsin)', async () => {
+  const writes = await captureRequestWrites(['GBCJAP01'], () =>
+    legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'ELLE01'], { allowManual: true }),
+  );
+  const withInput = writes.find((w) => w && w.input);
+  assert.ok(withInput, 'istek kaydi guncellenmedi');
+  assert.deepEqual(withInput.input.manualHosts, ['ELLE01'], 'elle girilenler kayda yazilmiyor');
+});
+
+test('EG8 elle giris YOKSA `manualHosts` kayda HIC yazilmaz', async () => {
+  const writes = await captureRequestWrites(['GBCJAP01'], () =>
+    legacy.discover(REQUEST, 'APP1', ['GBCJAP01'], { allowManual: true }),
+  );
+  const withInput = writes.find((w) => w && w.input);
+  assert.ok(withInput);
+  assert.ok(
+    !('manualHosts' in withInput.input),
+    'elle giris yokken bos alan yaziliyor — kayit gurultusu',
+  );
+});
+
+// ── ROUTE SEVIYESI: BAYRAK ve DENETIM GERCEKTEN BAGLI MI ────────────────────
+//
+// Bu depoda tekrar eden hata sinifi: mantik yazilir, test edilir ve GERCEK CAGRI
+// YOLUNDAN hic gecmez. `allowManual` route'ta okunmazsa elle giris HIC calismaz;
+// denetim kaydi yazilmazsa is "izlenebilir" olmaktan cikar.
+const ROUTE_SRC = fs
+  .readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8')
+  .split('\n')
+  .filter((l) => !/^\s*\/\//.test(l))
+  .join('\n')
+  .replace(/\s+/g, ' ')
+  .replace(/'/g, '"');
+
+test('EG9 route `allowManual` bayragini ACIKCA okuyor (varsayilan KAPALI)', () => {
+  assert.match(
+    ROUTE_SRC,
+    /const allowManual = req\.body\?\.allowManual === true;/,
+    'bayrak okunmuyor — elle giris ya hic calismaz ya da her zaman acik olur',
+  );
+  assert.match(
+    ROUTE_SRC,
+    /legacy\.discover\(row, app, hosts, \{ allowManual \}\)/,
+    'bayrak `discover`a GECIRILMIYOR',
+  );
+});
+
+test('EG10 elle girilen sunucular DENETIM KAYDINA yaziliyor', () => {
+  // "Envanter disina cikan bir is, sonradan `bu nereden geldi` sorusunu
+  // cevaplayabilmeli" — izlenebilirlik sartinin kod karsiligi.
+  assert.match(
+    ROUTE_SRC,
+    /if \(manualHosts\.length\) \{[\s\S]{0,200}audit[\s\S]{0,200}v2_legacy_manual_host/,
+    'elle giris denetim kaydina yazilmiyor',
+  );
+});
+
+test('EG11 elle girilen uygulama adi da YETKI KAPISINDAN geciyor', () => {
+  // Kisitlama modeli VARSAYILAN-ACIK; ama bir kisit TANIMLIYSA elle yazmak onu
+  // ATLATAMAMALI. Kapi `discover` cagrisindan ONCE olmali.
+  const at = ROUTE_SRC.indexOf('"/legacy/:requestId/discover"');
+  assert.ok(at > 0, 'route bulunamadi');
+  const body = ROUTE_SRC.slice(at, at + 900);
+  const gateAt = body.indexOf('assertAllowed("legacy_app"');
+  const callAt = body.indexOf('legacy.discover(');
+  assert.ok(gateAt > 0, 'yetki kapisi yok');
+  assert.ok(gateAt < callAt, 'yetki kapisi kesiften SONRA — is coktan baslamis olur');
 });

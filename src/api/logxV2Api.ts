@@ -191,8 +191,16 @@ export const logxV2Api = {
 
   /** `hosts` verilirse YALNIZ o sunucular taranır; boşsa uygulamanın tüm sunucuları
    *  (eski davranış). Sunucular sunucu tarafında envantere karşı yeniden doğrulanır. */
-  discoverLegacy: (requestId: string, app: string, hosts?: string[]) =>
-    postJson<{ ok: boolean; jobId: number }>(`/legacy/${requestId}/discover`, { app, hosts }),
+  /** `allowManual` KAPIYI ACIKCA ISTER. Gonderilmezse sunucu envanter disi her
+   *  sunucu adini 400 ile REDDEDER (anti-TOCTOU kapisi bilerek varsayilan-kapali).
+   *  Yanit, hangi adlarin envanter disi kabul edildigini `manualHosts` ile GERI
+   *  BILDIRIR — ekran bunu kullaniciya gosterebilsin, denetim de kayittan
+   *  cevaplanabilsin. */
+  discoverLegacy: (requestId: string, app: string, hosts?: string[], allowManual?: boolean) =>
+    postJson<{ ok: boolean; jobId: number; manualHosts?: string[] }>(
+      `/legacy/${requestId}/discover`,
+      { app, hosts, ...(allowManual ? { allowManual: true } : {}) },
+    ),
 
   discoverLegacyFallback: (requestId: string, hosts: string[]) =>
     postJson<{ ok: boolean; jobId: number }>(`/legacy/${requestId}/discover`, { hosts }),

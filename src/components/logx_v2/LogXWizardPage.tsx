@@ -544,9 +544,12 @@ const LogXWizardPage: React.FC = () => {
           <HostSelectStep
             app={legacyApp}
             busy={busy}
-            onSubmit={(hosts) =>
+            onSubmit={(hosts, opts) =>
               guarded(async () => {
-                await logxV2Api.discoverLegacy(requestId, legacyApp, hosts);
+                // BAYRAK YALNIZCA GEREKTIGINDE. Elle girilen sunucu yoksa istek
+                // eskisiyle BIREBIR ayni gider ve sunucudaki anti-TOCTOU kapisi
+                // tam gucuyle calisir.
+                await logxV2Api.discoverLegacy(requestId, legacyApp, hosts, opts.manual.length > 0);
                 await refresh(requestId);
               })
             }
