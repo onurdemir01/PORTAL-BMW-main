@@ -39,11 +39,19 @@ function mergeFreshness(a, b) {
 
 // Bir kaynak PATLARSA digeri yine de donmeli — envanter DB'si erisilemezken kullanici
 // taramasinin sonucunu gostermemek (ya da tersi) gereksiz bir kesinti olurdu.
-async function safe(promise, fallback) {
+//
+// AMA SESSIZ OLMAMALI. Eskiden hata yalnizca `console.warn`a gidiyordu: cagiran
+// taraf bos bir liste aliyor ve `ok: true` goruyordu, ekran da "namespace
+// bulunamadi" yaziyordu. YANI OKUNAMAYAN BIR KAYNAK, BOS BIR KAYNAK GIBI
+// GORUNUYORDU — kullanici dogru cluster'i sectigi halde yanlis sectigini sanip
+// oradan ayrilabiliyordu. Hangi kaynagin okunamadigi artik cagirana BILDIRILIYOR;
+// dayaniklilik ayni kaliyor, sessizlik bitiyor.
+async function safe(promise, fallback, label, sink) {
   try {
     return await promise;
   } catch (e) {
-    console.warn('[OcpCatalog] kaynak okunamadi:', e.message);
+    console.warn(`[OcpCatalog] kaynak okunamadi (${label}):`, e.message);
+    if (sink && !sink.includes(label)) sink.push(label);
     return fallback;
   }
 }
@@ -56,11 +64,19 @@ async function getNamespaces({ env, tenant, clusterNames }) {
   const clusters = [
     ...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean)),
   ];
-  if (!clusters.length) return { ...EMPTY, items: [], sources: {} };
+  if (!clusters.length) return { ...EMPTY, items: [], sources: {}, unreadableSources: [] };
 
-  const inv = await safe(inventory.getNamespaces({ clusterNames: clusters }), EMPTY);
+  const unreadable = [];
+  const inv = await safe(
+    inventory.getNamespaces({ clusterNames: clusters }),
+    EMPTY,
+    'inventory',
+    unreadable,
+  );
   const cachedPerCluster = await Promise.all(
-    clusters.map((clusterName) => safe(cache.getNamespaces({ env, tenant, clusterName }), EMPTY)),
+    clusters.map((clusterName) =>
+      safe(cache.getNamespaces({ env, tenant, clusterName }), EMPTY, 'cache', unreadable),
+    ),
   );
 
   const sources = {};
@@ -96,6 +112,9 @@ async function getNamespaces({ env, tenant, clusterNames }) {
     items: Object.keys(sources).sort(),
     sources,
     counts,
+    // Okunamayan kaynaklarin ADLARI. Bos dizi = iki kaynak da okundu, liste
+    // gercekten eksiksiz. Dolu = liste EKSIK OLABILIR ve ekran bunu soylemeli.
+    unreadableSources: unreadable,
     clusters: clusterMap,
     cached: Boolean(inv.cached || cachedPerCluster.some((c) => c.cached)),
     ...freshness,
@@ -113,12 +132,18 @@ async function getApps({ env, tenant, clusterNames, namespace }) {
   const clusters = [
     ...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean)),
   ];
-  if (!ns || !clusters.length) return { ...EMPTY, items: [], sources: {} };
+  if (!ns || !clusters.length) return { ...EMPTY, items: [], sources: {}, unreadableSources: [] };
 
-  const inv = await safe(inventory.getApps({ clusterNames: clusters, namespace: ns }), EMPTY);
+  const unreadable = [];
+  const inv = await safe(
+    inventory.getApps({ clusterNames: clusters, namespace: ns }),
+    EMPTY,
+    'inventory',
+    unreadable,
+  );
   const cachedPerCluster = await Promise.all(
     clusters.map((clusterName) =>
-      safe(cache.getApps({ env, tenant, clusterName, namespace: ns }), EMPTY),
+      safe(cache.getApps({ env, tenant, clusterName, namespace: ns }), EMPTY, 'cache', unreadable),
     ),
   );
 
@@ -171,6 +196,7 @@ async function getApps({ env, tenant, clusterNames, namespace }) {
     // tarama yapmaz: kayit okunamadigi surece tarama sonrasi da ayni belirsizlik
     // surer ve her giris yeni bir AWX job'i acardi (sonsuz dongu).
     scanUnknown: cachedPerCluster.some((c) => c.scanUnknown),
+    unreadableSources: unreadable,
     cached: Boolean(inv.cached || cachedPerCluster.some((c) => c.cached)),
     ...freshness,
     source:

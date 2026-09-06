@@ -15,78 +15,134 @@ const cache = require('../ocp-cache.cjs');
 const catalog = require('../ocp-catalog.cjs');
 
 function withSources({ inv = {}, cached = {} }, fn) {
-  const oi = inventory.getNamespaces, oia = inventory.getApps;
-  const oc = cache.getNamespaces, oca = cache.getApps;
-  inventory.getNamespaces = async () => inv.namespaces ?? { items: [], cached: false, fetchedAt: null, stale: false };
-  inventory.getApps = async () => inv.apps ?? { items: [], cached: false, fetchedAt: null, stale: false };
-  cache.getNamespaces = async ({ clusterName }) => (cached.namespaces?.[clusterName]
-    ?? { items: [], cached: false, fetchedAt: null, stale: false });
-  cache.getApps = async ({ clusterName }) => (cached.apps?.[clusterName]
-    ?? { items: [], cached: false, fetchedAt: null, stale: false });
+  const oi = inventory.getNamespaces,
+    oia = inventory.getApps;
+  const oc = cache.getNamespaces,
+    oca = cache.getApps;
+  inventory.getNamespaces = async () =>
+    inv.namespaces ?? { items: [], cached: false, fetchedAt: null, stale: false };
+  inventory.getApps = async () =>
+    inv.apps ?? { items: [], cached: false, fetchedAt: null, stale: false };
+  cache.getNamespaces = async ({ clusterName }) =>
+    cached.namespaces?.[clusterName] ?? { items: [], cached: false, fetchedAt: null, stale: false };
+  cache.getApps = async ({ clusterName }) =>
+    cached.apps?.[clusterName] ?? { items: [], cached: false, fetchedAt: null, stale: false };
   return Promise.resolve(fn()).finally(() => {
-    inventory.getNamespaces = oi; inventory.getApps = oia;
-    cache.getNamespaces = oc; cache.getApps = oca;
+    inventory.getNamespaces = oi;
+    inventory.getApps = oia;
+    cache.getNamespaces = oc;
+    cache.getApps = oca;
   });
 }
 
 const ARGS = { env: 'prod', tenant: 'ark', clusterNames: ['c1', 'c2'] };
 
 test('namespace: iki kaynak BIRLESTIRILIR, envanter kaynak etiketini kazanir', async () => {
-  await withSources({
-    inv: { namespaces: { items: ['ns-inv', 'ns-both'], cached: true, fetchedAt: '2026-08-09T06:00:00Z', stale: false } },
-    cached: {
-      namespaces: {
-        c1: { items: ['ns-both', 'ns-scan'], cached: true, fetchedAt: '2026-08-09T14:32:00Z', stale: false },
+  await withSources(
+    {
+      inv: {
+        namespaces: {
+          items: ['ns-inv', 'ns-both'],
+          cached: true,
+          fetchedAt: '2026-08-09T06:00:00Z',
+          stale: false,
+        },
+      },
+      cached: {
+        namespaces: {
+          c1: {
+            items: ['ns-both', 'ns-scan'],
+            cached: true,
+            fetchedAt: '2026-08-09T14:32:00Z',
+            stale: false,
+          },
+        },
       },
     },
-  }, async () => {
-    const out = await catalog.getNamespaces(ARGS);
-    assert.deepEqual(out.items, ['ns-both', 'ns-inv', 'ns-scan']);
-    assert.equal(out.sources['ns-inv'], 'inventory');
-    assert.equal(out.sources['ns-scan'], 'discovery', 'kullanici taramasi listede GORUNMELI');
-    assert.equal(out.sources['ns-both'], 'inventory', 'iki kaynakta da varsa envanter kazanir');
-    assert.equal(out.source, 'mixed');
-  });
+    async () => {
+      const out = await catalog.getNamespaces(ARGS);
+      assert.deepEqual(out.items, ['ns-both', 'ns-inv', 'ns-scan']);
+      assert.equal(out.sources['ns-inv'], 'inventory');
+      assert.equal(out.sources['ns-scan'], 'discovery', 'kullanici taramasi listede GORUNMELI');
+      assert.equal(out.sources['ns-both'], 'inventory', 'iki kaynakta da varsa envanter kazanir');
+      assert.equal(out.source, 'mixed');
+    },
+  );
 });
 
 test('namespace: envanter BOS olsa bile kullanici taramasi gorunur (kirik dongunun ozu)', async () => {
-  await withSources({
-    inv: { namespaces: { items: [], cached: false, fetchedAt: null, stale: false } },
-    cached: { namespaces: { c2: { items: ['yeni-ns'], cached: true, fetchedAt: '2026-08-09T14:32:00Z', stale: false } } },
-  }, async () => {
-    const out = await catalog.getNamespaces(ARGS);
-    assert.deepEqual(out.items, ['yeni-ns']);
-    assert.equal(out.cached, true, 'liste bos degilse cached=true olmali (aksi halde UI onu yok sayar)');
-    assert.equal(out.sources['yeni-ns'], 'discovery');
-  });
+  await withSources(
+    {
+      inv: { namespaces: { items: [], cached: false, fetchedAt: null, stale: false } },
+      cached: {
+        namespaces: {
+          c2: { items: ['yeni-ns'], cached: true, fetchedAt: '2026-08-09T14:32:00Z', stale: false },
+        },
+      },
+    },
+    async () => {
+      const out = await catalog.getNamespaces(ARGS);
+      assert.deepEqual(out.items, ['yeni-ns']);
+      assert.equal(
+        out.cached,
+        true,
+        'liste bos degilse cached=true olmali (aksi halde UI onu yok sayar)',
+      );
+      assert.equal(out.sources['yeni-ns'], 'discovery');
+    },
+  );
 });
 
 test('tazelik: en YENI zaman damgasi; herhangi biri bayatsa BAYAT', async () => {
-  await withSources({
-    inv: { namespaces: { items: ['a'], cached: true, fetchedAt: '2026-08-09T06:00:00Z', stale: false } },
-    cached: { namespaces: { c1: { items: ['b'], cached: true, fetchedAt: '2026-08-09T14:32:00Z', stale: true } } },
-  }, async () => {
-    const out = await catalog.getNamespaces(ARGS);
-    assert.equal(new Date(out.fetchedAt).toISOString(), '2026-08-09T14:32:00.000Z');
-    assert.equal(out.stale, true, 'bayat kaynak varsa iyimser gosterip kullaniciyi yaniltma');
-  });
+  await withSources(
+    {
+      inv: {
+        namespaces: { items: ['a'], cached: true, fetchedAt: '2026-08-09T06:00:00Z', stale: false },
+      },
+      cached: {
+        namespaces: {
+          c1: { items: ['b'], cached: true, fetchedAt: '2026-08-09T14:32:00Z', stale: true },
+        },
+      },
+    },
+    async () => {
+      const out = await catalog.getNamespaces(ARGS);
+      assert.equal(new Date(out.fetchedAt).toISOString(), '2026-08-09T14:32:00.000Z');
+      assert.equal(out.stale, true, 'bayat kaynak varsa iyimser gosterip kullaniciyi yaniltma');
+    },
+  );
 });
 
 test('uygulama: ONBELLEK kaydi envanterin yalin kaydini EZER (kind/replica tasir)', async () => {
-  await withSources({
-    inv: { apps: { items: [{ kind: 'Unknown', name: 'app1', replicas: null }], cached: true, fetchedAt: null, stale: false } },
-    cached: {
-      apps: {
-        c1: { items: [{ kind: 'Deployment', name: 'app1', replicas: 3 }], cached: true, fetchedAt: null, stale: false },
+  await withSources(
+    {
+      inv: {
+        apps: {
+          items: [{ kind: 'Unknown', name: 'app1', replicas: null }],
+          cached: true,
+          fetchedAt: null,
+          stale: false,
+        },
+      },
+      cached: {
+        apps: {
+          c1: {
+            items: [{ kind: 'Deployment', name: 'app1', replicas: 3 }],
+            cached: true,
+            fetchedAt: null,
+            stale: false,
+          },
+        },
       },
     },
-  }, async () => {
-    const out = await catalog.getApps({ ...ARGS, namespace: 'ns1' });
-    assert.equal(out.items.length, 1);
-    assert.equal(out.items[0].kind, 'Deployment', 'daha zengin kayit kazanmali');
-    assert.equal(out.items[0].replicas, 3);
-    assert.equal(out.sources.app1, 'inventory', 'kaynak etiketi yine envanterdir');
-  });
+    async () => {
+      const out = await catalog.getApps({ ...ARGS, namespace: 'ns1' });
+      assert.equal(out.items.length, 1);
+      assert.equal(out.items[0].kind, 'Deployment', 'daha zengin kayit kazanmali');
+      assert.equal(out.items[0].replicas, 3);
+      assert.equal(out.sources.app1, 'inventory', 'kaynak etiketi yine envanterdir');
+    },
+  );
 });
 
 test('cluster uyeligi: hangi ad hangi cluster(lar)da — onyuz rozeti bunun uzerine kurulur', async () => {
@@ -94,60 +150,81 @@ test('cluster uyeligi: hangi ad hangi cluster(lar)da — onyuz rozeti bunun uzer
   // "Her cluster'da var" ile "yalnizca birinde var" ayrimi bu haritadan gelir; ayrica
   // cluster suzgeci de bunu kullanir. Pod adlari cluster'a gore farkli oldugu icin bu
   // bilgi ozellikle uygulama ekraninda degerli.
-  await withSources({
-    inv: {
-      namespaces: {
-        items: ['ns-her-yerde', 'ns-yalniz-c1'],
-        clusters: { 'ns-her-yerde': ['c1', 'c2'], 'ns-yalniz-c1': ['c1'] },
-        cached: true, fetchedAt: null, stale: false,
+  await withSources(
+    {
+      inv: {
+        namespaces: {
+          items: ['ns-her-yerde', 'ns-yalniz-c1'],
+          clusters: { 'ns-her-yerde': ['c1', 'c2'], 'ns-yalniz-c1': ['c1'] },
+          cached: true,
+          fetchedAt: null,
+          stale: false,
+        },
       },
-    },
-    cached: {
-      namespaces: {
-        c2: { items: ['ns-taramadan-c2'], cached: true, fetchedAt: null, stale: false },
-      },
-    },
-  }, async () => {
-    const out = await catalog.getNamespaces(ARGS);
-    assert.deepEqual(out.clusters['ns-her-yerde'], ['c1', 'c2']);
-    assert.deepEqual(out.clusters['ns-yalniz-c1'], ['c1']);
-    // Onbellek cluster BASINA okunur; kaynak cluster indisle eslesir.
-    assert.deepEqual(out.clusters['ns-taramadan-c2'], ['c2'], 'tarama sonucu kendi cluster\'ina yazilmali');
-  });
-});
-
-test('uygulama cluster uyeligi: envanter + tarama BIRLESIR', async () => {
-  await withSources({
-    inv: {
-      apps: {
-        items: [{ kind: 'Unknown', name: 'app1', replicas: null }],
-        clusters: { app1: ['c1'] },
-        cached: true, fetchedAt: null, stale: false,
-      },
-    },
-    cached: {
-      apps: {
-        c2: {
-          items: [{ kind: 'Deployment', name: 'app1', replicas: 2 },
-                  { kind: 'Pod', name: 'app1-7-abcde', replicas: null }],
-          cached: true, fetchedAt: null, stale: false,
+      cached: {
+        namespaces: {
+          c2: { items: ['ns-taramadan-c2'], cached: true, fetchedAt: null, stale: false },
         },
       },
     },
-  }, async () => {
-    const out = await catalog.getApps({ ...ARGS, namespace: 'ns1' });
-    assert.deepEqual(out.clusters.app1, ['c1', 'c2'], 'iki kaynaktaki cluster\'lar birlesmeli');
-    assert.deepEqual(out.clusters['app1-7-abcde'], ['c2'], 'pod yalnizca kendi cluster\'inda');
-  });
+    async () => {
+      const out = await catalog.getNamespaces(ARGS);
+      assert.deepEqual(out.clusters['ns-her-yerde'], ['c1', 'c2']);
+      assert.deepEqual(out.clusters['ns-yalniz-c1'], ['c1']);
+      // Onbellek cluster BASINA okunur; kaynak cluster indisle eslesir.
+      assert.deepEqual(
+        out.clusters['ns-taramadan-c2'],
+        ['c2'],
+        "tarama sonucu kendi cluster'ina yazilmali",
+      );
+    },
+  );
+});
+
+test('uygulama cluster uyeligi: envanter + tarama BIRLESIR', async () => {
+  await withSources(
+    {
+      inv: {
+        apps: {
+          items: [{ kind: 'Unknown', name: 'app1', replicas: null }],
+          clusters: { app1: ['c1'] },
+          cached: true,
+          fetchedAt: null,
+          stale: false,
+        },
+      },
+      cached: {
+        apps: {
+          c2: {
+            items: [
+              { kind: 'Deployment', name: 'app1', replicas: 2 },
+              { kind: 'Pod', name: 'app1-7-abcde', replicas: null },
+            ],
+            cached: true,
+            fetchedAt: null,
+            stale: false,
+          },
+        },
+      },
+    },
+    async () => {
+      const out = await catalog.getApps({ ...ARGS, namespace: 'ns1' });
+      assert.deepEqual(out.clusters.app1, ['c1', 'c2'], "iki kaynaktaki cluster'lar birlesmeli");
+      assert.deepEqual(out.clusters['app1-7-abcde'], ['c2'], "pod yalnizca kendi cluster'inda");
+    },
+  );
 });
 
 test('bir kaynak PATLARSA digeri yine doner (kesinti buyutulmez)', async () => {
   const oi = inventory.getNamespaces;
   const oc = cache.getNamespaces;
-  inventory.getNamespaces = async () => { throw new Error('envanter DB kapali'); };
-  cache.getNamespaces = async ({ clusterName }) => (clusterName === 'c1'
-    ? { items: ['ns-scan'], cached: true, fetchedAt: null, stale: false }
-    : { items: [], cached: false, fetchedAt: null, stale: false });
+  inventory.getNamespaces = async () => {
+    throw new Error('envanter DB kapali');
+  };
+  cache.getNamespaces = async ({ clusterName }) =>
+    clusterName === 'c1'
+      ? { items: ['ns-scan'], cached: true, fetchedAt: null, stale: false }
+      : { items: [], cached: false, fetchedAt: null, stale: false };
   try {
     const out = await catalog.getNamespaces(ARGS);
     assert.deepEqual(out.items, ['ns-scan']);
@@ -160,7 +237,10 @@ test('bir kaynak PATLARSA digeri yine doner (kesinti buyutulmez)', async () => {
 test('bos cluster listesinde HIC sorgu yapilmaz', async () => {
   const oi = inventory.getNamespaces;
   let called = false;
-  inventory.getNamespaces = async () => { called = true; return { items: [] }; };
+  inventory.getNamespaces = async () => {
+    called = true;
+    return { items: [] };
+  };
   try {
     const out = await catalog.getNamespaces({ env: 'prod', tenant: 'ark', clusterNames: [] });
     assert.deepEqual(out.items, []);
@@ -176,11 +256,91 @@ test('envanter tablosuna YAZAN bir yol YOK (Onur karari)', () => {
   // vermesin diye kelime siniri + ardindan bosluk sarti.
   assert.ok(
     !/\b(INSERT\s+INTO|UPDATE\s+\w|DELETE\s+FROM|MERGE\s+\w)/i.test(src),
-    'katalog birlestiricisi salt-okunur olmali'
+    'katalog birlestiricisi salt-okunur olmali',
   );
   // Tabloya dogrudan erisim yok: yalnizca ocp-inventory.cjs uzerinden okunur.
   // Yorum satirlari haric tutulur — dosya basindaki mimari not tabloyu ADIYLA aniyor.
-  const code = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  const code = src
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('//'))
+    .join('\n');
   assert.ok(!/dbo\.Openshift_Inventory/i.test(code), 'tabloya dogrudan SQL erisimi olmamali');
   assert.ok(/require\('\.\/ocp-inventory\.cjs'\)/.test(code), 'okuma ocp-inventory.cjs uzerinden');
+});
+
+// -- OKUNAMAYAN KAYNAK SESSIZ KALMAZ ---------------------------------------
+//
+// Katalog bir kaynak patladiginda digeriyle devam eder — dayaniklilik boyle
+// olmali. AMA hata yalnizca `console.warn`a gidiyordu: cagiran bos bir liste
+// aliyor, uc `ok: true` donuyor ve ekran "namespace bulunamadi" yaziyordu.
+// OKUNAMAYAN BIR KAYNAK, BOS BIR KAYNAK GIBI GORUNUYORDU.
+function withThrowing({ invThrows = false, cacheThrows = false }, fn) {
+  const oi = inventory.getNamespaces;
+  const oia = inventory.getApps;
+  const oc = cache.getNamespaces;
+  const oca = cache.getApps;
+  const EMPTY = { items: [], cached: false, fetchedAt: null, stale: false };
+  const boom = async () => {
+    throw new Error('MSSQL: connection reset');
+  };
+  inventory.getNamespaces = invThrows
+    ? boom
+    : async () => ({ ...EMPTY, items: ['ns-inv'], counts: { 'ns-inv': 4 } });
+  inventory.getApps = invThrows ? boom : async () => ({ ...EMPTY, items: [{ name: 'app-inv' }] });
+  cache.getNamespaces = cacheThrows ? boom : async () => ({ ...EMPTY, items: ['ns-scan'] });
+  cache.getApps = cacheThrows ? boom : async () => ({ ...EMPTY, items: [{ name: 'app-scan' }] });
+  return Promise.resolve(fn()).finally(() => {
+    inventory.getNamespaces = oi;
+    inventory.getApps = oia;
+    cache.getNamespaces = oc;
+    cache.getApps = oca;
+  });
+}
+
+test('namespace: envanter patlarsa liste ONBELLEKTEN gelir ama EKSIKLIK bildirilir', async () => {
+  await withThrowing({ invThrows: true }, async () => {
+    const out = await catalog.getNamespaces(ARGS);
+    // Dayaniklilik korunur: oteki kaynak yine de doner.
+    assert.deepEqual(out.items, ['ns-scan'], 'onbellek kaynagi da kaybedilmis');
+    // Ve sessizlik biter.
+    assert.deepEqual(out.unreadableSources, ['inventory']);
+  });
+});
+
+test('namespace: onbellek patlarsa envanter doner ve `cache` bildirilir', async () => {
+  await withThrowing({ cacheThrows: true }, async () => {
+    const out = await catalog.getNamespaces(ARGS);
+    assert.deepEqual(out.items, ['ns-inv']);
+    assert.deepEqual(
+      out.unreadableSources,
+      ['cache'],
+      'ayni etiket cluster basina TEKRARLANMAMALI',
+    );
+  });
+});
+
+test('namespace: IKISI de patlarsa liste bos ama "bos" DEMEZ — iki kaynak da bildirilir', async () => {
+  await withThrowing({ invThrows: true, cacheThrows: true }, async () => {
+    const out = await catalog.getNamespaces(ARGS);
+    assert.deepEqual(out.items, []);
+    assert.deepEqual(out.unreadableSources.sort(), ['cache', 'inventory']);
+  });
+});
+
+test('namespace: HICBIRI patlamazsa dizi BOS — "eksik olabilir" uyarisi bosuna cikmaz', async () => {
+  await withThrowing({}, async () => {
+    const out = await catalog.getNamespaces(ARGS);
+    assert.deepEqual(out.unreadableSources, [], 'saglikli okumada uyari uretiliyor');
+  });
+});
+
+test('uygulama listesi de ayni sozlesmeyi tasir', async () => {
+  await withThrowing({ invThrows: true }, async () => {
+    const out = await catalog.getApps({ ...ARGS, namespace: 'ns1' });
+    assert.deepEqual(
+      out.items.map((i) => i.name),
+      ['app-scan'],
+    );
+    assert.deepEqual(out.unreadableSources, ['inventory']);
+  });
 });

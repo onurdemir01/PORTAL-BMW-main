@@ -4,9 +4,13 @@
 // Liste iki kaynaktan gelebilir: paylaşımlı önbellek (anında) veya canlı discovery job'ı.
 // Bileşen kaynağı UMURSAMAZ — düz bir ad listesi alır; tazelik bilgisi `cache` prop'uyla
 // gelir ve rozette gösterilir. Böylece "önce önbellek, istersen tazele" akışı tek yerde kalır.
-import React, { useMemo, useState } from "react";
-import { MagnifyingGlassIcon, ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import CacheBadge from "../../shared/CacheBadge";
+import React, { useMemo, useState } from 'react';
+import {
+  MagnifyingGlassIcon,
+  ExclamationTriangleIcon,
+  ArrowPathIcon,
+} from '@heroicons/react/24/outline';
+import CacheBadge from '../../shared/CacheBadge';
 
 interface Props {
   namespaces: string[];
@@ -27,16 +31,32 @@ interface Props {
   clusterMembership?: Record<string, string[]>;
   /** Seçili cluster adları — çipleri ve "hepsinde var mı" karşılaştırmasını kurar. */
   selectedClusters?: string[];
+  /** OKUNAMAYAN katalog kaynakları ('inventory' / 'cache'). Katalog bir kaynak
+   *  patladığında diğeriyle devam eder — dayanıklılık böyle olmalı — ama liste o
+   *  zaman EKSİK olur ve istek yine `ok: true` döner. Bu alan gelmeseydi ekran
+   *  eksik bir listeyi tam liste gibi gösterirdi. `failedClusters` bunu KARŞILAMAZ:
+   *  o canlı taramanın düşen cluster'larını sayar, katalog DB okumasını değil. */
+  unreadableSources?: string[];
   onRediscover?: () => void;
   busy?: boolean;
   onSelect: (ns: string) => void;
 }
 
 const NamespacePickerStep: React.FC<Props> = ({
-  namespaces, failedClusters = [], failedDetails = [], cache, sources, counts,
-  clusterMembership, selectedClusters = [], onRediscover, busy, onSelect,
+  namespaces,
+  failedClusters = [],
+  failedDetails = [],
+  cache,
+  sources,
+  counts,
+  clusterMembership,
+  selectedClusters = [],
+  unreadableSources = [],
+  onRediscover,
+  busy,
+  onSelect,
 }) => {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [showErrors, setShowErrors] = useState(false);
   // "Yalnızca uygulaması olanlar": boş namespace'ler listeyi şişiriyor ve kullanıcı
   // bunu ancak seçip ~1 dk tarama bekledikten sonra anlıyordu.
@@ -46,24 +66,28 @@ const NamespacePickerStep: React.FC<Props> = ({
 
   // Savunma amaçlı: backend normalize etmiş olsa da, `project.project.openshift.io/<ad>`
   // gibi API-group önekli değerler gelirse son `/`'ten sonrasını al (namespace adı).
-  const cleanNs = (ns: string) => String(ns || "").replace(/^.*\//, "").trim();
+  const cleanNs = (ns: string) =>
+    String(ns || '')
+      .replace(/^.*\//, '')
+      .trim();
 
   // OCP platform/sistem namespace'leri (openshift-*, kube-*, default...) genellikle aranmaz —
   // listede EN SONA sıralanır ki kullanıcının uygulama namespace'leri üste gelsin.
   const isSystemNs = (ns: string) =>
-    /^(openshift|kube)(-|$)/.test(ns) || ["default", "default-broker"].includes(ns);
+    /^(openshift|kube)(-|$)/.test(ns) || ['default', 'default-broker'].includes(ns);
 
   const allNamespaces = useMemo(() => {
     const set = new Set<string>();
     for (const ns of namespaces || []) {
       // Yalnızca metin değerleri: çağıran yanlış şekilli bir sonuç geçirirse
       // "[object Object]" satırları basmak yerine sessizce elenirler.
-      if (typeof ns !== "string") continue;
+      if (typeof ns !== 'string') continue;
       const clean = cleanNs(ns);
       if (clean) set.add(clean);
     }
     return [...set].sort((a, b) => {
-      const sa = isSystemNs(a), sb = isSystemNs(b);
+      const sa = isSystemNs(a),
+        sb = isSystemNs(b);
       if (sa !== sb) return sa ? 1 : -1; // sistem namespace'leri sona
       return a.localeCompare(b);
     });
@@ -90,14 +114,16 @@ const NamespacePickerStep: React.FC<Props> = ({
         aria-expanded={showErrors}
         className="underline underline-offset-2 hover:no-underline"
       >
-        {showErrors ? "Ayrıntıyı gizle" : "Neden? Ayrıntıyı göster"}
+        {showErrors ? 'Ayrıntıyı gizle' : 'Neden? Ayrıntıyı göster'}
       </button>
       {showErrors && (
         <ul className="mt-2 space-y-1.5">
           {failedDetails.map((d) => (
             <li key={d.cluster}>
               <span className="font-mono font-medium">{d.cluster}</span>
-              <pre className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] opacity-80">{d.error}</pre>
+              <pre className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] opacity-80">
+                {d.error}
+              </pre>
             </li>
           ))}
         </ul>
@@ -117,7 +143,7 @@ const NamespacePickerStep: React.FC<Props> = ({
             <div>
               <p className="font-medium">Namespace listesi alınamadı.</p>
               <p className="mt-0.5">
-                Seçilen cluster'ların hiçbirinden liste dönmedi: {failedClusters.join(", ")}.
+                Seçilen cluster'ların hiçbirinden liste dönmedi: {failedClusters.join(', ')}.
               </p>
             </div>
           </div>
@@ -130,7 +156,7 @@ const NamespacePickerStep: React.FC<Props> = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 disabled:pointer-events-none"
           >
             <ArrowPathIcon aria-hidden="true" className="w-4 h-4" />
-            {busy ? "Başlatılıyor…" : "Yeniden tara"}
+            {busy ? 'Başlatılıyor…' : 'Yeniden tara'}
           </button>
         )}
       </div>
@@ -144,27 +170,30 @@ const NamespacePickerStep: React.FC<Props> = ({
           fetchedAt={cache.fetchedAt}
           stale={cache.stale}
           source={cache.source}
-          discoveredCount={Object.values(sources || {}).filter((v) => v === "discovery").length}
+          discoveredCount={Object.values(sources || {}).filter((v) => v === 'discovery').length}
           onRediscover={onRediscover}
           busy={busy}
         />
       )}
       {failedClusters.length > 0 && (
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
-          Bazı cluster'lara erişilemedi: {failedClusters.join(", ")} — aşağıdaki liste EKSİK olabilir.
+          Bazı cluster'lara erişilemedi: {failedClusters.join(', ')} — aşağıdaki liste EKSİK
+          olabilir.
           {errorDetails && <div className="mt-1">{errorDetails}</div>}
         </div>
       )}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-[var(--text-secondary)]">Log çekmek istediğiniz namespace'i seçin</p>
+        <p className="text-xs text-[var(--text-secondary)]">
+          Log çekmek istediğiniz namespace'i seçin
+        </p>
         <div className="flex items-center gap-2">
           {emptyCount > 0 && (
             <button
               onClick={() => setOnlyWithApps((v) => !v)}
               className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
                 onlyWithApps
-                  ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                  : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"
+                  ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                  : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
               }`}
               title={`${emptyCount} namespace'te envanterde uygulama kaydı yok`}
             >
@@ -172,7 +201,9 @@ const NamespacePickerStep: React.FC<Props> = ({
             </button>
           )}
           <span className="text-xs text-[var(--text-muted)]">
-            {search || onlyWithApps || clusterFilter ? `${filtered.length} / ${allNamespaces.length}` : `${allNamespaces.length} namespace`}
+            {search || onlyWithApps || clusterFilter
+              ? `${filtered.length} / ${allNamespaces.length}`
+              : `${allNamespaces.length} namespace`}
           </span>
         </div>
       </div>
@@ -192,15 +223,15 @@ const NamespacePickerStep: React.FC<Props> = ({
           <span className="text-xs text-[var(--text-muted)]">Cluster:</span>
           {[null, ...selectedClusters].map((c) => (
             <button
-              key={c ?? "__all__"}
+              key={c ?? '__all__'}
               onClick={() => setClusterFilter(c)}
               className={`px-2.5 py-1 text-xs rounded-full border transition-colors font-mono ${
                 clusterFilter === c
-                  ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                  : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"
+                  ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                  : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
               }`}
             >
-              {c ?? "Tümü"}
+              {c ?? 'Tümü'}
             </button>
           ))}
         </div>
@@ -208,7 +239,12 @@ const NamespacePickerStep: React.FC<Props> = ({
 
       <div className="max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
         {filtered.length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)] text-center py-6">Sonuç yok.</p>
+          <p className="text-sm text-[var(--text-muted)] text-center py-6">
+            {/* "OKUNAMADI" ile "YOK" ayni ekran degildir. */}
+            {unreadableSources.length > 0 && !search
+              ? 'Namespace kataloğu okunamadı — liste boş görünmesi, gerçekten boş olduğu anlamına gelmez.'
+              : 'Sonuç yok.'}
+          </p>
         ) : (
           filtered.map((ns) => (
             <button
@@ -220,18 +256,24 @@ const NamespacePickerStep: React.FC<Props> = ({
               {counts?.[ns] !== undefined && (
                 <span
                   className={`ml-2 text-[11px] align-middle ${
-                    counts[ns] === 0 ? "text-[var(--text-muted)] italic" : "text-[var(--text-secondary)]"
+                    counts[ns] === 0
+                      ? 'text-[var(--text-muted)] italic'
+                      : 'text-[var(--text-secondary)]'
                   }`}
-                  title={counts[ns] === 0
-                    ? "Envanterde bu namespace için uygulama kaydı yok — boş olabilir."
-                    : "Envanterdeki uygulama sayısı"}
+                  title={
+                    counts[ns] === 0
+                      ? 'Envanterde bu namespace için uygulama kaydı yok — boş olabilir.'
+                      : 'Envanterdeki uygulama sayısı'
+                  }
                 >
-                  {counts[ns] === 0 ? "uygulama kaydı yok" : `${counts[ns]} uygulama`}
+                  {counts[ns] === 0 ? 'uygulama kaydı yok' : `${counts[ns]} uygulama`}
                 </span>
               )}
               {/* Rozet YALNIZCA fark varsa: her cluster'da olan adı rozetlemek listeyi
                   gürültüye boğardı. */}
-              {multiCluster && clusterMembership?.[ns] && clusterMembership[ns].length < selectedClusters.length &&
+              {multiCluster &&
+                clusterMembership?.[ns] &&
+                clusterMembership[ns].length < selectedClusters.length &&
                 clusterMembership[ns].map((c) => (
                   <span
                     key={c}
@@ -241,7 +283,7 @@ const NamespacePickerStep: React.FC<Props> = ({
                     {c}
                   </span>
                 ))}
-              {sources?.[ns] === "discovery" && (
+              {sources?.[ns] === 'discovery' && (
                 <span
                   className="ml-2 px-1.5 py-0.5 rounded-full border border-[var(--border)] text-[10px] font-semibold text-[var(--text-muted)] align-middle"
                   title="Zamanlanmış envanterde henüz yok — bir kullanıcının taramasıyla geldi."

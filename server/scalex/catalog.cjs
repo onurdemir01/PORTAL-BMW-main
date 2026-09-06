@@ -12,7 +12,8 @@ const restrictions = require('../logx/v2/restrictions.cjs');
 // Kisitlama anahtarlari LogX ile AYNI bicimde — tablo PAYLASILIYOR. "Log cekemedigi bir
 // namespace'te replica durdurabiliyor" celiskisi olusamasin diye bilincli.
 const nsKey = (tenant, env, cluster, namespace) => `${tenant}/${env}/${cluster}/${namespace}`;
-const appKey = (tenant, env, cluster, namespace, app) => `${nsKey(tenant, env, cluster, namespace)}/${app}`;
+const appKey = (tenant, env, cluster, namespace, app) =>
+  `${nsKey(tenant, env, cluster, namespace)}/${app}`;
 
 async function getClusterTree() {
   return adminData.getClusterTree();
@@ -50,7 +51,14 @@ async function getNamespaces({ env, tenant, clusterNames, user }) {
     counts: pick(cat.counts),
     sources: pick(cat.sources),
     clusters: pick(cat.clusters),
-    cached: cat.cached, fetchedAt: cat.fetchedAt, stale: cat.stale, source: cat.source,
+    // SUZULMEZ: bu bir namespace ADI degil, KAYNAK adi ('inventory'/'cache').
+    // Yetki suzgecinden gecirilecek bir sey yok; aksine, kisitli bir kullanicinin
+    // da listenin EKSIK OLABILECEGINI bilmesi gerekir.
+    unreadableSources: Array.isArray(cat.unreadableSources) ? cat.unreadableSources : [],
+    cached: cat.cached,
+    fetchedAt: cat.fetchedAt,
+    stale: cat.stale,
+    source: cat.source,
     hiddenCount: items.length - filtered.length,
   };
 }
@@ -78,9 +86,18 @@ async function listApps({ env, tenant, clusterNames, namespace, user }) {
   const cat = await ocpCatalog.getApps({ env, tenant, clusterNames, namespace });
   const items = Array.isArray(cat.items) ? cat.items : [];
   if (!items.length) {
-    return { items: [], clusters: {}, sources: {}, hiddenCount: 0,
-      cached: cat.cached, fetchedAt: cat.fetchedAt, stale: cat.stale,
-      scannedAt: cat.scannedAt, scannedEmpty: cat.scannedEmpty, source: cat.source };
+    return {
+      items: [],
+      clusters: {},
+      sources: {},
+      hiddenCount: 0,
+      cached: cat.cached,
+      fetchedAt: cat.fetchedAt,
+      stale: cat.stale,
+      scannedAt: cat.scannedAt,
+      scannedEmpty: cat.scannedEmpty,
+      source: cat.source,
+    };
   }
 
   const clustersOf = (name) => {
@@ -96,7 +113,8 @@ async function listApps({ env, tenant, clusterNames, namespace, user }) {
   // calistirma aninda her (cluster, uygulama) cifti AYRICA denetlenir
   // (bkz. assertAppsAllowed). Liste daha genis olabilir, kapi asla daha gevsek olamaz.
   const visible = items.filter((it) =>
-    clustersOf(it.name).some((c) => allowed.has(appKey(tenant, env, c, namespace, it.name))));
+    clustersOf(it.name).some((c) => allowed.has(appKey(tenant, env, c, namespace, it.name))),
+  );
 
   const pick = (obj) => {
     if (!obj || typeof obj !== 'object') return {};
@@ -111,8 +129,12 @@ async function listApps({ env, tenant, clusterNames, namespace, user }) {
     // GIZLENEN SAYISI SOYLENIR: soylemeden "uygulama yok" demek yanlis bilgi olurdu
     // (ayni gerekce: getNamespaces).
     hiddenCount: items.length - visible.length,
-    cached: cat.cached, fetchedAt: cat.fetchedAt, stale: cat.stale,
-    scannedAt: cat.scannedAt, scannedEmpty: cat.scannedEmpty, source: cat.source,
+    cached: cat.cached,
+    fetchedAt: cat.fetchedAt,
+    stale: cat.stale,
+    scannedAt: cat.scannedAt,
+    scannedEmpty: cat.scannedEmpty,
+    source: cat.source,
   };
 }
 
@@ -131,7 +153,11 @@ async function assertNamespaceAllowed({ env, tenant, clusters, namespace, user }
 async function assertAppsAllowed({ env, tenant, clusters, namespace, apps, user }) {
   for (const cluster of clusters) {
     for (const app of apps) {
-      await restrictions.assertAllowed('ocp_app', appKey(tenant, env, cluster, namespace, app), user);
+      await restrictions.assertAllowed(
+        'ocp_app',
+        appKey(tenant, env, cluster, namespace, app),
+        user,
+      );
     }
   }
 }
@@ -176,7 +202,12 @@ async function filterStoppedForUser(rows, { env, tenant, user } = {}) {
 
 module.exports = {
   listApps,
-  nsKey, appKey, getClusterTree, getNamespaces,
-  assertNamespaceAllowed, assertAppsAllowed, assertClustersExist,
+  nsKey,
+  appKey,
+  getClusterTree,
+  getNamespaces,
+  assertNamespaceAllowed,
+  assertAppsAllowed,
+  assertClustersExist,
   filterStoppedForUser,
 };

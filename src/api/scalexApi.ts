@@ -26,6 +26,13 @@ export interface ScaleXNamespaceList {
   source: string | null;
   /** Yetki kısıtı yüzünden listeden düşen namespace sayısı. Gizlemek yerine sayısını söylüyoruz. */
   hiddenCount: number;
+  /**
+   * OKUNAMAYAN kaynaklar ('inventory' / 'cache'). Katalog bir kaynak patladığında
+   * diğerinden devam eder — dayanıklılık böyle olmalı — ama liste o zaman EKSİK
+   * olur. Boş dizi "iki kaynak da okundu" demektir; dolu dizi geldiğinde ekran
+   * "bulunamadı" DEMEMELİ, "eksik olabilir" demeli.
+   */
+  unreadableSources?: string[];
 }
 
 /** Keşfin bir workload tipi hakkında bildirdiği sonuç. */

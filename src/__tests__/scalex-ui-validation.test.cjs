@@ -890,6 +890,62 @@ test('L7 satir govdesi TEK yerde (iki render yolu AYRISAMAZ)', () => {
   );
 });
 
+test('N1 namespace sayaci "SAYILMADI" ile "SIFIR"u AYIRIR', () => {
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(
+      __dirname,
+      '..',
+      'components',
+      'scalex',
+      'steps',
+      'NamespaceStep.tsx',
+    ),
+    'utf8',
+  );
+  const code = codeOnly(src);
+  // Sunucu sozlesmesi (ocp-catalog.cjs) acikca soyluyor: onbellekten gelen
+  // namespace'ler icin sayi BILINMEZ, `undefined` kalir ve "0 ile
+  // karistirilmamalidir". Ekran eskiden tanimsiz sayiyi "uygulama kaydi yok"
+  // diye basiyordu — SAYILMAMIS bir namespace icin SIFIR IDDIA EDIYORDU.
+  assert.match(
+    code,
+    /sayı bilinmiyor/,
+    'tanimsiz sayi icin ayri bir cumle yok — ekran "sayilmadi"ya "yok" diyor',
+  );
+  // Ve sifir gercekten sifir oldugunda hala "kayit yok" demeli: uc durum, uc cumle.
+  assert.match(code, /count === 0/, 'sifir ile tanimsiz ayni dala dusuyor');
+});
+
+test('N2 katalog OKUNAMADIGINDA ekran "bulunamadi" DEMEZ', () => {
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(
+      __dirname,
+      '..',
+      'components',
+      'scalex',
+      'steps',
+      'NamespaceStep.tsx',
+    ),
+    'utf8',
+  );
+  const code = codeOnly(src);
+  // Katalog iki kaynaktan okur; biri patlarsa digeriyle devam eder ve `ok: true`
+  // doner. Bos liste o zaman "yok" DEGIL "okunamadi" demektir.
+  assert.match(
+    code,
+    /unreadableSources/,
+    'ekran okunamayan kaynak bilgisini hic tuketmiyor — sessiz eksiklik geri geldi',
+  );
+  // Bos-liste mesaji bu bilgiye GERCEKTEN dallanmali; alani okuyup kullanmamak
+  // bekciyi kandirirdi.
+  const empty = code.slice(code.indexOf('Aramanla eşleşen namespace yok'));
+  assert.match(
+    empty.slice(0, 600),
+    /unreadable\.length > 0/,
+    'bos liste mesaji okunamayan kaynaga gore DEGISMIYOR',
+  );
+});
+
 test('L5 secim cubugu YAPISKAN (uzun listede sayac kaybolmaz)', () => {
   const code = codeOnly(WORKLOAD);
   assert.match(
