@@ -1,17 +1,17 @@
 // server/filex/index.cjs — FileX: Self Servis dosya listeleme (SADECE Legacy).
 //
-// OpsX'in AYNI deseni: kullanıcı uygulama adı + JBoss sürümü + sunucu seçer, bu portal
-// bir AWX job'ı tetikler ve sonucu okur. FileX'in OpsX'ten farkı: hiçbir işlem YAPMAZ
-// (restart/stop/start yok) — yalnızca seçilen uygulamanın .ear dizinindeki (logs HARİÇ)
-// tüm dosyaları `ls -la` bilgisi + sha512sum ile SALT-OKUNUR listeler. Kullanıcılar
-// "paketim geçmiş mi geçmemiş mi" sorusunu kendi repo'larındaki checksum'la
-// karşılaştırarak bize sormadan cevaplayabilsin diye.
+// OpsX'in AYNI deseni: kullanici uygulama adi + JBoss surumu + sunucu secer, bu portal
+// bir AWX job'i tetikler ve sonucu okur. FileX'in OpsX'ten farki: hicbir islem YAPMAZ
+// (restart/stop/start yok) — yalnizca secilen uygulamanin .ear dizinindeki (logs HARIC)
+// tum dosyalari `ls -la` bilgisi + sha512sum ile SALT-OKUNUR listeler. Kullanicilar
+// "paketim gecmis mi gecmemis mi" sorusunu kendi repo'larindaki checksum'la
+// karsilastirarak bize sormadan cevaplayabilsin diye.
 //
-// HANGI AWX SUNUCUSU / TEMPLATE'I: Admin > Playbook Kayıtları ekranından yönetilir
-// (ansible_playbook_registry satırı: filex_list_files). Playbook'un kendisi bu repo'nun
-// DIŞINDA tutulur (middleware_inventory.yml/openshift_inventory.yml ile aynı konvansiyon —
-// AWX'e ayrı bir Ansible projesi olarak yüklenir); sözleşme (extra_vars + filex_result
-// JSON şeması) için o dosyanın başlığına bakılmalı.
+// HANGI AWX SUNUCUSU / TEMPLATE'I: Admin > Playbook Kayitlari ekranindan yonetilir
+// (ansible_playbook_registry satiri: filex_list_files). Playbook'un kendisi bu repo'nun
+// DISINDA tutulur (middleware_inventory.yml/openshift_inventory.yml ile ayni konvansiyon —
+// AWX'e ayri bir Ansible projesi olarak yuklenir); sozlesme (extra_vars + filex_result
+// JSON semasi) icin o dosyanin basligina bakilmali.
 'use strict';
 
 const REGISTRY_KEY = 'filex_list_files';
@@ -24,9 +24,12 @@ async function resolveTarget() {
   }
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   const envServer = Number(String(process.env.FILEX_AWX_SERVER_ID || '').trim());
-  const serverId = row.awxServerId != null
-    ? Number(row.awxServerId)
-    : (Number.isInteger(envServer) && envServer >= 0 ? envServer : 0);
+  const serverId =
+    row.awxServerId != null
+      ? Number(row.awxServerId)
+      : Number.isInteger(envServer) && envServer >= 0
+        ? envServer
+        : 0;
   return { templateId: templateId || null, serverId };
 }
 
@@ -43,9 +46,14 @@ async function resolveTarget() {
 function extractFilexResult(rawArtifacts) {
   const artifacts = rawArtifacts || {};
   const { parseFilexResult } = require('./filex-parse.cjs');
-  if (artifacts.filex_result && typeof artifacts.filex_result === 'object') return parseFilexResult(artifacts.filex_result);
-  if (artifacts.data?.filex_result && typeof artifacts.data.filex_result === 'object') return parseFilexResult(artifacts.data.filex_result);
-  if (artifacts.ansible_stats?.data?.filex_result && typeof artifacts.ansible_stats.data.filex_result === 'object') {
+  if (artifacts.filex_result && typeof artifacts.filex_result === 'object')
+    return parseFilexResult(artifacts.filex_result);
+  if (artifacts.data?.filex_result && typeof artifacts.data.filex_result === 'object')
+    return parseFilexResult(artifacts.data.filex_result);
+  if (
+    artifacts.ansible_stats?.data?.filex_result &&
+    typeof artifacts.ansible_stats.data.filex_result === 'object'
+  ) {
     return parseFilexResult(artifacts.ansible_stats.data.filex_result);
   }
   return null;
@@ -54,16 +62,21 @@ function extractFilexResult(rawArtifacts) {
 function initFileX(app) {
   const express = require('express');
 
-  let requireAuth = (req, res, next) => res.status(401).json({ ok: false, message: 'Auth modülü yok.' });
+  let requireAuth = (req, res, next) =>
+    res.status(401).json({ ok: false, message: 'Auth modülü yok.' });
   try {
     const authMod = require('../auth/index.cjs');
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
-  } catch { /* auth modulu yoksa deny kalir */ }
+  } catch {
+    /* auth modulu yoksa deny kalir */
+  }
 
   try {
     const { requireVisiblePrefix } = require('../auth/visibility.cjs');
     app.use('/api/filex', requireVisiblePrefix('FileX'));
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // GET /api/filex/apps?search= — OpsX/LogX ile AYNI kaynak.
   app.get('/api/filex/apps', requireAuth, async (req, res) => {
@@ -76,7 +89,7 @@ function initFileX(app) {
     }
   });
 
-  // GET /api/filex/hosts?app= — OpsX'in hostsForApp'ini AYNEN kullanır (kod tekrarı yok).
+  // GET /api/filex/hosts?app= — OpsX'in hostsForApp'ini AYNEN kullanir (kod tekrari yok).
   app.get('/api/filex/hosts', requireAuth, async (req, res) => {
     try {
       const { hostsForApp } = require('../opsx/index.cjs');
@@ -95,9 +108,10 @@ function initFileX(app) {
     if (!templateId) {
       return res.status(501).json({
         ok: false,
-        message: `FileX için AWX job template'i henüz tanımlanmadı. Yönetici, Admin > `
-               + `Playbook Kayıtları ekranında "${REGISTRY_KEY}" satırının Template ID `
-               + `alanını doldurmalı.`,
+        message:
+          `FileX için AWX job template'i henüz tanımlanmadı. Yönetici, Admin > ` +
+          `Playbook Kayıtları ekranında "${REGISTRY_KEY}" satırının Template ID ` +
+          `alanını doldurmalı.`,
       });
     }
 
@@ -116,7 +130,13 @@ function initFileX(app) {
     } catch (err) {
       return res.status(err.status || 500).json({ ok: false, message: err.message });
     }
-    const requested = hosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean);
+    const requested = hosts
+      .map((h) =>
+        String(h || '')
+          .trim()
+          .toUpperCase(),
+      )
+      .filter(Boolean);
     const notMine = requested.filter((h) => !allowed.has(h));
     if (notMine.length) {
       return res.status(400).json({
@@ -129,7 +149,13 @@ function initFileX(app) {
 
     try {
       const runner = require('../ansible/runner.cjs');
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
+      const result = await runner.launchJobOnServer(
+        serverId,
+        templateId,
+        extraVars,
+        '',
+        req.session?.user,
+      );
 
       try {
         const db = require('../db/index.cjs');
@@ -137,10 +163,13 @@ function initFileX(app) {
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
             req.session?.user?.username || 'unknown',
-            serverId, templateId, 'FileX: dosya listeleme',
-            result?.jobId, result?.status || 'pending',
+            serverId,
+            templateId,
+            'FileX: dosya listeleme',
+            result?.jobId,
+            result?.status || 'pending',
             JSON.stringify(extraVars),
-          ]
+          ],
         );
       } catch (e) {
         console.warn('[FileX] Gecmis kaydedilemedi:', e.message);
@@ -150,16 +179,25 @@ function initFileX(app) {
         require('../audit/index.cjs').auditPortal(req, 'filex_list_files', {
           detail: JSON.stringify({ extraVars, jobId: result?.jobId ?? null }),
         });
-      } catch { /* denetim kaydi best-effort */ }
+      } catch {
+        /* denetim kaydi best-effort */
+      }
 
-      console.log(`[FileX] ${req.session?.user?.username} -> app=${extraVars.app_name} hosts=${extraVars.target_hosts} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
-      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
+      console.log(
+        `[FileX] ${req.session?.user?.username} -> app=${extraVars.app_name} hosts=${extraVars.target_hosts} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+      );
+      res.json({
+        ok: true,
+        jobId: result?.jobId ?? null,
+        status: result?.status ?? null,
+        awxServerId: serverId,
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
   });
 
-  // GET /api/filex/job-status/:serverId/:jobId — canlı durum + (bitince) yapılandırılmış sonuç.
+  // GET /api/filex/job-status/:serverId/:jobId — canli durum + (bitince) yapilandirilmis sonuc.
   app.get('/api/filex/job-status/:serverId/:jobId', requireAuth, async (req, res) => {
     const serverId = Number(req.params.serverId);
     const jobId = Number(req.params.jobId);
@@ -174,13 +212,19 @@ function initFileX(app) {
       if (reqUser.role !== 'Admin') {
         const { rows } = await db.query(
           `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, serverId]
+          [jobId, serverId],
         );
-        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+        if (
+          rows.length &&
+          rows[0].username &&
+          String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
+        ) {
           return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
         }
       }
-    } catch { /* DB hiccup -> fail-open */ }
+    } catch {
+      /* DB hiccup -> fail-open */
+    }
 
     try {
       const runner = require('../ansible/runner.cjs');

@@ -4,7 +4,7 @@
 // Admin > Sistem ekranindan girilip DB'ye (portal_env_overrides, AES-256-GCM) yazilir ve
 // boot'ta process.env'e uygulanir. .env ile elle vermek de calisir.
 //
-// Smart'tan AYRI bir sistem: farkli host, farkli protokol (duz GET, gövdesiz), kimlik
+// Smart'tan AYRI bir sistem: farkli host, farkli protokol (duz GET, govdesiz), kimlik
 // dogrulamasi YOK. Bu yuzden server/smart/* icine karistirilmadi - Smart'in isConfigured()
 // kontrolu OCO'yu kapsamaz, kapsamamali.
 'use strict';
@@ -15,8 +15,9 @@ function getConfig() {
     // Ortama gore host degisebilecegi icin taban adres ayarlanabilir birakildi.
     baseUrl: (process.env.OCO_API_URL || 'https://servicerepository').replace(/\/+$/, ''),
     // Path ve sorgu parametresi ayri tutulur ki uc degisirse kod degil ayar guncellensin.
-    changeOrderPath: process.env.OCO_CHANGE_ORDER_PATH
-      || '/ChangeManagement/ChangeManagementServiceRepository.svc/Change/getChangeOrderByWfInstanceId/',
+    changeOrderPath:
+      process.env.OCO_CHANGE_ORDER_PATH ||
+      '/ChangeManagement/ChangeManagementServiceRepository.svc/Change/getChangeOrderByWfInstanceId/',
     // Opsiyonel, OCO'ya OZEL proxy (global HTTPS_PROXY'den bilerek bagimsiz - Smart'ta
     // da ayni tercih yapildi: admin tek bir entegrasyonu proxy'lemek isteyebiliyor).
     proxyUrl: (process.env.OCO_PROXY_URL || '').trim(),

@@ -57,7 +57,9 @@ test('filtre ACIKSA yalnizca eslesen satirlar kalir ve KIRPILIR', () => {
 test('HICBIR satir eslesmezse bu DURUM RAPORLANIR (sessiz kalmaz)', () => {
   // Cagiran taraf `matchedLines === 0 && totalLines > 0` durumunu uyari olarak
   // loglar — "log gozukmuyor" sikayetinin ilk bakilacak yeri budur.
-  const r = applyOutputFilter(STDOUT, { outputFilter: { enabled: true, contains: 'BOYLE_BIR_SEY_YOK' } });
+  const r = applyOutputFilter(STDOUT, {
+    outputFilter: { enabled: true, contains: 'BOYLE_BIR_SEY_YOK' },
+  });
   assert.equal(r.filtered, true);
   assert.equal(r.output, '');
   assert.equal(r.totalLines, 5);
@@ -65,7 +67,7 @@ test('HICBIR satir eslesmezse bu DURUM RAPORLANIR (sessiz kalmaz)', () => {
 });
 
 test('stdout null/undefined ise BOS METIN doner, undefined DEGIL', () => {
-  // Istemci `data.output` bekliyor; `undefined` gondermek "Çıktı yok." yerine
+  // Istemci `data.output` bekliyor; `undefined` gondermek "Cikti yok." yerine
   // bozuk bir gorunum uretirdi.
   for (const v of [null, undefined, 0, false]) {
     assert.equal(applyOutputFilter(v, undefined).output, '');
@@ -74,7 +76,10 @@ test('stdout null/undefined ise BOS METIN doner, undefined DEGIL', () => {
 
 test('cok satirli eslesme sirasi KORUNUR', () => {
   const r = applyOutputFilter(STDOUT, { outputFilter: { enabled: true, contains: 'PLAY' } });
-  assert.deepEqual(r.output.split('\n'), ['PLAY [deploy] ******************', 'PLAY RECAP *********************']);
+  assert.deepEqual(r.output.split('\n'), [
+    'PLAY [deploy] ******************',
+    'PLAY RECAP *********************',
+  ]);
 });
 
 test('CRLF kalintisi eslesmeyi bozmaz', () => {

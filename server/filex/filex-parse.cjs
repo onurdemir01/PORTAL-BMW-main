@@ -1,17 +1,17 @@
-// server/filex/filex-parse.cjs — filex_list_files.yml'in HAM metin çıktısını (meta_raw +
-// sha_raw) yapılandırılmış dosya listesine çevirir.
+// server/filex/filex-parse.cjs — filex_list_files.yml'in HAM metin ciktisini (meta_raw +
+// sha_raw) yapilandirilmis dosya listesine cevirir.
 //
-// NEDEN PORTALDA: playbook v1'de her dosya için ayrı bir `ansible.builtin.stat` çağrısı
-// yapıyordu (dosya başına SSH round-trip) — kalabalık .ear dizinlerinde kullanılamayacak
-// kadar yavaştı. v2, host başına TEK `find -printf` + TEK `find -exec sha512sum {} +`
-// çalıştırır ve ham metni olduğu gibi artifact'e koyar; ayrıştırma burada, portalda yapılır.
-// Bu, LogX'in OCP obje keşfinde (server/logx/v2/ocp-app-parse.cjs) zaten kullanılan AYNI
-// desendir — büyük fan-out'ta Ansible/Jinja tarafında JSON üretmek pahalıdır.
+// NEDEN PORTALDA: playbook v1'de her dosya icin ayri bir `ansible.builtin.stat` cagrisi
+// yapiyordu (dosya basina SSH round-trip) — kalabalik .ear dizinlerinde kullanilamayacak
+// kadar yavasti. v2, host basina TEK `find -printf` + TEK `find -exec sha512sum {} +`
+// calistirir ve ham metni oldugu gibi artifact'e koyar; ayristirma burada, portalda yapilir.
+// Bu, LogX'in OCP obje kesfinde (server/logx/v2/ocp-app-parse.cjs) zaten kullanilan AYNI
+// desendir — buyuk fan-out'ta Ansible/Jinja tarafinda JSON uretmek pahalidir.
 'use strict';
 
-// GNU find `-printf '%m|%u|%g|%s|%T@|%p\n'` çıktısı: mod|sahip|grup|boyut|mtime|yol.
-// Yol SON alan ve içinde '|' geçebilir (nadir ama mümkün) — bu yüzden ilk 5 '|' ile
-// bölünür, kalan her şey yol olarak alınır.
+// GNU find `-printf '%m|%u|%g|%s|%T@|%p\n'` ciktisi: mod|sahip|grup|boyut|mtime|yol.
+// Yol SON alan ve icinde '|' gecebilir (nadir ama mumkun) — bu yuzden ilk 5 '|' ile
+// bolunur, kalan her sey yol olarak alinir.
 function parseMetaLine(line) {
   const parts = line.split('|');
   if (parts.length < 6) return null;
@@ -22,7 +22,7 @@ function parseMetaLine(line) {
   if (!path || !Number.isFinite(size) || !Number.isFinite(mtime)) return null;
   return {
     path,
-    // GNU find'in %m'i onde sifir olmadan doner (ör. "644") — stat modulunun "0644" tarzi
+    // GNU find'in %m'i onde sifir olmadan doner (or. "644") — stat modulunun "0644" tarzi
     // ciktisiyla gorsel tutarlilik icin 4 haneye tamamlanir.
     mode: mode.length < 4 ? mode.padStart(4, '0') : mode,
     owner,
@@ -33,7 +33,7 @@ function parseMetaLine(line) {
 }
 
 // sha512sum ciktisi: "<128-hex-hash> <mod-karakteri><yol>" — mod karakteri metin modunda
-// bosluk, ikili modda '*'. Toplamda hash ile yol arasinda İKİ karakter (bosluk + mod) var.
+// bosluk, ikili modda '*'. Toplamda hash ile yol arasinda IKI karakter (bosluk + mod) var.
 const SHA_LINE = /^([0-9a-f]{128}) [ *](.+)$/;
 
 function parseShaLine(line) {

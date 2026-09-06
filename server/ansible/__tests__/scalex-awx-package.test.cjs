@@ -88,8 +88,8 @@ test("S3 portalin SKALER anahtarlarinin hepsi survey'de (elle calistirma bozulma
   const YAPISAL = new Set([
     'scalex_clusters_override',
     'scalex_target_clusters',
-    // Cluster başına workload-kind haritası (dict); AWX survey skaler alır,
-    // bu anahtar "Prompt on launch > Variables" ile API gövdesinden gelir.
+    // Cluster basina workload-kind haritasi (dict); AWX survey skaler alir,
+    // bu anahtar "Prompt on launch > Variables" ile API govdesinden gelir.
     'cluster_workload_kinds',
   ]);
   const vars = new Set(survey('scalex_run.survey.json').spec.map((q) => q.variable));

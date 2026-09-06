@@ -75,9 +75,12 @@ async function resolveByKey(keyName) {
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   // Satirda awx_server_id yoksa OPSX_AWX_SERVER_ID, o da yoksa 0 (ilk/varsayilan sunucu).
   const envServer = Number(String(process.env.OPSX_AWX_SERVER_ID || '').trim());
-  const serverId = row.awxServerId != null
-    ? Number(row.awxServerId)
-    : (Number.isInteger(envServer) && envServer >= 0 ? envServer : 0);
+  const serverId =
+    row.awxServerId != null
+      ? Number(row.awxServerId)
+      : Number.isInteger(envServer) && envServer >= 0
+        ? envServer
+        : 0;
   return { templateId: templateId || null, serverId, keyName };
 }
 
@@ -88,7 +91,7 @@ async function resolveTarget(platform) {
 // Secilen uygulamanin bulundugu sunucular. LogX'in resolveHostsForApp'i ile ayni
 // tabloyu okur ama OpsX'in kendi ihtiyaci farkli: burada env, jboss_version VE status
 // bilgisi de dondurulur (kullanici hangi ortamdaki/versiyondaki sunucuyu sectigini
-// gormeli — ayni uygulamanin host'lari FARKLI JBoss majör surumlerinde olabiliyor;
+// gormeli — ayni uygulamanin host'lari FARKLI JBoss major surumlerinde olabiliyor;
 // status ise canli bir Ansible sorgusuyla DEGIL, dogrudan envanterden (MWAppsInventory.status,
 // "running"/"stopped"/"partial" — partial: coklu-JVM'li bir uygulamanin bazi server-config'leri
 // calisirken bazilari durmus, bkz. java_app_ops/operations/tasks/main.yml) okunur — daha once
@@ -106,7 +109,7 @@ async function hostsForApp(app) {
   const req = pool.request();
   req.input('app', appName);
   const result = await req.query(
-    `SELECT DISTINCT UPPER(host) AS host, env, jboss_version, status FROM ${getAppsTable()} WHERE app = @app ORDER BY host`
+    `SELECT DISTINCT UPPER(host) AS host, env, jboss_version, status FROM ${getAppsTable()} WHERE app = @app ORDER BY host`,
   );
   return result.recordset
     .filter((r) => r.host)
@@ -114,7 +117,9 @@ async function hostsForApp(app) {
       host: String(r.host).trim(),
       env: String(r.env || '').trim(),
       jbossVersion: String(r.jboss_version || '').trim(),
-      status: String(r.status || '').trim().toLowerCase(),
+      status: String(r.status || '')
+        .trim()
+        .toLowerCase(),
     }));
 }
 
@@ -143,7 +148,7 @@ function deriveJbossVersion(appHosts, requestedHosts, claimedMajors) {
 
   const availableInSelection = new Set();
   for (const h of requestedHosts) {
-    for (const m of (majorsByHost.get(h) || [])) availableInSelection.add(m);
+    for (const m of majorsByHost.get(h) || []) availableInSelection.add(m);
   }
 
   const claimed = Array.isArray(claimedMajors)
@@ -158,8 +163,10 @@ function deriveJbossVersion(appHosts, requestedHosts, claimedMajors) {
     const bogus = claimed.filter((m) => !availableInSelection.has(m));
     if (bogus.length) {
       throw Object.assign(
-        new Error(`Seçilen sunucularda bulunmayan JBoss sürümü: ${bogus.map((m) => `JBoss ${m}`).join(', ')}`),
-        { status: 400 }
+        new Error(
+          `Seçilen sunucularda bulunmayan JBoss sürümü: ${bogus.map((m) => `JBoss ${m}`).join(', ')}`,
+        ),
+        { status: 400 },
       );
     }
     jbossMajors = new Set(claimed);
@@ -179,7 +186,7 @@ function deriveJbossVersion(appHosts, requestedHosts, claimedMajors) {
   return null;
 }
 
-// Legacy sunucu listesini anti-TOCTOU ile dogrular ve islemin gidecegi JBoss majör
+// Legacy sunucu listesini anti-TOCTOU ile dogrular ve islemin gidecegi JBoss major
 // surumunu belirler. Hem POST /api/opsx/run (restart/stop/start) hem POST
 // /api/opsx/dump/legacy hem de JVM/server-config kesifleri tarafindan kullanilir —
 // hepsi AYNI dogrulama/turetme kurallarina tabi olmali.
@@ -204,10 +211,19 @@ async function resolveLegacyTargets(application, hosts, hostMajors) {
   }
   const appHosts = await hostsForApp(application);
   const allowed = new Set(appHosts.map((h) => h.host.toUpperCase()));
-  const requested = hosts.map((h) => String(h || '').trim().toUpperCase()).filter(Boolean);
+  const requested = hosts
+    .map((h) =>
+      String(h || '')
+        .trim()
+        .toUpperCase(),
+    )
+    .filter(Boolean);
   const notMine = requested.filter((h) => !allowed.has(h));
   if (notMine.length) {
-    throw Object.assign(new Error(`Bu sunucular seçilen uygulamaya ait değil: ${notMine.join(', ')}`), { status: 400 });
+    throw Object.assign(
+      new Error(`Bu sunucular seçilen uygulamaya ait değil: ${notMine.join(', ')}`),
+      { status: 400 },
+    );
   }
 
   return { requested, jbossVersion: deriveJbossVersion(appHosts, requested, hostMajors) };
@@ -229,11 +245,15 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user) {
   } catch (err) {
     throw Object.assign(new Error(`Cluster kataloğu okunamadı: ${err.message}`), { status: 503 });
   }
-  if (!tree[envKey]) throw Object.assign(new Error(`Ortam tanımlı değil: ${envKey}`), { status: 400 });
+  if (!tree[envKey])
+    throw Object.assign(new Error(`Ortam tanımlı değil: ${envKey}`), { status: 400 });
   const clusterNames = tree[envKey][tenantKey];
-  if (!clusterNames) throw Object.assign(new Error(`Cluster tanımlı değil: ${tenantKey}`), { status: 400 });
+  if (!clusterNames)
+    throw Object.assign(new Error(`Cluster tanımlı değil: ${tenantKey}`), { status: 400 });
   if (!Array.isArray(pairs) || pairs.length === 0) {
-    throw Object.assign(new Error('En az bir namespace/uygulama çifti eklenmeli.'), { status: 400 });
+    throw Object.assign(new Error('En az bir namespace/uygulama çifti eklenmeli.'), {
+      status: 400,
+    });
   }
   const cleanPairs = [];
   const restrictions = require('../logx/v2/restrictions.cjs');
@@ -241,10 +261,14 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user) {
     const ns = String(p?.namespace || '').trim();
     const appN = String(p?.application || '').trim();
     if (!ns || !appN) {
-      throw Object.assign(new Error('Her satırda namespace ve uygulama adı dolu olmalı.'), { status: 400 });
+      throw Object.assign(new Error('Her satırda namespace ve uygulama adı dolu olmalı.'), {
+        status: 400,
+      });
     }
     if (ns.includes(',') || ns.includes(';') || appN.includes(',') || appN.includes(';')) {
-      throw Object.assign(new Error('Namespace/uygulama adı "," veya ";" içeremez.'), { status: 400 });
+      throw Object.assign(new Error('Namespace/uygulama adı "," veya ";" içeremez.'), {
+        status: 400,
+      });
     }
     // YETKI KONTROLU: bu tenant/env grubundaki HERHANGI bir gercek cluster icin bu
     // namespace acikca kisitlanmissa (LogX v2 > Erisim Kisitlamalari) tum istek
@@ -252,11 +276,15 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user) {
     // indirme) bile daha riskli olurdu. fail-safe: tek bir kisitlama tum grubu kapatir.
     for (const clusterName of clusterNames) {
       const resourceKey = `${tenantKey}/${envKey}/${clusterName}/${ns}`;
-      const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, user).catch(() => false);
+      const allowed = await restrictions
+        .isAllowed('ocp_namespace', resourceKey, user)
+        .catch(() => false);
       if (!allowed) {
         throw Object.assign(
-          new Error(`"${ns}" namespace'i için erişim yetkiniz yok — ekibiniz bu kaynağı kısıtlamış olabilir.`),
-          { status: 403 }
+          new Error(
+            `"${ns}" namespace'i için erişim yetkiniz yok — ekibiniz bu kaynağı kısıtlamış olabilir.`,
+          ),
+          { status: 403 },
         );
       }
     }
@@ -280,12 +308,14 @@ async function resolveOcpClusterFanout(envKey, tenantKey, clusterNames) {
     throw Object.assign(
       new Error(
         `Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${missing.join(', ')} — ` +
-        `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`
+          `Admin > LogX Yapılandırma ekranından cluster satırına Jump Server girin.`,
       ),
-      { status: 400 }
+      { status: 400 },
     );
   }
-  const meta = await adminData.resolveClusterMeta(envKey, tenantKey, clusterNames).catch(() => ({}));
+  const meta = await adminData
+    .resolveClusterMeta(envKey, tenantKey, clusterNames)
+    .catch(() => ({}));
   return buildOcpExtraVars({ env: envKey, tenant: tenantKey, clusters: clusterNames, hosts, meta });
 }
 
@@ -374,10 +404,14 @@ async function appsForNamespace(env, tenant, namespace, user) {
   // (fail-safe — ayni gerekce yukarida).
   for (const clusterName of clusterNames) {
     const resourceKey = `${tenant}/${env}/${clusterName}/${ns}`;
-    const allowed = await restrictions.isAllowed('ocp_namespace', resourceKey, user).catch(() => false);
+    const allowed = await restrictions
+      .isAllowed('ocp_namespace', resourceKey, user)
+      .catch(() => false);
     if (!allowed) return [];
   }
-  const out = await ocpInventory.getApps({ clusterNames, namespace: ns }).catch(() => ({ items: [] }));
+  const out = await ocpInventory
+    .getApps({ clusterNames, namespace: ns })
+    .catch(() => ({ items: [] }));
   return [...new Set((out.items || []).map((i) => i.name))].sort();
 }
 
@@ -386,11 +420,14 @@ function initOpsX(app) {
 
   // Paylasilan auth guard'i (LogX v2 ile ayni desen). Auth modulu yuklenemezse
   // fallback KAPALI (deny) — guvenli varsayilan.
-  let requireAuth = (req, res, next) => res.status(401).json({ ok: false, message: 'Auth modülü yok.' });
+  let requireAuth = (req, res, next) =>
+    res.status(401).json({ ok: false, message: 'Auth modülü yok.' });
   try {
     const authMod = require('../auth/index.cjs');
     if (typeof authMod.requireAuth === 'function') requireAuth = authMod.requireAuth;
-  } catch { /* auth modulu yoksa deny kalir */ }
+  } catch {
+    /* auth modulu yoksa deny kalir */
+  }
 
   // OpsX sayfasi kullaniciya kapaliysa GERCEK 403 (kozmetik degil): sayfa gizlense de
   // API'ler aciktir ve URL'i bilen biri dogrudan cagirabilirdi. LogX v2 ile ayni desen
@@ -398,7 +435,9 @@ function initOpsX(app) {
   try {
     const { requireVisiblePrefix } = require('../auth/visibility.cjs');
     app.use('/api/opsx', requireVisiblePrefix('OpsX'));
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // GET /api/opsx/apps?search= — LogX ile AYNI kaynak (uygulama envanteri + snapshot
   // fallback). Kod tekrarlamak yerine legacy modulunun searchApps'i kullanilir.
@@ -443,7 +482,8 @@ function initOpsX(app) {
     try {
       const env = String(req.query.env || '').trim();
       const tenant = String(req.query.tenant || '').trim();
-      if (!env || !tenant) return res.status(400).json({ ok: false, message: 'env ve tenant gerekli.' });
+      if (!env || !tenant)
+        return res.status(400).json({ ok: false, message: 'env ve tenant gerekli.' });
       const user = req.session?.user || {};
       const namespaces = await namespacesForCluster(env, tenant, user);
       res.json({ ok: true, namespaces });
@@ -506,13 +546,19 @@ function initOpsX(app) {
       if (reqUser.role !== 'Admin') {
         const { rows } = await db.query(
           `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, serverId]
+          [jobId, serverId],
         );
-        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+        if (
+          rows.length &&
+          rows[0].username &&
+          String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
+        ) {
           return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
         }
       }
-    } catch { /* DB hiccup -> fail-open */ }
+    } catch {
+      /* DB hiccup -> fail-open */
+    }
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -559,12 +605,24 @@ function initOpsX(app) {
   //   adi kuruluyordu) — bu KANITLI calisan bir mekanizma (AWX limit'in aksine extra_vars
   //   sessizce yutulmuyor). O sablonlamayi TEK bir gercek cluster adina (target_cluster)
   //   yonlendirerek ayni yontemle GERCEK kisitlama saglanir. Kullanici oc_cluster/
-  //   oc_environment SECTIKTEN SONRA o gruptaki HANGI gercek cluster'in (ör. gbocptest1/
-  //   gbocptest2/gbocptest4) hedefleneceğini SEÇEBİLİR — YA DA "Tüm cluster'lar"ı seçip
-  //   grubun tamamını hedefleyebilir (bu durumda target_cluster HİÇ gönderilmez, playbook
-  //   eski/kanıtlı grup-tabanlı `hosts:`e döner). Bkz. OcpClusterPickStep.tsx.
+  //   oc_environment SECTIKTEN SONRA o gruptaki HANGI gercek cluster'in (or. gbocptest1/
+  //   gbocptest2/gbocptest4) hedeflenecegini SECEBILIR — YA DA "Tum cluster'lar"i secip
+  //   grubun tamamini hedefleyebilir (bu durumda target_cluster HIC gonderilmez, playbook
+  //   eski/kanitli grup-tabanli `hosts:`e doner). Bkz. OcpClusterPickStep.tsx.
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
-    const { platform, application, hosts, hostMajors, operation, env, tenant, pairs, ocOperation, cluster, serverConfigMap } = req.body || {};
+    const {
+      platform,
+      application,
+      hosts,
+      hostMajors,
+      operation,
+      env,
+      tenant,
+      pairs,
+      ocOperation,
+      cluster,
+      serverConfigMap,
+    } = req.body || {};
 
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
 
@@ -572,9 +630,10 @@ function initOpsX(app) {
     if (!templateId) {
       return res.status(501).json({
         ok: false,
-        message: `OpsX ${plat} işlemleri için AWX job template'i henüz tanımlanmadı. `
-               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
-               + `Template ID alanını doldurmalı.`,
+        message:
+          `OpsX ${plat} işlemleri için AWX job template'i henüz tanımlanmadı. ` +
+          `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının ` +
+          `Template ID alanını doldurmalı.`,
       });
     }
 
@@ -582,11 +641,13 @@ function initOpsX(app) {
     const cfg = (await opsxConfig.getConfig())[plat];
     const { vars: staticVars, rejected: badLines } = opsxConfig.parseExtraVarLines(cfg.extraVars);
     if (badLines.length) {
-      console.warn(`[OpsX] yapilandirilmis ek degiskenlerde gecersiz satir(lar) atlandi: ${badLines.join(' | ')}`);
+      console.warn(
+        `[OpsX] yapilandirilmis ek degiskenlerde gecersiz satir(lar) atlandi: ${badLines.join(' | ')}`,
+      );
     }
 
     let extraVars;
-    let limitValue = '';   // yalniz Legacy'de dolu — AWX'in --limit alani
+    let limitValue = ''; // yalniz Legacy'de dolu — AWX'in --limit alani
     let logSummary;
 
     if (plat === 'legacy') {
@@ -605,7 +666,7 @@ function initOpsX(app) {
       // AWX'in --limit alani PLAYBOOK GENELINDE gecerlidir — sadece ana islem play'ini
       // degil, java_app_ops.yml'in sonundaki "DB Ops" play'ini de (hosts: GBLABT02, is
       // calistirmasini denetim icin DB'ye kaydeder) kisitlar. limit sadece secilen hedef
-      // sunucularla sinirlanirsa (ör. "GBCJAP01,GBCJAP03") GBLABT02 bu kumede olmadigi
+      // sunucularla sinirlanirsa (or. "GBCJAP01,GBCJAP03") GBLABT02 bu kumede olmadigi
       // icin o play "skipping: no hosts matched" ile sessizce atlanir — is'in kendisi
       // BASARILI olur ama denetim kaydi hic yazilmaz. Bu yuzden GBLABT02 HER ZAMAN limit'e
       // eklenir (zaten hedeflerden biriyse tekrar eklenmez).
@@ -620,15 +681,26 @@ function initOpsX(app) {
       // dogrulamasi zaten var), o yuzden serverConfigMap SADECE restart/stop/start icin zorunlu.
       let cleanServerConfigMap;
       if (['restart', 'stop', 'start'].includes(operation)) {
-        if (!serverConfigMap || typeof serverConfigMap !== 'object' || Array.isArray(serverConfigMap) || Object.keys(serverConfigMap).length === 0) {
-          return res.status(400).json({ ok: false, message: 'En az bir JVM (host + server-config) seçilmeli.' });
+        if (
+          !serverConfigMap ||
+          typeof serverConfigMap !== 'object' ||
+          Array.isArray(serverConfigMap) ||
+          Object.keys(serverConfigMap).length === 0
+        ) {
+          return res
+            .status(400)
+            .json({ ok: false, message: 'En az bir JVM (host + server-config) seçilmeli.' });
         }
         const allowedHosts = new Set(requested);
         cleanServerConfigMap = {};
         for (const [host, items] of Object.entries(serverConfigMap)) {
-          const h = String(host || '').trim().toUpperCase();
+          const h = String(host || '')
+            .trim()
+            .toUpperCase();
           if (!allowedHosts.has(h)) {
-            return res.status(400).json({ ok: false, message: `Bu host seçilen sunucular arasında değil: ${host}` });
+            return res
+              .status(400)
+              .json({ ok: false, message: `Bu host seçilen sunucular arasında değil: ${host}` });
           }
           if (!Array.isArray(items) || items.length === 0) continue;
           const seen = new Set();
@@ -641,10 +713,14 @@ function initOpsX(app) {
             // sadece guvenli karakter kumesine izin verilir (Ansible tarafindaki
             // "application" assert'iyle AYNI desen).
             if (!/^[A-Za-z0-9_.-]+$/.test(name)) {
-              return res.status(400).json({ ok: false, message: `Geçersiz server-config adı: ${it?.name}` });
+              return res
+                .status(400)
+                .json({ ok: false, message: `Geçersiz server-config adı: ${it?.name}` });
             }
             if (jbossMajor !== '7' && jbossMajor !== '8') {
-              return res.status(400).json({ ok: false, message: `Geçersiz JBoss sürümü: ${it?.jbossMajor}` });
+              return res
+                .status(400)
+                .json({ ok: false, message: `Geçersiz JBoss sürümü: ${it?.jbossMajor}` });
             }
             const dedupeKey = `${name}:${jbossMajor}`;
             if (seen.has(dedupeKey)) continue;
@@ -654,7 +730,9 @@ function initOpsX(app) {
           if (cleanItems.length) cleanServerConfigMap[h] = cleanItems;
         }
         if (Object.keys(cleanServerConfigMap).length === 0) {
-          return res.status(400).json({ ok: false, message: 'En az bir JVM (host + server-config) seçilmeli.' });
+          return res
+            .status(400)
+            .json({ ok: false, message: 'En az bir JVM (host + server-config) seçilmeli.' });
         }
       }
 
@@ -668,7 +746,6 @@ function initOpsX(app) {
       };
 
       logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ` jboss_version=${jbossVersion}` : ''}`;
-
     } else {
       // ── Openshift ───────────────────────────────────────────────────────────
       // /api/opsx/run SADECE restart/rollout icin — threaddump/heapdump artik enabled:true
@@ -678,7 +755,9 @@ function initOpsX(app) {
       // ama client'a guvenilmez).
       const ocOp = OCP_OPERATIONS.find((o) => o.key === ocOperation);
       if (!ocOp || !ocOp.enabled || ocOp.key !== 'restart') {
-        return res.status(400).json({ ok: false, message: 'Bu Openshift işlemi henüz kullanıma açık değil.' });
+        return res
+          .status(400)
+          .json({ ok: false, message: 'Bu Openshift işlemi henüz kullanıma açık değil.' });
       }
 
       // Katalog + erisim kisitlamasi dogrulamasi: resolveOpenshiftTargets() (bkz. dosya
@@ -686,7 +765,12 @@ function initOpsX(app) {
       let envKey, tenantKey, cleanPairs, clusterNames;
       try {
         const user = req.session?.user || {};
-        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(env, tenant, pairs, user));
+        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
+          env,
+          tenant,
+          pairs,
+          user,
+        ));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
@@ -719,10 +803,11 @@ function initOpsX(app) {
         // Bos `email` ile job acmak, bir dakika bekleyip ayni hatayi gormek demek.
         return res.status(400).json({
           ok: false,
-          message: 'E-posta adresiniz profilinizde bulunamadı. Playbook işlem sonunda bu '
-                 + 'adrese bilgilendirme maili atıyor; adres olmadan iş başlatılamaz. '
-                 + 'Yönetici, OpsX yapılandırmasındaki ek değişkenler alanına varsayılan '
-                 + 'bir `email` tanımlayabilir.',
+          message:
+            'E-posta adresiniz profilinizde bulunamadı. Playbook işlem sonunda bu ' +
+            'adrese bilgilendirme maili atıyor; adres olmadan iş başlatılamaz. ' +
+            'Yönetici, OpsX yapılandırmasındaki ek değişkenler alanına varsayılan ' +
+            'bir `email` tanımlayabilir.',
         });
       }
 
@@ -757,12 +842,22 @@ function initOpsX(app) {
       const runner = require('../ansible/runner.cjs');
       // AWX'te "Prompt on launch" kapaliysa gonderilen extra_vars SESSIZCE yutulur ve
       // playbook bos girdiyle calisir. LogX ile ORTAK kontrol (2026-08-09 olayi).
-      await require('../ansible/template-preflight.cjs')
-        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
+      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+        serverId,
+        templateId,
+        extraVars,
+        { label: keyName },
+      );
       // launchJobOnServer(serverId, templateId, extraVars, limit) — limit bos string
       // ise payload'a HIC eklenmez (bkz. runner.cjs: `if (limit) payload.limit = limit`),
       // dolayisiyla Openshift govdesinde ust-seviye limit alani olusmaz.
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
+      const result = await runner.launchJobOnServer(
+        serverId,
+        templateId,
+        extraVars,
+        limitValue,
+        req.session?.user,
+      );
 
       // ansible_job_history'ye kayit: Self Service'in kullandigi AYNI genel-amacli
       // tablo. Bu, iki sey saglar: (a) job-status endpoint'i IDOR korumasi icin
@@ -776,10 +871,17 @@ function initOpsX(app) {
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
             req.session?.user?.username || 'unknown',
-            serverId, templateId, `OpsX: ${plat}`,
-            result?.jobId, result?.status || 'pending',
-            JSON.stringify({ platform: plat, ...(limitValue ? { limit: limitValue } : {}), ...extraVars }),
-          ]
+            serverId,
+            templateId,
+            `OpsX: ${plat}`,
+            result?.jobId,
+            result?.status || 'pending',
+            JSON.stringify({
+              platform: plat,
+              ...(limitValue ? { limit: limitValue } : {}),
+              ...extraVars,
+            }),
+          ],
         );
       } catch (e) {
         console.warn('[OpsX] Gecmis kaydedilemedi:', e.message);
@@ -787,11 +889,20 @@ function initOpsX(app) {
 
       try {
         require('../audit/index.cjs').auditPortal(req, 'opsx_operation', {
-          detail: JSON.stringify({ platform: plat, limit: limitValue || undefined, extraVars, jobId: result?.jobId ?? null }),
+          detail: JSON.stringify({
+            platform: plat,
+            limit: limitValue || undefined,
+            extraVars,
+            jobId: result?.jobId ?? null,
+          }),
         });
-      } catch { /* denetim kaydi best-effort */ }
+      } catch {
+        /* denetim kaydi best-effort */
+      }
 
-      console.log(`[OpsX] ${req.session?.user?.username} -> ${plat} ${logSummary} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
+      console.log(
+        `[OpsX] ${req.session?.user?.username} -> ${plat} ${logSummary} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+      );
       res.json({
         ok: true,
         jobId: result?.jobId ?? null,
@@ -837,62 +948,88 @@ function initOpsX(app) {
   // fazla (host,pid) cifti secer.
   //
   // POST /api/opsx/legacy/jvm/discover — { application, hosts } → { jobId, awxServerId }
-  app.post('/api/opsx/legacy/jvm/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-    const { application, hosts, hostMajors } = req.body || {};
-    const { templateId, serverId, keyName } = await resolveTarget('legacyJvmDiscover');
-    if (!templateId) {
-      return res.status(501).json({
-        ok: false,
-        message: `OpsX Legacy JVM keşfi için AWX job template'i henüz tanımlanmadı. `
-               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
-               + `Template ID alanını doldurmalı.`,
-      });
-    }
-
-    // Anti-TOCTOU: host'ların gercekten bu uygulamaya ait oldugu VE ortak JBoss majorunun
-    // (varsa) ne oldugu MEVCUT resolveLegacyTargets ile dogrulanir/turetilir — dump
-    // launch'inin zaten kullandigi AYNI kapi, ayni turetme.
-    let requested, jbossVersion;
-    try {
-      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
-    } catch (err) {
-      return res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-
-    const limitValue = requested.join(',');
-    const extraVars = {
-      application: String(application).trim(),
-      jboss_majors: jbossMajorsFor(jbossVersion),
-    };
-
-    try {
-      const runner = require('../ansible/runner.cjs');
-      await require('../ansible/template-preflight.cjs')
-        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
-
-      // IDOR korumasi /api/opsx/legacy/jvm/:serverId/:jobId/status'ta bu kayda bakar.
-      try {
-        const db = require('../db/index.cjs');
-        await db.query(
-          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            req.session?.user?.username || 'unknown',
-            serverId, templateId, `OpsX: Legacy JVM keşfi`,
-            result?.jobId, result?.status || 'pending',
-            JSON.stringify({ platform: 'legacy-jvm-discover', limit: limitValue, ...extraVars }),
-          ]
-        );
-      } catch (e) {
-        console.warn('[OpsX] JVM kesfi gecmisi kaydedilemedi:', e.message);
+  app.post(
+    '/api/opsx/legacy/jvm/discover',
+    requireAuth,
+    express.json({ limit: '16kb' }),
+    async (req, res) => {
+      const { application, hosts, hostMajors } = req.body || {};
+      const { templateId, serverId, keyName } = await resolveTarget('legacyJvmDiscover');
+      if (!templateId) {
+        return res.status(501).json({
+          ok: false,
+          message:
+            `OpsX Legacy JVM keşfi için AWX job template'i henüz tanımlanmadı. ` +
+            `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının ` +
+            `Template ID alanını doldurmalı.`,
+        });
       }
 
-      console.log(`[OpsX] ${req.session?.user?.username} -> jvm kesfi app=${application} limit=${limitValue} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
-      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+      // Anti-TOCTOU: host'larin gercekten bu uygulamaya ait oldugu VE ortak JBoss majorunun
+      // (varsa) ne oldugu MEVCUT resolveLegacyTargets ile dogrulanir/turetilir — dump
+      // launch'inin zaten kullandigi AYNI kapi, ayni turetme.
+      let requested, jbossVersion;
+      try {
+        ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+
+      const limitValue = requested.join(',');
+      const extraVars = {
+        application: String(application).trim(),
+        jboss_majors: jbossMajorsFor(jbossVersion),
+      };
+
+      try {
+        const runner = require('../ansible/runner.cjs');
+        await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+          serverId,
+          templateId,
+          extraVars,
+          { label: keyName },
+        );
+        const result = await runner.launchJobOnServer(
+          serverId,
+          templateId,
+          extraVars,
+          limitValue,
+          req.session?.user,
+        );
+
+        // IDOR korumasi /api/opsx/legacy/jvm/:serverId/:jobId/status'ta bu kayda bakar.
+        try {
+          const db = require('../db/index.cjs');
+          await db.query(
+            `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              req.session?.user?.username || 'unknown',
+              serverId,
+              templateId,
+              `OpsX: Legacy JVM keşfi`,
+              result?.jobId,
+              result?.status || 'pending',
+              JSON.stringify({ platform: 'legacy-jvm-discover', limit: limitValue, ...extraVars }),
+            ],
+          );
+        } catch (e) {
+          console.warn('[OpsX] JVM kesfi gecmisi kaydedilemedi:', e.message);
+        }
+
+        console.log(
+          `[OpsX] ${req.session?.user?.username} -> jvm kesfi app=${application} limit=${limitValue} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+        );
+        res.json({
+          ok: true,
+          jobId: result?.jobId ?? null,
+          status: result?.status ?? null,
+          awxServerId: serverId,
+        });
+      } catch (err) {
+        res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+    },
+  );
 
   // GET /api/opsx/legacy/jvm/:serverId/:jobId/status — is bitince JVM listesini doner.
   app.get('/api/opsx/legacy/jvm/:serverId/:jobId/status', requireAuth, async (req, res) => {
@@ -908,13 +1045,19 @@ function initOpsX(app) {
       if (reqUser.role !== 'Admin') {
         const { rows } = await db.query(
           `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, serverId]
+          [jobId, serverId],
         );
-        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+        if (
+          rows.length &&
+          rows[0].username &&
+          String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
+        ) {
           return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
         }
       }
-    } catch { /* DB hiccup -> fail-open, /job-status ile ayni desen */ }
+    } catch {
+      /* DB hiccup -> fail-open, /job-status ile ayni desen */
+    }
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -924,7 +1067,11 @@ function initOpsX(app) {
         return res.json({ ok: true, status: statusInfo.status });
       }
       if (statusInfo.status !== 'successful') {
-        return res.json({ ok: true, status: statusInfo.status, message: 'JVM listesi alınamadı (iş başarısız oldu).' });
+        return res.json({
+          ok: true,
+          status: statusInfo.status,
+          message: 'JVM listesi alınamadı (iş başarısız oldu).',
+        });
       }
 
       const raw = extractOpsxJvmResult(statusInfo.artifacts);
@@ -932,7 +1079,8 @@ function initOpsX(app) {
         return res.json({
           ok: true,
           status: statusInfo.status,
-          message: 'İş tamamlandı ancak JVM listesi alınamadı — playbook\'un set_stats adımını kontrol edin.',
+          message:
+            "İş tamamlandı ancak JVM listesi alınamadı — playbook'un set_stats adımını kontrol edin.",
         });
       }
       res.json({ ok: true, status: statusInfo.status, jvms: raw.results || [] });
@@ -950,220 +1098,308 @@ function initOpsX(app) {
   // artik kullanici HANGI JVM(ler)e dokunacagini bu kesiften seciyor.
   //
   // POST /api/opsx/legacy/serverconfig/discover — { application, hosts } → { jobId, awxServerId }
-  app.post('/api/opsx/legacy/serverconfig/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-    const { application, hosts, hostMajors } = req.body || {};
-    const { templateId, serverId, keyName } = await resolveTarget('legacyServerConfigDiscover');
-    if (!templateId) {
-      return res.status(501).json({
-        ok: false,
-        message: `OpsX Legacy Server-Config keşfi için AWX job template'i henüz tanımlanmadı. `
-               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
-               + `Template ID alanını doldurmalı.`,
-      });
-    }
-
-    // Anti-TOCTOU + jboss_version turetme: resolveLegacyTargets ile AYNI kapi — restart/
-    // stop/start launch'inin (POST /api/opsx/run) kullandigi AYNI dogrulama/turetme.
-    let requested, jbossVersion;
-    try {
-      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
-    } catch (err) {
-      return res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-
-    const limitValue = requested.join(',');
-    const extraVars = {
-      application: String(application).trim(),
-      ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
-    };
-
-    try {
-      const runner = require('../ansible/runner.cjs');
-      await require('../ansible/template-preflight.cjs')
-        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
-
-      // IDOR korumasi /api/opsx/legacy/serverconfig/:serverId/:jobId/status'ta bu kayda bakar.
-      try {
-        const db = require('../db/index.cjs');
-        await db.query(
-          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            req.session?.user?.username || 'unknown',
-            serverId, templateId, `OpsX: Legacy Server-Config keşfi`,
-            result?.jobId, result?.status || 'pending',
-            JSON.stringify({ platform: 'legacy-serverconfig-discover', limit: limitValue, ...extraVars }),
-          ]
-        );
-      } catch (e) {
-        console.warn('[OpsX] Server-Config kesfi gecmisi kaydedilemedi:', e.message);
+  app.post(
+    '/api/opsx/legacy/serverconfig/discover',
+    requireAuth,
+    express.json({ limit: '16kb' }),
+    async (req, res) => {
+      const { application, hosts, hostMajors } = req.body || {};
+      const { templateId, serverId, keyName } = await resolveTarget('legacyServerConfigDiscover');
+      if (!templateId) {
+        return res.status(501).json({
+          ok: false,
+          message:
+            `OpsX Legacy Server-Config keşfi için AWX job template'i henüz tanımlanmadı. ` +
+            `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının ` +
+            `Template ID alanını doldurmalı.`,
+        });
       }
 
-      console.log(`[OpsX] ${req.session?.user?.username} -> serverconfig kesfi app=${application} limit=${limitValue} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
-      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+      // Anti-TOCTOU + jboss_version turetme: resolveLegacyTargets ile AYNI kapi — restart/
+      // stop/start launch'inin (POST /api/opsx/run) kullandigi AYNI dogrulama/turetme.
+      let requested, jbossVersion;
+      try {
+        ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+
+      const limitValue = requested.join(',');
+      const extraVars = {
+        application: String(application).trim(),
+        ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
+      };
+
+      try {
+        const runner = require('../ansible/runner.cjs');
+        await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+          serverId,
+          templateId,
+          extraVars,
+          { label: keyName },
+        );
+        const result = await runner.launchJobOnServer(
+          serverId,
+          templateId,
+          extraVars,
+          limitValue,
+          req.session?.user,
+        );
+
+        // IDOR korumasi /api/opsx/legacy/serverconfig/:serverId/:jobId/status'ta bu kayda bakar.
+        try {
+          const db = require('../db/index.cjs');
+          await db.query(
+            `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              req.session?.user?.username || 'unknown',
+              serverId,
+              templateId,
+              `OpsX: Legacy Server-Config keşfi`,
+              result?.jobId,
+              result?.status || 'pending',
+              JSON.stringify({
+                platform: 'legacy-serverconfig-discover',
+                limit: limitValue,
+                ...extraVars,
+              }),
+            ],
+          );
+        } catch (e) {
+          console.warn('[OpsX] Server-Config kesfi gecmisi kaydedilemedi:', e.message);
+        }
+
+        console.log(
+          `[OpsX] ${req.session?.user?.username} -> serverconfig kesfi app=${application} limit=${limitValue} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+        );
+        res.json({
+          ok: true,
+          jobId: result?.jobId ?? null,
+          status: result?.status ?? null,
+          awxServerId: serverId,
+        });
+      } catch (err) {
+        res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+    },
+  );
 
   // GET /api/opsx/legacy/serverconfig/:serverId/:jobId/status — is bitince server-config listesini doner.
-  app.get('/api/opsx/legacy/serverconfig/:serverId/:jobId/status', requireAuth, async (req, res) => {
-    const serverId = Number(req.params.serverId);
-    const jobId = Number(req.params.jobId);
-    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
-      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
-    }
-
-    const reqUser = req.session?.user || {};
-    try {
-      const db = require('../db/index.cjs');
-      if (reqUser.role !== 'Admin') {
-        const { rows } = await db.query(
-          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, serverId]
-        );
-        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
-          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
-        }
-      }
-    } catch { /* DB hiccup -> fail-open, /job-status ile ayni desen */ }
-
-    try {
-      const runner = require('../ansible/runner.cjs');
-      const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
-      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
-      if (!TERMINAL.has(statusInfo.status)) {
-        return res.json({ ok: true, status: statusInfo.status });
-      }
-      if (statusInfo.status !== 'successful') {
-        return res.json({ ok: true, status: statusInfo.status, message: 'Server-Config listesi alınamadı (iş başarısız oldu).' });
+  app.get(
+    '/api/opsx/legacy/serverconfig/:serverId/:jobId/status',
+    requireAuth,
+    async (req, res) => {
+      const serverId = Number(req.params.serverId);
+      const jobId = Number(req.params.jobId);
+      if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
+        return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
       }
 
-      const raw = extractOpsxServerConfigResult(statusInfo.artifacts);
-      if (!raw) {
-        return res.json({
-          ok: true,
-          status: statusInfo.status,
-          message: 'İş tamamlandı ancak Server-Config listesi alınamadı — playbook\'un set_stats adımını kontrol edin.',
-        });
-      }
-      res.json({ ok: true, status: statusInfo.status, serverConfigs: raw.results || [] });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
-
-  // POST /api/opsx/dump/legacy — { application, hosts, dumpType, pidMap }
-  app.post('/api/opsx/dump/legacy', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { application, hosts, hostMajors, dumpType, pidMap } = req.body || {};
-    if (!DUMP_TYPES.has(dumpType)) {
-      return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
-    }
-    const { templateId, serverId, keyName } = await resolveTarget('legacyDump');
-    if (!templateId) {
-      return res.status(501).json({
-        ok: false,
-        message: `OpsX Legacy dump işlemi için AWX job template'i henüz tanımlanmadı. `
-               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
-               + `Template ID alanını doldurmalı.`,
-      });
-    }
-
-    let requested, jbossVersion;
-    try {
-      ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
-    } catch (err) {
-      return res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-
-    // pid_map anti-TOCTOU: her anahtar yukarida dogrulanan `requested` host kumesinin bir
-    // uyesi OLMALI (host secimiyle PID secimi tutarsiz olamaz). Her oge {pid, jbossMajor}
-    // — pid kucuk bir pozitif tamsayi olmali (playbook'ta shell'e enjekte edildigi icin —
-    // opsx_openshift_dump.yaml'daki `pods` adi dogrulamasiyla AYNI gerekce), jbossMajor
-    // SADECE '7' ya da '8' olabilir (playbook'ta HANGI SABIT JDK yolunun kullanilacagini
-    // secer — /usr/jboss/ vs /usr/jboss8/, kullanicinin verdigi GERCEK komutlar).
-    if (!pidMap || typeof pidMap !== 'object' || Array.isArray(pidMap) || Object.keys(pidMap).length === 0) {
-      return res.status(400).json({ ok: false, message: 'En az bir JVM (host + PID) seçilmeli.' });
-    }
-    const allowedHosts = new Set(requested);
-    const cleanPidMap = {};
-    for (const [host, items] of Object.entries(pidMap)) {
-      const h = String(host || '').trim().toUpperCase();
-      if (!allowedHosts.has(h)) {
-        return res.status(400).json({ ok: false, message: `Bu host seçilen sunucular arasında değil: ${host}` });
-      }
-      if (!Array.isArray(items) || items.length === 0) continue;
-      const seen = new Set();
-      const cleanItems = [];
-      for (const it of items) {
-        const pid = String(it?.pid || '').trim();
-        const jbossMajor = String(it?.jbossMajor || '').trim();
-        if (!/^\d{1,10}$/.test(pid)) {
-          return res.status(400).json({ ok: false, message: `Geçersiz PID: ${it?.pid}` });
-        }
-        if (jbossMajor !== '7' && jbossMajor !== '8') {
-          return res.status(400).json({ ok: false, message: `Geçersiz JBoss sürümü: ${it?.jbossMajor}` });
-        }
-        const dedupeKey = `${pid}:${jbossMajor}`;
-        if (seen.has(dedupeKey)) continue;
-        seen.add(dedupeKey);
-        cleanItems.push({ pid, jbossMajor });
-      }
-      if (cleanItems.length) cleanPidMap[h] = cleanItems;
-    }
-    if (Object.keys(cleanPidMap).length === 0) {
-      return res.status(400).json({ ok: false, message: 'En az bir JVM (host + PID) seçilmeli.' });
-    }
-
-    const opsxDownloads = require('./downloads.cjs');
-    const limitValue = requested.join(',');
-    const extraVars = {
-      application: String(application).trim(),
-      dump_type: dumpType,
-      staging_dir: opsxDownloads.stagingRoot(),
-      pid_map: cleanPidMap,
-      ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
-    };
-
-    try {
-      const runner = require('../ansible/runner.cjs');
-      await require('../ansible/template-preflight.cjs')
-        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
-
+      const reqUser = req.session?.user || {};
       try {
         const db = require('../db/index.cjs');
-        await db.query(
-          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            req.session?.user?.username || 'unknown',
-            serverId, templateId, `OpsX: Legacy ${dumpType}`,
-            result?.jobId, result?.status || 'pending',
-            JSON.stringify({ platform: 'legacy-dump', limit: limitValue, ...extraVars }),
-          ]
-        );
-      } catch (e) {
-        console.warn('[OpsX] Dump gecmisi kaydedilemedi:', e.message);
+        if (reqUser.role !== 'Admin') {
+          const { rows } = await db.query(
+            `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+            [jobId, serverId],
+          );
+          if (
+            rows.length &&
+            rows[0].username &&
+            String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
+          ) {
+            return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
+          }
+        }
+      } catch {
+        /* DB hiccup -> fail-open, /job-status ile ayni desen */
       }
 
       try {
-        require('../audit/index.cjs').auditPortal(req, 'opsx_dump', {
-          detail: JSON.stringify({ platform: 'legacy', dumpType, limit: limitValue, jobId: result?.jobId ?? null }),
-        });
-      } catch { /* best-effort */ }
+        const runner = require('../ansible/runner.cjs');
+        const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
+        const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+        if (!TERMINAL.has(statusInfo.status)) {
+          return res.json({ ok: true, status: statusInfo.status });
+        }
+        if (statusInfo.status !== 'successful') {
+          return res.json({
+            ok: true,
+            status: statusInfo.status,
+            message: 'Server-Config listesi alınamadı (iş başarısız oldu).',
+          });
+        }
 
-      console.log(`[OpsX] ${req.session?.user?.username} -> legacy dump app=${application} type=${dumpType} limit=${limitValue} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
-      res.json({
-        ok: true,
-        jobId: result?.jobId ?? null,
-        status: result?.status ?? null,
-        awxServerId: serverId,
-        sentBody: { limit: limitValue, extra_vars: extraVars },
-      });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+        const raw = extractOpsxServerConfigResult(statusInfo.artifacts);
+        if (!raw) {
+          return res.json({
+            ok: true,
+            status: statusInfo.status,
+            message:
+              "İş tamamlandı ancak Server-Config listesi alınamadı — playbook'un set_stats adımını kontrol edin.",
+          });
+        }
+        res.json({ ok: true, status: statusInfo.status, serverConfigs: raw.results || [] });
+      } catch (err) {
+        res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+    },
+  );
+
+  // POST /api/opsx/dump/legacy — { application, hosts, dumpType, pidMap }
+  app.post(
+    '/api/opsx/dump/legacy',
+    requireAuth,
+    express.json({ limit: '64kb' }),
+    async (req, res) => {
+      const { application, hosts, hostMajors, dumpType, pidMap } = req.body || {};
+      if (!DUMP_TYPES.has(dumpType)) {
+        return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
+      }
+      const { templateId, serverId, keyName } = await resolveTarget('legacyDump');
+      if (!templateId) {
+        return res.status(501).json({
+          ok: false,
+          message:
+            `OpsX Legacy dump işlemi için AWX job template'i henüz tanımlanmadı. ` +
+            `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının ` +
+            `Template ID alanını doldurmalı.`,
+        });
+      }
+
+      let requested, jbossVersion;
+      try {
+        ({ requested, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+
+      // pid_map anti-TOCTOU: her anahtar yukarida dogrulanan `requested` host kumesinin bir
+      // uyesi OLMALI (host secimiyle PID secimi tutarsiz olamaz). Her oge {pid, jbossMajor}
+      // — pid kucuk bir pozitif tamsayi olmali (playbook'ta shell'e enjekte edildigi icin —
+      // opsx_openshift_dump.yaml'daki `pods` adi dogrulamasiyla AYNI gerekce), jbossMajor
+      // SADECE '7' ya da '8' olabilir (playbook'ta HANGI SABIT JDK yolunun kullanilacagini
+      // secer — /usr/jboss/ vs /usr/jboss8/, kullanicinin verdigi GERCEK komutlar).
+      if (
+        !pidMap ||
+        typeof pidMap !== 'object' ||
+        Array.isArray(pidMap) ||
+        Object.keys(pidMap).length === 0
+      ) {
+        return res
+          .status(400)
+          .json({ ok: false, message: 'En az bir JVM (host + PID) seçilmeli.' });
+      }
+      const allowedHosts = new Set(requested);
+      const cleanPidMap = {};
+      for (const [host, items] of Object.entries(pidMap)) {
+        const h = String(host || '')
+          .trim()
+          .toUpperCase();
+        if (!allowedHosts.has(h)) {
+          return res
+            .status(400)
+            .json({ ok: false, message: `Bu host seçilen sunucular arasında değil: ${host}` });
+        }
+        if (!Array.isArray(items) || items.length === 0) continue;
+        const seen = new Set();
+        const cleanItems = [];
+        for (const it of items) {
+          const pid = String(it?.pid || '').trim();
+          const jbossMajor = String(it?.jbossMajor || '').trim();
+          if (!/^\d{1,10}$/.test(pid)) {
+            return res.status(400).json({ ok: false, message: `Geçersiz PID: ${it?.pid}` });
+          }
+          if (jbossMajor !== '7' && jbossMajor !== '8') {
+            return res
+              .status(400)
+              .json({ ok: false, message: `Geçersiz JBoss sürümü: ${it?.jbossMajor}` });
+          }
+          const dedupeKey = `${pid}:${jbossMajor}`;
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+          cleanItems.push({ pid, jbossMajor });
+        }
+        if (cleanItems.length) cleanPidMap[h] = cleanItems;
+      }
+      if (Object.keys(cleanPidMap).length === 0) {
+        return res
+          .status(400)
+          .json({ ok: false, message: 'En az bir JVM (host + PID) seçilmeli.' });
+      }
+
+      const opsxDownloads = require('./downloads.cjs');
+      const limitValue = requested.join(',');
+      const extraVars = {
+        application: String(application).trim(),
+        dump_type: dumpType,
+        staging_dir: opsxDownloads.stagingRoot(),
+        pid_map: cleanPidMap,
+        ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
+      };
+
+      try {
+        const runner = require('../ansible/runner.cjs');
+        await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+          serverId,
+          templateId,
+          extraVars,
+          { label: keyName },
+        );
+        const result = await runner.launchJobOnServer(
+          serverId,
+          templateId,
+          extraVars,
+          limitValue,
+          req.session?.user,
+        );
+
+        try {
+          const db = require('../db/index.cjs');
+          await db.query(
+            `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              req.session?.user?.username || 'unknown',
+              serverId,
+              templateId,
+              `OpsX: Legacy ${dumpType}`,
+              result?.jobId,
+              result?.status || 'pending',
+              JSON.stringify({ platform: 'legacy-dump', limit: limitValue, ...extraVars }),
+            ],
+          );
+        } catch (e) {
+          console.warn('[OpsX] Dump gecmisi kaydedilemedi:', e.message);
+        }
+
+        try {
+          require('../audit/index.cjs').auditPortal(req, 'opsx_dump', {
+            detail: JSON.stringify({
+              platform: 'legacy',
+              dumpType,
+              limit: limitValue,
+              jobId: result?.jobId ?? null,
+            }),
+          });
+        } catch {
+          /* best-effort */
+        }
+
+        console.log(
+          `[OpsX] ${req.session?.user?.username} -> legacy dump app=${application} type=${dumpType} limit=${limitValue} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+        );
+        res.json({
+          ok: true,
+          jobId: result?.jobId ?? null,
+          status: result?.status ?? null,
+          awxServerId: serverId,
+          sentBody: { limit: limitValue, extra_vars: extraVars },
+        });
+      } catch (err) {
+        res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+    },
+  );
 
   // ── Openshift POD KESFI ────────────────────────────────────────────────────────
   // Pod adlari EFEMERALDIR (her deploy'da degisir) — envanterde tutulamaz, bu yuzden
@@ -1179,65 +1415,94 @@ function initOpsX(app) {
   // cluster'lara) paralel bakar. `application` alani burada islevsel degil (pod kesfi
   // uygulama adina gore filtrelemiyor) ama HER pair yine de erisim kisitlamasindan
   // (resolveOpenshiftTargets) tek tek gecer.
-  app.post('/api/opsx/ocp/pods/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-    const { env, tenant, pairs } = req.body || {};
-    const { templateId, serverId, keyName } = await resolveTarget('openshiftPods');
-    if (!templateId) {
-      return res.status(501).json({
-        ok: false,
-        message: `OpsX Openshift pod keşfi için AWX job template'i henüz tanımlanmadı. `
-               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
-               + `Template ID alanını doldurmalı.`,
-      });
-    }
-
-    // Namespace/tenant dogrulamasi restart/dump ile AYNI kapidan gecer (katalog +
-    // erisim kisitlamasi) — kullanici goremedigi bir namespace'in pod'larini listeleyemez.
-    let envKey, tenantKey, cleanPairs, clusterNames, fanout;
-    try {
-      const user = req.session?.user || {};
-      ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
-        env, tenant, pairs, user
-      ));
-      // Bir tenant'a BIRDEN FAZLA gercek cluster bagli olabilir — hepsine paralel
-      // baglanip pod'un HANGI cluster'da oldugunu gostermek icin (bkz. resolveOcpClusterFanout
-      // yorumu) fan-out extra_vars'i kurulur; TEK `oc_cluster` alanina guvenilmez.
-      fanout = await resolveOcpClusterFanout(envKey, tenantKey, clusterNames);
-    } catch (err) {
-      return res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-
-    const namespaces = [...new Set(cleanPairs.map((p) => p.namespace))];
-    const extraVars = { ...fanout, namespaces };
-
-    try {
-      const runner = require('../ansible/runner.cjs');
-      await require('../ansible/template-preflight.cjs')
-        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
-
-      // IDOR korumasi /api/opsx/ocp/pods/:serverId/:jobId/status'ta bu kayda bakar.
-      try {
-        const db = require('../db/index.cjs');
-        await db.query(
-          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            req.session?.user?.username || 'unknown',
-            serverId, templateId, `OpsX: Openshift pod keşfi`,
-            result?.jobId, result?.status || 'pending',
-            JSON.stringify({ platform: 'openshift-pods', ...extraVars }),
-          ]
-        );
-      } catch (e) {
-        console.warn('[OpsX] Pod kesfi gecmisi kaydedilemedi:', e.message);
+  app.post(
+    '/api/opsx/ocp/pods/discover',
+    requireAuth,
+    express.json({ limit: '16kb' }),
+    async (req, res) => {
+      const { env, tenant, pairs } = req.body || {};
+      const { templateId, serverId, keyName } = await resolveTarget('openshiftPods');
+      if (!templateId) {
+        return res.status(501).json({
+          ok: false,
+          message:
+            `OpsX Openshift pod keşfi için AWX job template'i henüz tanımlanmadı. ` +
+            `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının ` +
+            `Template ID alanını doldurmalı.`,
+        });
       }
 
-      console.log(`[OpsX] ${req.session?.user?.username} -> pod kesfi env=${envKey} tenant=${tenantKey} clusters=${clusterNames.join(',')} namespaces=${namespaces.join(',')} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
-      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+      // Namespace/tenant dogrulamasi restart/dump ile AYNI kapidan gecer (katalog +
+      // erisim kisitlamasi) — kullanici goremedigi bir namespace'in pod'larini listeleyemez.
+      let envKey, tenantKey, cleanPairs, clusterNames, fanout;
+      try {
+        const user = req.session?.user || {};
+        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
+          env,
+          tenant,
+          pairs,
+          user,
+        ));
+        // Bir tenant'a BIRDEN FAZLA gercek cluster bagli olabilir — hepsine paralel
+        // baglanip pod'un HANGI cluster'da oldugunu gostermek icin (bkz. resolveOcpClusterFanout
+        // yorumu) fan-out extra_vars'i kurulur; TEK `oc_cluster` alanina guvenilmez.
+        fanout = await resolveOcpClusterFanout(envKey, tenantKey, clusterNames);
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+
+      const namespaces = [...new Set(cleanPairs.map((p) => p.namespace))];
+      const extraVars = { ...fanout, namespaces };
+
+      try {
+        const runner = require('../ansible/runner.cjs');
+        await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+          serverId,
+          templateId,
+          extraVars,
+          { label: keyName },
+        );
+        const result = await runner.launchJobOnServer(
+          serverId,
+          templateId,
+          extraVars,
+          '',
+          req.session?.user,
+        );
+
+        // IDOR korumasi /api/opsx/ocp/pods/:serverId/:jobId/status'ta bu kayda bakar.
+        try {
+          const db = require('../db/index.cjs');
+          await db.query(
+            `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              req.session?.user?.username || 'unknown',
+              serverId,
+              templateId,
+              `OpsX: Openshift pod keşfi`,
+              result?.jobId,
+              result?.status || 'pending',
+              JSON.stringify({ platform: 'openshift-pods', ...extraVars }),
+            ],
+          );
+        } catch (e) {
+          console.warn('[OpsX] Pod kesfi gecmisi kaydedilemedi:', e.message);
+        }
+
+        console.log(
+          `[OpsX] ${req.session?.user?.username} -> pod kesfi env=${envKey} tenant=${tenantKey} clusters=${clusterNames.join(',')} namespaces=${namespaces.join(',')} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+        );
+        res.json({
+          ok: true,
+          jobId: result?.jobId ?? null,
+          status: result?.status ?? null,
+          awxServerId: serverId,
+        });
+      } catch (err) {
+        res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+    },
+  );
 
   // GET /api/opsx/ocp/pods/:serverId/:jobId/status — job bitince pod listesini doner.
   app.get('/api/opsx/ocp/pods/:serverId/:jobId/status', requireAuth, async (req, res) => {
@@ -1253,13 +1518,19 @@ function initOpsX(app) {
       if (reqUser.role !== 'Admin') {
         const { rows } = await db.query(
           `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, serverId]
+          [jobId, serverId],
         );
-        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+        if (
+          rows.length &&
+          rows[0].username &&
+          String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
+        ) {
           return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
         }
       }
-    } catch { /* DB hiccup -> fail-open, /job-status ile ayni desen */ }
+    } catch {
+      /* DB hiccup -> fail-open, /job-status ile ayni desen */
+    }
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -1269,7 +1540,11 @@ function initOpsX(app) {
         return res.json({ ok: true, status: statusInfo.status });
       }
       if (statusInfo.status !== 'successful') {
-        return res.json({ ok: true, status: statusInfo.status, message: 'Pod listesi alınamadı (iş başarısız oldu).' });
+        return res.json({
+          ok: true,
+          status: statusInfo.status,
+          message: 'Pod listesi alınamadı (iş başarısız oldu).',
+        });
       }
 
       const raw = extractOpsxPodsResult(statusInfo.artifacts);
@@ -1277,7 +1552,8 @@ function initOpsX(app) {
         return res.json({
           ok: true,
           status: statusInfo.status,
-          message: 'İş tamamlandı ancak pod listesi alınamadı — playbook\'un set_stats adımını kontrol edin.',
+          message:
+            "İş tamamlandı ancak pod listesi alınamadı — playbook'un set_stats adımını kontrol edin.",
         });
       }
       // COK-CLUSTER: bir cluster basarisiz olsa bile DIGERLERININ pod'lari gosterilir
@@ -1318,138 +1594,185 @@ function initOpsX(app) {
   //
   // COKLU NAMESPACE: pod'lar artik TEK bir namespace'e sabitlenmez — her pod HANGI
   // namespace'ten geldigini de tasir (`pairs`'teki namespace'lerden biri OLMALI, anti-TOCTOU).
-  app.post('/api/opsx/dump/openshift', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
-    const { env, tenant, pairs, pods, dumpType, threadDumpCount, threadDumpInterval } = req.body || {};
-    if (!DUMP_TYPES.has(dumpType)) {
-      return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
-    }
-    const { templateId, serverId, keyName } = await resolveTarget('openshiftDump');
-    if (!templateId) {
-      return res.status(501).json({
-        ok: false,
-        message: `OpsX Openshift dump işlemi için AWX job template'i henüz tanımlanmadı. `
-               + `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının `
-               + `Template ID alanını doldurmalı.`,
-      });
-    }
-
-    let envKey, tenantKey, cleanPairs, clusterNames;
-    try {
-      const user = req.session?.user || {};
-      ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
-        env, tenant, pairs, user
-      ));
-    } catch (err) {
-      return res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-    const allowedNamespaces = new Set(cleanPairs.map((p) => p.namespace));
-
-    // Pod+cluster+namespace ucluleri client'tan gelir ama kesif job'inin ciktisindan
-    // secilir — anti-TOCTOU: her cluster adi katalogdan dogrulanmis clusterNames'in, her
-    // namespace de yukarida dogrulanmis `pairs`'in bir uyesi OLMALI (Legacy'nin pid_map'teki
-    // jbossMajor dogrulamasiyla AYNI gerekce). Pod adi bicimi de dogrulanir — playbook
-    // bunlari shell'e gecirdigi icin (oc exec) Kubernetes ad sozdizimi disinda bir sey
-    // KABUL EDILMEZ.
-    if (!Array.isArray(pods) || pods.length === 0) {
-      return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
-    }
-    const allowedClusters = new Set(clusterNames);
-    const podNameRe = /^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/i;
-    const seen = new Set();
-    const cleanPodTargets = [];
-    for (const p of pods) {
-      const cluster = String(p?.cluster || '').trim();
-      const namespace = String(p?.namespace || '').trim();
-      const pod = String(p?.pod || '').trim();
-      if (!allowedClusters.has(cluster)) {
-        return res.status(400).json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
+  app.post(
+    '/api/opsx/dump/openshift',
+    requireAuth,
+    express.json({ limit: '64kb' }),
+    async (req, res) => {
+      const { env, tenant, pairs, pods, dumpType, threadDumpCount, threadDumpInterval } =
+        req.body || {};
+      if (!DUMP_TYPES.has(dumpType)) {
+        return res.status(400).json({ ok: false, message: 'Geçersiz dump tipi.' });
       }
-      if (!allowedNamespaces.has(namespace)) {
-        return res.status(400).json({ ok: false, message: `Bu namespace seçilenler arasında değil: ${p?.namespace}` });
-      }
-      if (!podNameRe.test(pod) || pod.length > 253) {
-        return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${p?.pod}` });
-      }
-      const key = `${cluster}::${namespace}::${pod}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      cleanPodTargets.push({ cluster, namespace, pod });
-    }
-    if (cleanPodTargets.length === 0) {
-      return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
-    }
-
-    // Sadece secili pod'larin kapsadigi cluster'lara login acilir — kullanicinin
-    // gormedigi/secmedigi diger cluster'lara gereksiz baglanti YOK.
-    const neededClusters = [...new Set(cleanPodTargets.map((t) => t.cluster))];
-    let fanout;
-    try {
-      fanout = await resolveOcpClusterFanout(envKey, tenantKey, neededClusters);
-    } catch (err) {
-      return res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-
-    const opsxDownloads = require('./downloads.cjs');
-    const extraVars = {
-      ...fanout,
-      ocp_pod_targets: cleanPodTargets.map((t) => ({ cluster_name: t.cluster, namespace: t.namespace, pod: t.pod })),
-      choose: dumpType === 'heapdump' ? 'memory' : 'cpu',
-      staging_dir: opsxDownloads.stagingRoot(),
-    };
-
-    // Coklu thread dump — playbook'taki AYNI sinirlar (1-100 adet, 0-3600 sn).
-    if (dumpType === 'threaddump') {
-      const count = Number(threadDumpCount ?? 1);
-      const interval = Number(threadDumpInterval ?? 0);
-      if (!Number.isInteger(count) || count < 1 || count > 100) {
-        return res.status(400).json({ ok: false, message: 'Thread dump adedi 1-100 arasında olmalı.' });
-      }
-      if (!Number.isInteger(interval) || interval < 0 || interval > 3600) {
-        return res.status(400).json({ ok: false, message: 'Thread dump aralığı 0-3600 saniye arasında olmalı.' });
-      }
-      extraVars.dump_count = count;
-      extraVars.dump_interval = interval;
-    }
-
-    try {
-      const runner = require('../ansible/runner.cjs');
-      await require('../ansible/template-preflight.cjs')
-        .assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-      const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
-
-      try {
-        const db = require('../db/index.cjs');
-        await db.query(
-          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            req.session?.user?.username || 'unknown',
-            serverId, templateId, `OpsX: Openshift ${dumpType}`,
-            result?.jobId, result?.status || 'pending',
-            JSON.stringify({ platform: 'openshift-dump', ...extraVars }),
-          ]
-        );
-      } catch (e) {
-        console.warn('[OpsX] Dump gecmisi kaydedilemedi:', e.message);
-      }
-
-      try {
-        require('../audit/index.cjs').auditPortal(req, 'opsx_dump', {
-          detail: JSON.stringify({ platform: 'openshift', dumpType, extraVars, jobId: result?.jobId ?? null }),
+      const { templateId, serverId, keyName } = await resolveTarget('openshiftDump');
+      if (!templateId) {
+        return res.status(501).json({
+          ok: false,
+          message:
+            `OpsX Openshift dump işlemi için AWX job template'i henüz tanımlanmadı. ` +
+            `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının ` +
+            `Template ID alanını doldurmalı.`,
         });
-      } catch { /* best-effort */ }
+      }
 
-      console.log(`[OpsX] ${req.session?.user?.username} -> openshift dump env=${envKey} tenant=${tenantKey} clusters=${neededClusters.join(',')} type=${dumpType} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`);
-      res.json({
-        ok: true,
-        jobId: result?.jobId ?? null,
-        status: result?.status ?? null,
-        awxServerId: serverId,
-        sentBody: { extra_vars: extraVars },
-      });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+      let envKey, tenantKey, cleanPairs, clusterNames;
+      try {
+        const user = req.session?.user || {};
+        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
+          env,
+          tenant,
+          pairs,
+          user,
+        ));
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+      const allowedNamespaces = new Set(cleanPairs.map((p) => p.namespace));
+
+      // Pod+cluster+namespace ucluleri client'tan gelir ama kesif job'inin ciktisindan
+      // secilir — anti-TOCTOU: her cluster adi katalogdan dogrulanmis clusterNames'in, her
+      // namespace de yukarida dogrulanmis `pairs`'in bir uyesi OLMALI (Legacy'nin pid_map'teki
+      // jbossMajor dogrulamasiyla AYNI gerekce). Pod adi bicimi de dogrulanir — playbook
+      // bunlari shell'e gecirdigi icin (oc exec) Kubernetes ad sozdizimi disinda bir sey
+      // KABUL EDILMEZ.
+      if (!Array.isArray(pods) || pods.length === 0) {
+        return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
+      }
+      const allowedClusters = new Set(clusterNames);
+      const podNameRe = /^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/i;
+      const seen = new Set();
+      const cleanPodTargets = [];
+      for (const p of pods) {
+        const cluster = String(p?.cluster || '').trim();
+        const namespace = String(p?.namespace || '').trim();
+        const pod = String(p?.pod || '').trim();
+        if (!allowedClusters.has(cluster)) {
+          return res
+            .status(400)
+            .json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
+        }
+        if (!allowedNamespaces.has(namespace)) {
+          return res
+            .status(400)
+            .json({
+              ok: false,
+              message: `Bu namespace seçilenler arasında değil: ${p?.namespace}`,
+            });
+        }
+        if (!podNameRe.test(pod) || pod.length > 253) {
+          return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${p?.pod}` });
+        }
+        const key = `${cluster}::${namespace}::${pod}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        cleanPodTargets.push({ cluster, namespace, pod });
+      }
+      if (cleanPodTargets.length === 0) {
+        return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
+      }
+
+      // Sadece secili pod'larin kapsadigi cluster'lara login acilir — kullanicinin
+      // gormedigi/secmedigi diger cluster'lara gereksiz baglanti YOK.
+      const neededClusters = [...new Set(cleanPodTargets.map((t) => t.cluster))];
+      let fanout;
+      try {
+        fanout = await resolveOcpClusterFanout(envKey, tenantKey, neededClusters);
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+
+      const opsxDownloads = require('./downloads.cjs');
+      const extraVars = {
+        ...fanout,
+        ocp_pod_targets: cleanPodTargets.map((t) => ({
+          cluster_name: t.cluster,
+          namespace: t.namespace,
+          pod: t.pod,
+        })),
+        choose: dumpType === 'heapdump' ? 'memory' : 'cpu',
+        staging_dir: opsxDownloads.stagingRoot(),
+      };
+
+      // Coklu thread dump — playbook'taki AYNI sinirlar (1-100 adet, 0-3600 sn).
+      if (dumpType === 'threaddump') {
+        const count = Number(threadDumpCount ?? 1);
+        const interval = Number(threadDumpInterval ?? 0);
+        if (!Number.isInteger(count) || count < 1 || count > 100) {
+          return res
+            .status(400)
+            .json({ ok: false, message: 'Thread dump adedi 1-100 arasında olmalı.' });
+        }
+        if (!Number.isInteger(interval) || interval < 0 || interval > 3600) {
+          return res
+            .status(400)
+            .json({ ok: false, message: 'Thread dump aralığı 0-3600 saniye arasında olmalı.' });
+        }
+        extraVars.dump_count = count;
+        extraVars.dump_interval = interval;
+      }
+
+      try {
+        const runner = require('../ansible/runner.cjs');
+        await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+          serverId,
+          templateId,
+          extraVars,
+          { label: keyName },
+        );
+        const result = await runner.launchJobOnServer(
+          serverId,
+          templateId,
+          extraVars,
+          '',
+          req.session?.user,
+        );
+
+        try {
+          const db = require('../db/index.cjs');
+          await db.query(
+            `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              req.session?.user?.username || 'unknown',
+              serverId,
+              templateId,
+              `OpsX: Openshift ${dumpType}`,
+              result?.jobId,
+              result?.status || 'pending',
+              JSON.stringify({ platform: 'openshift-dump', ...extraVars }),
+            ],
+          );
+        } catch (e) {
+          console.warn('[OpsX] Dump gecmisi kaydedilemedi:', e.message);
+        }
+
+        try {
+          require('../audit/index.cjs').auditPortal(req, 'opsx_dump', {
+            detail: JSON.stringify({
+              platform: 'openshift',
+              dumpType,
+              extraVars,
+              jobId: result?.jobId ?? null,
+            }),
+          });
+        } catch {
+          /* best-effort */
+        }
+
+        console.log(
+          `[OpsX] ${req.session?.user?.username} -> openshift dump env=${envKey} tenant=${tenantKey} clusters=${neededClusters.join(',')} type=${dumpType} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+        );
+        res.json({
+          ok: true,
+          jobId: result?.jobId ?? null,
+          status: result?.status ?? null,
+          awxServerId: serverId,
+          sentBody: { extra_vars: extraVars },
+        });
+      } catch (err) {
+        res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+    },
+  );
 
   // GET /api/opsx/dump/:serverId/:jobId/status — job terminal + basariliysa
   // artifacts.opsx_dump_result okunur, her basarili sonuc icin bir indirme token'i
@@ -1468,13 +1791,19 @@ function initOpsX(app) {
       if (reqUser.role !== 'Admin') {
         const { rows } = await db.query(
           `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, serverId]
+          [jobId, serverId],
         );
-        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+        if (
+          rows.length &&
+          rows[0].username &&
+          String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
+        ) {
           return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
         }
       }
-    } catch { /* DB hiccup -> fail-open, /job-status ile ayni desen */ }
+    } catch {
+      /* DB hiccup -> fail-open, /job-status ile ayni desen */
+    }
 
     try {
       const runner = require('../ansible/runner.cjs');
@@ -1492,13 +1821,14 @@ function initOpsX(app) {
         return res.json({
           ok: true,
           status: statusInfo.status,
-          message: 'İşlem tamamlandı ancak sonuç alınamadı — playbook\'un set_stats adımını kontrol edin.',
+          message:
+            "İşlem tamamlandı ancak sonuç alınamadı — playbook'un set_stats adımını kontrol edin.",
         });
       }
 
       const opsxDownloads = require('./downloads.cjs');
       const results = [];
-      for (const r of (dumpResult.results || [])) {
+      for (const r of dumpResult.results || []) {
         if (r.ok && r.staged_path && r.filename) {
           const { token } = await opsxDownloads.issueDownloadToken({
             username: reqUser.username || 'unknown',
@@ -1528,6 +1858,13 @@ function initOpsX(app) {
 }
 
 module.exports = {
-  initOpsX, hostsForApp, ALLOWED_OPERATIONS, namespacesForCluster, deriveJbossVersion,
-  extractOpsxDumpResult, extractOpsxPodsResult, extractOpsxJvmResult, extractOpsxServerConfigResult,
+  initOpsX,
+  hostsForApp,
+  ALLOWED_OPERATIONS,
+  namespacesForCluster,
+  deriveJbossVersion,
+  extractOpsxDumpResult,
+  extractOpsxPodsResult,
+  extractOpsxJvmResult,
+  extractOpsxServerConfigResult,
 };

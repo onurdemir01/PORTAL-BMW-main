@@ -34,40 +34,68 @@ async function sendTeamsNotification(job, elapsedMinutes) {
   const startedLocal = new Date(job.started).toLocaleString('tr-TR');
   const body = {
     type: 'message',
-    attachments: [{
-      contentType: 'application/vnd.microsoft.card.adaptive',
-      content: {
-        '$schema': 'http://adaptivecards.io/schemas/adaptive-card.json',
-        type: 'AdaptiveCard',
-        version: '1.4',
-        body: [
-          {
-            type: 'Container',
-            style: 'attention',
-            bleed: true,
-            items: [{
-              type: 'ColumnSet',
-              columns: [
-                { type: 'Column', width: 'auto', verticalContentAlignment: 'Center',
-                  items: [{ type: 'TextBlock', text: '⏱️', size: 'ExtraLarge' }] },
-                { type: 'Column', width: 'stretch', verticalContentAlignment: 'Center',
-                  items: [
-                    { type: 'TextBlock', text: 'Uzun Süredir Çalışan Ansible İşi', weight: 'Bolder', size: 'Large', wrap: true },
-                    { type: 'TextBlock', text: `${job.serverName} sunucusu`, isSubtle: true, spacing: 'none', wrap: true },
-                  ] },
+    attachments: [
+      {
+        contentType: 'application/vnd.microsoft.card.adaptive',
+        content: {
+          $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+          type: 'AdaptiveCard',
+          version: '1.4',
+          body: [
+            {
+              type: 'Container',
+              style: 'attention',
+              bleed: true,
+              items: [
+                {
+                  type: 'ColumnSet',
+                  columns: [
+                    {
+                      type: 'Column',
+                      width: 'auto',
+                      verticalContentAlignment: 'Center',
+                      items: [{ type: 'TextBlock', text: '⏱️', size: 'ExtraLarge' }],
+                    },
+                    {
+                      type: 'Column',
+                      width: 'stretch',
+                      verticalContentAlignment: 'Center',
+                      items: [
+                        {
+                          type: 'TextBlock',
+                          text: 'Uzun Süredir Çalışan Ansible İşi',
+                          weight: 'Bolder',
+                          size: 'Large',
+                          wrap: true,
+                        },
+                        {
+                          type: 'TextBlock',
+                          text: `${job.serverName} sunucusu`,
+                          isSubtle: true,
+                          spacing: 'none',
+                          wrap: true,
+                        },
+                      ],
+                    },
+                  ],
+                },
               ],
-            }],
-          },
-          { type: 'FactSet', spacing: 'Medium', facts: [
-            { title: 'İş', value: job.jobName },
-            { title: 'Job No', value: String(job.jobId) },
-            { title: 'Başlangıç', value: startedLocal },
-            { title: 'Geçen Süre', value: `${Math.floor(elapsedMinutes)} dakika` },
-          ] },
-          { type: 'TextBlock', text: `[AWX'te aç](${job.url})`, wrap: true, spacing: 'Medium' },
-        ],
+            },
+            {
+              type: 'FactSet',
+              spacing: 'Medium',
+              facts: [
+                { title: 'İş', value: job.jobName },
+                { title: 'Job No', value: String(job.jobId) },
+                { title: 'Başlangıç', value: startedLocal },
+                { title: 'Geçen Süre', value: `${Math.floor(elapsedMinutes)} dakika` },
+              ],
+            },
+            { type: 'TextBlock', text: `[AWX'te aç](${job.url})`, wrap: true, spacing: 'Medium' },
+          ],
+        },
       },
-    }],
+    ],
   };
 
   const dispatcher = buildDispatcher(cfg.webhookUrl, 'teams-longjob');
@@ -106,9 +134,14 @@ async function tick() {
     try {
       await sendTeamsNotification(job, elapsedMinutes);
       _notified.add(key);
-      console.log(`[LongJobWatcher] ${job.serverName} job #${job.jobId} (${Math.floor(elapsedMinutes)} dk) icin Teams bildirimi gonderildi.`);
+      console.log(
+        `[LongJobWatcher] ${job.serverName} job #${job.jobId} (${Math.floor(elapsedMinutes)} dk) icin Teams bildirimi gonderildi.`,
+      );
     } catch (e) {
-      console.warn(`[LongJobWatcher] ${job.serverName} job #${job.jobId} icin bildirim gonderilemedi:`, e.message);
+      console.warn(
+        `[LongJobWatcher] ${job.serverName} job #${job.jobId} icin bildirim gonderilemedi:`,
+        e.message,
+      );
     }
   }
 
@@ -121,14 +154,19 @@ async function tick() {
 let _timer = null;
 
 function startWatcher() {
-  if (_timer) return; // zaten calisiyor (ör. hot-reload/test ortami)
+  if (_timer) return; // zaten calisiyor (or. hot-reload/test ortami)
   const cfg = getConfig();
-  _timer = setInterval(() => { tick().catch((e) => console.warn('[LongJobWatcher] tick hatasi:', e.message)); }, cfg.pollIntervalSeconds * 1000);
+  _timer = setInterval(() => {
+    tick().catch((e) => console.warn('[LongJobWatcher] tick hatasi:', e.message));
+  }, cfg.pollIntervalSeconds * 1000);
   _timer.unref?.();
 }
 
 function stopWatcher() {
-  if (_timer) { clearInterval(_timer); _timer = null; }
+  if (_timer) {
+    clearInterval(_timer);
+    _timer = null;
+  }
 }
 
 module.exports = { startWatcher, stopWatcher, tick, isConfigured, getConfig };

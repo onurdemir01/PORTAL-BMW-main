@@ -67,7 +67,7 @@ test('CD5 launchJob soguma penceresini GERCEKTEN uyguluyor (karar noktasi)', () 
   );
   // ZINCIR KIRILMASINA IZIN VER: prettier `[...existing].reverse().find(` zincirini
   // satirlara boluyor ve `norm` bunlari BOSLUGA cevirdigi icin bitisik desen tutmuyor.
-  // Olculen kural: son TERMINAL is, mevcut isler arasindan aranıyor mu?
+  // Olculen kural: son TERMINAL is, mevcut isler arasindan araniyor mu?
   assert.match(
     src,
     /const lastTerminal = \[\.\.\.existing\] ?\.reverse\(\) ?\.find\(/,

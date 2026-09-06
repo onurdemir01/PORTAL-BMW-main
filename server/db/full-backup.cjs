@@ -6,7 +6,7 @@
 // ile AYNI setInterval deseni).
 //
 // Tablo kesfi INFORMATION_SCHEMA.TABLES uzerinden OTOMATIK yapilir — yeni bir tablo
-// eklendiginde bu dosyanin GUNCELLENMESINE gerek yoktur. Buyuk tablolar (ör. audit_log)
+// eklendiginde bu dosyanin GUNCELLENMESINE gerek yoktur. Buyuk tablolar (or. audit_log)
 // icin bellek sismesin diye node-mssql'in DUSUK SEVIYELI streaming Request API'si
 // kullanilir (satir satir diske yazilir, TUM recordset bellekte tutulmaz).
 'use strict';
@@ -30,7 +30,9 @@ function numEnv(raw, fallback, { min, max }) {
 
 function getConfig() {
   return {
-    dir: process.env.DB_FULL_BACKUP_DIR || '/sw/WAS_IMAGES/Ansible/Middleware_Inventory/backup/daily_full',
+    dir:
+      process.env.DB_FULL_BACKUP_DIR ||
+      '/sw/WAS_IMAGES/Ansible/Middleware_Inventory/backup/daily_full',
     // Ana backup/ klasoru zaten diger job'larin (mwapps_backup.py, inventory_backup.py, ...)
     // TEK tablo yedekleriyle dolu — bilerek bir alt klasorde tutulur, hangi dosyanin
     // hangi ise ait oldugu KARISMASIN.
@@ -38,11 +40,14 @@ function getConfig() {
     // 0-23 arasi, gunun hangi SAATINDE (sunucu yerel saati) calisilsin.
     hour: numEnv(process.env.DB_FULL_BACKUP_HOUR, 2, { min: 0, max: 23 }),
     // Ust sinir 60: tick saatlik pencereyi HER ZAMAN yakalayabilmeli.
-    checkIntervalMinutes: numEnv(process.env.DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES, 15, { min: 1, max: 60 }),
+    checkIntervalMinutes: numEnv(process.env.DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES, 15, {
+      min: 1,
+      max: 60,
+    }),
   };
 }
 
-// Bellek-ici anlik durum — admin ekrani "Şimdi Çalıştır" sonrasi bunu polling eder.
+// Bellek-ici anlik durum — admin ekrani "Simdi Calistir" sonrasi bunu polling eder.
 const state = {
   status: 'idle', // idle | running | done | error
   startedAt: null,
@@ -84,10 +89,11 @@ function timestampStr(d) {
 // yerine KOLON ADI bazli maskeleme secildi: yeni bir tablo eklendiginde de otomatik
 // kapsanir (allowlist'i guncellemeyi unutmak sessiz bir sizinti olurdu) ve yedek YINE
 // eksiksiz kalir — yalnizca hassas HUCRELER maskelenir.
-const SECRET_COLUMN_RE = /(^|_)(token|password|passwd|secret|credential|api_key|apikey)($|_)|pending_launch_json/i;
+const SECRET_COLUMN_RE =
+  /(^|_)(token|password|passwd|secret|credential|api_key|apikey)($|_)|pending_launch_json/i;
 const MASK = '***maskelendi***';
 
-// node-mssql'in streaming Request API'si — buyuk tablolarda TUM sonucu belleğe
+// node-mssql'in streaming Request API'si — buyuk tablolarda TUM sonucu bellege
 // yuklemek yerine satir satir diske yazar.
 function backupTable(pool, schema, table, dir, tsStr) {
   return new Promise((resolve, reject) => {
@@ -116,15 +122,17 @@ function backupTable(pool, schema, table, dir, tsStr) {
       const names = Object.keys(columns);
       maskedCols = new Set(names.filter((n) => SECRET_COLUMN_RE.test(n)));
       if (maskedCols.size > 0) {
-        console.log(`[DBFullBackup] ${table}: maskelenen kolon(lar) — ${[...maskedCols].join(', ')}`);
+        console.log(
+          `[DBFullBackup] ${table}: maskelenen kolon(lar) — ${[...maskedCols].join(', ')}`,
+        );
       }
       ws.write(names.map(csvEscape).join('~') + '\n');
     });
     request.on('row', (row) => {
-      const cells = Object.entries(row).map(([k, v]) => (
+      const cells = Object.entries(row).map(([k, v]) =>
         // NULL maskelenmez: "deger yok" bilgisi sir degil ve yedegin butunlugu icin anlamli.
-        maskedCols.has(k) && v !== null && v !== undefined ? MASK : csvEscape(v)
-      ));
+        maskedCols.has(k) && v !== null && v !== undefined ? MASK : csvEscape(v),
+      );
       ws.write(cells.join('~') + '\n');
       rowCount++;
     });
@@ -166,9 +174,15 @@ async function persistLastRun() {
   try {
     const db = require('./index.cjs');
     const payload = JSON.stringify(state);
-    const upd = await db.query(`UPDATE portal_config_blobs SET data = $1, updated_at = GETUTCDATE() WHERE name = $2`, [payload, BLOB_NAME]);
+    const upd = await db.query(
+      `UPDATE portal_config_blobs SET data = $1, updated_at = GETUTCDATE() WHERE name = $2`,
+      [payload, BLOB_NAME],
+    );
     if (!upd.rowCount) {
-      await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [BLOB_NAME, payload]);
+      await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [
+        BLOB_NAME,
+        payload,
+      ]);
     }
   } catch (e) {
     console.warn('[DBFullBackup] son calisma durumu kaydedilemedi:', e.message);
@@ -178,7 +192,9 @@ async function persistLastRun() {
 async function loadPersistedState() {
   try {
     const db = require('./index.cjs');
-    const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]);
+    const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [
+      BLOB_NAME,
+    ]);
     if (rows.length) Object.assign(state, JSON.parse(rows[0].data));
   } catch {
     /* ilk calisma / DB henuz hazir degil — varsayilan idle state kalir */
@@ -209,9 +225,11 @@ async function runBackup() {
     await fs.promises.mkdir(cfg.dir, { recursive: true });
     const tsStr = timestampStr(new Date());
 
-    const result = await pool.request().query(
-      `SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME`
-    );
+    const result = await pool
+      .request()
+      .query(
+        `SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME`,
+      );
     const tables = result.recordset || [];
     state.tableCount = tables.length;
 
@@ -226,13 +244,18 @@ async function runBackup() {
       state.doneCount++;
     }
 
-    state.removedFiles = await cleanupOldFiles(cfg.dir, Date.now() - cfg.retentionDays * 86_400_000);
+    state.removedFiles = await cleanupOldFiles(
+      cfg.dir,
+      Date.now() - cfg.retentionDays * 86_400_000,
+    );
 
     state.status = state.failedTables.length > 0 ? 'error' : 'done';
     if (state.failedTables.length > 0) {
       state.lastError = `${state.failedTables.length} tablo yedeklenemedi: ${state.failedTables.join(', ')}`;
     }
-    console.log(`[DBFullBackup] tamamlandi — ${state.tableCount} tablo, ${state.totalRows} satir, ${state.failedTables.length} basarisiz.`);
+    console.log(
+      `[DBFullBackup] tamamlandi — ${state.tableCount} tablo, ${state.totalRows} satir, ${state.failedTables.length} basarisiz.`,
+    );
   } catch (e) {
     state.status = 'error';
     state.lastError = e.message;
@@ -282,7 +305,9 @@ function initDbFullBackup(app) {
     runBackup().catch((e) => console.error('[DBFullBackup] manuel calisma hatasi:', e.message));
     try {
       require('../audit/index.cjs').auditPortal(req, 'db_full_backup_manual_run', { detail: '' });
-    } catch { /* yoksay */ }
+    } catch {
+      /* yoksay */
+    }
     res.json({ ok: true, started: true });
   });
 

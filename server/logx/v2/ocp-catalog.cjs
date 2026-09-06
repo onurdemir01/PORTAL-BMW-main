@@ -152,7 +152,7 @@ async function getApps({ env, tenant, clusterNames, namespace }) {
   const anyCache = cachedPerCluster.find((c) => c.cached) || EMPTY;
   const freshness = mergeFreshness(inv, anyCache);
   // TARAMA KAYDI: cluster'lardan HERHANGI biri "tarandi ve bos cikti" diyorsa sihirbaz
-  // otomatik taramayi TEKRARLAMAZ (aksi halde bos bir namespace her girişte yeni bir
+  // otomatik taramayi TEKRARLAMAZ (aksi halde bos bir namespace her giriste yeni bir
   // AWX job'i aciyordu). En yeni tarama zamani gosterilir.
   const scanned = cachedPerCluster.filter((c) => c.scannedAt);
   const scannedAt = scanned.length
@@ -169,7 +169,7 @@ async function getApps({ env, tenant, clusterNames, namespace }) {
       [...byName.values()].length === 0,
     // Cluster'lardan HERHANGI birinin tarama kaydi OKUNAMADIYSA sihirbaz otomatik
     // tarama yapmaz: kayit okunamadigi surece tarama sonrasi da ayni belirsizlik
-    // surer ve her giriş yeni bir AWX job'i acardi (sonsuz dongu).
+    // surer ve her giris yeni bir AWX job'i acardi (sonsuz dongu).
     scanUnknown: cachedPerCluster.some((c) => c.scanUnknown),
     cached: Boolean(inv.cached || cachedPerCluster.some((c) => c.cached)),
     ...freshness,

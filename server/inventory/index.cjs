@@ -1,32 +1,38 @@
 // server/inventory/index.cjs
-const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const { getPool, isAvailable, query, sql, poolStats } = require("./mssql.cjs");
-const { getRequestUser, getRequestRole } = require("../auth/index.cjs");
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const { getPool, isAvailable, query, sql, poolStats } = require('./mssql.cjs');
+const { getRequestUser, getRequestRole } = require('../auth/index.cjs');
 
 // actions.md #20 (Bolum P) — salt-okunur havuz tanimli degilse bu uyariyi SADECE BIR KEZ logla.
 let _warnedSharedPoolFallback = false;
 
 // ── Blocklist — system tables + internal portal tables (never exposed via API) ──
 const BLOCKED_TABLES = [
-  "sys", "sysdiagrams", "MSreplication_options", "dtproperties",
+  'sys',
+  'sysdiagrams',
+  'MSreplication_options',
+  'dtproperties',
   // Internal portal tables — must not be visible in inventory UI
-  "logx_sessions", "logx_audit_logs", "logx_permissions",
-  "inventory_hosts", "servers",
+  'logx_sessions',
+  'logx_audit_logs',
+  'logx_permissions',
+  'inventory_hosts',
+  'servers',
 ];
 
 // Fallback list used when DB is unavailable
 const FALLBACK_TABLES = [
-  "Inventory",
-  "MWAppsInventory",
-  "OpenshiftInventory",
-  "WDS_CTG",
-  "WDS_IHS",
-  "WDS_JBOSS",
-  "WDS_NGINX",
-  "WDS_RHA",
-  "ekip_infos",
+  'Inventory',
+  'MWAppsInventory',
+  'OpenshiftInventory',
+  'WDS_CTG',
+  'WDS_IHS',
+  'WDS_JBOSS',
+  'WDS_NGINX',
+  'WDS_RHA',
+  'ekip_infos',
 ];
 
 // ── Table cache (60 s TTL) ────────────────────────────────────────────────────
@@ -68,7 +74,9 @@ function colCacheSet(table, cols, colTypes) {
 async function readAliases() {
   try {
     // is_active=0 olan bir alias artik gorunmez (raw tablo adina duser) — actions.md #13.
-    const result = await query(`SELECT table_name, alias FROM inventory_table_aliases WHERE is_active = 1`);
+    const result = await query(
+      `SELECT table_name, alias FROM inventory_table_aliases WHERE is_active = 1`,
+    );
     const map = {};
     for (const r of result.recordset) map[r.table_name] = r.alias;
     return map;
@@ -81,18 +89,20 @@ async function setAlias(tableName, alias, extra = {}) {
   const schemaName = extra.schemaName != null ? String(extra.schemaName) : null;
   const description = extra.description != null ? String(extra.description) : null;
   const isActive = extra.isActive !== false;
-  const language = extra.language ? String(extra.language) : "tr";
+  const language = extra.language ? String(extra.language) : 'tr';
   const sortOrder = Number.isFinite(Number(extra.sortOrder)) ? Number(extra.sortOrder) : 0;
 
-  const exists = await query(`SELECT id FROM inventory_table_aliases WHERE table_name = @t`, [{ name: "t", type: sql.NVarChar(255), value: tableName }]);
+  const exists = await query(`SELECT id FROM inventory_table_aliases WHERE table_name = @t`, [
+    { name: 't', type: sql.NVarChar(255), value: tableName },
+  ]);
   const params = [
-    { name: "a", type: sql.NVarChar(255), value: alias },
-    { name: "t", type: sql.NVarChar(255), value: tableName },
-    { name: "schema", type: sql.NVarChar(128), value: schemaName },
-    { name: "desc", type: sql.NVarChar(500), value: description },
-    { name: "active", type: sql.Bit, value: isActive },
-    { name: "lang", type: sql.NVarChar(10), value: language },
-    { name: "sort", type: sql.Int, value: sortOrder },
+    { name: 'a', type: sql.NVarChar(255), value: alias },
+    { name: 't', type: sql.NVarChar(255), value: tableName },
+    { name: 'schema', type: sql.NVarChar(128), value: schemaName },
+    { name: 'desc', type: sql.NVarChar(500), value: description },
+    { name: 'active', type: sql.Bit, value: isActive },
+    { name: 'lang', type: sql.NVarChar(10), value: language },
+    { name: 'sort', type: sql.Int, value: sortOrder },
   ];
   if (exists.recordset.length > 0) {
     await query(
@@ -100,19 +110,21 @@ async function setAlias(tableName, alias, extra = {}) {
          SET alias = @a, schema_name = @schema, description = @desc, is_active = @active,
              language = @lang, sort_order = @sort, updated_at = GETUTCDATE()
        WHERE table_name = @t`,
-      params
+      params,
     );
   } else {
     await query(
       `INSERT INTO inventory_table_aliases (table_name, alias, schema_name, description, is_active, language, sort_order)
        VALUES (@t, @a, @schema, @desc, @active, @lang, @sort)`,
-      params
+      params,
     );
   }
 }
 
 async function removeAlias(tableName) {
-  await query(`DELETE FROM inventory_table_aliases WHERE table_name = @t`, [{ name: "t", type: sql.NVarChar(255), value: tableName }]);
+  await query(`DELETE FROM inventory_table_aliases WHERE table_name = @t`, [
+    { name: 't', type: sql.NVarChar(255), value: tableName },
+  ]);
 }
 
 // ── Tablo gorunurlugu — YENI sema (actions.md #12, Bolum K) ───────────────────
@@ -128,8 +140,8 @@ async function removeAlias(tableName) {
 // /table-visibility/:id/role ve /table-visibility/role-all uzerinden, Admin > Envanter
 // Gorunurlugu ekraninda (InventoryVisibilityTab.tsx) yapilir.
 const DEFAULT_VISIBLE = {
-  User:  ["Inventory", "MWAppsInventory", "OpenshiftInventory"],
-  Admin: "*",
+  User: ['Inventory', 'MWAppsInventory', 'OpenshiftInventory'],
+  Admin: '*',
 };
 
 let _visibleTablesCache = null;
@@ -149,30 +161,37 @@ async function reconcileTableVisibility(liveTableNames) {
     await query(
       `IF NOT EXISTS (SELECT 1 FROM inventory_table_visibility WHERE table_name = '*')
        INSERT INTO inventory_table_visibility (schema_name, table_name, display_name, is_active)
-       VALUES ('*', '*', N'Tüm Tablolar (*)', 1)`
+       VALUES ('*', '*', N'Tüm Tablolar (*)', 1)`,
     );
 
     const existing = await query(`SELECT table_name, is_active FROM inventory_table_visibility`);
-    const existingMap = new Map(existing.recordset.map((r) => [r.table_name, r.is_active === true || r.is_active === 1]));
+    const existingMap = new Map(
+      existing.recordset.map((r) => [r.table_name, r.is_active === true || r.is_active === 1]),
+    );
     const liveSet = new Set(liveTableNames);
 
     for (const t of liveTableNames) {
       if (!existingMap.has(t)) {
-        await query(`INSERT INTO inventory_table_visibility (table_name) VALUES (@t)`,
-          [{ name: "t", type: sql.NVarChar(255), value: t }]).catch(() => {});
+        await query(`INSERT INTO inventory_table_visibility (table_name) VALUES (@t)`, [
+          { name: 't', type: sql.NVarChar(255), value: t },
+        ]).catch(() => {});
       } else if (existingMap.get(t) === false) {
-        await query(`UPDATE inventory_table_visibility SET is_active = 1, updated_at = GETUTCDATE() WHERE table_name = @t`,
-          [{ name: "t", type: sql.NVarChar(255), value: t }]).catch(() => {});
+        await query(
+          `UPDATE inventory_table_visibility SET is_active = 1, updated_at = GETUTCDATE() WHERE table_name = @t`,
+          [{ name: 't', type: sql.NVarChar(255), value: t }],
+        ).catch(() => {});
       }
     }
     for (const [name, active] of existingMap) {
-      if (name === "*" || liveSet.has(name) || !active) continue;
-      await query(`UPDATE inventory_table_visibility SET is_active = 0, updated_at = GETUTCDATE() WHERE table_name = @t`,
-        [{ name: "t", type: sql.NVarChar(255), value: name }]).catch(() => {});
+      if (name === '*' || liveSet.has(name) || !active) continue;
+      await query(
+        `UPDATE inventory_table_visibility SET is_active = 0, updated_at = GETUTCDATE() WHERE table_name = @t`,
+        [{ name: 't', type: sql.NVarChar(255), value: name }],
+      ).catch(() => {});
     }
     _reconciledAt = Date.now();
   } catch (e) {
-    console.warn("[Inventory] tablo gorunurlugu uzlastirilamadi:", e.message);
+    console.warn('[Inventory] tablo gorunurlugu uzlastirilamadi:', e.message);
   }
 }
 
@@ -184,7 +203,10 @@ async function migrateLegacyVisibleTablesIfNeeded() {
   if (_legacyMigrated) return;
   try {
     const roleRows = await query(`SELECT COUNT(*) AS n FROM inventory_table_role_visibility`);
-    if (Number(roleRows.recordset[0]?.n || 0) > 0) { _legacyMigrated = true; return; }
+    if (Number(roleRows.recordset[0]?.n || 0) > 0) {
+      _legacyMigrated = true;
+      return;
+    }
 
     const legacy = await query(`SELECT role_name, tables FROM inventory_visible_tables`);
     const sourceRows = legacy.recordset.length
@@ -196,30 +218,39 @@ async function migrateLegacyVisibleTablesIfNeeded() {
 
     for (const row of sourceRows) {
       const role = row.role_name;
-      if (row.tables === "*") {
-        const sentinelId = idByName.get("*");
+      if (row.tables === '*') {
+        const sentinelId = idByName.get('*');
         if (sentinelId) {
           await query(
             `INSERT INTO inventory_table_role_visibility (table_visibility_id, role_name, can_view) VALUES (@id, @r, 1)`,
-            [{ name: "id", type: sql.Int, value: sentinelId }, { name: "r", type: sql.NVarChar(50), value: role }]
+            [
+              { name: 'id', type: sql.Int, value: sentinelId },
+              { name: 'r', type: sql.NVarChar(50), value: role },
+            ],
           ).catch(() => {});
         }
         continue;
       }
-      const names = String(row.tables || "").split(",").map((s) => s.trim()).filter(Boolean);
+      const names = String(row.tables || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       for (const n of names) {
         const id = idByName.get(n);
         if (!id) continue; // uzlastirma henuz calismamis/tablo artik yok — sessizce atla
         await query(
           `INSERT INTO inventory_table_role_visibility (table_visibility_id, role_name, can_view) VALUES (@id, @r, 1)`,
-          [{ name: "id", type: sql.Int, value: id }, { name: "r", type: sql.NVarChar(50), value: role }]
+          [
+            { name: 'id', type: sql.Int, value: id },
+            { name: 'r', type: sql.NVarChar(50), value: role },
+          ],
         ).catch(() => {});
       }
     }
-    console.log("[Inventory] Eski gorunurluk verisi yeni semaya gocuruldu.");
+    console.log('[Inventory] Eski gorunurluk verisi yeni semaya gocuruldu.');
     _legacyMigrated = true;
   } catch (e) {
-    console.warn("[Inventory] Eski gorunurluk verisi gocurulemedi:", e.message);
+    console.warn('[Inventory] Eski gorunurluk verisi gocurulemedi:', e.message);
   }
 }
 
@@ -233,16 +264,19 @@ async function readVisibleTables() {
       `SELECT rv.role_name, tv.table_name
          FROM inventory_table_role_visibility rv
          JOIN inventory_table_visibility tv ON tv.id = rv.table_visibility_id
-        WHERE rv.can_view = 1 AND (tv.table_name = '*' OR tv.is_active = 1)`
+        WHERE rv.can_view = 1 AND (tv.table_name = '*' OR tv.is_active = 1)`,
     );
     const config = {};
     for (const r of recordset) {
-      if (r.table_name === "*") { config[r.role_name] = "*"; continue; }
-      if (config[r.role_name] === "*") continue; // sentinel her zaman kazanir
+      if (r.table_name === '*') {
+        config[r.role_name] = '*';
+        continue;
+      }
+      if (config[r.role_name] === '*') continue; // sentinel her zaman kazanir
       (config[r.role_name] ??= []).push(r.table_name);
     }
-    if (!("User" in config)) config.User = DEFAULT_VISIBLE.User;
-    if (!("Admin" in config)) config.Admin = DEFAULT_VISIBLE.Admin;
+    if (!('User' in config)) config.User = DEFAULT_VISIBLE.User;
+    if (!('Admin' in config)) config.Admin = DEFAULT_VISIBLE.Admin;
     _visibleTablesCache = config;
     _visibleTablesCacheAt = Date.now();
     return config;
@@ -255,21 +289,32 @@ async function writeVisibleTablesForRole(role, tables) {
   const tvRows = await query(`SELECT id, table_name FROM inventory_table_visibility`);
   const idByName = new Map(tvRows.recordset.map((r) => [r.table_name, r.id]));
 
-  await query(`DELETE FROM inventory_table_role_visibility WHERE role_name = @r`,
-    [{ name: "r", type: sql.NVarChar(50), value: role }]);
+  await query(`DELETE FROM inventory_table_role_visibility WHERE role_name = @r`, [
+    { name: 'r', type: sql.NVarChar(50), value: role },
+  ]);
 
-  if (tables === "*") {
-    const sentinelId = idByName.get("*");
+  if (tables === '*') {
+    const sentinelId = idByName.get('*');
     if (sentinelId) {
-      await query(`INSERT INTO inventory_table_role_visibility (table_visibility_id, role_name, can_view) VALUES (@id, @r, 1)`,
-        [{ name: "id", type: sql.Int, value: sentinelId }, { name: "r", type: sql.NVarChar(50), value: role }]);
+      await query(
+        `INSERT INTO inventory_table_role_visibility (table_visibility_id, role_name, can_view) VALUES (@id, @r, 1)`,
+        [
+          { name: 'id', type: sql.Int, value: sentinelId },
+          { name: 'r', type: sql.NVarChar(50), value: role },
+        ],
+      );
     }
   } else if (Array.isArray(tables)) {
     for (const t of tables) {
       const id = idByName.get(t);
       if (!id) continue; // bilinmeyen tablo adi sessizce atlanir (eski CSV davranisiyla ayni)
-      await query(`INSERT INTO inventory_table_role_visibility (table_visibility_id, role_name, can_view) VALUES (@id, @r, 1)`,
-        [{ name: "id", type: sql.Int, value: id }, { name: "r", type: sql.NVarChar(50), value: role }]).catch(() => {});
+      await query(
+        `INSERT INTO inventory_table_role_visibility (table_visibility_id, role_name, can_view) VALUES (@id, @r, 1)`,
+        [
+          { name: 'id', type: sql.Int, value: id },
+          { name: 'r', type: sql.NVarChar(50), value: role },
+        ],
+      ).catch(() => {});
     }
   }
   _visibleTablesCache = null; // sonraki okuma taze veriyi ceksin
@@ -283,7 +328,7 @@ async function getUserOverridesForUser(username) {
        FROM inventory_table_user_override o
        JOIN inventory_table_visibility tv ON tv.id = o.table_visibility_id
       WHERE o.username = @u`,
-    [{ name: "u", type: sql.NVarChar(255), value: String(username || "").toLowerCase() }]
+    [{ name: 'u', type: sql.NVarChar(255), value: String(username || '').toLowerCase() }],
   );
   const map = new Map();
   for (const r of recordset) map.set(r.table_name, r.override_type);
@@ -299,7 +344,9 @@ let _inactiveCacheAt = 0;
 async function getInactiveTableNames() {
   if (_inactiveCache && Date.now() - _inactiveCacheAt < VISIBLE_TABLES_TTL) return _inactiveCache;
   try {
-    const { recordset } = await query(`SELECT table_name FROM inventory_table_visibility WHERE is_active = 0 AND table_name <> '*'`);
+    const { recordset } = await query(
+      `SELECT table_name FROM inventory_table_visibility WHERE is_active = 0 AND table_name <> '*'`,
+    );
     _inactiveCache = new Set(recordset.map((r) => r.table_name));
   } catch {
     _inactiveCache = _inactiveCache || new Set();
@@ -312,9 +359,14 @@ async function getInactiveTableNames() {
 // donuk uyumluluk) yalniz rol kurali uygulanir — mevcut cagiranlar KIRILMAZ.
 async function filterTablesByRole(tables, role, username) {
   const config = await readVisibleTables();
-  const roleKey = role === "Admin" ? "Admin" : "User";
+  const roleKey = role === 'Admin' ? 'Admin' : 'User';
   const allowed = config[roleKey];
-  let base = allowed === "*" ? tables.slice() : (Array.isArray(allowed) ? tables.filter((t) => allowed.includes(t)) : tables.slice());
+  let base =
+    allowed === '*'
+      ? tables.slice()
+      : Array.isArray(allowed)
+        ? tables.filter((t) => allowed.includes(t))
+        : tables.slice();
 
   const inactive = await getInactiveTableNames();
   if (inactive.size) base = base.filter((t) => !inactive.has(t));
@@ -326,8 +378,8 @@ async function filterTablesByRole(tables, role, username) {
     const baseSet = new Set(base);
     for (const t of tables) {
       const ov = overrides.get(t);
-      if (ov === "allow") baseSet.add(t);
-      else if (ov === "deny") baseSet.delete(t);
+      if (ov === 'allow') baseSet.add(t);
+      else if (ov === 'deny') baseSet.delete(t);
     }
     return tables.filter((t) => baseSet.has(t)); // orijinal sirayi koru
   } catch {
@@ -343,9 +395,9 @@ async function filterTablesByRole(tables, role, username) {
 // kontrol ETMEZ (tek dogruluk kaynagi burasi).
 function buildAdvancedWhereClause(filterGroup, allCols, req) {
   if (!filterGroup || !Array.isArray(filterGroup.filters) || filterGroup.filters.length === 0) {
-    return "";
+    return '';
   }
-  const mode = filterGroup.mode === "OR" ? " OR " : " AND ";
+  const mode = filterGroup.mode === 'OR' ? ' OR ' : ' AND ';
   const parts = [];
   let idx = 0;
   for (const f of filterGroup.filters) {
@@ -353,49 +405,49 @@ function buildAdvancedWhereClause(filterGroup, allCols, req) {
     const p = `af${idx++}`;
     const colExpr = `CAST([${f.col}] AS NVARCHAR(MAX))`;
     switch (f.op) {
-      case "contains":
+      case 'contains':
         req.input(p, sql.NVarChar(512), `%${f.value}%`);
         parts.push(`${colExpr} LIKE @${p}`);
         break;
-      case "notContains":
+      case 'notContains':
         req.input(p, sql.NVarChar(512), `%${f.value}%`);
         parts.push(`${colExpr} NOT LIKE @${p}`);
         break;
-      case "equals":
+      case 'equals':
         req.input(p, sql.NVarChar(512), f.value);
         parts.push(`${colExpr} = @${p}`);
         break;
-      case "notEquals":
+      case 'notEquals':
         req.input(p, sql.NVarChar(512), f.value);
         parts.push(`${colExpr} <> @${p}`);
         break;
-      case "startsWith":
+      case 'startsWith':
         req.input(p, sql.NVarChar(512), `${f.value}%`);
         parts.push(`${colExpr} LIKE @${p}`);
         break;
-      case "endsWith":
+      case 'endsWith':
         req.input(p, sql.NVarChar(512), `%${f.value}`);
         parts.push(`${colExpr} LIKE @${p}`);
         break;
-      case "isNull":
+      case 'isNull':
         parts.push(`${quoteIdent(f.col)} IS NULL`);
         break;
-      case "isNotNull":
+      case 'isNotNull':
         parts.push(`${quoteIdent(f.col)} IS NOT NULL`);
         break;
-      case "gt":
+      case 'gt':
         req.input(p, sql.NVarChar(256), f.value);
         parts.push(`${colExpr} > @${p}`);
         break;
-      case "gte":
+      case 'gte':
         req.input(p, sql.NVarChar(256), f.value);
         parts.push(`${colExpr} >= @${p}`);
         break;
-      case "lt":
+      case 'lt':
         req.input(p, sql.NVarChar(256), f.value);
         parts.push(`${colExpr} < @${p}`);
         break;
-      case "lte":
+      case 'lte':
         req.input(p, sql.NVarChar(256), f.value);
         parts.push(`${colExpr} <= @${p}`);
         break;
@@ -409,28 +461,28 @@ function buildAdvancedWhereClause(filterGroup, allCols, req) {
 // ── Saved queries helpers ─────────────────────────────────────────────────────
 // Kayitli sorgular artik DB'de (inventory_saved_queries); eski server/data/
 // inventory-saved-queries.json yalnizca tek seferlik goc kaynagidir.
-const SAVED_QUERIES_FILE = path.join(__dirname, "../data/inventory-saved-queries.json");
-const portalDb = require("../db/index.cjs");
+const SAVED_QUERIES_FILE = path.join(__dirname, '../data/inventory-saved-queries.json');
+const portalDb = require('../db/index.cjs');
 
 // In-memory cache — senkron okumalar icin (DB yuklenene kadar dosya fallback).
 let _sqCache = null;
 
 function normalizeSavedQuery(q) {
   return {
-    name: q.name || "",
-    sql: q.sql || "",
-    isPublished: typeof q.isPublished === "undefined" ? true : !!q.isPublished,
+    name: q.name || '',
+    sql: q.sql || '',
+    isPublished: typeof q.isPublished === 'undefined' ? true : !!q.isPublished,
     isDefault: !!q.isDefault,
-    publishedBy: q.publishedBy || "",
+    publishedBy: q.publishedBy || '',
     savedAt: q.savedAt || new Date().toISOString(),
-    description: q.description || "",
+    description: q.description || '',
   };
 }
 
 function savedQueriesFileFallback() {
   try {
     if (!fs.existsSync(SAVED_QUERIES_FILE)) return [];
-    const raw = JSON.parse(fs.readFileSync(SAVED_QUERIES_FILE, "utf-8"));
+    const raw = JSON.parse(fs.readFileSync(SAVED_QUERIES_FILE, 'utf-8'));
     return Array.isArray(raw) ? raw.map(normalizeSavedQuery) : [];
   } catch {
     return [];
@@ -444,12 +496,12 @@ function readSavedQueries() {
 function sqRowToQuery(r) {
   return {
     name: r.name,
-    sql: r.sql_text || "",
+    sql: r.sql_text || '',
     isPublished: !!r.is_published,
     isDefault: !!r.is_default,
-    publishedBy: r.published_by || "",
-    savedAt: r.saved_at instanceof Date ? r.saved_at.toISOString() : String(r.saved_at || ""),
-    description: r.description || "",
+    publishedBy: r.published_by || '',
+    savedAt: r.saved_at instanceof Date ? r.saved_at.toISOString() : String(r.saved_at || ''),
+    description: r.description || '',
   };
 }
 
@@ -472,13 +524,29 @@ function stableStringify(obj) {
 async function upsertSavedQuery(q) {
   const upd = await portalDb.query(
     `UPDATE inventory_saved_queries SET sql_text=$1, is_published=$2, is_default=$3, published_by=$4, description=$5, saved_at=$6 WHERE name=$7`,
-    [q.sql, q.isPublished ? 1 : 0, q.isDefault ? 1 : 0, q.publishedBy, q.description, q.savedAt, q.name]
+    [
+      q.sql,
+      q.isPublished ? 1 : 0,
+      q.isDefault ? 1 : 0,
+      q.publishedBy,
+      q.description,
+      q.savedAt,
+      q.name,
+    ],
   );
   if (!upd.rowCount) {
     await portalDb.query(
       `INSERT INTO inventory_saved_queries (name, sql_text, is_published, is_default, published_by, description, saved_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [q.name, q.sql, q.isPublished ? 1 : 0, q.isDefault ? 1 : 0, q.publishedBy, q.description, q.savedAt]
+      [
+        q.name,
+        q.sql,
+        q.isPublished ? 1 : 0,
+        q.isDefault ? 1 : 0,
+        q.publishedBy,
+        q.description,
+        q.savedAt,
+      ],
     );
   }
 }
@@ -504,8 +572,8 @@ async function writeSavedQueries(data) {
   const removed = [...prevByName.keys()].filter((n) => !nextNames.has(n));
   if (removed.length > 0) {
     await portalDb.query(
-      `DELETE FROM inventory_saved_queries WHERE name IN (${removed.map((_, i) => `$${i + 1}`).join(",")})`,
-      removed
+      `DELETE FROM inventory_saved_queries WHERE name IN (${removed.map((_, i) => `$${i + 1}`).join(',')})`,
+      removed,
     );
   }
   _sqCache = queries;
@@ -527,17 +595,20 @@ async function loadSavedQueriesStore() {
     await reloadSavedQueriesCache();
     console.log(`[Inventory] ${_sqCache.length} kayitli sorgu DB'den yuklendi.`);
   } catch (e) {
-    console.warn("[Inventory] kayitli sorgular DB'den yuklenemedi, dosya fallback aktif:", e.message);
+    console.warn(
+      "[Inventory] kayitli sorgular DB'den yuklenemedi, dosya fallback aktif:",
+      e.message,
+    );
   }
 }
 
 // ── Security ─────────────────────────────────────────────────────────────────
 function isSelectOnly(sqlText) {
-  const cleaned = sqlText.replace(/\s+/g, " ").trim().toUpperCase();
-  if (!cleaned.startsWith("SELECT")) return false;
+  const cleaned = sqlText.replace(/\s+/g, ' ').trim().toUpperCase();
+  if (!cleaned.startsWith('SELECT')) return false;
   // Tek-ifade zorunlulugu: mesru SELECT'ler ';' gerektirmez, coklu-ifade injection'ini
   // (bir sonraki ifade banned-list disi bir sey olsa bile) engeller.
-  if (cleaned.replace(/;\s*$/, "").includes(";")) return false;
+  if (cleaned.replace(/;\s*$/, '').includes(';')) return false;
   const banned =
     /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|EXEC|EXECUTE|TRUNCATE|MERGE|GRANT|REVOKE|WAITFOR|OPENROWSET|OPENQUERY|OPENDATASOURCE|BULK|DBCC|SHUTDOWN|BACKUP|RESTORE|KILL)\b/;
   if (banned.test(cleaned)) return false;
@@ -566,7 +637,7 @@ function extractReferencedTables(sqlText) {
 // ── Admin helper ──────────────────────────────────────────────────────────────
 // Header'a dogrudan guvenmez — session veya secret'li guvenilir header (auth getRequestRole).
 function isAdmin(req) {
-  return getRequestRole(req) === "Admin";
+  return getRequestRole(req) === 'Admin';
 }
 
 // ── Table list helpers ────────────────────────────────────────────────────────
@@ -578,7 +649,7 @@ async function fetchTableList() {
   try {
     const result = await query(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
-      []
+      [],
     );
     const tables = result.recordset
       .map((r) => r.TABLE_NAME)
@@ -614,7 +685,7 @@ async function getColumns(table) {
   if (cached) return cached.cols;
   const result = await query(
     `SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table ORDER BY ORDINAL_POSITION`,
-    [{ name: "table", type: sql.VarChar(128), value: table }]
+    [{ name: 'table', type: sql.VarChar(128), value: table }],
   );
   const cols = result.recordset.map((r) => r.COLUMN_NAME);
   const colTypes = new Map(result.recordset.map((r) => [r.COLUMN_NAME, r.DATA_TYPE]));
@@ -630,14 +701,16 @@ const HIDDEN_COLUMNS_TTL = 60_000;
 
 async function getHiddenColumnsForTable(tableName) {
   try {
-    const tv = await query(`SELECT id FROM inventory_table_visibility WHERE table_name = @t`, [{ name: "t", type: sql.NVarChar(255), value: tableName }]);
+    const tv = await query(`SELECT id FROM inventory_table_visibility WHERE table_name = @t`, [
+      { name: 't', type: sql.NVarChar(255), value: tableName },
+    ]);
     const id = tv.recordset[0]?.id;
     if (!id) return new Set();
     const cached = _hiddenColumnsCache.get(id);
     if (cached && Date.now() - cached.at < HIDDEN_COLUMNS_TTL) return cached.cols;
     const { recordset } = await query(
       `SELECT column_name FROM inventory_column_visibility WHERE table_visibility_id = @id AND role_name = 'ALL' AND is_visible = 0`,
-      [{ name: "id", type: sql.Int, value: id }]
+      [{ name: 'id', type: sql.Int, value: id }],
     );
     const cols = new Set(recordset.map((r) => r.column_name));
     _hiddenColumnsCache.set(id, { cols, at: Date.now() });
@@ -647,7 +720,7 @@ async function getHiddenColumnsForTable(tableName) {
   }
 }
 
-const TEXT_COLUMN_TYPES = new Set(["char", "varchar", "nchar", "nvarchar", "text", "ntext"]);
+const TEXT_COLUMN_TYPES = new Set(['char', 'varchar', 'nchar', 'nvarchar', 'text', 'ntext']);
 
 // search parametresi artik TUM kolonlara degil, yalniz metin-tipi kolonlara CAST+LIKE
 // uygular (kurumsal AI kod incelemesi, review.md #5) — sayisal/tarih kolonlarda CAST+LIKE
@@ -657,37 +730,42 @@ async function getSearchableColumns(table) {
   await getColumns(table); // cache'i (colTypes dahil) doldurur, yoksa
   const entry = colCacheGet(table);
   if (!entry) return [];
-  return entry.cols.filter((c) => TEXT_COLUMN_TYPES.has(String(entry.colTypes.get(c) || "").toLowerCase()));
+  return entry.cols.filter((c) =>
+    TEXT_COLUMN_TYPES.has(String(entry.colTypes.get(c) || '').toLowerCase()),
+  );
 }
 
 // ── Ekip sahipligi lookup (Dynatrace/Instana entity zenginlestirme icin) ──────
 // `ekip_infos` semasi sabit degil (generic inventory browser) — host/ekip
 // kolonlari isim oruntusuyle kesfedilir. Eslesme bulunamazsa bos Map doner
 // (fail-open: takim bilgisi gosterilmez, istek basarisiz olmaz).
-const HOST_COL_HINTS = ["host", "sunucu", "server", "hostname", "makine"];
-const TEAM_COL_HINTS = ["ekip", "takim", "takım", "team", "sahip", "owner"];
+const HOST_COL_HINTS = ['host', 'sunucu', 'server', 'hostname', 'makine'];
+const TEAM_COL_HINTS = ['ekip', 'takim', 'takım', 'team', 'sahip', 'owner'];
 
 let _teamColsCache = null; // { hostCol, teamCol } | false (bulunamadi) | null (henuz denenmedi)
 
 async function resolveTeamColumns() {
   if (_teamColsCache !== null) return _teamColsCache || null;
   try {
-    if (!isAvailable() || !(await isAllowedTable("ekip_infos"))) {
+    if (!isAvailable() || !(await isAllowedTable('ekip_infos'))) {
       _teamColsCache = false;
       return null;
     }
-    const cols = await getColumns("ekip_infos");
+    const cols = await getColumns('ekip_infos');
     const hostCol = cols.find((c) => HOST_COL_HINTS.some((h) => c.toLowerCase().includes(h)));
     const teamCol = cols.find((c) => TEAM_COL_HINTS.some((h) => c.toLowerCase().includes(h)));
     if (!hostCol || !teamCol) {
-      console.warn("[Inventory] ekip_infos icinde host/ekip kolonu bulunamadi — takim sahipligi devre disi.", { cols });
+      console.warn(
+        '[Inventory] ekip_infos icinde host/ekip kolonu bulunamadi — takim sahipligi devre disi.',
+        { cols },
+      );
       _teamColsCache = false;
       return null;
     }
     _teamColsCache = { hostCol, teamCol };
     return _teamColsCache;
   } catch (err) {
-    console.warn("[Inventory] ekip_infos kolon kesfi basarisiz:", err.message);
+    console.warn('[Inventory] ekip_infos kolon kesfi basarisiz:', err.message);
     _teamColsCache = false;
     return null;
   }
@@ -696,7 +774,7 @@ async function resolveTeamColumns() {
 // hostnames: string[] → Map<hostname.toLowerCase(), teamName>
 async function getTeamOwnership(hostnames) {
   const result = new Map();
-  const names = (hostnames || []).map((h) => String(h || "").trim()).filter(Boolean);
+  const names = (hostnames || []).map((h) => String(h || '').trim()).filter(Boolean);
   if (names.length === 0) return result;
 
   const resolved = await resolveTeamColumns();
@@ -704,45 +782,51 @@ async function getTeamOwnership(hostnames) {
   const { hostCol, teamCol } = resolved;
 
   try {
-    const placeholders = names.map((_, i) => `@h${i}`).join(", ");
+    const placeholders = names.map((_, i) => `@h${i}`).join(', ');
     const inputs = names.map((v, i) => ({ name: `h${i}`, type: sql.NVarChar(256), value: v }));
     const rows = await query(
-      `SELECT ${quoteIdent(hostCol)} AS host_, ${quoteIdent(teamCol)} AS team_ FROM ${quoteIdent("ekip_infos")} WHERE ${quoteIdent(hostCol)} IN (${placeholders})`,
-      inputs
+      `SELECT ${quoteIdent(hostCol)} AS host_, ${quoteIdent(teamCol)} AS team_ FROM ${quoteIdent('ekip_infos')} WHERE ${quoteIdent(hostCol)} IN (${placeholders})`,
+      inputs,
     );
     for (const r of rows.recordset || []) {
       if (r.host_ && r.team_) result.set(String(r.host_).toLowerCase(), String(r.team_));
     }
   } catch (err) {
-    console.warn("[Inventory] getTeamOwnership sorgusu basarisiz:", err.message);
+    console.warn('[Inventory] getTeamOwnership sorgusu basarisiz:', err.message);
   }
   return result;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
 function initInventory(app) {
-  loadSavedQueriesStore().catch((e) => console.warn("[Inventory] store yukleme hata:", e.message));
+  loadSavedQueriesStore().catch((e) => console.warn('[Inventory] store yukleme hata:', e.message));
   // Tum mutasyonlar (sorgu calistirma/kaydetme/yayinlama, alias/gorunurluk) audit'lenir.
-  try { app.use("/api/inventory", require("../audit/index.cjs").auditMutations("inventory")); } catch { /* yoksay */ }
+  try {
+    app.use('/api/inventory', require('../audit/index.cjs').auditMutations('inventory'));
+  } catch {
+    /* yoksay */
+  }
   const router = express.Router();
-  router.use(express.json({ limit: "1mb" }));
+  router.use(express.json({ limit: '1mb' }));
 
   // Envanter sayfasi gizliyse gercek 403. /health muaf (probe). Not: envanter tablolari
   // ayrica rol-bazli ACL (filterTablesByRole) ile korunur — bu, sayfa-seviyesi ek katman.
   try {
-    const { requireVisiblePrefix } = require("../auth/visibility.cjs");
-    router.use(requireVisiblePrefix("Envanter", { exempt: ["/health"] }));
-  } catch { /* motor yoksa yoksay */ }
+    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
+    router.use(requireVisiblePrefix('Envanter', { exempt: ['/health'] }));
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // ── Health ──────────────────────────────────────────────────────────────────
   // E-08: server/port/db (no password); N-03: pool stats
-  router.get("/health", (req, res) => {
-    const server   = process.env.MSSQL_SERVER   || null;
-    const port     = process.env.MSSQL_PORT     || "1433";
+  router.get('/health', (req, res) => {
+    const server = process.env.MSSQL_SERVER || null;
+    const port = process.env.MSSQL_PORT || '1433';
     const database = process.env.MSSQL_DATABASE || null;
     res.json({
       ok: true,
-      service: "inventory",
+      service: 'inventory',
       mssqlAvailable: isAvailable(),
       server,
       port,
@@ -753,13 +837,14 @@ function initInventory(app) {
 
   // ── Table list (60 s cache, fallback on DB unavailability) ──────────────────
   // E-02: includes blocklisted and visibleToRole metadata (admin only)
-  router.get("/tables", async (req, res) => {
-    const role = getRequestRole(req) || "User";
-    const admin = role === "Admin";
+  router.get('/tables', async (req, res) => {
+    const role = getRequestRole(req) || 'User';
+    const admin = role === 'Admin';
     // "Farkli rol gibi goruntule" — sadece gercek rolu Admin olan istekler icin gecerli,
     // client'in kendini Admin olarak beyan etmesiyle bypass edilemez.
     const viewAsRole = req.query.viewAsRole;
-    const effectiveRole = admin && (viewAsRole === "User" || viewAsRole === "Admin") ? viewAsRole : role;
+    const effectiveRole =
+      admin && (viewAsRole === 'User' || viewAsRole === 'Admin') ? viewAsRole : role;
     const username = getRequestUser(req)?.username;
     try {
       const allTables = await fetchTableList();
@@ -767,13 +852,21 @@ function initInventory(app) {
       const usingFallback = !isAvailable();
       if (admin) {
         const visibleConfig = await readVisibleTables();
-        const userVisible = visibleConfig["User"] || [];
+        const userVisible = visibleConfig['User'] || [];
         const tablesMeta = tables.map((t) => ({
           name: t,
           blocklisted: false,
-          visibleToUser: userVisible === "*" || (Array.isArray(userVisible) && userVisible.includes(t)),
+          visibleToUser:
+            userVisible === '*' || (Array.isArray(userVisible) && userVisible.includes(t)),
         }));
-        return res.json({ ok: true, tables, tablesMeta, cached: !!_tableCache, fallback: usingFallback, effectiveRole });
+        return res.json({
+          ok: true,
+          tables,
+          tablesMeta,
+          cached: !!_tableCache,
+          fallback: usingFallback,
+          effectiveRole,
+        });
       }
       res.json({ ok: true, tables, cached: !!_tableCache, fallback: usingFallback });
     } catch {
@@ -785,8 +878,8 @@ function initInventory(app) {
   // ── Tablo gorunurlugu admin ekrani (actions.md #12) ──────────────────────────
   // Her tablonun tam satiri (aktif/pasif, sira, aciklama) + o tabloya bagli rol/kullanici
   // override sayilari — sentinel ('*') satiri listeye dahil edilmez (gercek bir tablo degil).
-  router.get("/table-visibility", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.get('/table-visibility', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     try {
       // inventory_table_aliases LEFT JOIN: eskiden Admin > Sistem > "Tablo Takma Adlari"
       // ayri bir ekrandi, orada "Aktif/Pasif" alias'in KENDI is_active'iydi (tablonun
@@ -799,23 +892,32 @@ function initInventory(app) {
            FROM inventory_table_visibility tv
            LEFT JOIN inventory_table_aliases al ON al.table_name = tv.table_name
           WHERE tv.table_name <> '*'
-          ORDER BY tv.sort_order, tv.table_name`
+          ORDER BY tv.sort_order, tv.table_name`,
       );
       // Rol-bazli gorunurluk (Admin > Sistem'deki eski "Kullanici Tablo Gorunurlugu"
       // ekraniyla AYNI alttaki veri: inventory_table_role_visibility, readVisibleTables
       // uzerinden) artik BURADA, tablo basina tek satirda gosterilir.
       const roleConfig = await readVisibleTables();
-      const isRoleVisible = (role, tableName) => (
-        roleConfig[role] === "*" ? true : (Array.isArray(roleConfig[role]) && roleConfig[role].includes(tableName))
-      );
+      const isRoleVisible = (role, tableName) =>
+        roleConfig[role] === '*'
+          ? true
+          : Array.isArray(roleConfig[role]) && roleConfig[role].includes(tableName);
       res.json({
         ok: true,
-        allTablesVisible: { User: roleConfig.User === "*", Admin: roleConfig.Admin === "*" },
+        allTablesVisible: { User: roleConfig.User === '*', Admin: roleConfig.Admin === '*' },
         tables: recordset.map((r) => ({
-          id: r.id, schemaName: r.schema_name, tableName: r.table_name,
-          displayName: r.display_name, isActive: r.is_active === true || r.is_active === 1,
-          sortOrder: r.sort_order, description: r.description, overrideCount: r.override_count,
-          roleVisible: { User: isRoleVisible("User", r.table_name), Admin: isRoleVisible("Admin", r.table_name) },
+          id: r.id,
+          schemaName: r.schema_name,
+          tableName: r.table_name,
+          displayName: r.display_name,
+          isActive: r.is_active === true || r.is_active === 1,
+          sortOrder: r.sort_order,
+          description: r.description,
+          overrideCount: r.override_count,
+          roleVisible: {
+            User: isRoleVisible('User', r.table_name),
+            Admin: isRoleVisible('Admin', r.table_name),
+          },
           // Alias satiri hic yoksa (henuz bir gorunen ad girilmemis) varsayilan true —
           // setAlias() ile ayni varsayilan (bkz. dosya basi).
           aliasActive: r.alias_active === false || r.alias_active === 0 ? false : true,
@@ -829,16 +931,16 @@ function initInventory(app) {
   // "Tum tablolari goster" toplu anahtari — role '*' (kisitlama yok) yazar/kaldirir.
   // Bu ACIKKEN bireysel tablo anahtarlari (asagidaki /:id/role) anlamsizdir; onyuz o
   // durumda onlari devre disi gosterir (SystemConfigTab'daki eski davranisla AYNI).
-  router.put("/table-visibility/role-all", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.put('/table-visibility/role-all', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     const { role, allVisible } = req.body || {};
-    if (!["User", "Admin"].includes(role)) {
+    if (!['User', 'Admin'].includes(role)) {
       return res.status(400).json({ ok: false, error: "role: 'User' veya 'Admin' olmalı." });
     }
     try {
       // Kapatildiginda BOS listeye duser (eski setRoleAllTables(role,false) davranisiyla
       // AYNI) — admin sonra tek tek tabloyu isaretler.
-      await writeVisibleTablesForRole(role, allVisible ? "*" : []);
+      await writeVisibleTablesForRole(role, allVisible ? '*' : []);
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
@@ -848,22 +950,31 @@ function initInventory(app) {
   // Tek bir tablonun bir role gore gorunurlugunu acar/kapatir — mevcut listeye
   // ekleme/cikarma yapar (readVisibleTables/writeVisibleTablesForRole zaten var olan,
   // test edilmis fonksiyonlar; burada sadece tek-tablo diff'i hesaplanir).
-  router.put("/table-visibility/:id/role", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.put('/table-visibility/:id/role', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     const id = Number(req.params.id);
     const { role, visible } = req.body || {};
-    if (!["User", "Admin"].includes(role)) {
+    if (!['User', 'Admin'].includes(role)) {
       return res.status(400).json({ ok: false, error: "role: 'User' veya 'Admin' olmalı." });
     }
     try {
-      const tvRow = await query(`SELECT table_name FROM inventory_table_visibility WHERE id = @id`, [{ name: "id", type: sql.Int, value: id }]);
+      const tvRow = await query(
+        `SELECT table_name FROM inventory_table_visibility WHERE id = @id`,
+        [{ name: 'id', type: sql.Int, value: id }],
+      );
       const tableName = tvRow.recordset[0]?.table_name;
-      if (!tableName || tableName === "*") return res.status(404).json({ ok: false, error: "Tablo bulunamadı." });
+      if (!tableName || tableName === '*')
+        return res.status(404).json({ ok: false, error: 'Tablo bulunamadı.' });
 
       const config = await readVisibleTables();
       const current = config[role];
-      if (current === "*") {
-        return res.status(400).json({ ok: false, error: `Bu rol için "Tüm tabloları göster" açık — önce onu kapatın.` });
+      if (current === '*') {
+        return res
+          .status(400)
+          .json({
+            ok: false,
+            error: `Bu rol için "Tüm tabloları göster" açık — önce onu kapatın.`,
+          });
       }
       const list = Array.isArray(current) ? current.slice() : [];
       const next = visible
@@ -876,8 +987,8 @@ function initInventory(app) {
     }
   });
 
-  router.put("/table-visibility/:id", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.put('/table-visibility/:id', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     const id = Number(req.params.id);
     const { isActive, displayName, description, sortOrder, aliasActive } = req.body || {};
     try {
@@ -886,12 +997,16 @@ function initInventory(app) {
             SET is_active = @a, display_name = @d, description = @desc, sort_order = @s, updated_at = GETUTCDATE()
           WHERE id = @id`,
         [
-          { name: "a", type: sql.Bit, value: isActive !== false },
-          { name: "d", type: sql.NVarChar(255), value: displayName || null },
-          { name: "desc", type: sql.NVarChar(500), value: description || null },
-          { name: "s", type: sql.Int, value: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0 },
-          { name: "id", type: sql.Int, value: id },
-        ]
+          { name: 'a', type: sql.Bit, value: isActive !== false },
+          { name: 'd', type: sql.NVarChar(255), value: displayName || null },
+          { name: 'desc', type: sql.NVarChar(500), value: description || null },
+          {
+            name: 's',
+            type: sql.Int,
+            value: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
+          },
+          { name: 'id', type: sql.Int, value: id },
+        ],
       );
       // Envanter sayfasindaki sekme basliklari bu "Gorunen Ad"i DEGIL,
       // inventory_table_aliases'i okur (bkz. EnvanterPage.tsx) — buradaki alan
@@ -900,11 +1015,17 @@ function initInventory(app) {
       // "Aktif/Pasif" anahtari — pasif alias tabloyu GIZLEMEZ, sadece HAM tablo adina
       // dusurur (bkz. readAliases). Gonderilmezse (undefined) setAlias'in kendi
       // varsayilanina (true) duser.
-      const tvRow = await query(`SELECT table_name FROM inventory_table_visibility WHERE id = @id`, [{ name: "id", type: sql.Int, value: id }]);
+      const tvRow = await query(
+        `SELECT table_name FROM inventory_table_visibility WHERE id = @id`,
+        [{ name: 'id', type: sql.Int, value: id }],
+      );
       const tableName = tvRow.recordset[0]?.table_name;
-      if (tableName && tableName !== "*") {
+      if (tableName && tableName !== '*') {
         if (displayName && String(displayName).trim()) {
-          await setAlias(tableName, String(displayName).trim(), { description, isActive: aliasActive });
+          await setAlias(tableName, String(displayName).trim(), {
+            description,
+            isActive: aliasActive,
+          });
         } else {
           await removeAlias(tableName);
         }
@@ -918,12 +1039,12 @@ function initInventory(app) {
   });
 
   // ── Kullanici-bazli tablo override (actions.md #12) ──────────────────────────
-  router.get("/table-visibility/:id/user-overrides", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.get('/table-visibility/:id/user-overrides', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     try {
       const { recordset } = await query(
         `SELECT username, override_type, created_by, created_at FROM inventory_table_user_override WHERE table_visibility_id = @id ORDER BY username`,
-        [{ name: "id", type: sql.Int, value: Number(req.params.id) }]
+        [{ name: 'id', type: sql.Int, value: Number(req.params.id) }],
       );
       res.json({ ok: true, overrides: recordset });
     } catch (err) {
@@ -931,25 +1052,35 @@ function initInventory(app) {
     }
   });
 
-  router.post("/table-visibility/:id/user-overrides", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.post('/table-visibility/:id/user-overrides', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     const id = Number(req.params.id);
     const { username, overrideType } = req.body || {};
-    if (!username || !["allow", "deny"].includes(overrideType)) {
-      return res.status(400).json({ ok: false, error: "username ve overrideType ('allow'|'deny') gerekli." });
+    if (!username || !['allow', 'deny'].includes(overrideType)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "username ve overrideType ('allow'|'deny') gerekli." });
     }
     const uname = String(username).trim().toLowerCase();
     const createdBy = getRequestUser(req)?.username || null;
     try {
       const upd = await query(
         `UPDATE inventory_table_user_override SET override_type = @t WHERE table_visibility_id = @id AND username = @u`,
-        [{ name: "t", type: sql.NVarChar(10), value: overrideType }, { name: "id", type: sql.Int, value: id }, { name: "u", type: sql.NVarChar(255), value: uname }]
+        [
+          { name: 't', type: sql.NVarChar(10), value: overrideType },
+          { name: 'id', type: sql.Int, value: id },
+          { name: 'u', type: sql.NVarChar(255), value: uname },
+        ],
       );
       if (!upd.rowsAffected?.[0]) {
         await query(
           `INSERT INTO inventory_table_user_override (table_visibility_id, username, override_type, created_by) VALUES (@id, @u, @t, @c)`,
-          [{ name: "id", type: sql.Int, value: id }, { name: "u", type: sql.NVarChar(255), value: uname },
-           { name: "t", type: sql.NVarChar(10), value: overrideType }, { name: "c", type: sql.NVarChar(255), value: createdBy }]
+          [
+            { name: 'id', type: sql.Int, value: id },
+            { name: 'u', type: sql.NVarChar(255), value: uname },
+            { name: 't', type: sql.NVarChar(10), value: overrideType },
+            { name: 'c', type: sql.NVarChar(255), value: createdBy },
+          ],
         );
       }
       res.json({ ok: true });
@@ -958,12 +1089,15 @@ function initInventory(app) {
     }
   });
 
-  router.delete("/table-visibility/:id/user-overrides/:username", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.delete('/table-visibility/:id/user-overrides/:username', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     try {
       await query(
         `DELETE FROM inventory_table_user_override WHERE table_visibility_id = @id AND username = @u`,
-        [{ name: "id", type: sql.Int, value: Number(req.params.id) }, { name: "u", type: sql.NVarChar(255), value: req.params.username.toLowerCase() }]
+        [
+          { name: 'id', type: sql.Int, value: Number(req.params.id) },
+          { name: 'u', type: sql.NVarChar(255), value: req.params.username.toLowerCase() },
+        ],
       );
       res.json({ ok: true });
     } catch (err) {
@@ -974,40 +1108,57 @@ function initInventory(app) {
   // ── Kolon-seviyesi gorunurluk (actions.md #12 — tamamen yeni) ────────────────
   // role_name='ALL' — su an tum roller icin tek bir kural seti yonetiliyor (per-rol
   // kolon-gorunurlugu gelecekte bu tabloya role_name ekleyerek genisletilebilir).
-  router.get("/table-visibility/:id/columns", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.get('/table-visibility/:id/columns', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     const id = Number(req.params.id);
     try {
-      const tv = await query(`SELECT table_name FROM inventory_table_visibility WHERE id = @id`, [{ name: "id", type: sql.Int, value: id }]);
+      const tv = await query(`SELECT table_name FROM inventory_table_visibility WHERE id = @id`, [
+        { name: 'id', type: sql.Int, value: id },
+      ]);
       const tableName = tv.recordset[0]?.table_name;
-      if (!tableName) return res.status(404).json({ ok: false, error: "Tablo bulunamadı." });
+      if (!tableName) return res.status(404).json({ ok: false, error: 'Tablo bulunamadı.' });
 
       const liveCols = await getColumns(tableName);
       const { recordset } = await query(
         `SELECT column_name, is_visible FROM inventory_column_visibility WHERE table_visibility_id = @id AND role_name = 'ALL'`,
-        [{ name: "id", type: sql.Int, value: id }]
+        [{ name: 'id', type: sql.Int, value: id }],
       );
-      const hiddenSet = new Set(recordset.filter((r) => r.is_visible === false || r.is_visible === 0).map((r) => r.column_name));
-      res.json({ ok: true, columns: liveCols.map((c) => ({ name: c, isVisible: !hiddenSet.has(c) })) });
+      const hiddenSet = new Set(
+        recordset
+          .filter((r) => r.is_visible === false || r.is_visible === 0)
+          .map((r) => r.column_name),
+      );
+      res.json({
+        ok: true,
+        columns: liveCols.map((c) => ({ name: c, isVisible: !hiddenSet.has(c) })),
+      });
     } catch (err) {
       res.status(503).json({ ok: false, error: err.message });
     }
   });
 
-  router.put("/table-visibility/:id/columns/:columnName", async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.put('/table-visibility/:id/columns/:columnName', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     const id = Number(req.params.id);
     const columnName = req.params.columnName;
     const isVisible = req.body?.isVisible !== false;
     try {
       const upd = await query(
         `UPDATE inventory_column_visibility SET is_visible = @v, updated_at = GETUTCDATE() WHERE table_visibility_id = @id AND column_name = @c AND role_name = 'ALL'`,
-        [{ name: "v", type: sql.Bit, value: isVisible }, { name: "id", type: sql.Int, value: id }, { name: "c", type: sql.NVarChar(255), value: columnName }]
+        [
+          { name: 'v', type: sql.Bit, value: isVisible },
+          { name: 'id', type: sql.Int, value: id },
+          { name: 'c', type: sql.NVarChar(255), value: columnName },
+        ],
       );
       if (!upd.rowsAffected?.[0]) {
         await query(
           `INSERT INTO inventory_column_visibility (table_visibility_id, column_name, is_visible, role_name) VALUES (@id, @c, @v, 'ALL')`,
-          [{ name: "id", type: sql.Int, value: id }, { name: "c", type: sql.NVarChar(255), value: columnName }, { name: "v", type: sql.Bit, value: isVisible }]
+          [
+            { name: 'id', type: sql.Int, value: id },
+            { name: 'c', type: sql.NVarChar(255), value: columnName },
+            { name: 'v', type: sql.Bit, value: isVisible },
+          ],
         );
       }
       _hiddenColumnsCache.delete(id);
@@ -1018,14 +1169,14 @@ function initInventory(app) {
   });
 
   // ── Discover tables — admin only, always live ────────────────────────────────
-  router.get("/tables/discover", async (req, res) => {
+  router.get('/tables/discover', async (req, res) => {
     if (!isAdmin(req)) {
-      return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+      return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     }
     try {
       const result = await query(
         `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
-        []
+        [],
       );
       const tables = result.recordset
         .map((r) => r.TABLE_NAME)
@@ -1040,17 +1191,17 @@ function initInventory(app) {
   });
 
   // ── Distinct values for a column (used by multi-select filter dropdown) ─────
-  router.get("/distinct/:table/:col", async (req, res) => {
+  router.get('/distinct/:table/:col', async (req, res) => {
     const { table, col } = req.params;
     if (!(await isAllowedTable(table))) {
-      return res.status(403).json({ ok: false, error: "İzin verilmeyen tablo." });
+      return res.status(403).json({ ok: false, error: 'İzin verilmeyen tablo.' });
     }
     const allCols = await getColumns(table);
     if (!allCols.includes(col)) {
-      return res.status(400).json({ ok: false, error: "Geçersiz kolon adı." });
+      return res.status(400).json({ ok: false, error: 'Geçersiz kolon adı.' });
     }
-    const search = String(req.query.search || "").trim();
-    const limitVal = Math.min(300, Math.max(1, parseInt(req.query.limit || "200", 10)));
+    const search = String(req.query.search || '').trim();
+    const limitVal = Math.min(300, Math.max(1, parseInt(req.query.limit || '200', 10)));
 
     // ZINCIRLEME FILTRE: bir kolona filtre uygulandiginda DIGER kolonlarin secenekleri de
     // daralmali. Onceden bu uc tablonun TAMAMINI tariyordu; kullanici product=IHS sectikten
@@ -1061,45 +1212,47 @@ function initInventory(app) {
     if (req.query.multiFilters) {
       try {
         const parsed = JSON.parse(String(req.query.multiFilters));
-        if (parsed && typeof parsed === "object") otherFilters = parsed;
-      } catch { /* bozuk parametre yok sayilir; uc calismaya devam eder */ }
+        if (parsed && typeof parsed === 'object') otherFilters = parsed;
+      } catch {
+        /* bozuk parametre yok sayilir; uc calismaya devam eder */
+      }
     }
 
     try {
       const pool = await getPool();
-      if (!pool) return res.status(503).json({ ok: false, error: "Veritabanı bağlantısı yok." });
+      if (!pool) return res.status(503).json({ ok: false, error: 'Veritabanı bağlantısı yok.' });
       const req2 = pool.request();
-      req2.input("limitVal", sql.Int, limitVal);
+      req2.input('limitVal', sql.Int, limitVal);
 
       const parts = [];
       if (search) {
-        req2.input("search", sql.NVarChar(256), `%${search}%`);
+        req2.input('search', sql.NVarChar(256), `%${search}%`);
         parts.push(`CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) LIKE @search`);
       }
       // Kolon adlari allCols'a karsi DOGRULANIR; deger'ler parametre olarak baglanir.
       let mfIdx = 0;
       for (const [c, vals] of Object.entries(otherFilters)) {
-        if (c === col) continue;                       // kendi kolonu haric
-        if (!allCols.includes(c)) continue;            // beyaz liste disi kolon adi
+        if (c === col) continue; // kendi kolonu haric
+        if (!allCols.includes(c)) continue; // beyaz liste disi kolon adi
         if (!Array.isArray(vals) || vals.length === 0) continue;
         const ps = vals.map((v) => {
           const p = `dmf${mfIdx++}`;
           req2.input(p, sql.NVarChar(512), String(v));
           return `@${p}`;
         });
-        parts.push(`CAST(${quoteIdent(c)} AS NVARCHAR(MAX)) IN (${ps.join(",")})`);
+        parts.push(`CAST(${quoteIdent(c)} AS NVARCHAR(MAX)) IN (${ps.join(',')})`);
       }
-      const whereClause = parts.length ? `WHERE ${parts.join(" AND ")}` : "";
+      const whereClause = parts.length ? `WHERE ${parts.join(' AND ')}` : '';
       const result = await req2.query(
         `SELECT TOP (@limitVal) CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) AS val, COUNT(*) AS cnt
          FROM ${quoteIdent(table)}
          ${whereClause}
          GROUP BY CAST(${quoteIdent(col)} AS NVARCHAR(MAX))
-         ORDER BY cnt DESC`
+         ORDER BY cnt DESC`,
       );
       const values = result.recordset
-        .map((r) => ({ value: r.val ?? "", count: r.cnt }))
-        .filter((r) => r.value !== "");
+        .map((r) => ({ value: r.val ?? '', count: r.cnt }))
+        .filter((r) => r.value !== '');
       res.json({ ok: true, values });
     } catch (err) {
       res.status(503).json({ ok: false, error: err.message });
@@ -1107,10 +1260,10 @@ function initInventory(app) {
   });
 
   // ── Columns ─────────────────────────────────────────────────────────────────
-  router.get("/columns/:table", async (req, res) => {
+  router.get('/columns/:table', async (req, res) => {
     const table = req.params.table;
     if (!(await isAllowedTable(table))) {
-      return res.status(403).json({ ok: false, error: "İzin verilmeyen tablo." });
+      return res.status(403).json({ ok: false, error: 'İzin verilmeyen tablo.' });
     }
     try {
       const result = await query(
@@ -1118,17 +1271,17 @@ function initInventory(app) {
          FROM INFORMATION_SCHEMA.COLUMNS
          WHERE TABLE_NAME = @table
          ORDER BY ORDINAL_POSITION`,
-        [{ name: "table", type: sql.VarChar(128), value: table }]
+        [{ name: 'table', type: sql.VarChar(128), value: table }],
       );
       // E-03: Normalize column keys for frontend compatibility
       let normalized = result.recordset.map((r) => ({
-        columnName:            r.COLUMN_NAME,
-        dataType:              r.DATA_TYPE,
-        isNullable:            r.IS_NULLABLE,
+        columnName: r.COLUMN_NAME,
+        dataType: r.DATA_TYPE,
+        isNullable: r.IS_NULLABLE,
         characterMaximumLength: r.CHARACTER_MAXIMUM_LENGTH,
         // Keep uppercase originals for backward compat
-        COLUMN_NAME:           r.COLUMN_NAME,
-        DATA_TYPE:             r.DATA_TYPE,
+        COLUMN_NAME: r.COLUMN_NAME,
+        DATA_TYPE: r.DATA_TYPE,
       }));
       const cols = result.recordset.map((r) => r.COLUMN_NAME);
       const colTypes = new Map(result.recordset.map((r) => [r.COLUMN_NAME, r.DATA_TYPE]));
@@ -1151,33 +1304,39 @@ function initInventory(app) {
   // artik PUT /table-visibility/:id (aliasActive dahil) uzerinden, Admin > Envanter
   // Gorunurlugu ekraninda yapilir. Bu salt-okunur uc (basit ad->alias haritasi) hala
   // QueryHelpPanel.tsx gibi kullanici-yuzlu ekranlarca okunuyor, KALDI.
-  router.get("/table-aliases", async (req, res) => {
+  router.get('/table-aliases', async (req, res) => {
     res.json({ ok: true, aliases: await readAliases() });
   });
 
   // ── Data (pagination + search + advanced filterGroup + sorting) ──────────────
-  router.get("/data/:table", async (req, res) => {
+  router.get('/data/:table', async (req, res) => {
     const table = req.params.table;
     if (!(await isAllowedTable(table))) {
-      return res.status(403).json({ ok: false, error: "İzin verilmeyen tablo." });
+      return res.status(403).json({ ok: false, error: 'İzin verilmeyen tablo.' });
     }
     // Rol-bazli ACL (inventory_visible_tables): eskiden yalniz /tables LISTELEMESI bunu
     // uyguluyordu; /data/:table dogrudan okuma BLOCKED_TABLES disinda kalan ama role
     // kapali birakilmis bir tabloyu koruyordu — kesif bulgusu (ai_review_3 planinda "ek
     // gozlem"). filterTablesByRole artik cache'li oldugu icin (bkz. readVisibleTables)
     // bu kontrolun maliyeti dusuk.
-    const requesterRole = getRequestRole(req) || "User";
-    const visibleForRole = await filterTablesByRole([table], requesterRole, getRequestUser(req)?.username);
+    const requesterRole = getRequestRole(req) || 'User';
+    const visibleForRole = await filterTablesByRole(
+      [table],
+      requesterRole,
+      getRequestUser(req)?.username,
+    );
     if (visibleForRole.length === 0) {
-      return res.status(403).json({ ok: false, error: "Bu tabloya erişim izniniz yok." });
+      return res.status(403).json({ ok: false, error: 'Bu tabloya erişim izniniz yok.' });
     }
 
     // I-02: countOnly=true → return just the row count (fast KPI fetch, avoids 92KB payload)
-    if (req.query.countOnly === "true") {
+    if (req.query.countOnly === 'true') {
       try {
         const pool = await getPool();
         if (!pool) return res.json({ ok: true, table, total: null, fallback: true });
-        const result = await pool.request().query(`SELECT COUNT(*) AS total FROM ${quoteIdent(table)}`);
+        const result = await pool
+          .request()
+          .query(`SELECT COUNT(*) AS total FROM ${quoteIdent(table)}`);
         return res.json({ ok: true, table, total: result.recordset[0].total });
       } catch (err) {
         return res.status(503).json({ ok: false, error: err.message });
@@ -1186,31 +1345,37 @@ function initInventory(app) {
 
     const admin = isAdmin(req);
     const maxLimit = admin ? 10000 : 1000;
-    const page = Math.max(1, parseInt(req.query.page || "1", 10));
-    const limit = Math.min(maxLimit, Math.max(1, parseInt(req.query.limit || "200", 10)));
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const limit = Math.min(maxLimit, Math.max(1, parseInt(req.query.limit || '200', 10)));
     const offset = (page - 1) * limit;
-    const search = String(req.query.search || "").trim();
+    const search = String(req.query.search || '').trim();
 
     // Sorting
-    const orderByRaw = String(req.query.orderBy || "").trim();
-    const orderDirRaw = String(req.query.orderDir || "").trim().toUpperCase();
-    const orderDir = orderDirRaw === "DESC" ? "DESC" : "ASC";
+    const orderByRaw = String(req.query.orderBy || '').trim();
+    const orderDirRaw = String(req.query.orderDir || '')
+      .trim()
+      .toUpperCase();
+    const orderDir = orderDirRaw === 'DESC' ? 'DESC' : 'ASC';
 
     // Advanced filterGroup (JSON encoded in query param)
     let filterGroup = null;
     if (req.query.filterGroup) {
-      try { filterGroup = JSON.parse(String(req.query.filterGroup)); } catch {}
+      try {
+        filterGroup = JSON.parse(String(req.query.filterGroup));
+      } catch {}
     }
 
     // Multi-select column filters: { colName: ["val1","val2"] }
     let multiFilters = {};
     if (req.query.multiFilters) {
-      try { multiFilters = JSON.parse(String(req.query.multiFilters)); } catch {}
+      try {
+        multiFilters = JSON.parse(String(req.query.multiFilters));
+      } catch {}
     }
 
     // Legacy per-column filters: ?filters[colName]=value (still supported)
     const colFilters = {};
-    if (req.query.filters && typeof req.query.filters === "object") {
+    if (req.query.filters && typeof req.query.filters === 'object') {
       for (const [col, val] of Object.entries(req.query.filters)) {
         if (val) colFilters[col] = String(val);
       }
@@ -1229,14 +1394,14 @@ function initInventory(app) {
         : `ORDER BY (SELECT NULL)`;
 
       const pool = await getPool();
-      if (!pool) return res.status(503).json({ ok: false, error: "Veritabanı bağlantısı yok." });
+      if (!pool) return res.status(503).json({ ok: false, error: 'Veritabanı bağlantısı yok.' });
 
       const buildWhere = (req2) => {
         const parts = [];
         if (search.length >= 3 && searchCols.length > 0) {
-          req2.input("search", sql.NVarChar(256), `%${search}%`);
+          req2.input('search', sql.NVarChar(256), `%${search}%`);
           parts.push(
-            `(${searchCols.map((c) => `CAST(${quoteIdent(c)} AS NVARCHAR(MAX)) LIKE @search`).join(" OR ")})`
+            `(${searchCols.map((c) => `CAST(${quoteIdent(c)} AS NVARCHAR(MAX)) LIKE @search`).join(' OR ')})`,
           );
         }
         // Legacy simple filters
@@ -1256,7 +1421,7 @@ function initInventory(app) {
             req2.input(p, sql.NVarChar(512), String(v));
             return `@${p}`;
           });
-          parts.push(`CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) IN (${params.join(",")})`);
+          parts.push(`CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) IN (${params.join(',')})`);
         }
         // Advanced filterGroup — buildAdvancedWhereClause artik onek-siz kosul metni doner
         // (bkz. yukarida fonksiyon tanimi); WHERE eklemek burada, tek yerde yapilir.
@@ -1264,7 +1429,7 @@ function initInventory(app) {
           const advancedWhere = buildAdvancedWhereClause(filterGroup, allCols, req2);
           if (advancedWhere) parts.push(`(${advancedWhere})`);
         }
-        return parts.length ? `WHERE ${parts.join(" AND ")}` : "";
+        return parts.length ? `WHERE ${parts.join(' AND ')}` : '';
       };
 
       // COUNT + veri TEK sorguda: COUNT(*) OVER() WHERE'e uyan TUM satir sayisini,
@@ -1276,10 +1441,10 @@ function initInventory(app) {
       // bu nadir durumda dogru toplami almak icin ayri, ucuz bir COUNT sorgusuna dusulur.
       const dataReq = pool.request();
       const whereClause = buildWhere(dataReq);
-      dataReq.input("limit", sql.Int, limit);
-      dataReq.input("offset", sql.Int, offset);
+      dataReq.input('limit', sql.Int, limit);
+      dataReq.input('offset', sql.Int, offset);
       const combined = await dataReq.query(
-        `SELECT COUNT(*) OVER() AS __total, * FROM ${quoteIdent(table)} ${whereClause} ${orderClause} OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`
+        `SELECT COUNT(*) OVER() AS __total, * FROM ${quoteIdent(table)} ${whereClause} ${orderClause} OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
       );
 
       let total;
@@ -1290,7 +1455,9 @@ function initInventory(app) {
       } else {
         const countReq = pool.request();
         const countWhere = buildWhere(countReq);
-        const countResult = await countReq.query(`SELECT COUNT(*) AS total FROM ${quoteIdent(table)} ${countWhere}`);
+        const countResult = await countReq.query(
+          `SELECT COUNT(*) AS total FROM ${quoteIdent(table)} ${countWhere}`,
+        );
         total = countResult.recordset[0]?.total ?? 0;
         rows = [];
       }
@@ -1329,40 +1496,52 @@ function initInventory(app) {
   // sadece SORGU KAYDETME Admin-only'idi. isSelectOnly + tablo-whitelist'i (asagida) atlatmanin
   // teorik bir yolu bulunursa bile bu, saldiri yuzeyini onemli olcude daraltir (kurumsal AI
   // kod incelemesi, review.md #3).
-  router.post("/query", async (req, res) => {
+  router.post('/query', async (req, res) => {
     const startedAt = Date.now();
-    const username = (getRequestUser(req) && getRequestUser(req).username) || "system";
+    const username = (getRequestUser(req) && getRequestUser(req).username) || 'system';
     // actions.md #20 — TAM audit: genel auditMutations middleware'i (dosya basi) yalniz
     // 2xx yanitlarda ve yalniz URL+redakte-body yakalar; sorgu suresi/satir-sayisi/basarili-
     // basarisiz/hata-mesaji/kullanilan-tablolari YAKALAMAZ. Bu route kendi ozel audit girisini
     // (hem basarili hem basarisiz durumlarda) auditQuery() ile ayrica atar.
     function auditQuery(sqlText, extra) {
       try {
-        require("../audit/index.cjs").auditPortal(req, "inventory_custom_query", {
+        require('../audit/index.cjs').auditPortal(req, 'inventory_custom_query', {
           username,
-          result: extra.ok ? "ok" : "failed",
+          result: extra.ok ? 'ok' : 'failed',
           detail: JSON.stringify({
-            sqlText: String(sqlText || "").slice(0, 2000),
+            sqlText: String(sqlText || '').slice(0, 2000),
             durationMs: Date.now() - startedAt,
             ...extra,
           }),
         });
-      } catch { /* audit modulu yoksa yoksay */ }
+      } catch {
+        /* audit modulu yoksa yoksay */
+      }
     }
 
     const admin = isAdmin(req);
     if (!admin) {
-      auditQuery(req.body?.sqlText, { ok: false, error: "Admin yetkisi gerekli.", httpStatus: 403 });
-      return res.status(403).json({ ok: false, error: "Ham SQL çalıştırmak için Admin yetkisi gerekli." });
+      auditQuery(req.body?.sqlText, {
+        ok: false,
+        error: 'Admin yetkisi gerekli.',
+        httpStatus: 403,
+      });
+      return res
+        .status(403)
+        .json({ ok: false, error: 'Ham SQL çalıştırmak için Admin yetkisi gerekli.' });
     }
     const { sqlText, save, queryName, description, limit: limitParam } = req.body || {};
 
-    if (!sqlText) return res.status(400).json({ ok: false, error: "sqlText gerekli." });
+    if (!sqlText) return res.status(400).json({ ok: false, error: 'sqlText gerekli.' });
     if (!isSelectOnly(sqlText)) {
-      auditQuery(sqlText, { ok: false, error: "Sadece SELECT sorguları çalıştırılabilir.", httpStatus: 403 });
+      auditQuery(sqlText, {
+        ok: false,
+        error: 'Sadece SELECT sorguları çalıştırılabilir.',
+        httpStatus: 403,
+      });
       return res
         .status(403)
-        .json({ ok: false, error: "Sadece SELECT sorguları çalıştırılabilir." });
+        .json({ ok: false, error: 'Sadece SELECT sorguları çalıştırılabilir.' });
     }
     // /data/:table, /columns/:table gibi diger route'larla ayni tablo whitelist'i:
     // referans edilen tum tablolar BLOCKED_TABLES/mevcut-tablo listesinden gecmeli
@@ -1371,38 +1550,52 @@ function initInventory(app) {
     const allowedFlags = await Promise.all(referencedTables.map((t) => isAllowedTable(t)));
     const blockedTable = referencedTables.find((_, i) => !allowedFlags[i]);
     if (blockedTable) {
-      auditQuery(sqlText, { ok: false, error: `'${blockedTable}' tablosuna erisim izni yok.`, httpStatus: 403, referencedTables });
+      auditQuery(sqlText, {
+        ok: false,
+        error: `'${blockedTable}' tablosuna erisim izni yok.`,
+        httpStatus: 403,
+        referencedTables,
+      });
       return res
         .status(403)
         .json({ ok: false, error: `'${blockedTable}' tablosuna erisim izni yok.` });
     }
 
-    const limit = Math.min(10000, Math.max(1, parseInt(limitParam || "200", 10)));
+    const limit = Math.min(10000, Math.max(1, parseInt(limitParam || '200', 10)));
 
     try {
       // actions.md #20.1 — AYRI salt-okunur havuz tercih edilir; tanimli degilse (DBA henuz
       // GRANT SELECT-only kullanicisini olusturmadiysa) PAYLASILAN havuza duser — davranis
       // KIRILMAZ, sadece bir kez guvenlik onerisi loglanir.
-      const readOnlyDb = require("./mssql-readonly.cjs");
+      const readOnlyDb = require('./mssql-readonly.cjs');
       let pool = await readOnlyDb.getReadOnlyPool();
-      let usedPool = "readonly";
+      let usedPool = 'readonly';
       if (!pool) {
         if (readOnlyDb.isConfigured()) {
-          console.warn("[Inventory] Salt-okunur MSSQL havuzuna ulasilamadi, paylasilan havuza dusuluyor.");
+          console.warn(
+            '[Inventory] Salt-okunur MSSQL havuzuna ulasilamadi, paylasilan havuza dusuluyor.',
+          );
         } else if (!_warnedSharedPoolFallback) {
-          console.warn("[Inventory] Custom SQL salt-okunur kimlik bilgisi tanimli degil (MSSQL_RO_USER/MSSQL_RO_PASSWORD), paylasilan havuz kullaniliyor — GUVENLIK ONERISI: ayri, GRANT SELECT-only bir DB kullanicisi tanimlayin.");
+          console.warn(
+            '[Inventory] Custom SQL salt-okunur kimlik bilgisi tanimli degil (MSSQL_RO_USER/MSSQL_RO_PASSWORD), paylasilan havuz kullaniliyor — GUVENLIK ONERISI: ayri, GRANT SELECT-only bir DB kullanicisi tanimlayin.',
+          );
           _warnedSharedPoolFallback = true;
         }
         pool = await getPool();
-        usedPool = "shared";
+        usedPool = 'shared';
       }
       if (!pool) {
-        auditQuery(sqlText, { ok: false, error: "Veritabanı bağlantısı yok.", httpStatus: 503, referencedTables });
-        return res.status(503).json({ ok: false, error: "Veritabanı bağlantısı yok." });
+        auditQuery(sqlText, {
+          ok: false,
+          error: 'Veritabanı bağlantısı yok.',
+          httpStatus: 503,
+          referencedTables,
+        });
+        return res.status(503).json({ ok: false, error: 'Veritabanı bağlantısı yok.' });
       }
 
       const req2 = pool.request();
-      req2.input("limit", sql.Int, limit);
+      req2.input('limit', sql.Int, limit);
       const wrapped = `SELECT TOP (@limit) * FROM (${sqlText}) AS __q`;
       const result = await req2.query(wrapped);
       const columns = result.recordset.length > 0 ? Object.keys(result.recordset[0]) : [];
@@ -1418,7 +1611,7 @@ function initInventory(app) {
           isDefault: false,
           publishedBy: username,
           savedAt: new Date().toISOString(),
-          description: description || "",
+          description: description || '',
         };
         if (existing >= 0) {
           // Preserve publish/default state on re-save
@@ -1428,13 +1621,25 @@ function initInventory(app) {
         } else {
           queries.push(entry);
         }
-        try { await writeSavedQueries(queries); } catch (e) {
-          auditQuery(sqlText, { ok: false, error: `Sorgu kaydedilemedi: ${e.message}`, httpStatus: 500, referencedTables });
+        try {
+          await writeSavedQueries(queries);
+        } catch (e) {
+          auditQuery(sqlText, {
+            ok: false,
+            error: `Sorgu kaydedilemedi: ${e.message}`,
+            httpStatus: 500,
+            referencedTables,
+          });
           return res.status(500).json({ ok: false, error: `Sorgu kaydedilemedi: ${e.message}` });
         }
       }
 
-      auditQuery(sqlText, { ok: true, rowCount: result.recordset.length, referencedTables, usedPool });
+      auditQuery(sqlText, {
+        ok: true,
+        rowCount: result.recordset.length,
+        referencedTables,
+        usedPool,
+      });
       res.json({ ok: true, columns, rows: result.recordset, rowCount: result.recordset.length });
     } catch (err) {
       auditQuery(sqlText, { ok: false, error: err.message, httpStatus: 503, referencedTables });
@@ -1444,7 +1649,7 @@ function initInventory(app) {
 
   // ── Saved queries — list ─────────────────────────────────────────────────────
   // Users see only published; admins see all
-  router.get("/saved-queries", (req, res) => {
+  router.get('/saved-queries', (req, res) => {
     const admin = isAdmin(req);
     const all = readSavedQueries();
     const visible = admin ? all : all.filter((q) => q.isPublished);
@@ -1452,52 +1657,55 @@ function initInventory(app) {
   });
 
   // ── Saved queries — publish / unpublish (toggle) — admin only ────────────────
-  router.post("/saved-queries/:name/publish", async (req, res) => {
-    if (!isAdmin(req))
-      return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.post('/saved-queries/:name/publish', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     const name = decodeURIComponent(req.params.name);
     const queries = readSavedQueries();
     const idx = queries.findIndex((q) => q.name === name);
-    if (idx < 0) return res.status(404).json({ ok: false, error: "Sorgu bulunamadı." });
-    const username = (getRequestUser(req) && getRequestUser(req).username) || "";
+    if (idx < 0) return res.status(404).json({ ok: false, error: 'Sorgu bulunamadı.' });
+    const username = (getRequestUser(req) && getRequestUser(req).username) || '';
     queries[idx].isPublished = !queries[idx].isPublished;
     if (queries[idx].isPublished) queries[idx].publishedBy = username;
-    try { await writeSavedQueries(queries); } catch (e) {
+    try {
+      await writeSavedQueries(queries);
+    } catch (e) {
       return res.status(500).json({ ok: false, error: `Kaydedilemedi: ${e.message}` });
     }
     res.json({ ok: true, query: queries[idx] });
   });
 
   // ── Saved queries — set default — admin only ─────────────────────────────────
-  router.post("/saved-queries/:name/set-default", async (req, res) => {
-    if (!isAdmin(req))
-      return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.post('/saved-queries/:name/set-default', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     const name = decodeURIComponent(req.params.name);
     const queries = readSavedQueries();
     const idx = queries.findIndex((q) => q.name === name);
-    if (idx < 0) return res.status(404).json({ ok: false, error: "Sorgu bulunamadı." });
+    if (idx < 0) return res.status(404).json({ ok: false, error: 'Sorgu bulunamadı.' });
     // Unset isDefault on all others, then set the target
     for (const q of queries) q.isDefault = false;
     queries[idx].isDefault = true;
-    try { await writeSavedQueries(queries); } catch (e) {
+    try {
+      await writeSavedQueries(queries);
+    } catch (e) {
       return res.status(500).json({ ok: false, error: `Kaydedilemedi: ${e.message}` });
     }
     res.json({ ok: true, query: queries[idx] });
   });
 
   // ── Saved queries — delete — admin only ──────────────────────────────────────
-  router.delete("/saved-queries/:name", async (req, res) => {
-    if (!isAdmin(req))
-      return res.status(403).json({ ok: false, error: "Admin yetkisi gerekli." });
+  router.delete('/saved-queries/:name', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
     const name = decodeURIComponent(req.params.name);
     const queries = readSavedQueries().filter((q) => q.name !== name);
-    try { await writeSavedQueries(queries); } catch (e) {
+    try {
+      await writeSavedQueries(queries);
+    } catch (e) {
       return res.status(500).json({ ok: false, error: `Silinemedi: ${e.message}` });
     }
     res.json({ ok: true, queries });
   });
 
-  // ── Envanter Yenile ("Ürün Envanteri" tablosu icin AWX tetikleme) ────────────
+  // ── Envanter Yenile ("Urun Envanteri" tablosu icin AWX tetikleme) ────────────
   // Kullanicinin acikca belirttigi sabit hedef: AWX job template #612, "Maestro2"
   // sunucusu — Dashboard'daki "Kuyruktaki Ansible Isleri" karti ile AYNI isim-onekli
   // sunucu cozumlemesi kullanilir (server_no ortamdan ortama degisebilir, isim sabit).
@@ -1506,67 +1714,103 @@ function initInventory(app) {
   // cagirabildigi TUM kayitli satirlari tarar; bu job'in beklenmedik sekilde AI
   // tarafindan tetiklenmesini istemedik).
   const INVENTORY_REFRESH_TEMPLATE_ID = 612;
-  const INVENTORY_REFRESH_CHOICES = new Set(["all", "nginx", "ihs", "rha", "jboss", "was", "ctg"]);
+  const INVENTORY_REFRESH_CHOICES = new Set(['all', 'nginx', 'ihs', 'rha', 'jboss', 'was', 'ctg']);
 
   function resolveInventoryRefreshServer() {
-    const runner = require("../ansible/runner.cjs");
+    const runner = require('../ansible/runner.cjs');
     const servers = runner.getServers();
-    return servers.find((s) => String(s.name || "").toLowerCase().replace(/[\s_-]/g, "").startsWith("maestro2")) || null;
+    return (
+      servers.find((s) =>
+        String(s.name || '')
+          .toLowerCase()
+          .replace(/[\s_-]/g, '')
+          .startsWith('maestro2'),
+      ) || null
+    );
   }
 
   // POST /api/inventory/refresh/run — secilen deger(ler) icin AWX job'ini tetikler.
-  router.post("/refresh/run", async (req, res) => {
+  router.post('/refresh/run', async (req, res) => {
     const { choices } = req.body || {};
     if (!Array.isArray(choices) || choices.length === 0) {
-      return res.status(400).json({ ok: false, message: "En az bir değer seçilmeli." });
+      return res.status(400).json({ ok: false, message: 'En az bir değer seçilmeli.' });
     }
-    const cleaned = [...new Set(choices.map((c) => String(c || "").trim().toLowerCase()).filter(Boolean))];
+    const cleaned = [
+      ...new Set(
+        choices
+          .map((c) =>
+            String(c || '')
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean),
+      ),
+    ];
     const invalid = cleaned.filter((c) => !INVENTORY_REFRESH_CHOICES.has(c));
     if (invalid.length) {
-      return res.status(400).json({ ok: false, message: `Geçersiz seçim: ${invalid.join(", ")}` });
+      return res.status(400).json({ ok: false, message: `Geçersiz seçim: ${invalid.join(', ')}` });
     }
     // "Tumu" secilmisken baska bir deger secilemez — istemci tarafinda da engellenir,
     // burada TEKRAR dogrulanir (client'e guvenilmez).
-    if (cleaned.includes("all") && cleaned.length > 1) {
-      return res.status(400).json({ ok: false, message: `"Tümü" seçiliyken başka bir değer seçilemez.` });
+    if (cleaned.includes('all') && cleaned.length > 1) {
+      return res
+        .status(400)
+        .json({ ok: false, message: `"Tümü" seçiliyken başka bir değer seçilemez.` });
     }
 
     const server = resolveInventoryRefreshServer();
     if (!server) {
-      return res.status(503).json({ ok: false, message: "Maestro2 AWX sunucusu yapılandırılmamış." });
+      return res
+        .status(503)
+        .json({ ok: false, message: 'Maestro2 AWX sunucusu yapılandırılmamış.' });
     }
 
     try {
-      const runner = require("../ansible/runner.cjs");
+      const runner = require('../ansible/runner.cjs');
       // Sartname: extra_vars = { choise: <deger> } — birden fazla secimde virgulle
       // birlestirilir (playbook'un TEK bir "choise" anahtari beklemesi nedeniyle).
-      const extraVars = { choise: cleaned.join(",") };
-      const result = await runner.launchJobOnServer(server.id, INVENTORY_REFRESH_TEMPLATE_ID, extraVars);
+      const extraVars = { choise: cleaned.join(',') };
+      const result = await runner.launchJobOnServer(
+        server.id,
+        INVENTORY_REFRESH_TEMPLATE_ID,
+        extraVars,
+      );
 
       // ansible_job_history: OpsX/Self-Service'in kullandigi AYNI genel-amacli tablo —
       // job-status endpoint'inin IDOR korumasi buna dayanir.
       try {
-        const db = require("../db/index.cjs");
+        const db = require('../db/index.cjs');
         await db.query(
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
-            getRequestUser(req)?.username || "unknown",
-            server.id, INVENTORY_REFRESH_TEMPLATE_ID, "Envanteri Yenile",
-            result?.jobId, result?.status || "pending",
+            getRequestUser(req)?.username || 'unknown',
+            server.id,
+            INVENTORY_REFRESH_TEMPLATE_ID,
+            'Envanteri Yenile',
+            result?.jobId,
+            result?.status || 'pending',
             JSON.stringify(extraVars),
-          ]
+          ],
         );
       } catch (e) {
-        console.warn("[Inventory] Yenileme geçmişi kaydedilemedi:", e.message);
+        console.warn('[Inventory] Yenileme gecmisi kaydedilemedi:', e.message);
       }
 
       try {
-        require("../audit/index.cjs").auditPortal(req, "inventory_refresh", {
+        require('../audit/index.cjs').auditPortal(req, 'inventory_refresh', {
           detail: JSON.stringify({ choices: cleaned, jobId: result?.jobId ?? null }),
         });
-      } catch { /* denetim kaydi best-effort */ }
+      } catch {
+        /* denetim kaydi best-effort */
+      }
 
-      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: server.id, choices: cleaned });
+      res.json({
+        ok: true,
+        jobId: result?.jobId ?? null,
+        status: result?.status ?? null,
+        awxServerId: server.id,
+        choices: cleaned,
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -1574,30 +1818,39 @@ function initInventory(app) {
 
   // GET /api/inventory/refresh/job-status/:jobId — tetiklenen job'in canli durumu +
   // stdout'u. OpsX'in job-status'uyla AYNI iki-cagrili desen ve IDOR korumasi.
-  router.get("/refresh/job-status/:jobId", async (req, res) => {
+  router.get('/refresh/job-status/:jobId', async (req, res) => {
     const jobId = Number(req.params.jobId);
     if (!Number.isInteger(jobId) || jobId <= 0) {
-      return res.status(400).json({ ok: false, message: "Geçersiz iş numarası." });
+      return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
     }
     const server = resolveInventoryRefreshServer();
-    if (!server) return res.status(503).json({ ok: false, message: "Maestro2 AWX sunucusu yapılandırılmamış." });
+    if (!server)
+      return res
+        .status(503)
+        .json({ ok: false, message: 'Maestro2 AWX sunucusu yapılandırılmamış.' });
 
     try {
-      const db = require("../db/index.cjs");
+      const db = require('../db/index.cjs');
       const reqUser = getRequestUser(req) || {};
-      if (getRequestRole(req) !== "Admin") {
+      if (getRequestRole(req) !== 'Admin') {
         const { rows } = await db.query(
           `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, server.id]
+          [jobId, server.id],
         );
-        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || "").toLowerCase()) {
-          return res.status(403).json({ ok: false, message: "Bu iş size ait değil." });
+        if (
+          rows.length &&
+          rows[0].username &&
+          String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
+        ) {
+          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
         }
       }
-    } catch { /* DB hiccup -> fail-open */ }
+    } catch {
+      /* DB hiccup -> fail-open */
+    }
 
     try {
-      const runner = require("../ansible/runner.cjs");
+      const runner = require('../ansible/runner.cjs');
       const [statusInfo, outputInfo] = await Promise.all([
         runner.getJobStatusOnServer(server.id, jobId),
         runner.getJobOutputOnServer(server.id, jobId),
@@ -1605,7 +1858,7 @@ function initInventory(app) {
       res.json({
         ok: true,
         status: statusInfo.status,
-        output: outputInfo.output || "",
+        output: outputInfo.output || '',
         finished: statusInfo.finished,
         failed: statusInfo.failed,
       });
@@ -1614,8 +1867,8 @@ function initInventory(app) {
     }
   });
 
-  app.use("/api/inventory", router);
-  console.log("[Inventory] module mounted at /api/inventory");
+  app.use('/api/inventory', router);
+  console.log('[Inventory] module mounted at /api/inventory');
 }
 
 // AI Analist portal-tools.cjs icin: uygulama envanteri tablosundan (env, host, app)
@@ -1624,25 +1877,40 @@ function initInventory(app) {
 // mssql.cjs'in pool'una `pool.request().query(...)` ile erisiyordu — katman ihlali
 // (kurumsal AI kod incelemesi, review.md #16). AI araclari artik yalnizca bu fonksiyonu cagirir.
 async function getHostsForAiTools() {
-  const result = await query(`SELECT env, host, app FROM ${require('../config/apps-table.cjs').getAppsTable()}`);
+  const result = await query(
+    `SELECT env, host, app FROM ${require('../config/apps-table.cjs').getAppsTable()}`,
+  );
   return result.recordset || [];
 }
 
 module.exports = {
-  initInventory, getTeamOwnership, getHostsForAiTools,
+  initInventory,
+  getTeamOwnership,
+  getHostsForAiTools,
   // test-only: /query'nin SQL-injection sertlestirmesini, kayitli-sorgu upsert desenini ve
   // WHERE-builder arayuzunu (ai_review_3 fazi) DB gerektirmeden dogrulamak icin acildi.
-  _isSelectOnly: isSelectOnly, _extractReferencedTables: extractReferencedTables,
-  _writeSavedQueries: writeSavedQueries, _buildAdvancedWhereClause: buildAdvancedWhereClause,
-  _setSqCache: (v) => { _sqCache = v; }, _getSqCache: () => _sqCache,
+  _isSelectOnly: isSelectOnly,
+  _extractReferencedTables: extractReferencedTables,
+  _writeSavedQueries: writeSavedQueries,
+  _buildAdvancedWhereClause: buildAdvancedWhereClause,
+  _setSqCache: (v) => {
+    _sqCache = v;
+  },
+  _getSqCache: () => _sqCache,
   // test-only: Bolum K (kullanici tablo gorunurlugu) yeni sema adaptorunu DB gerektirmeden
   // dogrulamak icin acildi (bkz. __tests__/visible-tables.test.cjs).
-  _readVisibleTables: readVisibleTables, _writeVisibleTablesForRole: writeVisibleTablesForRole,
-  _filterTablesByRole: filterTablesByRole, _reconcileTableVisibility: reconcileTableVisibility,
+  _readVisibleTables: readVisibleTables,
+  _writeVisibleTablesForRole: writeVisibleTablesForRole,
+  _filterTablesByRole: filterTablesByRole,
+  _reconcileTableVisibility: reconcileTableVisibility,
   _migrateLegacyVisibleTablesIfNeeded: migrateLegacyVisibleTablesIfNeeded,
   _getUserOverridesForUser: getUserOverridesForUser,
   _resetVisibleTablesTestState: () => {
-    _visibleTablesCache = null; _visibleTablesCacheAt = 0; _reconciledAt = 0; _legacyMigrated = false;
-    _inactiveCache = null; _inactiveCacheAt = 0;
+    _visibleTablesCache = null;
+    _visibleTablesCacheAt = 0;
+    _reconciledAt = 0;
+    _legacyMigrated = false;
+    _inactiveCache = null;
+    _inactiveCacheAt = 0;
   },
 };

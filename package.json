@@ -23,6 +23,7 @@
     "format": "prettier --write .",
     "test:ui": "vitest run",
     "lint:ascii": "node scripts/check-ascii.cjs",
+    "fix:ascii": "node scripts/fix-ascii.cjs",
     "prepare": "husky",
     "migrate": "node server/db/migrate.cjs",
     "db:seed": "node server/db/seed.cjs",

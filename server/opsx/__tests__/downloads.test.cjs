@@ -1,6 +1,6 @@
 // server/opsx/__tests__/downloads.test.cjs — OpsX dump indirme resolver'i: logx/v2/downloads.cjs
-// ile AYNI desen (staging kökünde filename ile ara, path traversal reddi) ama tek bir
-// staging kökü (OPSX_DUMP_STAGING_DIR) ile. Gerçek tmp FS kullanır.
+// ile AYNI desen (staging kokunde filename ile ara, path traversal reddi) ama tek bir
+// staging koku (OPSX_DUMP_STAGING_DIR) ile. Gercek tmp FS kullanir.
 'use strict';
 
 const { test, beforeEach, afterEach } = require('node:test');
@@ -26,7 +26,11 @@ beforeEach(() => {
 afterEach(() => {
   if (savedEnv.OPSX_DUMP_STAGING_DIR === undefined) delete process.env.OPSX_DUMP_STAGING_DIR;
   else process.env.OPSX_DUMP_STAGING_DIR = savedEnv.OPSX_DUMP_STAGING_DIR;
-  try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* yoksay */ }
+  try {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  } catch {
+    /* yoksay */
+  }
 });
 
 test('stagingRoot(): OPSX_DUMP_STAGING_DIR ayarlanmışsa onu döner', () => {

@@ -1,4 +1,4 @@
-// server/ansible/__tests__/ocp-staging-parity.test.cjs — OCP arşiv teslimi legacy ile AYNI.
+// server/ansible/__tests__/ocp-staging-parity.test.cjs — OCP arsiv teslimi legacy ile AYNI.
 //
 // GERCEK ARIZA (2026-08-09, uretim): job 3208785 basariyla 6 arsiv uretti ama HICBIRI
 // indirilemedi (404). Zincir: portal `staging_user` gondermiyordu → playbook `was`
@@ -21,7 +21,8 @@ const OCP_FETCH = 'logx_ocp_discover_fetch.yml';
 
 // Yorum satirlari haric kod: dosya basindaki mimari notlar 'dzdo'yu ADIYLA aniyor.
 function code(file) {
-  return fs.readFileSync(path.join(DIR, file), 'utf8')
+  return fs
+    .readFileSync(path.join(DIR, file), 'utf8')
     .split('\n')
     .filter((l) => !/^\s*#/.test(l))
     .join('\n');
@@ -29,17 +30,26 @@ function code(file) {
 
 test(`${OCP_FETCH}: dzdo / staging kullanicisi / mod ayari GECMEZ (legacy modeli)`, () => {
   const src = code(OCP_FETCH);
-  for (const banned of ['dzdo', 'staging_runas_user', 'staging_directory_mode', 'staged_archive_mode']) {
+  for (const banned of [
+    'dzdo',
+    'staging_runas_user',
+    'staging_directory_mode',
+    'staged_archive_mode',
+  ]) {
     assert.ok(
       !new RegExp(banned).test(src),
-      `${banned} geri gelmis — uretimde 'dzdo: unknown user: was' ile indirmeyi kirmisti`
+      `${banned} geri gelmis — uretimde 'dzdo: unknown user: was' ile indirmeyi kirmisti`,
     );
   }
 });
 
 test(`${OCP_FETCH}: arsiv DOGRUDAN staging yoluna yazilir, ara kopyalama yok`, () => {
   const src = code(OCP_FETCH);
-  assert.match(src, /dest: "\{\{ item\.staging_archive_path \}\}"/, 'staging arsivi dogrudan hedefe yazilmali');
+  assert.match(
+    src,
+    /dest: "\{\{ item\.staging_archive_path \}\}"/,
+    'staging arsivi dogrudan hedefe yazilmali',
+  );
   assert.match(src, /dest: "\{\{ item\.fallback_archive_path \}\}"/, 'fallback yolu korunmali');
 });
 
@@ -58,11 +68,20 @@ test(`${OCP_FETCH}: staging dizinini OLUSTURMAYA calisan gorev yok (legacy parit
 
 test('HICBIR playbook `ingest_url` kullanmiyor — portal da artik gondermemeli', () => {
   for (const file of fs.readdirSync(DIR).filter((f) => f.endsWith('.yml'))) {
-    assert.ok(!/ingest_url/.test(fs.readFileSync(path.join(DIR, file), 'utf8')), `${file}: ingest_url`);
+    assert.ok(
+      !/ingest_url/.test(fs.readFileSync(path.join(DIR, file), 'utf8')),
+      `${file}: ingest_url`,
+    );
   }
-  const ocp = fs.readFileSync(path.join(__dirname, '..', '..', 'logx', 'v2', 'ocp.cjs'), 'utf8')
-    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  assert.ok(!/ingest_url|issueIngestToken/.test(ocp), 'ocp.cjs bosuna token + DB satiri uretmemeli');
+  const ocp = fs
+    .readFileSync(path.join(__dirname, '..', '..', 'logx', 'v2', 'ocp.cjs'), 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
+  assert.ok(
+    !/ingest_url|issueIngestToken/.test(ocp),
+    'ocp.cjs bosuna token + DB satiri uretmemeli',
+  );
   // Teslim yolu staging: bu iki degisken gitmeye devam etmeli.
   assert.match(ocp, /staging_dir:/);
   assert.match(ocp, /fallback_dir:/);
@@ -90,7 +109,14 @@ function parseTasks(text) {
     const m = /^(\s*)- name:\s*(.*)$/.exec(line);
     if (m) {
       if (cur) tasks.push(cur);
-      cur = { indent: m[1].length, name: m[2].trim().replace(/^["']|["']$/g, ''), from: i, to: i, keys: [], hasWhen: false };
+      cur = {
+        indent: m[1].length,
+        name: m[2].trim().replace(/^["']|["']$/g, ''),
+        from: i,
+        to: i,
+        keys: [],
+        hasWhen: false,
+      };
     } else if (cur) {
       cur.to = i;
     }
@@ -106,7 +132,7 @@ function parseTasks(text) {
       const indent = m[1].length;
       const key = m[2];
       if (indent === taskKeyIndent) {
-        sfIndent = (key === 'set_fact' || key === 'ansible.builtin.set_fact') ? indent + 2 : null;
+        sfIndent = key === 'set_fact' || key === 'ansible.builtin.set_fact' ? indent + 2 : null;
         if (key === 'when') t.hasWhen = true;
         continue;
       }
@@ -140,6 +166,7 @@ test(`${OCP_FETCH}: when: ile korunan her set_fact play basinda ILKLENIR`, () =>
     violations,
     [],
     'Kosul saglanmadiginda bu degiskenler tanimsiz kalir; onlari okuyan gorev ' +
-    "'undefined' ile duser ve BASARILI bir calistirma 'failed' raporlanir:\n" + violations.join('\n')
+      "'undefined' ile duser ve BASARILI bir calistirma 'failed' raporlanir:\n" +
+      violations.join('\n'),
   );
 });

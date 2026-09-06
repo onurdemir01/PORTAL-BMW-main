@@ -3,7 +3,8 @@
 // GEREKSİNİMLER (Jenkins tarafında bir kez):
 //  - NodeJS Plugin + Global Tool: "node20" adında Node.js 20.x tanımı
 //
-// AKIŞ: checkout → npm ci → kalite kapısı (tsc + lint:ascii + server syntax) →
+// AKIŞ: checkout → npm ci → testler (node:test + vitest) →
+//       kalite kapısı (tsc + lint:ascii + eslint + server syntax) →
 //       build → paket → arşiv (indirilebilir artifact).
 //
 // NOT — DEPLOY BU PIPELINE'DA YOK: gerçek sunucuya (gblabt02, /vhosting8/bmw_portal)
@@ -49,18 +50,32 @@ pipeline {
     // suiti, daha eskiyse `mock.module` gerektiren dosyalari ATLAYARAK kalanini
     // kosar ve atladiklarini adiyla yazdirir. Boylece "node20" araciyla da calisir
     // ama neyin kosmadigi ciktida GORUNUR.
-    // SIRA BILEREK: testler KALITE KAPISINDAN ONCE. `lint:ascii` bu depoda su an
-    // 50 mevcut ihlalle kirmizi (benim degil, HEAD'de de oyle) ve o asama duserse
-    // sonraki asamalar HIC kosmaz — testleri arkasina koymak, onlari yine kosmaz
-    // hale getirirdi. Davranis dogrulugu, yorum karakterlerinden once gelir.
+    // SIRA HALA BILEREK: testler KALITE KAPISINDAN ONCE. Gerekce DEGISTI ama sonuc
+    // ayni: bir asama duserse sonrakiler HIC kosmaz ve davranis dogrulugu, yorum
+    // karakterlerinden once gelir. (Eski gerekce artik gecersiz: `lint:ascii`in
+    // 122 birikmis ihlali temizlendi ve kapi yeniden BLOKE ediyor.)
+    //
+    // VITEST DE BURADA. React bilesen testleri (WorkloadStep dahil) CI'da HIC
+    // kosmuyordu: `npm test` node:test kosucusudur ve `src/**/__tests__/*.tsx`
+    // dosyalarini gormez. Yani bilesen testleri de tam olarak `npm test`in bir
+    // zamanlar dustugu duruma dusmustu — yazilmis, yesil sanilan, kosmayan testler.
     stage('Testler') {
-      steps { sh 'npm test' }
+      steps {
+        sh 'npm test'
+        sh 'npm run test:ui'
+      }
     }
 
     stage('Kalite Kapısı') {
       steps {
         sh 'npx tsc --noEmit'
         sh 'npm run lint:ascii'
+        // ESLINT DE CI'DA. Kuruldu (2026-09-04) ama boru hattinda HIC cagrilmiyordu.
+        // Su an 0 HATA / 127 UYARI ile geciyor: kapi HATALARI yakalar, uyarilar
+        // gorunur bir borc olarak kalir. Uyarilari da kirmiziya cevirmek
+        // (`--max-warnings 0`) AYRI ve olculebilir bir is; sessizce dayatmak,
+        // ilgisiz bir PR'i bloke etmek olurdu.
+        sh 'npm run lint'
         // Backend dosyaları TS derlemesine girmez — sözdizimi kontrolü:
         sh '''
           for f in $(find server -name "*.cjs"); do

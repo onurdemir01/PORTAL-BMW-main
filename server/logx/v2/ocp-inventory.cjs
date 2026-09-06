@@ -8,7 +8,7 @@
 // TETIKLEMEZ, bu yuzden namespace/uygulama secimi HER ZAMAN aninda doner.
 //
 // NEDEN VAR (ONUR'UN KARARI — bkz. proje notlari): daha once OpsX ve LogX'in her ikisi
-// de aynı sorunu (namespace/uygulama katalogu) FARKLI mekanizmalarla cozmeye
+// de ayni sorunu (namespace/uygulama katalogu) FARKLI mekanizmalarla cozmeye
 // calisiyordu — biri kullanici-tetikli AWX kesif + paylasimli TTL onbellek
 // (server/logx/v2/ocp-cache.cjs), digeri (bu dosya) bagimsiz zamanlanmis toplu tarama.
 // Onur, portaldan bagimsiz zamanlanmis is + tek okuma noktasi modelini SECTI. ocp-cache.cjs
@@ -20,8 +20,11 @@
 const inventoryDb = require('../../inventory/mssql.cjs');
 
 async function getNamespaces({ clusterNames }) {
-  const clusters = [...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean))];
-  if (!clusters.length) return { items: [], cached: false, fetchedAt: null, stale: false, source: null };
+  const clusters = [
+    ...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean)),
+  ];
+  if (!clusters.length)
+    return { items: [], cached: false, fetchedAt: null, stale: false, source: null };
 
   const pool = await inventoryDb.getPool();
   if (!pool) return { items: [], cached: false, fetchedAt: null, stale: false, source: null };
@@ -42,7 +45,7 @@ async function getNamespaces({ clusterNames }) {
        FROM dbo.Openshift_Inventory
       WHERE cluster IN (${placeholders})
       GROUP BY cluster, namespace
-      ORDER BY namespace`
+      ORDER BY namespace`,
   );
   const fetchedAt = await latestLoadedAt(pool, clusters);
   const counts = {};
@@ -51,7 +54,11 @@ async function getNamespaces({ clusterNames }) {
   for (const r of result.recordset) {
     const ns = String(r.namespace || '').trim();
     if (!ns) continue;
-    if (!(ns in counts)) { counts[ns] = 0; clusterMap[ns] = []; items.push(ns); }
+    if (!(ns in counts)) {
+      counts[ns] = 0;
+      clusterMap[ns] = [];
+      items.push(ns);
+    }
     // Cluster'lar arasi en YUKSEK sayi: "bu namespace'te kac uygulama var" sorusunun
     // cevabi, cluster'larin toplami degil (ayni uygulama her cluster'da tekrar eder).
     counts[ns] = Math.max(counts[ns], Number(r.app_count || 0));
@@ -71,8 +78,11 @@ async function getNamespaces({ clusterNames }) {
 
 async function getApps({ clusterNames, namespace }) {
   const ns = String(namespace || '').trim();
-  const clusters = [...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean))];
-  if (!ns || !clusters.length) return { items: [], cached: false, fetchedAt: null, stale: false, source: null };
+  const clusters = [
+    ...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean)),
+  ];
+  if (!ns || !clusters.length)
+    return { items: [], cached: false, fetchedAt: null, stale: false, source: null };
 
   const pool = await inventoryDb.getPool();
   if (!pool) return { items: [], cached: false, fetchedAt: null, stale: false, source: null };
@@ -87,7 +97,7 @@ async function getApps({ clusterNames, namespace }) {
   const result = await req.query(
     `SELECT DISTINCT cluster, application FROM dbo.Openshift_Inventory
       WHERE namespace = @ns AND cluster IN (${placeholders})
-      ORDER BY application`
+      ORDER BY application`,
   );
   const fetchedAt = await latestLoadedAt(pool, clusters);
   const clusterMap = {};
@@ -118,7 +128,7 @@ async function latestLoadedAt(pool, clusters) {
     clusters.forEach((c, i) => req.input(`c${i}`, c));
     const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
     const result = await req.query(
-      `SELECT MAX(loaded_at) AS latest FROM dbo.Openshift_Inventory WHERE cluster IN (${placeholders})`
+      `SELECT MAX(loaded_at) AS latest FROM dbo.Openshift_Inventory WHERE cluster IN (${placeholders})`,
     );
     return result.recordset[0]?.latest || null;
   } catch {

@@ -71,7 +71,7 @@ test('DRIFT sabitleri Object.freeze ile korunur', () => {
   );
 });
 
-// ── keyOf yardımcı ────────────────────────────────────────────────────────────
+// ── keyOf yardimci ────────────────────────────────────────────────────────────
 test('keyOf: env/tenant/cluster/namespace/app birlestir (ayrac \\u001f)', () => {
   const fnBody = SRC.slice(SRC.indexOf('function keyOf'), SRC.indexOf('function keyOf') + 200);
   assert.match(

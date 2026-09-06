@@ -38,16 +38,26 @@ function parseSkipRules(raw) {
     const s = line.trim();
     if (!s || s.startsWith('#')) continue;
     const i = s.indexOf(':');
-    if (i <= 0) { invalid.push(s); continue; }
+    if (i <= 0) {
+      invalid.push(s);
+      continue;
+    }
     const field = s.slice(0, i).trim().toLowerCase();
-    const values = s.slice(i + 1).split(',').map((v) => v.trim().toLowerCase()).filter(Boolean);
-    if (!field || values.length === 0) { invalid.push(s); continue; }
+    const values = s
+      .slice(i + 1)
+      .split(',')
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean);
+    if (!field || values.length === 0) {
+      invalid.push(s);
+      continue;
+    }
     rules.push({ field, values });
   }
   return { rules, invalid };
 }
 
-// extraVars'ta alanı HARF DUYARSIZ arar (AWX survey adlari tutarsiz olabiliyor).
+// extraVars'ta alani HARF DUYARSIZ arar (AWX survey adlari tutarsiz olabiliyor).
 function lookupField(extraVars, field) {
   if (!extraVars || typeof extraVars !== 'object') return undefined;
   for (const [k, v] of Object.entries(extraVars)) {

@@ -5,7 +5,7 @@
 // ama "degildi" demek yetmez, KANITLANMASI gerekir: bu kapilar bir prod kesintisini
 // engelleyen tek sey ve calisan Self Service akisina dokunuldu.
 //
-// Bu test, cikarma ONCESI kodun ureteceği HTTP durumunu ve govde alanlarini tek tek
+// Bu test, cikarma ONCESI kodun uretecegi HTTP durumunu ve govde alanlarini tek tek
 // sayar. Beklenen degerler `runner.cjs`'in cikarmadan onceki halinden (main@49ad3ed,
 // satir 2437-2600) BIREBIR okunmustur; bir reviewer `git show 49ad3ed:server/ansible/
 // runner.cjs | sed -n '2437,2600p'` ile karsilastirabilir.
@@ -44,28 +44,63 @@ async function withMocks(overrides, fn) {
   const calls = [];
   const defaults = {
     prodDetect: { isProductionRequest: () => true },
-    ocoClient: { getChangeOrder: async () => ({ payload: {}, result: { Subject: 'Test degisikligi' } }) },
+    ocoClient: {
+      getChangeOrder: async () => ({ payload: {}, result: { Subject: 'Test degisikligi' } }),
+    },
     ocoWindow: {
-      extractPlannedInterruption: () => ({ startDate: '01.09.2026 14:00:00', endDate: '01.09.2026 16:00:00' }),
+      extractPlannedInterruption: () => ({
+        startDate: '01.09.2026 14:00:00',
+        endDate: '01.09.2026 16:00:00',
+      }),
       evaluateWindow: () => ({
-        ok: true, phase: 'inside', equal: false,
-        startText: '01.09.2026 14:00:00', endText: '01.09.2026 16:00:00',
-        windowStartText: '01.09.2026 14:00:00', windowEndText: '01.09.2026 16:00:00',
-        windowStart: new Date('2026-09-01T14:00:00'), windowEnd: new Date('2026-09-01T16:00:00'),
+        ok: true,
+        phase: 'inside',
+        equal: false,
+        startText: '01.09.2026 14:00:00',
+        endText: '01.09.2026 16:00:00',
+        windowStartText: '01.09.2026 14:00:00',
+        windowEndText: '01.09.2026 16:00:00',
+        windowStart: new Date('2026-09-01T14:00:00'),
+        windowEnd: new Date('2026-09-01T16:00:00'),
         message: 'pencere acik',
       }),
     },
     ocoStore: {
-      create: async (a) => { calls.push(['oco.create', a]); return { id: 77 }; },
-      createAwxScheduled: async (a) => { calls.push(['oco.createAwxScheduled', a]); return { id: 88 }; },
+      create: async (a) => {
+        calls.push(['oco.create', a]);
+        return { id: 77 };
+      },
+      createAwxScheduled: async (a) => {
+        calls.push(['oco.createAwxScheduled', a]);
+        return { id: 88 };
+      },
     },
-    smartClient: { createTicket: async (a) => { calls.push(['smart.createTicket', a]); return { ticketId: 'WF-1', raw: {} }; } },
-    smartStore: { createTicket: async (a) => { calls.push(['smart.storeTicket', a]); return { id: 42 }; } },
-    audit: { auditPortal: (req, action, o) => { calls.push(['audit', action, o]); } },
+    smartClient: {
+      createTicket: async (a) => {
+        calls.push(['smart.createTicket', a]);
+        return { ticketId: 'WF-1', raw: {} };
+      },
+    },
+    smartStore: {
+      createTicket: async (a) => {
+        calls.push(['smart.storeTicket', a]);
+        return { id: 42 };
+      },
+    },
+    audit: {
+      auditPortal: (req, action, o) => {
+        calls.push(['audit', action, o]);
+      },
+    },
     // Argumanlari KAYDEDEN mock. Onceki hali `() => false` idi ve argumanlara hic
     // bakmiyordu — yani "kapi gateVars mi extraVars mi okuyor" sorusu parity testinde
     // SIFIR kapsamdaydi; tek koruma metin tabanli bekciydi.
-    smartGate: { isSmartRequired: (a, b) => { calls.push(['gate.isSmartRequired', a, b]); return false; } },
+    smartGate: {
+      isSmartRequired: (a, b) => {
+        calls.push(['gate.isSmartRequired', a, b]);
+        return false;
+      },
+    },
   };
 
   for (const [k, p] of Object.entries(paths)) {
@@ -81,7 +116,8 @@ async function withMocks(overrides, fn) {
     return await fn(gates, calls);
   } finally {
     for (const [k, p] of Object.entries(paths)) {
-      if (saved[k]) require.cache[p] = saved[k]; else delete require.cache[p];
+      if (saved[k]) require.cache[p] = saved[k];
+      else delete require.cache[p];
     }
     delete require.cache[GATES_PATH];
   }
@@ -100,7 +136,11 @@ function baseCtx(extra = {}) {
     resolvedLaunchOptions: {},
     specFields: [],
     templateName: 'Test Template',
-    createOcoAwxSchedule: async () => ({ scheduleId: 9, scheduleName: 'SCHED', rrule: 'RRULE:...' }),
+    createOcoAwxSchedule: async () => ({
+      scheduleId: 9,
+      scheduleName: 'SCHED',
+      rrule: 'RRULE:...',
+    }),
     friendlyAwxError: (e) => ({ status: 502, message: e.message }),
     buildSmartMetadata: () => [{ key: 'app', value: 'x' }],
     ...extra,
@@ -111,13 +151,19 @@ function baseCtx(extra = {}) {
 
 test('OCO: kapi kapali (ocoCheck.enabled=false) → hic calismaz', async () => {
   await withMocks({}, (gates) => {
-    assert.equal(gates.isOcoGateApplicable({ ocoCheck: { enabled: false } }, { env: 'prod' }), false);
+    assert.equal(
+      gates.isOcoGateApplicable({ ocoCheck: { enabled: false } }, { env: 'prod' }),
+      false,
+    );
   });
 });
 
 test('OCO: production DEGILSE kapi hic calismaz', async () => {
   await withMocks({ prodDetect: { isProductionRequest: () => false } }, (gates) => {
-    assert.equal(gates.isOcoGateApplicable({ ocoCheck: { enabled: true } }, { env: 'test' }), false);
+    assert.equal(
+      gates.isOcoGateApplicable({ ocoCheck: { enabled: true } }, { env: 'test' }),
+      false,
+    );
   });
 });
 
@@ -132,140 +178,209 @@ test('OCO: numara yoksa → 400 { ocoRequired: true }', async () => {
 });
 
 test('OCO: servis hatasi → hatanin kendi statusu + ocoRequired', async () => {
-  await withMocks({
-    ocoClient: { getChangeOrder: async () => { throw Object.assign(new Error('OCO kaydi bulunamadi'), { status: 404 }); } },
-  }, async (gates) => {
-    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
-    assert.equal(d.status, 404);
-    assert.equal(d.body.ocoRequired, true);
-    assert.match(d.body.message, /bulunamadi/);
-  });
+  await withMocks(
+    {
+      ocoClient: {
+        getChangeOrder: async () => {
+          throw Object.assign(new Error('OCO kaydi bulunamadi'), { status: 404 });
+        },
+      },
+    },
+    async (gates) => {
+      const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
+      assert.equal(d.status, 404);
+      assert.equal(d.body.ocoRequired, true);
+      assert.match(d.body.message, /bulunamadi/);
+    },
+  );
 });
 
 test('OCO: PlannedInterruption yoksa → 400, ocoRequired YOK', async () => {
-  await withMocks({ ocoWindow: { extractPlannedInterruption: () => null, evaluateWindow: () => ({ ok: true }) } },
+  await withMocks(
+    { ocoWindow: { extractPlannedInterruption: () => null, evaluateWindow: () => ({ ok: true }) } },
     async (gates) => {
       const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
       assert.equal(d.status, 400);
-      assert.equal(d.body.ocoRequired, undefined, 'bu dalda ocoRequired GONDERILMEZ (eski davranis)');
+      assert.equal(
+        d.body.ocoRequired,
+        undefined,
+        'bu dalda ocoRequired GONDERILMEZ (eski davranis)',
+      );
       assert.match(d.body.message, /PlannedInterruption/);
-    });
+    },
+  );
 });
 
 test('OCO: pencere gecersizse (evaluateWindow.ok=false) → 400', async () => {
-  await withMocks({
-    ocoWindow: {
-      extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
-      evaluateWindow: () => ({ ok: false, message: 'Bitis baslangictan once' }),
+  await withMocks(
+    {
+      ocoWindow: {
+        extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
+        evaluateWindow: () => ({ ok: false, message: 'Bitis baslangictan once' }),
+      },
     },
-  }, async (gates) => {
-    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
-    assert.equal(d.status, 400);
-    assert.equal(d.body.message, 'Bitis baslangictan once');
-  });
+    async (gates) => {
+      const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
+      assert.equal(d.status, 400);
+      assert.equal(d.body.message, 'Bitis baslangictan once');
+    },
+  );
 });
 
 test('OCO: pencere DOLMUS → 400 { ocoExpired } + selfservice_oco_expired denetimi', async () => {
-  await withMocks({
-    ocoWindow: {
-      extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
-      evaluateWindow: () => ({ ok: true, phase: 'expired', windowEndText: '01.09.2026 16:00:00', message: 'Pencere doldu' }),
+  await withMocks(
+    {
+      ocoWindow: {
+        extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
+        evaluateWindow: () => ({
+          ok: true,
+          phase: 'expired',
+          windowEndText: '01.09.2026 16:00:00',
+          message: 'Pencere doldu',
+        }),
+      },
     },
-  }, async (gates, calls) => {
-    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
-    assert.equal(d.status, 400);
-    assert.equal(d.body.ocoExpired, true);
-    assert.equal(d.body.oco.ocoNumber, '123');
-    assert.ok(calls.some((c) => c[0] === 'audit' && c[1] === 'selfservice_oco_expired'));
-  });
+    async (gates, calls) => {
+      const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
+      assert.equal(d.status, 400);
+      assert.equal(d.body.ocoExpired, true);
+      assert.equal(d.body.oco.ocoNumber, '123');
+      assert.ok(calls.some((c) => c[0] === 'audit' && c[1] === 'selfservice_oco_expired'));
+    },
+  );
 });
 
 test('OCO: pencere HENUZ baslamadi + karar yok → 400 { ocoDecisionRequired }', async () => {
-  await withMocks({
-    ocoWindow: {
-      extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
-      evaluateWindow: () => ({ ok: true, phase: 'before', message: 'Pencere 14:00\'te aciliyor' }),
+  await withMocks(
+    {
+      ocoWindow: {
+        extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
+        evaluateWindow: () => ({ ok: true, phase: 'before', message: "Pencere 14:00'te aciliyor" }),
+      },
     },
-  }, async (gates) => {
-    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
-    assert.equal(d.status, 400);
-    assert.equal(d.body.ocoDecisionRequired, true);
-    assert.equal(d.body.oco.phase, 'before');
-  });
+    async (gates) => {
+      const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
+      assert.equal(d.status, 400);
+      assert.equal(d.body.ocoDecisionRequired, true);
+      assert.equal(d.body.oco.phase, 'before');
+    },
+  );
 });
 
 test("OCO: ocoAction='later' → HTTP 200 { ocoDeferred }, hicbir kayit acilmaz", async () => {
-  await withMocks({
-    ocoWindow: {
-      extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
-      evaluateWindow: () => ({ ok: true, phase: 'before', message: '...' }),
+  await withMocks(
+    {
+      ocoWindow: {
+        extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
+        evaluateWindow: () => ({ ok: true, phase: 'before', message: '...' }),
+      },
     },
-  }, async (gates, calls) => {
-    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123', ocoAction: 'later' }));
-    assert.equal(d.outcome, 'respond');
-    assert.equal(d.body.ocoDeferred, true);
-    assert.equal(calls.filter((c) => c[0].startsWith('oco.')).length, 0, 'later hicbir kayit ACMAMALI');
-    assert.equal(calls.filter((c) => c[0].startsWith('smart.')).length, 0);
-  });
+    async (gates, calls) => {
+      const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123', ocoAction: 'later' }));
+      assert.equal(d.outcome, 'respond');
+      assert.equal(d.body.ocoDeferred, true);
+      assert.equal(
+        calls.filter((c) => c[0].startsWith('oco.')).length,
+        0,
+        'later hicbir kayit ACMAMALI',
+      );
+      assert.equal(calls.filter((c) => c[0].startsWith('smart.')).length, 0);
+    },
+  );
 });
 
 test("OCO: ocoAction='schedule' + Smart GEREKMIYOR → AWX-native schedule", async () => {
-  await withMocks({
-    smartGate: { isSmartRequired: () => false },
-    ocoWindow: {
-      extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
-      evaluateWindow: () => ({
-        ok: true, phase: 'before', windowStart: new Date('2026-09-01T14:00:00'),
-        windowEnd: new Date('2026-09-01T16:00:00'), windowStartText: '01.09.2026 14:00:00', message: '...',
-      }),
+  await withMocks(
+    {
+      smartGate: { isSmartRequired: () => false },
+      ocoWindow: {
+        extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
+        evaluateWindow: () => ({
+          ok: true,
+          phase: 'before',
+          windowStart: new Date('2026-09-01T14:00:00'),
+          windowEnd: new Date('2026-09-01T16:00:00'),
+          windowStartText: '01.09.2026 14:00:00',
+          message: '...',
+        }),
+      },
     },
-  }, async (gates, calls) => {
-    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123', ocoAction: 'schedule' }));
-    assert.equal(d.outcome, 'respond');
-    assert.equal(d.body.ocoScheduled, true);
-    assert.equal(d.body.awxScheduleId, 9);
-    assert.ok(calls.some((c) => c[0] === 'oco.createAwxScheduled'));
-    assert.ok(!calls.some((c) => c[0] === 'oco.create'), 'portal poller kaydi ACILMAMALI');
-    assert.ok(calls.some((c) => c[0] === 'audit' && c[1] === 'selfservice_oco_awx_scheduled'));
-  });
+    async (gates, calls) => {
+      const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123', ocoAction: 'schedule' }));
+      assert.equal(d.outcome, 'respond');
+      assert.equal(d.body.ocoScheduled, true);
+      assert.equal(d.body.awxScheduleId, 9);
+      assert.ok(calls.some((c) => c[0] === 'oco.createAwxScheduled'));
+      assert.ok(!calls.some((c) => c[0] === 'oco.create'), 'portal poller kaydi ACILMAMALI');
+      assert.ok(calls.some((c) => c[0] === 'audit' && c[1] === 'selfservice_oco_awx_scheduled'));
+    },
+  );
 });
 
 test("OCO: ocoAction='schedule' + Smart GEREKIYOR → AWX'e DEVREDILMEZ (onay kapisi atlanmasin)", async () => {
   // Bu, testin en kritik maddesi: AWX schedule'i hicbir onaya BAKMADAN job baslatir.
-  await withMocks({
-    smartGate: { isSmartRequired: () => true },
-    ocoWindow: {
-      extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
-      evaluateWindow: () => ({
-        ok: true, phase: 'before', windowStart: new Date('2026-09-01T14:00:00'),
-        windowEnd: new Date('2026-09-01T16:00:00'), windowStartText: '01.09.2026 14:00:00', message: '...',
-      }),
+  await withMocks(
+    {
+      smartGate: { isSmartRequired: () => true },
+      ocoWindow: {
+        extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
+        evaluateWindow: () => ({
+          ok: true,
+          phase: 'before',
+          windowStart: new Date('2026-09-01T14:00:00'),
+          windowEnd: new Date('2026-09-01T16:00:00'),
+          windowStartText: '01.09.2026 14:00:00',
+          message: '...',
+        }),
+      },
     },
-  }, async (gates, calls) => {
-    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123', ocoAction: 'schedule' }));
-    assert.equal(d.body.ocoScheduled, true);
-    assert.equal(d.body.viaSmart, true);
-    assert.ok(calls.some((c) => c[0] === 'oco.create'), 'portal poller kaydi ACILMALI');
-    assert.ok(!calls.some((c) => c[0] === 'oco.createAwxScheduled'), 'AWX-native schedule ACILMAMALI — onay atlanirdi');
-  });
+    async (gates, calls) => {
+      const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123', ocoAction: 'schedule' }));
+      assert.equal(d.body.ocoScheduled, true);
+      assert.equal(d.body.viaSmart, true);
+      assert.ok(
+        calls.some((c) => c[0] === 'oco.create'),
+        'portal poller kaydi ACILMALI',
+      );
+      assert.ok(
+        !calls.some((c) => c[0] === 'oco.createAwxScheduled'),
+        'AWX-native schedule ACILMAMALI — onay atlanirdi',
+      );
+    },
+  );
 });
 
 test('OCO: AWX schedule kurulamazsa → hata, kayit acilmaz', async () => {
-  await withMocks({
-    smartGate: { isSmartRequired: () => false },
-    ocoWindow: {
-      extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
-      evaluateWindow: () => ({ ok: true, phase: 'before', windowStart: new Date(), windowEnd: new Date(), windowStartText: 'x', message: '...' }),
+  await withMocks(
+    {
+      smartGate: { isSmartRequired: () => false },
+      ocoWindow: {
+        extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
+        evaluateWindow: () => ({
+          ok: true,
+          phase: 'before',
+          windowStart: new Date(),
+          windowEnd: new Date(),
+          windowStartText: 'x',
+          message: '...',
+        }),
+      },
     },
-  }, async (gates, calls) => {
-    const ctx = baseCtx({ ocoNumber: '123', ocoAction: 'schedule' });
-    ctx.createOcoAwxSchedule = async () => { throw new Error('AWX 500'); };
-    const d = await gates.runChangeGates(ctx);
-    assert.equal(d.outcome, 'error');
-    assert.equal(d.status, 502);
-    assert.match(d.body.message, /AWX zamanlaması oluşturulamadı/);
-    assert.ok(!calls.some((c) => c[0].startsWith('oco.')), 'schedule kurulamadiysa DB kaydi ACILMAMALI');
-  });
+    async (gates, calls) => {
+      const ctx = baseCtx({ ocoNumber: '123', ocoAction: 'schedule' });
+      ctx.createOcoAwxSchedule = async () => {
+        throw new Error('AWX 500');
+      };
+      const d = await gates.runChangeGates(ctx);
+      assert.equal(d.outcome, 'error');
+      assert.equal(d.status, 502);
+      assert.match(d.body.message, /AWX zamanlaması oluşturulamadı/);
+      assert.ok(
+        !calls.some((c) => c[0].startsWith('oco.')),
+        'schedule kurulamadiysa DB kaydi ACILMAMALI',
+      );
+    },
+  );
 });
 
 test('OCO: pencere ACIK → akis devam eder + selfservice_oco_ok denetimi', async () => {
@@ -309,34 +424,56 @@ test('Smart: flowKey bos → 400, bilet ACILMAZ', async () => {
 });
 
 test('Smart: createTicket hatasi → hatanin statusu, is TETIKLENMEZ', async () => {
-  await withMocks({
-    smartGate: { isSmartRequired: () => true },
-    smartClient: { createTicket: async () => { throw Object.assign(new Error('Smart talebi reddedildi'), { status: 502 }); } },
-  }, async (gates, calls) => {
-    const ctx = baseCtx({ ocoNumber: '123' });
-    ctx.overrides = { ocoCheck: { enabled: false }, smartApproval: { flowKey: 'F' } };
-    const d = await gates.runChangeGates(ctx);
-    assert.equal(d.outcome, 'error');
-    assert.equal(d.status, 502);
-    assert.match(d.body.message, /Smart talebi açılamadı/);
-    assert.ok(!calls.some((c) => c[0] === 'smart.storeTicket'), 'Smart reddettiyse DB kaydi ACILMAMALI');
-  });
+  await withMocks(
+    {
+      smartGate: { isSmartRequired: () => true },
+      smartClient: {
+        createTicket: async () => {
+          throw Object.assign(new Error('Smart talebi reddedildi'), { status: 502 });
+        },
+      },
+    },
+    async (gates, calls) => {
+      const ctx = baseCtx({ ocoNumber: '123' });
+      ctx.overrides = { ocoCheck: { enabled: false }, smartApproval: { flowKey: 'F' } };
+      const d = await gates.runChangeGates(ctx);
+      assert.equal(d.outcome, 'error');
+      assert.equal(d.status, 502);
+      assert.match(d.body.message, /Smart talebi açılamadı/);
+      assert.ok(
+        !calls.some((c) => c[0] === 'smart.storeTicket'),
+        'Smart reddettiyse DB kaydi ACILMAMALI',
+      );
+    },
+  );
 });
 
-test('Smart: OCO kapisi SMART\'TAN ONCE calisir', async () => {
+test("Smart: OCO kapisi SMART'TAN ONCE calisir", async () => {
   // Penceresi gecmis bir OCO icin Smart'ta bosuna talep acmak, kullaniciyi bekletip
   // sonra reddetmek olurdu.
-  await withMocks({
-    smartGate: { isSmartRequired: () => true },
-    ocoWindow: {
-      extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
-      evaluateWindow: () => ({ ok: true, phase: 'expired', windowEndText: 'x', message: 'doldu' }),
+  await withMocks(
+    {
+      smartGate: { isSmartRequired: () => true },
+      ocoWindow: {
+        extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
+        evaluateWindow: () => ({
+          ok: true,
+          phase: 'expired',
+          windowEndText: 'x',
+          message: 'doldu',
+        }),
+      },
     },
-  }, async (gates, calls) => {
-    const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
-    assert.equal(d.body.ocoExpired, true);
-    assert.equal(calls.filter((c) => c[0].startsWith('smart.')).length, 0, 'OCO dustuyse Smart bileti ACILMAMALI');
-  });
+    async (gates, calls) => {
+      const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
+      assert.equal(d.body.ocoExpired, true);
+      assert.equal(
+        calls.filter((c) => c[0].startsWith('smart.')).length,
+        0,
+        'OCO dustuyse Smart bileti ACILMAMALI',
+      );
+    },
+  );
 });
 
 // ── pendingLaunch paketinin sekli (cagirma yerine gore FARKLI, bilincli) ──────
@@ -344,25 +481,40 @@ test('Smart: OCO kapisi SMART\'TAN ONCE calisir', async () => {
 test('openSmartTicket: pendingLaunchExtras verilmezse gateVars pakete GIRMEZ', async () => {
   await withMocks({}, async (gates, calls) => {
     await gates.openSmartTicket({
-      server: { id: 1 }, templateId: 55, username: 'u', email: 'e',
+      server: { id: 1 },
+      templateId: 55,
+      username: 'u',
+      email: 'e',
       templateName: 'T',
       overrides: { smartApproval: { flowKey: 'F' } },
-      extraVars: { a: 1 }, detail: {}, resolvedLaunchOptions: {}, specFields: [],
+      extraVars: { a: 1 },
+      detail: {},
+      resolvedLaunchOptions: {},
+      specFields: [],
       buildSmartMetadata: () => [],
     });
     const stored = calls.find((c) => c[0] === 'smart.storeTicket')[1];
-    assert.equal('gateVars' in stored.pendingLaunch, false,
-      'launch-ss / ss-test paketinde gateVars YOKTUR — o kayitlar performSsLaunch ile dogrudan oynatilir');
+    assert.equal(
+      'gateVars' in stored.pendingLaunch,
+      false,
+      'launch-ss / ss-test paketinde gateVars YOKTUR — o kayitlar performSsLaunch ile dogrudan oynatilir',
+    );
   });
 });
 
 test('openSmartTicket: pendingLaunchExtras ile gateVars + ocoRecordId pakete girer', async () => {
   await withMocks({}, async (gates, calls) => {
     await gates.openSmartTicket({
-      server: { id: 1 }, templateId: 55, username: 'u', email: '',
+      server: { id: 1 },
+      templateId: 55,
+      username: 'u',
+      email: '',
       templateName: 'T',
       overrides: { smartApproval: { flowKey: 'F' } },
-      extraVars: { a: 1 }, detail: {}, resolvedLaunchOptions: {}, specFields: [],
+      extraVars: { a: 1 },
+      detail: {},
+      resolvedLaunchOptions: {},
+      specFields: [],
       buildSmartMetadata: () => [],
       pendingLaunchExtras: { gateVars: { env: 'prod' }, ocoRecordId: 7 },
     });
@@ -377,30 +529,41 @@ test('openSmartTicket: pendingLaunchExtras ile gateVars + ocoRecordId pakete gir
 test('openSmartTicket: auditAction verilmezse denetim kaydi YAZILMAZ', async () => {
   await withMocks({}, async (gates, calls) => {
     await gates.openSmartTicket({
-      server: { id: 1 }, templateId: 55, username: 'u', email: '',
+      server: { id: 1 },
+      templateId: 55,
+      username: 'u',
+      email: '',
       templateName: 'T',
       overrides: { smartApproval: { flowKey: 'F' } },
-      extraVars: {}, detail: {}, resolvedLaunchOptions: {}, specFields: [],
+      extraVars: {},
+      detail: {},
+      resolvedLaunchOptions: {},
+      specFields: [],
       buildSmartMetadata: () => [],
     });
-    assert.equal(calls.filter((c) => c[0] === 'audit').length, 0,
-      'ss/test/run ve poller yolu bu denetimi yazMAZ — eski davranis');
+    assert.equal(
+      calls.filter((c) => c[0] === 'audit').length,
+      0,
+      'ss/test/run ve poller yolu bu denetimi yazMAZ — eski davranis',
+    );
   });
 });
-
 
 // ── Denetim sonrasi eklenen bekciler ─────────────────────────────────────────
 
 test('kapi gerçekten `gateVars` ile cagriliyor (mock argumani kaydeder)', async () => {
   await withMocks({}, async (gates, calls) => {
     const ctx = baseCtx({ ocoNumber: '123' });
-    ctx.extraVars = { env: 'prod', op_selection: 'read' };   // client'in "atlatma" denemesi
-    ctx.gateVars = { env: 'prod' };                           // dogrulanmis kume
+    ctx.extraVars = { env: 'prod', op_selection: 'read' }; // client'in "atlatma" denemesi
+    ctx.gateVars = { env: 'prod' }; // dogrulanmis kume
     await gates.runChangeGates(ctx);
     const gateCall = calls.find((c) => c[0] === 'gate.isSmartRequired');
     assert.ok(gateCall, 'kapi hic cagrilmadi');
-    assert.deepStrictEqual(gateCall[2], { env: 'prod' },
-      'kapi ham extraVars ile cagrilmis — `op_selection` ile onay atlatilabilirdi');
+    assert.deepStrictEqual(
+      gateCall[2],
+      { env: 'prod' },
+      'kapi ham extraVars ile cagrilmis — `op_selection` ile onay atlatilabilirdi',
+    );
   });
 });
 
@@ -410,8 +573,13 @@ test('yanit govdeleri BIREBIR (eklenen alan da hatadir)', async () => {
     // `deepStrictEqual`: onceki testler alan alan bakiyordu, yani yanita EKLENEN bir
     // alan hicbir testi kirmazdi — denetimin kor nokta olarak isaret ettigi sey.
     assert.deepStrictEqual(d, {
-      outcome: 'error', status: 400,
-      body: { ok: false, ocoRequired: true, message: 'Bu PRODUCTION talebi için OCO numarası gerekli.' },
+      outcome: 'error',
+      status: 400,
+      body: {
+        ok: false,
+        ocoRequired: true,
+        message: 'Bu PRODUCTION talebi için OCO numarası gerekli.',
+      },
     });
   });
 });
@@ -436,7 +604,7 @@ test('enjekte fonksiyon EKSIKSE acik hata (catch blogunun kendisi patlamasin)', 
         assert.equal(err.code, 'change_gates_missing_hook');
         assert.match(err.message, /friendlyAwxError/);
         return true;
-      }
+      },
     );
   });
 });
@@ -455,7 +623,7 @@ test('sonuc turu KAPALI bir kume — bilinmeyen bir deger uretilemez', async () 
 });
 
 // Parity testi `runner.cjs`i YUKLEMIYOR: `launch-ss`ten `runChangeGates` cagrisi komple
-// silinse 21 testin hepsi gecerdi. Asagidakiler bu bosluğu kaynak uzerinden kapatir.
+// silinse 21 testin hepsi gecerdi. Asagidakiler bu boslugu kaynak uzerinden kapatir.
 const fs = require('node:fs');
 const path = require('node:path');
 const RUNNER_SRC = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
@@ -465,8 +633,11 @@ test('launch-ss GERCEKTEN kapidan geciyor ve `proceed` disi her sonucu tuketiyor
   assert.match(RUNNER_SRC, /gateDecision\?\.outcome === "error"/);
   assert.match(RUNNER_SRC, /gateDecision\?\.outcome === "respond"/);
   // FAIL-CLOSED varsayilan: `proceed` disinda kalan her sey burada durdurulmali.
-  assert.match(RUNNER_SRC, /gateDecision\?\.outcome !== "proceed"[\s\S]{0,400}res\.status\(500\)/,
-    'taninmayan sonuc akisa birakiliyor — is sessizce calisir (fail-open)');
+  assert.match(
+    RUNNER_SRC,
+    /gateDecision\?\.outcome !== "proceed"[\s\S]{0,400}res\.status\(500\)/,
+    'taninmayan sonuc akisa birakiliyor — is sessizce calisir (fail-open)',
+  );
 });
 
 test('ocoNumber/ocoAction `req.body`den bagli', () => {

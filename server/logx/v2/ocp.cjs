@@ -273,7 +273,7 @@ async function finalizeAppDiscovery(requestRow, job) {
   // `app_name` NVARCHAR(150) sinirini asan bir ad, gecici DB hatasi) `putAppScan`
   // HIC calismiyordu. Sonuc: state `apps_discovered` olur, ekran "islendi" sanir,
   // ama tarama kaydi yazilmadigi icin `scannedEmpty` false kalir ve sihirbaz ayni
-  // namespace'e her girişte YENIDEN ~1 dk'lik bir AWX job'i acar. Yani bir uygulama
+  // namespace'e her giriste YENIDEN ~1 dk'lik bir AWX job'i acar. Yani bir uygulama
   // adinin uzun olmasi, o namespace'i SONSUZ tarama dongusune sokuyordu.
   //
   // Tarama KAYDI, uygulama listesinden daha kritiktir: listeyi kaybetmek kullaniciyi
@@ -293,7 +293,7 @@ async function finalizeAppDiscovery(requestRow, job) {
   try {
     // TARAMANIN KENDISI de kaydedilir — sonuc BOS olsa bile. `putApps` yalnizca bulunan
     // uygulamalari yazar; gercekten bos bir namespace hicbir satir uretmez ve "hic
-    // taranmamis" ile ayirt edilemezdi. Sihirbaz o yuzden ayni namespace'e her girişte
+    // taranmamis" ile ayirt edilemezdi. Sihirbaz o yuzden ayni namespace'e her giriste
     // yeniden ~1 dk'lik bir AWX job'i aciyordu (2026-08-10 kullanici geri bildirimi).
     await cache.putAppScan({ env: input.env, tenant: input.tenant, entries: parsed.entries });
   } catch (e) {
