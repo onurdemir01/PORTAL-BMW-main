@@ -7,6 +7,7 @@
 //
 // Keşif SALT OKUNUR bir AWX işidir (`discovery_mode: workloads`) — hiçbir mutasyon yapmaz.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   ArrowPathIcon,
   ExclamationTriangleIcon,
@@ -385,6 +386,34 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
     // `kindSummaryByName` asagida tanimli; gruplama yalnizca render aninda kullanilir.
   }, [list, groupMode, rowsByName, kindSummaryByName]);
 
+  // SANALLASTIRMA ESIGI. 150 uygulamali bir namespace'te her satir ~20 DOM dugumu
+  // uretiyor (ad, tip rozeti, HPA/GitOps/replica rozetleri, ikinci satir metni):
+  // ~3000 dugum, ve arama kutusuna basilan HER TUSTA yeniden render. Esik altinda
+  // sanallastirmanin kazanci yok, maliyeti (olcum, kaydirma, dinamik yukseklik) var.
+  const VIRTUALIZE_MIN = 60;
+
+  // Gruplar TEK DUZ diziye acilir: sanallastirici ic ice yapiyi degil, tek bir
+  // dizin uzayini sayar. Baslik da bir "satir"dir.
+  const flatRows = useMemo(() => {
+    const out: ({ t: 'header'; title: string } | { t: 'row'; w: ScaleXWorkload })[] = [];
+    for (const g of groups) {
+      if (g.title) out.push({ t: 'header', title: `${g.title} (${g.items.length})` });
+      for (const w of g.items) out.push({ t: 'row', w });
+    }
+    return out;
+  }, [groups]);
+
+  const virtualized = flatRows.length > VIRTUALIZE_MIN;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: flatRows.length,
+    getScrollElement: () => scrollRef.current,
+    // Satir yuksekligi DEGISKEN: rozetler sarmalayabilir, ikinci satir uzayabilir.
+    // Tahmin sadece baslangic icindir; gercek yukseklik `measureElement` ile olculur.
+    estimateSize: (i) => (flatRows[i]?.t === 'header' ? 30 : 64),
+    overscan: 12,
+  });
+
   // BAKILAMAYAN TIPLER. Cluster basina ayni tip birden fazla kez bildirilebilir
   // (her cluster kendi satirini basar) — tip bazinda tekillestirilir; bir tip HERHANGI
   // bir cluster'da okunabildiyse "bakilamadi" denmez.
@@ -507,6 +536,124 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
   // yoktur — hicbir sey taranmamistir.
   const allClustersFailed =
     failedClusters.length > 0 && failedClusters.length >= scope.clusters.length;
+
+  // SATIR GOVDESI TEK YERDE. Liste iki yoldan render edilir (duz ve
+  // sanallastirilmis); satiri kopyalamak, ikisinin zamanla AYRISMASI demekti.
+  function renderRow(w: ScaleXWorkload) {
+    // ÖLÇEKLENEMEYEN TİPLER SEÇİLEMEZ. DaemonSet düğüm sayısıyla ölçeklenir,
+    // CronJob `spec.suspend` ile durdurulur — replica ile bir şey yapılamaz.
+    // Listede DURURLAR: kullanıcı "namespace'imde var ama ScaleX görmüyor"
+    // demesin, ama neden dokunulamadığı yazsın.
+    //
+    // KILIT AD DUZEYINDEDIR: bir ad yalnizca HICBIR cluster'da olceklenemiyorsa
+    // kilitlidir. Tek bir cluster'da bile olceklenebiliyorsa islem orada
+    // anlamlidir; temsilci satira bakmak, satir sirasina gore keyfi bir kilit
+    // uretirdi.
+    const locked = isLockedName(w.name);
+    const summary = kindSummaryByName.get(w.name);
+    const multiKind = summary && summary.kinds.length > 1;
+    return (
+      <label
+        key={keyOf(w)}
+        className={`flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-[var(--bg-inset)] ${
+          locked ? 'cursor-default opacity-70' : 'cursor-pointer'
+        }`}
+      >
+        <input
+          type="checkbox"
+          className="mt-1"
+          disabled={busy || locked}
+          checked={!locked && isSelected(w)}
+          onChange={() => !locked && toggle(w)}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-[var(--text-primary)] truncate" title={w.name}>
+              {w.name}
+            </span>
+            <span
+              className="pf-label pf-label--grey"
+              title={multiKind ? 'cluster’a göre değişir' : undefined}
+            >
+              {multiKind ? summary.kinds.join(' / ') : w.kind}
+            </span>
+            {locked && <span className="pf-label pf-label--grey">ölçeklenemez</span>}
+            {/* Aynı ad farklı cluster'larda farklı tipte: kullanıcı bunu
+             bilerek seçmeli; her cluster'daki tip haritası AWX'e ayrı gider. */}
+            {multiKind && (
+              <span
+                className="pf-label pf-label--gold"
+                title="Bu ad farklı cluster'larda farklı tipte — her cluster kendi tipiyle işlenir"
+              >
+                cluster’a göre değişir
+              </span>
+            )}
+            {/* HPA bir GÜVENLİK SİNYALİ: kullanıcı "bu uygulamayı durdurursam
+            otomatik ölçekleyici ne yapar?" sorusunu sormadan geçmemeli.
+            Playbook HPA'ya dokunmuyor — bunu açıkça yazıyoruz. */}
+            {w.hasHpa && <span className="pf-label pf-label--gold">HPA var</span>}
+            {/* GitOps: ArgoCD auto-sync acikken replica 0 birkac DAKIKADA sessizce
+            geri alinir. Dogrula-ve-tut penceresi (15 sn) bunu genellikle
+            yakalayamaz — o yuzden ONCEDEN uyariyoruz. */}
+            {w.gitops && (
+              <span className="pf-label pf-label--orange" title={w.gitops}>
+                GitOps ile yönetiliyor
+              </span>
+            )}
+            {w.specReplicas === 0 && w.restorable && (
+              <span className="pf-label pf-label--blue">
+                durdurulmuş · geri alınabilir ({w.previousReplicas})
+              </span>
+            )}
+            {w.specReplicas === 0 && !w.restorable && (
+              <span className="pf-label pf-label--grey">replica 0</span>
+            )}
+          </span>
+          <span className="block mt-0.5 text-xs text-[var(--text-muted)] tabular-nums">
+            {locked ? (
+              w.notScalableReason === 'suspend_not_replicas' ? (
+                <>
+                  {w.suspended ? 'askıya alınmış' : 'etkin'}
+                  {w.schedule ? (
+                    <>
+                      {' '}
+                      · <span className="font-mono">{w.schedule}</span>
+                    </>
+                  ) : null}
+                  {' · durdurmak için suspend gerekir, replica ile yapılamaz'}
+                </>
+              ) : w.notScalableReason === 'unsupported_kind' ? (
+                <>
+                  {/* CLUSTER'DAN KESFEDILEN TIP (operator CRD'si). DaemonSet dalina
+                    dusuyordu ve "0 dugumde calisiyor · dugum sayisiyla olceklenir"
+                    yaziyordu — uc replicali bir Kafka icin IKI OLGU DA YANLIS:
+                    dugum zamanlamasiyla ilgisi yok ve `desired` bos oldugu icin
+                    sayi 0 gorunuyordu. */}
+                  replica {w.specReplicas} · hazır {w.readyReplicas}
+                  {' · ScaleX bu nesne tipini henüz işleyemiyor'}
+                </>
+              ) : (
+                <>
+                  {w.desired ?? 0} düğümde çalışıyor · hazır {w.readyReplicas}
+                  {' · düğüm sayısıyla ölçeklenir, replica ile yapılamaz'}
+                </>
+              )
+            ) : (
+              <>
+                replica {w.specReplicas} · hazır {w.readyReplicas}/{w.statusReplicas}
+              </>
+            )}
+            {w.image ? (
+              <>
+                {' '}
+                · <span className="font-mono">{w.image}</span>
+              </>
+            ) : null}
+          </span>
+        </span>
+      </label>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -778,135 +925,60 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
         </div>
       )}
 
-      <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border-subtle)] max-h-96 overflow-y-auto">
-        {groups.map((g) => (
-          <React.Fragment key={g.title || '_tek'}>
-            {/* Gruplama kapaliyken tek bir baslikisiz grup vardir — bugunku duz liste. */}
-            {g.title ? (
-              <div className="px-3 py-1.5 bg-[var(--bg-inset)] text-xs font-medium text-[var(--text-secondary)] sticky top-0 z-10">
-                {`${g.title} (${g.items.length})`}
-              </div>
-            ) : null}
-            {g.items.map((w) => {
-              // ÖLÇEKLENEMEYEN TİPLER SEÇİLEMEZ. DaemonSet düğüm sayısıyla ölçeklenir,
-              // CronJob `spec.suspend` ile durdurulur — replica ile bir şey yapılamaz.
-              // Listede DURURLAR: kullanıcı "namespace'imde var ama ScaleX görmüyor"
-              // demesin, ama neden dokunulamadığı yazsın.
-              //
-              // KILIT AD DUZEYINDEDIR: bir ad yalnizca HICBIR cluster'da olceklenemiyorsa
-              // kilitlidir. Tek bir cluster'da bile olceklenebiliyorsa islem orada
-              // anlamlidir; temsilci satira bakmak, satir sirasina gore keyfi bir kilit
-              // uretirdi.
-              const locked = isLockedName(w.name);
-              const summary = kindSummaryByName.get(w.name);
-              const multiKind = summary && summary.kinds.length > 1;
+      {/* IKI RENDER YOLU. Kucuk listede bugunku duz DOM korunur — sanallastirma
+          bedava degil: olcum, kaydirma ve `measureElement` karmasikligi getirir ve
+          kucuk listede hicbir sey kazandirmaz. Esik ustunde sanallastirilir.
+          SECIM HER IKI YOLDA DA DOM'DAN BAGIMSIZ: `selectableVisible` suzulmus
+          diziden gelir, gorunen satirlardan degil — "gorunenlerin hepsini sec"
+          sanallastirmayla YANLIS SAYIYA dusmez. */}
+      <div
+        ref={scrollRef}
+        className={`rounded-xl border border-[var(--border)] max-h-96 overflow-y-auto ${
+          virtualized ? '' : 'divide-y divide-[var(--border-subtle)]'
+        }`}
+      >
+        {virtualized ? (
+          <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+            {virtualizer.getVirtualItems().map((v) => {
+              const item = flatRows[v.index];
               return (
-                <label
-                  key={keyOf(w)}
-                  className={`flex items-start gap-3 px-3 py-2.5 text-sm hover:bg-[var(--bg-inset)] ${
-                    locked ? 'cursor-default opacity-70' : 'cursor-pointer'
-                  }`}
+                <div
+                  key={v.key}
+                  data-index={v.index}
+                  ref={virtualizer.measureElement}
+                  className="absolute left-0 w-full border-b border-[var(--border-subtle)]"
+                  style={{ top: 0, transform: `translateY(${v.start}px)` }}
                 >
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    disabled={busy || locked}
-                    checked={!locked && isSelected(w)}
-                    onChange={() => !locked && toggle(w)}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className="font-mono text-[var(--text-primary)] truncate"
-                        title={w.name}
-                      >
-                        {w.name}
-                      </span>
-                      <span
-                        className="pf-label pf-label--grey"
-                        title={multiKind ? 'cluster’a göre değişir' : undefined}
-                      >
-                        {multiKind ? summary.kinds.join(' / ') : w.kind}
-                      </span>
-                      {locked && <span className="pf-label pf-label--grey">ölçeklenemez</span>}
-                      {/* Aynı ad farklı cluster'larda farklı tipte: kullanıcı bunu
-                     bilerek seçmeli; her cluster'daki tip haritası AWX'e ayrı gider. */}
-                      {multiKind && (
-                        <span
-                          className="pf-label pf-label--gold"
-                          title="Bu ad farklı cluster'larda farklı tipte — her cluster kendi tipiyle işlenir"
-                        >
-                          cluster’a göre değişir
-                        </span>
-                      )}
-                      {/* HPA bir GÜVENLİK SİNYALİ: kullanıcı "bu uygulamayı durdurursam
-                    otomatik ölçekleyici ne yapar?" sorusunu sormadan geçmemeli.
-                    Playbook HPA'ya dokunmuyor — bunu açıkça yazıyoruz. */}
-                      {w.hasHpa && <span className="pf-label pf-label--gold">HPA var</span>}
-                      {/* GitOps: ArgoCD auto-sync acikken replica 0 birkac DAKIKADA sessizce
-                    geri alinir. Dogrula-ve-tut penceresi (15 sn) bunu genellikle
-                    yakalayamaz — o yuzden ONCEDEN uyariyoruz. */}
-                      {w.gitops && (
-                        <span className="pf-label pf-label--orange" title={w.gitops}>
-                          GitOps ile yönetiliyor
-                        </span>
-                      )}
-                      {w.specReplicas === 0 && w.restorable && (
-                        <span className="pf-label pf-label--blue">
-                          durdurulmuş · geri alınabilir ({w.previousReplicas})
-                        </span>
-                      )}
-                      {w.specReplicas === 0 && !w.restorable && (
-                        <span className="pf-label pf-label--grey">replica 0</span>
-                      )}
-                    </span>
-                    <span className="block mt-0.5 text-xs text-[var(--text-muted)] tabular-nums">
-                      {locked ? (
-                        w.notScalableReason === 'suspend_not_replicas' ? (
-                          <>
-                            {w.suspended ? 'askıya alınmış' : 'etkin'}
-                            {w.schedule ? (
-                              <>
-                                {' '}
-                                · <span className="font-mono">{w.schedule}</span>
-                              </>
-                            ) : null}
-                            {' · durdurmak için suspend gerekir, replica ile yapılamaz'}
-                          </>
-                        ) : w.notScalableReason === 'unsupported_kind' ? (
-                          <>
-                            {/* CLUSTER'DAN KESFEDILEN TIP (operator CRD'si). DaemonSet dalina
-                            dusuyordu ve "0 dugumde calisiyor · dugum sayisiyla olceklenir"
-                            yaziyordu — uc replicali bir Kafka icin IKI OLGU DA YANLIS:
-                            dugum zamanlamasiyla ilgisi yok ve `desired` bos oldugu icin
-                            sayi 0 gorunuyordu. */}
-                            replica {w.specReplicas} · hazır {w.readyReplicas}
-                            {' · ScaleX bu nesne tipini henüz işleyemiyor'}
-                          </>
-                        ) : (
-                          <>
-                            {w.desired ?? 0} düğümde çalışıyor · hazır {w.readyReplicas}
-                            {' · düğüm sayısıyla ölçeklenir, replica ile yapılamaz'}
-                          </>
-                        )
-                      ) : (
-                        <>
-                          replica {w.specReplicas} · hazır {w.readyReplicas}/{w.statusReplicas}
-                        </>
-                      )}
-                      {w.image ? (
-                        <>
-                          {' '}
-                          · <span className="font-mono">{w.image}</span>
-                        </>
-                      ) : null}
-                    </span>
-                  </span>
-                </label>
+                  {/* Grup basligi sanallastirilmis yolda YAPISKAN DEGIL: yapiskanlik
+                      mutlak konumlanmis satirlarla birlikte calismaz ve basligi
+                      yanlis grubun uzerinde birakirdi. Yanlis baslik, baslik
+                      olmamasindan kotudur. */}
+                  {item.t === 'header' ? (
+                    <div className="px-3 py-1.5 bg-[var(--bg-inset)] text-xs font-medium text-[var(--text-secondary)]">
+                      {item.title}
+                    </div>
+                  ) : (
+                    renderRow(item.w)
+                  )}
+                </div>
               );
             })}
-          </React.Fragment>
-        ))}
+          </div>
+        ) : (
+          groups.map((g) => (
+            <React.Fragment key={g.title || '_tek'}>
+              {/* Gruplama kapaliyken tek bir baslikisiz grup vardir — bugunku duz liste. */}
+              {g.title ? (
+                <div className="px-3 py-1.5 bg-[var(--bg-inset)] text-xs font-medium text-[var(--text-secondary)] sticky top-0 z-10">
+                  {`${g.title} (${g.items.length})`}
+                </div>
+              ) : null}
+              {g.items.map((w) => (
+                <React.Fragment key={keyOf(w)}>{renderRow(w)}</React.Fragment>
+              ))}
+            </React.Fragment>
+          ))
+        )}
         {list.length === 0 && (
           <div className="px-3 py-10 text-center">
             <BoltSlashIcon
