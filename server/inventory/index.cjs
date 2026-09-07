@@ -1871,8 +1871,100 @@ function initInventory(app) {
     }
   });
 
+  // ── Envanter gecmisi (SCD-2) ─────────────────────────────────────────────────
+  // Envanter tablolari her yenilemede TRUNCATE edilip yeniden yazildigi icin gecmis
+  // hicbir yerde tutulmuyordu; buradaki uclar gunluk anlik goruntuden birikeni okur.
+  // Geriye donuk veri URETILEMEZ - yalnizca zamanlayici basladiktan sonrasi bilinir.
+
+  // GET /api/inventory/history/tables — hangi tablolarin gecmisi tutuluyor
+  router.get('/history/tables', (req, res) => {
+    const { TABLES } = require('./history-config.cjs');
+    res.json({
+      ok: true,
+      tables: TABLES.map((t) => ({
+        table: t.table, label: t.label, mode: t.mode, key: t.key,
+      })),
+    });
+  });
+
+  // GET /api/inventory/history/runs — "Tarama Sagligi" metriginin kaynagi
+  router.get('/history/runs', async (req, res) => {
+    try {
+      res.json({ ok: true, runs: await require('./history.cjs').recentRuns(req.query.limit) });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/inventory/history/at?table=Inventory&date=2026-09-01
+  router.get('/history/at', async (req, res) => {
+    try {
+      const at = new Date(String(req.query.date || ''));
+      if (isNaN(at.getTime())) {
+        return res.status(400).json({ ok: false, message: 'Gecerli bir tarih verin (date).' });
+      }
+      // Gun verildiyse O GUNUN SONU alinir: "1 Eylul'deki hali" denince gun icinde
+      // yapilmis degisiklikler dahil beklenir, gun basi degil.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date))) at.setUTCHours(23, 59, 59, 999);
+      const rows = await require('./history.cjs').rowsAt(String(req.query.table || ''), at);
+      res.json({ ok: true, at: at.toISOString(), count: rows.length, rows });
+    } catch (err) {
+      res.status(400).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/inventory/history/diff?table=Inventory&from=2026-08-20&to=2026-09-07
+  router.get('/history/diff', async (req, res) => {
+    try {
+      const mk = (v) => {
+        const d = new Date(String(v || ''));
+        if (isNaN(d.getTime())) throw new Error('Gecerli bir tarih verin (from/to).');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) d.setUTCHours(23, 59, 59, 999);
+        return d;
+      };
+      const out = await require('./history.cjs').diff(
+        String(req.query.table || ''), mk(req.query.from), mk(req.query.to),
+      );
+      res.json({ ok: true, ...out });
+    } catch (err) {
+      res.status(400).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/inventory/history/series?table=Inventory&days=30
+  router.get('/history/series', async (req, res) => {
+    try {
+      const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+      const series = await require('./history.cjs').rowCountSeries(
+        String(req.query.table || ''), days,
+      );
+      res.json({ ok: true, series });
+    } catch (err) {
+      res.status(400).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST /api/inventory/history/snapshot — elle tetikleme (yalnizca Admin).
+  // Zamanlayici zaten gunde bir calisir; bu uc ilk kurulumda ve sorun ararken gerekir.
+  router.post('/history/snapshot', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
+    try {
+      const result = await require('./history-scheduler.cjs').tick({ force: true });
+      res.json({ ok: true, result });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
   app.use('/api/inventory', router);
   console.log('[Inventory] module mounted at /api/inventory');
+
+  // Zamanlayici en sonda baslar: uclar bagli, DB kurulumu tamamlanmis olur.
+  try {
+    require('./history-scheduler.cjs').start();
+  } catch (e) {
+    console.warn('[EnvanterGecmis] zamanlayici baslatilamadi:', e.message);
+  }
 }
 
 // AI Analist portal-tools.cjs icin: uygulama envanteri tablosundan (env, host, app)

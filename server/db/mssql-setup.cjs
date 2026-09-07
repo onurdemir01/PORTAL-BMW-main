@@ -1144,6 +1144,44 @@ const TABLES = [
         heap_used_mb      INT
       )`,
   },
+  {
+    // Envanter gecmisi (SCD-2). Envanter tablolarini dolduran Ansible loader'lari her
+    // calistirmada TRUNCATE edip yeniden yaziyor, yani gecmis HICBIR YERDE tutulmuyordu.
+    // Burada her satirin gecerlilik araligi saklanir:
+    //   satir T aninda gecerli  <=>  valid_from <= T AND (valid_to IS NULL OR valid_to > T)
+    // Gunluk TAM kopya yerine yalnizca DEGISIKLIK yazilir - envanter cogu gun degismedigi
+    // icin depolama degisimle orantili kalir.
+    name: 'inventory_history',
+    sql: `
+      CREATE TABLE inventory_history (
+        id          BIGINT IDENTITY(1,1) PRIMARY KEY,
+        table_name  NVARCHAR(128) NOT NULL,
+        row_key     NVARCHAR(450) NOT NULL,
+        row_hash    CHAR(64) NOT NULL,
+        row_json    NVARCHAR(MAX) NOT NULL,
+        valid_from  DATETIME2 NOT NULL,
+        valid_to    DATETIME2 NULL
+      )`,
+  },
+  {
+    // Her anlik goruntu calistirmasinin sonucu. "Tarama Sagligi" metrigi bunun uzerine
+    // kurulur: son basarili calistirma ne zaman, satir sayisi ani dustu mu (status
+    // 'aborted'), kac satir eklendi/degisti/silindi.
+    name: 'inventory_history_runs',
+    sql: `
+      CREATE TABLE inventory_history_runs (
+        id           BIGINT IDENTITY(1,1) PRIMARY KEY,
+        table_name   NVARCHAR(128) NOT NULL,
+        started_at   DATETIME2 NOT NULL,
+        finished_at  DATETIME2 NULL,
+        source_rows  INT NULL,
+        added        INT NULL,
+        changed      INT NULL,
+        removed      INT NULL,
+        status       NVARCHAR(20) NOT NULL,
+        message      NVARCHAR(1000) NULL
+      )`,
+  },
 ];
 
 // LogX v2 EAR-klasor-son-eki → ortam etiketi varsayilan seed'i (admin ekranindan duzenlenebilir).
@@ -2858,6 +2896,11 @@ async function setupTables() {
     { name: 'IX_prefs_user', table: 'portal_user_preferences', cols: 'username' },
     { name: 'IX_duty_date', table: 'duty_roster', cols: 'duty_date' },
     { name: 'IX_metrics_captured', table: 'metrics_snapshots', cols: 'captured_at DESC' },
+    // Envanter gecmisi: "su an acik satirlar" (snapshot her gece) ve "T anindaki hal"
+    // (her ekran acilisinda) sorgularinin ikisi de bu iki indeksten yararlanir.
+    { name: 'IX_invhist_open', table: 'inventory_history', cols: 'table_name, valid_to' },
+    { name: 'IX_invhist_at', table: 'inventory_history', cols: 'table_name, valid_from, valid_to' },
+    { name: 'IX_invhistruns_started', table: 'inventory_history_runs', cols: 'started_at DESC' },
   ];
   for (const { name, table, cols } of indexes) {
     try {
