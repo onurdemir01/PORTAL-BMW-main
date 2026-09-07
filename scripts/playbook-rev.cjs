@@ -75,7 +75,11 @@ function main() {
   for (const [rel, { revision, hash }] of Object.entries(computed)) {
     const src = fs.readFileSync(path.join(AWX_TREE, rel), 'utf8');
     const stamps = [...src.matchAll(STAMP_RE)];
-    const current = [...src.matchAll(/logx_playbook_revision:\s*"(.*?)"/g)].map((m) => m[1]);
+    // AYNI DAR DESEN. Burada bir kez `".*?"` yazilmisti ve `set_stats` icindeki
+    // `"{{ logx_playbook_revision }}"` SABLONUNU da damga saniyordu: `--check`
+    // TEMIZ AGACTA BILE 1 donuyor, yazma kipi her dosyayi surekli "bayat" goruyordu.
+    // PV1-PV5 bunu GORMEDI, cunku hicbiri betigi GERCEKTEN calistirmiyordu — PV6 kosturur.
+    const current = stamps.map((m) => m[0].match(/"([0-9a-f]*)"/)[1]);
     const okStamp = stamps.length > 0 && current.every((v) => v === revision);
     const okManifest = stored[rel]?.hash === hash && stored[rel]?.revision === revision;
     if (okStamp && okManifest) continue;

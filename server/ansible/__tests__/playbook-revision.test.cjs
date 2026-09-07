@@ -175,3 +175,59 @@ test('PV5 uyari kullaniciya GOSTERILEN metnin ONUNE geciyor', () => {
     'uyari kullanici mesajinin ONUNE eklenmiyor — sonuna eklenirse okunmaz',
   );
 });
+
+test('PV6 `--check` TEMIZ AGACTA 0 doner (betigin kendisi de olculur)', () => {
+  // NEDEN VAR: bu betik "damga guncel mi" sorusunun TEK otomatik cevabidir; kendisi
+  // bozulursa cevabi da bozulur ve kimse fark etmez.
+  //
+  // Ve bozuldu: `main()` icinde damgayi okuyan IKINCI bir desen (`".*?"`) kalmisti;
+  // `set_stats` icindeki `"{{ logx_playbook_revision }}"` SABLONUNU damga sanip
+  // temiz agacta bile "bayat" diyordu. PV1-PV5 bunu GORMEDI — hicbiri betigi
+  // GERCEKTEN calistirmiyordu, hepsi kutuphane fonksiyonlarini cagiriyordu.
+  const { execFileSync } = require('node:child_process');
+  const script = path.join(__dirname, '..', '..', '..', 'scripts', 'playbook-rev.cjs');
+  try {
+    execFileSync('node', [script, '--check'], { encoding: 'utf8' });
+  } catch (e) {
+    assert.fail(
+      '`playbook-rev.cjs --check` temiz agacta DUSUYOR:\n' +
+        String(e.stdout || '') +
+        String(e.stderr || ''),
+    );
+  }
+});
+
+test('PV7 `--check` damga bayatladiginda GERCEKTEN 1 doner', () => {
+  // PV6 tek basina yetmez: hep 0 donen bir betik de PV6'yi gecerdi.
+  const { execFileSync } = require('node:child_process');
+  const os = require('node:os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pbrev-'));
+  const ROOT = path.join(__dirname, '..', '..', '..');
+  try {
+    for (const rel of [
+      'scripts/playbook-rev.cjs',
+      'server/ansible/paths.cjs',
+      'server/ansible/playbook-revisions.json',
+      ...Object.keys(MANIFEST).map((k) => `server/ansible/bmw_portal/${k}`),
+    ]) {
+      const dst = path.join(tmp, rel);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(path.join(ROOT, rel), dst);
+    }
+    // Playbook'u degistir, damgayi ELLEME: tam da yakalanmasi gereken hal.
+    const hedef = path.join(tmp, 'server/ansible/bmw_portal', Object.keys(MANIFEST)[0]);
+    fs.writeFileSync(hedef, fs.readFileSync(hedef, 'utf8') + '\n# sessiz bir degisiklik\n');
+
+    let code = 0;
+    try {
+      execFileSync('node', [path.join(tmp, 'scripts/playbook-rev.cjs'), '--check'], {
+        encoding: 'utf8',
+      });
+    } catch (e) {
+      code = e.status ?? 1;
+    }
+    assert.equal(code, 1, '`--check` bayat damgayi GECIRIYOR — kapi hic ateslenmiyor');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
