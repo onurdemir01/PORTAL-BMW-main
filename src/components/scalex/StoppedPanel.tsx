@@ -9,6 +9,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
+  MagnifyingGlassIcon,
   ExclamationTriangleIcon,
   ArrowUturnLeftIcon,
 } from '@heroicons/react/24/outline';
@@ -249,6 +250,34 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
   //
   // Anahtar env/tenant'i DA icerir: kapsamsiz listede ayni ad farkli ortamlardan
   // gelebilir ve prod ile test kaydini ayni satirda toplamak TEHLIKELI olurdu.
+  // ARAMA VE HIZLI SUZGECLER.
+  //
+  // Liste 500 satira kadar cikabiliyor (`MIRROR_LIMIT`) ve kullanicinin gercek
+  // sorusu genellikle DAR: "hangi ikisi geri alinamadi?", "su uygulama nerede
+  // durdurulmus?". Duz bir listede bu sorularin cevabi gozle taranarak bulunuyordu.
+  const [query, setQuery] = useState('');
+  const [onlyFailed, setOnlyFailed] = useState(false);
+  const [onlyDrifted, setOnlyDrifted] = useState(false);
+
+  // SAYACLAR SUZGECTEN BAGIMSIZ: cip uzerindeki sayi, o cipe tiklayinca kac kayit
+  // KALACAGINI soylemeli. Suzulmus listeden hesaplasaydik, cip acikken kendi
+  // sayisini gosterip kapaliyken baska bir sayi gosterirdi.
+  const allGroups = React.useMemo(() => {
+    const m = new Map<string, ScaleXStoppedItem[]>();
+    for (const it of items) {
+      const k = `${it.env}\u0000${it.tenant}\u0000${it.namespace}\u0000${it.appName}`;
+      (m.get(k) || m.set(k, []).get(k))!.push(it);
+    }
+    return [...m.values()];
+  }, [items]);
+  const totalGroupCount = allGroups.length;
+  const failedGroupCount = allGroups.filter((rows) =>
+    rows.some((r) => (r.restoreAttempts ?? 0) > 0),
+  ).length;
+  const driftedGroupCount = allGroups.filter((rows) =>
+    rows.some((r) => r.driftStatus !== 'in_sync'),
+  ).length;
+
   const groupedItems = React.useMemo(() => {
     const map = new Map<
       string,
@@ -268,7 +297,7 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
       }
       g.rows.push(it);
     }
-    return [...map.values()].map((g) => {
+    const groups = [...map.values()].map((g) => {
       // Cluster sirasi SABIT olmali: her tazelemede yer degistiren kunyeler
       // okunamaz olurdu.
       const rows = [...g.rows].sort((a, b) => a.clusterName.localeCompare(b.clusterName, 'tr'));
@@ -295,7 +324,22 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
           : null,
       };
     });
-  }, [items, env, tenant]);
+
+    // SUZGECLER GRUP DUZEYINDE: bir uygulamanin HERHANGI bir cluster'i olcutu
+    // karsiliyorsa grup gorunur kalir ve o cluster kunyesinde zaten isaretli.
+    // Cluster satirlarini ayrica suzmek, "dortten ikisi olmadi" resmini bozardi.
+    const q = query.trim().toLowerCase();
+    return groups.filter((g) => {
+      if (onlyFailed && g.failed === 0) return false;
+      if (onlyDrifted && !g.rows.some((r) => r.driftStatus !== 'in_sync')) return false;
+      if (!q) return true;
+      return (
+        g.appName.toLowerCase().includes(q) ||
+        g.scopeText.toLowerCase().includes(q) ||
+        g.rows.some((r) => r.clusterName.toLowerCase().includes(q))
+      );
+    });
+  }, [items, env, tenant, query, onlyFailed, onlyDrifted]);
 
   if (loading)
     return <p className="text-sm text-[var(--text-muted)]">Durdurulmuş uygulamalar yükleniyor…</p>;
@@ -371,6 +415,53 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
         </span>
       </div>
 
+      {/* ARAMA + HIZLI SUZGECLER. Liste 500 satira kadar cikabiliyor; kullanicinin
+          gercek sorusu ise genellikle dar: "hangileri geri alinamadi?", "su uygulama
+          nerede durdurulmus?". Suzgecler VARSAYILAN KAPALI — mevcut davranis
+          degismesin. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[12rem]">
+          <MagnifyingGlassIcon
+            aria-hidden="true"
+            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Uygulama, namespace ya da cluster ara…"
+            aria-label="Durdurulmuş uygulamalarda ara"
+            className="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg border border-[var(--border)]
+                       bg-[var(--bg-surface)] text-[var(--text-primary)]
+                       placeholder-[var(--text-muted)] focus:outline-none
+                       focus:ring-2 focus:ring-[var(--accent)]"
+          />
+        </div>
+        {/* Cipler KAC KAYIT birakacaklarini yaziyor — tiklamadan once sonucu bilmek,
+            bos bir listeye dusup "arama mi bozuk?" diye dusunmeyi onler. */}
+        <button
+          type="button"
+          onClick={() => setOnlyFailed((v) => !v)}
+          aria-pressed={onlyFailed}
+          className={`pf-label ${onlyFailed ? 'pf-label--red' : 'pf-label--grey'} cursor-pointer`}
+          title="Yalnızca geri alınmaya çalışılıp başarısız olanlar"
+        >
+          geri alınamadı ({failedGroupCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setOnlyDrifted((v) => !v)}
+          aria-pressed={onlyDrifted}
+          className={`pf-label ${onlyDrifted ? 'pf-label--gold' : 'pf-label--grey'} cursor-pointer`}
+          title="Portal kaydı ile cluster gerçeği ayrışmış olanlar"
+        >
+          sapmalı ({driftedGroupCount})
+        </button>
+        <span className="ml-auto text-xs text-[var(--text-muted)] tabular-nums">
+          {groupedItems.length} / {totalGroupCount} uygulama
+        </span>
+      </div>
+
       {auditNote && <p className="text-xs text-[var(--text-muted)]">{auditNote}</p>}
 
       {showBulk && (
@@ -383,6 +474,22 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
             kayıt geri alınacak. Geri alma bir <strong>onarım</strong> işlemidir: OCO penceresi
             dışında da çalışır, ama gerekçe zorunludur ve SMART kaydına da yazılır.
           </p>
+          {/* SUZGEC TOPLU ISLEMI DARALTMAZ — VE BU SOYLENMELI.
+              Sunucu ucu (`/restore-all`) env/tenant kapsaminda calisir, ekrandaki
+              suzgeci BILMEZ. Kullanici listeyi 3 kayda daraltip "hepsini geri al"
+              derse 100 kaydin geri alinmasi surpriz olurdu — sayiyi zaten
+              yukarida yaziyoruz, ama suzgec aciksa farki ACIKCA soyluyoruz. */}
+          {(query.trim() || onlyFailed || onlyDrifted) && (
+            <p className="flex items-start gap-1.5 text-xs font-medium text-amber-900">
+              <ExclamationTriangleIcon
+                aria-hidden="true"
+                className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
+              />
+              Ekrandaki süzgeç bu işlemi <strong>daraltmaz</strong>: yukarıdaki sayı süzgeçten
+              bağımsız, listenin tamamı için geçerlidir. Yalnızca görünen {groupedItems.length}{' '}
+              uygulamayı geri almak istiyorsanız künyelerdeki tekil “Geri Al” düğmelerini kullanın.
+            </p>
+          )}
           <input
             type="text"
             value={bulkReason}
