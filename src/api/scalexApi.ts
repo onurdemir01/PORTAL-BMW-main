@@ -458,6 +458,9 @@ export const scalexApi = {
       sources: Record<string, string>;
       /** Yetki nedeniyle gizlenen uygulama sayısı — söylenmeden "yok" demek yalan olur. */
       hiddenCount?: number;
+      /** Bunlarin kaci SAHIPLIK yuzunden gizlendi (yetki degil) — kullanici
+       *  "listede yok" ile "sana gosterilmiyor"u ayirt edebilmeli. */
+      hiddenByOwnership?: number;
       cached?: boolean;
       fetchedAt?: string | null;
       stale?: boolean;
@@ -479,6 +482,9 @@ export const scalexApi = {
       message?: string;
       /** Yetki nedeniyle gizlenen kayit sayisi — panel bunu SOYLEMELI, yoksa "kayit yok" yalan olur. */
       hiddenCount?: number;
+      /** Bunlarin kaci SAHIPLIK yuzunden gizlendi (yetki degil) — kullanici
+       *  "listede yok" ile "sana gosterilmiyor"u ayirt edebilmeli. */
+      hiddenByOwnership?: number;
       truncated?: boolean;
       limit?: number;
     }>;

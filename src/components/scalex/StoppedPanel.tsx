@@ -51,6 +51,9 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
   // SOYLEMEDEN "kayit yok" demek, kullaniciya YANLIS bilgi vermek olurdu — aynen
   // NamespaceStep'in yaptigi gibi acikca yaziyoruz.
   const [hiddenCount, setHiddenCount] = useState(0);
+  // Kacinin SAHIPLIK yuzunden gizlendigi ayrica soylenir: "yetkim yok" ile
+  // "baskasinin kaydi" farkli sorulardir ve farkli cozumleri var.
+  const [hiddenByOwnership, setHiddenByOwnership] = useState(0);
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +82,7 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
       if (r.ok) {
         setItems(r.items || []);
         setHiddenCount(r.hiddenCount || 0);
+        setHiddenByOwnership(r.hiddenByOwnership || 0);
         setTruncated(r.truncated === true);
       } else setError(r.message || 'Liste alınamadı.');
     } catch (e) {
@@ -309,7 +313,11 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
         {env && tenant
           ? 'Bu ortam/tenant için portalda durdurulmuş uygulama kaydı yok.'
           : 'Portalda durdurulmuş uygulama kaydı yok.'}
-        {hiddenCount > 0 && ` (${hiddenCount} kayıt yetki kısıtı nedeniyle görünmüyor.)`}
+        {hiddenCount > 0 &&
+          ` (${hiddenCount} kayıt görünmüyor` +
+            (hiddenByOwnership > 0
+              ? `; ${hiddenByOwnership} tanesi başka bir kullanıcı/ekibe ait.)`
+              : ' — yetki kısıtı.)')}
       </p>
     );
   }

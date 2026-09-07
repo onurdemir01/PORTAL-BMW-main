@@ -95,6 +95,17 @@ function normalizeRow(r) {
     phase: r.phase,
     stoppedBy: r.stopped_by,
     stoppedAt: r.stopped_at,
+    // `null` = grup bilgisi hic yazilmamis (eski kayit) — gorunurlukte AYRI ele
+    // alinir; bos dizi ile karistirilmaz.
+    stoppedByGroups: (() => {
+      if (r.stopped_by_groups === null || r.stopped_by_groups === undefined) return null;
+      try {
+        const v = JSON.parse(r.stopped_by_groups);
+        return Array.isArray(v) ? v : null;
+      } catch {
+        return null;
+      }
+    })(),
     // GERI ALMA GECMISI. 0 = hic denenmedi; >0 = denendi ve OLMADI (sebebi
     // `lastRestoreError`da). Basarili olan satir zaten silinir.
     restoreAttempts: r.restore_attempts ?? 0,
@@ -116,6 +127,11 @@ async function upsertStopped({
   workloadKind,
   previousReplicas,
   stoppedBy,
+  // Sahibin AD gruplari — islem kaydindan (`scalex_operations.username_groups`)
+  // gelir. `null` = grup bilgisi HIC yazilmadi (eski kayit); `[]` = kullanicinin
+  // grubu yok. Ikisi AYRI: eski kayitlari "grupsuz" saymak gorunurlugu yanlis
+  // hesaplardi.
+  stoppedByGroups,
   operationId,
 }) {
   const { rows } = await db.query(
@@ -126,11 +142,13 @@ async function upsertStopped({
      WHEN MATCHED THEN UPDATE SET
        workload_kind = $6, previous_replicas = $7, phase = 'scaled_down',
        stopped_by = $8, stopped_at = GETUTCDATE(), operation_id = $9,
+       stopped_by_groups = $10,
        last_seen_at = GETUTCDATE(), drift_status = 'in_sync', updated_at = GETUTCDATE()
      WHEN NOT MATCHED THEN INSERT
        (env, tenant, cluster_name, namespace, app_name, workload_kind, previous_replicas,
-        phase, stopped_by, stopped_at, operation_id, last_seen_at, drift_status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'scaled_down',$8,GETUTCDATE(),$9,GETUTCDATE(),'in_sync')
+        phase, stopped_by, stopped_at, operation_id, last_seen_at, drift_status,
+        stopped_by_groups)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'scaled_down',$8,GETUTCDATE(),$9,GETUTCDATE(),'in_sync',$10)
      OUTPUT INSERTED.*;`,
     [
       env,
@@ -142,6 +160,9 @@ async function upsertStopped({
       Number.isFinite(previousReplicas) ? previousReplicas : null,
       stoppedBy,
       operationId || null,
+      stoppedByGroups === null || stoppedByGroups === undefined
+        ? null
+        : JSON.stringify((stoppedByGroups || []).slice(0, 200)),
     ],
   );
   return rows[0] ? normalizeRow(rows[0]) : null;

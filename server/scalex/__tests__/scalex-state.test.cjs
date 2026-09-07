@@ -55,9 +55,32 @@ test('B4: portal-sourced satirlar drift DEGISMESE BILE last_seen_at GUNCELLER', 
 // ── upsertStopped ─────────────────────────────────────────────────────────────
 // Durdurma islemi basariyla dogrulandiginda cagrilir. MERGE ile INSERT veya UPDATE.
 test('upsertStopped: MERGE deseni MATCHED ve NOT MATCHED dallarini icerir', () => {
+  // GOVDE PARANTEZ ESLESTIRILEREK cikarilir, SABIT PENCEREYLE degil.
+  //
+  // Onceki hali `slice(idx, idx + 1000)` idi: fonksiyona birkac satir aciklama
+  // eklenince `WHEN NOT MATCHED` pencerenin DISINA tasti ve bekci, MERGE dali
+  // yerinde dururken "kaybolmus" dedi. Sabit pencere, olctugunu sandigin seyi
+  // olcmez — bu turda ayni tuzaga uc kez dusuldu.
   const idx = SRC.indexOf('function upsertStopped');
   assert.ok(idx > 0, 'upsertStopped fonksiyonu bulunamadi');
-  const body = SRC.slice(idx, idx + 1000);
+  const body = (() => {
+    // Parametreler YIKILIYOR (`upsertStopped({ env, ... })`), yani basliktan sonraki
+    // ilk `{` govde DEGIL. Once parantez listesinin kapanisini bul.
+    let i = SRC.indexOf('(', idx);
+    let paren = 0;
+    for (; i < SRC.length; i++) {
+      if (SRC[i] === '(') paren++;
+      else if (SRC[i] === ')' && --paren === 0) break;
+    }
+    const open = SRC.indexOf('{', i);
+    let depth = 0;
+    for (let j = open; j < SRC.length; j++) {
+      if (SRC[j] === '{') depth++;
+      else if (SRC[j] === '}' && --depth === 0) return SRC.slice(open, j);
+    }
+    return '';
+  })();
+  assert.ok(body.length > 0, 'upsertStopped govdesi ayristirilamadi');
   assert.match(body, /WHEN MATCHED THEN UPDATE/, 'MERGE MATCHED dali kaybolmus');
   assert.match(body, /WHEN NOT MATCHED THEN INSERT/, 'MERGE NOT MATCHED dali kaybolmus');
   assert.match(body, /drift_status.*in_sync/, 'durdurulan uygulama in_sync olarak isaretlenmeli');

@@ -200,6 +200,61 @@ async function filterStoppedForUser(rows, { env, tenant, user } = {}) {
   return rows.filter((r) => allowed.has(stoppedKey(r, { env, tenant })));
 }
 
+// ── SAHIPLIK GORUNURLUGU ────────────────────────────────────────────────────
+//
+// Kullanici istegi (2026-09-07): "benim actigimi ben ve grubum gorsun, digerleri
+// gormesin." Bu, YETKI kapisindan (`filterStoppedForUser`) AYRI bir suzgectir:
+// o "bu namespace'i gorebilir misin" sorusunu, bu "bu KAYIT senin mi" sorusunu
+// yanitlar. Ikisini birlestirmek, birinde yapilan bir gevsemenin digerini de
+// sessizce gevsetmesi demekti.
+//
+// UC BILINCLI ISTISNA — aksi halde bir OPERASYON portalinda bilgi KAYBOLUR:
+//   1) Admin her seyi gorur. Prod'da durdurulmus bir uygulamayi kimsenin
+//      goremedigi bir durum, bu portalin isini yapamamasi demektir.
+//   2) `stoppedByGroups === null` olan kayitlar GIZLENMEZ. `null` "grup bilgisi
+//      HIC yazilmadi" demektir (bu ozellikten onceki kayitlar) — bos dizi ile
+//      AYNI SEY DEGILDIR. Bilgisizligi "sana ait degil" diye yorumlamak, eski
+//      kayitlarin tamamini bir anda gorunmez yapardi.
+//   3) Sahibi bilinmeyen kayitlar da GIZLENMEZ (ayni gerekce).
+//
+// GIZLENEN SAYISI HER ZAMAN SOYLENIR (`hiddenCount`) — bu repodaki kural:
+// gizle ama sayisini soyle.
+function normalizedGroupSet(list) {
+  return new Set(
+    (Array.isArray(list) ? list : [])
+      .map((g) =>
+        String(g || '')
+          .trim()
+          .toLowerCase(),
+      )
+      .filter(Boolean),
+  );
+}
+
+function filterStoppedByOwnership(rows, { user } = {}) {
+  if (!user) return rows;
+  if (String(user.role || '') === 'Admin') return rows;
+
+  const me = String(user.username || '')
+    .trim()
+    .toLowerCase();
+  const myGroups = normalizedGroupSet(user.groups);
+
+  return rows.filter((r) => {
+    const owner = String(r.stoppedBy || '')
+      .trim()
+      .toLowerCase();
+    // Sahibi bilinmeyen ya da grup bilgisi hic yazilmamis kayit: GIZLENMEZ.
+    if (!owner || owner === 'bilinmiyor') return true;
+    if (r.stoppedByGroups === null || r.stoppedByGroups === undefined) return true;
+    if (owner === me) return true;
+    // Ekip kesisimi: sahibin eylem anindaki gruplariyla goruntuleyenin gruplari.
+    const ownerGroups = normalizedGroupSet(r.stoppedByGroups);
+    for (const g of ownerGroups) if (myGroups.has(g)) return true;
+    return false;
+  });
+}
+
 module.exports = {
   listApps,
   nsKey,
@@ -210,4 +265,5 @@ module.exports = {
   assertAppsAllowed,
   assertClustersExist,
   filterStoppedForUser,
+  filterStoppedByOwnership,
 };
