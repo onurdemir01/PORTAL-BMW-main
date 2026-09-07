@@ -11,6 +11,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import CacheBadge from '../../shared/CacheBadge';
+import { humanizeOcpError } from '@/utils/ocpError';
 
 interface Props {
   namespaces: string[];
@@ -121,9 +122,25 @@ const NamespacePickerStep: React.FC<Props> = ({
           {failedDetails.map((d) => (
             <li key={d.cluster}>
               <span className="font-mono font-medium">{d.cluster}</span>
-              <pre className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] opacity-80">
-                {d.error}
-              </pre>
+              {/* ONCE INSAN DILI, SONRA HAM METIN. Uretimde kullaniciya
+                  "Missing or incomplete configuration info ... ~/.kube/config"
+                  duvari gosteriliyordu; o mesaj gercek hatanin IKI ADIM
+                  SONRASININ belirtisiydi ve kullaniciyi yapacak hicbir seyin
+                  olmadigi bir yere yonlendiriyordu. Ham metin SILINMEDI —
+                  operasyon ekibi onu okuyabilmeli. */}
+              {(() => {
+                const h = humanizeOcpError(d.error);
+                return (
+                  <>
+                    <p className="mt-0.5 text-[12px]">{h.text}</p>
+                    {h.translated && (
+                      <pre className="mt-0.5 whitespace-pre-wrap font-mono text-[11px] opacity-60">
+                        {h.raw}
+                      </pre>
+                    )}
+                  </>
+                );
+              })()}
             </li>
           ))}
         </ul>

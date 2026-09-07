@@ -88,7 +88,12 @@ test('TUZAK 2: parola tasiyan gorevde `no_log` var', () => {
   // cluster parolalarini AWX job ciktisina dokerdi — bu, kullanicinin acik kuralidir.
   const offenders = [];
   for (const f of FILES) {
-    const src = read(f);
+    // YORUMLAR ATILIR (TUZAK 1 ile ayni standart). Bekci ham kaynagi okuyordu ve
+    // bir DUZELTMENIN ACIKLAMASINDA gecen `oc login --password=''` cumlesini
+    // GOREV sanip yanlis yere kirmizi dondu (2026-09-07). Parolayi gercekten
+    // tasiyan satir bir yorum satiri olamaz; olcut CALISAN metin olmali.
+    // Kural GEVSEMEDI: `--password=` gecen her GOREV hala no_log tasimak zorunda.
+    const src = codeOnly(read(f));
     if (!/--password=/.test(src)) continue;
     // Gorev bloklarini kabaca ayir; parola gecen blokta no_log aranir.
     const tasks = src.split(/\n(?=\s*-\s+name:)/);

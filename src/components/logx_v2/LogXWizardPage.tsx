@@ -20,6 +20,7 @@ import HostSelectStep from './steps/legacy/HostSelectStep';
 import FileSelectionStep from './steps/legacy/FileSelectionStep';
 import ClusterSelectStep from './steps/ocp/ClusterSelectStep';
 import NamespacePickerStep from './steps/ocp/NamespacePickerStep';
+import { humanizeOcpError } from '@/utils/ocpError';
 import AppNameStep from './steps/ocp/AppNameStep';
 import SelectedTargetsBar from './steps/ocp/SelectedTargetsBar';
 import JobProgress from './shared/JobProgress';
@@ -821,10 +822,22 @@ const LogXWizardPage: React.FC = () => {
         {step === 'failed' && (
           <FailedStep
             jobId={lastJob(jobs)?.id}
+            // HAM `oc` HATASI KULLANICIYA CIPLAK GITMEZ. Uretimde transfer ekrani
+            // "Missing or incomplete configuration info ... ~/.kube/config" duvarini
+            // basiyordu; o mesaj gercek hatanin iki adim sonrasinin belirtisiydi.
+            // Ceviri eslesmezse metin AYNEN gecer — uydurma yapilmaz.
             message={
-              request?.errorMessage || 'İşlem tamamlanamadı. Lütfen sistem yöneticinize başvurun.'
+              request?.errorMessage
+                ? humanizeOcpError(request.errorMessage).text
+                : 'İşlem tamamlanamadı. Lütfen sistem yöneticinize başvurun.'
             }
-            technicalDetail={technicalDetail ?? undefined}
+            // Ham metin kaybolmaz: teknik ayrinti panelinde durmaya devam eder.
+            technicalDetail={
+              technicalDetail ??
+              (request?.errorMessage && humanizeOcpError(request.errorMessage).translated
+                ? request.errorMessage
+                : undefined)
+            }
             onRestart={restart}
           />
         )}
