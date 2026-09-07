@@ -93,6 +93,38 @@ function allPlaybookFiles() {
   return out.sort();
 }
 
+/**
+ * AWX'e kopyalanan playbook'larin SURUM DAMGALARI (bkz. scripts/playbook-rev.cjs).
+ *
+ * Portal, AWX job'inin yayinladigi `logx_playbook_revision` degerini buradakiyle
+ * karsilastirir; uyusmuyorsa (ya da HIC gelmiyorsa) AWX'teki kopya bayattir.
+ * Dosya yoksa harita BOS kalir — karsilastirma yapilmaz, yanlis suclama olmaz.
+ */
+let REVISIONS = {};
+try {
+  REVISIONS = require('./playbook-revisions.json');
+} catch {
+  /* damga dosyasi yoksa surum kontrolu sessizce devre disi kalir */
+}
+
+/**
+ * AWX'in bildirdigi playbook yolundan beklenen damgayi cozer.
+ *
+ * AWX yolu proje kokune goredir (`bmw_portal/logx/ocp/x.yml`), manifest anahtarlari
+ * ise `bmw_portal/`ye goredir (`logx/ocp/x.yml`) — SONEK eslesmesi kullanilir.
+ * Bilinmeyen playbook icin `null` doner: susmak, yanlis suclamaktan iyidir.
+ */
+function expectedRevisionFor(awxPlaybookPath) {
+  const p = String(awxPlaybookPath || '')
+    .replace(/\\/g, '/')
+    .trim();
+  if (!p) return null;
+  for (const [rel, info] of Object.entries(REVISIONS)) {
+    if (p === rel || p.endsWith('/' + rel)) return info.revision || null;
+  }
+  return null;
+}
+
 // Toplam playbook sayisinin ALT SINIRI. Bir toplayici yanlis dizine bakmaya
 // baslarsa test "kontrol edilecek sey yok" diye yesil kalmasin.
 const MIN_PLAYBOOK_COUNT = 25;
@@ -109,5 +141,7 @@ module.exports = {
   /** AWX agacindaki tum playbook'larin MUTLAK yollari. */
   allAwxPlaybooks: () => Object.values(PLAYBOOKS).map(abs),
   allPlaybookFiles,
+  REVISIONS,
+  expectedRevisionFor,
   MIN_PLAYBOOK_COUNT,
 };

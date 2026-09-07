@@ -94,6 +94,67 @@ function checkManualCopies(scalexVersion) {
   );
 }
 
+// ── 2b. OCP playbook surum damgalari ────────────────────────────────────────
+//
+// NEDEN VAR: `server/ansible/bmw_portal/logx/ocp/` klasoru AWX'e ELLE kopyalanir.
+// Kopyalanmadiginda AWX ESKI surumu kosar ve portalda gorunen hata repodaki
+// (coktan duzeltilmis) koda ait olur. 2026-09-07'de bu dongude dort tur donuldu.
+//
+// Damga guncelse portal, AWX'teki kopyanin bayat oldugunu KENDISI soyleyebilir;
+// damga guncel degilse o yetenek SESSIZCE olur.
+function checkPlaybookRevisions() {
+  let rev;
+  try {
+    rev = require('./playbook-rev.cjs');
+  } catch (e) {
+    // Betik ya da bagimliliklari yoksa preflight'in KENDISI dusmemeli: bu kontrol
+    // dagitimin one sartı degil, kolaylastiricisi. Ama sessizce de gecmemeli.
+    warn(
+      'Playbook surum damgasi DOGRULANAMADI',
+      `scripts/playbook-rev.cjs okunamadi: ${e.message}`,
+      '`npm run playbook:rev -- --check` ile elle bakin.',
+    );
+    return;
+  }
+  let manifest = {};
+  try {
+    manifest = JSON.parse(read('server/ansible/playbook-revisions.json'));
+  } catch {
+    fail(
+      "Playbook surum damgasi manifest'i YOK",
+      'server/ansible/playbook-revisions.json okunamadi.',
+      '`npm run playbook:rev` calistirin.',
+    );
+    return;
+  }
+
+  const computed = rev.computeAll();
+  const bayat = Object.keys(computed).filter((k) => manifest[k]?.hash !== computed[k].hash);
+  if (bayat.length) {
+    fail(
+      'Playbook surum damgasi GUNCEL DEGIL',
+      bayat.join(', '),
+      '`npm run playbook:rev` calistirip degisikligi commit edin. Damga guncellenmezse ' +
+        'portal AWX kopyasinin bayat oldugunu ANLAYAMAZ.',
+    );
+    return;
+  }
+
+  ok(
+    'Playbook surum damgalari guncel',
+    Object.entries(computed)
+      .map(([k, v]) => `${k.split('/').pop()}=${v.revision}`)
+      .join(', '),
+  );
+  warn(
+    'AWX kopyasi ELLE dogrulanmali: logx/ocp/',
+    'Portal, AWX isinin yayinladigi damgayi yukaridakiyle karsilastirir.',
+    'server/ansible/bmw_portal/logx/ocp/ klasorunu AWX projesindeki bmw_portal/logx/ocp/ ' +
+      'altina kopyalayin. Kopyalanmazsa isler kosar ama portal "AWX\'teki kopya eski" uyarisi ' +
+      'gosterir — ve gosterdiginde HAKLIDIR.',
+  );
+}
+
 // ── 3. `.env.example` butunlugu ─────────────────────────────────────────────
 //
 // Kodun okudugu bir degisken orada belgeli degilse, yeni bir kurulum onu HIC
@@ -338,6 +399,7 @@ function report() {
 
 const v = checkScalexPackage();
 if (v) checkManualCopies(v);
+checkPlaybookRevisions();
 checkEnvExample();
 checkPlaybookRegistry();
 checkEnvSuffixMap();
