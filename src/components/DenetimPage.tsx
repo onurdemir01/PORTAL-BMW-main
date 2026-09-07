@@ -12,6 +12,7 @@ import {
   ShieldCheckIcon, ArrowPathIcon, MagnifyingGlassIcon, ServerStackIcon,
   Squares2X2Icon, QuestionMarkCircleIcon, ArrowDownTrayIcon,
   DocumentDuplicateIcon, ChevronRightIcon, ChartBarSquareIcon, RectangleGroupIcon, LinkIcon,
+  ClockIcon,
 } from "@heroicons/react/24/outline";
 import {
   denetimApi, type NginxSpaResult, type OcpCoverageResult, type NginxSpaEnvCell,
@@ -20,6 +21,7 @@ import {
 import { Select } from "@/components/ui/Form";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import EnvanterMetrics from "@/components/denetim/EnvanterMetrics";
+import EnvanterDegisim from "@/components/denetim/EnvanterDegisim";
 import AppEnvs from "@/components/denetim/AppEnvs";
 import WebApp from "@/components/denetim/WebApp";
 import NginxLocations from "@/components/denetim/NginxLocations";
@@ -38,6 +40,11 @@ const HELP: HelpSection[] = [
     icon: ChartBarSquareIcon,
     title: "Envanter Audit",
     body: "Inventory, MWAppsInventory ve WASAppsInventory tablolarının dağılımları. Üstte özet sayaçlar; Sunucular kaynağında ayrıca ürün kapsamı (hangi üründen kaç sunucuda var, kaç ayrı sürümle). Dağılımlar bölümünde boyut seçerek (domain, subnet, OS, sürüm…) oransal kırılımı görürsünüz. En altta çapraz dağılım: satır ve sütunu kendiniz seçip örneğin JBoss sürümlerinin domain'lere göre yayılımını çıkarırsınız; hücre koyulaştıkça sayı büyür. Uygulama tablolarında sayımı 'uygulama' yerine 'sunucu' yapabilirsiniz — aynı sunucuda birden çok uygulama olabildiği için ikisi farklı sorulara cevap verir.",
+  },
+  {
+    icon: ClockIcon,
+    title: "Envanter Değişim",
+    body: "Envanter Audit BUGÜNÜ gösterir; bu sekme ZAMANI gösterir. Üstte seçtiğiniz iki tarih arasında kaç satır gelmiş, gitmiş ve değişmiş; altında satır sayısının gün gün trendi. 'Gelen ve giden kayıtlar' hangi sunucunun/uygulamanın eklendiğini veya düştüğünü tek tek listeler. 'En çok değişen kolonlar' gürültü kaynağını gösterir — bir kolon sürekli başı çekiyorsa farkı kirletiyordur ve hesabın dışına alınması konuşulabilir. 'Tarama sağlığı' her tablonun son anlık görüntüsünü verir; 'Durduruldu' satır sayısının ani düştüğü ve güvenlik eşiği devreye girip geçmişe kitlesel silme YAZILMADIĞI anlamına gelir — yani envanter job'ı yarım kalmış olabilir. 'Sessiz tablolar' bir haftadır hiç değişmemiş olanları işaret eder: ya gerçekten sabittirler ya da taramaları kırılmıştır. ÖNEMLİ: geçmiş yalnızca Portal günlük anlık görüntü almaya başladıktan sonrasını kapsar; envanter tabloları her yenilemede sıfırdan yazıldığı için daha eski tarihler geriye dönük üretilemez.",
   },
   {
     icon: LinkIcon,
@@ -86,7 +93,7 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 export default function DenetimPage() {
-  const [tab, setTab] = useState<"nginx" | "ocp" | "init" | "envanter" | "appenvs" | "webapp">("nginx");
+  const [tab, setTab] = useState<"nginx" | "ocp" | "init" | "envanter" | "degisim" | "appenvs" | "webapp">("nginx");
   const [showHelp, setShowHelp] = useState(false);
 
   return (
@@ -116,6 +123,7 @@ export default function DenetimPage() {
           { id: "ocp", label: "Openshift Audit", icon: Squares2X2Icon },
           { id: "init", label: "Init Script Audit", icon: DocumentDuplicateIcon },
           { id: "envanter", label: "Envanter Audit", icon: ChartBarSquareIcon },
+          { id: "degisim", label: "Envanter Değişim", icon: ClockIcon },
           { id: "appenvs", label: "Jboss/WAS Applications Audit", icon: RectangleGroupIcon },
           { id: "webapp", label: "Web-App Relations", icon: LinkIcon },
         ] as const).map((t) => (
@@ -135,6 +143,7 @@ export default function DenetimPage() {
       {tab === "ocp" && <OcpCoverage />}
       {tab === "init" && <InitScriptsAudit />}
       {tab === "envanter" && <EnvanterMetrics />}
+      {tab === "degisim" && <EnvanterDegisim />}
       {tab === "appenvs" && <AppEnvs />}
       {tab === "webapp" && <WebApp />}
 
