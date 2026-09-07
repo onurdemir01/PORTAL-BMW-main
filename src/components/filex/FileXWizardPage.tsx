@@ -6,29 +6,29 @@
 // "işlem seçimi" adımı yok, sonuç ekranı da AWX job'ının sentBody'sini değil GERÇEK dosya
 // listesini gösterir. Güvenlik OpsX ile AYNI ilkeye dayanır: son POST /api/filex/run
 // çağrısında sunucu uygulama-host eşleşmesini envanterden YENİDEN doğrular.
-import React, { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { filexApi, type FilexResult } from "@/api/filexApi";
-import AppSearchStep from "./steps/AppSearchStep";
-import JbossVersionStep from "./steps/JbossVersionStep";
-import HostSelectStep from "./steps/HostSelectStep";
-import FileListResultStep from "./steps/FileListResultStep";
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowLeftIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { filexApi, type FilexResult } from '@/api/filexApi';
+import AppSearchStep from './steps/AppSearchStep';
+import JbossVersionStep from './steps/JbossVersionStep';
+import HostSelectStep from './steps/HostSelectStep';
+import FileListResultStep from './steps/FileListResultStep';
 
-type Step = "app" | "jboss_version" | "hosts" | "running" | "result";
+type Step = 'app' | 'jboss_version' | 'hosts' | 'running' | 'result';
 
 const STEP_TITLES: Record<Step, string> = {
-  app: "Uygulama Seçimi",
-  jboss_version: "JBoss Sürümü",
-  hosts: "Sunucu Seçimi",
-  running: "Dosyalar Taranıyor",
-  result: "Dosya Listesi",
+  app: 'Uygulama Seçimi',
+  jboss_version: 'JBoss Sürümü',
+  hosts: 'Sunucu Seçimi',
+  running: 'Dosyalar Taranıyor',
+  result: 'Dosya Listesi',
 };
 
 const POLL_INTERVAL_MS = 2500;
 
 const FileXWizardPage: React.FC = () => {
-  const [step, setStep] = useState<Step>("app");
-  const [app, setApp] = useState("");
+  const [step, setStep] = useState<Step>('app');
+  const [app, setApp] = useState('');
   const [jbossVersions, setJbossVersions] = useState<string[]>([]);
   const [hosts, setHosts] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -43,6 +43,21 @@ const FileXWizardPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<FilexResult | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // GERCEK DURUM CEKILIYORDU AMA ATILIYORDU: poll `s.status`i aliyor, sonra
+  // `if (!s.finished) return;` ile hepsini yok sayiyordu. Kullanici donen bir
+  // halkadan baska hicbir sey gormuyordu — is takilirsa (bkz. LogX OCP arizasi)
+  // ne oldugunu anlamasinin yolu yoktu.
+  const [jobInfo, setJobInfo] = useState<{ serverId: number; jobId: number } | null>(null);
+  const [awxStatus, setAwxStatus] = useState<string>('pending');
+  const [startedAt, setStartedAt] = useState<number>(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  // GECEN SURE: is takildiginda kullanicinin elindeki ilk isaret budur.
+  useEffect(() => {
+    if (!startedAt) return;
+    const t = setInterval(() => setElapsedSec(Math.round((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [startedAt]);
   // ÇALIŞTIRMA KUŞAĞI (2026-08-28). `clearInterval` yalnızca GELECEK tick'leri durdurur;
   // O ANDA UÇUŞTA olan `jobStatus` isteği ağdan dönmeye devam eder ve `.then` gövdesi
   // yine çalışır. İki somut sonuç:
@@ -54,28 +69,38 @@ const FileXWizardPage: React.FC = () => {
   // değilse SESSİZCE atılır.
   const runIdRef = useRef(0);
 
-  useEffect(() => () => {
-    runIdRef.current += 1;                                  // uçuştaki yanıtları geçersiz kıl
-    if (pollRef.current) clearInterval(pollRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      runIdRef.current += 1; // uçuştaki yanıtları geçersiz kıl
+      if (pollRef.current) clearInterval(pollRef.current);
+    },
+    [],
+  );
 
   function restart() {
-    runIdRef.current += 1;   // eski akışın geç gelen yanıtı yeni ekranı ezmesin
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    setStep("app");
-    setApp("");
+    runIdRef.current += 1; // eski akışın geç gelen yanıtı yeni ekranı ezmesin
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setStep('app');
+    setApp('');
     setJbossVersions([]);
     setHosts([]);
-    busyRef.current = false; setBusy(false);
+    busyRef.current = false;
+    setBusy(false);
     setError(null);
     setResult(null);
   }
 
   function backTargetFor(s: Step): Step | null {
     switch (s) {
-      case "jboss_version": return "app";
-      case "hosts": return "jboss_version";
-      default: return null;
+      case 'jboss_version':
+        return 'app';
+      case 'hosts':
+        return 'jboss_version';
+      default:
+        return null;
     }
   }
 
@@ -92,11 +117,16 @@ const FileXWizardPage: React.FC = () => {
     try {
       const r = await filexApi.run(app, selectedHosts);
       if (!r.ok || r.jobId == null) {
-        setError("İş başlatılamadı.");
-        busyRef.current = false; setBusy(false);
+        setError('İş başlatılamadı.');
+        busyRef.current = false;
+        setBusy(false);
         return;
       }
-      setStep("running");
+      setStep('running');
+      setJobInfo({ serverId: r.awxServerId, jobId: r.jobId as number });
+      setAwxStatus(r.status || 'pending');
+      setStartedAt(Date.now());
+      setElapsedSec(0);
       const myRun = ++runIdRef.current;
       pollRef.current = setInterval(async () => {
         try {
@@ -104,27 +134,39 @@ const FileXWizardPage: React.FC = () => {
           // Yanıt ağdan dönene kadar kullanıcı sayfadan ayrılmış ya da yeni bir sorgu
           // başlatmış olabilir — o durumda bu yanıt ARTIK geçersizdir.
           if (myRun !== runIdRef.current) return;
+          // Durum ARTIK ekrana yaziliyor — cekip atmak, elimizdeki tek gercek
+          // ilerleme bilgisini cope atmakti.
+          if (s.status) setAwxStatus(s.status);
           if (!s.finished) return;
-          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-          busyRef.current = false; setBusy(false);
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          busyRef.current = false;
+          setBusy(false);
           if (s.failed || !s.result) {
-            setError("İşlem tamamlanamadı — sonuç okunamadı. Lütfen sistem yöneticinize başvurun.");
-            setStep("hosts");
+            setError('İşlem tamamlanamadı — sonuç okunamadı. Lütfen sistem yöneticinize başvurun.');
+            setStep('hosts');
             return;
           }
           setResult(s.result);
-          setStep("result");
+          setStep('result');
         } catch (err: unknown) {
           if (myRun !== runIdRef.current) return;
-          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-          busyRef.current = false; setBusy(false);
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          busyRef.current = false;
+          setBusy(false);
           setError(err instanceof Error ? err.message : String(err));
-          setStep("hosts");
+          setStep('hosts');
         }
       }, POLL_INTERVAL_MS);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
-      busyRef.current = false; setBusy(false);
+      busyRef.current = false;
+      setBusy(false);
     }
   }
 
@@ -132,10 +174,10 @@ const FileXWizardPage: React.FC = () => {
   // Sonuc adiminda binlerce dosya olabilir — dar sihirbaz sutunu (max-w-2xl) veriyi
   // ezerdi. Sadece bu adimda tam genislik (sol menu + ust bar disindaki tum alan)
   // kullanilir; diger adimlar (form niteligindeki secimler) dar/ortali kalir.
-  const isFullWidth = step === "result";
+  const isFullWidth = step === 'result';
 
   return (
-    <div className={isFullWidth ? "w-full space-y-5" : "max-w-2xl mx-auto space-y-5"}>
+    <div className={isFullWidth ? 'w-full space-y-5' : 'max-w-2xl mx-auto space-y-5'}>
       <div className="flex items-start gap-3">
         {canGoBack && (
           <button
@@ -161,43 +203,69 @@ const FileXWizardPage: React.FC = () => {
         </div>
       )}
 
-      <div key={step} className={`card p-5 animate-slide-up ${isFullWidth ? "w-full" : ""}`}>
-        {step === "app" && (
+      <div key={step} className={`card p-5 animate-slide-up ${isFullWidth ? 'w-full' : ''}`}>
+        {step === 'app' && (
           <AppSearchStep
             busy={busy}
-            onSelect={(a) => { setApp(a); setJbossVersions([]); setHosts([]); setStep("jboss_version"); }}
+            onSelect={(a) => {
+              setApp(a);
+              setJbossVersions([]);
+              setHosts([]);
+              setStep('jboss_version');
+            }}
           />
         )}
 
-        {step === "jboss_version" && (
+        {step === 'jboss_version' && (
           <JbossVersionStep
             app={app}
             busy={busy}
-            onSubmit={(v) => { setJbossVersions(v); setHosts([]); setStep("hosts"); }}
+            onSubmit={(v) => {
+              setJbossVersions(v);
+              setHosts([]);
+              setStep('hosts');
+            }}
           />
         )}
 
-        {step === "hosts" && (
+        {step === 'hosts' && (
           <HostSelectStep
             app={app}
             jbossVersions={jbossVersions}
             busy={busy}
-            onSubmit={(h) => { setHosts(h); runQuery(h); }}
+            onSubmit={(h) => {
+              setHosts(h);
+              runQuery(h);
+            }}
           />
         )}
 
-        {step === "running" && (
+        {step === 'running' && (
           <div className="py-10 text-center space-y-3">
             <div className="inline-block w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             <p className="text-sm text-[var(--text-muted)]">
               {hosts.length} sunucuda .ear dizini taranıyor…
             </p>
+            {/* ELIMIZDEKI GERCEK VERI GOSTERILIYOR — TAHMIN DEGIL.
+                AWX durumu poll'de zaten cekiliyordu ve atiliyordu; is no ve gecen
+                sure de elimizde. Is takilirsa kullanicinin yoneticiye soyleyecegi
+                sey bu uclusudur. Sahte bir yuzde ya da "biraz uzun suruyor" gibi
+                UYDURULMUS bir teshis BILEREK yok (bkz. LogX JobProgress). */}
+            <p className="text-xs text-[var(--text-muted)] tabular-nums">
+              {jobInfo && (
+                <>
+                  AWX Job: <span className="font-mono">#{jobInfo.jobId}</span>
+                  {' · '}
+                </>
+              )}
+              {awxStatus}
+              {' · '}
+              {elapsedSec}sn geçti
+            </p>
           </div>
         )}
 
-        {step === "result" && result && (
-          <FileListResultStep result={result} onRestart={restart} />
-        )}
+        {step === 'result' && result && <FileListResultStep result={result} onRestart={restart} />}
       </div>
     </div>
   );

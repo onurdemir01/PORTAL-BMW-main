@@ -33,11 +33,18 @@ for (const w of WIZARDS) {
   test(`H1: ${path.basename(w.file)} ref tabanli guard kullaniyor`, () => {
     const src = read(w.file);
     // LogX `React.useRef`, digerleri cikarilmis `useRef` kullaniyor — ikisi de gecerli.
-    assert.match(src, new RegExp(`const ${w.ref} = (React\\.)?useRef\\(false\\)`),
-      `${w.ref} yok — ayni tick’teki iki tik iki AWX job’i acabilir`);
+    assert.match(
+      src,
+      new RegExp(`const ${w.ref} = (React\\.)?useRef\\(false\\)`),
+      `${w.ref} yok — ayni tick’teki iki tik iki AWX job’i acabilir`,
+    );
     assert.match(src, new RegExp(`if \\(${w.ref}\\.current\\) return;`));
     assert.match(src, new RegExp(`${w.ref}\\.current = true;`));
-    assert.match(src, new RegExp(`${w.ref}\\.current = false;`), 'guard hic birakilmiyor — sayfa kilitlenir');
+    assert.match(
+      src,
+      new RegExp(`${w.ref}\\.current = false;`),
+      'guard hic birakilmiyor — sayfa kilitlenir',
+    );
   });
 }
 
@@ -56,8 +63,14 @@ test('H2: FileX poll’u bayat yaniti ATIYOR (unmount + yeniden baslatma)', () =
   const src = read('components/filex/FileXWizardPage.tsx');
   assert.match(src, /const runIdRef = useRef\(0\);/, 'calistirma kusagi yok');
   // Unmount: ucustaki yanitlar gecersiz kilinmali.
-  assert.match(src, /useEffect\(\(\) => \(\) => \{\s*\n\s*runIdRef\.current \+= 1;/,
-    'unmount’ta kusak artirilmiyor — unmount sonrasi setState');
+  // BICIM DEGIL KURAL. Onceki desen `useEffect(() => () => {` ifadesini TEK SATIR
+  // bekliyordu; dosya prettier'a girince cagri satirlara boluundu ve bekci DAVRANIS
+  // AYNEN dururken kirmiziya dondu. Bosluklar tekillestirilip aranir.
+  assert.match(
+    src.replace(/\s+/g, ' '),
+    /useEffect\( *\(\) => \(\) => \{ runIdRef\.current \+= 1;/,
+    'unmount’ta kusak artirilmiyor — unmount sonrasi setState',
+  );
   // Yeniden baslatma: eski akisin gec gelen yaniti yeni ekrani EZMEMELI.
   assert.match(src, /runIdRef\.current \+= 1;\s*\/\/ eski akışın/);
   // Hem basari hem hata yolunda kontrol edilmeli.
@@ -68,5 +81,8 @@ test('H2: FileX poll’u bayat yaniti ATIYOR (unmount + yeniden baslatma)', () =
 test('H2: interval her cikis yolunda temizleniyor', () => {
   const src = read('components/filex/FileXWizardPage.tsx');
   const clears = (src.match(/clearInterval\(pollRef\.current\)/g) || []).length;
-  assert.ok(clears >= 4, `clearInterval cagrisi az (${clears}) — bir cikis yolu sizdiriyor olabilir`);
+  assert.ok(
+    clears >= 4,
+    `clearInterval cagrisi az (${clears}) — bir cikis yolu sizdiriyor olabilir`,
+  );
 });
