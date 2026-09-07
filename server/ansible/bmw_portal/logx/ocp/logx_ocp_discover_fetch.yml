@@ -52,7 +52,19 @@
   become: false
 
   vars:
-    oc_namespace: "{{ oc_namespace_input | default(namespace | default('')) }}"
+    # `namespace` BIR JINJA GLOBAL'IDIR — degiskeniniz degil.
+    #
+    # Burada eskiden `namespace | default('')` yaziyordu. `namespace` extra_var olarak
+    # gelmediginde bu ifade BOS STRING'e DUSMEZ: Jinja'nin kendi `namespace` yapicisini
+    # (bir Python TIPI) dondurur. Ansible bunu fact olarak saklayamaz ve is, sebebi
+    # anlasilmaz bir mesajla play 1'de duser:
+    #   Error while resolving value for 'oc_namespace': Type 'type' is unsupported
+    #   for variable storage
+    # Portal her zaman `oc_namespace_input` gonderdigi icin uretimde bu dal hic
+    # secilmiyordu; yine de yerel calistirma/dogrulamayi imkansiz kiliyordu ve
+    # portal bir gun o alani gondermeyi birakirsa TESHIS EDILEMEZ bir ariza olurdu.
+    # `lookup('vars', ...)` ayni geriye-uyum niyetini korur, Jinja global'ine carpmaz.
+    oc_namespace: "{{ oc_namespace_input | default(lookup('vars', 'namespace', default='')) }}"
     # COKLU HEDEF: portal (namespace, app_name) ciftlerini `ocp_targets` ile yollar.
     # Gondermezse (eski portal surumu) tekil alanlardan tek elemanli liste kurulur —
     # tek hedef, coklu hedefin ozel halidir; iki ayri kod yolu YOK.
@@ -214,119 +226,241 @@
     oc_log_timeout: 300
 
   tasks:
-    - name: "Initialize working facts"
-      ansible.builtin.set_fact:
-        resolved_clusters: []
-        validation_errors: []
-        fetch_units: []
-        cluster_pod_matches: []
-        pod_fetch_targets: []
-        cluster_fetch_results: []
-        staged_unit_files: []
-        # KOSULLU set edilen HER degisken burada da ilklenir. `staging_error` yalnizca
-        # fallback gerektiginde yaziliyordu; her sey yolunda gidince tanimsiz kaliyor ve
-        # asagidaki ozet gorevi "'staging_error' is undefined" ile dusuyordu — dort arsiv
-        # de staging'e yazilmisken calistirma "failed" raporlaniyordu (2026-08-10, uretim).
-        staging_error: ''
-      changed_when: false
+    # HATA YALITIMI — HAZIRLIK GOREVLERI DE BLOK ICINDE.
+    #
+    # URETIM (AWX #3297277): asagidaki uc gorev BLOK DISINDAYDI ve tek bir eksik
+    # degisken uc ayri sonucu birden uretti:
+    #
+    #   1. "Validate requested cluster records" `no_log: true` tasidigi icin Ansible
+    #      sebebi "censored" diye GIZLEDI — ham ciktida tek kelime tanilama yoktu.
+    #   2. Tek bastion FAIL olunca Ansible "NO MORE HOSTS LEFT" ile KALAN PLAY'LERI
+    #      ATLADI; PLAY RECAP'te localhost ok=3 kaldi, yani toplayici play HIC KOSMADI.
+    #   3. `set_stats` yayinlanmadigi icin portal `logx_result` bulamadi ve
+    #      "beklenmeyen bir hata olustu" diye HICBIR SEY SOYLEMEYEN mesaji bastı.
+    #
+    # Asagidaki play 3'te duran "Clear any host errors so aggregation always runs"
+    # gorevi bunu ONLEDIGINI soyluyordu — ONLEMIYOR: o gorev play 3'un ICINDE ve
+    # play 3 hic baslamiyor.
+    #
+    # Blok/rescue zincirin ILK halkasini kesiyor: host FAIL olmadigi icin toplayici
+    # play kosar, sonuc yayinlanir ve kullanici GERCEK sebebi EKRANDA gorur.
+    - name: "Prepare and validate cluster records (failure-isolated)"
+      block:
+        - name: "Initialize working facts"
+          ansible.builtin.set_fact:
+            resolved_clusters: []
+            validation_errors: []
+            fetch_units: []
+            cluster_pod_matches: []
+            pod_fetch_targets: []
+            cluster_fetch_results: []
+            staged_unit_files: []
+            # KOSULLU set edilen HER degisken burada da ilklenir. `staging_error` yalnizca
+            # fallback gerektiginde yaziliyordu; her sey yolunda gidince tanimsiz kaliyor ve
+            # asagidaki ozet gorevi "'staging_error' is undefined" ile dusuyordu — dort arsiv
+            # de staging'e yazilmisken calistirma "failed" raporlaniyordu (2026-08-10, uretim).
+            staging_error: ''
+          changed_when: false
 
-    # Cok-bastion: her bastion YALNIZ kendi cluster'larini toplar. Cluster ogelerinde
-    # terminal_host yoksa (eski payload) tum liste tek bastion'da islenir; kismi tanimli
-    # payload'da sahipsizler ilk (alfabetik) bastion'a dusurulur — sessiz kayip olmaz.
-    - name: "Select the cluster subset that belongs to this bastion"
-      ansible.builtin.set_fact:
-        my_ocp_clusters: >-
-          {{
-            (ocp_clusters | selectattr('terminal_host', 'defined')
-                          | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
-            +
-            ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
-             if inventory_hostname == ((groups['logx_terminal'] | default([])) | sort | first)
-             else [])
-          }}
-      changed_when: false
+        # Cok-bastion: her bastion YALNIZ kendi cluster'larini toplar. Cluster ogelerinde
+        # terminal_host yoksa (eski payload) tum liste tek bastion'da islenir; kismi tanimli
+        # payload'da sahipsizler ilk (alfabetik) bastion'a dusurulur — sessiz kayip olmaz.
+        - name: "Select the cluster subset that belongs to this bastion"
+          ansible.builtin.set_fact:
+            my_ocp_clusters: >-
+              {{
+                (ocp_clusters | selectattr('terminal_host', 'defined')
+                              | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+                +
+                ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+                 if inventory_hostname == ((groups['logx_terminal'] | default([])) | sort | first)
+                 else [])
+              }}
+          changed_when: false
 
-      # DIKKAT — asagidaki mesajdaki apostrof CIFT TIRNAKLI string icinde durur.
-      # Jinja, ters-boluyle kacirilmis apostrofu YAML gibi yorumlamaz: tek tirnakli
-      # bir string apostrofta BITER ve kalan harfler sozdizimi sanilir —
-      #   template error while templating string: expected token ')', got 'nda'
-      # 2026-08-09'da uc playbook da uretimde bu yuzden dustu.
-    - name: "Validate requested cluster records"
-      ansible.builtin.set_fact:
-        validation_errors: >-
-          {{
-            validation_errors + ([{
-              'cluster_name': item.cluster_name | default('unknown'),
-              'status': 'error',
-              'error': (
-              (
-                'OCP kullanici adi tanimli degil (oc login --username). Admin > LogX '
-                ~ 'Yapilandirma > OCP Cluster Hiyerarsisi satirindaki "OCP Kullanici Adi" '
-                ~ "alanini doldurun ya da OCP Calistirma Ayarlari'nda genel varsayilani girin: "
-                ~ (item.cluster_name | default('missing-cluster-name'))
-              ) if (resolved_username | trim | length == 0) else (
-                'Cluster kimligi cozulemedi (parola bos). credential_key='
-                ~ (item.credential_key | default('?')) ~ ' — kimlik dosyasi okunamadi '
-                ~ 'ya da bu anahtar credentials.yaml icinde tanimli degil: '
-                ~ (item.cluster_name | default('missing-cluster-name'))
-              )
-              ) if (has_portal_meta | bool) or (inv_has | bool) else (
-                'Cluster inventory record not found: '
-                ~ (item.tenant | default('missing-tenant')) ~ '_'
-                ~ (item.env | default('missing-env')) ~ '/'
-                ~ (item.cluster_name | default('missing-cluster-name'))
-              ),
-              'pods_matched': [],
-              'pods_failed': []
-            }] if not cluster_exists else [])
-          }}
-      vars:
-        inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
-        # v3: portal api_url + credential_key gonderiyorsa O kullanilir; gondermiyorsa
-        # eski inventory yoluna dusulur. Ikisi de yoksa cluster "bulunamadi" sayilir.
-        has_portal_meta: >-
-          {{ (item.api_url | default('') | string | trim | length > 0)
-             and (item.credential_key | default('') | string | trim | length > 0) }}
-        inv_has: >-
-          {{ clusters is defined
-             and clusters[inventory_key] is defined
-             and clusters[inventory_key][item.cluster_name] is defined
-             and clusters[inventory_key][item.cluster_name].url is defined
-             and clusters[inventory_key][item.cluster_name].password is defined }}
-        resolved_url: >-
-          {{ item.api_url if (has_portal_meta | bool)
-             else (clusters[inventory_key][item.cluster_name].url if (inv_has | bool) else '') }}
-        resolved_password: >-
-          {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
-             else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
-        # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
-        # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
-        # Ucu de yoksa BOS kalir ve cluster dogrulamada elenir — daha once bu durumda
-        # Jinja "'username' is undefined" ile TUM bastion'u dusuruyordu (2026-08-09).
-        resolved_username: >-
-          {{ (item.username | default('', true))
-             or (ocp_username | default('', true))
-             or (username | default('', true)) }}
-        cluster_exists: >-
-          {{
-            item.tenant is defined and
-            item.env is defined and
-            item.cluster_name is defined and
-            ((has_portal_meta | bool) or (inv_has | bool)) and
-            (resolved_username | trim | length > 0) and
-            (resolved_password | trim | length > 0)
-          }}
-      loop: "{{ my_ocp_clusters }}"
-      loop_control:
-        label: "{{ item.cluster_name | default('?') }}"
-      no_log: true
-      changed_when: false
+          # DIKKAT — asagidaki mesajdaki apostrof CIFT TIRNAKLI string icinde durur.
+          # Jinja, ters-boluyle kacirilmis apostrofu YAML gibi yorumlamaz: tek tirnakli
+          # bir string apostrofta BITER ve kalan harfler sozdizimi sanilir —
+          #   template error while templating string: expected token ')', got 'nda'
+          # 2026-08-09'da uc playbook da uretimde bu yuzden dustu.
+        - name: "Validate requested cluster records"
+          ansible.builtin.set_fact:
+            validation_errors: >-
+              {{
+                validation_errors + ([{
+                  'cluster_name': item.cluster_name | default('unknown'),
+                  'status': 'error',
+                  'error': (
+                  (
+                    'OCP kullanici adi tanimli degil (oc login --username). Admin > LogX '
+                    ~ 'Yapilandirma > OCP Cluster Hiyerarsisi satirindaki "OCP Kullanici Adi" '
+                    ~ "alanini doldurun ya da OCP Calistirma Ayarlari'nda genel varsayilani girin: "
+                    ~ (item.cluster_name | default('missing-cluster-name'))
+                  ) if (resolved_username | trim | length == 0) else (
+                    'Cluster kimligi cozulemedi (parola bos). credential_key='
+                    ~ (item.credential_key | default('?')) ~ ' — kimlik dosyasi okunamadi '
+                    ~ 'ya da bu anahtar credentials.yaml icinde tanimli degil: '
+                    ~ (item.cluster_name | default('missing-cluster-name'))
+                  )
+                  ) if (has_portal_meta | bool) or (inv_has | bool) else (
+                    'Cluster inventory record not found: '
+                    ~ (item.tenant | default('missing-tenant')) ~ '_'
+                    ~ (item.env | default('missing-env')) ~ '/'
+                    ~ (item.cluster_name | default('missing-cluster-name'))
+                  ),
+                  'pods_matched': [],
+                  'pods_failed': []
+                }] if not cluster_exists else [])
+              }}
+          vars:
+            inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+            # v3: portal api_url + credential_key gonderiyorsa O kullanilir; gondermiyorsa
+            # eski inventory yoluna dusulur. Ikisi de yoksa cluster "bulunamadi" sayilir.
+            has_portal_meta: >-
+              {{ (item.api_url | default('') | string | trim | length > 0)
+                 and (item.credential_key | default('') | string | trim | length > 0) }}
+            inv_has: >-
+              {{ clusters is defined
+                 and clusters[inventory_key] is defined
+                 and clusters[inventory_key][item.cluster_name] is defined
+                 and clusters[inventory_key][item.cluster_name].url is defined
+                 and clusters[inventory_key][item.cluster_name].password is defined }}
+            resolved_url: >-
+              {{ item.api_url if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].url if (inv_has | bool) else '') }}
+            resolved_password: >-
+              {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
+            # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
+            # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
+            # Ucu de yoksa BOS kalir ve cluster dogrulamada elenir — daha once bu durumda
+            # Jinja "'username' is undefined" ile TUM bastion'u dusuruyordu (2026-08-09).
+            resolved_username: >-
+              {{ (item.username | default('', true))
+                 or (ocp_username | default('', true))
+                 or (username | default('', true)) }}
+            cluster_exists: >-
+              {{
+                item.tenant is defined and
+                item.env is defined and
+                item.cluster_name is defined and
+                ((has_portal_meta | bool) or (inv_has | bool)) and
+                (resolved_username | trim | length > 0) and
+                (resolved_password | trim | length > 0)
+              }}
+          loop: "{{ my_ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          no_log: true
+          changed_when: false
+
+      rescue:
+        - name: "Record the preparation failure"
+          ansible.builtin.set_fact:
+            prepare_failed: true
+            prepare_error: >-
+              {{
+                'Cluster hazirlik/dogrulama adimi dustu (gorev: '
+                ~ (ansible_failed_task.name | default('bilinmiyor'))
+                ~ '): '
+                ~ (ansible_failed_result.msg
+                   | default(ansible_failed_result.stderr
+                             | default('sebep bildirilmedi (gorev no_log tasiyor olabilir)', true), true))
+              }}
+          changed_when: false
+
+        # SIZDIRMAYAN TANILAMA — burada `no_log` BILEREK YOK.
+        #
+        # Yukaridaki gorev `no_log: true` tasidigi icin sebebi Ansible "censored"
+        # yapar. Bu gorev ayni karari BESLEYEN girdileri yazar; hicbiri gizli degil:
+        # cluster adi, credential_key ADI ve dort BOOLEAN. Parolanin KENDISI hicbir
+        # dalda basilmaz — yalnizca "cozuldu mu" sorusunun cevabi basilir.
+        - name: "Explain the preparation failure without leaking secrets"
+          ansible.builtin.debug:
+            msg: >-
+              {{ item.cluster_name | default('?') }} →
+              credential_key={{ item.credential_key | default('YOK') }},
+              portal_metadata={{ (item.api_url | default('') | string | trim | length > 0)
+                                 and (item.credential_key | default('') | string | trim | length > 0) }},
+              envanter_kaydi={{ clusters is defined
+                                and clusters[(item.tenant | default('')) ~ '_' ~ (item.env | default(''))] is defined
+                                and clusters[(item.tenant | default('')) ~ '_' ~ (item.env | default(''))][item.cluster_name | default('')] is defined }},
+              kullanici_adi_dolu={{ ((item.username | default('', true))
+                                     or (ocp_username | default('', true))
+                                     or (username | default('', true))) | trim | length > 0 }},
+              parola_cozuldu={{ (lookup('vars', item.credential_key | default('__tanimsiz__'), default='')
+                                 | string | trim | length) > 0 }}
+          loop: "{{ my_ocp_clusters | default(ocp_clusters | default([]), true) }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          changed_when: false
+
+        # GUVENLI VARSAYILANLAR: hazirlik yarida kaldiysa asagidaki fact'ler TANIMSIZ
+        # kalmis olabilir. Toplayici play ve rescue'nun kendi gorevleri bunlari okur;
+        # tanimsiz birakmak "yanlis hata" uretir (2026-08-10'daki staging_error tuzagi).
+        - name: "Fall back to safe defaults so the aggregator can still publish"
+          ansible.builtin.set_fact:
+            my_ocp_clusters: "{{ my_ocp_clusters | default(ocp_clusters | default([]), true) }}"
+            resolved_clusters: []
+            validation_errors: "{{ validation_errors | default([]) }}"
+            cluster_fetch_results: "{{ cluster_fetch_results | default([]) }}"
+            fetch_units: []
+            cluster_pod_matches: []
+            pod_fetch_targets: []
+            staged_unit_files: []
+            staging_error: ''
+          changed_when: false
+
+        # Dogrulama hatalari (varsa) da tasinir: asil blok `prepare_failed` yuzunden
+        # ATLANACAK, yani onun icindeki "Append validation errors" gorevi kosmayacak.
+        - name: "Keep validation errors even when preparation failed"
+          ansible.builtin.set_fact:
+            cluster_fetch_results: "{{ cluster_fetch_results + validation_errors }}"
+          changed_when: false
+
+        - name: "Record the preparation failure for every requested cluster"
+          ansible.builtin.set_fact:
+            cluster_fetch_results: >-
+              {{
+                cluster_fetch_results + [{
+                  'cluster_name': item.cluster_name | default('unknown'),
+                  'namespace': '',
+                  'app_name': '',
+                  'status': 'error',
+                  'error': prepare_error,
+                  'pods_matched': [],
+                  'pods_failed': []
+                }]
+              }}
+          loop: "{{ my_ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          when: >-
+            (item.cluster_name | default('')) not in
+            (cluster_fetch_results | map(attribute='cluster_name') | list)
+          changed_when: false
+
+        # Toplayici, arsivin NEDEN olmadigini bu ozetten okur; yoksa "cluster'lar ok
+        # ama arsiv yok, sebep bos" gibi anlasilmaz bir sonuc uretir.
+        - name: "Record a preparation failure summary for the aggregator"
+          ansible.builtin.set_fact:
+            logx_bastion_summary:
+              terminal_host: "{{ inventory_hostname }}"
+              files: []
+              staging_error: "{{ prepare_error }}"
+              archive_created: false
+              staged_ok: false
+          when: logx_bastion_summary is not defined
+          changed_when: false
 
     # HATA IZOLASYONU: bu bastion'a ait tum is block icinde. Herhangi bir adim coker
     # (or. oc bulunamadi, SSH/login hatasi) rescue devreye girer, YALNIZ bu bastion'in
     # cluster'lari hata olarak isaretlenir ve host FAIL sayilmaz. Boylece hem diger
     # bastion'lar hem de toplayici play (set_stats yazari) calismaya devam eder.
+    # Hazirlik dustuyse bu blok ATLANIR: rescue zaten her cluster icin sebebi
+    # yazdi ve devam etmek yalnizca ikinci, yaniltici bir hata uretirdi.
     - name: "Collect this bastion's clusters (failure-isolated)"
+      when: not (prepare_failed | default(false))
       # ignore_unreachable SART: rescue yalnizca GOREV hatalarini yakalar, SSH/DNS kesintisini
       # (unreachable) YAKALAMAZ. O durumda host "unreachable" isaretlenir, tum bastion'lar
       # boyle duserse Ansible "NO MORE HOSTS LEFT" ile sonraki play'leri ATLAR ve toplayici
