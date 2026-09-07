@@ -179,6 +179,103 @@ function checkEnvSuffixMap() {
   );
 }
 
+// ── 4c. Node surumu: hangi paketler calisan surumle uyumsuz ─────────────────
+//
+// OLCUM, LISTE DEGIL. Uyumsuz paketleri elle yazmak, bagimliliklar degistikce
+// yalan soylemeye baslar. Burada `package-lock.json` okunur ve her paketin
+// `engines.node` araligi CALISAN surumle karsilastirilir.
+//
+// ASIL AYRIM CALISMA ZAMANI / GELISTIRME: `vitest`, `jsdom`, `lint-staged`
+// yalnizca gelistirici makinesinde kosar — uyari gurultudur. Ama `dependencies`
+// agacindan gelen bir paket UYGULAMA ICINDE calisir; orada uyumsuzluk gercek
+// bir risktir.
+function checkNodeVersion() {
+  // SURUM OVERRIDE'I BILEREK VAR. Gelistirici makinesi prod'dan farkli bir Node
+  // kosuyor olabilir (burada 26, prod'da 20.20.2) — o zaman kontrol "her sey
+  // uyumlu" der ve prod'daki gercek durumu HIC gostermez. Bu bayrakla prod
+  // surumu sorulabilir:
+  //     PREFLIGHT_NODE_VERSION=20.20.2 npm run preflight
+  const running = String(process.env.PREFLIGHT_NODE_VERSION || '').trim() || process.versions.node;
+  const simulated = running !== process.versions.node;
+  let lock;
+  try {
+    lock = JSON.parse(read('package-lock.json'));
+  } catch {
+    warn('Node surumu dogrulanamadi', 'package-lock.json okunamadi.', 'Elle kontrol edin.');
+    return;
+  }
+
+  // Calisma zamani agaci: `dependencies` ve onlarin ic ice kopyalari HARIC —
+  // ic ice kopyalar (or. jsdom/node_modules/undici) yalnizca o paketin
+  // dunyasinda yasar ve gelistirme bagimliligiysa uygulamaya girmez.
+  const rootPkg = JSON.parse(read('package.json'));
+  const runtimeNames = new Set(Object.keys(rootPkg.dependencies || {}));
+
+  const satisfies = (version, range) => {
+    try {
+      return require('semver').satisfies(version, range, { includePrerelease: true });
+    } catch {
+      return true; // semver yoksa iddia etme
+    }
+  };
+
+  const bad = [];
+  for (const [key, meta] of Object.entries(lock.packages || {})) {
+    const range = meta && meta.engines && meta.engines.node;
+    if (!range || !key.startsWith('node_modules/')) continue;
+    if (satisfies(running, range)) continue;
+    const name = key.slice('node_modules/'.length);
+    // Ic ice kopya: `a/node_modules/b` -> sahibi `a`.
+    const nested = name.includes('/node_modules/');
+    const owner = nested ? name.split('/node_modules/')[0] : name;
+    bad.push({ name, range, runtime: !nested && runtimeNames.has(owner), owner });
+  }
+
+  if (bad.length === 0) {
+    ok(
+      'Node surumu',
+      `${running}${simulated ? ' (simule)' : ''} — tum paketlerin engines araligi karsilaniyor`,
+    );
+    return;
+  }
+
+  // CALISMA ZAMANI agacindan gelen uyumsuzluklar: `dependencies` altindaki bir
+  // paketin KENDISI ya da onun gecisli bagimliliklari.
+  const runtimeBad = bad.filter((b) => b.runtime || RUNTIME_TRANSITIVE.has(b.name));
+  const devBad = bad.filter((b) => !runtimeBad.includes(b));
+
+  const lines = [];
+  if (runtimeBad.length) {
+    lines.push(
+      'CALISMA ZAMANI: ' +
+        runtimeBad.map((b) => `${b.name} (${b.range})`).join(', ') +
+        ' — bunlar uygulama icinde kosuyor.',
+    );
+  }
+  if (devBad.length) {
+    lines.push(
+      'Gelistirme: ' +
+        devBad.map((b) => b.name).join(', ') +
+        ' — yalnizca gelistirici/CI makinesinde kosar.',
+    );
+  }
+  warn(
+    `Node ${running}${simulated ? ' (simule)' : ''}: ${bad.length} paket engines araligini karsilamiyor`,
+    lines.join(' | '),
+    'Node 22`ye gecince bu uyarilar biter. Gecis: docs/DEVREYE-ALMA.md > "Node 22`ye gecis". ' +
+      'package.json `engines` BILEREK >=20.18.0 birakildi — prod bugun kirilmasin diye.',
+  );
+}
+
+// Calisma zamani agacindan gelen ama `dependencies` icinde ADI GECMEYEN paketler
+// (gecisli). Elle yazilir cunku lock dosyasi sahiplik zincirini tutmuyor; liste
+// KISA tutulur ve yalnizca uygulama icinde GERCEKTEN kosanlari icerir.
+//
+// `tedious`: MSSQL surucusu, `mssql` uzerinden gelir ve portal her DB cagrisinda
+// onu kullanir. Node 22 istiyor; prod Node 20'de kosuyorsa bu listedeki TEK
+// gercek uretim riski odur.
+const RUNTIME_TRANSITIVE = new Set(['tedious']);
+
 // ── 5. CI kapilari gercekten kapali mi ──────────────────────────────────────
 function checkGates() {
   const check = read('scripts/check-ascii.cjs')
@@ -244,5 +341,6 @@ if (v) checkManualCopies(v);
 checkEnvExample();
 checkPlaybookRegistry();
 checkEnvSuffixMap();
+checkNodeVersion();
 checkGates();
 process.exit(report());

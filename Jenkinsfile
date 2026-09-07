@@ -16,6 +16,10 @@
 pipeline {
   agent any
 
+  // NODE 22 MATRISI BILEREK EKLENMEDI. Jenkins `tools` bloku bir GLOBAL TOOL adina
+  // baglidir; `node22` tanimli degilse boru hatti KOMPLE duser. Tanim bu repodan
+  // dogrulanamiyor. 22'ye gecerken yapilacaklar: docs/DEVREYE-ALMA.md >
+  // "Node 22'ye gecis" (tek adim: buradaki adi degistirmek).
   tools { nodejs 'node20' }
 
   environment {
@@ -81,6 +85,12 @@ pipeline {
         // gereken paketleri ciktiya yazar. Elle adimlar cikis kodunu DUSURMEZ —
         // ama artik her yapida GORUNUR: "kopyalandi mi" sorusu varsayima kalmaz.
         sh 'npm run preflight'
+        // PROD'UN NODE SURUMUYLE DE SOR. CI ajani ile prod farkli surumler
+        // kosabilir; on kontrol yalnizca AJANIN surumune bakarsa prod'daki
+        // gercek durumu HIC gostermez. Bu satir prod surumunu simule eder ve
+        // hangi paketlerin uyumsuz oldugunu (CALISMA ZAMANI / gelistirme
+        // ayrimiyla) her yapida yazdirir. Cikis kodunu DUSURMEZ.
+        sh 'PREFLIGHT_NODE_VERSION=20.20.2 npm run preflight'
         // Backend dosyaları TS derlemesine girmez — sözdizimi kontrolü:
         sh '''
           for f in $(find server -name "*.cjs"); do

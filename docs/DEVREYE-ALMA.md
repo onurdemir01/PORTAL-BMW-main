@@ -106,3 +106,45 @@ Ayrıntı: `docs/DEPLOYMENT.md`.
 | Bir özellik 501 dönüyor            | §4 — şablon kimliği boş                                                                                                                                        |
 | `logs/<env>.out` büyüyor           | Normal değil: süreç içi logger kurulamamış olabilir. `logs/<env>.app.log` var mı bak; yoksa açılış çıktısında `[log] dosya loglamasi devre disi` satırını ara. |
 | Prod `apply` başlamıyor            | SMART yapılandırılmamış — **bilinçli** fail-closed                                                                                                             |
+
+---
+
+## Node 22'ye geçiş
+
+Prod bugün **Node 20.20.2** koşuyor. `package.json` `engines` **bilerek** `>=20.18.0`
+bırakıldı — bugün hiçbir şey kırılmasın diye.
+
+### Bugün ne uyumsuz
+
+`npm run preflight` bunu **ölçer** (liste kodda gömülü değil, `package-lock.json`'dan
+hesaplanır). Prod sürümünü sormak için:
+
+```bash
+PREFLIGHT_NODE_VERSION=20.20.2 npm run preflight
+```
+
+Çıktı iki kümeye ayırır — **ayrım önemli**:
+
+| Küme               | Paketler                                                                                                                 | Anlamı                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| **Çalışma zamanı** | `tedious` (>=22)                                                                                                         | **Uygulamanın içinde koşar.** MSSQL sürücüsü; portal her DB çağrısında kullanıyor. Listedeki tek gerçek üretim riski budur. |
+| Geliştirme         | `vitest`, `jsdom`, `lint-staged`, `@testing-library/jest-dom`, `whatwg-url`, `@asamuzakjp/*`, `jsdom`'un iç `undici@8`'i | Yalnızca geliştirici/CI makinesinde koşar. `npm ci` uyarısı verir, prod'u etkilemez.                                        |
+
+> `undici@8.10.1` uyarısı yanıltıcıdır: o **jsdom'un iç kopyasıdır** (geliştirme).
+> Portalın kendi çalışma zamanı `undici`'si `7.29.1` ve Node 20 ile uyumludur.
+
+### Geçiş adımları
+
+1. Sunucuya Node 22 kur (nvm ya da paket yöneticisi).
+2. `deploy/run.sh` kullandığı Node'u `PATH`ten alır — ayrı bir değişiklik gerekmez.
+3. `npm ci` — EBADENGINE uyarıları biter.
+4. **Jenkins**: Global Tool olarak `node22` tanımlayın, sonra `Jenkinsfile`'daki
+   `tools { nodejs 'node20' }` satırını `'node22'` yapın. Matris **bilerek eklenmedi**:
+   `tools` bloğu var olmayan bir araç adına bağlanırsa boru hattı **komple düşer**
+   ve o tanım bu repodan doğrulanamıyor.
+5. İsterseniz `package.json` `engines`'i `>=22.0.0` yapın — tek satır.
+
+### Geri dönüş
+
+`engines` 20'de kaldığı sürece Node 20'ye geri dönmek serbesttir; hiçbir kod 22'ye
+özgü API kullanmıyor (kullanılsaydı `tsc`/testler 20'de kırılırdı).
