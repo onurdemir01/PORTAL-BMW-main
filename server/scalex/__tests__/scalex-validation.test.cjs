@@ -106,6 +106,11 @@ function withDb(handler, fn) {
 
 // ── A. SONUC SOZLESMESI ─────────────────────────────────────────────────────
 
+// TIRNAKTAN BAGIMSIZ. Bu dosyalar prettier'a ilk kez girdiginde cift tirnaklar
+// tek tirnaga cevrildi ve bu bekciler KOD DOGRUYKEN kirmizi dondu. Olcut BICIM
+// degil KURAL: anahtar uc yerde de AYNI mi.
+const q = (s) => s.replace(/"/g, "'");
+
 test('A1 artifact: dogrudan anahtar', () => {
   assert.equal(
     result.extractScaleXResult({ scalex_result: { overall_status: 'OK' } }).overallStatus,
@@ -1105,7 +1110,7 @@ test('H13 element anahtari ekran/route/seed uclusunde AYNI', () => {
     'utf8',
   );
   assert.ok(setup.includes("element_key: 'ScaleX'"));
-  assert.ok(elements.includes('id: "ScaleX"'));
+  assert.ok(q(elements).includes("id: 'ScaleX'"));
   assert.ok(INDEX.includes("requireVisiblePrefix('ScaleX')"));
 });
 
@@ -1195,8 +1200,8 @@ test('I2 route / element / registry / tablo adlari DORT yerde de tutarli', () =>
   );
   const app = fs.readFileSync(path.join(SRC_DIR, '..', '..', 'src', 'App.tsx'), 'utf8');
   assert.ok(setup.includes("element_key: 'ScaleX'"));
-  assert.ok(elements.includes('id: "ScaleX"') && elements.includes('route: "/scalex"'));
-  assert.ok(app.includes('pageId="ScaleX"') && app.includes('path="/scalex"'));
+  assert.ok(q(elements).includes("id: 'ScaleX'") && q(elements).includes("route: '/scalex'"));
+  assert.ok(q(app).includes("pageId='ScaleX'") && q(app).includes("path='/scalex'"));
   assert.ok(INDEX.includes("requireVisiblePrefix('ScaleX')"));
   assert.ok(INDEX.includes("'/api/scalex'"));
   for (const t of ['scalex_operations', 'scalex_state_mirror'])

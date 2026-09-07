@@ -22,13 +22,27 @@ const ALLOWED_EAGER = ['LoginPage', 'DashboardPage', 'ForbiddenPage'];
 test('sayfa bilesenleri lazy yuklenir (izin verilenler haric)', () => {
   const eager = [...SRC.matchAll(/^import (\w+Page) from "@\/components\//gm)].map((m) => m[1]);
   const unexpected = eager.filter((n) => !ALLOWED_EAGER.includes(n));
-  assert.deepEqual(unexpected, [], `bu sayfalar eager import — ana bundle sisiyor: ${unexpected.join(', ')}`);
+  assert.deepEqual(
+    unexpected,
+    [],
+    `bu sayfalar eager import — ana bundle sisiyor: ${unexpected.join(', ')}`,
+  );
 });
 
 test('DenetimPage lazy', () => {
-  assert.match(SRC, /const DenetimPage = React\.lazy\(\(\) => import\("@\/components\/DenetimPage"\)\)/);
+  // TIRNAKTAN BAGIMSIZ: App.tsx prettier'a ilk kez girdiginde cift tirnaklar tek
+  // tirnaga cevrildi ve bu bekci KOD DOGRUYKEN kirmizi dondu. Olcut, sayfanin
+  // GERCEKTEN lazy yuklendigi — hangi tirnakla yazildigi degil.
+  assert.match(
+    SRC.replace(/"/g, "'"),
+    /const DenetimPage = React\.lazy\(\(\) => import\('@\/components\/DenetimPage'\)\)/,
+  );
 });
 
 test('Suspense sinirini kaldirmadan lazy eklenmemis', () => {
-  assert.match(SRC, /<Suspense fallback=/, 'lazy route var ama Suspense yok — sayfa acilirken cokerdi');
+  assert.match(
+    SRC,
+    /<Suspense fallback=/,
+    'lazy route var ama Suspense yok — sayfa acilirken cokerdi',
+  );
 });

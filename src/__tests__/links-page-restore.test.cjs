@@ -25,9 +25,12 @@ const codeOnly = (s) =>
     .join('\n');
 
 test('LR1 menu ogesi ve grubu KAYITLI', () => {
-  const el = codeOnly(read('src/config/elements.ts'));
-  assert.match(el, /id: "Linkler"/, 'ELEMENTS icinde "Linkler" ogesi yok');
-  assert.match(el, /itemIds: \["Linkler"\]/, 'NAV_GROUPS icinde "Linkler" grubu yok');
+  // TIRNAKTAN BAGIMSIZ. `elements.ts` prettier'a ilk kez bu PR'da girdi ve cift
+  // tirnaklar tek tirnaga cevrildi — bekcinin ilk hali KOD DOGRUYKEN kirmizi
+  // dondu (ayni sebeple bes MEVCUT bekci de kirildi). Olcut BICIM degil KURAL.
+  const el = codeOnly(read('src/config/elements.ts')).replace(/"/g, "'");
+  assert.match(el, /id: 'Linkler'/, 'ELEMENTS icinde "Linkler" ogesi yok');
+  assert.match(el, /itemIds: \['Linkler'\]/, 'NAV_GROUPS icinde "Linkler" grubu yok');
 });
 
 test('LR2 route BAGLI', () => {

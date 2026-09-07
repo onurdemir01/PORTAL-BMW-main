@@ -432,22 +432,27 @@ test('U25 sapmali kayitta ve SUREN islemde "Geri Al" GOSTERILMIYOR', () => {
 // ── U26 Kayit / yonlendirme ─────────────────────────────────────────────────
 
 test('U26 sayfa uc yerde de AYNI anahtarla kayitli', () => {
-  const app = read('App.tsx');
-  const elements = read('config/elements.ts');
-  assert.match(app, /pageId="ScaleX"/);
-  assert.match(app, /path="\/scalex"/);
-  assert.match(elements, /id: "ScaleX"/);
-  assert.match(elements, /route: "\/scalex"/);
+  // TIRNAKTAN BAGIMSIZ. Bu iki dosya prettier'a ilk kez girdiginde cift tirnaklar
+  // tek tirnaga cevrildi ve bu bekci KOD DOGRUYKEN kirmizi dondu. Olcut BICIM degil
+  // KURAL: anahtar uc yerde de AYNI mi.
+  const q = (t) => t.replace(/"/g, "'");
+  const app = q(read('App.tsx'));
+  const elements = q(read('config/elements.ts'));
+  assert.match(app, /pageId='ScaleX'/);
+  assert.match(app, /path='\/scalex'/);
+  assert.match(elements, /id: 'ScaleX'/);
+  assert.match(elements, /route: '\/scalex'/);
   assert.ok(
-    elements.includes('"ScaleX"') && /itemIds:.*ScaleX/.test(elements),
+    elements.includes("'ScaleX'") && /itemIds:.*ScaleX/.test(elements),
     'nav grubuna eklenmemis',
   );
 });
 
 test('U27 sayfa route bazli code-splitting ile yukleniyor', () => {
+  // Tirnaktan bagimsiz (bkz. U26 notu).
   assert.match(
-    read('App.tsx'),
-    /React\.lazy\(\(\) => import\("@\/components\/scalex\/ScaleXPage"\)\)/,
+    read('App.tsx').replace(/"/g, "'"),
+    /React\.lazy\(\(\) => import\('@\/components\/scalex\/ScaleXPage'\)\)/,
   );
 });
 
