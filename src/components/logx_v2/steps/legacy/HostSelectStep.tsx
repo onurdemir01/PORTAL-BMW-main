@@ -169,6 +169,13 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit }) => {
       <p className="text-xs font-medium text-[var(--text-secondary)]">
         Sunucu listede yok mu? Elle ekleyin
       </p>
+      {/* NE OLACAGINI SOYLE. Kullanici elle yazdigi sunucunun envantere KAYDEDILDIGINI
+          sanabilir — hicbir yerde aksi yazmiyordu. Portal envanter tablosuna
+          (MWAppsInventory, kurumsal DB) YAZMAZ; oraya duzenli tarama yazar. */}
+      <p className="text-xs text-[var(--text-muted)]">
+        Bu değer <strong>envantere kaydedilmez</strong>. Envanter düzenli taramayla güncellenir;
+        sunucu eklendiğinde listede kendiliğinden görünür.
+      </p>
       <div className="flex gap-2">
         <input
           value={manualInput}

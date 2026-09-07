@@ -93,6 +93,13 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
               Bu ad envanterde bulunamadı. Yazdığınız değer büyük harfe çevrilerek gönderilir;
               sonraki adımda sunucuyu da elle girebilirsiniz.
             </span>
+            {/* NE OLACAGINI SOYLE. Kullanici elle yazdigi adin envantere KAYDEDILDIGINI
+                sanabilir — hicbir yerde aksi yazmiyordu. Portal envanter tablosuna
+                (MWAppsInventory, kurumsal DB) YAZMAZ; oraya duzenli tarama yazar. */}
+            <span className="mt-1 block text-xs text-[var(--text-muted)]">
+              Bu değer <strong>envantere kaydedilmez</strong>. Envanter düzenli taramayla
+              güncellenir; ad eklendiğinde listede kendiliğinden görünür.
+            </span>
           </span>
         </button>
       )}
