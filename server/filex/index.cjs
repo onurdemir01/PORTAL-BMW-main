@@ -210,20 +210,51 @@ function initFileX(app) {
       const db = require('../db/index.cjs');
       const reqUser = req.session?.user || {};
       if (reqUser.role !== 'Admin') {
-        const { rows } = await db.query(
-          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
-          [jobId, serverId],
-        );
-        if (
-          rows.length &&
-          rows[0].username &&
-          String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
-        ) {
+        // SAHIPLIK KAPISI FAIL-CLOSED (2026-09-07'de duzeltildi).
+        //
+        // Eski hali IKI yerde fail-open'di ve ikisi de sessizdi:
+        //   1) `rows.length &&` — is `ansible_job_history`de YOKSA kontrol atlanip
+        //      erisim VERILIYORDU.
+        //   2) `catch { /* DB hiccup -> fail-open */ }` — DB hatasinda da veriliyordu.
+        // Sonuc: giris yapmis bir kullanici serverId/jobId (kucuk tamsayilar)
+        // deneyerek BASKASININ FileX sonucunu — yani sunuculardaki dizin listelerini —
+        // okuyabilirdi.
+        //
+        // ScaleX'in `denyIfNotOwner`i bu kapiyi ZATEN fail-closed kuruyordu; iki
+        // modul ayni soruyu farkli katilikta yanitliyordu. Desen ScaleX'e hizalandi.
+        let owner = null;
+        try {
+          const { rows } = await db.query(
+            `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+            [jobId, serverId],
+          );
+          owner = rows.length && rows[0].username ? String(rows[0].username).toLowerCase() : null;
+        } catch (e) {
+          // DB okunamiyorsa sahiplik DOGRULANAMAZ. Bilinmezlikte erisim VERMEK,
+          // tam da kapinin engellemesi gereken sey.
+          console.warn('[FileX] sahiplik sorgusu basarisiz — erisim reddedildi:', e.message);
+          return res
+            .status(503)
+            .json({ ok: false, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' });
+        }
+        if (!owner || owner !== String(reqUser.username || '').toLowerCase()) {
+          // BASKASININ ISINE ERISIM DENEMESI DENETIME (ScaleX ile ayni gerekce):
+          // 403 donmek tek basina hicbir iz birakmiyordu.
+          try {
+            require('../audit/index.cjs').auditPortal(req, 'filex_access_denied', {
+              result: 'fail',
+              detail: JSON.stringify({ serverId, jobId, owner: owner || null }),
+            });
+          } catch {
+            /* denetim yazilamadi — kapi yine de kapali kalir */
+          }
           return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
         }
       }
-    } catch {
-      /* DB hiccup -> fail-open */
+    } catch (e) {
+      // Beklenmeyen bir hata: kapiyi ACIK birakma.
+      console.warn('[FileX] sahiplik kontrolu beklenmeyen hata — erisim reddedildi:', e.message);
+      return res.status(503).json({ ok: false, message: 'İş sahipliği doğrulanamadı.' });
     }
 
     try {
