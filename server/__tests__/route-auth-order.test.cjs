@@ -21,7 +21,13 @@ const SERVER = path.join(__dirname, '..');
 //   * logx/v2 `/ingest/:token` : kimlik TEK KULLANIMLIK TOKEN'dir; yukleyen kaynak
 //     host'un portal session'i YOKTUR. `requireAuth` onu 401'e dusururdu.
 //   * selfservice `/health`    : probe ucu; izleme sistemleri session tasimaz.
-const EXEMPT = new Set(['logx/v2/index.cjs::/ingest/:token', 'selfservice/index.cjs::/health']);
+const EXEMPT = new Set([
+  'logx/v2/index.cjs::/ingest/:token',
+  'selfservice/index.cjs::/health',
+  // logx v1 `/health` : probe ucu; yalnizca servis adi + DB erisilebilirligi doner,
+  // envanter/kullanici verisi ICERMEZ.
+  'logx/index.cjs::/health',
+]);
 
 function routerFiles() {
   const out = [];
@@ -72,6 +78,65 @@ test('RO1 hicbir uc KIMLIK KAPISINDAN once tanimlanmamis (bilinen muafiyetler ha
       '\n\nBu route`lar `router.use(requireAuth)` satirindan ONCE tanimli, yani kimlik\n' +
       'dogrulamasi UYGULANMIYOR. Ya kapinin ALTINA tasiyin, ya da gercekten muaf\n' +
       'olmasi gerekiyorsa bu testteki EXEMPT listesine GEREKCESIYLE ekleyin.',
+  );
+});
+
+test('RO1b kapiyi IMPORT eden her router onu GERCEKTEN UYGULAR', () => {
+  // BU KONTROL BIR GUVENLIK ACIGINI KACIRDIKTAN SONRA EKLENDI (2026-09-07).
+  //
+  // RO1 yalnizca `router.use(requireAuth)` CAGIRAN modulleri inceliyordu; cagirmayan
+  // bir modul kapsam DISINDA kaliyor ve sessizce "temiz" sayiliyordu. `server/logx/
+  // index.cjs` tam olarak oyleydi: `requireAuth`i import ediyor ama YALNIZCA tek bir
+  // route'a uyguluyordu. `GET /api/logx/inventory` kimlik dogrulamasi olmadan tum
+  // sunucu envanterini (hostname, IP, port, middleware surumu) donuyordu.
+  //
+  // Bir modulun `requireAuth`i import etmesi, korunmasi gereken bir seyi oldugunun
+  // KENDI beyanidir. Import edip uygulamamak, kapiyi alip takmamaktir.
+  //
+  // KAPSAM DAR TUTULDU: yalnizca `router.<method>` ile uc tanimlayan moduller.
+  // `app.<method>` ile dogrudan monte eden moduller kendi kapilarini uc bazinda
+  // veriyor ve bu bekcinin desenine girmiyor — onlari RO1 kapsar.
+  const EXEMPT_MODULES = new Set([
+    // Giris/cikis uclari OTURUM OLMADAN erisilebilir OLMAK ZORUNDA.
+    'auth/index.cjs',
+  ]);
+  const offenders = [];
+  let inspected = 0;
+  for (const f of routerFiles()) {
+    const rel = path.relative(SERVER, f);
+    if (EXEMPT_MODULES.has(rel)) continue;
+    const src = fs.readFileSync(f, 'utf8');
+    if (!/\brequireAuth\b/.test(src)) continue;
+    const routes = [
+      ...src.matchAll(/router\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)['"`]\s*,?([^\n]*)/g),
+    ];
+    if (routes.length === 0) continue; // `app.*` ile monte eden modul — RO1'in isi
+    inspected++;
+    if (/router\.use\(\s*requireAuth\s*\)/.test(src)) continue; // router seviyesinde kapali
+    // `requireAdmin` DE bir kapidir — hatta DAHA GUCLU olani. Ilk dedektorum
+    // yalnizca `requireAuth` ariyordu ve her ucu `requireAdmin` ile koruyan bir
+    // modulu (auth/visibility-routes.cjs) "kapisiz" diye isaretledi: yanlis pozitif.
+    const unguarded = routes.filter((m) => !/require(Auth|Admin)/.test(m[3]));
+    if (unguarded.length === 0) continue; // her uc kendi kapisini tasiyor
+    offenders.push(
+      `${rel} — ${unguarded.length}/${routes.length} uc kapisiz: ` +
+        unguarded
+          .slice(0, 4)
+          .map((m) => m[2])
+          .join(', '),
+    );
+  }
+  assert.ok(
+    inspected >= 3,
+    `yalnizca ${inspected} router modulu incelendi — toplayici yanlis yere bakiyor`,
+  );
+  assert.deepEqual(
+    offenders,
+    [],
+    '`requireAuth` IMPORT edilmis ama UYGULANMAMIS:\n' +
+      offenders.join('\n') +
+      '\n\nRouter seviyesinde `router.use(requireAuth)` ekleyin (probe/health uclari\n' +
+      'bundan ONCE tanimlanabilir ve EXEMPT listesine yazilir).',
   );
 });
 

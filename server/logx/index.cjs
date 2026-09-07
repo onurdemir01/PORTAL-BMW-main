@@ -29,12 +29,27 @@ function initLogX(app) {
   const router = express.Router();
 
   // ── Health ──────────────────────────────────────────────────────────────────
+  // KAPISIZ KALIR (probe): izleme sistemleri oturum tasimaz. Yalnizca servis adi ve
+  // DB erisilebilirligi doner — envanter/kullanici verisi ICERMEZ.
   router.get('/health', async (_req, res) => {
     const dbOk = await db.isAvailable().catch(() => false);
     res.json({ ok: true, service: 'logx', db: dbOk });
   });
 
-  // ── Inventory (public, active hosts only) ────────────────────────────────────
+  // ── KIMLIK KAPISI ───────────────────────────────────────────────────────────
+  //
+  // GUVENLIK ACIGI (2026-09-07'de kapatildi): bu dosya `requireAuth`i IMPORT ediyor
+  // ama YALNIZCA `POST /playbook-run`a uyguluyordu. `GET /api/logx/inventory`
+  // KIMLIK DOGRULAMASI OLMADAN tum aktif sunucu envanterini donuyordu:
+  // hostname, FQDN, IP, ortam, urun/middleware tipi ve SURUMU, port, notlar.
+  // Bir bankanin ic operasyon portalinda bu, dogrudan kesif malzemesidir.
+  //
+  // Ucun basindaki "(public, active hosts only)" notu niyeti aciklamiyordu —
+  // "public" burada "kimlik gerektirmez" degil "admin gerektirmez" anlaminda
+  // yazilmis gorunuyor; kod ise ikisini de gerektirmiyordu.
+  router.use(requireAuth);
+
+  // ── Inventory (giris yapmis her kullanici; admin gerekmez) ───────────────────
   router.get('/inventory', async (_req, res) => {
     try {
       const hosts = await inventory.listHosts();
@@ -46,59 +61,86 @@ function initLogX(app) {
 
   // ── Admin: Inventory CRUD ─────────────────────────────────────────────────────
   router.get('/admin/inventory', async (req, res) => {
-    if (getUser(req).role !== 'Admin') return res.status(403).json({ ok: false, error: 'Admin only' });
+    if (getUser(req).role !== 'Admin')
+      return res.status(403).json({ ok: false, error: 'Admin only' });
     try {
       const hosts = await inventory.getAllHosts();
       res.json({ ok: true, hosts });
-    } catch (err) { res.status(503).json({ ok: false, error: err.message }); }
+    } catch (err) {
+      res.status(503).json({ ok: false, error: err.message });
+    }
   });
 
   router.post('/admin/inventory', async (req, res) => {
-    if (getUser(req).role !== 'Admin') return res.status(403).json({ ok: false, error: 'Admin only' });
+    if (getUser(req).role !== 'Admin')
+      return res.status(403).json({ ok: false, error: 'Admin only' });
     const { hostname, ip } = req.body || {};
-    if (!hostname || !ip) return res.status(400).json({ ok: false, error: 'hostname and ip required' });
+    if (!hostname || !ip)
+      return res.status(400).json({ ok: false, error: 'hostname and ip required' });
     try {
       const host = await inventory.createHost(req.body);
       res.status(201).json({ ok: true, host });
-    } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
   });
 
   router.put('/admin/inventory/:id', async (req, res) => {
-    if (getUser(req).role !== 'Admin') return res.status(403).json({ ok: false, error: 'Admin only' });
+    if (getUser(req).role !== 'Admin')
+      return res.status(403).json({ ok: false, error: 'Admin only' });
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ ok: false, error: 'Invalid id' });
     try {
       const host = await inventory.updateHost(id, req.body);
       if (!host) return res.status(404).json({ ok: false, error: 'Not found' });
       res.json({ ok: true, host });
-    } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
   });
 
   router.delete('/admin/inventory/:id', async (req, res) => {
-    if (getUser(req).role !== 'Admin') return res.status(403).json({ ok: false, error: 'Admin only' });
+    if (getUser(req).role !== 'Admin')
+      return res.status(403).json({ ok: false, error: 'Admin only' });
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ ok: false, error: 'Invalid id' });
     try {
       const deleted = await inventory.deleteHost(id);
       res.json({ ok: deleted });
-    } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
   });
 
   // ── Admin: Audit log (logx_audit_logs — hem eski hem LogX v2 aksiyonlarini icerir) ──
   router.get('/admin/audit', async (req, res) => {
-    if (getUser(req).role !== 'Admin') return res.status(403).json({ ok: false, error: 'Admin only' });
+    if (getUser(req).role !== 'Admin')
+      return res.status(403).json({ ok: false, error: 'Admin only' });
     const { username, targetHost, action, limit = '50', offset = '0' } = req.query;
-    const parsedLimit  = Math.min(500, Math.max(1, parseInt(limit, 10) || 50));
+    const parsedLimit = Math.min(500, Math.max(1, parseInt(limit, 10) || 50));
     const parsedOffset = Math.max(0, parseInt(offset, 10) || 0);
     try {
-      const logs = await audit.getLogs({ limit: parsedLimit, offset: parsedOffset,
-        username, targetHost, action });
-      res.json({ ok: true, logs, page: Math.floor(parsedOffset / parsedLimit) + 1, limit: parsedLimit });
-    } catch (err) { res.status(503).json({ ok: false, error: err.message }); }
+      const logs = await audit.getLogs({
+        limit: parsedLimit,
+        offset: parsedOffset,
+        username,
+        targetHost,
+        action,
+      });
+      res.json({
+        ok: true,
+        logs,
+        page: Math.floor(parsedOffset / parsedLimit) + 1,
+        limit: parsedLimit,
+      });
+    } catch (err) {
+      res.status(503).json({ ok: false, error: err.message });
+    }
   });
 
   router.get('/admin/audit/verify', async (req, res) => {
-    if (getUser(req).role !== 'Admin') return res.status(403).json({ ok: false, error: 'Admin only' });
+    if (getUser(req).role !== 'Admin')
+      return res.status(403).json({ ok: false, error: 'Admin only' });
     try {
       const result = await audit.verifyChain();
       res.json({ ok: true, ...result });
@@ -124,7 +166,9 @@ function initLogX(app) {
       return res.status(503).json({ ok: false, error: 'Ansible modülleri yüklenemedi.' });
     }
     if (!runnerMod.isConfigured()) {
-      return res.status(503).json({ ok: false, error: 'AWX yapılandırılmamış. NEEDS.md dosyasına bakın.' });
+      return res
+        .status(503)
+        .json({ ok: false, error: 'AWX yapılandırılmamış. NEEDS.md dosyasına bakın.' });
     }
 
     const row = await playbookRegistry.getByKey(key).catch(() => null);
@@ -133,27 +177,47 @@ function initLogX(app) {
     }
     const templateId = playbookRegistry.getEffectiveTemplateId(row);
     if (!templateId) {
-      return res.status(503).json({ ok: false, error: `${row.displayName} için template ID tanımlı değil (Admin > Playbook Kayıtları veya ${row.envVarName}).` });
+      return res
+        .status(503)
+        .json({
+          ok: false,
+          error: `${row.displayName} için template ID tanımlı değil (Admin > Playbook Kayıtları veya ${row.envVarName}).`,
+        });
     }
 
     try {
-      const launch = await runnerMod.launchJob(Number(templateId), { target_hosts: hostname }, hostname);
+      const launch = await runnerMod.launchJob(
+        Number(templateId),
+        { target_hosts: hostname },
+        hostname,
+      );
 
       let attempts = 0;
       let jobStatus;
       while (attempts < 30) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 2000));
         jobStatus = await runnerMod.getJobStatus(launch.jobId);
         if (['successful', 'failed', 'error', 'canceled'].includes(jobStatus.status)) break;
         attempts++;
       }
 
       if (!jobStatus || jobStatus.status !== 'successful') {
-        return res.status(502).json({ ok: false, error: `AWX job ${jobStatus?.status || 'timeout'}`, jobId: launch.jobId });
+        return res
+          .status(502)
+          .json({
+            ok: false,
+            error: `AWX job ${jobStatus?.status || 'timeout'}`,
+            jobId: launch.jobId,
+          });
       }
 
       const output = await runnerMod.getJobOutput(launch.jobId);
-      res.json({ ok: true, output: output.output, jobId: launch.jobId, displayName: row.displayName });
+      res.json({
+        ok: true,
+        output: output.output,
+        jobId: launch.jobId,
+        displayName: row.displayName,
+      });
     } catch (err) {
       res.status(502).json({ ok: false, error: err.message });
     }
