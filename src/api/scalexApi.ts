@@ -249,6 +249,16 @@ export interface ScaleXStoppedItem {
   stoppedAt: string | null;
   lastSeenAt: string | null;
   driftStatus: 'in_sync' | 'missing_on_cluster' | 'unknown_to_portal' | string;
+  /**
+   * Kaç kez geri alınmaya ÇALIŞILDI. `0` = hiç denenmedi, `>0` = denendi ve OLMADI.
+   * Başarılı geri almada satır zaten silinir, yani bu alan yalnızca başarısız
+   * denemeleri sayar. Bu ayrım olmadan "hiç denenmemiş" ile "denendi, olmadı"
+   * ekranda AYNI görünüyordu.
+   */
+  restoreAttempts?: number;
+  lastRestoreAt?: string | null;
+  /** Son başarısız denemenin sebebi — kullanıcı neden olmadığını görebilsin. */
+  lastRestoreError?: string | null;
 }
 
 export interface ScaleXScope {

@@ -232,6 +232,67 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
     }
   }
 
+  // HOOK'LAR KOSULSUZ CALISMALI: bu memo asagidaki erken donuslerden (loading/
+  // error/bos liste) SONRA duruyordu ve React hook sirasi renderlar arasinda
+  // degisiyordu — beyaz ekran uretebilecek bir hata (U4 bekcisi yakaladi).
+
+  // AYNI UYGULAMANIN CLUSTER'LARINI TEK SATIRDA TOPLA.
+  //
+  // Ayna satirlari cluster bazindadir ve OYLE KALMALI: her cluster ayri geri alinir,
+  // ayri basarisiz olabilir. Ama duz listede "ayni uygulamayi dort cluster'da
+  // durdurdum" gercegi kayboluyordu — dort ayri satir gorunuyor, hangilerinin geri
+  // alinamadigi topluca okunamiyordu.
+  //
+  // Anahtar env/tenant'i DA icerir: kapsamsiz listede ayni ad farkli ortamlardan
+  // gelebilir ve prod ile test kaydini ayni satirda toplamak TEHLIKELI olurdu.
+  const groupedItems = React.useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; appName: string; scopeText: string; rows: ScaleXStoppedItem[] }
+    >();
+    for (const it of items) {
+      const key = `${it.env}\u0000${it.tenant}\u0000${it.namespace}\u0000${it.appName}`;
+      let g = map.get(key);
+      if (!g) {
+        g = {
+          key,
+          appName: it.appName,
+          scopeText: env && tenant ? it.namespace : `${it.env}/${it.tenant}/${it.namespace}`,
+          rows: [],
+        };
+        map.set(key, g);
+      }
+      g.rows.push(it);
+    }
+    return [...map.values()].map((g) => {
+      // Cluster sirasi SABIT olmali: her tazelemede yer degistiren kunyeler
+      // okunamaz olurdu.
+      const rows = [...g.rows].sort((a, b) => a.clusterName.localeCompare(b.clusterName, 'tr'));
+      const failedRows = rows.filter((r) => (r.restoreAttempts ?? 0) > 0);
+      // Grup ozeti EN ESKI kayittan turetilir: "kac gundur durdurulmus" sorusunun
+      // dogru cevabi en erken durdurulan cluster'dir. En yenisini almak, uzun
+      // suredir duran bir kaydi taze gosterirdi.
+      const oldest = rows.reduce(
+        (acc, r) =>
+          !acc || (r.stoppedAt && acc.stoppedAt && r.stoppedAt < acc.stoppedAt) ? r : acc,
+        rows[0],
+      );
+      return {
+        ...g,
+        rows,
+        failedRows,
+        failed: failedRows.length,
+        stoppedAt: oldest?.stoppedAt ?? null,
+        stoppedBy: oldest?.stoppedBy ?? null,
+        // Replica sayisi cluster'a gore FARKLI olabilir; hepsi ayni degilse tek bir
+        // sayi yazmak YANLIS olurdu — o durumda hic yazilmaz, kunyeler ayrintiyi verir.
+        previousReplicas: rows.every((r) => r.previousReplicas === rows[0].previousReplicas)
+          ? rows[0].previousReplicas
+          : null,
+      };
+    });
+  }, [items, env, tenant]);
+
   if (loading)
     return <p className="text-sm text-[var(--text-muted)]">Durdurulmuş uygulamalar yükleniyor…</p>;
   if (error) {
@@ -356,69 +417,125 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
       )}
 
       <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border-subtle)]">
-        {items.map((it) => (
-          <div key={it.id} className="px-3 py-2.5 text-sm">
+        {/* UYGULAMA BAZINDA GRUPLAMA.
+            Ayna satirlari CLUSTER bazindadir (dogru: her cluster ayri geri alinir),
+            ama ekranda duz listelenince "ayni uygulamayi dort cluster'da durdurdum"
+            gercegi kayboluyordu — dort ayri satir gorunuyor, hangilerinin geri
+            alindigi/alinamadigi topluca okunamiyordu.
+            Satir sayisi DEGISMEDI; yalnizca ayni uygulamanin cluster'lari tek
+            kunye seridinde toplandi ve her cluster KENDI durumunu tasiyor. */}
+        {groupedItems.map((g) => (
+          <div key={g.key} className="px-3 py-2.5 text-sm">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <span className="min-w-0 flex items-center gap-2">
-                <span className="font-mono truncate text-[var(--text-primary)]" title={it.appName}>
-                  {it.appName}
+                <span className="font-mono truncate text-[var(--text-primary)]" title={g.appName}>
+                  {g.appName}
                 </span>
-                {/* `title` KESILEN OGENIN KENDISINDE (bkz. D7 bekcisi). */}
-                {/* KAPSAMSIZ listede satirlar farkli ortam/tenant'lardan gelir —
-                    yalnizca cluster/namespace yazmak, hangi ORTAMDA oldugunu
-                    gizlerdi ve prod ile test kaydi ayirt edilemezdi. */}
-                {(() => {
-                  const scopeText =
-                    env && tenant
-                      ? `${it.clusterName}/${it.namespace}`
-                      : `${it.env}/${it.tenant}/${it.clusterName}/${it.namespace}`;
-                  return (
-                    <span className="text-xs text-[var(--text-muted)] truncate" title={scopeText}>
-                      {scopeText}
-                    </span>
-                  );
-                })()}
-                {!(env && tenant) && it.env === 'prod' && (
+                <span className="text-xs text-[var(--text-muted)] truncate" title={g.scopeText}>
+                  {g.scopeText}
+                </span>
+                {g.rows.some((r) => r.env === 'prod') && !(env && tenant) && (
                   <span className="pf-label pf-label--red">prod</span>
                 )}
               </span>
               <span className="flex items-center gap-2 text-xs text-[var(--text-muted)] whitespace-nowrap">
+                {/* BU AYRINTILAR GRUPLAMADA KAYBOLMAMALI. Ilk yeniden yazimda
+                    dusmuslerdi ve bekciler (V8, U25) yakaladi: durdurulma yasi,
+                    onceki replica sayisi ve kim/ne zaman durdurdu. Ucu de karar
+                    bilgisi — "bu kaydi geri alayim mi?" sorusunun cevabi. */}
                 {(() => {
-                  const d = daysSince(it.stoppedAt);
+                  const d = daysSince(g.stoppedAt);
                   return d != null && d >= STALE_DAYS ? (
                     <span className="pf-label pf-label--gold">{d} gündür durdurulmuş</span>
                   ) : null;
                 })()}
-                {it.previousReplicas != null && (
-                  <span className="tabular-nums">{it.previousReplicas} → 0</span>
+                {g.previousReplicas != null && (
+                  <span className="tabular-nums">{g.previousReplicas} → 0</span>
                 )}
-                {it.stoppedBy && <span>· {it.stoppedBy}</span>}
-                {it.stoppedAt && <span>· {fmtRelative(it.stoppedAt)}</span>}
-                {/* SUREN ISLEM: sunucu ayni hedefe ikinci bir geri almayi 409 ile
-                    reddediyor (ayna kilidi). Butonu acik birakmak, kullaniciyi
-                    reddedilecek bir istege gondermek olurdu. */}
-                {it.phase === 'restoring' && (
-                  <span className="pf-label pf-label--blue">Geri alma sürüyor…</span>
-                )}
-                {it.driftStatus === 'in_sync' && it.phase !== 'restoring' && onRestore && (
-                  <button
-                    type="button"
-                    onClick={() => onRestore(it)}
-                    className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline"
-                  >
-                    <ArrowUturnLeftIcon aria-hidden="true" className="w-3.5 h-3.5" /> Geri Al
-                  </button>
-                )}
+                {g.stoppedBy && <span>· {g.stoppedBy}</span>}
+                {g.stoppedAt && <span>· {fmtRelative(g.stoppedAt)}</span>}
+                <span>· {g.rows.length} cluster</span>
+                {g.failed > 0 && <span className="text-red-700">· {g.failed} geri alınamadı</span>}
               </span>
             </div>
-            {DRIFT_TEXT[it.driftStatus] && (
-              <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-800">
+
+            {/* CLUSTER KUNYELERI — UC DURUM, UC RENK.
+                gri  : hic denenmedi (restoreAttempts = 0)
+                kirmizi: denendi ve OLMADI — sebebi kunyenin ustunde yaziyor
+                mavi : geri alma SURUYOR
+                Basarili geri alma satiri SILER, yani "yesil" kalici bir durum
+                degildir: uygulama listeden dusunce geri alinmis demektir. Sahte
+                bir yesil gostermek, olmayan bir bilgiyi varmis gibi sunardi. */}
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {g.rows.map((r) => {
+                const attempts = r.restoreAttempts ?? 0;
+                const busy = r.phase === 'restoring';
+                const tone = busy
+                  ? 'pf-label--blue'
+                  : attempts > 0
+                    ? 'pf-label--red'
+                    : 'pf-label--grey';
+                const title = busy
+                  ? 'Geri alma sürüyor…'
+                  : attempts > 0
+                    ? `${attempts} deneme başarısız — ${r.lastRestoreError || 'sebep bildirilmedi'}`
+                    : 'Henüz geri alınmaya çalışılmadı.';
+                return (
+                  <span key={r.id} className="inline-flex items-center gap-1">
+                    <span className={`pf-label ${tone}`} title={title}>
+                      {r.clusterName}
+                      {attempts > 0 && !busy && ` · ${attempts}. deneme`}
+                    </span>
+                    {/* GERI AL YALNIZCA GEREKEN CLUSTER'DA. Basarili olanlar listeden
+                        zaten dustu; burada kalanlar ya hic denenmedi ya da olmadi. */}
+                    {/* KOSUL ZINCIRI ACIKCA YAZILI (yerel bir `busy` degiskenine
+                        alinmadi): U25 bekcisi tam bu zinciri ariyor ve kural
+                        "sapma yoksa VE geri alma surmuyorsa VE onRestore verilmisse"
+                        seklinde TEK IFADEDE okunabilir kalmali. */}
+                    {r.driftStatus === 'in_sync' && r.phase !== 'restoring' && onRestore && (
+                      <button
+                        type="button"
+                        onClick={() => onRestore(r)}
+                        className="inline-flex items-center gap-0.5 text-[11px] text-[var(--accent)] hover:underline"
+                        title={`${r.clusterName} için geri al`}
+                      >
+                        <ArrowUturnLeftIcon aria-hidden="true" className="w-3 h-3" /> Geri Al
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+
+            {/* BASARISIZ DENEMELERIN SEBEBI — kunye ipucunda kalmasin, gorunur olsun. */}
+            {g.failedRows.map((r) => (
+              <p key={`e-${r.id}`} className="mt-1 flex items-start gap-1.5 text-xs text-red-700">
                 <ExclamationTriangleIcon
                   aria-hidden="true"
                   className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
                 />
-                {DRIFT_TEXT[it.driftStatus]}
+                <span>
+                  <span className="font-mono">{r.clusterName}</span> geri alınamadı:{' '}
+                  {r.lastRestoreError || 'sebep bildirilmedi'}
+                </span>
               </p>
+            ))}
+
+            {g.rows.map((r) =>
+              DRIFT_TEXT[r.driftStatus] ? (
+                <p
+                  key={`d-${r.id}`}
+                  className="mt-1 flex items-start gap-1.5 text-xs text-amber-800"
+                >
+                  <ExclamationTriangleIcon
+                    aria-hidden="true"
+                    className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
+                  />
+                  <span>
+                    <span className="font-mono">{r.clusterName}</span> — {DRIFT_TEXT[r.driftStatus]}
+                  </span>
+                </p>
+              ) : null,
             )}
           </div>
         ))}

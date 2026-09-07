@@ -95,6 +95,11 @@ function normalizeRow(r) {
     phase: r.phase,
     stoppedBy: r.stopped_by,
     stoppedAt: r.stopped_at,
+    // GERI ALMA GECMISI. 0 = hic denenmedi; >0 = denendi ve OLMADI (sebebi
+    // `lastRestoreError`da). Basarili olan satir zaten silinir.
+    restoreAttempts: r.restore_attempts ?? 0,
+    lastRestoreAt: r.last_restore_at ?? null,
+    lastRestoreError: r.last_restore_error ?? null,
     operationId: r.operation_id,
     lastSeenAt: r.last_seen_at,
     driftStatus: r.drift_status,
@@ -201,6 +206,39 @@ async function unlockRestore({ env, tenant, clusterName, namespace, appName }) {
       WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND app_name=$5
         AND phase = 'restoring'`,
     [env, tenant, clusterName, namespace, appName],
+  );
+  return rowCount > 0;
+}
+
+// BASARISIZ GERI ALMA — SONUCU KAYDET.
+//
+// Eskiden basarisiz bir geri alma hicbir yere yazilmiyordu: basarili olan satiri
+// SILIYOR, basarisiz olan ise satiri OLDUGU GIBI birakiyordu. Sonuc: uc kez denenip
+// basarisiz olmus bir kayit, HIC DENENMEMIS bir kayittan ayirt EDILEMIYORDU.
+// Kullanici dort cluster'da durdurup geri aldiginda ikisi olmadiysa, ekranda o iki
+// satir "durdurulmus" diye duruyor ve NEDEN kaldiklari hicbir yerde yazmiyordu.
+//
+// Kilit birakma ile TEK UPDATE'te birlesir: iki ayri sorgu, arada bir cokme olursa
+// kilidi birakip sonucu yazmamak (ya da tersi) gibi yarim durumlar uretirdi.
+async function recordRestoreFailure({ env, tenant, clusterName, namespace, appName, error = '' }) {
+  const { rowCount } = await db.query(
+    `UPDATE scalex_state_mirror
+        SET phase = CASE WHEN phase = 'restoring' THEN 'scaled_down' ELSE phase END,
+            restore_attempts = ISNULL(restore_attempts, 0) + 1,
+            last_restore_at = GETUTCDATE(),
+            last_restore_error = $6,
+            updated_at = GETUTCDATE()
+      WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND namespace=$4 AND app_name=$5`,
+    [
+      env,
+      tenant,
+      clusterName,
+      namespace,
+      appName,
+      // Kolon 1000 karakter; playbook detayi bundan uzun olabilir. Kirpma BURADA
+      // yapilir — DB'nin sessizce kesmesi (ya da patlamasi) yerine.
+      String(error || '').slice(0, 1000) || 'Sebep bildirilmedi.',
+    ],
   );
   return rowCount > 0;
 }
@@ -370,6 +408,7 @@ module.exports = {
   listMirror,
   upsertStopped,
   clearRestored,
+  recordRestoreFailure,
   refreshDrift,
   adopt,
 };
