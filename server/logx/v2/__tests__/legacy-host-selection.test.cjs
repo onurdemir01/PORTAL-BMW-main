@@ -216,6 +216,9 @@ test('EG8 elle giris YOKSA `manualHosts` kayda HIC yazilmaz', async () => {
 // Bu depoda tekrar eden hata sinifi: mantik yazilir, test edilir ve GERCEK CAGRI
 // YOLUNDAN hic gecmez. `allowManual` route'ta okunmazsa elle giris HIC calismaz;
 // denetim kaydi yazilmazsa is "izlenebilir" olmaktan cikar.
+// `legacy.cjs` kaynagi: bicim kapilari ve envanter olcutu KOD olarak dogrulanir.
+const LEGACY_SRC = fs.readFileSync(path.join(__dirname, '..', 'legacy.cjs'), 'utf8');
+
 const ROUTE_SRC = fs
   .readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8')
   .split('\n')
@@ -230,11 +233,14 @@ test('EG9 route `allowManual` bayragini ACIKCA okuyor (varsayilan KAPALI)', () =
     /const allowManual = req\.body\?\.allowManual === true;/,
     'bayrak okunmuyor — elle giris ya hic calismaz ya da her zaman acik olur',
   );
-  assert.match(
-    ROUTE_SRC,
-    /legacy\.discover\(row, app, hosts, \{ allowManual \}\)/,
-    'bayrak `discover`a GECIRILMIYOR',
-  );
+  // BICIM DEGIL KURAL. Onceki desen cagriyi TEK SATIR halinde ariyordu; prettier
+  // cagriyi cok satira bolunce bekci, bayrak DOGRU sekilde gecirilirken kirmizi
+  // dondu. Olcut: `legacy.discover` cagrisinin argumanlari arasinda `allowManual`
+  // gecmesi. Bosluklar tekillenir, satir sonlari onemsizlesir.
+  const flatRoute = ROUTE_SRC.replace(/\s+/g, ' ');
+  const call = (flatRoute.match(/legacy\.discover\(([^)]*)\)/) || [])[1] || '';
+  assert.ok(call.length > 0, '`legacy.discover` cagrisi bulunamadi');
+  assert.match(call, /allowManual/, 'bayrak `discover`a GECIRILMIYOR');
 });
 
 test('EG10 elle girilen sunucular DENETIM KAYDINA yaziliyor', () => {
@@ -257,4 +263,76 @@ test('EG11 elle girilen uygulama adi da YETKI KAPISINDAN geciyor', () => {
   const callAt = body.indexOf('legacy.discover(');
   assert.ok(gateAt > 0, 'yetki kapisi yok');
   assert.ok(gateAt < callAt, 'yetki kapisi kesiften SONRA — is coktan baslamis olur');
+});
+
+// -- ELLE GIRILEN UYGULAMA ADI ------------------------------------------------
+//
+// Sunucu adlari icin siki bir bicim kapisi VARDI (SAFE_MANUAL_HOST_RE) ama UYGULAMA
+// adi icin HICBIR kontrol yoktu. Envanterden secilen adlar zaten guvenliydi; ekrana
+// serbest metin yolu eklenince (`AppSearchStep` "Listede yok — ... adiyla devam et")
+// bu bosluk gercek bir yol haline geldi: `app` degeri `app_name` olarak AWX
+// extra_vars'ina, oradan playbook'a ve kabuk yollarina gidiyor.
+
+test('EG16 uygulama adi icin BICIM kapisi var', () => {
+  assert.match(
+    LEGACY_SRC,
+    /SAFE_MANUAL_APP_RE\s*=/,
+    "uygulama adi icin bicim kapisi yok — serbest metin dogrudan extra_vars'a gider",
+  );
+  // Kapi GERCEKTEN uygulanmali; tanimlayip kullanmamak tam da kacirilan sey olurdu.
+  const fn = LEGACY_SRC.slice(LEGACY_SRC.indexOf('async function discover('));
+  assert.match(
+    fn.slice(0, 2000),
+    /SAFE_MANUAL_APP_RE\.test\(/,
+    'bicim kapisi tanimli ama `discover` icinde UYGULANMIYOR',
+  );
+});
+
+test('EG17 bos uygulama adi reddedilir', () => {
+  const fn = LEGACY_SRC.slice(LEGACY_SRC.indexOf('async function discover('));
+  assert.match(
+    fn.slice(0, 2000),
+    /Uygulama adı zorunlu/,
+    'bos ad kontrolu yok — is adsiz baslar ve playbook bos `app_name` ile calisir',
+  );
+});
+
+test('EG18 "envanterde var mi" olcutu HOST SAYISI degil', () => {
+  // Sunucusu olmayan bir uygulama da envanterde OLABILIR. Olcut "host dondu mu"
+  // olsaydi, envanterdeki bir uygulama "elle girilmis" diye isaretlenirdi.
+  const fn = LEGACY_SRC.slice(LEGACY_SRC.indexOf('async function discover('));
+  const window = fn.slice(0, 3000);
+  assert.match(window, /searchApps\(/, 'envanter kontrolu uygulama listesinden yapilmiyor');
+  assert.doesNotMatch(
+    window,
+    /appInInventory\s*=\s*inventoryHosts\.length/,
+    'envanterde varlik HOST SAYISINDAN turetiliyor — yanlis olcut',
+  );
+});
+
+test('EG19 envanter OKUNAMAZSA "elle girildi" diye ISARETLENMEZ', () => {
+  // Bilinmezligi suclama olarak yazmak denetim kaydini guvenilmez yapardi:
+  // DB kesintisinde her is "elle girilmis" gorunurdu.
+  const fn = LEGACY_SRC.slice(LEGACY_SRC.indexOf('async function discover('));
+  const catchBlock = fn.slice(fn.indexOf('searchApps('), fn.indexOf('searchApps(') + 800);
+  assert.match(
+    catchBlock,
+    /catch\s*\{[\s\S]{0,400}appInInventory\s*=\s*true/,
+    'envanter okunamayinca is "elle girilmis" sayiliyor — denetim kaydi guvenilmez olur',
+  );
+});
+
+test('EG20 elle girilen UYGULAMA da denetim kaydina yazilir', () => {
+  assert.match(
+    ROUTE_SRC,
+    /v2_legacy_manual_app/,
+    'elle girilen uygulama adi denetime yazilmiyor — "bu is hangi ada gitti" cevapsiz kalir',
+  );
+  // Kosula bagli olmali: her is "elle girilmis" diye yazilmamali.
+  const flat = ROUTE_SRC.replace(/\s+/g, ' ');
+  assert.match(
+    flat,
+    /if \(manualApp\)/,
+    'denetim kaydi kosulsuz yaziliyor — envanterden secilen adlar da "elle" gorunur',
+  );
 });

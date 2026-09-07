@@ -139,6 +139,46 @@ function checkPlaybookRegistry() {
   );
 }
 
+// ── 4b. Ortam eki haritasi: QA satiri seed'de YOK ───────────────────────────
+function checkEnvSuffixMap() {
+  // BILGILENDIRME AMACLI BIR KONTROL, TUM ON KONTROLU DUSURMEMELI. Ilk halinde
+  // dosyayi dogrudan okuyordu ve dosya yoksa `read()` firlatip preflight'i komple
+  // cokertiyordu (PF4-PF8 sahte deposunda tam olarak bu oldu). Okunamazsa
+  // "yok" DEMEZ — "dogrulanamadi" der; bilmemek, yanlis iddiadan iyidir.
+  let setup;
+  try {
+    setup = read('server/db/mssql-setup.cjs');
+  } catch {
+    warn(
+      'Ortam eki haritasi dogrulanamadi',
+      'server/db/mssql-setup.cjs okunamadi.',
+      'QA ortami icin `logx_env_suffix_map` satirini Admin ekranindan elle dogrulayin.',
+    );
+    return;
+  }
+  const seed = setup.slice(
+    setup.indexOf('const ENV_SUFFIX_SEED'),
+    setup.indexOf('async function seedEnvSuffixMap'),
+  );
+  const labels = [...seed.matchAll(/env_label:\s*'([^']+)'/g)].map((m) => m[1]);
+  if (labels.includes('QA')) {
+    ok('Ortam eki haritasi', `seed satirlari: ${labels.join(', ')}`);
+    return;
+  }
+  // BILEREK SEED'E EKLENMEDI. Ekin harfi (`-Q` mi baska bir sey mi) bu kurumun
+  // konvansiyonuna bagli ve DOGRULANMADI. Yanlis bir ek seed'lemek, prod'da yanlis
+  // ortam etiketi uretir ve sonradan elle temizlenmesi gerekir — bilmemek,
+  // uydurmaktan iyidir. Kullanici Admin ekranindan dogru eki girmeli.
+  warn(
+    'Ortam eki haritasi: QA satiri YOK',
+    `logx_env_suffix_map seed'inde yalnizca ${labels.join(', ')} var.`,
+    'QA ortamindaki EAR klasorleri ortam etiketi ALMAZ (bos gorunur). Dogru son eki ' +
+      'Admin > LogX Yapilandirma > Ortam Eki Haritasi ekranindan ekleyin. ' +
+      "Seed'e yazilmadi cunku ekin harfi dogrulanmadi; yanlis bir deger prod'da " +
+      'yanlis ortam etiketi uretirdi.',
+  );
+}
+
 // ── 5. CI kapilari gercekten kapali mi ──────────────────────────────────────
 function checkGates() {
   const check = read('scripts/check-ascii.cjs')
@@ -203,5 +243,6 @@ const v = checkScalexPackage();
 if (v) checkManualCopies(v);
 checkEnvExample();
 checkPlaybookRegistry();
+checkEnvSuffixMap();
 checkGates();
 process.exit(report());
