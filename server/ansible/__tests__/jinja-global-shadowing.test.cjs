@@ -85,6 +85,14 @@ function expressionParts(src) {
   const lines = src.split('\n');
   let thatIndent = -1;
 
+  // Jinja bloklari satirlar arasina yayilabilir. Onceki satir-bazli matchAll yalniz
+  // ayni satirda acilip kapanan bloklari goruyordu; tam da cok satirli `>-` icindeki
+  // rezerv `namespace` kullanimlarini sessizce atliyordu.
+  for (const m of src.matchAll(/\{\{([\s\S]*?)\}\}|\{%([\s\S]*?)%\}/g)) {
+    const line = src.slice(0, m.index).split('\n').length;
+    parts.push({ line, text: m[1] ?? m[2], raw: lines[line - 1] });
+  }
+
   lines.forEach((line, i) => {
     const indent = line.length - line.trimStart().length;
     const push = (text) => {
@@ -101,9 +109,6 @@ function expressionParts(src) {
     const w = line.match(/\bwhen:\s*(.+)$/);
     if (w) push(w[1]);
 
-    for (const m of line.matchAll(/\{\{([\s\S]*?)\}\}|\{%([\s\S]*?)%\}/g)) {
-      push(m[1] ?? m[2]);
-    }
   });
   return parts;
 }
@@ -168,4 +173,16 @@ test('JG2 tespit mantigi GERCEKTEN calisiyor (yanlis-negatif korumasi)', () => {
   for (const l of elenmeli) {
     assert.equal(bareUses(l, 'namespace').length, 0, `yanlis pozitif: ${l}`);
   }
+});
+
+test('JG3 cok satirli Jinja blogu da taranir', () => {
+  const fixture = `ns_list: >-
+    {{ (namespaces | default([namespace | default('')]))
+       | map('string') | list }}`;
+  const parts = expressionParts(fixture);
+  assert.equal(parts.length, 1, 'cok satirli Jinja blogu bulunamadi');
+  assert.ok(
+    bareUses(parts[0].text, 'namespace').length > 0,
+    'cok satirli bloktaki rezerv Jinja global kullanimi yakalanmadi',
+  );
 });
