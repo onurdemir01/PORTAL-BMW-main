@@ -56,6 +56,33 @@
       }}
 
   tasks:
+    # KIMLIK DOSYASI KAPISI — HER SEYDEN ONCE.
+    #
+    # Uretimde (AWX #3296360) kimlik dosyasi bulunamadigi halde is CALISMAYA DEVAM
+    # ETTI: parola bos kaldi, `oc login` patladi ve kullanici iki adim sonrasinin
+    # belirtisini ("Missing or incomplete configuration info ... ~/.kube/config")
+    # gordu — yapacak hicbir seyin olmadigi bir yere yonlendirildi.
+    #
+    # Bu gorev, o zincirin ILK halkasini kesiyor: dosya yoksa is BURADA, denenen
+    # yollari TEK TEK yazarak durur.
+    - name: "Kimlik dosyasi bulundu mu"
+      ansible.builtin.assert:
+        that:
+          - logx_credentials_file | length > 0
+        fail_msg: >-
+          Kimlik dosyasi (credentials.yaml) bulunamadi. Denenen yollar:
+          {{ logx_credentials_candidates | join(' , ') }} .
+          Bu playbook AWX reposunda bmw_openshift_jobs/ ile ayni kok altinda
+          durmalidir; tasindiysa yol derinligi degismis olabilir.
+        success_msg: "Kimlik dosyasi bulundu: {{ logx_credentials_file }}"
+      vars:
+        logx_credentials_candidates:
+          - "{{ playbook_dir }}/../../../bmw_openshift_jobs/global_variables/credentials.yaml"
+          - "{{ playbook_dir }}/../../bmw_openshift_jobs/global_variables/credentials.yaml"
+          - "{{ playbook_dir }}/../bmw_openshift_jobs/global_variables/credentials.yaml"
+        logx_credentials_file: >-
+          {{ lookup('first_found', logx_credentials_candidates, errors='ignore') | default('', true) }}
+
     - name: "Validate required input variables"
       ansible.builtin.assert:
         that:
@@ -90,11 +117,45 @@
   become: false
 
   vars_files:
-    # credentials.yaml ZORUNLU: parolalar (vault) buradan gelir; portal yalnizca
-    # anahtarin ADINI (credential_key) tasir.
-    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
-    # openshift_inventory_vars.yaml OPSIYONEL (geriye uyum icin).
-    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
+    # KIMLIK DOSYASI: YOL DERINLIGINDEN BAGIMSIZ ARANIR.
+    #
+    # URETIM ARIZASI (AWX #3296360/#3296365/#3296411): bu satir
+    # `../../bmw_openshift_jobs/...` idi, yani playbook'un AWX reposunda IKI seviye
+    # derinde durdugunu varsayiyordu. Playbook `bmw_portal/logx/ocp/` altina (UC seviye)
+    # tasininca kimlik dosyasi bulunamadi. Ansible bunu HATA SAYMADI: sessizce devam etti,
+    # `lookup('vars', credential_key)` BOS dondu, `oc login --password=''` patladi ve
+    # ekranda "Missing or incomplete configuration info" yazdi — yani GERCEK HATANIN
+    # IKI ADIM SONRASININ belirtisi.
+    #
+    # Hangi modulun ayakta kaldigi bunu birebir dogruluyordu: telnet_openshift/ ve
+    # opsx_openshift_dump/ (iki seviye) calisiyor, logx/ocp/ (uc seviye) kirilmisti.
+    #
+    # Artik birden fazla derinlik denenir: playbook AWX reposunda nereye tasinirsa
+    # tasinsin kimlik dosyasi bulunur.
+    #
+    # DOSYA BULUNAMAZSA NE OLUR: burada `errors='ignore'` VAR, ama bu SESSIZLIK
+    # DEMEK DEGIL. Ilk tasarimda lookup'in sert patlamasi birakilmisti; o zaman bu
+    # uc playbook YEREL OLARAK HIC `--syntax-check` edilemiyordu (kimlik dosyasi
+    # repo disinda). Kontrol, hemen asagidaki `Kimlik dosyasi bulundu mu` gorevine
+    # tasindi: orada denenen yollar TEK TEK yazilarak is DURDURULUR. Boylece hem
+    # mesaj daha acik, hem playbook yerel olarak dogrulanabilir kaliyor.
+    - >-
+      {{ lookup('first_found', [
+           playbook_dir ~ '/../../../bmw_openshift_jobs/global_variables/credentials.yaml',
+           playbook_dir ~ '/../../bmw_openshift_jobs/global_variables/credentials.yaml',
+           playbook_dir ~ '/../bmw_openshift_jobs/global_variables/credentials.yaml'
+         ], errors='ignore') | default('/dev/null', true) }}
+    # openshift_inventory_vars.yaml OPSIYONEL: portal artik api_url'i extra_vars ile
+    # gonderiyor. Dosya yoksa playbook CALISMAYA DEVAM EDER (bu yuzden burada
+    # `errors='ignore'` VAR — kimlik dosyasindan farki bu); yalnizca portal metadata
+    # gondermeyen (eski) cagrilarda geriye donus icin durur. Derinlikler yukaridakiyle
+    # AYNI sirada denenir.
+    - >-
+      {{ lookup('first_found', [
+           playbook_dir ~ '/../../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml',
+           playbook_dir ~ '/../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml',
+           playbook_dir ~ '/../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'
+         ], errors='ignore') | default('/dev/null', true) }}
 
   vars:
     # /bin/oc ILK: kurumsal bastion'larda oc gercekte burada.
@@ -152,10 +213,17 @@
               'namespace': '',
               'status': 'error',
               'error': (
+              (
                 'OCP kullanici adi tanimli degil (oc login --username). Admin > LogX '
                 ~ 'Yapilandirma > OCP Cluster Hiyerarsisi satirindaki "OCP Kullanici Adi" '
                 ~ "alanini doldurun ya da OCP Calistirma Ayarlari'nda genel varsayilani girin: "
                 ~ (item.cluster_name | default('?'))
+              ) if (resolved_username | trim | length == 0) else (
+                'Cluster kimligi cozulemedi (parola bos). credential_key='
+                ~ (item.credential_key | default('?')) ~ ' — kimlik dosyasi okunamadi '
+                ~ 'ya da bu anahtar credentials.yaml icinde tanimli degil: '
+                ~ (item.cluster_name | default('?'))
+              )
               ) if (has_portal_meta | bool) or (inv_has | bool) else (
                 'Cluster baglanti bilgisi cozulemedi: '
                 ~ (item.tenant | default('?')) ~ '_' ~ (item.env | default('?')) ~ '/'
@@ -187,7 +255,8 @@
           {{
             item.cluster_name is defined and
             ((has_portal_meta | bool) or (inv_has | bool)) and
-            (resolved_username | trim | length > 0)
+            (resolved_username | trim | length > 0) and
+            (resolved_password | trim | length > 0)
           }}
       loop: "{{ my_ocp_clusters }}"
       loop_control:
@@ -242,7 +311,8 @@
               {{
                 item.cluster_name is defined and
                 ((has_portal_meta | bool) or (inv_has | bool)) and
-                (resolved_username | trim | length > 0)
+                (resolved_username | trim | length > 0) and
+                (resolved_password | trim | length > 0)
               }}
           loop: "{{ my_ocp_clusters }}"
           loop_control:
@@ -331,12 +401,15 @@
             }
             trap cleanup EXIT
 
-            "{{ oc_bin }}" login \
+            if ! login_err="$("{{ oc_bin }}" login \
               --server={{ target.url | quote }} \
               --username={{ target.username | quote }} \
               --password={{ target.password | quote }} \
               --insecure-skip-tls-verify=true \
-              >/dev/null
+              2>&1 >/dev/null)"; then
+              echo "LOGIN_FAILED: ${login_err}" >&2
+              exit 1
+            fi
 
             # DIKKAT: bu blok icindeki yorumlarda KESME ISARETI KULLANMAYIN. Ansible
             # argumanlari bolerken tek tirnaklari sayar; tek basina bir kesme isareti
