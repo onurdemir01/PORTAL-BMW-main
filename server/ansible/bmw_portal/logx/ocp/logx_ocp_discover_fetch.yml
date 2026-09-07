@@ -52,6 +52,16 @@
   become: false
 
   vars:
+    # AWX'TEKI KOPYA GUNCEL MI? — bu damga o soruyu portalin cevaplamasi icin var.
+    #
+    # Bu playbook AWX projesine ELLE kopyalanir. Kopyalanmadiginda ya da eksik
+    # kopyalandiginda AWX ESKI surumu kosar; portalda gorunen hata repodaki
+    # (duzeltilmis) koda ait olur ve teshis SAATLERCE yanlis yerde aranir —
+    # 2026-09-07'de tam olarak bu oldu: #3297277 zaten duzeltilmisti.
+    #
+    # Deger `npm run playbook:rev` ile uretilir (dosya iceriginin sha256'sinin ilk
+    # 10 hanesi). ELLE DEGISTIRMEYIN — bekci PV1 icerikle damgayi karsilastirir.
+    logx_playbook_revision: "f0823b9191"
     # `namespace` BIR JINJA GLOBAL'IDIR — degiskeniniz degil.
     #
     # Burada eskiden `namespace | default('')` yaziyordu. `namespace` extra_var olarak
@@ -110,6 +120,19 @@
           - "{{ playbook_dir }}/../bmw_openshift_jobs/global_variables/credentials.yaml"
         logx_credentials_file: >-
           {{ lookup('first_found', logx_credentials_candidates, errors='ignore') | default('', true) }}
+
+    # DAMGA EN BASTA YAYINLANIR.
+    #
+    # `logx_result`i yayinlayan set_stats en SONDADIR; is ondan once duserse portal
+    # HICBIR artifact goremez ve "AWX'teki kopya eski mi" sorusunu soramaz —
+    # #3297277'de tam olarak bu oldu. set_stats cagrilari birikir, bu yuzden damgayi
+    # burada, hicbir seyin patlayamayacagi noktada yayinlamak onu ARIZA ANINDA DA
+    # okunabilir yapar. Damganin YOKLUGU da bir cevaptir: kopya damgadan eskidir.
+    - name: "Publish the playbook revision stamp"
+      ansible.builtin.set_stats:
+        data:
+          logx_playbook_revision: "{{ logx_playbook_revision }}"
+        per_host: false
 
     - name: "Validate required input variables"
       ansible.builtin.assert:
