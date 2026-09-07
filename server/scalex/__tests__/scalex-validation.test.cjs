@@ -1178,7 +1178,7 @@ test('I1 portal kaynaginda HIC "chaos" kalmadi (yorumlar dahil)', () => {
       //     okumak ZORUNDA, yoksa bugun durdurulmus uygulamalar geri alinamaz.
       //   * `chaos-scale-job`    — bastion'daki gecici calisma dizini. Yeniden
       //     adlandirmak, ust dizinde yazma izni olmayan bir host'ta isi dusururdu
-      //     (bkz. scalex_file/README.md). Sozlesmenin parcasi degil, gecici alan.
+      //     (bkz. bmw_portal/scalex/README.md). Sozlesmenin parcasi degil, gecici alan.
       const cleaned = txt.replace(/chaos-scale-state-|chaos-scale-job/g, '');
       if (/chaos/i.test(cleaned)) offenders.push(path.relative(process.cwd(), full));
     }

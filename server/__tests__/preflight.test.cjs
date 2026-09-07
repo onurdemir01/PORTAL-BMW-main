@@ -40,9 +40,9 @@ function withBrokenCopy(mutate, fn) {
     'scripts/check-ascii.cjs',
     'scripts/preflight.cjs',
     'server/scalex/result.cjs',
-    'server/ansible/scalex_file/scalex_app/VERSION',
-    'server/ansible/scalex_file/scalex_app/PACKAGE_MANIFEST',
-    'server/ansible/scalex_file/scalex_app/files/scalex_runner.sh',
+    'server/ansible/bmw_portal/scalex/scalex_app/VERSION',
+    'server/ansible/bmw_portal/scalex/scalex_app/PACKAGE_MANIFEST',
+    'server/ansible/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
     'server/log.cjs',
   ]) {
     const dst = path.join(tmp, rel);
@@ -83,7 +83,10 @@ test('PF3 ELLE adimlar cikis kodunu DUSURMEZ (CI makinesinde AWX yok)', () => {
 test('PF4 surum ucluSU ayrisirsa DUSER', () => {
   const r = withBrokenCopy(
     (tmp) =>
-      fs.writeFileSync(path.join(tmp, 'server/ansible/scalex_file/scalex_app/VERSION'), '4\n'),
+      fs.writeFileSync(
+        path.join(tmp, 'server/ansible/bmw_portal/scalex/scalex_app/VERSION'),
+        '4\n',
+      ),
     (tmp) => run(tmp),
   );
   assert.equal(r.code, 1, 'surum ayrismasi yakalanmadi');
@@ -93,7 +96,10 @@ test('PF4 surum ucluSU ayrisirsa DUSER', () => {
 test('PF5 runner ozeti manifest ile uyusmazsa DUSER', () => {
   const r = withBrokenCopy(
     (tmp) => {
-      const f = path.join(tmp, 'server/ansible/scalex_file/scalex_app/files/scalex_runner.sh');
+      const f = path.join(
+        tmp,
+        'server/ansible/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
+      );
       fs.appendFileSync(f, '\n# degistirildi\n');
     },
     (tmp) => run(tmp),

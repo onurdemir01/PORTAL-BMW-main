@@ -29,7 +29,7 @@ export interface TelnetRunResult {
 }
 
 /** Playbook'un `set_stats` ile yayinladigi SONUC SOZLESMESI (bkz.
- *  server/ansible/playbooks/ocp_telnet_control.yml son play'i).
+ *  server/ansible/bmw_portal/telnet_openshift/telnet_openshift.yaml son play'i).
  *
  *  NEDEN VAR: playbook AÇIK/KAPALI satirlarini yalnizca `debug` mesaji olarak
  *  uretiyordu ve portal bunlari HIC okumuyordu. Sonuc: tum portlar KAPALI olsa bile

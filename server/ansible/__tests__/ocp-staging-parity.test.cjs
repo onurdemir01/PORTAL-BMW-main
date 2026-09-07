@@ -16,13 +16,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DIR = path.join(__dirname, '..', 'playbooks');
-const OCP_FETCH = 'logx_ocp_discover_fetch.yml';
+// YOLLAR TEK KAYNAKTAN (server/ansible/paths.cjs). Agac AWX'in `bmw_portal/`
+// yapisinin aynasi oldugu icin duz `readdirSync` ARTIK YETMEZ: alt klasorlerdeki
+// playbook'lar sessizce kontrol disi kalirdi.
+const { allPlaybookFiles, MIN_PLAYBOOK_COUNT, PLAYBOOKS, abs } = require('../paths.cjs');
+const OCP_FETCH = abs(PLAYBOOKS.logxOcpDiscoverFetch);
 
 // Yorum satirlari haric kod: dosya basindaki mimari notlar 'dzdo'yu ADIYLA aniyor.
 function code(file) {
   return fs
-    .readFileSync(path.join(DIR, file), 'utf8')
+    .readFileSync(file, 'utf8')
     .split('\n')
     .filter((l) => !/^\s*#/.test(l))
     .join('\n');
@@ -67,11 +70,10 @@ test(`${OCP_FETCH}: staging dizinini OLUSTURMAYA calisan gorev yok (legacy parit
 });
 
 test('HICBIR playbook `ingest_url` kullanmiyor — portal da artik gondermemeli', () => {
-  for (const file of fs.readdirSync(DIR).filter((f) => f.endsWith('.yml'))) {
-    assert.ok(
-      !/ingest_url/.test(fs.readFileSync(path.join(DIR, file), 'utf8')),
-      `${file}: ingest_url`,
-    );
+  const files = allPlaybookFiles();
+  assert.ok(files.length >= MIN_PLAYBOOK_COUNT, `yalnizca ${files.length} playbook bulundu`);
+  for (const file of files) {
+    assert.ok(!/ingest_url/.test(fs.readFileSync(file, 'utf8')), `${file}: ingest_url`);
   }
   const ocp = fs
     .readFileSync(path.join(__dirname, '..', '..', 'logx', 'v2', 'ocp.cjs'), 'utf8')
@@ -143,7 +145,7 @@ function parseTasks(text) {
 }
 
 test(`${OCP_FETCH}: when: ile korunan her set_fact play basinda ILKLENIR`, () => {
-  const text = fs.readFileSync(path.join(DIR, OCP_FETCH), 'utf8');
+  const text = fs.readFileSync(OCP_FETCH, 'utf8');
   const { tasks } = parseTasks(text);
 
   const initTask = tasks.find((t) => t.name.startsWith('Initialize working facts'));

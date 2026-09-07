@@ -17,27 +17,32 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DIR = path.join(__dirname, '..', 'playbooks');
+// YOLLAR TEK KAYNAKTAN (server/ansible/paths.cjs). Agac AWX'in `bmw_portal/`
+// yapisinin aynasi oldugu icin duz `readdirSync` ARTIK YETMEZ: alt klasorlerdeki
+// playbook'lar sessizce kontrol disi kalirdi.
+const { allPlaybookFiles, MIN_PLAYBOOK_COUNT, PLAYBOOKS, abs } = require('../paths.cjs');
 const OCP_PLAYBOOKS = [
-  'logx_ocp_namespace_discovery.yml',
-  'logx_ocp_discover_fetch.yml',
-  'logx_ocp_app_discovery.yml',
-];
+  PLAYBOOKS.logxOcpNamespaceDiscovery,
+  PLAYBOOKS.logxOcpDiscoverFetch,
+  PLAYBOOKS.logxOcpAppDiscovery,
+].map(abs);
 
 function read(file) {
-  return fs.readFileSync(path.join(DIR, file), 'utf8');
+  return fs.readFileSync(file, 'utf8'); // toplayici MUTLAK yol dondurur
 }
 
 for (const file of OCP_PLAYBOOKS) {
   test(`${file}: oc login CIPLAK {{ username }} kullanmaz`, () => {
-    const loginArgs = read(file).split('\n').filter((l) => /--username=/.test(l));
+    const loginArgs = read(file)
+      .split('\n')
+      .filter((l) => /--username=/.test(l));
     assert.ok(loginArgs.length > 0, 'playbook oc login yapmali');
     for (const line of loginArgs) {
       // Cozulmus deger bir loop degiskeninden gelmeli (cluster. / unit. / target.).
       assert.match(
         line,
         /--username=\{\{\s*(cluster|unit|target)\.username\s*\|\s*quote\s*\}\}/,
-        `AWX inventory dosyasina bagimli ciplak degisken: ${line.trim()}`
+        `AWX inventory dosyasina bagimli ciplak degisken: ${line.trim()}`,
       );
     }
   });
@@ -57,14 +62,21 @@ for (const file of OCP_PLAYBOOKS) {
     assert.match(
       read(file),
       /cluster_exists:[\s\S]{0,400}?resolved_username \| trim \| length > 0/,
-      'cluster_exists kullanici adini kontrol etmeli'
+      'cluster_exists kullanici adini kontrol etmeli',
     );
   });
 
   test(`${file}: portal metadata'si (api_url + credential_key + username) belgelenmis`, () => {
-    const header = read(file).split('\n').filter((l) => l.startsWith('#')).join('\n');
+    const header = read(file)
+      .split('\n')
+      .filter((l) => l.startsWith('#'))
+      .join('\n');
     assert.match(header, /username/, 'baslikta username alani gecmeli');
-    assert.match(header, /ASIL KAYNAK PORTALDIR|api_url/, 'portal metadata sozlesmesi belgelenmeli');
+    assert.match(
+      header,
+      /ASIL KAYNAK PORTALDIR|api_url/,
+      'portal metadata sozlesmesi belgelenmeli',
+    );
   });
 }
 
@@ -79,10 +91,10 @@ test('overall_status bastan/sondan bosluk BIRAKMAZ (Jinja bosluk denetimi)', () 
     assert.ok(idx > 0, `${file}: overall_status yayinlanmali`);
     const block = text.slice(idx, idx + 1400);
     const setTags = block.match(/\{%-?\s*set /g) || [];
-    if (setTags.length === 0) continue;                 // tek satirlik ifade — sizinti yok
+    if (setTags.length === 0) continue; // tek satirlik ifade — sizinti yok
     assert.ok(
       setTags.every((t) => t.startsWith('{%-')),
-      `${file}: overall_status icindeki her {% set %} '{%-' ile baslamali`
+      `${file}: overall_status icindeki her {% set %} '{%-' ile baslamali`,
     );
     assert.match(block, /\{%-[^%]*-%\}/, `${file}: set etiketleri '-%}' ile bitmeli`);
     assert.match(block, /\{\{-/, `${file}: cikti ifadesi '{{-' ile baslamali`);
@@ -119,8 +131,14 @@ test('kayit sonucu uzerinden donen label ifadeleri DOGRU dongu degiskenine bakiy
     let src = null;
     lines.forEach((line, i) => {
       const lp = /^\s*loop:\s*"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\.results/.exec(line);
-      if (lp) { src = lp[1]; return; }
-      if (/^\s*loop:/.test(line)) { src = null; return; }
+      if (lp) {
+        src = lp[1];
+        return;
+      }
+      if (/^\s*loop:/.test(line)) {
+        src = null;
+        return;
+      }
       const lab = /^\s*label:\s*"(.+)"\s*$/.exec(line);
       if (!lab || !src || !(src in loopVarOf)) return;
       const expected = loopVarOf[src];
@@ -128,7 +146,7 @@ test('kayit sonucu uzerinden donen label ifadeleri DOGRU dongu degiskenine bakiy
         const seg = m[1];
         assert.ok(
           seg === expected || ASYNC_FIELDS.has(seg),
-          `${file}:${i + 1}: label 'item.${seg}' diyor ama '${src}' gorevinin dongu degiskeni '${expected}'`
+          `${file}:${i + 1}: label 'item.${seg}' diyor ama '${src}' gorevinin dongu degiskeni '${expected}'`,
         );
       }
     });
@@ -148,15 +166,16 @@ test('kayit sonucu uzerinden donen label ifadeleri DOGRU dongu degiskenine bakiy
 // Tek guvenli kural: bu playbook'larda kacirilmis apostrof HIC kullanilmasin;
 // apostrof gereken metin CIFT TIRNAKLI string icine yazilsin.
 
-test('OCP playbook\'larinda kacirilmis apostrof (\\\') YOK', () => {
+test("OCP playbook'larinda kacirilmis apostrof (\\') YOK", () => {
   for (const file of OCP_PLAYBOOKS) {
-    const bad = read(file).split('\n')
+    const bad = read(file)
+      .split('\n')
       .map((line, i) => ({ line, no: i + 1 }))
       .filter(({ line }) => line.includes("\\'"));
     assert.deepEqual(
       bad.map((b) => `${file}:${b.no}: ${b.line.trim()}`),
       [],
-      'apostrof iceren metin cift tirnakli string icine alinmali'
+      'apostrof iceren metin cift tirnakli string icine alinmali',
     );
   }
 });
@@ -167,7 +186,7 @@ test('hata mesajindaki apostrof CIFT TIRNAKLI string icinde', () => {
     assert.match(
       read(file),
       /~ "alanini doldurun ya da OCP Calistirma Ayarlari'nda genel varsayilani girin: "/,
-      `${file}: kullanici adi hata mesaji cift tirnakli olarak durmali`
+      `${file}: kullanici adi hata mesaji cift tirnakli olarak durmali`,
     );
   }
 });
@@ -180,14 +199,25 @@ test('Jinja ifadelerinin ICINE `#` yorum satiri konmamis', () => {
     // Sabit bir girinti esigi kullanmak ic ice bloklarda (vars: altindaki anahtarlar)
     // yanlis pozitif verirdi.
     let keyIndent = null;
-    read(file).split('\n').forEach((line, i) => {
-      const m = /^(\s*)\S.*:\s*>-\s*$/.exec(line);
-      if (m) { keyIndent = m[1].length; return; }
-      if (keyIndent === null) return;
-      if (line.trim() === '') return;
-      const indent = line.length - line.trimStart().length;
-      if (indent <= keyIndent) { keyIndent = null; return; }
-      assert.ok(!/^\s*#/.test(line), `${file}:${i + 1}: katlamali skaler icinde '#' yorum satiri`);
-    });
+    read(file)
+      .split('\n')
+      .forEach((line, i) => {
+        const m = /^(\s*)\S.*:\s*>-\s*$/.exec(line);
+        if (m) {
+          keyIndent = m[1].length;
+          return;
+        }
+        if (keyIndent === null) return;
+        if (line.trim() === '') return;
+        const indent = line.length - line.trimStart().length;
+        if (indent <= keyIndent) {
+          keyIndent = null;
+          return;
+        }
+        assert.ok(
+          !/^\s*#/.test(line),
+          `${file}:${i + 1}: katlamali skaler icinde '#' yorum satiri`,
+        );
+      });
   }
 });

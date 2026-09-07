@@ -6,10 +6,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "dry_run",
-        "apply"
-      ],
+      "choices": ["dry_run", "apply"],
       "default": "dry_run",
       "required": false,
       "variable": "execution_mode",
@@ -45,10 +42,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "single",
-        "all"
-      ],
+      "choices": ["single", "all"],
       "default": "single",
       "required": false,
       "variable": "cluster_selection_mode",
@@ -108,11 +102,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "stop",
-        "restore",
-        "scale"
-      ],
+      "choices": ["stop", "restore", "scale"],
       "default": "stop",
       "required": false,
       "variable": "operation_action",
@@ -136,11 +126,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "30",
-        "60",
-        "120"
-      ],
+      "choices": ["30", "60", "120"],
       "default": "60",
       "required": false,
       "variable": "verification_timeout",
@@ -152,10 +138,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "false",
-        "true"
-      ],
+      "choices": ["false", "true"],
       "default": "true",
       "required": false,
       "variable": "allow_partial_execution",
@@ -167,10 +150,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "false",
-        "true"
-      ],
+      "choices": ["false", "true"],
       "default": "false",
       "required": false,
       "variable": "change_confirmation",
@@ -182,10 +162,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "false",
-        "true"
-      ],
+      "choices": ["false", "true"],
       "default": "false",
       "required": false,
       "variable": "bulk_change_confirmation",
@@ -197,10 +174,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "false",
-        "true"
-      ],
+      "choices": ["false", "true"],
       "default": "",
       "required": false,
       "variable": "hpa_pin",

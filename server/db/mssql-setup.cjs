@@ -1708,7 +1708,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'legacy_discovery',
     description:
       'Bir uygulamanın /vhosting ve /vhosting8 altındaki log dosyalarını (salt-okunur, find) keşfeder.',
-    playbook_path: 'server/ansible/playbooks/logx_legacy_discovery.yml',
+    playbook_path: 'server/ansible/bmw_portal/logx/legacy/logx_legacy_discovery.yml',
     env_var_name: 'AWX_LOGX_LEGACY_DISCOVERY_TEMPLATE_ID',
   },
   {
@@ -1718,7 +1718,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'legacy_transfer',
     description:
       "Seçilen log dosyalarını zip'leyip portalın okuyabildiği staging dizinine bırakır.",
-    playbook_path: 'server/ansible/playbooks/logx_legacy_transfer.yml',
+    playbook_path: 'server/ansible/bmw_portal/logx/legacy/logx_legacy_transfer.yml',
     env_var_name: 'AWX_LOGX_LEGACY_TRANSFER_TEMPLATE_ID',
   },
   {
@@ -1728,7 +1728,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'ocp_namespace_discovery',
     description:
       'Seçilen cluster(lar)da kullanıcının erişebildiği namespace/proje listesini (oc get projects, salt-okunur) getirir.',
-    playbook_path: 'server/ansible/playbooks/logx_ocp_namespace_discovery.yml',
+    playbook_path: 'server/ansible/bmw_portal/logx/ocp/logx_ocp_namespace_discovery.yml',
     env_var_name: 'AWX_LOGX_OCP_NAMESPACE_DISCOVERY_TEMPLATE_ID',
   },
   {
@@ -1738,7 +1738,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'ocp_app_discovery',
     description:
       'Seçilen namespace(ler)de çalışan uygulama ve objeleri (deployment, statefulset, pod, service, route…) salt-okunur listeler; sonuç portalda önbelleğe alınır.',
-    playbook_path: 'server/ansible/playbooks/logx_ocp_app_discovery.yml',
+    playbook_path: 'server/ansible/bmw_portal/logx/ocp/logx_ocp_app_discovery.yml',
     env_var_name: 'AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID',
   },
   {
@@ -1748,7 +1748,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'ocp_discover_fetch',
     description:
       "Seçilen cluster(lar)da uygulama adına eşleşen tüm pod'ların loglarını çeker, zip'ler, staging dizinine bırakır.",
-    playbook_path: 'server/ansible/playbooks/logx_ocp_discover_fetch.yml',
+    playbook_path: 'server/ansible/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml',
     env_var_name: 'AWX_LOGX_OCP_DISCOVER_FETCH_TEMPLATE_ID',
   },
   // ── OpsX islem tipleri — LogX ile AYNI desen: satirlar seed'den gelir, admin
@@ -1783,7 +1783,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'opsx_legacy_dump',
     description:
       'JBoss7/8 sunucularda jmap/jstack ile heap/thread dump alir, paylasilan staging dizinine birakir.',
-    playbook_path: 'server/ansible/playbooks/opsx_legacy_dump.yml',
+    playbook_path: 'server/ansible/bmw_portal/opsx_legacy_dump/opsx_legacy_dump.yml',
     env_var_name: 'OPSX_LEGACY_DUMP_TEMPLATE_ID',
   },
   {
@@ -1812,8 +1812,8 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'opsx',
     handler: 'opsx_legacy_jvm_discover',
     description:
-      "Secili sunucularda uygulama adina calisan JVM'leri (PID + komut satiri) listeler (salt-okunur, ps) - dump sihirbazi kullaniciya JVM sectirmek icin ANLIK tetikler. server/ansible/playbooks/opsx_legacy_jvm_discover.yml",
-    playbook_path: 'server/ansible/playbooks/opsx_legacy_jvm_discover.yml',
+      "Secili sunucularda uygulama adina calisan JVM'leri (PID + komut satiri) listeler (salt-okunur, ps) - dump sihirbazi kullaniciya JVM sectirmek icin ANLIK tetikler. server/ansible/bmw_portal/opsx_legacy_dump/opsx_legacy_jvm_discover.yml",
+    playbook_path: 'server/ansible/bmw_portal/opsx_legacy_dump/opsx_legacy_jvm_discover.yml',
     env_var_name: 'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
   },
   {
@@ -1852,7 +1852,7 @@ const PLAYBOOK_REGISTRY_SEED = [
   // playbook_path null (OpsX/Telnet gibi).
   // ── ScaleX — OCP replica durdurma / geri alma / olcekleme ──────────────
   // Playbook'lar AWX projesinde calisir; bu deponun icindeki kaynak kopya
-  // `server/ansible/scalex_file/` altindadir (LogX ile ayni duzen: depoda referans,
+  // `server/ansible/bmw_portal/scalex/` altindadir (LogX ile ayni duzen: depoda referans,
   // AWX'te calisan kopya). `playbook_path` yine de null — dogrulama LogX'teki gibi
   // dosya adi eslemesiyle DEGIL, portal/playbook sozlesme testleriyle yapiliyor
   // (server/ansible/__tests__/scalex-awx-package.test.cjs).
@@ -1867,7 +1867,7 @@ const PLAYBOOK_REGISTRY_SEED = [
   // API launch'ini `400 variables_needed_to_start` ile duserirdi; ayrica survey
   // degisken adlari portalin gonderdigi extra_var adlariyla BIREBIR ayni olmak
   // zorunda (uretimdeki eski survey uygulama alanini `oc_app` diye tanimliyordu,
-  // portal ise `target_app_names` gonderiyor). Bkz. scalex_file/SCALEX_AWX_SETUP.md.
+  // portal ise `target_app_names` gonderiyor). Bkz. bmw_portal/scalex/SCALEX_AWX_SETUP.md.
   {
     key_name: 'scalex_run',
     display_name: 'ScaleX — Replica Islemi (OCP)',
