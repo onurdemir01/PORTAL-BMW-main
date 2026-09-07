@@ -15,6 +15,7 @@ import {
   QuestionMarkCircleIcon,
   TableCellsIcon,
   ShieldCheckIcon,
+  ClockIcon,
 } from '@heroicons/react/24/outline';
 import {
   inventoryApi,
@@ -30,6 +31,7 @@ import ColumnPicker from './envanter/ColumnPicker';
 import QueryPanel from './envanter/QueryPanel';
 import { FilterBar } from './envanter/FilterBar';
 import InventoryRefreshModal from './envanter/InventoryRefreshModal';
+import HistoryPanel from './envanter/HistoryPanel';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { fmtNumber } from '@/utils/datetime';
 
@@ -188,6 +190,11 @@ const EnvanterPage: React.FC = () => {
   const [showColPicker, setShowColPicker] = useState(false);
   const [showQuery, setShowQuery] = useState(false);
   const [showRefreshModal, setShowRefreshModal] = useState(false);
+  // Gecmisi TUTULAN tablolar sunucudan gelir (server/inventory/history-config.cjs).
+  // Listeyi burada SABITLEMEK, ileride kapsam degistiginde iki yerin sessizce
+  // ayrisması demek olurdu - dugme yalnizca gercekten gecmisi olan tabloda cikar.
+  const [historyTables, setHistoryTables] = useState<Record<string, string>>({});
+  const [showHistory, setShowHistory] = useState(false);
   const colPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -287,6 +294,18 @@ const EnvanterPage: React.FC = () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
   }, [search, fetchData]);
+
+  useEffect(() => {
+    inventoryApi
+      .historyTables()
+      .then((r) => {
+        if (!r.ok) return;
+        setHistoryTables(Object.fromEntries(r.tables.map((t) => [t.table, t.label])));
+      })
+      .catch(() => {
+        /* gecmis ozelligi yoksa dugme hic cikmaz — sessiz gecilir */
+      });
+  }, []);
 
   // Close col picker on outside click
   useEffect(() => {
@@ -643,6 +662,17 @@ const EnvanterPage: React.FC = () => {
           )}
         </button>
 
+        {historyTables[activeTable] && (
+          <button
+            onClick={() => setShowHistory(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-xl transition-colors hover:bg-gray-50"
+            title="Bu tablonun gecmis bir tarihteki hali ve iki tarih arasindaki fark"
+          >
+            <ClockIcon className="w-4 h-4" />
+            Geçmiş
+          </button>
+        )}
+
         <div className="relative" ref={colPickerRef}>
           <button
             onClick={() => setShowColPicker(!showColPicker)}
@@ -839,6 +869,13 @@ const EnvanterPage: React.FC = () => {
       />
 
       {showRefreshModal && <InventoryRefreshModal onClose={() => setShowRefreshModal(false)} />}
+
+      <HistoryPanel
+        open={showHistory}
+        onClose={() => setShowHistory(false)}
+        table={activeTable}
+        label={historyTables[activeTable]}
+      />
     </div>
   );
 };

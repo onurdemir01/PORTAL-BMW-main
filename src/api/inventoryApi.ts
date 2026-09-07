@@ -97,6 +97,42 @@ export interface InventoryRefreshJobStatus {
   message?: string;
 }
 
+
+// ── Envanter geçmişi (SCD-2) ──────────────────────────────────────────────────
+// Kaynak tablolar her yenilemede TRUNCATE edilip yeniden yazıldığı için geçmiş
+// yalnızca Portal'ın gecelik anlık görüntülerinden gelir; GERİYE DÖNÜK VERİ YOKTUR.
+export interface HistoryTableInfo {
+  table: string;
+  label: string;
+  mode: "snapshot" | "native";
+  key: string[];
+}
+
+export interface HistoryRow {
+  key: string;
+  data: Record<string, unknown>;
+}
+
+export interface HistoryDiff {
+  ok: boolean;
+  added: HistoryRow[];
+  removed: HistoryRow[];
+  changed: { key: string; fields: Record<string, { before: unknown; after: unknown }> }[];
+  message?: string;
+}
+
+export interface HistoryRun {
+  table_name: string;
+  started_at: string;
+  finished_at: string | null;
+  source_rows: number | null;
+  added: number | null;
+  changed: number | null;
+  removed: number | null;
+  status: string;
+  message: string | null;
+}
+
 export const inventoryApi = {
   health: () => fetch(`${BASE}/health`).then(safeJson),
 
@@ -283,4 +319,30 @@ export const inventoryApi = {
 
   refreshJobStatus: (jobId: number): Promise<InventoryRefreshJobStatus> =>
     fetch(`${BASE}/refresh/job-status/${jobId}`).then(safeJson),
+
+  // ── Envanter geçmişi ────────────────────────────────────────────────────────
+  historyTables: (): Promise<{ ok: boolean; tables: HistoryTableInfo[]; message?: string }> =>
+    fetch(`${BASE}/history/tables`).then(safeJson),
+
+  historyAt: (
+    table: string,
+    date: string,
+  ): Promise<{ ok: boolean; at: string; count: number; rows: HistoryRow[]; message?: string }> =>
+    fetch(`${BASE}/history/at?table=${encodeURIComponent(table)}&date=${encodeURIComponent(date)}`)
+      .then(safeJson),
+
+  historyDiff: (table: string, from: string, to: string): Promise<HistoryDiff> =>
+    fetch(
+      `${BASE}/history/diff?table=${encodeURIComponent(table)}` +
+        `&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ).then(safeJson),
+
+  historySeries: (
+    table: string,
+    days: number,
+  ): Promise<{ ok: boolean; series: { date: string; count: number }[]; message?: string }> =>
+    fetch(`${BASE}/history/series?table=${encodeURIComponent(table)}&days=${days}`).then(safeJson),
+
+  historyRuns: (limit = 50): Promise<{ ok: boolean; runs: HistoryRun[]; message?: string }> =>
+    fetch(`${BASE}/history/runs?limit=${limit}`).then(safeJson),
 };
