@@ -8,7 +8,7 @@
 // requireVisible aynı anahtarı paylaşır.
 
 export interface PageElement {
-  id: string;      // element_key (aynı zamanda page-visibility anahtarı)
+  id: string; // element_key (aynı zamanda page-visibility anahtarı)
   label: string;
   route: string;
 }
@@ -20,34 +20,43 @@ export interface NavGroupDef {
 }
 
 export interface TabElement {
-  id: string;      // element_key, ör. "Perf:instana" | "admintab:users"
+  id: string; // element_key, ör. "Perf:instana" | "admintab:users"
   label: string;
 }
 
 // ── Sayfalar ──────────────────────────────────────────────────────────────────
 export const PAGES: PageElement[] = [
-  { id: "Dashboard",    label: "Dashboard",    route: "/dashboard"       },
-  { id: "Envanter",     label: "Envanter",     route: "/envanter"        },
-  { id: "Denetim",      label: "Denetim",      route: "/denetim"         },
-  { id: "LogX",         label: "LogX",         route: "/logx"            },
-  { id: "OpsX",         label: "OpsX",         route: "/opsx"            },
-  { id: "FileX",        label: "FileX",        route: "/filex"           },
-  { id: "Telnet",       label: "Telnet",       route: "/telnet"          },
-  { id: "ScaleX",  label: "ScaleX",  route: "/scalex"     },
+  { id: 'Dashboard', label: 'Dashboard', route: '/dashboard' },
+  { id: 'Envanter', label: 'Envanter', route: '/envanter' },
+  { id: 'Denetim', label: 'Denetim', route: '/denetim' },
+  { id: 'LogX', label: 'LogX', route: '/logx' },
+  { id: 'OpsX', label: 'OpsX', route: '/opsx' },
+  { id: 'FileX', label: 'FileX', route: '/filex' },
+  { id: 'Telnet', label: 'Telnet', route: '/telnet' },
+  { id: 'ScaleX', label: 'ScaleX', route: '/scalex' },
   // element_key ("Self Service") DEGISMEDI — portal_element_visibility kurallari ve
   // canViewPage() cagrilari bu anahtara bagli. Yalniz GORUNEN etiket "Otomasyon" oldu.
-  { id: "Self Service", label: "Otomasyon",    route: "/self-service"    },
-  { id: "Ansible",      label: "Ansible",      route: "/ansible"         },
-  { id: "Performance",  label: "Performance",  route: "/performance"     },
-  { id: "AI Analist",   label: "AI Analist",   route: "/ai-analyst"      },
-  { id: "Nöbet",        label: "Nöbet",        route: "/duty-roster"     },
-  { id: "Admin",        label: "Admin",        route: "/admin"           },
+  { id: 'Self Service', label: 'Otomasyon', route: '/self-service' },
+  { id: 'Ansible', label: 'Ansible', route: '/ansible' },
+  { id: 'Performance', label: 'Performance', route: '/performance' },
+  { id: 'AI Analist', label: 'AI Analist', route: '/ai-analyst' },
+  { id: 'Nöbet', label: 'Nöbet', route: '/duty-roster' },
+  // 2026-09-07: GERI ACILDI. element_key "Linkler" DEGISMEDI — portal_element_visibility
+  // kurallari ve canViewPage() cagrilari bu anahtara bagli.
+  { id: 'Linkler', label: 'Faydalı Linkler', route: '/links' },
+  { id: 'Admin', label: 'Admin', route: '/admin' },
 ];
 
-// 2026-08-26: "Yardımcı Araçlar" grubu ve tek öğesi "Linkler" GEÇİCİ olarak kaldırıldı
-// (kullanıcı talebi). ImportantLinksPage.tsx, server/links/* ve portal_links tablosu
-// YERİNDE bırakıldı — geri açmak bu iki satırı ve App.tsx route'unu geri koymaktan ibaret.
-// DB tarafı: mssql-setup.cjs içindeki removeKaynaklarNavGroup() temizliği de geri alınmalı.
+// 2026-08-26'da "Yardımcı Araçlar" grubu ve tek öğesi "Linkler" geçici olarak kaldırılmıştı;
+// 2026-09-07'de GERİ AÇILDI (kullanıcı talebi: portal bir "super app" gibi diğer
+// uygulamalara/dokümanlara yönlendirsin). Sayfa, API ve tablo hep yerinde durdu.
+//
+// ⚠️ GERİ AÇMAK ÜÇ YERİ BİRDEN GEREKTİRDİ — biri unutulursa sayfa görünmez:
+//   1) buradaki ELEMENTS satırı + NAV_GROUPS grubu
+//   2) src/App.tsx route'u
+//   3) mssql-setup.cjs içindeki removeKaynaklarNavGroup() temizliği (HER AÇILIŞTA
+//      "Linkler" kaydını siliyordu — kaldırılmasaydı sayfa her restart'ta menüden
+//      düşerdi ve sebebi hiçbir yerde görünmezdi).
 // ── Navigasyon grupları (Sidebar render'ı) ────────────────────────────────────
 // "Gözlemlenebilirlik" grubu kaldırıldı (actions.md #19) — LogX ve Performance
 // artık kendi tek-öğeli üst-seviye gruplarında, tek bir belirsiz şemsiye altında
@@ -58,26 +67,33 @@ export const PAGES: PageElement[] = [
 // 2026-07-26: Envanter "Genel" grubundan ayrıldı — Dashboard direkt Genel grubu (alt menü YOK),
 // Envanter ayrı bir grup oldu. Her biri direkt açılır.
 export const NAV_GROUPS: NavGroupDef[] = [
-  { id: "genel",       label: "Genel",            itemIds: ["Dashboard"] },
-  { id: "envanter",    label: "Envanter",         itemIds: ["Envanter", "Denetim"] },
-  { id: "performance", label: "Performance",      itemIds: ["Performance"] },
-  { id: "operasyon",   label: "Nöbetçiler",       itemIds: ["Nöbet"] },
+  { id: 'genel', label: 'Genel', itemIds: ['Dashboard'] },
+  { id: 'envanter', label: 'Envanter', itemIds: ['Envanter', 'Denetim'] },
+  { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
+  { id: 'operasyon', label: 'Nöbetçiler', itemIds: ['Nöbet'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.
   // Grup etiketi "Otomasyon" -> "Self Servis"; grup ANAHTARI ("otomasyon") degismedi
   // (DB'deki nav_group element_key'i ve ona bagli kayitlar korunsun diye).
-  { id: "otomasyon",   label: "Self Servis",      itemIds: ["Self Service", "Ansible", "LogX", "OpsX", "FileX", "Telnet", "ScaleX"] },
-  { id: "ai",          label: "AI Analist",       itemIds: ["AI Analist"] },
-  { id: "admin",       label: "Admin",            itemIds: ["Admin"] },
+  {
+    id: 'otomasyon',
+    label: 'Self Servis',
+    itemIds: ['Self Service', 'Ansible', 'LogX', 'OpsX', 'FileX', 'Telnet', 'ScaleX'],
+  },
+  { id: 'ai', label: 'AI Analist', itemIds: ['AI Analist'] },
+  // Grup ANAHTARI ("kaynaklar") 2026-08-26 oncesiyle AYNI: DB'deki nav_group kaydi
+  // ve ona bagli gorunurluk kurallari korunsun diye.
+  { id: 'kaynaklar', label: 'Yardımcı Araçlar', itemIds: ['Linkler'] },
+  { id: 'admin', label: 'Admin', itemIds: ['Admin'] },
 ];
 
 // ── Performance alt-tab'ları (görünürlük anahtarı "Perf:*") ────────────────────
 export const PERF_TABS: TabElement[] = [
-  { id: "Perf:problems", label: "Problems" },
-  { id: "Perf:events",   label: "Events" },
-  { id: "Perf:entities", label: "Entities" },
-  { id: "Perf:metrics",  label: "Metrics" },
-  { id: "Perf:instana",  label: "Instana" },
-  { id: "Perf:splunk",   label: "Splunk" },
+  { id: 'Perf:problems', label: 'Problems' },
+  { id: 'Perf:events', label: 'Events' },
+  { id: 'Perf:entities', label: 'Entities' },
+  { id: 'Perf:metrics', label: 'Metrics' },
+  { id: 'Perf:instana', label: 'Instana' },
+  { id: 'Perf:splunk', label: 'Splunk' },
 ];
 
 // ── Admin sekmeleri (görünürlük anahtarı "admintab:*") ────────────────────────
@@ -85,20 +101,20 @@ export const PERF_TABS: TabElement[] = [
 // canSee(`admintab:<id>`) ile filtreleniyor, eksik/eskimiş bir kayıt yönetilemeyen
 // sekme demek. (Etiketler de AdminPage ile eşitlendi.)
 export const ADMIN_TABS: TabElement[] = [
-  { id: "admintab:logxv2",       label: "OCP Yapılandırma" },
-  { id: "admintab:scalex",       label: "ScaleX Yönetimi" },
-  { id: "admintab:audit",        label: "Denetim Kaydı" },
+  { id: 'admintab:logxv2', label: 'OCP Yapılandırma' },
+  { id: 'admintab:scalex', label: 'ScaleX Yönetimi' },
+  { id: 'admintab:audit', label: 'Denetim Kaydı' },
   // Bu dordu AdminPage'te VARDI ama burada ve seed'de YOKTU: sekme goruntyor ama
   // Sayfa Erisimi ekranindan YONETILEMIYORDU (kayitsiz anahtar → varsayilan gorunur).
-  { id: "admintab:smarttickets", label: "Smart Talepleri" },
-  { id: "admintab:testscenarios", label: "Test Senaryoları" },
-  { id: "admintab:dbbackup",     label: "DB Yedekleme" },
-  { id: "admintab:flowtests",    label: "Akış Testleri" },
-  { id: "admintab:ansible",      label: "Ansible Info" },
-  { id: "admintab:playbooks",    label: "Playbook Kayıtları" },
-  { id: "admintab:system",       label: "Sistem" },
-  { id: "admintab:users",        label: "Kullanıcılar" },
-  { id: "admintab:visibility",   label: "Sayfa Erişimi" },
-  { id: "admintab:inventoryvis", label: "Envanter Görünürlüğü" },
-  { id: "admintab:branding",     label: "Marka" },
+  { id: 'admintab:smarttickets', label: 'Smart Talepleri' },
+  { id: 'admintab:testscenarios', label: 'Test Senaryoları' },
+  { id: 'admintab:dbbackup', label: 'DB Yedekleme' },
+  { id: 'admintab:flowtests', label: 'Akış Testleri' },
+  { id: 'admintab:ansible', label: 'Ansible Info' },
+  { id: 'admintab:playbooks', label: 'Playbook Kayıtları' },
+  { id: 'admintab:system', label: 'Sistem' },
+  { id: 'admintab:users', label: 'Kullanıcılar' },
+  { id: 'admintab:visibility', label: 'Sayfa Erişimi' },
+  { id: 'admintab:inventoryvis', label: 'Envanter Görünürlüğü' },
+  { id: 'admintab:branding', label: 'Marka' },
 ];
