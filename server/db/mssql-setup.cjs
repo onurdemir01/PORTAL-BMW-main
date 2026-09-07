@@ -418,6 +418,11 @@ const TABLES = [
         id               INT IDENTITY(1,1) PRIMARY KEY,
         request_key      NVARCHAR(64) NOT NULL,
         username         NVARCHAR(255) NOT NULL,
+        -- EYLEMI YAPANIN AD GRUPLARI (JSON dizi). "A'nin durdurdugunu A ve A'nin
+        -- EKIBI gorsun" kurali icin gerekli: goruntuleyenin gruplarini oturumdan
+        -- biliyoruz ama SAHIBIN gruplarini bilmiyoruz. Sonradan ogrenmenin yolu da
+        -- yok (kisi ekip degistirebilir, ayrilabilir) — eylem anindaki uyelik yazilir.
+        username_groups  NVARCHAR(MAX) NULL,
         env              NVARCHAR(50) NOT NULL,
         tenant           NVARCHAR(100) NOT NULL,
         cluster_name     NVARCHAR(200) NOT NULL,
@@ -469,6 +474,8 @@ const TABLES = [
         -- SILIYOR, basarisiz olan ise satiri oldugu gibi birakiyordu. Kullanici
         -- dort cluster'i durdurup geri aldiginda, ikisi olmadiysa o ikisinin
         -- NEDEN kaldigini hicbir yerden ogrenemiyordu.
+        -- Kaydi olusturan islemin sahip gruplari (yukaridakinin aynasi).
+        stopped_by_groups NVARCHAR(MAX) NULL,
         restore_attempts  INT NOT NULL DEFAULT 0,
         last_restore_at   DATETIME2 NULL,
         last_restore_error NVARCHAR(1000) NULL,
@@ -2333,6 +2340,16 @@ async function setupTables() {
   const alters = [
     {
       // MEVCUT KURULUMLAR ICIN — CREATE TABLE bloku tablo zaten varsa hic calismaz.
+      table: 'scalex_operations',
+      col: 'username_groups',
+      sql: `ALTER TABLE scalex_operations ADD username_groups NVARCHAR(MAX) NULL`,
+    },
+    {
+      table: 'scalex_state_mirror',
+      col: 'stopped_by_groups',
+      sql: `ALTER TABLE scalex_state_mirror ADD stopped_by_groups NVARCHAR(MAX) NULL`,
+    },
+    {
       table: 'scalex_state_mirror',
       col: 'restore_attempts',
       sql: `ALTER TABLE scalex_state_mirror ADD restore_attempts INT NOT NULL DEFAULT 0`,

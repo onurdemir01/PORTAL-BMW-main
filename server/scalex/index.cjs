@@ -113,6 +113,9 @@ async function resolveByKey(keyName) {
 async function insertOperationRows({
   requestKey,
   username,
+  // Sahibin AD gruplari — "kendi actigini kendi ekibi gorsun" kurali icin.
+  // Eylem anindaki uyelik yazilir; sonradan ogrenmenin yolu yok.
+  usernameGroups,
   env,
   tenant,
   clusters,
@@ -133,8 +136,8 @@ async function insertOperationRows({
       `INSERT INTO scalex_operations
          (request_key, username, env, tenant, cluster_name, namespace, action, execution_mode,
           target_replicas, app_names_json, awx_server_id, awx_job_id, status, oco_number, reason,
-          smart_ticket_id, approval_state)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          smart_ticket_id, approval_state, username_groups)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
       [
         requestKey,
         username,
@@ -153,6 +156,10 @@ async function insertOperationRows({
         reason || null,
         smartTicketId,
         smartTicketId ? 'PENDING' : null,
+        // Bos dizi ile `null` AYRI SEYLER: `null` = grup bilgisi HIC yazilmadi
+        // (eski kayit), `[]` = kullanicinin grubu yok. Ikisini birlestirmek,
+        // eski kayitlari "grupsuz" sayip gorunurlugu yanlis hesaplardi.
+        Array.isArray(usernameGroups) ? JSON.stringify(usernameGroups.slice(0, 200)) : null,
       ],
     );
   }
@@ -327,6 +334,7 @@ async function runScaleXGates({
       await insertOperationRows({
         requestKey: `smart:${decision.body.ticketId}`,
         username: user.username,
+        usernameGroups: user.groups,
         env,
         tenant,
         clusters,
@@ -1080,6 +1088,7 @@ function initScaleX(app) {
       await insertOperationRows({
         requestKey: `${job.serverId}:${job.jobId}`,
         username: user.username,
+        usernameGroups: user.groups,
         env,
         tenant,
         clusters,
@@ -1200,13 +1209,25 @@ function initScaleX(app) {
       // Bu uc `resolveScope`tan GECMEZ (namespace almiyor), bu yuzden yetki suzgeci
       // BURADA uygulanmali — aksi halde kisitli bir namespace'in adi ve orada durdurulmus
       // uygulamalar, o namespace'i goremeyen kullaniciya listelenirdi.
-      const rows = await catalog.filterStoppedForUser(all, { env, tenant, user: currentUser(req) });
+      const allowed = await catalog.filterStoppedForUser(all, {
+        env,
+        tenant,
+        user: currentUser(req),
+      });
+      // SAHIPLIK SUZGECI AYRI VE SONRA. Yetki kapisi "bu namespace'i gorebilir
+      // misin", bu ise "bu KAYIT senin (ya da ekibinin) mi" sorusunu yanitlar.
+      // Ikisini tek fonksiyonda birlestirmek, birinde yapilan bir gevsemenin
+      // digerini de sessizce gevsetmesi demekti.
+      const rows = catalog.filterStoppedByOwnership(allowed, { user: currentUser(req) });
       // `truncated` FILTRELEMEDEN ONCE okunur: `filterStoppedForUser` yeni bir dizi
       // dondugu icin bayrak orada kaybolur.
       res.json({
         ok: true,
         items: rows,
+        // GIZLENEN SAYISI IKI SUZGECI DE KAPSAR (yetki + sahiplik). Kullanici
+        // "listede yok" ile "sana gosterilmiyor"u ayirt edebilmeli.
         hiddenCount: all.length - rows.length,
+        hiddenByOwnership: allowed.length - rows.length,
         truncated: all.truncated === true,
         limit: state.MIRROR_LIMIT,
       });
@@ -1430,6 +1451,7 @@ function initScaleX(app) {
         await insertOperationRows({
           requestKey: `${job.serverId}:${job.jobId}`,
           username: user.username,
+          usernameGroups: user.groups,
           env,
           tenant,
           clusters: [g.cluster],
@@ -1708,6 +1730,17 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
           workloadKind: t.kind,
           previousReplicas: null,
           stoppedBy: op.username,
+          // Sahibin gruplari ISLEM KAYDINDAN gelir: bu kod yolunda oturum YOK
+          // (is AWX'ten donerken isleniyor). `null` kalirsa kayit "grup bilgisi
+          // yazilmamis" sayilir ve gorunurlukte eski kayitlar gibi ele alinir.
+          stoppedByGroups: (() => {
+            try {
+              const v = JSON.parse(op.username_groups || 'null');
+              return Array.isArray(v) ? v : null;
+            } catch {
+              return null;
+            }
+          })(),
           operationId: idByCluster.get(t.cluster) ?? op.id,
         });
         mirror.stopped.push(`${t.cluster}/${t.app}`);
