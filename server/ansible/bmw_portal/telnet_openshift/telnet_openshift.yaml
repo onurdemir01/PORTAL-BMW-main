@@ -153,9 +153,12 @@
     # REZERVE ADLARDAN KAÇIN: `namespace` ve `port` Ansible'ın kendi ad alanında; doğrudan
     # kullanmak "Found variable using reserved name" uyarısı üretir ve sessiz çakışmaya açıktır.
     # ÇOĞUL birincil; tekil `namespace` yalnız geriye uyum için. Boş/yinelenen adlar düşer.
+    telnet_legacy_namespace_run: >-
+      {{ lookup('vars', 'namespace', default='') | string | trim }}
     ns_list: >-
-      {{ (namespaces | default([namespace | default('')]))
-         | map('string') | map('trim') | select('!=', '') | unique | list }}
+      {{ namespaces | default(
+           [telnet_legacy_namespace_run] if (telnet_legacy_namespace_run | length > 0) else [], true
+         ) | map('string') | map('trim') | select('!=', '') | unique | list }}
     telnet_host: "{{ target_host | default(ip) }}"
     telnet_port: "{{ target_port | default(port) }}"
     image: nicolaka/netshoot
@@ -572,9 +575,12 @@
     # burada (3. play) TANIMSIZDIR. Ayni ifade bilerek tekrarlaniyor — `set_fact` ile
     # tasimak da olurdu ama o zaman 2. play hic calisamadiginda (tam da duzeltmeye
     # calistigimiz durum) yine tanimsiz kalirdi. extra_vars her play'de gorunur.
+    telnet_legacy_namespace_agg: >-
+      {{ lookup('vars', 'namespace', default='') | string | trim }}
     ns_list_agg: >-
-      {{ (namespaces | default([namespace | default('')]))
-         | map('string') | map('trim') | select('!=', '') | unique | list }}
+      {{ namespaces | default(
+           [telnet_legacy_namespace_agg] if (telnet_legacy_namespace_agg | length > 0) else [], true
+         ) | map('string') | map('trim') | select('!=', '') | unique | list }}
     blocked_targets: >-
       {%- set out = [] -%}
       {%- for h in (groups['telnet_terminal'] | default([])) -%}
