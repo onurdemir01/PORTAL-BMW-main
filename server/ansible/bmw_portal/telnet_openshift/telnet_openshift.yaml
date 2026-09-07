@@ -68,6 +68,28 @@
   connection: local
   gather_facts: false
 
+  vars:
+    # `namespace` BIR JINJA GLOBAL'IDIR — sizin degiskeniniz DEGIL.
+    #
+    # OLCULDU (2026-09-07, yerel sonda, hicbir degisken gonderilmeden):
+    #   namespace is defined            -> True
+    #   (namespace | default('')) tipi  -> Namespace   (bir Python SINIFI)
+    #
+    # Yani hicbir namespace gonderilmese bile `namespace` "tanimli" gorunur ve
+    # `default('')` bos string DEGIL, o sinifi dondurur. Asagidaki kapi bu yuzden
+    # OLUYDU: `ternary` sinifi truthy gorup `[<class>]` uretiyor, `length > 0`
+    # DOGRU donuyor ve assert GECIYORDU — hem de tam ihtiyac duyuldugu anda,
+    # yani AWX'te "Prompt on launch" kapali olup TUM extra_vars yutuldugunda
+    # (fail_msg'in uyardigi senaryonun ta kendisi; 2026-08-09'da yasandi).
+    #
+    # `lookup('vars', ...)` ayni geriye-uyum niyetini korur, Jinja global'ine carpmaz.
+    telnet_legacy_namespace: >-
+      {{ lookup('vars', 'namespace', default='') | string | trim }}
+    telnet_namespaces: >-
+      {{ namespaces | default(
+           [telnet_legacy_namespace] if (telnet_legacy_namespace | length > 0) else [], true
+         ) }}
+
   tasks:
     - name: "--- [Task] Validate required input ---"
       ansible.builtin.assert:
@@ -77,11 +99,11 @@
           - ocp_clusters is defined
           - ocp_clusters | length > 0
           # ÇOĞUL birincil, TEKİL geriye uyum. İkisi de yoksa hata.
-          - (namespaces | default(namespace | default('') | ternary([namespace | default('')], []))) | length > 0
+          - telnet_namespaces | length > 0
         fail_msg: >-
           Zorunlu değişkenler eksik → bastion: {{ terminal_hosts | default([]) | length }},
           cluster: {{ ocp_clusters | default([]) | length }},
-          namespace(ler): {{ namespaces | default([namespace | default('(yok)')]) }}.
+          namespace(ler): {{ telnet_namespaces | default([], true) | ternary(telnet_namespaces, '(yok)') }}.
           Tümü boşsa AWX job template'inde "Prompt on launch" (Variables) kapalı olabilir.
 
     - name: "--- [Task] Add every jump server to dynamic inventory ---"

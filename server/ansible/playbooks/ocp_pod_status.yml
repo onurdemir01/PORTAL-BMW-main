@@ -6,7 +6,13 @@
   become: false
 
   vars:
-    ocp_namespace: "{{ namespace | default('--all-namespaces') }}"
+    # `namespace` BIR JINJA GLOBAL'IDIR — `is defined` HER ZAMAN dogru doner ve
+    # `| default(...)` varsayilana DUSMEZ, Jinja'nin Namespace SINIFINI dondurur.
+    # Yani namespace gonderilmedigi halde bu satir '--all-namespaces' yerine bir
+    # SINIF uretiyordu. `lookup('vars', ...)` ayni niyeti korur, global'e carpmaz.
+    ocp_namespace: >-
+      {{ lookup('vars', 'namespace', default='') | string | trim
+         or '--all-namespaces' }}
     ocp_label_selector: "{{ label_selector | default('') }}"
 
   tasks:
