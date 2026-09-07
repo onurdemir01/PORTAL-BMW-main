@@ -675,6 +675,23 @@ function initLogXv2(app) {
   // ── Downloads ────────────────────────────────────────────────────────────────
   router.get('/downloads/:token', asyncRoute(downloads.handleDownloadRoute));
 
+  // ── Admin: envanter bosluklari ───────────────────────────────────────────────
+  //
+  // Elle girilen (envanterde olmayan) adlar denetim kaydina yaziliyordu ve ORADA
+  // KALIYORDU. Hangi adlarin HALA envantere girmedigini kimse bilmiyordu; ayni adi
+  // her hafta yeniden yazan bir kullanici sessizce yeniden yazmaya devam ediyordu.
+  // Bu uc, o kayitlari okunabilir bir listeye cevirir ve her ad icin SIMDIKI durumu
+  // canli sorar (bkz. inventory-gaps.cjs — uc hal: hala_yok / envantere_girdi /
+  // kontrol_edilemedi).
+  router.get(
+    '/admin/inventory-gaps',
+    requireAdmin,
+    asyncRoute(async (req, res) => {
+      const gaps = require('./inventory-gaps.cjs');
+      res.json({ ok: true, rows: await gaps.listGaps() });
+    }),
+  );
+
   // ── Admin: ocp_cluster_index ─────────────────────────────────────────────────
   router.get(
     '/admin/ocp-cluster-index',

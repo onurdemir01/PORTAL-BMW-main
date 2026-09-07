@@ -2253,7 +2253,13 @@ test('S3 admin sekmeleri elements/seed ile AYRISMIYOR', () => {
   // dogrulanmamisti. Esik de sekme sayisina gore elle ayarlanmisti; iki sekme
   // kaldirilinca (2026-09-07: Test Senaryolari, Akis Testleri) yanlis alarm verdi.
   // Esik artik yalnizca "regex tamamen bozuldu mu" sorusunu yanitliyor.
-  const tabIds = [...page.matchAll(/\{ id: "([a-z0-9]+)",\s+label:/g)].map((m) => m[1]);
+  // TIRNAK CINSINDEN BAGIMSIZ: desen yalnizca CIFT tirnak esliyordu ve prettier
+  // AdminPage.tsx'i ilk kez bicimlendirdiginde (2026-09-08) JS dizeleri TEK tirnaga
+  // dondu — bekci "sekme listesi okunamadi" diye kirmiziya dondu. Olculen sey
+  // BICIM degil KURAL: her sekme id'sinin elements/seed karsiligi var mi.
+  const tabIds = [...page.matchAll(/\{\s*id:\s*["']([a-z0-9]+)["']\s*,\s*label:/g)].map(
+    (m) => m[1],
+  );
   assert.ok(tabIds.length >= 10, `sekme listesi okunamadi (${tabIds.length})`);
   assert.ok(tabIds.includes('logxv2'), 'rakam iceren id yakalanmali (regex kontrolu)');
   const eksikElements = tabIds.filter((id) => !elements.includes(`admintab:${id}`));
@@ -2273,7 +2279,13 @@ test('S4 ortak sekmenin ANAHTARI korunmus, yalnizca ETIKETI degismis', () => {
     path.join(SRC_DIR, '..', '..', 'src', 'components', 'admin', 'AdminPage.tsx'),
     'utf8',
   );
-  assert.match(page, /\{ id: "logxv2",\s+label: "OCP Yapılandırma"/, 'ortak sekme adlandirilmamis');
+  // Tirnak cinsi ve satir sarmasi SERBEST (bkz. S3 notu) — olcut anahtarin
+  // korunmus ve etiketin verilmis olmasi.
+  assert.match(
+    page,
+    /\{\s*id:\s*["']logxv2["']\s*,\s*label:\s*["']OCP Yapılandırma["']/,
+    'ortak sekme adlandirilmamis',
+  );
   const seed = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
   assert.match(
     seed,

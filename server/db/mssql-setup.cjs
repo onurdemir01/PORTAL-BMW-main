@@ -1593,6 +1593,16 @@ const ELEMENT_SEED = [
     default_visible: 1,
   },
   {
+    // Elle girilmis (envanterde olmayan) adlarin takip ekrani. Kayitsiz birakilirsa
+    // sekme "varsayilan gorunur" olur ve Sayfa Erisimi'nden YONETILEMEZ.
+    element_key: 'admintab:inventorygaps',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Envanter Boşlukları',
+    sort_order: 12,
+    default_visible: 1,
+  },
+  {
     element_key: 'admintab:branding',
     element_type: 'admin_tab',
     parent_key: 'Admin',
