@@ -31,11 +31,19 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DIR = path.join(__dirname, '..', 'playbooks');
-const FILES = fs.readdirSync(DIR).filter((f) => /\.(yml|yaml)$/.test(f));
+// YOLLAR TEK KAYNAKTAN (server/ansible/paths.cjs). Agac AWX'in `bmw_portal/`
+// yapisinin aynasi oldugu icin duz `readdirSync` ARTIK YETMEZ: alt klasorlerdeki
+// playbook'lar sessizce kontrol disi kalirdi.
+const { allPlaybookFiles } = require('../paths.cjs');
+// Mutlak yollar; `read()` bunlari dogrudan okur.
+const FILES = allPlaybookFiles();
+// Agac artik ic ice; toplayici MUTLAK yol donduruyor. Basename ile karsilastiran
+// her kume/istisna listesi bu yardimciyi kullanmali — yoksa istisnalar SESSIZCE
+// eslesmez ve bekci yanlis yere kirmizi/yesil doner.
+const baseName = (f) => f.split('/').pop();
 
 function read(f) {
-  return fs.readFileSync(path.join(DIR, f), 'utf8');
+  return fs.readFileSync(f, 'utf8'); // toplayici MUTLAK yol dondurur
 }
 
 // BICIM NORMALIZASYONU. Bekci KURALI olcmeli, SATIR DUZENINI degil: playbook
@@ -192,7 +200,7 @@ test("TUZAK 3: ayri toplayici play varsa, oncesindeki host play'leri rescue + ig
     const plays = parsePlays(read(f));
     const aggIdx = plays.findIndex((p) => p.isLocal && p.hasSetStats);
     if (aggIdx < 1) continue; // ayri toplayici yok -> tuzak yok
-    if (FAIL_GUARD_EXEMPT.has(f)) continue;
+    if (FAIL_GUARD_EXEMPT.has(baseName(f))) continue;
     for (let i = 0; i < aggIdx; i++) {
       const p = plays[i];
       if (p.isLocal || !p.hosts) continue; // hazirlik play'leri host calistirmaz
@@ -231,7 +239,7 @@ test('TUZAK 3: toplayici play, hicbir sonuc yoksa isi BASARISIZ yapar', () => {
   // halde portal yesil gosterirdi; mevcut durumdan DAHA KOTU olurdu.
   const offenders = [];
   for (const f of FILES) {
-    if (FAIL_GUARD_EXEMPT.has(f)) continue;
+    if (FAIL_GUARD_EXEMPT.has(baseName(f))) continue;
     const plays = parsePlays(read(f));
     const agg = plays.find((p) => p.isLocal && p.hasSetStats);
     if (!agg) continue;
@@ -304,7 +312,7 @@ const CROSS_PLAY_VARS_EXEMPT = new Set(['nginx_config_migration.yml']);
 test('TUZAK 4: bir play, onceki play’in `vars:` blogundaki degiskene basvurmuyor', () => {
   const offenders = [];
   for (const f of FILES) {
-    if (CROSS_PLAY_VARS_EXEMPT.has(f)) continue;
+    if (CROSS_PLAY_VARS_EXEMPT.has(baseName(f))) continue;
     const plays = parsePlays(codeOnly(read(f)));
     if (plays.length < 2) continue;
 

@@ -1,6 +1,6 @@
 // server/ansible/__tests__/scalex-awx-package.test.cjs
 //
-// `server/ansible/scalex_file/` altindaki AWX paketi ile PORTALIN sozlesmesini
+// `server/ansible/bmw_portal/scalex/` altindaki AWX paketi ile PORTALIN sozlesmesini
 // kilitler. Paket AWX'e ELLE kopyalaniyor; uyusmazlik aksi halde ancak URETIMDE,
 // "sonuc bulunamadi" ya da "400 variables_needed_to_start" olarak ortaya cikar.
 //
@@ -17,7 +17,7 @@ const { execFileSync } = require('node:child_process');
 
 const result = require('../../scalex/result.cjs');
 
-const PKG = path.join(__dirname, '..', 'scalex_file');
+const { SCALEX_PKG: PKG } = require('../paths.cjs');
 const APP = path.join(PKG, 'scalex_app');
 const RUNNER = path.join(APP, 'files', 'scalex_runner.sh');
 const read = (p) => fs.readFileSync(p, 'utf8');

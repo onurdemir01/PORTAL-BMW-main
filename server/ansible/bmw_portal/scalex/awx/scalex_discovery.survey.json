@@ -6,11 +6,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "workloads",
-        "state",
-        "health"
-      ],
+      "choices": ["workloads", "state", "health"],
       "default": "workloads",
       "required": false,
       "variable": "discovery_mode",
@@ -46,10 +42,7 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": [
-        "single",
-        "all"
-      ],
+      "choices": ["single", "all"],
       "default": "all",
       "required": false,
       "variable": "cluster_selection_mode",

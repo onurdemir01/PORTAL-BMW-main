@@ -28,7 +28,11 @@ const codeOnly = (s) =>
 
 const PLAYBOOK = codeOnly(
   fs.readFileSync(
-    path.join(__dirname, '..', '..', 'ansible', 'playbooks', 'ocp_telnet_control.yml'),
+    // Playbook AWX agacinin aynasina tasindi ve AWX'teki GERCEK adiyla duruyor
+    // (telnet_openshift/telnet_openshift.yaml). Yol paths.cjs'ten okunur.
+    require('../../ansible/paths.cjs').abs(
+      require('../../ansible/paths.cjs').PLAYBOOKS.telnetOpenshift,
+    ),
     'utf8',
   ),
 );

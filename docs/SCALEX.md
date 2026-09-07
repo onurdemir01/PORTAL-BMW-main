@@ -3,11 +3,11 @@
 ScaleX, OpenShift iş yüklerinin replica sayısını portal üzerinden değiştirir. Üç işlem
 de aynı mekanizmadır — bu yüzden adı "Chaos" değil **ScaleX**:
 
-| İşlem | Ne yapar | Geri alınabilir mi |
-|---|---|---|
-| **Durdur** | `spec.replicas = 0`, önceki değer cluster'da bir ConfigMap'e yazılır | Evet — kayıt portalda ve cluster'da |
-| **Geri Al** | Saklanan değere döner, kaydı siler | — |
-| **Ölçekle** | Verilen sayıya çeker | Hayır — bu yol kayıt **bırakmaz** |
+| İşlem       | Ne yapar                                                             | Geri alınabilir mi                  |
+| ----------- | -------------------------------------------------------------------- | ----------------------------------- |
+| **Durdur**  | `spec.replicas = 0`, önceki değer cluster'da bir ConfigMap'e yazılır | Evet — kayıt portalda ve cluster'da |
+| **Geri Al** | Saklanan değere döner, kaydı siler                                   | —                                   |
+| **Ölçekle** | Verilen sayıya çeker                                                 | Hayır — bu yol kayıt **bırakmaz**   |
 
 > **Ölçekle ile 0 verilemez.** Sunucu `use_stop_for_zero` ile reddeder. İki yol da 0'a
 > götürürken birinin hafızası olup diğerinin olmaması bir tuzaktı.
@@ -25,7 +25,7 @@ Ekran (src/components/scalex)
              ↓
         AWX (scalex_run / scalex_discovery şablonları)
              ↓
-        server/ansible/scalex_file/scalex_app/*
+        server/ansible/bmw_portal/scalex/scalex_app/*
         (playbook kaynağı — AWX'e kopyalanır; LogX ile aynı düzen)
 ```
 
@@ -42,11 +42,11 @@ tek yerde: uzlaştırıcı da aynı `finalizeOperation`'ı çağırır.
 
 Kapı politikası `launch.gatePolicyFor` ile belirlenir:
 
-| Durum | OCO | SMART |
-|---|---|---|
-| `dry_run` (Önce kontrol et) | yok | yok |
-| `restore` + apply | uyarır, engellemez (gerekçe **zorunlu**) | gerekli |
-| `stop` / `scale` + apply | gerekli | gerekli |
+| Durum                       | OCO                                      | SMART   |
+| --------------------------- | ---------------------------------------- | ------- |
+| `dry_run` (Önce kontrol et) | yok                                      | yok     |
+| `restore` + apply           | uyarır, engellemez (gerekçe **zorunlu**) | gerekli |
+| `stop` / `scale` + apply    | gerekli                                  | gerekli |
 
 Kapılar **ortak modülden** gelir (`server/ansible/change-gates.cjs`) — Self Service'teki
 nginx işleriyle aynı yol. Ayarlar `ansible_ss_customizations` tablosunda ScaleX'in kendi
@@ -83,9 +83,9 @@ grup üyeliği oturumdaki `user.groups`'tan okunur). Bu tablo LogX/OpsX/Telnet i
 ## Kurulum
 
 Ayrıntılı adımlar (AWX template alanları, survey'in API ile yüklenmesi, sık hatalar):
-**`server/ansible/scalex_file/SCALEX_AWX_SETUP.md`**. Özet:
+**`server/ansible/bmw_portal/scalex/SCALEX_AWX_SETUP.md`**. Özet:
 
-1. **AWX**: `server/ansible/scalex_file/scalex_app/` klasörünü AWX projesinde
+1. **AWX**: `server/ansible/bmw_portal/scalex/scalex_app/` klasörünü AWX projesinde
    AWX projenizde `global_variables/` ile **kardeş** bir klasöre kopyalayın
    (üretimde `bmw_portal/scalex/scalex_app/`); iki şablon oluşturun
    (`main.yml` ve `discovery.yml`). Her ikisinde de **Prompt on launch > Variables
@@ -93,7 +93,7 @@ Ayrıntılı adımlar (AWX template alanları, survey'in API ile yüklenmesi, s�
    dosyasına düşer (ekran bunu `catalogWarning` ile söyler).
    Survey **açık** olabilir ama **hiçbir sorusu zorunlu olmamalı**: zorunlu bir soru,
    portalın API launch'ını `400 variables_needed_to_start` ile düşürür. Hazır
-   tanımlar `scalex_file/awx/*.survey.json`.
+   tanımlar `bmw_portal/scalex/awx/*.survey.json`.
 2. **Portal**: Admin > Playbook Kayıtları'nda `scalex_run` / `scalex_discovery`
    satırlarına AWX şablon ve sunucu kimliğini girin (ya da `.env`'deki
    `SCALEX_TEMPLATE_ID` / `SCALEX_DISCOVERY_TEMPLATE_ID` / `SCALEX_AWX_SERVER_ID`).
@@ -114,7 +114,7 @@ kaynağı olan başka bir tip (operator CRD'si) bulunursa **listelenir ama seçi
 taşımaz, listede `ölçeklenemez` rozetiyle görünür ve **seçilemez**.
 
 **Neden `api-resources`?** Karar eskiden `oc auth can-i`nin başarısına dayanıyordu ve
-`can-i`nin *kendisi* hata verdiğinde (kaldırılmış DeploymentConfig API'si, kurulu olmayan
+`can-i`nin _kendisi_ hata verdiğinde (kaldırılmış DeploymentConfig API'si, kurulu olmayan
 Rollout CRD'si) sonuç tersine dönüyor, ekran API'si olmayan bir tip için "platform
 ekibinden yetki isteyin" diyordu. Artık ölçüt cluster'ın kaynak envanteri.
 

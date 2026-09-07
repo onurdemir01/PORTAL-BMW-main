@@ -30,7 +30,7 @@ const fail = (title, detail, fix) => results.push({ level: 'fail', title, detail
 
 // ── 1. ScaleX AWX paketi: surum ucluSU ve ozet ──────────────────────────────
 function checkScalexPackage() {
-  const APP = 'server/ansible/scalex_file/scalex_app';
+  const APP = 'server/ansible/bmw_portal/scalex/scalex_app';
   let version, runnerVersion, expected, manifest;
   try {
     version = read(`${APP}/VERSION`).trim();
@@ -82,13 +82,13 @@ function checkManualCopies(scalexVersion) {
     'AWX kopyasi ELLE dogrulanmali: scalex_app',
     `Portal paket surumu ${scalexVersion} bekliyor.`,
     'AWX projesindeki bmw_portal/scalex/scalex_app/VERSION dosyasi da ' +
-      `"${scalexVersion}" olmali. Degilse server/ansible/scalex_file/scalex_app/ ` +
+      `"${scalexVersion}" olmali. Degilse server/ansible/bmw_portal/scalex/scalex_app/ ` +
       'klasorunu oldugu gibi kopyalayin. (Uyusmazlikta ekran tahmin etmez, soyler.)',
   );
   warn(
     'AWX kopyasi ELLE dogrulanmali: ocp_telnet_control.yml',
     'Repo kopyasi REFERANS; portal onu calistirmaz.',
-    'server/ansible/playbooks/ocp_telnet_control.yml icerigini AWX projesindeki ' +
+    'server/ansible/bmw_portal/telnet_openshift/telnet_openshift.yaml icerigini AWX projesindeki ' +
       'bmw_openshift_jobs/ocp_telnet_control.yml dosyasina kopyalayin. ' +
       'Kopyalanmazsa "pod hazir degil" durumu yine KAPALI olarak raporlanir.',
   );

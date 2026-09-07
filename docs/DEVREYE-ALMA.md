@@ -35,7 +35,7 @@ gözle doğrulanır.
 ### 2.1 ScaleX paketi
 
 ```
-server/ansible/scalex_file/scalex_app/   →   <AWX projesi>/bmw_portal/scalex/scalex_app/
+server/ansible/bmw_portal/scalex/scalex_app/   →   <AWX projesi>/bmw_portal/scalex/scalex_app/
 ```
 
 `scalex_app/` klasörü `global_variables/` ile **kardeş** olmalı.
@@ -49,7 +49,7 @@ Portalın beklediği sürümü `npm run preflight` yazar.
 ### 2.2 Telnet playbook'u
 
 ```
-server/ansible/playbooks/ocp_telnet_control.yml
+server/ansible/bmw_portal/telnet_openshift/telnet_openshift.yaml
    →   <AWX projesi>/bmw_openshift_jobs/ocp_telnet_control.yml
 ```
 

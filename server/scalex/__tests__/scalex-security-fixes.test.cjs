@@ -366,7 +366,7 @@ test("ENV: kodun okudugu her SCALEX_* degiskeni .env.example'da belgeli", () => 
     .map((f) => `server/scalex/${f}`);
   // `process.env.X` VE `env_var_name: 'X'` (registry seed'i) — yani GERCEKTEN
   // okunan degiskenler. Ham `SCALEX_[A-Z_]+` taramasi yorumlardaki dosya adlarini
-  // da (or. scalex_file/SCALEX_AWX_SETUP.md) degisken sanip yanlis kirmizi veriyordu.
+  // da (or. bmw_portal/scalex/SCALEX_AWX_SETUP.md) degisken sanip yanlis kirmizi veriyordu.
   const used = new Set();
   for (const f of [...files, 'server/db/mssql-setup.cjs']) {
     const src = read(f);

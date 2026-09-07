@@ -6,7 +6,7 @@
 'use strict';
 
 // ── PAKET SURUM SOZLESMESI ──────────────────────────────────────────────────
-// `server/ansible/scalex_file/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
+// `server/ansible/bmw_portal/scalex/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
 const EXPECTED_PACKAGE_VERSION = '6';
@@ -133,7 +133,7 @@ function extractScaleXResult(rawArtifacts) {
 
 // Kesif satirlarindaki `detail` alani `anahtar=deger` ciftleri tasir. Bosluk ayrac;
 // DEGERLER bosluk ICERMEZ — playbook tarafinda `disc_val` her degeri temizler
-// (server/ansible/scalex_file/scalex_app/files/scalex_runner.sh, `discover` fazi).
+// (server/ansible/bmw_portal/scalex/scalex_app/files/scalex_runner.sh, `discover` fazi).
 function parseDetailPairs(detail) {
   const out = {};
   for (const part of String(detail || '').split(' ')) {

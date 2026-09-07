@@ -16,10 +16,10 @@ aynı commit'te ve aynı testlerle birlikte doğrulanabilsin. LogX'te de aynı d
 
 ## Ne, nereye kopyalanır
 
-| Buradaki yol | AWX projesindeki yol |
-|---|---|
-| `scalex_app/` (tamamı) | `<proje>/<klasör>/scalex_app/` — konum serbest |
-| `awx/*.survey.json` | Kopyalanmaz — AWX API'siyle template'e yüklenir (bkz. `SCALEX_AWX_SETUP.md`) |
+| Buradaki yol           | AWX projesindeki yol                                                         |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `scalex_app/` (tamamı) | `<proje>/<klasör>/scalex_app/` — konum serbest                               |
+| `awx/*.survey.json`    | Kopyalanmaz — AWX API'siyle template'e yüklenir (bkz. `SCALEX_AWX_SETUP.md`) |
 
 ```
 bmw_openshift_jobs/
@@ -57,15 +57,15 @@ Kaynak: `github.com/hknisci/garanti_tasks` → `scale/`. Yapı korundu
 execute → `20_build_report` → `30_send_mail`); portal ile çalışabilmesi için
 eklenenler:
 
-| Değişiklik | Neden |
-|---|---|
-| **`set_stats` ile `scalex_result` yayını** (`25_publish_result.yml`) | Çalışan otomasyonda `set_stats` **hiç yoktu**. Portal sonucu **yalnızca** bu artifact'tan okur; onsuz her iş "sonuç bulunamadı" ile biterdi. |
-| **`block`/`rescue` + `26_publish_validation.yml`** | Girdi doğrulaması düştüğünde playbook `set_stats`'a hiç ulaşmıyordu. Artık `stage: validation` + hata metni + düşen görev adı yayınlanıyor. |
-| **Portal kataloğu kazanır** (`scalex_clusters_override`) | Cluster/bastion/vault bilgisi Admin > LogX Yapılandırma'dan tek yerden yönetiliyor. Dosya artık yalnızca elle çalıştırma yedeği; hangisinin kullanıldığı `catalog_source` ile raporlanıyor. |
-| **`scalex_target_clusters` listesi önceliklidir** | Portal listeyi kullanıcının **yetki süzgecinden** geçirerek üretiyor. `all` ile katalogdan yeniden türetmek, kullanıcının göremediği bir cluster'ı geri getirebilirdi. |
-| **Durum ConfigMap öneki `scalex-state-`** | Eski önek (`chaos-scale-state-`) **okunmaya devam ediyor** ve `legacy=yes` rozetiyle işaretleniyor — bugün durdurulmuş uygulamalar geri alınabilir kalmalı. |
-| **Keşif fazı** (`SCALEX_PHASE=discover`) | Çalışan pakette keşif yoktu. Portalın ikinci template'i (`scalex_discovery`) bunu bekliyor. Ayrı betik yazılmadı: oturum açma / `oc` yolu bulma / kubeconfig mantığı aynı dosyada. |
-| **`hpa_pin` (opsiyonel)** | Varsayılan davranış **değişmedi**: HPA okunur, dokunulmaz. Bayrak yalnızca kullanıcı ekranda açıkça isterse ve yalnızca `stop` dışı + hedef ≥ 1 durumunda etkindir. |
+| Değişiklik                                                           | Neden                                                                                                                                                                                       |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`set_stats` ile `scalex_result` yayını** (`25_publish_result.yml`) | Çalışan otomasyonda `set_stats` **hiç yoktu**. Portal sonucu **yalnızca** bu artifact'tan okur; onsuz her iş "sonuç bulunamadı" ile biterdi.                                                |
+| **`block`/`rescue` + `26_publish_validation.yml`**                   | Girdi doğrulaması düştüğünde playbook `set_stats`'a hiç ulaşmıyordu. Artık `stage: validation` + hata metni + düşen görev adı yayınlanıyor.                                                 |
+| **Portal kataloğu kazanır** (`scalex_clusters_override`)             | Cluster/bastion/vault bilgisi Admin > LogX Yapılandırma'dan tek yerden yönetiliyor. Dosya artık yalnızca elle çalıştırma yedeği; hangisinin kullanıldığı `catalog_source` ile raporlanıyor. |
+| **`scalex_target_clusters` listesi önceliklidir**                    | Portal listeyi kullanıcının **yetki süzgecinden** geçirerek üretiyor. `all` ile katalogdan yeniden türetmek, kullanıcının göremediği bir cluster'ı geri getirebilirdi.                      |
+| **Durum ConfigMap öneki `scalex-state-`**                            | Eski önek (`chaos-scale-state-`) **okunmaya devam ediyor** ve `legacy=yes` rozetiyle işaretleniyor — bugün durdurulmuş uygulamalar geri alınabilir kalmalı.                                 |
+| **Keşif fazı** (`SCALEX_PHASE=discover`)                             | Çalışan pakette keşif yoktu. Portalın ikinci template'i (`scalex_discovery`) bunu bekliyor. Ayrı betik yazılmadı: oturum açma / `oc` yolu bulma / kubeconfig mantığı aynı dosyada.          |
+| **`hpa_pin` (opsiyonel)**                                            | Varsayılan davranış **değişmedi**: HPA okunur, dokunulmaz. Bayrak yalnızca kullanıcı ekranda açıkça isterse ve yalnızca `stop` dışı + hedef ≥ 1 durumunda etkindir.                         |
 
 `mail_cc` desteği çalışan pakette **zaten vardı**; değiştirilmedi.
 
@@ -85,20 +85,20 @@ parçası değil, yalnızca geçici alan.
 
 Keşif tip listesini **cluster'ın kendisinden** alır:
 `oc api-resources --namespaced=true --verbs=list` — bu çağrı yetki gerektirmez
-(discovery her kimliğe açıktır) ve iki soruyu birbirinden ayırır: *"bu tip burada var mı"*
-ve *"listeleyebiliyor muyum"*. Envanter okunamazsa aşağıdaki sabit listeye düşülür,
+(discovery her kimliğe açıktır) ve iki soruyu birbirinden ayırır: _"bu tip burada var mı"_
+ve _"listeleyebiliyor muyum"_. Envanter okunamazsa aşağıdaki sabit listeye düşülür,
 davranış gerilemez.
 
 Bilinen tipler şunlar; işlem yalnızca **ölçeklenebilir** olanlara dokunur.
 
-| Tip | Keşifte | İşlem | Neden |
-|---|---|---|---|
-| Deployment | ✅ | ✅ | |
-| StatefulSet | ✅ | ✅ | |
-| DeploymentConfig | ✅ | ✅ | |
-| Argo Rollout | ✅ | ✅ | |
-| DaemonSet | ✅ | ❌ | `spec.replicas` yoktur; düğüm sayısıyla ölçeklenir |
-| CronJob | ✅ | ❌ | `spec.suspend` ile durdurulur; replica semantiği taşımaz |
+| Tip              | Keşifte | İşlem | Neden                                                    |
+| ---------------- | ------- | ----- | -------------------------------------------------------- |
+| Deployment       | ✅      | ✅    |                                                          |
+| StatefulSet      | ✅      | ✅    |                                                          |
+| DeploymentConfig | ✅      | ✅    |                                                          |
+| Argo Rollout     | ✅      | ✅    |                                                          |
+| DaemonSet        | ✅      | ❌    | `spec.replicas` yoktur; düğüm sayısıyla ölçeklenir       |
+| CronJob          | ✅      | ❌    | `spec.suspend` ile durdurulur; replica semantiği taşımaz |
 
 ReplicaSet / ReplicationController / Pod **bilerek dışarıdadır**: bunlar
 Deployment ve DeploymentConfig'in sahip olduğu nesnelerdir. Listelemek her

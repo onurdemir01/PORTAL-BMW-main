@@ -15,7 +15,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DIR = path.join(__dirname, '..', 'playbooks');
+// YOLLAR TEK KAYNAKTAN (server/ansible/paths.cjs). Agac AWX'in `bmw_portal/`
+// yapisinin aynasi oldugu icin duz `readdirSync` ARTIK YETMEZ: alt klasorlerdeki
+// playbook'lar sessizce kontrol disi kalirdi.
+const { allPlaybookFiles, MIN_PLAYBOOK_COUNT } = require('../paths.cjs');
 
 function commentLinesWithOddQuotes(text) {
   const bad = [];
@@ -41,7 +44,7 @@ function extractShellBlocks(text) {
     const body = [];
     for (let j = i + 1; j < lines.length; j++) {
       const line = lines[j];
-      if (line.trim() && (line.length - line.trimStart().length) <= baseIndent) break;
+      if (line.trim() && line.length - line.trimStart().length <= baseIndent) break;
       body.push(line);
     }
     blocks.push({ startLine: i + 1, body: body.join('\n') });
@@ -50,12 +53,16 @@ function extractShellBlocks(text) {
 }
 
 test('playbook shell bloklarindaki yorumlarda dengesiz tek tirnak YOK', () => {
-  const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.yml'));
+  const files = allPlaybookFiles();
+  assert.ok(
+    files.length >= MIN_PLAYBOOK_COUNT,
+    `yalnizca ${files.length} playbook bulundu — toplayici yanlis dizine bakiyor olabilir`,
+  );
   assert.ok(files.length > 0, 'playbook dizini bos olmamali');
 
   const problems = [];
   for (const file of files) {
-    const text = fs.readFileSync(path.join(DIR, file), 'utf8');
+    const text = fs.readFileSync(file, 'utf8');
     for (const block of extractShellBlocks(text)) {
       for (const bad of commentLinesWithOddQuotes(block.body)) {
         problems.push(`${file} (shell blogu satir ${block.startLine}) → ${bad}`);
@@ -68,10 +75,10 @@ test('playbook shell bloklarindaki yorumlarda dengesiz tek tirnak YOK', () => {
 
 test('tespit mantigi gercekten calisiyor (yanlis-negatif korumasi)', () => {
   const sample = [
-    "        ansible.builtin.shell: |",
+    '        ansible.builtin.shell: |',
     "          # DeploymentConfig API'si kapaliysa",
     "          oc get pods -o jsonpath='{.items[*].metadata.name}'",
-    "        args:",
+    '        args:',
   ].join('\n');
 
   const blocks = extractShellBlocks(sample);

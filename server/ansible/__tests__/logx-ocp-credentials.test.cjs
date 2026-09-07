@@ -31,13 +31,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const PB = path.join(__dirname, '..', 'playbooks');
+const { PLAYBOOKS, abs } = require('../paths.cjs');
+// Yollar paths.cjs'ten: playbook AWX agacinda tasindiginda burasi da
+// tek yerden guncellenir, bekci yanlis dosyaya bakmaz.
 const FILES = [
-  'logx_ocp_namespace_discovery.yml',
-  'logx_ocp_app_discovery.yml',
-  'logx_ocp_discover_fetch.yml',
+  PLAYBOOKS.logxOcpNamespaceDiscovery,
+  PLAYBOOKS.logxOcpAppDiscovery,
+  PLAYBOOKS.logxOcpDiscoverFetch,
 ];
-const read = (f) => fs.readFileSync(path.join(PB, f), 'utf8');
+const read = (f) => fs.readFileSync(abs(f), 'utf8');
 
 // Bosluklari tekilleyip tek satira indirger: YAML girintisi ya da satir sarmasi
 // degisince bekci kirmiziya donmesin. Olcut BICIM degil KURAL.
@@ -239,10 +241,13 @@ test('C5 parola sizintisi kapisi acilmadi (no_log korunuyor)', () => {
     'logx_ocp_discover_fetch.yml': 6,
   };
   for (const f of FILES) {
+    // Anahtar TEMEL AD: FILES artik AWX agacindaki goreli yolu tasiyor
+    // ('logx/ocp/...'), duz dosya adini degil.
+    const key = f.split('/').pop();
     const n = (read(f).match(/no_log:\s*true/g) || []).length;
     assert.ok(
-      n >= EXPECTED_MIN[f],
-      `${f}: no_log sayisi ${n}, en az ${EXPECTED_MIN[f]} olmali — parola log'a dusebilir`,
+      n >= EXPECTED_MIN[key],
+      `${f}: no_log sayisi ${n}, en az ${EXPECTED_MIN[key]} olmali — parola log'a dusebilir`,
     );
   }
 });
