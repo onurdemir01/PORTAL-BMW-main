@@ -1672,18 +1672,26 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
         // geri alamazdi. Uzlastiricinin yetim kilit turu bunu nihayetinde toplar;
         // burada ANINDA birakiyoruz ki kullanici hemen tekrar deneyebilsin.
         if (parsed.action === 'restore') {
+          // KILIDI BIRAKMAKLA YETINME — SONUCU DA YAZ.
+          //
+          // Eskiden yalnizca kilit birakiliyordu; satir "durdurulmus" olarak
+          // kaliyor ama DENENDIGI hicbir yerde yazmiyordu. Kullanici dort
+          // cluster'i geri alip ikisi olmadiginda, o iki satiri HIC DENENMEMIS
+          // olanlardan ayirt edemiyordu — ve neden olmadigini da goremiyordu.
+          // `recordRestoreFailure` kilidi de birakir (tek UPDATE).
           await state
-            .unlockRestore({
+            .recordRestoreFailure({
               env: op.env,
               tenant: op.tenant,
               clusterName: t.cluster,
               namespace: op.namespace,
               appName: t.app,
+              error: t.detail || `Hedef ${t.status} dondu.`,
             })
             .then(() => {
               mirror.unlocked.push(`${t.cluster}/${t.app}`);
             })
-            .catch((e) => console.warn('[ScaleX] kilit birakilamadi:', e.message));
+            .catch((e) => console.warn('[ScaleX] geri alma sonucu yazilamadi:', e.message));
         }
         continue;
       }

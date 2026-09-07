@@ -464,6 +464,14 @@ const TABLES = [
         operation_id      INT NULL,
         last_seen_at      DATETIME2 NULL,
         drift_status      NVARCHAR(30) NOT NULL DEFAULT 'in_sync',
+        -- GERI ALMA DENEMESININ SONUCU. Bunlar olmadan "hic denenmemis" ile
+        -- "denendi ve OLMADI" ekranda AYNI gorunuyordu: basarili geri alma satiri
+        -- SILIYOR, basarisiz olan ise satiri oldugu gibi birakiyordu. Kullanici
+        -- dort cluster'i durdurup geri aldiginda, ikisi olmadiysa o ikisinin
+        -- NEDEN kaldigini hicbir yerden ogrenemiyordu.
+        restore_attempts  INT NOT NULL DEFAULT 0,
+        last_restore_at   DATETIME2 NULL,
+        last_restore_error NVARCHAR(1000) NULL,
         created_at        DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         updated_at        DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         UNIQUE(env, tenant, cluster_name, namespace, app_name)
@@ -2323,6 +2331,22 @@ async function setupTables() {
 
   // Alter existing tables to add missing columns
   const alters = [
+    {
+      // MEVCUT KURULUMLAR ICIN — CREATE TABLE bloku tablo zaten varsa hic calismaz.
+      table: 'scalex_state_mirror',
+      col: 'restore_attempts',
+      sql: `ALTER TABLE scalex_state_mirror ADD restore_attempts INT NOT NULL DEFAULT 0`,
+    },
+    {
+      table: 'scalex_state_mirror',
+      col: 'last_restore_at',
+      sql: `ALTER TABLE scalex_state_mirror ADD last_restore_at DATETIME2 NULL`,
+    },
+    {
+      table: 'scalex_state_mirror',
+      col: 'last_restore_error',
+      sql: `ALTER TABLE scalex_state_mirror ADD last_restore_error NVARCHAR(1000) NULL`,
+    },
     {
       // MEVCUT KURULUMLAR ICIN. Kolonu yalnizca `CREATE TABLE`a eklemek YETMEZ:
       // tablo zaten varsa o blok hic calismaz ve alan sessizce eksik kalir —
