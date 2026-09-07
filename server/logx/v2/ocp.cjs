@@ -327,6 +327,41 @@ function normalizeDiscoveryResult(artifacts) {
   return { ...artifacts, clusters };
 }
 
+/**
+ * Namespace kesif ciktisini normalize eder ve PAYLASILAN onbellege yazar.
+ *
+ * LogX'in sihirbaz akisindan AYRILDI (2026-09-07): ayni tarama artik ScaleX'ten de
+ * tetiklenebiliyor ve ScaleX'in bir LogX istek satiri YOK. Yazma mantigini kopyalamak,
+ * iki tarafin zamanla ayrisip AYNI onbellege FARKLI sekiller yazmasi demekti.
+ *
+ * `requestRow` almaz — yalnizca (env, tenant) ve ham artifact. Cagiran kendi durum
+ * makinesini kendi gunceller.
+ *
+ * @returns normalize edilmis sonuc (cagiran ekranda gostersin diye)
+ */
+async function cacheNamespaceDiscovery({ env, tenant, artifacts }) {
+  const normalized = normalizeDiscoveryResult(artifacts);
+  try {
+    const cache = require('./ocp-cache.cjs');
+    for (const c of normalized.clusters || []) {
+      // Yalnizca BASARILI taramalar yazilir; hatali cluster icin "namespace yok" yazmak
+      // kullaniciyi yanlis yonlendirirdi.
+      if (c.status !== 'ok') continue;
+      await cache.putNamespaces({
+        env,
+        tenant,
+        clusterName: c.cluster_name,
+        namespaces: c.namespaces,
+        source: 'discovery',
+      });
+    }
+  } catch (e) {
+    // BEST-EFFORT: onbellek yazimi basarisiz olsa da cagiranin akisi durmamali.
+    console.warn('[LogXv2] namespace onbellegi yazilamadi:', e.message);
+  }
+  return normalized;
+}
+
 async function finalizeNamespaceDiscovery(requestRow, job) {
   if (!job.artifacts) {
     await requests.updateRequest(requestRow.request_id, {
@@ -335,28 +370,12 @@ async function finalizeNamespaceDiscovery(requestRow, job) {
     });
     return;
   }
-  const normalized = normalizeDiscoveryResult(job.artifacts);
-
-  // Onbellege yaz — sonuc artik kullanicilar arasi paylasilir (best-effort: onbellek
-  // yazimi basarisiz olsa da sihirbaz akisi durmamali).
-  try {
-    const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : {};
-    const cache = require('./ocp-cache.cjs');
-    for (const c of normalized.clusters || []) {
-      // Yalnizca BASARILI taramalar yazilir; hatali cluster icin "namespace yok" yazmak
-      // kullaniciyi yanlis yonlendirirdi.
-      if (c.status !== 'ok') continue;
-      await cache.putNamespaces({
-        env: input.env,
-        tenant: input.tenant,
-        clusterName: c.cluster_name,
-        namespaces: c.namespaces,
-        source: 'discovery',
-      });
-    }
-  } catch (e) {
-    console.warn('[LogXv2] namespace onbellegi yazilamadi:', e.message);
-  }
+  const input = requestRow.input_json ? JSON.parse(requestRow.input_json) : {};
+  const normalized = await cacheNamespaceDiscovery({
+    env: input.env,
+    tenant: input.tenant,
+    artifacts: job.artifacts,
+  });
 
   await requests.updateRequest(requestRow.request_id, {
     state: 'namespaces_discovered',
@@ -485,6 +504,7 @@ module.exports = {
   selectClusters,
   discoverNamespaces,
   finalizeNamespaceDiscovery,
+  cacheNamespaceDiscovery,
   discoverFetch,
   discoverApps,
   finalizeAppDiscovery,
