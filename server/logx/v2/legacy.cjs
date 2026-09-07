@@ -160,9 +160,52 @@ async function listHostsForApp(app) {
 // (Ayni sezgisel `server/telnet/index.cjs` SAFE_HOST_RE ile tutarli.)
 const SAFE_MANUAL_HOST_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
+// UYGULAMA ADI ICIN AYNI KAPI.
+//
+// `app` degeri `app_name` olarak AWX extra_vars'ina, oradan playbook'a ve `oc`/kabuk
+// yollarina gidiyordu — ama SUNUCU adlari icin siki bir bicim kapisi varken UYGULAMA
+// adi icin HICBIR kontrol yoktu. Envanterden secilen adlar zaten guvenliydi; elle
+// giris yolu acilinca (serbest metin dugmesi) bu bosluk gercek bir yol haline geldi.
+//
+// Karakter kumesi host kapisiyla ayni tutuldu, yalnizca uzunluk daha genis: envanterdeki
+// uygulama adlari sunucu adlarindan uzun olabiliyor.
+const SAFE_MANUAL_APP_RE = /^[A-Za-z0-9._-]{1,128}$/;
+
 async function discover(requestRow, app, selectedHosts, options = {}) {
   const allowManual = options.allowManual === true;
+
+  // BICIM KAPISI — ELLE GIRILEN AD ICIN. Envanterden secilen adlar zaten bu kumede;
+  // kapi asil serbest metin yolunu kesiyor. Yetki kapisi (restrictions) AYRI ve
+  // caginin ucunda uygulanmaya devam ediyor — bu onun yerine GECMEZ.
+  const appName = String(app || '').trim();
+  if (!appName) {
+    throw Object.assign(new Error('Uygulama adı zorunlu.'), { status: 400 });
+  }
+  if (!SAFE_MANUAL_APP_RE.test(appName)) {
+    throw Object.assign(
+      new Error(
+        `Uygulama adı biçimi geçersiz: "${appName}". ` +
+          'Yalnızca harf, rakam, nokta, alt çizgi ve tire kullanılabilir (en fazla 128 karakter).',
+      ),
+      { status: 400, code: 'manual_app_format' },
+    );
+  }
+
   const inventoryHosts = await resolveHostsForApp(app, false).catch(() => []);
+  // AD ENVANTERDE VAR MI? Sunucusu olmayan bir uygulama da envanterde OLABILIR, bu
+  // yuzden olcut "host dondu mu" degil: uygulama listesinde ARANIYOR. Yanlis olcut,
+  // envanterdeki bir uygulamayi "elle girilmis" diye isaretlerdi.
+  let appInInventory = false;
+  try {
+    const found = await searchApps(appName);
+    appInInventory = (found.apps || []).some(
+      (a) => String(a).toUpperCase() === appName.toUpperCase(),
+    );
+  } catch {
+    // Envanter okunamadi: "elle girildi" DIYE ISARETLEME. Bilinmezligi suclama
+    // olarak yazmak, denetim kaydini guvenilmez yapardi.
+    appInInventory = true;
+  }
   const allowed = new Set(inventoryHosts.map((h) => String(h).toUpperCase()));
 
   const requested = Array.isArray(selectedHosts)
@@ -228,9 +271,14 @@ async function discover(requestRow, app, selectedHosts, options = {}) {
     // IZLENEBILIRLIK: hangi sunucularin ENVANTERDE OLMADIGI istek kaydinda durur.
     // Ekran bunu sonradan da gosterebilsin, denetim de "bu is elle girilen bir
     // sunucuya gitti mi" sorusunu kayittan cevaplayabilsin.
-    input: { app, hosts, ...(manualHosts.length ? { manualHosts } : {}) },
+    input: {
+      app,
+      hosts,
+      ...(manualHosts.length ? { manualHosts } : {}),
+      ...(appInInventory ? {} : { manualApp: true }),
+    },
   });
-  return { job, manualHosts };
+  return { job, manualHosts, manualApp: !appInInventory };
 }
 
 // Discovery job'i terminal duruma ulastiginda (jobs.pollJob tarafindan cagrilir) — artifacts'i

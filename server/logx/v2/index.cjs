@@ -46,13 +46,11 @@ function asyncRoute(fn) {
   return (req, res) => {
     fn(req, res).catch((err) => {
       const status = err.status || 500;
-      res
-        .status(status)
-        .json({
-          ok: false,
-          message: err.message,
-          ...(err.code ? { error: err.code, invalid: err.invalid } : {}),
-        });
+      res.status(status).json({
+        ok: false,
+        message: err.message,
+        ...(err.code ? { error: err.code, invalid: err.invalid } : {}),
+      });
     });
   };
 }
@@ -325,7 +323,24 @@ function initLogXv2(app) {
       // KAPI ACIKCA ISTENIR. Bayrak gonderilmedigi surece davranis AYNEN eskisi gibi:
       // envanter disi her sunucu adi 400 ile reddedilir (anti-TOCTOU).
       const allowManual = req.body?.allowManual === true;
-      const { job, manualHosts } = await legacy.discover(row, app, hosts, { allowManual });
+      const { job, manualHosts, manualApp } = await legacy.discover(row, app, hosts, {
+        allowManual,
+      });
+
+      // ELLE GIRILEN UYGULAMA ADI DA DENETIME YAZILIR. Sunucu icin bu zaten
+      // yapiliyordu; uygulama adi da envanter disina cikabildigi icin ayni izin
+      // birakilmasi gerekir — "bu is hangi ada gitti ve o ad nereden geldi"
+      // sorusu sonradan cevaplanabilmeli.
+      if (manualApp) {
+        await audit
+          .log({
+            username: currentUser(req)?.username,
+            action: 'v2_legacy_manual_app',
+            result: 'accepted',
+            detail: `app=${app} jobId=${job.id}`,
+          })
+          .catch(() => {});
+      }
 
       // IZLENEBILIRLIK: elle girilen sunucular DENETIM KAYDINA yazilir. Envanter
       // disina cikan bir is, sonradan "bu nereden geldi" sorusunu cevaplayabilmeli.
@@ -339,7 +354,7 @@ function initLogXv2(app) {
           })
           .catch(() => {});
       }
-      res.json({ ok: true, jobId: job.id, manualHosts });
+      res.json({ ok: true, jobId: job.id, manualHosts, manualApp: Boolean(manualApp) });
     }),
   );
 
