@@ -184,10 +184,21 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
   //
   // Okunamazsa is DURMAZ: atif varsayilana duser (eski davranis) ama
   // `requester_is_fallback` bayragi ile bu GORUNUR olur.
+  //
+  // KULLANICI ADI TEK BASINA YETMEZ. Ilk duzeltme buraya `{ username: row.username }`
+  // koyuyordu; `withRequesterVars` e-postayi `user.mail`den okur ve istek satirinda
+  // (`logx_v2_requests`) MAIL KOLONU YOKTUR. Yani `requester_email` YINE
+  // DEFAULT_REQUESTER'a — kod deposundaki sabit calisanin adresine — dusuyordu ve
+  // Teams bildirimi yanlis kisiye gitmeye devam ediyordu. Kimlik LDAP'tan cozulur
+  // (portal_users LDAP'in onbellegidir; ancak orada yoksa canli LDAP'a gidilir).
   let requester = null;
   try {
     const row = await require('./requests.cjs').getRequestRow(requestId);
-    if (row?.username) requester = { username: row.username };
+    if (row?.username) {
+      requester = (await require('../../auth/users.cjs').getUserIdentity(row.username)) || {
+        username: row.username,
+      };
+    }
   } catch {
     /* atif ikincil; is akisini durdurmaz */
   }

@@ -4111,4 +4111,9 @@ module.exports = {
   // Saf yardimci — "kullaniciya log gozukmuyor" senaryosunun test edilebilmesi icin
   // disari acildi (bkz. server/ansible/__tests__/output-filter.test.cjs).
   applyOutputFilter,
+  // Saf yardimci — atif zincirinin UCU burasi: AWX'e giden `requester_email`i bu
+  // fonksiyon kurar. Kaynak tarayan bekci "kullanici geciriliyor mu" diye sorup
+  // YESIL kalabiliyordu; davranisin kendisi olculebilsin diye disari acildi
+  // (bkz. server/auth/__tests__/user-identity.test.cjs).
+  withRequesterVars,
 };

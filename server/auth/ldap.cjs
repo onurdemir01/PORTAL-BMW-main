@@ -5,7 +5,7 @@ const fs = require('fs');
 const { Client } = require('ldapts');
 const { normalizeUsername } = require('./utils.cjs');
 
-const _cache    = new Map();
+const _cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
 
 function isConfigured() {
@@ -36,13 +36,13 @@ function buildTlsOpts() {
 }
 
 function createClient() {
-  const url    = process.env.LDAP_URL || '';
+  const url = process.env.LDAP_URL || '';
   const isLdaps = url.startsWith('ldaps://');
   return new Client({
     url,
-    tlsOptions:     isLdaps ? buildTlsOpts() : undefined,
+    tlsOptions: isLdaps ? buildTlsOpts() : undefined,
     connectTimeout: 8000,
-    timeout:        8000,
+    timeout: 8000,
   });
 }
 
@@ -51,27 +51,35 @@ function normalizePhotoToDataUrl(photo) {
   if (!photo) return null;
   try {
     let buf;
-    if (Buffer.isBuffer(photo))         buf = photo;
+    if (Buffer.isBuffer(photo)) buf = photo;
     else if (typeof photo === 'string') buf = Buffer.from(photo, 'base64');
-    else if (Array.isArray(photo))      buf = Buffer.isBuffer(photo[0]) ? photo[0] : Buffer.from(photo[0], 'base64');
-    else                                buf = Buffer.from(photo);
+    else if (Array.isArray(photo))
+      buf = Buffer.isBuffer(photo[0]) ? photo[0] : Buffer.from(photo[0], 'base64');
+    else buf = Buffer.from(photo);
     if (buf && buf.length > 0) {
       return `data:image/jpeg;base64,${buf.toString('base64')}`;
     }
-  } catch { /* fotograf cozulemezse null */ }
+  } catch {
+    /* fotograf cozulemezse null */
+  }
   return null;
 }
 
 function determineRole(memberOf) {
-  const adminGroup = (process.env.LDAP_ADMIN_GROUP || process.env.LDAP_GROUP_ADMIN_DN || '').toLowerCase().trim();
-  const userGroup  = (process.env.LDAP_USER_GROUP  || '').toLowerCase().trim();
-  const groups     = (Array.isArray(memberOf) ? memberOf : memberOf ? [memberOf] : []).map((g) => String(g).toLowerCase());
+  const adminGroup = (process.env.LDAP_ADMIN_GROUP || process.env.LDAP_GROUP_ADMIN_DN || '')
+    .toLowerCase()
+    .trim();
+  const userGroup = (process.env.LDAP_USER_GROUP || '').toLowerCase().trim();
+  const groups = (Array.isArray(memberOf) ? memberOf : memberOf ? [memberOf] : []).map((g) =>
+    String(g).toLowerCase(),
+  );
 
   // Tam esitlik veya DN-sonu eslesme — eski iki-yonlu .includes() kisa/genel bir grup DN'i
   // (or. "cn=admin") baska bir grubun DN'inin ALT DIZISI oldugunda yanlislikla Admin veriyordu
   // (ayricalik yukseltme riski). g.endsWith(',' + adminGroup) DN hiyerarsisinde "ayni RDN zinciri"
   // anlamina gelir, rastgele substring eslesmesi degil.
-  if (adminGroup && groups.some((g) => g === adminGroup || g.endsWith(',' + adminGroup))) return 'Admin';
+  if (adminGroup && groups.some((g) => g === adminGroup || g.endsWith(',' + adminGroup)))
+    return 'Admin';
   // LDAP_USER_GROUP TANIMLIYSA bu bir beyaz liste gibi davranir: yalniz o gruba
   // uye olanlar 'User' alir, digerleri reddedilir (kurumun ozellikle kisitlamak
   // istedigi durum icin). TANIMLI DEGILSE (varsayilan/mevcut uretim durumu),
@@ -88,10 +96,20 @@ function determineRole(memberOf) {
 
 // Ortak search attr'lari
 const USER_ATTRS = [
-  'dn', 'cn', 'sAMAccountName', 'mail', 'displayName',
-  'memberOf', 'department', 'title', 'telephoneNumber', 'mobile',
-  'thumbnailPhoto', 'jpegPhoto',
-  'physicalDeliveryOfficeName', 'ou',  // G-05: additional department sources
+  'dn',
+  'cn',
+  'sAMAccountName',
+  'mail',
+  'displayName',
+  'memberOf',
+  'department',
+  'title',
+  'telephoneNumber',
+  'mobile',
+  'thumbnailPhoto',
+  'jpegPhoto',
+  'physicalDeliveryOfficeName',
+  'ou', // G-05: additional department sources
   // 'mail' alani bos olan AD hesaplari icin: userPrincipalName cogu kurumsal AD
   // ortaminda ayni gercek e-posta ile ayni format (sAMAccountName@sirket-domaini).
   // Bos oldugunda Teams @mention lookup'i (runner.cjs withRequesterVars) sabit bir
@@ -102,10 +120,10 @@ const USER_ATTRS = [
 async function authenticateLdap(username, password) {
   if (!isConfigured()) throw new Error('LDAP yapılandırılmamış');
 
-  const baseDn      = process.env.LDAP_BASE_DN;
-  const bindDn      = process.env.LDAP_BIND_DN;
-  const bindPass    = process.env.LDAP_BIND_PASSWORD || '';
-  const searchAttr  = process.env.AUTH_LDAP_SEARCH_ATTR || 'sAMAccountName';
+  const baseDn = process.env.LDAP_BASE_DN;
+  const bindDn = process.env.LDAP_BIND_DN;
+  const bindPass = process.env.LDAP_BIND_PASSWORD || '';
+  const searchAttr = process.env.AUTH_LDAP_SEARCH_ATTR || 'sAMAccountName';
 
   // ── Adim 1: Servis hesabiyla bind ───────────────────────────────────────────
   const svcClient = createClient();
@@ -120,8 +138,8 @@ async function authenticateLdap(username, password) {
   let userEntry;
   try {
     const { searchEntries } = await svcClient.search(baseDn, {
-      filter:     `(${searchAttr}=${escapeFilter(username)})`,
-      scope:      'sub',
+      filter: `(${searchAttr}=${escapeFilter(username)})`,
+      scope: 'sub',
       attributes: USER_ATTRS,
     });
     userEntry = searchEntries[0];
@@ -147,14 +165,18 @@ async function authenticateLdap(username, password) {
   const role = determineRole(userEntry.memberOf);
   if (!role) throw new Error('Portal erişim grubunuzda bulunamadı.');
 
-  const rawPhoto  = userEntry.thumbnailPhoto || userEntry.jpegPhoto || null;
+  const rawPhoto = userEntry.thumbnailPhoto || userEntry.jpegPhoto || null;
   const avatarUrl = normalizePhotoToDataUrl(rawPhoto);
 
   if (!rawPhoto) {
-    console.log(`[LDAP] ${username} icin fotograf alani bulunamadi. Mevcut alanlar: ${Object.keys(userEntry).join(', ')}`);
+    console.log(
+      `[LDAP] ${username} icin fotograf alani bulunamadi. Mevcut alanlar: ${Object.keys(userEntry).join(', ')}`,
+    );
   } else {
     const len = Buffer.isBuffer(rawPhoto) ? rawPhoto.length : String(rawPhoto).length;
-    console.log(`[LDAP] ${username} fotograf: boyut=${len}b, avatarUrl=${avatarUrl ? 'ok' : 'null'}`);
+    console.log(
+      `[LDAP] ${username} fotograf: boyut=${len}b, avatarUrl=${avatarUrl ? 'ok' : 'null'}`,
+    );
   }
 
   const mail = String(userEntry.mail || userEntry.userPrincipalName || '');
@@ -162,8 +184,10 @@ async function authenticateLdap(username, password) {
     // Bu, requester_email'in DEFAULT_REQUESTER'a (bkz. runner.cjs withRequesterVars)
     // dusecegi anlamina gelir - Teams @mention YANLIS bir kisiyi etiketler. Loglanir
     // ki gercekten fetch edilip edilmedigi (fallback tetiklenmis mi) DOGRULANABILSIN.
-    console.warn(`[LDAP] ${username} icin ne "mail" ne "userPrincipalName" dolu - `
-      + `requester_email varsayilana (DEFAULT_REQUESTER) dusecek.`);
+    console.warn(
+      `[LDAP] ${username} icin ne "mail" ne "userPrincipalName" dolu - ` +
+        `requester_email varsayilana (DEFAULT_REQUESTER) dusecek.`,
+    );
   }
 
   // AD GRUPLARI OTURUMA (2026-08-29). `memberOf` zaten cekiliyordu ama YALNIZCA rol
@@ -179,27 +203,33 @@ async function authenticateLdap(username, password) {
   const MAX_GROUPS = 200;
   const rawGroups = Array.isArray(userEntry.memberOf)
     ? userEntry.memberOf
-    : (userEntry.memberOf ? [userEntry.memberOf] : []);
+    : userEntry.memberOf
+      ? [userEntry.memberOf]
+      : [];
   const allGroups = [...new Set(rawGroups.map((g) => String(g || '').trim()).filter(Boolean))];
   if (allGroups.length > MAX_GROUPS) {
-    console.warn(`[LDAP] ${username} icin ${allGroups.length} grup bulundu, ilk ${MAX_GROUPS} tanesi oturuma yazildi — `
-      + `grup bazli yetkilendirme eksik calisabilir.`);
+    console.warn(
+      `[LDAP] ${username} icin ${allGroups.length} grup bulundu, ilk ${MAX_GROUPS} tanesi oturuma yazildi — ` +
+        `grup bazli yetkilendirme eksik calisabilir.`,
+    );
   }
   const groups = allGroups.slice(0, MAX_GROUPS);
 
   return {
-    username:    normalizeUsername(username),
-    dn:          userEntry.dn,
+    username: normalizeUsername(username),
+    dn: userEntry.dn,
     groups,
     displayName: String(userEntry.displayName || userEntry.cn || username),
     mail,
     // G-05: fallback to physicalDeliveryOfficeName or ou if department is a raw code
-    department:  String(userEntry.department || userEntry.physicalDeliveryOfficeName || userEntry.ou || ''),
-    title:       String(userEntry.title || ''),
+    department: String(
+      userEntry.department || userEntry.physicalDeliveryOfficeName || userEntry.ou || '',
+    ),
+    title: String(userEntry.title || ''),
     role,
-    authSource:  'ldap',
+    authSource: 'ldap',
     avatarUrl,
-    photoUrl:    avatarUrl, // backward compat
+    photoUrl: avatarUrl, // backward compat
   };
 }
 
@@ -207,32 +237,33 @@ async function authenticateLdap(username, password) {
 async function findLdapUserByEmail(email) {
   if (!email || !isConfigured()) return null;
 
-  const baseDn   = process.env.LDAP_BASE_DN;
-  const bindDn   = process.env.LDAP_BIND_DN;
+  const baseDn = process.env.LDAP_BASE_DN;
+  const bindDn = process.env.LDAP_BIND_DN;
   const bindPass = process.env.LDAP_BIND_PASSWORD || '';
 
   const client = createClient();
   try {
     await client.bind(bindDn, bindPass);
     const { searchEntries } = await client.search(baseDn, {
-      filter:     `(mail=${escapeFilter(email)})`,
-      scope:      'sub',
+      filter: `(mail=${escapeFilter(email)})`,
+      scope: 'sub',
       attributes: USER_ATTRS,
     });
     const user = searchEntries[0];
     if (!user) return null;
 
-    const rawPhoto  = user.thumbnailPhoto || user.jpegPhoto || null;
+    const rawPhoto = user.thumbnailPhoto || user.jpegPhoto || null;
     const avatarUrl = normalizePhotoToDataUrl(rawPhoto);
 
     return {
-      username:    String(user.sAMAccountName || ''),
+      username: String(user.sAMAccountName || ''),
       displayName: String(user.displayName || user.cn || ''),
-      email:       String(user.mail || email),
+      email: String(user.mail || email),
       // G-05: physicalDeliveryOfficeName or ou as fallback if department is empty/numeric
-      department:  String(user.department || user.physicalDeliveryOfficeName || user.ou || '') || null,
-      title:       String(user.title || '') || null,
-      phone:       String(user.telephoneNumber || user.mobile || '') || null,
+      department:
+        String(user.department || user.physicalDeliveryOfficeName || user.ou || '') || null,
+      title: String(user.title || '') || null,
+      phone: String(user.telephoneNumber || user.mobile || '') || null,
       avatarUrl,
     };
   } catch (err) {
@@ -243,11 +274,55 @@ async function findLdapUserByEmail(email) {
   }
 }
 
+// Kullanici adindan LDAP profili cek (is atfi icin).
+//
+// NEDEN VAR: bir AWX isi acildiginda `requester_email`/`requester_name` GERCEK
+// tetikleyiciye cozulmeli. LogX v2 istek satiri yalnizca `username` tasir; e-posta
+// hicbir yerde durmaz. E-posta bos kalinca `withRequesterVars` DEFAULT_REQUESTER'a
+// duser — yani kod deposundaki SABIT bir calisanin adresine (2026-09-07: kullanici
+// kendi actigi iste baskasinin adini gordu).
+//
+// `findLdapUserByEmail` ile AYNI desen: servis bind'i + tek arama; tek fark filtre.
+// Hata durumunda `null` doner — atif ikincildir, is akisini durdurmaz.
+async function findLdapUserByUsername(username) {
+  const uname = String(username || '').trim();
+  if (!uname || !isConfigured()) return null;
+
+  const baseDn = process.env.LDAP_BASE_DN;
+  const bindDn = process.env.LDAP_BIND_DN;
+  const bindPass = process.env.LDAP_BIND_PASSWORD || '';
+
+  const client = createClient();
+  try {
+    await client.bind(bindDn, bindPass);
+    const { searchEntries } = await client.search(baseDn, {
+      filter: `(sAMAccountName=${escapeFilter(uname)})`,
+      scope: 'sub',
+      attributes: USER_ATTRS,
+    });
+    const user = searchEntries[0];
+    if (!user) return null;
+
+    return {
+      username: String(user.sAMAccountName || uname),
+      displayName: String(user.displayName || user.cn || ''),
+      // 'mail' bos olan AD hesaplarinda userPrincipalName ayni adresi tasir
+      // (bkz. USER_ATTRS yorumu) — authenticateLdap ile AYNI oncelik.
+      mail: String(user.mail || user.userPrincipalName || ''),
+    };
+  } catch (err) {
+    console.warn('[LDAP] findLdapUserByUsername hatasi:', err.message);
+    return null;
+  } finally {
+    await client.unbind().catch(() => {});
+  }
+}
+
 async function authenticate(username, password) {
   // Local users bypass LDAP entirely — prevents collisions when a real LDAP user
   // has the same name as a configured local fallback account.
   const localAdmin = process.env.LOCAL_ADMIN_USER ?? 'admin';
-  const localUser  = process.env.LOCAL_USER       ?? 'user';
+  const localUser = process.env.LOCAL_USER ?? 'user';
   if (username === localAdmin || username === localUser) {
     return authenticateLocal(username, password);
   }
@@ -260,14 +335,14 @@ async function authenticate(username, password) {
       _cache.set(username.toLowerCase(), { ...result, ts: Date.now() });
       return result;
     } catch (ldapErr) {
-      const msg  = ldapErr.message || '';
+      const msg = ldapErr.message || '';
       console.warn('[LDAP] Auth hatasi:', msg);
 
       const isNetworkErr =
         ldapErr.code === 'ECONNREFUSED' ||
-        ldapErr.code === 'ETIMEDOUT'    ||
-        ldapErr.code === 'ENOTFOUND'    ||
-        ldapErr.code === 'ECONNRESET'   ||
+        ldapErr.code === 'ETIMEDOUT' ||
+        ldapErr.code === 'ENOTFOUND' ||
+        ldapErr.code === 'ECONNRESET' ||
         msg.toLowerCase().includes('connect') ||
         msg.toLowerCase().includes('timeout') ||
         msg.includes('Servis hesabı bağlanamadı');
@@ -292,14 +367,14 @@ async function authenticate(username, password) {
 }
 
 function authenticateLocal(username, password) {
-  const localAdmin     = process.env.LOCAL_ADMIN_USER || 'admin';
-  const localUser      = process.env.LOCAL_USER       || 'user';
+  const localAdmin = process.env.LOCAL_ADMIN_USER || 'admin';
+  const localUser = process.env.LOCAL_USER || 'user';
   // GUVENLIK: sifre env degiskeni BOSSA (set edilmemisse) hesap ASLA eslesmez — eskiden
   // `|| 'admin'` / `|| 'user'` fallback'i vardi, yani sifre alanlari doldurulmadigi surece
   // production'da bile herkesce bilinen admin/admin, user/user ile Admin girisi calisiyordu
   // (LDAP tamamen calisir durumdayken bile, bu fonksiyon LDAP'tan ONCE kontrol edildigi icin).
   const localAdminPass = process.env.LOCAL_ADMIN_PASS || '';
-  const localUserPass  = process.env.LOCAL_USER_PASS  || '';
+  const localUserPass = process.env.LOCAL_USER_PASS || '';
 
   // GUVENLIK (2026-08-20, kullanici talebi: "ben aykiri bir sey soyleyene kadar
   // admin:admin girisini engeller misin"): sifrenin KULLANICI ADIYLA AYNI olmasi
@@ -312,18 +387,38 @@ function authenticateLocal(username, password) {
   if (!allowWeak && (username === localAdmin || username === localUser)) {
     const configured = username === localAdmin ? localAdminPass : localUserPass;
     if (isWeak(username, configured)) {
-      console.warn(`[Auth] "${username}" yerel hesabinin sifresi kullanici adiyla ayni ` +
-        `(${username}:${username}) - giris ENGELLENDI. LOCAL_${username === localAdmin ? 'ADMIN' : 'USER'}_PASS ` +
-        `degerini guclu bir sifreyle degistirin (ya da bilerek acmak icin ALLOW_WEAK_LOCAL_PASS=true).`);
+      console.warn(
+        `[Auth] "${username}" yerel hesabinin sifresi kullanici adiyla ayni ` +
+          `(${username}:${username}) - giris ENGELLENDI. LOCAL_${username === localAdmin ? 'ADMIN' : 'USER'}_PASS ` +
+          `degerini guclu bir sifreyle degistirin (ya da bilerek acmak icin ALLOW_WEAK_LOCAL_PASS=true).`,
+      );
       throw new Error('Kullanıcı adı veya şifre hatalı');
     }
   }
 
   if (username === localAdmin && localAdminPass && password === localAdminPass) {
-    return { username, dn: null, displayName: username, mail: '', role: 'Admin', authSource: 'local', avatarUrl: null, photoUrl: null };
+    return {
+      username,
+      dn: null,
+      displayName: username,
+      mail: '',
+      role: 'Admin',
+      authSource: 'local',
+      avatarUrl: null,
+      photoUrl: null,
+    };
   }
   if (username === localUser && localUserPass && password === localUserPass) {
-    return { username, dn: null, displayName: username, mail: '', role: 'User',  authSource: 'local', avatarUrl: null, photoUrl: null };
+    return {
+      username,
+      dn: null,
+      displayName: username,
+      mail: '',
+      role: 'User',
+      authSource: 'local',
+      avatarUrl: null,
+      photoUrl: null,
+    };
   }
   throw new Error('Kullanıcı adı veya şifre hatalı');
 }
@@ -334,7 +429,12 @@ function clearCache(username) {
 }
 
 module.exports = {
-  authenticate, authenticateLocal, isConfigured, clearCache, findLdapUserByEmail,
+  authenticate,
+  authenticateLocal,
+  isConfigured,
+  clearCache,
+  findLdapUserByEmail,
+  findLdapUserByUsername,
   // test-only (ayrica authenticate() ic-cagrisi da bunun uzerinden gecer — bkz. yukarida):
   // gercek LDAP baglantisi kurmadan authenticate()'in fallback mantigini dogrulamak icin.
   authenticateLdap,
