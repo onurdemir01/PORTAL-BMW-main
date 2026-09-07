@@ -3,8 +3,12 @@
 // Liste `ocp-catalog`tan gelir: dbo.Openshift_Inventory ∪ tarama önbelleği. Yetki
 // kısıtıyla düşen namespace'ler GİZLENİR ama SAYISI söylenir — "neden göremiyorum?"
 // sorusu cevapsız kalmasın.
-import React, { useEffect, useMemo, useState } from 'react';
-import { ExclamationTriangleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowPathIcon,
+  ExclamationTriangleIcon,
+  MagnifyingGlassIcon,
+} from '@heroicons/react/24/outline';
 import { scalexApi, type ScaleXNamespaceList } from '@/api/scalexApi';
 
 interface Props {
@@ -26,22 +30,83 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState(initial || '');
 
-  useEffect(() => {
-    let alive = true;
+  // CANLI TARAMA DURUMU. Katalogda olmayan bir namespace'e ulasmanin tek yolu.
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
+  const aliveRef = useRef(true);
+  useEffect(
+    () => () => {
+      aliveRef.current = false;
+    },
+    [],
+  );
+
+  const loadList = useCallback(async () => {
     setLoading(true);
-    scalexApi
-      .namespaces(env, tenant, clusters)
-      .then((r) => {
-        if (!alive) return;
-        if (r.ok) setData(r);
-        else setError(r.message || 'Namespace listesi alınamadı.');
-      })
-      .catch((e) => alive && setError(e.message))
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [env, tenant, clusters.join(',')]);
+    try {
+      const r = await scalexApi.namespaces(env, tenant, clusters);
+      if (!aliveRef.current) return;
+      if (r.ok) {
+        setData(r);
+        setError(null);
+      } else setError(r.message || 'Namespace listesi alınamadı.');
+    } catch (e) {
+      if (aliveRef.current) setError((e as Error).message);
+    } finally {
+      if (aliveRef.current) setLoading(false);
+    }
+  }, [env, tenant, clusters.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    loadList();
+  }, [loadList]);
+
+  // TARAMA. Sonuc PAYLASILAN onbellege yazilir (sunucu tarafinda, durum ucunda) —
+  // yani bu tarama LogX'i de besler. Bitince liste yeniden okunur.
+  async function runScan() {
+    if (scanning || busy) return;
+    setScanning(true);
+    setScanNote(null);
+    try {
+      const launched = await scalexApi.discoverNamespaces(env, tenant, clusters);
+      if (!launched.ok) throw new Error(launched.message || 'Tarama başlatılamadı.');
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 3000));
+        if (!aliveRef.current) return;
+        const st = await scalexApi.discoverNamespacesStatus(
+          launched.serverId,
+          launched.jobId,
+          env,
+          tenant,
+        );
+        if (!st.finished) continue;
+        const okClusters = st.clusters.filter((c) => c.status === 'ok');
+        const failed = st.clusters.filter((c) => c.status !== 'ok');
+        // "HICBIRI TARANAMADI" ile "NAMESPACE YOK" AYNI EKRAN DEGILDIR.
+        if (okClusters.length === 0) {
+          setScanNote(
+            failed.length
+              ? `Hiçbir cluster taranamadı: ${failed.map((c) => c.cluster).join(', ')}. ` +
+                  'Bu, namespace olmadığı anlamına GELMEZ.'
+              : st.message || 'Tarama sonuç döndürmedi.',
+          );
+        } else {
+          const total = okClusters.reduce((n, c) => n + c.count, 0);
+          setScanNote(
+            `${okClusters.length} cluster tarandı, ${total} namespace bulundu` +
+              (failed.length ? ` · ${failed.length} cluster taranamadı` : '') +
+              '. Liste yenilendi.',
+          );
+          await loadList();
+        }
+        return;
+      }
+    } catch (e) {
+      if (aliveRef.current) setScanNote(`Tarama başarısız: ${(e as Error).message}`);
+    } finally {
+      if (aliveRef.current) setScanning(false);
+    }
+  }
 
   const list = useMemo(() => {
     const items = data?.items || [];
@@ -106,6 +171,34 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
                      focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
         />
       </div>
+
+      {/* TARAMA DUGMESI HER ZAMAN GORUNUR — yalnizca liste bosken degil.
+          Envanter gecikmeli yazildigi icin liste DOLU olsa bile aranan namespace
+          eksik olabilir; dugmeyi bos-durum blogunun icine koymak, tam o durumda
+          kullaniciyi caresiz birakirdi. */}
+      <div className="flex items-center gap-3 text-xs">
+        <button
+          type="button"
+          onClick={runScan}
+          disabled={busy || scanning}
+          className="inline-flex items-center gap-1.5 text-[var(--accent)] hover:underline disabled:opacity-40 disabled:no-underline"
+        >
+          <ArrowPathIcon
+            aria-hidden="true"
+            className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`}
+          />
+          {scanning ? 'Cluster’lar taranıyor…' : 'Listede yok mu? Cluster’ları tara'}
+        </button>
+        <span className="text-[var(--text-muted)]">
+          Katalog gecikmeli yazılır; yeni açılmış bir namespace burada görünmeyebilir.
+        </span>
+      </div>
+
+      {scanNote && (
+        <p role="status" className="text-xs text-[var(--text-secondary)]">
+          {scanNote}
+        </p>
+      )}
 
       <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border-subtle)] max-h-80 overflow-y-auto">
         {list.map((ns) => {

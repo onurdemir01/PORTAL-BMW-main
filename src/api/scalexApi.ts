@@ -289,6 +289,42 @@ export const scalexApi = {
     });
   },
 
+  /**
+   * Canlı namespace taraması. Katalogda (envanter ∪ önbellek) olmayan bir namespace'e
+   * ulaşmanın TEK yolu — LogX'te bu düğme vardı, ScaleX'te yoktu.
+   * Sonuç PAYLAŞILAN önbelleğe yazılır: LogX de aynı taramadan faydalanır.
+   */
+  async discoverNamespaces(env: string, tenant: string, clusters: string[]) {
+    return safeJson(
+      await fetch(`${BASE}/namespaces/discover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ env, tenant, clusters }),
+      }),
+    ) as Promise<{
+      ok: boolean;
+      serverId: number;
+      jobId: number;
+      status: string;
+      message?: string;
+    }>;
+  },
+
+  async discoverNamespacesStatus(serverId: number, jobId: number, env: string, tenant: string) {
+    const q = new URLSearchParams({ env, tenant });
+    return safeJson(
+      await fetch(`${BASE}/namespaces/discover/${serverId}/${jobId}/status?${q}`),
+    ) as Promise<{
+      ok: boolean;
+      status: string;
+      finished: boolean;
+      failed: boolean;
+      /** Cluster başına sonuç — "hiçbiri taranamadı" ile "namespace yok" ayrı şeyler. */
+      clusters: { cluster: string; status: string; count: number; error: string }[];
+      message?: string;
+    }>;
+  },
+
   async discoverStatus(serverId: number, jobId: number) {
     return safeJson(await fetch(`${BASE}/discover/${serverId}/${jobId}/status`)) as Promise<{
       ok: boolean;

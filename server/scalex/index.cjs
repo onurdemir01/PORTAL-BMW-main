@@ -625,6 +625,133 @@ function initScaleX(app) {
     }),
   );
 
+  // ── NAMESPACE TARAMASI (canli) ─────────────────────────────────────────────
+  //
+  // ScaleX namespace listesini YALNIZCA katalogdan okuyordu: `dbo.Openshift_Inventory`
+  // (zamanlanmis is) ∪ `ocp_namespace_cache` (kullanici taramalari). Envanter gecikmeli
+  // yazildigi icin YENI acilmis bir namespace ScaleX'te HIC gorunmuyordu ve kullanicinin
+  // yapabilecegi bir sey yoktu — LogX'te "Bu namespace'i tara" dugmesi VARDI, ScaleX'te
+  // yoktu.
+  //
+  // AYNI PLAYBOOK, AYNI ONBELLEK: `logx_ocp_namespace_discovery` calisir ve sonuc
+  // PAYLASILAN `ocp_namespace_cache`e yazilir (bkz. ocp.cacheNamespaceDiscovery).
+  // Yani ScaleX'ten yapilan tarama LogX'i de besler, tersi de gecerli. Mimari
+  // DEGISMEDI: `dbo.Openshift_Inventory` birincil kaynak olmaya devam ediyor ve
+  // portal ona YAZMIYOR (bkz. docs/OCP-NAMESPACE-KATALOGU-KARARI.md).
+  router.post(
+    '/namespaces/discover',
+    asyncRoute(async (req, res) => {
+      const b = req.body || {};
+      const env = String(b.env || '').trim();
+      const tenant = String(b.tenant || '').trim();
+      const clusters = [
+        ...new Set(
+          (Array.isArray(b.clusters) ? b.clusters : [])
+            .map((c) => String(c).trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (!env || !tenant)
+        throw Object.assign(new Error('env ve tenant zorunlu.'), { status: 400 });
+      if (!clusters.length)
+        throw Object.assign(new Error('En az bir cluster seçilmeli.'), { status: 400 });
+      // Namespace HENUZ YOK — taranacak olan o. Bu yuzden `assertNamespaceAllowed`
+      // cagrilamaz; kapi cluster duzeyinde kurulur. Namespace bazli yetki, listeyi
+      // OKURKEN uygulanmaya devam ediyor (catalog.getNamespaces → restrictions),
+      // yani tarama kisitli bir namespace'i kullaniciya GORUNUR yapmaz.
+      await catalog.assertClustersExist({ env, tenant, clusters });
+
+      const admin = require('../logx/v2/admin.cjs');
+      const ocp = require('../logx/v2/ocp.cjs');
+      const extraVars = {
+        ...ocp.buildOcpExtraVars({
+          env,
+          tenant,
+          clusters,
+          hosts: (await admin.resolveTerminalHosts(env, tenant, clusters)).hosts,
+          meta: await admin.resolveClusterMeta(env, tenant, clusters),
+        }),
+        ...ocp.buildOcpRuntimeVars(
+          await require('../logx/v2/ocp-runtime-config.cjs')
+            .getConfig()
+            .catch(() => ({})),
+        ),
+      };
+
+      const job = await launchOnAwx({
+        keyName: 'logx_ocp_namespace_discovery',
+        extraVars,
+        req,
+        label: `ScaleX namespace taraması — ${tenant}/${env}`,
+      });
+      auditPortal(req, 'scalex_namespace_discovery', {
+        detail: JSON.stringify({ env, tenant, clusters, jobId: job.jobId }),
+      });
+      res.json({ ok: true, ...job });
+    }),
+  );
+
+  router.get(
+    '/namespaces/discover/:serverId/:jobId/status',
+    asyncRoute(async (req, res) => {
+      const serverId = Number(req.params.serverId);
+      const jobId = Number(req.params.jobId);
+      const denied = await denyIfNotOwner(req, serverId, jobId);
+      if (denied) return res.status(denied.status).json({ ok: false, message: denied.message });
+      const env = String(req.query.env || '').trim();
+      const tenant = String(req.query.tenant || '').trim();
+
+      const status = await runner.getJobStatusOnServer(serverId, jobId);
+
+      // ONBELLEGE YAZMA BURADA — AYRI BIR UC DEGIL. Istemciye "tarama bitti, simdi
+      // de sonucu kaydet" diye ikinci bir cagri yaptirmak, o cagriyi unutan ya da
+      // sekmesini kapatan her kullanicida sonucun SESSIZCE kaybolmasi demekti.
+      // (`refreshDrift` ve `rbacFindings.record` ile ayni gerekce.)
+      let clusters = [];
+      if (status.finished && status.artifacts && env && tenant) {
+        try {
+          const normalized = await require('../logx/v2/ocp.cjs').cacheNamespaceDiscovery({
+            env,
+            tenant,
+            artifacts: status.artifacts,
+          });
+          clusters = normalized.clusters || [];
+          auditPortal(req, 'scalex_namespace_discovery_result', {
+            result: clusters.some((c) => c.status === 'ok') ? 'ok' : 'fail',
+            detail: JSON.stringify({
+              serverId,
+              jobId,
+              clusters: clusters.map((c) => ({
+                cluster: c.cluster_name,
+                status: c.status,
+                count: (c.namespaces || []).length,
+              })),
+            }),
+          });
+        } catch (e) {
+          // Onbellek yazimi BEST-EFFORT; tarama sonucu bu yuzden gizlenmez.
+          console.warn('[ScaleX] namespace taramasi onbellege yazilamadi:', e.message);
+        }
+      }
+
+      res.json({
+        ok: true,
+        status: status.status,
+        finished: status.finished,
+        failed: status.failed,
+        // Cluster basina durum + HATA METNI: "hicbiri taranamadi" ile "namespace yok"
+        // ayni ekran degildir (bkz. PR #66).
+        clusters: clusters.map((c) => ({
+          cluster: c.cluster_name,
+          status: c.status,
+          count: (c.namespaces || []).length,
+          error: c.error || '',
+        })),
+        message: status.errorMessage || undefined,
+      });
+    }),
+  );
+
   router.get(
     '/discover/:serverId/:jobId/status',
     asyncRoute(async (req, res) => {
