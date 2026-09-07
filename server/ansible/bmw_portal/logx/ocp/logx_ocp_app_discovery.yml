@@ -243,6 +243,16 @@
              and clusters[inventory_key][item.cluster_name] is defined
              and clusters[inventory_key][item.cluster_name].url is defined
              and clusters[inventory_key][item.cluster_name].password is defined }}
+        # PAROLA BU GOREVDE DE TANIMLI OLMALI.
+        #
+        # URETIM (AWX #3297277): `cluster_exists` kapisina parola kosulu eklendi ama
+        # bu gorevin `vars:` blogunda `resolved_password` TANIMLI DEGILDI. Jinja
+        # tanimsiz degiskende patladi ve gorev `no_log: true` oldugu icin sebep
+        # "censored" olarak gizlendi — bastion komple dustu. Ayni kapi diger iki
+        # playbook'ta calisiyordu, cunku orada bu tanim zaten vardi.
+        resolved_password: >-
+          {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
+             else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
         # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
         # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
         # Ucu de yoksa BOS kalir ve cluster dogrulamada elenir — daha once bu durumda

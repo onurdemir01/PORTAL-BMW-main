@@ -804,12 +804,28 @@ async function getJobOutput(jobId) {
 // requester_email/requester_name olarak enjekte edilir — kullanici bilgisi yoksa
 // (ornegin zamanlanmis/sistem tetiklemesi) varsayilan olarak Onur Demir etiketlenir.
 // Template bu degiskeni "Prompt on launch"ta acmadiysa AWX sessizce yok sayar (zarar vermez).
-const DEFAULT_REQUESTER = { email: 'onurdemir3@garantibbva.com.tr', name: 'Onur Demir' };
+// VARSAYILAN GERCEK BIR CALISANIN KIMLIGIDIR ve bu YANLIS ATIF uretir: isi baska biri
+// tetiklemisken Teams'te (ve AWX extra_vars'inda) o kisi gorunur. Uretimde tam olarak
+// bu yasandi (2026-09-07): kullanici kendi actigi iste "Onur Demir" adini gordu.
+//
+// Adres yine de GERCEK ve COZULEBILIR olmak zorunda: Teams akisindaki "Search for users"
+// adimi cozemedigi bir adreste bildirimi TAMAMEN dusuruyor. Bu yuzden adres kaldirilmadi,
+// `.env` ile degistirilebilir hale getirildi — ve asagida artik HER ZAMAN kimin
+// tetikledigi (`requester_username`) ile varsayilana dusuldugu (`requester_is_fallback`)
+// da gonderiliyor, boylece yanlis atif GORUNUR oluyor.
+const DEFAULT_REQUESTER = {
+  email: process.env.PORTAL_DEFAULT_REQUESTER_EMAIL || 'onurdemir3@garantibbva.com.tr',
+  name: process.env.PORTAL_DEFAULT_REQUESTER_NAME || 'Onur Demir',
+};
 
 function withRequesterVars(extraVars, user) {
   const rawEmail = String(user?.mail || '').trim();
-  const rawName = String(user?.displayName || user?.username || '').trim();
+  const rawUsername = String(user?.username || '').trim();
+  const rawName = String(user?.displayName || rawUsername || '').trim();
   const email = rawEmail || DEFAULT_REQUESTER.email;
+  // AD BILINIYORSA VARSAYILANA DUSULMEZ. Eskiden `displayName` ve `username` bos
+  // gelince ad da varsayilana dusuyordu; oysa kullanici adi cogu yolda BILINIYOR
+  // (LogX istegi onu satirinda tasiyor) — yalnizca bu fonksiyona GECIRILMIYORDU.
   const name = rawName || DEFAULT_REQUESTER.name;
   // Varsayilana dusuldugunde logla - aksi halde Teams @mention'in GERCEKTEN o an
   // tetikleyen kisiye mi cozuldugu, yoksa DEFAULT_REQUESTER'a mi (Onur Demir - kod
@@ -822,7 +838,18 @@ function withRequesterVars(extraVars, user) {
         `mail_bos=${!rawEmail}, ad_bos=${!rawName}) -> Teams'te "${name}" gorunecek.`,
     );
   }
-  return { ...extraVars, requester_email: email, requester_name: name };
+  return {
+    ...extraVars,
+    requester_email: email,
+    requester_name: name,
+    // KIM TETIKLEDI — e-posta cozulemese bile. Yanlis atifin panzehiri budur:
+    // playbook/rapor/Teams tarafinda gercek tetikleyici her zaman okunabilir.
+    requester_username: rawUsername || 'bilinmiyor',
+    // Varsayilana dusuldu mu? Bildirimin GORUNTUSUNDEN ayirt edilemeyen seyi
+    // veriye tasir; "o kisi kendi adini gorup calisiyor sanabilir" belirsizligini
+    // ortadan kaldirir.
+    requester_is_fallback: !rawEmail || !rawName,
+  };
 }
 
 async function launchJobOnServer(
@@ -1321,13 +1348,11 @@ function initAnsibleRunner(app) {
     const registryRow = await playbookRegistry.getByKey('ocp_pod_status');
     const templateId = registryRow && playbookRegistry.getEffectiveTemplateId(registryRow);
     if (!templateId)
-      return res
-        .status(503)
-        .json({
-          ok: false,
-          message:
-            'OCP pod durumu için template ID tanımlı değil (Admin > Playbook Kayıtları veya AWX_OCP_POD_STATUS_TEMPLATE_ID).',
-        });
+      return res.status(503).json({
+        ok: false,
+        message:
+          'OCP pod durumu için template ID tanımlı değil (Admin > Playbook Kayıtları veya AWX_OCP_POD_STATUS_TEMPLATE_ID).',
+      });
 
     const { namespace, labelSelector } = req.body || {};
     try {
@@ -1350,13 +1375,11 @@ function initAnsibleRunner(app) {
         attempts++;
       }
       if (!jobStatus || jobStatus.status !== 'successful') {
-        return res
-          .status(502)
-          .json({
-            ok: false,
-            message: `AWX job ${jobStatus?.status || 'timeout'}`,
-            jobId: launch.jobId,
-          });
+        return res.status(502).json({
+          ok: false,
+          message: `AWX job ${jobStatus?.status || 'timeout'}`,
+          jobId: launch.jobId,
+        });
       }
       const output = await getJobOutput(launch.jobId);
       res.json({ ok: true, output: output.output, jobId: launch.jobId });
@@ -2302,12 +2325,10 @@ function initAnsibleRunner(app) {
 
     const { allowedIds } = getConfig();
     if (allowedIds.length > 0 && !allowedIds.includes(templateId)) {
-      return res
-        .status(400)
-        .json({
-          ok: false,
-          message: 'Bu template ID, AWX_READ_ONLY_TEMPLATE_IDS izin listesinde değil.',
-        });
+      return res.status(400).json({
+        ok: false,
+        message: 'Bu template ID, AWX_READ_ONLY_TEMPLATE_IDS izin listesinde değil.',
+      });
     }
 
     const items = readSsItems();
@@ -2326,12 +2347,10 @@ function initAnsibleRunner(app) {
       await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${templateId}/`);
     } catch (err) {
       if (err.status === 404) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            message: `Template AWX'te bulunamadı: #${templateId} (${server.name}).`,
-          });
+        return res.status(400).json({
+          ok: false,
+          message: `Template AWX'te bulunamadı: #${templateId} (${server.name}).`,
+        });
       }
       const friendly = friendlyAwxError(err);
       return res
@@ -2607,12 +2626,10 @@ function initAnsibleRunner(app) {
           const resolvedDefault =
             ov.defaultValue !== undefined ? ov.defaultValue : field.default || '';
           if (!resolvedDefault) {
-            return res
-              .status(400)
-              .json({
-                ok: false,
-                message: `"${field.question_name || field.variable}" alanının varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
-              });
+            return res.status(400).json({
+              ok: false,
+              message: `"${field.question_name || field.variable}" alanının varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
+            });
           }
         }
 
@@ -2630,12 +2647,10 @@ function initAnsibleRunner(app) {
         for (const [key, ov] of Object.entries(data.launchOptionOverrides || {})) {
           if (!ov?.hidden) continue;
           if (ov.default === undefined || ov.default === null || String(ov.default).trim() === '') {
-            return res
-              .status(400)
-              .json({
-                ok: false,
-                message: `"${LAUNCH_OPTION_LABELS[key] || key}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
-              });
+            return res.status(400).json({
+              ok: false,
+              message: `"${LAUNCH_OPTION_LABELS[key] || key}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
+            });
           }
         }
 
@@ -2644,13 +2659,11 @@ function initAnsibleRunner(app) {
         // her satirla eslesir degil, split/filter ile ANLAMSIZ bir goruntu uretir).
         const outputFilter = data.outputFilter;
         if (outputFilter?.enabled && !String(outputFilter.contains || '').trim()) {
-          return res
-            .status(400)
-            .json({
-              ok: false,
-              message:
-                'Çıktı filtresi etkin ama aranacak metin boş — bir metin girin veya filtreyi kapatın.',
-            });
+          return res.status(400).json({
+            ok: false,
+            message:
+              'Çıktı filtresi etkin ama aranacak metin boş — bir metin girin veya filtreyi kapatın.',
+          });
         }
 
         // Survey Tasarimcisi (customSurveyFields): AWX survey KAPALIYKEN admin'in portaldan
@@ -2668,12 +2681,10 @@ function initAnsibleRunner(app) {
               .status(400)
               .json({ ok: false, message: 'Her özel alanın bir değişken adı olmalı.' });
           if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-            return res
-              .status(400)
-              .json({
-                ok: false,
-                message: `Geçersiz değişken adı: "${name}" — yalnızca harf, rakam, alt çizgi içerebilir ve rakamla başlayamaz.`,
-              });
+            return res.status(400).json({
+              ok: false,
+              message: `Geçersiz değişken adı: "${name}" — yalnızca harf, rakam, alt çizgi içerebilir ve rakamla başlayamaz.`,
+            });
           }
           if (seenNames.has(name)) {
             return res
@@ -2687,12 +2698,10 @@ function initAnsibleRunner(app) {
               .json({ ok: false, message: `"${name}" alanının bir görünen adı (label) olmalı.` });
           }
           if (f?.hidden && !String(f?.defaultValue || '').trim()) {
-            return res
-              .status(400)
-              .json({
-                ok: false,
-                message: `"${f.label}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
-              });
+            return res.status(400).json({
+              ok: false,
+              message: `"${f.label}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
+            });
           }
           if (
             (f?.type === 'multiplechoice' || f?.type === 'multiselect') &&
@@ -2725,12 +2734,10 @@ function initAnsibleRunner(app) {
               if (
                 !customSurveyFields.some((other) => String(other?.name || '').trim() === condField)
               ) {
-                return res
-                  .status(400)
-                  .json({
-                    ok: false,
-                    message: `"${f.label}" tanımsız bir alana bağlı: "${condField}"`,
-                  });
+                return res.status(400).json({
+                  ok: false,
+                  message: `"${f.label}" tanımsız bir alana bağlı: "${condField}"`,
+                });
               }
             }
           }
@@ -3265,23 +3272,19 @@ function initAnsibleRunner(app) {
             });
           } catch (smartErr) {
             if (smartErr.code === 'smart_flow_key_missing') {
-              return res
-                .status(400)
-                .json({
-                  ok: false,
-                  message: 'Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun.',
-                });
+              return res.status(400).json({
+                ok: false,
+                message: 'Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun.',
+              });
             }
             // Bilet ACILDI ama yerel kayit dustuyse mesaj "acilamadi" DEMEMELI —
             // kullanici yetim bir Smart kaydiyla kalmasin, numarasini gorsun.
             if (smartErr.code === 'smart_ticket_store_failed') {
-              return res
-                .status(smartErr.status || 500)
-                .json({
-                  ok: false,
-                  message: smartErr.message,
-                  externalTicketId: smartErr.externalTicketId,
-                });
+              return res.status(smartErr.status || 500).json({
+                ok: false,
+                message: smartErr.message,
+                externalTicketId: smartErr.externalTicketId,
+              });
             }
             return res
               .status(smartErr.status || 502)
@@ -3329,12 +3332,10 @@ function initAnsibleRunner(app) {
       const order = await require('../oco/client.cjs').getChangeOrder(ocoNumber);
       const pi = ocoWindow.extractPlannedInterruption(order.payload);
       if (!pi || !pi.startDate) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            message: `OCO ${ocoNumber} kaydında planlanan kesinti (PlannedInterruption) bilgisi yok.`,
-          });
+        return res.status(400).json({
+          ok: false,
+          message: `OCO ${ocoNumber} kaydında planlanan kesinti (PlannedInterruption) bilgisi yok.`,
+        });
       }
       const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
       if (!w.ok) return res.status(400).json({ ok: false, message: w.message });
@@ -3450,12 +3451,10 @@ function initAnsibleRunner(app) {
         const rec = await ocoStore.get(Number(req.params.id));
         if (!rec) return res.status(404).json({ ok: false, message: 'Kayıt bulunamadı.' });
         if (!['SCHEDULED', 'AWX_SCHEDULED', 'LAUNCHED'].includes(rec.status)) {
-          return res
-            .status(400)
-            .json({
-              ok: false,
-              message: `Bu kayıt zaten sonuçlanmış (${rec.status}) — iptal edilecek bir şey yok.`,
-            });
+          return res.status(400).json({
+            ok: false,
+            message: `Bu kayıt zaten sonuçlanmış (${rec.status}) — iptal edilecek bir şey yok.`,
+          });
         }
 
         const server = getServerById(rec.awxServerId);
@@ -3463,12 +3462,10 @@ function initAnsibleRunner(app) {
 
         if (rec.awxScheduleId) {
           if (!server)
-            return res
-              .status(404)
-              .json({
-                ok: false,
-                message: `AWX sunucusu bulunamadı (id=${rec.awxServerId}) — schedule silinemedi, kayıt değiştirilmedi.`,
-              });
+            return res.status(404).json({
+              ok: false,
+              message: `AWX sunucusu bulunamadı (id=${rec.awxServerId}) — schedule silinemedi, kayıt değiştirilmedi.`,
+            });
           const token = await getTokenForServer(server);
 
           // 1) Schedule'in dogurdugu job'lari bul ve calisiyorsa iptal et. Bu sorgu
@@ -3543,12 +3540,10 @@ function initAnsibleRunner(app) {
           note,
         });
         if (!updated)
-          return res
-            .status(409)
-            .json({
-              ok: false,
-              message: 'Kayıt bu sırada başka bir işlemle sonuçlandı — listeyi yenileyin.',
-            });
+          return res.status(409).json({
+            ok: false,
+            message: 'Kayıt bu sırada başka bir işlemle sonuçlandı — listeyi yenileyin.',
+          });
 
         require('../audit/index.cjs').auditPortal(req, 'selfservice_oco_admin_cancel', {
           detail: JSON.stringify({
@@ -3572,12 +3567,10 @@ function initAnsibleRunner(app) {
       const username = req.session?.user?.username || 'anonymous';
       const rec = await require('../oco/store.cjs').cancel(Number(req.params.id), username);
       if (!rec)
-        return res
-          .status(404)
-          .json({
-            ok: false,
-            message: 'Bekleyen kayıt bulunamadı (iptal edilmiş ya da size ait değil olabilir).',
-          });
+        return res.status(404).json({
+          ok: false,
+          message: 'Bekleyen kayıt bulunamadı (iptal edilmiş ya da size ait değil olabilir).',
+        });
       require('../audit/index.cjs').auditPortal(req, 'selfservice_oco_cancelled', {
         detail: JSON.stringify({ scheduleId: rec.id, ocoNumber: rec.ocoNumber }),
       });
@@ -3820,12 +3813,10 @@ function initAnsibleRunner(app) {
         return res.status(403).json({ ok: false, message: 'Bu talep size ait değil.' });
       }
       if (existing.status !== 'PENDING') {
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message: `Bu talep artık iptal edilemez (durum: ${existing.status}).`,
-          });
+        return res.status(409).json({
+          ok: false,
+          message: `Bu talep artık iptal edilemez (durum: ${existing.status}).`,
+        });
       }
       // Iptal notu: admin BASKASININ talebini iptal edebildigi icin "neden" bilgisi
       // onemli (2026-08-20). Kullanici kendi talebini iptal ederken de yazabilir.
@@ -3840,12 +3831,10 @@ function initAnsibleRunner(app) {
         reqUser.username,
       );
       if (!cancelled) {
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message: 'Talep bu sırada durum değiştirdi, iptal edilemedi — sayfayı yenileyin.',
-          });
+        return res.status(409).json({
+          ok: false,
+          message: 'Talep bu sırada durum değiştirdi, iptal edilemedi — sayfayı yenileyin.',
+        });
       }
       require('../audit/index.cjs').auditPortal(req, 'selfservice_smart_ticket_cancel', {
         detail: JSON.stringify({ ticketId, owner: existing.username, byAdmin: isAdmin, note }),
