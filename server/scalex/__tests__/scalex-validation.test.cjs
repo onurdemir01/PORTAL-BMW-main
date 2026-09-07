@@ -2248,8 +2248,14 @@ test('S3 admin sekmeleri elements/seed ile AYRISMIYOR', () => {
   );
   const seed = fs.readFileSync(path.join(SRC_DIR, '..', 'db', 'mssql-setup.cjs'), 'utf8');
 
-  const tabIds = [...page.matchAll(/\{ id: "([a-z]+)",\s+label:/g)].map((m) => m[1]);
-  assert.ok(tabIds.length >= 12, `sekme listesi okunamadi (${tabIds.length})`);
+  // RAKAM DA KABUL EDILIR: onceki desen `[a-z]+` idi ve `logxv2`yi HIC yakalamiyordu —
+  // yani o sekmenin elements/seed karsiligi bu bekci tarafindan bir kez bile
+  // dogrulanmamisti. Esik de sekme sayisina gore elle ayarlanmisti; iki sekme
+  // kaldirilinca (2026-09-07: Test Senaryolari, Akis Testleri) yanlis alarm verdi.
+  // Esik artik yalnizca "regex tamamen bozuldu mu" sorusunu yanitliyor.
+  const tabIds = [...page.matchAll(/\{ id: "([a-z0-9]+)",\s+label:/g)].map((m) => m[1]);
+  assert.ok(tabIds.length >= 10, `sekme listesi okunamadi (${tabIds.length})`);
+  assert.ok(tabIds.includes('logxv2'), 'rakam iceren id yakalanmali (regex kontrolu)');
   const eksikElements = tabIds.filter((id) => !elements.includes(`admintab:${id}`));
   const eksikSeed = tabIds.filter((id) => !seed.includes(`admintab:${id}`));
   assert.deepEqual(

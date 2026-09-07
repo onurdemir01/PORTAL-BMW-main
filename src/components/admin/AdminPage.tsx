@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { prefsApi } from "../../api/prefsApi";
 import { toast } from "@/hooks/useToast";
@@ -14,7 +14,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CheckIcon,
-  BeakerIcon,
   ArchiveBoxIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
@@ -28,15 +27,19 @@ import LogXv2AdminTab from "./tabs/LogXv2AdminTab";
 import ScaleXAdminTab from "./tabs/ScaleXAdminTab";
 import InventoryVisibilityTab from "./tabs/InventoryVisibilityTab";
 import BrandingTab from "./tabs/BrandingTab";
-import TestScenariosTab from "./tabs/TestScenariosTab";
 import DbBackupTab from "./tabs/DbBackupTab";
-import FlowTestsTab from "./tabs/FlowTestsTab";
 import SmartTicketsTab from "./tabs/SmartTicketsTab";
 
 // Eski port-1111 LogX admin yüzeyleri (Oturumlar, İzinler, LogX Inventory) tamamen
 // kaldırıldı — yeni yapıda log akışı "LogX v2 Yapılandırma" (OCP cluster/terminal
 // haritası, Legacy ortam eşlemesi, erişim kısıtı) üzerinden yönetilir. "Linkler" sekmesi
 // de kaldırıldı (Yardımcı Araçlar sayfası zaten inline admin CRUD sağlıyor).
+//
+// 2026-09-07: "Test Senaryoları" ve "Akış Testleri" sekmeleri de kaldırıldı — hiç
+// kullanılmadılar. Bileşen dosyaları (TestScenariosTab.tsx / FlowTestsTab.tsx) DURUYOR,
+// yalnızca bağlantıları kesildi; ileride geri istenirse iki satırla dönerler.
+// Kayıtlı sekme sırasında bu id'ler kalmış olabilir: normalizeOrder bilinmeyen id'leri
+// zaten atıyor, dolayısıyla eski tercihler bozulmaz.
 const DEFAULT_TABS = [
   // ORTAK SEKME: cluster / vault / bastion / kisitlama tablolari LogX'e ozel degil,
   // LogX + OpsX + Telnet + ScaleX tarafindan PAYLASILIYOR. Ad bunu yansitiyor.
@@ -46,16 +49,14 @@ const DEFAULT_TABS = [
   { id: "scalex",      label: "ScaleX Yönetimi",  icon: ShieldCheckIcon },
   { id: "audit",       label: "Denetim Kaydı",     icon: ClipboardDocumentListIcon },
   { id: "smarttickets", label: "Smart Talepleri",  icon: ClipboardDocumentListIcon },
-  { id: "testscenarios", label: "Test Senaryoları", icon: BeakerIcon },
   { id: "dbbackup", label: "DB Yedekleme", icon: ArchiveBoxIcon },
-  { id: "flowtests", label: "Akış Testleri", icon: BeakerIcon },
   { id: "ansible",     label: "Ansible Info",     icon: CommandLineIcon },
   { id: "playbooks",   label: "Playbook Kayıtları", icon: CommandLineIcon },
   { id: "system",      label: "Sistem",           icon: CogIcon },
   { id: "users",       label: "Kullanıcılar",     icon: UsersIcon },
   { id: "visibility",  label: "Sayfa Erişimi",    icon: EyeIcon },
   { id: "inventoryvis", label: "Envanter Görünürlüğü", icon: ServerStackIcon },
-  { id: "branding",    label: "Marka",            icon: PhotoIcon },
+  { id: "branding",    label: "Logo",             icon: PhotoIcon },
 ] as const;
 
 type TabId = (typeof DEFAULT_TABS)[number]["id"];
@@ -99,6 +100,14 @@ const AdminPage: React.FC = () => {
     prefsApi.set({ [ADMIN_TAB_PREF]: id }).catch(() => { /* aktif sekme tercihi - sessiz hata kabul edilebilir */ });
   };
 
+  // Basarisiz bir kayit SESSIZCE yutulmuyor — reverse proxy PUT'u engelliyorsa/oturum
+  // dolmussa vb. kullaniciya HEMEN gorunur olsun (aksi halde "kaydettim ama sayfa
+  // yenilenince eski haline donuyor" hatasi teshis edilemezdi).
+  function persistOrder(next: TabId[]) {
+    prefsApi.set({ [ADMIN_TAB_ORDER_PREF]: JSON.stringify(next) })
+      .catch((e: unknown) => toast.error(`Sekme sırası kaydedilemedi: ${e instanceof Error ? e.message : String(e)}`));
+  }
+
   function moveTab(id: TabId, direction: -1 | 1) {
     setTabOrder((prev) => {
       const idx = prev.indexOf(id);
@@ -106,13 +115,55 @@ const AdminPage: React.FC = () => {
       if (idx < 0 || swapWith < 0 || swapWith >= prev.length) return prev;
       const next = [...prev];
       [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
-      // Basarisiz bir kayit artik SESSIZCE yutulmuyor — reverse proxy PUT'u engelliyorsa/
-      // oturum dolmussa vb. kullaniciya HEMEN gorunur olsun (aksi halde "kaydettim ama
-      // sayfa yenilenince eski haline donuyor" hatasi teshis edilemezdi).
-      prefsApi.set({ [ADMIN_TAB_ORDER_PREF]: JSON.stringify(next) })
-        .catch((e: unknown) => toast.error(`Sekme sırası kaydedilemedi: ${e instanceof Error ? e.message : String(e)}`));
+      persistOrder(next);
       return next;
     });
+  }
+
+  // ── Surukle-birak siralama ────────────────────────────────────────────────────
+  // Oklar KALDIRILMADI: surukle-birak fare gerektirir, klavye kullanicisi icin tek
+  // erisim yolu oklardir. Ikisi ayni durumu (tabOrder) yazar.
+  //
+  // Siralama surukleme SIRASINDA canli guncellenir ama SUNUCUYA yazilmaz — her
+  // dragover'da PUT atmak onlarca gereksiz istek demekti. Kayit yalnizca birakisda
+  // (dragEnd) ve yalnizca sira GERCEKTEN degistiyse yapilir.
+  const dragId = useRef<TabId | null>(null);
+  const dragMoved = useRef(false);
+  // dragEnd icindeki kapanis (closure) eski tabOrder'i gorurdu; ref her zaman
+  // en guncel siraya isaret eder.
+  const orderRef = useRef<TabId[]>(tabOrder);
+  useEffect(() => { orderRef.current = tabOrder; }, [tabOrder]);
+
+  function handleDragStart(e: React.DragEvent, id: TabId) {
+    dragId.current = id;
+    dragMoved.current = false;
+    e.dataTransfer.effectAllowed = "move";
+    // Firefox surukleme baslatmak icin veri SART kosar.
+    e.dataTransfer.setData("text/plain", id);
+  }
+
+  function handleDragOver(e: React.DragEvent, overId: TabId) {
+    if (!dragId.current) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const from = dragId.current;
+    if (from === overId) return;
+    setTabOrder((prev) => {
+      const a = prev.indexOf(from);
+      const b = prev.indexOf(overId);
+      if (a < 0 || b < 0) return prev;
+      const next = [...prev];
+      next.splice(b, 0, next.splice(a, 1)[0]);
+      dragMoved.current = true;
+      return next;
+    });
+  }
+
+  function handleDragEnd() {
+    dragId.current = null;
+    if (!dragMoved.current) return;
+    dragMoved.current = false;
+    persistOrder(orderRef.current);
   }
 
   // Admin sekmeleri de görünürlük motoruna tabidir (`admintab:<id>` element anahtarları).
@@ -153,6 +204,12 @@ const AdminPage: React.FC = () => {
         </button>
       </div>
 
+      {reordering && (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Sekmeleri fareyle tutup sürükleyerek taşıyabilirsiniz; ok tuşları da çalışmaya devam eder.
+        </p>
+      )}
+
       {/* Tab bar */}
       <div className="flex gap-1 rounded-xl p-1 flex-wrap" style={{ background: "var(--bg-elevated)" }}>
         {orderedTabs.map((tab, i) => {
@@ -161,8 +218,15 @@ const AdminPage: React.FC = () => {
           return (
             <div
               key={tab.id}
+              draggable={reordering}
+              onDragStart={(e) => handleDragStart(e, tab.id)}
+              onDragOver={(e) => handleDragOver(e, tab.id)}
+              onDrop={(e) => e.preventDefault()}
+              onDragEnd={handleDragEnd}
               className={`flex items-center rounded-lg transition-all duration-200 ${
                 !reordering && active ? "bg-white" : ""
+              } ${reordering ? "cursor-grab active:cursor-grabbing" : ""} ${
+                reordering && dragId.current === tab.id ? "opacity-40" : ""
               }`}
               style={!reordering && active ? { boxShadow: "var(--shadow-sm)" } : {}}
             >
@@ -205,9 +269,7 @@ const AdminPage: React.FC = () => {
         <div key={activeTab} style={{ animation: "fadeIn 0.18s ease" }}>
           {activeTab === "audit"       && <AuditLogTab />}
           {activeTab === "smarttickets" && <SmartTicketsTab />}
-          {activeTab === "testscenarios" && <TestScenariosTab />}
           {activeTab === "dbbackup" && <DbBackupTab />}
-          {activeTab === "flowtests" && <FlowTestsTab />}
           {activeTab === "ansible"     && <AnsibleConfigTab />}
           {activeTab === "playbooks"   && <PlaybookRegistryTab />}
           {activeTab === "system"      && <SystemConfigTab />}
