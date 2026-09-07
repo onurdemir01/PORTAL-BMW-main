@@ -690,6 +690,12 @@ const TABLES = [
         icon            NVARCHAR(100),
         visible_to      NVARCHAR(200) NOT NULL DEFAULT 'Admin,User',
         is_favorite     BIT NOT NULL DEFAULT 0,
+        -- NE ISE YARAR / NASIL KULLANILIR. description kolonu kartta gorunen KISA
+        -- metin; bu ikisi ayrinti panelinde. Portal bir "super app" gibi diger
+        -- uygulamalara yonlendirirken, gidilen yerin ne oldugu ve nasil kullanildigi
+        -- da yazsin (kullanici istegi).
+        purpose         NVARCHAR(MAX),
+        how_to_use      NVARCHAR(MAX),
         updated_at      DATETIME2 NOT NULL DEFAULT GETUTCDATE()
       )`,
   },
@@ -1171,6 +1177,7 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'Performance', roles: 'Admin,User' },
   { page_name: 'AI Analist', roles: 'Admin,User' },
   { page_name: 'Nöbet', roles: 'Admin,User' },
+  { page_name: 'Linkler', roles: 'Admin,User' },
   { page_name: 'Admin', roles: 'Admin' },
 ];
 
@@ -1345,6 +1352,23 @@ const ELEMENT_SEED = [
     label: 'Nöbet',
     route: '/duty-roster',
     sort_order: 9,
+    roles: ['Admin', 'User'],
+  },
+  {
+    // 2026-09-07 GERI ACILDI. Anahtarlar ('Linkler', 'navgroup:kaynaklar') 2026-08-26
+    // oncesiyle AYNI: eski kurulumlarda kalmis gorunurluk kurallari yeniden baglansin.
+    element_key: 'navgroup:kaynaklar',
+    element_type: 'nav_group',
+    label: 'Yardımcı Araçlar',
+    sort_order: 10,
+  },
+  {
+    element_key: 'Linkler',
+    element_type: 'page',
+    parent_key: 'navgroup:kaynaklar',
+    label: 'Faydalı Linkler',
+    route: '/links',
+    sort_order: 10,
     roles: ['Admin', 'User'],
   },
   {
@@ -2203,6 +2227,7 @@ async function migratePageParentKeysToNavGroups(pool) {
     OpsX: 'navgroup:otomasyon',
     FileX: 'navgroup:otomasyon',
     Nöbet: 'navgroup:operasyon',
+    Linkler: 'navgroup:kaynaklar',
     'Self Service': 'navgroup:otomasyon',
     Ansible: 'navgroup:otomasyon',
     Performance: 'navgroup:performance',
@@ -2256,7 +2281,10 @@ async function setupTables() {
   await seedPageVisibility(pool);
   await seedPortalElements(pool);
   await migratePageParentKeysToNavGroups(pool);
-  await removeKaynaklarNavGroup(pool);
+  // removeKaynaklarNavGroup ARTIK CAGRILMIYOR (2026-09-07): "Linkler" sayfasi geri
+  // acildi. Cagri kalsaydi kayit HER ACILISTA silinir, sayfa her restart'ta menuden
+  // duser ve sebebi hicbir yerde gorunmezdi. Fonksiyon SILINMEDI — ileride yeniden
+  // kaldirilmak istenirse tek satirla geri acilir.
   await seedMaskRules(pool);
   await seedAwxServersFromEnv(pool);
   await seedSplunkProducts(pool);
@@ -2295,6 +2323,19 @@ async function setupTables() {
 
   // Alter existing tables to add missing columns
   const alters = [
+    {
+      // MEVCUT KURULUMLAR ICIN. Kolonu yalnizca `CREATE TABLE`a eklemek YETMEZ:
+      // tablo zaten varsa o blok hic calismaz ve alan sessizce eksik kalir —
+      // `purpose`/`how_to_use` yazan API her kayitta "invalid column" alirdi.
+      table: 'portal_links',
+      col: 'purpose',
+      sql: `ALTER TABLE portal_links ADD purpose NVARCHAR(MAX) NULL`,
+    },
+    {
+      table: 'portal_links',
+      col: 'how_to_use',
+      sql: `ALTER TABLE portal_links ADD how_to_use NVARCHAR(MAX) NULL`,
+    },
     {
       table: 'inventory_hosts',
       col: 'server_type',
