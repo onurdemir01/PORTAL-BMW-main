@@ -969,12 +969,10 @@ function initInventory(app) {
       const config = await readVisibleTables();
       const current = config[role];
       if (current === '*') {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error: `Bu rol için "Tüm tabloları göster" açık — önce onu kapatın.`,
-          });
+        return res.status(400).json({
+          ok: false,
+          error: `Bu rol için "Tüm tabloları göster" açık — önce onu kapatın.`,
+        });
       }
       const list = Array.isArray(current) ? current.slice() : [];
       const next = visible
@@ -1774,6 +1772,12 @@ function initInventory(app) {
         server.id,
         INVENTORY_REFRESH_TEMPLATE_ID,
         extraVars,
+        '',
+        // BESINCI ARGUMAN (requester) HIC GECIRILMIYORDU: her envanter yenilemesi
+        // kod deposundaki sabit kisiye (DEFAULT_REQUESTER) atfediliyordu — asagida
+        // ansible_job_history'ye DOGRU kullaniciyi yazarken AWX'e YANLIS kisiyi
+        // gonderiyorduk. Iki kayit birbirini tutmuyordu.
+        getRequestUser(req),
       );
 
       // ansible_job_history: OpsX/Self-Service'in kullandigi AYNI genel-amacli tablo —
