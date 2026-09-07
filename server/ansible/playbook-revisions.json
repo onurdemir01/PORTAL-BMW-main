@@ -1,0 +1,14 @@
+{
+  "logx/ocp/logx_ocp_namespace_discovery.yml": {
+    "revision": "917dad4d2b",
+    "hash": "917dad4d2b57825ef24f57bcba007580a3488e46d26ee19db9d52b1d8ab7594e"
+  },
+  "logx/ocp/logx_ocp_app_discovery.yml": {
+    "revision": "4d2594521a",
+    "hash": "4d2594521a73f202a9fd5a96d89aeca78f7e47f1d7850a9cd8a5ab1fd55cedaa"
+  },
+  "logx/ocp/logx_ocp_discover_fetch.yml": {
+    "revision": "f0823b9191",
+    "hash": "f0823b919170fa311510f39c0413853290c1f531b691bcea555a46661fbc2700"
+  }
+}

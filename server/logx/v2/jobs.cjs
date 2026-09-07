@@ -360,6 +360,53 @@ function buildUserFacingJobError(job, live) {
   );
 }
 
+/**
+ * AWX'in yayinladigi surum damgasini artifacts'in UC olasi seklinden de okur
+ * (extractLogxResultFromArtifacts ile ayni sekiller — AWX surumleri farkli sariyor).
+ */
+function extractPlaybookRevision(rawArtifacts) {
+  const a = rawArtifacts || {};
+  const v =
+    a.logx_playbook_revision ??
+    a.data?.logx_playbook_revision ??
+    a.ansible_stats?.data?.logx_playbook_revision;
+  const s = String(v ?? '').trim();
+  return s || null;
+}
+
+/**
+ * "AWX'teki kopya bayat mi?" — bu soruyu kullanicinin sormasina gerek kalmasin.
+ *
+ * NEDEN VAR: `server/ansible/bmw_portal/` klasoru AWX projesine ELLE kopyalanir.
+ * Kopyalanmadiginda AWX ESKI surumu kosar ve portalda gorunen hata repodaki
+ * (coktan duzeltilmis) koda ait olur. 2026-09-07'de bu dongude dort tur donuldu;
+ * son turda #3297277'nin sebebi zaten duzeltilmisti ama AWX'teki kopya bayatti.
+ *
+ * DAMGANIN YOKLUGU DA BIR CEVAPTIR: damga play 1'de, hicbir seyin patlayamayacagi
+ * noktada yayinlanir. Gelmemesi, kopyanin damgadan bile eski oldugu anlamina gelir.
+ *
+ * SUSMA HALI: playbook manifest'te yoksa `null` doner. Yanlis suclamak, susmaktan
+ * kotudur — damgalanmamis playbook'lar (telnet, opsx...) hakkinda hicbir sey demez.
+ */
+function buildPlaybookStalenessWarning(live) {
+  const expected = require('../../ansible/paths.cjs').expectedRevisionFor(live?.playbook);
+  if (!expected) return null;
+
+  const actual = extractPlaybookRevision(live?.artifacts);
+  if (actual === expected) return null;
+
+  const kopyala =
+    `Aşağıdaki hata güncel koda ait olmayabilir — ` +
+    `\`server/ansible/bmw_portal/\` klasörünü AWX projesine yeniden kopyalayıp işi tekrarlayın.`;
+  if (!actual) {
+    return (
+      `AWX'teki playbook kopyası sürüm damgası taşımıyor, yani repodaki sürümden ` +
+      `(${expected}) eski. ${kopyala}`
+    );
+  }
+  return `AWX'teki playbook kopyası eski (AWX: ${actual}, repo: ${expected}). ${kopyala}`;
+}
+
 // YONETICI/destek icin teknik ayrinti. Kullaniciya gosterilmez; audit'e yazilir ve
 // /jobs/:id/status yanitinda YALNIZCA Admin rolune eklenir.
 function buildTechnicalJobDetail(job, live, keyInfo) {
@@ -386,8 +433,14 @@ async function pollJob(job) {
 
   const artifacts = extractLogxResultFromArtifacts(live.artifacts);
   const keyInfo = summarizeArtifactKeys(live.artifacts);
-  const errorMessage = artifacts ? null : buildUserFacingJobError(job, live);
-  const technicalDetail = artifacts ? null : buildTechnicalJobDetail(job, live, keyInfo);
+  // Bayat kopya uyarisi HATA MESAJININ ONUNE gecer: "beklenmeyen bir hata" diye
+  // baslayan bir metni okuyan kullanici, gercek sebebin AWX'te duran eski bir dosya
+  // oldugunu asla tahmin edemez.
+  const staleWarning = buildPlaybookStalenessWarning(live);
+  const baseError = artifacts ? null : buildUserFacingJobError(job, live);
+  const errorMessage = baseError && staleWarning ? `${staleWarning} ${baseError}` : baseError;
+  const baseDetail = artifacts ? null : buildTechnicalJobDetail(job, live, keyInfo);
+  const technicalDetail = baseDetail && staleWarning ? `${staleWarning} ${baseDetail}` : baseDetail;
 
   if (technicalDetail) {
     // Teknik ayrinti DB semasina EKLENMEZ (yeni kolon yok); kalici iz audit'te ve
@@ -464,6 +517,8 @@ module.exports = {
   // saf yardimcilar — birim testleri icin acildi (DB/AWX gerektirmez)
   buildUserFacingJobError,
   buildTechnicalJobDetail,
+  buildPlaybookStalenessWarning,
+  extractPlaybookRevision,
   isWithinCooldown,
   LAUNCH_COOLDOWN_MS,
 };
