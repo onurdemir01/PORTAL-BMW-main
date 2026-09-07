@@ -183,27 +183,45 @@ test('C2 kimlik dosyasi bulunamazsa is ACIK BIR MESAJLA DURUR', () => {
   }
 });
 
-test('C3 `cluster_exists` kapisi PAROLAYA da bakar', () => {
+test('C3 `cluster_exists` kapisi PAROLAYA bakar VE parola o gorevde TANIMLI', () => {
   for (const f of FILES) {
     const src = read(f);
-    // Ifadenin TAMAMI cikarilir. "Dosyada resolved_password geciyor mu" demek
-    // YETMEZDI: o degisken zaten `vars:` blogunda TANIMLI. Olcut, kapinin
-    // KARAR ifadesinde kullanilmasi.
-    const blocks = [...src.matchAll(/cluster_exists:\s*>-\s*\n([\s\S]*?)\n\s*\}\}/g)];
-    assert.ok(blocks.length >= 2, `${f}: cluster_exists ${blocks.length} yerde (>=2 bekleniyor)`);
-    for (const b of blocks) {
-      const expr = flat(b[1]);
+
+    // Gorevleri ayir: kapinin kullandigi degiskenin AYNI gorevin `vars:` blogunda
+    // tanimli olmasi gerekir; baska bir gorevde tanimli olmasi ISE YARAMAZ.
+    const tasks = src.split(/\n(?=    - name:)/);
+    const gated = tasks.filter((t) => t.includes('cluster_exists'));
+    assert.ok(gated.length >= 2, `${f}: cluster_exists ${gated.length} gorevde (>=2 bekleniyor)`);
+
+    for (const t of gated) {
+      const name = (t.match(/- name: "([^"]+)"/) || [])[1] || '?';
+
+      // 1) Kapi parolaya BAKIYOR mu (ifadenin kendisi okunur).
+      const expr = flat((t.match(/cluster_exists:\s*>-\s*\n([\s\S]*?)\n\s*\}\}/) || [])[1] || '');
       assert.match(
         expr,
         /resolved_password \| trim \| length > 0/,
-        `${f}: kapi parolaya bakmiyor — bos parolali cluster ise giriyor ve ` +
-          '`oc login` iki adim sonra yaniltici bir kubeconfig hatasi uretiyor',
+        `${f} / ${name}: kapi parolaya bakmiyor — bos parolali cluster ise giriyor`,
       );
-      // Kullanici adi kontrolu de KAYBOLMAMALI (eski kapi geri gelmesin diye).
       assert.match(
         expr,
         /resolved_username \| trim \| length > 0/,
-        `${f}: kullanici adi kapisi dusmus`,
+        `${f} / ${name}: kullanici adi kapisi dusmus`,
+      );
+
+      // 2) VE o degisken AYNI gorevde TANIMLI mi.
+      //
+      // BU KONTROL SONRADAN EKLENDI VE BIR URETIM ARIZASINI KACIRMISTI (AWX #3297277):
+      // C3'un ilk hali yalnizca "ifade parolaya bakiyor mu" diye soruyordu. Kapi
+      // `logx_ocp_app_discovery.yml`in dogrulama gorevine eklendi ama o gorevin
+      // `vars:` blogunda `resolved_password` TANIMLI DEGILDI. Jinja tanimsiz
+      // degiskende patladi, gorev `no_log: true` oldugu icin sebep "censored"
+      // olarak gizlendi ve bastion komple dustu — bekci ise YESILDI.
+      assert.match(
+        t,
+        /^\s+resolved_password: >-/m,
+        `${f} / ${name}: kapi \`resolved_password\`a bakiyor ama o degisken BU GOREVDE ` +
+          'tanimli degil — Jinja calisma aninda patlar ve no_log sebebi gizler',
       );
     }
   }

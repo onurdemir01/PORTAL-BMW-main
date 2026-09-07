@@ -176,6 +176,22 @@ function isWithinCooldown(lastTerminalJob, now = Date.now()) {
 // requestId sahibi oldugu dogrulanmis cagiran tarafindan gecilir (route seviyesinde kontrol edilir).
 async function launchJob(requestId, jobType, extraVars, limit = '') {
   const keyName = JOB_KEY_BY_TYPE[jobType];
+  // ISI KIM TETIKLEDI. `launchJobOnServer`in besinci parametresi (requester) HIC
+  // GECIRILMIYORDU — varsayilani `null` oldugu icin HER LogX isi kod deposundaki
+  // sabit kisiye (DEFAULT_REQUESTER) atfediliyordu. Kullanici 2026-09-07'de kendi
+  // actigi iste baskasinin adini gordu. Istek satiri kullanici adini zaten tasiyor;
+  // buradan okunup gecirilir.
+  //
+  // Okunamazsa is DURMAZ: atif varsayilana duser (eski davranis) ama
+  // `requester_is_fallback` bayragi ile bu GORUNUR olur.
+  let requester = null;
+  try {
+    const row = await require('./requests.cjs').getRequestRow(requestId);
+    if (row?.username) requester = { username: row.username };
+  } catch {
+    /* atif ikincil; is akisini durdurmaz */
+  }
+
   if (!keyName) throw Object.assign(new Error(`Bilinmeyen job tipi: ${jobType}`), { status: 400 });
 
   // Idempotency guard: ayni request icin ayni tipte HÂLÂ calisan (terminal-olmayan) bir job
@@ -234,7 +250,7 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
       extraVars,
       { label: keyName },
     );
-    launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit);
+    launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit, requester);
   } catch (err) {
     if (!isAwx404Error(err)) throw err;
 
@@ -256,7 +272,7 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
         extraVars,
         { label: keyName },
       );
-      launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit);
+      launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit, requester);
       // Otomatik-iyilestirme: dogru sunucuyu kalici yaz → sonraki launch'lar ~7sn telafi
       // taramasini atlar. Best-effort; yazamazsa job yine de basladi, sadece hiz kaybi olur.
       playbookRegistry
