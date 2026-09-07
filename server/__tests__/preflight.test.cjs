@@ -44,6 +44,14 @@ function withBrokenCopy(mutate, fn) {
     'server/ansible/bmw_portal/scalex/scalex_app/PACKAGE_MANIFEST',
     'server/ansible/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
     'server/log.cjs',
+    // Damga kontrolu icin gereken makine. Kopyalanmazsa preflight bu bolumu
+    // "DOGRULANAMADI" diye gecer ve mutasyon testleri farkli bir sey olcmus olur.
+    'scripts/playbook-rev.cjs',
+    'server/ansible/paths.cjs',
+    'server/ansible/playbook-revisions.json',
+    'server/ansible/bmw_portal/logx/ocp/logx_ocp_namespace_discovery.yml',
+    'server/ansible/bmw_portal/logx/ocp/logx_ocp_app_discovery.yml',
+    'server/ansible/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml',
   ]) {
     const dst = path.join(tmp, rel);
     fs.mkdirSync(path.dirname(dst), { recursive: true });
