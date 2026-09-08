@@ -32,6 +32,8 @@ import {
   type OutputFilter,
   type SurveyField,
   type FieldCustomization,
+  type SurveyFieldCondition,
+  type SurveyFieldConditionGroup,
 } from '@/api/ansibleApi';
 import { buildSuggestions, type SurveySuggestion } from '@/utils/surveySuggestions';
 
@@ -79,37 +81,108 @@ const EMPTY_CUSTOM_FIELD: SurveyField = {
 // bicimden gecis sirasinda kaydedilmis satirlar olabilir; conditions dizisi eksik/bozuksa
 // TypeError firlatmak (ve tum React agacini cokertip beyaz ekrana dusurmek) yerine
 // sessizce ya yeni sekle tasir ya da kosulu tamamen kaldirir.
+function normalizeConditions(raw: unknown): SurveyFieldCondition[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+    .map((c) => ({
+      field: String(c.field ?? ''),
+      equals: String(c.equals ?? ''),
+      operator: c.operator === 'notEmpty' ? ('notEmpty' as const) : ('equals' as const),
+    }));
+}
+
+// Tasarimci HER ZAMAN grup bicimiyle calisir: boylece arayuzde tek bir kod yolu olur.
+// Eski bicimlerin ikisi de KAYIPSIZ tasinir:
+//   {mode:'any', conditions:[a,b]}  ->  {mode:'all', groups:[{mode:'any', conditions:[a,b]}]}
+// Tek gruplu bir yapinin sonucu dis baglactan BAGIMSIZDIR, yani anlam birebir korunur.
 function normalizeCustomField(f: SurveyField): SurveyField {
   const raw = f.dependsOn as unknown;
   if (!raw || typeof raw !== 'object') return { ...f, dependsOn: undefined };
-  const dep = raw as { mode?: string; conditions?: unknown; field?: string; equals?: string };
-  if (Array.isArray(dep.conditions)) {
-    const conditions = dep.conditions
-      .filter(
-        (c): c is { field: string; equals: string; operator?: string } =>
-          !!c && typeof c === 'object',
-      )
-      .map((c) => ({
-        field: String((c as { field?: unknown }).field ?? ''),
-        equals: String((c as { equals?: unknown }).equals ?? ''),
-        operator:
-          (c as { operator?: unknown }).operator === 'notEmpty'
-            ? ('notEmpty' as const)
-            : ('equals' as const),
+  const dep = raw as {
+    mode?: string;
+    conditions?: unknown;
+    groups?: unknown;
+    field?: string;
+    equals?: string;
+  };
+
+  if (Array.isArray(dep.groups) && dep.groups.length > 0) {
+    const groups = dep.groups
+      .filter((g): g is Record<string, unknown> => !!g && typeof g === 'object')
+      .map((g) => ({
+        mode: g.mode === 'all' ? ('all' as const) : ('any' as const),
+        conditions: normalizeConditions(g.conditions),
       }));
-    return { ...f, dependsOn: { mode: dep.mode === 'all' ? 'all' : 'any', conditions } };
+    return {
+      ...f,
+      dependsOn: { mode: dep.mode === 'any' ? 'any' : 'all', groups },
+    };
   }
-  // Eski tek-kosul bicimi ({field, equals}) — yeni {mode, conditions[]} bicimine tasi.
+
+  if (Array.isArray(dep.conditions)) {
+    const conditions = normalizeConditions(dep.conditions);
+    return {
+      ...f,
+      dependsOn: {
+        mode: 'all',
+        groups: [{ mode: dep.mode === 'all' ? 'all' : 'any', conditions }],
+      },
+    };
+  }
+
+  // En eski bicim: tek {field, equals}.
   if (typeof dep.field === 'string' && dep.field) {
     return {
       ...f,
       dependsOn: {
-        mode: 'any',
-        conditions: [{ field: dep.field, equals: String(dep.equals ?? '') }],
+        mode: 'all',
+        groups: [
+          {
+            mode: 'any',
+            conditions: [
+              { field: dep.field, equals: String(dep.equals ?? ''), operator: 'equals' as const },
+            ],
+          },
+        ],
       },
     };
   }
   return { ...f, dependsOn: undefined };
+}
+
+/** Tasarimci icinde dependsOn her zaman normalize edilmistir; gruplari guvenle okur. */
+function groupsOf(dep: SurveyField['dependsOn']): SurveyFieldConditionGroup[] {
+  return dep && Array.isArray(dep.groups) ? dep.groups : [];
+}
+
+// Kurulan koşulu düz Türkçe bir cümleye çevirir. Boolean kurucularda en sık yapılan hata,
+// kullanıcının kurduğu ifadenin sandığından farklı olmasıdır (VE/VEYA önceliği); bu özet
+// admin'e ne kaydedeceğini kaydetmeden ÖNCE gösterir.
+function describeDependsOn(
+  dep: SurveyField['dependsOn'],
+  allFields: SurveyField[],
+): string {
+  const labelOf = (name: string) => {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return '(alan seçilmedi)';
+    const other = allFields.find((o) => o.name.trim() === trimmed);
+    return other?.label?.trim() || trimmed;
+  };
+  const describeCond = (c: SurveyFieldCondition) =>
+    c.operator === 'notEmpty'
+      ? `${labelOf(c.field)} doldurulduysa`
+      : `${labelOf(c.field)} = "${c.equals}"`;
+
+  const groups = groupsOf(dep).filter((g) => g.conditions.length > 0);
+  if (groups.length === 0) return 'Henüz koşul yok — alan her zaman gösterilir.';
+
+  const parts = groups.map((g) => {
+    const inner = g.conditions.map(describeCond).join(g.mode === 'any' ? ' VEYA ' : ' VE ');
+    // Parantez yalnızca GEREKTİĞİNDE: tek koşullu grup ya da tek grup varsa gürültü olur.
+    return groups.length > 1 && g.conditions.length > 1 ? `(${inner})` : inner;
+  });
+  return parts.join(dep?.mode === 'any' ? ' VEYA ' : ' VE ');
 }
 
 const LAUNCH_OPTION_KEYS = [
@@ -397,8 +470,11 @@ export default function FieldOverridesModal({
   );
   const invalidDependsOn = customFields.find((f) => {
     if (f.dependsOn === undefined) return false;
-    const conditions = Array.isArray(f.dependsOn.conditions) ? f.dependsOn.conditions : [];
+    const groups = groupsOf(f.dependsOn);
+    // Bos bir grup tek basina "kosul var" saymaz — sunucu tarafi da ayni sekilde reddeder.
+    const conditions = groups.flatMap((g) => g.conditions);
     if (conditions.length === 0) return true;
+    if (groups.some((g) => g.conditions.length === 0)) return true;
     return conditions.some((c) => {
       const parentName = (c.field || '').trim();
       if (!parentName || parentName === f.name.trim()) return true;
@@ -406,51 +482,61 @@ export default function FieldOverridesModal({
     });
   });
 
-  function addCondition(fieldIndex: number) {
-    setCustomFields((prev) =>
-      prev.map((f, i) => {
-        if (i !== fieldIndex || !f.dependsOn) return f;
-        return {
-          ...f,
-          dependsOn: {
-            ...f.dependsOn,
-            conditions: [
-              ...f.dependsOn.conditions,
-              { field: '', equals: '', operator: 'equals' as const },
-            ],
-          },
-        };
-      }),
-    );
-  }
-  function updateCondition(
+  const EMPTY_CONDITION: SurveyFieldCondition = { field: '', equals: '', operator: 'equals' };
+
+  /** Bir alanin gruplarini tek yerden gunceller — tum kosul islemleri buradan gecer. */
+  function patchGroups(
     fieldIndex: number,
-    condIndex: number,
-    patch: Partial<{ field: string; equals: string; operator: 'equals' | 'notEmpty' }>,
+    fn: (groups: SurveyFieldConditionGroup[]) => SurveyFieldConditionGroup[],
   ) {
     setCustomFields((prev) =>
       prev.map((f, i) => {
         if (i !== fieldIndex || !f.dependsOn) return f;
-        const conditions = f.dependsOn.conditions.map((c, ci) =>
-          ci === condIndex ? { ...c, ...patch } : c,
-        );
-        return { ...f, dependsOn: { ...f.dependsOn, conditions } };
+        return { ...f, dependsOn: { ...f.dependsOn, groups: fn(groupsOf(f.dependsOn)) } };
       }),
     );
   }
-  function removeCondition(fieldIndex: number, condIndex: number) {
-    setCustomFields((prev) =>
-      prev.map((f, i) => {
-        if (i !== fieldIndex || !f.dependsOn) return f;
-        return {
-          ...f,
-          dependsOn: {
-            ...f.dependsOn,
-            conditions: f.dependsOn.conditions.filter((_, ci) => ci !== condIndex),
-          },
-        };
-      }),
+
+  function addCondition(fieldIndex: number, groupIndex: number) {
+    patchGroups(fieldIndex, (gs) =>
+      gs.map((g, gi) =>
+        gi === groupIndex ? { ...g, conditions: [...g.conditions, { ...EMPTY_CONDITION }] } : g,
+      ),
     );
+  }
+  function updateCondition(
+    fieldIndex: number,
+    groupIndex: number,
+    condIndex: number,
+    patch: Partial<SurveyFieldCondition>,
+  ) {
+    patchGroups(fieldIndex, (gs) =>
+      gs.map((g, gi) =>
+        gi === groupIndex
+          ? { ...g, conditions: g.conditions.map((c, ci) => (ci === condIndex ? { ...c, ...patch } : c)) }
+          : g,
+      ),
+    );
+  }
+  function removeCondition(fieldIndex: number, groupIndex: number, condIndex: number) {
+    patchGroups(fieldIndex, (gs) =>
+      gs
+        .map((g, gi) =>
+          gi === groupIndex ? { ...g, conditions: g.conditions.filter((_, ci) => ci !== condIndex) } : g,
+        )
+        // Son kosulu silinen grup kendiliginden kalkar; tek grup kaldiysa korunur ki
+        // "Koşullu göster" isaretliyken hic grup kalmasin.
+        .filter((g, gi) => g.conditions.length > 0 || gs.length === 1 || gi !== groupIndex),
+    );
+  }
+  function addGroup(fieldIndex: number) {
+    patchGroups(fieldIndex, (gs) => [...gs, { mode: 'any', conditions: [{ ...EMPTY_CONDITION }] }]);
+  }
+  function removeGroup(fieldIndex: number, groupIndex: number) {
+    patchGroups(fieldIndex, (gs) => (gs.length <= 1 ? gs : gs.filter((_, gi) => gi !== groupIndex)));
+  }
+  function setGroupMode(fieldIndex: number, groupIndex: number, mode: 'all' | 'any') {
+    patchGroups(fieldIndex, (gs) => gs.map((g, gi) => (gi === groupIndex ? { ...g, mode } : g)));
   }
 
   // Smart'ın hemen hemen tüm RFF flow'larında tekrar eden bir ElementName seti var (KONU,
@@ -905,9 +991,14 @@ export default function FieldOverridesModal({
                             updateCustomField(i, {
                               dependsOn: e.target.checked
                                 ? {
-                                    mode: 'any',
-                                    conditions: [
-                                      { field: '', equals: '', operator: 'equals' as const },
+                                    mode: 'all',
+                                    groups: [
+                                      {
+                                        mode: 'any',
+                                        conditions: [
+                                          { field: '', equals: '', operator: 'equals' as const },
+                                        ],
+                                      },
                                     ],
                                   }
                                 : undefined,
@@ -918,109 +1009,165 @@ export default function FieldOverridesModal({
                       </label>
                       {f.dependsOn !== undefined && (
                         <div className="space-y-2">
-                          <div className="flex items-center gap-3">
-                            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`depends-mode-${i}`}
-                                checked={f.dependsOn.mode === 'any'}
-                                onChange={() =>
-                                  updateCustomField(i, {
-                                    dependsOn: { ...f.dependsOn!, mode: 'any' },
-                                  })
-                                }
-                              />
-                              Herhangi biri yeterli (VEYA)
-                            </label>
-                            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`depends-mode-${i}`}
-                                checked={f.dependsOn.mode === 'all'}
-                                onChange={() =>
-                                  updateCustomField(i, {
-                                    dependsOn: { ...f.dependsOn!, mode: 'all' },
-                                  })
-                                }
-                              />
-                              Hepsi sağlanmalı (VE)
-                            </label>
-                          </div>
-
-                          {(Array.isArray(f.dependsOn.conditions)
-                            ? f.dependsOn.conditions
-                            : []
-                          ).map((c, ci) => {
-                            const operator = c.operator === 'notEmpty' ? 'notEmpty' : 'equals';
-                            return (
-                              <div
-                                key={ci}
-                                className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center"
-                              >
-                                <Select
-                                  value={c.field}
-                                  onChange={(e) =>
-                                    updateCondition(i, ci, { field: e.target.value })
-                                  }
-                                >
-                                  <option value="">Alan seçin…</option>
-                                  {customFields
-                                    .filter((_, oi) => oi !== i)
-                                    .map((other, oi) => (
-                                      <option key={oi} value={other.name}>
-                                        {other.label || other.name || `Alan ${oi + 1}`}
-                                      </option>
-                                    ))}
-                                </Select>
-                                <Select
-                                  value={operator}
-                                  onChange={(e) =>
-                                    updateCondition(i, ci, {
-                                      operator:
-                                        e.target.value === 'notEmpty' ? 'notEmpty' : 'equals',
+                          {groupsOf(f.dependsOn).length > 1 && (
+                            <div className="flex items-center gap-3 pb-1">
+                              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                                Gruplar arasi:
+                              </span>
+                              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`depends-outer-${i}`}
+                                  checked={f.dependsOn.mode === 'all'}
+                                  onChange={() =>
+                                    updateCustomField(i, {
+                                      dependsOn: { ...f.dependsOn!, mode: 'all' },
                                     })
                                   }
-                                >
-                                  <option value="equals">şu değere eşitse</option>
-                                  <option value="notEmpty">herhangi bir değer seçilirse</option>
-                                </Select>
-                                {operator === 'equals' ? (
-                                  <TextInput
-                                    value={c.equals}
-                                    placeholder="ör. deactive"
-                                    onChange={(e) =>
-                                      updateCondition(i, ci, { equals: e.target.value })
-                                    }
-                                  />
-                                ) : (
-                                  <span className="text-[11px] text-[var(--text-muted)] italic px-1">
-                                    boş bırakılmadıkça
+                                />
+                                Tum gruplar (VE)
+                              </label>
+                              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`depends-outer-${i}`}
+                                  checked={f.dependsOn.mode === 'any'}
+                                  onChange={() =>
+                                    updateCustomField(i, {
+                                      dependsOn: { ...f.dependsOn!, mode: 'any' },
+                                    })
+                                  }
+                                />
+                                Herhangi bir grup (VEYA)
+                              </label>
+                            </div>
+                          )}
+
+                          {groupsOf(f.dependsOn).map((g, gi) => (
+                            <div
+                              key={gi}
+                              className="rounded-lg border border-[var(--border)] p-2 space-y-2"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                                    Grup {gi + 1}
                                   </span>
+                                  <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer">
+                                    <input
+                                      type="radio"
+                                      name={`depends-mode-${i}-${gi}`}
+                                      checked={g.mode === 'any'}
+                                      onChange={() => setGroupMode(i, gi, 'any')}
+                                    />
+                                    Herhangi biri (VEYA)
+                                  </label>
+                                  <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer">
+                                    <input
+                                      type="radio"
+                                      name={`depends-mode-${i}-${gi}`}
+                                      checked={g.mode === 'all'}
+                                      onChange={() => setGroupMode(i, gi, 'all')}
+                                    />
+                                    Hepsi (VE)
+                                  </label>
+                                </div>
+                                {groupsOf(f.dependsOn).length > 1 && (
+                                  <button
+                                    onClick={() => removeGroup(i, gi)}
+                                    className="text-red-400 hover:text-red-600 flex-shrink-0"
+                                    title="Grubu kaldir"
+                                  >
+                                    <TrashIcon className="w-3.5 h-3.5" />
+                                  </button>
                                 )}
-                                <button
-                                  onClick={() => removeCondition(i, ci)}
-                                  className="text-red-400 hover:text-red-600 flex-shrink-0"
-                                  title="Koşulu kaldır"
-                                >
-                                  <TrashIcon className="w-3.5 h-3.5" />
-                                </button>
                               </div>
-                            );
-                          })}
+
+                              {g.conditions.map((c, ci) => {
+                                const operator = c.operator === 'notEmpty' ? 'notEmpty' : 'equals';
+                                return (
+                                  <div
+                                    key={ci}
+                                    className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center"
+                                  >
+                                    <Select
+                                      value={c.field}
+                                      onChange={(e) =>
+                                        updateCondition(i, gi, ci, { field: e.target.value })
+                                      }
+                                    >
+                                      <option value="">Alan secin...</option>
+                                      {customFields
+                                        .filter((_, oi) => oi !== i)
+                                        .map((other, oi) => (
+                                          <option key={oi} value={other.name}>
+                                            {other.label || other.name || `Alan ${oi + 1}`}
+                                          </option>
+                                        ))}
+                                    </Select>
+                                    <Select
+                                      value={operator}
+                                      onChange={(e) =>
+                                        updateCondition(i, gi, ci, {
+                                          operator:
+                                            e.target.value === 'notEmpty' ? 'notEmpty' : 'equals',
+                                        })
+                                      }
+                                    >
+                                      <option value="equals">su degere esitse</option>
+                                      <option value="notEmpty">herhangi bir deger secilirse</option>
+                                    </Select>
+                                    {operator === 'equals' ? (
+                                      <TextInput
+                                        value={c.equals}
+                                        placeholder="or. deactive"
+                                        onChange={(e) =>
+                                          updateCondition(i, gi, ci, { equals: e.target.value })
+                                        }
+                                      />
+                                    ) : (
+                                      <span className="text-[11px] text-[var(--text-muted)] italic px-1">
+                                        bos birakilmadikca
+                                      </span>
+                                    )}
+                                    <button
+                                      onClick={() => removeCondition(i, gi, ci)}
+                                      className="text-red-400 hover:text-red-600 flex-shrink-0"
+                                      title="Kosulu kaldir"
+                                    >
+                                      <TrashIcon className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+
+                              <button
+                                onClick={() => addCondition(i, gi)}
+                                className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
+                              >
+                                <PlusIcon className="w-3 h-3" /> Kosul Ekle
+                              </button>
+                            </div>
+                          ))}
 
                           <button
-                            onClick={() => addCondition(i)}
+                            onClick={() => addGroup(i)}
                             className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
                           >
-                            <PlusIcon className="w-3 h-3" /> Koşul Ekle
+                            <PlusIcon className="w-3 h-3" /> Grup Ekle
                           </button>
+
+                          <p className="text-[11px] text-[var(--text-secondary)] rounded-md px-2 py-1.5 leading-relaxed border border-dashed border-[var(--border)]">
+                            <span className="font-semibold">Su durumda gosterilir: </span>
+                            {describeDependsOn(f.dependsOn, customFields)}
+                          </p>
                         </div>
                       )}
                       <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                        "VEYA" seçiliyse koşullardan herhangi biri sağlanınca (ör.
-                        op_selection=deactive VEYA op_selection=activate), "VE" seçiliyse hepsi
-                        birden sağlanınca bu alan kullanıcıya gösterilir; aksi halde hiç sorulmaz ve
-                        extra_vars'a eklenmez.
+                        Her grubun kendi bağlacı vardır; gruplar da yukarıdaki "Gruplar arası"
+                        bağlacıyla birleşir. Örnek: "ortam X VEYA Y VEYA Z" bir gruba, "operasyon
+                        = P" ikinci gruba yazılır ve gruplar arası "VE" seçilir. Koşul
+                        sağlanmazsa alan kullanıcıya hiç sorulmaz ve extra_vars'a eklenmez.
                       </p>
                     </div>
 

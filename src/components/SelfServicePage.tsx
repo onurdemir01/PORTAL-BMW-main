@@ -31,6 +31,7 @@ import IpCheckSection from '@/components/self_service/IpCheckSection';
 import OpenshiftCheckSection from '@/components/self_service/OpenshiftCheckSection';
 import { SkeletonList } from '@/components/common/Skeleton';
 import { fmtDateTime } from '@/utils/datetime';
+import { isFieldActive as isFieldActiveShared } from '../../shared/surveyConditions.cjs';
 
 // LAUNCHING ARA DURUMU (2026-08-28): Smart onayı geldi, AWX çağrısı uçuşta. Bu da bir
 // BEKLEME durumudur — sonlanmış gibi davranıp yoklamayı kesersek ekran "başlatılıyor"da
@@ -174,18 +175,12 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
       .finally(() => setLoading(false));
   }, [item]);
 
-  // Koşullu alanlar (Survey Tasarımcısı "dependsOn"): bir alan yalnızca koşul(lar)ı
-  // sağlanırsa kullanıcıya gösterilir/zorunlu tutulur/launch'a gönderilir — sunucudaki
-  // resolveCustomSurveyExtraVars'in isActive() mantığıyla AYNI (mode="any" → VEYA,
-  // aksi halde VE).
+  // Koşullu alanlar (Survey Tasarımcısı "dependsOn"). Mantık ARTIK KOPYALANMIYOR:
+  // sunucu (resolveCustomSurveyExtraVars) ile BİREBİR aynı fonksiyon çağrılır. İki
+  // kopya ayrışırsa alan burada gizli görünürken sunucu onu yine de gönderir — sessiz
+  // ve teşhisi zor bir hata. Karar sunucuda bağlayıcıdır; burası yalnızca UX.
   function isFieldActive(f: SurveyField): boolean {
-    const dep = f.dependsOn;
-    if (!dep || !Array.isArray(dep.conditions) || dep.conditions.length === 0) return true;
-    const results = dep.conditions.map((c) => {
-      const val = (values[c.field] ?? '').trim();
-      return c.operator === 'notEmpty' ? val !== '' : val === c.equals;
-    });
-    return dep.mode === 'any' ? results.some(Boolean) : results.every(Boolean);
+    return isFieldActiveShared(f.dependsOn, values);
   }
   const visibleFields = fields.filter(isFieldActive);
 

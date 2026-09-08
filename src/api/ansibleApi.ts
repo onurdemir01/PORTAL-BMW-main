@@ -789,10 +789,27 @@ export interface SurveyField {
   // giden HAM değer (choices[i]) ile kullanıcıya gösterilen metin farklı olabilir.
   choiceLabels?: Record<string, string>;
   // Yalnızca Survey Tasarımcısı için: bu alan yalnızca aşağıdaki koşul(lar) sağlanırsa
-  // kullanıcıya sorulur (koşullu alan). mode="any" → koşullardan HERHANGİ BİRİ yeterli
-  // (VEYA — ör. op_selection=deactive VEYA op_selection=activate); mode="all" → koşulların
-  // TÜMÜ sağlanmalı (VE — farklı alanlar üzerinde birden fazla şart).
-  dependsOn?: { mode: 'all' | 'any'; conditions: SurveyFieldCondition[] };
+  // kullanıcıya sorulur (koşullu alan).
+  //
+  // İKİ DÜZEYLİ VE/VEYA (groups): her grubun KENDİ bağlacı vardır, gruplar da dıştaki
+  // `mode` ile birleşir. "ortam X VEYA Y VEYA Z" VE "operasyon P" böyle kurulur:
+  //   { mode: 'all', groups: [ { mode: 'any', conditions: [env=X, env=Y, env=Z] },
+  //                            { mode: 'all', conditions: [op=P] } ] }
+  //
+  // GERİYE DÖNÜK UYUM: `groups` yoksa eski düz `conditions` listesi `mode` ile
+  // değerlendirilir — kayıtlı mevcut survey'lerin davranışı DEĞİŞMEZ.
+  // Değerlendirme mantığı TEK yerdedir: shared/surveyConditions.cjs
+  dependsOn?: {
+    mode: 'all' | 'any';
+    conditions?: SurveyFieldCondition[];
+    groups?: SurveyFieldConditionGroup[];
+  };
+}
+
+export interface SurveyFieldConditionGroup {
+  /** Grup İÇİ bağlaç: 'any' → VEYA, 'all' → VE. */
+  mode: 'all' | 'any';
+  conditions: SurveyFieldCondition[];
 }
 
 export interface SurveyFieldCondition {
