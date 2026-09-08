@@ -77,7 +77,13 @@ async function loadAwxServers() {
       apiBase: normalizeApiBase(r.api_prefix || process.env[`AWX_${r.server_no}_API_BASE`]),
     }));
     if (_awxServersCache.length) {
-      console.log(`[Ansible] ${_awxServersCache.length} AWX sunucusu DB'den yuklendi.`);
+      // API tabani VARSAYILANDAN farkli olan sunucular ayrica yazilir: "ayari yazdim ama
+      // okundu mu" sorusu bu satirla cevaplanir (aksi halde restart sonrasi tek yol
+      // hatayi tekrar tetiklemekti).
+      const ozet = _awxServersCache
+        .map((x) => `${x.name}${x.apiBase && x.apiBase !== DEFAULT_API_BASE ? ` [${x.apiBase}]` : ''}`)
+        .join(', ');
+      console.log(`[Ansible] ${_awxServersCache.length} AWX sunucusu DB'den yuklendi: ${ozet}`);
     }
   } catch (e) {
     console.warn("[Ansible] AWX sunuculari DB'den yuklenemedi, env fallback:", e.message);
@@ -479,14 +485,24 @@ function fetchTokenV2(baseUrl, user, pass, apiBase = DEFAULT_API_BASE) {
           if (res.statusCode >= 400) {
             reject(
               new Error(
-                `AWX v2/tokens başarısız (${res.statusCode}): ${json?.detail || data.slice(0, 100)}`,
+                `AWX token alinamadi (HTTP ${res.statusCode}) — ${parsed.href} : ` +
+                  `${json?.detail || data.slice(0, 100)}`,
               ),
             );
           } else {
             resolve({ token: json.token, expires: json.expires });
           }
         } catch {
-          reject(new Error(`AWX v2/tokens yanıtı JSON değil: ${data.slice(0, 100)}`));
+          // ADRESI YAZMAK SART: bu hata iki BAMBASKA sebepten gelir ve mesaj onlari
+          // ayirt edebilmeli — (a) yol yanlis (AAP 2.5'te /api/controller/v2 gerekir),
+          // (b) adres dogru ama karsida AWX yok. Adres olmadan ikisi ayni goruntuyu verir
+          // ve teshis tahmine kalir (2026-09-08'de tam bu yasandi).
+          reject(
+            new Error(
+              `AWX token yaniti JSON DEGIL (HTTP ${res.statusCode}) — istenen adres: ` +
+                `${parsed.href} | yanit: ${data.slice(0, 120).replace(/\s+/g, ' ')}`,
+            ),
+          );
         }
       });
     });
