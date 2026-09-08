@@ -1182,6 +1182,30 @@ const TABLES = [
         message      NVARCHAR(1000) NULL
       )`,
   },
+  {
+    // Hangi envanter tablosunun gecmisi tutulacak — Admin > Envanter Gorunurlugu'nden
+    // yonetilir. Kod tarafindaki liste (server/inventory/history-config.cjs) VARSAYILAN
+    // ve YEDEKtir: DB okunamazsa oradaki tanimlar kullanilir, boylece gecmis toplama
+    // bir tablo hatasi yuzunden tamamen durmaz.
+    //
+    // key_columns AYRI TUTULUR cunku "ayni satir" tanimi tablodan tabloya degisir ve
+    // YANLIS anahtar farki tamamen anlamsiz yapar (her satir hem "gelen" hem "giden"
+    // gorunur). Bu yuzden admin ekrani anahtari da soruyor.
+    name: 'inventory_history_config',
+    sql: `
+      CREATE TABLE inventory_history_config (
+        id           INT IDENTITY(1,1) PRIMARY KEY,
+        table_name   NVARCHAR(128) NOT NULL,
+        label        NVARCHAR(200) NULL,
+        mode         NVARCHAR(20)  NOT NULL DEFAULT 'snapshot',
+        key_columns  NVARCHAR(1000) NOT NULL,
+        volatile_columns NVARCHAR(1000) NULL,
+        enabled      BIT NOT NULL DEFAULT 1,
+        updated_at   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by   NVARCHAR(150) NULL,
+        UNIQUE(table_name)
+      )`,
+  },
 ];
 
 // LogX v2 EAR-klasor-son-eki → ortam etiketi varsayilan seed'i (admin ekranindan duzenlenebilir).
@@ -2158,6 +2182,44 @@ async function seedAwxServersFromEnv(pool) {
 }
 
 // Splunk urun listesini env'den seed et (tablo bossa) — sonrasi admin/DB yonetiminde.
+// Envanter gecmisi kapsami: kod tarafindaki VARSAYILAN tablolari (bes tanesi, anahtarlari
+// bmw_inventory yukleyicilerinin kendi DELETE/INSERT ifadelerinden dogrulanmis) tabloya
+// ACIK olarak yazar. Zaten satiri olan tabloya DOKUNULMAZ — admin bir tabloyu kapattiysa
+// her restart onu geri acmamali.
+async function seedInventoryHistoryConfig(pool) {
+  let defaults;
+  try {
+    ({ TABLES: defaults } = require('../inventory/history-config.cjs'));
+  } catch (err) {
+    console.warn('[DB] Envanter gecmisi varsayilanlari okunamadi:', err.message);
+    return;
+  }
+  for (const t of defaults) {
+    try {
+      const exists = await pool
+        .request()
+        .input('t', t.table)
+        .query(`SELECT 1 FROM inventory_history_config WHERE table_name = @t`);
+      if (exists.recordset.length) continue;
+      await pool
+        .request()
+        .input('t', t.table)
+        .input('label', t.label || t.table)
+        .input('mode', t.mode || 'snapshot')
+        .input('keys', JSON.stringify(t.key || []))
+        .input('vol', JSON.stringify(t.volatile || []))
+        .query(`
+          INSERT INTO inventory_history_config
+            (table_name, label, mode, key_columns, volatile_columns, enabled, updated_by)
+          VALUES (@t, @label, @mode, @keys, @vol, 1, 'seed')
+        `);
+      console.log(`[DB] Envanter gecmisi kapsamina eklendi (acik): ${t.table}`);
+    } catch (err) {
+      console.warn(`[DB] Envanter gecmisi kaydi eklenemedi (${t.table}):`, err.message);
+    }
+  }
+}
+
 async function seedSplunkProducts(pool) {
   try {
     const any = await pool.request().query(`SELECT TOP 1 1 AS x FROM splunk_products`);
@@ -2351,6 +2413,7 @@ async function setupTables() {
   await seedMaskRules(pool);
   await seedAwxServersFromEnv(pool);
   await seedSplunkProducts(pool);
+  await seedInventoryHistoryConfig(pool);
   await seedSelfServiceGroups(pool);
 
   // NOT: OCP katalog seed'i BURADA DEGIL, setupTables'in EN SONUNDA calisir — kullandigi

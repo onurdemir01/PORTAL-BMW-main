@@ -1877,14 +1877,18 @@ function initInventory(app) {
   // Geriye donuk veri URETILEMEZ - yalnizca zamanlayici basladiktan sonrasi bilinir.
 
   // GET /api/inventory/history/tables — hangi tablolarin gecmisi tutuluyor
-  router.get('/history/tables', (req, res) => {
-    const { TABLES } = require('./history-config.cjs');
-    res.json({
-      ok: true,
-      tables: TABLES.map((t) => ({
+  // Kapsam Admin'den yonetildigi icin STATIK liste degil, ETKIN kapsam donulur —
+  // Envanter'deki "Gecmis" dugmesi ve Denetim'deki tablo secici bunu okur.
+  router.get('/history/tables', async (req, res) => {
+    try {
+      const { effectiveTables } = require('./history-config.cjs');
+      const tables = (await effectiveTables()).map((t) => ({
         table: t.table, label: t.label, mode: t.mode, key: t.key,
-      })),
-    });
+      }));
+      res.json({ ok: true, tables });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
   });
 
   // GET /api/inventory/history/runs — "Tarama Sagligi" metriginin kaynagi
@@ -1941,6 +1945,103 @@ function initInventory(app) {
       res.json({ ok: true, series });
     } catch (err) {
       res.status(400).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/inventory/history/config — Admin: kapsam yonetimi ekrani icin.
+  // Hem KAYITLI satirlari hem de eklenebilecek ADAY tablolari doner.
+  router.get('/history/config', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
+    try {
+      const dbx = require('../db/index.cjs');
+      const { rows } = await dbx.query(
+        `SELECT table_name, label, mode, key_columns, volatile_columns, enabled, updated_at, updated_by
+         FROM inventory_history_config ORDER BY table_name`,
+      );
+      const configured = rows.map((r) => ({
+        table: r.table_name,
+        label: r.label,
+        mode: r.mode,
+        key: (() => { try { return JSON.parse(r.key_columns || '[]'); } catch { return []; } })(),
+        enabled: r.enabled === true || r.enabled === 1,
+        updatedAt: r.updated_at,
+        updatedBy: r.updated_by,
+      }));
+      const known = new Set(configured.map((c) => c.table.toLowerCase()));
+      const candidates = (await fetchTableList()).filter((t) => !known.has(t.toLowerCase()));
+      res.json({ ok: true, configured, candidates });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // GET /api/inventory/history/columns/:table — Admin: anahtar kolon secimi icin.
+  router.get('/history/columns/:table', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
+    try {
+      res.json({ ok: true, columns: await getColumns(req.params.table) });
+    } catch (err) {
+      res.status(400).json({ ok: false, message: err.message });
+    }
+  });
+
+  // PUT /api/inventory/history/config — Admin: bir tablonun kapsam ayarini yazar.
+  //
+  // ANAHTAR ZORUNLU: "ayni satir" tanimi yanlissa fark ekrani tamamen anlamsiz olur
+  // (her satir hem "gelen" hem "giden" gorunur). Bu yuzden bos anahtarla kayit
+  // KABUL EDILMEZ; kolonlarin tabloda GERCEKTEN var oldugu da dogrulanir.
+  router.put('/history/config', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'Admin yetkisi gerekli.' });
+    const { table, label, mode, key, enabled } = req.body || {};
+    const name = String(table || '').trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz tablo adı.' });
+    }
+    const keys = Array.isArray(key) ? key.map((k) => String(k).trim()).filter(Boolean) : [];
+    if (enabled && keys.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Geçmişi tutmak için en az bir anahtar kolon seçin — anahtar, "aynı satır" tanımıdır.',
+      });
+    }
+    try {
+      if (keys.length) {
+        const cols = (await getColumns(name)).map((c) => c.toLowerCase());
+        const missing = keys.filter((k) => !cols.includes(k.toLowerCase()));
+        if (missing.length) {
+          return res.status(400).json({ ok: false, message: `Tabloda olmayan kolon(lar): ${missing.join(', ')}` });
+        }
+      }
+      const dbx = require('../db/index.cjs');
+      const { COMMON_VOLATILE, invalidateCache } = require('./history-config.cjs');
+      const params = [
+        name,
+        String(label || name).slice(0, 200),
+        mode === 'native' ? 'native' : 'snapshot',
+        JSON.stringify(keys),
+        JSON.stringify(COMMON_VOLATILE),
+        enabled ? 1 : 0,
+        getRequestUser(req)?.username || 'unknown',
+      ];
+      const upd = await dbx.query(
+        `UPDATE inventory_history_config
+         SET label = $2, mode = $3, key_columns = $4, volatile_columns = $5,
+             enabled = $6, updated_by = $7, updated_at = GETUTCDATE()
+         WHERE table_name = $1`,
+        params,
+      );
+      if (!upd.rowCount) {
+        await dbx.query(
+          `INSERT INTO inventory_history_config
+             (table_name, label, mode, key_columns, volatile_columns, enabled, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          params,
+        );
+      }
+      invalidateCache(); // sonraki okuma taze kapsami gorsun
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
     }
   });
 

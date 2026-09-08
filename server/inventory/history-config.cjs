@@ -22,8 +22,31 @@
 // KENDİSİ değil, verinin metaverisidir — aynı gerekçeyle dışlanır.
 'use strict';
 
-/** Her tabloda dışlanan ortak metaveri kolonları (bkz. yukarıdaki not). */
-const COMMON_VOLATILE = ['created_at', 'updated_at', 'last_seen_at'];
+/**
+ * Her tabloda hash DIŞINDA tutulan kolonlar. Liste iki tür kolonu kapsar ve ikisi de
+ * aynı sonucu doğurur: dahil edilirlerse HER satır HER gece "değişti" sayılır, geçmiş
+ * tablosu her gece tüm envanter kadar büyür ve "ne değişti" ekranı kullanılamaz olur.
+ *
+ * 1) ZAMAN DAMGALARI — verinin kendisi değil, verinin metaverisi.
+ *    last_seen_at her başarılı taramada güncellenir.
+ *    loaded_at / inserted_at ise DEFAULT SYSUTCDATETIME() ile dolar; loader bu kolonları
+ *    YAZMAZ ve tablo her çalıştırmada TRUNCATE edilip yeniden yazıldığı için değer her
+ *    gece TAZEDİR. (2026-09-08'de dbo.Openshift_Inventory'de tam bu durum bulundu —
+ *    `loaded_at` listede olmadığı için o tablonun geçmişi baştan bozuk toplanacaktı.)
+ *
+ * 2) YAPAY ANAHTAR — `id INT IDENTITY`. TRUNCATE + yeniden doldurmada numaralar baştan
+ *    üretilir, yani aynı sunucu her gece başka bir id alır. Satır kimliği için zaten
+ *    `key` alanındaki DOĞAL anahtar kullanılıyor; id'nin hash'te hiçbir işi yok.
+ *    (dbo.Openshift_Inventory ve dbo.WASAppsInventory'de var.)
+ */
+const COMMON_VOLATILE = [
+  'id',
+  'created_at',
+  'updated_at',
+  'last_seen_at',
+  'loaded_at',
+  'inserted_at',
+];
 
 // Anahtarlar loader'ların KENDİ DELETE/upsert ifadelerinden alındı — yani kaynağın
 // "aynı satır" tanımıyla birebir aynı. Tahmin edilmedi:
@@ -84,6 +107,80 @@ function snapshotTables() {
   return TABLES.filter((t) => t.mode === 'snapshot');
 }
 
+// ── DB'den yonetilen kapsam ───────────────────────────────────────────────────────
+// Yukaridaki TABLES artik yalnizca VARSAYILAN ve YEDEK: gercek kapsam
+// `inventory_history_config` tablosundan gelir (Admin > Envanter Gorunurlugu).
+// DB okunamazsa koddaki listeye DUSULUR — bir DB hiccup'i yuzunden gecmis toplama
+// tamamen durmasin; kaybedilen gun geriye donuk uretilemez.
+let _cache = null;
+let _cacheAt = 0;
+const CACHE_TTL = 60_000;
+
+function normalizeRow(r) {
+  const fallback = getTable(r.table_name);
+  let key = [];
+  let volatile = null;
+  try {
+    key = JSON.parse(r.key_columns || '[]');
+  } catch {
+    key = [];
+  }
+  try {
+    volatile = r.volatile_columns ? JSON.parse(r.volatile_columns) : null;
+  } catch {
+    volatile = null;
+  }
+  // Anahtar bozuksa/boşsa koddaki DOGRULANMIS anahtara duselim — bos anahtarla
+  // calismak tum satirlari tek bir anahtara toplar ve gecmisi bozar.
+  if (!Array.isArray(key) || key.length === 0) key = fallback ? fallback.key : null;
+  if (!key) return null;
+  return {
+    table: r.table_name,
+    label: r.label || (fallback && fallback.label) || r.table_name,
+    mode: r.mode === 'native' ? 'native' : 'snapshot',
+    key,
+    volatile: Array.isArray(volatile) && volatile.length ? volatile : COMMON_VOLATILE,
+    dateColumn: fallback ? fallback.dateColumn : undefined,
+  };
+}
+
+/** Gecerli (ACIK) kapsam. DB'den okur, olmazsa koddaki varsayilanlara duser. */
+async function effectiveTables() {
+  if (_cache && Date.now() - _cacheAt < CACHE_TTL) return _cache;
+  try {
+    const { rows } = await require('../db/index.cjs').query(
+      `SELECT table_name, label, mode, key_columns, volatile_columns, enabled
+       FROM inventory_history_config`,
+    );
+    const list = rows
+      .filter((r) => r.enabled === true || r.enabled === 1)
+      .map(normalizeRow)
+      .filter(Boolean);
+    // Tablo BOS ise (henuz seed edilmemis) koddaki varsayilanlar kullanilir; aksi halde
+    // ilk boot'ta hicbir tablonun gecmisi tutulmaz ve o gun kaybedilirdi.
+    _cache = list.length ? list : TABLES;
+    _cacheAt = Date.now();
+    return _cache;
+  } catch (e) {
+    console.warn('[EnvanterGecmis] kapsam DB\'den okunamadi, kod varsayilanlari:', e.message);
+    return TABLES;
+  }
+}
+
+async function effectiveSnapshotTables() {
+  return (await effectiveTables()).filter((t) => t.mode === 'snapshot');
+}
+
+async function getEffectiveTable(name) {
+  const n = String(name || '').toLowerCase();
+  return (await effectiveTables()).find((t) => t.table.toLowerCase() === n) || null;
+}
+
+function invalidateCache() {
+  _cache = null;
+  _cacheAt = 0;
+}
+
 /**
  * Kaynak satır sayısı bir önceki başarılı çalıştırmaya göre bu oranın ALTINA düşerse
  * snapshot alınmaz. Bozuk/yarım bir tarama (ör. envanter job'ı hata alıp tabloyu yarım
@@ -92,4 +189,7 @@ function snapshotTables() {
  */
 const MIN_ROW_RATIO = 0.5;
 
-module.exports = { TABLES, getTable, snapshotTables, COMMON_VOLATILE, MIN_ROW_RATIO };
+module.exports = {
+  TABLES, getTable, snapshotTables, COMMON_VOLATILE, MIN_ROW_RATIO,
+  effectiveTables, effectiveSnapshotTables, getEffectiveTable, invalidateCache,
+};

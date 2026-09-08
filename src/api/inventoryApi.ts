@@ -133,6 +133,17 @@ export interface HistoryRun {
   message: string | null;
 }
 
+
+export interface HistoryConfigRow {
+  table: string;
+  label: string | null;
+  mode: "snapshot" | "native";
+  key: string[];
+  enabled: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 export const inventoryApi = {
   health: () => fetch(`${BASE}/health`).then(safeJson),
 
@@ -345,4 +356,21 @@ export const inventoryApi = {
 
   historyRuns: (limit = 50): Promise<{ ok: boolean; runs: HistoryRun[]; message?: string }> =>
     fetch(`${BASE}/history/runs?limit=${limit}`).then(safeJson),
+
+  // ── Envanter geçmişi kapsamı (Admin) ────────────────────────────────────────
+  historyConfig: (): Promise<{
+    ok: boolean; configured: HistoryConfigRow[]; candidates: string[]; message?: string;
+  }> => fetch(`${BASE}/history/config`).then(safeJson),
+
+  historyColumns: (table: string): Promise<{ ok: boolean; columns: string[]; message?: string }> =>
+    fetch(`${BASE}/history/columns/${encodeURIComponent(table)}`).then(safeJson),
+
+  historyConfigSave: (body: {
+    table: string; label?: string; mode?: string; key: string[]; enabled: boolean;
+  }): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/history/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(safeJson),
 };

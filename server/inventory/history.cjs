@@ -16,7 +16,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { getTable, snapshotTables, MIN_ROW_RATIO } = require('./history-config.cjs');
+const { getEffectiveTable, effectiveSnapshotTables, MIN_ROW_RATIO } = require('./history-config.cjs');
 
 const INSERT_BATCH = 200; // MSSQL'de 2100 parametre siniri var; 200 x 5 = 1000, guvenli.
 
@@ -202,10 +202,10 @@ async function finishRun(def, startedAt, res) {
   return { table: def.table, ...res };
 }
 
-/** Kayitli TUM snapshot tablolari icin anlik goruntu alir. */
+/** ACIK olan TUM snapshot tablolari icin anlik goruntu alir (kapsam Admin'den yonetilir). */
 async function snapshotAll(now = new Date()) {
   const out = [];
-  for (const def of snapshotTables()) {
+  for (const def of await effectiveSnapshotTables()) {
     try {
       out.push(await snapshotTable(def, now));
     } catch (e) {
@@ -220,7 +220,7 @@ async function snapshotAll(now = new Date()) {
 
 /** Tablonun verilen andaki hali. */
 async function rowsAt(tableName, at) {
-  const def = getTable(tableName);
+  const def = await getEffectiveTable(tableName);
   if (!def) throw new Error(`Gecmisi tutulmayan tablo: ${tableName}`);
   const { rows } = await db().query(
     `SELECT row_key, row_json FROM inventory_history
@@ -259,7 +259,7 @@ async function diff(tableName, from, to) {
 
 /** Gun gun satir sayisi (trend). */
 async function rowCountSeries(tableName, days = 30) {
-  const def = getTable(tableName);
+  const def = await getEffectiveTable(tableName);
   if (!def) throw new Error(`Gecmisi tutulmayan tablo: ${tableName}`);
   const out = [];
   const today = new Date();

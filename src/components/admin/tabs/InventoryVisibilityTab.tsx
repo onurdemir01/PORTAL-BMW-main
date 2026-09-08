@@ -10,6 +10,7 @@ import { PencilSquareIcon, PlusIcon, TrashIcon, TableCellsIcon, UsersIcon, EyeSl
 import { inventoryApi, type TableVisibilityRow, type TableUserOverride } from "@/api/inventoryApi";
 import { toast } from "@/hooks/useToast";
 import { Select } from "@/components/ui/Form";
+import HistoryScopePanel from "./HistoryScopePanel";
 
 export default function InventoryVisibilityTab() {
   const [tables, setTables] = useState<TableVisibilityRow[]>([]);
@@ -113,6 +114,10 @@ export default function InventoryVisibilityTab() {
 
   return (
     <div className="space-y-4">
+      {/* Gecmis kapsami: hangi tablonun gunluk anlik goruntusu alinacak. Gorunurlukten
+          AYRI bir kavram — bir tablo gorunur olmadan da gecmisi tutulabilir. */}
+      <HistoryScopePanel />
+
       <div>
         <h3 className="text-sm font-semibold text-gray-800 mb-1">Envanter Tablo Görünürlüğü</h3>
         <p className="text-xs text-gray-500 max-w-2xl">

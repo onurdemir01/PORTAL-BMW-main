@@ -102,3 +102,18 @@ test('anahtar kolonlari yukleyicilerin DELETE ifadeleriyle ayni', () => {
   assert.deepStrictEqual(getTable('Openshift_Inventory').key,
     ['cluster', 'namespace', 'application']);
 });
+
+// ── Hash disi kolonlar ────────────────────────────────────────────────────────
+// 2026-09-08: dbo.Openshift_Inventory'de `loaded_at` (DEFAULT SYSUTCDATETIME) ve
+// `id INT IDENTITY` kolonlari kesfedildi. Ikisi de TRUNCATE + yeniden doldurmada HER
+// GECE tazelenir; hash'e girselerdi o tablonun gecmisi baslangictan itibaren bozuk
+// toplanacakti (her satir her gece "degisti"). Liste bu yuzden genisletildi.
+test('TRUNCATE ile tazelenen kolonlarin HICBIRI hash-e girmiyor', () => {
+  const CHURN = ['id', 'created_at', 'updated_at', 'last_seen_at', 'loaded_at', 'inserted_at'];
+  for (const t of snapshotTables()) {
+    const v = (t.volatile || []).map((c) => c.toLowerCase());
+    for (const c of CHURN) {
+      assert.ok(v.includes(c), `${t.table}: "${c}" hash disinda olmali`);
+    }
+  }
+});
