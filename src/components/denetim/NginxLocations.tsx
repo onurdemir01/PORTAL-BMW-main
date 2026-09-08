@@ -65,13 +65,13 @@ export default function NginxLocations() {
     return () => clearTimeout(t);
   }, [service, env, status, q, load]);
 
-  if (loading && !data) return <div className="py-10 text-center text-sm text-gray-400">Yükleniyor…</div>;
+  if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
   if (!data) return null;
 
   if (!data.scanDate) {
     return (
-      <div className="text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-6 text-center">
+      <div className="text-sm text-[var(--text-muted)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-xl px-4 py-6 text-center">
         Henüz bir tarama kaydı yok. <code className="font-mono">nginx_config_audit</code> job'ı
         çalıştıktan sonra burası dolacak.
       </div>
@@ -94,7 +94,7 @@ export default function NginxLocations() {
             className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
               service === s
                 ? "bg-[var(--accent)]/10 border-[var(--accent)]/30 text-[var(--accent)]"
-                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                : "bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
             }`}
           >
             {s || "Tüm servisler"}
@@ -116,14 +116,14 @@ export default function NginxLocations() {
           ))}
         </Select>
         <div className="relative">
-          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             value={q} onChange={(e) => setQ(e.target.value)} placeholder="path, uygulama, namespace ara"
-            className="pl-8 pr-2.5 py-1.5 text-xs border border-gray-200 rounded-lg w-64"
+            className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-64"
           />
         </div>
-        <span className="text-xs text-gray-400 tabular-nums">{nf(data.total)} location</span>
-        <span className="text-xs text-gray-400">· tarama {data.scanDate}</span>
+        <span className="text-xs text-[var(--text-muted)] tabular-nums">{nf(data.total)} location</span>
+        <span className="text-xs text-[var(--text-muted)]">· tarama {data.scanDate}</span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => csvDownload(`nginx_location_${service || "tum"}`,
@@ -132,11 +132,11 @@ export default function NginxLocations() {
               data.rows.map((r) => [r.service, r.env, r.locationPath, r.namespace, r.application,
                 r.includeName, r.deployMode, STATUS_TR[r.status]?.label || r.status,
                 r.pathMatchesApp ? "uyumlu" : "UYUMSUZ", r.vhosts.join(" "), r.hosts.join(" ")]))}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
           >
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
           </button>
-          <button onClick={() => load({ service, env, status, q })} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">
+          <button onClick={() => load({ service, env, status, q })} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">
             <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
           </button>
         </div>
@@ -149,10 +149,10 @@ export default function NginxLocations() {
         <Stat n={pathUyumsuz} l="path ≠ uygulama adı" tone={pathUyumsuz ? "warn" : undefined} />
       </div>
 
-      <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-        Her satır bir <code className="px-1 rounded bg-white">location</code> bloğudur.
-        <b> Bloğun ham içeriği taranmıyor</b> — <code className="px-1 rounded bg-white">nginx_config_scan.sh</code>{" "}
-        yalnızca <code className="px-1 rounded bg-white">location …&#123; include … &#125;</code>{" "}
+      <p className="text-[11px] text-[var(--text-muted)] bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-3 py-2">
+        Her satır bir <code className="px-1 rounded bg-[var(--bg-surface)]">location</code> bloğudur.
+        <b> Bloğun ham içeriği taranmıyor</b> — <code className="px-1 rounded bg-[var(--bg-surface)]">nginx_config_scan.sh</code>{" "}
+        yalnızca <code className="px-1 rounded bg-[var(--bg-surface)]">location …&#123; include … &#125;</code>{" "}
         çiftini kaydeder. Burada path, include edilen dosya adı ve çözülen namespace/uygulama
         gösterilir; bloğun tam metni için tarama script’inin genişletilmesi gerekir.
         {" "}“path ≠ uygulama adı”, location yolunun servis edilen uygulamanın adını
@@ -160,30 +160,30 @@ export default function NginxLocations() {
         anlamına gelmez.
       </p>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-100">
+      <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
         <table className="w-full min-w-max text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left">
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Path</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Namespace</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Uygulama</th>
-              {!service && <th className="px-3 py-2 text-xs font-semibold text-gray-500">Servis</th>}
-              {!env && <th className="px-3 py-2 text-xs font-semibold text-gray-500">Ortam</th>}
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500">include dosyası</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Dağıtım</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Durum</th>
+            <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Path</th>
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Namespace</th>
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
+              {!service && <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Servis</th>}
+              {!env && <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Ortam</th>}
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">include dosyası</th>
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Dağıtım</th>
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Durum</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-[var(--border-subtle)]">
             {data.rows.length === 0 && (
               <TableEmptyRow colSpan={8} />
             )}
             {data.rows.map((r, i) => {
-              const meta = STATUS_TR[r.status] || { label: r.status, cls: "bg-gray-100 text-gray-600 border-gray-200" };
+              const meta = STATUS_TR[r.status] || { label: r.status, cls: "bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]" };
               return (
-                <tr key={i} className="hover:bg-gray-50/60 align-top">
-                  <td className="px-3 py-2 font-mono text-xs text-gray-800 whitespace-nowrap">
-                    {r.locationPath || <span className="text-gray-300">—</span>}
+                <tr key={i} className="hover:bg-[var(--bg-elevated)]/60 align-top">
+                  <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">
+                    {r.locationPath || <span className="text-[var(--text-muted)]">—</span>}
                     {!r.pathMatchesApp && r.application && (
                       <span
                         className="ml-1.5 text-[10px] px-1 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200"
@@ -193,19 +193,19 @@ export default function NginxLocations() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-600 whitespace-nowrap">
-                    {r.namespace || <span className="text-gray-300">—</span>}
+                  <td className="px-3 py-2 font-mono text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                    {r.namespace || <span className="text-[var(--text-muted)]">—</span>}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-800 whitespace-nowrap">
-                    {r.application || <span className="text-gray-300">—</span>}
+                  <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">
+                    {r.application || <span className="text-[var(--text-muted)]">—</span>}
                     {!r.inOcpInventory && (
                       <span className="ml-1.5 text-[10px] text-amber-600" title="OpenShift envanterinde bulunamadı">OCP✗</span>
                     )}
                   </td>
-                  {!service && <td className="px-3 py-2 text-xs text-gray-600">{r.service}</td>}
-                  {!env && <td className="px-3 py-2 text-xs text-gray-600">{r.env}</td>}
+                  {!service && <td className="px-3 py-2 text-xs text-[var(--text-secondary)]">{r.service}</td>}
+                  {!env && <td className="px-3 py-2 text-xs text-[var(--text-secondary)]">{r.env}</td>}
                   <td
-                    className="px-3 py-2 font-mono text-[11px] text-gray-500 max-w-[22rem] truncate"
+                    className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)] max-w-[22rem] truncate"
                     title={`${r.includeName}.conf\nvhost: ${r.vhosts.join(", ")}\nSunucular: ${r.hosts.join(", ")}`}
                   >
                     {r.includeName}
@@ -236,7 +236,7 @@ export default function NginxLocations() {
       </div>
 
       {data.capped && (
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-[var(--text-muted)]">
           İlk {nf(data.shown)} satır gösteriliyor — servis/ortam seçerek daraltın ya da CSV
           indirin. Üstteki sayılar <b>filtrelenmiş tüm</b> satırlar üzerinden hesaplanır.
         </p>
@@ -246,11 +246,11 @@ export default function NginxLocations() {
 }
 
 function Stat({ n, l, tone }: { n: number; l: string; tone?: "ok" | "warn" }) {
-  const color = tone === "ok" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-gray-900";
+  const color = tone === "ok" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-xl border border-gray-100 bg-white px-4 py-3">
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
       <div className={`text-2xl font-bold tabular-nums ${color}`}>{nf(n)}</div>
-      <div className="text-xs text-gray-500 mt-0.5">{l}</div>
+      <div className="text-xs text-[var(--text-muted)] mt-0.5">{l}</div>
     </div>
   );
 }

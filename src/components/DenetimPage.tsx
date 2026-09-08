@@ -98,46 +98,75 @@ export default function DenetimPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2">
-            <ShieldCheckIcon className="w-6 h-6 text-[var(--accent)]" />
-            <h1 className="text-xl font-bold">Middleware İç Denetim</h1>
+      {/* BASLIK — sayfa kimligi tek bir yuzeyde toplanir. Onceden baslik, aciklama ve
+          yardim dugmesi serbestce diziliydi; sekme cubugu da hemen altinda basliyordu
+          ve ikisi arasinda gorsel bir sinir yoktu. */}
+      <header
+        className="rounded-xl border overflow-hidden"
+        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}
+      >
+        <div className="flex items-start justify-between gap-4 flex-wrap px-5 pt-4 pb-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className="grid place-items-center w-8 h-8 rounded-lg flex-shrink-0"
+                style={{ background: "var(--accent-bg)" }}
+              >
+                <ShieldCheckIcon className="w-5 h-5" style={{ color: "var(--accent)" }} />
+              </span>
+              <h1 className="text-lg font-bold leading-tight" style={{ color: "var(--text-primary)" }}>
+                Middleware İç Denetim
+              </h1>
+            </div>
+            <p className="text-[13px] mt-1.5 max-w-2xl leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              Nginx, OpenShift, init script'leri, envanter dağılımları, JBoss/WAS
+              uygulamaları ve web-uygulama ilişkilerinin iç denetimi.
+            </p>
           </div>
-          <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Nginx, OpenShift, init script'leri, envanter dağılımları, JBoss/WAS
-            uygulamaları ve web-uygulama ilişkilerinin iç denetimi.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowHelp(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
-        >
-          <QuestionMarkCircleIcon className="w-4 h-4" /> Nasıl kullanılır?
-        </button>
-      </div>
-
-      <div className="flex gap-1 rounded-xl p-1 bg-gray-100 w-fit">
-        {([
-          { id: "nginx", label: "Nginx SPA Audit", icon: ServerStackIcon },
-          { id: "ocp", label: "Openshift Audit", icon: Squares2X2Icon },
-          { id: "init", label: "Init Script Audit", icon: DocumentDuplicateIcon },
-          { id: "envanter", label: "Envanter Audit", icon: ChartBarSquareIcon },
-          { id: "degisim", label: "Envanter Değişim", icon: ClockIcon },
-          { id: "appenvs", label: "Jboss/WAS Applications Audit", icon: RectangleGroupIcon },
-          { id: "webapp", label: "Web-App Relations", icon: LinkIcon },
-        ] as const).map((t) => (
           <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-              tab === t.id ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700"
-            }`}
+            onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors flex-shrink-0"
+            style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
           >
-            <t.icon className="w-4 h-4" /> {t.label}
+            <QuestionMarkCircleIcon className="w-4 h-4" /> Nasıl kullanılır?
           </button>
-        ))}
-      </div>
+        </div>
+
+        {/* SEKMELER — yedi sekme dolgulu bir hap seridinde sikisiyordu. Alt-cizgi
+            secimi daha az gurultu uretir ve dar ekranda yatay kaydirilir; kaydirma
+            KENDI icinde olur, sayfa govdesi yana kaymaz. */}
+        <nav
+          className="flex gap-0.5 px-3 overflow-x-auto border-t"
+          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-elevated)" }}
+          aria-label="Denetim bölümleri"
+        >
+          {([
+            { id: "nginx", label: "Nginx SPA", icon: ServerStackIcon },
+            { id: "ocp", label: "OpenShift", icon: Squares2X2Icon },
+            { id: "init", label: "Init Script", icon: DocumentDuplicateIcon },
+            { id: "envanter", label: "Envanter", icon: ChartBarSquareIcon },
+            { id: "degisim", label: "Envanter Değişim", icon: ClockIcon },
+            { id: "appenvs", label: "JBoss/WAS", icon: RectangleGroupIcon },
+            { id: "webapp", label: "Web-App", icon: LinkIcon },
+          ] as const).map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                aria-current={active ? "page" : undefined}
+                className="flex items-center gap-1.5 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors border-b-2"
+                style={{
+                  color: active ? "var(--accent)" : "var(--text-muted)",
+                  borderColor: active ? "var(--accent)" : "transparent",
+                }}
+              >
+                <t.icon className="w-4 h-4 flex-shrink-0" /> {t.label}
+              </button>
+            );
+          })}
+        </nav>
+      </header>
 
       {tab === "nginx" && <NginxSpaAudit />}
       {tab === "ocp" && <OcpCoverage />}
@@ -181,7 +210,7 @@ function SpaCoverage() {
   }, [platform]);
 
   if (err) return <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
-  if (!data && loading) return <div className="py-6 text-center text-sm text-gray-400">Kapsam yükleniyor…</div>;
+  if (!data && loading) return <div className="py-6 text-center text-sm text-[var(--text-muted)]">Kapsam yükleniyor…</div>;
   if (!data) return null;
 
   const maxTotal = Math.max(1, ...data.rows.map((r) => r.internetTotal));
@@ -191,18 +220,18 @@ function SpaCoverage() {
   const anomaly = sum((r) => (r.measured ? r.intranetInNginx : 0));
 
   return (
-    <div className="rounded-xl border border-gray-100 bg-white px-4 py-3.5 space-y-3">
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3.5 space-y-3">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="text-sm font-semibold text-gray-800">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
             OpenShift SPA’ları ↔ nginx tanımları
           </h3>
-          <p className="text-[11px] text-gray-400 mt-0.5 max-w-3xl">
+          <p className="text-[11px] text-[var(--text-muted)] mt-0.5 max-w-3xl">
             SPA ayrımı ad kalıbından yapılır (adında{" "}
-            <code className="px-1 rounded bg-gray-100">-app-v</code> ya da{" "}
-            <code className="px-1 rounded bg-gray-100">-app-emb-v</code> geçenler). Ağ ayrımı{" "}
-            <b>route tipinden</b> gelir: <code className="px-1 rounded bg-gray-100">passthrough</code>{" "}
-            → internet, nginx’e çıkabilir; <code className="px-1 rounded bg-gray-100">reencrypt</code>{" "}
+            <code className="px-1 rounded bg-[var(--bg-elevated)]">-app-v</code> ya da{" "}
+            <code className="px-1 rounded bg-[var(--bg-elevated)]">-app-emb-v</code> geçenler). Ağ ayrımı{" "}
+            <b>route tipinden</b> gelir: <code className="px-1 rounded bg-[var(--bg-elevated)]">passthrough</code>{" "}
+            → internet, nginx’e çıkabilir; <code className="px-1 rounded bg-[var(--bg-elevated)]">reencrypt</code>{" "}
             → intranet, nginx’e çıkamaz. Kapsam yüzdesi <b>yalnızca internet</b> uygulamaları
             üzerinden hesaplanır. Ortam bilgisi namespace son ekinden (-dev/-test/-qa/-prod) gelir.
           </p>
@@ -237,14 +266,14 @@ function SpaCoverage() {
 
       <div className="space-y-2">
         {data.rows.map((r) => (
-          <div key={r.env} className="rounded-lg border border-gray-100">
+          <div key={r.env} className="rounded-lg border border-[var(--border-subtle)]">
             <button
               onClick={() => setOpen(open === r.env ? null : r.env)}
-              className="w-full px-3 py-2 hover:bg-gray-50/70 text-left"
+              className="w-full px-3 py-2 hover:bg-[var(--bg-elevated)]/70 text-left"
             >
               <div className="flex items-center gap-3">
-                <span className="w-14 shrink-0 text-xs font-semibold text-gray-700">{r.env}</span>
-                <span className="flex-1 h-5 rounded bg-gray-100 overflow-hidden flex">
+                <span className="w-14 shrink-0 text-xs font-semibold text-[var(--text-secondary)]">{r.env}</span>
+                <span className="flex-1 h-5 rounded bg-[var(--bg-elevated)] overflow-hidden flex">
                   {r.measured ? (
                     <>
                       <span
@@ -276,14 +305,14 @@ function SpaCoverage() {
                     />
                   )}
                 </span>
-                <span className="w-28 shrink-0 text-right text-xs tabular-nums text-gray-600">
+                <span className="w-28 shrink-0 text-right text-xs tabular-nums text-[var(--text-secondary)]">
                   {r.measured
                     ? `${fmtNumber(r.internetInNginx)} / ${fmtNumber(r.internetTotal)}`
                     : `? / ${fmtNumber(r.internetTotal)}`}
                 </span>
                 <span className={`w-24 shrink-0 text-right text-xs tabular-nums font-semibold ${
-                  !r.measured ? "text-gray-400 font-normal"
-                    : r.coverage === null ? "text-gray-400"
+                  !r.measured ? "text-[var(--text-muted)] font-normal"
+                    : r.coverage === null ? "text-[var(--text-muted)]"
                     : r.coverage >= 90 ? "text-emerald-600"
                     : r.coverage >= 60 ? "text-amber-600" : "text-red-600"
                 }`}>
@@ -300,16 +329,16 @@ function SpaCoverage() {
             </button>
 
             {open === r.env && !r.measured && (
-              <div className="px-3 pb-3 pt-1 border-t border-gray-50 text-[11px] text-gray-600 leading-relaxed">
+              <div className="px-3 pb-3 pt-1 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-secondary)] leading-relaxed">
                 Bu ortam için nginx tarafında hiç kayıt yok, dolayısıyla neyin tanımlı olduğu{" "}
                 <b>bilinmiyor</b> — “hiçbiri tanımlı değil” demek değildir. Denetim yalnızca{" "}
-                <code className="px-1 rounded bg-gray-100">location …&#123; include application-confs/…&#125;</code>{" "}
-                kalıbını kaydeder; <code className="px-1 rounded bg-gray-100">proxy_pass</code> ile
+                <code className="px-1 rounded bg-[var(--bg-elevated)]">location …&#123; include application-confs/…&#125;</code>{" "}
+                kalıbını kaydeder; <code className="px-1 rounded bg-[var(--bg-elevated)]">proxy_pass</code> ile
                 kurulmuş sunucularda böyle bir satır bulunmaz.
               </div>
             )}
             {open === r.env && r.measured && (
-              <div className="px-3 pb-3 pt-1 border-t border-gray-50 grid gap-3 md:grid-cols-3">
+              <div className="px-3 pb-3 pt-1 border-t border-[var(--border-subtle)] grid gap-3 md:grid-cols-3">
                 <AppList
                   title={`internet, tanım eksik (${r.internetMissingCount})`}
                   tone="warn"
@@ -334,7 +363,7 @@ function SpaCoverage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-muted)]">
         <span className="flex items-center gap-1"><i className="w-3 h-3 rounded-sm bg-emerald-500/70 inline-block" /> internet, tanımlı</span>
         <span className="flex items-center gap-1"><i className="w-3 h-3 rounded-sm bg-amber-400/70 inline-block" /> internet, eksik</span>
         <button
@@ -344,7 +373,7 @@ function SpaCoverage() {
             data.rows.map((r) => [r.env, r.internetTotal, r.internetInNginx, r.internetMissingCount,
               r.intranetTotal, r.intranetInNginx, r.otherTotal, r.unknownTotal, r.onlyNginxCount,
               r.coverage === null ? "" : r.coverage]))}
-          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 rounded-lg hover:bg-gray-50"
+          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
         >
           <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
         </button>
@@ -352,14 +381,14 @@ function SpaCoverage() {
 
       {/* Route eslesme kalitesi: route_name ile application adinin ayni oldugu GARANTI
           degil, bu yuzden nasil eslestigi gizlenmez. */}
-      <p className="text-[11px] text-gray-400">
+      <p className="text-[11px] text-[var(--text-muted)]">
         Route eşleşmesi — adresten: {fmtNumber(data.routeMatch.address)}, route
         adından: {fmtNumber(data.routeMatch.name)}, namespace üzerinden:{" "}
         {fmtNumber(data.routeMatch.ns)}, çelişkili:{" "}
         {fmtNumber(data.routeMatch.conflict)}, bulunamadı:{" "}
         {fmtNumber(data.routeMatch.none)}. Uygulama adı öncelikle route
         adresinden çıkarılır{" "}
-        (<code className="px-1 rounded bg-gray-100">&lt;Uygulama&gt;-&lt;Namespace&gt;.apps[-t].fw.garanti.com.tr</code>);
+        (<code className="px-1 rounded bg-[var(--bg-elevated)]">&lt;Uygulama&gt;-&lt;Namespace&gt;.apps[-t].fw.garanti.com.tr</code>);
         namespace zaten bilindiği için son ek tam olarak kesilir, belirsizlik doğmaz. Adres bu
         kalıba uymazsa route adı denenir; o da tutmazsa namespace’teki route’lar hepsi aynı
         tipteyse o tip kullanılır. Hiçbiri olmazsa sınıflandırılmaz.
@@ -376,7 +405,7 @@ function SpaCoverage() {
       )}
 
       {data.nginxOutsidePattern.length > 0 && (
-        <p className="text-[11px] text-gray-400">
+        <p className="text-[11px] text-[var(--text-muted)]">
           nginx’e tanımlı {data.nginxOutsidePattern.length} uygulama SPA kalıbına uymuyor, bu
           yüzden karşılaştırmaya girmedi:{" "}
           <span className="font-mono">{data.nginxOutsidePattern.slice(0, 6).join(", ")}</span>
@@ -385,7 +414,7 @@ function SpaCoverage() {
       )}
 
       {data.ocpNonSpaExcluded > 0 && (
-        <p className="text-[11px] text-gray-400">
+        <p className="text-[11px] text-[var(--text-muted)]">
           {fmtNumber(data.ocpNonSpaExcluded)} OpenShift uygulaması SPA kalıbına
           uymadığı için sayılmadı. {data.ocpSkippedNoEnv > 0 && (
             <>Ayrıca {fmtNumber(data.ocpSkippedNoEnv)} kayıt namespace son eki
@@ -400,7 +429,7 @@ function SpaCoverage() {
 function Chip({ label, tone }: { label: string; tone: "info" | "bad" | "muted" }) {
   const cls = tone === "bad" ? "bg-red-50 text-red-700 border-red-200"
     : tone === "info" ? "bg-sky-50 text-sky-700 border-sky-200"
-    : "bg-gray-50 text-gray-500 border-gray-200";
+    : "bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]";
   return <span className={`text-[10px] px-1.5 py-0.5 rounded border tabular-nums ${cls}`}>{label}</span>;
 }
 
@@ -412,9 +441,9 @@ function AppList({ title, apps, tone, empty }: {
     : "bg-sky-50 text-sky-800 border-sky-200";
   return (
     <div>
-      <div className="text-[11px] font-semibold text-gray-600 mb-1">{title}</div>
+      <div className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">{title}</div>
       {apps.length === 0 ? (
-        <div className="text-[11px] text-gray-400">{empty}</div>
+        <div className="text-[11px] text-[var(--text-muted)]">{empty}</div>
       ) : (
         <div className="flex flex-wrap gap-1 max-h-44 overflow-y-auto">
           {apps.map((a) => (
@@ -472,7 +501,7 @@ function NginxSpaAudit() {
     });
   }, [data, service, q, onlyProblems]);
 
-  if (loading && !data) return <div className="py-10 text-center text-sm text-gray-400">Yükleniyor…</div>;
+  if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
   if (!data?.scanDate) {
     // Kapsam paneli nginx taramasi HIC yokken de anlamli: OpenShift tarafi zaten dolu ve
@@ -480,7 +509,7 @@ function NginxSpaAudit() {
     return (
       <div className="space-y-3">
         <SpaCoverage />
-        <div className="text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-4 py-6 text-center">
+        <div className="text-sm text-[var(--text-muted)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-xl px-4 py-6 text-center">
           Henüz bir nginx tarama kaydı yok. <code className="font-mono">nginx_config_audit</code> job'ı çalıştıktan sonra burası dolacak.
         </div>
       </div>
@@ -488,7 +517,7 @@ function NginxSpaAudit() {
   }
 
   const viewTabs = (
-    <div className="flex gap-1 rounded-lg p-0.5 bg-gray-100 w-fit">
+    <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)] w-fit">
       {([
         { id: "matris", label: "Ortam Matrisi" },
         { id: "location", label: "Location Detayı" },
@@ -497,7 +526,7 @@ function NginxSpaAudit() {
           key={v.id}
           onClick={() => setView(v.id)}
           className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-            view === v.id ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700"
+            view === v.id ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           }`}
         >
           {v.label}
@@ -541,7 +570,7 @@ function NginxSpaAudit() {
                 key={e.env}
                 title={e.rows ? `vhost: ${e.vhosts.join(", ")}` : "kayıt yok"}
                 className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${
-                  e.rows ? "bg-white text-gray-700 border-gray-200" : "bg-amber-100 text-amber-800 border-amber-300"
+                  e.rows ? "bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border)]" : "bg-amber-100 text-amber-800 border-amber-300"
                 }`}
               >
                 {e.env}: {fmtNumber(e.rows)}
@@ -557,17 +586,17 @@ function NginxSpaAudit() {
           {data.availableDates.map((d) => <option key={d} value={d}>{d}</option>)}
         </Select>
         <div className="relative">
-          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             value={q} onChange={(e) => setQ(e.target.value)} placeholder="uygulama ara"
-            className="pl-8 pr-2.5 py-1.5 text-xs border border-gray-200 rounded-lg w-56"
+            className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-56"
           />
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
           <input type="checkbox" checked={onlyProblems} onChange={(e) => setOnlyProblems(e.target.checked)} />
           Sadece sorunlular
         </label>
-        <span className="text-xs text-gray-400 tabular-nums">{rows.length} uygulama</span>
+        <span className="text-xs text-[var(--text-muted)] tabular-nums">{rows.length} uygulama</span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => csvDownload(
@@ -575,24 +604,24 @@ function NginxSpaAudit() {
               ["service", "application", ...envs],
               rows.map((r) => [r.service, r.application, ...envs.map((e) => r.envs[e]?.status || "-")])
             )}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
           >
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
           </button>
-          <button onClick={() => load(scanDate)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">
+          <button onClick={() => load(scanDate)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">
             <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
           </button>
         </div>
       </div>
 
       {/* Servis sekmeleri — kullanici talebi: "yan yana sekme sekme <Servis>" */}
-      <div className="flex gap-1 flex-wrap border-b border-gray-200">
+      <div className="flex gap-1 flex-wrap border-b border-[var(--border)]">
         {data.services.map((s) => (
           <button
             key={s}
             onClick={() => setService(s)}
             className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg border-b-2 -mb-px transition-colors ${
-              service === s ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-gray-500 hover:text-gray-700"
+              service === s ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             }`}
           >
             {s}
@@ -600,21 +629,21 @@ function NginxSpaAudit() {
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-100">
+      <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
         <table className="w-full text-sm pf-table-sticky">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left">
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Uygulama</th>
-              {envs.map((e) => <th key={e} className="px-3 py-2 text-xs font-semibold text-gray-500">{e}</th>)}
+            <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
+              {envs.map((e) => <th key={e} className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">{e}</th>)}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-[var(--border-subtle)]">
             {rows.length === 0 && (
               <TableEmptyRow colSpan={envs.length + 1} />
             )}
             {rows.map((r) => (
-              <tr key={r.service + r.application} className="hover:bg-gray-50/60">
-                <td className="px-3 py-2 font-mono text-xs text-gray-800">{r.application}</td>
+              <tr key={r.service + r.application} className="hover:bg-[var(--bg-elevated)]/60">
+                <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">{r.application}</td>
                 {envs.map((e) => <EnvCell key={e} cell={r.envs[e]} />)}
               </tr>
             ))}
@@ -627,8 +656,8 @@ function NginxSpaAudit() {
 }
 
 function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
-  if (!cell) return <td className="px-3 py-2"><span className="text-xs text-gray-300">—</span></td>;
-  const meta = STATUS_META[cell.status] || { label: cell.status, cls: "bg-gray-100 text-gray-600 border-gray-200" };
+  if (!cell) return <td className="px-3 py-2"><span className="text-xs text-[var(--text-muted)]">—</span></td>;
+  const meta = STATUS_META[cell.status] || { label: cell.status, cls: "bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]" };
   return (
     <td className="px-3 py-2">
       <div
@@ -688,7 +717,7 @@ function OcpCoverage() {
     });
   }, [data, q, onlyMissing]);
 
-  if (loading && !data) return <div className="py-10 text-center text-sm text-gray-400">Yükleniyor…</div>;
+  if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
 
   return (
@@ -698,17 +727,17 @@ function OcpCoverage() {
           {(data?.platforms || ["ark"]).map((p) => <option key={p} value={p}>{p}</option>)}
         </Select>
         <div className="relative">
-          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             value={q} onChange={(e) => setQ(e.target.value)} placeholder="uygulama ara"
-            className="pl-8 pr-2.5 py-1.5 text-xs border border-gray-200 rounded-lg w-56"
+            className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-56"
           />
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
           <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} />
           Sadece eksiği olanlar
         </label>
-        <span className="text-xs text-gray-400 tabular-nums">{rows.length} uygulama</span>
+        <span className="text-xs text-[var(--text-muted)] tabular-nums">{rows.length} uygulama</span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => csvDownload(
@@ -716,11 +745,11 @@ function OcpCoverage() {
               ["application", ...envs, "eksik"],
               rows.map((r) => [r.application, ...envs.map((e) => (r.envs[e]?.length ? "VAR" : "YOK")), r.missing.join(" ")])
             )}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
           >
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
           </button>
-          <button onClick={() => load(platform)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">
+          <button onClick={() => load(platform)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">
             <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
           </button>
         </div>
@@ -736,11 +765,11 @@ function OcpCoverage() {
       )}
 
       {data && data.patterns.length > 0 && (
-        <div className="rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
-          <div className="text-xs font-semibold text-gray-700 mb-1.5">En sık eksik ortam desenleri</div>
+        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/60 px-4 py-3">
+          <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1.5">En sık eksik ortam desenleri</div>
           <div className="flex flex-wrap gap-2">
             {data.patterns.map((p) => (
-              <span key={p.missing.join(",")} className="text-[11px] px-2 py-1 rounded-lg bg-white border border-gray-200">
+              <span key={p.missing.join(",")} className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
                 eksik: <b className="font-mono">{p.missing.join(", ")}</b> · {p.count} uygulama
               </span>
             ))}
@@ -748,21 +777,21 @@ function OcpCoverage() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-gray-100">
+      <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
         <table className="w-full text-sm pf-table-sticky">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left">
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Uygulama</th>
-              {envs.map((e) => <th key={e} className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">{e}</th>)}
+            <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+              <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
+              {envs.map((e) => <th key={e} className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)] uppercase">{e}</th>)}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-[var(--border-subtle)]">
             {rows.length === 0 && (
               <TableEmptyRow colSpan={envs.length + 1} />
             )}
             {rows.slice(0, 500).map((r) => (
-              <tr key={r.application} className="hover:bg-gray-50/60">
-                <td className="px-3 py-2 font-mono text-xs text-gray-800">{r.application}</td>
+              <tr key={r.application} className="hover:bg-[var(--bg-elevated)]/60">
+                <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">{r.application}</td>
                 {envs.map((e) => {
                   const hit = r.envs[e];
                   return (
@@ -786,7 +815,7 @@ function OcpCoverage() {
         </table>
       </div>
       {rows.length > 500 && (
-        <p className="text-xs text-gray-400">İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.</p>
+        <p className="text-xs text-[var(--text-muted)]">İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.</p>
       )}
     </div>
   );
@@ -844,7 +873,7 @@ function InitScriptsAudit() {
       .sort((a, b) => b.deviationCount - a.deviationCount || a.host.localeCompare(b.host));
   }, [data, q, onlyDiff]);
 
-  if (loading && !data) return <div className="py-10 text-center text-sm text-gray-400">Yükleniyor…</div>;
+  if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
 
   return (
@@ -854,13 +883,13 @@ function InitScriptsAudit() {
           {(data?.roots || ["vhosting"]).map((r) => <option key={r} value={r}>/{r}</option>)}
         </Select>
 
-        <div className="flex gap-1 rounded-lg p-0.5 bg-gray-100">
+        <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)]">
           {([{ id: "script", label: "Script bazlı" }, { id: "host", label: "Sunucu bazlı" }] as const).map((v) => (
             <button
               key={v.id}
               onClick={() => setView(v.id)}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                view === v.id ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700"
+                view === v.id ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               }`}
             >
               {v.label}
@@ -869,18 +898,18 @@ function InitScriptsAudit() {
         </div>
 
         <div className="relative">
-          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             value={q} onChange={(e) => setQ(e.target.value)}
             placeholder={view === "script" ? "script ara" : "sunucu ara"}
-            className="pl-8 pr-2.5 py-1.5 text-xs border border-gray-200 rounded-lg w-56"
+            className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-56"
           />
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
           <input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} />
           Sadece farkı olanlar
         </label>
-        <span className="text-xs text-gray-400 tabular-nums">
+        <span className="text-xs text-[var(--text-muted)] tabular-nums">
           {view === "script" ? `${scripts.length} script` : `${hostRows.length} sunucu`}
         </span>
 
@@ -895,11 +924,11 @@ function InitScriptsAudit() {
                   ["host", "sapma_adedi", "sapan_scriptler", "eksik_adedi", "eksik_scriptler", "startCustom_var"],
                   hostRows.map((h) => [h.host, h.deviationCount, h.deviations.join(" "), h.missingCount,
                     h.missing.join(" "), h.hasCustom ? "EVET" : "HAYIR"])))}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
           >
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
           </button>
-          <button onClick={() => load(root)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">
+          <button onClick={() => load(root)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">
             <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
           </button>
         </div>
@@ -922,31 +951,31 @@ function InitScriptsAudit() {
       )}
 
       {view === "script" ? (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="w-full text-sm pf-table-sticky">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left">
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Script</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Farklı sürüm</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Çoğunluk</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sapan</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Yok</th>
+              <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Script</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Farklı sürüm</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Çoğunluk</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sapan</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Yok</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-[var(--border-subtle)]">
               {scripts.length === 0 && (
                 <TableEmptyRow colSpan={5} />
               )}
               {scripts.map((sc) => (
                 <React.Fragment key={sc.key}>
                   <tr
-                    className="hover:bg-gray-50/60 cursor-pointer"
+                    className="hover:bg-[var(--bg-elevated)]/60 cursor-pointer"
                     onClick={() => setOpen(open === sc.key ? null : sc.key)}
                   >
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1.5">
-                        <ChevronRightIcon className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open === sc.key ? "rotate-90" : ""}`} />
-                        <span className="font-mono text-xs text-gray-800">{sc.label}</span>
+                        <ChevronRightIcon className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform ${open === sc.key ? "rotate-90" : ""}`} />
+                        <span className="font-mono text-xs text-[var(--text-primary)]">{sc.label}</span>
                         {sc.perServer && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded border bg-violet-50 text-violet-700 border-violet-200">
                             sunucuya özel
@@ -957,7 +986,7 @@ function InitScriptsAudit() {
                     <td className="px-3 py-2">
                       <VariantBadge sc={sc} />
                     </td>
-                    <td className="px-3 py-2 text-xs text-gray-600 tabular-nums">
+                    <td className="px-3 py-2 text-xs text-[var(--text-secondary)] tabular-nums">
                       {sc.majorityHash
                         // Kirpilmis hash okunabiliyordu ama KOPYALANAMIYORDU; oysa
                         // bu degerin tek isi baska bir yerdeki hash ile karsilastirilmak.
@@ -966,25 +995,25 @@ function InitScriptsAudit() {
                             <CodeChip value={sc.majorityHash} label={`${sc.majorityHash.slice(0, 10)}…`} wrap="truncate" copyable />
                             <span className="tabular-nums flex-shrink-0">· {sc.majorityCount}</span>
                           </span>
-                        : <span className="text-gray-400">—</span>}
+                        : <span className="text-[var(--text-muted)]">—</span>}
                     </td>
                     <td className="px-3 py-2 text-xs tabular-nums">
                       {sc.perServer
-                        ? <span className="text-gray-400">—</span>
+                        ? <span className="text-[var(--text-muted)]">—</span>
                         : sc.deviatingCount > 0
                           ? <span className="text-amber-700 font-semibold">{sc.deviatingCount}</span>
-                          : <span className="text-gray-400">0</span>}
+                          : <span className="text-[var(--text-muted)]">0</span>}
                     </td>
                     <td className="px-3 py-2 text-xs tabular-nums">
-                      {sc.missing > 0 ? <span className="text-gray-700">{sc.missing}</span> : <span className="text-gray-400">0</span>}
+                      {sc.missing > 0 ? <span className="text-[var(--text-secondary)]">{sc.missing}</span> : <span className="text-[var(--text-muted)]">0</span>}
                     </td>
                   </tr>
                   {open === sc.key && (
-                    <tr className="bg-gray-50/60">
+                    <tr className="bg-[var(--bg-elevated)]/60">
                       <td colSpan={5} className="px-3 py-3">
                         <div className="space-y-2">
                           {sc.variants.map((v, i) => (
-                            <div key={v.hash} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                            <div key={v.hash} className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                                   sc.perServer
@@ -995,20 +1024,20 @@ function InitScriptsAudit() {
                                 }`}>
                                   {sc.perServer ? `sürüm ${i + 1}` : i === 0 ? "çoğunluk" : `farklı sürüm ${i}`}
                                 </span>
-                                <span className="font-mono text-[11px] text-gray-500 break-all">{v.hash.slice(0, 32)}…</span>
-                                <span className="text-xs text-gray-500 tabular-nums ml-auto">{v.count} sunucu</span>
+                                <span className="font-mono text-[11px] text-[var(--text-muted)] break-all">{v.hash.slice(0, 32)}…</span>
+                                <span className="text-xs text-[var(--text-muted)] tabular-nums ml-auto">{v.count} sunucu</span>
                               </div>
-                              <div className="mt-1.5 text-[11px] text-gray-600 font-mono break-words">
+                              <div className="mt-1.5 text-[11px] text-[var(--text-secondary)] font-mono break-words">
                                 {v.hosts.slice(0, 40).join(", ")}
                                 {v.hosts.length > 40 && ` … (+${v.hosts.length - 40})`}
                               </div>
                             </div>
                           ))}
                           {sc.missing > 0 && (
-                            <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2">
                               <div className="flex items-center gap-2">
-                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-gray-100 text-gray-600 border-gray-200">dosya yok</span>
-                                <span className="text-xs text-gray-500 tabular-nums ml-auto">{sc.missing} sunucu</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]">dosya yok</span>
+                                <span className="text-xs text-[var(--text-muted)] tabular-nums ml-auto">{sc.missing} sunucu</span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1017,13 +1046,13 @@ function InitScriptsAudit() {
                                     e.stopPropagation();
                                     setOpenMissing(openMissing === sc.key ? null : sc.key);
                                   }}
-                                  className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+                                  className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
                                 >
                                   {openMissing === sc.key ? "sunucuları gizle" : "sunucuları göster"}
                                 </button>
                               </div>
                               {openMissing === sc.key && (
-                                <div className="mt-1.5 text-[11px] text-gray-600 font-mono break-words">
+                                <div className="mt-1.5 text-[11px] text-[var(--text-secondary)] font-mono break-words">
                                   {sc.missingHosts.slice(0, 40).join(", ")}
                                   {sc.missingHosts.length > 40 && ` … (+${sc.missingHosts.length - 40})`}
                                 </div>
@@ -1040,23 +1069,23 @@ function InitScriptsAudit() {
           </table>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="w-full text-sm pf-table-sticky">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left">
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sunucu</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Çoğunluktan sapan</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Eksik</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">startCustom.sh</th>
+              <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sunucu</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Çoğunluktan sapan</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Eksik</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">startCustom.sh</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-[var(--border-subtle)]">
               {hostRows.length === 0 && (
                 <TableEmptyRow colSpan={4} />
               )}
               {hostRows.slice(0, 500).map((h) => (
-                <tr key={h.host} className="hover:bg-gray-50/60 align-top">
-                  <td className="px-3 py-2 font-mono text-xs text-gray-800 whitespace-nowrap">{h.host}</td>
+                <tr key={h.host} className="hover:bg-[var(--bg-elevated)]/60 align-top">
+                  <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">{h.host}</td>
                   <td className="px-3 py-2">
                     {h.deviationCount === 0 ? (
                       <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200">aynı</span>
@@ -1069,10 +1098,10 @@ function InitScriptsAudit() {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    {h.missingCount === 0 ? <span className="text-xs text-gray-400">—</span> : (
+                    {h.missingCount === 0 ? <span className="text-xs text-[var(--text-muted)]">—</span> : (
                       <div className="flex flex-wrap gap-1">
                         {h.missing.map((d) => (
-                          <span key={d} className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-gray-100 text-gray-600 border-gray-200">{d}</span>
+                          <span key={d} className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]">{d}</span>
                         ))}
                       </div>
                     )}
@@ -1080,7 +1109,7 @@ function InitScriptsAudit() {
                   <td className="px-3 py-2">
                     {h.hasCustom
                       ? <span className="text-[11px] font-mono text-violet-700" title={h.customHash || ""}>{(h.customHash || "").slice(0, 10)}…</span>
-                      : <span className="text-xs text-gray-400">yok</span>}
+                      : <span className="text-xs text-[var(--text-muted)]">yok</span>}
                   </td>
                 </tr>
               ))}
@@ -1089,7 +1118,7 @@ function InitScriptsAudit() {
         </div>
       )}
       {view === "host" && hostRows.length > 500 && (
-        <p className="text-xs text-gray-400">İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.</p>
+        <p className="text-xs text-[var(--text-muted)]">İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.</p>
       )}
     </div>
   );
@@ -1112,11 +1141,11 @@ function VariantBadge({ sc }: { sc: InitScriptStat }) {
 }
 
 function Stat({ n, l, tone }: { n: number; l: string; tone?: "ok" | "warn" }) {
-  const color = tone === "ok" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-gray-900";
+  const color = tone === "ok" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-xl border border-gray-100 bg-white px-4 py-3">
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
       <div className={`text-2xl font-bold tabular-nums ${color}`}>{fmtNumber(n)}</div>
-      <div className="text-xs text-gray-500 mt-0.5">{l}</div>
+      <div className="text-xs text-[var(--text-muted)] mt-0.5">{l}</div>
     </div>
   );
 }

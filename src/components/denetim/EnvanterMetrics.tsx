@@ -60,7 +60,7 @@ export default function EnvanterMetrics() {
 
   useEffect(() => { load(source); }, [source, load]);
 
-  if (loading && !sum) return <div className="py-10 text-center text-sm text-gray-400">Yükleniyor…</div>;
+  if (loading && !sum) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
 
   return (
@@ -73,7 +73,7 @@ export default function EnvanterMetrics() {
         </Select>
         <button
           onClick={() => load(source)}
-          className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+          className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
         >
           <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
         </button>
@@ -106,9 +106,9 @@ function Totals({ sum }: { sum: EnvanterSummary }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map((c) => (
-        <div key={c.l} className="rounded-xl border border-gray-100 bg-white px-4 py-3">
-          <div className="text-2xl font-bold tabular-nums text-gray-900">{nf(c.n)}</div>
-          <div className="text-xs text-gray-500 mt-0.5">{c.l}</div>
+        <div key={c.l} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
+          <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)]">{nf(c.n)}</div>
+          <div className="text-xs text-[var(--text-muted)] mt-0.5">{c.l}</div>
         </div>
       ))}
     </div>
@@ -136,27 +136,27 @@ function ProductCoverage({ sum }: { sum: EnvanterSummary }) {
     >
       <div className="space-y-1.5">
         {sum.products.map((p) => (
-          <div key={p.key} className="rounded-lg border border-gray-100 bg-white">
+          <div key={p.key} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
             <button
               onClick={() => setOpen(open === p.key ? null : p.key)}
-              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50/70 text-left"
+              className="w-full flex items-center gap-3 px-3 py-2 hover:bg-[var(--bg-elevated)]/70 text-left"
             >
-              <span className="w-20 shrink-0 text-xs font-semibold text-gray-700">{p.label}</span>
-              <span className="flex-1 h-4 rounded bg-gray-100 overflow-hidden">
+              <span className="w-20 shrink-0 text-xs font-semibold text-[var(--text-secondary)]">{p.label}</span>
+              <span className="flex-1 h-4 rounded bg-[var(--bg-elevated)] overflow-hidden">
                 <span
                   className="block h-full rounded bg-[var(--accent)]/70"
                   style={{ width: `${(p.installed / max) * 100}%` }}
                 />
               </span>
-              <span className="w-16 shrink-0 text-right text-xs tabular-nums font-semibold text-gray-800">
+              <span className="w-16 shrink-0 text-right text-xs tabular-nums font-semibold text-[var(--text-primary)]">
                 {nf(p.installed)}
               </span>
-              <span className="w-24 shrink-0 text-right text-[11px] tabular-nums text-gray-400">
+              <span className="w-24 shrink-0 text-right text-[11px] tabular-nums text-[var(--text-muted)]">
                 {p.versionCount} sürüm
               </span>
             </button>
             {open === p.key && (
-              <div className="px-3 pb-2.5 pt-0.5 border-t border-gray-50">
+              <div className="px-3 pb-2.5 pt-0.5 border-t border-[var(--border-subtle)]">
                 <BarList
                   rows={p.versions.map((v) => ({ value: v.value, count: v.hosts }))}
                   unit="sunucu"
@@ -205,10 +205,10 @@ function Distributions({ sum }: { sum: EnvanterSummary }) {
       right={
         <div className="flex items-center gap-2">
           <div className="relative">
-            <MagnifyingGlassIcon className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+            <MagnifyingGlassIcon className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
               value={q} onChange={(e) => setQ(e.target.value)} placeholder="değer ara"
-              className="pl-7 pr-2 py-1 text-xs border border-gray-200 rounded-lg w-40"
+              className="pl-7 pr-2 py-1 text-xs border border-[var(--border)] rounded-lg w-40"
             />
           </div>
           <ExportBtn
@@ -227,11 +227,11 @@ function Distributions({ sum }: { sum: EnvanterSummary }) {
             className={`px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-colors ${
               dim === d.key
                 ? "bg-[var(--accent)]/10 border-[var(--accent)]/30 text-[var(--accent)]"
-                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                : "bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
             }`}
           >
             {d.label}
-            <span className="ml-1.5 tabular-nums text-gray-400">
+            <span className="ml-1.5 tabular-nums text-[var(--text-muted)]">
               {(sum.distributions[d.key] || []).length}
             </span>
           </button>
@@ -239,7 +239,7 @@ function Distributions({ sum }: { sum: EnvanterSummary }) {
       </div>
       <BarList rows={rows} unit={sum.unit} limit={40} showHosts={sum.source !== "hosts"} />
       {emptyRow && (
-        <p className="mt-2 text-[11px] text-gray-400">
+        <p className="mt-2 text-[11px] text-[var(--text-muted)]">
           Ayrıca {nf(emptyRow.count)} kayıtta bu alan boş — listede gösterilmiyor, yüzdeler
           dolu değerler üzerinden hesaplanıyor.
         </p>
@@ -259,7 +259,7 @@ function BarList({
   const total = rows.reduce((a, r) => a + r.count, 0) || 1;
   const shown = all ? rows : rows.slice(0, limit);
 
-  if (rows.length === 0) return <div className="py-6 text-center text-sm text-gray-400">Kayıt yok.</div>;
+  if (rows.length === 0) return <div className="py-6 text-center text-sm text-[var(--text-muted)]">Kayıt yok.</div>;
 
   return (
     <div className="space-y-1">
@@ -267,26 +267,26 @@ function BarList({
         <div key={r.value} className="flex items-center gap-2.5">
           <span
             className={`w-52 shrink-0 truncate text-xs ${
-              r.value === "(boş)" ? "text-gray-400 italic" : "text-gray-700 font-mono"
+              r.value === "(boş)" ? "text-[var(--text-muted)] italic" : "text-[var(--text-secondary)] font-mono"
             }`}
             title={r.value}
           >
             {r.value}
           </span>
-          <span className="flex-1 h-3.5 rounded bg-gray-100 overflow-hidden">
+          <span className="flex-1 h-3.5 rounded bg-[var(--bg-elevated)] overflow-hidden">
             <span
-              className={`block h-full rounded ${r.value === "(boş)" ? "bg-gray-300" : "bg-[var(--accent)]/70"}`}
+              className={`block h-full rounded ${r.value === "(boş)" ? "bg-[var(--border-strong)]" : "bg-[var(--accent)]/70"}`}
               style={{ width: `${(r.count / max) * 100}%` }}
             />
           </span>
-          <span className="w-14 shrink-0 text-right text-xs tabular-nums font-semibold text-gray-800">
+          <span className="w-14 shrink-0 text-right text-xs tabular-nums font-semibold text-[var(--text-primary)]">
             {nf(r.count)}
           </span>
-          <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-gray-400">
+          <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-[var(--text-muted)]">
             %{((r.count / total) * 100).toFixed(1)}
           </span>
           {showHosts && (
-            <span className="w-24 shrink-0 text-right text-[11px] tabular-nums text-gray-400">
+            <span className="w-24 shrink-0 text-right text-[11px] tabular-nums text-[var(--text-muted)]">
               {nf(r.hosts ?? 0)} sunucu
             </span>
           )}
@@ -365,62 +365,62 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
       }
     >
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <label className="text-[11px] text-gray-500">Sütun</label>
+        <label className="text-[11px] text-[var(--text-muted)]">Sütun</label>
         <Select sizeVariant="sm" value={x} onChange={(e) => setX(e.target.value)}>
           {sum.dims.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
         </Select>
-        <label className="text-[11px] text-gray-500 ml-1">Satır</label>
+        <label className="text-[11px] text-[var(--text-muted)] ml-1">Satır</label>
         <Select sizeVariant="sm" value={y} onChange={(e) => setY(e.target.value)}>
           {sum.dims.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
         </Select>
         {source !== "hosts" && (
           <>
-            <label className="text-[11px] text-gray-500 ml-1">Sayım</label>
+            <label className="text-[11px] text-[var(--text-muted)] ml-1">Sayım</label>
             <Select sizeVariant="sm" value={metric} onChange={(e) => setMetric(e.target.value as "rows" | "hosts")}>
               <option value="rows">uygulama</option>
               <option value="hosts">sunucu</option>
             </Select>
           </>
         )}
-        <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer ml-1">
+        <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer ml-1">
           <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
           Boş satırı gizle
         </label>
-        {loading && <span className="text-[11px] text-gray-400">yükleniyor…</span>}
+        {loading && <span className="text-[11px] text-[var(--text-muted)]">yükleniyor…</span>}
       </div>
 
       {err && <div className="text-xs text-red-600">{err}</div>}
 
       {data && ys.length > 0 ? (
         <>
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
             {/* w-full + min-w-max: sutun sayisi AZ oldugunda tablo kapsayiciyi doldurur
                 (eskiden sagda genis bir bosluk kaliyordu), COK oldugunda min-width
                 kazanir ve tablo yatay kayar. Tek basina w-full ikinci durumu bozardi. */}
             <table className="w-full min-w-max text-xs border-collapse">
               <thead>
-                <tr className="bg-gray-50">
-                  <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-500 border-b border-gray-100 min-w-[180px]">
+                <tr className="bg-[var(--bg-elevated)]">
+                  <th className="sticky left-0 z-10 bg-[var(--bg-elevated)] px-3 py-2 text-left font-semibold text-[var(--text-muted)] border-b border-[var(--border-subtle)] min-w-[180px]">
                     {data.y.label} \ {data.x.label}
                   </th>
                   {xs.map((c) => (
                     <th
                       key={c.value}
-                      className="px-2 py-2 font-semibold text-gray-500 border-b border-gray-100 whitespace-nowrap max-w-[140px] truncate"
+                      className="px-2 py-2 font-semibold text-[var(--text-muted)] border-b border-[var(--border-subtle)] whitespace-nowrap max-w-[140px] truncate"
                       title={`${c.value} — ${nf(c.count)}`}
                     >
                       {c.value}
                     </th>
                   ))}
-                  <th className="px-2 py-2 font-semibold text-gray-500 border-b border-l border-gray-100 whitespace-nowrap">Toplam</th>
+                  <th className="px-2 py-2 font-semibold text-[var(--text-muted)] border-b border-l border-[var(--border-subtle)] whitespace-nowrap">Toplam</th>
                 </tr>
               </thead>
               <tbody>
                 {ys.map((r) => (
-                  <tr key={r.value} className="hover:bg-gray-50/40">
+                  <tr key={r.value} className="hover:bg-[var(--bg-elevated)]/40">
                     <td
-                      className={`sticky left-0 z-10 bg-white px-3 py-1.5 border-b border-gray-50 whitespace-nowrap max-w-[220px] truncate ${
-                        r.value === "(boş)" ? "text-gray-400 italic" : "font-mono text-gray-800"
+                      className={`sticky left-0 z-10 bg-[var(--bg-surface)] px-3 py-1.5 border-b border-[var(--border-subtle)] whitespace-nowrap max-w-[220px] truncate ${
+                        r.value === "(boş)" ? "text-[var(--text-muted)] italic" : "font-mono text-[var(--text-primary)]"
                       }`}
                       title={r.value}
                     >
@@ -429,9 +429,9 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
                     {xs.map((c) => {
                       const n = data.cells[c.value + SEP + r.value] ?? 0;
                       return (
-                        <td key={c.value} className="px-2 py-1.5 text-center border-b border-gray-50 tabular-nums">
+                        <td key={c.value} className="px-2 py-1.5 text-center border-b border-[var(--border-subtle)] tabular-nums">
                           {n === 0 ? (
-                            <span className="text-gray-200">·</span>
+                            <span className="text-[var(--border)]">·</span>
                           ) : (
                             <span
                               className="inline-block min-w-[2rem] rounded px-1.5 py-0.5 font-semibold"
@@ -448,7 +448,7 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
                         </td>
                       );
                     })}
-                    <td className="px-2 py-1.5 text-center border-b border-l border-gray-50 tabular-nums font-semibold text-gray-700">
+                    <td className="px-2 py-1.5 text-center border-b border-l border-[var(--border-subtle)] tabular-nums font-semibold text-[var(--text-secondary)]">
                       {nf(r.count)}
                     </td>
                   </tr>
@@ -457,15 +457,15 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
             </table>
           </div>
           {(data.x.values.length > xs.length || data.y.values.length > ys.length) && (
-            <p className="mt-2 text-[11px] text-gray-400">
+            <p className="mt-2 text-[11px] text-[var(--text-muted)]">
               En kalabalık {xs.length} sütun ve {ys.length} satır gösteriliyor
               (toplam {nf(data.x.values.length)} × {nf(data.y.values.length)}). Tamamı için CSV indirin.
             </p>
           )}
         </>
       ) : !loading && (
-        <div className="py-8 text-center text-sm text-gray-400">
-          <TableCellsIcon className="w-6 h-6 mx-auto mb-1.5 text-gray-300" />
+        <div className="py-8 text-center text-sm text-[var(--text-muted)]">
+          <TableCellsIcon className="w-6 h-6 mx-auto mb-1.5 text-[var(--text-muted)]" />
           Bu kırılımda veri yok.
         </div>
       )}
@@ -480,11 +480,11 @@ function Section({
   title: string; note?: string; right?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white px-4 py-3.5">
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3.5">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
-          {note && <p className="text-[11px] text-gray-400 mt-0.5 max-w-2xl">{note}</p>}
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
+          {note && <p className="text-[11px] text-[var(--text-muted)] mt-0.5 max-w-2xl">{note}</p>}
         </div>
         {right}
       </div>
@@ -498,7 +498,7 @@ function ExportBtn({ onClick, disabled }: { onClick: () => void; disabled?: bool
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)] disabled:opacity-40"
     >
       <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
     </button>

@@ -65,7 +65,7 @@ export default function AppEnvs() {
     return needle ? list.filter((x) => x.app.toLowerCase().includes(needle)) : list;
   };
 
-  if (loading && !data) return <div className="py-10 text-center text-sm text-gray-400">Yükleniyor…</div>;
+  if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
   if (!data) return null;
 
@@ -80,7 +80,7 @@ export default function AppEnvs() {
           {data.sources.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </Select>
 
-        <div className="flex gap-1 rounded-lg p-0.5 bg-gray-100">
+        <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)]">
           {([
             { id: "matris", label: `Matris (${nf(data.totalApps)})` },
             { id: "sapma", label: `Ad kuralı dışı (${nf(data.nonStandard.length)})` },
@@ -90,7 +90,7 @@ export default function AppEnvs() {
               key={v.id}
               onClick={() => setView(v.id)}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                view === v.id ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700"
+                view === v.id ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               }`}
             >
               {v.label}
@@ -99,14 +99,14 @@ export default function AppEnvs() {
         </div>
 
         <div className="relative">
-          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             value={q} onChange={(e) => setQ(e.target.value)} placeholder="uygulama ara"
-            className="pl-8 pr-2.5 py-1.5 text-xs border border-gray-200 rounded-lg w-56"
+            className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-56"
           />
         </div>
         {view === "matris" && (
-          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
             <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} />
             Sadece eksiği olanlar
           </label>
@@ -125,11 +125,11 @@ export default function AppEnvs() {
                 : csvDownload("ortam_celiskisi_" + source,
                     ["uygulama", "ad_ortami", "env_sutunu", "sunucular"],
                     celiski.map((c) => [c.app, c.nameEnv, c.envColumn, c.hosts.join(" ")])))}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
           >
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
           </button>
-          <button onClick={() => load(source)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">
+          <button onClick={() => load(source)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">
             <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
           </button>
         </div>
@@ -143,16 +143,16 @@ export default function AppEnvs() {
               tone={data.nonStandard.length + data.conflicts.length ? "warn" : undefined} />
       </div>
 
-      <p className="text-[11px] text-gray-400">
+      <p className="text-[11px] text-[var(--text-muted)]">
         Ortam, uygulama adının son ekinden türer:{" "}
-        <code className="px-1 rounded bg-gray-100">-D</code> geliştirme,{" "}
-        <code className="px-1 rounded bg-gray-100">-T</code> test,{" "}
-        <code className="px-1 rounded bg-gray-100">-Q</code> QA, eksiz ad production.
+        <code className="px-1 rounded bg-[var(--bg-elevated)]">-D</code> geliştirme,{" "}
+        <code className="px-1 rounded bg-[var(--bg-elevated)]">-T</code> test,{" "}
+        <code className="px-1 rounded bg-[var(--bg-elevated)]">-Q</code> QA, eksiz ad production.
         Satırlar son ek atılmış <b>taban ada</b> göre gruplanır.
       </p>
 
       {data.outOfScopeEnvColumns.length > 0 && (
-        <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+        <p className="text-[11px] text-[var(--text-muted)] bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-3 py-2">
           Şu ortamların ad kuralında karşılığı yok:{" "}
           {data.outOfScopeEnvColumns.map((u) => `${u.envColumn} (${nf(u.appCount)} uygulama)`).join(", ")}.
           Bu uygulamaların adında son ek olmadığı için matriste <b>production</b> kutusunda
@@ -163,11 +163,11 @@ export default function AppEnvs() {
       {view === "matris" && (
         <>
           {data.patterns.length > 0 && (
-            <div className="rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
-              <div className="text-xs font-semibold text-gray-700 mb-1.5">En sık eksik ortam desenleri</div>
+            <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/60 px-4 py-3">
+              <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1.5">En sık eksik ortam desenleri</div>
               <div className="flex flex-wrap gap-2">
                 {data.patterns.map((p) => (
-                  <span key={p.missing.join(",")} className="text-[11px] px-2 py-1 rounded-lg bg-white border border-gray-200">
+                  <span key={p.missing.join(",")} className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
                     eksik: <b className="font-mono">{p.missing.join(", ")}</b> · {nf(p.count)} uygulama
                   </span>
                 ))}
@@ -175,21 +175,21 @@ export default function AppEnvs() {
             </div>
           )}
 
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
             <table className="w-full min-w-max text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-left">
-                  <th className="px-3 py-2 text-xs font-semibold text-gray-500">Uygulama</th>
-                  {envs.map((e) => <th key={e} className="px-3 py-2 text-xs font-semibold text-gray-500">{e}</th>)}
+                <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
+                  {envs.map((e) => <th key={e} className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">{e}</th>)}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-[var(--border-subtle)]">
                 {rows.length === 0 && (
                   <TableEmptyRow colSpan={envs.length + 1} />
                 )}
                 {rows.slice(0, 500).map((r) => (
-                  <tr key={r.base} className="hover:bg-gray-50/60">
-                    <td className="px-3 py-2 font-mono text-xs text-gray-800">{r.base}</td>
+                  <tr key={r.base} className="hover:bg-[var(--bg-elevated)]/60">
+                    <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">{r.base}</td>
                     {envs.map((e) => {
                       const hit = r.envs[e];
                       return (
@@ -216,34 +216,34 @@ export default function AppEnvs() {
             </table>
           </div>
           {rows.length > 500 && (
-            <p className="text-xs text-gray-400">İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.</p>
+            <p className="text-xs text-[var(--text-muted)]">İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.</p>
           )}
         </>
       )}
 
       {view === "sapma" && (
-        <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="w-full min-w-max text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left">
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Uygulama</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sebep</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">env sütunu</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sunucular</th>
+              <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sebep</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">env sütunu</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sunucular</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-[var(--border-subtle)]">
               {sapma.length === 0 && (
-                <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400">
+                <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-[var(--text-muted)]">
                   Ad kuralına uymayan uygulama yok.
                 </td></tr>
               )}
               {sapma.slice(0, 500).map((n) => (
-                <tr key={n.app} className="hover:bg-gray-50/60 align-top">
-                  <td className="px-3 py-2 font-mono text-xs text-gray-800 whitespace-nowrap">{n.app}</td>
+                <tr key={n.app} className="hover:bg-[var(--bg-elevated)]/60 align-top">
+                  <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">{n.app}</td>
                   <td className="px-3 py-2 text-xs text-amber-700">{n.reason}</td>
-                  <td className="px-3 py-2 text-xs text-gray-500">{n.envColumn.join(", ") || "—"}</td>
-                  <td className="px-3 py-2 text-[11px] font-mono text-gray-500">{n.hosts.slice(0, 6).join(", ")}{n.hosts.length > 6 && ` … (+${n.hosts.length - 6})`}</td>
+                  <td className="px-3 py-2 text-xs text-[var(--text-muted)]">{n.envColumn.join(", ") || "—"}</td>
+                  <td className="px-3 py-2 text-[11px] font-mono text-[var(--text-muted)]">{n.hosts.slice(0, 6).join(", ")}{n.hosts.length > 6 && ` … (+${n.hosts.length - 6})`}</td>
                 </tr>
               ))}
             </tbody>
@@ -264,30 +264,30 @@ export default function AppEnvs() {
               uygulamaları bu listeye <b>girmez</b> — sahte uyarı üretmemek için.
             </span>
           </p>
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
             <table className="w-full min-w-max text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-left">
-                  <th className="px-3 py-2 text-xs font-semibold text-gray-500">Uygulama</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-gray-500">Ada göre ortam</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-gray-500">env sütunu</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sunucular</th>
+                <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Ada göre ortam</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">env sütunu</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sunucular</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-[var(--border-subtle)]">
                 {celiski.length === 0 && (
                   <TableEmptyRow colSpan={4} title="Çelişki bulunamadı." description="Bu tarama turunda ortamlar arasında ad çakışması saptanmadı." />
                 )}
                 {celiski.slice(0, 500).map((c) => (
-                  <tr key={c.app} className="hover:bg-gray-50/60 align-top">
-                    <td className="px-3 py-2 font-mono text-xs text-gray-800 whitespace-nowrap">{c.app}</td>
+                  <tr key={c.app} className="hover:bg-[var(--bg-elevated)]/60 align-top">
+                    <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">{c.app}</td>
                     <td className="px-3 py-2">
                       <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-sky-50 text-sky-700 border-sky-200">{c.nameEnv}</span>
                     </td>
                     <td className="px-3 py-2">
                       <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-red-50 text-red-700 border-red-200">{c.envColumn}</span>
                     </td>
-                    <td className="px-3 py-2 text-[11px] font-mono text-gray-500">{c.hosts.slice(0, 6).join(", ")}{c.hosts.length > 6 && ` … (+${c.hosts.length - 6})`}</td>
+                    <td className="px-3 py-2 text-[11px] font-mono text-[var(--text-muted)]">{c.hosts.slice(0, 6).join(", ")}{c.hosts.length > 6 && ` … (+${c.hosts.length - 6})`}</td>
                   </tr>
                 ))}
               </tbody>
@@ -300,11 +300,11 @@ export default function AppEnvs() {
 }
 
 function Stat({ n, l, tone }: { n: number; l: string; tone?: "ok" | "warn" }) {
-  const color = tone === "ok" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-gray-900";
+  const color = tone === "ok" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-xl border border-gray-100 bg-white px-4 py-3">
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
       <div className={`text-2xl font-bold tabular-nums ${color}`}>{nf(n)}</div>
-      <div className="text-xs text-gray-500 mt-0.5">{l}</div>
+      <div className="text-xs text-[var(--text-muted)] mt-0.5">{l}</div>
     </div>
   );
 }
