@@ -74,6 +74,7 @@ async function loadAwxServers() {
       clientId: (r.client_id || process.env[`AWX_${r.server_no}_CLIENT_ID`] || '').trim() || null,
       clientSecret:
         (r.client_secret || process.env[`AWX_${r.server_no}_CLIENT_SECRET`] || '').trim() || null,
+      apiBase: normalizeApiBase(r.api_prefix || process.env[`AWX_${r.server_no}_API_BASE`]),
     }));
     if (_awxServersCache.length) {
       console.log(`[Ansible] ${_awxServersCache.length} AWX sunucusu DB'den yuklendi.`);
@@ -81,6 +82,32 @@ async function loadAwxServers() {
   } catch (e) {
     console.warn("[Ansible] AWX sunuculari DB'den yuklenemedi, env fallback:", e.message);
   }
+}
+
+// ── API TABANI (AAP 2.5 uyumu) ────────────────────────
+// AAP 2.5 ile controller API'si bir gateway'in arkasina alindi ve yolu degisti:
+//   klasik AWX / AAP <=2.4 :  /api/v2/...
+//   AAP 2.5+               :  /api/controller/v2/...
+// Kodun 27 yerinde yol `/api/v2/...` olarak SABIT yazili; ustelik
+// `new URL(mutlakYol, taban)` taban URL'indeki yolu ZATEN atiyor - yani sunucu
+// adresine onek yazmak ise yaramiyordu. Cozum tek noktada: istek katmani `/api/v2`
+// onekini sunucunun kendi tabaniyla degistirir. Bos/tanimsizsa `/api/v2` kalir,
+// yani mevcut sunucularin davranisi DEGISMEZ.
+const DEFAULT_API_BASE = '/api/v2';
+
+function normalizeApiBase(value) {
+  const v = String(value || '').trim();
+  if (!v) return DEFAULT_API_BASE;
+  const withSlash = v.startsWith('/') ? v : '/' + v;
+  return withSlash.replace(/[/]+$/, '') || DEFAULT_API_BASE;
+}
+
+/** `/api/v2/...` yolunu sunucunun API tabanina tasir. Diger yollara DOKUNMAZ. */
+function mapApiPath(server, pathname) {
+  const base = (server && server.apiBase) || DEFAULT_API_BASE;
+  if (base === DEFAULT_API_BASE) return pathname;
+  const p = String(pathname || '');
+  return p.startsWith(DEFAULT_API_BASE) ? base + p.slice(DEFAULT_API_BASE.length) : p;
 }
 
 function getServers() {
@@ -98,6 +125,7 @@ function getServers() {
       password: (process.env[`AWX_${i}_PASSWORD`] || '').trim() || null,
       clientId: (process.env[`AWX_${i}_CLIENT_ID`] || '').trim() || null,
       clientSecret: (process.env[`AWX_${i}_CLIENT_SECRET`] || '').trim() || null,
+      apiBase: normalizeApiBase(process.env[`AWX_${i}_API_BASE`]),
     });
   }
   // Backward compat: legacy AWX_URL as server 0
@@ -133,7 +161,7 @@ async function getTokenForServer(server) {
     return cache.token;
   }
 
-  const result = await fetchNewToken(url, user, password, clientId, clientSecret);
+  const result = await fetchNewToken(url, user, password, clientId, clientSecret, server.apiBase);
   _serverTokenCaches.set(id, { token: result.token, expiresAt: result.expires });
   console.log(`[AWX:${server.name}] Yeni token alindi, expire: ${result.expires}`);
   return result.token;
@@ -245,7 +273,9 @@ function summarizeAwxErrorBody(json) {
 }
 
 function awxRequestToServer(server, token, method, pathname, body = null) {
-  const parsed = new URL(pathname, server.url);
+  // TEK NOKTA: cagiranlar yolu `/api/v2/...` yazmaya devam eder; sunucunun tabani
+  // farkliysa (AAP 2.5) burada cevrilir.
+  const parsed = new URL(mapApiPath(server, pathname), server.url);
   const lib = parsed.protocol === 'https:' ? https : http;
   const bodyStr = body ? JSON.stringify(body) : null;
 
@@ -416,9 +446,9 @@ async function fetchTokenOAuth2(baseUrl, user, pass, clientId = null, clientSecr
 }
 
 // AWX API token via Basic auth: POST /api/v2/tokens/ (fallback method)
-function fetchTokenV2(baseUrl, user, pass) {
+function fetchTokenV2(baseUrl, user, pass, apiBase = DEFAULT_API_BASE) {
   return new Promise((resolve, reject) => {
-    const parsed = new URL('/api/v2/tokens/', baseUrl);
+    const parsed = new URL(apiBase + '/tokens/', baseUrl);
     const lib = parsed.protocol === 'https:' ? https : http;
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
     const bodyStr = '{}';
@@ -471,7 +501,7 @@ function fetchTokenV2(baseUrl, user, pass) {
 }
 
 // fetchNewToken: OAuth2 (when client creds are present), v2/tokens fallback/default
-async function fetchNewToken(baseUrl, user, pass, clientId = null, clientSecret = null) {
+async function fetchNewToken(baseUrl, user, pass, clientId = null, clientSecret = null, apiBase = DEFAULT_API_BASE) {
   const hasClientId = !!(clientId && String(clientId).trim());
   const hasClientSecret = !!(clientSecret && String(clientSecret).trim());
   const canTryOAuth = hasClientId && hasClientSecret;
@@ -491,7 +521,7 @@ async function fetchNewToken(baseUrl, user, pass, clientId = null, clientSecret 
   }
 
   try {
-    return await fetchTokenV2(baseUrl, user, pass);
+    return await fetchTokenV2(baseUrl, user, pass, apiBase);
   } catch (v2Err) {
     if (canTryOAuth) {
       throw new Error(
@@ -919,7 +949,7 @@ async function getJobOutputOnServer(serverId, jobId) {
 
   let output = '';
   try {
-    output = await fetchAwxPlainText(server.url, token, `/api/v2/jobs/${id}/stdout/?format=txt`);
+    output = await fetchAwxPlainText(server.url, token, mapApiPath(server, `/api/v2/jobs/${id}/stdout/?format=txt`));
   } catch (err) {
     console.warn(`[AWX] stdout cekilemedi (job ${id}, server ${serverId}): ${err.message}`);
   }
@@ -4092,6 +4122,9 @@ async function listRunningJobsAcrossServers() {
 
 module.exports = {
   initAnsibleRunner,
+  // AAP 2.5 API tabani esleme yardimcilari - birim testleri icin acildi (ag gerektirmez).
+  _normalizeApiBase: normalizeApiBase,
+  _mapApiPath: mapApiPath,
   isConfigured,
   launchJob,
   getJobStatus,

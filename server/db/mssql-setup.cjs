@@ -1071,6 +1071,10 @@ const TABLES = [
         password      NVARCHAR(MAX),
         client_id     NVARCHAR(255),
         client_secret NVARCHAR(MAX),
+        -- AAP 2.5 ile controller API'si gateway arkasina alindi ve yolu degisti:
+        -- /api/v2/... -> /api/controller/v2/... . Bos birakilirsa klasik AWX yolu
+        -- (/api/v2) kullanilir, yani mevcut sunucularin davranisi DEGISMEZ.
+        api_prefix    NVARCHAR(100) NULL,
         enabled       BIT NOT NULL DEFAULT 1,
         updated_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         UNIQUE(server_no)
@@ -2474,6 +2478,13 @@ async function setupTables() {
       table: 'scalex_state_mirror',
       col: 'last_restore_error',
       sql: `ALTER TABLE scalex_state_mirror ADD last_restore_error NVARCHAR(1000) NULL`,
+    },
+    {
+      // MEVCUT kurulumlar icin: ansible_awx_servers zaten varsa CREATE TABLE blogu
+      // hic calismaz ve kolon sessizce eksik kalir; getServers() 'invalid column' alir.
+      table: 'ansible_awx_servers',
+      col: 'api_prefix',
+      sql: `ALTER TABLE ansible_awx_servers ADD api_prefix NVARCHAR(100) NULL`,
     },
     {
       // MEVCUT KURULUMLAR ICIN. Kolonu yalnizca `CREATE TABLE`a eklemek YETMEZ:
