@@ -82,6 +82,25 @@ export type RequestState =
  *  kayitlari DB'de durdugu icin ikisi de kabul edilir; normalize etme isi
  *  `logFileMeta.normalizeMtime` icindedir (saniye/milisaniye epoch, ISO metin,
  *  hicbiri yoksa dosya adindaki tarih). */
+export type InventoryGapStatus = 'hala_yok' | 'envantere_girdi' | 'kontrol_edilemedi';
+
+/**
+ * Elle girilmis bir uygulama/sunucu adi ve envanterdeki SIMDIKI durumu.
+ * `kontrol_edilemedi` bilerek ayri bir hal: envanter okunamadiginda bir adi
+ * "hala yok" saymak, bilinmezligi suclama olarak yazmak olurdu.
+ */
+export interface InventoryGapRow {
+  kind: 'app' | 'host';
+  name: string;
+  app: string;
+  count: number;
+  userCount: number;
+  users: string[];
+  firstSeen: string | null;
+  lastSeen: string | null;
+  status: InventoryGapStatus;
+}
+
 export interface DiscoveredFile {
   path: string;
   size?: number;
@@ -301,6 +320,15 @@ export const logxV2Api = {
 
   // ── Admin: ocp_cluster_index ─────────────────────────────────────────────────
   admin: {
+    /**
+     * Elle girilen (envanterde olmayan) adlar ve SIMDIKI durumlari.
+     * `status` UC hallidir; `kontrol_edilemedi` bir eksiklik DEGIL, bilinmezliktir.
+     */
+    inventoryGaps: () =>
+      fetch(`${BASE}/admin/inventory-gaps`).then((r) =>
+        json<{ ok: boolean; rows: InventoryGapRow[] }>(r),
+      ),
+
     listClusterIndex: () =>
       fetch(`${BASE}/admin/ocp-cluster-index`).then((r) =>
         json<{ ok: boolean; rows: OcpClusterIndexRow[] }>(r),
