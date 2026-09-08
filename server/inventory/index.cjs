@@ -393,7 +393,7 @@ async function filterTablesByRole(tables, role, username) {
 // Artik yalniz kosul metnini (onek YOK) veya bos string doner; WHERE eklemek TEK yerde
 // (buildWhere) yapilir. filterGroup gecerliligi burada kontrol edilir; caller tekrar
 // kontrol ETMEZ (tek dogruluk kaynagi burasi).
-function buildAdvancedWhereClause(filterGroup, allCols, req) {
+function buildAdvancedWhereClause(filterGroup, allCols, req, colTypes) {
   if (!filterGroup || !Array.isArray(filterGroup.filters) || filterGroup.filters.length === 0) {
     return '';
   }
@@ -403,30 +403,32 @@ function buildAdvancedWhereClause(filterGroup, allCols, req) {
   for (const f of filterGroup.filters) {
     if (!f.col || !allCols.includes(f.col)) continue;
     const p = `af${idx++}`;
-    const colExpr = `CAST([${f.col}] AS NVARCHAR(MAX))`;
+    // colTypes verilmezse (eski cagrilar/testler) CAST'li guvenli hale duser.
+    const { expr: colExpr, ansi } = colExprFor(f.col, colTypes);
+    const P = (len) => strParam(ansi, len);
     switch (f.op) {
       case 'contains':
-        req.input(p, sql.NVarChar(512), `%${f.value}%`);
+        req.input(p, P(512), `%${f.value}%`);
         parts.push(`${colExpr} LIKE @${p}`);
         break;
       case 'notContains':
-        req.input(p, sql.NVarChar(512), `%${f.value}%`);
+        req.input(p, P(512), `%${f.value}%`);
         parts.push(`${colExpr} NOT LIKE @${p}`);
         break;
       case 'equals':
-        req.input(p, sql.NVarChar(512), f.value);
+        req.input(p, P(512), f.value);
         parts.push(`${colExpr} = @${p}`);
         break;
       case 'notEquals':
-        req.input(p, sql.NVarChar(512), f.value);
+        req.input(p, P(512), f.value);
         parts.push(`${colExpr} <> @${p}`);
         break;
       case 'startsWith':
-        req.input(p, sql.NVarChar(512), `${f.value}%`);
+        req.input(p, P(512), `${f.value}%`);
         parts.push(`${colExpr} LIKE @${p}`);
         break;
       case 'endsWith':
-        req.input(p, sql.NVarChar(512), `%${f.value}`);
+        req.input(p, P(512), `%${f.value}`);
         parts.push(`${colExpr} LIKE @${p}`);
         break;
       case 'isNull':
@@ -436,19 +438,19 @@ function buildAdvancedWhereClause(filterGroup, allCols, req) {
         parts.push(`${quoteIdent(f.col)} IS NOT NULL`);
         break;
       case 'gt':
-        req.input(p, sql.NVarChar(256), f.value);
+        req.input(p, P(256), f.value);
         parts.push(`${colExpr} > @${p}`);
         break;
       case 'gte':
-        req.input(p, sql.NVarChar(256), f.value);
+        req.input(p, P(256), f.value);
         parts.push(`${colExpr} >= @${p}`);
         break;
       case 'lt':
-        req.input(p, sql.NVarChar(256), f.value);
+        req.input(p, P(256), f.value);
         parts.push(`${colExpr} < @${p}`);
         break;
       case 'lte':
-        req.input(p, sql.NVarChar(256), f.value);
+        req.input(p, P(256), f.value);
         parts.push(`${colExpr} <= @${p}`);
         break;
       default:
@@ -721,6 +723,50 @@ async function getHiddenColumnsForTable(tableName) {
 }
 
 const TEXT_COLUMN_TYPES = new Set(['char', 'varchar', 'nchar', 'nvarchar', 'text', 'ntext']);
+
+// ── Kolon ifadesi: GEREKSIZ CAST'i kaldirir (arama performansi) ────────────────
+// SORUN: her filtre/arama predicate'i kolonu `CAST(col AS NVARCHAR(MAX))` ile sariyordu.
+// Kolon ZATEN metin oldugunda bu tamamen israf ve UC sekilde pahali:
+//   1) NVARCHAR(MAX) LOB semantigi getirir — satir basina donusum maliyeti,
+//   2) kolonun uzerindeki HICBIR index kullanilamaz (ifade uzerinde index yok),
+//   3) optimizer kolonun istatistiklerini kullanamaz, kardinalite tahmini bozulur.
+// Ozellikle multiFilters (`col IN (...)`) ve distinct dropdown'daki
+// `GROUP BY CAST(col AS NVARCHAR(MAX))` bundan zarar goruyordu: ikisi de TAM eslesme,
+// yani CAST olmasa index SEEK yapilabilirdi.
+//
+// TUZAK — TIP ESLESMESI SART: bir `varchar` kolonu NVarChar parametresiyle
+// karsilastirmak SQL Server'da IMPLICIT CONVERSION uretir; donusum KOLON tarafinda
+// uygulanir ve index'i CAST kadar kesin oldurur. Yani CAST'i kaldirip parametreyi
+// yanlis tiplemek hicbir sey kazandirmaz. Bu yuzden ANSI (char/varchar) kolonlar icin
+// VarChar, Unicode (nchar/nvarchar) kolonlar icin NVarChar parametre uretilir.
+//
+// text/ntext (LOB, kullanimdan kalkmis) ve metin-disi tipler CAST'te kalir: onlarda
+// zaten index avantaji yok, dogru string temsili gerekiyor.
+const UNICODE_TEXT_TYPES = new Set(['nchar', 'nvarchar']);
+const ANSI_TEXT_TYPES = new Set(['char', 'varchar']);
+
+/**
+ * @returns {{ expr: string, ansi: boolean }} expr: WHERE/GROUP BY'da kullanilacak kolon
+ *   ifadesi; ansi: parametrenin VarChar (true) mi NVarChar (false) mi baglanmasi gerektigi.
+ */
+function colExprFor(col, colTypes) {
+  const t = String((colTypes && colTypes.get && colTypes.get(col)) || '').toLowerCase();
+  if (UNICODE_TEXT_TYPES.has(t)) return { expr: quoteIdent(col), ansi: false };
+  if (ANSI_TEXT_TYPES.has(t)) return { expr: quoteIdent(col), ansi: true };
+  return { expr: `CAST(${quoteIdent(col)} AS NVARCHAR(MAX))`, ansi: false };
+}
+
+// Kolon tipine gore dogru mssql parametre tipini secer (yukaridaki tuzak).
+function strParam(ansi, len) {
+  return ansi ? sql.VarChar(len) : sql.NVarChar(len);
+}
+
+// Tablonun kolon->tip haritasi (getColumns cache'inden; ek sorgu YOK).
+async function getColTypes(table) {
+  await getColumns(table);
+  const entry = colCacheGet(table);
+  return entry ? entry.colTypes : new Map();
+}
 
 // search parametresi artik TUM kolonlara degil, yalniz metin-tipi kolonlara CAST+LIKE
 // uygular (kurumsal AI kod incelemesi, review.md #5) — sayisal/tarih kolonlarda CAST+LIKE
@@ -1221,11 +1267,15 @@ function initInventory(app) {
       if (!pool) return res.status(503).json({ ok: false, error: 'Veritabanı bağlantısı yok.' });
       const req2 = pool.request();
       req2.input('limitVal', sql.Int, limitVal);
+      const colTypes = await getColTypes(table);
+      // Kolon zaten metinse CAST YOK: asagidaki GROUP BY bu ifade uzerinden calisir ve
+      // NVARCHAR(MAX) uzerinde gruplama tablonun tamamini LOB'a cevirmeyi gerektirirdi.
+      const { expr: colExpr, ansi: colAnsi } = colExprFor(col, colTypes);
 
       const parts = [];
       if (search) {
-        req2.input('search', sql.NVarChar(256), `%${search}%`);
-        parts.push(`CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) LIKE @search`);
+        req2.input('search', strParam(colAnsi, 256), `%${search}%`);
+        parts.push(`${colExpr} LIKE @search`);
       }
       // Kolon adlari allCols'a karsi DOGRULANIR; deger'ler parametre olarak baglanir.
       let mfIdx = 0;
@@ -1233,19 +1283,20 @@ function initInventory(app) {
         if (c === col) continue; // kendi kolonu haric
         if (!allCols.includes(c)) continue; // beyaz liste disi kolon adi
         if (!Array.isArray(vals) || vals.length === 0) continue;
+        const { expr: otherExpr, ansi: otherAnsi } = colExprFor(c, colTypes);
         const ps = vals.map((v) => {
           const p = `dmf${mfIdx++}`;
-          req2.input(p, sql.NVarChar(512), String(v));
+          req2.input(p, strParam(otherAnsi, 512), String(v));
           return `@${p}`;
         });
-        parts.push(`CAST(${quoteIdent(c)} AS NVARCHAR(MAX)) IN (${ps.join(',')})`);
+        parts.push(`${otherExpr} IN (${ps.join(',')})`);
       }
       const whereClause = parts.length ? `WHERE ${parts.join(' AND ')}` : '';
       const result = await req2.query(
-        `SELECT TOP (@limitVal) CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) AS val, COUNT(*) AS cnt
+        `SELECT TOP (@limitVal) ${colExpr} AS val, COUNT(*) AS cnt
          FROM ${quoteIdent(table)}
          ${whereClause}
-         GROUP BY CAST(${quoteIdent(col)} AS NVARCHAR(MAX))
+         GROUP BY ${colExpr}
          ORDER BY cnt DESC`,
       );
       const values = result.recordset
@@ -1381,6 +1432,7 @@ function initInventory(app) {
 
     try {
       const allCols = await getColumns(table);
+      const colTypes = await getColTypes(table);
       // search yalniz metin-tipi kolonlara uygulanir + minimum 3 karakter zorunlu —
       // kucuk aramalar (1-2 karakter) her satirda TUM kolonlarda CAST+LIKE tetikleyip
       // indexsiz full-scan yaratiyordu (kurumsal AI kod incelemesi, review.md #5).
@@ -1397,34 +1449,47 @@ function initInventory(app) {
       const buildWhere = (req2) => {
         const parts = [];
         if (search.length >= 3 && searchCols.length > 0) {
-          req2.input('search', sql.NVarChar(256), `%${search}%`);
-          parts.push(
-            `(${searchCols.map((c) => `CAST(${quoteIdent(c)} AS NVARCHAR(MAX)) LIKE @search`).join(' OR ')})`,
-          );
+          // Iki AYRI parametre: ANSI kolonlar VarChar, Unicode kolonlar NVarChar ile
+          // karsilastirilir. Tek NVarChar parametresi ANSI kolonlarda implicit
+          // conversion uretir ve index'i oldururdu (bkz. colExprFor).
+          const preds = [];
+          let needAnsi = false;
+          let needUni = false;
+          for (const c of searchCols) {
+            const { expr, ansi } = colExprFor(c, colTypes);
+            if (ansi) needAnsi = true;
+            else needUni = true;
+            preds.push(`${expr} LIKE @${ansi ? 'searchA' : 'searchN'}`);
+          }
+          if (needAnsi) req2.input('searchA', sql.VarChar(256), `%${search}%`);
+          if (needUni) req2.input('searchN', sql.NVarChar(256), `%${search}%`);
+          parts.push(`(${preds.join(' OR ')})`);
         }
         // Legacy simple filters
         let idx = 0;
         for (const [col, val] of Object.entries(colFilters)) {
           if (!allCols.includes(col)) continue;
           const p = `filter${idx++}`;
-          req2.input(p, sql.NVarChar(256), `%${val}%`);
-          parts.push(`CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) LIKE @${p}`);
+          const { expr, ansi } = colExprFor(col, colTypes);
+          req2.input(p, strParam(ansi, 256), `%${val}%`);
+          parts.push(`${expr} LIKE @${p}`);
         }
         // Multi-select column filters: col IN (v1, v2, ...)
         let mfIdx = 0;
         for (const [col, vals] of Object.entries(multiFilters)) {
           if (!allCols.includes(col) || !Array.isArray(vals) || vals.length === 0) continue;
+          const { expr, ansi } = colExprFor(col, colTypes);
           const params = vals.map((v) => {
             const p = `mf${mfIdx++}`;
-            req2.input(p, sql.NVarChar(512), String(v));
+            req2.input(p, strParam(ansi, 512), String(v));
             return `@${p}`;
           });
-          parts.push(`CAST(${quoteIdent(col)} AS NVARCHAR(MAX)) IN (${params.join(',')})`);
+          parts.push(`${expr} IN (${params.join(',')})`);
         }
         // Advanced filterGroup — buildAdvancedWhereClause artik onek-siz kosul metni doner
         // (bkz. yukarida fonksiyon tanimi); WHERE eklemek burada, tek yerde yapilir.
         if (filterGroup && Array.isArray(filterGroup.filters) && filterGroup.filters.length > 0) {
-          const advancedWhere = buildAdvancedWhereClause(filterGroup, allCols, req2);
+          const advancedWhere = buildAdvancedWhereClause(filterGroup, allCols, req2, colTypes);
           if (advancedWhere) parts.push(`(${advancedWhere})`);
         }
         return parts.length ? `WHERE ${parts.join(' AND ')}` : '';
@@ -2090,6 +2155,8 @@ module.exports = {
   _extractReferencedTables: extractReferencedTables,
   _writeSavedQueries: writeSavedQueries,
   _buildAdvancedWhereClause: buildAdvancedWhereClause,
+  _colExprFor: colExprFor,
+  _strParam: strParam,
   _setSqCache: (v) => {
     _sqCache = v;
   },
