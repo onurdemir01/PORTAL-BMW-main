@@ -756,6 +756,44 @@ function initDenetim(app) {
     }
   });
 
+  // -- API (LOCATION) BAZINDA KIRILIM --------------------------------------------------
+  // "Su API hangi ortamda, hangi sunucularda var?" sorusu. /nginx-api konfigurasyon
+  // duzeyinde ozetliyor; burasi TEK TEK location'lara iner.
+  //
+  // Ham satirlar burada gruplaniyor (SQL'de degil) cunku ORTAM sunucu adindan turer -
+  // esleme JS'te. Istemciye giden yuk yine kucuk: (config x location) duzeyinde ~binler,
+  // host listeleri satirin icinde. Ayni desen /nginx-spa ucunda da kullaniliyor.
+  router.get('/nginx-api-locations', async (req, res) => {
+    try {
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const { summarizeLocations } = require('./nginx-locations.cjs');
+      const scanDate = String(req.query.scanDate || '').trim();
+
+      const dateRes = await query(
+        scanDate
+          ? `SELECT CONVERT(varchar(10), CAST(@d AS DATE), 23) AS d`
+          : `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.NginxRateLimitInventory`,
+        scanDate ? [{ name: 'd', type: sql.NVarChar(10), value: scanDate }] : [],
+      );
+      const effectiveDate = dateRes.recordset?.[0]?.d || null;
+      if (!effectiveDate) {
+        return res.json({ ok: true, scanDate: null, envs: [], rows: [] });
+      }
+
+      const r = await query(
+        `SELECT host, config_file, api_location, ip_rate_limit, server_rate_limit
+           FROM dbo.NginxRateLimitInventory
+          WHERE scan_date = @d`,
+        [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
+      );
+
+      const { envs, rows } = summarizeLocations(r.recordset || []);
+      res.json({ ok: true, scanDate: effectiveDate, envs, rows });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
   router.get('/init-scripts', async (req, res) => {
     try {
       const { query } = require('../inventory/mssql.cjs');

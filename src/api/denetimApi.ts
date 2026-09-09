@@ -413,9 +413,41 @@ export interface NginxProxyResult {
   message?: string;
 }
 
+/** API (location) bazinda kirilim: her yol hangi ORTAMDA, hangi SUNUCULARDA? */
+export interface NginxApiLocationCell {
+  hosts: string[];
+  /** O ortamda gorulen FARKLI limit degerleri; birden fazlaysa surukleme var. */
+  ipRateLimits: string[];
+  serverRateLimits: string[];
+}
+
+export interface NginxApiLocationRow {
+  config: string;
+  location: string;
+  envs: Record<string, NginxApiLocationCell>;
+  presentEnvs: string[];
+  missingEnvs: string[];
+  totalHosts: number;
+  /** AYNI ortamdaki sunucular farkli limit tasiyor - genelde HATA. */
+  limitDrift: boolean;
+  /** Ortamlar arasi limit farki - kasitli olabilir ama gorunur olmali. */
+  envLimitDrift: boolean;
+}
+
+export interface NginxApiLocationsResult {
+  ok: boolean;
+  scanDate: string | null;
+  envs: string[];
+  rows: NginxApiLocationRow[];
+  message?: string;
+}
+
 export const denetimApi = {
   nginxProxy: (scanDate?: string): Promise<NginxProxyResult> =>
     fetch(`${BASE}/nginx-proxy${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+
+  nginxApiLocations: (scanDate?: string): Promise<NginxApiLocationsResult> =>
+    fetch(`${BASE}/nginx-api-locations${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
 
   nginxApi: (scanDate?: string): Promise<NginxApiResult> =>
     fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),

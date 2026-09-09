@@ -24,6 +24,7 @@ import {
 import { denetimApi, type NginxApiResult, type NginxApiConfigRow } from "@/api/denetimApi";
 import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from "./ui";
 import { NginxInternetExpose } from "./NginxInternetExpose";
+import { NginxApiLocations } from "./NginxApiLocations";
 
 const nf = (n: number) => new Intl.NumberFormat("tr-TR").format(n);
 
@@ -38,7 +39,7 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
   URL.revokeObjectURL(url);
 }
 
-type View = "ortam" | "sunucu" | "konfig" | "internet";
+type View = "ortam" | "sunucu" | "konfig" | "apibazli" | "internet";
 
 export function NginxApiEnvanteri() {
   const [data, setData] = useState<NginxApiResult | null>(null);
@@ -104,6 +105,9 @@ export function NginxApiEnvanteri() {
           { id: "ortam", label: "Ortama Göre" },
           { id: "sunucu", label: "Sunucuya Göre" },
           { id: "konfig", label: "Konfigürasyon Karşılaştırma" },
+          // Konfigurasyon gorunumu "dosya her yerde ayni mi" sorusunu cevapliyor;
+          // bu gorunum "SU API nerede var" sorusunu - farkli soru, ayri gorunum.
+          { id: "apibazli", label: "API Bazlı" },
           // Denetim'in geri kalanı SALT OKUNUR; bu görünüm EYLEM içeriyor (bir API'yi
           // internete açar). Ayrı bir sekme olarak durması, kazayla tıklanma ihtimalini
           // azaltır ve okuma ile yazmayı görsel olarak ayırır.
@@ -158,6 +162,8 @@ export function NginxApiEnvanteri() {
           <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
         </button>
       </div>
+
+      {view === "apibazli" && <NginxApiLocations />}
 
       {view === "internet" && <NginxInternetExpose />}
 
