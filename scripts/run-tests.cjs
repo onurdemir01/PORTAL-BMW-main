@@ -34,6 +34,7 @@ const TEST_DIRS = [
   'server/ai/__tests__',
   'server/inventory/__tests__',
   'server/ansible/__tests__',
+  'server/nginx-expose/__tests__',
   'server/admin/__tests__',
   'server/opsx/__tests__',
   'server/filex/__tests__',

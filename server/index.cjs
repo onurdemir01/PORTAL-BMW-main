@@ -169,6 +169,11 @@ async function main() {
       init: () => require('./audit/denetim.cjs').initDenetim(app),
       optional: true,
     },
+    {
+      name: 'nginxExpose',
+      init: () => require('./nginx-expose/index.cjs').initNginxExpose(app),
+      optional: true,
+    },
   ];
   for (const { name, init, optional } of modules) {
     try {
