@@ -1,0 +1,113 @@
+# restart_all.yaml — her uygulamanin tipini KENDI icin tespit edip yeniden baslatir.
+#
+# NEDEN (2026-09-09 bulgusu): onceki akis tipi TEK SEFER, TUM parti icin tespit ediyordu.
+# Tespit dongusu ilk uygulamada `exit` ettigi icin ikinci ve sonraki uygulamalara HIC
+# bakilmiyordu; cikan tek rc butun partiyi tek bir dala (deployment / rollout / dc)
+# yonlendiriyordu. Karisik tipte bir parti gonderildiginde:
+#     uygulama-bir (Deployment)   -> Exist,Success
+#     uygulama-iki (Argo Rollout) -> "Not Exist,Failed"   <-- restart HIC denenmedi
+# Argo Rollout'un `oc patch ... restartAt` komutunda sorun YOKTU; komuta sira gelmiyordu.
+# (Ters yon de gecerliydi: parti bir Rollout ile baslarsa Deployment'lar "Not Exist" olur.)
+#
+# COZUM: dongude `exit` YERINE `continue`. Her uygulama kendi tipine gore islenir ve
+# TAM OLARAK BIR CSV satiri uretir. Bu, deployment.yaml / rollout.yaml /
+# deploymentconfig.yaml dosyalarinin ucunu de gereksiz kilar (ayni mantik uc kez
+# kopyalanmisti).
+#
+# CSV SATIRI: <application>,<namespace>,<cluster>,<Exist|Not Exist>,<Success|Failed>
+# Teshis satirlari STDERR'e yazilir - stdout dogrudan CSV'ye eklendigi icin oraya
+# yazmak raporu bozardi.
+
+- name: --- [Task] Her uygulamayi KENDI tipine gore yeniden baslat ---
+  shell: |
+    export KUBECONFIG="/tmp/kubeconfig_opsxrollout_$$"
+    LOGIN=$(oc login --server={{ url }} --username="{{ username }}" --password="{{ password }}" 2>&1)
+    IFS=';' read -ra input <<< "{{ oc_input }}"
+
+    for i in "${input[@]}";do
+      namespace=$(echo $i | awk -NF "," '{print $1}')
+      application=$(echo $i | awk -NF "," '{print $2}')
+      [[ -z "$namespace" || -z "$application" ]] && continue
+
+      # 1) DEPLOYMENT
+      if oc get deployments -n "$namespace" "$application" --no-headers >/dev/null 2>&1;then
+        if out=$(oc rollout restart deployment -n "$namespace" "$application" 2>&1);then
+          echo "$application,$namespace,{{ name }},Exist,Success"
+        else
+          echo "$application,$namespace,{{ name }},Exist,Failed"
+          echo "HATA deployment $namespace/$application: $out" >&2
+        fi
+        continue
+      fi
+
+      # 2) ARGO ROLLOUT
+      if oc get rollouts -n "$namespace" "$application" --no-headers >/dev/null 2>&1;then
+        restart_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        if [[ -z "$restart_at" ]];then
+          echo "$application,$namespace,{{ name }},Exist,Failed"
+          echo "HATA rollout $namespace/$application: zaman damgasi uretilemedi" >&2
+          continue
+        fi
+        patch_out=$(oc patch rollout -n "$namespace" "$application" --type merge \
+                    -p "{\"spec\":{\"restartAt\":\"${restart_at}\"}}" 2>&1)
+        patch_rc=$?
+        # `oc patch` DEGISIKLIK OLMASA DA 0 doner ("unchanged"). Yalniz cikis koduna
+        # bakmak, hicbir sey olmadigi halde Success yazdirirdi. Bu yuzden alan GERI
+        # OKUNUP yazdigimiz degerle karsilastirilir.
+        applied=$(oc get rollout -n "$namespace" "$application" \
+                  -o jsonpath='{.spec.restartAt}' 2>/dev/null)
+        if [[ $patch_rc -eq 0 && "$applied" == "$restart_at" ]];then
+          echo "$application,$namespace,{{ name }},Exist,Success"
+        else
+          echo "$application,$namespace,{{ name }},Exist,Failed"
+          echo "HATA rollout $namespace/$application: rc=$patch_rc istenen=$restart_at okunan=${applied:-<bos>} ${patch_out}" >&2
+        fi
+        continue
+      fi
+
+      # 3) DEPLOYMENTCONFIG
+      if oc get dc -n "$namespace" "$application" --no-headers >/dev/null 2>&1;then
+        if out=$(oc rollout latest -n "$namespace" "$application" 2>&1);then
+          echo "$application,$namespace,{{ name }},Exist,Success"
+        else
+          echo "$application,$namespace,{{ name }},Exist,Failed"
+          echo "HATA dc $namespace/$application: $out" >&2
+        fi
+        continue
+      fi
+
+      # 4) HICBIRI — nedeni STDERR'e yazilir; "yok" ile "bakamadik" ayirt edilebilsin.
+      echo "$application,$namespace,{{ name }},Not Exist,Failed"
+      echo "TESPIT-YOK $namespace/$application: deployment/rollout/dc hicbirinde bulunamadi (login=$LOGIN)" >&2
+    done
+
+    oc logout --server="{{ url }}" > /dev/null 2>&1
+    rm -f "$KUBECONFIG"
+  register: rollout_result
+  failed_when: false
+
+- name: --- [Task] Tespit/hata ayrintilari (AWX ciktisinda gorunur) ---
+  ansible.builtin.debug:
+    msg: "{{ rollout_result.stderr_lines | default([]) }}"
+  when: (rollout_result.stderr | default('')) | trim | length > 0
+
+- name: --- [Task] Ensure output file exist ---
+  ansible.builtin.copy:
+    content: ""
+    dest: /sw/WAS_IMAGES/Ansible/Openshift/application_rollout.csv
+    force: false
+    mode: 0777
+  run_once: true
+  delegate_to: localhost
+
+- name: --- [Task] Append results ---
+  ansible.builtin.lineinfile:
+    insertafter: EOF
+    path: /sw/WAS_IMAGES/Ansible/Openshift/application_rollout.csv
+    line: "{{ rollout_result.stdout }}"
+    create: yes
+    mode: 0777
+  delegate_to: localhost
+  throttle: 1
+  no_log: true
+  ignore_errors: true
