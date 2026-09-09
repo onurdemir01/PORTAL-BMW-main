@@ -189,6 +189,27 @@ export default function DenetimPage() {
 // Kapsam yuzdesi YALNIZCA internet kumesi uzerinden hesaplanir; intranet uygulamalarini
 // paydaya katmak, cikmasi zaten yasak olanlari "eksik" saymak olurdu.
 // Grafik CSS ile cizilir - projede grafik kutuphanesi yok.
+/** Bar renklerinin ne anlama geldigini gosteren kucuk kare + etiket. */
+function LegendSwatch({
+  className = "",
+  label,
+  style,
+}: {
+  className?: string;
+  label: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
+      <span
+        className={`w-3 h-3 rounded-sm border border-[var(--border-subtle)] ${className}`}
+        style={style}
+      />
+      {label}
+    </span>
+  );
+}
+
 function SpaCoverage() {
   const [platform, setPlatform] = useState("ark");
   const [data, setData] = useState<SpaCoverageResult | null>(null);
@@ -226,15 +247,36 @@ function SpaCoverage() {
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">
             OpenShift SPA’ları ↔ nginx tanımları
           </h3>
-          <p className="text-[11px] text-[var(--text-muted)] mt-0.5 max-w-3xl">
-            SPA ayrımı ad kalıbından yapılır (adında{" "}
-            <code className="px-1 rounded bg-[var(--bg-elevated)]">-app-v</code> ya da{" "}
-            <code className="px-1 rounded bg-[var(--bg-elevated)]">-app-emb-v</code> geçenler). Ağ ayrımı{" "}
-            <b>route tipinden</b> gelir: <code className="px-1 rounded bg-[var(--bg-elevated)]">passthrough</code>{" "}
-            → internet, nginx’e çıkabilir; <code className="px-1 rounded bg-[var(--bg-elevated)]">reencrypt</code>{" "}
-            → intranet, nginx’e çıkamaz. Kapsam yüzdesi <b>yalnızca internet</b> uygulamaları
-            üzerinden hesaplanır. Ortam bilgisi namespace son ekinden (-dev/-test/-qa/-prod) gelir.
+          <p className="text-[12px] text-[var(--text-secondary)] mt-1 max-w-2xl leading-relaxed">
+            <b>İnternete açık</b> SPA’ların kaçının nginx’te tanımı var? Her satır bir ortam;
+            yeşil kısım tanımlı olanları, turuncu kısım <b>eksik olanları</b> gösterir.
           </p>
+          <details className="mt-1.5 group">
+            <summary className="text-[11px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)] select-none">
+              Bu sayılar nasıl bulunuyor?
+            </summary>
+            <div className="mt-1.5 text-[11px] text-[var(--text-muted)] leading-relaxed max-w-3xl space-y-1">
+              <p>
+                <b>Hangi uygulamalar SPA sayılıyor:</b> adında{" "}
+                <code className="px-1 rounded bg-[var(--bg-elevated)]">-app-v</code> ya da{" "}
+                <code className="px-1 rounded bg-[var(--bg-elevated)]">-app-emb-v</code> geçenler.
+              </p>
+              <p>
+                <b>İnternet mi intranet mi:</b> route tipinden.{" "}
+                <code className="px-1 rounded bg-[var(--bg-elevated)]">passthrough</code> = internet,
+                nginx’e çıkabilir ·{" "}
+                <code className="px-1 rounded bg-[var(--bg-elevated)]">reencrypt</code> = intranet,
+                nginx’e çıkmamalı.
+              </p>
+              <p>
+                <b>Ortam:</b> namespace son ekinden (-dev / -test / -qa / -prod).
+              </p>
+              <p>
+                <b>Kapsam yüzdesi:</b> yalnızca internet uygulamaları üzerinden — intranet
+                olanlar zaten nginx’e çıkmayacağı için paydaya girmez.
+              </p>
+            </div>
+          </details>
         </div>
         <Select sizeVariant="sm" value={platform} onChange={(e) => setPlatform(e.target.value)}>
           {data.platforms.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -250,10 +292,10 @@ function SpaCoverage() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat n={sum((r) => r.internetTotal)} l="internet SPA (çıkmalı)" />
-        <Stat n={sum((r) => (r.measured ? r.internetInNginx : 0))} l="nginx'e tanımlı" tone="ok" />
-        <Stat n={sum((r) => (r.measured ? r.internetMissingCount : 0))} l="eksik tanım" tone="warn" />
-        <Stat n={anomaly} l="intranet olduğu hâlde nginx'te" tone={anomaly ? "warn" : undefined} />
+        <Stat n={sum((r) => r.internetTotal)} l="internete açık SPA" />
+        <Stat n={sum((r) => (r.measured ? r.internetInNginx : 0))} l="nginx'te tanımlı" tone="ok" />
+        <Stat n={sum((r) => (r.measured ? r.internetMissingCount : 0))} l="nginx'te tanımı yok" tone="warn" />
+        <Stat n={anomaly} l="intranet ama nginx'te" tone={anomaly ? "warn" : undefined} />
       </div>
 
       {anomaly > 0 && (
@@ -263,6 +305,31 @@ function SpaCoverage() {
           olan uygulamalar nginx’e çıkmamalıydı. Ortam satırını açıp listeyi görebilirsiniz.
         </p>
       )}
+
+      {/* Sutun basliklari bar satirinin genislikleriyle (w-14 / flex-1 / w-28 / w-24)
+          BIREBIR hizali tutulur - degistirilirse ikisi birden degismeli. */}
+      <div className="flex items-center gap-3 px-3 pt-1">
+        <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+          Ortam
+        </span>
+        <span className="flex-1 flex items-center gap-3 flex-wrap">
+          <LegendSwatch className="bg-emerald-500/70" label="nginx'te tanımlı" />
+          <LegendSwatch className="bg-amber-400/70" label="tanımı eksik" />
+          <LegendSwatch
+            label="ölçülemedi"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(45deg, var(--border) 0 6px, transparent 6px 12px)",
+            }}
+          />
+        </span>
+        <span className="w-28 shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+          tanımlı / toplam
+        </span>
+        <span className="w-24 shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+          kapsam
+        </span>
+      </div>
 
       <div className="space-y-2">
         {data.rows.map((r) => (
@@ -761,6 +828,59 @@ function OcpCoverage() {
           <Stat n={data.completeCount} l="tüm ortamlarda var" tone="ok" />
           <Stat n={data.totalApplications - data.completeCount} l="en az bir ortamda eksik" tone="warn" />
           <Stat n={data.clusters.length} l="cluster" />
+        </div>
+      )}
+
+      {/* Kullanici istegi: cluster secimi tek basina yeterli degil - hangi ORTAMDA kac
+          uygulama var? Sayilar data.rows (TAMAMI) uzerinden hesaplanir, ekrandaki
+          filtrelenmis `rows` uzerinden DEGIL: "sadece eksigi olanlar" varsayilan olarak
+          acik oldugu icin filtreli sayim ortam toplamlarini oldugundan KUCUK gosterirdi. */}
+      {data && data.rows.length > 0 && (
+        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3.5">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                Ortama göre uygulama sayısı
+              </h3>
+              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                <span className="font-mono">{platform}</span> cluster’ında bir uygulamanın o
+                ortamda en az bir namespace’i varsa sayılır. Ekrandaki filtrelerden
+                etkilenmez.
+              </p>
+            </div>
+            <span className="text-[11px] text-[var(--text-muted)] tabular-nums">
+              toplam {fmtNumber(data.rows.length)} uygulama
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {envs.map((e) => {
+              const apps = data.rows.filter((r) => (r.envs[e] || []).length > 0);
+              const nsCount = data.rows.reduce((a, r) => a + (r.envs[e] || []).length, 0);
+              const pct = data.rows.length ? (apps.length / data.rows.length) * 100 : 0;
+              return (
+                <div key={e} className="flex items-center gap-3">
+                  <span className="w-14 shrink-0 text-xs font-semibold uppercase text-[var(--text-secondary)]">
+                    {e}
+                  </span>
+                  <span className="flex-1 h-5 rounded bg-[var(--bg-elevated)] overflow-hidden">
+                    <span
+                      className="block h-full bg-[var(--accent)]/70"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </span>
+                  <span className="w-32 shrink-0 text-right text-xs tabular-nums text-[var(--text-secondary)]">
+                    {fmtNumber(apps.length)} uygulama
+                  </span>
+                  <span className="w-28 shrink-0 text-right text-[11px] tabular-nums text-[var(--text-muted)]">
+                    {fmtNumber(nsCount)} namespace
+                  </span>
+                  <span className="w-14 shrink-0 text-right text-xs tabular-nums font-semibold text-[var(--text-secondary)]">
+                    %{pct.toFixed(0)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
