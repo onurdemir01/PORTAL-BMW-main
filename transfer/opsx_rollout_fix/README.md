@@ -1,10 +1,10 @@
 # opsx rollout düzeltmesi — elden taşıma paketi
 
 > **Bu klasör Portal'ın parçası değildir.** Ansible deposuna (`gar_bmt_ansible_scripts`)
-> push yetkim olmadığı için değişiklik buraya, taşınmak üzere konuldu. Ansible deposuna
-> uygulandıktan sonra bu klasör silinebilir.
+> push yetkim olmadığı için değişiklik buraya, taşınmak üzere konuldu. Uygulandıktan
+> sonra silinebilir.
 >
-> Kanonik commit: `be56d7aac` — *opsx rollout: tip tespiti UYGULAMA BASINA*
+> Kanonik commit: `e5a63b400`
 
 ## Sorun
 
@@ -12,8 +12,8 @@
 `oc patch ... restartAt` komutu **doğruydu** — komuta **sıra gelmiyordu**.
 
 `main.yaml` tipi **tek sefer, tüm parti için** tespit ediyordu ve tespit döngüsü **ilk
-uygulamada `exit`** ediyordu. İkinci ve sonraki uygulamalara hiç bakılmadan, çıkan tek
-`rc` (0/44/55/66) bütün partiyi tek bir dala yönlendiriyordu:
+uygulamada `exit`** ediyordu. Sonraki uygulamalara hiç bakılmadan, çıkan tek `rc`
+(0/44/55/66) bütün partiyi tek bir dala yönlendiriyordu:
 
 ```
 uygulama-bir (Deployment)   -> Exist,Success
@@ -23,48 +23,59 @@ uygulama-iki (Argo Rollout) -> "Not Exist,Failed"    <-- restart hiç denenmedi
 Ters yön de geçerliydi: parti bir Rollout ile başlarsa Deployment'lar "Not Exist" olurdu.
 
 Portal tek koşuda birden fazla `(namespace, application)` çifti gönderiyor
-(`server/opsx/index.cjs` → `cleanPairs.map(...).join(';')`), yani hata pratikte
-tetikleniyordu. Tek uygulamada veya tek tipli partide sorun görünmüyordu — "bazen
-çalışıyor" hissi bundan.
+(`server/opsx/index.cjs` → `cleanPairs.map(...).join(';')`). Tek uygulamada veya tek
+tipli partide sorun görünmüyordu — "bazen çalışıyor" hissi bundan.
 
-## Çözüm
+## Çözüm — dosya-başına-tip düzeni korundu
 
-Döngüde `exit` yerine **`continue`**. Her uygulama kendi tipine göre işlenir ve tam
-olarak bir CSV satırı üretir (`restart_all.yaml`).
+Döngüde `exit` yerine **`continue`**; tespit **uygulama başına** yapılıyor ve her tip
+dosyası **yalnız kendi listesini** işliyor.
 
-Ayrıca `restartAt` tarafında iki iyileştirme:
+```
+detect.yaml (YENİ)   her uygulamayı ayrı değerlendirir, "<tip>,<ns>,<app>" satırları
+                     üretir ve üç listeye ayırır
+main.yaml            tipe göre dağıtım — her dosyaya `target_input` olarak yalnız kendi
+                     listesi verilir
+deployment.yaml      artık `oc_input` değil `target_input` işler
+rollout.yaml         aynı + restartAt geri-okuması (aşağıda)
+deploymentconfig.yaml aynı
+```
 
-* `oc patch` **değişiklik olmasa da 0 döner** ("unchanged"). Yalnız çıkış koduna bakmak,
-  hiçbir şey olmadığı hâlde `Success` yazdırıyordu. Alan artık **geri okunup** yazılan
+ARK / non-ARK dallanmasına gerek kalmadı: tespit zaten "önce deployment, sonra rollouts,
+sonra dc" sırasıyla çalışıyor; Argo CRD'si olmayan bir cluster'da `oc get rollouts` hata
+verip bir sonraki tipe geçiyor — **non-ARK davranışı aynen korunuyor**.
+
+## Ayrıca düzeltilen iki şey
+
+Bunlar düzenle ilgili değil, gerçek hatalardı:
+
+* **`oc patch` "unchanged" durumunda da 0 döner.** Yalnız çıkış koduna bakmak, hiçbir şey
+  olmadığı hâlde `Success` yazdırıyordu. `spec.restartAt` artık **geri okunup** yazılan
   değerle karşılaştırılıyor; tutmuyorsa `Failed`.
-* Başarısızlık nedenleri (oc'nin gerçek çıktısı, istenen/okunan damga) **stderr**'e
-  yazılıp ayrı bir debug görevinde gösteriliyor. stdout'a yazılamazdı — o doğrudan
-  `application_rollout.csv`'ye ekleniyor, raporu bozardı.
+* Başarısızlık nedenleri (oc'nin gerçek çıktısı) **stderr**'e yazılıp ayrı bir debug
+  görevinde gösteriliyor. stdout'a yazılamazdı — o doğrudan
+  `application_rollout.csv`'ye ekleniyor.
+* Hiçbir tipte bulunamayan uygulamalar `main.yaml`'da rapora **ekleniyor**. Aksi hâlde
+  istenen uygulama CSV'de hiç görünmez ve Teams kartında sessizce kaybolurdu.
 
 ## Ne yapılacak
 
-Hepsi `gar_bmt_ansible_scripts` deposunda, `bmw_portal/` altında.
+Hepsi `gar_bmt_ansible_scripts` deposunda, `bmw_portal/` altında. **Sadece kopyalama var,
+silinecek dosya yok.**
 
-**1. Kopyala** (üzerine yaz / yeni ekle)
+| Buradaki dosya | Hedef | Durum |
+|---|---|---|
+| `opsx_openshift_application_rollout/operations/tasks/detect.yaml` | aynı yol | **yeni** |
+| `opsx_openshift_application_rollout/operations/tasks/main.yaml` | aynı yol | üzerine yaz |
+| `opsx_openshift_application_rollout/operations/tasks/deployment.yaml` | aynı yol | üzerine yaz |
+| `opsx_openshift_application_rollout/operations/tasks/rollout.yaml` | aynı yol | üzerine yaz |
+| `opsx_openshift_application_rollout/operations/tasks/deploymentconfig.yaml` | aynı yol | üzerine yaz |
+| `tests/check_rollout_dispatch.py` | `bmw_portal/tests/` | **yeni** |
 
-| Buradaki dosya | Hedef |
-|---|---|
-| `opsx_openshift_application_rollout/operations/tasks/main.yaml` | aynı yol — **üzerine yaz** |
-| `opsx_openshift_application_rollout/operations/tasks/restart_all.yaml` | aynı yol — **yeni dosya** |
-| `tests/check_rollout_dispatch.py` | `bmw_portal/tests/` — **yeni dosya** |
+**`prepare.yaml`'a dokunulmadı** — bu pakette yok, hedefte olduğu gibi kalmalı.
 
-**2. Sil** — bu üçü artık kullanılmıyor. Aynı restart+CSV mantığı üç kez kopyalanmıştı;
-`restart_all.yaml` üçünün yerine geçiyor. Silinmezlerse zarar vermez, sadece ölü kod
-olarak kalırlar:
-
-```
-bmw_portal/opsx_openshift_application_rollout/operations/tasks/deployment.yaml
-bmw_portal/opsx_openshift_application_rollout/operations/tasks/rollout.yaml
-bmw_portal/opsx_openshift_application_rollout/operations/tasks/deploymentconfig.yaml
-```
-
-**3. AWX project sync** → sonra karışık tipli bir parti ile deneyin (bir Deployment +
-bir Argo Rollout aynı koşuda). Eskiden Argo olan "Not Exist,Failed" derdi.
+Sonra **AWX project sync** → karışık tipli bir partiyle deneyin (bir Deployment + bir
+Argo Rollout aynı koşuda). Eskiden Argo olan "Not Exist,Failed" derdi.
 
 ## Doğrulama
 
@@ -72,15 +83,12 @@ bir Argo Rollout aynı koşuda). Eskiden Argo olan "Not Exist,Failed" derdi.
 python bmw_portal/tests/check_rollout_dispatch.py
 ```
 
-Test, `restart_all.yaml` içindeki kabuk bloğunu dosyadan çıkarıp **sahte bir `oc` ile
-gerçekten çalıştırır** — iddiayı metin üzerinden değil davranış üzerinden doğrular.
-Karışık parti (Deployment + Argo Rollout + DC + hiçbiri) doğru işlenmeli; ayrıca
-"patch'i sessizce yutan oc" senaryosuyla geri-okuma korumasının `Success` yazmadığı
-kanıtlanır. `bash` gerektirir (Git Bash olur).
+Test dört katmanı ayrı ayrı doğrular: `detect.yaml`'ın kabuk bloğunu **sahte bir `oc` ile
+gerçekten çalıştırır**, `set_fact` ayrıştırmasını Jinja ile kontrol eder, her tip
+dosyasının kendi listesini işlediğini gösterir, ve "patch'i sessizce yutan oc"
+senaryosunda `Success` yazılmadığını kanıtlar. `bash` gerektirir (Git Bash olur).
 
 ## Değişmeyenler
 
-* `target_cluster` desteği (tek cluster kısıtlaması) **korundu**
-* Teams kartı, cluster'lar arası birleştirme, CSV formatı **aynı**
-* non-ARK davranışı **aynı**: tespit zaten önce `deployment`'a bakıyor; Argo CRD'si
-  olmayan cluster'da `oc get rollouts` hata verip bir sonraki tipe geçiyor
+`target_cluster` desteği, Teams kartı, cluster'lar arası birleştirme, CSV formatı,
+`prepare.yaml` ve non-ARK davranışı — hepsi aynı.

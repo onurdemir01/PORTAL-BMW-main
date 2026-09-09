@@ -7,25 +7,57 @@
   run_once: true
   delegate_to: localhost
 
-# TIP TESPITI ARTIK UYGULAMA BASINA (2026-09-09).
+# TIP TESPITI UYGULAMA BASINA (2026-09-09).
 #
-# Onceki hal: tek bir shell gorevi TUM parti icin tip tespit ediyor, cikan rc'ye gore
-# (0/44/55/66) parti KOMPLE tek bir dala yonlendiriliyordu. Tespit dongusu ilk
-# uygulamada `exit` ettigi icin sonraki uygulamalara HIC bakilmiyordu:
+# Onceki hal: tek bir shell TUM parti icin tip tespit ediyor, cikan rc'ye gore (0/44/55/66)
+# parti KOMPLE tek bir dala yonlendiriliyordu. Tespit dongusu ilk uygulamada `exit`
+# ettigi icin sonrakilere HIC bakilmiyordu:
 #     uygulama-bir (Deployment)   -> Exist,Success
 #     uygulama-iki (Argo Rollout) -> "Not Exist,Failed"   <-- restart hic denenmedi
-# Argo Rollout'un `oc patch ... restartAt` komutu DOGRUYDU; komuta sira gelmiyordu.
+# rollout.yaml'daki `oc patch ... restartAt` komutu DOGRUYDU; komuta sira gelmiyordu.
 #
-# Artik her uygulama kendi tipine gore isleniyor (restart_all.yaml). Bu, deployment.yaml
-# / rollout.yaml / deploymentconfig.yaml dosyalarini gereksiz kildi - ayni mantik uc kez
-# kopyalanmisti, ucu de kaldirildi.
+# Artik detect.yaml her uygulamayi AYRI degerlendirip uc listeye ayirir; her tip dosyasi
+# YALNIZ KENDI listesini isler. Dosya-basina-tip duzeni BILEREK korundu: dosya adi niyeti
+# soyler ve kardes job (bmw_openshift_jobs/application_rollout) ile hizali kalir.
 #
-# ARK/non-ARK ayrimi da kalkti: tespit zaten "once deployment, sonra rollouts, sonra dc"
-# sirasiyla calisiyor. Argo CRD'si olmayan bir cluster'da `oc get rollouts` hata verir ve
-# akis bir sonraki tipe gecer - non-ARK'ta bugunku davranis (deployment restart) AYNEN
-# korunur, ustelik oradaki bir DC de artik dogru islenir.
-- name: --- [Task] Uygulamalari yeniden baslat (tip uygulama basina tespit edilir) ---
-  include_tasks: restart_all.yaml
+# ARK/non-ARK dallanmasina gerek kalmadi: tespit "once deployment, sonra rollouts, sonra
+# dc" sirasiyla calisiyor; Argo CRD'si olmayan bir cluster'da `oc get rollouts` hata verip
+# bir sonraki tipe geciyor - non-ARK'ta bugunku davranis (deployment restart) AYNEN korunur.
+- name: --- [Task] Uygulama tiplerini tespit et ---
+  include_tasks: detect.yaml
+
+- name: --- Include task for Deployment Rollout Restart ---
+  include_tasks: deployment.yaml
+  vars:
+    target_input: "{{ apps_deployment | join(';') }}"
+  when: apps_deployment | length > 0
+
+- name: --- Include task for Argo Rollout Restart ---
+  include_tasks: rollout.yaml
+  vars:
+    target_input: "{{ apps_rollout | join(';') }}"
+  when: apps_rollout | length > 0
+
+- name: --- Include task for Deploymentconfig Rollout Restart ---
+  include_tasks: deploymentconfig.yaml
+  vars:
+    target_input: "{{ apps_dc | join(';') }}"
+  when: apps_dc | length > 0
+
+# Hicbir tipte bulunamayanlar da rapora GIRMELI: aksi halde istenen uygulama CSV'de hic
+# gorunmez ve Teams kartinda sessizce KAYBOLURDU ("istedim ama sonuc yok" durumu).
+- name: --- [Task] Hicbir tipte bulunamayan uygulamalari rapora ekle ---
+  ansible.builtin.lineinfile:
+    insertafter: EOF
+    path: /sw/WAS_IMAGES/Ansible/Openshift/application_rollout.csv
+    line: "{{ item.split(',')[1] }},{{ item.split(',')[0] }},{{ name }},Not Exist,Failed"
+    create: yes
+    mode: 0777
+  loop: "{{ apps_none }}"
+  delegate_to: localhost
+  throttle: 1
+  ignore_errors: true
+  when: apps_none | length > 0
 
 - name: --- [Task] Read application_rollout.csv ---
   read_csv:
