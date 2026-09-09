@@ -794,6 +794,47 @@ function initDenetim(app) {
     }
   });
 
+  // -- NGINX ENVANTERI ----------------------------------------------------------------
+  // Kaynak: dbo.nginx_inventory (bmw_nginx/nginx_metadata job'i doldurur).
+  // Her sunucuda .metadata dosyasi uretilip toplanir; tablo her kosuda TRUNCATE edilip
+  // yeniden yazilir - yani GECMIS YOK, tablo her zaman "su anki hal".
+  //
+  // Bu tabloda ORTAM KOLONU VAR (`env`); NginxRateLimitInventory'den farkli olarak
+  // sunucu adindan turetmeye gerek yok.
+  router.get('/nginx-inventory', async (req, res) => {
+    try {
+      const { query } = require('../inventory/mssql.cjs');
+      const { summarizeNginxInventory } = require('./nginx-inventory-summary.cjs');
+
+      const r = await query(
+        `SELECT metadata_version, hostname, fqdn, env, location, service, services,
+                service_count, domain, ip, subnet, os, kernel, architecture, cpu,
+                memory, nginx_version, nginx_user, nginx_prefix, config_count,
+                disk_usr_nginx, disk_web_log, source_last_update
+           FROM dbo.nginx_inventory
+          ORDER BY env, location, hostname`,
+      );
+
+      const rows = r.recordset || [];
+      // En yeni source_last_update, verinin ne kadar taze oldugunu soyler. Tabloda
+      // scan_date YOK (TRUNCATE+yeniden yazim), bu yuzden tazelik gostergesi budur.
+      const lastUpdate = rows
+        .map((x) => x.source_last_update)
+        .filter(Boolean)
+        .sort()
+        .pop() || null;
+
+      res.json({
+        ok: true,
+        lastUpdate: lastUpdate ? String(lastUpdate) : null,
+        ...summarizeNginxInventory(rows),
+        hosts: rows,
+      });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
   router.get('/init-scripts', async (req, res) => {
     try {
       const { query } = require('../inventory/mssql.cjs');

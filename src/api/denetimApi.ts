@@ -442,9 +442,93 @@ export interface NginxApiLocationsResult {
   message?: string;
 }
 
+/** Bir alanin deger dagilimi (cok gorulen once). */
+export interface NginxInvDist {
+  value: string;
+  count: number;
+}
+
+/** GiB toplami; cozulemeyen degerler `unparsed` altinda AYRICA bildirilir -
+ *  uydurulmus bir sayi toplamlari sessizce bozardi. */
+export interface NginxInvSize {
+  totalGiB: number;
+  parsed: number;
+  unparsed: number;
+}
+
+export interface NginxInvHost {
+  hostname: string;
+  fqdn: string | null;
+  env: string;
+  location: string | null;
+  service: string | null;
+  services: string | null;
+  service_count: string | number | null;
+  domain: string | null;
+  ip: string | null;
+  subnet: string | null;
+  os: string | null;
+  kernel: string | null;
+  architecture: string | null;
+  cpu: string | number | null;
+  memory: string | null;
+  nginx_version: string | null;
+  nginx_user: string | null;
+  nginx_prefix: string | null;
+  config_count: string | number | null;
+  disk_usr_nginx: string | null;
+  disk_web_log: string | null;
+  source_last_update: string | null;
+  metadata_version: string | number | null;
+}
+
+export interface NginxInventoryResult {
+  ok: boolean;
+  /** Tabloda scan_date YOK (her kosuda TRUNCATE+yeniden yazim); tazelik gostergesi budur. */
+  lastUpdate: string | null;
+  totals: {
+    hosts: number;
+    envs: number;
+    services: number;
+    nginxVersions: number;
+    osVersions: number;
+    cpuTotal: number;
+    memory: NginxInvSize;
+    diskNginx: NginxInvSize;
+    diskWebLog: NginxInvSize;
+  };
+  byEnv: { env: string; hosts: number; locations: { location: string; hosts: number }[] }[];
+  byService: { service: string; hosts: number; envs: string[] }[];
+  versions: {
+    nginx: NginxInvDist[];
+    os: NginxInvDist[];
+    kernel: NginxInvDist[];
+    architecture: NginxInvDist[];
+    metadata: NginxInvDist[];
+  };
+  resources: {
+    cpu: NginxInvDist[];
+    memory: NginxInvDist[];
+    diskNginx: NginxInvDist[];
+    diskWebLog: NginxInvDist[];
+    configCount: NginxInvDist[];
+    serviceCount: NginxInvDist[];
+  };
+  other: {
+    domain: NginxInvDist[];
+    subnet: NginxInvDist[];
+    nginxUser: NginxInvDist[];
+  };
+  hosts: NginxInvHost[];
+  message?: string;
+}
+
 export const denetimApi = {
   nginxProxy: (scanDate?: string): Promise<NginxProxyResult> =>
     fetch(`${BASE}/nginx-proxy${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+
+  nginxInventory: (): Promise<NginxInventoryResult> =>
+    fetch(`${BASE}/nginx-inventory`).then(safeJson),
 
   nginxApiLocations: (scanDate?: string): Promise<NginxApiLocationsResult> =>
     fetch(`${BASE}/nginx-api-locations${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),

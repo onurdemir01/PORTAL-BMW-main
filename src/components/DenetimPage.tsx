@@ -23,6 +23,7 @@ import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import EnvanterMetrics from "@/components/denetim/EnvanterMetrics";
 import EnvanterDegisim from "@/components/denetim/EnvanterDegisim";
 import { NginxApiEnvanteri } from "@/components/denetim/NginxApiEnvanteri";
+import { NginxEnvanteri } from "@/components/denetim/NginxEnvanteri";
 import { NginxProxy } from "@/components/denetim/NginxProxy";
 import AppEnvs from "@/components/denetim/AppEnvs";
 import WebApp from "@/components/denetim/WebApp";
@@ -69,6 +70,11 @@ const HELP: HelpSection[] = [
     body: "nginx_ratelimit_inventory job'ının günlük taramasını gösterir: hangi sunucuda, hangi konfigürasyon dosyasında kaç API (location) bloğu tanımlı ve bunların rate limit durumu. ÖNEMLİ: kaynak tablo ortam bilgisi TAŞIMAZ ve konfigürasyon dosya adları ortamdan bağımsız olarak AYNIDIR — aynı 'x.conf' hem DEV hem PROD sunucusunda bulunur. Bu yüzden ortam sunucu adından türetilir (GBNGWD..=dev, GBNGWT..=test, GBNGWQ..=qa, GBNGWP../GBNGWAP..=prod); kalıba uymayan sunucu sessizce bir ortama atanmaz, 'BİLİNMİYOR' olarak görünür. 'Konfigürasyon Karşılaştırma' görünümü asıl bulguyu üretir: bir satır tek bir dosyanın tüm ortamlardaki hâlidir, hücredeki sayı o ortamdaki API bloğu sayısıdır ve '—' dosyanın o ortamda hiç bulunmadığı anlamına gelir. İki tür sürüklenme ayrı işaretlenir: 'ortam farkı' ortamların beklenen API sayısı birbirinden farklı, 'sunucu farkı' AYNI ortamdaki sunucular birbirinden farklı (hücrede aralık olarak gösterilir, örn. 17–20) — ikincisi genelde bir sunucuya dağıtımın ulaşmadığı anlamına gelir. 'Rate limit tanımı olmayan konfigürasyonlar' listesi ise hiçbir location'ında ne IP bazlı ne de sunucu bazlı limit bulunmayan dosyaları toplar.",
   },
   {
+    icon: ServerStackIcon,
+    title: "Nginx Envanteri",
+    body: "nginx_metadata job'ının topladığı sunucu üst verisini gösterir (dbo.nginx_inventory). Her sunucuda bir .metadata dosyası üretilip toplanır. ÖNEMLİ: tablo her koşuda TRUNCATE edilip yeniden yazılır — yani GEÇMİŞ YOKTUR, gördüğünüz her zaman \"şu anki hâl\"dir; bu yüzden tarih seçici yerine en yeni source_last_update değeri gösterilir. NginxRateLimitInventory'den farklı olarak bu tabloda ORTAM KOLONU vardır, sunucu adından türetmeye gerek kalmaz. Beş görünüm var: 'Ortam' hangi ortamda kaç sunucu olduğunu ve bunların Pendik/Ankara dağılımını; 'Versiyonlar' nginx/OS/kernel/mimari dağılımını; 'Service'ler' bir service'i kaç sunucunun barındırdığını (services alanı tekil adlara bölünüp sayılır); 'Kaynaklar' cpu/bellek/disk/konfigürasyon dağılımını; 'Sunucular' ise tüm alanları arama ve CSV ile birlikte verir. Bellek ve disk toplamları yalnızca ÇÖZÜMLENEBİLEN değerlerden hesaplanır — çözümlenemeyen sunucu varsa sayı sarı renkle işaretlenir ve kaçının dışarıda kaldığı ipucunda yazar; uydurulmuş bir sayı toplamı sessizce bozardı.",
+  },
+  {
     icon: Squares2X2Icon,
     title: "Openshift Audit",
     body: "Bir uygulamanın bir platformun hangi ortamlarında var, hangilerinde eksik olduğunu gösterir. Ortam bilgisi cluster'dan DEĞİL, namespace son ekinden (-dev/-test/-qa/-prod) gelir — çünkü ark_dev ile ark_test aynı cluster'ları paylaşır, cluster tek başına ortam bilgisi taşımaz.",
@@ -101,7 +107,15 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 
 export default function DenetimPage() {
   const [tab, setTab] = useState<
-    "nginx" | "nginxapi" | "ocp" | "init" | "envanter" | "degisim" | "appenvs" | "webapp"
+    | "nginx"
+    | "nginxapi"
+    | "nginxenv"
+    | "ocp"
+    | "init"
+    | "envanter"
+    | "degisim"
+    | "appenvs"
+    | "webapp"
   >("nginx");
   const [showHelp, setShowHelp] = useState(false);
 
@@ -152,6 +166,7 @@ export default function DenetimPage() {
           {([
             { id: "nginx", label: "Nginx SPA", icon: ServerStackIcon },
             { id: "nginxapi", label: "Nginx API Envanteri", icon: ServerStackIcon },
+            { id: "nginxenv", label: "Nginx Envanteri", icon: ServerStackIcon },
             { id: "ocp", label: "OpenShift", icon: Squares2X2Icon },
             { id: "init", label: "Init Script", icon: DocumentDuplicateIcon },
             { id: "envanter", label: "Envanter", icon: ChartBarSquareIcon },
@@ -180,6 +195,7 @@ export default function DenetimPage() {
 
       {tab === "nginx" && <NginxSpaAudit />}
       {tab === "nginxapi" && <NginxApiEnvanteri />}
+      {tab === "nginxenv" && <NginxEnvanteri />}
       {tab === "ocp" && <OcpCoverage />}
       {tab === "init" && <InitScriptsAudit />}
       {tab === "envanter" && <EnvanterMetrics />}
