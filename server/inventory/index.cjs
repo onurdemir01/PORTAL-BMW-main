@@ -1495,34 +1495,50 @@ function initInventory(app) {
         return parts.length ? `WHERE ${parts.join(' AND ')}` : '';
       };
 
-      // COUNT + veri TEK sorguda: COUNT(*) OVER() WHERE'e uyan TUM satir sayisini,
-      // OFFSET/FETCH'ten BAGIMSIZ olarak dondurur (T-SQL mantiksal sorgu sirasinda
-      // pencere fonksiyonlari OFFSET/FETCH'ten ONCE hesaplanir) — onceden countReq/dataReq
-      // icin AYRI iki sorgu (iki full-scan) calisiyordu (kurumsal AI kod incelemesi,
-      // review.md #2). Istisna: OFFSET, eslesen tum satirlari asarsa (var-olmayan bir
-      // sayfa istenirse) FETCH NEXT sifir satir doner ve __total okunacak satir kalmaz —
-      // bu nadir durumda dogru toplami almak icin ayri, ucuz bir COUNT sorgusuna dusulur.
+      // TOPLAM SAYIM: pencere fonksiyonu KALDIRILDI (2026-09-10, kullanici karari).
+      //
+      // Onceki hal `SELECT COUNT(*) OVER() AS __total, * ... OFFSET/FETCH` idi. Tek
+      // sorguda hem veri hem toplam donduruyordu ama BEDELI agirdi: COUNT(*) OVER()
+      // WHERE'e uyan TUM satirlari saymak zorundadir, dolayisiyla SQL Server yalnizca
+      // `limit` satir istense bile ERKEN CIKAMAZ - her aramada tum tabloyu tarardi.
+      //
+      // Yeni yaklasim: `limit + 1` satir istenir, sayim YAPILMAZ.
+      //   * gelen satir <= limit  -> toplam KESIN olarak bilinir (offset + gelen)
+      //   * gelen satir == limit+1 -> daha fazlasi var; toplam BILINMIYOR, alt sinir
+      //     bildirilir ve arayuzde "200+" seklinde gosterilir.
+      // Boylece dar sonuc kumelerinde sayi yine KESIN, genis olanlarda ise sorgu
+      // `limit` satiri bulunca durabiliyor.
+      //
+      // KESIN SAYI HALA ISTENEBILIR: ?exactCount=1 ile ayri bir COUNT sorgusu calisir
+      // (arayuzdeki "tam sayiyi hesapla" ve CSV etiketi bunu kullanir). Yani kesinlik
+      // KAYBOLMADI, VARSAYILAN olmaktan cikti.
+      const wantExact = String(req.query.exactCount || '') === '1';
+
       const dataReq = pool.request();
       const whereClause = buildWhere(dataReq);
-      dataReq.input('limit', sql.Int, limit);
+      dataReq.input('limit', sql.Int, limit + 1); // +1 = "daha var mi" yoklamasi
       dataReq.input('offset', sql.Int, offset);
-      const combined = await dataReq.query(
-        `SELECT COUNT(*) OVER() AS __total, * FROM ${quoteIdent(table)} ${whereClause} ${orderClause} OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
+      const dataRes = await dataReq.query(
+        `SELECT * FROM ${quoteIdent(table)} ${whereClause} ${orderClause} OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
       );
 
-      let total;
-      let rows;
-      if (combined.recordset.length > 0) {
-        total = combined.recordset[0].__total;
-        rows = combined.recordset.map(({ __total, ...rest }) => rest);
-      } else {
+      let rows = dataRes.recordset || [];
+      const hasMore = rows.length > limit;
+      if (hasMore) rows = rows.slice(0, limit);
+
+      let total = offset + rows.length;
+      let exact = !hasMore;
+
+      // Sayfa tamamen bos donduyse (var-olmayan bir sayfa istenmis olabilir) ya da
+      // kullanici acikca kesin sayi istediyse ucuz olmayan ama DOGRU yolu kullan.
+      if (wantExact || (rows.length === 0 && offset > 0)) {
         const countReq = pool.request();
         const countWhere = buildWhere(countReq);
         const countResult = await countReq.query(
           `SELECT COUNT(*) AS total FROM ${quoteIdent(table)} ${countWhere}`,
         );
         total = countResult.recordset[0]?.total ?? 0;
-        rows = [];
+        exact = true;
       }
 
       // actions.md #12 — kolon-seviyesi gorunurluk; Admin BYPASS eder. Hem donen kolon
@@ -1547,7 +1563,17 @@ function initInventory(app) {
         table,
         columns: responseCols,
         rows: responseRows,
-        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+        // `pages` yalnizca toplam KESIN oldugunda gercek sayfa sayisidir; aksi halde
+        // "en az bu kadar" anlamina gelir ve `hasMore` bir sonraki sayfanin varligini
+        // soyler. Arayuz ikisini ayirt eder (kesin degilse sayinin yanina "+" konur).
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.max(1, Math.ceil(total / limit) + (exact ? 0 : 1)),
+          exact,
+          hasMore,
+        },
       });
     } catch (err) {
       res.status(503).json({ ok: false, error: err.message });

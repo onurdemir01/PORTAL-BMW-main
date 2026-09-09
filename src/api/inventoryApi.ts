@@ -48,8 +48,15 @@ export interface ColumnMeta {
 export interface PaginationInfo {
   page: number;
   limit: number;
+  /** `exact` false ise bu bir ALT SINIRDIR ("en az bu kadar"), kesin sayi degildir. */
   total: number;
+  /** `exact` false ise "en az bu kadar sayfa" anlamina gelir. */
   pages: number;
+  /** Sunucu COUNT(*) OVER() yerine limit+1 yoklamasi yapiyor: dar sonuc kumelerinde
+   *  sayi KESIN, genis olanlarda bilinmiyor. exactCount=1 ile kesin sayi istenebilir. */
+  exact: boolean;
+  /** Bu sayfadan sonrasi var mi (kesin sayi bilinmese de guvenilir). */
+  hasMore: boolean;
 }
 
 export interface TableDataResult {
@@ -196,6 +203,9 @@ export const inventoryApi = {
       filterGroup?: FilterGroup;
       orderBy?: string;
       orderDir?: "ASC" | "DESC";
+      /** Toplam sayiyi KESIN olarak istet. Varsayilan hizli yol yalnizca alt sinir
+       *  dondurur (bkz. server/inventory: limit+1 yoklamasi). */
+      exactCount?: boolean;
     } = {}
   ): Promise<TableDataResult> => {
     const qs = new URLSearchParams();
@@ -204,6 +214,7 @@ export const inventoryApi = {
     if (params.search) qs.set("search", params.search);
     if (params.orderBy) qs.set("orderBy", params.orderBy);
     if (params.orderDir) qs.set("orderDir", params.orderDir);
+    if (params.exactCount) qs.set("exactCount", "1");
     if (params.filters) {
       for (const [col, val] of Object.entries(params.filters)) {
         if (val) qs.set(`filters[${col}]`, val);

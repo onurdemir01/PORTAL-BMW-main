@@ -170,7 +170,18 @@ const EnvanterPage: React.FC = () => {
   const [allColumns, setAllColumns] = useState<string[]>([]);
   const [visibleCols, setVisibleCols] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
-  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 200 });
+  // `exact` false ise `total` bir ALT SINIRDIR: sunucu COUNT(*) OVER() kullanmayi
+  // birakti (her aramada tum tabloyu taramak zorunda kaliyordu) ve artik limit+1 satir
+  // yoklamasi yapiyor. Dar sonuc kumelerinde sayi yine KESIN; genis olanlarda "200+"
+  // gosterilir ve kullanici isterse tam sayiyi hesaplatabilir.
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pages: 1,
+    total: 0,
+    limit: 200,
+    exact: true,
+    hasMore: false,
+  });
   const [search, setSearch] = useState('');
 
   // Multi-select column filters — applied immediately when user clicks "Uygula" inside dropdown
@@ -209,7 +220,7 @@ const EnvanterPage: React.FC = () => {
     setAppliedFilterGroup(EMPTY_FILTER_GROUP);
     setSearch('');
     setRows([]);
-    setPagination({ page: 1, pages: 1, total: 0, limit });
+    setPagination({ page: 1, pages: 1, total: 0, limit, exact: true, hasMore: false });
     setError(null);
     setOrderBy(null);
     setOrderDir(null);
@@ -242,7 +253,7 @@ const EnvanterPage: React.FC = () => {
   }, [activeTable, dbAvailable]);
 
   const fetchData = useCallback(
-    async (page: number) => {
+    async (page: number, exactCount = false) => {
       if (dbAvailable === false || !activeTable) return;
       setLoading(true);
       setError(null);
@@ -255,6 +266,7 @@ const EnvanterPage: React.FC = () => {
           filterGroup: appliedFilterGroup.filters.length > 0 ? appliedFilterGroup : undefined,
           orderBy: orderBy ?? undefined,
           orderDir: orderDir ?? undefined,
+          exactCount,
         });
         if (!r.ok) throw new Error((r as unknown as { error: string }).error || 'Veri alınamadı');
         setRows(r.rows);
@@ -372,7 +384,11 @@ const EnvanterPage: React.FC = () => {
     try {
       let allRows: Record<string, unknown>[] = [];
       let page = 1;
-      let totalPages = 1;
+      // DURMA KOSULU `pages` DEGIL `hasMore`: toplam sayi artik her zaman kesin degil
+      // (sunucu COUNT(*) OVER() yerine limit+1 yoklamasi yapiyor), dolayisiyla `pages`
+      // kesin olmadiginda "en az bu kadar" anlamina gelir. `hasMore` ise sayidan
+      // BAGIMSIZ ve her zaman guvenilir - disa aktarmanin yarim kalmamasi buna bagli.
+      let more = true;
       do {
         const r = await inventoryApi.data(activeTable, {
           page,
@@ -385,9 +401,9 @@ const EnvanterPage: React.FC = () => {
         });
         if (!r.ok) throw new Error('Sunucu hatası.');
         allRows = allRows.concat(r.rows);
-        totalPages = r.pagination.pages;
+        more = r.pagination.hasMore;
         page += 1;
-      } while (page <= totalPages);
+      } while (more);
 
       if (allRows.length > 0) {
         downloadCsv(visibleCols, allRows, activeTable);
@@ -409,7 +425,8 @@ const EnvanterPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Envanter</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            TBMWANS veritabanı — {fmtNumber(pagination.total)} kayıt
+            TBMWANS veritabanı — {fmtNumber(pagination.total)}
+            {pagination.exact ? '' : '+'} kayıt
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -457,7 +474,7 @@ const EnvanterPage: React.FC = () => {
             disabled={rows.length === 0 || csvExporting}
             title={
               totalActiveFilters > 0
-                ? `Aktif filtrelerle tüm sonuçları indir (${pagination.total} kayıt)`
+                ? `Aktif filtrelerle tüm sonuçları indir (${pagination.total}${pagination.exact ? '' : '+'} kayıt)`
                 : 'Tümünü CSV olarak indir'
             }
             className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 transition-colors"
@@ -467,7 +484,7 @@ const EnvanterPage: React.FC = () => {
             ) : (
               <ArrowDownTrayIcon className="w-4 h-4" />
             )}
-            CSV{totalActiveFilters > 0 ? ` (${pagination.total})` : ''}
+            CSV{totalActiveFilters > 0 ? ` (${pagination.total}${pagination.exact ? '' : '+'})` : ''}
           </button>
         </div>
       </div>
@@ -722,9 +739,25 @@ const EnvanterPage: React.FC = () => {
           </button>
         )}
 
-        <span className="text-xs text-gray-400 ml-auto">
-          Toplam: {fmtNumber(pagination.total)} | Sayfa {pagination.page}/{pagination.pages} |{' '}
-          {limit} satır/sayfa
+        <span className="text-xs text-gray-400 ml-auto flex items-center gap-1.5">
+          <span>
+            Toplam: {fmtNumber(pagination.total)}
+            {pagination.exact ? '' : '+'} | Sayfa {pagination.page}
+            {pagination.exact ? `/${pagination.pages}` : ''} | {limit} satır/sayfa
+          </span>
+          {/* Kesin sayi VARSAYILAN olmaktan cikti ama KAYBOLMADI: istendiginde ayri bir
+              COUNT sorgusuyla hesaplanir. */}
+          {!pagination.exact && (
+            <button
+              type="button"
+              onClick={() => fetchData(pagination.page, true)}
+              disabled={loading}
+              className="underline hover:text-gray-600 disabled:opacity-40"
+              title="Tüm eşleşen kayıtları saydırır — büyük tablolarda birkaç saniye sürebilir"
+            >
+              tam sayıyı hesapla
+            </button>
+          )}
         </span>
       </div>
 
