@@ -16,6 +16,39 @@
 const express = require('express');
 const { PLATFORM_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
 
+// Proxy (production) kolonlari DDL ile eklendi mi?
+//
+// NEDEN TESPIT: `kind` kolonu YOKKEN sorguya "AND kind = 'spa'" koymak Denetim
+// sayfasinin TAMAMINI dusururdu. DDL elle calistirildigi icin kodun once, semanin
+// sonra gelmesi NORMAL bir durumdur - bu yuzden filtre KOSULLU kurulur ve sema
+// hazir olmadan da mevcut ekranlar calismaya devam eder.
+let _proxyColsAt = 0;
+let _proxyCols = null;
+const PROXY_COLS_TTL = 60_000;
+
+async function hasProxyColumns() {
+  if (_proxyCols !== null && Date.now() - _proxyColsAt < PROXY_COLS_TTL) return _proxyCols;
+  try {
+    const { query } = require('../inventory/mssql.cjs');
+    const r = await query(
+      `SELECT COUNT(*) AS n FROM sys.columns
+        WHERE object_id = OBJECT_ID('dbo.Nginx_Config_Audit')
+          AND name IN ('kind','upstream_name','target_url','upstream_defined')`,
+    );
+    _proxyCols = Number(r.recordset?.[0]?.n || 0) === 4;
+  } catch {
+    _proxyCols = false;
+  }
+  _proxyColsAt = Date.now();
+  return _proxyCols;
+}
+
+/** Mevcut SPA ekranlari proxy satirlarini GORMEMELI - sayilari sessizce degistirirdi.
+ *  Eski satirlarda kind NULL'dur ve SPA sayilir. */
+async function spaFilter() {
+  return (await hasProxyColumns()) ? " AND (kind IS NULL OR kind = 'spa')" : '';
+}
+
 function initDenetim(app) {
   const { requireAuth } = require('../auth/index.cjs');
   const router = express.Router();
@@ -57,7 +90,7 @@ function initDenetim(app) {
                   host, vhost, deploy_mode, include_exists, app_deployed,
                   in_ocp_inventory, status
              FROM dbo.Nginx_Config_Audit
-            WHERE scan_date = @d`,
+            WHERE scan_date = @d${await spaFilter()}`,
           [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
         ),
         query(
@@ -219,7 +252,8 @@ function initDenetim(app) {
         ),
         scanDate
           ? query(
-              `SELECT DISTINCT env, application FROM dbo.Nginx_Config_Audit WHERE scan_date = @d`,
+              `SELECT DISTINCT env, application FROM dbo.Nginx_Config_Audit
+                WHERE scan_date = @d${await spaFilter()}`,
               [{ name: 'd', type: sql.NVarChar(10), value: scanDate }],
             )
           : Promise.resolve({ recordset: [] }),
@@ -630,6 +664,92 @@ function initDenetim(app) {
         scanDate: effectiveDate,
         availableDates: (datesRes.recordset || []).map((r) => r.d),
         ...summary,
+      });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
+  // -- PROXY (PRODUCTION) TANIMLARI ---------------------------------------------------
+  // Production nginx SPA include deseni KULLANMAZ; tanimlar proxy_pass/upstream
+  // seklindedir. Denetim uzun sure yalniz include desenini kaydettigi icin PROD ortami
+  // BOS gorunuyordu (sunucular taraniyordu - tarayici deseni tanimiyordu).
+  //
+  // SPA'ya ozgu alanlar (include, deploy_mode, app_deployed) burada NULL'dur; sahte
+  // deger yazmak toplamlara sizip metrikleri yanlis gosterirdi.
+  router.get('/nginx-proxy', async (req, res) => {
+    try {
+      const { query, sql } = require('../inventory/mssql.cjs');
+
+      if (!(await hasProxyColumns())) {
+        // Sema hazir degil: BOS liste degil, NEDENINI soyleyen bir yanit doner -
+        // "hic tanim yok" ile "henuz olculemiyor" karistirilmamalidir.
+        return res.json({
+          ok: true, schemaReady: false, scanDate: null, envs: [], services: [],
+          totals: { rows: 0, vhosts: 0, hosts: 0, nonProdTarget: 0, undefinedUpstream: 0 },
+          rows: [],
+        });
+      }
+
+      const scanDate = String(req.query.scanDate || '').trim();
+      const dateRes = await query(
+        scanDate
+          ? `SELECT CONVERT(varchar(10), CAST(@d AS DATE), 23) AS d`
+          : `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d
+               FROM dbo.Nginx_Config_Audit WHERE kind = 'proxy'`,
+        scanDate ? [{ name: 'd', type: sql.NVarChar(10), value: scanDate }] : [],
+      );
+      const effectiveDate = dateRes.recordset?.[0]?.d || null;
+      if (!effectiveDate) {
+        return res.json({
+          ok: true, schemaReady: true, scanDate: null, envs: [], services: [],
+          totals: { rows: 0, vhosts: 0, hosts: 0, nonProdTarget: 0, undefinedUpstream: 0 },
+          rows: [],
+        });
+      }
+
+      const r = await query(
+        `SELECT service, env, host, vhost, location_path, upstream_name, target_url,
+                upstream_defined, in_ocp_inventory, status
+           FROM dbo.Nginx_Config_Audit
+          WHERE scan_date = @d AND kind = 'proxy'
+          ORDER BY env, service, vhost, location_path, host`,
+        [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
+      );
+
+      // Ayni tanim prod'da 4-8 sunucuda AYNADIR; location bazinda tekillestirilir,
+      // hangi sunucularda goruldugu ayrica tasinir ki eksik sunucu farkedilebilsin.
+      const map = new Map();
+      for (const x of r.recordset || []) {
+        const key = `${x.vhost}||${x.location_path}||${x.target_url || ''}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            service: x.service, env: String(x.env || '').trim().toUpperCase(),
+            vhost: x.vhost, locationPath: x.location_path,
+            upstreamName: x.upstream_name, targetUrl: x.target_url,
+            upstreamDefined: x.upstream_defined === 1 || x.upstream_defined === true,
+            inOcpInventory: x.in_ocp_inventory === 1 || x.in_ocp_inventory === true,
+            status: x.status, hosts: [],
+          });
+        }
+        map.get(key).hosts.push(x.host);
+      }
+      const rows = [...map.values()].map((v) => ({ ...v, hosts: v.hosts.sort() }));
+
+      res.json({
+        ok: true,
+        schemaReady: true,
+        scanDate: effectiveDate,
+        envs: [...new Set(rows.map((x) => x.env))].sort(),
+        services: [...new Set(rows.map((x) => x.service))].filter(Boolean).sort(),
+        totals: {
+          rows: rows.length,
+          vhosts: new Set(rows.map((x) => x.vhost)).size,
+          hosts: new Set((r.recordset || []).map((x) => x.host)).size,
+          nonProdTarget: rows.filter((x) => x.status === 'NON_PROD_TARGET').length,
+          undefinedUpstream: rows.filter((x) => !x.upstreamDefined).length,
+        },
+        rows,
       });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });

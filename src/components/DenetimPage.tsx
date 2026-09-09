@@ -23,6 +23,7 @@ import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import EnvanterMetrics from "@/components/denetim/EnvanterMetrics";
 import EnvanterDegisim from "@/components/denetim/EnvanterDegisim";
 import { NginxApiEnvanteri } from "@/components/denetim/NginxApiEnvanteri";
+import { NginxProxy } from "@/components/denetim/NginxProxy";
 import AppEnvs from "@/components/denetim/AppEnvs";
 import WebApp from "@/components/denetim/WebApp";
 import NginxLocations from "@/components/denetim/NginxLocations";
@@ -535,7 +536,7 @@ function AppList({ title, apps, tone, empty }: {
 // ── 1) NGINX SPA AUDIT ────────────────────────────────────────────────────────────────
 function NginxSpaAudit() {
   // Kullanici talebi: matrisin yani sira, her servis icin location bazinda AYRINTI.
-  const [view, setView] = useState<"matris" | "location">("matris");
+  const [view, setView] = useState<"matris" | "location" | "proxy">("matris");
   const [data, setData] = useState<NginxSpaResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -598,6 +599,9 @@ function NginxSpaAudit() {
       {([
         { id: "matris", label: "Ortam Matrisi" },
         { id: "location", label: "Location Detayı" },
+        // PROD proxy deseni AYRI gorunumde: mevcut iki gorunum SPA'ya ozgudur ve
+        // karistirmak ikisini de bulaniklastirirdi.
+        { id: "proxy", label: "Proxy Tanımları (PROD)" },
       ] as const).map((v) => (
         <button
           key={v.id}
@@ -617,6 +621,7 @@ function NginxSpaAudit() {
       <SpaCoverage />
       {viewTabs}
       {view === "location" && <NginxLocations />}
+      {view === "proxy" && <NginxProxy />}
 
       {/* ENV TESHISI: bir ortam bos gorunuyorsa NEDENI burada gorulur. env degeri vhost
           DOSYA ADINDAN turer (<SERVIS>-<ORTAM>.conf), taranan SUNUCUDAN degil - bu ayrim

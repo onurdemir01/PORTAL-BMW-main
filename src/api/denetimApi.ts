@@ -378,7 +378,45 @@ export interface NginxApiResult {
   message?: string;
 }
 
+/** Production proxy tanimi (kind='proxy'). SPA'ya ozgu alanlar burada YOKTUR. */
+export interface NginxProxyRow {
+  service: string;
+  env: string;
+  vhost: string;
+  locationPath: string;
+  upstreamName: string | null;
+  targetUrl: string | null;
+  /** proxy_pass hedefi AYNI dosyada upstream olarak tanimli mi (tek basina hata degil). */
+  upstreamDefined: boolean;
+  inOcpInventory: boolean;
+  status: string;
+  /** Ayni tanimin goruldugu sunucular - eksik kalan bir sunucu buradan farkedilir. */
+  hosts: string[];
+}
+
+export interface NginxProxyResult {
+  ok: boolean;
+  /** DDL (kind/upstream_name/target_url/upstream_defined) uygulanmis mi?
+   *  false ise "hic tanim yok" DEGIL, "henuz olculemiyor" demektir. */
+  schemaReady: boolean;
+  scanDate: string | null;
+  envs: string[];
+  services: string[];
+  totals: {
+    rows: number;
+    vhosts: number;
+    hosts: number;
+    nonProdTarget: number;
+    undefinedUpstream: number;
+  };
+  rows: NginxProxyRow[];
+  message?: string;
+}
+
 export const denetimApi = {
+  nginxProxy: (scanDate?: string): Promise<NginxProxyResult> =>
+    fetch(`${BASE}/nginx-proxy${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+
   nginxApi: (scanDate?: string): Promise<NginxApiResult> =>
     fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
 
