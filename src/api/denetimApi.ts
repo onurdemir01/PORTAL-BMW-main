@@ -306,7 +306,82 @@ export interface NginxLocationsResult {
   message?: string;
 }
 
+/** Nginx API Envanteri (dbo.NginxRateLimitInventory) - ortam SUNUCU ADINDAN turetilir,
+ *  konfigurasyon dosya adlari ortamdan bagimsiz olarak AYNIDIR. */
+export interface NginxApiEnvRow {
+  env: string;
+  hosts: number;
+  configs: number;
+  locations: number;
+  noLimitLocations: number;
+  configsWithoutLimit: number;
+}
+
+export interface NginxApiHostRow {
+  host: string;
+  env: string;
+  /** Yalnizca production icin anlamli: "Ankara" | "Pendik" | "". */
+  site: string;
+  configs: number;
+  locations: number;
+  noLimitLocations: number;
+}
+
+export interface NginxApiConfigHost {
+  host: string;
+  env: string;
+  site: string;
+  locations: number;
+  noLimit: number;
+}
+
+export interface NginxApiEnvCell {
+  hosts: number;
+  locations: number;
+  /** Ayni ortamdaki sunucularin en az/en cok location sayisi; farkliysa SURUKLENME var. */
+  minLoc: number;
+  maxLoc: number;
+}
+
+export interface NginxApiConfigRow {
+  config: string;
+  envs: Record<string, NginxApiEnvCell>;
+  presentEnvs: string[];
+  missingEnvs: string[];
+  /** Ayni ortamin sunuculari birbirinden farkli. */
+  hostInconsistent: boolean;
+  /** Ortamlarin beklenen location sayisi birbirinden farkli. */
+  envInconsistent: boolean;
+  totalLocations: number;
+  noLimitLocations: number;
+  noLimitEverywhere: boolean;
+  hosts: NginxApiConfigHost[];
+}
+
+export interface NginxApiResult {
+  ok: boolean;
+  scanDate: string | null;
+  availableDates: string[];
+  envs: string[];
+  totals: {
+    hosts: number;
+    configs: number;
+    locations: number;
+    noLimitLocations: number;
+    configsWithoutLimit: number;
+    inconsistentConfigs: number;
+  };
+  byEnv: NginxApiEnvRow[];
+  byHost: NginxApiHostRow[];
+  byConfig: NginxApiConfigRow[];
+  noLimitConfigs: string[];
+  message?: string;
+}
+
 export const denetimApi = {
+  nginxApi: (scanDate?: string): Promise<NginxApiResult> =>
+    fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+
   nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
     fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
 

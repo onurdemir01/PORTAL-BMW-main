@@ -48,8 +48,12 @@ test('HER sekmenin render ettigi bilesen IMPORT EDILMIS', () => {
     const m = SRC.match(new RegExp(`\\{tab === "${id}" && <([A-Za-z0-9_]+)`));
     assert.ok(m, `"${id}" icin render satiri cozulemedi`);
     const comp = m[1];
+    // Varsayilan (`import X from`) VE adlandirilmis (`import { X } from`) import'un
+    // ikisi de gecerlidir; guard onceden yalnizca ilkini taniyordu ve adlandirilmis
+    // import eden YENI bir sekmeyi yanlislikla "import edilmemis" sayiyordu.
     const imported =
       new RegExp(`import ${comp} from`).test(SRC) ||
+      new RegExp(`import\\s*\\{[^}]*\\b${comp}\\b[^}]*\\}\\s*from`).test(SRC) ||
       new RegExp(`function ${comp}\\b`).test(SRC) ||
       new RegExp(`const ${comp}\\b`).test(SRC);
     assert.ok(imported, `<${comp}/> render ediliyor ama ne import edilmis ne de bu dosyada tanimli`);

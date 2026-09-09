@@ -572,6 +572,70 @@ function initDenetim(app) {
     vhosting8: 'dbo.InitScriptsInventory8',
   };
 
+  // -- 4) NGINX API ENVANTERI ---------------------------------------------------------
+  // Kaynak: dbo.NginxRateLimitInventory (nginx_ratelimit_inventory job'i APPEND eder).
+  // Bir satir = (host, config_file, api_location) + o gunku iki rate limit zone'u.
+  //
+  // ORTAM BILGISI TABLODA YOK ve konfigurasyon dosya adlari ortamdan bagimsiz olarak
+  // AYNIDIR - ayni "x.conf" hem DEV hem PROD sunucusunda bulunur. Bu yuzden ortam
+  // SUNUCU ADINDAN turetilir (bkz. nginx-hosts.cjs), dosya adindan DEGIL.
+  //
+  // NEDEN SQL'DE GRUPLANIYOR: satir sayisi host x config x location ile carpilir
+  // (50 sunucu x 20 conf x 50 location ~ 50.000 satir). (host, config) duzeyinde
+  // gruplayinca ~1.000 satira duser; ortam/konfigurasyon kirilimlari bundan turetilir.
+  router.get('/nginx-api', async (req, res) => {
+    try {
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const { summarize } = require('./nginx-api-summary.cjs');
+      const scanDate = String(req.query.scanDate || '').trim();
+
+      const dateRes = await query(
+        scanDate
+          ? `SELECT CONVERT(varchar(10), CAST(@d AS DATE), 23) AS d`
+          : `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.NginxRateLimitInventory`,
+        scanDate ? [{ name: 'd', type: sql.NVarChar(10), value: scanDate }] : [],
+      );
+      const effectiveDate = dateRes.recordset?.[0]?.d || null;
+      if (!effectiveDate) {
+        // Bos yanit da DOLU yanitla AYNI sekli tasir - istemci ayri bir dal yazmasin.
+        return res.json({
+          ok: true, scanDate: null, availableDates: [], ...summarize([]),
+        });
+      }
+
+      const [aggRes, datesRes] = await Promise.all([
+        query(
+          `SELECT host, config_file,
+                  COUNT(*) AS locations,
+                  SUM(CASE WHEN ip_rate_limit IS NULL AND server_rate_limit IS NULL
+                           THEN 1 ELSE 0 END) AS no_limit,
+                  SUM(CASE WHEN ip_rate_limit IS NOT NULL THEN 1 ELSE 0 END) AS ip_limited,
+                  SUM(CASE WHEN server_rate_limit IS NOT NULL THEN 1 ELSE 0 END) AS srv_limited
+             FROM dbo.NginxRateLimitInventory
+            WHERE scan_date = @d
+            GROUP BY host, config_file`,
+          [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
+        ),
+        query(
+          `SELECT DISTINCT CONVERT(varchar(10), scan_date, 23) AS d
+             FROM dbo.NginxRateLimitInventory ORDER BY d DESC`,
+        ),
+      ]);
+
+      // Toplama mantigi SAF ve AYRI: DB olmadan test edilebilsin diye
+      // (bkz. __tests__/nginx-api-summary.test.cjs).
+      const summary = summarize(aggRes.recordset || []);
+      res.json({
+        ok: true,
+        scanDate: effectiveDate,
+        availableDates: (datesRes.recordset || []).map((r) => r.d),
+        ...summary,
+      });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
   router.get('/init-scripts', async (req, res) => {
     try {
       const { query } = require('../inventory/mssql.cjs');

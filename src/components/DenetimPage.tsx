@@ -22,6 +22,7 @@ import { Select } from "@/components/ui/Form";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import EnvanterMetrics from "@/components/denetim/EnvanterMetrics";
 import EnvanterDegisim from "@/components/denetim/EnvanterDegisim";
+import { NginxApiEnvanteri } from "@/components/denetim/NginxApiEnvanteri";
 import AppEnvs from "@/components/denetim/AppEnvs";
 import WebApp from "@/components/denetim/WebApp";
 import NginxLocations from "@/components/denetim/NginxLocations";
@@ -62,6 +63,11 @@ const HELP: HelpSection[] = [
     body: "check_initialize job'ının topladığı sha512 değerlerini karşılaştırır: bir script sunucular arasında kaç ayrı sürümle duruyor, hangi sunucular çoğunluktan ayrılmış, hangilerinde dosya hiç yok. Referans olarak en kalabalık hash alınır — tabloda kanonik sürümü işaretleyen bir alan yok, initialize.yaml da şablonu tüm sunuculara aynı dağıttığı için en kalabalık sürüm pratikte şablonun kendisidir. startCustom.sh bunun bilinen istisnasıdır: sunucuya özel olması tasarım gereğidir (initialize.yaml yeniden kurulumda onu yedekten geri kopyalar), o yüzden sapma sayılmaz, ayrıca listelenir.",
   },
   {
+    icon: ServerStackIcon,
+    title: "Nginx API Envanteri",
+    body: "nginx_ratelimit_inventory job'ının günlük taramasını gösterir: hangi sunucuda, hangi konfigürasyon dosyasında kaç API (location) bloğu tanımlı ve bunların rate limit durumu. ÖNEMLİ: kaynak tablo ortam bilgisi TAŞIMAZ ve konfigürasyon dosya adları ortamdan bağımsız olarak AYNIDIR — aynı 'x.conf' hem DEV hem PROD sunucusunda bulunur. Bu yüzden ortam sunucu adından türetilir (GBNGWD..=dev, GBNGWT..=test, GBNGWQ..=qa, GBNGWP../GBNGWAP..=prod); kalıba uymayan sunucu sessizce bir ortama atanmaz, 'BİLİNMİYOR' olarak görünür. 'Konfigürasyon Karşılaştırma' görünümü asıl bulguyu üretir: bir satır tek bir dosyanın tüm ortamlardaki hâlidir, hücredeki sayı o ortamdaki API bloğu sayısıdır ve '—' dosyanın o ortamda hiç bulunmadığı anlamına gelir. İki tür sürüklenme ayrı işaretlenir: 'ortam farkı' ortamların beklenen API sayısı birbirinden farklı, 'sunucu farkı' AYNI ortamdaki sunucular birbirinden farklı (hücrede aralık olarak gösterilir, örn. 17–20) — ikincisi genelde bir sunucuya dağıtımın ulaşmadığı anlamına gelir. 'Rate limit tanımı olmayan konfigürasyonlar' listesi ise hiçbir location'ında ne IP bazlı ne de sunucu bazlı limit bulunmayan dosyaları toplar.",
+  },
+  {
     icon: Squares2X2Icon,
     title: "Openshift Audit",
     body: "Bir uygulamanın bir platformun hangi ortamlarında var, hangilerinde eksik olduğunu gösterir. Ortam bilgisi cluster'dan DEĞİL, namespace son ekinden (-dev/-test/-qa/-prod) gelir — çünkü ark_dev ile ark_test aynı cluster'ları paylaşır, cluster tek başına ortam bilgisi taşımaz.",
@@ -93,7 +99,9 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 export default function DenetimPage() {
-  const [tab, setTab] = useState<"nginx" | "ocp" | "init" | "envanter" | "degisim" | "appenvs" | "webapp">("nginx");
+  const [tab, setTab] = useState<
+    "nginx" | "nginxapi" | "ocp" | "init" | "envanter" | "degisim" | "appenvs" | "webapp"
+  >("nginx");
   const [showHelp, setShowHelp] = useState(false);
 
   return (
@@ -142,6 +150,7 @@ export default function DenetimPage() {
         >
           {([
             { id: "nginx", label: "Nginx SPA", icon: ServerStackIcon },
+            { id: "nginxapi", label: "Nginx API Envanteri", icon: ServerStackIcon },
             { id: "ocp", label: "OpenShift", icon: Squares2X2Icon },
             { id: "init", label: "Init Script", icon: DocumentDuplicateIcon },
             { id: "envanter", label: "Envanter", icon: ChartBarSquareIcon },
@@ -169,6 +178,7 @@ export default function DenetimPage() {
       </header>
 
       {tab === "nginx" && <NginxSpaAudit />}
+      {tab === "nginxapi" && <NginxApiEnvanteri />}
       {tab === "ocp" && <OcpCoverage />}
       {tab === "init" && <InitScriptsAudit />}
       {tab === "envanter" && <EnvanterMetrics />}
