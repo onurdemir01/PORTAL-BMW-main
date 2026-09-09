@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { nobetciApi, type NobetciResult, type NobetRecord, type QuickLink } from "@/api/nobetciApi";
+import { nobetciApi, type NobetciResult, type NobetRecord, type NobetPerson, type QuickLink } from "@/api/nobetciApi";
+import { Modal } from "@/components/common/Modal";
+import { UserCircleIcon } from "@heroicons/react/24/outline";
 import { QuestionMarkCircleIcon, PhoneIcon, CalendarIcon, LinkIcon } from "@heroicons/react/24/outline";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import { fmtDate as formatDate } from "@/utils/datetime";
@@ -16,6 +18,11 @@ const DUTY_ROSTER_HELP_SECTIONS: HelpSection[] = [
     body: "Tablo, seçilen aya ait tüm nöbet dönemlerini listeler — \"Ay\" filtresiyle geçmiş/gelecek dönemleri görebilir, \"Tümü\" ile filtreyi kaldırabilirsiniz. Bugüne ait satır mavi vurgu ile işaretlenir.",
   },
   {
+    icon: UserCircleIcon,
+    title: "Bir Kişinin Tüm Nöbetleri",
+    body: "Tablodaki bir nöbetçi ya da yedek adına tıklayınca o kişinin KAYITLI TÜM nöbetleri açılır: her kaydın rolü (asıl/yedek), başlangıç-bitiş tarihi ve geçmiş/bugün/yaklaşan durumu. Bu liste üstteki \"Ay\" filtresinden ETKİLENMEZ — soru \"bu ay ne zaman nöbetçi\" değil, \"kayıtlı tüm nöbetleri ne zaman\" olduğu için. Kişi eşleştirmesi e-posta üzerinden yapılır; iki farklı kişi aynı ada sahip olabileceğinden ad tek başına güvenli bir anahtar değildir. Kayıtta e-posta boşsa ada düşülür.",
+  },
+  {
     icon: LinkIcon,
     title: "Hızlı Bağlantılar",
     body: "Sayfanın altındaki kısayollar, nöbetle ilgili sık kullanılan harici sayfalara (ör. eskalasyon prosedürü) doğrudan erişim sağlar.",
@@ -24,6 +31,73 @@ const DUTY_ROSTER_HELP_SECTIONS: HelpSection[] = [
 
 // ---------- helpers ----------
 
+/** Tabloda tıklanabilir kişi adı. <button> kullanılır: klavyeyle de erişilebilir olmalı. */
+function PersonButton({
+  person, onClick, muted = false,
+}: {
+  person: NobetPerson | null | undefined;
+  onClick: (p: NobetPerson) => void;
+  muted?: boolean;
+}) {
+  const name = person?.name?.trim();
+  if (!person || !name) return <span style={{ color: "var(--text-muted)" }}>-</span>;
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(person)}
+      title={`${name} — tüm nöbetlerini gör`}
+      className="text-left rounded px-1 -mx-1 transition-colors hover:underline focus:outline-none focus-visible:ring-2"
+      style={{
+        color: muted ? "var(--text-muted)" : "var(--text-primary)",
+        fontWeight: muted ? 400 : 600,
+      }}
+    >
+      {name}
+    </button>
+  );
+}
+
+
+/** Kişi kimliği. E-POSTA birincil anahtardır: iki farklı kişi aynı ada sahip olabilir,
+ *  ad üzerinden eşleştirmek onların nöbetlerini birbirine karıştırırdı. E-posta yoksa
+ *  ada düşülür (kayıtta e-posta boş olabiliyor) — bu durum kaçınılmaz bir tavizdir. */
+function personKey(p: NobetPerson | null | undefined): string | null {
+  if (!p) return null;
+  const email = (p.email || "").trim().toLowerCase();
+  if (email) return `e:${email}`;
+  const name = (p.name || "").trim().toLowerCase();
+  return name ? `n:${name}` : null;
+}
+
+type DutyRole = "nobetci" | "yedek";
+type PersonDuty = { record: NobetRecord; role: DutyRole };
+
+/** Bir kişinin TÜM nöbetleri — hem asıl nöbetçi hem yedek olduğu kayıtlar.
+ *  Ay filtresi BİLEREK uygulanmaz: soru "bu ay ne zaman nöbetçi" değil,
+ *  "kayıtlı tüm nöbetleri ne zaman". */
+function dutiesOfPerson(list: NobetRecord[], key: string): PersonDuty[] {
+  const out: PersonDuty[] = [];
+  for (const r of list) {
+    if (personKey(r.asNobetci) === key) out.push({ record: r, role: "nobetci" });
+    // Aynı kayıtta hem asıl hem yedek olması beklenmez ama olursa İKİSİ de gösterilir;
+    // birini yutmak kaydı olduğundan farklı gösterirdi.
+    if (personKey(r.yedekNobetci) === key) out.push({ record: r, role: "yedek" });
+  }
+  return out.sort((a, b) => (a.record.startDate || "").localeCompare(b.record.startDate || ""));
+}
+
+/** Yerel tarihe göre bugün (toISOString UTC'dir; ay filtresi de yerel saatle kuruluyor). */
+function todayLocalIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function dutyPhase(r: NobetRecord, todayIso: string): "gecmis" | "bugun" | "gelecek" {
+  if (r.isToday) return "bugun";
+  const end = (r.endDate || r.startDate || "").slice(0, 10);
+  if (end && end < todayIso) return "gecmis";
+  return "gelecek";
+}
 
 function getYearMonth(iso: string | null): string {
   if (!iso) return "";
@@ -45,6 +119,133 @@ function Avatar({ name, avatarUrl, size = "md" }: { name?: string | null; avatar
 }
 
 // ============================================================
+/** Seçilen kişinin KAYITLI TÜM nöbetleri. Sayım ay filtresinden ETKİLENMEZ. */
+function PersonDutiesModal({
+  person, list, onClose,
+}: {
+  person: NobetPerson | null;
+  list: NobetRecord[];
+  onClose: () => void;
+}) {
+  const key = personKey(person);
+  const todayIso = todayLocalIso();
+  const duties = key ? dutiesOfPerson(list, key) : [];
+
+  const asMain = duties.filter((d) => d.role === "nobetci").length;
+  const asBackup = duties.length - asMain;
+  const upcoming = duties.filter((d) => dutyPhase(d.record, todayIso) !== "gecmis");
+  const next = upcoming[0];
+
+  const PHASE: Record<string, { label: string; fg: string; bg: string }> = {
+    gecmis:  { label: "geçmiş",  fg: "var(--text-muted)",    bg: "var(--bg-elevated)" },
+    bugun:   { label: "bugün",   fg: "var(--accent)",        bg: "rgb(var(--accent-rgb) / 0.12)" },
+    gelecek: { label: "yaklaşan", fg: "var(--status-info)",  bg: "var(--bg-elevated)" },
+  };
+
+  return (
+    <Modal
+      open={!!person}
+      onClose={onClose}
+      title={person?.name || "Nöbetçi"}
+      subtitle={
+        [person?.intercom && `Dahili ${person.intercom}`, person?.phone, person?.email]
+          .filter(Boolean)
+          .join(" · ") || undefined
+      }
+      icon={UserCircleIcon}
+      size="lg"
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span
+            className="px-2 py-1 rounded-lg font-semibold tabular-nums"
+            style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}
+          >
+            {duties.length} nöbet kaydı
+          </span>
+          <span style={{ color: "var(--text-muted)" }}>
+            {asMain} asıl · {asBackup} yedek
+          </span>
+          {next && (
+            <span style={{ color: "var(--text-secondary)" }}>
+              · sıradaki: <b>{formatDate(next.record.startDate)}</b>
+              {next.role === "yedek" && " (yedek)"}
+            </span>
+          )}
+        </div>
+
+        {duties.length === 0 ? (
+          <div className="py-8 text-sm text-center" style={{ color: "var(--text-muted)" }}>
+            Bu kişi için kayıtlı nöbet bulunamadı.
+          </div>
+        ) : (
+          <div className="overflow-auto rounded-lg" style={{ border: "1px solid var(--border)", maxHeight: "24rem" }}>
+            <table className="w-full text-left text-sm" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+              <thead>
+                <tr style={{ background: "var(--bg-base)" }}>
+                  {["Rol", "Başlangıç", "Bitiş", "Durum"].map((h) => (
+                    <th
+                      key={h}
+                      className="px-3 py-2 whitespace-nowrap sticky top-0"
+                      style={{
+                        fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em",
+                        textTransform: "uppercase", color: "var(--text-muted)",
+                        background: "var(--bg-base)", borderBottom: "1px solid var(--border)",
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {duties.map((d, i) => {
+                  const ph = PHASE[dutyPhase(d.record, todayIso)];
+                  return (
+                    <tr key={`${d.record.asRecordId ?? i}-${d.role}`} style={{ borderTop: "1px solid var(--border)" }}>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span
+                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style={
+                            d.role === "nobetci"
+                              ? { background: "rgb(var(--accent-rgb) / 0.12)", color: "var(--accent)" }
+                              : { background: "var(--bg-elevated)", color: "var(--text-muted)" }
+                          }
+                        >
+                          {d.role === "nobetci" ? "Asıl" : "Yedek"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--text-primary)" }}>
+                        {formatDate(d.record.startDate)}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--text-secondary)" }}>
+                        {formatDate(d.record.endDate)}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span
+                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style={{ background: ph.bg, color: ph.fg }}
+                        >
+                          {ph.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+          Liste <b>tüm</b> kayıtları kapsar; tablodaki ay filtresinden etkilenmez. Kişi
+          eşleştirmesi e-posta üzerinden yapılır, e-posta boşsa ada düşülür.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
 export default function DutyRosterPage() {
   // ── Bugünün nöbetçisi
   const [nobetci, setNobetci] = useState<NobetciResult | null>(null);
@@ -62,6 +263,9 @@ export default function DutyRosterPage() {
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
 
   const [showHelp, setShowHelp] = useState(false);
+
+  // Nöbetleri görüntülenen kişi (tabloda ada tıklanınca).
+  const [selectedPerson, setSelectedPerson] = useState<NobetPerson | null>(null);
 
   useEffect(() => {
     nobetciApi.today().then(setNobetci).catch(() => setNobetci({ ok: false, message: "Bağlanılamadı" }));
@@ -255,13 +459,15 @@ export default function DutyRosterPage() {
                       {formatDate(r.startDate)}
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap" style={{ color: "var(--text-muted)" }}>{formatDate(r.endDate)}</td>
-                    <td className="px-4 py-3.5 font-semibold" style={{ color: "var(--text-primary)" }}>{r.asNobetci?.name ?? "-"}</td>
+                    <td className="px-4 py-3.5">
+                      <PersonButton person={r.asNobetci} onClick={setSelectedPerson} />
+                    </td>
                     <td className="px-4 py-3.5" style={{ color: "var(--text-secondary)" }}>{r.asNobetci?.intercom ?? "-"}</td>
                     <td className="px-4 py-3.5" style={{ color: "var(--text-secondary)" }}>{r.asNobetci?.phone ?? "-"}</td>
                     <td className="px-4 py-3.5 max-w-[180px] truncate" style={{ color: "var(--text-muted)" }} title={r.asNobetci?.email ?? "-"}>{r.asNobetci?.email ?? "-"}</td>
                     <td className="px-4 py-3.5">
                       {r.yedekNobetci?.name
-                        ? <span style={{ color: "var(--text-muted)" }}>{r.yedekNobetci.name}</span>
+                        ? <PersonButton person={r.yedekNobetci} onClick={setSelectedPerson} muted />
                         : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>Yedek Yok</span>
                       }
                     </td>
@@ -291,6 +497,12 @@ export default function DutyRosterPage() {
           ))}
         </div>
       )}
+
+      <PersonDutiesModal
+        person={selectedPerson}
+        list={nobetList}
+        onClose={() => setSelectedPerson(null)}
+      />
 
       <HelpModal
         open={showHelp}
