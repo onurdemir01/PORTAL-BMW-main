@@ -1,0 +1,423 @@
+# docs/OCP-YETKILERI.yaml
+#
+# BMW PORTAL — OpenShift SERVIS HESABI (`uxmid`) YETKI IHTIYACI
+# ==============================================================
+#
+# BU DOSYA NEDIR
+#   Portal'in Ansible playbook'lari her OCP cluster'ina `uxmid` kullanicisiyla
+#   `oc login` yapip komut calistirir. Bu dosya, O KOMUTLARIN TAM LISTESIDIR ve
+#   her biri icin hangi RBAC yetkisinin gerektigini yazar. Platform ekibinden
+#   yetki talebi BU DOSYAYA gore acilir.
+#
+# ⚠️ GUNCELLEME ZORUNLUDUR — "MUST"
+#   Playbook'lara YENI bir `oc` komutu ekleyen ya da mevcut birinin kaynagini/
+#   fiilini degistiren herkes BU DOSYAYI AYNI PR ICINDE guncellemek ZORUNDADIR.
+#
+#   Bu bir rica degil, KAPIDIR: `server/ansible/__tests__/ocp-permissions.test.cjs`
+#   playbook'lari tarar ve burada YAZMAYAN bir `oc` alt komutu bulursa testi
+#   KIRMIZIYA dondurur. `npm test` gecmeden PR merge edilemez.
+#
+#   NEDEN BOYLE: yetki eksikligi URETIMDE, kullanicinin isi yarida kalinca ve
+#   cogu zaman YANILTICI bir mesajla ortaya cikiyor ("Missing or incomplete
+#   configuration info", "censored", "0 pod bulundu"). Talep-onay dongusu gunler
+#   suruyor. Yeni komut yazan kisi ile yetkiyi isteyen kisi ayni anda bilmezse,
+#   bedeli kullanici oduyor.
+#
+# NASIL GUNCELLENIR
+#   1. Yeni komutu `komutlar:` altina ekle (modul, dosya, ne yaptigi, RBAC).
+#   2. Gerekiyorsa `talep_edilecek_roller:` altindaki kural setini genislet.
+#   3. `npm test` kos — kirmiziysa eksik birakmissin demektir.
+#   4. Degisiklik yetki GENISLETIYORSA `degisiklik_gunlugu:` altina satir ekle;
+#      platform ekibine gidecek talep bu gunlukten yazilir.
+#
+# KAPSAM DISI
+#   Bastion (jump server) uzerindeki Linux yetkileri, SSH anahtarlari ve AWX
+#   credential'lari bu dosyanin konusu DEGILDIR. Burada yalnizca CLUSTER ICI
+#   (Kubernetes/OpenShift RBAC) yetkileri vardir.
+
+surum: 1
+son_guncelleme: "2026-09-10"
+kullanici: uxmid
+kimlik_kaynagi: >-
+  Parola AWX deposundaki bmw_openshift_jobs/global_variables/credentials.yaml
+  icinde vault'lu durur; playbook'a `credential_key` ile ADI gecirilir, DEGERI
+  asla extra_vars'ta tasinmaz.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. CLUSTER LISTESI
+# ─────────────────────────────────────────────────────────────────────────────
+# Yetki HER CLUSTER'DA ayri ayri gerekir. Cluster listesi portalda
+# `ocp_cluster_index` tablosunda durur (Admin > LogX Yapilandirma > OCP Cluster
+# Hiyerarsisi); burada tek tek sayilmaz ki iki liste birbirinden ayrismasin.
+#
+# TALEP EDERKEN: o tablodaki AKTIF cluster'larin tamami icin isteyin. Eksik
+# kalan bir cluster, kullaniciya "bu cluster taranamadi" olarak doner.
+cluster_kapsami:
+  kaynak: "portal DB — ocp_cluster_index (env + tenant + cluster_name)"
+  not: >-
+    Yeni bir cluster envantere eklendiginde yetki TALEBI DE acilmalidir; aksi
+    halde cluster listede gorunur ama her isde hata verir.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. NAMESPACE KAPSAMI
+# ─────────────────────────────────────────────────────────────────────────────
+namespace_kapsami:
+  tercih_edilen: >-
+    Uygulama namespace'leri bazinda RoleBinding. En dar kapsam budur ve portal
+    zaten namespace listesini kullanicidan/katalogdan alir.
+  cluster_genelinde_gereken:
+    - komut: "oc get projects -o name"
+      neden: >-
+        LogX namespace KESFI. Kullanici "namespace tara" dediginde cluster'daki
+        gorulebilir projeler listelenir. Bu, namespace-bazli bir Role ile
+        KARSILANAMAZ; kullanicinin gorebildigi projeler kumesini dondurur.
+      not: >-
+        `oc get projects` OpenShift'te kullanicinin ERISEBILDIGI projeleri doner —
+        cluster-admin gerekmez. Hicbir namespace'e bagli degilse liste BOS doner
+        ve portal "namespace bulunamadi" der (yanlis gorunen bir hata degildir).
+    - komut: "oc get nodes -o wide / oc get clusteroperators"
+      kullanan: "playbooks/ocp_pod_status.yml (yalnizca TANI amacli)"
+      neden: "Portal tanilama ekrani; cluster saglik ozeti."
+      zorunlu_mu: >-
+        HAYIR. Bu iki komut yalnizca tani playbook'unda geciyor ve yetkisiz
+        durumda `|| echo` ile bos gecilir. Verilmezse portal islevi kaybetmez —
+        talebi opsiyonel olarak isteyin.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. KOMUTLAR VE GEREKEN YETKILER
+# ─────────────────────────────────────────────────────────────────────────────
+# Her giris: playbook'ta GERCEKTEN gecen komut + hangi modul + RBAC karsiligi.
+komutlar:
+
+  # ── Kimlik ────────────────────────────────────────────────────────────────
+  - alt_komut: login
+    modul: [LogX-OCP, OpsX, ScaleX, Telnet, OpsX-Rollout]
+    ornek: 'oc login --server=<api_url> --username=uxmid --password=***'
+    rbac:
+      aciklama: >-
+        RBAC yetkisi degil KIMLIK DOGRULAMA. `uxmid` hesabi cluster'in kimlik
+        saglayicisinda (IdP) tanimli ve AKTIF olmali; parola suresi dolmamali.
+      not: >-
+        Parola suresi dolarsa TUM moduller ayni anda ve ayni sekilde duser.
+        Uzun omurlu / rotasyonu duyurulan bir hesap isteyin.
+  - alt_komut: logout
+    modul: [OpsX-Rollout]
+    ornek: 'oc logout --server=<api_url>'
+    rbac: { aciklama: "Yetki gerektirmez." }
+  - alt_komut: whoami
+    modul: [Tani]
+    ornek: 'oc whoami'
+    rbac:
+      apiGroups: ["user.openshift.io"]
+      resources: ["users"]
+      resourceNames: ["~"]
+      verbs: ["get"]
+      not: "Cogu kurulumda `system:authenticated` ile zaten gelir."
+  - alt_komut: version
+    modul: [ScaleX, Tani]
+    ornek: 'oc version --client'
+    rbac: { aciklama: "Yetki gerektirmez (istemci surumu)." }
+  - alt_komut: project
+    modul: [ScaleX]
+    ornek: 'oc project <namespace>'
+    rbac:
+      apiGroups: ["project.openshift.io"]
+      resources: ["projects"]
+      verbs: ["get"]
+
+  # ── Kesif / okuma ─────────────────────────────────────────────────────────
+  - alt_komut: get
+    modul: [LogX-OCP, OpsX, ScaleX, Telnet, OpsX-Rollout]
+    aciklama: "En genis kullanim. Kaynak bazinda asagida ayristirildi."
+    kaynaklar:
+      - kaynak: projects
+        ornek: 'oc get projects -o name'
+        kapsam: cluster
+        rbac: { apiGroups: ["project.openshift.io"], resources: ["projects"], verbs: ["get", "list"] }
+      - kaynak: pods
+        ornek: 'oc get pods -n <ns> --no-headers'
+        kapsam: namespace
+        rbac: { apiGroups: [""], resources: ["pods"], verbs: ["get", "list"] }
+      - kaynak: "deployment, deploymentconfig, statefulset, daemonset, cronjob, service, route"
+        ornek: 'oc get deployment,deploymentconfig,statefulset,daemonset,cronjob,pod,service,route -n <ns>'
+        kapsam: namespace
+        not: >-
+          LogX uygulama kesfi bu SEKIZ tipi TEK komutta okur (`oc_object_kinds`).
+          Bir tipe yetki yoksa `oc` o tipi atlar ama komut yine 0 doner; sonuc
+          EKSIK gelir ve bu ekranda "uygulama bulunamadi" gibi gorunur.
+        rbac:
+          - { apiGroups: ["apps"], resources: ["deployments", "statefulsets", "daemonsets"], verbs: ["get", "list"] }
+          - { apiGroups: ["apps.openshift.io"], resources: ["deploymentconfigs"], verbs: ["get", "list"] }
+          - { apiGroups: ["batch"], resources: ["cronjobs"], verbs: ["get", "list"] }
+          - { apiGroups: [""], resources: ["pods", "services"], verbs: ["get", "list"] }
+          - { apiGroups: ["route.openshift.io"], resources: ["routes"], verbs: ["get", "list"] }
+      - kaynak: "rollouts (Argo Rollouts)"
+        ornek: 'oc get rollouts -n <ns> <app>'
+        kapsam: namespace
+        not: "Yalnizca Argo Rollouts KURULU cluster'larda gerekir."
+        rbac: { apiGroups: ["argoproj.io"], resources: ["rollouts"], verbs: ["get", "list"] }
+      - kaynak: horizontalpodautoscalers
+        ornek: 'oc get hpa -n <ns>'
+        kapsam: namespace
+        rbac: { apiGroups: ["autoscaling"], resources: ["horizontalpodautoscalers"], verbs: ["get", "list"] }
+      - kaynak: poddisruptionbudgets
+        ornek: 'oc get pdb -n <ns>'
+        kapsam: namespace
+        rbac: { apiGroups: ["policy"], resources: ["poddisruptionbudgets"], verbs: ["get", "list"] }
+      - kaynak: configmaps
+        ornek: 'oc get cm <scalex-state> -n <ns>'
+        kapsam: namespace
+        not: >-
+          ScaleX durdurma durumunu ConfigMap'te tutar (geri alma icin onceki
+          replica sayisi). Okuma yetkisi YOKSA "geri al" islevi calismaz.
+        rbac: { apiGroups: [""], resources: ["configmaps"], verbs: ["get", "list"] }
+      - kaynak: events
+        ornek: 'oc get events -n <ns> --field-selector type=Warning'
+        kapsam: namespace
+        not: "ScaleX tani ciktisi. Yetki yoksa bolum sessizce bos kalir."
+        rbac: { apiGroups: [""], resources: ["events"], verbs: ["get", "list"] }
+      - kaynak: nodes
+        ornek: 'oc get nodes -o wide'
+        kapsam: cluster
+        zorunlu_mu: hayir
+        rbac: { apiGroups: [""], resources: ["nodes"], verbs: ["get", "list"] }
+      - kaynak: clusteroperators
+        ornek: 'oc get clusteroperators'
+        kapsam: cluster
+        zorunlu_mu: hayir
+        rbac: { apiGroups: ["config.openshift.io"], resources: ["clusteroperators"], verbs: ["get", "list"] }
+      - kaynak: "--raw /apis"
+        ornek: 'oc get --raw /apis'
+        kapsam: cluster
+        not: >-
+          ScaleX, olceklenebilir tipleri (`/scale` alt kaynagi olanlari) bulmak
+          icin API kesif uclarini okur. Bu, RBAC degil DISCOVERY'dir ve
+          `system:discovery` ile gelir; ozel bir talep gerekmez.
+        rbac: { aciklama: "system:discovery (varsayilan)" }
+
+  - alt_komut: api-resources
+    modul: [ScaleX]
+    ornek: 'oc api-resources --namespaced=true --verbs=list -o name'
+    rbac: { aciklama: "Discovery — `system:discovery` ile gelir." }
+
+  - alt_komut: "auth can-i"
+    modul: [ScaleX]
+    ornek: 'oc auth can-i patch deployments -n <ns>'
+    aciklama: >-
+      ScaleX HER islemden ONCE kendi yetkisini sorar ve yetkisi yoksa islemi
+      DENEMEZ; kullaniciya "yetki yok" der. Bu, yarim kalmis olcekleme yerine
+      acik bir mesaj uretir.
+    rbac:
+      apiGroups: ["authorization.k8s.io"]
+      resources: ["selfsubjectaccessreviews"]
+      verbs: ["create"]
+      not: >-
+        `system:authenticated` ile varsayilan olarak gelir. GELMIYORSA ScaleX
+        her seyi "yetkisiz" sayar ve HICBIR IS YAPMAZ — bu talebin atlanmasi
+        sessiz degil, tam kapanma uretir.
+
+  # ── Log / dosya ───────────────────────────────────────────────────────────
+  - alt_komut: logs
+    modul: [LogX-OCP]
+    ornek: 'oc logs --namespace=<ns> <pod>'
+    aciklama: "LogX'in ASIL ISI: pod loglarini indirir."
+    rbac:
+      apiGroups: [""]
+      resources: ["pods/log"]
+      verbs: ["get"]
+  - alt_komut: rsync
+    modul: [OpsX, Nginx-Migration]
+    ornek: 'oc -n <ns> rsync <pod>:/tmp/<dosya> <yerel_dizin>/ -c <container>'
+    aciklama: "Pod icinden dosya ceker (heap dump, konfigurasyon)."
+    rbac:
+      apiGroups: [""]
+      resources: ["pods/exec"]
+      verbs: ["create"]
+      not: >-
+        `oc rsync` arka planda `exec` + `tar` calistirir; AYRI bir "rsync"
+        yetkisi YOKTUR. `pods/exec` verilmezse dosya cekme calismaz.
+  - alt_komut: exec
+    modul: [OpsX, Telnet]
+    ornek: 'oc exec <pod> -c <container> -n <ns> -- jcmd <pid> GC.heap_dump /tmp/<dosya>'
+    aciklama: >-
+      OpsX: JVM thread dump / heap dump alir (`ps`, `jcmd`, `rm`).
+      Telnet: gecici pod icinden hedef adrese baglanti dener.
+    rbac:
+      apiGroups: [""]
+      resources: ["pods/exec"]
+      verbs: ["create"]
+      dikkat: >-
+        EN GENIS YETKI BUDUR. `pods/exec` verilen bir hesap, pod icinde
+        container kullanicisinin yapabildigi HER SEYI yapabilir. Yalnizca
+        OpsX/Telnet'in ihtiyac duydugu namespace'lerde verilmesi, tum
+        cluster'da verilmesine tercih edilmelidir.
+
+  # ── Yazma / degisiklik ────────────────────────────────────────────────────
+  - alt_komut: patch
+    modul: [ScaleX, OpsX-Rollout]
+    ornekler:
+      - 'oc patch deployment <app> -n <ns> --type=merge -p {"spec":{"replicas":0}}'
+      - 'oc patch hpa <name> -n <ns> --type=merge -p {"spec":{"minReplicas":N,"maxReplicas":N}}'
+      - 'oc patch cm <scalex-state> -n <ns> --type=merge -p {"data":{"phase":"..."}}'
+      - 'oc patch rollout <app> -n <ns> --type merge -p {"spec":{"restartAt":"<ts>"}}'
+    aciklama: >-
+      ScaleX olceklemesi. `oc scale` DEGIL `oc patch` kullanilir — boylece
+      deployment/dc/statefulset/rollout icin TEK kod yolu vardir.
+    rbac:
+      - { apiGroups: ["apps"], resources: ["deployments", "statefulsets"], verbs: ["patch"] }
+      - { apiGroups: ["apps.openshift.io"], resources: ["deploymentconfigs"], verbs: ["patch"] }
+      - { apiGroups: ["argoproj.io"], resources: ["rollouts"], verbs: ["patch"] }
+      - { apiGroups: ["autoscaling"], resources: ["horizontalpodautoscalers"], verbs: ["patch"] }
+      - { apiGroups: [""], resources: ["configmaps"], verbs: ["patch"] }
+    not: >-
+      HPA yetkisi SART: HPA'si olan bir uygulamayi yalnizca replica'ya basarak
+      durdurmak ISE YARAMAZ — HPA onu geri olcekler. ScaleX bu yuzden HPA'yi da
+      sabitler; yetki yoksa durdurma islemi SESSIZCE geri alinir.
+  - alt_komut: create
+    modul: [ScaleX]
+    ornek: 'oc create cm <scalex-state> -n <ns> --from-literal=...'
+    aciklama: "Durdurma durumunu (geri alma bilgisi) saklayan ConfigMap."
+    rbac: { apiGroups: [""], resources: ["configmaps"], verbs: ["create"] }
+  - alt_komut: apply
+    modul: [ScaleX]
+    ornek: 'oc apply -n <ns> -f -'
+    aciklama: "Durum ConfigMap'inin idempotent yazimi."
+    rbac: { apiGroups: [""], resources: ["configmaps"], verbs: ["create", "update", "patch"] }
+  - alt_komut: delete
+    modul: [ScaleX, Telnet]
+    ornekler:
+      - 'oc delete cm <scalex-state> -n <ns> --ignore-not-found=true'
+      - 'oc delete pod <telnet-pod> -n <ns> --ignore-not-found=true'
+    aciklama: >-
+      ScaleX: geri alma tamamlaninca durum kaydini siler. Telnet: acilan gecici
+      pod'u KESINLIKLE temizler.
+    rbac:
+      - { apiGroups: [""], resources: ["configmaps"], verbs: ["delete"] }
+      - { apiGroups: [""], resources: ["pods"], verbs: ["delete"] }
+    not: >-
+      Telnet'te pod SILME yetkisi yoksa cluster'da artik (orphan) pod birikir.
+      ScaleX'te ConfigMap silme yetkisi yoksa runner `patch` ile "tamamlandi"
+      isaretine duser (kod bunu zaten kontrol eder) — kayit birikir ama islev
+      bozulmaz.
+  - alt_komut: run
+    modul: [Telnet]
+    ornek: 'oc run <pod> -n <ns> --image=nicolaka/netshoot --restart=Never --command -- sleep 3600'
+    aciklama: >-
+      Telnet testi icin gecici pod acar; baglanti denemesi bu pod'un ICINDEN
+      yapilir, boylece cluster ic agindan gercek sonuc alinir.
+    rbac:
+      apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["create"]
+    ek_gereksinimler:
+      - >-
+        IMAJ ERISIMI: `nicolaka/netshoot` cluster'dan cekilebilmeli. Kapali
+        ortamlarda ic registry'ye mirror'lanmasi ve namespace'in pull hakki
+        GEREKIR. Yetki tamam olsa bile imaj cekilemezse pod `ImagePullBackOff`
+        olur ve Telnet "pod hazir degil" der.
+      - >-
+        SCC: pod varsayilan `restricted-v2` altinda kosar; ek ayricalik
+        ISTENMEZ. netshoot root istemez.
+  - alt_komut: wait
+    modul: [Telnet]
+    ornek: 'oc wait --for=condition=Ready pod/<pod> -n <ns> --timeout=60s'
+    rbac: { apiGroups: [""], resources: ["pods"], verbs: ["get", "list", "watch"] }
+    not: "`watch` YOKSA `oc wait` timeout'a kadar bekler ve yanlis sekilde 'hazir degil' der."
+  - alt_komut: "rollout restart / rollout latest"
+    modul: [OpsX-Rollout]
+    ornekler:
+      - 'oc rollout restart deployment -n <ns> <app>'
+      - 'oc rollout latest -n <ns> <app>'
+    aciklama: "Uygulama yeniden baslatma (deployment) / yeni deploy tetikleme (dc)."
+    rbac:
+      - { apiGroups: ["apps"], resources: ["deployments"], verbs: ["get", "patch", "update"] }
+      - { apiGroups: ["apps.openshift.io"], resources: ["deploymentconfigs", "deploymentconfigs/instantiate"], verbs: ["get", "create"] }
+    not: >-
+      `oc rollout restart` bir ANNOTATION yazar (patch); `oc rollout latest` dc
+      icin `instantiate` alt kaynagini cagirir. Ikisi FARKLI yetkilerdir.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. TALEP EDILECEK ROLLER (platform ekibine verilecek ozet)
+# ─────────────────────────────────────────────────────────────────────────────
+# Uc parcaya bolundu ki ekipler ihtiyac duymadiklarini almasin. Portal'in
+# tamami icin UCU DE gerekir.
+talep_edilecek_roller:
+
+  - ad: bmw-portal-readonly
+    kapsam: "Her uygulama namespace'i (RoleBinding) + projects icin cluster capinda"
+    kullanan: [LogX-OCP, ScaleX-kesif, OpsX-listeleme, Telnet-dogrulama]
+    kurallar:
+      - { apiGroups: [""], resources: ["pods", "services", "configmaps", "events"], verbs: ["get", "list"] }
+      - { apiGroups: [""], resources: ["pods/log"], verbs: ["get"] }
+      - { apiGroups: ["apps"], resources: ["deployments", "statefulsets", "daemonsets"], verbs: ["get", "list"] }
+      - { apiGroups: ["apps.openshift.io"], resources: ["deploymentconfigs"], verbs: ["get", "list"] }
+      - { apiGroups: ["batch"], resources: ["cronjobs"], verbs: ["get", "list"] }
+      - { apiGroups: ["route.openshift.io"], resources: ["routes"], verbs: ["get", "list"] }
+      - { apiGroups: ["autoscaling"], resources: ["horizontalpodautoscalers"], verbs: ["get", "list"] }
+      - { apiGroups: ["policy"], resources: ["poddisruptionbudgets"], verbs: ["get", "list"] }
+      - { apiGroups: ["argoproj.io"], resources: ["rollouts"], verbs: ["get", "list"] }
+      - { apiGroups: ["authorization.k8s.io"], resources: ["selfsubjectaccessreviews"], verbs: ["create"] }
+    cluster_capinda:
+      - { apiGroups: ["project.openshift.io"], resources: ["projects"], verbs: ["get", "list"] }
+
+  - ad: bmw-portal-scale
+    kapsam: "Yalnizca ScaleX'in kullanildigi namespace'ler"
+    kullanan: [ScaleX, OpsX-Rollout]
+    kurallar:
+      - { apiGroups: ["apps"], resources: ["deployments", "statefulsets"], verbs: ["patch", "update"] }
+      - { apiGroups: ["apps.openshift.io"], resources: ["deploymentconfigs"], verbs: ["patch", "update"] }
+      - { apiGroups: ["apps.openshift.io"], resources: ["deploymentconfigs/instantiate"], verbs: ["create"] }
+      - { apiGroups: ["argoproj.io"], resources: ["rollouts"], verbs: ["patch", "update"] }
+      - { apiGroups: ["autoscaling"], resources: ["horizontalpodautoscalers"], verbs: ["patch", "update"] }
+      - { apiGroups: [""], resources: ["configmaps"], verbs: ["create", "update", "patch", "delete"] }
+
+  - ad: bmw-portal-exec
+    kapsam: "YALNIZCA OpsX dump / Telnet testi yapilan namespace'ler"
+    kullanan: [OpsX, Telnet, Nginx-Migration]
+    uyari: >-
+      EN GENIS YETKI. `pods/exec` verilen hesap, pod icinde container
+      kullanicisinin yapabildigi her seyi yapabilir. Cluster capinda VERMEYIN.
+    kurallar:
+      - { apiGroups: [""], resources: ["pods/exec"], verbs: ["create"] }
+      - { apiGroups: [""], resources: ["pods"], verbs: ["create", "delete"] }
+      - { apiGroups: [""], resources: ["pods"], verbs: ["get", "list", "watch"] }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. YETKI EKSIKLIGI URETIMDE NASIL GORUNUR
+# ─────────────────────────────────────────────────────────────────────────────
+# Talebi degerlendirecek kisi icin: her satirin bedeli nedir.
+eksiklik_belirtileri:
+  - yetki: "projects get/list"
+    belirti: "LogX namespace taramasi BOS liste doner; ekran 'namespace bulunamadi' der."
+  - yetki: "pods/log get"
+    belirti: "LogX arsiv uretir ama dosyalar BOS olur — is 'basarili' gorunur."
+  - yetki: "selfsubjectaccessreviews create"
+    belirti: "ScaleX her seyi 'yetkisiz' sayar ve HICBIR IS YAPMAZ."
+  - yetki: "horizontalpodautoscalers patch"
+    belirti: >-
+      ScaleX uygulamayi durdurur, HPA saniyeler icinde GERI OLCEKLER. Kullanici
+      'durdurdum ama geri geldi' der; hicbir hata mesaji cikmaz.
+  - yetki: "configmaps create/get"
+    belirti: >-
+      ScaleX durdurur ama GERI ALAMAZ — onceki replica sayisi hicbir yerde
+      saklanmadigi icin veri KAYBOLUR.
+  - yetki: "pods/exec create"
+    belirti: "OpsX heap/thread dump alamaz; Telnet testi hic calismaz."
+  - yetki: "pods create/delete"
+    belirti: >-
+      Telnet 'pod acilamadi' der; silme yoksa cluster'da artik pod BIRIKIR.
+  - yetki: "deployments patch"
+    belirti: "ScaleX 'olceklenemedi' der; uygulama calismaya devam eder."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. DEGISIKLIK GUNLUGU
+# ─────────────────────────────────────────────────────────────────────────────
+# YETKI GENISLETEN her degisiklik buraya yazilir. Platform ekibine gidecek EK
+# talep bu gunlukten uretilir — "neyi yeni istiyoruz" sorusunun tek cevabi.
+degisiklik_gunlugu:
+  - tarih: "2026-09-10"
+    degisiklik: "Dosya olusturuldu; mevcut playbook'larin tamami tarandi."
+    yetki_genisledi_mi: hayir
+    not: >-
+      Bu ilk surum MEVCUT DURUMU yazar, yeni yetki istemez. Playbook'lardan
+      makine ile cikarildi (`ocp-permissions.test.cjs` ayni taramayi yapar).
