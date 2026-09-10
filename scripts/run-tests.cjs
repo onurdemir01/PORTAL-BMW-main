@@ -48,6 +48,7 @@ const TEST_DIRS = [
   'src/__tests__',
   'src/components/scalex/__tests__',
   'src/components/denetim/__tests__',
+  'src/hooks/__tests__',
 ];
 
 function collect() {

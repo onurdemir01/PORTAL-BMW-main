@@ -5,21 +5,37 @@
 // TEK yönetim ekranı. Rol-bazlı görünürlük (eskiden Admin > Sistem'de ayrı bir bölümdü,
 // aynı alttaki inventory_table_role_visibility verisini okuyup yazıyordu) BURAYA taşındı;
 // Sistem sekmesi artık bu özelliği içermiyor.
-import React, { useEffect, useState } from "react";
-import { PencilSquareIcon, PlusIcon, TrashIcon, TableCellsIcon, UsersIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
-import { inventoryApi, type TableVisibilityRow, type TableUserOverride } from "@/api/inventoryApi";
-import { toast } from "@/hooks/useToast";
-import { Select } from "@/components/ui/Form";
-import HistoryScopePanel from "./HistoryScopePanel";
+import React, { useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import {
+  PencilSquareIcon,
+  PlusIcon,
+  TrashIcon,
+  TableCellsIcon,
+  UsersIcon,
+  EyeSlashIcon,
+} from '@heroicons/react/24/outline';
+import { inventoryApi, type TableVisibilityRow, type TableUserOverride } from '@/api/inventoryApi';
+import { toast } from '@/hooks/useToast';
+import { Select } from '@/components/ui/Form';
+import HistoryScopePanel from './HistoryScopePanel';
 
 export default function InventoryVisibilityTab() {
   const [tables, setTables] = useState<TableVisibilityRow[]>([]);
-  const [allTablesVisible, setAllTablesVisibleState] = useState<Record<"User" | "Admin", boolean>>({ User: false, Admin: true });
+  const [allTablesVisible, setAllTablesVisibleState] = useState<Record<'User' | 'Admin', boolean>>({
+    User: false,
+    Admin: true,
+  });
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<{ displayName: string; description: string; sortOrder: string; aliasActive: boolean }>({ displayName: "", description: "", sortOrder: "0", aliasActive: true });
+  const [editForm, setEditForm] = useState<{
+    displayName: string;
+    description: string;
+    sortOrder: string;
+    aliasActive: boolean;
+  }>({ displayName: '', description: '', sortOrder: '0', aliasActive: true });
   const [detailId, setDetailId] = useState<number | null>(null);
-  const [detailTab, setDetailTab] = useState<"overrides" | "columns">("overrides");
+  const [detailTab, setDetailTab] = useState<'overrides' | 'columns'>('overrides');
 
   async function reload() {
     setLoading(true);
@@ -28,14 +44,16 @@ export default function InventoryVisibilityTab() {
       setTables(r.tables || []);
       if (r.allTablesVisible) setAllTablesVisibleState(r.allTablesVisible);
     } catch {
-      toast.error("Tablolar yüklenemedi.");
+      toast.error('Tablolar yüklenemedi.');
     } finally {
       setLoading(false);
     }
   }
-  useEffect(() => { reload(); }, []);
+  useAsyncEffect(async () => {
+    await reload();
+  }, []);
 
-  async function toggleAllTablesVisible(role: "User" | "Admin") {
+  async function toggleAllTablesVisible(role: 'User' | 'Admin') {
     const next = !allTablesVisible[role];
     try {
       await inventoryApi.setAllTablesVisible(role, next);
@@ -43,54 +61,79 @@ export default function InventoryVisibilityTab() {
       // Kapatıldığında altta bireysel liste BOŞ başlar (backend ile aynı davranış) —
       // yeniden yüklemek satırlardaki roleVisible'ı bununla senkron tutar.
       await reload();
-      toast.success(`${role === "Admin" ? "Admin" : "Kullanıcı"} görünürlüğü güncellendi.`);
+      toast.success(`${role === 'Admin' ? 'Admin' : 'Kullanıcı'} görünürlüğü güncellendi.`);
     } catch {
-      toast.error("Güncellenemedi.");
+      toast.error('Güncellenemedi.');
     }
   }
 
-  async function toggleRoleForTable(row: TableVisibilityRow, role: "User" | "Admin") {
+  async function toggleRoleForTable(row: TableVisibilityRow, role: 'User' | 'Admin') {
     if (allTablesVisible[role]) return; // "Tüm tabloları göster" açıkken tek tek düzenlenemez
     try {
       await inventoryApi.setTableRoleVisibility(row.id, role, !row.roleVisible[role]);
-      setTables((prev) => prev.map((t) => (t.id === row.id ? { ...t, roleVisible: { ...t.roleVisible, [role]: !t.roleVisible[role] } } : t)));
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === row.id
+            ? { ...t, roleVisible: { ...t.roleVisible, [role]: !t.roleVisible[role] } }
+            : t,
+        ),
+      );
     } catch {
-      toast.error("Güncellenemedi.");
+      toast.error('Güncellenemedi.');
     }
   }
 
   async function toggleActive(row: TableVisibilityRow) {
     try {
       await inventoryApi.updateTableVisibility(row.id, {
-        isActive: !row.isActive, displayName: row.displayName || undefined,
-        description: row.description || undefined, sortOrder: row.sortOrder,
+        isActive: !row.isActive,
+        displayName: row.displayName || undefined,
+        description: row.description || undefined,
+        sortOrder: row.sortOrder,
         aliasActive: row.aliasActive, // korunmazsa takma adin aktif/pasif durumu YANLISLIKLA sifirlanirdi
       });
       setTables((prev) => prev.map((t) => (t.id === row.id ? { ...t, isActive: !t.isActive } : t)));
     } catch {
-      toast.error("Güncellenemedi.");
+      toast.error('Güncellenemedi.');
     }
   }
 
   function openEdit(row: TableVisibilityRow) {
     setEditId(row.id);
-    setEditForm({ displayName: row.displayName || "", description: row.description || "", sortOrder: String(row.sortOrder), aliasActive: row.aliasActive !== false });
+    setEditForm({
+      displayName: row.displayName || '',
+      description: row.description || '',
+      sortOrder: String(row.sortOrder),
+      aliasActive: row.aliasActive !== false,
+    });
   }
 
   async function saveEdit(row: TableVisibilityRow) {
     try {
       await inventoryApi.updateTableVisibility(row.id, {
-        isActive: row.isActive, displayName: editForm.displayName.trim() || undefined,
-        description: editForm.description.trim() || undefined, sortOrder: Number(editForm.sortOrder) || 0,
+        isActive: row.isActive,
+        displayName: editForm.displayName.trim() || undefined,
+        description: editForm.description.trim() || undefined,
+        sortOrder: Number(editForm.sortOrder) || 0,
         aliasActive: editForm.aliasActive,
       });
-      setTables((prev) => prev.map((t) => (t.id === row.id
-        ? { ...t, displayName: editForm.displayName.trim() || null, description: editForm.description.trim() || null, sortOrder: Number(editForm.sortOrder) || 0, aliasActive: editForm.aliasActive }
-        : t)));
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === row.id
+            ? {
+                ...t,
+                displayName: editForm.displayName.trim() || null,
+                description: editForm.description.trim() || null,
+                sortOrder: Number(editForm.sortOrder) || 0,
+                aliasActive: editForm.aliasActive,
+              }
+            : t,
+        ),
+      );
       setEditId(null);
-      toast.success("Kaydedildi.");
+      toast.success('Kaydedildi.');
     } catch {
-      toast.error("Kaydedilemedi.");
+      toast.error('Kaydedilemedi.');
     }
   }
 
@@ -101,12 +144,15 @@ export default function InventoryVisibilityTab() {
     const next = !row.aliasActive;
     try {
       await inventoryApi.updateTableVisibility(row.id, {
-        isActive: row.isActive, displayName: row.displayName, description: row.description || undefined,
-        sortOrder: row.sortOrder, aliasActive: next,
+        isActive: row.isActive,
+        displayName: row.displayName,
+        description: row.description || undefined,
+        sortOrder: row.sortOrder,
+        aliasActive: next,
       });
       setTables((prev) => prev.map((t) => (t.id === row.id ? { ...t, aliasActive: next } : t)));
     } catch {
-      toast.error("Güncellenemedi.");
+      toast.error('Güncellenemedi.');
     }
   }
 
@@ -121,10 +167,10 @@ export default function InventoryVisibilityTab() {
       <div>
         <h3 className="text-sm font-semibold text-gray-800 mb-1">Envanter Tablo Görünürlüğü</h3>
         <p className="text-xs text-gray-500 max-w-2xl">
-          Her fiziksel tablo için ayrı bir kayıt: aktif/pasif (Pasif bir tablo hiç kimseye —
-          "Tüm tabloları göster" işaretli bir role bile — görünmez), sıralama, açıklama,
-          User/Admin rolüne göre temel görünürlük. "Detay" ile her tablo için kullanıcı-bazlı
-          istisna ve kolon-seviyesi gizleme yönetilir.
+          Her fiziksel tablo için ayrı bir kayıt: aktif/pasif (Pasif bir tablo hiç kimseye — "Tüm
+          tabloları göster" işaretli bir role bile — görünmez), sıralama, açıklama, User/Admin
+          rolüne göre temel görünürlük. "Detay" ile her tablo için kullanıcı-bazlı istisna ve
+          kolon-seviyesi gizleme yönetilir.
         </p>
         <p className="text-xs text-gray-500 max-w-2xl mt-1">
           <b>User</b> ve <b>Admin</b> sütunları birbirinden tamamen bağımsızdır: <b>User</b>
@@ -136,15 +182,18 @@ export default function InventoryVisibilityTab() {
       </div>
 
       <div className="flex flex-wrap gap-4">
-        {(["User", "Admin"] as const).map((role) => (
-          <label key={role} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+        {(['User', 'Admin'] as const).map((role) => (
+          <label
+            key={role}
+            className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer bg-gray-50 border border-gray-100 rounded-xl px-3 py-2"
+          >
             <input
               type="checkbox"
               checked={allTablesVisible[role]}
               onChange={() => toggleAllTablesVisible(role)}
               className="rounded border-gray-300"
             />
-            {role === "Admin" ? "Adminler" : "Kullanıcılar"}: Tüm tabloları göster (kısıtlama yok)
+            {role === 'Admin' ? 'Adminler' : 'Kullanıcılar'}: Tüm tabloları göster (kısıtlama yok)
           </label>
         ))}
       </div>
@@ -155,7 +204,9 @@ export default function InventoryVisibilityTab() {
             <tr className="bg-gray-50 border-b border-gray-100 text-left">
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Aktif</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Tablo</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500">Görünen Ad / Açıklama</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500">
+                Görünen Ad / Açıklama
+              </th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Sıra</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Kullanıcı</th>
               <th className="px-3 py-2 text-xs font-semibold text-gray-500">Admin</th>
@@ -170,8 +221,8 @@ export default function InventoryVisibilityTab() {
                   <td className="px-3 py-2">
                     <button
                       onClick={() => toggleActive(row)}
-                      className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${row.isActive ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-200"}`}
-                      title={row.isActive ? "Pasif yap (herkesten gizler)" : "Aktif yap"}
+                      className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${row.isActive ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-gray-200'}`}
+                      title={row.isActive ? 'Pasif yap (herkesten gizler)' : 'Aktif yap'}
                     >
                       {row.isActive && <span className="text-xs">✓</span>}
                     </button>
@@ -180,14 +231,31 @@ export default function InventoryVisibilityTab() {
                   <td className="px-3 py-2">
                     {editId === row.id ? (
                       <div className="flex flex-col gap-1">
-                        <input value={editForm.displayName} onChange={(e) => setEditForm((f) => ({ ...f, displayName: e.target.value }))}
-                          placeholder="Görünen ad" className="px-2 py-1 text-xs border border-gray-200 rounded-lg" />
-                        <input value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-                          placeholder="Açıklama" className="px-2 py-1 text-xs border border-gray-200 rounded-lg" />
+                        <input
+                          value={editForm.displayName}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, displayName: e.target.value }))
+                          }
+                          placeholder="Görünen ad"
+                          className="px-2 py-1 text-xs border border-gray-200 rounded-lg"
+                        />
+                        <input
+                          value={editForm.description}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, description: e.target.value }))
+                          }
+                          placeholder="Açıklama"
+                          className="px-2 py-1 text-xs border border-gray-200 rounded-lg"
+                        />
                         {editForm.displayName.trim() && (
                           <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">
-                            <input type="checkbox" checked={editForm.aliasActive}
-                              onChange={(e) => setEditForm((f) => ({ ...f, aliasActive: e.target.checked }))} />
+                            <input
+                              type="checkbox"
+                              checked={editForm.aliasActive}
+                              onChange={(e) =>
+                                setEditForm((f) => ({ ...f, aliasActive: e.target.checked }))
+                              }
+                            />
                             Takma ad aktif (pasifse ham tablo adı gösterilir)
                           </label>
                         )}
@@ -195,30 +263,42 @@ export default function InventoryVisibilityTab() {
                     ) : (
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-gray-700">{row.displayName || <span className="text-gray-300 italic">isim yok</span>}</span>
+                          <span className="text-xs text-gray-700">
+                            {row.displayName || (
+                              <span className="text-gray-300 italic">isim yok</span>
+                            )}
+                          </span>
                           {row.displayName && (
                             <button
                               onClick={() => toggleAliasActive(row)}
-                              title={row.aliasActive ? "Takma adı pasif yap" : "Takma adı aktif yap"}
-                              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${row.aliasActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-400"}`}
+                              title={
+                                row.aliasActive ? 'Takma adı pasif yap' : 'Takma adı aktif yap'
+                              }
+                              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${row.aliasActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}
                             >
-                              {row.aliasActive ? "Aktif" : "Pasif"}
+                              {row.aliasActive ? 'Aktif' : 'Pasif'}
                             </button>
                           )}
                         </div>
-                        {row.description && <div className="text-[11px] text-gray-400">{row.description}</div>}
+                        {row.description && (
+                          <div className="text-[11px] text-gray-400">{row.description}</div>
+                        )}
                       </div>
                     )}
                   </td>
                   <td className="px-3 py-2">
                     {editId === row.id ? (
-                      <input type="number" value={editForm.sortOrder} onChange={(e) => setEditForm((f) => ({ ...f, sortOrder: e.target.value }))}
-                        className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-lg" />
+                      <input
+                        type="number"
+                        value={editForm.sortOrder}
+                        onChange={(e) => setEditForm((f) => ({ ...f, sortOrder: e.target.value }))}
+                        className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-lg"
+                      />
                     ) : (
                       <span className="text-xs text-gray-500">{row.sortOrder}</span>
                     )}
                   </td>
-                  {(["User", "Admin"] as const).map((role) => (
+                  {(['User', 'Admin'] as const).map((role) => (
                     <td key={role} className="px-3 py-2">
                       <button
                         onClick={() => toggleRoleForTable(row, role)}
@@ -226,36 +306,64 @@ export default function InventoryVisibilityTab() {
                         title={
                           allTablesVisible[role]
                             ? `"Tüm tabloları göster" açık — tek tek düzenlenemez`
-                            : (row.roleVisible[role] ? "Gizle" : "Göster")
+                            : row.roleVisible[role]
+                              ? 'Gizle'
+                              : 'Göster'
                         }
                         className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                          row.roleVisible[role] || allTablesVisible[role] ? "bg-[#1A56DB] border-[#1A56DB] text-white" : "border-gray-200"
+                          row.roleVisible[role] || allTablesVisible[role]
+                            ? 'bg-[#1A56DB] border-[#1A56DB] text-white'
+                            : 'border-gray-200'
                         }`}
                       >
-                        {(row.roleVisible[role] || allTablesVisible[role]) && <span className="text-xs">✓</span>}
+                        {(row.roleVisible[role] || allTablesVisible[role]) && (
+                          <span className="text-xs">✓</span>
+                        )}
                       </button>
                     </td>
                   ))}
                   <td className="px-3 py-2">
-                    {row.overrideCount > 0
-                      ? <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{row.overrideCount} kullanıcı</span>
-                      : <span className="text-xs text-gray-300">—</span>}
+                    {row.overrideCount > 0 ? (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                        {row.overrideCount} kullanıcı
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1 justify-end">
                       {editId === row.id ? (
                         <>
-                          <button onClick={() => saveEdit(row)} className="text-xs text-emerald-600 hover:underline">Kaydet</button>
-                          <button onClick={() => setEditId(null)} className="text-xs text-gray-400 hover:underline ml-1">İptal</button>
+                          <button
+                            onClick={() => saveEdit(row)}
+                            className="text-xs text-emerald-600 hover:underline"
+                          >
+                            Kaydet
+                          </button>
+                          <button
+                            onClick={() => setEditId(null)}
+                            className="text-xs text-gray-400 hover:underline ml-1"
+                          >
+                            İptal
+                          </button>
                         </>
                       ) : (
                         <>
-                          <button onClick={() => openEdit(row)} className="p-1 text-gray-400 hover:text-blue-500" title="Düzenle">
+                          <button
+                            onClick={() => openEdit(row)}
+                            className="p-1 text-gray-400 hover:text-blue-500"
+                            title="Düzenle"
+                          >
                             <PencilSquareIcon className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => { setDetailId(detailId === row.id ? null : row.id); setDetailTab("overrides"); }}
-                            className="p-1 text-gray-400 hover:text-blue-500" title="Kullanıcı override / kolon görünürlüğü"
+                            onClick={() => {
+                              setDetailId(detailId === row.id ? null : row.id);
+                              setDetailTab('overrides');
+                            }}
+                            className="p-1 text-gray-400 hover:text-blue-500"
+                            title="Kullanıcı override / kolon görünürlüğü"
                           >
                             <TableCellsIcon className="w-4 h-4" />
                           </button>
@@ -267,7 +375,11 @@ export default function InventoryVisibilityTab() {
                 {detailId === row.id && (
                   <tr className="bg-gray-50/40">
                     <td colSpan={8} className="px-4 py-3">
-                      <TableDetailPanel tableVisibilityId={row.id} tab={detailTab} setTab={setDetailTab} />
+                      <TableDetailPanel
+                        tableVisibilityId={row.id}
+                        tab={detailTab}
+                        setTab={setDetailTab}
+                      />
                     </td>
                   </tr>
                 )}
@@ -281,21 +393,35 @@ export default function InventoryVisibilityTab() {
 }
 
 function TableDetailPanel({
-  tableVisibilityId, tab, setTab,
-}: { tableVisibilityId: number; tab: "overrides" | "columns"; setTab: (t: "overrides" | "columns") => void }) {
+  tableVisibilityId,
+  tab,
+  setTab,
+}: {
+  tableVisibilityId: number;
+  tab: 'overrides' | 'columns';
+  setTab: (t: 'overrides' | 'columns') => void;
+}) {
   return (
     <div className="space-y-3">
       <div className="flex gap-1 rounded-lg p-1 bg-white border border-gray-100 w-fit">
-        <button onClick={() => setTab("overrides")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === "overrides" ? "bg-gray-100 text-black" : "text-gray-500"}`}>
+        <button
+          onClick={() => setTab('overrides')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === 'overrides' ? 'bg-gray-100 text-black' : 'text-gray-500'}`}
+        >
           <UsersIcon className="w-3.5 h-3.5" /> Kullanıcı Override
         </button>
-        <button onClick={() => setTab("columns")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === "columns" ? "bg-gray-100 text-black" : "text-gray-500"}`}>
+        <button
+          onClick={() => setTab('columns')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === 'columns' ? 'bg-gray-100 text-black' : 'text-gray-500'}`}
+        >
           <EyeSlashIcon className="w-3.5 h-3.5" /> Kolon Görünürlüğü
         </button>
       </div>
-      {tab === "overrides" ? <UserOverridesSection tableVisibilityId={tableVisibilityId} /> : <ColumnVisibilitySection tableVisibilityId={tableVisibilityId} />}
+      {tab === 'overrides' ? (
+        <UserOverridesSection tableVisibilityId={tableVisibilityId} />
+      ) : (
+        <ColumnVisibilitySection tableVisibilityId={tableVisibilityId} />
+      )}
     </div>
   );
 }
@@ -303,8 +429,8 @@ function TableDetailPanel({
 function UserOverridesSection({ tableVisibilityId }: { tableVisibilityId: number }) {
   const [overrides, setOverrides] = useState<TableUserOverride[]>([]);
   const [loading, setLoading] = useState(true);
-  const [username, setUsername] = useState("");
-  const [overrideType, setOverrideType] = useState<"allow" | "deny">("allow");
+  const [username, setUsername] = useState('');
+  const [overrideType, setOverrideType] = useState<'allow' | 'deny'>('allow');
 
   async function load() {
     setLoading(true);
@@ -315,17 +441,19 @@ function UserOverridesSection({ tableVisibilityId }: { tableVisibilityId: number
       setLoading(false);
     }
   }
-  useEffect(() => { load(); }, [tableVisibilityId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAsyncEffect(async () => {
+    await load();
+  }, [tableVisibilityId]);
 
   async function add() {
     if (!username.trim()) return;
     try {
       await inventoryApi.addTableUserOverride(tableVisibilityId, username.trim(), overrideType);
-      setUsername("");
+      setUsername('');
       await load();
-      toast.success("Override eklendi.");
+      toast.success('Override eklendi.');
     } catch {
-      toast.error("Eklenemedi.");
+      toast.error('Eklenemedi.');
     }
   }
 
@@ -334,7 +462,7 @@ function UserOverridesSection({ tableVisibilityId }: { tableVisibilityId: number
       await inventoryApi.removeTableUserOverride(tableVisibilityId, u);
       await load();
     } catch {
-      toast.error("Silinemedi.");
+      toast.error('Silinemedi.');
     }
   }
 
@@ -343,18 +471,29 @@ function UserOverridesSection({ tableVisibilityId }: { tableVisibilityId: number
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-gray-400">
-        "allow" rol kuralının üstüne geçip tabloyu AÇAR (o kullanıcı rolü görmese bile). "deny"
-        rol kuralının üstüne geçip tabloyu KAPATIR (rolü görse bile o kullanıcıdan gizler).
+        "allow" rol kuralının üstüne geçip tabloyu AÇAR (o kullanıcı rolü görmese bile). "deny" rol
+        kuralının üstüne geçip tabloyu KAPATIR (rolü görse bile o kullanıcıdan gizler).
       </p>
       <div className="flex gap-2 items-center">
-        <input value={username} onChange={(e) => setUsername(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          placeholder="kullanıcı adı" className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg font-mono w-48" />
-        <Select sizeVariant="sm" value={overrideType} onChange={(e) => setOverrideType(e.target.value as "allow" | "deny")}>
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="kullanıcı adı"
+          className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg font-mono w-48"
+        />
+        <Select
+          sizeVariant="sm"
+          value={overrideType}
+          onChange={(e) => setOverrideType(e.target.value as 'allow' | 'deny')}
+        >
           <option value="allow">allow (aç)</option>
           <option value="deny">deny (kapat)</option>
         </Select>
-        <button onClick={add} className="flex items-center gap-1 px-2.5 py-1.5 bg-black text-white text-xs rounded-lg hover:bg-gray-800">
+        <button
+          onClick={add}
+          className="flex items-center gap-1 px-2.5 py-1.5 bg-black text-white text-xs rounded-lg hover:bg-gray-800"
+        >
           <PlusIcon className="w-3.5 h-3.5" /> Ekle
         </button>
       </div>
@@ -363,12 +502,22 @@ function UserOverridesSection({ tableVisibilityId }: { tableVisibilityId: number
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {overrides.map((o) => (
-            <span key={o.username} className="flex items-center gap-1.5 text-xs bg-white border border-gray-200 rounded-full pl-2.5 pr-1 py-1">
+            <span
+              key={o.username}
+              className="flex items-center gap-1.5 text-xs bg-white border border-gray-200 rounded-full pl-2.5 pr-1 py-1"
+            >
               <code>{o.username}</code>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${o.override_type === "allow" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full ${o.override_type === 'allow' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}
+              >
                 {o.override_type}
               </span>
-              <button onClick={() => remove(o.username)} className="text-gray-300 hover:text-red-500"><TrashIcon className="w-3 h-3" /></button>
+              <button
+                onClick={() => remove(o.username)}
+                className="text-gray-300 hover:text-red-500"
+              >
+                <TrashIcon className="w-3 h-3" />
+              </button>
             </span>
           ))}
         </div>
@@ -390,14 +539,18 @@ function ColumnVisibilitySection({ tableVisibilityId }: { tableVisibilityId: num
       setLoading(false);
     }
   }
-  useEffect(() => { load(); }, [tableVisibilityId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAsyncEffect(async () => {
+    await load();
+  }, [tableVisibilityId]);
 
   async function toggle(col: { name: string; isVisible: boolean }) {
     try {
       await inventoryApi.setColumnVisibility(tableVisibilityId, col.name, !col.isVisible);
-      setColumns((prev) => prev.map((c) => (c.name === col.name ? { ...c, isVisible: !c.isVisible } : c)));
+      setColumns((prev) =>
+        prev.map((c) => (c.name === col.name ? { ...c, isVisible: !c.isVisible } : c)),
+      );
     } catch {
-      toast.error("Güncellenemedi.");
+      toast.error('Güncellenemedi.');
     }
   }
 
@@ -414,8 +567,8 @@ function ColumnVisibilitySection({ tableVisibilityId }: { tableVisibilityId: num
           <button
             key={c.name}
             onClick={() => toggle(c)}
-            className={`text-xs px-2.5 py-1 rounded-full border font-mono ${c.isVisible ? "bg-white border-gray-200 text-gray-700" : "bg-red-50 border-red-100 text-red-500 line-through"}`}
-            title={c.isVisible ? "Gizle" : "Göster"}
+            className={`text-xs px-2.5 py-1 rounded-full border font-mono ${c.isVisible ? 'bg-white border-gray-200 text-gray-700' : 'bg-red-50 border-red-100 text-red-500 line-through'}`}
+            title={c.isVisible ? 'Gizle' : 'Göster'}
           >
             {c.name}
           </button>

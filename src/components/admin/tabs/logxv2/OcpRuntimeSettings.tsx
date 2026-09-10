@@ -7,15 +7,34 @@
 //
 // Satır CRUD'u olmadığı için SimpleCrudTable uygun değil; OpsxConfigTab'ın yükle/kaydet
 // desenini izleyen düz bir form.
-import React, { useEffect, useState } from "react";
-import { ArrowUpIcon, ArrowDownIcon, TrashIcon, PlusIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import { logxV2Api, type OcpRuntimeConfig } from "@/api/logxV2Api";
-import { useToast } from "@/hooks/useToast";
+import React, { useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import {
+  ArrowUpIcon,
+  ArrowDownIcon,
+  TrashIcon,
+  PlusIcon,
+  ArrowPathIcon,
+} from '@heroicons/react/24/outline';
+import { logxV2Api, type OcpRuntimeConfig } from '@/api/logxV2Api';
+import { useToast } from '@/hooks/useToast';
 
 const TIMEOUTS: { key: keyof OcpRuntimeConfig; label: string; help: string }[] = [
-  { key: "ocAsyncTimeout", label: "Namespace keşfi (sn)", help: "oc login + proje listeleme için üst sınır." },
-  { key: "ocListTimeout", label: "Pod listeleme (sn)", help: "Namespace içindeki pod'ların taranması." },
-  { key: "ocLogTimeout", label: "Log çekme (sn)", help: "Pod loglarının indirilmesi — büyük loglarda artırın." },
+  {
+    key: 'ocAsyncTimeout',
+    label: 'Namespace keşfi (sn)',
+    help: 'oc login + proje listeleme için üst sınır.',
+  },
+  {
+    key: 'ocListTimeout',
+    label: 'Pod listeleme (sn)',
+    help: "Namespace içindeki pod'ların taranması.",
+  },
+  {
+    key: 'ocLogTimeout',
+    label: 'Log çekme (sn)',
+    help: 'Pod loglarının indirilmesi — büyük loglarda artırın.',
+  },
 ];
 
 export default function OcpRuntimeSettings() {
@@ -25,7 +44,7 @@ export default function OcpRuntimeSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newPath, setNewPath] = useState("");
+  const [newPath, setNewPath] = useState('');
 
   async function load() {
     setLoading(true);
@@ -35,28 +54,32 @@ export default function OcpRuntimeSettings() {
       setCfg(r.config);
       setDefaults(r.defaults);
     } catch (e) {
-      setError((e as Error).message || "Ayarlar yüklenemedi.");
+      setError((e as Error).message || 'Ayarlar yüklenemedi.');
     } finally {
       setLoading(false);
     }
   }
-  useEffect(() => { load(); }, []);
+  useAsyncEffect(async () => {
+    await load();
+  }, []);
 
   async function save() {
     if (!cfg) return;
     setSaving(true);
     try {
       const r = await logxV2Api.admin.saveOcpRuntimeConfig(cfg);
-      setCfg(r.config);   // sunucu normalize eder — geçersiz girdiler düzeltilmiş döner
-      toast.success("OCP çalıştırma ayarları kaydedildi.");
+      setCfg(r.config); // sunucu normalize eder — geçersiz girdiler düzeltilmiş döner
+      toast.success('OCP çalıştırma ayarları kaydedildi.');
     } catch (e) {
-      toast.error((e as Error).message || "Kaydedilemedi.");
+      toast.error((e as Error).message || 'Kaydedilemedi.');
     } finally {
       setSaving(false);
     }
   }
 
-  function patch(p: Partial<OcpRuntimeConfig>) { setCfg((c) => (c ? { ...c, ...p } : c)); }
+  function patch(p: Partial<OcpRuntimeConfig>) {
+    setCfg((c) => (c ? { ...c, ...p } : c));
+  }
 
   function moveCandidate(i: number, dir: -1 | 1) {
     if (!cfg) return;
@@ -70,9 +93,12 @@ export default function OcpRuntimeSettings() {
   function addCandidate() {
     const v = newPath.trim();
     if (!v || !cfg) return;
-    if (cfg.ocBinaryCandidates.includes(v)) { toast.error("Bu yol zaten listede."); return; }
+    if (cfg.ocBinaryCandidates.includes(v)) {
+      toast.error('Bu yol zaten listede.');
+      return;
+    }
     patch({ ocBinaryCandidates: [...cfg.ocBinaryCandidates, v] });
-    setNewPath("");
+    setNewPath('');
   }
 
   if (loading) return <div className="py-8 text-center text-sm text-gray-400">Yükleniyor…</div>;
@@ -82,31 +108,47 @@ export default function OcpRuntimeSettings() {
   return (
     <div className="space-y-4">
       <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-800">
-        Playbook, <span className="font-mono">oc</span> komutunu her jump server'da <strong>kendisi arar</strong>:
-        önce aşağıdaki yollar sırayla denenir, hiçbiri bulunamazsa sunucunun <span className="font-mono">PATH</span>'ine
-        bakılır. Bu yüzden farklı sunucularda farklı kurulumlar sorun çıkarmaz.
+        Playbook, <span className="font-mono">oc</span> komutunu her jump server'da{' '}
+        <strong>kendisi arar</strong>: önce aşağıdaki yollar sırayla denenir, hiçbiri bulunamazsa
+        sunucunun <span className="font-mono">PATH</span>'ine bakılır. Bu yüzden farklı sunucularda
+        farklı kurulumlar sorun çıkarmaz.
       </div>
 
       <div>
-        <label className="block text-xs font-medium mb-1 text-gray-600">Aranacak yollar (sırayla denenir)</label>
+        <label className="block text-xs font-medium mb-1 text-gray-600">
+          Aranacak yollar (sırayla denenir)
+        </label>
         <div className="space-y-1">
           {cfg.ocBinaryCandidates.map((p, i) => (
-            <div key={p} className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5">
+            <div
+              key={p}
+              className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5"
+            >
               <span className="text-xs text-gray-400 w-4">{i + 1}.</span>
               <span className="flex-1 text-sm font-mono text-gray-700">{p}</span>
-              <button onClick={() => moveCandidate(i, -1)} disabled={i === 0}
+              <button
+                onClick={() => moveCandidate(i, -1)}
+                disabled={i === 0}
                 aria-label={`${p} yolunu yukarı taşı`}
-                className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-30 disabled:hover:text-gray-300">
+                className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-30 disabled:hover:text-gray-300"
+              >
                 <ArrowUpIcon className="w-3.5 h-3.5" />
               </button>
-              <button onClick={() => moveCandidate(i, 1)} disabled={i === cfg.ocBinaryCandidates.length - 1}
+              <button
+                onClick={() => moveCandidate(i, 1)}
+                disabled={i === cfg.ocBinaryCandidates.length - 1}
                 aria-label={`${p} yolunu aşağı taşı`}
-                className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-30 disabled:hover:text-gray-300">
+                className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-30 disabled:hover:text-gray-300"
+              >
                 <ArrowDownIcon className="w-3.5 h-3.5" />
               </button>
-              <button onClick={() => patch({ ocBinaryCandidates: cfg.ocBinaryCandidates.filter((x) => x !== p) })}
+              <button
+                onClick={() =>
+                  patch({ ocBinaryCandidates: cfg.ocBinaryCandidates.filter((x) => x !== p) })
+                }
                 aria-label={`${p} yolunu sil`}
-                className="p-1 text-gray-300 hover:text-red-500">
+                className="p-1 text-gray-300 hover:text-red-500"
+              >
                 <TrashIcon className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -116,20 +158,30 @@ export default function OcpRuntimeSettings() {
           <input
             value={newPath}
             onChange={(e) => setNewPath(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") addCandidate(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') addCandidate();
+            }}
             placeholder="/usr/local/bin/oc"
             aria-label="Yeni oc yolu"
             className="flex-1 px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[var(--accent)]"
           />
-          <button onClick={addCandidate} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:text-gray-900">
+          <button
+            onClick={addCandidate}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:text-gray-900"
+          >
             <PlusIcon className="w-3.5 h-3.5" /> Ekle
           </button>
         </div>
-        <p className="mt-1 text-[11px] text-gray-400">Mutlak yol olmalı (ör. <span className="font-mono">/bin/oc</span>). Geçersiz girdiler kaydedilirken elenir.</p>
+        <p className="mt-1 text-[11px] text-gray-400">
+          Mutlak yol olmalı (ör. <span className="font-mono">/bin/oc</span>). Geçersiz girdiler
+          kaydedilirken elenir.
+        </p>
       </div>
 
       <div>
-        <label className="block text-xs font-medium mb-1 text-gray-600">Kesin yol (opsiyonel)</label>
+        <label className="block text-xs font-medium mb-1 text-gray-600">
+          Kesin yol (opsiyonel)
+        </label>
         <input
           value={cfg.ocBinary}
           onChange={(e) => patch({ ocBinary: e.target.value })}
@@ -137,9 +189,9 @@ export default function OcpRuntimeSettings() {
           className="w-full px-2.5 py-1.5 text-sm font-mono border border-gray-200 rounded-lg outline-none focus:border-[var(--accent)]"
         />
         <p className="mt-1 text-[11px] text-gray-400">
-          Doldurulursa <strong>ilk sırada denenir</strong> — sunucuda varsa otomatik aramanın önüne geçer.
-          Bu yol o sunucuda bulunamazsa aşağıdaki adaylara düşülür (işlem yolsuzluktan dolayı durmaz).
-          Yalnızca otomatik arama yanlış bir sürüm buluyorsa gerekir.
+          Doldurulursa <strong>ilk sırada denenir</strong> — sunucuda varsa otomatik aramanın önüne
+          geçer. Bu yol o sunucuda bulunamazsa aşağıdaki adaylara düşülür (işlem yolsuzluktan dolayı
+          durmaz). Yalnızca otomatik arama yanlış bir sürüm buluyorsa gerekir.
         </p>
       </div>
 
@@ -159,9 +211,9 @@ export default function OcpRuntimeSettings() {
         <p className="mt-1 text-[11px] text-gray-400">
           Playbook'un <span className="font-mono">oc login --username</span> değeri.
           <strong> OCP Cluster Hiyerarşisi</strong> sekmesinde bir cluster'a özel değer girilmişse
-          <strong> o kazanır</strong>; burası yalnızca boş bırakılan satırlar için geçerlidir.
-          Boş bırakırsanız cluster satırında da değer yoksa o cluster keşifte anlaşılır bir
-          hatayla elenir (diğerleri çalışmaya devam eder). PAROLA DEĞİLDİR.
+          <strong> o kazanır</strong>; burası yalnızca boş bırakılan satırlar için geçerlidir. Boş
+          bırakırsanız cluster satırında da değer yoksa o cluster keşifte anlaşılır bir hatayla
+          elenir (diğerleri çalışmaya devam eder). PAROLA DEĞİLDİR.
         </p>
       </div>
 
@@ -170,9 +222,13 @@ export default function OcpRuntimeSettings() {
           <div key={key}>
             <label className="block text-xs font-medium mb-1 text-gray-600">{label}</label>
             <input
-              type="number" min={10} max={3600}
+              type="number"
+              min={10}
+              max={3600}
               value={cfg[key] as number}
-              onChange={(e) => patch({ [key]: Number(e.target.value) } as Partial<OcpRuntimeConfig>)}
+              onChange={(e) =>
+                patch({ [key]: Number(e.target.value) } as Partial<OcpRuntimeConfig>)
+              }
               className="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-[var(--accent)]"
             />
             <p className="mt-1 text-[11px] text-gray-400">{help}</p>
@@ -182,7 +238,7 @@ export default function OcpRuntimeSettings() {
 
       <div className="flex items-center gap-2 pt-1">
         <button onClick={save} disabled={saving} className="btn-primary disabled:opacity-50">
-          {saving ? "Kaydediliyor…" : "Kaydet"}
+          {saving ? 'Kaydediliyor…' : 'Kaydet'}
         </button>
         {defaults && (
           <button
