@@ -5,24 +5,27 @@
 //   <Uygulama>-D / -T / -Q  -> dev / test / qa,  eksiz ad -> production
 //
 // Uc bolum: matris, ad kuralina uymayanlar, ad ile env sutununun celistigi kayitlar.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowPathIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, ExclamationTriangleIcon,
-} from "@heroicons/react/24/outline";
-import { denetimApi, type AppEnvsResult } from "@/api/denetimApi";
-import { Select } from "@/components/ui/Form";
-import { fmtNumber } from "@/utils/datetime";
-import { TableEmptyRow } from "@/components/common/EmptyState";
+  ArrowPathIcon,
+  ArrowDownTrayIcon,
+  MagnifyingGlassIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/react/24/outline';
+import { denetimApi, type AppEnvsResult } from '@/api/denetimApi';
+import { Select } from '@/components/ui/Form';
+import { fmtNumber } from '@/utils/datetime';
+import { TableEmptyRow } from '@/components/common/EmptyState';
 
 const nf = (n: number) => fmtNumber(n);
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
   const body = [header, ...rows]
-    .map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-  const blob = new Blob(["﻿" + body], { type: "text/csv;charset=utf-8;" });
+    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = url;
   a.download = `${name}_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
@@ -30,25 +33,58 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 export default function AppEnvs() {
-  const [source, setSource] = useState("mw");
+  const [source, setSource] = useState('mw');
   const [data, setData] = useState<AppEnvsResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [view, setView] = useState<"matris" | "sapma" | "celiski">("matris");
-  const [q, setQ] = useState("");
+  const [err, setErr] = useState('');
+  const [view, setView] = useState<'matris' | 'sapma' | 'celiski'>('matris');
+  const [q, setQ] = useState('');
   const [onlyMissing, setOnlyMissing] = useState(false);
 
   const load = useCallback(async (s: string) => {
     setLoading(true);
     try {
       const r = await denetimApi.appEnvs(s);
-      if (r.ok) { setData(r); setErr(""); } else setErr(r.message || "Veri alınamadı.");
+      if (r.ok) {
+        setData(r);
+        setErr('');
+      } else setErr(r.message || 'Veri alınamadı.');
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { load(source); }, [source, load]);
+  // ILK YUKLEME/KAYNAK DEGISIMI EFFECT ICINDE: istek BURADA kurulur, `load()`
+  // cagrilmaz. React 19'un `set-state-in-effect` kurali, effect'ten cagrilan bir
+  // fonksiyonun ICINDEKI setState'i de "effect'te senkron" sayiyor —
+  // `setLoading(true)`'yu cikarmak BILE yetmiyor (olculdu). Burada ilk ifade
+  // `await`, yani hicbir setState senkron degil.
+  //
+  // `load` KALIYOR: Yenile dugmesi onu cagiriyor (olay isleyicisinde setState
+  // mesrudur ve spinner HEMEN donmeli). Kaynak degisiminde spinner asagidaki
+  // Select'in onChange'inden geliyor.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await denetimApi.appEnvs(source);
+        if (!alive) return;
+        if (r.ok) {
+          setData(r);
+          setErr('');
+        } else setErr(r.message || 'Veri alınamadı.');
+      } catch (e: unknown) {
+        if (alive) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [source]);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -65,8 +101,14 @@ export default function AppEnvs() {
     return needle ? list.filter((x) => x.app.toLowerCase().includes(needle)) : list;
   };
 
-  if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
-  if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
+  if (loading && !data)
+    return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+  if (err)
+    return (
+      <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+        {err}
+      </div>
+    );
   if (!data) return null;
 
   const envs = data.envs;
@@ -76,21 +118,36 @@ export default function AppEnvs() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Select sizeVariant="sm" value={source} onChange={(e) => setSource(e.target.value)}>
-          {data.sources.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+        <Select
+          sizeVariant="sm"
+          value={source}
+          onChange={(e) => {
+            setLoading(true);
+            setSource(e.target.value);
+          }}
+        >
+          {data.sources.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
         </Select>
 
         <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)]">
-          {([
-            { id: "matris", label: `Matris (${nf(data.totalApps)})` },
-            { id: "sapma", label: `Ad kuralı dışı (${nf(data.nonStandard.length)})` },
-            { id: "celiski", label: `Çelişki (${nf(data.conflicts.length)})` },
-          ] as const).map((v) => (
+          {(
+            [
+              { id: 'matris', label: `Matris (${nf(data.totalApps)})` },
+              { id: 'sapma', label: `Ad kuralı dışı (${nf(data.nonStandard.length)})` },
+              { id: 'celiski', label: `Çelişki (${nf(data.conflicts.length)})` },
+            ] as const
+          ).map((v) => (
             <button
               key={v.id}
               onClick={() => setView(v.id)}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                view === v.id ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                view === v.id
+                  ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               }`}
             >
               {v.label}
@@ -101,36 +158,57 @@ export default function AppEnvs() {
         <div className="relative">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
-            value={q} onChange={(e) => setQ(e.target.value)} placeholder="uygulama ara"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="uygulama ara"
             className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-56"
           />
         </div>
-        {view === "matris" && (
+        {view === 'matris' && (
           <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-            <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={onlyMissing}
+              onChange={(e) => setOnlyMissing(e.target.checked)}
+            />
             Sadece eksiği olanlar
           </label>
         )}
 
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => (view === "matris"
-              ? csvDownload("uygulama_ortamlari_" + source,
-                  ["uygulama", ...envs, "eksik"],
-                  rows.map((r) => [r.base, ...envs.map((e) => (r.envs[e] ? "VAR" : "YOK")), r.missing.join(" ")]))
-              : view === "sapma"
-                ? csvDownload("ad_kurali_disi_" + source,
-                    ["uygulama", "sebep", "env_sutunu", "sunucular"],
-                    sapma.map((n) => [n.app, n.reason, n.envColumn.join(" "), n.hosts.join(" ")]))
-                : csvDownload("ortam_celiskisi_" + source,
-                    ["uygulama", "ad_ortami", "env_sutunu", "sunucular"],
-                    celiski.map((c) => [c.app, c.nameEnv, c.envColumn, c.hosts.join(" ")])))}
+            onClick={() =>
+              view === 'matris'
+                ? csvDownload(
+                    'uygulama_ortamlari_' + source,
+                    ['uygulama', ...envs, 'eksik'],
+                    rows.map((r) => [
+                      r.base,
+                      ...envs.map((e) => (r.envs[e] ? 'VAR' : 'YOK')),
+                      r.missing.join(' '),
+                    ]),
+                  )
+                : view === 'sapma'
+                  ? csvDownload(
+                      'ad_kurali_disi_' + source,
+                      ['uygulama', 'sebep', 'env_sutunu', 'sunucular'],
+                      sapma.map((n) => [n.app, n.reason, n.envColumn.join(' '), n.hosts.join(' ')]),
+                    )
+                  : csvDownload(
+                      'ortam_celiskisi_' + source,
+                      ['uygulama', 'ad_ortami', 'env_sutunu', 'sunucular'],
+                      celiski.map((c) => [c.app, c.nameEnv, c.envColumn, c.hosts.join(' ')]),
+                    )
+            }
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
           >
             <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
           </button>
-          <button onClick={() => load(source)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">
-            <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
+          <button
+            onClick={() => load(source)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
+          >
+            <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
           </button>
         </div>
       </div>
@@ -139,36 +217,47 @@ export default function AppEnvs() {
         <Stat n={data.totalApps} l="uygulama (taban ad)" />
         <Stat n={data.completeCount} l="dört ortamda da var" tone="ok" />
         <Stat n={data.totalApps - data.completeCount} l="en az bir ortamda eksik" tone="warn" />
-        <Stat n={data.nonStandard.length + data.conflicts.length} l="ad kuralı dışı + çelişki"
-              tone={data.nonStandard.length + data.conflicts.length ? "warn" : undefined} />
+        <Stat
+          n={data.nonStandard.length + data.conflicts.length}
+          l="ad kuralı dışı + çelişki"
+          tone={data.nonStandard.length + data.conflicts.length ? 'warn' : undefined}
+        />
       </div>
 
       <p className="text-[11px] text-[var(--text-muted)]">
-        Ortam, uygulama adının son ekinden türer:{" "}
-        <code className="px-1 rounded bg-[var(--bg-elevated)]">-D</code> geliştirme,{" "}
-        <code className="px-1 rounded bg-[var(--bg-elevated)]">-T</code> test,{" "}
+        Ortam, uygulama adının son ekinden türer:{' '}
+        <code className="px-1 rounded bg-[var(--bg-elevated)]">-D</code> geliştirme,{' '}
+        <code className="px-1 rounded bg-[var(--bg-elevated)]">-T</code> test,{' '}
         <code className="px-1 rounded bg-[var(--bg-elevated)]">-Q</code> QA, eksiz ad production.
         Satırlar son ek atılmış <b>taban ada</b> göre gruplanır.
       </p>
 
       {data.outOfScopeEnvColumns.length > 0 && (
         <p className="text-[11px] text-[var(--text-muted)] bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-3 py-2">
-          Şu ortamların ad kuralında karşılığı yok:{" "}
-          {data.outOfScopeEnvColumns.map((u) => `${u.envColumn} (${nf(u.appCount)} uygulama)`).join(", ")}.
-          Bu uygulamaların adında son ek olmadığı için matriste <b>production</b> kutusunda
+          Şu ortamların ad kuralında karşılığı yok:{' '}
+          {data.outOfScopeEnvColumns
+            .map((u) => `${u.envColumn} (${nf(u.appCount)} uygulama)`)
+            .join(', ')}
+          . Bu uygulamaların adında son ek olmadığı için matriste <b>production</b> kutusunda
           görünürler; çelişki sayılmazlar ama gerçekte o ortamın sunucularında çalışıyorlar.
         </p>
       )}
 
-      {view === "matris" && (
+      {view === 'matris' && (
         <>
           {data.patterns.length > 0 && (
             <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/60 px-4 py-3">
-              <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1.5">En sık eksik ortam desenleri</div>
+              <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1.5">
+                En sık eksik ortam desenleri
+              </div>
               <div className="flex flex-wrap gap-2">
                 {data.patterns.map((p) => (
-                  <span key={p.missing.join(",")} className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]">
-                    eksik: <b className="font-mono">{p.missing.join(", ")}</b> · {nf(p.count)} uygulama
+                  <span
+                    key={p.missing.join(',')}
+                    className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]"
+                  >
+                    eksik: <b className="font-mono">{p.missing.join(', ')}</b> · {nf(p.count)}{' '}
+                    uygulama
                   </span>
                 ))}
               </div>
@@ -179,17 +268,26 @@ export default function AppEnvs() {
             <table className="w-full min-w-max text-sm">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
-                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
-                  {envs.map((e) => <th key={e} className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">{e}</th>)}
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                    Uygulama
+                  </th>
+                  {envs.map((e) => (
+                    <th
+                      key={e}
+                      className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]"
+                    >
+                      {e}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-subtle)]">
-                {rows.length === 0 && (
-                  <TableEmptyRow colSpan={envs.length + 1} />
-                )}
+                {rows.length === 0 && <TableEmptyRow colSpan={envs.length + 1} />}
                 {rows.slice(0, 500).map((r) => (
                   <tr key={r.base} className="hover:bg-[var(--bg-elevated)]/60">
-                    <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">{r.base}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">
+                      {r.base}
+                    </td>
                     {envs.map((e) => {
                       const hit = r.envs[e];
                       return (
@@ -197,15 +295,19 @@ export default function AppEnvs() {
                           {hit ? (
                             <span
                               className="text-[11px] px-2 py-0.5 rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200"
-                              title={`${hit.rows} kayıt\nSunucular: ${hit.hosts.join(", ")}`}
+                              title={`${hit.rows} kayıt\nSunucular: ${hit.hosts.join(', ')}`}
                             >
                               VAR
                               {hit.hosts.length > 1 && (
-                                <span className="ml-1 opacity-70 tabular-nums">×{hit.hosts.length}</span>
+                                <span className="ml-1 opacity-70 tabular-nums">
+                                  ×{hit.hosts.length}
+                                </span>
                               )}
                             </span>
                           ) : (
-                            <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-red-50 text-red-600 border-red-200">YOK</span>
+                            <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-red-50 text-red-600 border-red-200">
+                              YOK
+                            </span>
                           )}
                         </td>
                       );
@@ -216,34 +318,54 @@ export default function AppEnvs() {
             </table>
           </div>
           {rows.length > 500 && (
-            <p className="text-xs text-[var(--text-muted)]">İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.</p>
+            <p className="text-xs text-[var(--text-muted)]">
+              İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.
+            </p>
           )}
         </>
       )}
 
-      {view === "sapma" && (
+      {view === 'sapma' && (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="w-full min-w-max text-sm">
             <thead>
               <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                  Uygulama
+                </th>
                 <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sebep</th>
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">env sütunu</th>
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sunucular</th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                  env sütunu
+                </th>
+                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                  Sunucular
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-subtle)]">
               {sapma.length === 0 && (
-                <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-[var(--text-muted)]">
-                  Ad kuralına uymayan uygulama yok.
-                </td></tr>
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-3 py-8 text-center text-sm text-[var(--text-muted)]"
+                  >
+                    Ad kuralına uymayan uygulama yok.
+                  </td>
+                </tr>
               )}
               {sapma.slice(0, 500).map((n) => (
                 <tr key={n.app} className="hover:bg-[var(--bg-elevated)]/60 align-top">
-                  <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">{n.app}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">
+                    {n.app}
+                  </td>
                   <td className="px-3 py-2 text-xs text-amber-700">{n.reason}</td>
-                  <td className="px-3 py-2 text-xs text-[var(--text-muted)]">{n.envColumn.join(", ") || "—"}</td>
-                  <td className="px-3 py-2 text-[11px] font-mono text-[var(--text-muted)]">{n.hosts.slice(0, 6).join(", ")}{n.hosts.length > 6 && ` … (+${n.hosts.length - 6})`}</td>
+                  <td className="px-3 py-2 text-xs text-[var(--text-muted)]">
+                    {n.envColumn.join(', ') || '—'}
+                  </td>
+                  <td className="px-3 py-2 text-[11px] font-mono text-[var(--text-muted)]">
+                    {n.hosts.slice(0, 6).join(', ')}
+                    {n.hosts.length > 6 && ` … (+${n.hosts.length - 6})`}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -251,15 +373,16 @@ export default function AppEnvs() {
         </div>
       )}
 
-      {view === "celiski" && (
+      {view === 'celiski' && (
         <>
           <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex gap-2">
             <ExclamationTriangleIcon className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
-              Uygulama adının söylediği ortam ile envanterdeki <code className="px-1 rounded bg-white/70 border border-amber-200">env</code>{" "}
-              sütunu uyuşmuyor. env sütunu <b>sunucu adından</b> türetilir, yani bu uygulamalar
-              adlarının işaret ettiğinden başka bir ortamın sunucusunda çalışıyor olabilir.
-              Not: sunucu adı geliştirme ile testi ayırt edemediği için (ikisi de “Test” yazar)
+              Uygulama adının söylediği ortam ile envanterdeki{' '}
+              <code className="px-1 rounded bg-white/70 border border-amber-200">env</code> sütunu
+              uyuşmuyor. env sütunu <b>sunucu adından</b> türetilir, yani bu uygulamalar adlarının
+              işaret ettiğinden başka bir ortamın sunucusunda çalışıyor olabilir. Not: sunucu adı
+              geliştirme ile testi ayırt edemediği için (ikisi de “Test” yazar)
               <code className="px-1 rounded bg-white/70 border border-amber-200 mx-1">-D</code>
               uygulamaları bu listeye <b>girmez</b> — sahte uyarı üretmemek için.
             </span>
@@ -268,26 +391,47 @@ export default function AppEnvs() {
             <table className="w-full min-w-max text-sm">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
-                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Uygulama</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Ada göre ortam</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">env sütunu</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sunucular</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                    Uygulama
+                  </th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                    Ada göre ortam
+                  </th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                    env sütunu
+                  </th>
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                    Sunucular
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-subtle)]">
                 {celiski.length === 0 && (
-                  <TableEmptyRow colSpan={4} title="Çelişki bulunamadı." description="Bu tarama turunda ortamlar arasında ad çakışması saptanmadı." />
+                  <TableEmptyRow
+                    colSpan={4}
+                    title="Çelişki bulunamadı."
+                    description="Bu tarama turunda ortamlar arasında ad çakışması saptanmadı."
+                  />
                 )}
                 {celiski.slice(0, 500).map((c) => (
                   <tr key={c.app} className="hover:bg-[var(--bg-elevated)]/60 align-top">
-                    <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">{c.app}</td>
-                    <td className="px-3 py-2">
-                      <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-sky-50 text-sky-700 border-sky-200">{c.nameEnv}</span>
+                    <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">
+                      {c.app}
                     </td>
                     <td className="px-3 py-2">
-                      <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-red-50 text-red-700 border-red-200">{c.envColumn}</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-sky-50 text-sky-700 border-sky-200">
+                        {c.nameEnv}
+                      </span>
                     </td>
-                    <td className="px-3 py-2 text-[11px] font-mono text-[var(--text-muted)]">{c.hosts.slice(0, 6).join(", ")}{c.hosts.length > 6 && ` … (+${c.hosts.length - 6})`}</td>
+                    <td className="px-3 py-2">
+                      <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-red-50 text-red-700 border-red-200">
+                        {c.envColumn}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-[11px] font-mono text-[var(--text-muted)]">
+                      {c.hosts.slice(0, 6).join(', ')}
+                      {c.hosts.length > 6 && ` … (+${c.hosts.length - 6})`}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -299,8 +443,13 @@ export default function AppEnvs() {
   );
 }
 
-function Stat({ n, l, tone }: { n: number; l: string; tone?: "ok" | "warn" }) {
-  const color = tone === "ok" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-[var(--text-primary)]";
+function Stat({ n, l, tone }: { n: number; l: string; tone?: 'ok' | 'warn' }) {
+  const color =
+    tone === 'ok'
+      ? 'text-emerald-600'
+      : tone === 'warn'
+        ? 'text-amber-600'
+        : 'text-[var(--text-primary)]';
   return (
     <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
       <div className={`text-2xl font-bold tabular-nums ${color}`}>{nf(n)}</div>

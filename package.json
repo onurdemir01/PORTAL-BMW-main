@@ -19,7 +19,7 @@
     "preview": "vite preview",
     "check:server": "tsc -p tsconfig.server-check.json --noEmit || true",
     "test": "node scripts/run-tests.cjs",
-    "lint": "eslint src/ server/ --max-warnings 109",
+    "lint": "eslint src/ server/ --max-warnings 90",
     "format": "prettier --write .",
     "test:ui": "vitest run",
     "lint:ascii": "node scripts/check-ascii.cjs",

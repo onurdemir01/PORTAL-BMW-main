@@ -6,7 +6,7 @@
 // Tablo her koşuda TRUNCATE edilip yeniden yazılıyor — yani GEÇMİŞ YOK, tablo her zaman
 // "şu anki hâl". Bu yüzden burada tarih seçici yok; tazelik göstergesi olarak en yeni
 // `source_last_update` gösteriliyor.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownTrayIcon,
   ArrowPathIcon,
@@ -15,21 +15,17 @@ import {
   CpuChipIcon,
   CircleStackIcon,
   Squares2X2Icon,
-} from "@heroicons/react/24/outline";
-import {
-  denetimApi,
-  type NginxInventoryResult,
-  type NginxInvDist,
-} from "@/api/denetimApi";
-import { Panel, StatTile, Pill, TableShell, Th, Td, Note } from "./ui";
+} from '@heroicons/react/24/outline';
+import { denetimApi, type NginxInventoryResult, type NginxInvDist } from '@/api/denetimApi';
+import { Panel, StatTile, Pill, TableShell, Th, Td, Note } from './ui';
 
-const nf = (n: number) => new Intl.NumberFormat("tr-TR").format(n);
+const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const esc = (v: string | number) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const csv = [header, ...rows].map((r) => r.map(esc).join(";")).join("\r\n");
-  const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a");
+  const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const csv = [header, ...rows].map((r) => r.map(esc).join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
   a.href = url;
   a.download = `${name}.csv`;
   a.click();
@@ -37,11 +33,22 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 /** Bir alanın değer dağılımı — oransal bar + sayı. */
-function DistBars({ title, items, total }: { title: string; items: NginxInvDist[]; total: number }) {
+function DistBars({
+  title,
+  items,
+  total,
+}: {
+  title: string;
+  items: NginxInvDist[];
+  total: number;
+}) {
   const max = Math.max(1, ...items.map((i) => i.count));
   return (
     <div>
-      <div className="text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>
+      <div
+        className="text-[11px] font-semibold uppercase tracking-wide mb-1.5"
+        style={{ color: 'var(--text-muted)' }}
+      >
         {title}
       </div>
       <div className="space-y-1">
@@ -49,31 +56,38 @@ function DistBars({ title, items, total }: { title: string; items: NginxInvDist[
           <div key={i.value} className="flex items-center gap-2">
             <span
               className="w-40 shrink-0 truncate text-[11px] font-mono"
-              style={{ color: "var(--text-primary)" }}
+              style={{ color: 'var(--text-primary)' }}
               title={i.value}
             >
               {i.value}
             </span>
-            <span className="flex-1 h-3.5 rounded overflow-hidden" style={{ background: "var(--bg-elevated)" }}>
+            <span
+              className="flex-1 h-3.5 rounded overflow-hidden"
+              style={{ background: 'var(--bg-elevated)' }}
+            >
               <span
                 className="block h-full"
-                style={{ width: `${(i.count / max) * 100}%`, background: "var(--accent)", opacity: 0.7 }}
+                style={{
+                  width: `${(i.count / max) * 100}%`,
+                  background: 'var(--accent)',
+                  opacity: 0.7,
+                }}
               />
             </span>
             <span
               className="w-16 shrink-0 text-right text-[11px] tabular-nums"
-              style={{ color: "var(--text-secondary)" }}
+              style={{ color: 'var(--text-secondary)' }}
             >
               {nf(i.count)}
-              <span style={{ color: "var(--text-muted)" }}>
-                {" "}
+              <span style={{ color: 'var(--text-muted)' }}>
+                {' '}
                 %{total ? Math.round((i.count / total) * 100) : 0}
               </span>
             </span>
           </div>
         ))}
         {items.length > 12 && (
-          <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+          <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
             +{items.length - 12} değer daha
           </div>
         )}
@@ -82,14 +96,14 @@ function DistBars({ title, items, total }: { title: string; items: NginxInvDist[
   );
 }
 
-type View = "ortam" | "versiyon" | "service" | "kaynak" | "sunucular";
+type View = 'ortam' | 'versiyon' | 'service' | 'kaynak' | 'sunucular';
 
 export function NginxEnvanteri() {
   const [data, setData] = useState<NginxInventoryResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [view, setView] = useState<View>("ortam");
-  const [q, setQ] = useState("");
+  const [err, setErr] = useState('');
+  const [view, setView] = useState<View>('ortam');
+  const [q, setQ] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,8 +111,8 @@ export function NginxEnvanteri() {
       const r = await denetimApi.nginxInventory();
       if (r.ok) {
         setData(r);
-        setErr("");
-      } else setErr(r.message || "Veri alınamadı.");
+        setErr('');
+      } else setErr(r.message || 'Veri alınamadı.');
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -106,16 +120,46 @@ export function NginxEnvanteri() {
     }
   }, []);
 
+  // ILK YUKLEME EFFECT ICINDE: istek BURADA kurulur, `load()` cagrilmaz.
+  //
+  // NEDEN: `load` ilk isi olarak `setLoading(true)` cagiriyor ve React 19'un
+  // `set-state-in-effect` kurali, effect'ten cagrilan bir fonksiyonun ICINDEKI
+  // setState'i de "effect'te senkron" sayiyor — `setLoading(true)`'yu cikarmak
+  // BILE yetmiyor (olculdu). Burada ilk ifade `await`, yani hicbir setState
+  // senkron degil. `loading` zaten `true` basladigi icin ilk yuklemede bayragi
+  // ayrica kaldirmaya gerek de yok.
+  //
+  // `alive` bayragi ayri bir kazanc: sekme yanit gelmeden kapanirsa cozulmus
+  // istegin sonucu artik olmayan bir bilesene yazilmaz.
+  // `load` KALIYOR: Yenile dugmesi onu cagiriyor ve olay isleyicisinde
+  // setState tamamen mesru.
   useEffect(() => {
-    load();
-  }, [load]);
+    let alive = true;
+    (async () => {
+      try {
+        const r = await denetimApi.nginxInventory();
+        if (!alive) return;
+        if (r.ok) {
+          setData(r);
+          setErr('');
+        } else setErr(r.message || 'Veri alınamadı.');
+      } catch (e: unknown) {
+        if (alive) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const hostRows = useMemo(() => {
     if (!data) return [];
     const needle = q.trim().toLowerCase();
     if (!needle) return data.hosts;
     return data.hosts.filter((h) =>
-      `${h.hostname} ${h.fqdn || ""} ${h.env} ${h.location || ""} ${h.services || ""} ${h.ip || ""}`
+      `${h.hostname} ${h.fqdn || ''} ${h.env} ${h.location || ''} ${h.services || ''} ${h.ip || ''}`
         .toLowerCase()
         .includes(needle),
     );
@@ -124,7 +168,11 @@ export function NginxEnvanteri() {
   if (loading && !data)
     return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err)
-    return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
+    return (
+      <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+        {err}
+      </div>
+    );
   if (!data) return null;
 
   if (data.totals.hosts === 0) {
@@ -143,11 +191,11 @@ export function NginxEnvanteri() {
     <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)] w-fit">
       {(
         [
-          { id: "ortam", label: "Ortam" },
-          { id: "versiyon", label: "Versiyonlar" },
-          { id: "service", label: "Service'ler" },
-          { id: "kaynak", label: "Kaynaklar" },
-          { id: "sunucular", label: "Sunucular" },
+          { id: 'ortam', label: 'Ortam' },
+          { id: 'versiyon', label: 'Versiyonlar' },
+          { id: 'service', label: "Service'ler" },
+          { id: 'kaynak', label: 'Kaynaklar' },
+          { id: 'sunucular', label: 'Sunucular' },
         ] as const
       ).map((v) => (
         <button
@@ -155,8 +203,8 @@ export function NginxEnvanteri() {
           onClick={() => setView(v.id)}
           className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
             view === v.id
-              ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
-              : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
           }`}
         >
           {v.label}
@@ -170,7 +218,11 @@ export function NginxEnvanteri() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatTile icon={ServerStackIcon} label="nginx sunucusu" value={nf(t.hosts)} tone="accent" />
         <StatTile icon={Squares2X2Icon} label="service" value={nf(t.services)} />
-        <StatTile label="farklı nginx sürümü" value={nf(t.nginxVersions)} hint="Sürüm dağılımı için Versiyonlar sekmesi" />
+        <StatTile
+          label="farklı nginx sürümü"
+          value={nf(t.nginxVersions)}
+          hint="Sürüm dağılımı için Versiyonlar sekmesi"
+        />
         <StatTile icon={CpuChipIcon} label="toplam çekirdek" value={nf(t.cpuTotal)} />
         <StatTile
           icon={CircleStackIcon}
@@ -181,7 +233,7 @@ export function NginxEnvanteri() {
               ? `${t.memory.unparsed} sunucunun bellek değeri çözümlenemedi, toplama dahil değil`
               : undefined
           }
-          tone={t.memory.unparsed ? "warning" : "neutral"}
+          tone={t.memory.unparsed ? 'warning' : 'neutral'}
         />
       </div>
 
@@ -189,18 +241,19 @@ export function NginxEnvanteri() {
         {viewTabs}
         {data.lastUpdate && (
           <span className="text-xs text-[var(--text-muted)]">
-            son güncelleme <span className="tabular-nums">{data.lastUpdate.slice(0, 19).replace("T", " ")}</span>
+            son güncelleme{' '}
+            <span className="tabular-nums">{data.lastUpdate.slice(0, 19).replace('T', ' ')}</span>
           </span>
         )}
         <button
           onClick={load}
           className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
         >
-          <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
+          <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
         </button>
       </div>
 
-      {view === "ortam" && (
+      {view === 'ortam' && (
         <Panel
           title="Ortam ve lokasyon"
           description="Hangi ortamda kaç nginx sunucusu var, bunlar hangi lokasyonlara dağılmış."
@@ -218,7 +271,9 @@ export function NginxEnvanteri() {
               {data.byEnv.map((e) => (
                 <tr key={e.env}>
                   <Td className="font-semibold">{e.env}</Td>
-                  <Td align="right" className="tabular-nums">{nf(e.hosts)}</Td>
+                  <Td align="right" className="tabular-nums">
+                    {nf(e.hosts)}
+                  </Td>
                   <Td>
                     <span className="flex flex-wrap gap-1.5">
                       {e.locations.map((l) => (
@@ -235,8 +290,11 @@ export function NginxEnvanteri() {
         </Panel>
       )}
 
-      {view === "versiyon" && (
-        <Panel title="Versiyonlar" description="nginx, işletim sistemi, çekirdek ve mimari dağılımı." >
+      {view === 'versiyon' && (
+        <Panel
+          title="Versiyonlar"
+          description="nginx, işletim sistemi, çekirdek ve mimari dağılımı."
+        >
           <div className="grid gap-5 md:grid-cols-2">
             <DistBars title="nginx sürümü" items={data.versions.nginx} total={n} />
             <DistBars title="işletim sistemi" items={data.versions.os} total={n} />
@@ -248,7 +306,7 @@ export function NginxEnvanteri() {
         </Panel>
       )}
 
-      {view === "service" && (
+      {view === 'service' && (
         <Panel
           title="Service'ler"
           description="Bir service birden çok sunucuda bulunabilir; sayı o service'i barındıran sunucu sayısıdır."
@@ -256,9 +314,9 @@ export function NginxEnvanteri() {
             <button
               onClick={() =>
                 csvDownload(
-                  "nginx_envanter_service",
-                  ["service", "sunucu", "ortamlar"],
-                  data.byService.map((s) => [s.service, s.hosts, s.envs.join(" ")]),
+                  'nginx_envanter_service',
+                  ['service', 'sunucu', 'ortamlar'],
+                  data.byService.map((s) => [s.service, s.hosts, s.envs.join(' ')]),
                 )
               }
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
@@ -280,11 +338,15 @@ export function NginxEnvanteri() {
               {data.byService.map((s) => (
                 <tr key={s.service}>
                   <Td className="font-mono">{s.service}</Td>
-                  <Td align="right" className="tabular-nums">{nf(s.hosts)}</Td>
+                  <Td align="right" className="tabular-nums">
+                    {nf(s.hosts)}
+                  </Td>
                   <Td>
                     <span className="flex flex-wrap gap-1">
                       {s.envs.map((e) => (
-                        <Pill key={e} tone="info">{e}</Pill>
+                        <Pill key={e} tone="info">
+                          {e}
+                        </Pill>
                       ))}
                     </span>
                   </Td>
@@ -295,24 +357,31 @@ export function NginxEnvanteri() {
         </Panel>
       )}
 
-      {view === "kaynak" && (
+      {view === 'kaynak' && (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
             <StatTile
               label="/usr/nginx toplam"
               value={`${nf(t.diskNginx.totalGiB)} GiB`}
-              tone={t.diskNginx.unparsed ? "warning" : "neutral"}
-              hint={t.diskNginx.unparsed ? `${t.diskNginx.unparsed} sunucu çözümlenemedi` : undefined}
+              tone={t.diskNginx.unparsed ? 'warning' : 'neutral'}
+              hint={
+                t.diskNginx.unparsed ? `${t.diskNginx.unparsed} sunucu çözümlenemedi` : undefined
+              }
             />
             <StatTile
               label="/web_log toplam"
               value={`${nf(t.diskWebLog.totalGiB)} GiB`}
-              tone={t.diskWebLog.unparsed ? "warning" : "neutral"}
-              hint={t.diskWebLog.unparsed ? `${t.diskWebLog.unparsed} sunucu çözümlenemedi` : undefined}
+              tone={t.diskWebLog.unparsed ? 'warning' : 'neutral'}
+              hint={
+                t.diskWebLog.unparsed ? `${t.diskWebLog.unparsed} sunucu çözümlenemedi` : undefined
+              }
             />
             <StatTile label="ortam sayısı" value={nf(t.envs)} />
           </div>
-          <Panel title="Kaynak dağılımı" description="Değerler sunucudan toplandığı gibi gruplanır.">
+          <Panel
+            title="Kaynak dağılımı"
+            description="Değerler sunucudan toplandığı gibi gruplanır."
+          >
             <div className="grid gap-5 md:grid-cols-2">
               <DistBars title="çekirdek (cpu)" items={data.resources.cpu} total={n} />
               <DistBars title="bellek" items={data.resources.memory} total={n} />
@@ -325,7 +394,7 @@ export function NginxEnvanteri() {
         </>
       )}
 
-      {view === "sunucular" && (
+      {view === 'sunucular' && (
         <Panel
           title="Sunucular"
           description={`${nf(hostRows.length)} sunucu gösteriliyor.`}
@@ -343,16 +412,46 @@ export function NginxEnvanteri() {
               <button
                 onClick={() =>
                   csvDownload(
-                    "nginx_envanteri",
-                    ["hostname", "fqdn", "ortam", "lokasyon", "ip", "subnet", "os", "kernel",
-                     "mimari", "cpu", "bellek", "nginx_surum", "nginx_kullanici", "konf_sayisi",
-                     "service_sayisi", "services", "disk_usr_nginx", "disk_web_log"],
+                    'nginx_envanteri',
+                    [
+                      'hostname',
+                      'fqdn',
+                      'ortam',
+                      'lokasyon',
+                      'ip',
+                      'subnet',
+                      'os',
+                      'kernel',
+                      'mimari',
+                      'cpu',
+                      'bellek',
+                      'nginx_surum',
+                      'nginx_kullanici',
+                      'konf_sayisi',
+                      'service_sayisi',
+                      'services',
+                      'disk_usr_nginx',
+                      'disk_web_log',
+                    ],
                     hostRows.map((h) => [
-                      h.hostname, h.fqdn || "", h.env, h.location || "", h.ip || "", h.subnet || "",
-                      h.os || "", h.kernel || "", h.architecture || "", String(h.cpu ?? ""),
-                      h.memory || "", h.nginx_version || "", h.nginx_user || "",
-                      String(h.config_count ?? ""), String(h.service_count ?? ""), h.services || "",
-                      h.disk_usr_nginx || "", h.disk_web_log || "",
+                      h.hostname,
+                      h.fqdn || '',
+                      h.env,
+                      h.location || '',
+                      h.ip || '',
+                      h.subnet || '',
+                      h.os || '',
+                      h.kernel || '',
+                      h.architecture || '',
+                      String(h.cpu ?? ''),
+                      h.memory || '',
+                      h.nginx_version || '',
+                      h.nginx_user || '',
+                      String(h.config_count ?? ''),
+                      String(h.service_count ?? ''),
+                      h.services || '',
+                      h.disk_usr_nginx || '',
+                      h.disk_web_log || '',
                     ]),
                   )
                 }
@@ -385,14 +484,22 @@ export function NginxEnvanteri() {
                     {h.hostname}
                   </Td>
                   <Td className="whitespace-nowrap">{h.env}</Td>
-                  <Td className="whitespace-nowrap" >{h.location || "—"}</Td>
-                  <Td className="font-mono whitespace-nowrap">{h.nginx_version || "—"}</Td>
-                  <Td className="whitespace-nowrap" title={h.kernel || ""}>{h.os || "—"}</Td>
-                  <Td align="right" className="tabular-nums">{h.cpu ?? "—"}</Td>
-                  <Td align="right" className="tabular-nums">{h.memory || "—"}</Td>
-                  <Td align="right" className="tabular-nums">{h.config_count ?? "—"}</Td>
-                  <Td className="text-[11px]" title={h.services || ""}>
-                    {h.services || "—"}
+                  <Td className="whitespace-nowrap">{h.location || '—'}</Td>
+                  <Td className="font-mono whitespace-nowrap">{h.nginx_version || '—'}</Td>
+                  <Td className="whitespace-nowrap" title={h.kernel || ''}>
+                    {h.os || '—'}
+                  </Td>
+                  <Td align="right" className="tabular-nums">
+                    {h.cpu ?? '—'}
+                  </Td>
+                  <Td align="right" className="tabular-nums">
+                    {h.memory || '—'}
+                  </Td>
+                  <Td align="right" className="tabular-nums">
+                    {h.config_count ?? '—'}
+                  </Td>
+                  <Td className="text-[11px]" title={h.services || ''}>
+                    {h.services || '—'}
                   </Td>
                 </tr>
               ))}
