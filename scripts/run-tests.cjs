@@ -47,6 +47,7 @@ const TEST_DIRS = [
   'server/__tests__',
   'src/__tests__',
   'src/components/scalex/__tests__',
+  'src/components/denetim/__tests__',
 ];
 
 function collect() {

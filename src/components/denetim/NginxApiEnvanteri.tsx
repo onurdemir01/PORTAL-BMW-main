@@ -11,7 +11,7 @@
 //   · ortamlar arası  — ortamların beklenen API sayısı birbirinden farklı
 //
 // Ortam bilgisi TABLODA YOKTUR; sunucu adından türetilir (server/audit/nginx-hosts.cjs).
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownTrayIcon,
   ArrowPathIcon,
@@ -20,33 +20,33 @@ import {
   DocumentTextIcon,
   Squares2X2Icon,
   ShieldExclamationIcon,
-} from "@heroicons/react/24/outline";
-import { denetimApi, type NginxApiResult, type NginxApiConfigRow } from "@/api/denetimApi";
-import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from "./ui";
-import { NginxInternetExpose } from "./NginxInternetExpose";
-import { NginxApiLocations } from "./NginxApiLocations";
+} from '@heroicons/react/24/outline';
+import { denetimApi, type NginxApiResult, type NginxApiConfigRow } from '@/api/denetimApi';
+import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from './ui';
+import { NginxInternetExpose } from './NginxInternetExpose';
+import { NginxApiLocations } from './NginxApiLocations';
 
-const nf = (n: number) => new Intl.NumberFormat("tr-TR").format(n);
+const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const esc = (v: string | number) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const csv = [header, ...rows].map((r) => r.map(esc).join(";")).join("\r\n");
-  const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a");
+  const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const csv = [header, ...rows].map((r) => r.map(esc).join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
   a.href = url;
   a.download = `${name}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-type View = "ortam" | "sunucu" | "konfig" | "apibazli" | "internet";
+type View = 'ortam' | 'sunucu' | 'konfig' | 'apibazli' | 'internet';
 
 export function NginxApiEnvanteri() {
   const [data, setData] = useState<NginxApiResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [view, setView] = useState<View>("ortam");
-  const [q, setQ] = useState("");
+  const [err, setErr] = useState('');
+  const [view, setView] = useState<View>('ortam');
+  const [q, setQ] = useState('');
   const [onlyProblem, setOnlyProblem] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
 
@@ -56,8 +56,8 @@ export function NginxApiEnvanteri() {
       const r = await denetimApi.nginxApi(d);
       if (r.ok) {
         setData(r);
-        setErr("");
-      } else setErr(r.message || "Veri alınamadı.");
+        setErr('');
+      } else setErr(r.message || 'Veri alınamadı.');
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -65,16 +65,54 @@ export function NginxApiEnvanteri() {
     }
   }, []);
 
+  // ILK YUKLEME EFFECT ICINDE: istek BURADA kurulur, `load()` cagrilmaz.
+  //
+  // NEDEN: `load` ilk isi olarak `setLoading(true)` cagiriyor ve React 19'un
+  // `set-state-in-effect` kurali, effect'ten cagrilan bir fonksiyonun ICINDEKI
+  // setState'i de "effect'te senkron" sayiyor — `setLoading(true)`'yu cikarmak
+  // BILE yetmiyor (olculdu). Burada ilk ifade `await`, yani hicbir setState
+  // senkron degil. `loading` zaten `true` basladigi icin ilk yuklemede bayragi
+  // ayrica kaldirmaya gerek de yok.
+  //
+  // `alive` bayragi ayri bir kazanc: sekme yanit gelmeden kapanirsa cozulmus
+  // istegin sonucu artik olmayan bir bilesene yazilmaz.
+  // `load` KALIYOR: Yenile dugmesi onu cagiriyor ve olay isleyicisinde
+  // setState tamamen mesru.
   useEffect(() => {
-    load();
-  }, [load]);
+    let alive = true;
+    (async () => {
+      try {
+        const r = await denetimApi.nginxApi();
+        if (!alive) return;
+        if (r.ok) {
+          setData(r);
+          setErr('');
+        } else setErr(r.message || 'Veri alınamadı.');
+      } catch (e: unknown) {
+        if (alive) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const configRows = useMemo(() => {
     if (!data) return [];
     const needle = q.trim().toLowerCase();
     return data.byConfig.filter((c) => {
       if (needle && !c.config.toLowerCase().includes(needle)) return false;
-      if (onlyProblem && !(c.hostInconsistent || c.envInconsistent || c.missingEnvs.length > 0 || c.noLimitEverywhere))
+      if (
+        onlyProblem &&
+        !(
+          c.hostInconsistent ||
+          c.envInconsistent ||
+          c.missingEnvs.length > 0 ||
+          c.noLimitEverywhere
+        )
+      )
         return false;
       return true;
     });
@@ -83,7 +121,11 @@ export function NginxApiEnvanteri() {
   if (loading && !data)
     return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err)
-    return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
+    return (
+      <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+        {err}
+      </div>
+    );
   if (!data) return null;
 
   if (!data.scanDate) {
@@ -102,16 +144,16 @@ export function NginxApiEnvanteri() {
     <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)] w-fit">
       {(
         [
-          { id: "ortam", label: "Ortama Göre" },
-          { id: "sunucu", label: "Sunucuya Göre" },
-          { id: "konfig", label: "Konfigürasyon Karşılaştırma" },
+          { id: 'ortam', label: 'Ortama Göre' },
+          { id: 'sunucu', label: 'Sunucuya Göre' },
+          { id: 'konfig', label: 'Konfigürasyon Karşılaştırma' },
           // Konfigurasyon gorunumu "dosya her yerde ayni mi" sorusunu cevapliyor;
           // bu gorunum "SU API nerede var" sorusunu - farkli soru, ayri gorunum.
-          { id: "apibazli", label: "API Bazlı" },
+          { id: 'apibazli', label: 'API Bazlı' },
           // Denetim'in geri kalanı SALT OKUNUR; bu görünüm EYLEM içeriyor (bir API'yi
           // internete açar). Ayrı bir sekme olarak durması, kazayla tıklanma ihtimalini
           // azaltır ve okuma ile yazmayı görsel olarak ayırır.
-          { id: "internet", label: "İnternete Açma" },
+          { id: 'internet', label: 'İnternete Açma' },
         ] as const
       ).map((v) => (
         <button
@@ -119,8 +161,8 @@ export function NginxApiEnvanteri() {
           onClick={() => setView(v.id)}
           className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
             view === v.id
-              ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
-              : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
           }`}
         >
           {v.label}
@@ -134,18 +176,23 @@ export function NginxApiEnvanteri() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatTile icon={ServerStackIcon} label="sunucu" value={nf(t.hosts)} />
         <StatTile icon={DocumentTextIcon} label="konfigürasyon" value={nf(t.configs)} />
-        <StatTile icon={Squares2X2Icon} label="API (location) bloğu" value={nf(t.locations)} tone="accent" />
+        <StatTile
+          icon={Squares2X2Icon}
+          label="API (location) bloğu"
+          value={nf(t.locations)}
+          tone="accent"
+        />
         <StatTile
           icon={ShieldExclamationIcon}
           label="rate limit'siz konfig."
           value={nf(t.configsWithoutLimit)}
-          tone={t.configsWithoutLimit ? "warning" : "neutral"}
+          tone={t.configsWithoutLimit ? 'warning' : 'neutral'}
           hint="Hiçbir location'ında ne IP ne de sunucu bazlı limit tanımlı olmayan konfigürasyonlar"
         />
         <StatTile
           label="tutarsız konfig."
           value={nf(t.inconsistentConfigs)}
-          tone={t.inconsistentConfigs ? "warning" : "neutral"}
+          tone={t.inconsistentConfigs ? 'warning' : 'neutral'}
           hint="Ortamlar veya aynı ortamdaki sunucular arasında API sayısı farklı olanlar"
         />
       </div>
@@ -159,15 +206,15 @@ export function NginxApiEnvanteri() {
           onClick={() => load()}
           className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
         >
-          <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
+          <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
         </button>
       </div>
 
-      {view === "apibazli" && <NginxApiLocations />}
+      {view === 'apibazli' && <NginxApiLocations />}
 
-      {view === "internet" && <NginxInternetExpose />}
+      {view === 'internet' && <NginxInternetExpose />}
 
-      {view === "ortam" && (
+      {view === 'ortam' && (
         <Panel
           title="Ortama göre"
           description="Her ortamda kaç konfigürasyonda toplam kaç API (location) bloğu tanımlı."
@@ -175,10 +222,22 @@ export function NginxApiEnvanteri() {
             <button
               onClick={() =>
                 csvDownload(
-                  "nginx_api_ortam",
-                  ["ortam", "sunucu", "konfigurasyon", "api_blogu", "limitsiz_location", "limitsiz_konfig"],
+                  'nginx_api_ortam',
+                  [
+                    'ortam',
+                    'sunucu',
+                    'konfigurasyon',
+                    'api_blogu',
+                    'limitsiz_location',
+                    'limitsiz_konfig',
+                  ],
                   data.byEnv.map((r) => [
-                    r.env, r.hosts, r.configs, r.locations, r.noLimitLocations, r.configsWithoutLimit,
+                    r.env,
+                    r.hosts,
+                    r.configs,
+                    r.locations,
+                    r.noLimitLocations,
+                    r.configsWithoutLimit,
                   ]),
                 )
               }
@@ -206,10 +265,18 @@ export function NginxApiEnvanteri() {
                   <Td>
                     <span className="font-semibold">{r.env}</span>
                   </Td>
-                  <Td align="right" className="tabular-nums">{nf(r.hosts)}</Td>
-                  <Td align="right" className="tabular-nums">{nf(r.configs)}</Td>
-                  <Td align="right" className="tabular-nums font-semibold">{nf(r.locations)}</Td>
-                  <Td align="right" className="tabular-nums">{nf(r.noLimitLocations)}</Td>
+                  <Td align="right" className="tabular-nums">
+                    {nf(r.hosts)}
+                  </Td>
+                  <Td align="right" className="tabular-nums">
+                    {nf(r.configs)}
+                  </Td>
+                  <Td align="right" className="tabular-nums font-semibold">
+                    {nf(r.locations)}
+                  </Td>
+                  <Td align="right" className="tabular-nums">
+                    {nf(r.noLimitLocations)}
+                  </Td>
                   <Td align="right" className="tabular-nums">
                     {r.configsWithoutLimit > 0 ? (
                       <Pill tone="warning">{nf(r.configsWithoutLimit)}</Pill>
@@ -224,7 +291,7 @@ export function NginxApiEnvanteri() {
         </Panel>
       )}
 
-      {view === "sunucu" && (
+      {view === 'sunucu' && (
         <Panel
           title="Sunucuya göre"
           description="Her sunucuda kaç konfigürasyonda toplam kaç API (location) bloğu tanımlı. Aynı ortamdaki sunucuların birbirine eşit olması beklenir."
@@ -232,10 +299,22 @@ export function NginxApiEnvanteri() {
             <button
               onClick={() =>
                 csvDownload(
-                  "nginx_api_sunucu",
-                  ["sunucu", "ortam", "lokasyon", "konfigurasyon", "api_blogu", "limitsiz_location"],
+                  'nginx_api_sunucu',
+                  [
+                    'sunucu',
+                    'ortam',
+                    'lokasyon',
+                    'konfigurasyon',
+                    'api_blogu',
+                    'limitsiz_location',
+                  ],
                   data.byHost.map((r) => [
-                    r.host, r.env, r.site, r.configs, r.locations, r.noLimitLocations,
+                    r.host,
+                    r.env,
+                    r.site,
+                    r.configs,
+                    r.locations,
+                    r.noLimitLocations,
                   ]),
                 )
               }
@@ -262,10 +341,16 @@ export function NginxApiEnvanteri() {
                 <tr key={r.host}>
                   <Td className="font-mono">{r.host}</Td>
                   <Td>{r.env}</Td>
-                  <Td className="text-[var(--text-muted)]">{r.site || "—"}</Td>
-                  <Td align="right" className="tabular-nums">{nf(r.configs)}</Td>
-                  <Td align="right" className="tabular-nums font-semibold">{nf(r.locations)}</Td>
-                  <Td align="right" className="tabular-nums">{nf(r.noLimitLocations)}</Td>
+                  <Td className="text-[var(--text-muted)]">{r.site || '—'}</Td>
+                  <Td align="right" className="tabular-nums">
+                    {nf(r.configs)}
+                  </Td>
+                  <Td align="right" className="tabular-nums font-semibold">
+                    {nf(r.locations)}
+                  </Td>
+                  <Td align="right" className="tabular-nums">
+                    {nf(r.noLimitLocations)}
+                  </Td>
                 </tr>
               ))}
             </tbody>
@@ -273,13 +358,13 @@ export function NginxApiEnvanteri() {
         </Panel>
       )}
 
-      {view === "konfig" && (
+      {view === 'konfig' && (
         <>
           <Note tone="info" title="Bu tablo nasıl okunur?">
-            Konfigürasyon dosya adları ortamdan bağımsız olarak <b>aynıdır</b>, bu yüzden her
-            satır tek bir dosyanın <b>tüm ortamlardaki</b> hâlini gösterir. Hücredeki sayı o
-            ortamdaki API (location) bloğu sayısıdır; <Code>—</Code> o ortamda dosyanın{" "}
-            <b>hiç bulunmadığı</b> anlamına gelir. Bir satıra tıklayınca sunucu kırılımı açılır.
+            Konfigürasyon dosya adları ortamdan bağımsız olarak <b>aynıdır</b>, bu yüzden her satır
+            tek bir dosyanın <b>tüm ortamlardaki</b> hâlini gösterir. Hücredeki sayı o ortamdaki API
+            (location) bloğu sayısıdır; <Code>—</Code> o ortamda dosyanın <b>hiç bulunmadığı</b>{' '}
+            anlamına gelir. Bir satıra tıklayınca sunucu kırılımı açılır.
             <div className="mt-1.5 flex flex-wrap gap-2">
               <Pill tone="warning">ortam farkı</Pill>
               <span>ortamların API sayısı birbirinden farklı ·</span>
@@ -313,15 +398,22 @@ export function NginxApiEnvanteri() {
                 <button
                   onClick={() =>
                     csvDownload(
-                      "nginx_api_konfigurasyon",
-                      ["konfigurasyon", ...envs, "eksik_ortam", "ortam_farki", "sunucu_farki", "limitsiz"],
+                      'nginx_api_konfigurasyon',
+                      [
+                        'konfigurasyon',
+                        ...envs,
+                        'eksik_ortam',
+                        'ortam_farki',
+                        'sunucu_farki',
+                        'limitsiz',
+                      ],
                       configRows.map((c) => [
                         c.config,
-                        ...envs.map((e) => (c.envs[e] ? c.envs[e].maxLoc : "")),
-                        c.missingEnvs.join(" "),
-                        c.envInconsistent ? "EVET" : "",
-                        c.hostInconsistent ? "EVET" : "",
-                        c.noLimitEverywhere ? "EVET" : "",
+                        ...envs.map((e) => (c.envs[e] ? c.envs[e].maxLoc : '')),
+                        c.missingEnvs.join(' '),
+                        c.envInconsistent ? 'EVET' : '',
+                        c.hostInconsistent ? 'EVET' : '',
+                        c.noLimitEverywhere ? 'EVET' : '',
                       ]),
                     )
                   }
@@ -338,7 +430,9 @@ export function NginxApiEnvanteri() {
                 <tr>
                   <Th>Konfigürasyon</Th>
                   {envs.map((e) => (
-                    <Th key={e} align="right">{e}</Th>
+                    <Th key={e} align="right">
+                      {e}
+                    </Th>
                   ))}
                   <Th>Bulgu</Th>
                 </tr>
@@ -367,7 +461,9 @@ export function NginxApiEnvanteri() {
         >
           <div className="p-4 flex flex-wrap gap-2">
             {data.noLimitConfigs.map((c) => (
-              <Pill key={c} tone="warning">{c}</Pill>
+              <Pill key={c} tone="warning">
+                {c}
+              </Pill>
             ))}
           </div>
         </Panel>
@@ -390,10 +486,7 @@ function ConfigRow({
 }) {
   return (
     <>
-      <tr
-        className="cursor-pointer hover:bg-[var(--bg-elevated)]/60"
-        onClick={onToggle}
-      >
+      <tr className="cursor-pointer hover:bg-[var(--bg-elevated)]/60" onClick={onToggle}>
         <Td className="font-mono whitespace-nowrap" title={row.config}>
           {row.config}
         </Td>
@@ -412,7 +505,7 @@ function ConfigRow({
             <Td
               key={e}
               align="right"
-              className={`tabular-nums ${drift ? "font-semibold text-[var(--status-danger)]" : ""}`}
+              className={`tabular-nums ${drift ? 'font-semibold text-[var(--status-danger)]' : ''}`}
               title={`${cell.hosts} sunucu · toplam ${cell.locations} location`}
             >
               {drift ? `${cell.minLoc}–${cell.maxLoc}` : cell.maxLoc}
@@ -422,7 +515,7 @@ function ConfigRow({
         <Td>
           <span className="flex flex-wrap gap-1">
             {row.missingEnvs.length > 0 && (
-              <Pill tone="info">eksik: {row.missingEnvs.join(", ")}</Pill>
+              <Pill tone="info">eksik: {row.missingEnvs.join(', ')}</Pill>
             )}
             {row.envInconsistent && <Pill tone="warning">ortam farkı</Pill>}
             {row.hostInconsistent && <Pill tone="danger">sunucu farkı</Pill>}
@@ -443,11 +536,11 @@ function ConfigRow({
                     key={h.host}
                     className="text-[11px] px-2 py-1 rounded-lg border font-mono"
                     style={{
-                      borderColor: "var(--border-subtle)",
-                      background: "var(--bg-surface)",
-                      color: "var(--text-secondary)",
+                      borderColor: 'var(--border-subtle)',
+                      background: 'var(--bg-surface)',
+                      color: 'var(--text-secondary)',
                     }}
-                    title={`${h.env}${h.site ? " · " + h.site : ""} · ${h.noLimit} limitsiz location`}
+                    title={`${h.env}${h.site ? ' · ' + h.site : ''} · ${h.noLimit} limitsiz location`}
                   >
                     {h.host}
                     <span className="ml-1.5 tabular-nums font-semibold text-[var(--text-primary)]">

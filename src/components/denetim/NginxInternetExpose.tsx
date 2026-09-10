@@ -8,34 +8,30 @@
 //
 // EYLEM GERİ ALINMASI KOLAY DEĞİL (bir tanım internete açılıyor), bu yüzden tıklama
 // doğrudan iş başlatmaz: önce ne yapılacağını yazan bir onay adımı gelir.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowPathIcon,
   GlobeAltIcon,
   MagnifyingGlassIcon,
   ChevronRightIcon,
-} from "@heroicons/react/24/outline";
-import {
-  nginxExposeApi,
-  type NginxExposeResult,
-  type NginxExposeRow,
-} from "@/api/nginxExposeApi";
-import { Modal } from "@/components/common/Modal";
-import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from "./ui";
+} from '@heroicons/react/24/outline';
+import { nginxExposeApi, type NginxExposeResult, type NginxExposeRow } from '@/api/nginxExposeApi';
+import { Modal } from '@/components/common/Modal';
+import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from './ui';
 
-const nf = (n: number) => new Intl.NumberFormat("tr-TR").format(n);
+const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
 export function NginxInternetExpose() {
   const [data, setData] = useState<NginxExposeResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [q, setQ] = useState("");
+  const [err, setErr] = useState('');
+  const [q, setQ] = useState('');
   const [open, setOpen] = useState<string | null>(null);
 
   // Onay bekleyen istek + sonuç mesajı
   const [pending, setPending] = useState<{ row: NginxExposeRow; host: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const [result, setResult] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,8 +39,8 @@ export function NginxInternetExpose() {
       const r = await nginxExposeApi.apis();
       if (r.ok) {
         setData(r);
-        setErr("");
-      } else setErr(r.message || "Veri alınamadı.");
+        setErr('');
+      } else setErr(r.message || 'Veri alınamadı.');
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -52,9 +48,39 @@ export function NginxInternetExpose() {
     }
   }, []);
 
+  // ILK YUKLEME EFFECT ICINDE: istek BURADA kurulur, `load()` cagrilmaz.
+  //
+  // NEDEN: `load` ilk isi olarak `setLoading(true)` cagiriyor ve React 19'un
+  // `set-state-in-effect` kurali, effect'ten cagrilan bir fonksiyonun ICINDEKI
+  // setState'i de "effect'te senkron" sayiyor — `setLoading(true)`'yu cikarmak
+  // BILE yetmiyor (olculdu). Burada ilk ifade `await`, yani hicbir setState
+  // senkron degil. `loading` zaten `true` basladigi icin ilk yuklemede bayragi
+  // ayrica kaldirmaya gerek de yok.
+  //
+  // `alive` bayragi ayri bir kazanc: sekme yanit gelmeden kapanirsa cozulmus
+  // istegin sonucu artik olmayan bir bilesene yazilmaz.
+  // `load` KALIYOR: Yenile dugmesi onu cagiriyor ve olay isleyicisinde
+  // setState tamamen mesru.
   useEffect(() => {
-    load();
-  }, [load]);
+    let alive = true;
+    (async () => {
+      try {
+        const r = await nginxExposeApi.apis();
+        if (!alive) return;
+        if (r.ok) {
+          setData(r);
+          setErr('');
+        } else setErr(r.message || 'Veri alınamadı.');
+      } catch (e: unknown) {
+        if (alive) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -74,14 +100,14 @@ export function NginxInternetExpose() {
       const r = await nginxExposeApi.open(pending.row.api, pending.host);
       if (r.ok) {
         setResult({
-          tone: "ok",
-          text: `${pending.row.api} için iş başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ""}. Hedef: ${r.targetHost || "—"}. Sonucu AWX'ten izleyebilirsiniz.`,
+          tone: 'ok',
+          text: `${pending.row.api} için iş başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ''}. Hedef: ${r.targetHost || '—'}. Sonucu AWX'ten izleyebilirsiniz.`,
         });
       } else {
-        setResult({ tone: "bad", text: r.message || "İş başlatılamadı." });
+        setResult({ tone: 'bad', text: r.message || 'İş başlatılamadı.' });
       }
     } catch (e: unknown) {
-      setResult({ tone: "bad", text: e instanceof Error ? e.message : String(e) });
+      setResult({ tone: 'bad', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
       setPending(null);
@@ -91,7 +117,11 @@ export function NginxInternetExpose() {
   if (loading && !data)
     return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err)
-    return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
+    return (
+      <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+        {err}
+      </div>
+    );
   if (!data) return null;
 
   if (!data.scanDate) {
@@ -107,23 +137,23 @@ export function NginxInternetExpose() {
   return (
     <div className="space-y-3">
       <Note tone="info" title="Bu ekran ne yapıyor?">
-        Test ortamında tanımlı API&apos;leri listeler. Bir satırdaki{" "}
-        <b>&quot;API&apos;yi internete aç&quot;</b> butonu, o API&apos;nin konfigürasyon
-        dosyasını kaynak test sunucusundan <b>birebir okuyup</b> internete açık sunucuya
-        (<Code>{data.config.targetHost}</Code>) kopyalar; limit zone satırları da taşınır.
-        Yeniden üretilmez — kopyalanır, çünkü konfigürasyon bloğu hiçbir envanterde
-        saklanmıyor, yalnızca dosyanın kendisinde var.
+        Test ortamında tanımlı API&apos;leri listeler. Bir satırdaki{' '}
+        <b>&quot;API&apos;yi internete aç&quot;</b> butonu, o API&apos;nin konfigürasyon dosyasını
+        kaynak test sunucusundan <b>birebir okuyup</b> internete açık sunucuya (
+        <Code>{data.config.targetHost}</Code>) kopyalar; limit zone satırları da taşınır. Yeniden
+        üretilmez — kopyalanır, çünkü konfigürasyon bloğu hiçbir envanterde saklanmıyor, yalnızca
+        dosyanın kendisinde var.
         <div className="mt-1.5">
-          Hedefte ilgili <Code>include</Code> satırı yoksa iş <b>durur</b>: dosya
-          yazılsaydı nginx onu hiç yüklemez, API açılmış <i>görünüp</i> açılmamış olurdu.
+          Hedefte ilgili <Code>include</Code> satırı yoksa iş <b>durur</b>: dosya yazılsaydı nginx
+          onu hiç yüklemez, API açılmış <i>görünüp</i> açılmamış olurdu.
         </div>
       </Note>
 
       {!configured && (
         <Note tone="warning" title="Buton henüz çalışmıyor — yapılandırma eksik">
           <Code>api_expose.yml</Code> için AWX&apos;te bir job template açılıp Portal&apos;a
-          tanıtılması gerekiyor. Bu yapılana kadar butona basmak açık bir hata döndürür,
-          sessizce hiçbir şey yapmaz.
+          tanıtılması gerekiyor. Bu yapılana kadar butona basmak açık bir hata döndürür, sessizce
+          hiçbir şey yapmaz.
         </Note>
       )}
 
@@ -133,7 +163,11 @@ export function NginxInternetExpose() {
           label="toplam yol (location)"
           value={nf(data.rows.reduce((a, r) => a + r.locations.length, 0))}
         />
-        <StatTile label="kaynak sunucu" value={nf(data.hosts.length)} hint={data.hosts.join(", ")} />
+        <StatTile
+          label="kaynak sunucu"
+          value={nf(data.hosts.length)}
+          hint={data.hosts.join(', ')}
+        />
         <StatTile
           label="hedef"
           value={data.config.targetHost}
@@ -142,9 +176,7 @@ export function NginxInternetExpose() {
         />
       </div>
 
-      {result && (
-        <Note tone={result.tone === "ok" ? "success" : "danger"}>{result.text}</Note>
-      )}
+      {result && <Note tone={result.tone === 'ok' ? 'success' : 'danger'}>{result.text}</Note>}
 
       <Panel
         title="Test ortamındaki API'ler"
@@ -164,7 +196,7 @@ export function NginxInternetExpose() {
               onClick={load}
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
             >
-              <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
+              <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
             </button>
           </div>
         }
@@ -192,15 +224,17 @@ export function NginxInternetExpose() {
                     >
                       <ChevronRightIcon
                         className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${
-                          open === r.configFile ? "rotate-90" : ""
+                          open === r.configFile ? 'rotate-90' : ''
                         }`}
                       />
                       {r.configFile}
                     </button>
                   </Td>
-                  <Td align="right" className="tabular-nums">{nf(r.locations.length)}</Td>
-                  <Td className="font-mono text-[11px]" title={r.hosts.join(", ")}>
-                    {r.hosts[0] || "—"}
+                  <Td align="right" className="tabular-nums">
+                    {nf(r.locations.length)}
+                  </Td>
+                  <Td className="font-mono text-[11px]" title={r.hosts.join(', ')}>
+                    {r.hosts[0] || '—'}
                     {r.hosts.length > 1 && (
                       <span className="text-[var(--text-muted)]"> +{r.hosts.length - 1}</span>
                     )}
@@ -215,9 +249,9 @@ export function NginxInternetExpose() {
                       }}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors disabled:opacity-40"
                       style={{
-                        borderColor: "var(--accent-light)",
-                        background: "var(--accent-bg)",
-                        color: "var(--accent)",
+                        borderColor: 'var(--accent-light)',
+                        background: 'var(--accent-bg)',
+                        color: 'var(--accent)',
                       }}
                     >
                       <GlobeAltIcon className="w-3.5 h-3.5" /> API&apos;yi internete aç
@@ -229,19 +263,30 @@ export function NginxInternetExpose() {
                     <td colSpan={4} className="p-0">
                       <div
                         className="px-4 py-3 border-t"
-                        style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}
+                        style={{
+                          background: 'var(--bg-elevated)',
+                          borderColor: 'var(--border-subtle)',
+                        }}
                       >
-                        <div className="text-[11px] font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>
+                        <div
+                          className="text-[11px] font-semibold mb-1.5"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
                           {r.configFile} içindeki yollar
                         </div>
                         <div className="space-y-1">
                           {r.locations.map((l) => (
-                            <div key={l.path} className="flex flex-wrap items-center gap-2 text-[11px]">
-                              <span className="font-mono" style={{ color: "var(--text-primary)" }}>
+                            <div
+                              key={l.path}
+                              className="flex flex-wrap items-center gap-2 text-[11px]"
+                            >
+                              <span className="font-mono" style={{ color: 'var(--text-primary)' }}>
                                 {l.path}
                               </span>
                               {l.ipRateLimit && <Pill tone="info">IP: {l.ipRateLimit}</Pill>}
-                              {l.serverRateLimit && <Pill tone="info">location: {l.serverRateLimit}</Pill>}
+                              {l.serverRateLimit && (
+                                <Pill tone="info">location: {l.serverRateLimit}</Pill>
+                              )}
                               {!l.ipRateLimit && !l.serverRateLimit && (
                                 <Pill tone="warning">rate limit yok</Pill>
                               )}
@@ -262,7 +307,9 @@ export function NginxInternetExpose() {
         open={!!pending}
         onClose={() => setPending(null)}
         title="API'yi internete aç"
-        subtitle={pending ? `${pending.row.api} · ${pending.host} → ${data.config.targetHost}` : undefined}
+        subtitle={
+          pending ? `${pending.row.api} · ${pending.host} → ${data.config.targetHost}` : undefined
+        }
         icon={GlobeAltIcon}
         footer={
           <div className="flex justify-end gap-2">
@@ -276,15 +323,15 @@ export function NginxInternetExpose() {
               onClick={confirmOpen}
               disabled={busy}
               className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
-              style={{ background: "var(--accent)" }}
+              style={{ background: 'var(--accent)' }}
             >
-              {busy ? "Başlatılıyor…" : "Evet, internete aç"}
+              {busy ? 'Başlatılıyor…' : 'Evet, internete aç'}
             </button>
           </div>
         }
       >
         {pending && (
-          <div className="space-y-2 text-[12px]" style={{ color: "var(--text-secondary)" }}>
+          <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
             <p>
               <b>{pending.row.configFile}</b> dosyası <Code>{pending.host}</Code> sunucusundan
               okunup <Code>{data.config.targetHost}</Code> sunucusuna kopyalanacak. Bu API
@@ -294,15 +341,19 @@ export function NginxInternetExpose() {
               Taşınacak yollar:
               <div className="mt-1 space-y-0.5">
                 {pending.row.locations.map((l) => (
-                  <div key={l.path} className="font-mono text-[11px]" style={{ color: "var(--text-primary)" }}>
+                  <div
+                    key={l.path}
+                    className="font-mono text-[11px]"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
                     {l.path}
                   </div>
                 ))}
               </div>
             </div>
-            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-              Hedefte aynı isimde bir tanım varsa önce yedeklenir. <Code>nginx -t</Code>{" "}
-              başarısız olursa değişiklik geri alınır ve iş hata ile biter.
+            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              Hedefte aynı isimde bir tanım varsa önce yedeklenir. <Code>nginx -t</Code> başarısız
+              olursa değişiklik geri alınır ve iş hata ile biter.
             </p>
           </div>
         )}
