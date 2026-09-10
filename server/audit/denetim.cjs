@@ -16,6 +16,7 @@
 const express = require('express');
 const { PLATFORM_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
 const { tierOfHost } = require('./nginx-hosts.cjs');
+const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
 //
@@ -245,7 +246,7 @@ function initDenetim(app) {
       const clusterParams = () =>
         clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(200), value: c }));
 
-      const [ocpRes, ngxRes, routeRes] = await Promise.all([
+      const [ocpRes, ngxRes, routeRes, intraRes] = await Promise.all([
         query(
           `SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory
             WHERE cluster IN (${placeholders})`,
@@ -270,9 +271,25 @@ function initDenetim(app) {
             WHERE cluster_name IN (${placeholders})`,
           clusterParams(),
         ).catch(() => ({ recordset: [], _missing: true })),
+        // INTRANET: ayri tablo, ayri tane. Bu sunucularda servis vhost'u olmadigi icin
+        // kapsam location'lardan DEGIL, uc dizinin varligindan okunur
+        // (bkz. nginx-intranet.cjs ve bmw_nginx/nginx_config_audit).
+        // Kendi scan_date'i kullanilir: DDL sonradan calistirildiysa iki tablonun son
+        // tarama gunu ayni olmayabilir; Nginx_Config_Audit'in tarihini dayatmak
+        // intranet tarafini bos gosterirdi.
+        query(
+          `SELECT host, namespace, application, hys_deployed, app_deployed,
+                  conf_exists, status
+             FROM dbo.Nginx_Intranet_Audit
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)`,
+        ).catch(() => ({ recordset: [], _missing: true })),
       ]);
 
       const routeTableMissing = !!routeRes._missing;
+      // Tablo YOKSA bu "hicbiri deploy edilmemis" DEMEK DEGILDIR - DDL henuz
+      // calistirilmamis demektir. Ikisini ayirmadan ekran yanlis alarm uretir.
+      const intranetTableMissing = !!intraRes._missing;
+      const intraIdx = indexIntranetRows(intraRes.recordset || []);
 
       // ── Route tipi haritasi ───────────────────────────────────────────────────────
       // "<namespace>|<route>" -> tip, ve "<namespace>" -> o namespace'teki tum tipler.
@@ -396,7 +413,10 @@ function initDenetim(app) {
       // ── nginx tarafi ──────────────────────────────────────────────────────────────
       const ngxNonSpa = new Set();
       const ngx = new Map(); // INTERNETE ACIK sunucularda tanimli SPA'lar
-      const ngxIntra = new Map(); // INTRANET sunucularinda tanimli SPA'lar
+      // Intranet sunucusunda servis vhost'u BEKLENMEZ. Yine de bir location kaydi
+      // cikarsa bunu SESSIZCE internet kumesine katmak orani bozar; sayilir ve
+      // ekranda bilgi olarak gosterilir.
+      let intranetVhostRows = 0;
       for (const r of ngxRes.recordset || []) {
         const e = String(r.env || '')
           .trim()
@@ -409,10 +429,12 @@ function initDenetim(app) {
         }
         // Katman host'tan gelir (bkz. nginx-hosts.cjs INTRANET_HOSTS). Listede
         // olmayan her host internete acik sayilir.
-        const tier = tierOfHost(r.host);
-        const store = tier === 'intranet' ? ngxIntra : ngx;
-        if (!store.has(e)) store.set(e, new Map());
-        store.get(e).set(app.toLowerCase(), app);
+        if (tierOfHost(r.host) === 'intranet') {
+          intranetVhostRows++;
+          continue;
+        }
+        if (!ngx.has(e)) ngx.set(e, new Map());
+        ngx.get(e).set(app.toLowerCase(), app);
       }
       const nginxOutsidePattern = [...ngxNonSpa]
         .sort((a, b) => a.localeCompare(b, 'tr'))
@@ -423,7 +445,7 @@ function initDenetim(app) {
           ...ENVS.map((e) => e.toUpperCase()),
           ...ocp.keys(),
           ...ngx.keys(),
-          ...ngxIntra.keys(), // EDU gibi YALNIZ intranet tarafinda gecen ortamlar
+          ...intraIdx.keys(), // EDU gibi YALNIZ intranet tarafinda gecen ortamlar
         ]),
       ];
       const CAP = 300;
@@ -432,13 +454,9 @@ function initDenetim(app) {
       const rows = ENV_LIST.map((e) => {
         const o = ocp.get(e) || new Map();
         const n = ngx.get(e) || new Map();
-        const ni = ngxIntra.get(e) || new Map();
         // nginx'te bu ortama ait HIC satir yoksa kapsam OLCULEMEZ (proxy_pass mimarisi
         // gibi durumlar). "%0 kapsam" demek yaniltici olurdu.
         const measured = n.size > 0;
-        // Intranet tarafi AYRI olculur: sunucular henuz taranmadiysa "hicbiri deploy
-        // olmamis" DEMEK DEGILDIR, "olculemedi" demektir.
-        const measuredIntranet = ni.size > 0;
 
         const bucket = { internet: [], intranet: [], diger: [], bilinmiyor: [] };
         const inNginx = { internet: [], intranet: [], diger: [], bilinmiyor: [] };
@@ -447,9 +465,9 @@ function initDenetim(app) {
           if (n.has(k)) inNginx[v.net].push(v.name);
         }
         const internetMissing = bucket.internet.filter((a) => !n.has(a.toLowerCase()));
-        // INTRANET KAPSAMI: intranet SPA'lari intranet sunucularinda mi?
-        const intranetInIntra = bucket.intranet.filter((a) => ni.has(a.toLowerCase()));
-        const intranetMissing = bucket.intranet.filter((a) => !ni.has(a.toLowerCase()));
+        // INTRANET KAPSAMI: uygulama uc dizinin UCUNDE de var mi? Hesap ayri modulde
+        // (nginx-intranet.cjs) - orada birim testleriyle kilitli.
+        const ic = coverageForEnv(bucket.intranet, intraIdx.get(e), CAP);
         const onlyNginx = [];
         for (const [k, v] of n) if (!o.has(k)) onlyNginx.push(v);
 
@@ -463,18 +481,23 @@ function initDenetim(app) {
           internetInNginx: inNginx.internet.length,
           internetMissingCount: internetMissing.length,
           internetMissing: internetMissing.sort(sortTr).slice(0, CAP),
-          // INTRANET (reencrypt) = intranet SPA sunucularina cikar (2026-09-10).
-          // Onceden "nginx'e HIC cikamaz" varsayiliyordu; intranet sunuculari
-          // eklenince bu varsayim gecersiz kaldi.
+          // INTRANET (reencrypt) = intranet SPA sunucularina dagitilir. Olcum
+          // location'dan DEGIL, uc dizinin varligindan gelir (2026-09-10 duzeltmesi):
+          //   /hysdeploy/<ns>/<app>/ + /usr/nginx/applications/<ns>/<app>/ +
+          //   application-confs/<app>-<ns>.conf
+          // "Yarim kurulum" ayri kovada: 404 doner ama mudahalesi bastan kurulumdan
+          // farklidir, ikisini birlestirmek nerede is oldugunu gizlerdi.
           intranetTotal: bucket.intranet.length,
-          measuredIntranet,
-          intranetInIntranet: intranetInIntra.length,
-          intranetMissingCount: intranetMissing.length,
-          intranetMissing: intranetMissing.sort(sortTr).slice(0, CAP),
-          intranetCoverage:
-            measuredIntranet && bucket.intranet.length
-              ? Math.round((intranetInIntra.length / bucket.intranet.length) * 1000) / 10
-              : null,
+          measuredIntranet: ic.measured,
+          intranetFull: ic.fullCount,
+          intranetPartialCount: ic.partialCount,
+          intranetPartial: ic.partial,
+          intranetMissingCount: ic.missingCount,
+          intranetMissing: ic.missing,
+          intranetOnlyOnServerCount: ic.onlyOnServerCount,
+          intranetOnlyOnServer: ic.onlyOnServer,
+          intranetHosts: ic.hosts,
+          intranetCoverage: ic.coverage,
           // BULGU DARALDI: intranet uygulamasinin INTERNETE ACIK sunucuda tanimli
           // olmasi. Intranet sunucusunda olmasi artik NORMALDIR, bulgu degildir.
           intranetInNginx: inNginx.intranet.length,
@@ -502,7 +525,7 @@ function initDenetim(app) {
 
       // Intranet sunuculari HENUZ TARANMADIYSA bunu ekran SOYLEMELI: aksi halde "hicbir
       // intranet uygulamasi deploy edilmemis" gibi okunur ve yanlis alarm uretir.
-      const intranetScanned = ngxIntra.size > 0;
+      const intranetScanned = intraIdx.size > 0;
 
       res.json({
         ok: true,
@@ -515,6 +538,9 @@ function initDenetim(app) {
         // "bilinmiyor" kovasina duser ve sebebi anlasilmaz.
         routeTableMissing,
         intranetScanned,
+        intranetTableMissing,
+        // Beklenmeyen durum: intranet sunucusunda servis vhost'u tanimi bulundu.
+        intranetVhostRows,
         routeMatch: matchStats,
         ocpNonSpaExcluded: ocpNonSpa.size,
         nginxOutsidePattern,

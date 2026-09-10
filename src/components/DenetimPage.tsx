@@ -314,7 +314,12 @@ function SpaCoverage() {
 
   const isIntra = tier === 'intranet';
   const totalOf = (r: SpaCoverageRow) => (isIntra ? r.intranetTotal : r.internetTotal);
-  const inNginxOf = (r: SpaCoverageRow) => (isIntra ? r.intranetInIntranet : r.internetInNginx);
+  // "Tanimli/tam": internet katmaninda nginx'te location tanimi VAR demek; intranet
+  // katmaninda UC DIZININ DE yerinde olmasi demek (hysdeploy + applications + conf).
+  const okOf = (r: SpaCoverageRow) => (isIntra ? r.intranetFull : r.internetInNginx);
+  // Yarim kurulum YALNIZCA intranet katmaninda vardir: internet tarafinda bir location
+  // ya vardir ya yoktur, arasi yoktur.
+  const partialOf = (r: SpaCoverageRow) => (isIntra ? r.intranetPartialCount : 0);
   const missingOf = (r: SpaCoverageRow) =>
     isIntra ? r.intranetMissingCount : r.internetMissingCount;
   const measuredOf = (r: SpaCoverageRow) => (isIntra ? r.measuredIntranet : r.measured);
@@ -333,8 +338,19 @@ function SpaCoverage() {
             OpenShift SPA’ları ↔ nginx tanımları
           </h3>
           <p className="text-[12px] text-[var(--text-secondary)] mt-1 max-w-2xl leading-relaxed">
-            <b>İnternete açık</b> SPA’ların kaçının nginx’te tanımı var? Her satır bir ortam; yeşil
-            kısım tanımlı olanları, turuncu kısım <b>eksik olanları</b> gösterir.
+            {isIntra ? (
+              <>
+                <b>İntranet</b> SPA’larının kaçı intranet sunucularına gerçekten kurulmuş? Bu
+                sunucularda servis vhost’u yoktur; ölçü <b>üç dizinin</b> varlığıdır. Yeşil kısım
+                tam kurulanları, sarı kısım <b>yarım kalanları</b>, kırmızı kısım hiç izi
+                olmayanları gösterir.
+              </>
+            ) : (
+              <>
+                <b>İnternete açık</b> SPA’ların kaçının nginx’te tanımı var? Her satır bir ortam;
+                yeşil kısım tanımlı olanları, turuncu kısım <b>eksik olanları</b> gösterir.
+              </>
+            )}
           </p>
           <details className="mt-1.5 group">
             <summary className="text-[11px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)] select-none">
@@ -357,8 +373,30 @@ function SpaCoverage() {
                 <b>Ortam:</b> namespace son ekinden (-dev / -test / -qa / -prod).
               </p>
               <p>
-                <b>Kapsam yüzdesi:</b> yalnızca internet uygulamaları üzerinden — intranet olanlar
-                zaten nginx’e çıkmayacağı için paydaya girmez.
+                <b>İntranet ölçümü:</b> bu sunucularda{' '}
+                <code className="px-1 rounded bg-[var(--bg-elevated)]">
+                  &lt;SERVİS&gt;-&lt;ORTAM&gt;.conf
+                </code>{' '}
+                gibi bir servis vhost’u <b>yoktur</b> — oraya yalnızca OpenShift’teki intranet
+                uygulamaları dağıtılır. Bu yüzden location aranmaz, üç yer kontrol edilir:{' '}
+                <code className="px-1 rounded bg-[var(--bg-elevated)]">
+                  /hysdeploy/&lt;ns&gt;/&lt;app&gt;/
+                </code>
+                ,{' '}
+                <code className="px-1 rounded bg-[var(--bg-elevated)]">
+                  /usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/
+                </code>{' '}
+                ve{' '}
+                <code className="px-1 rounded bg-[var(--bg-elevated)]">
+                  application-confs/&lt;app&gt;-&lt;ns&gt;.conf
+                </code>
+                . Üçü de varsa <b>tam</b>; biri eksikse <b>yarım</b> — yarım kurulum da 404 döner
+                ama müdahalesi baştan kurulumdan farklıdır, o yüzden ayrı sayılır.
+              </p>
+              <p>
+                <b>Kapsam yüzdesi:</b> internet katmanında yalnızca internet uygulamaları
+                üzerinden; intranet katmanında <b>yalnızca tam kurulumlar</b> üzerinden — yarım
+                kurulumu kapsandı saymak, 404 dönen uygulamayı yeşil göstermek olurdu.
               </p>
             </div>
           </details>
@@ -396,15 +434,43 @@ function SpaCoverage() {
 
       {/* Intranet sunuculari HENUZ TARANMADIYSA bunu SOYLE: aksi halde tablo "hicbir
           intranet uygulamasi deploy edilmemis" gibi okunur ve yanlis alarm uretir. */}
-      {isIntra && data.intranetScanned === false && (
+      {/* IKI FARKLI SEBEP, IKI FARKLI MESAJ: tablo hic yoksa yapilacak is DDL'i
+          calistirmaktir; tablo varsa ama bossa job'i kosturmaktir. Ikisini tek mesajda
+          birlestirmek, kullaniciyi yanlis adima yonlendirirdi. */}
+      {isIntra && data.intranetTableMissing && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <b>İntranet denetimi henüz açık değil.</b> Bu görünüm{' '}
+          <code className="px-1 rounded bg-white/70 border border-amber-200">
+            dbo.Nginx_Intranet_Audit
+          </code>{' '}
+          tablosunu kullanır; tablo yok. Tek seferlik DDL:{' '}
+          <code className="px-1 rounded bg-white/70 border border-amber-200">
+            bmw_nginx/nginx_config_audit/files/nginx_config_audit_intranet.sql
+          </code>
+          . Çalıştırıldıktan sonra{' '}
+          <code className="px-1 rounded bg-white/70 border border-amber-200">
+            nginx_config_audit
+          </code>{' '}
+          job’ının bir sonraki koşusunda burası dolar. <b>Diğer ekranlar etkilenmez.</b>
+        </p>
+      )}
+
+      {isIntra && !data.intranetTableMissing && data.intranetScanned === false && (
         <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           <b>İntranet SPA sunucuları henüz taranmamış.</b> Aşağıdaki sayılar &quot;hiçbiri deploy
           edilmemiş&quot; anlamına <b>gelmez</b> — ölçülemediği anlamına gelir.{' '}
           <code className="px-1 rounded bg-white/70 border border-amber-200">
             nginx_config_audit
           </code>{' '}
-          job&apos;ının host listesine bu sunucular eklendikten ve job bir kez koştuktan sonra
-          burası dolar.
+          job&apos;ı bir kez koştuktan sonra burası dolar.
+        </p>
+      )}
+
+      {isIntra && !!data.intranetVhostRows && (
+        <p className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg px-3 py-2">
+          Beklenmeyen durum: intranet sunucularında <b>{fmtNumber(data.intranetVhostRows)}</b>{' '}
+          servis vhost’u tanımı bulundu. Bu sunucularda servis vhost’u beklenmez; bu satırlar
+          kapsam hesabına <b>katılmadı</b>.
         </p>
       )}
 
@@ -420,20 +486,36 @@ function SpaCoverage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat n={sum(totalOf)} l={isIntra ? 'intranet SPA' : 'internete açık SPA'} />
         <Stat
-          n={sum((r) => (measuredOf(r) ? inNginxOf(r) : 0))}
-          l={isIntra ? 'intranet sunucularında' : "nginx'te tanımlı"}
+          n={sum((r) => (measuredOf(r) ? okOf(r) : 0))}
+          l={isIntra ? 'tam kurulu' : "nginx'te tanımlı"}
           tone="ok"
         />
-        <Stat
-          n={sum((r) => (measuredOf(r) ? missingOf(r) : 0))}
-          l={isIntra ? 'intranet sunucusunda yok' : "nginx'te tanımı yok"}
-          tone="warn"
-        />
-        <Stat
-          n={anomaly}
-          l="intranet ama internete açık sunucuda"
-          tone={anomaly ? 'warn' : undefined}
-        />
+        {isIntra ? (
+          <Stat
+            n={sum((r) => (measuredOf(r) ? partialOf(r) : 0))}
+            l="yarım kurulum"
+            tone="warn"
+          />
+        ) : (
+          <Stat
+            n={sum((r) => (measuredOf(r) ? missingOf(r) : 0))}
+            l="nginx'te tanımı yok"
+            tone="warn"
+          />
+        )}
+        {isIntra ? (
+          <Stat
+            n={sum((r) => (measuredOf(r) ? missingOf(r) : 0))}
+            l="hiçbir sunucuda yok"
+            tone="warn"
+          />
+        ) : (
+          <Stat
+            n={anomaly}
+            l="intranet ama internete açık sunucuda"
+            tone={anomaly ? 'warn' : undefined}
+          />
+        )}
       </div>
 
       {anomaly > 0 && (
@@ -451,8 +533,12 @@ function SpaCoverage() {
           Ortam
         </span>
         <span className="flex-1 flex items-center gap-3 flex-wrap">
-          <LegendSwatch className="bg-emerald-500/70" label="nginx'te tanımlı" />
-          <LegendSwatch className="bg-amber-400/70" label="tanımı eksik" />
+          <LegendSwatch className="bg-emerald-500/70" label={isIntra ? 'tam kurulu' : "nginx'te tanımlı"} />
+          <LegendSwatch
+            className={isIntra ? 'bg-amber-500/80' : 'bg-amber-400/70'}
+            label={isIntra ? 'yarım kurulum' : 'tanımı eksik'}
+          />
+          {isIntra && <LegendSwatch className="bg-rose-400/70" label="hiç yok" />}
           <LegendSwatch
             label="ölçülemedi"
             style={{
@@ -462,7 +548,7 @@ function SpaCoverage() {
           />
         </span>
         <span className="w-28 shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-          tanımlı / toplam
+          {isIntra ? 'tam / toplam' : 'tanımlı / toplam'}
         </span>
         <span className="w-24 shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
           kapsam
@@ -485,13 +571,22 @@ function SpaCoverage() {
                     <>
                       <span
                         className="h-full bg-emerald-500/70"
-                        style={{ width: `${(inNginxOf(r) / maxTotal) * 100}%` }}
-                        title={`tanımlı: ${inNginxOf(r)}`}
+                        style={{ width: `${(okOf(r) / maxTotal) * 100}%` }}
+                        title={isIntra ? `tam kurulu: ${okOf(r)}` : `tanımlı: ${okOf(r)}`}
                       />
+                      {/* YARIM kurulum yalnizca intranette var; sifir genislikte bir
+                          seride cizmemek icin kosullu. */}
+                      {isIntra && partialOf(r) > 0 && (
+                        <span
+                          className="h-full bg-amber-500/80"
+                          style={{ width: `${(partialOf(r) / maxTotal) * 100}%` }}
+                          title={`yarım kurulum: ${partialOf(r)}`}
+                        />
+                      )}
                       <span
-                        className="h-full bg-amber-400/70"
+                        className={`h-full ${isIntra ? 'bg-rose-400/70' : 'bg-amber-400/70'}`}
                         style={{ width: `${(missingOf(r) / maxTotal) * 100}%` }}
-                        title={`tanım eksik: ${missingOf(r)}`}
+                        title={isIntra ? `hiç yok: ${missingOf(r)}` : `tanım eksik: ${missingOf(r)}`}
                       />
                     </>
                   ) : (
@@ -518,7 +613,7 @@ function SpaCoverage() {
                 </span>
                 <span className="w-28 shrink-0 text-right text-xs tabular-nums text-[var(--text-secondary)]">
                   {measuredOf(r)
-                    ? `${fmtNumber(inNginxOf(r))} / ${fmtNumber(totalOf(r))}`
+                    ? `${fmtNumber(okOf(r))} / ${fmtNumber(totalOf(r))}`
                     : `? / ${fmtNumber(totalOf(r))}`}
                 </span>
                 <span
@@ -543,6 +638,18 @@ function SpaCoverage() {
               </div>
               <div className="flex flex-wrap gap-1.5 mt-1.5 pl-14">
                 <Chip tone="info" label={`intranet: ${r.intranetTotal}`} />
+                {isIntra && r.intranetPartialCount > 0 && (
+                  <Chip tone="warn" label={`yarım kurulum: ${r.intranetPartialCount}`} />
+                )}
+                {isIntra && r.intranetOnlyOnServerCount > 0 && (
+                  <Chip
+                    tone="muted"
+                    label={`yalnızca sunucuda: ${r.intranetOnlyOnServerCount}`}
+                  />
+                )}
+                {isIntra && r.intranetHosts.length > 0 && (
+                  <Chip tone="muted" label={`sunucu: ${r.intranetHosts.join(', ')}`} />
+                )}
                 {r.intranetInNginx > 0 && (
                   <Chip tone="bad" label={`intranet ama nginx'te: ${r.intranetInNginx}`} />
                 )}
@@ -558,7 +665,7 @@ function SpaCoverage() {
               </div>
             </button>
 
-            {open === r.env && !r.measured && (
+            {open === r.env && !measuredOf(r) && (
               <div className="px-3 pb-3 pt-1 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-secondary)] leading-relaxed">
                 Bu ortam için nginx tarafında hiç kayıt yok, dolayısıyla neyin tanımlı olduğu{' '}
                 <b>bilinmiyor</b> — “hiçbiri tanımlı değil” demek değildir. Denetim yalnızca{' '}
@@ -570,7 +677,35 @@ function SpaCoverage() {
                 kurulmuş sunucularda böyle bir satır bulunmaz.
               </div>
             )}
-            {open === r.env && r.measured && (
+            {open === r.env && measuredOf(r) && isIntra && (
+              <div className="px-3 pb-3 pt-1 border-t border-[var(--border-subtle)] grid gap-3 md:grid-cols-3">
+                {/* Yarim kurulumda ASIL BILGI "hangi sunucuda NE eksik"tir; yalniz
+                    uygulama adini vermek kullaniciyi tekrar sunucuya bakmaya zorlardi. */}
+                <AppList
+                  title={`yarım kurulum (${r.intranetPartialCount})`}
+                  tone="warn"
+                  apps={r.intranetPartial.map(
+                    (x) =>
+                      `${x.app} · ` +
+                      x.hosts.map((h) => `${h.host}: ${h.missing.join(', ')} yok`).join(' · '),
+                  )}
+                  empty="Yarım kalan kurulum yok."
+                />
+                <AppList
+                  title={`hiçbir sunucuda yok (${r.intranetMissingCount})`}
+                  tone="bad"
+                  apps={r.intranetMissing}
+                  empty="Hepsinin izi var."
+                />
+                <AppList
+                  title={`yalnızca sunucuda (${r.intranetOnlyOnServerCount})`}
+                  tone="info"
+                  apps={r.intranetOnlyOnServer}
+                  empty="Fazlalık kurulum yok."
+                />
+              </div>
+            )}
+            {open === r.env && measuredOf(r) && !isIntra && (
               <div className="px-3 pb-3 pt-1 border-t border-[var(--border-subtle)] grid gap-3 md:grid-cols-3">
                 <AppList
                   title={`internet, tanım eksik (${r.internetMissingCount})`}
@@ -598,11 +733,22 @@ function SpaCoverage() {
 
       <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-muted)]">
         <span className="flex items-center gap-1">
-          <i className="w-3 h-3 rounded-sm bg-emerald-500/70 inline-block" /> internet, tanımlı
+          <i className="w-3 h-3 rounded-sm bg-emerald-500/70 inline-block" />{' '}
+          {isIntra ? 'intranet, tam kurulu' : 'internet, tanımlı'}
         </span>
         <span className="flex items-center gap-1">
-          <i className="w-3 h-3 rounded-sm bg-amber-400/70 inline-block" /> internet, eksik
+          <i
+            className={`w-3 h-3 rounded-sm inline-block ${
+              isIntra ? 'bg-amber-500/80' : 'bg-amber-400/70'
+            }`}
+          />{' '}
+          {isIntra ? 'intranet, yarım kurulum' : 'internet, eksik'}
         </span>
+        {isIntra && (
+          <span className="flex items-center gap-1">
+            <i className="w-3 h-3 rounded-sm bg-rose-400/70 inline-block" /> intranet, hiç yok
+          </span>
+        )}
         <button
           onClick={() =>
             csvDownload(
@@ -613,6 +759,10 @@ function SpaCoverage() {
                 'nginx_tanimli',
                 'eksik',
                 'intranet_spa',
+                'intranet_tam',
+                'intranet_yarim',
+                'intranet_yok',
+                'intranet_kapsam_yuzde',
                 'intranet_ama_nginxte',
                 'diger_route',
                 'route_bilgisi_yok',
@@ -625,6 +775,10 @@ function SpaCoverage() {
                 r.internetInNginx,
                 r.internetMissingCount,
                 r.intranetTotal,
+                r.intranetFull,
+                r.intranetPartialCount,
+                r.intranetMissingCount,
+                r.intranetCoverage === null ? '' : r.intranetCoverage,
                 r.intranetInNginx,
                 r.otherTotal,
                 r.unknownTotal,
@@ -692,13 +846,18 @@ function SpaCoverage() {
   );
 }
 
-function Chip({ label, tone }: { label: string; tone: 'info' | 'bad' | 'muted' }) {
+// 'warn' AppList'te zaten vardi, Chip'te yoktu. Yarım kurulum ne "sorunsuz" ne de
+// "hata"dır — ara bir durumdur ve bardaki sarı seritle aynı rengi taşımalı, aksi halde
+// aynı bilgi iki yerde iki farklı ciddiyetle okunur.
+function Chip({ label, tone }: { label: string; tone: 'info' | 'warn' | 'bad' | 'muted' }) {
   const cls =
     tone === 'bad'
       ? 'bg-red-50 text-red-700 border-red-200'
-      : tone === 'info'
-        ? 'bg-sky-50 text-sky-700 border-sky-200'
-        : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]';
+      : tone === 'warn'
+        ? 'bg-amber-50 text-amber-700 border-amber-200'
+        : tone === 'info'
+          ? 'bg-sky-50 text-sky-700 border-sky-200'
+          : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]';
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded border tabular-nums ${cls}`}>{label}</span>
   );

@@ -767,7 +767,10 @@ thead th {
 :root .border-indigo-400 { border-color: var(--accent); }
 
 :root .text-red-500, :root .text-red-600, :root .text-red-700, :root .text-rose-500, :root .text-rose-600 { color: var(--status-danger); }
-:root .bg-red-500, :root .bg-red-600, :root .bg-rose-500 { background-color: var(--status-danger); }
+/* bg-rose-400: Denetim > Nginx SPA > Intranet barinin "hic yok" seridi (2026-09-10).
+   Uyum katmani rose ailesinden 50/200/500'u esliyordu; 400 tonu katmanin DISINDA
+   kaliyor ve koyu temada ham Tailwind pembesi basiyordu. */
+:root .bg-red-500, :root .bg-red-600, :root .bg-rose-400, :root .bg-rose-500 { background-color: var(--status-danger); }
 :root .bg-red-50, :root .bg-red-100, :root .bg-rose-50 { background-color: var(--status-danger-bg); }
 :root .border-red-200, :root .border-red-300 { border-color: var(--status-danger); }
 

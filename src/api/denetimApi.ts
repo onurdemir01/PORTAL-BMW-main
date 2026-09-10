@@ -50,15 +50,26 @@ export interface SpaCoverageRow {
   internetInNginx: number;
   internetMissingCount: number;
   internetMissing: string[];
-  /** route tipi reencrypt = intranet; nginx'e CIKAMAZ. */
+  /** route tipi reencrypt = intranet; INTRANET SPA sunucularina dagitilir. */
   intranetTotal: number;
   /** Intranet SPA sunucularinda bu ortama ait HIC satir var mi. false ise
    *  "hicbiri deploy olmamis" DEGIL, "olculemedi" demektir. */
   measuredIntranet: boolean;
-  /** Intranet SPA'larindan kaci INTRANET sunucularina deploy edilmis. */
-  intranetInIntranet: number;
+  /** Uc dizinin UCU DE yerinde: /hysdeploy, /usr/nginx/applications ve
+   *  application-confs/<app>-<ns>.conf. Kapsam orani YALNIZCA bunlar uzerinden. */
+  intranetFull: number;
+  /** Uc dizinden en az biri eksik. 404 doner ama "hic kurulmamis"tan AYRI bir
+   *  istir; ikisini birlestirmek nerede mudahale gerektigini gizlerdi. */
+  intranetPartialCount: number;
+  intranetPartial: { app: string; namespace: string; hosts: { host: string; missing: string[] }[] }[];
+  /** Hicbir intranet sunucusunda izi yok. */
   intranetMissingCount: number;
   intranetMissing: string[];
+  /** Sunucuda var ama OpenShift intranet listesinde yok - BILGI, bulgu degil. */
+  intranetOnlyOnServerCount: number;
+  intranetOnlyOnServer: string[];
+  /** Bu ortamda satir uretilen intranet sunuculari. */
+  intranetHosts: string[];
   intranetCoverage: number | null;
   /** BULGU: intranet uygulamasi INTERNETE ACIK sunucuda tanimli. Intranet
    *  sunucusunda olmasi normaldir, bulgu degildir. */
@@ -91,6 +102,11 @@ export interface SpaCoverageResult {
   nginxOutsidePattern: string[];
   ocpSkippedNoEnv: number;
   intranetScanned?: boolean;
+  /** dbo.Nginx_Intranet_Audit yoksa true: DDL henuz calistirilmamis. "Hicbiri
+   *  deploy edilmemis" ile KARISTIRILMAMALI. */
+  intranetTableMissing?: boolean;
+  /** Beklenmeyen durum: intranet sunucusunda servis vhost'u tanimi bulundu. */
+  intranetVhostRows?: number;
   rows: SpaCoverageRow[];
   message?: string;
 }
