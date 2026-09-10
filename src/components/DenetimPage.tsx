@@ -15,7 +15,8 @@ import {
   ClockIcon,
 } from "@heroicons/react/24/outline";
 import {
-  denetimApi, type NginxSpaResult, type OcpCoverageResult, type NginxSpaEnvCell,
+  denetimApi, type NginxSpaResult, type OcpCoverageResult, type OcpCoverageRow,
+  type NginxSpaEnvCell,
   type InitScriptsResult, type InitScriptStat, type SpaCoverageResult, type SpaCoverageRow,
 } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
@@ -77,7 +78,7 @@ const HELP: HelpSection[] = [
   {
     icon: Squares2X2Icon,
     title: "Openshift Audit",
-    body: "Bir uygulamanın bir platformun hangi ortamlarında var, hangilerinde eksik olduğunu gösterir. Ortam bilgisi cluster'dan DEĞİL, namespace son ekinden (-dev/-test/-qa/-prod) gelir — çünkü ark_dev ile ark_test aynı cluster'ları paylaşır, cluster tek başına ortam bilgisi taşımaz.",
+    body: "Bir uygulamanın bir platformun hangi ortamlarında var, hangilerinde eksik olduğunu gösterir. Ortam bilgisi cluster'dan DEĞİL, namespace son ekinden (-dev/-test/-qa/-prod) gelir — çünkü ark_dev ile ark_test aynı cluster'ları paylaşır, cluster tek başına ortam bilgisi taşımaz. Hücredeki k/n, uygulamanın o ortamın kaç cluster'ında bulunduğunu söyler: yeşil hepsinde, SARI ise bir kısmında (kısmi kapsam), kırmızı hiçbirinde. Önceden hücre yalnızca VAR/YOK gösteriyordu ve 5 cluster'ın 1'inde olan uygulama 5'inde olanla ayırt edilemiyordu. n sayısı sabit bir liste değildir, veriden çıkarılır — o ortamda gerçekten namespace barındıran cluster'lar sayılır; 'Ortam başına cluster'lar' paneli hangileri olduğunu ve her birindeki uygulama sayısını gösterir. KISMİ KAPSAM BİR HÜKÜM DEĞİL GÖZLEMDİR: bazı uygulamaların bazı cluster'larda (örneğin DR) bulunmaması meşru olabilir, o yüzden 'eksik' damgası vurulmaz — yalnızca görünür kılınır. Üstteki 'Sadece kısmi kapsam' filtresiyle bunları ayıklayabilirsiniz.",
   },
 ];
 
@@ -790,6 +791,10 @@ function OcpCoverage() {
   const [err, setErr] = useState("");
   const [q, setQ] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(true);
+  // Kismi kapsam: uygulama o ortamin cluster'larinin BIR KISMINDA var. Bu bir HUKUM
+  // degil GOZLEMDIR - bazi uygulamalarin bazi cluster'larda (or. DR) olmamasi mesru
+  // olabilir; amac gorunur kilmak.
+  const [onlyPartial, setOnlyPartial] = useState(false);
 
   const load = useCallback(async (p: string) => {
     setLoading(true);
@@ -805,15 +810,40 @@ function OcpCoverage() {
   useEffect(() => { load(platform); }, [platform, load]);
 
   const envs = data?.envs || ["dev", "test", "qa", "prod"];
+  /** Bir uygulamanin bir ortamdaki cluster kapsami: kacinda var / o ortamda kac cluster. */
+  const coverageOf = useCallback(
+    (row: OcpCoverageRow, env: string) => {
+      const all = data?.envClusters?.[env] ?? [];
+      const on = new Set((row.envs[env] ?? []).map((h) => h.cluster));
+      return { k: on.size, n: all.length, on, all: all.map((c) => c.cluster) };
+    },
+    [data],
+  );
+
+  const isPartial = useCallback(
+    (row: OcpCoverageRow) =>
+      (data?.envs ?? []).some((e) => {
+        const { k, n } = coverageOf(row, e);
+        return k > 0 && n > 0 && k < n;
+      }),
+    [data, coverageOf],
+  );
+
   const rows = useMemo(() => {
     if (!data) return [];
     const needle = q.trim().toLowerCase();
     return data.rows.filter((r) => {
       if (onlyMissing && r.missingCount === 0) return false;
+      if (onlyPartial && !isPartial(r)) return false;
       if (needle && !r.application.toLowerCase().includes(needle)) return false;
       return true;
     });
-  }, [data, q, onlyMissing]);
+  }, [data, q, onlyMissing, onlyPartial, isPartial]);
+
+  const partialCount = useMemo(
+    () => (data ? data.rows.filter(isPartial).length : 0),
+    [data, isPartial],
+  );
 
   if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
@@ -835,13 +865,24 @@ function OcpCoverage() {
           <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} />
           Sadece eksiği olanlar
         </label>
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer whitespace-nowrap">
+          <input type="checkbox" checked={onlyPartial} onChange={(e) => setOnlyPartial(e.target.checked)} />
+          Sadece kısmi kapsam
+        </label>
         <span className="text-xs text-[var(--text-muted)] tabular-nums">{rows.length} uygulama</span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => csvDownload(
               `ocp_kapsam_${platform}`,
               ["application", ...envs, "eksik"],
-              rows.map((r) => [r.application, ...envs.map((e) => (r.envs[e]?.length ? "VAR" : "YOK")), r.missing.join(" ")])
+              rows.map((r) => [
+                r.application,
+                ...envs.map((e) => {
+                  const { k, n } = coverageOf(r, e);
+                  return k ? `${k}/${n}` : "YOK";
+                }),
+                r.missing.join(" "),
+              ])
             )}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
           >
@@ -859,6 +900,11 @@ function OcpCoverage() {
           <Stat n={data.completeCount} l="tüm ortamlarda var" tone="ok" />
           <Stat n={data.totalApplications - data.completeCount} l="en az bir ortamda eksik" tone="warn" />
           <Stat n={data.clusters.length} l="cluster" />
+          <Stat
+            n={partialCount}
+            l="kısmi cluster kapsamı"
+            tone={partialCount ? "warn" : undefined}
+          />
         </div>
       )}
 
@@ -915,6 +961,54 @@ function OcpCoverage() {
         </div>
       )}
 
+      {/* "k/n" ifadesindeki n BURADA aciklanir. Kume sabit DEGIL, veriden cikarilir:
+          platformun cluster listesi ortam ayrimi tasimaz (bkz. ocp-platforms.cjs).
+          Uygulama sayilari DR gibi bilerek az kullanilan cluster'lari gorunur kilar -
+          oralarda "eksik" gorunmesi cogu zaman NORMALDIR. */}
+      {data && Object.values(data.envClusters || {}).some((c) => c.length > 0) && (
+        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3.5">
+          <div className="text-sm font-semibold text-[var(--text-primary)]">
+            Ortam başına cluster'lar
+          </div>
+          <p className="text-[11px] text-[var(--text-muted)] mt-0.5 mb-2">
+            Tablodaki <span className="font-mono">k/n</span> ifadesindeki <b>n</b> budur:
+            o ortamda gerçekten namespace barındıran cluster sayısı. Parantez içindeki
+            sayı o cluster'daki uygulama sayısıdır — az uygulamalı bir cluster (örn. DR)
+            için "eksik" görünmesi çoğu zaman normaldir.
+          </p>
+          <div className="space-y-1.5">
+            {envs.map((e) => {
+              const list = data.envClusters?.[e] ?? [];
+              if (!list.length) return null;
+              return (
+                <div key={e} className="flex flex-wrap items-baseline gap-1.5">
+                  <span className="w-12 shrink-0 text-xs font-semibold uppercase text-[var(--text-secondary)]">
+                    {e}
+                  </span>
+                  {list.map((c) => (
+                    <span
+                      key={c.cluster}
+                      className="text-[11px] px-2 py-0.5 rounded-lg border font-mono"
+                      style={{
+                        borderColor: "var(--border-subtle)",
+                        background: "var(--bg-elevated)",
+                        color: "var(--text-secondary)",
+                      }}
+                      title={`${c.apps} uygulama`}
+                    >
+                      {c.cluster}
+                      <span className="ml-1 tabular-nums text-[var(--text-muted)]">
+                        ({c.apps})
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {data && data.patterns.length > 0 && (
         <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/60 px-4 py-3">
           <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1.5">En sık eksik ortam desenleri</div>
@@ -945,18 +1039,31 @@ function OcpCoverage() {
                 <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">{r.application}</td>
                 {envs.map((e) => {
                   const hit = r.envs[e];
+                  // Onceden hucre yalnizca VAR/YOK gosteriyordu: 5 cluster'in 1'inde
+                  // olan uygulama, 5'inde olanla AYNI gorunuyordu (2026-09-10 bulgusu).
+                  // Artik kac cluster'da oldugu yazili; kismi kapsam sari.
+                  const { k, n, on, all } = coverageOf(r, e);
+                  const partial = k > 0 && n > 0 && k < n;
+                  const cls = !k
+                    ? "bg-red-50 text-red-600 border-red-200"
+                    : partial
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200";
+                  const eksik = all.filter((c) => !on.has(c));
                   return (
                     <td key={e} className="px-3 py-2">
-                      {hit?.length ? (
-                        <span
-                          className="text-[11px] px-2 py-0.5 rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200"
-                          title={hit.map((h) => `${h.cluster} / ${h.namespace}`).join("\n")}
-                        >
-                          VAR
-                        </span>
-                      ) : (
-                        <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-red-50 text-red-600 border-red-200">YOK</span>
-                      )}
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-lg border tabular-nums ${cls}`}
+                        title={
+                          k
+                            ? `VAR: ${[...on].sort().join(", ")}` +
+                              (eksik.length ? `\nYOK: ${eksik.sort().join(", ")}` : "") +
+                              `\n\n${hit?.map((h) => `${h.cluster} / ${h.namespace}`).join("\n")}`
+                            : `Bu ortamda hiç yok (${n} cluster tarandı)`
+                        }
+                      >
+                        {k ? `${k}/${n}` : "YOK"}
+                      </span>
                     </td>
                   );
                 })}

@@ -537,6 +537,25 @@ function initDenetim(app) {
         })
         .sort((a, b) => a.application.localeCompare(b.application));
 
+      // ORTAM BASINA GERCEKTE KULLANILAN CLUSTER KUMESI (2026-09-10, kullanici bulgusu).
+      //
+      // Sorun: bir uygulama production'in 5 cluster'indan yalnizca 1'inde olsa da hucre
+      // "VAR" gorunuyordu - 5'inde olanla ayirt EDILEMIYORDU. Cluster bilgisi yalnizca
+      // fare ipucunda duruyordu.
+      //
+      // Kume TAHMIN EDILMEZ, VERIDEN CIKARILIR: platformun cluster listesi ortam ayrimi
+      // TASIMAZ (bkz. ocp-platforms.cjs - ayni cluster hem dev hem test namespace'i
+      // barindirabiliyor). Bu yuzden "prod cluster'lari" diye sabit bir liste yazmak
+      // yanlis olurdu; bunun yerine o ortamda GERCEKTEN namespace barindiran cluster'lar
+      // sayilir.
+      //
+      // Her cluster icin uygulama sayisi da dondurulur: bu, "n" sayisinin ne demek
+      // oldugunu aciklar ve DR gibi az uygulamali cluster'lari gorunur kilar. Kismi
+      // kapsam BIR HUKUM DEGIL, bir GOZLEMDIR - bazi uygulamalarin (or. DR'de) olmamasi
+      // mesrudur, bu yuzden "eksik" damgasi vurulmaz.
+      const { envClustersFromApps } = require('./ocp-clusters.cjs');
+      const envClusterList = envClustersFromApps(apps.values(), ENVS);
+
       // Ozet: hangi "eksik ortam" deseni kac uygulamada goruluyor (en sik 10).
       const patternCount = new Map();
       for (const r of rows) {
@@ -559,6 +578,7 @@ function initDenetim(app) {
         completeCount: rows.filter((r) => !r.missing.length).length,
         skippedNoEnv,
         patterns,
+        envClusters: envClusterList,
         rows,
       });
     } catch (err) {

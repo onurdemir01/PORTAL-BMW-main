@@ -103,6 +103,10 @@ export interface OcpCoverageResult {
   completeCount: number;
   skippedNoEnv: number;
   patterns: { missing: string[]; count: number }[];
+  /** Ortam basina GERCEKTE kullanilan cluster'lar + her birindeki uygulama sayisi.
+   *  Sabit bir liste DEGIL, veriden cikarilir: platformun cluster listesi ortam ayrimi
+   *  tasimaz (bkz. server/audit/ocp-platforms.cjs). */
+  envClusters: Record<string, { cluster: string; apps: number }[]>;
   rows: OcpCoverageRow[];
   message?: string;
 }
