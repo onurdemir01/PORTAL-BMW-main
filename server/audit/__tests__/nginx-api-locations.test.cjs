@@ -1,4 +1,4 @@
-// server/audit/__tests__/nginx-locations.test.cjs
+// server/audit/__tests__/nginx-api-locations.test.cjs
 //
 // "Nginx API Envanteri > API Bazli" gorunumunun ozet mantigi. DB gerektirmez.
 //
@@ -10,7 +10,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { summarizeLocations } = require('../nginx-locations.cjs');
+const { summarizeLocations } = require('../nginx-api-locations.cjs');
 
 const row = (host, config_file, api_location, ip = null, srv = null) => ({
   host, config_file, api_location, ip_rate_limit: ip, server_rate_limit: srv,

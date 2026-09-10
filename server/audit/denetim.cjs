@@ -766,7 +766,7 @@ function initDenetim(app) {
   router.get('/nginx-api-locations', async (req, res) => {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
-      const { summarizeLocations } = require('./nginx-locations.cjs');
+      const { summarizeLocations } = require('./nginx-api-locations.cjs');
       const scanDate = String(req.query.scanDate || '').trim();
 
       const dateRes = await query(
