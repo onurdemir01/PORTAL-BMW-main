@@ -181,9 +181,11 @@ test('D3: BUTON ICI spinner’lara DOKUNULMADI (orada dogru olan spinner)', () =
   // Bu test bir REGRESYON bekcisi degil, bir KARARIN kaydi: buton spinner'larini
   // iskelete cevirmek yanlis olurdu ve sonradan "eksik kalmis" diye yapilmasin.
   const denetim = read('components/DenetimPage.tsx');
+  // Bosluk/satir sarmasi ve tirnak cinsi SERBEST — prettier bu satiri
+  // bolduğunde bekci kirilmisti. Olculen sey: Yenile butonunda DONEN bir ikon var.
   assert.match(
-    denetim,
-    /ArrowPathIcon className=\{`w-3\.5 h-3\.5 \$\{loading \? "animate-spin" : ""\}`\} \/> Yenile/,
+    denetim.replace(/\s+/g, ' '),
+    /ArrowPathIcon className=\{`w-3\.5 h-3\.5 \$\{loading \? ["']animate-spin["'] : ["']["']\}`\} \/> ?Yenile/,
   );
 });
 

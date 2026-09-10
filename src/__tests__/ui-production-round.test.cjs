@@ -56,7 +56,9 @@ test('G13: kirpilmis hash KOPYALANABILIR', () => {
   // Hash'in tek isi baska bir hash ile karsilastirilmak; okunup kopyalanamamasi
   // onu kullanissiz kiliyordu.
   const src = read('components/DenetimPage.tsx');
-  assert.match(src, /<CodeChip value=\{sc\.majorityHash\}[^>]*copyable/);
+  // Bosluklar tekillenir: prettier ozellikleri ALT ALTA yazinca `[^>]*` satir
+  // sonunda durup bekciyi kirmisti.
+  assert.match(src.replace(/\s+/g, ' '), /<CodeChip value=\{sc\.majorityHash\}[^>]*copyable/);
 });
 
 // ── G2/G3: eylem hiyerarsisi ────────────────────────────────────────────────
