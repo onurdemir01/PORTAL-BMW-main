@@ -16,12 +16,157 @@ import {
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import { nginxExposeApi, type NginxExposeResult, type NginxExposeRow } from '@/api/nginxExposeApi';
+import { ansibleApi, type AwxServer } from '@/api/ansibleApi';
 import { Modal } from '@/components/common/Modal';
+import { useAuth } from '@/contexts/AuthContext';
 import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from './ui';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
+/** Yoneticiye ozel: bu ekranin hangi AWX job template'ini calistiracagini secer.
+ *
+ *  YALNIZCA YONETICIYE gosterilir - sunucu ucu zaten requireAdmin ile korunuyor,
+ *  bu yalnizca herkese calismayacak bir form gostermemek icin. */
+function ExposeConfigPanel({
+  config,
+  onSaved,
+}: {
+  config: { awxServerId: number; templateId: number; targetHost: string };
+  onSaved: () => void;
+}) {
+  const [servers, setServers] = useState<AwxServer[]>([]);
+  const [awxServerId, setAwxServerId] = useState(config.awxServerId || 0);
+  const [templateId, setTemplateId] = useState(String(config.templateId || ''));
+  const [targetHost, setTargetHost] = useState(config.targetHost || 'GBNGXT07');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await ansibleApi.servers();
+        if (alive && r.ok) setServers(r.servers || []);
+      } catch {
+        // Sunucu listesi alinamazsa form yine kullanilabilir olmali: id elle de
+        // girilebilir. Bu yuzden hata YUTULMUYOR, sadece listeyi bos birakiyor.
+        if (alive) setMsg({ tone: 'bad', text: 'AWX sunucu listesi alınamadı.' });
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const save = async () => {
+    const tid = Number(templateId) || 0;
+    if (awxServerId <= 0 || tid <= 0) {
+      setMsg({ tone: 'bad', text: 'AWX sunucusu ve job template ID zorunlu.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await nginxExposeApi.saveConfig({
+        awxServerId,
+        templateId: tid,
+        targetHost: targetHost.trim() || 'GBNGXT07',
+      });
+      if (r.ok) {
+        setMsg({ tone: 'ok', text: 'Kaydedildi. Buton artık çalışır.' });
+        onSaved();
+      } else {
+        setMsg({ tone: 'bad', text: r.message || 'Kaydedilemedi.' });
+      }
+    } catch (e: unknown) {
+      setMsg({ tone: 'bad', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputCls =
+    'px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]';
+
+  return (
+    <Panel title="Job yapılandırması (yönetici)" dense>
+      <div className="flex flex-wrap items-end gap-3 px-3 py-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+            AWX sunucusu
+          </span>
+          <select
+            value={awxServerId}
+            onChange={(e) => setAwxServerId(Number(e.target.value))}
+            className={inputCls}
+          >
+            <option value={0}>seçiniz…</option>
+            {servers.map((sv) => (
+              <option key={sv.id} value={sv.id}>
+                {sv.name}
+                {sv.configured ? '' : ' (yapılandırılmamış)'}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+            Job template ID
+          </span>
+          <input
+            value={templateId}
+            onChange={(e) => setTemplateId(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="örn. 412"
+            inputMode="numeric"
+            className={`${inputCls} w-28 tabular-nums`}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+            Hedef sunucu
+          </span>
+          <input
+            value={targetHost}
+            onChange={(e) => setTargetHost(e.target.value)}
+            className={`${inputCls} w-40`}
+          />
+        </label>
+
+        <button
+          onClick={save}
+          disabled={busy}
+          className="px-3 py-1.5 text-xs rounded-lg btn-primary disabled:opacity-60"
+        >
+          {busy ? 'Kaydediliyor…' : 'Kaydet'}
+        </button>
+
+        {msg && (
+          <span
+            className={`text-[11px] ${
+              msg.tone === 'ok' ? 'text-emerald-700' : 'text-red-700'
+            }`}
+          >
+            {msg.text}
+          </span>
+        )}
+      </div>
+
+      <p className="px-3 pb-3 text-[11px] text-[var(--text-muted)] leading-relaxed">
+        Template <Code>bmw_nginx/api_expose/api_expose.yaml</Code> için açılmalı ve{' '}
+        <b>&quot;Prompt on launch&quot; → Variables</b> işaretli olmalıdır. İşaretli değilse AWX,
+        Portal&apos;ın gönderdiği <Code>api</Code> / <Code>source_host</Code> /{' '}
+        <Code>target_host</Code> değişkenlerini <b>sessizce yok sayar</b> — iş başarılı görünür
+        ama yanlış (ya da hiç) API taşınır. Envanterde hem kaynak test sunucuları hem{' '}
+        <Code>{targetHost || 'GBNGXT07'}</Code> bulunmalıdır.
+      </p>
+    </Panel>
+  );
+}
+
 export function NginxInternetExpose() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'Admin';
   const [data, setData] = useState<NginxExposeResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -151,11 +296,20 @@ export function NginxInternetExpose() {
 
       {!configured && (
         <Note tone="warning" title="Buton henüz çalışmıyor — yapılandırma eksik">
-          <Code>api_expose.yml</Code> için AWX&apos;te bir job template açılıp Portal&apos;a
+          <Code>api_expose.yaml</Code> için AWX&apos;te bir job template açılıp Portal&apos;a
           tanıtılması gerekiyor. Bu yapılana kadar butona basmak açık bir hata döndürür, sessizce
           hiçbir şey yapmaz.
+          {!isAdmin && (
+            <div className="mt-1.5">
+              Bu ayarı yalnızca <b>yönetici</b> yapabilir.
+            </div>
+          )}
         </Note>
       )}
+
+      {/* Yapilandirma paneli yoneticide HER ZAMAN durur (yalnizca eksikken degil):
+          template degistiginde ya da hedef sunucu tasindiginda da buradan duzeltilir. */}
+      {isAdmin && <ExposeConfigPanel config={data.config} onSaved={load} />}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="test API dosyası" value={nf(data.rows.length)} />
