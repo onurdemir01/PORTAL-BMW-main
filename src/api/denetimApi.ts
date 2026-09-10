@@ -52,7 +52,16 @@ export interface SpaCoverageRow {
   internetMissing: string[];
   /** route tipi reencrypt = intranet; nginx'e CIKAMAZ. */
   intranetTotal: number;
-  /** Intranet oldugu halde nginx'e tanimli olanlar - BULGU. */
+  /** Intranet SPA sunucularinda bu ortama ait HIC satir var mi. false ise
+   *  "hicbiri deploy olmamis" DEGIL, "olculemedi" demektir. */
+  measuredIntranet: boolean;
+  /** Intranet SPA'larindan kaci INTRANET sunucularina deploy edilmis. */
+  intranetInIntranet: number;
+  intranetMissingCount: number;
+  intranetMissing: string[];
+  intranetCoverage: number | null;
+  /** BULGU: intranet uygulamasi INTERNETE ACIK sunucuda tanimli. Intranet
+   *  sunucusunda olmasi normaldir, bulgu degildir. */
   intranetInNginx: number;
   intranetInNginxList: string[];
   /** passthrough/reencrypt disindaki route tipleri (edge, tls yok). */
@@ -81,6 +90,7 @@ export interface SpaCoverageResult {
   ocpNonSpaExcluded: number;
   nginxOutsidePattern: string[];
   ocpSkippedNoEnv: number;
+  intranetScanned?: boolean;
   rows: SpaCoverageRow[];
   message?: string;
 }

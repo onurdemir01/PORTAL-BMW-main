@@ -15,6 +15,7 @@
 
 const express = require('express');
 const { PLATFORM_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
+const { tierOfHost } = require('./nginx-hosts.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
 //
@@ -252,7 +253,10 @@ function initDenetim(app) {
         ),
         scanDate
           ? query(
-              `SELECT DISTINCT env, application FROM dbo.Nginx_Config_Audit
+              // host DA cekiliyor: nginx sunuculari artik IKI KATMAN (internete
+              // acik + intranet). Hangi katmanda tanimli oldugu bilinmeden "intranet
+              // uygulamasi intranet sunucusuna deploy olmus mu" sorusu cevaplanamaz.
+              `SELECT DISTINCT env, application, host FROM dbo.Nginx_Config_Audit
                 WHERE scan_date = @d${await spaFilter()}`,
               [{ name: 'd', type: sql.NVarChar(10), value: scanDate }],
             )
@@ -391,7 +395,8 @@ function initDenetim(app) {
 
       // ── nginx tarafi ──────────────────────────────────────────────────────────────
       const ngxNonSpa = new Set();
-      const ngx = new Map();
+      const ngx = new Map(); // INTERNETE ACIK sunucularda tanimli SPA'lar
+      const ngxIntra = new Map(); // INTRANET sunucularinda tanimli SPA'lar
       for (const r of ngxRes.recordset || []) {
         const e = String(r.env || '')
           .trim()
@@ -402,15 +407,24 @@ function initDenetim(app) {
           ngxNonSpa.add(app);
           continue;
         }
-        if (!ngx.has(e)) ngx.set(e, new Map());
-        ngx.get(e).set(app.toLowerCase(), app);
+        // Katman host'tan gelir (bkz. nginx-hosts.cjs INTRANET_HOSTS). Listede
+        // olmayan her host internete acik sayilir.
+        const tier = tierOfHost(r.host);
+        const store = tier === 'intranet' ? ngxIntra : ngx;
+        if (!store.has(e)) store.set(e, new Map());
+        store.get(e).set(app.toLowerCase(), app);
       }
       const nginxOutsidePattern = [...ngxNonSpa]
         .sort((a, b) => a.localeCompare(b, 'tr'))
         .slice(0, 40);
 
       const ENV_LIST = [
-        ...new Set([...ENVS.map((e) => e.toUpperCase()), ...ocp.keys(), ...ngx.keys()]),
+        ...new Set([
+          ...ENVS.map((e) => e.toUpperCase()),
+          ...ocp.keys(),
+          ...ngx.keys(),
+          ...ngxIntra.keys(), // EDU gibi YALNIZ intranet tarafinda gecen ortamlar
+        ]),
       ];
       const CAP = 300;
       const sortTr = (a, b) => a.localeCompare(b, 'tr');
@@ -418,9 +432,13 @@ function initDenetim(app) {
       const rows = ENV_LIST.map((e) => {
         const o = ocp.get(e) || new Map();
         const n = ngx.get(e) || new Map();
+        const ni = ngxIntra.get(e) || new Map();
         // nginx'te bu ortama ait HIC satir yoksa kapsam OLCULEMEZ (proxy_pass mimarisi
         // gibi durumlar). "%0 kapsam" demek yaniltici olurdu.
         const measured = n.size > 0;
+        // Intranet tarafi AYRI olculur: sunucular henuz taranmadiysa "hicbiri deploy
+        // olmamis" DEMEK DEGILDIR, "olculemedi" demektir.
+        const measuredIntranet = ni.size > 0;
 
         const bucket = { internet: [], intranet: [], diger: [], bilinmiyor: [] };
         const inNginx = { internet: [], intranet: [], diger: [], bilinmiyor: [] };
@@ -429,6 +447,9 @@ function initDenetim(app) {
           if (n.has(k)) inNginx[v.net].push(v.name);
         }
         const internetMissing = bucket.internet.filter((a) => !n.has(a.toLowerCase()));
+        // INTRANET KAPSAMI: intranet SPA'lari intranet sunucularinda mi?
+        const intranetInIntra = bucket.intranet.filter((a) => ni.has(a.toLowerCase()));
+        const intranetMissing = bucket.intranet.filter((a) => !ni.has(a.toLowerCase()));
         const onlyNginx = [];
         for (const [k, v] of n) if (!o.has(k)) onlyNginx.push(v);
 
@@ -442,8 +463,20 @@ function initDenetim(app) {
           internetInNginx: inNginx.internet.length,
           internetMissingCount: internetMissing.length,
           internetMissing: internetMissing.sort(sortTr).slice(0, CAP),
-          // INTRANET (reencrypt) = nginx'e CIKAMAZ. nginx'te gorunuyorsa BU BIR BULGUDUR.
+          // INTRANET (reencrypt) = intranet SPA sunucularina cikar (2026-09-10).
+          // Onceden "nginx'e HIC cikamaz" varsayiliyordu; intranet sunuculari
+          // eklenince bu varsayim gecersiz kaldi.
           intranetTotal: bucket.intranet.length,
+          measuredIntranet,
+          intranetInIntranet: intranetInIntra.length,
+          intranetMissingCount: intranetMissing.length,
+          intranetMissing: intranetMissing.sort(sortTr).slice(0, CAP),
+          intranetCoverage:
+            measuredIntranet && bucket.intranet.length
+              ? Math.round((intranetInIntra.length / bucket.intranet.length) * 1000) / 10
+              : null,
+          // BULGU DARALDI: intranet uygulamasinin INTERNETE ACIK sunucuda tanimli
+          // olmasi. Intranet sunucusunda olmasi artik NORMALDIR, bulgu degildir.
           intranetInNginx: inNginx.intranet.length,
           intranetInNginxList: inNginx.intranet.sort(sortTr).slice(0, CAP),
           // Route tipi passthrough/reencrypt DISINDA olanlar (edge, tls yok).
@@ -467,6 +500,10 @@ function initDenetim(app) {
           r.internetTotal || r.intranetTotal || r.otherTotal || r.unknownTotal || r.onlyNginxCount,
       );
 
+      // Intranet sunuculari HENUZ TARANMADIYSA bunu ekran SOYLEMELI: aksi halde "hicbir
+      // intranet uygulamasi deploy edilmemis" gibi okunur ve yanlis alarm uretir.
+      const intranetScanned = ngxIntra.size > 0;
+
       res.json({
         ok: true,
         platform,
@@ -477,6 +514,7 @@ function initDenetim(app) {
         // Route tablosu okunamadiysa ekran bunu SOYLEMELI: aksi halde her sey
         // "bilinmiyor" kovasina duser ve sebebi anlasilmaz.
         routeTableMissing,
+        intranetScanned,
         routeMatch: matchStats,
         ocpNonSpaExcluded: ocpNonSpa.size,
         nginxOutsidePattern,

@@ -14,15 +14,30 @@
 // metrik dogru gorunur ama yanlis olur.
 'use strict';
 
-const ENV_ORDER = ['DEV', 'TEST', 'QA', 'PROD'];
+const ENV_ORDER = ['DEV', 'TEST', 'EDU', 'QA', 'PROD'];
 const UNKNOWN_ENV = 'BILINMIYOR';
 
 const LETTER_TO_ENV = { D: 'DEV', T: 'TEST', Q: 'QA', P: 'PROD' };
+
+// ISTISNA: ad kalibi bu hostta YANILTIR. GBNGXT51'in 'T'si test der ama ortami EDU'dur
+// (2026-09-10, kullanici bildirimi). Kalibi zorlamak yerine ACIK bir istisna tutuluyor -
+// sessizce TEST saymak, edu uygulamalarini test rakamlarina karistirirdi.
+const HOST_ENV_OVERRIDE = { GBNGXT51: 'EDU' };
+
+// INTRANET SPA sunuculari (2026-09-10). Kalibla turetilemez: GBNGXT50 intranet,
+// GBNGXT34 internet - ikisi de "GBNGXT". Bu yuzden ACIK LISTE.
+// Burada OLMAYAN her nginx hostu internete acik kabul edilir; liste degisirse BURASI
+// guncellenmeli (Denetim'deki internet/intranet kapsam ayrimi buna dayanir).
+const INTRANET_HOSTS = new Set([
+  'GBNGXD50', 'GBNGXT50', 'GBNGXT51', 'GBNGXQ50',
+  'GBNGXP50', 'GBNGXP51', 'GBNGXP52', 'GBNGXP53', 'GBNGXAP50', 'GBNGXAP51',
+]);
 
 /** @returns {'DEV'|'TEST'|'QA'|'PROD'|'BILINMIYOR'} */
 function envOfHost(host) {
   const h = String(host || '').trim().toUpperCase();
   if (!h) return UNKNOWN_ENV;
+  if (HOST_ENV_OVERRIDE[h]) return HOST_ENV_OVERRIDE[h];
   // Reverse proxy production (GBRVPP.. / GBRVPAP..) - ortam harfi tasimaz, hepsi prod.
   if (h.startsWith('GBRVP')) return 'PROD';
   // GBNGW (API gateway) / GBNGX (reverse proxy) + istege bagli 'A' (Ankara) + ortam harfi.
@@ -34,8 +49,10 @@ function envOfHost(host) {
 /** Production lokasyonu: 'Ankara' | 'Pendik' | '' (non-prod'da anlamsiz). */
 function siteOfHost(host) {
   const h = String(host || '').trim().toUpperCase();
-  if (/^GBNGWAP|^GBRVPAP/.test(h)) return 'Ankara';
-  if (/^GBNGWP|^GBRVPP/.test(h)) return 'Pendik';
+  // GBNGXAP.. (intranet SPA, 2026-09-10) da Ankara'dir - eklenmeden once bu hostlar
+  // lokasyonsuz gorunuyordu. 'AP' onceki desende yoktu, testle yakalandi.
+  if (/^GBNGWAP|^GBNGXAP|^GBRVPAP/.test(h)) return 'Ankara';
+  if (/^GBNGWP|^GBNGXP|^GBRVPP/.test(h)) return 'Pendik';
   return '';
 }
 
@@ -45,4 +62,19 @@ function orderEnvs(seen) {
   return [...ENV_ORDER.filter((e) => seen.has(e)), ...extra];
 }
 
-module.exports = { envOfHost, siteOfHost, orderEnvs, ENV_ORDER, UNKNOWN_ENV };
+/** nginx sunucusunun AG KATMANI: 'intranet' | 'internet'.
+ *  Listede olmayan her host internete acik sayilir (bkz. INTRANET_HOSTS notu). */
+function tierOfHost(host) {
+  return INTRANET_HOSTS.has(String(host || '').trim().toUpperCase()) ? 'intranet' : 'internet';
+}
+
+module.exports = {
+  envOfHost,
+  siteOfHost,
+  tierOfHost,
+  orderEnvs,
+  ENV_ORDER,
+  UNKNOWN_ENV,
+  _INTRANET_HOSTS: INTRANET_HOSTS,
+  _HOST_ENV_OVERRIDE: HOST_ENV_OVERRIDE,
+};

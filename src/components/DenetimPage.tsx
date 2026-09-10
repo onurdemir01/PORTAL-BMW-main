@@ -240,6 +240,10 @@ function LegendSwatch({
 
 function SpaCoverage() {
   const [platform, setPlatform] = useState("ark");
+  // Nginx SPA sunuculari IKI KATMAN: internete acik olanlar ve intranet olanlar
+  // (2026-09-10). Ayni bar duzeni iki katmana da hizmet ediyor - kullanicinin
+  // begendigi tasarim korunuyor, yalnizca hangi kumeye baktigi degisiyor.
+  const [tier, setTier] = useState<"internet" | "intranet">("internet");
   const [data, setData] = useState<SpaCoverageResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -262,7 +266,15 @@ function SpaCoverage() {
   if (!data && loading) return <div className="py-6 text-center text-sm text-[var(--text-muted)]">Kapsam yükleniyor…</div>;
   if (!data) return null;
 
-  const maxTotal = Math.max(1, ...data.rows.map((r) => r.internetTotal));
+  const isIntra = tier === "intranet";
+  const totalOf = (r: SpaCoverageRow) => (isIntra ? r.intranetTotal : r.internetTotal);
+  const inNginxOf = (r: SpaCoverageRow) => (isIntra ? r.intranetInIntranet : r.internetInNginx);
+  const missingOf = (r: SpaCoverageRow) =>
+    isIntra ? r.intranetMissingCount : r.internetMissingCount;
+  const measuredOf = (r: SpaCoverageRow) => (isIntra ? r.measuredIntranet : r.measured);
+  const coverageOf = (r: SpaCoverageRow) => (isIntra ? r.intranetCoverage : r.coverage);
+
+  const maxTotal = Math.max(1, ...data.rows.map(totalOf));
   const sum = (f: (r: SpaCoverageRow) => number) =>
     data.rows.reduce((a, r) => a + (f(r) || 0), 0);
   const unmeasured = data.rows.filter((r) => !r.measured);
@@ -306,10 +318,42 @@ function SpaCoverage() {
             </div>
           </details>
         </div>
-        <Select sizeVariant="sm" value={platform} onChange={(e) => setPlatform(e.target.value)}>
-          {data.platforms.map((p) => <option key={p} value={p}>{p}</option>)}
-        </Select>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)] w-fit">
+            {([
+              { id: "internet", label: "İnternete Açık" },
+              { id: "intranet", label: "İntranet" },
+            ] as const).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTier(t.id)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                  tier === t.id
+                    ? "bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <Select sizeVariant="sm" value={platform} onChange={(e) => setPlatform(e.target.value)}>
+            {data.platforms.map((p) => <option key={p} value={p}>{p}</option>)}
+          </Select>
+        </div>
       </div>
+
+      {/* Intranet sunuculari HENUZ TARANMADIYSA bunu SOYLE: aksi halde tablo "hicbir
+          intranet uygulamasi deploy edilmemis" gibi okunur ve yanlis alarm uretir. */}
+      {isIntra && data.intranetScanned === false && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <b>İntranet SPA sunucuları henüz taranmamış.</b> Aşağıdaki sayılar
+          &quot;hiçbiri deploy edilmemiş&quot; anlamına <b>gelmez</b> — ölçülemediği
+          anlamına gelir. <code className="px-1 rounded bg-white/70 border border-amber-200">nginx_config_audit</code>{" "}
+          job&apos;ının host listesine bu sunucular eklendikten ve job bir kez
+          koştuktan sonra burası dolar.
+        </p>
+      )}
 
       {data.routeTableMissing && (
         <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -320,10 +364,18 @@ function SpaCoverage() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat n={sum((r) => r.internetTotal)} l="internete açık SPA" />
-        <Stat n={sum((r) => (r.measured ? r.internetInNginx : 0))} l="nginx'te tanımlı" tone="ok" />
-        <Stat n={sum((r) => (r.measured ? r.internetMissingCount : 0))} l="nginx'te tanımı yok" tone="warn" />
-        <Stat n={anomaly} l="intranet ama nginx'te" tone={anomaly ? "warn" : undefined} />
+        <Stat n={sum(totalOf)} l={isIntra ? "intranet SPA" : "internete açık SPA"} />
+        <Stat
+          n={sum((r) => (measuredOf(r) ? inNginxOf(r) : 0))}
+          l={isIntra ? "intranet sunucularında" : "nginx'te tanımlı"}
+          tone="ok"
+        />
+        <Stat
+          n={sum((r) => (measuredOf(r) ? missingOf(r) : 0))}
+          l={isIntra ? "intranet sunucusunda yok" : "nginx'te tanımı yok"}
+          tone="warn"
+        />
+        <Stat n={anomaly} l="intranet ama internete açık sunucuda" tone={anomaly ? "warn" : undefined} />
       </div>
 
       {anomaly > 0 && (
@@ -369,17 +421,17 @@ function SpaCoverage() {
               <div className="flex items-center gap-3">
                 <span className="w-14 shrink-0 text-xs font-semibold text-[var(--text-secondary)]">{r.env}</span>
                 <span className="flex-1 h-5 rounded bg-[var(--bg-elevated)] overflow-hidden flex">
-                  {r.measured ? (
+                  {measuredOf(r) ? (
                     <>
                       <span
                         className="h-full bg-emerald-500/70"
-                        style={{ width: `${(r.internetInNginx / maxTotal) * 100}%` }}
-                        title={`internet, nginx'e tanımlı: ${r.internetInNginx}`}
+                        style={{ width: `${(inNginxOf(r) / maxTotal) * 100}%` }}
+                        title={`tanımlı: ${inNginxOf(r)}`}
                       />
                       <span
                         className="h-full bg-amber-400/70"
-                        style={{ width: `${(r.internetMissingCount / maxTotal) * 100}%` }}
-                        title={`internet, tanım eksik: ${r.internetMissingCount}`}
+                        style={{ width: `${(missingOf(r) / maxTotal) * 100}%` }}
+                        title={`tanım eksik: ${missingOf(r)}`}
                       />
                     </>
                   ) : (
@@ -387,7 +439,11 @@ function SpaCoverage() {
                     // tanimli degilmis gibi okunurdu. Tarali gri = "veri yok".
                     <span
                       className="h-full w-full"
-                      title="nginx tarafında bu ortama ait kayıt yok — ölçülemedi"
+                      title={
+                        isIntra
+                          ? "İntranet sunucularında bu ortama ait kayıt yok — ölçülemedi"
+                          : "nginx tarafında bu ortama ait kayıt yok — ölçülemedi"
+                      }
                       style={{
                         // Cizgi rengi SABIT SIYAHTI (rgb(0 0 0 / 0.07)); koyu temada
                         // koyu zemin uzerinde GORUNMUYORDU ve "olculemedi" satiri bos
@@ -401,17 +457,21 @@ function SpaCoverage() {
                   )}
                 </span>
                 <span className="w-28 shrink-0 text-right text-xs tabular-nums text-[var(--text-secondary)]">
-                  {r.measured
-                    ? `${fmtNumber(r.internetInNginx)} / ${fmtNumber(r.internetTotal)}`
-                    : `? / ${fmtNumber(r.internetTotal)}`}
+                  {measuredOf(r)
+                    ? `${fmtNumber(inNginxOf(r))} / ${fmtNumber(totalOf(r))}`
+                    : `? / ${fmtNumber(totalOf(r))}`}
                 </span>
                 <span className={`w-24 shrink-0 text-right text-xs tabular-nums font-semibold ${
-                  !r.measured ? "text-[var(--text-muted)] font-normal"
-                    : r.coverage === null ? "text-[var(--text-muted)]"
-                    : r.coverage >= 90 ? "text-emerald-600"
-                    : r.coverage >= 60 ? "text-amber-600" : "text-red-600"
+                  !measuredOf(r) ? "text-[var(--text-muted)] font-normal"
+                    : coverageOf(r) === null ? "text-[var(--text-muted)]"
+                    : (coverageOf(r) as number) >= 90 ? "text-emerald-600"
+                    : (coverageOf(r) as number) >= 60 ? "text-amber-600" : "text-red-600"
                 }`}>
-                  {!r.measured ? "ölçülemedi" : r.coverage === null ? "—" : `%${r.coverage.toFixed(1)}`}
+                  {!measuredOf(r)
+                    ? "ölçülemedi"
+                    : coverageOf(r) === null
+                      ? "—"
+                      : `%${(coverageOf(r) as number).toFixed(1)}`}
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5 mt-1.5 pl-14">
