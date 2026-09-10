@@ -6,22 +6,22 @@
 // Rate limit farkı iki ayrı şeydir ve ayrı işaretlenir:
 //   · sunucu farkı — AYNI ortamdaki sunucular farklı limit taşıyor → genelde hata
 //   · ortam farkı  — ortamlar arası limit farkı → kasıtlı olabilir (test 50, prod 300)
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
   denetimApi,
   type NginxApiLocationsResult,
   type NginxApiLocationRow,
-} from "@/api/denetimApi";
-import { Panel, StatTile, Pill, TableShell, Th, Td, Note } from "./ui";
+} from '@/api/denetimApi';
+import { Panel, StatTile, Pill, TableShell, Th, Td, Note } from './ui';
 
-const nf = (n: number) => new Intl.NumberFormat("tr-TR").format(n);
+const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const esc = (v: string | number) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const csv = [header, ...rows].map((r) => r.map(esc).join(";")).join("\r\n");
-  const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a");
+  const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const csv = [header, ...rows].map((r) => r.map(esc).join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
   a.href = url;
   a.download = `${name}.csv`;
   a.click();
@@ -31,9 +31,9 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 export function NginxApiLocations() {
   const [data, setData] = useState<NginxApiLocationsResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [q, setQ] = useState("");
-  const [envFilter, setEnvFilter] = useState("");
+  const [err, setErr] = useState('');
+  const [q, setQ] = useState('');
+  const [envFilter, setEnvFilter] = useState('');
   const [onlyProblem, setOnlyProblem] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
 
@@ -43,8 +43,8 @@ export function NginxApiLocations() {
       const r = await denetimApi.nginxApiLocations();
       if (r.ok) {
         setData(r);
-        setErr("");
-      } else setErr(r.message || "Veri alınamadı.");
+        setErr('');
+      } else setErr(r.message || 'Veri alınamadı.');
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -52,9 +52,39 @@ export function NginxApiLocations() {
     }
   }, []);
 
+  // ILK YUKLEME EFFECT ICINDE: istek BURADA kurulur, `load()` cagrilmaz.
+  //
+  // NEDEN: `load` ilk isi olarak `setLoading(true)` cagiriyor ve React 19'un
+  // `set-state-in-effect` kurali, effect'ten cagrilan bir fonksiyonun ICINDEKI
+  // setState'i de "effect'te senkron" sayiyor — `setLoading(true)`'yu cikarmak
+  // BILE yetmiyor (olculdu). Burada ilk ifade `await`, yani hicbir setState
+  // senkron degil. `loading` zaten `true` basladigi icin ilk yuklemede bayragi
+  // ayrica kaldirmaya gerek de yok.
+  //
+  // `alive` bayragi ayri bir kazanc: sekme yanit gelmeden kapanirsa cozulmus
+  // istegin sonucu artik olmayan bir bilesene yazilmaz.
+  // `load` KALIYOR: Yenile dugmesi onu cagiriyor ve olay isleyicisinde
+  // setState tamamen mesru.
   useEffect(() => {
-    load();
-  }, [load]);
+    let alive = true;
+    (async () => {
+      try {
+        const r = await denetimApi.nginxApiLocations();
+        if (!alive) return;
+        if (r.ok) {
+          setData(r);
+          setErr('');
+        } else setErr(r.message || 'Veri alınamadı.');
+      } catch (e: unknown) {
+        if (alive) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -62,7 +92,8 @@ export function NginxApiLocations() {
     return data.rows.filter((r) => {
       if (needle && !`${r.location} ${r.config}`.toLowerCase().includes(needle)) return false;
       if (envFilter && !r.presentEnvs.includes(envFilter)) return false;
-      if (onlyProblem && !(r.limitDrift || r.envLimitDrift || r.missingEnvs.length > 0)) return false;
+      if (onlyProblem && !(r.limitDrift || r.envLimitDrift || r.missingEnvs.length > 0))
+        return false;
       return true;
     });
   }, [data, q, envFilter, onlyProblem]);
@@ -70,7 +101,11 @@ export function NginxApiLocations() {
   if (loading && !data)
     return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err)
-    return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
+    return (
+      <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+        {err}
+      </div>
+    );
   if (!data) return null;
   if (!data.scanDate) {
     return (
@@ -88,9 +123,9 @@ export function NginxApiLocations() {
   return (
     <div className="space-y-3">
       <Note tone="info" title="Bu tablo nasıl okunur?">
-        Her satır <b>tek bir API yolu</b>dur (location). Hücredeki sayı, o yolun o ortamda
-        kaç sunucuda bulunduğudur; <b>—</b> o ortamda hiç bulunmadığı anlamına gelir. Bir
-        satıra tıklayınca sunucu adları ve o ortamdaki rate limit değerleri açılır.
+        Her satır <b>tek bir API yolu</b>dur (location). Hücredeki sayı, o yolun o ortamda kaç
+        sunucuda bulunduğudur; <b>—</b> o ortamda hiç bulunmadığı anlamına gelir. Bir satıra
+        tıklayınca sunucu adları ve o ortamdaki rate limit değerleri açılır.
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
           <Pill tone="danger">sunucu farkı</Pill>
           <span>aynı ortamdaki sunucular farklı limit taşıyor ·</span>
@@ -101,17 +136,17 @@ export function NginxApiLocations() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="API yolu (location)" value={nf(data.rows.length)} tone="accent" />
-        <StatTile label="ortam" value={nf(envs.length)} hint={envs.join(", ")} />
+        <StatTile label="ortam" value={nf(envs.length)} hint={envs.join(', ')} />
         <StatTile
           label="sunucu farkı olan"
           value={nf(driftCount)}
-          tone={driftCount ? "danger" : "neutral"}
+          tone={driftCount ? 'danger' : 'neutral'}
           hint="Aynı ortamdaki sunucular farklı rate limit taşıyor"
         />
         <StatTile
           label="ortam farkı olan"
           value={nf(envDriftCount)}
-          tone={envDriftCount ? "warning" : "neutral"}
+          tone={envDriftCount ? 'warning' : 'neutral'}
           hint="Ortamlar arası rate limit farkı"
         />
       </div>
@@ -128,7 +163,9 @@ export function NginxApiLocations() {
             >
               <option value="">tüm ortamlar</option>
               {envs.map((e) => (
-                <option key={e} value={e}>{e}</option>
+                <option key={e} value={e}>
+                  {e}
+                </option>
               ))}
             </select>
             <div className="relative">
@@ -151,15 +188,15 @@ export function NginxApiLocations() {
             <button
               onClick={() =>
                 csvDownload(
-                  "nginx_api_bazli",
-                  ["konfigurasyon", "yol", ...envs, "eksik_ortam", "sunucu_farki", "ortam_farki"],
+                  'nginx_api_bazli',
+                  ['konfigurasyon', 'yol', ...envs, 'eksik_ortam', 'sunucu_farki', 'ortam_farki'],
                   rows.map((r) => [
                     r.config,
                     r.location,
-                    ...envs.map((e) => (r.envs[e] ? r.envs[e].hosts.join(" ") : "")),
-                    r.missingEnvs.join(" "),
-                    r.limitDrift ? "EVET" : "",
-                    r.envLimitDrift ? "EVET" : "",
+                    ...envs.map((e) => (r.envs[e] ? r.envs[e].hosts.join(' ') : '')),
+                    r.missingEnvs.join(' '),
+                    r.limitDrift ? 'EVET' : '',
+                    r.envLimitDrift ? 'EVET' : '',
                   ]),
                 )
               }
@@ -171,7 +208,7 @@ export function NginxApiLocations() {
               onClick={load}
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
             >
-              <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
+              <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
             </button>
           </div>
         }
@@ -183,7 +220,9 @@ export function NginxApiLocations() {
               <Th>API yolu</Th>
               <Th>Dosya</Th>
               {envs.map((e) => (
-                <Th key={e} align="right">{e}</Th>
+                <Th key={e} align="right">
+                  {e}
+                </Th>
               ))}
               <Th>Bulgu</Th>
             </tr>
@@ -236,19 +275,16 @@ function LocationRow({
               </Td>
             );
           return (
-            <Td
-              key={e}
-              align="right"
-              className="tabular-nums"
-              title={cell.hosts.join(", ")}
-            >
+            <Td key={e} align="right" className="tabular-nums" title={cell.hosts.join(', ')}>
               {cell.hosts.length}
             </Td>
           );
         })}
         <Td>
           <span className="flex flex-wrap gap-1">
-            {row.missingEnvs.length > 0 && <Pill tone="info">eksik: {row.missingEnvs.join(", ")}</Pill>}
+            {row.missingEnvs.length > 0 && (
+              <Pill tone="info">eksik: {row.missingEnvs.join(', ')}</Pill>
+            )}
             {row.limitDrift && <Pill tone="danger">sunucu farkı</Pill>}
             {row.envLimitDrift && <Pill tone="warning">ortam farkı</Pill>}
           </span>
@@ -259,7 +295,7 @@ function LocationRow({
           <td colSpan={envs.length + 3} className="p-0">
             <div
               className="px-4 py-3 border-t"
-              style={{ background: "var(--bg-elevated)", borderColor: "var(--border-subtle)" }}
+              style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
             >
               <div className="space-y-2">
                 {row.presentEnvs.map((e) => {
@@ -268,7 +304,7 @@ function LocationRow({
                     <div key={e} className="flex flex-wrap items-start gap-2 text-[11px]">
                       <span
                         className="w-16 shrink-0 font-semibold"
-                        style={{ color: "var(--text-secondary)" }}
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         {e}
                       </span>
@@ -277,19 +313,22 @@ function LocationRow({
                           <span
                             key={h}
                             className="px-1.5 py-0.5 rounded font-mono"
-                            style={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                            style={{
+                              background: 'var(--bg-surface)',
+                              color: 'var(--text-primary)',
+                            }}
                           >
                             {h}
                           </span>
                         ))}
                         {c.ipRateLimits.length > 0 && (
-                          <Pill tone={c.ipRateLimits.length > 1 ? "danger" : "info"}>
-                            IP: {c.ipRateLimits.join(" / ")}
+                          <Pill tone={c.ipRateLimits.length > 1 ? 'danger' : 'info'}>
+                            IP: {c.ipRateLimits.join(' / ')}
                           </Pill>
                         )}
                         {c.serverRateLimits.length > 0 && (
-                          <Pill tone={c.serverRateLimits.length > 1 ? "danger" : "info"}>
-                            location: {c.serverRateLimits.join(" / ")}
+                          <Pill tone={c.serverRateLimits.length > 1 ? 'danger' : 'info'}>
+                            location: {c.serverRateLimits.join(' / ')}
                           </Pill>
                         )}
                         {c.ipRateLimits.length === 0 && c.serverRateLimits.length === 0 && (

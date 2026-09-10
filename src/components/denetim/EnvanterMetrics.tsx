@@ -8,33 +8,34 @@
 //
 // Grafikler CSS ile cizilir; projede grafik kutuphanesi YOK ve tek bir dagilim gorseli
 // icin bagimlilik eklemek paket boyutuna deger bir kazanc saglamiyor.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowPathIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, TableCellsIcon,
-} from "@heroicons/react/24/outline";
-import {
-  denetimApi, type EnvanterSummary, type EnvanterPivot,
-} from "@/api/denetimApi";
-import { Select } from "@/components/ui/Form";
-import { fmtNumber } from "@/utils/datetime";
+  ArrowPathIcon,
+  ArrowDownTrayIcon,
+  MagnifyingGlassIcon,
+  TableCellsIcon,
+} from '@heroicons/react/24/outline';
+import { denetimApi, type EnvanterSummary, type EnvanterPivot } from '@/api/denetimApi';
+import { Select } from '@/components/ui/Form';
+import { fmtNumber } from '@/utils/datetime';
 
 // Sunucu tarafiyla AYNI ayirici (bkz. envanter-metrics.cjs). Bosluk kullanilsaydi
 // "a b"+"c" ile "a"+"b c" ayni anahtari uretirdi.
-const SEP = "\u0001";
+const SEP = '\u0001';
 
 // Sunucu tarafinin bos/NULL degerler icin kullandigi etiketle AYNI olmak ZORUNDA
 // (bkz. envanter-metrics.cjs -> NORM). Ayrisirsa filtre sessizce calismaz.
-const EMPTY_LABEL = "(boş)";
+const EMPTY_LABEL = '(boş)';
 
 const nf = (n: number) => fmtNumber(n);
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
   const body = [header, ...rows]
-    .map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-  const blob = new Blob(["﻿" + body], { type: "text/csv;charset=utf-8;" });
+    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = url;
   a.download = `${name}_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
@@ -42,31 +43,88 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 export default function EnvanterMetrics() {
-  const [source, setSource] = useState("hosts");
+  const [source, setSource] = useState('hosts');
   const [sum, setSum] = useState<EnvanterSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState('');
 
-  const load = useCallback(async (src: string) => {
-    setLoading(true);
+  // VERIYI CEKEN SAF YOL — `setLoading(true)` ICERMEZ.
+  // Ilk `await`e kadar hicbir setState calismaz; boylece bu fonksiyon bir effect
+  // govdesinden cagrilabilir. (React 19'un `set-state-in-effect` kurali, effect
+  // govdesinde SENKRON calisan setState'i isaretliyor.)
+  const fetchSummary = useCallback(async (src: string) => {
     try {
       const r = await denetimApi.envanterSummary(src);
-      if (r.ok) { setSum(r); setErr(""); }
-      else setErr(r.message || "Veri alınamadı.");
+      if (r.ok) {
+        setSum(r);
+        setErr('');
+      } else setErr(r.message || 'Veri alınamadı.');
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { load(source); }, [source, load]);
+  // KULLANICI TETIKLI yol (Yenile dugmesi): spinner HEMEN donsun. Olay
+  // isleyicisinde setState mesrudur.
+  const load = useCallback(
+    async (src: string) => {
+      setLoading(true);
+      await fetchSummary(src);
+    },
+    [fetchSummary],
+  );
 
-  if (loading && !sum) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
-  if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
+  // Ilk yuklemede `loading` zaten true basliyor; kaynak degisiminde bayragi
+  // Select'in onChange'i kaldiriyor. Effect yalnizca VERIYI ceker.
+  //
+  // ISTEK EFFECT ICINDE ACIKCA KURULUR: yardimci fonksiyonu cagirmak yetmiyor —
+  // kural cagrilan fonksiyonun govdesine de bakiyor ve icindeki setState'i
+  // "effect'te senkron" sayiyor. Burada ilk ifade `await`, yani setState'lerin
+  // hicbiri senkron degil. `alive` bayragi da sekme kapaninca cozulmus istegin
+  // artik olmayan bir bilesene yazmasini keser.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await denetimApi.envanterSummary(source);
+        if (!alive) return;
+        if (r.ok) {
+          setSum(r);
+          setErr('');
+        } else setErr(r.message || 'Veri alınamadı.');
+      } catch (e: unknown) {
+        if (alive) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [source]);
+
+  if (loading && !sum)
+    return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+  if (err)
+    return (
+      <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+        {err}
+      </div>
+    );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Select sizeVariant="sm" value={source} onChange={(e) => setSource(e.target.value)}>
+        <Select
+          sizeVariant="sm"
+          value={source}
+          onChange={(e) => {
+            setLoading(true);
+            setSource(e.target.value);
+          }}
+        >
           <option value="hosts">Sunucular · dbo.Inventory</option>
           <option value="mw">JBoss uygulamaları · dbo.MWAppsInventory</option>
           <option value="was">WAS uygulamaları · dbo.WASAppsInventory</option>
@@ -75,7 +133,7 @@ export default function EnvanterMetrics() {
           onClick={() => load(source)}
           className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
         >
-          <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Yenile
+          <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
         </button>
       </div>
 
@@ -90,24 +148,29 @@ export default function EnvanterMetrics() {
 // ── Ozet sayaclar ─────────────────────────────────────────────────────────────────────
 function Totals({ sum }: { sum: EnvanterSummary }) {
   const cards: { n: number; l: string }[] = [];
-  if (sum.source === "hosts") {
-    cards.push({ n: sum.totals.rows, l: "sunucu" });
+  if (sum.source === 'hosts') {
+    cards.push({ n: sum.totals.rows, l: 'sunucu' });
   } else {
-    cards.push({ n: sum.totals.rows, l: "uygulama kaydı" });
-    cards.push({ n: sum.totals.apps, l: "farklı uygulama" });
-    cards.push({ n: sum.totals.hosts, l: "sunucu" });
+    cards.push({ n: sum.totals.rows, l: 'uygulama kaydı' });
+    cards.push({ n: sum.totals.apps, l: 'farklı uygulama' });
+    cards.push({ n: sum.totals.hosts, l: 'sunucu' });
   }
   const domains = sum.distributions.domain?.length ?? 0;
-  if (domains) cards.push({ n: domains, l: "domain" });
+  if (domains) cards.push({ n: domains, l: 'domain' });
   const subnets = sum.distributions.subnet?.length ?? 0;
-  if (subnets) cards.push({ n: subnets, l: "subnet" });
+  if (subnets) cards.push({ n: subnets, l: 'subnet' });
   for (const x of sum.totals.numerics) if (x.value) cards.push({ n: x.value, l: x.label });
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map((c) => (
-        <div key={c.l} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
-          <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)]">{nf(c.n)}</div>
+        <div
+          key={c.l}
+          className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3"
+        >
+          <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)]">
+            {nf(c.n)}
+          </div>
           <div className="text-xs text-[var(--text-muted)] mt-0.5">{c.l}</div>
         </div>
       ))}
@@ -128,20 +191,29 @@ function ProductCoverage({ sum }: { sum: EnvanterSummary }) {
       note="Sürüm alanı dolu olan sunucular sayılır. Bir ürünün sürüm alanı boşsa o sunucuda kurulu değildir."
       right={
         <ExportBtn
-          onClick={() => csvDownload("urun_kapsami",
-            ["urun", "kurulu_sunucu", "farkli_surum"],
-            sum.products.map((p) => [p.label, p.installed, p.versionCount]))}
+          onClick={() =>
+            csvDownload(
+              'urun_kapsami',
+              ['urun', 'kurulu_sunucu', 'farkli_surum'],
+              sum.products.map((p) => [p.label, p.installed, p.versionCount]),
+            )
+          }
         />
       }
     >
       <div className="space-y-1.5">
         {sum.products.map((p) => (
-          <div key={p.key} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+          <div
+            key={p.key}
+            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]"
+          >
             <button
               onClick={() => setOpen(open === p.key ? null : p.key)}
               className="w-full flex items-center gap-3 px-3 py-2 hover:bg-[var(--bg-elevated)]/70 text-left"
             >
-              <span className="w-20 shrink-0 text-xs font-semibold text-[var(--text-secondary)]">{p.label}</span>
+              <span className="w-20 shrink-0 text-xs font-semibold text-[var(--text-secondary)]">
+                {p.label}
+              </span>
               <span className="flex-1 h-4 rounded bg-[var(--bg-elevated)] overflow-hidden">
                 <span
                   className="block h-full rounded bg-[var(--accent)]/70"
@@ -173,13 +245,16 @@ function ProductCoverage({ sum }: { sum: EnvanterSummary }) {
 
 // ── Boyut dagilimlari ─────────────────────────────────────────────────────────────────
 function Distributions({ sum }: { sum: EnvanterSummary }) {
-  const [dim, setDim] = useState(sum.dims[0]?.key || "env");
-  const [q, setQ] = useState("");
+  const [dimRaw, setDim] = useState(sum.dims[0]?.key || 'env');
+  const [q, setQ] = useState('');
 
   // Kaynak degisince onceki boyut anahtari gecersiz kalabilir.
-  useEffect(() => {
-    if (!sum.dims.some((d) => d.key === dim)) setDim(sum.dims[0]?.key || "");
-  }, [sum, dim]);
+  //
+  // EFFECT DEGIL, TURETME: eskiden bu bir `useEffect` idi ve gecersiz anahtarla
+  // BIR KEZ render edip sonra duzeltiyordu (React'in "you might not need an
+  // effect" dedigi desen; React 19 bunu uyariyla isaretliyor). Turetilmis deger
+  // hic gecersiz olmuyor, fazladan render de yok. Davranis birebir ayni.
+  const dim = sum.dims.some((d) => d.key === dimRaw) ? dimRaw : sum.dims[0]?.key || '';
 
   // "(bos)" satiri LISTEDEN cikarilir (kullanici talebi): urun surumu boyutlarinda bu
   // kova cogu zaman en buyuk satir olup gercek surum dagilimini gorunmez kiliyordu.
@@ -207,14 +282,20 @@ function Distributions({ sum }: { sum: EnvanterSummary }) {
           <div className="relative">
             <MagnifyingGlassIcon className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
-              value={q} onChange={(e) => setQ(e.target.value)} placeholder="değer ara"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="değer ara"
               className="pl-7 pr-2 py-1 text-xs border border-[var(--border)] rounded-lg w-40"
             />
           </div>
           <ExportBtn
-            onClick={() => csvDownload(`dagilim_${dim}`,
-              [label, sum.unit === "sunucu" ? "sunucu" : "kayit", "sunucu"],
-              rows.map((r) => [r.value, r.count, r.hosts]))}
+            onClick={() =>
+              csvDownload(
+                `dagilim_${dim}`,
+                [label, sum.unit === 'sunucu' ? 'sunucu' : 'kayit', 'sunucu'],
+                rows.map((r) => [r.value, r.count, r.hosts]),
+              )
+            }
           />
         </div>
       }
@@ -226,8 +307,8 @@ function Distributions({ sum }: { sum: EnvanterSummary }) {
             onClick={() => setDim(d.key)}
             className={`px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-colors ${
               dim === d.key
-                ? "bg-[var(--accent)]/10 border-[var(--accent)]/30 text-[var(--accent)]"
-                : "bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+                ? 'bg-[var(--accent)]/10 border-[var(--accent)]/30 text-[var(--accent)]'
+                : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
             }`}
           >
             {d.label}
@@ -237,11 +318,11 @@ function Distributions({ sum }: { sum: EnvanterSummary }) {
           </button>
         ))}
       </div>
-      <BarList rows={rows} unit={sum.unit} limit={40} showHosts={sum.source !== "hosts"} />
+      <BarList rows={rows} unit={sum.unit} limit={40} showHosts={sum.source !== 'hosts'} />
       {emptyRow && (
         <p className="mt-2 text-[11px] text-[var(--text-muted)]">
-          Ayrıca {nf(emptyRow.count)} kayıtta bu alan boş — listede gösterilmiyor, yüzdeler
-          dolu değerler üzerinden hesaplanıyor.
+          Ayrıca {nf(emptyRow.count)} kayıtta bu alan boş — listede gösterilmiyor, yüzdeler dolu
+          değerler üzerinden hesaplanıyor.
         </p>
       )}
     </Section>
@@ -249,17 +330,23 @@ function Distributions({ sum }: { sum: EnvanterSummary }) {
 }
 
 function BarList({
-  rows, unit, limit = 30, showHosts = false,
+  rows,
+  unit,
+  limit = 30,
+  showHosts = false,
 }: {
   rows: { value: string; count: number; hosts?: number }[];
-  unit: string; limit?: number; showHosts?: boolean;
+  unit: string;
+  limit?: number;
+  showHosts?: boolean;
 }) {
   const [all, setAll] = useState(false);
   const max = Math.max(1, ...rows.map((r) => r.count));
   const total = rows.reduce((a, r) => a + r.count, 0) || 1;
   const shown = all ? rows : rows.slice(0, limit);
 
-  if (rows.length === 0) return <div className="py-6 text-center text-sm text-[var(--text-muted)]">Kayıt yok.</div>;
+  if (rows.length === 0)
+    return <div className="py-6 text-center text-sm text-[var(--text-muted)]">Kayıt yok.</div>;
 
   return (
     <div className="space-y-1">
@@ -267,7 +354,9 @@ function BarList({
         <div key={r.value} className="flex items-center gap-2.5">
           <span
             className={`w-52 shrink-0 truncate text-xs ${
-              r.value === "(boş)" ? "text-[var(--text-muted)] italic" : "text-[var(--text-secondary)] font-mono"
+              r.value === '(boş)'
+                ? 'text-[var(--text-muted)] italic'
+                : 'text-[var(--text-secondary)] font-mono'
             }`}
             title={r.value}
           >
@@ -275,7 +364,7 @@ function BarList({
           </span>
           <span className="flex-1 h-3.5 rounded bg-[var(--bg-elevated)] overflow-hidden">
             <span
-              className={`block h-full rounded ${r.value === "(boş)" ? "bg-[var(--border-strong)]" : "bg-[var(--accent)]/70"}`}
+              className={`block h-full rounded ${r.value === '(boş)' ? 'bg-[var(--border-strong)]' : 'bg-[var(--accent)]/70'}`}
               style={{ width: `${(r.count / max) * 100}%` }}
             />
           </span>
@@ -297,7 +386,9 @@ function BarList({
           onClick={() => setAll(!all)}
           className="mt-1 text-[11px] text-[var(--accent)] hover:underline"
         >
-          {all ? "daha az göster" : `tümünü göster (${nf(rows.length)} ${unit === "sunucu" ? "değer" : "değer"})`}
+          {all
+            ? 'daha az göster'
+            : `tümünü göster (${nf(rows.length)} ${unit === 'sunucu' ? 'değer' : 'değer'})`}
         </button>
       )}
     </div>
@@ -312,36 +403,60 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
   // products dolu gelir), yoksa adi _version ile biten ilk boyut. Yalnizca son eke
   // bakmak "os_version"i secip urun kirilimini kaciriyordu - tarayicida goruldu.
   const firstY =
-    sum.dims.find((d) => d.key === sum.products[0]?.key)
-    || sum.dims.find((d) => d.key !== "os_version" && d.key.endsWith("_version"))
-    || sum.dims[1] || sum.dims[0];
-  const [x, setX] = useState(sum.dims.some((d) => d.key === "domain") ? "domain" : sum.dims[0].key);
+    sum.dims.find((d) => d.key === sum.products[0]?.key) ||
+    sum.dims.find((d) => d.key !== 'os_version' && d.key.endsWith('_version')) ||
+    sum.dims[1] ||
+    sum.dims[0];
+  const [x, setX] = useState(sum.dims.some((d) => d.key === 'domain') ? 'domain' : sum.dims[0].key);
   const [y, setY] = useState(firstY.key);
-  const [metric, setMetric] = useState<"rows" | "hosts">(source === "hosts" ? "rows" : "hosts");
+  const [metric, setMetric] = useState<'rows' | 'hosts'>(source === 'hosts' ? 'rows' : 'hosts');
   const [hideEmpty, setHideEmpty] = useState(true);
   const [data, setData] = useState<EnvanterPivot | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState('');
 
-  // Kaynak degisince eski boyut anahtarlari gecersiz olabilir - varsayilanlara don.
-  useEffect(() => {
+  // Kaynak/ozet degisince eski boyut anahtarlari gecersiz olabilir - varsayilanlara don.
+  //
+  // EFFECT DEGIL, RENDER SIRASINDA AYARLAMA: React'in "prop degisince state'i
+  // ayarla" deseni. Effect'te yapmak, gecersiz anahtarla BIR RENDER daha
+  // uretiyordu (ve React 19 bunu uyariyla isaretliyor). Tetikleme kosulu
+  // eskisiyle AYNI: `sum` ya da `source` degistiginde.
+  const [prevSum, setPrevSum] = useState(sum);
+  const [prevSource, setPrevSource] = useState(source);
+  if (prevSum !== sum || prevSource !== source) {
+    setPrevSum(sum);
+    setPrevSource(source);
     if (!sum.dims.some((d) => d.key === x)) setX(sum.dims[0].key);
     if (!sum.dims.some((d) => d.key === y)) setY(firstY.key);
-    setMetric(source === "hosts" ? "rows" : "hosts");
-  }, [sum, source]); // eslint-disable-line react-hooks/exhaustive-deps
+    setMetric(source === 'hosts' ? 'rows' : 'hosts');
+  }
+
+  // `loading` ARTIK BIR STATE DEGIL, TURETILMIS DEGER.
+  //
+  // Eskiden effect govdesinde `setLoading(true)` cagriliyordu. Turetme iki sey
+  // kazandirir: (a) effect govdesinde senkron setState kalmaz, (b) bayrak
+  // ASLA takili kalamaz — hangi istegin sonucunun elde oldugu anahtarla
+  // karsilastirilir, yani "yukleniyor" yazisi gercekten yuklenirken cikar.
+  const reqKey = `${source}|${x}|${y}|${metric}|${hideEmpty}`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loading = loadedKey !== reqKey;
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    denetimApi.envanterPivot({ source, x, y, metric, hideEmpty })
+    denetimApi
+      .envanterPivot({ source, x, y, metric, hideEmpty })
       .then((r) => {
         if (!alive) return;
-        if (r.ok) { setData(r); setErr(""); } else setErr(r.message || "Çapraz tablo alınamadı.");
+        if (r.ok) {
+          setData(r);
+          setErr('');
+        } else setErr(r.message || 'Çapraz tablo alınamadı.');
       })
       .catch((e) => alive && setErr(e instanceof Error ? e.message : String(e)))
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [source, x, y, metric, hideEmpty]);
+      .finally(() => alive && setLoadedKey(reqKey));
+    return () => {
+      alive = false;
+    };
+  }, [reqKey, source, x, y, metric, hideEmpty]);
 
   const xs = (data?.x.values || []).slice(0, 25);
   const ys = (data?.y.values || []).slice(0, 40);
@@ -354,36 +469,57 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
       right={
         <ExportBtn
           disabled={!data}
-          onClick={() => data && csvDownload(`capraz_${y}_x_${x}`,
-            [data.y.label, ...xs.map((c) => c.value), "TOPLAM"],
-            ys.map((r) => [
-              r.value,
-              ...xs.map((c) => data.cells[c.value + SEP + r.value] ?? 0),
-              r.count,
-            ]))}
+          onClick={() =>
+            data &&
+            csvDownload(
+              `capraz_${y}_x_${x}`,
+              [data.y.label, ...xs.map((c) => c.value), 'TOPLAM'],
+              ys.map((r) => [
+                r.value,
+                ...xs.map((c) => data.cells[c.value + SEP + r.value] ?? 0),
+                r.count,
+              ]),
+            )
+          }
         />
       }
     >
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <label className="text-[11px] text-[var(--text-muted)]">Sütun</label>
         <Select sizeVariant="sm" value={x} onChange={(e) => setX(e.target.value)}>
-          {sum.dims.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+          {sum.dims.map((d) => (
+            <option key={d.key} value={d.key}>
+              {d.label}
+            </option>
+          ))}
         </Select>
         <label className="text-[11px] text-[var(--text-muted)] ml-1">Satır</label>
         <Select sizeVariant="sm" value={y} onChange={(e) => setY(e.target.value)}>
-          {sum.dims.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+          {sum.dims.map((d) => (
+            <option key={d.key} value={d.key}>
+              {d.label}
+            </option>
+          ))}
         </Select>
-        {source !== "hosts" && (
+        {source !== 'hosts' && (
           <>
             <label className="text-[11px] text-[var(--text-muted)] ml-1">Sayım</label>
-            <Select sizeVariant="sm" value={metric} onChange={(e) => setMetric(e.target.value as "rows" | "hosts")}>
+            <Select
+              sizeVariant="sm"
+              value={metric}
+              onChange={(e) => setMetric(e.target.value as 'rows' | 'hosts')}
+            >
               <option value="rows">uygulama</option>
               <option value="hosts">sunucu</option>
             </Select>
           </>
         )}
         <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer ml-1">
-          <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={hideEmpty}
+            onChange={(e) => setHideEmpty(e.target.checked)}
+          />
           Boş satırı gizle
         </label>
         {loading && <span className="text-[11px] text-[var(--text-muted)]">yükleniyor…</span>}
@@ -412,7 +548,9 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
                       {c.value}
                     </th>
                   ))}
-                  <th className="px-2 py-2 font-semibold text-[var(--text-muted)] border-b border-l border-[var(--border-subtle)] whitespace-nowrap">Toplam</th>
+                  <th className="px-2 py-2 font-semibold text-[var(--text-muted)] border-b border-l border-[var(--border-subtle)] whitespace-nowrap">
+                    Toplam
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -420,7 +558,9 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
                   <tr key={r.value} className="hover:bg-[var(--bg-elevated)]/40">
                     <td
                       className={`sticky left-0 z-10 bg-[var(--bg-surface)] px-3 py-1.5 border-b border-[var(--border-subtle)] whitespace-nowrap max-w-[220px] truncate ${
-                        r.value === "(boş)" ? "text-[var(--text-muted)] italic" : "font-mono text-[var(--text-primary)]"
+                        r.value === '(boş)'
+                          ? 'text-[var(--text-muted)] italic'
+                          : 'font-mono text-[var(--text-primary)]'
                       }`}
                       title={r.value}
                     >
@@ -429,7 +569,10 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
                     {xs.map((c) => {
                       const n = data.cells[c.value + SEP + r.value] ?? 0;
                       return (
-                        <td key={c.value} className="px-2 py-1.5 text-center border-b border-[var(--border-subtle)] tabular-nums">
+                        <td
+                          key={c.value}
+                          className="px-2 py-1.5 text-center border-b border-[var(--border-subtle)] tabular-nums"
+                        >
                           {n === 0 ? (
                             <span className="text-[var(--border)]">·</span>
                           ) : (
@@ -439,7 +582,7 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
                                 // Isi haritasi: karekok olcekleme, tek bir buyuk hucrenin
                                 // digerlerini gorunmez kilmasini onler.
                                 backgroundColor: `color-mix(in srgb, var(--accent) ${Math.round(Math.sqrt(n / max) * 78) + 8}%, transparent)`,
-                                color: n / max > 0.45 ? "#fff" : "var(--text)",
+                                color: n / max > 0.45 ? '#fff' : 'var(--text)',
                               }}
                             >
                               {nf(n)}
@@ -458,16 +601,18 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
           </div>
           {(data.x.values.length > xs.length || data.y.values.length > ys.length) && (
             <p className="mt-2 text-[11px] text-[var(--text-muted)]">
-              En kalabalık {xs.length} sütun ve {ys.length} satır gösteriliyor
-              (toplam {nf(data.x.values.length)} × {nf(data.y.values.length)}). Tamamı için CSV indirin.
+              En kalabalık {xs.length} sütun ve {ys.length} satır gösteriliyor (toplam{' '}
+              {nf(data.x.values.length)} × {nf(data.y.values.length)}). Tamamı için CSV indirin.
             </p>
           )}
         </>
-      ) : !loading && (
-        <div className="py-8 text-center text-sm text-[var(--text-muted)]">
-          <TableCellsIcon className="w-6 h-6 mx-auto mb-1.5 text-[var(--text-muted)]" />
-          Bu kırılımda veri yok.
-        </div>
+      ) : (
+        !loading && (
+          <div className="py-8 text-center text-sm text-[var(--text-muted)]">
+            <TableCellsIcon className="w-6 h-6 mx-auto mb-1.5 text-[var(--text-muted)]" />
+            Bu kırılımda veri yok.
+          </div>
+        )
       )}
     </Section>
   );
@@ -475,9 +620,15 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
 
 // ── Ortak kabuk ───────────────────────────────────────────────────────────────────────
 function Section({
-  title, note, right, children,
+  title,
+  note,
+  right,
+  children,
 }: {
-  title: string; note?: string; right?: React.ReactNode; children: React.ReactNode;
+  title: string;
+  note?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3.5">
