@@ -11,16 +11,14 @@ Admin > Playbook Kayıtları'na Template ID gir → SMART/OCO ayarını tanımla
 ## 1. Klasörü AWX projesine kopyala
 
 ```bash
-# Portal reposundan AWX proje reposuna. HEDEF KLASOR SERBEST; tek sart
-# `global_variables/` ile KARDES olmasi.
-cp -r server/ansible/scalex_file/scalex_app  <awx-projesi>/<klasör>/
+# Portal reposundan AWX proje reposundaki canonical ayna konumuna.
+cp -r server/ansible/bmw_portal/scalex/scalex_app <AWX_PROJECT_DIR>/bmw_portal/scalex/
 ```
 
-`scalex_app/`, `global_variables/` ile **kardeş** olmalı — playbook'lar
-`../global_variables/credentials.yaml` ve `../global_variables/mail_vars.yml`
-dosyalarını bu göreli yoldan okur. Üretimdeki kurulum
-`bmw_portal/scalex/scalex_app/` yolunda (AWX job #3280508 ile doğrulandı);
-template'in **Playbook** alanına o projedeki gerçek yolu yazın.
+Hedef derinliği serbest değildir. Playbook'lar `../../../bmw_openshift_jobs/`
+üzerinden kimlik dosyalarını okur; bu nedenle AWX proje kökünde `bmw_portal/` ile
+`bmw_openshift_jobs/` kardeş, paket de `bmw_portal/scalex/scalex_app/` altında
+olmalıdır. Üretimdeki kurulum bu yoldadır (AWX job #3280508 ile doğrulandı).
 
 AWX'te **Projects > (proje) > Sync** ile yeni dosyaları çek.
 
@@ -35,7 +33,7 @@ AWX'te **Projects > (proje) > Sync** ile yeni dosyaları çek.
 | **Job Type**                     | `run`                                                                       | `run`                                         |
 | **Inventory**                    | BMW - Openshift Jump Server Inventory                                       | (aynı)                                        |
 | **Project**                      | ANSIBLE_6203                                                                | (aynı)                                        |
-| **Playbook**                     | `<klasör>/scalex_app/main.yml`                                              | `<klasör>/scalex_app/discovery.yml`           |
+| **Playbook**                     | `bmw_portal/scalex/scalex_app/main.yml`                                     | `bmw_portal/scalex/scalex_app/discovery.yml`  |
 | **Credentials**                  | `application_was_credentials` (ssh) + `uxmid_all_credentials_vault` (vault) | (aynı)                                        |
 | **Verbosity**                    | 2                                                                           | 1                                             |
 | **Variables → Prompt on launch** | ✅ **AÇIK**                                                                 | ✅ **AÇIK**                                   |

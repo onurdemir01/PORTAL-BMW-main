@@ -1,12 +1,12 @@
-# `scalex_file/` — ScaleX'in AWX paketi
+# `bmw_portal/scalex/` — ScaleX'in AWX paketi
 
 Bu klasör, ScaleX'in AWX tarafında çalışması için gereken **her şeyi** taşır ve
 kurumsal AWX proje reposuna **olduğu gibi kopyalanacak** şekilde düzenlenmiştir.
 
 Portal bu dosyaları **çalıştırmaz** — burada referans olarak dururlar ki portal
 sözleşmesi (`extra_vars` adları, `set_stats` anahtarları) ile playbook aynı depoda,
-aynı commit'te ve aynı testlerle birlikte doğrulanabilsin. LogX'te de aynı düzen var
-(`server/ansible/playbooks/logx_*.yml`).
+aynı commit'te ve aynı testlerle birlikte doğrulanabilsin. LogX'te de aynı düzen
+`server/ansible/bmw_portal/logx/` altında var.
 
 > Sözleşme testleri: `server/ansible/__tests__/scalex-awx-package.test.cjs`.
 > Bu testler gerçek `scalex_runner.sh`'i sahte bir `oc` ile çalıştırıp çıktısını
@@ -18,35 +18,31 @@ aynı commit'te ve aynı testlerle birlikte doğrulanabilsin. LogX'te de aynı d
 
 | Buradaki yol           | AWX projesindeki yol                                                         |
 | ---------------------- | ---------------------------------------------------------------------------- |
-| `scalex_app/` (tamamı) | `<proje>/<klasör>/scalex_app/` — konum serbest                               |
+| `scalex_app/` (tamamı) | `<AWX_PROJECT_DIR>/bmw_portal/scalex/scalex_app/`                            |
 | `awx/*.survey.json`    | Kopyalanmaz — AWX API'siyle template'e yüklenir (bkz. `SCALEX_AWX_SETUP.md`) |
 
 ```
-bmw_openshift_jobs/
-├── global_variables/            ← ZATEN VAR, bu pakette YOK
-│   ├── credentials.yaml         (vault: OCP servis kullanıcısı parolaları + `username`)
-│   └── mail_vars.yml            (SMTP: smtp_host, smtp_port, mail_from, mail_subject_prefix)
-└── scalex_app/                  ← bu paketten kopyalanır
-    ├── main.yml                 (mutasyon: stop / restore / scale, dry_run + apply)
-    ├── discovery.yml            (keşif: workloads / state / health — SALT OKUNUR)
-    ├── openshift_inventory_scalex.yaml   (yedek cluster kataloğu)
-    ├── tasks/
-    │   ├── 01_prepare.yml  02_select_targets.yml  10_run_phase.yml
-    │   ├── 20_build_report.yml  25_publish_result.yml  26_publish_validation.yml
-    │   ├── 30_send_mail.yml
-    │   └── discovery/ 01_prepare.yml  10_discover.yml
-    │                  25_publish_result.yml  26_publish_validation.yml
-    └── files/
-        └── scalex_runner.sh     (cluster üzerindeki tüm `oc` işi — tek dosya)
+AWX_PROJECT_DIR/
+├── bmw_portal/
+│   └── scalex/
+│       └── scalex_app/          ← bu paketten kopyalanır
+│           ├── main.yml         (mutasyon: stop / restore / scale, dry_run + apply)
+│           ├── discovery.yml    (keşif: workloads / state / health — SALT OKUNUR)
+│           ├── openshift_inventory_scalex.yaml   (yedek cluster kataloğu)
+│           ├── tasks/
+│           └── files/scalex_runner.sh
+└── bmw_openshift_jobs/
+    └── global_variables/        ← ZATEN VAR, bu pakette YOK
+        ├── credentials.yaml     (vault: OCP servis kullanıcısı parolaları + `username`)
+        └── mail_vars.yml        (SMTP: smtp_host, smtp_port, mail_from, mail_subject_prefix)
 ```
 
-**Tek şart — klasörün mutlak yolu değil, göreli konumu:** `main.yml` ve `discovery.yml`
-`../global_variables/` yolunu kullanır, yani `scalex_app/` klasörü **`global_variables/`
-ile kardeş** olmalıdır. Başka bir yere konursa `vars_files` çözülemez ve iş açılışta düşer.
+`main.yml` ve `discovery.yml`,
+`../../../bmw_openshift_jobs/global_variables/` yolunu kullanır. Bu yüzden yukarıdaki
+göreli derinlik sözleşmedir; paket başka bir seviyeye konursa `vars_files` çözülemez
+ve iş açılışta düşer.
 
-Üretimdeki kurulum bu koşulu sağlayan `bmw_portal/scalex/scalex_app/` yolunda duruyor
-(AWX job #3280508). Aşağıdaki ağaç `bmw_openshift_jobs/` örneğiyle çizilmiştir; kendi
-projenizdeki klasör adı farklı olabilir.
+Üretimdeki kurulum `bmw_portal/scalex/scalex_app/` yolunda duruyor (AWX job #3280508).
 
 ---
 
