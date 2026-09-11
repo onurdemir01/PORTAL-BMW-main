@@ -179,8 +179,32 @@ export interface NginxLegacyResult {
     inconsistent: number;
     findings: number;
   } | null;
-  byType: { type: string; count: number; label: string; severity: number }[];
+  byType: NginxLegacyType[];
+  /** Ekran icin gruplu gorunum; yalnizca bulgusu OLAN gruplar. */
+  groups: NginxLegacyGroup[];
   message?: string;
+}
+
+export interface NginxLegacyType {
+  type: string;
+  count: number;
+  label: string;
+  title: string;
+  /** "Bu ne demek?" - tek cumle. */
+  meaning: string;
+  /** "Ne yapmali?" - tek cumle. */
+  action: string;
+  group: 'critical' | 'peer' | 'hygiene' | 'info' | string;
+  severity: number;
+}
+
+export interface NginxLegacyGroup {
+  id: string;
+  title: string;
+  blurb: string;
+  tone: 'danger' | 'warning' | 'neutral' | 'muted' | string;
+  types: NginxLegacyType[];
+  count: number;
 }
 
 export interface OcpCoverageRow {

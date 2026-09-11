@@ -10,22 +10,144 @@
 // upstream'lerin kacinda resolve yok, eslenik sunucuyla farki ne".
 'use strict';
 
-// Bulgu tiplerinin TURKCE karsiligi ve agirligi. 'severity' SIRALAMA icindir:
-// once nginx davranisini gercekten degistirenler, sonra hijyen/bilgi.
+// Her bulgu tipi icin: kisa etiket (ciplerde), baslik, NE DEMEK, NE YAPMALI ve grup.
+//
+// NEDEN BU KADAR METIN: kullanici ilk okuyusta "upstream: zone yok: 202" gibi bir cipin
+// ne anlama geldigini cikaramadi. Tip kodu ve sayi yetmiyor; okuyanin sormasi gereken
+// iki soru var - "bu ne demek?" ve "ne yapayim?" - ikisi de burada cevaplaniyor.
+//
+// 'severity' SIRALAMA icindir (0 en agir). 'group' EKRANDAKI KUME:
+//   critical -> servis calismaz / reload yapilamaz
+//   peer     -> eslenik sunucular birbirinden farkli
+//   hygiene  -> calisir ama upstream katmaninin faydalari devre disi
+//   info     -> temizlik adayi, servisi etkilemez
+const GROUP_META = {
+  critical: {
+    title: 'Servisi bozar',
+    blurb: 'Bu bulgularla nginx başlamaz ya da reload edilemez. Önce bunlar.',
+    tone: 'danger',
+  },
+  peer: {
+    title: 'Eşlenikler arasında fark',
+    blurb:
+      'Aynı grubun sunucuları aynı konfigürasyonu taşımalı. Referans, grubun çoğunluğudur — ilk sunucu doğru varsayılmaz.',
+    tone: 'warning',
+  },
+  hygiene: {
+    title: 'Upstream hijyeni',
+    blurb:
+      'Servis çalışır ama resolve / keepalive / zone avantajlarının bir kısmı devre dışı.',
+    tone: 'neutral',
+  },
+  info: {
+    title: 'Temizlik adayı',
+    blurb: 'Servisi etkilemez; kaldırılabilir tanımlar.',
+    tone: 'muted',
+  },
+};
+
 const FINDING_META = {
-  PEER_MISSING_FILE: { label: 'eşlenikte var, bu sunucuda yok (dosya)', severity: 1 },
-  PEER_MISSING_LOCATION: { label: 'eşlenikte var, bu sunucuda yok (location)', severity: 1 },
-  PEER_MISSING_UPSTREAM: { label: 'eşlenikte var, bu sunucuda yok (upstream)', severity: 1 },
-  MISSING_INCLUDE: { label: 'include edilen dosya yok', severity: 1 },
-  // Hedef ne upstream ne de cozumlenebilir bir ad: nginx BASLAMAZ. En agir bulgu.
-  PROXY_UNDEFINED_TARGET: { label: 'hedef tanımsız — nginx başlamaz', severity: 0 },
-  PROXY_NO_UPSTREAM: { label: 'upstream katmanını atlıyor', severity: 2 },
-  PEER_EXTRA_LOCATION: { label: 'yalnızca bu sunucuda (location)', severity: 2 },
-  PEER_EXTRA_UPSTREAM: { label: 'yalnızca bu sunucuda (upstream)', severity: 2 },
-  UPS_NO_RESOLVE: { label: 'upstream: resolve yok', severity: 3 },
-  UPS_NO_KEEPALIVE: { label: 'upstream: keepalive yok', severity: 3 },
-  UPS_NO_ZONE: { label: 'upstream: zone yok', severity: 3 },
-  UNUSED_UPSTREAM: { label: 'kullanılmayan upstream', severity: 4 },
+  PROXY_UNDEFINED_TARGET: {
+    label: 'hedef tanımsız — nginx başlamaz',
+    title: 'Hedef tanımsız',
+    meaning:
+      "proxy_pass bir ada gidiyor ama o ad ne tanımlı bir upstream ne de DNS'te çözülebilir bir adres.",
+    action: 'nginx bu konfigürasyonla başlamaz. Upstream tanımlanmalı ya da hedef düzeltilmeli.',
+    group: 'critical',
+    severity: 0,
+  },
+  MISSING_INCLUDE: {
+    label: 'include edilen dosya yok',
+    title: 'Include edilen dosya yok',
+    meaning: 'Konfigürasyon bir dosyayı include ediyor ama o dosya diskte yok.',
+    action: '`nginx -t` düşer, reload yapılamaz. Dosya geri konmalı ya da include satırı kaldırılmalı.',
+    group: 'critical',
+    severity: 1,
+  },
+  PEER_MISSING_FILE: {
+    label: 'eşlenikte var, bu sunucuda yok (dosya)',
+    title: 'Servis dosyası bu sunucuda yok',
+    meaning: 'Grubun çoğunluğunda bu servisin conf dosyası var, bu sunucuda yok.',
+    action: 'Sunucu bu servisi hiç sunmuyor olabilir. Dosya eşlenikten alınmalı.',
+    group: 'peer',
+    severity: 1,
+  },
+  PEER_MISSING_LOCATION: {
+    label: 'eşlenikte var, bu sunucuda yok (location)',
+    title: 'Location bu sunucuda eksik',
+    meaning: "Grubun çoğunluğunda olan bir location tanımı bu sunucuda yok.",
+    action: 'Bu sunucuya gelen istek 404 dönebilir. Tanım eşlenikten kopyalanmalı.',
+    group: 'peer',
+    severity: 1,
+  },
+  PEER_MISSING_UPSTREAM: {
+    label: 'eşlenikte var, bu sunucuda yok (upstream)',
+    title: 'Upstream bu sunucuda eksik',
+    meaning: 'Grubun çoğunluğunda tanımlı bir upstream bu sunucuda yok.',
+    action: 'Onu kullanan location varsa nginx başlamaz. Tanım eşlenikten kopyalanmalı.',
+    group: 'peer',
+    severity: 1,
+  },
+  PEER_EXTRA_LOCATION: {
+    label: 'yalnızca bu sunucuda (location)',
+    title: 'Location yalnızca bu sunucuda',
+    meaning: 'Bu location tanımı eşleniklerde yok, sadece burada var.',
+    action: 'Ya diğerlerine dağıtılmamış ya da burada unutulmuş. Hangisi olduğuna bakılmalı.',
+    group: 'peer',
+    severity: 2,
+  },
+  PEER_EXTRA_UPSTREAM: {
+    label: 'yalnızca bu sunucuda (upstream)',
+    title: 'Upstream yalnızca bu sunucuda',
+    meaning: 'Bu upstream tanımı eşleniklerde yok, sadece burada var.',
+    action: 'Ya diğerlerine dağıtılmamış ya da burada unutulmuş.',
+    group: 'peer',
+    severity: 2,
+  },
+  PROXY_NO_UPSTREAM: {
+    label: 'upstream katmanını atlıyor',
+    title: 'Upstream katmanını atlıyor',
+    meaning:
+      "proxy_pass doğrudan DNS adına gidiyor (…apps.fw.garanti.com.tr), tanımlı bir upstream'e değil.",
+    action:
+      'Çalışır ama resolve / keepalive / zone devre dışı. Bir upstream tanımlanıp proxy_pass ona yönlendirilmeli.',
+    group: 'hygiene',
+    severity: 2,
+  },
+  UPS_NO_RESOLVE: {
+    label: 'upstream: resolve yok',
+    title: "Upstream'de resolve yok",
+    meaning:
+      'Arka uç adresi yalnızca nginx başlarken çözülür. OpenShift tarafında IP değişirse nginx eskisine gitmeye devam eder.',
+    action: "server satırının sonuna `resolve` eklenmeli (zone ile birlikte çalışır).",
+    group: 'hygiene',
+    severity: 3,
+  },
+  UPS_NO_KEEPALIVE: {
+    label: 'upstream: keepalive yok',
+    title: "Upstream'de keepalive yok",
+    meaning: 'Arka uca her istekte yeni TLS bağlantısı açılır.',
+    action: '`keepalive 10;` eklenmeli.',
+    group: 'hygiene',
+    severity: 3,
+  },
+  UPS_NO_ZONE: {
+    label: 'upstream: zone yok',
+    title: "Upstream'de zone yok",
+    meaning:
+      "Paylaşımlı bellek alanı tanımlı değil. `resolve` bu alan olmadan çalışmaz; worker'lar çözümü paylaşamaz.",
+    action: '`zone upstream_dynamic 4m;` eklenmeli.',
+    group: 'hygiene',
+    severity: 3,
+  },
+  UNUSED_UPSTREAM: {
+    label: 'kullanılmayan upstream',
+    title: 'Kullanılmayan upstream',
+    meaning: "Tanımlı ama hiçbir location ona proxy_pass yapmıyor.",
+    action: 'Servisi etkilemez. Kaldırılabilir.',
+    group: 'info',
+    severity: 4,
+  },
 };
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -144,16 +266,35 @@ function summarizeLegacy(rows, findings) {
     findings: (findings || []).length,
   };
 
+  // Bilinmeyen bir tip GIZLENMEZ: kodu baslik olur, aciklamasi bos kalir, 'info'
+  // grubuna duser. Yeni bir tip eklenip burasi unutulursa ekranda yine gorunur.
   const byType = [...typeCounts.entries()]
-    .map(([type, count]) => ({
-      type,
-      count,
-      label: (FINDING_META[type] || {}).label || type,
-      severity: (FINDING_META[type] || {}).severity ?? 9,
-    }))
+    .map(([type, count]) => {
+      const m = FINDING_META[type] || {};
+      return {
+        type,
+        count,
+        label: m.label || type,
+        title: m.title || type,
+        meaning: m.meaning || '',
+        action: m.action || '',
+        group: m.group || 'info',
+        severity: m.severity ?? 9,
+      };
+    })
     .sort((a, b) => a.severity - b.severity || b.count - a.count);
 
-  return { services, totals, byType };
+  // Ekran icin gruplu gorunum: yalnizca bulgusu OLAN gruplar.
+  const groups = Object.keys(GROUP_META)
+    .map((g) => ({
+      id: g,
+      ...GROUP_META[g],
+      types: byType.filter((t) => t.group === g),
+      count: byType.filter((t) => t.group === g).reduce((a, t) => a + t.count, 0),
+    }))
+    .filter((g) => g.types.length > 0);
+
+  return { services, totals, byType, groups };
 }
 
-module.exports = { summarizeLegacy, FINDING_META };
+module.exports = { summarizeLegacy, FINDING_META, GROUP_META };

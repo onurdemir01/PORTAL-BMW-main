@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
   denetimApi,
+  type NginxLegacyGroup,
   type NginxLegacyResult,
   type NginxLegacyService,
 } from '@/api/denetimApi';
@@ -155,23 +156,19 @@ export function NginxLegacy() {
         />
       </div>
 
-      {data.byType.length > 0 && (
-        <Panel title="Bulgu türleri" dense>
-          <div className="flex flex-wrap gap-1.5 px-3 py-2">
-            {data.byType.map((b) => (
-              <span
-                key={b.type}
-                title={b.type}
-                className={`text-[11px] px-2 py-0.5 rounded border tabular-nums ${
-                  b.severity <= 1
-                    ? 'bg-red-50 text-red-700 border-red-200'
-                    : b.severity === 2
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]'
-                }`}
-              >
-                {b.label}: {nf(b.count)}
-              </span>
+      {/* BULGU TURLERI: gruplu ve ACIKLAMALI. Onceki hal 11 kisa cipi yan yana
+          diziyordu ("upstream: zone yok: 202") ve ilk okuyusta ne anlama geldigi
+          cikarilamiyordu. Her kart iki soruyu cevaplar: "bu ne demek?" ve "ne
+          yapmali?". Gruplar ONEM sirasinda; yalnizca bulgusu olanlar gorunur. */}
+      {(data.groups || []).length > 0 && (
+        <Panel
+          title="Bulgular ne anlama geliyor?"
+          description="Önem sırasına göre. Sayı, tüm sunuculardaki toplam bulgu adedi."
+          dense
+        >
+          <div className="px-3 py-2 space-y-3">
+            {data.groups.map((g) => (
+              <FindingGroup key={g.id} g={g} />
             ))}
           </div>
         </Panel>
@@ -274,6 +271,57 @@ export function NginxLegacy() {
           </tbody>
         </TableShell>
       </Panel>
+    </div>
+  );
+}
+
+function FindingGroup({ g }: { g: NginxLegacyGroup }) {
+  const head =
+    g.tone === 'danger'
+      ? 'text-red-700'
+      : g.tone === 'warning'
+        ? 'text-amber-700'
+        : 'text-[var(--text-primary)]';
+  const dot =
+    g.tone === 'danger'
+      ? 'bg-red-500'
+      : g.tone === 'warning'
+        ? 'bg-amber-500'
+        : g.tone === 'neutral'
+          ? 'bg-sky-500'
+          : 'bg-[var(--border)]';
+  return (
+    <div className="rounded-lg border border-[var(--border-subtle)] overflow-hidden">
+      <div className="flex items-baseline gap-2 px-3 py-2 bg-[var(--bg-elevated)]/60">
+        <span className={`inline-block w-2 h-2 rounded-full ${dot} shrink-0 translate-y-[-1px]`} />
+        <span className={`text-xs font-semibold ${head}`}>{g.title}</span>
+        <span className="text-[11px] text-[var(--text-muted)] tabular-nums">· {nf(g.count)}</span>
+        <span className="text-[11px] text-[var(--text-muted)] ml-1">{g.blurb}</span>
+      </div>
+      <div className="divide-y divide-[var(--border-subtle)]">
+        {g.types.map((t) => (
+          <div key={t.type} className="px-3 py-2 grid gap-x-4 gap-y-0.5 md:grid-cols-[minmax(12rem,16rem)_1fr]">
+            <div className="flex items-baseline gap-2">
+              <span className="text-xs font-medium text-[var(--text-primary)]">{t.title}</span>
+              <span className="text-xs tabular-nums font-semibold text-[var(--text-secondary)]">
+                {nf(t.count)}
+              </span>
+            </div>
+            <div className="text-[11px] leading-relaxed">
+              {t.meaning && <div className="text-[var(--text-secondary)]">{t.meaning}</div>}
+              {t.action && (
+                <div className="text-[var(--text-muted)]">
+                  <span className="font-medium text-[var(--text-secondary)]">Ne yapmalı: </span>
+                  {t.action}
+                </div>
+              )}
+              {!t.meaning && !t.action && (
+                <div className="text-[var(--text-muted)] font-mono">{t.type}</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

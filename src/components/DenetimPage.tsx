@@ -428,11 +428,11 @@ function SpaCoverage({ tier }: { tier: 'internet' | 'intranet' }) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           n={sum(totalOf)}
-          l={isIntra ? 'intranet SPA sayısı' : 'internete açık SPA sayısı'}
+          l={isIntra ? 'Intranet SPA sayısı' : 'Internet SPA sayısı'}
           hint={
             isIntra
-              ? 'OpenShift’te route tipi reencrypt olan SPA’lar. Bir uygulama üç ortamda varsa 3 sayılır.'
-              : 'OpenShift’te route tipi passthrough olan SPA’lar. Bir uygulama üç ortamda varsa 3 sayılır.'
+              ? 'OpenShift’te route tipi reencrypt (Intranet) olan SPA’lar. Bir uygulama üç ortamda varsa 3 sayılır.'
+              : 'OpenShift’te route tipi passthrough (Internet) olan SPA’lar. Bir uygulama üç ortamda varsa 3 sayılır.'
           }
         />
         <Stat
@@ -607,7 +607,7 @@ function SpaCoverage({ tier }: { tier: 'internet' | 'intranet' }) {
                     {r.intranetOnlyOnServerCount > 0 && (
                       <Chip
                         tone="muted"
-                        label={`sunucuda var, OpenShift’te yok: ${r.intranetOnlyOnServerCount}`}
+                        label={`OpenShift’te karşılığı olmayan kurulum: ${r.intranetOnlyOnServerCount}`}
                       />
                     )}
                     {r.intranetHosts.length > 0 && (
@@ -631,7 +631,7 @@ function SpaCoverage({ tier }: { tier: 'internet' | 'intranet' }) {
                     {r.onlyNginxCount > 0 && (
                       <Chip
                         tone="muted"
-                        label={`nginx’te var, OpenShift’te yok: ${r.onlyNginxCount}`}
+                        label={`OpenShift’te karşılığı olmayan tanım: ${r.onlyNginxCount}`}
                       />
                     )}
                     {r.intranetInNginx > 0 && (
@@ -678,7 +678,7 @@ function SpaCoverage({ tier }: { tier: 'internet' | 'intranet' }) {
                   empty="Hepsinin izi var."
                 />
                 <AppList
-                  title={`sunucuda var, OpenShift’te yok (${r.intranetOnlyOnServerCount})`}
+                  title={`OpenShift’te karşılığı olmayan kurulum (${r.intranetOnlyOnServerCount})`}
                   tone="info"
                   apps={r.intranetOnlyOnServer}
                   empty="Fazlalık kurulum yok."
@@ -700,7 +700,7 @@ function SpaCoverage({ tier }: { tier: 'internet' | 'intranet' }) {
                   empty="Böyle bir kayıt yok."
                 />
                 <AppList
-                  title={`nginx’te var, OpenShift’te yok (${r.onlyNginxCount})`}
+                  title={`OpenShift’te karşılığı olmayan tanım (${r.onlyNginxCount})`}
                   tone="info"
                   apps={r.onlyNginx}
                   empty="Fazlalık tanım yok."
@@ -941,8 +941,8 @@ function NginxSpaAudit() {
       <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)] w-fit">
         {(
           [
-            { id: 'internet', label: 'İnternete Açık' },
-            { id: 'intranet', label: 'İntranet' },
+            { id: 'internet', label: 'Internet' },
+            { id: 'intranet', label: 'Intranet' },
           ] as const
         ).map((t) => (
           <button
@@ -958,11 +958,6 @@ function NginxSpaAudit() {
           </button>
         ))}
       </div>
-      <span className="text-[11px] text-[var(--text-muted)]">
-        {tier === 'intranet'
-          ? 'İntranet SPA sunucuları — servis vhost’u yoktur, ölçü üç dizinin varlığıdır.'
-          : 'İnternete açık nginx sunucuları — ölçü location/include tanımıdır.'}
-      </span>
       <details className="ml-auto group">
         <summary className="text-[11px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)] select-none">
           Terimler ne demek?
@@ -990,14 +985,17 @@ function NginxSpaAudit() {
             Bu kuralın dışında kalır, tahmin edilmez.
           </p>
           <p>
-            <b>nginx’te var, OpenShift’te yok:</b> nginx’te bu uygulamaya giden bir tanım var ama
-            OpenShift SPA listesinde karşılığı yok. Genelde <b>emekliye ayrılmış</b> bir uygulama
-            ya da adı kalıba uymayan bir tanımdır — temizlik adayı.
+            <b>OpenShift’te karşılığı olmayan tanım (Internet):</b> nginx’te bir uygulamaya
+            giden location tanımı var, ama OpenShift’te o adda bir SPA <b>artık yok</b>. Örnek:
+            uygulama emekliye ayrılmış, nginx tanımı kaldırılmamış. Servisi bozmaz; temizlik
+            adayı.
           </p>
           <p>
-            <b>sunucuda var, OpenShift’te yok:</b> aynı durumun intranet karşılığı. İntranet
-            sunucusunda dizinleri duruyor ama OpenShift artık onu intranet SPA olarak
-            listelemiyor.
+            <b>OpenShift’te karşılığı olmayan kurulum (Intranet):</b> aynı durumun intranet
+            hâli. Sunucuda uygulamanın dizinleri (<code className="px-1 rounded bg-[var(--bg-surface)]">/hysdeploy</code>,{' '}
+            <code className="px-1 rounded bg-[var(--bg-surface)]">/usr/nginx/applications</code>)
+            duruyor, ama OpenShift o adda bir intranet SPA listelemiyor. Ya uygulama
+            kaldırılmış ya da route tipi değişmiş. Servisi bozmaz; temizlik adayı.
           </p>
           <p>
             <b>intranet olduğu hâlde dışarıda:</b> route tipi <i>reencrypt</i> (yani intranet)
