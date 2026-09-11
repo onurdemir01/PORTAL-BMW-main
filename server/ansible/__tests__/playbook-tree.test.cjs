@@ -21,7 +21,16 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { AWX_TREE, LOCAL_PLAYBOOKS, PLAYBOOKS, abs, allPlaybookFiles } = require('../paths.cjs');
+const {
+  AWX_TREE,
+  LOCAL_PLAYBOOKS,
+  PLAYBOOKS,
+  SCALEX_APP,
+  abs,
+  allPlaybookFiles,
+} = require('../paths.cjs');
+
+const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 
 test('AT1 AWX agacindaki her playbook GERCEKTEN duruyor', () => {
   for (const [key, rel] of Object.entries(PLAYBOOKS)) {
@@ -104,4 +113,29 @@ test('AT5 toplayici IKI agaci da goruyor (sessizce kucuk kumeye dusmez)', () => 
   const inLocal = all.filter((f) => f.startsWith(LOCAL_PLAYBOOKS));
   assert.ok(inAwx.length >= 10, `AWX agacinda yalnizca ${inAwx.length} playbook goruluyor`);
   assert.ok(inLocal.length >= 10, `yerel agacta yalnizca ${inLocal.length} playbook goruluyor`);
+});
+
+test('AT6 ScaleX kurulum komutu CANONICAL kaynak ve hedef derinligini kullaniyor', () => {
+  const guide = path.join(AWX_TREE, 'scalex', 'SCALEX_AWX_SETUP.md');
+  const src = fs.readFileSync(guide, 'utf8');
+  const match = src.match(/^cp -r (\S+)\s+(\S+)$/m);
+  const canonicalSource = path.relative(REPO_ROOT, SCALEX_APP).split(path.sep).join('/');
+
+  assert.ok(match, 'ScaleX kurulum rehberinde kopyalama komutu bulunamadi');
+  assert.equal(
+    match[1],
+    canonicalSource,
+    `ScaleX kurulum rehberi canonical kaynak yerine '${match[1]}' kullaniyor`,
+  );
+  assert.equal(
+    match[2],
+    '<AWX_PROJECT_DIR>/bmw_portal/scalex/',
+    `ScaleX hedef derinligi vars_files yoluyla uyumsuz: ${match[2]}`,
+  );
+  for (const rel of ['main.yml', 'discovery.yml', 'files/scalex_runner.sh']) {
+    assert.ok(
+      fs.existsSync(path.join(SCALEX_APP, rel)),
+      `ScaleX paketinde zorunlu dosya yok: ${rel}`,
+    );
+  }
 });
