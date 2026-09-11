@@ -120,3 +120,24 @@ test('bos girdi cokmez', () => {
   assert.equal(out.totals.hosts, 0);
   assert.equal(out.totals.findings, 0);
 });
+
+test('en agir bulgu (severity 0) EN BASTA durur - "0 falsy" tuzagi', () => {
+  // PROXY_UNDEFINED_TARGET severity'si 0; `|| 9` yazilsaydi 9 olur ve
+  // "nginx baslamaz" bulgusu listenin en SONUNA duserdi.
+  const out = summarizeLegacy(
+    [row('GBRVPP07', 'GLOMO')],
+    [
+      { host: 'GBRVPP07', service: 'GLOMO', finding_type: 'UNUSED_UPSTREAM', item: 'u' },
+      { host: 'GBRVPP07', service: 'GLOMO', finding_type: 'MISSING_INCLUDE', item: 'i' },
+      {
+        host: 'GBRVPP07',
+        service: 'GLOMO',
+        finding_type: 'PROXY_UNDEFINED_TARGET',
+        item: '/kritik/',
+      },
+    ],
+  );
+  assert.equal(out.services[0].hosts[0].findings[0].type, 'PROXY_UNDEFINED_TARGET');
+  assert.equal(out.byType[0].type, 'PROXY_UNDEFINED_TARGET');
+  assert.equal(out.byType[0].label, 'hedef tanımsız — nginx başlamaz');
+});

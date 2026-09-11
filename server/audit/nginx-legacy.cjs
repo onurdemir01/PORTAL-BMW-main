@@ -17,6 +17,8 @@ const FINDING_META = {
   PEER_MISSING_LOCATION: { label: 'eşlenikte var, bu sunucuda yok (location)', severity: 1 },
   PEER_MISSING_UPSTREAM: { label: 'eşlenikte var, bu sunucuda yok (upstream)', severity: 1 },
   MISSING_INCLUDE: { label: 'include edilen dosya yok', severity: 1 },
+  // Hedef ne upstream ne de cozumlenebilir bir ad: nginx BASLAMAZ. En agir bulgu.
+  PROXY_UNDEFINED_TARGET: { label: 'hedef tanımsız — nginx başlamaz', severity: 0 },
   PROXY_NO_UPSTREAM: { label: 'upstream katmanını atlıyor', severity: 2 },
   PEER_EXTRA_LOCATION: { label: 'yalnızca bu sunucuda (location)', severity: 2 },
   PEER_EXTRA_UPSTREAM: { label: 'yalnızca bu sunucuda (upstream)', severity: 2 },
@@ -82,7 +84,9 @@ function summarizeLegacy(rows, findings) {
     byKey.get(k).push({
       type,
       label: (FINDING_META[type] || {}).label || type,
-      severity: (FINDING_META[type] || {}).severity || 9,
+      // `?? 9`, `|| 9` DEGIL: en agir tipin severity'si 0 ve `0 || 9` => 9 olurdu,
+      // yani "nginx baslamaz" bulgusu listenin EN SONUNA duserdi.
+      severity: (FINDING_META[type] || {}).severity ?? 9,
       item: String(f.item || ''),
       detail: String(f.detail || ''),
     });
@@ -145,7 +149,7 @@ function summarizeLegacy(rows, findings) {
       type,
       count,
       label: (FINDING_META[type] || {}).label || type,
-      severity: (FINDING_META[type] || {}).severity || 9,
+      severity: (FINDING_META[type] || {}).severity ?? 9,
     }))
     .sort((a, b) => a.severity - b.severity || b.count - a.count);
 
