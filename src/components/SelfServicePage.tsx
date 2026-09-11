@@ -27,6 +27,7 @@ import {
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
+import { useBackdropDismiss } from '@/components/common/backdropDismiss';
 import IpCheckSection from '@/components/self_service/IpCheckSection';
 import OpenshiftCheckSection from '@/components/self_service/OpenshiftCheckSection';
 import { SkeletonList } from '@/components/common/Skeleton';
@@ -67,6 +68,7 @@ interface SurveyModalProps {
 }
 
 function SurveyModal({ item, onClose }: SurveyModalProps) {
+  const backdrop = useBackdropDismiss(onClose, false);
   const [fields, setFields] = useState<SurveyField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [launchOptions, setLaunchOptions] = useState<LaunchOptions | null>(null);
@@ -398,12 +400,13 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
 
   if (typeof document === 'undefined') return null;
 
+  // Arka plan tiklamasi KAPALI (useBackdropDismiss(onClose, false)): kullanici burada
+  // form dolduruyor. Yanlislikla saga-sola surukleme / arka plana tek tiklama pencereyi
+  // kapatip her seyi sildiriyordu (kullanici bildirimi). Kapatma yalnizca X ve Iptal ile.
   return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      {...backdrop}
     >
       <div
         ref={floatRef}
@@ -923,6 +926,8 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
 // ── History Modal ─────────────────────────────────────────────────────────────
 
 function HistoryModal({ onClose }: { onClose: () => void }) {
+  // Salt okunur pencere: gercek arka plan tiklamasi kapatir, surukleme kapatmaz.
+  const backdrop = useBackdropDismiss(onClose);
   const [history, setHistory] = useState<JobHistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   // Geçmişteki bir job'a tıklayınca logu aynı modalda gösterilir (master-detail).
@@ -978,9 +983,7 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm overflow-y-auto p-4">
       <div
         className="min-h-full flex items-center justify-center"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
+        {...backdrop}
       >
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[calc(100dvh-2rem)] my-4">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">

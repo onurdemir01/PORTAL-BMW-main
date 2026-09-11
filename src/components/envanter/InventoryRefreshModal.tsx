@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { XMarkIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import { inventoryApi, type InventoryRefreshChoice } from "@/api/inventoryApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
+import { useBackdropDismiss } from "@/components/common/backdropDismiss";
 import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
 
 const OPTIONS: { value: InventoryRefreshChoice; label: string; description: string }[] = [
@@ -51,6 +52,7 @@ const OPTIONS: { value: InventoryRefreshChoice; label: string; description: stri
 ];
 
 export default function InventoryRefreshModal({ onClose }: { onClose: () => void }) {
+  const backdrop = useBackdropDismiss(onClose, false);
   const [selected, setSelected] = useState<Set<InventoryRefreshChoice>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -97,10 +99,11 @@ export default function InventoryRefreshModal({ onClose }: { onClose: () => void
     }
   }
 
+  // Arka plan tiklamasi KAPALI: secim formu var, yanlis tiklama secimi silmesin.
   return createPortal(
     <div
       className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      {...backdrop}
     >
       <div
         className="w-full max-w-lg rounded-2xl shadow-2xl flex flex-col animate-modal-pop"

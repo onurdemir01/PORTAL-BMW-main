@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { XMarkIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBackdropDismiss } from "@/components/common/backdropDismiss";
 
 export interface HelpSection {
   icon: React.ComponentType<{ className?: string }>;
@@ -30,6 +31,8 @@ export interface HelpModalProps {
 export default function HelpModal({ open, onClose, title, sections, steps, adminSteps }: HelpModalProps) {
   const { user } = useAuth();
   const isAdmin = user?.role === "Admin";
+  // Hook, asagidaki `if (!open) return null` ERKEN DONUSUNDEN ONCE cagrilmali.
+  const backdrop = useBackdropDismiss(onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -54,7 +57,7 @@ export default function HelpModal({ open, onClose, title, sections, steps, admin
   // (bkz. SelfServicePage.tsx'teki SurveyModal — aynı desen, oradan taşındı).
   return createPortal(
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm animate-fade-in overflow-y-auto p-4">
-      <div className="min-h-full flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="min-h-full flex items-center justify-center" {...backdrop}>
         <div className="rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100dvh-2rem)] my-4 overflow-hidden animate-modal-pop" style={{ background: "var(--bg-surface)" }}>
           <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
             <h2 className="section-label">{title}</h2>

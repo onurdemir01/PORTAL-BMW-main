@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useBackdropDismiss } from "@/components/common/backdropDismiss";
 import { XMarkIcon, PlayIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ClockIcon, InformationCircleIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { ansibleApi, type AwxServer, type AwxTemplate, type AwxTemplateDetail, type JobStatus, type AnsibleSsItem } from "@/api/ansibleApi";
 import { toast } from "@/hooks/useToast";
@@ -81,6 +82,7 @@ function StatusIcon({ status }: { status: string }) {
 interface JobOutputModalProps { jobId: number; templateName: string; onClose: () => void; }
 
 function JobOutputModal({ jobId, templateName, onClose }: JobOutputModalProps) {
+  const backdrop = useBackdropDismiss(onClose);
   const [status, setStatus]   = useState<JobStatus | null>(null);
   const [output, setOutput]   = useState<string>("");
   const [changed, setChanged] = useState(false);
@@ -118,7 +120,7 @@ function JobOutputModal({ jobId, templateName, onClose }: JobOutputModalProps) {
 
   return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto p-4" style={{ background: "rgba(3,9,18,0.6)", backdropFilter: "blur(4px)" }}>
-      <div className="min-h-full flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="min-h-full flex items-center justify-center" {...backdrop}>
         <div className="rounded-2xl w-full max-w-3xl flex flex-col max-h-[calc(100dvh-2rem)] my-4" style={{ background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)" }}>
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
@@ -187,6 +189,8 @@ interface LaunchModalProps {
 }
 
 function LaunchModal({ template, onClose, onLaunched }: LaunchModalProps) {
+  // Arka plan tiklamasi KAPALI: bu pencerede kullanici girdisi var.
+  const backdrop = useBackdropDismiss(onClose, false);
   // Template'in statik extra_vars'ından başlangıç değerleri (YAML olarak gösterilir).
   // Template ask_variables_on_launch kullanıp statik var tanımlamamışsa editör boş
   // başlar ama kullanıcı istediği değişkeni serbestçe ekleyebilir (opsiyonel olanlar dahil).
@@ -232,7 +236,8 @@ function LaunchModal({ template, onClose, onLaunched }: LaunchModalProps) {
 
   return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto p-4" style={{ background: "rgba(3,9,18,0.6)", backdropFilter: "blur(4px)" }}>
-      <div className="min-h-full flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      {/* Arka plan tiklamasi KAPALI: bu pencerede kullanici girdisi var. Tek yanlis tiklama (ya da editorde secim yapip fareyi disarida birakma) butun formu siliyordu. Kapatma yalnizca X ve Iptal ile. */}
+      <div className="min-h-full flex items-center justify-center" {...backdrop}>
       <div className="rounded-2xl w-full max-w-lg flex flex-col max-h-[calc(100dvh-2rem)] my-4" style={{ background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)" }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
@@ -351,6 +356,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalProps) {
+  const backdrop = useBackdropDismiss(onClose);
   const [detail, setDetail]   = useState<AwxTemplateDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -418,7 +424,7 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
 
   return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto p-4" style={{ background: "rgba(3,9,18,0.6)", backdropFilter: "blur(4px)" }}>
-      <div className="min-h-full flex items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="min-h-full flex items-center justify-center" {...backdrop}>
       <div className="rounded-2xl w-full max-w-2xl flex flex-col max-h-[calc(100dvh-2rem)] my-4" style={{ background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)" }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">

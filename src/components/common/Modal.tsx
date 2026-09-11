@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { XMarkIcon } from "@heroicons/react/24/outline";
+import { useBackdropDismiss } from "./backdropDismiss";
 
 interface Props {
   open: boolean;
@@ -10,6 +11,9 @@ interface Props {
   icon?: React.ComponentType<{ className?: string }>;
   footer?: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
+  /** Arka plana tiklayinca kapansin mi. Kullanici girdisi tasiyan pencerelerde
+   *  false verin: tek yanlis tiklama formu silmesin. Varsayilan true. */
+  dismissOnBackdrop?: boolean;
   children: React.ReactNode;
 }
 
@@ -22,8 +26,9 @@ const SIZE_MAP = {
 
 // PatternFly Modal: duz beyaz kutu (3px kose), 20px Red Hat Display baslik,
 // sag ustte kapat butonu, altta SOLA hizali aksiyon barı (PF konvansiyonu).
-export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size = "md", children }: Props) {
+export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size = "md", dismissOnBackdrop = true, children }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const backdrop = useBackdropDismiss(onClose, dismissOnBackdrop);
   const panelRef = useRef<HTMLDivElement>(null);
   // Modal acilmadan ONCE odakta olan oge — kapaninca odak buraya GERI verilir.
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -97,7 +102,7 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
       <div
         ref={overlayRef}
         className="min-h-full flex items-center justify-center"
-        onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+        {...backdrop}
       >
         <div
           ref={panelRef}
