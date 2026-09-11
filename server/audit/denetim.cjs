@@ -18,6 +18,7 @@ const { PLATFORM_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs
 const { tierOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeLegacy } = require('./nginx-legacy.cjs');
+const { summarizeAudit } = require('./nginx-audit.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
 //
@@ -596,6 +597,56 @@ function initDenetim(app) {
       res.json({ ok: true, schemaReady: true, scanDate, ...out });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Legacy denetim verisi alınamadı.' });
+    }
+  });
+
+  // ── 1c) NGINX AUDIT: TUM nginx sunuculari, nginx -T tabanli ───────────────────────
+  // Bes tablo (Hosts/Servers/Locations/Upstreams/Settings) host bazinda birlestirilir.
+  // Ureten is: bmw_nginx/nginx_audit. Legacy denetiminden AYRI veri, AYRI ekran.
+  router.get('/nginx-audit', async (req, res) => {
+    try {
+      const { query } = require('../inventory/mssql.cjs');
+
+      const dateRes = await query(
+        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Audit_Hosts`,
+      ).catch(() => ({ recordset: [], _missing: true }));
+
+      // Tablo YOKSA "bulgu yok" DEGIL, DDL calistirilmamis demektir.
+      if (dateRes._missing) {
+        return res.json({ ok: true, schemaReady: false, scanDate: null, hosts: [], totals: null });
+      }
+      const scanDate = dateRes.recordset?.[0]?.d || null;
+      if (!scanDate) {
+        return res.json({ ok: true, schemaReady: true, scanDate: null, hosts: [], totals: null });
+      }
+
+      const latest = (t) => `WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.${t})`;
+      const [hosts, servers, locations, upstreams, settings] = await Promise.all([
+        query(`SELECT host, status, status_msg, files, server_blocks, locations,
+                      locations_proxy, upstreams, ups_no_resolve, ups_no_keepalive,
+                      ups_no_zone, unused_upstreams, proxy_fqdn, proxy_undefined,
+                      settings_mismatch
+                 FROM dbo.Nginx_Audit_Hosts ${latest('Nginx_Audit_Hosts')}`),
+        query(`SELECT host, conf_file, seq, listen, server_name, ssl, cert_file, locations
+                 FROM dbo.Nginx_Audit_Servers ${latest('Nginx_Audit_Servers')}`),
+        query(`SELECT host, conf_file, srv_seq, location, behaviour, proxy_target, target_kind
+                 FROM dbo.Nginx_Audit_Locations ${latest('Nginx_Audit_Locations')}`),
+        query(`SELECT host, conf_file, name, server, resolve, keepalive, zone, used
+                 FROM dbo.Nginx_Audit_Upstreams ${latest('Nginx_Audit_Upstreams')}`),
+        query(`SELECT host, conf_file, context, directive, value, reference_value, matches
+                 FROM dbo.Nginx_Audit_Settings ${latest('Nginx_Audit_Settings')}`),
+      ]);
+
+      const out = summarizeAudit({
+        hosts: hosts.recordset || [],
+        servers: servers.recordset || [],
+        locations: locations.recordset || [],
+        upstreams: upstreams.recordset || [],
+        settings: settings.recordset || [],
+      });
+      res.json({ ok: true, schemaReady: true, scanDate, ...out });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Nginx audit verisi alınamadı.' });
     }
   });
 

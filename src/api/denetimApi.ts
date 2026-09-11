@@ -207,6 +207,114 @@ export interface NginxLegacyGroup {
   count: number;
 }
 
+// ── Nginx Audit (tum sunucular, nginx -T) ────────────────────────────────────────────
+export interface NginxAuditServer {
+  file: string;
+  filePath: string;
+  seq: number;
+  listen: string;
+  serverName: string;
+  ssl: boolean;
+  /** ssl_certificate dosya adi (tam yol certPath'te). */
+  cert: string;
+  certPath: string;
+  locations: number;
+}
+
+export interface NginxAuditFileLocations {
+  file: string;
+  filePath: string;
+  total: number;
+  proxy: number;
+  /** proxy_pass hedefi TANIMLI bir upstream. */
+  toUpstream: number;
+  /** proxy_pass dogrudan DNS adina; calisir ama upstream katmani devre disi. */
+  toFqdn: number;
+  /** hedef ne upstream ne cozumlenebilir ad: nginx BASLAMAZ. */
+  undefined: number;
+  other: number;
+  fqdnList: { location: string; target: string }[];
+  undefinedList: { location: string; target: string }[];
+}
+
+export interface NginxAuditUpstream {
+  file: string;
+  name: string;
+  server: string;
+  resolve: boolean;
+  keepalive: boolean;
+  zone: boolean;
+  used: boolean;
+}
+
+export interface NginxAuditSettingMismatch {
+  directive: string;
+  value: string;
+  reference: string | null;
+  file: string;
+  /** referansta var, sunucuda HIC yok */
+  missing: boolean;
+}
+
+export interface NginxAuditSettingOverride {
+  context: string;
+  directive: string;
+  value: string;
+  reference: string | null;
+  count: number;
+}
+
+export interface NginxAuditHost {
+  host: string;
+  env: string;
+  site: string;
+  tier: string;
+  /** nginx -T: ok | fail. fail = konfigurasyon RELOAD EDILEMEZ. */
+  status: string;
+  statusMsg: string;
+  files: number;
+  serverBlocks: number;
+  locations: number;
+  locationsProxy: number;
+  upstreams: number;
+  upsNoResolve: number;
+  upsNoKeepalive: number;
+  upsNoZone: number;
+  unusedUpstreams: number;
+  proxyFqdn: number;
+  proxyUndefined: number;
+  settingsMismatch: number;
+  issues: number;
+  servers: NginxAuditServer[];
+  locationsByFile: NginxAuditFileLocations[];
+  upstreamList: NginxAuditUpstream[];
+  settingsMismatched: NginxAuditSettingMismatch[];
+  settingsOverrides: NginxAuditSettingOverride[];
+}
+
+export interface NginxAuditResult {
+  ok: boolean;
+  /** dbo.Nginx_Audit_* yoksa false: DDL calistirilmamis. */
+  schemaReady: boolean;
+  scanDate: string | null;
+  hosts: NginxAuditHost[];
+  totals: {
+    hosts: number;
+    configInvalid: number;
+    serverBlocks: number;
+    locations: number;
+    upstreams: number;
+    proxyUndefined: number;
+    proxyFqdn: number;
+    unusedUpstreams: number;
+    upsNoResolve: number;
+    upsNoKeepalive: number;
+    settingsMismatch: number;
+    hostsWithMismatch: number;
+  } | null;
+  message?: string;
+}
+
 export interface OcpCoverageRow {
   application: string;
   envs: Record<string, { cluster: string; namespace: string }[]>;
@@ -661,6 +769,9 @@ export const denetimApi = {
 
   nginxApi: (scanDate?: string): Promise<NginxApiResult> =>
     fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+
+  nginxAudit: (): Promise<NginxAuditResult> =>
+    fetch(`${BASE}/nginx-audit`).then(safeJson),
 
   nginxLegacy: (): Promise<NginxLegacyResult> =>
     fetch(`${BASE}/nginx-legacy`).then(safeJson),

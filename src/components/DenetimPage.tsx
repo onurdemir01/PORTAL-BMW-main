@@ -42,6 +42,7 @@ import EnvanterDegisim from '@/components/denetim/EnvanterDegisim';
 import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
 import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
 import { NginxLegacy } from '@/components/denetim/NginxLegacy';
+import { NginxAudit } from '@/components/denetim/NginxAudit';
 import { NginxProxy } from '@/components/denetim/NginxProxy';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
@@ -86,6 +87,11 @@ const HELP: HelpSection[] = [
     icon: ServerStackIcon,
     title: 'Nginx API Envanteri',
     body: "nginx_ratelimit_inventory job'ının günlük taramasını gösterir: hangi sunucuda, hangi konfigürasyon dosyasında kaç API (location) bloğu tanımlı ve bunların rate limit durumu. ÖNEMLİ: kaynak tablo ortam bilgisi TAŞIMAZ ve konfigürasyon dosya adları ortamdan bağımsız olarak AYNIDIR — aynı 'x.conf' hem DEV hem PROD sunucusunda bulunur. Bu yüzden ortam sunucu adından türetilir (GBNGWD..=dev, GBNGWT..=test, GBNGWQ..=qa, GBNGWP../GBNGWAP..=prod); kalıba uymayan sunucu sessizce bir ortama atanmaz, 'BİLİNMİYOR' olarak görünür. 'Konfigürasyon Karşılaştırma' görünümü asıl bulguyu üretir: bir satır tek bir dosyanın tüm ortamlardaki hâlidir, hücredeki sayı o ortamdaki API bloğu sayısıdır ve '—' dosyanın o ortamda hiç bulunmadığı anlamına gelir. İki tür sürüklenme ayrı işaretlenir: 'ortam farkı' ortamların beklenen API sayısı birbirinden farklı, 'sunucu farkı' AYNI ortamdaki sunucular birbirinden farklı (hücrede aralık olarak gösterilir, örn. 17–20) — ikincisi genelde bir sunucuya dağıtımın ulaşmadığı anlamına gelir. 'Rate limit tanımı olmayan konfigürasyonlar' listesi ise hiçbir location'ında ne IP bazlı ne de sunucu bazlı limit bulunmayan dosyaları toplar.",
+  },
+  {
+    icon: ServerStackIcon,
+    title: 'Nginx Audit',
+    body: "TUM nginx sunucularinin konfigurasyon denetimi; veriyi bmw_nginx/nginx_audit isi uretir. Konfigurasyon 'nginx -T' ile okunur - yani include'lar dahil, nginx'in kendi gordugu haliyle; dosyalari tek tek okumak conf/ altindaki include'lari kacirirdi. Hostlar dbo.Inventory'den kesfedilir, sabit liste yoktur. Her satir bir SUNUCU; acilinca dort bolum: (1) server bloklari - hangi ip:port dinleniyor, hangi sertifika sunuluyor; (2) location'lar dosya basina - kac tane, kaci proxy_pass tasiyor, kaci tanimli bir upstream'e gidiyor, kaci dogrudan DNS adina gidiyor (calisir ama resolve/keepalive/zone devre disi), kaci TANIMSIZ bir hedefe gidiyor (nginx BASLAMAZ); (3) upstream'ler - resolve/keepalive/zone var mi, en az bir location kullaniyor mu; (4) ayarlar - kurulum referansiyla (nginx_installation: bmw_defaults.conf, proxy_settings.conf, rate_limits.conf, nginx.conf) karsilastirma. AYAR MANTIGI: sunucudaki GLOBAL deger referanstan farkliysa bulgudur; bir location'in kendi icinde farkli deger vermesi (orn. 60s timeout) bulgu DEGIL yerel ayardir ve ayri listelenir. Referans degerler koda gomulu degildir, her kosuda kurulum dosyalarindan okunur. 'nginx -T' hata verdiyse sunucu HATA olarak isaretlenir: konfigurasyon reload edilemez. Legacy denetiminden ayridir: o 12 prod sunucusunu servis bazinda ve eslenik karsilastirmasiyla olcer.",
   },
   {
     icon: ServerStackIcon,
@@ -137,6 +143,7 @@ export default function DenetimPage() {
     | 'nginxapi'
     | 'nginxenv'
     | 'nginxlegacy'
+    | 'nginxaudit'
     | 'ocp'
     | 'init'
     | 'envanter'
@@ -202,6 +209,7 @@ export default function DenetimPage() {
               { id: 'nginxapi', label: 'Nginx API Envanteri', icon: ServerStackIcon },
               { id: 'nginxenv', label: 'Nginx Envanteri', icon: ServerStackIcon },
               { id: 'nginxlegacy', label: 'Nginx Legacy (PROD)', icon: ServerStackIcon },
+              { id: 'nginxaudit', label: 'Nginx Audit', icon: ServerStackIcon },
               { id: 'ocp', label: 'OpenShift', icon: Squares2X2Icon },
               { id: 'init', label: 'Init Script', icon: DocumentDuplicateIcon },
               { id: 'envanter', label: 'Envanter', icon: ChartBarSquareIcon },
@@ -233,6 +241,7 @@ export default function DenetimPage() {
       {tab === 'nginxapi' && <NginxApiEnvanteri />}
       {tab === 'nginxenv' && <NginxEnvanteri />}
       {tab === 'nginxlegacy' && <NginxLegacy />}
+      {tab === 'nginxaudit' && <NginxAudit />}
       {tab === 'ocp' && <OcpCoverage />}
       {tab === 'init' && <InitScriptsAudit />}
       {tab === 'envanter' && <EnvanterMetrics />}
