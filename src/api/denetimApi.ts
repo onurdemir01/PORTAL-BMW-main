@@ -111,6 +111,78 @@ export interface SpaCoverageResult {
   message?: string;
 }
 
+// ── Nginx Legacy (PROD, proxy_pass + upstream) ────────────────────────────────────────
+export interface NginxLegacyFinding {
+  type: string;
+  /** Tip kodunun okunabilir karsiligi; bilinmeyen tip KODUYLA gosterilir. */
+  label: string;
+  severity: number;
+  item: string;
+  detail: string;
+}
+
+export interface NginxLegacyHost {
+  host: string;
+  vhostFiles: string;
+  upstreamFiles: string;
+  serverBlocks: number;
+  locationsTotal: number;
+  locationsProxy: number;
+  /** deny / return / rewrite / static - KASITLI olarak proxy'siz olanlar. */
+  locationsOther: number;
+  upstreamsTotal: number;
+  /** ANA conf dosyasinda tanimli upstream sayisi. */
+  upstreamsInVhost: number;
+  upstreamsInFile: number;
+  /** Hedefi tanimli bir upstream OLMAYAN location - upstream katmanini atliyor. */
+  proxyWithoutUpstream: number;
+  unusedUpstreams: number;
+  upsNoResolve: number;
+  upsNoKeepalive: number;
+  upsNoZone: number;
+  findings: NginxLegacyFinding[];
+}
+
+export interface NginxLegacyService {
+  service: string;
+  peerGroup: string;
+  hostCount: number;
+  hosts: NginxLegacyHost[];
+  findings: number;
+  /** Eslenik sunucularin sayilari AYNI mi. */
+  consistent: boolean;
+  signatures: string[];
+  locationsTotal: number;
+  locationsProxy: number;
+  upstreamsTotal: number;
+  upstreamsInVhost: number;
+  proxyWithoutUpstream: number;
+  unusedUpstreams: number;
+  upsNoResolve: number;
+  upsNoKeepalive: number;
+  upsNoZone: number;
+}
+
+export interface NginxLegacyResult {
+  ok: boolean;
+  /** dbo.Nginx_Legacy_Audit yoksa false: DDL calistirilmamis. "Bulgu yok" DEGIL. */
+  schemaReady: boolean;
+  scanDate: string | null;
+  services: NginxLegacyService[];
+  totals: {
+    services: number;
+    hosts: number;
+    locations: number;
+    upstreams: number;
+    proxyWithoutUpstream: number;
+    unusedUpstreams: number;
+    inconsistent: number;
+    findings: number;
+  } | null;
+  byType: { type: string; count: number; label: string; severity: number }[];
+  message?: string;
+}
+
 export interface OcpCoverageRow {
   application: string;
   envs: Record<string, { cluster: string; namespace: string }[]>;
@@ -565,6 +637,9 @@ export const denetimApi = {
 
   nginxApi: (scanDate?: string): Promise<NginxApiResult> =>
     fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+
+  nginxLegacy: (): Promise<NginxLegacyResult> =>
+    fetch(`${BASE}/nginx-legacy`).then(safeJson),
 
   nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
     fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),

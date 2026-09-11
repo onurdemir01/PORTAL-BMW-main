@@ -41,6 +41,7 @@ import EnvanterMetrics from '@/components/denetim/EnvanterMetrics';
 import EnvanterDegisim from '@/components/denetim/EnvanterDegisim';
 import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
 import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
+import { NginxLegacy } from '@/components/denetim/NginxLegacy';
 import { NginxProxy } from '@/components/denetim/NginxProxy';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
@@ -88,6 +89,11 @@ const HELP: HelpSection[] = [
   },
   {
     icon: ServerStackIcon,
+    title: 'Nginx Legacy (PROD)',
+    body: "Eski tip production nginx sunucularini (GBRVPP* / GBRVPAP*) olcer; veriyi bmw_nginx/nginx_legacy_audit isi uretir. Bu sunucularda SPA include deseni YOKTUR: tanimlar 'location X { proxy_pass https://<upstream>; }' seklindedir ve upstream bloklari cogunlukla ayri bir dosyadadir (<service>-<env>-upstreams.conf). Bu yuzden tane SERVIS'tir, location degil. Her satir bir servis; acilinca sunucu kirilimini ve bulgulari verir. SAYILAR TOPLANMAZ, EN YUKSEK SUNUCUDAN ALINIR - ayni tanim her eslenik sunucuda tekrar ettigi icin toplamak sunucu adedi kadar sisirilmis bir sayi uretirdi. 'Atlayan' sutunu, proxy_pass hedefi tanimli bir upstream OLMAYAN location sayisidir: o location dogrudan DNS adina gider, resolve/keepalive/zone avantajlarinin hicbiri devrede degildir. 'Kullanilmayan', tanimli ama hicbir location'in kullanmadigi upstream sayisidir. 'Eslenikler' sutunu ayni gruptaki sunucularin AYNI sayilari tasiyip tasimadigini soyler; gruplar A (GLOMO disi: GBRVPP01/02, GBRVPAP01/02) ve B (GLOMO: GBRVPP07-10, GBRVPAP03-06) seklindedir ve fark COGUNLUGA gore bulunur - ilk sunucu dogru varsayilmaz. DIKKAT: proxy_pass tasimayan location tek basina bulgu DEGILDIR; deny/return/rewrite/statik olanlar kasitli olarak proxy'sizdir ve 'diger' sutununda sayilir. Tablolar yoksa ekran 'bulgu yok' demez, DDL'in calistirilmadigini soyler.",
+  },
+  {
+    icon: ServerStackIcon,
     title: 'Nginx Envanteri',
     body: "nginx_metadata job'ının topladığı sunucu üst verisini gösterir (dbo.nginx_inventory). Her sunucuda bir .metadata dosyası üretilip toplanır. ÖNEMLİ: tablo her koşuda TRUNCATE edilip yeniden yazılır — yani GEÇMİŞ YOKTUR, gördüğünüz her zaman \"şu anki hâl\"dir; bu yüzden tarih seçici yerine en yeni source_last_update değeri gösterilir. NginxRateLimitInventory'den farklı olarak bu tabloda ORTAM KOLONU vardır, sunucu adından türetmeye gerek kalmaz. Beş görünüm var: 'Ortam' hangi ortamda kaç sunucu olduğunu ve bunların Pendik/Ankara dağılımını; 'Versiyonlar' nginx/OS/kernel/mimari dağılımını; 'Service'ler' bir service'i kaç sunucunun barındırdığını (services alanı tekil adlara bölünüp sayılır); 'Kaynaklar' cpu/bellek/disk/konfigürasyon dağılımını; 'Sunucular' ise tüm alanları arama ve CSV ile birlikte verir. Bellek ve disk toplamları yalnızca ÇÖZÜMLENEBİLEN değerlerden hesaplanır — çözümlenemeyen sunucu varsa sayı sarı renkle işaretlenir ve kaçının dışarıda kaldığı ipucunda yazar; uydurulmuş bir sayı toplamı sessizce bozardı.",
   },
@@ -130,6 +136,7 @@ export default function DenetimPage() {
     | 'nginx'
     | 'nginxapi'
     | 'nginxenv'
+    | 'nginxlegacy'
     | 'ocp'
     | 'init'
     | 'envanter'
@@ -194,6 +201,7 @@ export default function DenetimPage() {
               { id: 'nginx', label: 'Nginx SPA', icon: ServerStackIcon },
               { id: 'nginxapi', label: 'Nginx API Envanteri', icon: ServerStackIcon },
               { id: 'nginxenv', label: 'Nginx Envanteri', icon: ServerStackIcon },
+              { id: 'nginxlegacy', label: 'Nginx Legacy (PROD)', icon: ServerStackIcon },
               { id: 'ocp', label: 'OpenShift', icon: Squares2X2Icon },
               { id: 'init', label: 'Init Script', icon: DocumentDuplicateIcon },
               { id: 'envanter', label: 'Envanter', icon: ChartBarSquareIcon },
@@ -224,6 +232,7 @@ export default function DenetimPage() {
       {tab === 'nginx' && <NginxSpaAudit />}
       {tab === 'nginxapi' && <NginxApiEnvanteri />}
       {tab === 'nginxenv' && <NginxEnvanteri />}
+      {tab === 'nginxlegacy' && <NginxLegacy />}
       {tab === 'ocp' && <OcpCoverage />}
       {tab === 'init' && <InitScriptsAudit />}
       {tab === 'envanter' && <EnvanterMetrics />}

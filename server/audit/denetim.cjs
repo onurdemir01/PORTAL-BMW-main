@@ -17,6 +17,7 @@ const express = require('express');
 const { PLATFORM_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
 const { tierOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
+const { summarizeLegacy } = require('./nginx-legacy.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
 //
@@ -549,6 +550,52 @@ function initDenetim(app) {
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'SPA kapsam verisi alınamadı.' });
+    }
+  });
+
+  // ── 1b) ESKI TIP (proxy_pass + upstream) PROD DENETIMI ──────────────────────────────
+  // Bu sunucularda SPA include deseni YOKTUR; tane SERVIS'tir, location degil.
+  // Veriyi bmw_nginx/nginx_legacy_audit isi uretir.
+  router.get('/nginx-legacy', async (req, res) => {
+    try {
+      const { query } = require('../inventory/mssql.cjs');
+
+      const dateRes = await query(
+        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Legacy_Audit`,
+      ).catch(() => ({ recordset: [], _missing: true }));
+
+      // Tablo YOKSA bu "bulgu yok" DEMEK DEGILDIR - DDL henuz calistirilmamis
+      // demektir. Ikisini ayirmadan ekran yanlis guven verir.
+      if (dateRes._missing) {
+        return res.json({ ok: true, schemaReady: false, scanDate: null,
+          services: [], totals: null, byType: [] });
+      }
+      const scanDate = dateRes.recordset?.[0]?.d || null;
+      if (!scanDate) {
+        return res.json({ ok: true, schemaReady: true, scanDate: null,
+          services: [], totals: null, byType: [] });
+      }
+
+      const [sumRes, findRes] = await Promise.all([
+        query(
+          `SELECT host, peer_group, service, vhost_files, upstream_files, server_blocks,
+                  locations_total, locations_proxy, locations_other, upstreams_total,
+                  upstreams_in_vhost, upstreams_in_file, proxy_without_upstream,
+                  unused_upstreams, ups_no_resolve, ups_no_keepalive, ups_no_zone
+             FROM dbo.Nginx_Legacy_Audit
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Legacy_Audit)`,
+        ),
+        query(
+          `SELECT host, peer_group, service, finding_type, item, detail
+             FROM dbo.Nginx_Legacy_Findings
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Legacy_Findings)`,
+        ).catch(() => ({ recordset: [] })),
+      ]);
+
+      const out = summarizeLegacy(sumRes.recordset || [], findRes.recordset || []);
+      res.json({ ok: true, schemaReady: true, scanDate, ...out });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Legacy denetim verisi alınamadı.' });
     }
   });
 
