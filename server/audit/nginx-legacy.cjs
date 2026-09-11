@@ -47,6 +47,16 @@ const GROUP_META = {
 };
 
 const FINDING_META = {
+  CONFIG_INVALID: {
+    label: 'konfigürasyon geçersiz — reload edilemez',
+    title: 'Konfigürasyon geçersiz',
+    meaning:
+      '`nginx -T` bu sunucuda hata verdi: diskteki konfigürasyon ayrıştırılamıyor (eksik include, sözdizimi hatası…).',
+    action:
+      'nginx şu an çalışıyor olabilir ama bir sonraki reload BAŞARISIZ olur. Sunucuda `nginx -t` çıktısına bakılmalı.',
+    group: 'critical',
+    severity: 0,
+  },
   PROXY_UNDEFINED_TARGET: {
     label: 'hedef tanımsız — nginx başlamaz',
     title: 'Hedef tanımsız',
