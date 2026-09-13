@@ -14,6 +14,22 @@ const { envOfHost, envFromInventory, siteOfHost, tierOfHost, UNKNOWN_ENV } = req
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const bit = (v) => v === true || v === 1 || v === '1';
 
+function isMissingTableError(err) {
+  const number = err?.number ?? err?.originalError?.info?.number;
+  return number === 208 || /invalid object name/i.test(String(err?.message || ''));
+}
+
+async function readLatestAuditDate(query) {
+  try {
+    return await query(
+      `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Audit_Hosts`,
+    );
+  } catch (err) {
+    if (isMissingTableError(err)) return { recordset: [], _missing: true };
+    throw err;
+  }
+}
+
 /** Yol yerine dosya adi: ekranda "/usr/nginx/conf.d/GLOMO-PROD.conf" yerine
  *  "GLOMO-PROD.conf". Tam yol ipucunda durur. */
 function baseName(p) {
@@ -318,4 +334,9 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
   return { hosts: list, totals, reference };
 }
 
-module.exports = { summarizeAudit, _baseName: baseName };
+module.exports = {
+  summarizeAudit,
+  readLatestAuditDate,
+  _isMissingTableError: isMissingTableError,
+  _baseName: baseName,
+};

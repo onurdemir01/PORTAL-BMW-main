@@ -18,7 +18,7 @@ const { PLATFORM_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs
 const { tierOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeLegacy } = require('./nginx-legacy.cjs');
-const { summarizeAudit } = require('./nginx-audit.cjs');
+const { summarizeAudit, readLatestAuditDate } = require('./nginx-audit.cjs');
 const { loadMigration, resolveTarget, buildResolverMaps, MIGRATION_GROUPS } = require('./nginx-migration.cjs');
 const { buildRouteStats } = require('./route-stats.cjs');
 const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
@@ -833,9 +833,7 @@ function initDenetim(app) {
   async function loadNginxAudit(onlyHost) {
     const { query, sql } = require('../inventory/mssql.cjs');
 
-    const dateRes = await query(
-      `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Audit_Hosts`,
-    ).catch(() => ({ recordset: [], _missing: true }));
+    const dateRes = await readLatestAuditDate(query);
 
     // Tablo YOKSA "bulgu yok" DEGIL, DDL calistirilmamis demektir.
     if (dateRes._missing) {
