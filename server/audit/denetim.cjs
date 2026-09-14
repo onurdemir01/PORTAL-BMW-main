@@ -242,7 +242,7 @@ function initDenetim(app) {
       const rows = [...map.values()].sort(
         (a, b) => a.service.localeCompare(b.service) || a.application.localeCompare(b.application),
       );
-      const services = [...new Set(rows.map((r) => r.service))].sort();
+      // (services listesi yanitta yeniden uretilir: NEW_ONLY satirlari sonradan eklenir)
 
       // H/A/C DIZIN BAYRAKLARI (2026-09-14, kullanici: "ayni gosterimi non-prod icin de"):
       // dizin taramasi (hysdeploy / applications / application-confs) HER sunucuda kosar ve
@@ -267,19 +267,59 @@ function initDenetim(app) {
         try {
           const hIn = spaHosts.map((_, i) => `@h${i}`).join(', ');
           const dr = await query(
-            `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists
+            `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists, conf_name
                FROM dbo.Nginx_Intranet_Audit
               WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
                 AND host IN (${hIn})`,
             spaHosts.map((h, i) => ({ name: `h${i}`, type: sql.NVarChar(64), value: h })),
           );
           dirsReady = true;
+          const newProdHosts = new Set(MIGRATION_GROUPS.flatMap((g) => g.newHosts));
+          const groupOfNewHost = new Map();
+          for (const g of MIGRATION_GROUPS) for (const nh of g.newHosts) groupOfNewHost.set(nh, g);
+          const onNewProd = new Map(); // ns/app -> {hosts:Set, confName}
           for (const d of dr.recordset || []) {
-            const k = String(d.host || '').trim().toUpperCase() + '|' +
-              String(d.namespace || '').trim().toLowerCase() + '/' + String(d.application || '').trim().toLowerCase();
-            dirIdx.set(k, { hys: !!d.hys_deployed, app: !!d.app_deployed, conf: !!d.conf_exists });
+            const host = String(d.host || '').trim().toUpperCase();
+            const nsApp = String(d.namespace || '').trim().toLowerCase() + '/' + String(d.application || '').trim().toLowerCase();
+            dirIdx.set(host + '|' + nsApp, { hys: !!d.hys_deployed, app: !!d.app_deployed, conf: !!d.conf_exists });
+            if (newProdHosts.has(host) && (d.hys_deployed || d.app_deployed || d.conf_exists)) {
+              if (!onNewProd.has(nsApp)) onNewProd.set(nsApp, { hosts: new Set(), confName: null, namespace: String(d.namespace || '').trim().toLowerCase(), application: String(d.application || '').trim().toLowerCase() });
+              const e = onNewProd.get(nsApp);
+              e.hosts.add(host);
+              if (d.conf_name && !e.confName) e.confName = String(d.conf_name);
+            }
           }
-        } catch {
+          // YALNIZ YENI SUNUCUDA (kullanici, 2026-09-14): yeni prod SPA sunucusunda dizin var ama
+          // eski sunucuda proxy tanimi yok -> PROD hucresi NEW_ONLY. Ortam farki gorunur olsun.
+          const covered = new Set();
+          for (const r of rows) {
+            const c = r.envs.PROD;
+            if (c && c.namespace) covered.add(String(c.namespace).toLowerCase() + '/' + r.application.toLowerCase());
+          }
+          for (const [nsApp, e] of onNewProd) {
+            if (covered.has(nsApp)) continue;
+            if (!SPA_RE.test(e.application)) continue; // SPA olmayan dizinler (ornek/yardimci) matrise girmez
+            const hosts = [...e.hosts].sort();
+            // Servis: conf adinin oneki (<service>-<app>-<ns>) ya da tasima grubu
+            let service = null;
+            if (e.confName && !e.confName.toLowerCase().startsWith(e.application)) service = e.confName.split('-')[0].toUpperCase();
+            if (!service) {
+              const g = groupOfNewHost.get(hosts[0]);
+              service = g && g.id === 'glomo' ? 'GLOMO' : '(servis bilinmiyor)';
+            }
+            let row = rows.find((r) => r.application.toLowerCase() === e.application) || null;
+            if (!row) {
+              row = { service, application: e.application, envs: {} };
+              rows.push(row);
+            }
+            row.envs.PROD = {
+              present: true, status: 'NEW_ONLY', namespace: e.namespace, deployMode: 'namespaced',
+              includeExists: false, appDeployed: true, inOcpInventory: true, locationPath: '', hosts,
+            };
+          }
+          rows.sort((a, b) => a.service.localeCompare(b.service) || a.application.localeCompare(b.application));
+        } catch (e) {
+          console.warn('[denetim] dizin bayraklari okunamadi:', e.message);
           dirsReady = false;
         }
       }
@@ -312,7 +352,7 @@ function initDenetim(app) {
         prodProxy: prodProxyStats,
         scanDate: effectiveDate,
         availableDates: (datesRes.recordset || []).map((x) => x.d),
-        services,
+        services: [...new Set(rows.map((r) => r.service))].sort(), // NEW_ONLY satirlari dahil
         envs: envList,
         envStats,
         rows,

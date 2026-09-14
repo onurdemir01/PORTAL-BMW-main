@@ -34,6 +34,7 @@ import {
   type InitScriptsResult,
   type InitScriptStat,
   type SpaCoverageResult,
+  type NginxSpaRow,
   type SpaCoverageRow,
 } from '@/api/denetimApi';
 import { Select } from '@/components/ui/Form';
@@ -129,7 +130,20 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   BROKEN_INCLUDE: { label: 'Kırık include', cls: 'bg-red-100 text-red-800 border-red-300' },
   // PROD (2026-09-14): eski GBRVP* sunucusunda proxy_pass ile sunuluyor; SPA include'u yok.
   PROXY: { label: 'Proxy (eski sunucu)', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  // Yeni prod SPA sunucusunda dizin var ama eski sunucuda proxy tanimi YOK.
+  NEW_ONLY: { label: 'Yalnız yeni sunucuda', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
 };
+
+/** Ortam farki (kullanici, 2026-09-14): prod'da olan non-prod'da yok (ya da tersi) gorunsun. */
+type EnvGap = 'prod-only' | 'no-prod' | 'none';
+function envGapOf(r: NginxSpaRow): EnvGap {
+  const has = (e: string) => !!r.envs[e]?.present;
+  const nonProd = ['DEV', 'TEST', 'QA'].some(has);
+  const prod = has('PROD');
+  if (prod && !nonProd) return 'prod-only';
+  if (!prod && nonProd) return 'no-prod';
+  return 'none';
+}
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
   const body = [header, ...rows]
@@ -937,6 +951,7 @@ function NginxSpaAudit() {
   const [scanDate, setScanDate] = useState<string>('');
   const [q, setQ] = useState('');
   const [onlyProblems, setOnlyProblems] = useState(false);
+  const [gapFilter, setGapFilter] = useState<'all' | 'prod-only' | 'no-prod'>('all');
 
   const load = useCallback(async (d?: string) => {
     setLoading(true);
@@ -971,9 +986,10 @@ function NginxSpaAudit() {
         const bad = Object.values(r.envs).some((c) => c.status && c.status !== 'OK');
         if (!bad) return false;
       }
+      if (gapFilter !== 'all' && envGapOf(r) !== gapFilter) return false;
       return true;
     });
-  }, [data, service, q, onlyProblems]);
+  }, [data, service, q, onlyProblems, gapFilter]);
 
   const tierTabs = (
     <div className="flex flex-wrap items-center gap-2">
@@ -1228,6 +1244,16 @@ function NginxSpaAudit() {
               />
               Sadece sorunlular
             </label>
+            <select
+              value={gapFilter}
+              onChange={(e) => setGapFilter(e.target.value as 'all' | 'prod-only' | 'no-prod')}
+              className="px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
+              title="Ortam farkı: PROD ile non-prod (dev/test/qa) arasındaki eksikler"
+            >
+              <option value="all">ortam farkı: hepsi</option>
+              <option value="prod-only">yalnız PROD'da var (non-prod'da yok)</option>
+              <option value="no-prod">non-prod'da var, PROD'da yok</option>
+            </select>
             <span className="text-xs text-[var(--text-muted)] tabular-nums">
               {rows.length} uygulama
             </span>
@@ -1305,6 +1331,12 @@ function NginxSpaAudit() {
                   <tr key={r.service + r.application} className="hover:bg-[var(--bg-elevated)]/60">
                     <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">
                       {r.application}
+                      {envGapOf(r) === 'prod-only' && (
+                        <span className="ml-1.5 text-[9px] px-1 rounded border font-sans bg-amber-50 text-amber-700 border-amber-200" title="PROD'da tanımlı ama dev/test/qa'da yok">yalnız PROD</span>
+                      )}
+                      {envGapOf(r) === 'no-prod' && (
+                        <span className="ml-1.5 text-[9px] px-1 rounded border font-sans bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)]" title="dev/test/qa'da var, PROD'da tanım yok">PROD'da yok</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <OwnerCell owner={r.owner} ready={data.ownersReady !== false} />
@@ -1367,9 +1399,17 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
         {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
         {cell.status === 'PROXY' && cell.suffixAdded && <span className="text-[9px] opacity-70">+prod</span>}
         {!cell.inOcpInventory && <span className="opacity-80">OCP'de yok</span>}
+        {/* PROD: eski ve yeni sunucu durumu AYRI satirlarda (kullanici, 2026-09-14: "eski
+            sunucuda var mi yok mu belli degil"). */}
+        {(cell.status === 'PROXY' || cell.status === 'NEW_ONLY') && (
+          <span className="text-[10px] opacity-90" title={cell.status === 'PROXY' ? `eski sunucular: ${cell.hosts.join(', ')}` : 'eski GBRVP* sunucularında proxy tanımı bulunamadı'}>
+            Eski: {cell.status === 'PROXY' ? `✓ proxy (${cell.hosts.length} sunucu)` : '✗ tanım yok'}
+          </span>
+        )}
         {/* H/A/C dizin bayraklari (sunucu basina) - Production Tasimalari ile ayni gosterim */}
         {cell.dirs && cell.dirs.length > 0 && (
           <span className="inline-flex flex-wrap gap-1 mt-0.5">
+            {(cell.status === 'PROXY' || cell.status === 'NEW_ONLY') && <span className="text-[10px] opacity-90">Yeni:</span>}
             {cell.dirs.map((d) => (
               <span key={d.host} className="inline-flex items-center gap-1" title={d.host}>
                 {cell.dirs && (cell.dirs.length > 1 || cell.status === 'PROXY') && <span className="text-[9px] opacity-70">{d.host.replace(/^GBNGX/, '')}</span>}

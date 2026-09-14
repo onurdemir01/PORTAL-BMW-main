@@ -136,3 +136,12 @@ test('Nginx SPA matrisi: PROD proxy satirlari PROXY durumuyla girer; H/A/C yeni 
   const den = read('components/DenetimPage.tsx');
   assert.ok(den.includes("PROXY: { label: 'Proxy (eski sunucu)'"), 'PROXY durum etiketi yok');
 });
+
+test('Nginx SPA matrisi: PROD hucresinde eski/yeni ayrimi, NEW_ONLY, ortam farki suzgeci', () => {
+  const den = read('components/DenetimPage.tsx');
+  assert.ok(den.includes("Eski: {cell.status === 'PROXY' ? `✓ proxy"), 'PROD hucresinde eski sunucu satiri yok');
+  assert.ok(den.includes("NEW_ONLY: { label: 'Yalnız yeni sunucuda'"), 'NEW_ONLY etiketi yok');
+  assert.ok(den.includes("function envGapOf(") && den.includes('value="prod-only"') && den.includes('value="no-prod"'), 'ortam farki suzgeci yok');
+  const srv = read('../server/audit/denetim.cjs');
+  assert.ok(srv.includes("status: 'NEW_ONLY'"), 'yeni sunucuda dizin olup eski sunucuda proxy olmayan uygulama matrise girmeli');
+});
