@@ -171,3 +171,90 @@ test('bos girdi cokmez', () => {
   assert.equal(out.hosts.length, 0);
   assert.equal(out.totals.hosts, 0);
 });
+
+// ── Ortam: ad kalibi tutmayan hostlar envanterden (2026-09-14) ──────────────────────
+// Kullanici bildirimi: "cogu sunucunun ortam bilgisi BILINMIYOR". Nginx Audit TUM
+// filoyu tarar; GBNGX/GBNGW/GBRVP disindaki adlar kaliba uymaz. dbo.Inventory.env
+// (Production/Test/QA/Alpha/ODM) devreye girer; kalip tutuyorsa kalip kazanir.
+test('ortam: kalip tutmayan host envanterden alir, tutan host kalibi korur', () => {
+  const out = summarizeAudit({
+    hosts: [host('GBWEBP01'), host('GBWEBT05'), host('GBNGXT51'), host('GBBILINMEZ')],
+    servers: [],
+    locations: [],
+    upstreams: [],
+    settings: [],
+    inventory: [
+      { host: 'gbwebp01', env: 'Production' },
+      { host: 'GBWEBT05', env: 'Test' },
+      // GBNGXT51: envanter "Test" der ama kalip istisnasi EDU - kalip kazanmali
+      { host: 'GBNGXT51', env: 'Test' },
+      { host: 'GBBILINMEZ', env: 'Saçma' },
+    ],
+  });
+  const by = Object.fromEntries(out.hosts.map((h) => [h.host, h]));
+  assert.equal(by.GBWEBP01.env, 'PROD');
+  assert.equal(by.GBWEBP01.envSource, 'inventory');
+  assert.equal(by.GBWEBT05.env, 'TEST');
+  assert.equal(by.GBNGXT51.env, 'EDU');
+  assert.equal(by.GBNGXT51.envSource, 'name');
+  // Envanter de bilmiyorsa SESSIZCE atanmaz; kaynak "inventory-unknown" olarak gorunur
+  assert.equal(by.GBBILINMEZ.env, 'BILINMIYOR');
+  assert.equal(by.GBBILINMEZ.envSource, 'inventory-unknown');
+  assert.equal(out.totals.hostsEnvUnknown, 1);
+});
+
+// ── Kurulum dosyasi uyumu (Nginx_Audit_Files) ───────────────────────────────────────
+test('dosya uyumu: birebir / farkli / eksik ayrisir, ayrinti JSON cozulur, puana girer', () => {
+  const F = (host, ref_file, over = {}) => ({
+    host,
+    ref_file,
+    path: '/usr/nginx/conf/' + ref_file,
+    file_exists: 1,
+    identical: 1,
+    n_missing: 0,
+    n_changed: 0,
+    n_extra: 0,
+    details: '[]',
+    ...over,
+  });
+  const out = summarizeAudit({
+    hosts: [host('GBRVPP07'), host('GBRVPP08')],
+    servers: [],
+    locations: [],
+    upstreams: [],
+    settings: [],
+    files: [
+      F('GBRVPP07', 'proxy_settings.conf'),
+      F('GBRVPP07', 'bmw_defaults.conf', {
+        identical: 0,
+        n_missing: 1,
+        n_changed: 1,
+        details: JSON.stringify([
+          { kind: 'missing', key: 'main/autoindex', ref: 'off', server: null },
+          { kind: 'changed', key: 'main/client_max_body_size', ref: '1m', server: '50m' },
+        ]),
+      }),
+      F('GBRVPP07', 'log_format.conf', { file_exists: 0, identical: 0 }),
+      // referans bulunamadi: hukum yok
+      F('GBRVPP07', 'mime.types', { identical: null, details: '{"error":"x"}' }),
+      F('GBRVPP08', 'bmw_defaults.conf'),
+    ],
+  });
+  const p7 = out.hosts.find((h) => h.host === 'GBRVPP07');
+  assert.equal(p7.refFiles.length, 4);
+  assert.equal(p7.refFilesDiff, 2, 'bmw_defaults (farkli) + log_format (yok, identical=0)');
+  assert.equal(p7.refFilesMissing, 1);
+  const bd = p7.refFiles.find((f) => f.refFile === 'bmw_defaults.conf');
+  assert.equal(bd.details.length, 2);
+  assert.equal(bd.details[1].server, '50m');
+  const mt = p7.refFiles.find((f) => f.refFile === 'mime.types');
+  assert.equal(mt.identical, null);
+  assert.deepEqual(mt.details, [], 'bozuk/obje ayrinti bos listeye duser');
+  // Sorunlu sunucu USTTE: dosya farki puana girer
+  assert.equal(out.hosts[0].host, 'GBRVPP07');
+  assert.equal(out.totals.refFilesDiff, 2);
+  assert.equal(out.totals.hostsWithFileDiff, 1);
+  // Tablo yokken (files verilmedi) alanlar sifir, cokme yok
+  const p8 = out.hosts.find((h) => h.host === 'GBRVPP08');
+  assert.equal(p8.refFilesDiff, 0);
+});

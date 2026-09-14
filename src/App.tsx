@@ -11,6 +11,8 @@ import ForbiddenPage from '@/components/ForbiddenPage';
 // giristen sonra ancak menuden acilir) ve kod tabanindaki en agir sayfalardan biri.
 // Eager oldugu icin tum agirligi giris ekraninin bile indirdigi ana bundle'a giriyordu.
 const DenetimPage = React.lazy(() => import('@/components/DenetimPage'));
+// Nginx Audit > tek sunucu sayfasi: kendi URL'i var, Denetim gorunurlugune tabi.
+const NginxAuditHostPage = React.lazy(() => import('@/components/denetim/NginxAuditHostPage'));
 const EnvanterPage = React.lazy(() => import('@/components/EnvanterPage'));
 const DutyRosterPage = React.lazy(() => import('@/components/DutyRosterPage'));
 const ImportantLinksPage = React.lazy(() => import('@/components/ImportantLinksPage'));
@@ -68,6 +70,7 @@ export default function App() {
             </Route>
             <Route element={<PageVisibilityRoute pageId="Denetim" />}>
               <Route path="/denetim" element={<DenetimPage />} />
+              <Route path="/denetim/nginx-audit/:host" element={<NginxAuditHostPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="Nöbet" />}>
               <Route path="/duty-roster" element={<DutyRosterPage />} />

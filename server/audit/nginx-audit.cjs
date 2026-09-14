@@ -9,7 +9,7 @@
 // tanesinde ve eslenik karsilastirmasiyla olcer. Bu, tum filoyu sunucu tanesinde.
 'use strict';
 
-const { envOfHost, siteOfHost, tierOfHost } = require('./nginx-hosts.cjs');
+const { envOfHost, envFromInventory, siteOfHost, tierOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const bit = (v) => v === true || v === 1 || v === '1';
@@ -23,19 +23,36 @@ function baseName(p) {
 }
 
 /**
- * Bes tablonun satirlarini host bazinda birlestirir.
+ * Alti tablonun satirlarini host bazinda birlestirir.
+ * @param inventory  [{host, env}] dbo.Inventory - ad kalibi tutmayan hostlarin ortami
+ * @param files      dbo.Nginx_Audit_Files satirlari (tablo yoksa bos)
  * @returns {{hosts: Array, totals: Object}}
  */
-function summarizeAudit({ hosts, servers, locations, upstreams, settings }) {
+function summarizeAudit({ hosts, servers, locations, upstreams, settings, files, inventory }) {
   const byHost = new Map();
   const H = (h) => String(h || '').trim().toUpperCase();
+
+  // ORTAM: once ad kalibi (istisnalari bilir), tutmuyorsa envanter. Ikisi de
+  // bilmiyorsa BILINMIYOR - ve kaynak ekranda gorunur (envSource), sessiz atama yok.
+  const invEnv = new Map();
+  for (const r of inventory || []) {
+    const h = H(r.host);
+    if (h) invEnv.set(h, envFromInventory(r.env));
+  }
+  const envOf = (host) => {
+    const byName = envOfHost(host);
+    if (byName !== UNKNOWN_ENV) return { env: byName, envSource: 'name' };
+    const byInv = invEnv.get(host);
+    if (byInv && byInv !== UNKNOWN_ENV) return { env: byInv, envSource: 'inventory' };
+    return { env: UNKNOWN_ENV, envSource: invEnv.has(host) ? 'inventory-unknown' : 'none' };
+  };
 
   for (const r of hosts || []) {
     const host = H(r.host);
     if (!host) continue;
     byHost.set(host, {
       host,
-      env: envOfHost(host),
+      ...envOf(host),
       site: siteOfHost(host),
       tier: tierOfHost(host),
       status: String(r.status || '?'),
@@ -57,6 +74,10 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings }) {
       upstreamList: [],
       settingsMismatched: [],
       settingsOverrides: [],
+      // Kurulum dosyasi uyumu (nginx_installation/operations/files, licences haric)
+      refFiles: [],
+      refFilesDiff: 0,
+      refFilesMissing: 0,
     });
   }
 
@@ -168,6 +189,38 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings }) {
     byHost.get(k.split('|')[0]).settingsOverrides.push(o);
   }
 
+  // Kurulum dosyalari: identical NULL = referans yok, hukum yok (ne bulgu ne temiz).
+  for (const r of files || []) {
+    const h = byHost.get(H(r.host));
+    if (!h) continue;
+    let details = [];
+    try {
+      const d = JSON.parse(String(r.details || '[]'));
+      details = Array.isArray(d) ? d : [];
+    } catch {
+      details = [];
+    }
+    const exists = bit(r.file_exists);
+    const identical = r.identical == null ? null : bit(r.identical);
+    h.refFiles.push({
+      refFile: String(r.ref_file || ''),
+      path: String(r.path || ''),
+      exists,
+      identical,
+      missing: num(r.n_missing),
+      changed: num(r.n_changed),
+      extra: num(r.n_extra),
+      details: details.map((d) => ({
+        kind: String(d.kind || ''),
+        key: String(d.key || ''),
+        ref: d.ref == null ? null : String(d.ref),
+        server: d.server == null ? null : String(d.server),
+      })),
+    });
+    if (!exists) h.refFilesMissing += 1;
+    if (identical === false) h.refFilesDiff += 1;
+  }
+
   const list = [...byHost.values()];
   for (const h of list) {
     h.servers.sort((a, b) => a.seq - b.seq);
@@ -175,11 +228,13 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings }) {
     h.upstreamList.sort((a, b) => a.name.localeCompare(b.name));
     h.settingsMismatched.sort((a, b) => a.directive.localeCompare(b.directive));
     h.settingsOverrides.sort((a, b) => b.count - a.count || a.directive.localeCompare(b.directive));
+    h.refFiles.sort((a, b) => a.refFile.localeCompare(b.refFile));
     // Sunucunun "sorun puani": once nginx davranisini bozanlar.
     h.issues =
       (h.status === 'fail' ? 1000 : 0) +
       h.proxyUndefined * 100 +
       h.settingsMismatch * 10 +
+      h.refFilesDiff * 10 +
       h.proxyFqdn +
       h.unusedUpstreams +
       h.upsNoResolve;
@@ -200,6 +255,10 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings }) {
     upsNoKeepalive: sum((h) => h.upsNoKeepalive),
     settingsMismatch: sum((h) => h.settingsMismatch),
     hostsWithMismatch: list.filter((h) => h.settingsMismatch > 0).length,
+    refFilesDiff: sum((h) => h.refFilesDiff),
+    refFilesMissing: sum((h) => h.refFilesMissing),
+    hostsWithFileDiff: list.filter((h) => h.refFilesDiff > 0 || h.refFilesMissing > 0).length,
+    hostsEnvUnknown: list.filter((h) => h.env === UNKNOWN_ENV).length,
   };
 
   return { hosts: list, totals };

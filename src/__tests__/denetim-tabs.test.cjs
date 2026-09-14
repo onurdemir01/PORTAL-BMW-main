@@ -85,10 +85,15 @@ test('HER sekmenin render ettigi bilesen IMPORT EDILMIS', () => {
 test('sekme tipi (union) cubuktaki TUM id-leri iceriyor', () => {
   // Tip listesi eksik kalirsa tsc hata verir; burada da kilitlenir ki hata mesaji
   // "neden" sorusunu dogrudan yanitlasin.
-  const m = SRC.match(/useState<([^>]*)>\(["']nginx["']\)/);
-  assert.ok(m, 'sekme durumu (useState) bulunamadi');
+  // 2026-09-14: sekme id'leri DenetimTab tipi + DENETIM_TABS listesinde (ikisi de
+  // ?tab= dogrulamasi icin); useState<DenetimTab>(initialTab) o listeden beslenir.
+  assert.ok(/useState<DenetimTab>\(initialTab\)/.test(SRC), 'sekme durumu useState<DenetimTab>(initialTab) olmali');
+  const t = SRC.match(/type DenetimTab =\n([\s\S]*?);\n/);
+  const l = SRC.match(/const DENETIM_TABS: DenetimTab\[\] = \[([\s\S]*?)\];/);
+  assert.ok(t && l, 'DenetimTab tipi / DENETIM_TABS listesi bulunamadi');
   for (const id of tabIds()) {
-    assert.ok(new RegExp(`["']${id}["']`).test(m[1]), `sekme tipinde eksik: ${id}`);
+    assert.ok(new RegExp(`["']${id}["']`).test(t[1]), `sekme tipinde eksik: ${id}`);
+    assert.ok(new RegExp(`["']${id}["']`).test(l[1]), `DENETIM_TABS listesinde eksik: ${id}`);
   }
 });
 

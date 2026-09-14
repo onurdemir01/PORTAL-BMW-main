@@ -603,48 +603,100 @@ function initDenetim(app) {
   // ── 1c) NGINX AUDIT: TUM nginx sunuculari, nginx -T tabanli ───────────────────────
   // Bes tablo (Hosts/Servers/Locations/Upstreams/Settings) host bazinda birlestirilir.
   // Ureten is: bmw_nginx/nginx_audit. Legacy denetiminden AYRI veri, AYRI ekran.
-  router.get('/nginx-audit', async (req, res) => {
+  // Alti tabloyu (son tarama) okur ve host bazinda birlestirir. `onlyHost` verilirse
+  // yalnizca o sunucu (detay sayfasi): tum filoyu cekip birini secmek yerine SQL'de
+  // suzulur - ayarlar tablosu binlerce satir olabiliyor.
+  async function loadNginxAudit(onlyHost) {
+    const { query, sql } = require('../inventory/mssql.cjs');
+
+    const dateRes = await query(
+      `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Audit_Hosts`,
+    ).catch(() => ({ recordset: [], _missing: true }));
+
+    // Tablo YOKSA "bulgu yok" DEGIL, DDL calistirilmamis demektir.
+    if (dateRes._missing) {
+      return { ok: true, schemaReady: false, filesReady: false, scanDate: null, hosts: [], totals: null };
+    }
+    const scanDate = dateRes.recordset?.[0]?.d || null;
+    if (!scanDate) {
+      return { ok: true, schemaReady: true, filesReady: false, scanDate: null, hosts: [], totals: null };
+    }
+
+    const hostCond = onlyHost ? ' AND host = @host' : '';
+    const params = onlyHost ? [{ name: 'host', type: sql.NVarChar(64), value: onlyHost }] : [];
+    const latest = (t) => `WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.${t})${hostCond}`;
+    const q = (text) => query(text, params);
+
+    // Nginx_Audit_Files SONRADAN eklendi: tablo yoksa dosya uyumu bolumu "henuz yok"
+    // olarak gosterilir, ekranin geri kalani calisir.
+    const filesQ = q(`SELECT host, ref_file, path, file_exists, identical, n_missing, n_changed,
+                             n_extra, details
+                        FROM dbo.Nginx_Audit_Files ${latest('Nginx_Audit_Files')}`)
+      .then((r) => ({ rows: r.recordset || [], ready: true }))
+      .catch(() => ({ rows: [], ready: false }));
+
+    // Ortam: ad kalibi tutmayan hostlar icin dbo.Inventory.env (middleware_inventory).
+    const invQ = query(
+      `SELECT host, env FROM dbo.Inventory
+        WHERE nginx_version IS NOT NULL AND LTRIM(RTRIM(nginx_version)) <> ''`,
+    )
+      .then((r) => r.recordset || [])
+      .catch(() => []);
+
+    const [hosts, servers, locations, upstreams, settings, files, inventory] = await Promise.all([
+      q(`SELECT host, status, status_msg, files, server_blocks, locations,
+                locations_proxy, upstreams, ups_no_resolve, ups_no_keepalive,
+                ups_no_zone, unused_upstreams, proxy_fqdn, proxy_undefined,
+                settings_mismatch
+           FROM dbo.Nginx_Audit_Hosts ${latest('Nginx_Audit_Hosts')}`),
+      q(`SELECT host, conf_file, seq, listen, server_name, ssl, cert_file, locations
+           FROM dbo.Nginx_Audit_Servers ${latest('Nginx_Audit_Servers')}`),
+      q(`SELECT host, conf_file, srv_seq, location, behaviour, proxy_target, target_kind
+           FROM dbo.Nginx_Audit_Locations ${latest('Nginx_Audit_Locations')}`),
+      q(`SELECT host, conf_file, name, server, resolve, keepalive, zone, used
+           FROM dbo.Nginx_Audit_Upstreams ${latest('Nginx_Audit_Upstreams')}`),
+      q(`SELECT host, conf_file, context, directive, value, reference_value, matches
+           FROM dbo.Nginx_Audit_Settings ${latest('Nginx_Audit_Settings')}`),
+      filesQ,
+      invQ,
+    ]);
+
+    const out = summarizeAudit({
+      hosts: hosts.recordset || [],
+      servers: servers.recordset || [],
+      locations: locations.recordset || [],
+      upstreams: upstreams.recordset || [],
+      settings: settings.recordset || [],
+      files: files.rows,
+      inventory,
+    });
+    return { ok: true, schemaReady: true, filesReady: files.ready, scanDate, ...out };
+  }
+
+  router.get('/nginx-audit', async (_req, res) => {
     try {
-      const { query } = require('../inventory/mssql.cjs');
+      res.json(await loadNginxAudit(null));
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Nginx audit verisi alınamadı.' });
+    }
+  });
 
-      const dateRes = await query(
-        `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Audit_Hosts`,
-      ).catch(() => ({ recordset: [], _missing: true }));
-
-      // Tablo YOKSA "bulgu yok" DEGIL, DDL calistirilmamis demektir.
-      if (dateRes._missing) {
-        return res.json({ ok: true, schemaReady: false, scanDate: null, hosts: [], totals: null });
+  // Tek sunucunun ayrintisi (Denetim > Nginx Audit > sunucu sayfasi).
+  router.get('/nginx-audit/host/:host', async (req, res) => {
+    try {
+      const host = String(req.params.host || '').trim().toUpperCase();
+      if (!/^[A-Z0-9._-]{1,64}$/.test(host)) {
+        return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
       }
-      const scanDate = dateRes.recordset?.[0]?.d || null;
-      if (!scanDate) {
-        return res.json({ ok: true, schemaReady: true, scanDate: null, hosts: [], totals: null });
-      }
-
-      const latest = (t) => `WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.${t})`;
-      const [hosts, servers, locations, upstreams, settings] = await Promise.all([
-        query(`SELECT host, status, status_msg, files, server_blocks, locations,
-                      locations_proxy, upstreams, ups_no_resolve, ups_no_keepalive,
-                      ups_no_zone, unused_upstreams, proxy_fqdn, proxy_undefined,
-                      settings_mismatch
-                 FROM dbo.Nginx_Audit_Hosts ${latest('Nginx_Audit_Hosts')}`),
-        query(`SELECT host, conf_file, seq, listen, server_name, ssl, cert_file, locations
-                 FROM dbo.Nginx_Audit_Servers ${latest('Nginx_Audit_Servers')}`),
-        query(`SELECT host, conf_file, srv_seq, location, behaviour, proxy_target, target_kind
-                 FROM dbo.Nginx_Audit_Locations ${latest('Nginx_Audit_Locations')}`),
-        query(`SELECT host, conf_file, name, server, resolve, keepalive, zone, used
-                 FROM dbo.Nginx_Audit_Upstreams ${latest('Nginx_Audit_Upstreams')}`),
-        query(`SELECT host, conf_file, context, directive, value, reference_value, matches
-                 FROM dbo.Nginx_Audit_Settings ${latest('Nginx_Audit_Settings')}`),
-      ]);
-
-      const out = summarizeAudit({
-        hosts: hosts.recordset || [],
-        servers: servers.recordset || [],
-        locations: locations.recordset || [],
-        upstreams: upstreams.recordset || [],
-        settings: settings.recordset || [],
+      const out = await loadNginxAudit(host);
+      const found = (out.hosts || []).find((h) => h.host === host) || null;
+      res.json({
+        ok: true,
+        schemaReady: out.schemaReady,
+        filesReady: out.filesReady,
+        scanDate: out.scanDate,
+        host: found,
       });
-      res.json({ ok: true, schemaReady: true, scanDate, ...out });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Nginx audit verisi alınamadı.' });
     }

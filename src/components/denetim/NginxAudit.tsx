@@ -1,15 +1,18 @@
-// src/components/denetim/NginxAudit.tsx — "Nginx Audit".
+// src/components/denetim/NginxAudit.tsx — "Nginx Audit" (liste).
 //
 // TUM nginx sunucularinin `nginx -T` tabanli denetimi. Veriyi bmw_nginx/nginx_audit
-// isi uretir (bes tablo). Her satir bir SUNUCU; acilinca dort bolum:
-//   1) server bloklari (listen, server_name, sertifika)
-//   2) location'lar dosya bazinda (kac tane, kaci proxy, kaci upstream'e gidiyor)
-//   3) upstream'ler (resolve / keepalive / zone / kullanimda mi)
-//   4) ayarlar (kurulum referansiyla karsilastirma)
+// isi uretir (alti tablo). Her satir bir SUNUCU; satira tiklayinca sunucunun KENDI
+// SAYFASI acilir (/denetim/nginx-audit/:host — NginxAuditHostPage): server bloklari,
+// location'lar, upstream'ler, ayarlar, kurulum dosyasi uyumu.
+//
+// Kullanici bildirimi (2026-09-14): "Atlayan / Tanimsiz / Ayar sapmasi ne demek" ->
+// sozluk (nginxAuditGlossary.tsx) hem burada hem sunucu sayfasinda; sutun basliklari
+// ayni kisa aciklamayi ipucu olarak tasir.
 //
 // Legacy denetiminden AYRIDIR: o, 12 prod sunucusunu servis tanesinde ve eslenik
 // karsilastirmasiyla olcer. Bu, tum filoyu sunucu tanesinde olcer.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
   denetimApi,
@@ -17,8 +20,11 @@ import {
   type NginxAuditResult,
 } from '@/api/denetimApi';
 import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from './ui';
+import { AuditGlossary, termHint } from './nginxAuditGlossary';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
+
+export const hostPagePath = (host: string) => `/denetim/nginx-audit/${encodeURIComponent(host)}`;
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
   const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -31,12 +37,6 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
   URL.revokeObjectURL(url);
 }
 
-/** Evet/hayir hucreleri: tik yesil, capraz kirmizi; "yok" hicbir zaman sessiz kalmasin. */
-function YesNo({ v, bad }: { v: boolean; bad?: boolean }) {
-  if (v) return <span className="text-emerald-600 font-semibold">✓</span>;
-  return <span className={bad ? 'text-red-600 font-semibold' : 'text-[var(--text-muted)]'}>✗</span>;
-}
-
 export function NginxAudit() {
   const [data, setData] = useState<NginxAuditResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +44,6 @@ export function NginxAudit() {
   const [q, setQ] = useState('');
   const [env, setEnv] = useState('');
   const [onlyProblem, setOnlyProblem] = useState(false);
-  const [open, setOpen] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,16 +132,13 @@ export function NginxAudit() {
     <div className="space-y-3">
       <Note tone="info" title="Bu ekran ne gösteriyor?">
         Her satır bir nginx sunucusu. Konfigürasyon <Code>nginx -T</Code> ile okunur — yani
-        include&apos;lar dahil, nginx&apos;in kendi gördüğü hâliyle. Satırı açınca dört bölüm:
-        server blokları (ip:port, sertifika), location&apos;lar (dosya başına), upstream&apos;ler
-        (resolve / keepalive / zone / kullanımda mı) ve kurulum referansıyla ayar karşılaştırması.
-        <div className="mt-1.5">
-          <b>Referans</b> = <Code>nginx_installation</Code> job&apos;ının dosyaları
-          (bmw_defaults.conf, proxy_settings.conf…). Sunucudaki <b>global</b> değer
-          referanstan farklıysa bulgudur; bir location&apos;ın kendi içinde farklı değer vermesi
-          (örn. 60s timeout) bulgu değil, yerel ayardır — ayrı listelenir.
-        </div>
+        include&apos;lar dahil, nginx&apos;in kendi gördüğü hâliyle. <b>Satıra tıklayınca sunucunun
+        kendi sayfası açılır</b>: server blokları (ip:port, sertifika), location&apos;lar (dosya
+        başına), upstream&apos;ler (resolve / keepalive / zone / kullanımda mı), kurulum
+        referansıyla ayar karşılaştırması ve kurulum dosyalarının birebir uyumu.
       </Note>
+
+      <AuditGlossary />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
@@ -154,45 +150,64 @@ export function NginxAudit() {
           label="konfigürasyonu geçersiz"
           value={nf(t?.configInvalid || 0)}
           tone={t?.configInvalid ? 'danger' : 'neutral'}
-          hint="nginx -T hata verdi — bu sunucu reload edilemez"
+          hint={termHint('Konfigürasyon geçersiz')}
         />
         <StatTile
           label="hedefi tanımsız location"
           value={nf(t?.proxyUndefined || 0)}
           tone={t?.proxyUndefined ? 'danger' : 'neutral'}
-          hint="proxy_pass ne upstream'e ne çözümlenebilir bir adrese gidiyor — nginx başlamaz"
+          hint={termHint('Tanımsız')}
         />
         <StatTile
           label="referanstan sapan ayar"
           value={nf(t?.settingsMismatch || 0)}
           tone={t?.settingsMismatch ? 'danger' : 'neutral'}
-          hint={`${nf(t?.hostsWithMismatch || 0)} sunucuda; global bağlamda referansla eşleşmeyen direktif`}
+          hint={`${nf(t?.hostsWithMismatch || 0)} sunucuda · ${termHint('Ayar sapması')}`}
         />
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile
+          label="referanstan farklı kurulum dosyası"
+          value={data.filesReady ? nf(t?.refFilesDiff || 0) : '—'}
+          tone={t?.refFilesDiff ? 'warning' : 'neutral'}
+          hint={
+            data.filesReady
+              ? `${nf(t?.hostsWithFileDiff || 0)} sunucuda · ${nf(t?.refFilesMissing || 0)} dosya sunucuda yok · ${termHint('Dosya uyumu')}`
+              : 'DDL henüz uygulanmadı (nginx_audit_schema.sql yeniden çalıştırılmalı)'
+          }
+        />
         <StatTile
           label="upstream'i atlayan location"
           value={nf(t?.proxyFqdn || 0)}
           tone="neutral"
-          hint="doğrudan DNS adına gidiyor; çalışır ama resolve/keepalive/zone devre dışı"
+          hint={termHint('Atlayan')}
         />
         <StatTile
           label="resolve olmayan upstream"
           value={nf(t?.upsNoResolve || 0)}
           tone="neutral"
-          hint="adres yalnızca başlangıçta çözülür; arka uç IP değişirse eskisine gider"
+          hint={termHint('resolve yok')}
         />
         <StatTile
           label="kullanılmayan upstream"
           value={nf(t?.unusedUpstreams || 0)}
           tone="neutral"
-          hint="tanımlı ama hiçbir location proxy_pass ile kullanmıyor — temizlik adayı"
+          hint={termHint('Kullanılmayan upstream')}
         />
       </div>
 
+      {(t?.hostsEnvUnknown || 0) > 0 && (
+        <Note tone="warning" title={`${nf(t?.hostsEnvUnknown || 0)} sunucunun ortamı bilinmiyor`}>
+          Ortam önce sunucu adı kalıbından (GBNGX…/GBNGW…/GBRVP…), tutmazsa{' '}
+          <Code>dbo.Inventory.env</Code> kaydından alınır. İkisi de bilmiyorsa sessizce bir ortama
+          atanmaz, <b>BILINMIYOR</b> görünür — sunucu <Code>middleware_inventory</Code> job&apos;ında
+          yoksa oraya girmesi gerekir.
+        </Note>
+      )}
+
       <Panel
         title="Sunucular"
-        description={`${nf(rows.length)} sunucu gösteriliyor · tarama ${data.scanDate} · sorunlu olanlar üstte`}
+        description={`${nf(rows.length)} sunucu gösteriliyor · tarama ${data.scanDate} · sorunlu olanlar üstte · satıra tıklayınca sunucu sayfası açılır`}
         actions={
           <div className="flex items-center gap-2">
             <select
@@ -231,6 +246,7 @@ export function NginxAudit() {
                   [
                     'sunucu',
                     'ortam',
+                    'ortam_kaynagi',
                     'lokasyon',
                     'nginx_-T',
                     'server_blogu',
@@ -244,10 +260,13 @@ export function NginxAudit() {
                     'upstream_atlayan',
                     'hedef_tanimsiz',
                     'referanstan_sapan_ayar',
+                    'referanstan_farkli_dosya',
+                    'sunucuda_olmayan_dosya',
                   ],
                   rows.map((h) => [
                     h.host,
                     h.env,
+                    h.envSource,
                     h.site,
                     h.status,
                     h.serverBlocks,
@@ -261,6 +280,8 @@ export function NginxAudit() {
                     h.proxyFqdn,
                     h.proxyUndefined,
                     h.settingsMismatch,
+                    h.refFilesDiff,
+                    h.refFilesMissing,
                   ]),
                 )
               }
@@ -287,20 +308,16 @@ export function NginxAudit() {
               <Th align="right">Server</Th>
               <Th align="right">Location</Th>
               <Th align="right">Upstream</Th>
-              <Th align="right">resolve yok</Th>
-              <Th align="right">Atlayan</Th>
-              <Th align="right">Tanımsız</Th>
-              <Th align="right">Ayar sapması</Th>
+              <Th align="right"><span title={termHint('resolve yok')}>resolve yok</span></Th>
+              <Th align="right"><span title={termHint('Atlayan')}>Atlayan</span></Th>
+              <Th align="right"><span title={termHint('Tanımsız')}>Tanımsız</span></Th>
+              <Th align="right"><span title={termHint('Ayar sapması')}>Ayar sapması</span></Th>
+              <Th align="right"><span title={termHint('Dosya uyumu')}>Dosya farkı</span></Th>
             </tr>
           </thead>
           <tbody>
             {rows.map((h) => (
-              <HostRow
-                key={h.host}
-                h={h}
-                open={open === h.host}
-                onToggle={() => setOpen(open === h.host ? null : h.host)}
-              />
+              <HostRow key={h.host} h={h} filesReady={data.filesReady} />
             ))}
           </tbody>
         </TableShell>
@@ -309,243 +326,71 @@ export function NginxAudit() {
   );
 }
 
-function HostRow({ h, open, onToggle }: { h: NginxAuditHost; open: boolean; onToggle: () => void }) {
+function envSourceHint(src: string): string {
+  if (src === 'name') return 'Ortam sunucu adı kalıbından türetildi';
+  if (src === 'inventory') return 'Ortam dbo.Inventory (middleware_inventory) kaydından alındı';
+  if (src === 'inventory-unknown') return 'Envanter kaydı var ama ortam değeri tanınmıyor';
+  return 'Ne ad kalıbı ne envanter ortamı biliyor';
+}
+
+function HostRow({ h, filesReady }: { h: NginxAuditHost; filesReady: boolean }) {
+  const navigate = useNavigate();
   const dash = <span className="text-[var(--text-muted)]">—</span>;
   const numCell = (n: number, bad?: boolean) =>
     n ? <span className={bad ? 'text-red-600 font-semibold' : ''}>{nf(n)}</span> : dash;
+  const to = hostPagePath(h.host);
+  // Satirin tamami tiklanabilir; sunucu adi gercek bir <Link> - orta tik / ctrl+tik
+  // yeni sekmede acar (kullanici bircok sunucuyu yan yana bakmak isteyebilir).
   return (
-    <>
-      <tr className="hover:bg-[var(--bg-elevated)]/60 cursor-pointer" onClick={onToggle} title="Ayrıntı için tıklayın">
-        <Td className="whitespace-nowrap font-mono font-medium">{h.host}</Td>
-        <Td className="whitespace-nowrap">
+    <tr
+      className="hover:bg-[var(--bg-elevated)]/60 cursor-pointer"
+      onClick={(e) => {
+        if (e.ctrlKey || e.metaKey || e.button !== 0) return;
+        navigate(to);
+      }}
+      title="Sunucu sayfasını aç"
+    >
+      <Td className="whitespace-nowrap font-mono font-medium">
+        <Link to={to} className="underline decoration-dotted underline-offset-2" onClick={(e) => e.stopPropagation()}>
+          {h.host}
+        </Link>
+      </Td>
+      <Td className="whitespace-nowrap">
+        <span title={envSourceHint(h.envSource)} className={h.env === 'BILINMIYOR' ? 'text-amber-700' : ''}>
           {h.env}
-          {h.site && <span className="text-[var(--text-muted)]"> · {h.site}</span>}
-          {h.tier === 'intranet' && <span className="text-[var(--text-muted)]"> · intranet</span>}
-        </Td>
-        <Td>
-          {h.status === 'ok' ? (
-            <Pill tone="success">geçerli</Pill>
-          ) : (
-            <Pill tone="danger">HATA</Pill>
-          )}
-        </Td>
-        <Td align="right" className="tabular-nums">{nf(h.serverBlocks)}</Td>
-        <Td align="right" className="tabular-nums" title={`${nf(h.locationsProxy)} tanesi proxy_pass taşıyor`}>
-          {nf(h.locations)}
-        </Td>
-        <Td align="right" className="tabular-nums">{nf(h.upstreams)}</Td>
-        <Td align="right" className="tabular-nums">{numCell(h.upsNoResolve)}</Td>
-        <Td align="right" className="tabular-nums">{numCell(h.proxyFqdn)}</Td>
-        <Td align="right" className="tabular-nums">{numCell(h.proxyUndefined, true)}</Td>
-        <Td align="right" className="tabular-nums">{numCell(h.settingsMismatch, true)}</Td>
-      </tr>
-      {open && (
-        <tr>
-          <td colSpan={10} className="px-3 py-3 bg-[var(--bg-elevated)]/40 space-y-4">
-            {h.status !== 'ok' && (
-              <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                <b>nginx -T hata verdi:</b> <span className="font-mono">{h.statusMsg}</span>
-                <div className="mt-0.5">
-                  Diskteki konfigürasyon ayrıştırılamıyor. nginx şu an çalışıyor olabilir ama bir
-                  sonraki reload <b>başarısız</b> olur. Aşağıdaki sayılar kısmi olabilir.
-                </div>
-              </div>
-            )}
-
-            {/* 1) SERVER BLOKLARI — ip:port + sertifika */}
-            <Section title="Server blokları" hint="Hangi ip:port dinleniyor, hangi sertifika sunuluyor">
-              <table className="text-[11px] w-full">
-                <thead>
-                  <tr className="text-[var(--text-muted)]">
-                    <th className="text-left pr-3 pb-1">#</th>
-                    <th className="text-left pr-3 pb-1">Dosya</th>
-                    <th className="text-left pr-3 pb-1">listen</th>
-                    <th className="text-left pr-3 pb-1">server_name</th>
-                    <th className="text-left pr-3 pb-1">SSL</th>
-                    <th className="text-left pr-3 pb-1">Sertifika</th>
-                    <th className="text-right pb-1">location</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {h.servers.map((s) => (
-                    <tr key={s.seq} className="border-t border-[var(--border-subtle)]">
-                      <td className="pr-3 py-1 tabular-nums">{s.seq}</td>
-                      <td className="pr-3 py-1 font-mono whitespace-nowrap" title={s.filePath}>{s.file}</td>
-                      <td className="pr-3 py-1 font-mono whitespace-nowrap">{s.listen || '—'}</td>
-                      <td className="pr-3 py-1 font-mono">{s.serverName || '—'}</td>
-                      <td className="pr-3 py-1"><YesNo v={s.ssl} /></td>
-                      <td className="pr-3 py-1 font-mono whitespace-nowrap" title={s.certPath}>
-                        {s.cert || (s.ssl ? <span className="text-red-600">yok!</span> : '—')}
-                      </td>
-                      <td className="py-1 text-right tabular-nums">{nf(s.locations)}</td>
-                    </tr>
-                  ))}
-                  {h.servers.length === 0 && (
-                    <tr><td colSpan={7} className="py-1 text-[var(--text-muted)]">server bloğu yok</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </Section>
-
-            {/* 2) LOCATION'LAR — dosya bazinda */}
-            <Section
-              title="Location'lar (dosya başına)"
-              hint="proxy_pass var mı, varsa tanımlı bir upstream'e mi gidiyor"
-            >
-              <table className="text-[11px] w-full">
-                <thead>
-                  <tr className="text-[var(--text-muted)]">
-                    <th className="text-left pr-3 pb-1">Dosya</th>
-                    <th className="text-right pr-3 pb-1">location</th>
-                    <th className="text-right pr-3 pb-1">proxy_pass</th>
-                    <th className="text-right pr-3 pb-1">→ upstream</th>
-                    <th className="text-right pr-3 pb-1">→ DNS (atlayan)</th>
-                    <th className="text-right pr-3 pb-1">→ tanımsız</th>
-                    <th className="text-right pb-1">diğer</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {h.locationsByFile.map((f) => (
-                    <React.Fragment key={f.filePath}>
-                      <tr className="border-t border-[var(--border-subtle)]">
-                        <td className="pr-3 py-1 font-mono whitespace-nowrap" title={f.filePath}>{f.file}</td>
-                        <td className="pr-3 py-1 text-right tabular-nums">{nf(f.total)}</td>
-                        <td className="pr-3 py-1 text-right tabular-nums">{nf(f.proxy)}</td>
-                        <td className="pr-3 py-1 text-right tabular-nums text-emerald-700">{nf(f.toUpstream)}</td>
-                        <td className="pr-3 py-1 text-right tabular-nums">{f.toFqdn ? <span className="text-amber-700">{nf(f.toFqdn)}</span> : '—'}</td>
-                        <td className="pr-3 py-1 text-right tabular-nums">{f.undefined ? <span className="text-red-600 font-semibold">{nf(f.undefined)}</span> : '—'}</td>
-                        <td className="py-1 text-right tabular-nums text-[var(--text-muted)]" title="deny / return / rewrite / static">{nf(f.other)}</td>
-                      </tr>
-                      {(f.undefinedList.length > 0 || f.fqdnList.length > 0) && (
-                        <tr>
-                          <td colSpan={7} className="pb-1.5 pl-3">
-                            <div className="flex flex-wrap gap-1">
-                              {f.undefinedList.map((x, i) => (
-                                <span key={'u' + i} className="text-[10px] px-1.5 py-0.5 rounded border font-mono bg-red-50 text-red-700 border-red-200" title={`hedef: ${x.target} — ne upstream ne çözümlenebilir ad`}>
-                                  {x.location} → {x.target}
-                                </span>
-                              ))}
-                              {f.fqdnList.slice(0, 40).map((x, i) => (
-                                <span key={'f' + i} className="text-[10px] px-1.5 py-0.5 rounded border font-mono bg-amber-50 text-amber-700 border-amber-200" title={`doğrudan DNS adına gidiyor: ${x.target}`}>
-                                  {x.location}
-                                </span>
-                              ))}
-                              {f.fqdnList.length > 40 && (
-                                <span className="text-[10px] text-[var(--text-muted)]">+{nf(f.fqdnList.length - 40)} tane daha</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                  {h.locationsByFile.length === 0 && (
-                    <tr><td colSpan={7} className="py-1 text-[var(--text-muted)]">location yok</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </Section>
-
-            {/* 3) UPSTREAM'LER */}
-            <Section
-              title={`Upstream'ler (${nf(h.upstreamList.length)})`}
-              hint="resolve: adres canlı çözülür · keepalive: bağlantı yeniden kullanılır · zone: resolve için paylaşımlı bellek · kullanımda: en az bir location gidiyor"
-            >
-              {h.upstreamList.length === 0 ? (
-                <div className="text-[11px] text-[var(--text-muted)]">Bu sunucuda upstream tanımı yok.</div>
-              ) : (
-                <div className="overflow-auto max-h-72">
-                  <table className="text-[11px] w-full">
-                    <thead className="sticky top-0 bg-[var(--bg-elevated)]">
-                      <tr className="text-[var(--text-muted)]">
-                        <th className="text-left pr-3 pb-1">Ad</th>
-                        <th className="text-left pr-3 pb-1">Dosya</th>
-                        <th className="text-center pr-3 pb-1">resolve</th>
-                        <th className="text-center pr-3 pb-1">keepalive</th>
-                        <th className="text-center pr-3 pb-1">zone</th>
-                        <th className="text-center pb-1">kullanımda</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {h.upstreamList.map((u) => (
-                        <tr key={u.name} className="border-t border-[var(--border-subtle)]">
-                          <td className="pr-3 py-0.5 font-mono whitespace-nowrap" title={u.server}>{u.name}</td>
-                          <td className="pr-3 py-0.5 font-mono text-[var(--text-muted)] whitespace-nowrap">{u.file}</td>
-                          <td className="pr-3 py-0.5 text-center"><YesNo v={u.resolve} /></td>
-                          <td className="pr-3 py-0.5 text-center"><YesNo v={u.keepalive} /></td>
-                          <td className="pr-3 py-0.5 text-center"><YesNo v={u.zone} /></td>
-                          <td className="py-0.5 text-center"><YesNo v={u.used} /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Section>
-
-            {/* 4) AYARLAR */}
-            <Section
-              title="Ayarlar — kurulum referansıyla karşılaştırma"
-              hint="Referans: nginx_installation dosyaları (bmw_defaults.conf, proxy_settings.conf, rate_limits.conf, nginx.conf)"
-            >
-              {h.settingsMismatched.length === 0 ? (
-                <div className="text-[11px] text-emerald-700">Global ayarların tamamı referansla uyumlu.</div>
-              ) : (
-                <table className="text-[11px] w-full mb-2">
-                  <thead>
-                    <tr className="text-[var(--text-muted)]">
-                      <th className="text-left pr-3 pb-1">Direktif</th>
-                      <th className="text-left pr-3 pb-1">Sunucudaki değer</th>
-                      <th className="text-left pr-3 pb-1">Referans</th>
-                      <th className="text-left pb-1">Dosya</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {h.settingsMismatched.map((m, i) => (
-                      <tr key={i} className="border-t border-[var(--border-subtle)]">
-                        <td className="pr-3 py-1 font-mono">{m.directive}</td>
-                        <td className="pr-3 py-1 font-mono text-red-700">{m.missing ? <i>tanımlı değil</i> : m.value}</td>
-                        <td className="pr-3 py-1 font-mono text-emerald-700">{m.reference ?? '—'}</td>
-                        <td className="py-1 font-mono text-[var(--text-muted)]">{m.file || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {h.settingsOverrides.length > 0 && (
-                <details className="mt-1">
-                  <summary className="text-[11px] text-[var(--text-muted)] cursor-pointer select-none">
-                    Yerel override&apos;lar ({nf(h.settingsOverrides.length)}) — bulgu değil, bilgi
-                  </summary>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {h.settingsOverrides.map((o, i) => (
-                      <span
-                        key={i}
-                        className="text-[10px] px-1.5 py-0.5 rounded border font-mono bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border)]"
-                        title={`${o.context} bağlamında; referans: ${o.reference ?? '—'}`}
-                      >
-                        {o.directive} {o.value} <span className="text-[var(--text-muted)]">×{nf(o.count)}</span>
-                      </span>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </Section>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="flex items-baseline gap-2 mb-1">
-        <span className="text-xs font-semibold text-[var(--text-primary)]">{title}</span>
-        {hint && <span className="text-[10px] text-[var(--text-muted)]">{hint}</span>}
-      </div>
-      <div className="overflow-x-auto">{children}</div>
-    </div>
+        </span>
+        {h.site && <span className="text-[var(--text-muted)]"> · {h.site}</span>}
+        {h.tier === 'intranet' && <span className="text-[var(--text-muted)]"> · intranet</span>}
+      </Td>
+      <Td>
+        {h.status === 'ok' ? (
+          <Pill tone="success">geçerli</Pill>
+        ) : (
+          <Pill tone="danger" title={h.statusMsg}>HATA</Pill>
+        )}
+      </Td>
+      <Td align="right" className="tabular-nums">{nf(h.serverBlocks)}</Td>
+      <Td align="right" className="tabular-nums" title={`${nf(h.locationsProxy)} tanesi proxy_pass taşıyor`}>
+        {nf(h.locations)}
+      </Td>
+      <Td align="right" className="tabular-nums">{nf(h.upstreams)}</Td>
+      <Td align="right" className="tabular-nums">{numCell(h.upsNoResolve)}</Td>
+      <Td align="right" className="tabular-nums">{numCell(h.proxyFqdn)}</Td>
+      <Td align="right" className="tabular-nums">{numCell(h.proxyUndefined, true)}</Td>
+      <Td align="right" className="tabular-nums">{numCell(h.settingsMismatch, true)}</Td>
+      <Td align="right" className="tabular-nums">
+        {!filesReady ? (
+          dash
+        ) : h.refFilesMissing ? (
+          <span className="text-red-600 font-semibold" title={`${nf(h.refFilesMissing)} dosya sunucuda yok`}>
+            {nf(h.refFilesDiff)}
+          </span>
+        ) : h.refFilesDiff ? (
+          <span className="text-amber-700 font-semibold">{nf(h.refFilesDiff)}</span>
+        ) : (
+          dash
+        )}
+      </Td>
+    </tr>
   );
 }

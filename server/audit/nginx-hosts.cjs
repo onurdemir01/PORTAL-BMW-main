@@ -56,6 +56,22 @@ function siteOfHost(host) {
   return '';
 }
 
+// dbo.Inventory.env degerleri (middleware_inventory, checkEnv): Production | Test | QA |
+// Alpha | ODM. Ad kalibi tutmayan nginx hostlari (Nginx Audit TUM filoyu tarar:
+// GBNGX/GBNGW/GBRVP disinda adlar da var) icin ortam BURADAN alinir.
+// Kalip tutuyorsa kalip kazanir: envanter kurali daha kaba (D.. -> Test, harf yoksa
+// Production) ve GBNGXT51=EDU gibi istisnalari bilmez.
+const INVENTORY_ENV = {
+  PRODUCTION: 'PROD', PROD: 'PROD', TEST: 'TEST', QA: 'QA', ALPHA: 'ALPHA', ODM: 'ODM',
+  DEV: 'DEV', EDU: 'EDU',
+};
+
+/** dbo.Inventory.env -> Portal ortam etiketi; taninmayan deger BILINMIYOR. */
+function envFromInventory(v) {
+  const k = String(v || '').trim().toUpperCase();
+  return INVENTORY_ENV[k] || UNKNOWN_ENV;
+}
+
 /** Ortamlari sabit sirada dondurur; taninmayanlar EN SONA eklenir (gizlenmez). */
 function orderEnvs(seen) {
   const extra = [...seen].filter((e) => !ENV_ORDER.includes(e)).sort();
@@ -70,6 +86,7 @@ function tierOfHost(host) {
 
 module.exports = {
   envOfHost,
+  envFromInventory,
   siteOfHost,
   tierOfHost,
   orderEnvs,

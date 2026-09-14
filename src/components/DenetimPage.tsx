@@ -8,6 +8,7 @@
 //   Jboss/WAS Applications Audit-> ad kuralindan ortam matrisi + sapmalar
 //   Web-App Relations           -> uygulamayi servis eden web sunucusu/vhost
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ShieldCheckIcon,
@@ -91,7 +92,7 @@ const HELP: HelpSection[] = [
   {
     icon: ServerStackIcon,
     title: 'Nginx Audit',
-    body: "TUM nginx sunucularinin konfigurasyon denetimi; veriyi bmw_nginx/nginx_audit isi uretir. Konfigurasyon 'nginx -T' ile okunur - yani include'lar dahil, nginx'in kendi gordugu haliyle; dosyalari tek tek okumak conf/ altindaki include'lari kacirirdi. Hostlar dbo.Inventory'den kesfedilir, sabit liste yoktur. Her satir bir SUNUCU; acilinca dort bolum: (1) server bloklari - hangi ip:port dinleniyor, hangi sertifika sunuluyor; (2) location'lar dosya basina - kac tane, kaci proxy_pass tasiyor, kaci tanimli bir upstream'e gidiyor, kaci dogrudan DNS adina gidiyor (calisir ama resolve/keepalive/zone devre disi), kaci TANIMSIZ bir hedefe gidiyor (nginx BASLAMAZ); (3) upstream'ler - resolve/keepalive/zone var mi, en az bir location kullaniyor mu; (4) ayarlar - kurulum referansiyla (nginx_installation: bmw_defaults.conf, proxy_settings.conf, rate_limits.conf, nginx.conf) karsilastirma. AYAR MANTIGI: sunucudaki GLOBAL deger referanstan farkliysa bulgudur; bir location'in kendi icinde farkli deger vermesi (orn. 60s timeout) bulgu DEGIL yerel ayardir ve ayri listelenir. Referans degerler koda gomulu degildir, her kosuda kurulum dosyalarindan okunur. 'nginx -T' hata verdiyse sunucu HATA olarak isaretlenir: konfigurasyon reload edilemez. Legacy denetiminden ayridir: o 12 prod sunucusunu servis bazinda ve eslenik karsilastirmasiyla olcer.",
+    body: "TUM nginx sunucularinin konfigurasyon denetimi; veriyi bmw_nginx/nginx_audit isi uretir. Konfigurasyon 'nginx -T' ile okunur - yani include'lar dahil, nginx'in kendi gordugu haliyle; dosyalari tek tek okumak conf/ altindaki include'lari kacirirdi. Hostlar dbo.Inventory'den kesfedilir, sabit liste yoktur. Ortam once sunucu adi kalibindan, tutmazsa dbo.Inventory.env kaydindan gelir; ikisi de bilmiyorsa BILINMIYOR gorunur. Her satir bir SUNUCU; tiklayinca sunucunun KENDI SAYFASI acilir (/denetim/nginx-audit/<host>), bes bolum: (1) server bloklari - hangi ip:port dinleniyor, hangi sertifika sunuluyor; (2) location'lar dosya basina - kac tane, kaci proxy_pass tasiyor, kaci tanimli bir upstream'e gidiyor, kaci dogrudan DNS adina gidiyor (calisir ama resolve/keepalive/zone devre disi), kaci TANIMSIZ bir hedefe gidiyor (nginx BASLAMAZ); (3) upstream'ler - resolve/keepalive/zone var mi, en az bir location kullaniyor mu; (4) ayarlar - kurulum referansiyla (nginx_installation: bmw_defaults.conf, proxy_settings.conf, rate_limits.conf, nginx.conf) karsilastirma. AYAR MANTIGI: sunucudaki GLOBAL deger referanstan farkliysa bulgudur; bir location'in kendi icinde farkli deger vermesi (orn. 60s timeout) bulgu DEGIL yerel ayardir ve ayri listelenir. (5) kurulum dosyasi uyumu - nginx_installation/operations/files altindaki dosyalar (licences haric) sunucuya oldugu gibi kopyalanir; sunucudaki kopya referansla birebir mi, degilse hangi direktif eksik/degismis/fazla. Referans degerler koda gomulu degildir, her kosuda kurulum dosyalarindan okunur. Terimler icin sekmenin ustundeki Sozluk acilir. 'nginx -T' hata verdiyse sunucu HATA olarak isaretlenir: konfigurasyon reload edilemez. Legacy denetiminden ayridir: o 12 prod sunucusunu servis bazinda ve eslenik karsilastirmasiyla olcer.",
   },
   {
     icon: ServerStackIcon,
@@ -137,20 +138,32 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
   URL.revokeObjectURL(url);
 }
 
+type DenetimTab =
+  | 'nginx'
+  | 'nginxapi'
+  | 'nginxenv'
+  | 'nginxlegacy'
+  | 'nginxaudit'
+  | 'ocp'
+  | 'init'
+  | 'envanter'
+  | 'degisim'
+  | 'appenvs'
+  | 'webapp';
+const DENETIM_TABS: DenetimTab[] = [
+  'nginx', 'nginxapi', 'nginxenv', 'nginxlegacy', 'nginxaudit', 'ocp', 'init',
+  'envanter', 'degisim', 'appenvs', 'webapp',
+];
+
 export default function DenetimPage() {
-  const [tab, setTab] = useState<
-    | 'nginx'
-    | 'nginxapi'
-    | 'nginxenv'
-    | 'nginxlegacy'
-    | 'nginxaudit'
-    | 'ocp'
-    | 'init'
-    | 'envanter'
-    | 'degisim'
-    | 'appenvs'
-    | 'webapp'
-  >('nginx');
+  // ?tab=nginxaudit: sunucu sayfasindan geri donus dogru sekmeye gelsin. Tanınmayan
+  // deger sessizce ilk sekmeye duser.
+  const [searchParams] = useSearchParams();
+  const initialTab = ((): DenetimTab => {
+    const v = searchParams.get('tab') as DenetimTab | null;
+    return v && DENETIM_TABS.includes(v) ? v : 'nginx';
+  })();
+  const [tab, setTab] = useState<DenetimTab>(initialTab);
   const [showHelp, setShowHelp] = useState(false);
 
   return (

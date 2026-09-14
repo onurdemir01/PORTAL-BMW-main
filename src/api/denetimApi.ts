@@ -264,9 +264,30 @@ export interface NginxAuditSettingOverride {
   count: number;
 }
 
+/** Kurulum dosyasi uyumu: nginx_installation/operations/files (licences haric) sunucuya
+ *  oldugu gibi kopyalanir; sunucudaki kopya referansla birebir olmali. */
+export interface NginxAuditRefFile {
+  /** referans dosya adi (nginx.conf yerine nginx_plus.conf olabilir) */
+  refFile: string;
+  /** sunucudaki yol */
+  path: string;
+  exists: boolean;
+  /** null: referans dosyasi bulunamadi, hukum yok */
+  identical: boolean | null;
+  /** referansta var, sunucuda yok */
+  missing: number;
+  /** ikisinde de var, deger farkli */
+  changed: number;
+  /** sunucuda var, referansta yok */
+  extra: number;
+  details: { kind: 'missing' | 'changed' | 'extra' | string; key: string; ref: string | null; server: string | null }[];
+}
+
 export interface NginxAuditHost {
   host: string;
   env: string;
+  /** ortam nereden: name (ad kalibi) | inventory (dbo.Inventory.env) | inventory-unknown | none */
+  envSource: string;
   site: string;
   tier: string;
   /** nginx -T: ok | fail. fail = konfigurasyon RELOAD EDILEMEZ. */
@@ -290,12 +311,28 @@ export interface NginxAuditHost {
   upstreamList: NginxAuditUpstream[];
   settingsMismatched: NginxAuditSettingMismatch[];
   settingsOverrides: NginxAuditSettingOverride[];
+  refFiles: NginxAuditRefFile[];
+  /** referanstan farkli (ya da eksik) kurulum dosyasi sayisi */
+  refFilesDiff: number;
+  refFilesMissing: number;
+}
+
+export interface NginxAuditHostResult {
+  ok: boolean;
+  message?: string;
+  schemaReady: boolean;
+  filesReady: boolean;
+  scanDate: string | null;
+  /** null: son taramada bu sunucu yok */
+  host: NginxAuditHost | null;
 }
 
 export interface NginxAuditResult {
   ok: boolean;
   /** dbo.Nginx_Audit_* yoksa false: DDL calistirilmamis. */
   schemaReady: boolean;
+  /** dbo.Nginx_Audit_Files yoksa false: dosya uyumu DDL'i sonradan eklendi. */
+  filesReady: boolean;
   scanDate: string | null;
   hosts: NginxAuditHost[];
   totals: {
@@ -308,6 +345,10 @@ export interface NginxAuditResult {
     proxyFqdn: number;
     unusedUpstreams: number;
     upsNoResolve: number;
+    refFilesDiff: number;
+    refFilesMissing: number;
+    hostsWithFileDiff: number;
+    hostsEnvUnknown: number;
     upsNoKeepalive: number;
     settingsMismatch: number;
     hostsWithMismatch: number;
@@ -772,6 +813,9 @@ export const denetimApi = {
 
   nginxAudit: (): Promise<NginxAuditResult> =>
     fetch(`${BASE}/nginx-audit`).then(safeJson),
+
+  nginxAuditHost: (host: string): Promise<NginxAuditHostResult> =>
+    fetch(`${BASE}/nginx-audit/host/${encodeURIComponent(host)}`).then(safeJson),
 
   nginxLegacy: (): Promise<NginxLegacyResult> =>
     fetch(`${BASE}/nginx-legacy`).then(safeJson),
