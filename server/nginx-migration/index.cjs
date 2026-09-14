@@ -21,6 +21,51 @@ const express = require('express');
 
 const CONFIG_NAME = 'nginx-prod-migration';
 
+// Gecis takibi (nginx_migration_tracking): uygulama basina durum + tarihler + not.
+const TRACK_STATES = ['none', 'planned', 'migrated', 'cancelled'];
+
+/** Istemciden gelen takip kaydini dogrular/normalize eder (saf, test edilebilir). */
+function normalizeTracking(body) {
+  const group = String(body?.group || '').trim();
+  const namespace = String(body?.namespace || '').trim().toLowerCase();
+  const application = String(body?.application || '').trim().toLowerCase();
+  const state = String(body?.state || 'none').trim().toLowerCase();
+  const date = (v) => {
+    const t = String(v || '').trim();
+    if (!t) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) throw new Error(`Tarih YYYY-AA-GG olmali: ${t}`);
+    return t;
+  };
+  if (!group || !namespace || !application) throw new Error('group, namespace, application zorunlu.');
+  if (!TRACK_STATES.includes(state)) throw new Error(`Gecersiz durum: ${state}`);
+  const plannedDate = date(body?.plannedDate);
+  const migratedDate = date(body?.migratedDate);
+  if (state === 'migrated' && !migratedDate) throw new Error('"Gecti" icin gecis tarihi zorunlu.');
+  if (state === 'planned' && !plannedDate) throw new Error('"Planlandi" icin planlanan tarih zorunlu.');
+  return {
+    group, namespace, application, state, plannedDate, migratedDate,
+    note: String(body?.note || '').trim().slice(0, 500) || null,
+  };
+}
+
+function rowToTracking(r) {
+  const d = (v) => (v ? String(v instanceof Date ? v.toISOString().slice(0, 10) : v).slice(0, 10) : null);
+  return {
+    group: r.group_id,
+    namespace: r.namespace,
+    application: r.application,
+    state: r.state || 'none',
+    plannedDate: d(r.planned_date),
+    migratedDate: d(r.migrated_date),
+    note: r.note || null,
+    configJobId: r.config_job_id == null ? null : Number(r.config_job_id),
+    configCreatedAt: r.config_created_at ? new Date(r.config_created_at).toISOString() : null,
+    configCreatedBy: r.config_created_by || null,
+    updatedBy: r.updated_by || null,
+    updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+  };
+}
+
 /** Playbook'a giden extra_vars - saf, test edilebilir. */
 function buildExtraVars({ service, application, namespace, inputPath, user }) {
   return {
@@ -91,6 +136,66 @@ function initNginxMigration(app) {
     }
   }
 
+  // -- Gecis takibi --------------------------------------------------------------
+  router.get('/tracking', async (_req, res) => {
+    try {
+      const { rows } = await db.query(
+        `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
+                config_job_id, config_created_at, config_created_by, updated_by, updated_at
+           FROM nginx_migration_tracking`,
+      );
+      res.json({ ok: true, rows: rows.map(rowToTracking) });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
+  // Kayit: giris yapmis her kullanici (ekip takip eder); kim/ne zaman yazildi tutulur.
+  router.put('/tracking', async (req, res) => {
+    let t;
+    try {
+      t = normalizeTracking(req.body);
+    } catch (err) {
+      return res.status(400).json({ ok: false, message: err.message });
+    }
+    const user = getRequestUser(req) || {};
+    const by = user.username || null;
+    try {
+      const ex = await db.query(
+        `SELECT id FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
+        [t.group, t.namespace, t.application],
+      );
+      if (ex.rows.length) {
+        await db.query(
+          `UPDATE nginx_migration_tracking
+              SET state = $4, planned_date = $5, migrated_date = $6, note = $7, updated_by = $8, updated_at = GETUTCDATE()
+            WHERE group_id = $1 AND namespace = $2 AND application = $3`,
+          [t.group, t.namespace, t.application, t.state, t.plannedDate, t.migratedDate, t.note, by],
+        );
+      } else {
+        await db.query(
+          `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, planned_date, migrated_date, note, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [t.group, t.namespace, t.application, t.state, t.plannedDate, t.migratedDate, t.note, by],
+        );
+      }
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_track', {
+          username: by, result: 'ok', detail: JSON.stringify(t),
+        });
+      } catch { /* audit yoksa yoksay */ }
+      const r = await db.query(
+        `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
+                config_job_id, config_created_at, config_created_by, updated_by, updated_at
+           FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
+        [t.group, t.namespace, t.application],
+      );
+      res.json({ ok: true, row: r.rows[0] ? rowToTracking(r.rows[0]) : null });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
   router.get('/config', async (_req, res) => {
     res.json({ ok: true, config: await readConfig() });
   });
@@ -152,6 +257,31 @@ function initNginxMigration(app) {
       } catch {
         /* audit modulu yoksa yoksay */
       }
+      // Takip kaydina "tanim olusturuldu" damgasi: kayit yoksa olusturulur (durum 'none'
+      // kalir - gecis KARARI kullanicinin), varsa yalniz config_* alanlari guncellenir.
+      try {
+        const gid = String(req.body?.group || '');
+        const jobId = job && job.id != null ? Number(job.id) : null;
+        const ex = await db.query(
+          `SELECT id FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
+          [gid, v.app.namespace, v.app.application],
+        );
+        if (ex.rows.length) {
+          await db.query(
+            `UPDATE nginx_migration_tracking SET config_job_id = $4, config_created_at = GETUTCDATE(), config_created_by = $5
+              WHERE group_id = $1 AND namespace = $2 AND application = $3`,
+            [gid, v.app.namespace, v.app.application, jobId, user.username || null],
+          );
+        } else {
+          await db.query(
+            `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, config_job_id, config_created_at, config_created_by, updated_by)
+             VALUES ($1, $2, $3, 'none', $4, GETUTCDATE(), $5, $5)`,
+            [gid, v.app.namespace, v.app.application, jobId, user.username || null],
+          );
+        }
+      } catch (e) {
+        console.warn('[nginx-migration] takip damgasi yazilamadi:', e.message);
+      }
       const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
       res.json({ ok: true, job, extraVars: extra, targetHosts: g ? g.newHosts : [] });
     } catch (err) {
@@ -162,4 +292,4 @@ function initNginxMigration(app) {
   app.use('/api/nginx-migration', router);
 }
 
-module.exports = { initNginxMigration, buildExtraVars, validateRequest, _CONFIG_NAME: CONFIG_NAME };
+module.exports = { initNginxMigration, buildExtraVars, validateRequest, normalizeTracking, rowToTracking, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };

@@ -673,6 +673,30 @@ const TABLES = [
       )`,
   },
   {
+    // Nginx SPA > Production Tasimalari takibi (2026-09-14, kullanici talebi): uygulama
+    // basina gecis durumu/tarihi. Kaynak gorunum (hangi uygulamalar) MSSQL denetim
+    // tablolarindan hesaplanir; BURASI yalnizca insan girdisi: planlanan/gecis tarihi, not.
+    // config_* alanlarini "Tanim olustur" dugmesi doldurur (job kimligi + zaman).
+    name: 'nginx_migration_tracking',
+    sql: `
+      CREATE TABLE nginx_migration_tracking (
+        id                INT IDENTITY(1,1) PRIMARY KEY,
+        group_id          NVARCHAR(32)  NOT NULL,
+        namespace         NVARCHAR(200) NOT NULL,
+        application       NVARCHAR(200) NOT NULL,
+        state             NVARCHAR(16)  NOT NULL DEFAULT 'none',
+        planned_date      DATE NULL,
+        migrated_date     DATE NULL,
+        note              NVARCHAR(500) NULL,
+        config_job_id     INT NULL,
+        config_created_at DATETIME2 NULL,
+        config_created_by NVARCHAR(128) NULL,
+        updated_by        NVARCHAR(128) NULL,
+        updated_at        DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UNIQUE(group_id, namespace, application)
+      )`,
+  },
+  {
     // Element basina hedefleme kurallari. principal_type ∈ {role, user}; principal_id =
     // rol adi ("Admin"/"User") veya kullanici adi (lowercase). Cozunurluk (visibility.cjs):
     // enabled=false ⇒ herkese kapali → Admin ⇒ gorur → user kurali > role kurali → default_visible.

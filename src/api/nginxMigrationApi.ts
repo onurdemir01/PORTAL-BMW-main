@@ -44,3 +44,42 @@ export const nginxMigrationApi = {
       body: JSON.stringify(body),
     }).then(safeJson),
 };
+
+// ── Gecis takibi ────────────────────────────────────────────────────────────────────
+export type MigrationTrackState = 'none' | 'planned' | 'migrated' | 'cancelled';
+
+export interface MigrationTracking {
+  group: string;
+  namespace: string;
+  application: string;
+  state: MigrationTrackState;
+  plannedDate: string | null;
+  migratedDate: string | null;
+  note: string | null;
+  /** "Tanım oluştur" ile başlatılan son job */
+  configJobId: number | null;
+  configCreatedAt: string | null;
+  configCreatedBy: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
+export const nginxMigrationTrackingApi = {
+  list: (): Promise<{ ok: boolean; rows: MigrationTracking[]; message?: string }> =>
+    fetch(`${BASE}/tracking`).then(safeJson),
+
+  save: (body: {
+    group: string;
+    namespace: string;
+    application: string;
+    state: MigrationTrackState;
+    plannedDate?: string | null;
+    migratedDate?: string | null;
+    note?: string | null;
+  }): Promise<{ ok: boolean; row?: MigrationTracking; message?: string }> =>
+    fetch(`${BASE}/tracking`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(safeJson),
+};

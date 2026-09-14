@@ -100,3 +100,16 @@ test('H/A/C gosterimi ORTAK (HacCell) ve Nginx SPA matrisi de kullaniyor', () =>
   const spa = srv.slice(srv.indexOf("router.get('/nginx-spa'"), srv.indexOf("router.get('/nginx-spa-coverage'"));
   assert.ok(spa.includes('FROM dbo.Nginx_Intranet_Audit') && spa.includes('cell.dirs = cell.hosts.map('), '/nginx-spa dizin bayraklarini eklemeli');
 });
+
+test('Production Tasimalari: gecis takibi (planlandi/gecti + tarih) ve sema', () => {
+  const src = read('components/denetim/NginxProdMigration.tsx');
+  assert.ok(src.includes('<TrackCell t={trackOf(a)}'), 'Gecis sutunu yok');
+  assert.ok(src.includes('function TrackingModal('), 'takip penceresi yok');
+  assert.ok(/name="state"/.test(src) && src.includes('type="date"'), 'durum + tarih alanlari yok');
+  assert.ok(src.includes("<option value=\"plan\">"), 'gecis tarihine gore siralama yok');
+  assert.ok(src.includes("value=\"open\">geçiş: henüz geçmedi"), 'gecis suzgeci yok');
+  const schema = read('../server/db/mssql-setup.cjs');
+  assert.ok(schema.includes('CREATE TABLE nginx_migration_tracking') && schema.includes('UNIQUE(group_id, namespace, application)'));
+  const api = read('api/nginxMigrationApi.ts');
+  assert.ok(api.includes('nginxMigrationTrackingApi'));
+});

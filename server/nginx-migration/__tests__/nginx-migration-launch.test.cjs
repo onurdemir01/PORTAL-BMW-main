@@ -49,3 +49,28 @@ test('deploy edilmemis (missing) ve taranmamis uygulama icin job KOSTURULMAZ (40
   assert.equal(r.status, 409);
   assert.match(r.message, /taranmadı/);
 });
+
+// ── Gecis takibi (2026-09-14): planlandi / gecti / iptal + tarihler ─────────────────
+const { normalizeTracking, rowToTracking } = require('../index.cjs');
+
+test('takip kaydi: durumlar ve tarih zorunluluklari', () => {
+  const ok = normalizeTracking({ group: 'glomo', namespace: 'Glomo-Prod', application: 'X-App-V1', state: 'planned', plannedDate: '2026-09-20', note: ' oco 1234 ' });
+  assert.deepEqual(ok, { group: 'glomo', namespace: 'glomo-prod', application: 'x-app-v1', state: 'planned', plannedDate: '2026-09-20', migratedDate: null, note: 'oco 1234' });
+  assert.throws(() => normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'planned' }), /planlanan tarih/i);
+  assert.throws(() => normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'migrated' }), /gecis tarihi/i);
+  assert.throws(() => normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'migrated', migratedDate: '20.09.2026' }), /YYYY-AA-GG/);
+  assert.throws(() => normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'bilinmez' }), /Gecersiz durum/);
+  assert.throws(() => normalizeTracking({ group: '', namespace: 'a', application: 'b' }), /zorunlu/);
+  // durum 'none' tarihsiz olabilir; not 500 ile kesilir
+  const n = normalizeTracking({ group: 'g', namespace: 'a', application: 'b', note: 'x'.repeat(600) });
+  assert.equal(n.state, 'none');
+  assert.equal(n.note.length, 500);
+});
+
+test('DB satiri -> API sekli (tarihler YYYY-AA-GG, Date nesnesi de string de olsa)', () => {
+  const r = rowToTracking({ group_id: 'glomo', namespace: 'ns', application: 'app', state: 'migrated', planned_date: new Date('2026-09-20T00:00:00Z'), migrated_date: '2026-09-25', note: null, config_job_id: '77', config_created_at: '2026-09-14T10:00:00Z', updated_at: null });
+  assert.equal(r.plannedDate, '2026-09-20');
+  assert.equal(r.migratedDate, '2026-09-25');
+  assert.equal(r.configJobId, 77);
+  assert.equal(r.updatedAt, null);
+});

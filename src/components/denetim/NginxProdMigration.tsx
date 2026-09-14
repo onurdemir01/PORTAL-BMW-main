@@ -6,8 +6,14 @@
 // olarak var mi? Her satir bir uygulama, her sutun bir YENI sunucu. Hesap sunucuda
 // (nginx-migration.cjs); burada yalnizca gosterim.
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowDownTrayIcon, ArrowPathIcon, DocumentPlusIcon } from '@heroicons/react/24/outline';
-import { nginxMigrationApi, type NginxMigrationConfig } from '@/api/nginxMigrationApi';
+import { ArrowDownTrayIcon, ArrowPathIcon, DocumentPlusIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
+import {
+  nginxMigrationApi,
+  nginxMigrationTrackingApi,
+  type NginxMigrationConfig,
+  type MigrationTracking,
+  type MigrationTrackState,
+} from '@/api/nginxMigrationApi';
 import { ansibleApi, type AwxServer } from '@/api/ansibleApi';
 import { Modal } from '@/components/common/Modal';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,7 +56,7 @@ export default function NginxProdMigration() {
   const [onlyProblem, setOnlyProblem] = useState(false);
   // Siralama (kullanici, 2026-09-14): 'status' (sorunlu ustte) | 'team' (cok uygulamasi
   // olan ekip ustte, ekip icinde uygulama adi) | 'app' (ad)
-  const [sortBy, setSortBy] = useState<'status' | 'team' | 'app'>('status');
+  const [sortBy, setSortBy] = useState<'status' | 'team' | 'app' | 'plan'>('status');
   const [q, setQ] = useState('');
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
@@ -59,6 +65,24 @@ export default function NginxProdMigration() {
   const [pending, setPending] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  // GECIS TAKIBI (kullanici, 2026-09-14): uygulama basina planlanan/gecis tarihi + not.
+  // Anahtar "group|ns/app". Ayri uctan gelir; ana veri yuklenmese de takip listesi okunur.
+  const [tracking, setTracking] = useState<Map<string, MigrationTracking>>(new Map());
+  const [trackingReady, setTrackingReady] = useState(true);
+  const [editing, setEditing] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp } | null>(null);
+  const [trackFilter, setTrackFilter] = useState<'all' | 'open' | 'planned' | 'migrated'>('all');
+
+  const loadTracking = async () => {
+    try {
+      const r = await nginxMigrationTrackingApi.list();
+      if (r.ok) {
+        setTracking(new Map(r.rows.map((t) => [trackKey(t.group, t.namespace, t.application), t])));
+        setTrackingReady(true);
+      } else setTrackingReady(false);
+    } catch {
+      setTrackingReady(false);
+    }
+  };
 
   const loadConfig = async () => {
     try {
@@ -73,6 +97,7 @@ export default function NginxProdMigration() {
     let alive = true;
     setLoading(true);
     loadConfig();
+    loadTracking();
     (async () => {
       try {
         const r = await denetimApi.nginxMigration();
@@ -115,6 +140,7 @@ export default function NginxProdMigration() {
     } finally {
       setBusy(false);
       setPending(null);
+      loadTracking();
     }
   }
 
@@ -181,13 +207,25 @@ export default function NginxProdMigration() {
         />
         <select
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as 'status' | 'team' | 'app')}
+          onChange={(e) => setSortBy(e.target.value as 'status' | 'team' | 'app' | 'plan')}
           className="px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
           title="Sıralama"
         >
           <option value="status">sırala: durum (sorunlu üstte)</option>
           <option value="team">sırala: ekip (çok uygulaması olan üstte)</option>
           <option value="app">sırala: uygulama adı</option>
+          <option value="plan">sırala: geçiş tarihi</option>
+        </select>
+        <select
+          value={trackFilter}
+          onChange={(e) => setTrackFilter(e.target.value as 'all' | 'open' | 'planned' | 'migrated')}
+          className="px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
+          title="Geçiş durumuna göre süz"
+        >
+          <option value="all">geçiş: hepsi</option>
+          <option value="open">geçiş: henüz geçmedi</option>
+          <option value="planned">geçiş: planlandı</option>
+          <option value="migrated">geçiş: geçti</option>
         </select>
         <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
           <input type="checkbox" checked={onlyProblem} onChange={(e) => setOnlyProblem(e.target.checked)} />
@@ -197,10 +235,15 @@ export default function NginxProdMigration() {
           onClick={() =>
             csvDownload(
               'nginx_prod_tasima',
-              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'eski_locationlar', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
+              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'gecis_durumu', 'planlanan_tarih', 'gecis_tarihi', 'gecis_notu', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'eski_locationlar', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
               data.groups.flatMap((g) =>
                 g.apps.map((a) => [
-                  g.label, a.namespace, a.suffixAdded ? 'evet' : '', a.application, a.owner?.groups.join(' | ') || '', a.forms.join('+'), a.written.join(' '), STATUS[a.status].label, a.readyHosts, a.scannedHosts,
+                  g.label, a.namespace, a.suffixAdded ? 'evet' : '', a.application, a.owner?.groups.join(' | ') || '',
+                  TRACK_LABEL[tracking.get(trackKey(g.id, a.namespace, a.application))?.state || 'none'].label,
+                  tracking.get(trackKey(g.id, a.namespace, a.application))?.plannedDate || '',
+                  tracking.get(trackKey(g.id, a.namespace, a.application))?.migratedDate || '',
+                  tracking.get(trackKey(g.id, a.namespace, a.application))?.note || '',
+                  a.forms.join('+'), a.written.join(' '), STATUS[a.status].label, a.readyHosts, a.scannedHosts,
                   a.oldHosts.join(' '), a.services.join(' '), a.locationCount, a.paths.map((p) => p.service + ' ' + p.location).join(' | '), a.target,
                   ...data.groups.flatMap((gg) => gg.newHosts.map((h) => (gg.id !== g.id ? '' : cellText(a.perHost[h])))),
                 ]),
@@ -229,6 +272,10 @@ export default function NginxProdMigration() {
           ownersReady={data.ownersReady !== false}
           canCreate={configured}
           onCreate={(app) => setPending({ group: g, app, pathIdx: 0 })}
+          tracking={tracking}
+          trackingReady={trackingReady}
+          trackFilter={trackFilter}
+          onTrack={(app) => setEditing({ group: g, app })}
         />
       ))}
 
@@ -286,7 +333,132 @@ export default function NginxProdMigration() {
           );
         })()}
       </Modal>
+
+      {editing && (
+        <TrackingModal
+          group={editing.group}
+          app={editing.app}
+          current={tracking.get(trackKey(editing.group.id, editing.app.namespace, editing.app.application)) || null}
+          onClose={() => setEditing(null)}
+          onSaved={(row) => {
+            setTracking((m) => new Map(m).set(trackKey(row.group, row.namespace, row.application), row));
+            setEditing(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+const trackKey = (group: string, ns: string, app: string) => `${group}|${ns}/${app}`;
+const fmtDate = (d: string | null | undefined) => (d ? d.split('-').reverse().join('.') : '');
+const TRACK_LABEL: Record<MigrationTrackState, { label: string; tone: 'success' | 'warning' | 'neutral' | 'danger' }> = {
+  none: { label: 'geçmedi', tone: 'neutral' },
+  planned: { label: 'planlandı', tone: 'warning' },
+  migrated: { label: 'geçti', tone: 'success' },
+  cancelled: { label: 'iptal', tone: 'danger' },
+};
+
+/** Gecis hucresi: durum + tarih; tiklaninca duzenleme penceresi. */
+function TrackCell({ t, ready, onEdit }: { t: MigrationTracking | null; ready: boolean; onEdit: () => void }) {
+  const st = t?.state || 'none';
+  const meta = TRACK_LABEL[st];
+  const date = st === 'migrated' ? t?.migratedDate : st === 'planned' ? t?.plannedDate : null;
+  const title = [
+    t?.plannedDate ? `planlanan: ${fmtDate(t.plannedDate)}` : '',
+    t?.migratedDate ? `geçiş: ${fmtDate(t.migratedDate)}` : '',
+    t?.note ? `not: ${t.note}` : '',
+    t?.configJobId ? `tanım job ${t.configJobId} (${t.configCreatedAt ? new Date(t.configCreatedAt).toLocaleString('tr-TR') : ''}${t.configCreatedBy ? ', ' + t.configCreatedBy : ''})` : '',
+    t?.updatedBy ? `son güncelleyen: ${t.updatedBy}` : '',
+    'düzenlemek için tıklayın',
+  ].filter(Boolean).join('\n');
+  return (
+    <button onClick={onEdit} disabled={!ready} className="inline-flex items-center gap-1 disabled:opacity-40" title={ready ? title : 'takip tablosu okunamadı'}>
+      <Pill tone={meta.tone}>{meta.label}{date ? ` ${fmtDate(date)}` : ''}</Pill>
+      {t?.configJobId && <span className="text-[9px] text-[var(--text-muted)]" title="Tanım oluştur job'ı koşturuldu">⚙{t.configJobId}</span>}
+      <CalendarDaysIcon className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+    </button>
+  );
+}
+
+function TrackingModal({ group, app, current, onClose, onSaved }: {
+  group: NginxMigrationGroup; app: NginxMigrationApp; current: MigrationTracking | null;
+  onClose: () => void; onSaved: (row: MigrationTracking) => void;
+}) {
+  const [state, setState] = useState<MigrationTrackState>(current?.state || 'none');
+  const [plannedDate, setPlannedDate] = useState(current?.plannedDate || '');
+  const [migratedDate, setMigratedDate] = useState(current?.migratedDate || '');
+  const [note, setNote] = useState(current?.note || '');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const save = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      const r = await nginxMigrationTrackingApi.save({
+        group: group.id, namespace: app.namespace, application: app.application,
+        state, plannedDate: plannedDate || null, migratedDate: migratedDate || null, note: note || null,
+      });
+      if (r.ok && r.row) onSaved(r.row);
+      else setMsg(r.message || 'Kaydedilemedi.');
+    } catch (e: unknown) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const inputCls = 'px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]';
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Geçiş takibi"
+      subtitle={`${app.application} · ${app.namespace} · ${group.label}`}
+      icon={CalendarDaysIcon}
+      dismissOnBackdrop={false}
+      footer={
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border)]">İptal</button>
+          <button onClick={save} disabled={busy} className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50" style={{ background: 'var(--accent)' }}>
+            {busy ? 'Kaydediliyor…' : 'Kaydet'}
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-3 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+        <div className="flex flex-wrap gap-3">
+          {(['none', 'planned', 'migrated', 'cancelled'] as MigrationTrackState[]).map((st) => (
+            <label key={st} className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="state" checked={state === st} onChange={() => setState(st)} />
+              <Pill tone={TRACK_LABEL[st].tone}>{TRACK_LABEL[st].label}</Pill>
+            </label>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Planlanan tarih{state === 'planned' ? ' *' : ''}</span>
+            <input type="date" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)} className={inputCls} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Geçiş tarihi{state === 'migrated' ? ' *' : ''}</span>
+            <input type="date" value={migratedDate} onChange={(e) => setMigratedDate(e.target.value)} className={inputCls} />
+          </label>
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Not (OCO no, sorumlu, koşul…)</span>
+          <textarea value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} rows={3} className={inputCls} />
+        </label>
+        {current?.configJobId && (
+          <div className="text-[11px] text-[var(--text-muted)]">
+            Tanım oluştur job&apos;ı: <b>{current.configJobId}</b>{current.configCreatedAt ? ` · ${new Date(current.configCreatedAt).toLocaleString('tr-TR')}` : ''}{current.configCreatedBy ? ` · ${current.configCreatedBy}` : ''}
+          </div>
+        )}
+        {current?.updatedBy && (
+          <div className="text-[11px] text-[var(--text-muted)]">Son güncelleme: {current.updatedBy}{current.updatedAt ? ` · ${new Date(current.updatedAt).toLocaleString('tr-TR')}` : ''}</div>
+        )}
+        {msg && <div className="text-[11px] text-red-600">{msg}</div>}
+      </div>
+    </Modal>
   );
 }
 
@@ -377,20 +549,29 @@ function cellText(f: { hys: boolean; app: boolean; conf: boolean } | null | unde
 const STATUS_ORDER: Record<NginxMigrationApp['status'], number> = { missing: 0, partial: 1, 'not-scanned': 2, ready: 3 };
 
 function GroupPanel({
-  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate,
+  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, trackFilter, onTrack,
 }: {
   g: NginxMigrationGroup;
   onlyProblem: boolean;
   q: string;
-  sortBy: 'status' | 'team' | 'app';
+  sortBy: 'status' | 'team' | 'app' | 'plan';
   ownersReady: boolean;
   canCreate: boolean;
   onCreate: (app: NginxMigrationApp) => void;
+  tracking: Map<string, MigrationTracking>;
+  trackingReady: boolean;
+  trackFilter: 'all' | 'open' | 'planned' | 'migrated';
+  onTrack: (app: NginxMigrationApp) => void;
 }) {
+  const trackOf = (a: NginxMigrationApp) => tracking.get(trackKey(g.id, a.namespace, a.application)) || null;
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let list = g.apps.filter((a) => {
       if (onlyProblem && a.status === 'ready') return false;
+      const ts = trackOf(a)?.state || 'none';
+      if (trackFilter === 'open' && (ts === 'migrated' || ts === 'cancelled')) return false;
+      if (trackFilter === 'planned' && ts !== 'planned') return false;
+      if (trackFilter === 'migrated' && ts !== 'migrated') return false;
       if (needle && !a.application.includes(needle) && !a.namespace.includes(needle) && !ownerText(a.owner).includes(needle)) return false;
       return true;
     });
@@ -406,9 +587,20 @@ function GroupPanel({
       });
     } else if (sortBy === 'app') {
       list = [...list].sort((a, b) => a.application.localeCompare(b.application));
+    } else if (sortBy === 'plan') {
+      // Gecis tarihi: planlanan/gecis tarihi olanlar tarihe gore, tarihsizler sona.
+      const d = (a: NginxMigrationApp) => { const t = trackOf(a); return t?.migratedDate || t?.plannedDate || ''; };
+      list = [...list].sort((a, b) => { const da = d(a), db = d(b); if (!da !== !db) return da ? -1 : 1; return da.localeCompare(db) || a.application.localeCompare(b.application); });
     }
     return list;
-  }, [g, onlyProblem, q, sortBy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [g, onlyProblem, q, sortBy, tracking, trackFilter]);
+  const trackTotals = useMemo(() => {
+    const c = { planned: 0, migrated: 0, cancelled: 0, none: 0 };
+    for (const a of g.apps) c[trackOf(a)?.state || 'none'] += 1;
+    return c;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [g, tracking]);
   // Ekip bazli ozet (siralama 'ekip' iken baslikta gosterilir)
   const teamSummary = useMemo(() => {
     const m = new Map<string, number>();
@@ -436,6 +628,11 @@ function GroupPanel({
           <StatTile label="eksik" value={nf(g.totals.missing)} tone={g.totals.missing ? 'danger' : 'neutral'} hint={STATUS.missing.hint} />
           <StatTile label="SPA değil" value={nf(g.totals.nonSpa)} hint="API/arka uç hedefi — dizin beklenmez" />
           <StatTile label="çözülemedi" value={nf(g.totals.unresolved)} tone={g.totals.unresolved ? 'warning' : 'neutral'} hint="hedef (ns, app)'a eşlenemedi — aşağıda" />
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <StatTile label="geçti" value={nf(trackTotals.migrated)} tone={trackTotals.migrated ? 'success' : 'neutral'} hint={`${g.totals.apps} uygulamanın ${trackTotals.migrated} tanesi yeni sunuculara geçti (takip kaydı)`} />
+          <StatTile label="planlandı" value={nf(trackTotals.planned)} tone={trackTotals.planned ? 'warning' : 'neutral'} hint="geçiş tarihi belirlenmiş, henüz geçmedi" />
+          <StatTile label="henüz planı yok" value={nf(trackTotals.none)} hint={`${trackTotals.cancelled} iptal · Geçiş sütunundaki rozete tıklayarak planlayın`} />
         </div>
 
         {notScanned.length > 0 && (
@@ -474,6 +671,7 @@ function GroupPanel({
                 <th className="text-left pr-3 pb-1">Uygulama</th>
                 <th className="text-left pr-3 pb-1">Namespace</th>
                 <th className="text-left pr-3 pb-1" title="namespace'in CMDB sahibi">Ekip</th>
+                <th className="text-left pr-3 pb-1" title="geçiş takibi: planlandı / geçti / iptal + tarih; tıklayarak düzenleyin">Geçiş</th>
                 <th className="text-left pr-3 pb-1">Durum</th>
                 <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost ve location tanımları (proxy_pass ile); ipucunda hangi eski sunucularda">Eski sunucudaki location</th>
                 <th className="text-left pr-3 pb-1" title="proxy_pass yazımı: FQDN ya da upstream adı; ipucunda yazılan ad(lar) ve gerçek hedefin kaynağı">Yazım</th>
@@ -513,6 +711,7 @@ function GroupPanel({
                     )}
                   </td>
                   <td className="pr-3 py-1"><OwnerCell owner={a.owner} ready={ownersReady} /></td>
+                  <td className="pr-3 py-1"><TrackCell t={trackOf(a)} ready={trackingReady} onEdit={() => onTrack(a)} /></td>
                   <td className="pr-3 py-1">
                     <Pill tone={STATUS[a.status].tone} title={STATUS[a.status].hint}>
                       {STATUS[a.status].label} {a.status !== 'not-scanned' && `${a.readyHosts}/${g.newHosts.length}`}
@@ -544,7 +743,7 @@ function GroupPanel({
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={7 + g.newHosts.length} className="py-2 text-[var(--text-muted)]">
+                <tr><td colSpan={8 + g.newHosts.length} className="py-2 text-[var(--text-muted)]">
                   {onlyProblem ? 'Hazır olmayan uygulama yok.' : 'Uygulama yok.'}
                 </td></tr>
               )}
