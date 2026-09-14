@@ -205,6 +205,7 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
           map.set(key, {
             ...extra, target, targetSource, suffixAdded: res.suffixAdded === true,
             services: new Set(), oldHosts: new Set(), locations: new Set(), forms: new Set(), written: new Set(),
+            paths: new Map(), // "SERVICE|location" -> {service, location, hosts:Set}
           });
         }
         const row = map.get(key);
@@ -213,6 +214,11 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
         row.locations.add(loc);
         row.forms.add(form);
         if (written) row.written.add(written);
+        // "Tanim olustur" icin: hangi vhost (servis) + hangi context path. Ayni uygulama
+        // birden fazla location'dan sunuluyorsa kullanici birini secer.
+        const pk = svc + '|' + loc;
+        if (!row.paths.has(pk)) row.paths.set(pk, { service: svc, location: loc, hosts: new Set() });
+        row.paths.get(pk).hosts.add(host);
       };
 
       if (res.namespace && res.application) {
@@ -240,6 +246,9 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       // proxy_pass yazim bicim(ler)i: 'fqdn' | 'upstream'; ve yazilan ad(lar)
       forms: [...row.forms].sort(),
       written: [...row.written].sort(),
+      paths: [...row.paths.values()]
+        .map((x) => ({ service: x.service, location: x.location, hosts: [...x.hosts].sort() }))
+        .sort((a, b) => a.service.localeCompare(b.service) || a.location.localeCompare(b.location)),
     });
 
     const appRows = [...apps.values()].map((row) => {
@@ -290,4 +299,85 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
   return out;
 }
 
-module.exports = { buildMigration, resolveTarget, MIGRATION_GROUPS, SPA_RE, _hostOf: hostOf };
+/**
+ * Veritabanindan tasima gorunumunu yukler (Denetim ucu + "Tanim olustur" anti-tamper).
+ * Her tablo KENDI son tarama gunuyle okunur (config audit ile nginx_audit ayri isler).
+ * @param query           mssql query(text, inputs)
+ * @param sql             mssql tip nesnesi
+ * @param hasProxyColumns async () => boolean  (Nginx_Config_Audit kind/target_url DDL'i)
+ */
+async function loadMigration({ query, sql, hasProxyColumns }) {
+  const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
+  const oldHosts = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.oldHosts))];
+  const newHosts = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.newHosts))];
+  const inList = (prefix, arr) => ({
+    sqlText: arr.map((_, i) => `@${prefix}${i}`).join(', '),
+    params: arr.map((h, i) => ({ name: `${prefix}${i}`, type: sql.NVarChar(64), value: h })),
+  });
+  const oldIn = inList('o', oldHosts);
+  const newIn = inList('n', newHosts);
+
+  // kind/target_url kolonlari DDL ile geldi; yoksa proxy satirlari hic yazilmamistir.
+  if (hasProxyColumns && !(await hasProxyColumns())) {
+    return {
+      ok: true, ownersReady: false, proxyReady: false, dirsReady: false, proxyScanDate: null, dirScanDate: null,
+      groups: buildMigration({ proxyRows: [], upstreamRows: [], routeRows: [], ocpRows: [], dirRows: [] }),
+    };
+  }
+
+  const [proxyDate, dirDate] = await Promise.all([
+    query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`)
+      .then((r) => r.recordset?.[0]?.d || null).catch(() => null),
+    query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Intranet_Audit`)
+      .then((r) => r.recordset?.[0]?.d || null).catch(() => null),
+  ]);
+
+  const [proxy, ups, routes, ocp, dirs] = await Promise.all([
+    proxyDate
+      ? query(
+          `SELECT host, vhost, service, location_path AS location, upstream_name, target_url
+             FROM dbo.Nginx_Config_Audit
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
+              AND kind = 'proxy' AND host IN (${oldIn.sqlText})`,
+          oldIn.params,
+        ).then((r) => r.recordset || [])
+      : Promise.resolve([]),
+    // nginx_audit (nginx -T) upstream server host'u. Tablo yoksa yedek yok, is durmaz.
+    query(
+      `SELECT host, name, server FROM dbo.Nginx_Audit_Upstreams
+        WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Upstreams)
+          AND host IN (${oldIn.sqlText})`,
+      oldIn.params,
+    ).then((r) => r.recordset || []).catch(() => []),
+    query(`SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`)
+      .then((r) => r.recordset || []).catch(() => []),
+    query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory`)
+      .then((r) => r.recordset || []).catch(() => []),
+    dirDate
+      ? query(
+          `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists
+             FROM dbo.Nginx_Intranet_Audit
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
+              AND host IN (${newIn.sqlText})`,
+          newIn.params,
+        ).then((r) => r.recordset || [])
+      : Promise.resolve([]),
+  ]);
+
+  const groups = buildMigration({ proxyRows: proxy, upstreamRows: ups, routeRows: routes, ocpRows: ocp, dirRows: dirs });
+  const owners = await loadNamespaceOwners(query);
+  for (const g of groups) {
+    for (const a of g.apps) a.owner = ownersFor(owners.byNs, [a.namespace]);
+  }
+  return {
+    ok: true,
+    ownersReady: owners.ready,
+    proxyReady: !!proxyDate,
+    dirsReady: !!dirDate,
+    proxyScanDate: proxyDate,
+    dirScanDate: dirDate,
+    groups,
+  };
+}
+
+module.exports = { buildMigration, loadMigration, resolveTarget, MIGRATION_GROUPS, SPA_RE, _hostOf: hostOf };

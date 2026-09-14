@@ -174,6 +174,11 @@ async function main() {
       init: () => require('./nginx-expose/index.cjs').initNginxExpose(app),
       optional: true,
     },
+    {
+      name: 'nginxMigration',
+      init: () => require('./nginx-migration/index.cjs').initNginxMigration(app),
+      optional: true,
+    },
   ];
   for (const { name, init, optional } of modules) {
     try {

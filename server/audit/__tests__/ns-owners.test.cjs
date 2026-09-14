@@ -28,7 +28,10 @@ test('tablo yoksa ready=false ve bos harita (ekran "veri yok" der, "bilinmiyor" 
 });
 
 test('Nginx_Config_Audit sutun adi location_path (job_3315997 sonrasi: "Invalid column name location")', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  // Sorgu nginx-migration.cjs/loadMigration'a tasindi (2026-09-14); iki dosya da taranir.
+  const src = ['denetim.cjs', 'nginx-migration.cjs']
+    .map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8'))
+    .join('\n');
   // Nginx_Config_Audit'ten okuyan her SELECT'te ciplak "location" sutunu olmamali.
   const selects = src.split('FROM dbo.Nginx_Config_Audit').slice(0, -1).map((s) => s.slice(s.lastIndexOf('SELECT')));
   assert.ok(selects.length >= 3);

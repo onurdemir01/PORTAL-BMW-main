@@ -66,3 +66,23 @@ test('Nginx SPA > Prod Tasima sekmesi bagli ve kapsam paneli o sekmede gizli', (
   const api = read('api/denetimApi.ts');
   assert.ok(api.includes('nginxMigration: ()'), 'API ucu yok');
 });
+
+test('Production Tasimalari: Tanim olustur dugmesi, ekip siralamasi, H/A/C sozlugu', () => {
+  const src = read('components/denetim/NginxProdMigration.tsx');
+  // dugme: yapilandirma yoksa / eksik / taranmadi -> pasif; onay penceresi formlu -> arka plan tiklamasi kapali
+  assert.ok(src.includes("disabled={!canCreate || a.status === 'missing' || a.status === 'not-scanned'}"));
+  assert.ok(src.includes('dismissOnBackdrop={false}'), 'onay penceresi surukleme ile kapanmamali');
+  assert.ok(src.includes('nginxMigrationApi.create({'), 'launch ucu cagrilmiyor');
+  // ekip siralamasi: cok uygulamasi olan ekip ustte, ekipsizler en sona
+  assert.ok(src.includes("<option value=\"team\">"), 'ekip siralamasi secenegi yok');
+  assert.ok(/if \(!ta !== !tb\) return ta \? -1 : 1;/.test(src), 'ekipsizler en sona dusmeli');
+  // H/A/C sozlugu ust tarafta, acik
+  assert.ok(src.includes('function HacLegend()') && src.includes('<HacLegend />'));
+  for (const s of ['/hysdeploy/&lt;ns&gt;/&lt;app&gt;/', '/usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/', 'application-confs/&lt;app&gt;-&lt;ns&gt;.conf']) {
+    assert.ok(src.includes(s), `sozlukte yok: ${s}`);
+  }
+  // yonetici paneli + rota
+  assert.ok(src.includes('<MigrationConfigPanel'));
+  const idx = read('../server/index.cjs');
+  assert.ok(idx.includes("require('./nginx-migration/index.cjs').initNginxMigration(app)"), 'server modulu kayitli degil');
+});

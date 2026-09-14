@@ -65,6 +65,8 @@ export interface NginxMigrationApp {
   oldHosts: string[];
   locations: string[];
   locationCount: number;
+  /** eski sunucudaki (vhost servisi, context path) ciftleri - "Tanim olustur" secimi icin */
+  paths: { service: string; location: string; hosts: string[] }[];
   /** yeni host -> bayraklar; null = o sunucu henuz taranmadi */
   perHost: Record<string, NginxMigrationDirFlags | null>;
   readyHosts: number;
