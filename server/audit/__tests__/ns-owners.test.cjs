@@ -40,3 +40,16 @@ test('Nginx_Config_Audit sutun adi location_path (job_3315997 sonrasi: "Invalid 
   }
   assert.ok(src.includes('location_path AS location'), 'tasima sorgusu location_path AS location kullanmali');
 });
+
+// 2026-09-14 canli hata: "loadNamespaceOwners is not defined" - yukleyici tasinirken import
+// silindi, /nginx-spa hala kullaniyordu. Testler route'u kosturmadigi icin yakalayamadi.
+// Bekci: denetim.cjs'te CAGRILAN her ns-owners / nginx-migration fonksiyonu import edilmis olmali.
+test('denetim.cjs: kullanilan yardimci fonksiyonlar gercekten import edilmis', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  for (const fn of ['loadNamespaceOwners', 'ownersFor', 'loadMigration', 'summarizeAudit']) {
+    const used = (src.match(new RegExp(`\\b${fn}\\(`, 'g')) || []).length;
+    if (!used) continue;
+    const imported = new RegExp(`\\{[^}]*\\b${fn}\\b[^}]*\\}\\s*=\\s*require\\(`).test(src);
+    assert.ok(imported, `${fn} kullaniliyor (${used} yer) ama import edilmemis`);
+  }
+});

@@ -20,6 +20,7 @@ const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeLegacy } = require('./nginx-legacy.cjs');
 const { summarizeAudit } = require('./nginx-audit.cjs');
 const { loadMigration } = require('./nginx-migration.cjs');
+const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
 //
