@@ -1,4 +1,4 @@
-// src/components/denetim/NginxProdMigration.tsx — Nginx SPA > "Prod Taşıma".
+// src/components/denetim/NginxProdMigration.tsx — Nginx SPA > "Production Taşımaları".
 //
 // Soru (kullanici, 2026-09-14): eski GBRVP* sunucularinin location'larinda proxy_pass
 // ile tanimli uygulamalar, yeni GBNGXP4x/5x sunucularinda
@@ -77,6 +77,13 @@ export default function NginxProdMigration() {
         OpenShift route envanteriyle <i>(namespace, uygulama)</i>&apos;ya çözülür; sonra <b>her yeni sunucuda</b>{' '}
         <Code>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</Code> ve <Code>/usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/</Code>{' '}
         var mı bakılır. Hücre: <b>H</b> = hysdeploy, <b>A</b> = applications, <b>C</b> = application-confs.
+        <div className="mt-1">
+          <Code>proxy_pass</Code> iki biçimde yazılmış olabilir: doğrudan <b>FQDN</b>{' '}
+          (<Code>https://&lt;app&gt;-&lt;ns&gt;.apps.fw.garanti.com.tr/</Code>) ya da bir <b>upstream</b> adı{' '}
+          (<Code>https://&lt;app&gt;-&lt;ns&gt;/</Code>) — ikisi de aynı uygulamaya çözülür; upstream takma adlıysa
+          (<Code>onur</Code> gibi) gerçek adres upstream bloğunun <Code>server</Code> satırından alınır.
+          &quot;Yazım&quot; sütunu hangisinin kullanıldığını gösterir.
+        </div>
         Bir uygulama <b>hazır</b> sayılır ancak yeni sunucuların <b>hepsinde</b> H ve A varsa.
         <div className="mt-1.5 text-[var(--text-muted)]">
           Eski sunucu verisi: <Code>nginx_config_audit</Code> ({data.proxyScanDate || '—'}) · yeni sunucu dizinleri:
@@ -100,10 +107,10 @@ export default function NginxProdMigration() {
           onClick={() =>
             csvDownload(
               'nginx_prod_tasima',
-              ['grup', 'namespace', 'uygulama', 'ekip', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
+              ['grup', 'namespace', 'uygulama', 'ekip', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
               data.groups.flatMap((g) =>
                 g.apps.map((a) => [
-                  g.label, a.namespace, a.application, a.owner?.groups.join(' | ') || '', STATUS[a.status].label, a.readyHosts, a.scannedHosts,
+                  g.label, a.namespace, a.application, a.owner?.groups.join(' | ') || '', a.forms.join('+'), a.written.join(' '), STATUS[a.status].label, a.readyHosts, a.scannedHosts,
                   a.oldHosts.join(' '), a.services.join(' '), a.locationCount, a.target,
                   ...data.groups.flatMap((gg) => gg.newHosts.map((h) => (gg.id !== g.id ? '' : cellText(a.perHost[h])))),
                 ]),
@@ -126,6 +133,25 @@ export default function NginxProdMigration() {
         <GroupPanel key={g.id} g={g} onlyProblem={onlyProblem} ownersReady={data.ownersReady !== false} />
       ))}
     </div>
+  );
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  'upstream-server': 'upstream bloğunun server satırı',
+  proxy_ssl_name: 'location’daki proxy_ssl_name',
+  proxy_pass: 'proxy_pass’teki adın kendisi',
+};
+
+function FormCell({ forms, written, source, target }: { forms: string[]; written: string[]; source: string; target: string }) {
+  const title = [`yazılan: ${written.join(', ')}`, `gerçek hedef: ${target}`, `kaynak: ${SOURCE_LABEL[source] || source}`].join('\n');
+  return (
+    <span className="inline-flex gap-1" title={title}>
+      {forms.map((f) => (
+        <span key={f} className="text-[10px] px-1.5 py-0.5 rounded border font-mono" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+          {f === 'fqdn' ? 'FQDN' : 'upstream'}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -187,6 +213,7 @@ function GroupPanel({ g, onlyProblem, ownersReady }: { g: NginxMigrationGroup; o
                 <th className="text-left pr-3 pb-1" title="namespace'in CMDB sahibi">Ekip</th>
                 <th className="text-left pr-3 pb-1">Durum</th>
                 <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost / location sayısı">Eski taraf</th>
+                <th className="text-left pr-3 pb-1" title="proxy_pass yazımı: FQDN ya da upstream adı; ipucunda yazılan ad(lar) ve gerçek hedefin kaynağı">Yazım</th>
                 {g.newHosts.map((h) => (
                   <th key={h} className="text-center px-1.5 pb-1 font-mono whitespace-nowrap" title={g.newHostsScanned.includes(h) ? 'tarandı' : 'henüz taranmadı'}>
                     {h}
@@ -210,6 +237,7 @@ function GroupPanel({ g, onlyProblem, ownersReady }: { g: NginxMigrationGroup; o
                   <td className="pr-3 py-1 text-[var(--text-muted)] whitespace-nowrap" title={`${a.oldHosts.join(', ')}\n${a.locations.join('\n')}`}>
                     {a.services.join(', ')} · {nf(a.locationCount)} location · {a.oldHosts.length} sunucu
                   </td>
+                  <td className="pr-3 py-1 whitespace-nowrap"><FormCell forms={a.forms} written={a.written} source={a.targetSource} target={a.target} /></td>
                   {g.newHosts.map((h) => (
                     <td key={h} className="text-center px-1.5 py-1">
                       <DirCell f={a.perHost[h]} />
@@ -218,7 +246,7 @@ function GroupPanel({ g, onlyProblem, ownersReady }: { g: NginxMigrationGroup; o
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={5 + g.newHosts.length} className="py-2 text-[var(--text-muted)]">
+                <tr><td colSpan={6 + g.newHosts.length} className="py-2 text-[var(--text-muted)]">
                   {onlyProblem ? 'Hazır olmayan uygulama yok.' : 'Uygulama yok.'}
                 </td></tr>
               )}

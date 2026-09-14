@@ -53,6 +53,12 @@ export interface NginxMigrationApp {
   /** hedef nasil cozuldu: route (adres birebir) | inventory (envanter cifti) */
   how: string;
   target: string;
+  /** gercek arka uc nereden: upstream-server | proxy_ssl_name | proxy_pass */
+  targetSource: string;
+  /** proxy_pass yazim bicimleri: 'fqdn' | 'upstream' */
+  forms: string[];
+  /** proxy_pass'te yazan ad(lar) */
+  written: string[];
   services: string[];
   oldHosts: string[];
   locations: string[];
@@ -70,6 +76,9 @@ export interface NginxMigrationOther {
   application?: string | null;
   how: string;
   candidates?: string[];
+  targetSource?: string;
+  forms?: string[];
+  written?: string[];
   services: string[];
   oldHosts: string[];
   locations: string[];

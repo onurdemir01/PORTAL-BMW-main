@@ -139,3 +139,72 @@ test('hic yeni sunucu taranmamissa uygulama satiri "not-scanned" - "eksik" DEGIL
   assert.equal(other.totals.notScanned, 1);
   assert.equal(other.totals.missing, 0);
 });
+
+// ── proxy_pass yazim bicimleri (kullanici, 2026-09-14) ──────────────────────────────
+// Dort yazim: FQDN, FQDN/, <app>-<ns> (upstream), <app>-<ns>/ (upstream). Tarayici
+// sema/yol/portu attigi icin DB'de FQDN ya da ciplak ad kalir; ikisi de ayni
+// uygulamaya cozulmeli. Ayrica takma adli upstream ("onur") server satirindan cozulur.
+test('dort proxy_pass yazimi da ayni uygulamaya cozulur; takma adli upstream server satirindan', () => {
+  const R = (host, loc, upstream_name, target_url = '') => P(host, 'GLOMO', loc, target_url, upstream_name);
+  const out = buildMigration({
+    proxyRows: [
+      // FQDN (yolsuz ve yollu - tarayici ikisini de host'a indirger), proxy_ssl_name YOK
+      R('GBRVPP07', '/a/', 'x-app-v1-glomo-prod' + APPS),
+      R('GBRVPP08', '/b/', 'x-app-v1-glomo-prod' + APPS),
+      // ciplak upstream adi, proxy_ssl_name YOK, nginx_audit upstream satiri da YOK
+      // -> route envanterinde ILK ETIKET eslesmesiyle cozulmeli (route kesinligi)
+      R('GBRVPP09', '/c/', 'x-app-v1-glomo-prod'),
+      // ciplak upstream adi + nginx_audit server satiri var
+      R('GBRVPP10', '/d/', 'x-app-v1-glomo-prod'),
+      // takma adli upstream: adi hicbir kaliba uymaz, server satiri gercek adresi verir
+      R('GBRVPAP03', '/e/', 'onur'),
+      // envanterde route'u olmayan ciplak ad -> OpenShift envanter ciftinden (yedek)
+      R('GBRVPAP04', '/f/', 'y-app-v2-glomo-prod'),
+    ],
+    upstreamRows: [
+      { host: 'GBRVPP10', name: 'x-app-v1-glomo-prod', server: 'x-app-v1-glomo-prod' + APPS + ':443' },
+      { host: 'GBRVPAP03', name: 'onur', server: 'https://x-app-v1-glomo-prod' + APPS + '/' },
+    ],
+    routeRows: [{ namespace_name: 'glomo-prod', route_address: 'x-app-v1-glomo-prod' + APPS }],
+    ocpRows: [{ namespace: 'glomo-prod', application: 'y-app-v2' }],
+    dirRows: [],
+  });
+  const glomo = out.find((g) => g.id === 'glomo');
+  const by = Object.fromEntries(glomo.apps.map((a) => [a.application, a]));
+  assert.deepEqual(Object.keys(by).sort(), ['x-app-v1', 'y-app-v2']);
+  const x = by['x-app-v1'];
+  assert.equal(x.namespace, 'glomo-prod');
+  assert.equal(x.how, 'route');
+  assert.deepEqual(x.oldHosts, ['GBRVPAP03', 'GBRVPP07', 'GBRVPP08', 'GBRVPP09', 'GBRVPP10'], 'bes yazim tek satirda toplanmali');
+  assert.deepEqual(x.forms, ['fqdn', 'upstream']);
+  assert.deepEqual(x.written, ['onur', 'x-app-v1-glomo-prod', 'x-app-v1-glomo-prod' + APPS]);
+  assert.equal(x.locationCount, 5);
+  assert.equal(glomo.unresolved.length, 0, 'takma ad "onur" cozulemedi listesine DUSMEMELI');
+  const y = by['y-app-v2'];
+  assert.equal(y.how, 'inventory');
+  assert.deepEqual(y.forms, ['upstream']);
+});
+
+test('gercek arka uc oncelik sirasi: upstream server > proxy_ssl_name > yazilan ad', () => {
+  const out = buildMigration({
+    proxyRows: [
+      // ucu de var ve FARKLI: upstream server satiri kazanmali
+      P('GBRVPP01', 'WEBFORMS', '/w/', 'sni-app-v1-webforms-prod' + APPS, 'takma'),
+      // yalniz proxy_ssl_name var
+      P('GBRVPP02', 'WEBFORMS', '/z/', 'ssl-app-v1-webforms-prod' + APPS, 'takma2'),
+    ],
+    upstreamRows: [{ host: 'GBRVPP01', name: 'takma', server: 'ups-app-v1-webforms-prod' + APPS }],
+    routeRows: [
+      { namespace_name: 'webforms-prod', route_address: 'ups-app-v1-webforms-prod' + APPS },
+      { namespace_name: 'webforms-prod', route_address: 'sni-app-v1-webforms-prod' + APPS },
+      { namespace_name: 'webforms-prod', route_address: 'ssl-app-v1-webforms-prod' + APPS },
+    ],
+    ocpRows: [],
+    dirRows: [],
+  });
+  const other = out.find((g) => g.id === 'other');
+  const by = Object.fromEntries(other.apps.map((a) => [a.application, a]));
+  assert.ok(by['ups-app-v1'] && !by['sni-app-v1'], 'upstream server satiri proxy_ssl_name\'i gecmeli');
+  assert.equal(by['ups-app-v1'].targetSource, 'upstream-server');
+  assert.equal(by['ssl-app-v1'].targetSource, 'proxy_ssl_name');
+});

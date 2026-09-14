@@ -60,7 +60,7 @@ test('sunucu sayfasi bes bolumu ve dosya uyumu DDL uyarisini tasir', () => {
 
 test('Nginx SPA > Prod Tasima sekmesi bagli ve kapsam paneli o sekmede gizli', () => {
   const denetim = read('components/DenetimPage.tsx');
-  assert.ok(denetim.includes("{ id: 'tasima', label: 'Prod Taşıma' }"), 'Prod Tasima secenegi yok');
+  assert.ok(denetim.includes("{ id: 'tasima', label: 'Production Taşımaları' }"), 'Production Tasimalari secenegi yok');
   assert.ok(denetim.includes("{tier === 'tasima' && <NginxProdMigration />}"), 'NginxProdMigration render edilmiyor');
   assert.ok(denetim.includes("{tier !== 'tasima' && <SpaCoverage tier={tier} />}"), 'kapsam paneli tasima sekmesinde gizlenmeli');
   const api = read('api/denetimApi.ts');

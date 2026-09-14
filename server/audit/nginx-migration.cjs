@@ -1,4 +1,4 @@
-// server/audit/nginx-migration.cjs - Nginx SPA > "Prod Tasima": eski GBRVP* sunucularinin
+// server/audit/nginx-migration.cjs - Nginx SPA > "Production Tasimalari": eski GBRVP* sunucularinin
 // proxy_pass hedefleri, yeni GBNGXP4x/5x sunucularinda DIZIN olarak var mi?
 //
 // SORU (kullanici, 2026-09-14): eski sunuculardaki location'larda tanimli proxy_pass
@@ -15,12 +15,26 @@
 //                                            (tablo adi tarihsel; dizin taramasi HER
 //                                            sunucuda kosar - bmw_nginx/nginx_config_audit)
 //
-// HEDEF -> (namespace, uygulama) COZUMU: route adresi <app>-<ns>.apps.fw.garanti.com.tr
-// kalibindadir ama hem app hem ns tire icerebilir; "nerede bolunur" belirsiz. Bu yuzden
-// TAHMIN EDILMEZ: (1) adres route envanterinde BIREBIR varsa namespace oradan, app =
-// etiket - "-ns"; (2) yoksa OpenShift envanterindeki (ns, app) ciftlerinden etiketi
-// birebir ureten(ler) aranir; birden fazla ciftse "belirsiz", hicbiri yoksa
-// "cozulemedi" - ikisi de ekranda AYRI gorunur, sessizce dusmez.
+// proxy_pass YAZIM BICIMLERI (kullanici, 2026-09-14) - dordu de gecerli:
+//   proxy_pass https://<app>-<ns>.apps.fw.garanti.com.tr     (FQDN)
+//   proxy_pass https://<app>-<ns>.apps.fw.garanti.com.tr/    (FQDN, yol)
+//   proxy_pass https://<app>-<ns>                             (upstream blogu adi)
+//   proxy_pass https://<app>-<ns>/                            (upstream blogu adi, yol)
+// Tarayici sema/yol/portu attigi icin DB'de iki bicim kalir: FQDN ya da CIPLAK AD.
+// Upstream adi her zaman <app>-<ns> DEGILDIR (takma ad olabilir: "onur", "pblc-cfa");
+// o yuzden GERCEK arka uc su sirayla bulunur:
+//   1) upstream blogunun server satiri (nginx_audit / Nginx_Audit_Upstreams)  - en kesin
+//   2) location'daki proxy_ssl_name (target_url)                               - SNI adi
+//   3) proxy_pass'teki adin kendisi (FQDN ya da ciplak <app>-<ns>)
+//
+// HEDEF -> (namespace, uygulama) COZUMU: etiket <app>-<ns> kalibindadir ama hem app hem
+// ns tire icerebilir; "nerede bolunur" belirsiz. Bu yuzden TAHMIN EDILMEZ:
+//   (1) FQDN route envanterinde BIREBIR varsa namespace oradan, app = etiket - "-ns"
+//   (2) ciplak ad / etiket, route envanterindeki bir adresin ILK ETIKETIYLE ayniysa
+//       (ayni kesinlik: route adresleri kurumsal kalipta)
+//   (3) OpenShift envanterindeki (ns, app) ciftlerinden etiketi birebir ureten(ler);
+//       birden fazla ciftse "belirsiz", hicbiri yoksa "cozulemedi" - ikisi de ekranda
+//       AYRI gorunur, sessizce dusmez.
 //
 // SPA OLMAYAN HEDEFLER: eski vhost'lar API/arka uc servislerine de proxy_pass yapar.
 // Bunlar yeni sunucuda dizin olarak BEKLENMEZ (proxy ile tasinir); "-app-v/-app-emb-v"
@@ -62,12 +76,13 @@ function hostOf(url) {
  * Hedef host adini (namespace, uygulama)'ya cozer.
  * @returns {{namespace:string|null, application:string|null, how:'route'|'inventory'|'ambiguous'|'unresolved', candidates?:string[]}}
  */
-function resolveTarget(host, routeByAddress, ocpByLabel) {
+function resolveTarget(host, routeByAddress, ocpByLabel, routeByLabel = new Map()) {
   const h = L(host);
   if (!h) return { namespace: null, application: null, how: 'unresolved' };
   const label = h.split('.')[0];
 
-  const ns = routeByAddress.get(h);
+  // (1) FQDN birebir, (2) ciplak ad = route adresinin ilk etiketi
+  const ns = routeByAddress.get(h) || routeByLabel.get(label);
   if (ns) {
     const suf = '-' + ns;
     if (label.endsWith(suf) && label.length > suf.length) {
@@ -97,10 +112,14 @@ function resolveTarget(host, routeByAddress, ocpByLabel) {
 function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, groups = MIGRATION_GROUPS }) {
   // route adresi -> namespace (birebir)
   const routeByAddress = new Map();
+  const routeByLabel = new Map(); // ilk etiket -> ns (ciplak upstream adi icin)
   for (const r of routeRows || []) {
     const a = hostOf(r.route_address);
     const ns = L(r.namespace_name);
-    if (a && ns && !routeByAddress.has(a)) routeByAddress.set(a, ns);
+    if (!a || !ns) continue;
+    if (!routeByAddress.has(a)) routeByAddress.set(a, ns);
+    const lbl = a.split('.')[0];
+    if (lbl && !routeByLabel.has(lbl)) routeByLabel.set(lbl, ns);
   }
   // "<app>-<ns>" etiketi -> [(ns, app)] (yedek cozum)
   const ocpByLabel = new Map();
@@ -144,21 +163,37 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
     for (const r of proxyRows || []) {
       const host = H(r.host);
       if (!oldSet.has(host)) continue;
-      let target = hostOf(r.target_url);
-      if (!target) target = upsServer.get(host + '|' + L(r.upstream_name)) || '';
-      if (!target) target = L(r.upstream_name);
+      // proxy_pass'te yazan ad (FQDN ya da ciplak upstream adi) - ekranda "yazim" olarak gorunur
+      const written = hostOf(r.upstream_name);
+      const form = written ? (written.includes('.') ? 'fqdn' : 'upstream') : 'none';
+      // Gercek arka uc: upstream server satiri > proxy_ssl_name > yazilan ad
+      let target = upsServer.get(host + '|' + written) || '';
+      let targetSource = 'upstream-server';
+      if (!target) {
+        target = hostOf(r.target_url);
+        targetSource = 'proxy_ssl_name';
+      }
+      if (!target) {
+        target = written;
+        targetSource = 'proxy_pass';
+      }
       const loc = String(r.location || '');
       const svc = String(r.service || r.vhost || '');
-      const res = resolveTarget(target, routeByAddress, ocpByLabel);
+      const res = resolveTarget(target, routeByAddress, ocpByLabel, routeByLabel);
 
       const push = (map, key, extra) => {
         if (!map.has(key)) {
-          map.set(key, { ...extra, target, services: new Set(), oldHosts: new Set(), locations: new Set() });
+          map.set(key, {
+            ...extra, target, targetSource,
+            services: new Set(), oldHosts: new Set(), locations: new Set(), forms: new Set(), written: new Set(),
+          });
         }
         const row = map.get(key);
         row.services.add(svc);
         row.oldHosts.add(host);
         row.locations.add(loc);
+        row.forms.add(form);
+        if (written) row.written.add(written);
       };
 
       if (res.namespace && res.application) {
@@ -183,6 +218,9 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       oldHosts: [...row.oldHosts].sort(),
       locations: [...row.locations].sort(),
       locationCount: row.locations.size,
+      // proxy_pass yazim bicim(ler)i: 'fqdn' | 'upstream'; ve yazilan ad(lar)
+      forms: [...row.forms].sort(),
+      written: [...row.written].sort(),
     });
 
     const appRows = [...apps.values()].map((row) => {

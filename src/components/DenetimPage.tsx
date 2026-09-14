@@ -59,7 +59,7 @@ const HELP: HelpSection[] = [
   {
     icon: ServerStackIcon,
     title: 'Nginx SPA Audit',
-    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır. 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz. PROD TAŞIMA sekmesi (2026-09-14): eski GBRVP* sunucularının vhost'larındaki her proxy_pass hedefi OpenShift route envanteriyle (namespace, uygulama)'ya çözülür ve yeni GBNGXP4x/5x sunucularında /hysdeploy/<ns>/<app>/ ile /usr/nginx/applications/<ns>/<app>/ var mı gösterilir (H/A/C hücreleri). Bir uygulama ancak yeni sunucuların HEPSİNDE H+A varsa 'hazır'dır; SPA olmayan (API) hedefler dizin beklemez, ayrı listelenir.",
+    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır. 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz. PRODUCTION TAŞIMALARI sekmesi (2026-09-14): eski GBRVP* sunucularının vhost'larındaki her proxy_pass hedefi OpenShift route envanteriyle (namespace, uygulama)'ya çözülür ve yeni GBNGXP4x/5x sunucularında /hysdeploy/<ns>/<app>/ ile /usr/nginx/applications/<ns>/<app>/ var mı gösterilir (H/A/C hücreleri). Bir uygulama ancak yeni sunucuların HEPSİNDE H+A varsa 'hazır'dır; SPA olmayan (API) hedefler dizin beklemez, ayrı listelenir.",
   },
   {
     icon: ChartBarSquareIcon,
@@ -970,7 +970,7 @@ function NginxSpaAudit() {
           [
             { id: 'internet', label: 'Internet' },
             { id: 'intranet', label: 'Intranet' },
-            { id: 'tasima', label: 'Prod Taşıma' },
+            { id: 'tasima', label: 'Production Taşımaları' },
           ] as const
         ).map((t) => (
           <button
