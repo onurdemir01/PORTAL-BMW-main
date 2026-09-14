@@ -1,0 +1,236 @@
+// server/audit/nginx-migration.cjs - Nginx SPA > "Prod Tasima": eski GBRVP* sunucularinin
+// proxy_pass hedefleri, yeni GBNGXP4x/5x sunucularinda DIZIN olarak var mi?
+//
+// SORU (kullanici, 2026-09-14): eski sunuculardaki location'larda tanimli proxy_pass
+// uygulamalari yeni sunucularda /hysdeploy/<ns>/<app>/ ve
+// /usr/nginx/applications/<ns>/<app>/ olarak bulunuyor mu?
+//
+// KAYNAKLAR (hepsi mevcut tablolar, yeni tablo YOK):
+//   dbo.Nginx_Config_Audit  kind='proxy'  -> eski sunucu: vhost, location, upstream,
+//                                            target_url (= proxy_ssl_name, route adresi)
+//   dbo.Nginx_Audit_Upstreams             -> target_url bossa upstream'in server host'u
+//   dbo.BMW_Openshift_Route_Inventory     -> route adresi -> namespace (KESIN eslesme)
+//   dbo.Openshift_Inventory               -> (namespace, application) ciftleri (yedek cozum)
+//   dbo.Nginx_Intranet_Audit              -> yeni sunucu: hys/app/conf dizin bayraklari
+//                                            (tablo adi tarihsel; dizin taramasi HER
+//                                            sunucuda kosar - bmw_nginx/nginx_config_audit)
+//
+// HEDEF -> (namespace, uygulama) COZUMU: route adresi <app>-<ns>.apps.fw.garanti.com.tr
+// kalibindadir ama hem app hem ns tire icerebilir; "nerede bolunur" belirsiz. Bu yuzden
+// TAHMIN EDILMEZ: (1) adres route envanterinde BIREBIR varsa namespace oradan, app =
+// etiket - "-ns"; (2) yoksa OpenShift envanterindeki (ns, app) ciftlerinden etiketi
+// birebir ureten(ler) aranir; birden fazla ciftse "belirsiz", hicbiri yoksa
+// "cozulemedi" - ikisi de ekranda AYRI gorunur, sessizce dusmez.
+//
+// SPA OLMAYAN HEDEFLER: eski vhost'lar API/arka uc servislerine de proxy_pass yapar.
+// Bunlar yeni sunucuda dizin olarak BEKLENMEZ (proxy ile tasinir); "-app-v/-app-emb-v"
+// kalibina uymayanlar ayri listede gosterilir, "eksik" sayilmaz.
+'use strict';
+
+const SPA_RE = /-app(-emb)?-v/i;
+
+/** Sabit tasima gruplari (kullanici verdi, 2026-09-14). */
+const MIGRATION_GROUPS = [
+  {
+    id: 'glomo',
+    label: 'Glomo',
+    oldHosts: ['GBRVPP07', 'GBRVPP08', 'GBRVPP09', 'GBRVPP10', 'GBRVPAP03', 'GBRVPAP04', 'GBRVPAP05', 'GBRVPAP06'],
+    newHosts: ['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP24', 'GBNGXAP25'],
+  },
+  {
+    id: 'other',
+    label: 'Openbanking / Saklama / Webforms vb.',
+    oldHosts: ['GBRVPP01', 'GBRVPP02', 'GBRVPAP01', 'GBRVPAP02'],
+    newHosts: ['GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP28', 'GBNGXAP29'],
+  },
+];
+
+const H = (h) => String(h || '').trim().toUpperCase();
+const L = (s) => String(s || '').trim().toLowerCase();
+const bit = (v) => v === true || v === 1 || v === '1';
+
+/** "https://x.y:443/" ya da "x.y" -> "x.y" */
+function hostOf(url) {
+  let s = L(url);
+  s = s.replace(/^[a-z]+:\/\//, '');
+  s = s.split('/')[0];
+  s = s.replace(/:\d+$/, '');
+  return s;
+}
+
+/**
+ * Hedef host adini (namespace, uygulama)'ya cozer.
+ * @returns {{namespace:string|null, application:string|null, how:'route'|'inventory'|'ambiguous'|'unresolved', candidates?:string[]}}
+ */
+function resolveTarget(host, routeByAddress, ocpByLabel) {
+  const h = L(host);
+  if (!h) return { namespace: null, application: null, how: 'unresolved' };
+  const label = h.split('.')[0];
+
+  const ns = routeByAddress.get(h);
+  if (ns) {
+    const suf = '-' + ns;
+    if (label.endsWith(suf) && label.length > suf.length) {
+      return { namespace: ns, application: label.slice(0, -suf.length), how: 'route' };
+    }
+  }
+  const cands = ocpByLabel.get(label) || [];
+  if (cands.length === 1) return { namespace: cands[0].namespace, application: cands[0].application, how: 'inventory' };
+  if (cands.length > 1) {
+    return {
+      namespace: null,
+      application: null,
+      how: 'ambiguous',
+      candidates: cands.map((c) => c.namespace + '/' + c.application),
+    };
+  }
+  return { namespace: null, application: null, how: 'unresolved' };
+}
+
+/**
+ * @param proxyRows    Nginx_Config_Audit kind='proxy' (host, vhost, service, location, upstream_name, target_url)
+ * @param upstreamRows Nginx_Audit_Upstreams (host, name, server)
+ * @param routeRows    BMW_Openshift_Route_Inventory (namespace_name, route_address)
+ * @param ocpRows      Openshift_Inventory (namespace, application)
+ * @param dirRows      Nginx_Intranet_Audit (host, namespace, application, hys_deployed, app_deployed, conf_exists)
+ */
+function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, groups = MIGRATION_GROUPS }) {
+  // route adresi -> namespace (birebir)
+  const routeByAddress = new Map();
+  for (const r of routeRows || []) {
+    const a = hostOf(r.route_address);
+    const ns = L(r.namespace_name);
+    if (a && ns && !routeByAddress.has(a)) routeByAddress.set(a, ns);
+  }
+  // "<app>-<ns>" etiketi -> [(ns, app)] (yedek cozum)
+  const ocpByLabel = new Map();
+  for (const r of ocpRows || []) {
+    const ns = L(r.namespace);
+    const app = L(r.application);
+    if (!ns || !app) continue;
+    const label = app + '-' + ns;
+    if (!ocpByLabel.has(label)) ocpByLabel.set(label, []);
+    const arr = ocpByLabel.get(label);
+    if (!arr.some((c) => c.namespace === ns && c.application === app)) arr.push({ namespace: ns, application: app });
+  }
+  // (host, upstream adi) -> server host (target_url bos kaldiysa)
+  const upsServer = new Map();
+  for (const r of upstreamRows || []) {
+    const k = H(r.host) + '|' + L(r.name);
+    if (!upsServer.has(k)) upsServer.set(k, hostOf(r.server));
+  }
+  // yeni sunucu dizinleri: host -> "ns/app" -> bayraklar
+  const dirs = new Map();
+  const scannedHosts = new Set();
+  for (const r of dirRows || []) {
+    const host = H(r.host);
+    if (!host) continue;
+    scannedHosts.add(host);
+    if (!dirs.has(host)) dirs.set(host, new Map());
+    dirs.get(host).set(L(r.namespace) + '/' + L(r.application), {
+      hys: bit(r.hys_deployed),
+      app: bit(r.app_deployed),
+      conf: bit(r.conf_exists),
+    });
+  }
+
+  const out = [];
+  for (const g of groups) {
+    const oldSet = new Set(g.oldHosts.map(H));
+    const apps = new Map(); // "ns/app" -> satir
+    const nonSpa = new Map(); // hedef host -> satir
+    const unresolved = new Map(); // hedef host -> satir
+
+    for (const r of proxyRows || []) {
+      const host = H(r.host);
+      if (!oldSet.has(host)) continue;
+      let target = hostOf(r.target_url);
+      if (!target) target = upsServer.get(host + '|' + L(r.upstream_name)) || '';
+      if (!target) target = L(r.upstream_name);
+      const loc = String(r.location || '');
+      const svc = String(r.service || r.vhost || '');
+      const res = resolveTarget(target, routeByAddress, ocpByLabel);
+
+      const push = (map, key, extra) => {
+        if (!map.has(key)) {
+          map.set(key, { ...extra, target, services: new Set(), oldHosts: new Set(), locations: new Set() });
+        }
+        const row = map.get(key);
+        row.services.add(svc);
+        row.oldHosts.add(host);
+        row.locations.add(loc);
+      };
+
+      if (res.namespace && res.application) {
+        const key = res.namespace + '/' + res.application;
+        if (!SPA_RE.test(res.application)) {
+          push(nonSpa, key, { namespace: res.namespace, application: res.application, how: res.how });
+        } else {
+          push(apps, key, { namespace: res.namespace, application: res.application, how: res.how });
+        }
+      } else if (SPA_RE.test(target)) {
+        push(unresolved, target, { how: res.how, candidates: res.candidates || [] });
+      } else {
+        // SPA kalibina uymayan ve cozulemeyen: API/arka uc olabilir - SPA-disi listede
+        push(nonSpa, target, { namespace: null, application: null, how: res.how });
+      }
+    }
+
+    const newHosts = g.newHosts.map(H);
+    const finish = (row) => ({
+      ...row,
+      services: [...row.services].sort(),
+      oldHosts: [...row.oldHosts].sort(),
+      locations: [...row.locations].sort(),
+      locationCount: row.locations.size,
+    });
+
+    const appRows = [...apps.values()].map((row) => {
+      const key = row.namespace + '/' + row.application;
+      const perHost = {};
+      let readyHosts = 0;
+      let scanned = 0;
+      for (const nh of newHosts) {
+        if (!scannedHosts.has(nh)) {
+          perHost[nh] = null; // taranmadi
+          continue;
+        }
+        scanned++;
+        const f = dirs.get(nh).get(key) || { hys: false, app: false, conf: false };
+        perHost[nh] = f;
+        if (f.hys && f.app) readyHosts++;
+      }
+      // hazir: TARANAN her yeni sunucuda hys+app var; taranmayan varsa "kismi"
+      const status =
+        scanned === 0 ? 'not-scanned' : readyHosts === scanned && scanned === newHosts.length ? 'ready'
+          : readyHosts === 0 ? 'missing' : 'partial';
+      return { ...finish(row), perHost, readyHosts, scannedHosts: scanned, status };
+    });
+    const order = { missing: 0, partial: 1, 'not-scanned': 2, ready: 3 };
+    appRows.sort((a, b) => order[a.status] - order[b.status] || a.application.localeCompare(b.application));
+
+    out.push({
+      id: g.id,
+      label: g.label,
+      oldHosts: g.oldHosts.map(H),
+      newHosts,
+      newHostsScanned: newHosts.filter((h) => scannedHosts.has(h)),
+      oldHostsSeen: [...new Set((proxyRows || []).map((r) => H(r.host)).filter((h) => oldSet.has(h)))].sort(),
+      apps: appRows,
+      nonSpa: [...nonSpa.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),
+      unresolved: [...unresolved.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),
+      totals: {
+        apps: appRows.length,
+        ready: appRows.filter((r) => r.status === 'ready').length,
+        partial: appRows.filter((r) => r.status === 'partial').length,
+        missing: appRows.filter((r) => r.status === 'missing').length,
+        notScanned: appRows.filter((r) => r.status === 'not-scanned').length,
+        nonSpa: nonSpa.size,
+        unresolved: unresolved.size,
+      },
+    });
+  }
+  return out;
+}
+
+module.exports = { buildMigration, resolveTarget, MIGRATION_GROUPS, SPA_RE, _hostOf: hostOf };

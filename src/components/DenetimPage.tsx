@@ -44,6 +44,7 @@ import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
 import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
 import { NginxLegacy } from '@/components/denetim/NginxLegacy';
 import { NginxAudit } from '@/components/denetim/NginxAudit';
+import NginxProdMigration from '@/components/denetim/NginxProdMigration';
 import { NginxProxy } from '@/components/denetim/NginxProxy';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
@@ -57,7 +58,7 @@ const HELP: HelpSection[] = [
   {
     icon: ServerStackIcon,
     title: 'Nginx SPA Audit',
-    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır. 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz.",
+    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır. 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz. PROD TAŞIMA sekmesi (2026-09-14): eski GBRVP* sunucularının vhost'larındaki her proxy_pass hedefi OpenShift route envanteriyle (namespace, uygulama)'ya çözülür ve yeni GBNGXP4x/5x sunucularında /hysdeploy/<ns>/<app>/ ile /usr/nginx/applications/<ns>/<app>/ var mı gösterilir (H/A/C hücreleri). Bir uygulama ancak yeni sunucuların HEPSİNDE H+A varsa 'hazır'dır; SPA olmayan (API) hedefler dizin beklemez, ayrı listelenir.",
   },
   {
     icon: ChartBarSquareIcon,
@@ -911,7 +912,9 @@ function NginxSpaAudit() {
   // Intranet sunucularinda servis vhost'u YOKTUR; dolayisiyla servis matrisi, location
   // detayi ve proxy tanimlari orada TANIMSIZDIR - gizlenmeleri kozmetik degil, dogru
   // olan.
-  const [tier, setTier] = useState<'internet' | 'intranet'>('internet');
+  // 'tasima' (2026-09-14): eski GBRVP* -> yeni GBNGXP4x/5x prod tasimasi. Kapsam
+  // paneli/servis matrisi burada ANLAMSIZ; yalnizca NginxProdMigration gosterilir.
+  const [tier, setTier] = useState<'internet' | 'intranet' | 'tasima'>('internet');
   // Kullanici talebi: matrisin yani sira, her servis icin location bazinda AYRINTI.
   const [view, setView] = useState<'matris' | 'location' | 'proxy'>('matris');
   const [data, setData] = useState<NginxSpaResult | null>(null);
@@ -965,6 +968,7 @@ function NginxSpaAudit() {
           [
             { id: 'internet', label: 'Internet' },
             { id: 'intranet', label: 'Intranet' },
+            { id: 'tasima', label: 'Prod Taşıma' },
           ] as const
         ).map((t) => (
           <button
@@ -1071,7 +1075,7 @@ function NginxSpaAudit() {
     return (
       <div className="space-y-3">
         {tierTabs}
-        <SpaCoverage tier={tier} />
+        {tier === 'tasima' ? <NginxProdMigration /> : <SpaCoverage tier={tier} />}
         {/* Bu uyari INTERNET taramasi hakkinda: intranet olcumu ayri bir tablodan gelir
             ve kendi eksik-veri mesajini kendisi gosterir. */}
         {tier === 'internet' && (
@@ -1114,7 +1118,8 @@ function NginxSpaAudit() {
   return (
     <div className="space-y-3">
       {tierTabs}
-      <SpaCoverage tier={tier} />
+      {tier === 'tasima' && <NginxProdMigration />}
+      {tier !== 'tasima' && <SpaCoverage tier={tier} />}
       {/* Asagidakilerin HEPSI internet tarafina ait: servis vhost'u, location tanimi ve
           proxy deseni intranet sunucularinda YOKTUR. */}
       {tier === 'internet' && viewTabs}

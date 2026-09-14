@@ -19,6 +19,7 @@ const { tierOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeLegacy } = require('./nginx-legacy.cjs');
 const { summarizeAudit } = require('./nginx-audit.cjs');
+const { buildMigration, MIGRATION_GROUPS } = require('./nginx-migration.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
 //
@@ -699,6 +700,82 @@ function initDenetim(app) {
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Nginx audit verisi alınamadı.' });
+    }
+  });
+
+  // ── 1c) PROD TASIMA: eski GBRVP* proxy_pass hedefleri yeni GBNGXP4x/5x'te dizin mi ────
+  // Kaynaklar ve cozum kurali nginx-migration.cjs basliginda. Burada yalnizca SQL:
+  // her tablo KENDI son tarama gunuyle okunur (config audit ile nginx_audit ayri isler).
+  router.get('/nginx-migration', async (_req, res) => {
+    try {
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const oldHosts = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.oldHosts))];
+      const newHosts = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.newHosts))];
+      const inList = (prefix, arr) => ({
+        sqlText: arr.map((_, i) => `@${prefix}${i}`).join(', '),
+        params: arr.map((h, i) => ({ name: `${prefix}${i}`, type: sql.NVarChar(64), value: h })),
+      });
+      const oldIn = inList('o', oldHosts);
+      const newIn = inList('n', newHosts);
+
+      // kind/target_url kolonlari DDL ile geldi; yoksa proxy satirlari hic yazilmamistir.
+      if (!(await hasProxyColumns())) {
+        return res.json({
+          ok: true, proxyReady: false, dirsReady: false, proxyScanDate: null, dirScanDate: null,
+          groups: buildMigration({ proxyRows: [], upstreamRows: [], routeRows: [], ocpRows: [], dirRows: [] }),
+        });
+      }
+
+      const [proxyDate, dirDate] = await Promise.all([
+        query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`)
+          .then((r) => r.recordset?.[0]?.d || null).catch(() => null),
+        query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Intranet_Audit`)
+          .then((r) => r.recordset?.[0]?.d || null).catch(() => null),
+      ]);
+
+      const [proxy, ups, routes, ocp, dirs] = await Promise.all([
+        proxyDate
+          ? query(
+              `SELECT host, vhost, service, location, upstream_name, target_url
+                 FROM dbo.Nginx_Config_Audit
+                WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
+                  AND kind = 'proxy' AND host IN (${oldIn.sqlText})`,
+              oldIn.params,
+            ).then((r) => r.recordset || [])
+          : Promise.resolve([]),
+        // nginx_audit (nginx -T) upstream server host'u: target_url (proxy_ssl_name) bos
+        // kaldiysa yedek. Tablo yoksa yedek yok, is durmaz.
+        query(
+          `SELECT host, name, server FROM dbo.Nginx_Audit_Upstreams
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Upstreams)
+              AND host IN (${oldIn.sqlText})`,
+          oldIn.params,
+        ).then((r) => r.recordset || []).catch(() => []),
+        query(`SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`)
+          .then((r) => r.recordset || []).catch(() => []),
+        query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory`)
+          .then((r) => r.recordset || []).catch(() => []),
+        dirDate
+          ? query(
+              `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists
+                 FROM dbo.Nginx_Intranet_Audit
+                WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
+                  AND host IN (${newIn.sqlText})`,
+              newIn.params,
+            ).then((r) => r.recordset || [])
+          : Promise.resolve([]),
+      ]);
+
+      res.json({
+        ok: true,
+        proxyReady: !!proxyDate,
+        dirsReady: !!dirDate,
+        proxyScanDate: proxyDate,
+        dirScanDate: dirDate,
+        groups: buildMigration({ proxyRows: proxy, upstreamRows: ups, routeRows: routes, ocpRows: ocp, dirRows: dirs }),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Taşıma verisi alınamadı.' });
     }
   });
 

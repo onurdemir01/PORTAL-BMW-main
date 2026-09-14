@@ -30,6 +30,61 @@ export interface NginxEnvStat {
   vhosts: string[];
 }
 
+// ── Nginx SPA > Prod Tasima (eski GBRVP* -> yeni GBNGXP4x/5x) ───────────────────────
+export interface NginxMigrationDirFlags {
+  hys: boolean;
+  app: boolean;
+  conf: boolean;
+}
+export interface NginxMigrationApp {
+  namespace: string;
+  application: string;
+  /** hedef nasil cozuldu: route (adres birebir) | inventory (envanter cifti) */
+  how: string;
+  target: string;
+  services: string[];
+  oldHosts: string[];
+  locations: string[];
+  locationCount: number;
+  /** yeni host -> bayraklar; null = o sunucu henuz taranmadi */
+  perHost: Record<string, NginxMigrationDirFlags | null>;
+  readyHosts: number;
+  scannedHosts: number;
+  status: 'ready' | 'partial' | 'missing' | 'not-scanned';
+}
+export interface NginxMigrationOther {
+  target: string;
+  namespace?: string | null;
+  application?: string | null;
+  how: string;
+  candidates?: string[];
+  services: string[];
+  oldHosts: string[];
+  locations: string[];
+  locationCount: number;
+}
+export interface NginxMigrationGroup {
+  id: string;
+  label: string;
+  oldHosts: string[];
+  newHosts: string[];
+  newHostsScanned: string[];
+  oldHostsSeen: string[];
+  apps: NginxMigrationApp[];
+  nonSpa: NginxMigrationOther[];
+  unresolved: NginxMigrationOther[];
+  totals: { apps: number; ready: number; partial: number; missing: number; notScanned: number; nonSpa: number; unresolved: number };
+}
+export interface NginxMigrationResult {
+  ok: boolean;
+  message?: string;
+  proxyReady: boolean;
+  dirsReady: boolean;
+  proxyScanDate: string | null;
+  dirScanDate: string | null;
+  groups: NginxMigrationGroup[];
+}
+
 export interface NginxSpaResult {
   ok: boolean;
   scanDate: string | null;
@@ -819,6 +874,9 @@ export const denetimApi = {
 
   nginxLegacy: (): Promise<NginxLegacyResult> =>
     fetch(`${BASE}/nginx-legacy`).then(safeJson),
+
+  nginxMigration: (): Promise<NginxMigrationResult> =>
+    fetch(`${BASE}/nginx-migration`).then(safeJson),
 
   nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
     fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
