@@ -15,6 +15,7 @@ import {
   type NginxMigrationResult,
 } from '@/api/denetimApi';
 import { Panel, StatTile, Pill, Code, Note } from './ui';
+import { OwnerCell } from './OwnerCell';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
@@ -99,10 +100,10 @@ export default function NginxProdMigration() {
           onClick={() =>
             csvDownload(
               'nginx_prod_tasima',
-              ['grup', 'namespace', 'uygulama', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
+              ['grup', 'namespace', 'uygulama', 'ekip', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
               data.groups.flatMap((g) =>
                 g.apps.map((a) => [
-                  g.label, a.namespace, a.application, STATUS[a.status].label, a.readyHosts, a.scannedHosts,
+                  g.label, a.namespace, a.application, a.owner?.groups.join(' | ') || '', STATUS[a.status].label, a.readyHosts, a.scannedHosts,
                   a.oldHosts.join(' '), a.services.join(' '), a.locationCount, a.target,
                   ...data.groups.flatMap((gg) => gg.newHosts.map((h) => (gg.id !== g.id ? '' : cellText(a.perHost[h])))),
                 ]),
@@ -122,7 +123,7 @@ export default function NginxProdMigration() {
       </div>
 
       {data.groups.map((g) => (
-        <GroupPanel key={g.id} g={g} onlyProblem={onlyProblem} />
+        <GroupPanel key={g.id} g={g} onlyProblem={onlyProblem} ownersReady={data.ownersReady !== false} />
       ))}
     </div>
   );
@@ -134,7 +135,7 @@ function cellText(f: { hys: boolean; app: boolean; conf: boolean } | null | unde
   return (f.hys ? 'H' : '-') + (f.app ? 'A' : '-') + (f.conf ? 'C' : '-');
 }
 
-function GroupPanel({ g, onlyProblem }: { g: NginxMigrationGroup; onlyProblem: boolean }) {
+function GroupPanel({ g, onlyProblem, ownersReady }: { g: NginxMigrationGroup; onlyProblem: boolean; ownersReady: boolean }) {
   const rows = useMemo(() => (onlyProblem ? g.apps.filter((a) => a.status !== 'ready') : g.apps), [g, onlyProblem]);
   const notScanned = g.newHosts.filter((h) => !g.newHostsScanned.includes(h));
   const oldNotSeen = g.oldHosts.filter((h) => !g.oldHostsSeen.includes(h));
@@ -183,6 +184,7 @@ function GroupPanel({ g, onlyProblem }: { g: NginxMigrationGroup; onlyProblem: b
               <tr className="text-[var(--text-muted)]">
                 <th className="text-left pr-3 pb-1">Uygulama</th>
                 <th className="text-left pr-3 pb-1">Namespace</th>
+                <th className="text-left pr-3 pb-1" title="namespace'in CMDB sahibi">Ekip</th>
                 <th className="text-left pr-3 pb-1">Durum</th>
                 <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost / location sayısı">Eski taraf</th>
                 {g.newHosts.map((h) => (
@@ -199,6 +201,7 @@ function GroupPanel({ g, onlyProblem }: { g: NginxMigrationGroup; onlyProblem: b
                     {a.application}
                   </td>
                   <td className="pr-3 py-1 font-mono text-[var(--text-muted)] whitespace-nowrap">{a.namespace}</td>
+                  <td className="pr-3 py-1"><OwnerCell owner={a.owner} ready={ownersReady} /></td>
                   <td className="pr-3 py-1">
                     <Pill tone={STATUS[a.status].tone} title={STATUS[a.status].hint}>
                       {STATUS[a.status].label} {a.status !== 'not-scanned' && `${a.readyHosts}/${g.newHosts.length}`}
@@ -215,7 +218,7 @@ function GroupPanel({ g, onlyProblem }: { g: NginxMigrationGroup; onlyProblem: b
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={4 + g.newHosts.length} className="py-2 text-[var(--text-muted)]">
+                <tr><td colSpan={5 + g.newHosts.length} className="py-2 text-[var(--text-muted)]">
                   {onlyProblem ? 'Hazır olmayan uygulama yok.' : 'Uygulama yok.'}
                 </td></tr>
               )}

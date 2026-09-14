@@ -20,6 +20,7 @@ const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeLegacy } = require('./nginx-legacy.cjs');
 const { summarizeAudit } = require('./nginx-audit.cjs');
 const { buildMigration, MIGRATION_GROUPS } = require('./nginx-migration.cjs');
+const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
 //
@@ -197,8 +198,18 @@ function initDenetim(app) {
       );
       const services = [...new Set(rows.map((r) => r.service))].sort();
 
+      // EKIP (2026-09-14): uygulamanin namespace'inin CMDB sahibi. Ortamlar farkli
+      // namespace'te olabilir (glomo-dev / glomo-prod); hepsinin sahibi toplanir,
+      // farkli ekiplerse hepsi listelenir. Namespace'siz satirlar "bilinmiyor".
+      const owners = await loadNamespaceOwners(query);
+      for (const r of rows) {
+        const nss = [...new Set(Object.values(r.envs).map((c) => c.namespace).filter(Boolean))];
+        r.owner = { ...ownersFor(owners.byNs, nss), namespaces: nss };
+      }
+
       res.json({
         ok: true,
+        ownersReady: owners.ready,
         scanDate: effectiveDate,
         availableDates: (datesRes.recordset || []).map((x) => x.d),
         services,
@@ -736,7 +747,7 @@ function initDenetim(app) {
       const [proxy, ups, routes, ocp, dirs] = await Promise.all([
         proxyDate
           ? query(
-              `SELECT host, vhost, service, location, upstream_name, target_url
+              `SELECT host, vhost, service, location_path AS location, upstream_name, target_url
                  FROM dbo.Nginx_Config_Audit
                 WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
                   AND kind = 'proxy' AND host IN (${oldIn.sqlText})`,
@@ -766,13 +777,19 @@ function initDenetim(app) {
           : Promise.resolve([]),
       ]);
 
+      const groups = buildMigration({ proxyRows: proxy, upstreamRows: ups, routeRows: routes, ocpRows: ocp, dirRows: dirs });
+      const owners = await loadNamespaceOwners(query);
+      for (const g of groups) {
+        for (const a of g.apps) a.owner = ownersFor(owners.byNs, [a.namespace]);
+      }
       res.json({
         ok: true,
+        ownersReady: owners.ready,
         proxyReady: !!proxyDate,
         dirsReady: !!dirDate,
         proxyScanDate: proxyDate,
         dirScanDate: dirDate,
-        groups: buildMigration({ proxyRows: proxy, upstreamRows: ups, routeRows: routes, ocpRows: ocp, dirRows: dirs }),
+        groups,
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Taşıma verisi alınamadı.' });

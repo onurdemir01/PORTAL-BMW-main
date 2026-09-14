@@ -45,6 +45,7 @@ import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
 import { NginxLegacy } from '@/components/denetim/NginxLegacy';
 import { NginxAudit } from '@/components/denetim/NginxAudit';
 import NginxProdMigration from '@/components/denetim/NginxProdMigration';
+import { OwnerCell, ownerText } from '@/components/denetim/OwnerCell';
 import { NginxProxy } from '@/components/denetim/NginxProxy';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
@@ -952,7 +953,8 @@ function NginxSpaAudit() {
     const needle = q.trim().toLowerCase();
     return data.rows.filter((r) => {
       if (service && r.service !== service) return false;
-      if (needle && !r.application.toLowerCase().includes(needle)) return false;
+      // Ekip adiyla da aranabilir (2026-09-14): "hangi uygulamalar X ekibinin" sorusu.
+      if (needle && !r.application.toLowerCase().includes(needle) && !ownerText(r.owner).includes(needle)) return false;
       if (onlyProblems) {
         const bad = Object.values(r.envs).some((c) => c.status && c.status !== 'OK');
         if (!bad) return false;
@@ -1199,7 +1201,7 @@ function NginxSpaAudit() {
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="uygulama ara"
+                placeholder="uygulama ya da ekip ara"
                 className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-56"
               />
             </div>
@@ -1219,10 +1221,12 @@ function NginxSpaAudit() {
                 onClick={() =>
                   csvDownload(
                     `nginx_spa_audit_${service || 'tum'}`,
-                    ['service', 'application', ...envs],
+                    ['service', 'application', 'ekip', 'ekip_eposta', ...envs],
                     rows.map((r) => [
                       r.service,
                       r.application,
+                      r.owner?.groups.join(' | ') || '',
+                      r.owner?.emails.join(' | ') || '',
                       ...envs.map((e) => r.envs[e]?.status || '-'),
                     ]),
                   )
@@ -1264,6 +1268,12 @@ function NginxSpaAudit() {
                   <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
                     Uygulama
                   </th>
+                  <th
+                    className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]"
+                    title="Sorumlu ekip: uygulamanin namespace'inin CMDB sahibi (dbo.Openshift_Namespace_Owners)"
+                  >
+                    Ekip
+                  </th>
                   {envs.map((e) => (
                     <th
                       key={e}
@@ -1275,11 +1285,14 @@ function NginxSpaAudit() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-subtle)]">
-                {rows.length === 0 && <TableEmptyRow colSpan={envs.length + 1} />}
+                {rows.length === 0 && <TableEmptyRow colSpan={envs.length + 2} />}
                 {rows.map((r) => (
                   <tr key={r.service + r.application} className="hover:bg-[var(--bg-elevated)]/60">
                     <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">
                       {r.application}
+                    </td>
+                    <td className="px-3 py-2">
+                      <OwnerCell owner={r.owner} ready={data.ownersReady !== false} />
                     </td>
                     {envs.map((e) => (
                       <EnvCell key={e} cell={r.envs[e]} />

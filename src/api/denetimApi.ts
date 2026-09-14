@@ -16,10 +16,21 @@ export interface NginxSpaEnvCell {
   hosts: string[];
 }
 
+/** Uygulamanin sorumlu ekibi = namespace'inin CMDB sahibi (dbo.Openshift_Namespace_Owners). */
+export interface AppOwner {
+  /** benzersiz AD grup adlari; bos = hicbir namespace icin sahip cozulmemis */
+  groups: string[];
+  emails: string[];
+  /** sahibi bilinmeyen namespace'ler */
+  unknownNs: string[];
+  namespaces?: string[];
+}
+
 export interface NginxSpaRow {
   service: string;
   application: string;
   envs: Record<string, NginxSpaEnvCell>;
+  owner?: AppOwner;
 }
 
 export interface NginxEnvStat {
@@ -51,6 +62,7 @@ export interface NginxMigrationApp {
   readyHosts: number;
   scannedHosts: number;
   status: 'ready' | 'partial' | 'missing' | 'not-scanned';
+  owner?: AppOwner;
 }
 export interface NginxMigrationOther {
   target: string;
@@ -78,6 +90,7 @@ export interface NginxMigrationGroup {
 export interface NginxMigrationResult {
   ok: boolean;
   message?: string;
+  ownersReady?: boolean;
   proxyReady: boolean;
   dirsReady: boolean;
   proxyScanDate: string | null;
@@ -93,6 +106,8 @@ export interface NginxSpaResult {
   envs: string[];
   envStats?: NginxEnvStat[];
   rows: NginxSpaRow[];
+  /** dbo.Openshift_Namespace_Owners okunabildi mi */
+  ownersReady?: boolean;
   message?: string;
 }
 
