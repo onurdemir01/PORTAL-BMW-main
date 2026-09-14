@@ -196,11 +196,11 @@ export default function NginxProdMigration() {
           onClick={() =>
             csvDownload(
               'nginx_prod_tasima',
-              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
+              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'eski_locationlar', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
               data.groups.flatMap((g) =>
                 g.apps.map((a) => [
                   g.label, a.namespace, a.suffixAdded ? 'evet' : '', a.application, a.owner?.groups.join(' | ') || '', a.forms.join('+'), a.written.join(' '), STATUS[a.status].label, a.readyHosts, a.scannedHosts,
-                  a.oldHosts.join(' '), a.services.join(' '), a.locationCount, a.target,
+                  a.oldHosts.join(' '), a.services.join(' '), a.locationCount, a.paths.map((p) => p.service + ' ' + p.location).join(' | '), a.target,
                   ...data.groups.flatMap((gg) => gg.newHosts.map((h) => (gg.id !== g.id ? '' : cellText(a.perHost[h])))),
                 ]),
               ),
@@ -511,7 +511,7 @@ function GroupPanel({
                 <th className="text-left pr-3 pb-1">Namespace</th>
                 <th className="text-left pr-3 pb-1" title="namespace'in CMDB sahibi">Ekip</th>
                 <th className="text-left pr-3 pb-1">Durum</th>
-                <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost / location sayısı">Eski taraf</th>
+                <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost ve location tanımları (proxy_pass ile); ipucunda hangi eski sunucularda">Eski sunucudaki location</th>
                 <th className="text-left pr-3 pb-1" title="proxy_pass yazımı: FQDN ya da upstream adı; ipucunda yazılan ad(lar) ve gerçek hedefin kaynağı">Yazım</th>
                 {g.newHosts.map((h) => (
                   <th key={h} className="text-center px-1.5 pb-1 font-mono whitespace-nowrap" title={g.newHostsScanned.includes(h) ? 'tarandı' : 'henüz taranmadı'}>
@@ -554,8 +554,22 @@ function GroupPanel({
                       {STATUS[a.status].label} {a.status !== 'not-scanned' && `${a.readyHosts}/${g.newHosts.length}`}
                     </Pill>
                   </td>
-                  <td className="pr-3 py-1 text-[var(--text-muted)] whitespace-nowrap" title={`${a.oldHosts.join(', ')}\n${a.locations.join('\n')}`}>
-                    {a.services.join(', ')} · {nf(a.locationCount)} location · {a.oldHosts.length} sunucu
+                  <td className="pr-3 py-1" title={`eski sunucular: ${a.oldHosts.join(', ')}`}>
+                    {/* Eski sunucudaki location tanimlari GORUNUR (kullanici, 2026-09-14): her cip
+                        bir (vhost, location) cifti - "Tanim olustur" bunlardan birini secer. */}
+                    <div className="flex flex-wrap gap-1 max-w-[22rem]">
+                      {a.paths.map((p) => (
+                        <span
+                          key={p.service + p.location}
+                          className="text-[10px] px-1.5 py-0.5 rounded border font-mono whitespace-nowrap"
+                          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+                          title={`${p.service}-PROD.conf · location ${p.location} · ${p.hosts.join(', ')}`}
+                        >
+                          <span className="text-[var(--text-muted)]">{p.service}</span> {p.location}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{a.oldHosts.length} sunucu</div>
                   </td>
                   <td className="pr-3 py-1 whitespace-nowrap"><FormCell forms={a.forms} written={a.written} source={a.targetSource} target={a.target} /></td>
                   {g.newHosts.map((h) => (
