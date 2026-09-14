@@ -44,7 +44,7 @@ const ENVANTER_HELP_SECTIONS: HelpSection[] = [
   {
     icon: ArrowDownTrayIcon,
     title: 'CSV Dışa Aktarma',
-    body: '"CSV" butonu aktif filtrelerle eşleşen TÜM sonuçları (yalnızca ekrandaki sayfayı değil) indirir — denetim veya raporlama için kullanılabilir. Sonuç büyükse arka planda otomatik sayfalanarak toplanır, üst sınır yoktur.',
+    body: '"CSV" butonu aktif filtrelerle eşleşen TÜM sonuçları (yalnızca ekrandaki sayfayı değil) indirir — denetim veya raporlama için kullanılabilir. Sonuç büyükse arka planda otomatik sayfalanarak toplanır, üst sınır yoktur. Custom SQL sorgusunun sonucu ise sorgu panelinin KENDİ "CSV" düğmesiyle indirilir (üstteki düğme tablo verisini indirir, sorgu sonucunu değil).',
   },
   {
     icon: BookmarkIcon,

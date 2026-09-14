@@ -7,6 +7,7 @@ import {
   StarIcon,
   CheckCircleIcon,
   QuestionMarkCircleIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 import { inventoryApi, type SavedQuery, type QueryResult } from "@/api/inventoryApi";
 import DynamicTable from "./DynamicTable";
@@ -16,6 +17,24 @@ interface Props {
   onClose: () => void;
   isAdmin?: boolean;
   onQueriesChange?: () => void;
+}
+
+// Sorgu sonucunu CSV olarak indir (kullanici bildirimi, 2026-09-14: "Custom SQL atinca
+// CSV indiremiyorum"). Sayfanin ustundeki CSV dugmesi TABLO verisini sayfalayarak
+// indirir, sorgu sonucunu degil. Sorgu sonucu zaten tumuyle bellekte (sunucu tek
+// yanit doner), bu yuzden burada sayfalama yok; dosya adi kayitli sorgunun adi.
+// Ayirici ";" - Turkce Excel ";" bekler, "," tek sutuna yigar (denetim CSV'leriyle ayni).
+function downloadResultCsv(columns: string[], rows: Record<string, unknown>[], name: string) {
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [columns.map(esc).join(";"), ...rows.map((r) => columns.map((c) => esc(r[c])).join(";"))];
+  const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const safe = (name || "custom_sql").replace(/[^\w.-]+/g, "_").slice(0, 60);
+  a.download = `${safe}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange }) => {
@@ -275,7 +294,17 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
 
       {result && (
         <div>
-          <p className="text-xs text-gray-500 mb-2">{result.rowCount} kayıt döndü.</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-gray-500">{result.rowCount} kayıt döndü.</p>
+            <button
+              onClick={() => downloadResultCsv(visibleCols, result.rows, saveName.trim() || "custom_sql")}
+              disabled={result.rows.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 transition"
+              title="Sorgu sonucunun tamamını CSV olarak indir"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4" /> CSV ({result.rows.length})
+            </button>
+          </div>
           <DynamicTable
             table=""
             columns={visibleCols}
