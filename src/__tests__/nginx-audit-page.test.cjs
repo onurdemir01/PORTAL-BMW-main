@@ -113,3 +113,16 @@ test('Production Tasimalari: gecis takibi (planlandi/gecti + tarih) ve sema', ()
   const api = read('api/nginxMigrationApi.ts');
   assert.ok(api.includes('nginxMigrationTrackingApi'));
 });
+
+test('Nginx SPA > Internet: route istatistikleri paneli + PROD kapsaminda proxy cozumu', () => {
+  const den = read('components/DenetimPage.tsx');
+  assert.ok(den.includes("{tier === 'internet' && <RouteStats />}"), 'RouteStats internet katmaninda yok');
+  assert.ok(den.includes('data.prodProxy'), 'PROD proxy cozum notu yok');
+  const rs = read('components/denetim/RouteStats.tsx');
+  for (const s of ['SPA → IP', 'SPA değil → IP', 'sınıflanamadı']) assert.ok(rs.includes(s), `panelde yok: ${s}`);
+  const srv = read('../server/audit/denetim.cjs');
+  const cov = srv.slice(srv.indexOf("router.get('/nginx-spa-coverage'"), srv.indexOf('// ── 2) OPENSHIFT ORTAM KAPSAMI'));
+  assert.ok(cov.includes("kind = 'proxy' AND UPPER(env) = 'PROD'"), 'kapsam PROD proxy satirlarini okumali');
+  assert.ok(cov.includes("ngx.get('PROD').set(res.application"), 'cozulen proxy uygulamalari PROD nginx kumesine girmeli');
+  assert.ok(srv.includes("router.get('/route-stats'"), 'route-stats ucu yok');
+});

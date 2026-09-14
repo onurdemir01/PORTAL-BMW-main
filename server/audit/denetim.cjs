@@ -19,7 +19,8 @@ const { tierOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeLegacy } = require('./nginx-legacy.cjs');
 const { summarizeAudit } = require('./nginx-audit.cjs');
-const { loadMigration } = require('./nginx-migration.cjs');
+const { loadMigration, resolveTarget, buildResolverMaps } = require('./nginx-migration.cjs');
+const { buildRouteStats } = require('./route-stats.cjs');
 const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
@@ -284,6 +285,27 @@ function initDenetim(app) {
   const SPA_RE = /-app(-emb)?-v/i;
   const SPA_LABEL = '-app-v / -app-emb-v';
 
+  // ── 1c) ROUTE ISTATISTIKLERI: ortam basina route / SPA / SPA-disi / IP ──────────────
+  // Hesap route-stats.cjs'te (birim testli). Platform suzgeci kapsam ucuyla ayni.
+  router.get('/route-stats', async (req, res) => {
+    try {
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')] ? String(req.query.platform) : 'ark';
+      const clusters = PLATFORM_CLUSTERS[platform];
+      const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
+      const r = await query(
+        `SELECT cluster_name, namespace_name, route_name, route_address, resolved_ip, termination_type
+           FROM dbo.BMW_Openshift_Route_Inventory
+          WHERE cluster_name IN (${placeholders})`,
+        clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(200), value: c })),
+      ).catch(() => ({ recordset: [], _missing: true }));
+      const out = buildRouteStats(r.recordset || []);
+      res.json({ ok: true, platform, routeTableMissing: !!r._missing, ...out });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Route istatistikleri alınamadı.' });
+    }
+  });
+
   router.get('/nginx-spa-coverage', async (req, res) => {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
@@ -301,7 +323,7 @@ function initDenetim(app) {
       const clusterParams = () =>
         clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(200), value: c }));
 
-      const [ocpRes, ngxRes, routeRes, intraRes] = await Promise.all([
+      const [ocpRes, ngxRes, routeRes, intraRes, proxyRes] = await Promise.all([
         query(
           `SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory
             WHERE cluster IN (${placeholders})`,
@@ -338,6 +360,18 @@ function initDenetim(app) {
              FROM dbo.Nginx_Intranet_Audit
             WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)`,
         ).catch(() => ({ recordset: [], _missing: true })),
+        // PROD: eski GBRVP* vhost'lari SPA include'u DEGIL proxy_pass kullanir; bu satirlar
+        // spaFilter ile disarida kaliyordu ve PROD kapsami "olculemedi" gorunuyordu
+        // (kullanici bildirimi, 2026-09-14). Hedefler Production Tasimalari'ndaki cozumle
+        // (-prod eki dahil) uygulamaya cevrilir ve PROD nginx kumesine katilir.
+        scanDate && (await hasProxyColumns())
+          ? query(
+              `SELECT host, upstream_name, target_url
+                 FROM dbo.Nginx_Config_Audit
+                WHERE scan_date = @d AND kind = 'proxy' AND UPPER(env) = 'PROD'`,
+              [{ name: 'd', type: sql.NVarChar(10), value: scanDate }],
+            ).catch(() => ({ recordset: [] }))
+          : Promise.resolve({ recordset: [] }),
       ]);
 
       const routeTableMissing = !!routeRes._missing;
@@ -491,6 +525,32 @@ function initDenetim(app) {
         if (!ngx.has(e)) ngx.set(e, new Map());
         ngx.get(e).set(app.toLowerCase(), app);
       }
+      // PROD proxy satirlari -> (ns, app) -> PROD nginx kumesi (internet katmani; GBRVP*
+      // hostlari internettir). Cozulemeyenler sayilir, sessizce dusmez.
+      const proxyStats = { rows: 0, resolved: 0, spa: 0, unresolved: 0 };
+      {
+        const maps = buildResolverMaps(routeRes.recordset || [], ocpRes.recordset || []);
+        const hostOf = (u) => String(u || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').split('/')[0].replace(/:\d+$/, '');
+        for (const r of proxyRes.recordset || []) {
+          proxyStats.rows++;
+          if (tierOfHost(r.host) === 'intranet') continue;
+          const target = hostOf(r.target_url) || hostOf(r.upstream_name);
+          const res = resolveTarget(target, maps.routeByAddress, maps.ocpByLabel, maps.routeByLabel);
+          if (!res.application) {
+            proxyStats.unresolved++;
+            continue;
+          }
+          proxyStats.resolved++;
+          if (!SPA_RE.test(res.application)) {
+            ngxNonSpa.add(res.application);
+            continue;
+          }
+          proxyStats.spa++;
+          if (!ngx.has('PROD')) ngx.set('PROD', new Map());
+          if (!ngx.get('PROD').has(res.application)) ngx.get('PROD').set(res.application, res.application);
+        }
+      }
+
       const nginxOutsidePattern = [...ngxNonSpa]
         .sort((a, b) => a.localeCompare(b, 'tr'))
         .slice(0, 40);
@@ -597,6 +657,8 @@ function initDenetim(app) {
         // Beklenmeyen durum: intranet sunucusunda servis vhost'u tanimi bulundu.
         intranetVhostRows,
         routeMatch: matchStats,
+        // PROD nginx kumesinin kaynagi: eski sunucudaki proxy_pass satirlari (cozum sayilari)
+        prodProxy: proxyStats,
         ocpNonSpaExcluded: ocpNonSpa.size,
         nginxOutsidePattern,
         ocpSkippedNoEnv: ocpNoEnv,

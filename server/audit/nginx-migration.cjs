@@ -121,6 +121,34 @@ function resolveTarget(host, routeByAddress, ocpByLabel, routeByLabel = new Map(
   return ambiguous || { namespace: null, application: null, how: 'unresolved', suffixAdded: false };
 }
 
+/** Cozum haritalari: route adresi/etiketi -> ns, "<app>-<ns>" -> [(ns, app)].
+ *  buildMigration ve Denetim kapsam ucu (PROD proxy satirlari) ayni haritayi kullanir. */
+function buildResolverMaps(routeRows, ocpRows) {
+// route adresi -> namespace (birebir)
+const routeByAddress = new Map();
+const routeByLabel = new Map(); // ilk etiket -> ns (ciplak upstream adi icin)
+for (const r of routeRows || []) {
+  const a = hostOf(r.route_address);
+  const ns = L(r.namespace_name);
+  if (!a || !ns) continue;
+  if (!routeByAddress.has(a)) routeByAddress.set(a, ns);
+  const lbl = a.split('.')[0];
+  if (lbl && !routeByLabel.has(lbl)) routeByLabel.set(lbl, ns);
+}
+// "<app>-<ns>" etiketi -> [(ns, app)] (yedek cozum)
+const ocpByLabel = new Map();
+for (const r of ocpRows || []) {
+  const ns = L(r.namespace);
+  const app = L(r.application);
+  if (!ns || !app) continue;
+  const label = app + '-' + ns;
+  if (!ocpByLabel.has(label)) ocpByLabel.set(label, []);
+  const arr = ocpByLabel.get(label);
+  if (!arr.some((c) => c.namespace === ns && c.application === app)) arr.push({ namespace: ns, application: app });
+}
+  return { routeByAddress, routeByLabel, ocpByLabel };
+}
+
 /**
  * @param proxyRows    Nginx_Config_Audit kind='proxy' (host, vhost, service, location, upstream_name, target_url)
  * @param upstreamRows Nginx_Audit_Upstreams (host, name, server)
@@ -129,28 +157,7 @@ function resolveTarget(host, routeByAddress, ocpByLabel, routeByLabel = new Map(
  * @param dirRows      Nginx_Intranet_Audit (host, namespace, application, hys_deployed, app_deployed, conf_exists)
  */
 function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, groups = MIGRATION_GROUPS }) {
-  // route adresi -> namespace (birebir)
-  const routeByAddress = new Map();
-  const routeByLabel = new Map(); // ilk etiket -> ns (ciplak upstream adi icin)
-  for (const r of routeRows || []) {
-    const a = hostOf(r.route_address);
-    const ns = L(r.namespace_name);
-    if (!a || !ns) continue;
-    if (!routeByAddress.has(a)) routeByAddress.set(a, ns);
-    const lbl = a.split('.')[0];
-    if (lbl && !routeByLabel.has(lbl)) routeByLabel.set(lbl, ns);
-  }
-  // "<app>-<ns>" etiketi -> [(ns, app)] (yedek cozum)
-  const ocpByLabel = new Map();
-  for (const r of ocpRows || []) {
-    const ns = L(r.namespace);
-    const app = L(r.application);
-    if (!ns || !app) continue;
-    const label = app + '-' + ns;
-    if (!ocpByLabel.has(label)) ocpByLabel.set(label, []);
-    const arr = ocpByLabel.get(label);
-    if (!arr.some((c) => c.namespace === ns && c.application === app)) arr.push({ namespace: ns, application: app });
-  }
+  const { routeByAddress, routeByLabel, ocpByLabel } = buildResolverMaps(routeRows, ocpRows);
   // (host, upstream adi) -> server host (target_url bos kaldiysa)
   const upsServer = new Map();
   for (const r of upstreamRows || []) {
@@ -380,4 +387,4 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
   };
 }
 
-module.exports = { buildMigration, loadMigration, resolveTarget, MIGRATION_GROUPS, SPA_RE, _hostOf: hostOf };
+module.exports = { buildMigration, loadMigration, resolveTarget, buildResolverMaps, MIGRATION_GROUPS, SPA_RE, _hostOf: hostOf };

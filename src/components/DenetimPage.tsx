@@ -47,6 +47,7 @@ import { NginxAudit } from '@/components/denetim/NginxAudit';
 import NginxProdMigration from '@/components/denetim/NginxProdMigration';
 import { OwnerCell, ownerText } from '@/components/denetim/OwnerCell';
 import { DirCell, HacLegend } from '@/components/denetim/HacCell';
+import RouteStats from '@/components/denetim/RouteStats';
 import { NginxProxy } from '@/components/denetim/NginxProxy';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
@@ -60,7 +61,7 @@ const HELP: HelpSection[] = [
   {
     icon: ServerStackIcon,
     title: 'Nginx SPA Audit',
-    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır; hücredeki H A C harfleri o sunucudaki dizinleri gösterir (H=/hysdeploy, A=/usr/nginx/applications, C=application-confs; büyük harf var, küçük harf yok — matrisin üstündeki sözlük). 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz. PRODUCTION TAŞIMALARI sekmesi (2026-09-14): eski GBRVP* sunucularının vhost'larındaki her proxy_pass hedefi OpenShift route envanteriyle (namespace, uygulama)'ya çözülür ve yeni GBNGXP4x/5x sunucularında /hysdeploy/<ns>/<app>/ ile /usr/nginx/applications/<ns>/<app>/ var mı gösterilir (H/A/C hücreleri). Bir uygulama ancak yeni sunucuların HEPSİNDE H+A varsa 'hazır'dır; SPA olmayan (API) hedefler dizin beklemez, ayrı listelenir. Satırdaki 'Tanım oluştur' düğmesi, seçilen location için yeni sunucularda <SERVICE>-PROD.conf içine location bloğu ve application-confs/<service>-<app>-<ns>.conf dosyasını üreten AWX job'ını (nginx_ops/nginx_prod_migration.yml) tetikler — non-prod SPA oluşturma akışının aynısı; uygulama dizini yoksa durur, nginx -t düşerse geri alır. Eski sunucuya dokunmaz. Sıralama ekip bazında yapılabilir (çok uygulaması olan ekip üstte).",
+    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır; hücredeki H A C harfleri o sunucudaki dizinleri gösterir (H=/hysdeploy, A=/usr/nginx/applications, C=application-confs; büyük harf var, küçük harf yok — matrisin üstündeki sözlük). Internet katmanında ayrıca 'OpenShift route istatistikleri' paneli: ortam başına kaç route, kaçı SPA / SPA değil, hangi IP'lere çözüyor (route_inventory job'ının nslookup sonucu). PROD kapsamı eski GBRVP* sunucularının proxy_pass satırlarından çözülür (Production Taşımaları ile aynı çözüm, -prod eki dâhil); dipnotta kaç satırın çözüldüğü yazar. 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz. PRODUCTION TAŞIMALARI sekmesi (2026-09-14): eski GBRVP* sunucularının vhost'larındaki her proxy_pass hedefi OpenShift route envanteriyle (namespace, uygulama)'ya çözülür ve yeni GBNGXP4x/5x sunucularında /hysdeploy/<ns>/<app>/ ile /usr/nginx/applications/<ns>/<app>/ var mı gösterilir (H/A/C hücreleri). Bir uygulama ancak yeni sunucuların HEPSİNDE H+A varsa 'hazır'dır; SPA olmayan (API) hedefler dizin beklemez, ayrı listelenir. Satırdaki 'Tanım oluştur' düğmesi, seçilen location için yeni sunucularda <SERVICE>-PROD.conf içine location bloğu ve application-confs/<service>-<app>-<ns>.conf dosyasını üreten AWX job'ını (nginx_ops/nginx_prod_migration.yml) tetikler — non-prod SPA oluşturma akışının aynısı; uygulama dizini yoksa durur, nginx -t düşerse geri alır. Eski sunucuya dokunmaz. Sıralama ekip bazında yapılabilir (çok uygulaması olan ekip üstte).",
   },
   {
     icon: ChartBarSquareIcon,
@@ -811,6 +812,14 @@ function SpaCoverage({ tier }: { tier: 'internet' | 'intranet' }) {
         ); namespace zaten bilindiği için son ek tam olarak kesilir, belirsizlik doğmaz. Adres bu
         kalıba uymazsa route adı denenir; o da tutmazsa namespace’teki route’lar hepsi aynı tipteyse
         o tip kullanılır. Hiçbiri olmazsa sınıflandırılmaz.
+        {data.prodProxy && data.prodProxy.rows > 0 && (
+          <>
+            {' '}<b>PROD</b>: eski sunucularda SPA include&apos;u değil <code className="px-1 rounded bg-[var(--bg-elevated)]">proxy_pass</code> kullanılır;
+            {fmtNumber(data.prodProxy.rows)} proxy satırının {fmtNumber(data.prodProxy.resolved)} tanesi uygulamaya çözüldü
+            ({fmtNumber(data.prodProxy.spa)} SPA; Production Taşımaları ile aynı çözüm, <code className="px-1 rounded bg-[var(--bg-elevated)]">-prod</code> eki dâhil),
+            {fmtNumber(data.prodProxy.unresolved)} çözülemedi.
+          </>
+        )}
       </p>
 
       {unmeasured.length > 0 && (
@@ -1179,6 +1188,8 @@ function NginxSpaAudit() {
           </div>
         </div>
       )}
+
+      {tier === 'internet' && <RouteStats />}
 
       {tier === 'internet' && view === 'matris' && (
         <>

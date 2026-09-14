@@ -174,6 +174,34 @@ export interface SpaCoverageRow {
   coverage: number | null;
 }
 
+// ── Route istatistikleri (ortam basina route / SPA / IP) ─────────────────────────────
+export interface RouteStatsIp {
+  ip: string;
+  count: number;
+  samples: string[];
+}
+export interface RouteStatsEnv {
+  env: string;
+  routes: number;
+  spa: number;
+  nonSpa: number;
+  unclassified: number;
+  clusters: string[];
+  namespaces: number;
+  terminations: { type: string; count: number }[];
+  spaIps: RouteStatsIp[];
+  nonSpaIps: RouteStatsIp[];
+  unresolvedIp: { spa: number; nonSpa: number };
+}
+export interface RouteStatsResult {
+  ok: boolean;
+  message?: string;
+  platform: string;
+  routeTableMissing: boolean;
+  envs: RouteStatsEnv[];
+  totals: { routes: number; spa: number; nonSpa: number; unclassified: number; noEnv: number };
+}
+
 export interface SpaCoverageResult {
   ok: boolean;
   platform: string;
@@ -185,6 +213,8 @@ export interface SpaCoverageResult {
   routeTableMissing: boolean;
   /** Route eslesme kalitesi - route adi ile uygulama adi ayni olmayabilir. */
   routeMatch: { address: number; name: number; ns: number; conflict: number; none: number };
+  /** PROD nginx kumesi eski GBRVP* proxy_pass satirlarindan cozulur (Production Tasimalari ile ayni cozum) */
+  prodProxy?: { rows: number; resolved: number; spa: number; unresolved: number };
   ocpNonSpaExcluded: number;
   nginxOutsidePattern: string[];
   ocpSkippedNoEnv: number;
@@ -915,6 +945,9 @@ export const denetimApi = {
 
   spaCoverage: (platform: string): Promise<SpaCoverageResult> =>
     fetch(`${BASE}/nginx-spa-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),
+
+  routeStats: (platform = 'ark'): Promise<RouteStatsResult> =>
+    fetch(`${BASE}/route-stats?platform=${encodeURIComponent(platform)}`).then(safeJson),
 
   ocpCoverage: (platform: string): Promise<OcpCoverageResult> =>
     fetch(`${BASE}/ocp-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),
