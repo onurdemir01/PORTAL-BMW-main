@@ -138,3 +138,15 @@ test('writeSavedQueries(): bos cache ile ilk yazim tum kayitlari yeni sayar (mig
   assert.equal(updateCount, 2);
   assert.equal(getSqCache().length, 2);
 });
+
+// Custom SQL satir ust siniri (kullanici bildirimi, 2026-09-14: "200 satir donuyor").
+// Istemci limit gondermiyor; varsayilan ARTIK ust sinirin kendisi ve kesilme bildirilir.
+test('custom sorgu varsayilan limiti 200 DEGIL ust sinir (10000); truncated bayragi yanitta', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.ok(!/parseInt\(limitParam \|\| '200'/.test(src), 'custom sorgu varsayilani 200 kalmis');
+  assert.ok(/const MAX_ROWS = 10000;/.test(src));
+  assert.ok(/parseInt\(limitParam \|\| String\(MAX_ROWS\), 10\)/.test(src));
+  assert.ok(/truncated: result\.recordset\.length >= limit/.test(src), 'sinira takilma yanitta bildirilmeli');
+});

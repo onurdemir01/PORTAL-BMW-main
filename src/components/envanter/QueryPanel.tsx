@@ -295,7 +295,14 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
       {result && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-gray-500">{result.rowCount} kayıt döndü.</p>
+            <p className="text-xs text-gray-500">
+              {result.rowCount} kayıt döndü.
+              {result.truncated && (
+                <span className="ml-2 text-amber-700" title="Sunucu tek sorguda en fazla bu kadar satır döner; sorguya WHERE ya da TOP ekleyerek daraltın">
+                  Üst sınıra ({result.limit ?? result.rowCount}) ulaşıldı — daha fazla satır olabilir.
+                </span>
+              )}
+            </p>
             <button
               onClick={() => downloadResultCsv(visibleCols, result.rows, saveName.trim() || "custom_sql")}
               disabled={result.rows.length === 0}

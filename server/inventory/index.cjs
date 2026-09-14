@@ -1650,7 +1650,11 @@ function initInventory(app) {
         .json({ ok: false, error: `'${blockedTable}' tablosuna erisim izni yok.` });
     }
 
-    const limit = Math.min(10000, Math.max(1, parseInt(limitParam || '200', 10)));
+    // Varsayilan ust sinirin kendisi (kullanici bildirimi, 2026-09-14: "custom sorgu 200
+    // satir donuyor"). Istemci limit gondermiyordu, 200 sessizce kesiyordu. Sinira takilan
+    // sonuc `truncated` ile bildirilir; kullanici daraltmak icin sorguya WHERE/TOP ekler.
+    const MAX_ROWS = 10000;
+    const limit = Math.min(MAX_ROWS, Math.max(1, parseInt(limitParam || String(MAX_ROWS), 10)));
 
     try {
       // actions.md #20.1 — AYRI salt-okunur havuz tercih edilir; tanimli degilse (DBA henuz
@@ -1729,7 +1733,16 @@ function initInventory(app) {
         referencedTables,
         usedPool,
       });
-      res.json({ ok: true, columns, rows: result.recordset, rowCount: result.recordset.length });
+      res.json({
+        ok: true,
+        columns,
+        rows: result.recordset,
+        rowCount: result.recordset.length,
+        limit,
+        // TOP(limit) tam doluysa sonuc BUYUK IHTIMALLE kesilmistir (tam limit satirlik
+        // sonuc da olabilir - ayirt edilemez; uyari yine gosterilir, gizlenmez).
+        truncated: result.recordset.length >= limit,
+      });
     } catch (err) {
       auditQuery(sqlText, { ok: false, error: err.message, httpStatus: 503, referencedTables });
       res.status(503).json({ ok: false, error: err.message });

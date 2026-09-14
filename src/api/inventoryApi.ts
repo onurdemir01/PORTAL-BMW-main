@@ -72,6 +72,10 @@ export interface QueryResult {
   columns: string[];
   rows: Record<string, unknown>[];
   rowCount: number;
+  /** sunucu ust siniri (varsayilan 10000) */
+  limit?: number;
+  /** sonuc sinira takildi: daha fazla satir olabilir */
+  truncated?: boolean;
 }
 
 export interface SavedQuery {
