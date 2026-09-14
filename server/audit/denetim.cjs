@@ -19,7 +19,7 @@ const { tierOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeLegacy } = require('./nginx-legacy.cjs');
 const { summarizeAudit } = require('./nginx-audit.cjs');
-const { loadMigration, resolveTarget, buildResolverMaps } = require('./nginx-migration.cjs');
+const { loadMigration, resolveTarget, buildResolverMaps, MIGRATION_GROUPS } = require('./nginx-migration.cjs');
 const { buildRouteStats } = require('./route-stats.cjs');
 const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
 
@@ -108,6 +108,49 @@ function initDenetim(app) {
 
       const raw = rowsRes.recordset || [];
 
+      // PROD MATRISTE (2026-09-14, kullanici: "prod uygulamalarin bilgileri gozukmuyor"):
+      // eski GBRVP* vhost'lari SPA include'u degil proxy_pass kullanir; bu satirlar
+      // spaFilter ile disarida kaliyor ve PROD sutunu bos kaliyordu. Proxy satirlari
+      // Production Tasimalari'ndaki cozumle (-prod eki dahil) uygulamaya cevrilip
+      // status='PROXY' SPA satiri gibi haritaya katilir. namespace cozumden gelir; hucre
+      // H/A/C bayraklari YENI prod SPA sunucularindan (tasima grubunun newHosts'u) okunur.
+      let prodProxyStats = null;
+      if (await hasProxyColumns()) {
+        try {
+          const [prx, routes, ocp] = await Promise.all([
+            query(
+              `SELECT service, env, host, vhost, location_path, upstream_name, target_url
+                 FROM dbo.Nginx_Config_Audit
+                WHERE scan_date = @d AND kind = 'proxy' AND UPPER(env) = 'PROD'`,
+              [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
+            ),
+            query(`SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`).catch(() => ({ recordset: [] })),
+            query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory`).catch(() => ({ recordset: [] })),
+          ]);
+          const maps = buildResolverMaps(routes.recordset || [], ocp.recordset || []);
+          const hostOf = (u) => String(u || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').split('/')[0].replace(/:\d+$/, '');
+          prodProxyStats = { rows: 0, resolved: 0, unresolved: 0 };
+          for (const r of prx.recordset || []) {
+            prodProxyStats.rows++;
+            const target = hostOf(r.target_url) || hostOf(r.upstream_name);
+            const res = resolveTarget(target, maps.routeByAddress, maps.ocpByLabel, maps.routeByLabel);
+            if (!res.application) {
+              prodProxyStats.unresolved++;
+              continue;
+            }
+            prodProxyStats.resolved++;
+            raw.push({
+              service: r.service, env: 'PROD', application: res.application, namespace: res.namespace,
+              include_name: null, location_path: r.location_path, host: r.host, vhost: r.vhost,
+              deploy_mode: 'proxy', include_exists: 1, app_deployed: null, in_ocp_inventory: 1,
+              status: 'PROXY', _proxyTarget: target, _suffixAdded: res.suffixAdded === true,
+            });
+          }
+        } catch (e) {
+          console.warn('[denetim] PROD proxy satirlari matrise katilamadi:', e.message);
+        }
+      }
+
       // ENV LISTESI VERIDEN TURETILIR. Kanonik dortlu her zaman gosterilir (bir ortam
       // hic taranmadiysa "bos" olarak GORUNMESI gerekir, sessizce kaybolmasi degil);
       // veride gecen baska jetonlar da eklenir, yoksa o satirlar hicbir sutuna dusmez.
@@ -183,6 +226,8 @@ function initDenetim(app) {
           inOcpInventory: !!r.in_ocp_inventory,
           locationPath: r.location_path,
           hosts: [r.host],
+          proxyTarget: r._proxyTarget || null,
+          suffixAdded: r._suffixAdded === true,
         };
         if (!prev) {
           entry.envs[env] = cell;
@@ -203,7 +248,19 @@ function initDenetim(app) {
       // dizin taramasi (hysdeploy / applications / application-confs) HER sunucuda kosar ve
       // dbo.Nginx_Intranet_Audit'e yazilir (ad tarihsel). Matristeki her hucrenin sunuculari
       // icin (namespace, uygulama) bayraklari eklenir. Tablo yoksa hucreler bayraksiz kalir.
-      const spaHosts = [...new Set(raw.map((r) => String(r.host || '').trim().toUpperCase()).filter(Boolean))];
+      // Eski GBRVP* hostu -> tasima grubunun yeni sunuculari (PROD proxy hucreleri bunlardan okur)
+      const newHostsOfOld = new Map();
+      for (const g of MIGRATION_GROUPS) for (const oh of g.oldHosts) newHostsOfOld.set(oh, g.newHosts);
+      const dirHostsOfCell = (cell) => {
+        if (cell.status !== 'PROXY') return cell.hosts;
+        const set = new Set();
+        for (const h of cell.hosts) for (const nh of newHostsOfOld.get(String(h).trim().toUpperCase()) || []) set.add(nh);
+        return [...set];
+      };
+      const spaHosts = [...new Set([
+        ...raw.map((r) => String(r.host || '').trim().toUpperCase()),
+        ...MIGRATION_GROUPS.flatMap((g) => g.newHosts),
+      ].filter(Boolean))];
       let dirsReady = false;
       const dirIdx = new Map(); // "HOST|ns/app" -> {hys, app, conf}
       if (spaHosts.length) {
@@ -231,7 +288,7 @@ function initDenetim(app) {
           for (const cell of Object.values(r.envs)) {
             if (!cell.namespace) continue; // flat dagitimda ns/app dizini yok
             const key = String(cell.namespace).trim().toLowerCase() + '/' + r.application.toLowerCase();
-            cell.dirs = cell.hosts.map((h) => ({
+            cell.dirs = dirHostsOfCell(cell).map((h) => ({
               host: h,
               flags: dirIdx.get(String(h).trim().toUpperCase() + '|' + key) || null,
             }));
@@ -252,6 +309,7 @@ function initDenetim(app) {
         ok: true,
         ownersReady: owners.ready,
         dirsReady,
+        prodProxy: prodProxyStats,
         scanDate: effectiveDate,
         availableDates: (datesRes.recordset || []).map((x) => x.d),
         services,

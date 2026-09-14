@@ -14,7 +14,12 @@ export interface NginxSpaEnvCell {
   inOcpInventory: boolean;
   locationPath: string;
   hosts: string[];
-  /** H/A/C dizin bayraklari (sunucu basina); flags null = o sunucuda dizin yok */
+  /** PROD: eski GBRVP* sunucusundaki proxy_pass hedefi (status='PROXY') */
+  proxyTarget?: string | null;
+  /** proxy yaziminda -prod eksikti, eklenerek cozuldu */
+  suffixAdded?: boolean;
+  /** H/A/C dizin bayraklari (sunucu basina); flags null = o sunucuda dizin yok.
+   *  PROD proxy hucrelerinde sunucular YENI prod SPA sunuculardir (tasima grubu). */
   dirs?: { host: string; flags: { hys: boolean; app: boolean; conf: boolean } | null }[];
 }
 
@@ -125,6 +130,8 @@ export interface NginxSpaResult {
   ownersReady?: boolean;
   /** dbo.Nginx_Intranet_Audit (dizin taramasi) okunabildi mi -> hucrelerde H/A/C */
   dirsReady?: boolean;
+  /** PROD proxy satirlari matrise katildi: kac satir, kaci cozuldu */
+  prodProxy?: { rows: number; resolved: number; unresolved: number } | null;
   message?: string;
 }
 

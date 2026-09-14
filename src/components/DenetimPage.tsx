@@ -127,6 +127,8 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   // "Deploy Yok" olarak geciyordu - iki ad tek ada indirildi.
   NOT_DEPLOYED: { label: "Paket Nginx'te yok", cls: 'bg-red-50 text-red-700 border-red-200' },
   BROKEN_INCLUDE: { label: 'Kırık include', cls: 'bg-red-100 text-red-800 border-red-300' },
+  // PROD (2026-09-14): eski GBRVP* sunucusunda proxy_pass ile sunuluyor; SPA include'u yok.
+  PROXY: { label: 'Proxy (eski sunucu)', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
 };
 
 function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
@@ -1345,6 +1347,13 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
               'Kontrol birden çok sunucuda ayrı ayrı yapılır; aşağıdaki sunucu listesi ' +
               'eksiğin görüldüğü yerlerdir.'
             : null,
+          cell.status === 'PROXY'
+            ? [
+                "PROD: eski sunucuda proxy_pass ile OpenShift route'una yönlendiriliyor (SPA include'u yok).",
+                `Hedef: ${cell.proxyTarget || '—'}${cell.suffixAdded ? ' (namespace -prod eksikti, eklendi)' : ''}`,
+                'H/A/C bayrakları YENİ prod SPA sunucularından okunur (Production Taşımaları).',
+              ].join(String.fromCharCode(10))
+            : null,
           cell.namespace ? `Namespace: ${cell.namespace}` : null,
           cell.deployMode ? `Dağıtım: ${cell.deployMode}` : null,
           `Context path: ${cell.locationPath}`,
@@ -1356,13 +1365,14 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
         <span className="font-semibold">{meta.label}</span>
         {/* Context path GORUNUR (kullanici, 2026-09-14: "servislerde location bilgisi yok") */}
         {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
+        {cell.status === 'PROXY' && cell.suffixAdded && <span className="text-[9px] opacity-70">+prod</span>}
         {!cell.inOcpInventory && <span className="opacity-80">OCP'de yok</span>}
         {/* H/A/C dizin bayraklari (sunucu basina) - Production Tasimalari ile ayni gosterim */}
         {cell.dirs && cell.dirs.length > 0 && (
           <span className="inline-flex flex-wrap gap-1 mt-0.5">
             {cell.dirs.map((d) => (
               <span key={d.host} className="inline-flex items-center gap-1" title={d.host}>
-                {cell.dirs && cell.dirs.length > 1 && <span className="text-[9px] opacity-70">{d.host.replace(/^GBNGX/, '')}</span>}
+                {cell.dirs && (cell.dirs.length > 1 || cell.status === 'PROXY') && <span className="text-[9px] opacity-70">{d.host.replace(/^GBNGX/, '')}</span>}
                 <DirCell f={d.flags} />
               </span>
             ))}

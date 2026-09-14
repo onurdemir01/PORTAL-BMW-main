@@ -98,7 +98,7 @@ test('H/A/C gosterimi ORTAK (HacCell) ve Nginx SPA matrisi de kullaniyor', () =>
   assert.ok(den.includes('<HacLegend defaultOpen={false} />'), 'matriste sozluk yok');
   const srv = read('../server/audit/denetim.cjs');
   const spa = srv.slice(srv.indexOf("router.get('/nginx-spa'"), srv.indexOf("router.get('/nginx-spa-coverage'"));
-  assert.ok(spa.includes('FROM dbo.Nginx_Intranet_Audit') && spa.includes('cell.dirs = cell.hosts.map('), '/nginx-spa dizin bayraklarini eklemeli');
+  assert.ok(spa.includes('FROM dbo.Nginx_Intranet_Audit') && spa.includes('cell.dirs = dirHostsOfCell(cell).map('), '/nginx-spa dizin bayraklarini eklemeli');
 });
 
 test('Production Tasimalari: gecis takibi (planlandi/gecti + tarih) ve sema', () => {
@@ -125,4 +125,14 @@ test('Nginx SPA > Internet: route istatistikleri paneli + PROD kapsaminda proxy 
   assert.ok(cov.includes("kind = 'proxy' AND UPPER(env) = 'PROD'"), 'kapsam PROD proxy satirlarini okumali');
   assert.ok(cov.includes("ngx.get('PROD').set(res.application"), 'cozulen proxy uygulamalari PROD nginx kumesine girmeli');
   assert.ok(srv.includes("router.get('/route-stats'"), 'route-stats ucu yok');
+});
+
+test('Nginx SPA matrisi: PROD proxy satirlari PROXY durumuyla girer; H/A/C yeni prod sunuculardan', () => {
+  const srv = read('../server/audit/denetim.cjs');
+  const spa = srv.slice(srv.indexOf("router.get('/nginx-spa'"), srv.indexOf("router.get('/route-stats'"));
+  assert.ok(spa.includes("status: 'PROXY', _proxyTarget: target"), 'proxy satiri PROXY durumuyla haritaya girmeli');
+  assert.ok(spa.includes("if (cell.status !== 'PROXY') return cell.hosts;"), 'PROXY hucresinin dizinleri yeni sunuculardan okunmali');
+  assert.ok(spa.includes('MIGRATION_GROUPS.flatMap((g) => g.newHosts)'), 'yeni prod sunucular dizin sorgusuna girmeli');
+  const den = read('components/DenetimPage.tsx');
+  assert.ok(den.includes("PROXY: { label: 'Proxy (eski sunucu)'"), 'PROXY durum etiketi yok');
 });
