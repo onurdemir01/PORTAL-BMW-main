@@ -4,6 +4,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { ansibleApi, type AwxTemplate } from "@/api/ansibleApi";
 import { fmtDate } from "@/utils/datetime";
+import LongJobCancelPanel from "./LongJobCancelPanel";
 
 interface ServerHealth {
   id: number; name: string; url: string; configured: boolean;
@@ -159,6 +160,9 @@ export default function AnsibleConfigTab() {
           ansible_ocp_clusters tablosu VERI KAYBI OLMASIN diye silinmedi; artik hicbir
           ekran onlari cagirmiyor. */}
 
+      {/* Uzun suren isleri otomatik iptal (2026-09-14) — template listesi yukaridaki ozetten */}
+      <LongJobCancelPanel summary={templateSummary} />
+
       {/* Ortam Değişkenleri Notu — actions.md #10: her değişkenin (i) ikonunda açıklama/örnek/kullanım yeri */}
       <section className="px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700">
         <p className="font-semibold mb-1">Gerekli Env Değişkenleri</p>
@@ -168,6 +172,7 @@ export default function AnsibleConfigTab() {
             { key: "AWX_USER + AWX_PASSWORD", desc: "AWX_TOKEN tanımlı değilse, token almak için kullanılan servis hesabı — şifre DB'de şifreli saklanır." },
             { key: "AWX_READ_ONLY_TEMPLATE_IDS", desc: "Virgülle ayrılmış template ID listesi — boşsa TÜM template'ler izinli sayılır." },
             { key: "AWX_LOG_FETCH_TEMPLATE_ID", desc: "AI Analist'in uzak log dosyası çekmek için kullandığı template ID'si." },
+            { key: "TEAMS_LONGJOB_WEBHOOK_URL", desc: "Uzun süren job bildirimi ve otomatik iptal kartı bu Teams webhook'una gider (eşik: TEAMS_LONGJOB_THRESHOLD_MINUTES, varsayılan 30; iptal eşiği Admin ekranından)." },
           ].map((v) => (
             <li key={v.key} className="flex items-center gap-1.5">
               <span>{v.key}</span>

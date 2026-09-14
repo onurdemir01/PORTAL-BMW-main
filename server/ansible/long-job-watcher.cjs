@@ -26,6 +26,17 @@ function isConfigured() {
   return !!getConfig().webhookUrl;
 }
 
+// Otomatik iptal (long-job-cancel.cjs) Teams webhook'u OLMASA DA calisir: bildirim
+// yalnizca webhook varsa gider, iptal karari DB'deki izin listesine baglidir.
+async function cancelEnabled() {
+  try {
+    const cfg = await require('./long-job-cancel.cjs').readConfig(require('../db/index.cjs'));
+    return cfg.enabled && cfg.templates.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 const _notified = new Set(); // "serverId:jobId"
 
 async function sendTeamsNotification(job, elapsedMinutes) {
@@ -113,7 +124,9 @@ async function sendTeamsNotification(job, elapsedMinutes) {
 }
 
 async function tick() {
-  if (!isConfigured()) return;
+  const notify = isConfigured();
+  const cancel = await cancelEnabled();
+  if (!notify && !cancel) return;
   const cfg = getConfig();
   const runner = require('./runner.cjs');
   let jobs;
@@ -123,6 +136,23 @@ async function tick() {
     console.warn('[LongJobWatcher] calisan job listesi alinamadi:', e.message);
     return;
   }
+
+  // ONCE IPTAL (izin listesindeki, esigi asan job'lar) - iptal edilen job bir sonraki
+  // tick'te listede gorunmez; bildirim adimi bu tick'te yine calisir (ayni job'a
+  // "uzun suruyor" + "iptal edildi" iki kart gidebilir, kabul edilebilir).
+  if (cancel) {
+    try {
+      await require('./long-job-cancel.cjs').processJobs(jobs, {
+        db: require('../db/index.cjs'),
+        runner,
+        webhookUrl: cfg.webhookUrl,
+        audit: (action, opts) => require('../audit/index.cjs').auditPortal(null, action, { username: 'system', ...opts }),
+      });
+    } catch (e) {
+      console.warn('[LongJobCancel] islem hatasi:', e.message);
+    }
+  }
+  if (!notify) return;
 
   const stillRunningKeys = new Set();
   for (const job of jobs) {
@@ -169,4 +199,4 @@ function stopWatcher() {
   }
 }
 
-module.exports = { startWatcher, stopWatcher, tick, isConfigured, getConfig };
+module.exports = { startWatcher, stopWatcher, tick, isConfigured, getConfig, cancelEnabled };

@@ -1218,6 +1218,31 @@ function initAnsibleRunner(app) {
     res.json({ ok: true, servers: results });
   });
 
+  // ── Uzun suren job'lari otomatik iptal (Admin > Ansible Info) ─────────────────────
+  // Ayrinti: long-job-cancel.cjs basligi. Yalnizca Admin okur/yazar.
+  app.get('/api/ansible/longjob-cancel', requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const ljc = require('./long-job-cancel.cjs');
+      const db = require('../db/index.cjs');
+      res.json({ ok: true, config: await ljc.readConfig(db), teamsConfigured: !!(process.env.TEAMS_LONGJOB_WEBHOOK_URL || '').trim() });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+  app.put('/api/ansible/longjob-cancel', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const ljc = require('./long-job-cancel.cjs');
+      const db = require('../db/index.cjs');
+      const cfg = await ljc.writeConfig(db, req.body || {});
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'awx_long_job_cancel_config', { result: 'ok', detail: JSON.stringify(cfg) });
+      } catch { /* audit yoksa yoksay */ }
+      res.json({ ok: true, config: cfg });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
   // GET /api/ansible/templates/:serverId — templates for a specific server
   // F-09: ?search=query filters by name/description
   app.get('/api/ansible/templates/:serverId', requireAuth, requireAnsiblePage, async (req, res) => {
@@ -2321,7 +2346,8 @@ function initAnsibleRunner(app) {
 
   // Uzun-suredir-calisan-job izleyicisini BIR KEZ baslat (kullanici istegi: 30 dakikadan
   // uzun calisan job'lar icin Teams bildirimi). TEAMS_LONGJOB_WEBHOOK_URL bos oldugu
-  // surece izleyici sessizce hicbir sey yapmaz (bkz. long-job-watcher.cjs basi).
+  // surece BILDIRIM gitmez; OTOMATIK IPTAL (long-job-cancel.cjs, Admin izin listesi)
+  // webhook olmasa da calisir (bkz. long-job-watcher.cjs basi).
   try {
     require('./long-job-watcher.cjs').startWatcher();
   } catch (e) {
@@ -4123,6 +4149,13 @@ async function listRunningJobsAcrossServers() {
           serverName: server.name,
           jobId: j.id,
           jobName: j.summary_fields?.job_template?.name || j.name || `Job #${j.id}`,
+          // Otomatik iptal izin listesi (long-job-cancel.cjs) template KIMLIGI ile eslesir.
+          templateId: Number(j.job_template ?? j.summary_fields?.job_template?.id) || null,
+          executer:
+            j.summary_fields?.launched_by?.name ||
+            j.summary_fields?.created_by?.username ||
+            j.summary_fields?.created_by?.name ||
+            '—',
           started: j.started,
           url: `${String(server.url || '').replace(/\/+$/, '')}/#/jobs/playbook/${j.id}/output`,
         });
