@@ -1354,6 +1354,8 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
           .join('\n')}
       >
         <span className="font-semibold">{meta.label}</span>
+        {/* Context path GORUNUR (kullanici, 2026-09-14: "servislerde location bilgisi yok") */}
+        {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
         {!cell.inOcpInventory && <span className="opacity-80">OCP'de yok</span>}
         {/* H/A/C dizin bayraklari (sunucu basina) - Production Tasimalari ile ayni gosterim */}
         {cell.dirs && cell.dirs.length > 0 && (

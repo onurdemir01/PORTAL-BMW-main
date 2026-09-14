@@ -7,6 +7,7 @@ import { denetimApi, type RouteStatsResult, type RouteStatsEnv } from '@/api/den
 import { Panel, StatTile, Code, Note } from './ui';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
+const pct = (a: number, b: number) => (b ? `%${(Math.round((a / b) * 1000) / 10).toLocaleString('tr-TR')}` : '—');
 
 export default function RouteStats() {
   const [data, setData] = useState<RouteStatsResult | null>(null);
@@ -59,6 +60,7 @@ export default function RouteStats() {
                 <th className="text-left pr-3 pb-1">Ortam</th>
                 <th className="text-right pr-3 pb-1">Route</th>
                 <th className="text-right pr-3 pb-1">SPA</th>
+                <th className="text-right pr-3 pb-1" title="SPA / toplam route">% SPA</th>
                 <th className="text-right pr-3 pb-1">SPA değil</th>
                 <th className="text-right pr-3 pb-1" title="ne adresten ne route adından uygulama adı çıkarılamadı">sınıflanamadı</th>
                 <th className="text-right pr-3 pb-1">namespace</th>
@@ -74,6 +76,7 @@ export default function RouteStats() {
                     <td className="pr-3 py-1 font-semibold">{e.env}</td>
                     <td className="pr-3 py-1 text-right tabular-nums">{nf(e.routes)}</td>
                     <td className="pr-3 py-1 text-right tabular-nums text-emerald-700">{nf(e.spa)}</td>
+                    <td className="pr-3 py-1 text-right tabular-nums font-semibold">{pct(e.spa, e.routes)}</td>
                     <td className="pr-3 py-1 text-right tabular-nums">{nf(e.nonSpa)}</td>
                     <td className="pr-3 py-1 text-right tabular-nums text-[var(--text-muted)]">{e.unclassified ? nf(e.unclassified) : '—'}</td>
                     <td className="pr-3 py-1 text-right tabular-nums">{nf(e.namespaces)}</td>
@@ -83,7 +86,7 @@ export default function RouteStats() {
                   </tr>
                   {openIps && openIps.startsWith(e.env + ':') && (
                     <tr>
-                      <td colSpan={9} className="pb-2">
+                      <td colSpan={10} className="pb-2">
                         <IpDetail env={e} kind={openIps.endsWith(':spa') ? 'spa' : 'non'} />
                       </td>
                     </tr>
@@ -91,14 +94,14 @@ export default function RouteStats() {
                 </React.Fragment>
               ))}
               {data.envs.length === 0 && (
-                <tr><td colSpan={9} className="py-2 text-[var(--text-muted)]">Route kaydı yok.</td></tr>
+                <tr><td colSpan={10} className="py-2 text-[var(--text-muted)]">Route kaydı yok.</td></tr>
               )}
             </tbody>
           </table>
         </div>
         <div className="grid gap-2 sm:grid-cols-4">
           <StatTile label="route (tüm ortamlar)" value={nf(data.totals.routes)} />
-          <StatTile label="SPA" value={nf(data.totals.spa)} tone="success" />
+          <StatTile label="SPA" value={nf(data.totals.spa)} tone="success" hint={`tüm route'ların ${pct(data.totals.spa, data.totals.routes)}'i`} />
           <StatTile label="SPA değil" value={nf(data.totals.nonSpa)} />
           <StatTile label="sınıflanamadı" value={nf(data.totals.unclassified)} tone={data.totals.unclassified ? 'warning' : 'neutral'} hint="adres kalıba uymuyor ve route adı boş" />
         </div>
