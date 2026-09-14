@@ -102,6 +102,8 @@ export interface NginxMigrationGroup {
   newHosts: string[];
   newHostsScanned: string[];
   oldHostsSeen: string[];
+  /** eski sunucularda servis basina location sayisi (SPA-disi dahil) */
+  serviceLocations: { service: string; locations: number }[];
   apps: NginxMigrationApp[];
   nonSpa: NginxMigrationOther[];
   unresolved: NginxMigrationOther[];
@@ -130,6 +132,8 @@ export interface NginxSpaResult {
   ownersReady?: boolean;
   /** dbo.Nginx_Intranet_Audit (dizin taramasi) okunabildi mi -> hucrelerde H/A/C */
   dirsReady?: boolean;
+  /** servis basina location sayisi, ortam kirilimiyla (mirror sunucular carpilmaz) */
+  serviceStats?: { service: string; envs: Record<string, number> }[];
   /** PROD proxy satirlari matrise katildi: kac satir, kaci cozuldu */
   prodProxy?: { rows: number; resolved: number; unresolved: number } | null;
   message?: string;

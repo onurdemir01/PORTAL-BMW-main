@@ -289,6 +289,18 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       newHosts,
       newHostsScanned: newHosts.filter((h) => scannedHosts.has(h)),
       oldHostsSeen: [...new Set((proxyRows || []).map((r) => H(r.host)).filter((h) => oldSet.has(h)))].sort(),
+      // Servis basina location sayisi (eski sunucular; ayni tanim birden fazla sunucuda
+      // olsa da BIR kez). SPA-disi ve cozulemeyen hedefler de dahil - vhost'un tamami.
+      serviceLocations: (() => {
+        const m = new Map();
+        for (const r of proxyRows || []) {
+          if (!oldSet.has(H(r.host))) continue;
+          const svc = String(r.service || r.vhost || '').toUpperCase() || '(bilinmiyor)';
+          if (!m.has(svc)) m.set(svc, new Set());
+          m.get(svc).add(String(r.location || ''));
+        }
+        return [...m.entries()].map(([service, set]) => ({ service, locations: set.size })).sort((a, b) => b.locations - a.locations || a.service.localeCompare(b.service));
+      })(),
       apps: appRows,
       nonSpa: [...nonSpa.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),
       unresolved: [...unresolved.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),

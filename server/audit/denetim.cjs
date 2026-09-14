@@ -184,6 +184,22 @@ function initDenetim(app) {
         if (r.host) st.hosts.add(String(r.host));
         if (r.vhost) st.vhosts.add(String(r.vhost));
       }
+      // SERVIS BASINA LOCATION SAYISI (kullanici, 2026-09-14): ortam kirilimiyla. Bir
+      // location = (servis, ortam, vhost, location_path) - ayni tanim birden fazla
+      // sunucuda (mirror) olabilir, sunucu sayisiyla CARPILMAZ.
+      const svcLoc = new Map(); // service -> env -> Set(vhost|location)
+      for (const r of raw) {
+        const svc = r.service || '(bilinmiyor)';
+        const e = normEnv(r.env);
+        if (!svcLoc.has(svc)) svcLoc.set(svc, new Map());
+        const m = svcLoc.get(svc);
+        if (!m.has(e)) m.set(e, new Set());
+        m.get(e).add(String(r.vhost || '') + '|' + String(r.location_path || ''));
+      }
+      const serviceStats = [...svcLoc.entries()]
+        .map(([service, m]) => ({ service, envs: Object.fromEntries([...m.entries()].map(([e, set]) => [e, set.size])) }))
+        .sort((a, b) => a.service.localeCompare(b.service));
+
       const envStats = envList.map((e) => {
         const st = statMap.get(e);
         return {
@@ -338,6 +354,7 @@ function initDenetim(app) {
         ownersReady: owners.ready,
         dirsReady,
         prodProxy: prodProxyStats,
+        serviceStats,
         scanDate: effectiveDate,
         availableDates: (datesRes.recordset || []).map((x) => x.d),
         services: [...new Set(rows.map((r) => r.service))].sort(), // NEW_ONLY satirlari dahil

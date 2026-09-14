@@ -616,6 +616,11 @@ function GroupPanel({
         <>
           eski: <span className="font-mono">{g.oldHosts.join(', ')}</span> · yeni:{' '}
           <span className="font-mono">{g.newHosts.join(', ')}</span>
+          {g.serviceLocations.length > 0 && (
+            <span className="ml-2" title="eski sunucudaki vhost başına farklı location sayısı (SPA olmayanlar dâhil)">
+              · location: {g.serviceLocations.map((x) => `${x.service} ${x.locations}`).join(' · ')}
+            </span>
+          )}
         </>
       }
       dense

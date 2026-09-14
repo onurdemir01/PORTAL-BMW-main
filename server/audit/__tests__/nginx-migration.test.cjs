@@ -244,3 +244,18 @@ test('"-prod" eksiz yazim: once oldugu gibi, tutmazsa -prod eklenerek cozulur ve
   assert.equal(a.suffixAdded, true);
   assert.equal(a.perHost.GBNGXP40.hys, true, 'dizin eslesmesi -prod\'lu namespace ile yapilmali');
 });
+
+test('grup basina servis location sayisi: SPA-disi ve cozulemeyen dahil, mirror sunucu carpilmaz', () => {
+  const out = buildMigration({
+    proxyRows: [
+      P('GBRVPP07', 'GLOMO', '/a/', 'a-app-v1-glomo-prod' + APPS),
+      P('GBRVPP08', 'GLOMO', '/a/', 'a-app-v1-glomo-prod' + APPS), // mirror: ayni location
+      P('GBRVPP07', 'GLOMO', '/api/', 'glomo-api-glomo-prod' + APPS), // SPA degil
+      P('GBRVPP07', 'GLOMO', '/x/', 'hayalet-app-v1-yok-prod' + APPS), // cozulemedi
+      P('GBRVPP01', 'WEBFORMS', '/w/', 'w-app-v1-webforms-prod' + APPS),
+    ],
+    upstreamRows: [], routeRows: [{ namespace_name: 'glomo-prod', route_address: 'a-app-v1-glomo-prod' + APPS }], ocpRows: [], dirRows: [],
+  });
+  assert.deepEqual(out.find((g) => g.id === 'glomo').serviceLocations, [{ service: 'GLOMO', locations: 3 }]);
+  assert.deepEqual(out.find((g) => g.id === 'other').serviceLocations, [{ service: 'WEBFORMS', locations: 1 }]);
+});

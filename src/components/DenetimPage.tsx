@@ -1299,10 +1299,36 @@ function NginxSpaAudit() {
                 }`}
               >
                 {s}
+                {(() => {
+                  const st = data.serviceStats?.find((x) => x.service === s);
+                  if (!st) return null;
+                  const total = Object.values(st.envs).reduce((a, n) => a + n, 0);
+                  return (
+                    <span className="ml-1 text-[10px] font-normal text-[var(--text-muted)]" title={`location tanımı: ${envs.map((e) => `${e} ${st.envs[e] || 0}`).join(' · ')}`}>
+                      {total}
+                    </span>
+                  );
+                })()}
               </button>
             ))}
           </div>
 
+          {/* Secili servisin ortam basina location sayisi (kullanici, 2026-09-14) */}
+          {(() => {
+            const st = data.serviceStats?.find((x) => x.service === service);
+            if (!st) return null;
+            return (
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
+                <span className="text-[var(--text-muted)]">{service} location tanımı:</span>
+                {envs.map((e) => (
+                  <span key={e} className="px-1.5 py-0.5 rounded border tabular-nums" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                    {e} <b>{st.envs[e] || 0}</b>
+                  </span>
+                ))}
+                <span className="text-[var(--text-muted)]">(vhost içindeki farklı location sayısı; aynı tanım birden fazla sunucuda olsa da bir kez)</span>
+              </div>
+            );
+          })()}
           <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
             <table className="w-full text-sm pf-table-sticky">
               <thead>
