@@ -131,6 +131,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   // PROD (2026-09-14): eski GBRVP* sunucusunda proxy_pass ile sunuluyor; SPA include'u yok.
   PROXY: { label: 'Proxy (eski sunucu)', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
   // Yeni prod SPA sunucusunda dizin var ama eski sunucuda proxy tanimi YOK.
+  // Yalnizca dev/test/qa'da gorunen uygulamalara eklenir; baska ortamda olmayanlar satir acmaz.
   NEW_ONLY: { label: 'Yalnız yeni sunucuda', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
 };
 

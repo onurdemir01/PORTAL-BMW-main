@@ -144,4 +144,7 @@ test('Nginx SPA matrisi: PROD hucresinde eski/yeni ayrimi, NEW_ONLY, ortam farki
   assert.ok(den.includes("function envGapOf(") && den.includes('value="prod-only"') && den.includes('value="no-prod"'), 'ortam farki suzgeci yok');
   const srv = read('../server/audit/denetim.cjs');
   assert.ok(srv.includes("status: 'NEW_ONLY'"), 'yeni sunucuda dizin olup eski sunucuda proxy olmayan uygulama matrise girmeli');
+  // Kural: NEW_ONLY yalnizca zaten gorunen satira eklenir; yeni satir ACILMAZ
+  assert.ok(srv.includes('if (!row) continue; // baska ortamda yok -> gosterilmez'), 'yalniz yeni sunucudaki uygulama satir olusturmamali');
+  assert.ok(!srv.includes("row = { service, application: e.application, envs: {} };"), 'NEW_ONLY icin satir olusturma kalmis');
 });
