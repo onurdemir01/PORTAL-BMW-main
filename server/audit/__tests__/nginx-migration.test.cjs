@@ -208,3 +208,39 @@ test('gercek arka uc oncelik sirasi: upstream server > proxy_ssl_name > yazilan 
   assert.equal(by['ups-app-v1'].targetSource, 'upstream-server');
   assert.equal(by['ssl-app-v1'].targetSource, 'proxy_ssl_name');
 });
+
+// ── "-prod" eki (kullanici, 2026-09-14): eski yazimda <Namespace> "-prod" eksiz ─────
+test('"-prod" eksiz yazim: once oldugu gibi, tutmazsa -prod eklenerek cozulur ve isaretlenir', () => {
+  const routeByAddress = new Map([['base-app-v0-digital-banking-ch-prod' + APPS, 'digital-banking-ch-prod']]);
+  const routeByLabel = new Map([['base-app-v0-digital-banking-ch-prod', 'digital-banking-ch-prod']]);
+  const ocpByLabel = new Map([['other-app-v1-x-ch-prod', [{ namespace: 'x-ch-prod', application: 'other-app-v1' }]]]);
+
+  // ciplak upstream adi, -prod yok -> route etiketiyle (-prod eklenerek)
+  let r = resolveTarget('base-app-v0-digital-banking-ch', routeByAddress, ocpByLabel, routeByLabel);
+  assert.deepEqual([r.namespace, r.application, r.how, r.suffixAdded], ['digital-banking-ch-prod', 'base-app-v0', 'route', true]);
+  // FQDN, -prod yok -> adres -prod eklenerek birebir
+  r = resolveTarget('base-app-v0-digital-banking-ch' + APPS, routeByAddress, ocpByLabel, routeByLabel);
+  assert.deepEqual([r.namespace, r.how, r.suffixAdded], ['digital-banking-ch-prod', 'route', true]);
+  // -prod zaten varsa ek DENENMEZ, isaret yok
+  r = resolveTarget('base-app-v0-digital-banking-ch-prod', routeByAddress, ocpByLabel, routeByLabel);
+  assert.deepEqual([r.namespace, r.suffixAdded], ['digital-banking-ch-prod', false]);
+  // envanter yedegi de -prod ile
+  r = resolveTarget('other-app-v1-x-ch', routeByAddress, ocpByLabel, routeByLabel);
+  assert.deepEqual([r.namespace, r.application, r.how, r.suffixAdded], ['x-ch-prod', 'other-app-v1', 'inventory', true]);
+  // hicbiri: cozulemedi
+  r = resolveTarget('yok-app-v1-yok-ch', routeByAddress, ocpByLabel, routeByLabel);
+  assert.equal(r.how, 'unresolved');
+
+  // Uctan uca: satirda suffixAdded ve namespace -prod'lu (ekip/dizin eslesmesi buna bagli)
+  const out = buildMigration({
+    proxyRows: [P('GBRVPP07', 'GLOMO', '/base/', '', 'base-app-v0-digital-banking-ch')],
+    upstreamRows: [],
+    routeRows: [{ namespace_name: 'digital-banking-ch-prod', route_address: 'base-app-v0-digital-banking-ch-prod' + APPS }],
+    ocpRows: [],
+    dirRows: [D('GBNGXP40', 'digital-banking-ch-prod', 'base-app-v0')],
+  });
+  const a = out.find((g) => g.id === 'glomo').apps[0];
+  assert.equal(a.namespace, 'digital-banking-ch-prod');
+  assert.equal(a.suffixAdded, true);
+  assert.equal(a.perHost.GBNGXP40.hys, true, 'dizin eslesmesi -prod\'lu namespace ile yapilmali');
+});

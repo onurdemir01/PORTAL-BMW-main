@@ -82,7 +82,10 @@ export default function NginxProdMigration() {
           (<Code>https://&lt;app&gt;-&lt;ns&gt;.apps.fw.garanti.com.tr/</Code>) ya da bir <b>upstream</b> adı{' '}
           (<Code>https://&lt;app&gt;-&lt;ns&gt;/</Code>) — ikisi de aynı uygulamaya çözülür; upstream takma adlıysa
           (<Code>onur</Code> gibi) gerçek adres upstream bloğunun <Code>server</Code> satırından alınır.
-          &quot;Yazım&quot; sütunu hangisinin kullanıldığını gösterir.
+          &quot;Yazım&quot; sütunu hangisinin kullanıldığını gösterir. Eski yazımda namespace çoğunlukla{' '}
+          <b>-prod eksiz</b>dir (<Code>…-digital-banking-ch</Code>); ad olduğu gibi tutmazsa <Code>-prod</Code>{' '}
+          eklenerek eşlenir ve satırda <b>+prod</b> olarak işaretlenir — ekip ve dizin kontrolü gerçek
+          (<Code>-prod</Code>&apos;lu) namespace üzerinden yapılır.
         </div>
         Bir uygulama <b>hazır</b> sayılır ancak yeni sunucuların <b>hepsinde</b> H ve A varsa.
         <div className="mt-1.5 text-[var(--text-muted)]">
@@ -107,10 +110,10 @@ export default function NginxProdMigration() {
           onClick={() =>
             csvDownload(
               'nginx_prod_tasima',
-              ['grup', 'namespace', 'uygulama', 'ekip', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
+              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
               data.groups.flatMap((g) =>
                 g.apps.map((a) => [
-                  g.label, a.namespace, a.application, a.owner?.groups.join(' | ') || '', a.forms.join('+'), a.written.join(' '), STATUS[a.status].label, a.readyHosts, a.scannedHosts,
+                  g.label, a.namespace, a.suffixAdded ? 'evet' : '', a.application, a.owner?.groups.join(' | ') || '', a.forms.join('+'), a.written.join(' '), STATUS[a.status].label, a.readyHosts, a.scannedHosts,
                   a.oldHosts.join(' '), a.services.join(' '), a.locationCount, a.target,
                   ...data.groups.flatMap((gg) => gg.newHosts.map((h) => (gg.id !== g.id ? '' : cellText(a.perHost[h])))),
                 ]),
@@ -227,7 +230,12 @@ function GroupPanel({ g, onlyProblem, ownersReady }: { g: NginxMigrationGroup; o
                   <td className="pr-3 py-1 font-mono whitespace-nowrap" title={`hedef: ${a.target} · çözüm: ${a.how === 'route' ? 'route adresi (kesin)' : 'OpenShift envanter çifti'}`}>
                     {a.application}
                   </td>
-                  <td className="pr-3 py-1 font-mono text-[var(--text-muted)] whitespace-nowrap">{a.namespace}</td>
+                  <td className="pr-3 py-1 font-mono text-[var(--text-muted)] whitespace-nowrap">
+                    {a.namespace}
+                    {a.suffixAdded && (
+                      <span className="ml-1 text-[9px] px-1 rounded border" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }} title="proxy_pass yazımında -prod yoktu; eklenerek eşlendi">+prod</span>
+                    )}
+                  </td>
                   <td className="pr-3 py-1"><OwnerCell owner={a.owner} ready={ownersReady} /></td>
                   <td className="pr-3 py-1">
                     <Pill tone={STATUS[a.status].tone} title={STATUS[a.status].hint}>

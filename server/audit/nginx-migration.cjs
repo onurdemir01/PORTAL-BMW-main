@@ -27,6 +27,11 @@
 //   2) location'daki proxy_ssl_name (target_url)                               - SNI adi
 //   3) proxy_pass'teki adin kendisi (FQDN ya da ciplak <app>-<ns>)
 //
+// "-prod" EKI (kullanici, 2026-09-14): eski vhost'lardaki yazimda <Namespace> "-prod"
+// EKSIZDIR (proxy_pass https://x-app-v1-digital-banking-ch/ -> gercek namespace
+// digital-banking-ch-prod). Cozum once adi OLDUGU GIBI dener; tutmazsa "-prod"
+// eklenmis halini dener ve bunu satirda isaretler (suffixAdded) - sessiz ek yok.
+//
 // HEDEF -> (namespace, uygulama) COZUMU: etiket <app>-<ns> kalibindadir ama hem app hem
 // ns tire icerebilir; "nerede bolunur" belirsiz. Bu yuzden TAHMIN EDILMEZ:
 //   (1) FQDN route envanterinde BIREBIR varsa namespace oradan, app = etiket - "-ns"
@@ -76,30 +81,44 @@ function hostOf(url) {
  * Hedef host adini (namespace, uygulama)'ya cozer.
  * @returns {{namespace:string|null, application:string|null, how:'route'|'inventory'|'ambiguous'|'unresolved', candidates?:string[]}}
  */
+const PROD_SUFFIX = '-prod';
+
 function resolveTarget(host, routeByAddress, ocpByLabel, routeByLabel = new Map()) {
   const h = L(host);
-  if (!h) return { namespace: null, application: null, how: 'unresolved' };
-  const label = h.split('.')[0];
+  if (!h) return { namespace: null, application: null, how: 'unresolved', suffixAdded: false };
+  const dot = h.indexOf('.');
+  const label0 = dot >= 0 ? h.slice(0, dot) : h;
+  const rest = dot >= 0 ? h.slice(dot) : '';
 
-  // (1) FQDN birebir, (2) ciplak ad = route adresinin ilk etiketi
-  const ns = routeByAddress.get(h) || routeByLabel.get(label);
-  if (ns) {
-    const suf = '-' + ns;
-    if (label.endsWith(suf) && label.length > suf.length) {
-      return { namespace: ns, application: label.slice(0, -suf.length), how: 'route' };
+  // Once oldugu gibi, sonra "-prod" eklenmis hali (eski yazimda ek yok).
+  const tries = [{ label: label0, suffixAdded: false }];
+  if (!label0.endsWith(PROD_SUFFIX)) tries.push({ label: label0 + PROD_SUFFIX, suffixAdded: true });
+
+  let ambiguous = null;
+  for (const { label, suffixAdded } of tries) {
+    // (1) FQDN birebir, (2) ciplak ad = route adresinin ilk etiketi
+    const ns = routeByAddress.get(label + rest) || routeByLabel.get(label);
+    if (ns) {
+      const suf = '-' + ns;
+      if (label.endsWith(suf) && label.length > suf.length) {
+        return { namespace: ns, application: label.slice(0, -suf.length), how: 'route', suffixAdded };
+      }
+    }
+    const cands = ocpByLabel.get(label) || [];
+    if (cands.length === 1) {
+      return { namespace: cands[0].namespace, application: cands[0].application, how: 'inventory', suffixAdded };
+    }
+    if (cands.length > 1 && !ambiguous) {
+      ambiguous = {
+        namespace: null,
+        application: null,
+        how: 'ambiguous',
+        suffixAdded,
+        candidates: cands.map((c) => c.namespace + '/' + c.application),
+      };
     }
   }
-  const cands = ocpByLabel.get(label) || [];
-  if (cands.length === 1) return { namespace: cands[0].namespace, application: cands[0].application, how: 'inventory' };
-  if (cands.length > 1) {
-    return {
-      namespace: null,
-      application: null,
-      how: 'ambiguous',
-      candidates: cands.map((c) => c.namespace + '/' + c.application),
-    };
-  }
-  return { namespace: null, application: null, how: 'unresolved' };
+  return ambiguous || { namespace: null, application: null, how: 'unresolved', suffixAdded: false };
 }
 
 /**
@@ -184,7 +203,7 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       const push = (map, key, extra) => {
         if (!map.has(key)) {
           map.set(key, {
-            ...extra, target, targetSource,
+            ...extra, target, targetSource, suffixAdded: res.suffixAdded === true,
             services: new Set(), oldHosts: new Set(), locations: new Set(), forms: new Set(), written: new Set(),
           });
         }

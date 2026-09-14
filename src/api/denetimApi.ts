@@ -55,6 +55,8 @@ export interface NginxMigrationApp {
   target: string;
   /** gercek arka uc nereden: upstream-server | proxy_ssl_name | proxy_pass */
   targetSource: string;
+  /** yazimda namespace "-prod" eksizdi; ek eklenerek cozuldu */
+  suffixAdded: boolean;
   /** proxy_pass yazim bicimleri: 'fqdn' | 'upstream' */
   forms: string[];
   /** proxy_pass'te yazan ad(lar) */
