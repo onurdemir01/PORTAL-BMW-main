@@ -9,7 +9,10 @@ const BASE = "/api/nginx-migration";
 
 export interface NginxMigrationConfig {
   awxServerId: number;
+  /** nginx_ops/nginx_prod_migration.yml (Tanım oluştur) */
   templateId: number;
+  /** nginx_ops/nginx_ops.yml (Eski tanımı kaldır: action=delete, env=prod — 23:00'e zamanlanır) */
+  deleteTemplateId?: number;
 }
 
 export interface NginxMigrationCreateResult {
@@ -20,9 +23,31 @@ export interface NginxMigrationCreateResult {
   message?: string;
 }
 
+export interface NginxMigrationDeleteResult {
+  ok: boolean;
+  job?: { id?: number; [k: string]: unknown };
+  extraVars?: Record<string, string>;
+  oldHosts?: string[];
+  scheduled?: boolean;
+  message?: string;
+}
+
 export const nginxMigrationApi = {
   config: (): Promise<{ ok: boolean; config: NginxMigrationConfig }> =>
     fetch(`${BASE}/config`).then(safeJson),
+
+  remove: (body: {
+    group: string;
+    namespace: string;
+    application: string;
+    service: string;
+    inputPath: string;
+  }): Promise<NginxMigrationDeleteResult> =>
+    fetch(`${BASE}/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(safeJson),
 
   saveConfig: (cfg: NginxMigrationConfig): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/config`, {
@@ -60,6 +85,10 @@ export interface MigrationTracking {
   configJobId: number | null;
   configCreatedAt: string | null;
   configCreatedBy: string | null;
+  /** "Eski tanımı kaldır" ile başlatılan son job (23:00'e zamanlanır) */
+  deleteJobId?: number | null;
+  deleteRequestedAt?: string | null;
+  deleteRequestedBy?: string | null;
   updatedBy: string | null;
   updatedAt: string | null;
 }

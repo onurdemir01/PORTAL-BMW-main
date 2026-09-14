@@ -148,3 +148,15 @@ test('Nginx SPA matrisi: PROD hucresinde eski/yeni ayrimi, NEW_ONLY, ortam farki
   assert.ok(srv.includes('if (!row) continue; // baska ortamda yok -> gosterilmez'), 'yalniz yeni sunucudaki uygulama satir olusturmamali');
   assert.ok(!srv.includes("row = { service, application: e.application, envs: {} };"), 'NEW_ONLY icin satir olusturma kalmis');
 });
+
+test('Production Tasimalari: "Eski tanimi kaldir" dugmesi - nginx_ops delete akisi, 23:00 uyarisi, gecmemis uyarisi', () => {
+  const src = read('components/denetim/NginxProdMigration.tsx');
+  assert.ok(src.includes('nginxMigrationApi.remove({'), 'silme ucu cagrilmiyor');
+  assert.ok(src.includes("Eski tanımı kaldır"), 'dugme yok');
+  assert.ok(src.includes("t?.state !== 'migrated'") && src.includes("Geçiş kaydı 'geçti' değil"), 'gecmemis uygulamada uyari yok');
+  assert.ok(src.includes('23:00'), '23:00 zamanlama bilgisi yok');
+  assert.ok(src.includes("Silme job'ı (nginx_ops) ID"), 'yonetici panelinde silme template alani yok');
+  const srv = read('../server/nginx-migration/index.cjs');
+  assert.ok(srv.includes("router.post('/delete'") && srv.includes("action: 'delete'") && srv.includes("env: 'prod'"));
+  assert.ok(srv.includes('{ ignoreStatus: true }'), 'silmede yeni sunucu hazirligi aranmamali');
+});

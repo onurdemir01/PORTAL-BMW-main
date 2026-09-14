@@ -691,6 +691,9 @@ const TABLES = [
         config_job_id     INT NULL,
         config_created_at DATETIME2 NULL,
         config_created_by NVARCHAR(128) NULL,
+        delete_job_id     INT NULL,
+        delete_requested_at DATETIME2 NULL,
+        delete_requested_by NVARCHAR(128) NULL,
         updated_by        NVARCHAR(128) NULL,
         updated_at        DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         UNIQUE(group_id, namespace, application)
@@ -2477,6 +2480,22 @@ async function setupTables() {
 
   // Alter existing tables to add missing columns
   const alters = [
+    {
+      // Production Tasimalari > eski sunucudan tanim silme (2026-09-14): job damgasi.
+      table: 'nginx_migration_tracking',
+      col: 'delete_job_id',
+      sql: `ALTER TABLE nginx_migration_tracking ADD delete_job_id INT NULL`,
+    },
+    {
+      table: 'nginx_migration_tracking',
+      col: 'delete_requested_at',
+      sql: `ALTER TABLE nginx_migration_tracking ADD delete_requested_at DATETIME2 NULL`,
+    },
+    {
+      table: 'nginx_migration_tracking',
+      col: 'delete_requested_by',
+      sql: `ALTER TABLE nginx_migration_tracking ADD delete_requested_by NVARCHAR(128) NULL`,
+    },
     {
       // MEVCUT KURULUMLAR ICIN — CREATE TABLE bloku tablo zaten varsa hic calismaz.
       table: 'scalex_operations',

@@ -6,7 +6,7 @@
 // olarak var mi? Her satir bir uygulama, her sutun bir YENI sunucu. Hesap sunucuda
 // (nginx-migration.cjs); burada yalnizca gosterim.
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowDownTrayIcon, ArrowPathIcon, DocumentPlusIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, ArrowPathIcon, DocumentPlusIcon, CalendarDaysIcon, TrashIcon } from '@heroicons/react/24/outline';
 import {
   nginxMigrationApi,
   nginxMigrationTrackingApi,
@@ -60,7 +60,9 @@ export default function NginxProdMigration() {
   const [q, setQ] = useState('');
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const [config, setConfig] = useState<NginxMigrationConfig>({ awxServerId: 0, templateId: 0 });
+  const [config, setConfig] = useState<NginxMigrationConfig>({ awxServerId: 0, templateId: 0, deleteTemplateId: 0 });
+  // Silme onayi (eski sunucudan location + upstream; nginx_ops 23:00'e zamanlar)
+  const [pendingDelete, setPendingDelete] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
   // Onay penceresi: hangi satir, hangi location (birden fazla olabilir)
   const [pending, setPending] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -144,11 +146,36 @@ export default function NginxProdMigration() {
     }
   }
 
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    const path = pendingDelete.app.paths[pendingDelete.pathIdx];
+    setBusy(true);
+    try {
+      const r = await nginxMigrationApi.remove({
+        group: pendingDelete.group.id, namespace: pendingDelete.app.namespace, application: pendingDelete.app.application,
+        service: path.service, inputPath: path.location,
+      });
+      if (r.ok) {
+        setResult({
+          tone: 'ok',
+          text: `${pendingDelete.app.application} için kaldırma işi başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içindeki ${path.location} location'ı ve (başka tanım kullanmıyorsa) upstream'i. PROD kuralı: iş şimdi yalnızca doğrular ve 23:00 kesinti penceresine ZAMANLAR; gerçek silmeyi nginx_scheduled_ops yapar. Eski sunucular: ${(r.oldHosts || []).join(', ')}. Teams'ten izleyin.`,
+        });
+      } else setResult({ tone: 'bad', text: r.message || 'İş başlatılamadı.' });
+    } catch (e: unknown) {
+      setResult({ tone: 'bad', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+      setPendingDelete(null);
+      loadTracking();
+    }
+  }
+
   if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
   if (!data) return null;
 
   const configured = config.awxServerId > 0 && config.templateId > 0;
+  const deleteConfigured = config.awxServerId > 0 && (config.deleteTemplateId || 0) > 0;
 
   return (
     <div className="space-y-3">
@@ -272,6 +299,8 @@ export default function NginxProdMigration() {
           ownersReady={data.ownersReady !== false}
           canCreate={configured}
           onCreate={(app) => setPending({ group: g, app, pathIdx: 0 })}
+          canDelete={deleteConfigured}
+          onDelete={(app) => setPendingDelete({ group: g, app, pathIdx: 0 })}
           tracking={tracking}
           trackingReady={trackingReady}
           trackFilter={trackFilter}
@@ -334,6 +363,60 @@ export default function NginxProdMigration() {
         })()}
       </Modal>
 
+      <Modal
+        open={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        title="Eski sunucudaki tanımı kaldır"
+        subtitle={pendingDelete ? `${pendingDelete.app.application} · ${pendingDelete.app.namespace}` : undefined}
+        icon={TrashIcon}
+        dismissOnBackdrop={false}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setPendingDelete(null)} className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border)]">İptal</button>
+            <button onClick={confirmDelete} disabled={busy} className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50" style={{ background: 'var(--status-danger)' }}>
+              {busy ? 'Başlatılıyor…' : 'Evet, kaldırmayı zamanla'}
+            </button>
+          </div>
+        }
+      >
+        {pendingDelete && (() => {
+          const path = pendingDelete.app.paths[pendingDelete.pathIdx];
+          const t = tracking.get(trackKey(pendingDelete.group.id, pendingDelete.app.namespace, pendingDelete.app.application));
+          return (
+            <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+              {pendingDelete.app.paths.length > 1 && (
+                <div>
+                  Bu uygulama eski sunucuda <b>{pendingDelete.app.paths.length}</b> location'dan sunuluyor; hangisi kaldırılsın?
+                  <div className="mt-1 space-y-0.5">
+                    {pendingDelete.app.paths.map((p, i) => (
+                      <label key={p.service + p.location} className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="delpath" checked={i === pendingDelete.pathIdx} onChange={() => setPendingDelete({ ...pendingDelete, pathIdx: i })} />
+                        <span className="font-mono text-[11px]" style={{ color: 'var(--text-primary)' }}>{p.service}-PROD.conf · {p.location}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p>Eski sunucularda (<span className="font-mono">{pendingDelete.group.oldHosts.join(', ')}</span>) şunlar kaldırılacak:</p>
+              <div className="font-mono text-[11px] space-y-0.5 rounded-lg px-3 py-2" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
+                <div>/usr/nginx/conf.d/{path.service}-PROD.conf → <span className="text-[var(--text-muted)]">location {path.location} {'{ proxy_pass … }'}</span></div>
+                <div>upstream {pendingDelete.app.written.join(' / ')} <span className="text-[var(--text-muted)]">— yalnızca başka hiçbir location kullanmıyorsa</span></div>
+              </div>
+              {t?.state !== 'migrated' && (
+                <Note tone="warning" title="Geçiş kaydı 'geçti' değil">
+                  Bu uygulamanın geçiş takibi <b>{t ? TRACK_LABEL[t.state].label : 'kayıtsız'}</b>. Trafik yeni sunuculara alınmadan eski tanım kaldırılırsa uygulama <b>erişilemez</b> olur. Emin değilseniz iptal edin.
+                </Note>
+              )}
+              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                PROD kuralı (nginx_ops): iş şimdi yalnızca <b>doğrular</b> ve <b>23:00</b> kesinti penceresine zamanlar; gerçek silmeyi{' '}
+                <Code>nginx_scheduled_ops</Code> yapar — location bloğu çıkarılır, upstream başka tanım kullanmıyorsa çıkarılır,{' '}
+                <Code>nginx -t</Code> düşerse geri alınır, geçerse reload. Yeni sunuculara dokunulmaz. İptal için AWX'teki schedule silinir.
+              </p>
+            </div>
+          );
+        })()}
+      </Modal>
+
       {editing && (
         <TrackingModal
           group={editing.group}
@@ -369,6 +452,7 @@ function TrackCell({ t, ready, onEdit }: { t: MigrationTracking | null; ready: b
     t?.migratedDate ? `geçiş: ${fmtDate(t.migratedDate)}` : '',
     t?.note ? `not: ${t.note}` : '',
     t?.configJobId ? `tanım job ${t.configJobId} (${t.configCreatedAt ? new Date(t.configCreatedAt).toLocaleString('tr-TR') : ''}${t.configCreatedBy ? ', ' + t.configCreatedBy : ''})` : '',
+    t?.deleteJobId ? `eski tanım kaldırma job ${t.deleteJobId} (${t.deleteRequestedAt ? new Date(t.deleteRequestedAt).toLocaleString('tr-TR') : ''}${t.deleteRequestedBy ? ', ' + t.deleteRequestedBy : ''}) — 23:00'e zamanlandı` : '',
     t?.updatedBy ? `son güncelleyen: ${t.updatedBy}` : '',
     'düzenlemek için tıklayın',
   ].filter(Boolean).join('\n');
@@ -376,6 +460,7 @@ function TrackCell({ t, ready, onEdit }: { t: MigrationTracking | null; ready: b
     <button onClick={onEdit} disabled={!ready} className="inline-flex items-center gap-1 disabled:opacity-40" title={ready ? title : 'takip tablosu okunamadı'}>
       <Pill tone={meta.tone}>{meta.label}{date ? ` ${fmtDate(date)}` : ''}</Pill>
       {t?.configJobId && <span className="text-[9px] text-[var(--text-muted)]" title="Tanım oluştur job'ı koşturuldu">⚙{t.configJobId}</span>}
+      {t?.deleteJobId && <span className="text-[9px] text-red-600" title="Eski tanımı kaldırma job'ı koşturuldu (23:00'e zamanlandı)">🗑{t.deleteJobId}</span>}
       <CalendarDaysIcon className="w-3.5 h-3.5 text-[var(--text-muted)]" />
     </button>
   );
@@ -467,12 +552,14 @@ function MigrationConfigPanel({ config, onSaved }: { config: NginxMigrationConfi
   const [servers, setServers] = useState<AwxServer[]>([]);
   const [awxServerId, setAwxServerId] = useState(config.awxServerId || 0);
   const [templateId, setTemplateId] = useState(String(config.templateId || ''));
+  const [deleteTemplateId, setDeleteTemplateId] = useState(String(config.deleteTemplateId || ''));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   useEffect(() => {
     setAwxServerId(config.awxServerId || 0);
     setTemplateId(String(config.templateId || ''));
-  }, [config.awxServerId, config.templateId]);
+    setDeleteTemplateId(String(config.deleteTemplateId || ''));
+  }, [config.awxServerId, config.templateId, config.deleteTemplateId]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -490,7 +577,7 @@ function MigrationConfigPanel({ config, onSaved }: { config: NginxMigrationConfi
     if (awxServerId <= 0 || tid <= 0) { setMsg({ tone: 'bad', text: 'AWX sunucusu ve job template ID zorunlu.' }); return; }
     setBusy(true);
     try {
-      const r = await nginxMigrationApi.saveConfig({ awxServerId, templateId: tid });
+      const r = await nginxMigrationApi.saveConfig({ awxServerId, templateId: tid, deleteTemplateId: Number(deleteTemplateId) || 0 });
       if (r.ok) { setMsg({ tone: 'ok', text: 'Kaydedildi. Düğme artık çalışır.' }); onSaved(); }
       else setMsg({ tone: 'bad', text: r.message || 'Kaydedilemedi.' });
     } catch (e: unknown) {
@@ -499,7 +586,7 @@ function MigrationConfigPanel({ config, onSaved }: { config: NginxMigrationConfi
   };
   const inputCls = 'px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]';
   return (
-    <Panel title="Tanım oluşturma job'ı (yönetici)" description="nginx_ops/nginx_prod_migration.yml için AWX template" dense>
+    <Panel title="Job yapılandırması (yönetici)" description="Tanım oluştur: nginx_ops/nginx_prod_migration.yml template'i · Eski tanımı kaldır: mevcut nginx_ops (Nginx Reverse Proxy Operations, survey'li) template'i — action=delete, env=prod ile koşar, 23:00'e zamanlar" dense>
       <div className="flex flex-wrap items-end gap-3 px-3 py-2">
         <label className="flex flex-col gap-1">
           <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">AWX sunucusu</span>
@@ -511,6 +598,10 @@ function MigrationConfigPanel({ config, onSaved }: { config: NginxMigrationConfi
         <label className="flex flex-col gap-1">
           <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Job template ID</span>
           <input value={templateId} onChange={(e) => setTemplateId(e.target.value.replace(/[^0-9]/g, ''))} placeholder="örn. 412" inputMode="numeric" className={`${inputCls} w-28`} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Silme job'ı (nginx_ops) ID</span>
+          <input value={deleteTemplateId} onChange={(e) => setDeleteTemplateId(e.target.value.replace(/[^0-9]/g, ''))} placeholder="isteğe bağlı" inputMode="numeric" className={`${inputCls} w-28`} />
         </label>
         <button onClick={save} disabled={busy} className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50" style={{ background: 'var(--accent)' }}>
           {busy ? 'Kaydediliyor…' : 'Kaydet'}
@@ -549,7 +640,7 @@ function cellText(f: { hys: boolean; app: boolean; conf: boolean } | null | unde
 const STATUS_ORDER: Record<NginxMigrationApp['status'], number> = { missing: 0, partial: 1, 'not-scanned': 2, ready: 3 };
 
 function GroupPanel({
-  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, trackFilter, onTrack,
+  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, trackFilter, onTrack, canDelete, onDelete,
 }: {
   g: NginxMigrationGroup;
   onlyProblem: boolean;
@@ -562,6 +653,8 @@ function GroupPanel({
   trackingReady: boolean;
   trackFilter: 'all' | 'open' | 'planned' | 'migrated';
   onTrack: (app: NginxMigrationApp) => void;
+  canDelete: boolean;
+  onDelete: (app: NginxMigrationApp) => void;
 }) {
   const trackOf = (a: NginxMigrationApp) => tracking.get(trackKey(g.id, a.namespace, a.application)) || null;
   const rows = useMemo(() => {
@@ -704,6 +797,15 @@ function GroupPanel({
                       }
                     >
                       <DocumentPlusIcon className="w-3.5 h-3.5" /> Tanım oluştur
+                    </button>
+                    <button
+                      onClick={() => onDelete(a)}
+                      disabled={!canDelete}
+                      className="mt-1 flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg border disabled:opacity-40 whitespace-nowrap"
+                      style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}
+                      title={!canDelete ? 'Silme job\'ı yapılandırılmamış (yönetici paneli: nginx_ops template)' : `Eski sunucudaki ${a.paths.map((p) => p.service + '-PROD.conf ' + p.location).join(' / ')} tanımını (ve kullanılmayan upstream'i) kaldır — 23:00'e zamanlanır`}
+                    >
+                      <TrashIcon className="w-3.5 h-3.5" /> Eski tanımı kaldır
                     </button>
                   </td>
                   <td className="pr-3 py-1 font-mono whitespace-nowrap" title={`hedef: ${a.target} · çözüm: ${a.how === 'route' ? 'route adresi (kesin)' : 'OpenShift envanter çifti'}`}>

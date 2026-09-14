@@ -10,6 +10,13 @@
 // (eski sunucudaki context path), requester. Hedef sunuculari PLAYBOOK secer (GLOMO /
 // GLOMO-disi) - Portal host listesi gondermez; uc yerdeki liste birebir tutulur.
 //
+// SILME (kullanici, 2026-09-14): eski GBRVP* sunucusundaki location + (referanssiz kaldiysa)
+// upstream blogunu kaldirir. Yeni playbook YOK: mevcut nginx_ops (action=delete, env=prod)
+// akisi kullanilir - o akis prod'da ANINDA silmez, dogrular ve AWX'te 23:00 icin
+// zamanlar; gercek silmeyi nginx_scheduled_ops yapar (location + kullanilmayan upstream,
+// nginx -t dusunce geri alma, Teams). Bu yuzden Portal'da ayri bir template id
+// (deleteTemplateId = nginx_ops template'i) tutulur.
+//
 // ANTI-TAMPER: istemcinin gonderdigi (group, namespace, application, service, inputPath)
 // dordulusu, Portal'in KENDI tasima gorunumunde (loadMigration) gercekten bir satir mi?
 // Aksi halde istemci istedigi uygulama/yol icin tanim yazdirabilirdi. Ayrica satir
@@ -61,6 +68,9 @@ function rowToTracking(r) {
     configJobId: r.config_job_id == null ? null : Number(r.config_job_id),
     configCreatedAt: r.config_created_at ? new Date(r.config_created_at).toISOString() : null,
     configCreatedBy: r.config_created_by || null,
+    deleteJobId: r.delete_job_id == null ? null : Number(r.delete_job_id),
+    deleteRequestedAt: r.delete_requested_at ? new Date(r.delete_requested_at).toISOString() : null,
+    deleteRequestedBy: r.delete_requested_by || null,
     updatedBy: r.updated_by || null,
     updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
   };
@@ -78,11 +88,24 @@ function buildExtraVars({ service, application, namespace, inputPath, user }) {
   };
 }
 
+/** nginx_ops (action=delete, env=prod) extra_vars - saf, test edilebilir. */
+function buildDeleteExtraVars({ service, inputPath, user }) {
+  return {
+    action: 'delete',
+    env: 'prod',
+    service: String(service || '').trim().toUpperCase(),
+    input_path: String(inputPath || '').trim(),
+    email: (user && user.email) || '',
+    requester_name: (user && (user.displayName || user.username)) || '',
+    requester_email: (user && user.email) || '',
+  };
+}
+
 /**
  * Istegi tasima gorunumune karsi dogrular.
  * @returns {{ok:true, app:Object, path:Object} | {ok:false, status:number, message:string}}
  */
-function validateRequest(groups, { group, namespace, application, service, inputPath }) {
+function validateRequest(groups, { group, namespace, application, service, inputPath }, { ignoreStatus = false } = {}) {
   const g = (groups || []).find((x) => x.id === String(group || ''));
   if (!g) return { ok: false, status: 400, message: 'Geçersiz taşıma grubu.' };
   const ns = String(namespace || '').trim().toLowerCase();
@@ -101,6 +124,7 @@ function validateRequest(groups, { group, namespace, application, service, input
       message: `${svc} ${loc} bu uygulamanın eski sunucudaki location'ları arasında yok.`,
     };
   }
+  if (ignoreStatus) return { ok: true, app: row, path: p };
   if (row.status === 'not-scanned') {
     return {
       ok: false,
@@ -130,9 +154,13 @@ function initNginxMigration(app) {
       const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [CONFIG_NAME]);
       const raw = rows?.[0]?.data;
       const cfg = typeof raw === 'string' ? JSON.parse(raw) : raw || {};
-      return { awxServerId: Number(cfg.awxServerId) || 0, templateId: Number(cfg.templateId) || 0 };
+      return {
+        awxServerId: Number(cfg.awxServerId) || 0,
+        templateId: Number(cfg.templateId) || 0,
+        deleteTemplateId: Number(cfg.deleteTemplateId) || 0,
+      };
     } catch {
-      return { awxServerId: 0, templateId: 0 };
+      return { awxServerId: 0, templateId: 0, deleteTemplateId: 0 };
     }
   }
 
@@ -141,7 +169,8 @@ function initNginxMigration(app) {
     try {
       const { rows } = await db.query(
         `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
-                config_job_id, config_created_at, config_created_by, updated_by, updated_at
+                config_job_id, config_created_at, config_created_by,
+                delete_job_id, delete_requested_at, delete_requested_by, updated_by, updated_at
            FROM nginx_migration_tracking`,
       );
       res.json({ ok: true, rows: rows.map(rowToTracking) });
@@ -186,7 +215,8 @@ function initNginxMigration(app) {
       } catch { /* audit yoksa yoksay */ }
       const r = await db.query(
         `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
-                config_job_id, config_created_at, config_created_by, updated_by, updated_at
+                config_job_id, config_created_at, config_created_by,
+                delete_job_id, delete_requested_at, delete_requested_by, updated_by, updated_at
            FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
         [t.group, t.namespace, t.application],
       );
@@ -203,10 +233,11 @@ function initNginxMigration(app) {
   router.put('/config', requireAdmin, async (req, res) => {
     const awxServerId = Number(req.body?.awxServerId) || 0;
     const templateId = Number(req.body?.templateId) || 0;
+    const deleteTemplateId = Number(req.body?.deleteTemplateId) || 0; // istege bagli: nginx_ops
     if (awxServerId <= 0 || templateId <= 0) {
       return res.status(400).json({ ok: false, message: 'AWX sunucusu ve template ID zorunlu.' });
     }
-    const data = JSON.stringify({ awxServerId, templateId });
+    const data = JSON.stringify({ awxServerId, templateId, deleteTemplateId });
     try {
       const ex = await db.query(`SELECT 1 FROM portal_config_blobs WHERE name = $1`, [CONFIG_NAME]);
       if (ex.rows.length) {
@@ -214,7 +245,7 @@ function initNginxMigration(app) {
       } else {
         await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [CONFIG_NAME, data]);
       }
-      res.json({ ok: true, config: { awxServerId, templateId } });
+      res.json({ ok: true, config: { awxServerId, templateId, deleteTemplateId } });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }
@@ -289,7 +320,67 @@ function initNginxMigration(app) {
     }
   });
 
+  // -- Eylem: eski sunucudaki location (+ upstream) tanimini kaldir (23:00'e zamanlanir) --
+  router.post('/delete', async (req, res) => {
+    const cfg = await readConfig();
+    if (!cfg.awxServerId || !cfg.deleteTemplateId) {
+      return res.status(409).json({
+        ok: false,
+        message:
+          'Silme job\'ı henüz yapılandırılmamış. nginx_ops (Nginx Reverse Proxy Operations) template ' +
+          'ID\'si bu sayfadaki yönetici panelinde "Silme job\'ı" alanına girilmeli.',
+      });
+    }
+    try {
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const { loadMigration } = require('../audit/nginx-migration.cjs');
+      const view = await loadMigration({ query, sql, hasProxyColumns: null });
+      // Silmede satirin yeni sunucudaki hazirligi ONEMSIZ (eski sunucudan kaldiriyoruz);
+      // yalnizca (grup, ns, app, servis, location) gercekten tasima listesinde mi.
+      const v = validateRequest(view.groups, req.body || {}, { ignoreStatus: true });
+      if (!v.ok) return res.status(v.status).json({ ok: false, message: v.message });
+
+      const { launchJobOnServer } = require('../ansible/runner.cjs');
+      const user = getRequestUser(req) || {};
+      const extra = buildDeleteExtraVars({ service: v.path.service, inputPath: v.path.location, user });
+      const job = await launchJobOnServer(cfg.awxServerId, cfg.deleteTemplateId, extra, '', user.username || null);
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_delete', {
+          username: user.username, result: 'ok',
+          detail: JSON.stringify({ ...extra, jobId: job?.id || null, group: req.body?.group, namespace: v.app.namespace, application: v.app.application }),
+        });
+      } catch { /* audit yoksa yoksay */ }
+      try {
+        const gid = String(req.body?.group || '');
+        const jobId = job && job.id != null ? Number(job.id) : null;
+        const ex = await db.query(
+          `SELECT id FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
+          [gid, v.app.namespace, v.app.application],
+        );
+        if (ex.rows.length) {
+          await db.query(
+            `UPDATE nginx_migration_tracking SET delete_job_id = $4, delete_requested_at = GETUTCDATE(), delete_requested_by = $5
+              WHERE group_id = $1 AND namespace = $2 AND application = $3`,
+            [gid, v.app.namespace, v.app.application, jobId, user.username || null],
+          );
+        } else {
+          await db.query(
+            `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, delete_job_id, delete_requested_at, delete_requested_by, updated_by)
+             VALUES ($1, $2, $3, 'none', $4, GETUTCDATE(), $5, $5)`,
+            [gid, v.app.namespace, v.app.application, jobId, user.username || null],
+          );
+        }
+      } catch (e) {
+        console.warn('[nginx-migration] silme damgasi yazilamadi:', e.message);
+      }
+      const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
+      res.json({ ok: true, job, extraVars: extra, oldHosts: g ? g.oldHosts : [], scheduled: true });
+    } catch (err) {
+      res.status(err.status || 503).json({ ok: false, message: err.message });
+    }
+  });
+
   app.use('/api/nginx-migration', router);
 }
 
-module.exports = { initNginxMigration, buildExtraVars, validateRequest, normalizeTracking, rowToTracking, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };
+module.exports = { initNginxMigration, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };

@@ -74,3 +74,18 @@ test('DB satiri -> API sekli (tarihler YYYY-AA-GG, Date nesnesi de string de ols
   assert.equal(r.configJobId, 77);
   assert.equal(r.updatedAt, null);
 });
+
+// ── Eski sunucudan silme (2026-09-14): nginx_ops action=delete env=prod ─────────────
+const { buildDeleteExtraVars } = require('../index.cjs');
+
+test('silme extra_vars: nginx_ops sozlesmesi (action=delete, env=prod, service, input_path, email)', () => {
+  const v = buildDeleteExtraVars({ service: 'glomo', inputPath: '/base/', user: { displayName: 'Onur', username: 'od', email: 'o@x' } });
+  assert.deepEqual(v, { action: 'delete', env: 'prod', service: 'GLOMO', input_path: '/base/', email: 'o@x', requester_name: 'Onur', requester_email: 'o@x' });
+});
+
+test('silme dogrulamasi: yeni sunucu hazirligi ONEMSIZ (eksik/taranmadi satir da silinebilir), listede olmayan yine reddedilir', () => {
+  let r = validateRequest(groups, { group: 'glomo', namespace: 'glomo-prod', application: 'eksik-app-v1', service: 'GLOMO', inputPath: '/e/' }, { ignoreStatus: true });
+  assert.equal(r.ok, true);
+  r = validateRequest(groups, { group: 'glomo', namespace: 'glomo-prod', application: 'eksik-app-v1', service: 'GLOMO', inputPath: '/yok/' }, { ignoreStatus: true });
+  assert.equal(r.ok, false);
+});
