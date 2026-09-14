@@ -14,6 +14,8 @@ export interface NginxSpaEnvCell {
   inOcpInventory: boolean;
   locationPath: string;
   hosts: string[];
+  /** H/A/C dizin bayraklari (sunucu basina); flags null = o sunucuda dizin yok */
+  dirs?: { host: string; flags: { hys: boolean; app: boolean; conf: boolean } | null }[];
 }
 
 /** Uygulamanin sorumlu ekibi = namespace'inin CMDB sahibi (dbo.Openshift_Namespace_Owners). */
@@ -121,6 +123,8 @@ export interface NginxSpaResult {
   rows: NginxSpaRow[];
   /** dbo.Openshift_Namespace_Owners okunabildi mi */
   ownersReady?: boolean;
+  /** dbo.Nginx_Intranet_Audit (dizin taramasi) okunabildi mi -> hucrelerde H/A/C */
+  dirsReady?: boolean;
   message?: string;
 }
 

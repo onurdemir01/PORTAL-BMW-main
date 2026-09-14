@@ -133,7 +133,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 test('denetim.cjs sorgusu modulun okudugu KOLONLARI seciyor', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const whole = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  // 2026-09-14: ayni tablo /nginx-spa'da da okunuyor (H/A/C hucreleri, status gerekmez).
+  // Bu bekci indexIntranetRows'u besleyen KAPSAM sorgusuna bakar: /nginx-spa-coverage.
+  const start = whole.indexOf("router.get('/nginx-spa-coverage'");
+  assert.ok(start > 0, '/nginx-spa-coverage bulunamadi');
+  const src = whole.slice(start);
   const m = /FROM dbo\.Nginx_Intranet_Audit/.exec(src);
   assert.ok(m, 'dbo.Nginx_Intranet_Audit sorgusu bulunamadi');
   // SELECT ... FROM arasindaki kolon listesi.

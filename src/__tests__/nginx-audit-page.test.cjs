@@ -77,12 +77,26 @@ test('Production Tasimalari: Tanim olustur dugmesi, ekip siralamasi, H/A/C sozlu
   assert.ok(src.includes("<option value=\"team\">"), 'ekip siralamasi secenegi yok');
   assert.ok(/if \(!ta !== !tb\) return ta \? -1 : 1;/.test(src), 'ekipsizler en sona dusmeli');
   // H/A/C sozlugu ust tarafta, acik
-  assert.ok(src.includes('function HacLegend()') && src.includes('<HacLegend />'));
+  assert.ok(src.includes('<HacLegend />'), 'sozluk render edilmiyor'); // tanim HacCell.tsx'te (ortak)
+  const hac = read('components/denetim/HacCell.tsx');
   for (const s of ['/hysdeploy/&lt;ns&gt;/&lt;app&gt;/', '/usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/', 'application-confs/&lt;app&gt;-&lt;ns&gt;.conf']) {
-    assert.ok(src.includes(s), `sozlukte yok: ${s}`);
+    assert.ok(hac.includes(s), `sozlukte yok: ${s}`);
   }
   // yonetici paneli + rota
   assert.ok(src.includes('<MigrationConfigPanel'));
   const idx = read('../server/index.cjs');
   assert.ok(idx.includes("require('./nginx-migration/index.cjs').initNginxMigration(app)"), 'server modulu kayitli degil');
+});
+
+test('H/A/C gosterimi ORTAK (HacCell) ve Nginx SPA matrisi de kullaniyor', () => {
+  const hac = read('components/denetim/HacCell.tsx');
+  assert.ok(hac.includes('export function DirCell(') && hac.includes('export function HacLegend('));
+  const mig = read('components/denetim/NginxProdMigration.tsx');
+  assert.ok(mig.includes("from './HacCell'") && !mig.includes('function DirCell('), 'tasima sayfasi kendi kopyasini tutmamali');
+  const den = read('components/DenetimPage.tsx');
+  assert.ok(den.includes('<DirCell f={d.flags} />'), 'matris hucresinde H/A/C yok');
+  assert.ok(den.includes('<HacLegend defaultOpen={false} />'), 'matriste sozluk yok');
+  const srv = read('../server/audit/denetim.cjs');
+  const spa = srv.slice(srv.indexOf("router.get('/nginx-spa'"), srv.indexOf("router.get('/nginx-spa-coverage'"));
+  assert.ok(spa.includes('FROM dbo.Nginx_Intranet_Audit') && spa.includes('cell.dirs = cell.hosts.map('), '/nginx-spa dizin bayraklarini eklemeli');
 });

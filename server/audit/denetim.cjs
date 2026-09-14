@@ -198,6 +198,46 @@ function initDenetim(app) {
       );
       const services = [...new Set(rows.map((r) => r.service))].sort();
 
+      // H/A/C DIZIN BAYRAKLARI (2026-09-14, kullanici: "ayni gosterimi non-prod icin de"):
+      // dizin taramasi (hysdeploy / applications / application-confs) HER sunucuda kosar ve
+      // dbo.Nginx_Intranet_Audit'e yazilir (ad tarihsel). Matristeki her hucrenin sunuculari
+      // icin (namespace, uygulama) bayraklari eklenir. Tablo yoksa hucreler bayraksiz kalir.
+      const spaHosts = [...new Set(raw.map((r) => String(r.host || '').trim().toUpperCase()).filter(Boolean))];
+      let dirsReady = false;
+      const dirIdx = new Map(); // "HOST|ns/app" -> {hys, app, conf}
+      if (spaHosts.length) {
+        try {
+          const hIn = spaHosts.map((_, i) => `@h${i}`).join(', ');
+          const dr = await query(
+            `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists
+               FROM dbo.Nginx_Intranet_Audit
+              WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
+                AND host IN (${hIn})`,
+            spaHosts.map((h, i) => ({ name: `h${i}`, type: sql.NVarChar(64), value: h })),
+          );
+          dirsReady = true;
+          for (const d of dr.recordset || []) {
+            const k = String(d.host || '').trim().toUpperCase() + '|' +
+              String(d.namespace || '').trim().toLowerCase() + '/' + String(d.application || '').trim().toLowerCase();
+            dirIdx.set(k, { hys: !!d.hys_deployed, app: !!d.app_deployed, conf: !!d.conf_exists });
+          }
+        } catch {
+          dirsReady = false;
+        }
+      }
+      if (dirsReady) {
+        for (const r of rows) {
+          for (const cell of Object.values(r.envs)) {
+            if (!cell.namespace) continue; // flat dagitimda ns/app dizini yok
+            const key = String(cell.namespace).trim().toLowerCase() + '/' + r.application.toLowerCase();
+            cell.dirs = cell.hosts.map((h) => ({
+              host: h,
+              flags: dirIdx.get(String(h).trim().toUpperCase() + '|' + key) || null,
+            }));
+          }
+        }
+      }
+
       // EKIP (2026-09-14): uygulamanin namespace'inin CMDB sahibi. Ortamlar farkli
       // namespace'te olabilir (glomo-dev / glomo-prod); hepsinin sahibi toplanir,
       // farkli ekiplerse hepsi listelenir. Namespace'siz satirlar "bilinmiyor".
@@ -210,6 +250,7 @@ function initDenetim(app) {
       res.json({
         ok: true,
         ownersReady: owners.ready,
+        dirsReady,
         scanDate: effectiveDate,
         availableDates: (datesRes.recordset || []).map((x) => x.d),
         services,
