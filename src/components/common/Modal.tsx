@@ -41,6 +41,14 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
   //     BASINDAN basliyordu — kullanici kaldigi yeri kaybediyordu.
   // `aria-modal="true"` bunu KENDILIGINDEN yapmaz; yalnizca yardimci teknolojiye
   // "arkasi gizli" der, Tab sirasini degistirmez.
+  // onClose REF'te tutulur (2026-09-15 kullanici bildirimi): asagidaki efekt `onClose`a
+  // bagliydi ve `onClose={() => setX(null)}` gibi satir-ici bir fonksiyon her render'da
+  // YENIDEN olusur -> her tus vurusu (state degisimi) efekti yeniden calistirip odagi
+  // ILK odaklanabilir ogeye (kapatma X'i) tasiyordu; textarea'ya yazilamiyordu
+  // (Nginx Audit > istisna notu). Efekt artik yalniz `open` degisince kosar.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     returnFocusRef.current = document.activeElement as HTMLElement | null;
@@ -57,7 +65,7 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
     (first ?? panelRef.current)?.focus();
 
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "Escape") { onCloseRef.current(); return; }
       if (e.key !== "Tab") return;
       const list = focusables();
       if (list.length === 0) { e.preventDefault(); panelRef.current?.focus(); return; }
@@ -82,7 +90,7 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
       const target = returnFocusRef.current;
       if (target && document.contains(target)) target.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   useEffect(() => {
     if (open) document.body.style.overflow = "hidden";
