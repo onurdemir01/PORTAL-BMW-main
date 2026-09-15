@@ -120,6 +120,14 @@ export default function NginxAuditHostPage() {
 
       {data && (
         <>
+          {data.exception && (
+            <Note tone="warning" title="Bu sunucu denetim istisnası">
+              {data.exception.note}
+              <div className="mt-1 text-[var(--text-muted)]">
+                {data.exception.by ? `${data.exception.by}` : ''}{data.exception.at ? ` · ${new Date(data.exception.at).toLocaleString('tr-TR')}` : ''} — listede metrikler gösterilmez ve toplamlara girmez; bu sayfa ham veriyi göstermeye devam eder.
+              </div>
+            </Note>
+          )}
           {data.status !== 'ok' && (
             <Note tone="danger" title="nginx -T hata verdi — konfigürasyon reload edilemez">
               <span className="font-mono">{data.statusMsg}</span>

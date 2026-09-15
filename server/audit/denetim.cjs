@@ -73,7 +73,8 @@ function initDenetim(app) {
   // YANIT ONBELLEGI (2026-09-15): gorunurluk kapisindan SONRA - onbellek yetki
   // kontrolunu atlayamaz. 60 sn; ?fresh=1 (Yenile dugmesi) atlar. Bkz. response-cache.cjs
   const { createResponseCache } = require('./response-cache.cjs');
-  router.use(createResponseCache().middleware);
+  const responseCache = createResponseCache();
+  router.use(responseCache.middleware);
 
   // ── 1) NGINX SPA AUDIT ──────────────────────────────────────────────────────────────
   // Nginx_Config_Audit gunluk satir tutar; HER ZAMAN en son scan_date okunur (tarih
@@ -866,7 +867,12 @@ function initDenetim(app) {
       .then((r) => r.recordset || [])
       .catch(() => []);
 
-    const [hosts, servers, locations, upstreams, settings, files, inventory] = await Promise.all([
+    // Istisnalar Portal DB'sinde (nginx_audit_exceptions); tablo yoksa bos.
+    const excQ = require('../db/index.cjs')
+      .query(`SELECT host, note, created_by, created_at, updated_by, updated_at FROM nginx_audit_exceptions`)
+      .then((r) => r.rows || [])
+      .catch(() => []);
+    const [hosts, servers, locations, upstreams, settings, files, inventory, exceptions] = await Promise.all([
       q(`SELECT host, status, status_msg, files, server_blocks, locations,
                 locations_proxy, upstreams, ups_no_resolve, ups_no_keepalive,
                 ups_no_zone, unused_upstreams, proxy_fqdn, proxy_undefined,
@@ -882,6 +888,7 @@ function initDenetim(app) {
            FROM dbo.Nginx_Audit_Settings ${latest('Nginx_Audit_Settings')}`),
       filesQ,
       invQ,
+      excQ,
     ]);
 
     const out = summarizeAudit({
@@ -892,6 +899,7 @@ function initDenetim(app) {
       settings: settings.recordset || [],
       files: files.rows,
       inventory,
+      exceptions,
     });
     return { ok: true, schemaReady: true, filesReady: files.ready, scanDate, ...out };
   }
@@ -903,6 +911,53 @@ function initDenetim(app) {
       res.status(500).json({ ok: false, message: err.message || 'Nginx audit verisi alınamadı.' });
     }
   });
+
+  // ── Nginx Audit istisnalari (2026-09-15): yalniz Admin yazar, herkes gorur ────────────
+  {
+    const db = require('../db/index.cjs');
+    let requireAdmin = (_req, res) => res.status(403).json({ ok: false, message: 'Yetki yok.' });
+    let getRequestUser = () => null;
+    try {
+      const auth = require('../auth/index.cjs');
+      if (typeof auth.requireAdmin === 'function') requireAdmin = auth.requireAdmin;
+      if (typeof auth.getRequestUser === 'function') getRequestUser = auth.getRequestUser;
+    } catch { /* auth modulu yoksa yazma kapali kalir */ }
+    const HOST_RE = /^[A-Z0-9._-]{1,64}$/;
+
+    router.put('/nginx-audit/exceptions/:host', requireAdmin, async (req, res) => {
+      const host = String(req.params.host || '').trim().toUpperCase();
+      const note = String(req.body?.note || '').trim().slice(0, 500);
+      if (!HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+      if (!note) return res.status(400).json({ ok: false, message: 'İstisna notu zorunlu (neden istisna?).' });
+      const by = (getRequestUser(req) || {}).username || null;
+      try {
+        const ex = await db.query(`SELECT 1 FROM nginx_audit_exceptions WHERE host = $1`, [host]);
+        if (ex.rows.length) {
+          await db.query(`UPDATE nginx_audit_exceptions SET note = $2, updated_by = $3, updated_at = GETUTCDATE() WHERE host = $1`, [host, note, by]);
+        } else {
+          await db.query(`INSERT INTO nginx_audit_exceptions (host, note, created_by, updated_by) VALUES ($1, $2, $3, $3)`, [host, note, by]);
+        }
+        responseCache.clear();
+        try { require('./index.cjs').auditPortal(req, 'nginx_audit_exception_set', { username: by, result: 'ok', detail: JSON.stringify({ host, note }) }); } catch { /* yoksay */ }
+        res.json({ ok: true, host, note, by });
+      } catch (err) {
+        res.status(503).json({ ok: false, message: err.message });
+      }
+    });
+
+    router.delete('/nginx-audit/exceptions/:host', requireAdmin, async (req, res) => {
+      const host = String(req.params.host || '').trim().toUpperCase();
+      if (!HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+      try {
+        await db.query(`DELETE FROM nginx_audit_exceptions WHERE host = $1`, [host]);
+        responseCache.clear();
+        try { require('./index.cjs').auditPortal(req, 'nginx_audit_exception_clear', { username: (getRequestUser(req) || {}).username, result: 'ok', detail: JSON.stringify({ host }) }); } catch { /* yoksay */ }
+        res.json({ ok: true, host });
+      } catch (err) {
+        res.status(503).json({ ok: false, message: err.message });
+      }
+    });
+  }
 
   // Tek sunucunun ayrintisi (Denetim > Nginx Audit > sunucu sayfasi).
   router.get('/nginx-audit/host/:host', async (req, res) => {

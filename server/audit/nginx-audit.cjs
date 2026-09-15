@@ -26,9 +26,11 @@ function baseName(p) {
  * Alti tablonun satirlarini host bazinda birlestirir.
  * @param inventory  [{host, env}] dbo.Inventory - ad kalibi tutmayan hostlarin ortami
  * @param files      dbo.Nginx_Audit_Files satirlari (tablo yoksa bos)
+ * @param exceptions [{host, note, created_by, created_at, updated_by, updated_at}] - istisnali
+ *                   sunucular: metrikler gosterilmez, toplamlara girmez, puan 0 (listede sona)
  * @returns {{hosts: Array, totals: Object}}
  */
-function summarizeAudit({ hosts, servers, locations, upstreams, settings, files, inventory }) {
+function summarizeAudit({ hosts, servers, locations, upstreams, settings, files, inventory, exceptions }) {
   const byHost = new Map();
   const H = (h) => String(h || '').trim().toUpperCase();
 
@@ -221,16 +223,29 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     if (identical === false) h.refFilesDiff += 1;
   }
 
+  // ISTISNALAR (2026-09-15): kayit varsa host.exception dolar; metrikler ham olarak kalir
+  // (sunucu sayfasi gostermeye devam eder) ama puan 0 ve toplamlara girmez.
+  const excMap = new Map();
+  for (const e of exceptions || []) {
+    const h = H(e.host);
+    if (h) excMap.set(h, {
+      note: String(e.note || ''),
+      by: e.updated_by || e.created_by || null,
+      at: e.updated_at ? new Date(e.updated_at).toISOString() : (e.created_at ? new Date(e.created_at).toISOString() : null),
+    });
+  }
+
   const list = [...byHost.values()];
   for (const h of list) {
+    h.exception = excMap.get(h.host) || null;
     h.servers.sort((a, b) => a.seq - b.seq);
     h.locationsByFile.sort((a, b) => b.total - a.total || a.file.localeCompare(b.file));
     h.upstreamList.sort((a, b) => a.name.localeCompare(b.name));
     h.settingsMismatched.sort((a, b) => a.directive.localeCompare(b.directive));
     h.settingsOverrides.sort((a, b) => b.count - a.count || a.directive.localeCompare(b.directive));
     h.refFiles.sort((a, b) => a.refFile.localeCompare(b.refFile));
-    // Sunucunun "sorun puani": once nginx davranisini bozanlar.
-    h.issues =
+    // Sunucunun "sorun puani": once nginx davranisini bozanlar. Istisnali sunucu 0.
+    h.issues = h.exception ? 0 :
       (h.status === 'fail' ? 1000 : 0) +
       h.proxyUndefined * 100 +
       h.settingsMismatch * 10 +
@@ -241,10 +256,14 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
   }
   list.sort((a, b) => b.issues - a.issues || a.host.localeCompare(b.host));
 
-  const sum = (f) => list.reduce((a, h) => a + f(h), 0);
+  // Toplamlar istisnalilari SAYMAZ (kullanici: kafa karistirici metrikler gorunmesin);
+  // kac sunucunun istisna oldugu ayrica bildirilir.
+  const counted = list.filter((h) => !h.exception);
+  const sum = (f) => counted.reduce((a, h) => a + f(h), 0);
   const totals = {
     hosts: list.length,
-    configInvalid: list.filter((h) => h.status === 'fail').length,
+    excepted: list.length - counted.length,
+    configInvalid: counted.filter((h) => h.status === 'fail').length,
     serverBlocks: sum((h) => h.serverBlocks),
     locations: sum((h) => h.locations),
     upstreams: sum((h) => h.upstreams),
@@ -254,10 +273,10 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     upsNoResolve: sum((h) => h.upsNoResolve),
     upsNoKeepalive: sum((h) => h.upsNoKeepalive),
     settingsMismatch: sum((h) => h.settingsMismatch),
-    hostsWithMismatch: list.filter((h) => h.settingsMismatch > 0).length,
+    hostsWithMismatch: counted.filter((h) => h.settingsMismatch > 0).length,
     refFilesDiff: sum((h) => h.refFilesDiff),
     refFilesMissing: sum((h) => h.refFilesMissing),
-    hostsWithFileDiff: list.filter((h) => h.refFilesDiff > 0 || h.refFilesMissing > 0).length,
+    hostsWithFileDiff: counted.filter((h) => h.refFilesDiff > 0 || h.refFilesMissing > 0).length,
     hostsEnvUnknown: list.filter((h) => h.env === UNKNOWN_ENV).length,
   };
 

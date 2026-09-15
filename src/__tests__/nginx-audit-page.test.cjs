@@ -160,3 +160,19 @@ test('Production Tasimalari: "Eski tanimi kaldir" dugmesi - nginx_ops delete aki
   assert.ok(srv.includes("router.post('/delete'") && srv.includes("action: 'delete'") && srv.includes("env: 'prod'"));
   assert.ok(srv.includes('{ ignoreStatus: true }'), 'silmede yeni sunucu hazirligi aranmamali');
 });
+
+test('Nginx Audit istisna: gri metrikler, en sagda rozet + not, Admin duzenler, sunucu sayfasinda bant', () => {
+  const list = read('components/denetim/NginxAudit.tsx');
+  assert.ok(list.includes("exc ? muted : n ?"), 'istisnali satirda metrik hucreleri gri olmali');
+  assert.ok(list.includes('<Th><span title="İstisna:'), 'Istisna sutunu yok');
+  assert.ok(list.includes('denetimApi.nginxAuditExceptionSet(') && list.includes('denetimApi.nginxAuditExceptionClear('), 'kaydet/kaldir uclari cagrilmiyor');
+  assert.ok(list.includes("disabled={excBusy || !excEdit?.note.trim()}"), 'not zorunlu olmali');
+  assert.ok(list.includes('canEdit={isAdmin}'), 'yalniz Admin duzenler');
+  const page = read('components/denetim/NginxAuditHostPage.tsx');
+  assert.ok(page.includes('Bu sunucu denetim istisnası'), 'sunucu sayfasinda bant yok');
+  const srv = read('../server/audit/denetim.cjs');
+  assert.ok(srv.includes("router.put('/nginx-audit/exceptions/:host', requireAdmin") && srv.includes("router.delete('/nginx-audit/exceptions/:host', requireAdmin"));
+  assert.ok(srv.includes('responseCache.clear();'), 'istisna yazilinca yanit onbellegi temizlenmeli');
+  const schema = read('../server/db/mssql-setup.cjs');
+  assert.ok(schema.includes('CREATE TABLE nginx_audit_exceptions'));
+});

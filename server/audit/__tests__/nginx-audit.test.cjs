@@ -258,3 +258,28 @@ test('dosya uyumu: birebir / farkli / eksik ayrisir, ayrinti JSON cozulur, puana
   const p8 = out.hosts.find((h) => h.host === 'GBRVPP08');
   assert.equal(p8.refFilesDiff, 0);
 });
+
+// ── Istisnalar (2026-09-15): metrikler toplamlara girmez, puan 0, rozet + not ───────
+test('istisnali sunucu: exception dolu, puan 0 (listede sona), toplamlar onu SAYMAZ, excepted sayilir', () => {
+  const out = summarizeAudit({
+    hosts: [
+      host('GBISTISNA', { proxy_undefined: 3, settings_mismatch: 5, status: 'fail' }),
+      host('GBNORMAL', { settings_mismatch: 1 }),
+    ],
+    servers: [], locations: [], upstreams: [], settings: [],
+    exceptions: [{ host: 'gbistisna', note: 'Eski reverse proxy, referans uygulanmaz', created_by: 'odemir', created_at: '2026-09-15T08:00:00Z' }],
+  });
+  const ex = out.hosts.find((h) => h.host === 'GBISTISNA');
+  assert.equal(ex.exception.note, 'Eski reverse proxy, referans uygulanmaz');
+  assert.equal(ex.exception.by, 'odemir');
+  assert.equal(ex.issues, 0, 'istisnali sunucunun puani 0');
+  assert.equal(ex.proxyUndefined, 3, 'ham metrik korunur (sunucu sayfasi gosterir)');
+  assert.equal(out.hosts[0].host, 'GBNORMAL', 'istisnali sunucu listede sona duser');
+  assert.equal(out.totals.hosts, 2);
+  assert.equal(out.totals.excepted, 1);
+  assert.equal(out.totals.configInvalid, 0, 'istisnali sunucunun -T hatasi toplama girmez');
+  assert.equal(out.totals.proxyUndefined, 0);
+  assert.equal(out.totals.settingsMismatch, 1);
+  assert.equal(out.totals.hostsWithMismatch, 1);
+  assert.equal(out.hosts.find((h) => h.host === 'GBNORMAL').exception, null);
+});

@@ -440,6 +440,8 @@ export interface NginxAuditHost {
   settingsMismatched: NginxAuditSettingMismatch[];
   settingsOverrides: NginxAuditSettingOverride[];
   refFiles: NginxAuditRefFile[];
+  /** Istisna kaydi (Portal DB): varsa metrikler gosterilmez, toplamlara girmez */
+  exception: { note: string; by: string | null; at: string | null } | null;
   /** referanstan farkli (ya da eksik) kurulum dosyasi sayisi */
   refFilesDiff: number;
   refFilesMissing: number;
@@ -477,6 +479,8 @@ export interface NginxAuditResult {
     refFilesMissing: number;
     hostsWithFileDiff: number;
     hostsEnvUnknown: number;
+    /** istisnali sunucu sayisi (toplamlarin disinda) */
+    excepted: number;
     upsNoKeepalive: number;
     settingsMismatch: number;
     hostsWithMismatch: number;
@@ -944,6 +948,16 @@ export const denetimApi = {
   // fresh=true: sunucu onbellegini atla (Yenile dugmesi). Varsayilan: 60 sn onbellek.
   nginxAudit: (fresh = false): Promise<NginxAuditResult> =>
     fetch(`${BASE}/nginx-audit${fresh ? '?fresh=1' : ''}`).then(safeJson),
+
+  nginxAuditExceptionSet: (host: string, note: string): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/nginx-audit/exceptions/${encodeURIComponent(host)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note }),
+    }).then(safeJson),
+
+  nginxAuditExceptionClear: (host: string): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/nginx-audit/exceptions/${encodeURIComponent(host)}`, { method: 'DELETE' }).then(safeJson),
 
   nginxAuditHost: (host: string): Promise<NginxAuditHostResult> =>
     fetch(`${BASE}/nginx-audit/host/${encodeURIComponent(host)}`).then(safeJson),

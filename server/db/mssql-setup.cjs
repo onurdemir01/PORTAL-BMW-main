@@ -673,6 +673,21 @@ const TABLES = [
       )`,
   },
   {
+    // Denetim > Nginx Audit istisnalari (2026-09-15, kullanici talebi): istisnali sunucuda
+    // metrikler (ayar sapmasi/atlayan/tanimsiz/dosya farki) gosterilmez, toplamlara girmez;
+    // en sagda rozet + not. Not zorunlu - "neden istisna" kaybolmasin.
+    name: 'nginx_audit_exceptions',
+    sql: `
+      CREATE TABLE nginx_audit_exceptions (
+        host        NVARCHAR(64)  NOT NULL PRIMARY KEY,
+        note        NVARCHAR(500) NOT NULL,
+        created_by  NVARCHAR(128) NULL,
+        created_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by  NVARCHAR(128) NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Nginx SPA > Production Tasimalari takibi (2026-09-14, kullanici talebi): uygulama
     // basina gecis durumu/tarihi. Kaynak gorunum (hangi uygulamalar) MSSQL denetim
     // tablolarindan hesaplanir; BURASI yalnizca insan girdisi: planlanan/gecis tarihi, not.
