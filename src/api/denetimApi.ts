@@ -432,6 +432,9 @@ export interface NginxAuditHost {
   unusedUpstreams: number;
   proxyFqdn: number;
   proxyUndefined: number;
+  /** Istisnada sifirlanan degerlerin ham hali (sunucu sayfasi / iyimser guncelleme). */
+  proxyFqdnRaw?: number;
+  proxyUndefinedRaw?: number;
   settingsMismatch: number;
   issues: number;
   servers: NginxAuditServer[];
@@ -949,7 +952,7 @@ export const denetimApi = {
   nginxAudit: (fresh = false): Promise<NginxAuditResult> =>
     fetch(`${BASE}/nginx-audit${fresh ? '?fresh=1' : ''}`).then(safeJson),
 
-  nginxAuditExceptionSet: (host: string, note: string): Promise<{ ok: boolean; message?: string }> =>
+  nginxAuditExceptionSet: (host: string, note: string): Promise<{ ok: boolean; message?: string; by?: string | null }> =>
     fetch(`${BASE}/nginx-audit/exceptions/${encodeURIComponent(host)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

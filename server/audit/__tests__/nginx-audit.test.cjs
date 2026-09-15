@@ -259,11 +259,12 @@ test('dosya uyumu: birebir / farkli / eksik ayrisir, ayrinti JSON cozulur, puana
   assert.equal(p8.refFilesDiff, 0);
 });
 
-// ── Istisnalar (2026-09-15): metrikler toplamlara girmez, puan 0, rozet + not ───────
-test('istisnali sunucu: exception dolu, puan 0 (listede sona), toplamlar onu SAYMAZ, excepted sayilir', () => {
+// ── Istisnalar (2026-09-15, ikinci tur — kullanici karari): istisna YALNIZ "Atlayan" ve
+// "Tanimsiz"i sifirlar; "Ayar sapmasi" ve "Dosya farki" gosterilmeye ve sayilmaya devam eder.
+test('istisnali sunucu: atlayan/tanimsiz 0 (ham korunur), ayar sapmasi + dosya farki SAYILIR, excepted sayilir', () => {
   const out = summarizeAudit({
     hosts: [
-      host('GBISTISNA', { proxy_undefined: 3, settings_mismatch: 5, status: 'fail' }),
+      host('GBISTISNA', { proxy_undefined: 3, proxy_fqdn: 7, settings_mismatch: 5 }),
       host('GBNORMAL', { settings_mismatch: 1 }),
     ],
     servers: [], locations: [], upstreams: [], settings: [],
@@ -272,14 +273,18 @@ test('istisnali sunucu: exception dolu, puan 0 (listede sona), toplamlar onu SAY
   const ex = out.hosts.find((h) => h.host === 'GBISTISNA');
   assert.equal(ex.exception.note, 'Eski reverse proxy, referans uygulanmaz');
   assert.equal(ex.exception.by, 'odemir');
-  assert.equal(ex.issues, 0, 'istisnali sunucunun puani 0');
-  assert.equal(ex.proxyUndefined, 3, 'ham metrik korunur (sunucu sayfasi gosterir)');
-  assert.equal(out.hosts[0].host, 'GBNORMAL', 'istisnali sunucu listede sona duser');
+  assert.equal(ex.proxyUndefined, 0, 'istisna: tanimsiz sifirlanir');
+  assert.equal(ex.proxyFqdn, 0, 'istisna: atlayan sifirlanir');
+  assert.equal(ex.proxyUndefinedRaw, 3, 'ham deger korunur (sunucu sayfasi gosterir)');
+  assert.equal(ex.proxyFqdnRaw, 7);
+  assert.equal(ex.settingsMismatch, 5, 'ayar sapmasi istisnada da gosterilir');
+  assert.equal(ex.issues, 50, 'puan yalniz ayar sapmasindan (5x10); atlayan/tanimsiz girmez');
+  assert.equal(out.hosts[0].host, 'GBISTISNA', 'ayar sapmasi buyuk oldugu icin listede onde kalir');
   assert.equal(out.totals.hosts, 2);
   assert.equal(out.totals.excepted, 1);
-  assert.equal(out.totals.configInvalid, 0, 'istisnali sunucunun -T hatasi toplama girmez');
-  assert.equal(out.totals.proxyUndefined, 0);
-  assert.equal(out.totals.settingsMismatch, 1);
-  assert.equal(out.totals.hostsWithMismatch, 1);
+  assert.equal(out.totals.proxyUndefined, 0, 'istisnalinin tanimsizi toplama girmez');
+  assert.equal(out.totals.proxyFqdn, 0);
+  assert.equal(out.totals.settingsMismatch, 6, 'ayar sapmasi istisnali dahil sayilir');
+  assert.equal(out.totals.hostsWithMismatch, 2);
   assert.equal(out.hosts.find((h) => h.host === 'GBNORMAL').exception, null);
 });

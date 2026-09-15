@@ -161,9 +161,15 @@ test('Production Tasimalari: "Eski tanimi kaldir" dugmesi - nginx_ops delete aki
   assert.ok(srv.includes('{ ignoreStatus: true }'), 'silmede yeni sunucu hazirligi aranmamali');
 });
 
-test('Nginx Audit istisna: gri metrikler, en sagda rozet + not, Admin duzenler, sunucu sayfasinda bant', () => {
+test('Nginx Audit istisna: YALNIZ atlayan/tanimsiz gri, ayar sapmasi + dosya farki gorunur, iyimser guncelleme, Admin duzenler', () => {
   const list = read('components/denetim/NginxAudit.tsx');
-  assert.ok(list.includes("exc ? muted : n ?"), 'istisnali satirda metrik hucreleri gri olmali');
+  // Ikinci tur (2026-09-15): istisna yalniz proxy hucrelerini griler; ayar sapmasi ve dosya farki
+  // normal hucre. Kaydettikten sonra tam yeniden yukleme ("Yukleniyor...") YOK, satir aninda guncellenir.
+  assert.ok(list.includes('proxyCell(h.proxyFqdn)') && list.includes('proxyCell(h.proxyUndefined, true)'), 'atlayan/tanimsiz istisnada gri olmali');
+  assert.ok(list.includes('numCell(h.settingsMismatch, true)'), 'ayar sapmasi istisnada da gosterilmeli');
+  assert.ok(!/\{exc \? \(\s*muted\s*\) : !filesReady/.test(list), 'dosya farki istisnada gizlenmemeli');
+  assert.ok(list.includes('applyExceptionLocally(excEdit.host') && list.includes('void refreshQuietly()'), 'kaydettikten sonra iyimser guncelleme + sessiz tazeleme olmali');
+  assert.ok(!/nginxAuditExceptionSet\([\s\S]{0,200}await load\(\)/.test(list), 'kaydettikten sonra tam yeniden yukleme (spinner) olmamali');
   assert.ok(list.includes('<Th><span title="İstisna:'), 'Istisna sutunu yok');
   assert.ok(list.includes('denetimApi.nginxAuditExceptionSet(') && list.includes('denetimApi.nginxAuditExceptionClear('), 'kaydet/kaldir uclari cagrilmiyor');
   assert.ok(list.includes("disabled={excBusy || !excEdit?.note.trim()}"), 'not zorunlu olmali');

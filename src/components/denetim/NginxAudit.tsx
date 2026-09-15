@@ -91,6 +91,37 @@ export function NginxAudit() {
     };
   }, []);
 
+  // IYIMSER GUNCELLEME (2026-09-15 kullanici bildirimi: "hemen eklemiyor, cok bekletiyor"):
+  // kaydettikten sonra tum denetim (agir sorgu) yeniden yuklenip tablo "Yukleniyor…"a
+  // dusuyordu. Simdi satir ANINDA yerel olarak guncellenir; tam veri arka planda,
+  // yukleme gostergesi olmadan tazelenir (toplam kartlari o zaman oturur).
+  function applyExceptionLocally(host: string, exception: NginxAuditHost['exception']) {
+    setData((prev) => {
+      if (!prev) return prev;
+      const hosts = prev.hosts.map((h) => {
+        if (h.host !== host) return h;
+        const raw = { fqdn: h.proxyFqdnRaw ?? h.proxyFqdn, undef: h.proxyUndefinedRaw ?? h.proxyUndefined };
+        return {
+          ...h,
+          exception,
+          proxyFqdnRaw: raw.fqdn,
+          proxyUndefinedRaw: raw.undef,
+          proxyFqdn: exception ? 0 : raw.fqdn,
+          proxyUndefined: exception ? 0 : raw.undef,
+        };
+      });
+      const excepted = hosts.filter((h) => h.exception).length;
+      return { ...prev, hosts, totals: { ...prev.totals, excepted } };
+    });
+  }
+  async function refreshQuietly() {
+    try {
+      const r = await denetimApi.nginxAudit(true);
+      if (r.ok) setData(r);
+    } catch {
+      /* iyimser durum zaten ekranda; bir sonraki Yenile duzeltir */
+    }
+  }
   async function saveException() {
     if (!excEdit) return;
     setExcBusy(true);
@@ -98,8 +129,9 @@ export function NginxAudit() {
     try {
       const r = await denetimApi.nginxAuditExceptionSet(excEdit.host, excEdit.note.trim());
       if (r.ok) {
+        applyExceptionLocally(excEdit.host, { note: excEdit.note.trim(), by: r.by ?? null, at: new Date().toISOString() });
         setExcEdit(null);
-        await load();
+        void refreshQuietly();
       } else setExcMsg(r.message || 'Kaydedilemedi.');
     } catch (e: unknown) {
       setExcMsg(e instanceof Error ? e.message : String(e));
@@ -113,8 +145,9 @@ export function NginxAudit() {
     try {
       const r = await denetimApi.nginxAuditExceptionClear(excEdit.host);
       if (r.ok) {
+        applyExceptionLocally(excEdit.host, null);
         setExcEdit(null);
-        await load();
+        void refreshQuietly();
       } else setExcMsg(r.message || 'Kaldırılamadı.');
     } catch (e: unknown) {
       setExcMsg(e instanceof Error ? e.message : String(e));
@@ -398,8 +431,9 @@ export function NginxAudit() {
         {excEdit && (
           <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
             <p>
-              <b>{excEdit.host}</b> istisna olarak işaretlenince listede ayar sapması / atlayan / tanımsız / dosya farkı hücreleri
-              gösterilmez, sunucu toplam kartlarına girmez ve sıralamada sona düşer. Sunucu sayfası ham veriyi göstermeye devam eder.
+              <b>{excEdit.host}</b> istisna olarak işaretlenince yalnızca <b>Atlayan</b> ve <b>Tanımsız</b> sıfırlanır (upstream
+              katmanı bilerek yok sayılır); <b>Ayar sapması</b> ve <b>Dosya farkı</b> gösterilmeye ve sayılmaya devam eder. Sunucu
+              sayfası ham veriyi göstermeye devam eder.
             </p>
             <label className="flex flex-col gap-1">
               <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Not (zorunlu — neden istisna?)</span>
@@ -429,11 +463,13 @@ function envSourceHint(src: string): string {
 function HostRow({ h, filesReady, canEdit, onEditException }: { h: NginxAuditHost; filesReady: boolean; canEdit: boolean; onEditException: () => void }) {
   const navigate = useNavigate();
   const dash = <span className="text-[var(--text-muted)]">—</span>;
-  // Istisnali sunucuda metrik hucreleri GRI: sayi gosterilmez (kafa karistirmasin).
+  // Istisnali sunucuda YALNIZ atlayan/tanimsiz hucreleri gri (upstream katmani bilerek yok);
+  // ayar sapmasi ve dosya farki normal gosterilir (kullanici karari, 2026-09-15).
   const exc = !!h.exception;
-  const muted = <span className="text-[var(--text-muted)] opacity-50" title="istisna: metrik gösterilmiyor">—</span>;
+  const muted = <span className="text-[var(--text-muted)] opacity-50" title="istisna: bu metrik sayılmıyor">—</span>;
   const numCell = (n: number, bad?: boolean) =>
-    exc ? muted : n ? <span className={bad ? 'text-red-600 font-semibold' : ''}>{nf(n)}</span> : dash;
+    n ? <span className={bad ? 'text-red-600 font-semibold' : ''}>{nf(n)}</span> : dash;
+  const proxyCell = (n: number, bad?: boolean) => (exc ? muted : numCell(n, bad));
   const to = hostPagePath(h.host);
   // Satirin tamami tiklanabilir; sunucu adi gercek bir <Link> - orta tik / ctrl+tik
   // yeni sekmede acar (kullanici bircok sunucuyu yan yana bakmak isteyebilir).
@@ -471,13 +507,11 @@ function HostRow({ h, filesReady, canEdit, onEditException }: { h: NginxAuditHos
       </Td>
       <Td align="right" className="tabular-nums">{nf(h.upstreams)}</Td>
       <Td align="right" className="tabular-nums">{numCell(h.upsNoResolve)}</Td>
-      <Td align="right" className="tabular-nums">{numCell(h.proxyFqdn)}</Td>
-      <Td align="right" className="tabular-nums">{numCell(h.proxyUndefined, true)}</Td>
+      <Td align="right" className="tabular-nums">{proxyCell(h.proxyFqdn)}</Td>
+      <Td align="right" className="tabular-nums">{proxyCell(h.proxyUndefined, true)}</Td>
       <Td align="right" className="tabular-nums">{numCell(h.settingsMismatch, true)}</Td>
       <Td align="right" className="tabular-nums">
-        {exc ? (
-          muted
-        ) : !filesReady ? (
+        {!filesReady ? (
           dash
         ) : h.refFilesMissing ? (
           <span className="text-red-600 font-semibold" title={`${nf(h.refFilesMissing)} dosya sunucuda yok`}>

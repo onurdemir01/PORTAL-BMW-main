@@ -223,8 +223,11 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     if (identical === false) h.refFilesDiff += 1;
   }
 
-  // ISTISNALAR (2026-09-15): kayit varsa host.exception dolar; metrikler ham olarak kalir
-  // (sunucu sayfasi gostermeye devam eder) ama puan 0 ve toplamlara girmez.
+  // ISTISNALAR (2026-09-15, ikinci tur): kayit varsa host.exception dolar. Istisna YALNIZ
+  // "Atlayan" (proxyFqdn) ve "Tanimsiz" (proxyUndefined) metriklerini sifirlar — eski
+  // reverse proxy'de upstream katmani bilerek yok; bunlar bulgu degil. "Ayar sapmasi" ve
+  // "Dosya farki" GOSTERILMEYE ve sayilmaya DEVAM eder (kullanici karari: kurulum referansi
+  // istisnali sunucuda da gecerli). Ham degerler *Raw alanlarinda korunur (sunucu sayfasi).
   const excMap = new Map();
   for (const e of exceptions || []) {
     const h = H(e.host);
@@ -244,8 +247,15 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     h.settingsMismatched.sort((a, b) => a.directive.localeCompare(b.directive));
     h.settingsOverrides.sort((a, b) => b.count - a.count || a.directive.localeCompare(b.directive));
     h.refFiles.sort((a, b) => a.refFile.localeCompare(b.refFile));
-    // Sunucunun "sorun puani": once nginx davranisini bozanlar. Istisnali sunucu 0.
-    h.issues = h.exception ? 0 :
+    h.proxyFqdnRaw = h.proxyFqdn;
+    h.proxyUndefinedRaw = h.proxyUndefined;
+    if (h.exception) {
+      h.proxyFqdn = 0;
+      h.proxyUndefined = 0;
+    }
+    // Sunucunun "sorun puani": once nginx davranisini bozanlar. Istisnali sunucuda
+    // atlayan/tanimsiz zaten 0; ayar sapmasi ve dosya farki puana girmeye devam eder.
+    h.issues =
       (h.status === 'fail' ? 1000 : 0) +
       h.proxyUndefined * 100 +
       h.settingsMismatch * 10 +
@@ -256,14 +266,14 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
   }
   list.sort((a, b) => b.issues - a.issues || a.host.localeCompare(b.host));
 
-  // Toplamlar istisnalilari SAYMAZ (kullanici: kafa karistirici metrikler gorunmesin);
-  // kac sunucunun istisna oldugu ayrica bildirilir.
-  const counted = list.filter((h) => !h.exception);
-  const sum = (f) => counted.reduce((a, h) => a + f(h), 0);
+  // Toplamlar: istisnali sunucunun atlayan/tanimsiz degerleri zaten 0; diger metrikleri
+  // (ayar sapmasi, dosya farki, -T hatasi...) HERKES gibi sayilir. Kac sunucunun istisna
+  // oldugu ayrica bildirilir.
+  const sum = (f) => list.reduce((a, h) => a + f(h), 0);
   const totals = {
     hosts: list.length,
-    excepted: list.length - counted.length,
-    configInvalid: counted.filter((h) => h.status === 'fail').length,
+    excepted: list.filter((h) => h.exception).length,
+    configInvalid: list.filter((h) => h.status === 'fail').length,
     serverBlocks: sum((h) => h.serverBlocks),
     locations: sum((h) => h.locations),
     upstreams: sum((h) => h.upstreams),
@@ -273,10 +283,10 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     upsNoResolve: sum((h) => h.upsNoResolve),
     upsNoKeepalive: sum((h) => h.upsNoKeepalive),
     settingsMismatch: sum((h) => h.settingsMismatch),
-    hostsWithMismatch: counted.filter((h) => h.settingsMismatch > 0).length,
+    hostsWithMismatch: list.filter((h) => h.settingsMismatch > 0).length,
     refFilesDiff: sum((h) => h.refFilesDiff),
     refFilesMissing: sum((h) => h.refFilesMissing),
-    hostsWithFileDiff: counted.filter((h) => h.refFilesDiff > 0 || h.refFilesMissing > 0).length,
+    hostsWithFileDiff: list.filter((h) => h.refFilesDiff > 0 || h.refFilesMissing > 0).length,
     hostsEnvUnknown: list.filter((h) => h.env === UNKNOWN_ENV).length,
   };
 
