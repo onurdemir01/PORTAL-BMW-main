@@ -41,14 +41,18 @@ function normEnv(v) {
 // (ocp_cluster_index; tree[env][tenant] = [cluster...]). nginx_ops'ta tenant secimi
 // yoktur; ortamin TUM tenant'larindaki cluster'lar birlestirilir. Katalogda o ortam
 // yoksa bos doner; cagiran namespace son-eki (`-test`) ile geri duser.
-async function clustersForEnv(env) {
+// `tenant` verilirse (or. 'ark' — RVP tanimlari YALNIZCA ARK cluster'i icin yapilir,
+// 2026-09-15 kullanici kurali) yalniz o tenant'in cluster'lari; yoksa ortamin tumu.
+async function clustersForEnv(env, tenant) {
   const key = String(env || '').trim().toLowerCase();
+  const ten = String(tenant || '').trim().toLowerCase();
   if (!key) return [];
   try {
     const tree = await require('../logx/v2/admin.cjs').getClusterTree();
     const byEnv = Object.entries(tree || {}).find(([k]) => String(k).toLowerCase() === key);
     if (!byEnv) return [];
-    return [...new Set(Object.values(byEnv[1]).flat().map((c) => String(c || '').trim()).filter(Boolean))];
+    const groups = Object.entries(byEnv[1]).filter(([t]) => !ten || String(t).toLowerCase() === ten);
+    return [...new Set(groups.map(([, cs]) => cs).flat().map((c) => String(c || '').trim()).filter(Boolean))];
   } catch {
     return [];
   }
@@ -60,9 +64,9 @@ const SPA_RE = /-app(-emb)?-v/i;
 
 // dbo.Openshift_Inventory: ortamin cluster'larindaki (namespace, application) ciftleri.
 // Cluster katalogu bos ise namespace son-eki ile daralir (digital-ch-test -> test).
-async function ocpPairsForEnv(env) {
+async function ocpPairsForEnv(env, tenant) {
   const { query, sql } = require('../inventory/mssql.cjs');
-  const clusters = await clustersForEnv(env);
+  const clusters = await clustersForEnv(env, tenant);
   let rows;
   if (clusters.length) {
     const params = clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(128), value: c }));
@@ -74,6 +78,9 @@ async function ocpPairsForEnv(env) {
       )
     ).recordset;
   } else {
+    // Katalogda o ortam/tenant yoksa: tenant verilmisse BOS doner (yanlis cluster'in
+    // namespace'lerini listelemektense hic listelememek yegdir); tenant yoksa son-ek.
+    if (String(tenant || '').trim()) return [];
     const suffix = '%-' + String(env || '').trim().toLowerCase();
     rows = (
       await query(
@@ -110,10 +117,13 @@ const SOURCES = {
   // Self Servis > Nginx - RVP Operations (nginx_ops): OpenShift namespace'leri. LogX/OpsX
   // ile AYNI envanter tablosu (Openshift_Inventory), ortam cluster katalogundan.
   'ocp-namespaces': {
-    label: 'OpenShift namespace listesi (Openshift Uygulama Envanteri, ortama göre)',
+    label: 'OpenShift namespace listesi (Openshift Uygulama Envanteri, ortam + cluster grubu)',
     params: [{ name: 'env', label: 'Ortam alanı (dev/test/qa/prod)', required: true }],
-    async load({ env }) {
-      const pairs = await ocpPairsForEnv(env);
+    // SABIT secenekler (form alanina bagli degil; admin ekraninda metin olarak girilir).
+    // tenant: ocp_cluster_index.tenant (LogX/OpsX ile ayni katalog) — RVP icin 'ark'.
+    options: [{ name: 'tenant', label: 'Cluster grubu (tenant, ör. ark)', default: 'ark' }],
+    async load({ env, tenant }) {
+      const pairs = await ocpPairsForEnv(env, tenant);
       const count = new Map();
       for (const p of pairs) {
         if (!p.namespace) continue;
@@ -138,9 +148,10 @@ const SOURCES = {
       { name: 'env', label: 'Ortam alanı', required: true },
       { name: 'namespace', label: 'Namespace alanı', required: true },
     ],
-    async load({ env, namespace }) {
+    options: [{ name: 'tenant', label: 'Cluster grubu (tenant, ör. ark)', default: 'ark' }],
+    async load({ env, namespace, tenant }) {
       const ns = String(namespace || '').trim();
-      const pairs = await ocpPairsForEnv(env);
+      const pairs = await ocpPairsForEnv(env, tenant);
       const apps = [...new Set(pairs.filter((p) => p.namespace === ns && SPA_RE.test(p.application)).map((p) => p.application))];
       return apps.sort().map((a) => ({ value: a, label: a }));
     },
@@ -231,7 +242,12 @@ const SOURCES = {
 };
 
 function listSources() {
-  return Object.entries(SOURCES).map(([name, s]) => ({ name, label: s.label, params: s.params }));
+  return Object.entries(SOURCES).map(([name, s]) => ({
+    name,
+    label: s.label,
+    params: s.params,
+    options: s.options || [],
+  }));
 }
 
 function getSource(name) {
@@ -250,6 +266,11 @@ async function loadChoices(sourceName, params) {
     if (def.required && !v) return [];
     p[def.name] = v;
   }
+  // Sabit secenekler: istekte varsa o, yoksa kaynak varsayilani.
+  for (const def of src.options || []) {
+    const v = String((params || {})[def.name] ?? '').trim();
+    p[def.name] = v || String(def.default ?? '');
+  }
   const key = cacheKey(sourceName, p);
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.choices;
@@ -267,6 +288,10 @@ function paramsFromValues(choicesSource, values) {
   const map = (choicesSource && choicesSource.params) || {};
   for (const [param, fieldName] of Object.entries(map)) {
     out[param] = values ? values[String(fieldName)] : undefined;
+  }
+  // Sabit secenekler (admin ekraninda girilen; or. tenant=ark) parametrelere eklenir.
+  for (const [k, v] of Object.entries((choicesSource && choicesSource.options) || {})) {
+    if (String(v ?? '').trim()) out[k] = String(v).trim();
   }
   return out;
 }

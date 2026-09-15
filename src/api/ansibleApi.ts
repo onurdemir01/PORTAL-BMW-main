@@ -642,12 +642,15 @@ export interface ChoicesSource {
   params?: Record<string, string>;
   /** Zorunlu OLMAYAN parametreler: boş olsalar da liste çekilir (yalnızca daraltırlar). */
   optional?: string[];
+  /** Sabit seçenekler (form alanına bağlı değil; ör. tenant: 'ark'). */
+  options?: Record<string, string>;
 }
 
 export interface ChoiceSourceInfo {
   name: string;
   label: string;
   params: { name: string; label: string; required?: boolean }[];
+  options?: { name: string; label: string; default?: string }[];
 }
 
 export interface DynamicChoice {

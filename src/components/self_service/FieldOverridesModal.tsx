@@ -57,6 +57,13 @@ interface LocalFieldState {
   choicesSource?: ChoicesSource;
 }
 
+// Hangi alan tipleri kaynağa bağlanabilir. AWX survey alanında yalnızca metin (AWX'in
+// kendi seçim listesi olan alanı envanterle ezmek iki listeyi çeliştirir); Survey
+// Tasarımcısı alanında metin VE seçim tipleri (kullanıcı bildirimi 2026-09-15: "Metin"
+// alanlarda çıkmıyordu, asıl ihtiyaç namespace/uygulama gibi metin alanlarıydı).
+const SOURCE_BINDABLE_AWX = new Set(['text', 'textarea']);
+const SOURCE_BINDABLE_CUSTOM = new Set(['text', 'textarea', 'multiplechoice', 'multiselect']);
+
 // SEÇENEK KAYNAĞI EDİTÖRÜ (2026-09-15): serbest metin alanını veritabanından beslenen
 // listeye bağlar. Hem AWX survey alanı override'ında hem Survey Tasarımcısı özel
 // alanında aynı bileşen kullanılır; kaynak listesi sunucudan (/ss/choice-sources) gelir.
@@ -92,7 +99,14 @@ function ChoicesSourceEditor({
           const params: Record<string, string> = {};
           for (const p of src?.params || []) params[p.name] = others.includes(p.name) ? p.name : '';
           const optional = (src?.params || []).filter((p) => !p.required).map((p) => p.name);
-          onChange({ source: name, params, ...(optional.length ? { optional } : {}) });
+          const options: Record<string, string> = {};
+          for (const o of src?.options || []) options[o.name] = o.default ?? '';
+          onChange({
+            source: name,
+            params,
+            ...(optional.length ? { optional } : {}),
+            ...(Object.keys(options).length ? { options } : {}),
+          });
         }}
       >
         <option value="">Kapalı — kullanıcı serbest metin girer</option>
@@ -128,6 +142,19 @@ function ChoicesSourceEditor({
             </div>
           );
         })}
+      {info &&
+        (info.options || []).map((o) => (
+          <div key={o.name} className="flex items-center gap-2">
+            <span className="text-[11px] text-[var(--text-muted)] whitespace-nowrap">{o.label}</span>
+            <TextInput
+              value={value?.options?.[o.name] ?? o.default ?? ''}
+              placeholder={o.default || ''}
+              onChange={(e) =>
+                onChange({ ...value!, options: { ...(value?.options || {}), [o.name]: e.target.value } })
+              }
+            />
+          </div>
+        ))}
       {info && (
         <p className="text-[11px] text-[var(--text-muted)]">
           Kullanıcı listeden seçer; sunucu launch'ta değeri kaynağa karşı yeniden doğrular.
@@ -1020,7 +1047,7 @@ export default function FieldOverridesModal({
                       </div>
                     </div>
 
-                    {isChoiceType && choiceSources.length > 0 && (
+                    {SOURCE_BINDABLE_CUSTOM.has(f.type) && choiceSources.length > 0 && (
                       <ChoicesSourceEditor
                         value={f.choicesSource}
                         sources={choiceSources}
@@ -1364,7 +1391,7 @@ export default function FieldOverridesModal({
                         ? 'Zorunlu bir alan — kullanıcıya gösterilecek, değer girmesi istenecek.'
                         : 'Bu alan kullanıcıya opsiyonel olarak gösterilecek.'}
                     </p>
-                    {(f.type === 'text' || f.type === 'textarea') && choiceSources.length > 0 && (
+                    {SOURCE_BINDABLE_AWX.has(f.type) && choiceSources.length > 0 && (
                       <ChoicesSourceEditor
                         value={f.choicesSource}
                         sources={choiceSources}

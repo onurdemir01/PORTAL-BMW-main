@@ -127,3 +127,36 @@ test('CS8 istemci opsiyonel parametreyi "eksik" saymaz (liste yine cekilir)', ()
   assert.match(sel, /source\.optional/, 'optional listesi okunmuyor');
   assert.match(sel, /!v && !optional\.has\(k\)/, 'eksik parametre hesabi opsiyonelleri disarida birakmiyor');
 });
+
+// RVP tanimlari YALNIZCA ARK cluster'i icin (kullanici, 2026-09-15): namespace listesi
+// ortamin ARK cluster'larindan gelmeli (test secilirse ARK test). tenant sabit secenek.
+test('CS9 tenant filtresi: yalniz o tenant cluster\'lari; sabit secenek parametreye eklenir', async () => {
+  const adminPath = require.resolve('../../logx/v2/admin.cjs');
+  const saved = require.cache[adminPath];
+  require.cache[adminPath] = {
+    id: adminPath, filename: adminPath, loaded: true,
+    exports: { getClusterTree: async () => ({ test: { ark: ['ark-test-1', 'ark-test-2'], gls: ['gls-test'] }, prod: { ark: ['ark-prod'] } }) },
+  };
+  try {
+    assert.deepEqual(await cs.clustersForEnv('test', 'ark'), ['ark-test-1', 'ark-test-2']);
+    assert.deepEqual(await cs.clustersForEnv('TEST', 'ARK'), ['ark-test-1', 'ark-test-2'], 'buyuk/kucuk harf');
+    assert.deepEqual(await cs.clustersForEnv('test'), ['ark-test-1', 'ark-test-2', 'gls-test'], 'tenant yoksa ortamin tumu');
+    assert.deepEqual(await cs.clustersForEnv('qa', 'ark'), [], 'katalogda olmayan ortam bos');
+  } finally {
+    if (saved) require.cache[adminPath] = saved; else delete require.cache[adminPath];
+  }
+  const p = cs.paramsFromValues({ source: 'ocp-namespaces', params: { env: 'env' }, options: { tenant: 'ark' } }, { env: 'test' });
+  assert.deepEqual(p, { env: 'test', tenant: 'ark' });
+  const info = cs.listSources().find((s) => s.name === 'ocp-namespaces');
+  assert.ok(info.options.some((o) => o.name === 'tenant' && o.default === 'ark'), 'ocp-namespaces tenant sabiti (varsayilan ark) yok');
+  const apps = cs.listSources().find((s) => s.name === 'ocp-spa-applications');
+  assert.ok(apps.options.some((o) => o.name === 'tenant'), 'ocp-spa-applications tenant sabiti yok');
+});
+
+test('CS10 admin ekrani: kaynak editoru METIN alanlarinda cikar (Survey Tasarimcisi + AWX)', () => {
+  const modal = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'FieldOverridesModal.tsx'), 'utf8'));
+  assert.match(modal, /SOURCE_BINDABLE_AWX = new Set\(\['text', 'textarea'\]\)/);
+  assert.match(modal, /SOURCE_BINDABLE_CUSTOM = new Set\(\['text', 'textarea', 'multiplechoice', 'multiselect'\]\)/);
+  assert.match(modal, /SOURCE_BINDABLE_CUSTOM\.has\(f\.type\) && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/, 'ozel alanda editor tip kumesine bagli degil');
+  assert.doesNotMatch(modal, /isChoiceType && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/, 'editor hala yalnizca secim tiplerinde (Metin alanlarda cikmaz)');
+});
