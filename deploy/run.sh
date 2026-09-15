@@ -77,6 +77,49 @@ pid_of() { # pidfile'dan canli PID doner (yoksa bos)
   if is_alive "$pid"; then echo "$pid"; else rm -f "$pf"; fi
 }
 
+# ── Yetim surec / port korumasi (2026-09-15) ────────────────────────────────────
+# GERCEK VAKA: release sonrasi PID dosyasi olmayan eski bir `node server/index.cjs`
+# :3000'u tutmaya devam etti; yeni surec EADDRINUSE ile dustu (1 sn'lik is_alive
+# kontrolu bunu yakalamiyordu) ve tarayici eski surecin sundugu eski index.html'i
+# alip artik var olmayan asset'leri istedi -> BEYAZ EKRAN. Yalniz PID dosyasina
+# guvenmek yetmez: porta ve surec listesine de bakilir.
+port_pids() { # $1=port → o portu dinleyen PID'ler (bos olabilir)
+  local port="$1" out=""
+  if command -v ss >/dev/null 2>&1; then
+    out="$(ss -Hltnp "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)"
+  elif command -v lsof >/dev/null 2>&1; then
+    out="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | sort -u)"
+  fi
+  echo "$out"
+}
+orphan_portal_pids() { # bu uygulama agacindan calisan, PID dosyasinda OLMAYAN node surecleri
+  local tracked="" e pid
+  for e in "${ALL_ENVS[@]}"; do pid="$(pid_of "$LOG_DIR/$e.pid")"; [[ -n "$pid" ]] && tracked="$tracked $pid"; done
+  pgrep -f "node $ROOT_DIR/server/index.cjs" 2>/dev/null | while read -r pid; do
+    case " $tracked " in *" $pid "*) ;; *) echo "$pid" ;; esac
+  done
+}
+reclaim_port() { # $1=port — portu tutan sureci tanir: bizimse durdurur, degilse DURUR
+  local port="$1" pids pid cmd
+  pids="$(port_pids "$port")"
+  [[ -z "$pids" ]] && return 0
+  for pid in $pids; do
+    cmd="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+    if [[ "$cmd" == *"server/index.cjs"* ]]; then
+      echo "[$ENV_NAME] :$port PID $pid tarafindan tutuluyor (PID dosyasiz portal sureci) → durduruluyor: $cmd"
+      kill "$pid" 2>/dev/null || true
+      for _ in $(seq 1 20); do is_alive "$pid" || break; sleep 0.5; done
+      is_alive "$pid" && { echo "[$ENV_NAME] PID $pid TERM'e yanit yok → KILL."; kill -9 "$pid" 2>/dev/null || true; }
+    else
+      echo "HATA: :$port baska bir surec tarafindan tutuluyor (PID $pid: ${cmd:-?}). Portal baslatilmadi." >&2
+      exit 1
+    fi
+  done
+  sleep 1
+  [[ -n "$(port_pids "$port")" ]] && { echo "HATA: :$port hala dolu." >&2; exit 1; }
+  return 0
+}
+
 stop_env() { # $1=env — o ortami durdur (best-effort, TERM → KILL)
   # NOT: bash 3.2'de `local a=$1 b=$a` ayni satirda guvenilmez → ayri satirlar.
   local env pf pid
@@ -188,6 +231,16 @@ start_env() {
   rotate_log_if_needed
 
   local port; port="$(read_port "$ENV_FILE")"
+  # PID dosyasinda olmayan yetim portal surecleri (release/yeniden kurulum kalintisi)
+  local orphan
+  for orphan in $(orphan_portal_pids); do
+    echo "[$ENV_NAME] PID dosyasiz portal sureci bulundu (PID $orphan) → durduruluyor."
+    kill "$orphan" 2>/dev/null || true
+    for _ in $(seq 1 20); do is_alive "$orphan" || break; sleep 0.5; done
+    is_alive "$orphan" && kill -9 "$orphan" 2>/dev/null || true
+  done
+  # Port hala doluysa: bizimse durdur, degilse acik hatayla dur (EADDRINUSE ile sessiz cokme YOK)
+  [[ -n "$port" ]] && reclaim_port "$port"
   echo "[$ENV_NAME] baslatiliyor (PORT=${port:-?}) …"
   # NODE_ENV=production ACIKCA export edilir — dotenv zaten-set edilen degeri EZMEZ,
   # bu yuzden kabuktaki her turlu NODE_ENV kirliligine (nvm, onceki dev oturumu, vb.)
@@ -205,7 +258,21 @@ start_env() {
     < /dev/null >> "$OUT_FILE" 2>&1 &
   local pid=$!
   echo "$pid" > "$PID_FILE"
-  sleep 1
+  # "listening" gorulene ya da surec olene kadar bekle (en fazla ~15 sn). Onceden 1 sn
+  # sonra 'yasiyor' denip cikiliyordu; EADDRINUSE/DB acilisi daha gec gelince yanlis
+  # 'calisiyor' raporlaniyordu.
+  local i bound=""
+  for i in $(seq 1 30); do
+    is_alive "$pid" || break
+    if [[ -n "$port" ]]; then
+      case " $(port_pids "$port") " in *" $pid "*) bound=1; break ;; esac
+    fi
+    grep -q "listening on :" "$OUT_FILE" 2>/dev/null && [[ -z "$port" ]] && { bound=1; break; }
+    sleep 0.5
+  done
+  if is_alive "$pid" && [[ -n "$port" && -z "$bound" ]]; then
+    echo "UYARI: [$ENV_NAME] surec yasiyor ama :$port henuz baglanmadi (PID $pid) — logu izleyin: $OUT_FILE" >&2
+  fi
   if is_alive "$pid"; then
     touch "$ENABLED_FILE"
     echo "[$ENV_NAME] calisiyor (PID $pid) · uygulama logu: $LOG_DIR/$ENV_NAME.app.log (surec ici rotasyon) · acilis/cokme: $OUT_FILE"

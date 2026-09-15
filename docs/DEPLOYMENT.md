@@ -22,6 +22,26 @@ Kullanici → https://bmwportal-d.fw.garanti.com.tr (kurumsal nginx, 443)
 - **Tum kalici veri MSSQL'dedir (TBMWANS).** Uygulama dizini ezilebilir/silinebilir —
   kayit, ayar, oturum, tercih, sohbet, audit hicbir sey kaybolmaz.
 
+## Hizli geri donus (rollback)
+
+Bir surum sonrasi portal acilmiyorsa (beyaz ekran, /api yanit vermiyor) **tek komut**:
+
+```bash
+./deploy/rollback.sh prod            # en yeni yedege don (build gerekmez, ~1 dk)
+./deploy/rollback.sh prod --list     # once yedekleri ve commit'lerini gor
+```
+
+`release.sh`/`release-git.sh`'in aldigi `deploy/backup-<zaman>/` (dist + node_modules dahil)
+uygulama agacinin uzerine geri yazilir; oncesinde mevcut agac `deploy/rollback-oncesi-<zaman>/`
+olarak saklanir (geri donusten de donulebilir). `.env.<env>` korunur, kalici veri MSSQL'de.
+
+Sik gorulen sebep (2026-09-15 vakasi): PID dosyasiz eski bir `node server/index.cjs` `:3000`'u
+tutuyordu, yeni surec EADDRINUSE ile dustu, tarayici eski surecten eski `index.html` alip
+artik olmayan asset'leri istedi -> beyaz ekran. `run.sh start` artik yetim surecleri ve portu
+tutan sureci tanir (bizimse durdurur, degilse acik hatayla durur) ve portun gercekten
+baglandigini dogrular. Teshis: `./deploy/run.sh prod status`, `tail -n 60 logs/prod.out`,
+`pgrep -af "node server/index.cjs"`, `ss -ltnp | grep :3000`.
+
 ## Erisim gereksinimleri
 
 | Hedef | Port | Amac |
