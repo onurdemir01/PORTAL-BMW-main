@@ -954,10 +954,10 @@ function NginxSpaAudit() {
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [gapFilter, setGapFilter] = useState<'all' | 'prod-only' | 'no-prod'>('all');
 
-  const load = useCallback(async (d?: string) => {
+  const load = useCallback(async (d?: string, fresh = false) => {
     setLoading(true);
     try {
-      const r = await denetimApi.nginxSpa(d);
+      const r = await denetimApi.nginxSpa(d, fresh);
       if (r.ok) {
         setData(r);
         setErr('');
@@ -1278,7 +1278,7 @@ function NginxSpaAudit() {
                 <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
               </button>
               <button
-                onClick={() => load(scanDate)}
+                onClick={() => load(scanDate, true)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
               >
                 <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile

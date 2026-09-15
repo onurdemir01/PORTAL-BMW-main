@@ -64,7 +64,7 @@ test('Nginx SPA > Prod Tasima sekmesi bagli ve kapsam paneli o sekmede gizli', (
   assert.ok(denetim.includes("{tier === 'tasima' && <NginxProdMigration />}"), 'NginxProdMigration render edilmiyor');
   assert.ok(denetim.includes("{tier !== 'tasima' && <SpaCoverage tier={tier} />}"), 'kapsam paneli tasima sekmesinde gizlenmeli');
   const api = read('api/denetimApi.ts');
-  assert.ok(api.includes('nginxMigration: ()'), 'API ucu yok');
+  assert.ok(api.includes('nginxMigration: (fresh = false)'), 'API ucu yok');
 });
 
 test('Production Tasimalari: Tanim olustur dugmesi, ekip siralamasi, H/A/C sozlugu', () => {

@@ -102,7 +102,7 @@ export default function NginxProdMigration() {
     loadTracking();
     (async () => {
       try {
-        const r = await denetimApi.nginxMigration();
+        const r = await denetimApi.nginxMigration(tick > 0); // Yenile (tick>0): onbellegi atla
         if (!alive) return;
         if (r.ok) {
           setData(r);

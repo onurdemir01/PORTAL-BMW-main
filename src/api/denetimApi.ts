@@ -939,20 +939,26 @@ export const denetimApi = {
   nginxApi: (scanDate?: string): Promise<NginxApiResult> =>
     fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
 
-  nginxAudit: (): Promise<NginxAuditResult> =>
-    fetch(`${BASE}/nginx-audit`).then(safeJson),
+  // fresh=true: sunucu onbellegini atla (Yenile dugmesi). Varsayilan: 60 sn onbellek.
+  nginxAudit: (fresh = false): Promise<NginxAuditResult> =>
+    fetch(`${BASE}/nginx-audit${fresh ? '?fresh=1' : ''}`).then(safeJson),
 
   nginxAuditHost: (host: string): Promise<NginxAuditHostResult> =>
     fetch(`${BASE}/nginx-audit/host/${encodeURIComponent(host)}`).then(safeJson),
 
-  nginxLegacy: (): Promise<NginxLegacyResult> =>
-    fetch(`${BASE}/nginx-legacy`).then(safeJson),
+  nginxLegacy: (fresh = false): Promise<NginxLegacyResult> =>
+    fetch(`${BASE}/nginx-legacy${fresh ? '?fresh=1' : ''}`).then(safeJson),
 
-  nginxMigration: (): Promise<NginxMigrationResult> =>
-    fetch(`${BASE}/nginx-migration`).then(safeJson),
+  nginxMigration: (fresh = false): Promise<NginxMigrationResult> =>
+    fetch(`${BASE}/nginx-migration${fresh ? '?fresh=1' : ''}`).then(safeJson),
 
-  nginxSpa: (scanDate?: string): Promise<NginxSpaResult> =>
-    fetch(`${BASE}/nginx-spa${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+  nginxSpa: (scanDate?: string, fresh = false): Promise<NginxSpaResult> => {
+    const q = new URLSearchParams();
+    if (scanDate) q.set("scanDate", scanDate);
+    if (fresh) q.set("fresh", "1");
+    const qs = q.toString();
+    return fetch(`${BASE}/nginx-spa${qs ? `?${qs}` : ""}`).then(safeJson);
+  },
 
   spaCoverage: (platform: string): Promise<SpaCoverageResult> =>
     fetch(`${BASE}/nginx-spa-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),

@@ -70,6 +70,11 @@ function initDenetim(app) {
     /* motor yoksa yoksay */
   }
 
+  // YANIT ONBELLEGI (2026-09-15): gorunurluk kapisindan SONRA - onbellek yetki
+  // kontrolunu atlayamaz. 60 sn; ?fresh=1 (Yenile dugmesi) atlar. Bkz. response-cache.cjs
+  const { createResponseCache } = require('./response-cache.cjs');
+  router.use(createResponseCache().middleware);
+
   // ── 1) NGINX SPA AUDIT ──────────────────────────────────────────────────────────────
   // Nginx_Config_Audit gunluk satir tutar; HER ZAMAN en son scan_date okunur (tarih
   // parametresi verilirse o gun). Ayni (service, env, application) birden fazla host'ta

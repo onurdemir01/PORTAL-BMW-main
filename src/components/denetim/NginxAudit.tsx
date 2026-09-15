@@ -48,7 +48,7 @@ export function NginxAudit() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await denetimApi.nginxAudit();
+      const r = await denetimApi.nginxAudit(true); // Yenile: sunucu onbellegini atla
       if (r.ok) {
         setData(r);
         setErr('');

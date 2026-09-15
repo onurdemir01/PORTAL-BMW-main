@@ -43,7 +43,7 @@ export function NginxLegacy() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await denetimApi.nginxLegacy();
+      const r = await denetimApi.nginxLegacy(true); // Yenile: sunucu onbellegini atla
       if (r.ok) {
         setData(r);
         setErr('');
