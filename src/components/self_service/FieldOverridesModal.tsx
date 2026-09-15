@@ -91,7 +91,8 @@ function ChoicesSourceEditor({
           // Parametre adı formda aynı adla varsa otomatik bağla (env -> env).
           const params: Record<string, string> = {};
           for (const p of src?.params || []) params[p.name] = others.includes(p.name) ? p.name : '';
-          onChange({ source: name, params });
+          const optional = (src?.params || []).filter((p) => !p.required).map((p) => p.name);
+          onChange({ source: name, params, ...(optional.length ? { optional } : {}) });
         }}
       >
         <option value="">Kapalı — kullanıcı serbest metin girer</option>

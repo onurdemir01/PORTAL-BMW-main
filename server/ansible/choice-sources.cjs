@@ -37,7 +37,156 @@ function normEnv(v) {
   return s;
 }
 
+// ORTAM -> OpenShift cluster adlari: LogX/OpsX'in kullandigi AYNI katalog
+// (ocp_cluster_index; tree[env][tenant] = [cluster...]). nginx_ops'ta tenant secimi
+// yoktur; ortamin TUM tenant'larindaki cluster'lar birlestirilir. Katalogda o ortam
+// yoksa bos doner; cagiran namespace son-eki (`-test`) ile geri duser.
+async function clustersForEnv(env) {
+  const key = String(env || '').trim().toLowerCase();
+  if (!key) return [];
+  try {
+    const tree = await require('../logx/v2/admin.cjs').getClusterTree();
+    const byEnv = Object.entries(tree || {}).find(([k]) => String(k).toLowerCase() === key);
+    if (!byEnv) return [];
+    return [...new Set(Object.values(byEnv[1]).flat().map((c) => String(c || '').trim()).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+// SPA uygulamasi: Nginx SPA tanimi yalnizca bu ada sahip uygulamalar icin yapilir
+// (Denetim > Nginx SPA ile AYNI kural — nginx-migration.cjs SPA_RE).
+const SPA_RE = /-app(-emb)?-v/i;
+
+// dbo.Openshift_Inventory: ortamin cluster'larindaki (namespace, application) ciftleri.
+// Cluster katalogu bos ise namespace son-eki ile daralir (digital-ch-test -> test).
+async function ocpPairsForEnv(env) {
+  const { query, sql } = require('../inventory/mssql.cjs');
+  const clusters = await clustersForEnv(env);
+  let rows;
+  if (clusters.length) {
+    const params = clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(128), value: c }));
+    const ph = clusters.map((_, i) => `@c${i}`).join(', ');
+    rows = (
+      await query(
+        `SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE cluster IN (${ph})`,
+        params,
+      )
+    ).recordset;
+  } else {
+    const suffix = '%-' + String(env || '').trim().toLowerCase();
+    rows = (
+      await query(
+        `SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE LOWER(namespace) LIKE @s`,
+        [{ name: 's', type: sql.NVarChar(64), value: suffix }],
+      )
+    ).recordset;
+  }
+  return (rows || []).map((r) => ({
+    namespace: String(r.namespace || '').trim(),
+    application: String(r.application || '').trim(),
+  }));
+}
+
+// dbo.Nginx_Config_Audit (nginx_config_audit job'i): son taramadaki SPA location'lari.
+async function nginxAuditRows(env, service) {
+  const { query, sql } = require('../inventory/mssql.cjs');
+  const params = [{ name: 'e', type: sql.NVarChar(16), value: normEnv(env) }];
+  let where = `scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit) AND UPPER(env) = @e`;
+  const svc = String(service || '').trim().toUpperCase();
+  if (svc) {
+    where += ` AND UPPER(service) = @svc`;
+    params.push({ name: 'svc', type: sql.NVarChar(64), value: svc });
+  }
+  const r = await query(
+    `SELECT DISTINCT service, location_path, application, namespace, host
+       FROM dbo.Nginx_Config_Audit WHERE ${where}`,
+    params,
+  );
+  return r.recordset || [];
+}
+
 const SOURCES = {
+  // Self Servis > Nginx - RVP Operations (nginx_ops): OpenShift namespace'leri. LogX/OpsX
+  // ile AYNI envanter tablosu (Openshift_Inventory), ortam cluster katalogundan.
+  'ocp-namespaces': {
+    label: 'OpenShift namespace listesi (Openshift Uygulama Envanteri, ortama göre)',
+    params: [{ name: 'env', label: 'Ortam alanı (dev/test/qa/prod)', required: true }],
+    async load({ env }) {
+      const pairs = await ocpPairsForEnv(env);
+      const count = new Map();
+      for (const p of pairs) {
+        if (!p.namespace) continue;
+        if (!count.has(p.namespace)) count.set(p.namespace, 0);
+        if (SPA_RE.test(p.application)) count.set(p.namespace, count.get(p.namespace) + 1);
+      }
+      // SPA'si olan namespace'ler once — nginx_ops SPA tanimi icin anlamli olanlar onlar.
+      return [...count.entries()]
+        .sort((a, b) => (b[1] > 0) - (a[1] > 0) || a[0].localeCompare(b[0]))
+        .map(([ns, n]) => ({
+          value: ns,
+          label: n ? `${ns}  (${n} SPA)` : ns,
+          group: n ? 'SPA uygulaması olan' : 'SPA uygulaması yok',
+        }));
+    },
+  },
+
+  // Secilen namespace'teki YALNIZCA SPA uygulamalari (-app-v / -app-emb-v adli).
+  'ocp-spa-applications': {
+    label: 'OpenShift SPA uygulamaları (seçilen namespace, yalnızca *-app-v* adlılar)',
+    params: [
+      { name: 'env', label: 'Ortam alanı', required: true },
+      { name: 'namespace', label: 'Namespace alanı', required: true },
+    ],
+    async load({ env, namespace }) {
+      const ns = String(namespace || '').trim();
+      const pairs = await ocpPairsForEnv(env);
+      const apps = [...new Set(pairs.filter((p) => p.namespace === ns && SPA_RE.test(p.application)).map((p) => p.application))];
+      return apps.sort().map((a) => ({ value: a, label: a }));
+    },
+  },
+
+  // Reverse proxy servisleri (GLOMO, WEBFORMS, ...): son nginx_config_audit taramasinda
+  // o ortamda gorulen vhost servisleri.
+  'nginx-services': {
+    label: 'Nginx reverse proxy servisleri (GLOMO, WEBFORMS… — Nginx SPA denetimi)',
+    params: [{ name: 'env', label: 'Ortam alanı', required: true }],
+    async load({ env }) {
+      const rows = await nginxAuditRows(env, '');
+      const svcs = [...new Set(rows.map((r) => String(r.service || '').trim().toUpperCase()).filter(Boolean))];
+      return svcs.sort().map((s) => ({ value: s, label: s }));
+    },
+  },
+
+  // Mevcut location tanimlari (update/delete icin "eski" path): ortam + servis; namespace
+  // ve uygulama verilirse o uygulamanin location'larina daralir (opsiyonel).
+  'nginx-locations': {
+    label: 'Mevcut Nginx location tanımları (ortam + servis; update/delete için)',
+    params: [
+      { name: 'env', label: 'Ortam alanı', required: true },
+      { name: 'service', label: 'Servis alanı', required: true },
+      { name: 'namespace', label: 'Namespace alanı (opsiyonel daraltma)', required: false },
+      { name: 'application', label: 'Uygulama alanı (opsiyonel daraltma)', required: false },
+    ],
+    async load({ env, service, namespace, application }) {
+      const rows = await nginxAuditRows(env, service);
+      const ns = String(namespace || '').trim();
+      const app = String(application || '').trim();
+      const byPath = new Map();
+      for (const r of rows) {
+        const path = String(r.location_path || '').trim();
+        if (!path) continue;
+        if (ns && String(r.namespace || '').trim() !== ns) continue;
+        if (app && String(r.application || '').trim() !== app) continue;
+        const who = [r.application, r.namespace].filter(Boolean).join(' / ');
+        if (!byPath.has(path)) byPath.set(path, who);
+      }
+      return [...byPath.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([path, who]) => ({ value: path, label: who ? `${path}  —  ${who}` : path }));
+    },
+  },
+
   // Denetim > Nginx API envanteri: dbo.NginxRateLimitInventory (nginx_ratelimit_inventory
   // job'i doldurur). Bir satir = (host, config_file, api_location). Ortam SUNUCU ADINDAN
   // turetilir (tabloda ortam kolonu yok, bkz. nginx-hosts.cjs). Kanal bilgisi tabloda
@@ -172,6 +321,8 @@ function clearCache() {
 
 module.exports = {
   SOURCES,
+  SPA_RE,
+  clustersForEnv,
   listSources,
   getSource,
   loadChoices,

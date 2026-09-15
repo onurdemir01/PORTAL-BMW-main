@@ -104,3 +104,26 @@ test('CS6 istemci: kaynaga bagli alan DynamicChoiceSelect ile cizilir, statik wh
   assert.match(sel, /ansibleApi\s*\.choices\(/, 'secenekler sunucudan cekilmiyor');
   assert.doesNotMatch(sel, /<datalist/, 'datalist serbest metne izin verir; select olmali');
 });
+
+// nginx_ops (Nginx - RVP Operations) icin kaynaklar (kullanici istegi, 2026-09-15):
+// namespace envanterden, ardindan o namespace'in YALNIZCA SPA uygulamalari; servis ve
+// mevcut location'lar Nginx SPA denetiminden. Serbest metin yalnizca create'teki input_path.
+test('CS7 nginx_ops kaynaklari kayitli ve zincir parametreleri dogru', () => {
+  const names = cs.listSources().map((s) => s.name);
+  for (const n of ['ocp-namespaces', 'ocp-spa-applications', 'nginx-services', 'nginx-locations']) {
+    assert.ok(names.includes(n), `${n} kaynagi yok`);
+  }
+  const apps = cs.getSource('ocp-spa-applications');
+  assert.deepEqual(apps.params.map((p) => p.name), ['env', 'namespace'], 'uygulama listesi namespace secimine bagli olmali');
+  const locs = cs.getSource('nginx-locations');
+  assert.deepEqual(locs.params.filter((p) => p.required).map((p) => p.name), ['env', 'service']);
+  assert.ok(locs.params.some((p) => p.name === 'namespace' && !p.required), 'namespace daraltmasi opsiyonel olmali');
+  // SPA kurali Denetim ile AYNI (nginx-migration.cjs)
+  assert.equal(String(cs.SPA_RE), String(require('../../audit/nginx-migration.cjs').SPA_RE));
+});
+
+test('CS8 istemci opsiyonel parametreyi "eksik" saymaz (liste yine cekilir)', () => {
+  const sel = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'DynamicChoiceSelect.tsx'), 'utf8'));
+  assert.match(sel, /source\.optional/, 'optional listesi okunmuyor');
+  assert.match(sel, /!v && !optional\.has\(k\)/, 'eksik parametre hesabi opsiyonelleri disarida birakmiyor');
+});

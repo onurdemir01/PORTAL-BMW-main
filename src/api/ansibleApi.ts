@@ -640,6 +640,8 @@ export interface FieldOverride {
 export interface ChoicesSource {
   source: string;
   params?: Record<string, string>;
+  /** Zorunlu OLMAYAN parametreler: boş olsalar da liste çekilir (yalnızca daraltırlar). */
+  optional?: string[];
 }
 
 export interface ChoiceSourceInfo {

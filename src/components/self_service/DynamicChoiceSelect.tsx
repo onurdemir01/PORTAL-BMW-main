@@ -33,7 +33,8 @@ export function paramsFor(source: ChoicesSource, values: Record<string, string>)
 export default function DynamicChoiceSelect({ id, source, values, value, onChange, onBlur, error }: Props) {
   const params = paramsFor(source, values);
   const paramsKey = JSON.stringify(params);
-  const missingParam = Object.entries(params).some(([, v]) => !v);
+  const optional = new Set(source.optional || []);
+  const missingParam = Object.entries(params).some(([k, v]) => !v && !optional.has(k));
   const [choices, setChoices] = useState<DynamicChoice[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -85,7 +86,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
   }, [choices, filter]);
 
   const missingNames = Object.entries(source.params || {})
-    .filter(([p]) => !params[p])
+    .filter(([p]) => !params[p] && !optional.has(p))
     .map(([, fieldName]) => fieldName);
 
   return (
