@@ -376,7 +376,16 @@ export function NginxEnvanteri() {
                 t.diskWebLog.unparsed ? `${t.diskWebLog.unparsed} sunucu çözümlenemedi` : undefined
               }
             />
-            <StatTile label="ortam sayısı" value={nf(t.envs)} />
+            <StatTile
+              label="ortam sayısı"
+              value={nf(t.envs)}
+              tone={t.envCorrected ? 'warning' : 'neutral'}
+              hint={
+                t.envCorrected
+                  ? `${nf(t.envCorrected)} sunucuda tablodaki ortam sunucu adı kalıbıyla çelişiyordu; kalıp esas alındı (nginx_metadata job'ı yeni betikle koşunca kaybolur)`
+                  : 'ortam: sunucu adı kalıbı (GBRVP*/…P=prod, …D/T/Q=non-prod); kalıp dışı sunucularda tablo değeri'
+              }
+            />
           </div>
           <Panel
             title="Kaynak dağılımı"

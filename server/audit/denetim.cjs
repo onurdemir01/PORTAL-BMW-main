@@ -1296,8 +1296,8 @@ function initDenetim(app) {
       res.json({
         ok: true,
         lastUpdate: lastUpdate ? String(lastUpdate) : null,
+        // hosts: ozetleyicinin DUZELTILMIS env tasiyan satirlari (ham tablo satirlari degil)
         ...summarizeNginxInventory(rows),
-        hosts: rows,
       });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });

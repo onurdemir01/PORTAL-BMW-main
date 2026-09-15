@@ -892,6 +892,8 @@ export interface NginxInventoryResult {
   totals: {
     hosts: number;
     envs: number;
+    /** tablodaki env ile sunucu adi kalibinin celistigi sunucu (betik duzeltmesi yayilana kadar) */
+    envCorrected?: number;
     services: number;
     nginxVersions: number;
     osVersions: number;

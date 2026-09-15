@@ -121,3 +121,26 @@ test('bos girdi cokmez', () => {
   assert.equal(s.totals.memory.totalGiB, 0);
   assert.deepEqual(summarizeNginxInventory(undefined).byEnv, []);
 });
+
+// 2026-09-15: tablodaki env ("*-PROD.conf var mi" kurali) prod SPA/gateway sunucularini
+// non-production sayiyordu. Ad kalibi taniyorsa o esas; celisenler sayilir.
+test('ortam: ad kalibi tablo degerini duzeltir, celisenler sayilir, kalip disi tablo degerini korur', () => {
+  const { summarizeNginxInventory } = require('../nginx-inventory-summary.cjs');
+  const out = summarizeNginxInventory([
+    { hostname: 'GBNGXP50', env: 'non-production', location: 'Pendik' },   // intranet prod SPA: vhost yok
+    { hostname: 'GBNGXAP24', env: 'non-production', location: 'Ankara' },  // yeni prod SPA
+    { hostname: 'GBNGXT34', env: 'production', location: '' },             // unutulmus X-PROD.conf
+    { hostname: 'GBRVPP07', env: 'production', location: 'Pendik' },       // dogru
+    { hostname: 'GBLABT02', env: 'non-production', location: '' },         // kalip disi: tablo degeri
+  ]);
+  const by = Object.fromEntries(out.hosts.map((h) => [h.hostname, h]));
+  assert.equal(by.GBNGXP50.env, 'production');
+  assert.equal(by.GBNGXP50.envRaw, 'non-production');
+  assert.equal(by.GBNGXAP24.env, 'production');
+  assert.equal(by.GBNGXT34.env, 'non-production');
+  assert.equal(by.GBRVPP07.env, 'production');
+  assert.equal(by.GBLABT02.env, 'non-production');
+  assert.equal(out.totals.envCorrected, 3);
+  const prod = out.byEnv.find((e) => e.env === 'production');
+  assert.equal(prod.hosts, 3);
+});

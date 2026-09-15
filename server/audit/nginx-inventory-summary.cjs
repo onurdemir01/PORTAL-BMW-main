@@ -65,12 +65,22 @@ function splitServices(v) {
 }
 
 function summarizeNginxInventory(recordset) {
-  const rows = (recordset || []).map((r) => ({
-    ...r,
-    hostname: norm(r.hostname),
-    env: norm(r.env),
-    location: norm(r.location),
-  }));
+  // ORTAM (2026-09-15 duzeltmesi): tablodaki env, nginx_metadata betiginin "*-PROD.conf
+  // var mi" kuralindan geliyordu ve servis vhost'u olmayan prod sunuculari (intranet
+  // SPA, yeni prod SPA, API gateway) non-production sayiyordu. Sunucu adi kalibi
+  // (nginx-hosts.cjs, GBNGXT51=EDU istisnasi dahil) taniyorsa O esas alinir; tablo
+  // degeri envRaw'da tutulur ve celisenler sayilir (envCorrected) - sessiz duzeltme yok.
+  const { envOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
+  const toBucket = (e) => (e === 'PROD' ? 'production' : e === UNKNOWN_ENV ? null : 'non-production');
+  let envCorrected = 0;
+  const rows = (recordset || []).map((r) => {
+    const hostname = norm(r.hostname);
+    const envRaw = norm(r.env);
+    const byName = toBucket(envOfHost(hostname));
+    const env = byName || envRaw;
+    if (byName && envRaw && byName !== envRaw) envCorrected++;
+    return { ...r, hostname, env, envRaw, envByName: envOfHost(hostname), location: norm(r.location) };
+  });
 
   // -- ORTAM: env x location kirilimi ---------------------------------------
   const envMap = new Map();
@@ -108,6 +118,8 @@ function summarizeNginxInventory(recordset) {
     totals: {
       hosts: rows.length,
       envs: envMap.size,
+      // tablodaki env ile ad kalibinin celistigi sunucu sayisi (betik duzeltmesi yayilana kadar)
+      envCorrected,
       services: svcMap.size,
       nginxVersions: new Set(rows.map((r) => norm(r.nginx_version))).size,
       osVersions: new Set(rows.map((r) => norm(r.os))).size,
@@ -118,6 +130,8 @@ function summarizeNginxInventory(recordset) {
     },
     byEnv,
     byService,
+    // Satirlar DUZELTILMIS env ile (route bunlari gonderir; ham tablo satirlari degil)
+    hosts: rows,
     versions: {
       nginx: distribution(rows, 'nginx_version'),
       os: distribution(rows, 'os'),
