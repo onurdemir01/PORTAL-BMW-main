@@ -249,3 +249,47 @@ test('RA7 HER launchJobOnServer cagrisi tetikleyeni geciriyor', () => {
       'bu isler kod deposundaki SABIT kisiye atfedilir ve yanlis kisiye bildirim gider.',
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UCUNCU TUR (2026-09-15): SELF SERVIS + SMART ONAYI yolu.
+//
+// Kullanici (serkansagl) rate_limit_change isini Self Servis'ten acti; Smart onayi
+// geldiginde isi server/smart/poller.cjs -> performSsLaunch baslatti. Bu yolda canli
+// HTTP istegi YOK (`req` null) ve atif `req?.session?.user` uzerinden yapildigi icin
+// DOGRUDAN DEFAULT_REQUESTER'a dustu:
+//
+//   "requester_name": "Onur Demir", "requester_is_fallback": true
+//
+// Oysa talep kaydi `username`i tasiyor; kimlik oradan (portal_users / LDAP) cozulmeli.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('RA8 performSsLaunch: req yoksa tetikleyen USERNAME uzerinden cozulur', () => {
+  const src = codeOnly(read('ansible/runner.cjs'));
+  // bodyOf ilk `{`i alir; burada parametre listesi yikimli (`{ detail, ... }`) oldugu
+  // icin govde, parametre parantezi KAPANDIKTAN sonraki `{`den baslar.
+  const sig = 'async function performSsLaunch(';
+  const i = src.indexOf(sig);
+  assert.ok(i >= 0, 'performSsLaunch bulunamadi');
+  let depth = 0, close = -1;
+  for (let k = i + sig.length - 1; k < src.length; k++) {
+    if (src[k] === '(') depth++;
+    else if (src[k] === ')' && --depth === 0) { close = k; break; }
+  }
+  assert.ok(close > 0, 'parametre listesi kapanmadi');
+  const fn = bodyOf(src.slice(close), '{');
+
+  // Hatanin kendisi: dogrudan `req?.session?.user` ile withRequesterVars cagrisi.
+  assert.doesNotMatch(
+    fn,
+    /withRequesterVars\(\s*extraVars\s*,\s*req\?\.session\?\.user\s*\)/,
+    'withRequesterVars dogrudan req.session.user aliyor — poller yolunda req null, atif sabit kisiye duser',
+  );
+  // Kimlik username uzerinden cozuluyor mu (e-posta dahil; bkz. RA5 mantigi).
+  assert.match(fn, /getUserIdentity\(\s*username\s*\)/, 'kimlik username ile cozulmuyor');
+  // Cozum SONUCU withRequesterVars'a geciriliyor mu.
+  const arg = (fn.match(/withRequesterVars\(\s*extraVars\s*,\s*([A-Za-z_$][\w$]*)\s*\)/) || [])[1];
+  assert.ok(arg && arg !== 'req', 'withRequesterVars cozulen kullaniciyi almiyor');
+  assert.match(fn, new RegExp(arg + '\\s*=\\s*\\{[^}]*mail:\\s*ident\\.mail'), 'cozulen e-posta gecirilmiyor');
+  // Cozulemezse en azindan username gitmeli (requester_username = bilinmiyor OLMAMALI).
+  assert.match(fn, new RegExp(arg + '\\s*=\\s*\\{\\s*username\\s*\\}'), 'cozulemeyen durumda username bile gecirilmiyor');
+});

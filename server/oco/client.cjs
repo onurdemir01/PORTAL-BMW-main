@@ -29,6 +29,59 @@ function fail(message, status) {
   return err;
 }
 
+// OLMAYAN OCO (kullanici bildirimi, 2026-09-15): OCO servisi bilinmeyen numaraya HTTP 404
+// donuyor; ekranda "OCO servisi 404 dondu." gibi ham bir satir cikiyordu. Kullanicinin
+// yapabilecegi tek sey numarayi kontrol etmek — mesaj bunu SOYLEMELI. Diger kodlar da
+// ayni sekilde "ne oldu / ne yapmali" diliyle yazilir; HTTP kodu parantezde kalir ki
+// yonetici izleyebilsin. Servis govdesinde okunur bir mesaj varsa eklenir.
+function describeUpstreamError(statusCode, text, num) {
+  const hint = upstreamHint(text);
+  const suffix = hint ? ` (${hint})` : '';
+  if (statusCode === 404) {
+    return fail(
+      `OCO ${num} bulunamadı. Numarayı kontrol edin — kayıt OCO sisteminde açılmış olmalı` +
+        ` ve yalnızca rakamlardan oluşmalı (ör. 22502813).${suffix}`,
+      404,
+    );
+  }
+  if (statusCode === 401 || statusCode === 403) {
+    return fail(
+      `OCO servisi Portal'ın erişimini reddetti (HTTP ${statusCode}). Bu sizinle ilgili değil;` +
+        ` yöneticiye bildirin.${suffix}`,
+      502,
+    );
+  }
+  if (statusCode === 400) {
+    return fail(`OCO servisi ${num} numarasını kabul etmedi (HTTP 400). Numarayı kontrol edin.${suffix}`, 400);
+  }
+  if (statusCode >= 500) {
+    return fail(
+      `OCO servisi şu an yanıt veremiyor (HTTP ${statusCode}). Biraz sonra tekrar deneyin;` +
+        ` sorun sürerse yöneticiye bildirin.${suffix}`,
+      502,
+    );
+  }
+  return fail(`OCO servisi beklenmeyen bir cevap döndü (HTTP ${statusCode}).${suffix}`, 502);
+}
+
+// Servis govdesinden kisa, okunur bir ipucu: JSON ise Message/ResultMessage/error alani;
+// degilse ilk 120 karakter. HTML hata sayfasi ya da bos govde -> hicbir sey.
+function upstreamHint(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  try {
+    const j = JSON.parse(raw);
+    const m = j?.ResultMessage || j?.Message || j?.message || j?.error || '';
+    return String(m || '').trim().slice(0, 160);
+  } catch {
+    /* JSON degil */
+  }
+  // HTML hata sayfasi (IIS/ASP.NET 404 sayfasi gibi) kullaniciya gosterilecek bir sey degil.
+  if (/^\s*<(!doctype|html)/i.test(raw)) return '';
+  const plain = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return plain.slice(0, 120);
+}
+
 // OCO numarasi: yalnizca rakam. Dogrudan URL'ye gomuldugu icin bu kontrol SART -
 // serbest metin kabul etmek path/sorgu enjeksiyonuna acik kapi birakirdi.
 function normalizeOcoNumber(raw) {
@@ -68,7 +121,7 @@ async function getChangeOrder(ocoNumber) {
   }
 
   if (statusCode < 200 || statusCode >= 300) {
-    throw fail(`OCO servisi ${statusCode} döndü.`, 502);
+    throw describeUpstreamError(statusCode, text, num);
   }
 
   let payload;
@@ -84,10 +137,10 @@ async function getChangeOrder(ocoNumber) {
   // bulunamamis demektir - "bos kaydi gecerli say" YAPILMAZ, prod'a dokunuyoruz.
   if (!wrapper.Result) {
     const msg = wrapper.ResultMessage ? ` (${wrapper.ResultMessage})` : '';
-    throw fail(`OCO kaydı bulunamadı: ${num}${msg}`, 404);
+    throw fail(`OCO ${num} bulunamadı. Numarayı kontrol edin — kayıt OCO sisteminde açılmış olmalı.${msg}`, 404);
   }
 
   return { payload, result: wrapper.Result, resultCode: wrapper.ResultCode };
 }
 
-module.exports = { getChangeOrder, normalizeOcoNumber };
+module.exports = { getChangeOrder, normalizeOcoNumber, describeUpstreamError, upstreamHint };

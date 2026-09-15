@@ -442,6 +442,23 @@ export const ansibleApi = {
   history: (days = 30): Promise<{ ok: boolean; history: JobHistoryRecord[] }> =>
     fetch(`${BASE}/history?days=${days}`).then(safeJson),
 
+  // Seçenek kaynakları (Admin, Survey ayarları ekranı).
+  choiceSources: (): Promise<{ ok: boolean; sources: ChoiceSourceInfo[]; message?: string }> =>
+    fetch(`${BASE}/ss/choice-sources`).then(safeJson),
+
+  // Bir kaynağın seçenekleri; bağımlı alan değerleri sorgu parametresi olarak gider.
+  choices: (
+    source: string,
+    params: Record<string, string>,
+  ): Promise<{ ok: boolean; choices: DynamicChoice[]; count?: number; message?: string }> => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
+    const qs = q.toString();
+    return fetch(`${BASE}/ss/choices/${encodeURIComponent(source)}${qs ? `?${qs}` : ''}`).then(
+      safeJson,
+    );
+  },
+
   getCustomization: (
     serverId: number,
     templateId: number,
@@ -611,6 +628,30 @@ export interface FieldOverride {
   required?: boolean;
   defaultValue?: string;
   hidden?: boolean;
+  /** Metin alanını envanterden beslenen seçim kutusuna çevirir (bkz. ChoicesSource). */
+  choicesSource?: ChoicesSource;
+}
+
+// SEÇENEK KAYNAĞI (2026-09-15): serbest metin yerine veritabanından beslenen liste.
+// `params`: kaynağın istediği parametre -> formdaki HANGİ alandan alınacağı
+// (ör. { env: 'env' }). Kaynak listesi sunucuda kayıtlıdır (choice-sources.cjs);
+// admin ekranı /ss/choice-sources'tan okur. Sunucu launch'ta değeri kaynağa karşı
+// YENİDEN doğrular — istemci listesi yalnızca kullanıcı deneyimi içindir.
+export interface ChoicesSource {
+  source: string;
+  params?: Record<string, string>;
+}
+
+export interface ChoiceSourceInfo {
+  name: string;
+  label: string;
+  params: { name: string; label: string; required?: boolean }[];
+}
+
+export interface DynamicChoice {
+  value: string;
+  label: string;
+  group?: string;
 }
 
 // Built-in launch seçeneği (limit/forks/job_tags/skip_tags/verbosity/job_type) için
@@ -785,6 +826,8 @@ export interface SurveyField {
   description: string;
   min?: number;
   max?: number;
+  /** Doluysa seçenekler statik `choices` yerine sunucudan (/ss/choices/:source) gelir. */
+  choicesSource?: ChoicesSource;
   // Yalnızca Survey Tasarımcısı (özel alanlar) için: seçim alanlarında AWX'e/extra_vars'a
   // giden HAM değer (choices[i]) ile kullanıcıya gösterilen metin farklı olabilir.
   choiceLabels?: Record<string, string>;

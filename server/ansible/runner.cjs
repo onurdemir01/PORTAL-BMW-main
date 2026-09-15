@@ -8,6 +8,8 @@ const fs = require('fs');
 // Survey "kosullu goster" mantigi: istemci ile PAYLASILAN tek dogruluk kaynagi.
 // Kopyalanmaz - istemci de (SelfServicePage) AYNI fonksiyonu cagirir.
 const surveyConditions = require('../../shared/surveyConditions.cjs');
+// Veritabanindan beslenen secenek listeleri (bkz. choice-sources.cjs basligi).
+const choiceSources = require('./choice-sources.cjs');
 
 // ── Simple YAML key:value parser (extra_vars fallback icin, frontend AnsiblePage.tsx
 // ile ayni mantik — AWX Survey tanimli olmayan template'lerin extra_vars default'larini
@@ -1797,17 +1799,22 @@ function initAnsibleRunner(app) {
     const mapped = (rawFields || []).map((field) => {
       const ov = (overrides.fieldOverrides || []).find((o) => o.fieldName === field.variable) || {};
       const required = !!field.required;
+      // SECENEK KAYNAGI: admin bir metin alanini envanterden beslenen secim kutusuna
+      // cevirmis olabilir (choice-sources.cjs). Istemci bunu gorunce <select> cizer ve
+      // secenekleri /ss/choices/:source'tan ceker; AWX tarafinda alan yine metin'dir.
+      const choicesSource = ov.choicesSource && ov.choicesSource.source ? ov.choicesSource : undefined;
       return {
         name: field.variable,
         label: ov.label || field.question_name,
-        type: field.type,
+        type: choicesSource ? 'multiplechoice' : field.type,
         required,
         defaultValue: ov.defaultValue !== undefined ? ov.defaultValue : field.default || '',
-        choices: field.choices || [],
+        choices: choicesSource ? [] : field.choices || [],
         hidden: !!ov.hidden,
         description: field.question_description || '',
         min: field.min,
         max: field.max,
+        ...(choicesSource ? { choicesSource } : {}),
       };
     });
     return includeHidden ? mapped : mapped.filter((f) => !f.hidden);
@@ -1898,6 +1905,25 @@ function initAnsibleRunner(app) {
       extraVars[field.variable] = val;
     }
     return extraVars;
+  }
+
+  // SECENEK KAYNAGI DOGRULAMASI (choice-sources.cjs): choicesSource tasiyan her alanin
+  // gonderilen degeri, kaynak yeniden sorularak listeye karsi dogrulanir. Cozumleyiciler
+  // (resolve*ExtraVars) senkron kaldigi icin bu ayri, async bir adimdir; ikisinden sonra
+  // cagrilir. Parametreler (or. env) COZUMLENMIS extra_vars'tan alinir — gizli alanin
+  // admin varsayilani dahil.
+  async function assertChoiceSources(fieldDefs, extraVars) {
+    for (const f of fieldDefs || []) {
+      const cs = f && f.choicesSource;
+      if (!cs || !cs.source) continue;
+      const val = extraVars[f.name];
+      if (val === undefined || val === null || String(val) === '') continue;
+      try {
+        await choiceSources.assertValueInSource(cs, String(val), extraVars, f.label || f.name);
+      } catch (e) {
+        throw Object.assign(e, { field: f.name });
+      }
+    }
   }
 
   // resolveLaunchExtraVars'in "Survey Tasarimcisi" (customSurveyFields) surumu — AYNI
@@ -2117,7 +2143,23 @@ function initAnsibleRunner(app) {
     },
   ) {
     const token = await getTokenForServer(server);
-    const extraVarsWithRequester = withRequesterVars(extraVars, req?.session?.user);
+    // KIM TETIKLEDI (2026-09-15 duzeltmesi): Smart onayi SONRA geldiginde isi poller
+    // baslatir ve `req` yoktur; onceden atif DEFAULT_REQUESTER'a (Onur Demir) dusuyordu -
+    // kullanici kendi actigi iste baskasinin adini gordu (rate_limit_change,
+    // requester_is_fallback=true). Talep kaydi username'i tasir: kimlik oradan cozulur
+    // (portal_users onbellegi, yoksa LDAP). Cozulemezse eski davranis (fallback + bayrak).
+    let requesterUser = req?.session?.user || null;
+    if (!requesterUser && username) {
+      try {
+        const ident = await require('../auth/users.cjs').getUserIdentity(username);
+        if (ident) requesterUser = { username: ident.username || username, displayName: ident.displayName, mail: ident.mail };
+        else requesterUser = { username };
+      } catch (e) {
+        console.warn('[Ansible] tetikleyen kimligi cozulemedi:', e.message);
+        requesterUser = { username };
+      }
+    }
+    const extraVarsWithRequester = withRequesterVars(extraVars, requesterUser);
     const payload = buildAwxLaunchPayload(detail, {
       extraVars: extraVarsWithRequester,
       ...resolvedLaunchOptions,
@@ -2355,6 +2397,25 @@ function initAnsibleRunner(app) {
   }
 
   // GET /api/ansible/ss/items — Self-Service Ansible item listesi
+  // GET /api/ansible/ss/choice-sources — Admin (Survey ayarlari): kayitli secenek kaynaklari.
+  app.get('/api/ansible/ss/choice-sources', requireAuth, requireAdmin, (_req, res) => {
+    res.json({ ok: true, sources: choiceSources.listSources() });
+  });
+
+  // GET /api/ansible/ss/choices/:source?env=... — bir kaynagin secenekleri. Formdaki
+  // bagimli alan (or. env) degisince istemci yeniden cagirir. Asil dogrulama launch'ta
+  // (assertChoiceSources) yeniden yapilir; burasi yalnizca liste sunar.
+  app.get('/api/ansible/ss/choices/:source', requireAuth, async (req, res) => {
+    try {
+      const params = {};
+      for (const [k, v] of Object.entries(req.query || {})) params[k] = String(v ?? '');
+      const choices = await choiceSources.loadChoices(req.params.source, params);
+      res.json({ ok: true, choices, count: choices.length });
+    } catch (err) {
+      res.status(err.status || 503).json({ ok: false, message: err.message, choices: [] });
+    }
+  });
+
   app.get('/api/ansible/ss/items', requireAuth, (req, res) => {
     res.json({ ok: true, items: readSsItems() });
   });
@@ -2688,6 +2749,32 @@ function initAnsibleRunner(app) {
         // varsayilan deger bos olmasin. Bu, hassas/credential niteligindeki zorunlu alanlarin
         // admin tarafindan bilinen bir degerle kullanicidan saklanabilmesini saglar; zorunlu
         // olmayi hâlâ "gizlemeyi engelleyen" bir kural olarak KULLANMIYORUZ.
+        // Secenek kaynagi: kaynak tanimli mi, parametreleri var olan bir alana bagli mi.
+        // Yalnizca metin tipli survey alanlari kaynaga baglanabilir — AWX'in kendi secim
+        // listesi olan bir alani envanterle ezmek iki listeyi celistirir.
+        const specNames = specFields.map((f) => f.variable);
+        for (const ov of overrides) {
+          if (!ov.choicesSource) continue;
+          if (!ov.choicesSource.source) {
+            delete ov.choicesSource;
+            continue;
+          }
+          const field = specFields.find((f) => f.variable === ov.fieldName);
+          if (field && field.type !== 'text' && field.type !== 'textarea') {
+            return res.status(400).json({
+              ok: false,
+              message: `"${field.question_name || field.variable}" metin alanı değil (${field.type}); seçenek kaynağı yalnızca metin alanlarına bağlanabilir.`,
+            });
+          }
+          const problem = choiceSources.validateChoicesSource(ov.choicesSource, specNames);
+          if (problem) {
+            return res.status(400).json({
+              ok: false,
+              message: `"${field?.question_name || ov.fieldName}" seçenek kaynağı: ${problem}`,
+            });
+          }
+        }
+
         for (const ov of overrides) {
           if (!ov.hidden) continue;
           const field = specFields.find((f) => f.variable === ov.fieldName);
@@ -2772,8 +2859,21 @@ function initAnsibleRunner(app) {
               message: `"${f.label}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
             });
           }
+          if (f?.choicesSource && !f.choicesSource.source) delete f.choicesSource;
+          if (f?.choicesSource) {
+            const problem = choiceSources.validateChoicesSource(
+              f.choicesSource,
+              customSurveyFields.map((o) => String(o?.name || '').trim()),
+            );
+            if (problem) {
+              return res
+                .status(400)
+                .json({ ok: false, message: `"${f.label}" seçenek kaynağı: ${problem}` });
+            }
+          }
           if (
             (f?.type === 'multiplechoice' || f?.type === 'multiselect') &&
+            !f?.choicesSource &&
             (!Array.isArray(f.choices) ||
               f.choices.filter((c) => String(c || '').trim()).length === 0)
           ) {
@@ -2919,6 +3019,7 @@ function initAnsibleRunner(app) {
       // kullanicidan gelmez, AWX template'in kendi statik extra_vars'iyla calisir.
       if (Array.isArray(overrides.customSurveyFields) && overrides.customSurveyFields.length > 0) {
         extraVars = resolveCustomSurveyExtraVars(overrides.customSurveyFields, submittedExtraVars);
+        await assertChoiceSources(overrides.customSurveyFields, extraVars);
       } else {
         extraVars = {};
       }
@@ -2937,6 +3038,13 @@ function initAnsibleRunner(app) {
 
       if (specFields && specFields.length > 0) {
         extraVars = resolveLaunchExtraVars(specFields, overrides, submittedExtraVars);
+        await assertChoiceSources(
+          specFields.map((f) => {
+            const ov = (overrides.fieldOverrides || []).find((o) => o.fieldName === f.variable) || {};
+            return { name: f.variable, label: f.question_name, choicesSource: ov.choicesSource };
+          }),
+          extraVars,
+        );
       } else {
         // Gercek bir survey yok (extra_vars fallback senaryosu) — mevcut esnek davranis
         // korunur: yalnizca dolu degerler gecirilir, kati dogrulama uygulanmaz.

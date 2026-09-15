@@ -34,6 +34,8 @@ import {
   type FieldCustomization,
   type SurveyFieldCondition,
   type SurveyFieldConditionGroup,
+  type ChoicesSource,
+  type ChoiceSourceInfo,
 } from '@/api/ansibleApi';
 import { buildSuggestions, type SurveySuggestion } from '@/utils/surveySuggestions';
 
@@ -51,6 +53,88 @@ interface LocalFieldState {
   description: string;
   defaultValue: string;
   hidden: boolean;
+  /** Metin alanı envanterden beslenen seçim kutusuna çevrildiyse. */
+  choicesSource?: ChoicesSource;
+}
+
+// SEÇENEK KAYNAĞI EDİTÖRÜ (2026-09-15): serbest metin alanını veritabanından beslenen
+// listeye bağlar. Hem AWX survey alanı override'ında hem Survey Tasarımcısı özel
+// alanında aynı bileşen kullanılır; kaynak listesi sunucudan (/ss/choice-sources) gelir.
+// Kaynağın parametreleri (ör. env) formdaki BAŞKA bir alana bağlanır — kullanıcı ortamı
+// seçince liste o ortama göre çekilir.
+function ChoicesSourceEditor({
+  value,
+  sources,
+  fieldNames,
+  selfName,
+  onChange,
+}: {
+  value?: ChoicesSource;
+  sources: ChoiceSourceInfo[];
+  fieldNames: string[];
+  selfName: string;
+  onChange: (v: ChoicesSource | undefined) => void;
+}) {
+  const info = sources.find((x) => x.name === value?.source);
+  const others = fieldNames.filter((n) => n && n !== selfName);
+  return (
+    <div className="rounded-lg border border-dashed border-[var(--border)] p-2 space-y-1.5 bg-[var(--bg-elevated)]/40">
+      <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+        Seçenek kaynağı (serbest metin yerine envanterden liste)
+      </label>
+      <Select
+        value={value?.source || ''}
+        onChange={(e) => {
+          const name = e.target.value;
+          if (!name) return onChange(undefined);
+          const src = sources.find((x) => x.name === name);
+          // Parametre adı formda aynı adla varsa otomatik bağla (env -> env).
+          const params: Record<string, string> = {};
+          for (const p of src?.params || []) params[p.name] = others.includes(p.name) ? p.name : '';
+          onChange({ source: name, params });
+        }}
+      >
+        <option value="">Kapalı — kullanıcı serbest metin girer</option>
+        {sources.map((x) => (
+          <option key={x.name} value={x.name}>
+            {x.label}
+          </option>
+        ))}
+      </Select>
+      {info &&
+        info.params.map((p) => {
+          const bound = value?.params?.[p.name] || '';
+          return (
+            <div key={p.name} className="flex items-center gap-2">
+              <span className="text-[11px] text-[var(--text-muted)] whitespace-nowrap">
+                {p.label}
+                {p.required ? ' *' : ''}
+              </span>
+              <Select
+                value={bound}
+                error={!!p.required && !bound}
+                onChange={(e) =>
+                  onChange({ ...value!, params: { ...(value?.params || {}), [p.name]: e.target.value } })
+                }
+              >
+                <option value="">— form alanı seçin —</option>
+                {others.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          );
+        })}
+      {info && (
+        <p className="text-[11px] text-[var(--text-muted)]">
+          Kullanıcı listeden seçer; sunucu launch'ta değeri kaynağa karşı yeniden doğrular.
+          Kaynak cevap vermezse iş başlamaz.
+        </p>
+      )}
+    </div>
+  );
 }
 
 // Survey Tasarımcısı'nda seçilebilecek alan tipleri — SurveyModal'ın (SelfServicePage.tsx)
@@ -211,6 +295,7 @@ export default function FieldOverridesModal({
   onClose: () => void;
 }) {
   const [fields, setFields] = useState<LocalFieldState[]>([]);
+  const [choiceSources, setChoiceSources] = useState<ChoiceSourceInfo[]>([]);
   const [surveyEnabled, setSurveyEnabled] = useState(true);
   const [launchOptions, setLaunchOptions] = useState<LaunchOptions | null>(null);
   const [launchOptionOverrides, setLaunchOptionOverrides] = useState<
@@ -254,6 +339,13 @@ export default function FieldOverridesModal({
   const [err, setErr] = useState('');
 
   useEffect(() => {
+    ansibleApi
+      .choiceSources()
+      .then((r) => setChoiceSources(r.ok ? r.sources || [] : []))
+      .catch(() => setChoiceSources([]));
+  }, []);
+
+  useEffect(() => {
     Promise.all([
       ansibleApi.surveySpecAdmin(item.awxServerId, item.awxTemplateId),
       ansibleApi.getCustomization(item.awxServerId, item.awxTemplateId).catch(() => ({
@@ -281,14 +373,18 @@ export default function FieldOverridesModal({
             // override'ı yoksa) gizlemeyi ÖNERİRİZ (zorunlu kılmadan) — diğer tipler ve
             // zaten yapılandırılmış alanlar mevcut/varsayılan durumunu korur.
             const suggestHidden = f.type === 'password' && !hasExistingOverride;
+            const existing = existingOverrides.find((o) => o.fieldName === f.name);
             return {
               name: f.name,
               label: f.label,
-              type: f.type,
+              // Kaynağa bağlı alan sunucudan 'multiplechoice' gelir; admin ekranı AWX'teki
+              // asıl tipi (metin) bilmeli ki kaynak kapatılınca doğru davransın.
+              type: existing?.choicesSource?.source && f.type === 'multiplechoice' ? 'text' : f.type,
               required: f.required,
               description: f.description,
               defaultValue: f.defaultValue || '',
               hidden: suggestHidden ? true : f.hidden,
+              choicesSource: existing?.choicesSource?.source ? existing.choicesSource : undefined,
             };
           }),
         );
@@ -466,8 +562,16 @@ export default function FieldOverridesModal({
   const invalidCustomChoices = customFields.find(
     (f) =>
       (f.type === 'multiplechoice' || f.type === 'multiselect') &&
+      !f.choicesSource?.source &&
       f.choices.filter((c) => c.trim()).length === 0,
   );
+  // Kaynağa bağlı alanların zorunlu parametreleri bir form alanına bağlanmış olmalı.
+  const unboundSourceParam = [...fields, ...customFields].find((f) => {
+    const cs = f.choicesSource;
+    if (!cs?.source) return false;
+    const info = choiceSources.find((x) => x.name === cs.source);
+    return (info?.params || []).some((p) => p.required && !(cs.params || {})[p.name]);
+  });
   const invalidDependsOn = customFields.find((f) => {
     if (f.dependsOn === undefined) return false;
     const groups = groupsOf(f.dependsOn);
@@ -660,6 +764,12 @@ export default function FieldOverridesModal({
       setErr(`"${invalidCustomChoices.label}" bir seçim alanı ama hiç seçeneği yok.`);
       return;
     }
+    if (unboundSourceParam) {
+      setErr(
+        `"${unboundSourceParam.label || unboundSourceParam.name}" seçenek kaynağının zorunlu parametresi bir form alanına bağlanmamış.`,
+      );
+      return;
+    }
     if (invalidDependsOn) {
       setErr(
         `"${invalidDependsOn.label || invalidDependsOn.name}" için geçerli bir koşul alanı seçin.`,
@@ -674,6 +784,7 @@ export default function FieldOverridesModal({
         label: f.label,
         defaultValue: f.defaultValue,
         hidden: f.hidden,
+        ...(f.choicesSource?.source ? { choicesSource: f.choicesSource } : {}),
       }));
       const r = await ansibleApi.saveCustomization(item.awxServerId, item.awxTemplateId, {
         fieldOverrides,
@@ -908,7 +1019,17 @@ export default function FieldOverridesModal({
                       </div>
                     </div>
 
-                    {isChoiceType && (
+                    {isChoiceType && choiceSources.length > 0 && (
+                      <ChoicesSourceEditor
+                        value={f.choicesSource}
+                        sources={choiceSources}
+                        fieldNames={customFields.map((x) => x.name.trim())}
+                        selfName={f.name.trim()}
+                        onChange={(v) => updateCustomField(i, { choicesSource: v })}
+                      />
+                    )}
+
+                    {isChoiceType && !f.choicesSource?.source && (
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <label className="text-[11px] font-semibold text-[var(--text-secondary)]">
@@ -1236,11 +1357,22 @@ export default function FieldOverridesModal({
                     </p>
                   </div>
                 ) : (
-                  <p className="text-xs text-emerald-600">
-                    {f.required
-                      ? 'Zorunlu bir alan — kullanıcıya gösterilecek, değer girmesi istenecek.'
-                      : 'Bu alan kullanıcıya opsiyonel olarak gösterilecek.'}
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-xs text-emerald-600">
+                      {f.required
+                        ? 'Zorunlu bir alan — kullanıcıya gösterilecek, değer girmesi istenecek.'
+                        : 'Bu alan kullanıcıya opsiyonel olarak gösterilecek.'}
+                    </p>
+                    {(f.type === 'text' || f.type === 'textarea') && choiceSources.length > 0 && (
+                      <ChoicesSourceEditor
+                        value={f.choicesSource}
+                        sources={choiceSources}
+                        fieldNames={fields.map((x) => x.name)}
+                        selfName={f.name}
+                        onChange={(v) => updateField(f.name, { choicesSource: v })}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
             ))}

@@ -6,6 +6,7 @@ import { ansibleApi, type OcoWindowInfo } from '@/api/ansibleApi';
 import { nobetciApi, type NobetciResult } from '@/api/nobetciApi';
 import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions } from '@/api/ansibleApi';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
+import DynamicChoiceSelect from '@/components/self_service/DynamicChoiceSelect';
 import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { useFloatingWindow, ResizeHandle } from '@/hooks/useFloatingWindow';
@@ -199,8 +200,11 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
     if (!v) return null;
     if (f.type === 'integer' && !/^-?\d+$/.test(v)) return 'Tam sayı girin.';
     if (f.type === 'float' && !/^-?\d*\.?\d+$/.test(v)) return 'Geçerli bir sayı girin.';
+    // Kaynaktan beslenen alanlarda liste istemcide anlık yüklenir; whitelist kararı
+    // sunucuda (assertChoiceSources) verilir — burada statik listeye bakılmaz.
     if (
       f.type === 'multiplechoice' &&
+      !f.choicesSource &&
       Array.isArray(f.choices) &&
       f.choices.length > 0 &&
       !f.choices.includes(v)
@@ -647,7 +651,17 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
                         hint={f.description}
                         error={err}
                       >
-                        {f.type === 'multiplechoice' || f.type === 'multiselect' ? (
+                        {f.choicesSource ? (
+                          <DynamicChoiceSelect
+                            id={id}
+                            source={f.choicesSource}
+                            values={values}
+                            value={val}
+                            onChange={set}
+                            onBlur={onBlur}
+                            error={!!err}
+                          />
+                        ) : f.type === 'multiplechoice' || f.type === 'multiselect' ? (
                           <Select
                             id={id}
                             error={!!err}

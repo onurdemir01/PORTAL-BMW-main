@@ -142,6 +142,34 @@ export default function RequestsSidePanel() {
     }
   };
 
+  // CANLI TAKIP (2026-09-15 duzeltmesi): loadJobOutput ciktiyi TEK SEFER cekiyordu; job o
+  // sirada suruyorsa terminal o anki (cogu zaman bos) ciktida donup kaliyordu ("hicbir sey
+  // akmadi", job arkada bitti). Pencere acikken ve durum terminal degilken 3 sn'de bir
+  // yeniden cekilir; pencere kapaninca ya da job bitince durur.
+  useEffect(() => {
+    if (jobOutputOpenId == null) return;
+    const t = tickets.find((x) => x.id === jobOutputOpenId);
+    const det = detailCache[jobOutputOpenId];
+    if (!t?.jobId || !det?.awxServerId) return;
+    const cur = jobOutputCache[jobOutputOpenId];
+    const TERMINAL = ['successful', 'failed', 'error', 'canceled'];
+    if (cur && TERMINAL.includes(String(cur.status || '').toLowerCase())) return;
+    let alive = true;
+    const timer = setInterval(async () => {
+      try {
+        const r = await ansibleApi.ssJobStatus(det.awxServerId!, t.jobId!);
+        if (!alive || !r.ok) return;
+        setJobOutputCache((prev) => ({ ...prev, [jobOutputOpenId]: { status: r.status, output: r.output || '' } }));
+      } catch {
+        /* gecici hata: bir sonraki tik tekrar dener */
+      }
+    }, 3000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [jobOutputOpenId, tickets, detailCache, jobOutputCache]);
+
   const load = useCallback(async () => {
     try {
       const r = await ansibleApi.smartTicketsMine();
@@ -459,6 +487,12 @@ export default function RequestsSidePanel() {
                         <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                           Job #{t?.jobId}
                           {t?.externalTicketId ? ` · Smart #${t.externalTicketId}` : ''}
+                          {out && !['successful', 'failed', 'error', 'canceled'].includes(String(out.status || '').toLowerCase()) && (
+                            <span className="ml-2 inline-flex items-center gap-1 text-emerald-600">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              canlı · 3 sn
+                            </span>
+                          )}
                         </div>
                       </div>
                       <button
