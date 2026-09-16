@@ -1,0 +1,157 @@
+---
+# configuration_delivery.yaml — nginx kurulum dosyalarini SECIMLI dagitir (2026-09-16).
+#
+# ONCEKI HAL: hangi dosyanin gidecegi playbook'ta satir yorumlayarak seciliyordu ve her
+# kosuda dhparam yeniden uretiliyordu. SIMDI: Portal (Self Servis) ya da AWX'ten
+#   files        : uzerine yazilacak dosyalar (liste ya da virgul/satir ayrimli dizge)
+#                  bmw_defaults.conf | proxy_settings.conf | rate_limits.conf |
+#                  log_format.conf | gt-error-page.html | nginx.conf
+#   target_hosts : hedef sunucular (liste ya da virgullu; Portal Nginx Envanteri'nden secilir)
+#   dry_run      : true -> yalniz FARK gosterir, hicbir sey yazmaz (varsayilan false)
+#   fix_permissions : true (varsayilan) -> sahiplik/izinler duzeltilir, dhparam YOKSA uretilir
+# nginx.conf icin plus/opensource AYRIMI sunucudan (nginx -v) otomatik; `version` extra var
+# verilirse (Plus|Opensource) o kazanir (eski davranisla uyum).
+# Her yazilan dosyanin yedegi alinir; nginx -t duserse TUM dosyalar geri alinir ve host FAIL;
+# gecerse reload. Kabuk bloklari files/ altinda (fix_permissions.sh, nginx_test_or_reload.sh).
+# Ayrinti: README.md
+
+- name: "--- [Play] Configuration Delivery (secimli) ---"
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: no
+  vars:
+    files: []
+    dry_run: false
+    fix_permissions: true
+    # dosya -> hedef yol (nginx.conf kaynagi surume gore secilir)
+    cd_targets:
+      bmw_defaults.conf: /usr/nginx/conf/bmw_defaults.conf
+      proxy_settings.conf: /usr/nginx/conf/proxy_settings.conf
+      rate_limits.conf: /usr/nginx/conf/rate_limits.conf
+      log_format.conf: /usr/nginx/conf/log_format.conf
+      gt-error-page.html: /usr/nginx/html/gt-error-page.html
+      nginx.conf: /usr/nginx/nginx.conf
+  tasks:
+    # Portal coklu secimi LISTE, AWX/elle kullanim virgul ya da satir sonu ayrimli DIZGE
+    # gonderebilir; ikisi de tek listeye indirgenir.
+    - name: --- [Task] Secilen dosyalari normalize et ---
+      ansible.builtin.set_fact:
+        cd_files: >-
+          {{ (files if (files is not string and files is iterable) else (files | string | replace('\n', ',') | split(',')))
+             | map('trim') | reject('equalto', '') | unique | list }}
+
+    - name: --- [Task] En az bir dosya secilmis ve hepsi taninan dosyalar olmali ---
+      ansible.builtin.assert:
+        that:
+          - (cd_files | length) > 0
+          - (cd_files | difference(cd_targets.keys() | list) | length) == 0
+        fail_msg: >-
+          files bos ya da bilinmeyen dosya iceriyor: {{ cd_files | difference(cd_targets.keys() | list) | join(', ') }}.
+          Gecerli: {{ cd_targets.keys() | join(', ') }}
+
+    - name: --- [Task] nginx surumu (plus / opensource) ---
+      become: true
+      become_method: dzdo
+      become_user: www
+      ansible.builtin.shell: dzdo /usr/nginx/sbin/nginx -v 2>&1 | awk -F "/" '{print $2}'
+      register: cd_ver
+      changed_when: false
+      failed_when: false
+      when: "'nginx.conf' in cd_files"
+
+    - name: --- [Task] nginx.conf kaynagini sec ---
+      ansible.builtin.set_fact:
+        cd_nginx_src: >-
+          {{ 'nginx_plus.conf'
+             if ((version | default('') | lower) == 'plus'
+                 or ((version | default('') | length) == 0 and 'plus' in (cd_ver.stdout | default('') | lower)))
+             else 'nginx_opensource.conf' }}
+      when: "'nginx.conf' in cd_files"
+
+    - name: --- [Task] Plan ---
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} · {{ 'DENEME (dry_run: yazilmaz)' if (dry_run | bool) else 'UYGULA' }} ·
+          {{ cd_files | join(', ') }}{{ (' · nginx.conf <- ' ~ cd_nginx_src) if ('nginx.conf' in cd_files) else '' }}
+
+    # backup: yes -> her item icin backup_file (rollback icin). check_mode + diff -> dry_run'da
+    # yalniz fark gosterilir. Kaynak dosya adi hedef adindan farkli olabilir (nginx.conf).
+    - name: "--- [Task] {{ 'FARK' if (dry_run | bool) else 'Kopyala' }}: secilen dosyalar (yedekli) ---"
+      become: true
+      become_method: dzdo
+      become_user: www
+      ansible.builtin.copy:
+        src: "{{ cd_nginx_src if item == 'nginx.conf' else item }}"
+        dest: "{{ cd_targets[item] }}"
+        owner: www
+        mode: '0740'
+        backup: yes
+      loop: "{{ cd_files }}"
+      register: cd_copy
+      check_mode: "{{ dry_run | bool }}"
+      diff: yes
+
+    - name: "--- [Task] Deneme modu: degisecek dosyalar ---"
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: degisecek {{ cd_copy.results | selectattr('changed') | map(attribute='item') | list | join(', ') | default('hicbiri', true) }}
+          · ayni {{ cd_copy.results | rejectattr('changed') | map(attribute='item') | list | join(', ') | default('-', true) }}
+      when: dry_run | bool
+
+    - name: --- [Task] Deneme modunda burada biter ---
+      ansible.builtin.meta: end_host
+      when: dry_run | bool
+
+    - name: --- [Task] Izinler / sahiplik / dhparam (yoksa) ---
+      become: true
+      become_method: dzdo
+      become_user: www
+      ansible.builtin.script:
+        cmd: files/fix_permissions.sh
+      when: fix_permissions | bool
+      changed_when: false
+
+    - name: --- [Task] nginx -t ---
+      become: true
+      become_method: dzdo
+      become_user: www
+      ansible.builtin.script:
+        cmd: files/nginx_test_or_reload.sh test
+      register: cd_test
+      failed_when: false
+      changed_when: false
+
+    - name: "--- [Task] nginx -t DUSTU -> yedekten geri al ---"
+      become: true
+      become_method: dzdo
+      become_user: www
+      ansible.builtin.copy:
+        src: "{{ item.backup_file }}"
+        dest: "{{ item.dest }}"
+        remote_src: yes
+        owner: www
+        mode: '0740'
+      loop: "{{ cd_copy.results | selectattr('backup_file', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.dest }}"
+      when: cd_test.rc != 0
+
+    - name: --- [Task] Geri alindi, host FAIL ---
+      ansible.builtin.fail:
+        msg: "{{ inventory_hostname }}: nginx -t dustu, dosyalar yedekten geri alindi: {{ ((cd_test.stdout_lines | default([])) + (cd_test.stderr_lines | default([]))) | join(' / ') | truncate(600) }}"
+      when: cd_test.rc != 0
+
+    - name: --- [Task] nginx reload ---
+      become: true
+      become_method: dzdo
+      become_user: www
+      ansible.builtin.script:
+        cmd: files/nginx_test_or_reload.sh reload
+      when: cd_copy.results | selectattr('changed') | list | length > 0
+      changed_when: true
+
+    - name: --- [Task] Sonuc ---
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: {{ cd_copy.results | selectattr('changed') | list | length }} dosya degisti
+          ({{ cd_copy.results | selectattr('changed') | map(attribute='item') | list | join(', ') | default('-', true) }}),
+          nginx -t gecti{{ ', reload yapildi' if (cd_copy.results | selectattr('changed') | list | length) > 0 else ', degisiklik yok - reload yapilmadi' }}
