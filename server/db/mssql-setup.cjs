@@ -688,6 +688,23 @@ const TABLES = [
       )`,
   },
   {
+    // SELF SERVIS AYAR GECMISI (2026-09-16 olayi: bir servisin Survey Tasarimcisi ayarlari
+    // "kayboldu"). ansible_ss_customizations tek satir/tek surum tutuyordu; bir kere ezilince
+    // geri donus yoktu. Artik her kayittan once ONCEKI veri buraya yazilir; Admin ekrani
+    // gecmisi listeler ve geri yukler. Silinmez (kucuk JSON'lar).
+    name: 'ansible_ss_customizations_history',
+    sql: `
+      CREATE TABLE ansible_ss_customizations_history (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        awx_server_id INT NOT NULL,
+        template_id   INT NOT NULL,
+        data          NVARCHAR(MAX) NOT NULL,
+        saved_by      NVARCHAR(128) NULL,
+        reason        NVARCHAR(64)  NULL,
+        saved_at      DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Nginx SPA > Production Tasimalari takibi (2026-09-14, kullanici talebi): uygulama
     // basina gecis durumu/tarihi. Kaynak gorunum (hangi uygulamalar) MSSQL denetim
     // tablolarindan hesaplanir; BURASI yalnizca insan girdisi: planlanan/gecis tarihi, not.

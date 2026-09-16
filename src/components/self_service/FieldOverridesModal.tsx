@@ -36,7 +36,12 @@ import {
   type SurveyFieldConditionGroup,
   type ChoicesSource,
   type ChoiceSourceInfo,
+  type CustomizationHistoryItem,
 } from '@/api/ansibleApi';
+
+import { fmtDateTime } from '@/utils/datetime';
+
+const fmtWhen = (iso: string) => fmtDateTime(iso);
 import { buildSuggestions, type SurveySuggestion } from '@/utils/surveySuggestions';
 
 interface FieldOverridesModalItem {
@@ -363,6 +368,13 @@ export default function FieldOverridesModal({
   );
   const [smartMetaErr, setSmartMetaErr] = useState('');
   const [loading, setLoading] = useState(true);
+  // KAYIT KILIDI (2026-09-16 olayi): mevcut ayarlar okunamadiysa ekran BOS acilir ve
+  // "Kaydet" o bos hali DB'ye yazar - ayarlar "kaybolur". Okuma basarisizsa kaydetme kapali.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [history, setHistory] = useState<CustomizationHistoryItem[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [restoring, setRestoring] = useState<number | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -376,8 +388,9 @@ export default function FieldOverridesModal({
   useEffect(() => {
     Promise.all([
       ansibleApi.surveySpecAdmin(item.awxServerId, item.awxTemplateId),
-      ansibleApi.getCustomization(item.awxServerId, item.awxTemplateId).catch(() => ({
+      ansibleApi.getCustomization(item.awxServerId, item.awxTemplateId).catch((e: unknown) => ({
         ok: false,
+        message: e instanceof Error ? e.message : String(e),
         customization: {
           fieldOverrides: [],
           rawExtraVars: '',
@@ -389,6 +402,16 @@ export default function FieldOverridesModal({
         if (!specRes.ok) {
           setErr(specRes.message || 'Alanlar yüklenemedi.');
           return;
+        }
+        if (!customRes.ok) {
+          // Kaydetme KILITLI: bos ekranla mevcut ayari ezmek yerine kullaniciya soyle.
+          setLoadFailed(true);
+          setErr(
+            'Mevcut ayarlar okunamadı (' + (customRes.message || 'sunucu hatası') +
+            '). Kaydetme kilitlendi — sayfayı yenileyip tekrar deneyin; mevcut ayarlar silinmedi.',
+          );
+        } else {
+          setLoadFailed(false);
         }
         setSurveyEnabled(specRes.surveyEnabled);
         setLaunchOptions(specRes.launchOptions);
@@ -449,7 +472,36 @@ export default function FieldOverridesModal({
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, [item]);
+  }, [item, reloadTick]);
+
+  async function loadHistory() {
+    try {
+      const r = await ansibleApi.customizationHistory(item.awxServerId, item.awxTemplateId);
+      setHistory(r.ok ? r.items : []);
+    } catch {
+      setHistory([]);
+    }
+  }
+  async function restore(h: CustomizationHistoryItem) {
+    if (!window.confirm(`${fmtWhen(h.savedAt)} tarihli sürümü geri yüklemek istiyor musunuz? Mevcut hâl de geçmişe yazılır.`)) return;
+    setRestoring(h.id);
+    setErr('');
+    try {
+      const r = await ansibleApi.restoreCustomization(item.awxServerId, item.awxTemplateId, h.id);
+      if (!r.ok) {
+        setErr(r.message || 'Geri yükleme başarısız.');
+        return;
+      }
+      setHistory(null);
+      setHistoryOpen(false);
+      setLoading(true);
+      setReloadTick((t) => t + 1);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRestoring(null);
+    }
+  }
 
   // ÖNERİLER — hesaplanır, ASLA kendiliğinden uygulanmaz.
   //
@@ -871,14 +923,70 @@ export default function FieldOverridesModal({
             Kapat
           </button>
           {!loading && (
-            <button onClick={save} disabled={saving} className="btn-primary">
-              {saving ? 'Kaydediliyor...' : 'Kaydet'}
+            <button
+              onClick={save}
+              disabled={saving || loadFailed}
+              className="btn-primary"
+              title={loadFailed ? 'Mevcut ayarlar okunamadığı için kaydetme kilitli' : undefined}
+            >
+              {saving ? 'Kaydediliyor...' : loadFailed ? 'Kaydet (kilitli)' : 'Kaydet'}
             </button>
           )}
         </>
       }
     >
       <div className="space-y-4">
+        {/* GECMIS SURUMLER (2026-09-16): her kayittan onceki hal saklanir; tek tikla geri yukleme. */}
+        {!loading && (
+          <details
+            open={historyOpen}
+            onToggle={(e) => {
+              const o = (e.currentTarget as HTMLDetailsElement).open;
+              setHistoryOpen(o);
+              if (o && history === null) void loadHistory();
+            }}
+            className="rounded-xl border border-[var(--border)] px-3 py-2"
+          >
+            <summary className="cursor-pointer select-none text-xs font-semibold text-[var(--text-secondary)]">
+              Geçmiş sürümler — bir ayar kaybolduysa buradan geri yükleyin
+            </summary>
+            <div className="mt-2 space-y-1">
+              {history === null ? (
+                <p className="text-[11px] text-[var(--text-muted)]">Yükleniyor…</p>
+              ) : history.length === 0 ? (
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Bu servis için kayıtlı geçmiş yok (geçmiş, bu sürümden sonraki her kayıtta birikir).
+                </p>
+              ) : (
+                history.map((h) => (
+                  <div key={h.id} className="flex items-center justify-between gap-2 text-[11px] border-t border-[var(--border-subtle)] py-1">
+                    <span className="min-w-0">
+                      <b>{fmtWhen(h.savedAt)}</b>
+                      {h.savedBy ? ` · ${h.savedBy}` : ''}
+                      {h.reason && h.reason !== 'save' ? ` · ${h.reason}` : ''}
+                      {' · '}
+                      {h.customSurveyFields} tasarımcı alanı, {h.fieldOverrides} AWX alan ayarı
+                      {h.smart ? ' · Smart' : ''}{h.oco ? ' · OCO' : ''}
+                      {h.customFieldNames.length > 0 && (
+                        <span className="block font-mono text-[10px] text-[var(--text-muted)] truncate" title={h.customFieldNames.join(', ')}>
+                          {h.customFieldNames.join(', ')}
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => restore(h)}
+                      disabled={restoring !== null}
+                      className="shrink-0 px-2 py-1 rounded-lg border border-[var(--border)] hover:bg-[var(--bg-elevated)]"
+                    >
+                      {restoring === h.id ? 'Yükleniyor…' : 'Geri yükle'}
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </details>
+        )}
         {err && (
           <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
             {err}

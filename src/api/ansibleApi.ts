@@ -462,8 +462,21 @@ export const ansibleApi = {
   getCustomization: (
     serverId: number,
     templateId: number,
-  ): Promise<{ ok: boolean; customization: FieldCustomization }> =>
+  ): Promise<{ ok: boolean; customization: FieldCustomization; message?: string }> =>
     fetch(`${BASE}/ss/custom/${serverId}/${templateId}`).then(safeJson),
+
+  // Ayar gecmisi (her kayittan onceki surum saklanir) ve geri yukleme.
+  customizationHistory: (
+    serverId: number,
+    templateId: number,
+  ): Promise<{ ok: boolean; items: CustomizationHistoryItem[]; message?: string }> =>
+    fetch(`${BASE}/ss/custom/${serverId}/${templateId}/history`).then(safeJson),
+  restoreCustomization: (
+    serverId: number,
+    templateId: number,
+    historyId: number,
+  ): Promise<{ ok: boolean; customization?: FieldCustomization; message?: string }> =>
+    fetch(`${BASE}/ss/custom/${serverId}/${templateId}/restore/${historyId}`, { method: 'POST' }).then(safeJson),
 
   saveCustomization: (
     serverId: number,
@@ -675,6 +688,18 @@ export interface LaunchOptionOverride {
 export interface OutputFilter {
   enabled: boolean;
   contains: string;
+}
+
+export interface CustomizationHistoryItem {
+  id: number;
+  savedBy: string | null;
+  reason: string | null;
+  savedAt: string;
+  fieldOverrides: number;
+  customSurveyFields: number;
+  customFieldNames: string[];
+  smart: boolean;
+  oco: boolean;
 }
 
 export interface FieldCustomization {

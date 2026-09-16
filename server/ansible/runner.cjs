@@ -1705,6 +1705,19 @@ function initAnsibleRunner(app) {
     return customFileFallback(serverId, templateId);
   }
 
+  // ONBELLEK TAZELIGI (2026-09-16 olayi): _ssCustom yalniz boot'ta yukleniyordu. Iki portal
+  // sureci ayni anda calisinca (yasandi: yetim surec) ya da DB baska yerden guncellenince,
+  // ekran ESKI ayari gosteriyor, admin "kaydet" deyince eski hal DB'ye geri yaziliyordu -
+  // yani ayarlar "kayboluyordu". Admin ekrani acilmadan once onbellek DB'den tazelenir.
+  let _ssCustomLoadedAt = 0;
+  const SS_CUSTOM_TTL_MS = 30 * 1000;
+  async function freshCustom(serverId, templateId) {
+    if (!_ssCustom || Date.now() - _ssCustomLoadedAt > SS_CUSTOM_TTL_MS) {
+      try { await reloadSsCustomCache(); } catch (e) { console.warn('[AnsibleSS] ayar onbellegi tazelenemedi:', e.message); }
+    }
+    return readCustom(serverId, templateId);
+  }
+
   async function reloadSsCustomCache() {
     const { rows } = await dbx.query(`SELECT * FROM ansible_ss_customizations`);
     _ssCustom = new Map();
@@ -1715,9 +1728,31 @@ function initAnsibleRunner(app) {
         /* bozuk satiri atla */
       }
     }
+    _ssCustomLoadedAt = Date.now();
   }
 
-  async function writeCustom(serverId, templateId, data) {
+  // Her kayittan once ONCEKI surum gecmise yazilir (ansible_ss_customizations_history) -
+  // bir ezilme artik geri alinabilir. Gecmis yazimi kaydi bloklamaz (best-effort, uyari).
+  async function archiveCustom(serverId, templateId, by, reason) {
+    try {
+      const cur = await dbx.query(
+        `SELECT data FROM ansible_ss_customizations WHERE awx_server_id = $1 AND template_id = $2`,
+        [Number(serverId), Number(templateId)],
+      );
+      const prev = cur.rows[0]?.data;
+      if (!prev) return;
+      await dbx.query(
+        `INSERT INTO ansible_ss_customizations_history (awx_server_id, template_id, data, saved_by, reason)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [Number(serverId), Number(templateId), String(prev), by || null, reason || 'save'],
+      );
+    } catch (e) {
+      console.warn('[AnsibleSS] ayar gecmisi yazilamadi:', e.message);
+    }
+  }
+
+  async function writeCustom(serverId, templateId, data, opts = {}) {
+    await archiveCustom(serverId, templateId, opts.by, opts.reason);
     const json = JSON.stringify(data);
     const upd = await dbx.query(
       `UPDATE ansible_ss_customizations SET data = $1, updated_at = GETUTCDATE()
@@ -2956,7 +2991,20 @@ function initAnsibleRunner(app) {
           }
         }
 
-        await writeCustom(server.id, req.params.templateId, data);
+        const by = req.session?.user?.username || null;
+        await writeCustom(server.id, req.params.templateId, data, { by, reason: 'save' });
+        // Denetim izi: kim, hangi template, kac alan (icerik gecmis tablosunda).
+        try {
+          require('../audit/index.cjs').auditPortal(req, 'ss_custom_save', {
+            username: by,
+            detail: JSON.stringify({
+              awxServerId: server.id, templateId: Number(req.params.templateId),
+              fieldOverrides: (data.fieldOverrides || []).length,
+              customSurveyFields: (data.customSurveyFields || []).length,
+              smart: !!data.smartApproval?.enabled, oco: !!data.ocoCheck?.enabled,
+            }),
+          });
+        } catch { /* audit yoksa yoksay */ }
         res.json({ ok: true });
       } catch (err) {
         const { status, message } = friendlyAwxError(err);
@@ -2966,10 +3014,66 @@ function initAnsibleRunner(app) {
   );
 
   // GET /api/ansible/ss/custom/:serverId/:templateId — Admin, mevcut override'lari getir
-  app.get('/api/ansible/ss/custom/:serverId/:templateId', requireAuth, requireAdmin, (req, res) => {
+  app.get('/api/ansible/ss/custom/:serverId/:templateId', requireAuth, requireAdmin, async (req, res) => {
     const server = getServerById(req.params.serverId);
-    if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
-    res.json({ ok: true, customization: readCustom(server.id, req.params.templateId) });
+    if (!server) return res.status(400).json({ ok: false, message: 'Sunucu bulunamadı.' });
+    try {
+      // Admin ekrani DB'deki GUNCEL hali gormeli (bkz. freshCustom); nginx 404/500'u HTML'e
+      // cevirdigi icin hata 400 ile doner ve ekran KAYDETMEYI KILITLER (bos halle ezmesin).
+      res.json({ ok: true, customization: await freshCustom(server.id, req.params.templateId) });
+    } catch (err) {
+      res.status(400).json({ ok: false, message: 'Ayarlar okunamadı: ' + err.message });
+    }
+  });
+
+  // GECMIS (2026-09-16): son 30 surum ozetle; geri yukleme mevcut hali de gecmise yazar.
+  app.get('/api/ansible/ss/custom/:serverId/:templateId/history', requireAuth, requireAdmin, async (req, res) => {
+    const server = getServerById(req.params.serverId);
+    if (!server) return res.status(400).json({ ok: false, message: 'Sunucu bulunamadı.' });
+    try {
+      const { rows } = await dbx.query(
+        `SELECT TOP 30 id, saved_by, reason, saved_at, data FROM ansible_ss_customizations_history
+          WHERE awx_server_id = $1 AND template_id = $2 ORDER BY id DESC`,
+        [Number(server.id), Number(req.params.templateId)],
+      );
+      const items = rows.map((r) => {
+        let d = {};
+        try { d = JSON.parse(r.data); } catch { /* bozuk */ }
+        return {
+          id: r.id, savedBy: r.saved_by, reason: r.reason, savedAt: r.saved_at,
+          fieldOverrides: (d.fieldOverrides || []).length,
+          customSurveyFields: (d.customSurveyFields || []).length,
+          customFieldNames: (d.customSurveyFields || []).map((f) => f.name).filter(Boolean).slice(0, 12),
+          smart: !!d.smartApproval?.enabled, oco: !!d.ocoCheck?.enabled,
+        };
+      });
+      res.json({ ok: true, items });
+    } catch (err) {
+      res.status(400).json({ ok: false, message: 'Geçmiş okunamadı: ' + err.message });
+    }
+  });
+
+  app.post('/api/ansible/ss/custom/:serverId/:templateId/restore/:historyId', requireAuth, requireAdmin, async (req, res) => {
+    const server = getServerById(req.params.serverId);
+    if (!server) return res.status(400).json({ ok: false, message: 'Sunucu bulunamadı.' });
+    try {
+      const { rows } = await dbx.query(
+        `SELECT data FROM ansible_ss_customizations_history WHERE id = $1 AND awx_server_id = $2 AND template_id = $3`,
+        [Number(req.params.historyId), Number(server.id), Number(req.params.templateId)],
+      );
+      if (!rows[0]) return res.status(400).json({ ok: false, message: 'Geçmiş kaydı bulunamadı.' });
+      const data = JSON.parse(rows[0].data);
+      const by = req.session?.user?.username || null;
+      await writeCustom(server.id, req.params.templateId, data, { by, reason: 'restore:' + req.params.historyId });
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'ss_custom_restore', {
+          username: by, detail: JSON.stringify({ awxServerId: server.id, templateId: Number(req.params.templateId), historyId: Number(req.params.historyId) }),
+        });
+      } catch { /* yoksay */ }
+      res.json({ ok: true, customization: data });
+    } catch (err) {
+      res.status(400).json({ ok: false, message: 'Geri yükleme başarısız: ' + err.message });
+    }
   });
 
   // GET /api/ansible/ss/smart-flow-metadata/:flowKey — Admin arac-kutusu: Smart RFF'in
