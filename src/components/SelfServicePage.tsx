@@ -131,7 +131,13 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   } = // 2026-08-26: genislik 640 -> 760. OCO kontrolu paneli uzun Turkce cumleler
     // iceriyor ve 640'ta secenek metinleri kirpiliyordu; ayni genislik normal
     // survey formlarina da yariyor (uzun etiketler alt satira dusmuyor).
-    useFloatingWindow({ w: 760, h: 640 }, { w: 420, h: 380 }, { autoHeight: true });
+    // 2026-09-16: 760 -> 1040 (ekrana sigacak sekilde). Envanterden gelen secenek etiketleri
+    // (location yolu + uygulama/namespace) uzun; dar pencerede alt satira kayiyordu.
+    useFloatingWindow(
+      { w: Math.min(1040, (typeof window !== 'undefined' ? window.innerWidth : 1040) - 40), h: 640 },
+      { w: 420, h: 380 },
+      { autoHeight: true },
+    );
   // Satır-içi doğrulama (Faz 5): alan dokunulunca veya submit denenince hata gösterilir.
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitAttempted, setSubmitAttempted] = useState(false);

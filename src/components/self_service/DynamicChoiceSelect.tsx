@@ -137,14 +137,14 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
         {choices.length > 8 && (
           <TextInput value={filter} placeholder="Listede ara…" onChange={(e) => setFilter(e.target.value)} aria-label="Seçeneklerde ara" />
         )}
-        <div className="max-h-64 overflow-y-auto space-y-0.5">
+        <div className="max-h-72 overflow-y-auto space-y-0.5">
           {groups.map(([g, cs]) => (
             <div key={g || '_'}>
               {g && <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] mt-1">{g}</div>}
               {cs.map((c) => (
-                <label key={c.value} className="flex items-center gap-2 text-[12px] cursor-pointer py-0.5">
+                <label key={c.value} className="flex items-center gap-2 text-[12px] cursor-pointer py-0.5" title={c.label}>
                   <input type="checkbox" checked={picked.has(c.value)} onChange={() => toggle(c.value)} />
-                  <span className="font-mono">{c.label}</span>
+                  <span className="font-mono whitespace-nowrap overflow-hidden text-ellipsis">{c.label}</span>
                 </label>
               ))}
             </div>
@@ -216,7 +216,7 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
         />
       )}
       {showList && (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] max-h-60 overflow-y-auto" role="listbox">
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] max-h-72 overflow-y-auto" role="listbox">
           <div className="px-2 py-1 text-[10px] text-[var(--text-muted)] border-b border-[var(--border-subtle)]">
             {filter.trim() ? `${visible.length} / ${choices.length} eşleşme` : `${choices.length} kayıt — yazarak daraltın`}
             {selected && (
@@ -237,7 +237,8 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
                   aria-selected={c.value === value}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(c.value)}
-                  className={`block w-full text-left px-2 py-1 text-[12px] font-mono hover:bg-[var(--bg-elevated)] ${c.value === value ? 'bg-[var(--bg-elevated)] font-semibold' : ''}`}
+                  className={`block w-full text-left px-2 py-1 text-[12px] font-mono whitespace-nowrap overflow-hidden text-ellipsis hover:bg-[var(--bg-elevated)] ${c.value === value ? 'bg-[var(--bg-elevated)] font-semibold' : ''}`}
+                  title={c.label}
                 >
                   {c.label}
                 </button>
