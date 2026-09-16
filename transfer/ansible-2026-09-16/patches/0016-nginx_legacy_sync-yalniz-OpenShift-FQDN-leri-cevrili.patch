@@ -1,0 +1,179 @@
+From eed4579accded323c05c64db3c1fcd2b55fa9688 Mon Sep 17 00:00:00 2001
+From: Onur Demir <demir-onur@hotmail.com>
+Date: Tue, 15 Sep 2026 23:57:21 +0300
+Subject: [PATCH 16/22] nginx_legacy_sync: yalniz OpenShift FQDN'leri cevrilir
+ (SKIP_EXTERNAL, all_fqdn ile zorlanir); vhost adi kalip disiysa upstream yine
+ dogru dosyaya
+
+job_3320865 dersleri: garantibbvakripto.com.tr / developers.apiportal-3rd... ilk etiketten
+anlamsiz upstream adi uretiyordu; apiportal vhost'u <SERVICE>-PROD.conf kalibinda olmadigi
+icin NO_ANCHOR cikiyordu. Testler 12-13.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ bmw_nginx/nginx_legacy_sync/README.md         |  5 ++-
+ .../files/legacy_sync_plan.py                 | 32 ++++++++++++++++---
+ .../nginx_legacy_sync/nginx_legacy_sync.yml   |  3 ++
+ bmw_nginx/tests/check_legacy_sync.py          | 21 ++++++++++++
+ 4 files changed, 55 insertions(+), 6 deletions(-)
+
+diff --git a/bmw_nginx/nginx_legacy_sync/README.md b/bmw_nginx/nginx_legacy_sync/README.md
+index 6a5d71ddd..a0a81903f 100644
+--- a/bmw_nginx/nginx_legacy_sync/README.md
++++ b/bmw_nginx/nginx_legacy_sync/README.md
+@@ -37,7 +37,10 @@ taranabildiyse o grup atlanır (tek sunucuyla eşitlenecek bir şey yoktur).
+    `prod_create`'in `upstream_host` türetimiyle aynı. Blokta `proxy_ssl_name <fqdn>` ve
+    `proxy_set_header Host <fqdn>` yoksa `proxy_pass` altına eklenir (upstream'e geçince
+    SNI/Host bunlardan gelir). IP adresi ve `$değişken` hedefe dokunulmaz. `proxy_pass`
+-   satırının boşluk düzeni korunur.
++   satırının boşluk düzeni korunur. **Yalnız OpenShift adresleri** (`*.apps.fw.garanti.com.tr`,
++   `*.apps-t.…`) çevrilir; dış alan adları (`garantibbvakripto.com.tr`,
++   `developers.apiportal-3rd.fw…`) ilk etiketten anlamlı bir upstream adı üretmediği için
++   `SKIP_EXTERNAL` ile raporlanır, `all_fqdn=true` ile zorlanır.
+ 2. **Upstream tanımı.** Kullanılan her upstream adı için grupta tanım yoksa şu üretilir
+    (`nginx_scheduled_ops/…/upstream-append-template.j2` ile aynı):
+    ```nginx
+diff --git a/bmw_nginx/nginx_legacy_sync/files/legacy_sync_plan.py b/bmw_nginx/nginx_legacy_sync/files/legacy_sync_plan.py
+index d403780f7..235336b0b 100644
+--- a/bmw_nginx/nginx_legacy_sync/files/legacy_sync_plan.py
++++ b/bmw_nginx/nginx_legacy_sync/files/legacy_sync_plan.py
+@@ -45,7 +45,7 @@ KURALLAR (sira onemli):
+ CIKTI (report.txt / actions):  ACTION  HOST  SERVIS  DETAY
+   REWRITE_PROXY_PASS  ADD_SSL_NAME  ADD_HOST_HEADER  ADD_UPSTREAM  ADD_LOCATION
+   REPLACE_LOCATION(strict)  FIX_UPSTREAM  DIFF_LOCATION  DIFF_UPSTREAM  CONFLICT
+-  UNDEFINED_TARGET  NO_ANCHOR
++  UNDEFINED_TARGET  NO_ANCHOR  SKIP_EXTERNAL(OpenShift disi FQDN, dokunulmaz)  MISSING_VHOST
+ """
+ import io
+ import json
+@@ -61,6 +61,13 @@ PEER_GROUPS = {
+ CONF_DIR = "/usr/nginx/conf.d"
+ UPSTREAM_TEMPLATE = "upstream {name} {{\n  server {fqdn}:443 resolve;\n  keepalive 10;\n  zone upstream_dynamic 4m;\n}}\n"
+ FQDN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*(\.[A-Za-z0-9][A-Za-z0-9-]*)+$")
++# YALNIZ OpenShift uygulama adresleri otomatik upstream'e cevrilir. Dis alan adlari
++# (garantibbvakripto.com.tr, developers.apiportal-3rd.fw...) ilk etiketten anlamli bir
++# upstream adi uretmez ("garantibbvakripto", "developers") ve resolve/keepalive kararini
++# elle vermek gerekir -> SKIP_EXTERNAL ile raporlanir, --all-fqdn ile zorlanir
++# (job_3320865 dersi, 2026-09-15).
++OCP_SUFFIXES = (".apps.fw.garanti.com.tr", ".apps-t.fw.garanti.com.tr")
++ALL_FQDN = False
+ IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+ PROXY_PASS_RE = re.compile(r"^(\s*)proxy_pass(\s+)(https?)://([^/;\s]+)(/[^;\s]*)?\s*;(.*)$")
+ SSL_NAME_RE = re.compile(r"^\s*proxy_ssl_name\s+([^;\s]+)\s*;")
+@@ -230,17 +237,27 @@ class Host(object):
+                 idx.setdefault(u["name"], {"file": fname, **u})
+         return idx
+ 
++    def vhost_file_of(self, service):
++        """Servisin vhost dosyasi — ad kalibi ne olursa olsun (APIPORTAL-PROD.conf,
++        apiportal-prod.conf, APIPORTAL.conf...): dosya icerigi server{} tasiyor ve
++        service_of(ad) eslesiyorsa odur. job_3320865 dersi: yalniz <SERVICE>-PROD.conf
++        varsayimi apiportal'da NO_ANCHOR uretti."""
++        for fname, lines in sorted(self.files.items()):
++            if service_of(fname) == service and is_vhost(lines):
++                return fname
++        return None
++
+     def upstream_file_for(self, service):
+         cand = "%s-prod-upstreams.conf" % service
+         if cand in self.files:
+             return cand
+-        # servis dosyasinda upstream var mi? yoksa da vhost dosyasi (create ile ayni yer)
+-        return "%s-PROD.conf" % service.upper() if ("%s-PROD.conf" % service.upper()) in self.files else None
++        # -upstreams.conf yoksa vhost dosyasinin basi (create ile ayni yer)
++        return self.vhost_file_of(service)
+ 
+     def add_upstream(self, service, name, text_lines, why):
+         fname = self.upstream_file_for(service)
+         if fname is None:
+-            self.act("NO_ANCHOR", service, "upstream %s icin dosya yok (%s-PROD.conf?)" % (name, service.upper()))
++            self.act("NO_ANCHOR", service, "upstream %s icin dosya yok (%s icin ne -prod-upstreams.conf ne vhost dosyasi bulundu)" % (name, service))
+             return False
+         lines = self.files[fname]
+         block = [l.rstrip("\n") for l in text_lines]
+@@ -305,6 +322,9 @@ def plan_group(gname, hosts, strict=False, fix_upstreams=False, scope="all"):
+                         fqdn = None
+                         name = None
+                         if FQDN_RE.match(port_less):
++                            if not ALL_FQDN and not port_less.lower().endswith(OCP_SUFFIXES):
++                                h.act("SKIP_EXTERNAL", service, "location %s: %s OpenShift adresi degil, dokunulmadi (--all-fqdn ile cevrilir)" % (loc["key"], port_less))
++                                continue
+                             fqdn = port_less
+                             name = port_less.split(".")[0]
+                             existing = ups_idx.get(name)
+@@ -468,9 +488,11 @@ def main():
+     ap.add_argument("--hosts", default="", help="OZEL eslenik kumesi (virgullu; PEER_GROUPS yerine), or. GBRVPAP03,GBRVPAP04")
+     ap.add_argument("--reference", default="", help="referans sunucu: onun surumu kazanir (cogunluk yerine)")
+     ap.add_argument("--scope", default="all", choices=["all", "upstreams", "locations"], help="upstreams: yalniz FQDN->upstream + eksik upstream; locations: yalniz location esitleme")
++    ap.add_argument("--all-fqdn", action="store_true", help="OpenShift disi alan adlarini da upstream'e cevir (varsayilan: SKIP_EXTERNAL)")
+     a = ap.parse_args()
+-    global REFERENCE_HOST
++    global REFERENCE_HOST, ALL_FQDN
+     REFERENCE_HOST = a.reference.strip().upper()
++    ALL_FQDN = a.all_fqdn
+ 
+     hosts_by_name = {}
+     for fn in sorted(os.listdir(a.raw_dir)):
+diff --git a/bmw_nginx/nginx_legacy_sync/nginx_legacy_sync.yml b/bmw_nginx/nginx_legacy_sync/nginx_legacy_sync.yml
+index bce98ba60..070c27873 100644
+--- a/bmw_nginx/nginx_legacy_sync/nginx_legacy_sync.yml
++++ b/bmw_nginx/nginx_legacy_sync/nginx_legacy_sync.yml
+@@ -19,6 +19,8 @@
+ #   peer_hosts=GBRVPAP03,GBRVPAP04,... (gruplar yerine OZEL eslenik kumesi; dokum de yalniz
+ #   bunlardan alinir), reference=GBRVPAP03 (cogunluk yerine bu sunucunun surumu kazanir),
+ #   scope=upstreams|locations|all (yalniz upstream isi / yalniz location esitleme / hepsi).
++#   all_fqdn=true: OpenShift disi alan adlarini (garantibbvakripto.com.tr gibi) da cevir;
++#   varsayilan yalniz *.apps.fw.garanti.com.tr / *.apps-t..., digerleri SKIP_EXTERNAL.
+ #   scope=upstreams: peer_hosts GEREKMEZ - target_hosts'taki her sunucu tek basina islenir
+ #   (proxy_pass duzeltme + eksik upstream'i <servis>-prod-upstreams.conf'a ekleme).
+ # ONERILEN SIRA: mode=report -> report.txt oku -> mode=apply target_hosts=<tek sunucu> -> tumu.
+@@ -113,6 +115,7 @@
+         {{ ('--hosts ' ~ peer_hosts) if (peer_hosts | default('') | length) > 0 else '' }}
+         {{ ('--reference ' ~ reference) if (reference | default('') | length) > 0 else '' }}
+         --scope {{ scope | default('all') }}
++        {{ '--all-fqdn' if (all_fqdn | default(false) | bool) else '' }}
+       register: plan_out
+       changed_when: false
+ 
+diff --git a/bmw_nginx/tests/check_legacy_sync.py b/bmw_nginx/tests/check_legacy_sync.py
+index 92e4a4cc5..5eb3a656b 100644
+--- a/bmw_nginx/tests/check_legacy_sync.py
++++ b/bmw_nginx/tests/check_legacy_sync.py
+@@ -62,6 +62,7 @@ h1_locs = [
+     LOC % dict(path="/undef/", pp="https://undef-app-v0-ns/", extra=""),
+     LOC % dict(path="/conf/", pp="https://conf-app-v0-ns.apps-t.fw.garanti.com.tr/", extra=""),
+     LOC % dict(path="/common/", pp="https://ok-app-v0-ok-ns/", extra="        proxy_read_timeout 60s;\n"),
++    LOC % dict(path="/ext/", pp="https://garantibbvakripto.com.tr/", extra=""),
+ ]
+ # Host 2: /fq/ ZATEN upstream + ssl basliklari var, /only2/ yalniz burada, /common/ farkli govde,
+ #         /bare/ /ip/ /ok/ /old/ /undef/ /conf/ yok (eslenikten gelecek)
+@@ -148,6 +149,26 @@ if not any(a[0] == "DIFF_LOCATION" and "/common/" in a[1] for a in acts1 | acts2
+     problems.append("4: govdesi farkli /common/ DIFF_LOCATION vermedi")
+ if "proxy_read_timeout 60s;" not in v1 or "proxy_read_timeout 20s;" not in v2:
+     problems.append("4: strict olmadan farkli govde degistirildi")
++# 12) OpenShift disi FQDN dokunulmaz + SKIP_EXTERNAL; --all-fqdn ile cevrilir
++if "https://garantibbvakripto.com.tr/" not in v1:
++    problems.append("12: dis alan adi varsayilanda upstream'e cevrildi (yalniz OCP adresleri cevrilmeli)")
++if not any(a[0] == "SKIP_EXTERNAL" and "/ext/" in a[1] for a in acts1):
++    problems.append("12: dis alan adi SKIP_EXTERNAL ile raporlanmadi")
++planx = os.path.join(tmp, "planx")
++run_plan(raw, planx, "--scope", "upstreams", "--all-fqdn")
++x1 = load(planx, "GBRVPP01"); xv = {os.path.basename(f["path"]): f["content"] for f in x1["files"]}
++if "https://garantibbvakripto/;" not in xv.get("WEBFORMS-PROD.conf", ""):
++    problems.append("12: --all-fqdn dis alan adini cevirmedi")
++# 13) vhost dosyasi <SERVICE>-PROD.conf kalibinda degilse de upstream dogru dosyaya gider
++rawv = os.path.join(tmp, "rawv"); planv = os.path.join(tmp, "planv"); os.makedirs(rawv)
++write_raw(rawv, "GBRVPAP01", {"apiportal-prod.conf": vhost([LOC % dict(path="/x/", pp="https://x-app-v0-ns.apps.fw.garanti.com.tr/", extra="")])})
++run_plan(rawv, planv, "--scope", "upstreams")
++pv = load(planv, "GBRVPAP01"); pvf = {os.path.basename(f["path"]): f["content"] for f in pv["files"]}
++if any(a["action"] == "NO_ANCHOR" for a in pv["actions"]):
++    problems.append("13: kucuk harfli vhost adi NO_ANCHOR uretti (job_3320865 apiportal)")
++if not pvf.get("apiportal-prod.conf", "").startswith("upstream x-app-v0-ns {"):
++    problems.append("13: upstream vhost dosyasinin basina eklenmedi:\n" + pvf.get("apiportal-prod.conf", "")[:200])
++
+ # 5
+ if not any(a[0] == "UNDEFINED_TARGET" and "/undef/" in a[1] for a in acts1):
+     problems.append("5: tanimsiz+basliksiz hedef UNDEFINED_TARGET vermedi")
+-- 
+2.55.0.windows.3
+

@@ -1,0 +1,26 @@
+From d93380c20fd9ca2b6ec4b8f05d601fceb180adb0 Mon Sep 17 00:00:00 2001
+From: Onur Demir <demir-onur@hotmail.com>
+Date: Tue, 15 Sep 2026 11:12:16 +0300
+Subject: [PATCH 04/22] nginx_ops README: webc blogu dosya sonuna notu
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ bmw_nginx/nginx_ops/README.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/bmw_nginx/nginx_ops/README.md b/bmw_nginx/nginx_ops/README.md
+index 8749de737..50dc011a3 100644
+--- a/bmw_nginx/nginx_ops/README.md
++++ b/bmw_nginx/nginx_ops/README.md
+@@ -146,7 +146,7 @@ bloğu istendi — `locales/locales.json` bloğunun birebir eşi, yalnızca dosy
+ | Nerede | Nasıl |
+ |---|---|
+ | **Yeni tanımlar** | `operations/templates/configuration-append-template-spa.j2` — non-prod `create` ve prod taşıması (`nginx_prod_migration.yml`) aynı şablonu kullanır. |
+-| **Mevcut dosyalar** | `nginx_webc_locales_backfill.yml` — her `application-confs/*.conf`'taki mevcut `locales.json` bloğunu **klonlar**, dosya adını değiştirir (`operations/files/webc_locales_backfill.sh`). CORS değişken adı, path öneki, `Allow-Credentials` satırının varlığı o dosyada ne ise korunur; idempotent. |
++| **Mevcut dosyalar** | `nginx_webc_locales_backfill.yml` — her `application-confs/*.conf`'taki mevcut `locales.json` bloğunu **klonlar**, dosya adını değiştirip **dosyanın en sonuna** ekler — `tail` ile görünsün (`operations/files/webc_locales_backfill.sh`). CORS değişken adı, path öneki, `Allow-Credentials` satırının varlığı o dosyada ne ise korunur; idempotent. |
+ | `nginx_scheduled_ops` | Değişiklik **yok**: eski prod sunucuları (GBRVP*) `proxy_pass` deseni kullanır, per-uygulama SPA dosyası üretmez. |
+ | `nginx_deployment_spa` şablonu | Bu commit'te **değil** — çalışma ağacında sizin düzenlemeniz var. Not: orada `alias` **dizine** (`…/$application/`) yazılmış; `location =` tam eşleşmesiyle dizin alias'ı dosyayı değil dizini servis eder. `locales.json` bloğundaki gibi `…/locales/webc_locales.json` olmalı (bu depodaki iki yol da öyle). |
+ 
+-- 
+2.55.0.windows.3
+

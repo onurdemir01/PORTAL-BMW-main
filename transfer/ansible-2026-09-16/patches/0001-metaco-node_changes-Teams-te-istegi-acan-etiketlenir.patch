@@ -1,0 +1,316 @@
+From 5c5a0305e5f0170421a942cc58553ef0b7afc150 Mon Sep 17 00:00:00 2001
+From: Onur Demir <demir-onur@hotmail.com>
+Date: Tue, 15 Sep 2026 10:00:39 +0300
+Subject: [PATCH 01/22] metaco node_changes: Teams'te istegi acan etiketlenir
+ (email'den), degisiklik detayi kartta
+
+Kullanici bildirimi: Smart/AWX'ten gelen kosularda requester_* olmadigi icin
+kartta HEP Onur etiketleniyordu -> mention artik requester_* > email > ekip
+sahibi sirasiyla. Karta "Zincir / Eski degerler / Yeni degerler" bolumu:
+templates/teams_details.json.j2 (mail sablonu body.yml.j2 ile ayni operation
+eslemesi; eski degerler Trigger execution KEY=VALUE satirlarindan, yeniler
+survey'den). Gizli sorgu parametreleri (?auth=, apikey, token, sig) ve
+user:pass@ Teams kanalinda maskeli (ilk 4 + ...). Test: gercek render.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ bmw_openshift_jobs/metaco/README.md           | 29 ++++++
+ bmw_openshift_jobs/metaco/node_changes.yaml   | 42 +++++---
+ .../metaco/templates/teams_details.json.j2    | 48 ++++++++++
+ .../metaco/tests/check_teams_details.py       | 95 +++++++++++++++++++
+ 4 files changed, 202 insertions(+), 12 deletions(-)
+ create mode 100644 bmw_openshift_jobs/metaco/README.md
+ create mode 100644 bmw_openshift_jobs/metaco/templates/teams_details.json.j2
+ create mode 100644 bmw_openshift_jobs/metaco/tests/check_teams_details.py
+
+diff --git a/bmw_openshift_jobs/metaco/README.md b/bmw_openshift_jobs/metaco/README.md
+new file mode 100644
+index 000000000..de4a6d84a
+--- /dev/null
++++ b/bmw_openshift_jobs/metaco/README.md
+@@ -0,0 +1,29 @@
++# Metaco Harmonize — Node Değişikliği (`metaco/node_changes.yaml`)
++
++`smart_operations.yaml` üzerinden `openshift_operations=metaco_ops` ile tetiklenir. Seçilen
++zincirin indexer deployment'ında node adreslerini değiştirir, rollout başlatır, mail + Teams
++bildirimi gönderir.
++
++## Bildirimler (2026-09-15)
++
++**Kim etiketlenir:** önce Portal'ın enjekte ettiği `requester_name`/`requester_email`; yoksa
++survey'deki `email` (Smart/AWX'ten doğrudan gelen koşular — önceden bunlarda hep ekip sahibi
++etiketleniyordu); o da yoksa ekip sahibi.
++
++**Değişiklik detayı:** kartta "Zincir / Eski değerler / Yeni değerler" bölümü. Eşleme
++`templates/teams_details.json.j2`'de, mail şablonu `templates/body.yml.j2` ile aynı
++`operation → zincir / değişken` tablosu (biri değişirse diğeri de güncellenmeli). Eski
++değerler *Trigger execution* adımının `KEY=VALUE` satırlarından, yeniler survey
++değişkenlerinden.
++
++**Maskeleme:** Teams kanalına node adreslerindeki gizli sorgu parametreleri (`?auth=`,
++`apikey=`, `token=`, `sig=` …) ve `kullanıcı:parola@` ilk 4 karakter + `…` ile yazılır;
++host/yol korunur. Mail (istek sahibi + ekip adresleri) tam değeri taşımaya devam eder.
++Kapatmak için şablondaki `mask` makrosu `{{ v }}` döndürecek şekilde değiştirilir.
++
++## Test
++```bash
++python3 bmw_openshift_jobs/metaco/tests/check_teams_details.py
++```
++Şablonu gerçekten render eder (Ansible filtreleri taklit): sıra, maskeleme, boş çıktı,
++bilinmeyen operation.
+diff --git a/bmw_openshift_jobs/metaco/node_changes.yaml b/bmw_openshift_jobs/metaco/node_changes.yaml
+index 277578a0e..9fadda94f 100644
+--- a/bmw_openshift_jobs/metaco/node_changes.yaml
++++ b/bmw_openshift_jobs/metaco/node_changes.yaml
+@@ -141,16 +141,17 @@
+                     version: "1.4"
+                     # Teams @mention: mention ENTITY'si ile govdedeki <at>...</at> metni
+                     # BIRLIKTE bulunmak zorunda - biri eksikse Teams karti reddeder.
+-                    # requester_* degiskenlerini Portal (runner.cjs) enjekte eder; AWX'ten
+-                    # elle calistirmalarda default devreye girer.
++                    # Kim etiketlenir (2026-09-15): once Portal'in enjekte ettigi requester_*;
++                    # yoksa survey'deki `email` (Smart/AWX'ten dogrudan gelen kosular - onceden
++                    # bunlarda HEP Onur etiketleniyordu); o da yoksa ekip sahibi.
+                     msteams:
+                       width: "Full"
+                       entities:
+                         - type: mention
+-                          text: "<at>{{ requester_name | default('Onur Demir') }}</at>"
++                          text: "<at>{{ requester_name | default(email | default('Onur Demir', true), true) }}</at>"
+                           mentioned:
+-                            id: "{{ requester_email | default('onurdemir3@garantibbva.com.tr') }}"
+-                            name: "{{ requester_name | default('Onur Demir') }}"
++                            id: "{{ requester_email | default(email | default('onurdemir3@garantibbva.com.tr', true), true) }}"
++                            name: "{{ requester_name | default(email | default('Onur Demir', true), true) }}"
+                     body:
+                       - type: Container
+                         style: accent
+@@ -182,7 +183,7 @@
+                       - type: TextBlock
+                         wrap: true
+                         spacing: Medium
+-                        text: "İsteği açan: <at>{{ requester_name | default('Onur Demir') }}</at>"
++                        text: "İsteği açan: <at>{{ requester_name | default(email | default('Onur Demir', true), true) }}</at>"
+                       - type: FactSet
+                         spacing: Medium
+                         facts:
+@@ -194,6 +195,14 @@
+                             value: "{{ cluster | default('?') }}"
+                           - title: "Namespace"
+                             value: "{{ namespace | default('?') }}"
++                      # Degisiklik detayi (2026-09-15): mail sablonuyla ayni operation -> zincir /
++                      # degisken eslemesi; eski degerler `output` (Trigger execution) ciktisindan,
++                      # yeni degerler survey degiskenlerinden. Gizli sorgu parametreleri maskeli
++                      # (bkz. templates/teams_details.json.j2).
++                      - type: Container
++                        spacing: Medium
++                        separator: true
++                        items: "{{ lookup('template', 'templates/teams_details.json.j2') | from_json }}"
+                       - type: TextBlock
+                         text: "Job No: {{ tower_job_id | default('N/A') }} · {{ now(fmt='%d.%m.%Y %H:%M') }}"
+                         isSubtle: true
+@@ -370,16 +379,17 @@
+                     version: "1.4"
+                     # Teams @mention: mention ENTITY'si ile govdedeki <at>...</at> metni
+                     # BIRLIKTE bulunmak zorunda - biri eksikse Teams karti reddeder.
+-                    # requester_* degiskenlerini Portal (runner.cjs) enjekte eder; AWX'ten
+-                    # elle calistirmalarda default devreye girer.
++                    # Kim etiketlenir (2026-09-15): once Portal'in enjekte ettigi requester_*;
++                    # yoksa survey'deki `email` (Smart/AWX'ten dogrudan gelen kosular - onceden
++                    # bunlarda HEP Onur etiketleniyordu); o da yoksa ekip sahibi.
+                     msteams:
+                       width: "Full"
+                       entities:
+                         - type: mention
+-                          text: "<at>{{ requester_name | default('Onur Demir') }}</at>"
++                          text: "<at>{{ requester_name | default(email | default('Onur Demir', true), true) }}</at>"
+                           mentioned:
+-                            id: "{{ requester_email | default('onurdemir3@garantibbva.com.tr') }}"
+-                            name: "{{ requester_name | default('Onur Demir') }}"
++                            id: "{{ requester_email | default(email | default('onurdemir3@garantibbva.com.tr', true), true) }}"
++                            name: "{{ requester_name | default(email | default('Onur Demir', true), true) }}"
+                     body:
+                       - type: Container
+                         style: accent
+@@ -411,7 +421,7 @@
+                       - type: TextBlock
+                         wrap: true
+                         spacing: Medium
+-                        text: "İsteği açan: <at>{{ requester_name | default('Onur Demir') }}</at>"
++                        text: "İsteği açan: <at>{{ requester_name | default(email | default('Onur Demir', true), true) }}</at>"
+                       - type: FactSet
+                         spacing: Medium
+                         facts:
+@@ -423,6 +433,14 @@
+                             value: "{{ cluster | default('?') }}"
+                           - title: "Namespace"
+                             value: "{{ namespace | default('?') }}"
++                      # Degisiklik detayi (2026-09-15): mail sablonuyla ayni operation -> zincir /
++                      # degisken eslemesi; eski degerler `output` (Trigger execution) ciktisindan,
++                      # yeni degerler survey degiskenlerinden. Gizli sorgu parametreleri maskeli
++                      # (bkz. templates/teams_details.json.j2).
++                      - type: Container
++                        spacing: Medium
++                        separator: true
++                        items: "{{ lookup('template', 'templates/teams_details.json.j2') | from_json }}"
+                       - type: TextBlock
+                         text: "Job No: {{ tower_job_id | default('N/A') }} · {{ now(fmt='%d.%m.%Y %H:%M') }}"
+                         isSubtle: true
+diff --git a/bmw_openshift_jobs/metaco/templates/teams_details.json.j2 b/bmw_openshift_jobs/metaco/templates/teams_details.json.j2
+new file mode 100644
+index 000000000..a40f97e2c
+--- /dev/null
++++ b/bmw_openshift_jobs/metaco/templates/teams_details.json.j2
+@@ -0,0 +1,48 @@
++{#
++  teams_details.json.j2 — Metaco node degisikligi icin Teams kartinin "Degisiklik detayi"
++  bolumu. body.yml.j2 (mail) ile AYNI operation -> zincir / degisken eslemesi; burada
++  Adaptive Card TextBlock listesi (JSON) uretilir, gorev `| from_json` ile karta ekler.
++
++  MASKELEME: node adreslerindeki sorgu parametreleri (?auth=..., ?apikey=...) ve URL'deki
++  kullanici:parola@ kismi Teams KANALINA acik yazilmaz - ilk 4 karakter + "…". Mail
++  (yalniz istegi acan + ekip adresleri) tam degeri tasimaya devam eder.
++  Kapatmak icin asagidaki mask makrosunu `{{ v }}` dondurecek sekilde degistirin.
++#}
++{%- macro mask(v) -%}
++{{- (v | default('') | string) | regex_replace('(\\?|&)([A-Za-z0-9_\\-]*(auth|key|token|secret|pass|password|sig)[A-Za-z0-9_\\-]*)=([^&\\s]{4})[^&\\s]*', '\\1\\2=\\4…') | regex_replace('://([^:/@\\s]+):([^@/\\s]{2})[^@/\\s]*@', '://\\1:\\2…@') -}}
++{%- endmacro -%}
++{%- set chains = {
++  'metaco_solana_node_change':      ['Solana',                   [['SOLRPC', solrpc_url | default('')], ['SOLWSRPC', solwsrpc_url | default('')]]],
++  'metaco_btc_node_change':         ['Bitcoin-Mainnet',          [['NBXPLORER_BTCNODEENDPOINT', btc_nodeendpoint | default('')], ['NBXPLORER_BTCRPCURL', btcrpc_url | default('')]]],
++  'metaco_ltc_node_change':         ['Litecoin',                 [['NBXPLORER_LTCNODEENDPOINT', ltc_nodeendpoint | default('')], ['NBXPLORER_LTCRPCURL', ltcrpc_url | default('')]]],
++  'metaco_btc_testnet_node_change': ['Bitcoin-Testnet',          [['NBXPLORER_BTCNODEENDPOINT', btc_nodeendpoint_testnet | default('')], ['NBXPLORER_BTCRPCURL', btcrpc_url_testnet | default('')]]],
++  'metaco_eth_node_change':         ['Ethereum',                 [['ETH_INDEXER_NODE_URI', eth_nodeendpoint | default('')]]],
++  'metaco_eth_sepolia_node_change': ['Ethereum-Testnet-Sepolia', [['ETH_INDEXER_NODE_URI', eth_nodeendpoint_sepolia | default('')]]],
++  'metaco_avax_node_change':        ['Avalanche Mainnet',        [['ETH_INDEXER_NODE_URI', avax_nodeendpoint | default('')]]],
++  'metaco_ada_node_change':         ['Cardano Mainnet',          [['OGMIOS', ada_ogmios | default('')]]],
++  'metaco_xrp_node_change':         ['XRP Mainnet',              [['XRP_INDEXER_SERVER_URI', xrp_nodeendpoint | default('')]]],
++  'metaco_dot_node_change':         ['Polkadot Mainnet',         [['SIDECAR_URL', dot_nodeendpoint | default('')], ['SIDECAR_AUTH_VALUE', dot_authkey | default('')]]],
++  'metaco_polygon_node_change':     ['Polygon Mainnet',          [['ETH_INDEXER_NODE_URI', pol_nodeendpoint | default('')]]]
++} -%}
++{%- set op = operation | default('') -%}
++{%- set items = [] -%}
++{%- if op in chains -%}
++{%-   set chain = chains[op][0] -%}
++{%-   set old_lines = (output.stdout_lines | default([])) | select('match', '^[A-Z_]+=') | list -%}
++{%-   set _ = items.append({'type': 'TextBlock', 'text': '**Zincir:** ' ~ chain ~ ' indexer', 'wrap': true, 'spacing': 'Medium'}) -%}
++{%-   set _ = items.append({'type': 'TextBlock', 'text': '**Eski değerler**', 'wrap': true, 'spacing': 'Small'}) -%}
++{%-   if old_lines | length > 0 -%}
++{%-     for line in old_lines -%}
++{%-       set _ = items.append({'type': 'TextBlock', 'text': mask(line), 'wrap': true, 'spacing': 'None', 'fontType': 'Monospace', 'size': 'Small'}) -%}
++{%-     endfor -%}
++{%-   else -%}
++{%-     set _ = items.append({'type': 'TextBlock', 'text': '(okunamadı)', 'wrap': true, 'spacing': 'None', 'isSubtle': true, 'size': 'Small'}) -%}
++{%-   endif -%}
++{%-   set _ = items.append({'type': 'TextBlock', 'text': '**Yeni değerler**', 'wrap': true, 'spacing': 'Small'}) -%}
++{%-   for kv in chains[op][1] -%}
++{%-     set _ = items.append({'type': 'TextBlock', 'text': kv[0] ~ '=' ~ mask(kv[1]), 'wrap': true, 'spacing': 'None', 'fontType': 'Monospace', 'size': 'Small'}) -%}
++{%-   endfor -%}
++{%- else -%}
++{%-   set _ = items.append({'type': 'TextBlock', 'text': 'Bu işlem için ayrıntı şablonu yok: ' ~ op, 'wrap': true, 'isSubtle': true, 'spacing': 'Medium'}) -%}
++{%- endif -%}
++{{ items | to_json }}
+diff --git a/bmw_openshift_jobs/metaco/tests/check_teams_details.py b/bmw_openshift_jobs/metaco/tests/check_teams_details.py
+new file mode 100644
+index 000000000..0b98b0500
+--- /dev/null
++++ b/bmw_openshift_jobs/metaco/tests/check_teams_details.py
+@@ -0,0 +1,95 @@
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++"""metaco/templates/teams_details.json.j2: Teams karti "Degisiklik detayi" sablonu.
++
++Ansible'a ozgu filtre/testler (to_json, regex_replace, match) burada taklit edilir; sablon
++GERCEKTEN render edilir. Kilitlenen iddialar:
++  1. Solana: zincir adi, eski degerler (output'tan), yeni degerler (survey) - sirali.
++  2. Maskeleme: ?auth=... sorgu parametresi ve user:pass@ Teams'e acik gitmez; host korunur.
++  3. Eski cikti yoksa "(okunamadi)"; bilinmeyen operation acik mesaj (bos kart yok).
++  4. Uretilen JSON gecerli Adaptive Card TextBlock listesi.
++"""
++import io
++import json
++import os
++import re
++import sys
++
++import jinja2
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++TPL = os.path.join(os.path.dirname(HERE), "templates", "teams_details.json.j2")
++
++env = jinja2.Environment(undefined=jinja2.Undefined)
++env.filters["to_json"] = lambda v: json.dumps(v, ensure_ascii=False)
++
++
++def _regex_replace(value, pattern, replacement):
++    return re.sub(pattern, replacement, str(value))
++
++
++env.filters["regex_replace"] = _regex_replace
++env.tests["match"] = lambda v, p: re.match(p, str(v)) is not None
++tpl = env.from_string(io.open(TPL, encoding="utf-8").read())
++
++AUTH = "_lgthFcMDzjFJYgzKF2WHSuHkRuDlsZOKflow9uPSJ0"
++base = {
++    "operation": "metaco_solana_node_change",
++    "solrpc_url": "https://violet-tatooine-1a027.solana.bdnodes.net?auth=" + AUTH,
++    "solwsrpc_url": "wss://violet-tatooine-1a027.solana.bdnodes.net:8443/websocket?auth=" + AUTH,
++    "output": {"stdout_lines": [
++        "SOLRPC=https://old-node.solana.bdnodes.net?auth=OLDSECRETVALUE1234",
++        "SOLWSRPC=wss://old-node.solana.bdnodes.net:8443/websocket?auth=OLDSECRETVALUE1234",
++    ]},
++}
++problems = []
++
++items = json.loads(tpl.render(**base))
++texts = [i["text"] for i in items]
++if not all(i.get("type") == "TextBlock" for i in items):
++    problems.append("tum ogeler TextBlock olmali: %r" % items)
++if texts[0] != "**Zincir:** Solana indexer":
++    problems.append("zincir satiri: %r" % texts[0])
++if "**Eski değerler**" not in texts or "**Yeni değerler**" not in texts:
++    problems.append("eski/yeni basliklari yok: %r" % texts)
++if texts.index("**Eski değerler**") > texts.index("**Yeni değerler**"):
++    problems.append("eski, yeniden ONCE gelmeli")
++joined = "\n".join(texts)
++if AUTH in joined or "OLDSECRETVALUE1234" in joined:
++    problems.append("auth parametresi MASKELENMEDI: %s" % joined)
++if "auth=_lgt…" not in joined or "auth=OLDS…" not in joined:
++    problems.append("maske bicimi (ilk 4 + …) yok: %s" % joined)
++if "violet-tatooine-1a027.solana.bdnodes.net:8443/websocket" not in joined:
++    problems.append("host/yol korunmali: %s" % joined)
++new_lines = [t for t in texts if t.startswith("SOLRPC=") or t.startswith("SOLWSRPC=")]
++if len(new_lines) != 4:  # 2 eski + 2 yeni
++    problems.append("SOLRPC/SOLWSRPC satirlari: beklenen 4, bulunan %d" % len(new_lines))
++
++# user:pass@ maskesi
++u = tpl.render(operation="metaco_btc_node_change", btc_nodeendpoint="http://bitcoin:VerySecretPass@10.1.1.1:8332",
++               btcrpc_url="", output={"stdout_lines": []})
++uj = json.loads(u)
++ut = "\n".join(i["text"] for i in uj)
++if "VerySecretPass" in ut or "bitcoin:Ve…@10.1.1.1:8332" not in ut:
++    problems.append("user:pass@ maskesi: %s" % ut)
++if "(okunamadı)" not in ut:
++    problems.append("eski cikti bosken '(okunamadı)' yazmali: %s" % ut)
++
++# bilinmeyen operation
++x = json.loads(tpl.render(operation="metaco_bilinmeyen", output={"stdout_lines": []}))
++if not (len(x) == 1 and "ayrıntı şablonu yok" in x[0]["text"]):
++    problems.append("bilinmeyen operation icin acik mesaj yok: %r" % x)
++
++# stdout'ta anahtar=deger olmayan satirlar (oc login ciktisi vb.) eski degerlere GIRMEZ
++y = json.loads(tpl.render(operation="metaco_eth_node_change", eth_nodeendpoint="https://eth.example/x",
++                          output={"stdout_lines": ["Login successful.", "ETH_INDEXER_NODE_URI=https://old.eth/x"]}))
++yt = [i["text"] for i in y]
++if any("Login successful" in t for t in yt) or "ETH_INDEXER_NODE_URI=https://old.eth/x" not in yt:
++    problems.append("eski deger suzgeci: %r" % yt)
++
++if problems:
++    print("BULGU (%d):" % len(problems))
++    for p in problems:
++        print("  - " + p)
++    sys.exit(1)
++print("Temiz: zincir/eski/yeni sirasi, maskeleme (auth=, user:pass@), bos cikti ve bilinmeyen operation dogru.")
+-- 
+2.55.0.windows.3
+

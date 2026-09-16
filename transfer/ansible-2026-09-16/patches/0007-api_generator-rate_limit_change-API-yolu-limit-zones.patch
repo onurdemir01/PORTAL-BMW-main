@@ -1,0 +1,370 @@
+From 75b86537f81c097db414df0858abd94942d31c2f Mon Sep 17 00:00:00 2001
+From: Onur Demir <demir-onur@hotmail.com>
+Date: Tue, 15 Sep 2026 21:20:37 +0300
+Subject: [PATCH 07/22] api_generator rate_limit_change: API yolu
+ limit-zones.conf'a karsi cozumlenir (sondaki / farki), benzer zone + yonerge
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- files/resolve_zone_base.sh: yazilan yolu /'li-/'siz adaylarla gercek zone govdesine
+  eslestirir; bulamazsa benzer zone adlarini doner
+- fail mesaji ve Teams bildirimi: Benzer Zone + Yonerge (beklenen bicim)
+- basari bildiriminde girilen -> kullanilan zone govdesi
+- README §2 chosen_api satiri, §5 cozumleme; tests/check_rate_limit_resolve.py
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ bmw_nginx/api_generator/README.md             |  22 ++++
+ .../operations/files/resolve_zone_base.sh     |  86 ++++++++++++++
+ .../operations/tasks/rate_limit_change.yaml   |  50 +++++++-
+ bmw_nginx/tests/check_rate_limit_resolve.py   | 111 ++++++++++++++++++
+ 4 files changed, 267 insertions(+), 2 deletions(-)
+ create mode 100644 bmw_nginx/api_generator/operations/files/resolve_zone_base.sh
+ create mode 100644 bmw_nginx/tests/check_rate_limit_resolve.py
+
+diff --git a/bmw_nginx/api_generator/README.md b/bmw_nginx/api_generator/README.md
+index 833cdf3c6..c55515c45 100644
+--- a/bmw_nginx/api_generator/README.md
++++ b/bmw_nginx/api_generator/README.md
+@@ -49,6 +49,7 @@ belirler. Lokasyon kısıtı için `site` alanı kullanılır (§3).
+ | `channel` | Text | Evet | Kanal adı; vhost dosyasını belirler |
+ | `api` | Text | Evet | API adı; `<channel>-<ENV>-apis/<api>.conf` |
+ | `site` | Multiple Choice | Hayır | `all` / `pendik` / `ankara` — **varsayılan `all`** |
++| `chosen_api` | Text | rate_limit_change | API yolu (`/<domain-app>/<api>/v0`) **veya** konfigürasyon dosya adı (`ORT.CST.REST…V1`) — bkz. §5 |
+ | `limit_type` | Multiple Choice | Hayır | `ip` / `location` / `both` — **varsayılan `ip`** |
+ | `new_limit_req_zone_rate` | Text | rate_limit_change | Yeni IP bazlı limit |
+ | `new_location_limit_rate` | Text | rate_limit_change | Yeni location bazlı limit |
+@@ -105,6 +106,27 @@ sayılmaz: o zone `rl_missing_zones` listesine düşer ve bildirimde ayrıca rap
+ 
+ Bildirimde değişiklik **öncesi ve sonrası** değerler birlikte gösterilir.
+ 
++### `chosen_api` — yol mu, dosya mı; sondaki `/` sorunu
++
++`chosen_api` büyük harfli domain öneki (`GAR`, `ORT`, `DAS` …) içeriyorsa **konfigürasyon
++dosyası** kabul edilir (`<channel>-<ENV>-apis/<chosen_api>.conf`, zone'lar dosyadan okunur);
++aksi halde **API yolu** kabul edilir ve zone gövdesi olarak kullanılır
++(`<chosen_api>_rate_limit`, `<chosen_api>_location_limit`).
++
++Sunucudaki zone adlarının büyük çoğunluğu **sonda `/` taşımaz**; kullanıcı ise yolu çoğu
++zaman `/…/v0/` biçiminde yazar. Bu yüzden yol, `operations/files/resolve_zone_base.sh`
++ile `limit-zones.conf`'a karşı **çözümlenir**: yazıldığı gibi, sondaki `/` atılmış, sona
++`/` eklenmiş, baştaki `/` atılmış/eklenmiş adaylar sırayla denenir; istenen tipte zone'u
++olan ilk aday kullanılır ve bildirimde `girilen → kullanılan` olarak gösterilir. Hiçbiri
++yoksa iş yine durur, ama hata mesajı ve Teams bildirimi **benzer zone adlarını** ve
++beklenen biçimi (yönerge) içerir — kullanıcı "ne yazmalıydım" sorusuna cevap alır.
++
++> Portal tarafında bu alanın serbest metin yerine envanterden (Denetim > Nginx API,
++> `dbo.NginxRateLimitInventory.api_location`) beslenen bir seçim kutusu olması planlanır;
++> playbook'taki çözümleme buna rağmen kalır (AWX'ten doğrudan çalıştırma için).
++
++Test: `python bmw_nginx/tests/check_rate_limit_resolve.py`
++
+ > **Not — bozulmuş bir desen:** zone tespitinde `uniq` kullanılmamalıdır. `uniq` yalnızca
+ > **bitişik** tekrarları siler; sıralanmamış çıktıda tekrarlar kalır ve ardından gelen
+ > `lineinfile`, regexp eşleşmediği için dosyanın **sonuna satır ekler**. Bu, konfigürasyonu
+diff --git a/bmw_nginx/api_generator/operations/files/resolve_zone_base.sh b/bmw_nginx/api_generator/operations/files/resolve_zone_base.sh
+new file mode 100644
+index 000000000..b30ca5fce
+--- /dev/null
++++ b/bmw_nginx/api_generator/operations/files/resolve_zone_base.sh
+@@ -0,0 +1,86 @@
++#!/bin/bash
++# resolve_zone_base.sh — kullanicinin yazdigi API yolunu limit-zones.conf'taki GERCEK zone
++# adina eslestirir. Kullanim:  resolve_zone_base.sh <chosen_api> <limit_type> [limit-zones.conf]
++#
++# Neden var (2026-09-15): rate_limit_change'de zone adi kullanicinin yazdigi metinden
++# uretiliyordu ("<chosen_api>_rate_limit"). Sunucudaki zone adlarinin buyuk cogunlugu
++# sonda "/" TASIMAZ; kullanici "/x/y/v0/" yazinca "/x/y/v0/_rate_limit" aranip
++# "TANIMLI DEGIL" ile is duruyordu. Burada sirayla su adaylar denenir:
++#   1) yazildigi gibi          2) sondaki "/" atilmis        3) sonuna "/" eklenmis
++#   4) bastaki "/" atilmis     5) basina "/" eklenmis
++# ve limit-zones.conf'ta istenen tipte (_rate_limit / _location_limit) zone'u OLAN ilk
++# aday secilir. Hicbiri yoksa, benzer zone adlari (yolun govdesini iceren) listelenir ki
++# hata mesaji "ne yazmaliydim" sorusuna cevap versin.
++#
++# Cikti (Ansible bunu satir satir okur):
++#   RESOLVED=<zone govdesi ya da bos>
++#   NORMALIZED=yes|no          (girdi oldugu gibi mi kullanildi)
++#   SIMILAR=<virgulle ayrilmis benzer zone adlari, en fazla 8>
++# Her zaman 0 ile cikar; karar Ansible tarafinda verilir.
++
++set -u
++api="${1:-}"
++ltype="${2:-ip}"
++zones="${3:-/usr/nginx/conf.d/limit-zones.conf}"
++
++api="$(printf '%s' "$api" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
++
++# Tipe gore aranacak sonekler
++case "$ltype" in
++  ip)       suffixes="_rate_limit" ;;
++  location) suffixes="_location_limit" ;;
++  *)        suffixes="_rate_limit _location_limit" ;;
++esac
++
++# Adaylar (sira onemli; tekrarlar atilir)
++no_trail="${api%/}"
++with_trail="${no_trail}/"
++no_lead="${api#/}"
++with_lead="/${no_lead}"
++candidates=""
++for c in "$api" "$no_trail" "$with_trail" "$no_lead" "$with_lead" "${no_lead%/}" "/${no_lead%/}/"; do
++  [ -z "$c" ] && continue
++  case " $candidates " in *" $c "*) continue ;; esac
++  candidates="$candidates $c"
++done
++
++# Tanimli zone adlarinin listesi (bir kez okunur)
++if [ -r "$zones" ]; then
++  defined="$(grep -E '^[[:space:]]*limit_req_zone[[:space:]]+\S+[[:space:]]+zone=' "$zones" \
++    | grep -oE 'zone=[^:[:space:]]+' | sed 's/^zone=//' | sort -u)"
++else
++  defined=""
++fi
++
++has_zone() { # $1 = tam zone adi
++  printf '%s\n' "$defined" | grep -qxF -- "$1"
++}
++
++resolved=""
++for c in $candidates; do
++  for s in $suffixes; do
++    if has_zone "${c}${s}"; then resolved="$c"; break 2; fi
++  done
++done
++
++normalized=no
++if [ -n "$resolved" ] && [ "$resolved" != "$api" ]; then normalized=yes; fi
++
++# Benzerler: yolun govdesi (bas/son "/" atilmis, kucuk harf) zone adinda geciyorsa.
++core="$(printf '%s' "${no_lead%/}" | tr 'A-Z' 'a-z')"
++similar=""
++if [ -n "$core" ] && [ -n "$defined" ]; then
++  similar="$(printf '%s\n' "$defined" | grep -iF -- "$core" | head -8 | paste -sd, -)"
++fi
++# Govde bulunamadiysa son iki path parcasi ile de dene (v0 gibi tek parcalar anlamsiz)
++if [ -z "$similar" ] && [ -n "$defined" ]; then
++  tail2="$(printf '%s' "$core" | awk -F/ '{ n=NF; if (n>=2) print $(n-1); else print $n }')"
++  if [ -n "$tail2" ] && [ "${#tail2}" -ge 4 ]; then
++    similar="$(printf '%s\n' "$defined" | grep -iF -- "$tail2" | head -8 | paste -sd, -)"
++  fi
++fi
++
++printf 'RESOLVED=%s\n' "$resolved"
++printf 'NORMALIZED=%s\n' "$normalized"
++printf 'SIMILAR=%s\n' "$similar"
++exit 0
+diff --git a/bmw_nginx/api_generator/operations/tasks/rate_limit_change.yaml b/bmw_nginx/api_generator/operations/tasks/rate_limit_change.yaml
+index 26449f1d7..4f1e07d6a 100644
+--- a/bmw_nginx/api_generator/operations/tasks/rate_limit_change.yaml
++++ b/bmw_nginx/api_generator/operations/tasks/rate_limit_change.yaml
+@@ -62,11 +62,36 @@
+     or
+     (rl_type_n in ['location', 'both'] and not (rl_loc_rate is match('^[0-9]+$') and rl_loc_rate | int > 0))
+ 
++# YOL -> ZONE ESLESTIRME (2026-09-15): sunucudaki zone adlarinin cogu sonda "/" tasimaz;
++# kullanici "/x/y/v0/" yazinca "/x/y/v0/_rate_limit" aranip is duruyordu. Betik yazilan
++# yolu "/"li-"/"siz adaylarla limit-zones.conf'ta dener, gercek zone govdesini secer;
++# bulamazsa benzer zone adlarini doner (hata mesajinda yonerge olarak gosterilir).
++# Betik: ../files/resolve_zone_base.sh (kabuk bloklari files/ altinda tutulur).
++- name: --- [Task] Resolve zone base name against limit-zones.conf (NOT a conf file) ---
++  become: true
++  become_method: dzdo
++  become_user: www
++  ansible.builtin.script:
++    cmd: "files/resolve_zone_base.sh {{ chosen_api | quote }} {{ rl_type_n | quote }}"
++  register: rl_resolve
++  changed_when: false
++  when: not is_conf
++
+ - name: --- [Task] Set zone base name if chosen API is NOT a conf file ---
+   set_fact:
+-    rl_zone_base: "{{ chosen_api }}"
++    # `+ ['']` : regex_findall bos liste donerse [0] patlamasin (Jinja `first` de patlar).
++    rl_zone_base: "{{ ((rl_resolve.stdout | default('') | regex_findall('(?m)^RESOLVED=(.*)$')) + [''])[0] | trim or chosen_api }}"
++    rl_zone_normalized: "{{ (rl_resolve.stdout | default('')) is search('(?m)^NORMALIZED=yes') }}"
++    rl_similar_zones: "{{ ((rl_resolve.stdout | default('') | regex_findall('(?m)^SIMILAR=(.*)$')) + [''])[0] | trim }}"
+   when: not is_conf
+ 
++- name: --- [Task] Note when the typed API path was normalized to the real zone name ---
++  ansible.builtin.debug:
++    msg: >-
++      Girilen API yolu '{{ chosen_api }}' limit-zones.conf'ta bu haliyle yok;
++      '{{ rl_zone_base }}' zone govdesi kullanilacak (sondaki/bastaki "/" farki).
++  when: not is_conf and rl_zone_normalized | default(false)
++
+ - name: --- [Task] Find existence a conf file ---
+   become: true
+   become_method: dzdo
+@@ -185,6 +210,24 @@
+     rl_apply_zones: "{{ rl_zone_defined.results | selectattr('rc', 'eq', 0) | map(attribute='item') | list }}"
+     rl_missing_zones: "{{ rl_zone_defined.results | selectattr('rc', 'ne', 0) | map(attribute='item') | list }}"
+ 
++# TAMAMLAYICI YONERGE: kullanici "ne yazmaliydim" sorusuna cevap alsin. Benzer zone
++# adlari (sondaki "/" farki, yol parcasi) ve girisin beklenen bicimi tek metinde.
++- name: --- [Task] Build guidance text for missing zone failures ---
++  set_fact:
++    rl_hint_text: >-
++      {%- set sim = rl_similar_zones | default('', true) -%}
++      {%- if sim -%}
++      Benzer zone adlari: {{ sim }}. Zone govdesi bu adlarin _rate_limit/_location_limit
++      soneki atilmis halidir; API alanina onu yazin.
++      {%- else -%}
++      Bu yola benzeyen hicbir zone yok: yolu (kanal/ortam dahil) kontrol edin. Sondaki "/"
++      otomatik denenir; farkli bir versiyon (v0/v1) ya da yazim farki olabilir.
++      {%- endif %}
++      Beklenen bicim: /<domain-app>/<api>/v0 (sonda "/" YOK) ya da konfigurasyon dosya adi
++      (or. ORT.CST.REST...V1). Mevcut zone'lar icin "read" islemini ya da Portal Denetim >
++      Nginx API sayfasini kullanin.
++  run_once: true
++
+ - name: --- [Task] Warn about missing limit zones (limit_type=both) ---
+   ansible.builtin.debug:
+     msg: >-
+@@ -230,6 +273,8 @@
+       - { title: "API", value: "{{ chosen_api }}" }
+       - { title: "Limit Tipi", value: "{{ rl_type_label }}" }
+       - { title: "Eksik Zone", value: "{{ rl_missing_zones | join(', ') }}" }
++      - { title: "Benzer Zone", value: "{{ rl_similar_zones | default('', true) | default('(bulunamadı)', true) }}" }
++      - { title: "Yönerge", value: "{{ rl_hint_text }}" }
+       - { title: "Kanal", value: "{{ channel }}" }
+       - { title: "Ortam", value: "{{ env }}" }
+   when: (rl_missing_zones | length) > 0 and (rl_type_n != 'both' or (rl_apply_zones | length) == 0)
+@@ -243,6 +288,7 @@
+          if (rl_apply_zones | length) == 0
+          else ('Tanimli olan(lar): ' ~ (rl_apply_zones | join(', ')) ~
+                ' - yalnizca mevcut olan(lar)i degistirmek icin limit_type=both kullanin.') }}
++      {{ rl_hint_text }}
+   when:
+     - (rl_missing_zones | length) > 0
+     - rl_type_n != 'both' or (rl_apply_zones | length) == 0
+@@ -363,7 +409,7 @@
+     teams_title: "✅ Rate limit güncellendi"
+     teams_facts:
+       - { title: "İşlem", value: "Rate Limit Değiştirme" }
+-      - { title: "API", value: "{{ chosen_api }}" }
++      - { title: "API", value: "{{ chosen_api }}{{ (' → ' ~ rl_zone_base) if (rl_zone_normalized | default(false)) else '' }}" }
+       - { title: "Limit Tipi", value: "{{ rl_type_label }}" }
+       - { title: "Değişiklik", value: "{{ rl_change_text | default('?') }}" }
+       - { title: "Güncellenen Zone", value: "{{ rl_apply_zones | join(', ') }}" }
+diff --git a/bmw_nginx/tests/check_rate_limit_resolve.py b/bmw_nginx/tests/check_rate_limit_resolve.py
+new file mode 100644
+index 000000000..c152ee7d2
+--- /dev/null
++++ b/bmw_nginx/tests/check_rate_limit_resolve.py
+@@ -0,0 +1,111 @@
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++"""rate_limit_change: yazilan API yolu -> limit-zones.conf'taki gercek zone govdesi.
++
++Kullanici bildirimi (2026-09-15): sunucudaki zone adlarinin cogu sonda "/" tasimaz;
++"/x/y/v0/" yazilinca "/x/y/v0/_rate_limit" aranip is "TANIMLI DEGIL" ile duruyordu.
++
++Kilitlenen iddialar (betik GERCEKTEN kosturulur, Git Bash):
++  1. "/x/v0/" yazildi, zone "/x/v0_rate_limit" -> RESOLVED=/x/v0, NORMALIZED=yes
++  2. tersi: zone "/y/v0/_rate_limit", "/y/v0" yazildi -> RESOLVED=/y/v0/
++  3. birebir varsa girdi degismez (NORMALIZED=no)
++  4. limit_type=location yalniz _location_limit'e bakar (ip zone'u varken bile bulamaz)
++  5. bulunamayinca SIMILAR yol parcasi uzerinden benzerleri listeler; hic benzer yoksa bos
++  6. playbook betigi files/ altindan `script` ile cagirir, set_fact bos-liste tuzagina
++     dusmez (`| first` YOK), hata mesajina ve Teams'e yonerge (rl_hint_text) girer
++"""
++import io
++import os
++import re
++import subprocess
++import sys
++import tempfile
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++OPS = os.path.join(os.path.dirname(HERE), "api_generator", "operations")
++SCRIPT = os.path.join(OPS, "files", "resolve_zone_base.sh")
++TASKS = os.path.join(OPS, "tasks", "rate_limit_change.yaml")
++
++problems = []
++tmp = tempfile.mkdtemp(prefix="rlz-")
++zones = os.path.join(tmp, "limit-zones.conf")
++io.open(zones, "w", encoding="utf-8", newline="\n").write(
++    "limit_req_zone $binary_remote_addr zone=/das-fireblocks-event-mngmnt/fireblocks-webhook-public/v0_rate_limit:10m rate=50r/s;\n"
++    "limit_req_zone $server_name zone=/das-fireblocks-event-mngmnt/fireblocks-webhook-public/v0_location_limit:10m rate=100r/s;\n"
++    "limit_req_zone $binary_remote_addr zone=/family-banking-mngmnt/family-banking-mng-ch/v0/_rate_limit:10m rate=5r/s;\n"
++    "limit_req_zone $binary_remote_addr zone=/only-ip/api/v1_rate_limit:10m rate=5r/s;\n"
++)
++
++
++def run(api, ltype):
++    try:
++        r = subprocess.run(["bash", SCRIPT, api, ltype, zones], capture_output=True, text=True, encoding="utf-8")
++    except FileNotFoundError:
++        print("ATLANDI: bash yok")
++        sys.exit(0)
++    out = {}
++    for line in r.stdout.splitlines():
++        k, _, v = line.partition("=")
++        out[k] = v
++    if r.returncode != 0:
++        problems.append("betik %s ile cikti (%s %s): %s" % (r.returncode, api, ltype, r.stderr))
++    return out
++
++
++# 1) sondaki "/" atilir
++o = run("/das-fireblocks-event-mngmnt/fireblocks-webhook-public/v0/", "ip")
++if o.get("RESOLVED") != "/das-fireblocks-event-mngmnt/fireblocks-webhook-public/v0":
++    problems.append("1: sondaki / atilarak cozulmedi: %r" % o)
++if o.get("NORMALIZED") != "yes":
++    problems.append("1: NORMALIZED=yes bekleniyordu: %r" % o)
++
++# 2) ters yon: zone "/"li, girdi "/"siz
++o = run("/family-banking-mngmnt/family-banking-mng-ch/v0", "both")
++if o.get("RESOLVED") != "/family-banking-mngmnt/family-banking-mng-ch/v0/":
++    problems.append("2: sona / eklenerek cozulmedi: %r" % o)
++
++# 3) birebir
++o = run("/only-ip/api/v1", "ip")
++if o.get("RESOLVED") != "/only-ip/api/v1" or o.get("NORMALIZED") != "no":
++    problems.append("3: birebir eslesme degistirildi: %r" % o)
++
++# 4) tip ayrimi
++o = run("/only-ip/api/v1", "location")
++if o.get("RESOLVED"):
++    problems.append("4: location tipi icin ip zone'u kabul edildi: %r" % o)
++if "/only-ip/api/v1_rate_limit" not in (o.get("SIMILAR") or ""):
++    problems.append("4: benzer listesinde mevcut ip zone'u yok: %r" % o)
++
++# 5) benzerler
++o = run("/das-fireblocks-event-mngmnt/fireblocks-webhook/v0", "ip")
++if o.get("RESOLVED"):
++    problems.append("5: olmayan yol cozuldu: %r" % o)
++if "fireblocks-webhook-public/v0_rate_limit" not in (o.get("SIMILAR") or ""):
++    problems.append("5: yol parcasi uzerinden benzer bulunamadi: %r" % o)
++o = run("/yok/hic/v9", "ip")
++if o.get("RESOLVED") or o.get("SIMILAR"):
++    problems.append("5b: hic benzemeyen yol icin RESOLVED/SIMILAR bos olmali: %r" % o)
++
++# 6) playbook baglantisi
++src = io.open(TASKS, encoding="utf-8").read()
++if not re.search(r"ansible\.builtin\.script:\s*\n\s*cmd:\s*\"files/resolve_zone_base\.sh ", src):
++    problems.append("6: rate_limit_change.yaml betigi files/ altindan script ile cagirmiyor")
++if re.search(r"rl_resolve[^\n]*\|\s*first\b", src):
++    problems.append("6: rl_resolve uzerinde `| first` var - bos listede Jinja patlar")
++if "+ ['']" not in src:
++    problems.append("6: regex_findall sonucuna [''] eklenmemis - bos listede [0] patlar")
++if src.count("rl_hint_text") < 3:
++    problems.append("6: rl_hint_text tanimlanip hem fail mesajina hem Teams'e girmiyor")
++if "Benzer Zone" not in src:
++    problems.append("6: Teams bildiriminde 'Benzer Zone' alani yok")
++if not re.search(r"shell: \|[\s\S]{0,400}resolve_zone_base", src):
++    pass  # gomulu kabuk yok - istenen bu
++if "resolve_zone_base.sh" in src and re.search(r"shell:\s*\|\s*\n\s*.*resolve_zone_base", src):
++    problems.append("6: betik gomulu shell blogundan cagriliyor; script modulu kullanilmali")
++
++if problems:
++    print("HATALAR:")
++    for p in problems:
++        print(" -", p)
++    sys.exit(1)
++print("OK: rate_limit_change yol->zone cozumlemesi ve yonergeler dogru")
+-- 
+2.55.0.windows.3
+

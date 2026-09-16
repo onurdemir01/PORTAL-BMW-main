@@ -1,0 +1,124 @@
+From 1a87f3b4b69e7c9e9efb4fcf0930eb289234b7d7 Mon Sep 17 00:00:00 2001
+From: Onur Demir <demir-onur@hotmail.com>
+Date: Wed, 16 Sep 2026 15:05:49 +0300
+Subject: [PATCH 21/22] nginx_deployment_spa: intranet (50'li seri) dev/test/qa
+ vhost'u apps-t.fw.garanti.com.tr + wildcard.apps-t...localca sertifikasi
+
+Kullanici (2026-09-16): intranet non-prod deployment'ta server_name
+<application>-<namespace>.apps-t.fw.garanti.com.tr, ssl_certificate(_key)
+/usr/nginx/ssl/wildcard.apps-t.garanti.com.tr.localca.{crt,key}. Prod intranet ve internet
+sunuculari degismez. Liste nginx_config_audit / Portal INTRANET_HOSTS ile ayni;
+tests/check_deployment_intranet_vhost.py
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ .../files/3-nginx_configuration.sh            | 26 ++++++++
+ .../tests/check_deployment_intranet_vhost.py  | 59 +++++++++++++++++++
+ 2 files changed, 85 insertions(+)
+ create mode 100644 bmw_nginx/tests/check_deployment_intranet_vhost.py
+
+diff --git a/bmw_nginx/nginx_deployment_spa/files/3-nginx_configuration.sh b/bmw_nginx/nginx_deployment_spa/files/3-nginx_configuration.sh
+index 101910441..253244e69 100644
+--- a/bmw_nginx/nginx_deployment_spa/files/3-nginx_configuration.sh
++++ b/bmw_nginx/nginx_deployment_spa/files/3-nginx_configuration.sh
+@@ -107,6 +107,32 @@ if [[ "$(printf '%s' "$env" | tr '[:upper:]' '[:lower:]')" == "prod" \
+   echo "PRODUCTION sunucusu: server_name ve sertifika adlarindan ortam soneki kaldirildi."
+ fi
+ 
++############################################################
++#### INTRANET (50'li seri) NON-PROD: server_name ve sertifika
++############################################################
++#### Kullanici (2026-09-16): intranet SPA sunucularinda dev/test/qa vhost'u sirket
++#### DNS'i (.irp-<env>.garantibbva.com.tr) ile DEGIL, OpenShift dis adiyla acilir:
++####   server_name      <application>-<namespace>.apps-t.fw.garanti.com.tr
++####   ssl_certificate  /usr/nginx/ssl/wildcard.apps-t.garanti.com.tr.localca.{crt,key}
++#### Uc ortam da AYNI (apps-t = non-prod OpenShift). Prod intranet'e DOKUNULMAZ (yukaridaki
++#### prod blogu). Liste nginx_config_audit ve Portal INTRANET_HOSTS ile ayni tutulur:
++####   dev GBNGXD50 | test GBNGXT50 GBNGXT51 | qa GBNGXQ50 | prod GBNGXP50-53 GBNGXAP50-51
++#### Bu blok $env yerine konduktan SONRA calisir; satirlar TAMAMEN yeniden yazilir
++#### (kalip aramaz), boylece sablondaki non-prod kalibi degisse de sonuc ayni.
++HOSTNAME_UP=$(hostname | tr '[:lower:]' '[:upper:]')
++env_lc="$(printf '%s' "$env" | tr '[:upper:]' '[:lower:]')"
++case "$HOSTNAME_UP" in
++  GBNGXD50|GBNGXT50|GBNGXT51|GBNGXQ50|GBNGXP50|GBNGXP51|GBNGXP52|GBNGXP53|GBNGXAP50|GBNGXAP51)
++    is_intranet=1 ;;
++  *) is_intranet=0 ;;
++esac
++if [[ "$is_intranet" == "1" && ( "$env_lc" == "dev" || "$env_lc" == "test" || "$env_lc" == "qa" ) ]]; then
++  sed -i -E "s|^([[:space:]]*)server_name[[:space:]]+.*;|\1server_name ${application}-${namespace}.apps-t.fw.garanti.com.tr;|" "$server_conf"
++  sed -i -E "s|^([[:space:]]*)ssl_certificate[[:space:]]+.*;|\1ssl_certificate /usr/nginx/ssl/wildcard.apps-t.garanti.com.tr.localca.crt;|" "$server_conf"
++  sed -i -E "s|^([[:space:]]*)ssl_certificate_key[[:space:]]+.*;|\1ssl_certificate_key /usr/nginx/ssl/wildcard.apps-t.garanti.com.tr.localca.key;|" "$server_conf"
++  echo "INTRANET non-prod (${HOSTNAME_UP}, ${env_lc}): server_name ${application}-${namespace}.apps-t.fw.garanti.com.tr, sertifika wildcard.apps-t.garanti.com.tr.localca"
++fi
++
+ 
+ if [[ -f "$app_conf" ]]; then
+   cp -pr "$app_conf" "${app_conf}_${job_no}"
+diff --git a/bmw_nginx/tests/check_deployment_intranet_vhost.py b/bmw_nginx/tests/check_deployment_intranet_vhost.py
+new file mode 100644
+index 000000000..873526278
+--- /dev/null
++++ b/bmw_nginx/tests/check_deployment_intranet_vhost.py
+@@ -0,0 +1,59 @@
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++"""nginx_deployment_spa/3-nginx_configuration.sh: INTRANET non-prod vhost (2026-09-16).
++
++Kullanici: intranet (50'li seri) sunucularda dev/test/qa vhost'u
++  server_name <application>-<namespace>.apps-t.fw.garanti.com.tr
++  ssl_certificate(_key) /usr/nginx/ssl/wildcard.apps-t.garanti.com.tr.localca.{crt,key}
++olsun. Prod intranet ve internet sunuculari DEGISMEZ. Blok Git Bash ile GERCEKTEN kosturulur
++(hostname sahte); intranet listesi nginx_config_audit ve Portal INTRANET_HOSTS ile ayni.
++"""
++import io, os, re, subprocess, sys, tempfile
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++D = os.path.join(os.path.dirname(HERE), "nginx_deployment_spa", "files")
++SRC = io.open(os.path.join(D, "3-nginx_configuration.sh"), encoding="utf-8").read()
++TPL = io.open(os.path.join(D, "server_template.conf"), encoding="utf-8").read()
++problems = []
++i = SRC.find("#### INTRANET (50'li seri) NON-PROD"); j = SRC.find('if [[ -f "$app_conf" ]]; then')
++if i < 0 or j < 0 or j < i:
++    print("HATALAR:\n - intranet blogu bulunamadi"); sys.exit(1)
++BLK = SRC[i:j]
++tmp = tempfile.mkdtemp(prefix="ivh-")
++
++
++def run(host, env):
++    conf = os.path.join(tmp, "s.conf").replace("\\", "/")
++    io.open(conf, "w", newline="\n").write(TPL.replace("$application", "odeme-app-v1").replace("$namespace", "digital-ch-test").replace("$env", env))
++    sh = "application=odeme-app-v1; namespace=digital-ch-test; env=%s; server_conf='%s'\nhostname(){ echo %s; }\n%s\ncat \"$server_conf\"" % (env, conf, host, BLK)
++    try:
++        r = subprocess.run(["bash", "-c", sh], capture_output=True, text=True, encoding="utf-8")
++    except FileNotFoundError:
++        print("ATLANDI: bash yok"); sys.exit(0)
++    return r.stdout
++
++
++EXP = ("server_name odeme-app-v1-digital-ch-test.apps-t.fw.garanti.com.tr;",
++       "ssl_certificate /usr/nginx/ssl/wildcard.apps-t.garanti.com.tr.localca.crt;",
++       "ssl_certificate_key /usr/nginx/ssl/wildcard.apps-t.garanti.com.tr.localca.key;")
++for host, env in (("GBNGXD50", "dev"), ("gbngxt50", "test"), ("GBNGXT51", "TEST"), ("GBNGXQ50", "qa")):
++    out = run(host, env)
++    for e in EXP:
++        if e not in out:
++            problems.append("%s/%s: beklenen satir yok: %s" % (host, env, e))
++    if "irp-" in out or "mrp-test" in out:
++        problems.append("%s/%s: eski server_name/sertifika kaldi" % (host, env))
++for host, env in (("GBNGXP50", "prod"), ("GBNGXT33", "test"), ("GBNGXD01", "dev")):
++    out = run(host, env)
++    if "apps-t.fw.garanti.com.tr" in out or "localca" in out:
++        problems.append("%s/%s: intranet kurali YANLIS uygulandi (prod intranet / internet dokunulmamali)" % (host, env))
++# liste tutarliligi
++audit = io.open(os.path.join(os.path.dirname(HERE), "nginx_config_audit", "nginx_config_audit.yml"), encoding="utf-8").read()
++for h in ("GBNGXD50", "GBNGXT50", "GBNGXT51", "GBNGXQ50", "GBNGXP50", "GBNGXP51", "GBNGXP52", "GBNGXP53", "GBNGXAP50", "GBNGXAP51"):
++    if h not in BLK:
++        problems.append("intranet listesinde eksik: " + h)
++    if h not in audit:
++        problems.append("nginx_config_audit listesinde yok (tutarsizlik): " + h)
++if problems:
++    print("HATALAR:"); [print(" -", p) for p in problems]; sys.exit(1)
++print("OK: intranet non-prod vhost apps-t + localca sertifika; prod/internet dokunulmadi; liste tutarli")
+-- 
+2.55.0.windows.3
+

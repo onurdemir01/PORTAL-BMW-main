@@ -1,0 +1,445 @@
+From 22b00dc355df0d2e209e7d1e7ed30b0d5cb73c93 Mon Sep 17 00:00:00 2001
+From: Onur Demir <demir-onur@hotmail.com>
+Date: Tue, 15 Sep 2026 11:02:40 +0300
+Subject: [PATCH 02/22] nginx_ops: webc_locales.json location blogu - sablon +
+ mevcut dosyalara geriye donuk ekleme
+
+Tum SPA uygulamalarina `location = <path>locales/webc_locales.json` istendi
+(locales.json blogunun birebir esi).
+- configuration-append-template-spa.j2: yeni tanimlar (non-prod create ve prod
+  tasimasi ayni sablon).
+- nginx_webc_locales_backfill.yml + files/webc_locales_backfill.sh: mevcut
+  application-confs/*.conf'ta locales.json blogunu KLONLAR (CORS degisken adi,
+  path oneki, Allow-Credentials varligi dosyaya sadik); idempotent; report
+  (varsayilan) / apply (yedek, nginx -t, dusunce geri alma, reload). Hedef:
+  tum SPA sunuculari (internet non-prod, intranet, yeni prod SPA); GBRVP*
+  proxy deseni kapsam disi. nginx_scheduled_ops'ta SPA dosyasi uretilmedigi
+  icin degisiklik yok.
+- Test: tests/check_webc_backfill.py (betik gercekten kosar; sablon uyumu).
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ bmw_nginx/nginx_ops/README.md                 |  23 +++
+ .../nginx_ops/nginx_webc_locales_backfill.yml |  65 ++++++++
+ .../operations/files/webc_locales_backfill.sh | 109 +++++++++++++
+ .../configuration-append-template-spa.j2      |  20 +++
+ bmw_nginx/tests/check_webc_backfill.py        | 154 ++++++++++++++++++
+ 5 files changed, 371 insertions(+)
+ create mode 100644 bmw_nginx/nginx_ops/nginx_webc_locales_backfill.yml
+ create mode 100644 bmw_nginx/nginx_ops/operations/files/webc_locales_backfill.sh
+ create mode 100644 bmw_nginx/tests/check_webc_backfill.py
+
+diff --git a/bmw_nginx/nginx_ops/README.md b/bmw_nginx/nginx_ops/README.md
+index 439a853bd..8749de737 100644
+--- a/bmw_nginx/nginx_ops/README.md
++++ b/bmw_nginx/nginx_ops/README.md
+@@ -138,6 +138,29 @@ Portal `nginx-migration.cjs`; `tests/check_prod_migration.py` ilk ikisini kilitl
+ 
+ ---
+ 
++## 4c. `webc_locales.json` bloğu (2026-09-15)
++
++Tüm SPA uygulamalarının per-uygulama conf'una `location = <path>locales/webc_locales.json`
++bloğu istendi — `locales/locales.json` bloğunun birebir eşi, yalnızca dosya adı farklı.
++
++| Nerede | Nasıl |
++|---|---|
++| **Yeni tanımlar** | `operations/templates/configuration-append-template-spa.j2` — non-prod `create` ve prod taşıması (`nginx_prod_migration.yml`) aynı şablonu kullanır. |
++| **Mevcut dosyalar** | `nginx_webc_locales_backfill.yml` — her `application-confs/*.conf`'taki mevcut `locales.json` bloğunu **klonlar**, dosya adını değiştirir (`operations/files/webc_locales_backfill.sh`). CORS değişken adı, path öneki, `Allow-Credentials` satırının varlığı o dosyada ne ise korunur; idempotent. |
++| `nginx_scheduled_ops` | Değişiklik **yok**: eski prod sunucuları (GBRVP*) `proxy_pass` deseni kullanır, per-uygulama SPA dosyası üretmez. |
++| `nginx_deployment_spa` şablonu | Bu commit'te **değil** — çalışma ağacında sizin düzenlemeniz var. Not: orada `alias` **dizine** (`…/$application/`) yazılmış; `location =` tam eşleşmesiyle dizin alias'ı dosyayı değil dizini servis eder. `locales.json` bloğundaki gibi `…/locales/webc_locales.json` olmalı (bu depodaki iki yol da öyle). |
++
++Geriye dönük ekleme:
++```bash
++# önce rapor (hiçbir şey yazmaz), sonra tek non-prod hostta apply, sonra hepsi
++ansible-playbook nginx_ops/nginx_webc_locales_backfill.yml                         # report
++ansible-playbook nginx_ops/nginx_webc_locales_backfill.yml -e "mode=apply target_hosts=GBNGXD01"
++ansible-playbook nginx_ops/nginx_webc_locales_backfill.yml -e "mode=apply"
++```
++`apply`: değişen her dosyanın `.webc-bak.<ts>` yedeği; `nginx -t` düşerse o hosttaki tüm
++değişen dosyalar yedekten geri alınır, reload yapılmaz, host fail. Test:
++`tests/check_webc_backfill.py` (betik gerçekten koşturulur).
++
+ ## 5. Güvenlik modeli
+ 
+ `update` akışı değişiklikten önce şunları doğrular:
+diff --git a/bmw_nginx/nginx_ops/nginx_webc_locales_backfill.yml b/bmw_nginx/nginx_ops/nginx_webc_locales_backfill.yml
+new file mode 100644
+index 000000000..b155ff198
+--- /dev/null
++++ b/bmw_nginx/nginx_ops/nginx_webc_locales_backfill.yml
+@@ -0,0 +1,65 @@
++---
++# nginx_webc_locales_backfill.yml — MEVCUT per-uygulama SPA conf'larina (application-confs/)
++# "webc_locales.json" location blogunu geriye donuk ekler (2026-09-15, tum uygulamalar
++# icin istendi). Yeni tanimlar icin ayni blok nginx_ops SPA sablonunda (configuration-
++# append-template-spa.j2); bu playbook yalnizca ESKI dosyalar icindir.
++#
++# NASIL: her dosyadaki mevcut `location = <onek>locales/locales.json {...}` blogu
++# klonlanir, yalnizca dosya adi webc_locales.json yapilir (files/webc_locales_backfill.sh).
++# Boylece CORS degisken adlari, path oneki ve Allow-Credentials satirinin varligi o
++# dosyada ne ise korunur. Idempotent: zaten olan dosyaya dokunulmaz.
++#
++# MOD (extra var `mode`): report (VARSAYILAN, hicbir sey yazmaz) | apply (yaz + nginx -t
++# + reload; -t duserse o hosttaki tum degisen dosyalar yedekten geri alinir, host fail).
++# HEDEF (extra var `target_hosts`): varsayilan tum SPA sunuculari (asagida). Once bir
++# non-prod hostta apply ile deneyin: -e "mode=apply target_hosts=GBNGXD01".
++#
++# Ayrinti: README.md "webc_locales.json" bolumu.
++
++- name: "--- webc_locales.json geriye donuk ekleme ---"
++  # SPA per-uygulama conf'u olan sunucular: internet non-prod, intranet (50'li), yeni prod SPA.
++  # Eski GBRVP* prod sunucularinda SPA dosyasi YOK (proxy_pass), kapsam disi.
++  hosts: >-
++    {{ target_hosts | default('GBNGXD01,GBNGXD02,GBNGXT33,GBNGXT34,GBNGXQ01,GBNGXQ02,GBNGXD50,GBNGXT50,GBNGXT51,GBNGXQ50,GBNGXP50,GBNGXP51,GBNGXP52,GBNGXP53,GBNGXAP50,GBNGXAP51,GBNGXP40,GBNGXP41,GBNGXP48,GBNGXP49,GBNGXAP24,GBNGXAP25,GBNGXP44,GBNGXP45,GBNGXP58,GBNGXP59,GBNGXAP28,GBNGXAP29') }}
++  gather_facts: no
++  ignore_unreachable: true
++  vars:
++    mode: report
++  tasks:
++    - name: --- [Task] Mod dogrula ---
++      ansible.builtin.assert:
++        that: (mode | lower) in ['report', 'apply']
++        fail_msg: "mode report|apply olmali (verilen: '{{ mode }}')"
++
++    - name: --- [Task] Betigi kopyala ---
++      ansible.builtin.copy:
++        src: operations/files/webc_locales_backfill.sh
++        dest: /tmp/webc_locales_backfill.sh
++        mode: '0755'
++
++    - name: "--- [Task] {{ 'UYGULA' if (mode | lower) == 'apply' else 'RAPOR' }}: application-confs tarama ---"
++      become: true
++      become_method: dzdo
++      become_user: www
++      ansible.builtin.command: /bin/bash /tmp/webc_locales_backfill.sh {{ mode | lower }}
++      register: webc
++      changed_when: (mode | lower) == 'apply' and ('RESULT\tOK' in webc.stdout)
++      failed_when: webc.rc not in [0, 3]
++
++    - name: --- [Task] Betigi temizle ---
++      ansible.builtin.file:
++        path: /tmp/webc_locales_backfill.sh
++        state: absent
++      changed_when: false
++
++    - name: --- [Task] Ozet ---
++      ansible.builtin.debug:
++        msg:
++          - "{{ inventory_hostname }} · mod={{ mode }}"
++          - "{{ (webc.stdout_lines | select('match', '^SUMMARY') | list | first | default('SUMMARY 0 0 0 0')) | regex_replace('^SUMMARY\\t(\\d+)\\t(\\d+)\\t(\\d+)\\t(\\d+)$', 'toplam \\1 dosya · eklenecek/eklenen \\2 · zaten var \\3 · locales.json blogu yok \\4') }}"
++          - "{{ (webc.stdout_lines | select('match', '^RESULT') | list | first | default('RESULT\t-\trapor modu, degisiklik yok')) | regex_replace('^RESULT\\t', '') | regex_replace('\\t', ' - ') }}"
++
++    - name: --- [Task] nginx -t dustu, geri alindi -> host FAIL ---
++      ansible.builtin.fail:
++        msg: "{{ inventory_hostname }}: {{ (webc.stdout_lines | select('match', '^RESULT') | list | first | default('')) }}"
++      when: webc.rc == 3
+diff --git a/bmw_nginx/nginx_ops/operations/files/webc_locales_backfill.sh b/bmw_nginx/nginx_ops/operations/files/webc_locales_backfill.sh
+new file mode 100644
+index 000000000..c212bcf07
+--- /dev/null
++++ b/bmw_nginx/nginx_ops/operations/files/webc_locales_backfill.sh
+@@ -0,0 +1,109 @@
++#!/bin/bash
++# webc_locales_backfill.sh - MEVCUT per-uygulama conf'larina "webc_locales.json" location
++# blogunu geriye donuk ekler (2026-09-15, tum uygulamalar icin istendi).
++#
++# YAKLASIM: sablonla yeniden uretmek YERINE dosyadaki mevcut
++#     location = <onek>locales/locales.json { ... }
++# blogu KLONLANIR ve iki yerde "locales/locales.json" -> "locales/webc_locales.json"
++# yapilir (location satiri + alias satiri). Boylece o dosyada CORS degisken adi ne ise
++# (flat/namespaced eki), Allow-Credentials satiri var mi yok mu, path oneki ne - hepsi
++# AYNEN korunur; nginx_ops sablonunun uretecegi blokla birebir ayni sonuc cikar.
++#
++# KURALLAR
++#   - Dosyada zaten "webc_locales.json" gecen bir location varsa DOKUNULMAZ (idempotent).
++#   - locales.json blogu yoksa (SPA disi / eski desen) dosya ATLANIR ve raporlanir.
++#   - Klon, orijinal blogun HEMEN ARDINA yazilir.
++#   - apply: her degisen dosyanin .webc-bak.<ts> yedegi alinir; nginx -t duserse TUM
++#     degisen dosyalar yedekten geri alinir, reload yapilmaz, cikis 3.
++#
++# KULLANIM: webc_locales_backfill.sh <report|apply> [conf_dir]
++#   report : yalnizca sayar ve listeler, hicbir sey yazmaz (varsayilan)
++#   apply  : yazar + nginx -t + reload
++#
++# CIKTI (stdout, TAB ayrilmis): SUMMARY  <toplam> <eklenecek/eklenen> <zaten var> <blok yok>
++#                                FILE     <durum>  <dosya>      (durum: ADD|HAS|NOBLOCK|ERR)
++set -u
++MODE="${1:-report}"
++CONF_DIR="${2:-/usr/nginx/conf.d/application-confs}"
++NGINX_BIN="/usr/nginx/sbin/nginx"
++TS="$(date +%Y%m%d%H%M%S)"
++
++case "$MODE" in report|apply) ;; *) echo "kullanim: $0 <report|apply> [conf_dir]" >&2; exit 2 ;; esac
++[ -d "$CONF_DIR" ] || { echo "SUMMARY	0	0	0	0"; echo "NOTE	dizin yok: $CONF_DIR"; exit 0; }
++
++# Bir dosyadan klonlanmis blogu (yalniz ekleme yapilacaksa) uretir; dosyayi DEGISTIRMEZ.
++# Cikis: 0 = klon uretildi (stdout: yeni dosya icerigi), 10 = zaten var, 11 = blok yok.
++clone_into() {
++  local f="$1"
++  grep -qE 'location[[:space:]]*=[[:space:]]*[^[:space:]{]*locales/webc_locales\.json[[:space:]]*\{' "$f" && return 10
++  grep -qE 'location[[:space:]]*=[[:space:]]*[^[:space:]{]*locales/locales\.json[[:space:]]*\{' "$f" || return 11
++  awk '
++    # Blok yakalama: location = ...locales/locales.json { ile baslar, parantez sayaci
++    # sifira dusunce biter. Blok satirlari toplanir; kapanista klon basilir.
++    function emit_clone(   i, line) {
++      for (i = 1; i <= n; i++) {
++        line = blk[i]
++        gsub(/locales\/locales\.json/, "locales/webc_locales.json", line)
++        print line
++      }
++    }
++    {
++      if (!inblk && $0 ~ /^[[:space:]]*location[[:space:]]*=[[:space:]]*[^[:space:]{]*locales\/locales\.json[[:space:]]*\{/) {
++        inblk = 1; n = 0; depth = 0
++      }
++      print $0
++      if (inblk) {
++        blk[++n] = $0
++        o = gsub(/\{/, "{"); c = gsub(/\}/, "}")
++        depth += o - c
++        if (depth <= 0 && n > 0 && (o > 0 || c > 0)) {
++          inblk = 0
++          print ""
++          emit_clone()
++        }
++      }
++    }
++  ' "$f"
++}
++
++total=0; add=0; has=0; noblock=0; failed=0
++changed_files=""
++for f in "$CONF_DIR"/*.conf; do
++  [ -f "$f" ] || continue
++  total=$((total + 1))
++  out="$(clone_into "$f")"; rc=$?
++  case "$rc" in
++    10) has=$((has + 1)); printf 'FILE\tHAS\t%s\n' "$f"; continue ;;
++    11) noblock=$((noblock + 1)); printf 'FILE\tNOBLOCK\t%s\n' "$f"; continue ;;
++    0)  ;;
++    *)  failed=$((failed + 1)); printf 'FILE\tERR\t%s\n' "$f"; continue ;;
++  esac
++  # Guvenlik: klon gercekten uretildi mi (satir sayisi artmali ve webc gecmeli)
++  if ! printf '%s\n' "$out" | grep -q 'webc_locales.json'; then
++    failed=$((failed + 1)); printf 'FILE\tERR\t%s\n' "$f"; continue
++  fi
++  add=$((add + 1)); printf 'FILE\tADD\t%s\n' "$f"
++  if [ "$MODE" = "apply" ]; then
++    cp -p "$f" "$f.webc-bak.$TS" || { failed=$((failed + 1)); continue; }
++    printf '%s\n' "$out" > "$f"
++    changed_files="$changed_files $f"
++  fi
++done
++printf 'SUMMARY\t%d\t%d\t%d\t%d\n' "$total" "$add" "$has" "$noblock"
++[ "$failed" -gt 0 ] && printf 'NOTE\t%d dosyada hata\n' "$failed"
++
++if [ "$MODE" = "apply" ] && [ -n "$changed_files" ]; then
++  if dzdo "$NGINX_BIN" -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -t >/tmp/webc_nginx_t.$$ 2>&1; then
++    dzdo "$NGINX_BIN" -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -s reload
++    printf 'RESULT\tOK\t%d dosya degisti, nginx -t gecti, reload yapildi\n' "$add"
++    rm -f /tmp/webc_nginx_t.$$
++    exit 0
++  else
++    # GERI AL: degisen her dosya yedekten
++    for f in $changed_files; do cp -p "$f.webc-bak.$TS" "$f"; done
++    printf 'RESULT\tROLLBACK\tnginx -t DUSTU, %d dosya yedekten geri alindi: %s\n' "$add" "$(tr '\n' ' ' < /tmp/webc_nginx_t.$$ | cut -c1-400)"
++    rm -f /tmp/webc_nginx_t.$$
++    exit 3
++  fi
++fi
++exit 0
+diff --git a/bmw_nginx/nginx_ops/operations/templates/configuration-append-template-spa.j2 b/bmw_nginx/nginx_ops/operations/templates/configuration-append-template-spa.j2
+index bb7066821..e231c36a1 100644
+--- a/bmw_nginx/nginx_ops/operations/templates/configuration-append-template-spa.j2
++++ b/bmw_nginx/nginx_ops/operations/templates/configuration-append-template-spa.j2
+@@ -36,6 +36,26 @@ location = {{ path }}locales/locales.json {
+   }
+ }
+ 
++{# webc_locales.json (2026-09-15, tum uygulamalar icin istendi): locales.json blogunun
++   birebir esi, yalnizca dosya adi farkli. Mevcut dosyalara geriye donuk ekleme:
++   nginx_webc_locales_backfill.yml (klonlama yaklasimi, bu sablonla ayni sonuc). #}
++location = {{ path }}locales/webc_locales.json {
++
++  add_header Access-Control-Allow-Origin $allowed_origin_{{ cors }} always;
++  add_header Access-Control-Max-Age $max_age_{{ cors }};
++{% if allowed_credentials_map_exists | default(false) %}
++  add_header Access-Control-Allow-Credentials $allowed_credentials_{{ cors }} always;
++{% endif %}
++  add_header Access-Control-Allow-Headers $allowed_headers_{{ cors }} always;
++  add_header Access-Control-Allow-Methods $allowed_methods_{{ cors }} always;
++  add_header Cache-Control 'no-cache';
++  alias {{ app_root }}locales/webc_locales.json;
++
++  if ($request_method ~* ^(OPTIONS|POST)$) {
++    return 200;
++  }
++}
++
+ location {{ path }}live {
+   access_log off;
+   return 200 'healthy\n';
+diff --git a/bmw_nginx/tests/check_webc_backfill.py b/bmw_nginx/tests/check_webc_backfill.py
+new file mode 100644
+index 000000000..f35ea0083
+--- /dev/null
++++ b/bmw_nginx/tests/check_webc_backfill.py
+@@ -0,0 +1,154 @@
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++"""webc_locales_backfill.sh: mevcut per-uygulama conf'larina webc_locales.json blogu.
++
++Kilitlenen iddialar (betik GERCEKTEN kosturulur, Git Bash):
++  1. nginx_ops SPA sablonu ciktisi (namespaced, credentials'li) -> klon locales.json
++     blogunun hemen ardinda, ayni CORS degisken adi, alias yalniz dosya adi degisir.
++  2. Deployment sablonu bicimi (kok-goreli /locales/locales.json) -> /locales/webc_locales.json.
++  3. Credentials SATIRI OLMAYAN dosyada klon da credentials'siz (dosyaya sadik).
++  4. Zaten webc iceren dosya HAS, locales.json blogu olmayan dosya NOBLOCK; dokunulmaz.
++  5. report modu hicbir dosyayi degistirmez; apply degistirir, yedek birakir, idempotent.
++  6. nginx_ops sablonu (configuration-append-template-spa.j2) webc blogunu icerir ve
++     klonla AYNI satirlari uretir (iki yol tek sonuc).
++"""
++import io
++import os
++import re
++import shutil
++import subprocess
++import sys
++import tempfile
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++OPS = os.path.join(os.path.dirname(HERE), "nginx_ops", "operations")
++SCRIPT = os.path.join(OPS, "files", "webc_locales_backfill.sh")
++TPL = os.path.join(OPS, "templates", "configuration-append-template-spa.j2")
++
++problems = []
++tmp = tempfile.mkdtemp(prefix="webc-")
++conf = os.path.join(tmp, "application-confs")
++os.makedirs(conf)
++
++NS_APP = """location = /odeme/locales/locales.json {
++
++  add_header Access-Control-Allow-Origin $allowed_origin_odeme_app_v1_digital_ch_test always;
++  add_header Access-Control-Max-Age $max_age_odeme_app_v1_digital_ch_test;
++  add_header Access-Control-Allow-Credentials $allowed_credentials_odeme_app_v1_digital_ch_test always;
++  add_header Access-Control-Allow-Headers $allowed_headers_odeme_app_v1_digital_ch_test always;
++  add_header Access-Control-Allow-Methods $allowed_methods_odeme_app_v1_digital_ch_test always;
++  add_header Cache-Control 'no-cache';
++  alias /usr/nginx/applications/digital-ch-test/odeme-app-v1/locales/locales.json;
++
++  if ($request_method ~* ^(OPTIONS|POST)$) {
++    return 200;
++  }
++}
++
++location /odeme/live {
++  access_log off;
++  return 200 'healthy\\n';
++}
++"""
++ROOT_REL = NS_APP.replace("/odeme/locales/locales.json", "/locales/locales.json").replace("/odeme/live", "/live")
++NO_CRED = "\n".join(l for l in NS_APP.splitlines() if "Allow-Credentials" not in l) + "\n"
++HAS = NS_APP + NS_APP.replace("locales/locales.json", "locales/webc_locales.json")
++NOBLOCK = "location /api/ {\n  proxy_pass https://x/;\n}\n"
++files = {"ns-app.conf": NS_APP, "rootrel.conf": ROOT_REL, "nocred.conf": NO_CRED, "has.conf": HAS, "proxy.conf": NOBLOCK}
++for name, body in files.items():
++    io.open(os.path.join(conf, name), "w", encoding="utf-8", newline="\n").write(body)
++
++
++def run(mode):
++    try:
++        r = subprocess.run(["bash", SCRIPT, mode, conf], capture_output=True, text=True, encoding="utf-8")
++    except FileNotFoundError:
++        print("ATLANDI: bash yok")
++        sys.exit(0)
++    rows = [l.split("\t") for l in r.stdout.splitlines() if l.strip()]
++    return r, rows
++
++
++# [5] report: dosya degismez
++before = {n: io.open(os.path.join(conf, n), encoding="utf-8").read() for n in files}
++r, rows = run("report")
++summ = [x for x in rows if x[0] == "SUMMARY"][0]
++if summ[1:] != ["5", "3", "1", "1"]:
++    problems.append("report SUMMARY: beklenen 5/3/1/1, bulunan %r" % summ[1:])
++st = {os.path.basename(x[2]): x[1] for x in rows if x[0] == "FILE"}
++if st.get("has.conf") != "HAS" or st.get("proxy.conf") != "NOBLOCK" or st.get("ns-app.conf") != "ADD":
++    problems.append("durumlar: %r" % st)
++after = {n: io.open(os.path.join(conf, n), encoding="utf-8").read() for n in files}
++if before != after:
++    problems.append("report modu dosya DEGISTIRDI")
++
++# apply (nginx yok -> -t adimi dzdo bulunamadigi icin ROLLBACK yapar; burada yalniz klonu olcmek
++# icin nginx -t oncesi hali yedekten degil, betigin urettigi icerikten kontrol ederiz)
++# Bunun icin betigi bir sahte dzdo/nginx ile kosturuyoruz.
++fake = os.path.join(tmp, "bin")
++os.makedirs(fake)
++io.open(os.path.join(fake, "dzdo"), "w", newline="\n").write("#!/bin/bash\nexit 0\n")
++os.chmod(os.path.join(fake, "dzdo"), 0o755)
++env = dict(os.environ, PATH=fake + os.pathsep + os.environ.get("PATH", ""))
++r = subprocess.run(["bash", SCRIPT, "apply", conf], capture_output=True, text=True, encoding="utf-8", env=env)
++rows = [l.split("\t") for l in r.stdout.splitlines() if l.strip()]
++res = [x for x in rows if x[0] == "RESULT"]
++if not res or res[0][1] != "OK":
++    problems.append("apply RESULT OK degil: %r (stderr: %s)" % (res, r.stderr[:200]))
++
++def block_of(text, fname):
++    # {{ path }} (sablon) ya da /odeme/ (gercek dosya) oneki: satir sonuna kadar her sey
++    m = re.search(r"location = [^\n]*?%s \{.*?\n\}\n" % re.escape(fname), text, re.S)
++    return m.group(0) if m else None
++
++# [1] namespaced + credentials
++t = io.open(os.path.join(conf, "ns-app.conf"), encoding="utf-8").read()
++orig = block_of(t, "locales/locales.json"); clone = block_of(t, "locales/webc_locales.json")
++if not clone:
++    problems.append("ns-app: klon yok")
++else:
++    if clone != orig.replace("locales/locales.json", "locales/webc_locales.json"):
++        problems.append("ns-app: klon orijinalin birebir esi degil (yalniz dosya adi degismeli)")
++    if t.index(clone) < t.index(orig) or t.index(clone) > t.index("location /odeme/live"):
++        problems.append("ns-app: klon locales.json blogunun HEMEN ardinda olmali")
++    if "alias /usr/nginx/applications/digital-ch-test/odeme-app-v1/locales/webc_locales.json;" not in clone:
++        problems.append("ns-app: alias dosya adi: %s" % clone)
++# [2] kok-goreli
++t2 = io.open(os.path.join(conf, "rootrel.conf"), encoding="utf-8").read()
++if "location = /locales/webc_locales.json {" not in t2:
++    problems.append("rootrel: /locales/webc_locales.json yok")
++# [3] credentials'siz
++t3 = io.open(os.path.join(conf, "nocred.conf"), encoding="utf-8").read()
++c3 = block_of(t3, "locales/webc_locales.json")
++if not c3 or "Allow-Credentials" in c3:
++    problems.append("nocred: klon credentials satiri TASIMAMALI")
++# [4] dokunulmayanlar
++if io.open(os.path.join(conf, "has.conf"), encoding="utf-8").read() != HAS:
++    problems.append("has.conf degistirildi")
++if io.open(os.path.join(conf, "proxy.conf"), encoding="utf-8").read() != NOBLOCK:
++    problems.append("proxy.conf degistirildi")
++# yedekler
++baks = [n for n in os.listdir(conf) if ".webc-bak." in n]
++if len(baks) != 3:
++    problems.append("yedek sayisi: beklenen 3, bulunan %d" % len(baks))
++# idempotent
++r2 = subprocess.run(["bash", SCRIPT, "apply", conf], capture_output=True, text=True, encoding="utf-8", env=env)
++s2 = [l.split("\t") for l in r2.stdout.splitlines() if l.startswith("SUMMARY")][0]
++if s2[2] != "0":
++    problems.append("ikinci apply yeniden ekledi (idempotent degil): %r" % s2)
++
++# [6] nginx_ops sablonu: webc blogu var ve locales.json bloguyla yalniz dosya adi farki
++tpl = io.open(TPL, encoding="utf-8").read()
++tb = block_of(tpl, "locales/locales.json"); wb = block_of(tpl, "locales/webc_locales.json")
++if not wb:
++    problems.append("sablonda webc blogu yok")
++elif wb != tb.replace("locales/locales.json", "locales/webc_locales.json"):
++    problems.append("sablondaki webc blogu locales.json blogunun birebir esi degil")
++
++shutil.rmtree(tmp, ignore_errors=True)
++if problems:
++    print("BULGU (%d):" % len(problems))
++    for p in problems:
++        print("  - " + p)
++    sys.exit(1)
++print("Temiz: klon birebir (yalniz dosya adi), yer dogru, credentials'a sadik, idempotent, report yazmaz, sablon uyumlu.")
+-- 
+2.55.0.windows.3
+

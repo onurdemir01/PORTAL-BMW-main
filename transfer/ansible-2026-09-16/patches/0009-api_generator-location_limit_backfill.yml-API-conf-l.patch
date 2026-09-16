@@ -1,0 +1,556 @@
+From 9a1102c0b7214806815c7e6d6932cd932affd19d Mon Sep 17 00:00:00 2001
+From: Onur Demir <demir-onur@hotmail.com>
+Date: Tue, 15 Sep 2026 23:02:52 +0300
+Subject: [PATCH 09/22] api_generator: location_limit_backfill.yml - API
+ conf'larina eksik location bazli rate limit'i geriye donuk ekler
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- files/location_limit_backfill.sh: rate_limit var / location_limit yok -> rate satirinin
+  altina ayni base ile burst=10; baslik satirlari; eksik zone'lar limit-zones.conf sonuna
+  (300r/s, 10m); yorumlu (#) satirli bloklar varsayilan atlanir + raporlanir
+  (include_commented ile eklenir); yedek + nginx -t + reload, duserse geri alma; idempotent
+- playbook: 36 prod API gateway (GBNGWP01-16/25-32, GBNGWAP01-08/22-25), mode report|apply
+- README §7, tests/check_location_limit_backfill.py (GBNGWAP01 dump: 84 dosya / 613 satir /
+  32 zone, BAKARKGW 92 yorumlu blok)
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ bmw_nginx/api_generator/README.md             |  36 ++++
+ .../api_generator/location_limit_backfill.yml |  80 ++++++++
+ .../files/location_limit_backfill.sh          | 194 ++++++++++++++++++
+ .../tests/check_location_limit_backfill.py    | 186 +++++++++++++++++
+ 4 files changed, 496 insertions(+)
+ create mode 100644 bmw_nginx/api_generator/location_limit_backfill.yml
+ create mode 100644 bmw_nginx/api_generator/operations/files/location_limit_backfill.sh
+ create mode 100644 bmw_nginx/tests/check_location_limit_backfill.py
+
+diff --git a/bmw_nginx/api_generator/README.md b/bmw_nginx/api_generator/README.md
+index c55515c45..a8fe3bcfb 100644
+--- a/bmw_nginx/api_generator/README.md
++++ b/bmw_nginx/api_generator/README.md
+@@ -134,6 +134,42 @@ Test: `python bmw_nginx/tests/check_rate_limit_resolve.py`
+ 
+ ---
+ 
++## 7. `location_limit_backfill.yml` — eksik location limit'leri geriye dönük ekleme (2026-09-15)
++
++Location bazlı limit'ler (`zone=<base>_location_limit`) bir betikle tüm location'lara
++tanımlanmıştı; bir süre **eski şablonla** üretilen API'lerde bu satır ezildi (yalnız
++`_rate_limit` kaldı). GBNGWAP01 dump'ında 252 API dosyasının 83'ünde hiç yoktu, 32 API'nin
++`limit-zones.conf`'ta zone tanımı da yoktu, bir API'de (BAKARKGW) 94 bloğun hepsinde satır
++**yorumluydu**. Bu playbook eksikleri tamamlar; yeni tanımlar için `create.yaml` zaten iki
++limiti de yazar.
++
++| | |
++|---|---|
++| Playbook | `bmw_nginx/api_generator/location_limit_backfill.yml` |
++| Betik | `operations/files/location_limit_backfill.sh` (kabuk bloğu files/ altında) |
++| Hedef | 36 production API gateway (§1: GBNGWP01-16, 25-32; GBNGWAP01-08, 22-25); `target_hosts` ile daraltılır |
++| Mod | `mode=report` (**varsayılan**, yazmaz) / `mode=apply` (yaz + `nginx -t` + reload) |
++
++Kural, her location bloğu için: blokta `limit_req zone=<base>_rate_limit …;` var ve
++`_location_limit` satırı yoksa **rate satırının hemen altına**, aynı girintiyle
++`limit_req zone=<base>_location_limit burst=10 nodelay;` eklenir (`<base>` bloğun kendi
++rate zone'undan alınır). Dosya başına `# limit_req_location_zone_*` başlıkları, kullanılan
++her `<base>` için `limit-zones.conf` sonuna `limit_req_zone $server_name … :10m rate=300r/s;`
++eklenir (`ll_rate` / `ll_mem` / `ll_burst` ile değiştirilebilir). `limit_req` olmayan bloklar
++(`@named`, servicePing) ve zaten tam dosyalar dokunulmaz; ikinci koşu hiçbir şey değiştirmez.
++
++**Yorumlu satır kuralı:** blokta `#limit_req zone=…_location_limit` varsa biri bilerek
++kapatmış olabilir → varsayılan **atlanır**, Teams/özet çıktısında `COMMENTED` olarak
++raporlanır; `-e include_commented=true` ile onlar da eklenir.
++
++Güvenlik: apply'da değişen her dosyanın `.ll-bak.<ts>` yedeği alınır; `nginx -t` düşerse
++tüm dosyalar (limit-zones.conf dahil) geri alınır, reload yapılmaz, host FAIL olur.
++
++Önerilen sıra: `-e mode=report` (tüm hostlar) → `-e "mode=apply target_hosts=GBNGWAP01"` →
++tümüne apply. Test: `python bmw_nginx/tests/check_location_limit_backfill.py`.
++
++---
++
+ ## 6. Bilinen eksikler
+ 
+ * `operations/tasks/main.yaml`, `op_selection` değeri `open_nginx` veya `close_nginx`
+diff --git a/bmw_nginx/api_generator/location_limit_backfill.yml b/bmw_nginx/api_generator/location_limit_backfill.yml
+new file mode 100644
+index 000000000..b41cb8a6a
+--- /dev/null
++++ b/bmw_nginx/api_generator/location_limit_backfill.yml
+@@ -0,0 +1,80 @@
++---
++# location_limit_backfill.yml — API gateway (mblcustomers) sunucularindaki API conf'larina
++# EKSIK olan location bazli rate limit'i geriye donuk ekler (2026-09-15).
++#
++# NEDEN: location limit'ler (zone=<base>_location_limit) bir betikle tum location'lara
++# tanimlanmisti; bir sure ESKI sablonla uretilen API'lerde bu satir ezildi. Yeni sablon
++# (operations/tasks/create.yaml) zaten iki limiti de yaziyor; bu playbook yalnizca ESKI
++# dosyalar icindir. Kural ve kenar durumlar: operations/files/location_limit_backfill.sh
++# (kabuk bloklari files/ altinda tutulur), README.md §7.
++#
++# MOD (extra var `mode`): report (VARSAYILAN, hicbir sey yazmaz) | apply (yaz + nginx -t
++# + reload; -t duserse o hosttaki tum degisen dosyalar yedekten geri alinir, host fail).
++# HEDEF (extra var `target_hosts`): varsayilan tum production API gateway sunuculari
++# (asagida). Once TEK hostta apply ile deneyin: -e "mode=apply target_hosts=GBNGWAP01".
++# YORUMLU location_limit'li bloklar (BAKARKGW gibi) varsayilan ATLANIR ve raporlanir;
++# -e include_commented=true ile onlar da eklenir.
++# DEGERLER: rate/mem/burst varsayilani mevcut tanimlarla ayni (300r/s, 10m, burst=10);
++# -e "ll_rate=300r/s ll_mem=10m ll_burst=10" ile degistirilebilir.
++
++- name: "--- location_limit geriye donuk ekleme (API gateway) ---"
++  # Production API gateway: Pendik GBNGWP01-16 + GBNGWP25-32, Ankara GBNGWAP01-08 + GBNGWAP22-25.
++  # README §1 ile ayni liste (36 sunucu).
++  hosts: >-
++    {{ target_hosts | default('GBNGWP01,GBNGWP02,GBNGWP03,GBNGWP04,GBNGWP05,GBNGWP06,GBNGWP07,GBNGWP08,GBNGWP09,GBNGWP10,GBNGWP11,GBNGWP12,GBNGWP13,GBNGWP14,GBNGWP15,GBNGWP16,GBNGWP25,GBNGWP26,GBNGWP27,GBNGWP28,GBNGWP29,GBNGWP30,GBNGWP31,GBNGWP32,GBNGWAP01,GBNGWAP02,GBNGWAP03,GBNGWAP04,GBNGWAP05,GBNGWAP06,GBNGWAP07,GBNGWAP08,GBNGWAP22,GBNGWAP23,GBNGWAP24,GBNGWAP25') }}
++  gather_facts: no
++  ignore_unreachable: true
++  vars:
++    mode: report
++    include_commented: false
++    ll_rate: "300r/s"
++    ll_mem: "10m"
++    ll_burst: "10"
++  tasks:
++    - name: --- [Task] Mod dogrula ---
++      ansible.builtin.assert:
++        that:
++          - (mode | lower) in ['report', 'apply']
++          - ll_rate is match('^[0-9]+r/[sm]$')
++          - ll_mem is match('^[0-9]+[mk]$')
++          - ll_burst is match('^[0-9]+$')
++        fail_msg: "mode report|apply olmali (verilen: '{{ mode }}'); ll_rate 300r/s, ll_mem 10m, ll_burst 10 biciminde olmali"
++
++    - name: --- [Task] Betigi kopyala ---
++      ansible.builtin.copy:
++        src: operations/files/location_limit_backfill.sh
++        dest: /tmp/location_limit_backfill.sh
++        mode: '0755'
++
++    - name: "--- [Task] {{ 'UYGULA' if (mode | lower) == 'apply' else 'RAPOR' }}: *-apis/*.conf tarama ---"
++      become: true
++      become_method: dzdo
++      become_user: www
++      ansible.builtin.command: /bin/bash /tmp/location_limit_backfill.sh {{ mode | lower }}
++      environment:
++        LL_RATE: "{{ ll_rate }}"
++        LL_MEM: "{{ ll_mem }}"
++        LL_BURST: "{{ ll_burst }}"
++        LL_INCLUDE_COMMENTED: "{{ '1' if (include_commented | bool) else '0' }}"
++      register: ll
++      changed_when: (mode | lower) == 'apply' and ('RESULT\tOK' in ll.stdout)
++      failed_when: ll.rc not in [0, 3]
++
++    - name: --- [Task] Betigi temizle ---
++      ansible.builtin.file:
++        path: /tmp/location_limit_backfill.sh
++        state: absent
++      changed_when: false
++
++    - name: --- [Task] Ozet ---
++      ansible.builtin.debug:
++        msg:
++          - "{{ inventory_hostname }} · mod={{ mode }} · rate={{ ll_rate }} burst={{ ll_burst }}"
++          - "{{ (ll.stdout_lines | select('match', '^SUMMARY') | list | first | default('SUMMARY 0 0 0 0 0 0 0')) | regex_replace('^SUMMARY\\t(\\d+)\\t(\\d+)\\t(\\d+)\\t(\\d+)\\t(\\d+)\\t(\\d+)\\t(\\d+)$', 'toplam \\1 dosya · degisen \\2 dosya / \\3 location satiri · zaten tam \\4 · limit_req yok \\5 · eklenen zone \\6 · yorumlu atlanan blok \\7') }}"
++          - "{{ (ll.stdout_lines | select('match', '^RESULT') | list | first | default('RESULT\t-\trapor modu, degisiklik yok')) | regex_replace('^RESULT\\t', '') | regex_replace('\\t', ' - ') }}"
++          - "{{ ll.stdout_lines | select('match', '^NOTE') | map('regex_replace', '\\t', ' ') | list }}"
++
++    - name: --- [Task] nginx -t dustu, geri alindi -> host FAIL ---
++      ansible.builtin.fail:
++        msg: "{{ inventory_hostname }}: {{ (ll.stdout_lines | select('match', '^RESULT') | list | first | default('')) }}"
++      when: ll.rc == 3
+diff --git a/bmw_nginx/api_generator/operations/files/location_limit_backfill.sh b/bmw_nginx/api_generator/operations/files/location_limit_backfill.sh
+new file mode 100644
+index 000000000..d368f2178
+--- /dev/null
++++ b/bmw_nginx/api_generator/operations/files/location_limit_backfill.sh
+@@ -0,0 +1,194 @@
++#!/bin/bash
++# location_limit_backfill.sh - API conf'larindaki location bloklarina EKSIK olan location
++# bazli rate limit'i (zone=<base>_location_limit) geriye donuk ekler (2026-09-15).
++#
++# NEDEN: location limit'ler bir betikle tum location'lara tanimlanmisti; bir sure boyunca
++# ESKI sablonla uretilen API'lerde bu satir ezildi (yalniz _rate_limit kaldi). Dump
++# (GBNGWAP01): 252 API dosyasinin 83'unde hic yok; 32 API'nin limit-zones.conf'ta
++# location zone TANIMI da yok; 1 API'de (BAKARKGW) 94 blogun hepsinde satir YORUMLU.
++#
++# KURAL (her location blogu icin):
++#   - blokta  `limit_req zone=<base>_rate_limit ...;`  VAR ve
++#     `limit_req zone=<base>_location_limit ...;` YOK ise
++#     rate_limit satirinin HEMEN ALTINA, ayni girintiyle:
++#         limit_req zone=<base>_location_limit burst=<BURST> nodelay;
++#     (<base> o bloktaki rate_limit zone adindan alinir; Base Path basligina bakilmaz -
++#      blok neyi kullaniyorsa onun esi eklenir.)
++#   - hic limit_req olmayan bloklar (@named, servicePing) DOKUNULMAZ.
++#   - blokta YORUMLU (#) bir location_limit satiri varsa biri bilerek kapatmis olabilir:
++#     varsayilan ATLANIR ve NOTE COMMENTED ile raporlanir; LL_INCLUDE_COMMENTED=1 ekletir.
++#   - dosya basinda `# limit_req_location_zone_memory_size` / `_rate` satirlari yoksa
++#     `# limit_req_zone_rate:` satirinin hemen altina eklenir (yeni sablonla ayni gorunum).
++#   - kullanilan her <base> icin limit-zones.conf'ta
++#         limit_req_zone $server_name zone=<base>_location_limit:<MEM> rate=<RATE>;
++#     yoksa dosya SONUNA eklenir (create.yaml'in lineinfile davranisiyla ayni yer).
++#   - Idempotent: ikinci kosu hicbir sey degistirmez.
++#   - apply: degisen her dosyanin .ll-bak.<ts> yedegi alinir; nginx -t duserse TUM
++#     degisen dosyalar (limit-zones.conf dahil) geri alinir, reload yapilmaz, cikis 3.
++#
++# KULLANIM: location_limit_backfill.sh <report|apply> [conf_glob] [zones_file]
++#   varsayilan conf_glob : /usr/nginx/conf.d/*-apis/*.conf   (kanal bagimsiz)
++#   varsayilan zones_file: /usr/nginx/conf.d/limit-zones.conf
++# ORTAM: LL_RATE (300r/s) LL_MEM (10m) LL_BURST (10) LL_INCLUDE_COMMENTED (0)
++#        LL_NGINX (/usr/nginx/sbin/nginx)
++#
++# CIKTI (stdout, TAB ayrilmis):
++#   FILE     <ADD|HAS|COMMENTED|SKIP|ERR>  <dosya>  <eklenen satir sayisi>
++#   ZONE     <ADD|HAS>           <base>
++#   NOTE     COMMENTED <dosya> <aciklama>   (yorumlu location_limit'li bloklar)
++#   SUMMARY  <toplam dosya> <degisen dosya> <eklenen location satiri> <zaten tam> <limit_req'siz> <eklenen zone> <yorumlu atlanan blok>
++#   RESULT   <OK|ROLLBACK|-> <aciklama>
++set -u
++MODE="${1:-report}"
++CONF_GLOB="${2:-/usr/nginx/conf.d/*-apis/*.conf}"
++ZONES="${3:-/usr/nginx/conf.d/limit-zones.conf}"
++RATE="${LL_RATE:-300r/s}"
++MEM="${LL_MEM:-10m}"
++BURST="${LL_BURST:-10}"
++INCLUDE_COMMENTED="${LL_INCLUDE_COMMENTED:-0}"
++NGINX_BIN="${LL_NGINX:-/usr/nginx/sbin/nginx}"
++TS="$(date +%Y%m%d%H%M%S)"
++
++case "$MODE" in report|apply) ;; *) echo "kullanim: $0 <report|apply> [conf_glob] [zones_file]" >&2; exit 2 ;; esac
++[ -f "$ZONES" ] || { printf 'SUMMARY\t0\t0\t0\t0\t0\t0\t0\n'; printf 'NOTE\tzone dosyasi yok: %s\n' "$ZONES"; exit 0; }
++
++# Bir dosyanin yeni icerigini uretir (dosyayi DEGISTIRMEZ). stdout: yeni icerik.
++# stderr: "ADDED <n>", "SKIPPEDC <n>" ve kullanilan base'ler "BASE <base>".
++rewrite() {
++  local has_hdr=0
++  grep -qE '^# limit_req_location_zone_(memory_size|rate):' "$1" && has_hdr=1
++  awk -v BURST="$BURST" -v MEM="$MEM" -v RATE="$RATE" -v HAS_HDR="$has_hdr" -v INCL_COMMENTED="$INCLUDE_COMMENTED" '
++    # Cikti ONCE tamponlanir (out[]): baslik satirlari yalniz gercekten location satiri
++    # EKLENDIYSE yazilir - aksi halde 87 tam dosyaya salt yorum icin dokunulurdu.
++    function emit(line) { out[++m] = line }
++    function flush_block(   i, line, ind, added_before) {
++      added_before = added
++      for (i = 1; i <= n; i++) {
++        line = blk[i]
++        emit(line)
++        if (rate_base != "" && !has_loc && i == rate_idx && (!commented || INCL_COMMENTED == "1")) {
++          ind = line; sub(/[^ \t].*$/, "", ind)
++          emit(ind "limit_req zone=" rate_base "_location_limit burst=" BURST " nodelay;")
++          added++
++        }
++      }
++      # Zone yalniz AKTIF kullanilan base icin (eklenen ya da zaten olan satir); yorumlu
++      # atlanan blogun base degeri icin zone acilmaz.
++      if (rate_base != "" && (has_loc || added > added_before)) print "BASE " rate_base > "/dev/stderr"
++      # Yorumlanmis (#) location_limit satiri olan blok: biri BILEREK kapatmis olabilir.
++      # Varsayilan: atla ve raporla; LL_INCLUDE_COMMENTED=1 ile yine eklenir.
++      if (rate_base != "" && !has_loc && commented) { print "COMMENTED " hdr > "/dev/stderr"; skipped_c++ }
++      n = 0; rate_base = ""; rate_idx = 0; has_loc = 0; commented = 0; hdr = ""
++    }
++    BEGIN { inblk = 0; depth = 0; n = 0; m = 0; added = 0; skipped_c = 0; hdr_at = 0 }
++    {
++      # Baslik: `# limit_req_zone_rate:` satirinin HEMEN altina location basliklari
++      # (dosyada hic yoksa; on-tarama HAS_HDR ile bakildi). Yeni sablonla ayni gorunum.
++      # Yeri simdi isaretlenir, satirlar END asamasinda (added > 0 ise) araya konur.
++      if (!inblk && !HAS_HDR && !hdr_at && $0 ~ /^# limit_req_zone_rate:/) { emit($0); hdr_at = m; next }
++      if (!inblk) {
++        if ($0 ~ /^[[:space:]]*location[[:space:]]/) {
++          inblk = 1; depth = 0; n = 0; rate_base = ""; rate_idx = 0; has_loc = 0; commented = 0
++          hdr = $0; sub(/^[[:space:]]+/, "", hdr); sub(/[[:space:]]*\{.*$/, "", hdr)
++        } else { emit($0); next }
++      }
++      blk[++n] = $0
++      if ($0 ~ /^[[:space:]]*limit_req[[:space:]]+zone=[^[:space:];]+_rate_limit([[:space:];]|$)/) {
++        s = $0; sub(/^[[:space:]]*limit_req[[:space:]]+zone=/, "", s); sub(/_rate_limit([[:space:];].*)?$/, "", s)
++        if (rate_base == "") { rate_base = s; rate_idx = n }
++      }
++      if ($0 ~ /^[[:space:]]*limit_req[[:space:]]+zone=[^[:space:];]+_location_limit([[:space:];]|$)/) has_loc = 1
++      if ($0 ~ /^[[:space:]]*#[[:space:]]*limit_req[[:space:]]+zone=[^[:space:];]+_location_limit/) commented = 1
++      o = gsub(/\{/, "{"); c = gsub(/\}/, "}")
++      depth += o - c
++      if (depth <= 0 && (o > 0 || c > 0)) { inblk = 0; flush_block() }
++    }
++    END {
++      if (inblk) { for (i = 1; i <= n; i++) emit(blk[i]) }   # kapanmamis blok: dokunma
++      for (i = 1; i <= m; i++) {
++        print out[i]
++        if (added > 0 && hdr_at == i) {
++          print "# limit_req_location_zone_memory_size: " MEM
++          print "# limit_req_location_zone_rate: " RATE
++        }
++      }
++      print "ADDED " added > "/dev/stderr"
++      print "SKIPPEDC " skipped_c > "/dev/stderr"
++    }
++  ' "$1"
++}
++
++total=0; changed=0; lines_added=0; has=0; skip=0; err=0; zones_added=0; commented_blocks=0
++changed_files=""
++bases_all=""
++for f in $CONF_GLOB; do
++  [ -f "$f" ] || continue
++  total=$((total + 1))
++  tmp_err="$(mktemp)"
++  out="$(rewrite "$f" 2>"$tmp_err")"; rc=$?
++  if [ "$rc" -ne 0 ]; then err=$((err + 1)); printf 'FILE\tERR\t%s\t0\n' "$f"; rm -f "$tmp_err"; continue; fi
++  added="$(sed -n 's/^ADDED //p' "$tmp_err")"
++  skc="$(sed -n 's/^SKIPPEDC //p' "$tmp_err")"
++  bases="$(sed -n 's/^BASE //p' "$tmp_err" | sort -u)"
++  rm -f "$tmp_err"
++  if [ "${skc:-0}" -gt 0 ]; then
++    if [ "$INCLUDE_COMMENTED" = "1" ]; then
++      printf 'NOTE\tCOMMENTED\t%s\t%s blokta yorumlu location_limit vardi, LL_INCLUDE_COMMENTED=1 ile yine eklendi\n' "$f" "$skc"
++    else
++      printf 'NOTE\tCOMMENTED\t%s\t%s blokta location_limit YORUMLU (#) - bilerek kapatilmis olabilir, ATLANDI (LL_INCLUDE_COMMENTED=1 ile eklenir)\n' "$f" "$skc"
++    fi
++    commented_blocks=$((commented_blocks + skc))
++  fi
++  [ -n "$bases" ] && bases_all="$bases_all
++$bases"
++  # Yalniz yorumlu-atlanan bloklari olan dosya: "limit_req yok" DEGIL, "atlanan" sayilir.
++  if [ -z "$bases" ] && [ "${skc:-0}" -gt 0 ]; then has=$((has + 1)); printf 'FILE\tCOMMENTED\t%s\t0\n' "$f"; continue; fi
++  if [ -z "$bases" ]; then skip=$((skip + 1)); printf 'FILE\tSKIP\t%s\t0\n' "$f"; continue; fi
++  # Icerik degisti mi (baslik satirlari eklenmis olabilir; location eklenmemis olsa da)
++  if [ "$out" = "$(cat "$f")" ]; then has=$((has + 1)); printf 'FILE\tHAS\t%s\t0\n' "$f"; continue; fi
++  changed=$((changed + 1)); lines_added=$((lines_added + added)); printf 'FILE\tADD\t%s\t%s\n' "$f" "$added"
++  if [ "$MODE" = "apply" ]; then
++    cp -p "$f" "$f.ll-bak.$TS" || { err=$((err + 1)); continue; }
++    printf '%s\n' "$out" > "$f"
++    changed_files="$changed_files $f"
++  fi
++done
++
++# Zone tanimlari: kullanilan her base icin _location_limit zone'u var mi. (Yorumlu
++# atlanan bloklarin base'i listeye GIRMEZ - kullanilmayan zone acilmaz.)
++zone_lines=""
++for base in $(printf '%s\n' "$bases_all" | sed '/^$/d' | sort -u); do
++  if grep -qE "^[[:space:]]*limit_req_zone[[:space:]]+\S+[[:space:]]+zone=${base}_location_limit:" "$ZONES"; then
++    printf 'ZONE\tHAS\t%s\n' "$base"
++  else
++    zones_added=$((zones_added + 1)); printf 'ZONE\tADD\t%s\n' "$base"
++    zone_lines="$zone_lines
++limit_req_zone \$server_name zone=${base}_location_limit:${MEM} rate=${RATE};"
++  fi
++done
++if [ "$MODE" = "apply" ] && [ "$zones_added" -gt 0 ]; then
++  cp -p "$ZONES" "$ZONES.ll-bak.$TS"
++  # dosya sonu newline ile bitmiyorsa once tamamla
++  [ -n "$(tail -c1 "$ZONES")" ] && printf '\n' >> "$ZONES"
++  printf '%s\n' "$zone_lines" | sed '/^$/d' >> "$ZONES"
++  changed_files="$changed_files $ZONES"
++fi
++
++printf 'SUMMARY\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n' "$total" "$changed" "$lines_added" "$has" "$skip" "$zones_added" "$commented_blocks"
++[ "$err" -gt 0 ] && printf 'NOTE\tERR\t%d dosyada hata\n' "$err"
++
++if [ "$MODE" = "apply" ] && [ -n "$changed_files" ]; then
++  if dzdo "$NGINX_BIN" -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -t >/tmp/ll_nginx_t.$$ 2>&1; then
++    dzdo "$NGINX_BIN" -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -s reload
++    printf 'RESULT\tOK\t%d dosya + %d zone degisti, nginx -t gecti, reload yapildi\n' "$changed" "$zones_added"
++    rm -f /tmp/ll_nginx_t.$$
++    exit 0
++  else
++    for f in $changed_files; do cp -p "$f.ll-bak.$TS" "$f"; done
++    printf 'RESULT\tROLLBACK\tnginx -t DUSTU, %d dosya yedekten geri alindi: %s\n' "$changed" "$(tr '\n' ' ' < /tmp/ll_nginx_t.$$ | cut -c1-400)"
++    rm -f /tmp/ll_nginx_t.$$
++    exit 3
++  fi
++fi
++printf 'RESULT\t-\t%s\n' "$([ "$MODE" = "apply" ] && echo 'degisiklik yok' || echo 'rapor modu, degisiklik yok')"
++exit 0
+diff --git a/bmw_nginx/tests/check_location_limit_backfill.py b/bmw_nginx/tests/check_location_limit_backfill.py
+new file mode 100644
+index 000000000..9fdf5676c
+--- /dev/null
++++ b/bmw_nginx/tests/check_location_limit_backfill.py
+@@ -0,0 +1,186 @@
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++"""location_limit_backfill.sh: API conf'larina eksik location_limit satiri + zone tanimi.
++
++Kilitlenen iddialar (betik GERCEKTEN kosturulur, Git Bash):
++  1. rate_limit var / location_limit yok -> rate satirinin HEMEN altina, ayni girintiyle,
++     ayni <base> ile, burst=LL_BURST; baslik (memory_size/rate) `# limit_req_zone_rate:`
++     satirinin hemen altina; zone tanimi limit-zones.conf SONUNA.
++  2. zaten tam olan dosya ve limit_req'siz bloklar (@named) DOKUNULMAZ; basliksiz ama tam
++     dosyaya salt yorum icin de dokunulmaz.
++  3. YORUMLU (#) location_limit'li blok varsayilan ATLANIR + NOTE COMMENTED;
++     LL_INCLUDE_COMMENTED=1 ile eklenir.
++  4. report modu hicbir dosyayi degistirmez; apply yedek birakir; ikinci kosu idempotent.
++  5. nginx -t duserse tum degisen dosyalar (limit-zones.conf dahil) geri alinir, cikis 3.
++  6. playbook betigi files/ altindan kopyalayip calistirir (gomulu shell yok), 36 prod
++     API gateway sunucusu README §1 ile ayni.
++"""
++import io
++import os
++import re
++import subprocess
++import sys
++import tempfile
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++API = os.path.join(os.path.dirname(HERE), "api_generator")
++SCRIPT = os.path.join(API, "operations", "files", "location_limit_backfill.sh")
++PLAYBOOK = os.path.join(API, "location_limit_backfill.yml")
++README = os.path.join(API, "README.md")
++
++problems = []
++tmp = tempfile.mkdtemp(prefix="llbf-")
++apis = os.path.join(tmp, "mblcustomers-prod-apis")
++os.makedirs(apis)
++fake = os.path.join(tmp, "bin")
++os.makedirs(fake)
++zones = os.path.join(tmp, "limit-zones.conf")
++
++BLOCK = """location = {path} {{
++  limit_except GET OPTIONS {{
++    deny all;
++  }}
++
++  limit_req zone={base}_rate_limit burst={burst} nodelay;
++{extra}  limit_req_status 429;
++
++  proxy_pass https://apigw;
++}}
++"""
++
++
++def hdr(base, loc=False):
++    h = "# Service Instance Name: X\n# Base Path: %s\n# limit_req_zone_memory_size: 10m\n# limit_req_zone_rate: 50r/s\n" % base
++    if loc:
++        h += "# limit_req_location_zone_memory_size: 10m\n# limit_req_location_zone_rate: 300r/s\n"
++    return h + "\n"
++
++
++B1, B2, B3 = "/a/one/v0", "/b/two/v0", "/c/three/v0"
++missing = hdr(B1) + BLOCK.format(path=B1 + "/x", base=B1, burst=10, extra="") + "\n" + BLOCK.format(path=B1 + "/y", base=B1, burst=50, extra="")
++full = hdr(B2) + BLOCK.format(path=B2 + "/x", base=B2, burst=10, extra="  limit_req zone=%s_location_limit burst=10 nodelay;\n" % B2) + "\nlocation @custom_403_json {\n  return 403;\n}\n"
++commented = hdr(B3) + BLOCK.format(path=B3 + "/x", base=B3, burst=10, extra="  #limit_req zone=%s_location_limit burst=10 nodelay;\n" % B3)
++io.open(os.path.join(apis, "MISSING.conf"), "w", newline="\n").write(missing)
++io.open(os.path.join(apis, "FULL.conf"), "w", newline="\n").write(full)
++io.open(os.path.join(apis, "COMMENTED.conf"), "w", newline="\n").write(commented)
++io.open(os.path.join(apis, "servicepingssl.conf"), "w", newline="\n").write("location = /servicePing/ssl/ {\n  return 200;\n}\n")
++io.open(zones, "w", newline="\n").write(
++    "limit_req_zone $binary_remote_addr zone=%s_rate_limit:10m rate=50r/s;\n" % B1
++    + "limit_req_zone $binary_remote_addr zone=%s_rate_limit:10m rate=50r/s;\n" % B2
++    + "limit_req_zone $server_name zone=%s_location_limit:10m rate=300r/s;\n" % B2
++    + "limit_req_zone $binary_remote_addr zone=%s_rate_limit:10m rate=50r/s;\n" % B3
++)
++io.open(os.path.join(fake, "dzdo"), "w", newline="\n").write("#!/bin/bash\n[ -f \"$(dirname \"$0\")/fail\" ] && exit 1\nexit 0\n")
++
++
++def run(mode, env_extra=None):
++    env = dict(os.environ)
++    env["PATH"] = fake.replace("\\", "/") + os.pathsep + env.get("PATH", "")
++    env["LL_NGINX"] = os.path.join(fake, "dzdo")
++    # Windows/MSYS: yerel surecten gelen argumanlardaki joker (*) bash'e ulasmadan MSYS
++    # tarafindan genisletilir ($2/$3 kayar). noglob bunu kapatir; Linux'ta etkisiz.
++    env["MSYS"] = "noglob"
++    env.update(env_extra or {})
++    glob_ = os.path.join(tmp, "*-apis", "*.conf").replace("\\", "/")
++    try:
++        r = subprocess.run(["bash", SCRIPT, mode, glob_, zones], capture_output=True, text=True, encoding="utf-8", env=env)
++    except FileNotFoundError:
++        print("ATLANDI: bash yok")
++        sys.exit(0)
++    return r
++
++
++def summary(out):
++    m = re.search(r"^SUMMARY\t(.*)$", out, re.M)
++    return [int(x) for x in m.group(1).split("\t")] if m else None
++
++
++rd = lambda n: io.open(os.path.join(apis, n), encoding="utf-8").read()
++
++# 4) report degistirmez
++before = {n: rd(n) for n in os.listdir(apis)}
++r = run("report")
++if r.returncode != 0:
++    problems.append("report rc=%s: %s" % (r.returncode, r.stderr))
++s = summary(r.stdout)
++if s != [4, 1, 2, 2, 1, 1, 1]:
++    problems.append("4: report SUMMARY beklenen [4,1,2,2,1,1,1] (COMMENTED dosya atlanan sayilir), gelen %r" % s)
++if {n: rd(n) for n in os.listdir(apis)} != before:
++    problems.append("4: report modu dosya degistirdi")
++if "NOTE\tCOMMENTED\t" not in r.stdout or "1 blokta" not in r.stdout:
++    problems.append("3: yorumlu blok NOTE COMMENTED ile raporlanmadi")
++if not re.search(r"^ZONE\tADD\t%s$" % re.escape(B1), r.stdout, re.M) or not re.search(r"^ZONE\tHAS\t%s$" % re.escape(B2), r.stdout, re.M):
++    problems.append("1: zone ADD/HAS ayrimi yanlis:\n" + r.stdout)
++
++# apply
++r = run("apply")
++if r.returncode != 0 or "RESULT\tOK" not in r.stdout:
++    problems.append("apply basarisiz rc=%s\n%s\n%s" % (r.returncode, r.stdout, r.stderr))
++m = rd("MISSING.conf")
++exp_line = "  limit_req zone=%s_location_limit burst=10 nodelay;" % B1
++if m.count(exp_line) != 2:
++    problems.append("1: MISSING.conf'ta iki bloga da location_limit eklenmedi:\n" + m)
++if not re.search(r"limit_req zone=%s_rate_limit burst=50 nodelay;\n%s\n" % (re.escape(B1), re.escape(exp_line)), m):
++    problems.append("1: location satiri rate satirinin HEMEN altinda degil (burst=50 blok)")
++if "# limit_req_zone_rate: 50r/s\n# limit_req_location_zone_memory_size: 10m\n# limit_req_location_zone_rate: 300r/s\n" not in m:
++    problems.append("1: baslik satirlari limit_req_zone_rate altina eklenmedi")
++if rd("FULL.conf") != full:
++    problems.append("2: tam dosyaya dokunuldu")
++if rd("COMMENTED.conf") != commented:
++    problems.append("3: yorumlu blok varsayilanda eklendi (atlanmaliydi)")
++if rd("servicepingssl.conf") != "location = /servicePing/ssl/ {\n  return 200;\n}\n":
++    problems.append("2: limit_req'siz dosyaya dokunuldu")
++z = io.open(zones, encoding="utf-8").read()
++if not z.endswith("limit_req_zone $server_name zone=%s_location_limit:10m rate=300r/s;\n" % B1):
++    problems.append("1: zone tanimi limit-zones.conf sonuna eklenmedi:\n" + z)
++if z.count("_location_limit:") != 2:
++    problems.append("1: zone sayisi yanlis (B2 zaten vardi, B1 eklenmeli, B3 yorumlu-atlanan icin de eklenmemeli? -> %d)" % z.count("_location_limit:"))
++if not [f for f in os.listdir(apis) if ".ll-bak." in f]:
++    problems.append("4: apply yedek birakmadi")
++
++# idempotent
++r = run("apply")
++s = summary(r.stdout)
++if s is None or s[1] != 0 or s[2] != 0 or s[5] != 0 or "degisiklik yok" not in r.stdout:
++    problems.append("4: ikinci kosu idempotent degil: %r" % s)
++
++# include commented
++r = run("apply", {"LL_INCLUDE_COMMENTED": "1"})
++if "limit_req zone=%s_location_limit burst=10 nodelay;" % B3 not in rd("COMMENTED.conf"):
++    problems.append("3: LL_INCLUDE_COMMENTED=1 yorumlu bloga eklemedi")
++z = io.open(zones, encoding="utf-8").read()
++if z.count("_location_limit:") != 3:
++    problems.append("3: yorumlu blok eklenince zone da eklenmeli (%d)" % z.count("_location_limit:"))
++
++# 5) rollback
++io.open(os.path.join(apis, "MISSING2.conf"), "w", newline="\n").write(hdr("/d/four/v0") + BLOCK.format(path="/d/four/v0/x", base="/d/four/v0", burst=10, extra=""))
++zbefore = io.open(zones, encoding="utf-8").read()
++io.open(os.path.join(fake, "fail"), "w").write("1")
++r = run("apply")
++os.remove(os.path.join(fake, "fail"))
++if r.returncode != 3 or "RESULT\tROLLBACK" not in r.stdout:
++    problems.append("5: nginx -t dusunce cikis 3 / ROLLBACK bekleniyordu: rc=%s\n%s" % (r.returncode, r.stdout))
++if "_location_limit" in rd("MISSING2.conf"):
++    problems.append("5: rollback dosyayi geri almadi")
++if io.open(zones, encoding="utf-8").read() != zbefore:
++    problems.append("5: rollback limit-zones.conf'u geri almadi")
++
++# 6) playbook + README
++pb = io.open(PLAYBOOK, encoding="utf-8").read()
++if "src: operations/files/location_limit_backfill.sh" not in pb or "shell: |" in pb:
++    problems.append("6: playbook betigi files/ altindan kopyalamiyor ya da gomulu shell var")
++hosts = re.findall(r"GBNGWA?P\d{2}", pb)
++exp = ["GBNGWP%02d" % i for i in list(range(1, 17)) + list(range(25, 33))] + ["GBNGWAP%02d" % i for i in list(range(1, 9)) + list(range(22, 26))]
++if sorted(set(hosts)) != sorted(exp):
++    problems.append("6: playbook hedef listesi 36 prod API gateway ile ayni degil: eksik %s fazla %s" % (sorted(set(exp) - set(hosts)), sorted(set(hosts) - set(exp))))
++if "LL_INCLUDE_COMMENTED" not in pb:
++    problems.append("6: include_commented anahtari betige gecmiyor")
++if "location_limit_backfill" not in io.open(README, encoding="utf-8").read():
++    problems.append("6: README'de playbook anlatilmamis")
++
++if problems:
++    print("HATALAR:")
++    for p in problems:
++        print(" -", p)
++    sys.exit(1)
++print("OK: location_limit backfill - ekleme yeri/bicimi, zone, yorumlu politika, idempotent, rollback, playbook hedefleri")
+-- 
+2.55.0.windows.3
+

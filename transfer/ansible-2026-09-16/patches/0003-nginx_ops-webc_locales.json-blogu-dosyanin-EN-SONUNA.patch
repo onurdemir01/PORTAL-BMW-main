@@ -1,0 +1,139 @@
+From b9343c7ddd4eaf0a5f42539157038ca45299d096 Mon Sep 17 00:00:00 2001
+From: Onur Demir <demir-onur@hotmail.com>
+Date: Tue, 15 Sep 2026 11:12:08 +0300
+Subject: [PATCH 03/22] nginx_ops: webc_locales.json blogu dosyanin EN SONUNA
+ (sablon ve geriye donuk betik)
+
+Kullanici: "cat/tail ile bakinca en sonda gorunsun". Geriye donuk betik klonu
+locales.json blogunun ardina degil dosya sonuna yazar; SPA sablonunda da blok
+en sonda. Test yer beklentisini kilitler.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ .../operations/files/webc_locales_backfill.sh |  7 ++--
+ .../configuration-append-template-spa.j2      | 41 ++++++++++---------
+ bmw_nginx/tests/check_webc_backfill.py        | 10 +++--
+ 3 files changed, 31 insertions(+), 27 deletions(-)
+
+diff --git a/bmw_nginx/nginx_ops/operations/files/webc_locales_backfill.sh b/bmw_nginx/nginx_ops/operations/files/webc_locales_backfill.sh
+index c212bcf07..9f4999c85 100644
+--- a/bmw_nginx/nginx_ops/operations/files/webc_locales_backfill.sh
++++ b/bmw_nginx/nginx_ops/operations/files/webc_locales_backfill.sh
+@@ -12,7 +12,7 @@
+ # KURALLAR
+ #   - Dosyada zaten "webc_locales.json" gecen bir location varsa DOKUNULMAZ (idempotent).
+ #   - locales.json blogu yoksa (SPA disi / eski desen) dosya ATLANIR ve raporlanir.
+-#   - Klon, orijinal blogun HEMEN ARDINA yazilir.
++#   - Klon dosyanin EN SONUNA yazilir (kullanici: "cat/tail ile bakinca en sonda gorunsun").
+ #   - apply: her degisen dosyanin .webc-bak.<ts> yedegi alinir; nginx -t duserse TUM
+ #     degisen dosyalar yedekten geri alinir, reload yapilmaz, cikis 3.
+ #
+@@ -58,11 +58,12 @@ clone_into() {
+         depth += o - c
+         if (depth <= 0 && n > 0 && (o > 0 || c > 0)) {
+           inblk = 0
+-          print ""
+-          emit_clone()
++          have = 1
+         }
+       }
+     }
++    # Klon dosyanin SONUNA: son satir bos degilse once bir bos satir.
++    END { if (have) { print ""; emit_clone() } }
+   ' "$f"
+ }
+ 
+diff --git a/bmw_nginx/nginx_ops/operations/templates/configuration-append-template-spa.j2 b/bmw_nginx/nginx_ops/operations/templates/configuration-append-template-spa.j2
+index e231c36a1..28cd9e622 100644
+--- a/bmw_nginx/nginx_ops/operations/templates/configuration-append-template-spa.j2
++++ b/bmw_nginx/nginx_ops/operations/templates/configuration-append-template-spa.j2
+@@ -36,26 +36,6 @@ location = {{ path }}locales/locales.json {
+   }
+ }
+ 
+-{# webc_locales.json (2026-09-15, tum uygulamalar icin istendi): locales.json blogunun
+-   birebir esi, yalnizca dosya adi farkli. Mevcut dosyalara geriye donuk ekleme:
+-   nginx_webc_locales_backfill.yml (klonlama yaklasimi, bu sablonla ayni sonuc). #}
+-location = {{ path }}locales/webc_locales.json {
+-
+-  add_header Access-Control-Allow-Origin $allowed_origin_{{ cors }} always;
+-  add_header Access-Control-Max-Age $max_age_{{ cors }};
+-{% if allowed_credentials_map_exists | default(false) %}
+-  add_header Access-Control-Allow-Credentials $allowed_credentials_{{ cors }} always;
+-{% endif %}
+-  add_header Access-Control-Allow-Headers $allowed_headers_{{ cors }} always;
+-  add_header Access-Control-Allow-Methods $allowed_methods_{{ cors }} always;
+-  add_header Cache-Control 'no-cache';
+-  alias {{ app_root }}locales/webc_locales.json;
+-
+-  if ($request_method ~* ^(OPTIONS|POST)$) {
+-    return 200;
+-  }
+-}
+-
+ location {{ path }}live {
+   access_log off;
+   return 200 'healthy\n';
+@@ -175,3 +155,24 @@ location ~* {{ path }}.*\.wasm\.gz$ {
+   types { application/wasm wasm.gz; }
+   default_type application/wasm;
+ }
++
++{# webc_locales.json (2026-09-15, tum uygulamalar icin istendi): locales.json blogunun
++   birebir esi, yalnizca dosya adi farkli. EN SONDA durur (kullanici: cat/tail ile bakinca
++   gorunsun); geriye donuk betik de dosya sonuna ekler. Mevcut dosyalara geriye donuk ekleme:
++   nginx_webc_locales_backfill.yml (klonlama yaklasimi, bu sablonla ayni sonuc). #}
++location = {{ path }}locales/webc_locales.json {
++
++  add_header Access-Control-Allow-Origin $allowed_origin_{{ cors }} always;
++  add_header Access-Control-Max-Age $max_age_{{ cors }};
++{% if allowed_credentials_map_exists | default(false) %}
++  add_header Access-Control-Allow-Credentials $allowed_credentials_{{ cors }} always;
++{% endif %}
++  add_header Access-Control-Allow-Headers $allowed_headers_{{ cors }} always;
++  add_header Access-Control-Allow-Methods $allowed_methods_{{ cors }} always;
++  add_header Cache-Control 'no-cache';
++  alias {{ app_root }}locales/webc_locales.json;
++
++  if ($request_method ~* ^(OPTIONS|POST)$) {
++    return 200;
++  }
++}
+diff --git a/bmw_nginx/tests/check_webc_backfill.py b/bmw_nginx/tests/check_webc_backfill.py
+index f35ea0083..7fa45edbf 100644
+--- a/bmw_nginx/tests/check_webc_backfill.py
++++ b/bmw_nginx/tests/check_webc_backfill.py
+@@ -3,8 +3,8 @@
+ """webc_locales_backfill.sh: mevcut per-uygulama conf'larina webc_locales.json blogu.
+ 
+ Kilitlenen iddialar (betik GERCEKTEN kosturulur, Git Bash):
+-  1. nginx_ops SPA sablonu ciktisi (namespaced, credentials'li) -> klon locales.json
+-     blogunun hemen ardinda, ayni CORS degisken adi, alias yalniz dosya adi degisir.
++  1. nginx_ops SPA sablonu ciktisi (namespaced, credentials'li) -> klon dosyanin EN
++     SONUNDA, ayni CORS degisken adi, alias yalniz dosya adi degisir.
+   2. Deployment sablonu bicimi (kok-goreli /locales/locales.json) -> /locales/webc_locales.json.
+   3. Credentials SATIRI OLMAYAN dosyada klon da credentials'siz (dosyaya sadik).
+   4. Zaten webc iceren dosya HAS, locales.json blogu olmayan dosya NOBLOCK; dokunulmaz.
+@@ -109,8 +109,8 @@ if not clone:
+ else:
+     if clone != orig.replace("locales/locales.json", "locales/webc_locales.json"):
+         problems.append("ns-app: klon orijinalin birebir esi degil (yalniz dosya adi degismeli)")
+-    if t.index(clone) < t.index(orig) or t.index(clone) > t.index("location /odeme/live"):
+-        problems.append("ns-app: klon locales.json blogunun HEMEN ardinda olmali")
++    if not t.rstrip("\n").endswith(clone.rstrip("\n")) or t.index(clone) < t.index("location /odeme/live"):
++        problems.append("ns-app: klon dosyanin EN SONUNDA olmali (kullanici: tail ile gorunsun)")
+     if "alias /usr/nginx/applications/digital-ch-test/odeme-app-v1/locales/webc_locales.json;" not in clone:
+         problems.append("ns-app: alias dosya adi: %s" % clone)
+ # [2] kok-goreli
+@@ -142,6 +142,8 @@ tpl = io.open(TPL, encoding="utf-8").read()
+ tb = block_of(tpl, "locales/locales.json"); wb = block_of(tpl, "locales/webc_locales.json")
+ if not wb:
+     problems.append("sablonda webc blogu yok")
++elif not tpl.rstrip("\n").endswith(wb.rstrip("\n")):
++    problems.append("sablonda webc blogu EN SONDA olmali")
+ elif wb != tb.replace("locales/locales.json", "locales/webc_locales.json"):
+     problems.append("sablondaki webc blogu locales.json blogunun birebir esi degil")
+ 
+-- 
+2.55.0.windows.3
+

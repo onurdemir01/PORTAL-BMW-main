@@ -1,0 +1,1486 @@
+From 4393aa427b2f4f604d4e2a33b52fd1561966084d Mon Sep 17 00:00:00 2001
+From: Onur Demir <demir-onur@hotmail.com>
+Date: Tue, 15 Sep 2026 23:27:32 +0300
+Subject: [PATCH 11/22] nginx_legacy_sync: eski tip prod SPA sunucularini
+ eslenik grupta esitle, FQDN proxy_pass -> upstream, eksik upstream tanimla
+
+- gruplar A (GBRVPP01/02, AP01/02) ve B (GBRVPP07-10, AP03-06) - nginx_legacy_audit ile ayni
+- files/legacy_sync_dump.sh (salt-okunur dokum), files/legacy_sync_plan.py (GBLABT02, plan +
+  rapor: REWRITE_PROXY_PASS / ADD_SSL_NAME / ADD_HOST_HEADER / ADD_UPSTREAM / ADD_LOCATION /
+  DIFF_* / CONFLICT / UNDEFINED_TARGET), files/nginx_test_or_reload.sh
+- mode=report varsayilan; apply: yedekli copy + nginx -t + reload, duserse geri alma;
+  strict / fix_upstreams / group / target_hosts secenekleri; hicbir sey silinmez
+- README, tests/check_legacy_sync.py (8 iddia, idempotent)
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ bmw_nginx/nginx_legacy_sync/README.md         | 109 ++++
+ .../legacy_sync_plan.cpython-312.pyc          | Bin 0 -> 32159 bytes
+ .../files/legacy_sync_dump.sh                 |  22 +
+ .../files/legacy_sync_plan.py                 | 488 ++++++++++++++++++
+ .../files/nginx_test_or_reload.sh             |  20 +
+ .../nginx_legacy_sync/nginx_legacy_sync.yml   | 217 ++++++++
+ bmw_nginx/tests/check_legacy_sync.py          | 220 ++++++++
+ 7 files changed, 1076 insertions(+)
+ create mode 100644 bmw_nginx/nginx_legacy_sync/README.md
+ create mode 100644 bmw_nginx/nginx_legacy_sync/files/__pycache__/legacy_sync_plan.cpython-312.pyc
+ create mode 100644 bmw_nginx/nginx_legacy_sync/files/legacy_sync_dump.sh
+ create mode 100644 bmw_nginx/nginx_legacy_sync/files/legacy_sync_plan.py
+ create mode 100644 bmw_nginx/nginx_legacy_sync/files/nginx_test_or_reload.sh
+ create mode 100644 bmw_nginx/nginx_legacy_sync/nginx_legacy_sync.yml
+ create mode 100644 bmw_nginx/tests/check_legacy_sync.py
+
+diff --git a/bmw_nginx/nginx_legacy_sync/README.md b/bmw_nginx/nginx_legacy_sync/README.md
+new file mode 100644
+index 000000000..932340362
+--- /dev/null
++++ b/bmw_nginx/nginx_legacy_sync/README.md
+@@ -0,0 +1,109 @@
++# Nginx Legacy Sync (`nginx_legacy_sync`)
++
++Eski tip (**proxy_pass + upstream**) SPA production sunucularını **eşlenik grup içinde
++eşitler**, doğrudan DNS adına giden `proxy_pass`'leri **upstream'e çevirir** ve eksik
++**upstream tanımlarını** yapar (2026-09-15). `nginx_legacy_audit` ölçer; bu iş düzeltir.
++
++| | |
++|---|---|
++| Playbook | `bmw_nginx/nginx_legacy_sync/nginx_legacy_sync.yml` |
++| Döküm | `files/legacy_sync_dump.sh` (her sunucuda, salt-okunur; `conf.d/*.conf`) |
++| Plan | `files/legacy_sync_plan.py` (GBLABT02, stdlib Python; sunuculara dokunmaz) |
++| Uygulama | playbook son play'i: yedekli `copy` + `nginx -t` + reload, düşerse geri alma |
++| Çalışma dizini | `/sw/WAS_IMAGES/Nginx/legacy_sync/{raw,plan}` |
++| Mod | `mode=report` (**varsayılan**, hiçbir şeyi değiştirmez) / `mode=apply` |
++
++---
++
++## 1. Eşlenik gruplar
++
++`nginx_legacy_audit` ile aynı; aynı konfigürasyonu taşıması **beklenen** sunucular.
++
++| Grup | Sunucular | Servisler |
++|---|---|---|
++| **A** | `GBRVPP01`, `GBRVPP02`, `GBRVPAP01`, `GBRVPAP02` | GLOMO dışı (WEBFORMS, OPENBANKING…) |
++| **B** | `GBRVPP07-10`, `GBRVPAP03-06` | GLOMO |
++
++Liste iki yerde durur (`legacy_sync_plan.py` `PEER_GROUPS` ve playbook `hosts`);
++`tests/check_legacy_sync.py` ayrışmasını yakalar. Bir grupta 2'den az sunucu
++taranabildiyse o grup atlanır (tek sunucuyla eşitlenecek bir şey yoktur).
++
++---
++
++## 2. Kurallar (sırayla)
++
++1. **FQDN → upstream.** `proxy_pass https://<ad>.apps.fw.garanti.com.tr[/…]` →
++   `proxy_pass https://<ad>[/…]`. `<ad>` FQDN'in ilk etiketidir — `nginx_ops`
++   `prod_create`'in `upstream_host` türetimiyle aynı. Blokta `proxy_ssl_name <fqdn>` ve
++   `proxy_set_header Host <fqdn>` yoksa `proxy_pass` altına eklenir (upstream'e geçince
++   SNI/Host bunlardan gelir). IP adresi ve `$değişken` hedefe dokunulmaz. `proxy_pass`
++   satırının boşluk düzeni korunur.
++2. **Upstream tanımı.** Kullanılan her upstream adı için grupta tanım yoksa şu üretilir
++   (`nginx_scheduled_ops/…/upstream-append-template.j2` ile aynı):
++   ```nginx
++   upstream <ad> {
++     server <fqdn>:443 resolve;
++     keepalive 10;
++     zone upstream_dynamic 4m;
++   }
++   ```
++   FQDN, `proxy_pass`'ten (kural 1) ya da bloktaki `proxy_ssl_name` / `Host` başlığından
++   gelir. Hiçbiri yoksa **`UNDEFINED_TARGET`**: nginx zaten başlamaz, elle bakılmalı.
++   Aynı adda ama **başka hedefe** giden upstream varsa **`CONFLICT`**: dokunulmaz.
++   Yeni tanım, o servisin `<servis>-prod-upstreams.conf` dosyası varsa onun **başına**,
++   yoksa vhost dosyasının başına yazılır (create akışı ile aynı yer).
++3. **Eşitleme.** Aynı vhost dosyasının (`<SERVICE>-PROD.conf`) location kümesi grup
++   içinde **birleşim**dir: bir sunucuda eksik olan location, **çoğunluk** sürümüyle
++   `error_page` satırının önüne eklenir (create çapası; çapa yoksa server bloğunun sonuna
++   ve `NO_ANCHOR` notu). Upstream'ler de birleşimdir; eksik olan sunucuya eşlenikten
++   kopyalanır. **Hiçbir şey silinmez.** Vhost dosyası bir sunucuda hiç yoksa dosya
++   kopyalanmaz, `MISSING_VHOST` ile raporlanır.
++4. **Fark.** Her sunucuda var ama gövdesi farklı location → `DIFF_LOCATION` (dokunulmaz).
++   `strict=true` ile çoğunluk sürümü yazılır (`REPLACE_LOCATION`). Eşitlikte alfabetik
++   ilk sunucunun sürümü ("ilk sunucu doğru" değil, yalnız eşitliği bozmak için). Upstream
++   gövde farkı `DIFF_UPSTREAM` (bilgi).
++5. **`fix_upstreams=true`** (varsayılan kapalı): mevcut upstream'lerde eksik `resolve` /
++   `keepalive 10` / `zone upstream_dynamic 4m` tamamlanır. `nginx_audit` GBRVPP09'da 199
++   upstream'de eksik ölçmüştü; toplu değişiklik olduğu için ayrı karar.
++
++Karşılaştırma yorum ve boşluk duyarsızdır. Plan idempotenttir: uygulanmış bir grupta
++ikinci koşu hiçbir dosyayı değiştirmez.
++
++---
++
++## 3. Akış ve kullanım
++
++```
++1) -e "mode=report"                      # 12 sunucu dökümü → plan + rapor (GBLABT02)
++   /sw/WAS_IMAGES/Nginx/legacy_sync/plan/report.txt  ve  <HOST>.json (yeni dosya içerikleri)
++2) -e "mode=apply target_hosts=GBRVPP02" # tek sunucuda uygula (plan yine tüm grupla hesaplanır)
++3) -e "mode=apply"                       # tümü
++   seçenekler: group=A|B  strict=true  fix_upstreams=true
++```
++
++`apply`: her dosya `backup: yes` ile yazılır, `nginx -t` (plus/OSS ayrımı
++`files/nginx_test_or_reload.sh`) düşerse **tüm** dosyalar yedekten geri alınır ve host
++FAIL olur; geçerse reload. Plan dosyaları her koşuda sıfırdan üretilir (önceki turun
++dökümü silinir — ulaşılamayan sunucunun eski hali plana karışmasın).
++
++Rapor satırı: `AKSIYON  HOST  SERVIS  DETAY`. Aksiyonlar: `REWRITE_PROXY_PASS`,
++`ADD_SSL_NAME`, `ADD_HOST_HEADER`, `ADD_UPSTREAM`, `ADD_LOCATION`, `REPLACE_LOCATION`,
++`FIX_UPSTREAM`, `DIFF_LOCATION`, `DIFF_UPSTREAM`, `CONFLICT`, `UNDEFINED_TARGET`,
++`NO_ANCHOR`, `MISSING_VHOST`.
++
++---
++
++## 4. Sınırlar
++
++* Yalnız `conf.d/*.conf` içindeki `server {}` bloklarının **üst düzey** location'ları
++  ele alınır; `-check.conf` ve yedek dosyalar dökümde yoktur.
++* `error_page` çapası `nginx_ops` create ile aynıdır; vhost'ta yoksa blok server
++  bloğunun sonuna eklenir (çalışır, ama sıra farklı olur).
++* Yeni upstream `resolve` kullanır → `resolver` `bmw_defaults.conf`'ta tanımlı olmalı
++  (kurulum referansında var).
++
++## 5. Test
++
++```bash
++python3 bmw_nginx/tests/check_legacy_sync.py
++```
+diff --git a/bmw_nginx/nginx_legacy_sync/files/__pycache__/legacy_sync_plan.cpython-312.pyc b/bmw_nginx/nginx_legacy_sync/files/__pycache__/legacy_sync_plan.cpython-312.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..643230f855c30732dc220e6d879fc9d6b46f0cd8
+GIT binary patch
+literal 32159
+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
+Gi2q+%$6ihV
+
+literal 0
+HcmV?d00001
+
+diff --git a/bmw_nginx/nginx_legacy_sync/files/legacy_sync_dump.sh b/bmw_nginx/nginx_legacy_sync/files/legacy_sync_dump.sh
+new file mode 100644
+index 000000000..3e4bdd22c
+--- /dev/null
++++ b/bmw_nginx/nginx_legacy_sync/files/legacy_sync_dump.sh
+@@ -0,0 +1,22 @@
++#!/bin/bash
++# legacy_sync_dump.sh - /usr/nginx/conf.d/*.conf dosyalarini TEK akista basar (salt-okunur).
++# legacy_sync_plan.py bunu okur. Bicim (nginx_ratelimit_inventory ile ayni desen):
++#   ###FILE_BEGIN:<dosya adi>
++#   <icerik>
++#   ###FILE_END
++# Yedek / -bak / .deleted- / -check dosyalari ATLANIR: onlar nginx tarafindan da okunmaz
++# (nginx.conf yalniz *.conf include eder) ve plana girmemeli.
++set -u
++CONF_DIR="${1:-/usr/nginx/conf.d}"
++[ -d "$CONF_DIR" ] || { echo "###NOTE:dizin yok: $CONF_DIR"; exit 0; }
++shopt -s nullglob
++for f in "$CONF_DIR"/*.conf; do
++  [ -f "$f" ] || continue
++  case "$(basename "$f")" in *-check.conf) continue ;; esac
++  printf '###FILE_BEGIN:%s\n' "$(basename "$f")"
++  cat "$f"
++  # dosya sonu newline ile bitmiyorsa isaret satiri yapismasin
++  [ -n "$(tail -c1 "$f")" ] && printf '\n'
++  printf '###FILE_END\n'
++done
++exit 0
+diff --git a/bmw_nginx/nginx_legacy_sync/files/legacy_sync_plan.py b/bmw_nginx/nginx_legacy_sync/files/legacy_sync_plan.py
+new file mode 100644
+index 000000000..441bce7c4
+--- /dev/null
++++ b/bmw_nginx/nginx_legacy_sync/files/legacy_sync_plan.py
+@@ -0,0 +1,488 @@
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++"""legacy_sync_plan.py — ESKI TIP (proxy_pass + upstream) prod sunucularini ESLENIK grup
++icinde esitleyen PLANI uretir (2026-09-15, kullanici istegi). Sunuculara dokunmaz; her
++sunucu icin "su dosyalarin yeni icerigi su" listesi ve okunur rapor yazar. Uygulamayi
++playbook yapar (mode=apply).
++
++GIRDI : <raw_dir>/<HOST>.txt   (files/legacy_sync_dump.sh ciktisi: conf.d/*.conf icerikleri)
++CIKTI : <plan_dir>/<HOST>.json ({"files": [{"path", "content"}], "actions": [...]})
++        <plan_dir>/report.txt   (insan icin), stdout son satir: SYNC_JSON {...}
++
++ESLENIK GRUPLAR (nginx_legacy_audit ile AYNI; kullanici, 2026-09-11/15):
++  A: GBRVPP01, GBRVPP02, GBRVPAP01, GBRVPAP02      (GLOMO disi servisler)
++  B: GBRVPP07-10, GBRVPAP03-06                     (GLOMO)
++
++KURALLAR (sira onemli):
++  1. FQDN -> UPSTREAM: `proxy_pass https://<ad>.apps.fw.garanti.com.tr[/...]` gibi dogrudan
++     DNS adina giden location, `proxy_pass https://<ad>[/...]` yapilir (<ad> = FQDN'in ilk
++     etiketi; nginx_ops prod_create'in upstream_host turetimiyle AYNI). Blokta
++     `proxy_ssl_name <fqdn>` / `proxy_set_header Host <fqdn>` yoksa proxy_pass altina eklenir
++     (upstream'e gecince SNI/Host bunlardan gelir). IP adresleri dokunulmaz.
++  2. UPSTREAM TANIMI: kullanilan her upstream adi icin grupta bir tanim yoksa
++     `upstream <ad> { server <fqdn>:443 resolve; keepalive 10; zone upstream_dynamic 4m; }`
++     uretilir (nginx_scheduled_ops upstream-append-template.j2 ile AYNI). FQDN, proxy_pass
++     (kural 1) ya da bloktaki proxy_ssl_name/Host basligindan gelir; hicbiri yoksa
++     UNDEFINED_TARGET olarak raporlanir (nginx zaten baslamaz - elle bakilmali).
++     Ayni adda ama BASKA hedefe giden upstream varsa CONFLICT raporlanir, dokunulmaz.
++  3. ESITLEME: grup icinde ayni vhost dosyasinin (<SERVICE>-PROD.conf) location kumesi
++     BIRLESIMdir; bir sunucuda eksik olan location, referans (cogunluk) surumuyle
++     `error_page` satirinin ONUNE (nginx_ops create ile ayni capa) eklenir. Upstream'ler de
++     grup birlesimidir; eksik olan sunucuya eklenir (o servisin -upstreams.conf dosyasi
++     varsa ORAYA, yoksa vhost dosyasinin BASINA - create ile ayni yer). HICBIR SEY SILINMEZ.
++  4. FARK: her sunucuda var ama govdesi farkli location -> DIFF_LOCATION (dokunulmaz);
++     --strict ile cogunluk surumu yazilir. Upstream govde farki -> DIFF_UPSTREAM (bilgi).
++  5. --fix-upstreams: mevcut upstream'lerde eksik `resolve` / `keepalive` / `zone`
++     tamamlanir (varsayilan KAPALI; nginx_audit'te 199 upstream'de eksikti, ayrica karar).
++
++CIKTI (report.txt / actions):  ACTION  HOST  SERVIS  DETAY
++  REWRITE_PROXY_PASS  ADD_SSL_NAME  ADD_HOST_HEADER  ADD_UPSTREAM  ADD_LOCATION
++  REPLACE_LOCATION(strict)  FIX_UPSTREAM  DIFF_LOCATION  DIFF_UPSTREAM  CONFLICT
++  UNDEFINED_TARGET  NO_ANCHOR
++"""
++import io
++import json
++import os
++import re
++import sys
++from collections import Counter, defaultdict
++
++PEER_GROUPS = {
++    "A": ["GBRVPP01", "GBRVPP02", "GBRVPAP01", "GBRVPAP02"],
++    "B": ["GBRVPP07", "GBRVPP08", "GBRVPP09", "GBRVPP10", "GBRVPAP03", "GBRVPAP04", "GBRVPAP05", "GBRVPAP06"],
++}
++CONF_DIR = "/usr/nginx/conf.d"
++UPSTREAM_TEMPLATE = "upstream {name} {{\n  server {fqdn}:443 resolve;\n  keepalive 10;\n  zone upstream_dynamic 4m;\n}}\n"
++FQDN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*(\.[A-Za-z0-9][A-Za-z0-9-]*)+$")
++IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
++PROXY_PASS_RE = re.compile(r"^(\s*)proxy_pass(\s+)(https?)://([^/;\s]+)(/[^;\s]*)?\s*;(.*)$")
++SSL_NAME_RE = re.compile(r"^\s*proxy_ssl_name\s+([^;\s]+)\s*;")
++HOST_HDR_RE = re.compile(r"^\s*proxy_set_header\s+Host\s+([^;\s]+)\s*;")
++UPSTREAM_HDR_RE = re.compile(r"^\s*upstream\s+([^\s{]+)\s*\{")
++LOCATION_HDR_RE = re.compile(r"^\s*location\s+([^{]+?)\s*\{")
++SERVER_HDR_RE = re.compile(r"^\s*server\s*\{")
++ERROR_PAGE_RE = re.compile(r"^\s*error_page\b")
++
++
++# ----------------------------------------------------------------------------- parse
++def strip_comment(line):
++    """# ile baslayan kuyrugu atar (tirnak icindeki # korunur)."""
++    out = []
++    q = None
++    for ch in line:
++        if q:
++            out.append(ch)
++            if ch == q:
++                q = None
++            continue
++        if ch in ("'", '"'):
++            q = ch
++            out.append(ch)
++            continue
++        if ch == "#":
++            break
++        out.append(ch)
++    return "".join(out)
++
++
++def brace_delta(line):
++    s = strip_comment(line)
++    return s.count("{") - s.count("}")
++
++
++def find_blocks(lines, start, end, header_re):
++    """[start,end) araligindaki, header_re ile baslayan UST duzey bloklari
++    [(baslangic, bitis DAHIL, baslik eslemesi)] dondurur. Ic bloklar parantez sayaciyla
++    atlanir; tek satirlik `location /x { return 200; }` de blok sayilir."""
++    blocks = []
++    i = start
++    while i < end:
++        m = header_re.match(strip_comment(lines[i]))
++        if not m:
++            i += 1
++            continue
++        depth = 0
++        j = i
++        while j < end:
++            depth += brace_delta(lines[j])
++            if depth <= 0 and "}" in strip_comment(lines[j]):
++                break
++            j += 1
++        blocks.append((i, min(j, end - 1), m))
++        i = j + 1
++    return blocks
++
++
++def norm_ws(s):
++    return re.sub(r"\s+", " ", s).strip()
++
++
++def norm_block(lines):
++    out = []
++    for l in lines:
++        s = norm_ws(strip_comment(l))
++        if s:
++            out.append(s)
++    return "\n".join(out)
++
++
++def parse_vhost(lines):
++    """server bloklari ve icindeki ust duzey location'lar."""
++    servers = []
++    for (s, e, _) in find_blocks(lines, 0, len(lines), SERVER_HDR_RE):
++        locs = []
++        for (ls, le, m) in find_blocks(lines, s + 1, e, LOCATION_HDR_RE):
++            key = norm_ws(m.group(1))
++            locs.append({"start": ls, "end": le, "key": key})
++        anchor = None
++        for k in range(s + 1, e):
++            if ERROR_PAGE_RE.match(strip_comment(lines[k])):
++                anchor = k
++                break
++        servers.append({"start": s, "end": e, "locations": locs, "anchor": anchor})
++    return servers
++
++
++def parse_upstreams(lines):
++    ups = []
++    for (s, e, m) in find_blocks(lines, 0, len(lines), UPSTREAM_HDR_RE):
++        body = lines[s:e + 1]
++        server = ""
++        for l in body:
++            sm = re.match(r"^\s*server\s+([^;\s]+)", strip_comment(l))
++            if sm:
++                server = sm.group(1)
++                break
++        ups.append({"start": s, "end": e, "name": m.group(1), "server": server,
++                    "server_host": server.split(":")[0] if server else "",
++                    "has_resolve": any(re.search(r"^\s*server\s.*\bresolve\b", strip_comment(l)) for l in body),
++                    "has_keepalive": any(re.match(r"^\s*keepalive\s", strip_comment(l)) for l in body),
++                    "has_zone": any(re.match(r"^\s*zone\s", strip_comment(l)) for l in body),
++                    "text": body})
++    return ups
++
++
++def block_info(lines, ls, le):
++    """location govdesinden proxy_pass / ssl_name / host header bilgisi."""
++    info = {"proxy_idx": None, "scheme": None, "host": None, "suffix": "", "ssl_name": None, "host_hdr": None, "indent": None}
++    for k in range(ls + 1, le):
++        s = strip_comment(lines[k])
++        m = PROXY_PASS_RE.match(s)
++        if m and info["proxy_idx"] is None:
++            info.update(proxy_idx=k, indent=m.group(1), scheme=m.group(3), host=m.group(4), suffix=m.group(5) or "")
++            continue
++        m = SSL_NAME_RE.match(s)
++        if m:
++            info["ssl_name"] = m.group(1)
++        m = HOST_HDR_RE.match(s)
++        if m:
++            info["host_hdr"] = m.group(1)
++    return info
++
++
++# ----------------------------------------------------------------------------- raw io
++def read_raw(path):
++    """dump ciktisi: ###FILE_BEGIN:<conf.d icindeki ad>\\n...\\n###FILE_END"""
++    text = io.open(path, encoding="utf-8", errors="replace").read()
++    files = {}
++    for m in re.finditer(r"###FILE_BEGIN:(\S+)\n(.*?)\n###FILE_END", text, re.S):
++        files[m.group(1)] = m.group(2).split("\n")
++    return files
++
++
++def is_vhost(lines):
++    return any(SERVER_HDR_RE.match(strip_comment(l)) for l in lines)
++
++
++def service_of(conf_name):
++    """GLOMO-PROD.conf -> glomo ; glomo-prod-upstreams.conf -> glomo ; WEBFORMS-PROD.conf -> webforms"""
++    base = conf_name[:-5] if conf_name.endswith(".conf") else conf_name
++    base = base.lower()
++    for suf in ("-prod-upstreams", "-upstreams", "-prod"):
++        if base.endswith(suf):
++            base = base[: -len(suf)]
++            break
++    return base
++
++
++# ----------------------------------------------------------------------------- host state
++class Host(object):
++    def __init__(self, name, files):
++        self.name = name
++        self.files = {k: list(v) for k, v in files.items()}   # ad -> satirlar (degistirilebilir)
++        self.actions = []
++        self.changed = set()
++
++    def act(self, action, service, detail):
++        self.actions.append((action, self.name, service, detail))
++
++    def upstream_index(self):
++        idx = {}
++        for fname, lines in self.files.items():
++            for u in parse_upstreams(lines):
++                idx.setdefault(u["name"], {"file": fname, **u})
++        return idx
++
++    def upstream_file_for(self, service):
++        cand = "%s-prod-upstreams.conf" % service
++        if cand in self.files:
++            return cand
++        # servis dosyasinda upstream var mi? yoksa da vhost dosyasi (create ile ayni yer)
++        return "%s-PROD.conf" % service.upper() if ("%s-PROD.conf" % service.upper()) in self.files else None
++
++    def add_upstream(self, service, name, text_lines, why):
++        fname = self.upstream_file_for(service)
++        if fname is None:
++            self.act("NO_ANCHOR", service, "upstream %s icin dosya yok (%s-PROD.conf?)" % (name, service.upper()))
++            return False
++        lines = self.files[fname]
++        block = [l.rstrip("\n") for l in text_lines]
++        if block and block[-1] != "":
++            block = block + [""]
++        self.files[fname] = block + lines
++        self.changed.add(fname)
++        self.act("ADD_UPSTREAM", service, "%s -> %s (%s)" % (name, fname, why))
++        return True
++
++
++# ----------------------------------------------------------------------------- planning
++def majority(versions):
++    """[(host, norm, raw_lines)] -> cogunluktaki (norm, raw_lines). Esitlikte, alfabetik
++    ilk sunucunun surumu ("ilk sunucu dogru" DEGIL: yalnizca esitligi bozmak icin)."""
++    c = Counter(v[1] for v in versions)
++    top = max(c.values())
++    for h, n, raw in sorted(versions, key=lambda x: x[0]):
++        if c[n] == top:
++            return n, raw
++    return versions[0][1], versions[0][2]
++
++
++def plan_group(gname, hosts, strict=False, fix_upstreams=False):
++    """hosts: [Host]. Dosyalari yerinde degistirir, aksiyonlari toplar."""
++    # --- 1) FQDN -> upstream + eksik ssl_name/Host + upstream ihtiyaclari (sunucu bazinda)
++    needed = defaultdict(dict)   # service -> name -> fqdn (grup genelinde ihtiyac)
++    for h in hosts:
++        for fname in sorted(h.files):
++            lines = h.files[fname]
++            if not is_vhost(lines):
++                continue
++            service = service_of(fname)
++            ups_idx = h.upstream_index()
++            # location'lari SONDAN basa isle: satir ekleyince alt indeksler kaymasin
++            for srv in reversed(parse_vhost(lines)):
++                for loc in reversed(srv["locations"]):
++                    info = block_info(lines, loc["start"], loc["end"])
++                    if info["proxy_idx"] is None:
++                        continue
++                    host = info["host"]
++                    port_less = host.split(":")[0]
++                    # IP ya da degisken ($upstream) hedefe dokunulmaz
++                    if IP_RE.match(port_less) or "$" in port_less:
++                        continue
++                    fqdn = None
++                    name = None
++                    if FQDN_RE.match(port_less):
++                        fqdn = port_less
++                        name = port_less.split(".")[0]
++                        existing = ups_idx.get(name)
++                        if existing and existing["server_host"] and existing["server_host"].lower() != fqdn.lower():
++                            h.act("CONFLICT", service, "location %s: upstream %s zaten %s hedefine gidiyor, FQDN %s -> dokunulmadi"
++                                  % (loc["key"], name, existing["server_host"], fqdn))
++                            continue
++                        k = info["proxy_idx"]
++                        m = PROXY_PASS_RE.match(strip_comment(lines[k]))
++                        # bosluk duzeni korunur (proxy_pass      https://... gibi hizalanmis dosyalar)
++                        lines[k] = "%sproxy_pass%s%s://%s%s;%s" % (m.group(1), m.group(2), m.group(3), name, m.group(5) or "", m.group(6) or "")
++                        h.changed.add(fname)
++                        h.act("REWRITE_PROXY_PASS", service, "location %s: %s -> upstream %s" % (loc["key"], fqdn, name))
++                        ind = m.group(1)
++                        ins = []
++                        if not info["host_hdr"]:
++                            ins.append("%sproxy_set_header Host %s;" % (ind, fqdn))
++                            h.act("ADD_HOST_HEADER", service, "location %s: Host %s" % (loc["key"], fqdn))
++                        if not info["ssl_name"]:
++                            ins.insert(0, "%sproxy_ssl_name %s;" % (ind, fqdn))
++                            h.act("ADD_SSL_NAME", service, "location %s: proxy_ssl_name %s" % (loc["key"], fqdn))
++                        if ins:
++                            lines[k + 1:k + 1] = ins
++                    else:
++                        name = port_less
++                        # cipla ad: upstream tanimli mi (bu sunucuda)? degilse FQDN basliklardan
++                        if name in ups_idx:
++                            fqdn = ups_idx[name]["server_host"]
++                        else:
++                            fqdn = info["ssl_name"] or info["host_hdr"]
++                            if not fqdn:
++                                h.act("UNDEFINED_TARGET", service, "location %s: upstream %s tanimsiz, blokta FQDN de yok - ELLE bakilmali" % (loc["key"], name))
++                                continue
++                    if name and fqdn:
++                        needed[service].setdefault(name, fqdn)
++
++    # --- 2) upstream birlesimi (grup) + ihtiyac duyulanlar
++    union = defaultdict(dict)    # service -> name -> [(host, norm, raw)]
++    for h in hosts:
++        for fname, lines in h.files.items():
++            for u in parse_upstreams(lines):
++                svc = service_of(fname)
++                union[svc][u["name"]] = union[svc].get(u["name"], []) + [(h.name, norm_block(u["text"]), u["text"], u)]
++    # servis eslemesi: vhost dosyasi glomo -> upstream dosyasi glomo-prod-upstreams
++    for h in hosts:
++        idx = h.upstream_index()
++        services = sorted({service_of(f) for f, l in h.files.items() if is_vhost(l)})
++        for service in services:
++            # grup birlesimindeki upstream'ler (bu servise ait) bu sunucuda var mi
++            for name, versions in sorted(union.get(service, {}).items()):
++                if name in idx:
++                    continue
++                n, raw = majority([(v[0], v[1], v[2]) for v in versions])
++                h.add_upstream(service, name, raw, "eslenikten (%s)" % ",".join(sorted({v[0] for v in versions})))
++                idx = h.upstream_index()
++            # ihtiyac duyulan ama hicbir yerde tanimli olmayanlar: sablonla uret
++            for name, fqdn in sorted(needed.get(service, {}).items()):
++                if name in idx:
++                    continue
++                text = UPSTREAM_TEMPLATE.format(name=name, fqdn=fqdn).split("\n")
++                h.add_upstream(service, name, text, "yeni tanim, hedef %s" % fqdn)
++                idx = h.upstream_index()
++                union[service][name] = union[service].get(name, []) + [(h.name, norm_block(text), text, None)]
++        # upstream govde farki (bilgi) / --fix-upstreams. Duzeltmeler dosya icinde SONDAN
++        # basa uygulanir: satir eklemek ustteki bloklarin indekslerini kaydirmasin.
++        for name, u in sorted(idx.items(), key=lambda kv: (kv[1]["file"], -kv[1]["start"])):
++            versions = union.get(service_of(u["file"]), {}).get(name, [])
++            norms = {v[1] for v in versions}
++            if len(norms) > 1 and norm_block(u["text"]) != majority([(v[0], v[1], v[2]) for v in versions])[0]:
++                h.act("DIFF_UPSTREAM", service_of(u["file"]), "%s govdesi eslenik cogunlugundan farkli" % name)
++            if fix_upstreams and not (u["has_resolve"] and u["has_keepalive"] and u["has_zone"]):
++                lines = h.files[u["file"]]
++                s, e = u["start"], u["end"]
++                ind = "  "
++                fixes = []
++                if not u["has_resolve"]:
++                    for k in range(s + 1, e):
++                        if re.match(r"^\s*server\s", strip_comment(lines[k])):
++                            lines[k] = re.sub(r"\s*;", " resolve;", lines[k], count=1)
++                            fixes.append("resolve")
++                            break
++                add = []
++                if not u["has_keepalive"]:
++                    add.append("%skeepalive 10;" % ind)
++                    fixes.append("keepalive")
++                if not u["has_zone"]:
++                    add.append("%szone upstream_dynamic 4m;" % ind)
++                    fixes.append("zone")
++                if add:
++                    lines[e:e] = add
++                h.changed.add(u["file"])
++                h.act("FIX_UPSTREAM", service_of(u["file"]), "%s: %s eklendi" % (name, "+".join(fixes)))
++
++    # --- 3) location esitleme (vhost dosyasi bazinda birlesim)
++    vhost_names = sorted({f for h in hosts for f, l in h.files.items() if is_vhost(l)})
++    for vname in vhost_names:
++        service = service_of(vname)
++        have = [h for h in hosts if vname in h.files]
++        missing_file = [h.name for h in hosts if vname not in h.files]
++        if missing_file:
++            for h in hosts:
++                if vname not in h.files:
++                    h.act("MISSING_VHOST", service, "%s bu sunucuda yok (eslenikte var: %s) - dosya kopyalanmaz, ELLE bakilmali"
++                          % (vname, ",".join(x.name for x in have)))
++        # server blogu sirasina gore (0., 1., ...) location kumeleri
++        max_srv = max(len(parse_vhost(h.files[vname])) for h in have)
++        for si in range(max_srv):
++            versions = defaultdict(list)   # key -> [(host, norm, raw)]
++            for h in have:
++                srvs = parse_vhost(h.files[vname])
++                if si >= len(srvs):
++                    continue
++                for loc in srvs[si]["locations"]:
++                    raw = h.files[vname][loc["start"]:loc["end"] + 1]
++                    versions[loc["key"]].append((h.name, norm_block(raw), raw))
++            for key in sorted(versions):
++                vs = versions[key]
++                ref_norm, ref_raw = majority(vs)
++                present = {v[0] for v in vs}
++                for h in have:
++                    srvs = parse_vhost(h.files[vname])
++                    if si >= len(srvs):
++                        continue
++                    srv = srvs[si]
++                    if h.name not in present:
++                        # EKSIK -> error_page capasinin onune; yoksa server kapanisinin onune
++                        at = srv["anchor"] if srv["anchor"] is not None else srv["end"]
++                        block = list(ref_raw)
++                        if block and block[-1].strip() != "":
++                            block = block + [""]
++                        h.files[vname][at:at] = block
++                        h.changed.add(vname)
++                        h.act("ADD_LOCATION", service, "location %s (server #%d) eslenikten eklendi (%s)%s"
++                              % (key, si + 1, ",".join(sorted(present)), "" if srv["anchor"] is not None else " [error_page capasi yok, server sonuna]"))
++                        if srv["anchor"] is None:
++                            h.act("NO_ANCHOR", service, "%s server #%d: error_page satiri yok" % (vname, si + 1))
++                    else:
++                        mine = next(v for v in vs if v[0] == h.name)
++                        if mine[1] != ref_norm:
++                            if strict:
++                                loc = next(l for l in srv["locations"] if l["key"] == key)
++                                h.files[vname][loc["start"]:loc["end"] + 1] = list(ref_raw)
++                                h.changed.add(vname)
++                                h.act("REPLACE_LOCATION", service, "location %s cogunluk surumuyle degistirildi" % key)
++                            else:
++                                h.act("DIFF_LOCATION", service, "location %s govdesi eslenik cogunlugundan farkli (strict ile degistirilir)" % key)
++
++
++# ----------------------------------------------------------------------------- main
++def main():
++    import argparse
++    ap = argparse.ArgumentParser()
++    ap.add_argument("raw_dir")
++    ap.add_argument("plan_dir")
++    ap.add_argument("--strict", action="store_true")
++    ap.add_argument("--fix-upstreams", action="store_true")
++    ap.add_argument("--group", default="", help="yalniz bu grup (A|B)")
++    a = ap.parse_args()
++
++    hosts_by_name = {}
++    for fn in sorted(os.listdir(a.raw_dir)):
++        if not fn.endswith(".txt"):
++            continue
++        name = fn[:-4].upper()
++        hosts_by_name[name] = Host(name, read_raw(os.path.join(a.raw_dir, fn)))
++
++    os.makedirs(a.plan_dir, exist_ok=True)
++    all_actions = []
++    scanned = {}
++    for g, members in PEER_GROUPS.items():
++        if a.group and a.group.upper() != g:
++            continue
++        hosts = [hosts_by_name[m] for m in members if m in hosts_by_name]
++        scanned[g] = [h.name for h in hosts]
++        if len(hosts) < 2:
++            print("NOTE\tgrup %s: %d sunucu tarandi, esitleme icin en az 2 gerekir - atlandi" % (g, len(hosts)))
++            continue
++        plan_group(g, hosts, strict=a.strict, fix_upstreams=a.fix_upstreams)
++        for h in hosts:
++            files = [{"path": "%s/%s" % (CONF_DIR, f), "content": "\n".join(h.files[f]).rstrip("\n") + "\n"} for f in sorted(h.changed)]
++            io.open(os.path.join(a.plan_dir, h.name + ".json"), "w", encoding="utf-8").write(
++                json.dumps({"host": h.name, "group": g, "files": files,
++                            "actions": [{"action": x[0], "service": x[2], "detail": x[3]} for x in h.actions]},
++                           ensure_ascii=False, indent=1))
++            all_actions.extend(h.actions)
++
++    by_type = Counter(x[0] for x in all_actions)
++    with io.open(os.path.join(a.plan_dir, "report.txt"), "w", encoding="utf-8") as rep:
++        rep.write("Nginx legacy sync plani\n")
++        for g, names in scanned.items():
++            rep.write("grup %s: %s\n" % (g, ", ".join(names) or "(sunucu yok)"))
++        rep.write("\n")
++        for t, n in sorted(by_type.items()):
++            rep.write("%-20s %d\n" % (t, n))
++        rep.write("\n")
++        for x in all_actions:
++            rep.write("%s\t%s\t%s\t%s\n" % x)
++    print("SYNC_JSON " + json.dumps({"groups": scanned, "by_type": dict(by_type), "total": len(all_actions),
++                                     "hosts_changed": sorted({x[1] for x in all_actions if x[0] in
++                                                              ("REWRITE_PROXY_PASS", "ADD_SSL_NAME", "ADD_HOST_HEADER", "ADD_UPSTREAM", "ADD_LOCATION", "REPLACE_LOCATION", "FIX_UPSTREAM")})}))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/bmw_nginx/nginx_legacy_sync/files/nginx_test_or_reload.sh b/bmw_nginx/nginx_legacy_sync/files/nginx_test_or_reload.sh
+new file mode 100644
+index 000000000..1dc97a66d
+--- /dev/null
++++ b/bmw_nginx/nginx_legacy_sync/files/nginx_test_or_reload.sh
+@@ -0,0 +1,20 @@
++#!/bin/bash
++# nginx_test_or_reload.sh <test|reload> - nginx (plus ya da OSS) icin -t / -s reload.
++# Diger playbook'lardaki (nginx_ops, api_generator) gomulu blogun files/ altina alinmis hali.
++set -u
++MODE="${1:-test}"
++BIN=/usr/nginx/sbin/nginx
++ver="$(dzdo "$BIN" -v 2>&1 | awk -F "/" '{print $2}')"
++if [ "$MODE" = "reload" ]; then
++  if [[ "$ver" == *plus* ]]; then
++    dzdo "$BIN" -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -s reload
++  else
++    dzdo "$BIN" -s reload
++  fi
++else
++  if [[ "$ver" == *plus* ]]; then
++    dzdo "$BIN" -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -t
++  else
++    dzdo "$BIN" -t
++  fi
++fi
+diff --git a/bmw_nginx/nginx_legacy_sync/nginx_legacy_sync.yml b/bmw_nginx/nginx_legacy_sync/nginx_legacy_sync.yml
+new file mode 100644
+index 000000000..c9038228b
+--- /dev/null
++++ b/bmw_nginx/nginx_legacy_sync/nginx_legacy_sync.yml
+@@ -0,0 +1,217 @@
++---
++# nginx_legacy_sync.yml — ESKI TIP (proxy_pass + upstream) SPA production sunucularini
++# eslenik grup icinde ESITLER (2026-09-15, kullanici istegi):
++#   1) sunucular birbirine esitlenir (eksik location / upstream eslenikten gelir),
++#   2) FQDN'e giden proxy_pass'ler upstream'e cevrilir,
++#   3) tanimi olmayan upstream'ler tanimlanir.
++# Kurallar ve sinirlar: files/legacy_sync_plan.py basligi, README.md.
++#
++# ESLENIK GRUPLAR (nginx_legacy_audit ile AYNI):
++#   A: GBRVPP01, GBRVPP02, GBRVPAP01, GBRVPAP02      (GLOMO disi)
++#   B: GBRVPP07-10, GBRVPAP03-06                     (GLOMO)
++#
++# MOD (extra var `mode`): report (VARSAYILAN: tarar, plani ve raporu GBLABT02'ye yazar,
++#   sunuculara DOKUNMAZ) | apply (plani uygular: yedek + nginx -t + reload; -t duserse o
++#   sunucudaki tum dosyalar geri alinir, host FAIL).
++# SECENEKLER: group=A|B (yalniz o grup), strict=true (govdesi farkli location'lari cogunluk
++#   surumuyle degistir), fix_upstreams=true (eksik resolve/keepalive/zone tamamla),
++#   target_hosts=... (apply'i su sunucularla sinirla; plan yine tum grupla hesaplanir).
++# ONERILEN SIRA: mode=report -> report.txt oku -> mode=apply target_hosts=<tek sunucu> -> tumu.
++
++- name: "--- [Play] Legacy sync - hazirlik ---"
++  hosts: GBLABT02
++  gather_facts: no
++  vars:
++    sync_dir: /sw/WAS_IMAGES/Nginx/legacy_sync
++  tasks:
++    - name: --- [Task] Mod dogrula ---
++      ansible.builtin.assert:
++        that: (mode | default('report') | lower) in ['report', 'apply']
++        fail_msg: "mode report|apply olmali (verilen: '{{ mode | default('report') }}')"
++
++    - name: --- [Task] Dizinler ---
++      ansible.builtin.file:
++        path: "{{ item }}"
++        state: directory
++        mode: '0777'
++      loop:
++        - "{{ sync_dir }}"
++        - "{{ sync_dir }}/raw"
++        - "{{ sync_dir }}/plan"
++
++    # Onceki turun dokumu kalirsa ulasilamayan sunucunun ESKI hali plana girer.
++    - name: --- [Task] Onceki tur dokumlerini ve planini temizle ---
++      ansible.builtin.shell: rm -f {{ sync_dir }}/raw/*.txt {{ sync_dir }}/plan/*.json {{ sync_dir }}/plan/report.txt
++      changed_when: false
++      ignore_errors: true
++
++- name: "--- [Play] Legacy sync - dokum (salt-okunur) ---"
++  hosts: >-
++    GBRVPP01,GBRVPP02,GBRVPAP01,GBRVPAP02,
++    GBRVPP07,GBRVPP08,GBRVPP09,GBRVPP10,GBRVPAP03,GBRVPAP04,GBRVPAP05,GBRVPAP06
++  gather_facts: no
++  ignore_unreachable: true
++  vars:
++    sync_dir: /sw/WAS_IMAGES/Nginx/legacy_sync
++  tasks:
++    - name: --- [Task] Dump betigini kopyala ---
++      ansible.builtin.copy:
++        src: files/legacy_sync_dump.sh
++        dest: /tmp/legacy_sync_dump.sh
++        mode: '0755'
++
++    - name: --- [Task] conf.d/*.conf dokumu ---
++      become: true
++      become_method: dzdo
++      become_user: www
++      ansible.builtin.command: /bin/bash /tmp/legacy_sync_dump.sh
++      register: dump_out
++      changed_when: false
++
++    - name: --- [Task] Dokumu GBLABT02'ye yaz ---
++      ansible.builtin.copy:
++        content: "{{ dump_out.stdout }}\n"
++        dest: "{{ sync_dir }}/raw/{{ inventory_hostname }}.txt"
++        mode: '0666'
++      delegate_to: GBLABT02
++      when: (dump_out.stdout | default('') | trim | length) > 0
++
++    - name: --- [Task] Betigi temizle ---
++      ansible.builtin.file:
++        path: /tmp/legacy_sync_dump.sh
++        state: absent
++      changed_when: false
++
++- name: "--- [Play] Legacy sync - plan ---"
++  hosts: GBLABT02
++  gather_facts: no
++  vars:
++    sync_dir: /sw/WAS_IMAGES/Nginx/legacy_sync
++  tasks:
++    - name: --- [Task] Planlayiciyi kopyala ---
++      ansible.builtin.copy:
++        src: files/legacy_sync_plan.py
++        dest: "{{ sync_dir }}/legacy_sync_plan.py"
++        mode: '0755'
++
++    - name: --- [Task] Plani uret ---
++      ansible.builtin.command: >-
++        python3 {{ sync_dir }}/legacy_sync_plan.py {{ sync_dir }}/raw {{ sync_dir }}/plan
++        {{ '--strict' if (strict | default(false) | bool) else '' }}
++        {{ '--fix-upstreams' if (fix_upstreams | default(false) | bool) else '' }}
++        {{ ('--group ' ~ group) if (group | default('') | length) > 0 else '' }}
++      register: plan_out
++      changed_when: false
++
++    - name: --- [Task] Ozeti ayristir ---
++      ansible.builtin.set_fact:
++        sync_summary: >-
++          {{ (plan_out.stdout_lines | select('match', '^SYNC_JSON ') | list | first | default('SYNC_JSON {}'))
++             | regex_replace('^SYNC_JSON ', '') | from_json }}
++
++    - name: --- [Task] Rapor ---
++      ansible.builtin.slurp:
++        src: "{{ sync_dir }}/plan/report.txt"
++      register: report_raw
++
++    - name: --- [Task] Plan ozeti ---
++      ansible.builtin.debug:
++        msg:
++          - "mod={{ mode | default('report') }} · gruplar={{ sync_summary.groups | default({}) }}"
++          - "aksiyonlar={{ sync_summary.by_type | default({}) }}"
++          - "degisecek sunucular={{ sync_summary.hosts_changed | default([]) }}"
++          - "rapor: {{ sync_dir }}/plan/report.txt"
++          - "{{ (report_raw.content | b64decode).split('\n')[:80] }}"
++
++- name: "--- [Play] Legacy sync - uygula ---"
++  hosts: >-
++    {{ target_hosts | default('GBRVPP01,GBRVPP02,GBRVPAP01,GBRVPAP02,GBRVPP07,GBRVPP08,GBRVPP09,GBRVPP10,GBRVPAP03,GBRVPAP04,GBRVPAP05,GBRVPAP06') }}
++  gather_facts: no
++  ignore_unreachable: true
++  vars:
++    sync_dir: /sw/WAS_IMAGES/Nginx/legacy_sync
++  tasks:
++    - name: --- [Task] Rapor modunda uygulama yok ---
++      ansible.builtin.meta: end_host
++      when: (mode | default('report') | lower) != 'apply'
++
++    - name: --- [Task] Bu sunucunun planini oku ---
++      ansible.builtin.slurp:
++        src: "{{ sync_dir }}/plan/{{ inventory_hostname }}.json"
++      register: plan_raw
++      delegate_to: GBLABT02
++      failed_when: false
++
++    - name: --- [Task] Plan yoksa bu sunucu atlanir ---
++      ansible.builtin.meta: end_host
++      when: plan_raw.content is not defined
++
++    - name: --- [Task] Plani coz ---
++      ansible.builtin.set_fact:
++        host_plan: "{{ plan_raw.content | b64decode | from_json }}"
++
++    - name: --- [Task] Degisecek dosya yoksa bitir ---
++      ansible.builtin.debug:
++        msg: "{{ inventory_hostname }}: plan degisiklik icermiyor"
++      when: (host_plan.files | default([]) | length) == 0
++
++    - name: --- [Task] Degisecek dosya yoksa bu sunucu atlanir ---
++      ansible.builtin.meta: end_host
++      when: (host_plan.files | default([]) | length) == 0
++
++    # YEDEK: copy backup:yes yedek yolunu doner; nginx -t duserse bu yollardan geri alinir.
++    - name: --- [Task] Dosyalari yaz (yedekli) ---
++      become: true
++      become_method: dzdo
++      become_user: www
++      ansible.builtin.copy:
++        content: "{{ item.content }}"
++        dest: "{{ item.path }}"
++        backup: yes
++        mode: '0644'
++      loop: "{{ host_plan.files }}"
++      loop_control:
++        label: "{{ item.path }}"
++      register: written
++
++    - name: --- [Task] nginx -t ---
++      become: true
++      become_method: dzdo
++      become_user: www
++      ansible.builtin.script:
++        cmd: files/nginx_test_or_reload.sh test
++      register: ngx_test
++      failed_when: false
++      changed_when: false
++
++    - name: --- [Task] nginx -t DUSTU -> geri al (rollback) ---
++      become: true
++      become_method: dzdo
++      become_user: www
++      ansible.builtin.copy:
++        src: "{{ item.backup_file }}"
++        dest: "{{ item.dest }}"
++        remote_src: yes
++        mode: '0644'
++      loop: "{{ written.results | selectattr('backup_file', 'defined') | list }}"
++      loop_control:
++        label: "{{ item.dest }}"
++      when: ngx_test.rc != 0
++
++    - name: --- [Task] Geri alindi, host FAIL ---
++      ansible.builtin.fail:
++        msg: "{{ inventory_hostname }}: nginx -t dustu, {{ written.results | length }} dosya yedekten geri alindi: {{ ((ngx_test.stdout_lines | default([])) + (ngx_test.stderr_lines | default([]))) | join(' / ') | truncate(600) }}"
++      when: ngx_test.rc != 0
++
++    - name: --- [Task] nginx reload ---
++      become: true
++      become_method: dzdo
++      become_user: www
++      ansible.builtin.script:
++        cmd: files/nginx_test_or_reload.sh reload
++      register: ngx_reload
++      changed_when: true
++
++    - name: --- [Task] Sonuc ---
++      ansible.builtin.debug:
++        msg: "{{ inventory_hostname }}: {{ host_plan.files | length }} dosya yazildi, nginx -t gecti, reload yapildi · {{ host_plan.actions | length }} aksiyon ({{ host_plan.actions | map(attribute='action') | unique | join(', ') }})"
+diff --git a/bmw_nginx/tests/check_legacy_sync.py b/bmw_nginx/tests/check_legacy_sync.py
+new file mode 100644
+index 000000000..bf648b4e0
+--- /dev/null
++++ b/bmw_nginx/tests/check_legacy_sync.py
+@@ -0,0 +1,220 @@
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++"""nginx_legacy_sync: eski tip prod sunuculari eslenik grup icinde esitleme PLANI.
++
++Kilitlenen iddialar (planlayici GERCEKTEN kosturulur; dump betigi Git Bash ile):
++  1. FQDN proxy_pass -> upstream adi (ilk etiket); eksik proxy_ssl_name / Host eklenir;
++     mevcut olanlar tekrar eklenmez; IP ve $degisken hedefe dokunulmaz
++  2. kullanilan ama tanimsiz upstream: sablonla (resolve/keepalive/zone) -upstreams.conf
++     BASINA; -upstreams.conf yoksa vhost dosyasinin basina; ayni ad baska hedefe -> CONFLICT
++  3. eslenikte olup bu sunucuda olmayan location: cogunluk surumu error_page ONUNE;
++     eksik upstream eslenikten kopyalanir; hicbir sey silinmez
++  4. govdesi farkli location: DIFF (dokunulmaz); --strict ile cogunluk surumu
++  5. cipla ad + tanimsiz + basliksiz -> UNDEFINED_TARGET (degisiklik yok)
++  6. --fix-upstreams: eksik resolve/keepalive/zone tamamlanir; kapaliyken dokunulmaz
++  7. plan JSON'da yalniz DEGISEN dosyalar, tam yol; ikinci planlama (plan cikti girdi
++     olunca) sifir degisiklik (idempotent)
++  8. playbook: gruplar planlayici ile AYNI, dump betigi files/ altindan, apply yedek +
++     nginx -t + geri alma
++"""
++import io
++import json
++import os
++import re
++import subprocess
++import sys
++import tempfile
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++D = os.path.join(os.path.dirname(HERE), "nginx_legacy_sync")
++PLAN = os.path.join(D, "files", "legacy_sync_plan.py")
++DUMP = os.path.join(D, "files", "legacy_sync_dump.sh")
++PB = os.path.join(D, "nginx_legacy_sync.yml")
++problems = []
++
++LOC = """    location %(path)s {
++        proxy_pass      %(pp)s;
++        include /usr/nginx/conf/proxy_settings.conf;
++        rewrite ^%(path)s(.*)$ /$1 break;
++%(extra)s    }
++"""
++SSL = "        proxy_ssl_name %s;\n        proxy_set_header Host %s;\n"
++
++
++def vhost(locs, extra_top=""):
++    return (extra_top + "server {\n    listen 443 ssl;\n    server_name webforms.garanti.com.tr;\n\n"
++            + "".join(locs) + "\n    error_page 404 /404.html;\n    location = /404.html { root html; }\n}\n")
++
++
++UPS_OK = "upstream ok-app-v0-ok-ns {\n  server ok-app-v0-ok-ns.apps.fw.garanti.com.tr:443 resolve;\n  keepalive 10;\n  zone upstream_dynamic 4m;\n}\n"
++UPS_OLD = "upstream old-app-v0-ns {\n  server old-app-v0-ns.apps.fw.garanti.com.tr:443;\n}\n"
++UPS_ONLY2 = "upstream only2-app-v0-ns {\n  server only2-app-v0-ns.apps.fw.garanti.com.tr:443 resolve;\n  keepalive 10;\n  zone upstream_dynamic 4m;\n}\n"
++UPS_CONFLICT = "upstream conf-app-v0-ns {\n  server conf-app-v0-ns.apps.fw.garanti.com.tr:443 resolve;\n}\n"
++
++# Host 1: FQDN'li location (ssl_name yok), cipla-tanimsiz (basliktan cozulur), IP, upstream OK,
++#         old-app resolve'suz, cipla-tanimsiz-basliksiz, CONFLICT adayi, ortak location
++h1_locs = [
++    LOC % dict(path="/fq/", pp="https://fq-app-v0-ns.apps.fw.garanti.com.tr/", extra=""),
++    LOC % dict(path="/bare/", pp="https://bare-app-v0-ns/", extra=SSL % ("bare-app-v0-ns.apps.fw.garanti.com.tr", "bare-app-v0-ns.apps.fw.garanti.com.tr")),
++    LOC % dict(path="/ip/", pp="https://10.1.2.3:8443/", extra=""),
++    LOC % dict(path="/ok/", pp="https://ok-app-v0-ok-ns/", extra=SSL % ("ok-app-v0-ok-ns.apps.fw.garanti.com.tr", "ok-app-v0-ok-ns.apps.fw.garanti.com.tr")),
++    LOC % dict(path="/old/", pp="https://old-app-v0-ns/", extra=""),
++    LOC % dict(path="/undef/", pp="https://undef-app-v0-ns/", extra=""),
++    LOC % dict(path="/conf/", pp="https://conf-app-v0-ns.apps-t.fw.garanti.com.tr/", extra=""),
++    LOC % dict(path="/common/", pp="https://ok-app-v0-ok-ns/", extra="        proxy_read_timeout 60s;\n"),
++]
++# Host 2: /fq/ ZATEN upstream + ssl basliklari var, /only2/ yalniz burada, /common/ farkli govde,
++#         /bare/ /ip/ /ok/ /old/ /undef/ /conf/ yok (eslenikten gelecek)
++h2_locs = [
++    LOC % dict(path="/fq/", pp="https://fq-app-v0-ns/", extra=SSL % ("fq-app-v0-ns.apps.fw.garanti.com.tr", "fq-app-v0-ns.apps.fw.garanti.com.tr")),
++    LOC % dict(path="/only2/", pp="https://only2-app-v0-ns/", extra=SSL % ("only2-app-v0-ns.apps.fw.garanti.com.tr", "only2-app-v0-ns.apps.fw.garanti.com.tr")),
++    LOC % dict(path="/common/", pp="https://ok-app-v0-ok-ns/", extra="        proxy_read_timeout 20s;\n"),
++]
++H1 = {"WEBFORMS-PROD.conf": vhost(h1_locs), "webforms-prod-upstreams.conf": UPS_OK + UPS_OLD + UPS_CONFLICT}
++H2 = {"WEBFORMS-PROD.conf": vhost(h2_locs), "webforms-prod-upstreams.conf": UPS_OK + UPS_ONLY2 + UPS_OLD}
++
++
++def write_raw(raw, host, files):
++    with io.open(os.path.join(raw, host + ".txt"), "w", newline="\n", encoding="utf-8") as f:
++        for n, body in files.items():
++            f.write("###FILE_BEGIN:%s\n%s%s###FILE_END\n" % (n, body, "" if body.endswith("\n") else "\n"))
++
++
++def run_plan(raw, plan, *args):
++    r = subprocess.run([sys.executable, PLAN, raw, plan] + list(args), capture_output=True, text=True, encoding="utf-8")
++    if r.returncode != 0:
++        problems.append("planlayici dustu (%s): %s" % (args, r.stderr[-800:]))
++    return r
++
++
++def load(plan, host):
++    return json.load(io.open(os.path.join(plan, host + ".json"), encoding="utf-8"))
++
++
++tmp = tempfile.mkdtemp(prefix="lsync-")
++raw = os.path.join(tmp, "raw"); plan = os.path.join(tmp, "plan"); os.makedirs(raw)
++write_raw(raw, "GBRVPP01", H1); write_raw(raw, "GBRVPP02", H2)
++r = run_plan(raw, plan)
++p1 = load(plan, "GBRVPP01"); p2 = load(plan, "GBRVPP02")
++acts1 = {(a["action"], a["detail"]) for a in p1["actions"]}
++acts2 = {(a["action"], a["detail"]) for a in p2["actions"]}
++f1 = {os.path.basename(f["path"]): f["content"] for f in p1["files"]}
++f2 = {os.path.basename(f["path"]): f["content"] for f in p2["files"]}
++v1 = f1.get("WEBFORMS-PROD.conf", ""); u1 = f1.get("webforms-prod-upstreams.conf", "")
++v2 = f2.get("WEBFORMS-PROD.conf", ""); u2 = f2.get("webforms-prod-upstreams.conf", "")
++
++# 1
++if "proxy_pass      https://fq-app-v0-ns/;" not in v1:
++    problems.append("1: FQDN proxy_pass upstream adina cevrilmedi")
++if not re.search(r"proxy_pass      https://fq-app-v0-ns/;\n\s+proxy_ssl_name fq-app-v0-ns\.apps\.fw\.garanti\.com\.tr;\n\s+proxy_set_header Host fq-app-v0-ns\.apps\.fw\.garanti\.com\.tr;", v1):
++    problems.append("1: eksik proxy_ssl_name/Host proxy_pass altina eklenmedi")
++if v1.count("proxy_ssl_name bare-app-v0-ns.apps.fw.garanti.com.tr;") != 1:
++    problems.append("1: mevcut ssl_name tekrar eklendi")
++if "https://10.1.2.3:8443/" not in v1:
++    problems.append("1: IP hedefe dokunuldu")
++if not any(a[0] == "REWRITE_PROXY_PASS" for a in acts1):
++    problems.append("1: REWRITE_PROXY_PASS aksiyonu yok")
++# 2
++if not u1.startswith("upstream "):
++    problems.append("2: upstream dosyasi basina eklenmedi:\n" + u1[:200])
++for name in ("fq-app-v0-ns", "bare-app-v0-ns"):
++    if not re.search(r"upstream %s \{\n  server %s\.apps\.fw\.garanti\.com\.tr:443 resolve;\n  keepalive 10;\n  zone upstream_dynamic 4m;\n\}" % (name, name), u1):
++        problems.append("2: %s icin sablonla upstream uretilmedi" % name)
++if u1.count("upstream ok-app-v0-ok-ns {") != 1:
++    problems.append("2: var olan upstream tekrar eklendi")
++if not any(a[0] == "CONFLICT" and "conf-app-v0-ns" in a[1] for a in acts1):
++    problems.append("2: farkli hedefe giden ayni adli upstream CONFLICT vermedi")
++if "https://conf-app-v0-ns.apps-t.fw.garanti.com.tr/" not in v1:
++    problems.append("2: CONFLICT'e ragmen proxy_pass degistirildi")
++# 3
++for path in ("/bare/", "/ip/", "/ok/", "/old/", "/undef/", "/conf/"):
++    if ("location %s {" % path) not in v2:
++        problems.append("3: eslenikteki %s GBRVPP02'ye eklenmedi" % path)
++if "location /only2/ {" not in v1:
++    problems.append("3: /only2/ GBRVPP01'e eklenmedi")
++if v2 and v2.index("location /bare/ {") > v2.index("error_page"):
++    problems.append("3: eklenen location error_page capasindan SONRA")
++if "upstream only2-app-v0-ns {" not in u1:
++    problems.append("3: eksik upstream eslenikten kopyalanmadi")
++if "upstream conf-app-v0-ns {" not in u2:
++    problems.append("3: eslenikteki upstream (conflict adli olsa da tanimli) GBRVPP02'ye kopyalanmadi")
++# eklenen /fq/ GBRVPP02'de zaten var: tekrar eklenmemeli; GBRVPP02'de /bare/ ssl basliklari korunmus
++if v2.count("location /fq/ {") != 1:
++    problems.append("3: /fq/ GBRVPP02'de coklandi")
++if len(re.findall(r"location /", v2)) != len(re.findall(r"location /", v1)):
++    problems.append("3: iki sunucunun location sayisi esit degil (%d vs %d)" % (len(re.findall(r"location /", v1)), len(re.findall(r"location /", v2))))
++# 4
++if not any(a[0] == "DIFF_LOCATION" and "/common/" in a[1] for a in acts1 | acts2):
++    problems.append("4: govdesi farkli /common/ DIFF_LOCATION vermedi")
++if "proxy_read_timeout 60s;" not in v1 or "proxy_read_timeout 20s;" not in v2:
++    problems.append("4: strict olmadan farkli govde degistirildi")
++# 5
++if not any(a[0] == "UNDEFINED_TARGET" and "/undef/" in a[1] for a in acts1):
++    problems.append("5: tanimsiz+basliksiz hedef UNDEFINED_TARGET vermedi")
++if "upstream undef-app-v0-ns" in u1:
++    problems.append("5: FQDN bilinmeyen hedef icin upstream uydurulmus")
++# 6 (kapali): old-app resolve eklenmemis
++if "old-app-v0-ns.apps.fw.garanti.com.tr:443 resolve" in u1:
++    problems.append("6: --fix-upstreams kapaliyken resolve eklendi")
++# 7
++if any(not f["path"].startswith("/usr/nginx/conf.d/") for f in p1["files"] + p2["files"]):
++    problems.append("7: plan dosya yollari tam degil")
++raw2 = os.path.join(tmp, "raw2"); plan2 = os.path.join(tmp, "plan2"); os.makedirs(raw2)
++write_raw(raw2, "GBRVPP01", {**H1, **f1}); write_raw(raw2, "GBRVPP02", {**H2, **f2})
++r2 = run_plan(raw2, plan2)
++q1 = load(plan2, "GBRVPP01"); q2 = load(plan2, "GBRVPP02")
++if q1["files"] or q2["files"]:
++    problems.append("7: ikinci planlama yine dosya degistiriyor (idempotent degil): %s / %s"
++                    % ([a["detail"] for a in q1["actions"] if a["action"] not in ("DIFF_LOCATION", "DIFF_UPSTREAM", "UNDEFINED_TARGET", "CONFLICT")],
++                       [a["detail"] for a in q2["actions"] if a["action"] not in ("DIFF_LOCATION", "DIFF_UPSTREAM", "UNDEFINED_TARGET", "CONFLICT")]))
++# 4 strict / 6 fix
++plan3 = os.path.join(tmp, "plan3")
++run_plan(raw, plan3, "--strict", "--fix-upstreams")
++s1 = load(plan3, "GBRVPP01"); s2 = load(plan3, "GBRVPP02")
++sv1 = {os.path.basename(f["path"]): f["content"] for f in s1["files"]}
++sv2 = {os.path.basename(f["path"]): f["content"] for f in s2["files"]}
++# /common/: iki surum 1-1, esitlikte alfabetik ilk sunucu (GBRVPP01) kazanir -> GBRVPP02 degisir
++if "proxy_read_timeout 60s;" not in sv2.get("WEBFORMS-PROD.conf", ""):
++    problems.append("4: --strict cogunluk (esitlikte alfabetik ilk) surumunu yazmadi")
++if not any(a["action"] == "REPLACE_LOCATION" for a in s2["actions"]):
++    problems.append("4: REPLACE_LOCATION aksiyonu yok")
++if not re.search(r"upstream old-app-v0-ns \{\n  server old-app-v0-ns\.apps\.fw\.garanti\.com\.tr:443 resolve;\n  keepalive 10;\n  zone upstream_dynamic 4m;\n\}", sv1.get("webforms-prod-upstreams.conf", "")):
++    problems.append("6: --fix-upstreams resolve/keepalive/zone tamamlamadi:\n" + sv1.get("webforms-prod-upstreams.conf", "")[:600])
++# rapor + ozet
++if not os.path.exists(os.path.join(plan, "report.txt")):
++    problems.append("report.txt yok")
++if "SYNC_JSON " not in r.stdout:
++    problems.append("SYNC_JSON ozet satiri yok")
++
++# 8 playbook + dump
++pb = io.open(PB, encoding="utf-8").read()
++src = io.open(PLAN, encoding="utf-8").read()
++for g in ("A", "B"):
++    m = re.search(r'"%s": \[([^\]]+)\]' % g, src)
++    names = re.findall(r"[A-Z0-9]+", m.group(1))
++    for n in names:
++        if n not in pb:
++            problems.append("8: planlayici grup %s sunucusu %s playbook'ta yok" % (g, n))
++if "src: files/legacy_sync_dump.sh" not in pb or "shell: |" in pb:
++    problems.append("8: dump betigi files/ altindan kopyalanmiyor ya da gomulu shell var")
++if "backup: yes" not in pb or "nginx" not in pb or "rollback" not in pb.lower():
++    problems.append("8: apply yedek/nginx -t/geri alma icermiyor")
++try:
++    d = subprocess.run(["bash", DUMP, os.path.join(tmp, "confd")], capture_output=True, text=True, encoding="utf-8")
++    os.makedirs(os.path.join(tmp, "confd"))
++    io.open(os.path.join(tmp, "confd", "X-PROD.conf"), "w", newline="\n").write("server {\n}")  # newline'siz son satir
++    io.open(os.path.join(tmp, "confd", "x-prod-upstreams-check.conf"), "w", newline="\n").write("upstream a { }\n")
++    d = subprocess.run(["bash", DUMP, os.path.join(tmp, "confd").replace("\\", "/")], capture_output=True, text=True, encoding="utf-8", env={**os.environ, "MSYS": "noglob"})
++    if "###FILE_BEGIN:X-PROD.conf\nserver {\n}\n###FILE_END" not in d.stdout:
++        problems.append("8: dump bicimi / newline tamamlama yanlis:\n" + d.stdout)
++    if "-check.conf" in d.stdout:
++        problems.append("8: -check.conf dump'a girdi")
++except FileNotFoundError:
++    print("NOT: bash yok, dump betigi atlandi")
++
++if problems:
++    print("HATALAR:")
++    for p in problems:
++        print(" -", p)
++    sys.exit(1)
++print("OK: legacy sync plani - FQDN->upstream, tanim uretimi, eslenik esitleme, diff/strict, undefined, fix, idempotent, playbook")
+-- 
+2.55.0.windows.3
+
