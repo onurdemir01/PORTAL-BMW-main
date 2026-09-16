@@ -1,6 +1,0 @@
-bmw_nginx/configuration_delivery/files/bmw_defaults.conf
-bmw_nginx/nginx_deployment_spa/files/configuration_template.conf
-bmw_nginx/nginx_installation/operations/files/bmw_defaults.conf
-bmw_nginx/nginx_installation/operations/files/log_format.conf
-bmw_nginx/nginx_upgrade/operations/files/bmw_defaults.conf
-bmw_nginx/nginx_upgrade/operations/files/log_format.conf
