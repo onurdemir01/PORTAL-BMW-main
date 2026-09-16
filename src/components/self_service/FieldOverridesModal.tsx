@@ -10,7 +10,8 @@
 // salt-okunurdu, artık hidden/default admin tarafından ayarlanabiliyor) + serbest
 // "Ek Değişkenler" bloğu (survey'de karşılığı olmayan, AWX'in ask_variables_on_launch
 // desteklediği ama hiçbir yerde free-form giriş noktası olmayan boşluğu kapatır).
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { toast } from '@/hooks/useToast';
 import {
   LockClosedIcon,
   ShieldExclamationIcon,
@@ -564,9 +565,30 @@ export default function FieldOverridesModal({
     setLaunchOptionOverrides((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }
 
+  // "Alan Ekle" -> yeni bos alan gorunur alana kaydirilir ve ilk kutusu odaklanir
+  // (kullanici, 2026-09-16: eklenen alan asagida kaliyor, bulmak icin kaydirmak gerekiyordu).
+  const scrollToNewField = useRef(false);
+  const lastFieldRef = useRef<HTMLDivElement | null>(null);
   function addCustomField() {
+    scrollToNewField.current = true;
     setCustomFields((prev) => [...prev, { ...EMPTY_CUSTOM_FIELD }]);
   }
+  useEffect(() => {
+    if (!scrollToNewField.current) return;
+    scrollToNewField.current = false;
+    const el = lastFieldRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const input = el.querySelector<HTMLInputElement>('input[type="text"], input:not([type])');
+    if (input) setTimeout(() => input.focus(), 250);
+  }, [customFields.length]);
+
+  // HATALAR TOAST OLARAK (kullanici, 2026-09-16): pencerenin en ustundeki kirmizi kutu
+  // asagida calisirken gorunmuyordu. Hata pencerenin ustunde ayri bir bildirim olarak
+  // cikar ve kendiliginden kaybolur. Yalniz "kaydetme kilitli" uyarisi kalici kalir.
+  useEffect(() => {
+    if (err && !loadFailed) toast.error(err, 8000);
+  }, [err, loadFailed]);
   function updateCustomField(index: number, patch: Partial<SurveyField>) {
     setCustomFields((prev) => prev.map((f, i) => (i === index ? { ...f, ...patch } : f)));
   }
@@ -987,7 +1009,7 @@ export default function FieldOverridesModal({
             </div>
           </details>
         )}
-        {err && (
+        {err && loadFailed && (
           <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
             {err}
           </div>
@@ -1067,7 +1089,11 @@ export default function FieldOverridesModal({
               customFields.map((f, i) => {
                 const isChoiceType = f.type === 'multiplechoice' || f.type === 'multiselect';
                 return (
-                  <div key={i} className="border border-[var(--border)] rounded-xl p-3 space-y-2">
+                  <div
+                    key={i}
+                    ref={i === customFields.length - 1 ? lastFieldRef : undefined}
+                    className="border border-[var(--border)] rounded-xl p-3 space-y-2"
+                  >
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-semibold text-[var(--text-muted)]">
                         Alan {i + 1}
