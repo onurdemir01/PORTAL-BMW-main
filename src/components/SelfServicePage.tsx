@@ -6,7 +6,7 @@ import { ansibleApi, type OcoWindowInfo } from '@/api/ansibleApi';
 import { nobetciApi, type NobetciResult } from '@/api/nobetciApi';
 import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions } from '@/api/ansibleApi';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
-import DynamicChoiceSelect from '@/components/self_service/DynamicChoiceSelect';
+import DynamicChoiceSelect, { MULTI_SEP, splitMulti } from '@/components/self_service/DynamicChoiceSelect';
 import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { useFloatingWindow, ResizeHandle } from '@/hooks/useFloatingWindow';
@@ -210,6 +210,9 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
       !f.choices.includes(v)
     ) {
       return 'Listeden geçerli bir seçenek seçin.';
+    }
+    if (f.type === 'multiselect' && !f.choicesSource && Array.isArray(f.choices) && f.choices.length > 0) {
+      if (splitMulti(v).some((x) => !f.choices.includes(x))) return 'Listeden geçerli seçenekler seçin.';
     }
     return null;
   }
@@ -660,8 +663,32 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
                             onChange={set}
                             onBlur={onBlur}
                             error={!!err}
+                            multiple={f.type === 'multiselect'}
                           />
-                        ) : f.type === 'multiplechoice' || f.type === 'multiselect' ? (
+                        ) : f.type === 'multiselect' ? (
+                          // COKLU SECIM = onay kutulari (2026-09-16: "overwrite edilecek dosyalari
+                          // tikle secebileyim"). Deger satir sonu ile birlesik; sunucu listeye cevirir.
+                          <div className={`rounded-lg border p-2 space-y-0.5 ${err ? 'border-red-400' : 'border-[var(--border)]'}`} id={id} onBlur={onBlur}>
+                            {f.choices.map((c) => {
+                              const picked = new Set(splitMulti(val));
+                              return (
+                                <label key={c} className="flex items-center gap-2 text-[12px] cursor-pointer py-0.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={picked.has(c)}
+                                    onChange={() => {
+                                      if (picked.has(c)) picked.delete(c);
+                                      else picked.add(c);
+                                      set(f.choices.filter((x) => picked.has(x)).join(MULTI_SEP));
+                                    }}
+                                  />
+                                  <span>{f.choiceLabels?.[c] ?? c}</span>
+                                </label>
+                              );
+                            })}
+                            <div className="text-[11px] text-[var(--text-muted)] pt-1">{splitMulti(val).length} / {f.choices.length} seçili</div>
+                          </div>
+                        ) : f.type === 'multiplechoice' ? (
                           <Select
                             id={id}
                             error={!!err}

@@ -157,6 +157,31 @@ const SOURCES = {
     },
   },
 
+  // Nginx sunuculari (Denetim > Nginx Envanteri, dbo.nginx_inventory; nginx_metadata job'i).
+  // Ortam opsiyonel daraltma; configuration_delivery gibi "su sunuculara dagit" isleri icin
+  // COKLU SECIM alanina baglanir.
+  'nginx-hosts': {
+    label: 'Nginx sunucuları (Nginx Envanteri; çoklu seçim için)',
+    params: [{ name: 'env', label: 'Ortam alanı (opsiyonel daraltma)', required: false }],
+    async load({ env }) {
+      const { query } = require('../inventory/mssql.cjs');
+      const { envOfHost } = require('../audit/nginx-hosts.cjs');
+      const wantEnv = normEnv(env);
+      const r = await query(`SELECT hostname, env, location, service FROM dbo.nginx_inventory`);
+      const out = [];
+      for (const row of r.recordset || []) {
+        const host = String(row.hostname || '').trim().toUpperCase();
+        if (!host) continue;
+        const e = normEnv(row.env) || envOfHost(host);
+        if (wantEnv && e !== wantEnv) continue;
+        const svc = String(row.service || '').trim();
+        out.push({ value: host, label: `${host}${svc ? '  ·  ' + svc : ''}${row.location ? '  ·  ' + row.location : ''}`, group: e || 'BILINMIYOR' });
+      }
+      out.sort((a, b) => a.group.localeCompare(b.group) || a.value.localeCompare(b.value));
+      return out;
+    },
+  },
+
   // Reverse proxy servisleri (GLOMO, WEBFORMS, ...): son nginx_config_audit taramasinda
   // o ortamda gorulen vhost servisleri.
   'nginx-services': {

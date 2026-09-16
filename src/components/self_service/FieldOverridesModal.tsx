@@ -61,7 +61,7 @@ interface LocalFieldState {
 // kendi seçim listesi olan alanı envanterle ezmek iki listeyi çeliştirir); Survey
 // Tasarımcısı alanında metin VE seçim tipleri (kullanıcı bildirimi 2026-09-15: "Metin"
 // alanlarda çıkmıyordu, asıl ihtiyaç namespace/uygulama gibi metin alanlarıydı).
-const SOURCE_BINDABLE_AWX = new Set(['text', 'textarea']);
+const SOURCE_BINDABLE_AWX = new Set(['text', 'textarea', 'multiselect']);
 const SOURCE_BINDABLE_CUSTOM = new Set(['text', 'textarea', 'multiplechoice', 'multiselect']);
 
 // SEÇENEK KAYNAĞI EDİTÖRÜ (2026-09-15): serbest metin alanını veritabanından beslenen
@@ -175,7 +175,7 @@ const CUSTOM_FIELD_TYPES: { value: string; label: string }[] = [
   { value: 'float', label: 'Ondalıklı Sayı' },
   { value: 'password', label: 'Şifre/Gizli' },
   { value: 'multiplechoice', label: 'Tekli Seçim (liste)' },
-  { value: 'multiselect', label: 'Çoklu Seçim (liste)' },
+  { value: 'multiselect', label: 'Çoklu Seçim (onay kutuları)' },
 ];
 
 const EMPTY_CUSTOM_FIELD: SurveyField = {

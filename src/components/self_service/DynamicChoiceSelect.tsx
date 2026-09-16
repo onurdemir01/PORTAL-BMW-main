@@ -19,6 +19,16 @@ interface Props {
   onChange: (v: string) => void;
   onBlur?: () => void;
   error?: boolean;
+  /** Çoklu seçim: onay kutuları; değer satır sonu ile birleştirilir (sunucu listeye çevirir). */
+  multiple?: boolean;
+}
+
+export const MULTI_SEP = '\n';
+export function splitMulti(v: string): string[] {
+  return String(v || '')
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter(Boolean);
 }
 
 /** Kaynak parametrelerini form değerlerinden kurar (sunucudaki paramsFromValues ile aynı). */
@@ -33,7 +43,7 @@ export function paramsFor(source: ChoicesSource, values: Record<string, string>)
   return out;
 }
 
-export default function DynamicChoiceSelect({ id, source, values, value, onChange, onBlur, error }: Props) {
+export default function DynamicChoiceSelect({ id, source, values, value, onChange, onBlur, error, multiple = false }: Props) {
   const params = paramsFor(source, values);
   const paramsKey = JSON.stringify(params);
   const optional = new Set(source.optional || []);
@@ -62,8 +72,11 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
           return;
         }
         setChoices(r.choices || []);
-        // Bağımlı alan değişti ve eski seçim yeni listede yok -> temizle.
-        if (value && !(r.choices || []).some((c) => c.value === value)) onChange('');
+        // Bağımlı alan değişti ve eski seçim yeni listede yok -> temizle (çokluda: yalnız listede olmayanlar düşer).
+        if (multiple) {
+          const keep = splitMulti(value).filter((v) => (r.choices || []).some((c) => c.value === v));
+          if (keep.length !== splitMulti(value).length) onChange(keep.join(MULTI_SEP));
+        } else if (value && !(r.choices || []).some((c) => c.value === value)) onChange('');
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -92,6 +105,56 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
   const missingNames = Object.entries(source.params || {})
     .filter(([p]) => !params[p] && !optional.has(p))
     .map(([, fieldName]) => fieldName);
+
+  if (multiple) {
+    const picked = new Set(splitMulti(value));
+    const toggle = (v: string) => {
+      const next = new Set(picked);
+      if (next.has(v)) next.delete(v);
+      else next.add(v);
+      onChange(choices.filter((c) => next.has(c.value)).map((c) => c.value).join(MULTI_SEP));
+    };
+    const visible = groups.flatMap(([, cs]) => cs);
+    return (
+      <div className={`space-y-1.5 rounded-lg border p-2 ${error ? 'border-red-400' : 'border-[var(--border)]'}`} id={id} onBlur={onBlur}>
+        <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
+          <span>
+            {missingParam ? `Önce ${missingNames.join(', ')} seçin…` : loading ? 'Yükleniyor…' : `${picked.size} / ${choices.length} seçili`}
+          </span>
+          {choices.length > 0 && (
+            <span className="flex gap-2">
+              <button type="button" className="underline decoration-dotted" onClick={() => onChange(visible.map((c) => c.value).join(MULTI_SEP))}>
+                {filter ? 'görünenlerin tümü' : 'tümü'}
+              </button>
+              <button type="button" className="underline decoration-dotted" onClick={() => onChange('')}>
+                hiçbiri
+              </button>
+            </span>
+          )}
+        </div>
+        {choices.length > 8 && (
+          <TextInput value={filter} placeholder="Listede ara…" onChange={(e) => setFilter(e.target.value)} aria-label="Seçeneklerde ara" />
+        )}
+        <div className="max-h-64 overflow-y-auto space-y-0.5">
+          {groups.map(([g, cs]) => (
+            <div key={g || '_'}>
+              {g && <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] mt-1">{g}</div>}
+              {cs.map((c) => (
+                <label key={c.value} className="flex items-center gap-2 text-[12px] cursor-pointer py-0.5">
+                  <input type="checkbox" checked={picked.has(c.value)} onChange={() => toggle(c.value)} />
+                  <span className="font-mono">{c.label}</span>
+                </label>
+              ))}
+            </div>
+          ))}
+          {!loading && !missingParam && choices.length === 0 && (
+            <div className="text-[11px] text-[var(--text-muted)]">Envanterde kayıt yok.</div>
+          )}
+        </div>
+        {err && <p className="text-xs text-red-600">{err}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-1.5">

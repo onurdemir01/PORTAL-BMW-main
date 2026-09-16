@@ -92,7 +92,8 @@ test('CS5 mapSurveySpec: kaynaga bagli alan secim kutusu olarak sunulur, choices
   const i = src.indexOf('function mapSurveySpec(');
   const body = src.slice(i, i + 1800);
   assert.match(body, /ov\.choicesSource/, 'override choicesSource okunmuyor');
-  assert.match(body, /type: choicesSource \? 'multiplechoice' : field\.type/, 'tip secim kutusuna cevrilmiyor');
+  // Coklu secim alani (AWX multiselect) kaynaga baglaninca coklu kalir; digerleri tekli secim.
+  assert.match(body, /type: choicesSource \? \(field\.type === 'multiselect' \? 'multiselect' : 'multiplechoice'\) : field\.type/, 'tip secim kutusuna cevrilmiyor');
   assert.match(body, /\.\.\.\(choicesSource \? \{ choicesSource \} : \{\}\)/, 'choicesSource istemciye gitmiyor');
 });
 
@@ -155,8 +156,26 @@ test('CS9 tenant filtresi: yalniz o tenant cluster\'lari; sabit secenek parametr
 
 test('CS10 admin ekrani: kaynak editoru METIN alanlarinda cikar (Survey Tasarimcisi + AWX)', () => {
   const modal = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'FieldOverridesModal.tsx'), 'utf8'));
-  assert.match(modal, /SOURCE_BINDABLE_AWX = new Set\(\['text', 'textarea'\]\)/);
+  assert.match(modal, /SOURCE_BINDABLE_AWX = new Set\(\['text', 'textarea', 'multiselect'\]\)/);
   assert.match(modal, /SOURCE_BINDABLE_CUSTOM = new Set\(\['text', 'textarea', 'multiplechoice', 'multiselect'\]\)/);
   assert.match(modal, /SOURCE_BINDABLE_CUSTOM\.has\(f\.type\) && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/, 'ozel alanda editor tip kumesine bagli degil');
   assert.doesNotMatch(modal, /isChoiceType && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/, 'editor hala yalnizca secim tiplerinde (Metin alanlarda cikmaz)');
+});
+
+// COKLU SECIM (2026-09-16, configuration_delivery: "overwrite edilecek dosyalari tikle secebileyim"):
+// istemci onay kutulari, deger satir sonuyla birlesik; sunucu her degeri dogrular ve AWX'e LISTE gonderir.
+test('CS11 multiselect: istemci onay kutusu, sunucu satir-sonu -> liste ve her deger whitelist', () => {
+  const page = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'SelfServicePage.tsx'), 'utf8'));
+  assert.match(page, /f\.type === 'multiselect' \? \(/, 'multiselect icin ayri dal yok');
+  assert.match(page, /type="checkbox"/, 'onay kutusu yok');
+  assert.match(page, /multiple=\{f\.type === 'multiselect'\}/, 'kaynakli alanda coklu secim gecirilmiyor');
+  const src = codeOnly(read('runner.cjs'));
+  assert.match(src, /function splitMulti\(raw\)/, 'splitMulti yok');
+  const occurrences = (src.match(/if \(field\.type === 'multiselect'\) \{\s*const picked = splitMulti\(/g) || []).length;
+  assert.equal(occurrences, 2, 'hem AWX survey hem Survey Tasarimcisi cozumleyicisinde multiselect dali olmali');
+  assert.match(src, /extraVars\[field\.variable\] = picked;/, 'AWX yoluna liste gitmiyor');
+  assert.match(src, /extraVars\[field\.name\] = picked;/, 'ozel alan yoluna liste gitmiyor');
+  const sel = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'DynamicChoiceSelect.tsx'), 'utf8');
+  assert.match(sel, /if \(multiple\) \{/, 'kaynakli coklu secim yok');
+  assert.ok(cs.listSources().some((s) => s.name === 'nginx-hosts'), 'nginx-hosts kaynagi yok');
 });

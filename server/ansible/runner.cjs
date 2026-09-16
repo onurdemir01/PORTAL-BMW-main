@@ -1806,7 +1806,7 @@ function initAnsibleRunner(app) {
       return {
         name: field.variable,
         label: ov.label || field.question_name,
-        type: choicesSource ? 'multiplechoice' : field.type,
+        type: choicesSource ? (field.type === 'multiselect' ? 'multiselect' : 'multiplechoice') : field.type,
         required,
         defaultValue: ov.defaultValue !== undefined ? ov.defaultValue : field.default || '',
         choices: choicesSource ? [] : field.choices || [],
@@ -1872,6 +1872,20 @@ function initAnsibleRunner(app) {
       }
       if (val === '') continue; // opsiyonel + bos → AWX'in kendi survey default'una birakilir
 
+      if (field.type === 'multiselect') {
+        const picked = splitMulti(raw);
+        const bad = Array.isArray(field.choices) && field.choices.length > 0
+          ? picked.filter((v) => !field.choices.includes(v))
+          : [];
+        if (bad.length) {
+          throw Object.assign(new Error(`Geçersiz seçim (${label}): ${bad.join(', ')}`), {
+            status: 400,
+            field: field.variable,
+          });
+        }
+        extraVars[field.variable] = picked;
+        continue;
+      }
       if (
         Array.isArray(field.choices) &&
         field.choices.length > 0 &&
@@ -1907,6 +1921,17 @@ function initAnsibleRunner(app) {
     return extraVars;
   }
 
+  // COKLU SECIM (2026-09-16): istemci secilen degerleri satir sonu ('\n') ile birlestirir
+  // (AWX'in "Multiple Select" metin bicimi); AWX'e LISTE olarak gider (AWX survey
+  // multiselect extra_vars'ta list). Dizi de kabul edilir. Bos deger -> [].
+  function splitMulti(raw) {
+    if (Array.isArray(raw)) return raw.map((x) => String(x).trim()).filter(Boolean);
+    return String(raw ?? '')
+      .split(/\r?\n/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+
   // SECENEK KAYNAGI DOGRULAMASI (choice-sources.cjs): choicesSource tasiyan her alanin
   // gonderilen degeri, kaynak yeniden sorularak listeye karsi dogrulanir. Cozumleyiciler
   // (resolve*ExtraVars) senkron kaldigi icin bu ayri, async bir adimdir; ikisinden sonra
@@ -1918,8 +1943,12 @@ function initAnsibleRunner(app) {
       if (!cs || !cs.source) continue;
       const val = extraVars[f.name];
       if (val === undefined || val === null || String(val) === '') continue;
+      // Coklu secim: her deger ayri dogrulanir (liste ya da '\n' ile birlesik dizge).
+      const vals = Array.isArray(val) ? val : f.type === 'multiselect' ? splitMulti(val) : [String(val)];
       try {
-        await choiceSources.assertValueInSource(cs, String(val), extraVars, f.label || f.name);
+        for (const v of vals) {
+          await choiceSources.assertValueInSource(cs, String(v), extraVars, f.label || f.name);
+        }
       } catch (e) {
         throw Object.assign(e, { field: f.name });
       }
@@ -1987,6 +2016,20 @@ function initAnsibleRunner(app) {
         continue;
       }
 
+      if (field.type === 'multiselect') {
+        const picked = splitMulti(submittedValues ? submittedValues[field.name] : val);
+        const bad = Array.isArray(field.choices) && field.choices.length > 0
+          ? picked.filter((v) => !field.choices.includes(v))
+          : [];
+        if (bad.length) {
+          throw Object.assign(new Error(`Geçersiz seçim (${label}): ${bad.join(', ')}`), {
+            status: 400,
+            field: field.name,
+          });
+        }
+        extraVars[field.name] = picked;
+        continue;
+      }
       if (
         Array.isArray(field.choices) &&
         field.choices.length > 0 &&
@@ -2760,10 +2803,10 @@ function initAnsibleRunner(app) {
             continue;
           }
           const field = specFields.find((f) => f.variable === ov.fieldName);
-          if (field && field.type !== 'text' && field.type !== 'textarea') {
+          if (field && !['text', 'textarea', 'multiselect'].includes(field.type)) {
             return res.status(400).json({
               ok: false,
-              message: `"${field.question_name || field.variable}" metin alanı değil (${field.type}); seçenek kaynağı yalnızca metin alanlarına bağlanabilir.`,
+              message: `"${field.question_name || field.variable}" metin/çoklu seçim alanı değil (${field.type}); seçenek kaynağı yalnızca bunlara bağlanabilir.`,
             });
           }
           const problem = choiceSources.validateChoicesSource(ov.choicesSource, specNames);
