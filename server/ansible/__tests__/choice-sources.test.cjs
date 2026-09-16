@@ -179,3 +179,17 @@ test('CS11 multiselect: istemci onay kutusu, sunucu satir-sonu -> liste ve her d
   assert.match(sel, /if \(multiple\) \{/, 'kaynakli coklu secim yok');
   assert.ok(cs.listSources().some((s) => s.name === 'nginx-hosts'), 'nginx-hosts kaynagi yok');
 });
+
+// UX (kullanici, 2026-09-16): arama kutusuna yazinca yerel <select> acilmiyor, kullanici
+// sorgunun calistigini anlamiyordu. Tekli secim artik combobox: yazdikca eslesenler HEMEN
+// listelenir (role=listbox), Enter ilk eslesen; secim rozet + "degistir".
+test('CS12 tekli kaynak secimi combobox: yerel select yok, yazdikca liste, Enter ile secim', () => {
+  const sel = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'DynamicChoiceSelect.tsx'), 'utf8'));
+  assert.doesNotMatch(sel, /<Select\b/, 'yerel <select> hala kullaniliyor (arama sonucu gorunmez)');
+  assert.match(sel, /role="listbox"/, 'sonuc listesi yok');
+  assert.match(sel, /e\.key === 'Enter' && visible\.length > 0/, 'Enter ilk eslesen secmiyor');
+  assert.match(sel, /setFilter\(e\.target\.value\);\s*setOpen\(true\);/, 'yazinca liste acilmiyor');
+  assert.match(sel, /değiştir/, 'secili deger degistirilemiyor');
+  // hook sirasi: useState(open) erken donusten (multiple) ONCE
+  assert.ok(sel.indexOf('const [open, setOpen] = useState(false)') < sel.indexOf('if (multiple) {'), 'open state erken donusten sonra tanimli (hook sirasi)');
+});

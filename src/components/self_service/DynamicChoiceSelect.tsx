@@ -8,7 +8,7 @@
 // gönderilmesin (sunucu zaten reddeder, ama kullanıcı bunu formda görmeli).
 import React, { useEffect, useMemo, useState } from 'react';
 import { ansibleApi, type ChoicesSource, type DynamicChoice } from '@/api/ansibleApi';
-import { Select, TextInput } from '@/components/ui/Form';
+import { TextInput } from '@/components/ui/Form';
 
 interface Props {
   id: string;
@@ -53,6 +53,8 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [filter, setFilter] = useState('');
+  // tekli secim combobox'inin acik/kapali durumu (hook sirasi: erken donuslerden ONCE)
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (missingParam) {
@@ -156,55 +158,94 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
     );
   }
 
+  // TEKLI SECIM = COMBOBOX (kullanici, 2026-09-16): "arama kutusuna yazinca liste
+  // kendiliginden acilmiyor, tiklamak gerekiyor; kullanici sorgunun calistigini anlamiyor".
+  // Yerel <select> arama sonucunu gostermez; simdi yazdikca eslesenler HEMEN altta listelenir,
+  // tiklayinca (ya da Enter ile ilk eslesen) secilir, secim rozet olarak gorunur.
+  const selected = choices.find((c) => c.value === value) || (value ? { value, label: value } : null);
+  const visible = groups.flatMap(([g, cs]) => cs.map((c) => ({ ...c, g })));
+  const showList = !missingParam && !loading && (open || (!selected && filter.trim().length > 0));
+  const pick = (v: string) => {
+    onChange(v);
+    setFilter('');
+    setOpen(false);
+  };
   return (
-    <div className="space-y-1.5">
-      {choices.length > 12 && (
+    <div className="space-y-1.5" id={id} onBlur={onBlur}>
+      {selected && !open ? (
+        <div className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] ${error ? 'border-red-400' : 'border-[var(--border)]'} bg-[var(--bg-surface)]`}>
+          <span className="font-mono truncate" title={selected.label}>{selected.label}</span>
+          <span className="flex gap-2 shrink-0">
+            <button type="button" className="text-[11px] underline decoration-dotted text-[var(--text-muted)]" onClick={() => setOpen(true)}>
+              değiştir
+            </button>
+            <button type="button" className="text-[11px] text-[var(--text-muted)]" aria-label="Seçimi temizle" onClick={() => onChange('')}>
+              ✕
+            </button>
+          </span>
+        </div>
+      ) : (
         <TextInput
           value={filter}
-          placeholder="Listede ara…"
-          onChange={(e) => setFilter(e.target.value)}
-          aria-label="Seçeneklerde ara"
+          error={error}
+          disabled={missingParam || loading}
+          placeholder={
+            missingParam
+              ? `Önce ${missingNames.join(', ')} seçin…`
+              : loading
+                ? 'Yükleniyor…'
+                : choices.length === 0
+                  ? 'Envanterde kayıt yok'
+                  : `Ara ve seç… (${choices.length} kayıt)`
+          }
+          onChange={(e) => {
+            setFilter(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && visible.length > 0) {
+              e.preventDefault();
+              pick(visible[0].value);
+            } else if (e.key === 'Escape') {
+              setOpen(false);
+            }
+          }}
+          aria-label="Ara ve seç"
+          autoComplete="off"
         />
       )}
-      <Select
-        id={id}
-        error={error}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        disabled={missingParam || loading}
-      >
-        <option value="">
-          {missingParam
-            ? `Önce ${missingNames.join(', ')} seçin…`
-            : loading
-              ? 'Yükleniyor…'
-              : choices.length === 0
-                ? 'Envanterde kayıt yok'
-                : `Seçin… (${choices.length})`}
-        </option>
-        {/* Seçili değer filtre dışında kalsa bile listede kalsın; yoksa <select> onu boşa çeker. */}
-        {value && !groups.some(([, cs]) => cs.some((c) => c.value === value)) && (
-          <option value={value}>{value}</option>
-        )}
-        {groups.map(([g, cs]) =>
-          g ? (
-            <optgroup key={g} label={g}>
+      {showList && (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] max-h-60 overflow-y-auto" role="listbox">
+          <div className="px-2 py-1 text-[10px] text-[var(--text-muted)] border-b border-[var(--border-subtle)]">
+            {filter.trim() ? `${visible.length} / ${choices.length} eşleşme` : `${choices.length} kayıt — yazarak daraltın`}
+            {selected && (
+              <button type="button" className="ml-2 underline decoration-dotted" onClick={() => setOpen(false)}>
+                vazgeç
+              </button>
+            )}
+          </div>
+          {visible.length === 0 && <div className="px-2 py-2 text-[12px] text-[var(--text-muted)]">Eşleşen kayıt yok.</div>}
+          {groups.map(([g, cs]) => (
+            <div key={g || '_'}>
+              {g && <div className="px-2 pt-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">{g}</div>}
               {cs.map((c) => (
-                <option key={c.value} value={c.value}>
+                <button
+                  key={c.value}
+                  type="button"
+                  role="option"
+                  aria-selected={c.value === value}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(c.value)}
+                  className={`block w-full text-left px-2 py-1 text-[12px] font-mono hover:bg-[var(--bg-elevated)] ${c.value === value ? 'bg-[var(--bg-elevated)] font-semibold' : ''}`}
+                >
                   {c.label}
-                </option>
+                </button>
               ))}
-            </optgroup>
-          ) : (
-            cs.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))
-          ),
-        )}
-      </Select>
+            </div>
+          ))}
+        </div>
+      )}
       {err && <p className="text-xs text-red-600">{err}</p>}
       {!err && !missingParam && !loading && choices.length === 0 && (
         <p className="text-xs text-[var(--text-muted)]">
