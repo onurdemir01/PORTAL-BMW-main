@@ -143,4 +143,16 @@ async function getChangeOrder(ocoNumber) {
   return { payload, result: wrapper.Result, resultCode: wrapper.ResultCode };
 }
 
-module.exports = { getChangeOrder, normalizeOcoNumber, describeUpstreamError, upstreamHint };
+// HTTP DURUM KODU (ekran goruntusu, 2026-09-16): Portal, nginx arkasinda calisiyor ve
+// nginx `proxy_intercept_errors on` + `error_page 403 404 500 502 503 504` ile bu kodlu
+// cevaplarin GOVDESINI kendi HTML hata sayfasiyla degistiriyor. Yani "OCO bulunamadi"
+// mesajini JSON olarak 404 ile dondurmek, kullaniciya "<!doctype html>..." gostermek
+// demek. Kullaniciya mesaj tasiyan OCO cevaplari bu yuzden 400 ile doner (nginx 400'e
+// dokunmaz); err.status semantik olarak kalir, yalnizca HTTP katmanina cevrilir.
+const NGINX_INTERCEPTED = new Set([403, 404, 500, 502, 503, 504]);
+function httpStatus(err) {
+  const s = Number((err && err.status) || 400);
+  return NGINX_INTERCEPTED.has(s) ? 400 : s;
+}
+
+module.exports = { getChangeOrder, normalizeOcoNumber, describeUpstreamError, upstreamHint, httpStatus, NGINX_INTERCEPTED };

@@ -3555,7 +3555,7 @@ function initAnsibleRunner(app) {
       if (!pi || !pi.startDate) {
         return res.status(400).json({
           ok: false,
-          message: `OCO ${ocoNumber} kaydında planlanan kesinti (PlannedInterruption) bilgisi yok.`,
+          message: `OCO ${ocoNumber} kaydında planlanan kesinti tarihi yok (PlannedStartDate/PlannedEndDate ya da PlannedInterruption).`,
         });
       }
       const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
@@ -3578,7 +3578,8 @@ function initAnsibleRunner(app) {
         message: w.message,
       });
     } catch (err) {
-      res.status(err.status || 502).json({ ok: false, message: err.message });
+      // 404/502/503 nginx tarafindan HTML hata sayfasina cevriliyordu -> 400 (bkz. oco/client httpStatus)
+      res.status(require('../oco/client.cjs').httpStatus(err)).json({ ok: false, message: err.message });
     }
   });
 

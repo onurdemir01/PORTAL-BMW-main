@@ -19,8 +19,22 @@ const EQUAL_DATE_WINDOW_MS = 2 * 60 * 60 * 1000;
 // platforma gore FARKLI yorumlar (ay/gun yer degistirebilir). Alanlar tek tek okunup
 // yerel saatte kurulur - OCO tarihleri kurum saatiyle (Europe/Istanbul) verilir ve
 // Portal sunucusu da o saat diliminde calisir.
+// IKINCI BICIM (kullanici, 2026-09-16): bazi OCO'larda PlannedInterruption yok; kayit
+// PlannedStartDate / PlannedEndDate tasiyor ve deger WCF/ASP.NET JSON tarihi:
+//     "/Date(1789605000000+0300)/"
+// Parantez icindeki sayi 1970'ten beri MILISANIYE (UTC epoch); "+0300" yalnizca bilgi
+// amacli saat dilimi, hesaba KATILMAZ (epoch zaten mutlak). new Date(ms) yerel saatte
+// (Portal sunucusu Europe/Istanbul) dogru ani verir.
+const WCF_DATE_RE = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/;
+
 function parseOcoDate(value) {
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
   if (typeof value !== 'string') return null;
+  const w = value.trim().match(WCF_DATE_RE);
+  if (w) {
+    const d = new Date(Number(w[1]));
+    return isNaN(d.getTime()) ? null : d;
+  }
   const m = value.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (!m) return null;
   const [, dd, MM, yyyy, HH, mm, ss] = m;
@@ -89,20 +103,33 @@ function evaluateWindow({ startDate, endDate, now = new Date() }) {
   };
 }
 
-// OCO cevabinin govdesinden PlannedInterruption alanini cikarir. Servis alan adlarini
-// bazen farkli kasada donduruyor olabilir diye anahtar eslemesi harf duyarsiz yapilir.
+// OCO cevabinin govdesinden kesinti penceresini cikarir. ONCELIK (kullanici, 2026-09-16):
+//   1) Result.PlannedStartDate / PlannedEndDate  (WCF "/Date(ms+0300)/" ya da dd.MM.yyyy)
+//   2) Result.PlannedInterruption.InterruptionStartDate / InterruptionEndDate (eski alan;
+//      bazi OCO'larda hic yok)
+// Servis alan adlarini farkli kasada donduruyor olabilir diye eslesme harf duyarsiz.
+// Donen nesne `source` tasir ('planned' | 'interruption') — bildirim/loglama icin.
 function extractPlannedInterruption(payload) {
   const result = payload?.GetChangeOrderByWfInstanceIdResult?.Result;
-  if (!result) return null;
-  const pi = result.PlannedInterruption;
-  if (!pi || typeof pi !== 'object') return null;
-  const pick = (name) => {
-    const key = Object.keys(pi).find((k) => k.toLowerCase() === name.toLowerCase());
-    return key ? pi[key] : undefined;
+  if (!result || typeof result !== 'object') return null;
+  const pickFrom = (obj, name) => {
+    if (!obj || typeof obj !== 'object') return undefined;
+    const key = Object.keys(obj).find((k) => k.toLowerCase() === name.toLowerCase());
+    return key ? obj[key] : undefined;
   };
+  const ps = pickFrom(result, 'PlannedStartDate');
+  const pe = pickFrom(result, 'PlannedEndDate');
+  if (ps !== undefined && ps !== null && String(ps).trim() !== '') {
+    return { startDate: ps, endDate: pe, source: 'planned' };
+  }
+  const pi = pickFrom(result, 'PlannedInterruption');
+  if (!pi || typeof pi !== 'object') return null;
+  const is = pickFrom(pi, 'InterruptionStartDate');
+  if (is === undefined || is === null || String(is).trim() === '') return null;
   return {
-    startDate: pick('InterruptionStartDate'),
-    endDate: pick('InterruptionEndDate'),
+    startDate: is,
+    endDate: pickFrom(pi, 'InterruptionEndDate'),
+    source: 'interruption',
   };
 }
 

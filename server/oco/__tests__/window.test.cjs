@@ -135,3 +135,52 @@ test('production tespiti: baska deger/alan PRODUCTION SAYILMAZ', () => {
     assert.strictEqual(isProductionRequest(ev), false, JSON.stringify(ev));
   }
 });
+
+// ── PlannedStartDate / PlannedEndDate (WCF tarihi), 2026-09-16 ───────────────────────
+// Bazi OCO'larda PlannedInterruption YOK; kayit "/Date(1789605000000+0300)/" biciminde
+// PlannedStartDate/PlannedEndDate tasiyor. Parantez icindeki sayi epoch MILISANIYE;
+// "+0300" bilgi amacli (hesaba katilmaz).
+test('parseOcoDate: WCF "/Date(ms+0300)/" bicimi epoch milisaniyeden okunur', () => {
+  const d = parseOcoDate('/Date(1789605000000+0300)/');
+  assert.ok(d instanceof Date);
+  assert.equal(d.getTime(), 1789605000000);
+  assert.equal(parseOcoDate('/Date(1789605000000)/').getTime(), 1789605000000, 'dilimsiz bicim de okunur');
+  assert.equal(parseOcoDate('/Date(abc)/'), null);
+  // dilim eki hesaba KATILMAZ: +0300 ile -0500 ayni ani verir
+  assert.equal(parseOcoDate('/Date(1789605000000-0500)/').getTime(), 1789605000000);
+});
+
+test('extractPlannedInterruption: PlannedStartDate/PlannedEndDate ONCELIKLI, PlannedInterruption yedek', () => {
+  const planned = {
+    GetChangeOrderByWfInstanceIdResult: {
+      Result: {
+        PlannedStartDate: '/Date(1789605000000+0300)/',
+        PlannedEndDate: '/Date(1789614000000+0300)/',
+        // ikisi birden varsa Planned* kazanir
+        PlannedInterruption: { InterruptionStartDate: '01.01.2020 00:00:00', InterruptionEndDate: '01.01.2020 00:00:00' },
+      },
+    },
+  };
+  const a = extractPlannedInterruption(planned);
+  assert.equal(a.source, 'planned');
+  assert.equal(a.startDate, '/Date(1789605000000+0300)/');
+  const w = evaluateWindow({ startDate: a.startDate, endDate: a.endDate, now: new Date(1789605000000 + 60000) });
+  assert.equal(w.ok, true);
+  assert.equal(w.phase, 'inside');
+  assert.equal(w.equal, false, 'baslangic != bitis: verilen aralik (2.5 saat), 2 saat kurali uygulanmaz');
+  assert.equal(w.windowEnd.getTime(), 1789614000000);
+
+  const legacy = {
+    GetChangeOrderByWfInstanceIdResult: {
+      Result: { PlannedInterruption: { InterruptionStartDate: '25.08.2026 22:00:00', InterruptionEndDate: '25.08.2026 22:00:00' } },
+    },
+  };
+  const b = extractPlannedInterruption(legacy);
+  assert.equal(b.source, 'interruption');
+  assert.equal(b.startDate, '25.08.2026 22:00:00');
+
+  // Planned* bos dizgeyse yedege duser; hicbiri yoksa null
+  const empty = { GetChangeOrderByWfInstanceIdResult: { Result: { PlannedStartDate: '', PlannedInterruption: { InterruptionStartDate: '25.08.2026 22:00:00' } } } };
+  assert.equal(extractPlannedInterruption(empty).source, 'interruption');
+  assert.equal(extractPlannedInterruption({ GetChangeOrderByWfInstanceIdResult: { Result: { Subject: 'x' } } }), null);
+});

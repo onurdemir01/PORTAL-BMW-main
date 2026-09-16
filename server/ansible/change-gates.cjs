@@ -206,12 +206,13 @@ async function evaluateOcoGate({
   try {
     order = await ocoClient.getChangeOrder(ocoNumber);
   } catch (ocoErr) {
-    return { outcome: 'error', status: ocoErr.status || 502, body: { ok: false, ocoRequired: true, message: ocoErr.message } };
+    // status: nginx'in yakaladigi kodlar (404/502/503) 400'e cevrilir - bkz. oco/client httpStatus
+    return { outcome: 'error', status: ocoClient.httpStatus(ocoErr), body: { ok: false, ocoRequired: true, message: ocoErr.message } };
   }
 
   const pi = ocoWindow.extractPlannedInterruption(order.payload);
   if (!pi || !pi.startDate) {
-    return { outcome: 'error', status: 400, body: { ok: false, message: `OCO ${ocoNumber} kaydında planlanan kesinti (PlannedInterruption) bilgisi yok — işlem yapılmadı.` } };
+    return { outcome: 'error', status: 400, body: { ok: false, message: `OCO ${ocoNumber} kaydında planlanan kesinti tarihi yok (PlannedStartDate/PlannedEndDate ya da PlannedInterruption) — işlem yapılmadı.` } };
   }
   const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
   if (!w.ok) return { outcome: 'error', status: 400, body: { ok: false, message: w.message } };

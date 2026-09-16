@@ -46,6 +46,7 @@ async function withMocks(overrides, fn) {
     prodDetect: { isProductionRequest: () => true },
     ocoClient: {
       getChangeOrder: async () => ({ payload: {}, result: { Subject: 'Test degisikligi' } }),
+      httpStatus: (e) => ([403, 404, 500, 502, 503, 504].includes(e.status) ? 400 : e.status || 400),
     },
     ocoWindow: {
       extractPlannedInterruption: () => ({
@@ -177,18 +178,21 @@ test('OCO: numara yoksa → 400 { ocoRequired: true }', async () => {
   });
 });
 
-test('OCO: servis hatasi → hatanin kendi statusu + ocoRequired', async () => {
+// 2026-09-16: 404/502/503 nginx tarafindan HTML hata sayfasina cevrildigi icin OCO hatalari
+// HTTP katmaninda 400 ile doner (oco/client httpStatus); mesaj ve ocoRequired ayni.
+test('OCO: servis hatasi → 400 (nginx 404 HTML gostermesin) + ocoRequired + mesaj', async () => {
   await withMocks(
     {
       ocoClient: {
         getChangeOrder: async () => {
           throw Object.assign(new Error('OCO kaydi bulunamadi'), { status: 404 });
         },
+        httpStatus: (e) => ([403, 404, 500, 502, 503, 504].includes(e.status) ? 400 : e.status || 400),
       },
     },
     async (gates) => {
       const d = await gates.runChangeGates(baseCtx({ ocoNumber: '123' }));
-      assert.equal(d.status, 404);
+      assert.equal(d.status, 400);
       assert.equal(d.body.ocoRequired, true);
       assert.match(d.body.message, /bulunamadi/);
     },
@@ -206,7 +210,7 @@ test('OCO: PlannedInterruption yoksa → 400, ocoRequired YOK', async () => {
         undefined,
         'bu dalda ocoRequired GONDERILMEZ (eski davranis)',
       );
-      assert.match(d.body.message, /PlannedInterruption/);
+      assert.match(d.body.message, /PlannedStartDate|PlannedInterruption/);
     },
   );
 });
