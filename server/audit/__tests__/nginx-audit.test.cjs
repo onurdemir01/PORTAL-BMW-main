@@ -128,6 +128,22 @@ test('ayarlar: GLOBAL uyumsuzluk bulgu, server/location farki OVERRIDE (sayilir)
       ['ssl_protocols', 'TLSv1.2', 1],
     ],
   );
+  // STANDART DEGERLER (2026-09-16): TUM global referans direktifleri, uyumlu olanlar dahil,
+  // alfabetik; sunucuda hic olmayan null deger + matches=false. Location/server satirlari
+  // (yerel override) bu listeye GIRMEZ.
+  assert.deepEqual(
+    h.settingsAll.map((m) => [m.directive, m.reference, m.value, m.matches]),
+    [
+      ['autoindex', 'off', 'off', true],
+      ['charset', 'utf-8', null, false],
+      ['server_tokens', 'off', 'on', false],
+    ],
+  );
+  // Referans listesi sonuc duzeyinde (tum sunucular icin ayni kurulum dosyalari)
+  assert.deepEqual(
+    out.reference.map((r) => [r.directive, r.value]),
+    [['autoindex', 'off'], ['charset', 'utf-8'], ['server_tokens', 'off']],
+  );
 });
 
 test('siralama: -T dusen en ustte, sonra tanimsiz hedef, sonra global sapma', () => {

@@ -22,7 +22,7 @@ import {
 import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from './ui';
 import { Modal } from '@/components/common/Modal';
 import { useAuth } from '@/contexts/AuthContext';
-import { AuditGlossary, termHint } from './nginxAuditGlossary';
+import { AuditGlossary, ReferenceValuesPanel, termHint } from './nginxAuditGlossary';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
@@ -213,6 +213,7 @@ export function NginxAudit() {
       </Note>
 
       <AuditGlossary />
+      <ReferenceValuesPanel items={data?.reference || []} />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile

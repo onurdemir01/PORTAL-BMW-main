@@ -320,24 +320,42 @@ export default function NginxAuditHostPage() {
             dense
           >
             <div className="p-3">
-              {data.settingsMismatched.length === 0 ? (
-                <div className="text-[11px] text-emerald-700">Global ayarların tamamı referansla uyumlu.</div>
+              {/* TUM standart degerler alt alta (kullanici, 2026-09-16): uyumlu olanlar dahil.
+                  Sapma olanlar kirmizi, tanimsiz olanlar italik; yalniz sapmalari gormek icin
+                  ust sutun basligindaki suzgec. */}
+              <div className="text-[11px] mb-1.5 flex items-center justify-between gap-2">
+                <span className={data.settingsMismatched.length === 0 ? 'text-emerald-700' : 'text-red-700 font-semibold'}>
+                  {data.settingsMismatched.length === 0
+                    ? `Global ayarların tamamı referansla uyumlu (${nf((data.settingsAll || []).length)} direktif).`
+                    : `${nf(data.settingsMismatched.length)} / ${nf((data.settingsAll || []).length)} direktif referanstan sapıyor.`}
+                </span>
+              </div>
+              {(data.settingsAll || []).length === 0 ? (
+                <div className="text-[11px] text-[var(--text-muted)]">Bu taramada referans karşılaştırması yok.</div>
               ) : (
                 <table className="text-[11px] w-full mb-2">
                   <thead>
                     <tr className="text-[var(--text-muted)]">
                       <th className="text-left pr-3 pb-1">Direktif</th>
+                      <th className="text-left pr-3 pb-1">Bağlam</th>
+                      <th className="text-left pr-3 pb-1">Standart (referans)</th>
                       <th className="text-left pr-3 pb-1">Sunucudaki değer</th>
-                      <th className="text-left pr-3 pb-1">Referans</th>
+                      <th className="text-left pr-3 pb-1">Durum</th>
                       <th className="text-left pb-1">Dosya</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.settingsMismatched.map((m, i) => (
-                      <tr key={i} className="border-t border-[var(--border-subtle)]">
-                        <td className="pr-3 py-1 font-mono">{m.directive}</td>
-                        <td className="pr-3 py-1 font-mono text-red-700">{m.missing ? <i>tanımlı değil</i> : m.value}</td>
-                        <td className="pr-3 py-1 font-mono text-emerald-700">{m.reference ?? '—'}</td>
+                    {(data.settingsAll || []).map((m, i) => (
+                      <tr key={i} className={`border-t border-[var(--border-subtle)] ${m.matches ? '' : 'bg-red-50/50'}`}>
+                        <td className="pr-3 py-1 font-mono whitespace-nowrap">{m.directive}</td>
+                        <td className="pr-3 py-1 font-mono text-[var(--text-muted)]">{m.context}</td>
+                        <td className="pr-3 py-1 font-mono text-emerald-700 break-all">{m.reference}</td>
+                        <td className={`pr-3 py-1 font-mono break-all ${m.matches ? '' : 'text-red-700'}`}>
+                          {m.value === null ? <i>tanımlı değil</i> : m.value}
+                        </td>
+                        <td className="pr-3 py-1 whitespace-nowrap">
+                          {m.matches ? <span className="text-emerald-700">✓ uyumlu</span> : m.value === null ? <span className="text-red-700">✗ eksik</span> : <span className="text-red-700">✗ sapma</span>}
+                        </td>
                         <td className="py-1 font-mono text-[var(--text-muted)]">{m.file || '—'}</td>
                       </tr>
                     ))}

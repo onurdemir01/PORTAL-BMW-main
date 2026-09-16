@@ -76,6 +76,9 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
       upstreamList: [],
       settingsMismatched: [],
       settingsOverrides: [],
+      // TUM global (main/http/events) referans direktifleri: uyumlu olanlar dahil.
+      // Kullanici (2026-09-16): "standart degerleri alt alta, net gormek istiyorum".
+      settingsAll: [],
       // Kurulum dosyasi uyumu (nginx_installation/operations/files, licences haric)
       refFiles: [],
       refFilesDiff: 0,
@@ -161,6 +164,8 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
   // Override'lar direktif+deger bazinda SAYILIR: 241 location ayni 60s'i tekrar
   // ediyorsa 241 satir degil "proxy_read_timeout 60s x241" gorunmeli.
   const overAgg = new Map(); // host|ctx|directive|value -> count
+  const reference = [];
+  const refSeen = new Set();
   for (const r of settings || []) {
     const host = H(r.host);
     const h = byHost.get(host);
@@ -172,6 +177,24 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     const matches = r.matches == null ? null : bit(r.matches);
     const isGlobal = ctx === 'main' || ctx === 'http' || ctx === 'events' || ctx === 'global';
     if (isGlobal) {
+      if (ref !== null) {
+        h.settingsAll.push({
+          directive,
+          context: ctx,
+          value: String(r.conf_file || '') ? value : null,
+          reference: ref,
+          matches: matches === true,
+          file: baseName(r.conf_file),
+        });
+        // Referans listesi (tum sunucular icin ayni kurulum dosyalarindan gelir): ilk gorulen
+        // deger. Farkli bir referans degeri gorulurse (kurulum dosyasi degisti ve eski tarama
+        // karisti) ikisi de listelenir.
+        const rk = directive + '|' + ref;
+        if (!refSeen.has(rk)) {
+          refSeen.add(rk);
+          reference.push({ directive, context: ctx, value: ref });
+        }
+      }
       if (matches === false) {
         h.settingsMismatched.push({
           directive,
@@ -245,6 +268,7 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     h.locationsByFile.sort((a, b) => b.total - a.total || a.file.localeCompare(b.file));
     h.upstreamList.sort((a, b) => a.name.localeCompare(b.name));
     h.settingsMismatched.sort((a, b) => a.directive.localeCompare(b.directive));
+    h.settingsAll.sort((a, b) => a.directive.localeCompare(b.directive));
     h.settingsOverrides.sort((a, b) => b.count - a.count || a.directive.localeCompare(b.directive));
     h.refFiles.sort((a, b) => a.refFile.localeCompare(b.refFile));
     h.proxyFqdnRaw = h.proxyFqdn;
@@ -290,7 +314,8 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     hostsEnvUnknown: list.filter((h) => h.env === UNKNOWN_ENV).length,
   };
 
-  return { hosts: list, totals };
+  reference.sort((a, b) => a.directive.localeCompare(b.directive) || a.value.localeCompare(b.value));
+  return { hosts: list, totals, reference };
 }
 
 module.exports = { summarizeAudit, _baseName: baseName };

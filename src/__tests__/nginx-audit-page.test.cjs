@@ -182,3 +182,13 @@ test('Nginx Audit istisna: YALNIZ atlayan/tanimsiz gri, ayar sapmasi + dosya far
   const schema = read('../server/db/mssql-setup.cjs');
   assert.ok(schema.includes('CREATE TABLE nginx_audit_exceptions'));
 });
+
+test('Nginx Audit standart degerler: liste sekmesinde referans paneli, sunucu sayfasinda TUM direktifler alt alta', () => {
+  const list = read('components/denetim/NginxAudit.tsx');
+  assert.ok(list.includes('<ReferenceValuesPanel items={data?.reference || []} />'), 'liste sekmesinde standart degerler paneli yok');
+  const page = read('components/denetim/NginxAuditHostPage.tsx');
+  assert.ok(page.includes('(data.settingsAll || []).map('), 'sunucu sayfasi yalniz sapmalari degil TUM direktifleri listelemeli');
+  assert.ok(page.includes('Standart (referans)') && page.includes('✓ uyumlu') && page.includes('✗ eksik'), 'durum sutunu yok');
+  const srv = read('../server/audit/nginx-audit.cjs');
+  assert.ok(srv.includes('settingsAll') && srv.includes('return { hosts: list, totals, reference }'), 'sunucu settingsAll/reference uretmiyor');
+});

@@ -180,3 +180,53 @@ export function AuditGlossary({ defaultOpen = false }: { defaultOpen?: boolean }
     </details>
   );
 }
+
+/**
+ * STANDART DEGERLER (kullanici istegi, 2026-09-16): kurulum referansindaki tum direktifler
+ * alt alta, net. Liste sunucudan gelir (Nginx_Audit_Settings.reference_value) — koda gomulu
+ * deger yok; kurulum dosyasi degisince denetimle birlikte burasi da degisir.
+ */
+export function ReferenceValuesPanel({
+  items,
+  defaultOpen = false,
+}: {
+  items: { directive: string; context: string; value: string }[];
+  defaultOpen?: boolean;
+}) {
+  if (!items || items.length === 0) return null;
+  const byCtx = new Map<string, typeof items>();
+  for (const it of items) {
+    const k = it.context || 'http';
+    if (!byCtx.has(k)) byCtx.set(k, []);
+    byCtx.get(k)!.push(it);
+  }
+  const order = ['main', 'events', 'http', 'global'];
+  const ctxs = [...byCtx.keys()].sort((a, b) => (order.indexOf(a) + 100) % 100 - (order.indexOf(b) + 100) % 100 || a.localeCompare(b));
+  return (
+    <details open={defaultOpen} className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]">
+      <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-[var(--text-primary)]">
+        Standart değerler — kurulum referansı ({items.length} direktif)
+        <span className="ml-2 font-normal text-[11px] text-[var(--text-muted)]">
+          nginx_installation: bmw_defaults.conf · proxy_settings.conf · rate_limits.conf · nginx.conf — sunucudaki global değer bunlardan farklıysa &quot;ayar sapması&quot;
+        </span>
+      </summary>
+      <div className="px-3 pb-3 grid gap-3 md:grid-cols-2">
+        {ctxs.map((ctx) => (
+          <div key={ctx}>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] mb-1">{ctx} bağlamı</div>
+            <table className="text-[11px] w-full">
+              <tbody>
+                {byCtx.get(ctx)!.map((it, i) => (
+                  <tr key={i} className="border-t border-[var(--border-subtle)]">
+                    <td className="py-0.5 pr-3 font-mono whitespace-nowrap">{it.directive}</td>
+                    <td className="py-0.5 font-mono text-emerald-700 break-all">{it.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}

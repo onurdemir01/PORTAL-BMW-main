@@ -974,6 +974,7 @@ function initDenetim(app) {
         filesReady: out.filesReady,
         scanDate: out.scanDate,
         host: found,
+        reference: out.reference || [],
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Nginx audit verisi alınamadı.' });

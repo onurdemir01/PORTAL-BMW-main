@@ -442,12 +442,32 @@ export interface NginxAuditHost {
   upstreamList: NginxAuditUpstream[];
   settingsMismatched: NginxAuditSettingMismatch[];
   settingsOverrides: NginxAuditSettingOverride[];
+  /** TUM global referans direktifleri (uyumlular dahil) — "standart degerler" tablosu */
+  settingsAll: NginxAuditSettingRow[];
   refFiles: NginxAuditRefFile[];
   /** Istisna kaydi (Portal DB): varsa metrikler gosterilmez, toplamlara girmez */
   exception: { note: string; by: string | null; at: string | null } | null;
   /** referanstan farkli (ya da eksik) kurulum dosyasi sayisi */
   refFilesDiff: number;
   refFilesMissing: number;
+}
+
+export interface NginxAuditSettingRow {
+  directive: string;
+  context: string;
+  /** null: sunucuda hic tanimli degil */
+  value: string | null;
+  reference: string;
+  matches: boolean;
+  file: string;
+}
+
+/** Kurulum referansindaki (bmw_defaults.conf, proxy_settings.conf, rate_limits.conf,
+ *  nginx.conf) standart degerler — tum sunucular icin ayni. */
+export interface NginxAuditReferenceValue {
+  directive: string;
+  context: string;
+  value: string;
 }
 
 export interface NginxAuditHostResult {
@@ -458,6 +478,7 @@ export interface NginxAuditHostResult {
   scanDate: string | null;
   /** null: son taramada bu sunucu yok */
   host: NginxAuditHost | null;
+  reference?: NginxAuditReferenceValue[];
 }
 
 export interface NginxAuditResult {
@@ -468,6 +489,8 @@ export interface NginxAuditResult {
   filesReady: boolean;
   scanDate: string | null;
   hosts: NginxAuditHost[];
+  /** standart degerler (kurulum referansi), direktif bazinda */
+  reference?: NginxAuditReferenceValue[];
   totals: {
     hosts: number;
     configInvalid: number;
