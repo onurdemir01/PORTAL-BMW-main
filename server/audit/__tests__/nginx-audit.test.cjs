@@ -5,7 +5,9 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { summarizeAudit } = require('../nginx-audit.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
+const { summarizeAudit, readLatestAuditDate } = require('../nginx-audit.cjs');
 
 const host = (h, over = {}) => ({
   host: h,
@@ -303,4 +305,41 @@ test('istisnali sunucu: atlayan/tanimsiz 0 (ham korunur), ayar sapmasi + dosya f
   assert.equal(out.totals.settingsMismatch, 6, 'ayar sapmasi istisnali dahil sayilir');
   assert.equal(out.totals.hostsWithMismatch, 2);
   assert.equal(out.hosts.find((h) => h.host === 'GBNORMAL').exception, null);
+});
+
+test('SQL Server 208: audit tablosu yoksa schema fallback korunur', async () => {
+  const direct = Object.assign(new Error("Invalid object name 'dbo.Nginx_Audit_Hosts'."), { number: 208 });
+  const nested = Object.assign(new Error('request failed'), { originalError: { info: { number: 208 } } });
+
+  for (const err of [direct, nested]) {
+    const out = await readLatestAuditDate(async () => { throw err; });
+    assert.deepEqual(out, { recordset: [], _missing: true });
+  }
+});
+
+test('DB timeout/login/baglanti hatasi schema eksigi gibi GIZLENMEZ', async () => {
+  const errors = [
+    Object.assign(new Error('Failed to connect within 30000ms'), { code: 'ETIMEOUT' }),
+    Object.assign(new Error('Login failed for user'), { code: 'ELOGIN' }),
+    Object.assign(new Error('socket closed'), { code: 'ESOCKET' }),
+  ];
+
+  for (const err of errors) {
+    await assert.rejects(readLatestAuditDate(async () => { throw err; }), (actual) => actual === err);
+  }
+});
+
+test('Nginx Audit yukleyicisi genis catch yerine siniflandirici helper kullanir', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const start = src.indexOf('async function loadNginxAudit');
+  const end = src.indexOf("router.get('/nginx-audit'", start);
+  const loader = src.slice(start, end);
+
+  assert.ok(start >= 0 && end > start, 'Nginx Audit yukleyici siniri bulunamadi');
+  assert.match(loader, /readLatestAuditDate\(query\)/, 'yukleyici hata siniflandirici helpera bagli degil');
+  assert.doesNotMatch(
+    loader,
+    /\.catch\(\(\)\s*=>\s*\(\{\s*recordset:\s*\[\],\s*_missing:\s*true\s*\}\)\)/,
+    'yukleyici butun DB hatalarini yeniden schema eksigi gibi gizliyor',
+  );
 });
