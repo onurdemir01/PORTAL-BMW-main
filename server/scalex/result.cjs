@@ -9,7 +9,7 @@
 // `server/ansible/bmw_portal/scalex/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
-const EXPECTED_PACKAGE_VERSION = '8';
+const EXPECTED_PACKAGE_VERSION = '9';
 
 function extractStatsKey(rawArtifacts, key) {
   const a = rawArtifacts || {};
@@ -276,6 +276,32 @@ function extractDiscoveryResult(rawArtifacts) {
           createdAt: d.created_at && d.created_at !== '-' ? d.created_at : null,
           createdBy: d.created_by && d.created_by !== '-' ? d.created_by : null,
           jobId: d.job_id && d.job_id !== '-' ? d.job_id : null,
+        };
+      });
+  }
+
+  if (base.mode === 'state') {
+    // CANLI REPLICA — "ConfigMap yok" ile "uygulama kapali" AYRI SORULAR.
+    //
+    // ConfigMap yoksa portal bugune kadar "biri elle geri almis olabilir" diye bir
+    // TAHMIN yaziyordu ve iki farkli gercegi ayni sekilde gosteriyordu: uygulama
+    // AYAKTA olabilir (sorun yok, kayit anlamsiz kalmis) ya da 0'DA olabilir (geri
+    // alma bilgisi KAYIP — asil bakilmasi gereken durum). Ayirt etmek icin canli
+    // replica gerekiyordu.
+    base.live = items
+      .filter((i) => String(i.step) === 'LIVE')
+      .map((i) => {
+        const d = parseDetailPairs(i.detail);
+        return {
+          cluster: String(i.cluster || ''),
+          appName: String(i.app || ''),
+          kind: String(i.kind || '-'),
+          // `workload_absent=yes` → uygulama namespace'te YOK (silinmis olabilir).
+          // "Bakamadim" ile karistirilmamali; bu da bir CEVAP.
+          workloadAbsent: d.workload_absent === 'yes',
+          specReplicas: d.spec != null ? toInt(d.spec) : null,
+          statusReplicas: d.status != null ? toInt(d.status) : null,
+          readyReplicas: d.ready != null ? toInt(d.ready) : null,
         };
       });
   }

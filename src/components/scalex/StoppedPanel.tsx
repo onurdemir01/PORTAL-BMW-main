@@ -46,8 +46,14 @@ function daysSince(iso: string | null): number | null {
   return Math.floor((Date.now() - t) / 86_400_000);
 }
 
+// METIN BIR TAHMIN DEGIL ARTIK. Eskiden "biri elle geri almis OLABILIR" yaziyordu ve
+// IKI FARKLI gercegi ayni sekilde gosteriyordu. Sunucu artik canli replica'ya da
+// bakiyor: uygulama AYAKTAYSA satir kendiliginden KAPANIR (bkz. state.refreshDrift).
+// Ekranda kalan satir, uygulamanin GERCEKTEN kapali oldugu ve geri alma bilgisinin
+// kayboldugu durumdur — kullanicinin bakmasi gereken tek durum budur.
 const DRIFT_TEXT: Record<string, string> = {
-  missing_on_cluster: "Portal kaydı var, cluster'da ConfigMap YOK — biri elle geri almış olabilir.",
+  missing_on_cluster:
+    "Cluster'da durum kaydı YOK ve uygulama ayakta DEĞİL — geri alma bilgisi kayıp, önceki replica sayısı bilinmiyor.",
   unknown_to_portal: "Cluster'da durdurulmuş ama portal kaydı yok — AWX'ten elle durdurulmuş.",
 };
 

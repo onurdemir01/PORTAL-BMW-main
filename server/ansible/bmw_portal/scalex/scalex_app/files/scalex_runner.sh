@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="8"
+PACKAGE_VERSION="9"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -162,6 +162,14 @@ if ! printf '%s' "$WAIT_ATTEMPTS" | grep -Eq '^[1-9][0-9]*$' || ! printf '%s' "$
 fi
 
 APPS_TEXT="$(printf '%s\n' "$APP_RAW" | tr ',;' '\n\n' | awk '{$1=$1}; NF && !seen[$0]++ {print}')"
+
+# CANLI YOKLAMA LISTESI — YALNIZCA `state` KESFINDE, YALNIZCA `LIVE` SATIRLARI ICIN.
+#
+# NEDEN `APPS_TEXT` DEGIL: `APPS_TEXT` ConfigMap listelemesini de SUZUYOR
+# (`disc_app_wanted`). Portal aynasindaki uygulamalarla suzseydik, cluster'da
+# durdurulmus ama portalda kaydi OLMAYAN uygulamalar (`unknown_to_portal`) gorunmez
+# olurdu — yani sapma tespitinin YARISI kaybolurdu. Ayri degisken sart.
+LIVE_PROBE_TEXT="$(printf '%s\n' "${SCALEX_LIVE_PROBE_APPS:-}" | tr ',;' '\n\n' | awk '{$1=$1}; NF && !seen[$0]++ {print}')"
 if [ -z "$APPS_TEXT" ] && [ "$PHASE" != "discover" ]; then
   log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" "No application remained after parsing input"
   exit 0
@@ -1452,6 +1460,41 @@ EOF_DISC_STATE
   if [ "$found_any" -eq 0 ]; then
     log "$CLUSTER" "$JUMP_SERVER" "-" "-" "STATE" "OK" "No reversible state record found in namespace $(disc_val "$NS")"
   fi
+  discover_live_probe
+}
+
+# ── CANLI REPLICA YOKLAMASI ─────────────────────────────────────────────────
+#
+# NEDEN VAR (2026-09-17 uretim tespiti): durum ConfigMap'i YOKSA portal bugune kadar
+# "portal kaydi var, cluster'da yok — biri elle geri almis olabilir" diyordu. Bu bir
+# TAHMINDI ve iki farkli gercegi ayni sekilde gosteriyordu:
+#
+#   * uygulama AYAKTA  → biri (ya da bizim kendi isimiz) geri almis; SORUN YOK,
+#     portal kaydi anlamsiz kalmis, kapatilmali.
+#   * uygulama 0'DA    → ConfigMap kaybolmus ama uygulama hala kapali; geri alma
+#     bilgisi KAYIP, kullanicinin GERCEKTEN bakmasi gereken durum bu.
+#
+# Ayirt etmek icin CANLI replica gerekiyordu; `discover_state` yalnizca ConfigMap
+# listeliyordu. Maliyet: yoklama uygulamasi basina `detect_workload` + bir
+# `read_replica_state` (tek `oc get`, bkz. PR #98).
+discover_live_probe() {
+  local app display
+  [ -z "$LIVE_PROBE_TEXT" ] && return 0
+  while IFS= read -r app; do
+    [ -z "$app" ] && continue
+    if ! detect_workload "$app"; then
+      # Tip bulunamadi: uygulama namespace'te YOK (silinmis olabilir). Bu da bir
+      # CEVAP — "bakamadim" ile karistirilmasin diye ayri bir belirtec tasiyor.
+      log "$CLUSTER" "$JUMP_SERVER" "$app" "-" "LIVE" "INFO" "workload_absent=yes"
+      continue
+    fi
+    display="$(kind_to_display "$DETECTED_KIND")"
+    read_replica_state "$DETECTED_RESOURCE" "$app"
+    log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "LIVE" "OK" \
+      "spec=$(disc_val "$RV_DESIRED") status=$(disc_val "$RV_CURRENT") ready=$(disc_val "$RV_READY")"
+  done <<EOF_LIVE_PROBE
+$LIVE_PROBE_TEXT
+EOF_LIVE_PROBE
 }
 
 # ── SAGLIK KESFI ────────────────────────────────────────────────────────────
