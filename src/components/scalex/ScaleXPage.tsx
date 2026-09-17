@@ -32,6 +32,7 @@ import ScopeStep from './steps/ScopeStep';
 import NamespaceStep from './steps/NamespaceStep';
 import WorkloadStep from './steps/WorkloadStep';
 import OperationStep, { TIMEOUT_DEFAULT } from './steps/OperationStep';
+import { useScaleXLimits } from '@/hooks/useScaleXLimits';
 import PreviewStep from './steps/PreviewStep';
 import ScaleXResultPanel from './steps/ScaleXResultPanel';
 import StoppedPanel from './StoppedPanel';
@@ -90,6 +91,10 @@ const ScaleXPage: React.FC = () => {
   // Kullanici ISLEM adimini bir kez doldurdu mu? Doldurduysa geri donusde kendi
   // secimleri geri yuklenir; doldurmadiysa adim NOTR acilir (bkz. OperationStep).
   const [operationTouched, setOperationTouched] = useState(false);
+  // SINIRLAR SUNUCUDAN. Admin > Sistem ekranindan degistirilebiliyorlar ve
+  // degisiklik ANINDA gecerli oluyor — server/scalex/config.cjs her istekte
+  // `process.env`i YENIDEN okur, restart gerekmez.
+  const limits = useScaleXLimits();
   const [action, setAction] = useState<ScaleXAction>('stop');
   const [executionMode, setExecutionMode] = useState<ScaleXMode>('dry_run');
   const [targetReplicas, setTargetReplicas] = useState<string | undefined>(undefined);
@@ -97,6 +102,14 @@ const ScaleXPage: React.FC = () => {
   // OperationStep'in varsayilanini 300 yapti, sayfa durumu 60'ta kaldi ve kullanici
   // adima geri donup ilerledigi anda is 5 dk yerine 1 dk bekledi (HAR kaniti,
   // 2026-09-17). Ayni sayiyi iki yerde tutmak bu hatayi uretti.
+  // TOHUM DEGER — asla kullaniciya GOSTERILMEZ. Bu durum yalnizca OperationStep
+  // "Onizle"ye basip `onSubmit` ile kendi degerini YAZDIKTAN sonra okunuyor
+  // (`/preview`, `/run` ve `previous`). Kullanicinin gordugu varsayilan
+  // OperationStep'in `tDefault`u, o da SUNUCUDAN geliyor.
+  //
+  // SENKRON EFEKTI BILEREK YOK: `useEffect` icinde `setState` hem gereksiz (deger
+  // okunmadan once zaten yaziliyor) hem de `react-hooks/set-state-in-effect`
+  // uyarisi uretip lint citasini bozardi.
   const [verificationTimeout, setVerificationTimeout] = useState(TIMEOUT_DEFAULT);
   const [allowPartial, setAllowPartial] = useState(true);
   const [mailCc, setMailCc] = useState('');
@@ -601,6 +614,7 @@ const ScaleXPage: React.FC = () => {
             workloads={workloads}
             clusterCount={clusters.length}
             busy={busy}
+            limits={limits}
             previous={
               operationTouched
                 ? {
@@ -792,6 +806,7 @@ const ScaleXPage: React.FC = () => {
         <StoppedPanel
           env={env}
           tenant={tenant}
+          maxAuditGroups={limits.maxAuditGroups}
           onRestore={restoreFromPanel}
           reloadKey={stoppedReloadKey}
         />

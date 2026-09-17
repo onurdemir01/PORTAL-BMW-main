@@ -98,6 +98,24 @@ const SYSTEM_CONFIG_KEYS = [
   'SMART_POLL_INTERVAL_SECONDS', 'SMART_TICKET_TIMEOUT_MINUTES', 'SMART_PROXY_URL',
   'TEAMS_LONGJOB_WEBHOOK_URL', 'TEAMS_LONGJOB_THRESHOLD_MINUTES', 'TEAMS_LONGJOB_POLL_INTERVAL_SECONDS',
   'DB_FULL_BACKUP_DIR', 'DB_FULL_BACKUP_RETENTION_DAYS', 'DB_FULL_BACKUP_HOUR', 'DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES',
+  // ── ScaleX sinirlari — SICAK YUKLENIR (restart GEREKMEZ) ──────────────────
+  // `server/scalex/config.cjs` bunlari HER ISTEKTE `process.env`den okur. Bu
+  // listedeki diger anahtarlarin cogundan farkli olarak degisiklik ANINDA gecerli
+  // olur; `HOT_RELOADABLE_KEYS` bunu ekrana da soyler.
+  'SCALEX_VERIFY_TIMEOUT_DEFAULT', 'SCALEX_VERIFY_TIMEOUT_MIN', 'SCALEX_VERIFY_TIMEOUT_MAX',
+  'SCALEX_VERIFY_FAIL_MULTIPLIER', 'SCALEX_MAX_TARGETS', 'SCALEX_PROD_CONFIRM_THRESHOLD',
+  'SCALEX_MAX_AUDIT_GROUPS',
+];
+
+// RESTART GEREKTIRMEYEN anahtarlar. Portalin cogu modulu env'i boot'ta okuyup
+// sabite donduruyor; onlar icin ekran "restart gerekir" demek ZORUNDA. Buradaki
+// anahtarlari okuyan kod ise degeri HER KULLANIMDA yeniden okur, yani admin
+// kaydettigi anda gecerli olur. Ekrana YANLIS bilgi vermemek icin ayri liste:
+// "restart gerekir" deyip gerekmemesi, kullaniciyi bosuna kesinti planlamaya iter.
+const HOT_RELOADABLE_KEYS = [
+  'SCALEX_VERIFY_TIMEOUT_DEFAULT', 'SCALEX_VERIFY_TIMEOUT_MIN', 'SCALEX_VERIFY_TIMEOUT_MAX',
+  'SCALEX_VERIFY_FAIL_MULTIPLIER', 'SCALEX_MAX_TARGETS', 'SCALEX_PROD_CONFIRM_THRESHOLD',
+  'SCALEX_MAX_AUDIT_GROUPS',
 ];
 
 const LOAD_TIMEOUT_MS = 8000; // olu DB boot'u sonsuza dek bloklamasin
@@ -165,4 +183,4 @@ function isFromDb(key) {
   return _appliedFromDb.has(key);
 }
 
-module.exports = { SYSTEM_CONFIG_KEYS, loadEnvOverrides, setEnvOverride, deleteEnvOverride, isFromDb };
+module.exports = { SYSTEM_CONFIG_KEYS, HOT_RELOADABLE_KEYS, loadEnvOverrides, setEnvOverride, deleteEnvOverride, isFromDb };

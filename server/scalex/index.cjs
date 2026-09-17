@@ -520,6 +520,22 @@ function initScaleX(app) {
     /* gorunurluk motoru yoksa auth tek basina korur */
   }
 
+  // ── Ayarlar — EKRANIN SINIRLARI SUNUCUDAN OGRENMESI ──────────────────────
+  //
+  // Sinirlar admin ekranindan degisebiliyor (bkz. server/scalex/config.cjs). Ekran
+  // onlari ELDE tutsaydi, admin 300'u 600 yaptiginda kullanici hala "30-3600 arasi"
+  // gorur, girdigi degeri sunucu reddeder ve sebebi hicbir yerde YAZMAZDI.
+  // Bu uc her istekte GUNCEL degeri doner — onbellege ALINMAZ.
+  //
+  // GIZLI BILGI YOK: yalnizca sinirlar. `problems` de burada, cunku tutarsiz bir
+  // ayari GIZLEMEK ekranin anlamsiz bir aralik gostermesi demekti.
+  router.get(
+    '/config',
+    asyncRoute(async (_req, res) => {
+      res.json({ ok: true, ...require('./config.cjs').publicConfig() });
+    }),
+  );
+
   // ── Katalog ───────────────────────────────────────────────────────────────
   router.get(
     '/clusters',
@@ -962,7 +978,7 @@ function initScaleX(app) {
       if (radius.exceedsMaxTargets) {
         throw Object.assign(
           new Error(
-            `Tek işlemde en fazla ${launch.MAX_TARGETS} hedef: ${radius.targets} seçildi (${radius.clusterCount} cluster × ${radius.appCount} uygulama).`,
+            `Tek işlemde en fazla ${launch.maxTargets()} hedef: ${radius.targets} seçildi (${radius.clusterCount} cluster × ${radius.appCount} uygulama).`,
           ),
           { status: 400 },
         );

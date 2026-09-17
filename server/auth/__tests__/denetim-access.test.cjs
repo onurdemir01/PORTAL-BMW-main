@@ -92,7 +92,29 @@ test('istemci: DenetimPage sekmeleri canSee ile suzer, hic yoksa mesaj; Admin se
   const page = read('src/components/DenetimPage.tsx');
   assert.ok(page.includes(".filter((t) => canSee(`tab:denetim:${t.id}`))"), 'sekme suzgeci yok');
   assert.ok(page.includes('Bu sayfada size açılmış bir bölüm yok'), 'bos durum mesaji yok');
-  assert.ok(page.includes("{tabAllowed && tab === 'nginx' && <NginxSpaAudit />}"), 'icerik de kapali olmali');
+  // ICERIK DE KAPALI OLMALI — AMA KURAL BIREBIR METIN DEGIL.
+  //
+  // Ilk hali `"{tabAllowed && tab === 'nginx' && <NginxSpaAudit />}"` dizesini
+  // ARIYORDU. 2026-09-17'de o `useEffect(setTab(...))` bir TUREVE (`activeTab`)
+  // cevrilince — ki AdminPage'in zaten kullandigi desen budur — bekci kirmizi
+  // dondu, oysa icerik HALA kapaliydi. Birebir metne baglanmak, dogru bir
+  // duzeltmeyi engelleyip yanlis olani (uyari uretenini) tesvik ediyordu.
+  //
+  // KORUNAN KURAL: gorunmeyen bir sekmenin icerigi RENDER EDILMEMELI. Bunun iki
+  // gecerli yazimi var ve ikisi de kabul edilir:
+  //   * `{tabAllowed && tab === 'nginx' && <X />}`  — ham durum + bekci kosulu
+  //   * `{activeTab === 'nginx' && <X />}`          — turetilmis (gorunur kumeden)
+  // YASAK olan: ham `tab` durumunu KOSULSUZ render etmek.
+  const izin = /const\s+tabAllowed\s*=\s*visibleTabs\.includes\(tab\)/.test(page);
+  assert.ok(izin, 'gorunurluk kontrolu (`visibleTabs.includes(tab)`) yok');
+  const korumali = /\{\s*tabAllowed\s*&&\s*tab === 'nginx'\s*&& <NginxSpaAudit \/>\}/.test(page);
+  const turetilmis =
+    /const\s+activeTab[^=]*=\s*tabAllowed \? tab :/.test(page) &&
+    /\{\s*activeTab === 'nginx'\s*&& <NginxSpaAudit \/>\}/.test(page);
+  assert.ok(
+    korumali || turetilmis,
+    'icerik de kapali olmali: ham `tab` durumu kosulsuz render ediliyor',
+  );
   const admin = read('src/components/admin/AdminPage.tsx');
   assert.ok(admin.includes("{ id: 'denetimaccess', label: 'Denetim Erişimi'") && admin.includes("{activeTab === 'denetimaccess' && <DenetimAccessTab />}"), 'admin sekmesi bagli degil');
   const tab = read('src/components/admin/tabs/DenetimAccessTab.tsx');

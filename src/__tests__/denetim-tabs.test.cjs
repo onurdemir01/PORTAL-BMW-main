@@ -51,11 +51,24 @@ test('sekme listesi okunabiliyor (regex bozulmadi)', () => {
   assert.ok(ids.includes('nginx') && ids.includes('degisim'), ids.join(','));
 });
 
+// Bir sekmenin RENDER SATIRI. Kosul degiskeninin ADI serbest (`tab`, `activeTab`,
+// istege bagli bir `x &&` on kosulu); aranan sey KURALIN kendisi. `withComponent`
+// verilirse render edilen bilesen adi 1. yakalama grubunda doner.
+function TAB_RENDER(id, withComponent = false) {
+  const cond = `\\{\\s*(?:[A-Za-z0-9_.]+\\s*&&\\s*)*[A-Za-z0-9_.]*[Tt]ab === ["']${id}["']\\s*&&`;
+  return new RegExp(withComponent ? `${cond} <([A-Za-z0-9_]+)` : cond);
+}
+
 test('HER sekmenin bir render satiri var', () => {
   for (const id of tabIds()) {
     assert.ok(
-      // 2026-09-17: sekme bazli erisim -> `{tabAllowed && tab === 'x' && <...`
-      new RegExp(`\\{\\s*(tabAllowed\\s*&&\\s*)?tab === ["']${id}["']\\s*&&`).test(SRC),
+      // DEGISKEN ADINA BAGLANMA. Ilk hali `tab === 'x'` diye ARIYORDU ve
+      // 2026-09-17'de degisken `activeTab` olarak yeniden adlandirilinca iki test
+      // birden kirmizi dondu — oysa render satirlari YERINDEYDI. Bu dosyanin kendi
+      // ilkesi: "Olcut BICIM degil KURAL" (bkz. tabIds). Kural sudur: cubuktaki her
+      // id icin bir `<ad> === 'id' &&` render satiri BULUNMALI; o adin ne oldugu
+      // testin konusu DEGIL.
+      TAB_RENDER(id).test(SRC),
       `"${id}" sekmesi cubukta var ama render edilmiyor — tiklayinca bos ekran gelir`,
     );
   }
@@ -65,7 +78,7 @@ test('HER sekmenin render ettigi bilesen IMPORT EDILMIS', () => {
   // Asil yakalanmak istenen hata bu: import unutulunca Vite build gecer, sekmeye
   // tiklandiginda uygulama coker.
   for (const id of tabIds()) {
-    const m = SRC.match(new RegExp(`\\{\\s*(?:tabAllowed\\s*&&\\s*)?tab === ["']${id}["']\\s*&& <([A-Za-z0-9_]+)`));
+    const m = SRC.match(TAB_RENDER(id, true));
     assert.ok(m, `"${id}" icin render satiri cozulemedi`);
     const comp = m[1];
     // Varsayilan (`import X from`) VE adlandirilmis (`import { X } from`) import'un

@@ -4,6 +4,7 @@
 const adminData = require('../logx/v2/admin.cjs');
 const ocp = require('../logx/v2/ocp.cjs');
 const gates = require('../ansible/change-gates.cjs');
+const config = require('./config.cjs');
 
 const ACTIONS = Object.freeze(['stop', 'restore', 'scale']);
 const MODES = Object.freeze(['dry_run', 'apply']);
@@ -16,9 +17,22 @@ const MODES = Object.freeze(['dry_run', 'apply']);
 // Butce ACMA ve KAPATMA'da FARKLI anlamlara gelir (bkz. scalex_runner.sh
 // verify_replicas): acmada "bu kadar bekle, sonra uyarip basarili bit",
 // kapatmada "bu kadar sonra uyar, iki kati sonra fail".
-const VERIFICATION_TIMEOUT_DEFAULT = 300;
-const VERIFICATION_TIMEOUT_MIN = 30;
-const VERIFICATION_TIMEOUT_MAX = 3600;
+// ── BU DORT DEGER ARTIK SABIT DEGIL: ADMIN EKRANINDAN GELIYOR ──────────────
+//
+// Kullanici istegi (2026-09-17): "timeout vb yapilari da admin ekranindan
+// verebilecek ve bu degiskenleri de degistirince dinamik calisacak".
+//
+// `server/scalex/config.cjs` her cagrida `process.env`i YENIDEN okur; Admin >
+// Sistem ekranindan yazilan deger `setEnvOverride` ile ayni anda `process.env`e
+// islendigi icin SONRAKI ISTEK yeni degerle calisir — RESTART GEREKMEZ.
+//
+// ASAGIDAKI GETTER'LAR FONKSIYON, SABIT DEGIL. Modul duzeyinde
+// `const X = tunable(...)` yazmak dinamikligi SESSIZCE oldururdu: deger boot'ta
+// donar ve admin ekrani bir daha hicbir seyi degistirmez. Bekci
+// (scalex-dinamik-ayarlar.test.cjs) bunu ayni proses icinde KANITLIYOR.
+const verifyTimeoutDefault = () => config.tunable('SCALEX_VERIFY_TIMEOUT_DEFAULT');
+const verifyTimeoutMin = () => config.tunable('SCALEX_VERIFY_TIMEOUT_MIN');
+const verifyTimeoutMax = () => config.tunable('SCALEX_VERIFY_TIMEOUT_MAX');
 
 /**
  * Saniye butcesini dogrular. Bos/undefined -> varsayilan.
@@ -27,21 +41,21 @@ const VERIFICATION_TIMEOUT_MAX = 3600;
  */
 function normalizeVerificationTimeout(raw) {
   const t = String(raw ?? '').trim();
-  if (!t) return VERIFICATION_TIMEOUT_DEFAULT;
-  if (!/^[0-9]{1,5}$/.test(t)) return null;
+  if (!t) return verifyTimeoutDefault();
+  if (!/^[0-9]{1,7}$/.test(t)) return null;
   const n = Number(t);
-  if (n < VERIFICATION_TIMEOUT_MIN || n > VERIFICATION_TIMEOUT_MAX) return null;
+  if (n < verifyTimeoutMin() || n > verifyTimeoutMax()) return null;
   return n;
 }
 
 // Bir istekte izin verilen azami (cluster x uygulama) cifti. Ust sinir olmadan bir
 // kullanici yuzlerce hedef gonderip tek isle cok genis bir kesinti yaratabilirdi.
-const MAX_TARGETS = 200;
+const maxTargets = () => config.tunable('SCALEX_MAX_TARGETS');
 
 // Prod'da bu esigin ustundeki her calistirma YAZILI onay ister (kullanici namespace
 // adini elle yazar). Isi ENGELLEMEZ — yalnizca "ne kadarina dokunuyorum" sorusunu
 // kullanicinin onune koyar.
-const PROD_WRITTEN_CONFIRM_THRESHOLD = 5;
+const prodWrittenConfirmThreshold = () => config.tunable('SCALEX_PROD_CONFIRM_THRESHOLD');
 
 const NS_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 const APP_RE = /^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/;
@@ -70,11 +84,11 @@ function computeBlastRadius({ clusters = [], apps = [], environment, action, exe
     isProd: prod,
     action,
     multiCluster: clusterCount > 1,
-    requiresWrittenConfirm: mutating && prod && targets > PROD_WRITTEN_CONFIRM_THRESHOLD,
+    requiresWrittenConfirm: mutating && prod && targets > prodWrittenConfirmThreshold(),
     // Prod + cok cluster = ikinci kisi onayi (kullanici karari). Playbook tarafindaki
     // `bulk_change_confirmation` bunun makine karsiligi.
     requiresSecondPerson: mutating && prod && clusterCount > 1,
-    exceedsMaxTargets: targets > MAX_TARGETS,
+    exceedsMaxTargets: targets > maxTargets(),
   };
 }
 
@@ -173,7 +187,7 @@ function assertValidTargets({
   if (normalizeVerificationTimeout(verificationTimeout) === null)
     bad(
       `Geçersiz sonuç kontrol süresi: "${verificationTimeout}". ` +
-        `${VERIFICATION_TIMEOUT_MIN}–${VERIFICATION_TIMEOUT_MAX} arası bir saniye değeri girin.`,
+        `${verifyTimeoutMin()}–${verifyTimeoutMax()} arası bir saniye değeri girin.`,
     );
   // Bu degerler `oc` komut satirina gidiyor — playbook ve kabuk tarafinda da ayni
   // dogrulama var; portal ISI HIC BASLATMADAN kesiyor.
@@ -323,7 +337,7 @@ async function buildRunExtraVars({
   const radius = computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
 
   const verifySeconds =
-    normalizeVerificationTimeout(verificationTimeout) ?? VERIFICATION_TIMEOUT_DEFAULT;
+    normalizeVerificationTimeout(verificationTimeout) ?? verifyTimeoutDefault();
   return {
     // Katalog portal DB'sinden; playbook `scalex_clusters_override` yoksa kendi
     // dosyasina duser (AWX'ten elle calistirma bozulmaz).
@@ -367,7 +381,9 @@ async function buildRunExtraVars({
     // ACMA/KAPATMA ASIMETRISI. Uyari esigi butcenin KENDISI; kapatmanin fail esigi
     // iki kati. Betik bu ikisini ayri okur (bkz. scalex_runner.sh verify_replicas).
     verify_warn_seconds: Number(verifySeconds),
-    verify_fail_seconds: Number(verifySeconds) * 2,
+    // KAPATMADA FAIL ESIGI. Carpan da admin ayari (kullanici karari: 5 dk uyar,
+    // 10 dk fail). Acmada FAIL YOK; betik uyarip basarili biter.
+    verify_fail_seconds: Number(verifySeconds) * config.tunable('SCALEX_VERIFY_FAIL_MULTIPLIER'),
     allow_partial_execution: allowPartial ? 'true' : 'false',
     // ONAY KUTULARI SUNUCUDA URETILIR, client'tan GELMEZ. Kullanici ekranda
     // "anladim" derse portal bunu uretir; client'in dogrudan `change_confirmation: true`
@@ -490,12 +506,14 @@ function buildGateVars({ env, tenant, action, executionMode, clusters, namespace
 module.exports = {
   ACTIONS,
   MODES,
-  VERIFICATION_TIMEOUT_DEFAULT,
-  VERIFICATION_TIMEOUT_MIN,
-  VERIFICATION_TIMEOUT_MAX,
+  // GERIYE UYUM: eski adlar FONKSIYON olarak disa aciliyor. Sabit olarak
+  // birakmak, cagiranin degeri boot'ta dondurmasina yol acardi.
+  verifyTimeoutDefault,
+  verifyTimeoutMin,
+  verifyTimeoutMax,
   normalizeVerificationTimeout,
-  MAX_TARGETS,
-  PROD_WRITTEN_CONFIRM_THRESHOLD,
+  maxTargets,
+  prodWrittenConfirmThreshold,
   isProdEnv,
   computeBlastRadius,
   isHpaPinAllowed,

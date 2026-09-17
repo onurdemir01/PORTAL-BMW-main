@@ -24,6 +24,11 @@ interface Props {
   onRestore?: (item: ScaleXStoppedItem) => void;
   /** Degeri her degistiginde liste sessizce tazelenir (is bitiminde sayfa artirir). */
   reloadKey?: number;
+  /**
+   * Sapma taramasinda es zamanli AWX isi tavani — SUNUCUDAN gelir (Admin > Sistem,
+   * `SCALEX_MAX_AUDIT_GROUPS`). Verilmezse asagidaki fabrika degeri kullanilir.
+   */
+  maxAuditGroups?: number;
 }
 
 // Bu esigi asan bir durdurma "unutulmus" olabilir. Sert bir kural degil, bir hatirlatma:
@@ -37,6 +42,10 @@ const MAX_POLL_ERRORS = 3;
 // Sapma taramasinda her GRUP ayri bir AWX isi baslatir. Kapsamsiz liste (env/tenant
 // secilmemis) 500 satira kadar gelebilecegi icin bir tavan sart; tavan asilirsa tarama
 // BASLAMAZ — sessizce kirpmak "hepsi tarandi" yalanini geri getirirdi.
+//
+// FABRIKA DEGERI. Gercek tavan admin ekranindan gelir (`maxAuditGroups` prop'u);
+// `server/scalex/config.cjs` icindeki `SCALEX_MAX_AUDIT_GROUPS` fallback'i ile AYNI
+// olmali — bekci ikisini birden kilitler.
 const MAX_AUDIT_GROUPS = 12;
 
 function daysSince(iso: string | null): number | null {
@@ -51,7 +60,13 @@ const DRIFT_TEXT: Record<string, string> = {
   unknown_to_portal: "Cluster'da durdurulmuş ama portal kaydı yok — AWX'ten elle durdurulmuş.",
 };
 
-const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloadKey = 0 }) => {
+const StoppedPanel: React.FC<Props> = ({
+  env = '',
+  tenant = '',
+  onRestore,
+  reloadKey = 0,
+  maxAuditGroups = MAX_AUDIT_GROUPS,
+}) => {
   const [items, setItems] = useState<ScaleXStoppedItem[]>([]);
   // Yetki nedeniyle gizlenen ve sinir nedeniyle kirpilan kayit sayilari. Bunlari
   // SOYLEMEDEN "kayit yok" demek, kullaniciya YANLIS bilgi vermek olurdu — aynen
@@ -161,10 +176,10 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
     // TAVAN. Kapsamsiz liste 500 satira kadar gelebilir ve her GRUP bir AWX isi
     // demek. Sessizce kirpmak "hepsi tarandi" yalanini geri getirirdi; tarama hic
     // BASLAMAZ ve kullanicidan kapsami daraltmasi istenir.
-    if (groups.size > MAX_AUDIT_GROUPS) {
+    if (groups.size > maxAuditGroups) {
       setAuditNote(null);
       setError(
-        `Bu listede ${groups.size} ayrı kapsam var (sınır ${MAX_AUDIT_GROUPS}). ` +
+        `Bu listede ${groups.size} ayrı kapsam var (sınır ${maxAuditGroups}). ` +
           'Tarama başlatılmadı — üstten ortam/platform seçip listeyi daraltın.',
       );
       return;

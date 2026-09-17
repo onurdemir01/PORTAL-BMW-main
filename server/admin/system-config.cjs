@@ -8,7 +8,7 @@
 
 const express = require('express');
 const {
-  SYSTEM_CONFIG_KEYS, setEnvOverride, isFromDb,
+  SYSTEM_CONFIG_KEYS, HOT_RELOADABLE_KEYS, setEnvOverride, isFromDb,
 } = require('../db/env-overrides.cjs');
 // server/db/env-overrides.cjs ile PAYLASILAN tek desen — eskiden iki dosyada birebir kopya
 // tutuluyordu (kurumsal AI kod incelemesi, review.md #21); artik ikisi de bagimliliksiz
@@ -35,6 +35,11 @@ function initSystemConfig(app) {
         masked,
         // Kaynak bilgisi: bu deger admin tarafindan DB'ye yazilmis bir override mi?
         source: isFromDb(key) ? "db" : "env",
+        // RESTART GEREKIYOR MU. Cogu modul env'i boot'ta okuyup sabite donduruyor;
+        // onlar icin `false`. ScaleX sinirlari gibi HER KULLANIMDA yeniden okunan
+        // anahtarlar icin `true` — degisiklik aninda gecerli. Bunu soylememek,
+        // kullaniciyi gereksiz yere kesinti planlamaya iterdi.
+        hotReloadable: HOT_RELOADABLE_KEYS.includes(key),
       };
     });
     res.json({ ok: true, values });
@@ -59,7 +64,16 @@ function initSystemConfig(app) {
         });
       } catch { /* yoksay */ }
       console.log(`[Config] ${req.session.user.username} -> ${key} guncellendi (DB override).`);
-      res.json({ ok: true, key, restartRequired: true, source: "db" });
+      // `restartRequired` ARTIK ANAHTARA GORE. Sabit `true` yaziyordu ve sicak
+      // yuklenen bir ayar icin de "yeniden baslatin" diyordu — dogru olmayan ama
+      // zararsiz gorunen bir yalan: admin degeri degistirip etkisini gormek icin
+      // bosuna restart bekler.
+      res.json({
+        ok: true,
+        key,
+        restartRequired: !HOT_RELOADABLE_KEYS.includes(key),
+        source: "db",
+      });
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
     }

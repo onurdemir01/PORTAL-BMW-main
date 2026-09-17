@@ -188,11 +188,13 @@ export default function DenetimPage() {
   // hepsini gorur. Gorunmeyen sekme URL'den istense de acilmaz (sunucu ucu zaten 403).
   const { canSee } = useAuth();
   const visibleTabs = DENETIM_TABS.filter((id) => canSee(`tab:denetim:${id}`));
-  useEffect(() => {
-    if (visibleTabs.length && !visibleTabs.includes(tab)) setTab(visibleTabs[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleTabs.join(','), tab]);
+  // TUREVDIR, DURUM DEGIL. Onceden bir `useEffect` icinde `setTab(visibleTabs[0])`
+  // cagriliyordu; bu hem fazladan bir render turu uretiyor (o arada ekran BOS
+  // kaliyor: `tabAllowed` false oldugu icin hicbir sekme cizilmiyordu) hem de
+  // `react-hooks/set-state-in-effect` uyarisi veriyordu. Gorunur sekmeler yalnizca
+  // `canSee`den turuyor — yani zaten bir TUREV; durum olarak tutmaya gerek yok.
   const tabAllowed = visibleTabs.includes(tab);
+  const activeTab: DenetimTab = tabAllowed ? tab : (visibleTabs[0] ?? tab);
 
   if (visibleTabs.length === 0) {
     return (
@@ -271,7 +273,7 @@ export default function DenetimPage() {
             // Admin hepsini gorur (motor); sunucu uclari da ayni anahtarla kapali.
             .filter((t) => canSee(`tab:denetim:${t.id}`))
             .map((t) => {
-            const active = tab === t.id;
+            const active = activeTab === t.id;
             return (
               <button
                 key={t.id}
@@ -290,16 +292,16 @@ export default function DenetimPage() {
         </nav>
       </header>
 
-      {tabAllowed && tab === 'nginx' && <NginxSpaAudit />}
-      {tabAllowed && tab === 'nginxapi' && <NginxApiEnvanteri />}
-      {tabAllowed && tab === 'nginxenv' && <NginxEnvanteri />}
-      {tabAllowed && tab === 'nginxaudit' && <NginxAudit />}
-      {tabAllowed && tab === 'ocp' && <OcpCoverage />}
-      {tabAllowed && tab === 'init' && <InitScriptsAudit />}
-      {tabAllowed && tab === 'envanter' && <EnvanterMetrics />}
-      {tabAllowed && tab === 'degisim' && <EnvanterDegisim />}
-      {tabAllowed && tab === 'appenvs' && <AppEnvs />}
-      {tabAllowed && tab === 'webapp' && <WebApp />}
+      {activeTab === 'nginx' && <NginxSpaAudit />}
+      {activeTab === 'nginxapi' && <NginxApiEnvanteri />}
+      {activeTab === 'nginxenv' && <NginxEnvanteri />}
+      {activeTab === 'nginxaudit' && <NginxAudit />}
+      {activeTab === 'ocp' && <OcpCoverage />}
+      {activeTab === 'init' && <InitScriptsAudit />}
+      {activeTab === 'envanter' && <EnvanterMetrics />}
+      {activeTab === 'degisim' && <EnvanterDegisim />}
+      {activeTab === 'appenvs' && <AppEnvs />}
+      {activeTab === 'webapp' && <WebApp />}
 
       <HelpModal
         open={showHelp}
