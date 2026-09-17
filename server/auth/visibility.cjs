@@ -8,6 +8,8 @@
 //   1) element.enabled === false          → HERKESE kapali (admin dahil; global kill-switch)
 //   2) user.role === 'Admin'              → gorunur (adminler tum enabled ogeleri gorur)
 //   3) user kurali (principal user=<name>) → allow degeri KAZANIR (deny dahil)
+//   3b) group kurali (principal group=<AD grubu DN ya da CN>) → herhangi biri allow ise
+//       gorunur, yalniz deny varsa gizli (2026-09-17: Denetim erisimi grup bazli verilebilsin)
 //   4) role kurali (principal role=<rol>)  → allow degeri
 //   5) hic kural yoksa                     → element.default_visible
 //
@@ -109,11 +111,34 @@ function buildRuleIndex(rules) {
   return idx;
 }
 
-function decide(el, ruleIndex, role, usernameLower) {
+// Oturumdaki AD gruplari (memberOf DN'leri) -> eslesme anahtarlari: tam DN (kucuk harf)
+// ve CN parcasi (kucuk harf). Admin panelinde grup "CN=..." tam DN ile de yalin adla da
+// girilebilsin (ldap.cjs determineRole ile ayni tolerans).
+function groupKeysOf(user) {
+  const out = new Set();
+  for (const g of Array.isArray(user && user.groups) ? user.groups : []) {
+    const dn = String(g || '').trim().toLowerCase();
+    if (!dn) continue;
+    out.add(dn);
+    const m = /^cn=([^,]+)/.exec(dn);
+    if (m) out.add(m[1].trim());
+  }
+  return out;
+}
+
+function decide(el, ruleIndex, role, usernameLower, groupKeys) {
   if (!truthy(el.enabled)) return false;                 // 1) global kill-switch
   if (role === 'Admin') return true;                     // 2) admin her enabled ogeyi gorur
   const uKey = `${el.element_key}|user|${usernameLower}`;
   if (ruleIndex.has(uKey)) return ruleIndex.get(uKey);   // 3) user kurali kazanir
+  if (groupKeys && groupKeys.size) {                     // 3b) grup kurali: bir allow yeter
+    let seen = false, allow = false;
+    for (const g of groupKeys) {
+      const gKey = `${el.element_key}|group|${g}`;
+      if (ruleIndex.has(gKey)) { seen = true; if (ruleIndex.get(gKey)) { allow = true; break; } }
+    }
+    if (seen) return allow;
+  }
   const rKey = `${el.element_key}|role|${role.toLowerCase()}`;
   if (ruleIndex.has(rKey)) return ruleIndex.get(rKey);   // 4) role kurali
   return truthy(el.default_visible);                     // 5) varsayilan
@@ -159,7 +184,8 @@ async function resolveVisibility(user) {
   const usernameLower = ((user && user.username) || '').toLowerCase();
 
   if (_resolvedMemoVersion !== _version) { _resolvedMemo = new Map(); _resolvedMemoVersion = _version; }
-  const memoKey = `${role}|${usernameLower}`;
+  const groupKeys = groupKeysOf(user);
+  const memoKey = `${role}|${usernameLower}|${[...groupKeys].sort().join(',')}`;
   const hit = _resolvedMemo.get(memoKey);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { version: _version, visibility: hit.visibility };
 
@@ -178,7 +204,7 @@ async function resolveVisibility(user) {
   }
   const ruleIndex = buildRuleIndex(rules);
   const map = {};
-  for (const el of elements) map[el.element_key] = decide(el, ruleIndex, role, usernameLower);
+  for (const el of elements) map[el.element_key] = decide(el, ruleIndex, role, usernameLower, groupKeys);
   const visibility = applyParentCascade(map, elements);
   _resolvedMemo.set(memoKey, { visibility, at: Date.now() });
   return { version: _version, visibility };

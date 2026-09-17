@@ -23,6 +23,7 @@ import PlaybookRegistryTab from './tabs/PlaybookRegistryTab';
 import SystemConfigTab from './tabs/SystemConfigTab';
 import UserManagementTab from './tabs/UserManagementTab';
 import PageVisibilityTab from './tabs/PageVisibilityTab';
+import DenetimAccessTab from './tabs/DenetimAccessTab';
 import LogXv2AdminTab from './tabs/LogXv2AdminTab';
 import ScaleXAdminTab from './tabs/ScaleXAdminTab';
 import InventoryVisibilityTab from './tabs/InventoryVisibilityTab';
@@ -56,6 +57,7 @@ const DEFAULT_TABS = [
   { id: 'system', label: 'Sistem', icon: CogIcon },
   { id: 'users', label: 'Kullanıcılar', icon: UsersIcon },
   { id: 'visibility', label: 'Sayfa Erişimi', icon: EyeIcon },
+  { id: 'denetimaccess', label: 'Denetim Erişimi', icon: ShieldCheckIcon },
   { id: 'inventoryvis', label: 'Envanter Görünürlüğü', icon: ServerStackIcon },
   { id: 'inventorygaps', label: 'Envanter Boşlukları', icon: ServerStackIcon },
   { id: 'branding', label: 'Logo', icon: PhotoIcon },
@@ -300,6 +302,7 @@ const AdminPage: React.FC = () => {
           {activeTab === 'system' && <SystemConfigTab />}
           {activeTab === 'users' && <UserManagementTab />}
           {activeTab === 'visibility' && <PageVisibilityTab />}
+          {activeTab === 'denetimaccess' && <DenetimAccessTab />}
           {activeTab === 'logxv2' && <LogXv2AdminTab />}
           {activeTab === 'scalex' && <ScaleXAdminTab />}
           {activeTab === 'inventoryvis' && <InventoryVisibilityTab />}

@@ -1400,7 +1400,10 @@ const ELEMENT_SEED = [
     label: 'Middleware İç Denetim',
     route: '/denetim',
     sort_order: 3,
-    roles: ['Admin', 'User'],
+    // 2026-09-17: YALNIZ Admin. Baska kullanici/AD grubuna Admin > "Denetim Erisimi"
+    // panelinden sekme sekme acilir (user/group kurallari). Mevcut kurulumlar icin
+    // closeDenetimToUsers() tek seferlik kapatir.
+    roles: ['Admin'],
   },
   {
     element_key: 'LogX',
@@ -1680,6 +1683,15 @@ const ELEMENT_SEED = [
     default_visible: 1,
   },
   {
+    // Denetim Erisimi (2026-09-17): Denetim sekmelerini kullanici / AD grubuna acan panel.
+    element_key: 'admintab:denetimaccess',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Denetim Erişimi',
+    sort_order: 11,
+    default_visible: 1,
+  },
+  {
     // Elle girilmis (envanterde olmayan) adlarin takip ekrani. Kayitsiz birakilirsa
     // sekme "varsayilan gorunur" olur ve Sayfa Erisimi'nden YONETILEMEZ.
     element_key: 'admintab:inventorygaps',
@@ -1706,6 +1718,89 @@ const ELEMENT_SEED = [
     label: 'AI → Altyapı Job Başlatma',
     sort_order: 1,
     default_visible: 1,
+  },
+  // Denetim sekmeleri (2026-09-17): varsayilan KAPALI; Admin > "Denetim Erisimi" paneli
+  // kullanici/AD grubu bazinda acar. Sayfa (parent) gorunmuyorsa kaskadla sekme de gorunmez.
+  // Anahtarlar DenetimPage sekme id'leriyle birebir (tab:denetim:<id>).
+  {
+    element_key: 'tab:denetim:nginx',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Nginx SPA',
+    sort_order: 1,
+    default_visible: 0,
+  },
+  {
+    element_key: 'tab:denetim:nginxapi',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Nginx API Envanteri',
+    sort_order: 2,
+    default_visible: 0,
+  },
+  {
+    element_key: 'tab:denetim:nginxenv',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Nginx Envanteri',
+    sort_order: 3,
+    default_visible: 0,
+  },
+  {
+    element_key: 'tab:denetim:nginxaudit',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Nginx Audit',
+    sort_order: 4,
+    default_visible: 0,
+  },
+  {
+    element_key: 'tab:denetim:ocp',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'OpenShift',
+    sort_order: 5,
+    default_visible: 0,
+  },
+  {
+    element_key: 'tab:denetim:init',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Init Script',
+    sort_order: 6,
+    default_visible: 0,
+  },
+  {
+    element_key: 'tab:denetim:envanter',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Envanter',
+    sort_order: 7,
+    default_visible: 0,
+  },
+  {
+    element_key: 'tab:denetim:degisim',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Envanter Değişim',
+    sort_order: 8,
+    default_visible: 0,
+  },
+  {
+    element_key: 'tab:denetim:appenvs',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'JBoss/WAS',
+    sort_order: 9,
+    default_visible: 0,
+  },
+  {
+    element_key: 'tab:denetim:webapp',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Web-App',
+    sort_order: 10,
+    default_visible: 0,
   },
 ];
 
@@ -1741,6 +1836,24 @@ async function seedPortalElements(pool) {
       console.warn(`[DB] portal_elements seed eklenemedi (${el.element_key}):`, err.message);
     }
   }
+  // 2026-09-17: Denetim sayfasi HERKESE KAPATILDI (yalniz Admin). Seed yalniz eksik
+  // kaydi ekledigi icin mevcut kurulumlarda role=User allow kurali ve default_visible=1
+  // kalirdi; asagidaki tek seferlik migration (isaret: portal_config_blobs) bunu kapatir.
+  // Admin'in verecegi kullanici/grup grant'lari (Denetim Erisimi paneli) dokunulmaz.
+  try {
+    const MARK = 'migration:denetim-admin-only-2026-09-17';
+    const done = await pool.request().input('n', MARK).query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    if (!done.recordset.length) {
+      await pool.request().query(`UPDATE portal_elements SET default_visible = 0 WHERE element_key = 'Denetim'`);
+      await pool.request().query(`DELETE FROM portal_element_visibility WHERE element_key = 'Denetim' AND principal_type = 'role' AND principal_id = 'User'`);
+      await pool.request().input('n', MARK).input('d', JSON.stringify({ at: new Date().toISOString() }))
+        .query(`INSERT INTO portal_config_blobs (name, data) VALUES (@n, @d)`);
+      console.log('[DB] Denetim sayfasi yalniz Admin olarak kapatildi (migration isaretlendi).');
+    }
+  } catch (err) {
+    console.warn('[DB] Denetim admin-only migration uygulanamadi:', err.message);
+  }
+
   // 2026-08-25: sayfa adi "Denetim" -> "Middleware Ic Denetim". ELEMENT_SEED yalnizca
   // EKSIK kaydi ekler (yukarida "if (exists) continue"), bu yuzden mevcut kurulumlarda
   // etiket eski halinde kalirdi. Asagidaki guncelleme YALNIZCA etiket hala eski

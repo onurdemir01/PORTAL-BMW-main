@@ -9,6 +9,7 @@
 //   Web-App Relations           -> uygulamayi servis eden web sunucusu/vhost
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ShieldCheckIcon,
@@ -183,6 +184,24 @@ export default function DenetimPage() {
   })();
   const [tab, setTab] = useState<DenetimTab>(initialTab);
   const [showHelp, setShowHelp] = useState(false);
+  // SEKME BAZLI erisim (2026-09-17): Admin > "Denetim Erisimi" ile acilan sekmeler; Admin
+  // hepsini gorur. Gorunmeyen sekme URL'den istense de acilmaz (sunucu ucu zaten 403).
+  const { canSee } = useAuth();
+  const visibleTabs = DENETIM_TABS.filter((id) => canSee(`tab:denetim:${id}`));
+  useEffect(() => {
+    if (visibleTabs.length && !visibleTabs.includes(tab)) setTab(visibleTabs[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTabs.join(','), tab]);
+  const tabAllowed = visibleTabs.includes(tab);
+
+  if (visibleTabs.length === 0) {
+    return (
+      <div className="rounded-xl border px-6 py-10 text-center" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+        <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Bu sayfada size açılmış bir bölüm yok</div>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Middleware İç Denetim yalnız yöneticilere açıktır; bir bölüme erişim gerekiyorsa yöneticinizden isteyin (Admin › Denetim Erişimi).</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -247,7 +266,11 @@ export default function DenetimPage() {
               { id: 'appenvs', label: 'JBoss/WAS', icon: RectangleGroupIcon },
               { id: 'webapp', label: 'Web-App', icon: LinkIcon },
             ] as const
-          ).map((t) => {
+          )
+            // SEKME BAZLI erisim (2026-09-17): Admin > Denetim Erisimi ile acilan sekmeler.
+            // Admin hepsini gorur (motor); sunucu uclari da ayni anahtarla kapali.
+            .filter((t) => canSee(`tab:denetim:${t.id}`))
+            .map((t) => {
             const active = tab === t.id;
             return (
               <button
@@ -267,16 +290,16 @@ export default function DenetimPage() {
         </nav>
       </header>
 
-      {tab === 'nginx' && <NginxSpaAudit />}
-      {tab === 'nginxapi' && <NginxApiEnvanteri />}
-      {tab === 'nginxenv' && <NginxEnvanteri />}
-      {tab === 'nginxaudit' && <NginxAudit />}
-      {tab === 'ocp' && <OcpCoverage />}
-      {tab === 'init' && <InitScriptsAudit />}
-      {tab === 'envanter' && <EnvanterMetrics />}
-      {tab === 'degisim' && <EnvanterDegisim />}
-      {tab === 'appenvs' && <AppEnvs />}
-      {tab === 'webapp' && <WebApp />}
+      {tabAllowed && tab === 'nginx' && <NginxSpaAudit />}
+      {tabAllowed && tab === 'nginxapi' && <NginxApiEnvanteri />}
+      {tabAllowed && tab === 'nginxenv' && <NginxEnvanteri />}
+      {tabAllowed && tab === 'nginxaudit' && <NginxAudit />}
+      {tabAllowed && tab === 'ocp' && <OcpCoverage />}
+      {tabAllowed && tab === 'init' && <InitScriptsAudit />}
+      {tabAllowed && tab === 'envanter' && <EnvanterMetrics />}
+      {tabAllowed && tab === 'degisim' && <EnvanterDegisim />}
+      {tabAllowed && tab === 'appenvs' && <AppEnvs />}
+      {tabAllowed && tab === 'webapp' && <WebApp />}
 
       <HelpModal
         open={showHelp}

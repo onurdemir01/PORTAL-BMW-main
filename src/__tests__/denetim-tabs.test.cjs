@@ -54,7 +54,8 @@ test('sekme listesi okunabiliyor (regex bozulmadi)', () => {
 test('HER sekmenin bir render satiri var', () => {
   for (const id of tabIds()) {
     assert.ok(
-      new RegExp(`\\{\\s*tab === ["']${id}["']\\s*&&`).test(SRC),
+      // 2026-09-17: sekme bazli erisim -> `{tabAllowed && tab === 'x' && <...`
+      new RegExp(`\\{\\s*(tabAllowed\\s*&&\\s*)?tab === ["']${id}["']\\s*&&`).test(SRC),
       `"${id}" sekmesi cubukta var ama render edilmiyor — tiklayinca bos ekran gelir`,
     );
   }
@@ -64,7 +65,7 @@ test('HER sekmenin render ettigi bilesen IMPORT EDILMIS', () => {
   // Asil yakalanmak istenen hata bu: import unutulunca Vite build gecer, sekmeye
   // tiklandiginda uygulama coker.
   for (const id of tabIds()) {
-    const m = SRC.match(new RegExp(`\\{\\s*tab === ["']${id}["']\\s*&& <([A-Za-z0-9_]+)`));
+    const m = SRC.match(new RegExp(`\\{\\s*(?:tabAllowed\\s*&&\\s*)?tab === ["']${id}["']\\s*&& <([A-Za-z0-9_]+)`));
     assert.ok(m, `"${id}" icin render satiri cozulemedi`);
     const comp = m[1];
     // Varsayilan (`import X from`) VE adlandirilmis (`import { X } from`) import'un

@@ -150,6 +150,21 @@ async function okJson(res: Response) {
   return d;
 }
 
+// Denetim Erisimi (Admin, 2026-09-17): kullanici / AD grubu -> Denetim sekmeleri
+export interface DenetimAccessGrant { principalType: 'user' | 'group'; principalId: string; page: boolean; tabs: string[] }
+export const denetimAccessApi = {
+  async list(): Promise<{ tabs: string[]; grants: DenetimAccessGrant[] }> {
+    const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = await okJson(await fetch("/api/visibility/denetim-access")) as never;
+    return { tabs: d.tabs ?? [], grants: d.grants ?? [] };
+  },
+  async set(body: { principalType: 'user' | 'group'; principalId: string; tabs: string[] | 'all' }): Promise<void> {
+    await okJson(await fetch("/api/visibility/denetim-access", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  },
+  async remove(principalType: 'user' | 'group', principalId: string): Promise<void> {
+    await okJson(await fetch(`/api/visibility/denetim-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`, { method: "DELETE" }));
+  },
+};
+
 export const elementsApi = {
   async list(): Promise<{ elements: PortalElement[]; rules: ElementRule[] }> {
     const res = await fetch("/api/visibility/elements");

@@ -64,8 +64,26 @@ function initDenetim(app) {
 
   // Sayfa gizliyse gercek 403 (diger modullerle AYNI desen).
   try {
-    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
+    const { requireVisiblePrefix, requireVisible } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('Denetim'));
+    // SEKME BAZLI kapi (2026-09-17): sayfa acik olsa da yalniz izin verilen sekmenin uclari.
+    // Yol -> sekme eslemesi DenetimPage sekme id'leriyle ayni; eslesmeyen yol sayfa kapisiyla kalir.
+    const TAB_OF_PATH = [
+      [/^\/(nginx-spa|nginx-spa-coverage|route-stats|nginx-migration|nginx-legacy|nginx-locations|nginx-proxy)(\/|$)/, 'nginx'],
+      [/^\/(nginx-api|nginx-api-locations)(\/|$)/, 'nginxapi'],
+      [/^\/nginx-inventory(\/|$)/, 'nginxenv'],
+      [/^\/nginx-audit(\/|$)/, 'nginxaudit'],
+      [/^\/ocp-coverage(\/|$)/, 'ocp'],
+      [/^\/init-scripts(\/|$)/, 'init'],
+      [/^\/envanter(\/|$)/, 'envanter'],
+      [/^\/app-envs(\/|$)/, 'appenvs'],
+      [/^\/web-app(\/|$)/, 'webapp'],
+    ];
+    router.use((req, res, next) => {
+      const hit = TAB_OF_PATH.find(([re]) => re.test(req.path));
+      if (!hit) return next();
+      return requireVisible('tab:denetim:' + hit[1])(req, res, next);
+    });
   } catch {
     /* motor yoksa yoksay */
   }

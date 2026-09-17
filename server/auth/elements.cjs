@@ -24,7 +24,7 @@ function normElement(row) {
 function normRule(row) {
   return {
     elementKey: row.element_key,
-    principalType: row.principal_type,   // 'role' | 'user'
+    principalType: row.principal_type,   // 'role' | 'user' | 'group' (AD grubu, 2026-09-17)
     principalId: row.principal_id,
     allow: row.allow === true || row.allow === 1,
   };
@@ -88,14 +88,15 @@ async function deleteElement(key) {
 async function setElementRules(key, rules) {
   await db.query(`DELETE FROM portal_element_visibility WHERE element_key = $1`, [key]);
   for (const r of rules || []) {
-    const pt = r.principalType === 'user' ? 'user' : 'role';
+    const pt = r.principalType === 'user' ? 'user' : r.principalType === 'group' ? 'group' : 'role';
     const pid = String(r.principalId || '').trim();
     if (!pid) continue;
     const allow = r.allow === false ? 0 : 1;
     await db.query(
       `INSERT INTO portal_element_visibility (element_key, principal_type, principal_id, allow)
        VALUES ($1,$2,$3,$4)`,
-      [key, pt, pt === 'user' ? pid.toLowerCase() : pid, allow]
+      // user ve group kucuk harf (motor kucuk harfle eslestirir; grup DN ya da CN olabilir)
+      [key, pt, pt === 'role' ? pid : pid.toLowerCase(), allow]
     );
   }
   return true;
