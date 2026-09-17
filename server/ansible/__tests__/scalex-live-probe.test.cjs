@@ -175,3 +175,36 @@ test('LP6 `scalex_live_probe_apps` playbook`tan betige gecuriliyor', () => {
   const index = fs.readFileSync(path.join(ROOT, 'server/scalex/index.cjs'), 'utf8');
   assert.match(index, /scalex_live_probe_apps: wanted\.join\(','\)/, 'portal listeyi gondermiyor');
 });
+
+// LP7 — ZINCIRIN SON HALKASI. Mutasyon turunda `liveStates`i `refreshDrift`e HIC
+// gecirmedigimde HICBIR bekci kirmizi donmedi (2026-09-17 bekci korlugu): betik
+// yokluyor, ayristirici ayristiriyor, ama karar merciine ULASMIYOR — ozellik
+// tamamen OLU, hicbir sey de patlamiyor. Bu deponun "var denilen ama hic
+// ateslenmeyen kapi" sinifi tam olarak bu.
+//
+// Cagri BLOGUNU cikarip iceriginde `parsed.live`den turetilen bir `liveStates`
+// oldugunu dogruluyoruz; sabit pencere yerine parantez eslestirmesi kullaniliyor
+// (bkz. scalex-restore-outcome.test.cjs, sabit pencere olcmedigini olcer).
+test('LP7 `liveStates` GERCEKTEN `refreshDrift`e geciriliyor', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'server/scalex/index.cjs'), 'utf8');
+  const at = src.indexOf('await state.refreshDrift(');
+  assert.ok(at > 0, '`refreshDrift` cagrisi bulunamadi');
+  const open = src.indexOf('{', at);
+  let depth = 0;
+  let body = '';
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) {
+      body = src.slice(open, i);
+      break;
+    }
+  }
+  assert.ok(body.length > 0, 'cagri blogu ayristirilamadi');
+  assert.match(body, /liveStates:/, '`liveStates` gecirilmiyor — canli yoklama OLU KOD');
+  assert.match(
+    body,
+    /parsed\.live\b/,
+    '`liveStates` `parsed.live`den turetilmiyor — betigin bastigi satirlar kullanilmiyor',
+  );
+  assert.match(body, /readyReplicas:/, '`readyReplicas` tasinmiyor — karar olcutu kaybolur');
+});
