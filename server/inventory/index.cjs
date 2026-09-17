@@ -1832,7 +1832,10 @@ function initInventory(app) {
   }
 
   // POST /api/inventory/refresh/run — secilen deger(ler) icin AWX job'ini tetikler.
+  // YALNIZ ADMIN (kullanici, 2026-09-17): envanteri yenilemek tum sunuculara baglanan bir
+  // AWX job'i baslatir; sunucu tarafinda kapi, dugmeyi gizlemek yetmez (API dogrudan cagrilabilir).
   router.post('/refresh/run', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, message: 'Envanteri yenilemek için yönetici yetkisi gerekli.' });
     const { choices } = req.body || {};
     if (!Array.isArray(choices) || choices.length === 0) {
       return res.status(400).json({ ok: false, message: 'En az bir değer seçilmeli.' });

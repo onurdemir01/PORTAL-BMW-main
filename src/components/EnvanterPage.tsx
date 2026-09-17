@@ -637,8 +637,9 @@ const EnvanterPage: React.FC = () => {
       )}
 
       {/* "Ürün Envanteri" (Inventory) tablosu için: sunuculara bağlanıp runtime'daki
-          gerçek durumu çekerek envanteri güncelleyen AWX job'ını tetikleyen bar. */}
-      {activeTable === 'Inventory' && (
+          gerçek durumu çekerek envanteri güncelleyen AWX job'ını tetikleyen bar.
+          YALNIZ ADMIN gorur (kullanici, 2026-09-17); sunucu ucu da 403 ile kapali. */}
+      {activeTable === 'Inventory' && isAdmin && (
         <button
           onClick={() => setShowRefreshModal(true)}
           className="flex items-center gap-2 w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-colors"
