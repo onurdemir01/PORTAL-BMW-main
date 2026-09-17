@@ -153,13 +153,13 @@ function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose:
   const [err, setErr] = useState('');
   const [kind, setKind] = useState<'all' | 'spa' | 'nonSpa'>('all');
   const [q, setQ] = useState('');
-  useEffect(() => {
-    let alive = true;
+  // `useAsyncEffect`: `setRows(null)` effect govdesinde SENKRON calismasin
+  // (React 19 `set-state-in-effect`). Iptal bayragi hook'tan gelir.
+  useAsyncEffect(async (alive) => {
     setRows(null);
-    denetimApi.routesOfIp({ ip, env, kind: 'all' })
-      .then((r) => { if (!alive) return; if (r.ok) setRows(r.rows); else setErr(r.message || 'Route listesi alınamadı.'); })
-      .catch((e: unknown) => alive && setErr(e instanceof Error ? e.message : String(e)));
-    return () => { alive = false; };
+    await denetimApi.routesOfIp({ ip, env, kind: 'all' })
+      .then((r) => { if (!alive()) return; if (r.ok) setRows(r.rows); else setErr(r.message || 'Route listesi alınamadı.'); })
+      .catch((e: unknown) => alive() && setErr(e instanceof Error ? e.message : String(e)));
   }, [ip, env]);
   const list = useMemo(() => {
     const n = q.trim().toLowerCase();
