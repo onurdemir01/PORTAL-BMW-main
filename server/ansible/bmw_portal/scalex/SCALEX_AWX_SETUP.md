@@ -45,6 +45,18 @@ Bu nedenle AWX proje kökünde aşağıdaki yapı korunmalıdır:
 └── bmw_openshift_jobs/
 ```
 
+Kopyalama komutu (portal deposunun kökünden çalıştırılır):
+
+```bash
+cp -r server/ansible/bmw_portal/scalex/scalex_app <AWX_PROJECT_DIR>/bmw_portal/scalex/
+```
+
+> Bu iki yol **birebir** böyle olmalıdır. Playbook `vars_files` ile
+> `../../../bmw_openshift_jobs/` yolunu kullanıyor; hedef derinliği bir kademe
+> kayarsa cluster kimlik dosyaları bulunamaz ve iş "catalog_source: file" ile
+> sessizce yanlış katalogla koşar. `AT6` bekçisi (server/ansible/__tests__/
+> playbook-tree.test.cjs) bu satırı kilitler — komutu değiştirirseniz bekçi kırmızı olur.
+
 Paket kopyalandıktan veya güncellendikten sonra AWX üzerinde:
 
 **Projects → ANSIBLE_6203 → Sync**
