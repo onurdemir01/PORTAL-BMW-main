@@ -319,9 +319,55 @@ async function listMirrorAll() {
 
 // `scalex_state_audit` kesfinden sonra sapma durumlarini tazeler. Taranmayan cluster'lara
 // DOKUNMAZ (bkz. classifyDrift gerekcesi).
-async function refreshDrift({ env, tenant, scannedClusters, clusterStates }) {
+async function refreshDrift({ env, tenant, scannedClusters, clusterStates, liveStates = [] }) {
   const mirrorRows = await listMirror({ env, tenant });
   const classified = classifyDrift({ mirrorRows, clusterStates, scannedClusters });
+
+  // ── DIS MUDAHALE TOLERANSI ────────────────────────────────────────────────
+  //
+  // "ConfigMap yok" IKI FARKLI gercegi ortuyordu ve ekran ikisine de ayni cumleyi
+  // yaziyordu: "biri elle geri almis olabilir" — bir TAHMIN.
+  //
+  //   * uygulama AYAKTA → biri geri almis (ya da bizim kendi isimiz basarili
+  //     olmus). Portal kaydi ANLAMSIZ kalmistir; kapatilir ve SORUN YOK denir.
+  //   * uygulama 0'DA   → ConfigMap kaybolmus ama uygulama hala kapali. Geri alma
+  //     bilgisi KAYIP; satir DURUR ve uyarir. Asil bakilmasi gereken durum budur.
+  //
+  // `ready >= 1` OLCUTU: `spec.replicas` 1 olup pod hic ayaga kalkmamis olabilir
+  // (imaj cekilemiyor, kota yok). O durumda kayit ANLAMSIZ DEGILDIR — kullanici
+  // hala onu geri almak isteyebilir, o yuzden satir durur.
+  const liveByKey = new Map(liveStates.map((l) => [keyOf(l), l]));
+  const resolved = [];
+  for (const row of classified) {
+    if (row.source !== 'portal' || row.drift !== DRIFT.MISSING_ON_CLUSTER) continue;
+    const live = liveByKey.get(keyOf(row));
+    if (!live || (live.readyReplicas ?? 0) < 1) continue;
+    await clearRestored({
+      env: row.env,
+      tenant: row.tenant,
+      clusterName: row.clusterName,
+      namespace: row.namespace,
+      appName: row.appName,
+    });
+    row.drift = DRIFT.IN_SYNC;
+    row.resolvedExternally = true;
+    resolved.push({
+      cluster: row.clusterName,
+      namespace: row.namespace,
+      app: row.appName,
+      ready: live.readyReplicas,
+    });
+  }
+  if (resolved.length) {
+    // `result: 'ok'` — BU BIR ARIZA DEGIL. `scalex_drift_detected` kaydi `fail`
+    // seviyesinde; ayni seviyeye yazmak, "her sey yolunda" haberini alarm
+    // listesinin icine gomerdi.
+    require('../audit/index.cjs').auditPortal(null, 'scalex_drift_resolved', {
+      username: 'system:scalex-discovery',
+      result: 'ok',
+      detail: JSON.stringify({ env, tenant, resolved: resolved.slice(0, 20), total: resolved.length }),
+    });
+  }
 
   // SAPMA DEGISIMLERI DENETIME. `missing_on_cluster` / `unknown_to_portal`, "birisi
   // portal disindan is yapmis" tespitidir — kullanicinin bilmesi gereken sey ve
@@ -332,6 +378,8 @@ async function refreshDrift({ env, tenant, scannedClusters, clusterStates }) {
   // denetime yazmak, gercek degisimi gurultunun icinde kaybederdi.
   const changes = [];
   for (const row of classified) {
+    // Disaridan cozulmus satir SILINDI — uzerine UPDATE atmak bos sorgu olurdu.
+    if (row.resolvedExternally) continue;
     // ── PORTAL KAYNAKLI: drift_status + last_seen_at ───────────────────
     if (row.source === 'portal' && row.drift !== null) {
       const { rowCount } = await db.query(

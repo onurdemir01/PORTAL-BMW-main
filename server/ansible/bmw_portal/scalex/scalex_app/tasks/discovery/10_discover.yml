@@ -20,6 +20,14 @@
     TLS_VERIFY: "{{ scalex_target.tls_verify | bool | string | lower }}"
     NS: "{{ oc_namespace }}"
     APP_RAW: "{{ target_app_list | join(',') }}"
+    # CANLI YOKLAMA LISTESI — yalnizca `state` kesfinde dolu gelir. Portal, o
+    # namespace icin AYNASINDA kayitli uygulamalarin adlarini gonderir; betik her
+    # biri icin bir `LIVE` satiri basar (istenen/mevcut/hazir replica).
+    #
+    # `APP_RAW`DAN AYRI: `APP_RAW` ConfigMap listelemesini de suzuyor. Bu listeyle
+    # suzseydik cluster'da durdurulmus ama portalda kaydi OLMAYAN uygulamalar
+    # (`unknown_to_portal`) gorunmez olurdu — sapma tespitinin YARISI kaybolurdu.
+    SCALEX_LIVE_PROBE_APPS: "{{ scalex_live_probe_apps | default('') }}"
     # Kesifte islem YOK. Betik `discover` fazinda `ACTION` aramaz; yine de bos
     # gecmek, degiskenin tanimsiz kalmasindan iyidir (`set -u` ile calisiyor).
     ACTION: ""

@@ -632,6 +632,37 @@ function initScaleX(app) {
         scalex_target_clusters: clusters,
         discovery_mode: mode,
         ...(apps.length ? { target_app_names: apps.join(',') } : {}),
+        // CANLI YOKLAMA LISTESI — yalnizca `state` kesfinde. Portal, bu kapsamdaki
+        // ayna satirlarinin uygulama adlarini gonderir; betik her biri icin bir
+        // `LIVE` satiri (istenen/mevcut/hazir replica) basar. `refreshDrift` bunu
+        // kullanarak "ConfigMap yok ama uygulama AYAKTA" satirlarini kapatir.
+        //
+        // LISTEYI SUNUCU DOLDURUR, ISTEMCI DEGIL: karar icin gereken TAM liste
+        // aynadadir ve istemciye sormak, sekmesini kapatan her kullanicida yoklamanin
+        // sessizce eksik kalmasi demekti (`refreshDrift`in kendi gerekcesiyle AYNI).
+        //
+        // `target_app_names`DEN AYRI: o degisken ConfigMap listelemesini de suzuyor;
+        // bu listeyle suzseydik cluster'da durdurulmus ama portalda kaydi OLMAYAN
+        // uygulamalar (`unknown_to_portal`) gorunmez olurdu.
+        ...(await (async () => {
+          if (mode !== 'state') return {};
+          try {
+            const rows = await state.listMirror({ env, tenant });
+            const wanted = [
+              ...new Set(
+                rows
+                  .filter((r) => clusters.includes(r.clusterName) && r.namespace === namespace)
+                  .map((r) => r.appName),
+              ),
+            ];
+            return wanted.length ? { scalex_live_probe_apps: wanted.join(',') } : {};
+          } catch (e) {
+            // Yoklama listesi BEST-EFFORT: uretilemezse kesif YINE KOSAR, yalnizca
+            // "ayakta mi" sorusu cevapsiz kalir ve sapma eski davranisla isaretlenir.
+            console.warn('[ScaleX] canli yoklama listesi uretilemedi:', e.message);
+            return {};
+          }
+        })()),
       };
       const job = await launchOnAwx({
         keyName: DISCOVERY_KEY,
@@ -856,6 +887,16 @@ function initScaleX(app) {
               stoppedBy: st.createdBy,
               workloadKind: st.kind,
               legacy: st.legacy,
+            })),
+            // CANLI REPLICA: "ConfigMap yok" ile "uygulama kapali" ayri sorular.
+            liveStates: (parsed.live || []).map((lv) => ({
+              env: parsed.environment,
+              tenant: parsed.platform,
+              clusterName: lv.cluster,
+              namespace: parsed.namespace,
+              appName: lv.appName,
+              readyReplicas: lv.readyReplicas,
+              workloadAbsent: lv.workloadAbsent,
             })),
           });
         } catch (e) {
