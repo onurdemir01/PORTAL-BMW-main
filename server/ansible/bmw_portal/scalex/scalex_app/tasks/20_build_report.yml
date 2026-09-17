@@ -65,11 +65,14 @@
           {%- set exe_warn = pair.exe | selectattr('5', 'equalto', 'WARN') | list -%}
           {%- set verify_ok = namespace(items=[]) -%}
           {%- set verify_fail = namespace(items=[]) -%}
+          {%- set verify_applied = namespace(items=[]) -%}
           {%- for p in pair.exe -%}
             {%- if p[4] == 'VERIFY' and p[5] == 'OK' -%}
               {%- set verify_ok.items = verify_ok.items + [p] -%}
             {%- elif p[4] == 'VERIFY' and p[5] == 'FAIL' -%}
               {%- set verify_fail.items = verify_fail.items + [p] -%}
+            {%- elif p[4] == 'VERIFY' and p[5] == 'WARN' and 'applied=yes' in (p[6:] | join(';')) -%}
+              {%- set verify_applied.items = verify_applied.items + [p] -%}
             {%- endif -%}
             {%- if calc.kind == '-' and p[3] != '-' -%}
               {%- set calc.kind = p[3] -%}
@@ -117,6 +120,13 @@
             {%- elif verify_ok.items | length > 0 -%}
               {%- set calc.status = 'OK' -%}
               {%- set calc.detail = 'İşlem tamamlandı ve doğrulandı.' -%}
+            {%- elif verify_applied.items | length > 0 -%}
+              {#- ACMA'DA "UYGULANDI AMA HAZIR DEGIL". Bu bir HATA DEGIL: `oc patch`
+                  calisti, betik durum ConfigMap'ini SILDI ve isi basarili saydi.
+                  Belirteci olmayan bir WARN satiri asagidaki `exe_warn` daline
+                  dusuyor ve portal onu geri alma HATASI sayiyordu. -#}
+              {%- set calc.status = 'WARN' -%}
+              {%- set calc.detail = 'Replica değişikliği uygulandı, pod hazır olmayı sürdürüyor. ' ~ (verify_applied.items[0][6:] | join(';')) -%}
             {%- elif _strict_blocked | bool -%}
               {%- set calc.status = 'FAIL' -%}
               {%- set calc.detail = 'Genel ön kontrol hatası nedeniyle işlem uygulanmadı.' -%}
@@ -127,12 +137,19 @@
             {%- endif -%}
           {%- endif -%}
 
+          {#- `verified`: HEDEFTE ISTENEN DEGISIKLIK CLUSTER'DA UYGULANDI MI.
+              `status`tan AYRI bir soru: bir hedef WARN olabilir ama degisiklik
+              uygulanmis olabilir. Portal geri alma kararini artik BUNA gore
+              veriyor (server/scalex/index.cjs) — `status !== 'OK'` demek,
+              ayakta olan bir uygulamaya "geri alinamadi" demekti. YENI ALAN;
+              mevcut anahtarlarin hicbiri degismedi. -#}
           {%- set ns.rows = ns.rows + [{
             'cluster': cluster,
             'app': app,
             'kind': calc.kind,
             'status': calc.status,
-            'detail': calc.detail
+            'detail': calc.detail,
+            'verified': (verify_ok.items | length > 0) or (verify_applied.items | length > 0)
           }] -%}
         {%- endfor -%}
       {%- endfor -%}

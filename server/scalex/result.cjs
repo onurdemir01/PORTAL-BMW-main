@@ -9,7 +9,7 @@
 // `server/ansible/bmw_portal/scalex/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
-const EXPECTED_PACKAGE_VERSION = '7';
+const EXPECTED_PACKAGE_VERSION = '8';
 
 function extractStatsKey(rawArtifacts, key) {
   const a = rawArtifacts || {};
@@ -119,6 +119,15 @@ function extractScaleXResult(rawArtifacts) {
       kind: String(t.kind || '-'),
       status: normalizeStatus(t.status),
       detail: String(t.detail || ''),
+      // ISTENEN DEGISIKLIK CLUSTER'DA UYGULANDI MI — `status`tan AYRI bir soru.
+      // Bir hedef WARN olabilir ama degisiklik uygulanmis olabilir: acmada pod'un
+      // hazir olmasi 5 dk'yi gecerse betik uyarir, `oc patch` calismistir ve durum
+      // ConfigMap'i SILINMISTIR. Portal `status !== 'OK'` diye bakinca AYAKTA olan
+      // bir uygulamaya "geri alinamadi" yaziyordu (2026-09-17, is #3326330).
+      //
+      // `=== true` SART: paket 7 ve oncesi bu alani HIC gondermez ve `undefined`
+      // kalir — o zaman eski davranis (yalnizca `status`) gecerli olur.
+      verified: t.verified === true,
     })),
     targetsTruncated: toBool(raw.targets_truncated),
     targetsTotal: toInt(raw.targets_total),
