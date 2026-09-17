@@ -40,7 +40,9 @@ test('sunucu satiri kendi sayfasina gider; rota tanimli; geri donus Nginx Audit 
   const app = read('App.tsx');
   const denetim = read('components/DenetimPage.tsx');
   assert.ok(/hostPagePath = \(host: string\) => `\/denetim\/nginx-audit\/\$\{encodeURIComponent\(host\)\}`/.test(list));
-  assert.ok(list.includes('<Link to={to}'), 'sunucu adi gercek bir Link olmali (yeni sekmede acilabilsin)');
+  // BOSLUK/SATIR SARMASI SERBEST: prettier ozellikleri alt alta yazdiginda bu
+  // birebir dize eslesmesi kiriliyor. Olculen sey BICIM degil KURAL.
+  assert.match(list.replace(/\s+/g, ' '), /<Link to=\{to\}/, 'sunucu adi gercek bir Link olmali (yeni sekmede acilabilsin)');
   assert.ok(!/onToggle|open === h\.host/.test(list), 'eski satir-ici acilir bolum kalmamali');
   assert.ok(app.includes('path="/denetim/nginx-audit/:host"'), 'App.tsx rotasi yok');
   assert.ok(page.includes("'/denetim?tab=nginxaudit'"), 'geri baglantisi Nginx Audit sekmesine gitmeli');
@@ -202,7 +204,8 @@ test('Nginx Audit istisna: YALNIZ atlayan/tanimsiz gri, ayar sapmasi + dosya far
   assert.ok(!/\{exc \? \(\s*muted\s*\) : !filesReady/.test(list), 'dosya farki istisnada gizlenmemeli');
   assert.ok(list.includes('applyExceptionLocally(excEdit.host') && list.includes('void refreshQuietly()'), 'kaydettikten sonra iyimser guncelleme + sessiz tazeleme olmali');
   assert.ok(!/nginxAuditExceptionSet\([\s\S]{0,200}await load\(\)/.test(list), 'kaydettikten sonra tam yeniden yukleme (spinner) olmamali');
-  assert.ok(list.includes('<Th><span title="İstisna:'), 'Istisna sutunu yok');
+  // Ayni sebeple bosluk-toleransli (prettier <Th> ve <span>'i ayri satirlara alir).
+  assert.match(list.replace(/\s+/g, ' '), /<Th> ?<span title="İstisna:/, 'Istisna sutunu yok');
   assert.ok(list.includes('denetimApi.nginxAuditExceptionSet(') && list.includes('denetimApi.nginxAuditExceptionClear('), 'kaydet/kaldir uclari cagrilmiyor');
   assert.ok(list.includes("disabled={excBusy || !excEdit?.note.trim()}"), 'not zorunlu olmali');
   assert.ok(list.includes('canEdit={isAdmin}'), 'yalniz Admin duzenler');

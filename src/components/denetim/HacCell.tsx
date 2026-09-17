@@ -34,13 +34,18 @@ export function DirCell({ f }: { f: { hys: boolean; app: boolean; conf: boolean 
 }
 
 
+// MODUL DUZEYINDE — RENDER ICINDE DEGIL. Render sirasinda tanimlanan bir bilesen
+// HER RENDER'DA YENI BIR TIP olur: React onu ayni bilesen sayamaz, alt agaci sokup
+// yeniden kurar (state/odak kaybi). `react-hooks/static-components` bunu dort
+// kullanimda isaretliyordu.
+const Ex = ({ f, label }: { f: { hys: boolean; app: boolean; conf: boolean }; label: string }) => (
+  <div className="flex items-center gap-2">
+    <DirCell f={f} />
+    <span>{label}</span>
+  </div>
+);
+
 export function HacLegend({ defaultOpen = true }: { defaultOpen?: boolean }) {
-  const Ex = ({ f, label }: { f: { hys: boolean; app: boolean; conf: boolean }; label: string }) => (
-    <div className="flex items-center gap-2">
-      <DirCell f={f} />
-      <span>{label}</span>
-    </div>
-  );
   return (
     <details className="rounded-xl border px-4 py-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }} open={defaultOpen}>
       <summary className="text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--text-primary)' }}>

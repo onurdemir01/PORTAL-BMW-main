@@ -8,6 +8,9 @@
 // (kurulum referansi), kurulum dosyasi uyumu (direktif bazinda fark). Veri tek uctan:
 // GET /api/denetim/nginx-audit/host/:host (SQL'de suzulur, tum filo cekilmez).
 import React, { useEffect, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+// Ham tarih bicimlendirme YOK: bicim tek yerden gelir (bekci G19).
+import { fmtDateTime } from '@/utils/datetime';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeftIcon, ArrowPathIcon, ServerStackIcon } from '@heroicons/react/24/outline';
 import { denetimApi, type NginxAuditHost, type NginxAuditRefFile } from '@/api/denetimApi';
@@ -31,27 +34,26 @@ export default function NginxAuditHostPage() {
   const [err, setErr] = useState('');
   const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    let alive = true;
+  // `useAsyncEffect`: is effect flush'indan SONRAKI mikro-goreve ertelenir, yani
+  // `setLoading(true)` effect govdesinde SENKRON degildir (React 19'un
+  // `set-state-in-effect` kurali bunu isaretliyordu). Iptal de hook'tan gelir.
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     (async () => {
       try {
         const r = await denetimApi.nginxAuditHost(hostName);
-        if (!alive) return;
+        if (!alive()) return;
         if (r.ok) {
           setData(r.host);
           setMeta({ scanDate: r.scanDate, filesReady: r.filesReady, schemaReady: r.schemaReady });
           setErr('');
         } else setErr(r.message || 'Veri alınamadı.');
       } catch (e: unknown) {
-        if (alive) setErr(e instanceof Error ? e.message : String(e));
+        if (alive()) setErr(e instanceof Error ? e.message : String(e));
       } finally {
-        if (alive) setLoading(false);
+        if (alive()) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
   }, [hostName, tick]);
 
   return (
@@ -124,7 +126,7 @@ export default function NginxAuditHostPage() {
             <Note tone="warning" title="Bu sunucu denetim istisnası">
               {data.exception.note}
               <div className="mt-1 text-[var(--text-muted)]">
-                {data.exception.by ? `${data.exception.by}` : ''}{data.exception.at ? ` · ${new Date(data.exception.at).toLocaleString('tr-TR')}` : ''} — listede metrikler gösterilmez ve toplamlara girmez; bu sayfa ham veriyi göstermeye devam eder.
+                {data.exception.by ? `${data.exception.by}` : ''}{data.exception.at ? ` · ${fmtDateTime(data.exception.at)}` : ''} — listede metrikler gösterilmez ve toplamlara girmez; bu sayfa ham veriyi göstermeye devam eder.
               </div>
             </Note>
           )}

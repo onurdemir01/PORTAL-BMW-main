@@ -8,6 +8,7 @@
 // hesap sunucuda, burada yalnizca gosterim. "Insanlara gosterdigimde anlamiyorlar"
 // sikayetine cevap: buyuk sayi + oran cubugu, her sutun tek soruya cevap verir.
 import React, { useEffect, useMemo, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   denetimApi,
   type SpaCoverageResult,
@@ -152,13 +153,13 @@ function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose:
   const [err, setErr] = useState('');
   const [kind, setKind] = useState<'all' | 'spa' | 'nonSpa'>('all');
   const [q, setQ] = useState('');
-  useEffect(() => {
-    let alive = true;
+  // `useAsyncEffect`: `setRows(null)` effect govdesinde SENKRON calismasin
+  // (React 19 `set-state-in-effect`). Iptal bayragi hook'tan gelir.
+  useAsyncEffect(async (alive) => {
     setRows(null);
-    denetimApi.routesOfIp({ ip, env, kind: 'all' })
-      .then((r) => { if (!alive) return; if (r.ok) setRows(r.rows); else setErr(r.message || 'Route listesi alınamadı.'); })
-      .catch((e: unknown) => alive && setErr(e instanceof Error ? e.message : String(e)));
-    return () => { alive = false; };
+    await denetimApi.routesOfIp({ ip, env, kind: 'all' })
+      .then((r) => { if (!alive()) return; if (r.ok) setRows(r.rows); else setErr(r.message || 'Route listesi alınamadı.'); })
+      .catch((e: unknown) => alive() && setErr(e instanceof Error ? e.message : String(e)));
   }, [ip, env]);
   const list = useMemo(() => {
     const n = q.trim().toLowerCase();
@@ -330,22 +331,21 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
   const [open, setOpen] = useState<{ title: string; subtitle: string; rows: MissingRow[] } | null>(null);
   const [ipOpen, setIpOpen] = useState<{ ip: string; env: string } | null>(null);
 
-  useEffect(() => {
-    let alive = true;
+  // `useAsyncEffect`: is effect flush'indan SONRAKI mikro-goreve ertelenir, yani
+  // `setLoading(true)` effect govdesinde SENKRON degildir (React 19'un
+  // `set-state-in-effect` kurali bunu isaretliyordu). Iptal de hook'tan gelir.
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     // Uc uc BAGIMSIZ: biri dusse de digerleri gosterilir (route tablosu yoksa sutun "—").
-    Promise.allSettled([denetimApi.spaCoverage('ark'), denetimApi.routeStats('ark'), denetimApi.nginxMigration()])
+    await Promise.allSettled([denetimApi.spaCoverage('ark'), denetimApi.routeStats('ark'), denetimApi.nginxMigration()])
       .then(([c, r, m]) => {
-        if (!alive) return;
+        if (!alive()) return;
         if (c.status === 'fulfilled' && c.value.ok) setCov(c.value);
         else setErr(c.status === 'fulfilled' ? c.value.message || 'Kapsam verisi alınamadı.' : String(c.reason));
         if (r.status === 'fulfilled' && r.value.ok) setRoutes(r.value);
         if (m.status === 'fulfilled' && m.value.ok) setMig(m.value);
       })
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
+      .finally(() => alive() && setLoading(false));
   }, []);
 
   const rows = useMemo(() => {

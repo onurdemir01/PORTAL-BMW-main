@@ -7,6 +7,7 @@
 // çekilir; eski değer yeni listede yoksa temizlenir ki geçersiz bir değer sessizce
 // gönderilmesin (sunucu zaten reddeder, ama kullanıcı bunu formda görmeli).
 import React, { useEffect, useMemo, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { ansibleApi, type ChoicesSource, type DynamicChoice } from '@/api/ansibleApi';
 import { TextInput } from '@/components/ui/Form';
 
@@ -56,18 +57,19 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
   // tekli secim combobox'inin acik/kapali durumu (hook sirasi: erken donuslerden ONCE)
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
+  // `useAsyncEffect`: govdedeki setState'ler artik effect flush'inda SENKRON
+  // calismiyor (mikro-goreve ertelenir). Iptal bayragi hook'tan gelir.
+  useAsyncEffect(async (alive) => {
     if (missingParam) {
       setChoices([]);
       return;
     }
-    let alive = true;
     setLoading(true);
     setErr('');
     ansibleApi
       .choices(source.source, params)
       .then((r) => {
-        if (!alive) return;
+        if (!alive()) return;
         if (!r.ok) {
           setErr(r.message || 'Seçenekler yüklenemedi.');
           setChoices([]);
@@ -81,15 +83,11 @@ export default function DynamicChoiceSelect({ id, source, values, value, onChang
         } else if (value && !(r.choices || []).some((c) => c.value === value)) onChange('');
       })
       .catch((e: unknown) => {
-        if (!alive) return;
+        if (!alive()) return;
         setErr(e instanceof Error ? e.message : String(e));
         setChoices([]);
       })
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .finally(() => alive() && setLoading(false));
   }, [source.source, paramsKey, missingParam]);
 
   const groups = useMemo(() => {

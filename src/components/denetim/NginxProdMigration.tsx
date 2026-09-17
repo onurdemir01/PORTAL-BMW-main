@@ -6,6 +6,9 @@
 // olarak var mi? Her satir bir uygulama, her sutun bir YENI sunucu. Hesap sunucuda
 // (nginx-migration.cjs); burada yalnizca gosterim.
 import React, { useEffect, useMemo, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+// Ham tarih bicimlendirme YOK: bicim tek yerden gelir (bekci G19).
+import { fmtDateTime } from '@/utils/datetime';
 import { ArrowDownTrayIcon, ArrowPathIcon, DocumentPlusIcon, CalendarDaysIcon, TrashIcon } from '@heroicons/react/24/outline';
 import {
   nginxMigrationApi,
@@ -98,28 +101,26 @@ export default function NginxProdMigration() {
     }
   };
 
-  useEffect(() => {
-    let alive = true;
+  // `useAsyncEffect`: is mikro-goreve ertelenir, yani `setLoading(true)` effect
+  // govdesinde SENKRON degildir; iptal bayragi da hook'tan gelir (`alive()`).
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     loadConfig();
     loadTracking();
     (async () => {
       try {
         const r = await denetimApi.nginxMigration(tick > 0); // Yenile (tick>0): onbellegi atla
-        if (!alive) return;
+        if (!alive()) return;
         if (r.ok) {
           setData(r);
           setErr('');
         } else setErr(r.message || 'Veri alınamadı.');
       } catch (e: unknown) {
-        if (alive) setErr(e instanceof Error ? e.message : String(e));
+        if (alive()) setErr(e instanceof Error ? e.message : String(e));
       } finally {
-        if (alive) setLoading(false);
+        if (alive()) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
   }, [tick]);
 
   async function confirmCreate() {
@@ -437,7 +438,11 @@ export default function NginxProdMigration() {
 }
 
 const trackKey = (group: string, ns: string, app: string) => `${group}|${ns}/${app}`;
-const fmtDate = (d: string | null | undefined) => (d ? d.split('-').reverse().join('.') : '');
+// DUZ TARIH (YYYY-MM-DD) — ortak `fmtDate` DEGIL, bilerek. Bu degerler DB'den
+// SAATSIZ gelir; ortak yardimci onlari Date'e cevirip saat dilimine gore
+// bicimler ve bos degerde '—' doner. Burada istenen yalniz gun.ay.yil ve bosta
+// BOS metin. Ham `toLocale*` kullanmadigi icin G19'u da ihlal etmez.
+const fmtPlainDate = (d: string | null | undefined) => (d ? d.split('-').reverse().join('.') : '');
 const TRACK_LABEL: Record<MigrationTrackState, { label: string; tone: 'success' | 'warning' | 'neutral' | 'danger' }> = {
   none: { label: 'geçmedi', tone: 'neutral' },
   planned: { label: 'planlandı', tone: 'warning' },
@@ -451,17 +456,17 @@ function TrackCell({ t, ready, onEdit }: { t: MigrationTracking | null; ready: b
   const meta = TRACK_LABEL[st];
   const date = st === 'migrated' ? t?.migratedDate : st === 'planned' ? t?.plannedDate : null;
   const title = [
-    t?.plannedDate ? `planlanan: ${fmtDate(t.plannedDate)}` : '',
-    t?.migratedDate ? `geçiş: ${fmtDate(t.migratedDate)}` : '',
+    t?.plannedDate ? `planlanan: ${fmtPlainDate(t.plannedDate)}` : '',
+    t?.migratedDate ? `geçiş: ${fmtPlainDate(t.migratedDate)}` : '',
     t?.note ? `not: ${t.note}` : '',
-    t?.configJobId ? `tanım job ${t.configJobId} (${t.configCreatedAt ? new Date(t.configCreatedAt).toLocaleString('tr-TR') : ''}${t.configCreatedBy ? ', ' + t.configCreatedBy : ''})` : '',
-    t?.deleteJobId ? `eski tanım kaldırma job ${t.deleteJobId} (${t.deleteRequestedAt ? new Date(t.deleteRequestedAt).toLocaleString('tr-TR') : ''}${t.deleteRequestedBy ? ', ' + t.deleteRequestedBy : ''}) — 23:00'e zamanlandı` : '',
+    t?.configJobId ? `tanım job ${t.configJobId} (${t.configCreatedAt ? fmtDateTime(t.configCreatedAt) : ''}${t.configCreatedBy ? ', ' + t.configCreatedBy : ''})` : '',
+    t?.deleteJobId ? `eski tanım kaldırma job ${t.deleteJobId} (${t.deleteRequestedAt ? fmtDateTime(t.deleteRequestedAt) : ''}${t.deleteRequestedBy ? ', ' + t.deleteRequestedBy : ''}) — 23:00'e zamanlandı` : '',
     t?.updatedBy ? `son güncelleyen: ${t.updatedBy}` : '',
     'düzenlemek için tıklayın',
   ].filter(Boolean).join('\n');
   return (
     <button onClick={onEdit} disabled={!ready} className="inline-flex items-center gap-1 disabled:opacity-40" title={ready ? title : 'takip tablosu okunamadı'}>
-      <Pill tone={meta.tone}>{meta.label}{date ? ` ${fmtDate(date)}` : ''}</Pill>
+      <Pill tone={meta.tone}>{meta.label}{date ? ` ${fmtPlainDate(date)}` : ''}</Pill>
       {t?.configJobId && <span className="text-[9px] text-[var(--text-muted)]" title="Tanım oluştur job'ı koşturuldu">⚙{t.configJobId}</span>}
       {t?.deleteJobId && <span className="text-[9px] text-red-600" title="Eski tanımı kaldırma job'ı koşturuldu (23:00'e zamanlandı)">🗑{t.deleteJobId}</span>}
       <CalendarDaysIcon className="w-3.5 h-3.5 text-[var(--text-muted)]" />
@@ -538,11 +543,11 @@ function TrackingModal({ group, app, current, onClose, onSaved }: {
         </label>
         {current?.configJobId && (
           <div className="text-[11px] text-[var(--text-muted)]">
-            Tanım oluştur job&apos;ı: <b>{current.configJobId}</b>{current.configCreatedAt ? ` · ${new Date(current.configCreatedAt).toLocaleString('tr-TR')}` : ''}{current.configCreatedBy ? ` · ${current.configCreatedBy}` : ''}
+            Tanım oluştur job&apos;ı: <b>{current.configJobId}</b>{current.configCreatedAt ? ` · ${fmtDateTime(current.configCreatedAt)}` : ''}{current.configCreatedBy ? ` · ${current.configCreatedBy}` : ''}
           </div>
         )}
         {current?.updatedBy && (
-          <div className="text-[11px] text-[var(--text-muted)]">Son güncelleme: {current.updatedBy}{current.updatedAt ? ` · ${new Date(current.updatedAt).toLocaleString('tr-TR')}` : ''}</div>
+          <div className="text-[11px] text-[var(--text-muted)]">Son güncelleme: {current.updatedBy}{current.updatedAt ? ` · ${fmtDateTime(current.updatedAt)}` : ''}</div>
         )}
         {msg && <div className="text-[11px] text-red-600">{msg}</div>}
       </div>
@@ -558,11 +563,18 @@ function MigrationConfigPanel({ config, onSaved }: { config: NginxMigrationConfi
   const [deleteTemplateId, setDeleteTemplateId] = useState(String(config.deleteTemplateId || ''));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
-  useEffect(() => {
+  // PROP DEGISINCE STATE'I AYARLA — EFFECT DEGIL, RENDER SIRASINDA. Effect'te
+  // yapmak ESKI degerlerle BIR RENDER daha uretiyordu ve React 19 bunu
+  // `set-state-in-effect` ile isaretliyordu. Kosul bir sonraki render'da yanlis
+  // olur, yani yakinsar (React'in belgeledigi desen).
+  const propKey = `${config.awxServerId || 0}|${config.templateId || ''}|${config.deleteTemplateId || ''}`;
+  const [prevPropKey, setPrevPropKey] = useState(propKey);
+  if (prevPropKey !== propKey) {
+    setPrevPropKey(propKey);
     setAwxServerId(config.awxServerId || 0);
     setTemplateId(String(config.templateId || ''));
     setDeleteTemplateId(String(config.deleteTemplateId || ''));
-  }, [config.awxServerId, config.templateId, config.deleteTemplateId]);
+  }
   useEffect(() => {
     let alive = true;
     (async () => {

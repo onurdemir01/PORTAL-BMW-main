@@ -12,6 +12,8 @@
 // Legacy denetiminden AYRIDIR: o, 12 prod sunucusunu servis tanesinde ve eslenik
 // karsilastirmasiyla olcer. Bu, tum filoyu sunucu tanesinde olcer.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+// Ham tarih bicimlendirme YOK: bicim tek yerden gelir (bekci G19).
+import { fmtDate } from '@/utils/datetime';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
@@ -527,7 +529,7 @@ function HostRow({ h, filesReady, canEdit, onEditException }: { h: NginxAuditHos
       <Td className="whitespace-nowrap">
         {h.exception ? (
           <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <Pill tone="warning" title={`${h.exception.note}${h.exception.by ? `\n— ${h.exception.by}` : ''}${h.exception.at ? ` · ${new Date(h.exception.at).toLocaleDateString('tr-TR')}` : ''}`}>istisna</Pill>
+            <Pill tone="warning" title={`${h.exception.note}${h.exception.by ? `\n— ${h.exception.by}` : ''}${h.exception.at ? ` · ${fmtDate(h.exception.at)}` : ''}`}>istisna</Pill>
             <span className="text-[10px] text-[var(--text-muted)] max-w-[14rem] truncate" title={h.exception.note}>{h.exception.note}</span>
             {canEdit && (
               <button onClick={onEditException} className="text-[10px] underline decoration-dotted text-[var(--text-muted)]" title="istisnayı düzenle / kaldır">✎</button>

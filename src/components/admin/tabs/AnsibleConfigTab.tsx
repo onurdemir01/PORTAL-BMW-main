@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   CheckCircleIcon, XCircleIcon, ArrowPathIcon,
 } from "@heroicons/react/24/outline";
@@ -41,8 +42,14 @@ export default function AnsibleConfigTab() {
     }
   }
 
+  // IKI AYRI HOOK, BILEREK: ilk yukleme `useAsyncEffect` ile (effect govdesinde
+  // senkron setState uyari uretiyordu), interval AYRI `useEffect`te kaliyor cunku
+  // TEMIZLIK dondurmesi gerek. `setInterval` geri cagrisi zaten senkron calismaz.
+  useAsyncEffect(async () => {
+    await reload();
+  }, []);
+
   useEffect(() => {
-    reload();
     // Periyodik kontrol (actions.md #8) — 5 dk'da bir otomatik yenile, backend'e ek
     // yuk bindirmez (yalniz bu sekme acikken calisir, kisa TTL'li tek bir ping/sunucu).
     const timer = setInterval(reload, 5 * 60 * 1000);
