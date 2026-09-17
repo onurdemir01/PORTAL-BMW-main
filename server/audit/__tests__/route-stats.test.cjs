@@ -2,7 +2,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRouteStats } = require('../route-stats.cjs');
+const { buildRouteStats, routesOfIp } = require('../route-stats.cjs');
 
 const R = (ns, route, addr, ip, tt = 'passthrough', cluster = 'ark-prod-1') => ({
   namespace_name: ns, route_name: route, route_address: addr, resolved_ip: ip, termination_type: tt, cluster_name: cluster,
@@ -35,4 +35,18 @@ test('ortam namespace son ekinden; SPA/SPA-disi ayrimi; IP kovalari; cozulmeyen 
   assert.deepEqual(prod.clusters, ['ark-prod-1']);
   assert.equal(out.totals.noEnv, 1);
   assert.equal(out.totals.routes, 6);
+});
+
+test('routesOfIp (2026-09-17): IP + ortam suzgeci, SPA / SPA-disi turu, siralama', () => {
+  const rows = [
+    { cluster_name: 'ark-a', namespace_name: 'digital-ch-dev', route_name: 'odeme', route_address: 'odeme-app-v1-digital-ch-dev.apps-t.fw.garanti.com.tr', resolved_ip: '10.1.1.1', termination_type: 'passthrough' },
+    { cluster_name: 'ark-a', namespace_name: 'api-dev', route_name: 'api', route_address: 'api-svc-api-dev.apps-t.fw.garanti.com.tr', resolved_ip: '10.1.1.1', termination_type: 'reencrypt' },
+    { cluster_name: 'ark-a', namespace_name: 'digital-ch-test', route_name: 'odeme', route_address: 'odeme-app-v1-digital-ch-test.apps-t.fw.garanti.com.tr', resolved_ip: '10.1.1.1', termination_type: 'passthrough' }, // baska ortam
+    { cluster_name: 'ark-a', namespace_name: 'digital-ch-dev', route_name: 'kart', route_address: 'kart-app-v1-digital-ch-dev.apps-t.fw.garanti.com.tr', resolved_ip: '10.1.1.2', termination_type: 'passthrough' }, // baska IP
+  ];
+  const all = routesOfIp(rows, '10.1.1.1', 'dev');
+  assert.deepEqual(all.map((r) => [r.namespace, r.kind, r.type]), [['api-dev', 'nonSpa', 'reencrypt'], ['digital-ch-dev', 'spa', 'passthrough']]);
+  assert.deepEqual(routesOfIp(rows, '10.1.1.1', 'DEV', 'spa').map((r) => r.route), ['odeme']);
+  assert.equal(routesOfIp(rows, '10.1.1.1', '').length, 3); // ortam verilmezse hepsi
+  assert.equal(routesOfIp(rows, '10.9.9.9', 'dev').length, 0);
 });

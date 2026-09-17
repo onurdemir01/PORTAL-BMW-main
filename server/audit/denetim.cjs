@@ -333,6 +333,20 @@ function initDenetim(app) {
           dirsReady = false;
         }
       }
+      // PROXY hucresi (kullanici, 2026-09-17: "8 sunucu vardi, hepsi icin tanim var mi yok mu
+      // belirt"): tasima grubunun ESKI sunucularinin hangilerinde proxy tanimi VAR, hangileri
+      // EKSIK. Grup, tanimin gorüldugu ilk eski sunucudan bulunur.
+      const oldGroupOf = new Map();
+      for (const g of MIGRATION_GROUPS) for (const oh of g.oldHosts) oldGroupOf.set(oh, g.oldHosts);
+      for (const r of rows) {
+        for (const cell of Object.values(r.envs)) {
+          if (cell.status !== 'PROXY') continue;
+          const have = new Set(cell.hosts.map((h) => String(h).trim().toUpperCase()));
+          const expected = oldGroupOf.get([...have][0]) || [...have];
+          cell.oldExpected = expected;
+          cell.oldMissing = expected.filter((h) => !have.has(h));
+        }
+      }
       if (dirsReady) {
         for (const r of rows) {
           for (const cell of Object.values(r.envs)) {
@@ -412,6 +426,29 @@ function initDenetim(app) {
       res.json({ ok: true, platform, routeTableMissing: !!r._missing, ...out });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Route istatistikleri alınamadı.' });
+    }
+  });
+
+  // Bir IP'ye cozen route'lar (ortam ozeti > SPA route -> IP tiklamasi)
+  router.get('/route-stats/ip', async (req, res) => {
+    try {
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const { routesOfIp } = require('./route-stats.cjs');
+      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')] ? String(req.query.platform) : 'ark';
+      const clusters = PLATFORM_CLUSTERS[platform];
+      const ip = String(req.query.ip || '').trim();
+      if (!/^[0-9a-f.:]{3,45}$/i.test(ip)) return res.status(400).json({ ok: false, message: 'ip gecersiz' });
+      const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
+      const r = await query(
+        `SELECT cluster_name, namespace_name, route_name, route_address, resolved_ip, termination_type
+           FROM dbo.BMW_Openshift_Route_Inventory
+          WHERE cluster_name IN (${placeholders}) AND LTRIM(RTRIM(resolved_ip)) = @ip`,
+        [...clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(200), value: c })), { name: 'ip', type: sql.NVarChar(64), value: ip }],
+      ).catch(() => ({ recordset: [], _missing: true }));
+      const kind = ['spa', 'nonSpa', 'all'].includes(String(req.query.kind)) ? String(req.query.kind) : 'all';
+      res.json({ ok: true, ip, env: String(req.query.env || '').toUpperCase(), kind, routeTableMissing: !!r._missing, rows: routesOfIp(r.recordset || [], ip, req.query.env, kind) });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Route listesi alınamadı.' });
     }
   });
 
@@ -611,10 +648,21 @@ function initDenetim(app) {
         const prev = ocp.get(env).get(k);
         // Ayni uygulama birden fazla namespace'te olabilir; internet bilgisi baskindir
         // (bir yerde bile internete acilliyorsa nginx'e cikabilir demektir).
+        // Namespace'ler sahiplik icin biriktirilir (kullanici, 2026-09-17: "deploy olmamis
+        // uygulamalari ve sahipliklerini getir"): ekip namespace'in CMDB sahibidir.
+        const nss = prev ? prev.nss : new Set();
+        nss.add(nsLower);
         if (!prev || (prev.net !== 'internet' && net === 'internet')) {
-          ocp.get(env).set(k, { name: app, net });
+          ocp.get(env).set(k, { name: app, net, nss });
         }
       }
+      const owners = await loadNamespaceOwners(query);
+      // Eksik uygulama satiri: ad + namespace'ler + ekip (OwnerCell ile ayni sekil)
+      const detailOf = (env, name, extra) => {
+        const v = (ocp.get(env) || new Map()).get(String(name).toLowerCase());
+        const nss = v ? [...v.nss].sort() : [];
+        return { app: name, namespaces: nss, owner: { ...ownersFor(owners.byNs, nss), namespaces: nss }, ...extra };
+      };
 
       // ── nginx tarafi ──────────────────────────────────────────────────────────────
       const ngxNonSpa = new Set();
@@ -717,6 +765,15 @@ function initDenetim(app) {
           internetInNginx: inNginx.internet.length,
           internetMissingCount: internetMissing.length,
           internetMissing: internetMissing.sort(sortTr).slice(0, CAP),
+          // Sahiplikli ayrinti (ekrandaki "tikla, listeyi gor"): internet = nginx'te tanimi
+          // olmayanlar; intranet = hic kurulmamis + yarim kurulmus (eksik dizinler ve sunucular)
+          missingDetail: {
+            internet: internetMissing.slice(0, CAP).map((a) => detailOf(e, a, { kind: 'missing' })),
+            intranet: [
+              ...ic.missing.map((a) => detailOf(e, a, { kind: 'missing' })),
+              ...ic.partial.map((x) => detailOf(e, x.app, { kind: 'partial', namespace: x.namespace, hosts: x.hosts })),
+            ],
+          },
           // INTRANET (reencrypt) = intranet SPA sunucularina dagitilir. Olcum
           // location'dan DEGIL, uc dizinin varligindan gelir (2026-09-10 duzeltmesi):
           //   /hysdeploy/<ns>/<app>/ + /usr/nginx/applications/<ns>/<app>/ +
@@ -778,6 +835,7 @@ function initDenetim(app) {
         // Beklenmeyen durum: intranet sunucusunda servis vhost'u tanimi bulundu.
         intranetVhostRows,
         routeMatch: matchStats,
+        ownersReady: owners.ready,
         // PROD nginx kumesinin kaynagi: eski sunucudaki proxy_pass satirlari (cozum sayilari)
         prodProxy: proxyStats,
         ocpNonSpaExcluded: ocpNonSpa.size,

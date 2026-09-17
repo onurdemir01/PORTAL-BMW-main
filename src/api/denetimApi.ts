@@ -18,6 +18,9 @@ export interface NginxSpaEnvCell {
   proxyTarget?: string | null;
   /** proxy yaziminda -prod eksikti, eklenerek cozuldu */
   suffixAdded?: boolean;
+  /** PROD proxy: tasima grubunun eski sunuculari ve proxy tanimi OLMAYANLAR (2026-09-17) */
+  oldExpected?: string[];
+  oldMissing?: string[];
   /** H/A/C dizin bayraklari (sunucu basina); flags null = o sunucuda dizin yok.
    *  PROD proxy hucrelerinde sunucular YENI prod SPA sunuculardir (tasima grubu). */
   dirs?: { host: string; flags: { hys: boolean; app: boolean; conf: boolean } | null }[];
@@ -193,6 +196,17 @@ export interface SpaCoverageRow {
   onlyNginx: string[];
   /** YALNIZCA internet kumesi uzerinden. Olculemediyse null. */
   coverage: number | null;
+  /** Deploy olmamis uygulamalar + sahiplik (2026-09-17). internet: nginx'te tanimi yok;
+   *  intranet: hic kurulmamis (missing) ya da yarim (partial: eksik dizinler sunucu basina). */
+  missingDetail?: { internet: SpaMissingApp[]; intranet: SpaMissingApp[] };
+}
+export interface SpaMissingApp {
+  app: string;
+  namespaces: string[];
+  owner: AppOwner;
+  kind: 'missing' | 'partial';
+  namespace?: string;
+  hosts?: { host: string; missing: string[] }[];
 }
 
 // ── Route istatistikleri (ortam basina route / SPA / IP) ─────────────────────────────
@@ -214,6 +228,23 @@ export interface RouteStatsEnv {
   nonSpaIps: RouteStatsIp[];
   unresolvedIp: { spa: number; nonSpa: number };
 }
+export interface RouteOfIp {
+  namespace: string;
+  route: string;
+  address: string;
+  type: string;
+  kind: 'spa' | 'nonSpa' | 'unclassified';
+  cluster: string;
+}
+export interface RoutesOfIpResult {
+  ok: boolean;
+  message?: string;
+  ip: string;
+  env: string;
+  kind: string;
+  routeTableMissing: boolean;
+  rows: RouteOfIp[];
+}
 export interface RouteStatsResult {
   ok: boolean;
   message?: string;
@@ -234,6 +265,8 @@ export interface SpaCoverageResult {
   routeTableMissing: boolean;
   /** Route eslesme kalitesi - route adi ile uygulama adi ayni olmayabilir. */
   routeMatch: { address: number; name: number; ns: number; conflict: number; none: number };
+  /** dbo.Openshift_Namespace_Owners okunabildi mi (sahiplik sutunu icin) */
+  ownersReady?: boolean;
   /** PROD nginx kumesi eski GBRVP* proxy_pass satirlarindan cozulur (Production Tasimalari ile ayni cozum) */
   prodProxy?: { rows: number; resolved: number; spa: number; unresolved: number };
   ocpNonSpaExcluded: number;
@@ -1021,6 +1054,9 @@ export const denetimApi = {
 
   routeStats: (platform = 'ark'): Promise<RouteStatsResult> =>
     fetch(`${BASE}/route-stats?platform=${encodeURIComponent(platform)}`).then(safeJson),
+  /** Bir IP'ye cozen route'lar (ortam ve tur suzgeciyle). */
+  routesOfIp: (p: { ip: string; env?: string; kind?: 'spa' | 'nonSpa' | 'all'; platform?: string }): Promise<RoutesOfIpResult> =>
+    fetch(`${BASE}/route-stats/ip?ip=${encodeURIComponent(p.ip)}&env=${encodeURIComponent(p.env || '')}&kind=${p.kind || 'all'}&platform=${encodeURIComponent(p.platform || 'ark')}`).then(safeJson),
 
   ocpCoverage: (platform: string): Promise<OcpCoverageResult> =>
     fetch(`${BASE}/ocp-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),

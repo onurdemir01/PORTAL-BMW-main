@@ -33,9 +33,7 @@ import {
   type NginxSpaEnvCell,
   type InitScriptsResult,
   type InitScriptStat,
-  type SpaCoverageResult,
   type NginxSpaRow,
-  type SpaCoverageRow,
 } from '@/api/denetimApi';
 import { Select } from '@/components/ui/Form';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
@@ -126,6 +124,14 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   // Yalnizca dev/test/qa'da gorunen uygulamalara eklenir; baska ortamda olmayanlar satir acmaz.
   NEW_ONLY: { label: 'Yalnız yeni sunucuda', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
 };
+
+/** Hucre sorunlu mu: OK/PROXY disi durum, eski sunucuda eksik proxy, eksik dizin. */
+function cellHasProblem(c?: NginxSpaEnvCell): boolean {
+  if (!c || !c.status) return false;
+  if (c.status !== 'OK' && c.status !== 'PROXY') return true;
+  if ((c.oldMissing || []).length > 0) return true;
+  return (c.dirs || []).some((d) => d.flags && !(d.flags.hys && d.flags.app && d.flags.conf));
+}
 
 /** Ortam farki (kullanici, 2026-09-14): prod'da olan non-prod'da yok (ya da tersi) gorunsun. */
 type EnvGap = 'prod-only' | 'no-prod' | 'none';
@@ -291,649 +297,8 @@ export default function DenetimPage() {
 // paydaya katmak, cikmasi zaten yasak olanlari "eksik" saymak olurdu.
 // Grafik CSS ile cizilir - projede grafik kutuphanesi yok.
 /** Bar renklerinin ne anlama geldigini gosteren kucuk kare + etiket. */
-function LegendSwatch({
-  className = '',
-  label,
-  style,
-}: {
-  className?: string;
-  label: string;
-  style?: React.CSSProperties;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
-      <span
-        className={`w-3 h-3 rounded-sm border border-[var(--border-subtle)] ${className}`}
-        style={style}
-      />
-      {label}
-    </span>
-  );
-}
-
-// Katman ARTIK PROP: dugme sayfa seviyesinde duruyor (bkz. NginxSpaAudit). Katmani
-// burada tutmak, altindaki internet'e ozgu panellerin katmandan habersiz kalmasina
-// yol aciyordu - "Intranet" secilince ekranin alt yarisi degismiyordu.
-//
-// PLATFORM SECICI KALDIRILDI: SPA denetimi yalnizca ARK cluster'lari icin anlamli
-// (kullanici, 2026-09-10). Secim sunmak, digerlerinde bos ekran gosterip "veri yok mu,
-// kapsam disi mi" sorusunu doguruyordu.
-/** Kapsam cubuklari + eksik listeleri: ozet tablonun AYRINTISI, varsayilan kapali. */
-function CoverageDetails({ tier }: { tier: 'internet' | 'intranet' }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <details open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary className="text-[11px] cursor-pointer select-none px-1" style={{ color: 'var(--text-muted)' }}>
-        Ayrıntı: ortam başına kapsam çubukları ve eksik uygulama listeleri
-      </summary>
-      {open && <div className="mt-2"><SpaCoverage tier={tier} /></div>}
-    </details>
-  );
-}
-
-function SpaCoverage({ tier }: { tier: 'internet' | 'intranet' }) {
-  const [data, setData] = useState<SpaCoverageResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
-  const [open, setOpen] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    denetimApi
-      .spaCoverage('ark')
-      .then((r) => {
-        if (!alive) return;
-        if (r.ok) {
-          setData(r);
-          setErr('');
-        } else setErr(r.message || 'Kapsam verisi alınamadı.');
-      })
-      .catch((e) => alive && setErr(e instanceof Error ? e.message : String(e)))
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  if (err)
-    return (
-      <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-        {err}
-      </div>
-    );
-  if (!data && loading)
-    return (
-      <div className="py-6 text-center text-sm text-[var(--text-muted)]">Kapsam yükleniyor…</div>
-    );
-  if (!data) return null;
-
-  const isIntra = tier === 'intranet';
-  const totalOf = (r: SpaCoverageRow) => (isIntra ? r.intranetTotal : r.internetTotal);
-  // "Tanimli/tam": internet katmaninda nginx'te location tanimi VAR demek; intranet
-  // katmaninda UC DIZININ DE yerinde olmasi demek (hysdeploy + applications + conf).
-  const okOf = (r: SpaCoverageRow) => (isIntra ? r.intranetFull : r.internetInNginx);
-  // Yarim kurulum YALNIZCA intranet katmaninda vardir: internet tarafinda bir location
-  // ya vardir ya yoktur, arasi yoktur.
-  const partialOf = (r: SpaCoverageRow) => (isIntra ? r.intranetPartialCount : 0);
-  const missingOf = (r: SpaCoverageRow) =>
-    isIntra ? r.intranetMissingCount : r.internetMissingCount;
-  const measuredOf = (r: SpaCoverageRow) => (isIntra ? r.measuredIntranet : r.measured);
-  const coverageOf = (r: SpaCoverageRow) => (isIntra ? r.intranetCoverage : r.coverage);
-
-  const maxTotal = Math.max(1, ...data.rows.map(totalOf));
-  const sum = (f: (r: SpaCoverageRow) => number) => data.rows.reduce((a, r) => a + (f(r) || 0), 0);
-  const unmeasured = data.rows.filter((r) => !r.measured);
-  const anomaly = sum((r) => (r.measured ? r.intranetInNginx : 0));
-
-  return (
-    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3.5 space-y-3">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-            OpenShift SPA’ları ↔ nginx tanımları
-          </h3>
-          <p className="text-[12px] text-[var(--text-secondary)] mt-1 max-w-2xl leading-relaxed">
-            {isIntra ? (
-              <>
-                <b>İntranet</b> SPA’larının kaçı intranet sunucularına gerçekten kurulmuş? Bu
-                sunucularda servis vhost’u yoktur; ölçü <b>üç dizinin</b> varlığıdır. Yeşil kısım
-                tam kurulanları, sarı kısım <b>yarım kalanları</b>, kırmızı kısım hiç izi
-                olmayanları gösterir.
-              </>
-            ) : (
-              <>
-                <b>İnternete açık</b> SPA’ların kaçının nginx’te tanımı var? Her satır bir ortam;
-                yeşil kısım tanımlı olanları, turuncu kısım <b>eksik olanları</b> gösterir.
-              </>
-            )}
-          </p>
-        </div>
-        {/* Platform secici YOK: bu denetim yalnizca ARK cluster'lari icin anlamli.
-            Hangi cluster'lara bakildigi yine de GORUNUR kalsin diye yaziliyor. */}
-        <div
-          className="text-[11px] text-[var(--text-muted)] whitespace-nowrap"
-          title={data.clusters.join(', ')}
-        >
-          ARK cluster’ları · {data.clusters.length} adet
-        </div>
-      </div>
-
-      {/* Intranet sunuculari HENUZ TARANMADIYSA bunu SOYLE: aksi halde tablo "hicbir
-          intranet uygulamasi deploy edilmemis" gibi okunur ve yanlis alarm uretir. */}
-      {/* IKI FARKLI SEBEP, IKI FARKLI MESAJ: tablo hic yoksa yapilacak is DDL'i
-          calistirmaktir; tablo varsa ama bossa job'i kosturmaktir. Ikisini tek mesajda
-          birlestirmek, kullaniciyi yanlis adima yonlendirirdi. */}
-      {isIntra && data.intranetTableMissing && (
-        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          <b>İntranet denetimi henüz açık değil.</b> Bu görünüm{' '}
-          <code className="px-1 rounded bg-white/70 border border-amber-200">
-            dbo.Nginx_Intranet_Audit
-          </code>{' '}
-          tablosunu kullanır; tablo yok. Tek seferlik DDL:{' '}
-          <code className="px-1 rounded bg-white/70 border border-amber-200">
-            bmw_nginx/nginx_config_audit/files/nginx_config_audit_intranet.sql
-          </code>
-          . Çalıştırıldıktan sonra{' '}
-          <code className="px-1 rounded bg-white/70 border border-amber-200">
-            nginx_config_audit
-          </code>{' '}
-          job’ının bir sonraki koşusunda burası dolar. <b>Diğer ekranlar etkilenmez.</b>
-        </p>
-      )}
-
-      {isIntra && !data.intranetTableMissing && data.intranetScanned === false && (
-        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          <b>İntranet SPA sunucuları henüz taranmamış.</b> Aşağıdaki sayılar &quot;hiçbiri deploy
-          edilmemiş&quot; anlamına <b>gelmez</b> — ölçülemediği anlamına gelir.{' '}
-          <code className="px-1 rounded bg-white/70 border border-amber-200">
-            nginx_config_audit
-          </code>{' '}
-          job&apos;ı bir kez koştuktan sonra burası dolar.
-        </p>
-      )}
-
-      {isIntra && !!data.intranetVhostRows && (
-        <p className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg px-3 py-2">
-          Beklenmeyen durum: intranet sunucularında <b>{fmtNumber(data.intranetVhostRows)}</b>{' '}
-          servis vhost’u tanımı bulundu. Bu sunucularda servis vhost’u beklenmez; bu satırlar
-          kapsam hesabına <b>katılmadı</b>.
-        </p>
-      )}
-
-      {data.routeTableMissing && (
-        <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-          Route envanteri okunamadı — internet/intranet ayrımı yapılamıyor, tüm uygulamalar “route
-          bilgisi yok” sayıldı.{' '}
-          <code className="px-1 rounded bg-white/70 border border-red-200">route_inventory</code>{' '}
-          job’ı çalıştıktan sonra burası dolar.
-        </p>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          n={sum(totalOf)}
-          l={isIntra ? 'Intranet SPA sayısı' : 'Internet SPA sayısı'}
-          hint={
-            isIntra
-              ? 'OpenShift’te route tipi reencrypt (Intranet) olan SPA’lar. Bir uygulama üç ortamda varsa 3 sayılır.'
-              : 'OpenShift’te route tipi passthrough (Internet) olan SPA’lar. Bir uygulama üç ortamda varsa 3 sayılır.'
-          }
-        />
-        <Stat
-          n={sum((r) => (measuredOf(r) ? okOf(r) : 0))}
-          l={isIntra ? 'tam kurulu' : 'nginx’te tanımlı'}
-          tone="ok"
-          hint={
-            isIntra
-              ? 'Üç dizin de yerinde: /hysdeploy, /usr/nginx/applications ve application-confs.'
-              : 'İnternete açık nginx sunucusunda bu uygulamaya giden bir location tanımı var.'
-          }
-        />
-        {isIntra ? (
-          <Stat
-            n={sum((r) => (measuredOf(r) ? partialOf(r) : 0))}
-            l="yarım kurulum"
-            tone="warn"
-            hint="Üç dizinden en az biri eksik. Uygulama 404 döner ama kurulum başlamış."
-          />
-        ) : (
-          <Stat
-            n={sum((r) => (measuredOf(r) ? missingOf(r) : 0))}
-            l="nginx’te tanımı yok"
-            tone="warn"
-            hint="Çıkması beklendiği hâlde hiçbir internete açık sunucuda tanımı bulunmuyor."
-          />
-        )}
-        {isIntra ? (
-          <Stat
-            n={sum((r) => (measuredOf(r) ? missingOf(r) : 0))}
-            l="hiç kurulmamış"
-            tone="warn"
-            hint="Hiçbir intranet sunucusunda üç dizinden hiçbirinin izi yok."
-          />
-        ) : (
-          <Stat
-            n={anomaly}
-            l="intranet olduğu hâlde dışarıda"
-            tone={anomaly ? 'warn' : undefined}
-            hint="Route tipi reencrypt (intranet) ama internete açık bir nginx’te tanımlı. Bulgu."
-          />
-        )}
-      </div>
-
-      {anomaly > 0 && (
-        <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-          <b>{anomaly} intranet uygulaması internete açık sunucuda tanımlı.</b> Route tipi{' '}
-          <code className="px-1 rounded bg-white/70 border border-red-200">reencrypt</code> olan
-          uygulamalar nginx’e çıkmamalıydı. Ortam satırını açıp listeyi görebilirsiniz.
-        </p>
-      )}
-
-      {/* Sutun basliklari bar satirinin genislikleriyle (w-14 / flex-1 / w-28 / w-24)
-          BIREBIR hizali tutulur - degistirilirse ikisi birden degismeli. */}
-      <div className="flex items-center gap-3 px-3 pt-1">
-        <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-          Ortam
-        </span>
-        <span className="flex-1 flex items-center gap-3 flex-wrap">
-          <LegendSwatch className="bg-emerald-500/70" label={isIntra ? 'tam kurulu' : "nginx'te tanımlı"} />
-          <LegendSwatch
-            className={isIntra ? 'bg-amber-500/80' : 'bg-amber-400/70'}
-            label={isIntra ? 'yarım kurulum' : 'tanımı eksik'}
-          />
-          {isIntra && <LegendSwatch className="bg-rose-400/70" label="hiç yok" />}
-          <LegendSwatch
-            label="ölçülemedi"
-            style={{
-              backgroundImage:
-                'repeating-linear-gradient(45deg, var(--border) 0 6px, transparent 6px 12px)',
-            }}
-          />
-        </span>
-        <span className="w-28 shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-          {isIntra ? 'tam / toplam' : 'tanımlı / toplam'}
-        </span>
-        <span className="w-24 shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-          kapsam
-        </span>
-      </div>
-
-      <div className="space-y-2">
-        {data.rows.map((r) => (
-          <div key={r.env} className="rounded-lg border border-[var(--border-subtle)]">
-            <button
-              onClick={() => setOpen(open === r.env ? null : r.env)}
-              className="w-full px-3 py-2 hover:bg-[var(--bg-elevated)]/70 text-left"
-            >
-              <div className="flex items-center gap-3">
-                <span className="w-14 shrink-0 text-xs font-semibold text-[var(--text-secondary)]">
-                  {r.env}
-                </span>
-                <span className="flex-1 h-5 rounded bg-[var(--bg-elevated)] overflow-hidden flex">
-                  {measuredOf(r) ? (
-                    <>
-                      <span
-                        className="h-full bg-emerald-500/70"
-                        style={{ width: `${(okOf(r) / maxTotal) * 100}%` }}
-                        title={isIntra ? `tam kurulu: ${okOf(r)}` : `tanımlı: ${okOf(r)}`}
-                      />
-                      {/* YARIM kurulum yalnizca intranette var; sifir genislikte bir
-                          seride cizmemek icin kosullu. */}
-                      {isIntra && partialOf(r) > 0 && (
-                        <span
-                          className="h-full bg-amber-500/80"
-                          style={{ width: `${(partialOf(r) / maxTotal) * 100}%` }}
-                          title={`yarım kurulum: ${partialOf(r)}`}
-                        />
-                      )}
-                      <span
-                        className={`h-full ${isIntra ? 'bg-rose-400/70' : 'bg-amber-400/70'}`}
-                        style={{ width: `${(missingOf(r) / maxTotal) * 100}%` }}
-                        title={isIntra ? `hiç yok: ${missingOf(r)}` : `tanım eksik: ${missingOf(r)}`}
-                      />
-                    </>
-                  ) : (
-                    // Olculemeyen ortam DOLU bar ile gosterilmez: taranmis da hicbiri
-                    // tanimli degilmis gibi okunurdu. Tarali gri = "veri yok".
-                    <span
-                      className="h-full w-full"
-                      title={
-                        isIntra
-                          ? 'İntranet sunucularında bu ortama ait kayıt yok — ölçülemedi'
-                          : 'nginx tarafında bu ortama ait kayıt yok — ölçülemedi'
-                      }
-                      style={{
-                        // Cizgi rengi SABIT SIYAHTI (rgb(0 0 0 / 0.07)); koyu temada
-                        // koyu zemin uzerinde GORUNMUYORDU ve "olculemedi" satiri bos
-                        // gri bir bar gibi okunuyordu — yani "%0" ile ayirt edilemiyordu
-                        // (uretim ekran goruntusu, koyu tema). Token'a baglandi:
-                        // --border acik temada #c7c7c7, koyuda #4d4d4d — ikisinde de gorunur.
-                        backgroundImage:
-                          'repeating-linear-gradient(45deg, var(--border) 0 6px, transparent 6px 12px)',
-                      }}
-                    />
-                  )}
-                </span>
-                <span className="w-28 shrink-0 text-right text-xs tabular-nums text-[var(--text-secondary)]">
-                  {measuredOf(r)
-                    ? `${fmtNumber(okOf(r))} / ${fmtNumber(totalOf(r))}`
-                    : `? / ${fmtNumber(totalOf(r))}`}
-                </span>
-                <span
-                  className={`w-24 shrink-0 text-right text-xs tabular-nums font-semibold ${
-                    !measuredOf(r)
-                      ? 'text-[var(--text-muted)] font-normal'
-                      : coverageOf(r) === null
-                        ? 'text-[var(--text-muted)]'
-                        : (coverageOf(r) as number) >= 90
-                          ? 'text-emerald-600'
-                          : (coverageOf(r) as number) >= 60
-                            ? 'text-amber-600'
-                            : 'text-red-600'
-                  }`}
-                >
-                  {!measuredOf(r)
-                    ? 'ölçülemedi'
-                    : coverageOf(r) === null
-                      ? '—'
-                      : `%${(coverageOf(r) as number).toFixed(1)}`}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mt-1.5 pl-14">
-                {/* Cipler KATMANA GORE ayri: internet tarafina ait sayaclari intranet
-                    gorunumunde gostermek, kullaniciyi "bu rakam neyin nesi" sorusuna
-                    birakiyordu. */}
-                {isIntra ? (
-                  <>
-                    {r.intranetPartialCount > 0 && (
-                      <Chip tone="warn" label={`yarım kurulum: ${r.intranetPartialCount}`} />
-                    )}
-                    {r.intranetOnlyOnServerCount > 0 && (
-                      <Chip
-                        tone="muted"
-                        label={`OpenShift’te karşılığı olmayan kurulum: ${r.intranetOnlyOnServerCount}`}
-                      />
-                    )}
-                    {r.intranetHosts.length > 0 && (
-                      <Chip tone="muted" label={`sunucu: ${r.intranetHosts.join(', ')}`} />
-                    )}
-                    {r.intranetInNginx > 0 && (
-                      <Chip
-                        tone="bad"
-                        label={`intranet olduğu hâlde dışarıda: ${r.intranetInNginx}`}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {r.otherTotal > 0 && (
-                      <Chip tone="muted" label={`route tipi edge/TLS yok: ${r.otherTotal}`} />
-                    )}
-                    {r.unknownTotal > 0 && (
-                      <Chip tone="muted" label={`route bulunamadı: ${r.unknownTotal}`} />
-                    )}
-                    {r.onlyNginxCount > 0 && (
-                      <Chip
-                        tone="muted"
-                        label={`OpenShift’te karşılığı olmayan tanım: ${r.onlyNginxCount}`}
-                      />
-                    )}
-                    {r.intranetInNginx > 0 && (
-                      <Chip
-                        tone="bad"
-                        label={`intranet olduğu hâlde dışarıda: ${r.intranetInNginx}`}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            </button>
-
-            {open === r.env && !measuredOf(r) && (
-              <div className="px-3 pb-3 pt-1 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                Bu ortam için nginx tarafında hiç kayıt yok, dolayısıyla neyin tanımlı olduğu{' '}
-                <b>bilinmiyor</b> — “hiçbiri tanımlı değil” demek değildir. Denetim yalnızca{' '}
-                <code className="px-1 rounded bg-[var(--bg-elevated)]">
-                  location …&#123; include application-confs/…&#125;
-                </code>{' '}
-                kalıbını kaydeder;{' '}
-                <code className="px-1 rounded bg-[var(--bg-elevated)]">proxy_pass</code> ile
-                kurulmuş sunucularda böyle bir satır bulunmaz.
-              </div>
-            )}
-            {open === r.env && measuredOf(r) && isIntra && (
-              <div className="px-3 pb-3 pt-1 border-t border-[var(--border-subtle)] grid gap-3 md:grid-cols-3">
-                {/* Yarim kurulumda ASIL BILGI "hangi sunucuda NE eksik"tir; yalniz
-                    uygulama adini vermek kullaniciyi tekrar sunucuya bakmaya zorlardi. */}
-                <AppList
-                  title={`yarım kurulum (${r.intranetPartialCount})`}
-                  tone="warn"
-                  apps={r.intranetPartial.map(
-                    (x) =>
-                      `${x.app} · ` +
-                      x.hosts.map((h) => `${h.host}: ${h.missing.join(', ')} yok`).join(' · '),
-                  )}
-                  empty="Yarım kalan kurulum yok."
-                />
-                <AppList
-                  title={`hiçbir sunucuda yok (${r.intranetMissingCount})`}
-                  tone="bad"
-                  apps={r.intranetMissing}
-                  empty="Hepsinin izi var."
-                />
-                <AppList
-                  title={`OpenShift’te karşılığı olmayan kurulum (${r.intranetOnlyOnServerCount})`}
-                  tone="info"
-                  apps={r.intranetOnlyOnServer}
-                  empty="Fazlalık kurulum yok."
-                />
-              </div>
-            )}
-            {open === r.env && measuredOf(r) && !isIntra && (
-              <div className="px-3 pb-3 pt-1 border-t border-[var(--border-subtle)] grid gap-3 md:grid-cols-3">
-                <AppList
-                  title={`nginx’te tanımı yok (${r.internetMissingCount})`}
-                  tone="warn"
-                  apps={r.internetMissing}
-                  empty="Hepsi tanımlı."
-                />
-                <AppList
-                  title={`intranet olduğu hâlde dışarıda (${r.intranetInNginx})`}
-                  tone="bad"
-                  apps={r.intranetInNginxList}
-                  empty="Böyle bir kayıt yok."
-                />
-                <AppList
-                  title={`OpenShift’te karşılığı olmayan tanım (${r.onlyNginxCount})`}
-                  tone="info"
-                  apps={r.onlyNginx}
-                  empty="Fazlalık tanım yok."
-                />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-muted)]">
-        <span className="flex items-center gap-1">
-          <i className="w-3 h-3 rounded-sm bg-emerald-500/70 inline-block" />{' '}
-          {isIntra ? 'intranet, tam kurulu' : 'internet, tanımlı'}
-        </span>
-        <span className="flex items-center gap-1">
-          <i
-            className={`w-3 h-3 rounded-sm inline-block ${
-              isIntra ? 'bg-amber-500/80' : 'bg-amber-400/70'
-            }`}
-          />{' '}
-          {isIntra ? 'intranet, yarım kurulum' : 'internet, eksik'}
-        </span>
-        {isIntra && (
-          <span className="flex items-center gap-1">
-            <i className="w-3 h-3 rounded-sm bg-rose-400/70 inline-block" /> intranet, hiç yok
-          </span>
-        )}
-        <button
-          onClick={() =>
-            csvDownload(
-              'spa_kapsam_' + tier,
-              [
-                'ortam',
-                'internet_spa',
-                'nginx_tanimli',
-                'eksik',
-                'intranet_spa',
-                'intranet_tam',
-                'intranet_yarim',
-                'intranet_yok',
-                'intranet_kapsam_yuzde',
-                'intranet_ama_nginxte',
-                'diger_route',
-                'route_bilgisi_yok',
-                'yalnizca_nginx',
-                'kapsam_yuzde',
-              ],
-              data.rows.map((r) => [
-                r.env,
-                r.internetTotal,
-                r.internetInNginx,
-                r.internetMissingCount,
-                r.intranetTotal,
-                r.intranetFull,
-                r.intranetPartialCount,
-                r.intranetMissingCount,
-                r.intranetCoverage === null ? '' : r.intranetCoverage,
-                r.intranetInNginx,
-                r.otherTotal,
-                r.unknownTotal,
-                r.onlyNginxCount,
-                r.coverage === null ? '' : r.coverage,
-              ]),
-            )
-          }
-          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
-        >
-          <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
-        </button>
-      </div>
-
-      {/* Route eslesme kalitesi: route_name ile application adinin ayni oldugu GARANTI
-          degil, bu yuzden nasil eslestigi gizlenmez. */}
-      <p className="text-[11px] text-[var(--text-muted)]">
-        Route eşleşmesi — adresten: {fmtNumber(data.routeMatch.address)}, route adından:{' '}
-        {fmtNumber(data.routeMatch.name)}, namespace üzerinden: {fmtNumber(data.routeMatch.ns)},
-        çelişkili: {fmtNumber(data.routeMatch.conflict)}, bulunamadı:{' '}
-        {fmtNumber(data.routeMatch.none)}. Uygulama adı öncelikle route adresinden çıkarılır (
-        <code className="px-1 rounded bg-[var(--bg-elevated)]">
-          &lt;Uygulama&gt;-&lt;Namespace&gt;.apps[-t].fw.garanti.com.tr
-        </code>
-        ); namespace zaten bilindiği için son ek tam olarak kesilir, belirsizlik doğmaz. Adres bu
-        kalıba uymazsa route adı denenir; o da tutmazsa namespace’teki route’lar hepsi aynı tipteyse
-        o tip kullanılır. Hiçbiri olmazsa sınıflandırılmaz.
-        {data.prodProxy && data.prodProxy.rows > 0 && (
-          <>
-            {' '}<b>PROD</b>: eski sunucularda SPA include&apos;u değil <code className="px-1 rounded bg-[var(--bg-elevated)]">proxy_pass</code> kullanılır;
-            {fmtNumber(data.prodProxy.rows)} proxy satırının {fmtNumber(data.prodProxy.resolved)} tanesi uygulamaya çözüldü
-            ({fmtNumber(data.prodProxy.spa)} SPA; Production Taşımaları ile aynı çözüm, <code className="px-1 rounded bg-[var(--bg-elevated)]">-prod</code> eki dâhil),
-            {fmtNumber(data.prodProxy.unresolved)} çözülemedi.
-          </>
-        )}
-      </p>
-
-      {unmeasured.length > 0 && (
-        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          <b>{unmeasured.map((r) => r.env).join(', ')}</b> ortamı için nginx tarafında hiç kayıt yok
-          — kapsam hesaplanmadı ve yukarıdaki toplamlara dâhil edilmedi. Denetim yalnızca{' '}
-          <code className="px-1 rounded bg-white/70 border border-amber-200">
-            location …&#123; include application-confs/…&#125;
-          </code>{' '}
-          kalıbını kaydeder;{' '}
-          <code className="px-1 rounded bg-white/70 border border-amber-200">proxy_pass</code> ile
-          kurulmuş sunucular bu kalıba uymaz.
-        </p>
-      )}
-
-      {data.nginxOutsidePattern.length > 0 && (
-        <p className="text-[11px] text-[var(--text-muted)]">
-          nginx’e tanımlı {data.nginxOutsidePattern.length} uygulama SPA kalıbına uymuyor, bu yüzden
-          karşılaştırmaya girmedi:{' '}
-          <span className="font-mono">{data.nginxOutsidePattern.slice(0, 6).join(', ')}</span>
-          {data.nginxOutsidePattern.length > 6 && ' …'}
-        </p>
-      )}
-
-      {data.ocpNonSpaExcluded > 0 && (
-        <p className="text-[11px] text-[var(--text-muted)]">
-          {fmtNumber(data.ocpNonSpaExcluded)} OpenShift uygulaması SPA kalıbına uymadığı için
-          sayılmadı.{' '}
-          {data.ocpSkippedNoEnv > 0 && (
-            <>
-              Ayrıca {fmtNumber(data.ocpSkippedNoEnv)} kayıt namespace son eki kalıba uymadığı için
-              hiçbir ortama atanamadı.
-            </>
-          )}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// 'warn' AppList'te zaten vardi, Chip'te yoktu. Yarım kurulum ne "sorunsuz" ne de
-// "hata"dır — ara bir durumdur ve bardaki sarı seritle aynı rengi taşımalı, aksi halde
-// aynı bilgi iki yerde iki farklı ciddiyetle okunur.
-function Chip({ label, tone }: { label: string; tone: 'info' | 'warn' | 'bad' | 'muted' }) {
-  const cls =
-    tone === 'bad'
-      ? 'bg-red-50 text-red-700 border-red-200'
-      : tone === 'warn'
-        ? 'bg-amber-50 text-amber-700 border-amber-200'
-        : tone === 'info'
-          ? 'bg-sky-50 text-sky-700 border-sky-200'
-          : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]';
-  return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded border tabular-nums ${cls}`}>{label}</span>
-  );
-}
-
-function AppList({
-  title,
-  apps,
-  tone,
-  empty,
-}: {
-  title: string;
-  apps: string[];
-  tone: 'warn' | 'info' | 'bad';
-  empty: string;
-}) {
-  const cls =
-    tone === 'warn'
-      ? 'bg-amber-50 text-amber-800 border-amber-200'
-      : tone === 'bad'
-        ? 'bg-red-50 text-red-800 border-red-200'
-        : 'bg-sky-50 text-sky-800 border-sky-200';
-  return (
-    <div>
-      <div className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">{title}</div>
-      {apps.length === 0 ? (
-        <div className="text-[11px] text-[var(--text-muted)]">{empty}</div>
-      ) : (
-        <div className="flex flex-wrap gap-1 max-h-44 overflow-y-auto">
-          {apps.map((a) => (
-            <span key={a} className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${cls}`}>
-              {a}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── 1) NGINX SPA AUDIT ────────────────────────────────────────────────────────────────
 function NginxSpaAudit() {
-  // KATMAN BURADA TUTULUYOR, SpaCoverage'in icinde DEGIL. Icerideyken yalnizca kapsam
+  // KATMAN BURADA TUTULUYOR, ozet bileseninin icinde DEGIL. Icerideyken yalnizca kapsam
   // paneli katmani biliyordu; altindaki servis matrisi (GLOMO/SAKLAMA...), Location
   // Detayi ve Proxy panelleri INTERNET tarafina ait olduklari halde her iki katmanda da
   // duruyordu - "Intranet"e basildiginda ekranin alt yarisi hic degismiyordu
@@ -985,7 +350,10 @@ function NginxSpaAudit() {
       // Ekip adiyla da aranabilir (2026-09-14): "hangi uygulamalar X ekibinin" sorusu.
       if (needle && !r.application.toLowerCase().includes(needle) && !ownerText(r.owner).includes(needle)) return false;
       if (onlyProblems) {
-        const bad = Object.values(r.envs).some((c) => c.status && c.status !== 'OK');
+        // "Sorunlu" (kullanici, 2026-09-17: "kalan tanimlar neden sorunlu?"): PROXY normal
+        // PROD durumudur, sorun DEGILDIR. Sorun = OK/PROXY disi durum, eski sunucularda eksik
+        // proxy, ya da herhangi bir sunucuda H/A/C'den birinin eksik olmasi.
+        const bad = Object.values(r.envs).some((c) => cellHasProblem(c));
         if (!bad) return false;
       }
       if (gapFilter !== 'all' && envGapOf(r) !== gapFilter) return false;
@@ -1108,7 +476,7 @@ function NginxSpaAudit() {
       <div className="space-y-3">
         {tierTabs}
         {tier !== 'tasima' && <NginxSpaSummary tier={tier} />}
-        {tier === 'tasima' ? <NginxProdMigration /> : <CoverageDetails tier={tier} />}
+        {tier === 'tasima' && <NginxProdMigration />}
         {/* Bu uyari INTERNET taramasi hakkinda: intranet olcumu ayri bir tablodan gelir
             ve kendi eksik-veri mesajini kendisi gosterir. */}
         {tier === 'internet' && (
@@ -1127,10 +495,10 @@ function NginxSpaAudit() {
       {tierTabs}
       {tier === 'tasima' && <NginxProdMigration />}
       {/* ORTAM OZETI en ustte (kullanici, 2026-09-17): tek tabloda SPA sayisi, nginx'e cikan,
-          route'lar. Kapsam cubuklari ve eksik listeleri AYRINTI olarak altinda, kapali.
-          "Location Detayi" ve "Proxy Tanimlari (PROD)" gorunumleri kaldirildi (kafa karistiriyordu). */}
+          route'lar; eksik uygulamalar + sahiplik hucreye tiklayinca pencerede.
+          Kapsam cubuklari ("Ayrinti"), "Location Detayi" ve "Proxy Tanimlari (PROD)"
+          gorunumleri kaldirildi (kafa karistiriyordu). */}
       {tier !== 'tasima' && <NginxSpaSummary tier={tier} />}
-      {tier !== 'tasima' && <CoverageDetails tier={tier} />}
 
       {/* ENV TESHISI: bir ortam bos gorunuyorsa NEDENI burada gorulur. env degeri vhost
           DOSYA ADINDAN turer (<SERVIS>-<ORTAM>.conf), taranan SUNUCUDAN degil - bu ayrim
@@ -1413,16 +781,31 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
   );
   if (isProd) {
     // PROD (kullanici, 2026-09-17): eski ve yeni sunucu AYNI sutunda ama AYRI kucuk kutular.
-    const oldOk = cell.status === 'PROXY';
+    // Eski sunucular (kullanici, 2026-09-17): grubun 8 sunucusunun HEPSINDE tanim varsa
+    // yesil; bazisinda eksikse amber ve eksikler yazilir; hic yoksa 'tanim yok'.
+    const oldHas = cell.status === 'PROXY';
+    const oldExpected = cell.oldExpected || cell.hosts;
+    const oldMissing = cell.oldMissing || [];
+    const oldCls = !oldHas
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : oldMissing.length === 0
+        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+        : 'bg-amber-50 text-amber-700 border-amber-200';
+    const oldTitle = oldHas
+      ? `proxy tanımı olan: ${cell.hosts.join(', ')}` + (oldMissing.length ? `\nTANIM OLMAYAN: ${oldMissing.join(', ')}` : '\n(grubun tüm eski sunucularında var)')
+      : 'eski GBRVP* sunucularında proxy tanımı bulunamadı';
     return (
       <td className="px-3 py-2">
         <div className="inline-flex flex-col gap-1 text-[11px]" title={title}>
-          <div className={`px-2 py-1 rounded-lg border ${oldOk ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+          <div className={`px-2 py-1 rounded-lg border ${oldCls}`} title={oldTitle}>
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] font-semibold uppercase tracking-wide opacity-70">Eski</span>
-              <span className="font-semibold">{oldOk ? `proxy · ${cell.hosts.length} sunucu` : 'tanım yok'}</span>
+              <span className="font-semibold">{oldHas ? `proxy · ${cell.hosts.length}/${oldExpected.length} sunucu` : 'tanım yok'}</span>
               {cell.suffixAdded && <span className="text-[9px] opacity-70">+prod</span>}
             </div>
+            {oldMissing.length > 0 && (
+              <span className="block text-[10px]">eksik: {oldMissing.map((h) => h.replace(/^GBRVP/, '')).join(', ')}</span>
+            )}
             {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
           </div>
           <div className={`px-2 py-1 rounded-lg border ${dirsIncomplete || !cell.dirs?.length ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>

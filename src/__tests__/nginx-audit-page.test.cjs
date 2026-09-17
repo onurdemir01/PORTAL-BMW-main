@@ -63,7 +63,7 @@ test('Nginx SPA > Prod Tasima sekmesi bagli ve kapsam paneli o sekmede gizli', (
   assert.ok(denetim.includes("{ id: 'tasima', label: 'Production Taşımaları' }"), 'Production Tasimalari secenegi yok');
   assert.ok(denetim.includes("{tier === 'tasima' && <NginxProdMigration />}"), 'NginxProdMigration render edilmiyor');
   // 2026-09-17: kapsam cubuklari artik katlanir ayrinti (CoverageDetails); tasima sekmesinde yine gizli
-  assert.ok(denetim.includes("{tier !== 'tasima' && <CoverageDetails tier={tier} />}"), 'kapsam paneli tasima sekmesinde gizlenmeli');
+  assert.ok(!denetim.includes('SpaCoverage'), 'kapsam paneli kaldirildi (2026-09-17)');
   const api = read('api/denetimApi.ts');
   assert.ok(api.includes('nginxMigration: (fresh = false)'), 'API ucu yok');
 });
@@ -117,13 +117,19 @@ test('Production Tasimalari: gecis takibi (planlandi/gecti + tarih) ve sema', ()
 
 test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlemesi, PROD yeni sunucu hazirligi, route + IP); Location Detayi / Proxy Tanimlari / ayri route paneli KALDIRILDI (2026-09-17)', () => {
   const den = read('components/DenetimPage.tsx');
+  const sum = read('components/denetim/NginxSpaSummary.tsx');
   assert.ok(den.includes("{tier !== 'tasima' && <NginxSpaSummary tier={tier} />}"), 'ortam ozeti internet/intranet katmaninda yok');
-  assert.ok(den.includes("{tier !== 'tasima' && <CoverageDetails tier={tier} />}"), 'kapsam cubuklari ayrinti olarak kalmali');
+  // 2026-09-17 (ikinci tur): "Ayrinti" katlanir kapsam paneli de kaldirildi (kafa karistiriyordu)
+  assert.ok(!den.includes('CoverageDetails') && !den.includes('function SpaCoverage'), 'kapsam cubuklari kaldirilmis olmali');
+  // eksik uygulamalar + sahiplik penceresi: hucreye tiklaninca
+  for (const s of ['function MissingAppsModal(', 'E-postaları kopyala', 'rowsFromCoverage(c.missingDetail?.internet', 'rowsFromCoverage(c.missingDetail?.intranet', 'rowsFromMigration(mig?.groups']) {
+    assert.ok(sum.includes(s), `eksik uygulama penceresi: ${s}`);
+  }
+  const covSrv = read('../server/audit/denetim.cjs');
+  assert.ok(covSrv.includes('missingDetail: {') && covSrv.includes('ownersFor(owners.byNs, nss)'), 'kapsam ucu eksik uygulamalari sahiplikle vermeli');
   for (const gone of ['<RouteStats />', '<NginxLocations />', '<NginxProxy />', "label: 'Location Detayı'", "label: 'Proxy Tanımları (PROD)'"]) {
     assert.ok(!den.includes(gone), `kaldirilmis olmali: ${gone}`);
   }
-  assert.ok(den.includes('data.prodProxy'), 'PROD proxy cozum notu yok');
-  const sum = read('components/denetim/NginxSpaSummary.tsx');
   for (const s of ['OpenShift SPA', 'İnternet · nginx’te tanımlı', 'İntranet · nginx’e kurulu', 'Route’lar', 'SPA route → IP', 'Yeni sunucularda yük almaya hazır', 'spaTotal', 'ocpApps']) {
     assert.ok(sum.includes(s), `ozette yok: ${s}`);
   }
@@ -161,7 +167,11 @@ test('Nginx SPA matrisi: PROD proxy satirlari PROXY durumuyla girer; H/A/C yeni 
 test('Nginx SPA matrisi: PROD hucresinde eski/yeni ayrimi, NEW_ONLY, ortam farki suzgeci', () => {
   const den = read('components/DenetimPage.tsx');
   // 2026-09-17: eski ve yeni AYRI kucuk kutular (ayni sutunda)
-  assert.ok(den.includes("{oldOk ? `proxy · ${cell.hosts.length} sunucu` : 'tanım yok'}"), 'PROD hucresinde eski sunucu kutusu yok');
+  assert.ok(den.includes("{oldHas ? `proxy · ${cell.hosts.length}/${oldExpected.length} sunucu` : 'tanım yok'}"), 'PROD hucresinde eski sunucu kutusu yok (8/8 sunucu)');
+  // 2026-09-17: PROXY sorun DEGIL; sorun = OK/PROXY disi durum, eksik eski sunucu, eksik dizin
+  assert.ok(den.includes('function cellHasProblem(') && den.includes("if (c.status !== 'OK' && c.status !== 'PROXY') return true;"), '"Sadece sorunlular" PROXY hucresini sorun saymamali');
+  const srv2 = read('../server/audit/denetim.cjs');
+  assert.ok(srv2.includes('cell.oldMissing = expected.filter((h) => !have.has(h));'), 'eski sunucu eksik listesi hesaplanmali');
   assert.ok(den.includes("NEW_ONLY: { label: 'Yalnız yeni sunucuda'"), 'NEW_ONLY etiketi yok');
   assert.ok(den.includes("function envGapOf(") && den.includes('value="prod-only"') && den.includes('value="no-prod"'), 'ortam farki suzgeci yok');
   const srv = read('../server/audit/denetim.cjs');
