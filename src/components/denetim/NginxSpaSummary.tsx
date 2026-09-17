@@ -31,6 +31,9 @@ interface MissingRow {
   owner: SpaMissingApp['owner'];
   what: string;
   detail?: string;
+  /** Tum ortamlari birlestiren pencerede satirin ortami / katmani (2026-09-17) */
+  env?: string;
+  tier?: string;
 }
 
 /**
@@ -42,9 +45,10 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
   title: string; subtitle: string; rows: MissingRow[]; ownersReady: boolean; onClose: () => void;
 }) {
   const [q, setQ] = useState('');
+  const hasEnv = rows.some((r) => r.env);
   const list = useMemo(() => {
     const n = q.trim().toLowerCase();
-    return rows.filter((r) => !n || r.app.toLowerCase().includes(n) || r.namespaces.some((x) => x.includes(n)) || r.owner.groups.some((g) => g.toLowerCase().includes(n)) || r.owner.emails.some((e) => e.toLowerCase().includes(n)));
+    return rows.filter((r) => !n || r.app.toLowerCase().includes(n) || r.namespaces.some((x) => x.includes(n)) || r.owner.groups.some((g) => g.toLowerCase().includes(n)) || r.owner.emails.some((e) => e.toLowerCase().includes(n)) || (r.env || '').toLowerCase().includes(n) || (r.tier || '').toLowerCase().includes(n));
   }, [rows, q]);
   const emails = useMemo(() => [...new Set(list.flatMap((r) => r.owner.emails))], [list]);
   const teams = useMemo(() => {
@@ -62,7 +66,7 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
   };
   const csv = () => {
     const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const body = [['uygulama', 'namespace', 'ekip', 'eposta', 'eksik', 'ayrinti'], ...list.map((r) => [r.app, r.namespaces.join(' '), r.owner.groups.join(' | '), r.owner.emails.join(' | '), r.what, r.detail || ''])]
+    const body = [['ortam', 'katman', 'uygulama', 'namespace', 'ekip', 'eposta', 'eksik', 'ayrinti'], ...list.map((r) => [r.env || '', r.tier || '', r.app, r.namespaces.join(' '), r.owner.groups.join(' | '), r.owner.emails.join(' | '), r.what, r.detail || ''])]
       .map((r) => r.map(esc).join(';')).join('\r\n');
     const url = URL.createObjectURL(new Blob(['\ufeff' + body], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a');
@@ -111,6 +115,7 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
           <table className="w-full text-[11px]">
             <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
               <tr>
+                {hasEnv && <th className="text-left px-2 py-1.5 font-semibold">Ortam</th>}
                 <th className="text-left px-2 py-1.5 font-semibold">Uygulama</th>
                 <th className="text-left px-2 py-1.5 font-semibold">Namespace</th>
                 <th className="text-left px-2 py-1.5 font-semibold" title="namespace'in CMDB sahibi (dbo.Openshift_Namespace_Owners)">Ekip</th>
@@ -120,7 +125,8 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
             </thead>
             <tbody>
               {list.map((r) => (
-                <tr key={r.app + r.namespaces.join()} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
+                <tr key={(r.env || '') + (r.tier || '') + r.app + r.namespaces.join()} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
+                  {hasEnv && <td className="px-2 py-1 whitespace-nowrap"><b style={{ color: 'var(--text-primary)' }}>{r.env}</b> <span style={{ color: 'var(--text-muted)' }}>{r.tier}</span></td>}
                   <td className="px-2 py-1 font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>{r.app}</td>
                   <td className="px-2 py-1 font-mono whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{r.namespaces.join(', ') || '—'}</td>
                   <td className="px-2 py-1"><OwnerCell owner={r.owner} ready={ownersReady} /></td>
@@ -131,7 +137,7 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
                   </td>
                 </tr>
               ))}
-              {list.length === 0 && <tr><td colSpan={5} className="px-2 py-4 text-center" style={{ color: 'var(--text-muted)' }}>{rows.length ? 'Aramaya uyan uygulama yok.' : 'Eksik uygulama yok — hepsi deploy olmuş.'}</td></tr>}
+              {list.length === 0 && <tr><td colSpan={hasEnv ? 6 : 5} className="px-2 py-4 text-center" style={{ color: 'var(--text-muted)' }}>{rows.length ? 'Aramaya uyan uygulama yok.' : 'Eksik uygulama yok — hepsi deploy olmuş.'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -371,6 +377,17 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
   }, [mig]);
 
   const spaAll = rows.reduce((a, r) => a + (r.cov?.spaTotal || 0), 0);
+  // Tum ortamlar + iki katman + PROD yeni sunucular tek listede (sahiplerine ulasmak icin)
+  const allMissing = useMemo<MissingRow[]>(() => {
+    const out: MissingRow[] = [];
+    for (const { env, cov: c } of rows) {
+      if (!c) continue;
+      if (c.measured) out.push(...rowsFromCoverage(c.missingDetail?.internet || []).map((x) => ({ ...x, env, tier: 'internet' })));
+      if (c.measuredIntranet) out.push(...rowsFromCoverage(c.missingDetail?.intranet || []).map((x) => ({ ...x, env, tier: 'intranet' })));
+    }
+    if (mig) out.push(...rowsFromMigration(mig.groups).map((x) => ({ ...x, env: 'PROD', tier: 'yeni sunucu' })));
+    return out;
+  }, [rows, mig]);
 
   if (err && !cov)
     return <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
@@ -394,9 +411,22 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
             {cov.scanDate ? ` · nginx taraması ${cov.scanDate}` : ''}.
           </p>
         </div>
-        <span className="text-[10px] px-2 py-0.5 rounded-full border" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
-          vurgulu sütun: {isIntra ? 'İntranet' : 'İnternet'}
-        </span>
+        <div className="flex items-center gap-2">
+          {/* Katman fark etmeksizin TUM deploy olmamis / sorunlu uygulamalar + sahipleri
+              (kullanici, 2026-09-17: "internet veya intranet fark etmez, sahiplerine ulasmak istiyorum") */}
+          <button
+            onClick={() => setOpen({ title: 'Deploy olmamış / sorunlu tüm SPA’lar ve sahipleri', subtitle: 'tüm ortamlar · internet (nginx’te tanım yok) + intranet (hiç yok / yarım) + PROD yeni sunucular (hazır değil)', rows: allMissing })}
+            disabled={allMissing.length === 0}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
+            style={{ background: 'var(--accent)' }}
+            title="Katman fark etmeksizin, tüm ortamlarda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta)"
+          >
+            <UsersIcon className="w-3.5 h-3.5" /> Sahiplerine ulaş · {fmtNumber(allMissing.length)}
+          </button>
+          <span className="text-[10px] px-2 py-0.5 rounded-full border" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
+            vurgulu sütun: {isIntra ? 'İntranet' : 'İnternet'}
+          </span>
+        </div>
       </header>
       <div className="overflow-x-auto">
         <table className="w-full text-[12px]">
