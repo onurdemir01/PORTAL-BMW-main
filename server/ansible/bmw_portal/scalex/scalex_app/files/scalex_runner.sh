@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="6"
+PACKAGE_VERSION="7"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -29,6 +29,19 @@ REQUESTED_KIND="${WORKLOAD_KIND:-auto}"
 # `ambiguous` deyip isi dusurmesi ortadan kalkiyor — kullaniciya yeni bir adim
 # eklemeden. Bos birakilirsa bugunku `auto` davranisi AYNEN surer.
 WORKLOAD_KINDS_MAP="${WORKLOAD_KINDS:-}"
+# ── DOGRULAMA SURELERI ───────────────────────────────────────────────────────
+#
+# KULLANICI KARARI (2026-09-17):
+#   ACMA  (target > 0): 5 dk dolunca BEKLEMEYI BIRAK, UYARI yaz, is BASARILI bitsin.
+#                       ("aciliyor, 0/1, 5 dk'dir" — replica degisikligi zaten uygulandi)
+#   KAPATMA (target = 0): 5 dk'da UYARI yaz ama BEKLEMEYE DEVAM et; 10 dk'da FAIL.
+#                       ("scale 0 calisti ama 0 olmasi 5 dk'yi gecti")
+#
+# `WAIT_ATTEMPTS`/`WAIT_SECONDS` GERIYE UYUM icin duruyor: eski bir AWX surumu ya da
+# elle calistirma bunlari gonderirse butce onlardan turetilir. Portal artik saniye
+# cinsinden butce gonderiyor.
+VERIFY_WARN_SECONDS="${VERIFY_WARN_SECONDS:-300}"
+VERIFY_FAIL_SECONDS="${VERIFY_FAIL_SECONDS:-600}"
 WAIT_ATTEMPTS="${WAIT_ATTEMPTS:-30}"
 WAIT_SECONDS="${WAIT_SECONDS:-2}"
 JOB_ID="${JOB_ID:-N/A}"
@@ -678,6 +691,48 @@ get_spec_replicas() { local v; v="$(oc_get_jsonpath "$1" "$2" '{.spec.replicas}'
 get_status_replicas() { local v; v="$(oc_get_jsonpath "$1" "$2" '{.status.replicas}')"; [ -z "$v" ] && v=0; echo "$v"; }
 get_ready_replicas() { local v; v="$(oc_get_jsonpath "$1" "$2" '{.status.readyReplicas}')"; [ -z "$v" ] && v=0; echo "$v"; }
 
+# UC ALAN, TEK CAGRI — doğrulama dongusunun maliyeti.
+#
+# `verify_replicas` her denemede yukaridaki UC fonksiyonu ayri ayri cagiriyordu,
+# yani deneme basina UC `oc` gidis-donusu. Butce 60 sn iken bu 90 cagriydi; 300 sn'ye
+# cikarilinca 450 olurdu. Tek jsonpath ucunu birden getirir: 450 -> 150, kademeli
+# bekleme ile ~40.
+#
+# `RV_*` degiskenleri BILEREK global: `local` bir fonksiyondan cagirana deger
+# donduremez ve uc degeri stdout'tan ayristirmak ek bir alt kabuk demekti.
+RV_DESIRED=0; RV_CURRENT=0; RV_READY=0
+read_replica_state() {
+  local raw
+  raw="$(oc_get_jsonpath "$1" "$2" '{.spec.replicas}|{.status.replicas}|{.status.readyReplicas}')"
+  RV_DESIRED="${raw%%|*}"; raw="${raw#*|}"
+  RV_CURRENT="${raw%%|*}"
+  RV_READY="${raw#*|}"
+  # Alan yoksa `oc` BOS birakir (0 yazmaz) — okunmayan alan 0 sayilir.
+  [ -z "$RV_DESIRED" ] && RV_DESIRED=0
+  [ -z "$RV_CURRENT" ] && RV_CURRENT=0
+  [ -z "$RV_READY" ] && RV_READY=0
+}
+
+# KADEMELI BEKLEME. Sabit 2 sn ile 300 sn'lik butce 150 deneme demekti; ilk
+# saniyeler disinda o siklikta sormanin bir faydasi yok. Ilk 30 sn 2 sn, 2 dk'ya
+# kadar 5 sn, sonrasi 10 sn: 150 -> ~40 deneme.
+# "300" -> "5 dk", "90" -> "1 dk 30 sn", "45" -> "45 sn".
+# `$((x / 60))` kullanmak kisa surelerde "0 dk" yaziyordu.
+human_seconds() {
+  local n="$1" m sec
+  m=$((n / 60)); sec=$((n % 60))
+  if [ "$m" -eq 0 ]; then printf '%s sn' "$sec"
+  elif [ "$sec" -eq 0 ]; then printf '%s dk' "$m"
+  else printf '%s dk %s sn' "$m" "$sec"; fi
+}
+
+verify_sleep_for() {
+  local elapsed="$1"
+  if [ "$elapsed" -lt 30 ]; then printf '2'
+  elif [ "$elapsed" -lt 120 ]; then printf '5'
+  else printf '10'; fi
+}
+
 patch_replicas() {
   local kind="$1" app="$2" target="$3" candidate
   while IFS= read -r candidate; do
@@ -902,23 +957,78 @@ log_pod_state() {
   fi
 }
 
+# ── DOGRULAMA: ACMA ve KAPATMA ARTIK AYNI SEY DEGIL ──────────────────────────
+#
+# KULLANICI KARARI (2026-09-17). Eski davranis simetrikti: tek bir butce, dolunca
+# her iki yon de FAIL. Iki sorunu vardi:
+#
+#   * KAPATMA'da erken FAIL YANILTICIYDI. `oc patch` basarili olmus, pod'lar
+#     terminationGracePeriod boyunca kapaniyor olabilir. "FAIL" diyen bir satir,
+#     aslinda calisan bir islemi basarisiz gosteriyordu.
+#   * ACMA'da FAIL GEREKSIZDI. Replica degisikligi UYGULANDI; pod'un hazir olmasi
+#     imaj cekme/probe suresine bagli ve otomasyonun sorumlulugunda degil.
+#
+# YENI TABLO:
+#   ACMA  (target > 0): WARN esiginde BEKLEMEYI BIRAK, uyari yaz, BASARILI don.
+#   KAPATMA (target = 0): WARN esiginde uyari yaz ama BEKLEMEYE DEVAM; FAIL esiginde FAIL.
+#
+# "0/0" ve "0/1": olcut artik `ready`yi de iceriyor (kullanicinin kendi ifadesi).
 verify_replicas() {
-  local app="$1" display="$2" res="$3" target="$4" desired current ready i
-  desired=""; current=""; ready=""; i=1
-  while [ "$i" -le "$WAIT_ATTEMPTS" ]; do
-    desired="$(get_spec_replicas "$res" "$app")"; current="$(get_status_replicas "$res" "$app")"; ready="$(get_ready_replicas "$res" "$app")"
-    [ "$desired" = "$target" ] && [ "$current" = "$target" ] && break
-    sleep "$WAIT_SECONDS"; i=$((i + 1))
-  done
-  if [ "$desired" = "$target" ] && [ "$current" = "$target" ]; then
-    log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "OK" "desired=$desired current=$current ready=$ready target=$target"
-    if [ "$target" != "0" ] && [ "$ready" != "$target" ]; then
-      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "READINESS" "INFO" "Replica change succeeded; pod readiness is still converging ready=$ready target=$target"
+  local app="$1" display="$2" res="$3" target="$4"
+  local start now elapsed warned=0 sl
+  start="$(date +%s)"
+  warned=0
+
+  while :; do
+    read_replica_state "$res" "$app"
+    # BASARI OLCUTU — IKI YONDE FARKLI.
+    #
+    # KAPATMA ("0/0"): istenen 0 VE ayakta pod yok.
+    # ACMA   ("N/N"): istenen ve ayakta olan hedefte OLMASI YETMEZ, HAZIR da olmali.
+    #
+    # OLCULDU: `.status.replicas` pod olusur olusmaz hedefe esitleniyor, yani eski
+    # olcutle acma HEMEN "OK" donuyordu ve kullanicinin istedigi "aciliyor, 0/1,
+    # 5 dk'dir" uyarisi HIC ATESLENEMIYORDU. Beklenen sey pod'un HAZIR olmasi.
+    if [ "$target" = "0" ]; then
+      [ "$RV_DESIRED" = "0" ] && [ "$RV_CURRENT" = "0" ] && {
+        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "OK" \
+          "desired=$RV_DESIRED current=$RV_CURRENT ready=$RV_READY target=0"
+        return 0
+      }
+    else
+      [ "$RV_DESIRED" = "$target" ] && [ "$RV_CURRENT" = "$target" ] && [ "$RV_READY" = "$target" ] && {
+        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "OK" \
+          "desired=$RV_DESIRED current=$RV_CURRENT ready=$RV_READY target=$target"
+        return 0
+      }
     fi
-    return 0
-  fi
-  log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "FAIL" "Replica verification timed out expected=$target desired=$desired current=$current ready=$ready"
-  return 1
+
+    now="$(date +%s)"; elapsed=$((now - start))
+
+    if [ "$elapsed" -ge "$VERIFY_WARN_SECONDS" ] && [ "$warned" -eq 0 ]; then
+      warned=1
+      if [ "$target" = "0" ]; then
+        # KAPATMA: uyar ama BEKLEMEYE DEVAM.
+        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "WARN" \
+          "scale 0 komutu calisti ama 0 olmasi $(human_seconds "$VERIFY_WARN_SECONDS") gecti; hala $RV_CURRENT pod var — beklemeye devam ediliyor (fail esigi $(human_seconds "$VERIFY_FAIL_SECONDS"))"
+      else
+        # ACMA: uyar ve BIRAK — is basarili sayilir.
+        log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "WARN" \
+          "aciliyor, $RV_READY/$target, $(human_seconds "$VERIFY_WARN_SECONDS") bekleniyor; replica degisikligi UYGULANDI, pod hazir olmayi surduruyor"
+        return 0
+      fi
+    fi
+
+    # FAIL ESIGI YALNIZCA KAPATMADA. Acma yukarida zaten donmus olur.
+    if [ "$target" = "0" ] && [ "$elapsed" -ge "$VERIFY_FAIL_SECONDS" ]; then
+      log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "FAIL" \
+        "0 olmasi $(human_seconds "$VERIFY_FAIL_SECONDS") gecti expected=$target desired=$RV_DESIRED current=$RV_CURRENT ready=$RV_READY"
+      return 1
+    fi
+
+    sl="$(verify_sleep_for "$elapsed")"
+    sleep "$sl"
+  done
 }
 
 precheck_app() {
