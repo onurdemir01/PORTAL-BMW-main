@@ -12,6 +12,7 @@
 import React, { useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import type { ScaleXAction, ScaleXMode, ScaleXWorkload } from "@/api/scalexApi";
+import type { ScaleXLimits } from "@/hooks/useScaleXLimits";
 
 interface Props {
   apps: string[];
@@ -32,6 +33,8 @@ interface Props {
     targetReplicas?: string; verificationTimeout: string;
     allowPartial: boolean; mailCc: string; hpaPin: boolean;
   };
+  /** SUNUCUDAN gelen sinirlar; verilmezse asagidaki fabrika degerleri kullanilir. */
+  limits?: ScaleXLimits;
 }
 
 // Her işlem TEK CÜMLEYLE ne yaptığını söyler — kullanıcı adını okuyup tahmin etmesin.
@@ -57,9 +60,15 @@ const ACTION_INFO: Record<ScaleXAction, { label: string; text: string }> = {
 // araligi bagimsiz dogrular (server/scalex/launch.cjs) — burasi yalnizca erken
 // geri bildirim.
 //
-// DISA ACIK cunku sihirbaz sayfasi da AYNI varsayilani tutuyor. Iki yerde iki sayi
-// tutmak bu hatayi uretti: PR #98 burayi 300 yapti, `ScaleXPage` 60'ta kaldi ve
-// kullanicinin isi 5 dk yerine 1 dk bekledi (2026-09-17 uretim tespiti).
+// DISA ACIK cunku sihirbaz sayfasi da AYNI varsayilani tohum olarak kullaniyor.
+// Iki yerde iki sayi tutmak bu hatayi uretti: PR #98 burayi 300 yapti, `ScaleXPage`
+// 60'ta kaldi ve kullanicinin isi 5 dk yerine 1 dk bekledi (2026-09-17).
+//
+// ARTIK YALNIZCA FABRIKA DEGERI. Gercek sinirlar SUNUCUDAN geliyor (`limits`
+// prop'u, bkz. src/hooks/useScaleXLimits.ts) cunku admin onlari Admin > Sistem
+// ekranindan degistirebiliyor ve degisiklik ANINDA gecerli oluyor. Ekran sayiyi
+// elde tutsaydi, admin varsayilani 600 yaptiginda kullanici hala "30-3600 arasi"
+// gorur, girdigi degeri sunucu reddeder ve sebebi hicbir yerde yazmazdi.
 export const TIMEOUT_DEFAULT = "300";
 export const TIMEOUT_MIN = 30;
 export const TIMEOUT_MAX = 3600;
@@ -74,7 +83,13 @@ export function humanSeconds(raw: string): string {
   return s ? `${m} dk ${s} sn` : `${m} dk`;
 }
 
-const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, onSubmit, previous }) => {
+const OperationStep: React.FC<Props> = ({
+  apps, workloads, clusterCount, busy, onSubmit, previous, limits,
+}) => {
+  // SINIRLAR SUNUCUDAN; gelmediyse fabrika degerleri (eski davranis).
+  const tMin = limits?.timeoutMin ?? TIMEOUT_MIN;
+  const tMax = limits?.timeoutMax ?? TIMEOUT_MAX;
+  const tDefault = limits?.timeoutDefault ?? TIMEOUT_DEFAULT;
   // ILK SUNUM NOTR KALIR: `previous` YALNIZCA kullanici bu adimi bir kez doldurup
   // ilerledikten sonra dolar; ilk gelisinde `undefined`tir ve hicbir sey secili gelmez.
   // Kendi verdigi karari geri donunce hatirlamak yonlendirme DEGILDIR — tersine, bos
@@ -84,13 +99,13 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
   // Önceden seçili DEĞİL — kullanıcı bilinçli olarak seçsin (bkz. dosya başı, kural 2).
   const [mode, setMode] = useState<ScaleXMode | null>(previous?.executionMode ?? null);
   const [replicas, setReplicas] = useState(previous?.targetReplicas ?? "");
-  const [timeout, setTimeoutValue] = useState(previous?.verificationTimeout ?? TIMEOUT_DEFAULT);
+  const [timeout, setTimeoutValue] = useState(previous?.verificationTimeout ?? tDefault);
   const [allowPartial, setAllowPartial] = useState(previous?.allowPartial ?? true);
   // Sunucu ayni araligi bagimsiz dogrular; bu yalnizca erken geri bildirim ve
   // "Devam" dugmesini kapatmak icin.
   const timeoutNum = Number(timeout);
   const timeoutBad =
-    !/^[0-9]{1,5}$/.test(timeout.trim()) || timeoutNum < TIMEOUT_MIN || timeoutNum > TIMEOUT_MAX;
+    !/^[0-9]{1,7}$/.test(timeout.trim()) || timeoutNum < tMin || timeoutNum > tMax;
   const [mailCc, setMailCc] = useState(previous?.mailCc ?? "");
   // HPA sabitleme ONCEDEN SECILI DEGIL: HPA'ya dokunmak politikanin tersi, kullanici
   // bilinçli olarak istemeli.
@@ -290,7 +305,7 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
             Sonucu ne kadar bekleyelim? (saniye)
           </label>
           <input id="scalex-timeout" type="number" inputMode="numeric"
-            min={TIMEOUT_MIN} max={TIMEOUT_MAX} step={30}
+            min={tMin} max={tMax} step={30}
             value={timeout} disabled={busy}
             onChange={(e) => setTimeoutValue(e.target.value)}
             aria-describedby="scalex-timeout-help"
@@ -298,7 +313,7 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
                        text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
           {timeoutBad ? (
             <p className="mt-1 text-xs text-red-600">
-              {TIMEOUT_MIN}–{TIMEOUT_MAX} arası bir saniye değeri girin.
+              {tMin}–{tMax} arası bir saniye değeri girin.
             </p>
           ) : (
             <p id="scalex-timeout-help" className="mt-1 text-xs text-[var(--text-muted)]">

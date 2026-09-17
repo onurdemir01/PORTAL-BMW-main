@@ -92,7 +92,11 @@ test('VT1 varsayilan butce HER YERDE 300 sn (ALTI yer ayrismiyor)', () => {
     path.join(ROOT, 'src/components/scalex/steps/OperationStep.tsx'), 'utf8',
   );
   assert.match(runner, /VERIFY_WARN_SECONDS:-300/, 'betik varsayilani 300 degil');
-  assert.match(launch, /VERIFICATION_TIMEOUT_DEFAULT = 300/, 'sunucu varsayilani 300 degil');
+  // Sunucu varsayilani artik SABIT DEGIL — admin ekranindan gelebiliyor. Fabrika
+  // degeri `config.cjs`te duruyor ve `launch.cjs` onu HER CAGRIDA okuyor.
+  const cfg = fs.readFileSync(path.join(ROOT, 'server/scalex/config.cjs'), 'utf8');
+  assert.match(cfg, /SCALEX_VERIFY_TIMEOUT_DEFAULT: \{ fallback: 300/, 'fabrika varsayilani 300 degil');
+  assert.match(launch, /verifyTimeoutDefault = \(\) => config\.tunable/, 'sunucu varsayilani dinamik okunmuyor');
   assert.match(prepare, /verification_timeout \| default\('300'\)/, 'playbook varsayilani 300 degil');
   assert.match(ui, /TIMEOUT_DEFAULT = "300"/, 'ekran varsayilani 300 degil');
   // Eski onayarli liste GERI GELMESIN.

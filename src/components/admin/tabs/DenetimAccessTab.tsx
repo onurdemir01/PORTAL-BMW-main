@@ -5,10 +5,11 @@
 // (portal_element_visibility) — 'Denetim' sayfasina allow + secilen 'tab:denetim:<id>'
 // elementlerine allow. Grup kurali oturumdaki AD gruplarindan (memberOf) eslesir; tam DN
 // ya da yalin CN adi girilebilir.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ShieldCheckIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { denetimAccessApi, type DenetimAccessGrant } from '@/api/adminApi';
 import { toast } from '@/hooks/useToast';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 
 const TAB_LABELS: Record<string, string> = {
   nginx: 'Nginx SPA', nginxapi: 'Nginx API Envanteri', nginxenv: 'Nginx Envanteri', nginxaudit: 'Nginx Audit',
@@ -39,7 +40,13 @@ export default function DenetimAccessTab() {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); }, []);
+  // `useAsyncEffect`: efekt icinde dogrudan `load()` cagirmak
+  // `react-hooks/set-state-in-effect` uyarisi uretiyordu (ESLint ozel hook'larin
+  // ICINE bakmaz; erteleme hook'un kendisinde). Ayrica bilesen sokulduktan sonra
+  // gelen cevap artik `setState` CAGIRMAZ.
+  useAsyncEffect(async (alive) => {
+    if (alive()) await load();
+  }, []);
 
   const allSelected = tabs.length > 0 && sel.size === tabs.length;
   const toggle = (t: string) => setSel((s) => { const n = new Set(s); if (n.has(t)) n.delete(t); else n.add(t); return n; });

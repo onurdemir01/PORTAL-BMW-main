@@ -470,6 +470,23 @@ export const scalexApi = {
     }>;
   },
 
+  /**
+   * ScaleX SINIRLARI — sunucudan. Admin ekranindan degisebildikleri icin ekranda
+   * ELDE tutulmazlar: aksi halde admin varsayilani 600 yaptiginda kullanici hala
+   * "30-3600 arasi" gorur ve sunucunun kabul ettigi degerle ekran AYRISIR.
+   */
+  async config() {
+    return safeJson(await fetch(`${BASE}/config`)) as Promise<{
+      ok: boolean;
+      verificationTimeout: { default: number; min: number; max: number; failMultiplier: number };
+      maxTargets: number;
+      prodConfirmThreshold: number;
+      maxAuditGroups: number;
+      problems: string[];
+      message?: string;
+    }>;
+  },
+
   async stopped(env?: string, tenant?: string, cluster?: string) {
     const scoped = !!(env && tenant);
     const q = new URLSearchParams({
