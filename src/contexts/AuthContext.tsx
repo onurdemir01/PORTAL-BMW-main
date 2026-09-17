@@ -50,6 +50,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [showTimeoutModal, setShowTimeoutModal] = useState(false);
   const [countdown, setCountdown] = useState(TIMEOUT_WARNING / 1000);
   const [loading, setLoading] = useState(true);
+  // Acilista sunucuya ulasilamiyorsa (release penceresi) kacinci denemede oldugumuz:
+  // 0 = sorun yok. >0 iken bos ekran yerine "Portal guncelleniyor" mesaji gosterilir.
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [pageVisibility, setPageVisibility] = useState<Record<string, string[]>>({});
   const [pageVisibilityLoaded, setPageVisibilityLoaded] = useState(false);
   // Element bazlı çözülmüş görünürlük haritası (key → görünür mü) + izlenen versiyon.
@@ -108,6 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (async () => {
       const data = await fetchSessionWithRetry({
         cancelled: () => cancelled,
+        onRetry: (attempt) => { if (!cancelled) setRestoreAttempt(attempt); },
         onGiveUp: (attempts) =>
           console.warn(`[Auth] /api/auth/me ${attempts} denemede yanit vermedi — ` +
             "sunucu erisilemiyor olabilir; oturum acilmamis sayildi."),
@@ -227,7 +231,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [user, resetSessionTimeout, clearTimers]);
 
-  if (loading) return null;
+  if (loading) {
+    if (restoreAttempt === 0) return null;
+    // Sunucu (henuz) yanit vermiyor: buyuk olasilikla release. Oturum DB'de duruyor;
+    // login ekranina DUSURMEDEN beklenir, sunucu gelince kaldigi yerden devam eder.
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: 'var(--bg-page, #f4f4f4)' }}>
+        <div className="max-w-md w-full rounded-2xl border px-6 py-5 text-center" style={{ borderColor: 'var(--border-subtle, #ddd)', background: 'var(--bg-surface, #fff)' }}>
+          <div className="text-base font-semibold" style={{ color: 'var(--text-primary, #111)' }}>Portal şu an yanıt vermiyor</div>
+          <p className="mt-1.5 text-sm" style={{ color: 'var(--text-secondary, #444)' }}>
+            Büyük olasılıkla bir güncelleme yapılıyor. Oturumunuz korunuyor; bağlantı gelince kaldığınız yerden devam edeceksiniz.
+          </p>
+          <p className="mt-2 text-xs tabular-nums" style={{ color: 'var(--text-muted, #777)' }}>yeniden deneniyor… ({restoreAttempt}. deneme)</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider

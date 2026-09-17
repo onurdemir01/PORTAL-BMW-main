@@ -95,13 +95,22 @@ cp .env.example .env.prod && vi .env.prod
 # 1) Yeni zip'i kopyala
 cp /tmp/PORTAL-BMW-main.zip /vhosting8/bmw_portal/deploy/
 
-# 2) release.sh her seyi yapar: stop → yedek → unzip → env koru → npm ci → build → start
+# 2) release.sh her seyi yapar: unzip (hazirlik dizini) → npm ci → build → yedek → stop → dizin degisimi → start
 cd /vhosting8/bmw_portal/app/PORTAL-BMW-main
 ./deploy/release.sh prod
 ```
 
 `release.sh` env dosyalarini otomatik korur, son 3 yedegi `deploy/backup-<ts>` altinda tutar.
 Veri DB'de oldugu icin surum degisiminde hicbir kayit/ayar kaybolmaz.
+
+**Kesinti (2026-09-17):** npm ci + build artik `app/.stage-<ts>/` altinda, **eski surum
+calisirken** yapilir; kesinti yalnizca `stop → mv → start` (saniyeler). Oturumlar MSSQL'de
+(`portal_sessions`) tutuldugu icin restart oturum dusurmez; istemci de sunucu gelene kadar
+(~3 dk) "Portal guncelleniyor" ekraniyla bekler, login ekranina dusmez. Eski agac
+`app/PORTAL-BMW-main.prev-<ts>` olarak build'li hâliyle kalir — build'siz geri donus:
+`run.sh prod stop` → iki dizinin adini degistir → `run.sh prod start`.
+`.env.prod` icinde `SESSION_STORE=memory` OLMAMALI (varsayilan mssql; acilis logunda
+"[Auth] MSSQL session store aktif" gorunmeli, `/api/auth/session-debug` de gosterir).
 
 ## Ortamlar
 

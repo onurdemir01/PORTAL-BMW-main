@@ -10,7 +10,7 @@ interface Props {
   subtitle?: string;
   icon?: React.ComponentType<{ className?: string }>;
   footer?: React.ReactNode;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "wide";
   /** Arka plana tiklayinca kapansin mi. Kullanici girdisi tasiyan pencerelerde
    *  false verin: tek yanlis tiklama formu silmesin. Varsayilan true. */
   dismissOnBackdrop?: boolean;
@@ -22,6 +22,9 @@ const SIZE_MAP = {
   md: "max-w-md",
   lg: "max-w-lg",
   xl: "max-w-2xl",
+  // Liste/tablo pencereleri (kullanici, 2026-09-17: "cok kucuk aciliyor, iyice buyuk acilsin"):
+  // ekranin ~%95'i, ust siniri 90rem.
+  wide: "max-w-[min(90rem,95vw)]",
 };
 
 // PatternFly Modal: duz beyaz kutu (3px kose), 20px Red Hat Display baslik,

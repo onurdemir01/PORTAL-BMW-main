@@ -39,11 +39,17 @@ export interface SessionRestoreDeps {
   /** Denemeler arasında iptal edildi mi (unmount). */
   cancelled?: () => boolean;
   onGiveUp?: (attempts: number) => void;
+  /** Gecici hata sonrasi her yeniden denemeden ONCE cagrilir (ekranda "guncelleme suruyor"
+   *  gostermek icin). attempt: kacinci deneme basarisiz oldu (1'den), nextDelayMs: bekleme. */
+  onRetry?: (attempt: number, nextDelayMs: number) => void;
 }
 
-// Bekleme araliklari toplam ~11 saniye; buna en fazla alti adet 10 saniyelik
-// istek eklenir. Yanit/govde gelmeyen baglanti da artik sinirli surede biter.
-const DEFAULT_DELAYS = [400, 800, 1600, 3000, 5000];
+// 2026-09-17: toplam bekleme ~11 sn'den ~3 dakikaya cikti. Release sirasinda backend
+// (stop → start) saniyeler surer ama eski akista npm ci + build de kesintiye giriyordu;
+// 11 sn'de pes eden istemci, oturumu DB'de GECERLI olan herkesi login ekranina
+// dusuruyordu. Simdi: ilk denemeler sik, sonra 5 sn'de bir; AuthContext bu sirada
+// "Portal guncelleniyor" ekrani gosterir, login ekrani gostermez.
+const DEFAULT_DELAYS = [400, 800, 1600, 3000, 5000, ...Array(34).fill(5000)];
 
 export async function fetchSessionWithRetry(
   deps: SessionRestoreDeps = {},
@@ -90,6 +96,7 @@ export async function fetchSessionWithRetry(
       if (transient) deps.onGiveUp?.(attempt + 1);
       return null;
     }
+    deps.onRetry?.(attempt + 1, delays[attempt]);
     await sleep(delays[attempt]);
   }
 }

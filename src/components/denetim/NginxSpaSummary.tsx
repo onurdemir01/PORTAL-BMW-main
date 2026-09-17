@@ -83,7 +83,7 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
       title={title}
       subtitle={subtitle}
       icon={UsersIcon}
-      size="xl"
+      size="wide"
       footer={
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
@@ -112,7 +112,7 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
             ))}
           </span>
         </div>
-        <div className="overflow-auto max-h-[60vh] rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div className="overflow-auto max-h-[70vh] rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
           <table className="w-full text-[11px]">
             <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
               <tr>
@@ -174,7 +174,7 @@ function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose:
   };
   const KIND_LABEL = { all: 'hepsi', spa: 'SPA', nonSpa: 'SPA değil' } as const;
   return (
-    <Modal open onClose={onClose} title={`${ip} → route’lar`} subtitle={`${env} ortamında bu IP’ye çözen route’lar (route_inventory nslookup)`} icon={GlobeAltIcon} size="xl"
+    <Modal open onClose={onClose} title={`${ip} → route’lar`} subtitle={`${env} ortamında bu IP’ye çözen route’lar (route_inventory nslookup)`} icon={GlobeAltIcon} size="wide"
       footer={
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{rows ? `${fmtNumber(list.length)} route` : ''}</span>
@@ -196,7 +196,7 @@ function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose:
         {err && <div className="text-xs text-red-600">{err}</div>}
         {!rows && !err && <div className="py-4 text-center text-xs" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</div>}
         {rows && (
-          <div className="overflow-auto max-h-[60vh] rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+          <div className="overflow-auto max-h-[70vh] rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
             <table className="w-full text-[11px]">
               <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
                 <tr>
