@@ -11,6 +11,7 @@ import {
   scalexApi, type ScaleXAction, type ScaleXMode, type ScaleXPreview, type ScaleXScope, type ScaleXWorkload,
 } from "@/api/scalexApi";
 import { fmtDateTime, fmtRelative } from "@/utils/datetime";
+import { humanSeconds } from "./OperationStep";
 
 interface Props {
   scope: ScaleXScope;
@@ -190,7 +191,7 @@ const PreviewStep: React.FC<Props> = ({
             {allowPartial ? "geçen hedefler uygulanır" : "hiçbir şey uygulanmaz"}
           </strong>
         </span>
-        <span>Sonuç kontrolü: <strong className="text-[var(--text-secondary)]">{verificationTimeout} sn</strong></span>
+        <span>Sonuç kontrolü: <strong className="text-[var(--text-secondary)]">{verificationTimeout} sn{humanSeconds(verificationTimeout) ? ` (${humanSeconds(verificationTimeout)})` : ''}</strong></span>
         {mailCc && <span className="truncate max-w-[20rem]" title={mailCc}>Rapor CC: {mailCc}</span>}
         {/* VERI TAZELIGI: kesif `Uygulamalar` adiminda donuyor ve onizleme yeniden
             kesif YAPMIYOR. Damgayi gostermemek, dakikalar once alinmis bir replica

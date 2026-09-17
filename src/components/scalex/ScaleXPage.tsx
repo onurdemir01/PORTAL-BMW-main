@@ -31,7 +31,7 @@ import { isProdEnv } from '@/utils/env';
 import ScopeStep from './steps/ScopeStep';
 import NamespaceStep from './steps/NamespaceStep';
 import WorkloadStep from './steps/WorkloadStep';
-import OperationStep from './steps/OperationStep';
+import OperationStep, { TIMEOUT_DEFAULT } from './steps/OperationStep';
 import PreviewStep from './steps/PreviewStep';
 import ScaleXResultPanel from './steps/ScaleXResultPanel';
 import StoppedPanel from './StoppedPanel';
@@ -93,7 +93,11 @@ const ScaleXPage: React.FC = () => {
   const [action, setAction] = useState<ScaleXAction>('stop');
   const [executionMode, setExecutionMode] = useState<ScaleXMode>('dry_run');
   const [targetReplicas, setTargetReplicas] = useState<string | undefined>(undefined);
-  const [verificationTimeout, setVerificationTimeout] = useState('60');
+  // VARSAYILAN TEK KAYNAKTAN. Burada ELDE yazili '60' duruyordu: PR #98 yalnizca
+  // OperationStep'in varsayilanini 300 yapti, sayfa durumu 60'ta kaldi ve kullanici
+  // adima geri donup ilerledigi anda is 5 dk yerine 1 dk bekledi (HAR kaniti,
+  // 2026-09-17). Ayni sayiyi iki yerde tutmak bu hatayi uretti.
+  const [verificationTimeout, setVerificationTimeout] = useState(TIMEOUT_DEFAULT);
   const [allowPartial, setAllowPartial] = useState(true);
   const [mailCc, setMailCc] = useState('');
   const [hpaPin, setHpaPin] = useState(false);

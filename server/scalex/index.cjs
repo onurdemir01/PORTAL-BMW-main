@@ -875,7 +875,11 @@ function initScaleX(app) {
         action,
         targetReplicas,
         executionMode,
-        verificationTimeout: req.body?.verificationTimeout ?? '60',
+        // VARSAYILAN SUNUCU SABITINDEN. Burada ELDE '60' yaziliydi ve PR #98'in
+        // 300'e cektigi varsayilani BU UC sessizce eskitiyordu: onizleme bir butce,
+        // calistirma baska bir butce gosteriyordu.
+        verificationTimeout:
+          req.body?.verificationTimeout ?? String(launch.VERIFICATION_TIMEOUT_DEFAULT),
       });
       const radius = launch.computeBlastRadius({
         clusters,

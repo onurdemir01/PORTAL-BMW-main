@@ -82,7 +82,7 @@ function verify({ state, target, warn, fail }) {
   }
 }
 
-test('VT1 varsayilan butce HER YERDE 300 sn (uc dosya ayrismiyor)', () => {
+test('VT1 varsayilan butce HER YERDE 300 sn (ALTI yer ayrismiyor)', () => {
   const runner = fs.readFileSync(RUNNER, 'utf8');
   const launch = fs.readFileSync(path.join(ROOT, 'server/scalex/launch.cjs'), 'utf8');
   const prepare = fs.readFileSync(
@@ -97,6 +97,39 @@ test('VT1 varsayilan butce HER YERDE 300 sn (uc dosya ayrismiyor)', () => {
   assert.match(ui, /TIMEOUT_DEFAULT = "300"/, 'ekran varsayilani 300 degil');
   // Eski onayarli liste GERI GELMESIN.
   assert.doesNotMatch(launch, /VERIFICATION_TIMEOUTS/, 'eski onayarli liste geri gelmis');
+
+  // ── BU IKI YERI ILK VT1 GORMUYORDU (bekci korlugu, 2026-09-17) ───────────
+  // PR #98 `TIMEOUT_DEFAULT`i 300 yapti ve VT1 yesil kaldi; ama sihirbaz sayfasi
+  // ELDE yazili '60' tutuyordu ve kullanicinin isi 5 dk yerine 1 dk bekledi (HAR
+  // kaniti). Bir sabiti "bir yerde dogru" diye dogrulamak yetmiyor — AYNI SAYIYI
+  // TUTAN HER YER kontrol edilmeli.
+  const page = fs.readFileSync(
+    path.join(ROOT, 'src/components/scalex/ScaleXPage.tsx'), 'utf8',
+  );
+  assert.match(
+    page,
+    /useState\(TIMEOUT_DEFAULT\)/,
+    'sihirbaz sayfasi varsayilani PAYLASILAN sabitten okumuyor',
+  );
+  assert.doesNotMatch(
+    page,
+    /setVerificationTimeout\] = useState\(['"][0-9]+['"]\)/,
+    'sihirbaz sayfasi sure varsayilanini ELDE yaziyor — PR #98 regresyonu geri geldi',
+  );
+
+  // `/preview` ucunun kendi yedegi de sunucu sabitinden gelmeli; yoksa onizleme
+  // bir butce, calistirma baska bir butce gosterir.
+  const server = fs.readFileSync(path.join(ROOT, 'server/scalex/index.cjs'), 'utf8');
+  assert.doesNotMatch(
+    server,
+    /verificationTimeout: req\.body\?\.verificationTimeout \?\? ['"][0-9]+['"]/,
+    '/preview yedegi ELDE yazili bir saniye degeri kullaniyor',
+  );
+  assert.match(
+    server,
+    /req\.body\?\.verificationTimeout \?\?\s*String\(launch\.VERIFICATION_TIMEOUT_DEFAULT\)/,
+    '/preview yedegi sunucu sabitinden gelmiyor',
+  );
 });
 
 test('VT2 deneme basina TEK `oc` cagrisi (uc alan tek jsonpath)', () => {

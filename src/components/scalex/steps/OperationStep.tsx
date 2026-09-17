@@ -56,12 +56,16 @@ const ACTION_INFO: Record<ScaleXAction, { label: string; text: string }> = {
 // varsayilan 5 dakika, ekstra isteyen SANIYE cinsinden girsin. Sunucu tarafi ayni
 // araligi bagimsiz dogrular (server/scalex/launch.cjs) — burasi yalnizca erken
 // geri bildirim.
-const TIMEOUT_DEFAULT = "300";
-const TIMEOUT_MIN = 30;
-const TIMEOUT_MAX = 3600;
+//
+// DISA ACIK cunku sihirbaz sayfasi da AYNI varsayilani tutuyor. Iki yerde iki sayi
+// tutmak bu hatayi uretti: PR #98 burayi 300 yapti, `ScaleXPage` 60'ta kaldi ve
+// kullanicinin isi 5 dk yerine 1 dk bekledi (2026-09-17 uretim tespiti).
+export const TIMEOUT_DEFAULT = "300";
+export const TIMEOUT_MIN = 30;
+export const TIMEOUT_MAX = 3600;
 
 /** "300" -> "5 dk", "90" -> "1 dk 30 sn" — kullanici saniyeyi zihninde cevirmesin. */
-function humanSeconds(raw: string): string {
+export function humanSeconds(raw: string): string {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return "";
   const m = Math.floor(n / 60);
