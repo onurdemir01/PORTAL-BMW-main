@@ -24,7 +24,6 @@ function loadShouldDismiss() {
   const m = /export function shouldDismiss\(([^)]*)\)\s*\{\s*return ([^;]+);/.exec(src);
   assert.ok(m, 'shouldDismiss bulunamadi');
   const params = m[1].replace(/:\s*boolean/g, '').replace(/\s*=\s*true/g, '');
-  // eslint-disable-next-line no-new-func
   return new Function(params, 'return ' + m[2] + ';');
 }
 
@@ -51,7 +50,11 @@ test('hicbir pencere eski "target === currentTarget -> onClose" kalibini kullanm
       else if (/\.tsx$/.test(e.name)) {
         const src = fs.readFileSync(p, 'utf8');
         // "e.target === e.currentTarget" ya da "=== overlayRef.current" ile onClose
-        if (/onClick=\{\s*\(e\)\s*=>\s*\{\s*if\s*\(e\.target\s*===\s*(e\.currentTarget|\w+Ref\.current)\)\s*onClose\(\)/.test(src)) {
+        if (
+          /onClick=\{\s*\(e\)\s*=>\s*\{\s*if\s*\(e\.target\s*===\s*(e\.currentTarget|\w+Ref\.current)\)\s*onClose\(\)/.test(
+            src,
+          )
+        ) {
           offenders.push(path.relative(ROOT, p));
         }
       }

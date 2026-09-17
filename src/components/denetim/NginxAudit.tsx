@@ -12,13 +12,11 @@
 // Legacy denetiminden AYRIDIR: o, 12 prod sunucusunu servis tanesinde ve eslenik
 // karsilastirmasiyla olcer. Bu, tum filoyu sunucu tanesinde olcer.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+// Ham tarih bicimlendirme YOK: bicim tek yerden gelir (bekci G19).
+import { fmtDate } from '@/utils/datetime';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
-import {
-  denetimApi,
-  type NginxAuditHost,
-  type NginxAuditResult,
-} from '@/api/denetimApi';
+import { denetimApi, type NginxAuditHost, type NginxAuditResult } from '@/api/denetimApi';
 import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from './ui';
 import { Modal } from '@/components/common/Modal';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,7 +48,9 @@ export function NginxAudit() {
   // metrikler gri, en sagda rozet + not; toplamlar onu saymaz. Herkes gorur, Admin duzenler.
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const [excEdit, setExcEdit] = useState<{ host: string; note: string; existing: boolean } | null>(null);
+  const [excEdit, setExcEdit] = useState<{ host: string; note: string; existing: boolean } | null>(
+    null,
+  );
   const [excBusy, setExcBusy] = useState(false);
   const [excMsg, setExcMsg] = useState('');
 
@@ -100,7 +100,10 @@ export function NginxAudit() {
       if (!prev) return prev;
       const hosts = prev.hosts.map((h) => {
         if (h.host !== host) return h;
-        const raw = { fqdn: h.proxyFqdnRaw ?? h.proxyFqdn, undef: h.proxyUndefinedRaw ?? h.proxyUndefined };
+        const raw = {
+          fqdn: h.proxyFqdnRaw ?? h.proxyFqdn,
+          undef: h.proxyUndefinedRaw ?? h.proxyUndefined,
+        };
         return {
           ...h,
           exception,
@@ -129,7 +132,11 @@ export function NginxAudit() {
     try {
       const r = await denetimApi.nginxAuditExceptionSet(excEdit.host, excEdit.note.trim());
       if (r.ok) {
-        applyExceptionLocally(excEdit.host, { note: excEdit.note.trim(), by: r.by ?? null, at: new Date().toISOString() });
+        applyExceptionLocally(excEdit.host, {
+          note: excEdit.note.trim(),
+          by: r.by ?? null,
+          at: new Date().toISOString(),
+        });
         setExcEdit(null);
         void refreshQuietly();
       } else setExcMsg(r.message || 'Kaydedilemedi.');
@@ -185,9 +192,9 @@ export function NginxAudit() {
   if (!data.schemaReady) {
     return (
       <Note tone="warning" title="Nginx Audit henüz açık değil">
-        Bu görünüm <Code>dbo.Nginx_Audit_*</Code> tablolarını kullanır; henüz yoklar. Tek
-        seferlik DDL: <Code>bmw_nginx/nginx_audit/files/nginx_audit_schema.sql</Code>.
-        Çalıştırıldıktan sonra <Code>nginx_audit</Code> job&apos;ının ilk koşusunda burası dolar.{' '}
+        Bu görünüm <Code>dbo.Nginx_Audit_*</Code> tablolarını kullanır; henüz yoklar. Tek seferlik
+        DDL: <Code>bmw_nginx/nginx_audit/files/nginx_audit_schema.sql</Code>. Çalıştırıldıktan sonra{' '}
+        <Code>nginx_audit</Code> job&apos;ının ilk koşusunda burası dolar.{' '}
         <b>Diğer ekranlar etkilenmez.</b>
       </Note>
     );
@@ -206,10 +213,11 @@ export function NginxAudit() {
     <div className="space-y-3">
       <Note tone="info" title="Bu ekran ne gösteriyor?">
         Her satır bir nginx sunucusu. Konfigürasyon <Code>nginx -T</Code> ile okunur — yani
-        include&apos;lar dahil, nginx&apos;in kendi gördüğü hâliyle. <b>Satıra tıklayınca sunucunun
-        kendi sayfası açılır</b>: server blokları (ip:port, sertifika), location&apos;lar (dosya
-        başına), upstream&apos;ler (resolve / keepalive / zone / kullanımda mı), kurulum
-        referansıyla ayar karşılaştırması ve kurulum dosyalarının birebir uyumu.
+        include&apos;lar dahil, nginx&apos;in kendi gördüğü hâliyle.{' '}
+        <b>Satıra tıklayınca sunucunun kendi sayfası açılır</b>: server blokları (ip:port,
+        sertifika), location&apos;lar (dosya başına), upstream&apos;ler (resolve / keepalive / zone
+        / kullanımda mı), kurulum referansıyla ayar karşılaştırması ve kurulum dosyalarının birebir
+        uyumu.
       </Note>
 
       <AuditGlossary />
@@ -275,8 +283,8 @@ export function NginxAudit() {
         <Note tone="warning" title={`${nf(t?.hostsEnvUnknown || 0)} sunucunun ortamı bilinmiyor`}>
           Ortam önce sunucu adı kalıbından (GBNGX…/GBNGW…/GBRVP…), tutmazsa{' '}
           <Code>dbo.Inventory.env</Code> kaydından alınır. İkisi de bilmiyorsa sessizce bir ortama
-          atanmaz, <b>BILINMIYOR</b> görünür — sunucu <Code>middleware_inventory</Code> job&apos;ında
-          yoksa oraya girmesi gerekir.
+          atanmaz, <b>BILINMIYOR</b> görünür — sunucu <Code>middleware_inventory</Code>{' '}
+          job&apos;ında yoksa oraya girmesi gerekir.
         </Note>
       )}
 
@@ -383,12 +391,26 @@ export function NginxAudit() {
               <Th align="right">Server</Th>
               <Th align="right">Location</Th>
               <Th align="right">Upstream</Th>
-              <Th align="right"><span title={termHint('resolve yok')}>resolve yok</span></Th>
-              <Th align="right"><span title={termHint('Atlayan')}>Atlayan</span></Th>
-              <Th align="right"><span title={termHint('Tanımsız')}>Tanımsız</span></Th>
-              <Th align="right"><span title={termHint('Ayar sapması')}>Ayar sapması</span></Th>
-              <Th align="right"><span title={termHint('Dosya uyumu')}>Dosya farkı</span></Th>
-              <Th><span title="İstisna: bu sunucuda denetim metrikleri gösterilmez ve toplamlara girmez; not zorunlu">İstisna</span></Th>
+              <Th align="right">
+                <span title={termHint('resolve yok')}>resolve yok</span>
+              </Th>
+              <Th align="right">
+                <span title={termHint('Atlayan')}>Atlayan</span>
+              </Th>
+              <Th align="right">
+                <span title={termHint('Tanımsız')}>Tanımsız</span>
+              </Th>
+              <Th align="right">
+                <span title={termHint('Ayar sapması')}>Ayar sapması</span>
+              </Th>
+              <Th align="right">
+                <span title={termHint('Dosya uyumu')}>Dosya farkı</span>
+              </Th>
+              <Th>
+                <span title="İstisna: bu sunucuda denetim metrikleri gösterilmez ve toplamlara girmez; not zorunlu">
+                  İstisna
+                </span>
+              </Th>
             </tr>
           </thead>
           <tbody>
@@ -398,7 +420,13 @@ export function NginxAudit() {
                 h={h}
                 filesReady={data.filesReady}
                 canEdit={isAdmin}
-                onEditException={() => setExcEdit({ host: h.host, note: h.exception?.note || '', existing: !!h.exception })}
+                onEditException={() =>
+                  setExcEdit({
+                    host: h.host,
+                    note: h.exception?.note || '',
+                    existing: !!h.exception,
+                  })
+                }
               />
             ))}
           </tbody>
@@ -415,14 +443,29 @@ export function NginxAudit() {
           <div className="flex justify-between gap-2 w-full">
             <div>
               {excEdit?.existing && (
-                <button onClick={clearException} disabled={excBusy} className="px-3 py-1.5 text-xs rounded-lg border" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}>
+                <button
+                  onClick={clearException}
+                  disabled={excBusy}
+                  className="px-3 py-1.5 text-xs rounded-lg border"
+                  style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}
+                >
                   İstisnayı kaldır
                 </button>
               )}
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setExcEdit(null)} className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border)]">İptal</button>
-              <button onClick={saveException} disabled={excBusy || !excEdit?.note.trim()} className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50" style={{ background: 'var(--accent)' }}>
+              <button
+                onClick={() => setExcEdit(null)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border)]"
+              >
+                İptal
+              </button>
+              <button
+                onClick={saveException}
+                disabled={excBusy || !excEdit?.note.trim()}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
+                style={{ background: 'var(--accent)' }}
+              >
                 {excBusy ? 'Kaydediliyor…' : 'Kaydet'}
               </button>
             </div>
@@ -432,12 +475,15 @@ export function NginxAudit() {
         {excEdit && (
           <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
             <p>
-              <b>{excEdit.host}</b> istisna olarak işaretlenince yalnızca <b>Atlayan</b> ve <b>Tanımsız</b> sıfırlanır (upstream
-              katmanı bilerek yok sayılır); <b>Ayar sapması</b> ve <b>Dosya farkı</b> gösterilmeye ve sayılmaya devam eder. Sunucu
-              sayfası ham veriyi göstermeye devam eder.
+              <b>{excEdit.host}</b> istisna olarak işaretlenince yalnızca <b>Atlayan</b> ve{' '}
+              <b>Tanımsız</b> sıfırlanır (upstream katmanı bilerek yok sayılır); <b>Ayar sapması</b>{' '}
+              ve <b>Dosya farkı</b> gösterilmeye ve sayılmaya devam eder. Sunucu sayfası ham veriyi
+              göstermeye devam eder.
             </p>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Not (zorunlu — neden istisna?)</span>
+              <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                Not (zorunlu — neden istisna?)
+              </span>
               <textarea
                 value={excEdit.note}
                 onChange={(e) => setExcEdit({ ...excEdit, note: e.target.value.slice(0, 500) })}
@@ -461,13 +507,27 @@ function envSourceHint(src: string): string {
   return 'Ne ad kalıbı ne envanter ortamı biliyor';
 }
 
-function HostRow({ h, filesReady, canEdit, onEditException }: { h: NginxAuditHost; filesReady: boolean; canEdit: boolean; onEditException: () => void }) {
+function HostRow({
+  h,
+  filesReady,
+  canEdit,
+  onEditException,
+}: {
+  h: NginxAuditHost;
+  filesReady: boolean;
+  canEdit: boolean;
+  onEditException: () => void;
+}) {
   const navigate = useNavigate();
   const dash = <span className="text-[var(--text-muted)]">—</span>;
   // Istisnali sunucuda YALNIZ atlayan/tanimsiz hucreleri gri (upstream katmani bilerek yok);
   // ayar sapmasi ve dosya farki normal gosterilir (kullanici karari, 2026-09-15).
   const exc = !!h.exception;
-  const muted = <span className="text-[var(--text-muted)] opacity-50" title="istisna: bu metrik sayılmıyor">—</span>;
+  const muted = (
+    <span className="text-[var(--text-muted)] opacity-50" title="istisna: bu metrik sayılmıyor">
+      —
+    </span>
+  );
   const numCell = (n: number, bad?: boolean) =>
     n ? <span className={bad ? 'text-red-600 font-semibold' : ''}>{nf(n)}</span> : dash;
   const proxyCell = (n: number, bad?: boolean) => (exc ? muted : numCell(n, bad));
@@ -484,12 +544,19 @@ function HostRow({ h, filesReady, canEdit, onEditException }: { h: NginxAuditHos
       title="Sunucu sayfasını aç"
     >
       <Td className="whitespace-nowrap font-mono font-medium">
-        <Link to={to} className="underline decoration-dotted underline-offset-2" onClick={(e) => e.stopPropagation()}>
+        <Link
+          to={to}
+          className="underline decoration-dotted underline-offset-2"
+          onClick={(e) => e.stopPropagation()}
+        >
           {h.host}
         </Link>
       </Td>
       <Td className="whitespace-nowrap">
-        <span title={envSourceHint(h.envSource)} className={h.env === 'BILINMIYOR' ? 'text-amber-700' : ''}>
+        <span
+          title={envSourceHint(h.envSource)}
+          className={h.env === 'BILINMIYOR' ? 'text-amber-700' : ''}
+        >
           {h.env}
         </span>
         {h.site && <span className="text-[var(--text-muted)]"> · {h.site}</span>}
@@ -499,23 +566,44 @@ function HostRow({ h, filesReady, canEdit, onEditException }: { h: NginxAuditHos
         {h.status === 'ok' ? (
           <Pill tone="success">geçerli</Pill>
         ) : (
-          <Pill tone="danger" title={h.statusMsg}>HATA</Pill>
+          <Pill tone="danger" title={h.statusMsg}>
+            HATA
+          </Pill>
         )}
       </Td>
-      <Td align="right" className="tabular-nums">{nf(h.serverBlocks)}</Td>
-      <Td align="right" className="tabular-nums" title={`${nf(h.locationsProxy)} tanesi proxy_pass taşıyor`}>
+      <Td align="right" className="tabular-nums">
+        {nf(h.serverBlocks)}
+      </Td>
+      <Td
+        align="right"
+        className="tabular-nums"
+        title={`${nf(h.locationsProxy)} tanesi proxy_pass taşıyor`}
+      >
         {nf(h.locations)}
       </Td>
-      <Td align="right" className="tabular-nums">{nf(h.upstreams)}</Td>
-      <Td align="right" className="tabular-nums">{numCell(h.upsNoResolve)}</Td>
-      <Td align="right" className="tabular-nums">{proxyCell(h.proxyFqdn)}</Td>
-      <Td align="right" className="tabular-nums">{proxyCell(h.proxyUndefined, true)}</Td>
-      <Td align="right" className="tabular-nums">{numCell(h.settingsMismatch, true)}</Td>
+      <Td align="right" className="tabular-nums">
+        {nf(h.upstreams)}
+      </Td>
+      <Td align="right" className="tabular-nums">
+        {numCell(h.upsNoResolve)}
+      </Td>
+      <Td align="right" className="tabular-nums">
+        {proxyCell(h.proxyFqdn)}
+      </Td>
+      <Td align="right" className="tabular-nums">
+        {proxyCell(h.proxyUndefined, true)}
+      </Td>
+      <Td align="right" className="tabular-nums">
+        {numCell(h.settingsMismatch, true)}
+      </Td>
       <Td align="right" className="tabular-nums">
         {!filesReady ? (
           dash
         ) : h.refFilesMissing ? (
-          <span className="text-red-600 font-semibold" title={`${nf(h.refFilesMissing)} dosya sunucuda yok`}>
+          <span
+            className="text-red-600 font-semibold"
+            title={`${nf(h.refFilesMissing)} dosya sunucuda yok`}
+          >
             {nf(h.refFilesDiff)}
           </span>
         ) : h.refFilesDiff ? (
@@ -527,14 +615,39 @@ function HostRow({ h, filesReady, canEdit, onEditException }: { h: NginxAuditHos
       <Td className="whitespace-nowrap">
         {h.exception ? (
           <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <Pill tone="warning" title={`${h.exception.note}${h.exception.by ? `\n— ${h.exception.by}` : ''}${h.exception.at ? ` · ${new Date(h.exception.at).toLocaleDateString('tr-TR')}` : ''}`}>istisna</Pill>
-            <span className="text-[10px] text-[var(--text-muted)] max-w-[14rem] truncate" title={h.exception.note}>{h.exception.note}</span>
+            <Pill
+              tone="warning"
+              title={`${h.exception.note}${h.exception.by ? `\n— ${h.exception.by}` : ''}${h.exception.at ? ` · ${fmtDate(h.exception.at)}` : ''}`}
+            >
+              istisna
+            </Pill>
+            <span
+              className="text-[10px] text-[var(--text-muted)] max-w-[14rem] truncate"
+              title={h.exception.note}
+            >
+              {h.exception.note}
+            </span>
             {canEdit && (
-              <button onClick={onEditException} className="text-[10px] underline decoration-dotted text-[var(--text-muted)]" title="istisnayı düzenle / kaldır">✎</button>
+              <button
+                onClick={onEditException}
+                className="text-[10px] underline decoration-dotted text-[var(--text-muted)]"
+                title="istisnayı düzenle / kaldır"
+              >
+                ✎
+              </button>
             )}
           </span>
         ) : canEdit ? (
-          <button onClick={(e) => { e.stopPropagation(); onEditException(); }} className="text-[10px] text-[var(--text-muted)] underline decoration-dotted" title="bu sunucuyu istisna yap">istisna ekle</button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditException();
+            }}
+            className="text-[10px] text-[var(--text-muted)] underline decoration-dotted"
+            title="bu sunucuyu istisna yap"
+          >
+            istisna ekle
+          </button>
         ) : (
           dash
         )}
