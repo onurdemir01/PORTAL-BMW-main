@@ -423,8 +423,10 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
           >
             <UsersIcon className="w-3.5 h-3.5" /> Sahiplerine ulaş · {fmtNumber(allMissing.length)}
           </button>
+          {/* Katman adi KALIN ve renkli (kullanici, 2026-09-17): Internet mavi, Intranet yesil. */}
           <span className="text-[10px] px-2 py-0.5 rounded-full border" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
-            vurgulu sütun: {isIntra ? 'İntranet' : 'İnternet'}
+            vurgulu sütun:{' '}
+            <b style={{ color: isIntra ? 'var(--status-success)' : 'var(--accent)' }}>{isIntra ? 'İntranet' : 'İnternet'}</b>
           </span>
         </div>
       </header>
