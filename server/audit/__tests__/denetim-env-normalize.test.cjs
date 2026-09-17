@@ -49,7 +49,8 @@ test('B4: normalize davranisi — bosluklu ve bos degerler sutunla ESLESIR', () 
   // COK SATIRA YAYILMIS TANIMI da yakalar: `.` satir sonunu GECMEZ ve prettier
   // zinciri boldugunde eski desen YARIM bir parca cikariyordu (gecersiz JS).
   // Bu test fonksiyonu GERCEKTEN CALISTIRDIGI icin yarim parca ReferenceError verirdi.
-  const m = SRC.match(/const normEnv = [\s\S]*?;\n/);
+  // Windows checkout'ta (autocrlf) satir sonu \r\n olabilir; kural satir sonu bicimine bagli degil.
+  const m = SRC.match(/const normEnv = [\s\S]*?;\r?\n/);
   assert.ok(m, 'normEnv bulunamadi');
   const normEnv = new Function(`${m[0]}; return normEnv;`)();
   assert.equal(normEnv(' qa '), 'QA', 'bosluklu env kanonik sutuna dusmeli');
