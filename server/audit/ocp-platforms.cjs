@@ -45,7 +45,9 @@ for (const [platform, clusters] of Object.entries(PLATFORM_CLUSTERS)) {
   for (const c of clusters) CLUSTER_TO_PLATFORM.set(c.toLowerCase(), platform);
 }
 
-const ENVS = ['dev', 'test', 'qa', 'prod'];
+// EDU (2026-09-17): "-edu" ekli namespace'ler (GBNGXT51 intranet sunucusunun ortami)
+// onceden null donup SESSIZCE sayilmiyordu; kullanici ortam ozetinde Edu'yu ayri istedi.
+const ENVS = ['dev', 'test', 'qa', 'edu', 'prod'];
 
 // Ortam YALNIZCA namespace son ekinden belirlenir (yukaridaki nota bakin). Eslesmeyen
 // namespace'ler (ornek "falcon-operator", "openshift-monitoring") null doner ve ortam

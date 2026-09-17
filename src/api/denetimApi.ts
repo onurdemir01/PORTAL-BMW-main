@@ -72,8 +72,10 @@ export interface NginxMigrationApp {
   oldHosts: string[];
   locations: string[];
   locationCount: number;
-  /** eski sunucudaki (vhost servisi, context path) ciftleri - "Tanim olustur" secimi icin */
-  paths: { service: string; location: string; hosts: string[] }[];
+  /** eski sunucudaki (vhost servisi, context path) ciftleri - "Tanim olustur" secimi icin.
+   *  newHosts / newStatus (2026-09-17): bu location YENI sunucularda tanimli mi
+   *  (defined = hepsinde, partial = bazisinda, none = hicbirinde, not-scanned). */
+  paths: { service: string; location: string; hosts: string[]; newHosts: string[]; newStatus: 'defined' | 'partial' | 'none' | 'not-scanned' }[];
   /** yeni host -> bayraklar; null = o sunucu henuz taranmadi */
   perHost: Record<string, NginxMigrationDirFlags | null>;
   readyHosts: number;
@@ -102,12 +104,17 @@ export interface NginxMigrationGroup {
   newHosts: string[];
   newHostsScanned: string[];
   oldHostsSeen: string[];
-  /** eski sunucularda servis basina location sayisi (SPA-disi dahil) */
-  serviceLocations: { service: string; locations: number }[];
+  /** eski sunucularda servis basina location sayisi (SPA-disi dahil) ve yeni sunucudaki
+   *  tanim durumu sayilari (location ilerlemesi, 2026-09-17) */
+  serviceLocations: { service: string; locations: number; defined: number; partial: number; none: number; notScanned: number }[];
   apps: NginxMigrationApp[];
   nonSpa: NginxMigrationOther[];
   unresolved: NginxMigrationOther[];
-  totals: { apps: number; ready: number; partial: number; missing: number; notScanned: number; nonSpa: number; unresolved: number };
+  totals: {
+    apps: number; ready: number; partial: number; missing: number; notScanned: number; nonSpa: number; unresolved: number;
+    /** location ilerlemesi: eski sunuculardaki tum location'lar (SPA + SPA-disi + cozulemeyen) */
+    locations: { total: number; defined: number; partial: number; none: number; notScanned: number };
+  };
 }
 export interface NginxMigrationResult {
   ok: boolean;
@@ -143,6 +150,9 @@ export interface SpaCoverageRow {
   env: string;
   /** nginx tarafinda bu ortama ait hic satir yoksa false: kapsam OLCULEMEDI. */
   measured: boolean;
+  /** Ortam ozeti (2026-09-17): ortamdaki TUM OpenShift uygulamalari ve TUM SPA'lar. */
+  ocpApps: number;
+  spaTotal: number;
   /** route tipi passthrough = internet; nginx'e CIKMASI BEKLENEN kume. */
   internetTotal: number;
   internetInNginx: number;

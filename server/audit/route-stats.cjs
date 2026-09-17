@@ -83,7 +83,7 @@ function buildRouteStats(routeRows) {
     if (e.samples.size < 5) e.samples.add(ns + '/' + app);
   }
 
-  const ORDER = ['DEV', 'TEST', 'QA', 'PROD'];
+  const ORDER = ['DEV', 'TEST', 'QA', 'EDU', 'PROD'];
   const envs = [...byEnv.entries()]
     .sort((a, b) => {
       const ia = ORDER.indexOf(a[0]), ib = ORDER.indexOf(b[0]);

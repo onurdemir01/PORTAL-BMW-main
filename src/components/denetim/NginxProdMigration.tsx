@@ -73,6 +73,9 @@ export default function NginxProdMigration() {
   const [trackingReady, setTrackingReady] = useState(true);
   const [editing, setEditing] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp } | null>(null);
   const [trackFilter, setTrackFilter] = useState<'all' | 'open' | 'planned' | 'migrated'>('all');
+  // Gruplar SEKME (kullanici, 2026-09-17): Glomo / Openbanking-Saklama-Webforms alt alta degil,
+  // sekmeyle gecilir. Ilk grup varsayilan.
+  const [groupId, setGroupId] = useState<string>('');
 
   const loadTracking = async () => {
     try {
@@ -179,29 +182,9 @@ export default function NginxProdMigration() {
 
   return (
     <div className="space-y-3">
-      <Note tone="info" title="Bu ekran ne gösteriyor?">
-        Eski prod sunucularının (<Code>GBRVP*</Code>) vhost&apos;larındaki her <Code>proxy_pass</Code> hedefi
-        OpenShift route envanteriyle <i>(namespace, uygulama)</i>&apos;ya çözülür; sonra <b>her yeni sunucuda</b>{' '}
-        <Code>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</Code> ve <Code>/usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/</Code>{' '}
-        var mı bakılır (hücre gösterimi için aşağıdaki sözlük).
-        <div className="mt-1">
-          <Code>proxy_pass</Code> iki biçimde yazılmış olabilir: doğrudan <b>FQDN</b>{' '}
-          (<Code>https://&lt;app&gt;-&lt;ns&gt;.apps.fw.garanti.com.tr/</Code>) ya da bir <b>upstream</b> adı{' '}
-          (<Code>https://&lt;app&gt;-&lt;ns&gt;/</Code>) — ikisi de aynı uygulamaya çözülür; upstream takma adlıysa
-          (<Code>onur</Code> gibi) gerçek adres upstream bloğunun <Code>server</Code> satırından alınır.
-          &quot;Yazım&quot; sütunu hangisinin kullanıldığını gösterir. Eski yazımda namespace çoğunlukla{' '}
-          <b>-prod eksiz</b>dir (<Code>…-digital-banking-ch</Code>); ad olduğu gibi tutmazsa <Code>-prod</Code>{' '}
-          eklenerek eşlenir ve satırda <b>+prod</b> olarak işaretlenir — ekip ve dizin kontrolü gerçek
-          (<Code>-prod</Code>&apos;lu) namespace üzerinden yapılır.
-        </div>
-        Bir uygulama <b>hazır</b> sayılır ancak yeni sunucuların <b>hepsinde</b> H ve A varsa.
-        <div className="mt-1.5 text-[var(--text-muted)]">
-          Eski sunucu verisi: <Code>nginx_config_audit</Code> ({data.proxyScanDate || '—'}) · yeni sunucu dizinleri:
-          aynı job ({data.dirScanDate || '—'}). SPA olmayan hedefler (API/arka uç) dizin beklemez, ayrı listelenir.
-        </div>
-      </Note>
-
-      <HacLegend />
+      {/* "Bu ekran ne gosteriyor" notu KALDIRILDI (kullanici, 2026-09-17: kafa karistiriyor);
+          aciklamalar sutun ipuclarinda ve sozlukte (kapali). */}
+      <HacLegend defaultOpen={false} />
 
       {result && (
         <Note tone={result.tone === 'ok' ? 'success' : 'danger'} title={result.tone === 'ok' ? 'İş başlatıldı' : 'İş başlatılamadı'}>
@@ -289,7 +272,27 @@ export default function NginxProdMigration() {
         </button>
       </div>
 
-      {data.groups.map((g) => (
+      <div className="flex gap-1 flex-wrap border-b border-[var(--border)]">
+        {data.groups.map((g) => {
+          const active = (groupId || data.groups[0]?.id) === g.id;
+          const loc = g.totals.locations;
+          return (
+            <button
+              key={g.id}
+              onClick={() => setGroupId(g.id)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg border-b-2 -mb-px transition-colors ${
+                active ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+              title={`${g.oldHosts.length} eski → ${g.newHosts.length} yeni sunucu · ${nf(loc.defined)}/${nf(loc.total)} location yeni sunucularda tanımlı`}
+            >
+              {g.label}
+              <span className="ml-1.5 text-[10px] font-normal tabular-nums text-[var(--text-muted)]">{nf(loc.defined)}/{nf(loc.total)}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {data.groups.filter((g) => g.id === (groupId || data.groups[0]?.id)).map((g) => (
         <GroupPanel
           key={g.id}
           g={g}
@@ -639,6 +642,85 @@ function cellText(f: { hys: boolean; app: boolean; conf: boolean } | null | unde
 
 const STATUS_ORDER: Record<NginxMigrationApp['status'], number> = { missing: 0, partial: 1, 'not-scanned': 2, ready: 3 };
 
+/** Location'in YENI sunuculardaki tanim durumu (nginx-migration.cjs newLocStatus). */
+const NEW_LOC: Record<'defined' | 'partial' | 'none' | 'not-scanned', { mark: string; color: string; hint: string }> = {
+  defined: { mark: '✓', color: 'var(--status-success)', hint: 'her yeni sunucuda tanımlı' },
+  partial: { mark: '◐', color: 'var(--status-warning)', hint: 'bazı yeni sunucularda tanımlı' },
+  none: { mark: '✗', color: 'var(--status-danger)', hint: 'hiçbir yeni sunucuda tanım yok' },
+  'not-scanned': { mark: '?', color: 'var(--text-muted)', hint: 'yeni sunucular taranmadı' },
+};
+
+/**
+ * LOCATION ILERLEMESI (kullanici, 2026-09-17: "ilerleme raporunu location'lar uzerinden takip
+ * edecegim"). Eski sunuculardaki her location (SPA + SPA-disi + cozulemeyen) yeni sunucularda
+ * tanimli mi: hepsinde / bazisinda / hicbirinde. Servis (vhost) basina kirilim.
+ */
+function LocationProgress({ g }: { g: NginxMigrationGroup }) {
+  const t = g.totals.locations;
+  const p = (n: number) => (t.total ? Math.round((n / t.total) * 1000) / 10 : 0);
+  const seg = (n: number, color: string, label: string) =>
+    n > 0 ? <span className="h-full" style={{ width: `${p(n)}%`, background: color }} title={`${label}: ${nf(n)}`} /> : null;
+  return (
+    <div className="rounded-xl border px-4 py-3 space-y-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Taşıma ilerlemesi — location bazında</div>
+          <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
+            <b className="text-lg tabular-nums">{nf(t.defined)}</b> / {nf(t.total)} location yeni sunucularda tanımlı
+            <span className="ml-2 text-base font-semibold tabular-nums" style={{ color: p(t.defined) >= 90 ? 'var(--status-success)' : p(t.defined) >= 50 ? 'var(--status-warning)' : 'var(--status-danger)' }}>
+              %{nf(p(t.defined))}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+          <span><span className="inline-block w-2.5 h-2.5 rounded-sm mr-1 align-middle" style={{ background: 'var(--status-success)' }} />hepsinde {nf(t.defined)}</span>
+          <span><span className="inline-block w-2.5 h-2.5 rounded-sm mr-1 align-middle" style={{ background: 'var(--status-warning)' }} />bazısında {nf(t.partial)}</span>
+          <span><span className="inline-block w-2.5 h-2.5 rounded-sm mr-1 align-middle" style={{ background: 'var(--status-danger)' }} />hiçbirinde {nf(t.none)}</span>
+          {t.notScanned > 0 && <span><span className="inline-block w-2.5 h-2.5 rounded-sm mr-1 align-middle" style={{ background: 'var(--border)' }} />taranmadı {nf(t.notScanned)}</span>}
+        </div>
+      </div>
+      <div className="h-3 rounded-full overflow-hidden flex" style={{ background: 'var(--bg-surface)' }}>
+        {seg(t.defined, 'var(--status-success)', 'her yeni sunucuda tanımlı')}
+        {seg(t.partial, 'var(--status-warning)', 'bazı yeni sunucularda tanımlı')}
+        {seg(t.none, 'var(--status-danger)', 'hiçbir yeni sunucuda tanım yok')}
+        {seg(t.notScanned, 'var(--border)', 'yeni sunucular taranmadı')}
+      </div>
+      {g.serviceLocations.length > 1 && (
+        <table className="text-[11px]">
+          <thead>
+            <tr style={{ color: 'var(--text-muted)' }}>
+              <th className="text-left pr-4 pb-0.5 font-semibold">Vhost</th>
+              <th className="text-right pr-4 pb-0.5 font-semibold">location</th>
+              <th className="text-right pr-4 pb-0.5 font-semibold">hepsinde</th>
+              <th className="text-right pr-4 pb-0.5 font-semibold">bazısında</th>
+              <th className="text-right pr-4 pb-0.5 font-semibold">hiçbirinde</th>
+              <th className="text-right pb-0.5 font-semibold">ilerleme</th>
+            </tr>
+          </thead>
+          <tbody>
+            {g.serviceLocations.map((x) => {
+              const pp = x.locations ? Math.round((x.defined / x.locations) * 1000) / 10 : 0;
+              return (
+                <tr key={x.service} className="border-t" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}>
+                  <td className="pr-4 py-0.5 font-mono" style={{ color: 'var(--text-primary)' }}>{x.service}-PROD.conf</td>
+                  <td className="pr-4 py-0.5 text-right tabular-nums">{nf(x.locations)}</td>
+                  <td className="pr-4 py-0.5 text-right tabular-nums" style={{ color: 'var(--status-success)' }}>{nf(x.defined)}</td>
+                  <td className="pr-4 py-0.5 text-right tabular-nums" style={{ color: x.partial ? 'var(--status-warning)' : undefined }}>{nf(x.partial)}</td>
+                  <td className="pr-4 py-0.5 text-right tabular-nums" style={{ color: x.none ? 'var(--status-danger)' : undefined }}>{nf(x.none)}</td>
+                  <td className="py-0.5 text-right tabular-nums font-semibold">%{nf(pp)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+        Sayım vhost başına farklı location; SPA olmayan (API) ve çözülemeyen hedefler de dâhil — vhost'un tamamı. “Tanımlı” = yeni sunucunun <Code>{'<SERVIS>'}-PROD.conf</Code> dosyasında aynı location var (include ya da proxy). Uygulama satırlarındaki H/A/C ise dosyaların hazır olup olmadığını gösterir.
+      </div>
+    </div>
+  );
+}
+
 function GroupPanel({
   g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, trackFilter, onTrack, canDelete, onDelete,
 }: {
@@ -706,19 +788,16 @@ function GroupPanel({
     <Panel
       title={`${g.label} — ${g.oldHosts.length} eski → ${g.newHosts.length} yeni sunucu`}
       description={
-        <>
-          eski: <span className="font-mono">{g.oldHosts.join(', ')}</span> · yeni:{' '}
-          <span className="font-mono">{g.newHosts.join(', ')}</span>
-          {g.serviceLocations.length > 0 && (
-            <span className="ml-2" title="eski sunucudaki vhost başına farklı location sayısı (SPA olmayanlar dâhil)">
-              · location: {g.serviceLocations.map((x) => `${x.service} ${x.locations}`).join(' · ')}
-            </span>
-          )}
-        </>
+        // Eski ve yeni sunucu listeleri ALT ALTA (kullanici, 2026-09-17)
+        <span className="block space-y-0.5">
+          <span className="block"><span className="inline-block w-9 font-semibold">eski</span><span className="font-mono">{g.oldHosts.join(', ')}</span></span>
+          <span className="block"><span className="inline-block w-9 font-semibold">yeni</span><span className="font-mono">{g.newHosts.join(', ')}</span></span>
+        </span>
       }
       dense
     >
       <div className="p-3 space-y-3">
+        <LocationProgress g={g} />
         <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <StatTile label="uygulama" value={nf(g.totals.apps)} hint="eski sunuculardaki SPA hedefleri" />
           <StatTile label="hazır" value={nf(g.totals.ready)} tone={g.totals.ready === g.totals.apps && g.totals.apps > 0 ? 'success' : 'neutral'} hint={STATUS.ready.hint} />
@@ -771,7 +850,7 @@ function GroupPanel({
                 <th className="text-left pr-3 pb-1" title="namespace'in CMDB sahibi">Ekip</th>
                 <th className="text-left pr-3 pb-1" title="geçiş takibi: planlandı / geçti / iptal + tarih; tıklayarak düzenleyin">Geçiş</th>
                 <th className="text-left pr-3 pb-1">Durum</th>
-                <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost ve location tanımları (proxy_pass ile); ipucunda hangi eski sunucularda">Eski sunucudaki location</th>
+                <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost ve location tanımları (proxy_pass ile). Sondaki işaret: bu location YENİ sunucularda tanımlı mı (✓ hepsinde, ◐ bazısında, ✗ hiçbirinde, ? taranmadı)">Location (eski → yeni)</th>
                 <th className="text-left pr-3 pb-1" title="proxy_pass yazımı: FQDN ya da upstream adı; ipucunda yazılan ad(lar) ve gerçek hedefin kaynağı">Yazım</th>
                 {g.newHosts.map((h) => (
                   <th key={h} className="text-center px-1.5 pb-1 font-mono whitespace-nowrap" title={g.newHostsScanned.includes(h) ? 'tarandı' : 'henüz taranmadı'}>
@@ -831,11 +910,13 @@ function GroupPanel({
                       {a.paths.map((p) => (
                         <span
                           key={p.service + p.location}
-                          className="text-[10px] px-1.5 py-0.5 rounded border font-mono whitespace-nowrap"
+                          className="text-[10px] px-1.5 py-0.5 rounded border font-mono whitespace-nowrap inline-flex items-center gap-1"
                           style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
-                          title={`${p.service}-PROD.conf · location ${p.location} · ${p.hosts.join(', ')}`}
+                          title={`${p.service}-PROD.conf · location ${p.location}\neski: ${p.hosts.join(', ')}\nyeni sunucuda tanım: ${NEW_LOC[p.newStatus].hint}${p.newHosts.length ? ` (${p.newHosts.join(', ')})` : ''}`}
                         >
                           <span className="text-[var(--text-muted)]">{p.service}</span> {p.location}
+                          {/* yeni sunucudaki tanim durumu (location ilerlemesi, 2026-09-17) */}
+                          <span className="font-sans font-semibold" style={{ color: NEW_LOC[p.newStatus].color }}>{NEW_LOC[p.newStatus].mark}</span>
                         </span>
                       ))}
                     </div>

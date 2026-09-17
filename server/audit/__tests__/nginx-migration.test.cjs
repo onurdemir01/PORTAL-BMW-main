@@ -118,7 +118,7 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
   assert.equal(glomo.nonSpa[0].application, 'glomo-api');
   assert.equal(glomo.unresolved.length, 1);
   assert.equal(glomo.unresolved[0].target, 'hayalet-app-v1-yok-prod' + APPS);
-  assert.deepEqual(glomo.totals, { apps: 3, ready: 0, partial: 2, missing: 1, notScanned: 0, nonSpa: 1, unresolved: 1 });
+  assert.deepEqual(glomo.totals, { locations: { total: 7, defined: 0, partial: 0, none: 7, notScanned: 0 }, apps: 3, ready: 0, partial: 2, missing: 1, notScanned: 0, nonSpa: 1, unresolved: 1 });
 
   // Diger grup: yalniz GBNGXP44 taranmis -> partial; Glomo satiri sizmamis
   assert.equal(other.apps.length, 1);
@@ -256,6 +256,40 @@ test('grup basina servis location sayisi: SPA-disi ve cozulemeyen dahil, mirror 
     ],
     upstreamRows: [], routeRows: [{ namespace_name: 'glomo-prod', route_address: 'a-app-v1-glomo-prod' + APPS }], ocpRows: [], dirRows: [],
   });
-  assert.deepEqual(out.find((g) => g.id === 'glomo').serviceLocations, [{ service: 'GLOMO', locations: 3 }]);
-  assert.deepEqual(out.find((g) => g.id === 'other').serviceLocations, [{ service: 'WEBFORMS', locations: 1 }]);
+  // yeni sunucu taranmadi -> hepsi notScanned
+  assert.deepEqual(out.find((g) => g.id === 'glomo').serviceLocations, [{ service: 'GLOMO', locations: 3, defined: 0, partial: 0, none: 0, notScanned: 3 }]);
+  assert.deepEqual(out.find((g) => g.id === 'other').serviceLocations, [{ service: 'WEBFORMS', locations: 1, defined: 0, partial: 0, none: 0, notScanned: 1 }]);
+  assert.deepEqual(out.find((g) => g.id === 'glomo').totals.locations, { total: 3, defined: 0, partial: 0, none: 0, notScanned: 3 });
+});
+
+test('location ilerlemesi (2026-09-17): yeni sunuculardaki tanimlara gore defined / partial / none; path basina yeni sunucu listesi', () => {
+  const N = (host, service, location) => ({ host, service, vhost: service + '-PROD.conf', location });
+  const glomoNew = MIGRATION_GROUPS.find((g) => g.id === 'glomo').newHosts;
+  const out = buildMigration({
+    proxyRows: [
+      P('GBRVPP07', 'GLOMO', '/tam/', 'tam-app-v1-glomo-prod' + APPS),
+      P('GBRVPP07', 'GLOMO', '/yarim/', 'yarim-app-v1-glomo-prod' + APPS),
+      P('GBRVPP07', 'GLOMO', '/yok/', 'yok-app-v1-glomo-prod' + APPS),
+      P('GBRVPP07', 'GLOMO', '/api/', 'glomo-api-glomo-prod' + APPS), // SPA degil, proxy ile tasinir
+    ],
+    upstreamRows: [], routeRows: ['tam', 'yarim', 'yok'].map((a) => ({ namespace_name: 'glomo-prod', route_address: a + '-app-v1-glomo-prod' + APPS })), ocpRows: [],
+    dirRows: glomoNew.map((h) => D(h, 'glomo-prod', 'tam-app-v1')),
+    newLocRows: [
+      ...glomoNew.map((h) => N(h, 'GLOMO', '/tam/')),
+      N(glomoNew[0], 'glomo', '/yarim/'), // servis adi kucuk harf yazilsa da eslesir
+      ...glomoNew.map((h) => N(h, 'GLOMO', '/api/')), // SPA-disi location proxy ile tasinmis
+    ],
+  });
+  const g = out.find((x) => x.id === 'glomo');
+  assert.deepEqual(g.serviceLocations, [{ service: 'GLOMO', locations: 4, defined: 2, partial: 1, none: 1, notScanned: 0 }]);
+  assert.deepEqual(g.totals.locations, { total: 4, defined: 2, partial: 1, none: 1, notScanned: 0 });
+  const byApp = Object.fromEntries(g.apps.map((a) => [a.application, a]));
+  assert.equal(byApp['tam-app-v1'].paths[0].newStatus, 'defined');
+  assert.deepEqual(byApp['tam-app-v1'].paths[0].newHosts, glomoNew);
+  assert.equal(byApp['yarim-app-v1'].paths[0].newStatus, 'partial');
+  assert.deepEqual(byApp['yarim-app-v1'].paths[0].newHosts, [glomoNew[0]]);
+  assert.equal(byApp['yok-app-v1'].paths[0].newStatus, 'none');
+  // hic yeni sunucu taranmadiysa "none" DEGIL "not-scanned"
+  const out2 = buildMigration({ proxyRows: [P('GBRVPP07', 'GLOMO', '/a/', 'a-app-v1-glomo-prod' + APPS)], upstreamRows: [], routeRows: [{ namespace_name: 'glomo-prod', route_address: 'a-app-v1-glomo-prod' + APPS }], ocpRows: [], dirRows: [] });
+  assert.equal(out2.find((x) => x.id === 'glomo').apps[0].paths[0].newStatus, 'not-scanned');
 });

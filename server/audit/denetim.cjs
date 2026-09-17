@@ -570,14 +570,22 @@ function initDenetim(app) {
       let ocpNoEnv = 0;
       // env -> { app -> { name, net } }   net: 'internet' | 'intranet' | 'diger' | 'bilinmiyor'
       const ocp = new Map();
+      // env -> Set(app)  SPA olsun olmasin TUM uygulamalar: ortam ozetindeki "SPA'larin
+      // envanterdeki payi" (kullanici, 2026-09-17) bunun uzerinden.
+      const ocpAll = new Map();
       for (const r of ocpRes.recordset || []) {
         const app = String(r.application || '').trim();
         if (!app) continue;
+        const e = envOfNamespace(r.namespace);
+        if (e) {
+          const E = e.toUpperCase();
+          if (!ocpAll.has(E)) ocpAll.set(E, new Set());
+          ocpAll.get(E).add(app.toLowerCase());
+        }
         if (!SPA_RE.test(app)) {
           ocpNonSpa.add(app.toLowerCase());
           continue;
         }
-        const e = envOfNamespace(r.namespace);
         if (!e) {
           ocpNoEnv++;
           continue;
@@ -700,6 +708,10 @@ function initDenetim(app) {
           // (uctan uca testte yakalandi - duz JS oldugu icin tsc gormuyor).
           env: e,
           measured,
+          // Ortam ozeti (2026-09-17): bu ortamdaki TUM OpenShift uygulamalari ve TUM SPA'lar
+          // (internet + intranet + diger + bilinmiyor) - "kac SPA var, envanterin yuzde kaci".
+          ocpApps: (ocpAll.get(e) || new Set()).size,
+          spaTotal: o.size,
           // INTERNET (passthrough) = nginx'e cikmasi BEKLENEN kume. Kapsam bunun uzerinden.
           internetTotal: bucket.internet.length,
           internetInNginx: inNginx.internet.length,

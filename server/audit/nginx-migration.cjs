@@ -155,9 +155,24 @@ for (const r of ocpRows || []) {
  * @param routeRows    BMW_Openshift_Route_Inventory (namespace_name, route_address)
  * @param ocpRows      Openshift_Inventory (namespace, application)
  * @param dirRows      Nginx_Intranet_Audit (host, namespace, application, hys_deployed, app_deployed, conf_exists)
+ * @param newLocRows   Nginx_Config_Audit YENI sunucu satirlari (host, service, vhost, location):
+ *                     spa include'u ya da proxy - "bu location yeni sunucuda TANIMLI mi" (2026-09-17,
+ *                     kullanici ilerlemeyi location uzerinden takip ediyor)
  */
-function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, groups = MIGRATION_GROUPS }) {
+function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, newLocRows, groups = MIGRATION_GROUPS }) {
   const { routeByAddress, routeByLabel, ocpByLabel } = buildResolverMaps(routeRows, ocpRows);
+  // yeni sunuculardaki location tanimlari: "SERVICE|location" -> Set(host)
+  const newLoc = new Map();
+  const newLocHosts = new Set();
+  const locKey = (svc, loc) => String(svc || '').toUpperCase() + '|' + String(loc || '');
+  for (const r of newLocRows || []) {
+    const host = H(r.host);
+    if (!host) continue;
+    newLocHosts.add(host);
+    const k = locKey(r.service || r.vhost, r.location);
+    if (!newLoc.has(k)) newLoc.set(k, new Set());
+    newLoc.get(k).add(host);
+  }
   // (host, upstream adi) -> server host (target_url bos kaldiysa)
   const upsServer = new Map();
   for (const r of upstreamRows || []) {
@@ -244,6 +259,16 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
     }
 
     const newHosts = g.newHosts.map(H);
+    // Location yeni sunucularda tanimli mi: defined = HER yeni sunucuda, partial = bazisinda,
+    // none = hicbirinde. Sadece taranmis (config audit satiri olan ya da dizin taramasi
+    // gecmis) sunucular bilinir; hicbiri taranmadiysa 'not-scanned'.
+    const newLocStatus = (svc, loc) => {
+      const have = newLoc.get(locKey(svc, loc)) || new Set();
+      const on = newHosts.filter((h) => have.has(h));
+      const known = newHosts.filter((h) => newLocHosts.has(h) || scannedHosts.has(h));
+      const status = known.length === 0 ? 'not-scanned' : on.length === newHosts.length ? 'defined' : on.length === 0 ? 'none' : 'partial';
+      return { newHosts: on, newStatus: status };
+    };
     const finish = (row) => ({
       ...row,
       services: [...row.services].sort(),
@@ -254,7 +279,7 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       forms: [...row.forms].sort(),
       written: [...row.written].sort(),
       paths: [...row.paths.values()]
-        .map((x) => ({ service: x.service, location: x.location, hosts: [...x.hosts].sort() }))
+        .map((x) => ({ service: x.service, location: x.location, hosts: [...x.hosts].sort(), ...newLocStatus(x.service, x.location) }))
         .sort((a, b) => a.service.localeCompare(b.service) || a.location.localeCompare(b.location)),
     });
 
@@ -282,6 +307,36 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
     const order = { missing: 0, partial: 1, 'not-scanned': 2, ready: 3 };
     appRows.sort((a, b) => order[a.status] - order[b.status] || a.application.localeCompare(b.application));
 
+    // Servis basina location sayisi (eski sunucular; ayni tanim birden fazla sunucuda
+    // olsa da BIR kez). SPA-disi ve cozulemeyen hedefler de dahil - vhost'un tamami.
+    // Location ilerlemesi (2026-09-17): her location yeni sunucularda tanimli mi
+    // (defined/partial/none/notScanned) - kullanici tasimayi location uzerinden izler.
+    const serviceLocations = (() => {
+      const m = new Map();
+      for (const r of proxyRows || []) {
+        if (!oldSet.has(H(r.host))) continue;
+        const svc = String(r.service || r.vhost || '').toUpperCase() || '(bilinmiyor)';
+        if (!m.has(svc)) m.set(svc, new Set());
+        m.get(svc).add(String(r.location || ''));
+      }
+      return [...m.entries()].map(([service, set]) => {
+        const c = { defined: 0, partial: 0, none: 0, notScanned: 0 };
+        for (const loc of set) {
+          const st = newLocStatus(service, loc).newStatus;
+          c[st === 'not-scanned' ? 'notScanned' : st]++;
+        }
+        return { service, locations: set.size, ...c };
+      }).sort((a, b) => b.locations - a.locations || a.service.localeCompare(b.service));
+    })();
+    const locationTotals = { total: 0, defined: 0, partial: 0, none: 0, notScanned: 0 };
+    for (const sl of serviceLocations) {
+      locationTotals.total += sl.locations;
+      locationTotals.defined += sl.defined;
+      locationTotals.partial += sl.partial;
+      locationTotals.none += sl.none;
+      locationTotals.notScanned += sl.notScanned;
+    }
+
     out.push({
       id: g.id,
       label: g.label,
@@ -289,22 +344,13 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       newHosts,
       newHostsScanned: newHosts.filter((h) => scannedHosts.has(h)),
       oldHostsSeen: [...new Set((proxyRows || []).map((r) => H(r.host)).filter((h) => oldSet.has(h)))].sort(),
-      // Servis basina location sayisi (eski sunucular; ayni tanim birden fazla sunucuda
-      // olsa da BIR kez). SPA-disi ve cozulemeyen hedefler de dahil - vhost'un tamami.
-      serviceLocations: (() => {
-        const m = new Map();
-        for (const r of proxyRows || []) {
-          if (!oldSet.has(H(r.host))) continue;
-          const svc = String(r.service || r.vhost || '').toUpperCase() || '(bilinmiyor)';
-          if (!m.has(svc)) m.set(svc, new Set());
-          m.get(svc).add(String(r.location || ''));
-        }
-        return [...m.entries()].map(([service, set]) => ({ service, locations: set.size })).sort((a, b) => b.locations - a.locations || a.service.localeCompare(b.service));
-      })(),
+      serviceLocations,
       apps: appRows,
       nonSpa: [...nonSpa.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),
       unresolved: [...unresolved.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),
       totals: {
+        // location ilerlemesi (SPA + SPA-disi + cozulemeyen; vhost'un tamami)
+        locations: locationTotals,
         apps: appRows.length,
         ready: appRows.filter((r) => r.status === 'ready').length,
         partial: appRows.filter((r) => r.status === 'partial').length,
@@ -351,7 +397,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
       .then((r) => r.recordset?.[0]?.d || null).catch(() => null),
   ]);
 
-  const [proxy, ups, routes, ocp, dirs] = await Promise.all([
+  const [proxy, ups, routes, ocp, dirs, newLocs] = await Promise.all([
     proxyDate
       ? query(
           `SELECT host, vhost, service, location_path AS location, upstream_name, target_url
@@ -381,9 +427,20 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
           newIn.params,
         ).then((r) => r.recordset || [])
       : Promise.resolve([]),
+    // YENI sunuculardaki location tanimlari (spa include'u ya da proxy) - ilerleme
+    // location uzerinden izlenir (2026-09-17). kind kolonu yoksa satirlarin hepsi spa'dir.
+    proxyDate
+      ? query(
+          `SELECT host, service, vhost, location_path AS location
+             FROM dbo.Nginx_Config_Audit
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
+              AND host IN (${newIn.sqlText})`,
+          newIn.params,
+        ).then((r) => r.recordset || []).catch(() => [])
+      : Promise.resolve([]),
   ]);
 
-  const groups = buildMigration({ proxyRows: proxy, upstreamRows: ups, routeRows: routes, ocpRows: ocp, dirRows: dirs });
+  const groups = buildMigration({ proxyRows: proxy, upstreamRows: ups, routeRows: routes, ocpRows: ocp, dirRows: dirs, newLocRows: newLocs });
   const owners = await loadNamespaceOwners(query);
   for (const g of groups) {
     for (const a of g.apps) a.owner = ownersFor(owners.byNs, [a.namespace]);

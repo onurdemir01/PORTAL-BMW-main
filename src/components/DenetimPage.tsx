@@ -48,11 +48,9 @@ import { NginxAudit } from '@/components/denetim/NginxAudit';
 import NginxProdMigration from '@/components/denetim/NginxProdMigration';
 import { OwnerCell, ownerText } from '@/components/denetim/OwnerCell';
 import { DirCell, HacLegend } from '@/components/denetim/HacCell';
-import RouteStats from '@/components/denetim/RouteStats';
-import { NginxProxy } from '@/components/denetim/NginxProxy';
+import NginxSpaSummary from '@/components/denetim/NginxSpaSummary';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
-import NginxLocations from '@/components/denetim/NginxLocations';
 import { toast } from '@/hooks/useToast';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import CodeChip from '@/components/common/CodeChip';
@@ -329,6 +327,19 @@ function LegendSwatch({
 // PLATFORM SECICI KALDIRILDI: SPA denetimi yalnizca ARK cluster'lari icin anlamli
 // (kullanici, 2026-09-10). Secim sunmak, digerlerinde bos ekran gosterip "veri yok mu,
 // kapsam disi mi" sorusunu doguruyordu.
+/** Kapsam cubuklari + eksik listeleri: ozet tablonun AYRINTISI, varsayilan kapali. */
+function CoverageDetails({ tier }: { tier: 'internet' | 'intranet' }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary className="text-[11px] cursor-pointer select-none px-1" style={{ color: 'var(--text-muted)' }}>
+        Ayrıntı: ortam başına kapsam çubukları ve eksik uygulama listeleri
+      </summary>
+      {open && <div className="mt-2"><SpaCoverage tier={tier} /></div>}
+    </details>
+  );
+}
+
 function SpaCoverage({ tier }: { tier: 'internet' | 'intranet' }) {
   const [data, setData] = useState<SpaCoverageResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -944,7 +955,6 @@ function NginxSpaAudit() {
   // paneli/servis matrisi burada ANLAMSIZ; yalnizca NginxProdMigration gosterilir.
   const [tier, setTier] = useState<'internet' | 'intranet' | 'tasima'>('internet');
   // Kullanici talebi: matrisin yani sira, her servis icin location bazinda AYRINTI.
-  const [view, setView] = useState<'matris' | 'location' | 'proxy'>('matris');
   const [data, setData] = useState<NginxSpaResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -1106,7 +1116,8 @@ function NginxSpaAudit() {
     return (
       <div className="space-y-3">
         {tierTabs}
-        {tier === 'tasima' ? <NginxProdMigration /> : <SpaCoverage tier={tier} />}
+        {tier !== 'tasima' && <NginxSpaSummary tier={tier} />}
+        {tier === 'tasima' ? <NginxProdMigration /> : <CoverageDetails tier={tier} />}
         {/* Bu uyari INTERNET taramasi hakkinda: intranet olcumu ayri bir tablodan gelir
             ve kendi eksik-veri mesajini kendisi gosterir. */}
         {tier === 'internet' && (
@@ -1120,42 +1131,15 @@ function NginxSpaAudit() {
     );
   }
 
-  const viewTabs = (
-    <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)] w-fit">
-      {(
-        [
-          { id: 'matris', label: 'Ortam Matrisi' },
-          { id: 'location', label: 'Location Detayı' },
-          // PROD proxy deseni AYRI gorunumde: mevcut iki gorunum SPA'ya ozgudur ve
-          // karistirmak ikisini de bulaniklastirirdi.
-          { id: 'proxy', label: 'Proxy Tanımları (PROD)' },
-        ] as const
-      ).map((v) => (
-        <button
-          key={v.id}
-          onClick={() => setView(v.id)}
-          className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-            view === v.id
-              ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]'
-              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          {v.label}
-        </button>
-      ))}
-    </div>
-  );
-
   return (
     <div className="space-y-3">
       {tierTabs}
       {tier === 'tasima' && <NginxProdMigration />}
-      {tier !== 'tasima' && <SpaCoverage tier={tier} />}
-      {/* Asagidakilerin HEPSI internet tarafina ait: servis vhost'u, location tanimi ve
-          proxy deseni intranet sunucularinda YOKTUR. */}
-      {tier === 'internet' && viewTabs}
-      {tier === 'internet' && view === 'location' && <NginxLocations />}
-      {tier === 'internet' && view === 'proxy' && <NginxProxy />}
+      {/* ORTAM OZETI en ustte (kullanici, 2026-09-17): tek tabloda SPA sayisi, nginx'e cikan,
+          route'lar. Kapsam cubuklari ve eksik listeleri AYRINTI olarak altinda, kapali.
+          "Location Detayi" ve "Proxy Tanimlari (PROD)" gorunumleri kaldirildi (kafa karistiriyordu). */}
+      {tier !== 'tasima' && <NginxSpaSummary tier={tier} />}
+      {tier !== 'tasima' && <CoverageDetails tier={tier} />}
 
       {/* ENV TESHISI: bir ortam bos gorunuyorsa NEDENI burada gorulur. env degeri vhost
           DOSYA ADINDAN turer (<SERVIS>-<ORTAM>.conf), taranan SUNUCUDAN degil - bu ayrim
@@ -1208,9 +1192,7 @@ function NginxSpaAudit() {
         </div>
       )}
 
-      {tier === 'internet' && <RouteStats />}
-
-      {tier === 'internet' && view === 'matris' && (
+      {tier === 'internet' && (
         <>
           {data.dirsReady && <HacLegend defaultOpen={false} />}
           <div className="flex flex-wrap items-center gap-2">
@@ -1389,62 +1371,89 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
         <span className="text-xs text-[var(--text-muted)]">—</span>
       </td>
     );
-  const meta = STATUS_META[cell.status] || {
-    label: cell.status,
-    cls: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]',
-  };
+  // DIZIN EKSIGI durumu ezer (kullanici, 2026-09-17: "hAC olanlara sorunsuz yazmissin, kafa
+  // karistiriyor"): H/A/C'den biri herhangi bir sunucuda kucuk harfse hucre "Sorunsuz"
+  // DEGILDIR. Hangi harfin nerede eksik oldugu ipucunda.
+  const missingDirs = (cell.dirs || [])
+    .filter((d) => d.flags && !(d.flags.hys && d.flags.app && d.flags.conf))
+    .map((d) => `${d.host}: ${[!d.flags!.hys && 'H', !d.flags!.app && 'A', !d.flags!.conf && 'C'].filter(Boolean).join('')} yok`);
+  const dirsIncomplete = missingDirs.length > 0;
+  const meta =
+    cell.status === 'OK' && dirsIncomplete
+      ? { label: 'Dizin eksik', cls: 'bg-amber-50 text-amber-700 border-amber-200' }
+      : STATUS_META[cell.status] || {
+          label: cell.status,
+          cls: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]',
+        };
+  const isProd = cell.status === 'PROXY' || cell.status === 'NEW_ONLY';
+  const title = [
+    `Durum: ${meta.label}`,
+    dirsIncomplete ? `Eksik dizinler:\n  ${missingDirs.join('\n  ')}` : null,
+    cell.status === 'NOT_DEPLOYED'
+      ? 'Konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications ' +
+        'altında bulunamadı — bu adres 404 döner.\nYa hiç dağıtılmamış ya da conf ' +
+        'adının işaret ettiğinden BAŞKA bir namespace dizinine dağıtılmış.\n' +
+        'Kontrol birden çok sunucuda ayrı ayrı yapılır; aşağıdaki sunucu listesi ' +
+        'eksiğin görüldüğü yerlerdir.'
+      : null,
+    cell.status === 'PROXY'
+      ? [
+          "PROD: eski sunucuda proxy_pass ile OpenShift route'una yönlendiriliyor (SPA include'u yok).",
+          `Hedef: ${cell.proxyTarget || '—'}${cell.suffixAdded ? ' (namespace -prod eksikti, eklendi)' : ''}`,
+          'H/A/C bayrakları YENİ prod SPA sunucularından okunur (Production Taşımaları).',
+        ].join(String.fromCharCode(10))
+      : null,
+    cell.namespace ? `Namespace: ${cell.namespace}` : null,
+    cell.deployMode ? `Dağıtım: ${cell.deployMode}` : null,
+    `Context path: ${cell.locationPath}`,
+    `Sunucular: ${cell.hosts.join(', ')}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const dirsBlock = cell.dirs && cell.dirs.length > 0 && (
+    <span className="inline-flex flex-wrap gap-1">
+      {cell.dirs.map((d) => (
+        <span key={d.host} className="inline-flex items-center gap-1" title={d.host}>
+          {cell.dirs && (cell.dirs.length > 1 || isProd) && <span className="text-[9px] opacity-70">{d.host.replace(/^GBNGX/, '')}</span>}
+          <DirCell f={d.flags} />
+        </span>
+      ))}
+    </span>
+  );
+  if (isProd) {
+    // PROD (kullanici, 2026-09-17): eski ve yeni sunucu AYNI sutunda ama AYRI kucuk kutular.
+    const oldOk = cell.status === 'PROXY';
+    return (
+      <td className="px-3 py-2">
+        <div className="inline-flex flex-col gap-1 text-[11px]" title={title}>
+          <div className={`px-2 py-1 rounded-lg border ${oldOk ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-semibold uppercase tracking-wide opacity-70">Eski</span>
+              <span className="font-semibold">{oldOk ? `proxy · ${cell.hosts.length} sunucu` : 'tanım yok'}</span>
+              {cell.suffixAdded && <span className="text-[9px] opacity-70">+prod</span>}
+            </div>
+            {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
+          </div>
+          <div className={`px-2 py-1 rounded-lg border ${dirsIncomplete || !cell.dirs?.length ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] font-semibold uppercase tracking-wide opacity-70">Yeni</span>
+              {cell.dirs?.length ? dirsBlock : <span className="opacity-80">taranmadı</span>}
+            </div>
+            {!cell.inOcpInventory && <span className="opacity-80">OCP'de yok</span>}
+          </div>
+        </div>
+      </td>
+    );
+  }
   return (
     <td className="px-3 py-2">
-      <div
-        className={`inline-flex flex-col gap-0.5 text-[11px] px-2 py-1 rounded-lg border ${meta.cls}`}
-        title={[
-          `Durum: ${meta.label}`,
-          cell.status === 'NOT_DEPLOYED'
-            ? 'Konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications ' +
-              'altında bulunamadı — bu adres 404 döner.\nYa hiç dağıtılmamış ya da conf ' +
-              'adının işaret ettiğinden BAŞKA bir namespace dizinine dağıtılmış.\n' +
-              'Kontrol birden çok sunucuda ayrı ayrı yapılır; aşağıdaki sunucu listesi ' +
-              'eksiğin görüldüğü yerlerdir.'
-            : null,
-          cell.status === 'PROXY'
-            ? [
-                "PROD: eski sunucuda proxy_pass ile OpenShift route'una yönlendiriliyor (SPA include'u yok).",
-                `Hedef: ${cell.proxyTarget || '—'}${cell.suffixAdded ? ' (namespace -prod eksikti, eklendi)' : ''}`,
-                'H/A/C bayrakları YENİ prod SPA sunucularından okunur (Production Taşımaları).',
-              ].join(String.fromCharCode(10))
-            : null,
-          cell.namespace ? `Namespace: ${cell.namespace}` : null,
-          cell.deployMode ? `Dağıtım: ${cell.deployMode}` : null,
-          `Context path: ${cell.locationPath}`,
-          `Sunucular: ${cell.hosts.join(', ')}`,
-        ]
-          .filter(Boolean)
-          .join('\n')}
-      >
+      <div className={`inline-flex flex-col gap-0.5 text-[11px] px-2 py-1 rounded-lg border ${meta.cls}`} title={title}>
         <span className="font-semibold">{meta.label}</span>
         {/* Context path GORUNUR (kullanici, 2026-09-14: "servislerde location bilgisi yok") */}
         {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
-        {cell.status === 'PROXY' && cell.suffixAdded && <span className="text-[9px] opacity-70">+prod</span>}
         {!cell.inOcpInventory && <span className="opacity-80">OCP'de yok</span>}
-        {/* PROD: eski ve yeni sunucu durumu AYRI satirlarda (kullanici, 2026-09-14: "eski
-            sunucuda var mi yok mu belli degil"). */}
-        {(cell.status === 'PROXY' || cell.status === 'NEW_ONLY') && (
-          <span className="text-[10px] opacity-90" title={cell.status === 'PROXY' ? `eski sunucular: ${cell.hosts.join(', ')}` : 'eski GBRVP* sunucularında proxy tanımı bulunamadı'}>
-            Eski: {cell.status === 'PROXY' ? `✓ proxy (${cell.hosts.length} sunucu)` : '✗ tanım yok'}
-          </span>
-        )}
         {/* H/A/C dizin bayraklari (sunucu basina) - Production Tasimalari ile ayni gosterim */}
-        {cell.dirs && cell.dirs.length > 0 && (
-          <span className="inline-flex flex-wrap gap-1 mt-0.5">
-            {(cell.status === 'PROXY' || cell.status === 'NEW_ONLY') && <span className="text-[10px] opacity-90">Yeni:</span>}
-            {cell.dirs.map((d) => (
-              <span key={d.host} className="inline-flex items-center gap-1" title={d.host}>
-                {cell.dirs && (cell.dirs.length > 1 || cell.status === 'PROXY') && <span className="text-[9px] opacity-70">{d.host.replace(/^GBNGX/, '')}</span>}
-                <DirCell f={d.flags} />
-              </span>
-            ))}
-          </span>
-        )}
+        {dirsBlock && <span className="mt-0.5">{dirsBlock}</span>}
       </div>
     </td>
   );

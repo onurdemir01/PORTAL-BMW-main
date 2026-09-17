@@ -62,7 +62,8 @@ test('Nginx SPA > Prod Tasima sekmesi bagli ve kapsam paneli o sekmede gizli', (
   const denetim = read('components/DenetimPage.tsx');
   assert.ok(denetim.includes("{ id: 'tasima', label: 'Production Taşımaları' }"), 'Production Tasimalari secenegi yok');
   assert.ok(denetim.includes("{tier === 'tasima' && <NginxProdMigration />}"), 'NginxProdMigration render edilmiyor');
-  assert.ok(denetim.includes("{tier !== 'tasima' && <SpaCoverage tier={tier} />}"), 'kapsam paneli tasima sekmesinde gizlenmeli');
+  // 2026-09-17: kapsam cubuklari artik katlanir ayrinti (CoverageDetails); tasima sekmesinde yine gizli
+  assert.ok(denetim.includes("{tier !== 'tasima' && <CoverageDetails tier={tier} />}"), 'kapsam paneli tasima sekmesinde gizlenmeli');
   const api = read('api/denetimApi.ts');
   assert.ok(api.includes('nginxMigration: (fresh = false)'), 'API ucu yok');
 });
@@ -77,7 +78,7 @@ test('Production Tasimalari: Tanim olustur dugmesi, ekip siralamasi, H/A/C sozlu
   assert.ok(src.includes("<option value=\"team\">"), 'ekip siralamasi secenegi yok');
   assert.ok(/if \(!ta !== !tb\) return ta \? -1 : 1;/.test(src), 'ekipsizler en sona dusmeli');
   // H/A/C sozlugu ust tarafta, acik
-  assert.ok(src.includes('<HacLegend />'), 'sozluk render edilmiyor'); // tanim HacCell.tsx'te (ortak)
+  assert.ok(src.includes('<HacLegend defaultOpen={false} />'), 'sozluk render edilmiyor'); // tanim HacCell.tsx'te (ortak); 2026-09-17: kapali
   const hac = read('components/denetim/HacCell.tsx');
   for (const s of ['/hysdeploy/&lt;ns&gt;/&lt;app&gt;/', '/usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/', 'application-confs/&lt;app&gt;-&lt;ns&gt;.conf']) {
     assert.ok(hac.includes(s), `sozlukte yok: ${s}`);
@@ -114,12 +115,32 @@ test('Production Tasimalari: gecis takibi (planlandi/gecti + tarih) ve sema', ()
   assert.ok(api.includes('nginxMigrationTrackingApi'));
 });
 
-test('Nginx SPA > Internet: route istatistikleri paneli + PROD kapsaminda proxy cozumu', () => {
+test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlemesi, PROD yeni sunucu hazirligi, route + IP); Location Detayi / Proxy Tanimlari / ayri route paneli KALDIRILDI (2026-09-17)', () => {
   const den = read('components/DenetimPage.tsx');
-  assert.ok(den.includes("{tier === 'internet' && <RouteStats />}"), 'RouteStats internet katmaninda yok');
+  assert.ok(den.includes("{tier !== 'tasima' && <NginxSpaSummary tier={tier} />}"), 'ortam ozeti internet/intranet katmaninda yok');
+  assert.ok(den.includes("{tier !== 'tasima' && <CoverageDetails tier={tier} />}"), 'kapsam cubuklari ayrinti olarak kalmali');
+  for (const gone of ['<RouteStats />', '<NginxLocations />', '<NginxProxy />', "label: 'Location Detayı'", "label: 'Proxy Tanımları (PROD)'"]) {
+    assert.ok(!den.includes(gone), `kaldirilmis olmali: ${gone}`);
+  }
   assert.ok(den.includes('data.prodProxy'), 'PROD proxy cozum notu yok');
-  const rs = read('components/denetim/RouteStats.tsx');
-  for (const s of ['SPA → IP', 'SPA değil → IP', 'sınıflanamadı']) assert.ok(rs.includes(s), `panelde yok: ${s}`);
+  const sum = read('components/denetim/NginxSpaSummary.tsx');
+  for (const s of ['OpenShift SPA', 'İnternet · nginx’te tanımlı', 'İntranet · nginx’e kurulu', 'Route’lar', 'SPA route → IP', 'Yeni sunucularda yük almaya hazır', 'spaTotal', 'ocpApps']) {
+    assert.ok(sum.includes(s), `ozette yok: ${s}`);
+  }
+  assert.ok(sum.includes("['DEV', 'TEST', 'QA', 'EDU', 'PROD']"), 'EDU ortami sirada yok');
+  const plat = read('../server/audit/ocp-platforms.cjs');
+  assert.ok(plat.includes("const ENVS = ['dev', 'test', 'qa', 'edu', 'prod'];"), "EDU namespace eki ('-edu') ortam sayilmali");
+  // "Sorunsuz" ama dizin eksik -> "Dizin eksik"; PROD: Eski / Yeni ayri kutular
+  assert.ok(den.includes("cell.status === 'OK' && dirsIncomplete") && den.includes("label: 'Dizin eksik'"), 'hAC hucresi Sorunsuz yazmamali');
+  assert.ok(den.includes('uppercase tracking-wide opacity-70">Eski</span>') && den.includes('uppercase tracking-wide opacity-70">Yeni</span>'), 'PROD hucresinde Eski/Yeni ayri kutular yok');
+  // Production Tasimalari: grup sekmeleri, location ilerlemesi, "Bu ekran ne gosteriyor" yok
+  const mig = read('components/denetim/NginxProdMigration.tsx');
+  assert.ok(!mig.includes('title="Bu ekran ne gösteriyor?"'), 'aciklama notu kaldirilmali');
+  assert.ok(mig.includes('onClick={() => setGroupId(g.id)}'), 'grup sekmeleri yok');
+  assert.ok(mig.includes('function LocationProgress(') && mig.includes('<LocationProgress g={g} />'), 'location ilerleme panosu yok');
+  assert.ok(mig.includes('NEW_LOC[p.newStatus].mark'), 'path cipinde yeni sunucu durumu yok');
+  const srvm = read('../server/audit/nginx-migration.cjs');
+  assert.ok(srvm.includes('newLocRows') && srvm.includes("'defined' : on.length === 0 ? 'none' : 'partial'"), 'yeni sunucu location durumu hesaplanmali');
   const srv = read('../server/audit/denetim.cjs');
   const cov = srv.slice(srv.indexOf("router.get('/nginx-spa-coverage'"), srv.indexOf('// ── 2) OPENSHIFT ORTAM KAPSAMI'));
   assert.ok(cov.includes("kind = 'proxy' AND UPPER(env) = 'PROD'"), 'kapsam PROD proxy satirlarini okumali');
@@ -139,7 +160,8 @@ test('Nginx SPA matrisi: PROD proxy satirlari PROXY durumuyla girer; H/A/C yeni 
 
 test('Nginx SPA matrisi: PROD hucresinde eski/yeni ayrimi, NEW_ONLY, ortam farki suzgeci', () => {
   const den = read('components/DenetimPage.tsx');
-  assert.ok(den.includes("Eski: {cell.status === 'PROXY' ? `✓ proxy"), 'PROD hucresinde eski sunucu satiri yok');
+  // 2026-09-17: eski ve yeni AYRI kucuk kutular (ayni sutunda)
+  assert.ok(den.includes("{oldOk ? `proxy · ${cell.hosts.length} sunucu` : 'tanım yok'}"), 'PROD hucresinde eski sunucu kutusu yok');
   assert.ok(den.includes("NEW_ONLY: { label: 'Yalnız yeni sunucuda'"), 'NEW_ONLY etiketi yok');
   assert.ok(den.includes("function envGapOf(") && den.includes('value="prod-only"') && den.includes('value="no-prod"'), 'ortam farki suzgeci yok');
   const srv = read('../server/audit/denetim.cjs');
