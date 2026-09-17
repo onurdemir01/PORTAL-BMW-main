@@ -268,6 +268,43 @@ function Bar({ value, total, measured = true, title }: { value: number; total: n
   );
 }
 
+/** Servis paletleri: sabit sira, farkli tonlar (GLOMO her ortamda ayni renk olsun diye ada gore). */
+const SERVICE_COLORS = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4b5563', '#65a30d'];
+function serviceColor(name: string) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return SERVICE_COLORS[h % SERVICE_COLORS.length];
+}
+
+/** Internet SPA'larinin nginx SERVISI (vhost) kirilimi: bolunmus cubuk + etiketler.
+ *  Genislik internete acik toplam SPA'ya gore (bos kalan = tanimsiz). */
+function ServiceBar({ total, services, multi }: { total: number; services: { service: string; count: number }[]; multi: number }) {
+  const sum = services.reduce((a, x) => a + x.count, 0);
+  return (
+    <div className="mt-1" title="nginx’te tanımlı internet SPA’ları hangi servisin (vhost: GLOMO, WEBFORMS, SAKLAMA…) altında">
+      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>servis dağılımı</div>
+      <div className="h-2 rounded-full overflow-hidden flex mt-0.5" style={{ background: 'var(--bg-elevated)' }}>
+        {services.map((x) => (
+          <span key={x.service} className="h-full" style={{ width: `${total ? Math.min(100, (x.count / total) * 100) : 0}%`, background: serviceColor(x.service) }} title={`${x.service}: ${fmtNumber(x.count)}`} />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+        {services.map((x) => (
+          <span key={x.service} className="inline-flex items-center gap-1 whitespace-nowrap">
+            <span className="inline-block w-2 h-2 rounded-sm" style={{ background: serviceColor(x.service) }} />
+            {x.service} <b className="tabular-nums">{fmtNumber(x.count)}</b>
+          </span>
+        ))}
+        {multi > 0 && (
+          <span style={{ color: 'var(--text-muted)' }} title="bu uygulamalar birden fazla servisin altında tanımlı; her serviste sayıldı">
+            ({fmtNumber(multi)} uygulama birden fazla serviste; servis toplamı {fmtNumber(sum)})
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Tiklanabilir hucre govdesi: eksik varsa "N eksik → listele" ipucu, yoksa duz. */
 function ClickCell({ count, disabled = false, onClick, children }: { count: number; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
   if (disabled) return <div className="space-y-1">{children}</div>;
@@ -478,10 +515,13 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                         >
                           <Big n={c.measured ? c.internetInNginx : 0} of={c.internetTotal} label={env === 'PROD' ? 'eski sunucuda proxy' : 'tanımlı'} />
                           <Bar value={c.internetInNginx} total={c.internetTotal} measured={c.measured} title="nginx’te tanımlı / internete açık SPA" />
+                          {c.measured && (c.internetServices || []).length > 0 && (
+                            <ServiceBar total={c.internetTotal} services={c.internetServices || []} multi={c.internetMultiService || 0} />
+                          )}
                         </ClickCell>
                         {env === 'PROD' && prodNew && (
                           <div className="rounded-lg px-2 py-1.5 mt-1 border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-                            <div className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-muted)' }}>Yeni sunucularda yük almaya hazır</div>
+                            <div className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-muted)' }} title="Bu kume OpenShift’in ‘internet SPA’ saydığı kümeden FARKLIDIR: eski GBRVP* sunucularının proxy_pass’inde bulunan ve bir (namespace, uygulama)’ya çözülen SPA’lar — route bilgisi olmayan (route’suz) uygulamalar dâhil, aynı uygulama iki namespace’teyse iki kez. Üstteki ‘eski sunucuda proxy X / Y’ ise OpenShift’teki internet SPA’larından kaçının eski sunucuda tanımı olduğudur.">Yeni sunucularda yük almaya hazır <span className="normal-case font-normal">(eski sunucuda proxy’si olan tüm SPA’lar)</span></div>
                             {prodNew.scanned ? (
                               <>
                                 <ClickCell

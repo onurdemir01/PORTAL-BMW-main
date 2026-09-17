@@ -159,6 +159,10 @@ export interface SpaCoverageRow {
   /** route tipi passthrough = internet; nginx'e CIKMASI BEKLENEN kume. */
   internetTotal: number;
   internetInNginx: number;
+  /** nginx'te tanimli internet SPA'larinin SERVIS (vhost: GLOMO, WEBFORMS...) kirilimi (2026-09-17).
+   *  Birden fazla serviste tanimli uygulama her serviste sayilir; internetMultiService kac tane. */
+  internetServices?: { service: string; count: number }[];
+  internetMultiService?: number;
   internetMissingCount: number;
   internetMissing: string[];
   /** route tipi reencrypt = intranet; INTRANET SPA sunucularina dagitilir. */

@@ -129,6 +129,9 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   }
   const covSrv = read('../server/audit/denetim.cjs');
   assert.ok(covSrv.includes('missingDetail: {') && covSrv.includes('ownersFor(owners.byNs, nss)'), 'kapsam ucu eksik uygulamalari sahiplikle vermeli');
+  // internet SPA'larinin nginx SERVISI (vhost) kirilimi (2026-09-17): sunucu hesaplar, ekran bolunmus cubuk cizer
+  assert.ok(covSrv.includes('internetServices,') && covSrv.includes("addSvc('PROD', String(res.application).toLowerCase(), r.service)") && covSrv.includes('addSvc(e, app.toLowerCase(), r.service)'), 'servis kirilimi hesaplanmali (include vhost + PROD proxy vhost)');
+  assert.ok(sum.includes('function ServiceBar(') && sum.includes('<ServiceBar total={c.internetTotal} services={c.internetServices || []}'), 'internet hucresinde servis cubugu yok');
   for (const gone of ['<RouteStats />', '<NginxLocations />', '<NginxProxy />', "label: 'Location Detayı'", "label: 'Proxy Tanımları (PROD)'"]) {
     assert.ok(!den.includes(gone), `kaldirilmis olmali: ${gone}`);
   }

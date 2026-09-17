@@ -480,7 +480,7 @@ function initDenetim(app) {
               // host DA cekiliyor: nginx sunuculari artik IKI KATMAN (internete
               // acik + intranet). Hangi katmanda tanimli oldugu bilinmeden "intranet
               // uygulamasi intranet sunucusuna deploy olmus mu" sorusu cevaplanamaz.
-              `SELECT DISTINCT env, application, host FROM dbo.Nginx_Config_Audit
+              `SELECT DISTINCT env, application, host, service FROM dbo.Nginx_Config_Audit
                 WHERE scan_date = @d${await spaFilter()}`,
               [{ name: 'd', type: sql.NVarChar(10), value: scanDate }],
             )
@@ -512,7 +512,7 @@ function initDenetim(app) {
         // (-prod eki dahil) uygulamaya cevrilir ve PROD nginx kumesine katilir.
         scanDate && (await hasProxyColumns())
           ? query(
-              `SELECT host, upstream_name, target_url
+              `SELECT host, upstream_name, target_url, service
                  FROM dbo.Nginx_Config_Audit
                 WHERE scan_date = @d AND kind = 'proxy' AND UPPER(env) = 'PROD'`,
               [{ name: 'd', type: sql.NVarChar(10), value: scanDate }],
@@ -667,6 +667,17 @@ function initDenetim(app) {
       // ── nginx tarafi ──────────────────────────────────────────────────────────────
       const ngxNonSpa = new Set();
       const ngx = new Map(); // INTERNETE ACIK sunucularda tanimli SPA'lar
+      // env -> app(lower) -> Set(SERVIS): uygulama hangi nginx servisinin (vhost: GLOMO,
+      // WEBFORMS, SAKLAMA...) altinda tanimli (kullanici, 2026-09-17: "kac tanesi hangi
+      // servisin altindan reverse proxy'leniyor"). Non-prod: include satirinin vhost'u;
+      // PROD: eski sunucudaki proxy_pass satirinin vhost'u.
+      const ngxSvc = new Map();
+      const addSvc = (env, appLower, svc) => {
+        const sv = String(svc || '').trim().toUpperCase() || '(bilinmiyor)';
+        if (!ngxSvc.has(env)) ngxSvc.set(env, new Map());
+        if (!ngxSvc.get(env).has(appLower)) ngxSvc.get(env).set(appLower, new Set());
+        ngxSvc.get(env).get(appLower).add(sv);
+      };
       // Intranet sunucusunda servis vhost'u BEKLENMEZ. Yine de bir location kaydi
       // cikarsa bunu SESSIZCE internet kumesine katmak orani bozar; sayilir ve
       // ekranda bilgi olarak gosterilir.
@@ -689,6 +700,7 @@ function initDenetim(app) {
         }
         if (!ngx.has(e)) ngx.set(e, new Map());
         ngx.get(e).set(app.toLowerCase(), app);
+        addSvc(e, app.toLowerCase(), r.service);
       }
       // PROD proxy satirlari -> (ns, app) -> PROD nginx kumesi (internet katmani; GBRVP*
       // hostlari internettir). Cozulemeyenler sayilir, sessizce dusmez.
@@ -713,6 +725,7 @@ function initDenetim(app) {
           proxyStats.spa++;
           if (!ngx.has('PROD')) ngx.set('PROD', new Map());
           if (!ngx.get('PROD').has(res.application)) ngx.get('PROD').set(res.application, res.application);
+          addSvc('PROD', String(res.application).toLowerCase(), r.service);
         }
       }
 
@@ -745,6 +758,18 @@ function initDenetim(app) {
           if (n.has(k)) inNginx[v.net].push(v.name);
         }
         const internetMissing = bucket.internet.filter((a) => !n.has(a.toLowerCase()));
+        // Internet SPA'larindan nginx'te tanimli olanlarin SERVIS kirilimi: servis -> uygulama
+        // sayisi. Bir uygulama birden fazla vhost'ta tanimliysa her birinde sayilir
+        // (multi = kac uygulama birden fazla serviste). Toplam servis sayilari bu yuzden
+        // internetInNginx'i asabilir; ekran bunu yazar.
+        const svcCount = new Map();
+        let multi = 0;
+        for (const a of inNginx.internet) {
+          const set = (ngxSvc.get(e) || new Map()).get(a.toLowerCase()) || new Set(['(bilinmiyor)']);
+          if (set.size > 1) multi++;
+          for (const sv of set) svcCount.set(sv, (svcCount.get(sv) || 0) + 1);
+        }
+        const internetServices = [...svcCount.entries()].map(([service, count]) => ({ service, count })).sort((x, y) => y.count - x.count || x.service.localeCompare(y.service));
         // INTRANET KAPSAMI: uygulama uc dizinin UCUNDE de var mi? Hesap ayri modulde
         // (nginx-intranet.cjs) - orada birim testleriyle kilitli.
         const ic = coverageForEnv(bucket.intranet, intraIdx.get(e), CAP);
@@ -763,6 +788,8 @@ function initDenetim(app) {
           // INTERNET (passthrough) = nginx'e cikmasi BEKLENEN kume. Kapsam bunun uzerinden.
           internetTotal: bucket.internet.length,
           internetInNginx: inNginx.internet.length,
+          internetServices,
+          internetMultiService: multi,
           internetMissingCount: internetMissing.length,
           internetMissing: internetMissing.sort(sortTr).slice(0, CAP),
           // Sahiplikli ayrinti (ekrandaki "tikla, listeyi gor"): internet = nginx'te tanimi
