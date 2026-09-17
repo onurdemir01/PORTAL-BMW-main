@@ -76,7 +76,16 @@
     # degerine duser.
     cluster_workload_kinds_effective: "{{ cluster_workload_kinds | default({}) }}"
     operation_action_effective: "{{ operation_action | default('stop') | string | trim | lower }}"
-    verification_timeout_effective: "{{ verification_timeout | default('60') | string | trim }}"
+    verification_timeout_effective: "{{ verification_timeout | default('300') | string | trim }}"
+    # ACMA/KAPATMA ASIMETRISI (kullanici karari, 2026-09-17). Portal ikisini de
+    # gonderir; gelmezse butceden turetilir (eski AWX surumu / elle calistirma).
+    #   acma   : uyari esiginde BIRAK, is BASARILI
+    #   kapatma: uyari esiginde UYAR ama BEKLE, fail esiginde FAIL
+    verify_warn_seconds_effective: >-
+      {{ verify_warn_seconds | default(verification_timeout | default('300'), true) | string | trim }}
+    verify_fail_seconds_effective: >-
+      {{ verify_fail_seconds
+         | default(((verification_timeout | default('300') | int) * 2) | string, true) | string | trim }}
     allow_partial_execution_effective: "{{ allow_partial_execution | default(false) | bool }}"
     change_confirmation_effective: "{{ change_confirmation | default(false) | bool }}"
     bulk_change_confirmation_effective: "{{ bulk_change_confirmation | default(false) | bool }}"
@@ -97,6 +106,8 @@
       {{ '0' if operation_action_effective == 'stop' else
          _target_replicas_input if operation_action_effective == 'scale' else '' }}
     wait_seconds: "2"
+    # GERIYE UYUM: betik artik saniye butcesini kendisi kullaniyor, ama bu iki
+    # degisken eski bir betik surumu icin hala gonderiliyor.
     wait_attempts: "{{ ((verification_timeout_effective | int) / 2) | round(0, 'ceil') | int | string }}"
     job_id: "{{ lookup('env', 'AWX_JOB_ID') | default(lookup('env', 'JOB_ID'), true) | default('N/A', true) }}"
     target_app_list: >-

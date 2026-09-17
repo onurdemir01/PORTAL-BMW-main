@@ -34,6 +34,9 @@
     # "tanimsiz" sayip tam da ezmek istedigi duz haritaya geri duserdi — belirsiz
     # cluster yanlis tiple islenirdi. Sadece ANAHTAR YOKSA (undefined) geriye dusulur.
     WORKLOAD_KINDS: "{{ cluster_workload_kinds_effective[scalex_target.cluster] | default(workload_kinds_effective) | default('') }}"
+    # Saniye butcesi: betik kademeli bekleme ile kendi dongusunu kurar.
+    VERIFY_WARN_SECONDS: "{{ verify_warn_seconds_effective }}"
+    VERIFY_FAIL_SECONDS: "{{ verify_fail_seconds_effective }}"
     WAIT_ATTEMPTS: "{{ wait_attempts }}"
     WAIT_SECONDS: "{{ wait_seconds }}"
     JOB_ID: "{{ job_id }}"

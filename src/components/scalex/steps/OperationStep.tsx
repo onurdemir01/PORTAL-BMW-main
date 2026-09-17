@@ -50,11 +50,25 @@ const ACTION_INFO: Record<ScaleXAction, { label: string; text: string }> = {
   },
 };
 
-const TIMEOUTS: { value: string; label: string }[] = [
-  { value: "30", label: "30 saniye" },
-  { value: "60", label: "1 dakika" },
-  { value: "120", label: "2 dakika" },
-];
+// SONUC KONTROL BUTCESI — SANIYE.
+//
+// Eskiden uc onayarli secenek vardi (30/60/120 sn). Kullanici karari (2026-09-17):
+// varsayilan 5 dakika, ekstra isteyen SANIYE cinsinden girsin. Sunucu tarafi ayni
+// araligi bagimsiz dogrular (server/scalex/launch.cjs) — burasi yalnizca erken
+// geri bildirim.
+const TIMEOUT_DEFAULT = "300";
+const TIMEOUT_MIN = 30;
+const TIMEOUT_MAX = 3600;
+
+/** "300" -> "5 dk", "90" -> "1 dk 30 sn" — kullanici saniyeyi zihninde cevirmesin. */
+function humanSeconds(raw: string): string {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const m = Math.floor(n / 60);
+  const s = n % 60;
+  if (!m) return `${s} sn`;
+  return s ? `${m} dk ${s} sn` : `${m} dk`;
+}
 
 const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, onSubmit, previous }) => {
   // ILK SUNUM NOTR KALIR: `previous` YALNIZCA kullanici bu adimi bir kez doldurup
@@ -66,8 +80,13 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
   // Önceden seçili DEĞİL — kullanıcı bilinçli olarak seçsin (bkz. dosya başı, kural 2).
   const [mode, setMode] = useState<ScaleXMode | null>(previous?.executionMode ?? null);
   const [replicas, setReplicas] = useState(previous?.targetReplicas ?? "");
-  const [timeout, setTimeoutValue] = useState(previous?.verificationTimeout ?? "60");
+  const [timeout, setTimeoutValue] = useState(previous?.verificationTimeout ?? TIMEOUT_DEFAULT);
   const [allowPartial, setAllowPartial] = useState(previous?.allowPartial ?? true);
+  // Sunucu ayni araligi bagimsiz dogrular; bu yalnizca erken geri bildirim ve
+  // "Devam" dugmesini kapatmak icin.
+  const timeoutNum = Number(timeout);
+  const timeoutBad =
+    !/^[0-9]{1,5}$/.test(timeout.trim()) || timeoutNum < TIMEOUT_MIN || timeoutNum > TIMEOUT_MAX;
   const [mailCc, setMailCc] = useState(previous?.mailCc ?? "");
   // HPA sabitleme ONCEDEN SECILI DEGIL: HPA'ya dokunmak politikanin tersi, kullanici
   // bilinçli olarak istemeli.
@@ -117,7 +136,10 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
   // olmaması bir tuzaktı — sunucu da ayrıca reddediyor.
   const scaleToZero = action === "scale" && replicas.trim() === "0";
   const replicasValid = action !== "scale" || (/^[0-9]+$/.test(replicas) && !scaleToZero);
-  const canSubmit = !!action && !!mode && replicasValid && !(action === "restore" && restoreBlocked);
+  // `timeoutBad` de kapiya girer: gecersiz bir saniye degeri sunucuda 400 doner,
+  // kullaniciyi oraya kadar goturmenin anlami yok.
+  const canSubmit =
+    !!action && !!mode && replicasValid && !timeoutBad && !(action === "restore" && restoreBlocked);
 
   return (
     <div className="space-y-6">
@@ -261,13 +283,26 @@ const OperationStep: React.FC<Props> = ({ apps, workloads, clusterCount, busy, o
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="scalex-timeout" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
-            Sonucu ne kadar bekleyelim?
+            Sonucu ne kadar bekleyelim? (saniye)
           </label>
-          <select id="scalex-timeout" value={timeout} disabled={busy} onChange={(e) => setTimeoutValue(e.target.value)}
+          <input id="scalex-timeout" type="number" inputMode="numeric"
+            min={TIMEOUT_MIN} max={TIMEOUT_MAX} step={30}
+            value={timeout} disabled={busy}
+            onChange={(e) => setTimeoutValue(e.target.value)}
+            aria-describedby="scalex-timeout-help"
             className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
-                       text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">
-            {TIMEOUTS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
+                       text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
+          {timeoutBad ? (
+            <p className="mt-1 text-xs text-red-600">
+              {TIMEOUT_MIN}–{TIMEOUT_MAX} arası bir saniye değeri girin.
+            </p>
+          ) : (
+            <p id="scalex-timeout-help" className="mt-1 text-xs text-[var(--text-muted)]">
+              {humanSeconds(timeout)} · <strong>Açarken</strong> bu süre dolunca uyarı yazılır ve iş
+              başarılı biter. <strong>Kapatırken</strong> uyarı yazılır ama 0 olana kadar beklenir;{" "}
+              {humanSeconds(String(Number(timeout) * 2 || 0))} geçilirse başarısız sayılır.
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor="scalex-cc" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">

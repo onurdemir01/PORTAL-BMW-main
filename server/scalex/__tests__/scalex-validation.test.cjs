@@ -755,11 +755,21 @@ test('E11 gecersiz islem red', () => {
 test('E12 gecersiz mod red', () => {
   assert.throws(() => launch.assertValidTargets({ ...okBase, executionMode: 'force' }), /mod/i);
 });
-test('E13 gecersiz timeout red', () => {
-  for (const t of ['45', '0', '', 'abc'])
+test('E13 gecersiz timeout red (artik SANIYE butcesi: 30..3600)', () => {
+  // 2026-09-17: onayarli liste ('30','60','120') kaldirildi; kullanici karari
+  // "varsayilan 5 dk, ekstra isteyen SANIYE girsin". Yani '45' artik GECERLI —
+  // reddedilenler ARALIK DISI ve BICIMSIZ olanlar.
+  for (const t of ['0', '29', '3601', 'abc', '-5', '10.5'])
     assert.throws(
       () => launch.assertValidTargets({ ...okBase, verificationTimeout: t }),
       /süre/i,
+      t,
+    );
+  // BOS = varsayilan (5 dk); reddedilmez.
+  assert.doesNotThrow(() => launch.assertValidTargets({ ...okBase, verificationTimeout: '' }));
+  for (const t of ['30', '45', '300', '3600'])
+    assert.doesNotThrow(
+      () => launch.assertValidTargets({ ...okBase, verificationTimeout: t }),
       t,
     );
 });
@@ -959,6 +969,9 @@ test('H1 calistirma extra_vars anahtar kumesi SABIT', () => {
       'execution_mode',
       'mail_to',
       'operation_action',
+      // 2026-09-17: acma/kapatma asimetrisi (bkz. scalex_runner.sh verify_replicas).
+      'verify_fail_seconds',
+      'verify_warn_seconds',
       'target_app_names',
       'target_cluster_name',
       'target_environment',

@@ -7,7 +7,32 @@ const gates = require('../ansible/change-gates.cjs');
 
 const ACTIONS = Object.freeze(['stop', 'restore', 'scale']);
 const MODES = Object.freeze(['dry_run', 'apply']);
-const VERIFICATION_TIMEOUTS = Object.freeze(['30', '60', '120']);
+// DOGRULAMA BUTCESI — SANIYE.
+//
+// Eskiden uc onayarli deger vardi ('30','60','120') ve varsayilan 60 sn idi.
+// Kullanici karari (2026-09-17): varsayilan HER YERDE 5 dakika, ekstra isteyen
+// SANIYE cinsinden girsin.
+//
+// Butce ACMA ve KAPATMA'da FARKLI anlamlara gelir (bkz. scalex_runner.sh
+// verify_replicas): acmada "bu kadar bekle, sonra uyarip basarili bit",
+// kapatmada "bu kadar sonra uyar, iki kati sonra fail".
+const VERIFICATION_TIMEOUT_DEFAULT = 300;
+const VERIFICATION_TIMEOUT_MIN = 30;
+const VERIFICATION_TIMEOUT_MAX = 3600;
+
+/**
+ * Saniye butcesini dogrular. Bos/undefined -> varsayilan.
+ * Gecersiz deger SESSIZCE varsayilana DUSMEZ: kullanici 30000 yazdiysa bunu
+ * bilmeli, aksi halde "neden 5 dk bekledi" sorusu cevapsiz kalir.
+ */
+function normalizeVerificationTimeout(raw) {
+  const t = String(raw ?? '').trim();
+  if (!t) return VERIFICATION_TIMEOUT_DEFAULT;
+  if (!/^[0-9]{1,5}$/.test(t)) return null;
+  const n = Number(t);
+  if (n < VERIFICATION_TIMEOUT_MIN || n > VERIFICATION_TIMEOUT_MAX) return null;
+  return n;
+}
 
 // Bir istekte izin verilen azami (cluster x uygulama) cifti. Ust sinir olmadan bir
 // kullanici yuzlerce hedef gonderip tek isle cok genis bir kesinti yaratabilirdi.
@@ -145,8 +170,11 @@ function assertValidTargets({
   };
   if (!ACTIONS.includes(action)) bad(`Geçersiz işlem: ${action}`);
   if (!MODES.includes(executionMode)) bad(`Geçersiz çalıştırma modu: ${executionMode}`);
-  if (!VERIFICATION_TIMEOUTS.includes(String(verificationTimeout)))
-    bad('Geçersiz sonuç kontrol süresi.');
+  if (normalizeVerificationTimeout(verificationTimeout) === null)
+    bad(
+      `Geçersiz sonuç kontrol süresi: "${verificationTimeout}". ` +
+        `${VERIFICATION_TIMEOUT_MIN}–${VERIFICATION_TIMEOUT_MAX} arası bir saniye değeri girin.`,
+    );
   // Bu degerler `oc` komut satirina gidiyor — playbook ve kabuk tarafinda da ayni
   // dogrulama var; portal ISI HIC BASLATMADAN kesiyor.
   if (!namespace || namespace.length > 63 || !NS_RE.test(namespace))
@@ -294,6 +322,8 @@ async function buildRunExtraVars({
 
   const radius = computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
 
+  const verifySeconds =
+    normalizeVerificationTimeout(verificationTimeout) ?? VERIFICATION_TIMEOUT_DEFAULT;
   return {
     // Katalog portal DB'sinden; playbook `scalex_clusters_override` yoksa kendi
     // dosyasina duser (AWX'ten elle calistirma bozulmaz).
@@ -325,7 +355,19 @@ async function buildRunExtraVars({
     // Playbook tarafi etkilenmez: `01_prepare.yml` degeri `| string | trim` ile
     // normalize edip regexle dogruluyor.
     ...(action === 'scale' ? { target_replicas: Number(targetReplicas) } : {}),
-    verification_timeout: String(verificationTimeout),
+    // SAYI, STRING DEGIL. Bu uc soru AWX survey'inde `integer` tipinde; string
+    // gonderilirse AWX launch'i 400 ile duser (bu depoda kayitli bir tuzak —
+    // bkz. scalex-awx-package.test.cjs S7).
+    //
+    // `?? DEFAULT` KASITLI: `normalizeVerificationTimeout` gecersiz girdide `null`
+    // doner ve `Number(null)` SIFIR olur — yani dogrulama bir sekilde atlanirsa
+    // AWX'e "0 sn" giderdi. Burada null'a yer yok; dogrulama zaten `validate()`te
+    // 400 veriyor, bu ikinci kemer.
+    verification_timeout: Number(verifySeconds),
+    // ACMA/KAPATMA ASIMETRISI. Uyari esigi butcenin KENDISI; kapatmanin fail esigi
+    // iki kati. Betik bu ikisini ayri okur (bkz. scalex_runner.sh verify_replicas).
+    verify_warn_seconds: Number(verifySeconds),
+    verify_fail_seconds: Number(verifySeconds) * 2,
     allow_partial_execution: allowPartial ? 'true' : 'false',
     // ONAY KUTULARI SUNUCUDA URETILIR, client'tan GELMEZ. Kullanici ekranda
     // "anladim" derse portal bunu uretir; client'in dogrudan `change_confirmation: true`
@@ -448,7 +490,10 @@ function buildGateVars({ env, tenant, action, executionMode, clusters, namespace
 module.exports = {
   ACTIONS,
   MODES,
-  VERIFICATION_TIMEOUTS,
+  VERIFICATION_TIMEOUT_DEFAULT,
+  VERIFICATION_TIMEOUT_MIN,
+  VERIFICATION_TIMEOUT_MAX,
+  normalizeVerificationTimeout,
   MAX_TARGETS,
   PROD_WRITTEN_CONFIRM_THRESHOLD,
   isProdEnv,
