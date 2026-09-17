@@ -116,7 +116,8 @@ test('G5: bos panel yeni talebi GERCEKTEN ogrenebiliyor', () => {
 test('G9: "olculemedi" cizgisi TOKEN renginde (koyu temada gorunur)', () => {
   // Cizgi `rgb(0 0 0 / 0.07)` idi: koyu zeminde gorunmuyordu ve satir bos gri bir
   // bar gibi okunuyordu — yani "%0" ile ayirt edilemiyordu.
-  const src = stripComments(read('components/DenetimPage.tsx'));
+  // 2026-09-17: "olculemedi" cubugu ortam ozetine (NginxSpaSummary) tasindi.
+  const src = stripComments(read('components/denetim/NginxSpaSummary.tsx'));
   assert.match(src, /repeating-linear-gradient\(45deg, var\(--border\)/);
   assert.ok(!/rgb\(0 0 0 \/ 0\.07\)/.test(src), 'sabit siyah cizgi duruyor');
 });

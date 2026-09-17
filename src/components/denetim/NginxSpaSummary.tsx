@@ -18,6 +18,447 @@ import {
   type NginxMigrationResult,
 } from '@/api/denetimApi';
 import { fmtNumber } from '@/utils/datetime';
+import { Modal } from '@/components/common/Modal';
+import { toast } from '@/hooks/useToast';
+import { OwnerCell } from './OwnerCell';
+import { UsersIcon, ArrowDownTrayIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import type {
+  SpaMissingApp,
+  NginxMigrationApp,
+  NginxMigrationGroup,
+  RouteOfIp,
+} from '@/api/denetimApi';
+import { GlobeAltIcon } from '@heroicons/react/24/outline';
+
+/** Pencerede listelenen satir: (uygulama, namespace'ler, ekip, eksik ne) - uc kaynak tek sekle iner. */
+interface MissingRow {
+  app: string;
+  namespaces: string[];
+  owner: SpaMissingApp['owner'];
+  what: string;
+  detail?: string;
+}
+
+/**
+ * "Deploy olmamis uygulamalar + sahiplik" penceresi (kullanici, 2026-09-17: "tanimsiz
+ * uygulamalarin sahiplerine gidip deployment gecmelerini isteyecegim"). Arama, CSV,
+ * e-postalari tek tikla panoya (noktali virgulle - Outlook'a yapistirilir).
+ */
+function MissingAppsModal({
+  title,
+  subtitle,
+  rows,
+  ownersReady,
+  onClose,
+}: {
+  title: string;
+  subtitle: string;
+  rows: MissingRow[];
+  ownersReady: boolean;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const list = useMemo(() => {
+    const n = q.trim().toLowerCase();
+    return rows.filter(
+      (r) =>
+        !n ||
+        r.app.toLowerCase().includes(n) ||
+        r.namespaces.some((x) => x.includes(n)) ||
+        r.owner.groups.some((g) => g.toLowerCase().includes(n)) ||
+        r.owner.emails.some((e) => e.toLowerCase().includes(n)),
+    );
+  }, [rows, q]);
+  const emails = useMemo(() => [...new Set(list.flatMap((r) => r.owner.emails))], [list]);
+  const teams = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of list)
+      m.set(
+        r.owner.groups[0] || '(ekip bilinmiyor)',
+        (m.get(r.owner.groups[0] || '(ekip bilinmiyor)') || 0) + 1,
+      );
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [list]);
+  const copyEmails = async () => {
+    try {
+      await navigator.clipboard.writeText(emails.join('; '));
+      toast.success(`${emails.length} e-posta adresi panoya kopyalandı.`);
+    } catch {
+      toast.error('Panoya kopyalanamadı; CSV indirip oradan alın.');
+    }
+  };
+  const csv = () => {
+    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const body = [
+      ['uygulama', 'namespace', 'ekip', 'eposta', 'eksik', 'ayrinti'],
+      ...list.map((r) => [
+        r.app,
+        r.namespaces.join(' '),
+        r.owner.groups.join(' | '),
+        r.owner.emails.join(' | '),
+        r.what,
+        r.detail || '',
+      ]),
+    ]
+      .map((r) => r.map(esc).join(';'))
+      .join('\r\n');
+    const url = URL.createObjectURL(
+      new Blob(['\ufeff' + body], { type: 'text/csv;charset=utf-8' }),
+    );
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={title}
+      subtitle={subtitle}
+      icon={UsersIcon}
+      size="xl"
+      footer={
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            {fmtNumber(list.length)} uygulama · {fmtNumber(emails.length)} farklı e-posta
+            {!ownersReady && (
+              <span style={{ color: 'var(--status-warning)' }}>
+                {' '}
+                · sahiplik tablosu okunamadı (dbo.Openshift_Namespace_Owners)
+              </span>
+            )}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={csv}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
+            >
+              <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
+            </button>
+            <button
+              onClick={copyEmails}
+              disabled={emails.length === 0}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
+              style={{ background: 'var(--accent)' }}
+            >
+              <ClipboardDocumentIcon className="w-3.5 h-3.5" /> E-postaları kopyala
+            </button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="uygulama, namespace, ekip ya da e-posta ara"
+            className="px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-72 bg-[var(--bg-surface)]"
+          />
+          <span className="flex flex-wrap gap-1 text-[10px]">
+            {teams.slice(0, 8).map(([t, n]) => (
+              <button
+                key={t}
+                onClick={() => setQ(t === '(ekip bilinmiyor)' ? '' : t)}
+                className="px-1.5 py-0.5 rounded border hover:bg-[var(--bg-elevated)]"
+                style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}
+                title="bu ekibe süz"
+              >
+                {t} <b>{n}</b>
+              </button>
+            ))}
+          </span>
+        </div>
+        <div
+          className="overflow-auto max-h-[60vh] rounded-lg border"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
+          <table className="w-full text-[11px]">
+            <thead
+              className="sticky top-0"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            >
+              <tr>
+                <th className="text-left px-2 py-1.5 font-semibold">Uygulama</th>
+                <th className="text-left px-2 py-1.5 font-semibold">Namespace</th>
+                <th
+                  className="text-left px-2 py-1.5 font-semibold"
+                  title="namespace'in CMDB sahibi (dbo.Openshift_Namespace_Owners)"
+                >
+                  Ekip
+                </th>
+                <th className="text-left px-2 py-1.5 font-semibold">E-posta</th>
+                <th className="text-left px-2 py-1.5 font-semibold">Eksik olan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((r) => (
+                <tr
+                  key={r.app + r.namespaces.join()}
+                  className="border-t align-top"
+                  style={{ borderColor: 'var(--border-subtle)' }}
+                >
+                  <td
+                    className="px-2 py-1 font-mono whitespace-nowrap"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    {r.app}
+                  </td>
+                  <td
+                    className="px-2 py-1 font-mono whitespace-nowrap"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {r.namespaces.join(', ') || '—'}
+                  </td>
+                  <td className="px-2 py-1">
+                    <OwnerCell owner={r.owner} ready={ownersReady} />
+                  </td>
+                  <td className="px-2 py-1 font-mono" style={{ color: 'var(--text-muted)' }}>
+                    {r.owner.emails.join(', ') || '—'}
+                  </td>
+                  <td className="px-2 py-1 whitespace-nowrap" title={r.detail}>
+                    <span>{r.what}</span>
+                    {r.detail && (
+                      <div className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                        {r.detail}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {list.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-2 py-4 text-center"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {rows.length
+                      ? 'Aramaya uyan uygulama yok.'
+                      : 'Eksik uygulama yok — hepsi deploy olmuş.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Bir IP'ye cozen route'lar: ortamla suzulu, SPA / SPA-disi / hepsi, arama, CSV. */
+function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose: () => void }) {
+  const [rows, setRows] = useState<RouteOfIp[] | null>(null);
+  const [err, setErr] = useState('');
+  const [kind, setKind] = useState<'all' | 'spa' | 'nonSpa'>('all');
+  const [q, setQ] = useState('');
+  useEffect(() => {
+    let alive = true;
+    setRows(null);
+    denetimApi
+      .routesOfIp({ ip, env, kind: 'all' })
+      .then((r) => {
+        if (!alive) return;
+        if (r.ok) setRows(r.rows);
+        else setErr(r.message || 'Route listesi alınamadı.');
+      })
+      .catch((e: unknown) => alive && setErr(e instanceof Error ? e.message : String(e)));
+    return () => {
+      alive = false;
+    };
+  }, [ip, env]);
+  const list = useMemo(() => {
+    const n = q.trim().toLowerCase();
+    return (rows || []).filter(
+      (r) =>
+        (kind === 'all' || r.kind === kind) &&
+        (!n ||
+          r.namespace.includes(n) ||
+          r.address.toLowerCase().includes(n) ||
+          r.route.toLowerCase().includes(n)),
+    );
+  }, [rows, kind, q]);
+  const counts = useMemo(
+    () => ({
+      all: rows?.length || 0,
+      spa: rows?.filter((r) => r.kind === 'spa').length || 0,
+      nonSpa: rows?.filter((r) => r.kind === 'nonSpa').length || 0,
+    }),
+    [rows],
+  );
+  const csv = () => {
+    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const body = [
+      ['ip', 'ortam', 'namespace', 'route', 'adres', 'tip', 'tur'],
+      ...list.map((r) => [ip, env, r.namespace, r.route, r.address, r.type, r.kind]),
+    ]
+      .map((r) => r.map(esc).join(';'))
+      .join('\r\n');
+    const url = URL.createObjectURL(
+      new Blob(['\ufeff' + body], { type: 'text/csv;charset=utf-8' }),
+    );
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `route_ip_${ip.replace(/[^0-9a-z]/gi, '_')}_${env}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const KIND_LABEL = { all: 'hepsi', spa: 'SPA', nonSpa: 'SPA değil' } as const;
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${ip} → route’lar`}
+      subtitle={`${env} ortamında bu IP’ye çözen route’lar (route_inventory nslookup)`}
+      icon={GlobeAltIcon}
+      size="xl"
+      footer={
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            {rows ? `${fmtNumber(list.length)} route` : ''}
+          </span>
+          <button
+            onClick={csv}
+            disabled={!rows}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)] disabled:opacity-50"
+          >
+            <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="namespace, route ya da adres ara"
+            className="px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-64 bg-[var(--bg-surface)]"
+          />
+          <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)]">
+            {(['all', 'spa', 'nonSpa'] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                className={`px-2 py-0.5 text-[11px] rounded-md ${kind === k ? 'bg-[var(--bg-surface)] shadow-sm font-semibold' : ''}`}
+                style={{ color: kind === k ? 'var(--text-primary)' : 'var(--text-muted)' }}
+              >
+                {KIND_LABEL[k]} <span className="tabular-nums">{fmtNumber(counts[k])}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {err && <div className="text-xs text-red-600">{err}</div>}
+        {!rows && !err && (
+          <div className="py-4 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
+            Yükleniyor…
+          </div>
+        )}
+        {rows && (
+          <div
+            className="overflow-auto max-h-[60vh] rounded-lg border"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
+            <table className="w-full text-[11px]">
+              <thead
+                className="sticky top-0"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+              >
+                <tr>
+                  <th className="text-left px-2 py-1.5 font-semibold">Namespace</th>
+                  <th className="text-left px-2 py-1.5 font-semibold">Route</th>
+                  <th className="text-left px-2 py-1.5 font-semibold">Adres</th>
+                  <th className="text-left px-2 py-1.5 font-semibold">Tip</th>
+                  <th className="text-left px-2 py-1.5 font-semibold">Tür</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((r, i) => (
+                  <tr
+                    key={r.namespace + r.address + i}
+                    className="border-t"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                  >
+                    <td
+                      className="px-2 py-1 font-mono whitespace-nowrap"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {r.namespace}
+                    </td>
+                    <td
+                      className="px-2 py-1 font-mono whitespace-nowrap"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      {r.route}
+                    </td>
+                    <td className="px-2 py-1 font-mono">{r.address}</td>
+                    <td className="px-2 py-1 whitespace-nowrap">{r.type}</td>
+                    <td className="px-2 py-1 whitespace-nowrap">
+                      {r.kind === 'spa'
+                        ? 'SPA'
+                        : r.kind === 'nonSpa'
+                          ? 'SPA değil'
+                          : 'sınıflanamadı'}
+                    </td>
+                  </tr>
+                ))}
+                {list.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-2 py-4 text-center"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Route yok.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+const rowsFromCoverage = (list: SpaMissingApp[]): MissingRow[] =>
+  list.map((x) => ({
+    app: x.app,
+    namespaces: x.namespaces,
+    owner: x.owner,
+    what: x.kind === 'partial' ? 'yarım kurulum' : 'hiç deploy olmamış',
+    detail:
+      x.kind === 'partial'
+        ? (x.hosts || []).map((h) => `${h.host}: ${h.missing.join(', ')} yok`).join(' · ')
+        : undefined,
+  }));
+const rowsFromMigration = (groups: NginxMigrationGroup[]): MissingRow[] =>
+  groups.flatMap((g) =>
+    g.apps
+      .filter((a: NginxMigrationApp) => a.status !== 'ready')
+      .map((a) => ({
+        app: a.application,
+        namespaces: [a.namespace],
+        owner: a.owner || { groups: [], emails: [], unknownNs: [a.namespace] },
+        what:
+          a.status === 'missing'
+            ? 'hiçbir yeni sunucuda yok'
+            : a.status === 'partial'
+              ? `kısmi (${a.readyHosts}/${g.newHosts.length} sunucu hazır)`
+              : 'yeni sunucular taranmadı',
+        detail: g.newHosts
+          .filter((h) => {
+            const f = a.perHost[h];
+            return !(f && f.hys && f.app);
+          })
+          .map((h) => `${h}${a.perHost[h] === null ? ' (taranmadı)' : ''}`)
+          .join(', '),
+      })),
+  );
 
 const ENV_ORDER = ['DEV', 'TEST', 'QA', 'EDU', 'PROD'];
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
@@ -75,6 +516,42 @@ function Bar({
   );
 }
 
+/** Tiklanabilir hucre govdesi: eksik varsa "N eksik → listele" ipucu, yoksa duz. */
+function ClickCell({
+  count,
+  disabled = false,
+  onClick,
+  children,
+}: {
+  count: number;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  if (disabled) return <div className="space-y-1">{children}</div>;
+  return (
+    <button
+      onClick={onClick}
+      className="block w-full text-left space-y-1 rounded-lg -mx-1 px-1 py-0.5 hover:bg-[var(--bg-elevated)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      title={
+        count > 0
+          ? `${fmtNumber(count)} uygulama deploy olmamış — tıklayın, sahipleriyle listelensin`
+          : 'eksik yok'
+      }
+    >
+      {children}
+      {count > 0 && (
+        <span
+          className="block text-[10px] underline decoration-dotted"
+          style={{ color: 'var(--accent)' }}
+        >
+          {fmtNumber(count)} eksik → sahipleriyle listele
+        </span>
+      )}
+    </button>
+  );
+}
+
 function Big({ n, of, label }: { n: number; of?: number; label?: string }) {
   return (
     <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
@@ -95,7 +572,7 @@ function Big({ n, of, label }: { n: number; of?: number; label?: string }) {
   );
 }
 
-function IpCell({ e }: { e: RouteStatsEnv }) {
+function IpCell({ e, onPick }: { e: RouteStatsEnv; onPick: (ip: string) => void }) {
   const [open, setOpen] = useState(false);
   const ips = e.spaIps;
   if (ips.length === 0 && !e.unresolvedIp.spa)
@@ -104,18 +581,23 @@ function IpCell({ e }: { e: RouteStatsEnv }) {
   return (
     <div className="space-y-0.5">
       {shown.map((x) => (
-        <div
+        // IP tiklanir: bu IP'ye cozen route'lar pencerede (kullanici, 2026-09-17)
+        <button
           key={x.ip}
-          className="flex items-center gap-1.5 whitespace-nowrap"
-          title={`örnek: ${x.samples.join(', ')}`}
+          onClick={() => onPick(x.ip)}
+          className="flex items-center gap-1.5 whitespace-nowrap rounded px-0.5 hover:bg-[var(--bg-elevated)]"
+          title={`örnek: ${x.samples.join(', ')} — tıklayın, bu IP’ye çözen route’lar listelensin`}
         >
-          <span className="font-mono text-[11px]" style={{ color: 'var(--text-primary)' }}>
+          <span
+            className="font-mono text-[11px] underline decoration-dotted"
+            style={{ color: 'var(--text-primary)' }}
+          >
             {x.ip}
           </span>
           <span className="text-[10px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
             ×{fmtNumber(x.count)}
           </span>
-        </div>
+        </button>
       ))}
       {e.unresolvedIp.spa > 0 && (
         <div
@@ -145,6 +627,11 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
   const [mig, setMig] = useState<NginxMigrationResult | null>(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
+  // Tiklanan hucre -> eksik uygulamalar penceresi
+  const [open, setOpen] = useState<{ title: string; subtitle: string; rows: MissingRow[] } | null>(
+    null,
+  );
+  const [ipOpen, setIpOpen] = useState<{ ip: string; env: string } | null>(null);
 
   // `useAsyncEffect`: is effect flush'indan SONRAKI mikro-goreve ertelenir, yani
   // asagidaki `setLoading(true)` effect govdesinde SENKRON degildir (React 19'un
@@ -153,7 +640,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
   useAsyncEffect(async (alive) => {
     setLoading(true);
     // Uc uc BAGIMSIZ: biri dusse de digerleri gosterilir (route tablosu yoksa sutun "—").
-    Promise.allSettled([
+    await Promise.allSettled([
       denetimApi.spaCoverage('ark'),
       denetimApi.routeStats('ark'),
       denetimApi.nginxMigration(),
@@ -331,17 +818,29 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                   <td className="px-3 py-2.5 min-w-[13rem]" style={hl('internet')}>
                     {c ? (
                       <div className="space-y-1">
-                        <Big
-                          n={c.measured ? c.internetInNginx : 0}
-                          of={c.internetTotal}
-                          label={env === 'PROD' ? 'eski sunucuda proxy' : 'tanımlı'}
-                        />
-                        <Bar
-                          value={c.internetInNginx}
-                          total={c.internetTotal}
-                          measured={c.measured}
-                          title="nginx’te tanımlı / internete açık SPA"
-                        />
+                        <ClickCell
+                          disabled={!c.measured}
+                          count={c.internetMissingCount}
+                          onClick={() =>
+                            setOpen({
+                              title: `${env} · nginx’te tanımı olmayan internet SPA’ları`,
+                              subtitle: `${fmtNumber(c.internetMissingCount)} uygulama · route tipi passthrough, internete açık nginx’lerde location tanımı yok`,
+                              rows: rowsFromCoverage(c.missingDetail?.internet || []),
+                            })
+                          }
+                        >
+                          <Big
+                            n={c.measured ? c.internetInNginx : 0}
+                            of={c.internetTotal}
+                            label={env === 'PROD' ? 'eski sunucuda proxy' : 'tanımlı'}
+                          />
+                          <Bar
+                            value={c.internetInNginx}
+                            total={c.internetTotal}
+                            measured={c.measured}
+                            title="nginx’te tanımlı / internete açık SPA"
+                          />
+                        </ClickCell>
                         {env === 'PROD' && prodNew && (
                           <div
                             className="rounded-lg px-2 py-1.5 mt-1 border"
@@ -358,14 +857,23 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                             </div>
                             {prodNew.scanned ? (
                               <>
-                                <div className="flex items-center gap-2">
+                                <ClickCell
+                                  count={prodNew.apps - prodNew.ready}
+                                  onClick={() =>
+                                    setOpen({
+                                      title: 'PROD · yeni sunuculara deploy olmamış SPA’lar',
+                                      subtitle: `${fmtNumber(prodNew.apps - prodNew.ready)} uygulama · eski GBRVP* sunucusunda proxy ile sunuluyor, yeni GBNGXP* sunucularının hepsinde hysdeploy + applications dizini yok`,
+                                      rows: rowsFromMigration(mig?.groups || []),
+                                    })
+                                  }
+                                >
                                   <Big n={prodNew.ready} of={prodNew.apps} label="uygulama" />
-                                </div>
-                                <Bar
-                                  value={prodNew.ready}
-                                  total={prodNew.apps}
-                                  title="hazır = her yeni sunucuda hysdeploy + applications dizini var"
-                                />
+                                  <Bar
+                                    value={prodNew.ready}
+                                    total={prodNew.apps}
+                                    title="hazır = her yeni sunucuda hysdeploy + applications dizini var"
+                                  />
+                                </ClickCell>
                                 <div
                                   className="text-[10px] mt-0.5"
                                   style={{ color: 'var(--text-muted)' }}
@@ -400,17 +908,29 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                   <td className="px-3 py-2.5 min-w-[13rem]" style={hl('intranet')}>
                     {c ? (
                       <div className="space-y-1">
-                        <Big
-                          n={c.measuredIntranet ? c.intranetFull : 0}
-                          of={c.intranetTotal}
-                          label="tam kurulu"
-                        />
-                        <Bar
-                          value={c.intranetFull}
-                          total={c.intranetTotal}
-                          measured={c.measuredIntranet}
-                          title="üç dizin de yerinde / intranet SPA"
-                        />
+                        <ClickCell
+                          disabled={!c.measuredIntranet}
+                          count={c.intranetMissingCount + c.intranetPartialCount}
+                          onClick={() =>
+                            setOpen({
+                              title: `${env} · intranet nginx’lerine kurulmamış SPA’lar`,
+                              subtitle: `${fmtNumber(c.intranetMissingCount)} hiç yok · ${fmtNumber(c.intranetPartialCount)} yarım (üç dizinden biri eksik)`,
+                              rows: rowsFromCoverage(c.missingDetail?.intranet || []),
+                            })
+                          }
+                        >
+                          <Big
+                            n={c.measuredIntranet ? c.intranetFull : 0}
+                            of={c.intranetTotal}
+                            label="tam kurulu"
+                          />
+                          <Bar
+                            value={c.intranetFull}
+                            total={c.intranetTotal}
+                            measured={c.measuredIntranet}
+                            title="üç dizin de yerinde / intranet SPA"
+                          />
+                        </ClickCell>
                         {c.measuredIntranet &&
                           (c.intranetPartialCount > 0 || c.intranetMissingCount > 0) && (
                             <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
@@ -435,10 +955,14 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                   <td className="px-3 py-2.5">
                     {r ? (
                       <div className="space-y-0.5">
-                        <Big n={r.routes} label="route" />
+                        <Big n={r.spa} of={r.routes} label="SPA route" />
+                        <Bar
+                          value={r.spa}
+                          total={r.routes}
+                          title="SPA uygulamalarına ait route / ortamdaki tüm route'lar"
+                        />
                         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          SPA <b style={{ color: 'var(--text-secondary)' }}>{fmtNumber(r.spa)}</b> (
-                          {pctText(pct(r.spa, r.routes))}) · SPA değil {fmtNumber(r.nonSpa)}
+                          SPA değil {fmtNumber(r.nonSpa)}
                           {r.unclassified ? ` · sınıflanamadı ${fmtNumber(r.unclassified)}` : ''}
                         </div>
                         <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
@@ -456,7 +980,11 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                     )}
                   </td>
                   <td className="px-3 py-2.5">
-                    {r ? <IpCell e={r} /> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    {r ? (
+                      <IpCell e={r} onPick={(ip) => setIpOpen({ ip, env })} />
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                    )}
                   </td>
                 </tr>
               );
@@ -475,15 +1003,27 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
           </tbody>
         </table>
       </div>
+      {ipOpen && <IpRoutesModal ip={ipOpen.ip} env={ipOpen.env} onClose={() => setIpOpen(null)} />}
+      {open && (
+        <MissingAppsModal
+          title={open.title}
+          subtitle={open.subtitle}
+          rows={open.rows}
+          ownersReady={cov.ownersReady !== false}
+          onClose={() => setOpen(null)}
+        />
+      )}
       <div
         className="px-4 py-2 border-t text-[10px] leading-relaxed"
         style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}
       >
-        <b>SPA</b> = OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama;
-        sayım uygulama × ortam. <b>İnternet</b> = route tipi passthrough, nginx’te location tanımı
-        aranır (PROD’da eski GBRVP* sunucularının proxy_pass’i). <b>İntranet</b> = route tipi
-        reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. <b>Taralı</b> = o
-        ortam için nginx kaydı yok, ölçülemedi.
+        <b>Tıklayın:</b> sayıya tıklayınca o ortamda henüz deploy olmamış uygulamalar ve sahipleri
+        (ekip, e-posta), IP’ye tıklayınca o IP’ye çözen route’lar listelenir. <b>SPA</b> =
+        OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım
+        uygulama × ortam. <b>İnternet</b> = route tipi passthrough, nginx’te location tanımı aranır
+        (PROD’da eski GBRVP* sunucularının proxy_pass’i). <b>İntranet</b> = route tipi reencrypt,
+        intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. <b>Taralı</b> = o ortam için
+        nginx kaydı yok, ölçülemedi.
         {routes?.routeTableMissing && (
           <span style={{ color: 'var(--status-warning)' }}>
             {' '}

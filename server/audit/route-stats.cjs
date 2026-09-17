@@ -116,4 +116,33 @@ function buildRouteStats(routeRows) {
   };
 }
 
-module.exports = { buildRouteStats, appFromAddress, SPA_RE };
+/**
+ * Bir IP'ye cozen route'lar (kullanici, 2026-09-17: "IP'ye tikladigimda hangi route'lar
+ * cozuyor"). Ortam namespace ekinden; kind = spa | nonSpa | all.
+ * @returns {{namespace:string, route:string, address:string, type:string, kind:'spa'|'nonSpa'|'unclassified', cluster:string}[]}
+ */
+function routesOfIp(routeRows, ip, env, kind = 'all') {
+  const want = String(ip || '').trim();
+  const E = String(env || '').trim().toUpperCase();
+  const out = [];
+  for (const r of routeRows || []) {
+    if (String(r.resolved_ip || '').trim() !== want) continue;
+    const ns = L(r.namespace_name);
+    const e = envOfNamespace(ns);
+    if (E && (!e || e.toUpperCase() !== E)) continue;
+    const app = appFromAddress(r.route_address, ns) || L(r.route_name) || null;
+    const k = !app ? 'unclassified' : SPA_RE.test(app) ? 'spa' : 'nonSpa';
+    if (kind !== 'all' && k !== kind) continue;
+    out.push({
+      namespace: ns,
+      route: String(r.route_name || '').trim(),
+      address: String(r.route_address || '').trim(),
+      type: L(r.termination_type) || 'yok',
+      kind: k,
+      cluster: String(r.cluster_name || '').trim(),
+    });
+  }
+  return out.sort((a, b) => a.namespace.localeCompare(b.namespace) || a.address.localeCompare(b.address));
+}
+
+module.exports = { buildRouteStats, routesOfIp, appFromAddress, SPA_RE };
