@@ -1691,7 +1691,23 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
     // Aynaya NE YAZILDIGI da ayri bir iz — asagida bkz. `scalex_mirror_update`.
     const mirror = { stopped: [], restored: [], unlocked: [] };
     for (const t of parsed.targets) {
-      if (t.status !== 'OK') {
+      // ── "UYGULANDI MI" ile "OK MI" AYRI SORULAR ────────────────────────────
+      //
+      // URETIM (2026-09-17, is #3326330): geri alma WARN dondu, portal "geri
+      // alinamadi" yazdi, uygulama AYAKTAYDI (replicas 1, readyReplicas 1, pod
+      // Running) ve ayni is `STATE;OK;Deleted restore state ConfigMap` basmisti.
+      // Betik isi basarili saydi, portal basarisiz — iki taraf ZIT karar verdi.
+      //
+      // Sebep: acmada pod'un hazir olmasi butceyi gecince betik UYARIR ve isi
+      // basarili sayar (kullanici karari: "beklemeyi birak, uyari yaz, is
+      // basarili bitsin"). O hedef `WARN` doner; `status !== 'OK'` onu HATA
+      // sayiyordu. Karar artik `verified` alanindan geliyor: replica degisikligi
+      // CLUSTER'DA UYGULANDI mi?
+      //
+      // `verified` YOKSA (paket 7 ve oncesi) `false` gelir ve ESKI davranis
+      // gecerli olur — geriye uyumlu.
+      const applied = t.status === 'OK' || t.verified === true;
+      if (!applied) {
         // BASARISIZ GERI ALMA: kilit BIZDE kalmamali. Basarili yolda satir zaten
         // siliniyor (`clearRestored`), ama FAIL/WARN donen bir hedefin ayna satiri
         // `restoring` fazinda asili kalirdi ve kullanici o uygulamayi bir daha hic
@@ -1756,7 +1772,12 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
           namespace: op.namespace,
           appName: t.app,
         });
-        mirror.restored.push(`${t.cluster}/${t.app}`);
+        // IZDE AYRIMI KORU: "OK" ile "uygulandi ama pod hazir olmayi surduruyor"
+        // ayni sey degil. Ayna ikisinde de temizlenir (kayit anlamsizlastigi icin)
+        // ama denetim kaydi hangisinin yasandigini SOYLEMELI.
+        mirror.restored.push(
+          t.status === 'OK' ? `${t.cluster}/${t.app}` : `${t.cluster}/${t.app} (uyarili)`,
+        );
       }
     }
     // AYNA DEGISIKLIGI AYRI BIR IZ. Sapma tespitinin ("biri portal disindan is

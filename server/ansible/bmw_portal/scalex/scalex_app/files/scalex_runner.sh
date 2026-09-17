@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="7"
+PACKAGE_VERSION="8"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -1013,8 +1013,18 @@ verify_replicas() {
           "scale 0 komutu calisti ama 0 olmasi $(human_seconds "$VERIFY_WARN_SECONDS") gecti; hala $RV_CURRENT pod var — beklemeye devam ediliyor (fail esigi $(human_seconds "$VERIFY_FAIL_SECONDS"))"
       else
         # ACMA: uyar ve BIRAK — is basarili sayilir.
+        #
+        # `applied=yes` MAKINE BELIRTECI. `VERIFY;OK` BASMIYORUZ: pod hazir degilken
+        # "dogrulandi" demek yalan olurdu. Ama rapor asamasi (20_build_report.yml)
+        # hedef durumunu `VERIFY;OK` satirinin VARLIGINA gore veriyordu, yani bu
+        # satir hicbir makine-okunur sinyal tasimadigi icin hedef "yalnizca uyari"
+        # dalina dusuyor, portal de onu GERI ALMA HATASI sayiyordu (2026-09-17
+        # uretim tespiti: is ConfigMap'i silmisti, ekran "geri alinamadi" diyordu).
+        # Dogru bilgi "uygulandi ama hazir degil" ve satir artik bunu SOYLUYOR.
+        # Bu dosyadaki tum detaylar zaten `anahtar=deger` tasiyor (expected=,
+        # desired=, ready=) — yeni bir sozlesme degil, mevcut sozlesmenin kullanimi.
         log "$CLUSTER" "$JUMP_SERVER" "$app" "$display" "VERIFY" "WARN" \
-          "aciliyor, $RV_READY/$target, $(human_seconds "$VERIFY_WARN_SECONDS") bekleniyor; replica degisikligi UYGULANDI, pod hazir olmayi surduruyor"
+          "applied=yes aciliyor, $RV_READY/$target, $(human_seconds "$VERIFY_WARN_SECONDS") bekleniyor; replica degisikligi UYGULANDI, pod hazir olmayi surduruyor"
         return 0
       fi
     fi

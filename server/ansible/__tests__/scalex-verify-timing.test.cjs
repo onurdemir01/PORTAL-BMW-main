@@ -155,7 +155,11 @@ test('VT3 KAPATMA: uyari esiginde BEKLEMEYE DEVAM, fail esiginde FAIL', () => {
 
 test('VT4 ACMA: uyari esiginde BIRAK ve BASARILI don (FAIL YOK)', () => {
   const r = verify({ state: '1|1|0', target: 1, warn: 2, fail: 4 });
-  assert.match(r.out, /VERIFY;WARN;aciliyor, 0\/1/, '"aciliyor, 0/1" uyarisi yok');
+  // `applied=yes` MAKINE BELIRTECI uyari metninden ONCE gelir: rapor asamasi
+  // hedefi "uygulandi ama hazir degil" diye siniflandirabilsin (bkz.
+  // scalex-report-verified.test.cjs). Belirtec olmadan portal bunu geri alma
+  // HATASI sayiyordu (2026-09-17, is #3326330).
+  assert.match(r.out, /VERIFY;WARN;applied=yes aciliyor, 0\/1/, '"aciliyor, 0/1" uyarisi yok');
   assert.doesNotMatch(r.out, /VERIFY;FAIL/, 'acmada FAIL uretilmis — karar tablosuna aykiri');
   assert.match(r.out, /RC=0/, 'acma uyaridan sonra basarili bitmeli');
 });
