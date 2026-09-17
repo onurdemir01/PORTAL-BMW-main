@@ -294,7 +294,7 @@ export function NginxApiEnvanteri() {
       {view === 'sunucu' && (
         <Panel
           title="Sunucuya göre"
-          description="Her sunucuda kaç konfigürasyonda toplam kaç API (location) bloğu tanımlı. Aynı ortamdaki sunucuların birbirine eşit olması beklenir."
+          description="Her sunucuda kaç konfigürasyonda toplam kaç API (location) bloğu tanımlı. Servis = sunucunun vhost dosyası (nginx_audit); aynı ortam ve servisteki sunucuların birbirine eşit olması beklenir."
           actions={
             <button
               onClick={() =>
@@ -302,6 +302,7 @@ export function NginxApiEnvanteri() {
                   'nginx_api_sunucu',
                   [
                     'sunucu',
+                    'servis',
                     'ortam',
                     'lokasyon',
                     'konfigurasyon',
@@ -310,6 +311,7 @@ export function NginxApiEnvanteri() {
                   ],
                   data.byHost.map((r) => [
                     r.host,
+                    (r.services || []).join(' '),
                     r.env,
                     r.site,
                     r.configs,
@@ -329,6 +331,9 @@ export function NginxApiEnvanteri() {
             <thead>
               <tr>
                 <Th>Sunucu</Th>
+                {/* Servis = vhost dosyasi (kullanici, 2026-09-17): sunucular mblcustomers /
+                    customers / mcustomers gibi servislere gore ayrilir. */}
+                <Th>Servis</Th>
                 <Th>Ortam</Th>
                 <Th>Lokasyon</Th>
                 <Th align="right">Konfigürasyon</Th>
@@ -340,6 +345,17 @@ export function NginxApiEnvanteri() {
               {data.byHost.map((r) => (
                 <tr key={r.host}>
                   <Td className="font-mono">{r.host}</Td>
+                  <Td title={(r.serverNames || []).length ? `server_name: ${r.serverNames.join(', ')}` : 'nginx_audit (nginx -T) verisi yok — servis vhost dosyasından okunur'}>
+                    {(r.services || []).length ? (
+                      <span className="inline-flex flex-wrap gap-1">
+                        {r.services.map((sv) => (
+                          <span key={sv} className="px-1.5 py-0.5 rounded border text-[10px] font-mono" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>{sv}</span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span className="text-[var(--text-muted)]">—</span>
+                    )}
+                  </Td>
                   <Td>{r.env}</Td>
                   <Td className="text-[var(--text-muted)]">{r.site || '—'}</Td>
                   <Td align="right" className="tabular-nums">

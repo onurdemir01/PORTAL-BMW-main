@@ -1174,7 +1174,7 @@ function initDenetim(app) {
         });
       }
 
-      const [aggRes, datesRes] = await Promise.all([
+      const [aggRes, datesRes, srvRes] = await Promise.all([
         query(
           `SELECT host, config_file,
                   COUNT(*) AS locations,
@@ -1191,11 +1191,17 @@ function initDenetim(app) {
           `SELECT DISTINCT CONVERT(varchar(10), scan_date, 23) AS d
              FROM dbo.NginxRateLimitInventory ORDER BY d DESC`,
         ),
+        // Sunucunun SERVISI (vhost dosyasi) nginx_audit'in server bloklarindan; tablo
+        // yoksa ya da job kosmadiysa sutun "—" kalir, ekran calisir.
+        query(
+          `SELECT host, conf_file, server_name FROM dbo.Nginx_Audit_Servers
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Servers)`,
+        ).catch(() => ({ recordset: [] })),
       ]);
 
       // Toplama mantigi SAF ve AYRI: DB olmadan test edilebilsin diye
       // (bkz. __tests__/nginx-api-summary.test.cjs).
-      const summary = summarize(aggRes.recordset || []);
+      const summary = summarize(aggRes.recordset || [], srvRes.recordset || []);
       res.json({
         ok: true,
         scanDate: effectiveDate,

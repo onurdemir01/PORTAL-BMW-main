@@ -765,6 +765,10 @@ export interface NginxApiHostRow {
   env: string;
   /** Yalnizca production icin anlamli: "Ankara" | "Pendik" | "". */
   site: string;
+  /** Sunucunun servis(ler)i = vhost dosyalari (mblcustomers, customers, mcustomers...);
+   *  nginx_audit server bloklarindan. Bos = audit verisi yok. */
+  services: string[];
+  serverNames: string[];
   configs: number;
   locations: number;
   noLimitLocations: number;

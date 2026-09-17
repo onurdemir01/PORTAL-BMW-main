@@ -11,10 +11,40 @@
 const { envOfHost, siteOfHost, orderEnvs, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
 
 /**
+ * Sunucunun SERVISI (kullanici, 2026-09-17: "sunucular mblcustomers / customers / mcustomers
+ * servislerine gore ayriliyor"). NginxRateLimitInventory yalniz <api>.conf adini tutar,
+ * kanal (vhost) dizinini tutmaz; servis bu yuzden nginx_audit'in (nginx -T) server
+ * bloklarindan okunur: dbo.Nginx_Audit_Servers.conf_file -> "mblcustomers-PROD.conf" ->
+ * "mblcustomers" (ortam eki ve .conf atilir). Sunucudaki her vhost bir servistir.
+ * @param {{host:string, conf_file:string, server_name?:string}[]} serverRows
+ * @returns Map<host, {services:string[], names:string[]}>
+ */
+function servicesOfHosts(serverRows) {
+  const m = new Map();
+  for (const r of serverRows || []) {
+    const host = String(r.host || '').trim();
+    const file = String(r.conf_file || '').trim().split('/').pop() || '';
+    if (!host || !file) continue;
+    const svc = file
+      .replace(/\.conf$/i, '')
+      .replace(/-(dev|test|qa|edu|prod|production)$/i, '')
+      .toLowerCase();
+    if (!svc) continue;
+    if (!m.has(host)) m.set(host, { services: new Set(), names: new Set() });
+    const e = m.get(host);
+    e.services.add(svc);
+    for (const n of String(r.server_name || '').split(/\s+/)) if (n) e.names.add(n);
+  }
+  return new Map([...m.entries()].map(([h, e]) => [h, { services: [...e.services].sort(), names: [...e.names].sort() }]));
+}
+
+/**
  * @param {{host:string, config_file:string, locations:number, no_limit:number,
  *          ip_limited?:number, srv_limited?:number}[]} recordset
+ * @param {{host:string, conf_file:string, server_name?:string}[]} [serverRows]  Nginx_Audit_Servers (servis icin)
  */
-function summarize(recordset) {
+function summarize(recordset, serverRows) {
+  const svcOf = servicesOfHosts(serverRows);
   const raw = (recordset || []).map((r) => {
     const host = String(r.host || '').trim();
     return {
@@ -74,6 +104,9 @@ function summarize(recordset) {
     if (!hostAgg.has(r.host)) {
       hostAgg.set(r.host, {
         host: r.host, env: r.env, site: r.site,
+        // servis: vhost dosyalarindan (nginx_audit); yoksa bos liste -> ekranda "—"
+        services: svcOf.get(r.host)?.services || [],
+        serverNames: svcOf.get(r.host)?.names || [],
         configs: 0, locations: 0, noLimitLocations: 0,
       });
     }
@@ -83,7 +116,9 @@ function summarize(recordset) {
     h.noLimitLocations += r.noLimit;
   }
   const byHost = [...hostAgg.values()].sort(
-    (a, b) => (envRank.get(a.env) - envRank.get(b.env)) || a.host.localeCompare(b.host),
+    (a, b) => (envRank.get(a.env) - envRank.get(b.env))
+      || a.services.join(',').localeCompare(b.services.join(','))
+      || a.host.localeCompare(b.host),
   );
 
   // -- konfigurasyon kirilimi + FARKLAR ---------------------------------------
@@ -159,4 +194,4 @@ function summarize(recordset) {
   };
 }
 
-module.exports = { summarize };
+module.exports = { summarize, servicesOfHosts };

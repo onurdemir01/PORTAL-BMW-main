@@ -43,7 +43,6 @@ import EnvanterMetrics from '@/components/denetim/EnvanterMetrics';
 import EnvanterDegisim from '@/components/denetim/EnvanterDegisim';
 import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
 import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
-import { NginxLegacy } from '@/components/denetim/NginxLegacy';
 import { NginxAudit } from '@/components/denetim/NginxAudit';
 import NginxProdMigration from '@/components/denetim/NginxProdMigration';
 import { OwnerCell, ownerText } from '@/components/denetim/OwnerCell';
@@ -95,12 +94,7 @@ const HELP: HelpSection[] = [
   {
     icon: ServerStackIcon,
     title: 'Nginx Audit',
-    body: "TUM nginx sunucularinin konfigurasyon denetimi; veriyi bmw_nginx/nginx_audit isi uretir. Konfigurasyon 'nginx -T' ile okunur - yani include'lar dahil, nginx'in kendi gordugu haliyle; dosyalari tek tek okumak conf/ altindaki include'lari kacirirdi. Hostlar dbo.Inventory'den kesfedilir, sabit liste yoktur. Ortam once sunucu adi kalibindan, tutmazsa dbo.Inventory.env kaydindan gelir; ikisi de bilmiyorsa BILINMIYOR gorunur. Her satir bir SUNUCU; tiklayinca sunucunun KENDI SAYFASI acilir (/denetim/nginx-audit/<host>), bes bolum: (1) server bloklari - hangi ip:port dinleniyor, hangi sertifika sunuluyor; (2) location'lar dosya basina - kac tane, kaci proxy_pass tasiyor, kaci tanimli bir upstream'e gidiyor, kaci dogrudan DNS adina gidiyor (calisir ama resolve/keepalive/zone devre disi), kaci TANIMSIZ bir hedefe gidiyor (nginx BASLAMAZ); (3) upstream'ler - resolve/keepalive/zone var mi, en az bir location kullaniyor mu; (4) ayarlar - kurulum referansiyla (nginx_installation: bmw_defaults.conf, proxy_settings.conf, rate_limits.conf, nginx.conf) karsilastirma. AYAR MANTIGI: sunucudaki GLOBAL deger referanstan farkliysa bulgudur; bir location'in kendi icinde farkli deger vermesi (orn. 60s timeout) bulgu DEGIL yerel ayardir ve ayri listelenir. (5) kurulum dosyasi uyumu - nginx_installation/operations/files altindaki dosyalar (licences haric) sunucuya oldugu gibi kopyalanir; sunucudaki kopya referansla birebir mi, degilse hangi direktif eksik/degismis/fazla. Referans degerler koda gomulu degildir, her kosuda kurulum dosyalarindan okunur. Terimler icin sekmenin ustundeki Sozluk acilir. ISTISNA: yonetici bir sunucuyu not ile istisna yapabilir (en sagdaki sutun) - o satirda ayar sapmasi/atlayan/tanimsiz/dosya farki gosterilmez, toplam kartlarina girmez, siralamada sona duser; sunucu sayfasi ham veriyi gostermeye devam eder. Not zorunludur (neden istisna?). 'nginx -T' hata verdiyse sunucu HATA olarak isaretlenir: konfigurasyon reload edilemez. Legacy denetiminden ayridir: o 12 prod sunucusunu servis bazinda ve eslenik karsilastirmasiyla olcer.",
-  },
-  {
-    icon: ServerStackIcon,
-    title: 'Nginx Legacy (PROD)',
-    body: "Eski tip production nginx sunucularini (GBRVPP* / GBRVPAP*) olcer; veriyi bmw_nginx/nginx_legacy_audit isi uretir. Bu sunucularda SPA include deseni YOKTUR: tanimlar 'location X { proxy_pass https://<upstream>; }' seklindedir ve upstream bloklari cogunlukla ayri bir dosyadadir (<service>-<env>-upstreams.conf). Bu yuzden tane SERVIS'tir, location degil. Her satir bir servis; acilinca sunucu kirilimini ve bulgulari verir. SAYILAR TOPLANMAZ, EN YUKSEK SUNUCUDAN ALINIR - ayni tanim her eslenik sunucuda tekrar ettigi icin toplamak sunucu adedi kadar sisirilmis bir sayi uretirdi. 'Atlayan' sutunu, proxy_pass hedefi tanimli bir upstream OLMAYAN location sayisidir: o location dogrudan DNS adina gider, resolve/keepalive/zone avantajlarinin hicbiri devrede degildir. 'Kullanilmayan', tanimli ama hicbir location'in kullanmadigi upstream sayisidir. 'Eslenikler' sutunu ayni gruptaki sunucularin AYNI sayilari tasiyip tasimadigini soyler; gruplar A (GLOMO disi: GBRVPP01/02, GBRVPAP01/02) ve B (GLOMO: GBRVPP07-10, GBRVPAP03-06) seklindedir ve fark COGUNLUGA gore bulunur - ilk sunucu dogru varsayilmaz. DIKKAT: proxy_pass tasimayan location tek basina bulgu DEGILDIR; deny/return/rewrite/statik olanlar kasitli olarak proxy'sizdir ve 'diger' sutununda sayilir. Tablolar yoksa ekran 'bulgu yok' demez, DDL'in calistirilmadigini soyler.",
+    body: "TUM nginx sunucularinin konfigurasyon denetimi; veriyi bmw_nginx/nginx_audit isi uretir. Konfigurasyon 'nginx -T' ile okunur - yani include'lar dahil, nginx'in kendi gordugu haliyle; dosyalari tek tek okumak conf/ altindaki include'lari kacirirdi. Hostlar dbo.Inventory'den kesfedilir, sabit liste yoktur. Ortam once sunucu adi kalibindan, tutmazsa dbo.Inventory.env kaydindan gelir; ikisi de bilmiyorsa BILINMIYOR gorunur. Her satir bir SUNUCU; tiklayinca sunucunun KENDI SAYFASI acilir (/denetim/nginx-audit/<host>), bes bolum: (1) server bloklari - hangi ip:port dinleniyor, hangi sertifika sunuluyor; (2) location'lar dosya basina - kac tane, kaci proxy_pass tasiyor, kaci tanimli bir upstream'e gidiyor, kaci dogrudan DNS adina gidiyor (calisir ama resolve/keepalive/zone devre disi), kaci TANIMSIZ bir hedefe gidiyor (nginx BASLAMAZ); (3) upstream'ler - resolve/keepalive/zone var mi, en az bir location kullaniyor mu; (4) ayarlar - kurulum referansiyla (nginx_installation: bmw_defaults.conf, proxy_settings.conf, rate_limits.conf, nginx.conf) karsilastirma. AYAR MANTIGI: sunucudaki GLOBAL deger referanstan farkliysa bulgudur; bir location'in kendi icinde farkli deger vermesi (orn. 60s timeout) bulgu DEGIL yerel ayardir ve ayri listelenir. (5) kurulum dosyasi uyumu - nginx_installation/operations/files altindaki dosyalar (licences haric) sunucuya oldugu gibi kopyalanir; sunucudaki kopya referansla birebir mi, degilse hangi direktif eksik/degismis/fazla. Referans degerler koda gomulu degildir, her kosuda kurulum dosyalarindan okunur. Terimler icin sekmenin ustundeki Sozluk acilir. ISTISNA: yonetici bir sunucuyu not ile istisna yapabilir (en sagdaki sutun) - o satirda ayar sapmasi/atlayan/tanimsiz/dosya farki gosterilmez, toplam kartlarina girmez, siralamada sona duser; sunucu sayfasi ham veriyi gostermeye devam eder. Not zorunludur (neden istisna?). 'nginx -T' hata verdiyse sunucu HATA olarak isaretlenir: konfigurasyon reload edilemez. (Eski 'Nginx Legacy (PROD)' sekmesi 2026-09-17'de kaldirildi: burada gosterilenler onu kapsiyor.)",
   },
   {
     icon: ServerStackIcon,
@@ -161,7 +155,6 @@ type DenetimTab =
   | 'nginx'
   | 'nginxapi'
   | 'nginxenv'
-  | 'nginxlegacy'
   | 'nginxaudit'
   | 'ocp'
   | 'init'
@@ -170,7 +163,7 @@ type DenetimTab =
   | 'appenvs'
   | 'webapp';
 const DENETIM_TABS: DenetimTab[] = [
-  'nginx', 'nginxapi', 'nginxenv', 'nginxlegacy', 'nginxaudit', 'ocp', 'init',
+  'nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init',
   'envanter', 'degisim', 'appenvs', 'webapp',
 ];
 
@@ -240,7 +233,6 @@ export default function DenetimPage() {
               { id: 'nginx', label: 'Nginx SPA', icon: ServerStackIcon },
               { id: 'nginxapi', label: 'Nginx API Envanteri', icon: ServerStackIcon },
               { id: 'nginxenv', label: 'Nginx Envanteri', icon: ServerStackIcon },
-              { id: 'nginxlegacy', label: 'Nginx Legacy (PROD)', icon: ServerStackIcon },
               { id: 'nginxaudit', label: 'Nginx Audit', icon: ServerStackIcon },
               { id: 'ocp', label: 'OpenShift', icon: Squares2X2Icon },
               { id: 'init', label: 'Init Script', icon: DocumentDuplicateIcon },
@@ -272,7 +264,6 @@ export default function DenetimPage() {
       {tab === 'nginx' && <NginxSpaAudit />}
       {tab === 'nginxapi' && <NginxApiEnvanteri />}
       {tab === 'nginxenv' && <NginxEnvanteri />}
-      {tab === 'nginxlegacy' && <NginxLegacy />}
       {tab === 'nginxaudit' && <NginxAudit />}
       {tab === 'ocp' && <OcpCoverage />}
       {tab === 'init' && <InitScriptsAudit />}

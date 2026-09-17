@@ -11,7 +11,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { summarize } = require('../nginx-api-summary.cjs');
+const { summarize, servicesOfHosts } = require('../nginx-api-summary.cjs');
 const { envOfHost } = require('../nginx-hosts.cjs');
 
 const row = (host, config_file, locations, no_limit = 0) => ({
@@ -164,4 +164,22 @@ test('bos girdi cokmez ve DOLU yanitla ayni sekli tasir', () => {
   assert.deepEqual(s.noLimitConfigs, []);
   assert.equal(s.totals.hosts, 0);
   assert.ok(Array.isArray(s.envs));
+});
+
+test('sunucu basina SERVIS: vhost dosyasindan (ortam eki ve .conf atilir), audit verisi yoksa bos; siralama ortam > servis > ad (2026-09-17)', () => {
+  const servers = [
+    { host: 'GBNGWP02', conf_file: '/usr/nginx/conf.d/mblcustomers-PROD.conf', server_name: 'mblcustomers.garantibbva.com.tr' },
+    { host: 'GBNGWP01', conf_file: '/usr/nginx/conf.d/customers-PROD.conf', server_name: 'customers.garantibbva.com.tr www.customers.garantibbva.com.tr' },
+    { host: 'GBNGWP01', conf_file: '/usr/nginx/conf.d/customers-PROD.conf', server_name: 'customers.garantibbva.com.tr' }, // ikinci server blogu (443)
+    { host: 'GBNGWD01', conf_file: 'mcustomers-dev.conf' },
+  ];
+  const m = servicesOfHosts(servers);
+  assert.deepEqual(m.get('GBNGWP01'), { services: ['customers'], names: ['customers.garantibbva.com.tr', 'www.customers.garantibbva.com.tr'] });
+  assert.deepEqual(m.get('GBNGWD01').services, ['mcustomers']);
+  const out = summarize([row('GBNGWP01', 'a.conf', 3), row('GBNGWP02', 'a.conf', 3), row('GBNGWP03', 'a.conf', 3), row('GBNGWD01', 'a.conf', 1)], servers);
+  const by = Object.fromEntries(out.byHost.map((h) => [h.host, h]));
+  assert.deepEqual(by.GBNGWP02.services, ['mblcustomers']);
+  assert.deepEqual(by.GBNGWP03.services, []); // audit verisi yok -> "—"
+  assert.deepEqual(out.byHost.map((h) => h.host), ['GBNGWD01', 'GBNGWP03', 'GBNGWP01', 'GBNGWP02']); // DEV once; PROD icinde servissiz ('') once, sonra customers, mblcustomers
+  assert.deepEqual(summarize([row('GBNGWP01', 'a.conf', 1)]).byHost[0].services, []); // serverRows verilmezse de calisir
 });
