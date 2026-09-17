@@ -34,6 +34,11 @@ const STALE_DAYS = 7;
 // sekme sonsuza dek istek atmasin (WorkloadStep ile AYNI kural).
 const MAX_POLL_ERRORS = 3;
 
+// Sapma taramasinda her GRUP ayri bir AWX isi baslatir. Kapsamsiz liste (env/tenant
+// secilmemis) 500 satira kadar gelebilecegi icin bir tavan sart; tavan asilirsa tarama
+// BASLAMAZ — sessizce kirpmak "hepsi tarandi" yalanini geri getirirdi.
+const MAX_AUDIT_GROUPS = 12;
+
 function daysSince(iso: string | null): number | null {
   if (!iso) return null;
   const t = new Date(iso).getTime();
@@ -131,27 +136,66 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [hasRestoring, env, tenant]);
 
-  // GERCEK sapma taramasi: her cluster/namespace icin `state` keşfi koşar, sunucu iş
-  // bitince aynayı cluster gerçeğiyle karşılaştırıp `drift_status`u günceller.
+  // GERCEK sapma taramasi: her kapsam (env/tenant/cluster/namespace) icin `state`
+  // kesfi kosar, sunucu is bitince aynayi cluster gercegiyle karsilastirip
+  // `drift_status`u gunceller.
+  //
+  // KAPSAM SATIRIN KENDISINDEN GELIR, SAYFA PROP'UNDAN DEGIL. Onceden gruplar
+  // yalnizca `cluster|namespace` ile kuruluyor ve `discover`a bilesene gecilen
+  // `env`/`tenant` yollaniyordu. Panel kapsam SECILMEDEN de gorunuyor (bkz. `load`),
+  // yani bu iki deger BOS oluyordu; sunucu `resolveScope` ile 400 donuyor, dongu
+  // `continue` ile SESSIZCE yutuyor ve ekran yine de "tarandi" yaziyordu. Hicbir sey
+  // taranmiyordu. `ScaleXStoppedItem` zaten `env` ve `tenant` tasiyor.
   async function runAudit() {
     if (busyRef.current || !items.length) return;
+
+    const groups = new Map<string, { env: string; tenant: string; cluster: string; namespace: string }>();
+    for (const it of items)
+      groups.set(`${it.env}|${it.tenant}|${it.clusterName}|${it.namespace}`, {
+        env: it.env,
+        tenant: it.tenant,
+        cluster: it.clusterName,
+        namespace: it.namespace,
+      });
+
+    // TAVAN. Kapsamsiz liste 500 satira kadar gelebilir ve her GRUP bir AWX isi
+    // demek. Sessizce kirpmak "hepsi tarandi" yalanini geri getirirdi; tarama hic
+    // BASLAMAZ ve kullanicidan kapsami daraltmasi istenir.
+    if (groups.size > MAX_AUDIT_GROUPS) {
+      setAuditNote(null);
+      setError(
+        `Bu listede ${groups.size} ayrı kapsam var (sınır ${MAX_AUDIT_GROUPS}). ` +
+          'Tarama başlatılmadı — üstten ortam/platform seçip listeyi daraltın.',
+      );
+      return;
+    }
+
     busyRef.current = true;
     setAuditing(true);
     setAuditNote(null);
     setError(null);
     try {
-      const groups = new Map<string, { cluster: string; namespace: string }>();
-      for (const it of items)
-        groups.set(`${it.clusterName}|${it.namespace}`, {
-          cluster: it.clusterName,
-          namespace: it.namespace,
-        });
+      // BASARISIZLIK SAYILIR VE ADIYLA SOYLENIR. `continue` ile yutmak, tam olarak
+      // bu ekranin gizlememesi gereken seyi gizlemekti.
+      const failures: string[] = [];
+      let scanned = 0;
       for (const g of groups.values()) {
-        const launched = await scalexApi.discover(
-          { env, tenant, namespace: g.namespace, clusters: [g.cluster] },
-          'state',
-        );
-        if (!launched.ok) continue;
+        const label = `${g.env}/${g.tenant} ${g.cluster}:${g.namespace}`;
+        let launched;
+        try {
+          launched = await scalexApi.discover(
+            { env: g.env, tenant: g.tenant, namespace: g.namespace, clusters: [g.cluster] },
+            'state',
+          );
+        } catch (e) {
+          failures.push(`${label} (${(e as Error).message})`);
+          continue;
+        }
+        if (!launched.ok) {
+          failures.push(`${label} (${launched.message || 'keşif başlatılamadı'})`);
+          continue;
+        }
+        scanned++;
         let pollErrors = 0;
         for (let i = 0; i < 20; i++) {
           await new Promise((r) => setTimeout(r, 3000));
@@ -170,7 +214,18 @@ const StoppedPanel: React.FC<Props> = ({ env = '', tenant = '', onRestore, reloa
       }
       if (!aliveRef.current) return;
       await load({ silent: true });
-      setAuditNote("Cluster'lar tarandı, sapma durumu güncellendi.");
+      // UC AYRI CUMLE. Tek sabit metin ("tarandi") hicbir sey taranmadiginda da
+      // yaziliyordu ve bu bir YALANDI.
+      if (scanned === 0) {
+        setAuditNote(null);
+        setError(`Hiçbir kapsam taranamadı: ${failures.join('; ')}`);
+      } else if (failures.length) {
+        setAuditNote(
+          `${groups.size} kapsamdan ${scanned}'i tarandı. Taranamayanlar: ${failures.join('; ')}`,
+        );
+      } else {
+        setAuditNote(`${scanned} kapsam tarandı, sapma durumu güncellendi.`);
+      }
     } catch (e) {
       setError(`Sapma taraması tamamlanamadı: ${(e as Error).message}`);
     } finally {
