@@ -165,3 +165,63 @@ test('DA7 ekran fallback degerleri sunucu fabrika degerleriyle AYNI', () => {
   const panel = fs.readFileSync(path.join(ROOT, 'src/components/scalex/StoppedPanel.tsx'), 'utf8');
   assert.match(panel, /const MAX_AUDIT_GROUPS = 12;/, 'panel fabrika tavani ayrismis');
 });
+
+// DA8 — UCUN KARARI. DA6 yalnizca LISTENIN var oldugunu kontrol ediyordu; mutasyon
+// turunda `restartRequired: true` sabitini geri koydugumda HICBIR bekci kirmizi
+// DONMEDI (2026-09-17 bekci korlugu). Liste dogru olup uc onu KULLANMAYABILIR.
+// Bu test gercek yol isleyicisini CAGIRIR.
+test('DA8 admin ucu sicak anahtar icin "restart gerekir" DEMIYOR', async () => {
+  // `system-config.cjs` `setEnvOverride`i YIKIYOR — require'dan ONCE yamanmali.
+  const envOv = require('../../db/env-overrides.cjs');
+  const saved = envOv.setEnvOverride;
+  envOv.setEnvOverride = async () => {};
+  // Denetim kaydi DB'ye gitmesin.
+  const audit = require('../../audit/index.cjs');
+  const savedAudit = audit.auditPortal;
+  audit.auditPortal = () => {};
+  try {
+    const routes = {};
+    const fakeApp = {
+      get: (p, h) => { routes[`GET ${p}`] = h; },
+      put: (p, _mw, h) => { routes[`PUT ${p}`] = h || _mw; },
+    };
+    require('../../admin/system-config.cjs').initSystemConfig(fakeApp);
+
+    const put = routes['PUT /api/admin/system-config'];
+    assert.ok(put, 'system-config PUT ucu bulunamadi');
+
+    const call = (key) =>
+      new Promise((resolve) => {
+        put(
+          { session: { user: { role: 'Admin', username: 'admin' } }, body: { key, value: '600' } },
+          { status: () => ({ json: resolve }), json: resolve },
+        );
+      });
+
+    const hot = await call('SCALEX_VERIFY_TIMEOUT_DEFAULT');
+    assert.equal(
+      hot.restartRequired,
+      false,
+      'sicak yuklenen ayar icin "yeniden baslatin" deniyor — kullanici bosuna kesinti planlar',
+    );
+
+    // KARSI ORNEK: sicak OLMAYAN bir anahtar hala restart istemeli. Aksi halde
+    // "hepsine false de" mutasyonu bu testten gecerdi.
+    const cold = await call('PORT');
+    assert.equal(cold.restartRequired, true, 'boot-ta okunan ayar icin restart uyarisi DUSTU');
+
+    // GET de "sicak mi" bilgisini TASIMALI; ekran rozeti oradan geliyor.
+    const rows = await new Promise((resolve) => {
+      routes['GET /api/admin/system-config'](
+        { session: { user: { role: 'Admin' } } },
+        { status: () => ({ json: resolve }), json: resolve },
+      );
+    });
+    const row = rows.values.find((v) => v.key === 'SCALEX_MAX_AUDIT_GROUPS');
+    assert.ok(row, 'ScaleX ayari admin listesinde YOK');
+    assert.equal(row.hotReloadable, true, 'ekran "sicak yuklenir" bilgisini alamiyor');
+  } finally {
+    envOv.setEnvOverride = saved;
+    audit.auditPortal = savedAudit;
+  }
+});
