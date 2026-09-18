@@ -1790,11 +1790,14 @@ export default function FieldOverridesModal({
                             </th>
                             <th className="p-1.5">Zorunlu</th>
                             <th className="p-1.5">Tip</th>
+                            <th className="p-1.5" title="Smart'ın bu alan için döndürdüğü diğer her şey (seçenek listesi, TechValue, varsayılan…) — dropdown eşlemesi bunlardan yazılır">
+                              Seçenekler / ayrıntı
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           {smartMetaFields.map((f, i) => (
-                            <tr key={i} className="border-b border-[var(--border)] last:border-0">
+                            <tr key={i} className="border-b border-[var(--border)] last:border-0 align-top">
                               <td className="p-1.5 font-mono">
                                 {String(f.ElementName ?? f.elementName ?? '-')}
                               </td>
@@ -1805,6 +1808,12 @@ export default function FieldOverridesModal({
                                 {String(f.IsRequired ?? f.isRequired ?? '-')}
                               </td>
                               <td className="p-1.5">{String(f.DataType ?? f.dataType ?? '-')}</td>
+                              <td className="p-1.5">
+                                {/* Dropdown alanlarinda "Belirtilmemis" gelmesinin sebebi (2026-09-18): Smart
+                                    GERCEK secenek adini / TechValue'yu bekler; o ad ancak bu ayrintida gorunur.
+                                    Bilinen dort alan disinda kalan her sey oldugu gibi gosterilir. */}
+                                <SmartFieldExtra f={f} />
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1939,5 +1948,43 @@ export default function FieldOverridesModal({
         )}
       </div>
     </Modal>
+  );
+}
+
+/** Smart alan kaydinin bilinen dort alan disindaki her seyi: secenek listeleri (dizi) satir satir,
+ *  digerleri "ad: deger". Secenek nesnelerinde ad/deger/TechValue benzeri alanlar one cikarilir. */
+function SmartFieldExtra({ f }: { f: Record<string, unknown> }) {
+  const KNOWN = new Set(['ElementName', 'elementName', 'ComponentType', 'componentType', 'IsRequired', 'isRequired', 'DataType', 'dataType']);
+  const rest = Object.entries(f).filter(([k, v]) => !KNOWN.has(k) && v !== null && v !== undefined && v !== '');
+  const [open, setOpen] = useState(false);
+  if (rest.length === 0) return <span className="text-[var(--text-muted)]">—</span>;
+  const pick = (o: Record<string, unknown>) => {
+    const keys = Object.keys(o);
+    const label = keys.find((k) => /^(name|label|text|value|displayvalue|displayname|parametername|itemname)$/i.test(k));
+    const tech = keys.find((k) => /tech|code|id$/i.test(k));
+    return `${label ? String(o[label]) : JSON.stringify(o)}${tech && tech !== label ? ` [${tech}=${String(o[tech])}]` : ''}`;
+  };
+  return (
+    <div className="text-[10px] space-y-0.5 max-w-[26rem]">
+      {rest.map(([k, v]) => (
+        <div key={k}>
+          <span className="font-semibold">{k}:</span>{' '}
+          {Array.isArray(v) ? (
+            <span className="font-mono break-all">
+              {(open ? v : v.slice(0, 6)).map((o, i) => (
+                <span key={i} className="inline-block mr-1.5 px-1 rounded bg-[var(--bg-elevated)]">{o && typeof o === 'object' ? pick(o as Record<string, unknown>) : String(o)}</span>
+              ))}
+              {v.length > 6 && (
+                <button type="button" onClick={() => setOpen(!open)} className="underline decoration-dotted text-[var(--accent)]">{open ? 'daha az' : `+${v.length - 6}`}</button>
+              )}
+            </span>
+          ) : typeof v === 'object' ? (
+            <span className="font-mono break-all">{JSON.stringify(v)}</span>
+          ) : (
+            <span className="font-mono break-all">{String(v)}</span>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
