@@ -59,8 +59,10 @@ const RbacFindings: React.FC = () => {
 
   // `useAsyncEffect`: efekt icinde dogrudan `load()` cagirmak
   // `react-hooks/set-state-in-effect` uyarisi uretiyor (ESLint ozel hook'larin
-  // ICINE bakmaz; erteleme hook'un kendisinde). Ayrica sekme sokulduktan sonra
-  // gelen cevap artik `setState` CAGIRMAZ.
+  // ICINE bakmaz; erteleme hook'un kendisinde). DIKKAT: `alive()` yalnizca ISTEK
+  // BASLAMADAN once bakilir — `load()` icindeki `setState`ler sokme sonrasi yine
+  // calisabilir. Hook'un garantisi "sokulmus bilesende istek BASLATMA"dir,
+  // "cevabi yut" degil. React 19 bu durumda uyari uretmiyor.
   useAsyncEffect(async (alive) => {
     if (alive()) await load();
   }, []);
@@ -226,8 +228,10 @@ const ScaleXAdminTab: React.FC = () => {
   }
   // `useAsyncEffect`: efekt icinde dogrudan `load()` cagirmak
   // `react-hooks/set-state-in-effect` uyarisi uretiyor (ESLint ozel hook'larin
-  // ICINE bakmaz; erteleme hook'un kendisinde). Ayrica sekme sokulduktan sonra
-  // gelen cevap artik `setState` CAGIRMAZ.
+  // ICINE bakmaz; erteleme hook'un kendisinde). DIKKAT: `alive()` yalnizca ISTEK
+  // BASLAMADAN once bakilir — `load()` icindeki `setState`ler sokme sonrasi yine
+  // calisabilir. Hook'un garantisi "sokulmus bilesende istek BASLATMA"dir,
+  // "cevabi yut" degil. React 19 bu durumda uyari uretmiyor.
   useAsyncEffect(async (alive) => {
     if (alive()) await load();
   }, []);

@@ -43,7 +43,17 @@ pipeline {
     }
 
     stage('Install') {
-      steps { sh 'node --version && npm ci --no-audit --no-fund' }
+      // ANSIBLE DE KURULUR: `scalex-verify-timing` icindeki VT8 ailesi
+      // `01_prepare.yml`i GERCEKTEN kosturuyor ve 2026-09-18 uretim arizasinin tek
+      // davranissal testi o. Ansible yoksa `{ skip: !HAS_ANSIBLE }` ile SESSIZCE
+      // atlanip suit yesil donuyordu. `VT0` bekcisi CI'da eksikligi HATA yapar;
+      // asagidaki kurulum onu karsilar. `|| true` YOK: kurulum basarisizsa
+      // Install asamasi dusmeli, yoksa yine sessiz atlamaya doneriz.
+      steps {
+        sh 'node --version && npm ci --no-audit --no-fund'
+        sh 'ansible-playbook --version || python3 -m pip install --user ansible-core'
+        sh 'ansible-playbook --version'
+      }
     }
 
     // TESTLER CI'DA KOSMALI. Uzun sure kosmuyorlardi: boru hatti tsc + lint + build

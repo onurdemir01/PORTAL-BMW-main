@@ -1282,3 +1282,54 @@ test('S9 runner degistiyse VERSION artmis ve manifest tazelenmis olmali', () => 
       'Aksi halde AWX`teki bayat kopya ayni surumu bildirir ve uyusmazlik gorunmez.',
   );
 });
+
+// ── S10 — SURVEY SINIRLARI, PORTALIN URETEBILECEGI HER DEGERI KAPSAMALI ─────
+//
+// 2026-09-18 denetimi: survey `verify_fail_seconds` icin `max: 3600` diyordu ama
+// portal `fail = butce × carpan` ile turetiyor. Butce 1800'u gecince turetilen
+// deger tavani asiyor ve AWX launch'i 400 ile REDDEDIYOR — yani portalin ILAN
+// ETTIGI araligin YARISI kullanilamazdi. Ariza `01_prepare.yml`deki sabit liste
+// ile AYNI SINIF: bir katman, birlikte guncellenmemis bir dogrulama siniri.
+//
+// S7 yalnizca TIPE bakiyor (`Number(` zorunlu, `String(` yasak); min/max'a dokunan
+// TEK BIR assert yoktu.
+test('S10 survey min/max, config.cjs`in izin verdigi HER (butce x carpan) degerini kapsiyor', () => {
+  const config = require('../../scalex/config.cjs');
+  const spec = survey('scalex_run.survey.json').spec;
+  const q = (name) => {
+    const found = spec.find((x) => x.variable === name);
+    assert.ok(found, `survey'de ${name} sorusu yok`);
+    return found;
+  };
+
+  const T = config.TUNABLES;
+  // Admin'in koyabilecegi EN GENIS is araligi = sert sinirlar.
+  const enBuyukButce = T.SCALEX_VERIFY_TIMEOUT_MAX.hardMax;
+  const enKucukButce = T.SCALEX_VERIFY_TIMEOUT_MIN.hardMin;
+  const enBuyukCarpan = T.SCALEX_VERIFY_FAIL_MULTIPLIER.hardMax;
+
+  for (const [name, altSinir, ustSinir] of [
+    ['verification_timeout', enKucukButce, enBuyukButce],
+    ['verify_warn_seconds', enKucukButce, enBuyukButce],
+    // TURETILMIS DEGER: portal bunu carpanla uretiyor (launch.cjs).
+    ['verify_fail_seconds', enKucukButce, enBuyukButce * enBuyukCarpan],
+  ]) {
+    const s = q(name);
+    assert.ok(
+      s.min <= altSinir,
+      `${name}: survey min=${s.min}, portal ${altSinir} uretebiliyor — AWX 400 doner`,
+    );
+    assert.ok(
+      s.max >= Math.min(ustSinir, T.SCALEX_VERIFY_TIMEOUT_DEFAULT.hardMax),
+      `${name}: survey max=${s.max}, portal ${ustSinir}'e kadar uretebiliyor — AWX 400 doner`,
+    );
+  }
+
+  // SOMUT SENARYO — soyut aritmetik degil, gercek arizanin kendisi.
+  const butce = 1801;
+  const fail = butce * T.SCALEX_VERIFY_FAIL_MULTIPLIER.fallback;
+  assert.ok(
+    q('verify_fail_seconds').max >= fail,
+    `butce ${butce} sn -> verify_fail_seconds ${fail} sn, survey tavani ${q('verify_fail_seconds').max}`,
+  );
+});

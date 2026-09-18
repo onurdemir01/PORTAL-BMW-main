@@ -133,37 +133,37 @@
       "question_description": "YALNIZCA `scale` isleminde kullanilir. VARSAYILANI YOK: portal bu alani yalnizca scale isleminde gonderir; bir varsayilan tanimlansaydi AWX onu diger islemlere de enjekte ederdi."
     },
     {
-      "max": 3600,
-      "min": 30,
+      "max": 86400,
+      "min": 1,
       "type": "integer",
       "default": 300,
       "required": false,
       "variable": "verification_timeout",
       "new_question": true,
       "question_name": "Sonuc Kontrol Suresi (sn)",
-      "question_description": "Varsayilan 300 sn (5 dk). ACARKEN bu sure dolunca uyari yazilir ve is BASARILI biter; KAPATIRKEN uyari yazilir ama 0 olana kadar beklenir, iki kati gecilirse FAIL."
+      "question_description": "Varsayilan 300 sn (5 dk). ACARKEN bu sure dolunca uyari yazilir ve is BASARILI biter; KAPATIRKEN uyari yazilir ama 0 olana kadar beklenir, iki kati gecilirse FAIL. SINIR NOTU: buradaki min/max yalnizca MUTLAK sinirdir (1-86400), IS ARALIGI DEGIL. Gercek aralik portalda yonetilir (Admin > Sistem, SCALEX_VERIFY_TIMEOUT_MIN/MAX) ve ANINDA gecerli olur. Survey burada ikinci bir is kurali tasirsa portalin kabul ettigi bir deger AWX'te 400 ile reddedilir; 2026-09-18'de tam bu sinifta bir ariza yasandi (playbook tarafinda sabit liste)."
     },
     {
-      "max": 3600,
-      "min": 30,
+      "max": 86400,
+      "min": 1,
       "type": "integer",
       "default": 300,
       "required": false,
       "variable": "verify_warn_seconds",
       "new_question": true,
       "question_name": "Uyari Esigi (sn)",
-      "question_description": "Bu sure dolunca uyari yazilir. ACARKEN beklemeyi birakir (is basarili); KAPATIRKEN yalnizca uyarir, beklemeye devam eder. Bos birakilirsa Sonuc Kontrol Suresi kullanilir."
+      "question_description": "Bu sure dolunca uyari yazilir. ACARKEN beklemeyi birakir (is basarili); KAPATIRKEN yalnizca uyarir, beklemeye devam eder. Bos birakilirsa Sonuc Kontrol Suresi kullanilir. SINIR NOTU: buradaki min/max yalnizca MUTLAK sinirdir (1-86400), IS ARALIGI DEGIL. Gercek aralik portalda yonetilir (Admin > Sistem, SCALEX_VERIFY_TIMEOUT_MIN/MAX) ve ANINDA gecerli olur. Survey burada ikinci bir is kurali tasirsa portalin kabul ettigi bir deger AWX'te 400 ile reddedilir; 2026-09-18'de tam bu sinifta bir ariza yasandi (playbook tarafinda sabit liste)."
     },
     {
-      "max": 3600,
-      "min": 30,
+      "max": 86400,
+      "min": 1,
       "type": "integer",
       "default": 600,
       "required": false,
       "variable": "verify_fail_seconds",
       "new_question": true,
       "question_name": "Fail Esigi (sn) — yalniz kapatma",
-      "question_description": "YALNIZCA kapatmada gecerlidir: 0 olmasi bu sureyi gecerse is BASARISIZ sayilir. Acmada fail esigi YOKTUR. Bos birakilirsa Sonuc Kontrol Suresi`nin iki kati kullanilir."
+      "question_description": "YALNIZCA kapatmada gecerlidir: 0 olmasi bu sureyi gecerse is BASARISIZ sayilir. Acmada fail esigi YOKTUR. Bos birakilirsa Sonuc Kontrol Suresi`nin iki kati kullanilir. SINIR NOTU: buradaki min/max yalnizca MUTLAK sinirdir (1-86400), IS ARALIGI DEGIL. Gercek aralik portalda yonetilir (Admin > Sistem, SCALEX_VERIFY_TIMEOUT_MIN/MAX) ve ANINDA gecerli olur. Survey burada ikinci bir is kurali tasirsa portalin kabul ettigi bir deger AWX'te 400 ile reddedilir; 2026-09-18'de tam bu sinifta bir ariza yasandi (playbook tarafinda sabit liste)."
     },
     {
       "max": 1024,
