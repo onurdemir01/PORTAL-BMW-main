@@ -368,6 +368,25 @@ export default function FieldOverridesModal({
     null,
   );
   const [smartMetaErr, setSmartMetaErr] = useState('');
+  // Onizleme (2026-09-18): ornek survey degerleri (satir basina alan: deger) -> render sonucu
+  const [previewVars, setPreviewVars] = useState('action: create\nenv: test\nservice: GLOMO\napplication: odeme-app-v1\nnamespace: digital-ch-test\ninput_path: /odeme/');
+  const [previewOut, setPreviewOut] = useState<Record<string, string> | null>(null);
+  const [previewErr, setPreviewErr] = useState('');
+  const [previewBusy, setPreviewBusy] = useState(false);
+  async function runPreview() {
+    setPreviewBusy(true); setPreviewErr(''); setPreviewOut(null);
+    try {
+      const extraVars: Record<string, unknown> = {};
+      for (const line of previewVars.split('\n')) {
+        const i = line.indexOf(':'); if (i < 0) continue;
+        const k = line.slice(0, i).trim(); const v = line.slice(i + 1).trim();
+        if (k) extraVars[k] = v.includes(',') && /path/i.test(k) ? v.split(',').map((x) => x.trim()) : v;
+      }
+      const r = await ansibleApi.smartMetadataPreview({ metadataFields: smartApproval.metadataFields, extraVars, templateName: item.title });
+      if (r.ok && r.metadata) setPreviewOut(r.metadata); else setPreviewErr(r.message || 'Önizleme alınamadı.');
+    } catch (e: unknown) { setPreviewErr(e instanceof Error ? e.message : String(e)); }
+    finally { setPreviewBusy(false); }
+  }
   const [loading, setLoading] = useState(true);
   // KAYIT KILIDI (2026-09-16 olayi): mevcut ayarlar okunamadiysa ekran BOS acilir ve
   // "Kaydet" o bos hali DB'ye yazar - ayarlar "kaybolur". Okuma basarisizsa kaydetme kapali.
@@ -1880,7 +1899,7 @@ export default function FieldOverridesModal({
                   <code className="font-mono">\n</code> da satır sonu sayılır.
                 </p>
                 <Textarea
-                  rows={4}
+                  rows={8}
                   className="text-xs font-mono"
                   value={smartApproval.metadataFields}
                   placeholder={
@@ -1890,6 +1909,26 @@ export default function FieldOverridesModal({
                     setSmartApproval((s) => ({ ...s, metadataFields: e.target.value }))
                   }
                 />
+                {/* ONIZLEME: eslemeyi ornek degerlerle render et, Smart'a TAM OLARAK ne gidecegini gor */}
+                <div className="mt-2 rounded-lg border border-[var(--border)] p-2 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-[var(--text-secondary)]">Önizleme — örnek survey değerleri (satır başına <code className="font-mono">alan: değer</code>)</span>
+                    <button type="button" onClick={runPreview} disabled={previewBusy || !smartApproval.metadataFields.trim()} className="text-[11px] px-2 py-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50">
+                      {previewBusy ? 'Render ediliyor…' : 'Önizle'}
+                    </button>
+                  </div>
+                  <Textarea rows={3} className="text-xs font-mono" value={previewVars} onChange={(e) => setPreviewVars(e.target.value)} />
+                  {previewErr && <p className="text-[11px] text-red-500">{previewErr}</p>}
+                  {previewOut && (
+                    <div className="text-[11px] font-mono rounded bg-[var(--bg-elevated)] p-2 space-y-1">
+                      {Object.entries(previewOut).map(([k, v]) => (
+                        <div key={k}><span className="font-semibold">{k}</span>: <span className="whitespace-pre-wrap">{v === '' ? <i className="text-[var(--text-muted)]">(boş)</i> : v}</span></div>
+                      ))}
+                      {Object.keys(previewOut).length === 0 && <i className="text-[var(--text-muted)]">hiç alan yok (hepsi # ile yorumda?)</i>}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-[var(--text-muted)]">Gösterilen anahtar/değerler Smart'a birebir bu şekilde gider; <code className="font-mono">#</code> ile yorumlanmış satırlar burada da görünmez.</p>
+                </div>
               </div>
             )}
 

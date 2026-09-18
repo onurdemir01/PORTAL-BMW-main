@@ -3379,6 +3379,27 @@ function initAnsibleRunner(app) {
     return metadata;
   }
 
+  // ONIZLEME (2026-09-18, kullanici: "Smart'a duzgun gelmiyor"): admin, metadata eslemesini
+  // ornek survey degerleriyle render edip Smart'a TAM OLARAK ne gidecegini gorur - gercek
+  // talep acmadan. Degerler yalniz cagirana doner, loglanmaz.
+  app.post('/api/ansible/ss/smart-metadata-preview', requireAuth, requireAdmin, (req, res) => {
+    try {
+      const raw = String(req.body?.metadataFields || '');
+      const extraVars = req.body?.extraVars && typeof req.body.extraVars === 'object' ? req.body.extraVars : {};
+      const u = req.session?.user || {};
+      const metadata = buildSmartMetadata(raw, {
+        username: u.username || 'onizleme',
+        email: u.mail || '',
+        templateName: String(req.body?.templateName || 'Onizleme'),
+        templateId: 0,
+        extraVars,
+      });
+      res.json({ ok: true, metadata });
+    } catch (err) {
+      res.status(err.status || 400).json({ ok: false, message: err.message });
+    }
+  });
+
   app.post('/api/ansible/launch-ss/:serverId/:templateId', requireAuth, async (req, res) => {
     const server = getServerById(req.params.serverId);
     if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
