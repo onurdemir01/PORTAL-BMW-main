@@ -103,7 +103,11 @@ function timeoutLiterals(rel) {
   const out = [];
   src.split('\n').forEach((line, n) => {
     if (/^\s*(\/\/|#|\*)/.test(line)) return; // yorumlar teshis metni tasiyor
-    if (!/verification_?[Tt]imeout|VERIFY_(WARN|FAIL)_SECONDS|TIMEOUT_(DEFAULT|MIN|MAX)/.test(line)) return;
+    // BUYUK/KUCUK HARF DUYARSIZ. Ilk yazimda `verification_?[Tt]imeout` duyarliydi
+    // ve `setVerificationTimeout('60')` (buyuk V) suzgecten GECTI — mutasyon turunda
+    // yakalandi. Tam olarak kacirdigi yazim, PR #98'in regresyonunu ureten yazimdi.
+    if (!/verification_?timeout|verify_(warn|fail)_seconds|timeout_(default|min|max)/i.test(line))
+      return;
     for (const m of line.matchAll(/['"`](\d{1,5})['"`]|\b(?<!\.)(\d{2,5})\b/g)) {
       const v = m[1] || m[2];
       if (v) out.push({ rel, line: n + 1, value: v, text: line.trim().slice(0, 100) });
