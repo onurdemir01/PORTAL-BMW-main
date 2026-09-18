@@ -957,7 +957,9 @@ export default function FieldOverridesModal({
       title="Alanları Yönet"
       subtitle={item.title}
       icon={AdjustmentsHorizontalIcon}
-      size="xl"
+      // Genis pencere (kullanici, 2026-09-18: "kucucuk bir alanda calisiyormus gibi") - alan
+      // listesi, kosullar ve Smart eslemesi yan yana rahat siğsin
+      size="wide"
       footer={
         <>
           <button onClick={onClose} className="btn-secondary">
