@@ -1864,7 +1864,11 @@ export default function FieldOverridesModal({
                   muhtemelen Smart'ta önceden tanımlı bir seçenek/kayıt adı bekler, serbest metin
                   kabul etmeyebilir. Boş bırakılırsa eski sabit (
                   <code className="font-mono">application</code>/
-                  <code className="font-mono">requestedBy</code>) gövde gönderilir.
+                  <code className="font-mono">requestedBy</code>) gövde gönderilir.{' '}
+                  <strong>Çok satırlı değer:</strong> <code className="font-mono">ALAN: |</code> yazıp
+                  altına satırları <b>girintili</b> yazın (YAML blok); koşullu satırlar boş kalınca
+                  ardışık boş satırlar tek satıra iner. Satır içinde{' '}
+                  <code className="font-mono">\n</code> da satır sonu sayılır.
                 </p>
                 <Textarea
                   rows={4}

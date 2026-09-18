@@ -14,15 +14,32 @@ const choiceSources = require('./choice-sources.cjs');
 // ── Simple YAML key:value parser (extra_vars fallback icin, frontend AnsiblePage.tsx
 // ile ayni mantik — AWX Survey tanimli olmayan template'lerin extra_vars default'larini
 // self-service akisinda da gostermek icin kullanilir) ─────────────────────────
+// COK SATIRLI DEGER (2026-09-18, kullanici: Smart ACIKLAMA'si satir satir gorunsun):
+// YAML blok skaleri desteklenir - `ALAN: |` (ya da `|-`) satirinin altindaki GIRINTILI
+// satirlar, ortak girinti atilarak '\n' ile birlestirilir; ilk girintisiz satirda biter.
+// Tek satirli anahtar: deger davranisi birebir korunur (AWX extra_vars da buradan gecer).
 function parseSimpleYaml(src) {
   const out = {};
-  for (const line of String(src || '').split('\n')) {
-    const t = line.trim();
+  const lines = String(src || '').split('\n');
+  for (let li = 0; li < lines.length; li++) {
+    const t = lines[li].trim();
     if (!t || t.startsWith('#')) continue;
     const i = t.indexOf(':');
     if (i === -1) continue;
     const key = t.slice(0, i).trim();
     let val = t.slice(i + 1).trim();
+    if (key && (val === '|' || val === '|-')) {
+      const block = [];
+      while (li + 1 < lines.length && (/^[ \t]/.test(lines[li + 1]) || lines[li + 1].trim() === '')) {
+        block.push(lines[li + 1]);
+        li++;
+      }
+      while (block.length && block[block.length - 1].trim() === '') block.pop();
+      const indents = block.filter((b) => b.trim()).map((b) => b.match(/^[ \t]*/)[0].length);
+      const indent = indents.length ? Math.min(...indents) : 0;
+      out[key] = block.map((b) => b.slice(indent).replace(/[ \t]+$/, '')).join('\n');
+      continue;
+    }
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
@@ -3317,7 +3334,13 @@ function initAnsibleRunner(app) {
     const metadata = {};
     for (const [key, rawValue] of Object.entries(parsed)) {
       try {
-        metadata[key] = smartMetaEnv.renderString(rawValue, ctx);
+        // Cok satirli deger (2026-09-18): `\n` kacisi gercek satir sonuna cevrilir; kosullu
+        // ({% if %}) satirlar bos kalinca ardisik bos satirlar tek satira iner, uc bosluk atilir.
+        metadata[key] = String(smartMetaEnv.renderString(rawValue, ctx))
+          .replace(/\\n/g, '\n')
+          .replace(/[ \t]+\n/g, '\n')
+          .replace(/\n{2,}/g, '\n')
+          .trim();
       } catch (renderErr) {
         console.warn(
           `[SmartMetadata] "${key}" render hatasi - mevcut extraVars anahtarlari:`,
