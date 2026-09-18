@@ -230,9 +230,29 @@ function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose:
 const rowsFromCoverage = (list: SpaMissingApp[]): MissingRow[] =>
   list.map((x) => ({
     app: x.app, namespaces: x.namespaces, owner: x.owner,
-    what: x.kind === 'partial' ? 'yarım kurulum' : 'hiç deploy olmamış',
-    detail: x.kind === 'partial' ? (x.hosts || []).map((h) => `${h.host}: ${h.missing.join(', ')} yok`).join(' · ') : undefined,
+    what: x.kind === 'partial' ? 'yarım kurulum' : x.kind === 'noroute' ? 'route bilgisi yok' : 'hiç deploy olmamış',
+    detail: x.kind === 'partial'
+      ? (x.hosts || []).map((h) => `${h.host}: ${h.missing.join(', ')} yok`).join(' · ')
+      : x.kind === 'noroute' ? (x.inNginx ? 'nginx’te yine de tanımlı (eski sunucuda proxy / include)' : 'nginx’te tanımı da yok') : undefined,
   }));
+
+/** "route'suz N" baglantisi: OpenShift'te olup route envanterinde kaydi olmayan SPA'lar (sahiplikle). */
+function NoRouteLink({ c, env, onOpen }: { c: SpaCoverageRow; env: string; onOpen: (o: { title: string; subtitle: string; rows: MissingRow[] }) => void }) {
+  return (
+    <button
+      onClick={() => onOpen({
+        title: `${env} · route’suz SPA’lar`,
+        subtitle: `${fmtNumber(c.unknownTotal)} uygulama OpenShift envanterinde var ama route envanterinde (route_inventory) kaydı yok — internet/intranet sınıflandırılamıyor, kapsam hesabına girmiyor`,
+        rows: rowsFromCoverage(c.missingDetail?.noRoute || []),
+      })}
+      className="underline decoration-dotted"
+      style={{ color: 'var(--status-warning)' }}
+      title="tıklayın: route’suz SPA’lar sahipleriyle listelensin"
+    >
+      route’suz {fmtNumber(c.unknownTotal)}
+    </button>
+  );
+}
 const rowsFromMigration = (groups: NginxMigrationGroup[]): MissingRow[] =>
   groups.flatMap((g) => g.apps.filter((a: NginxMigrationApp) => a.status !== 'ready').map((a) => ({
     app: a.application, namespaces: [a.namespace], owner: a.owner || { groups: [], emails: [], unknownNs: [a.namespace] },
@@ -282,7 +302,7 @@ function ServiceBar({ total, services, multi }: { total: number; services: { ser
   const sum = services.reduce((a, x) => a + x.count, 0);
   return (
     <div className="mt-1" title="nginx’te tanımlı internet SPA’ları hangi servisin (vhost: GLOMO, WEBFORMS, SAKLAMA…) altında">
-      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>servis dağılımı</div>
+      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>servis dağılımı <span className="normal-case">(% = internete açık SPA’ların payı)</span></div>
       <div className="h-2 rounded-full overflow-hidden flex mt-0.5" style={{ background: 'var(--bg-elevated)' }}>
         {services.map((x) => (
           <span key={x.service} className="h-full" style={{ width: `${total ? Math.min(100, (x.count / total) * 100) : 0}%`, background: serviceColor(x.service) }} title={`${x.service}: ${fmtNumber(x.count)}`} />
@@ -293,6 +313,7 @@ function ServiceBar({ total, services, multi }: { total: number; services: { ser
           <span key={x.service} className="inline-flex items-center gap-1 whitespace-nowrap">
             <span className="inline-block w-2 h-2 rounded-sm" style={{ background: serviceColor(x.service) }} />
             {x.service} <b className="tabular-nums">{fmtNumber(x.count)}</b>
+            <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>({pctText(pct(x.count, total))})</span>
           </span>
         ))}
         {multi > 0 && (
@@ -500,7 +521,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                         </div>
                         <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
                           internet {fmtNumber(c.internetTotal)} · intranet {fmtNumber(c.intranetTotal)}
-                          {c.unknownTotal ? ` · route’suz ${fmtNumber(c.unknownTotal)}` : ''}
+                          {c.unknownTotal ? <> · <NoRouteLink c={c} env={env} onOpen={setOpen} /></> : null}
                         </div>
                       </div>
                     ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
@@ -576,7 +597,17 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           SPA değil {fmtNumber(r.nonSpa)}
                           {r.unclassified ? ` · sınıflanamadı ${fmtNumber(r.unclassified)}` : ''}
                         </div>
-                        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{fmtNumber(r.namespaces)} namespace · {r.terminations.map((t) => `${t.type} ${fmtNumber(t.count)}`).join(' · ')}</div>
+                        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                          {fmtNumber(r.namespaces)} namespace · {r.terminations.map((t) => (
+                            // "yok" = route VAR ama TLS sonlandirma tipi bos; route'suz SPA ile karistirilmasin
+                            <span key={t.type} title={t.type === 'yok' ? 'route var ama termination_type boş (TLS sonlandırma tanımsız)' : `termination_type = ${t.type}`}>{t.type === 'yok' ? 'TLS tipi yok' : t.type} {fmtNumber(t.count)} </span>
+                          ))}
+                        </div>
+                        {c && c.unknownTotal > 0 && (
+                          <div className="text-[10px]" style={{ color: 'var(--status-warning)' }}>
+                            <NoRouteLink c={c} env={env} onOpen={setOpen} /> — OpenShift’te var, route envanterinde kaydı yok
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <span style={{ color: 'var(--text-muted)' }} title="route envanteri yok ya da bu ortamda route bulunamadı">—</span>

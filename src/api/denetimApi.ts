@@ -202,13 +202,15 @@ export interface SpaCoverageRow {
   coverage: number | null;
   /** Deploy olmamis uygulamalar + sahiplik (2026-09-17). internet: nginx'te tanimi yok;
    *  intranet: hic kurulmamis (missing) ya da yarim (partial: eksik dizinler sunucu basina). */
-  missingDetail?: { internet: SpaMissingApp[]; intranet: SpaMissingApp[] };
+  missingDetail?: { internet: SpaMissingApp[]; intranet: SpaMissingApp[]; noRoute?: SpaMissingApp[] };
 }
 export interface SpaMissingApp {
   app: string;
   namespaces: string[];
   owner: AppOwner;
-  kind: 'missing' | 'partial';
+  kind: 'missing' | 'partial' | 'noroute';
+  /** noroute: nginx'te yine de tanimli mi (eski sunucuda proxy / include) */
+  inNginx?: boolean;
   namespace?: string;
   hosts?: { host: string; missing: string[] }[];
 }

@@ -818,6 +818,10 @@ function initDenetim(app) {
               ...ic.missing.map((a) => detailOf(e, a, { kind: 'missing' })),
               ...ic.partial.map((x) => detailOf(e, x.app, { kind: 'partial', namespace: x.namespace, hosts: x.hosts })),
             ],
+            // ROUTE'SUZ SPA'lar (kullanici, 2026-09-18): OpenShift'te var ama route envanterinde
+            // hic kaydi yok -> internet/intranet siniflandirilamiyor; nginx'te tanimli olup
+            // olmadigi ayrica yazilir (inNginx: eski sunucuda proxy / include var mi).
+            noRoute: bucket.bilinmiyor.slice(0, CAP).map((a) => detailOf(e, a, { kind: 'noroute', inNginx: n.has(a.toLowerCase()) })),
           },
           // INTRANET (reencrypt) = intranet SPA sunucularina dagitilir. Olcum
           // location'dan DEGIL, uc dizinin varligindan gelir (2026-09-10 duzeltmesi):
