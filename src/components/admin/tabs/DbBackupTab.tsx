@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArchiveBoxIcon, PlayIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ClockIcon } from "@heroicons/react/24/outline";
 import { toast } from "@/hooks/useToast";
 import { fmtDateTime as fmt, fmtNumber } from "@/utils/datetime";
+import DbUsagePanel from "./DbUsagePanel";
 
 interface BackupState {
   status: "idle" | "running" | "done" | "error";
@@ -171,6 +172,9 @@ const DbBackupTab: React.FC = () => {
         <ArchiveBoxIcon className="w-4 h-4 flex-shrink-0" />
         Bu değerler Admin &gt; Sistem'den (env değişkenleri) ayarlanabilir.
       </div>
+
+      {/* Doluluk + gece temizligi (2026-09-18) — server/db/housekeeping.cjs */}
+      <DbUsagePanel />
     </div>
   );
 };

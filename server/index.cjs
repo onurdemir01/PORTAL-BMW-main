@@ -142,6 +142,12 @@ async function main() {
       init: () => require('./db/full-backup.cjs').initDbFullBackup(app),
       optional: true,
     },
+    {
+      // Doluluk gozlemi + Teams esik uyarisi + logx_v2 gece temizligi (2026-09-18)
+      name: 'dbHousekeeping',
+      init: () => require('./db/housekeeping.cjs').initDbHousekeeping(app),
+      optional: true,
+    },
     { name: 'ansible', init: () => initAnsible(app), optional: true },
     { name: 'selfService', init: () => initSelfService(app), optional: true },
     { name: 'logX', init: () => initLogX(app), optional: true },
