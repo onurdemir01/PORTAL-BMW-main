@@ -163,6 +163,8 @@ export interface SpaCoverageRow {
    *  Birden fazla serviste tanimli uygulama her serviste sayilir; internetMultiService kac tane. */
   internetServices?: { service: string; count: number }[];
   internetMultiService?: number;
+  /** bir nginx servisinin altinda hizmet alan FARKLI internet SPA sayisi (servis toplami degil) */
+  internetServiced?: number;
   internetMissingCount: number;
   internetMissing: string[];
   /** route tipi reencrypt = intranet; INTRANET SPA sunucularina dagitilir. */

@@ -782,9 +782,14 @@ function initDenetim(app) {
         // internetInNginx'i asabilir; ekran bunu yazar.
         const svcCount = new Map();
         let multi = 0;
+        // Bir nginx SERVISININ altinda hizmet alan FARKLI uygulama sayisi (kullanici,
+        // 2026-09-18: "435 SPA'nin kaci Glomo/Webforms/Saklama altindan hizmet aliyor" -
+        // servis toplamlari cakisma yuzunden bunu vermez). Servisi bilinmeyen sayilmaz.
+        let serviced = 0;
         for (const a of inNginx.internet) {
           const set = (ngxSvc.get(e) || new Map()).get(a.toLowerCase()) || new Set(['(bilinmiyor)']);
           if (set.size > 1) multi++;
+          if ([...set].some((sv) => sv !== '(bilinmiyor)')) serviced++;
           for (const sv of set) svcCount.set(sv, (svcCount.get(sv) || 0) + 1);
         }
         const internetServices = [...svcCount.entries()].map(([service, count]) => ({ service, count })).sort((x, y) => y.count - x.count || x.service.localeCompare(y.service));
@@ -808,6 +813,7 @@ function initDenetim(app) {
           internetInNginx: inNginx.internet.length,
           internetServices,
           internetMultiService: multi,
+          internetServiced: serviced,
           internetMissingCount: internetMissing.length,
           internetMissing: internetMissing.sort(sortTr).slice(0, CAP),
           // Sahiplikli ayrinti (ekrandaki "tikla, listeyi gor"): internet = nginx'te tanimi

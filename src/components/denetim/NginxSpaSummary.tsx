@@ -298,11 +298,16 @@ function serviceColor(name: string) {
 
 /** Internet SPA'larinin nginx SERVISI (vhost) kirilimi: bolunmus cubuk + etiketler.
  *  Genislik internete acik toplam SPA'ya gore (bos kalan = tanimsiz). */
-function ServiceBar({ total, services, multi }: { total: number; services: { service: string; count: number }[]; multi: number }) {
+function ServiceBar({ total, serviced, services, multi }: { total: number; serviced: number; services: { service: string; count: number }[]; multi: number }) {
   const sum = services.reduce((a, x) => a + x.count, 0);
   return (
-    <div className="mt-1" title="nginx’te tanımlı internet SPA’ları hangi servisin (vhost: GLOMO, WEBFORMS, SAKLAMA…) altında">
-      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>servis dağılımı <span className="normal-case">(% = internete açık SPA’ların payı)</span></div>
+    <div className="mt-1.5" title="internete açık SPA’lardan kaçı bir nginx servisinin (vhost: GLOMO, WEBFORMS, SAKLAMA…) altından hizmet alıyor; altında servis kırılımı">
+      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>nginx servisi altında</div>
+      {/* Baslik: FARKLI uygulama sayisi (servis toplami degil - bir uygulama iki serviste olabilir) */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Big n={serviced} of={total} label="bir servisin altında" />
+        <span className="text-[11px] font-semibold tabular-nums" style={{ color: toneOf(pct(serviced, total)) }}>{pctText(pct(serviced, total))}</span>
+      </div>
       <div className="h-2 rounded-full overflow-hidden flex mt-0.5" style={{ background: 'var(--bg-elevated)' }}>
         {services.map((x) => (
           <span key={x.service} className="h-full" style={{ width: `${total ? Math.min(100, (x.count / total) * 100) : 0}%`, background: serviceColor(x.service) }} title={`${x.service}: ${fmtNumber(x.count)}`} />
@@ -537,7 +542,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           <Big n={c.measured ? c.internetInNginx : 0} of={c.internetTotal} label={env === 'PROD' ? 'eski sunucuda proxy' : 'tanımlı'} />
                           <Bar value={c.internetInNginx} total={c.internetTotal} measured={c.measured} title="nginx’te tanımlı / internete açık SPA" />
                           {c.measured && (c.internetServices || []).length > 0 && (
-                            <ServiceBar total={c.internetTotal} services={c.internetServices || []} multi={c.internetMultiService || 0} />
+                            <ServiceBar total={c.internetTotal} serviced={c.internetServiced ?? c.internetInNginx} services={c.internetServices || []} multi={c.internetMultiService || 0} />
                           )}
                         </ClickCell>
                         {env === 'PROD' && prodNew && (
