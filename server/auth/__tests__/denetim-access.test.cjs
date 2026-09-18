@@ -60,7 +60,7 @@ test('seed: Denetim yalniz Admin; sekme elementleri varsayilan kapali; tek sefer
   const src = read('server/db/mssql-setup.cjs');
   const i = src.indexOf("element_key: 'Denetim',");
   assert.ok(/roles: \['Admin'\],/.test(src.slice(i, i + 600)), 'Denetim seed roles Admin olmali');
-  for (const t of ['nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'envanter', 'degisim', 'appenvs', 'webapp']) {
+  for (const t of ['nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp']) {
     const j = src.indexOf(`element_key: 'tab:denetim:${t}',`);
     assert.ok(j > 0, `tab:denetim:${t} seed yok`);
     const blk = src.slice(j, j + 300);
@@ -78,7 +78,7 @@ test('sunucu: /api/denetim yol -> sekme kapisi; panel uclari', () => {
   const den = read('server/audit/denetim.cjs');
   assert.ok(den.includes("requireVisiblePrefix('Denetim')"), 'sayfa kapisi');
   assert.ok(den.includes("requireVisible('tab:denetim:' + hit[1])"), 'sekme kapisi yok');
-  for (const t of ['nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'envanter', 'appenvs', 'webapp']) {
+  for (const t of ['nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'deploy', 'envanter', 'appenvs', 'webapp']) {
     assert.ok(new RegExp(`'${t}'\\]`).test(den), `yol eslemesinde ${t} yok`);
   }
   const routes = read('server/auth/visibility-routes.cjs');

@@ -647,6 +647,8 @@ export interface InitScriptsResult {
   scripts: InitScriptStat[];
   hostRows: InitScriptHostRow[];
   message?: string;
+  /** Deployment Scripts: son tarama gunu (uzun tablo scan_date) */
+  scanDate?: string | null;
 }
 
 export interface EnvanterDistRow {
@@ -1083,6 +1085,9 @@ export const denetimApi = {
 
   initScripts: (root: string): Promise<InitScriptsResult> =>
     fetch(`${BASE}/init-scripts?root=${encodeURIComponent(root)}`).then(safeJson),
+  // Deployment Scripts (2026-09-18): /vhosting[8]/HYSUXSCRIPTS/*.sh sha512 sapmasi - Init ile AYNI sekil
+  deployScripts: (root: string): Promise<InitScriptsResult> =>
+    fetch(`${BASE}/deploy-scripts?root=${encodeURIComponent(root)}`).then(safeJson),
 
   nginxLocations: (p: { service?: string; env?: string; status?: string; q?: string }): Promise<NginxLocationsResult> => {
     const qs = new URLSearchParams();

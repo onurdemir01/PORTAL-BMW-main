@@ -1771,6 +1771,15 @@ const ELEMENT_SEED = [
     default_visible: 0,
   },
   {
+    // Deployment Scripts (2026-09-18): /vhosting[8]/HYSUXSCRIPTS/*.sh sha512 sapmasi
+    element_key: 'tab:denetim:deploy',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Deployment Scripts',
+    sort_order: 6,
+    default_visible: 0,
+  },
+  {
     element_key: 'tab:denetim:envanter',
     element_type: 'tab',
     parent_key: 'Denetim',

@@ -4,6 +4,7 @@
 //   Nginx SPA Audit             -> nginx vhost/location denetimi + SPA kapsami
 //   Openshift Audit             -> uygulama hangi ortamlarda var/eksik
 //   Init Script Audit           -> sunucular arasi init script sha512 sapmasi
+//   Deployment Scripts Audit    -> /vhosting[8]/HYSUXSCRIPTS/*.sh sha512 sapmasi (ayni ekran)
 //   Envanter Audit              -> Inventory/MWApps/WASApps dagilimlari
 //   Jboss/WAS Applications Audit-> ad kuralindan ortam matrisi + sapmalar
 //   Web-App Relations           -> uygulamayi servis eden web sunucusu/vhost
@@ -86,6 +87,11 @@ const HELP: HelpSection[] = [
     body: "check_initialize job'ının topladığı sha512 değerlerini karşılaştırır: bir script sunucular arasında kaç ayrı sürümle duruyor, hangi sunucular çoğunluktan ayrılmış, hangilerinde dosya hiç yok. Referans olarak en kalabalık hash alınır — tabloda kanonik sürümü işaretleyen bir alan yok, initialize.yaml da şablonu tüm sunuculara aynı dağıttığı için en kalabalık sürüm pratikte şablonun kendisidir. startCustom.sh bunun bilinen istisnasıdır: sunucuya özel olması tasarım gereğidir (initialize.yaml yeniden kurulumda onu yedekten geri kopyalar), o yüzden sapma sayılmaz, ayrıca listelenir.",
   },
   {
+    icon: DocumentDuplicateIcon,
+    title: 'Deployment Scripts Audit',
+    body: "check_deployment_scripts job'ının topladığı sha512 değerlerini karşılaştırır: /vhosting/HYSUXSCRIPTS ve /vhosting8/HYSUXSCRIPTS altındaki deployment script'leri (was_startstop.sh, was_fulldeploy_rsync.sh, was_fulldeploy_unzip.sh, was_setenvironment.sh, was_checkapp.sh …) sunucular arasında kaç ayrı sürümle duruyor, hangi sunucular çoğunluktan ayrılmış, hangilerinde dosya hiç yok. Init Script ile aynı mantık; script listesi sabit değil, sunucuda ne varsa o gelir (vhosting8'de ek script'ler var).",
+  },
+  {
     icon: ServerStackIcon,
     title: 'Nginx API Envanteri',
     body: "nginx_ratelimit_inventory job'ının günlük taramasını gösterir: hangi sunucuda, hangi konfigürasyon dosyasında kaç API (location) bloğu tanımlı ve bunların rate limit durumu. ÖNEMLİ: kaynak tablo ortam bilgisi TAŞIMAZ ve konfigürasyon dosya adları ortamdan bağımsız olarak AYNIDIR — aynı 'x.conf' hem DEV hem PROD sunucusunda bulunur. Bu yüzden ortam sunucu adından türetilir (GBNGWD..=dev, GBNGWT..=test, GBNGWQ..=qa, GBNGWP../GBNGWAP..=prod); kalıba uymayan sunucu sessizce bir ortama atanmaz, 'BİLİNMİYOR' olarak görünür. 'Konfigürasyon Karşılaştırma' görünümü asıl bulguyu üretir: bir satır tek bir dosyanın tüm ortamlardaki hâlidir, hücredeki sayı o ortamdaki API bloğu sayısıdır ve '—' dosyanın o ortamda hiç bulunmadığı anlamına gelir. İki tür sürüklenme ayrı işaretlenir: 'ortam farkı' ortamların beklenen API sayısı birbirinden farklı, 'sunucu farkı' AYNI ortamdaki sunucular birbirinden farklı (hücrede aralık olarak gösterilir, örn. 17–20) — ikincisi genelde bir sunucuya dağıtımın ulaşmadığı anlamına gelir. 'Rate limit tanımı olmayan konfigürasyonlar' listesi ise hiçbir location'ında ne IP bazlı ne de sunucu bazlı limit bulunmayan dosyaları toplar.",
@@ -165,12 +171,13 @@ type DenetimTab =
   | 'nginxaudit'
   | 'ocp'
   | 'init'
+  | 'deploy'
   | 'envanter'
   | 'degisim'
   | 'appenvs'
   | 'webapp';
 const DENETIM_TABS: DenetimTab[] = [
-  'nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init',
+  'nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'deploy',
   'envanter', 'degisim', 'appenvs', 'webapp',
 ];
 
@@ -263,6 +270,7 @@ export default function DenetimPage() {
               { id: 'nginxaudit', label: 'Nginx Audit', icon: ServerStackIcon },
               { id: 'ocp', label: 'OpenShift', icon: Squares2X2Icon },
               { id: 'init', label: 'Init Script', icon: DocumentDuplicateIcon },
+              { id: 'deploy', label: 'Deployment Scripts', icon: DocumentDuplicateIcon },
               { id: 'envanter', label: 'Envanter', icon: ChartBarSquareIcon },
               { id: 'degisim', label: 'Envanter Değişim', icon: ClockIcon },
               { id: 'appenvs', label: 'JBoss/WAS', icon: RectangleGroupIcon },
@@ -297,7 +305,8 @@ export default function DenetimPage() {
       {activeTab === 'nginxenv' && <NginxEnvanteri />}
       {activeTab === 'nginxaudit' && <NginxAudit />}
       {activeTab === 'ocp' && <OcpCoverage />}
-      {activeTab === 'init' && <InitScriptsAudit />}
+      {activeTab === 'init' && <ScriptsAudit kind="init" />}
+      {activeTab === 'deploy' && <ScriptsAudit kind="deploy" />}
       {activeTab === 'envanter' && <EnvanterMetrics />}
       {activeTab === 'degisim' && <EnvanterDegisim />}
       {activeTab === 'appenvs' && <AppEnvs />}
@@ -1202,10 +1211,27 @@ function OcpCoverage() {
   );
 }
 
-// ── 3) INIT SCRIPT SAPMASI ────────────────────────────────────────────────────────────
+// ── 3) INIT / DEPLOYMENT SCRIPT SAPMASI ───────────────────────────────────────────────
 // Iki bakis acisi: SCRIPT bazli (bir dosya kac ayri surumle duruyor) ve SUNUCU bazli
 // (bir host cogunluktan kac dosyada ayriliyor). Ikisi de ayni veriden turer.
-function InitScriptsAudit() {
+// kind='deploy' (2026-09-18): /vhosting[8]/HYSUXSCRIPTS/*.sh - ayni ekran, ayni yanit sekli;
+// tek fark veri ucu, CSV adi ve sunucuya ozel (startCustom.sh) sutununun olmamasi.
+const SCRIPTS_AUDIT_META = {
+  init: {
+    api: (root: string) => denetimApi.initScripts(root),
+    csv: 'init',
+    job: 'check_initialize',
+    intro: 'İnit script\'leri (/vhosting[8]/scripts/initialize) — sha512 çoğunluktan sapanlar.',
+  },
+  deploy: {
+    api: (root: string) => denetimApi.deployScripts(root),
+    csv: 'deployment',
+    job: 'check_deployment_scripts',
+    intro: 'Deployment script\'leri (/vhosting[8]/HYSUXSCRIPTS/*.sh: was_startstop.sh, was_fulldeploy_*.sh …) — sha512 çoğunluktan sapanlar.',
+  },
+} as const;
+function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
+  const meta = SCRIPTS_AUDIT_META[kind];
   const [root, setRoot] = useState('vhosting');
   const [data, setData] = useState<InitScriptsResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1222,7 +1248,7 @@ function InitScriptsAudit() {
   const load = useCallback(async (r: string) => {
     setLoading(true);
     try {
-      const res = await denetimApi.initScripts(r);
+      const res = await meta.api(r);
       if (res.ok) {
         setData(res);
         setErr('');
@@ -1232,11 +1258,14 @@ function InitScriptsAudit() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [meta]);
 
   useAsyncEffect(async () => {
     await load(root);
   }, [root, load]);
+
+  // startCustom.sh (sunucuya ozel) sutunu yalniz Init'te var
+  const hasCustomCol = !!data?.scripts.some((sc) => sc.perServer);
 
   const scripts = useMemo(() => {
     if (!data) return [];
@@ -1327,7 +1356,7 @@ function InitScriptsAudit() {
             onClick={() =>
               view === 'script'
                 ? csvDownload(
-                    `init_script_sapma_${root}`,
+                    `${meta.csv}_script_sapma_${root}`,
                     [
                       'script',
                       'sunucuya_ozel',
@@ -1348,7 +1377,7 @@ function InitScriptsAudit() {
                     ]),
                   )
                 : csvDownload(
-                    `init_sunucu_sapma_${root}`,
+                    `${meta.csv}_sunucu_sapma_${root}`,
                     [
                       'host',
                       'sapma_adedi',
@@ -1378,6 +1407,11 @@ function InitScriptsAudit() {
             <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
           </button>
         </div>
+      </div>
+
+      <div className="text-xs text-[var(--text-muted)]">
+        {meta.intro} Kaynak job: <code>{meta.job}</code>{data?.scanDate ? ` · son tarama ${data.scanDate.split('-').reverse().join('.')}` : ''}.
+        {data?.message && data.hosts === 0 && <span className="ml-1 text-amber-700">{data.message}</span>}
       </div>
 
       {data && (
@@ -1564,13 +1598,15 @@ function InitScriptsAudit() {
                   Çoğunluktan sapan
                 </th>
                 <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Eksik</th>
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
-                  startCustom.sh
-                </th>
+                {hasCustomCol && (
+                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                    startCustom.sh
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-subtle)]">
-              {hostRows.length === 0 && <TableEmptyRow colSpan={4} />}
+              {hostRows.length === 0 && <TableEmptyRow colSpan={hasCustomCol ? 4 : 3} />}
               {hostRows.slice(0, 500).map((h) => (
                 <tr key={h.host} className="hover:bg-[var(--bg-elevated)]/60 align-top">
                   <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">
@@ -1610,6 +1646,7 @@ function InitScriptsAudit() {
                       </div>
                     )}
                   </td>
+                  {hasCustomCol && (
                   <td className="px-3 py-2">
                     {h.hasCustom ? (
                       <span
@@ -1622,6 +1659,7 @@ function InitScriptsAudit() {
                       <span className="text-xs text-[var(--text-muted)]">yok</span>
                     )}
                   </td>
+                  )}
                 </tr>
               ))}
             </tbody>

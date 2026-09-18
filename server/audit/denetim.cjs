@@ -75,6 +75,7 @@ function initDenetim(app) {
       [/^\/nginx-audit(\/|$)/, 'nginxaudit'],
       [/^\/ocp-coverage(\/|$)/, 'ocp'],
       [/^\/init-scripts(\/|$)/, 'init'],
+      [/^\/deploy-scripts(\/|$)/, 'deploy'],
       [/^\/envanter(\/|$)/, 'envanter'],
       [/^\/app-envs(\/|$)/, 'appenvs'],
       [/^\/web-app(\/|$)/, 'webapp'],
@@ -1526,6 +1527,140 @@ function initDenetim(app) {
     }
   });
 
+  // Ortak hesap (Init Script + Deployment Scripts, 2026-09-18): raw = [{host, <key>: sha}],
+  // scripts = [{key,label,perServer?}] -> script bazli surum dagilimi + sunucu bazli sapma.
+  function scriptDeviationReport(raw, scripts) {
+    const hostCount = raw.length;
+    const scriptStats = scripts.map((sc) => {
+      const byHash = new Map();
+      const absent = [];
+      for (const r of raw) {
+        const host = String(r.host).trim();
+        const h = r[sc.key] ? String(r[sc.key]).trim() : '';
+        if (!h) {
+          absent.push(host);
+          continue;
+        }
+        if (!byHash.has(h)) byHash.set(h, []);
+        byHash.get(h).push(host);
+      }
+      const variants = [...byHash.entries()]
+        .map(([hash, hosts]) => ({ hash, count: hosts.length, hosts: hosts.sort() }))
+        .sort((a, b) => b.count - a.count || a.hash.localeCompare(b.hash));
+      const majority = variants[0] || null;
+      return {
+        key: sc.key,
+        label: sc.label,
+        perServer: !!sc.perServer,
+        present: hostCount - absent.length,
+        missing: absent.length,
+        missingHosts: absent.sort(),
+        variantCount: variants.length,
+        majorityHash: majority ? majority.hash : null,
+        majorityCount: majority ? majority.count : 0,
+        deviatingCount: majority ? variants.slice(1).reduce((a, v) => a + v.count, 0) : 0,
+        variants,
+      };
+    });
+    const majorityOf = new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
+    const hostRows = raw.map((r) => {
+      const deviations = [];
+      const missing = [];
+      let customHash = null;
+      for (const sc of scripts) {
+        const val = r[sc.key] ? String(r[sc.key]).trim() : '';
+        if (sc.perServer) {
+          customHash = val || null;
+          continue;
+        }
+        if (!val) {
+          missing.push(sc.label);
+          continue;
+        }
+        const maj = majorityOf.get(sc.key);
+        if (maj && val !== maj) deviations.push(sc.label);
+      }
+      return {
+        host: String(r.host).trim(),
+        deviations,
+        deviationCount: deviations.length,
+        missing,
+        missingCount: missing.length,
+        hasCustom: !!customHash,
+        customHash,
+      };
+    });
+    return { scriptStats, hostRows };
+  }
+
+  function scriptReportSummary(scripts, scriptStats, hostRows) {
+    return {
+      hosts: hostRows.length,
+      scriptCount: scripts.length,
+      // "tam uyumlu" = perServer disindaki HER script'te cogunlukla ayni hash, hicbiri eksik degil
+      identicalHosts: hostRows.filter((r) => r.deviationCount === 0 && r.missingCount === 0).length,
+      totalVariants: scriptStats.filter((sc) => !sc.perServer).reduce((a, sc) => a + sc.variantCount, 0),
+      customHosts: hostRows.filter((r) => r.hasCustom).length,
+      scripts: scriptStats,
+      hostRows,
+    };
+  }
+
+  // ── 3b) DEPLOYMENT SCRIPT SAPMASI (2026-09-18) ──────────────────────────────────────
+  // dbo.DeployScriptsInventory - bmw_wds_scripts/deployment_scripts/check_deployment_scripts.yaml
+  // doldurur: /vhosting/HYSUXSCRIPTS/*.sh ve /vhosting8/HYSUXSCRIPTS/*.sh icin (host, root,
+  // script, sha512, size, mtime). Init'ten farki: tablo UZUN bicimde (script basina satir),
+  // script listesi sabit degil - hangi dosya varsa o gelir (vhosting8'de was_checkapp.sh,
+  // was_enable_hc.sh gibi ekler var). Yanit sekli Init ile AYNI ki ekran ortak.
+  const DEPLOY_TABLE = 'dbo.DeployScriptsInventory';
+  const DEPLOY_ROOTS = ['vhosting', 'vhosting8'];
+
+  router.get('/deploy-scripts', async (req, res) => {
+    try {
+      const { query, sql } = require('../inventory/mssql.cjs');
+      const rootParam = String(req.query.root || 'vhosting');
+      const root = DEPLOY_ROOTS.includes(rootParam) ? rootParam : 'vhosting';
+      const empty = (message) => ({
+        ok: true, root, roots: DEPLOY_ROOTS, scanDate: null, missingColumns: [], message,
+        hosts: 0, scriptCount: 0, identicalHosts: 0, totalVariants: 0, customHosts: 0, scripts: [], hostRows: [],
+      });
+      const ex = await query(`SELECT OBJECT_ID('${DEPLOY_TABLE}') AS oid`);
+      if (!ex.recordset?.[0]?.oid) {
+        return res.json(empty('dbo.DeployScriptsInventory tablosu henüz yok — check_deployment_scripts job\'ı bir kez koşmalı.'));
+      }
+      const rowsRes = await query(
+        `SELECT host, script, sha512, scan_date FROM ${DEPLOY_TABLE} WHERE root = @root ORDER BY host, script`,
+        [{ name: 'root', type: sql.NVarChar, value: root }],
+      );
+      const rows = rowsRes.recordset || [];
+      if (!rows.length) return res.json(empty(`/${root} için kayıt yok.`));
+      // Uzun tablo -> Init ile ayni "host basina satir" sekli; script listesi VERIDEN.
+      const names = [...new Set(rows.map((r) => String(r.script || '').trim()).filter(Boolean))].sort();
+      const scripts = names.map((n) => ({ key: n, label: n }));
+      const byHost = new Map();
+      let scanDate = null;
+      for (const r of rows) {
+        const host = String(r.host || '').trim();
+        if (!host) continue;
+        if (!byHost.has(host)) byHost.set(host, { host });
+        byHost.get(host)[String(r.script).trim()] = r.sha512 ? String(r.sha512).trim() : '';
+        if (r.scan_date && (!scanDate || r.scan_date > scanDate)) scanDate = r.scan_date;
+      }
+      const raw = [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host));
+      const { scriptStats, hostRows } = scriptDeviationReport(raw, scripts);
+      res.json({
+        ok: true,
+        root,
+        roots: DEPLOY_ROOTS,
+        scanDate: scanDate ? new Date(scanDate).toISOString().slice(0, 10) : null,
+        missingColumns: [],
+        ...scriptReportSummary(scripts, scriptStats, hostRows),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Deployment script denetim verisi alinamadi.' });
+    }
+  });
+
   router.get('/init-scripts', async (req, res) => {
     try {
       const { query } = require('../inventory/mssql.cjs');
@@ -1564,87 +1699,14 @@ function initDenetim(app) {
         `SELECT host, ${scripts.map((sc) => sc.key).join(', ')} FROM ${table} ORDER BY host`,
       );
       const raw = (rowsRes.recordset || []).filter((r) => String(r.host || '').trim());
-      const hostCount = raw.length;
 
-      // ── Script bazli surum dagilimi ──
-      const scriptStats = scripts.map((sc) => {
-        const byHash = new Map();
-        const absent = [];
-        for (const r of raw) {
-          const host = String(r.host).trim();
-          const h = r[sc.key] ? String(r[sc.key]).trim() : '';
-          if (!h) {
-            absent.push(host);
-            continue;
-          }
-          if (!byHash.has(h)) byHash.set(h, []);
-          byHash.get(h).push(host);
-        }
-        const variants = [...byHash.entries()]
-          .map(([hash, hosts]) => ({ hash, count: hosts.length, hosts: hosts.sort() }))
-          .sort((a, b) => b.count - a.count || a.hash.localeCompare(b.hash));
-        const majority = variants[0] || null;
-        return {
-          key: sc.key,
-          label: sc.label,
-          perServer: !!sc.perServer,
-          present: hostCount - absent.length,
-          missing: absent.length,
-          missingHosts: absent.sort(),
-          variantCount: variants.length,
-          majorityHash: majority ? majority.hash : null,
-          majorityCount: majority ? majority.count : 0,
-          deviatingCount: majority ? variants.slice(1).reduce((a, v) => a + v.count, 0) : 0,
-          variants,
-        };
-      });
-
-      // ── Sunucu bazli sapma ──
-      const majorityOf = new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
-      const hostRows = raw.map((r) => {
-        const deviations = [];
-        const missing = [];
-        let customHash = null;
-        for (const sc of scripts) {
-          const val = r[sc.key] ? String(r[sc.key]).trim() : '';
-          if (sc.perServer) {
-            customHash = val || null;
-            continue;
-          }
-          if (!val) {
-            missing.push(sc.label);
-            continue;
-          }
-          const maj = majorityOf.get(sc.key);
-          if (maj && val !== maj) deviations.push(sc.label);
-        }
-        return {
-          host: String(r.host).trim(),
-          deviations,
-          deviationCount: deviations.length,
-          missing,
-          missingCount: missing.length,
-          hasCustom: !!customHash,
-          customHash,
-        };
-      });
-
+      const { scriptStats, hostRows } = scriptDeviationReport(raw, scripts);
       res.json({
         ok: true,
         root,
         roots: Object.keys(INIT_TABLES),
-        hosts: hostCount,
-        scriptCount: scripts.length,
-        // "tam uyumlu" = perServer disindaki HER script'te cogunlukla ayni hash, hicbiri eksik degil
-        identicalHosts: hostRows.filter((r) => r.deviationCount === 0 && r.missingCount === 0)
-          .length,
-        totalVariants: scriptStats
-          .filter((sc) => !sc.perServer)
-          .reduce((a, sc) => a + sc.variantCount, 0),
-        customHosts: hostRows.filter((r) => r.hasCustom).length,
         missingColumns,
-        scripts: scriptStats,
-        hostRows,
+        ...scriptReportSummary(scripts, scriptStats, hostRows),
       });
     } catch (err) {
       res
