@@ -204,13 +204,25 @@ export interface SpaCoverageRow {
   coverage: number | null;
   /** Deploy olmamis uygulamalar + sahiplik (2026-09-17). internet: nginx'te tanimi yok;
    *  intranet: hic kurulmamis (missing) ya da yarim (partial: eksik dizinler sunucu basina). */
-  missingDetail?: { internet: SpaMissingApp[]; intranet: SpaMissingApp[]; noRoute?: SpaMissingApp[] };
+  missingDetail?: {
+    internet: SpaMissingApp[]; intranet: SpaMissingApp[]; noRoute?: SpaMissingApp[];
+    notDeployed?: SpaMissingApp[]; deployedNotDefined?: SpaMissingApp[]; definedNotDeployed?: SpaMissingApp[];
+  };
+  /** internet sunucularinda dizin taramasi (H+A) - 2026-09-18 */
+  internetDirsMeasured?: boolean;
+  internetDeployed?: number;
+  internetServing?: number;
+  internetNotDeployedCount?: number;
+  internetDeployedNotDefinedCount?: number;
+  internetDefinedNotDeployedCount?: number;
 }
 export interface SpaMissingApp {
   app: string;
   namespaces: string[];
   owner: AppOwner;
-  kind: 'missing' | 'partial' | 'noroute';
+  kind: 'missing' | 'partial' | 'noroute' | 'notdeployed' | 'notdefined' | 'nopackage';
+  /** notdeployed: konfigurasyon tanimi var mi (var ise 404 riski) */
+  defined?: boolean;
   /** noroute: nginx'te yine de tanimli mi (eski sunucuda proxy / include) */
   inNginx?: boolean;
   namespace?: string;

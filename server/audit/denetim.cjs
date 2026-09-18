@@ -15,7 +15,7 @@
 
 const express = require('express');
 const { PLATFORM_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
-const { tierOfHost } = require('./nginx-hosts.cjs');
+const { tierOfHost, envOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeLegacy } = require('./nginx-legacy.cjs');
 const { summarizeAudit, readLatestAuditDate } = require('./nginx-audit.cjs');
@@ -543,6 +543,22 @@ function initDenetim(app) {
       // calistirilmamis demektir. Ikisini ayirmadan ekran yanlis alarm uretir.
       const intranetTableMissing = !!intraRes._missing;
       const intraIdx = indexIntranetRows(intraRes.recordset || []);
+      // INTERNET sunucularindaki dizin taramasi (kullanici, 2026-09-18): "deploy edilmis" =
+      // internete acik en az bir sunucuda /hysdeploy/<ns>/<app>/ VE /usr/nginx/applications/
+      // <ns>/<app>/ var (H+A; matristeki "hazir" kurali). Konfigurasyon tanimi (include /
+      // proxy) AYRI olcudur; ikisi karistirildigi icin ozet yaniltiyordu. Ortam sunucu
+      // adindan (envOfHost; yeni PROD SPA sunuculari GBNGXP4x -> PROD).
+      const netDirs = new Map(); // env -> app(lower) -> { hosts: [{host, hys, app}] }
+      for (const r of intraRes.recordset || []) {
+        const host = String(r.host || '').trim().toUpperCase();
+        const app = String(r.application || '').trim();
+        if (!host || !app || tierOfHost(host) === 'intranet') continue;
+        const env = envOfHost(host);
+        if (!netDirs.has(env)) netDirs.set(env, new Map());
+        const k = app.toLowerCase();
+        if (!netDirs.get(env).has(k)) netDirs.get(env).set(k, { hosts: [] });
+        netDirs.get(env).get(k).hosts.push({ host, hys: !!r.hys_deployed, app: !!r.app_deployed });
+      }
 
       // ── Route tipi haritasi ───────────────────────────────────────────────────────
       // "<namespace>|<route>" -> tip, ve "<namespace>" -> o namespace'teki tum tipler.
@@ -776,6 +792,16 @@ function initDenetim(app) {
           if (n.has(k)) inNginx[v.net].push(v.name);
         }
         const internetMissing = bucket.internet.filter((a) => !n.has(a.toLowerCase()));
+        // DEPLOY EDILMIS (H+A) / SERVISE TANIMLI / YUK ALIYOR (ikisi de) - uc ayri kume
+        const nd = netDirs.get(e) || new Map();
+        const dirsMeasured = nd.size > 0;
+        const deployedOn = (a) => ((nd.get(a.toLowerCase()) || { hosts: [] }).hosts.filter((h) => h.hys && h.app).map((h) => h.host));
+        const deployed = bucket.internet.filter((a) => deployedOn(a).length > 0);
+        const deployedSet = new Set(deployed.map((a) => a.toLowerCase()));
+        const serving = deployed.filter((a) => n.has(a.toLowerCase()));
+        const notDeployed = bucket.internet.filter((a) => !deployedSet.has(a.toLowerCase()));
+        const deployedNotDefined = deployed.filter((a) => !n.has(a.toLowerCase()));
+        const definedNotDeployed = bucket.internet.filter((a) => n.has(a.toLowerCase()) && !deployedSet.has(a.toLowerCase()));
         // Internet SPA'larindan nginx'te tanimli olanlarin SERVIS kirilimi: servis -> uygulama
         // sayisi. Bir uygulama birden fazla vhost'ta tanimliysa her birinde sayilir
         // (multi = kac uygulama birden fazla serviste). Toplam servis sayilari bu yuzden
@@ -816,6 +842,13 @@ function initDenetim(app) {
           internetServiced: serviced,
           internetMissingCount: internetMissing.length,
           internetMissing: internetMissing.sort(sortTr).slice(0, CAP),
+          // Deploy (H+A, internet sunuculari) - 2026-09-18
+          internetDirsMeasured: dirsMeasured,
+          internetDeployed: deployed.length,
+          internetServing: serving.length,
+          internetNotDeployedCount: notDeployed.length,
+          internetDeployedNotDefinedCount: deployedNotDefined.length,
+          internetDefinedNotDeployedCount: definedNotDeployed.length,
           // Sahiplikli ayrinti (ekrandaki "tikla, listeyi gor"): internet = nginx'te tanimi
           // olmayanlar; intranet = hic kurulmamis + yarim kurulmus (eksik dizinler ve sunucular)
           missingDetail: {
@@ -828,6 +861,10 @@ function initDenetim(app) {
             // hic kaydi yok -> internet/intranet siniflandirilamiyor; nginx'te tanimli olup
             // olmadigi ayrica yazilir (inNginx: eski sunucuda proxy / include var mi).
             noRoute: bucket.bilinmiyor.slice(0, CAP).map((a) => detailOf(e, a, { kind: 'noroute', inNginx: n.has(a.toLowerCase()) })),
+            // deploy bakisi (2026-09-18): ekibin isi / bizim isimiz / 404 riski
+            notDeployed: notDeployed.sort(sortTr).slice(0, CAP).map((a) => detailOf(e, a, { kind: 'notdeployed', defined: n.has(a.toLowerCase()) })),
+            deployedNotDefined: deployedNotDefined.sort(sortTr).slice(0, CAP).map((a) => detailOf(e, a, { kind: 'notdefined', hosts: deployedOn(a).map((h) => ({ host: h, missing: [] })) })),
+            definedNotDeployed: definedNotDeployed.sort(sortTr).slice(0, CAP).map((a) => detailOf(e, a, { kind: 'nopackage' })),
           },
           // INTRANET (reencrypt) = intranet SPA sunucularina dagitilir. Olcum
           // location'dan DEGIL, uc dizinin varligindan gelir (2026-09-10 duzeltmesi):

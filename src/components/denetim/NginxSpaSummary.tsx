@@ -230,10 +230,18 @@ function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose:
 const rowsFromCoverage = (list: SpaMissingApp[]): MissingRow[] =>
   list.map((x) => ({
     app: x.app, namespaces: x.namespaces, owner: x.owner,
-    what: x.kind === 'partial' ? 'yarım kurulum' : x.kind === 'noroute' ? 'route bilgisi yok' : 'hiç deploy olmamış',
+    what: x.kind === 'partial' ? 'yarım kurulum'
+      : x.kind === 'noroute' ? 'route bilgisi yok'
+      : x.kind === 'notdeployed' ? 'deploy edilmemiş (H+A yok)'
+      : x.kind === 'notdefined' ? 'deploy edilmiş, servis tanımı yok'
+      : x.kind === 'nopackage' ? 'tanımı var, paketi yok (404)'
+      : 'hiç deploy olmamış',
     detail: x.kind === 'partial'
       ? (x.hosts || []).map((h) => `${h.host}: ${h.missing.join(', ')} yok`).join(' · ')
-      : x.kind === 'noroute' ? (x.inNginx ? 'nginx’te yine de tanımlı (eski sunucuda proxy / include)' : 'nginx’te tanımı da yok') : undefined,
+      : x.kind === 'noroute' ? (x.inNginx ? 'nginx’te yine de tanımlı (eski sunucuda proxy / include)' : 'nginx’te tanımı da yok')
+      : x.kind === 'notdeployed' ? (x.defined ? 'servis tanımı var — paket gelince yük alır' : 'servis tanımı da yok')
+      : x.kind === 'notdefined' ? 'paket olan sunucular: ' + (x.hosts || []).map((h) => h.host).join(', ')
+      : undefined,
   }));
 
 /** "route'suz N" baglantisi: OpenShift'te olup route envanterinde kaydi olmayan SPA'lar (sahiplikle). */
@@ -298,16 +306,11 @@ function serviceColor(name: string) {
 
 /** Internet SPA'larinin nginx SERVISI (vhost) kirilimi: bolunmus cubuk + etiketler.
  *  Genislik internete acik toplam SPA'ya gore (bos kalan = tanimsiz). */
-function ServiceBar({ total, serviced, services, multi }: { total: number; serviced: number; services: { service: string; count: number }[]; multi: number }) {
+function ServiceBar({ total, services, multi }: { total: number; services: { service: string; count: number }[]; multi: number }) {
   const sum = services.reduce((a, x) => a + x.count, 0);
   return (
-    <div className="mt-1.5" title="internete açık SPA’lardan kaçı bir nginx servisinin (vhost: GLOMO, WEBFORMS, SAKLAMA…) altından hizmet alıyor; altında servis kırılımı">
-      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>nginx servisi altında</div>
-      {/* Baslik: FARKLI uygulama sayisi (servis toplami degil - bir uygulama iki serviste olabilir) */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Big n={serviced} of={total} label="bir servisin altında" />
-        <span className="text-[11px] font-semibold tabular-nums" style={{ color: toneOf(pct(serviced, total)) }}>{pctText(pct(serviced, total))}</span>
-      </div>
+    <div className="mt-1" title="servise tanımlı SPA’lar hangi vhost’un (GLOMO, WEBFORMS, SAKLAMA…) altında; % = internete açık SPA’ların payı">
+      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>servis kırılımı <span className="normal-case">(% = internete açık SPA’ların payı)</span></div>
       <div className="h-2 rounded-full overflow-hidden flex mt-0.5" style={{ background: 'var(--bg-elevated)' }}>
         {services.map((x) => (
           <span key={x.service} className="h-full" style={{ width: `${total ? Math.min(100, (x.count / total) * 100) : 0}%`, background: serviceColor(x.service) }} title={`${x.service}: ${fmtNumber(x.count)}`} />
@@ -445,7 +448,9 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
     const out: MissingRow[] = [];
     for (const { env, cov: c } of rows) {
       if (!c) continue;
-      if (c.measured) out.push(...rowsFromCoverage(c.missingDetail?.internet || []).map((x) => ({ ...x, env, tier: 'internet' })));
+      // internet: deploy edilmemisler (ekibin isi). Dizin taramasi yoksa eski olcu (tanimi olmayanlar).
+      if (c.internetDirsMeasured) out.push(...rowsFromCoverage(c.missingDetail?.notDeployed || []).map((x) => ({ ...x, env, tier: 'internet' })));
+      else if (c.measured) out.push(...rowsFromCoverage(c.missingDetail?.internet || []).map((x) => ({ ...x, env, tier: 'internet' })));
       if (c.measuredIntranet) out.push(...rowsFromCoverage(c.missingDetail?.intranet || []).map((x) => ({ ...x, env, tier: 'intranet' })));
     }
     if (mig) out.push(...rowsFromMigration(mig.groups).map((x) => ({ ...x, env: 'PROD', tier: 'yeni sunucu' })));
@@ -478,7 +483,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
           {/* Katman fark etmeksizin TUM deploy olmamis / sorunlu uygulamalar + sahipleri
               (kullanici, 2026-09-17: "internet veya intranet fark etmez, sahiplerine ulasmak istiyorum") */}
           <button
-            onClick={() => setOpen({ title: 'Deploy olmamış / sorunlu tüm SPA’lar ve sahipleri', subtitle: 'tüm ortamlar · internet (nginx’te tanım yok) + intranet (hiç yok / yarım) + PROD yeni sunucular (hazır değil)', rows: allMissing })}
+            onClick={() => setOpen({ title: 'Deploy olmamış / sorunlu tüm SPA’lar ve sahipleri', subtitle: 'tüm ortamlar · internet (deploy edilmemiş: H+A yok) + intranet (hiç yok / yarım) + PROD yeni sunucular (hazır değil)', rows: allMissing })}
             disabled={allMissing.length === 0}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
             style={{ background: 'var(--accent)' }}
@@ -501,8 +506,8 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
               <th className={th} title="OpenShift’teki SPA uygulaması sayısı (adında -app-v / -app-emb-v geçenler) ve ortamdaki tüm uygulamalar içindeki payı">
                 OpenShift SPA
               </th>
-              <th className={th} style={hl('internet')} title="İnternete açık (route tipi passthrough) SPA’ların kaçının internet nginx’lerinde location tanımı var">
-                İnternet · nginx’te tanımlı
+              <th className={th} style={hl('internet')} title="İnternete açık (route tipi passthrough) SPA’lar: kaçı internet nginx’lerine deploy edilmiş (H+A), kaçı servise tanımlı (location/include), kaçı ikisi birden (yük alıyor)">
+                İnternet · deploy / tanım / yük
               </th>
               <th className={th} style={hl('intranet')} title="İntranet (route tipi reencrypt) SPA’ların kaçı intranet nginx’lerine TAM kurulu (hysdeploy + applications + conf)">
                 İntranet · nginx’e kurulu
@@ -534,16 +539,34 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                   <td className="px-3 py-2.5 min-w-[13rem]" style={hl('internet')}>
                     {c ? (
                       <div className="space-y-1">
+                        {/* UC AYRI OLCU (kullanici, 2026-09-18): deploy edilmis (H+A) / servise tanimli / yuk aliyor.
+                            Eskiden yalniz "tanimli" vardi ve deploy sanilip yanlis okunuyordu. */}
+                        <ClickCell
+                          disabled={!c.internetDirsMeasured}
+                          count={c.internetNotDeployedCount || 0}
+                          onClick={() => setOpen({ title: `${env} · deploy edilmemiş internet SPA’ları`, subtitle: `${fmtNumber(c.internetNotDeployedCount || 0)} uygulama · internete açık hiçbir nginx sunucusunda /hysdeploy/<ns>/<app>/ + /usr/nginx/applications/<ns>/<app>/ (H+A) yok — ekipler deployment geçmeli`, rows: rowsFromCoverage(c.missingDetail?.notDeployed || []) })}
+                        >
+                          <Big n={c.internetDirsMeasured ? (c.internetDeployed || 0) : 0} of={c.internetTotal} label="deploy edilmiş (H+A)" />
+                          <Bar value={c.internetDeployed || 0} total={c.internetTotal} measured={!!c.internetDirsMeasured} title="internete açık nginx sunucusunda paket + dosyalar var / internete açık SPA" />
+                        </ClickCell>
                         <ClickCell
                           disabled={!c.measured}
-                          count={c.internetMissingCount}
-                          onClick={() => setOpen({ title: `${env} · nginx’te tanımı olmayan internet SPA’ları`, subtitle: `${fmtNumber(c.internetMissingCount)} uygulama · route tipi passthrough, internete açık nginx’lerde location tanımı yok`, rows: rowsFromCoverage(c.missingDetail?.internet || []) })}
+                          count={c.internetDeployedNotDefinedCount || 0}
+                          onClick={() => setOpen({ title: `${env} · deploy edilmiş ama servise tanımlanmamış SPA’lar`, subtitle: `${fmtNumber(c.internetDeployedNotDefinedCount || 0)} uygulama · paket sunucuda var (H+A) ama vhost’ta location/include tanımı yok — bizim işimiz: tanım oluştur`, rows: rowsFromCoverage(c.missingDetail?.deployedNotDefined || []) })}
                         >
-                          <Big n={c.measured ? c.internetInNginx : 0} of={c.internetTotal} label={env === 'PROD' ? 'eski sunucuda proxy' : 'tanımlı'} />
-                          <Bar value={c.internetInNginx} total={c.internetTotal} measured={c.measured} title="nginx’te tanımlı / internete açık SPA" />
+                          <Big n={c.measured ? c.internetInNginx : 0} of={c.internetTotal} label={env === 'PROD' ? 'servise tanımlı (eski sunucuda proxy)' : 'servise tanımlı'} />
+                          <Bar value={c.internetInNginx} total={c.internetTotal} measured={c.measured} title="vhost’ta location/include tanımı var / internete açık SPA" />
                           {c.measured && (c.internetServices || []).length > 0 && (
-                            <ServiceBar total={c.internetTotal} serviced={c.internetServiced ?? c.internetInNginx} services={c.internetServices || []} multi={c.internetMultiService || 0} />
+                            <ServiceBar total={c.internetTotal} services={c.internetServices || []} multi={c.internetMultiService || 0} />
                           )}
+                        </ClickCell>
+                        <ClickCell
+                          disabled={!c.measured || !c.internetDirsMeasured}
+                          count={c.internetDefinedNotDeployedCount || 0}
+                          onClick={() => setOpen({ title: `${env} · tanımı var ama paketi olmayan SPA’lar (404 riski)`, subtitle: `${fmtNumber(c.internetDefinedNotDeployedCount || 0)} uygulama · vhost’ta tanım var, internete açık sunucularda H+A yok — adres 404 döner`, rows: rowsFromCoverage(c.missingDetail?.definedNotDeployed || []) })}
+                        >
+                          <Big n={c.measured && c.internetDirsMeasured ? (c.internetServing || 0) : 0} of={c.internetTotal} label="yük alıyor (deploy + tanım)" />
+                          <Bar value={c.internetServing || 0} total={c.internetTotal} measured={!!(c.measured && c.internetDirsMeasured)} title="hem deploy edilmiş hem servise tanımlı / internete açık SPA" />
                         </ClickCell>
                         {env === 'PROD' && prodNew && (
                           <div className="rounded-lg px-2 py-1.5 mt-1 border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
@@ -631,7 +654,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
       {ipOpen && <IpRoutesModal ip={ipOpen.ip} env={ipOpen.env} onClose={() => setIpOpen(null)} />}
       {open && <MissingAppsModal title={open.title} subtitle={open.subtitle} rows={open.rows} ownersReady={cov.ownersReady !== false} onClose={() => setOpen(null)} />}
       <div className="px-4 py-2 border-t text-[10px] leading-relaxed" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
-        <b>Tıklayın:</b> sayıya tıklayınca o ortamda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta), IP’ye tıklayınca o IP’ye çözen route’lar listelenir. <b>SPA</b> = OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım uygulama × ortam. <b>İnternet</b> = route tipi passthrough, nginx’te location tanımı aranır (PROD’da eski GBRVP* sunucularının proxy_pass’i). <b>İntranet</b> = route tipi reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. <b>Taralı</b> = o ortam için nginx kaydı yok, ölçülemedi.
+        <b>Tıklayın:</b> sayıya tıklayınca o ortamda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta), IP’ye tıklayınca o IP’ye çözen route’lar listelenir. <b>SPA</b> = OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım uygulama × ortam. <b>İnternet</b> = route tipi passthrough; <b>deploy edilmiş</b> = internete açık sunucuda /hysdeploy + /usr/nginx/applications dizinleri (H+A), <b>servise tanımlı</b> = vhost’ta location/include (PROD’da eski GBRVP* sunucularının proxy_pass’i), <b>yük alıyor</b> = ikisi birden. <b>İntranet</b> = route tipi reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. <b>Taralı</b> = o ortam için nginx kaydı yok, ölçülemedi.
         {routes?.routeTableMissing && <span style={{ color: 'var(--status-warning)' }}> Route envanteri okunamadı (route_inventory job’ı koşmalı).</span>}
       </div>
     </section>
