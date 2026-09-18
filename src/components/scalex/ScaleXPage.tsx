@@ -264,7 +264,7 @@ const ScaleXPage: React.FC = () => {
     setAction('stop');
     setExecutionMode('dry_run');
     setTargetReplicas(undefined);
-    setVerificationTimeout('60');
+    setVerificationTimeout(TIMEOUT_DEFAULT);
     setAllowPartial(true);
     setMailCc('');
     setHpaPin(false);

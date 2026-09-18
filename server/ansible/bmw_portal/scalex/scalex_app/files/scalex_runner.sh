@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="9"
+PACKAGE_VERSION="10"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"

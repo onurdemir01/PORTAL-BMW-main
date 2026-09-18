@@ -11,7 +11,8 @@
 //
 // YENİ TABLO YOK, YENİ UÇ YOK: aynı satır, aynı uçlar, aynı modal — yalnızca template
 // kimliği `scalex_run` kaydından çözülüp doğru yerden açılıyor.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ShieldCheckIcon,
   ExclamationTriangleIcon,
@@ -56,8 +57,12 @@ const RbacFindings: React.FC = () => {
     }
   }
 
-  useEffect(() => {
-    void load();
+  // `useAsyncEffect`: efekt icinde dogrudan `load()` cagirmak
+  // `react-hooks/set-state-in-effect` uyarisi uretiyor (ESLint ozel hook'larin
+  // ICINE bakmaz; erteleme hook'un kendisinde). Ayrica sekme sokulduktan sonra
+  // gelen cevap artik `setState` CAGIRMAZ.
+  useAsyncEffect(async (alive) => {
+    if (alive()) await load();
   }, []);
 
   const askable = useMemo(() => rows.filter((r) => r.reason === 'no_permission'), [rows]);
@@ -219,8 +224,12 @@ const ScaleXAdminTab: React.FC = () => {
       setLoading(false);
     }
   }
-  useEffect(() => {
-    load();
+  // `useAsyncEffect`: efekt icinde dogrudan `load()` cagirmak
+  // `react-hooks/set-state-in-effect` uyarisi uretiyor (ESLint ozel hook'larin
+  // ICINE bakmaz; erteleme hook'un kendisinde). Ayrica sekme sokulduktan sonra
+  // gelen cevap artik `setState` CAGIRMAZ.
+  useAsyncEffect(async (alive) => {
+    if (alive()) await load();
   }, []);
 
   const run = useMemo(() => rows.find((r) => r.keyName === RUN_KEY) || null, [rows]);

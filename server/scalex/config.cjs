@@ -94,6 +94,34 @@ function readTunables() {
       sources[k] = 'default';
     }
   }
+  // ── IKINCI TUTARLILIK KURALI: ESIK, TAVANI GECEMEZ ────────────────────────
+  //
+  // `requiresWrittenConfirm = targets > threshold` ve `exceedsMaxTargets =
+  // targets > maxTargets`. Esik tavandan BUYUKSE yazili onay kosulu
+  // MATEMATIKSEL OLARAK saglanamaz: esigi asan her istek zaten `maxTargets` ile
+  // 400 alir. Yani admin ekranindan TEK BIR SAYI yazarak prod yazili-onay
+  // kapisi, hicbir uyari olmadan tamamen devre disi birakilabiliyordu —
+  // "var denilen ama hic ateslenmeyen kapi" sinifinin ayar tarafindaki hali.
+  if (values.SCALEX_PROD_CONFIRM_THRESHOLD > values.SCALEX_MAX_TARGETS) {
+    problems.push(
+      `Prod yazılı onay eşiği (${values.SCALEX_PROD_CONFIRM_THRESHOLD}) hedef tavanından ` +
+        `(${values.SCALEX_MAX_TARGETS}) büyük — bu ayarla yazılı onay HİÇ istenmez. ` +
+        `Eşik fabrika değerine (${TUNABLES.SCALEX_PROD_CONFIRM_THRESHOLD.fallback}) döndürüldü.`,
+    );
+    values.SCALEX_PROD_CONFIRM_THRESHOLD = TUNABLES.SCALEX_PROD_CONFIRM_THRESHOLD.fallback;
+    sources.SCALEX_PROD_CONFIRM_THRESHOLD = 'default';
+  }
+
+  // Carpan 1 ise kapatmada uyari ve fail esigi AYNI saniyeye duser; "uyar ama
+  // beklemeye devam et" semantigi (scalex_runner.sh verify_replicas) coker.
+  // Deger gecerli, ama kullanici bunu BILMELI.
+  if (values.SCALEX_VERIFY_FAIL_MULTIPLIER === 1) {
+    problems.push(
+      'Fail çarpanı 1: kapatmada uyarı ve hata eşiği aynı saniyeye düşüyor; ' +
+        '"uyar ama beklemeye devam et" davranışı kalkar.',
+    );
+  }
+
   return { values, sources, problems };
 }
 

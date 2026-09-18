@@ -82,58 +82,89 @@ function verify({ state, target, warn, fail }) {
   }
 }
 
-test('VT1 varsayilan butce HER YERDE 300 sn (ALTI yer ayrismiyor)', () => {
+// ── VT1 YENIDEN YAZILDI: ELLE REGEX YERINE TARAMA + DAVRANIS ───────────────
+//
+// ESKI VT1 "varsayilan HER YERDE 300" diyordu ve YESILDI; ama uretimde (2026-09-18,
+// isler #3329581/#3329638/#3329647/#3329656/#3329662) ScaleX TAMAMEN kapaliydi ve
+// dort ayri '60' kalintisi hayattaydi. Sebep: elle yazilmis dort regex.
+//
+//   * `verificationTimeout:` NESNE-OZELLIK yazimini ariyordu; `/run`daki
+//     `const verificationTimeout = ... ?? '60'` (= yazimi) suzgecten gecti —
+//     ustelik ISI GERCEKTEN BASLATAN uc orasi.
+//   * `useState(...)` baslangicini ariyordu; `setVerificationTimeout('60')`
+//     sifirlama cagrisini gormedi.
+//   * `String(launch.VERIFICATION_TIMEOUT_DEFAULT)` metnini KILITLIYORDU —
+//     oysa o ad #102'de silinmisti. Bekci OLU BIR ADI koruyordu ve dogru
+//     duzeltmeyi yapanin testi kirmizi olacakti.
+//
+// Yeni olcut: "bir sabiti bir yerde dogrula" degil, "bu sayiyi TUTAN HER YERI tara".
+function timeoutLiterals(rel) {
+  const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  const out = [];
+  src.split('\n').forEach((line, n) => {
+    if (/^\s*(\/\/|#|\*)/.test(line)) return; // yorumlar teshis metni tasiyor
+    // BUYUK/KUCUK HARF DUYARSIZ. Ilk yazimda `verification_?[Tt]imeout` duyarliydi
+    // ve `setVerificationTimeout('60')` (buyuk V) suzgecten GECTI — mutasyon turunda
+    // yakalandi. Tam olarak kacirdigi yazim, PR #98'in regresyonunu ureten yazimdi.
+    if (!/verification_?timeout|verify_(warn|fail)_seconds|timeout_(default|min|max)/i.test(line))
+      return;
+    for (const m of line.matchAll(/['"`](\d{1,5})['"`]|\b(?<!\.)(\d{2,5})\b/g)) {
+      const v = m[1] || m[2];
+      if (v) out.push({ rel, line: n + 1, value: v, text: line.trim().slice(0, 100) });
+    }
+  });
+  return out;
+}
+
+test('VT1 sure sabiti TUTAN HER YERDE 300 (tarama, elle regex degil)', () => {
+  const SCANNED = [
+    'server/scalex/index.cjs',
+    'server/scalex/launch.cjs',
+    'server/scalex/config.cjs',
+    'src/components/scalex/ScaleXPage.tsx',
+    'src/components/scalex/steps/OperationStep.tsx',
+    'src/hooks/useScaleXLimits.ts',
+    'server/ansible/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml',
+  ];
+  const ALLOWED = new Set(['300', '30', '3600', '86400']); // varsayilan + min + max + mutlak tavan
+  const bad = [];
+  for (const rel of SCANNED) for (const hit of timeoutLiterals(rel)) {
+    if (!ALLOWED.has(hit.value)) bad.push(`${hit.rel}:${hit.line} -> "${hit.value}"  ${hit.text}`);
+  }
+  assert.deepEqual(bad, [], `sure satirinda beklenmeyen sabit:\n  ${bad.join('\n  ')}`);
+
+  // TOPLAYICI BOSALMASIN: desen bozulursa liste sifirlanir ve test VAKUMLA gecer.
+  const total = SCANNED.reduce((n, rel) => n + timeoutLiterals(rel).length, 0);
+  assert.ok(total >= 8, `toplayici yalnizca ${total} sabit gordu — desen bozulmus`);
+
   const runner = fs.readFileSync(RUNNER, 'utf8');
-  const launch = fs.readFileSync(path.join(ROOT, 'server/scalex/launch.cjs'), 'utf8');
-  const prepare = fs.readFileSync(
-    path.join(ROOT, 'server/ansible/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml'), 'utf8',
-  );
-  const ui = fs.readFileSync(
-    path.join(ROOT, 'src/components/scalex/steps/OperationStep.tsx'), 'utf8',
-  );
   assert.match(runner, /VERIFY_WARN_SECONDS:-300/, 'betik varsayilani 300 degil');
-  // Sunucu varsayilani artik SABIT DEGIL — admin ekranindan gelebiliyor. Fabrika
-  // degeri `config.cjs`te duruyor ve `launch.cjs` onu HER CAGRIDA okuyor.
   const cfg = fs.readFileSync(path.join(ROOT, 'server/scalex/config.cjs'), 'utf8');
   assert.match(cfg, /SCALEX_VERIFY_TIMEOUT_DEFAULT: \{ fallback: 300/, 'fabrika varsayilani 300 degil');
-  assert.match(launch, /verifyTimeoutDefault = \(\) => config\.tunable/, 'sunucu varsayilani dinamik okunmuyor');
-  assert.match(prepare, /verification_timeout \| default\('300'\)/, 'playbook varsayilani 300 degil');
-  assert.match(ui, /TIMEOUT_DEFAULT = "300"/, 'ekran varsayilani 300 degil');
-  // Eski onayarli liste GERI GELMESIN.
+  const launch = fs.readFileSync(path.join(ROOT, 'server/scalex/launch.cjs'), 'utf8');
   assert.doesNotMatch(launch, /VERIFICATION_TIMEOUTS/, 'eski onayarli liste geri gelmis');
+});
 
-  // ── BU IKI YERI ILK VT1 GORMUYORDU (bekci korlugu, 2026-09-17) ───────────
-  // PR #98 `TIMEOUT_DEFAULT`i 300 yapti ve VT1 yesil kaldi; ama sihirbaz sayfasi
-  // ELDE yazili '60' tutuyordu ve kullanicinin isi 5 dk yerine 1 dk bekledi (HAR
-  // kaniti). Bir sabiti "bir yerde dogru" diye dogrulamak yetmiyor — AYNI SAYIYI
-  // TUTAN HER YER kontrol edilmeli.
-  const page = fs.readFileSync(
-    path.join(ROOT, 'src/components/scalex/ScaleXPage.tsx'), 'utf8',
-  );
-  assert.match(
-    page,
-    /useState\(TIMEOUT_DEFAULT\)/,
-    'sihirbaz sayfasi varsayilani PAYLASILAN sabitten okumuyor',
-  );
-  assert.doesNotMatch(
-    page,
-    /setVerificationTimeout\] = useState\(['"][0-9]+['"]\)/,
-    'sihirbaz sayfasi sure varsayilanini ELDE yaziyor — PR #98 regresyonu geri geldi',
-  );
-
-  // `/preview` ucunun kendi yedegi de sunucu sabitinden gelmeli; yoksa onizleme
-  // bir butce, calistirma baska bir butce gosterir.
-  const server = fs.readFileSync(path.join(ROOT, 'server/scalex/index.cjs'), 'utf8');
-  assert.doesNotMatch(
-    server,
-    /verificationTimeout: req\.body\?\.verificationTimeout \?\? ['"][0-9]+['"]/,
-    '/preview yedegi ELDE yazili bir saniye degeri kullaniyor',
-  );
-  assert.match(
-    server,
-    /req\.body\?\.verificationTimeout \?\?\s*String\(launch\.VERIFICATION_TIMEOUT_DEFAULT\)/,
-    '/preview yedegi sunucu sabitinden gelmiyor',
-  );
+// VT1b — KAYNAK METNI DEGIL, GERCEK MODULU SOR. Eski bekci silinmis bir
+// tanimlayiciyi metin olarak kilitliyordu; `require` bunu YAPAMAZ.
+test('VT1b `/preview` yedegi GERCEKTEN var olan bir disa acilimi kullaniyor', () => {
+  const launch = require(path.join(ROOT, 'server/scalex/launch.cjs'));
+  // YORUM SATIRLARI ELENIR. Ilk yazimimda elemiyordum ve test KENDI aciklamamda
+  // gecen `launch.VERIFICATION_TIMEOUT_DEFAULT` metnini yakalayip kirmizi dondu —
+  // bu dosyanin defalarca kaydettigi "kendi doc-comment'ini eslestirme" korlugu.
+  const server = fs
+    .readFileSync(path.join(ROOT, 'server/scalex/index.cjs'), 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
+  // `require('./launch.cjs')` de eslesiyor — dosya uzantisi bir disa acilim degil.
+  const used = [...server.matchAll(/launch\.([A-Za-z_][A-Za-z0-9_]*)/g)]
+    .map((m) => m[1])
+    .filter((n) => n !== 'cjs');
+  const missing = [...new Set(used)].filter((n) => launch[n] === undefined);
+  assert.deepEqual(missing, [], `index.cjs olmayan disa acilim(lar)i cagiriyor: ${missing.join(', ')}`);
+  assert.equal(typeof launch.verifyTimeoutDefault, 'function', 'varsayilan getter degil');
+  assert.equal(launch.verifyTimeoutDefault(), 300);
 });
 
 test('VT2 deneme basina TEK `oc` cagrisi (uc alan tek jsonpath)', () => {
@@ -212,4 +243,86 @@ test('VT6 saniye butcesi SUNUCUDA dogrulaniyor (yalniz ekranda degil)', () => {
   for (const kotu of ['0', '29', '3601', 'abc', '-5', '10.5', '99999999']) {
     assert.equal(normalizeVerificationTimeout(kotu), null, `gecersiz deger kabul edildi: ${kotu}`);
   }
+});
+
+// ── VT8 — URETIMDE YASANAN HATANIN BIREBIR TESTI ───────────────────────────
+//
+// 2026-09-18: ScaleX'in TAMAMI kapaliydi. `01_prepare.yml:79` varsayilani '300'
+// yapiyordu, `:134` ise yalnizca ['30','60','120'] kabul ediyordu. Her is
+// `Validate inputs`ta oldu ve kullaniciya "Survey, credential veya mail ayarlari
+// eksik/gecersiz." dendi — tamamen yanlis bir sebep.
+//
+// Bu test GORVEV DOSYASINI GERCEKTEN KOSTURUR. Kaynak taramasi bu sinifi
+// goremez: sabit liste dogru yazilmis olabilir ama VARSAYILANLA celisebilir.
+// `--syntax-check` de goremez (YAML gecerli, assert calisma aninda degerlenir).
+const { spawnSync: _spawn } = require('node:child_process');
+const HAS_ANSIBLE = _spawn('ansible-playbook', ['--version'], { stdio: 'ignore' }).status === 0;
+
+/** `01_prepare.yml`i verilen sure ile kosturur; {ok, msg} doner. */
+function prepareWith(timeout) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-vt8-'));
+  try {
+    const play = path.join(tmp, 'p.yml');
+    fs.writeFileSync(
+      play,
+      [
+        '---',
+        '- hosts: localhost',
+        '  gather_facts: false',
+        '  vars:',
+        '    scalex_clusters_override: {version: 1, clusters: {c1: {api_url: "https://a", credential: k, enabled: true, environments: [test], jump_server: j, platform: ark}}}',
+        '    target_platform: ark',
+        '    target_environment: test',
+        '    target_namespace: ns1',
+        '    target_app_names: app1',
+        '    operation_action: stop',
+        '    execution_mode: dry_run',
+        '    scalex_cluster_mode: all',
+        `    verification_timeout: "${timeout}"`,
+        '    username: uxmid',
+        '    smtp_host: smtp.x',
+        '    smtp_port: 25',
+        '    mail_from: a@b.c',
+        '    mail_subject_prefix: "[X]"',
+        '    mail_to: a@b.c',
+        '    awx_job_id: "1"',
+        '  tasks:',
+        '    - block:',
+        `        - ansible.builtin.include_tasks: ${path.join(ROOT, 'server/ansible/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml')}`,
+        '      rescue:',
+        '        - ansible.builtin.debug: { msg: "PREPARE_FAILED: {{ ansible_failed_result.msg | default(\'?\') }}" }',
+      ].join('\n'),
+    );
+    const r = _spawn('ansible-playbook', [play], {
+      encoding: 'utf8',
+      env: { ...process.env, ANSIBLE_LOCALHOST_WARNING: 'False' },
+    });
+    const out = r.stdout || '';
+    const m = out.match(/PREPARE_FAILED: (.*?)"/);
+    return { ok: !m, msg: m ? m[1] : '', out };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+test('VT8 varsayilan 300 sn playbook dogrulamasindan GECIYOR', { skip: !HAS_ANSIBLE }, () => {
+  const r = prepareWith('300');
+  assert.ok(
+    r.ok,
+    `300 sn REDDEDILDI — uretimdeki hata geri geldi. Mesaj: ${r.msg}\n${r.out.slice(-1200)}`,
+  );
+});
+
+test('VT8b gecersiz sure REDDEDILIYOR ve sebep DOGRU yazi', { skip: !HAS_ANSIBLE }, () => {
+  const r = prepareWith('abc');
+  assert.ok(!r.ok, 'sayi olmayan sure kabul edildi');
+  assert.match(
+    r.msg,
+    /Sonuç kontrol süresi geçersiz/,
+    `sure hatasi "mail ayarlari" diye raporlaniyor — uretimde teshisi imkansiz kilan buydu: ${r.msg}`,
+  );
+});
+
+test('VT8c mutlak sinir disi sure REDDEDILIYOR', { skip: !HAS_ANSIBLE }, () => {
+  assert.ok(!prepareWith('999999').ok, 'mutlak tavan disi deger kabul edildi');
 });

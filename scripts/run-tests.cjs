@@ -47,6 +47,10 @@ const TEST_DIRS = [
   'server/selfservice/__tests__',
   'server/__tests__',
   'src/__tests__',
+  // TS-ONLY (vitest) dizin: `collect()` yalnizca `.test.cjs` topladigi icin
+  // buradan `node --test`e dosya GITMEZ; liste "hicbir test dizini sessizce
+  // kosmadan kalmasin" bekcisi (test-glob-coverage) icin gerekli.
+  'src/api/__tests__',
   'src/components/scalex/__tests__',
   'src/components/denetim/__tests__',
   'src/hooks/__tests__',

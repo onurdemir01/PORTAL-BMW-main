@@ -225,3 +225,34 @@ test('DA8 admin ucu sicak anahtar icin "restart gerekir" DEMIYOR', async () => {
     audit.auditPortal = savedAudit;
   }
 });
+
+// DA9 — ESIK TAVANI GECEMEZ. `requiresWrittenConfirm = targets > threshold` ve
+// `exceedsMaxTargets = targets > maxTargets`. Esik tavandan buyukse yazili onay
+// kosulu MATEMATIKSEL OLARAK saglanamaz: esigi asan her istek zaten 400 alir.
+// Yani admin ekranindan TEK BIR SAYI yazarak prod yazili-onay kapisi, hicbir
+// uyari olmadan devre disi birakilabiliyordu (2026-09-18 denetim bulgusu).
+test('DA9 esik > tavan ise kapi SESSIZCE olmuyor — fabrikaya doner ve SEBEBI yazilir', () => {
+  process.env.SCALEX_MAX_TARGETS = '10';
+  process.env.SCALEX_PROD_CONFIRM_THRESHOLD = '1000';
+  const c = config.publicConfig();
+  assert.equal(c.maxTargets, 10, 'tavan uygulanmadi');
+  assert.equal(
+    c.prodConfirmThreshold,
+    config.TUNABLES.SCALEX_PROD_CONFIRM_THRESHOLD.fallback,
+    'esik fabrikaya donmedi — prod yazili onay kapisi HIC ateslenmez',
+  );
+  assert.match(c.problems.join(' '), /yazılı onay/i, 'sebep raporlanmadi');
+
+  // GEVSEMEDIGINI KANITLA: esik tavanin ALTINDAYSA admin degeri GECERLI kalmali.
+  process.env.SCALEX_PROD_CONFIRM_THRESHOLD = '3';
+  const ok = config.publicConfig();
+  assert.equal(ok.prodConfirmThreshold, 3, 'gecerli admin degeri fabrikaya dusuruldu');
+  assert.deepEqual(ok.problems, [], 'gecerli ayar icin sorun raporlandi');
+});
+
+// DA10 — carpan 1 sessiz kalmasin: kapatmada uyari ve fail esigi ayni saniyeye
+// duser ve "uyar ama beklemeye devam et" davranisi coker.
+test('DA10 fail carpani 1 ise kullanici UYARILIYOR', () => {
+  process.env.SCALEX_VERIFY_FAIL_MULTIPLIER = '1';
+  assert.match(config.publicConfig().problems.join(' '), /çarpan/i, 'carpan=1 sessizce kabul edildi');
+});
