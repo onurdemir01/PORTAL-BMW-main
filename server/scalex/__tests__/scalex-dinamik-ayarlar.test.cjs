@@ -248,6 +248,25 @@ test('DA9 esik > tavan ise kapi SESSIZCE olmuyor — fabrikaya doner ve SEBEBI y
   const ok = config.publicConfig();
   assert.equal(ok.prodConfirmThreshold, 3, 'gecerli admin degeri fabrikaya dusuruldu');
   assert.deepEqual(ok.problems, [], 'gecerli ayar icin sorun raporlandi');
+
+  // ── FABRIKA DEGERI DE BUYUK OLABILIR ────────────────────────────────────
+  // Ilk yazimda kural kosulsuzca `fallback`a donduruyordu ve `MAX_TARGETS=3`
+  // iken mesaj KENDINI YALANLIYORDU: "esik (5) tavandan (3) buyuk -> fabrika
+  // degerine (5) donduruldu". Esik yine tavandan buyuk kaliyor, kapi hala olu.
+  // DA9'un ilk hali bu durumu HIC denemiyordu (yalnizca fallback <= tavan olani).
+  delete process.env.SCALEX_PROD_CONFIRM_THRESHOLD;
+  process.env.SCALEX_MAX_TARGETS = '3';
+  const dar = config.publicConfig();
+  assert.ok(
+    dar.prodConfirmThreshold <= dar.maxTargets,
+    `esik (${dar.prodConfirmThreshold}) tavandan (${dar.maxTargets}) buyuk kaldi — kapi hala olu`,
+  );
+  // ADMIN ESIGE DOKUNMAMIS: "ayarini duzelttim" demek yanlis olurdu, sorun tavanda.
+  assert.match(
+    dar.problems.join(' '),
+    /Hedef tavanı/,
+    'admin esige dokunmamisken mesaj onun ayarini suclamamali',
+  );
 });
 
 // DA10 — carpan 1 sessiz kalmasin: kapatmada uyari ve fail esigi ayni saniyeye

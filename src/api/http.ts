@@ -26,7 +26,11 @@ export async function safeJson(res: Response): Promise<any> {
           'Portal şu an yeniden başlatılıyor ya da geçici olarak yanıt vermiyor ' +
             `(HTTP ${res.status}). Birkaç saniye sonra tekrar deneyin; sürerse yöneticiye bildirin.`,
         ),
-        { status: res.status, gatewayUnavailable: true },
+        // `gatewayUnavailable`: cagiran tarafin "bu gecici, yeniden dene" ile
+        // "bu kalici, dur" ayrimini yapabilmesi icin. `bodyPreview` kullaniciya
+        // GOSTERILMEZ ama konsol/teshis icin hatada durur — govdeyi mesajdan
+        // cikarmak teshis ipucunu tamamen yok etmemeli.
+        { status: res.status, gatewayUnavailable: true, bodyPreview: text.slice(0, 150) },
       );
     }
     // DIGER DURUMLARDA ONIZLEME KALIR — bu fonksiyonun var olus sebebi o:

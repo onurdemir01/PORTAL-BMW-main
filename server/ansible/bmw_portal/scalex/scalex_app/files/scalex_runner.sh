@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="10"
+PACKAGE_VERSION="11"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -158,6 +158,22 @@ if [ "$TLS_VERIFY" != "true" ] && [ "$TLS_VERIFY" != "false" ]; then
 fi
 if ! printf '%s' "$WAIT_ATTEMPTS" | grep -Eq '^[1-9][0-9]*$' || ! printf '%s' "$WAIT_SECONDS" | grep -Eq '^[1-9][0-9]*$'; then
   log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" "Invalid verification wait configuration"
+  exit 0
+fi
+# VERIFY_*_SECONDS DOGRULAMASI — SESSIZ KAPIYI KAPATIR.
+#
+# Bu iki deger `verify_replicas` icinde `[ "$elapsed" -ge "$VERIFY_FAIL_SECONDS" ]`
+# ile karsilastiriliyor. Sayisal DEGILSE `test` "integer expression expected" yazip
+# rc=2 doner; betik `set -e` ILE KOSMUYOR (bkz. dosya basi), yani kosul sessizce
+# YANLIS sayilir ve KAPATMANIN FAIL ESIGI HIC ATESLENMEZ: pod'lar hic 0'a inmese
+# bile is "basarili" biter. Ekran "tamam" der.
+#
+# `WAIT_*` icin bu dogrulama zaten VARDI; butce saniyeye gecince (PR #98) yeni iki
+# degisken ayni korumayi ALMAMISTI.
+if ! printf '%s' "$VERIFY_WARN_SECONDS" | grep -Eq '^[1-9][0-9]*$' \
+  || ! printf '%s' "$VERIFY_FAIL_SECONDS" | grep -Eq '^[1-9][0-9]*$'; then
+  log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" \
+    "Invalid verification budget: warn=$VERIFY_WARN_SECONDS fail=$VERIFY_FAIL_SECONDS (positive integers required)"
   exit 0
 fi
 

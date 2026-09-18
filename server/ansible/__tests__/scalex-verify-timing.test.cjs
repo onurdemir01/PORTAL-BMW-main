@@ -100,42 +100,75 @@ function verify({ state, target, warn, fail }) {
 // Yeni olcut: "bir sabiti bir yerde dogrula" degil, "bu sayiyi TUTAN HER YERI tara".
 function timeoutLiterals(rel) {
   const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  const lines = src.split('\n');
   const out = [];
-  src.split('\n').forEach((line, n) => {
-    if (/^\s*(\/\/|#|\*)/.test(line)) return; // yorumlar teshis metni tasiyor
-    // BUYUK/KUCUK HARF DUYARSIZ. Ilk yazimda `verification_?[Tt]imeout` duyarliydi
-    // ve `setVerificationTimeout('60')` (buyuk V) suzgecten GECTI — mutasyon turunda
-    // yakalandi. Tam olarak kacirdigi yazim, PR #98'in regresyonunu ureten yazimdi.
+  // YORUM VE DUZYAZI ELENIR — ikisi de sayi tasiyor ama KOD DEGIL.
+  //   * `/**` ile baslayan JSDoc satiri ilk yazimda elenmiyordu ve
+  //     `"90" -> "1 dk 30 sn"` ornegi yanlis alarm uretti.
+  //   * Survey JSON'unun `question_description` alanlari tarih ve HTTP kodu
+  //     iceriyor ("2026-09-18", "400") — bunlar ayar degil, aciklama.
+  const duzyazi = (l) =>
+    /^\s*(\/\/|#|\*|\/\*)/.test(l) || /"(question_description|question_name)"/.test(l);
+  lines.forEach((line, n) => {
+    if (duzyazi(line)) return;
+    // BUYUK/KUCUK HARF DUYARSIZ. Duyarli desen `setVerificationTimeout('60')`
+    // yazimini kaciriyordu — tam da PR #98'in regresyonunu ureten yazim.
     if (!/verification_?timeout|verify_(warn|fail)_seconds|timeout_(default|min|max)/i.test(line))
       return;
-    for (const m of line.matchAll(/['"`](\d{1,5})['"`]|\b(?<!\.)(\d{2,5})\b/g)) {
-      const v = m[1] || m[2];
-      if (v) out.push({ rel, line: n + 1, value: v, text: line.trim().slice(0, 100) });
+    // KAYAN PENCERE: anahtar kelime satiri + SONRAKI IKI satir. Tek satira bagli
+    // tarama `?? \n '60';` gibi satira bolunmus bir varsayilani KACIRIYORDU
+    // (prettier ya da elle bolme yeter).
+    for (let k = n; k < Math.min(n + 3, lines.length); k++) {
+      const l = lines[k];
+      if (k > n && duzyazi(l)) continue;
+      for (const m of l.matchAll(/['"`](\d{1,5})['"`]|\b(?<!\.)(\d{2,5})\b/g)) {
+        const v = m[1] || m[2];
+        if (v) out.push({ rel, line: k + 1, value: v, text: l.trim().slice(0, 100) });
+      }
     }
   });
-  return out;
+  // Ayni satir birden cok pencereye girebilir — tekille.
+  const seen = new Set();
+  return out.filter((h) => {
+    const k = `${h.line}:${h.value}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 test('VT1 sure sabiti TUTAN HER YERDE 300 (tarama, elle regex degil)', () => {
-  const SCANNED = [
-    'server/scalex/index.cjs',
-    'server/scalex/launch.cjs',
-    'server/scalex/config.cjs',
-    'src/components/scalex/ScaleXPage.tsx',
-    'src/components/scalex/steps/OperationStep.tsx',
-    'src/hooks/useScaleXLimits.ts',
-    'server/ansible/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml',
-  ];
-  const ALLOWED = new Set(['300', '30', '3600', '86400']); // varsayilan + min + max + mutlak tavan
+  // DOSYA BAZLI IZIN. Duz bir kume (`{300,30,3600,86400}`) cok genisti:
+  // `index.cjs`e `'30'` ya da `'3600'` yazmak GECIYORDU — uretimdeki `'60'`
+  // hatasiyla ayni siniftan bir regresyon. Sunucu uclarinda ve sihirbaz
+  // sayfasinda TEK MESRU sabit 300'dur; aralik sinirlari yalnizca sinirlarin
+  // TANIMLANDIGI dosyalarda gorunmeli.
+  const SCANNED = {
+    'server/scalex/index.cjs': { izin: new Set(['300']), enAz: 0 },
+    'server/scalex/launch.cjs': { izin: new Set(['300']), enAz: 0 },
+    'src/components/scalex/ScaleXPage.tsx': { izin: new Set(['300']), enAz: 0 },
+    'server/scalex/config.cjs': { izin: new Set(['300', '30', '3600', '86400', '20']), enAz: 6 },
+    'src/components/scalex/steps/OperationStep.tsx': { izin: new Set(['300', '30', '3600']), enAz: 3 },
+    'src/hooks/useScaleXLimits.ts': { izin: new Set(['300', '30', '3600']), enAz: 0 },
+    'server/ansible/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml': {
+      izin: new Set(['300', '86400']), enAz: 4,
+    },
+  };
+
   const bad = [];
-  for (const rel of SCANNED) for (const hit of timeoutLiterals(rel)) {
-    if (!ALLOWED.has(hit.value)) bad.push(`${hit.rel}:${hit.line} -> "${hit.value}"  ${hit.text}`);
+  for (const [rel, kural] of Object.entries(SCANNED)) {
+    const hits = timeoutLiterals(rel);
+    // ALT SINIR DOSYA BASINA. Toplam sinir (>= 8) zayifti: `index.cjs` ve
+    // `launch.cjs` taramadan tamamen dusse toplam yine tutuyordu.
+    assert.ok(
+      hits.length >= kural.enAz,
+      `${rel}: toplayici ${hits.length} sabit gordu, en az ${kural.enAz} bekleniyor — desen bozulmus`,
+    );
+    for (const hit of hits) {
+      if (!kural.izin.has(hit.value)) bad.push(`${hit.rel}:${hit.line} -> "${hit.value}"  ${hit.text}`);
+    }
   }
   assert.deepEqual(bad, [], `sure satirinda beklenmeyen sabit:\n  ${bad.join('\n  ')}`);
-
-  // TOPLAYICI BOSALMASIN: desen bozulursa liste sifirlanir ve test VAKUMLA gecer.
-  const total = SCANNED.reduce((n, rel) => n + timeoutLiterals(rel).length, 0);
-  assert.ok(total >= 8, `toplayici yalnizca ${total} sabit gordu — desen bozulmus`);
 
   const runner = fs.readFileSync(RUNNER, 'utf8');
   assert.match(runner, /VERIFY_WARN_SECONDS:-300/, 'betik varsayilani 300 degil');
@@ -143,6 +176,25 @@ test('VT1 sure sabiti TUTAN HER YERDE 300 (tarama, elle regex degil)', () => {
   assert.match(cfg, /SCALEX_VERIFY_TIMEOUT_DEFAULT: \{ fallback: 300/, 'fabrika varsayilani 300 degil');
   const launch = fs.readFileSync(path.join(ROOT, 'server/scalex/launch.cjs'), 'utf8');
   assert.doesNotMatch(launch, /VERIFICATION_TIMEOUTS/, 'eski onayarli liste geri gelmis');
+
+  // SURVEY YAPISAL OKUNUR, SATIR TARANMAZ. JSON'da anahtar satiri (`"variable"`)
+  // `min`/`max`/`default`tan SONRA geliyor; ileri bakan pencere onlari kaciriyordu
+  // ve "0 sabit gorduм" diye yanlis alarm uretiyordu. JSON'u ayristirmak hem dogru
+  // hem kirilmaz. (Sinirlarin PORTALIN uretebilecegi degerleri kapsamasi ayrica
+  // S10 tarafindan kilitleniyor — burada yalnizca VARSAYILANLAR.)
+  const survey = JSON.parse(
+    fs.readFileSync(
+      path.join(ROOT, 'server/ansible/bmw_portal/scalex/awx/scalex_run.survey.json'), 'utf8',
+    ),
+  );
+  const soru = (v) => survey.spec.find((q) => q.variable === v);
+  assert.equal(soru('verification_timeout').default, 300, 'survey butce varsayilani 300 degil');
+  assert.equal(soru('verify_warn_seconds').default, 300, 'survey uyari varsayilani 300 degil');
+  assert.equal(
+    soru('verify_fail_seconds').default,
+    300 * 2,
+    'survey fail varsayilani, butce x fabrika carpani ile ayrismis',
+  );
 });
 
 // VT1b — KAYNAK METNI DEGIL, GERCEK MODULU SOR. Eski bekci silinmis bir
@@ -165,6 +217,23 @@ test('VT1b `/preview` yedegi GERCEKTEN var olan bir disa acilimi kullaniyor', ()
   assert.deepEqual(missing, [], `index.cjs olmayan disa acilim(lar)i cagiriyor: ${missing.join(', ')}`);
   assert.equal(typeof launch.verifyTimeoutDefault, 'function', 'varsayilan getter degil');
   assert.equal(launch.verifyTimeoutDefault(), 300);
+
+  // DAVRANISSAL CAPA — "var mi" yetmiyor, "DOGRUSU mu" da sorulmali.
+  // `launch.verifyTimeoutMin()` VAR OLAN ama YANLIS bir getter (30 doner); yalnizca
+  // varlik kontrolu yapan bir bekci onu da gecirirdi. Uc yerin de ayni degeri
+  // uretmesi GERCEKTEN olculur.
+  const kaynak = fs.readFileSync(path.join(ROOT, 'server/scalex/index.cjs'), 'utf8');
+  const cagrilar = [...kaynak.matchAll(/verificationTimeout[^\n]*launch\.(\w+)\(\)/g)].map(
+    (m) => m[1],
+  );
+  assert.ok(cagrilar.length >= 3, `sure yedegi yalnizca ${cagrilar.length} yerde — desen bozulmus`);
+  for (const ad of new Set(cagrilar)) {
+    assert.equal(
+      launch[ad](),
+      300,
+      `index.cjs \`launch.${ad}()\` kullaniyor ama o ${launch[ad]()} donduruyor — varsayilan 300 olmali`,
+    );
+  }
 });
 
 test('VT2 deneme basina TEK `oc` cagrisi (uc alan tek jsonpath)', () => {
@@ -258,6 +327,26 @@ test('VT6 saniye butcesi SUNUCUDA dogrulaniyor (yalniz ekranda degil)', () => {
 const { spawnSync: _spawn } = require('node:child_process');
 const HAS_ANSIBLE = _spawn('ansible-playbook', ['--version'], { stdio: 'ignore' }).status === 0;
 
+// CI'DA ATLAMA SESSIZ OLMASIN.
+//
+// VT8 ailesi 2026-09-18 uretim arizasinin (butce 300 -> "Validate inputs"ta olum)
+// TEK davranissal testi. `{ skip: !HAS_ANSIBLE }` ile, ansible kurulu olmayan bir
+// makinede sessizce atlaniyor — ve `Jenkinsfile` yalnizca `nodejs 'node20'`
+// tanimliyor, ansible KURMUYOR. Yani bu uc test CI'da HIC kosmuyordu ve suit yine
+// yesil donuyordu: bu deponun tam da kovaladigi "yesil ama kosmayan bekci" sinifi.
+//
+// Gelistirici makinesinde ansible yoksa atlamak makul (herkes ansible kurmak
+// zorunda degil); CI'da atlamak DEGIL. `CI=true` iken eksiklik HATA olur.
+test('VT0 CI`da ansible KURULU (VT8 ailesi sessizce atlanmasin)', () => {
+  if (process.env.CI !== 'true') return; // yerelde bilgi amacli, kapi degil
+  assert.ok(
+    HAS_ANSIBLE,
+    'CI=true ama `ansible-playbook` yok — VT8/VT8b/VT8c atlanir ve uretim ' +
+      'arizasinin tek davranissal testi kosmaz. Jenkinsfile Install asamasina ' +
+      'ansible kurulumu ekleyin.',
+  );
+});
+
 /** `01_prepare.yml`i verilen sure ile kosturur; {ok, msg} doner. */
 function prepareWith(timeout) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-vt8-'));
@@ -314,15 +403,106 @@ test('VT8 varsayilan 300 sn playbook dogrulamasindan GECIYOR', { skip: !HAS_ANSI
 });
 
 test('VT8b gecersiz sure REDDEDILIYOR ve sebep DOGRU yazi', { skip: !HAS_ANSIBLE }, () => {
-  const r = prepareWith('abc');
-  assert.ok(!r.ok, 'sayi olmayan sure kabul edildi');
-  assert.match(
-    r.msg,
-    /Sonuç kontrol süresi geçersiz/,
-    `sure hatasi "mail ayarlari" diye raporlaniyor — uretimde teshisi imkansiz kilan buydu: ${r.msg}`,
+  // `'abc'` ve `'300abc'` REGEX OLMADAN DA reddedilir: Jinja `| int` donusturemezse
+  // 0 verir (shell gibi KIRPMAZ) ve `>= 1` kosuluna takilir. Yani bu iki deger
+  // regex satirini KORUMUYOR — olculdu:
+  //     '300.5' | int = 300      is match = false
+  //     '1e3'   | int = 1000     is match = false
+  // Regex satirinin TEK gercek katkisi bunlari kesmek. Ilk yazimda VT8b ikisini de
+  // denemiyordu, yani `is match('^[0-9]+$')` satirini SILMEK hicbir testi kirmiyordu.
+  for (const kotu of ['abc', '300abc', '300.5', '1e3', '-5', '']) {
+    const r = prepareWith(kotu);
+    assert.ok(!r.ok, `gecersiz sure KABUL EDILDI: ${JSON.stringify(kotu)}`);
+    assert.match(
+      r.msg,
+      /Sonuç kontrol süresi geçersiz/,
+      `sure hatasi "mail ayarlari" diye raporlaniyor — uretimde teshisi imkansiz kilan buydu: ${r.msg}`,
+    );
+  }
+});
+
+// VT8d — YAPISAL CAPA. VT8 yalnizca POZITIF ("300 geciyor mu") oldugu icin assert
+// gorevini TAMAMEN SILMEK onu kirmiyordu: gorev yoksa 300 zaten gecer.
+test('VT8d dogrulama gorevi VAR ve uc butce degiskenini de kontrol ediyor', () => {
+  const src = fs.readFileSync(
+    path.join(ROOT, 'server/ansible/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml'), 'utf8',
   );
+  assert.match(src, /- name: "Validate verification budget"/, 'dogrulama gorevi YOK');
+  const blok = src.slice(src.indexOf('- name: "Validate verification budget"'));
+  const govde = blok.slice(0, blok.indexOf('\n- name:'));
+  // BETIGE GIDEN UC DEGER: butce + uyari + fail. Ucu de dogrulanmali; `verify_*`
+  // ikisi dogrulanmazsa `verify_replicas` karsilastirmasi sessizce yanlis sayilir
+  // ve KAPATMANIN FAIL ESIGI hic ateslenmez (betik `set -e` ile kosmuyor).
+  for (const v of [
+    'verification_timeout_effective',
+    'verify_warn_seconds_effective',
+    'verify_fail_seconds_effective',
+  ]) {
+    assert.ok(govde.includes(`${v} is match`), `${v} icin regex kontrolu yok`);
+    assert.ok(govde.includes(`${v} | int >= 1`), `${v} icin alt sinir yok`);
+    assert.ok(govde.includes(`${v} | int <= 86400`), `${v} icin ust sinir yok`);
+  }
 });
 
 test('VT8c mutlak sinir disi sure REDDEDILIYOR', { skip: !HAS_ANSIBLE }, () => {
   assert.ok(!prepareWith('999999').ok, 'mutlak tavan disi deger kabul edildi');
+});
+
+// ── VT9 — BETIK TARAFINDAKI BUTCE DOGRULAMASI ──────────────────────────────
+//
+// Mutasyon turunda betikten `VERIFY_*_SECONDS` dogrulamasini SILMEK hicbir bekciyi
+// kirmadi: VT8d yalnizca PLAYBOOK tarafina bakiyor. Oysa betik AWX'ten ELLE de
+// calistirilabilir (survey doldurularak, playbook dogrulamasi ayni olsa da bu
+// ikinci kemer bilerek var) ve `set -e` YOK — sayisal olmayan bir esikte
+// `[ "$elapsed" -ge "$VERIFY_FAIL_SECONDS" ]` rc=2 verir, kosul SESSIZCE yanlis
+// sayilir ve KAPATMANIN FAIL ESIGI hic ateslenmez.
+//
+// Dogrulama blogu `awk` ile cikarilip GERCEKTEN kosturulur — kaynak taramasi degil.
+function butceDogrula(warn, fail) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-vt9-'));
+  try {
+    const h = path.join(tmp, 'h.sh');
+    fs.writeFileSync(
+      h,
+      [
+        '#!/bin/bash',
+        'set -u',
+        'CLUSTER=c1; JUMP_SERVER=j1',
+        "log() { printf '%s;%s;%s;%s;%s;%s;%s\\n' \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$7\"; }",
+        `VERIFY_WARN_SECONDS="${warn}"`,
+        `VERIFY_FAIL_SECONDS="${fail}"`,
+        // Yalnizca VERIFY_* dogrulama blogunu cikar (yorumlar dahil degil).
+        `eval "$(awk '/^if ! printf .%s. "\\$VERIFY_WARN_SECONDS"/,/^fi$/' "$1")"`,
+        'echo "GECTI"',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    const r = _spawn('bash', [h, RUNNER], { encoding: 'utf8' });
+    return r.stdout || '';
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+test('VT9 betik, sayisal olmayan butceyi INPUT;FAIL ile REDDEDIYOR', () => {
+  const iyi = butceDogrula('300', '600');
+  assert.match(iyi, /GECTI/, 'gecerli butce reddedildi');
+  assert.doesNotMatch(iyi, /INPUT;FAIL/, 'gecerli butce icin FAIL basildi');
+
+  for (const [w, f] of [
+    ['abc', '600'],
+    ['300', 'abc'],
+    ['0', '600'],
+    ['300', '0'],
+    ['', '600'],
+    ['-5', '600'],
+  ]) {
+    const out = butceDogrula(w, f);
+    assert.match(
+      out,
+      /INPUT;FAIL;Invalid verification budget/,
+      `gecersiz butce KABUL EDILDI: warn=${JSON.stringify(w)} fail=${JSON.stringify(f)} -> ${out.trim()}`,
+    );
+    assert.doesNotMatch(out, /GECTI/, 'gecersiz butcede betik devam etti (exit 0 beklenir)');
+  }
 });

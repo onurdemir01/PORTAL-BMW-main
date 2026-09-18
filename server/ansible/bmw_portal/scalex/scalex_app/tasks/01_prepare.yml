@@ -76,7 +76,14 @@
     # degerine duser.
     cluster_workload_kinds_effective: "{{ cluster_workload_kinds | default({}) }}"
     operation_action_effective: "{{ operation_action | default('stop') | string | trim | lower }}"
-    verification_timeout_effective: "{{ verification_timeout | default('300') | string | trim }}"
+    # `default(..., true)` BOOLEAN BICIMI: bos string ('') ya da null geldiginde de
+    # fabrika degerine duser. Boolean OLMAYAN bicim yalnizca "tanimsiz" halini
+    # yakalar; AWX'ten bos bir survey alani ya da elle calistirma '' gonderdiginde
+    # deger '' kalir ve asagidaki dogrulama isi DUSURURDU. Alti satir asagida
+    # (verify_warn/fail) zaten boolean bicim kullaniliyordu — dosya kendi icinde
+    # tutarsizdi.
+    verification_timeout_effective: >-
+      {{ verification_timeout | default('300', true) | string | trim }}
     # ACMA/KAPATMA ASIMETRISI (kullanici karari, 2026-09-17). Portal ikisini de
     # gonderir; gelmezse butceden turetilir (eski AWX surumu / elle calistirma).
     #   acma   : uyari esiginde BIRAK, is BASARILI
@@ -131,14 +138,25 @@
 #
 # IS ARALIGI ARTIK SUNUCUDA: `server/scalex/config.cjs` (admin ekranindan
 # ayarlanabilir, SCALEX_VERIFY_TIMEOUT_MIN/MAX). Burada yalnizca MUTLAK sinir
-# dogrulanir ve o sinir `config.cjs`teki `hardMin`/`hardMax` ile AYNIDIR —
-# playbook ikinci bir is kurali TASIMAZ, yalnizca sacma degerleri keser.
+# dogrulanir: TAVAN `config.cjs`teki `hardMax` (86400) ile AYNI, TABAN ise
+# KASTEN daha gevsek (config'te ilgili taban 5) cunku playbook ikinci bir is
+# kurali TASIMAZ — yalnizca sacma degerleri keser. AWX survey'i de ayni mutlak
+# sinira acildi (1..86400); uc katmanin da IS ARALIGI tasimamasi bilincli.
 - name: "Validate verification budget"
   ansible.builtin.assert:
     that:
       - verification_timeout_effective is match('^[0-9]+$')
       - verification_timeout_effective | int >= 1
       - verification_timeout_effective | int <= 86400
+      # BETIGE ASIL GIDEN IKI DEGER DE DOGRULANIR. Once yalnizca butce
+      # dogrulaniyordu; oysa `verify_replicas` bu ikisini karsilastiriyor ve
+      # sayisal olmayan bir deger KAPATMANIN FAIL ESIGINI sessizce olduruyordu.
+      - verify_warn_seconds_effective is match('^[0-9]+$')
+      - verify_warn_seconds_effective | int >= 1
+      - verify_warn_seconds_effective | int <= 86400
+      - verify_fail_seconds_effective is match('^[0-9]+$')
+      - verify_fail_seconds_effective | int >= 1
+      - verify_fail_seconds_effective | int <= 86400
     fail_msg: >-
       Sonuç kontrol süresi geçersiz: "{{ verification_timeout_effective }}".
       1-86400 saniye arası bir tam sayı olmalı.

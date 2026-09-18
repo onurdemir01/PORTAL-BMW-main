@@ -72,9 +72,36 @@ const ENV_VARS: EnvVarMeta[] = [
   { key: "DB_FULL_BACKUP_RETENTION_DAYS", label: "Yedek Saklama Süresi (gün)", group: "Veritabanı", description: "Bu süreden eski yedek dosyaları her çalışmada otomatik silinir.", required: false, example: "14", usedIn: "server/db/full-backup.cjs", restartRequired: false },
   { key: "DB_FULL_BACKUP_HOUR", label: "Yedekleme Saati (0-23)", group: "Veritabanı", description: "Günlük yedeklemenin sunucu yerel saatiyle hangi saatte tetikleneceği.", required: false, example: "2", usedIn: "server/db/full-backup.cjs", restartRequired: true },
   { key: "DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES", label: "Kontrol Sıklığı (dk)", group: "Veritabanı", description: "Zamanlayıcının hedef saate ulaşılıp ulaşılmadığını ne sıklıkla kontrol edeceği.", required: false, example: "15", usedIn: "server/db/full-backup.cjs", restartRequired: true },
+  // ── ScaleX — SICAK YUKLENIR (restart GEREKMEZ) ────────────────────────────
+  // Bu yedi anahtar `SYSTEM_CONFIG_KEYS`te vardi ve sunucu ucu kabul ediyordu, ama
+  // ENV_VARS'ta OLMADIGI icin EKRANDA HIC GORUNMUYORDU: "admin ekranindan
+  // verilebilir" vaadi yalnizca API duzeyinde gerceklesmisti (2026-09-18 denetimi).
+  // `restartRequired: false` — `server/scalex/config.cjs` bunlari HER ISTEKTE
+  // `process.env`den yeniden okur; sunucu da yanitinda `hotReloadable: true` doner.
+  { key: "SCALEX_VERIFY_TIMEOUT_DEFAULT", label: "Doğrulama Bütçesi (sn)", group: "ScaleX", description: "Sonuç kontrol süresi. AÇARKEN bu süre dolunca uyarı yazılır ve iş BAŞARILI biter; KAPATIRKEN uyarılır ama 0 olana kadar beklenir. Boş = 300 (5 dk).", required: false, example: "300", usedIn: "server/scalex/config.cjs", restartRequired: false },
+  { key: "SCALEX_VERIFY_TIMEOUT_MIN", label: "Bütçe Alt Sınırı (sn)", group: "ScaleX", description: "Kullanıcının girebileceği en küçük süre. min ≤ varsayılan ≤ max olmazsa ÜÇÜ BİRDEN fabrika değerine döner. Boş = 30.", required: false, example: "30", usedIn: "server/scalex/config.cjs", restartRequired: false },
+  { key: "SCALEX_VERIFY_TIMEOUT_MAX", label: "Bütçe Üst Sınırı (sn)", group: "ScaleX", description: "Kullanıcının girebileceği en büyük süre. Boş = 3600 (1 saat).", required: false, example: "3600", usedIn: "server/scalex/config.cjs", restartRequired: false },
+  { key: "SCALEX_VERIFY_FAIL_MULTIPLIER", label: "Hata Eşiği Çarpanı", group: "ScaleX", description: "KAPATMADA hata eşiği = uyarı eşiği × bu çarpan. Açmada hata eşiği YOKTUR. 1 yazılırsa uyarı ve hata aynı saniyeye düşer ve 'uyar ama bekle' davranışı kalkar. Boş = 2.", required: false, example: "2", usedIn: "server/scalex/config.cjs", restartRequired: false },
+  { key: "SCALEX_MAX_TARGETS", label: "Azami Hedef (cluster × uygulama)", group: "ScaleX", description: "Tek istekte izin verilen azami hedef sayısı. Prod yazılı onay eşiğinden KÜÇÜK yapılırsa o kapı hiç ateşlenemez; sunucu eşiği otomatik aşağı çeker ve sebebini bildirir. Boş = 200.", required: false, example: "200", usedIn: "server/scalex/launch.cjs", restartRequired: false },
+  { key: "SCALEX_PROD_CONFIRM_THRESHOLD", label: "Prod Yazılı Onay Eşiği", group: "ScaleX", description: "Prod ortamında bu eşiğin üstündeki çalıştırma, kullanıcıdan namespace adını ELLE yazmasını ister. İşi engellemez. Boş = 5.", required: false, example: "5", usedIn: "server/scalex/launch.cjs", restartRequired: false },
+  { key: "SCALEX_MAX_AUDIT_GROUPS", label: "Sapma Taraması Kapsam Tavanı", group: "ScaleX", description: "'Durumu tazele' her kapsam için ayrı bir AWX işi başlatır. Tavan aşılırsa tarama HİÇ başlamaz ve kullanıcıdan kapsamı daraltması istenir. Boş = 12.", required: false, example: "12", usedIn: "src/components/scalex/StoppedPanel.tsx", restartRequired: false },
+  // ── Uzun suredir beyaz listede olup EKRANDA OLMAYAN uc anahtar ────────────
+  // Ucu de kullanimda (mssql-setup.cjs registry seed'i ve oco/config.cjs) ama
+  // ENV_VARS'ta yoklardi. Bekcinin (S11) istisnasiz calisabilmesi icin eklendi:
+  // "beyaz listede varsa ekranda da olmali" kurali istisna tasirsa, istisna listesi
+  // zamanla gercek eksikleri gizler.
+  { key: "OPSX_LEGACY_TEMPLATE_ID", label: "OpsX Legacy Template ID", group: "OpsX", description: "JBoss/WAS geleneksel sunucu operasyonu (restart/stop/start) AWX template ID'si. Yalnızca playbook kayıt tablosunun ilk tohumlanmasında kullanılır; sonrasında Admin > Playbook Kayıtları ekranı geçerlidir.", required: false, example: "42", usedIn: "server/db/mssql-setup.cjs (registry seed)", restartRequired: true },
+  { key: "OPSX_OPENSHIFT_TEMPLATE_ID", label: "OpsX OpenShift Template ID", group: "OpsX", description: "Container uygulamalarında restart/stop/start AWX template ID'si. Yalnızca ilk tohumlamada kullanılır.", required: false, example: "43", usedIn: "server/db/mssql-setup.cjs (registry seed)", restartRequired: true },
+  { key: "OCO_TIMEOUT_MS", label: "OCO İstek Zaman Aşımı (ms)", group: "OCO", description: "Değişiklik kaydı (ChangeManagement) servisine yapılan HTTP isteğinin zaman aşımı. Geçersiz ya da boş bırakılırsa 15000 kullanılır.", required: false, example: "15000", usedIn: "server/oco/config.cjs", restartRequired: true },
 ];
 
-interface ConfigValue { key: string; value: string; defined: boolean; masked: boolean; }
+// `hotReloadable` SUNUCUDAN gelir (server/admin/system-config.cjs). Ekranin kendi
+// `restartRequired` alani ikinci bir dogruluk kaynagiydi: `server/scalex/config.cjs`
+// gibi env'i HER ISTEKTE okuyan moduller icin sunucu "restart gerekmez" derken
+// ekran "gerekir" yaziyordu. Sunucu bilir, ekran ona uyar.
+interface ConfigValue {
+  key: string; value: string; defined: boolean; masked: boolean; hotReloadable?: boolean;
+}
 
 const CACHE_ACTIONS = [
   { key: "nobetci",    label: "Nöbet Önbelleği",   desc: "nobetci/today 5dk cache",       serverEndpoint: "/api/admin/cache/nobetci" },
@@ -116,7 +143,11 @@ export default function SystemConfigTab() {
       }).then((x) => x.json());
       if (!r.ok) throw new Error(r.error || "Kaydedilemedi");
       toast.success(`${key} güncellendi.`);
-      setRestartNeeded(true);
+      // SUNUCU KARAR VERIR. Onceden KOSULSUZ `true` yaziliyordu: sicak yuklenen bir
+      // ayari degistiren admin de "yeniden baslatin" uyarisi goruyor ve bosuna
+      // kesinti planliyordu. `restartRequired` PUT yanitindan geliyor ve anahtara
+      // gore hesaplaniyor (HOT_RELOADABLE_KEYS).
+      if (r.restartRequired !== false) setRestartNeeded(true);
       setEditingKey(null);
       loadSystemConfig();
     } catch (e: unknown) {
@@ -211,7 +242,7 @@ export default function SystemConfigTab() {
                           {v.required && <span className="text-[9px] px-1 rounded bg-amber-50 text-amber-600 font-medium">zorunlu</span>}
                           <span
                             className="text-gray-300 hover:text-gray-500 cursor-help text-xs leading-none flex-shrink-0"
-                            title={`${v.description}\n\nÖrnek: ${v.example}\nKullanıldığı yer: ${v.usedIn}\nDeğişiklik sonrası restart gerekir: ${v.restartRequired ? "Evet" : "Hayır (canlı uygulanır)"}`}
+                            title={`${v.description}\n\nÖrnek: ${v.example}\nKullanıldığı yer: ${v.usedIn}\nDeğişiklik sonrası restart gerekir: ${(configValues[v.key]?.hotReloadable ?? !v.restartRequired) ? "Hayır (canlı uygulanır)" : "Evet"}`}
                           >
                             ⓘ
                           </span>

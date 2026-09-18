@@ -52,7 +52,10 @@ function readOne(key) {
   const raw = String(process.env[key] ?? '').trim();
   if (!raw) return { value: spec.fallback, source: 'default', problem: null };
   if (!/^[0-9]{1,7}$/.test(raw)) {
-    return { value: spec.fallback, source: 'default', problem: `${key}: "${raw}" bir tam sayı değil — fabrika değeri (${spec.fallback}) kullanılıyor.` };
+    // HAM DEGER KIRPILIR. `system-config` PUT'u yalnizca satir sonu kontrol ediyor,
+    // UZUNLUK kapisi yok: 1 MB'lik tek satirlik bir override, `GET /api/scalex/config`
+    // yanitini HER ISTEKTE 1 MB sisirirdi. Denetim kaydi da ayni refleksle kirpiyor.
+    return { value: spec.fallback, source: 'default', problem: `${key}: "${raw.slice(0, 40)}" bir tam sayı değil — fabrika değeri (${spec.fallback}) kullanılıyor.` };
   }
   const n = Number(raw);
   if (n < spec.hardMin || n > spec.hardMax) {
@@ -103,12 +106,28 @@ function readTunables() {
   // kapisi, hicbir uyari olmadan tamamen devre disi birakilabiliyordu —
   // "var denilen ama hic ateslenmeyen kapi" sinifinin ayar tarafindaki hali.
   if (values.SCALEX_PROD_CONFIRM_THRESHOLD > values.SCALEX_MAX_TARGETS) {
-    problems.push(
-      `Prod yazılı onay eşiği (${values.SCALEX_PROD_CONFIRM_THRESHOLD}) hedef tavanından ` +
-        `(${values.SCALEX_MAX_TARGETS}) büyük — bu ayarla yazılı onay HİÇ istenmez. ` +
-        `Eşik fabrika değerine (${TUNABLES.SCALEX_PROD_CONFIRM_THRESHOLD.fallback}) döndürüldü.`,
+    // FABRIKA DEGERI DE BUYUK OLABILIR. Ilk yazimda kosulsuzca `fallback`a
+    // donduruyordum ve `SCALEX_MAX_TARGETS=3` iken mesaj KENDINI YALANLIYORDU:
+    // "esik (5) tavandan (3) buyuk -> fabrika degerine (5) donduruldu". Esik yine
+    // tavandan buyuk kaliyor, yani kapi hala olu. `Math.min` ile GERCEKTEN
+    // ateslenebilir bir esige ceker.
+    const adminYazdi = sources.SCALEX_PROD_CONFIRM_THRESHOLD === 'admin';
+    const duzeltilmis = Math.min(
+      TUNABLES.SCALEX_PROD_CONFIRM_THRESHOLD.fallback,
+      values.SCALEX_MAX_TARGETS,
     );
-    values.SCALEX_PROD_CONFIRM_THRESHOLD = TUNABLES.SCALEX_PROD_CONFIRM_THRESHOLD.fallback;
+    problems.push(
+      adminYazdi
+        ? `Prod yazılı onay eşiği (${values.SCALEX_PROD_CONFIRM_THRESHOLD}) hedef tavanından ` +
+            `(${values.SCALEX_MAX_TARGETS}) büyük — bu ayarla yazılı onay HİÇ istenmez. ` +
+            `Eşik ${duzeltilmis} değerine çekildi.`
+        : // ADMIN ESIGE DOKUNMAMIS. "Ayarini duzelttim" demek yanlis olurdu; sorun
+          // tavani daraltmis olmasinda.
+          `Hedef tavanı (${values.SCALEX_MAX_TARGETS}) fabrika yazılı onay eşiğinden ` +
+            `(${TUNABLES.SCALEX_PROD_CONFIRM_THRESHOLD.fallback}) küçük — eşik ${duzeltilmis} ` +
+            `değerine çekildi, yoksa prod yazılı onay kapısı hiç ateşlenmezdi.`,
+    );
+    values.SCALEX_PROD_CONFIRM_THRESHOLD = duzeltilmis;
     sources.SCALEX_PROD_CONFIRM_THRESHOLD = 'default';
   }
 
