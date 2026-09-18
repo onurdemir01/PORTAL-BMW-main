@@ -3,7 +3,7 @@
 // restart aktif, diğerleri (thread dump/heap dump/tcpdump) görünür ama tıklanamaz
 // placeholder'lar; playbook desteği eklendiğinde sunucu tarafında enabled:true yapılır.
 import React, { useEffect, useState } from "react";
-import { ArrowPathIcon, DocumentMagnifyingGlassIcon, CircleStackIcon, SignalIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, DocumentMagnifyingGlassIcon, CircleStackIcon, SignalIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxOcpOperation, type OpsxOcpOperationDef, type OpsxOcpPair } from "@/api/opsxApi";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -11,6 +11,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   threaddump: DocumentMagnifyingGlassIcon,
   heapdump: CircleStackIcon,
   tcpdump: SignalIcon,
+  poddelete: TrashIcon,
 };
 
 const OcpOperationStep: React.FC<{

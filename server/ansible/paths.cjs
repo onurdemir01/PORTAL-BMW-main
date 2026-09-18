@@ -51,6 +51,7 @@ const PLAYBOOKS = {
   opsxLegacyJvmDiscover: 'opsx_legacy_dump/opsx_legacy_jvm_discover.yml',
   opsxOpenshiftDump: 'opsx_openshift_dump/opsx_openshift_dump.yaml',
   opsxOpenshiftPods: 'opsx_openshift_dump/opsx_openshift_pods.yaml',
+  opsxOpenshiftPodDelete: 'opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml',
   telnetOpenshift: 'telnet_openshift/telnet_openshift.yaml',
 };
 

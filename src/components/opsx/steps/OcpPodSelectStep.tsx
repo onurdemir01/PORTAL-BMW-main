@@ -34,9 +34,14 @@ const OcpPodSelectStep: React.FC<{
   tenant: string;
   pairs: OpsxOcpPair[];
   dumpType: OpsxDumpType;
+  /** 'poddelete' (2026-09-18): ayni kesif/secim, ama dump secenekleri yerine ONAY kutusu ve
+   *  "Pod'lari sil" dugmesi. Varsayilan 'dump'. */
+  mode?: "dump" | "poddelete";
   busy?: boolean;
-  onSubmit: (v: { pods: { cluster: string; namespace: string; pod: string }[]; threadDumpCount: number; threadDumpInterval: number }) => void;
-}> = ({ env, tenant, pairs, dumpType, busy, onSubmit }) => {
+  onSubmit: (v: { pods: { cluster: string; namespace: string; pod: string }[]; threadDumpCount: number; threadDumpInterval: number; consent: boolean }) => void;
+}> = ({ env, tenant, pairs, dumpType, mode = "dump", busy, onSubmit }) => {
+  const isDelete = mode === "poddelete";
+  const [consent, setConsent] = useState(false);
   const [pods, setPods] = useState<OpsxPod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,7 +144,7 @@ const OcpPodSelectStep: React.FC<{
     const targets = pods
       .filter((p) => selected.has(podKey(p.cluster, p.namespace, p.name)))
       .map((p) => ({ cluster: p.cluster, namespace: p.namespace, pod: p.name }));
-    onSubmit({ pods: targets, threadDumpCount, threadDumpInterval });
+    onSubmit({ pods: targets, threadDumpCount, threadDumpInterval, consent });
   }
 
   if (loading) {
@@ -188,7 +193,9 @@ const OcpPodSelectStep: React.FC<{
     <div className="space-y-4">
       <div>
         <p className="text-sm text-[var(--text-secondary)]">
-          Hangi pod'lardan {dumpType === "heapdump" ? "heap" : "thread"} dump alınsın?
+          {isDelete
+            ? "Hangi pod'lar silinsin (OpenShift yeniden ayağa kaldırır)?"
+            : `Hangi pod'lardan ${dumpType === "heapdump" ? "heap" : "thread"} dump alınsın?`}
         </p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
           Namespace{namespaceList.length > 1 ? "'ler" : ""}: <span className="font-mono text-[var(--text-primary)]">{namespaceList.join(", ")}</span>
@@ -249,7 +256,21 @@ const OcpPodSelectStep: React.FC<{
 
       {/* Çoklu thread dump — YALNIZ thread dump için anlamlı (heap dump'ta pod başına
           tek dosya üretilir). Sınırlar backend + playbook ile aynı. */}
-      {dumpType === "threaddump" && (
+      {isDelete && (
+        <div className="space-y-2 border border-amber-200 bg-amber-50 rounded-xl p-3">
+          <p className="text-xs text-amber-900">
+            Seçilen pod'lar <b>silinir</b>; OpenShift her biri için yeni bir pod ayağa kaldırır. O sırada
+            uygulama kısa süreli kesinti yaşayabilir. Deployment/rollout'a dokunulmaz. Yeni pod'un adını
+            Dynatrace'ten, loglarını Kibana'dan takip edebilirsiniz. Sonuç e-posta ile de gelir.
+          </p>
+          <label className="flex items-center gap-2 text-xs text-amber-900 cursor-pointer">
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} disabled={busy} />
+            Yaptığım işlemin sonuçlarını kabul ediyorum.
+          </label>
+        </div>
+      )}
+
+      {!isDelete && dumpType === "threaddump" && (
         <div className="space-y-2 border border-[var(--border)] rounded-xl p-3">
           <p className="text-xs font-medium text-[var(--text-secondary)]">Çoklu Thread Dump</p>
           <div className="flex items-center gap-3 flex-wrap">
@@ -294,10 +315,11 @@ const OcpPodSelectStep: React.FC<{
         <span className="text-xs text-[var(--text-muted)]">{selected.size} pod seçildi</span>
         <button
           onClick={submit}
-          disabled={!ready || busy}
+          disabled={!ready || busy || (isDelete && !consent)}
           className="btn-primary"
+          title={isDelete && !consent ? "Önce onay kutusunu işaretleyin" : undefined}
         >
-          Dump Al
+          {isDelete ? "Pod'ları Sil / Restart Et" : "Dump Al"}
         </button>
       </div>
     </div>

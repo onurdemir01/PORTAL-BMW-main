@@ -1,0 +1,427 @@
+---
+# server/ansible/bmw_portal/opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml —
+# OpsX Openshift: seçilen POD'ları siler (OpenShift yeniden ayağa kaldırır = restart),
+# HANGİ gerçek cluster'a ait olurlarsa olsunlar. (2026-09-18, kullanıcı: "Çalışan
+# podlarımı silmek (restart etmek) istiyorum" seçeneği.)
+#
+# KAYNAK: bmw_openshift_jobs/pod_restart (tek inventory grubu, `oc_input` = "ns,pod;…",
+# CSV ile sonuç, mail + Teams). Buradaki sürüm opsx_openshift_dump.yaml'ın çok-bastion
+# fan-out iskeletini kullanır: Play1 doğrula + bastion'ları add_host / Play2 her bastion
+# KENDİ cluster'larındaki pod'ları siler / Play3 sonuçları toplar, set_stats ile Portal'a
+# yayınlar, e-posta (ve tanımlıysa Teams) gönderir. Pod listesi Portal'daki dump akışıyla
+# AYNI keşiften (opsx_openshift_pods.yaml) gelir; kullanıcı pod'ları seçer.
+#
+# Gerekli extra_vars (server/opsx/index.cjs POST /api/opsx/poddelete/openshift kurar):
+#   ocp_clusters: [{env, tenant, cluster_name, terminal_host, api_url?, credential_key?, username?}, ...]
+#   terminal_hosts: [bastion, ...]
+#   ocp_pod_targets: [{cluster_name, namespace, pod}, ...]
+#   pod_delete_consent: true   ("Yaptığım işlemin sonuçlarını kabul ediyorum" — Portal'da onay kutusu;
+#                               kaynak playbook'taki `choise` ile aynı anlam, kabul yoksa iş başlamaz)
+#   email: isteği açan kullanıcının adresi (bilgilendirme)
+#   requester: kullanıcı adı (rapor)
+#
+# ÇIKTI SÖZLEŞMESİ (server/opsx/index.cjs extractOpsxPodDeleteResult()):
+#   set_stats: { opsx_pod_delete_result: { overall_status: ok|partial|failed, results: [
+#     {cluster, namespace, pod, existence: 'Exist'|'Not Exist', ok: true|false, error?} ] } }
+#
+# GÜVENLİK: silme YALNIZ `oc delete pod` — deployment/rollout'a dokunulmaz; pod bulunamazsa
+# "Not Exist" olarak raporlanır, hata sayılmaz ama ok:false'tur. Teams webhook'u bu (public)
+# repoda TUTULMAZ: `opsx_teams_webhook_url` tanımlıysa (AWX extra var ya da
+# ../../bmw_openshift_jobs/global_variables/teams_vars.yml) kart gönderilir, yoksa atlanır.
+
+- name: "Validate input and add terminal hosts dynamically"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: "Validate required input variables"
+      ansible.builtin.assert:
+        that:
+          - terminal_hosts is defined and terminal_hosts | length > 0
+          - ocp_clusters is defined and ocp_clusters is sequence and ocp_clusters | length > 0
+          - ocp_pod_targets is defined and ocp_pod_targets is sequence and ocp_pod_targets | length > 0
+          - ocp_pod_targets | rejectattr('namespace', 'defined') | list | length == 0
+          - ocp_pod_targets | map(attribute='namespace') | map('trim') | select('equalto', '') | list | length == 0
+          - ocp_pod_targets | rejectattr('pod', 'defined') | list | length == 0
+        fail_msg: >-
+          Zorunlu değişkenler eksik/geçersiz → terminal_hosts: {{ terminal_hosts | default([]) | length }},
+          ocp_clusters: {{ ocp_clusters | default([]) | length }}, ocp_pod_targets:
+          {{ ocp_pod_targets | default([]) | length }} (her ögede namespace ve pod dolu olmalı).
+
+    # Kaynak playbook'taki "choise" kuralı: kullanıcı sonuçları kabul etmediyse iş yapılmaz.
+    - name: "Kullanıcı onayı (sonuçları kabul ediyorum) olmadan pod silinmez"
+      ansible.builtin.assert:
+        that:
+          - (pod_delete_consent | default(false)) | bool
+        fail_msg: >-
+          "Yaptığım işlemin sonuçlarını kabul ediyorum." onayı verilmediği için pod silme
+          işlemi başlatılmadı. Portal'da onay kutusunu işaretleyip yeniden deneyin.
+
+    - name: "Add every bastion to dynamic inventory"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: opsx_terminal
+      loop: "{{ terminal_hosts }}"
+      changed_when: false
+
+- name: "OpsX Openshift - Pod Delete/Restart (multi-cluster)"
+  hosts: opsx_terminal
+  # `rescue` yalnız GÖREV hatalarını yakalar; unreachable host'lar için ignore_unreachable
+  # şart — aksi hâlde tüm host'lar düşünce toplayıcı play hiç çalışmaz (dump ile aynı not).
+  ignore_unreachable: true
+  any_errors_fatal: false
+  gather_facts: false
+  become: false
+
+  vars_files:
+    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
+    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
+
+  vars:
+    oc_binary: ""
+    oc_binary_candidates:
+      - /bin/oc
+      - /usr/local/bin/oc
+      - /usr/bin/oc
+    oc_probe_paths: >-
+      {{
+        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
+         + (oc_binary_candidates | default([]))) | unique | list
+      }}
+    job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+
+  tasks:
+    - block:
+      # ── Bu bastion'un sahip olduğu cluster'lar + bağlantı bilgileri — opsx_openshift_dump.
+      # yaml ile AYNI 5 task ────────────────────────────────────────────────────────────────
+      - name: "Select the cluster subset that belongs to this bastion"
+        ansible.builtin.set_fact:
+          my_ocp_clusters: >-
+            {{
+              (ocp_clusters | selectattr('terminal_host', 'defined')
+                            | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+              +
+              ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+               if inventory_hostname == ((groups['opsx_terminal'] | default([])) | sort | first)
+               else [])
+            }}
+        changed_when: false
+
+      - name: "Probe candidate oc paths"
+        ansible.builtin.stat:
+          path: "{{ item }}"
+        loop: "{{ oc_probe_paths }}"
+        register: oc_stats
+        changed_when: false
+        failed_when: false
+        when: my_ocp_clusters | length > 0
+
+      - name: "Collect usable oc paths"
+        ansible.builtin.set_fact:
+          oc_stat_hits: >-
+            {{
+              oc_stats.results | default([])
+              | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+              | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+              | map(attribute='stat.path') | list
+            }}
+        when: my_ocp_clusters | length > 0
+        changed_when: false
+
+      - name: "Fall back to PATH lookup when no candidate matched"
+        ansible.builtin.shell: command -v oc || true
+        args:
+          executable: /bin/bash
+        register: oc_which
+        when: (my_ocp_clusters | length > 0) and (oc_stat_hits | default([]) | length == 0)
+        changed_when: false
+        failed_when: false
+
+      - name: "Resolve the oc binary for this bastion"
+        ansible.builtin.set_fact:
+          oc_bin: >-
+            {{
+              oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
+              else (oc_which.stdout | default('', true) | trim)
+            }}
+        when: my_ocp_clusters | length > 0
+        changed_when: false
+
+      - name: "Resolve connection details for each owned cluster"
+        ansible.builtin.set_fact:
+          resolved_clusters: >-
+            {{
+              (resolved_clusters | default([])) + [{
+                'cluster_name': item.cluster_name,
+                'url': resolved_url, 'username': resolved_username, 'password': resolved_password
+              }]
+            }}
+        vars:
+          inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+          inv_row: >-
+            {{ (clusters[inventory_key][item.cluster_name])
+               if (clusters is defined and clusters[inventory_key] is defined
+                   and clusters[inventory_key][item.cluster_name] is defined)
+               else {} }}
+          resolved_url: "{{ item.api_url | default('') | trim or (inv_row.url | default('')) }}"
+          resolved_username: "{{ item.username | default('') | trim or (username | default('')) }}"
+          resolved_password: >-
+            {{ (lookup('vars', item.credential_key, default=''))
+               if (item.credential_key | default('') | trim | length > 0)
+               else (inv_row.password | default('')) }}
+        loop: "{{ my_ocp_clusters }}"
+        loop_control:
+          label: "{{ item.cluster_name }}"
+        no_log: true
+        changed_when: false
+        when: my_ocp_clusters | length > 0
+
+      - name: "Build per-pod delete units owned by this bastion"
+        ansible.builtin.set_fact:
+          pod_units: >-
+            {{
+              (pod_units | default([])) + (
+                [{'cluster_name': item.cluster_name, 'namespace': item.namespace, 'url': owning_cluster[0].url,
+                  'username': owning_cluster[0].username, 'password': owning_cluster[0].password,
+                  'pod': item.pod}]
+                if (owning_cluster | length) > 0 else []
+              )
+            }}
+        vars:
+          owning_cluster: "{{ resolved_clusters | default([]) | selectattr('cluster_name', 'equalto', item.cluster_name) | list }}"
+        loop: "{{ ocp_pod_targets }}"
+        loop_control:
+          label: "{{ item.cluster_name }}/{{ item.pod }}"
+        when: my_ocp_clusters | length > 0
+        changed_when: false
+        no_log: true
+
+      # Her pod için: KENDİ cluster'ına login (KUBECONFIG izole), pod var mı, sil.
+      # Kaynak: pod_restart/tasks/execute.yaml — `oc get pod … | grep -i $pod | wc -l` yerine
+      # pod adı TAM eşleşmeyle okunur (grep -i benzer adlı ikinci pod'u da sayıyordu).
+      # stdout tek satır: EXISTENCE|OK|MESAJ. failed_when:false — bir pod patlarsa diğerleri sürer.
+      - name: "Login and delete each pod owned by this bastion"
+        ansible.builtin.shell: |
+          set -u
+          export KUBECONFIG="/tmp/opsx-poddel-{{ job_id }}-{{ item.cluster_name | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.namespace | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.pod }}.kubeconfig"
+          trap 'rm -f "${KUBECONFIG}"' EXIT
+          if [ -z "{{ item.url }}" ]; then
+            echo "Not Exist|false|Cluster için API URL/kimlik bilgisi çözülemedi: {{ item.cluster_name }}"
+            exit 0
+          fi
+          if ! "{{ oc_bin }}" login \
+            --server={{ item.url | quote }} \
+            --username={{ item.username | quote }} \
+            --password={{ item.password | quote }} \
+            --insecure-skip-tls-verify=true >/dev/null 2>&1; then
+            echo "Not Exist|false|Cluster'a login olunamadı: {{ item.cluster_name }}"
+            exit 0
+          fi
+          POD="{{ item.pod }}"
+          NS="{{ item.namespace }}"
+          if ! "{{ oc_bin }}" get pod "$POD" -n "$NS" -o name >/dev/null 2>&1; then
+            echo "Not Exist|false|Pod bulunamadı (zaten silinmiş / yeniden oluşmuş olabilir)"
+            "{{ oc_bin }}" logout >/dev/null 2>&1 || true
+            exit 0
+          fi
+          ERR="$("{{ oc_bin }}" delete pod "$POD" -n "$NS" --force 2>&1 >/dev/null)"; RC=$?
+          "{{ oc_bin }}" logout >/dev/null 2>&1 || true
+          if [ "$RC" -eq 0 ]; then
+            echo "Exist|true|Silindi; OpenShift yeni pod'u ayağa kaldırır"
+          else
+            echo "Exist|false|$(printf '%s' "$ERR" | tr '\n' ' ' | cut -c1-300)"
+          fi
+        args:
+          executable: /bin/bash
+        loop: "{{ pod_units | default([]) }}"
+        loop_control:
+          label: "{{ item.cluster_name }}/{{ item.namespace }}/{{ item.pod }}"
+        register: pod_delete_results
+        no_log: true
+        changed_when: true
+        failed_when: false
+        when: (pod_units | default([]) | length) > 0
+
+      - name: "Bu bastion'un sonucunu yayınla (bastion_pod_delete_result)"
+        ansible.builtin.set_fact:
+          bastion_pod_delete_result: >-
+            {{
+              (bastion_pod_delete_result | default([])) + [{
+                'cluster': item.item.cluster_name,
+                'namespace': item.item.namespace,
+                'pod': item.item.pod,
+                'existence': (parts[0] | default('Not Exist')),
+                'ok': ((parts[1] | default('false')) == 'true'),
+                'error': ('' if ((parts[1] | default('false')) == 'true') else (parts[2] | default('Silinemedi')))
+              }]
+            }}
+        vars:
+          parts: "{{ (item.stdout | default('') | trim | split('|')) if (item.stdout | default('') | trim | length) > 0 else ['Not Exist', 'false', (item.stderr | default('') | trim) or 'Sonuç alınamadı'] }}"
+        loop: "{{ pod_delete_results.results | default([]) }}"
+        loop_control:
+          label: "{{ item.item.cluster_name }}/{{ item.item.pod }}"
+        when: (pod_units | default([]) | length) > 0
+        changed_when: false
+
+      rescue:
+        - name: "Hata kaydedilir (host ayakta kalir)"
+          ansible.builtin.set_fact:
+            host_blocked_reason: >-
+              {{ ansible_failed_result.msg | default('Bu host uzerinde is tamamlanamadi.') }}
+
+- name: "Aggregate per-bastion results, publish opsx_pod_delete_result, notify"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars_files:
+    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/mail_vars.yml'], errors='ignore') | default('/dev/null', true) }}"
+    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/teams_vars.yml'], errors='ignore') | default('/dev/null', true) }}"
+
+  vars:
+    job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+
+  tasks:
+    - name: "Clear any host errors so aggregation always runs"
+      ansible.builtin.meta: clear_host_errors
+
+    - name: "Tüm bastion sonuçlarını toparla"
+      ansible.builtin.set_fact:
+        flat_results: >-
+          {{
+            (groups['opsx_terminal'] | default([]) | sort)
+            | map('extract', hostvars, 'bastion_pod_delete_result')
+            | select('defined') | list | sum(start=[])
+          }}
+      changed_when: false
+
+    # Hiçbir bastion'a düşmeyen hedefler (cluster çözülemedi / bastion unreachable) de
+    # sonuca girsin: kullanıcı "bu pod'a ne oldu" sorusuna cevap bulsun.
+    - name: "Sonucu olmayan hedefleri işaretle"
+      ansible.builtin.set_fact:
+        flat_results: >-
+          {{ flat_results + [{
+               'cluster': item.cluster_name, 'namespace': item.namespace, 'pod': item.pod,
+               'existence': 'Not Exist', 'ok': false,
+               'error': 'Bu pod için hiçbir bastion sonuç bildirmedi (cluster çözülemedi ya da bastion erişilemez).'
+             }] }}
+      loop: "{{ ocp_pod_targets }}"
+      loop_control:
+        label: "{{ item.cluster_name }}/{{ item.pod }}"
+      when: >-
+        (flat_results | selectattr('cluster', 'equalto', item.cluster_name)
+                      | selectattr('namespace', 'equalto', item.namespace)
+                      | selectattr('pod', 'equalto', item.pod) | list | length) == 0
+      changed_when: false
+
+    - name: "Publish opsx_pod_delete_result"
+      ansible.builtin.set_stats:
+        data:
+          opsx_pod_delete_result:
+            overall_status: >-
+              {{
+                'ok'
+                if (flat_results | selectattr('ok', 'equalto', false) | list | length) == 0
+                else (
+                  'partial'
+                  if (flat_results | selectattr('ok', 'equalto', true) | list | length) > 0
+                  else 'failed'
+                )
+              }}
+            results: "{{ flat_results }}"
+        per_host: false
+
+    - name: "Rapor özeti"
+      ansible.builtin.set_fact:
+        rep_total: "{{ flat_results | length }}"
+        rep_success: "{{ flat_results | selectattr('ok', 'equalto', true) | list | length }}"
+        rep_not_found: "{{ flat_results | selectattr('existence', 'equalto', 'Not Exist') | list | length }}"
+        rep_requester: >-
+          {{ (requester | default('')) or ((email | default('')).split('@')[0]) or 'Kullanıcı' }}
+      changed_when: false
+
+    - name: "Bilgilendirme e-postası (isteği açan kişiye)"
+      community.general.mail:
+        host: "{{ smtp_host | default('smtpappv1.fw.garanti.com.tr') }}"
+        port: "{{ smtp_port | default(25) }}"
+        from: "{{ mail_from | default('ansible@garanti.com.tr') }}"
+        to: "{{ email }}"
+        cc: "{{ mail_cc | default([]) }}"
+        subject: "{{ mail_subject_prefix | default('Ansible Automation Report - Job :') }} Openshift Pod Delete/Restart (Portal OpsX)"
+        subtype: html
+        charset: utf8
+        body: >-
+          <html><body style="font-family:Calibri;font-size:14px">
+          <h3>Openshift Pod Delete/Restart Otomasyon Bilgilendirmesi</h3>
+          <p>Merhaba,</p>
+          <p>Portal OpsX üzerinden açtığınız pod silme/restart isteğinin sonucu aşağıdadır.
+          Silinen pod'un yerine OpenShift yeni bir pod ayağa kaldırır; yeni pod'un adını
+          Dynatrace'ten, loglarını Kibana'dan takip edebilirsiniz.</p>
+          <table style="border:1px solid black;border-collapse:collapse">
+          <tr>{% for h in ['Pod','Cluster','Namespace','Durum','Sonuç'] %}<th style="border:1px solid black;padding:6px 12px">{{ h }}</th>{% endfor %}</tr>
+          {% for r in flat_results %}
+          <tr><td style="border:1px solid black;padding:6px 12px">{{ r.pod }}</td>
+          <td style="border:1px solid black;padding:6px 12px">{{ r.cluster }}</td>
+          <td style="border:1px solid black;padding:6px 12px">{{ r.namespace }}</td>
+          <td style="border:1px solid black;padding:6px 12px">{{ 'Var' if r.existence == 'Exist' else 'Bulunamadı' }}</td>
+          <td style="border:1px solid black;padding:6px 12px">{{ 'Başarılı' if r.ok else ('Başarısız: ' ~ (r.error | default(''))) }}</td></tr>
+          {% endfor %}
+          </table>
+          <p>Toplam {{ rep_total }} · başarılı {{ rep_success }} · bulunamayan {{ rep_not_found }}<br>
+          İşleminize ait Job Numarası: <strong>{{ job_id }}</strong></p>
+          <p>İyi çalışmalar dileriz</p></body></html>
+      when: (email | default('') | trim | length) > 0
+      failed_when: false
+
+    # Teams karti YALNIZ webhook tanimliysa (public repoda gizli URL tutulmaz).
+    - name: "Teams bildirimi (opsx_teams_webhook_url tanımlıysa)"
+      ansible.builtin.uri:
+        url: "{{ opsx_teams_webhook_url }}"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          type: message
+          attachments:
+            - contentType: application/vnd.microsoft.card.adaptive
+              content:
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+                type: AdaptiveCard
+                version: "1.4"
+                msteams:
+                  width: "Full"
+                body:
+                  - type: TextBlock
+                    text: "🔄 OpenShift Pod Delete/Restart (Portal OpsX)"
+                    weight: Bolder
+                    size: Large
+                    wrap: true
+                  - type: TextBlock
+                    text: "İsteği açan: {{ rep_requester }} · Job {{ job_id }}"
+                    isSubtle: true
+                    wrap: true
+                  - type: TextBlock
+                    text: "Toplam {{ rep_total }} · Başarılı {{ rep_success }} · Bulunamadı {{ rep_not_found }}"
+                    wrap: true
+                  - type: TextBlock
+                    wrap: true
+                    text: >-
+                      {% for r in flat_results %}{{ '✅' if r.ok else ('⚠️' if r.existence == 'Not Exist' else '❌') }} **{{ r.pod }}** — {{ r.namespace }} · {{ r.cluster }}{{ '' if r.ok else (' · ' ~ (r.error | default(''))) }}
+
+                      {% endfor %}
+        status_code: [200, 202]
+      when: (opsx_teams_webhook_url | default('') | trim | length) > 0
+      failed_when: false
+      environment:
+        http_proxy: "{{ opsx_http_proxy | default('http://tekprxv2.fw.garanti.com.tr:80') }}"
+        https_proxy: "{{ opsx_http_proxy | default('http://tekprxv2.fw.garanti.com.tr:80') }}"
+        no_proxy: "localhost,127.0.0.1"
+
+    - name: "Hiçbir pod silinemediyse işi BAŞARISIZ yap"
+      ansible.builtin.fail:
+        msg: "Pod silme tamamlanamadı — hiçbir pod başarıyla silinmedi."
+      when: (flat_results | selectattr('ok', 'equalto', true) | list | length) == 0

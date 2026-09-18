@@ -2084,6 +2084,18 @@ const PLAYBOOK_REGISTRY_SEED = [
     env_var_name: 'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID',
   },
   {
+    // 2026-09-18: "Calisan podlarimi silmek (restart etmek) istiyorum" - pod kesfinden secilen
+    // pod'lari oc delete pod ile siler (bmw_openshift_jobs/pod_restart'in Portal surumu).
+    key_name: 'opsx_openshift_pod_delete',
+    display_name: 'OpsX — Openshift Pod Silme/Restart',
+    category: 'opsx',
+    handler: 'opsx_openshift_pod_delete',
+    description:
+      "Secilen pod'lari siler; OpenShift yeni pod'u ayaga kaldirir (restart). bmw_portal/opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml - sonuc Portal'a set_stats ile doner, istegi acana e-posta gider.",
+    playbook_path: null,
+    env_var_name: 'OPSX_OPENSHIFT_POD_DELETE_TEMPLATE_ID',
+  },
+  {
     key_name: 'opsx_openshift_pods',
     display_name: 'OpsX — Openshift Pod Keşfi',
     category: 'opsx',

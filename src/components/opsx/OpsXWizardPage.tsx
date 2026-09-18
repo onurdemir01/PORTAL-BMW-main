@@ -13,6 +13,7 @@ import {
   opsxApi,
   type OpsxPlatform, type OpsxOperation, type OpsxOcpOperation, type OpsxOcpPair,
   type OpsxRunResult, type OpsxDumpType, type OpsxDumpLaunchResult, type OpsxDumpStatus,
+  type OpsxPodDeleteStatus,
   type OpsxPidSelection, type OpsxServerConfigSelection,
 } from "@/api/opsxApi";
 import { useJobTracker } from "@/contexts/JobTrackerContext";
@@ -59,6 +60,8 @@ const STEP_TITLES: Record<Step, string> = {
 };
 
 const DUMP_OPERATIONS = new Set(["threaddump", "heapdump"]);
+// Pod silme de dump ile AYNI kesif/secim adimini kullanir (2026-09-18)
+const POD_SELECT_OPERATIONS = new Set(["threaddump", "heapdump", "poddelete"]);
 
 const OpsXWizardPage: React.FC = () => {
   const [step, setStep] = useState<Step>("platform");
@@ -94,6 +97,28 @@ const OpsXWizardPage: React.FC = () => {
   // BAĞIMSIZ, aynı SelfServicePage.tsx'teki Smart ticket polling deseni.
   const [dumpJob, setDumpJob] = useState<{ awxServerId: number; jobId: number } | null>(null);
   const [dumpStatus, setDumpStatus] = useState<OpsxDumpStatus | null>(null);
+  // Pod silme (2026-09-18): ayri durum ucu, pod basina Silindi / Bulunamadi / Hata
+  const [podDeleteJob, setPodDeleteJob] = useState<{ awxServerId: number; jobId: number } | null>(null);
+  const [podDeleteStatus, setPodDeleteStatus] = useState<OpsxPodDeleteStatus | null>(null);
+  const [podDeleteMode, setPodDeleteMode] = useState(false);
+  useEffect(() => {
+    if (!podDeleteJob) return;
+    let cancelled = false;
+    const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
+    const tick = async () => {
+      try {
+        const r = await opsxApi.podDeleteStatus(podDeleteJob.awxServerId, podDeleteJob.jobId);
+        if (cancelled) return;
+        setPodDeleteStatus(r);
+        if (r.ok && TERMINAL.has(r.status)) return;
+      } catch (e) {
+        if (!cancelled) setPodDeleteStatus({ ok: false, status: "unknown", message: e instanceof Error ? e.message : String(e) });
+      }
+      if (!cancelled) timer = window.setTimeout(tick, 5000);
+    };
+    let timer = window.setTimeout(tick, 3000);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [podDeleteJob]);
   // Openshift'te işlem seçimi ile dump'ın tetiklenmesi arasında bir pod seçim adımı
   // olduğu için, seçilen dump tipi o adım boyunca burada tutulur.
   const [dumpType, setDumpType] = useState<OpsxDumpType | null>(null);
@@ -110,6 +135,9 @@ const OpsXWizardPage: React.FC = () => {
 
   function restart() {
     setStep("platform");
+    setPodDeleteJob(null);
+    setPodDeleteStatus(null);
+    setPodDeleteMode(false);
     setPlatform(null);
     setApp("");
     setJbossVersions([]);
@@ -338,7 +366,39 @@ const OpsXWizardPage: React.FC = () => {
     }
   }
 
+  async function runOpenshiftPodDelete(selectedPods: { cluster: string; namespace: string; pod: string }[], consent: boolean) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await opsxApi.podDeleteOpenshift(env, tenant, pairs, selectedPods, consent);
+      if (!r.ok) {
+        setError(r.message || "Pod silme işi başlatılamadı.");
+        return;
+      }
+      setResult(r);
+      setStep("done");
+      if (r.jobId != null) {
+        setPodDeleteJob({ awxServerId: r.awxServerId, jobId: r.jobId });
+        trackJob(r);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+
   function handleOcpOperation(ocOperation: OpsxOcpOperation) {
+    if (ocOperation === "poddelete") {
+      // Pod silme: dump ile ayni kesif + secim adimi, dump secenekleri yerine onay kutusu.
+      setPodDeleteMode(true);
+      setDumpType("threaddump"); // adimin zorunlu prop'u; poddelete modunda kullanilmaz
+      setStep("ocp_pods");
+      return;
+    }
     if (DUMP_OPERATIONS.has(ocOperation)) {
       // Pod keşfi/dump artık pairs'teki TÜM (namespace,uygulama) çiftlerini birden
       // hedefleyebiliyor (bkz. opsx_openshift_pods.yaml/opsx_openshift_dump.yaml'ın
@@ -476,8 +536,9 @@ const OpsXWizardPage: React.FC = () => {
             tenant={tenant}
             pairs={pairs}
             dumpType={dumpType}
+            mode={podDeleteMode ? "poddelete" : "dump"}
             busy={busy}
-            onSubmit={(v) => runOpenshiftDump(dumpType, v.pods, v.threadDumpCount, v.threadDumpInterval)}
+            onSubmit={(v) => (podDeleteMode ? runOpenshiftPodDelete(v.pods, v.consent) : runOpenshiftDump(dumpType, v.pods, v.threadDumpCount, v.threadDumpInterval))}
           />
         )}
 
@@ -505,6 +566,38 @@ const OpsXWizardPage: React.FC = () => {
                   title={trackedJob.title}
                 />
                 {trackedJob.pollErr && <p className="mt-1.5 text-xs text-amber-600">{trackedJob.pollErr}</p>}
+              </div>
+            )}
+
+            {/* Pod silme sonuçları (2026-09-18): pod başına Silindi / Bulunamadı / Hata */}
+            {podDeleteJob && (
+              <div className="w-full text-left bg-[var(--bg-elevated)] rounded-xl p-3 space-y-2">
+                <div className="text-xs font-medium text-[var(--text-muted)]">
+                  Pod Silme Sonuçları
+                  {podDeleteStatus?.overallStatus && (
+                    <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${podDeleteStatus.overallStatus === "ok" ? "bg-green-100 text-green-700" : podDeleteStatus.overallStatus === "partial" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-700"}`}>
+                      {podDeleteStatus.overallStatus === "ok" ? "hepsi silindi" : podDeleteStatus.overallStatus === "partial" ? "kısmen" : "başarısız"}
+                    </span>
+                  )}
+                </div>
+                {podDeleteStatus?.results && podDeleteStatus.results.length > 0 ? (
+                  podDeleteStatus.results.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]">
+                      <span className="text-sm font-mono text-[var(--text-primary)] truncate" title={`${r.cluster} / ${r.namespace}`}>
+                        {r.pod} <span className="text-xs text-[var(--text-muted)]">· {r.namespace} · {r.cluster}</span>
+                      </span>
+                      {r.ok ? (
+                        <span className="text-xs text-green-700">Silindi · yeni pod ayağa kalkıyor</span>
+                      ) : (
+                        <span className="text-xs text-red-600">{r.existence === "Not Exist" ? "Bulunamadı" : "Başarısız"}{r.error ? ` — ${r.error}` : ""}</span>
+                      )}
+                    </div>
+                  ))
+                ) : podDeleteStatus?.message ? (
+                  <p className="text-xs text-amber-700">{podDeleteStatus.message}</p>
+                ) : (
+                  <p className="text-xs text-[var(--text-muted)]">Pod'lar siliniyor, lütfen bekleyin…</p>
+                )}
               </div>
             )}
 

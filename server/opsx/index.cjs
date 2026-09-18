@@ -47,6 +47,9 @@ const OCP_OPERATIONS = Object.freeze([
   { key: 'threaddump', label: 'Thread dump al', enabled: true },
   { key: 'heapdump', label: 'Heap dump al', enabled: true },
   { key: 'tcpdump', label: 'Tcpdump al', enabled: false },
+  // 2026-09-18: pod kesfi (dump ile ayni) -> secilen pod'lar oc delete pod ile silinir,
+  // OpenShift yeniden ayaga kaldirir. AYRI template: opsx_openshift_pod_delete.
+  { key: 'poddelete', label: 'Çalışan podlarımı silmek (restart etmek) istiyorum', enabled: true },
 ]);
 
 // java_app_ops.yml'in sonundaki "DB Ops" play'inin sabit hedefi — Legacy restart/stop/
@@ -59,6 +62,7 @@ const REGISTRY_KEYS = Object.freeze({
   legacyDump: 'opsx_legacy_dump',
   openshiftDump: 'opsx_openshift_dump',
   openshiftPods: 'opsx_openshift_pods',
+  openshiftPodDelete: 'opsx_openshift_pod_delete',
   legacyJvmDiscover: 'opsx_legacy_jvm_discover',
   legacyServerConfigDiscover: 'opsx_legacy_serverconfig_discover',
 });
@@ -337,6 +341,11 @@ function extractStatsKey(rawArtifacts, key) {
 // Dump playbook'unun son adimda set_stats ile yayinladigi yapilandirilmis sonuc.
 function extractOpsxDumpResult(rawArtifacts) {
   return extractStatsKey(rawArtifacts, 'opsx_dump_result');
+}
+
+// Pod silme playbook'unun (opsx_openshift_pod_delete.yaml) sonucu.
+function extractOpsxPodDeleteResult(rawArtifacts) {
+  return extractStatsKey(rawArtifacts, 'opsx_pod_delete_result');
 }
 
 // Pod kesfi playbook'unun (opsx_openshift_pods.yaml) sonucu.
@@ -1772,6 +1781,153 @@ function initOpsX(app) {
     },
   );
 
+  // POST /api/opsx/poddelete/openshift — { env, tenant, pairs, pods: [{cluster,namespace,pod}], consent }
+  //
+  // "Calisan podlarimi silmek (restart etmek) istiyorum" (2026-09-18). Pod listesi dump
+  // akisiyla AYNI kesiften gelir; dogrulama dump ucuyla birebir (katalog, pairs, cluster,
+  // namespace, pod adi, anti-TOCTOU). Ek: `consent` (kaynak playbook'taki "choise") true
+  // olmadan is BASLATILMAZ - hem burada hem playbook'ta (assert) zorunlu.
+  app.post(
+    '/api/opsx/poddelete/openshift',
+    requireAuth,
+    express.json({ limit: '64kb' }),
+    async (req, res) => {
+      const { env, tenant, pairs, pods, consent } = req.body || {};
+      if (consent !== true) {
+        return res.status(400).json({
+          ok: false,
+          message: '"Yaptığım işlemin sonuçlarını kabul ediyorum." onayı olmadan pod silinemez.',
+        });
+      }
+      const { templateId, serverId, keyName } = await resolveTarget('openshiftPodDelete');
+      if (!templateId) {
+        return res.status(501).json({
+          ok: false,
+          message:
+            `OpsX Openshift pod silme işlemi için AWX job template'i henüz tanımlanmadı. ` +
+            `Yönetici, Admin > Playbook Kayıtları ekranında "${keyName}" satırının ` +
+            `Template ID alanını doldurmalı.`,
+        });
+      }
+
+      let envKey, tenantKey, cleanPairs, clusterNames;
+      try {
+        const user = req.session?.user || {};
+        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(env, tenant, pairs, user));
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+      const allowedNamespaces = new Set(cleanPairs.map((p) => p.namespace));
+      if (!Array.isArray(pods) || pods.length === 0) {
+        return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
+      }
+      const allowedClusters = new Set(clusterNames);
+      const podNameRe = /^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/i;
+      const seen = new Set();
+      const cleanPodTargets = [];
+      for (const p of pods) {
+        const cluster = String(p?.cluster || '').trim();
+        const namespace = String(p?.namespace || '').trim();
+        const pod = String(p?.pod || '').trim();
+        if (!allowedClusters.has(cluster)) {
+          return res.status(400).json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
+        }
+        if (!allowedNamespaces.has(namespace)) {
+          return res.status(400).json({ ok: false, message: `Bu namespace seçilenler arasında değil: ${p?.namespace}` });
+        }
+        if (!podNameRe.test(pod) || pod.length > 253) {
+          return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${p?.pod}` });
+        }
+        const key = `${cluster}::${namespace}::${pod}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        cleanPodTargets.push({ cluster, namespace, pod });
+      }
+      if (cleanPodTargets.length === 0) {
+        return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
+      }
+      if (cleanPodTargets.length > 50) {
+        return res.status(400).json({ ok: false, message: 'Tek seferde en fazla 50 pod silinebilir.' });
+      }
+
+      const neededClusters = [...new Set(cleanPodTargets.map((t) => t.cluster))];
+      let fanout;
+      try {
+        fanout = await resolveOcpClusterFanout(envKey, tenantKey, neededClusters);
+      } catch (err) {
+        return res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+
+      const extraVars = {
+        ...fanout,
+        ocp_pod_targets: cleanPodTargets.map((t) => ({ cluster_name: t.cluster, namespace: t.namespace, pod: t.pod })),
+        pod_delete_consent: true,
+        email: String(req.session?.user?.mail || '').trim(),
+        requester: String(req.session?.user?.username || '').trim(),
+      };
+
+      try {
+        const runner = require('../ansible/runner.cjs');
+        await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
+        const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
+        try {
+          const db = require('../db/index.cjs');
+          await db.query(
+            `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [req.session?.user?.username || 'unknown', serverId, templateId, 'OpsX: Openshift poddelete', result?.jobId, result?.status || 'pending', JSON.stringify({ platform: 'openshift-poddelete', ...extraVars })],
+          );
+        } catch (e) {
+          console.warn('[OpsX] Pod silme gecmisi kaydedilemedi:', e.message);
+        }
+        try {
+          require('../audit/index.cjs').auditPortal(req, 'opsx_operation', {
+            detail: JSON.stringify({ platform: 'openshift', ocOperation: 'poddelete', extraVars, jobId: result?.jobId ?? null }),
+          });
+        } catch { /* best-effort */ }
+        console.log(
+          `[OpsX] ${req.session?.user?.username} -> openshift poddelete env=${envKey} tenant=${tenantKey} clusters=${neededClusters.join(',')} pods=${cleanPodTargets.length} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+        );
+        res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId, sentBody: { extra_vars: extraVars } });
+      } catch (err) {
+        res.status(err.status || 500).json({ ok: false, message: err.message });
+      }
+    },
+  );
+
+  // GET /api/opsx/poddelete/:serverId/:jobId/status — terminal olunca opsx_pod_delete_result
+  // (pod basina Exist/Not Exist + ok/error). IDOR korumasi dump status ile ayni.
+  app.get('/api/opsx/poddelete/:serverId/:jobId/status', requireAuth, async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu/iş numarası.' });
+    }
+    const reqUser = req.session?.user || {};
+    try {
+      const db = require('../db/index.cjs');
+      if (reqUser.role !== 'Admin') {
+        const { rows } = await db.query(`SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`, [jobId, serverId]);
+        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+          return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
+        }
+      }
+    } catch { /* fail-open, /job-status ile ayni desen */ }
+    try {
+      const runner = require('../ansible/runner.cjs');
+      const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
+      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+      if (!TERMINAL.has(statusInfo.status)) return res.json({ ok: true, status: statusInfo.status });
+      // Kismi basari da (bazi pod'lar silinemedi) playbook'u "failed" yapabilir - sonuc yine okunur.
+      const out = extractOpsxPodDeleteResult(statusInfo.artifacts);
+      if (!out) {
+        return res.json({ ok: true, status: statusInfo.status, message: statusInfo.status === 'successful' ? "İşlem tamamlandı ancak sonuç alınamadı — playbook'un set_stats adımını kontrol edin." : 'İşlem başarısız oldu.' });
+      }
+      res.json({ ok: true, status: statusInfo.status, overallStatus: out.overall_status || null, results: out.results || [] });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // GET /api/opsx/dump/:serverId/:jobId/status — job terminal + basariliysa
   // artifacts.opsx_dump_result okunur, her basarili sonuc icin bir indirme token'i
   // uretilir. IDOR korumasi /api/opsx/job-status ile AYNI desen (ansible_job_history'de
@@ -1863,6 +2019,8 @@ module.exports = {
   deriveJbossVersion,
   extractOpsxDumpResult,
   extractOpsxPodsResult,
+  extractOpsxPodDeleteResult,
+  OCP_OPERATIONS,
   extractOpsxJvmResult,
   extractOpsxServerConfigResult,
 };

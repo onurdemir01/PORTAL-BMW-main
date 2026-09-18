@@ -25,7 +25,7 @@ export interface OpsxOperationDef {
 }
 
 // Openshift bacağındaki 4 işlem butonu — sadece "enabled: true" olan tıklanabilir.
-export type OpsxOcpOperation = "restart" | "threaddump" | "heapdump" | "tcpdump";
+export type OpsxOcpOperation = "restart" | "threaddump" | "heapdump" | "tcpdump" | "poddelete";
 export interface OpsxOcpOperationDef {
   key: OpsxOcpOperation;
   label: string;
@@ -95,6 +95,23 @@ export interface OpsxDumpLaunchResult {
   sentBody: { limit?: string; extra_vars: Record<string, unknown> };
   // ok:false ise backend'in ürettiği hata metni — bkz. OpsxRunResult.message notu.
   message?: string;
+}
+
+// Pod silme/restart sonucu (opsx_openshift_pod_delete.yaml set_stats)
+export interface OpsxPodDeleteResultItem {
+  cluster: string;
+  namespace: string;
+  pod: string;
+  existence: "Exist" | "Not Exist";
+  ok: boolean;
+  error?: string;
+}
+export interface OpsxPodDeleteStatus {
+  ok: boolean;
+  status: string;
+  overallStatus?: "ok" | "partial" | "failed" | null;
+  message?: string;
+  results?: OpsxPodDeleteResultItem[];
 }
 
 export interface OpsxDumpStatus {
@@ -357,6 +374,22 @@ export const opsxApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ env, tenant, pairs, pods, dumpType, threadDumpCount, threadDumpInterval }),
     }).then(safeJson),
+
+  // Pod silme/restart (2026-09-18): dump ile AYNI kesif + pod secimi; `consent` zorunlu.
+  podDeleteOpenshift: (
+    env: string,
+    tenant: string,
+    pairs: OpsxOcpPair[],
+    pods: { cluster: string; namespace: string; pod: string }[],
+    consent: boolean,
+  ): Promise<OpsxDumpLaunchResult> =>
+    fetch(`${BASE}/poddelete/openshift`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ env, tenant, pairs, pods, consent }),
+    }).then(safeJson),
+  podDeleteStatus: (awxServerId: number, jobId: number): Promise<OpsxPodDeleteStatus> =>
+    fetch(`${BASE}/poddelete/${awxServerId}/${jobId}/status`).then(safeJson),
 
   // Dump job'ının durumu — terminal + başarılıysa `results` her başarılı öge için
   // bir `downloadToken` taşır (bkz. dumpDownloadUrl).
