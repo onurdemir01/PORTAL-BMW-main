@@ -114,6 +114,36 @@
       {{ (target_app_names | regex_replace('[;\r\n]+', ',')).split(',')
          | map('trim') | reject('equalto', '') | unique | list }}
 
+# DOGRULAMA BUTCESI — SABIT LISTE YOK, ARALIK VAR.
+#
+# URETIM (2026-09-18, isler #3329581 / #3329638 / #3329647 / #3329656 / #3329662):
+# portal varsayilani 5 dakikaya cekildi (`verification_timeout | default('300')`,
+# yukarida satir 79) ama asagidaki dogrulama hala `['30','60','120']` sabit
+# listesindeydi. Sonuc: stop/scale, prod/test, dry_run/apply — HER IS
+# `Validate inputs`ta oldu ve kullaniciya "Survey, credential veya mail ayarlari
+# eksik/gecersiz." dendi. Yani ScaleX tamamen kapaliydi ve hata mesaji TAMAMEN
+# YANLIS yeri gosteriyordu.
+#
+# NEDEN SABIT LISTE DEGIL: bu dosya zaten (asagida, platform/ortam gerekcesinde)
+# sabit beyaz listelerin "IKINCI ve BAYATLAYAN bir dogruluk kaynagi" oldugunu ve
+# 2026-09-01'de tenant listesinde ayni hatanin yasandigini yaziyor. Bu satir tam
+# olarak o hataydi.
+#
+# IS ARALIGI ARTIK SUNUCUDA: `server/scalex/config.cjs` (admin ekranindan
+# ayarlanabilir, SCALEX_VERIFY_TIMEOUT_MIN/MAX). Burada yalnizca MUTLAK sinir
+# dogrulanir ve o sinir `config.cjs`teki `hardMin`/`hardMax` ile AYNIDIR —
+# playbook ikinci bir is kurali TASIMAZ, yalnizca sacma degerleri keser.
+- name: "Validate verification budget"
+  ansible.builtin.assert:
+    that:
+      - verification_timeout_effective is match('^[0-9]+$')
+      - verification_timeout_effective | int >= 1
+      - verification_timeout_effective | int <= 86400
+    fail_msg: >-
+      Sonuç kontrol süresi geçersiz: "{{ verification_timeout_effective }}".
+      1-86400 saniye arası bir tam sayı olmalı.
+  changed_when: false
+
 - name: "Validate inputs"
   ansible.builtin.assert:
     that:
@@ -131,7 +161,6 @@
       - oc_environment is match('^[a-z0-9][a-z0-9_-]*$')
       - oc_cluster_mode in ['single', 'all']
       - operation_action_effective in ['stop', 'restore', 'scale']
-      - verification_timeout_effective in ['30', '60', '120']
       - oc_namespace | length > 0
       - oc_namespace | length <= 63
       - oc_namespace is match('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')

@@ -935,8 +935,13 @@ function initScaleX(app) {
         // VARSAYILAN SUNUCU SABITINDEN. Burada ELDE '60' yaziliydi ve PR #98'in
         // 300'e cektigi varsayilani BU UC sessizce eskitiyordu: onizleme bir butce,
         // calistirma baska bir butce gosteriyordu.
+        // `launch.VERIFICATION_TIMEOUT_DEFAULT` ARTIK YOK: PR #100 bu satiri yazdi,
+        // PR #102 sabitleri getter'a cevirdi. Iki dal FARKLI satirlara dokundugu
+        // icin merge temiz gecti — hicbiri tek basina bozuk degildi, BIRLESIMI
+        // bozuktu. `String(undefined)` -> "undefined" -> 400. Ustelik bekcinin
+        // kendisi bu OLU ADI kilitliyordu (bkz. scalex-verify-timing VT1).
         verificationTimeout:
-          req.body?.verificationTimeout ?? String(launch.VERIFICATION_TIMEOUT_DEFAULT),
+          req.body?.verificationTimeout ?? String(launch.verifyTimeoutDefault()),
       });
       const radius = launch.computeBlastRadius({
         clusters,
@@ -968,7 +973,12 @@ function initScaleX(app) {
       const action = String(req.body?.action || '');
       const executionMode = String(req.body?.executionMode || '');
       const targetReplicas = req.body?.targetReplicas;
-      const verificationTimeout = req.body?.verificationTimeout ?? '60';
+      // ELDE YAZILI '60' DEGIL. PR #100 "60 artiklarini temizle" basligiyla gitti
+      // ama bekci regex'i yalnizca `verificationTimeout:` NESNE-OZELLIK yazimini
+      // yasakliyordu; bu `=` yazimi suzgecten gecti ve ISI GERCEKTEN BASLATAN uc
+      // burasi.
+      const verificationTimeout =
+        req.body?.verificationTimeout ?? String(launch.verifyTimeoutDefault());
       const allowPartial = req.body?.allowPartial !== false;
       const reason = String(req.body?.reason || '').trim();
       // CC kullanicidan gelir ve mail gorevine ulasir — satir sonu/format dogrulanmadan
@@ -1416,7 +1426,10 @@ function initScaleX(app) {
           action: 'restore',
           executionMode: 'apply',
           targetReplicas: undefined,
-          verificationTimeout: '60',
+          // TOPLU GERI ALMA da admin ayarini gormeli. Sabit '60' ile, acmada pod
+          // 60 sn'de hazir degilse her hedef "uyarili" donuyordu — tek fark
+          // butcenin 300 yerine 60 olmasiyken.
+          verificationTimeout: String(launch.verifyTimeoutDefault()),
           allowPartial: true,
           mailTo: String(user.mail || '').trim(),
           mailCc: '',
