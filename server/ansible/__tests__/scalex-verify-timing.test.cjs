@@ -447,3 +447,62 @@ test('VT8d dogrulama gorevi VAR ve uc butce degiskenini de kontrol ediyor', () =
 test('VT8c mutlak sinir disi sure REDDEDILIYOR', { skip: !HAS_ANSIBLE }, () => {
   assert.ok(!prepareWith('999999').ok, 'mutlak tavan disi deger kabul edildi');
 });
+
+// ── VT9 — BETIK TARAFINDAKI BUTCE DOGRULAMASI ──────────────────────────────
+//
+// Mutasyon turunda betikten `VERIFY_*_SECONDS` dogrulamasini SILMEK hicbir bekciyi
+// kirmadi: VT8d yalnizca PLAYBOOK tarafina bakiyor. Oysa betik AWX'ten ELLE de
+// calistirilabilir (survey doldurularak, playbook dogrulamasi ayni olsa da bu
+// ikinci kemer bilerek var) ve `set -e` YOK — sayisal olmayan bir esikte
+// `[ "$elapsed" -ge "$VERIFY_FAIL_SECONDS" ]` rc=2 verir, kosul SESSIZCE yanlis
+// sayilir ve KAPATMANIN FAIL ESIGI hic ateslenmez.
+//
+// Dogrulama blogu `awk` ile cikarilip GERCEKTEN kosturulur — kaynak taramasi degil.
+function butceDogrula(warn, fail) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-vt9-'));
+  try {
+    const h = path.join(tmp, 'h.sh');
+    fs.writeFileSync(
+      h,
+      [
+        '#!/bin/bash',
+        'set -u',
+        'CLUSTER=c1; JUMP_SERVER=j1',
+        "log() { printf '%s;%s;%s;%s;%s;%s;%s\\n' \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$7\"; }",
+        `VERIFY_WARN_SECONDS="${warn}"`,
+        `VERIFY_FAIL_SECONDS="${fail}"`,
+        // Yalnizca VERIFY_* dogrulama blogunu cikar (yorumlar dahil degil).
+        `eval "$(awk '/^if ! printf .%s. "\\$VERIFY_WARN_SECONDS"/,/^fi$/' "$1")"`,
+        'echo "GECTI"',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    const r = _spawn('bash', [h, RUNNER], { encoding: 'utf8' });
+    return r.stdout || '';
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+test('VT9 betik, sayisal olmayan butceyi INPUT;FAIL ile REDDEDIYOR', () => {
+  const iyi = butceDogrula('300', '600');
+  assert.match(iyi, /GECTI/, 'gecerli butce reddedildi');
+  assert.doesNotMatch(iyi, /INPUT;FAIL/, 'gecerli butce icin FAIL basildi');
+
+  for (const [w, f] of [
+    ['abc', '600'],
+    ['300', 'abc'],
+    ['0', '600'],
+    ['300', '0'],
+    ['', '600'],
+    ['-5', '600'],
+  ]) {
+    const out = butceDogrula(w, f);
+    assert.match(
+      out,
+      /INPUT;FAIL;Invalid verification budget/,
+      `gecersiz butce KABUL EDILDI: warn=${JSON.stringify(w)} fail=${JSON.stringify(f)} -> ${out.trim()}`,
+    );
+    assert.doesNotMatch(out, /GECTI/, 'gecersiz butcede betik devam etti (exit 0 beklenir)');
+  }
+});
