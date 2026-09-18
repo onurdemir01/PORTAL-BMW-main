@@ -20,6 +20,7 @@ import {
 import { ansibleApi, type AwxServer } from '@/api/ansibleApi';
 import { Modal } from '@/components/common/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useJobTracker } from '@/contexts/JobTrackerContext';
 import {
   denetimApi,
   type NginxMigrationApp,
@@ -68,6 +69,25 @@ export default function NginxProdMigration() {
   const [pendingDelete, setPendingDelete] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
   // Onay penceresi: hangi satir, hangi location (birden fazla olabilir)
   const [pending, setPending] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
+  // Izleme penceresi (2026-09-18): OpsX/Self Service ile AYNI JobTracker - AWX'e gitmeden canli log.
+  // Terminal olunca takip tablosu yeniden okunur ki "tanim olusturuldu" hemen yansisin.
+  const { addJob } = useJobTracker();
+  const JOB_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+  function trackMigrationJob(title: string, jobId: number) {
+    let reloaded = false;
+    addJob({
+      title,
+      fetchStatus: async () => {
+        const r = await nginxMigrationApi.jobStatus(jobId);
+        if (!r.ok) throw new Error(r.message || 'Durum okunamadı.');
+        if (JOB_TERMINAL.has(r.status) && !reloaded) {
+          reloaded = true;
+          loadTracking();
+        }
+        return { status: r.status, output: r.output || '' };
+      },
+    });
+  }
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   // GECIS TAKIBI (kullanici, 2026-09-14): uygulama basina planlanan/gecis tarihi + not.
@@ -136,9 +156,10 @@ export default function NginxProdMigration() {
         inputPath: path.location,
       });
       if (r.ok) {
+        if (r.job?.id) trackMigrationJob(`Tanım oluştur · ${pending.app.application} #${r.job.id}`, r.job.id);
         setResult({
           tone: 'ok',
-          text: `${pending.app.application} için tanım işi başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içinde ${path.location} → application-confs/${path.service.toLowerCase()}-${pending.app.application}-${pending.app.namespace}.conf · hedef: ${(r.targetHosts || []).join(', ')}. Sonucu Teams / AWX'ten izleyin.`,
+          text: `${pending.app.application} için tanım işi başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içinde ${path.location} → application-confs/${path.service.toLowerCase()}-${pending.app.application}-${pending.app.namespace}.conf · hedef: ${(r.targetHosts || []).join(', ')}. ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde; bitince Geçiş sütununa yansır.' : "Sonucu Teams / AWX'ten izleyin."}`,
         });
       } else setResult({ tone: 'bad', text: r.message || 'İş başlatılamadı.' });
     } catch (e: unknown) {
@@ -160,9 +181,10 @@ export default function NginxProdMigration() {
         service: path.service, inputPath: path.location,
       });
       if (r.ok) {
+        if (r.job?.id) trackMigrationJob(`Eski tanımı kaldır · ${pendingDelete.app.application} #${r.job.id}`, r.job.id);
         setResult({
           tone: 'ok',
-          text: `${pendingDelete.app.application} için kaldırma işi başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içindeki ${path.location} location'ı ve (başka tanım kullanmıyorsa) upstream'i. PROD kuralı: iş şimdi yalnızca doğrular ve 23:00 kesinti penceresine ZAMANLAR; gerçek silmeyi nginx_scheduled_ops yapar. Eski sunucular: ${(r.oldHosts || []).join(', ')}. Teams'ten izleyin.`,
+          text: `${pendingDelete.app.application} için kaldırma işi başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içindeki ${path.location} location'ı ve (başka tanım kullanmıyorsa) upstream'i. PROD kuralı: iş şimdi yalnızca doğrular ve 23:00 kesinti penceresine ZAMANLAR; gerçek silmeyi nginx_scheduled_ops yapar. Eski sunucular: ${(r.oldHosts || []).join(', ')}. ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde.' : "Teams'ten izleyin."}`,
         });
       } else setResult({ tone: 'bad', text: r.message || 'İş başlatılamadı.' });
     } catch (e: unknown) {
@@ -450,6 +472,17 @@ const TRACK_LABEL: Record<MigrationTrackState, { label: string; tone: 'success' 
   cancelled: { label: 'iptal', tone: 'danger' },
 };
 
+/** AWX job durumu -> Turkce / renk (takip hucresi + location cipi). */
+const JOB_STATE_TR = (st?: string | null) =>
+  st === 'successful' ? 'başarılı — tanım oluşturuldu'
+    : st === 'failed' || st === 'error' ? 'HATALI — iş penceresinden/AWX\'ten loga bakın'
+      : st === 'canceled' ? 'iptal edildi'
+        : st ? 'çalışıyor' : 'durum bilinmiyor (eski kayıt)';
+const JOB_STATE_COLOR = (st?: string | null) =>
+  st === 'successful' ? 'var(--status-success)'
+    : st === 'failed' || st === 'error' || st === 'canceled' ? 'var(--status-danger)'
+      : st ? 'var(--status-warning)' : 'var(--text-muted)';
+
 /** Gecis hucresi: durum + tarih; tiklaninca duzenleme penceresi. */
 function TrackCell({ t, ready, onEdit }: { t: MigrationTracking | null; ready: boolean; onEdit: () => void }) {
   const st = t?.state || 'none';
@@ -459,7 +492,7 @@ function TrackCell({ t, ready, onEdit }: { t: MigrationTracking | null; ready: b
     t?.plannedDate ? `planlanan: ${fmtPlainDate(t.plannedDate)}` : '',
     t?.migratedDate ? `geçiş: ${fmtPlainDate(t.migratedDate)}` : '',
     t?.note ? `not: ${t.note}` : '',
-    t?.configJobId ? `tanım job ${t.configJobId} (${t.configCreatedAt ? fmtDateTime(t.configCreatedAt) : ''}${t.configCreatedBy ? ', ' + t.configCreatedBy : ''})` : '',
+    t?.configJobId ? `tanım job ${t.configJobId} (${t.configCreatedAt ? fmtDateTime(t.configCreatedAt) : ''}${t.configCreatedBy ? ', ' + t.configCreatedBy : ''}) — ${JOB_STATE_TR(t.configJobStatus)}${t.configService && t.configLocation ? ` · ${t.configService} ${t.configLocation}` : ''}` : '',
     t?.deleteJobId ? `eski tanım kaldırma job ${t.deleteJobId} (${t.deleteRequestedAt ? fmtDateTime(t.deleteRequestedAt) : ''}${t.deleteRequestedBy ? ', ' + t.deleteRequestedBy : ''}) — 23:00'e zamanlandı` : '',
     t?.updatedBy ? `son güncelleyen: ${t.updatedBy}` : '',
     'düzenlemek için tıklayın',
@@ -467,8 +500,16 @@ function TrackCell({ t, ready, onEdit }: { t: MigrationTracking | null; ready: b
   return (
     <button onClick={onEdit} disabled={!ready} className="inline-flex items-center gap-1 disabled:opacity-40" title={ready ? title : 'takip tablosu okunamadı'}>
       <Pill tone={meta.tone}>{meta.label}{date ? ` ${fmtPlainDate(date)}` : ''}</Pill>
-      {t?.configJobId && <span className="text-[9px] text-[var(--text-muted)]" title="Tanım oluştur job'ı koşturuldu">⚙{t.configJobId}</span>}
-      {t?.deleteJobId && <span className="text-[9px] text-red-600" title="Eski tanımı kaldırma job'ı koşturuldu (23:00'e zamanlandı)">🗑{t.deleteJobId}</span>}
+      {t?.configJobId && (
+        <span className="text-[9px] font-semibold" style={{ color: JOB_STATE_COLOR(t.configJobStatus) }} title={`Tanım oluştur job'ı ${t.configJobId}: ${JOB_STATE_TR(t.configJobStatus)}`}>
+          ⚙{t.configJobId}{t.configJobStatus === 'successful' ? '✓' : t.configJobStatus && ['failed', 'error', 'canceled'].includes(t.configJobStatus) ? '✗' : t.configJobStatus ? '…' : ''}
+        </span>
+      )}
+      {t?.deleteJobId && (
+        <span className="text-[9px] font-semibold" style={{ color: JOB_STATE_COLOR(t.deleteJobStatus) }} title={`Eski tanımı kaldırma job'ı ${t.deleteJobId} (23:00'e zamanlandı): ${JOB_STATE_TR(t.deleteJobStatus)}`}>
+          🗑{t.deleteJobId}{t.deleteJobStatus === 'successful' ? '✓' : t.deleteJobStatus && ['failed', 'error', 'canceled'].includes(t.deleteJobStatus) ? '✗' : ''}
+        </span>
+      )}
       <CalendarDaysIcon className="w-3.5 h-3.5 text-[var(--text-muted)]" />
     </button>
   );
@@ -919,18 +960,26 @@ function GroupPanel({
                     {/* Eski sunucudaki location tanimlari GORUNUR (kullanici, 2026-09-14): her cip
                         bir (vhost, location) cifti - "Tanim olustur" bunlardan birini secer. */}
                     <div className="flex flex-wrap gap-1 max-w-[22rem]">
-                      {a.paths.map((p) => (
+                      {a.paths.map((p) => {
+                        // Tanim job'i BASARILI ama tarama (nginx_config_audit) henuz kosmadi:
+                        // chip'te "olusturuldu (job)" - kullanici ertesi taramayi beklemesin (2026-09-18).
+                        const t = trackOf(a);
+                        const jobDone = !!t && t.configJobStatus === 'successful' && p.newStatus !== 'defined'
+                          && (t.configService || '').toLowerCase() === p.service.toLowerCase() && (t.configLocation || '') === p.location;
+                        const mark = jobDone ? { mark: '✓⚙', color: 'var(--status-success)', hint: `job ${t!.configJobId} ile oluşturuldu (${t!.configJobFinishedAt ? fmtDateTime(t!.configJobFinishedAt) : ''}); tarama henüz doğrulamadı — nginx_config_audit koşunca ✓ olur` } : NEW_LOC[p.newStatus];
+                        return (
                         <span
                           key={p.service + p.location}
                           className="text-[10px] px-1.5 py-0.5 rounded border font-mono whitespace-nowrap inline-flex items-center gap-1"
                           style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
-                          title={`${p.service}-PROD.conf · location ${p.location}\neski: ${p.hosts.join(', ')}\nyeni sunucuda tanım: ${NEW_LOC[p.newStatus].hint}${p.newHosts.length ? ` (${p.newHosts.join(', ')})` : ''}`}
+                          title={`${p.service}-PROD.conf · location ${p.location}\neski: ${p.hosts.join(', ')}\nyeni sunucuda tanım: ${mark.hint}${!jobDone && p.newHosts.length ? ` (${p.newHosts.join(', ')})` : ''}`}
                         >
                           <span className="text-[var(--text-muted)]">{p.service}</span> {p.location}
                           {/* yeni sunucudaki tanim durumu (location ilerlemesi, 2026-09-17) */}
-                          <span className="font-sans font-semibold" style={{ color: NEW_LOC[p.newStatus].color }}>{NEW_LOC[p.newStatus].mark}</span>
+                          <span className="font-sans font-semibold" style={{ color: mark.color }}>{mark.mark}</span>
                         </span>
-                      ))}
+                        );
+                      })}
                     </div>
                     <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{a.oldHosts.length} sunucu</div>
                   </td>

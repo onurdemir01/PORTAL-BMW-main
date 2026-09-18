@@ -2654,6 +2654,34 @@ async function setupTables() {
       sql: `ALTER TABLE nginx_migration_tracking ADD delete_requested_by NVARCHAR(128) NULL`,
     },
     {
+      // Tanim job'inin SONUCU ekrana yansisin (2026-09-18): AWX durumu + hangi (servis, location)
+      // olusturuldu. Basarili job, taramanin (nginx_config_audit) dogrulamasina kadar
+      // location cipinde "olusturuldu" olarak gorunur.
+      table: 'nginx_migration_tracking',
+      col: 'config_job_status',
+      sql: `ALTER TABLE nginx_migration_tracking ADD config_job_status NVARCHAR(20) NULL`,
+    },
+    {
+      table: 'nginx_migration_tracking',
+      col: 'config_job_finished_at',
+      sql: `ALTER TABLE nginx_migration_tracking ADD config_job_finished_at DATETIME2 NULL`,
+    },
+    {
+      table: 'nginx_migration_tracking',
+      col: 'config_service',
+      sql: `ALTER TABLE nginx_migration_tracking ADD config_service NVARCHAR(64) NULL`,
+    },
+    {
+      table: 'nginx_migration_tracking',
+      col: 'config_location',
+      sql: `ALTER TABLE nginx_migration_tracking ADD config_location NVARCHAR(512) NULL`,
+    },
+    {
+      table: 'nginx_migration_tracking',
+      col: 'delete_job_status',
+      sql: `ALTER TABLE nginx_migration_tracking ADD delete_job_status NVARCHAR(20) NULL`,
+    },
+    {
       // MEVCUT KURULUMLAR ICIN — CREATE TABLE bloku tablo zaten varsa hic calismaz.
       table: 'scalex_operations',
       col: 'username_groups',

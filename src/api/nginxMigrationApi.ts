@@ -15,9 +15,19 @@ export interface NginxMigrationConfig {
   deleteTemplateId?: number;
 }
 
+export interface NginxMigrationJobStatus {
+  ok: boolean;
+  status: string;
+  output: string;
+  finished?: string | null;
+  failed?: boolean;
+  message?: string;
+}
+
 export interface NginxMigrationCreateResult {
   ok: boolean;
-  job?: { id?: number; [k: string]: unknown };
+  job?: { id?: number | null; status?: string; [k: string]: unknown };
+  awxServerId?: number;
   extraVars?: Record<string, string>;
   targetHosts?: string[];
   message?: string;
@@ -25,7 +35,8 @@ export interface NginxMigrationCreateResult {
 
 export interface NginxMigrationDeleteResult {
   ok: boolean;
-  job?: { id?: number; [k: string]: unknown };
+  job?: { id?: number | null; status?: string; [k: string]: unknown };
+  awxServerId?: number;
   extraVars?: Record<string, string>;
   oldHosts?: string[];
   scheduled?: boolean;
@@ -35,6 +46,11 @@ export interface NginxMigrationDeleteResult {
 export const nginxMigrationApi = {
   config: (): Promise<{ ok: boolean; config: NginxMigrationConfig }> =>
     fetch(`${BASE}/config`).then(safeJson),
+
+  // Tetiklenen job'in canli durumu + stdout'u (izleme penceresi, 2026-09-18). Sunucu terminal
+  // durumu takip tablosuna da isler - ekran "tanim olusturuldu / job hatali" gosterir.
+  jobStatus: (jobId: number): Promise<NginxMigrationJobStatus> =>
+    fetch(`${BASE}/job-status/${jobId}`).then(safeJson),
 
   remove: (body: {
     group: string;
@@ -85,6 +101,13 @@ export interface MigrationTracking {
   configJobId: number | null;
   configCreatedAt: string | null;
   configCreatedBy: string | null;
+  /** AWX durumu (pending/running/successful/failed…) — sunucu job-status/uzlaştırma ile yazar */
+  configJobStatus?: string | null;
+  configJobFinishedAt?: string | null;
+  /** job'ın oluşturduğu (servis, location) — tarama doğrulayana kadar chip'te "oluşturuldu" */
+  configService?: string | null;
+  configLocation?: string | null;
+  deleteJobStatus?: string | null;
   /** "Eski tanımı kaldır" ile başlatılan son job (23:00'e zamanlanır) */
   deleteJobId?: number | null;
   deleteRequestedAt?: string | null;

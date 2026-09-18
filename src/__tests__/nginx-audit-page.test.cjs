@@ -154,7 +154,8 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   assert.ok(!mig.includes('title="Bu ekran ne gösteriyor?"'), 'aciklama notu kaldirilmali');
   assert.ok(mig.includes('onClick={() => setGroupId(g.id)}'), 'grup sekmeleri yok');
   assert.ok(mig.includes('function LocationProgress(') && mig.includes('<LocationProgress g={g} />'), 'location ilerleme panosu yok');
-  assert.ok(mig.includes('NEW_LOC[p.newStatus].mark'), 'path cipinde yeni sunucu durumu yok');
+  // 2026-09-18: basarili "Tanim olustur" job'i tarama dogrulayana kadar cipte ✓⚙ gosterir
+  assert.ok(mig.includes('NEW_LOC[p.newStatus]') && mig.includes('{mark.mark}') && mig.includes("mark: '✓⚙'"), 'path cipinde yeni sunucu durumu / job sonucu yok');
   const srvm = read('../server/audit/nginx-migration.cjs');
   assert.ok(srvm.includes('newLocRows') && srvm.includes("'defined' : on.length === 0 ? 'none' : 'partial'"), 'yeni sunucu location durumu hesaplanmali');
   const srv = read('../server/audit/denetim.cjs');

@@ -68,9 +68,14 @@ function rowToTracking(r) {
     configJobId: r.config_job_id == null ? null : Number(r.config_job_id),
     configCreatedAt: r.config_created_at ? new Date(r.config_created_at).toISOString() : null,
     configCreatedBy: r.config_created_by || null,
+    configJobStatus: r.config_job_status || null,
+    configJobFinishedAt: r.config_job_finished_at ? new Date(r.config_job_finished_at).toISOString() : null,
+    configService: r.config_service || null,
+    configLocation: r.config_location || null,
     deleteJobId: r.delete_job_id == null ? null : Number(r.delete_job_id),
     deleteRequestedAt: r.delete_requested_at ? new Date(r.delete_requested_at).toISOString() : null,
     deleteRequestedBy: r.delete_requested_by || null,
+    deleteJobStatus: r.delete_job_status || null,
     updatedBy: r.updated_by || null,
     updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
   };
@@ -142,6 +147,52 @@ function validateRequest(groups, { group, namespace, application, service, input
   return { ok: true, app: row, path: p };
 }
 
+/** launchJobOnServer -> istemci/DB sekli. Ayni sekil OpsX/SS ile: { id, status }. */
+function jobShape(launched, awxServerId) {
+  const id = launched && launched.jobId != null ? Number(launched.jobId) : null;
+  return { id, status: (launched && launched.status) || 'pending', awxServerId };
+}
+
+const JOB_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+const JOB_LIVE = new Set(['pending', 'waiting', 'running', 'new']);
+
+/** ansible_job_history kaydi (best-effort): Ansible sekmesindeki gecmis + job-status IDOR bekcisi. */
+async function recordJobHistory(awxServerId, templateId, templateName, job, extra, user) {
+  if (job.id == null) return;
+  try {
+    const db = require('../db/index.cjs');
+    await db.query(
+      `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [user.username || 'unknown', awxServerId, templateId, templateName, job.id, job.status || 'pending', JSON.stringify(extra)],
+    );
+  } catch (e) {
+    console.warn('[nginx-migration] job gecmisi kaydedilemedi:', e.message);
+  }
+}
+
+/**
+ * Job'in AWX durumunu takip tablosuna isler (config_job_id / delete_job_id eslesen satirlar).
+ * Terminal olunca bitis zamani da yazilir. Ekran bunu okur: "tanim olusturuldu" / "job hatali".
+ */
+async function syncJobStatusToTracking(db, jobId, status) {
+  if (!jobId || !status) return;
+  const fin = JOB_TERMINAL.has(status);
+  try {
+    await db.query(
+      `UPDATE nginx_migration_tracking SET config_job_status = $2${fin ? ', config_job_finished_at = COALESCE(config_job_finished_at, GETUTCDATE())' : ''}
+        WHERE config_job_id = $1 AND (config_job_status IS NULL OR config_job_status <> $2)`,
+      [jobId, status],
+    );
+    await db.query(
+      `UPDATE nginx_migration_tracking SET delete_job_status = $2
+        WHERE delete_job_id = $1 AND (delete_job_status IS NULL OR delete_job_status <> $2)`,
+      [jobId, status],
+    );
+  } catch (e) {
+    console.warn('[nginx-migration] job durumu takibe yazilamadi:', e.message);
+  }
+}
+
 function initNginxMigration(app) {
   const db = require('../db/index.cjs');
   const { requireAuth, requireAdmin, getRequestUser } = require('../auth/index.cjs');
@@ -164,13 +215,59 @@ function initNginxMigration(app) {
     }
   }
 
+  // -- Job izleme (2026-09-18): "Tanim olustur"a basinca pencere acilir, AWX'e gitmeden
+  // canli stdout gorunur. Terminal durum takip tablosuna da islenir (ekran yansimasi).
+  router.get('/job-status/:jobId', async (req, res) => {
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
+    const cfg = await readConfig();
+    if (!cfg.awxServerId) return res.status(409).json({ ok: false, message: 'Taşıma job\'ı yapılandırılmamış.' });
+    try {
+      const runner = require('../ansible/runner.cjs');
+      const [statusInfo, outputInfo] = await Promise.all([
+        runner.getJobStatusOnServer(cfg.awxServerId, jobId),
+        runner.getJobOutputOnServer(cfg.awxServerId, jobId),
+      ]);
+      await syncJobStatusToTracking(db, jobId, statusInfo.status);
+      res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', finished: statusInfo.finished, failed: statusInfo.failed });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // -- Gecis takibi --------------------------------------------------------------
   router.get('/tracking', async (_req, res) => {
     try {
+      // UZLASTIRMA: pencere kapatilmis / tarayici kapanmis olsa da son 3 gunun "canli" gorunen
+      // job'lari AWX'ten sorulur, terminal olanlar tabloya islenir (en fazla 10 satir, paralel).
+      try {
+        const live = await db.query(
+          `SELECT TOP 10 config_job_id AS job_id FROM nginx_migration_tracking
+            WHERE config_job_id IS NOT NULL AND (config_job_status IS NULL OR config_job_status IN ('pending','waiting','running','new'))
+              AND config_created_at > DATEADD(day, -3, GETUTCDATE())
+           UNION
+           SELECT TOP 10 delete_job_id FROM nginx_migration_tracking
+            WHERE delete_job_id IS NOT NULL AND (delete_job_status IS NULL OR delete_job_status IN ('pending','waiting','running','new'))
+              AND delete_requested_at > DATEADD(day, -3, GETUTCDATE())`,
+        );
+        const cfg = live.rows.length ? await readConfig() : null;
+        if (cfg && cfg.awxServerId) {
+          const runner = require('../ansible/runner.cjs');
+          await Promise.allSettled(
+            live.rows.map(async (r) => {
+              const st = await runner.getJobStatusOnServer(cfg.awxServerId, Number(r.job_id));
+              await syncJobStatusToTracking(db, Number(r.job_id), st.status);
+            }),
+          );
+        }
+      } catch (e) {
+        console.warn('[nginx-migration] job uzlastirma atlandi:', e.message);
+      }
       const { rows } = await db.query(
         `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
                 config_job_id, config_created_at, config_created_by,
-                delete_job_id, delete_requested_at, delete_requested_by, updated_by, updated_at
+                config_job_status, config_job_finished_at, config_service, config_location,
+                delete_job_id, delete_requested_at, delete_requested_by, delete_job_status, updated_by, updated_at
            FROM nginx_migration_tracking`,
       );
       res.json({ ok: true, rows: rows.map(rowToTracking) });
@@ -216,7 +313,8 @@ function initNginxMigration(app) {
       const r = await db.query(
         `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
                 config_job_id, config_created_at, config_created_by,
-                delete_job_id, delete_requested_at, delete_requested_by, updated_by, updated_at
+                config_job_status, config_job_finished_at, config_service, config_location,
+                delete_job_id, delete_requested_at, delete_requested_by, delete_job_status, updated_by, updated_at
            FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
         [t.group, t.namespace, t.application],
       );
@@ -278,12 +376,16 @@ function initNginxMigration(app) {
         inputPath: v.path.location,
         user,
       });
-      const job = await launchJobOnServer(cfg.awxServerId, cfg.templateId, extra, '', user.username || null);
+      const launched = await launchJobOnServer(cfg.awxServerId, cfg.templateId, extra, '', user.username || null);
+      // launchJobOnServer { jobId, status } dondurur; onceki kod `job.id` okuyordu ve damga
+      // HEP NULL kaliyordu (2026-09-18). Istemciye ayni sekil + awxServerId (izleme penceresi).
+      const job = jobShape(launched, cfg.awxServerId);
+      await recordJobHistory(cfg.awxServerId, cfg.templateId, 'Nginx PROD taşıması: tanım oluştur', job, extra, user);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_create', {
           username: user.username,
           result: 'ok',
-          detail: JSON.stringify({ ...extra, jobId: job?.id || null, group: req.body?.group }),
+          detail: JSON.stringify({ ...extra, jobId: job.id, group: req.body?.group }),
         });
       } catch {
         /* audit modulu yoksa yoksay */
@@ -292,29 +394,30 @@ function initNginxMigration(app) {
       // kalir - gecis KARARI kullanicinin), varsa yalniz config_* alanlari guncellenir.
       try {
         const gid = String(req.body?.group || '');
-        const jobId = job && job.id != null ? Number(job.id) : null;
+        const jobId = job.id;
         const ex = await db.query(
           `SELECT id FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
           [gid, v.app.namespace, v.app.application],
         );
         if (ex.rows.length) {
           await db.query(
-            `UPDATE nginx_migration_tracking SET config_job_id = $4, config_created_at = GETUTCDATE(), config_created_by = $5
+            `UPDATE nginx_migration_tracking SET config_job_id = $4, config_created_at = GETUTCDATE(), config_created_by = $5,
+                    config_job_status = $6, config_job_finished_at = NULL, config_service = $7, config_location = $8
               WHERE group_id = $1 AND namespace = $2 AND application = $3`,
-            [gid, v.app.namespace, v.app.application, jobId, user.username || null],
+            [gid, v.app.namespace, v.app.application, jobId, user.username || null, job.status || 'pending', v.path.service, v.path.location],
           );
         } else {
           await db.query(
-            `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, config_job_id, config_created_at, config_created_by, updated_by)
-             VALUES ($1, $2, $3, 'none', $4, GETUTCDATE(), $5, $5)`,
-            [gid, v.app.namespace, v.app.application, jobId, user.username || null],
+            `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, config_job_id, config_created_at, config_created_by, config_job_status, config_service, config_location, updated_by)
+             VALUES ($1, $2, $3, 'none', $4, GETUTCDATE(), $5, $6, $7, $8, $5)`,
+            [gid, v.app.namespace, v.app.application, jobId, user.username || null, job.status || 'pending', v.path.service, v.path.location],
           );
         }
       } catch (e) {
         console.warn('[nginx-migration] takip damgasi yazilamadi:', e.message);
       }
       const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
-      res.json({ ok: true, job, extraVars: extra, targetHosts: g ? g.newHosts : [] });
+      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, targetHosts: g ? g.newHosts : [] });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
     }
@@ -343,38 +446,40 @@ function initNginxMigration(app) {
       const { launchJobOnServer } = require('../ansible/runner.cjs');
       const user = getRequestUser(req) || {};
       const extra = buildDeleteExtraVars({ service: v.path.service, inputPath: v.path.location, user });
-      const job = await launchJobOnServer(cfg.awxServerId, cfg.deleteTemplateId, extra, '', user.username || null);
+      const launched = await launchJobOnServer(cfg.awxServerId, cfg.deleteTemplateId, extra, '', user.username || null);
+      const job = jobShape(launched, cfg.awxServerId);
+      await recordJobHistory(cfg.awxServerId, cfg.deleteTemplateId, 'Nginx PROD taşıması: eski tanımı kaldır', job, extra, user);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_delete', {
           username: user.username, result: 'ok',
-          detail: JSON.stringify({ ...extra, jobId: job?.id || null, group: req.body?.group, namespace: v.app.namespace, application: v.app.application }),
+          detail: JSON.stringify({ ...extra, jobId: job.id, group: req.body?.group, namespace: v.app.namespace, application: v.app.application }),
         });
       } catch { /* audit yoksa yoksay */ }
       try {
         const gid = String(req.body?.group || '');
-        const jobId = job && job.id != null ? Number(job.id) : null;
+        const jobId = job.id;
         const ex = await db.query(
           `SELECT id FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
           [gid, v.app.namespace, v.app.application],
         );
         if (ex.rows.length) {
           await db.query(
-            `UPDATE nginx_migration_tracking SET delete_job_id = $4, delete_requested_at = GETUTCDATE(), delete_requested_by = $5
+            `UPDATE nginx_migration_tracking SET delete_job_id = $4, delete_requested_at = GETUTCDATE(), delete_requested_by = $5, delete_job_status = $6
               WHERE group_id = $1 AND namespace = $2 AND application = $3`,
-            [gid, v.app.namespace, v.app.application, jobId, user.username || null],
+            [gid, v.app.namespace, v.app.application, jobId, user.username || null, job.status || 'pending'],
           );
         } else {
           await db.query(
-            `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, delete_job_id, delete_requested_at, delete_requested_by, updated_by)
-             VALUES ($1, $2, $3, 'none', $4, GETUTCDATE(), $5, $5)`,
-            [gid, v.app.namespace, v.app.application, jobId, user.username || null],
+            `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, delete_job_id, delete_requested_at, delete_requested_by, delete_job_status, updated_by)
+             VALUES ($1, $2, $3, 'none', $4, GETUTCDATE(), $5, $6, $5)`,
+            [gid, v.app.namespace, v.app.application, jobId, user.username || null, job.status || 'pending'],
           );
         }
       } catch (e) {
         console.warn('[nginx-migration] silme damgasi yazilamadi:', e.message);
       }
       const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
-      res.json({ ok: true, job, extraVars: extra, oldHosts: g ? g.oldHosts : [], scheduled: true });
+      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, oldHosts: g ? g.oldHosts : [], scheduled: true });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
     }
@@ -383,4 +488,4 @@ function initNginxMigration(app) {
   app.use('/api/nginx-migration', router);
 }
 
-module.exports = { initNginxMigration, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };
+module.exports = { initNginxMigration, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };

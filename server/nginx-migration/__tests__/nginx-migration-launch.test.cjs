@@ -4,6 +4,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { buildExtraVars, validateRequest } = require('../index.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
 
 test('extra_vars: playbookun bekledigi 4 alan + requester; env/action/app_type GONDERILMEZ (playbook sabitler)', () => {
   const v = buildExtraVars({
@@ -88,4 +90,47 @@ test('silme dogrulamasi: yeni sunucu hazirligi ONEMSIZ (eksik/taranmadi satir da
   assert.equal(r.ok, true);
   r = validateRequest(groups, { group: 'glomo', namespace: 'glomo-prod', application: 'eksik-app-v1', service: 'GLOMO', inputPath: '/yok/' }, { ignoreStatus: true });
   assert.equal(r.ok, false);
+});
+
+// ── Job izleme + ekrana yansima (2026-09-18) ────────────────────────────────────────
+// launchJobOnServer { jobId, status } dondurur; onceki kod job.id okuyup damgayi NULL
+// birakiyordu. Simdi jobShape ile { id, status, awxServerId }; job-status ucu terminal
+// durumu takip tablosuna isler; /tracking canli job'lari AWX'ten uzlastirir.
+test('JT1 jobShape: launchJobOnServer ciktisindan id/status/awxServerId', () => {
+  const { jobShape } = require('../index.cjs');
+  assert.deepEqual(jobShape({ jobId: 4242, status: 'pending' }, 3), { id: 4242, status: 'pending', awxServerId: 3 });
+  assert.deepEqual(jobShape(null, 3), { id: null, status: 'pending', awxServerId: 3 });
+});
+
+test('JT2 syncJobStatusToTracking: config_job_id ve delete_job_id eslesen satirlar, terminalde bitis zamani', async () => {
+  const { syncJobStatusToTracking } = require('../index.cjs');
+  const calls = [];
+  const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rowCount: 1 }; } };
+  await syncJobStatusToTracking(db, 77, 'successful');
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].sql, /config_job_status = \$2/);
+  assert.match(calls[0].sql, /config_job_finished_at = COALESCE/);
+  assert.match(calls[1].sql, /delete_job_status = \$2/);
+  assert.deepEqual(calls[0].params, [77, 'successful']);
+  calls.length = 0;
+  await syncJobStatusToTracking(db, 77, 'running');
+  assert.doesNotMatch(calls[0].sql, /config_job_finished_at/); // canli durumda bitis yazilmaz
+  calls.length = 0;
+  await syncJobStatusToTracking(db, null, 'running');
+  assert.equal(calls.length, 0);
+});
+
+test('JT3 kaynak sozlesme: job.id okunmaz, job-status ucu var, /tracking uzlastirir, kolonlar seed\'de', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.doesNotMatch(src, /job\?\.id \|\| null/);
+  assert.match(src, /router\.get\('\/job-status\/:jobId'/);
+  assert.match(src, /config_job_status IS NULL OR config_job_status IN \('pending','waiting','running','new'\)/);
+  const setup = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  for (const c of ['config_job_status', 'config_job_finished_at', 'config_service', 'config_location', 'delete_job_status']) {
+    assert.match(setup, new RegExp(`ALTER TABLE nginx_migration_tracking ADD ${c} `), `${c} kolonu seed'de yok`);
+  }
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.match(ui, /useJobTracker/);
+  assert.match(ui, /trackMigrationJob\(/);
+  assert.match(ui, /configJobStatus === 'successful'/);
 });
