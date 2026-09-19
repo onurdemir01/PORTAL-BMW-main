@@ -271,7 +271,9 @@ function initNginxConsole(app) {
     if (!all && !hosts.length) return res.status(400).json({ ok: false, message: 'En az bir sunucu seçilmeli (ya da tüm filo).' });
     if (hosts.length > 400) return res.status(400).json({ ok: false, message: 'Tek seferde en fazla 400 sunucu.' });
     try {
-      const extraVars = { ...(all ? {} : { target_hosts: hosts }), console_dir: consoleDir(), requester: req.session?.user?.username || '' };
+      // Ekrandan tetiklenen yenileme her zaman TAM dokum (force_full); zamanlanmis gece/30 dk
+      // kosusu bunu gondermez -> playbook parmak iziyle degismeyen sunucuyu atlar.
+      const extraVars = { ...(all ? {} : { target_hosts: hosts }), force_full: true, console_dir: consoleDir(), requester: req.session?.user?.username || '' };
       const r = await launch(req, REGISTRY_KEYS.fetch, all ? 'Nginx Hub: TUM filo dokumu' : 'Nginx Hub: dokum yenile', extraVars, { op: 'fetch', hosts: all ? 'ALL' : hosts });
       res.json({ ok: true, ...r, hosts: all ? [] : hosts, all });
     } catch (err) {

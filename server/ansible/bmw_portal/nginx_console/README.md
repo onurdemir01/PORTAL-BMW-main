@@ -17,6 +17,23 @@ ve `nginx_metadata` ile aynı betik (`../../bmw_nginx/nginx_metadata/files/get_n
 `dbo.Inventory.nginx_version` dolu olanlar), GBLABT02'de `was` ile. Bu yüzden bu klasör AWX'te
 `bmw_nginx` ile aynı projede (gar_bmt_ansible_scripts) durmalı.
 
+## Sık tarama ve süre — nasıl hızlı kalır
+
+Kullanıcı gereksinimi: ekip sunucuda elle değişiklik yapabiliyor, Portal en az **30 dakikada bir** tüm
+filoyu görmeli. Üç mekanizma:
+
+1. **Parmak izi ile artımlı dokum** (`force_full` verilmezse): her sunucuda tek kısa komut —
+   `conf.d`+`conf` ağacının (boyut, mtime, yol) sha256'sı, `/var/tmp/.nginx_console_fp`'deki son
+   dokum iziyle karşılaştırılır; aynıysa dokum ve /sw kopyası **atlanır**. 311 sunucuda tipik koşu:
+   1 SSH turu/sunucu + yalnız değişenlerde dokum. Portal'daki "Yenile" ise `force_full: true` gönderir.
+2. **AWX Forks**: template'te Forks'u **50** yapın (varsayılan 5 → 311 sunucu 5'erli dalgalar; nginx_audit'in
+   30-40 dakikasının asıl sebebi bu + gövde başına çok görev + DB yükleme).
+3. **Publish sırasında sha kontrolü**: dokum eski olsa bile push betiği sunucudaki **anlık** sha'yı
+   Portal'ın gördüğüyle karşılaştırır; arkadaşınız o dosyayı elle değiştirdiyse iş **durur** (rc 60),
+   üzerine yazmaz. Çakışma koruması tarama sıklığından bağımsızdır.
+
+Zamanlama önerisi: fetch template'ine `*/30` schedule, extra vars boş (tüm filo, artımlı).
+
 ## Süre
 
 Sunucu başına birkaç saniye; **tüm filo 30–40 dk** (kullanıcı deneyimi, `nginx -T` taramalarıyla aynı).

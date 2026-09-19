@@ -9,6 +9,14 @@
 #                                              nginx_audit / nginx_metadata ile AYNI betik)
 #   console_dir:  /sw/BMW_PORTAL/nginx_console   (raw/<HOST>.txt buraya; varsayilan bu)
 #   requester:    kullanici adi (gunluk)
+#   force_full:   true -> parmak izi ne derse desin dokumu al (Portal'daki "Yenile" boyle gonderir);
+#                 yok/false (zamanlanmis kosu) -> conf.d/conf agacinin parmak izi (boyut+mtime+yol)
+#                 sunucudaki son dokumun parmak iziyle ayniysa dokum ve /sw kopyasi ATLANIR.
+#
+# SIK TARAMA (kullanici, 2026-09-19: "en az yarim saatte bir tum sunucular"): her kosuda host
+# basina 1 kisa SSH komutu (parmak izi) — dokum/kopya yalniz DEGISEN sunucuda. Ansible'in asil
+# maliyeti gorev basina SSH turu oldugu icin ayrica AWX template'inde Forks 50+ yapilmali
+# (varsayilan 5 -> 311 sunucu 5'erli dalgalar halinde gider, o yuzden 30-40 dk).
 #
 # NEDEN add_host: AWX `limit` yalniz template'te "prompt on launch" aciksa calisir (bkz. Portal
 # notlari) — host secimi playbook icinde yapilir.
@@ -98,11 +106,33 @@
   tasks:
     - name: --- [Task] Dokum ---
       block:
+        # 1) Parmak izi: conf.d + conf agacinin (boyut, mtime, yol) ozeti ve son dokumun izi.
+        #    TEK kisa komut; degismemis sunucuda asagidaki agir adimlar hic kosmaz.
+        - name: --- [Task] Parmak izi (degisiklik var mi?) ---
+          become: true
+          become_method: dzdo
+          become_user: www
+          ansible.builtin.shell: |
+            cur="$( (find /usr/nginx/conf.d /usr/nginx/conf -type f -printf '%s %T@ %p\n' 2>/dev/null | sort | sha256sum | cut -c1-64) )"
+            last="$(cat /var/tmp/.nginx_console_fp 2>/dev/null)"
+            echo "FP|${cur}|${last}"
+          register: fp_out
+          changed_when: false
+
+        - name: --- [Task] Dokum gerekli mi ---
+          ansible.builtin.set_fact:
+            fp_cur: "{{ (fp_out.stdout_lines | default([]) | select('match', '^FP\\|') | list | last | default('FP||')).split('|')[1] }}"
+            fp_last: "{{ (fp_out.stdout_lines | default([]) | select('match', '^FP\\|') | list | last | default('FP||')).split('|')[2] | default('') }}"
+        - name: --- [Task] Karar ---
+          ansible.builtin.set_fact:
+            need_dump: "{{ (force_full | default(false) | bool) or (fp_cur | length) == 0 or fp_cur != fp_last }}"
+
         - name: --- [Task] Dokum betigini kopyala ---
           ansible.builtin.copy:
             src: files/nginx_console_dump.sh
             dest: /tmp/nginx_console_dump.sh
             mode: '0755'
+          when: need_dump | bool
 
         # www: nginx dosyalari ve sertifikalar bu kullanicinin; diger nginx isleriyle ayni.
         - name: --- [Task] Dokumu al (www, salt okunur) ---
@@ -112,6 +142,7 @@
           ansible.builtin.command: /bin/bash /tmp/nginx_console_dump.sh
           register: dump_out
           changed_when: false
+          when: need_dump | bool
 
         - name: --- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---
           ansible.builtin.copy:
@@ -119,11 +150,24 @@
             dest: "{{ console_dir }}/raw/{{ inventory_hostname | upper }}.txt"
             mode: '0666'
           delegate_to: GBLABT02
-          when: (dump_out.stdout | default('') | length) > 0
+          when: (need_dump | bool) and (dump_out.stdout | default('') | length) > 0
+
+        # Basarili dokumdan sonra parmak izi sunucuda saklanir (bir sonraki kosu karsilastirir).
+        - name: --- [Task] Parmak izini kaydet ---
+          become: true
+          become_method: dzdo
+          become_user: www
+          ansible.builtin.copy:
+            content: "{{ fp_cur }}"
+            dest: /var/tmp/.nginx_console_fp
+            mode: '0644'
+          when: (need_dump | bool) and (dump_out.stdout | default('') | length) > 0
+          changed_when: false
 
         - name: --- [Task] Sonuc ---
           ansible.builtin.set_fact:
-            console_fetch_ok: "{{ (dump_out.stdout | default('') | length) > 0 }}"
+            console_fetch_ok: "{{ (not (need_dump | bool)) or ((dump_out.stdout | default('') | length) > 0) }}"
+            console_fetch_skipped: "{{ not (need_dump | bool) }}"
       rescue:
         - name: --- [Task] Hata kaydi ---
           ansible.builtin.set_fact:
@@ -148,6 +192,7 @@
           {{ (fetch_results | default([])) + [ {
                'host': item,
                'ok': (hostvars[item].console_fetch_ok | default(false) | bool),
+               'skipped': (hostvars[item].console_fetch_skipped | default(false) | bool),
                'error': (hostvars[item].console_fetch_error | default('unreachable' if hostvars[item].console_fetch_ok is not defined else ''))
              } ] }}
       loop: "{{ groups['nginx_console_targets'] }}"
@@ -160,6 +205,8 @@
           nginx_console_fetch_result:
             hosts: "{{ fetch_results | default([]) }}"
             ok_count: "{{ fetch_results | default([]) | selectattr('ok') | list | length }}"
+            dumped_count: "{{ fetch_results | default([]) | selectattr('ok') | rejectattr('skipped') | list | length }}"
+            skipped_count: "{{ fetch_results | default([]) | selectattr('skipped') | list | length }}"
 
     - name: --- [Task] Hic host dokulemediyse basarisiz ---
       ansible.builtin.fail:

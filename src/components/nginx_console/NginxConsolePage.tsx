@@ -84,7 +84,7 @@ export default function NginxConsolePage() {
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2"><ServerStackIcon className="w-6 h-6" style={{ color: 'var(--nginx-green)' }} /> <span className="nginx-hub-label"><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span></h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            Tüm nginx sunucularının konfigürasyon ağacı, dosya içerikleri ve sertifikaları; tek dosya değişikliği push (nginx -t, geri alma, reload). Veriler Ansible dokumundan gelir — sunucu başına saniyeler, tüm filo 30–40 dk.
+            Tüm nginx sunucularının konfigürasyon ağacı, dosya içerikleri ve sertifikaları; tek dosya değişikliği push (nginx -t, geri alma, reload). Veriler Ansible dokumundan gelir; zamanlanmış tarama yalnız değişen sunucuları döker (parmak izi), "Yenile" tam dokum alır.
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
@@ -173,10 +173,18 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
     });
   }
 
-  const refresh = async (list: string[], all = false) => {
+  // Onaylar Portal'in kendi penceresinde (tarayici confirm'i YOK — kullanici, 2026-09-19)
+  const [ask, setAsk] = useState<{ title: string; body: React.ReactNode; okLabel: string; onOk: () => void } | null>(null);
+  const refresh = async (list: string[], all = false, confirmed = false) => {
     if (!all && !list.length) return;
-    if (all && !window.confirm('TÜM nginx filosu envanterden keşfedilip dökülecek — 30-40 dk sürebilir. Devam?')) return;
-    if (!all && list.length > 20 && !window.confirm(`${list.length} sunucu seçili — dokum ~${Math.ceil(list.length / 10)}-${Math.ceil(list.length / 4)} dk sürebilir. Devam?`)) return;
+    if (!confirmed && all) {
+      setAsk({ title: 'Tüm filoyu yenile', okLabel: 'Başlat', onOk: () => refresh([], true, true), body: <>Tüm nginx sunucuları envanterden keşfedilip dokumu alınacak (<b>{hosts.length}</b> sunucu). Sunucu başına birkaç saniye; filo geneli AWX forks ayarına göre dakikalar sürebilir. İş penceresinden izlenebilir.</> });
+      return;
+    }
+    if (!confirmed && !all && list.length > 20) {
+      setAsk({ title: `${list.length} sunucuyu yenile`, okLabel: 'Başlat', onOk: () => refresh(list, false, true), body: <>{list.length} sunucunun dokumu alınacak. Devam edilsin mi?</> });
+      return;
+    }
     setBusy(true);
     try {
       const r = await nginxConsoleApi.refresh(all ? [] : list, all);
@@ -209,7 +217,10 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
     try {
       const r = await nginxConsoleApi.push({ hosts: targets, path: p, mode, content: draft, expectedSha, force });
       if (!r.ok) {
-        if (r.conflicts?.length && window.confirm(`${r.message}\n\nYine de üzerine yazılsın mı? (force)`)) { await doPush(true); return; }
+        if (r.conflicts?.length) {
+          setAsk({ title: 'Ön kontrol uyarısı', okLabel: 'Yine de yayınla (force)', onOk: () => { doPush(true); }, body: <><div>{r.message}</div><div className="mt-1" style={{ color: 'var(--text-muted)' }}>Force ile sunucudaki mevcut hal üzerine yazılır; yedek yine alınır.</div></> });
+          return;
+        }
         toast.error(r.message || 'Publish başlatılamadı.'); return;
       }
       setConfirm(false);
@@ -368,6 +379,12 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
 
       {/* Yeni dosya */}
       <NewFileModal open={newModal} onClose={() => setNewModal(false)} host={cur} prefix={tree?.prefix || '/usr/nginx'} hosts={hosts.filter((h) => h.dumpedAt)} onCreate={(p, content) => { setMode('create'); setNewPath(p); setFile(null); setDraft(content); setNewModal(false); }} />
+
+      {/* Portal ici onay penceresi (tarayici confirm'i yerine) */}
+      <Modal open={!!ask} onClose={() => setAsk(null)} title={ask?.title} size="sm"
+        footer={<div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>Vazgeç</button><button onClick={() => { const a = ask; setAsk(null); a?.onOk(); }} className={SM_BTN} style={smBtn(true)}>{ask?.okLabel}</button></div>}>
+        <div className="text-xs">{ask?.body}</div>
+      </Modal>
 
       {/* Karsilastirma */}
       <Modal open={!!compare} onClose={() => setCompare(null)} title="Diğer sunucularda" subtitle={compare?.path} size="lg">
