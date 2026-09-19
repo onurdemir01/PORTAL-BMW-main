@@ -24,7 +24,7 @@
 const fs = require('fs');
 const path = require('path');
 
-let _deps = null; // { consoleDir(), loadDump(host), listDumpedHosts() } — index.cjs verir (dongusel require yok)
+let _deps = null; // { consoleDir(), ensureIngested(host), listDumpedHosts() } — index.cjs verir (dongusel require yok)
 function init(deps) {
   _deps = deps;
 }
@@ -218,10 +218,11 @@ function rowOut(r) {
 let _timer = null;
 async function sweep() {
   try {
+    // Host basina SIRAYLA ve tam ayristirma yalniz ingest edilmemis dokumda (bellek: OOM 2026-09-20).
     for (const d of _deps.listDumpedHosts()) {
       if (_ingested.get(d.host) === d.dumpedAt) continue;
-      const parsed = _deps.loadDump(d.host);
-      if (parsed) await ingestDump(parsed);
+      _deps.ensureIngested(d.host);
+      await new Promise((r) => setTimeout(r, 50));
     }
   } catch (e) {
     console.warn('[NginxHub] gecmis taramasi:', e.message);

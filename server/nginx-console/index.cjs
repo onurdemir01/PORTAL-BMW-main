@@ -37,37 +37,172 @@ const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
 const ALLOWED_PATH_RE = /^\/usr\/nginx\/(conf\.d|conf)\/[^\0]+$/;
 const MAX_CONTENT = 512 * 1024;
 
-// ── Dokum onbellegi (dosya mtime'i degismedikce yeniden ayristirilmaz) ─────────────────
-const _cache = new Map(); // HOST -> { mtimeMs, parsed }
+// ── Dokum onbellegi ───────────────────────────────────────────────────────────────────
+// URETIM OOM'U (2026-09-20, "Reached heap limit ... Runtime_StringSplit"): ilk surum HER
+// host'un TAM ayristirilmis dokumunu (dosya icerikleri dahil) bellekte tutuyordu ve /hosts,
+// /certs, gecmis taramasi 311 host'u birden yukluyordu -> GB'larca heap. Simdi iki katman:
+//   - OZET (summary): agac (yol/sha/boyut/mtime/sahip), nginx -t, sertifikalar, kullanimlar —
+//     dosya ICERIGI YOK. Host basina ~50 KB. raw/<HOST>.summary.json yan dosyasina yazilir
+//     (mtime damgali); bellekte de kucuk bir harita. /hosts, /certs, /tree, /compare, /push bunu okur.
+//   - TAM (full): icerikli ayristirma yalniz /file icin, en fazla 4 host LRU. Yeni dokumda bir
+//     kez tam ayristirilir (ozet + gecmis ingest), sonra birakilir.
+const _summaries = new Map(); // HOST -> { mtimeMs, summary }
+const _full = new Map(); // HOST -> { mtimeMs, parsed }  (LRU, FULL_MAX)
+const FULL_MAX = 4;
 
 function dumpPathOf(host) {
   return path.join(rawDir(), `${String(host).toUpperCase()}.txt`);
 }
+function summaryPathOf(host) {
+  return path.join(rawDir(), `${String(host).toUpperCase()}.summary.json`);
+}
 
-function loadDump(host) {
-  const p = dumpPathOf(host);
-  let st;
+function statDump(host) {
   try {
-    st = fs.statSync(p);
+    return fs.statSync(dumpPathOf(host));
   } catch {
     return null;
   }
-  const hit = _cache.get(host.toUpperCase());
-  if (hit && hit.mtimeMs === st.mtimeMs) return hit.parsed;
-  const parsed = parseDump(fs.readFileSync(p, 'utf8'));
+}
+
+function parseFull(host, st) {
+  const parsed = parseDump(fs.readFileSync(dumpPathOf(host), 'utf8'));
   parsed.dumpedAt = st.mtime.toISOString();
   parsed.host = parsed.host || host.toUpperCase();
-  _cache.set(host.toUpperCase(), { mtimeMs: st.mtimeMs, parsed });
-  // Yeni dokum -> gecmis (blob + degisiklik gunlugu), arka planda; ekrani bekletmez.
-  history.ingestDump(parsed).catch(() => {});
   return parsed;
 }
+
+function summaryOf(parsed, mtimeMs, ingested) {
+  return {
+    mtimeMs,
+    ingested: !!ingested,
+    host: parsed.host,
+    dumpedAt: parsed.dumpedAt,
+    time: parsed.time,
+    prefix: parsed.prefix,
+    nginxT: parsed.nginxT,
+    tree: parsed.tree,
+    certs: [...parsed.certs.values()],
+    certUses: parsed.certUses,
+    fileCount: parsed.tree.length,
+  };
+}
+function writeSummary(host, summary) {
+  try {
+    const p = summaryPathOf(host);
+    const tmp = p + '.tmp' + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(summary));
+    fs.renameSync(tmp, p);
+  } catch (e) {
+    console.warn('[NginxHub] ozet yazilamadi:', host, e.message);
+  }
+}
+
+/** Ozet (icerik YOK). Yeni dokumda bir kez tam ayristirir, ozeti yazar, gecmisi isler. */
+function loadSummary(host) {
+  const H = String(host).toUpperCase();
+  const st = statDump(H);
+  if (!st) return null;
+  const hit = _summaries.get(H);
+  if (hit && hit.mtimeMs === st.mtimeMs) return hit.summary;
+  // yan dosya
+  try {
+    const raw = JSON.parse(fs.readFileSync(summaryPathOf(H), 'utf8'));
+    if (raw && raw.mtimeMs === st.mtimeMs) {
+      _summaries.set(H, { mtimeMs: st.mtimeMs, summary: raw });
+      if (!raw.ingested) scheduleIngest(H, st);
+      return raw;
+    }
+  } catch { /* yok/bozuk -> yeniden uret */ }
+  // JSON gidis-donus BILEREK: split()/slice() ile uretilen alt-dizgeler V8'de "sliced string"
+  // olur ve 2 MB'lik ham dokum metnini canli tutar (120 host x 2 MB = 274 MB, MEM1 testi).
+  // JSON.parse duz kopyalar uretir; tam ayristirma bu satirdan sonra cop olur.
+  const summary = JSON.parse(JSON.stringify(summaryOf(parseFull(H, st), st.mtimeMs, false)));
+  _summaries.set(H, { mtimeMs: st.mtimeMs, summary });
+  writeSummary(H, summary);
+  runIngest(H, st);
+  return summary;
+}
+
+// Gecmis ingest: tam ayristirma gerektirir. TEK ISCI KUYRUGU — ayni anda en fazla BIR
+// host'un icerikli dokumu bellekte (311 host'un tam dokumunu ayni anda tutmak OOM'du).
+// Kuyrukta ayristirilmis veri DEGIL, yalniz (host, mtime) durur; isci sirasi gelince ayristirir.
+const _ingestQueue = [];
+const _queued = new Set();
+let _ingestBusy = false;
+function runIngest(H, st) {
+  if (_queued.has(H)) return;
+  _queued.add(H);
+  _ingestQueue.push({ H, mtimeMs: st.mtimeMs });
+  pumpIngest();
+}
+function pumpIngest() {
+  if (_ingestBusy) return;
+  const job = _ingestQueue.shift();
+  if (!job) return;
+  _ingestBusy = true;
+  (async () => {
+    const { H, mtimeMs } = job;
+    try {
+      const st = statDump(H);
+      if (!st || st.mtimeMs !== mtimeMs) return; // dokum bu arada degisti; yeni mtime ayrica kuyruga girer
+      const parsed = parseFull(H, st);
+      const r = await history.ingestDump(parsed);
+      if (r) {
+        const cur = _summaries.get(H);
+        if (cur && cur.mtimeMs === mtimeMs) {
+          cur.summary.ingested = true;
+          writeSummary(H, cur.summary);
+        }
+      }
+    } catch (e) {
+      console.warn('[NginxHub] ingest hatasi:', H, e.message);
+    } finally {
+      _queued.delete(H);
+      _ingestBusy = false;
+      setImmediate(pumpIngest);
+    }
+  })();
+}
+function scheduleIngest(H, st) {
+  runIngest(H, st);
+}
+/** Arka plan taramasi icin: ozet guncel + ingest edilmis degilse isler. */
+function ensureIngested(host) {
+  const sum = loadSummary(host);
+  if (sum && !sum.ingested) {
+    const st = statDump(host);
+    if (st && st.mtimeMs === sum.mtimeMs) scheduleIngest(String(host).toUpperCase(), st);
+  }
+  return sum;
+}
+
+/** TAM dokum (icerikler dahil) — yalniz /file; LRU. */
+function loadFull(host) {
+  const H = String(host).toUpperCase();
+  const st = statDump(H);
+  if (!st) return null;
+  const hit = _full.get(H);
+  if (hit && hit.mtimeMs === st.mtimeMs) {
+    _full.delete(H);
+    _full.set(H, hit); // LRU: en yeni sona
+    return hit.parsed;
+  }
+  const parsed = parseFull(H, st);
+  _full.set(H, { mtimeMs: st.mtimeMs, parsed });
+  while (_full.size > FULL_MAX) _full.delete(_full.keys().next().value);
+  loadSummary(H); // ozet/ingest de guncel olsun
+  return parsed;
+}
+
+// Geriye uyumluluk (eski ad): OZET doner, icerik icermez.
+const loadDump = loadSummary;
 
 function listDumpedHosts() {
   try {
     return fs
       .readdirSync(rawDir())
-      .filter((f) => f.endsWith('.txt'))
+      .filter((f) => f.endsWith('.txt') && !f.endsWith('.summary.json'))
       .map((f) => {
         const st = fs.statSync(path.join(rawDir(), f));
         return { host: f.slice(0, -4).toUpperCase(), dumpedAt: st.mtime.toISOString(), size: st.size };
@@ -144,7 +279,7 @@ function isAdmin(req) {
 // ── HTTP ────────────────────────────────────────────────────────────────────────────────
 function initNginxConsole(app) {
   const { requireAuth } = require('../auth/index.cjs');
-  history.init({ consoleDir, loadDump, listDumpedHosts });
+  history.init({ consoleDir, ensureIngested, listDumpedHosts });
   history.startWatcher(5);
   const router = express.Router();
   router.use(express.json({ limit: '2mb' }));
@@ -178,7 +313,7 @@ function initNginxConsole(app) {
           dumpedAt: d ? d.dumpedAt : null,
           nginxT: parsed ? parsed.nginxT.status : null,
           fileCount: parsed ? parsed.tree.length : null,
-          certCount: parsed ? parsed.certs.size : null,
+          certCount: parsed ? parsed.certs.length : null,
           certMinDays: parsed ? minDays(parsed) : null,
         };
       });
@@ -186,7 +321,7 @@ function initNginxConsole(app) {
       for (const d of dumped.values()) {
         if (seen.has(d.host)) continue;
         const parsed = loadDump(d.host);
-        hosts.push({ host: d.host, env: null, location: null, service: null, services: [], nginxVersion: null, prefix: null, configCount: null, ip: null, dumpedAt: d.dumpedAt, nginxT: parsed ? parsed.nginxT.status : null, fileCount: parsed ? parsed.tree.length : null, certCount: parsed ? parsed.certs.size : null, certMinDays: parsed ? minDays(parsed) : null, inventoryMissing: true });
+        hosts.push({ host: d.host, env: null, location: null, service: null, services: [], nginxVersion: null, prefix: null, configCount: null, ip: null, dumpedAt: d.dumpedAt, nginxT: parsed ? parsed.nginxT.status : null, fileCount: parsed ? parsed.tree.length : null, certCount: parsed ? parsed.certs.length : null, certMinDays: parsed ? minDays(parsed) : null, inventoryMissing: true });
       }
       res.json({ ok: true, hosts, consoleDir: consoleDir(), inventoryError: invError });
     } catch (err) {
@@ -209,7 +344,7 @@ function initNginxConsole(app) {
       nginxT: d.nginxT,
       tree: buildTree(d.tree, d.prefix),
       fileCount: d.tree.length,
-      certs: [...d.certs.values()].map((c) => ({ ...c, daysLeft: daysLeft(c.notAfter) })),
+      certs: d.certs.map((c) => ({ ...c, daysLeft: daysLeft(c.notAfter) })),
       certUses: d.certUses,
     });
   });
@@ -218,7 +353,7 @@ function initNginxConsole(app) {
     const host = String(req.params.host || '').toUpperCase();
     const p = String(req.query.path || '');
     if (!HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
-    const d = loadDump(host);
+    const d = loadFull(host);
     if (!d) return res.status(400).json({ ok: false, message: 'Dokum yok.' });
     const f = d.files.get(p);
     const t = d.tree.find((x) => x.path === p);
@@ -247,7 +382,10 @@ function initNginxConsole(app) {
   router.get('/certs', (req, res) => {
     const only = String(req.query.host || '').toUpperCase();
     const hosts = only ? [only] : listDumpedHosts().map((d) => d.host);
-    const dumps = hosts.map(loadDump).filter(Boolean);
+    const dumps = hosts
+      .map(loadSummary)
+      .filter(Boolean)
+      .map((sm) => ({ host: sm.host, certUses: sm.certUses, certs: new Map(sm.certs.map((c) => [c.path, c])) }));
     const certs = aggregateCerts(dumps);
     const now = Date.now();
     res.json({
@@ -413,7 +551,7 @@ function initNginxConsole(app) {
 
 function minDays(parsed) {
   let m = null;
-  for (const c of parsed.certs.values()) {
+  for (const c of parsed.certs) {
     const dl = daysLeft(c.notAfter);
     if (dl == null) continue;
     if (m == null || dl < m) m = dl;
@@ -421,4 +559,4 @@ function minDays(parsed) {
   return m;
 }
 
-module.exports = { initNginxConsole, REGISTRY_KEYS, ALLOWED_PATH_RE, HOST_RE, consoleDir, _loadDumpForTest: loadDump };
+module.exports = { initNginxConsole, REGISTRY_KEYS, ALLOWED_PATH_RE, HOST_RE, consoleDir, _loadDumpForTest: loadDump, _loadFullForTest: loadFull, _loadSummaryForTest: loadSummary };
