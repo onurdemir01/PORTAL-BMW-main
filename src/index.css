@@ -644,9 +644,9 @@ thead th {
   border-radius: inherit;
   padding: 2px;
   background: conic-gradient(from var(--nh-angle), transparent 0 62%, rgba(0, 150, 57, 0.25) 74%, var(--nginx-green) 86%, var(--nginx-green-bright) 93%, transparent 100%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
   -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
   mask-composite: exclude;
   animation: nh-spin 2.8s linear infinite;
   pointer-events: none;
