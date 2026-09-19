@@ -14,6 +14,17 @@ const os = require('node:os');
 const path = require('node:path');
 
 test('MEM1 120 host x ~2 MB dokum: ozet katmani heap\'i sinirli tutar, icerik yalniz LRU\'da', async () => {
+  // Olcum GC'siz anlamsiz (toplanmamis cop artisi sisirir): --expose-gc yoksa kendini o
+  // bayrakla alt surecte kosturur ve sonucunu bekler.
+  if (!global.gc) {
+    const { spawnSync } = require('node:child_process');
+    const r = spawnSync(process.execPath, ['--expose-gc', '--test', __filename], { encoding: 'utf8' });
+    const out = (r.stdout || '') + (r.stderr || '');
+    const m = /\[MEM1\] heap artisi ([\d.]+) MB/.exec(out);
+    assert.equal(r.status, 0, `alt surec basarisiz:\n${out.slice(-1500)}`);
+    if (m) console.log(`[MEM1] heap artisi ${m[1]} MB (alt surec, --expose-gc)`);
+    return;
+  }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nh-mem-'));
   process.env.NGINX_CONSOLE_DIR = dir;
   fs.mkdirSync(path.join(dir, 'raw'), { recursive: true });
