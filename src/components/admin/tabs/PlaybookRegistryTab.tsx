@@ -14,7 +14,7 @@ import { Select } from "@/components/ui/Form";
 // duzenleyip kaydettiginde Select mevcut degeri gosteremez ve kategori SESSIZCE
 // "genel"e duser — kayit bozulur, kimse fark etmez. `opsx`, `telnet`, `filex` ve
 // `scalex` tam olarak bu durumdaydi.
-const CATEGORIES = ["genel", "jvm", "network", "system", "openshift", "logx", "opsx", "telnet", "filex", "scalex"];
+const CATEGORIES = ["genel", "jvm", "network", "system", "openshift", "logx", "opsx", "telnet", "filex", "scalex", "nginx"];
 const SOURCE_TYPES = ["awx_template", "repo_file", "external_script"];
 
 type FormState = {

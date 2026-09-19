@@ -1308,6 +1308,7 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'Dashboard', roles: 'Admin,User' },
   { page_name: 'Envanter', roles: 'Admin,User' },
   { page_name: 'Denetim', roles: 'Admin,User' },
+  { page_name: 'NginxConsole', roles: 'Admin' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
   { page_name: 'FileX', roles: 'Admin,User' },
@@ -1403,6 +1404,17 @@ const ELEMENT_SEED = [
     // 2026-09-17: YALNIZ Admin. Baska kullanici/AD grubuna Admin > "Denetim Erisimi"
     // panelinden sekme sekme acilir (user/group kurallari). Mevcut kurulumlar icin
     // closeDenetimToUsers() tek seferlik kapatir.
+    roles: ['Admin'],
+  },
+  {
+    // Nginx Hub (2026-09-19): konfigurasyon agaci/icerik/sertifika + push. YALNIZ Admin
+    // (push zaten sunucu tarafinda da Admin'e kapali).
+    element_key: 'NginxConsole',
+    element_type: 'page',
+    parent_key: 'navgroup:envanter',
+    label: 'Nginx Hub',
+    route: '/nginx-console',
+    sort_order: 4,
     roles: ['Admin'],
   },
   {
@@ -2103,6 +2115,28 @@ const PLAYBOOK_REGISTRY_SEED = [
       "Secilen pod'lari siler; OpenShift yeni pod'u ayaga kaldirir (restart). bmw_portal/opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml - sonuc Portal'a set_stats ile doner, istegi acana e-posta gider.",
     playbook_path: null,
     env_var_name: 'OPSX_OPENSHIFT_POD_DELETE_TEMPLATE_ID',
+  },
+  {
+    // Nginx Hub (2026-09-19): secilen nginx sunucularinin konfigurasyon agaci + dosya
+    // icerikleri + sertifikalari (salt okunur) -> /sw/BMW_PORTAL/nginx_console/raw/<HOST>.txt
+    key_name: 'nginx_console_fetch',
+    display_name: 'Nginx Hub — Dokum (salt okunur)',
+    category: 'nginx',
+    handler: 'nginx_console_fetch',
+    description:
+      'bmw_portal/nginx_console/nginx_console_fetch.yml — target_hosts listesindeki sunucularda conf.d/conf agaci, dosya icerikleri ve sertifika bilgileri (www ile) dokulur, GBLABT02 uzerinden /sw/BMW_PORTAL/nginx_console/raw/ altina yazilir. Tum filo 30-40 dk: gece zamanlayin, ekrandan yalniz secili sunucular yenilenir.',
+    playbook_path: null,
+    env_var_name: 'NGINX_CONSOLE_FETCH_TEMPLATE_ID',
+  },
+  {
+    key_name: 'nginx_console_push',
+    display_name: 'Nginx Hub — Konfigurasyon Push',
+    category: 'nginx',
+    handler: 'nginx_console_push',
+    description:
+      'bmw_portal/nginx_console/nginx_console_push.yml — tek sunucuda tek dosya (create/update): yol beyaz listesi, deployment kilidi, yedek (.console_backup), nginx -t, dusserse geri alma, reload; ardindan dokum yenilenir. Yalniz Admin tetikler.',
+    playbook_path: null,
+    env_var_name: 'NGINX_CONSOLE_PUSH_TEMPLATE_ID',
   },
   {
     key_name: 'opsx_openshift_pods',

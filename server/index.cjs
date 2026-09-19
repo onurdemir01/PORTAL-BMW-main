@@ -153,6 +153,7 @@ async function main() {
     { name: 'logX', init: () => initLogX(app), optional: true },
     { name: 'logXv2', init: () => initLogXv2(app), optional: true },
     { name: 'opsX', init: () => require('./opsx/index.cjs').initOpsX(app), optional: true },
+    { name: 'nginxConsole', init: () => require('./nginx-console/index.cjs').initNginxConsole(app), optional: true },
     { name: 'fileX', init: () => require('./filex/index.cjs').initFileX(app), optional: true },
     { name: 'telnet', init: () => require('./telnet/index.cjs').initTelnet(app), optional: true },
     { name: 'scalex', init: () => require('./scalex/index.cjs').initScaleX(app), optional: true },

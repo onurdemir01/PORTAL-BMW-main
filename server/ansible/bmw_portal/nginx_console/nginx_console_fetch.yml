@@ -1,0 +1,113 @@
+---
+# nginx_console_fetch.yml — Portal > Nginx Hub: secilen nginx sunucularinin konfigurasyon
+# agacini + dosya iceriklerini + sertifikalarini SALT OKUNUR doker, GBLABT02 uzerinden /sw'ye
+# yazar (Portal ayni mount'u dogrudan okur). Ayrinti: README.md.
+#
+# extra_vars (Portal gonderir):
+#   target_hosts: ["GBNGXP40", "GBNGXP41"]   (bos/yok -> hata; tum filo icin Portal listeyi verir)
+#   console_dir:  /sw/BMW_PORTAL/nginx_console   (raw/<HOST>.txt buraya)
+#   requester:    kullanici adi (gunluk)
+#
+# NEDEN target_hosts + add_host: AWX `limit` yalniz template'te "prompt on launch" aciksa
+# calisir (bkz. Portal notlari) — host secimi extra_vars ile playbook icinde yapilir.
+# NEDEN delegate_to GBLABT02: nginx sunucularinda /sw mount YOK; nginx_audit ile ayni desen.
+#
+# Sure: host basina birkac saniye; TUM filo (yuzlerce nginx) 30-40 dk surebilir - Portal
+# ekranindaki "Yenile" YALNIZ secilen hostlari gonderir, tam tarama gece zamanlanir.
+
+- name: --- [Play] Hedef sunuculari gruba al ---
+  hosts: localhost
+  gather_facts: no
+  become: false
+  tasks:
+    - name: --- [Task] Girdi dogrulama ---
+      ansible.builtin.assert:
+        that:
+          - (target_hosts | default([]) | length) > 0
+          - (console_dir | default('') | length) > 0
+        fail_msg: "target_hosts (liste) ve console_dir zorunlu."
+
+    - name: --- [Task] add_host ---
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: nginx_console_targets
+      loop: "{{ target_hosts | unique }}"
+      loop_control:
+        label: "{{ item }}"
+
+- name: --- [Play] Konfigurasyon + sertifika dokumu ---
+  hosts: nginx_console_targets
+  gather_facts: no
+  ignore_unreachable: true
+  vars:
+    console_dir: "{{ console_dir }}"
+  tasks:
+    - name: --- [Task] Dokum ---
+      block:
+        - name: --- [Task] Dokum betigini kopyala ---
+          ansible.builtin.copy:
+            src: files/nginx_console_dump.sh
+            dest: /tmp/nginx_console_dump.sh
+            mode: '0755'
+
+        # www: nginx dosyalari ve sertifikalar bu kullanicinin; diger nginx isleriyle ayni.
+        - name: --- [Task] Dokumu al (www, salt okunur) ---
+          become: true
+          become_method: dzdo
+          become_user: www
+          ansible.builtin.command: /bin/bash /tmp/nginx_console_dump.sh
+          register: dump_out
+          changed_when: false
+
+        - name: --- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---
+          ansible.builtin.copy:
+            content: "{{ dump_out.stdout }}\n"
+            dest: "{{ console_dir }}/raw/{{ inventory_hostname | upper }}.txt"
+            mode: '0666'
+          delegate_to: GBLABT02
+          when: (dump_out.stdout | default('') | length) > 0
+
+        - name: --- [Task] Sonuc ---
+          ansible.builtin.set_fact:
+            console_fetch_ok: "{{ (dump_out.stdout | default('') | length) > 0 }}"
+      rescue:
+        - name: --- [Task] Hata kaydi ---
+          ansible.builtin.set_fact:
+            console_fetch_ok: false
+            console_fetch_error: "{{ ansible_failed_result.msg | default('dokum alinamadi') }}"
+      always:
+        - name: --- [Task] Betigi temizle ---
+          ansible.builtin.file:
+            path: /tmp/nginx_console_dump.sh
+            state: absent
+          failed_when: false
+
+- name: --- [Play] Toplayici ---
+  hosts: localhost
+  gather_facts: no
+  become: false
+  tasks:
+    # Ulasilamayan host'ta console_fetch_ok HIC yok -> default(false); rescue'da error dolu.
+    - name: --- [Task] Sonuc listesi ---
+      ansible.builtin.set_fact:
+        fetch_results: >-
+          {{ (fetch_results | default([])) + [ {
+               'host': item,
+               'ok': (hostvars[item].console_fetch_ok | default(false) | bool),
+               'error': (hostvars[item].console_fetch_error | default('unreachable' if hostvars[item].console_fetch_ok is not defined else ''))
+             } ] }}
+      loop: "{{ groups['nginx_console_targets'] }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: --- [Task] set_stats ---
+      ansible.builtin.set_stats:
+        data:
+          nginx_console_fetch_result:
+            hosts: "{{ fetch_results | default([]) }}"
+            ok_count: "{{ fetch_results | default([]) | selectattr('ok') | list | length }}"
+
+    - name: --- [Task] Hic host dokulemediyse basarisiz ---
+      ansible.builtin.fail:
+        msg: "Hicbir sunucudan dokum alinamadi: {{ fetch_results | default([]) }}"
+      when: (fetch_results | default([]) | selectattr('ok') | list | length) == 0

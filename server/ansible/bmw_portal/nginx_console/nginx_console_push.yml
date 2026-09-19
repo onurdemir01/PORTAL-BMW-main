@@ -1,0 +1,144 @@
+---
+# nginx_console_push.yml — Portal > Nginx Hub: BIR konfigurasyon dosyasini bir ya da daha
+# fazla sunucuda (instance group = servis) olusturur/gunceller. Her sunucuda
+# files/nginx_console_push.sh: yol beyaz listesi, deployment kilidi, yedek, nginx -t, dusserse
+# geri alma, reload; ardindan o sunucunun dokumu yenilenir (Portal hemen guncel gorur).
+# NGINX Instance Manager'daki "Publish" akisinin karsiligi. Ayrinti: README.md.
+#
+# extra_vars (Portal gonderir):
+#   target_hosts:   ["GBNGXP40", "GBNGXP41"]
+#   file_path:      "/usr/nginx/conf.d/application-confs/glomo-x-y.conf"
+#   mode:           "create" | "update"
+#   content_b64:    base64 icerik
+#   expected_sha:   {"GBNGXP40": "<sha256>", ...}  (host basina Portal'in gordugu sha; bos = kontrol yok)
+#   force:          true -> sha uyusmazligini yoksay
+#   console_dir:    /sw/BMW_PORTAL/nginx_console
+#   requester:      kullanici adi
+# set_stats: nginx_console_push_result: { hosts: [{host, ok, status, message, rc}], ok_count }
+
+- name: --- [Play] Girdi + hedefler ---
+  hosts: localhost
+  gather_facts: no
+  become: false
+  tasks:
+    - name: --- [Task] Girdi dogrulama ---
+      ansible.builtin.assert:
+        that:
+          - (target_hosts | default([]) | length) > 0
+          - (file_path | default('') | trim) is match('^/usr/nginx/(conf\.d|conf)/')
+          - (file_path | default('')) is not search('\.\.')
+          - (mode | default('') | trim) in ['create', 'update']
+          - (content_b64 | default('') | length) > 0
+          - (console_dir | default('') | length) > 0
+        fail_msg: "target_hosts (liste), file_path (/usr/nginx/conf.d|conf altinda), mode (create|update), content_b64, console_dir zorunlu."
+
+    - name: --- [Task] add_host ---
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: nginx_console_targets
+      loop: "{{ target_hosts | unique }}"
+      loop_control:
+        label: "{{ item }}"
+
+- name: --- [Play] Uygula ---
+  hosts: nginx_console_targets
+  gather_facts: no
+  ignore_unreachable: true
+  tasks:
+    - name: --- [Task] Push ---
+      block:
+        - name: --- [Task] Betikleri kopyala ---
+          ansible.builtin.copy:
+            src: "files/{{ item }}"
+            dest: "/tmp/{{ item }}"
+            mode: '0755'
+          loop:
+            - nginx_console_push.sh
+            - nginx_console_dump.sh
+
+        - name: --- [Task] Degisikligi uygula (www) ---
+          become: true
+          become_method: dzdo
+          become_user: www
+          ansible.builtin.command: /bin/bash /tmp/nginx_console_push.sh
+          environment:
+            CS_PATH: "{{ file_path | trim }}"
+            CS_MODE: "{{ mode | trim }}"
+            CS_CONTENT_B64: "{{ content_b64 }}"
+            CS_EXPECTED_SHA: "{{ (expected_sha | default({}))[inventory_hostname | upper] | default('') }}"
+            CS_FORCE: "{{ '1' if (force | default(false) | bool) else '0' }}"
+            CS_JOB: "{{ tower_job_id | default('portal') }}"
+            CS_REQUESTER: "{{ requester | default('portal') }}"
+          register: push_out
+          failed_when: false
+          changed_when: push_out.rc == 0
+
+        - name: --- [Task] Sonuc satiri ---
+          ansible.builtin.set_fact:
+            push_line: "{{ (push_out.stdout_lines | default([]) | select('match', '^RESULT\\|') | list | last) | default('RESULT|fail|cikti yok') }}"
+            push_rc: "{{ push_out.rc | default(1) }}"
+
+        - name: --- [Task] Dokumu yenile (sunucudaki gercek hali goster) ---
+          become: true
+          become_method: dzdo
+          become_user: www
+          ansible.builtin.command: /bin/bash /tmp/nginx_console_dump.sh
+          register: dump_out
+          changed_when: false
+          failed_when: false
+
+        - name: --- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---
+          ansible.builtin.copy:
+            content: "{{ dump_out.stdout }}\n"
+            dest: "{{ console_dir }}/raw/{{ inventory_hostname | upper }}.txt"
+            mode: '0666'
+          delegate_to: GBLABT02
+          when: (dump_out.stdout | default('') | length) > 0
+          failed_when: false
+      rescue:
+        - name: --- [Task] Hata kaydi ---
+          ansible.builtin.set_fact:
+            push_line: "RESULT|fail|{{ ansible_failed_result.msg | default('push uygulanamadi') }}"
+            push_rc: 1
+      always:
+        - name: --- [Task] Betikleri temizle ---
+          ansible.builtin.file:
+            path: "/tmp/{{ item }}"
+            state: absent
+          loop:
+            - nginx_console_push.sh
+            - nginx_console_dump.sh
+          failed_when: false
+
+- name: --- [Play] Toplayici ---
+  hosts: localhost
+  gather_facts: no
+  become: false
+  tasks:
+    - name: --- [Task] Sonuc listesi ---
+      ansible.builtin.set_fact:
+        push_results: >-
+          {{ (push_results | default([])) + [ {
+               'host': item | upper,
+               'ok': ((hostvars[item].push_rc | default(1)) | int) == 0,
+               'rc': (hostvars[item].push_rc | default(1)) | int,
+               'status': (hostvars[item].push_line | default('RESULT|fail|unreachable')).split('|')[1] | default('fail'),
+               'message': (hostvars[item].push_line | default('RESULT|fail|unreachable')).split('|')[2:] | join('|')
+             } ] }}
+      loop: "{{ groups['nginx_console_targets'] }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: --- [Task] set_stats ---
+      ansible.builtin.set_stats:
+        data:
+          nginx_console_push_result:
+            hosts: "{{ push_results | default([]) }}"
+            ok_count: "{{ push_results | default([]) | selectattr('ok') | list | length }}"
+            file_path: "{{ file_path }}"
+            mode: "{{ mode }}"
+
+    - name: --- [Task] Herhangi bir sunucuda basarisizsa isi dusur ---
+      ansible.builtin.fail:
+        msg: "Basarisiz sunucular: {{ push_results | default([]) | rejectattr('ok') | map(attribute='host') | list }} — {{ push_results | default([]) | rejectattr('ok') | map(attribute='message') | list }}"
+      when: (push_results | default([]) | rejectattr('ok') | list | length) > 0

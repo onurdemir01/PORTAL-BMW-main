@@ -52,6 +52,9 @@ const PLAYBOOKS = {
   opsxOpenshiftDump: 'opsx_openshift_dump/opsx_openshift_dump.yaml',
   opsxOpenshiftPods: 'opsx_openshift_dump/opsx_openshift_pods.yaml',
   opsxOpenshiftPodDelete: 'opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml',
+  // Nginx Hub (2026-09-19): dokum (salt okunur) + tek dosya push
+  nginxConsoleFetch: 'nginx_console/nginx_console_fetch.yml',
+  nginxConsolePush: 'nginx_console/nginx_console_push.yml',
   telnetOpenshift: 'telnet_openshift/telnet_openshift.yaml',
 };
 

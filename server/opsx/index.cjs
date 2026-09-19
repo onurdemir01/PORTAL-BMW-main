@@ -2020,6 +2020,7 @@ module.exports = {
   extractOpsxDumpResult,
   extractOpsxPodsResult,
   extractOpsxPodDeleteResult,
+  extractStatsKey,
   OCP_OPERATIONS,
   extractOpsxJvmResult,
   extractOpsxServerConfigResult,
