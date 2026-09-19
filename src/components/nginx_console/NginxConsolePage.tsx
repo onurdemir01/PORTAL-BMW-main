@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { toast } from '@/hooks/useToast';
 import { Modal } from '@/components/common/Modal';
+import { TableEmptyRow } from '@/components/common/EmptyState';
 import { Pill, Panel, Code } from '@/components/denetim/ui';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
@@ -608,8 +609,8 @@ function ChangesTab() {
                 <td className="px-3 py-1.5">{(c.hasOld || c.hasNew) && c.source !== 'first-seen' && <button className="underline" onClick={() => setSel(c)}>fark</button>}</td>
               </tr>
             ))}
-            {rows && list.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center" style={{ color: 'var(--text-muted)' }}>Kayıt yok.</td></tr>}
-            {rows === null && <tr><td colSpan={7} className="px-3 py-6 text-center" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</td></tr>}
+            {rows && list.length === 0 && <TableEmptyRow colSpan={7} title="Kayıt yok." description="Değişiklik kayıtları ilk dokumdan sonra oluşur." />}
+            {rows === null && <TableEmptyRow colSpan={7} title="Yükleniyor…" />}
           </tbody>
         </table>
       </div>
@@ -697,7 +698,7 @@ function CertsTab() {
                 <td className="px-3 py-1.5 text-right tabular-nums">{c.san?.length || 0}</td>
               </tr>
             ))}
-            {!loading && rows.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: 'var(--text-muted)' }}>{data?.hostsScanned ? 'Eşleşen sertifika yok.' : 'Henüz dokum yok — Konfigürasyon sekmesinden sunucuları yenileyin.'}</td></tr>}
+            {!loading && rows.length === 0 && <TableEmptyRow colSpan={8} title={data?.hostsScanned ? 'Eşleşen sertifika yok.' : 'Henüz dokum yok.'} description={data?.hostsScanned ? undefined : 'Konfigürasyon sekmesinden sunucuları yenileyin.'} />}
           </tbody>
         </table>
       </div>
