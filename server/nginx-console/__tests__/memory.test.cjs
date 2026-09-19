@@ -18,10 +18,15 @@ test('MEM1 120 host x ~2 MB dokum: ozet katmani heap\'i sinirli tutar, icerik ya
   // bayrakla alt surecte kosturur ve sonucunu bekler.
   if (!global.gc) {
     const { spawnSync } = require('node:child_process');
-    const r = spawnSync(process.execPath, ['--expose-gc', '--test', __filename], { encoding: 'utf8' });
+    // node --test'in alt surec ortam degiskenleri (NODE_TEST_CONTEXT...) torun surecte
+    // kosuyu sessizce atlatiyor (66 ms'de status 0, olcum yok) — temizlenir; dosya
+    // dogrudan (--test'siz) kosturulur, node:test tek dosyada da calisir.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('NODE_TEST')));
+    const r = spawnSync(process.execPath, ['--expose-gc', __filename], { encoding: 'utf8', env });
     const out = (r.stdout || '') + (r.stderr || '');
     const m = /\[MEM1\] heap artisi ([\d.]+) MB/.exec(out);
     assert.equal(r.status, 0, `alt surec basarisiz:\n${out.slice(-1500)}`);
+    assert.ok(m, `alt surec olcum uretmedi:\n${out.slice(-800)}`);
     if (m) console.log(`[MEM1] heap artisi ${m[1]} MB (alt surec, --expose-gc)`);
     return;
   }
