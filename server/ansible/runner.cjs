@@ -716,6 +716,23 @@ async function getJobStatus(jobId) {
 
 // ── Job output ────────────────────────────────────────────────────────────────
 
+// Bir is ciktisinin bellege alinabilecegi azami boyut. AWX'in kendi stdout esigi
+// 1 MB; bu yedek yol onu asan isler icin var, dolayisiyla tavan ondan buyuk ama
+// heap'i tehdit etmeyecek kadar kucuk olmali. 16 MB: 2 GB heap'te, ayni icerigin
+// string + dizi olarak iki kez durmasi dahil, guvenli buyukluk mertebesi.
+const JOB_OUTPUT_MAX_BYTES = 16 * 1024 * 1024;
+
+// Tek bir AWX HTTP yanitinin bellege alinabilecegi azami boyut. `fetchAwxPlainText`
+// her yanit icin uygular; `collectJobEventsStdout` ayrica KENDI birikimine
+// `JOB_OUTPUT_MAX_BYTES` uygular (biri tek cagriyi, oteki toplami sinirlar).
+const AWX_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
+
+// SESSIZ KIRPMA YOK. Kullanici "log yarim" ile "is yarim" arasindaki farki
+// gorebilmeli; yoksa eksik bir cikti tamamlanmis bir is gibi okunur.
+const AWX_TRUNCATION_NOTICE =
+  '\n... [PORTAL] Bu cikti bellek korumasi nedeniyle KIRPILDI. ' +
+  'Tamami icin AWX arayuzunden isin ciktisini indirin.';
+
 // AWX'in stdout ucu (`?format=txt`) DUZ METIN doner, JSON DEGIL — awxRequest/
 // awxRequestToServer'in kosulsuz JSON.parse'i burada asla kullanilamaz (onceden
 // getJobOutputOnServer bu hatayi yapiyordu, her zaman JSON.parse patlayip bos
@@ -739,12 +756,53 @@ function fetchAwxPlainText(baseUrl, token, pathname) {
       timeout: 30000,
     };
 
+    // `kirpildi` PROMISE KAPSAMINDA: hem `res` geri cagrisi hem de asagidaki
+    // `req.on('error')` okuyor. Ilk yazimda `res` icinde tanimliydi ve dis
+    // kapsamdaki okuma `ReferenceError` veriyordu — her AWX hata yolunda patlardi.
+    let kirpildi = false;
+
     const req = lib.request(options, (res) => {
+      // BAYT BUTCESI — URETIMDE IKI KEZ COKERTTI (2026-09-19).
+      //
+      // Buraya kadar `data += chunk` SINIRSIZDI: AWX yanitinin tamami tek bir JS
+      // string'ine yigiliyordu. `?format=txt` ucunda AWX'in kendi 1 MB esigi
+      // KAZARA koruyordu, ama o esik asildiginda kod `collectJobEventsStdout`
+      // yedegine dusuyor ve orada hicbir tavan yoktu.
+      //
+      // Asil sorun tek bir cagri degil, BIRIKIM: ayni stdout her yoklamada
+      // yeniden indiriliyor ve istemci cikti buyudukce DAHA SIK yokluyor
+      // (JobTrackerContext RUN_MS=1500). Es zamanli alti isin tamponlari ayni
+      // anda canli oldugu icin GC toplayamiyor.
+      //
+      // prod.out kaniti — Mark-Compact SONRASI hala 2065 MB canli:
+      //   Mark-Compact 2090.0 (2122.6) -> 2065.6 (2107.6) MB ... allocation failure
+      //   FATAL ERROR: Reached heap limit Allocation failed
+      // Iki cokmenin son JS karesi FARKLI (`Runtime_StringSplit` ve
+      // `Runtime_AllocateInYoungGeneration`) — yani `split` son damlaydi, SEBEP
+      // DEGIL. Sebep tutulan (retained) tamponlar.
+      //
+      // `setEncoding` de eklendi: onceden Buffer parcalari string'e eklenirken
+      // cok-baytli karakterler parca sinirinda BOZULABILIYORDU.
+      res.setEncoding('utf8');
       let data = '';
+      let bayt = 0;
       res.on('data', (chunk) => {
+        if (kirpildi) return;
+        bayt += chunk.length;
+        if (bayt > AWX_RESPONSE_MAX_BYTES) {
+          kirpildi = true;
+          // HEMEN COZ, `end`i BEKLEME. `req.destroy()` cagrildiginda `end` olayi
+          // ARTIK GELMEZ; yalnizca `end` icinde cozseydik promise SONSUZA DEK
+          // asili kalir ve cagiran taraf beklerdi — orijinal sinirsiz tamponlamadan
+          // daha kotu bir hata. (Bu tuzaga ilk yazimda dustum, test yakaladi.)
+          resolve(data + AWX_TRUNCATION_NOTICE);
+          req.destroy();
+          return;
+        }
         data += chunk;
       });
       res.on('end', () => {
+        if (kirpildi) return; // zaten cozuldu
         if (res.statusCode >= 400) {
           reject(
             Object.assign(new Error(`AWX HTTP ${res.statusCode}`), { status: res.statusCode }),
@@ -755,7 +813,12 @@ function fetchAwxPlainText(baseUrl, token, pathname) {
       });
     });
 
-    req.on('error', reject);
+    // KIRPMADAN SONRAKI `error` YUTULUR: `req.destroy()` kendisi bir `ECONNRESET`
+    // uretir; promise zaten cozulmus olsa da bunu reject etmek log gurultusu yaratir.
+    req.on('error', (err) => {
+      if (kirpildi) return;
+      reject(err);
+    });
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('Stdout isteği zaman aşımına uğradı.'));
@@ -771,6 +834,41 @@ function fetchAwxPlainText(baseUrl, token, pathname) {
 // dolayisiyla `!output.trim()` bos-cikti kontrolu bunu YAKALAMAZ ve bu uyari metni
 // kullaniciya SANKI GERCEK STDOUT'MUS gibi gosterilirdi. job_events yedegine
 // (sayfalanmis, boyut siniri olmayan) dusmek icin bu deseni ayrica tespit ederiz.
+// Bir is ciktisinin bellege alinabilecegi azami boyut. AWX'in kendi stdout esigi
+// 1 MB; bu yedek yol onu asan isler icin var, dolayisiyla tavan ondan buyuk ama
+// heap'i tehdit etmeyecek kadar kucuk olmali. 16 MB: 2 GB heap'te, ayni icerigin
+// string + dizi olarak iki kez durmasi dahil, guvenli buyukluk mertebesi.
+// AWX'in `/stdout/?format=txt` ucu, cikti kendi ic esigini (varsayilan 1MB,
+// STDOUT_MAX_BYTES_DISPLAY) astiginda HTTP 200 ile birlikte GERCEK stdout YERINE
+// "Standard Output too large to display (N bytes), only download supported for
+// sizes over M bytes." metnini doner — bu bir hata durumu DEGIL (4xx firlatmaz),
+// dolayisiyla `!output.trim()` bos-cikti kontrolu bunu YAKALAMAZ ve bu uyari metni
+// kullaniciya SANKI GERCEK STDOUT'MUS gibi gosterilirdi. job_events yedegine
+// (sayfalanmis, boyut siniri olmayan) dusmek icin bu deseni ayrica tespit ederiz.
+// Bir is ciktisinin bellege alinabilecegi azami boyut. AWX'in kendi stdout esigi
+// 1 MB; bu yedek yol onu asan isler icin var, dolayisiyla tavan ondan buyuk ama
+// heap'i tehdit etmeyecek kadar kucuk olmali. 16 MB: 2 GB heap'te, ayni icerigin
+// string + dizi olarak iki kez durmasi dahil, guvenli buyukluk mertebesi.
+// AWX'in `/stdout/?format=txt` ucu, cikti kendi ic esigini (varsayilan 1MB,
+// STDOUT_MAX_BYTES_DISPLAY) astiginda HTTP 200 ile birlikte GERCEK stdout YERINE
+// "Standard Output too large to display (N bytes), only download supported for
+// sizes over M bytes." metnini doner — bu bir hata durumu DEGIL (4xx firlatmaz),
+// dolayisiyla `!output.trim()` bos-cikti kontrolu bunu YAKALAMAZ ve bu uyari metni
+// kullaniciya SANKI GERCEK STDOUT'MUS gibi gosterilirdi. job_events yedegine
+// (sayfalanmis, boyut siniri olmayan) dusmek icin bu deseni ayrica tespit ederiz.
+// Bir is ciktisinin bellege alinabilecegi azami boyut. AWX'in kendi stdout esigi
+// 1 MB; bu yedek yol onu asan isler icin var, dolayisiyla tavan ondan buyuk ama
+// heap'i tehdit etmeyecek kadar kucuk olmali. 16 MB: 2 GB heap'te, ayni icerigin
+// string + dizi olarak iki kez durmasi dahil, guvenli buyukluk mertebesi.
+// AWX'in `/stdout/?format=txt` ucu, cikti kendi ic esigini (varsayilan 1MB,
+// STDOUT_MAX_BYTES_DISPLAY) astiginda HTTP 200 ile birlikte GERCEK stdout YERINE
+// "Standard Output too large to display (N bytes), only download supported for
+// sizes over M bytes." metnini doner — bu bir hata durumu DEGIL (4xx firlatmaz),
+// dolayisiyla `!output.trim()` bos-cikti kontrolu bunu YAKALAMAZ ve bu uyari metni
+// kullaniciya SANKI GERCEK STDOUT'MUS gibi gosterilirdi. job_events yedegine
+// (sayfalanmis, boyut siniri olmayan) dusmek icin bu deseni ayrica tespit ederiz.
+
+
 function isAwxStdoutTooLarge(text) {
   return typeof text === 'string' && /Standard Output too large to display/i.test(text);
 }
@@ -786,6 +884,23 @@ async function collectJobEventsStdout(requestJson, jobId) {
   let pathname = `/api/v2/jobs/${jobId}/job_events/?page_size=500&order_by=counter`;
   const chunks = [];
   let guard = 0;
+  // BAYT BUTCESI — URETIMDE COKERTTI (2026-09-19).
+  //
+  // Bu fonksiyon "cikti cok buyuk" senaryosunun YEDEGI; yani tam olarak en buyuk
+  // ciktilarda calisiyor. Event sayisi tavani (40000) VARDI ama BAYT tavani YOKTU:
+  // event basina stdout birkac KB olabildigi icin birikim yuzlerce MB'a cikabiliyor.
+  // Sonra cagiran taraf ayni veriyi `split('\n')` ile diziye cevirince ayni icerik
+  // hem string hem dizi olarak bellekte duruyor ve heap ikiye katlaniyor.
+  //
+  // prod.out kaniti:
+  //   Mark-Compact 2090.0 (2122.6) -> 2065.6 MB ... allocation failure
+  //   FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+  //   13: v8::internal::Runtime_StringSplit(...)        <-- son JS islemi
+  //
+  // SESSIZ KIRPMA YOK: butce dolunca ciktinin sonuna ne oldugu ACIKCA yazilir.
+  // Kullanicinin "log yarim" ile "is yarim" arasindaki farki gorebilmesi sart.
+  let toplamBayt = 0;
+  let kirpildi = false;
   while (pathname && guard < 80) {
     let data;
     try {
@@ -795,10 +910,20 @@ async function collectJobEventsStdout(requestJson, jobId) {
     }
     const results = Array.isArray(data.results) ? data.results : [];
     for (const ev of results) {
-      if (ev && typeof ev.stdout === 'string' && ev.stdout.length) chunks.push(ev.stdout);
+      if (!ev || typeof ev.stdout !== 'string' || !ev.stdout.length) continue;
+      if (toplamBayt + ev.stdout.length > JOB_OUTPUT_MAX_BYTES) {
+        kirpildi = true;
+        break;
+      }
+      chunks.push(ev.stdout);
+      toplamBayt += ev.stdout.length;
     }
+    if (kirpildi) break;
     pathname = data.next || null;
     guard++;
+  }
+  if (kirpildi) {
+    chunks.push(AWX_TRUNCATION_NOTICE);
   }
   return chunks.join('\n');
 }
@@ -853,8 +978,13 @@ async function getJobOutput(jobId) {
   }
 
   // Production safety: warn if "changed" appears in output
-  const lines = output.split('\n');
-  const changedWarning = lines.some((l) => /changed=\s*[1-9]/.test(l));
+  //
+  // DIZIYE AYIRMADAN. Onceden `output.split('\n')` ile TUM cikti satirlara
+  // boluruyordu ve tek amaci asagidaki regex testiydi; yani dev bir dizi yalnizca
+  // "icinde su desen var mi" sorusu icin ayriliyordu. OOM'un son JS islemi
+  // (`Runtime_StringSplit`) tam olarak burasiydi. Regex zaten satir satir
+  // gezebiliyor — `m` bayragi `^`/`$`i satir sinirlarina baglar.
+  const changedWarning = /^.*changed=\s*[1-9]/m.test(output);
   return { output, changedWarning };
 }
 
