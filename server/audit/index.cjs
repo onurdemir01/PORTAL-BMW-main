@@ -9,6 +9,7 @@
 
 const crypto = require('crypto');
 const db = require('../db/index.cjs');
+const spool = require('./spool.cjs');
 
 const HASH_PREFIX = 'v3:';
 
@@ -23,18 +24,28 @@ function computeEntryHash(prevHash, username, action, detail) {
 function createAuditChain(tableName) {
   let _writeQueue = Promise.resolve();
 
+  // HATADA FIRLATIR, '' DONMEZ.
+  //
+  // Onceden `catch { return ''; }` vardi. SELECT'in dustugu ama INSERT'in
+  // basarili oldugu bir pencerede `prev_hash=''` yazilir ve `verifyChain` o
+  // noktayi KIRIK ZINCIR olarak raporlardi — kurtarma yolu olmadan. Zincirin
+  // anlami "araya kayit sokulmadi/silinmedi"dir; onu kendi elimizle kirmak
+  // garantiyi yok eder.
+  //
+  // Firlatmak dogru davranis: yazim tumuyle duser ve girdi spool'a gider, yani
+  // KAYIT KAYBOLMAZ, yalnizca gecikir.
   async function getLastHash() {
-    try {
-      const { rows } = await db.query(
-        `SELECT TOP 1 entry_hash FROM ${tableName} ORDER BY id DESC`
-      );
-      return rows[0]?.entry_hash || '';
-    } catch {
-      return '';
-    }
+    const { rows } = await db.query(
+      `SELECT TOP 1 entry_hash FROM ${tableName} ORDER BY id DESC`
+    );
+    return rows[0]?.entry_hash || '';
   }
 
-  async function writeEntry({ sessionId, username, authSource, role, targetHost, targetIp, action, result, detail, clientIp }) {
+  async function writeEntry(entry) {
+    const {
+      sessionId, username, authSource, role, targetHost, targetIp,
+      action, result, detail, clientIp,
+    } = entry;
     try {
       const prevHash = await getLastHash();
       // detail kirpmasi hash'ten ONCE — hash DB'de birebir saklanan deger uzerinden hesaplanir.
@@ -53,8 +64,18 @@ function createAuditChain(tableName) {
           clientIp || null, prevHash, entryHash,
         ]
       );
+      return true;
     } catch (err) {
-      console.error(`[audit:${tableName}] write failed:`, err.message);
+      // KAYIT YUTULMAZ — DISKE ALINIR. Hash BURADA hesaplanmis olsa bile spool'a
+      // HAM GIRDI gider: `prev_hash` aktarim anindaki son kayda baglidir ve
+      // beklerken baska kayitlar yazilmis olabilir.
+      const alindi = spool.append(tableName, entry);
+      console.error(
+        `[audit:${tableName}] write failed:`,
+        err.message,
+        alindi ? '— kayit spool`a alindi, DB donunce aktarilacak.' : '— SPOOL DA DUSTU, KAYIT KAYIP.',
+      );
+      return false;
     }
   }
 
@@ -126,7 +147,22 @@ function createAuditChain(tableName) {
     return { ok: broken === 0, verified: rows.length, broken, firstBrokenId, legacyCount };
   }
 
-  return { log, getLogs, verifyChain };
+  // ── SPOOL BOSALTMA ─────────────────────────────────────────────────────────
+  //
+  // Bekleyen kayitlar TEK YAZAR KUYRUGUNDAN gecer (`_writeQueue`): aktarim
+  // sirasinda gelen yeni bir kayit araya girip sirayi bozamaz. Hash zinciri
+  // sirali bir yapidir; paralel yazim onu anlamsiz kilardi.
+  function drainSpool() {
+    const task = _writeQueue.then(() => spool.drain(tableName, (entry) => writeEntry(entry)));
+    _writeQueue = task.catch(() => {});
+    return task;
+  }
+
+  function spoolDepth() {
+    return spool.depth(tableName);
+  }
+
+  return { log, getLogs, verifyChain, drainSpool, spoolDepth };
 }
 
 // ── Portal geneli instance ───────────────────────────────────────────────────
@@ -224,11 +260,32 @@ function initPortalAudit(app) {
 
   app.get('/api/portal-audit/verify', requireAuth, requireAdmin, async (req, res) => {
     try {
-      res.json({ ok: true, ...(await portalChain.verifyChain()) });
+      // `pendingSpool` ZINCIR SONUCUYLA BIRLIKTE doner: "zincir saglam" demek,
+      // "hicbir kayit eksik degil" demek DEGILDIR — diskte bekleyen kayitlar
+      // henuz zincire girmemistir. Ikisini ayri ayri gostermezsek yonetici
+      // saglam bir zincire bakip eksigi olmadigini sanar.
+      const zincir = await portalChain.verifyChain();
+      res.json({ ok: true, ...zincir, pendingSpool: portalChain.spoolDepth() });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+
+  // ── BEKLEYEN KAYITLARI AKTAR ───────────────────────────────────────────────
+  //
+  // Acilista bir kez: onceki calismada DB dustuyse kayitlar diskte bekliyordur.
+  // Sonra periyodik: DB kesintisi calisir durumdayken de gecebilir (2026-09-18'de
+  // tam boyle oldu — bes saat surdu ve proses hic yeniden baslamadi).
+  //
+  // `unref()`: bu zamanlayici surecin kapanmasini ENGELLEMEZ; aksi halde
+  // dagitim sirasindaki `stop` adimi bu yuzden asili kalirdi.
+  const DRAIN_INTERVAL_MS = 5 * 60 * 1000;
+  setTimeout(() => {
+    portalChain.drainSpool().catch(() => {});
+  }, 10_000).unref();
+  setInterval(() => {
+    if (portalChain.spoolDepth() > 0) portalChain.drainSpool().catch(() => {});
+  }, DRAIN_INTERVAL_MS).unref();
 
   console.log('[Audit] /api/portal-audit (admin) mounted');
 }
