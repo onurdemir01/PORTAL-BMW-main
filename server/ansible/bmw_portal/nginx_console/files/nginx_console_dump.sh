@@ -5,7 +5,7 @@
 # Cikti bolumleri (Portal tarafi: server/nginx-console/dump-parse.cjs):
 #   @@HOST <ad>            @@TIME <ISO>          @@PREFIX <nginx prefix>
 #   @@NGINX_T <ok|fail>    (ardindan nginx -t ciktisi, @@END ile biter)
-#   @@TREE                 size<TAB>mtime<TAB>sha256<TAB>yol  ... @@END
+#   @@TREE                 size<TAB>mtime<TAB>sha256<TAB>sahip<TAB>yol  ... @@END   (sahip: stat %U)
 #   @@FILE <yol> <sha256> <size>   ...icerik...   @@END
 #   @@CERT <yol>           openssl x509 alanlari (key=value)   @@END
 #   @@CERTUSE conf<TAB>server_name<TAB>ssl_certificate<TAB>ssl_certificate_key
@@ -41,7 +41,8 @@ for d in "$PREFIX/conf.d" "$PREFIX/conf"; do
   find "$d" -type f 2>/dev/null | sort | while IFS= read -r f; do
     sz="$(stat -c %s "$f" 2>/dev/null || echo 0)"
     mt="$(stat -c %y "$f" 2>/dev/null | cut -d. -f1)"
-    printf '%s\t%s\t%s\t%s\n' "$sz" "$mt" "$(sha_of "$f")" "$f"
+    ow="$(stat -c %U "$f" 2>/dev/null)"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$sz" "$mt" "$(sha_of "$f")" "${ow:-?}" "$f"
   done
 done
 echo "@@END"

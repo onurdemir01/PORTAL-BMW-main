@@ -153,3 +153,67 @@ test('NH7 push betigi sozlesmesi: beyaz liste, kilit, yedek, nginx -t geri alma,
     assert.match(y, /delegate_to: GBLABT02/);
   }
 });
+
+// ── Gecmis (Git benzeri, 2026-09-19) ──────────────────────────────────────────────────
+const os = require('node:os');
+const history = require('../history.cjs');
+
+test('NH8 blob deposu: icerik adresli, ayni sha bir kez yazilir, gecersiz sha reddedilir', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nh-'));
+  history.init({ consoleDir: () => dir, loadDump: () => null, listDumpedHosts: () => [] });
+  const sha = 'a'.repeat(64);
+  assert.equal(history.putBlob(sha, 'server {}'), true);
+  assert.equal(history.putBlob(sha, 'server {}'), false, 'ikinci yazim atlanmali (dedup)');
+  assert.equal(history.getBlob(sha), 'server {}');
+  assert.equal(history.hasBlob(sha), true);
+  assert.equal(history.putBlob('../etc/passwd', 'x'), false);
+  assert.equal(history.getBlob('zz'), null);
+  assert.ok(fs.existsSync(path.join(dir, 'objects', 'aa', sha)));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('NH9 diffState: eklenen / degisen / silinen; degismeyen dosya HIC olay uretmez', () => {
+  const prev = new Map([
+    ['/usr/nginx/conf.d/a.conf', { sha256: '1', size: 1, mtime: 't' }],
+    ['/usr/nginx/conf.d/b.conf', { sha256: '2', size: 1, mtime: 't' }],
+    ['/usr/nginx/conf.d/gone.conf', { sha256: '3', size: 1, mtime: 't' }],
+  ]);
+  const tree = [
+    { path: '/usr/nginx/conf.d/a.conf', sha256: '1', size: 1, mtime: 't' },
+    { path: '/usr/nginx/conf.d/b.conf', sha256: '22', size: 2, mtime: 't2' },
+    { path: '/usr/nginx/conf.d/new.conf', sha256: '9', size: 1, mtime: 't' },
+  ];
+  const d = history.diffState(prev, tree);
+  assert.deepEqual(d.added.map((f) => f.path), ['/usr/nginx/conf.d/new.conf']);
+  assert.deepEqual(d.changed.map((f) => [f.path, f.oldSha, f.sha256]), [['/usr/nginx/conf.d/b.conf', '2', '22']]);
+  assert.deepEqual(d.deleted, [{ path: '/usr/nginx/conf.d/gone.conf', oldSha: '3' }]);
+});
+
+test('NH10 agac satiri 5 alan (sahip) ve eski 4 alan ikisi de okunur', () => {
+  const d5 = parseDump('@@TREE\n10\t2026-01-01 00:00:00\tabc\twww\t/usr/nginx/conf.d/x y.conf\n@@END');
+  assert.deepEqual(d5.tree[0], { size: 10, mtime: '2026-01-01 00:00:00', sha256: 'abc', owner: 'www', path: '/usr/nginx/conf.d/x y.conf' });
+  const d4 = parseDump('@@TREE\n10\t2026-01-01 00:00:00\tabc\t/usr/nginx/conf.d/x.conf\n@@END');
+  assert.equal(d4.tree[0].owner, null);
+  assert.equal(d4.tree[0].path, '/usr/nginx/conf.d/x.conf');
+});
+
+test('NH11 gecmis tablolari + indeksler seed\'de; publish niyeti + ingest kaynak eslestirme sozlesmesi', () => {
+  const setup = read('server/db/mssql-setup.cjs');
+  assert.match(setup, /CREATE TABLE nginx_hub_file_state/);
+  assert.match(setup, /CREATE TABLE nginx_hub_file_history/);
+  assert.match(setup, /IX_nhh_host_path/);
+  const idx = read('server/nginx-console/index.cjs');
+  assert.match(idx, /history\.recordPublishIntent\(/);
+  assert.match(idx, /history\.ingestDump\(parsed\)/);
+  assert.match(idx, /router\.get\('\/history\/:host'/);
+  assert.match(idx, /router\.get\('\/changes'/);
+  assert.match(idx, /router\.get\('\/blob\/:sha'/);
+  const h = read('server/nginx-console/history.cjs');
+  // degismeyen dosya icin satir yazilmaz: yalniz added/changed/deleted olaylari INSERT eder
+  assert.match(h, /for \(const f of added\)[\s\S]*for \(const f of changed\)[\s\S]*for \(const d of deleted\)/);
+  assert.match(h, /pending = 1 AND seen_at > DATEADD\(day, -7, GETUTCDATE\(\)\)/);
+  const ui = read('src/components/nginx_console/NginxConsolePage.tsx');
+  assert.match(ui, /function FileHistory\(/);
+  assert.match(ui, /function ChangesTab\(/);
+  assert.match(ui, /bu sürüme dön/);
+});

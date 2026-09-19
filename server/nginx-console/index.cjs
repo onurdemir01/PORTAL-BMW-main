@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { parseDump, buildTree, aggregateCerts, daysLeft } = require('./dump-parse.cjs');
+const history = require('./history.cjs');
 
 const REGISTRY_KEYS = Object.freeze({
   fetch: 'nginx_console_fetch',
@@ -57,6 +58,8 @@ function loadDump(host) {
   parsed.dumpedAt = st.mtime.toISOString();
   parsed.host = parsed.host || host.toUpperCase();
   _cache.set(host.toUpperCase(), { mtimeMs: st.mtimeMs, parsed });
+  // Yeni dokum -> gecmis (blob + degisiklik gunlugu), arka planda; ekrani bekletmez.
+  history.ingestDump(parsed).catch(() => {});
   return parsed;
 }
 
@@ -141,6 +144,8 @@ function isAdmin(req) {
 // ── HTTP ────────────────────────────────────────────────────────────────────────────────
 function initNginxConsole(app) {
   const { requireAuth } = require('../auth/index.cjs');
+  history.init({ consoleDir, loadDump, listDumpedHosts });
+  history.startWatcher(5);
   const router = express.Router();
   router.use(express.json({ limit: '2mb' }));
   router.use(requireAuth);
@@ -336,10 +341,49 @@ function initNginxConsole(app) {
         requester: req.session?.user?.username || '',
       };
       const r = await launch(req, REGISTRY_KEYS.push, `Nginx Hub: ${mode} ${path.basename(filePath)} → ${hosts.length === 1 ? hosts[0] : hosts.length + ' sunucu'}`, extraVars, { op: 'publish', hosts, filePath, mode, newSha256: newSha, force });
+      // Gecmis: yeni icerik blob olarak simdiden saklanir + beklemede publish satiri (dokum baglar)
+      history.putBlob(newSha, body);
+      await history.recordPublishIntent({ hosts, filePath, newSha, expected, requester: req.session?.user?.username || '', jobId: r.jobId });
       res.json({ ok: true, ...r, hosts, path: filePath, mode, newSha256: newSha });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
+  });
+
+  // ── Gecmis (Git benzeri) ─────────────────────────────────────────────────────────
+  router.get('/history/:host', async (req, res) => {
+    const host = String(req.params.host || '').toUpperCase();
+    const p = String(req.query.path || '');
+    if (!HOST_RE.test(host) || !p) return res.status(400).json({ ok: false, message: 'Geçersiz istek.' });
+    try {
+      res.json({ ok: true, host, path: p, versions: await history.fileHistory(host, p) });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // Filo genelinde son degisiklikler: ?host=&path=&source=&since=ISO&limit=
+  router.get('/changes', async (req, res) => {
+    try {
+      const rows = await history.changes({
+        limit: req.query.limit,
+        host: req.query.host ? String(req.query.host).toUpperCase() : undefined,
+        pathLike: req.query.path ? String(req.query.path) : undefined,
+        source: req.query.source ? String(req.query.source) : undefined,
+        since: req.query.since ? new Date(String(req.query.since)) : undefined,
+      });
+      res.json({ ok: true, changes: rows });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // Blob icerigi (sha256) — diff/geri donus icin
+  router.get('/blob/:sha', (req, res) => {
+    const sha = String(req.params.sha || '').toLowerCase();
+    const content = history.getBlob(sha);
+    if (content == null) return res.status(404).json({ ok: false, message: 'İçerik depoda yok (512 KB üstü ya da geçmiş öncesi).' });
+    res.json({ ok: true, sha256: sha, content });
   });
 
   // Canli job durumu + stdout (JobTracker penceresi)

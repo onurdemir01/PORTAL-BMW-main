@@ -732,6 +732,44 @@ const TABLES = [
       )`,
   },
   {
+    // Nginx Hub gecmisi (2026-09-19, Git benzeri): (host, path) basina SON bilinen sha —
+    // degisiklik tespiti icin. Icerik DB'de DEGIL: /sw/BMW_PORTAL/nginx_console/objects/<sha>.
+    name: 'nginx_hub_file_state',
+    sql: `
+      CREATE TABLE nginx_hub_file_state (
+        host      NVARCHAR(64)  NOT NULL,
+        path      NVARCHAR(512) NOT NULL,
+        sha256    NVARCHAR(64)  NULL,
+        size      BIGINT NULL,
+        mtime     NVARCHAR(32)  NULL,
+        last_seen DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        PRIMARY KEY (host, path)
+      )`,
+  },
+  {
+    // YALNIZ degisiklikte bir satir (first-seen | server | portal-publish | deleted);
+    // taramada degismeyen dosya icin satir yazilmaz -> degisiklik sayisiyla buyur.
+    // pending=1: Portal publish niyeti, dokum sha'yi gorunce 0'a iner (kaynak eslestirme).
+    name: 'nginx_hub_file_history',
+    sql: `
+      CREATE TABLE nginx_hub_file_history (
+        id          INT IDENTITY(1,1) PRIMARY KEY,
+        host        NVARCHAR(64)  NOT NULL,
+        path        NVARCHAR(512) NOT NULL,
+        old_sha256  NVARCHAR(64)  NULL,
+        new_sha256  NVARCHAR(64)  NULL,
+        size        BIGINT NULL,
+        file_mtime  NVARCHAR(32)  NULL,
+        file_owner  NVARCHAR(64)  NULL,
+        source      NVARCHAR(24)  NOT NULL,
+        requester   NVARCHAR(128) NULL,
+        job_id      INT NULL,
+        seen_at     DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        dump_time   DATETIME2 NULL,
+        pending     BIT NOT NULL DEFAULT 0
+      )`,
+  },
+  {
     // Element basina hedefleme kurallari. principal_type ∈ {role, user}; principal_id =
     // rol adi ("Admin"/"User") veya kullanici adi (lowercase). Cozunurluk (visibility.cjs):
     // enabled=false ⇒ herkese kapali → Admin ⇒ gorur → user kurali > role kurali → default_visible.
@@ -3222,6 +3260,9 @@ async function setupTables() {
     { name: 'IX_audit_created', table: 'logx_audit_logs', cols: 'created_at DESC' },
     { name: 'IX_audit_user_created', table: 'logx_audit_logs', cols: 'username, created_at DESC' },
     { name: 'IX_dl_expires', table: 'logx_v2_downloads', cols: 'expires_at' },
+    { name: 'IX_nhh_host_path', table: 'nginx_hub_file_history', cols: 'host, path, seen_at DESC' },
+    { name: 'IX_nhh_seen', table: 'nginx_hub_file_history', cols: 'seen_at DESC' },
+    { name: 'IX_nhh_pending', table: 'nginx_hub_file_history', cols: 'pending, host' },
     { name: 'IX_dl_token', table: 'logx_v2_downloads', cols: 'token' },
     { name: 'IX_dl_request', table: 'logx_v2_downloads', cols: 'request_id' },
     { name: 'IX_opsxdl_expires', table: 'opsx_dump_downloads', cols: 'expires_at' },

@@ -59,3 +59,18 @@ Portal'daki "Yenile" yalnız seçili sunucuları gönderir; "Tüm filo" düğmes
 
 0 ok · 50 yol yasak · 51 içerik/mod · 59 kilit · 60 sha uyuşmazlığı · 61 create ama dosya var ·
 62 `nginx -t` düştü (geri alındı) · 63 reload düştü (dosya yeni haliyle kaldı, -t temizdi).
+
+## Konfigürasyon geçmişi (Git benzeri, 2026-09-19)
+
+Ek job/SSH **yok**; dokumdaki sha256'lar kullanılır. Portal her yeni dokumu işlerken:
+- dosya içeriklerini **içerik adresli** saklar: `<console_dir>/objects/<sha[0:2]>/<sha>` — aynı içerik
+  filoda bir kez (20 sunucudaki aynı vhost = tek blob; ~20-40 MB + değişiklik başına birkaç KB),
+- `nginx_hub_file_state` (host,path → son sha) ile karşılaştırıp **yalnız değişen** dosya için
+  `nginx_hub_file_history`'ye bir satır yazar (kaynak: `first-seen` / `server` = sunucuda elle /
+  `portal-publish` = kim, hangi job / `deleted`). Değişmeyen dosya için satır yok.
+- Publish anında `pending=1` satır açılır; dokum aynı sha'yı görünce bağlanır → "Portal publish".
+- Dump betiği ağaç satırına `stat %U` (dosya sahibi) ekler: elle değişikliklerde ipucu.
+
+Ekran: dosya panelinde **Geçmiş** (sürümler, fark, şu ankiyle, "bu sürüme dön" → Publish),
+üst sekmede **Değişiklikler** (filo geneli akış, kaynak/tarih filtresi, diff). Uçlar:
+`GET /history/:host?path=`, `GET /changes`, `GET /blob/:sha`.

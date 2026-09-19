@@ -89,6 +89,27 @@ export interface NcCertsResult {
   summary: { total: number; expired: number; within30: number; within90: number; missing: number; selfSigned: number; generatedAt: string };
 }
 
+// Gecmis (Git benzeri, 2026-09-19): yalniz degisiklikte satir; icerik blob deposunda (sha256)
+export type NcChangeSource = "first-seen" | "server" | "portal-publish" | "deleted";
+export interface NcChange {
+  id: number;
+  host: string;
+  path: string;
+  oldSha256: string | null;
+  newSha256: string | null;
+  size: number | null;
+  fileMtime: string | null;
+  fileOwner: string | null;
+  source: NcChangeSource;
+  requester: string | null;
+  jobId: number | null;
+  seenAt: string | null;
+  dumpTime: string | null;
+  pending: boolean;
+  hasOld: boolean;
+  hasNew: boolean;
+}
+
 export interface NcLaunch { ok: boolean; jobId: number | null; status: string | null; awxServerId: number; message?: string; newSha256?: string; currentSha256?: string | null; conflicts?: { host: string; reason: string; currentSha256?: string }[]; hosts?: string[] }
 export interface NcJobStatus { ok: boolean; status: string; output: string; result?: unknown; message?: string }
 
@@ -108,4 +129,13 @@ export const nginxConsoleApi = {
   push: (body: { hosts: string[]; path: string; mode: "create" | "update"; content: string; expectedSha?: Record<string, string>; force?: boolean }): Promise<NcLaunch> =>
     fetch(`${BASE}/push`, json(body)).then(safeJson),
   jobStatus: (awxServerId: number, jobId: number): Promise<NcJobStatus> => fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
+  // Gecmis
+  history: (host: string, path: string): Promise<{ ok: boolean; versions: NcChange[]; message?: string }> =>
+    fetch(`${BASE}/history/${encodeURIComponent(host)}?path=${encodeURIComponent(path)}`).then(safeJson),
+  changes: (q: { host?: string; path?: string; source?: string; since?: string; limit?: number } = {}): Promise<{ ok: boolean; changes: NcChange[]; message?: string }> => {
+    const u = new URLSearchParams();
+    Object.entries(q).forEach(([k, v]) => { if (v != null && v !== "") u.set(k, String(v)); });
+    return fetch(`${BASE}/changes?${u.toString()}`).then(safeJson);
+  },
+  blob: (sha: string): Promise<{ ok: boolean; sha256: string; content: string; message?: string }> => fetch(`${BASE}/blob/${encodeURIComponent(sha)}`).then(safeJson),
 };

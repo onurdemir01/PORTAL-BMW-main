@@ -11,7 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, DocumentPlusIcon, FolderIcon, FolderOpenIcon,
-  MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon,
+  MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon,
 } from '@heroicons/react/24/outline';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,9 +20,9 @@ import { toast } from '@/hooks/useToast';
 import { Modal } from '@/components/common/Modal';
 import { Pill, Panel, Code } from '@/components/denetim/ui';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
-import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert } from '@/api/nginxConsoleApi';
+import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
 
-type Tab = 'config' | 'certs';
+type Tab = 'config' | 'certs' | 'changes';
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -88,14 +88,14 @@ export default function NginxConsolePage() {
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
-          {([{ id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }] as const).map((t) => (
+          {([{ id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }] as const).map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
               <t.icon className="w-4 h-4" /> {t.label}
             </button>
           ))}
         </div>
       </div>
-      {tab === 'config' ? <ConfigTab isAdmin={isAdmin} /> : <CertsTab />}
+      {tab === 'config' ? <ConfigTab isAdmin={isAdmin} /> : tab === 'changes' ? <ChangesTab /> : <CertsTab />}
     </div>
   );
 }
@@ -122,6 +122,7 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
   // dokumu olan diger sunuculari da secilebilir. Host basina beklenen sha karsilastirmadan gelir.
   const [pubHosts, setPubHosts] = useState<Set<string>>(new Set());
   const [pubShas, setPubShas] = useState<Record<string, { sha256: string | null; exists: boolean }>>({});
+  const [histOpen, setHistOpen] = useState(false);
   const [compare, setCompare] = useState<{ path: string; rows: { host: string; exists: boolean; sha256: string | null; mtime: string | null }[]; variants: number } | null>(null);
 
   const loadHosts = useCallback(async () => {
@@ -143,7 +144,7 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
     if (!cur) return;
     const f = await nginxConsoleApi.file(cur, p);
     if (!f.ok) { toast.error(f.message || 'Dosya okunamadı.'); return; }
-    setFile(f); setDraft(f.content || ''); setMode('update'); setNewPath('');
+    setFile(f); setDraft(f.content || ''); setMode('update'); setNewPath(''); setHistOpen(false);
   };
 
   // Servis -> sunucular
@@ -317,7 +318,10 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
       } actions={(file || mode === 'create') && (
         <div className="flex items-center gap-1">
           {file && mode === 'update' && (
-            <button onClick={async () => { const r = await nginxConsoleApi.compare(file.path); if (r.ok) setCompare(r); }} className={SM_BTN} style={smBtn()} title="Bu yol diğer sunucularda aynı mı?">Diğer sunucularda</button>
+            <>
+              <button onClick={async () => { const r = await nginxConsoleApi.compare(file.path); if (r.ok) setCompare(r); }} className={SM_BTN} style={smBtn()} title="Bu yol diğer sunucularda aynı mı?">Diğer sunucularda</button>
+              <button onClick={() => setHistOpen((o) => !o)} className={SM_BTN} style={smBtn(histOpen)} title="Bu dosyanın sürüm geçmişi (Git gibi)"><ClockIcon className="w-3.5 h-3.5" />Geçmiş</button>
+            </>
           )}
           <button disabled={!dirty} onClick={() => { if (mode === 'create') { setMode('update'); setDraft(file?.content || ''); } else setDraft(file?.content || ''); }} className={SM_BTN} style={smBtn()}><ArrowUturnLeftIcon className="w-3.5 h-3.5" />Geri al</button>
           {isAdmin && <button disabled={!dirty || busy} onClick={openConfirm} className={SM_BTN} style={smBtn(true)} title="Sunucuya yayınla: kilit → yedek → yaz → nginx -t → reload"><PaperAirplaneIcon className="w-3.5 h-3.5" />Yayınla (Publish)</button>}
@@ -335,7 +339,10 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
                   {file.tooLarge && <Pill tone="danger">512 KB üstü — içerik dokumde yok</Pill>}
                 </div>
               )}
-              <textarea value={draft} onChange={(e) => setDraft(e.target.value)} readOnly={!isAdmin || !!file?.tooLarge} spellCheck={false} className="w-full font-mono text-[12px] leading-5 p-2 border rounded-lg" style={{ minHeight: '65vh', borderColor: 'var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', tabSize: 4 }} />
+              {histOpen && file && mode === 'update' && cur && (
+                <FileHistory host={cur} path={file.path} currentSha={file.sha256} isAdmin={isAdmin} onRestore={(content) => { setDraft(content); setHistOpen(false); toast.success('Sürüm editöre alındı — yayınlamak için "Yayınla (Publish)".'); }} />
+              )}
+              <textarea value={draft} onChange={(e) => setDraft(e.target.value)} readOnly={!isAdmin || !!file?.tooLarge} spellCheck={false} className="w-full font-mono text-[12px] leading-5 p-2 border rounded-lg" style={{ minHeight: histOpen ? '40vh' : '65vh', borderColor: 'var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', tabSize: 4 }} />
               {!isAdmin && <div className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Salt okunur — değişiklik yalnız Admin.</div>}
             </>
           )}
@@ -458,6 +465,158 @@ function NewFileModal({ open, onClose, host, prefix, hosts, onCreate }: { open: 
         <textarea value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} placeholder="# içerik (boş bırakıp editörde de yazabilirsiniz)" className="w-full font-mono text-[12px] p-2 border rounded-lg" style={{ minHeight: '30vh', borderColor: 'var(--border)' }} />
       </div>
     </Modal>
+  );
+}
+
+// ── Gecmis (Git benzeri) ────────────────────────────────────────────────────────────
+const SOURCE_TR: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' | 'info' }> = {
+  'portal-publish': { label: 'Portal publish', tone: 'success' },
+  server: { label: 'sunucuda değişti', tone: 'warning' },
+  'first-seen': { label: 'ilk görülme', tone: 'neutral' },
+  deleted: { label: 'silindi', tone: 'danger' },
+};
+const fmtWhen = (c: NcChange) => fmtDateTime(c.dumpTime || c.seenAt);
+
+/** Iki sha arasindaki fark: blob'lari ceker, lineDiff ile gosterir. */
+function DiffView({ oldSha, newSha, labels }: { oldSha: string | null; newSha: string | null; labels?: [string, string] }) {
+  const [state, setState] = useState<{ a: string; b: string } | null>(null);
+  const [err, setErr] = useState('');
+  useAsyncEffect(async () => {
+    setState(null); setErr('');
+    try {
+      const [a, b] = await Promise.all([oldSha ? nginxConsoleApi.blob(oldSha) : Promise.resolve({ ok: true, content: '' }), newSha ? nginxConsoleApi.blob(newSha) : Promise.resolve({ ok: true, content: '' })]);
+      if (!a.ok || !b.ok) { setErr((a as { message?: string }).message || (b as { message?: string }).message || 'İçerik alınamadı.'); return; }
+      setState({ a: a.content || '', b: b.content || '' });
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  }, [oldSha, newSha]);
+  if (err) return <div className="text-xs text-amber-700">{err}</div>;
+  if (!state) return <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Fark hesaplanıyor…</div>;
+  const d = lineDiff(state.a, state.b);
+  return (
+    <div className="text-xs space-y-1">
+      <div className="flex gap-2 items-center">
+        <Pill tone="danger">−{d.removed}</Pill><Pill tone="success">+{d.added}</Pill>
+        {labels && <span style={{ color: 'var(--text-muted)' }}>{labels[0]} → {labels[1]}</span>}
+        {d.added === 0 && d.removed === 0 && <span style={{ color: 'var(--text-muted)' }}>içerik aynı</span>}
+      </div>
+      <pre className="max-h-[45vh] overflow-auto p-2 rounded-lg border font-mono text-[11px] leading-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+        {d.hunks.map((l, i) => (<div key={i} style={{ color: l.startsWith('+') ? 'var(--status-success)' : l.startsWith('-') ? 'var(--status-danger)' : undefined }}>{l}</div>))}
+      </pre>
+    </div>
+  );
+}
+
+function FileHistory({ host, path, currentSha, isAdmin, onRestore }: { host: string; path: string; currentSha: string; isAdmin: boolean; onRestore: (content: string) => void }) {
+  const [versions, setVersions] = useState<NcChange[] | null>(null);
+  const [sel, setSel] = useState<{ a: string | null; b: string | null; la: string; lb: string } | null>(null);
+  useAsyncEffect(async () => {
+    setVersions(null); setSel(null);
+    const r = await nginxConsoleApi.history(host, path);
+    setVersions(r.ok ? r.versions : []);
+  }, [host, path]);
+  const restore = async (sha: string) => {
+    const r = await nginxConsoleApi.blob(sha);
+    if (!r.ok) { toast.error(r.message || 'İçerik yok.'); return; }
+    onRestore(r.content);
+  };
+  return (
+    <div className="mb-2 rounded-lg border p-2 space-y-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+      <div className="text-xs font-semibold flex items-center gap-2"><ClockIcon className="w-3.5 h-3.5" /> Sürüm geçmişi <span className="font-normal" style={{ color: 'var(--text-muted)' }}>— yalnız değişiklikler kayıtlıdır (Git gibi); "fark" = önceki sürümle</span></div>
+      {versions === null && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</div>}
+      {versions && versions.length === 0 && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Henüz kayıt yok — ilk dokumdan sonra oluşur.</div>}
+      {versions && versions.length > 0 && (
+        <div className="max-h-48 overflow-auto">
+          <table className="w-full text-[11px]">
+            <thead><tr className="text-left" style={{ color: 'var(--text-muted)' }}><th className="py-0.5 pr-2">Zaman</th><th className="pr-2">Kaynak</th><th className="pr-2">Kim</th><th className="pr-2">sha</th><th className="pr-2">Boyut</th><th></th></tr></thead>
+            <tbody>
+              {versions.map((v) => (
+                <tr key={v.id} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                  <td className="py-0.5 pr-2 whitespace-nowrap">{fmtWhen(v)}{v.pending && <span title="dokum henüz doğrulamadı"> ⏳</span>}</td>
+                  <td className="pr-2"><Pill tone={SOURCE_TR[v.source]?.tone || 'neutral'}>{SOURCE_TR[v.source]?.label || v.source}</Pill></td>
+                  <td className="pr-2">{v.requester || v.fileOwner || '—'}{v.jobId ? <span style={{ color: 'var(--text-muted)' }}> · job {v.jobId}</span> : ''}</td>
+                  <td className="pr-2 font-mono">{shortSha(v.newSha256)}{v.newSha256 === currentSha && <Pill tone="info">şu anki</Pill>}</td>
+                  <td className="pr-2 tabular-nums">{fmtBytes(v.size)}</td>
+                  <td className="whitespace-nowrap">
+                    {v.oldSha256 && v.newSha256 && <button className="underline mr-2" onClick={() => setSel({ a: v.oldSha256, b: v.newSha256, la: 'önceki', lb: fmtWhen(v) })}>fark</button>}
+                    {v.newSha256 && v.newSha256 !== currentSha && <button className="underline mr-2" onClick={() => setSel({ a: v.newSha256, b: currentSha, la: fmtWhen(v), lb: 'şu anki' })}>şu ankiyle</button>}
+                    {isAdmin && v.newSha256 && v.hasNew && v.newSha256 !== currentSha && <button className="underline" onClick={() => restore(v.newSha256!)}>bu sürüme dön</button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {sel && <DiffView oldSha={sel.a} newSha={sel.b} labels={[sel.la, sel.lb]} />}
+    </div>
+  );
+}
+
+function ChangesTab() {
+  const [rows, setRows] = useState<NcChange[] | null>(null);
+  const [q, setQ] = useState('');
+  const [src, setSrc] = useState<'all' | 'server' | 'portal-publish' | 'deleted' | 'first-seen'>('all');
+  const [days, setDays] = useState(7);
+  const [sel, setSel] = useState<NcChange | null>(null);
+  const load = useCallback(async () => {
+    setRows(null);
+    const since = new Date(Date.now() - days * 86400000).toISOString();
+    const r = await nginxConsoleApi.changes({ source: src === 'all' ? undefined : src, since, limit: 500 });
+    setRows(r.ok ? r.changes : []);
+  }, [src, days]);
+  useAsyncEffect(async () => { await load(); }, [load]);
+  const list = useMemo(() => {
+    if (!rows) return [];
+    const n = q.trim().toLowerCase();
+    return n ? rows.filter((c) => [c.host, c.path, c.requester, c.fileOwner].some((x) => String(x || '').toLowerCase().includes(n))) : rows;
+  }, [rows, q]);
+  return (
+    <div className="space-y-3">
+      <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        Filo genelinde konfigürasyon değişiklikleri — dokumlardan üretilir, yalnız sha'sı değişen dosya için bir kayıt. <b>sunucuda değişti</b> = Portal dışından (elle) yapılan değişiklik; <b>Portal publish</b> = kim, hangi job.
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="sunucu / dosya / kim" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-72" style={{ borderColor: 'var(--border)' }} />
+        </div>
+        <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
+          {([['all', 'Hepsi'], ['server', 'Sunucuda değişti'], ['portal-publish', 'Portal publish'], ['deleted', 'Silindi'], ['first-seen', 'İlk görülme']] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setSrc(id)} className={`px-2.5 py-1 text-xs rounded-md ${src === id ? 'shadow-sm' : ''}`} style={{ background: src === id ? 'var(--bg-surface)' : 'transparent', color: src === id ? 'var(--text-primary)' : 'var(--text-muted)' }}>{label}</button>
+          ))}
+        </div>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="px-2 py-1 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}>
+          {[1, 7, 30, 90, 365].map((d) => <option key={d} value={d}>son {d} gün</option>)}
+        </select>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{list.length} kayıt</span>
+        <button onClick={load} className={`${SM_BTN} ml-auto`} style={smBtn()}><ArrowPathIcon className="w-3.5 h-3.5" /> Yenile</button>
+      </div>
+      <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+        <table className="w-full text-xs">
+          <thead><tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+            <th className="px-3 py-2">Zaman</th><th className="px-3 py-2">Sunucu</th><th className="px-3 py-2">Dosya</th><th className="px-3 py-2">Kaynak</th><th className="px-3 py-2">Kim</th><th className="px-3 py-2">sha</th><th className="px-3 py-2"></th>
+          </tr></thead>
+          <tbody>
+            {list.map((c) => (
+              <tr key={c.id} className="border-t hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-subtle)' }}>
+                <td className="px-3 py-1.5 whitespace-nowrap">{fmtWhen(c)}</td>
+                <td className="px-3 py-1.5 font-mono">{c.host}</td>
+                <td className="px-3 py-1.5 font-mono break-all">{c.path.replace('/usr/nginx/', '')}</td>
+                <td className="px-3 py-1.5"><Pill tone={SOURCE_TR[c.source]?.tone || 'neutral'}>{SOURCE_TR[c.source]?.label || c.source}</Pill></td>
+                <td className="px-3 py-1.5">{c.requester || c.fileOwner || '—'}{c.jobId ? <span style={{ color: 'var(--text-muted)' }}> · job {c.jobId}</span> : ''}</td>
+                <td className="px-3 py-1.5 font-mono">{shortSha(c.oldSha256)} → {shortSha(c.newSha256)}</td>
+                <td className="px-3 py-1.5">{(c.hasOld || c.hasNew) && c.source !== 'first-seen' && <button className="underline" onClick={() => setSel(c)}>fark</button>}</td>
+              </tr>
+            ))}
+            {rows && list.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center" style={{ color: 'var(--text-muted)' }}>Kayıt yok.</td></tr>}
+            {rows === null && <tr><td colSpan={7} className="px-3 py-6 text-center" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Modal open={!!sel} onClose={() => setSel(null)} title={sel ? `${sel.host} · ${sel.path.split('/').pop()}` : ''} subtitle={sel ? `${sel.path} · ${SOURCE_TR[sel.source]?.label || sel.source} · ${fmtWhen(sel)}${sel.requester ? ' · ' + sel.requester : ''}` : undefined} size="wide">
+        {sel && <DiffView oldSha={sel.oldSha256} newSha={sel.newSha256} labels={['önceki', 'sonraki']} />}
+      </Modal>
+    </div>
   );
 }
 

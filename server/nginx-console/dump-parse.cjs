@@ -34,7 +34,9 @@ function parseDump(text) {
       i++;
       while (i < n && lines[i].replace(/\r$/, '') !== '@@END') {
         const f = lines[i].replace(/\r$/, '').split('\t');
-        if (f.length >= 4) out.tree.push({ size: Number(f[0]) || 0, mtime: f[1], sha256: f[2], path: f.slice(3).join('\t') });
+        // 5 alan (2026-09-19, sahip eklendi) ya da eski 4 alan; yol her zaman SON alan
+        if (f.length >= 5) out.tree.push({ size: Number(f[0]) || 0, mtime: f[1], sha256: f[2], owner: f[3] === '?' ? null : f[3], path: f.slice(4).join('\t') });
+        else if (f.length === 4) out.tree.push({ size: Number(f[0]) || 0, mtime: f[1], sha256: f[2], owner: null, path: f[3] });
         i++;
       }
     } else if (line.startsWith('@@FILE ')) {
