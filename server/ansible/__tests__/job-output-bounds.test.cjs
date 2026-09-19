@@ -47,6 +47,19 @@ function sahteAwx(bayt) {
 }
 
 /**
+ * ASILMAYA DAYANIKLI BEKLEME. Bir mutasyon promise'i cozulmez birakirsa (bkz.
+ * JO1b), `await` suiti SONSUZA DEK bloklar ve dosyadaki DIGER testler de hic
+ * kosmaz — yani tek bir hata butun bekciyi sustururdu. Her cagri kendi sinirini
+ * tasir.
+ */
+function sureSinirli(p, ms, etiket) {
+  return Promise.race([
+    p,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`${etiket}: promise ${ms} ms icinde cozulmedi`)), ms)),
+  ]);
+}
+
+/**
  * `fetchAwxPlainText` disa acilmiyor; kaynaktan cikarilip AYNI bagimliliklarla
  * kosturulur — kopyasi degil, GERCEK govde. (Sabitler de birlikte alinir, yoksa
  * `AWX_RESPONSE_MAX_BYTES` tanimsiz kalir.)
@@ -70,7 +83,11 @@ test('JO1 `fetchAwxPlainText` buyuk yaniti KIRPIYOR ve sessiz kalmiyor', async (
   const fn = gercekFetch();
   const { srv, port } = await sahteAwx(20 * 1024 * 1024);
   try {
-    const out = await fn.fetchAwxPlainText(`http://127.0.0.1:${port}`, 't', '/stdout');
+    const out = await sureSinirli(
+      fn.fetchAwxPlainText(`http://127.0.0.1:${port}`, 't', '/stdout'),
+      15000,
+      'JO1',
+    );
     assert.ok(
       out.length <= fn.AWX_RESPONSE_MAX_BYTES + fn.AWX_TRUNCATION_NOTICE.length + 65536,
       `yanit kirpilmadi: ${Math.round(out.length / 1024 / 1024)} MB alindi`,
@@ -103,7 +120,11 @@ test('JO2 kucuk yanit kirpilmiyor ve uyari metni EKLENMIYOR', async () => {
   const fn = gercekFetch();
   const { srv, port } = await sahteAwx(128 * 1024);
   try {
-    const out = await fn.fetchAwxPlainText(`http://127.0.0.1:${port}`, 't', '/stdout');
+    const out = await sureSinirli(
+      fn.fetchAwxPlainText(`http://127.0.0.1:${port}`, 't', '/stdout'),
+      15000,
+      'JO2',
+    );
     assert.equal(out.length, 128 * 1024, 'kucuk yanit degistirildi');
     assert.ok(!out.includes('KIRPILDI'), 'kirpilmayan yanita uyari eklendi');
   } finally {
