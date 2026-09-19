@@ -609,6 +609,69 @@ thead th {
   color: var(--nav-text);
   font-weight: 700;
 }
+/* ── Nginx Hub nav girisi (2026-09-19): nginx yesili (#009639) cerceve, cercevenin
+   etrafinda donen "lazer" isik; "Hub" sozcugu acik yesil parlar. Donme, conic-gradient'in
+   acisini @property ile animasyonlayarak; cerceve mask ile yalniz kenarda birakilir.
+   prefers-reduced-motion: animasyon kapali, sabit cerceve kalir. */
+@property --nh-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+.nginx-hub-link {
+  position: relative;
+  margin: 0.35rem 0.75rem;
+  border-radius: 0.6rem;
+  border-left: 0 !important;
+  padding-left: 1rem !important;
+  isolation: isolate;
+  overflow: hidden;
+}
+.nginx-hub-link::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(from var(--nh-angle), transparent 0 62%, rgba(0, 150, 57, 0.25) 74%, #009639 86%, #8cf5b3 93%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: nh-spin 2.8s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+.nginx-hub-link::after {
+  /* sabit ince cerceve: @property desteklemeyen tarayicida da yesil kenar gorunsun */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(0, 150, 57, 0.45);
+  pointer-events: none;
+}
+.nginx-hub-link.is-current { background: rgba(0, 150, 57, 0.12); }
+.nginx-hub-label { display: inline-flex; gap: 0.3rem; align-items: baseline; }
+/* "Hub" rengi temaya gore: acik zeminde koyu nginx yesili (okunur), karanlikta acik yesil. */
+:root { --nh-hub: #007a2e; --nh-hub-bright: #009639; --nh-glow: rgba(0, 150, 57, 0.55); }
+:root[data-theme="dark"] { --nh-hub: #8cf5b3; --nh-hub-bright: #b9ffd2; --nh-glow: rgba(140, 245, 179, 0.9); }
+.nginx-hub-word {
+  color: var(--nh-hub);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 6px var(--nh-glow);
+  animation: nh-glow 2.2s ease-in-out infinite alternate;
+}
+@keyframes nh-spin { to { --nh-angle: 360deg; } }
+@keyframes nh-glow {
+  from { text-shadow: 0 0 2px var(--nh-glow); color: var(--nh-hub); }
+  to { text-shadow: 0 0 10px var(--nh-glow), 0 0 20px var(--nh-glow); color: var(--nh-hub-bright); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nginx-hub-link::before, .nginx-hub-word { animation: none; }
+}
+
 .pf-nav-toggle {
   display: flex;
   align-items: center;

@@ -118,7 +118,15 @@ test('NH6 kayitlar: PLAYBOOKS, registry seed, sayfa elementi (Admin), nav, route
   assert.match(setup, /element_key: 'NginxConsole'[\s\S]{0,400}roles: \['Admin'\]/);
   assert.match(setup, /page_name: 'NginxConsole', roles: 'Admin'/);
   assert.match(read('src/config/elements.ts'), /id: 'NginxConsole', label: 'Nginx Hub', route: '\/nginx-console'/);
-  assert.match(read('src/config/elements.ts'), /itemIds: \['Envanter', 'Denetim', 'NginxConsole'\]/);
+  // 2026-09-19: kendi nav grubu (Envanter'den ayri) + nginx yesili lazer cerceve / parlayan Hub
+  assert.match(read('src/config/elements.ts'), /id: 'nginxhub', label: 'Nginx Hub', itemIds: \['NginxConsole'\]/);
+  assert.match(setup, /element_key: 'navgroup:nginxhub'/);
+  assert.match(setup, /parent_key = 'navgroup:nginxhub' WHERE element_key = 'NginxConsole'/);
+  assert.match(read('src/components/layout/PageNav.tsx'), /nginx-hub-link/);
+  const css = read('src/index.css');
+  assert.match(css, /\.nginx-hub-link::before[\s\S]{0,600}conic-gradient\(from var\(--nh-angle\)/);
+  assert.match(css, /#009639/);
+  assert.match(css, /prefers-reduced-motion: reduce\) \{\s*\.nginx-hub-link::before, \.nginx-hub-word \{ animation: none; \}/);
   assert.match(read('src/App.tsx'), /PageVisibilityRoute pageId="NginxConsole"/);
   assert.match(read('server/index.cjs'), /nginx-console\/index\.cjs'\)\.initNginxConsole\(app\)/);
   // sunucu tarafi Admin kapisi

@@ -69,7 +69,9 @@ export const PAGES: PageElement[] = [
 // Envanter ayrı bir grup oldu. Her biri direkt açılır.
 export const NAV_GROUPS: NavGroupDef[] = [
   { id: 'genel', label: 'Genel', itemIds: ['Dashboard'] },
-  { id: 'envanter', label: 'Envanter', itemIds: ['Envanter', 'Denetim', 'NginxConsole'] },
+  { id: 'envanter', label: 'Envanter', itemIds: ['Envanter', 'Denetim'] },
+  // Nginx Hub tek basina bir sekme (2026-09-19)
+  { id: 'nginxhub', label: 'Nginx Hub', itemIds: ['NginxConsole'] },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
   { id: 'operasyon', label: 'Nöbetçiler', itemIds: ['Nöbet'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.

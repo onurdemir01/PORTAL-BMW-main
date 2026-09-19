@@ -75,15 +75,17 @@ export default function PageNav({ onNavigate }: Props) {
             // Tek ogeli grup: ust seviye baglanti (OpenShift'teki "Home" gibi tekil girisler).
             if (group.items.length === 1) {
               const item = group.items[0];
+              // Nginx Hub (2026-09-19): nginx yesili "lazer" cerceve + parlayan "Hub" (bkz. index.css .nginx-hub-*)
+              const isHub = item.id === "NginxConsole";
               return (
                 <li key={group.id}>
                   <NavLink
                     to={item.to}
-                    className={linkClass}
+                    className={({ isActive }) => `${linkClass({ isActive })}${isHub ? " nginx-hub-link" : ""}`}
                     style={{ paddingLeft: "1rem" }}
                     onClick={onNavigate}
                   >
-                    {group.label}
+                    {isHub ? <span className="nginx-hub-label"><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span> : group.label}
                   </NavLink>
                 </li>
               );

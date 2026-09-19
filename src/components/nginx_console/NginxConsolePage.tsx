@@ -76,7 +76,7 @@ export default function NginxConsolePage() {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2"><ServerStackIcon className="w-6 h-6" /> Nginx Hub</h1>
+          <h1 className="text-xl font-semibold flex items-center gap-2"><ServerStackIcon className="w-6 h-6" style={{ color: '#009639' }} /> <span className="nginx-hub-label"><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span></h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
             Tüm nginx sunucularının konfigürasyon ağacı, dosya içerikleri ve sertifikaları; tek dosya değişikliği push (nginx -t, geri alma, reload). Veriler Ansible dokumundan gelir — sunucu başına saniyeler, tüm filo 30–40 dk.
           </p>

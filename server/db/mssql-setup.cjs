@@ -1355,6 +1355,8 @@ const ELEMENT_SEED = [
   // adimi gerekiyor).
   { element_key: 'navgroup:genel', element_type: 'nav_group', label: 'Genel', sort_order: 1 },
   { element_key: 'navgroup:envanter', element_type: 'nav_group', label: 'Envanter', sort_order: 2 },
+  // Nginx Hub kendi basina bir sekme (kullanici, 2026-09-19): Envanter grubundan AYRILDI.
+  { element_key: 'navgroup:nginxhub', element_type: 'nav_group', label: 'Nginx Hub', sort_order: 3 },
   {
     element_key: 'navgroup:performance',
     element_type: 'nav_group',
@@ -1411,10 +1413,10 @@ const ELEMENT_SEED = [
     // (push zaten sunucu tarafinda da Admin'e kapali).
     element_key: 'NginxConsole',
     element_type: 'page',
-    parent_key: 'navgroup:envanter',
+    parent_key: 'navgroup:nginxhub',
     label: 'Nginx Hub',
     route: '/nginx-console',
-    sort_order: 4,
+    sort_order: 1,
     roles: ['Admin'],
   },
   {
@@ -1873,6 +1875,16 @@ async function seedPortalElements(pool) {
     }
   } catch (err) {
     console.warn('[DB] Denetim admin-only migration uygulanamadi:', err.message);
+  }
+
+  // 2026-09-19: Nginx Hub Envanter grubundan kendi grubuna tasindi. Seed var olan satiri
+  // guncellemez; yalniz hala eski grupta duran kayit tasinir (admin baska yere koyduysa dokunulmaz).
+  try {
+    await pool.request().query(
+      `UPDATE portal_elements SET parent_key = 'navgroup:nginxhub' WHERE element_key = 'NginxConsole' AND parent_key = 'navgroup:envanter'`,
+    );
+  } catch (err) {
+    console.warn('[DB] Nginx Hub nav grubu guncellenemedi:', err.message);
   }
 
   // 2026-08-25: sayfa adi "Denetim" -> "Middleware Ic Denetim". ELEMENT_SEED yalnizca
