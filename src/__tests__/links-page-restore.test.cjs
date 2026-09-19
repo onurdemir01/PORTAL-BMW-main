@@ -1,4 +1,4 @@
-// src/__tests__/links-page-restore.test.cjs — "Faydali Linkler" sayfasinin GORUNUR kalmasi.
+// src/__tests__/links-page-restore.test.cjs — "Faydali Linkler" sayfasi: 2026-09-19'dan beri GIZLI (menu/route/seed kapali).
 //
 // Sayfa 2026-08-26'da menuden kaldirilmis, 2026-09-07'de geri acildi. Geri acmak UC
 // YERI birden gerektirdi ve biri unutulsa sayfa SESSIZCE gorunmez kalirdi:
@@ -24,38 +24,30 @@ const codeOnly = (s) =>
     .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
     .join('\n');
 
-test('LR1 menu ogesi ve grubu KAYITLI', () => {
-  // TIRNAKTAN BAGIMSIZ. `elements.ts` prettier'a ilk kez bu PR'da girdi ve cift
-  // tirnaklar tek tirnaga cevrildi — bekcinin ilk hali KOD DOGRUYKEN kirmizi
-  // dondu (ayni sebeple bes MEVCUT bekci de kirildi). Olcut BICIM degil KURAL.
+// 2026-09-19: sayfa YENIDEN KALDIRILDI (kullanici: "Yardimci Araclar su an hicbir ise
+// yaramiyor"). Bekciler tersine cevrildi: uc yer birden KAPALI olmali, aksi halde sayfa
+// yarim gorunur (menude var ama route yok -> 404; ya da DB seed geri getirir).
+test('LR1 menu ogesi ve grubu KAYITLI DEGIL', () => {
   const el = codeOnly(read('src/config/elements.ts')).replace(/"/g, "'");
-  assert.match(el, /id: 'Linkler'/, 'ELEMENTS icinde "Linkler" ogesi yok');
-  assert.match(el, /itemIds: \['Linkler'\]/, 'NAV_GROUPS icinde "Linkler" grubu yok');
+  assert.doesNotMatch(el, /id: 'Linkler'/, 'ELEMENTS icinde "Linkler" hala var');
+  assert.doesNotMatch(el, /itemIds: \['Linkler'\]/, 'NAV_GROUPS icinde "kaynaklar" grubu hala var');
 });
 
-test('LR2 route BAGLI', () => {
+test('LR2 route BAGLI DEGIL', () => {
   const app = codeOnly(read('src/App.tsx'));
-  assert.match(app, /path="\/links"/, "/links route'u yok — menu ogesi 404'e gider");
-  assert.match(app, /ImportantLinksPage/, 'sayfa bileseni import edilmemis');
+  assert.doesNotMatch(app, /path="\/links"/, "/links route'u hala bagli");
 });
 
-test('LR3 sayfayi HER ACILISTA silen temizlik CAGRILMIYOR', () => {
+test('LR3 sayfayi her aciliste silen temizlik CAGRILIYOR (DB nav grubu da menuden dussun)', () => {
   const setup = codeOnly(read('server/db/mssql-setup.cjs'));
-  // Fonksiyon TANIMLI kalabilir (ileride yeniden kaldirmak icin); CAGRILMAMALI.
-  assert.doesNotMatch(
-    setup,
-    /^\s*await removeKaynaklarNavGroup\(pool\);/m,
-    "removeKaynaklarNavGroup HALA cagriliyor — sayfa her restart'ta menuden duser",
-  );
+  assert.match(setup, /^\s*await removeKaynaklarNavGroup\(pool\);/m, 'removeKaynaklarNavGroup cagrilmiyor — DB-driven menude grup kalir');
 });
 
-test("LR4 DB seed'i sayfayi TANIYOR (kayitsiz anahtar yonetilemez)", () => {
-  // Kayitsiz bir anahtar "varsayilan gorunur" olur ve Sayfa Erisimi ekranindan
-  // YONETILEMEZ — bu repoda daha once yasanan bir tuzak.
+test("LR4 DB seed'i sayfayi YENIDEN OLUSTURMUYOR", () => {
   const setup = codeOnly(read('server/db/mssql-setup.cjs'));
-  assert.match(setup, /element_key: 'Linkler'/, 'ELEMENT_SEED icinde "Linkler" yok');
-  assert.match(setup, /element_key: 'navgroup:kaynaklar'/, 'nav grubu seed edilmemis');
-  assert.match(setup, /page_name: 'Linkler'/, 'PAGE_VISIBILITY_SEED icinde "Linkler" yok');
+  assert.doesNotMatch(setup, /element_key: 'Linkler'/, 'ELEMENT_SEED icinde "Linkler" hala var');
+  assert.doesNotMatch(setup, /element_key: 'navgroup:kaynaklar'/, 'nav grubu hala seed ediliyor');
+  assert.doesNotMatch(setup, /page_name: 'Linkler'/, 'PAGE_VISIBILITY_SEED icinde "Linkler" hala var');
 });
 
 test('LR5 yeni alanlar MEVCUT kurulumlara da gidiyor (ALTER var)', () => {

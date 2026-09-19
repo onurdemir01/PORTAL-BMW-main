@@ -1318,7 +1318,6 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'Performance', roles: 'Admin,User' },
   { page_name: 'AI Analist', roles: 'Admin,User' },
   { page_name: 'Nöbet', roles: 'Admin,User' },
-  { page_name: 'Linkler', roles: 'Admin,User' },
   { page_name: 'Admin', roles: 'Admin' },
 ];
 
@@ -1511,23 +1510,8 @@ const ELEMENT_SEED = [
     sort_order: 9,
     roles: ['Admin', 'User'],
   },
-  {
-    // 2026-09-07 GERI ACILDI. Anahtarlar ('Linkler', 'navgroup:kaynaklar') 2026-08-26
-    // oncesiyle AYNI: eski kurulumlarda kalmis gorunurluk kurallari yeniden baglansin.
-    element_key: 'navgroup:kaynaklar',
-    element_type: 'nav_group',
-    label: 'Yardımcı Araçlar',
-    sort_order: 10,
-  },
-  {
-    element_key: 'Linkler',
-    element_type: 'page',
-    parent_key: 'navgroup:kaynaklar',
-    label: 'Faydalı Linkler',
-    route: '/links',
-    sort_order: 10,
-    roles: ['Admin', 'User'],
-  },
+  // 'navgroup:kaynaklar' + 'Linkler' seed'leri 2026-09-19'da KALDIRILDI (menuden cikti);
+  // mevcut kurulumlarda kayitlari removeKaynaklarNavGroup() her aciliste temizler.
   {
     element_key: 'Admin',
     element_type: 'page',
@@ -2649,6 +2633,8 @@ async function setupTables() {
   await seedPageVisibility(pool);
   await seedPortalElements(pool);
   await migratePageParentKeysToNavGroups(pool);
+  // 2026-09-19: Yardımcı Araçlar / Faydalı Linkler menuden kaldirildi (bkz. elements.ts)
+  await removeKaynaklarNavGroup(pool);
   // removeKaynaklarNavGroup ARTIK CAGRILMIYOR (2026-09-07): "Linkler" sayfasi geri
   // acildi. Cagri kalsaydi kayit HER ACILISTA silinir, sayfa her restart'ta menuden
   // duser ve sebebi hicbir yerde gorunmezdi. Fonksiyon SILINMEDI — ileride yeniden

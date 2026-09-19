@@ -42,9 +42,10 @@ export const PAGES: PageElement[] = [
   { id: 'Performance', label: 'Performance', route: '/performance' },
   { id: 'AI Analist', label: 'AI Analist', route: '/ai-analyst' },
   { id: 'Nöbet', label: 'Nöbet', route: '/duty-roster' },
-  // 2026-09-07: GERI ACILDI. element_key "Linkler" DEGISMEDI — portal_element_visibility
-  // kurallari ve canViewPage() cagrilari bu anahtara bagli.
-  { id: 'Linkler', label: 'Faydalı Linkler', route: '/links' },
+  // 2026-09-19: "Yardımcı Araçlar" / "Faydalı Linkler" MENUDEN KALDIRILDI (kullanici: "su an
+  // hicbir ise yaramiyor"). Ilk kaldirma 2026-08-26, geri acma 2026-09-07 — uc yer birden:
+  // burasi (ELEMENTS + NAV_GROUPS), src/App.tsx route'u, mssql-setup removeKaynaklarNavGroup().
+  // Sayfa bileseni, /api/links ve portal_links tablosu YERINDE; geri acmak icin ayni uc yer.
   { id: 'Admin', label: 'Admin', route: '/admin' },
 ];
 
@@ -83,9 +84,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
     itemIds: ['Self Service', 'Ansible', 'LogX', 'OpsX', 'FileX', 'Telnet', 'ScaleX'],
   },
   { id: 'ai', label: 'AI Analist', itemIds: ['AI Analist'] },
-  // Grup ANAHTARI ("kaynaklar") 2026-08-26 oncesiyle AYNI: DB'deki nav_group kaydi
-  // ve ona bagli gorunurluk kurallari korunsun diye.
-  { id: 'kaynaklar', label: 'Yardımcı Araçlar', itemIds: ['Linkler'] },
+  // "kaynaklar" (Yardımcı Araçlar) grubu 2026-09-19'da kaldirildi — bkz. ELEMENTS notu.
   { id: 'admin', label: 'Admin', itemIds: ['Admin'] },
 ];
 

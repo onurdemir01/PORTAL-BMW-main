@@ -15,7 +15,7 @@ const DenetimPage = React.lazy(() => import('@/components/DenetimPage'));
 const NginxAuditHostPage = React.lazy(() => import('@/components/denetim/NginxAuditHostPage'));
 const EnvanterPage = React.lazy(() => import('@/components/EnvanterPage'));
 const DutyRosterPage = React.lazy(() => import('@/components/DutyRosterPage'));
-const ImportantLinksPage = React.lazy(() => import('@/components/ImportantLinksPage'));
+// ImportantLinksPage: 2026-09-19'da menu ve route kaldirildi (bilesen duruyor; bkz. elements.ts)
 const DynatracePage = React.lazy(() => import('@/components/dynatrace/DynatracePage'));
 const SelfServicePage = React.lazy(() => import('@/components/SelfServicePage'));
 const AnsiblePage = React.lazy(() => import('@/components/ansible/AnsiblePage'));
@@ -75,7 +75,6 @@ export default function App() {
             </Route>
             <Route element={<PageVisibilityRoute pageId="Nöbet" />}>
               <Route path="/duty-roster" element={<DutyRosterPage />} />
-              <Route path="/links" element={<ImportantLinksPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="Performance" />}>
               <Route path="/performance" element={<DynatracePage />} />

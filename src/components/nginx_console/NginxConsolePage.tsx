@@ -382,7 +382,7 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
 
       {/* Portal ici onay penceresi (tarayici confirm'i yerine) */}
       <Modal open={!!ask} onClose={() => setAsk(null)} title={ask?.title} size="sm"
-        footer={<div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>Vazgeç</button><button onClick={() => { const a = ask; setAsk(null); a?.onOk(); }} className={SM_BTN} style={smBtn(true)}>{ask?.okLabel}</button></div>}>
+        footer={<div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button onClick={() => { const a = ask; setAsk(null); a?.onOk(); }} className={SM_BTN} style={smBtn(true)}>{ask?.okLabel}</button></div>}>
         <div className="text-xs">{ask?.body}</div>
       </Modal>
 
