@@ -23,6 +23,12 @@ import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert } from '@/api/nginxConsoleApi';
 
 type Tab = 'config' | 'certs';
+// Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
+// dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
+const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
+const smBtn = (primary = false): React.CSSProperties => (primary
+  ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: '#fff' }
+  : { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' });
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 
 const fmtBytes = (n: number | null | undefined) => (n == null ? '—' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`);
@@ -76,7 +82,7 @@ export default function NginxConsolePage() {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2"><ServerStackIcon className="w-6 h-6" style={{ color: '#009639' }} /> <span className="nginx-hub-label"><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span></h1>
+          <h1 className="text-xl font-semibold flex items-center gap-2"><ServerStackIcon className="w-6 h-6" style={{ color: 'var(--nginx-green)' }} /> <span className="nginx-hub-label"><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span></h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
             Tüm nginx sunucularının konfigürasyon ağacı, dosya içerikleri ve sertifikaları; tek dosya değişikliği push (nginx -t, geri alma, reload). Veriler Ansible dokumundan gelir — sunucu başına saniyeler, tüm filo 30–40 dk.
           </p>
@@ -220,19 +226,19 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="grid gap-3 grid-cols-1 xl:[grid-template-columns:minmax(16rem,20rem)_minmax(16rem,22rem)_1fr]">
       {/* Sol: sunucular */}
-      <Panel dense title={<span className="flex items-center gap-2">Sunucular <span className="text-[10px] font-normal" style={{ color: 'var(--text-muted)' }}>{hosts.length}</span></span>}
-        actions={
-          <div className="flex items-center gap-1">
-            <button disabled={busy || checked.size === 0} onClick={() => refresh([...checked])} className="btn-primary px-2 py-1 text-[11px] rounded-lg disabled:opacity-40" title="Seçili sunucuların dokumunu Ansible ile yenile">
-              <ArrowPathIcon className="w-3.5 h-3.5 inline mr-1" />Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}
-            </button>
-            <button disabled={busy} onClick={() => refresh([], true)} className="px-2 py-1 text-[11px] rounded-lg border disabled:opacity-40" style={{ borderColor: 'var(--border)' }} title="Tüm nginx filosu envanterden keşfedilir (nginx_audit ile aynı betik) — 30-40 dk">Tüm filo</button>
-          </div>
-        }>
+      <Panel dense title={<span className="flex items-center gap-2">Sunucular <span className="text-[10px] font-normal" style={{ color: 'var(--text-muted)' }}>{hosts.length}</span></span>}>
         <div className="p-2 space-y-2">
           <div className="relative">
             <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="sunucu / servis / ortam" className="w-full pl-8 pr-2 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }} />
+          </div>
+          {/* Dokum araclari: baslik satirinda DEGIL, arama kutusunun altinda kendi satirinda */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button disabled={busy || checked.size === 0} onClick={() => refresh([...checked])} className={SM_BTN} style={smBtn(true)} title="Seçili sunucuların dokumunu Ansible ile yenile (sunucu başına saniyeler)">
+              <ArrowPathIcon className="w-3.5 h-3.5" />Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}
+            </button>
+            <button disabled={busy} onClick={() => refresh([], true)} className={SM_BTN} style={smBtn()} title="Tüm nginx filosu envanterden keşfedilir (nginx_audit ile aynı betik) — 30-40 dk">Tüm filo</button>
+            {checked.size > 0 && <button onClick={() => setChecked(new Set())} className={SM_BTN} style={smBtn()} title="seçimi temizle">Temizle</button>}
           </div>
           {hostsErr && <div className="text-[11px] text-amber-700">{hostsErr}</div>}
           <div className="max-h-[70vh] overflow-y-auto space-y-1">
@@ -272,8 +278,8 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
       <Panel dense title={cur ? <span className="font-mono">{cur}</span> : 'Konfigürasyon ağacı'}
         actions={cur && (
           <div className="flex items-center gap-1">
-            <button disabled={busy} onClick={() => refresh([cur])} className="px-2 py-1 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)' }} title="Bu sunucunun dokumunu yenile"><ArrowPathIcon className="w-3.5 h-3.5 inline mr-1" />Yenile</button>
-            {isAdmin && <button disabled={busy || !tree?.dumped} onClick={() => { setNewModal(true); }} className="px-2 py-1 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)' }} title="Bu sunucuda yeni konfigürasyon dosyası"><DocumentPlusIcon className="w-3.5 h-3.5 inline mr-1" />Yeni dosya</button>}
+            <button disabled={busy} onClick={() => refresh([cur])} className={SM_BTN} style={smBtn()} title="Bu sunucunun dokumunu yenile"><ArrowPathIcon className="w-3.5 h-3.5" />Yenile</button>
+            {isAdmin && <button disabled={busy || !tree?.dumped} onClick={() => { setNewModal(true); }} className={SM_BTN} style={smBtn()} title="Bu sunucuda yeni konfigürasyon dosyası"><DocumentPlusIcon className="w-3.5 h-3.5" />Yeni dosya</button>}
           </div>
         )}>
         <div className="p-2 max-h-[75vh] overflow-auto text-xs">
@@ -300,10 +306,10 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
       } actions={(file || mode === 'create') && (
         <div className="flex items-center gap-1">
           {file && mode === 'update' && (
-            <button onClick={async () => { const r = await nginxConsoleApi.compare(file.path); if (r.ok) setCompare(r); }} className="px-2 py-1 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)' }} title="Bu yol diğer sunucularda aynı mı?">Diğer sunucularda</button>
+            <button onClick={async () => { const r = await nginxConsoleApi.compare(file.path); if (r.ok) setCompare(r); }} className={SM_BTN} style={smBtn()} title="Bu yol diğer sunucularda aynı mı?">Diğer sunucularda</button>
           )}
-          <button disabled={!dirty} onClick={() => { if (mode === 'create') { setMode('update'); setDraft(file?.content || ''); } else setDraft(file?.content || ''); }} className="px-2 py-1 text-[11px] rounded-lg border disabled:opacity-40" style={{ borderColor: 'var(--border)' }}><ArrowUturnLeftIcon className="w-3.5 h-3.5 inline mr-1" />Geri al</button>
-          {isAdmin && <button disabled={!dirty || busy} onClick={openConfirm} className="btn-primary px-2 py-1 text-[11px] rounded-lg disabled:opacity-40" title="Sunucuya yayınla: kilit → yedek → yaz → nginx -t → reload"><PaperAirplaneIcon className="w-3.5 h-3.5 inline mr-1" />Yayınla (Publish)</button>}
+          <button disabled={!dirty} onClick={() => { if (mode === 'create') { setMode('update'); setDraft(file?.content || ''); } else setDraft(file?.content || ''); }} className={SM_BTN} style={smBtn()}><ArrowUturnLeftIcon className="w-3.5 h-3.5" />Geri al</button>
+          {isAdmin && <button disabled={!dirty || busy} onClick={openConfirm} className={SM_BTN} style={smBtn(true)} title="Sunucuya yayınla: kilit → yedek → yaz → nginx -t → reload"><PaperAirplaneIcon className="w-3.5 h-3.5" />Yayınla (Publish)</button>}
         </div>
       )}>
         <div className="p-2">

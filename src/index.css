@@ -90,6 +90,13 @@
   --masthead-bg:     #f2f2f2;
   --masthead-border: #c7c7c7;
   --nav-bg:          #f2f2f2;
+  /* Nginx Hub marka renkleri (nginx yesili #009639): sol menu cercevesi + parlayan "Hub".
+     Acik zeminde koyu yesil okunur; koyu temada acik yesil (asagida). */
+  --nginx-green:        #009639;
+  --nginx-green-bright: #8cf5b3;
+  --nh-hub:             #007a2e;
+  --nh-hub-bright:      #009639;
+  --nh-glow:            rgba(0, 150, 57, 0.55);
   --nav-hover-bg:    #e0e0e0;
   --nav-current-bg:  #e0e0e0;
   --nav-text:        #151515;
@@ -169,6 +176,9 @@
 
 /* ── Dark tema (PatternFly dark) ───────────────────────────────────────────── */
 :root[data-theme="dark"] {
+  --nh-hub:        #8cf5b3;
+  --nh-hub-bright: #b9ffd2;
+  --nh-glow:       rgba(140, 245, 179, 0.9);
   /* KOYU TEMADA MARKA RENGI ACIK MAVIDIR — PF6'nin bilincli karari.
      `dark--color--brand--200` = blue-20 (#b9dafc), uzerindeki metin ise
      `dark--text--color--300` = gray-90 (#1f1f1f).
@@ -609,7 +619,7 @@ thead th {
   color: var(--nav-text);
   font-weight: 700;
 }
-/* ── Nginx Hub nav girisi (2026-09-19): nginx yesili (#009639) cerceve, cercevenin
+/* ── Nginx Hub nav girisi (2026-09-19): nginx yesili (--nginx-green) cerceve, cercevenin
    etrafinda donen "lazer" isik; "Hub" sozcugu acik yesil parlar. Donme, conic-gradient'in
    acisini @property ile animasyonlayarak; cerceve mask ile yalniz kenarda birakilir.
    prefers-reduced-motion: animasyon kapali, sabit cerceve kalir. */
@@ -633,7 +643,7 @@ thead th {
   inset: 0;
   border-radius: inherit;
   padding: 2px;
-  background: conic-gradient(from var(--nh-angle), transparent 0 62%, rgba(0, 150, 57, 0.25) 74%, #009639 86%, #8cf5b3 93%, transparent 100%);
+  background: conic-gradient(from var(--nh-angle), transparent 0 62%, rgba(0, 150, 57, 0.25) 74%, var(--nginx-green) 86%, var(--nginx-green-bright) 93%, transparent 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -653,9 +663,7 @@ thead th {
 }
 .nginx-hub-link.is-current { background: rgba(0, 150, 57, 0.12); }
 .nginx-hub-label { display: inline-flex; gap: 0.3rem; align-items: baseline; }
-/* "Hub" rengi temaya gore: acik zeminde koyu nginx yesili (okunur), karanlikta acik yesil. */
-:root { --nh-hub: #007a2e; --nh-hub-bright: #009639; --nh-glow: rgba(0, 150, 57, 0.55); }
-:root[data-theme="dark"] { --nh-hub: #8cf5b3; --nh-hub-bright: #b9ffd2; --nh-glow: rgba(140, 245, 179, 0.9); }
+/* "Hub" rengi temaya gore (--nh-* token'lari :root ve [data-theme=dark] altinda). */
 .nginx-hub-word {
   color: var(--nh-hub);
   font-weight: 800;

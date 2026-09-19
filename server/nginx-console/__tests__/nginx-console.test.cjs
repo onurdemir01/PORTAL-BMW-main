@@ -125,7 +125,7 @@ test('NH6 kayitlar: PLAYBOOKS, registry seed, sayfa elementi (Admin), nav, route
   assert.match(read('src/components/layout/PageNav.tsx'), /nginx-hub-link/);
   const css = read('src/index.css');
   assert.match(css, /\.nginx-hub-link::before[\s\S]{0,600}conic-gradient\(from var\(--nh-angle\)/);
-  assert.match(css, /#009639/);
+  assert.match(css, /--nginx-green:\s*#009639/); // marka rengi TOKEN (nav blogunda sabit hex yasak, bkz. pf6-palette D)
   assert.match(css, /prefers-reduced-motion: reduce\) \{\s*\.nginx-hub-link::before, \.nginx-hub-word \{ animation: none; \}/);
   assert.match(read('src/App.tsx'), /PageVisibilityRoute pageId="NginxConsole"/);
   assert.match(read('server/index.cjs'), /nginx-console\/index\.cjs'\)\.initNginxConsole\(app\)/);
