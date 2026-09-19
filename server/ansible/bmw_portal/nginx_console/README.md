@@ -12,12 +12,16 @@ dosyalarına **www** kullanıcısıyla (dzdo) dokunulur.
 | `nginx_console_push` | `nginx_console_push.yml` | Tek sunucu, tek dosya (`create`/`update`): `files/nginx_console_push.sh` — yol beyaz listesi (`/usr/nginx/conf.d/`, `/usr/nginx/conf/`), SPA deployment kilidi (`/vhosting/HYSUXSCRIPTS/nginx_deploy_lock.sh` varsa), yedek `conf.d/.console_backup/`, yaz, `nginx -t` (düşerse **geri alır**), `nginx -s reload`; ardından dokum yenilenir. Sonuç `set_stats nginx_console_push_result`. |
 
 Host seçimi `add_host` ile (AWX `limit` template'te prompt-on-launch açık değilse yok sayılır).
+`target_hosts` **verilmezse** fetch job'ı tüm nginx filosunu envanterden keşfeder — `nginx_audit`
+ve `nginx_metadata` ile aynı betik (`../../bmw_nginx/nginx_metadata/files/get_nginx_hosts.py`,
+`dbo.Inventory.nginx_version` dolu olanlar), GBLABT02'de `was` ile. Bu yüzden bu klasör AWX'te
+`bmw_nginx` ile aynı projede (gar_bmt_ansible_scripts) durmalı.
 
 ## Süre
 
 Sunucu başına birkaç saniye; **tüm filo 30–40 dk** (kullanıcı deneyimi, `nginx -T` taramalarıyla aynı).
-Portal'daki "Yenile" yalnız seçili sunucuları gönderir. Tam dokum için AWX'te gece zamanlayın:
-`target_hosts` = tüm nginx host listesi (Portal `GET /api/nginx-console/hosts` ya da `dbo.nginx_inventory`).
+Portal'daki "Yenile" yalnız seçili sunucuları gönderir; "Tüm filo" düğmesi ve gece zamanlaması
+`target_hosts` göndermez → envanter keşfi. Zamanlamak için: fetch template'ine schedule, extra vars boş.
 
 ## Kurulum
 

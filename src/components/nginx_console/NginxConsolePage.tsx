@@ -167,15 +167,16 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
     });
   }
 
-  const refresh = async (list: string[]) => {
-    if (!list.length) return;
-    if (list.length > 20 && !window.confirm(`${list.length} sunucu seçili — dokum ~${Math.ceil(list.length / 10)}-${Math.ceil(list.length / 4)} dk sürebilir. Devam?`)) return;
+  const refresh = async (list: string[], all = false) => {
+    if (!all && !list.length) return;
+    if (all && !window.confirm('TÜM nginx filosu envanterden keşfedilip dökülecek — 30-40 dk sürebilir. Devam?')) return;
+    if (!all && list.length > 20 && !window.confirm(`${list.length} sunucu seçili — dokum ~${Math.ceil(list.length / 10)}-${Math.ceil(list.length / 4)} dk sürebilir. Devam?`)) return;
     setBusy(true);
     try {
-      const r = await nginxConsoleApi.refresh(list);
+      const r = await nginxConsoleApi.refresh(all ? [] : list, all);
       if (!r.ok) { toast.error(r.message || 'Başlatılamadı.'); return; }
       toast.success(`Dokum başlatıldı (job ${r.jobId}) — bitince liste kendini yeniler.`);
-      trackJob(`Nginx dokum · ${list.length} sunucu #${r.jobId}`, r, () => { loadHosts(); if (cur && list.includes(cur)) loadTree(cur); });
+      trackJob(all ? `Nginx dokum · TÜM filo #${r.jobId}` : `Nginx dokum · ${list.length} sunucu #${r.jobId}`, r, () => { loadHosts(); if (cur && (all || list.includes(cur))) loadTree(cur); });
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
 
@@ -225,6 +226,7 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
             <button disabled={busy || checked.size === 0} onClick={() => refresh([...checked])} className="btn-primary px-2 py-1 text-[11px] rounded-lg disabled:opacity-40" title="Seçili sunucuların dokumunu Ansible ile yenile">
               <ArrowPathIcon className="w-3.5 h-3.5 inline mr-1" />Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}
             </button>
+            <button disabled={busy} onClick={() => refresh([], true)} className="px-2 py-1 text-[11px] rounded-lg border disabled:opacity-40" style={{ borderColor: 'var(--border)' }} title="Tüm nginx filosu envanterden keşfedilir (nginx_audit ile aynı betik) — 30-40 dk">Tüm filo</button>
           </div>
         }>
         <div className="p-2 space-y-2">

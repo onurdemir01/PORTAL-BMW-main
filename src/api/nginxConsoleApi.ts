@@ -101,7 +101,8 @@ export const nginxConsoleApi = {
   compare: (path: string, hosts?: string[]): Promise<{ ok: boolean; path: string; rows: { host: string; exists: boolean; sha256: string | null; size: number | null; mtime: string | null }[]; variants: number }> =>
     fetch(`${BASE}/compare?path=${encodeURIComponent(path)}${hosts?.length ? `&hosts=${encodeURIComponent(hosts.join(","))}` : ""}`).then(safeJson),
   certs: (host?: string): Promise<NcCertsResult> => fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ""}`).then(safeJson),
-  refresh: (hosts: string[]): Promise<NcLaunch & { hosts: string[] }> => fetch(`${BASE}/refresh`, json({ hosts })).then(safeJson),
+  // hosts bos + all:true -> playbook tum nginx filosunu envanterden kesfeder (30-40 dk)
+  refresh: (hosts: string[], all = false): Promise<NcLaunch & { hosts: string[]; all?: boolean }> => fetch(`${BASE}/refresh`, json({ hosts, all })).then(safeJson),
   // Publish (NIM "Publish"): bir dosya, bir ya da daha fazla sunucu (instance group = servis).
   // expectedSha: host -> Portal'in gordugu sha (anti-TOCTOU); force ile atlanir.
   push: (body: { hosts: string[]; path: string; mode: "create" | "update"; content: string; expectedSha?: Record<string, string>; force?: boolean }): Promise<NcLaunch> =>

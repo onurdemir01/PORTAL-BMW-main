@@ -263,14 +263,17 @@ function initNginxConsole(app) {
 
   // Dokum yenile: secilen host'lar (tum filo 30-40 dk — istemci uyarir)
   router.post('/refresh', async (req, res) => {
+    // all:true -> target_hosts GONDERILMEZ, playbook envanterden tum nginx filosunu kesfeder
+    // (nginx_audit ile ayni betik). 30-40 dk; istemci ayrica onaylatir.
+    const all = req.body?.all === true;
     const list = Array.isArray(req.body?.hosts) ? req.body.hosts : [];
     const hosts = [...new Set(list.map((h) => String(h || '').trim().toUpperCase()).filter((h) => HOST_RE.test(h)))];
-    if (!hosts.length) return res.status(400).json({ ok: false, message: 'En az bir sunucu seçilmeli.' });
+    if (!all && !hosts.length) return res.status(400).json({ ok: false, message: 'En az bir sunucu seçilmeli (ya da tüm filo).' });
     if (hosts.length > 400) return res.status(400).json({ ok: false, message: 'Tek seferde en fazla 400 sunucu.' });
     try {
-      const extraVars = { target_hosts: hosts, console_dir: consoleDir(), requester: req.session?.user?.username || '' };
-      const r = await launch(req, REGISTRY_KEYS.fetch, 'Nginx Hub: dokum yenile', extraVars, { op: 'fetch', hosts });
-      res.json({ ok: true, ...r, hosts });
+      const extraVars = { ...(all ? {} : { target_hosts: hosts }), console_dir: consoleDir(), requester: req.session?.user?.username || '' };
+      const r = await launch(req, REGISTRY_KEYS.fetch, all ? 'Nginx Hub: TUM filo dokumu' : 'Nginx Hub: dokum yenile', extraVars, { op: 'fetch', hosts: all ? 'ALL' : hosts });
+      res.json({ ok: true, ...r, hosts: all ? [] : hosts, all });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }

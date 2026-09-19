@@ -4,43 +4,97 @@
 # yazar (Portal ayni mount'u dogrudan okur). Ayrinti: README.md.
 #
 # extra_vars (Portal gonderir):
-#   target_hosts: ["GBNGXP40", "GBNGXP41"]   (bos/yok -> hata; tum filo icin Portal listeyi verir)
-#   console_dir:  /sw/BMW_PORTAL/nginx_console   (raw/<HOST>.txt buraya)
+#   target_hosts: ["GBNGXP40", "GBNGXP41"]   (opsiyonel; BOS/YOK -> tum nginx filosu envanterden
+#                                              kesfedilir: dbo.Inventory.nginx_version dolu olanlar,
+#                                              nginx_audit / nginx_metadata ile AYNI betik)
+#   console_dir:  /sw/BMW_PORTAL/nginx_console   (raw/<HOST>.txt buraya; varsayilan bu)
 #   requester:    kullanici adi (gunluk)
 #
-# NEDEN target_hosts + add_host: AWX `limit` yalniz template'te "prompt on launch" aciksa
-# calisir (bkz. Portal notlari) — host secimi extra_vars ile playbook icinde yapilir.
-# NEDEN delegate_to GBLABT02: nginx sunucularinda /sw mount YOK; nginx_audit ile ayni desen.
+# NEDEN add_host: AWX `limit` yalniz template'te "prompt on launch" aciksa calisir (bkz. Portal
+# notlari) — host secimi playbook icinde yapilir.
+# NEDEN GBLABT02: envanter DB'sine erisen kesif betigi orada kosar; /sw mount da orada
+# (nginx sunucularinda /sw YOK) — nginx_audit ile ayni desen.
 #
 # Sure: host basina birkac saniye; TUM filo (yuzlerce nginx) 30-40 dk surebilir - Portal
-# ekranindaki "Yenile" YALNIZ secilen hostlari gonderir, tam tarama gece zamanlanir.
+# ekranindaki "Yenile" secili hostlari gonderir; zamanlanmis gece kosusu target_hosts'suz
+# calisir (tum filo).
 
-- name: --- [Play] Hedef sunuculari gruba al ---
-  hosts: localhost
+- name: "--- [Play] Hedef sunucular - verilen liste ya da envanterden kesif ---"
+  hosts: GBLABT02
   gather_facts: no
-  become: false
+  vars:
+    console_dir: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}"
   tasks:
-    - name: --- [Task] Girdi dogrulama ---
-      ansible.builtin.assert:
-        that:
-          - (target_hosts | default([]) | length) > 0
-          - (console_dir | default('') | length) > 0
-        fail_msg: "target_hosts (liste) ve console_dir zorunlu."
+    - name: --- [Task] Cikti dizini ---
+      ansible.builtin.file:
+        path: "{{ console_dir }}/raw"
+        state: directory
+        mode: '0777'
+      ignore_errors: true
+
+    # target_hosts verilmediyse: nginx_audit.yml / nginx_metadata ile AYNI kesif
+    # (bmw_nginx/nginx_metadata/files/get_nginx_hosts.py -> dbo.Inventory, nginx_version dolu).
+    - name: --- [Task] Envanter kesfi (target_hosts bos) ---
+      when: (target_hosts | default([]) | length) == 0
+      block:
+        - name: --- [Task] Host kesif script'ini kopyala ---
+          become: true
+          become_method: dzdo
+          become_user: was
+          ansible.builtin.copy:
+            src: ../../bmw_nginx/nginx_metadata/files/get_nginx_hosts.py
+            dest: /vhosting/scripts/get_nginx_hosts.py
+            mode: '0755'
+
+        - name: --- [Task] Envanterden nginx hostlarini sor ---
+          become: true
+          become_method: dzdo
+          become_user: was
+          ansible.builtin.command: python3 /vhosting/scripts/get_nginx_hosts.py
+          register: nginx_known_hosts_result
+          changed_when: false
+      always:
+        - name: --- [Task] Host kesif script'ini kaldir ---
+          become: true
+          become_method: dzdo
+          become_user: was
+          ansible.builtin.file:
+            path: /vhosting/scripts/get_nginx_hosts.py
+            state: absent
+          failed_when: false
+
+    - name: --- [Task] Hedef listesi ---
+      ansible.builtin.set_fact:
+        console_targets: >-
+          {{ ((target_hosts | default([]) | length) > 0)
+             | ternary(target_hosts | default([]), nginx_known_hosts_result.stdout_lines | default([]))
+             | map('trim') | map('upper') | reject('equalto', '') | unique | list }}
+
+    - name: --- [Task] Hedef yoksa DUR ---
+      ansible.builtin.fail:
+        msg: >-
+          Hedef sunucu yok: target_hosts bos ve envanter kesfi 0 host dondurdu (muhtemelen
+          middleware_inventory henuz calismadi). "all"a dusup tum filoyu taramak yerine duruyoruz.
+      when: (console_targets | length) == 0
 
     - name: --- [Task] add_host ---
       ansible.builtin.add_host:
         name: "{{ item }}"
         groups: nginx_console_targets
-      loop: "{{ target_hosts | unique }}"
+      loop: "{{ console_targets }}"
       loop_control:
         label: "{{ item }}"
+
+    - name: --- [Task] Ozet ---
+      ansible.builtin.debug:
+        msg: "{{ console_targets | length }} sunucu ({{ 'verilen liste' if (target_hosts | default([]) | length) > 0 else 'envanter kesfi' }}) -> {{ console_dir }}/raw"
 
 - name: --- [Play] Konfigurasyon + sertifika dokumu ---
   hosts: nginx_console_targets
   gather_facts: no
   ignore_unreachable: true
   vars:
-    console_dir: "{{ console_dir }}"
+    console_dir: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}"
   tasks:
     - name: --- [Task] Dokum ---
       block:

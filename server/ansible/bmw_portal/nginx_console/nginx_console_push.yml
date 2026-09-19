@@ -29,8 +29,7 @@
           - (file_path | default('')) is not search('\.\.')
           - (mode | default('') | trim) in ['create', 'update']
           - (content_b64 | default('') | length) > 0
-          - (console_dir | default('') | length) > 0
-        fail_msg: "target_hosts (liste), file_path (/usr/nginx/conf.d|conf altinda), mode (create|update), content_b64, console_dir zorunlu."
+        fail_msg: "target_hosts (liste), file_path (/usr/nginx/conf.d|conf altinda), mode (create|update), content_b64 zorunlu."
 
     - name: --- [Task] add_host ---
       ansible.builtin.add_host:
@@ -90,7 +89,7 @@
         - name: --- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---
           ansible.builtin.copy:
             content: "{{ dump_out.stdout }}\n"
-            dest: "{{ console_dir }}/raw/{{ inventory_hostname | upper }}.txt"
+            dest: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}/raw/{{ inventory_hostname | upper }}.txt"
             mode: '0666'
           delegate_to: GBLABT02
           when: (dump_out.stdout | default('') | length) > 0
