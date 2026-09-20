@@ -90,6 +90,31 @@ function normalizeOcoNumber(raw) {
   return s;
 }
 
+/** OCO yaniti icin bayt tavani. Bir degisiklik kaydi birkac KB'dir. */
+const OCO_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Govdeyi tavana kadar okur; tavan asilirsa akisi KESER ve hata firlatir.
+ * `.text()` cagirip sonra uzunluga bakmak ise yaramazdi — o noktada veri ZATEN
+ * bellekte olurdu.
+ */
+async function okuSinirli(body, tavan) {
+  let bayt = 0;
+  const parcalar = [];
+  for await (const parca of body) {
+    bayt += parca.length;
+    if (bayt > tavan) {
+      if (typeof body.destroy === 'function') body.destroy();
+      throw fail(
+        `OCO yaniti cok buyuk (> ${Math.round(tavan / (1024 * 1024))} MB) — beklenmeyen bir cevap.`,
+        502,
+      );
+    }
+    parcalar.push(parca);
+  }
+  return Buffer.concat(parcalar).toString('utf8');
+}
+
 async function getChangeOrder(ocoNumber) {
   const num = normalizeOcoNumber(ocoNumber);
   if (!num) throw fail('OCO numarası yalnızca rakamlardan oluşmalıdır.', 400);
@@ -113,7 +138,11 @@ async function getChangeOrder(ocoNumber) {
       bodyTimeout: cfg.timeoutMs,
     });
     statusCode = res.statusCode;
-    text = await res.body.text();
+    // BAYT KAPISI. `.text()` sinirsizdir; portal 2026-09'da sinirsiz tamponlama
+    // yuzunden yedi kez OOM ile coktu. Bir degisiklik kaydi birkac KB'dir —
+    // MB'larca gelen bir yanit ya bozuk ya da bizim beklemedigimiz bir seydir,
+    // ikisinde de bellege almak yanlis.
+    text = await okuSinirli(res.body, OCO_RESPONSE_MAX_BYTES);
   } catch (err) {
     throw fail(`OCO servisine ulaşılamadı: ${err.message}`, 502);
   } finally {

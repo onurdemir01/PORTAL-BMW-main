@@ -1648,9 +1648,15 @@ test('L5 kapi politikasini soran HER uc ortami GERCEKTEN geciriyor', () => {
   // yanlis kapi uygular (`gatePolicyFor` ortam bilinmiyorken prod'a duser, yani
   // prod disi bir istekte gereksiz onay ISTER). `/preview`, `/run` ve
   // `/restore-all` — ucu de.
+  //
+  // SAYIYA DEGIL KURALA BAGLI (2026-09-20): bekci onceden "tam 3 cagri" diyordu
+  // ve dorduncu bir uc (OCO Tani) eklenince kirmiziya dustu — oysa yeni uc
+  // kurali DOGRU uyguluyordu. Sayiyi kilitlemek, mesru her eklemeyi yanlis
+  // alarmla karsilamak demek; kilitlenmesi gereken sey HER cagrinin ortami
+  // gecirmesi.
   const code = codeOnly(INDEX);
   const calls = code.match(/gatePolicyFor\(\{[^}]*\}\)/g) || [];
-  assert.equal(calls.length, 3, `gatePolicyFor cagrisi sayisi degismis: ${calls.length}`);
+  assert.ok(calls.length >= 3, `gatePolicyFor cagrisi kaybolmus: ${calls.length}`);
   for (const c of calls) {
     assert.match(c, /environment:\s*env/, `ortam gecirilmeyen gatePolicyFor cagrisi: ${c}`);
   }

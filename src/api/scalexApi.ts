@@ -484,6 +484,55 @@ export const scalexApi = {
   },
 
   /**
+   * OCO TANI — salt okunur. Bir numara girilir, servisin döndürdüğü HER alan
+   * listelenir ve her biri "okunuyor / yok sayılıyor" diye işaretlenir.
+   *
+   * Bugün portal yanıttan yalnızca ÜÇ şey okuyor (kayıt var mı, planlanan
+   * kesinti saatleri, başlık). Onay durumu / statü / hedef sistemler HİÇ
+   * okunmuyor — yani "OCO kontrolü" gerçekte bir TAKVİM kontrolü. Bu uç o
+   * gerçeği görünür yapar. HİÇBİR ŞEY BAŞLATMAZ.
+   */
+  async ocoDiagnose(params: { number: string; env?: string; action?: string }) {
+    const q = new URLSearchParams({ number: params.number });
+    if (params.env) q.set('env', params.env);
+    if (params.action) q.set('action', params.action);
+    return safeJson(await fetch(`${BASE}/admin/oco-diagnose?${q}`)) as Promise<{
+      ok: boolean;
+      message?: string;
+      /** Ayar hiç girilmemiş — "servise ulaşılamadı"dan AYRI bir durum. */
+      notConfigured?: boolean;
+      /** Sorgu yapıldı ama kayıt bulunamadı / servis hata verdi. */
+      lookupFailed?: boolean;
+      number?: string;
+      readFields?: { path: string; reader: string; why: string }[];
+      fields?: {
+        path: string;
+        type: string;
+        value: string | null;
+        read: boolean;
+        truncated?: boolean;
+      }[];
+      fieldsTruncated?: boolean;
+      ignoredCount?: number;
+      missing?: { path: string; reader: string; why: string }[];
+      plannedSource?: string | null;
+      window?: {
+        ok: boolean;
+        phase?: string;
+        equal?: boolean;
+        windowStartText?: string;
+        windowEndText?: string;
+        message?: string;
+        reason?: string;
+      } | null;
+      resultCode?: number | null;
+      scope?: { env: string; action: string; executionMode: string };
+      gatePolicy?: ScaleXGatePolicy;
+      simulation?: { outcome: string; message: string };
+    }>;
+  },
+
+  /**
    * ScaleX SINIRLARI — sunucudan. Admin ekranindan degisebildikleri icin ekranda
    * ELDE tutulmazlar: aksi halde admin varsayilani 600 yaptiginda kullanici hala
    * "30-3600 arasi" gorur ve sunucunun kabul ettigi degerle ekran AYRISIR.
