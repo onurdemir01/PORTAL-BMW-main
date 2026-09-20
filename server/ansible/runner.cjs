@@ -808,6 +808,9 @@ const AWX_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 // DUZ METIN icindir; JSON'da ayrica `JSON.parse` NESNE GRAFIGI uretir ve o, metnin
 // 3-6 KATI bellek tutar — bu yuzden tavan metin tavanindan DAHA DUSUK.
 const AWX_JSON_MAX_BYTES = 4 * 1024 * 1024;
+// Suzulmus ciktinin tavani. Suzgec normalde metnin cogunu atar; atmiyorsa
+// (needle cok genis) sonuc kaynak kadar buyuyebilir ve ayni OOM sinifina doner.
+const FILTERED_OUTPUT_MAX_BYTES = 4 * 1024 * 1024;
 
 // SESSIZ KIRPMA YOK. Kullanici "log yarim" ile "is yarim" arasindaki farki
 // gorebilmeli; yoksa eksik bir cikti tamamlanmis bir is gibi okunur.
@@ -1031,18 +1034,82 @@ function applyOutputFilter(stdoutText, overrides) {
   if (!filt?.enabled || !needle)
     return { output: text, filtered: false, totalLines: 0, matchedLines: 0 };
 
-  const lines = text ? text.split('\n') : [];
-  // .trim() — eslesen satirlarin bastaki/sondaki bosluklarini kaldirir. Ham stdout'ta
-  // playbook ciktisi girintili (TASK altinda birkac bosluk) veya CRLF kalintili (\r)
-  // gelebilir; filtre EKRANA yalniz ozet satirlari koydugu icin bu girinti
-  // anlamsizlasiyor ve satirlar "kaymis" gorunuyordu. Filtresiz goruntude playbook'un
-  // orijinal bicimi DOKUNULMADAN kalir.
-  const kept = lines.filter((line) => line.includes(needle)).map((line) => line.trim());
+  // DIZIYE AYIRMADAN TARA.
+  //
+  // Eski hali `text.split('\n')` yapiyordu. `getJobOutput` girdiyi 16 MB ile
+  // sinirliyor; 30 satir asagida (`getJobOutput`) ayni `split` ZATEN kaldirilmisti
+  // ama BU fonksiyon atlanmisti. `GET /jobs/N/output` uretimde ortalama 20.846 ms
+  // suruyor (98 istek) ve tam bu yoldan geciyor.
+  //
+  // OLCUM (dizi CANLIYKEN, --expose-gc):
+  //   12 MB girdi / 200 bin satir -> eski: +8 MB heap, 7 ms   yeni: +0 MB, 2 ms
+  //   24 MB girdi / 400 bin satir -> eski: +15 MB heap
+  //
+  // DURUST NOT: ilk yazdigimda bu maliyeti "~100-150 MB" diye tahmin etmistim;
+  // OLCUM BUNU CURUTTU. V8 `split` sonuclarini "sliced string" olarak tutuyor,
+  // yani maliyet girdinin ~0,6 kati. Dolayisiyla BU SATIR TEK BASINA 2 GB'lik
+  // OOM'u ACIKLAMAZ. `Runtime_StringSplit` karesi (7 cokmenin 4'unde) SON DAMLAYI
+  // gosterir, NEDENI degil: heap zaten 2040 MB'a tirmanmisken 8 MB'lik bir istek
+  // de patlatir. Yine de bu, sicak bir yolda bedava kazanilan bir tahsis ve
+  // kaldirilmasi dogru — ama "OOM'un sebebi buydu" DEMEK YANLIS OLUR.
+  //
+  // Simdi: satir sinirlari indeksle bulunur, eslesme tek gecisle ilerletilir ve
+  // YALNIZCA eslesen satirlar tutulur. Filtrenin amaci zaten "cogu satiri at".
+  let totalLines = 0;
+  let matchedLines = 0;
+  const kept = [];
+  let keptBytes = 0;
+  let keptKirpildi = false;
+  if (text) {
+    // TEK GECIS. `needle`in bir sonraki konumu ILERI dogru aranir ve satirlar
+    // ilerledikce YENIDEN KULLANILIR; yalnizca geride kaldiginda tazelenir.
+    //
+    // Ilk denememde satir basina `lastIndexOf(needle, ust)` yazmistim: o cagri
+    // `ust`ten GERIYE dogru tarar, yani satir basina O(konum) → toplamda O(n²).
+    // 13 MB'lik sentetik ciktida test 100 saniyede BITMEDI. Olcum olmasaydi bu
+    // "duzeltme" OOM'u yavaslamayla degistirirdi.
+    //
+    // `bas` monoton arttigi ve `sonrakiEslesme` hep ileri gittigi icin toplam
+    // tarama O(n)'dir: her karakter sabit sayida gezilir.
+    let sonrakiEslesme = text.indexOf(needle);
+    let bas = 0;
+    for (;;) {
+      const nl = text.indexOf('\n', bas);
+      const son = nl === -1 ? text.length : nl;
+      totalLines++;
+      if (sonrakiEslesme !== -1 && sonrakiEslesme < bas) {
+        sonrakiEslesme = text.indexOf(needle, bas);
+      }
+      // Eslesme SATIR ICINDE tamamen sigmali. Bu kontrol olmadan icinde '\n'
+      // tasiyan bir needle satir sinirinin OTESINE tasardi; diferansiyel test
+      // bu farki `text="a\nb", needle="a\nb"` ornegiyle yakaladi.
+      if (sonrakiEslesme !== -1 && sonrakiEslesme + needle.length <= son) {
+        // .trim() — eslesen satirlarin bastaki/sondaki bosluklarini kaldirir. Ham
+        // stdout'ta playbook ciktisi girintili (TASK altinda birkac bosluk) veya
+        // CRLF kalintili (\r) gelebilir; filtre EKRANA yalniz ozet satirlari
+        // koydugu icin bu girinti anlamsizlasiyor ve satirlar "kaymis" gorunuyordu.
+        // Filtresiz goruntude playbook'un orijinal bicimi DOKUNULMADAN kalir.
+        const satir = text.slice(bas, son).trim();
+        if (satir) matchedLines++;
+        if (!keptKirpildi) {
+          keptBytes += satir.length + 1;
+          if (keptBytes > FILTERED_OUTPUT_MAX_BYTES) {
+            keptKirpildi = true;
+            kept.push(AWX_TRUNCATION_NOTICE);
+          } else {
+            kept.push(satir);
+          }
+        }
+      }
+      if (nl === -1) break;
+      bas = nl + 1;
+    }
+  }
   return {
     output: kept.join('\n'),
     filtered: true,
-    totalLines: lines.length,
-    matchedLines: kept.filter(Boolean).length,
+    totalLines,
+    matchedLines,
     needle,
   };
 }
