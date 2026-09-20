@@ -41,7 +41,16 @@ function createAuditChain(tableName) {
     return rows[0]?.entry_hash || '';
   }
 
-  async function writeEntry(entry) {
+  /**
+   * @param {object} entry
+   * @param {{ spoolOnFailure?: boolean }} [opts]
+   *   `spoolOnFailure: false` YALNIZCA spool aktariminda kullanilir: girdi ZATEN
+   *   spool dosyasinda duruyor; dusen bir yazim onu ikinci kez eklerse dosyada
+   *   MUKERRER kayit olusur ve zincire iki kez girer. (Bu, akis tabanli `drain`e
+   *   gecince ortaya cikti — eski `drain` tum dosyayi okuyup uzerine yazdigi icin
+   *   mukerrer kaydi farkinda olmadan SILIYORDU.)
+   */
+  async function writeEntry(entry, { spoolOnFailure = true } = {}) {
     const {
       sessionId, username, authSource, role, targetHost, targetIp,
       action, result, detail, clientIp,
@@ -69,6 +78,11 @@ function createAuditChain(tableName) {
       // KAYIT YUTULMAZ — DISKE ALINIR. Hash BURADA hesaplanmis olsa bile spool'a
       // HAM GIRDI gider: `prev_hash` aktarim anindaki son kayda baglidir ve
       // beklerken baska kayitlar yazilmis olabilir.
+      if (!spoolOnFailure) {
+        // Aktarim yolu: girdi spool'da KALIYOR (drain onu dosyadan dusurmez).
+        console.error(`[audit:${tableName}] spool aktarimi dustu:`, err.message);
+        return false;
+      }
       const alindi = spool.append(tableName, entry);
       console.error(
         `[audit:${tableName}] write failed:`,
@@ -119,32 +133,54 @@ function createAuditChain(tableName) {
     return rows;
   }
 
+  // Zincir dogrulamasi SAYFALI kosar. Eski hali tum tabloyu tek `SELECT` ile
+  // bellege aliyordu (`ORDER BY id ASC`, TOP/OFFSET YOK) ve `portal_audit_logs`
+  // icin RETENTION YOK — `housekeeping.cjs` bu tabloyu hic temizlemiyor. Satir
+  // basina ~2-4 KB ile 500 bin satir ~1-2 GB eder; uretimdeki heap tavani 2 GB.
+  // Yani bu ucun cokmesi zaman meselesiydi: tablo buyudukce kacinilmazdi.
+  //
+  // SAYFALAMA ZINCIRI BOZMAZ: `runningPrev` sayfalar arasinda TASINIR ve sira
+  // `id ASC` ile sabittir. Sayfa sinirinda zinciri sifirlamak, her sayfanin ilk
+  // kaydini YANLISLIKLA saglam gosterirdi — kurcalama tam orada gizlenebilirdi.
+  const VERIFY_PAGE = 2000;
+
   async function verifyChain() {
     const { rows: countRows } = await db.query(`SELECT COUNT(*) AS total FROM ${tableName}`);
     const totalRows = Number(countRows[0]?.total || 0);
-    const { rows } = await db.query(
-      `SELECT id, username, action, detail, prev_hash, entry_hash
-       FROM ${tableName} WHERE entry_hash LIKE 'v3:%' ORDER BY id ASC`
-    );
-    const legacyCount = totalRows - rows.length;
-    if (rows.length === 0) {
-      return { ok: true, verified: 0, broken: 0, firstBrokenId: null, legacyCount };
-    }
+
     const brokenIds = new Set();
     let firstBrokenId = null;
-    let runningPrev = rows[0].prev_hash;
-    for (const row of rows) {
-      const prevMismatch = row.prev_hash !== runningPrev;
-      const expected = computeEntryHash(row.prev_hash, row.username, row.action, row.detail);
-      const hashMismatch = expected !== row.entry_hash;
-      if (prevMismatch || hashMismatch) {
-        brokenIds.add(row.id);
-        if (!firstBrokenId) firstBrokenId = row.id;
+    let runningPrev = null;
+    let verified = 0;
+    let offset = 0;
+
+    for (;;) {
+      const { rows } = await db.query(
+        `SELECT id, username, action, detail, prev_hash, entry_hash
+         FROM ${tableName} WHERE entry_hash LIKE 'v3:%' ORDER BY id ASC
+         OFFSET $1 ROWS FETCH NEXT $2 ROWS ONLY`,
+        [offset, VERIFY_PAGE],
+      );
+      if (!rows.length) break;
+      for (const row of rows) {
+        // Ilk kaydin `prev_hash`i kiyaslanmaz — oncesi yok.
+        const prevMismatch = runningPrev !== null && row.prev_hash !== runningPrev;
+        const expected = computeEntryHash(row.prev_hash, row.username, row.action, row.detail);
+        const hashMismatch = expected !== row.entry_hash;
+        if (prevMismatch || hashMismatch) {
+          brokenIds.add(row.id);
+          if (!firstBrokenId) firstBrokenId = row.id;
+        }
+        runningPrev = row.entry_hash;
       }
-      runningPrev = row.entry_hash;
+      verified += rows.length;
+      if (rows.length < VERIFY_PAGE) break;
+      offset += VERIFY_PAGE;
     }
+
+    const legacyCount = totalRows - verified;
     const broken = brokenIds.size;
-    return { ok: broken === 0, verified: rows.length, broken, firstBrokenId, legacyCount };
+    return { ok: broken === 0, verified, broken, firstBrokenId, legacyCount };
   }
 
   // ── SPOOL BOSALTMA ─────────────────────────────────────────────────────────
@@ -153,7 +189,11 @@ function createAuditChain(tableName) {
   // sirasinda gelen yeni bir kayit araya girip sirayi bozamaz. Hash zinciri
   // sirali bir yapidir; paralel yazim onu anlamsiz kilardi.
   function drainSpool() {
-    const task = _writeQueue.then(() => spool.drain(tableName, (entry) => writeEntry(entry)));
+    const task = _writeQueue.then(() =>
+      // `spoolOnFailure: false` — girdi zaten spool'da; basarisiz yazim onu ikinci
+      // kez eklemeyecek, `drain` dosyada BIRAKACAK.
+      spool.drain(tableName, (entry) => writeEntry(entry, { spoolOnFailure: false })),
+    );
     _writeQueue = task.catch(() => {});
     return task;
   }

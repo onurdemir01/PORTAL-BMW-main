@@ -75,3 +75,79 @@ test('MEM1 120 host x ~2 MB dokum: ozet katmani heap\'i sinirli tutar, icerik ya
   assert.ok(growthMb < 80, `heap artisi ${growthMb.toFixed(1)} MB — tam dokumlar bellekte tutuluyor olabilir`);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// ── MEM2/MEM3 — DOKUM BOYUT TAVANI ────────────────────────────────────────────
+//
+// 2026-09-20 OOM'unda KAC dokumun bellekte tutuldugu sinirlandi (`FULL_MAX = 4`),
+// ama TEK BIR dokumun NE KADAR BUYUK olabilecegi hic kontrol edilmedi. Dosyayi
+// AWX yaziyor ve icinde tum nginx conf agaci var; sismis tek bir host 50-200 MB
+// uretebilir ve `parseDump` ustune `split('\n')` yapiyor. 4 x 200 MB yine OOM.
+//
+// Bu testler DESEN ARAMAZ — gercek `loadFull`/`loadSummary` cagrilir.
+
+function devDokumKur(boyutBayt) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nh-big-'));
+  process.env.NGINX_CONSOLE_DIR = dir;
+  fs.mkdirSync(path.join(dir, 'raw'), { recursive: true });
+  const bas = '@@HOST BIGHOST\n@@TIME 2026-09-20T00:00:00Z\n@@PREFIX /usr/nginx\n@@TREE\n@@END\n';
+  const akis = fs.createWriteStream(path.join(dir, 'raw', 'BIGHOST.txt'));
+  akis.write(bas);
+  const parca = '# ' + 'x'.repeat(4094) + '\n';
+  let yazilan = bas.length;
+  while (yazilan < boyutBayt) {
+    akis.write(parca);
+    yazilan += parca.length;
+  }
+  return new Promise((r) => akis.end(() => r(dir)));
+}
+
+test('MEM2 TAVANI ASAN dokum ayristirilmaz — `loadFull` "cok buyuk" der', async () => {
+  const onceki = process.env.NGINX_CONSOLE_DIR;
+  const dir = await devDokumKur(26 * 1024 * 1024); // tavan 24 MB
+  try {
+    delete require.cache[require.resolve('../index.cjs')];
+    const mod = require('../index.cjs');
+    let hata = null;
+    try {
+      mod._loadFullForTest('BIGHOST');
+    } catch (e) {
+      hata = e;
+    }
+    assert.ok(hata, 'dev dokum ayristirildi — bayt kapisi ATES ALMADI');
+    assert.equal(hata.tooLarge, true, 'hata "cok buyuk" olarak isaretlenmemis');
+    assert.equal(hata.status, 413);
+    assert.match(hata.message, /boyut/i, 'kullaniciya NEDEN soylenmiyor');
+  } finally {
+    if (onceki === undefined) delete process.env.NGINX_CONSOLE_DIR;
+    else process.env.NGINX_CONSOLE_DIR = onceki;
+    fs.rmSync(dir, { recursive: true, force: true });
+    delete require.cache[require.resolve('../index.cjs')];
+  }
+});
+
+test('MEM3 dev dokum host\'u LISTEDEN DUSURMEZ — `loadSummary` bayrakla doner', async () => {
+  const onceki = process.env.NGINX_CONSOLE_DIR;
+  const dir = await devDokumKur(26 * 1024 * 1024);
+  try {
+    delete require.cache[require.resolve('../index.cjs')];
+    const mod = require('../index.cjs');
+    // `/hosts` 311 host'un hepsinde bunu cagiriyor: tek dev dokum TUM listeyi
+    // 500'e dusurmemeli.
+    const ozet = mod._loadSummaryForTest('BIGHOST');
+    assert.ok(ozet, 'ozet null dondu — host listeden dusuyor');
+    assert.equal(ozet.tooLarge, true, '"cok buyuk" bayragi yok');
+    assert.equal(ozet.host, 'BIGHOST');
+    assert.deepEqual(ozet.tree, [], 'icerik agaci bellege alinmis');
+    // Yan dosyaya YAZILMAMALI: dokum kuculdugunde yeniden denensin.
+    assert.equal(
+      fs.existsSync(path.join(dir, 'raw', 'BIGHOST.summary.json')),
+      false,
+      '"cok buyuk" karari diske kalici yazildi — duzelen dokum sonsuza dek bozuk gorunur',
+    );
+  } finally {
+    if (onceki === undefined) delete process.env.NGINX_CONSOLE_DIR;
+    else process.env.NGINX_CONSOLE_DIR = onceki;
+    fs.rmSync(dir, { recursive: true, force: true });
+    delete require.cache[require.resolve('../index.cjs')];
+  }
+});

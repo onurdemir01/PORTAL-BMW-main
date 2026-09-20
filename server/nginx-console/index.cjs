@@ -65,7 +65,38 @@ function statDump(host) {
   }
 }
 
+// DOKUM BOYUT TAVANI.
+//
+// 2026-09-20 OOM'unda (`f1b1ee2`) KAC dokumun bellekte tutuldugu sinirlandi
+// (`FULL_MAX = 4`), ama TEK BIR dokumun NE KADAR BUYUK olabilecegi hic
+// kontrol edilmedi. Dosyayi AWX yaziyor (`nginx_console_dump.sh`) ve icinde
+// `@@FILE` bloklariyla TUM nginx conf agaci var — conf agaci sismis tek bir
+// host 50-200 MB uretebilir. `parseDump` ustune `split('\n')` yapiyor
+// (`dump-parse.cjs:19`), yani heap'te birkac kati. 4 x 200 MB yine OOM demekti.
+//
+// Kod yorumu "host basina ~2 MB" diyordu — bu bir GOZLEM, bir SINIR degildi.
+const DUMP_MAX_BYTES = 24 * 1024 * 1024;
+
+/**
+ * Tavani asan dokum icin firlatilir. `tooLarge` isareti cagiranin bunu
+ * "okunamadi" degil "cok buyuk" diye AYIRT etmesini saglar — kullanici
+ * bos bir ekran yerine ne yapacagini soyleyen bir mesaj gorur.
+ */
+function dumpTooLargeError(host, boyut) {
+  return Object.assign(
+    new Error(
+      `${String(host).toUpperCase()} dokumu portalin isleyebilecegi boyutu asiyor ` +
+        `(${Math.round(boyut / (1024 * 1024))} MB > ` +
+        `${Math.round(DUMP_MAX_BYTES / (1024 * 1024))} MB). ` +
+        'Dokum sunucuda incelenmeli.',
+    ),
+    { status: 413, tooLarge: true, host: String(host).toUpperCase(), size: boyut },
+  );
+}
+
 function parseFull(host, st) {
+  // `st` ZATEN bir `fs.Stats` — boyut elimizde, ek bir sistem cagrisi gerekmiyor.
+  if (st.size > DUMP_MAX_BYTES) throw dumpTooLargeError(host, st.size);
   const parsed = parseDump(fs.readFileSync(dumpPathOf(host), 'utf8'));
   parsed.dumpedAt = st.mtime.toISOString();
   parsed.host = parsed.host || host.toUpperCase();
@@ -114,10 +145,41 @@ function loadSummary(host) {
       return raw;
     }
   } catch { /* yok/bozuk -> yeniden uret */ }
+  // COK BUYUK DOKUM HOST'U LISTEDEN DUSURMEZ.
+  //
+  // Bu fonksiyon `/hosts` icin 311 host'un hepsinde cagriliyor. Tavani asan TEK
+  // bir dokumun burada firlatmasina izin verseydik, o tek host yuzunden TUM host
+  // listesi 500 donerdi — bir bellek korumasinin butun ekrani karartmasi.
+  // Bunun yerine host listede KALIR ve `tooLarge` bayragiyla NEDENINI soyler.
+  let tam;
+  try {
+    tam = parseFull(H, st);
+  } catch (e) {
+    if (!e || !e.tooLarge) throw e;
+    console.warn('[NginxHub] dokum cok buyuk, ozet uretilemedi:', H, e.message);
+    const bozuk = {
+      mtimeMs: st.mtimeMs,
+      ingested: false,
+      host: H,
+      dumpedAt: st.mtime.toISOString(),
+      tooLarge: true,
+      tooLargeBytes: st.size,
+      error: e.message,
+      tree: [],
+      certs: [],
+      certUses: {},
+      fileCount: 0,
+    };
+    _summaries.set(H, { mtimeMs: st.mtimeMs, summary: bozuk });
+    // Yan dosyaya YAZILMAZ: dokum kuculdugunde (ya da tavan yukseldiginde)
+    // yeniden denensin; "cok buyuk" kararini diske kalici yazmak, duzelmis bir
+    // dokumu sonsuza dek bozuk gosterirdi.
+    return bozuk;
+  }
   // JSON gidis-donus BILEREK: split()/slice() ile uretilen alt-dizgeler V8'de "sliced string"
   // olur ve 2 MB'lik ham dokum metnini canli tutar (120 host x 2 MB = 274 MB, MEM1 testi).
   // JSON.parse duz kopyalar uretir; tam ayristirma bu satirdan sonra cop olur.
-  const summary = JSON.parse(JSON.stringify(summaryOf(parseFull(H, st), st.mtimeMs, false)));
+  const summary = JSON.parse(JSON.stringify(summaryOf(tam, st.mtimeMs, false)));
   _summaries.set(H, { mtimeMs: st.mtimeMs, summary });
   writeSummary(H, summary);
   runIngest(H, st);
