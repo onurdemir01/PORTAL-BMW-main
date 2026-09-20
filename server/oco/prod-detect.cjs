@@ -25,4 +25,21 @@ function isProductionRequest(extraVars) {
   return false;
 }
 
-module.exports = { isProductionRequest, ENV_KEYS, PROD_VALUES };
+// Talepteki ORTAM ETIKETINI dondurur (kucuk harfe indirgenmis), yoksa ''.
+//
+// Bu fonksiyon "prod nedir" sorusunu DEGISTIRMEZ — yalnizca etiketi OKUR.
+// Yukaridaki "yapilandirilabilir degil" karari `isProductionRequest` icindir:
+// prod tespiti kodda sabit kalir. Buna karsilik "prod'a EK OLARAK hangi
+// ortamlarda OCO istensin" sorusu bir IS KURALIDIR ve admin tarafindan
+// yonetilir; o kural bu okuyucuyu kullanir.
+function readEnvLabel(vars) {
+  if (!vars || typeof vars !== 'object') return '';
+  for (const [k, v] of Object.entries(vars)) {
+    if (!ENV_KEYS.includes(String(k).trim().toLowerCase())) continue;
+    const label = String(v ?? '').trim().toLowerCase();
+    if (label) return label;
+  }
+  return '';
+}
+
+module.exports = { isProductionRequest, readEnvLabel, ENV_KEYS, PROD_VALUES };

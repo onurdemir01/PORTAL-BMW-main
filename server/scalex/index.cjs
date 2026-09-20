@@ -201,6 +201,27 @@ async function insertOperationRows({
 //
 // SET KAPALI: `proceed` disindaki her deger cagiranda tuketilmek ZORUNDA; taninmayan
 // bir deger FAIL-CLOSED ele alinir (bkz. change-gates.cjs sozlesmesi).
+// ── OCO AYARINI TEK YERDEN OKU ──────────────────────────────────────────────
+//
+// `gatePolicyFor` artik admin ayarini da hesaba katiyor. Ayari her cagri
+// yerinde AYRI AYRI okumak, uc ucun zamanla AYRISMASINA acik kapi birakirdi —
+// bu dosyada tam bu sinifta bir ariza yasandi: `/preview` ile `/run` farkli
+// politika uretiyordu ve ekran numara istiyor, sunucu numarayi kullanmiyordu.
+//
+// DB okunamazsa `{}` doner (ss-customizations fail-safe) ve `gatePolicyFor`
+// varsayilana duser: OCO ACIK, yalnizca prod. Yani bir DB tokezlemesi kapiyi
+// ACIK BIRAKIR, kapatmaz.
+async function readOcoConfig() {
+  try {
+    const { templateId, serverId } = await resolveByKey(RUN_KEY);
+    const cfg = await require('../ansible/ss-customizations.cjs').readCustom(serverId, templateId);
+    return cfg.ocoCheck || {};
+  } catch (e) {
+    console.warn('[ScaleX] OCO ayari okunamadi, varsayilan (prod acik) kullaniliyor:', e.message);
+    return {};
+  }
+}
+
 async function runScaleXGates({
   req,
   user,
@@ -246,29 +267,59 @@ async function runScaleXGates({
   // demek; ayar satiri yoksa sessizce onaysiz gecmek, kapiyi HIC KOYMAMAKLA ayni
   // sey olurdu. Ustelik ekran kullaniciya "SMART kaydi acilacak" YAZIYOR — sessiz
   // gecis, kullaniciya YALAN soylenmesi anlamina gelirdi.
-  if (policy.smart === 'require' && !svcConfig.smartApproval?.enabled) {
-    return {
-      outcome: 'error',
-      status: 503,
-      body: {
-        ok: false,
-        code: 'smart_not_configured',
-        message:
-          'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. ' +
-          'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için ' +
-          'SMART onayını (flowKey ve metadata alanları) tanımlayın. ' +
-          'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
-      },
-    };
-  }
+  //
+  // ── SIRA DEGISTI (2026-09-20): SMART 503'u OCO KAPISINDAN SONRA ─────────────
+  //
+  // Bu kontrol daha once BURADA, `runChangeGates` cagrisindan 30 satir ONCE
+  // donuyordu. OCO kapisi ise `runChangeGates` ICINDE. Sonuc: uretimde
+  // `ansible_ss_customizations`ta ScaleX satiri hic olmadigi icin HER prod
+  // `apply` istegi 503 ile oluyordu ve **OCO koduna hic ulasilmiyordu**.
+  //
+  // KANIT (prod.app.log, 13,5 gun):
+  //   `grep -icE "scalex.*oco|oco.*scalex"` -> 0        (iki dosyada da SIFIR)
+  //   `smart_not_configured` -> 11, sonuncusu 2026-09-20T08:20:11
+  // Yani ScaleX'te OCO "bozuk" degildi — ERISILEMEZDI.
+  //
+  // Artik kapilar BAGIMSIZ: OCO once kosar ve kendi kararini soyler; SMART
+  // ayari eksikse is YINE BASLATILMAZ (fail-closed korunur) ama kullanici
+  // once GERCEK OCO hatasini gorur, yaniltici bir SMART mesajini degil.
+  const smartYapilandirilmamis = policy.smart === 'require' && !svcConfig.smartApproval?.enabled;
+
+  // ── OCO KAPISI AYARI ────────────────────────────────────────────────────────
+  //
+  // `enabled` ARTIK ADMIN AYARINDAN okunuyor. Onceden burada sabit `true` vardi
+  // (`policy.oco === 'require'`), yani `FieldOverridesModal`daki "OCO Kontrolu"
+  // anahtari ScaleX icin HICBIR SEY YAPMIYORDU — admin acip kapatiyor, davranis
+  // degismiyordu.
+  //
+  // VARSAYILAN ACIK (`!== false`): ayar satiri YOKSA bugunku davranis aynen
+  // surer. Varsayilani kapali yapmak, uretimdeki gibi satirin hic olmadigi bir
+  // kurulumda kapiyi SESSIZCE indirmek olurdu.
+  const ocoCfg = svcConfig.ocoCheck || {};
+  const ocoAdminEnabled = ocoCfg.enabled !== false;
+  const ocoEnvironments = Array.isArray(ocoCfg.environments) ? ocoCfg.environments : null;
   const overrides = {
     // `restore` icin OCO UYARIR ama ENGELLEMEZ → kapiyi hic acmiyoruz; gerekce
     // zaten cagiranda zorunlu kilindi ve kayda + SMART'a gidiyor.
-    // Admin OCO'yu kapatmis olsa bile prod'da acik tutuyoruz — bu sayfa bir
-    // kesinti araci, kapinin varsayilani "acik" olmali.
-    ocoCheck: { enabled: policy.oco === 'require' },
+    ocoCheck: {
+      enabled: ocoAdminEnabled && policy.oco === 'require',
+      // Liste verilmisse ortak kapi ONU kullanir; verilmemisse bugunku prod
+      // kurali gecerli kalir (bkz. change-gates.isOcoGateApplicable).
+      ...(ocoEnvironments ? { environments: ocoEnvironments } : {}),
+    },
     smartApproval: svcConfig.smartApproval || {},
   };
+
+  // KAPI KAPALIYSA SESSIZ KALMAZ. Kullanicinin karari "kapatilabilsin ama
+  // GORUNUR olsun" idi: prod bir `apply`, OCO kapisi admin tarafindan kapatilmis
+  // halde kosuyorsa bu denetime AYRI bir eylem olarak yazilir. Sessiz bir kapali
+  // kapi, kapiyi hic koymamakla ayni seydir.
+  if (policy.oco === 'require' && !ocoAdminEnabled) {
+    auditPortal(req, 'scalex_oco_gate_disabled', {
+      result: 'warn',
+      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, action, executionMode }),
+    });
+  }
   const radius = launch.computeBlastRadius({
     clusters,
     apps,
@@ -390,6 +441,34 @@ async function runScaleXGates({
         ok: false,
         message:
           'Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.',
+      },
+    };
+  }
+
+  // ── SMART FAIL-CLOSED — ARTIK OCO KAPISINDAN SONRA ──────────────────────────
+  //
+  // `isSmartRequired` bos ayarda `false` doner (Self Service icin dogru varsayilan;
+  // orada SMART opsiyonel bir eklenti). Ama ScaleX'te `policy.smart === 'require'`
+  // demek "bu islem onaysiz yapilmamali" demek; ayar satiri yoksa sessizce gecmek
+  // kapiyi HIC KOYMAMAKLA ayni sey olurdu. Ustelik ekran kullaniciya "SMART kaydi
+  // acilacak" YAZIYOR — sessiz gecis, kullaniciya YALAN soylenmesi olurdu.
+  //
+  // Buraya TASINDI (once `runChangeGates`ten ONCE donuyordu): boylece OCO kapisi
+  // her halukarda kosar ve kullanici once GERCEK OCO hatasini gorur. Yanit,
+  // hangi kapinin ne dedigini AYRI AYRI tasir.
+  if (smartYapilandirilmamis) {
+    return {
+      outcome: 'error',
+      status: 503,
+      body: {
+        ok: false,
+        code: 'smart_not_configured',
+        gates: { oco: 'passed', smart: 'not_configured' },
+        message:
+          'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. ' +
+          'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için ' +
+          'SMART onayını (flowKey ve metadata alanları) tanımlayın. ' +
+          'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
       },
     };
   }
@@ -1047,7 +1126,12 @@ function initScaleX(app) {
         action,
         executionMode,
       });
-      const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
+      const policy = launch.gatePolicyFor({
+        action,
+        executionMode,
+        environment: env,
+        ocoConfig: await readOcoConfig(),
+      });
       res.json({
         ok: true,
         blastRadius: radius,
@@ -1145,7 +1229,12 @@ function initScaleX(app) {
         });
       }
 
-      const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
+      const policy = launch.gatePolicyFor({
+        action,
+        executionMode,
+        environment: env,
+        ocoConfig: await readOcoConfig(),
+      });
       // Geri alma OCO penceresi disinda da calisabilir ama GEREKCESIZ calisamaz —
       // iz kalmali ve gerekce hem portal kaydina hem SMART metadata'sina gitmeli.
       if (policy.oco === 'warn' && !reason) {
@@ -1499,6 +1588,7 @@ function initScaleX(app) {
         action: 'restore',
         executionMode: 'apply',
         environment: env,
+        ocoConfig: await readOcoConfig(),
       });
 
       const launched = [];

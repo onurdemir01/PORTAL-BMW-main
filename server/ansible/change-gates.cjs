@@ -179,9 +179,31 @@ async function openSmartTicket({
 // olurdu — Self Service'te guvenilmez kaynaktan gelen `env: prod` `gateVars`ten
 // atiliyor ama `extraVars`te kaliyor; bugun OCO onun icin de calisiyor ve bu
 // davranisin ZAYIFLAMAMASI gerekiyor.
+//
+// ORTAM LISTESI (2026-09-20): admin "OCO hangi ortamlarda istensin" diyebilir.
+// Liste VERILMISSE o liste gecerlidir; VERILMEMISSE bugunku davranis aynen
+// surer (yalnizca prod). Liste bos dizi olarak gelirse bu "hicbir ortam"
+// demektir ve LISTE YOKLUGUNDAN farklidir — ikisini ayirmamak, ayari kaydeden
+// ama hicbir ortam secmeyen bir admin'e sessizce "her prod" davranisi
+// vermek olurdu.
+function normalizeOcoEnvironments(raw) {
+  if (!Array.isArray(raw)) return null; // "liste yok" — politikaya birak
+  return new Set(raw.map((e) => String(e ?? '').trim().toLowerCase()).filter(Boolean));
+}
+
 function isOcoGateApplicable(overrides, extraVars, gateVars) {
   if (!overrides.ocoCheck?.enabled) return false;
-  const { isProductionRequest } = require('../oco/prod-detect.cjs');
+  const { isProductionRequest, readEnvLabel } = require('../oco/prod-detect.cjs');
+
+  const envs = normalizeOcoEnvironments(overrides.ocoCheck.environments);
+  if (envs) {
+    // Etiket IKI KAYNAKTAN da okunur — asagidaki BIRLESIM gerekcesinin aynisi:
+    // ScaleX ortami `target_environment` adiyla gonderdigi icin `env` YALNIZCA
+    // `gateVars`ta bulunur.
+    const a = readEnvLabel(extraVars);
+    const b = readEnvLabel(gateVars);
+    return (a && envs.has(a)) || (b && envs.has(b));
+  }
   return isProductionRequest(extraVars) || isProductionRequest(gateVars);
 }
 
@@ -352,6 +374,7 @@ module.exports = {
   OUTCOMES,
   isSmartRequired,
   isOcoGateApplicable,
+  normalizeOcoEnvironments,
   evaluateOcoGate,
   openSmartTicket,
   runChangeGates,

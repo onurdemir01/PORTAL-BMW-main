@@ -472,20 +472,62 @@ function isHpaPinAllowed({ action, targetReplicas, restoreTargets }) {
 // gormedigi icin `/preview` test ortaminda da `oco: 'require'` donuyor, PreviewStep
 // OCO numarasi isteyip "Calistir" butonunu kilitliyordu. Sunucu o numarayi HIC
 // KULLANMIYORDU.
-function gatePolicyFor({ action, executionMode, environment }) {
+//
+// `ocoConfig` (2026-09-20): admin ayari. `{ enabled, environments }`.
+//   enabled=false      -> OCO hicbir yerde istenmez (prod dahil) AMA bu GORUNUR
+//                         olur: `ocoGateDisabled: true` doner, ekran kirmizi uyarir
+//                         ve sunucu tarafi denetime ayri bir kayit yazar.
+//   environments=[...]  -> yalnizca bu ortamlar. Liste YOKSA bugunku kural (prod).
+//
+// BU PARAMETRE SART: `change-gates.isOcoGateApplicable` artik listeye bakiyor.
+// Bu fonksiyon ona AYAK UYDURMAZSA ekran ile sunucu AYRISIR — ornegin admin
+// `test` eklediginde `/preview` "skip" der, numara alani hic cikmaz, sonra
+// `/run` `ocoRequired` ile reddeder. Yukaridaki yorumun anlattigi arizanin
+// birebir aynisi, ters yonden.
+function gatePolicyFor({ action, executionMode, environment, ocoConfig }) {
   if (executionMode !== 'apply')
     return { oco: 'skip', smart: 'skip', reason: 'dry_run hicbir sey degistirmez' };
+
   const envKnown = typeof environment === 'string' && environment.trim() !== '';
-  if (envKnown && !isProdEnv(environment)) {
+  const prod = !envKnown || isProdEnv(environment); // ORTAM BILINMIYORSA PROD SAYILIR
+
+  // OCO hangi ortamlarda isteniyor?
+  const cfg = ocoConfig || {};
+  const adminEnabled = cfg.enabled !== false; // ayar yoksa ACIK — bkz. index.cjs
+  const liste = Array.isArray(cfg.environments) ? cfg.environments : null;
+  const ortamKapsamda = liste
+    ? liste.some((e) => String(e || '').trim().toLowerCase() === String(environment || '').trim().toLowerCase())
+    : prod;
+  const ocoUygulanir = adminEnabled && ortamKapsamda;
+
+  // KAPI KAPALI MI, VE BU GORUNMELI MI? Yalnizca prod'da anlamli: prod disinda
+  // kapinin zaten istenmemesi normal, uyari gurultu olurdu.
+  const ocoGateDisabled = prod && !adminEnabled;
+
+  // SMART ortam kurali DEGISMEDI: yalnizca production.
+  if (!prod) {
     return {
-      oco: 'skip',
+      oco: ocoUygulanir ? (action === 'restore' ? 'warn' : 'require') : 'skip',
       smart: 'skip',
-      reason: 'prod disi ortam — onay kapilari yalnizca production icin',
+      ocoGateDisabled: false,
+      reason: ocoUygulanir
+        ? 'prod disi ortam — OCO admin ayariyla bu ortamda da isteniyor'
+        : 'prod disi ortam — onay kapilari yalnizca production icin',
     };
   }
   if (action === 'restore')
-    return { oco: 'warn', smart: 'require', reason: 'geri alma bir onarim islemidir' };
-  return { oco: 'require', smart: 'require', reason: null };
+    return {
+      oco: ocoUygulanir ? 'warn' : 'skip',
+      smart: 'require',
+      ocoGateDisabled,
+      reason: 'geri alma bir onarim islemidir',
+    };
+  return {
+    oco: ocoUygulanir ? 'require' : 'skip',
+    smart: 'require',
+    ocoGateDisabled,
+    reason: ocoGateDisabled ? 'OCO kapisi admin tarafindan KAPATILMIS' : null,
+  };
 }
 
 // `gateVars` TAMAMEN SUNUCUDA uretilir — client'tan hicbir anahtar kapiya girmez.
