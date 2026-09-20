@@ -196,6 +196,34 @@ test('CC11 `resources_readable` YALNIZCA "yes" iken true sayiliyor', () => {
   assert.equal(c1.resourcesReadable, false, '"no" okunabilir sayilmis');
   assert.equal(c2.resourcesReadable, true);
   assert.deepEqual(c1.kinds, ['a.io']);
+
+  // ASIL TEHLIKE "no" DEGIL, EKSIK/BEKLENMEDIK DEGER.
+  //
+  // Mutasyon turunda `=== 'yes'` yerine `!== 'no'` yazmak HICBIR BEKCIYI ates
+  // almadi: test yalnizca 'yes'/'no' deniyordu ve iki uygulama o iki degerde
+  // AYNI davraniyor. Oysa alan hic gelmezse (eski runner, kirpilmis satir,
+  // bicim degisikligi) `!== 'no'` onu OKUNABILIR sayar ve OKUNAMAMIS bir
+  // taramayi GECERLI onbellek olarak yazdirir — tam kacindigimiz sey.
+  const eksik = RESULT.extractDiscoveryResult({
+    scalex_discovery_result: {
+      mode: 'capabilities',
+      overall_status: 'ok',
+      items: [
+        { cluster: 'c3', step: 'CAP_SUMMARY', status: 'OK', detail: 'kinds=5' },
+        { cluster: 'c4', step: 'CAP_SUMMARY', status: 'OK', detail: 'kinds=5 resources_readable=maybe' },
+      ],
+    },
+  });
+  assert.equal(
+    eksik.capabilities.find((c) => c.cluster === 'c3').resourcesReadable,
+    false,
+    'EKSIK `resources_readable` okunabilir sayilmis — okunamamis tarama onbellege girer',
+  );
+  assert.equal(
+    eksik.capabilities.find((c) => c.cluster === 'c4').resourcesReadable,
+    false,
+    'BEKLENMEDIK deger okunabilir sayilmis',
+  );
 });
 
 test('CC12 tablo CREATE + INDEX ile tanimli, tanecik CLUSTER duzeyi', () => {
