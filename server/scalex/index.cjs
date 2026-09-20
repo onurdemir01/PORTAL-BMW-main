@@ -237,6 +237,7 @@ async function runScaleXGates({
   extraVars,
   reason,
   ocoNumber,
+  ocoAction,
 }) {
   if (policy.smart !== 'require' && policy.oco !== 'require') return { outcome: 'proceed' };
 
@@ -346,20 +347,31 @@ async function runScaleXGates({
     specFields: [],
     templateName: 'ScaleX',
     ocoNumber,
-    // OCO PENCERESI HENUZ ACILMADIYSA: ortak kapi normalde kullaniciya
-    // "zamanla mi, sonra mi?" diye sorar (400 `ocoDecisionRequired`). ScaleX icin
-    // ZAMANLAMA YOK — asagidaki `createOcoAwxSchedule` bilerek hata firlatiyor
-    // (bir kesinti araci, kendiliginden ateslenen ertelenmis is birakmamali).
-    // Dolayisiyla sorulan iki secenekten biri HER ZAMAN patlardi ve ekranda o
-    // secimi yapacak alan da yok: kullanici "Calistir"a basar, ayni mesaji alir,
-    // tekrar basar — kapali dongu. Var olmayan secimi sormak yerine tek gecerli
-    // cevabi veriyoruz: `later` → is BASLATILMAZ, kullanici pencere acildiginda
-    // geri gelir. Ekran bunu `ocoDeferred` ile net bir mesaj olarak gosterir.
-    ocoAction: 'later',
+    // OCO PENCERESI HENUZ ACILMADIYSA: artik KULLANICIYA SORULUYOR (2026-09-20).
+    //
+    // Onceden burada `ocoAction: 'later'` SABITI vardi ve `createOcoAwxSchedule`
+    // bilerek hata firliyordu; yani pencere kapaliyken istek 200 OK donup
+    // SESSIZCE hicbir sey yapmiyordu. Kullanici acisindan: "OCO numarasini
+    // girdim, hicbir sey olmadi."
+    //
+    // Simdi ekran "zamanlayayim mi?" diye soruyor ve secim buraya geliyor.
+    // ZAMANLAMA PORTALDA TUTULUYOR (`preferPortalScheduler`), AWX-native degil:
+    // istenen sey "her noktada iptal VE GUNCELLEME" ve bunu AWX-native bir
+    // schedule'da yapmak AWX API'sinden silip yeniden kurmayi gerektirirdi —
+    // kayit ile AWX arasinda ayrisma riski. Portal kaydinda ise poller kesinti
+    // saatinde `launchOrRequestApproval`i cagiriyor ve SMART kapisi ORADA
+    // devreye giriyor; yani zamanlama onay kapisini ATLAMIYOR.
+    ocoAction: ocoAction === 'schedule' ? 'schedule' : 'later',
+    preferPortalScheduler: true,
+    // Gorunurluk: kullanici KENDI ve GRUBUNUN kayitlarini gorur/iptal eder.
+    ownerGroups: Array.isArray(user.groups) ? user.groups : null,
     createOcoAwxSchedule: async () => {
+      // `preferPortalScheduler: true` oldugu icin ortak kapi buraya HIC gelmez.
+      // Yine de firlatiyoruz: sessizce AWX-native zamanlamaya dusmek, kaydin
+      // portal tarafindan guncellenememesi demek olurdu.
       throw Object.assign(
-        new Error('ScaleX işlemleri zamanlanamaz — pencere açıkken tekrar deneyin.'),
-        { status: 400 },
+        new Error('ScaleX zamanlamasi portal tarafinda tutulur — AWX schedule kullanilmaz.'),
+        { status: 500 },
       );
     },
     friendlyAwxError: (e) => ({ status: e.status || 502, message: e.message }),
@@ -1310,6 +1322,8 @@ function initScaleX(app) {
           extraVars,
           reason,
           ocoNumber: req.body?.ocoNumber,
+          // Kullanicinin "pencere acilinca otomatik baslat" secimi.
+          ocoAction: req.body?.ocoAction,
         });
       } catch (e) {
         await releaseRestoreLocks(locking.acquired);
@@ -1743,6 +1757,134 @@ function initScaleX(app) {
         }),
       });
       res.json({ ok: true, launched, pendingApproval, blocked });
+    }),
+  );
+
+  // ── ZAMANLANMIS OCO TETIKLEMELERI — KULLANICI UCLARI ────────────────────
+  //
+  // GORUNURLUK: kullanici KENDI ve GRUBUNUN kayitlarini gorur, Admin hepsini.
+  // Grup bilgisi kayit acilirken yaziliyor (`owner_groups`); `null` (eski kayit)
+  // grup uzerinden gorunur SAYILMAZ — "bilmiyoruz"u "senin grubun" saymak
+  // baskasinin kesinti kaydini gostermek olurdu.
+  router.get(
+    '/oco-schedules',
+    asyncRoute(async (req, res) => {
+      const u = currentUser(req);
+      const ocoStore = require('../oco/store.cjs');
+      const { items, truncated } = await ocoStore.listForUser({
+        username: u.username,
+        groups: u.groups,
+        limit: Number(req.query?.limit) || 100,
+      });
+      // ADMIN HEPSINI GORUR. Ayri bir sorgu degil, ayni listenin suzgecsiz hali:
+      // iki ayri sorgu zamanla AYRISIRDI.
+      const gorunur = u.role === 'Admin'
+        ? (await ocoStore.listAll({ limit: Number(req.query?.limit) || 100 }))
+        : items;
+      res.json({ ok: true, items: gorunur, truncated, scope: u.role === 'Admin' ? 'all' : 'mine+groups' });
+    }),
+  );
+
+  // IPTAL — "her noktada iptal edilsin" (kullanicinin istegi).
+  // Sahip, GRUP UYESI ve Admin iptal edebilir; iptal EDEN her zaman kaydedilir.
+  router.post(
+    '/oco-schedules/:id/cancel',
+    asyncRoute(async (req, res) => {
+      const u = currentUser(req);
+      const ocoStore = require('../oco/store.cjs');
+      const rec = await ocoStore.get(Number(req.params.id));
+      if (!rec) return res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' });
+      if (!ocoStore.canManage(rec, u)) {
+        // BASKASININ KAYDINA ERISIM DENEMESI DENETIME — `denyIfNotOwner`
+        // ile ayni gerekce: 403 donup iz birakmamak, bir kesinti aracinda
+        // kabul edilemez.
+        auditPortal(req, 'scalex_oco_schedule_forbidden', {
+          result: 'fail',
+          detail: JSON.stringify({ id: rec.id, owner: rec.username }),
+        });
+        return res.status(403).json({ ok: false, message: 'Bu kayit sizin ya da grubunuzun degil.' });
+      }
+      const iptal = await ocoStore.cancelBy(rec.id, {
+        cancelledBy: u.username,
+        note: String(req.body?.note || '').slice(0, 1000),
+      });
+      if (!iptal) {
+        // Kosullu UPDATE 0 satir etkiledi: kayit bu arada tetiklendi ya da
+        // zaten kapandi. SESSIZCE "iptal edildi" DEMEYIZ.
+        return res.status(409).json({
+          ok: false,
+          message: `Kayit iptal edilemedi — durumu "${rec.status}". Tetiklenmis ya da zaten kapanmis olabilir.`,
+        });
+      }
+      auditPortal(req, 'scalex_oco_schedule_cancelled', {
+        detail: JSON.stringify({ id: rec.id, owner: rec.username, oco: rec.ocoNumber }),
+      });
+      res.json({ ok: true, record: iptal });
+    }),
+  );
+
+  // GUNCELLEME — "guncellemek isterse guncellesin her noktada".
+  // YALNIZCA `SCHEDULED` iken: tetiklenmis bir isi "guncellemek" onu sessizce
+  // ezmek olurdu (store.update kosullu UPDATE ile bunu zorluyor).
+  router.post(
+    '/oco-schedules/:id/update',
+    asyncRoute(async (req, res) => {
+      const u = currentUser(req);
+      const ocoStore = require('../oco/store.cjs');
+      const rec = await ocoStore.get(Number(req.params.id));
+      if (!rec) return res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' });
+      if (!ocoStore.canManage(rec, u)) {
+        auditPortal(req, 'scalex_oco_schedule_forbidden', {
+          result: 'fail',
+          detail: JSON.stringify({ id: rec.id, owner: rec.username }),
+        });
+        return res.status(403).json({ ok: false, message: 'Bu kayit sizin ya da grubunuzun degil.' });
+      }
+
+      // YENI NUMARA VERILDIYSE DOGRULANIR. Numara degistirip pencereyi eski
+      // kayittan devam ettirmek, DOGRULANMAMIS bir OCO ile is baslatmak olurdu.
+      const yeniNumara = String(req.body?.ocoNumber || '').trim();
+      let yama = {};
+      if (yeniNumara && yeniNumara !== rec.ocoNumber) {
+        const ocoClient = require('../oco/client.cjs');
+        const ocoWindow = require('../oco/window.cjs');
+        let order;
+        try {
+          order = await ocoClient.getChangeOrder(yeniNumara);
+        } catch (e) {
+          return res.status(ocoClient.httpStatus(e)).json({ ok: false, message: e.message });
+        }
+        const planned = ocoWindow.extractPlannedInterruption(order.payload);
+        if (!planned) {
+          return res.status(400).json({
+            ok: false,
+            message: `OCO ${yeniNumara} kaydinda planlanan kesinti tarihi yok.`,
+          });
+        }
+        const w = ocoWindow.evaluateWindow({ startDate: planned.startDate, endDate: planned.endDate });
+        if (!w.ok) return res.status(400).json({ ok: false, message: w.message });
+        if (w.phase === 'expired') {
+          return res.status(400).json({ ok: false, ocoExpired: true, message: w.message });
+        }
+        yama = {
+          ocoNumber: yeniNumara,
+          ocoSubject: order.result?.OcoWfIdSubject || order.result?.Subject || null,
+          runAt: w.windowStart,
+          windowEnd: w.windowEnd,
+        };
+      }
+
+      const guncel = await ocoStore.update(rec.id, yama);
+      if (!guncel) {
+        return res.status(409).json({
+          ok: false,
+          message: `Kayit guncellenemedi — durumu "${rec.status}". Yalnizca beklemedeki kayitlar guncellenebilir.`,
+        });
+      }
+      auditPortal(req, 'scalex_oco_schedule_updated', {
+        detail: JSON.stringify({ id: rec.id, oncekiOco: rec.ocoNumber, yeniOco: guncel.ocoNumber }),
+      });
+      res.json({ ok: true, record: guncel });
     }),
   );
 
