@@ -465,7 +465,12 @@ export const scalexApi = {
       fetchedAt?: string | null;
       stale?: boolean;
       scannedAt?: string | null;
+      /** Tarandı ve GERÇEKTEN boş çıktı — otomatik tarama BAŞLATILMAZ. */
       scannedEmpty?: boolean;
+      /** Tarama kaydı OKUNAMADI — "hiç taranmadı" DEĞİL. Otomatik tarama
+       *  başlatılmaz; okunamayan bir kaydı "yok" saymak her sayfa girişinde
+       *  yeni bir AWX işi açardı (LogX tarafında üretimde yaşandı). */
+      scanUnknown?: boolean;
       source?: string;
     }>;
   },

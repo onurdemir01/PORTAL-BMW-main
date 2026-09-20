@@ -1132,3 +1132,38 @@ test('W2 keşfedilen CRD, DaemonSet metniyle ANLATILMAZ', () => {
   assert.match(code, /düğüm sayısıyla ölçeklenir/, 'DaemonSet dali kaybolmus');
   assert.match(code, /suspend gerekir/, 'CronJob dali kaybolmus');
 });
+
+// ── HS9/HS10: OTOMATIK TARAMA HAFIZASININ SAHIPLIGI ─────────────────────────
+//
+// `WorkloadStep` sonsuz tarama dongusune karsi bir hafiza kullaniyor, ama o
+// hafizanin NEREDE tutuldugu kritik: sihirbaz `<div key={step}>` ile bileseni
+// her adim degisiminde REMOUNT ediyor ve tarama akisi adimi zorunlu
+// degistiriyor. Hafiza bilesen icinde (ya da her render'da yeniden) kurulursa
+// koruma ETKISIZ kalir — LogX tarafinda uretimde tam bu yasandi.
+//
+// Bu iki kural DAVRANIS testiyle yakalanmiyor: `WorkloadStep` testleri hafizayi
+// prop olarak aliyor, yani SAYFANIN sahipligini hic kosturmuyorlar. Mutasyon
+// turunda "hafizayi bilesen icine al" mutasyonu HICBIR BEKCIYI ates almamisti;
+// bu bosluk onun icin kapatildi.
+test('HS9 otomatik tarama hafizasi HER RENDER`da yeniden kurulmuyor', () => {
+  const kod = codeOnly(PAGE);
+  assert.match(
+    kod,
+    /const \[autoScanMemo\] = useState<Map<string, number>>\(\(\) => new Map\(\)\)/,
+    'hafiza kararli bir baslatici ile kurulmuyor (useState baslaticisi / useRef)',
+  );
+  // Her render'da yeni bir Map: koruma her turda sifirlanir.
+  assert.ok(
+    !/const autoScanMemo = new Map/.test(kod),
+    'hafiza her render`da yeniden kuruluyor — remount korumasi ETKISIZ',
+  );
+});
+
+test('HS10 hafiza `WorkloadStep`e GERCEKTEN geciriliyor', () => {
+  // Kural "degisken var mi" degil, KARAR NOKTASINDA kullaniliyor mu.
+  const kod = codeOnly(PAGE).replace(/\s+/g, ' ');
+  const i = kod.indexOf('<WorkloadStep');
+  assert.ok(i > 0, 'WorkloadStep render edilmiyor');
+  const blok = kod.slice(i, kod.indexOf('/>', i) > 0 ? kod.indexOf('onSubmit={(v) => {', i) : i + 600);
+  assert.match(blok, /autoScanMemo=\{autoScanMemo\}/, 'hafiza bilesene GECIRILMIYOR');
+});
