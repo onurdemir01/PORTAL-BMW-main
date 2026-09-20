@@ -284,3 +284,116 @@ test('JO7 `tooLarge` reddi YASI BEKLEMEDEN "bilinmiyor" isaretleniyor', () => {
     '`tooLarge` dali yas kontrolunden SONRA — yas dolana kadar ates almaz',
   );
 });
+
+// ── JO8/JO9/JO10 — CIKTI FILTRESI (OOM'UN SON ACIK YOLU) ───────────────────
+//
+// 2026-09-20 log turunda uretimde 7 OOM olctum (onceki turda 3 saymistim; o
+// analiz daha kucuk bir log dilimindeydi). 7'nin 4'unde son JS karesi:
+//   13: v8::internal::Runtime_StringSplit(...)
+//
+// `getJobOutput` bu teshisi dogru yapip KENDI satirindaki `split`i kaldirmisti,
+// ama 30 satir yukaridaki `applyOutputFilter` ATLANMISTI ve ayni `split`i
+// yapmaya devam ediyordu. `GET /jobs/N/output` uretimde ortalama 20.846 ms
+// suruyor ve tam bu yoldan geciyor.
+//
+// Bu testler DESEN ARAMAZ — gercek `applyOutputFilter` govdesi kosturulur.
+
+function gercekFiltre() {
+  const i = RUNNER_SRC.indexOf('function applyOutputFilter');
+  const j = RUNNER_SRC.indexOf('async function getJobOutput');
+  assert.ok(i > 0 && j > i, 'applyOutputFilter bulunamadi');
+  return new Function(
+    'AWX_TRUNCATION_NOTICE',
+    'FILTERED_OUTPUT_MAX_BYTES',
+    `${RUNNER_SRC.slice(i, j)}\nreturn applyOutputFilter;`,
+  )('\n... [PORTAL] KIRPILDI', 4 * 1024 * 1024);
+}
+
+test('JO8 filtre 16 MB ciktiyi DIZIYE AYIRMIYOR (heap olculur)', () => {
+  const filtre = gercekFiltre();
+  // ~16 MB: 200 bin satir x ~80 bayt. Eski hali bunu 200 bin elemanli bir
+  // diziye aciyordu; V8'de her kucuk string ~40-60 bayt ek yuk tasir, yani
+  // kaynak metin HALA CANLIYKEN ustune ~100-150 MB.
+  const satir = 'ok: [host-0123456789] => changed=false  elapsed=0.01s  msg=done';
+  const metin = new Array(200000).fill(satir).join('\n');
+  const boyut = Buffer.byteLength(metin, 'utf8');
+
+  if (global.gc) global.gc();
+  const once = process.memoryUsage().heapUsed;
+  const r = filtre(metin, { outputFilter: { enabled: true, contains: 'ZZZ-HICBIR-SEY' } });
+  const artis = process.memoryUsage().heapUsed - once;
+
+  assert.equal(r.totalLines, 200000, 'satir sayisi yanlis');
+  assert.equal(r.matchedLines, 0);
+  assert.equal(r.output, '');
+  // Hicbir satir eslesmedigi halde diziye acilsaydi artis kaynak boyutunun
+  // KATLARI olurdu. Kaynagin YARISI bile asilmamali.
+  assert.ok(
+    artis < boyut / 2,
+    `filtre girdiyi diziye acti: girdi ${boyut} B, heap artisi ${artis} B`,
+  );
+});
+
+test('JO9 filtre sonucu BAYT TAVANI tasiyor (genis needle kaynak kadar buyumesin)', () => {
+  const filtre = gercekFiltre();
+  const src = RUNNER_SRC.slice(
+    RUNNER_SRC.indexOf('function applyOutputFilter'),
+    RUNNER_SRC.indexOf('async function getJobOutput'),
+  );
+  assert.match(src, /FILTERED_OUTPUT_MAX_BYTES/, 'suzulmus cikti tavani yok');
+
+  // Her satiri eslestiren bir needle: sonuc kaynak kadar buyuk olurdu.
+  const satir = 'ok: ' + 'x'.repeat(200);
+  const metin = new Array(60000).fill(satir).join('\n'); // ~12 MB
+  const r = filtre(metin, { outputFilter: { enabled: true, contains: 'ok:' } });
+  assert.ok(
+    Buffer.byteLength(r.output, 'utf8') <= 4 * 1024 * 1024 + 200,
+    `suzulmus cikti tavani asildi: ${Buffer.byteLength(r.output, 'utf8')}`,
+  );
+  assert.match(r.output, /KIRPILDI/, 'kirpma SESSIZ — kullaniciya soylenmiyor');
+});
+
+test('JO10 filtre SOZLESMESI degismedi (eski uygulamayla birebir ayni)', () => {
+  const filtre = gercekFiltre();
+  // Eski uygulama, referans olarak.
+  const eski = (stdoutText, overrides) => {
+    const text = typeof stdoutText === 'string' ? stdoutText : '';
+    const filt = overrides?.outputFilter;
+    const needle = String(filt?.contains ?? '').trim();
+    if (!filt?.enabled || !needle)
+      return { output: text, filtered: false, totalLines: 0, matchedLines: 0 };
+    const lines = text ? text.split('\n') : [];
+    const kept = lines.filter((l) => l.includes(needle)).map((l) => l.trim());
+    return {
+      output: kept.join('\n'),
+      filtered: true,
+      totalLines: lines.length,
+      matchedLines: kept.filter(Boolean).length,
+      needle,
+    };
+  };
+
+  const parcalar = ['TASK [foo]', '  ok: [host]', 'changed=1', '', '   ', 'fatal: FAILED', 'ok', '\r'];
+  let denendi = 0;
+  for (let t = 0; t < 1500; t++) {
+    const n = t % 11;
+    const metin = Array.from({ length: n }, () => parcalar[(t * 7 + n) % parcalar.length]).join('\n');
+    for (const needle of ['ok', 'changed', 'TASK', 'zzz', '  ', 'a']) {
+      const ov = { outputFilter: { enabled: true, contains: needle } };
+      assert.deepEqual(filtre(metin, ov), eski(metin, ov), `sozlesme kaydi: ${JSON.stringify(metin)} / ${needle}`);
+      denendi++;
+    }
+  }
+  // Kenar durumlar — `a\nb` ornegini diferansiyel test yakalamisti:
+  // `lastIndexOf` negatif `fromIndex`i 0 gibi ele aliyor ve needle satir
+  // sinirinin OTESINE tasabiliyordu.
+  for (const [metin, needle] of [
+    ['', 'x'], ['tek satir', 'tek'], ['a\n', 'a'], ['\n\n', 'x'],
+    ['abc', 'abcd'], ['a\nb', 'a\nb'], ['a\nb\nc', 'b\nc'],
+  ]) {
+    const ov = { outputFilter: { enabled: true, contains: needle } };
+    assert.deepEqual(filtre(metin, ov), eski(metin, ov), `kenar: ${JSON.stringify(metin)} / ${JSON.stringify(needle)}`);
+    denendi++;
+  }
+  assert.ok(denendi > 9000, `yeterince durum denenmedi: ${denendi}`);
+});

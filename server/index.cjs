@@ -364,6 +364,33 @@ async function main() {
     );
   });
 
+  // ── BELLEK NABZI — "OOM kapandi mi?" sorusunu OLCULEBILIR yapar ────────────
+  //
+  // 2026-09-19'da uretimde 7 OOM yasandi (`FATAL ERROR: Reached heap limit`).
+  // Duzeltmeler yazildi, AMA elimizdeki loglar duzeltmelerden ONCE bitiyor:
+  // "kapandi" diyebilmek icin tek bir veri noktasi bile yok. Daha kotusu,
+  // yapilandirilmis logger cokmeyi HIC gormuyor — surec V8 ile birlikte oluyor
+  // ve `FATAL ERROR` yalnizca stdout'a dusuyor. Yalnizca app.log'a bakan biri
+  // "cokme yok" der ve yanilir.
+  //
+  // Bu satir dakikada bir heap'i yaziyor. Bir sonraki log turunda:
+  //   - heap zamanla tirmaniyorsa SIZINTI,
+  //   - aniden zirve yapip kayboluyorsa TEK BIR ISTEK 2 GB yiyor (bugunku desen),
+  //   - duz gidiyorsa duzeltmeler TUTMUS.
+  // Ucunu de ayirt edecek veri bugun YOK; bu satir onu uretir.
+  const HEAP_NABIZ_MS = 60000;
+  const _heapNabiz = setInterval(() => {
+    const m = process.memoryUsage();
+    const mb = (n) => Math.round(n / (1024 * 1024));
+    console.log(
+      `[Server] heap=${mb(m.heapUsed)}/${mb(m.heapTotal)}MB rss=${mb(m.rss)}MB ` +
+        `ext=${mb(m.external)}MB uptime=${Math.round(process.uptime())}s`,
+    );
+  }, HEAP_NABIZ_MS);
+  // `unref()`: bu zamanlayici surecin kapanmasini ENGELLEMEZ — aksi halde
+  // dagitim sirasinda portal bir dakika gec kapanirdi.
+  _heapNabiz.unref();
+
   // Node'un varsayilan keepAliveTimeout'u (5s) nginx'in upstream keep-alive suresinden
   // KISA olabilir — bu durumda nginx bir soketi hala acik sanip uzerinden yeni istek
   // gonderirken Node tam o an kapatmaya karar vermisse, istek Express'e hic ulasmadan
