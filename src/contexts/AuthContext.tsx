@@ -173,11 +173,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Canlı yayılım: admin bir görünürlük değişikliği yapınca versiyon artar; istemci hafif
   // version ucunu poll'leyip değişince haritayı yeniden çeker — reload GEREKMEZ.
+  //
+  // 401 GELDIGINDE YOKLAMA DURUR (2026-09-20). Eskiden oturum dustugunde bu
+  // dongu SONSUZA DEK donmeye devam ediyordu: sunucu yeniden baslayip oturumlari
+  // sildiginde `user` istemci tarafinda hala doluydu ve her 45 saniyede iki
+  // istek (version + resolved) 401 uretiyordu. Uretimde 13,5 gunde 6.690 istek
+  // yalnizca bu iki uctan geldi.
+  //
+  // Artik 401 "oturum bitti" demektir: `setUser(null)` ile uygulama giris
+  // ekranina duser ve dongu (bagimlilik `user`) KENDILIGINDEN durur.
   useEffect(() => {
     if (!user) return;
     const id = window.setInterval(() => {
       visibilityApi.getVersion()
-        .then((v) => { if (v !== visibilityVersion.current) refreshVisibility(); })
+        .then(({ version, unauthorized }) => {
+          if (unauthorized) {
+            setUser(null);
+            return;
+          }
+          if (version !== visibilityVersion.current) refreshVisibility();
+        })
         .catch(() => {});
     }, 45_000);
     return () => window.clearInterval(id);

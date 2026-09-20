@@ -1160,6 +1160,14 @@ async function getJobOutput(jobId) {
 // `.env` ile degistirilebilir hale getirildi — ve asagida artik HER ZAMAN kimin
 // tetikledigi (`requester_username`) ile varsayilana dusuldugu (`requester_is_fallback`)
 // da gonderiliyor, boylece yanlis atif GORUNUR oluyor.
+/**
+ * Tetikleyici HIC bilinmiyorken gosterilecek ad.
+ *
+ * GERCEK BIR KISININ ADI OLMAMALI: bildirime bakan biri "bu isi o kisi istemis"
+ * diye okur ve denetim izi yanlislanir. Notr etiket, "bilmiyoruz"u acikca soyler.
+ */
+const FALLBACK_REQUESTER_LABEL = 'Bilinmeyen tetikleyici (Portal)';
+
 const DEFAULT_REQUESTER = {
   email: process.env.PORTAL_DEFAULT_REQUESTER_EMAIL || 'onurdemir3@garantibbva.com.tr',
   name: process.env.PORTAL_DEFAULT_REQUESTER_NAME || 'Onur Demir',
@@ -1173,7 +1181,18 @@ function withRequesterVars(extraVars, user) {
   // AD BILINIYORSA VARSAYILANA DUSULMEZ. Eskiden `displayName` ve `username` bos
   // gelince ad da varsayilana dusuyordu; oysa kullanici adi cogu yolda BILINIYOR
   // (LogX istegi onu satirinda tasiyor) — yalnizca bu fonksiyona GECIRILMIYORDU.
-  const name = rawName || DEFAULT_REQUESTER.name;
+  // AD ICIN VARSAYILANA DUSULMEZ — YANLIS ATIF URETIR.
+  //
+  // `DEFAULT_REQUESTER.name` GERCEK BIR CALISANIN adi. Tetikleyici bilinmiyorken
+  // onu yazmak, Teams bildiriminde ve AWX `extra_vars`inda isi O KISIYE atfeder.
+  // Uretimde 13,5 gunde 33 bildirim boyle gitti; denetim izi acisindan "kim ne
+  // istedi" kaydi YANLIS.
+  //
+  // ADRES yine varsayilana duser (`email` yukarida) cunku Teams akisindaki
+  // "Search for users" adimi cozemedigi bir adreste bildirimi TAMAMEN dusurur —
+  // yani adresi bozmak bildirimi yok eder. AMA GORUNEN AD kimseyi suclamaz:
+  // kullanici adi biliniyorsa o, bilinmiyorsa notr bir etiket yazilir.
+  const name = rawName || FALLBACK_REQUESTER_LABEL;
   // Varsayilana dusuldugunde logla - aksi halde Teams @mention'in GERCEKTEN o an
   // tetikleyen kisiye mi cozuldugu, yoksa DEFAULT_REQUESTER'a mi (Onur Demir - kod
   // deposundaki sabit) dustugu, bildirimin GORUNTUSUNDEN AYIRT EDILEMEZ (DEFAULT_REQUESTER
@@ -1296,6 +1315,26 @@ async function cancelJobOnServer(serverId, jobId) {
     const status = err && err.status;
     // 405 Method Not Allowed = job zaten terminal (iptal edilemez); bunu hata sayma.
     if (status === 405 || status === 409) return { canceled: false, alreadyTerminal: true };
+    // ── YETKI YOKSA MESAJ ACIK OLMALI ────────────────────────────────────────
+    //
+    // Uretimde 8 kez: `POST /api/v2/jobs/N/cancel/ -> 403 "You do not have
+    // permission to perform this action."` Portalin AWX token'i `cancel`
+    // yetkisine sahip degil. AWX'in ham mesaji kullaniciya ISIN HALA KOSTUGUNU
+    // SOYLEMIYOR — kesinti sirasinda tehlikeli bir belirsizlik.
+    //
+    // Ayrica bu red KALICIDIR: yetki bir sonraki denemede belirmez. Tekrar
+    // denemek hem bosuna hem de kullaniciya "belki olur" hissi verir.
+    // (PR #108'deki `tooLarge` ile ayni sinif.)
+    if (status === 403) {
+      throw Object.assign(
+        new Error(
+          'İş İPTAL EDİLEMEDİ: portalın AWX kullanıcısında iptal yetkisi yok. ' +
+            'İş AWX üzerinde ÇALIŞMAYA DEVAM EDİYOR — AWX arayüzünden iptal edin. ' +
+            '(Kalıcı bir yetki eksiği; tekrar denemek sonucu değiştirmez.)',
+        ),
+        { status: 403, permanent: true, jobStillRunning: true },
+      );
+    }
     throw err;
   }
 }
@@ -4615,6 +4654,8 @@ function initAnsibleRunner(app) {
       // birkac satir yukarida ZATEN yazilan `stdoutText` HAM haliyle kalir (denetim/tam-log
       // butunlugu bozulmaz) — filtre yalniz EKRANDA gorunen goruntu.
       let displayOutput = stdoutText;
+      // Filtre hicbir satirla eslesmediyse sebebi buraya yazilir ve EKRANA gider.
+      let filtreUyarisi = null;
       if (jobTemplateId) {
         try {
           const overrides = readCustom(Number(req.params.serverId), jobTemplateId);
@@ -4633,6 +4674,16 @@ function initAnsibleRunner(app) {
               console.warn(
                 `[SS-Filter] UYARI: cikti filtresi HICBIR satirla eslesmedi — kullaniciya BOS log gorunuyor (server=${req.params.serverId} template=${jobTemplateId}).`,
               );
+              // ...VE ARTIK EKRANA DA SOYLENIYOR (2026-09-20).
+              //
+              // Uyari 13,5 gunde 50 kez yazildi ama YALNIZCA sunucu loguna. Kullanici
+              // bos bir konsol gorup isi BASARISIZ saniyor ve cogu zaman yeniden
+              // calistiriyor. Filtrenin eslesmemesi bir BILGIdir; ekranda durmali.
+              filtreUyarisi =
+                `[PORTAL] Çıktı filtresi hiçbir satırla eşleşmedi ` +
+                `(aranan: "${filtered.needle}", taranan satır: ${filtered.totalLines}). ` +
+                `İş çalıştı; görüntülenecek eşleşme yok. Filtreyi Admin > Ansible > ` +
+                `Self Servis Özelleştirmeleri ekranından gözden geçirebilirsiniz.`;
             }
           } else if (overrides && Object.keys(overrides).length > 0) {
             // Ozellestirme kaydi VAR ama outputFilter yok/kapali — beklenen: tam cikti donuyor.
@@ -4662,7 +4713,11 @@ function initAnsibleRunner(app) {
       res.json({
         ok: true,
         status: data.status,
-        output: displayOutput,
+        // Filtre hicbir satirla eslesmediyse ekran BOS kalmaz: sebebi yazilir.
+        output: filtreUyarisi ? `${filtreUyarisi}\n` : displayOutput,
+        // Ayri alan olarak da gonderilir — ekran isterse onu rozet olarak gosterir
+        // ve ciktiyi bos birakir; ikisi de "sessiz bos ekran"dan iyidir.
+        filterNoMatch: filtreUyarisi || null,
         resultTraceback: data.result_traceback || '',
         jobExplanation: data.job_explanation || '',
         finished: data.finished,

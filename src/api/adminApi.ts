@@ -98,10 +98,23 @@ export const visibilityApi = {
     return { version: d.version ?? 0, visibility: d.visibility ?? {} };
   },
 
-  async getVersion(): Promise<number> {
+  /**
+   * Görünürlük versiyonu. **401 SESSİZCE 0'A DÜŞMEZ.**
+   *
+   * Eski hali `safeJson` kullanıyordu; o, HTTP durumunu kontrol etmez. Oturum
+   * düştüğünde (sunucu yeniden başladı, oturumlar bellekteydi) yanıt 401 olur,
+   * `d.version` `undefined` gelir ve `?? 0` onu **0** yapardı. Çağıran taraf
+   * `0 !== mevcutVersiyon` görüp haritayı yeniden çeker — yani her yoklama
+   * turunda **İKİ** istek atılırdı. Üretim ölçümü bunu birebir gösteriyor:
+   * `/version` 3.007, `/resolved` 3.683.
+   *
+   * Artık 401 ayrı bir sonuç olarak döner; çağıran yoklamayı DURDURUR.
+   */
+  async getVersion(): Promise<{ version: number; unauthorized: boolean }> {
     const res = await fetch("/api/visibility/version");
+    if (res.status === 401) return { version: 0, unauthorized: true };
     const d: { ok: boolean; version: number } = await safeJson(res);
-    return d.version ?? 0;
+    return { version: d.version ?? 0, unauthorized: false };
   },
 
   // actions.md #19 (Bolum O.2) — ana menu grup YAPISI (DB-tabanli, eskiden Sidebar.tsx'te
