@@ -23,6 +23,19 @@ const oku = (p) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
  */
 const kodOnly = (s) =>
   s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+/**
+ * FAIL-CLOSED dilimleyici. `indexOf` -1 dondugunde `slice` HATA VERMEZ —
+ * sessizce yanlis bir dilim uretir ve olumsuz assert'ler bos metinde HER ZAMAN
+ * gecer, yani bekci FAIL-OPEN olur. Sinir bulunamazsa test DUSER.
+ */
+function dilim(src, bas, son) {
+  const i = src.indexOf(bas);
+  const j = src.indexOf(son, i + 1);
+  assert.ok(i >= 0, `dilim baslangici bulunamadi: ${bas}`);
+  assert.ok(j > i, `dilim sonu bulunamadi: ${son}`);
+  return src.slice(i, j);
+}
+
 const CS = kodOnly(oku('ansible/choice-sources.cjs'));
 const LG = kodOnly(oku('logx/v2/legacy.cjs'));
 
@@ -48,6 +61,13 @@ test('DB2 SURESI DOLAN giris SILINIYOR (TTL bellegi de koruyor)', () => {
   const tazeIdx = govde.indexOf('< CACHE_TTL_MS');
   const silIdx = govde.indexOf('cache.delete(key)');
   assert.ok(tazeIdx > 0 && silIdx > tazeIdx, 'silme tazelik kontrolunden ONCE — taze giris de silinir');
+  // OLU DAL YASAK. Mutasyon turunda silmenin onune `if (false)` koymak hicbir
+  // seyi ates almadi: kod metinde duruyordu ama HIC KOSMUYORDU. Bu depoda
+  // tekrar eden kor bekci bicimi #4 — "varligi arar, ULASILABILIRLIGI degil".
+  assert.ok(
+    !/if \((?:false|0|null|undefined)\)/.test(govde),
+    'silme OLU DALA alinmis — metinde duruyor ama hic kosmuyor',
+  );
 });
 
 test('DB3 yeniden yazimda FIFO sirasi TAZELENIYOR', () => {
@@ -64,14 +84,29 @@ test('DB3 yeniden yazimda FIFO sirasi TAZELENIYOR', () => {
 
 test('DB4 yedek dosyasi HEM YAZMADA HEM OKUMADA sinirli', () => {
   assert.match(LG, /const SNAPSHOT_MAX_BYTES = /, 'tavan tanimli degil');
-  const yaz = LG.slice(LG.indexOf('function writeSnapshotAsync'), LG.indexOf('// GET /legacy/apps'));
-  const okuF = LG.slice(LG.indexOf('function readSnapshot'), LG.indexOf('function writeSnapshotAsync'));
-  assert.match(yaz, /SNAPSHOT_MAX_BYTES/, 'YAZMADA sinir yok');
-  assert.match(okuF, /SNAPSHOT_MAX_BYTES/, 'OKUMADA sinir yok — yalnizca bir yon sinirli kalirdi');
+  // DILIM SINIRI KOD OLMALI, YORUM DEGIL. Ilk yazdigimda sinir olarak
+  // `// GET /legacy/apps` yorumunu vermistim — ama yukarida yorumlari ELIYORUZ,
+  // yani o sinir kaynakta YOK ve `indexOf` -1 donuyordu. `slice(i, -1)` hata
+  // VERMEZ, sessizce bambaska bir dilim uretir ve bekci bos/yanlis metni
+  // tarardi. Mutasyon turu bunu yakaladi (M5/M6 "kor" cikti).
+  const yaz = dilim(LG, 'function writeSnapshotAsync', 'async function searchApps');
+  const okuF = dilim(LG, 'function readSnapshot', 'function writeSnapshotAsync');
+  // KOSULU OLC, MESAJI DEGIL. Ilk yazdigimda yalnizca `SNAPSHOT_MAX_BYTES`
+  // gectigini ariyordum — ama o ad `console.warn` METNINDE de geciyor. Kapiyi
+  // `if (false)` yapan mutasyon hicbir seyi ates almadi: sabit hala metinde
+  // duruyordu. (kor bekci bicimi #4)
+  assert.match(yaz, /if \(bayt > SNAPSHOT_MAX_BYTES\)/, 'YAZMADA sinir KOSULU yok');
+  assert.match(okuF, /if \(st\.size > SNAPSHOT_MAX_BYTES\)/, 'OKUMADA sinir KOSULU yok');
+  for (const [ad, g] of [['yazma', yaz], ['okuma', okuF]]) {
+    assert.ok(
+      !/if \((?:false|0|null|undefined)\)/.test(g),
+      `${ad} kapisi OLU DALA alinmis — metinde duruyor ama hic kosmuyor`,
+    );
+  }
 });
 
 test('DB5 okumada ONCE BOYUTA bakiliyor, sonra dosya aciliyor', () => {
-  const okuF = LG.slice(LG.indexOf('function readSnapshot'), LG.indexOf('function writeSnapshotAsync'));
+  const okuF = dilim(LG, 'function readSnapshot', 'function writeSnapshotAsync');
   const statIdx = okuF.indexOf('statSync');
   const readIdx = okuF.indexOf('readFileSync');
   assert.ok(statIdx > 0, 'boyut hic olculmuyor');
@@ -79,8 +114,11 @@ test('DB5 okumada ONCE BOYUTA bakiliyor, sonra dosya aciliyor', () => {
 });
 
 test('DB6 yedek GIRINTISIZ yaziliyor (dosyayi ~2 kat buyutuyordu)', () => {
-  const yaz = LG.slice(LG.indexOf('function writeSnapshotAsync'), LG.indexOf('// GET /legacy/apps'));
-  assert.ok(!/JSON\.stringify\([^)]*,\s*null,\s*2\)/.test(yaz), 'hala girintili yaziliyor');
+  const yaz = dilim(LG, 'function writeSnapshotAsync', 'async function searchApps');
+  // BASIT VE SAGLAM: `[^)]*` desenim `new Date().toISOString()` icindeki
+  // parantezi GECEMIYORDU, yani girintiyi geri koyan mutasyon eslesmiyordu ve
+  // bekci yesil kaliyordu. Girinti argumani tek basina aranir.
+  assert.ok(!/,\s*null,\s*2\s*\)/.test(yaz), 'hala girintili yaziliyor (`null, 2`)');
 });
 
 // ── DB7: uygulama listesi ──────────────────────────────────────────────────
