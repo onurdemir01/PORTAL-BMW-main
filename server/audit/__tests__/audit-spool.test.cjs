@@ -177,3 +177,36 @@ test('AS6 aktarim ortasinda DB duserse kalanlar spool`da KALIYOR', async () => {
   assert.equal(tablo.length, 3, 'ikinci turda kalanlar aktarilmadi');
   assert.deepEqual(tablo.map((x) => x.action), ['bir', 'iki', 'uc'], 'SIRA bozuldu');
 });
+
+// AS7 — AKTARIM MUKERRER KAYIT URETMEZ.
+//
+// `writeEntry` dusen bir yazimda girdiyi spool'a GERI EKLER. Aktarim sirasinda
+// bu, girdinin dosyada ZATEN duran kopyasinin yanina ikincisini koyar ve DB
+// donunce ayni denetim kaydi zincire IKI KEZ girer.
+//
+// Bu kusur akis tabanli `drain`e gecince GORUNUR OLDU: eski `drain` tum dosyayi
+// bastan okuyup uzerine yazdigi icin mukerrer kaydi farkinda olmadan SILIYORDU —
+// yani dogru sonucu yanlis sebeple veriyordu.
+test('AS7 aktarim sirasinda dusen yazim MUKERRER kayit uretmez', async () => {
+  dbBozuk = true;
+  for (const a of ['bir', 'iki']) await zincir.log({ username: 'u', action: a, detail: a });
+  assert.equal(zincir.spoolDepth(), 2);
+
+  // Her INSERT dussun: hicbiri aktarilamaz, ikisi de spool'da KALMALI — 4 degil.
+  dbBozuk = false;
+  const gercek = db.query;
+  db.query = async (sql, params) => {
+    if (String(sql).startsWith('INSERT INTO')) throw new Error('DB yine dustu');
+    return gercek(sql, params);
+  };
+  try {
+    await zincir.drainSpool();
+  } finally {
+    db.query = gercek;
+  }
+  assert.equal(zincir.spoolDepth(), 2, 'aktarim MUKERRER kayit uretti');
+
+  // DB donunce tam olarak iki kayit yazilmali.
+  await zincir.drainSpool();
+  assert.deepEqual(tablo.map((x) => x.action), ['bir', 'iki'], 'kayitlar mukerrer ya da eksik');
+});

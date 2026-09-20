@@ -14,6 +14,9 @@ const db = require('../db/index.cjs');
 //      icin dogrulama yalniz v3'u kapsar; v1+v2 legacyCount olarak raporlanir.
 const HASH_PREFIX = 'v3:';
 
+/** Zincir dogrulamasinda sayfa boyu — tum tablo BELLEGE ALINMAZ. */
+const VERIFY_PAGE = 2000;
+
 function computeEntryHash(prevHash, username, action, detail) {
   return HASH_PREFIX + crypto
     .createHash('sha256')
@@ -101,37 +104,47 @@ async function verifyChain() {
   );
   const totalRows = Number(countRows[0]?.total || 0);
 
-  const { rows } = await db.query(
-    `SELECT id, username, action, detail, prev_hash, entry_hash
-     FROM logx_audit_logs
-     WHERE entry_hash LIKE 'v3:%'
-     ORDER BY id ASC`
-  );
-
-  const legacyCount = totalRows - rows.length;
-
-  if (rows.length === 0) {
-    return { ok: true, verified: 0, broken: 0, firstBrokenId: null, legacyCount };
-  }
-
+  // SAYFALI okunur. Eski hali tum tabloyu tek `SELECT` ile bellege aliyordu;
+  // bu tablo da buyuyor ve ayni OOM sinifindaydi (bkz. server/audit/index.cjs).
+  // `runningPrev` sayfalar arasinda TASINIR — sayfa sinirinda sifirlamak, her
+  // sayfanin ilk kaydini yanlislikla saglam gosterir ve kurcalamayi tam orada
+  // gizlerdi.
   const brokenIds = new Set();
   let firstBrokenId = null;
   // Genesis: ilk v3 satirinin prev_hash'i bir v1/v2 hash'e (veya '' seed'ine)
   // isaret edebilir — bu baglanti kontrol edilmez, zincir buradan baslar.
-  let runningPrev = rows[0].prev_hash;
-  for (const row of rows) {
-    const prevMismatch = row.prev_hash !== runningPrev;
-    const expected = computeEntryHash(row.prev_hash, row.username, row.action, row.detail);
-    const hashMismatch = expected !== row.entry_hash;
-    if (prevMismatch || hashMismatch) {
-      brokenIds.add(row.id);
-      if (!firstBrokenId) firstBrokenId = row.id;
+  let runningPrev = null;
+  let verified = 0;
+  let offset = 0;
+
+  for (;;) {
+    const { rows } = await db.query(
+      `SELECT id, username, action, detail, prev_hash, entry_hash
+       FROM logx_audit_logs
+       WHERE entry_hash LIKE 'v3:%'
+       ORDER BY id ASC
+       OFFSET $1 ROWS FETCH NEXT $2 ROWS ONLY`,
+      [offset, VERIFY_PAGE],
+    );
+    if (!rows.length) break;
+    for (const row of rows) {
+      const prevMismatch = runningPrev !== null && row.prev_hash !== runningPrev;
+      const expected = computeEntryHash(row.prev_hash, row.username, row.action, row.detail);
+      const hashMismatch = expected !== row.entry_hash;
+      if (prevMismatch || hashMismatch) {
+        brokenIds.add(row.id);
+        if (!firstBrokenId) firstBrokenId = row.id;
+      }
+      runningPrev = row.entry_hash;
     }
-    runningPrev = row.entry_hash;
+    verified += rows.length;
+    if (rows.length < VERIFY_PAGE) break;
+    offset += VERIFY_PAGE;
   }
 
+  const legacyCount = totalRows - verified;
   const broken = brokenIds.size;
-  return { ok: broken === 0, verified: rows.length, broken, firstBrokenId, legacyCount };
+  return { ok: broken === 0, verified, broken, firstBrokenId, legacyCount };
 }
 
 module.exports = { log, getLogs, verifyChain };
