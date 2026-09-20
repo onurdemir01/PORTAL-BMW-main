@@ -8,6 +8,10 @@
 'use strict';
 
 const https = require('https');
+const { readResponseLimited } = require('../util/bounded-read.cjs');
+
+/** AI yanit tavani. `MAX_TOKENS` ile sinirli bir cevap birkac yuz KB`dir. */
+const AI_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 
 // ── Provider config ───────────────────────────────────────────────────────────
 
@@ -98,9 +102,15 @@ function httpsPost(hostname, path, headers, body) {
         agent: _tlsAgent,
       },
       (res) => {
-        let data = '';
-        res.on('data', (c) => { data += c; });
-        res.on('end', () => {
+        // SINIRLI OKUMA. `MAX_TOKENS` ciktiyi normalde kucuk tutar ama o KARSI
+        // TARAFIN UYUMUNA bagli bir sinirdir, portalin kendi kapisi degil.
+        // Bozuk ya da akan bir yanit sinirsiz buyurdu.
+        readResponseLimited(res, {
+          maxBytes: AI_RESPONSE_MAX_BYTES,
+          label: 'AI API',
+          onAbort: () => req.destroy(),
+        })
+        .then((data) => {
           try {
             const parsed = JSON.parse(data);
             if (res.statusCode >= 400) {
@@ -112,7 +122,8 @@ function httpsPost(hostname, path, headers, body) {
           } catch {
             reject(new Error(`AI API yanıtı JSON değil: ${data.slice(0, 200)}`));
           }
-        });
+        })
+        .catch(reject);
       }
     );
     // Teshis: TLS/ag hatalarinda gercek sebep (code + cause zinciri) gorunur olsun —

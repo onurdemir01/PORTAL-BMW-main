@@ -13,6 +13,13 @@
 
 const { buildCombinedCa } = require('../ai/ca.cjs');
 
+/**
+ * MCP arac sonucu tavani. Uzak sunucu portalin denetiminde DEGIL.
+ * Bu deger `ai-analyst` tarafindaki `TOOL_RESULT_MAX` kirpmasindan ONCE
+ * uygulanir — o kirpma parse`tan sonra calistigi icin bellegi kurtarmiyordu.
+ */
+const MCP_RESULT_MAX_BYTES = 4 * 1024 * 1024;
+
 const CONNECT_TIMEOUT_MS = Number(process.env.MCP_CONNECT_TIMEOUT_MS) || 10_000;
 
 // ── NO_PROXY degerlendirmesi ──────────────────────────────────────────────────
@@ -280,6 +287,24 @@ function createMcpClient({ name, url, headers = {} }) {
     const result = await client.callTool({ name: toolName, arguments: args });
     const textContent = (result?.content ?? []).find((c) => c.type === 'text')?.text;
     if (!textContent) return result ?? {};
+    // SIRA ONEMLI: ONCE SINIRLA, SONRA PARSE ET.
+    //
+    // `JSON.parse` metnin 3-6 kati buyuklukte bir nesne grafigi uretir. Cagiran
+    // taraf (`ai-analyst/orchestrator.cjs`) sonucu `truncate(8000)` ile kirpiyor
+    // ama o kirpma PARSE'TAN SONRA calisiyor: 100 MB'lik bir arac yaniti once
+    // TAM OLARAK parse edilip nesne grafigine donusuyor, sonra kirpiliyor.
+    // Kirpma belleği HIC kurtarmiyor — zarar o noktada zaten olusmus oluyor.
+    //
+    // Uzak MCP sunucusu (Dynatrace/Instana/Splunk) portalin denetiminde DEGIL.
+    if (Buffer.byteLength(textContent, 'utf8') > MCP_RESULT_MAX_BYTES) {
+      // ATMIYORUZ, KIRPIYORUZ: arac yaniti genelde teshis icin okunuyor ve bas
+      // kismi cogu zaman yeterli. Ama kirpildigi ACIKCA soyleniyor.
+      return {
+        text: textContent.slice(0, MCP_RESULT_MAX_BYTES),
+        truncated: true,
+        originalBytes: Buffer.byteLength(textContent, 'utf8'),
+      };
+    }
     try { return JSON.parse(textContent); }
     catch { return { text: textContent }; }
   }

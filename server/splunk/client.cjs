@@ -8,6 +8,10 @@
 
 const net = require('net');
 const { buildDispatcher } = require('../mcp/client.cjs');
+const { readBodyLimited } = require('../util/bounded-read.cjs');
+
+/** Splunk yanit tavani. `| head 200` ile sinirli bir sorgu birkac MB`dir. */
+const SPLUNK_RESPONSE_MAX_BYTES = 16 * 1024 * 1024;
 
 function getConfig() {
   return {
@@ -98,7 +102,13 @@ async function search({ product, windowMinutes = 15, limit = 50 }) {
     throw err;
   }
 
-  const text = await res.text();
+  // SINIRLI OKUMA. SPL `| head 200` ile olay SAYISI sinirli ama olay BOYUTU
+  // degil: `_raw` alani MB'larca olabilir. Ustelik `parseExportLines` tum metni
+  // `split('\n')` ile aciyor — bayt kapisi onun da ust siniridir.
+  const text = await readBodyLimited(res.body, {
+    maxBytes: SPLUNK_RESPONSE_MAX_BYTES,
+    label: 'Splunk',
+  });
   if (!res.ok) {
     throw new Error(`Splunk HTTP ${res.status}: ${text.slice(0, 300)}`);
   }
