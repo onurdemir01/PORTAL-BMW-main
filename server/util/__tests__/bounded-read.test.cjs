@@ -123,6 +123,28 @@ test('BR4 `parseJsonLimited` PARSE ETMEDEN once sinirliyor', () => {
   const buyuk = JSON.stringify({ a: 'x'.repeat(2 * 1024 * 1024) });
   assert.throws(() => parseJsonLimited(buyuk, { maxBytes: 64 * 1024, label: 'test' }), (e) => e.tooLarge === true);
   assert.deepEqual(parseJsonLimited('{"a":1}', { maxBytes: 1024, label: 'test' }), { a: 1 });
+
+  // ── SIRAYI GERCEKTEN AYIRT ET ────────────────────────────────────────────
+  //
+  // Yukaridaki iki assert SIRAYI OLCMUYOR: parse once kosup SONRA boyut
+  // kontrolu firlatsa da sonuc yine `tooLarge` olurdu. Mutasyon turunda
+  // "kapiyi parse'tan sonraya al" mutasyonu HICBIR BEKCIYI ates almadi.
+  //
+  // AYIRT EDICI: hem TAVANI ASAN hem de GECERSIZ JSON olan bir girdi.
+  //   kapi ONCE ise  -> `tooLarge` (parse hic calismaz)
+  //   parse ONCE ise -> `SyntaxError`
+  const bozukVeBuyuk = '{' + 'x'.repeat(200 * 1024);
+  assert.throws(
+    () => parseJsonLimited(bozukVeBuyuk, { maxBytes: 64 * 1024, label: 'test' }),
+    (e) => {
+      assert.equal(
+        e.tooLarge,
+        true,
+        `kapi PARSE'TAN SONRA calisiyor — bellegi kurtarmiyor (alinan: ${e.name})`,
+      );
+      return true;
+    },
+  );
 });
 
 // ── CAGRI YERLERI ──────────────────────────────────────────────────────────
