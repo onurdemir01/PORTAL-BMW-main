@@ -717,6 +717,28 @@ describe('WorkloadStep - hizli secim akisi', () => {
 
   it('HS4 "tarandi, BOS cikti" ise otomatik tarama YAPILMAZ', async () => {
     // Ayrim olmadan bos bir namespace HER GIRISTE ~1 dk'lik AWX isi aciyordu.
+    //
+    // `scannedAt` BILEREK null: gercek hayatta `scannedEmpty` ile birlikte bir
+    // damga da gelir, ama ikisini birlikte vermek `scannedEmpty` terimini
+    // SINAMAZ — `scannedAt` tek basina kapiyi kapatir ve bekci kor kalir.
+    // (Mutasyon turunda `scannedEmpty`i sokmak hicbir sey ates almamisti.)
+    mockApps.mockResolvedValue({
+      ok: true,
+      items: [],
+      clusters: {},
+      sources: {},
+      hiddenCount: 0,
+      scannedAt: null,
+      scannedEmpty: true,
+      scanUnknown: false,
+    });
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+
+    expect(mockDiscover).not.toHaveBeenCalled();
+    expect(screen.getByText(/ölçeklenebilir uygulama bulunamadı/i)).toBeInTheDocument();
+  });
+
+  it('HS4b damgali "bos" da tarama ACMAZ (gercek hayattaki bicim)', async () => {
     mockApps.mockResolvedValue({
       ok: true,
       items: [],
@@ -728,9 +750,7 @@ describe('WorkloadStep - hizli secim akisi', () => {
       scanUnknown: false,
     });
     await renderAndPoll(<WorkloadStep {...defaultProps} />);
-
     expect(mockDiscover).not.toHaveBeenCalled();
-    expect(screen.getByText(/ölçeklenebilir uygulama bulunamadı/i)).toBeInTheDocument();
   });
 
   it('HS5 "tarama kaydi OKUNAMADI" ise otomatik tarama YAPILMAZ', async () => {
