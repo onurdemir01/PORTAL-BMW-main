@@ -11,9 +11,16 @@
 
 function getConfig() {
   return {
-    // Kullanicinin verdigi uc: https://servicerepository/ChangeManagement/...
-    // Ortama gore host degisebilecegi icin taban adres ayarlanabilir birakildi.
-    baseUrl: (process.env.OCO_API_URL || 'https://servicerepository').replace(/\/+$/, ''),
+    // VARSAYILAN YOK — ve bu BILEREK boyle.
+    //
+    // Onceden burada `|| 'https://servicerepository'` vardi. Sonucu: `baseUrl`
+    // HER ZAMAN doluydu, dolayisiyla `client.cjs`teki
+    //   if (!cfg.baseUrl) throw 'OCO servisi yapilandirilmamis...'
+    // korumasi HIC ATESLENEMIYORDU ve `isConfigured()` DAIMA true donuyordu.
+    // Ayar hic girilmemisse istek uydurma bir hosta gidiyor, DNS/TLS dusuyor ve
+    // kullanici "OCO servisine ulasilamadi" goruyordu — yani "ayar YOK" durumu
+    // "servis COKMUS" gibi gorunuyordu. Iki apayri sorun, tek mesaj.
+    baseUrl: String(process.env.OCO_API_URL || '').trim().replace(/\/+$/, ''),
     // Path ve sorgu parametresi ayri tutulur ki uc degisirse kod degil ayar guncellensin.
     changeOrderPath:
       process.env.OCO_CHANGE_ORDER_PATH ||

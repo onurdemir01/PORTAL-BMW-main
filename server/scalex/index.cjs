@@ -1746,6 +1746,86 @@ function initScaleX(app) {
     }),
   );
 
+  router.get(
+    '/admin/oco-diagnose',
+    asyncRoute(async (req, res) => {
+      // ── OCO TANI — SALT OKUNUR ────────────────────────────────────────────
+      //
+      // "Bir ornek OCO girince ne cikiyor, hangisi nasil dikkate aliniyor?"
+      // sorusunun cevabi bugun HICBIR YERDE gorunmuyor. Portal servisin
+      // yanitindan yalnizca UC sey okuyor (kayit var mi, planlanan kesinti
+      // saatleri, baslik); onay durumu / status / hedef sistemler HIC
+      // okunmuyor. Bu uc o gercegi ekrana tasir.
+      //
+      // HICBIR SEY BASLATMAZ: AWX isi acmaz, SMART kaydi yaratmaz, DB'ye
+      // yazmaz. Tek yan etkisi denetim kaydidir.
+      if (currentUser(req).role !== 'Admin') {
+        return res.status(403).json({ ok: false, message: 'Bu ekran yalnizca yoneticilere acik.' });
+      }
+      const num = String(req.query?.number || '').trim();
+      if (!num) {
+        return res.status(400).json({ ok: false, message: 'OCO numarasi zorunlu.' });
+      }
+
+      // Ayar hic girilmemisse bunu ACIKCA soyle. Onceden `OCO_API_URL`in kod
+      // icinde bir varsayilani vardi ve "ayar yok" durumu "servise ulasilamadi"
+      // gibi gorunuyordu — iki apayri sorun, tek mesaj.
+      const ocoConfig = require('../oco/config.cjs');
+      if (!ocoConfig.isConfigured()) {
+        return res.status(503).json({
+          ok: false,
+          notConfigured: true,
+          message: 'OCO servisi yapilandirilmamis (Admin > Sistem > OCO_API_URL).',
+        });
+      }
+
+      // KIM NEYI SORGULADI — denetime. Sorgu salt okunur ama bir uretim
+      // degisiklik kaydini okuyor; izsiz kalmamali.
+      auditPortal(req, 'scalex_oco_diagnose', { detail: JSON.stringify({ oco: num }) });
+
+      const ocoClient = require('../oco/client.cjs');
+      const diagnoseMod = require('../oco/diagnose.cjs');
+      let order;
+      try {
+        order = await ocoClient.getChangeOrder(num);
+      } catch (e) {
+        // Tani ekraninda hata da BIR SONUCTUR: kullanici "numara mi yanlis,
+        // servis mi erisilemez" ayrimini gormeli.
+        return res.status(200).json({
+          ok: false,
+          lookupFailed: true,
+          status: ocoClient.httpStatus(e),
+          message: e.message,
+          readFields: diagnoseMod.READ_FIELDS,
+        });
+      }
+
+      const diagnosis = diagnoseMod.diagnose(order);
+      // Kapi simulasyonu: sorgulanan kapsam admin'den gelir, varsayilan prod.
+      const env = String(req.query?.env || 'prod').trim();
+      const action = String(req.query?.action || 'stop').trim();
+      const policy = launch.gatePolicyFor({
+        action,
+        executionMode: 'apply',
+        environment: env,
+        ocoConfig: await readOcoConfig(),
+      });
+      const simulation = diagnoseMod.simulateGate({
+        diagnosis,
+        ocoApplies: policy.oco === 'require',
+      });
+
+      res.json({
+        ok: true,
+        number: num,
+        ...diagnosis,
+        scope: { env, action, executionMode: 'apply' },
+        gatePolicy: policy,
+        simulation,
+      });
+    }),
+  );
+
   // ── ADMIN: OKUNAMAYAN TIPLER (RBAC BULGULARI) ─────────────────────────────
   //
   // Kullanici ekraninda artik TEK SATIR ozet var; tam liste burada birikiyor.

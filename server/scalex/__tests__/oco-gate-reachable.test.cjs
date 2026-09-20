@@ -120,11 +120,22 @@ test('OG8 ortak kapi (`change-gates`) ayni listeyi TANIYOR — ekran/sunucu ayri
   );
 });
 
-test('OG9 UC ucun hepsi ayni OCO ayarini okuyor (politika ayrismaz)', () => {
+test('OG9 gatePolicyFor cagiran HER uc ayni OCO ayarini okuyor (politika ayrismaz)', () => {
   // Bu dosyada tam bu sinifta bir ariza yasandi: `/preview` ile `/run` farkli
   // politika uretiyor, ekran numara istiyor, sunucu numarayi kullanmiyordu.
-  const kez = (IX.match(/ocoConfig: await readOcoConfig\(\)/g) || []).length;
-  assert.equal(kez, 3, `gatePolicyFor cagri yerlerinin ${kez} tanesi ayari okuyor, 3 olmali`);
+  //
+  // SAYIYA DEGIL KURALA BAGLI: "tam 3 cagri" demek, mesru bir dorduncu ucu
+  // (OCO Tani) yanlis alarmla karsilamak olurdu. Kilitlenmesi gereken sey
+  // HER cagrinin ayari okumasi.
+  const cagrilar = IX.match(/gatePolicyFor\(\{[^}]*\}\)/g) || [];
+  assert.ok(cagrilar.length >= 3, `gatePolicyFor cagrisi kaybolmus: ${cagrilar.length}`);
+  for (const c of cagrilar) {
+    assert.match(
+      c,
+      /ocoConfig:\s*await readOcoConfig\(\)/,
+      `OCO ayarini OKUMAYAN gatePolicyFor cagrisi — politika AYRISIR: ${c.slice(0, 120)}`,
+    );
+  }
   assert.match(IX, /async function readOcoConfig/, 'ortak okuyucu yok — her uc kendi okursa AYRISIR');
 });
 
