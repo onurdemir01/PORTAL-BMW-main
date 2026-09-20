@@ -21,6 +21,11 @@ const launch = require('./launch.cjs');
 const state = require('./state.cjs');
 const rbacFindings = require('./rbac-findings.cjs');
 const result = require('./result.cjs');
+// PAYLASILAN uygulama onbellegi — LogX'in modulu. ScaleX zaten `catalog.cjs`
+// uzerinden ayni katalogu OKUYOR (`ocp-catalog.cjs`); burada ayni onbellegi
+// BESLIYORUZ, yani ScaleX'ten yapilan tam bir kesif LogX'i de hizlandiriyor.
+// Ikinci bir tablo/modul acmak, ayni verinin iki yerde ayrismasi demekti.
+const ocpCache = require('../logx/v2/ocp-cache.cjs');
 
 const RUN_KEY = 'scalex_run';
 const DISCOVERY_KEY = 'scalex_discovery';
@@ -35,6 +40,29 @@ function rememberJobOwner(serverId, jobId, username) {
   }
   JOB_OWNER_CACHE.set(`${serverId}:${jobId}`, String(username || '').toLowerCase());
 }
+
+// KESIF KAPSAMI: bir kesfin TUM namespace'i mi yoksa yalnizca secilen uygulamalari
+// mi taradigini is bittikten sonra bilmemiz gerekiyor.
+//
+// NEDEN: sonuc paylasilan uygulama katalogunu (`ocp_app_cache`) besliyor ve
+// `putApps` o namespace'te GORULMEYEN uygulamalari `is_deleted=1` yapiyor.
+// Daraltilmis bir kesfi (kullanici 1 uygulama secti) onbellege yazmak, kalan 49
+// uygulamayi SILINMIS isaretlerdi — katalog kendi kendini bosaltirdi.
+//
+// Boyut JOB_OWNER_CACHE ile ayni gerekceyle sinirli: sinirsiz bir Map bellek
+// sizintisidir (2026-09 OOM turunda tam bu sinif tarandi).
+const DISCOVERY_SCOPE_CACHE = new Map();
+const DISCOVERY_SCOPE_MAX = 2000;
+function rememberDiscoveryScope(serverId, jobId, scope) {
+  if (DISCOVERY_SCOPE_CACHE.size >= DISCOVERY_SCOPE_MAX) {
+    DISCOVERY_SCOPE_CACHE.delete(DISCOVERY_SCOPE_CACHE.keys().next().value);
+  }
+  DISCOVERY_SCOPE_CACHE.set(`${serverId}:${jobId}`, scope);
+}
+
+// AWX ciktisi istemciye TAMAMEN gonderiliyordu. Bir kesif isinin log'u MB'larca
+// olabilir ve portal 2026-09'da UC KEZ bu sinif yuzunden OOM ile coktu.
+const DISCOVERY_OUTPUT_MAX = 256 * 1024;
 
 // FAIL-CLOSED: sahiplik dogrulanamiyorsa erisim REDDEDILIR (503). Fail-open olsaydi bir
 // DB kesintisi tum islerin herkese acilmasi demek olurdu.
@@ -670,6 +698,19 @@ function initScaleX(app) {
         req,
         label: `ScaleX keşif (${mode}) — ${namespace}`,
       });
+      // KAPSAM HATIRLANIR: is bittiginde sonucun paylasilan uygulama katalogunu
+      // besleyip beslemeyecegine bu belirliyor. `full` yalnizca uygulama listesi
+      // GONDERILMEDIGINDE true — daraltilmis bir kesfi katalog yazimi saymak,
+      // secilmeyen uygulamalari silinmis isaretlerdi (bkz. rememberDiscoveryScope).
+      rememberDiscoveryScope(job.serverId, job.jobId, {
+        env,
+        tenant,
+        namespace,
+        clusters,
+        mode,
+        full: apps.length === 0,
+      });
+
       // IZ: kesif salt-okunur ama YINE DE kullanici girdisini (`namespace`,
       // `target_app_names`) AWX uzerinden `oc` komut satirina tasiyor. Denetim kaydi
       // olmadan "bu namespace'i kim taratti" sorusu yanitlanamiyordu.
@@ -906,12 +947,68 @@ function initScaleX(app) {
         }
       }
 
+      // KATALOGU BESLE — YALNIZCA TAM NAMESPACE TARAMASINDA.
+      //
+      // Kullanicinin istegi: "her kesfi db ye yaz bir kere, db de olani oradan oku".
+      // Yazilan sey YALNIZCA KIMLIK: ad + tip. Replica/image/HPA gibi CANLI alanlar
+      // BILEREK `null` gecilir — bayat bir replica sayisi yanlis isleme, bayat bir
+      // `restorable` bayragi `STATE;FAIL` ile dusen bir ise yol acar (R2 bekcisinin
+      // gerekcesi). Katalog "bu namespace'te ne var" sorusunu cevaplar, "su anda ne
+      // durumda" sorusunu DEGIL.
+      //
+      // DARALTILMIS KESIF YAZILMAZ: `putApps` gorulmeyen uygulamalari is_deleted=1
+      // yapar; 1 uygulamalik bir kesfi yazmak kalan 49'u silerdi.
+      const kapsam = DISCOVERY_SCOPE_CACHE.get(`${serverId}:${jobId}`);
+      if (status.finished && parsed && parsed.mode === 'workloads' && kapsam && kapsam.full) {
+        try {
+          const basarisiz = new Set(parsed.failedClusters || []);
+          const perCluster = new Map();
+          for (const c of parsed.clusters || []) {
+            if (!basarisiz.has(c)) perCluster.set(c, []);
+          }
+          for (const w of parsed.workloads || []) {
+            const arr = perCluster.get(w.cluster);
+            // Taranamayan bir cluster'in satiri olmamali; olduysa da yazmayiz.
+            if (arr) arr.push({ name: w.name, kind: w.kind, replicas: null, image: null });
+          }
+          const entries = [...perCluster.entries()].map(([clusterName, objects]) => ({
+            clusterName,
+            namespace: parsed.namespace,
+            status: 'ok',
+            objects,
+          }));
+          if (entries.length) {
+            await ocpCache.putApps({
+              env: parsed.environment,
+              tenant: parsed.platform,
+              entries,
+              source: 'discovery',
+            });
+          }
+        } catch (e) {
+          // BEST-EFFORT: katalog yazilamadiysa kesif sonucu GIZLENMEZ. Kullanici
+          // listeyi yine gorur, yalnizca bir sonraki acilis hizlanmaz.
+          console.warn('[ScaleX] uygulama katalogu guncellenemedi:', e.message);
+        }
+      }
+
+      // CIKTI KIRPILIR. AWX log'u MB'larca olabiliyor ve tamami istemciye
+      // gonderiliyordu; portal 2026-09'da UC KEZ bu sinif yuzunden coktu.
+      // Kirpma SESSIZ DEGIL: metin kullaniciya nereye bakacagini soyler.
+      let ciktiMetni = output.output || '';
+      if (ciktiMetni.length > DISCOVERY_OUTPUT_MAX) {
+        ciktiMetni =
+          ciktiMetni.slice(0, DISCOVERY_OUTPUT_MAX) +
+          '\n... [PORTAL] Çıktı bellek koruması nedeniyle KIRPILDI. ' +
+          'Tamamı için AWX arayüzünden işin çıktısını inceleyin.';
+      }
+
       res.json({
         ok: true,
         status: status.status,
         finished: !!status.finished,
         failed: !!status.failed,
-        output: output.output || '',
+        output: ciktiMetni,
         result: parsed,
       });
     }),

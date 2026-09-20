@@ -96,6 +96,11 @@ async function listApps({ env, tenant, clusterNames, namespace, user }) {
       stale: cat.stale,
       scannedAt: cat.scannedAt,
       scannedEmpty: cat.scannedEmpty,
+      // UC DURUM, IKI DEGIL: "hic taranmadi" / "tarandi, bos cikti" /
+      // "tarama kaydi OKUNAMADI". `scanUnknown` gecirilmezse ekran okunamayan
+      // bir kaydi "hic taranmadi" sayar ve HER SAYFA GIRISINDE yeni bir AWX isi
+      // acar — LogX tarafinda uretimde tam bu yasandi (`ocp-cache.cjs`).
+      scanUnknown: cat.scanUnknown,
       source: cat.source,
     };
   }
@@ -134,6 +139,7 @@ async function listApps({ env, tenant, clusterNames, namespace, user }) {
     stale: cat.stale,
     scannedAt: cat.scannedAt,
     scannedEmpty: cat.scannedEmpty,
+    scanUnknown: cat.scanUnknown,
     source: cat.source,
   };
 }

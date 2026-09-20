@@ -20,6 +20,9 @@ import {
   type ScaleXScope,
   type ScaleXKindReport,
 } from '@/api/scalexApi';
+// ORTAK BICIMLENDIRICI (G19): ham `toLocaleString` deponun kuralina aykiri —
+// tarih bicimi tek yerden yonetiliyor.
+import { fmtDateTime } from '@/utils/datetime';
 
 interface Props {
   scope: ScaleXScope;
@@ -36,6 +39,15 @@ interface Props {
   }) => void;
   /** Kesif asilirsa kullaniciya bir CIKIS yolu vermek icin (bkz. bekleme ekrani). */
   onBack: () => void;
+  /**
+   * OTOMATIK TARAMA HAFIZASI — BILESEN DISINDA tutulur.
+   *
+   * Sihirbaz `<div key={step}>` ile her adim degisiminde bu bileseni REMOUNT
+   * ediyor ve tarama akisi adimi zorunlu degistiriyor. Bilesen ici bir `useRef`
+   * her remount'ta sifirlanir ve koruma ETKISIZ kalir — LogX tarafinda uretimde
+   * tam bu yuzden SONSUZ TARAMA DONGUSU yasandi (`LogXWizardPage`'teki gerekce).
+   */
+  autoScanMemo: Map<string, number>;
 }
 
 // HIZLI SUZGECLER. 150 uygulamali bir namespace'te arama tek basina yetmiyor:
@@ -104,15 +116,46 @@ const nameFromKey = (s: string) => {
   return i >= 0 ? s.slice(0, i) : s;
 };
 
-const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack }) => {
-  const [phase, setPhase] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+const WorkloadStep: React.FC<Props> = ({
+  scope,
+  busy,
+  initial,
+  onSubmit,
+  onBack,
+  autoScanMemo,
+}) => {
+  // AKIS DEGISTI (2026-09-20). Eskiden namespace secilir secilmez, hic uygulama
+  // secilmeden, TUM namespace'i tarayan bir AWX isi aciliyordu; secim listesi ancak
+  // ~60 sn sonra aciliyordu. Kullanicinin sorusu hakliydi: "namespace'te 50 uygulama
+  // var, ben 1 tanesini istiyorum, 49 fazlasinin maliyetini niye odyoruz?"
+  //
+  //   ESKI:  namespace -> [60 sn kesif, TUM namespace] -> liste acilir -> sec
+  //   YENI:  namespace -> liste ANINDA (paylasilan katalog, DB) -> sec -> [Kontrol et]
+  //
+  // 'select' fazi AWX'e HIC DOKUNMAZ.
+  const [phase, setPhase] = useState<'select' | 'running' | 'done' | 'error'>('select');
   const [message, setMessage] = useState<string | null>(null);
   const [workloads, setWorkloads] = useState<ScaleXWorkload[]>([]);
   // ON-LISTE: paylasilan katalogdan gelen ad/tip listesi. Ekran bunu ANINDA acar;
   // canli sutunlar (replica, HPA, GitOps) kesif bitince dolar. Ad listesi yavas
   // degisir, canli veri degismez sayilamaz — bu yuzden yalnizca ADLAR onbellekten.
-  const [preview, setPreview] = useState<{ name: string; clusters: string[] }[]>([]);
+  const [preview, setPreview] = useState<{ name: string; kind?: string | null; clusters: string[] }[]>(
+    [],
+  );
   const [previewHidden, setPreviewHidden] = useState(0);
+  // Katalogun UC DURUMU. "hic taranmadi" / "tarandi, bos cikti" / "OKUNAMADI".
+  // Ikisini birlestirmek uretimde iki ayri ariza uretti: bos bir namespace her
+  // girişte ~1 dk'lik AWX isi aciyordu, okunamayan bir kayit ise SONSUZ tarama.
+  const [catalogMeta, setCatalogMeta] = useState<{
+    scannedAt?: string | null;
+    scannedEmpty?: boolean;
+    scanUnknown?: boolean;
+    stale?: boolean;
+    fetchedAt?: string | null;
+    source?: string;
+  }>({});
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   // Kesfin TAMAMLANDIGI an — onizlemedeki tazelik damgasi buradan gelir.
   const fetchedAtRef = useRef<number | null>(null);
   const [failedClusters, setFailedClusters] = useState<string[]>([]);
@@ -158,7 +201,64 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
     return () => clearInterval(t);
   }, [phase]);
 
-  async function startDiscovery() {
+  // KATALOG OKUMASI — AWX'e HIC DOKUNMAZ, tek bir DB sorgusudur.
+  //
+  // Kaynak LogX ile PAYLASILAN katalog: `dbo.Openshift_Inventory` (kurumsal,
+  // salt-okunur) ∪ `ocp_app_cache` (portalin onbellegi, `kind` tasir). Yani
+  // LogX'te yapilmis bir tarama ScaleX'i de hizlandiriyor, tersi de gecerli.
+  //
+  // CANLI ALAN GELMEZ (replica, HPA, GitOps, `restorable`): bayat bir replica
+  // sayisi yanlis isleme, bayat bir `restorable` `STATE;FAIL` ile dusen bir ise
+  // yol acar. Onlar yalnizca "Kontrol et" ile canlidan gelir.
+  const loadCatalog = useCallback(async () => {
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      const r = await scalexApi.apps({
+        env: scope.env,
+        tenant: scope.tenant,
+        namespace: scope.namespace,
+        clusters: scope.clusters,
+      });
+      if (!aliveRef.current) return null;
+      if (!r.ok) {
+        setCatalogError(r.message || 'Uygulama listesi alınamadı.');
+        return null;
+      }
+      setPreview(
+        (r.items || []).map((it) => ({
+          name: it.name,
+          kind: it.kind ?? null,
+          clusters: r.clusters?.[it.name] || scope.clusters,
+        })),
+      );
+      setPreviewHidden(r.hiddenCount || 0);
+      setCatalogMeta({
+        scannedAt: r.scannedAt ?? null,
+        scannedEmpty: !!r.scannedEmpty,
+        scanUnknown: !!r.scanUnknown,
+        stale: !!r.stale,
+        fetchedAt: r.fetchedAt ?? null,
+        source: r.source,
+      });
+      return r;
+    } catch (e) {
+      if (aliveRef.current) setCatalogError((e as Error).message);
+      return null;
+    } finally {
+      if (aliveRef.current) setCatalogLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope.env, scope.tenant, scope.namespace, scope.clusters.join(',')]);
+
+  /**
+   * @param apps Bos dizi = TUM namespace taranir (katalog bos oldugunda tek
+   *   durustce yapilabilecek sey). Dolu dizi = YALNIZCA bu uygulamalar.
+   *   Sunucu bunu `target_app_names` olarak gonderiyor; playbook, survey ve
+   *   runner betigi bu daraltmayi ZATEN destekliyordu — eksik olan tek halka
+   *   ekrandi.
+   */
+  async function startDiscovery(apps: string[]) {
     if (startingRef.current) return;
     startingRef.current = true;
     setPhase('running');
@@ -167,31 +267,8 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
     setFailedClusters([]);
     setJob(null);
     setElapsed(0);
-    // ON-LISTE ONCE ve BEKLETMEDEN: AWX'e dokunmayan bir DB okumasi. Basarisiz
-    // olursa akis etkilenmez — yalnizca ekran kesfi bekler (eski davranis).
-    scalexApi
-      .apps({
-        env: scope.env,
-        tenant: scope.tenant,
-        namespace: scope.namespace,
-        clusters: scope.clusters,
-      })
-      .then((r) => {
-        if (!aliveRef.current || !r.ok) return;
-        setPreview(
-          (r.items || []).map((it) => ({
-            name: it.name,
-            clusters: r.clusters?.[it.name] || scope.clusters,
-          })),
-        );
-        setPreviewHidden(r.hiddenCount || 0);
-      })
-      .catch(() => {
-        /* on-liste BEST-EFFORT: kesif zaten gercegi getirecek */
-      });
-
     try {
-      const launched = await scalexApi.discover(scope, 'workloads');
+      const launched = await scalexApi.discover({ ...scope, apps }, 'workloads');
       if (!aliveRef.current) return;
       if (!launched.ok) {
         setPhase('error');
@@ -273,9 +350,38 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
     }
   }
 
+  // MOUNT'TA KESIF YOK — YALNIZCA KATALOG.
+  //
+  // Eskiden burada kosulsuz `startDiscovery()` vardi: kullanici namespace'e
+  // tikladigi anda, hicbir sey secmeden, TUM namespace'i tarayan bir AWX isi
+  // aciliyordu.
   useEffect(() => {
-    startDiscovery(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, []);
+    let iptal = false;
+    (async () => {
+      const r = await loadCatalog();
+      if (iptal || !aliveRef.current || !r) return;
+
+      // OTOMATIK TARAMA — UC DURUM AYRI, IKI DEGIL.
+      //   items var                -> tarama YOK, liste zaten elimizde
+      //   scannedEmpty             -> tarandi ve GERCEKTEN bos; tarama YOK
+      //   scanUnknown              -> tarama KAYDI OKUNAMADI; "hic taranmadi"
+      //                               SAYILMAZ, aksi halde her sayfa girisinde
+      //                               yeni bir AWX isi acilir (uretimde yasandi)
+      //   hicbiri yok & scannedAt yok -> ilk kez bakiliyor, TAM tarama mesru
+      const bos = !(r.items || []).length;
+      if (!bos || r.scannedEmpty || r.scanUnknown || r.scannedAt) return;
+
+      // HAFIZA BILESEN DISINDA: remount bunu sifirlamaz (bkz. `autoScanMemo`).
+      const anahtar = `${scope.env}|${scope.tenant}|${scope.clusters.join(',')}|${scope.namespace}`;
+      if (autoScanMemo.has(anahtar)) return;
+      autoScanMemo.set(anahtar, Date.now());
+      startDiscovery([]);
+    })();
+    return () => {
+      iptal = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadCatalog]);
 
   // AD BASINA TUM CLUSTER SATIRLARI. Suzgecler ve rozetler bu satirlarin BIRLESIMINE
   // bakar: bir uygulama bir cluster'da HPA'liysa "HPA var" suzgecinde gorunmelidir —
@@ -439,6 +545,181 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
 
   const isSelected = (w: ScaleXWorkload) => selected.includes(keyOf(w));
 
+  // ── SECIM FAZI — AWX'E HIC DOKUNMAZ ────────────────────────────────────────
+  //
+  // Liste paylasilan katalogdan (DB) ANINDA gelir. Arama TAMAMEN ISTEMCI
+  // TARAFIDIR (LogX'teki `AppNameStep` ile ayni): her tusa basista sunucuya
+  // gitmek, "hizli" hissinin yarisini yok ederdi.
+  if (phase === 'select') {
+    const q = query.trim().toLowerCase();
+    const gorunen = q ? preview.filter((a) => a.name.toLowerCase().includes(q)) : preview;
+    const taramaYapilabilir = !busy && !startingRef.current;
+
+    return (
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Uygulamaları seçin</h3>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">
+            Liste <strong>kayıtlı katalogdan</strong> geliyor — AWX'e dokunulmadı. Seçtiklerinizi
+            işaretleyip <strong>Kontrol et</strong> deyin; canlı durum{' '}
+            <strong>yalnızca seçilenler</strong> için okunur.
+          </p>
+        </div>
+
+        {catalogError && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-700"
+          >
+            <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>{catalogError}</span>
+          </div>
+        )}
+
+        {/* KAYNAK VE TAZELIK AYRI AYRI SOYLENIR. Kullanici neyin kayittan, neyin
+            canlidan geldigini bilmeden karar veremez. */}
+        {!catalogLoading && !catalogError && (
+          <p className="text-xs text-[var(--text-muted)]">
+            {preview.length} uygulama kayıtlı
+            {previewHidden > 0 && ` · ${previewHidden} tanesi yetki kısıtı nedeniyle gizli`}
+            {catalogMeta.fetchedAt &&
+              ` · kayıt ${fmtDateTime(catalogMeta.fetchedAt)}`}
+            {catalogMeta.stale && ' · bayat'}
+            {' · replica / HPA / geri alınabilirlik '}
+            <strong>henüz okunmadı</strong>
+          </p>
+        )}
+
+        {catalogLoading && (
+          <p className="text-sm text-[var(--text-muted)]">Kayıtlı liste okunuyor…</p>
+        )}
+
+        {/* UC DURUM AYRI EKRAN. "Tarandi, bos cikti" ile "tarama kaydi okunamadi"
+            ayni sey DEGILDIR; ikincisinde otomatik tarama YAPILMAZ ama kullanici
+            elle tarayabilir. */}
+        {!catalogLoading && !preview.length && (
+          <div className="rounded-xl border border-[var(--border)] p-4 text-sm">
+            {catalogMeta.scanUnknown ? (
+              <p className="text-[var(--text-secondary)]">
+                Tarama kaydı <strong>okunamadı</strong> — bu, namespace'in boş olduğu anlamına{' '}
+                <strong>gelmez</strong>. Aşağıdan elle tarayabilirsiniz.
+              </p>
+            ) : catalogMeta.scannedEmpty ? (
+              <p className="text-[var(--text-secondary)]">
+                Bu namespace tarandı ve <strong>ölçeklenebilir uygulama bulunamadı</strong>
+                {catalogMeta.scannedAt && ` (${fmtDateTime(catalogMeta.scannedAt)})`}
+                .
+              </p>
+            ) : (
+              <p className="text-[var(--text-secondary)]">
+                Bu namespace için kayıtlı liste yok. Tarama namespace'in tamamına bakar ve
+                sonucu kaydeder — <strong>sonraki açılışlar anında gelir</strong>.
+              </p>
+            )}
+          </div>
+        )}
+
+        {preview.length > 0 && (
+          <>
+            <div className="relative">
+              <MagnifyingGlassIcon
+                aria-hidden="true"
+                className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+              />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                disabled={busy}
+                placeholder="Uygulama ara…"
+                aria-label="Uygulama ara"
+                className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
+                           text-[var(--text-primary)] placeholder-[var(--text-muted)]
+                           focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              />
+            </div>
+
+            <div className="max-h-80 overflow-y-auto rounded-xl border border-[var(--border)] divide-y divide-[var(--border)]">
+              {gorunen.map((a) => (
+                <label
+                  key={a.name}
+                  className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--bg-inset)]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(a.name)}
+                    disabled={busy}
+                    onChange={() =>
+                      setSelected((prev) =>
+                        prev.includes(a.name)
+                          ? prev.filter((x) => x !== a.name)
+                          : [...prev, a.name],
+                      )
+                    }
+                  />
+                  <span
+                    className="font-mono truncate text-[var(--text-primary)]"
+                    title={`${a.name}${a.kind ? ` — ${a.kind}` : ''} · ${a.clusters.join(', ')}`}
+                  >
+                    {a.name}
+                  </span>
+                  {a.kind && (
+                    <span className="text-xs text-[var(--text-muted)] flex-shrink-0">{a.kind}</span>
+                  )}
+                  <span className="ml-auto text-xs text-[var(--text-muted)] flex-shrink-0">
+                    {a.clusters.length} cluster
+                  </span>
+                </label>
+              ))}
+              {!gorunen.length && (
+                <p className="px-3 py-4 text-sm text-[var(--text-muted)]">
+                  Aramayla eşleşen uygulama yok.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+
+        <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-surface)] pt-4 pb-1">
+          <span className="text-xs text-[var(--text-muted)]">
+            {selected.length ? (
+              <>
+                <strong className="text-[var(--text-primary)]">{selected.length}</strong> uygulama
+                seçildi — yalnızca bunlar okunacak
+              </>
+            ) : (
+              'Hiçbir uygulama seçilmedi'
+            )}
+          </span>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn-secondary" disabled={busy} onClick={onBack}>
+              Geri
+            </button>
+            {/* KACIS KAPISI: aranan uygulama listede yoksa (yeni acilmis, hic
+                taranmamis) namespace'in tamami taranir ve sonuc kaydedilir. */}
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={!taramaYapilabilir}
+              title="Namespace'in tamamını tarar ve sonucu kaydeder"
+              onClick={() => startDiscovery([])}
+            >
+              Namespace'i tara
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy || !selected.length}
+              onClick={() => startDiscovery(selected)}
+            >
+              Kontrol et
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (phase === 'running') {
     return (
       <div className="py-10 flex flex-col items-center gap-3">
@@ -524,7 +805,7 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
         <button
           type="button"
           className="btn-secondary inline-flex items-center gap-1.5"
-          onClick={startDiscovery}
+          onClick={() => startDiscovery(selected)}
         >
           <ArrowPathIcon aria-hidden="true" className="w-4 h-4" /> Tekrar dene
         </button>
@@ -808,7 +1089,7 @@ const WorkloadStep: React.FC<Props> = ({ scope, busy, initial, onSubmit, onBack 
         </div>
         <button
           type="button"
-          onClick={startDiscovery}
+          onClick={() => startDiscovery(selected)}
           disabled={busy}
           title="Listeyi yeniden tara"
           className="p-2 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"

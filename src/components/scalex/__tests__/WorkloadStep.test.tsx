@@ -81,6 +81,10 @@ const defaultProps = {
   busy: false,
   onSubmit: vi.fn(),
   onBack: vi.fn(),
+  // Hafiza bilesen DISINDA tutulur (sayfa duzeyinde `useRef`); testlerde ayni
+  // nesne paylasilir ve her testten once TEMIZLENIR — aksi halde ilk testten
+  // sonraki hicbir testte otomatik tarama tetiklenmezdi.
+  autoScanMemo: new Map<string, number>(),
 };
 
 const POLL_MS = 3000;
@@ -104,13 +108,22 @@ beforeEach(() => {
     clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
   });
 
-  // Default: apps() is best-effort, doesn't affect the flow
+  defaultProps.autoScanMemo.clear();
+
+  // VARSAYILAN: katalog BOS ve namespace HIC TARANMAMIS.
+  //
+  // Bu, otomatik tam taramanin mesru oldugu tek durumdur; boylece mevcut testler
+  // eskisi gibi "kesif kosar, liste gelir" akisini olcmeye devam eder. Katalogda
+  // uygulama VARKEN kesif artik KENDILIGINDEN kosmaz — onu ayri testler olcer.
   mockApps.mockResolvedValue({
-    ok: false,
+    ok: true,
     items: [],
     clusters: {},
     sources: {},
     hiddenCount: 0,
+    scannedAt: null,
+    scannedEmpty: false,
+    scanUnknown: false,
   });
 
   // Default: discover() succeeds (launches the AWX job)
@@ -614,5 +627,180 @@ describe('WorkloadStep - accessibility', () => {
     const alerts = screen.getAllByRole('alert');
     const clusterAlert = alerts.find((el) => el.textContent?.includes('hiçbiri'));
     expect(clusterAlert).toBeDefined();
+  });
+});
+
+// ── HS: HIZLI SECIM AKISI (2026-09-20) ──────────────────────────────────────
+//
+// Kullanicinin sikayeti: "namespace sectim, direkt kesif basliyor; icinde 50
+// uygulama var ama ben 1 tanesini istiyorum — 49 fazlasinin maliyetini niye
+// simdi odyoruz?"
+//
+//   ESKI:  namespace -> [kesif, TUM namespace] -> liste acilir -> sec
+//   YENI:  namespace -> liste ANINDA (katalog) -> sec -> [Kontrol et]
+//
+// Daraltma TUM alt katmanlarda zaten vardi (survey `target_app_names`, playbook
+// `APP_RAW`, runner `disc_app_wanted`, sunucu `/discover`); eksik olan TEK halka
+// ekrandi. Bu testler o halkayi kilitler.
+
+/** Katalogda uygulama VAR: kesif kendiliginden kosmamali, liste hemen gelmeli. */
+function katalogDolu(names: string[], extra: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    items: names.map((n) => ({ name: n, kind: 'Deployment' })),
+    clusters: Object.fromEntries(names.map((n) => [n, ['cluster-a']])),
+    sources: Object.fromEntries(names.map((n) => [n, 'inventory'])),
+    hiddenCount: 0,
+    scannedAt: '2026-09-19T00:00:00Z',
+    scannedEmpty: false,
+    scanUnknown: false,
+    ...extra,
+  };
+}
+
+async function renderSelect(ui: React.ReactElement) {
+  const r = render(ui);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10);
+  });
+  return r;
+}
+
+describe('WorkloadStep - hizli secim akisi', () => {
+  it('HS1 katalog doluyken mount KESIF ACMAZ, liste ANINDA gelir', async () => {
+    mockApps.mockResolvedValue(katalogDolu(['odeme-api', 'batch-worker']));
+    await renderSelect(<WorkloadStep {...defaultProps} />);
+
+    // EN KRITIK ISTEK: hicbir AWX isi acilmadi.
+    expect(mockDiscover).not.toHaveBeenCalled();
+    expect(screen.getByText('odeme-api')).toBeInTheDocument();
+    expect(screen.getByText('batch-worker')).toBeInTheDocument();
+  });
+
+  it('HS2 "Kontrol et" YALNIZCA secilen uygulamayi kesfe gonderir', async () => {
+    const isimler = Array.from({ length: 50 }, (_, i) => `app-${String(i).padStart(2, '0')}`);
+    mockApps.mockResolvedValue(katalogDolu(isimler));
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([makeWorkload({ name: 'app-07' })]));
+    await renderSelect(<WorkloadStep {...defaultProps} />);
+
+    fireEvent.click(screen.getByText('app-07'));
+    fireEvent.click(screen.getByRole('button', { name: 'Kontrol et' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+
+    expect(mockDiscover).toHaveBeenCalledTimes(1);
+    const [scopeArg, modeArg] = mockDiscover.mock.calls[0];
+    expect(modeArg).toBe('workloads');
+    // 50 degil 1. Isaretlenmeyen 49 uygulama kesfe GIRMEMELI.
+    expect(scopeArg.apps).toEqual(['app-07']);
+  });
+
+  it('HS3 katalog BOS ve HIC TARANMAMIS ise tam tarama BIR KEZ kosar', async () => {
+    mockApps.mockResolvedValue({
+      ok: true,
+      items: [],
+      clusters: {},
+      sources: {},
+      hiddenCount: 0,
+      scannedAt: null,
+      scannedEmpty: false,
+      scanUnknown: false,
+    });
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([makeWorkload()]));
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+
+    expect(mockDiscover).toHaveBeenCalledTimes(1);
+    // TAM tarama: uygulama listesi BOS gider (namespace'in tamami).
+    expect(mockDiscover.mock.calls[0][0].apps).toEqual([]);
+  });
+
+  it('HS4 "tarandi, BOS cikti" ise otomatik tarama YAPILMAZ', async () => {
+    // Ayrim olmadan bos bir namespace HER GIRISTE ~1 dk'lik AWX isi aciyordu.
+    mockApps.mockResolvedValue({
+      ok: true,
+      items: [],
+      clusters: {},
+      sources: {},
+      hiddenCount: 0,
+      scannedAt: '2026-09-19T00:00:00Z',
+      scannedEmpty: true,
+      scanUnknown: false,
+    });
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+
+    expect(mockDiscover).not.toHaveBeenCalled();
+    expect(screen.getByText(/ölçeklenebilir uygulama bulunamadı/i)).toBeInTheDocument();
+  });
+
+  it('HS5 "tarama kaydi OKUNAMADI" ise otomatik tarama YAPILMAZ', async () => {
+    // `scanUnknown`u "hic taranmadi" saymak SONSUZ TARAMA DONGUSU uretiyordu.
+    mockApps.mockResolvedValue({
+      ok: true,
+      items: [],
+      clusters: {},
+      sources: {},
+      hiddenCount: 0,
+      scannedAt: null,
+      scannedEmpty: false,
+      scanUnknown: true,
+    });
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+
+    expect(mockDiscover).not.toHaveBeenCalled();
+    // "okunamadi" ile "bos" AYNI EKRAN DEGIL.
+    expect(screen.getByText(/okunamadı/i)).toBeInTheDocument();
+  });
+
+  it('HS6 otomatik tarama REMOUNT sonrasi TEKRARLANMAZ (sonsuz dongu korumasi)', async () => {
+    mockApps.mockResolvedValue({
+      ok: true,
+      items: [],
+      clusters: {},
+      sources: {},
+      hiddenCount: 0,
+      scannedAt: null,
+      scannedEmpty: false,
+      scanUnknown: false,
+    });
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([makeWorkload()]));
+
+    const first = await renderAndPoll(<WorkloadStep {...defaultProps} />);
+    expect(mockDiscover).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    // Sihirbaz `<div key={step}>` ile bileseni remount ediyor ve tarama akisi
+    // adimi zorunlu degistiriyor. Hafiza bilesen ICINDE olsaydi bu ikinci render
+    // yeni bir AWX isi acardi — uretimde LogX'te tam bu yasandi.
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+    expect(mockDiscover).toHaveBeenCalledTimes(1);
+  });
+
+  it('HS7 "Namespace\'i tara" kacis kapisi TAM tarama kosar', async () => {
+    mockApps.mockResolvedValue(katalogDolu(['odeme-api']));
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse([makeWorkload()]));
+    await renderSelect(<WorkloadStep {...defaultProps} />);
+
+    fireEvent.click(screen.getByText("Namespace'i tara"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(mockDiscover).toHaveBeenCalledTimes(1);
+    expect(mockDiscover.mock.calls[0][0].apps).toEqual([]);
+  });
+
+  it('HS8 secim fazinda CANLI sutun GOSTERILMEZ (bayat sayi yanlis islem demek)', async () => {
+    mockApps.mockResolvedValue(katalogDolu(['odeme-api']));
+    await renderSelect(<WorkloadStep {...defaultProps} />);
+
+    // Katalog canli alan TASIMAZ. Bekci "replica" KELIMESINI aramaz — ekranin
+    // kendi aciklama metninde de gecer ve bekci kendi metnini bulup yesil kalirdi
+    // (bu depoda tekrar eden kor bekci bicimi). Aranan sey bir SAYI ile birlikte
+    // gosterilen canli deger: "3 replica", "3/3", "HPA var" gibi.
+    expect(screen.queryByText(/\d+\s*replica/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\d+\s*\/\s*\d+/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/HPA var/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/geri alınabilir$/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/henüz okunmadı/i)).toBeInTheDocument();
   });
 });

@@ -69,6 +69,19 @@ function fmtElapsed(ms: number): string {
 }
 
 const ScaleXPage: React.FC = () => {
+  // OTOMATIK TARAMA HAFIZASI — `WorkloadStep`'in DISINDA.
+  //
+  // Sihirbaz asagida `<div key={step}>` kullaniyor: her adim degisimi
+  // `WorkloadStep`'i REMOUNT ediyor. Tarama akisi ise adimi zorunlu degistiriyor
+  // ('workloads' -> tarama -> 'workloads'). Bu yuzden bilesen icinde tutulan bir
+  // `useRef` her turda sifirlanir ve koruma ETKISIZ kalir — LogX tarafinda
+  // uretimde tam bu yuzden SONSUZ TARAMA DONGUSU yasandi ve hafiza sayfa
+  // duzeyine tasindi. Ayni hatayi ScaleX'te tekrarlamiyoruz.
+  // `useRef` DEGIL `useState` baslatici: ref'in `.current`ine render sirasinda
+  // erismek React'in kuralina aykiri (lint bunu yakaliyor). `useState` baslaticisi
+  // bir kez kosar ve nesne kimligi sabit kalir — istenen tam olarak bu.
+  const [autoScanMemo] = useState<Map<string, number>>(() => new Map());
+
   const [step, setStep] = useState<Step>('scope');
   const [env, setEnv] = useState('');
   const [tenant, setTenant] = useState('');
@@ -596,6 +609,7 @@ const ScaleXPage: React.FC = () => {
             scope={{ env, tenant, namespace, clusters }}
             busy={busy}
             initial={workloadKeys}
+            autoScanMemo={autoScanMemo}
             onBack={() => setStep('namespace')}
             onSubmit={(v) => {
               setApps(v.apps);
