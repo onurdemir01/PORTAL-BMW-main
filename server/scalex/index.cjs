@@ -26,6 +26,7 @@ const result = require('./result.cjs');
 // BESLIYORUZ, yani ScaleX'ten yapilan tam bir kesif LogX'i de hizlandiriyor.
 // Ikinci bir tablo/modul acmak, ayni verinin iki yerde ayrismasi demekti.
 const ocpCache = require('../logx/v2/ocp-cache.cjs');
+const clusterCaps = require('./cluster-caps.cjs');
 
 const RUN_KEY = 'scalex_run';
 const DISCOVERY_KEY = 'scalex_discovery';
@@ -727,7 +728,7 @@ function initScaleX(app) {
   router.post(
     '/discover',
     asyncRoute(async (req, res) => {
-      const mode = ['workloads', 'state', 'health'].includes(req.body?.mode)
+      const mode = ['workloads', 'state', 'health', 'capabilities'].includes(req.body?.mode)
         ? req.body.mode
         : 'workloads';
       const { env, tenant, namespace, clusters, apps } = await resolveScope(req, {
@@ -736,6 +737,31 @@ function initScaleX(app) {
       // Kesif de bu degerleri playbook'a, oradan `oc` komut satirina tasiyor — `/preview`
       // ve `/run` ile AYNI format kurallari burada da gecerli (bkz. launch.cjs basligi).
       launch.assertValidDiscoveryTargets({ namespace, apps });
+      // CLUSTER YETENEK ONBELLEGI — kesifteki ~50 `oc get --raw` cagrisini atlatir.
+      //
+      // UC DURUM AYRI (bkz. cluster-caps.cjs): guvenilir bir kayit YOKSA
+      // (hic taranmamis / okunamamis / kapsamin bir kismi eksik) BOS gecilir ve
+      // betik ESKI yolu kosar. "Onbellek yok"u "CRD yok" saymak, olceklenebilir
+      // operator nesnelerini SESSIZCE listeden dusurmek olurdu.
+      //
+      // `capabilities` modunda BILEREK okunmaz: o mod onbellegi URETIR,
+      // tuketmez. Aksi halde bayat bir liste kendini sonsuza dek dogrularadi.
+      let extraKinds = '';
+      if (mode !== 'capabilities') {
+        try {
+          const bulunan = await clusterCaps.kindsForScope({
+            env,
+            tenant,
+            clusterNames: clusters,
+          });
+          if (bulunan && bulunan.length) extraKinds = bulunan.join(',');
+        } catch (e) {
+          // BEST-EFFORT: onbellek okunamadiysa kesif YINE calisir, yalnizca
+          // hizlanmaz. Ters yon (okunamayinca kesfi dusurmek) kabul edilemez.
+          console.warn('[ScaleX] yetenek onbellegi okunamadi, tam tarama:', e.message);
+        }
+      }
+
       const extraVars = {
         scalex_clusters_override: launch.buildScaleXClusterCatalog({
           env,
@@ -751,6 +777,7 @@ function initScaleX(app) {
         scalex_target_clusters: clusters,
         discovery_mode: mode,
         ...(apps.length ? { target_app_names: apps.join(',') } : {}),
+        ...(extraKinds ? { scalex_extra_kinds: extraKinds } : {}),
         // CANLI YOKLAMA LISTESI — yalnizca `state` kesfinde. Portal, bu kapsamdaki
         // ayna satirlarinin uygulama adlarini gonderir; betik her biri icin bir
         // `LIVE` satiri (istenen/mevcut/hazir replica) basar. `refreshDrift` bunu
@@ -1035,6 +1062,36 @@ function initScaleX(app) {
           // Sapma tazelenemedi — kesif sonucunu GIZLEME. Kullanici listeyi yine gorur,
           // yalnizca sapma isaretleri bir onceki taramadan kalir.
           console.warn('[ScaleX] sapma tazelenemedi:', e.message);
+        }
+      }
+
+      // YETENEK ENVANTERINI YAZ — `capabilities` modunda.
+      //
+      // Her cluster AYRI satira yazilir: tek bir birlesik liste yazmak, bir
+      // cluster'da OLMAYAN bir CRD'yi orada VARMIS gibi gostermek olurdu.
+      //
+      // OKUNAMAMIS tarama da yazilir ama `resourcesReadable: false` ile — o
+      // satir ekranda gorunur (admin "burada yetki eksik" der) ama kesfi
+      // HIZLANDIRMAK icin KULLANILMAZ.
+      if (status.finished && parsed && parsed.mode === 'capabilities') {
+        try {
+          for (const c of parsed.capabilities || []) {
+            if (!c.cluster || !c.scanned) continue; // ozet satiri gelmemisse yazma
+            await clusterCaps.save({
+              env: parsed.environment,
+              tenant: parsed.platform,
+              clusterName: c.cluster,
+              kinds: c.kinds,
+              rbac: c.rbac,
+              resourcesReadable: c.resourcesReadable,
+              scannedBy: currentUser(req).username,
+              awxJobId: jobId,
+            });
+          }
+        } catch (e) {
+          // BEST-EFFORT: yazilamadiysa tarama sonucu GIZLENMEZ; yalnizca bir
+          // sonraki kesif hizlanmaz.
+          console.warn('[ScaleX] yetenek envanteri yazilamadi:', e.message);
         }
       }
 
@@ -1885,6 +1942,25 @@ function initScaleX(app) {
         detail: JSON.stringify({ id: rec.id, oncekiOco: rec.ocoNumber, yeniOco: guncel.ocoNumber }),
       });
       res.json({ ok: true, record: guncel });
+    }),
+  );
+
+  // ── CLUSTER YETENEK ENVANTERI — "Denetim gibi ekran" ────────────────────
+  //
+  // Cluster basina: son tarama zamani, bulunan olceklenebilir tip sayisi,
+  // OKUNAMAYAN kaynaklar (RBAC bosluklari). Admin buradan toplu tarama
+  // baslatir; kesif o envanteri okuyup cluster basina ~50 `oc get --raw`
+  // cagrisini atlar.
+  router.get(
+    '/admin/cluster-caps',
+    asyncRoute(async (req, res) => {
+      if (currentUser(req).role !== 'Admin') {
+        return res.status(403).json({ ok: false, message: 'Bu ekran yalnizca yoneticilere acik.' });
+      }
+      const env = String(req.query?.env || '').trim();
+      const tenant = String(req.query?.tenant || '').trim();
+      const items = await clusterCaps.list({ env: env || undefined, tenant: tenant || undefined });
+      res.json({ ok: true, items, ttlDays: clusterCaps.CAPS_TTL_DAYS });
     }),
   );
 

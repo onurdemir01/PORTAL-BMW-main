@@ -539,6 +539,37 @@ export const scalexApi = {
   },
 
   /**
+   * Cluster yetenek envanteri — keşfin en pahalı iki kaleminin önbelleği.
+   *
+   * Ölçülen maliyet cluster başına ~110 `oc` çağrısı; bunun ~%80'i API grubu
+   * sayımı ve CRD tip probe'ları ve ikisi de NAMESPACE/UYGULAMA'dan BAĞIMSIZ.
+   * Admin cluster başına bir kez tarar, keşifler oradan okur.
+   */
+  async clusterCaps(params: { env?: string; tenant?: string } = {}) {
+    const q = new URLSearchParams();
+    if (params.env) q.set('env', params.env);
+    if (params.tenant) q.set('tenant', params.tenant);
+    return safeJson(await fetch(`${BASE}/admin/cluster-caps?${q}`)) as Promise<{
+      ok: boolean;
+      message?: string;
+      ttlDays?: number;
+      items: {
+        env: string;
+        tenant: string;
+        clusterName: string;
+        /** `null` = hiç taranmadı; `[]` = tarandı, ekstra CRD yok. AYRI şeyler. */
+        kinds: string[] | null;
+        rbac: Record<string, boolean> | null;
+        /** `false` ise liste GÜVENİLMEZ — keşfi hızlandırmak için kullanılmaz. */
+        resourcesReadable: boolean;
+        scannedBy: string | null;
+        fetchedAt: string;
+        stale: boolean;
+      }[];
+    }>;
+  },
+
+  /**
    * OCO TANI — salt okunur. Bir numara girilir, servisin döndürdüğü HER alan
    * listelenir ve her biri "okunuyor / yok sayılıyor" diye işaretlenir.
    *

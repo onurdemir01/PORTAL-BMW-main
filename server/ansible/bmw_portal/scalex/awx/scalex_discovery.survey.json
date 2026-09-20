@@ -6,13 +6,18 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": ["workloads", "state", "health"],
+      "choices": [
+        "workloads",
+        "state",
+        "health",
+        "capabilities"
+      ],
       "default": "workloads",
       "required": false,
       "variable": "discovery_mode",
       "new_question": true,
       "question_name": "Kesif Modu",
-      "question_description": "workloads: namespace'teki workload'lari, HPA/GitOps/PDB bilgisiyle listeler. state: geri alinabilir durum kayitlarini (ConfigMap) listeler. health: secilen uygulamalarin pod ve uyari olaylarini gosterir."
+      "question_description": "workloads: namespace'teki workload'lari, HPA/GitOps/PDB bilgisiyle listeler. state: geri alinabilir durum kayitlarini (ConfigMap) listeler. health: secilen uygulamalarin pod ve uyari olaylarini gosterir. capabilities: CLUSTER DUZEYI yetenek taramasi — olceklenebilir CRD listesi ve yetki yoklamasi. NAMESPACE ISTEMEZ. Admin cluster basina BIR KEZ kosturur; sonuc portalda saklanir ve kesifler oradan okur (cluster basina ~50 `oc get --raw` cagrisi boylece atlanir). DIKKAT: bu deger AWX survey'ine EKLENMEDEN portal 'capabilities' baslatirsa AWX launch'i 400 ile REDDEDER — 2026-09-01'de ayni sinifta bir ariza yasandi (sabit secenek listesi kodla ayrismisti)."
     },
     {
       "max": 253,
@@ -42,7 +47,10 @@
       "max": 1024,
       "min": 0,
       "type": "multiplechoice",
-      "choices": ["single", "all"],
+      "choices": [
+        "single",
+        "all"
+      ],
       "default": "all",
       "required": false,
       "variable": "cluster_selection_mode",
@@ -72,7 +80,7 @@
       "variable": "target_namespace",
       "new_question": true,
       "question_name": "Namespace",
-      "question_description": "Kubernetes namespace adi (en fazla 63 karakter)."
+      "question_description": "Kubernetes namespace adi (en fazla 63 karakter). `capabilities` modunda BOS BIRAKILIR: o mod cluster duzeyidir."
     },
     {
       "max": 4096,
@@ -85,6 +93,18 @@
       "new_question": true,
       "question_name": "Uygulama Adlari",
       "question_description": "Virgulle ayrilmis liste. `workloads` ve `state` modunda BOS BIRAKILABILIR — bos birakildiginda namespace'in TAMAMI listelenir (ekran uygulama adini ezberden bilmek zorunda kalmasin). `health` modunda ZORUNLUDUR."
+    },
+    {
+      "max": 4096,
+      "min": 0,
+      "type": "textarea",
+      "choices": "",
+      "default": "",
+      "required": false,
+      "variable": "scalex_extra_kinds",
+      "new_question": true,
+      "question_name": "Olceklenebilir CRD Listesi (onbellek)",
+      "question_description": "OPSIYONEL, PORTAL DOLDURUR. Virgulle ayrilmis `<cogul>.<grup>` listesi (or. rollouts.argoproj.io). Cluster'da `scale` alt kaynagi olan CRD'ler — bu liste NAMESPACE'TEN ve UYGULAMADAN BAGIMSIZDIR ve aylarca degismez. Dolu geldiginde betik cluster basina ~50 `oc get --raw` cagrisini ATLAR. BOS BIRAKMAK GUVENLIDIR: betik listeyi kendisi hesaplar (fail-safe). Portal onbellek yok/bayat/okunamadi durumlarinda BILEREK bos gonderir — 'onbellek yok'u 'CRD yok' saymak olceklenebilir operator nesnelerini SESSIZCE listeden dusurmek olurdu. Liste `capabilities` modunda URETILIR."
     }
   ]
 }

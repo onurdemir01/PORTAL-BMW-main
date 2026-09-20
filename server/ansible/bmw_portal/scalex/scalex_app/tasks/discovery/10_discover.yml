@@ -28,6 +28,16 @@
     # suzseydik cluster'da durdurulmus ama portalda kaydi OLMAYAN uygulamalar
     # (`unknown_to_portal`) gorunmez olurdu — sapma tespitinin YARISI kaybolurdu.
     SCALEX_LIVE_PROBE_APPS: "{{ scalex_live_probe_apps | default('') }}"
+    # CLUSTER YETENEK ONBELLEGI — olceklenebilir CRD listesi.
+    #
+    # Bu liste cluster duzeyidir ve aylarca degismez; portal onu DB'de tutuyor.
+    # Dolu geldiginde betik ~50 `oc get --raw` cagrisini TAMAMEN atlar.
+    #
+    # BOS GECMEK GUVENLIDIR: betik eski yola duser ve listeyi kendisi hesaplar
+    # (fail-safe). Portal onbellek yok/bayat/okunamadi durumlarinda bilerek bos
+    # gonderir — "onbellek yok"u "CRD yok" saymak, olceklenebilir operator
+    # nesnelerini SESSIZCE listeden dusurmek olurdu.
+    SCALEX_EXTRA_KINDS: "{{ scalex_extra_kinds | default('') }}"
     # Kesifte islem YOK. Betik `discover` fazinda `ACTION` aramaz; yine de bos
     # gecmek, degiskenin tanimsiz kalmasindan iyidir (`set -u` ile calisiyor).
     ACTION: ""

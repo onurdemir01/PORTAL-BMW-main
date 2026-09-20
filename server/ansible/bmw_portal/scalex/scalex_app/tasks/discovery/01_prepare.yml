@@ -73,7 +73,7 @@
 - name: "Validate discovery inputs"
   ansible.builtin.assert:
     that:
-      - discovery_mode_effective in ['workloads', 'state', 'health']
+      - discovery_mode_effective in ['workloads', 'state', 'health', 'capabilities']
       # PLATFORM/ORTAM ICIN SABIT BEYAZ LISTE YOK — BILEREK.
       # Tenant ve ortam listesi portalin `ocp_cluster_index` tablosundan gelir ve
       # ADMIN EKRANINDAN buyur. Buradaki sabit liste IKINCI ve BAYATLAYAN bir
@@ -85,9 +85,13 @@
       # cluster katalogda var mi, `platform` esitleniyor mu, `environments` iceriyor mu.
       - oc_platform is match('^[a-z0-9][a-z0-9_-]*$')
       - oc_environment is match('^[a-z0-9][a-z0-9_-]*$')
-      - oc_namespace | length > 0
+      # NAMESPACE, `capabilities` DISINDA zorunludur. O mod CLUSTER DUZEYIDIR:
+      # hicbir namespace nesnesine bakmaz, yalnizca API kaynak listesi ve yetki
+      # yoklamasi yapar. Zorunlu tutmak, admin'e anlamsiz bir alan doldurtmak
+      # ve dolduramazsa taramayi ALAKASIZ bir sebeple dusurmek olurdu.
+      - (discovery_mode_effective == 'capabilities') or (oc_namespace | length > 0)
       - oc_namespace | length <= 63
-      - oc_namespace is match('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+      - (oc_namespace | length == 0) or (oc_namespace is match('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'))
       - username | default('') | string | length > 0
     fail_msg: "Keşif girdileri eksik/geçersiz (mod, platform, ortam, namespace veya vault kullanıcısı)."
 
