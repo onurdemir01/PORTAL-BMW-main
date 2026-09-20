@@ -17,6 +17,10 @@ const http = require('http');
 
 const { readDutyRoster } = require('../duty-roster/index.cjs');
 const { clearTokenCache } = require('../ansible/runner.cjs');
+const { readResponseLimited } = require("../util/bounded-read.cjs");
+
+/** Nobetci API yanit tavani. Nobet listesi birkac KB`dir. */
+const NOBETCI_MAX_BYTES = 4 * 1024 * 1024;
 
 // Iki ayri cache: liste 1 saat, bugunku 5 dakika (T61)
 const NOBETCI_LIST_CACHE  = { data: null, ts: 0 };
@@ -82,18 +86,32 @@ function fetchNobetList() {
     console.log(`[Nobetci] Baglaniyor: ${opts.hostname}:${opts.port}${opts.path}`);
 
     const req = lib.request(opts, (res2) => {
-      const chunks = [];
-      res2.on("data", (c) => chunks.push(c));
-      res2.on("end", () => {
-        const raw = Buffer.concat(chunks).toString("utf-8").trim();
-        try {
-          const data = JSON.parse(raw.replace(/^﻿/, ""));
-          const arr = Array.isArray(data) ? data : (data?.data ?? data?.result ?? []);
-          resolve(arr);
-        } catch (e) {
-          reject(new Error(`JSON parse hatasi: ${e.message} | raw: ${raw.slice(0, 120)}`));
-        }
-      });
+      // SINIRLI OKUMA. Eski hali `chunks.push` + `Buffer.concat` + `JSON.parse`
+      // yapiyordu ve HICBIR SINIR yoktu — portalin 2026-09'da yedi kez cokmesine
+      // yol acan sinifin birebir aynisi, yalnizca baska bir upstream.
+      //
+      // MALIYET UC KAT: `Buffer.concat` ikinci bir tam kopya, `.toString()`
+      // ucuncu, `JSON.parse` metnin 3-6 kati nesne grafigi. Ham yanitin ~6-10
+      // kati heap.
+      //
+      // `timeout: 8000` ise HAREKETSIZLIK zaman asimidir: akan bir yanitta
+      // ASLA tetiklenmez. Bayt kapisi ondan bagimsiz olarak sarttir.
+      readResponseLimited(res2, {
+        maxBytes: NOBETCI_MAX_BYTES,
+        label: "Nobetci API",
+        onAbort: () => req.destroy(),
+      })
+        .then((ham) => {
+          const raw = ham.trim();
+          try {
+            const data = JSON.parse(raw.replace(/^﻿/, ""));
+            const arr = Array.isArray(data) ? data : (data?.data ?? data?.result ?? []);
+            resolve(arr);
+          } catch (e) {
+            reject(new Error(`JSON parse hatasi: ${e.message} | raw: ${raw.slice(0, 120)}`));
+          }
+        })
+        .catch(reject);
     });
     req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
     req.on("error",   (e) => reject(e));

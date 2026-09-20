@@ -45,6 +45,7 @@ const TEST_DIRS = [
   'server/telnet/__tests__',
   'server/scalex/__tests__',
   'server/audit/__tests__',
+  'server/util/__tests__',
   'server/selfservice/__tests__',
   'server/__tests__',
   'src/__tests__',

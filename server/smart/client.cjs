@@ -24,6 +24,10 @@ const { getConfig, isConfigured } = require('./config.cjs');
 // trafigini proxy'lemek istedi (SMART_PROXY_URL, Admin > Sistem > Smart), global
 // HTTPS_PROXY MCP/Splunk/AI gibi diger TUM entegrasyonlari da etkiler.
 const { buildCombinedCa } = require('../ai/ca.cjs');
+const { readBodyLimited } = require('../util/bounded-read.cjs');
+
+/** Smart API yanit tavani. Bir bilet yaniti birkac KB`dir. */
+const SMART_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
 
 function buildSmartDispatcher(targetUrl) {
   const cfg = getConfig();
@@ -68,7 +72,13 @@ async function post(path, body, extraHeaders) {
       bodyTimeout: 20_000,
     });
     statusCode = result.statusCode;
-    text = await result.body.text();
+    // SINIRLI OKUMA: `.text()` govdenin TAMAMINI bellege alir ve uzunluga
+    // SONRADAN bakmak hicbir seyi kurtarmaz — zarar o noktada olusmustur.
+    // Bir Smart bileti yaniti birkac KB'dir.
+    text = await readBodyLimited(result.body, {
+      maxBytes: SMART_RESPONSE_MAX_BYTES,
+      label: 'Smart API',
+    });
   } catch (err) {
     // Tani icin: node surumu + kurulu undici surumu + TAM stack (sadece mesaj degil) —
     // "webidl.util.markAsUncloneable is not a function" gibi ic-kutuphane hatalarinda
