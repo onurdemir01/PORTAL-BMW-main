@@ -2656,7 +2656,10 @@ async function setupTables() {
     try {
       const exists = await pool
         .request()
-        .query(`SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${name}'`);
+        // TABLE_SCHEMA = SCHEMA_NAME(): DEV ortami ayni TBMWANS icinde ayri SEMADA (dev)
+        // calisir (bkz. docs/DEV-PROD.md); filtre olmasa dev, prod'un dbo tablosunu gorup
+        // kendi semasinda CREATE'i atlar ve ilk sorguda "Invalid object name" alirdi.
+        .query(`SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${name}' AND TABLE_SCHEMA = SCHEMA_NAME()`);
       if (!exists.recordset.length) {
         await pool.request().query(sql);
         console.log(`[DB] Tablo olusturuldu: ${name}`);
@@ -2704,7 +2707,7 @@ async function setupTables() {
     try {
       const exists = await pool
         .request()
-        .query(`SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${deadTable}'`);
+        .query(`SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${deadTable}' AND TABLE_SCHEMA = SCHEMA_NAME()`);
       if (exists.recordset.length) {
         await pool.request().query(`DROP TABLE ${deadTable}`);
         console.log(`[DB] Olu tablo dusuruldu: ${deadTable} (eski LogX proxy kalintisi)`);
@@ -3218,7 +3221,7 @@ async function setupTables() {
       const has = await pool
         .request()
         .query(
-          `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='${table}' AND COLUMN_NAME='${col}'`,
+          `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='${table}' AND COLUMN_NAME='${col}' AND TABLE_SCHEMA = SCHEMA_NAME()`,
         );
       if (!has.recordset.length) {
         await pool.request().query(sql);
@@ -3242,7 +3245,7 @@ async function setupTables() {
     try {
       const info = await pool.request().query(
         `SELECT CHARACTER_MAXIMUM_LENGTH AS len FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_NAME='${table}' AND COLUMN_NAME='${col}'`,
+         WHERE TABLE_NAME='${table}' AND COLUMN_NAME='${col}' AND TABLE_SCHEMA = SCHEMA_NAME()`,
       );
       const len = info.recordset[0]?.len;
       if (len != null && len > 0 && len < minLen) {

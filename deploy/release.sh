@@ -21,7 +21,8 @@
 # .env.<env> dosyalari zip icinde YOKTUR (gitignore) — eski agactan yeni agaca kopyalanir.
 set -euo pipefail
 
-BASE_DIR="/vhosting8/bmw_portal"
+# PORTAL_BASE_DIR ile ikinci bir ornek (DEV) ayri agacta kurulur: PORTAL_BASE_DIR=/vhosting8/bmw_portal_dev (bkz. docs/DEV-PROD.md)
+BASE_DIR="${PORTAL_BASE_DIR:-/vhosting8/bmw_portal}"
 DEPLOY_DIR="$BASE_DIR/deploy"
 APP_DIR="$BASE_DIR/app"
 ZIP_FILE="$DEPLOY_DIR/PORTAL-BMW-main.zip"

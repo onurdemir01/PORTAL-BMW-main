@@ -650,7 +650,7 @@ async function fetchTableList() {
   if (!isAvailable()) return FALLBACK_TABLES;
   try {
     const result = await query(
-      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = 'dbo' ORDER BY TABLE_NAME`,
       [],
     );
     const tables = result.recordset
@@ -686,7 +686,7 @@ async function getColumns(table) {
   const cached = colCacheGet(table);
   if (cached) return cached.cols;
   const result = await query(
-    `SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table ORDER BY ORDINAL_POSITION`,
+    `SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table AND TABLE_SCHEMA = 'dbo' ORDER BY ORDINAL_POSITION`,
     [{ name: 'table', type: sql.VarChar(128), value: table }],
   );
   const cols = result.recordset.map((r) => r.COLUMN_NAME);
@@ -1219,7 +1219,7 @@ function initInventory(app) {
     }
     try {
       const result = await query(
-        `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
+        `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = 'dbo' ORDER BY TABLE_NAME`,
         [],
       );
       const tables = result.recordset
@@ -1318,7 +1318,7 @@ function initInventory(app) {
       const result = await query(
         `SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
          FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_NAME = @table
+         WHERE TABLE_NAME = @table AND TABLE_SCHEMA = 'dbo'
          ORDER BY ORDINAL_POSITION`,
         [{ name: 'table', type: sql.VarChar(128), value: table }],
       );

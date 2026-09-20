@@ -236,7 +236,7 @@ async function runBackup() {
     const result = await pool
       .request()
       .query(
-        `SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME`,
+        `SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA IN ('dbo', SCHEMA_NAME()) ORDER BY TABLE_SCHEMA, TABLE_NAME`,
       );
     const tables = result.recordset || [];
     state.tableCount = tables.length;
