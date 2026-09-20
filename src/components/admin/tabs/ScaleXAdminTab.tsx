@@ -11,7 +11,7 @@
 //
 // YENİ TABLO YOK, YENİ UÇ YOK: aynı satır, aynı uçlar, aynı modal — yalnızca template
 // kimliği `scalex_run` kaydından çözülüp doğru yerden açılıyor.
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ShieldCheckIcon,
@@ -21,6 +21,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { playbookRegistryApi, type PlaybookRegistryEntry } from '@/api/playbookRegistryApi';
 import { scalexApi, type ScaleXRbacFinding } from '@/api/scalexApi';
+import { fmtDateTime } from '@/utils/datetime';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
 
 const RUN_KEY = 'scalex_run';
@@ -360,6 +361,8 @@ const ScaleXAdminTab: React.FC = () => {
             )}
           </section>
 
+          <ClusterCapsPanel />
+
           <OcoDiagnosePanel />
         </>
       )}
@@ -567,6 +570,139 @@ function OcoDiagnosePanel() {
               ))}
             </ul>
           </details>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── CLUSTER YETENEK ENVANTERI ────────────────────────────────────────────────
+//
+// Keşfin ölçülen maliyeti cluster başına ~110 `oc` çağrısı (~30 sn) ve bunun
+// %80'i API grubu sayımı + CRD tip probe'ları. İkisi de NAMESPACE'TEN,
+// UYGULAMADAN ve KULLANICIDAN BAĞIMSIZ; bir operator kurulmadıkça aylarca
+// değişmez. Admin cluster başına BİR KEZ tarar, keşifler oradan okur.
+//
+// ÜÇ DURUM AYRI GÖSTERİLİR — ikisini birleştirmek bu depoda iki ayrı arıza
+// üretti: "hiç taranmadı" / "tarandı, ekstra CRD yok" / "okunamadı".
+function ClusterCapsPanel() {
+  const [rows, setRows] = useState<Awaited<ReturnType<typeof scalexApi.clusterCaps>>['items']>([]);
+  const [ttl, setTtl] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await scalexApi.clusterCaps();
+      if (r.ok) {
+        setRows(r.items || []);
+        setTtl(r.ttlDays ?? null);
+        setErr(null);
+      } else setErr(r.message || 'Yetenek envanteri okunamadı.');
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useAsyncEffect(async (alive) => {
+    if (alive()) await load();
+  }, []);
+
+  return (
+    <section className="rounded-xl border border-[var(--border)] p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">Cluster yetenekleri</p>
+          <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+            Ölçeklenebilir CRD listesi ve yetki taraması. Keşfin en pahalı iki kalemi burada{' '}
+            <strong>bir kez</strong> hesaplanır; sonraki keşifler bunu okuyup cluster başına
+            ~50 API çağrısını atlar.
+            {ttl != null && ` Kayıt ${ttl} gün geçerli sayılır.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={load}
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline flex-shrink-0"
+        >
+          <ArrowPathIcon aria-hidden="true" className="w-3.5 h-3.5" /> Yenile
+        </button>
+      </div>
+
+      {err && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+          {err}
+        </div>
+      )}
+
+      {loading && !rows.length && (
+        <p className="text-sm text-[var(--text-muted)]">Envanter okunuyor…</p>
+      )}
+
+      {!loading && !rows.length && !err && (
+        <p className="text-xs text-[var(--text-muted)]">
+          Henüz hiçbir cluster taranmamış. Keşif ekranından bir tarama koştuğunuzda liste
+          kendiliğinden dolar — o ana kadar keşif <strong>eski (yavaş) yolu</strong> kullanır,
+          sonuç yine doğrudur.
+        </p>
+      )}
+
+      {rows.length > 0 && (
+        <div className="divide-y divide-[var(--border)]">
+          {rows.map((r) => {
+            const okunamadi = !r.resourcesReadable;
+            const hicTaranmadi = r.kinds === null;
+            const rbacEksik = Object.entries(r.rbac || {})
+              .filter(([, v]) => !v)
+              .map(([k]) => k);
+            return (
+              <div key={`${r.env}|${r.tenant}|${r.clusterName}`} className="py-2.5 space-y-1">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-mono text-[var(--text-primary)]">{r.clusterName}</span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {r.tenant} / {r.env}
+                  </span>
+                  {/* UC DURUM AYRI ROZET. "okunamadi"yi "CRD yok" gibi gostermek,
+                      olceklenebilir operator nesnelerinin sessizce dusmesi demekti. */}
+                  {okunamadi ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-800">
+                      OKUNAMADI — hızlandırma için kullanılmıyor
+                    </span>
+                  ) : hicTaranmadi ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[var(--bg-inset)] text-[var(--text-muted)]">
+                      hiç taranmadı
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-800">
+                      {r.kinds!.length} ölçeklenebilir CRD
+                    </span>
+                  )}
+                  {r.stale && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-900">
+                      bayat
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {fmtDateTime(r.fetchedAt)}
+                  {r.scannedBy && ` · ${r.scannedBy}`}
+                </p>
+                {rbacEksik.length > 0 && (
+                  <p className="text-xs text-amber-800">
+                    Okunamayan kaynaklar: <span className="font-mono">{rbacEksik.join(', ')}</span>
+                  </p>
+                )}
+                {!hicTaranmadi && r.kinds!.length > 0 && (
+                  <p className="text-xs font-mono text-[var(--text-muted)] break-all">
+                    {r.kinds!.join(', ')}
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>

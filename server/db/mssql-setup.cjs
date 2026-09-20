@@ -989,6 +989,38 @@ const TABLES = [
       )`,
   },
   {
+    // CLUSTER YETENEK ENVANTERI — kesifteki en pahali iki kalemin onbellegi.
+    //
+    // NEDEN AYRI TABLO (ocp_app_cache.payload_json yerine): TANECIK yanlis
+    // olurdu. `ocp_app_cache` satiri UYGULAMA x NAMESPACE basinadir
+    // (UNIQUE(env, tenant, cluster_name, namespace, kind, app_name)); CRD
+    // listesi ise CLUSTER duzeyi bir olgudur — sahte bir app_name uydurmak
+    // gerekirdi. Ustelik LogX'in supurmesi (is_deleted=1) o sahte satiri ilk
+    // taramada silerdi ve TTL'ler (saatler vs gunler) cakisirdi.
+    name: 'scalex_cluster_caps',
+    sql: `
+      CREATE TABLE scalex_cluster_caps (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        env           NVARCHAR(50)  NOT NULL,
+        tenant        NVARCHAR(100) NOT NULL,
+        cluster_name  NVARCHAR(200) NOT NULL,
+        -- Olceklenebilir CRD tipleri, virgulle. BOS STRING ile NULL AYRI:
+        -- '' = tarandi, hicbir ekstra CRD yok; NULL = hic taranmadi.
+        kinds_csv     NVARCHAR(MAX) NULL,
+        -- Yetki yoklamasi sonucu (JSON): { "deployments": true, ... }
+        rbac_json     NVARCHAR(MAX) NULL,
+        -- Tarama sirasinda API kaynak listesi okunabildi mi. 0 ise liste
+        -- GUVENILMEZ: "okunamadi"yi "CRD yok" saymak, olceklenebilir operator
+        -- nesnelerini sessizce dusurmek olurdu.
+        resources_readable BIT NOT NULL DEFAULT 1,
+        scanned_by    NVARCHAR(200) NULL,
+        awx_job_id    INT NULL,
+        fetched_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        expires_at    DATETIME2 NULL,
+        CONSTRAINT UQ_scalex_cluster_caps UNIQUE (env, tenant, cluster_name)
+      )`,
+  },
+  {
     // OCO (ChangeManagement) kesinti penceresi icin ZAMANLANMIS Self Service
     // tetiklemeleri. smart_tickets'tan AYRI tutulur: orada beklenen sey bir INSAN
     // onayi (suresiz olabilir), burada bir SAAT (penceresi kapaninca gecersiz olur).
@@ -3272,6 +3304,8 @@ async function setupTables() {
   // ── Performans index'leri (olcek — Sprint 4/D3) — idempotent (yoksa olustur) ────
   // Sik filtrelenen/siralanan sutunlar; tablo buyudukce (audit, download, job) sorgulari hizlandirir.
   const indexes = [
+    // Kesif her calistirmada (env, tenant, cluster) ile okur.
+    { name: 'IX_scalexcaps_scope', table: 'scalex_cluster_caps', cols: 'env, tenant, cluster_name' },
     { name: 'IX_audit_created', table: 'logx_audit_logs', cols: 'created_at DESC' },
     { name: 'IX_audit_user_created', table: 'logx_audit_logs', cols: 'username, created_at DESC' },
     { name: 'IX_dl_expires', table: 'logx_v2_downloads', cols: 'expires_at' },

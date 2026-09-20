@@ -9,7 +9,7 @@
 // `server/ansible/bmw_portal/scalex/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
-const EXPECTED_PACKAGE_VERSION = '11';
+const EXPECTED_PACKAGE_VERSION = '12';
 
 function extractStatsKey(rawArtifacts, key) {
   const a = rawArtifacts || {};
@@ -184,6 +184,45 @@ function extractDiscoveryResult(rawArtifacts) {
         detail: String(i.detail || ''),
       })),
   };
+
+  // ── CLUSTER YETENEK TARAMASI ───────────────────────────────────────────────
+  //
+  // `capabilities` modu CLUSTER DUZEYI bir envanter uretir: olceklenebilir CRD
+  // listesi + yetki yoklamasi. Kesifteki en pahali iki kalem burada BIR KEZ
+  // hesaplanir ve portal onu saklar.
+  //
+  // CLUSTER BASINA gruplanir: her cluster kendi yetenegini tasir ve portal her
+  // birini AYRI satira yazar. Tek bir birlesik liste yazmak, bir cluster'da
+  // olmayan bir CRD'yi orada VARMIS gibi gostermek olurdu.
+  if (base.mode === 'capabilities') {
+    const perCluster = new Map();
+    const al = (c) => {
+      const k = String(c || '');
+      if (!perCluster.has(k)) {
+        perCluster.set(k, { cluster: k, kinds: [], rbac: {}, resourcesReadable: true, scanned: false });
+      }
+      return perCluster.get(k);
+    };
+    for (const i of items) {
+      const step = String(i.step || '');
+      if (step === 'CAP_KIND') {
+        const d = parseDetailPairs(i.detail);
+        if (d.kind) al(i.cluster).kinds.push(String(d.kind));
+      } else if (step === 'CAP_RBAC') {
+        const d = parseDetailPairs(i.detail);
+        if (d.resource) al(i.cluster).rbac[String(d.resource)] = String(d.allowed) === 'yes';
+      } else if (step === 'CAP_SUMMARY') {
+        const d = parseDetailPairs(i.detail);
+        const c = al(i.cluster);
+        // `resources_readable` YALNIZCA 'yes' iken true. Eksik/bilinmeyen deger
+        // "okunabildi" SAYILMAZ — o varsayim, okunamamis bir taramayi gecerli
+        // onbellek olarak yazdirirdi.
+        c.resourcesReadable = String(d.resources_readable) === 'yes';
+        c.scanned = true;
+      }
+    }
+    base.capabilities = [...perCluster.values()];
+  }
 
   if (base.mode === 'workloads') {
     // TIP BASINA RAPOR: "baktim, N tane buldum" / "bakamadim, cunku ...".
