@@ -283,7 +283,14 @@ async function tick() {
       // yok — ama YALNIZCA yeterince eskiyse. Gecici bir AWX kesintisinde taze
       // isleri "bilinmiyor" yapmak, calisan bir isi kayip ilan etmek olurdu.
       const ageHours = j.created_at ? (Date.now() - new Date(j.created_at).getTime()) / 3600000 : 0;
-      if (ageHours >= cfg.staleHours) {
+      // BAYT KAPISI REDDI KALICIDIR — BEKLEMEK ISE YARAMAZ.
+      // AWX yaniti tavani asiyorsa bir sonraki turda da asacak. Yasi dolana kadar
+      // beklemek, ayni dev yaniti her turda yeniden indirmeye calismak demekti:
+      // OOM'u cozup yerine sonu gelmez bir indirme dongusu birakirdik.
+      if (e && e.tooLarge) {
+        await markStale(serverId, jobId, `AWX yaniti portalin okuyabilecegi boyutu asiyor; isin sonucu AWX arayuzunden incelenmeli: ${e.message}`);
+        stale++;
+      } else if (ageHours >= cfg.staleHours) {
         await markStale(serverId, jobId, `AWX durumu okunamadi (${ageHours.toFixed(0)} saattir bekliyor): ${e.message}`);
         stale++;
       }
