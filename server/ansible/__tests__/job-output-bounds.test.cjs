@@ -158,3 +158,129 @@ test('JO4 `collectJobEventsStdout` BAYT butcesi tasiyor (event sayisi degil)', (
   assert.match(govde, /kirpildi/, 'kirpma bayragi yok');
   assert.match(govde, /AWX_TRUNCATION_NOTICE/, 'kirpma SESSIZ — kullaniciya soylenmiyor');
 });
+
+// ── JO5/JO6 — JSON YOLU (URETIMDEKI UCUNCU OOM) ────────────────────────────
+//
+// 2026-09-19 21:02: portal acilistan 1 dk 52 sn sonra oldu.
+//   Mark-Compact (reduce) 2046.8 (2068.4) -> 2046.3 (2068.7) MB ... allocation failure
+// GC HICBIR SEY bosaltamiyor — 2 GB TUTULAN veriydi.
+//
+// Zincir: ScaleX uzlastiricisi acilistan saniyeler sonra kosuyor (log: "uzlastirici:
+// 1 is sonuclandirildi") -> `getJobStatusOnServer` -> `/api/v2/jobs/<id>/` -> o yanit
+// `artifacts` tasiyor -> SINIRSIZ tampon + `JSON.parse` (metnin 3-6 kati nesne grafigi).
+//
+// PR #106 yalnizca DUZ METIN yolunu kapatmisti; JSON yolu acik kalmisti.
+let TEST_AWX_URL = 'http://127.0.0.1:1';
+
+function gercekJsonIstek(fnAdi) {
+  let i = RUNNER_SRC.indexOf(`function ${fnAdi}(`);
+  assert.ok(i > 0, `${fnAdi} bulunamadi`);
+  // `async` oneki KESILMEMELI: kesilirse govdedeki `await` sozdizimi hatasi verir
+  // ve bekci gercek kodu hic kosturmadan "kirmizi" gorunur.
+  if (RUNNER_SRC.slice(i - 6, i) === 'async ') i -= 6;
+  // Govde: bir sonraki ust duzey `function` bildirimine kadar.
+  const sonraki = RUNNER_SRC.indexOf('\nfunction ', i + 16);
+  const sonrakiAsync = RUNNER_SRC.indexOf('\nasync function ', i + 16);
+  const son = Math.min(...[sonraki, sonrakiAsync].filter((n) => n > 0));
+  const k = RUNNER_SRC.indexOf('const JOB_OUTPUT_MAX_BYTES');
+  const sabitSon = RUNNER_SRC.indexOf('function fetchAwxPlainText');
+  const kaynak = `${RUNNER_SRC.slice(k, sabitSon)}\n${RUNNER_SRC.slice(i, son)}`;
+
+  // Cikarilan govde birkac yardimciya bagli; testin konusu OLMAYAN bu yardimcilar
+  // en sade halleriyle enjekte edilir. Olculen sey BAYT KAPISI, yol esleme degil.
+  // ADAPTIF: kaynakta ZATEN ust duzey bildirilen bir adi enjekte etmek
+  // "Identifier has already been declared" verir — o adlar elenir.
+  const stoklar = {
+    mapApiPath: (_s, yol) => yol,
+    summarizeAwxErrorBody: () => null,
+    _tokenCache: { token: null, expiresAt: null },
+    getConfig: () => ({ url: TEST_AWX_URL }),
+    getToken: async () => 'test-token',
+  };
+  const adlar = [];
+  const degerler = [];
+  for (const [ad, deger] of Object.entries(stoklar)) {
+    if (new RegExp(`^(const|let|var|function|async function) ${ad}\\b`, 'm').test(kaynak)) continue;
+    adlar.push(ad);
+    degerler.push(deger);
+  }
+
+  return new Function(
+    'http',
+    'https',
+    'URL',
+    ...adlar,
+    `${kaynak}\nreturn { fn: ${fnAdi}, AWX_JSON_MAX_BYTES };`,
+  )(http, require('node:https'), URL, ...degerler);
+}
+
+for (const fnAdi of ['awxRequestToServer', 'awxRequest']) {
+  test(`JO5 ${fnAdi}: dev JSON yaniti REDDEDILIYOR (OOM yolu kapali)`, async () => {
+    const mod = gercekJsonIstek(fnAdi);
+    // 12 MB'lik gecerli JSON — tavan 4 MB.
+    const { srv, port } = await sahteAwx(12 * 1024 * 1024);
+    try {
+      const cagir =
+        fnAdi === 'awxRequestToServer'
+          ? mod.fn({ url: `http://127.0.0.1:${port}` }, 't', 'GET', '/api/v2/jobs/1/')
+          : (() => {
+              TEST_AWX_URL = `http://127.0.0.1:${port}`;
+              return gercekJsonIstek(fnAdi).fn('GET', '/api/v2/jobs/1/');
+            })();
+      await assert.rejects(
+        () => sureSinirli(cagir, 15000, fnAdi),
+        (e) => {
+          assert.ok(e.tooLarge, `hata "cok buyuk" olarak isaretlenmedi: ${e.message}`);
+          assert.match(e.message, /çok büyük/, 'kullaniciya sebep soylenmiyor');
+          return true;
+        },
+        'dev JSON yaniti KABUL EDILDI — OOM yolu hala acik',
+      );
+    } finally {
+      srv.close();
+    }
+  });
+}
+
+// JO6 — GEVSEMEDIGINI KANITLA: normal boyutta JSON dokunulmadan gecmeli.
+test('JO6 normal JSON yaniti REDDEDILMIYOR', async () => {
+  const mod = gercekJsonIstek('awxRequestToServer');
+  const govde = JSON.stringify({ id: 1, status: 'successful', artifacts: { a: 'b' } });
+  const srv = http.createServer((q, r) => {
+    r.writeHead(200, { 'content-type': 'application/json' });
+    r.end(govde);
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  try {
+    const out = await sureSinirli(
+      mod.fn({ url: `http://127.0.0.1:${srv.address().port}` }, 't', 'GET', '/api/v2/jobs/1/'),
+      15000,
+      'JO6',
+    );
+    assert.equal(out.status, 'successful', 'normal yanit bozuldu');
+  } finally {
+    srv.close();
+  }
+});
+
+// ── JO7 — BAYT KAPISI REDDI SONSUZ INDIRME DONGUSU BIRAKMIYOR ──────────────
+//
+// Uzlastirici her turda yarim kalmis isleri yeniden yokluyor. Bayt kapisi bir isi
+// reddettiginde o red KALICIDIR (yanit bir sonraki turda kuculmez). `staleHours`
+// dolana kadar beklemek, ayni dev yaniti saatlerce her turda yeniden indirmeye
+// calismak olurdu — OOM'u cozup yerine bir indirme dongusu birakmak.
+test('JO7 `tooLarge` reddi YASI BEKLEMEDEN "bilinmiyor" isaretleniyor', () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'scalex', 'reconciler.cjs'),
+    'utf8',
+  );
+  const i = src.indexOf('const ageHours = j.created_at');
+  assert.ok(i > 0, 'uzlastiricinin hata dali bulunamadi');
+  const dal = src.slice(i, i + 900);
+  assert.match(dal, /e\s*&&\s*e\.tooLarge/, '`tooLarge` dali yok — dev yanit her turda yeniden indirilir');
+  // Kapi yas kontrolunden ONCE gelmeli; sonra gelseydi hic ates almazdi.
+  assert.ok(
+    dal.indexOf('tooLarge') < dal.indexOf('ageHours >= cfg.staleHours'),
+    '`tooLarge` dali yas kontrolunden SONRA — yas dolana kadar ates almaz',
+  );
+});

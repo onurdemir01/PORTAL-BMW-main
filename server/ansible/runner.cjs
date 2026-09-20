@@ -322,12 +322,48 @@ function awxRequestToServer(server, token, method, pathname, body = null) {
       rejectUnauthorized: false,
       timeout: 15000,
     };
+    // BAYT KAPISI — URETIMDEKI UCUNCU OOM'UN YOLU TAM BURASI (2026-09-19 21:02).
+    //
+    // ScaleX uzlastiricisi acilistan saniyeler sonra kosuyor ve yarim kalmis her is
+    // icin `getJobStatusOnServer` -> `/api/v2/jobs/<id>/` cagiriyor. O yanit
+    // `artifacts` alanini TASIR; bir kesif isi orada yuzlerce kalem yayinlar.
+    // Burasi SINIRSIZ tamponluyordu ve ustune `JSON.parse` metnin 3-6 KATI
+    // buyuklukte bir nesne grafigi uretiyordu.
+    //
+    // prod.out kaniti (uptime 1 dk 52 sn):
+    //   Mark-Compact (reduce) 2046.8 (2068.4) -> 2046.3 (2068.7) MB ... allocation failure
+    // GC HICBIR SEY bosaltamiyor — 2 GB TUTULAN veriydi.
+    //
+    // PR #106 yalnizca DUZ METIN yolunu (`fetchAwxPlainText`) kapatmisti; JSON yolu
+    // acik kalmisti. Ayni sinifin ikinci yuzu.
+    let jsonKirpildi = false;
     const req = lib.request(options, (res) => {
+      res.setEncoding('utf8');
       let data = '';
+      let bayt = 0;
       res.on('data', (c) => {
+        if (jsonKirpildi) return;
+        bayt += c.length;
+        if (bayt > AWX_JSON_MAX_BYTES) {
+          jsonKirpildi = true;
+          // HEMEN REDDET, `end`i BEKLEME: `req.destroy()` sonrasi `end` GELMEZ ve
+          // promise sonsuza dek asili kalirdi (PR #106'da tam bu tuzaga dustum).
+          reject(
+            Object.assign(
+              new Error(
+                `AWX yanıtı çok büyük (> ${Math.round(AWX_JSON_MAX_BYTES / (1024 * 1024))} MB): ` +
+                  `${pathname}. İşin çıktısı AWX arayüzünden incelenmeli.`,
+              ),
+              { status: 502, tooLarge: true },
+            ),
+          );
+          req.destroy();
+          return;
+        }
         data += c;
       });
       res.on('end', () => {
+        if (jsonKirpildi) return; // zaten reddedildi
         // DELETE (ve bazi POST'lar) 204 No Content doner: GOVDE BOSTUR ve JSON.parse("")
         // hata firlatir. Onceki hal bunu "AWX yaniti JSON degil" diye BASARISIZLIK
         // sayiyordu - oysa 204 basarinin ta kendisi.
@@ -354,7 +390,11 @@ function awxRequestToServer(server, token, method, pathname, body = null) {
         }
       });
     });
-    req.on('error', reject);
+    // Kirpma sonrasi `req.destroy()` kendi ECONNRESET'ini uretir; zaten reddettik.
+    req.on('error', (err) => {
+      if (jsonKirpildi) return;
+      reject(err);
+    });
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('AWX isteği zaman aşımına uğradı.'));
@@ -597,12 +637,48 @@ async function awxRequest(method, pathname, body = null) {
       timeout: 15000,
     };
 
+    // BAYT KAPISI — URETIMDE UCUNCU OOM'UN YOLU BURASIYDI (2026-09-19 21:02).
+    //
+    // ScaleX uzlastiricisi acilistan saniyeler sonra kosuyor ve yarim kalmis her is
+    // icin `getJobStatusOnServer` -> `/api/v2/jobs/<id>/` cagiriyor. O yanit
+    // `artifacts` alanini tasir; bir kesif isi orada yuzlerce kalem yayinlar.
+    // Burasi SINIRSIZ tamponluyordu ve ustune `JSON.parse` metnin 3-6 kati
+    // buyuklukte bir nesne grafigi uretiyordu.
+    //
+    // prod.out kaniti (uptime 1 dk 52 sn):
+    //   Mark-Compact (reduce) 2046.8 (2068.4) -> 2046.3 (2068.7) MB ... allocation failure
+    // GC HICBIR SEY bosaltamiyor: 2 GB TUTULAN veriydi.
+    //
+    // PR #106 yalnizca DUZ METIN yolunu (`fetchAwxPlainText`) kapatmisti; JSON yolu
+    // acik kalmisti — ayni sinifin ikinci yuzu.
+    let jsonKirpildi = false;
     const req = lib.request(options, (res) => {
+      res.setEncoding('utf8');
       let data = '';
+      let bayt = 0;
       res.on('data', (chunk) => {
+        if (jsonKirpildi) return;
+        bayt += chunk.length;
+        if (bayt > AWX_JSON_MAX_BYTES) {
+          jsonKirpildi = true;
+          // HEMEN REDDET, `end`i BEKLEME: `req.destroy()` sonrasi `end` GELMEZ ve
+          // promise sonsuza dek asili kalirdi (PR #106'da tam bu tuzaga dustum).
+          reject(
+            Object.assign(
+              new Error(
+                `AWX yanıtı çok büyük (> ${Math.round(AWX_JSON_MAX_BYTES / (1024 * 1024))} MB): ` +
+                  `${options.path}. İşin çıktısı AWX arayüzünden incelenmeli.`,
+              ),
+              { status: 502, tooLarge: true },
+            ),
+          );
+          req.destroy();
+          return;
+        }
         data += chunk;
       });
       res.on('end', () => {
+        if (jsonKirpildi) return; // zaten reddedildi
         // Token expire olduysa cache'i temizle
         if (res.statusCode === 401) {
           _tokenCache.token = null;
@@ -726,6 +802,12 @@ const JOB_OUTPUT_MAX_BYTES = 16 * 1024 * 1024;
 // her yanit icin uygular; `collectJobEventsStdout` ayrica KENDI birikimine
 // `JOB_OUTPUT_MAX_BYTES` uygular (biri tek cagriyi, oteki toplami sinirlar).
 const AWX_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
+
+// AWX JSON yanitinin azami boyutu. `/api/v2/jobs/<id>/` yaniti `artifacts` alanini
+// TASIR ve bir ScaleX/LogX kesfi orada yuzlerce kalem yayinlayabilir. Metin tamponu
+// DUZ METIN icindir; JSON'da ayrica `JSON.parse` NESNE GRAFIGI uretir ve o, metnin
+// 3-6 KATI bellek tutar — bu yuzden tavan metin tavanindan DAHA DUSUK.
+const AWX_JSON_MAX_BYTES = 4 * 1024 * 1024;
 
 // SESSIZ KIRPMA YOK. Kullanici "log yarim" ile "is yarim" arasindaki farki
 // gorebilmeli; yoksa eksik bir cikti tamamlanmis bir is gibi okunur.
