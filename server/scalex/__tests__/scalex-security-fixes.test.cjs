@@ -438,8 +438,18 @@ test('UI: iptal hata verirse buton KILITLI KALMAZ', () => {
 });
 
 test('UI: AWX is numarasi donmezse sonsuz spinner yerine mesaj gosterilir', () => {
+  // KOSUL AYRILDI (2026-09-20). Eskiden tek daldi:
+  //   if (r.ocoScheduled || r.jobId == null || r.serverId == null) -> "baslatilamadi"
+  // ScaleX zamanlama yapamadigi icin `ocoScheduled` bir ARIZA sayiliyordu. Artik
+  // zamanlama BEKLENEN bir sonuc; onu "is numarasi donmedi" hatasiyla ayni dala
+  // koymak, basarili bir zamanlamayi hata gibi gostermek olurdu.
+  //
+  // Kilitlenen sey degismedi: is numarasi yoksa SESSIZ SPINNER OLMAMALI.
   const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
-  assert.match(PAGE, /r\.ocoScheduled \|\| r\.jobId == null \|\| r\.serverId == null/);
+  assert.match(PAGE, /if \(r\.jobId == null \|\| r\.serverId == null\)/, 'savunma dali kalkmis');
+  // Zamanlama AYRI ve KENDI mesajini veriyor.
+  assert.match(PAGE, /if \(r\.ocoScheduled\)/, 'zamanlama dali yok');
+  assert.match(PAGE, /setPendingSchedule\(null\)/, 'zamanlama sonrasi teklif ekranda kaliyor');
 });
 
 test("UI: hata banner'i ekran okuyucuya DUYURULUR", () => {

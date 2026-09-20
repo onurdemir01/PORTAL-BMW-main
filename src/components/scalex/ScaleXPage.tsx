@@ -36,6 +36,7 @@ import { useScaleXLimits } from '@/hooks/useScaleXLimits';
 import PreviewStep from './steps/PreviewStep';
 import ScaleXResultPanel from './steps/ScaleXResultPanel';
 import StoppedPanel from './StoppedPanel';
+import OcoSchedulePanel from './OcoSchedulePanel';
 
 type Step = 'scope' | 'namespace' | 'workloads' | 'operation' | 'preview' | 'done';
 
@@ -81,6 +82,21 @@ const ScaleXPage: React.FC = () => {
   // erismek React'in kuralina aykiri (lint bunu yakaliyor). `useState` baslaticisi
   // bir kez kosar ve nesne kimligi sabit kalir — istenen tam olarak bu.
   const [autoScanMemo] = useState<Map<string, number>>(() => new Map());
+
+  // OCO penceresi henuz acilmamis bir istek: kullaniciya "zamanlayayim mi?" diye
+  // soruyoruz. Eskiden burada sessiz bir erteleme vardi — 200 OK doner, hicbir
+  // sey olmazdi.
+  const [pendingSchedule, setPendingSchedule] = useState<{
+    windowStartText: string | null;
+    ocoNumber: string | null;
+    // ILK DENEMENIN ARGUMANLARI. Zamanlama "ayni istegin" tekrari olmali:
+    // gerekce ve yazili onay gibi alanlari yeniden toplamak ya da BOS gondermek,
+    // kullanicinin onayladigindan FARKLI bir islemi zamanlamak olurdu.
+    extra: { writtenConfirm?: string; reason?: string; ocoNumber?: string };
+  } | null>(null);
+  // Liste tazeleme tetikleyicisi: yeni bir kayit olustugunda ya da iptal/
+  // guncelleme yapildiginda artar.
+  const [scheduleReload, setScheduleReload] = useState(0);
 
   const [step, setStep] = useState<Step>('scope');
   const [env, setEnv] = useState('');
@@ -299,7 +315,13 @@ const ScaleXPage: React.FC = () => {
     }
   }
 
-  function run(extra: { writtenConfirm?: string; reason?: string; ocoNumber?: string }) {
+  function run(extra: {
+    writtenConfirm?: string;
+    reason?: string;
+    ocoNumber?: string;
+    /** 'schedule' = pencere acilinca otomatik baslat. */
+    ocoAction?: 'schedule' | 'later';
+  }) {
     return guarded(async () => {
       const r = await scalexApi.run({
         env,
@@ -363,15 +385,15 @@ const ScaleXPage: React.FC = () => {
       // OCO penceresi henuz acilmadiysa sunucu 200 + `ocoDeferred` doner: is
       // BASLATILMADI ve bu bir hata degil.
       if (r.ocoDeferred) {
-        // Pencere bilgisini METINDE veriyoruz: "tekrar deneyin" demek, NE ZAMAN
-        // denenecegini soylemedigi surece kullaniciyi tahmine birakir.
-        const w = r.oco?.windowStartText;
-        setNotice(
-          `OCO penceresi henüz açılmadı — işlem başlatılmadı, cluster'a dokunulmadı.` +
-            (w
-              ? ` Pencere ${w} tarihinde açılıyor; o saatten sonra tekrar deneyin.`
-              : ' Pencere açıldığında tekrar deneyin.'),
-        );
+        // ARTIK SESSIZ ERTELEME YOK (2026-09-20). Eskiden burada yalnizca bir
+        // metin vardi: "pencere acildiginda tekrar deneyin". Kullanici numarayi
+        // girip "Calistir"a basiyor, 200 OK donuyor, hicbir sey olmuyordu.
+        // Simdi zamanlama teklif ediliyor ve secim sunucuya gidiyor.
+        setPendingSchedule({
+          windowStartText: r.oco?.windowStartText || null,
+          ocoNumber: r.oco?.ocoNumber || null,
+          extra,
+        });
         setStep('done');
         return;
       }
@@ -379,7 +401,21 @@ const ScaleXPage: React.FC = () => {
       // ScaleX'te olusmamali (zamanlama kapali) ama olusursa asagidaki `setJob`
       // `serverId: undefined` yazar ve ekran sonsuza dek "calisiyor" spinner'i
       // gosterirdi — sessiz bir kilitlenme yerine net bir mesaj.
-      if (r.ocoScheduled || r.jobId == null || r.serverId == null) {
+      // ZAMANLANDI: artik BEKLENEN bir sonuc (eskiden ScaleX zamanlama yapamadigi
+      // icin bu dal bir "savunma" idi).
+      if (r.ocoScheduled) {
+        setPendingSchedule(null);
+        setNotice(
+          `İşlem zamanlandı — OCO penceresi açıldığında otomatik başlayacak. ` +
+            `Kaydı "Zamanlanmış işlemler" listesinden her an iptal edebilir ya da güncelleyebilirsiniz.`,
+        );
+        setScheduleReload((n) => n + 1);
+        setStep('done');
+        return;
+      }
+      // SAVUNMA: is numarasi donmediyse ekran sonsuza dek "calisiyor" spinner'i
+      // gosterirdi — sessiz bir kilitlenme yerine net bir mesaj.
+      if (r.jobId == null || r.serverId == null) {
         setNotice(
           r.message || 'İşlem başlatılmadı — AWX iş numarası dönmedi. Lütfen tekrar deneyin.',
         );
@@ -675,6 +711,54 @@ const ScaleXPage: React.FC = () => {
 
         {step === 'done' && (
           <div className="space-y-4">
+            {/* PENCERE HENUZ ACILMADI — SESSIZ ERTELEME YERINE GERCEK SECIM.
+                Eskiden burada yalnizca bir metin vardi ("pencere acildiginda
+                tekrar deneyin"); kullanici numarayi girip "Calistir"a basiyor,
+                200 OK donuyor ve HICBIR SEY OLMUYORDU. */}
+            {pendingSchedule && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                <div className="flex items-start gap-2 text-sm text-amber-900">
+                  <ClockIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    <strong>OCO penceresi henüz açılmadı</strong> — işlem başlatılmadı,
+                    cluster'a dokunulmadı.
+                    {pendingSchedule.windowStartText &&
+                      ` Pencere ${pendingSchedule.windowStartText} tarihinde açılıyor.`}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={busy}
+                    onClick={() =>
+                      run({ ...pendingSchedule.extra, ocoAction: 'schedule' })
+                    }
+                  >
+                    Pencere açılınca otomatik başlat
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      setPendingSchedule(null);
+                      setNotice(
+                        'İşlem zamanlanmadı. Pencere açıldığında tekrar deneyebilirsiniz.',
+                      );
+                    }}
+                  >
+                    Zamanlama, o saatte kendim gelirim
+                  </button>
+                </div>
+                <p className="text-xs text-amber-800">
+                  Zamanlarsanız kayıt <strong>her an</strong> iptal edilebilir ya da OCO
+                  numarası değiştirilebilir. Onay kapısı atlanmaz — SMART gerekiyorsa kayıt
+                  o saatte açılır.
+                </p>
+              </div>
+            )}
+
             {notice && (
               <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
                 <ClockIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -816,6 +900,15 @@ const ScaleXPage: React.FC = () => {
           ekranda bulamiyor, geri almak icin sihirbazi bastan doldurmak (ve yeni bir
           kesif isi baslatmak) zorunda kaliyordu.
           Kapsam secilmediginde panel TUM kapsamlari listeler; secilince ona daralir. */}
+      {/* ZAMANLANMIS ISLEMLER — HER ADIMDA gorunur.
+          Kullanicinin istegi "her noktada iptal edilsin ya da guncellensin":
+          panel yalnizca sonuc ekraninda dursaydi, kaydini iptal etmek isteyen
+          birinin once sihirbazi bastan doldurmasi gerekirdi. Kayit yoksa panel
+          kendini hic cizmez. */}
+      <div className="card p-5">
+        <OcoSchedulePanel reloadKey={scheduleReload} />
+      </div>
+
       <div className="card p-5">
         <StoppedPanel
           env={env}

@@ -1167,3 +1167,80 @@ test('HS10 hafiza `WorkloadStep`e GERCEKTEN geciriliyor', () => {
   const blok = kod.slice(i, kod.indexOf('/>', i) > 0 ? kod.indexOf('onSubmit={(v) => {', i) : i + 600);
   assert.match(blok, /autoScanMemo=\{autoScanMemo\}/, 'hafiza bilesene GECIRILMIYOR');
 });
+
+// ── OSU: ZAMANLANMIS OCO TETIKLEMELERI (EKRAN) ──────────────────────────────
+//
+// Kullanicinin istegi: "self service gibi zamanlama da sunsun ama istedigi
+// zamanda iptal edebilsin user ve admin ... her noktada iptal edilsin ya da
+// guncellemek isterse guncellesin her noktada adimda yerde."
+//
+// ONCEKI HAL: pencere kapaliyken ekran yalnizca bir METIN gosteriyordu
+// ("pencere acildiginda tekrar deneyin"). Kullanici numarayi girip "Calistir"a
+// basiyor, 200 OK donuyor ve HICBIR SEY OLMUYORDU.
+const PANEL = read('components/scalex/OcoSchedulePanel.tsx');
+
+test('OSU1 pencere kapaliyken SESSIZ metin degil, GERCEK SECIM sunuluyor', () => {
+  const kod = codeOnly(PAGE);
+  const dal = kod.slice(kod.indexOf('r.ocoDeferred'), kod.indexOf('r.ocoScheduled'));
+  assert.match(dal, /setPendingSchedule\(/, '`ocoDeferred` hala yalnizca bildirim yaziyor');
+  // Eski hal: dogrudan `setNotice(...)` + `setStep('done')` ve baska hicbir sey.
+  assert.ok(
+    !/setNotice\([\s\S]{0,200}tekrar deneyin/.test(dal),
+    'hala "tekrar deneyin" metniyle sessizce erteliyor',
+  );
+});
+
+test('OSU2 zamanlama ILK ISTEGIN argumanlariyla tekrarlaniyor', () => {
+  // Gerekce / yazili onay gibi alanlari BOS gondermek, kullanicinin
+  // onayladigindan FARKLI bir islemi zamanlamak olurdu.
+  const kod = codeOnly(PAGE).replace(/\s+/g, ' ');
+  assert.match(
+    kod,
+    /run\(\{ \.\.\.pendingSchedule\.extra, ocoAction: "schedule" \}\)/,
+    'zamanlama istegi orijinal argumanlari TASIMIYOR',
+  );
+  assert.match(kod, /extra,/, '`extra` saklanmiyor');
+});
+
+test('OSU3 zamanlama paneli HER ADIMDA gorunuyor (yalniz sonuc ekraninda degil)', () => {
+  const kod = codeOnly(PAGE);
+  const i = kod.indexOf('<OcoSchedulePanel');
+  assert.ok(i > 0, 'panel hic render edilmiyor');
+  // Panel, adim kosullu blogun (`step === "..."`) DISINDA olmali. Sihirbaz
+  // bloklari `{step === '...' && (` ile basliyor; panel onlardan SONRA,
+  // kosulsuz bir `<div className="card p-5">` icinde duruyor.
+  const oncesi = kod.slice(0, i);
+  const sonAdimKosulu = oncesi.lastIndexOf("step === '");
+  const sonKapanis = oncesi.lastIndexOf('</div>');
+  assert.ok(
+    sonKapanis > sonAdimKosulu,
+    'panel bir ADIM blogunun ICINDE — kaydini iptal etmek isteyen once sihirbazi doldurmak zorunda kalir',
+  );
+});
+
+test('OSU4 iptal BASARISIZ olabilir ve ekran bunu SOYLER', () => {
+  // Sunucu 409 doner: kayit bu arada tetiklenmis olabilir. Bunu basari gibi
+  // gostermek kullaniciya YALAN soylemek olurdu.
+  const govde = codeOnly(PANEL);
+  const iptal = govde.slice(govde.indexOf('async function iptal'), govde.indexOf('async function guncelle'));
+  assert.match(iptal, /if \(!r\.ok\) setError/, 'iptal basarisizligi YUTULUYOR');
+  assert.match(iptal, /await load\(\)/, 'liste tazelenmiyor — ekran bayat kalir');
+});
+
+test('OSU5 panel KAYDI ACANI gosteriyor (grubun kaydini koru korune iptal etme)', () => {
+  const govde = codeOnly(PANEL);
+  assert.match(govde, /\{it\.username\}/, 'kaydi acan gosterilmiyor');
+  assert.match(govde, /it\.cancelledBy/, 'iptal eden gosterilmiyor');
+});
+
+test('OSU6 yalnizca ACIK kayitlarda iptal/guncelleme dugmesi var', () => {
+  const govde = codeOnly(PANEL);
+  // `codeOnly` prettier uyumu icin tek tirnaklari CIFT tirnaga cevirir —
+  // desen ona gore yazilmali (bu depoda tekrar eden bir kor bekci sebebi).
+  assert.match(
+    govde,
+    /const ACIK = new Set\(\["SCHEDULED", "AWX_SCHEDULED", "PENDING_APPROVAL"\]\)/,
+    'acik durum kumesi degismis',
+  );
+  assert.match(govde, /\{acik && \(/, 'kapanmis kayitta da dugme gosteriliyor');
+});
