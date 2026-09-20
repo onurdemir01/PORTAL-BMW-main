@@ -1,7 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
+// src/components/admin/AdminPage.tsx — Admin Merkezi.
+//
+// 2026-09-20 SADELESTIRME (kullanici: "giren admin arkadaslar ne kadar basit bir panel olmus
+// desin"): 14 sekmelik sarmalanan "hap" seridi ve surukle-birak siralama KALDIRILDI. Yerine
+// sol tarafta DORT BOLUME ayrilmis sabit bir menu (Erisim / Otomasyon / Kayitlar / Sistem),
+// sagda tek icerik karti; kartin basliginda sekmenin adi ve tek cumlelik aciklamasi.
+// Sekme KIMLIKLERI (id) ve gorunurluk anahtarlari (`admintab:<id>`) DEGISMEDI: kayitli
+// kurallar ve `admin_active_tab` tercihi aynen calisir. `admin_tab_order` tercihi artik
+// okunmaz (siralama sabit); eski kayit DB'de zararsiz durur.
+//
+// 2026-09-07: "Test Senaryolari" ve "Akis Testleri" sekmeleri kaldirildi — bilesen dosyalari
+// duruyor (TestScenariosTab.tsx / FlowTestsTab.tsx), yalnizca baglantilari kesik.
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { prefsApi } from '../../api/prefsApi';
-import { toast } from '@/hooks/useToast';
 import {
   ServerStackIcon,
   ClipboardDocumentListIcon,
@@ -10,12 +21,15 @@ import {
   UsersIcon,
   EyeIcon,
   PhotoIcon,
-  Bars3Icon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CheckIcon,
   ArchiveBoxIcon,
   ShieldCheckIcon,
+  KeyIcon,
+  TicketIcon,
+  CircleStackIcon,
+  ArrowsPointingOutIcon,
+  TableCellsIcon,
+  ExclamationTriangleIcon,
+  BookOpenIcon,
 } from '@heroicons/react/24/outline';
 import AuditLogTab from './tabs/AuditLogTab';
 import AnsibleConfigTab from './tabs/AnsibleConfigTab';
@@ -32,76 +46,54 @@ import BrandingTab from './tabs/BrandingTab';
 import DbBackupTab from './tabs/DbBackupTab';
 import SmartTicketsTab from './tabs/SmartTicketsTab';
 
-// Eski port-1111 LogX admin yüzeyleri (Oturumlar, İzinler, LogX Inventory) tamamen
-// kaldırıldı — yeni yapıda log akışı "LogX v2 Yapılandırma" (OCP cluster/terminal
-// haritası, Legacy ortam eşlemesi, erişim kısıtı) üzerinden yönetilir. "Linkler" sekmesi
-// de kaldırıldı (Yardımcı Araçlar sayfası zaten inline admin CRUD sağlıyor).
-//
-// 2026-09-07: "Test Senaryoları" ve "Akış Testleri" sekmeleri de kaldırıldı — hiç
-// kullanılmadılar. Bileşen dosyaları (TestScenariosTab.tsx / FlowTestsTab.tsx) DURUYOR,
-// yalnızca bağlantıları kesildi; ileride geri istenirse iki satırla dönerler.
-// Kayıtlı sekme sırasında bu id'ler kalmış olabilir: normalizeOrder bilinmeyen id'leri
-// zaten atıyor, dolayısıyla eski tercihler bozulmaz.
+// Sekme tanimlari. `id` = gorunurluk anahtari (`admintab:<id>`) — DEGISTIRME.
+// (Bicim `{ id: '...', label: '...' }` bekciler tarafindan okunur: scalex-validation S3/S4,
+// denetim-access.)
 const DEFAULT_TABS = [
   // ORTAK SEKME: cluster / vault / bastion / kisitlama tablolari LogX'e ozel degil,
-  // LogX + OpsX + Telnet + ScaleX tarafindan PAYLASILIYOR. Ad bunu yansitiyor.
-  // Sekme KIMLIGI (`logxv2`) BILEREK korunuyor: kayitli sekme sirasi ve
-  // `admintab:logxv2` gorunurluk anahtari bozulmasin.
-  { id: 'logxv2', label: 'OCP Yapılandırma', icon: ServerStackIcon },
-  { id: 'scalex', label: 'ScaleX Yönetimi', icon: ShieldCheckIcon },
-  { id: 'audit', label: 'Denetim Kaydı', icon: ClipboardDocumentListIcon },
-  { id: 'smarttickets', label: 'Smart Talepleri', icon: ClipboardDocumentListIcon },
-  { id: 'dbbackup', label: 'DB Yedekleme', icon: ArchiveBoxIcon },
-  { id: 'ansible', label: 'Ansible Info', icon: CommandLineIcon },
-  { id: 'playbooks', label: 'Playbook Kayıtları', icon: CommandLineIcon },
-  { id: 'system', label: 'Sistem', icon: CogIcon },
-  { id: 'users', label: 'Kullanıcılar', icon: UsersIcon },
-  { id: 'visibility', label: 'Sayfa Erişimi', icon: EyeIcon },
-  { id: 'denetimaccess', label: 'Denetim Erişimi', icon: ShieldCheckIcon },
-  { id: 'inventoryvis', label: 'Envanter Görünürlüğü', icon: ServerStackIcon },
-  { id: 'inventorygaps', label: 'Envanter Boşlukları', icon: ServerStackIcon },
-  { id: 'branding', label: 'Logo', icon: PhotoIcon },
+  // LogX + OpsX + Telnet + ScaleX tarafindan PAYLASILIYOR. Kimlik (`logxv2`) bilerek korunuyor.
+  { id: 'logxv2', label: 'OCP Yapılandırma', icon: ServerStackIcon, hint: 'OpenShift cluster, vault anahtarı ve bastion tanımları — LogX, OpsX, Telnet ve ScaleX ortak kullanır.' },
+  { id: 'scalex', label: 'ScaleX Yönetimi', icon: ArrowsPointingOutIcon, hint: 'Replica durdurma/ölçekleme kuralları ve RBAC bulguları.' },
+  { id: 'audit', label: 'Denetim Kaydı', icon: ClipboardDocumentListIcon, hint: 'Kim, ne zaman, ne yaptı — hash zincirli, değiştirilemez kayıt.' },
+  { id: 'smarttickets', label: 'Smart Talepleri', icon: TicketIcon, hint: 'Smart üzerinden açılan taleplerin durumu ve eşleşen işler.' },
+  { id: 'dbbackup', label: 'DB Yedekleme', icon: CircleStackIcon, hint: 'Günlük tam yedek, veritabanı doluluğu ve gece temizliği.' },
+  { id: 'ansible', label: 'Ansible Info', icon: CommandLineIcon, hint: 'AWX sunucuları ve bağlantı bilgileri.' },
+  { id: 'playbooks', label: 'Playbook Kayıtları', icon: BookOpenIcon, hint: 'Portal işlerinin hangi AWX job template ile koştuğu.' },
+  { id: 'system', label: 'Sistem', icon: CogIcon, hint: 'Ortam değişkenleri ve çalışma zamanı ayarları.' },
+  { id: 'users', label: 'Kullanıcılar', icon: UsersIcon, hint: 'Yerel kullanıcılar, roller ve LDAP eşleşmeleri.' },
+  { id: 'visibility', label: 'Sayfa Erişimi', icon: EyeIcon, hint: 'Hangi sayfa/sekme kime görünür — rol, kullanıcı ve grup kuralları.' },
+  { id: 'denetimaccess', label: 'Denetim Erişimi', icon: ShieldCheckIcon, hint: 'Denetim sekmelerini kişi ya da LDAP grubu bazında açma.' },
+  { id: 'inventoryvis', label: 'Envanter Görünürlüğü', icon: TableCellsIcon, hint: 'Envanter tablolarının ve sütunlarının kimlere açık olduğu.' },
+  { id: 'inventorygaps', label: 'Envanter Boşlukları', icon: ExclamationTriangleIcon, hint: 'Envanterde eksik ya da tutarsız kayıtlar.' },
+  { id: 'branding', label: 'Logo', icon: PhotoIcon, hint: 'Portal logosu ve sekme simgesi.' },
 ] as const;
 
 type TabId = (typeof DEFAULT_TABS)[number]['id'];
 const DEFAULT_TAB_IDS = DEFAULT_TABS.map((t) => t.id) as TabId[];
-const TAB_BY_ID = new Map(DEFAULT_TABS.map((t) => [t.id, t]));
+const TAB_BY_ID = new Map<TabId, (typeof DEFAULT_TABS)[number]>(DEFAULT_TABS.map((t) => [t.id, t]));
+
+// Dort bolum — sira sabit, surukleme yok. Bir sekme gorunmezse (admintab kurali) bolumden
+// duser; bolum bosalirsa basligi da gizlenir.
+const SECTIONS: { title: string; icon: React.ElementType; ids: TabId[] }[] = [
+  { title: 'Erişim', icon: KeyIcon, ids: ['users', 'visibility', 'denetimaccess', 'inventoryvis'] },
+  { title: 'Otomasyon', icon: CommandLineIcon, ids: ['playbooks', 'ansible', 'logxv2', 'scalex'] },
+  { title: 'Kayıtlar', icon: ArchiveBoxIcon, ids: ['audit', 'smarttickets', 'dbbackup', 'inventorygaps'] },
+  { title: 'Sistem', icon: CogIcon, ids: ['system', 'branding'] },
+];
 
 const ADMIN_TAB_PREF = 'admin_active_tab';
-const ADMIN_TAB_ORDER_PREF = 'admin_tab_order';
-
-// Kaydedilmis sirayi gecerli sekle sokar: bilinmeyen id'leri atar, eksik kalan
-// (ornegin ileride eklenen yeni bir sekme) id'leri sonuna ekler — boylece kayitli
-// sira asla "kayip sekme" uretmez.
-function normalizeTabOrder(saved: unknown): TabId[] {
-  const validSaved = Array.isArray(saved)
-    ? saved.filter((id): id is TabId => typeof id === 'string' && TAB_BY_ID.has(id as TabId))
-    : [];
-  const missing = DEFAULT_TAB_IDS.filter((id) => !validSaved.includes(id));
-  return [...validSaved, ...missing];
-}
 
 const AdminPage: React.FC = () => {
   const { canSee } = useAuth();
-  const [activeTab, setActiveTabState] = useState<TabId>('logxv2');
-  const [tabOrder, setTabOrder] = useState<TabId[]>(DEFAULT_TAB_IDS);
-  const [reordering, setReordering] = useState(false);
+  const [activeTab, setActiveTabState] = useState<TabId>('users');
 
-  // Aktif sekme + sekme sirasi sunucu tercihinden gelir (restart/tarayici degisiminde korunur).
+  // Aktif sekme sunucu tercihinden gelir (restart/tarayici degisiminde korunur).
   useEffect(() => {
     prefsApi
       .getAll()
       .then((prefs) => {
         const saved = prefs[ADMIN_TAB_PREF];
         if (saved && DEFAULT_TAB_IDS.includes(saved as TabId)) setActiveTabState(saved as TabId);
-        const savedOrder = prefs[ADMIN_TAB_ORDER_PREF];
-        if (savedOrder) {
-          try {
-            setTabOrder(normalizeTabOrder(JSON.parse(savedOrder)));
-          } catch {
-            /* bozuk kayit -> varsayilan */
-          }
-        }
       })
       .catch(() => {});
   }, []);
@@ -113,205 +105,108 @@ const AdminPage: React.FC = () => {
     });
   };
 
-  // Basarisiz bir kayit SESSIZCE yutulmuyor — reverse proxy PUT'u engelliyorsa/oturum
-  // dolmussa vb. kullaniciya HEMEN gorunur olsun (aksi halde "kaydettim ama sayfa
-  // yenilenince eski haline donuyor" hatasi teshis edilemezdi).
-  function persistOrder(next: TabId[]) {
-    prefsApi
-      .set({ [ADMIN_TAB_ORDER_PREF]: JSON.stringify(next) })
-      .catch((e: unknown) =>
-        toast.error(`Sekme sırası kaydedilemedi: ${e instanceof Error ? e.message : String(e)}`),
-      );
-  }
+  // Admin sekmeleri de gorunurluk motoruna tabidir (`admintab:<id>`).
+  // KACIS KAPISI: "Sayfa Erisimi" ASLA gizlenmez — kurallar oradan yonetilir; o da
+  // gizlenebilseydi geri almanin UI yolu kalmazdi.
+  const visibleIds = new Set(DEFAULT_TAB_IDS.filter((id) => id === 'visibility' || canSee(`admintab:${id}`)));
+  const sections = SECTIONS.map((s) => ({ ...s, tabs: s.ids.filter((id) => visibleIds.has(id)).map((id) => TAB_BY_ID.get(id)!) })).filter((s) => s.tabs.length > 0);
+  const orderedTabs = sections.flatMap((s) => s.tabs);
 
-  function moveTab(id: TabId, direction: -1 | 1) {
-    setTabOrder((prev) => {
-      const idx = prev.indexOf(id);
-      const swapWith = idx + direction;
-      if (idx < 0 || swapWith < 0 || swapWith >= prev.length) return prev;
-      const next = [...prev];
-      [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
-      persistOrder(next);
-      return next;
-    });
-  }
-
-  // ── Surukle-birak siralama ────────────────────────────────────────────────────
-  // Oklar KALDIRILMADI: surukle-birak fare gerektirir, klavye kullanicisi icin tek
-  // erisim yolu oklardir. Ikisi ayni durumu (tabOrder) yazar.
-  //
-  // Siralama surukleme SIRASINDA canli guncellenir ama SUNUCUYA yazilmaz — her
-  // dragover'da PUT atmak onlarca gereksiz istek demekti. Kayit yalnizca birakisda
-  // (dragEnd) ve yalnizca sira GERCEKTEN degistiyse yapilir.
-  const dragId = useRef<TabId | null>(null);
-  const dragMoved = useRef(false);
-  // dragEnd icindeki kapanis (closure) eski tabOrder'i gorurdu; ref her zaman
-  // en guncel siraya isaret eder.
-  const orderRef = useRef<TabId[]>(tabOrder);
-  useEffect(() => {
-    orderRef.current = tabOrder;
-  }, [tabOrder]);
-
-  function handleDragStart(e: React.DragEvent, id: TabId) {
-    dragId.current = id;
-    dragMoved.current = false;
-    e.dataTransfer.effectAllowed = 'move';
-    // Firefox surukleme baslatmak icin veri SART kosar.
-    e.dataTransfer.setData('text/plain', id);
-  }
-
-  function handleDragOver(e: React.DragEvent, overId: TabId) {
-    if (!dragId.current) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const from = dragId.current;
-    if (from === overId) return;
-    setTabOrder((prev) => {
-      const a = prev.indexOf(from);
-      const b = prev.indexOf(overId);
-      if (a < 0 || b < 0) return prev;
-      const next = [...prev];
-      next.splice(b, 0, next.splice(a, 1)[0]);
-      dragMoved.current = true;
-      return next;
-    });
-  }
-
-  function handleDragEnd() {
-    dragId.current = null;
-    if (!dragMoved.current) return;
-    dragMoved.current = false;
-    persistOrder(orderRef.current);
-  }
-
-  // Admin sekmeleri de görünürlük motoruna tabidir (`admintab:<id>` element anahtarları).
-  // Bu anahtarlar Sayfa Erişimi ekranında zaten yönetilebiliyordu ama HİÇBİR YERDE
-  // uygulanmıyordu — kapatmak hiçbir şey değiştirmiyordu. Kayıtsız anahtar → görünür.
-  // KAÇIŞ KAPISI: "Sayfa Erişimi" sekmesi ASLA gizlenmez. Görünürlük kurallarını buradan
-  // yönetiyoruz; kendisi de gizlenebilseydi (ör. yanlışlıkla kill-switch kapatılınca)
-  // geri almanın UI yolu kalmaz, DB müdahalesi gerekirdi.
-  const orderedTabs = tabOrder
-    .map((id) => TAB_BY_ID.get(id)!)
-    .filter(Boolean)
-    .filter((tab) => tab.id === 'visibility' || canSee(`admintab:${tab.id}`));
-
-  // Aktif sekme gizlenmişse ilk görünür sekmeye düş (boş içerik gösterme).
+  // Aktif sekme gizlenmisse ilk gorunur sekmeye dus.
   useEffect(() => {
     if (!orderedTabs.length) return;
     if (!orderedTabs.some((t) => t.id === activeTab)) setActiveTab(orderedTabs[0].id);
   }, [orderedTabs, activeTab]);
 
+  const current = TAB_BY_ID.get(activeTab);
+  const CurrentIcon = current?.icon;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">Admin Merkezi</h1>
-          <p className="mt-1 text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
-            LogX, Self Service ve sistem yönetimi.
-          </p>
-        </div>
-        <button
-          onClick={() => setReordering((v) => !v)}
-          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-colors flex-shrink-0 ${
-            reordering
-              ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-          }`}
-          style={reordering ? {} : { borderColor: 'var(--border)' }}
-        >
-          {reordering ? (
-            <CheckIcon className="w-3.5 h-3.5" />
-          ) : (
-            <Bars3Icon className="w-3.5 h-3.5" />
-          )}
-          {reordering ? 'Bitti' : 'Sekmeleri Sırala'}
-        </button>
-      </div>
-
-      {reordering && (
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Sekmeleri fareyle tutup sürükleyerek taşıyabilirsiniz; ok tuşları da çalışmaya devam eder.
+    <div className="space-y-5">
+      <div>
+        <h1 className="page-title">Admin Merkezi</h1>
+        <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+          Erişim, otomasyon, kayıtlar ve sistem ayarları tek yerde.
         </p>
-      )}
+      </div>
 
-      {/* Tab bar */}
-      <div
-        className="flex gap-1 rounded-xl p-1 flex-wrap"
-        style={{ background: 'var(--bg-elevated)' }}
-      >
-        {orderedTabs.map((tab, i) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return (
-            <div
-              key={tab.id}
-              draggable={reordering}
-              onDragStart={(e) => handleDragStart(e, tab.id)}
-              onDragOver={(e) => handleDragOver(e, tab.id)}
-              onDrop={(e) => e.preventDefault()}
-              onDragEnd={handleDragEnd}
-              className={`flex items-center rounded-lg transition-all duration-200 ${
-                !reordering && active ? 'bg-white' : ''
-              } ${reordering ? 'cursor-grab active:cursor-grabbing' : ''} ${
-                reordering && dragId.current === tab.id ? 'opacity-40' : ''
-              }`}
-              style={!reordering && active ? { boxShadow: 'var(--shadow-sm)' } : {}}
-            >
-              {reordering && (
-                <button
-                  onClick={() => moveTab(tab.id, -1)}
-                  disabled={i === 0}
-                  className="px-1 py-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-25 disabled:pointer-events-none"
-                  title="Sola taşı"
-                >
-                  <ChevronLeftIcon className="w-3.5 h-3.5" />
-                </button>
+      <div className="grid gap-5 admin-grid" style={{ gridTemplateColumns: 'minmax(13rem, 16rem) 1fr' }}>
+        {/* Sol: bolumlu menu */}
+        <nav aria-label="Admin bölümleri" className="space-y-4 self-start lg:sticky lg:top-4">
+          {sections.map((s) => {
+            const SIcon = s.icon;
+            return (
+              <div key={s.title}>
+                <div className="flex items-center gap-1.5 px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  <SIcon className="w-3.5 h-3.5" /> {s.title}
+                </div>
+                <ul className="space-y-0.5">
+                  {s.tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const active = activeTab === tab.id;
+                    return (
+                      <li key={tab.id}>
+                        <button
+                          onClick={() => setActiveTab(tab.id)}
+                          aria-current={active ? 'page' : undefined}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg text-left transition-colors"
+                          style={{
+                            background: active ? 'var(--bg-elevated)' : 'transparent',
+                            color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontWeight: active ? 600 : 500,
+                            boxShadow: active ? 'inset 3px 0 0 var(--accent)' : 'none',
+                          }}
+                        >
+                          <Icon className="w-4 h-4 flex-shrink-0" style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }} />
+                          <span className="truncate" title={tab.label}>{tab.label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* Sag: icerik */}
+        <section className="card overflow-hidden min-w-0">
+          {current && (
+            <header className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+              {CurrentIcon && (
+                <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'var(--bg-surface)', color: 'var(--accent)', boxShadow: 'var(--shadow-sm)' }}>
+                  <CurrentIcon className="w-5 h-5" />
+                </span>
               )}
-              <button
-                onClick={() => !reordering && setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg
-                  ${!reordering && active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}
-                  ${reordering ? 'cursor-default' : ''}`}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-              {reordering && (
-                <button
-                  onClick={() => moveTab(tab.id, 1)}
-                  disabled={i === orderedTabs.length - 1}
-                  className="px-1 py-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-25 disabled:pointer-events-none"
-                  title="Sağa taşı"
-                >
-                  <ChevronRightIcon className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold leading-tight">{current.label}</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{current.hint}</p>
+              </div>
+            </header>
+          )}
+          <div className="p-5">
+            <div key={activeTab} style={{ animation: 'fadeIn 0.18s ease' }}>
+              {activeTab === 'audit' && <AuditLogTab />}
+              {activeTab === 'smarttickets' && <SmartTicketsTab />}
+              {activeTab === 'dbbackup' && <DbBackupTab />}
+              {activeTab === 'ansible' && <AnsibleConfigTab />}
+              {activeTab === 'playbooks' && <PlaybookRegistryTab />}
+              {activeTab === 'system' && <SystemConfigTab />}
+              {activeTab === 'users' && <UserManagementTab />}
+              {activeTab === 'visibility' && <PageVisibilityTab />}
+              {activeTab === 'denetimaccess' && <DenetimAccessTab />}
+              {activeTab === 'logxv2' && <LogXv2AdminTab />}
+              {activeTab === 'scalex' && <ScaleXAdminTab />}
+              {activeTab === 'inventoryvis' && <InventoryVisibilityTab />}
+              {activeTab === 'inventorygaps' && <InventoryGapsTab />}
+              {activeTab === 'branding' && <BrandingTab />}
             </div>
-          );
-        })}
+          </div>
+        </section>
       </div>
 
-      {/* Tab content */}
-      <div className="card p-5">
-        <div key={activeTab} style={{ animation: 'fadeIn 0.18s ease' }}>
-          {activeTab === 'audit' && <AuditLogTab />}
-          {activeTab === 'smarttickets' && <SmartTicketsTab />}
-          {activeTab === 'dbbackup' && <DbBackupTab />}
-          {activeTab === 'ansible' && <AnsibleConfigTab />}
-          {activeTab === 'playbooks' && <PlaybookRegistryTab />}
-          {activeTab === 'system' && <SystemConfigTab />}
-          {activeTab === 'users' && <UserManagementTab />}
-          {activeTab === 'visibility' && <PageVisibilityTab />}
-          {activeTab === 'denetimaccess' && <DenetimAccessTab />}
-          {activeTab === 'logxv2' && <LogXv2AdminTab />}
-          {activeTab === 'scalex' && <ScaleXAdminTab />}
-          {activeTab === 'inventoryvis' && <InventoryVisibilityTab />}
-          {activeTab === 'inventorygaps' && <InventoryGapsTab />}
-          {activeTab === 'branding' && <BrandingTab />}
-        </div>
-      </div>
-
-      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 900px) { .admin-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
   );
 };
