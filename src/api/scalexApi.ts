@@ -216,6 +216,14 @@ export interface ScaleXBlastRadius {
 export interface ScaleXGatePolicy {
   oco: 'require' | 'warn' | 'skip';
   smart: 'require' | 'skip';
+  /**
+   * PROD bir işlemde OCO kapısı admin tarafından KAPATILMIŞ.
+   *
+   * `oco: 'skip'` tek başına yetmez: "prod değil" ile "prod ama kapı kapalı"
+   * ekranda AYNI görünürdü. Kullanıcının kararı "kapatılabilsin ama GÖRÜNÜR
+   * olsun" idi — sessiz bir kapalı kapı, kapıyı hiç koymamakla aynı şeydir.
+   */
+  ocoGateDisabled?: boolean;
   reason: string | null;
 }
 

@@ -397,3 +397,30 @@ test('JO10 filtre SOZLESMESI degismedi (eski uygulamayla birebir ayni)', () => {
   }
   assert.ok(denendi > 9000, `yeterince durum denenmedi: ${denendi}`);
 });
+
+// ── JO11 — BELLEK NABZI (OLCUM ARACININ KENDISI) ───────────────────────────
+//
+// PR #112 ile `server/index.cjs`e dakikada bir heap/rss yazan bir satir eklendi.
+// Gerekcesi: "OOM kapandi mi?" sorusunu cevaplayacak TEK BIR VERI NOKTASI yoktu
+// (duzeltmeler log penceresinden SONRA commit edilmisti) ve yapilandirilmis
+// logger cokmeyi hic gormuyor — surec V8 ile birlikte oluyor.
+//
+// Bu bekci mutasyon turunda dogdu: "bellek nabzini sok" mutasyonu HICBIR BEKCIYI
+// ates almadi. Olcum aracinin kendisi korumasizdi; sessizce silinse kimse fark
+// etmezdi ve bir sonraki OOM turunda yine elimizde veri olmazdi.
+test('JO11 bellek nabzi duruyor ve surecin kapanmasini ENGELLEMIYOR', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'index.cjs'), 'utf8');
+  const i = src.indexOf('BELLEK NABZI');
+  assert.ok(i > 0, 'bellek nabzi SILINMIS — "OOM kapandi mi" sorusu olculemez hale gelir');
+  const blok = src.slice(i, i + 1400);
+
+  // Olcumun KENDISI: heap ve rss yazilmali. Yalnizca "bir setInterval var" demek,
+  // icinde ne yazdigini bilmeden yesil kalmak olurdu.
+  assert.match(blok, /memoryUsage\(\)/, 'nabiz bellek OKUMUYOR');
+  assert.match(blok, /heap=/, 'heap yazilmiyor');
+  assert.match(blok, /rss=/, 'rss yazilmiyor');
+  assert.match(blok, /uptime=/, 'uptime yazilmiyor — cokme sonrasi sureyi kimse eslestiremez');
+
+  // `unref()` SART: aksi halde dagitimda portal bir dakika gec kapanir.
+  assert.match(blok, /\.unref\(\)/, 'zamanlayici `unref()` edilmemis — kapanmayi geciktirir');
+});
