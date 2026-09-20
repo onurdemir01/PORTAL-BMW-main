@@ -5,6 +5,7 @@ const https = require('https');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const { readResponseLimited } = require('../util/bounded-read.cjs');
 // Survey "kosullu goster" mantigi: istemci ile PAYLASILAN tek dogruluk kaynagi.
 // Kopyalanmaz - istemci de (SelfServicePage) AYNI fonksiyonu cagirir.
 const surveyConditions = require('../../shared/surveyConditions.cjs');
@@ -1351,6 +1352,73 @@ const {
 
 // ── Express route init ────────────────────────────────────────────────────────
 
+function probeClusterApiVersion(cluster, { httpLib = http, httpsLib = https } = {}) {
+  return new Promise((resolve) => {
+    let parsed;
+    try {
+      parsed = new URL('/version', cluster.apiUrl);
+    } catch {
+      resolve({ ok: false, message: 'Geçersiz API URL.' });
+      return;
+    }
+
+    const lib = parsed.protocol === 'https:' ? httpsLib : httpLib;
+    let settled = false;
+    let bodyLimitAbort = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const options = {
+      hostname: parsed.hostname,
+      port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+      path: parsed.pathname,
+      method: 'GET',
+      headers: cluster.token ? { Authorization: `Bearer ${cluster.token}` } : {},
+      rejectUnauthorized: false,
+      timeout: 5000,
+    };
+    const httpReq = lib.request(options, (httpRes) => {
+      // Bu uc yalnizca erisilebilirligi olcer ve hata govdesinden 150 karakter
+      // gosterir. Idle timeout surekli akan bir yaniti durdurmaz; govdeyi
+      // sinirsiz biriktirmek yanlis cluster URL'sinde OOM'a kadar buyuyebilir.
+      readResponseLimited(httpRes, {
+        maxBytes: 256 * 1024,
+        label: 'OCP baglanti testi',
+        onAbort: () => {
+          // `destroy()` request error uretebilir. Bayt kapisinin asil hatasi
+          // microtask'ta gelir; sentetik ECONNRESET onun onune gecmemeli.
+          bodyLimitAbort = true;
+          httpReq.destroy();
+        },
+      })
+        .then((data) => {
+          if (httpRes.statusCode && httpRes.statusCode < 400) {
+            finish({ ok: true });
+          } else if (httpRes.statusCode === 401 || httpRes.statusCode === 403) {
+            finish({
+              ok: false,
+              message: `Erişilebilir ama kimlik doğrulama başarısız (HTTP ${httpRes.statusCode}).`,
+            });
+          } else {
+            finish({ ok: false, message: `HTTP ${httpRes.statusCode}: ${data.slice(0, 150)}` });
+          }
+        })
+        .catch((err) => finish({ ok: false, message: err.message }));
+    });
+    httpReq.on('error', (err) => {
+      if (bodyLimitAbort) return;
+      finish({ ok: false, message: err.message });
+    });
+    httpReq.on('timeout', () => {
+      finish({ ok: false, message: 'Bağlantı zaman aşımına uğradı.' });
+      httpReq.destroy();
+    });
+    httpReq.end();
+  });
+}
+
 function initAnsibleRunner(app) {
   // Tum /api/ansible mutasyonlari (launch, SS item/customization, OCP cluster CRUD)
   // portal_audit_logs'a yazilir — bkz. server/audit/index.cjs (secret'lar redakte edilir).
@@ -1692,49 +1760,7 @@ function initAnsibleRunner(app) {
           .json({ ok: false, message: 'Bu cluster için API URL tanımlı değil.' });
 
       const startedAt = Date.now();
-      const result = await new Promise((resolve) => {
-        let parsed;
-        try {
-          parsed = new URL('/version', cluster.apiUrl);
-        } catch {
-          resolve({ ok: false, message: 'Geçersiz API URL.' });
-          return;
-        }
-        const lib = parsed.protocol === 'https:' ? https : http;
-        const options = {
-          hostname: parsed.hostname,
-          port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-          path: parsed.pathname,
-          method: 'GET',
-          headers: cluster.token ? { Authorization: `Bearer ${cluster.token}` } : {},
-          rejectUnauthorized: false,
-          timeout: 5000,
-        };
-        const httpReq = lib.request(options, (httpRes) => {
-          let data = '';
-          httpRes.on('data', (c) => {
-            data += c;
-          });
-          httpRes.on('end', () => {
-            if (httpRes.statusCode && httpRes.statusCode < 400) {
-              resolve({ ok: true });
-            } else if (httpRes.statusCode === 401 || httpRes.statusCode === 403) {
-              resolve({
-                ok: false,
-                message: `Erişilebilir ama kimlik doğrulama başarısız (HTTP ${httpRes.statusCode}).`,
-              });
-            } else {
-              resolve({ ok: false, message: `HTTP ${httpRes.statusCode}: ${data.slice(0, 150)}` });
-            }
-          });
-        });
-        httpReq.on('error', (err) => resolve({ ok: false, message: err.message }));
-        httpReq.on('timeout', () => {
-          httpReq.destroy();
-          resolve({ ok: false, message: 'Bağlantı zaman aşımına uğradı.' });
-        });
-        httpReq.end();
-      });
+      const result = await probeClusterApiVersion(cluster);
 
       const responseTimeMs = Date.now() - startedAt;
       const status = result.ok ? 'ok' : 'unreachable';
@@ -4817,6 +4843,7 @@ async function listRunningJobsAcrossServers() {
 
 module.exports = {
   initAnsibleRunner,
+  _probeClusterApiVersion: probeClusterApiVersion,
   // AAP 2.5 API tabani esleme yardimcilari - birim testleri icin acildi (ag gerektirmez).
   _normalizeApiBase: normalizeApiBase,
   _mapApiPath: mapApiPath,
