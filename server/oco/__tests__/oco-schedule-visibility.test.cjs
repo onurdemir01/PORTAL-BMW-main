@@ -91,11 +91,33 @@ test('OS7 yetkisiz erisim DENETIME yaziliyor', () => {
 test('OS8 numara DEGISTIRILIRSE yeniden DOGRULANIYOR', () => {
   // Numara degistirip pencereyi eski kayittan devam ettirmek, DOGRULANMAMIS bir
   // OCO ile is baslatmak olurdu.
+  //
+  // BEKCI ULASILABILIRLIGI OLCER, VARLIGI DEGIL. Ilk yazdigimda yalnizca
+  // `getChangeOrder(yeniNumara)` gibi ifadelerin GECTIGINI kontrol ediyordum;
+  // mutasyon turunda kosulu `if (false)` yapmak HICBIR BEKCIYI ates almadi —
+  // dogrulama kodu OLU DALDA duruyordu ama metinde hala goruluyordu. Bu depoda
+  // tekrar eden kor bekci bicimi #4: "tanimlayicinin VARLIGINI arar, KARAR
+  // NOKTASINDAKI kullanimini degil".
   const govde = IX.slice(IX.indexOf("'/oco-schedules/:id/update'"), IX.indexOf("'/admin/oco-diagnose'"));
-  assert.match(govde, /getChangeOrder\(yeniNumara\)/, 'yeni numara dogrulanmiyor');
-  assert.match(govde, /evaluateWindow/, 'yeni pencere hesaplanmiyor');
-  assert.match(govde, /ocoExpired/, 'suresi gecmis numara kabul ediliyor');
-  assert.match(govde, /runAt: w\.windowStart/, 'pencere ESKI kayittan devam ediyor');
+
+  // 1) Kosul GERCEK olmali — sabit degil.
+  const kosul = /if \(yeniNumara && yeniNumara !== rec\.ocoNumber\) \{/;
+  assert.match(govde, kosul, 'numara degisimi kosulu kaldirilmis ya da sabitlenmis');
+
+  // 2) Dogrulama O KOSULUN ICINDE olmali.
+  const bas = govde.search(kosul);
+  const dal = govde.slice(bas, govde.indexOf('const guncel = await ocoStore.update'));
+  assert.ok(dal.length > 100, 'dal bulunamadi — bicim mi degisti?');
+  assert.match(dal, /getChangeOrder\(yeniNumara\)/, 'yeni numara dogrulanmiyor');
+  assert.match(dal, /evaluateWindow/, 'yeni pencere hesaplanmiyor');
+  assert.match(dal, /ocoExpired/, 'suresi gecmis numara kabul ediliyor');
+  assert.match(dal, /runAt: w\.windowStart/, 'pencere ESKI kayittan devam ediyor');
+
+  // 3) OLU DAL YASAK: `if (false)` / `if (0)` gibi bir sabitleme kabul edilmez.
+  assert.ok(
+    !/if \((?:false|0|null|undefined)\)/.test(govde),
+    'dogrulama OLU DALA alinmis — metinde duruyor ama hic kosmuyor',
+  );
 });
 
 test('OS9 ScaleX PORTAL zamanlayicisini kullaniyor (AWX-native DEGIL)', () => {
