@@ -212,6 +212,7 @@ async function evaluateOcoGate({
   overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
   ocoNumber: rawOcoNumber, ocoAction: rawOcoAction,
   createOcoAwxSchedule, friendlyAwxError,
+  preferPortalScheduler, ownerGroups,
 }) {
   assertHooks({ createOcoAwxSchedule, friendlyAwxError }, ['createOcoAwxSchedule', 'friendlyAwxError']);
   const ocoClient = require('../oco/client.cjs');
@@ -274,7 +275,8 @@ async function evaluateOcoGate({
     //     saatinde launchOrRequestApproval'i cagirir ve Smart bileti ORADA acilir.
     //     Iki mekanizma da ayni tabloda, status ile ayrilir.
     const smartAlsoRequired = isSmartRequired(overrides.smartApproval, gateVars);
-    if (!smartAlsoRequired) {
+    // `preferPortalScheduler`: cagiran AWX-native zamanlamayi ISTEMIYOR.
+    if (!smartAlsoRequired && !preferPortalScheduler) {
       const schedName = `PORTAL_OCO_${ocoNumber}_${templateId}_${Date.now()}`;
       let sched;
       try {
@@ -290,7 +292,7 @@ async function evaluateOcoGate({
         username, awxServerId: server.id, awxTemplateId: templateId,
         ocoNumber, ocoSubject: ocoInfo.subject,
         runAt: w.windowStart, windowEnd: w.windowEnd,
-        awxScheduleId: sched.scheduleId, pendingLaunch,
+        awxScheduleId: sched.scheduleId, pendingLaunch, ownerGroups,
       });
       audit.auditPortal(req, 'selfservice_oco_awx_scheduled', {
         detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id, awxScheduleId: sched.scheduleId, rrule: sched.rrule }),
@@ -310,11 +312,23 @@ async function evaluateOcoGate({
       ocoNumber, ocoSubject: ocoInfo.subject,
       runAt: w.windowStart, windowEnd: w.windowEnd,
       pendingLaunch,
+      // Gorunurluk icin: kullanici KENDI ve GRUBUNUN kayitlarini gorur.
+      ownerGroups,
     });
     audit.auditPortal(req, 'selfservice_oco_scheduled', {
       detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id, viaPortalPoller: true }),
     });
-    return { outcome: 'respond', body: { ok: true, ocoScheduled: true, scheduleId: rec.id, viaSmart: true, oco: ocoInfo } };
+    return {
+      outcome: 'respond',
+      body: {
+        ok: true, ocoScheduled: true, scheduleId: rec.id,
+        // `viaSmart` ADI YANILTICIYDI: bu dal artik yalnizca "SMART da gerekiyor"
+        // diye degil, cagiran PORTAL zamanlayicisini istedigi icin de secilebiliyor.
+        viaSmart: isSmartRequired(overrides.smartApproval, gateVars),
+        viaPortalScheduler: true,
+        oco: ocoInfo,
+      },
+    };
   }
 
   // phase === 'inside': pencere acik, akis normal devam eder (Smart onayi varsa o devreye girer).
@@ -334,6 +348,14 @@ async function runChangeGates(ctx) {
     ocoNumber, ocoAction,
     createOcoAwxSchedule, friendlyAwxError, buildSmartMetadata,
     smartAuditAction = 'selfservice_smart_ticket_open',
+    // ZAMANLAMA NEREDE TUTULSUN (2026-09-20): varsayilan AWX-native, ama cagiran
+    // PORTAL zamanlayicisini zorlayabilir. ScaleX bunu kullaniyor — istenen sey
+    // "her noktada iptal VE GUNCELLEME" ve bu yalnizca portal kaydinda mumkun;
+    // AWX-native bir schedule'i guncellemek AWX API'sinden silip yeniden kurmayi
+    // gerektirir ve kayit ile AWX arasinda ayrisma riski dogurur.
+    preferPortalScheduler = false,
+    // Kaydi acanin AD gruplari — gorunurluk icin saklanir.
+    ownerGroups = null,
   } = ctx;
 
   if (isOcoGateApplicable(overrides, extraVars, gateVars)) {
@@ -341,6 +363,7 @@ async function runChangeGates(ctx) {
       server, templateId, username, req,
       overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
       ocoNumber, ocoAction, createOcoAwxSchedule, friendlyAwxError,
+      preferPortalScheduler, ownerGroups,
     });
     if (ocoDecision.outcome !== 'proceed') return ocoDecision;
   }

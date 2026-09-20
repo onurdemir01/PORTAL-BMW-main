@@ -213,6 +213,25 @@ export interface ScaleXBlastRadius {
   exceedsMaxTargets: boolean;
 }
 
+export interface ScaleXOcoSchedule {
+  id: number;
+  username: string;
+  ocoNumber: string;
+  ocoSubject: string | null;
+  runAt: string;
+  windowEnd: string;
+  status: string;
+  awxJobId: number | null;
+  /** `null` = eski kayıt, grup bilgisi hiç yazılmamış (boş diziden FARKLI). */
+  ownerGroups: string[] | null;
+  cancelledBy: string | null;
+  cancelNote: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+}
+
 export interface ScaleXGatePolicy {
   oco: 'require' | 'warn' | 'skip';
   smart: 'require' | 'skip';
@@ -481,6 +500,42 @@ export const scalexApi = {
       scanUnknown?: boolean;
       source?: string;
     }>;
+  },
+
+  /**
+   * Zamanlanmış OCO tetiklemeleri — KENDİ ve GRUBUNUN kayıtları (Admin: hepsi).
+   *
+   * Grup bilgisi kayıt açılırken saklanıyor; `ownerGroups === null` (eski kayıt)
+   * grup üzerinden GÖRÜNÜR SAYILMAZ — "bilmiyoruz"u "senin grubun" saymak
+   * başkasının kesinti kaydını göstermek olurdu.
+   */
+  async ocoSchedules() {
+    return safeJson(await fetch(`${BASE}/oco-schedules`)) as Promise<{
+      ok: boolean;
+      message?: string;
+      items: ScaleXOcoSchedule[];
+      truncated?: boolean;
+      scope?: 'all' | 'mine+groups';
+    }>;
+  },
+
+  /** Kaydı iptal eder. Sahip, grup üyesi ve Admin yapabilir; iptal eden kaydedilir. */
+  async ocoScheduleCancel(id: number, note?: string) {
+    return post<{ ok: boolean; message?: string; record?: ScaleXOcoSchedule }>(
+      `/oco-schedules/${id}/cancel`,
+      { note: note || '' },
+    );
+  },
+
+  /**
+   * Kaydı günceller. Yeni numara verilirse YENİDEN DOĞRULANIR — eski kaydın
+   * penceresini devam ettirmek, doğrulanmamış bir OCO ile iş başlatmak olurdu.
+   */
+  async ocoScheduleUpdate(id: number, patch: { ocoNumber?: string }) {
+    return post<{ ok: boolean; message?: string; record?: ScaleXOcoSchedule; ocoExpired?: boolean }>(
+      `/oco-schedules/${id}/update`,
+      patch,
+    );
   },
 
   /**

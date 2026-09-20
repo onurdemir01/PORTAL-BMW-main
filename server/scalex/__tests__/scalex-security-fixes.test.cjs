@@ -273,27 +273,50 @@ test('S3: ldap gruplari normalize edip ustsinirla dondurmeye devam ediyor', () =
   assert.match(LDAP, /groups,/);
 });
 
-// ── OCO KAPALI DONGUSU ──────────────────────────────────────────────────────
-// Kapi canlandirilinca (S1) "pencere henuz acilmadi" dali ERISILEBILIR hale geldi.
-// Ortak kapi orada `ocoAction` bekliyor; ScaleX ekraninda o alan YOK ve ScaleX
-// zamanlama da yapamiyor → kullanici ayni mesaji alip duracakti.
+// ── OCO "PENCERE HENUZ ACILMADI" DALI ───────────────────────────────────────
+//
+// TARIHCE — bu bolum bir KISITI kural olarak kilitliyordu:
+//   S1 kapiyi canlandirinca "pencere henuz acilmadi" dali erisilebilir oldu.
+//   ScaleX o zaman zamanlama YAPAMIYORDU, bu yuzden sunucu `ocoAction: 'later'`
+//   sabitini veriyordu ve bekci "client'tan ocoAction BEKLENMEMELI" diyordu.
+//   Dogru cozum o gunku kisit icin dogruydu — ama kisit kalkinca bekci YANLIS
+//   VARSAYIMI KILITLEMIS oluyordu (bu depoda tekrar eden kor bekci bicimi:
+//   "bekci kirmizi oldugunda once 'kural mi yanlis, kod mu?' diye sor").
+//
+// 2026-09-20: ScaleX artik PORTAL zamanlayicisiyla zamanlama sunuyor ve kullanici
+// kaydi her noktada iptal/guncelleyebiliyor. Kilitlenmesi gereken sey degisti:
+// sessiz erteleme OLMAMALI ve zamanlama onay kapisini ATLAMAMALI.
 
-test('OCO: ScaleX tek gecerli cevabi ("later") sunucuda verir — ekrana olmayan bir secim sorulmaz', () => {
-  assert.match(INDEX, /ocoAction: 'later'/);
-  assert.doesNotMatch(
-    INDEX,
-    /ocoAction: req\.body\?\.ocoAction/,
-    "client'tan ocoAction beklenmemeli",
-  );
+test('OCO: ScaleX pencere kapaliyken SESSIZCE ertelemiyor — kullaniciya soruyor', () => {
+  // Eski hal: `ocoAction: 'later'` SABITI → 200 OK doner, hicbir sey olmaz.
+  assert.doesNotMatch(INDEX, /ocoAction: 'later',/, 'hala sabit "later" — kullaniciya secim sunulmuyor');
+  assert.match(INDEX, /ocoAction === 'schedule' \? 'schedule' : 'later'/, 'kullanici secimi gecirilmiyor');
+  assert.match(INDEX, /ocoAction: req\.body\?\.ocoAction/, 'secim istekten alinmiyor');
 });
 
-test('OCO: ScaleX zamanlama YAPAMAZ — "later" disindaki cevap zaten hata verirdi', () => {
-  assert.match(INDEX, /createOcoAwxSchedule: async \(\) => \{[\s\S]{0,200}?throw/);
+test('OCO: ScaleX zamanlamasi PORTALDA tutulur — AWX-native kullanilmaz', () => {
+  // AWX-native bir schedule guncellenemez (silip yeniden kurmak gerekir) ve
+  // kayit ile AWX arasinda ayrisma riski dogurur. Ayrica AWX schedule'i hicbir
+  // onaya bakmadan job baslatir — SMART kapisini ATLARDI.
+  assert.match(INDEX, /preferPortalScheduler: true/);
+  assert.match(INDEX, /createOcoAwxSchedule: async \(\) => \{[\s\S]{0,400}?throw/);
 });
 
 test('OCO: "later" ortak kapida is BASLATMADAN respond doner (dayanak)', () => {
   const GATES = codeOnly(read('server/ansible/change-gates.cjs'));
   assert.match(GATES, /ocoAction === 'later'[\s\S]{0,120}?ocoDeferred: true/);
+});
+
+test('OCO: zamanlama ONAY KAPISINI ATLAMIYOR', () => {
+  // Portal kaydinda poller kesinti saatinde `launchOrRequestApproval` cagiriyor
+  // ve SMART bileti ORADA aciliyor. AWX-native dala dusulseydi job hicbir onaya
+  // bakmadan baslardi.
+  const GATES = codeOnly(read('server/ansible/change-gates.cjs'));
+  assert.match(
+    GATES,
+    /if \(!smartAlsoRequired && !preferPortalScheduler\)/,
+    'AWX-native dal `preferPortalScheduler` ile engellenmiyor',
+  );
 });
 
 // ── SORGU SINIRLARI ─────────────────────────────────────────────────────────
@@ -415,8 +438,18 @@ test('UI: iptal hata verirse buton KILITLI KALMAZ', () => {
 });
 
 test('UI: AWX is numarasi donmezse sonsuz spinner yerine mesaj gosterilir', () => {
+  // KOSUL AYRILDI (2026-09-20). Eskiden tek daldi:
+  //   if (r.ocoScheduled || r.jobId == null || r.serverId == null) -> "baslatilamadi"
+  // ScaleX zamanlama yapamadigi icin `ocoScheduled` bir ARIZA sayiliyordu. Artik
+  // zamanlama BEKLENEN bir sonuc; onu "is numarasi donmedi" hatasiyla ayni dala
+  // koymak, basarili bir zamanlamayi hata gibi gostermek olurdu.
+  //
+  // Kilitlenen sey degismedi: is numarasi yoksa SESSIZ SPINNER OLMAMALI.
   const PAGE = codeOnly(read('src/components/scalex/ScaleXPage.tsx'));
-  assert.match(PAGE, /r\.ocoScheduled \|\| r\.jobId == null \|\| r\.serverId == null/);
+  assert.match(PAGE, /if \(r\.jobId == null \|\| r\.serverId == null\)/, 'savunma dali kalkmis');
+  // Zamanlama AYRI ve KENDI mesajini veriyor.
+  assert.match(PAGE, /if \(r\.ocoScheduled\)/, 'zamanlama dali yok');
+  assert.match(PAGE, /setPendingSchedule\(null\)/, 'zamanlama sonrasi teklif ekranda kaliyor');
 });
 
 test("UI: hata banner'i ekran okuyucuya DUYURULUR", () => {

@@ -1007,6 +1007,11 @@ const TABLES = [
         pending_launch_json NVARCHAR(MAX) NOT NULL,
         awx_job_id          INT NULL,
         error_message       NVARCHAR(MAX) NULL,
+        -- Kaydi acan kullanicinin AD gruplari (JSON dizi). Gorunurluk icin:
+        -- kullanici KENDI ve GRUBUNUN kayitlarini gorur, admin hepsini.
+        -- NULL = grup bilgisi hic yazilmamis (eski kayit) ve bos diziden AYRI
+        -- ele alinir: "grubu yok" ile "bilmiyoruz" ayni sey degildir.
+        owner_groups        NVARCHAR(MAX) NULL,
         created_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         updated_at          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         resolved_at         DATETIME2 NULL
@@ -3181,6 +3186,13 @@ async function setupTables() {
     // birlestirmek "otomasyon mu patladi yoksa biri mi iptal etti" ayrimini kaybettirirdi.
     // cancelled_by ayrica tutulur: talebi ACAN kullanici (username) ile IPTAL EDEN
     // admin farkli kisilerdir.
+    // YALNIZ `CREATE TABLE`a yazmak YETMEZ: mevcut kurulumlarda kolon HIC
+    // olusmaz ve sorgular sessizce patlar (bu depoda defalarca yasandi).
+    {
+      table: 'oco_scheduled_launches',
+      col: 'owner_groups',
+      sql: `ALTER TABLE oco_scheduled_launches ADD owner_groups NVARCHAR(MAX) NULL`,
+    },
     {
       table: 'oco_scheduled_launches',
       col: 'cancelled_by',
