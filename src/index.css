@@ -969,3 +969,12 @@ h1, h2, h3, h4 { line-height: var(--breath-tight); letter-spacing: -0.011em; }
 
 /* Tablo hucreleri: nefes BURAYA UYGULANMAZ (yogunluk korunur). */
 :root table, :root th, :root td { line-height: 1.45; }
+
+/* Yukleme gostergesi (2026-09-22): logo nabiz + hafif donme; reduced-motion'da sabit. */
+.portal-loading-logo { display: inline-flex; animation: portal-loading-spin 2.4s ease-in-out infinite; }
+@keyframes portal-loading-spin {
+  0% { transform: rotate(0deg) scale(1); opacity: 0.85; }
+  50% { transform: rotate(180deg) scale(1.08); opacity: 1; }
+  100% { transform: rotate(360deg) scale(1); opacity: 0.85; }
+}
+@media (prefers-reduced-motion: reduce) { .portal-loading-logo { animation: none; } }

@@ -6,6 +6,7 @@
 //
 // Uc bolum: matris, ad kuralina uymayanlar, ad ile env sutununun celistigi kayitlar.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
   ArrowPathIcon,
   ArrowDownTrayIcon,
@@ -102,7 +103,7 @@ export default function AppEnvs() {
   };
 
   if (loading && !data)
-    return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+    return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">

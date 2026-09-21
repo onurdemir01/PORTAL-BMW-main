@@ -6,6 +6,7 @@
 // olarak var mi? Her satir bir uygulama, her sutun bir YENI sunucu. Hesap sunucuda
 // (nginx-migration.cjs); burada yalnizca gosterim.
 import React, { useEffect, useMemo, useState } from 'react';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 // Ham tarih bicimlendirme YOK: bicim tek yerden gelir (bekci G19).
 import { fmtDateTime } from '@/utils/datetime';
@@ -196,7 +197,7 @@ export default function NginxProdMigration() {
     }
   }
 
-  if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+  if (loading && !data) return <LoadingLogo />;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
   if (!data) return null;
 

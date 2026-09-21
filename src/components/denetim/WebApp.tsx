@@ -4,6 +4,7 @@
 // Eslesmenin NASIL kuruldugu her satirda yaziyor - kural tahmine dayali oldugu icin
 // guvenilirlik gizlenmemeli (route eslesmesinde oldugu gibi).
 import React, { useCallback, useEffect, useState } from "react";
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
   ArrowPathIcon, ArrowDownTrayIcon, MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
@@ -52,7 +53,7 @@ export default function WebApp() {
     return () => clearTimeout(t);
   }, [source, q, onlyUnmatched, load]);
 
-  if (loading && !data) return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+  if (loading && !data) return <LoadingLogo />;
   if (err) return <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
   if (!data) return null;
 

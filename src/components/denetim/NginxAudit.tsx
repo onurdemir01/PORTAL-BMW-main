@@ -12,6 +12,7 @@
 // Legacy denetiminden AYRIDIR: o, 12 prod sunucusunu servis tanesinde ve eslenik
 // karsilastirmasiyla olcer. Bu, tum filoyu sunucu tanesinde olcer.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 // Ham tarih bicimlendirme YOK: bicim tek yerden gelir (bekci G19).
 import { fmtDate } from '@/utils/datetime';
 import { Link, useNavigate } from 'react-router-dom';
@@ -175,7 +176,7 @@ export function NginxAudit() {
   }, [data, q, env, onlyProblem]);
 
   if (loading && !data)
-    return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+    return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">

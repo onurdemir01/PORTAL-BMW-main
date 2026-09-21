@@ -9,6 +9,7 @@
 //   Jboss/WAS Applications Audit-> ad kuralindan ortam matrisi + sapmalar
 //   Web-App Relations           -> uygulamayi servis eden web sunucusu/vhost
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
@@ -506,7 +507,7 @@ function NginxSpaAudit() {
   );
 
   if (loading && !data)
-    return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+    return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -946,7 +947,7 @@ function OcpCoverage() {
   );
 
   if (loading && !data)
-    return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+    return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -1300,7 +1301,7 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
   }, [data, q, onlyDiff]);
 
   if (loading && !data)
-    return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+    return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">

@@ -7,6 +7,7 @@
 //   · sunucu farkı — AYNI ortamdaki sunucular farklı limit taşıyor → genelde hata
 //   · ortam farkı  — ortamlar arası limit farkı → kasıtlı olabilir (test 50, prod 300)
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
   denetimApi,
@@ -99,7 +100,7 @@ export function NginxApiLocations() {
   }, [data, q, envFilter, onlyProblem]);
 
   if (loading && !data)
-    return <div className="py-10 text-center text-sm text-[var(--text-muted)]">Yükleniyor…</div>;
+    return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
