@@ -150,6 +150,9 @@
             dest: "{{ console_dir }}/raw/{{ inventory_hostname | upper }}.txt"
             mode: '0666'
           delegate_to: GBLABT02
+          # GBLABT02'ye ayni anda forks kadar oturum -> sshd MaxSessions (10) asilir:
+          # "mux_client_request_session: session request failed" (kullanici, 2026-09-21). En cok 6 eszamanli.
+          throttle: 6
           when: (need_dump | bool) and (dump_out.stdout | default('') | length) > 0
 
         # Basarili dokumdan sonra parmak izi sunucuda saklanir (bir sonraki kosu karsilastirir).
