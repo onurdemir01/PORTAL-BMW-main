@@ -210,7 +210,11 @@ function describeError(err) {
 
 // ── Factory ───────────────────────────────────────────────────────────────────
 // createMcpClient({ name, url, headers }) → { callTool, listTools, disconnect, getStatus }
-function createMcpClient({ name, url, headers = {} }) {
+// `_backoffBaseMs` / `_backoffMaxMs`: YALNIZCA TEST DIKISI. Uretim yolunda
+// verilmez; varsayilanlar asagida. Gerekcesi: geri cekilme DENEMELERI kestigi
+// icin kademeli log davranisi ancak GERCEK birden fazla deneme ile olculebilir
+// ve bunu gercek zamanla beklemek testi dakikalara cikarirdi.
+function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxMs } = {}) {
   let _client = null;
   let _transport = null;
   let _connecting = null;     // baglanma devam ediyorsa paylasilan in-flight Promise
@@ -235,8 +239,8 @@ function createMcpClient({ name, url, headers = {} }) {
   // TAVAN 5 DAKIKA: admin token'i duzelttiginde en gec 5 dakika icinde
   // toparlanir. Sinirsiz buyuyen bir bekleme, duzeltmeyi saatlerce gorunmez
   // kilardi.
-  const BACKOFF_BASE_MS = 5_000;
-  const BACKOFF_MAX_MS = 5 * 60_000;
+  const BACKOFF_BASE_MS = Number.isFinite(_backoffBaseMs) ? _backoffBaseMs : 5_000;
+  const BACKOFF_MAX_MS = Number.isFinite(_backoffMaxMs) ? _backoffMaxMs : 5 * 60_000;
   const TAM_LOG_ESIGI = 3; // ilk 3 hata tam yazilir
   let _ardArda = 0;        // ardisik basarisiz deneme sayisi
   let _sonrakiDeneme = 0;  // bu ana kadar yeni deneme YAPILMAZ

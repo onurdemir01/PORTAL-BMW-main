@@ -73,13 +73,26 @@ test('MB2 hata YINE firlatiliyor — sorun GIZLENMIYOR', async () => {
 });
 
 test('MB3 LOG KADEMELI — ayni satir tekrar tekrar yazilmiyor', async () => {
+  // GERCEK BIRDEN FAZLA DENEME SART. Geri cekilme denemeleri kestigi icin
+  // arka arkaya cagri yapmak yalnizca BIR deneme uretir ve kademeli log
+  // davranisi olculemez — mutasyon turunda "her hatayi tam yaz" mutasyonu tam
+  // bu yuzden ates almamisti. Bekleme suresi test dikisiyle 1 ms'ye cekiliyor.
   await sessiz(async (satirlar) => {
-    const c = createMcpClient({ name: 'test', url: ULASILMAZ });
-    for (let i = 0; i < 5; i++) await c.callTool('x').catch(() => {});
+    const c = createMcpClient({
+      name: 'test',
+      url: ULASILMAZ,
+      _backoffBaseMs: 1,
+      _backoffMaxMs: 1,
+    });
+    for (let i = 0; i < 8; i++) {
+      await c.callTool('x').catch(() => {});
+      await new Promise((r) => setTimeout(r, 3)); // pencere gercekten acilsin
+    }
+    assert.ok(c.getStatus().consecutiveFailures >= 6, 'yeterince GERCEK deneme yapilmadi');
     const hata = satirlar.filter((l) => l.includes('Baglanti hatasi'));
     assert.ok(
       hata.length <= 4,
-      `bes cagride ${hata.length} "Baglanti hatasi" satiri — kademeli log calismiyor`,
+      `sekiz GERCEK denemede ${hata.length} tam "Baglanti hatasi" satiri — kademeli log calismiyor`,
     );
   });
 });
@@ -98,9 +111,12 @@ test('MB4 `getStatus` NE ZAMANDIR basarisiz oldugunu soyluyor', async () => {
 test('MB5 geri cekilme TAVANI var (duzeltme sonsuza dek gorunmez kalmasin)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'client.cjs'), 'utf8');
   const kod = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
-  const m = /const BACKOFF_MAX_MS = ([^;]+);/.exec(kod);
-  assert.ok(m, 'tavan tanimli degil');
-  const tavan = Function(`return (${m[1]})`)();
+  // VARSAYILANI olc, test dikisini degil. Ifade artik
+  // `Number.isFinite(_backoffMaxMs) ? _backoffMaxMs : 5 * 60_000` bicimindedir;
+  // kilitlenmesi gereken sey URETIMDE gecerli olan varsayilan.
+  const m = /const BACKOFF_MAX_MS = [^;]*?:\s*([0-9_ *]+);/.exec(kod);
+  assert.ok(m, 'tavan varsayilani tanimli degil');
+  const tavan = Function(`return (${m[1].replace(/_/g, '')})`)();
   assert.ok(tavan > 0 && tavan <= 10 * 60_000, `tavan cok buyuk (${tavan} ms) — duzeltme gec fark edilir`);
   assert.match(
     kod,
@@ -112,9 +128,17 @@ test('MB5 geri cekilme TAVANI var (duzeltme sonsuza dek gorunmez kalmasin)', () 
 test('MB6 BASARIDA geri cekilme SIFIRLANIYOR', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'client.cjs'), 'utf8');
   const kod = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
-  const i = kod.indexOf('_lastError = null;');
+  // DILIM BASARI DALINDAN BASLAMALI, BILDIRIMLERDEN DEGIL.
+  //
+  // Ilk yazdigimda `indexOf('_lastError = null;')` kullanmistim — o ifade
+  // `let _lastError = null;` BILDIRIMINDE de geciyor ve dilim dosyanin
+  // basindaki degisken bildirimlerine dusuyordu. Orada `let _ardArda = 0;`
+  // gibi satirlar var, yani bekci SIFIRLAMAYI degil BILDIRIMI esliyordu:
+  // gercek sifirlama silindiginde hicbir sey ates almiyordu.
+  const i = kod.indexOf('_connectedUrl = variant;');
   assert.ok(i > 0, 'basari dali bulunamadi');
   const govde = kod.slice(i, i + 900);
+  assert.ok(!govde.includes('let _ardArda'), 'dilim hala bildirimlere dusuyor');
   for (const alan of ['_ardArda = 0', '_sonrakiDeneme = 0', '_ilkHataAt = null']) {
     assert.ok(govde.includes(alan), `basarida sifirlanmiyor: ${alan}`);
   }
