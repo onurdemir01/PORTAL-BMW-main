@@ -33,7 +33,7 @@ sınıflamıştım — **alarm dışı bırakılmalı**, düzeltilecek bir şey 
 
 | PBI | Durum |
 |---|---|
-| P0-1 OOM | Dört ayrı yol kapatıldı (PR #106/#108/#109/#112) + ortak sınırlı okuma yardımcısı (#118). **Üretimde doğrulanmadı** — düzeltmeler log penceresinden sonra; bellek nabzı (#112) bir sonraki turda bunu ölçülebilir kılacak |
+| P0-1 OOM | Dört ayrı yol kapatıldı (PR #106/#108/#109/#112) + ortak sınırlı okuma yardımcısı (#118) + **son beş sınırsız okuma** (bu tur) + artımlı stdout (#125, birikimin kendisi). **Üretimde doğrulanmadı** — düzeltmeler log penceresinden sonra; bellek nabzı (#112) bir sonraki turda bunu ölçülebilir kılacak |
 | P0-2 Denetim kaydı | Kapatıldı (#107), spool'un kendisi de sınırlandı (#109) |
 | P1-1 ScaleX keşfi | Anlık uygulama listesi (#110) + Cluster Yetenek Envanteri (#116) |
 | P1-2 Önizle/uygula | Önizle → işaretle → uygula (#119/#120) + hedef bazlı seçim (#123) |

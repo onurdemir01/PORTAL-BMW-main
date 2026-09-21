@@ -434,6 +434,12 @@ async function getToken() {
   return _tokenCache.token;
 }
 
+// Token uclari icin ayri (ve `AWX_RESPONSE_MAX_BYTES`ten cok daha kucuk) tavan:
+// gecerli bir token yaniti birkac yuz bayttir. 8 MB'lik bir esik, bir hata
+// sayfasini "normal" saymak olurdu. KULLANIMDAN ONCE tanimli — `const` TDZ'de
+// oldugu icin asagi konulmasi calisma zamaninda ise yarasa da okuyanı yanıltır.
+const AWX_TOKEN_MAX_BYTES = 256 * 1024;
+
 // OAuth2 password grant: POST /api/o/token/ (preferred) or /o/token/ (legacy)
 function fetchTokenOAuth2AtPath(
   baseUrl,
@@ -466,11 +472,37 @@ function fetchTokenOAuth2AtPath(
     };
 
     const req = lib.request(opts, (res) => {
+      // BAYT KAPISI. Token uclari normalde birkac yuz baytlik JSON doner, ama
+      // AWX ayakta degilse ters-vekil PORTALIN KENDI index.html'ini dondurur
+      // (bkz. src/api/http.ts'teki GATEWAY notu) ve bozuk bir vekil cok daha
+      // buyugunu donebilir. Bu yol HER token tazelemesinde calisir; sinirsiz
+      // tamponlama bu depoda yedi OOM'un sinifiydi.
       let data = '';
+      let tokenBayt = 0;
+      let tokenKirpildi = false;
       res.on('data', (c) => {
+        if (tokenKirpildi) return;
+        tokenBayt += c.length;
+        if (tokenBayt > AWX_TOKEN_MAX_BYTES) {
+          tokenKirpildi = true;
+          // HEMEN REDDET, `end`i BEKLEME: `req.destroy()` sonrasi `end` GELMEZ
+          // ve yalnizca orada cozen bir kapi promise'i sonsuza dek asili birakirdi.
+          reject(
+            Object.assign(
+              new Error(
+                `AWX token yanıtı çok büyük (> ${Math.round(AWX_TOKEN_MAX_BYTES / 1024)} KB) — ` +
+                  'AWX adresi ya da ters-proxy yapılandırması hatalı olabilir.',
+              ),
+              { status: 502, tooLarge: true },
+            ),
+          );
+          req.destroy();
+          return;
+        }
         data += c;
       });
       res.on('end', () => {
+        if (tokenKirpildi) return; // zaten reddedildi
         try {
           const json = JSON.parse(data);
           if (res.statusCode >= 400) {
@@ -538,11 +570,37 @@ function fetchTokenV2(baseUrl, user, pass, apiBase = DEFAULT_API_BASE) {
     };
 
     const req = lib.request(opts, (res) => {
+      // BAYT KAPISI. Token uclari normalde birkac yuz baytlik JSON doner, ama
+      // AWX ayakta degilse ters-vekil PORTALIN KENDI index.html'ini dondurur
+      // (bkz. src/api/http.ts'teki GATEWAY notu) ve bozuk bir vekil cok daha
+      // buyugunu donebilir. Bu yol HER token tazelemesinde calisir; sinirsiz
+      // tamponlama bu depoda yedi OOM'un sinifiydi.
       let data = '';
+      let tokenBayt = 0;
+      let tokenKirpildi = false;
       res.on('data', (c) => {
+        if (tokenKirpildi) return;
+        tokenBayt += c.length;
+        if (tokenBayt > AWX_TOKEN_MAX_BYTES) {
+          tokenKirpildi = true;
+          // HEMEN REDDET, `end`i BEKLEME: `req.destroy()` sonrasi `end` GELMEZ
+          // ve yalnizca orada cozen bir kapi promise'i sonsuza dek asili birakirdi.
+          reject(
+            Object.assign(
+              new Error(
+                `AWX token yanıtı çok büyük (> ${Math.round(AWX_TOKEN_MAX_BYTES / 1024)} KB) — ` +
+                  'AWX adresi ya da ters-proxy yapılandırması hatalı olabilir.',
+              ),
+              { status: 502, tooLarge: true },
+            ),
+          );
+          req.destroy();
+          return;
+        }
         data += c;
       });
       res.on('end', () => {
+        if (tokenKirpildi) return; // zaten reddedildi
         try {
           const json = JSON.parse(data);
           if (res.statusCode >= 400) {
