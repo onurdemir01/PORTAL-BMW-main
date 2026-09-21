@@ -68,9 +68,13 @@ type TopTab = 'ansible' | 'ip' | 'openshift' | 'svc:new' | `svc:${string}`;
 interface SurveyModalProps {
   item: AnsibleSsItem;
   onClose: () => void;
+  /** 2026-09-21: Otomasyon sayfasinda secilen servisin formu MODAL DEGIL, icerik kartinin
+   *  icinde acilir (kullanici: "ise tikliyorum, bir daha isi gosterip Baslat cikariyor").
+   *  inline=true: portal/arka plan/surukleme basligi yok, yalniz govde + alt satir. */
+  inline?: boolean;
 }
 
-function SurveyModal({ item, onClose }: SurveyModalProps) {
+function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   const backdrop = useBackdropDismiss(onClose, false);
   const [fields, setFields] = useState<SurveyField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -418,48 +422,8 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
   // Arka plan tiklamasi KAPALI (useBackdropDismiss(onClose, false)): kullanici burada
   // form dolduruyor. Yanlislikla saga-sola surukleme / arka plana tek tiklama pencereyi
   // kapatip her seyi sildiriyordu (kullanici bildirimi). Kapatma yalnizca X ve Iptal ile.
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
-      {...backdrop}
-    >
-      <div
-        ref={floatRef}
-        className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl flex flex-col animate-modal-pop relative"
-        style={floatStyle}
-      >
-        {/* Temiz başlık — ikon + başlık + alt-metin + kapat; aynı zamanda sürükle-taşı tutamacı. */}
-        <div
-          onPointerDown={startMove}
-          className="flex items-start gap-3 px-5 py-4 border-b border-[var(--border)] flex-shrink-0 cursor-move select-none"
-        >
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'var(--accent-glow)' }}
-          >
-            <PlayIcon className="w-5 h-5 text-[var(--accent)]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2
-              className="text-[15px] font-bold text-[var(--text-primary)] truncate"
-              title={item.title}
-            >
-              {item.title}
-            </h2>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Parametreleri doldurup işi başlatın.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            onPointerDown={(e) => e.stopPropagation()}
-            className="p-1.5 -mr-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors flex-shrink-0"
-            aria-label="Kapat"
-          >
-            <XMarkIcon className="w-5 h-5" />
-          </button>
-        </div>
-
+  const body = (
+    <>
         <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 flex flex-col">
           {err && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -965,6 +929,52 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
             </button>
           )}
         </div>
+    </>
+  );
+  if (inline) return <div className="flex flex-col -m-5">{body}</div>;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+      {...backdrop}
+    >
+      <div
+        ref={floatRef}
+        className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl flex flex-col animate-modal-pop relative"
+        style={floatStyle}
+      >
+        {/* Temiz başlık — ikon + başlık + alt-metin + kapat; aynı zamanda sürükle-taşı tutamacı. */}
+        <div
+          onPointerDown={startMove}
+          className="flex items-start gap-3 px-5 py-4 border-b border-[var(--border)] flex-shrink-0 cursor-move select-none"
+        >
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--accent-glow)' }}
+          >
+            <PlayIcon className="w-5 h-5 text-[var(--accent)]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2
+              className="text-[15px] font-bold text-[var(--text-primary)] truncate"
+              title={item.title}
+            >
+              {item.title}
+            </h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Parametreleri doldurup işi başlatın.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="p-1.5 -mr-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors flex-shrink-0"
+            aria-label="Kapat"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        </div>
+
+        {body}
         <ResizeHandle onPointerDown={startResize} />
       </div>
     </div>,
@@ -974,7 +984,8 @@ function SurveyModal({ item, onClose }: SurveyModalProps) {
 
 // ── History Modal ─────────────────────────────────────────────────────────────
 
-function HistoryModal({ onClose }: { onClose: () => void }) {
+// item verilirse yalniz o servisin (AWX sunucu + template) gecmisi (2026-09-21).
+function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSsItem | null }) {
   // Salt okunur pencere: gercek arka plan tiklamasi kapatir, surukleme kapatmaz.
   const backdrop = useBackdropDismiss(onClose);
   const [history, setHistory] = useState<JobHistoryRecord[]>([]);
@@ -989,9 +1000,9 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     ansibleApi
       .history(30)
-      .then((r) => setHistory(r.history || []))
+      .then((r) => setHistory((r.history || []).filter((h) => !item || (Number(h.template_id) === Number(item.awxTemplateId) && Number(h.awx_server_id) === Number(item.awxServerId)))))
       .finally(() => setLoading(false));
-  }, []);
+  }, [item]);
 
   useEffect(() => {
     if (!selected || !selected.job_id) return;
@@ -1046,7 +1057,7 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
                 </button>
               ) : (
                 <>
-                  <ClockIcon className="w-5 h-5 text-[var(--accent)]" /> İş Geçmişi (Son 30 Gün)
+                  <ClockIcon className="w-5 h-5 text-[var(--accent)]" /> {item ? `${item.title} — geçmiş (son 30 gün)` : 'İş Geçmişi (Son 30 Gün)'}
                 </>
               )}
             </h2>
@@ -1176,6 +1187,7 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [fieldsItem, setFieldsItem] = useState<AnsibleSsItem | null>(null);
+  const [formEpoch, setFormEpoch] = useState(0); // inline formu sifirlamak icin (Iptal/Kapat)
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -1245,45 +1257,38 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
   const visibleItems = isAdmin ? items : items.filter((i) => i.enabled);
   const selectedItem = selected && selected !== 'new' ? visibleItems.find((i) => i.id === selected) || null : null;
 
-  // Tek servis: ayrinti karti (menuden secildi)
+  // Tek servis (menuden secildi): form DOGRUDAN kartin icinde — baslik zaten kart
+  // basliginda, o yuzden ikinci bir kart + "Baslat" dugmesi YOK. Ust satir: kucuk eylemler.
   if (selectedItem) {
     const item = selectedItem;
     return (
-      <div className="space-y-4">
-        <div className="rounded-2xl border p-5 space-y-4" style={{ background: 'var(--bg-surface)', borderColor: item.enabled ? 'var(--border-subtle)' : 'var(--status-warning)', boxShadow: 'var(--shadow-sm)' }}>
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-bold text-lg">{item.title}</h3>
-                {isAdmin && !item.enabled && (
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">kullanıcılara kapalı</span>
-                )}
-              </div>
-              {item.description && <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{item.description}</p>}
-              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>AWX template #{item.awxTemplateId} · sunucu {item.awxServerId}</p>
-            </div>
-            <button onClick={() => setLaunchItem(item)} className="btn-primary px-5 py-2 text-sm flex items-center gap-1.5 rounded-xl">
-              <PlayIcon className="w-4 h-4" /> Başlat
-            </button>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap pt-3 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-            <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
-              <ClockIcon className="w-4 h-4" /> Geçmiş
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          {isAdmin && !item.enabled && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">kullanıcılara kapalı</span>
+          )}
+          <span style={{ color: 'var(--text-muted)' }}>AWX template #{item.awxTemplateId} · sunucu {item.awxServerId}</span>
+          <span className="ml-auto flex items-center gap-1.5">
+            <button onClick={() => setShowHistory(true)} className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }} title="Bu servisin geçmişi">
+              <ClockIcon className="w-3.5 h-3.5" /> Geçmiş
             </button>
             {isAdmin && (
               <>
-                <button onClick={() => setFieldsItem(item)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
-                  <AdjustmentsHorizontalIcon className="w-4 h-4" /> Alanları Yönet
+                <button onClick={() => setFieldsItem(item)} className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+                  <AdjustmentsHorizontalIcon className="w-3.5 h-3.5" /> Alanları Yönet
                 </button>
-                <button onClick={() => deleteItem(item.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl border" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}>
-                  <TrashIcon className="w-4 h-4" /> Sil
+                <button onClick={() => deleteItem(item.id)} className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}>
+                  <TrashIcon className="w-3.5 h-3.5" /> Sil
                 </button>
               </>
             )}
-          </div>
+          </span>
         </div>
-        {launchItem && <SurveyModal item={launchItem} onClose={() => setLaunchItem(null)} />}
-        {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
+        <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+          {/* key: servis degisince form sifirdan kurulsun; onClose (Iptal/Kapat) = ayni servisi yeniden ac */}
+          <SurveyModal key={item.id + ':' + formEpoch} item={item} inline onClose={() => setFormEpoch((n) => n + 1)} />
+        </div>
+        {showHistory && <HistoryModal item={item} onClose={() => setShowHistory(false)} />}
         {fieldsItem && <FieldOverridesModal item={fieldsItem} onClose={() => setFieldsItem(null)} />}
       </div>
     );
@@ -1566,7 +1571,7 @@ export default function SelfServicePage() {
         </div>
       )}
 
-      <div className="grid gap-5 ss-grid" style={{ gridTemplateColumns: 'minmax(13rem, 16rem) 1fr' }}>
+      <div className="grid gap-4 ss-grid" style={{ gridTemplateColumns: 'minmax(11rem, 12.5rem) 1fr' }}>
         {/* Sol: bolumlu menu */}
         <nav aria-label="Otomasyon bölümleri" className="space-y-4 self-start lg:sticky lg:top-4">
           {SECTIONS.map((sec) => {
@@ -1586,7 +1591,7 @@ export default function SelfServicePage() {
                         <button
                           onClick={() => setActiveTop(id)}
                           aria-current={active ? 'page' : undefined}
-                          className="w-full flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg text-left transition-colors"
+                          className="w-full flex items-center gap-2 px-2 py-1.5 text-[13px] rounded-lg text-left transition-colors"
                           style={{
                             background: active ? 'var(--bg-elevated)' : 'transparent',
                             color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
