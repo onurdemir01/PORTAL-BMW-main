@@ -13,7 +13,10 @@ const {
 
 function mockRes() {
   return {
-    statusCode: 0, body: null,
+    statusCode: 0, body: null, headers: {},
+    // `setHeader`: oturum 401'leri `oturumYok(res)` ile imzalaniyor (P1-3).
+    // Sahte res bunu tasimazsa gercek kod yolu TypeError ile duser.
+    setHeader(k, v) { this.headers[String(k).toLowerCase()] = v; return this; },
     status(c) { this.statusCode = c; return this; },
     json(b) { this.body = b; return this; },
   };
@@ -84,6 +87,9 @@ test('requireVisiblePrefix: exempt olmayan yol, session/secret yoksa 401 (auth z
   mw({ path: '/tables', headers: {}, session: undefined }, res, () => { nexted = true; });
   assert.equal(nexted, false);
   assert.equal(res.statusCode, 401);
+  // Bu yol da OTURUM 401'idir: imzasiz kalirsa istemci kapisi burada ateslenmez
+  // ve sayfa-onekli uclar 401 firtinasina katkı vermeye devam ederdi.
+  assert.equal(res.headers['x-portal-session'], 'expired');
 });
 
 // ── Legacy sayfa-gorunurlugu: writeVisibility per-row hata izolasyonu (review.md #15) ──

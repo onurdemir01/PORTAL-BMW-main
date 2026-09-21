@@ -9,7 +9,7 @@
 const express = require("express");
 const session = require("express-session");
 const { authenticate, clearCache } = require("./ldap.cjs");
-const { getRequestUser, getRequestRole } = require("./utils.cjs");
+const { getRequestUser, getRequestRole, oturumYok } = require("./utils.cjs");
 const roleStore = require("./role-store.cjs");
 const { initPresenceRoutes, removePresence } = require("./presence-routes.cjs");
 const { initVisibilityRoutes } = require("./visibility-routes.cjs");
@@ -163,7 +163,7 @@ function initAuth(app) {
   // ── Me ─────────────────────────────────────────────────────────────────────
   router.get("/me", (req, res) => {
     if (!req.session?.user) {
-      return res.status(401).json({ ok: false, error: "Oturum bulunamadı." });
+      return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
     }
     res.json({ ok: true, user: req.session.user });
   });
@@ -175,7 +175,7 @@ function initAuth(app) {
 
   router.get("/prefs", async (req, res) => {
     const me = req.session?.user;
-    if (!me) return res.status(401).json({ ok: false, error: "Oturum bulunamadı." });
+    if (!me) return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
     try {
       res.json({ ok: true, prefs: await usersDb.getPrefs(me.username) });
     } catch (e) {
@@ -187,7 +187,7 @@ function initAuth(app) {
   // PUT /prefs — body: { prefs: { key: value, silinecek: null } } (null → tercihi siler)
   router.put("/prefs", async (req, res) => {
     const me = req.session?.user;
-    if (!me) return res.status(401).json({ ok: false, error: "Oturum bulunamadı." });
+    if (!me) return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
     const prefs = req.body?.prefs;
     if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
       return res.status(400).json({ ok: false, error: "prefs objesi gerekli." });
@@ -247,14 +247,14 @@ function initAuth(app) {
 // (server/tasks, server/links, server/inventory bunlari `require("../auth/index.cjs")` ile cekiyor).
 function requireAuth(req, res, next) {
   if (getRequestUser(req)) return next();
-  res.status(401).json({ ok: false, error: "Oturum bulunamadı. Lütfen giriş yapın." });
+  oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı. Lütfen giriş yapın." });
 }
 
 // Tek, paylasilan admin guard'i — moduller kendi `role==='Admin'` kontrollerini yeniden
 // yazmak yerine bunu kullanir (tutarli + secret-kapili header ile guvenli).
 function requireAdmin(req, res, next) {
   const u = getRequestUser(req);
-  if (!u) return res.status(401).json({ ok: false, error: "Oturum bulunamadı. Lütfen giriş yapın." });
+  if (!u) return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı. Lütfen giriş yapın." });
   if (u.role !== "Admin") return res.status(403).json({ ok: false, error: "Bu işlem için yönetici yetkisi gerekli." });
   next();
 }

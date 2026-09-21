@@ -36,8 +36,8 @@ sınıflamıştım — **alarm dışı bırakılmalı**, düzeltilecek bir şey 
 | P0-1 OOM | Dört ayrı yol kapatıldı (PR #106/#108/#109/#112) + ortak sınırlı okuma yardımcısı (#118). **Üretimde doğrulanmadı** — düzeltmeler log penceresinden sonra; bellek nabzı (#112) bir sonraki turda bunu ölçülebilir kılacak |
 | P0-2 Denetim kaydı | Kapatıldı (#107), spool'un kendisi de sınırlandı (#109) |
 | P1-1 ScaleX keşfi | Anlık uygulama listesi (#110) + Cluster Yetenek Envanteri (#116) |
-| P1-2 Önizle/uygula | **Açık** |
-| P1-3 401 fırtınası | Kök neden bulundu ve kapatıldı (#117). Kalan yarısı `SESSION_STORE` — sunucu tarafı ayar |
+| P1-2 Önizle/uygula | Önizle → işaretle → uygula (#119/#120) + hedef bazlı seçim (#123) |
+| P1-3 401 fırtınası | Görünürlük döngüsü (#117) + **oturum-bitti kapısı** (bu tur): imzalı 401 sonrası `/api/*` ağa çıkmaz. Kalan yarısı `SESSION_STORE` — sunucu tarafı ayar |
 | P2-1 Log gürültüsü | MCP geri çekilme + TLS önbelleği (#121); ECONNRESET **yeniden sınıflandı** |
 | P2-2 Yavaş uçlar | Kısmen (#112, #118) |
 | P3-1 MSSQL/AWX 403 | AWX 403 kapatıldı (#117); MSSQL havuzu **açık** |
@@ -243,6 +243,26 @@ CPU/DB hem de gerçek hataları gömen log hacmi.
 
 ### Kabul ölçütü
 Oturumu dolmuş bir sekme 60 saniyede **≤ 2** istek üretiyor.
+
+### Çözüldü (2026-09-22) — kapı döngülerin ALTINA kondu
+
+PR #117 görünürlük yoklamasını `user` bağımlılığına bağlayarak durdurdu ama
+`user` kapısı **olmayan** döngüler kaldı (örn. talep paneli `smart-tickets/mine`
+ucunu 120 sn'de bir **koşulsuz** yokluyordu — 854 adet 401). Her döngüyü tek tek
+yamamak whack-a-mole olurdu: bugün ondan fazla `setInterval` var ve gelecek ay
+yazılacak on birincisi aynı hatayı geri getirirdi.
+
+Bunun yerine tek bir kapı: oturumun bittiği bir kez anlaşıldığında `/api/*`
+istekleri **ağa hiç çıkmaz**. Döngü dönmeye devam etse bile sunucuya tek bir
+istek gitmez.
+
+**Çıplak 401'e bakmak neden yanlış olurdu:** bu depoda 401 iki ayrı şey demek.
+`server/ansible/runner.cjs` AWX hatasını `{ status: res.statusCode }` ile
+sarıyor ve 22 route `res.status(err.status || 500)` yazıyor — yani **portalın
+AWX token'ı düşerse tarayıcı 401 görür**. Çıplak duruma bakan bir kapı, AWX
+token'ı dolduğunda portalı kullanan **herkesi** dışarı atardı. Bu yüzden oturum
+401'leri — ve yalnızca onlar — sunucuda imzalanıyor; giriş denemesinin
+başarısızlığı (yanlış parola) bilerek imzalanmıyor.
 
 ---
 

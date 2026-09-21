@@ -52,4 +52,39 @@ function getRequestRole(req) {
   return u ? u.role : null;
 }
 
-module.exports = { normalizeUsername, trustedHeaderUser, getRequestUser, getRequestRole };
+// ── OTURUM BITTI ISARETI ─────────────────────────────────────────────────────
+//
+// NEDEN BIR ISARET GEREKIYOR: istemcinin "401 gordum → oturum bitti" demesi
+// YANLIS olurdu. Bu depoda 401 iki AYRI anlama geliyor:
+//
+//   1. Portal oturumu yok            → kullanici giris ekranina dusmeli
+//   2. UST SERVISIN kimligi gecersiz → kullanicinin oturumuyla ILGISI YOK
+//
+// Ikincisi gercek bir yol: `server/ansible/runner.cjs` AWX hatasini
+// `Object.assign(new Error(...), { status: res.statusCode })` ile sariyor ve
+// 22 ayri route `res.status(err.status || 500)` yaziyor. Yani AWX token'i
+// duserse tarayici 401 gorur. Ciplak durum koduna bakan bir kapi, AWX token'i
+// doldugunda TUM KULLANICILARI portaldan atardi.
+//
+// Bu yuzden oturum 401'leri — ve YALNIZCA onlar — bu baslikla imzalanir.
+// Giris denemesinin basarisizligi (yanlis parola) BU DEGILDIR: ortada bitmis
+// bir oturum yoktur, bu yuzden orasi bilerek imzalanmaz.
+const SESSION_HEADER = 'X-Portal-Session';
+
+/**
+ * Yanita "bu 401 OTURUM 401'idir" imzasini basar ve `res`i geri dondurur —
+ * boylece cagiran taraf kendi govdesini AYNEN korur:
+ *
+ *     return oturumYok(res).status(401).json({ ok: false, error: '...' });
+ *
+ * Govde SEKLI DEGISMEZ. Mevcut istemci kodu bu degisiklikten etkilenmez;
+ * yeni kapi yalnizca baslik uzerinden calisir (tek mekanizma, tek dogruluk).
+ * Govdesiz 401'ler (`res.status(401).end()`) de imzalanabilir — baslik
+ * content-type'tan bagimsizdir.
+ */
+function oturumYok(res) {
+  res.setHeader(SESSION_HEADER, 'expired');
+  return res;
+}
+
+module.exports = { normalizeUsername, trustedHeaderUser, getRequestUser, getRequestRole, oturumYok, SESSION_HEADER };
