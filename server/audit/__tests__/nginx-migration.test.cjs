@@ -19,9 +19,9 @@ const D = (host, namespace, application, hys = 1, app = 1, conf = 1) => ({
 test('gruplar kullanicinin verdigi sunucularla BIREBIR', () => {
   const g = Object.fromEntries(MIGRATION_GROUPS.map((x) => [x.id, x]));
   assert.deepEqual(g.glomo.oldHosts, ['GBRVPP07', 'GBRVPP08', 'GBRVPP09', 'GBRVPP10', 'GBRVPAP03', 'GBRVPAP04', 'GBRVPAP05', 'GBRVPAP06']);
-  assert.deepEqual(g.glomo.newHosts, ['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP24', 'GBNGXAP25']);
+  assert.deepEqual(g.glomo.newHosts, ['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP34', 'GBNGXAP35']);
   assert.deepEqual(g.other.oldHosts, ['GBRVPP01', 'GBRVPP02', 'GBRVPAP01', 'GBRVPAP02']);
-  assert.deepEqual(g.other.newHosts, ['GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP28', 'GBNGXAP29']);
+  assert.deepEqual(g.other.newHosts, ['GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP32', 'GBNGXAP33']);
 });
 
 test('hedef cozumu: route adresi KESIN; tireli ns/app belirsizligi dogmaz; yedek envanter; belirsiz/cozulemedi ayri', () => {
@@ -78,8 +78,8 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
       { namespace: 'webforms-prod', application: 'wf-app-v1' },
     ],
     dirRows: [
-      // 6 yeni Glomo sunucusunun 5'i taranmis (GBNGXAP25 yok)
-      ...['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP24'].map((h) => D(h, 'glomo-prod', 'hazir-app-v1')),
+      // 6 yeni Glomo sunucusunun 5'i taranmis (GBNGXAP35 yok)
+      ...['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP34'].map((h) => D(h, 'glomo-prod', 'hazir-app-v1')),
       D('GBNGXP40', 'glomo-prod', 'kismi-app-v1'),
       D('GBNGXP41', 'glomo-prod', 'kismi-app-v1', 1, 0, 1), // hys var, app yok -> hazir degil
       // eksik-app-emb-v2 hicbir yeni sunucuda yok
@@ -89,7 +89,7 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
   const glomo = out.find((g) => g.id === 'glomo');
   const other = out.find((g) => g.id === 'other');
 
-  assert.deepEqual(glomo.newHostsScanned, ['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP24']);
+  assert.deepEqual(glomo.newHostsScanned, ['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP34']);
   assert.deepEqual(glomo.oldHostsSeen, ['GBRVPP07', 'GBRVPP08', 'GBRVPP09', 'GBRVPP10']);
 
   const by = Object.fromEntries(glomo.apps.map((a) => [a.application, a]));
@@ -98,7 +98,7 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
   // hazir: 5 taranan sunucuda var ama 6. taranmadi -> 'partial' (tam hazir DENEMEZ)
   assert.equal(by['hazir-app-v1'].status, 'partial');
   assert.equal(by['hazir-app-v1'].readyHosts, 5);
-  assert.equal(by['hazir-app-v1'].perHost.GBNGXAP25, null, 'taranmayan sunucu null');
+  assert.equal(by['hazir-app-v1'].perHost.GBNGXAP35, null, 'taranmayan sunucu null');
   assert.deepEqual(by['hazir-app-v1'].oldHosts, ['GBRVPP07', 'GBRVPP08', 'GBRVPP09'], 'upstream server host ile cozulen GBRVPP09 dahil');
   assert.equal(by['hazir-app-v1'].locationCount, 3);
   assert.equal(by['hazir-app-v1'].how, 'route');
