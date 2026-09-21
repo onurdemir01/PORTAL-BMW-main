@@ -113,6 +113,9 @@ const ScaleXPage: React.FC = () => {
   // gostermemek, dakikalar once alinmis bir replica sayisini "su anki durum"
   // sanmaya yol acardi. Sentetik (ayna) satirlarda `null`.
   const [workloadsFetchedAt, setWorkloadsFetchedAt] = useState<number | null>(null);
+  // HEDEF BAZLI SECIM: `(cluster, uygulama)` ciftleri. Bos ise sunucu bugunku
+  // TAM CARPIM davranisini surdurur.
+  const [selectedTargets, setSelectedTargets] = useState<{ cluster: string; name: string }[]>([]);
   // Secili uygulamalarin cluster basina tip haritasi (PBI-S1-01).
   const [clusterWorkloadKinds, setClusterWorkloadKinds] = useState<
     { cluster: string; name: string; kind: string }[]
@@ -356,6 +359,9 @@ const ScaleXPage: React.FC = () => {
           .filter((w) => w.source === 'discovery' && apps.includes(w.name) && w.scalable !== false)
           .map((w) => ({ name: w.name, kind: w.kind })),
         clusterWorkloadKinds,
+        // Kullanicinin ISARETLI biraktigi hedefler. Sunucu bunu yetki suzgecine
+        // karsi yeniden dogrular; liste kapsami GENISLETEMEZ, yalnizca daraltir.
+        targets: selectedTargets,
         ...extra,
       });
       if (!r.ok) {
@@ -653,6 +659,7 @@ const ScaleXPage: React.FC = () => {
               setWorkloads(v.workloads);
               setWorkloadsFetchedAt(v.fetchedAt);
               setClusterWorkloadKinds(v.clusterWorkloadKinds);
+              setSelectedTargets(v.targets);
               setStep('operation');
             }}
           />

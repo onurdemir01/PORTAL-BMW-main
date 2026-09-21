@@ -407,9 +407,27 @@ export const scalexApi = {
        *  tipte olabilir. Her cluster icin "app=kind,app=kind" biciminde bir harita
        *  gonderilir; playbook o cluster icin kendi haritasini kullanir. */
       clusterWorkloadKinds?: { cluster: string; name: string; kind: string }[];
-      // `ocoAction` BILEREK YOK: ScaleX zamanlama yapmaz, sunucu tek gecerli cevabi
-      // ('later') kendisi verir. Alani burada tutmak, ekranin dolduramadigi bir
-      // sozlesme alani birakmak olurdu (bkz. server/scalex/index.cjs kapi blogu).
+      /**
+       * HEDEF BAZLI SEÇİM — `(cluster, uygulama)` çiftleri.
+       *
+       * Seçim eskiden yalnızca AD BAZLIYDI ve hedefler `uygulama × cluster`
+       * ÇARPIMI olarak üretiliyordu; *"şu cluster'da uygula, ötekinde uygulama"*
+       * ifade edilemiyordu. Sunucu bu listeyi yetki süzgecine karşı YENİDEN
+       * doğrular: kapsamı GENİŞLETEMEZ, yalnızca daraltır.
+       *
+       * Boş/verilmemişse davranış bugünkü tam çarpım ile birebir aynıdır.
+       */
+      targets?: { cluster: string; name: string }[];
+      /**
+       * OCO penceresi henüz açılmamışken kullanıcının seçimi.
+       * `'schedule'` = pencere açılınca otomatik başlat.
+       *
+       * NOT: bu alan uzun süre tipte YOKTU ama ekran onu gönderiyordu — çağrı
+       * bir nesne literali değil yayılım (`...extra`) olduğu için TypeScript'in
+       * fazla-özellik denetimi devreye girmiyor ve eksiklik sessiz kalıyordu.
+       * Tipin gerçeği söylemesi, sözleşmenin kendisi kadar önemli.
+       */
+      ocoAction?: 'schedule' | 'later';
       ocoNumber?: string;
       writtenConfirm?: string;
     },

@@ -212,6 +212,34 @@ async function insertOperationRows({
 // DB okunamazsa `{}` doner (ss-customizations fail-safe) ve `gatePolicyFor`
 // varsayilana duser: OCO ACIK, yalnizca prod. Yani bir DB tokezlemesi kapiyi
 // ACIK BIRAKIR, kapatmaz.
+// ── HEDEF BAZLI SECIM ───────────────────────────────────────────────────────
+//
+// Secim bugune kadar AD BAZLIYDI ve hedefler `uygulama × cluster` CARPIMI
+// olarak uretiliyordu — yani "su cluster'da uygula, otekinde uygulama" IFADE
+// EDILEMIYORDU.
+//
+// ISTEMCIDEN GELEN LISTE ASLA KAPSAMI GENISLETEMEZ, yalnizca DARALTABILIR:
+// her hedef, zaten yetki suzgecinden gecmis `apps` ve `clusters` kumelerinin
+// ICINDE olmak zorunda. Aksi halde kullanici govdeye bir satir ekleyerek
+// goremedigi bir cluster'a dokunabilirdi.
+function normalizeTargets(raw, { clusters, apps }) {
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const clusterSet = new Set(clusters);
+  const appSet = new Set(apps);
+  const gorulen = new Set();
+  const out = [];
+  for (const t of raw) {
+    const cluster = String(t?.cluster || '').trim();
+    const name = String(t?.name || '').trim();
+    if (!clusterSet.has(cluster) || !appSet.has(name)) continue;
+    const k = `${cluster}\u0000${name}`;
+    if (gorulen.has(k)) continue;
+    gorulen.add(k);
+    out.push({ cluster, name });
+  }
+  return out.length ? out : null;
+}
+
 async function readOcoConfig() {
   try {
     const { templateId, serverId } = await resolveByKey(RUN_KEY);
@@ -1188,12 +1216,14 @@ function initScaleX(app) {
         verificationTimeout:
           req.body?.verificationTimeout ?? String(launch.verifyTimeoutDefault()),
       });
+      const selectedTargets = normalizeTargets(req.body?.targets, { clusters, apps });
       const radius = launch.computeBlastRadius({
         clusters,
         apps,
         environment: env,
         action,
         executionMode,
+        selectedTargets,
       });
       const policy = launch.gatePolicyFor({
         action,
@@ -1269,12 +1299,14 @@ function initScaleX(app) {
         );
       }
 
+      const selectedTargets = normalizeTargets(req.body?.targets, { clusters, apps });
       const radius = launch.computeBlastRadius({
         clusters,
         apps,
         environment: env,
         action,
         executionMode,
+        selectedTargets,
       });
       if (radius.exceedsMaxTargets) {
         throw Object.assign(
@@ -1345,6 +1377,10 @@ function initScaleX(app) {
         // CLUSTER BASINA TIP HARITASI: ayni uygulama farkli cluster'larda farkli
         // tipte olabilir; her cluster kendi haritasini alir.
         clusterWorkloadKinds: req.body?.clusterWorkloadKinds,
+        // HEDEF BAZLI SECIM: kullanici bir cluster'da bir uygulamayi haric
+        // tuttuysa o hedef `extra_vars`a GIRMEZ. Liste normalize edilmis
+        // (yetki suzgecinden gecmis) haliyle gonderilir.
+        targets: selectedTargets,
       });
 
       // ── GERI ALMA KILIDI ────────────────────────────────────────────────────

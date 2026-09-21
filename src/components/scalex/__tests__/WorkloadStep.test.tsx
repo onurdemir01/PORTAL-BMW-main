@@ -824,3 +824,99 @@ describe('WorkloadStep - hizli secim akisi', () => {
     expect(screen.getByText(/henüz okunmadı/i)).toBeInTheDocument();
   });
 });
+
+// ── HB: HEDEF BAZLI SECIM ───────────────────────────────────────────────────
+//
+// Secim bugune kadar AD BAZLIYDI (`selected: string[]`) ve hedefler
+// `uygulama × cluster` CARPIMI olarak uretiliyordu. Yani "su cluster'da uygula,
+// otekinde uygulama" IFADE EDILEMIYORDU: kullanici dort cluster'lik bir listede
+// tek bir cluster'i haric tutamiyor, ya hepsi ya hicbiri oluyordu.
+//
+// Playbook bunu ZATEN destekliyordu — `10_run_phase.yml` her cluster icin
+// betigi AYRI cagiriyor. Eksik olan yine EKRANDI.
+
+describe('WorkloadStep - hedef bazli secim', () => {
+  function cokCluster() {
+    return [
+      makeWorkload({ name: 'odeme-api', cluster: 'c1' }),
+      makeWorkload({ name: 'odeme-api', cluster: 'c2' }),
+      makeWorkload({ name: 'batch', cluster: 'c1' }),
+    ];
+  }
+
+  it('HB1 VARSAYILAN: tum cluster`lar dahil (bugunku davranis korunur)', async () => {
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse(cokCluster()));
+    const onSubmit = vi.fn();
+    await renderAndPoll(<WorkloadStep {...defaultProps} onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByText('odeme-api'));
+    fireEvent.click(screen.getByText('Devam'));
+
+    const t = onSubmit.mock.calls[0][0].targets;
+    assert2(t.length === 2, `varsayilanda ${t.length} hedef — ikisi de dahil olmaliydi`);
+    assert2(
+      t.some((x: { cluster: string }) => x.cluster === 'c1') &&
+        t.some((x: { cluster: string }) => x.cluster === 'c2'),
+      'her iki cluster dahil degil',
+    );
+  });
+
+  it('HB2 bir cluster HARIC tutulabiliyor', async () => {
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse(cokCluster()));
+    const onSubmit = vi.fn();
+    await renderAndPoll(<WorkloadStep {...defaultProps} onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByText('odeme-api'));
+    // Cip yalnizca SECILI ve COK CLUSTER'li uygulamada cikar.
+    fireEvent.click(screen.getByRole('button', { name: 'c2' }));
+    fireEvent.click(screen.getByText('Devam'));
+
+    const t = onSubmit.mock.calls[0][0].targets;
+    assert2(t.length === 1, `haric tutmadan sonra ${t.length} hedef — 1 olmaliydi`);
+    assert2(t[0].cluster === 'c1', `yanlis cluster kaldi: ${t[0].cluster}`);
+  });
+
+  it('HB3 HARIC tutulan hedefin TIPI de gonderilmiyor', async () => {
+    // Islem gormeyecek bir hedefin tipini playbook'a bildirmek, sozlesmeyi
+    // yaniltmak olurdu.
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse(cokCluster()));
+    const onSubmit = vi.fn();
+    await renderAndPoll(<WorkloadStep {...defaultProps} onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByText('odeme-api'));
+    fireEvent.click(screen.getByRole('button', { name: 'c2' }));
+    fireEvent.click(screen.getByText('Devam'));
+
+    const k = onSubmit.mock.calls[0][0].clusterWorkloadKinds;
+    assert2(
+      !k.some((x: { cluster: string }) => x.cluster === 'c2'),
+      'haric tutulan cluster tip haritasinda hala var',
+    );
+  });
+
+  it('HB4 sayac CARPIM degil GERCEK hedef sayisi gosteriyor', async () => {
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse(cokCluster()));
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+
+    fireEvent.click(screen.getByText('odeme-api'));
+    // `getByText(/N hedef/)` YETMEZ: "1 hedef" hem sayacta hem "1 hedef hariç
+    // tutuldu" metninde geciyor ve sorgu IKI oge buluyor. Sayac `<strong>`
+    // icinde oldugu icin dogrudan onu sorguluyoruz.
+    expect(screen.getByText('2 hedef')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'c2' }));
+    expect(screen.getByText('1 hedef')).toBeInTheDocument();
+    expect(screen.getByText(/hariç tutuldu/)).toBeInTheDocument();
+  });
+
+  it('HB5 TEK cluster`li uygulamada cip GOSTERILMIYOR (gurultu olurdu)', async () => {
+    mockDiscoverStatus.mockResolvedValue(makeStatusResponse(cokCluster()));
+    await renderAndPoll(<WorkloadStep {...defaultProps} />);
+    fireEvent.click(screen.getByText('batch')); // yalnizca c1'de
+    expect(screen.queryByRole('button', { name: 'c1' })).not.toBeInTheDocument();
+  });
+});
+
+/** Vitest `expect` yerine acik mesajli kisa yardimci. */
+function assert2(kosul: boolean, mesaj: string) {
+  if (!kosul) throw new Error(mesaj);
+}

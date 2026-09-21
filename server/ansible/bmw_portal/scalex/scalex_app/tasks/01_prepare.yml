@@ -75,6 +75,9 @@
     # Eski istemciler gondermezse bos sozluk; playbook `workload_kinds_effective`
     # degerine duser.
     cluster_workload_kinds_effective: "{{ cluster_workload_kinds | default({}) }}"
+    # CLUSTER BASINA UYGULAMA LISTESI (hedef bazli secim). Portal yalnizca secim
+    # tam carpim DEGILSE gonderir; gelmezse bos harita ve davranis degismez.
+    scalex_cluster_apps_effective: "{{ scalex_cluster_apps | default({}) }}"
     operation_action_effective: "{{ operation_action | default('stop') | string | trim | lower }}"
     # `default(..., true)` BOOLEAN BICIMI: bos string ('') ya da null geldiginde de
     # fabrika degerine duser. Boolean OLMAYAN bicim yalnizca "tanimsiz" halini

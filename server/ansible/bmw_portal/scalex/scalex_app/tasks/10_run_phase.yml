@@ -14,7 +14,23 @@
     OCP_OC_PATHS: "{{ scalex_target.oc_paths | join(':') }}"
     TLS_VERIFY: "{{ scalex_target.tls_verify | bool | string | lower }}"
     NS: "{{ oc_namespace }}"
-    APP_RAW: "{{ target_app_list | join(',') }}"
+    # CLUSTER BASINA UYGULAMA LISTESI — hedef bazli secim.
+    #
+    # Secim eskiden AD BAZLIYDI ve hedefler `uygulama × cluster` CARPIMI olarak
+    # uretiliyordu; "su cluster'da uygula, otekinde uygulama" IFADE EDILEMIYORDU.
+    # Bu gorev zaten her cluster icin betigi AYRI cagirdigi icin (yukaridaki
+    # `WORKLOAD_KINDS` ile ayni desen) daraltma dogal olarak burada yapilir.
+    #
+    # `default(x)` BILEREK BOOLEAN DEGIL — yukaridaki `WORKLOAD_KINDS` ile AYNI
+    # gerekce: bu cluster icin KASITLI olarak bos bir liste gonderilmis olabilir
+    # (kullanici o cluster'da hicbir hedef birakmadi). Boolean bicimi (`default(x,
+    # true)`) o kasitli bos degeri "tanimsiz" sayip TUM listeye geri duserdi —
+    # yani haric tutulan hedefler YINE islem gorurdu. Sadece ANAHTAR YOKSA
+    # (undefined) tam listeye dusulur.
+    #
+    # Portal bu alani YALNIZCA secim tam carpim DEGILSE gonderir; gondermediginde
+    # davranis bugunku ile birebir aynidir.
+    APP_RAW: "{{ scalex_cluster_apps_effective[scalex_target.cluster] | default(target_app_list | join(',')) }}"
     ACTION: "{{ operation_action_effective }}"
     TARGET: "{{ target_replicas_effective }}"
     WORKLOAD_KIND: "{{ workload_kind_effective }}"

@@ -91,6 +91,10 @@ test("S3 portalin SKALER anahtarlarinin hepsi survey'de (elle calistirma bozulma
     // Cluster basina workload-kind haritasi (dict); AWX survey skaler alir,
     // bu anahtar "Prompt on launch > Variables" ile API govdesinden gelir.
     'cluster_workload_kinds',
+    // Cluster basina UYGULAMA listesi (dict) — hedef bazli secim. Ayni gerekce:
+    // dict, survey'e konulamaz. Elle calistirmada gonderilmez ve playbook
+    // `target_app_names`e (tam carpim) duser — yani elle calistirma BOZULMAZ.
+    'scalex_cluster_apps',
   ]);
   const vars = new Set(survey('scalex_run.survey.json').spec.map((q) => q.variable));
   const eksik = [...portalRunKeys()].filter((k) => !YAPISAL.has(k) && !vars.has(k));
