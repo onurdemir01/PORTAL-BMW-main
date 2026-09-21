@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useCallback, useRef, useCont
 import { User } from "@/types";
 import { pageVisibilityApi, visibilityApi } from "@/api/adminApi";
 import { fetchSessionWithRetry } from "./sessionRestore";
+import { oturumBittiAbone, oturumDurumunuBildir } from "@/api/sessionGuard";
 
 interface AuthContextType {
   user: User | null;
@@ -170,6 +171,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 2500);
     return () => window.clearTimeout(id);
   }, [user, visibilityReady, refreshVisibility]);
+
+  // ── OTURUM BITTI KAPISI (P1-3) ──────────────────────────────────────────────
+  //
+  // PR #117 gorunurluk yoklamasini `user` bagimliligina baglayarak durdurmustu.
+  // Ama `user` kapisi OLMAYAN dongular vardi ve her yeni dongu ayni hatayi
+  // yeniden getirebiliyordu (or. RequestsSidePanel `smart-tickets/mine`i 120
+  // sn'de bir, kosulsuz yokluyordu — uretimde 854 adet 401).
+  //
+  // Artik karar TEK YERDE: sunucunun imzaladigi bir oturum-401'i goren
+  // `sessionGuard` kapiyi kapatir; burasi yalnizca kullaniciyi giris ekranina
+  // duser. Dongulerin durmasi bu satira BAGLI DEGIL — kapi zaten agi kesiyor;
+  // bu, kullaniciya NE OLDUGUNU soyleyen kisim.
+  useEffect(() => oturumBittiAbone(() => setUser(null)), []);
+
+  // Kapi "oturum VARDI ve OLDU" ayrimini yapabilsin diye istemcinin inancini
+  // bildirir. Giris ekranindaki 401 bitmis bir oturum DEGILDIR; orada kapi
+  // kapanirsa henuz giris yapmamis kullanicinin istekleri sessizce yutulurdu.
+  useEffect(() => oturumDurumunuBildir(!!user), [user]);
 
   // Canlı yayılım: admin bir görünürlük değişikliği yapınca versiyon artar; istemci hafif
   // version ucunu poll'leyip değişince haritayı yeniden çeker — reload GEREKMEZ.

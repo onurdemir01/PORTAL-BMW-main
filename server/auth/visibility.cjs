@@ -18,7 +18,7 @@
 'use strict';
 
 const db = require('../db/index.cjs');
-const { getRequestUser } = require('./utils.cjs');
+const { getRequestUser, oturumYok } = require('./utils.cjs');
 
 let _version = 1;         // her yazimda artar — istemci bunu izler
 let _cache = null;        // { elements, rules } anlik goruntusu
@@ -239,7 +239,7 @@ function requireVisible(elementKey) {
     let user = null;
     try {
       user = getRequestUser(req);
-      if (!user) return res.status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
+      if (!user) return oturumYok(res).status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
       const ok = await canSee(user, elementKey);
       if (!ok) return res.status(403).json({ ok: false, error: 'Bu kaynağa erişiminiz kapalı.' });
       return next();

@@ -9,6 +9,7 @@
 
 const express = require('express');
 const avatarCache = require('./avatar-cache.cjs');
+const { oturumYok } = require('./utils.cjs');
 
 const ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const _onlineUsers = new Map(); // username → { displayName, role, lastSeen }
@@ -52,7 +53,7 @@ function initPresenceRoutes(app) {
   // ── Online kullanicilar (dashboard baloncuklari) ────────────────────────────
   router.get("/online", (req, res) => {
     const me = req.session?.user;
-    if (!me) return res.status(401).json({ ok: false, error: "Oturum bulunamadı." });
+    if (!me) return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
     const now = Date.now();
     const users = [];
     for (const [username, info] of _onlineUsers) {
@@ -67,7 +68,7 @@ function initPresenceRoutes(app) {
 
   // ── Kullanici avatari (ayri avatar-cache.cjs'ten binary serve) ──────────────
   router.get("/avatar/:username", (req, res) => {
-    if (!req.session?.user) return res.status(401).end();
+    if (!req.session?.user) return oturumYok(res).status(401).end();
     const dataUrl = avatarCache.getAvatar(req.params.username);
     if (!dataUrl) return res.status(404).end();
     const match = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
