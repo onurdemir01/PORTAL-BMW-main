@@ -79,7 +79,7 @@ function safeTableName(def) {
 
 async function tableExists(name) {
   const { rows } = await db().query(
-    `SELECT 1 AS ok FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = $1 AND TABLE_SCHEMA = SCHEMA_NAME()`,
+    `SELECT 1 AS ok FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = $1 AND TABLE_SCHEMA IN ('dbo', SCHEMA_NAME())`,
     [name],
   );
   return rows.length > 0;
