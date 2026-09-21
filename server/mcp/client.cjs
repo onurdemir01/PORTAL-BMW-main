@@ -217,10 +217,41 @@ function createMcpClient({ name, url, headers = {} }) {
   let _lastError = null;      // { message, at, url }
   let _connectedUrl = null;   // basarili varyant (orijinal ya da /mcp ekli)
 
+  // ── GERI CEKILME (backoff) ────────────────────────────────────────────────
+  //
+  // OLCUM (uretim, 13,5 gun): `[MCP:dynatrace] Baglanti hatasi` 845 kez —
+  // gunde ~62, 13,5 gunun HER gununde. Hata hep ayni:
+  // `Unauthorized: no valid Dynatrace token supplied [401]`. Yani entegrasyon
+  // HIC calismadi ve portal bunu 845 kez yeniden denedi.
+  //
+  // Her deneme yalnizca log satiri degil: TLS guven deposu kurulumu (PR #121'e
+  // kadar her cagride ~145 sertifika), proxy/agent kurulumu ve bir ag turu.
+  //
+  // GERI CEKILME SORUNU GIZLEMEZ, GORUNUR KILAR: 845 ayni satir yerine ilk
+  // birkaci tam, sonrasinda yalnizca KADEME DEGISIMINDE bir satir ve her
+  // satirda "kacinci ardisik hata, ne zamandir" bilgisi. `getStatus()` da
+  // durumu tasir; saglik uclari "entegrasyon N saattir basarisiz" diyebilir.
+  //
+  // TAVAN 5 DAKIKA: admin token'i duzelttiginde en gec 5 dakika icinde
+  // toparlanir. Sinirsiz buyuyen bir bekleme, duzeltmeyi saatlerce gorunmez
+  // kilardi.
+  const BACKOFF_BASE_MS = 5_000;
+  const BACKOFF_MAX_MS = 5 * 60_000;
+  const TAM_LOG_ESIGI = 3; // ilk 3 hata tam yazilir
+  let _ardArda = 0;        // ardisik basarisiz deneme sayisi
+  let _sonrakiDeneme = 0;  // bu ana kadar yeni deneme YAPILMAZ
+  let _ilkHataAt = null;   // kesintisiz basarisizligin baslangici
+  let _sonKademe = 0;      // en son loglanan bekleme suresi
+
   function setError(err, attemptedUrl) {
     const detail = describeError(err);
     _lastError = { message: detail, at: new Date().toISOString(), url: attemptedUrl };
-    console.error(`[MCP:${name}] Baglanti hatasi (${attemptedUrl}):`, detail);
+    // LOG KADEMELI: ilk birkac hata tam yazilir; sonrasinda yalnizca bekleme
+    // suresi DEGISTIGINDE. Ayni satiri 845 kez yazmak, gercek hatalari
+    // gurultuye gomuyordu (uretimde ERROR hacminin %35'i bu tek entegrasyondu).
+    if (_ardArda < TAM_LOG_ESIGI) {
+      console.error(`[MCP:${name}] Baglanti hatasi (${attemptedUrl}):`, detail);
+    }
   }
 
   async function tryConnect(targetUrl) {
@@ -254,6 +285,20 @@ function createMcpClient({ name, url, headers = {} }) {
     if (_client) return _client;
     if (_connecting) return _connecting;
 
+    // GERI CEKILME PENCERESI: bu ana kadar yeni deneme YAPILMAZ. Son hata
+    // aynen firlatilir — cagiran acisindan davranis DEGISMEZ, yalnizca ag
+    // turu ve log satiri harcanmaz.
+    if (_sonrakiDeneme && Date.now() < _sonrakiDeneme) {
+      const kalan = Math.ceil((_sonrakiDeneme - Date.now()) / 1000);
+      throw Object.assign(
+        new Error(
+          `MCP bağlantısı geri çekilmede (${name}): ${_ardArda} ardışık hata, ` +
+            `${kalan} sn sonra yeniden denenecek. Son hata: ${_lastError?.message || 'bilinmiyor'}`,
+        ),
+        { mcpBackoff: true, consecutiveFailures: _ardArda, retryInSeconds: kalan },
+      );
+    }
+
     _connecting = (async () => {
       // Varyantlar: baglanilmis URL biliniyorsa once o; yoksa verilen URL, sonra /mcp eki
       const base = url.replace(/\/+$/, '');
@@ -269,12 +314,41 @@ function createMcpClient({ name, url, headers = {} }) {
           _transport = transport;
           _connectedUrl = variant;
           _lastError = null;
-          console.log(`[MCP:${name}] Baglandi: ${variant}`);
+          // BASARIDA GERI CEKILME SIFIRLANIR. Ayrica kesintinin ne kadar
+          // surdugu YAZILIR — "ne zaman duzeldi" sorusu loglardan cevaplanabilsin.
+          if (_ardArda > 0) {
+            const sure = _ilkHataAt ? Math.round((Date.now() - _ilkHataAt) / 60000) : 0;
+            console.log(
+              `[MCP:${name}] Baglandi: ${variant} — ${_ardArda} ardisik hatadan sonra ` +
+                `(kesinti ~${sure} dk).`,
+            );
+          } else {
+            console.log(`[MCP:${name}] Baglandi: ${variant}`);
+          }
+          _ardArda = 0;
+          _sonrakiDeneme = 0;
+          _ilkHataAt = null;
+          _sonKademe = 0;
           return _client;
         } catch (err) {
           lastErr = err;
           setError(err, variant);
         }
+      }
+      // BASARISIZ: geri cekilmeyi buyut.
+      if (!_ilkHataAt) _ilkHataAt = Date.now();
+      _ardArda++;
+      const bekle = Math.min(BACKOFF_BASE_MS * 2 ** (_ardArda - 1), BACKOFF_MAX_MS);
+      _sonrakiDeneme = Date.now() + bekle;
+      // KADEME DEGISTIGINDE bir ozet. Boylece "hala basarisiz" bilgisi kaybolmaz
+      // ama ayni satir 845 kez yazilmaz.
+      if (bekle !== _sonKademe) {
+        _sonKademe = bekle;
+        const sure = Math.round((Date.now() - _ilkHataAt) / 60000);
+        console.error(
+          `[MCP:${name}] ${_ardArda} ardisik baglanti hatasi (~${sure} dk). ` +
+            `Yeniden deneme ${Math.round(bekle / 1000)} sn sonra. Son hata: ${_lastError?.message || 'bilinmiyor'}`,
+        );
       }
       throw lastErr || new Error('MCP bağlantısı kurulamadı');
     })().finally(() => { _connecting = null; });
@@ -350,6 +424,11 @@ function createMcpClient({ name, url, headers = {} }) {
       connectedUrl: _connectedUrl,
       connected: !!_client,
       lastError: _lastError,
+      // GERI CEKILME DURUMU saglik uclarina tasinir: "entegrasyon N saattir
+      // basarisiz" demek, "su an bir hata aldim" demekten cok daha kullanisli.
+      consecutiveFailures: _ardArda,
+      failingSince: _ilkHataAt ? new Date(_ilkHataAt).toISOString() : null,
+      retryAfter: _sonrakiDeneme ? new Date(_sonrakiDeneme).toISOString() : null,
     };
   }
 
