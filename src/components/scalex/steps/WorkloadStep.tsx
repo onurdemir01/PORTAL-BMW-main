@@ -36,6 +36,15 @@ interface Props {
     fetchedAt: number;
     /** Cluster basina secili uygulamalarin tip haritasi. */
     clusterWorkloadKinds: { cluster: string; name: string; kind: string }[];
+    /**
+     * HEDEF BAZLI SECIM — `(cluster, uygulama)` ciftleri.
+     *
+     * Secim eskiden yalnizca AD BAZLIYDI ve hedefler `uygulama × cluster`
+     * CARPIMI olarak uretiliyordu; "şu cluster'da uygula, ötekinde uygulama"
+     * ifade edilemiyordu. Kullanici dört cluster'lık bir listede tek bir
+     * cluster'ı hariç tutamıyor, ya hepsi ya hiçbiri oluyordu.
+     */
+    targets: { cluster: string; name: string }[];
   }) => void;
   /** Kesif asilirsa kullaniciya bir CIKIS yolu vermek icin (bkz. bekleme ekrani). */
   onBack: () => void;
@@ -167,6 +176,11 @@ const WorkloadStep: React.FC<Props> = ({
   const [pkg, setPkg] = useState<{ running: string; expected: string } | null>(null);
   const [pkgCopied, setPkgCopied] = useState(false);
   const [selected, setSelected] = useState<string[]>(initial?.map(nameFromKey) || []);
+  // HARIC TUTULAN HEDEFLER: `cluster\0uygulama`. VARSAYILAN BOS — yani secilen
+  // her uygulama, bulundugu TUM cluster'larda islem gorur (bugunku davranis).
+  // Kullanici tek tek cikarabilir.
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const hedefAnahtari = (cluster: string, name: string) => `${cluster}\u0000${name}`;
   const [query, setQuery] = useState('');
   // Etkin hizli suzgecler ve gruplama kipi. Ikisi de VARSAYILAN KAPALI: bu adimin
   // bugunku davranisi degismesin, ozellikler isteyene acilsin.
@@ -544,6 +558,22 @@ const WorkloadStep: React.FC<Props> = ({
   };
 
   const isSelected = (w: ScaleXWorkload) => selected.includes(keyOf(w));
+
+  // GERCEK HEDEF SAYISI — carpim DEGIL. Secilen her uygulamanin, haric
+  // tutulmamis cluster'lari. Carpimi gostermek, kullanici hedeflerin yarisini
+  // cikardiginda bile eski rakami gostermek olurdu.
+  const { hedefSayisi, haricSayisi } = useMemo(() => {
+    let dahil = 0;
+    let haric = 0;
+    for (const ad of selected) {
+      for (const w of rowsByName.get(ad) || []) {
+        if (w.source !== 'discovery' || w.scalable === false) continue;
+        if (excluded.has(hedefAnahtari(w.cluster, ad))) haric++;
+        else dahil++;
+      }
+    }
+    return { hedefSayisi: dahil, haricSayisi: haric };
+  }, [selected, rowsByName, excluded]);
 
   // ── SECIM FAZI — AWX'E HIC DOKUNMAZ ────────────────────────────────────────
   //
@@ -931,6 +961,56 @@ const WorkloadStep: React.FC<Props> = ({
               </>
             ) : null}
           </span>
+
+          {/* HEDEF BAZLI SECIM — CLUSTER CIPLERI.
+              Yalnizca SECILI, OLCEKLENEBILIR ve BIRDEN FAZLA cluster'da bulunan
+              uygulamalarda gorunur. Tek cluster'da cip gostermek gurultu olurdu;
+              secili olmayanda ise secim zaten yok.
+              Varsayilan: HEPSI DAHIL — yani bugunku davranis. */}
+          {isSelected(w) && !locked && (rowsByName.get(w.name) || []).length > 1 && (
+            <span className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                cluster:
+              </span>
+              {(rowsByName.get(w.name) || [])
+                .filter((r) => r.source === 'discovery' && r.scalable !== false)
+                .map((r) => {
+                  const anahtar = hedefAnahtari(r.cluster, r.name);
+                  const dahil = !excluded.has(anahtar);
+                  return (
+                    <button
+                      key={anahtar}
+                      type="button"
+                      disabled={busy}
+                      aria-pressed={dahil}
+                      title={
+                        dahil
+                          ? `${r.cluster}: bu hedef işlem görecek — hariç tutmak için tıklayın`
+                          : `${r.cluster}: HARİÇ — geri eklemek için tıklayın`
+                      }
+                      onClick={(e) => {
+                        // Satirin `label`i secimi de degistirmesin.
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setExcluded((prev) => {
+                          const y = new Set(prev);
+                          if (y.has(anahtar)) y.delete(anahtar);
+                          else y.add(anahtar);
+                          return y;
+                        });
+                      }}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                        dahil
+                          ? 'border-[var(--accent)] text-[var(--text-primary)]'
+                          : 'border-[var(--border-subtle)] text-[var(--text-muted)] line-through'
+                      }`}
+                    >
+                      {r.cluster}
+                    </button>
+                  );
+                })}
+            </span>
+          )}
         </span>
       </label>
     );
@@ -1306,21 +1386,38 @@ const WorkloadStep: React.FC<Props> = ({
           asagi kaydirmak zorundaydi. Karar rakami HER ZAMAN gorunur olmali. */}
       <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-surface)] pt-4 pb-1">
         <span className="text-xs text-[var(--text-muted)]">
-          {selected.length} uygulama × {scope.clusters.length} cluster ={' '}
-          <strong className="text-[var(--text-primary)]">
-            {selected.length * scope.clusters.length} hedef
-          </strong>
+          {selected.length} uygulama ·{' '}
+          <strong className="text-[var(--text-primary)]">{hedefSayisi} hedef</strong>
+          {haricSayisi > 0 && (
+            <span className="text-amber-700"> · {haricSayisi} hedef hariç tutuldu</span>
+          )}
         </span>
         <button
           type="button"
           className="btn-primary"
           disabled={busy || !selected.length}
           onClick={() => {
-            // Secim YALNIZCA uygulama adidir; her cluster icin tip haritasi ayri gider.
+            // HEDEF LISTESI: secili her uygulamanin, HARIC TUTULMAMIS cluster'lari.
+            // `targets` sunucuda yetki suzgecine karsi YENIDEN dogrulanir;
+            // istemciden gelen liste kapsami GENISLETEMEZ, yalnizca daraltir.
+            const hedefler = workloads
+              .filter(
+                (w) =>
+                  w.source === 'discovery' &&
+                  selected.includes(w.name) &&
+                  w.scalable !== false &&
+                  !excluded.has(hedefAnahtari(w.cluster, w.name)),
+              )
+              .map((w) => ({ cluster: w.cluster, name: w.name }));
+            // Tip haritasi AYNI suzgecten gecer: haric tutulan bir hedefin tipini
+            // gondermek, playbook'a islem gormeyecek bir hedef bildirmek olurdu.
             const clusterWorkloadKinds = workloads
               .filter(
                 (w) =>
-                  w.source === 'discovery' && selected.includes(w.name) && w.scalable !== false,
+                  w.source === 'discovery' &&
+                  selected.includes(w.name) &&
+                  w.scalable !== false &&
+                  !excluded.has(hedefAnahtari(w.cluster, w.name)),
               )
               .map((w) => ({ cluster: w.cluster, name: w.name, kind: w.kind }));
             onSubmit({
@@ -1329,6 +1426,7 @@ const WorkloadStep: React.FC<Props> = ({
               workloads,
               fetchedAt: fetchedAtRef.current || Date.now(),
               clusterWorkloadKinds,
+              targets: hedefler,
             });
           }}
         >

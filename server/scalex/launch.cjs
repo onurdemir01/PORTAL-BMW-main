@@ -70,10 +70,23 @@ function isProdEnv(env) {
 
 // SAF — dogrudan test edilir. Ekran bunu `/preview` uzerinden okur ve kullaniciya
 // calistirmadan ONCE gosterir.
-function computeBlastRadius({ clusters = [], apps = [], environment, action, executionMode }) {
+function computeBlastRadius({
+  clusters = [],
+  apps = [],
+  environment,
+  action,
+  executionMode,
+  // HEDEF BAZLI SECIM: verilmisse hedef sayisi CARPIM DEGIL, GERCEK secim
+  // sayisidir. Carpimi kullanmak, kullanici hedeflerin yarisini haric
+  // tuttugunda bile "yazili onay gerekir" demek — ve daha kotusu, `maxTargets`
+  // sinirini HIC etkilenmeyecek hedefler yuzunden asmak olurdu.
+  selectedTargets = null,
+}) {
   const clusterCount = clusters.length;
   const appCount = apps.length;
-  const targets = clusterCount * appCount;
+  const targets = Array.isArray(selectedTargets) && selectedTargets.length
+    ? selectedTargets.length
+    : clusterCount * appCount;
   const prod = isProdEnv(environment);
   // `dry_run` hicbir sey degistirmez; yazili onay istemek anlamsiz surtunme olurdu.
   const mutating = executionMode === 'apply';
@@ -267,6 +280,54 @@ function buildWorkloadKindMap(entries, allowedApps) {
 // `ambiguous` olarak dusuyordu. Yeni sozlesme cluster'a gore ayri haritalar gonderir;
 // ayni cluster icinde ayni adi iki farkli tip hala belirsizdir (null) ve playbook
 // o cluster icin `auto` taramasina duser.
+/**
+ * HEDEF BAZLI SECIM — cluster basina uygulama listesi.
+ *
+ * NEDEN VAR: secim bugune kadar AD BAZLIYDI (`selected: string[]`) ve hedefler
+ * `uygulama × cluster` CARPIMI olarak uretiliyordu. Yani *"su cluster'da uygula,
+ * otekinde uygulama"* IFADE EDILEMIYORDU: kullanici dort cluster'lik bir listede
+ * tek bir cluster'i haric tutamiyor, ya hepsi ya hicbiri oluyordu.
+ *
+ * Playbook tarafi bunu ZATEN destekliyor: `10_run_phase.yml` her cluster icin
+ * betigi AYRI cagiriyor ve `WORKLOAD_KINDS` orada cluster basina cozuluyor.
+ * Ayni deseni `APP_RAW` icin kuruyoruz.
+ *
+ * @param targets `[{ cluster, name }]` — kullanicinin ISARETLI biraktiklari
+ * @param allowedApps yetki suzgecinden gecmis uygulama adlari
+ * @returns `{ cluster: 'app1,app2' }` — SECIM TAM CARPIMSA `{}` (bkz. cagiran)
+ */
+function buildClusterAppMap(targets, allowedApps) {
+  if (!Array.isArray(targets) || !targets.length) return {};
+  const allowed = new Set(allowedApps || []);
+  const byCluster = new Map();
+  for (const t of targets) {
+    const cluster = String(t?.cluster || '').trim();
+    const name = String(t?.name || '').trim();
+    // Yetki suzgecinden GECMEYEN ad buraya giremez. Istemciden gelen bir liste
+    // asla kapsami GENISLETEMEZ — yalnizca DARALTABILIR.
+    if (!cluster || !name || !allowed.has(name)) continue;
+    if (!byCluster.has(cluster)) byCluster.set(cluster, new Set());
+    byCluster.get(cluster).add(name);
+  }
+  const out = {};
+  for (const [cluster, set] of byCluster) out[cluster] = [...set].sort().join(',');
+  return out;
+}
+
+/**
+ * Secim TAM CARPIM mi? (her cluster'da her uygulama isaretli)
+ *
+ * Tam carpimsa `scalex_cluster_apps` GONDERILMEZ ve davranis bugunku ile
+ * BIREBIR ayni kalir — gereksiz bir extra_var is kaydini kirletmez ve eski
+ * playbook surumleriyle uyum bozulmaz.
+ */
+function isFullProduct(clusterAppMap, clusters, apps) {
+  const c = Object.keys(clusterAppMap);
+  if (c.length !== clusters.length) return false;
+  const beklenen = [...apps].sort().join(',');
+  return c.every((k) => clusterAppMap[k] === beklenen);
+}
+
 function buildClusterWorkloadKindMap(entries, allowedApps) {
   // ISTEMCIDEN gelen veri DUZ DIZI de olabilir, cluster bazinda gruplu nesne de.
   // Her iki sekil normalize edilerek ayni givenlik/tip suzgecinden gecirilir.
@@ -327,6 +388,9 @@ async function buildRunExtraVars({
   hpaPin = false,
   workloadKinds = null,
   clusterWorkloadKinds = null,
+  // HEDEF BAZLI SECIM: `[{ cluster, name }]`. Bos/verilmemisse davranis
+  // bugunku TAM CARPIM ile birebir ayni kalir.
+  targets = null,
 }) {
   const hosts = await ocpResolveHosts(env, tenant, clusters);
   const meta = await adminData.resolveClusterMeta(env, tenant, clusters);
@@ -360,6 +424,20 @@ async function buildRunExtraVars({
     // hala gecerli ve playbook o degeri kullanir.
     ...((m) => (m && Object.keys(m).length ? { cluster_workload_kinds: m } : {}))(
       buildClusterWorkloadKindMap(clusterWorkloadKinds, apps),
+    ),
+    // CLUSTER BASINA UYGULAMA LISTESI — YALNIZCA secim tam carpim DEGILSE.
+    //
+    // Tam carpimda gondermek davranisi degistirmezdi ama her is kaydina
+    // gereksiz bir extra_var eklerdi; ayrica playbook'un eski bir surumu
+    // AWX'te kosuyorsa bu alan sessizce yok sayilir ve TAM CARPIM davranisi
+    // dogru kalir. Daraltilmis bir secimde ise alan SART — yoksa haric
+    // tutulan hedefler yine islem gorur.
+    ...((m) => (m && Object.keys(m).length ? { scalex_cluster_apps: m } : {}))(
+      (() => {
+        const harita = buildClusterAppMap(targets, apps);
+        if (!Object.keys(harita).length) return null;
+        return isFullProduct(harita, clusters, apps) ? null : harita;
+      })(),
     ),
     operation_action: action,
     // SAYI OLARAK gonderilir, string DEGIL. AWX survey'inde bu soru `integer` tipinde
@@ -566,6 +644,8 @@ module.exports = {
   buildRunExtraVars,
   buildWorkloadKindMap,
   buildClusterWorkloadKindMap,
+  buildClusterAppMap,
+  isFullProduct,
   gatePolicyFor,
   buildGateVars,
   gates,
