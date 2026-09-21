@@ -15,6 +15,7 @@ import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtNumber, fmtDate } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
+import RetirementTab from './RetirementTab';
 
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
 const smBtn = (primary = false): React.CSSProperties => (primary
@@ -83,6 +84,31 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
+  // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
+  const [tab, setTab] = useState<'hosts' | 'retirement'>('hosts');
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-semibold flex items-center gap-2"><ServerStackIcon className="w-6 h-6" style={{ color: 'var(--accent)' }} /> <span className="nginx-hub-label"><span>Server</span> <span className="nginx-hub-word" style={{ color: 'var(--accent)', textShadow: 'none', animation: 'none' }}>Hub</span></span></h1>
+          <p className="text-sm mt-0.5 max-w-4xl" style={{ color: 'var(--text-muted)' }}>
+            {tab === 'hosts'
+              ? 'Reboot sonrası her şey doğru açılacak mı, sunucularda atıl bir şey var mı? Günlük tarama: init script referans uyumu, JBoss 7/8 JVM’leri (auto-start, kapalı, restart-required), RHA/IHS/Nginx sözdizimi ve vhost yükü (hc.html/hc.jsp hariç), boşta IP, sshd sınırları.'
+              : 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.'}
+          </p>
+        </div>
+        <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
+          {([{ id: 'hosts', label: 'Sunucular' }, { id: 'retirement', label: 'Retirement' }] as const).map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+      {tab === 'hosts' ? <HostsTab /> : <RetirementTab />}
+    </div>
+  );
+}
+
+function HostsTab() {
   const { addJob } = useJobTracker();
   const [data, setData] = useState<ShOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -139,16 +165,9 @@ export default function ServerHubPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2"><ServerStackIcon className="w-6 h-6" style={{ color: 'var(--accent)' }} /> <span className="nginx-hub-label"><span>Server</span> <span className="nginx-hub-word" style={{ color: 'var(--accent)', textShadow: 'none', animation: 'none' }}>Hub</span></span></h1>
-          <p className="text-sm mt-0.5 max-w-4xl" style={{ color: 'var(--text-muted)' }}>
-            Reboot sonrası her şey doğru açılacak mı, sunucularda atıl bir şey var mı? Günlük tarama: init script referans uyumu, JBoss 7/8 JVM'leri (auto-start, kapalı, restart-required), RHA/IHS/Nginx sözdizimi ve vhost yükü (hc.html/hc.jsp hariç), boşta IP. Son tarama: <b>{data.latestScan ? fmtDate(data.latestScan) : '—'}</b>.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => load(true)} className={SM_BTN} style={smBtn()}><ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile</button>
-        </div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Son tarama: <b>{data.latestScan ? fmtDate(data.latestScan) : '—'}</b></span>
+        <button onClick={() => load(true)} className={SM_BTN} style={smBtn()}><ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile</button>
       </div>
 
       {data.tableMissing && (

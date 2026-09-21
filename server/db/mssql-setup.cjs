@@ -732,6 +732,67 @@ const TABLES = [
       )`,
   },
   {
+    // Uygulama Retirement (2026-09-21, kullanici talebi): ekibin elle surecinin (Smart silme kaydi ->
+    // stop -> secilen tarihte silme -> IP/LB/DNS kayitlari) Portal'da takibi. Kayit = uygulama (tum
+    // ortamlar/siteler); silme tarihi kaydi acan secer, bos ise stop + delete_after_days (45).
+    name: 'retirement_records',
+    sql: `
+      CREATE TABLE retirement_records (
+        id                INT IDENTITY(1,1) PRIMARY KEY,
+        app               NVARCHAR(128) NOT NULL,
+        smart_no          NVARCHAR(64)  NOT NULL,
+        oco_no            NVARCHAR(64)  NULL,
+        owner_email       NVARCHAR(256) NULL,
+        requested_by      NVARCHAR(128) NOT NULL,
+        status            NVARCHAR(24)  NOT NULL DEFAULT 'open',
+        delete_after_days INT NOT NULL DEFAULT 45,
+        planned_delete_at DATE NULL,
+        stop_at           DATETIME2 NULL,
+        dns_reuse         BIT NOT NULL DEFAULT 0,
+        lb_reuse          BIT NOT NULL DEFAULT 0,
+        scc_notified_at   DATETIME2 NULL,
+        notes             NVARCHAR(MAX) NULL,
+        created_at        DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_at        DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    // Retirement hedefleri: uygulamanin bulundugu her (sunucu, ortam) — envanterden kesif aninda
+    // dondurulur (Ankara dahil), web sunuculari Denetim Web-App kuraliyla (JSON). stop adimi hedef
+    // basina AWX isi; plan/sonuc metni burada.
+    name: 'retirement_targets',
+    sql: `
+      CREATE TABLE retirement_targets (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        record_id     INT NOT NULL,
+        host          NVARCHAR(64)  NOT NULL,
+        site          NVARCHAR(16)  NULL,
+        env           NVARCHAR(16)  NULL,
+        app_name      NVARCHAR(128) NOT NULL,
+        jboss_gen     INT NULL,
+        app_path      NVARCHAR(512) NULL,
+        web_json      NVARCHAR(MAX) NULL,
+        status        NVARCHAR(16)  NOT NULL DEFAULT 'pending',
+        plan_text     NVARCHAR(1000) NULL,
+        result_text   NVARCHAR(1000) NULL,
+        last_job_id   INT NULL,
+        stopped_at    DATETIME2 NULL,
+        updated_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    name: 'retirement_events',
+    sql: `
+      CREATE TABLE retirement_events (
+        id         INT IDENTITY(1,1) PRIMARY KEY,
+        record_id  INT NOT NULL,
+        at         DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        username   NVARCHAR(128) NULL,
+        kind       NVARCHAR(32)  NOT NULL,
+        text       NVARCHAR(1000) NULL
+      )`,
+  },
+  {
     // Nginx Hub gecmisi (2026-09-19, Git benzeri): (host, path) basina SON bilinen sha —
     // degisiklik tespiti icin. Icerik DB'de DEGIL: /sw/BMW_PORTAL/nginx_console/objects/<sha>.
     name: 'nginx_hub_file_state',
@@ -2232,6 +2293,17 @@ const PLAYBOOK_REGISTRY_SEED = [
       'bmw_automation_folder/server_hub/server_hub_scan.yml — init script referans uyumu, JBoss7/8 JVM auto-start/kapali/restart-required, RHA/IHS/Nginx sozdizimi + vhost yuku (hc haric), bosta IP -> dbo.Server_Hub_*. Gunluk zamanlayin; ekrandan target_hosts ile tek sunucu yenilenir. Survey: tbmwans_pwd credential.',
     playbook_path: null,
     env_var_name: 'SERVER_HUB_SCAN_TEMPLATE_ID',
+  },
+  {
+    // Uygulama Retirement STOP adimi (2026-09-21): tek sunucu + tek uygulama; plan_only once
+    key_name: 'app_retirement_stop',
+    display_name: 'Retirement — STOP adimi',
+    category: 'system',
+    handler: 'app_retirement_stop',
+    description:
+      'bmw_automation_folder/app_retirement/app_retirement_stop.yml — auto-start kapat, stop-servers, paketi .<smart_no>.old yap; plan_only=true once plan, onayla uygular; prod ortaminda SCC maili. Survey: yok (Portal extra vars). Yalniz Admin.',
+    playbook_path: null,
+    env_var_name: 'APP_RETIREMENT_STOP_TEMPLATE_ID',
   },
   {
     key_name: 'server_hub_fix',
