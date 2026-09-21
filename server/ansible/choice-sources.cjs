@@ -22,6 +22,20 @@
 'use strict';
 
 const CACHE_TTL_MS = 60 * 1000;
+// ── ONBELLEK SINIRLARI ──────────────────────────────────────────────────────
+//
+// Anahtar KULLANICI GIRDISINI tasiyor: `cacheKey` survey form degerlerini
+// (`paramsFromValues`) JSON'a ceviriyor. TTL ise yalnizca OKUMADA kontrol
+// ediliyordu; suresi dolan giris HIC SILINMIYORDU. Yani her yeni parametre
+// bilesimi KALICI bir giris birakiyor ve her giris tam bir secenek listesi
+// (on binlerce cift olabilir) tutuyordu.
+//
+// Portal 2026-09'da yedi kez OOM ile coktu; kullanici anahtarli budanmayan
+// Map'ler o taramada ayri bir risk kalemiydi (`server/dynatrace/cache.cjs` ile
+// ayni sinif, PR #109'da kapatilmisti).
+//
+// Desen `server/audit/response-cache.cjs`ten: MAX_ENTRIES + FIFO + TTL'de silme.
+const CACHE_MAX_ENTRIES = 64;
 const cache = new Map(); // key -> { at, choices }
 
 function cacheKey(source, params) {
@@ -298,8 +312,19 @@ async function loadChoices(sourceName, params) {
   }
   const key = cacheKey(sourceName, p);
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.choices;
+  if (hit) {
+    if (Date.now() - hit.at < CACHE_TTL_MS) return hit.choices;
+    // SURESI DOLAN GIRIS SILINIR. Eskiden yalnizca "taze degil" deyip geciliyor
+    // ve giris sonsuza dek heap'te kaliyordu: TTL bellegi degil, yalnizca
+    // tazeligi koruyordu.
+    cache.delete(key);
+  }
   const choices = await src.load(p);
+  // Ayni anahtar yeniden yazilirken once silinir ki FIFO sirasi TAZELENSIN;
+  // `Map.set` mevcut anahtarin sirasini degistirmez ve sicak bir giris haksiz
+  // yere "en eski" sayilirdi.
+  cache.delete(key);
+  while (cache.size >= CACHE_MAX_ENTRIES) cache.delete(cache.keys().next().value);
   cache.set(key, { at: Date.now(), choices });
   return choices;
 }

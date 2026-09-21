@@ -22,12 +22,40 @@ const TRANSFER_SELECTION_MAX_BYTES = Math.floor(EXPRESS_JSON_LIMIT_BYTES / 2);
 
 const SNAPSHOT_FILE = path.join(__dirname, '..', '..', 'data', 'logx-legacy-snapshot.json');
 
+/**
+ * Yedek dosyasi tavani. `MWAppsInventory` kurumsal bir tablo ve portalin
+ * denetiminde DEGIL; bu dosya onunla birlikte buyur. Hem YAZMADA hem OKUMADA
+ * uygulanir — yalnizca birinde olsaydi diger yon hala sinirsiz kalirdi.
+ */
+const SNAPSHOT_MAX_BYTES = 32 * 1024 * 1024;
+
+/**
+ * Uygulama listesi satir tavani. Bos aramada desen `LIKE '%%'` olur ve TUM
+ * tablo doner. Kirpma SESSIZ DEGIL: yanit `truncated` tasir.
+ */
+const APP_LIST_MAX = 5000;
+
 function readSnapshot() {
+  const bos = { apps: [], appHosts: {}, generatedAt: null };
   try {
-    if (!fs.existsSync(SNAPSHOT_FILE)) return { apps: [], appHosts: {}, generatedAt: null };
+    if (!fs.existsSync(SNAPSHOT_FILE)) return bos;
+    // ONCE BOYUTA BAK, SONRA OKU. `readFileSync` + `JSON.parse` dosyanin 3-6
+    // kati heap ister; once okuyup sonra uzunluga bakmak hicbir seyi kurtarmaz
+    // (portalin yedi OOM'unun ortak dersi).
+    //
+    // Elle bozulmus ya da beklenmedik sekilde buyumus bir yedek yuzunden portal
+    // COKMEMELI: bu dosya zaten bir YEDEK yolu, kritik yol degil.
+    const st = fs.statSync(SNAPSHOT_FILE);
+    if (st.size > SNAPSHOT_MAX_BYTES) {
+      console.warn(
+        `[LogXv2] Legacy snapshot OKUNMADI — ${Math.round(st.size / (1024 * 1024))} MB, ` +
+          `tavan ${Math.round(SNAPSHOT_MAX_BYTES / (1024 * 1024))} MB.`,
+      );
+      return bos;
+    }
     return JSON.parse(fs.readFileSync(SNAPSHOT_FILE, 'utf-8'));
   } catch {
-    return { apps: [], appHosts: {}, generatedAt: null };
+    return bos;
   }
 }
 
@@ -36,11 +64,26 @@ function readSnapshot() {
 function writeSnapshotAsync(apps, appHosts) {
   try {
     fs.mkdirSync(path.dirname(SNAPSHOT_FILE), { recursive: true });
-    fs.writeFileSync(
-      SNAPSHOT_FILE,
-      JSON.stringify({ apps, appHosts, generatedAt: new Date().toISOString() }, null, 2),
-      'utf-8',
-    );
+    // GIRINTI YOK (`null, 2` kaldirildi). Bu dosya INSAN ICIN DEGIL, portalin
+    // DB dustugunde okudugu bir yedek. Girinti dosyayi ~2 KAT buyutuyordu ve
+    // hem diske hem de `readSnapshot`un `JSON.parse`ina o boyutla yansiyordu.
+    const govde = JSON.stringify({ apps, appHosts, generatedAt: new Date().toISOString() });
+
+    // BOYUT KAPISI. `MWAppsInventory` kurumsal bir envanter tablosu ve portalin
+    // denetiminde DEGIL; buyudukce bu dosya da buyur. `readSnapshot` onu
+    // `JSON.parse` ile TAMAMEN bellege aliyor (metnin 3-6 kati nesne grafigi).
+    // Tavan asilirsa YAZMAYIZ: bir sonraki okumada patlayacak bir yedek,
+    // yedek olmamaktan kotudur — eski (kucuk) dosya yerinde kalir ve calisir.
+    const bayt = Buffer.byteLength(govde, 'utf8');
+    if (bayt > SNAPSHOT_MAX_BYTES) {
+      console.warn(
+        `[LogXv2] Legacy snapshot YAZILMADI — ${Math.round(bayt / (1024 * 1024))} MB, ` +
+          `tavan ${Math.round(SNAPSHOT_MAX_BYTES / (1024 * 1024))} MB. ` +
+          'Envanter beklenenden buyuk; son gecerli yedek korundu.',
+      );
+      return;
+    }
+    fs.writeFileSync(SNAPSHOT_FILE, govde, 'utf-8');
   } catch (err) {
     console.warn('[LogXv2] Legacy snapshot yazilamadi:', err.message);
   }
@@ -54,17 +97,26 @@ async function searchApps(search) {
     if (!pool) throw new Error('Envanter DB bağlantısı yok.');
     const req = pool.request();
     req.input('q', `%${term}%`);
+    // SATIR TAVANI. Bos aramada desen `LIKE '%%'` olur ve TUM tablo doner;
+    // `MWAppsInventory` kurumsal bir envanter ve portalin denetiminde DEGIL.
+    //
+    // `+ 1` KASITLI: tavana ULASILDIGINI anlamak icin bir fazla isteriz ve
+    // kullaniciya "liste kirpildi, aramanizi daraltin" diyebiliriz. Sessizce
+    // kirpmak, ekranda olmayan bir uygulamayi "envanterde yok" sandirirdi —
+    // bu depoda `Envanter Bosluklari` sekmesi tam bu yanilgiyi kapatmak icin var.
     const result = await req.query(
-      `SELECT DISTINCT app FROM ${getAppsTable()} WHERE app LIKE @q ORDER BY app`,
+      `SELECT DISTINCT TOP (${APP_LIST_MAX + 1}) app FROM ${getAppsTable()} WHERE app LIKE @q ORDER BY app`,
     );
-    const apps = result.recordset.map((r) => r.app);
+    const hepsi = result.recordset.map((r) => r.app);
+    const truncated = hepsi.length > APP_LIST_MAX;
+    const apps = truncated ? hepsi.slice(0, APP_LIST_MAX) : hepsi;
 
     // Snapshot'i arka planda tazele (yalnizca bos arama = tam liste iken, snapshot'in
     // gereksiz yere kismi bir alt kumeye indirgenmemesi icin).
     if (!term) {
       refreshFullSnapshot(pool).catch(() => {});
     }
-    return { apps, fallbackMode: false };
+    return { apps, fallbackMode: false, truncated, limit: APP_LIST_MAX };
   } catch (err) {
     console.warn(
       `[LogXv2] ${getAppsTable()} sorgusu basarisiz, snapshot fallback kullaniliyor:`,
