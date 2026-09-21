@@ -549,7 +549,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           missingLabel="deploy edilmemiş (ekip)"
                           onClick={() => setOpen({ title: `${env} · deploy edilmemiş internet SPA’ları`, subtitle: `${fmtNumber(c.internetNotDeployedCount || 0)} uygulama · internete açık hiçbir nginx sunucusunda /hysdeploy/<ns>/<app>/ + /usr/nginx/applications/<ns>/<app>/ (H+A) yok — ekipler deployment geçmeli`, rows: rowsFromCoverage(c.missingDetail?.notDeployed || []) })}
                         >
-                          <Big n={c.internetDirsMeasured ? (c.internetDeployed || 0) : 0} of={c.internetTotal} label="deploy edilmiş (H+A)" />
+                          <Big n={c.internetDirsMeasured ? (c.internetDeployed || 0) : 0} of={c.internetTotal} label="deploy edilmiş (H+A, en az bir internet sunucusunda)" />
                           <Bar value={c.internetDeployed || 0} total={c.internetTotal} measured={!!c.internetDirsMeasured} title="internete açık nginx sunucusunda paket + dosyalar var / internete açık SPA" />
                         </ClickCell>
                         <ClickCell
@@ -582,9 +582,13 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                                   count={prodNew.apps - prodNew.ready}
                                   onClick={() => setOpen({ title: 'PROD · yeni sunuculara deploy olmamış SPA’lar', subtitle: `${fmtNumber(prodNew.apps - prodNew.ready)} uygulama · eski GBRVP* sunucusunda proxy ile sunuluyor, yeni GBNGXP* sunucularının hepsinde hysdeploy + applications dizini yok`, rows: rowsFromMigration(mig?.groups || []) })}
                                 >
-                                  <Big n={prodNew.ready} of={prodNew.apps} label="uygulama" />
-                                  <Bar value={prodNew.ready} total={prodNew.apps} title="hazır = her yeni sunucuda hysdeploy + applications dizini var" />
+                                  <Big n={prodNew.ready} of={prodNew.apps} label="(namespace, uygulama) çifti — eski sunucu proxy listesi" />
+                                  <Bar value={prodNew.ready} total={prodNew.apps} title="hazır = servisin HER yeni sunucusunda hysdeploy + applications dizini var" />
                                 </ClickCell>
+                                {/* Ustteki "deploy edilmis (H+A)" ile farki (kullanici, 2026-09-21): evren, anahtar ve esik ayri */}
+                                <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                  Üstteki ölçüden farkı: burada evren OpenShift route listesi değil <b>eski GBRVP proxy listesi</b> ({fmtNumber(prodNew.apps)} çift, route'suzlar dâhil); "hazır" = <b>servisin tüm yeni sunucularında</b> H+A (üstte: en az bir internet sunucusunda).
+                                </div>
                                 <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                                   location tanımı yazılmış: <b style={{ color: 'var(--text-secondary)' }}>{fmtNumber(prodNew.locDefined)}</b> / {fmtNumber(prodNew.locTotal)} (Production Taşımaları)
                                 </div>

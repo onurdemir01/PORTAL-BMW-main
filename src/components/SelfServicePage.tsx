@@ -26,6 +26,8 @@ import {
   CalendarDaysIcon,
   UserIcon,
   ChevronRightIcon,
+  GlobeAltIcon,
+  CubeIcon,
 } from '@heroicons/react/24/outline';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { useBackdropDismiss } from '@/components/common/backdropDismiss';
@@ -59,7 +61,7 @@ const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   },
 ];
 
-type TopTab = 'ansible' | 'check';
+type TopTab = 'ansible' | 'ip' | 'openshift';
 
 // ── Survey Form Modal ─────────────────────────────────────────────────────────
 
@@ -1226,11 +1228,12 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-[--text-muted]">AWX üzerinden job başlatın</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{isAdmin ? 'Servis kartına tıklayıp başlatın; yeni servisi "Servis Ekle" ile tanımlayın.' : 'Servis kartındaki "Başlat" ile AWX işi açılır.'}</p>
         <div className="flex gap-2">
           <button
             onClick={() => setShowHistory(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-600 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl border transition-colors"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
           >
             <ClockIcon className="w-4 h-4" />
             Geçmiş
@@ -1241,7 +1244,7 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
                 setAddForm(!addForm);
                 setSaveError('');
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#060C17] text-white rounded-xl hover:bg-gray-800 transition"
+              className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl"
             >
               <PlusIcon className="w-4 h-4" />
               Servis Ekle
@@ -1251,8 +1254,8 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       {isAdmin && addForm && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-3 shadow-[var(--shadow-md)]">
-          <h3 className="text-sm font-bold text-gray-900">Yeni Ansible Servisi</h3>
+        <div className="rounded-2xl border p-5 space-y-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+          <h3 className="text-sm font-bold">Yeni Ansible Servisi</h3>
           {saveError && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
               {saveError}
@@ -1322,8 +1325,8 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {visibleItems.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 flex items-center justify-center h-40">
-          <p className="text-sm text-gray-400">
+        <div className="rounded-2xl border flex items-center justify-center h-40" style={{ borderColor: 'var(--border-subtle)' }}>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {isAdmin
               ? 'Henüz Ansible servisi yok. Servis Ekle butonunu kullanın.'
               : 'Henüz Ansible servisi tanımlanmamış.'}
@@ -1336,12 +1339,13 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
             .map((item) => (
               <div
                 key={item.id}
-                className={`bg-white rounded-2xl border p-5 shadow-[var(--shadow-sm)] card-hover group relative ${item.enabled ? 'border-gray-100' : 'border-amber-200'}`}
+                className="rounded-2xl border p-5 card-hover group relative"
+                style={{ background: 'var(--bg-surface)', borderColor: item.enabled ? 'var(--border-subtle)' : 'var(--status-warning)', boxShadow: 'var(--shadow-sm)' }}
               >
                 <div className="mb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-bold text-gray-900 text-base">{item.title}</h3>
+                      <h3 className="font-bold text-base">{item.title}</h3>
                       {/* enabled=false SADECE normal kullanicilardan gizler — admin her zaman
                         gorur ve calistirabilir; bu rozet admin'e bunu hatirlatir. */}
                       {isAdmin && !item.enabled && (
@@ -1370,11 +1374,11 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
                     )}
                   </div>
                   {item.description && (
-                    <p className="text-sm text-gray-500 mt-1">{item.description}</p>
+                    <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{item.description}</p>
                   )}
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     Template #{item.awxTemplateId} · Server {item.awxServerId}
                   </span>
                   <button
@@ -1416,10 +1420,6 @@ export default function SelfServicePage() {
   const [groups, setGroups] = useState<SelfServiceGroup[]>([]);
   const [activeTop, setActiveTop] = useState<TopTab>('ansible');
   const [showHelp, setShowHelp] = useState(false);
-  // "Check" sekmesinin İÇ sekmesi — IP envanteri mi, OpenShift namespace/uygulama envanteri
-  // mi sorgulanacak. TopTab'dan AYRI tutulur çünkü DB-güdümlü grup mekanizmasının dışında,
-  // sadece bu iki sabit alt-check arasında geçiş yapar (bkz. TOP_TABS notu).
-  const [checkType, setCheckType] = useState<'ip' | 'openshift'>('ip');
 
   useEffect(() => {
     let alive = true;
@@ -1439,14 +1439,22 @@ export default function SelfServicePage() {
     };
   }, []);
 
-  // "Ansible" etiket/sira bilgisi hala DB'den (/api/selfservice -> groups) gelir — Smart/
-  // Diğerleri grupları kaldırıldığı icin artik geriye tek DB grubu (ansible) kalıyor. "Check"
-  // sekmesi DB-guduml grup mekanizmasinin DISINDA, sabit 2. sekme olarak eklenir.
+  // 2026-09-21: Admin Merkezi ile AYNI kabuk (kullanici istegi) — solda bolumlu menu, sagda
+  // baslik + tek cumle aciklamali icerik karti. "Ansible" etiketi hala DB'den (/api/selfservice
+  // -> groups); IP / OpenShift kontrolleri eskiden "Check" sekmesinin ic sekmesiydi, simdi
+  // menude kendi basina iki giris.
   const ansibleGroup = groups.find((g) => g.groupKey === 'ansible');
-  const TOP_TABS: { id: TopTab; label: string; icon: React.ElementType }[] = [
-    { id: 'ansible', label: ansibleGroup?.label || 'Ansible', icon: CommandLineIcon },
-    { id: 'check', label: 'Check', icon: MagnifyingGlassIcon },
+  const ENTRIES: Record<TopTab, { label: string; icon: React.ElementType; hint: string }> = {
+    ansible: { label: ansibleGroup?.label || 'Ansible', icon: CommandLineIcon, hint: 'Tanımlı Ansible servislerini (AWX job template) survey ile başlatın; geçmiş ve canlı log iş penceresinde.' },
+    ip: { label: 'IP Sorgu', icon: GlobeAltIcon, hint: 'Bir IP ya da sunucu adının envanterde neye karşılık geldiğini bulun.' },
+    openshift: { label: 'OpenShift Sorgu', icon: CubeIcon, hint: 'Namespace / uygulama envanterinde arama.' },
+  };
+  const SECTIONS: { title: string; icon: React.ElementType; ids: TopTab[] }[] = [
+    { title: 'Otomasyon', icon: CommandLineIcon, ids: ['ansible'] },
+    { title: 'Kontrol', icon: MagnifyingGlassIcon, ids: ['ip', 'openshift'] },
   ];
+  const current = ENTRIES[activeTop];
+  const CurrentIcon = current.icon;
 
   if (loading) {
     return (
@@ -1457,80 +1465,99 @@ export default function SelfServicePage() {
   }
 
   return (
-    <div className="flex items-start gap-4 animate-spring-in">
-      <div className="flex-1 min-w-0 space-y-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="page-title">Self Service</h1>
-            <p className="mt-1 text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
-              Ansible otomasyonu, IP ve OpenShift envanteri kontrolü
-            </p>
-          </div>
-          <button
-            onClick={() => setShowHelp(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors flex-shrink-0"
-          >
-            <QuestionMarkCircleIcon className="w-4 h-4" />
-            Yardım
-          </button>
+    <div className="space-y-5 animate-spring-in">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="page-title">Otomasyon</h1>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+            Ansible servisleri, IP ve OpenShift envanter kontrolü tek yerde.
+          </p>
         </div>
-
-        {err && (
-          <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-            {err}
-          </div>
-        )}
-
-        {/* Top fixed tabs */}
-        <div className="flex items-center gap-1 bg-[#EEF2FF] p-1 rounded-xl w-fit">
-          {TOP_TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTop(id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                activeTop === id
-                  ? 'bg-white text-[var(--accent)] shadow-[var(--shadow-sm)]'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {activeTop === 'ansible' && <AnsibleSection isAdmin={isAdmin} />}
-        {activeTop === 'check' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg w-fit">
-              {[
-                { id: 'ip' as const, label: 'IP' },
-                { id: 'openshift' as const, label: 'OpenShift' },
-              ].map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => setCheckType(id)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
-                    checkType === id
-                      ? 'bg-white text-[var(--accent)] shadow-[var(--shadow-sm)]'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {checkType === 'ip' ? <IpCheckSection /> : <OpenshiftCheckSection />}
-          </div>
-        )}
-
-        <HelpModal
-          open={showHelp}
-          onClose={() => setShowHelp(false)}
-          title="Self Service — Nasıl Kullanılır?"
-          sections={SELF_SERVICE_HELP_SECTIONS}
-        />
+        <button
+          onClick={() => setShowHelp(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl border transition-colors flex-shrink-0"
+          style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+        >
+          <QuestionMarkCircleIcon className="w-4 h-4" />
+          Yardım
+        </button>
       </div>
+
+      {err && (
+        <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+          {err}
+        </div>
+      )}
+
+      <div className="grid gap-5 ss-grid" style={{ gridTemplateColumns: 'minmax(13rem, 16rem) 1fr' }}>
+        {/* Sol: bolumlu menu */}
+        <nav aria-label="Otomasyon bölümleri" className="space-y-4 self-start lg:sticky lg:top-4">
+          {SECTIONS.map((sec) => {
+            const SIcon = sec.icon;
+            return (
+              <div key={sec.title}>
+                <div className="flex items-center gap-1.5 px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  <SIcon className="w-3.5 h-3.5" /> {sec.title}
+                </div>
+                <ul className="space-y-0.5">
+                  {sec.ids.map((id) => {
+                    const e = ENTRIES[id];
+                    const Icon = e.icon;
+                    const active = activeTop === id;
+                    return (
+                      <li key={id}>
+                        <button
+                          onClick={() => setActiveTop(id)}
+                          aria-current={active ? 'page' : undefined}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg text-left transition-colors"
+                          style={{
+                            background: active ? 'var(--bg-elevated)' : 'transparent',
+                            color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontWeight: active ? 600 : 500,
+                            boxShadow: active ? 'inset 3px 0 0 var(--accent)' : 'none',
+                          }}
+                        >
+                          <Icon className="w-4 h-4 flex-shrink-0" style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }} />
+                          <span className="truncate" title={e.label}>{e.label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* Sag: icerik */}
+        <section className="card overflow-hidden min-w-0">
+          <header className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+            <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'var(--bg-surface)', color: 'var(--accent)', boxShadow: 'var(--shadow-sm)' }}>
+              <CurrentIcon className="w-5 h-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold leading-tight">{current.label}</h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{current.hint}</p>
+            </div>
+          </header>
+          <div className="p-5">
+            <div key={activeTop} style={{ animation: 'fadeIn 0.18s ease' }}>
+              {activeTop === 'ansible' && <AnsibleSection isAdmin={isAdmin} />}
+              {activeTop === 'ip' && <IpCheckSection />}
+              {activeTop === 'openshift' && <OpenshiftCheckSection />}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <HelpModal
+        open={showHelp}
+        onClose={() => setShowHelp(false)}
+        title="Otomasyon — Nasıl Kullanılır?"
+        sections={SELF_SERVICE_HELP_SECTIONS}
+      />
+      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 900px) { .ss-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
   );
 }

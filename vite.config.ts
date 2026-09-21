@@ -4,6 +4,33 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+// shared/*.cjs (sunucuyla PAYLASILAN saf moduller, ör. surveyConditions.cjs) DEV sunucusunda:
+// Vite dev, kaynak agacindaki CommonJS dosyalarini donusturmez ("module is not defined" +
+// "does not provide an export named ...") — Self Servis sayfasi dev'de hic acilmiyordu
+// (2026-09-21). Uretim build'i rollup commonjs ile zaten calisiyor. Bu eklenti YALNIZ serve
+// modunda `module.exports = { a, b }` bicimindeki dosyayi ESM'e sarar: adlandirilmis
+// export'lar module.exports'taki anahtarlardan uretilir (yalniz bu basit bicim desteklenir).
+function sharedCjsDevShim() {
+  return {
+    name: "shared-cjs-dev-shim",
+    apply: "serve" as const,
+    transform(code: string, id: string) {
+      if (!/[\\/]shared[\\/][^\\/]+\.cjs(\?.*)?$/.test(id)) return null;
+      const m = /module\.exports\s*=\s*\{([\s\S]*?)\}\s*;?/.exec(code);
+      if (!m) return null;
+      const keys = m[1]
+        .split(",")
+        .map((k) => k.trim().split(":")[0].trim())
+        .filter((k) => /^[A-Za-z_$][\w$]*$/.test(k));
+      // Dosyanin kendi fonksiyon adlariyla CAKISMASIN: `export const a = ...` yerine `export { a }`
+      // (module.exports = { a, b } zaten ust kapsamdaki a ve b'yi gosterir).
+      const named = keys.length ? `export { ${keys.join(", ")} };` : "";
+      const wrapped = `const module = { exports: {} }; const exports = module.exports;\n${code}\n${named}\nexport default module.exports;\n`;
+      return { code: wrapped, map: null };
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
 
@@ -47,7 +74,7 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), sharedCjsDevShim()],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "src"),
