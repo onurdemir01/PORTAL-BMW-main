@@ -11,7 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, DocumentPlusIcon, FolderIcon, FolderOpenIcon,
-  MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon,
+  MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon, ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,9 +21,10 @@ import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { Pill, Panel, Code } from '@/components/denetim/ui';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
+import { DashboardTab, InstancesTab } from './NimTabs';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
 
-type Tab = 'config' | 'certs' | 'changes';
+type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes';
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -77,7 +78,35 @@ function lineDiff(a: string, b: string): { added: number; removed: number; hunks
 export default function NginxConsolePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const [tab, setTab] = useState<Tab>('config');
+  // NIM benzeri Dashboard/Instances (2026-09-21) varsayilan acilis: once genel durum.
+  const [tab, setTab] = useState<Tab>('dashboard');
+  const [focusHost, setFocusHost] = useState<string | null>(null);
+  const [hosts, setHosts] = useState<NcHost[]>([]);
+  const [hostsLoading, setHostsLoading] = useState(false);
+  const { addJob } = useJobTracker();
+  const loadHosts = useCallback(async () => {
+    setHostsLoading(true);
+    try { const r = await nginxConsoleApi.hosts(); if (r.ok) setHosts(r.hosts); } catch { /* ekranda bos kalir */ } finally { setHostsLoading(false); }
+  }, []);
+  useEffect(() => { if (tab === 'dashboard' || tab === 'instances') loadHosts(); }, [tab, loadHosts]);
+  const refreshHosts = async (list: string[]) => {
+    if (!list.length) return;
+    try {
+      const r = await nginxConsoleApi.refresh(list, false);
+      if (!r.ok) { toast.error(r.message || 'Başlatılamadı.'); return; }
+      toast.success(`Dokum başlatıldı (job ${r.jobId}).`);
+      if (r.jobId != null) {
+        let done = false;
+        addJob({ title: `Nginx dokum · ${list.length} sunucu #${r.jobId}`, fetchStatus: async () => {
+          const s = await nginxConsoleApi.jobStatus(r.awxServerId, r.jobId as number);
+          if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
+          if (TERMINAL.has(s.status) && !done) { done = true; loadHosts(); }
+          return { status: s.status, output: s.output || '', result: s.result };
+        } });
+      }
+    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
+  };
+  const go = (t: Tab, host?: string) => { if (host) setFocusHost(host.toUpperCase()); setTab(t); };
 
   return (
     <div className="space-y-4">
@@ -89,20 +118,24 @@ export default function NginxConsolePage() {
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
-          {([{ id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }] as const).map((t) => (
+          {([{ id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon }, { id: 'instances', label: 'Instances', icon: ServerStackIcon }, { id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }] as const).map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
               <t.icon className="w-4 h-4" /> {t.label}
             </button>
           ))}
         </div>
       </div>
-      {tab === 'config' ? <ConfigTab isAdmin={isAdmin} /> : tab === 'changes' ? <ChangesTab /> : <CertsTab />}
+      {tab === 'dashboard' && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
+      {tab === 'instances' && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={refreshHosts} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
+      {tab === 'config' && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}
+      {tab === 'changes' && <ChangesTab />}
+      {tab === 'certs' && <CertsTab />}
     </div>
   );
 }
 
 // ── Konfigurasyon ─────────────────────────────────────────────────────────────────────
-function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
+function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialHost?: string | null }) {
   const { addJob } = useJobTracker();
   const [hosts, setHosts] = useState<NcHost[]>([]);
   const [hostsErr, setHostsErr] = useState('');
@@ -140,6 +173,8 @@ function ConfigTab({ isAdmin }: { isAdmin: boolean }) {
     try { setTree(await nginxConsoleApi.tree(h)); } finally { setTreeLoading(false); }
   }, []);
   useEffect(() => { if (cur) { setFile(null); setDraft(''); setMode('update'); loadTree(cur); } }, [cur, loadTree]);
+  // Dashboard/Instances'tan gelen sunucu (2026-09-21)
+  useEffect(() => { if (initialHost) setCur(initialHost); }, [initialHost]);
 
   const openFile = async (p: string) => {
     if (!cur) return;
