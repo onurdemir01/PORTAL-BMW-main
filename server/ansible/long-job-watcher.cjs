@@ -118,7 +118,13 @@ async function sendTeamsNotification(job, elapsedMinutes) {
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
+    // SINIRLI OKUMA: `.text()` govdenin TAMAMINI bellege alir; ardindan gelen
+    // `slice(0, 200)` HICBIR SEY KURTARMAZ — veri o noktada zaten bellektedir
+    // (bkz. server/util/bounded-read.cjs, 2 numarali ders). Araya giren bir
+    // kurumsal vekil sunucu bu uca MB'larca HTML hata sayfasi donebilir ve bu
+    // yol her basarisiz webhook'ta calisir.
+    const { readBodyPreview } = require('../util/bounded-read.cjs');
+    const text = await readBodyPreview(res.body, { maxBytes: 1024 });
     throw new Error(`Teams webhook HTTP ${res.status}: ${text.slice(0, 200)}`);
   }
 }

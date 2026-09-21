@@ -132,4 +132,51 @@ function parseJsonLimited(text, { maxBytes, label } = {}) {
   return JSON.parse(text);
 }
 
-module.exports = { readResponseLimited, readBodyLimited, parseJsonLimited, tooLargeError };
+/**
+ * Hata mesajina koymak icin gövdenin YALNIZCA BASINI okur.
+ *
+ * NEDEN AYRI BIR YARDIMCI: hata yollarinda tekrarlanan desen suydu —
+ *
+ *     const text = await res.text();                 // ← TAMAMI bellege alinir
+ *     throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+ *
+ * `slice(0, 200)` HICBIR SEY KURTARMAZ: o noktada gövdenin tamami zaten
+ * bellektedir. Bu dosyanin basindaki 2 numarali ders tam olarak budur, ve
+ * portalda uc ayri yerde (Teams webhook hata yollari) aynen tekrarlaniyordu.
+ * Araya giren bir kurumsal vekil sunucu bu uclara MB'larca HTML hata sayfasi
+ * dondurebiliyor.
+ *
+ * `readBodyLimited`den FARKI: bu fonksiyon HATA FIRLATMAZ. Cagiran taraf zaten
+ * bir hatayi bildirmek uzeredir; tavan asildi diye BASKA bir hata firlatmak
+ * gercek HTTP durumunu maskelerdi. Tavan asilirsa okuma kesilir ve eldeki
+ * bas kismi dondurulur.
+ *
+ * @param {AsyncIterable<Buffer>|null|undefined} body
+ * @param {{ maxBytes?: number }} [opts]
+ * @returns {Promise<string>} en fazla `maxBytes` baytlik metin (hic okunamazsa '')
+ */
+async function readBodyPreview(body, { maxBytes = 4096 } = {}) {
+  if (!body) return '';
+  const parcalar = [];
+  let bayt = 0;
+  try {
+    for await (const parca of body) {
+      parcalar.push(parca);
+      bayt += parca.length;
+      if (bayt >= maxBytes) break;
+    }
+  } catch {
+    /* okuma yarida kesildi — eldeki kadari yine de teshise yarar */
+  }
+  try {
+    if (typeof body.destroy === 'function') body.destroy();
+    else if (typeof body.cancel === 'function') body.cancel();
+  } catch {
+    /* kapatma hatasi yutulur */
+  }
+  return Buffer.concat(parcalar.map((p) => (Buffer.isBuffer(p) ? p : Buffer.from(p))))
+    .toString('utf8')
+    .slice(0, maxBytes);
+}
+
+module.exports = { readResponseLimited, readBodyLimited, readBodyPreview, parseJsonLimited, tooLargeError };
