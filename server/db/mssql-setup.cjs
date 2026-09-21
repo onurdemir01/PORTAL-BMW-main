@@ -1384,6 +1384,7 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'Envanter', roles: 'Admin,User' },
   { page_name: 'Denetim', roles: 'Admin,User' },
   { page_name: 'NginxConsole', roles: 'Admin' },
+  { page_name: 'ServerHub', roles: 'Admin' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
   { page_name: 'FileX', roles: 'Admin,User' },
@@ -1431,6 +1432,8 @@ const ELEMENT_SEED = [
   { element_key: 'navgroup:envanter', element_type: 'nav_group', label: 'Envanter', sort_order: 2 },
   // Nginx Hub kendi basina bir sekme (kullanici, 2026-09-19): Envanter grubundan AYRILDI.
   { element_key: 'navgroup:nginxhub', element_type: 'nav_group', label: 'Nginx Hub', sort_order: 3 },
+  // Server Hub (2026-09-21): reboot hazirligi + atil kaynak raporu, kendi grubu (Nginx Hub gibi)
+  { element_key: 'navgroup:serverhub', element_type: 'nav_group', label: 'Server Hub', sort_order: 3 },
   {
     element_key: 'navgroup:performance',
     element_type: 'nav_group',
@@ -1490,6 +1493,17 @@ const ELEMENT_SEED = [
     parent_key: 'navgroup:nginxhub',
     label: 'Nginx Hub',
     route: '/nginx-console',
+    sort_order: 1,
+    roles: ['Admin'],
+  },
+  {
+    // Server Hub (2026-09-21): gunluk tarama raporu (init uyumu, JBoss auto-start/kapali/
+    // restart-required, RHA/IHS/Nginx sozdizimi + yuk, bosta IP) + "simdi tara" + "duzelt". YALNIZ Admin.
+    element_key: 'ServerHub',
+    element_type: 'page',
+    parent_key: 'navgroup:serverhub',
+    label: 'Server Hub',
+    route: '/server-hub',
     sort_order: 1,
     roles: ['Admin'],
   },
@@ -2207,6 +2221,27 @@ const PLAYBOOK_REGISTRY_SEED = [
       'bmw_portal/nginx_console/nginx_console_fetch.yml — target_hosts listesindeki sunucularda conf.d/conf agaci, dosya icerikleri ve sertifika bilgileri (www ile) dokulur, GBLABT02 uzerinden /sw/BMW_PORTAL/nginx_console/raw/ altina yazilir. Tum filo 30-40 dk: gece zamanlayin, ekrandan yalniz secili sunucular yenilenir.',
     playbook_path: null,
     env_var_name: 'NGINX_CONSOLE_FETCH_TEMPLATE_ID',
+  },
+  {
+    // Server Hub (2026-09-21): gunluk tarama; target_hosts ile tek sunucu (reboot oncesi)
+    key_name: 'server_hub_scan',
+    display_name: 'Server Hub — Tarama',
+    category: 'system',
+    handler: 'server_hub_scan',
+    description:
+      'bmw_automation_folder/server_hub/server_hub_scan.yml — init script referans uyumu, JBoss7/8 JVM auto-start/kapali/restart-required, RHA/IHS/Nginx sozdizimi + vhost yuku (hc haric), bosta IP -> dbo.Server_Hub_*. Gunluk zamanlayin; ekrandan target_hosts ile tek sunucu yenilenir. Survey: tbmwans_pwd credential.',
+    playbook_path: null,
+    env_var_name: 'SERVER_HUB_SCAN_TEMPLATE_ID',
+  },
+  {
+    key_name: 'server_hub_fix',
+    display_name: 'Server Hub — Duzelt',
+    category: 'system',
+    handler: 'server_hub_fix',
+    description:
+      'bmw_automation_folder/server_hub/server_hub_fix.yml — tek sunucu, tek eylem (jboss_autostart_on/off, jboss_retire, apache_comment_line, apache_retire_vhost); plan_only=true once plan, onayla uygular; yedek + dogrulama + geri alma. Yalniz Admin tetikler.',
+    playbook_path: null,
+    env_var_name: 'SERVER_HUB_FIX_TEMPLATE_ID',
   },
   {
     key_name: 'nginx_console_push',

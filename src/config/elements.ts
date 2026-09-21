@@ -30,6 +30,7 @@ export const PAGES: PageElement[] = [
   { id: 'Envanter', label: 'Envanter', route: '/envanter' },
   { id: 'Denetim', label: 'Denetim', route: '/denetim' },
   { id: 'NginxConsole', label: 'Nginx Hub', route: '/nginx-console' },
+  { id: 'ServerHub', label: 'Server Hub', route: '/server-hub' },
   { id: 'LogX', label: 'LogX', route: '/logx' },
   { id: 'OpsX', label: 'OpsX', route: '/opsx' },
   { id: 'FileX', label: 'FileX', route: '/filex' },
@@ -73,6 +74,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
   { id: 'envanter', label: 'Envanter', itemIds: ['Envanter', 'Denetim'] },
   // Nginx Hub tek basina bir sekme (2026-09-19)
   { id: 'nginxhub', label: 'Nginx Hub', itemIds: ['NginxConsole'] },
+  // Server Hub (2026-09-21): reboot hazirligi / atil kaynak raporu, kendi girisi
+  { id: 'serverhub', label: 'Server Hub', itemIds: ['ServerHub'] },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
   { id: 'operasyon', label: 'Nöbetçiler', itemIds: ['Nöbet'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.

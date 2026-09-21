@@ -679,6 +679,17 @@ thead th {
 @media (prefers-reduced-motion: reduce) {
   .nginx-hub-link::before, .nginx-hub-word { animation: none; }
 }
+/* Server Hub (2026-09-21): ayni lazer cerceve, accent (mavi) tonunda; "Hub" accent ile parlar. */
+.server-hub-link::before {
+  background: conic-gradient(from var(--nh-angle), transparent 0 62%, var(--accent-bg) 74%, var(--accent) 86%, var(--accent-light) 93%, transparent 100%);
+}
+.server-hub-link::after { border-color: var(--accent-light); }
+.server-hub-link.is-current { background: var(--accent-bg); }
+.server-hub-link .nginx-hub-word { color: var(--accent); text-shadow: 0 0 6px var(--accent-light); animation-name: sh-glow; }
+@keyframes sh-glow {
+  from { text-shadow: 0 0 2px var(--accent-light); color: var(--accent); }
+  to { text-shadow: 0 0 10px var(--accent-light), 0 0 18px var(--accent-light); color: var(--accent); }
+}
 
 .pf-nav-toggle {
   display: flex;
