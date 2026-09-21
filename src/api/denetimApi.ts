@@ -756,6 +756,42 @@ export interface WebAppRow {
   vhostCountOnHost: number;
 }
 
+/** Route Trafigi (2026-09-21): dbo.BMW_Openshift_Route_Traffic (route_traffic job'i, Thanos). */
+export type RouteTrafficStatus = 'active' | 'silent' | 'dead' | 'nodata';
+export interface RouteTrafficRow {
+  namespace: string;
+  route: string;
+  address: string;
+  app: string;
+  spa: boolean;
+  env: string | null;
+  clusters: string[];
+  inInventory: boolean;
+  req7: number;
+  req30: number;
+  req90: number;
+  /** son 90 gunun gunluk ortalamasi (pencereye gore) */
+  perDay: number;
+  err4xxPct: number;
+  err5xxPct: number;
+  /** istek gorulen son gun (YYYY-MM-DD) */
+  lastSeen: string | null;
+  lastScan: string | null;
+  status: RouteTrafficStatus;
+}
+export interface RouteTrafficResult {
+  ok: boolean;
+  message?: string;
+  tableMissing: boolean;
+  rows: RouteTrafficRow[];
+  summary: { routes: number; active: number; silent: number; dead: number; nodata: number; spa: number; spaDead: number };
+  latestScan: string | null;
+  earliestScan: string | null;
+  daysCovered: number;
+  silentDays: number;
+  deadDays: number;
+}
+
 export interface WebAppResult {
   ok: boolean;
   source: string;
@@ -1098,6 +1134,8 @@ export const denetimApi = {
     return fetch(`${BASE}/nginx-locations?${qs.toString()}`).then(safeJson);
   },
 
+  routeTraffic: (fresh = false): Promise<RouteTrafficResult> =>
+    fetch(`${BASE}/route-traffic${fresh ? '?fresh=1' : ''}`).then(safeJson),
   webApp: (source: string, q?: string, onlyUnmatched?: boolean): Promise<WebAppResult> =>
     fetch(`${BASE}/web-app?source=${encodeURIComponent(source)}`
       + (q ? `&q=${encodeURIComponent(q)}` : "")

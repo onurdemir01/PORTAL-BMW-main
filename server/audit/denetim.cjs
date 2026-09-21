@@ -76,6 +76,7 @@ function initDenetim(app) {
       [/^\/ocp-coverage(\/|$)/, 'ocp'],
       [/^\/init-scripts(\/|$)/, 'init'],
       [/^\/deploy-scripts(\/|$)/, 'deploy'],
+      [/^\/route-traffic(\/|$)/, 'routetraffic'],
       [/^\/envanter(\/|$)/, 'envanter'],
       [/^\/app-envs(\/|$)/, 'appenvs'],
       [/^\/web-app(\/|$)/, 'webapp'],
@@ -1670,6 +1671,38 @@ function initDenetim(app) {
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Deployment script denetim verisi alinamadi.' });
+    }
+  });
+
+  // ── 3c) ROUTE TRAFIGI (2026-09-21) ───────────────────────────────────────────────────
+  // dbo.BMW_Openshift_Route_Traffic - bmw_openshift_jobs/route_traffic/openshift_route_traffic.yml
+  // doldurur (Thanos, route basina gunluk istek). Envanterle birlestirme + siniflama
+  // route-traffic.cjs'te (birim testli). Son DEAD_DAYS gun okunur; tablo yoksa bos yanit.
+  router.get('/route-traffic', async (req, res) => {
+    try {
+      const { query } = require('../inventory/mssql.cjs');
+      const { buildRouteTraffic, DEAD_DAYS } = require('./route-traffic.cjs');
+      const ex = await query(`SELECT OBJECT_ID('dbo.BMW_Openshift_Route_Traffic') AS oid`);
+      if (!ex.recordset?.[0]?.oid) {
+        return res.json({
+          ok: true, tableMissing: true,
+          message: 'dbo.BMW_Openshift_Route_Traffic tablosu henüz yok — route_traffic job\'ı bir kez koşmalı.',
+          rows: [], summary: { routes: 0, active: 0, silent: 0, dead: 0, nodata: 0, spa: 0, spaDead: 0 },
+          latestScan: null, earliestScan: null, daysCovered: 0, silentDays: 30, deadDays: DEAD_DAYS,
+        });
+      }
+      const [traffic, inventory] = await Promise.all([
+        query(
+          `SELECT scan_date, window_hours, cluster, namespace, route, req_total, r2xx, r4xx, r5xx
+             FROM dbo.BMW_Openshift_Route_Traffic
+            WHERE scan_date >= DATEADD(day, -${DEAD_DAYS}, CAST(GETDATE() AS DATE))`,
+        ),
+        query(`SELECT cluster_name, namespace_name, route_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`)
+          .catch(() => ({ recordset: [] })),
+      ]);
+      res.json({ ok: true, tableMissing: false, ...buildRouteTraffic(traffic.recordset || [], inventory.recordset || []) });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Route trafiği verisi alınamadı.' });
     }
   });
 

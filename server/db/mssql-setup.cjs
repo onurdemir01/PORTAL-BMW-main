@@ -1853,6 +1853,15 @@ const ELEMENT_SEED = [
     default_visible: 0,
   },
   {
+    // Route Trafigi (2026-09-21): OpenShift route basina istek - yasiyor mu / atil mi / emekli mi
+    element_key: 'tab:denetim:routetraffic',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Route Trafiği',
+    sort_order: 7,
+    default_visible: 0,
+  },
+  {
     element_key: 'tab:denetim:envanter',
     element_type: 'tab',
     parent_key: 'Denetim',

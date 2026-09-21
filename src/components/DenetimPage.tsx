@@ -26,6 +26,7 @@ import {
   RectangleGroupIcon,
   LinkIcon,
   ClockIcon,
+  SignalIcon,
 } from '@heroicons/react/24/outline';
 import {
   denetimApi,
@@ -50,6 +51,7 @@ import { DirCell, HacLegend } from '@/components/denetim/HacCell';
 import NginxSpaSummary from '@/components/denetim/NginxSpaSummary';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
+import RouteTraffic from '@/components/denetim/RouteTraffic';
 import { toast } from '@/hooks/useToast';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import CodeChip from '@/components/common/CodeChip';
@@ -90,6 +92,11 @@ const HELP: HelpSection[] = [
     icon: DocumentDuplicateIcon,
     title: 'Deployment Scripts Audit',
     body: "check_deployment_scripts job'ının topladığı sha512 değerlerini karşılaştırır: /vhosting/HYSUXSCRIPTS ve /vhosting8/HYSUXSCRIPTS altındaki deployment script'leri (was_startstop.sh, was_fulldeploy_rsync.sh, was_fulldeploy_unzip.sh, was_setenvironment.sh, was_checkapp.sh …) sunucular arasında kaç ayrı sürümle duruyor, hangi sunucular çoğunluktan ayrılmış, hangilerinde dosya hiç yok. Init Script ile aynı mantık; script listesi sabit değil, sunucuda ne varsa o gelir (vhosting8'de ek script'ler var).",
+  },
+  {
+    icon: SignalIcon,
+    title: 'Route Trafiği',
+    body: "route_traffic job'ının her cluster'ın Thanos'undan çektiği route başına HTTP istek sayıları (OCP router/HAProxy sayacı, günde bir). Soru: bu uygulama yaşıyor mu? 'aktif' = son 30 günde istek var; 'atıl aday' = 30 gündür istek yok ama 90 gün içinde vardı; 'emekli aday' = 90 gündür (ya da verinin tamamında) hiç istek yok; 'veri yok' = route envanterde var ama router sayacında hiç görünmedi. Job yeni koşmaya başladıysa üstteki not kaç günün kapsandığını yazar — 'emekli' hükmü 90 gün dolunca kesinleşir. 4xx/5xx yüzdeleri son 90 günün toplamına göre; %100 4xx = trafik geliyor ama uygulama cevap vermiyor. Dikkat: GBNGX'e taşınan internet SPA'larında paket doğrudan nginx'ten sunulur, OCP route sayacı düşer — bu atıl demek değildir.",
   },
   {
     icon: ServerStackIcon,
@@ -172,12 +179,13 @@ type DenetimTab =
   | 'ocp'
   | 'init'
   | 'deploy'
+  | 'routetraffic'
   | 'envanter'
   | 'degisim'
   | 'appenvs'
   | 'webapp';
 const DENETIM_TABS: DenetimTab[] = [
-  'nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'deploy',
+  'nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'deploy', 'routetraffic',
   'envanter', 'degisim', 'appenvs', 'webapp',
 ];
 
@@ -271,6 +279,7 @@ export default function DenetimPage() {
               { id: 'ocp', label: 'OpenShift', icon: Squares2X2Icon },
               { id: 'init', label: 'Init Script', icon: DocumentDuplicateIcon },
               { id: 'deploy', label: 'Deployment Scripts', icon: DocumentDuplicateIcon },
+              { id: 'routetraffic', label: 'Route Trafiği', icon: SignalIcon },
               { id: 'envanter', label: 'Envanter', icon: ChartBarSquareIcon },
               { id: 'degisim', label: 'Envanter Değişim', icon: ClockIcon },
               { id: 'appenvs', label: 'JBoss/WAS', icon: RectangleGroupIcon },
@@ -307,6 +316,7 @@ export default function DenetimPage() {
       {activeTab === 'ocp' && <OcpCoverage />}
       {activeTab === 'init' && <ScriptsAudit kind="init" />}
       {activeTab === 'deploy' && <ScriptsAudit kind="deploy" />}
+      {activeTab === 'routetraffic' && <RouteTraffic />}
       {activeTab === 'envanter' && <EnvanterMetrics />}
       {activeTab === 'degisim' && <EnvanterDegisim />}
       {activeTab === 'appenvs' && <AppEnvs />}
