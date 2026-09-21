@@ -6,6 +6,42 @@ Kaynak: 13 günlük üretim logu (2026-09-06 → 2026-09-19), `prod.out` (70k sa
 > **Not:** Bu depo public. Log alıntıları sunucu adı, iç URL ve kullanıcı adı
 > içermeyecek şekilde sadeleştirildi; sayılar ve hata sınıfları korundu.
 
+---
+
+## 2026-09-21 güncellemesi — iki ölçümüm yanlış çıktı
+
+20 Eylül tarihli **daha geniş** bir log turunda bu belgedeki iki iddia
+**ölçümle çürüdü**. İkisi de aşağıda düzeltildi; asıl metin, nasıl yanıldığımın
+kaydı olarak duruyor.
+
+**1. OOM sayısı üç değil YEDİ.** Dört belirtecin dördü de (`FATAL ERROR`,
+`Reached heap limit`, `Last few GCs`, `JS stacktrace`) `prod.out`'ta tam **7**.
+İlk analizim daha küçük bir log dilimindeydi. Uptime'lar **59 sn – 12 dk**:
+sızıntı **değil**, tek bir istek 2 GB yiyor.
+
+**Ve daha önemlisi:** `prod.app.log` çökmeyi **hiç görmüyor** (dört belirteç de
+sıfır) — süreç V8 ile birlikte ölüyor ve `FATAL ERROR` yalnızca stdout'a
+düşüyor. **Yalnızca app.log'a bakan "çökme yok" der ve yanılır.**
+
+**2. `clientError ECONNRESET` bir üretim arızası DEĞİL.** 1.326 olayın 683'ü
+09-12, 677'si 09-19 — **ikisi de Cumartesi, saat 05:00**. `HPE_INVALID_METHOD`
+ve `HPE_INVALID_URL` aynı günlerde zirve yapıyor. Bu **haftalık zafiyet
+taraması**; gerçek istemci reset'i günde ~5. Aşağıda "gürültü" diye
+sınıflamıştım — **alarm dışı bırakılmalı**, düzeltilecek bir şey yok.
+
+### Bu belgedeki PBI'ların durumu
+
+| PBI | Durum |
+|---|---|
+| P0-1 OOM | Dört ayrı yol kapatıldı (PR #106/#108/#109/#112) + ortak sınırlı okuma yardımcısı (#118). **Üretimde doğrulanmadı** — düzeltmeler log penceresinden sonra; bellek nabzı (#112) bir sonraki turda bunu ölçülebilir kılacak |
+| P0-2 Denetim kaydı | Kapatıldı (#107), spool'un kendisi de sınırlandı (#109) |
+| P1-1 ScaleX keşfi | Anlık uygulama listesi (#110) + Cluster Yetenek Envanteri (#116) |
+| P1-2 Önizle/uygula | **Açık** |
+| P1-3 401 fırtınası | Kök neden bulundu ve kapatıldı (#117). Kalan yarısı `SESSION_STORE` — sunucu tarafı ayar |
+| P2-1 Log gürültüsü | MCP geri çekilme + TLS önbelleği (#121); ECONNRESET **yeniden sınıflandı** |
+| P2-2 Yavaş uçlar | Kısmen (#112, #118) |
+| P3-1 MSSQL/AWX 403 | AWX 403 kapatıldı (#117); MSSQL havuzu **açık** |
+
 | # | Başlık | Sınıf | Öncelik | Büyüklük |
 |---|---|---|---|---|
 | [P0-1](#p0-1) | AWX iş çıktısı OOM ile portalı çökertiyor | hata | P0 | M |
@@ -219,7 +255,7 @@ Toplam **2.430 ERROR**:
 
 | kaynak | sayı | gerçek hata mı |
 |---|---|---|
-| `clientError ... ECONNRESET` | 1.322 | hayır — Express'e hiç ulaşmayan soket kopması |
+| `clientError ... ECONNRESET` | 1.322 | **hayır — ve gürültü de değil.** 2026-09-21 ölçümü: olayların %99'u iki Cumartesi 05:00'te yoğunlaşıyor, `HPE_INVALID_*` protokol hatalarıyla birlikte. Bu **haftalık zafiyet taraması**; alarm dışı bırakılmalı |
 | MCP entegrasyonu bağlantı hatası | 838 | evet ama **tek** hata, 838 kez yazılıyor |
 | `clientError ... HPE_INVALID_*` | 208 | hayır — bozuk HTTP (tarama/LB) |
 | denetim yazımı (P0-2) | 25 | **evet** |
