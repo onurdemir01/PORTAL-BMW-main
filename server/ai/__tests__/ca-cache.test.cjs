@@ -76,6 +76,25 @@ test('CA2 SERTIFIKA DONUSU (dosya degisimi) onbellegi GECERSIZ kilar', () => {
     const b = ca.buildCombinedCa();
     assert.equal(a, b, 'ayni dosyada onbellek isabet etmiyor');
 
+    // ONBELLEGE ALINAN DEPO **TAM** OLMALI.
+    //
+    // Mutasyon turunda "kurumsal sertifikalar eklenmeden onbellege al"
+    // denendi ve ETKISIZ cikti — fonksiyonun SONUNDAKI atama kismi girdiyi
+    // eziyor. Ama ayni mutasyonun ERKEN RETURN'lu hali GERCEKTEN zararli ve
+    // CA1/CA2 onu yakaliyor: kurumsal CA'si EKSIK bir guven deposu, ic hostlara
+    // TLS dogrulamasini SESSIZCE bozar (her cagri "basarili" doner).
+    //
+    // Asagidaki iki assert TAMLIK SOZLESMESINI kilitler: onbellekten donen
+    // nesne, taze kurulanla ayni alanlari tasimali. `corporateFileCount`
+    // ayristirilan PEM blogu sayisidir.
+    assert.equal(a.corporateFileCount, 1, 'kurumsal PEM blogu sayilmamis');
+    assert.equal(
+      b.corporateFileCount,
+      1,
+      'ONBELLEKTEKI depo EKSIK — kurumsal sertifikalar eklenmeden onbellege alinmis',
+    );
+    assert.equal(b.rootCount, a.rootCount);
+
     // DOSYA DEGISTI (rotation). mtime cozunurlugune takilmamak icin boyutu da
     // degistiriyoruz — anahtar ikisini birden kapsiyor.
     fs.writeFileSync(dosya, sahtePem() + sahtePem());
