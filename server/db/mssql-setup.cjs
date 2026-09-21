@@ -2822,6 +2822,14 @@ async function setupTables() {
     }
   }
 
+  // Denetim tablolarina scan_date indeksi (2026-09-21, Nginx Audit 30 sn zaman asimi) —
+  // arka planda, boot'u bloklamaz; olan indekse dokunmaz.
+  setTimeout(() => {
+    require('./external-indexes.cjs').ensureExternalIndexes(pool)
+      .then((done) => { if (done.length) console.log(`[DB] ${done.length} indeks olusturuldu: ${done.join(', ')}`); })
+      .catch((err) => console.warn('[DB] Indeks kontrolu basarisiz:', err.message));
+  }, 15000);
+
   await seedPlaybookRegistry(pool);
   await seedEnvSuffixMap(pool);
   await seedPageVisibility(pool);

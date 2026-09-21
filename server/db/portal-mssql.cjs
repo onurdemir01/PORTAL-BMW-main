@@ -73,4 +73,4 @@ function poolStats() {
   }
 }
 
-module.exports = { getPool, sql, poolStats };
+module.exports = { getConfig, getPool, sql, poolStats };
