@@ -61,7 +61,7 @@ const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   },
 ];
 
-type TopTab = 'ansible' | 'ip' | 'openshift';
+type TopTab = 'ansible' | 'ip' | 'openshift' | 'svc:new' | `svc:${string}`;
 
 // ── Survey Form Modal ─────────────────────────────────────────────────────────
 
@@ -1151,7 +1151,17 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
 
 // ── Ansible Tab ───────────────────────────────────────────────────────────────
 
-function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
+// 2026-09-21: servisler sol menude tek tek listelenir (kullanici istegi). `selected`:
+//   null      -> genel bakis (kart izgarasi, eski gorunum)
+//   'new'     -> yeni servis formu (admin)
+//   <item id> -> o servisin ayrinti karti (Baslat, Gecmis, Alanlari Yonet, Sil)
+// Liste degisince `onItems` ile ust bilesene bildirilir (menu oradan kurulur).
+function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
+  isAdmin: boolean;
+  selected?: string | null;
+  onItems?: (items: AnsibleSsItem[]) => void;
+  onSelect?: (id: string | null) => void;
+}) {
   const [items, setItems] = useState<AnsibleSsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [launchItem, setLaunchItem] = useState<AnsibleSsItem | null>(null);
@@ -1178,10 +1188,18 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => {
     reload();
   }, [reload]);
+  useEffect(() => {
+    onItems?.(isAdmin ? items : items.filter((i) => i.enabled));
+  }, [items, isAdmin, onItems]);
+  // Menuden "Servis Ekle" secilince form acik gelsin
+  useEffect(() => {
+    if (selected === 'new') { setAddForm(true); setSaveError(''); }
+  }, [selected]);
 
   async function deleteItem(id: string) {
     if (!confirm('Bu servisi kaldır?')) return;
     await ansibleApi.deleteSsItem(id);
+    onSelect?.(null);
     reload();
   }
 
@@ -1201,6 +1219,7 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
       setDraft({ title: '', description: '', awxServerId: 1, awxTemplateId: 0 });
       setAddForm(false);
       reload();
+      if (r.item) onSelect?.(r.item.id);
       // Template otomatik çekilip kaydedildiği için, kullanıcı launch ekranında
       // göreceği TÜM alanlarla eksiksiz karşılaşsın diye alan incelemesi/gizleme
       // kararı SONRADAN erişilen ayrı bir aksiyon değil, kayıt anının doğal bir
@@ -1224,11 +1243,56 @@ function AnsibleSection({ isAdmin }: { isAdmin: boolean }) {
   // gorunurluk anahtari) — admin her zaman TUM kayitlari gorur ve calistirabilir,
   // aksi halde bir servisi kapatan admin onu bir daha o ekrandan yonetemezdi.
   const visibleItems = isAdmin ? items : items.filter((i) => i.enabled);
+  const selectedItem = selected && selected !== 'new' ? visibleItems.find((i) => i.id === selected) || null : null;
+
+  // Tek servis: ayrinti karti (menuden secildi)
+  if (selectedItem) {
+    const item = selectedItem;
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl border p-5 space-y-4" style={{ background: 'var(--bg-surface)', borderColor: item.enabled ? 'var(--border-subtle)' : 'var(--status-warning)', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-bold text-lg">{item.title}</h3>
+                {isAdmin && !item.enabled && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">kullanıcılara kapalı</span>
+                )}
+              </div>
+              {item.description && <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{item.description}</p>}
+              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>AWX template #{item.awxTemplateId} · sunucu {item.awxServerId}</p>
+            </div>
+            <button onClick={() => setLaunchItem(item)} className="btn-primary px-5 py-2 text-sm flex items-center gap-1.5 rounded-xl">
+              <PlayIcon className="w-4 h-4" /> Başlat
+            </button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap pt-3 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+            <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+              <ClockIcon className="w-4 h-4" /> Geçmiş
+            </button>
+            {isAdmin && (
+              <>
+                <button onClick={() => setFieldsItem(item)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+                  <AdjustmentsHorizontalIcon className="w-4 h-4" /> Alanları Yönet
+                </button>
+                <button onClick={() => deleteItem(item.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl border" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}>
+                  <TrashIcon className="w-4 h-4" /> Sil
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        {launchItem && <SurveyModal item={launchItem} onClose={() => setLaunchItem(null)} />}
+        {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
+        {fieldsItem && <FieldOverridesModal item={fieldsItem} onClose={() => setFieldsItem(null)} />}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{isAdmin ? 'Servis kartına tıklayıp başlatın; yeni servisi "Servis Ekle" ile tanımlayın.' : 'Servis kartındaki "Başlat" ile AWX işi açılır.'}</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{isAdmin ? 'Soldaki menüden bir servis seçin ya da "Servis Ekle" ile yeni servis tanımlayın.' : 'Soldaki menüden bir servis seçip "Başlat" ile AWX işini açın.'}</p>
         <div className="flex gap-2">
           <button
             onClick={() => setShowHistory(true)}
@@ -1420,6 +1484,9 @@ export default function SelfServicePage() {
   const [groups, setGroups] = useState<SelfServiceGroup[]>([]);
   const [activeTop, setActiveTop] = useState<TopTab>('ansible');
   const [showHelp, setShowHelp] = useState(false);
+  // Sol menudeki servis listesi (AnsibleSection yukler, buraya bildirir)
+  const [ssItems, setSsItems] = useState<AnsibleSsItem[]>([]);
+  const onSsItems = useCallback((list: AnsibleSsItem[]) => setSsItems(list), []);
 
   useEffect(() => {
     let alive = true;
@@ -1428,6 +1495,8 @@ export default function SelfServicePage() {
         setLoading(true);
         const r = await selfServiceApi.get();
         if (alive) setGroups(r.groups || []);
+        // Menu icin servis listesi (AnsibleSection mount degilken de dolu olsun)
+        ansibleApi.ssItems().then((x) => { if (alive) setSsItems(isAdmin ? x.items || [] : (x.items || []).filter((i) => i.enabled)); }).catch(() => {});
       } catch (e: unknown) {
         if (alive) setErr(e instanceof Error ? e.message : String(e));
       } finally {
@@ -1444,16 +1513,24 @@ export default function SelfServicePage() {
   // -> groups); IP / OpenShift kontrolleri eskiden "Check" sekmesinin ic sekmesiydi, simdi
   // menude kendi basina iki giris.
   const ansibleGroup = groups.find((g) => g.groupKey === 'ansible');
-  const ENTRIES: Record<TopTab, { label: string; icon: React.ElementType; hint: string }> = {
-    ansible: { label: ansibleGroup?.label || 'Ansible', icon: CommandLineIcon, hint: 'Tanımlı Ansible servislerini (AWX job template) survey ile başlatın; geçmiş ve canlı log iş penceresinde.' },
+  const ENTRIES: Record<string, { label: string; icon: React.ElementType; hint: string; muted?: boolean }> = {
+    ansible: { label: `${ansibleGroup?.label || 'Ansible'} — tümü`, icon: CommandLineIcon, hint: 'Tanımlı Ansible servislerine genel bakış; her servis soldaki menüde ayrı bir giriştir.' },
     ip: { label: 'IP Sorgu', icon: GlobeAltIcon, hint: 'Bir IP ya da sunucu adının envanterde neye karşılık geldiğini bulun.' },
     openshift: { label: 'OpenShift Sorgu', icon: CubeIcon, hint: 'Namespace / uygulama envanterinde arama.' },
+    'svc:new': { label: 'Servis Ekle', icon: PlusIcon, hint: 'AWX job template\'ini Portal\'a servis olarak tanımlayın; alanlar kayıttan sonra hemen düzenlenir.' },
   };
+  // Her self servis ogesi menude ayri giris (2026-09-21, kullanici istegi)
+  const svcIds = [...ssItems].sort((a, b) => a.order - b.order).map((i) => {
+    ENTRIES[`svc:${i.id}`] = { label: i.title, icon: PlayIcon, hint: i.description || `AWX template #${i.awxTemplateId}`, muted: !i.enabled };
+    return `svc:${i.id}` as TopTab;
+  });
   const SECTIONS: { title: string; icon: React.ElementType; ids: TopTab[] }[] = [
-    { title: 'Otomasyon', icon: CommandLineIcon, ids: ['ansible'] },
+    { title: ansibleGroup?.label || 'Ansible', icon: CommandLineIcon, ids: ['ansible', ...svcIds, ...(isAdmin ? (['svc:new'] as TopTab[]) : [])] },
     { title: 'Kontrol', icon: MagnifyingGlassIcon, ids: ['ip', 'openshift'] },
   ];
-  const current = ENTRIES[activeTop];
+  const current = ENTRIES[activeTop] || ENTRIES.ansible;
+  const isAnsibleView = activeTop === 'ansible' || activeTop.startsWith('svc:');
+  const ansibleSelected = activeTop === 'svc:new' ? 'new' : activeTop.startsWith('svc:') ? activeTop.slice(4) : null;
   const CurrentIcon = current.icon;
 
   if (loading) {
@@ -1518,7 +1595,7 @@ export default function SelfServicePage() {
                           }}
                         >
                           <Icon className="w-4 h-4 flex-shrink-0" style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }} />
-                          <span className="truncate" title={e.label}>{e.label}</span>
+                          <span className="truncate" title={e.label + (e.muted ? ' (kullanıcılara kapalı)' : '')} style={e.muted ? { opacity: 0.6 } : undefined}>{e.label}</span>
                         </button>
                       </li>
                     );
@@ -1542,7 +1619,14 @@ export default function SelfServicePage() {
           </header>
           <div className="p-5">
             <div key={activeTop} style={{ animation: 'fadeIn 0.18s ease' }}>
-              {activeTop === 'ansible' && <AnsibleSection isAdmin={isAdmin} />}
+              {isAnsibleView && (
+                <AnsibleSection
+                  isAdmin={isAdmin}
+                  selected={ansibleSelected}
+                  onItems={onSsItems}
+                  onSelect={(id) => setActiveTop(id ? (`svc:${id}` as TopTab) : 'ansible')}
+                />
+              )}
               {activeTop === 'ip' && <IpCheckSection />}
               {activeTop === 'openshift' && <OpenshiftCheckSection />}
             </div>
