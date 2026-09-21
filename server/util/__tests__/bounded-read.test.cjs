@@ -189,3 +189,19 @@ test('BR7 yardimci `end` beklemeden REDDEDIYOR (asili promise tuzagi)', () => {
   assert.ok(dataIdx > 0 && endIdx > dataIdx, 'isleyici sirasi beklenmedik');
   assert.ok(kesIdx > dataIdx && kesIdx < endIdx, 'red `data` isleyicisinde DEGIL — promise asili kalabilir');
 });
+
+test('BR8 OCP baglanti helperi akan govdeyi sinirsiz biriktirmiyor', () => {
+  const src = oku('ansible/runner.cjs');
+  const start = src.indexOf('function probeClusterApiVersion');
+  const end = src.indexOf('function initAnsibleRunner', start);
+  const helper = src.slice(start, end);
+
+  assert.ok(start >= 0 && end > start, 'OCP baglanti helper siniri bulunamadi');
+  assert.match(helper, /readResponseLimited\(httpRes,/, 'helper ortak bayt kapisini kullanmiyor');
+  assert.match(helper, /maxBytes:\s*256 \* 1024/, 'OCP probe bayt tavani yok');
+  assert.doesNotMatch(
+    helper,
+    /httpRes\.on\('data',[\s\S]{0,160}data \+= c/,
+    'OCP probe govdeyi yeniden sinirsiz biriktiriyor',
+  );
+});
