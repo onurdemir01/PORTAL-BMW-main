@@ -29,7 +29,7 @@ const SEV: Record<ShSeverity, { label: string; color: string; bg: string; icon: 
   warning: { label: 'uyarı', color: 'var(--status-warning)', bg: 'var(--status-warning-bg)', icon: ExclamationTriangleIcon },
   danger: { label: 'kritik', color: 'var(--status-danger)', bg: 'var(--status-danger-bg)', icon: ShieldExclamationIcon },
 };
-const AREA: Record<string, string> = { init: 'Init script', jboss: 'JBoss', jvm: 'JVM', web: 'Web sunucu', ip: 'IP', scan: 'Tarama' };
+const AREA: Record<string, string> = { init: 'Init script', jboss: 'JBoss', jvm: 'JVM', web: 'Web sunucu', ip: 'IP', ssh: 'SSH', scan: 'Tarama' };
 
 // ── Grafik parcalari (SVG; kutuphane yok) ──────────────────────────────────────────
 function Donut({ parts, size = 112, label, sub }: { parts: { value: number; color: string; title: string }[]; size?: number; label: React.ReactNode; sub?: string }) {
@@ -181,6 +181,11 @@ export default function ServerHubPage() {
               <Donut label={String(s.ips.unused)} sub="boşta" parts={[
                 { value: s.ips.total - s.ips.unused, color: SEV.ok.color, title: 'kullanımda' }, { value: s.ips.unused, color: SEV.warning.color, title: 'boşta' },
               ]} />
+              {s.ssh && s.ssh.hosts > 0 && (
+                <div className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }} title="sshd MaxSessions ≤ 10 olan sunucular — Ansible delegate/forks ile mux_client_request_session hatası verir">
+                  SSH: <b style={s.ssh.near ? { color: SEV.warning.color } : undefined}>{s.ssh.near}</b> sınıra yakın · <b>{s.ssh.lowMaxSessions}</b>/{s.ssh.hosts} MaxSessions ≤ 10
+                </div>
+              )}
             </Kpi>
           </div>
 
@@ -442,6 +447,11 @@ function HostModal({ host, onClose, onScan, trackJob, reload }: {
                   ))}
                 </tbody>
               </table>
+              {d.sshd && (
+                <div className="px-2.5 py-1.5 text-[11px] border-t" style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}>
+                  sshd: MaxSessions <b>{d.sshd.maxSessions ?? '?'}</b> · MaxStartups <b>{d.sshd.maxStartups || '?'}</b> · açık ssh oturumu <b>{d.sshd.activeSessions ?? '?'}</b>
+                </div>
+              )}
             </div>
           )}
         </div>

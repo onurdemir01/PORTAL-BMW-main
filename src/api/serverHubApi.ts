@@ -5,7 +5,7 @@ const BASE = '/api/server-hub';
 
 export type ShSeverity = 'ok' | 'info' | 'warning' | 'danger';
 export interface ShFix { action: string; gen?: number; jvm?: string; product?: string; file?: string; line?: number; server_name?: string }
-export interface ShFinding { severity: Exclude<ShSeverity, 'ok'>; area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'scan'; code: string; text: string; fix: ShFix | null }
+export interface ShFinding { severity: Exclude<ShSeverity, 'ok'>; area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'ssh' | 'scan'; code: string; text: string; fix: ShFix | null }
 export interface ShHostRow {
   host: string; scanDate: string | null; products: string[]; status: ShSeverity;
   counts: { danger: number; warning: number; info: number };
@@ -29,6 +29,7 @@ export interface ShHostDetail extends Omit<ShHostRow, 'jvms' | 'vhosts'> {
   web: { product: string; running: boolean; syntax: string; detail: string }[];
   vhosts: ShVhost[];
   ips: { ip: string; iface: string; usedBy: string; primary: boolean }[];
+  sshd: { maxSessions: number | null; maxStartups: string; activeSessions: number | null } | null;
 }
 export interface ShSummary {
   hosts: { total: number; ok: number; info: number; warning: number; danger: number };
@@ -36,6 +37,7 @@ export interface ShSummary {
   jvm: { total: number; running: number; stopped: number; autoOn: number; autoOff: number; autoUnknown: number; restartRequired: number; rebootRisk: number; retireCandidates: number; noLoad: number; mapped: number };
   web: Record<string, { hosts: number; syntaxOk: number; syntaxFail: number; notRunning: number; vhosts: number; idleVhosts: number }>;
   ips: { total: number; unused: number };
+  ssh: { hosts: number; lowMaxSessions: number; near: number };
   scan: { avgCpuS: number | null; maxCpuS: number | null; maxCpuHost: string | null };
 }
 export interface ShOverview { ok: boolean; message?: string; tableMissing: boolean; latestScan: string | null; summary: ShSummary | null; hosts: ShHostRow[] }

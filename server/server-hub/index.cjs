@@ -31,11 +31,12 @@ async function loadLatest() {
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
   ).then((r) => r.recordset || []);
-  const [hosts, init, jboss, jvms, web, vhosts, ips] = await Promise.all([
+  const [hosts, init, jboss, jvms, web, vhosts, ips, sshd] = await Promise.all([
     q('dbo.Server_Hub_Hosts'), q('dbo.Server_Hub_Init'), q('dbo.Server_Hub_Jboss'), q('dbo.Server_Hub_Jvms'),
     q('dbo.Server_Hub_Web'), q('dbo.Server_Hub_Vhosts'), q('dbo.Server_Hub_Ips'),
+    q('dbo.Server_Hub_Sshd').catch(() => []), // tablo eski taramada yoksa
   ]);
-  return { tableMissing: false, data: { hosts, init, jboss, jvms, web, vhosts, ips } };
+  return { tableMissing: false, data: { hosts, init, jboss, jvms, web, vhosts, ips, sshd } };
 }
 
 async function getAssessment(fresh) {
@@ -65,7 +66,7 @@ function hostDetail(h) {
     findings: h.findings,
     init: h.init, jboss: h.jboss,
     jvms: h.jvms.map((j) => ({ ...j, vhosts: j.vhosts.map((m) => ({ host: m.host, product: m.v.product, serverName: m.v.serverName, req24h: m.v.req24h, req7d: m.v.req7d, hc24h: m.v.hc24h, sampled: m.v.sampled })) })),
-    web: h.web, vhosts: h.vhosts.map((v) => ({ ...v, proxyTargets: v.proxyTargetsRaw })), ips: h.ips,
+    web: h.web, vhosts: h.vhosts.map((v) => ({ ...v, proxyTargets: v.proxyTargetsRaw })), ips: h.ips, sshd: h.sshd,
   };
 }
 

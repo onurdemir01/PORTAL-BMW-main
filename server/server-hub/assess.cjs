@@ -36,7 +36,7 @@ function assess(data) {
   const byHost = new Map();
   const H = (h) => {
     const k = shortHost(h);
-    if (!byHost.has(k)) byHost.set(k, { host: k, scanDate: null, products: [], wallS: null, cpuS: null, init: [], jboss: [], jvms: [], web: [], vhosts: [], ips: [], findings: [] });
+    if (!byHost.has(k)) byHost.set(k, { host: k, scanDate: null, products: [], wallS: null, cpuS: null, init: [], jboss: [], jvms: [], web: [], vhosts: [], ips: [], sshd: null, findings: [] });
     return byHost.get(k);
   };
   for (const r of data.hosts || []) {
@@ -62,6 +62,7 @@ function assess(data) {
     hc24h: r.hc_24h == null ? null : Number(r.hc_24h), shared: Number(r.shared) === 1, sampled: Number(r.sampled) === 1,
     confFile: r.conf_file || '', jvm: null,
   });
+  for (const r of data.sshd || []) H(r.host).sshd = { maxSessions: r.max_sessions == null ? null : Number(r.max_sessions), maxStartups: r.max_startups || '', activeSessions: r.active_sessions == null ? null : Number(r.active_sessions) };
   for (const r of data.ips || []) H(r.host).ips.push({ ip: r.ip, iface: r.iface || '', usedBy: L(r.used_by) || 'none', primary: Number(r.is_primary) === 1 });
 
   // ── JVM <-> vhost eslemesi ──────────────────────────────────────────────────────
@@ -139,6 +140,12 @@ function assess(data) {
     }
     // ip
     for (const ip of h.ips) if (ip.usedBy === 'none' && !ip.primary) add('warning', 'ip', 'IP_UNUSED', `${ip.ip} (${ip.iface}) hiçbir vhost/soket kullanmıyor — boşta IP`);
+    // sshd: MaxSessions dusuk (varsayilan 10) -> Ansible delegate/forks ile "mux_client_request_session"
+    if (h.sshd && h.sshd.maxSessions != null) {
+      const near = h.sshd.activeSessions != null && h.sshd.activeSessions >= Math.max(1, Math.floor(h.sshd.maxSessions * 0.8));
+      if (near) add('warning', 'ssh', 'SSH_SESSIONS_NEAR', `sshd MaxSessions ${h.sshd.maxSessions}, açık oturum ${h.sshd.activeSessions} — sınıra yakın (mux_client_request_session riski)`);
+      else if (h.sshd.maxSessions <= 10) add('info', 'ssh', 'SSH_MAXSESSIONS_LOW', `sshd MaxSessions ${h.sshd.maxSessions} (varsayılan) — Ansible delegate/forks ile tıkanabilir; öneri 64`);
+    }
     // scan cost
     if (h.cpuS != null && h.cpuS > 10) add('info', 'scan', 'SCAN_COST', `tarama ${h.cpuS.toFixed(1)} sn CPU harcadı`);
 
@@ -166,6 +173,7 @@ function assess(data) {
     },
     web: {},
     ips: { total: hosts.reduce((a, h) => a + h.ips.length, 0), unused: hosts.reduce((a, h) => a + h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length, 0) },
+    ssh: { hosts: hosts.filter((h) => h.sshd).length, lowMaxSessions: hosts.filter((h) => h.sshd && h.sshd.maxSessions != null && h.sshd.maxSessions <= 10).length, near: hosts.reduce((a, h) => a + h.findings.filter((f) => f.code === 'SSH_SESSIONS_NEAR').length, 0) },
     scan: { avgCpuS: null, maxCpuS: null, maxCpuHost: null },
   };
   for (const h of hosts) summary.hosts[h.status] += 1;
