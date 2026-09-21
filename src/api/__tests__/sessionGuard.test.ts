@@ -120,12 +120,22 @@ describe('sessionGuard', () => {
     expect(ag).toHaveBeenCalledTimes(1);
   });
 
-  it('SG9 — abone YALNIZCA BIR KEZ haber alir (her tikta giris ekranina atmasin)', async () => {
+  it('SG9 — AYNI ANDA ucan istekler abonelere TEK haber verir', async () => {
+    // Bu, sirali degil ES ZAMANLI durumdur ve dedup'in TEK gercek sinavi: oturum
+    // oldugunde ucusta olan istekler kapi kapanmadan BASLAMISTIR, yani hepsi
+    // gercek 401i gorur. Sirali bir dongu bunu sinayamaz — ilk istek kapiyi
+    // kapatir ve kalanlar aga hic cikmaz.
     const haber = vi.fn();
     oturumBittiAbone(haber);
     oturumDurumunuBildir(true);
     ag.mockResolvedValue(yanit(401, true));
-    for (let i = 0; i < 5; i++) await window.fetch('/api/visibility/version');
+    await Promise.all([
+      window.fetch('/api/visibility/version'),
+      window.fetch('/api/auth/prefs'),
+      window.fetch('/api/ansible/ss/smart-tickets/mine'),
+      window.fetch('/api/presence/online'),
+    ]);
+    expect(ag).toHaveBeenCalledTimes(4); // dordude ucustaydi
     expect(haber).toHaveBeenCalledTimes(1);
   });
 
