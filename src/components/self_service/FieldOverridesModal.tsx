@@ -45,6 +45,12 @@ import { fmtDateTime } from '@/utils/datetime';
 const fmtWhen = (iso: string) => fmtDateTime(iso);
 import { buildSuggestions, type SurveySuggestion } from '@/utils/surveySuggestions';
 
+// OCO'nun istenebilecegi ortam etiketleri. Portalin cluster katalogundaki `env`
+// degerleriyle ayni sozluk (`ansible_ocp_clusters.env`, `logx_env_suffix_map`).
+// SERBEST METIN DEGIL, cunku yanlis yazilmis bir etiket kapiyi SESSIZCE kapatir:
+// eslesmeyen etiket "bu ortamda OCO istenmiyor" demek olur ve kimse fark etmez.
+const OCO_ENV_CHOICES = ['prod', 'production', 'preprod', 'test', 'dev', 'lab'] as const;
+
 interface FieldOverridesModalItem {
   awxServerId: number;
   awxTemplateId: number;
@@ -358,7 +364,16 @@ export default function FieldOverridesModal({
   // OCO Kontrolu: TEK anahtar. Production tespiti (env|ortam = prod|production) ve
   // 2 saatlik pencere kurali BILEREK kodda sabit - bir guvenlik kapisi admin ekranindan
   // gevsetilebilir olmamali (bkz. server/oco/prod-detect.cjs).
-  const [ocoCheck, setOcoCheck] = useState({ enabled: false });
+  // `environments`: OCO'nun hangi ortamlarda istenecegi.
+  //   null  -> LISTE YOK: bugunku kural gecerli (yalnizca production)
+  //   []    -> HICBIR ORTAM (liste yoklugundan FARKLI — admin bilerek bosaltti)
+  //   [...] -> yalnizca bu ortamlar
+  // Ikisini ayirmamak, hicbir ortam secmeyen bir admin'e sessizce "her prod"
+  // davranisi vermek olurdu.
+  const [ocoCheck, setOcoCheck] = useState<{ enabled: boolean; environments: string[] | null }>({
+    enabled: false,
+    environments: null,
+  });
   // REDDEDILEN ONERILER. Ayni oneriyi her acilista tekrar gostermek, yoneticinin
   // bilincli kararini gormezden gelmek olurdu. Sema degisikligi GEREKMEDI:
   // `ansible_ss_customizations.data` zaten serbest bicimli bir JSON blogu.
@@ -474,7 +489,12 @@ export default function FieldOverridesModal({
             emailKey: inj?.emailKey || 'email',
             usernameKey: inj?.usernameKey || 'username',
           });
-          setOcoCheck({ enabled: !!customRes.customization?.ocoCheck?.enabled });
+          setOcoCheck({
+            enabled: !!customRes.customization?.ocoCheck?.enabled,
+            environments: Array.isArray(customRes.customization?.ocoCheck?.environments)
+              ? customRes.customization.ocoCheck.environments
+              : null,
+          });
           setDismissed(
             Array.isArray(customRes.customization?.dismissedSuggestions)
               ? (customRes.customization.dismissedSuggestions as string[])
@@ -555,7 +575,7 @@ export default function FieldOverridesModal({
   function applySuggestion(s: SurveySuggestion) {
     switch (s.patch.kind) {
       case 'ocoCheck':
-        setOcoCheck({ enabled: true });
+        setOcoCheck((prev) => ({ ...prev, enabled: true }));
         break;
       case 'smartApproval':
         setSmartApproval((prev) => ({ ...prev, enabled: true }));
@@ -922,7 +942,12 @@ export default function FieldOverridesModal({
           emailKey: injectUserInfo.emailKey.trim() || 'email',
           usernameKey: injectUserInfo.usernameKey.trim() || 'username',
         },
-        ocoCheck: { enabled: ocoCheck.enabled },
+        ocoCheck: {
+          enabled: ocoCheck.enabled,
+          // Liste YOKSA alani hic gondermiyoruz: `undefined` ile `[]` ayni sey
+          // degil ve sunucu bu ikisini farkli yorumluyor.
+          ...(ocoCheck.environments ? { environments: ocoCheck.environments } : {}),
+        },
         // Reddedilen oneriler de saklanir; aksi halde yoneticinin karari her
         // acilista sifirlanir ve panel gurultuye donusur.
         dismissedSuggestions: dismissed,
@@ -1706,7 +1731,7 @@ export default function FieldOverridesModal({
                 <input
                   type="checkbox"
                   checked={ocoCheck.enabled}
-                  onChange={(e) => setOcoCheck({ enabled: e.target.checked })}
+                  onChange={(e) => setOcoCheck((s) => ({ ...s, enabled: e.target.checked }))}
                 />
               </label>
             </div>
@@ -1717,11 +1742,91 @@ export default function FieldOverridesModal({
               ya da “o saatte tekrar gel” seçeneği sunulur, pencere kapandıysa iş başlatılmaz.
             </p>
             <p className="text-[11px] text-[var(--text-muted)] mt-1.5">
-              Production şartı sabittir: extra_vars içinde <code>env</code> veya <code>ortam</code>{' '}
-              alanının değeri <code>prod</code> ya da <code>production</code> olmalıdır. Başlangıç
-              ve bitiş saati aynı verilmişse pencere 2 saattir; farklıysa OCO'daki aralık
-              kullanılır. Non-production talepler bu kontrolden hiç etkilenmez.
+              Ortam, extra_vars içindeki <code>env</code> ya da <code>ortam</code> alanından
+              okunur. Başlangıç ve bitiş saati aynı verilmişse pencere 2 saattir; farklıysa
+              OCO'daki aralık kullanılır.
             </p>
+
+            {/* ORTAM SECIMI — varsayilan "yalnizca production".
+                Liste ACILMADIGI surece bugunku davranis aynen surer; acildiginda
+                secilen ortamlar gecerli olur. Bos birakmak "hicbir ortam" demektir
+                ve bu, listeyi hic acmamaktan FARKLIDIR. */}
+            {ocoCheck.enabled && (
+              <div className="mt-3 border-t border-[var(--border)] pt-2.5">
+                <div className="flex items-center gap-3 mb-1.5">
+                  <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                    Hangi ortamlarda istensin
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOcoCheck((s) => ({
+                        ...s,
+                        environments: s.environments ? null : [...OCO_ENV_CHOICES],
+                      }))
+                    }
+                    className="text-[11px] underline decoration-dotted text-[var(--accent)]"
+                  >
+                    {ocoCheck.environments ? 'varsayılana dön (yalnızca production)' : 'ortam seç'}
+                  </button>
+                </div>
+                {ocoCheck.environments ? (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      {OCO_ENV_CHOICES.map((envName) => {
+                        const secili = ocoCheck.environments!.includes(envName);
+                        return (
+                          <label
+                            key={envName}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer ${
+                              secili ? 'font-semibold' : ''
+                            }`}
+                            style={{
+                              borderColor: secili ? 'var(--accent)' : 'var(--border-subtle)',
+                              background: secili ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={secili}
+                              onChange={() =>
+                                setOcoCheck((s) => ({
+                                  ...s,
+                                  environments: (s.environments || []).includes(envName)
+                                    ? s.environments!.filter((x) => x !== envName)
+                                    : [...(s.environments || []), envName],
+                                }))
+                              }
+                            />
+                            {envName}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {!ocoCheck.environments.length && (
+                      <p role="alert" className="mt-1.5 text-[11px] text-red-600">
+                        Hiçbir ortam seçili değil — OCO <strong>hiçbir yerde</strong> istenmez.
+                        Production dahil.
+                      </p>
+                    )}
+                    {ocoCheck.environments.length > 0 &&
+                      !ocoCheck.environments.some((e) =>
+                        ['prod', 'production'].includes(e.toLowerCase()),
+                      ) && (
+                        <p role="alert" className="mt-1.5 text-[11px] text-red-600">
+                          Listede <strong>production yok</strong> — prod değişikliklerinde OCO
+                          istenmeyecek.
+                        </p>
+                      )}
+                  </>
+                ) : (
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    Yalnızca <code>prod</code> / <code>production</code> talepleri. Diğer ortamlar
+                    bu kontrolden hiç etkilenmez.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
 

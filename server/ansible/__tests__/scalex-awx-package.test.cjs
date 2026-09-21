@@ -180,7 +180,15 @@ test('S7 `integer` survey sorusuna portal STRING gondermemeli', () => {
 test("S6 kesif survey'i portalin `/discover` anahtarlariyla uyumlu", () => {
   const vars = new Set(survey('scalex_discovery.survey.json').spec.map((q) => q.variable));
   const i = SCALEX_INDEX.indexOf('const extraVars = {');
-  const block = SCALEX_INDEX.slice(i, SCALEX_INDEX.indexOf('};', i));
+  // YORUMLAR ELENIR. Desen `([a-z_]+):` bir anahtar arıyor ama yorum metnindeki
+  // her "kelime:" de eşleşiyordu — Türkçe bir açıklama satırındaki "gecilmez:"
+  // yüzünden bekçi "survey'de eksik: gecilmez" diye KIRMIZI döndü. Aynı körlük
+  // ters yönde de çalışır: bir yorum, gerçekten eksik bir anahtarı MASKELEYEBILIR.
+  // (bkz. bekci-korlugu-desenleri #1 — "bekçi kendi açıklamasıyla eşleşir")
+  const block = SCALEX_INDEX.slice(i, SCALEX_INDEX.indexOf('};', i))
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
   const YAPISAL = new Set(['scalex_clusters_override', 'scalex_target_clusters']);
   for (const k of [...block.matchAll(/([a-z_]+):/g)].map((m) => m[1])) {
     if (

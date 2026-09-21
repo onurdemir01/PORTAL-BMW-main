@@ -343,3 +343,28 @@ test('Nginx Audit yukleyicisi genis catch yerine siniflandirici helper kullanir'
     'yukleyici butun DB hatalarini yeniden schema eksigi gibi gizliyor',
   );
 });
+
+test('Nginx Audit butun tarihli tablolari ayni parameterized snapshot ile okur', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
+  const start = src.indexOf('async function loadNginxAudit');
+  const end = src.indexOf("router.get('/nginx-audit'", start);
+  const loader = src.slice(start, end);
+
+  assert.ok(start >= 0 && end > start, 'Nginx Audit yukleyici siniri bulunamadi');
+  assert.match(
+    loader,
+    /name:\s*'scanDate',\s*type:\s*sql\.Date,\s*value:\s*scanDate/,
+    'Hosts snapshot tarihi typed query parametresi degil',
+  );
+  assert.match(loader, /WHERE scan_date = @scanDate/, 'ortak snapshot filtresi bulunamadi');
+  assert.doesNotMatch(
+    loader,
+    /SELECT MAX\(scan_date\) FROM dbo\.Nginx_Audit_/,
+    'tablo basina MAX eski detaylari yeni snapshot yanitina sizdirabilir',
+  );
+  assert.equal(
+    (loader.match(/\$\{latest\(\)\}/g) || []).length,
+    6,
+    'Hosts, Servers, Locations, Upstreams, Settings ve Files ayni filtreyi kullanmali',
+  );
+});

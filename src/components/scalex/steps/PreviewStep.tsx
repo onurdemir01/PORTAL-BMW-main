@@ -267,6 +267,20 @@ const PreviewStep: React.FC<Props> = ({
         </p>
       </div>
 
+      {/* KAPALI KAPI GORUNUR OLUR. `oco: "skip"` tek basina yetmez: "prod degil"
+          ile "prod ama kapi kapali" ekranda AYNI gorunurdu. */}
+      {g.ocoGateDisabled && executionMode === "apply" && (
+        <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            <strong>OCO kapısı bu ortamda KAPALI.</strong> Bu bir production işlemi ama
+            değişiklik kaydı sorulmayacak. Kapıyı admin kapattı (Admin &gt; Otomasyon &gt;
+            ScaleX Yönetimi &gt; SMART / OCO ayarları). Çalıştırma denetime{" "}
+            <code>scalex_oco_gate_disabled</code> olarak yazılır.
+          </span>
+        </div>
+      )}
+
       {g.oco === "require" && executionMode === "apply" && (
         <div>
           <label htmlFor="scalex-oco" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">OCO numarası</label>

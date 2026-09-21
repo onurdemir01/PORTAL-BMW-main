@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="11"
+PACKAGE_VERSION="12"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -105,12 +105,16 @@ if [ "$PHASE" != "precheck" ] && [ "$PHASE" != "execute" ] && [ "$PHASE" != "dis
 fi
 if [ "$PHASE" = "discover" ]; then
   case "$DISCOVERY_MODE" in
-    workloads|state|health) ;;
+    workloads|state|health|capabilities) ;;
     *) log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" "Unsupported DISCOVERY_MODE=$DISCOVERY_MODE"; exit 0 ;;
   esac
 fi
 
-if [ -z "$CLUSTER" ] || [ -z "$JUMP_SERVER" ] || [ -z "$API_URL" ] || [ -z "$OCP_USERNAME" ] || [ -z "$OCP_PASSWORD" ] || [ -z "$NS" ]; then
+# NAMESPACE, `capabilities` DISINDA zorunludur. O mod CLUSTER DUZEYIDIR: hicbir
+# namespace nesnesine bakmaz, yalnizca API kaynak listesi ve yetki yoklamasi
+# yapar. Namespace istemek, admin'e anlamsiz bir alan doldurtmak olurdu.
+if [ -z "$CLUSTER" ] || [ -z "$JUMP_SERVER" ] || [ -z "$API_URL" ] || [ -z "$OCP_USERNAME" ] || [ -z "$OCP_PASSWORD" ] \
+   || { [ -z "$NS" ] && [ "$DISCOVERY_MODE" != "capabilities" ]; }; then
   log "${CLUSTER:-GLOBAL}" "${JUMP_SERVER:--}" "-" "-" "INPUT" "FAIL" "Required runtime input is missing (cluster/jump/api/user/password/namespace)"
   exit 0
 fi
@@ -186,6 +190,22 @@ APPS_TEXT="$(printf '%s\n' "$APP_RAW" | tr ',;' '\n\n' | awk '{$1=$1}; NF && !se
 # durdurulmus ama portalda kaydi OLMAYAN uygulamalar (`unknown_to_portal`) gorunmez
 # olurdu — yani sapma tespitinin YARISI kaybolurdu. Ayri degisken sart.
 LIVE_PROBE_TEXT="$(printf '%s\n' "${SCALEX_LIVE_PROBE_APPS:-}" | tr ',;' '\n\n' | awk '{$1=$1}; NF && !seen[$0]++ {print}')"
+
+# CLUSTER YETENEK ONBELLEGI — OLCULEN DARBOGAZIN TEK CAGRIYLA ATLANMASI.
+#
+# `load_extra_scalable_resources` cluster basina ~50 `oc get --raw` yapiyor
+# (API grubu basina bir tane). Bu liste — cluster'da `scale` alt kaynagi olan
+# CRD'ler — NAMESPACE'TEN, UYGULAMADAN ve KULLANICIDAN BAGIMSIZDIR ve bir
+# operator kurulmadikca AYLARCA degismez. Yani her kesifte yeniden hesaplamak
+# saf israf.
+#
+# Portal bu listeyi DB'de tutuyor ve doluysa buradan geciriyor; dolu geldiginde
+# asagidaki fonksiyon HIC `oc` cagirmaz.
+#
+# FAIL-SAFE: bos gelirse (onbellek yok / bayat / okunamadi) ESKI yol aynen
+# kosar. "Onbellek yok"u "CRD yok" saymak, olceklenebilir operator nesnelerini
+# SESSIZCE listeden dusurmek olurdu — bu depodaki en pahali hata sinifi.
+EXTRA_KINDS_TEXT="$(printf '%s\n' "${SCALEX_EXTRA_KINDS:-}" | tr ',;' '\n\n' | awk '{$1=$1}; NF && !seen[$0]++ {print}')"
 if [ -z "$APPS_TEXT" ] && [ "$PHASE" != "discover" ]; then
   log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" "No application remained after parsing input"
   exit 0
@@ -367,12 +387,17 @@ if [ "$LOGIN_RC" -ne 0 ]; then
 fi
 [ "$PHASE" = "precheck" ] && log "$CLUSTER" "$JUMP_SERVER" "-" "-" "LOGIN" "OK" "Login success"
 
-if ! oc project "$NS" >/dev/null 2>&1; then
-  STEP="NAMESPACE"; [ "$PHASE" = "execute" ] && STEP="RECHECK"
-  log "$CLUSTER" "$JUMP_SERVER" "-" "-" "$STEP" "FAIL" "Namespace/project not found or not accessible: $NS"
-  exit 0
+# `capabilities` CLUSTER DUZEYIDIR: namespace'e gecmez, cunku bakacagi hicbir
+# namespace nesnesi yok. Var olmayan bir namespace'e gecmeye calismak, yetenek
+# taramasini alakasiz bir sebeple dusururdu.
+if [ "$DISCOVERY_MODE" != "capabilities" ]; then
+  if ! oc project "$NS" >/dev/null 2>&1; then
+    STEP="NAMESPACE"; [ "$PHASE" = "execute" ] && STEP="RECHECK"
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "$STEP" "FAIL" "Namespace/project not found or not accessible: $NS"
+    exit 0
+  fi
+  { [ "$PHASE" = "precheck" ] || [ "$PHASE" = "discover" ]; } && log "$CLUSTER" "$JUMP_SERVER" "-" "-" "NAMESPACE" "OK" "Using project $NS"
 fi
-{ [ "$PHASE" = "precheck" ] || [ "$PHASE" = "discover" ]; } && log "$CLUSTER" "$JUMP_SERVER" "-" "-" "NAMESPACE" "OK" "Using project $NS"
 
 # Namespace-level RBAC checks. HPA visibility is mandatory because the policy is deliberately HPA-aware/read-only.
 if [ "$PHASE" = "precheck" ]; then
@@ -540,6 +565,14 @@ preferred_gv() {
 
 load_extra_scalable_resources() {
   local res group seen_groups="" gv
+  # ONBELLEK VARSA HIC `oc` CAGIRMA. Portal listeyi `SCALEX_EXTRA_KINDS` ile
+  # gecirdiyse ~50 API cagrisi tamamen atlanir. Bos ise asagidaki eski yol kosar
+  # (fail-safe) ve sonuc yine `WORKLOAD_KIND;...;discovered=yes` satirlariyla
+  # portala doner — yani onbellek bir sonraki kesif icin kendiliginden dolar.
+  if [ -n "$EXTRA_KINDS_TEXT" ]; then
+    printf '%s\n' "$EXTRA_KINDS_TEXT"
+    return 0
+  fi
   [ "$CLUSTER_RESOURCES_OK" = "yes" ] || return 0
   load_preferred_group_versions
   while IFS= read -r res; do
@@ -1572,12 +1605,63 @@ $APPS_TEXT
 EOF_DISC_HEALTH
 }
 
+# ── CLUSTER YETENEK TARAMASI (`capabilities`) ────────────────────────────────
+#
+# NEDEN AYRI BIR MOD: kesifteki en pahali iki kalem — API grubu sayimi
+# (cluster basina ~50 `oc get --raw`) ve yetki yoklamalari — NAMESPACE'TEN,
+# UYGULAMADAN ve KULLANICIDAN BAGIMSIZ. Bir operator kurulmadikca aylarca
+# degismezler. Her kesifte yeniden hesaplamak saf israf.
+#
+# Admin bunu CLUSTER BASINA BIR KEZ kosturur; portal sonucu saklar ve kesifler
+# `SCALEX_EXTRA_KINDS` ile oradan okur.
+#
+# BU MOD NAMESPACE ISTEMEZ ve hicbir namespace nesnesine BAKMAZ.
+discover_capabilities() {
+  # `EXTRA_KINDS_TEXT` BILEREK bosaltilir: bu mod onbellegi URETIR, tuketmez.
+  # Aksi halde bayat bir liste kendini sonsuza dek yeniden dogrularadi.
+  EXTRA_KINDS_TEXT=""
+  load_cluster_resources
+
+  local kinds n=0
+  kinds="$(load_extra_scalable_resources | awk 'NF' | sort -u)"
+  while IFS= read -r k; do
+    [ -z "$k" ] && continue
+    n=$((n + 1))
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "CAP_KIND" "OK" "kind=$(disc_val "$k")"
+  done <<EOF_CAPS
+$kinds
+EOF_CAPS
+
+  # OKUNAMADI ile BOS AYRI SEYLER. `oc api-resources` dusmusse liste bos gorunur
+  # ama bu "cluster'da olceklenebilir CRD yok" DEMEK DEGILDIR. Portal bu ayrimi
+  # gormeli: okunamamis bir tarama onbellege YAZILMAMALI, yoksa tum operator
+  # nesneleri sessizce kaybolur — bu depodaki en pahali hata sinifi.
+  log "$CLUSTER" "$JUMP_SERVER" "-" "-" "CAP_SUMMARY" \
+    "$([ "$CLUSTER_RESOURCES_OK" = "yes" ] && echo OK || echo WARN)" \
+    "kinds=$n resources_readable=$(disc_val "$CLUSTER_RESOURCES_OK")"
+
+  # YETKI TARAMASI — bugun kesif sirasinda DAGITIK yapiliyor (`disc_pdb`,
+  # `disc_load_states` her kesifte `oc auth can-i` cagiriyor). Burada TOPLU ve
+  # cluster duzeyinde olculur ki ekran "hangi cluster'da neyi okuyamiyoruz"
+  # sorusunu tek bakista cevaplasin.
+  local res
+  for res in deployments statefulsets deploymentconfigs replicasets \
+             poddisruptionbudgets configmaps horizontalpodautoscalers; do
+    if oc auth can-i list "$res" >/dev/null 2>&1; then
+      log "$CLUSTER" "$JUMP_SERVER" "-" "-" "CAP_RBAC" "OK" "resource=$(disc_val "$res") verb=list allowed=yes"
+    else
+      log "$CLUSTER" "$JUMP_SERVER" "-" "-" "CAP_RBAC" "WARN" "resource=$(disc_val "$res") verb=list allowed=no"
+    fi
+  done
+}
+
 rc=0
 if [ "$PHASE" = "discover" ]; then
   case "$DISCOVERY_MODE" in
-    workloads) discover_workloads ;;
-    state)     discover_state ;;
-    health)    discover_health ;;
+    workloads)    discover_workloads ;;
+    state)        discover_state ;;
+    health)       discover_health ;;
+    capabilities) discover_capabilities ;;
   esac
 else
   while IFS= read -r app; do

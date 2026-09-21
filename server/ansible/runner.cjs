@@ -808,6 +808,9 @@ const AWX_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 // DUZ METIN icindir; JSON'da ayrica `JSON.parse` NESNE GRAFIGI uretir ve o, metnin
 // 3-6 KATI bellek tutar — bu yuzden tavan metin tavanindan DAHA DUSUK.
 const AWX_JSON_MAX_BYTES = 4 * 1024 * 1024;
+// Suzulmus ciktinin tavani. Suzgec normalde metnin cogunu atar; atmiyorsa
+// (needle cok genis) sonuc kaynak kadar buyuyebilir ve ayni OOM sinifina doner.
+const FILTERED_OUTPUT_MAX_BYTES = 4 * 1024 * 1024;
 
 // SESSIZ KIRPMA YOK. Kullanici "log yarim" ile "is yarim" arasindaki farki
 // gorebilmeli; yoksa eksik bir cikti tamamlanmis bir is gibi okunur.
@@ -1031,18 +1034,82 @@ function applyOutputFilter(stdoutText, overrides) {
   if (!filt?.enabled || !needle)
     return { output: text, filtered: false, totalLines: 0, matchedLines: 0 };
 
-  const lines = text ? text.split('\n') : [];
-  // .trim() — eslesen satirlarin bastaki/sondaki bosluklarini kaldirir. Ham stdout'ta
-  // playbook ciktisi girintili (TASK altinda birkac bosluk) veya CRLF kalintili (\r)
-  // gelebilir; filtre EKRANA yalniz ozet satirlari koydugu icin bu girinti
-  // anlamsizlasiyor ve satirlar "kaymis" gorunuyordu. Filtresiz goruntude playbook'un
-  // orijinal bicimi DOKUNULMADAN kalir.
-  const kept = lines.filter((line) => line.includes(needle)).map((line) => line.trim());
+  // DIZIYE AYIRMADAN TARA.
+  //
+  // Eski hali `text.split('\n')` yapiyordu. `getJobOutput` girdiyi 16 MB ile
+  // sinirliyor; 30 satir asagida (`getJobOutput`) ayni `split` ZATEN kaldirilmisti
+  // ama BU fonksiyon atlanmisti. `GET /jobs/N/output` uretimde ortalama 20.846 ms
+  // suruyor (98 istek) ve tam bu yoldan geciyor.
+  //
+  // OLCUM (dizi CANLIYKEN, --expose-gc):
+  //   12 MB girdi / 200 bin satir -> eski: +8 MB heap, 7 ms   yeni: +0 MB, 2 ms
+  //   24 MB girdi / 400 bin satir -> eski: +15 MB heap
+  //
+  // DURUST NOT: ilk yazdigimda bu maliyeti "~100-150 MB" diye tahmin etmistim;
+  // OLCUM BUNU CURUTTU. V8 `split` sonuclarini "sliced string" olarak tutuyor,
+  // yani maliyet girdinin ~0,6 kati. Dolayisiyla BU SATIR TEK BASINA 2 GB'lik
+  // OOM'u ACIKLAMAZ. `Runtime_StringSplit` karesi (7 cokmenin 4'unde) SON DAMLAYI
+  // gosterir, NEDENI degil: heap zaten 2040 MB'a tirmanmisken 8 MB'lik bir istek
+  // de patlatir. Yine de bu, sicak bir yolda bedava kazanilan bir tahsis ve
+  // kaldirilmasi dogru — ama "OOM'un sebebi buydu" DEMEK YANLIS OLUR.
+  //
+  // Simdi: satir sinirlari indeksle bulunur, eslesme tek gecisle ilerletilir ve
+  // YALNIZCA eslesen satirlar tutulur. Filtrenin amaci zaten "cogu satiri at".
+  let totalLines = 0;
+  let matchedLines = 0;
+  const kept = [];
+  let keptBytes = 0;
+  let keptKirpildi = false;
+  if (text) {
+    // TEK GECIS. `needle`in bir sonraki konumu ILERI dogru aranir ve satirlar
+    // ilerledikce YENIDEN KULLANILIR; yalnizca geride kaldiginda tazelenir.
+    //
+    // Ilk denememde satir basina `lastIndexOf(needle, ust)` yazmistim: o cagri
+    // `ust`ten GERIYE dogru tarar, yani satir basina O(konum) → toplamda O(n²).
+    // 13 MB'lik sentetik ciktida test 100 saniyede BITMEDI. Olcum olmasaydi bu
+    // "duzeltme" OOM'u yavaslamayla degistirirdi.
+    //
+    // `bas` monoton arttigi ve `sonrakiEslesme` hep ileri gittigi icin toplam
+    // tarama O(n)'dir: her karakter sabit sayida gezilir.
+    let sonrakiEslesme = text.indexOf(needle);
+    let bas = 0;
+    for (;;) {
+      const nl = text.indexOf('\n', bas);
+      const son = nl === -1 ? text.length : nl;
+      totalLines++;
+      if (sonrakiEslesme !== -1 && sonrakiEslesme < bas) {
+        sonrakiEslesme = text.indexOf(needle, bas);
+      }
+      // Eslesme SATIR ICINDE tamamen sigmali. Bu kontrol olmadan icinde '\n'
+      // tasiyan bir needle satir sinirinin OTESINE tasardi; diferansiyel test
+      // bu farki `text="a\nb", needle="a\nb"` ornegiyle yakaladi.
+      if (sonrakiEslesme !== -1 && sonrakiEslesme + needle.length <= son) {
+        // .trim() — eslesen satirlarin bastaki/sondaki bosluklarini kaldirir. Ham
+        // stdout'ta playbook ciktisi girintili (TASK altinda birkac bosluk) veya
+        // CRLF kalintili (\r) gelebilir; filtre EKRANA yalniz ozet satirlari
+        // koydugu icin bu girinti anlamsizlasiyor ve satirlar "kaymis" gorunuyordu.
+        // Filtresiz goruntude playbook'un orijinal bicimi DOKUNULMADAN kalir.
+        const satir = text.slice(bas, son).trim();
+        if (satir) matchedLines++;
+        if (!keptKirpildi) {
+          keptBytes += satir.length + 1;
+          if (keptBytes > FILTERED_OUTPUT_MAX_BYTES) {
+            keptKirpildi = true;
+            kept.push(AWX_TRUNCATION_NOTICE);
+          } else {
+            kept.push(satir);
+          }
+        }
+      }
+      if (nl === -1) break;
+      bas = nl + 1;
+    }
+  }
   return {
     output: kept.join('\n'),
     filtered: true,
-    totalLines: lines.length,
-    matchedLines: kept.filter(Boolean).length,
+    totalLines,
+    matchedLines,
     needle,
   };
 }
@@ -1093,6 +1160,14 @@ async function getJobOutput(jobId) {
 // `.env` ile degistirilebilir hale getirildi — ve asagida artik HER ZAMAN kimin
 // tetikledigi (`requester_username`) ile varsayilana dusuldugu (`requester_is_fallback`)
 // da gonderiliyor, boylece yanlis atif GORUNUR oluyor.
+/**
+ * Tetikleyici HIC bilinmiyorken gosterilecek ad.
+ *
+ * GERCEK BIR KISININ ADI OLMAMALI: bildirime bakan biri "bu isi o kisi istemis"
+ * diye okur ve denetim izi yanlislanir. Notr etiket, "bilmiyoruz"u acikca soyler.
+ */
+const FALLBACK_REQUESTER_LABEL = 'Bilinmeyen tetikleyici (Portal)';
+
 const DEFAULT_REQUESTER = {
   email: process.env.PORTAL_DEFAULT_REQUESTER_EMAIL || 'onurdemir3@garantibbva.com.tr',
   name: process.env.PORTAL_DEFAULT_REQUESTER_NAME || 'Onur Demir',
@@ -1106,7 +1181,18 @@ function withRequesterVars(extraVars, user) {
   // AD BILINIYORSA VARSAYILANA DUSULMEZ. Eskiden `displayName` ve `username` bos
   // gelince ad da varsayilana dusuyordu; oysa kullanici adi cogu yolda BILINIYOR
   // (LogX istegi onu satirinda tasiyor) — yalnizca bu fonksiyona GECIRILMIYORDU.
-  const name = rawName || DEFAULT_REQUESTER.name;
+  // AD ICIN VARSAYILANA DUSULMEZ — YANLIS ATIF URETIR.
+  //
+  // `DEFAULT_REQUESTER.name` GERCEK BIR CALISANIN adi. Tetikleyici bilinmiyorken
+  // onu yazmak, Teams bildiriminde ve AWX `extra_vars`inda isi O KISIYE atfeder.
+  // Uretimde 13,5 gunde 33 bildirim boyle gitti; denetim izi acisindan "kim ne
+  // istedi" kaydi YANLIS.
+  //
+  // ADRES yine varsayilana duser (`email` yukarida) cunku Teams akisindaki
+  // "Search for users" adimi cozemedigi bir adreste bildirimi TAMAMEN dusurur —
+  // yani adresi bozmak bildirimi yok eder. AMA GORUNEN AD kimseyi suclamaz:
+  // kullanici adi biliniyorsa o, bilinmiyorsa notr bir etiket yazilir.
+  const name = rawName || FALLBACK_REQUESTER_LABEL;
   // Varsayilana dusuldugunde logla - aksi halde Teams @mention'in GERCEKTEN o an
   // tetikleyen kisiye mi cozuldugu, yoksa DEFAULT_REQUESTER'a mi (Onur Demir - kod
   // deposundaki sabit) dustugu, bildirimin GORUNTUSUNDEN AYIRT EDILEMEZ (DEFAULT_REQUESTER
@@ -1229,6 +1315,26 @@ async function cancelJobOnServer(serverId, jobId) {
     const status = err && err.status;
     // 405 Method Not Allowed = job zaten terminal (iptal edilemez); bunu hata sayma.
     if (status === 405 || status === 409) return { canceled: false, alreadyTerminal: true };
+    // ── YETKI YOKSA MESAJ ACIK OLMALI ────────────────────────────────────────
+    //
+    // Uretimde 8 kez: `POST /api/v2/jobs/N/cancel/ -> 403 "You do not have
+    // permission to perform this action."` Portalin AWX token'i `cancel`
+    // yetkisine sahip degil. AWX'in ham mesaji kullaniciya ISIN HALA KOSTUGUNU
+    // SOYLEMIYOR — kesinti sirasinda tehlikeli bir belirsizlik.
+    //
+    // Ayrica bu red KALICIDIR: yetki bir sonraki denemede belirmez. Tekrar
+    // denemek hem bosuna hem de kullaniciya "belki olur" hissi verir.
+    // (PR #108'deki `tooLarge` ile ayni sinif.)
+    if (status === 403) {
+      throw Object.assign(
+        new Error(
+          'İş İPTAL EDİLEMEDİ: portalın AWX kullanıcısında iptal yetkisi yok. ' +
+            'İş AWX üzerinde ÇALIŞMAYA DEVAM EDİYOR — AWX arayüzünden iptal edin. ' +
+            '(Kalıcı bir yetki eksiği; tekrar denemek sonucu değiştirmez.)',
+        ),
+        { status: 403, permanent: true, jobStillRunning: true },
+      );
+    }
     throw err;
   }
 }
@@ -4548,6 +4654,8 @@ function initAnsibleRunner(app) {
       // birkac satir yukarida ZATEN yazilan `stdoutText` HAM haliyle kalir (denetim/tam-log
       // butunlugu bozulmaz) — filtre yalniz EKRANDA gorunen goruntu.
       let displayOutput = stdoutText;
+      // Filtre hicbir satirla eslesmediyse sebebi buraya yazilir ve EKRANA gider.
+      let filtreUyarisi = null;
       if (jobTemplateId) {
         try {
           const overrides = readCustom(Number(req.params.serverId), jobTemplateId);
@@ -4566,6 +4674,16 @@ function initAnsibleRunner(app) {
               console.warn(
                 `[SS-Filter] UYARI: cikti filtresi HICBIR satirla eslesmedi — kullaniciya BOS log gorunuyor (server=${req.params.serverId} template=${jobTemplateId}).`,
               );
+              // ...VE ARTIK EKRANA DA SOYLENIYOR (2026-09-20).
+              //
+              // Uyari 13,5 gunde 50 kez yazildi ama YALNIZCA sunucu loguna. Kullanici
+              // bos bir konsol gorup isi BASARISIZ saniyor ve cogu zaman yeniden
+              // calistiriyor. Filtrenin eslesmemesi bir BILGIdir; ekranda durmali.
+              filtreUyarisi =
+                `[PORTAL] Çıktı filtresi hiçbir satırla eşleşmedi ` +
+                `(aranan: "${filtered.needle}", taranan satır: ${filtered.totalLines}). ` +
+                `İş çalıştı; görüntülenecek eşleşme yok. Filtreyi Admin > Ansible > ` +
+                `Self Servis Özelleştirmeleri ekranından gözden geçirebilirsiniz.`;
             }
           } else if (overrides && Object.keys(overrides).length > 0) {
             // Ozellestirme kaydi VAR ama outputFilter yok/kapali — beklenen: tam cikti donuyor.
@@ -4595,7 +4713,11 @@ function initAnsibleRunner(app) {
       res.json({
         ok: true,
         status: data.status,
-        output: displayOutput,
+        // Filtre hicbir satirla eslesmediyse ekran BOS kalmaz: sebebi yazilir.
+        output: filtreUyarisi ? `${filtreUyarisi}\n` : displayOutput,
+        // Ayri alan olarak da gonderilir — ekran isterse onu rozet olarak gosterir
+        // ve ciktiyi bos birakir; ikisi de "sessiz bos ekran"dan iyidir.
+        filterNoMatch: filtreUyarisi || null,
         resultTraceback: data.result_traceback || '',
         jobExplanation: data.job_explanation || '',
         finished: data.finished,

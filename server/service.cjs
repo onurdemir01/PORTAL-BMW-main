@@ -15,10 +15,49 @@ function createApp() {
   // gorunmuyor. Bu yuzden 400+ donen her /api yanitinin GERCEK govdesini burada, en
   // erken noktada (express.json/session'dan once) yakalayip logluyoruz; aksi halde bir
   // sonraki "500 aliyorum ama sebebini bilmiyorum" turunu tekrar yasariz.
+  // OTURUMSUZ ISTEK BIR HATA DEGIL — TOPLANIR, TEK TEK YAZILMAZ.
+  //
+  // OLCUM (uretim, 13,5 gun): 17.280 WARN'in 10.211'i 401. Bunun 6.690'i tek
+  // basina iki yoklama ucundan (`visibility/resolved` 3.683, `visibility/version`
+  // 3.007). Kok neden ayri (oturum deposu bellekte, her yeniden baslatmada tum
+  // oturumlar siliniyor) ama SONUC su: logun ucte biri "oturum yok" diyor ve
+  // GERCEK hatalar bu gurultunun altinda kayboluyor.
+  //
+  // SUSTURMUYORUZ, OZETLIYORUZ: dakikada bir uc bazinda sayilar yazilir. Boylece
+  // "401 firtinasi var mi, hangi ucta" sorusu hala cevaplanabilir — ki bir
+  // sonraki oturum deposu degisikliginin ise yarayip yaramadigi ancak boyle
+  // olculur.
+  //
+  // 401 DISINDAKI her sey ESKISI GIBI tek tek yazilir.
+  const _401Sayac = new Map();
+  let _401Toplam = 0;
+  const OZET_MS = 60000;
+  const _401Ozet = setInterval(() => {
+    if (!_401Toplam) return;
+    // Yalnizca en yogun 5 uc — sinirsiz bir ozet, gurultuyu baska bicimde
+    // geri getirirdi.
+    const ilk = [..._401Sayac.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    console.warn(
+      `[API 401 ozet] son ${OZET_MS / 1000} sn: ${_401Toplam} oturumsuz istek · ` +
+        ilk.map(([u, n]) => `${u}=${n}`).join(' '),
+    );
+    _401Sayac.clear();
+    _401Toplam = 0;
+  }, OZET_MS);
+  // `unref()`: dagitimda kapanmayi geciktirmez.
+  _401Ozet.unref();
+
   app.use("/api", (req, res, next) => {
     const origJson = res.json.bind(res);
     res.json = (body) => {
-      if (res.statusCode >= 400) {
+      if (res.statusCode === 401) {
+        // Uc adi SORGU DIZESINDEN ARINDIRILIR: `?id=123` gibi parametreler
+        // sayaci sinirsiz buyuturdu (bu depoda kullanici anahtarli sinirsiz
+        // Map'ler bir OOM sinifiydi).
+        const yol = String(req.originalUrl || '').split('?')[0];
+        if (_401Sayac.size < 50) _401Sayac.set(yol, (_401Sayac.get(yol) || 0) + 1);
+        _401Toplam++;
+      } else if (res.statusCode >= 400) {
         console.warn(`[API hata] ${res.statusCode} ${req.method} ${req.originalUrl}:`, JSON.stringify(body));
       }
       return origJson(body);

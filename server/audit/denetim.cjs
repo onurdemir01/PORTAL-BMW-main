@@ -1017,15 +1017,18 @@ function initDenetim(app) {
     }
 
     const hostCond = onlyHost ? ' AND host = @host' : '';
-    const params = onlyHost ? [{ name: 'host', type: sql.NVarChar(64), value: onlyHost }] : [];
-    const latest = (t) => `WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.${t})${hostCond}`;
+    const params = [{ name: 'scanDate', type: sql.Date, value: scanDate }];
+    if (onlyHost) params.push({ name: 'host', type: sql.NVarChar(64), value: onlyHost });
+    // Butun audit tablolari yanitta ilan edilen Hosts snapshot'ini okumali. Tablo
+    // basina MAX kullanmak, yarim yuklemede eski detaylari yeni taramaya tasirdi.
+    const latest = () => `WHERE scan_date = @scanDate${hostCond}`;
     const q = (text) => query(text, params);
 
     // Nginx_Audit_Files SONRADAN eklendi: tablo yoksa dosya uyumu bolumu "henuz yok"
     // olarak gosterilir, ekranin geri kalani calisir.
     const filesQ = q(`SELECT host, ref_file, path, file_exists, identical, n_missing, n_changed,
                              n_extra, details
-                        FROM dbo.Nginx_Audit_Files ${latest('Nginx_Audit_Files')}`)
+                        FROM dbo.Nginx_Audit_Files ${latest()}`)
       .then((r) => ({ rows: r.recordset || [], ready: true }))
       .catch(() => ({ rows: [], ready: false }));
 
@@ -1047,15 +1050,15 @@ function initDenetim(app) {
                 locations_proxy, upstreams, ups_no_resolve, ups_no_keepalive,
                 ups_no_zone, unused_upstreams, proxy_fqdn, proxy_undefined,
                 settings_mismatch
-           FROM dbo.Nginx_Audit_Hosts ${latest('Nginx_Audit_Hosts')}`),
+           FROM dbo.Nginx_Audit_Hosts ${latest()}`),
       q(`SELECT host, conf_file, seq, listen, server_name, ssl, cert_file, locations
-           FROM dbo.Nginx_Audit_Servers ${latest('Nginx_Audit_Servers')}`),
+           FROM dbo.Nginx_Audit_Servers ${latest()}`),
       q(`SELECT host, conf_file, srv_seq, location, behaviour, proxy_target, target_kind
-           FROM dbo.Nginx_Audit_Locations ${latest('Nginx_Audit_Locations')}`),
+           FROM dbo.Nginx_Audit_Locations ${latest()}`),
       q(`SELECT host, conf_file, name, server, resolve, keepalive, zone, used
-           FROM dbo.Nginx_Audit_Upstreams ${latest('Nginx_Audit_Upstreams')}`),
+           FROM dbo.Nginx_Audit_Upstreams ${latest()}`),
       q(`SELECT host, conf_file, context, directive, value, reference_value, matches
-           FROM dbo.Nginx_Audit_Settings ${latest('Nginx_Audit_Settings')}`),
+           FROM dbo.Nginx_Audit_Settings ${latest()}`),
       filesQ,
       invQ,
       excQ,

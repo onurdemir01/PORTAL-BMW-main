@@ -13,6 +13,10 @@ const http = require('http');
 const https = require('https');
 
 const db = require('../../db/index.cjs');
+const { readResponseLimited } = require('../../util/bounded-read.cjs');
+
+/** Saglik yoklamasi yanit tavani. Yanittan yalnizca 150 karakter kullaniliyor. */
+const HEALTH_MAX_BYTES = 256 * 1024;
 
 // Satiri KATALOGDAN okur (client'in gonderdigi degerlere guvenilmez).
 async function getClusterRow(id) {
@@ -52,22 +56,33 @@ function probeApiUrl(apiUrl, token) {
         timeout: 5000,
       },
       (response) => {
-        let data = '';
-        response.on('data', (c) => {
-          data += c;
-        });
-        response.on('end', () => {
-          const code = response.statusCode || 0;
-          if (code && code < 400) resolve({ ok: true });
-          else if (code === 401 || code === 403) {
-            resolve({
-              ok: true,
-              message: `Erişilebilir (HTTP ${code} — kimlik doğrulama beklenen davranış, token portalda tutulmaz).`,
-            });
-          } else {
-            resolve({ ok: false, message: `HTTP ${code}: ${data.slice(0, 150)}` });
-          }
-        });
+        // SINIRLI OKUMA. Bu bir SAGLIK YOKLAMASIDIR: yanittan yalnizca ilk 150
+        // karakter kullaniliyor, ama eski hali govdeyi SINIRSIZ tamponluyordu.
+        //
+        // SINSI NOKTA: yukaridaki `timeout: 5000` bir HAREKETSIZLIK zaman
+        // asimidir. Surekli akan bir yanit o sayaci her chunk'ta sifirlar →
+        // timeout ASLA tetiklenmez ve tampon sinirsiz buyur. "Timeout var"
+        // demek "sinir var" DEMEK DEGILDIR.
+        //
+        // Yanlis yapilandirilmis ya da bozuk tek bir uc yeterliydi.
+        readResponseLimited(response, {
+          maxBytes: HEALTH_MAX_BYTES,
+          label: 'OCP saglik yoklamasi',
+          onAbort: () => request.destroy(),
+        })
+          .then((data) => {
+            const code = response.statusCode || 0;
+            if (code && code < 400) resolve({ ok: true });
+            else if (code === 401 || code === 403) {
+              resolve({
+                ok: true,
+                message: `Erişilebilir (HTTP ${code} — kimlik doğrulama beklenen davranış, token portalda tutulmaz).`,
+              });
+            } else {
+              resolve({ ok: false, message: `HTTP ${code}: ${data.slice(0, 150)}` });
+            }
+          })
+          .catch((err) => resolve({ ok: false, message: err.message }));
       },
     );
     request.on('error', (err) => resolve({ ok: false, message: err.message }));

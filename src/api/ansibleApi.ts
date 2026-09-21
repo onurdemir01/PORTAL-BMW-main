@@ -770,7 +770,16 @@ export interface FieldCustomization {
   // penceresi sorgulanır ve pencereye göre karar verilir (bkz. server/oco/*).
   // Ayar TEK bir anahtardan ibarettir — production tespiti ve 2 saatlik pencere kuralı
   // KOD İÇİNDE sabittir, yönetici ekranından gevşetilemez.
-  ocoCheck?: { enabled: boolean };
+  ocoCheck?: {
+    enabled: boolean;
+    /**
+     * OCO'nun hangi ortamlarda isteneceği. Alan YOKSA bugünkü kural geçerlidir
+     * (yalnızca production). Boş dizi "hiçbir ortam" demektir ve alanın
+     * yokluğundan FARKLIDIR — ikisini aynı saymak, hiçbir ortam seçmeyen bir
+     * admin'e sessizce "her prod" davranışı vermek olurdu.
+     */
+    environments?: string[];
+  };
 }
 
 // OCO kesinti penceresi ozeti (server/oco/window.cjs evaluateWindow ciktisi).

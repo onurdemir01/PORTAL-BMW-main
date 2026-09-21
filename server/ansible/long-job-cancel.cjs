@@ -178,8 +178,21 @@ async function processJobs(jobs, { db, runner, webhookUrl, audit } = {}) {
       }
       results.push({ job, ok: true, elapsedMinutes: d.elapsedMinutes });
     } catch (e) {
-      console.warn(`[LongJobCancel] ${job.serverName} job #${job.jobId} iptal edilemedi (deneme ${n + 1}/${MAX_ATTEMPTS}):`, e.message);
-      results.push({ job, ok: false, error: e.message });
+      // KALICI RED TEKRAR DENENMEZ. Portalin AWX kullanicisinda `cancel` yetkisi
+      // yoksa (403) bu bir sonraki turda BELIRMEZ; uc kez denemek hem bosuna hem
+      // de logda "belki olur" gorunumu uretir. Uretimde tam bu yasandi: 8 × 403
+      // + LongJobCancel'in tekrar denemeleri.
+      // (PR #108'deki `tooLarge` reddiyle ayni sinif.)
+      if (e && e.permanent) {
+        _attempts.set(key, MAX_ATTEMPTS); // bir daha denenmesin
+        console.warn(
+          `[LongJobCancel] ${job.serverName} job #${job.jobId} iptal edilemedi — KALICI, tekrar denenmeyecek:`,
+          e.message,
+        );
+      } else {
+        console.warn(`[LongJobCancel] ${job.serverName} job #${job.jobId} iptal edilemedi (deneme ${n + 1}/${MAX_ATTEMPTS}):`, e.message);
+      }
+      results.push({ job, ok: false, error: e.message, permanent: !!(e && e.permanent) });
     }
   }
   for (const key of _done) if (!alive.has(key)) _done.delete(key);

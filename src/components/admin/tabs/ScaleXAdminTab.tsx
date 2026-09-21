@@ -11,7 +11,7 @@
 //
 // YENİ TABLO YOK, YENİ UÇ YOK: aynı satır, aynı uçlar, aynı modal — yalnızca template
 // kimliği `scalex_run` kaydından çözülüp doğru yerden açılıyor.
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ShieldCheckIcon,
@@ -21,6 +21,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { playbookRegistryApi, type PlaybookRegistryEntry } from '@/api/playbookRegistryApi';
 import { scalexApi, type ScaleXRbacFinding } from '@/api/scalexApi';
+import { fmtDateTime } from '@/utils/datetime';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
 
 const RUN_KEY = 'scalex_run';
@@ -359,6 +360,10 @@ const ScaleXAdminTab: React.FC = () => {
               </p>
             )}
           </section>
+
+          <ClusterCapsPanel />
+
+          <OcoDiagnosePanel />
         </>
       )}
 
@@ -378,5 +383,330 @@ const ScaleXAdminTab: React.FC = () => {
     </div>
   );
 };
+
+// ── OCO TANI PANELI ──────────────────────────────────────────────────────────
+//
+// "Bir örnek OCO girince ne çıkıyor, hangisi nasıl dikkate alınıyor?" sorusunun
+// cevabı bugün hiçbir yerde görünmüyor. Portal, servisin döndürdüğü gövdeden
+// YALNIZCA ÜÇ şey okuyor: kayıt var mı, planlanan kesinti saatleri, başlık.
+// Onay durumu / statü / hedef sistemler HİÇ okunmuyor — yani bugünkü "OCO
+// kontrolü" gerçekte bir TAKVİM kontrolü.
+//
+// Bu panel o gerçeği görünür yapar: gelen HER alan listelenir ve "okunuyor /
+// yok sayılıyor" diye işaretlenir. Amaç, alan kurallarını tahminle değil
+// GERÇEK ÇIKTIYLA yazabilmek. HİÇBİR ŞEY BAŞLATMAZ.
+function OcoDiagnosePanel() {
+  const [num, setNum] = useState('');
+  const [env, setEnv] = useState('prod');
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<Awaited<ReturnType<typeof scalexApi.ocoDiagnose>> | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [hepsi, setHepsi] = useState(false);
+
+  async function sorgula() {
+    if (!num.trim() || busy) return;
+    setBusy(true);
+    setErr(null);
+    setRes(null);
+    try {
+      const r = await scalexApi.ocoDiagnose({ number: num.trim(), env });
+      setRes(r);
+      if (!r.ok && !r.lookupFailed && !r.notConfigured) setErr(r.message || 'Sorgu başarısız.');
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const gosterilen = res?.fields
+    ? hepsi
+      ? res.fields
+      : res.fields.filter((f) => f.type !== 'object')
+    : [];
+
+  return (
+    <section className="rounded-xl border border-[var(--border)] p-4 space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-[var(--text-primary)]">OCO Tanı</p>
+        <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+          Bir OCO numarası girin; servisin döndürdüğü <strong>her alan</strong> listelenir ve
+          portalın hangisini okuduğu işaretlenir. <strong>Hiçbir şey başlatılmaz</strong> — salt
+          okunur bir sorgudur ve denetime yazılır.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+            OCO numarası
+          </span>
+          <input
+            value={num}
+            onChange={(e) => setNum(e.target.value)}
+            inputMode="numeric"
+            placeholder="22502813"
+            className="w-44 px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+            Simülasyon ortamı
+          </span>
+          <input
+            value={env}
+            onChange={(e) => setEnv(e.target.value)}
+            className="w-32 px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
+          />
+        </label>
+        <button type="button" className="btn-primary" disabled={busy || !num.trim()} onClick={sorgula}>
+          {busy ? 'Sorgulanıyor…' : 'Sorgula'}
+        </button>
+      </div>
+
+      {err && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+          {err}
+        </div>
+      )}
+
+      {/* "AYAR YOK" ile "SERVİS ÇÖKMÜŞ" AYRI EKRANLAR. Eskiden `OCO_API_URL`in
+          kod içinde bir varsayılanı vardı ve ikisi aynı mesajı veriyordu. */}
+      {res?.notConfigured && (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+          OCO servisi <strong>yapılandırılmamış</strong>. Admin &gt; Sistem &gt;{' '}
+          <code>OCO_API_URL</code> girin. Bu, servisin çökmüş olmasından <strong>farklı</strong> bir
+          durumdur.
+        </div>
+      )}
+
+      {res?.lookupFailed && (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+          <strong>Kayıt okunamadı:</strong> {res.message}
+        </div>
+      )}
+
+      {res?.ok && (
+        <div className="space-y-3">
+          {/* KAPI SİMÜLASYONU — "bu numarayla apply denesen ne olurdu" */}
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-inset)] p-3 text-xs space-y-1">
+            <p className="font-semibold text-[var(--text-primary)]">
+              Kapı simülasyonu ({res.scope?.env} · {res.scope?.action} · apply)
+            </p>
+            <p className="text-[var(--text-secondary)]">
+              <span className="font-mono">{res.simulation?.outcome}</span> — {res.simulation?.message}
+            </p>
+            {res.window && (
+              <p className="text-[var(--text-muted)]">
+                Pencere: {res.window.windowStartText} → {res.window.windowEndText}
+                {res.window.equal && ' (başlangıç = bitiş verilmiş, 2 saat sayıldı)'}
+                {res.plannedSource === 'interruption' &&
+                  ' · kaynak: PlannedInterruption (Planned* alanları yoktu)'}
+              </p>
+            )}
+            {res.gatePolicy?.ocoGateDisabled && (
+              <p className="text-red-700">
+                <strong>Not:</strong> bu ortamda OCO kapısı admin tarafından KAPATILMIŞ.
+              </p>
+            )}
+          </div>
+
+          {/* EKSİK ALANLAR — "kapı neden çalışmadı"nın doğrudan cevabı */}
+          {res.missing && res.missing.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+              <p className="font-semibold">Portalın beklediği ama yanıtta OLMAYAN alanlar:</p>
+              <ul className="mt-1 space-y-0.5">
+                {res.missing.map((m) => (
+                  <li key={m.path}>
+                    <code>{m.path.split('.').pop()}</code> — {m.why}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-[var(--text-muted)]">
+              {res.fields?.length} alan geldi · <strong>{res.ignoredCount}</strong> tanesi
+              portal tarafından <strong>yok sayılıyor</strong>
+              {res.fieldsTruncated && ' · liste kırpıldı'}
+            </p>
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] cursor-pointer">
+              <input type="checkbox" checked={hepsi} onChange={(e) => setHepsi(e.target.checked)} />
+              iç nesneleri de göster
+            </label>
+          </div>
+
+          <div className="max-h-96 overflow-y-auto rounded-lg border border-[var(--border)] divide-y divide-[var(--border)]">
+            {gosterilen.map((f) => (
+              <div key={f.path} className="flex items-start gap-2 px-2.5 py-1.5 text-xs">
+                <span
+                  className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                    f.read ? 'bg-green-100 text-green-800' : 'bg-[var(--bg-inset)] text-[var(--text-muted)]'
+                  }`}
+                >
+                  {f.read ? 'OKUNUYOR' : 'yok sayılıyor'}
+                </span>
+                <span className="font-mono text-[var(--text-primary)] break-all">
+                  {f.path.replace('GetChangeOrderByWfInstanceIdResult.', '')}
+                </span>
+                <span className="ml-auto font-mono text-[var(--text-muted)] break-all text-right max-w-[40%]">
+                  {f.value ?? '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <details className="text-xs">
+            <summary className="cursor-pointer text-[var(--text-muted)]">
+              Portal hangi alanı NEDEN okuyor?
+            </summary>
+            <ul className="mt-1.5 space-y-1">
+              {res.readFields?.map((f) => (
+                <li key={f.path} className="text-[var(--text-secondary)]">
+                  <code>{f.path.split('.').pop()}</code>{' '}
+                  <span className="text-[var(--text-muted)]">({f.reader})</span> — {f.why}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── CLUSTER YETENEK ENVANTERI ────────────────────────────────────────────────
+//
+// Keşfin ölçülen maliyeti cluster başına ~110 `oc` çağrısı (~30 sn) ve bunun
+// %80'i API grubu sayımı + CRD tip probe'ları. İkisi de NAMESPACE'TEN,
+// UYGULAMADAN ve KULLANICIDAN BAĞIMSIZ; bir operator kurulmadıkça aylarca
+// değişmez. Admin cluster başına BİR KEZ tarar, keşifler oradan okur.
+//
+// ÜÇ DURUM AYRI GÖSTERİLİR — ikisini birleştirmek bu depoda iki ayrı arıza
+// üretti: "hiç taranmadı" / "tarandı, ekstra CRD yok" / "okunamadı".
+function ClusterCapsPanel() {
+  const [rows, setRows] = useState<Awaited<ReturnType<typeof scalexApi.clusterCaps>>['items']>([]);
+  const [ttl, setTtl] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await scalexApi.clusterCaps();
+      if (r.ok) {
+        setRows(r.items || []);
+        setTtl(r.ttlDays ?? null);
+        setErr(null);
+      } else setErr(r.message || 'Yetenek envanteri okunamadı.');
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useAsyncEffect(async (alive) => {
+    if (alive()) await load();
+  }, []);
+
+  return (
+    <section className="rounded-xl border border-[var(--border)] p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">Cluster yetenekleri</p>
+          <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+            Ölçeklenebilir CRD listesi ve yetki taraması. Keşfin en pahalı iki kalemi burada{' '}
+            <strong>bir kez</strong> hesaplanır; sonraki keşifler bunu okuyup cluster başına
+            ~50 API çağrısını atlar.
+            {ttl != null && ` Kayıt ${ttl} gün geçerli sayılır.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={load}
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline flex-shrink-0"
+        >
+          <ArrowPathIcon aria-hidden="true" className="w-3.5 h-3.5" /> Yenile
+        </button>
+      </div>
+
+      {err && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+          {err}
+        </div>
+      )}
+
+      {loading && !rows.length && (
+        <p className="text-sm text-[var(--text-muted)]">Envanter okunuyor…</p>
+      )}
+
+      {!loading && !rows.length && !err && (
+        <p className="text-xs text-[var(--text-muted)]">
+          Henüz hiçbir cluster taranmamış. Keşif ekranından bir tarama koştuğunuzda liste
+          kendiliğinden dolar — o ana kadar keşif <strong>eski (yavaş) yolu</strong> kullanır,
+          sonuç yine doğrudur.
+        </p>
+      )}
+
+      {rows.length > 0 && (
+        <div className="divide-y divide-[var(--border)]">
+          {rows.map((r) => {
+            const okunamadi = !r.resourcesReadable;
+            const hicTaranmadi = r.kinds === null;
+            const rbacEksik = Object.entries(r.rbac || {})
+              .filter(([, v]) => !v)
+              .map(([k]) => k);
+            return (
+              <div key={`${r.env}|${r.tenant}|${r.clusterName}`} className="py-2.5 space-y-1">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-mono text-[var(--text-primary)]">{r.clusterName}</span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {r.tenant} / {r.env}
+                  </span>
+                  {/* UC DURUM AYRI ROZET. "okunamadi"yi "CRD yok" gibi gostermek,
+                      olceklenebilir operator nesnelerinin sessizce dusmesi demekti. */}
+                  {okunamadi ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-800">
+                      OKUNAMADI — hızlandırma için kullanılmıyor
+                    </span>
+                  ) : hicTaranmadi ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[var(--bg-inset)] text-[var(--text-muted)]">
+                      hiç taranmadı
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-800">
+                      {r.kinds!.length} ölçeklenebilir CRD
+                    </span>
+                  )}
+                  {r.stale && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-900">
+                      bayat
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {fmtDateTime(r.fetchedAt)}
+                  {r.scannedBy && ` · ${r.scannedBy}`}
+                </p>
+                {rbacEksik.length > 0 && (
+                  <p className="text-xs text-amber-800">
+                    Okunamayan kaynaklar: <span className="font-mono">{rbacEksik.join(', ')}</span>
+                  </p>
+                )}
+                {!hicTaranmadi && r.kinds!.length > 0 && (
+                  <p className="text-xs font-mono text-[var(--text-muted)] break-all">
+                    {r.kinds!.join(', ')}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default ScaleXAdminTab;

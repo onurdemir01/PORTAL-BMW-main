@@ -213,9 +213,36 @@ export interface ScaleXBlastRadius {
   exceedsMaxTargets: boolean;
 }
 
+export interface ScaleXOcoSchedule {
+  id: number;
+  username: string;
+  ocoNumber: string;
+  ocoSubject: string | null;
+  runAt: string;
+  windowEnd: string;
+  status: string;
+  awxJobId: number | null;
+  /** `null` = eski kayıt, grup bilgisi hiç yazılmamış (boş diziden FARKLI). */
+  ownerGroups: string[] | null;
+  cancelledBy: string | null;
+  cancelNote: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+}
+
 export interface ScaleXGatePolicy {
   oco: 'require' | 'warn' | 'skip';
   smart: 'require' | 'skip';
+  /**
+   * PROD bir işlemde OCO kapısı admin tarafından KAPATILMIŞ.
+   *
+   * `oco: 'skip'` tek başına yetmez: "prod değil" ile "prod ama kapı kapalı"
+   * ekranda AYNI görünürdü. Kullanıcının kararı "kapatılabilsin ama GÖRÜNÜR
+   * olsun" idi — sessiz bir kapalı kapı, kapıyı hiç koymamakla aynı şeydir.
+   */
+  ocoGateDisabled?: boolean;
   reason: string | null;
 }
 
@@ -472,6 +499,122 @@ export const scalexApi = {
        *  yeni bir AWX işi açardı (LogX tarafında üretimde yaşandı). */
       scanUnknown?: boolean;
       source?: string;
+    }>;
+  },
+
+  /**
+   * Zamanlanmış OCO tetiklemeleri — KENDİ ve GRUBUNUN kayıtları (Admin: hepsi).
+   *
+   * Grup bilgisi kayıt açılırken saklanıyor; `ownerGroups === null` (eski kayıt)
+   * grup üzerinden GÖRÜNÜR SAYILMAZ — "bilmiyoruz"u "senin grubun" saymak
+   * başkasının kesinti kaydını göstermek olurdu.
+   */
+  async ocoSchedules() {
+    return safeJson(await fetch(`${BASE}/oco-schedules`)) as Promise<{
+      ok: boolean;
+      message?: string;
+      items: ScaleXOcoSchedule[];
+      truncated?: boolean;
+      scope?: 'all' | 'mine+groups';
+    }>;
+  },
+
+  /** Kaydı iptal eder. Sahip, grup üyesi ve Admin yapabilir; iptal eden kaydedilir. */
+  async ocoScheduleCancel(id: number, note?: string) {
+    return post<{ ok: boolean; message?: string; record?: ScaleXOcoSchedule }>(
+      `/oco-schedules/${id}/cancel`,
+      { note: note || '' },
+    );
+  },
+
+  /**
+   * Kaydı günceller. Yeni numara verilirse YENİDEN DOĞRULANIR — eski kaydın
+   * penceresini devam ettirmek, doğrulanmamış bir OCO ile iş başlatmak olurdu.
+   */
+  async ocoScheduleUpdate(id: number, patch: { ocoNumber?: string }) {
+    return post<{ ok: boolean; message?: string; record?: ScaleXOcoSchedule; ocoExpired?: boolean }>(
+      `/oco-schedules/${id}/update`,
+      patch,
+    );
+  },
+
+  /**
+   * Cluster yetenek envanteri — keşfin en pahalı iki kaleminin önbelleği.
+   *
+   * Ölçülen maliyet cluster başına ~110 `oc` çağrısı; bunun ~%80'i API grubu
+   * sayımı ve CRD tip probe'ları ve ikisi de NAMESPACE/UYGULAMA'dan BAĞIMSIZ.
+   * Admin cluster başına bir kez tarar, keşifler oradan okur.
+   */
+  async clusterCaps(params: { env?: string; tenant?: string } = {}) {
+    const q = new URLSearchParams();
+    if (params.env) q.set('env', params.env);
+    if (params.tenant) q.set('tenant', params.tenant);
+    return safeJson(await fetch(`${BASE}/admin/cluster-caps?${q}`)) as Promise<{
+      ok: boolean;
+      message?: string;
+      ttlDays?: number;
+      items: {
+        env: string;
+        tenant: string;
+        clusterName: string;
+        /** `null` = hiç taranmadı; `[]` = tarandı, ekstra CRD yok. AYRI şeyler. */
+        kinds: string[] | null;
+        rbac: Record<string, boolean> | null;
+        /** `false` ise liste GÜVENİLMEZ — keşfi hızlandırmak için kullanılmaz. */
+        resourcesReadable: boolean;
+        scannedBy: string | null;
+        fetchedAt: string;
+        stale: boolean;
+      }[];
+    }>;
+  },
+
+  /**
+   * OCO TANI — salt okunur. Bir numara girilir, servisin döndürdüğü HER alan
+   * listelenir ve her biri "okunuyor / yok sayılıyor" diye işaretlenir.
+   *
+   * Bugün portal yanıttan yalnızca ÜÇ şey okuyor (kayıt var mı, planlanan
+   * kesinti saatleri, başlık). Onay durumu / statü / hedef sistemler HİÇ
+   * okunmuyor — yani "OCO kontrolü" gerçekte bir TAKVİM kontrolü. Bu uç o
+   * gerçeği görünür yapar. HİÇBİR ŞEY BAŞLATMAZ.
+   */
+  async ocoDiagnose(params: { number: string; env?: string; action?: string }) {
+    const q = new URLSearchParams({ number: params.number });
+    if (params.env) q.set('env', params.env);
+    if (params.action) q.set('action', params.action);
+    return safeJson(await fetch(`${BASE}/admin/oco-diagnose?${q}`)) as Promise<{
+      ok: boolean;
+      message?: string;
+      /** Ayar hiç girilmemiş — "servise ulaşılamadı"dan AYRI bir durum. */
+      notConfigured?: boolean;
+      /** Sorgu yapıldı ama kayıt bulunamadı / servis hata verdi. */
+      lookupFailed?: boolean;
+      number?: string;
+      readFields?: { path: string; reader: string; why: string }[];
+      fields?: {
+        path: string;
+        type: string;
+        value: string | null;
+        read: boolean;
+        truncated?: boolean;
+      }[];
+      fieldsTruncated?: boolean;
+      ignoredCount?: number;
+      missing?: { path: string; reader: string; why: string }[];
+      plannedSource?: string | null;
+      window?: {
+        ok: boolean;
+        phase?: string;
+        equal?: boolean;
+        windowStartText?: string;
+        windowEndText?: string;
+        message?: string;
+        reason?: string;
+      } | null;
+      resultCode?: number | null;
+      scope?: { env: string; action: string; executionMode: string };
+      gatePolicy?: ScaleXGatePolicy;
+      simulation?: { outcome: string; message: string };
     }>;
   },
 

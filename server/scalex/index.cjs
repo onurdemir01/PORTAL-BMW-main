@@ -26,6 +26,7 @@ const result = require('./result.cjs');
 // BESLIYORUZ, yani ScaleX'ten yapilan tam bir kesif LogX'i de hizlandiriyor.
 // Ikinci bir tablo/modul acmak, ayni verinin iki yerde ayrismasi demekti.
 const ocpCache = require('../logx/v2/ocp-cache.cjs');
+const clusterCaps = require('./cluster-caps.cjs');
 
 const RUN_KEY = 'scalex_run';
 const DISCOVERY_KEY = 'scalex_discovery';
@@ -201,6 +202,27 @@ async function insertOperationRows({
 //
 // SET KAPALI: `proceed` disindaki her deger cagiranda tuketilmek ZORUNDA; taninmayan
 // bir deger FAIL-CLOSED ele alinir (bkz. change-gates.cjs sozlesmesi).
+// ── OCO AYARINI TEK YERDEN OKU ──────────────────────────────────────────────
+//
+// `gatePolicyFor` artik admin ayarini da hesaba katiyor. Ayari her cagri
+// yerinde AYRI AYRI okumak, uc ucun zamanla AYRISMASINA acik kapi birakirdi —
+// bu dosyada tam bu sinifta bir ariza yasandi: `/preview` ile `/run` farkli
+// politika uretiyordu ve ekran numara istiyor, sunucu numarayi kullanmiyordu.
+//
+// DB okunamazsa `{}` doner (ss-customizations fail-safe) ve `gatePolicyFor`
+// varsayilana duser: OCO ACIK, yalnizca prod. Yani bir DB tokezlemesi kapiyi
+// ACIK BIRAKIR, kapatmaz.
+async function readOcoConfig() {
+  try {
+    const { templateId, serverId } = await resolveByKey(RUN_KEY);
+    const cfg = await require('../ansible/ss-customizations.cjs').readCustom(serverId, templateId);
+    return cfg.ocoCheck || {};
+  } catch (e) {
+    console.warn('[ScaleX] OCO ayari okunamadi, varsayilan (prod acik) kullaniliyor:', e.message);
+    return {};
+  }
+}
+
 async function runScaleXGates({
   req,
   user,
@@ -216,6 +238,7 @@ async function runScaleXGates({
   extraVars,
   reason,
   ocoNumber,
+  ocoAction,
 }) {
   if (policy.smart !== 'require' && policy.oco !== 'require') return { outcome: 'proceed' };
 
@@ -246,29 +269,59 @@ async function runScaleXGates({
   // demek; ayar satiri yoksa sessizce onaysiz gecmek, kapiyi HIC KOYMAMAKLA ayni
   // sey olurdu. Ustelik ekran kullaniciya "SMART kaydi acilacak" YAZIYOR — sessiz
   // gecis, kullaniciya YALAN soylenmesi anlamina gelirdi.
-  if (policy.smart === 'require' && !svcConfig.smartApproval?.enabled) {
-    return {
-      outcome: 'error',
-      status: 503,
-      body: {
-        ok: false,
-        code: 'smart_not_configured',
-        message:
-          'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. ' +
-          'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için ' +
-          'SMART onayını (flowKey ve metadata alanları) tanımlayın. ' +
-          'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
-      },
-    };
-  }
+  //
+  // ── SIRA DEGISTI (2026-09-20): SMART 503'u OCO KAPISINDAN SONRA ─────────────
+  //
+  // Bu kontrol daha once BURADA, `runChangeGates` cagrisindan 30 satir ONCE
+  // donuyordu. OCO kapisi ise `runChangeGates` ICINDE. Sonuc: uretimde
+  // `ansible_ss_customizations`ta ScaleX satiri hic olmadigi icin HER prod
+  // `apply` istegi 503 ile oluyordu ve **OCO koduna hic ulasilmiyordu**.
+  //
+  // KANIT (prod.app.log, 13,5 gun):
+  //   `grep -icE "scalex.*oco|oco.*scalex"` -> 0        (iki dosyada da SIFIR)
+  //   `smart_not_configured` -> 11, sonuncusu 2026-09-20T08:20:11
+  // Yani ScaleX'te OCO "bozuk" degildi — ERISILEMEZDI.
+  //
+  // Artik kapilar BAGIMSIZ: OCO once kosar ve kendi kararini soyler; SMART
+  // ayari eksikse is YINE BASLATILMAZ (fail-closed korunur) ama kullanici
+  // once GERCEK OCO hatasini gorur, yaniltici bir SMART mesajini degil.
+  const smartYapilandirilmamis = policy.smart === 'require' && !svcConfig.smartApproval?.enabled;
+
+  // ── OCO KAPISI AYARI ────────────────────────────────────────────────────────
+  //
+  // `enabled` ARTIK ADMIN AYARINDAN okunuyor. Onceden burada sabit `true` vardi
+  // (`policy.oco === 'require'`), yani `FieldOverridesModal`daki "OCO Kontrolu"
+  // anahtari ScaleX icin HICBIR SEY YAPMIYORDU — admin acip kapatiyor, davranis
+  // degismiyordu.
+  //
+  // VARSAYILAN ACIK (`!== false`): ayar satiri YOKSA bugunku davranis aynen
+  // surer. Varsayilani kapali yapmak, uretimdeki gibi satirin hic olmadigi bir
+  // kurulumda kapiyi SESSIZCE indirmek olurdu.
+  const ocoCfg = svcConfig.ocoCheck || {};
+  const ocoAdminEnabled = ocoCfg.enabled !== false;
+  const ocoEnvironments = Array.isArray(ocoCfg.environments) ? ocoCfg.environments : null;
   const overrides = {
     // `restore` icin OCO UYARIR ama ENGELLEMEZ → kapiyi hic acmiyoruz; gerekce
     // zaten cagiranda zorunlu kilindi ve kayda + SMART'a gidiyor.
-    // Admin OCO'yu kapatmis olsa bile prod'da acik tutuyoruz — bu sayfa bir
-    // kesinti araci, kapinin varsayilani "acik" olmali.
-    ocoCheck: { enabled: policy.oco === 'require' },
+    ocoCheck: {
+      enabled: ocoAdminEnabled && policy.oco === 'require',
+      // Liste verilmisse ortak kapi ONU kullanir; verilmemisse bugunku prod
+      // kurali gecerli kalir (bkz. change-gates.isOcoGateApplicable).
+      ...(ocoEnvironments ? { environments: ocoEnvironments } : {}),
+    },
     smartApproval: svcConfig.smartApproval || {},
   };
+
+  // KAPI KAPALIYSA SESSIZ KALMAZ. Kullanicinin karari "kapatilabilsin ama
+  // GORUNUR olsun" idi: prod bir `apply`, OCO kapisi admin tarafindan kapatilmis
+  // halde kosuyorsa bu denetime AYRI bir eylem olarak yazilir. Sessiz bir kapali
+  // kapi, kapiyi hic koymamakla ayni seydir.
+  if (policy.oco === 'require' && !ocoAdminEnabled) {
+    auditPortal(req, 'scalex_oco_gate_disabled', {
+      result: 'warn',
+      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, action, executionMode }),
+    });
+  }
   const radius = launch.computeBlastRadius({
     clusters,
     apps,
@@ -295,20 +348,31 @@ async function runScaleXGates({
     specFields: [],
     templateName: 'ScaleX',
     ocoNumber,
-    // OCO PENCERESI HENUZ ACILMADIYSA: ortak kapi normalde kullaniciya
-    // "zamanla mi, sonra mi?" diye sorar (400 `ocoDecisionRequired`). ScaleX icin
-    // ZAMANLAMA YOK — asagidaki `createOcoAwxSchedule` bilerek hata firlatiyor
-    // (bir kesinti araci, kendiliginden ateslenen ertelenmis is birakmamali).
-    // Dolayisiyla sorulan iki secenekten biri HER ZAMAN patlardi ve ekranda o
-    // secimi yapacak alan da yok: kullanici "Calistir"a basar, ayni mesaji alir,
-    // tekrar basar — kapali dongu. Var olmayan secimi sormak yerine tek gecerli
-    // cevabi veriyoruz: `later` → is BASLATILMAZ, kullanici pencere acildiginda
-    // geri gelir. Ekran bunu `ocoDeferred` ile net bir mesaj olarak gosterir.
-    ocoAction: 'later',
+    // OCO PENCERESI HENUZ ACILMADIYSA: artik KULLANICIYA SORULUYOR (2026-09-20).
+    //
+    // Onceden burada `ocoAction: 'later'` SABITI vardi ve `createOcoAwxSchedule`
+    // bilerek hata firliyordu; yani pencere kapaliyken istek 200 OK donup
+    // SESSIZCE hicbir sey yapmiyordu. Kullanici acisindan: "OCO numarasini
+    // girdim, hicbir sey olmadi."
+    //
+    // Simdi ekran "zamanlayayim mi?" diye soruyor ve secim buraya geliyor.
+    // ZAMANLAMA PORTALDA TUTULUYOR (`preferPortalScheduler`), AWX-native degil:
+    // istenen sey "her noktada iptal VE GUNCELLEME" ve bunu AWX-native bir
+    // schedule'da yapmak AWX API'sinden silip yeniden kurmayi gerektirirdi —
+    // kayit ile AWX arasinda ayrisma riski. Portal kaydinda ise poller kesinti
+    // saatinde `launchOrRequestApproval`i cagiriyor ve SMART kapisi ORADA
+    // devreye giriyor; yani zamanlama onay kapisini ATLAMIYOR.
+    ocoAction: ocoAction === 'schedule' ? 'schedule' : 'later',
+    preferPortalScheduler: true,
+    // Gorunurluk: kullanici KENDI ve GRUBUNUN kayitlarini gorur/iptal eder.
+    ownerGroups: Array.isArray(user.groups) ? user.groups : null,
     createOcoAwxSchedule: async () => {
+      // `preferPortalScheduler: true` oldugu icin ortak kapi buraya HIC gelmez.
+      // Yine de firlatiyoruz: sessizce AWX-native zamanlamaya dusmek, kaydin
+      // portal tarafindan guncellenememesi demek olurdu.
       throw Object.assign(
-        new Error('ScaleX işlemleri zamanlanamaz — pencere açıkken tekrar deneyin.'),
-        { status: 400 },
+        new Error('ScaleX zamanlamasi portal tarafinda tutulur — AWX schedule kullanilmaz.'),
+        { status: 500 },
       );
     },
     friendlyAwxError: (e) => ({ status: e.status || 502, message: e.message }),
@@ -390,6 +454,34 @@ async function runScaleXGates({
         ok: false,
         message:
           'Değişiklik kapısı beklenmeyen bir sonuç döndürdü; iş güvenlik gereği başlatılmadı.',
+      },
+    };
+  }
+
+  // ── SMART FAIL-CLOSED — ARTIK OCO KAPISINDAN SONRA ──────────────────────────
+  //
+  // `isSmartRequired` bos ayarda `false` doner (Self Service icin dogru varsayilan;
+  // orada SMART opsiyonel bir eklenti). Ama ScaleX'te `policy.smart === 'require'`
+  // demek "bu islem onaysiz yapilmamali" demek; ayar satiri yoksa sessizce gecmek
+  // kapiyi HIC KOYMAMAKLA ayni sey olurdu. Ustelik ekran kullaniciya "SMART kaydi
+  // acilacak" YAZIYOR — sessiz gecis, kullaniciya YALAN soylenmesi olurdu.
+  //
+  // Buraya TASINDI (once `runChangeGates`ten ONCE donuyordu): boylece OCO kapisi
+  // her halukarda kosar ve kullanici once GERCEK OCO hatasini gorur. Yanit,
+  // hangi kapinin ne dedigini AYRI AYRI tasir.
+  if (smartYapilandirilmamis) {
+    return {
+      outcome: 'error',
+      status: 503,
+      body: {
+        ok: false,
+        code: 'smart_not_configured',
+        gates: { oco: 'passed', smart: 'not_configured' },
+        message:
+          'ScaleX için SMART onay yapılandırması yapılmamış; değişiklik uygulanmadı. ' +
+          'Admin > Ansible > Self Servis Özelleştirmeleri ekranından ScaleX şablonu için ' +
+          'SMART onayını (flowKey ve metadata alanları) tanımlayın. ' +
+          'Bu arada "Önce kontrol et" modu kullanılabilir — hiçbir değişiklik yapmaz.',
       },
     };
   }
@@ -636,7 +728,7 @@ function initScaleX(app) {
   router.post(
     '/discover',
     asyncRoute(async (req, res) => {
-      const mode = ['workloads', 'state', 'health'].includes(req.body?.mode)
+      const mode = ['workloads', 'state', 'health', 'capabilities'].includes(req.body?.mode)
         ? req.body.mode
         : 'workloads';
       const { env, tenant, namespace, clusters, apps } = await resolveScope(req, {
@@ -645,6 +737,31 @@ function initScaleX(app) {
       // Kesif de bu degerleri playbook'a, oradan `oc` komut satirina tasiyor — `/preview`
       // ve `/run` ile AYNI format kurallari burada da gecerli (bkz. launch.cjs basligi).
       launch.assertValidDiscoveryTargets({ namespace, apps });
+      // CLUSTER YETENEK ONBELLEGI — kesifteki ~50 `oc get --raw` cagrisini atlatir.
+      //
+      // UC DURUM AYRI (bkz. cluster-caps.cjs): guvenilir bir kayit YOKSA
+      // (hic taranmamis / okunamamis / kapsamin bir kismi eksik) BOS gecilir ve
+      // betik ESKI yolu kosar. "Onbellek yok"u "CRD yok" saymak, olceklenebilir
+      // operator nesnelerini SESSIZCE listeden dusurmek olurdu.
+      //
+      // `capabilities` modunda BILEREK okunmaz: o mod onbellegi URETIR,
+      // tuketmez. Aksi halde bayat bir liste kendini sonsuza dek dogrularadi.
+      let extraKinds = '';
+      if (mode !== 'capabilities') {
+        try {
+          const bulunan = await clusterCaps.kindsForScope({
+            env,
+            tenant,
+            clusterNames: clusters,
+          });
+          if (bulunan && bulunan.length) extraKinds = bulunan.join(',');
+        } catch (e) {
+          // BEST-EFFORT: onbellek okunamadiysa kesif YINE calisir, yalnizca
+          // hizlanmaz. Ters yon (okunamayinca kesfi dusurmek) kabul edilemez.
+          console.warn('[ScaleX] yetenek onbellegi okunamadi, tam tarama:', e.message);
+        }
+      }
+
       const extraVars = {
         scalex_clusters_override: launch.buildScaleXClusterCatalog({
           env,
@@ -660,6 +777,7 @@ function initScaleX(app) {
         scalex_target_clusters: clusters,
         discovery_mode: mode,
         ...(apps.length ? { target_app_names: apps.join(',') } : {}),
+        ...(extraKinds ? { scalex_extra_kinds: extraKinds } : {}),
         // CANLI YOKLAMA LISTESI — yalnizca `state` kesfinde. Portal, bu kapsamdaki
         // ayna satirlarinin uygulama adlarini gonderir; betik her biri icin bir
         // `LIVE` satiri (istenen/mevcut/hazir replica) basar. `refreshDrift` bunu
@@ -947,6 +1065,36 @@ function initScaleX(app) {
         }
       }
 
+      // YETENEK ENVANTERINI YAZ — `capabilities` modunda.
+      //
+      // Her cluster AYRI satira yazilir: tek bir birlesik liste yazmak, bir
+      // cluster'da OLMAYAN bir CRD'yi orada VARMIS gibi gostermek olurdu.
+      //
+      // OKUNAMAMIS tarama da yazilir ama `resourcesReadable: false` ile — o
+      // satir ekranda gorunur (admin "burada yetki eksik" der) ama kesfi
+      // HIZLANDIRMAK icin KULLANILMAZ.
+      if (status.finished && parsed && parsed.mode === 'capabilities') {
+        try {
+          for (const c of parsed.capabilities || []) {
+            if (!c.cluster || !c.scanned) continue; // ozet satiri gelmemisse yazma
+            await clusterCaps.save({
+              env: parsed.environment,
+              tenant: parsed.platform,
+              clusterName: c.cluster,
+              kinds: c.kinds,
+              rbac: c.rbac,
+              resourcesReadable: c.resourcesReadable,
+              scannedBy: currentUser(req).username,
+              awxJobId: jobId,
+            });
+          }
+        } catch (e) {
+          // BEST-EFFORT: yazilamadiysa tarama sonucu GIZLENMEZ; yalnizca bir
+          // sonraki kesif hizlanmaz.
+          console.warn('[ScaleX] yetenek envanteri yazilamadi:', e.message);
+        }
+      }
+
       // KATALOGU BESLE — YALNIZCA TAM NAMESPACE TARAMASINDA.
       //
       // Kullanicinin istegi: "her kesfi db ye yaz bir kere, db de olani oradan oku".
@@ -1047,7 +1195,12 @@ function initScaleX(app) {
         action,
         executionMode,
       });
-      const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
+      const policy = launch.gatePolicyFor({
+        action,
+        executionMode,
+        environment: env,
+        ocoConfig: await readOcoConfig(),
+      });
       res.json({
         ok: true,
         blastRadius: radius,
@@ -1145,7 +1298,12 @@ function initScaleX(app) {
         });
       }
 
-      const policy = launch.gatePolicyFor({ action, executionMode, environment: env });
+      const policy = launch.gatePolicyFor({
+        action,
+        executionMode,
+        environment: env,
+        ocoConfig: await readOcoConfig(),
+      });
       // Geri alma OCO penceresi disinda da calisabilir ama GEREKCESIZ calisamaz —
       // iz kalmali ve gerekce hem portal kaydina hem SMART metadata'sina gitmeli.
       if (policy.oco === 'warn' && !reason) {
@@ -1221,6 +1379,8 @@ function initScaleX(app) {
           extraVars,
           reason,
           ocoNumber: req.body?.ocoNumber,
+          // Kullanicinin "pencere acilinca otomatik baslat" secimi.
+          ocoAction: req.body?.ocoAction,
         });
       } catch (e) {
         await releaseRestoreLocks(locking.acquired);
@@ -1499,6 +1659,7 @@ function initScaleX(app) {
         action: 'restore',
         executionMode: 'apply',
         environment: env,
+        ocoConfig: await readOcoConfig(),
       });
 
       const launched = [];
@@ -1653,6 +1814,233 @@ function initScaleX(app) {
         }),
       });
       res.json({ ok: true, launched, pendingApproval, blocked });
+    }),
+  );
+
+  // ── ZAMANLANMIS OCO TETIKLEMELERI — KULLANICI UCLARI ────────────────────
+  //
+  // GORUNURLUK: kullanici KENDI ve GRUBUNUN kayitlarini gorur, Admin hepsini.
+  // Grup bilgisi kayit acilirken yaziliyor (`owner_groups`); `null` (eski kayit)
+  // grup uzerinden gorunur SAYILMAZ — "bilmiyoruz"u "senin grubun" saymak
+  // baskasinin kesinti kaydini gostermek olurdu.
+  router.get(
+    '/oco-schedules',
+    asyncRoute(async (req, res) => {
+      const u = currentUser(req);
+      const ocoStore = require('../oco/store.cjs');
+      const { items, truncated } = await ocoStore.listForUser({
+        username: u.username,
+        groups: u.groups,
+        limit: Number(req.query?.limit) || 100,
+      });
+      // ADMIN HEPSINI GORUR. Ayri bir sorgu degil, ayni listenin suzgecsiz hali:
+      // iki ayri sorgu zamanla AYRISIRDI.
+      const gorunur = u.role === 'Admin'
+        ? (await ocoStore.listAll({ limit: Number(req.query?.limit) || 100 }))
+        : items;
+      res.json({ ok: true, items: gorunur, truncated, scope: u.role === 'Admin' ? 'all' : 'mine+groups' });
+    }),
+  );
+
+  // IPTAL — "her noktada iptal edilsin" (kullanicinin istegi).
+  // Sahip, GRUP UYESI ve Admin iptal edebilir; iptal EDEN her zaman kaydedilir.
+  router.post(
+    '/oco-schedules/:id/cancel',
+    asyncRoute(async (req, res) => {
+      const u = currentUser(req);
+      const ocoStore = require('../oco/store.cjs');
+      const rec = await ocoStore.get(Number(req.params.id));
+      if (!rec) return res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' });
+      if (!ocoStore.canManage(rec, u)) {
+        // BASKASININ KAYDINA ERISIM DENEMESI DENETIME — `denyIfNotOwner`
+        // ile ayni gerekce: 403 donup iz birakmamak, bir kesinti aracinda
+        // kabul edilemez.
+        auditPortal(req, 'scalex_oco_schedule_forbidden', {
+          result: 'fail',
+          detail: JSON.stringify({ id: rec.id, owner: rec.username }),
+        });
+        return res.status(403).json({ ok: false, message: 'Bu kayit sizin ya da grubunuzun degil.' });
+      }
+      const iptal = await ocoStore.cancelBy(rec.id, {
+        cancelledBy: u.username,
+        note: String(req.body?.note || '').slice(0, 1000),
+      });
+      if (!iptal) {
+        // Kosullu UPDATE 0 satir etkiledi: kayit bu arada tetiklendi ya da
+        // zaten kapandi. SESSIZCE "iptal edildi" DEMEYIZ.
+        return res.status(409).json({
+          ok: false,
+          message: `Kayit iptal edilemedi — durumu "${rec.status}". Tetiklenmis ya da zaten kapanmis olabilir.`,
+        });
+      }
+      auditPortal(req, 'scalex_oco_schedule_cancelled', {
+        detail: JSON.stringify({ id: rec.id, owner: rec.username, oco: rec.ocoNumber }),
+      });
+      res.json({ ok: true, record: iptal });
+    }),
+  );
+
+  // GUNCELLEME — "guncellemek isterse guncellesin her noktada".
+  // YALNIZCA `SCHEDULED` iken: tetiklenmis bir isi "guncellemek" onu sessizce
+  // ezmek olurdu (store.update kosullu UPDATE ile bunu zorluyor).
+  router.post(
+    '/oco-schedules/:id/update',
+    asyncRoute(async (req, res) => {
+      const u = currentUser(req);
+      const ocoStore = require('../oco/store.cjs');
+      const rec = await ocoStore.get(Number(req.params.id));
+      if (!rec) return res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' });
+      if (!ocoStore.canManage(rec, u)) {
+        auditPortal(req, 'scalex_oco_schedule_forbidden', {
+          result: 'fail',
+          detail: JSON.stringify({ id: rec.id, owner: rec.username }),
+        });
+        return res.status(403).json({ ok: false, message: 'Bu kayit sizin ya da grubunuzun degil.' });
+      }
+
+      // YENI NUMARA VERILDIYSE DOGRULANIR. Numara degistirip pencereyi eski
+      // kayittan devam ettirmek, DOGRULANMAMIS bir OCO ile is baslatmak olurdu.
+      const yeniNumara = String(req.body?.ocoNumber || '').trim();
+      let yama = {};
+      if (yeniNumara && yeniNumara !== rec.ocoNumber) {
+        const ocoClient = require('../oco/client.cjs');
+        const ocoWindow = require('../oco/window.cjs');
+        let order;
+        try {
+          order = await ocoClient.getChangeOrder(yeniNumara);
+        } catch (e) {
+          return res.status(ocoClient.httpStatus(e)).json({ ok: false, message: e.message });
+        }
+        const planned = ocoWindow.extractPlannedInterruption(order.payload);
+        if (!planned) {
+          return res.status(400).json({
+            ok: false,
+            message: `OCO ${yeniNumara} kaydinda planlanan kesinti tarihi yok.`,
+          });
+        }
+        const w = ocoWindow.evaluateWindow({ startDate: planned.startDate, endDate: planned.endDate });
+        if (!w.ok) return res.status(400).json({ ok: false, message: w.message });
+        if (w.phase === 'expired') {
+          return res.status(400).json({ ok: false, ocoExpired: true, message: w.message });
+        }
+        yama = {
+          ocoNumber: yeniNumara,
+          ocoSubject: order.result?.OcoWfIdSubject || order.result?.Subject || null,
+          runAt: w.windowStart,
+          windowEnd: w.windowEnd,
+        };
+      }
+
+      const guncel = await ocoStore.update(rec.id, yama);
+      if (!guncel) {
+        return res.status(409).json({
+          ok: false,
+          message: `Kayit guncellenemedi — durumu "${rec.status}". Yalnizca beklemedeki kayitlar guncellenebilir.`,
+        });
+      }
+      auditPortal(req, 'scalex_oco_schedule_updated', {
+        detail: JSON.stringify({ id: rec.id, oncekiOco: rec.ocoNumber, yeniOco: guncel.ocoNumber }),
+      });
+      res.json({ ok: true, record: guncel });
+    }),
+  );
+
+  // ── CLUSTER YETENEK ENVANTERI — "Denetim gibi ekran" ────────────────────
+  //
+  // Cluster basina: son tarama zamani, bulunan olceklenebilir tip sayisi,
+  // OKUNAMAYAN kaynaklar (RBAC bosluklari). Admin buradan toplu tarama
+  // baslatir; kesif o envanteri okuyup cluster basina ~50 `oc get --raw`
+  // cagrisini atlar.
+  router.get(
+    '/admin/cluster-caps',
+    asyncRoute(async (req, res) => {
+      if (currentUser(req).role !== 'Admin') {
+        return res.status(403).json({ ok: false, message: 'Bu ekran yalnizca yoneticilere acik.' });
+      }
+      const env = String(req.query?.env || '').trim();
+      const tenant = String(req.query?.tenant || '').trim();
+      const items = await clusterCaps.list({ env: env || undefined, tenant: tenant || undefined });
+      res.json({ ok: true, items, ttlDays: clusterCaps.CAPS_TTL_DAYS });
+    }),
+  );
+
+  router.get(
+    '/admin/oco-diagnose',
+    asyncRoute(async (req, res) => {
+      // ── OCO TANI — SALT OKUNUR ────────────────────────────────────────────
+      //
+      // "Bir ornek OCO girince ne cikiyor, hangisi nasil dikkate aliniyor?"
+      // sorusunun cevabi bugun HICBIR YERDE gorunmuyor. Portal servisin
+      // yanitindan yalnizca UC sey okuyor (kayit var mi, planlanan kesinti
+      // saatleri, baslik); onay durumu / status / hedef sistemler HIC
+      // okunmuyor. Bu uc o gercegi ekrana tasir.
+      //
+      // HICBIR SEY BASLATMAZ: AWX isi acmaz, SMART kaydi yaratmaz, DB'ye
+      // yazmaz. Tek yan etkisi denetim kaydidir.
+      if (currentUser(req).role !== 'Admin') {
+        return res.status(403).json({ ok: false, message: 'Bu ekran yalnizca yoneticilere acik.' });
+      }
+      const num = String(req.query?.number || '').trim();
+      if (!num) {
+        return res.status(400).json({ ok: false, message: 'OCO numarasi zorunlu.' });
+      }
+
+      // Ayar hic girilmemisse bunu ACIKCA soyle. Onceden `OCO_API_URL`in kod
+      // icinde bir varsayilani vardi ve "ayar yok" durumu "servise ulasilamadi"
+      // gibi gorunuyordu — iki apayri sorun, tek mesaj.
+      const ocoConfig = require('../oco/config.cjs');
+      if (!ocoConfig.isConfigured()) {
+        return res.status(503).json({
+          ok: false,
+          notConfigured: true,
+          message: 'OCO servisi yapilandirilmamis (Admin > Sistem > OCO_API_URL).',
+        });
+      }
+
+      // KIM NEYI SORGULADI — denetime. Sorgu salt okunur ama bir uretim
+      // degisiklik kaydini okuyor; izsiz kalmamali.
+      auditPortal(req, 'scalex_oco_diagnose', { detail: JSON.stringify({ oco: num }) });
+
+      const ocoClient = require('../oco/client.cjs');
+      const diagnoseMod = require('../oco/diagnose.cjs');
+      let order;
+      try {
+        order = await ocoClient.getChangeOrder(num);
+      } catch (e) {
+        // Tani ekraninda hata da BIR SONUCTUR: kullanici "numara mi yanlis,
+        // servis mi erisilemez" ayrimini gormeli.
+        return res.status(200).json({
+          ok: false,
+          lookupFailed: true,
+          status: ocoClient.httpStatus(e),
+          message: e.message,
+          readFields: diagnoseMod.READ_FIELDS,
+        });
+      }
+
+      const diagnosis = diagnoseMod.diagnose(order);
+      // Kapi simulasyonu: sorgulanan kapsam admin'den gelir, varsayilan prod.
+      const env = String(req.query?.env || 'prod').trim();
+      const action = String(req.query?.action || 'stop').trim();
+      const policy = launch.gatePolicyFor({
+        action,
+        executionMode: 'apply',
+        environment: env,
+        ocoConfig: await readOcoConfig(),
+      });
+      const simulation = diagnoseMod.simulateGate({
+        diagnosis,
+        ocoApplies: policy.oco === 'require',
+      });
+
+      res.json({
+        ok: true,
+        number: num,
+        ...diagnosis,
+        scope: { env, action, executionMode: 'apply' },
+        gatePolicy: policy,
+        simulation,
+      });
     }),
   );
 
