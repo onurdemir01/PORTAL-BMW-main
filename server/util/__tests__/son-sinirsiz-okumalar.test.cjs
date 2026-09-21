@@ -52,15 +52,25 @@ function sureSinirli(p, ms, etiket) {
 // ── A sinifi: hata govdesi onizlemesi ───────────────────────────────────────
 
 test('SS1 `readBodyPreview` 64 MB govdeyi TAMAMEN OKUMAZ', async () => {
-  const { srv, port } = await devSunucu(64 * 1024 * 1024);
+  const { srv, durum, port } = await devSunucu(64 * 1024 * 1024);
   try {
     const res = await fetch(`http://127.0.0.1:${port}/`);
-    const oncesi = process.memoryUsage().heapUsed;
     const text = await sureSinirli(readBodyPreview(res.body, { maxBytes: 1024 }), 20000, 'SS1');
-    const artis = process.memoryUsage().heapUsed - oncesi;
     assert.ok(text.length <= 1024, `tavan asildi: ${text.length} bayt`);
-    // OLCULEN kanit: girdi 64 MB iken heap artisi MB mertebesinde olmamali.
-    assert.ok(artis < 16 * 1024 * 1024, `heap ${Math.round(artis / 1024 / 1024)} MB artti — govde tamponlanmis`);
+
+    // ── ASIL OLCU: SUNUCUNUN YAZABILDIGI BAYT ────────────────────────────────
+    // Ilk yazimda burada `process.memoryUsage().heapUsed` karsilastiriliyordu
+    // ve bekci KORDU: mutasyon tavani tamamen kaldirdiginda bile gecti. Sebep,
+    // `heapUsed`in Buffer'lari SAYMAMASI — Buffer bellegi JS yiginin DISINDA
+    // (harici/ArrayBuffer) tutulur. Yani "bellek artmadi" olcumu, tam da
+    // olcmesi gereken seyi goremiyordu.
+    //
+    // Sunucunun yazabildigi bayt ise deterministiktir ve GC'ye bagli degildir:
+    // okuma erken kesildiyse 64 MB'in tamami YAZILAMAZ.
+    assert.ok(
+      durum.yazilan < 32 * 1024 * 1024,
+      `sunucu ${Math.round(durum.yazilan / 1024 / 1024)} MB yazabildi — okuma kesilmedi, govde tamponlaniyor`,
+    );
   } finally {
     srv.close();
   }
