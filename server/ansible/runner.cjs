@@ -1325,7 +1325,15 @@ async function getJobOutputOnServer(serverId, jobId, { artimli = false } = {}) {
       } catch (err) {
         console.warn(`[AWX] artimli stdout cekilemedi (job ${id}): ${err.message} — tam cekime dusuluyor`);
       }
-      stdoutCache.sil(serverId, id);
+      // BURADA ACIK BIR GECERSIZ KILMA YOK — ve bu BILEREK boyle.
+      //
+      // Ilk yazimda buraya `stdoutCache.sil(...)` konmustu. Mutasyon turu onu
+      // KALDIRDIGINDA hicbir bekci atesleme(di): cunku gozlenebilir bir sey
+      // degistirmiyordu. Asagidaki tam cekim yolu satiri ZATEN yeniden yaziyor
+      // (`yaz`, tavani asarsa SILIYOR), ve dogrulugu saglayan sey silme degil
+      // `birlestir` icindeki CAPA KONTROLU: dogrulanmamis bir metin hicbir
+      // zaman birlestirilmez. Kanitlanamayan savunma kodu birakmak yerine
+      // gercek degismezi yazili tutuyoruz (bkz. JS13).
     }
   }
 

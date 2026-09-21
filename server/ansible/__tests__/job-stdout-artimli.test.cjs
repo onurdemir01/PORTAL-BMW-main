@@ -222,6 +222,28 @@ test('JS11 arsivlenen metin ARTIMLARDAN turemez — arsiv terminal cekimden geli
   assert.ok(kod.indexOf('const bittiMi', i) < cekim, 'bittiMi cekimden SONRA hesaplaniyor');
 });
 
+test('JS13 DEGISMEZ: artimli reddedildikten sonra onbellek TAM CEKIMLE tazelenir', async () => {
+  // Reddedilen bir birlestirmeden sonra onbellekte BAYAT bir satir kalirsa,
+  // bir sonraki yoklama onun uzerine artim ekler. Dogrulugu capa kontrolu
+  // korur, ama satirin tam cekimle tazelenmesi bu iyilestirmenin bir kez
+  // reddedildikten sonra KALICI OLARAK olmemesini saglar.
+  onbellek._sifirla();
+  const { srv, durum, port } = await sahteAwx();
+  const getir = gercekGetJobOutput(port);
+  try {
+    durum.satirlar.push('a', 'b', 'c');
+    await getir(1, 7, { artimli: true });               // tam cekim → onbellek dolar
+    onbellek.yaz(1, 7, 'BOZUK\nMETIN', 2);              // capayi kasitli boz
+    durum.satirlar.push('d');
+    const { output } = await getir(1, 7, { artimli: true });
+    assert.equal(output, durum.satirlar.join('\n'), 'red sonrasi cikti bozuldu');
+    const k = onbellek.al(1, 7);
+    assert.ok(k && k.text === durum.satirlar.join('\n'), 'onbellek tam cekimle tazelenmedi — artim kalici olarak olur');
+  } finally {
+    srv.close();
+  }
+});
+
 test('JS12 event yedeginden gelen metin ONBELLEGE KONMAZ (farkli satir bolumlemesi)', () => {
   const kod = RUNNER_SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const g = kod.indexOf('async function getJobOutputOnServer');
