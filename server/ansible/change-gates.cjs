@@ -240,6 +240,16 @@ async function evaluateOcoGate({
   const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
   if (!w.ok) return { outcome: 'error', status: 400, body: { ok: false, message: w.message } };
 
+  // OCO numarasi ISE DE gider (2026-09-21): nginx_ops prod akislari `oco_number` gorunce
+  // 23:00'a zamanlamak yerine HEMEN uygular (kesinti penceresinde oldugumuzu bu kapi zaten
+  // garanti eder — pencere icindeyse aninda, oncesindeyse pencere basina AWX zamanlamasi).
+  // Ayni nesne hem anlik launch'a hem pendingLaunch.extraVars'a gider.
+  if (extraVars && typeof extraVars === 'object') {
+    extraVars.oco_number = ocoNumber;
+    extraVars.oco_window_start = w.windowStartText || '';
+    extraVars.oco_window_end = w.windowEndText || '';
+  }
+
   const ocoInfo = {
     ocoNumber,
     subject: order.result?.OcoWfIdSubject || order.result?.Subject || '',
