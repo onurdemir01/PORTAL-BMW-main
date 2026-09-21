@@ -1004,7 +1004,8 @@ function initDenetim(app) {
   // yalnizca o sunucu (detay sayfasi): tum filoyu cekip birini secmek yerine SQL'de
   // suzulur - ayarlar tablosu binlerce satir olabiliyor.
   async function loadNginxAudit(onlyHost) {
-    const { query, sql } = require('../inventory/mssql.cjs');
+    // queryLong (2026-09-21): 14 gunluk tablolarda 30 sn yetmiyordu; 180 sn'lik ayri havuz.
+    const { queryLong: query, sql } = require('../inventory/mssql.cjs');
 
     const dateRes = await readLatestAuditDate(query);
 
@@ -1078,9 +1079,14 @@ function initDenetim(app) {
     return { ok: true, schemaReady: true, filesReady: files.ready, scanDate, ...out };
   }
 
-  router.get('/nginx-audit', async (_req, res) => {
+  // Sicak onbellek (2026-09-21): tum filo hesabi bellekte, istek aninda doner; suresi dolunca
+  // arka planda yenilenir; ?fresh=1 bekleyerek yeniler. Boot'tan 45 sn sonra onceden isitilir.
+  const { createWarmCache } = require('./warm-cache.cjs');
+  const nginxAuditWarm = createWarmCache({ name: 'nginx-audit', ttlMs: 10 * 60 * 1000, compute: () => loadNginxAudit(null) });
+  nginxAuditWarm.warm(45000);
+  router.get('/nginx-audit', async (req, res) => {
     try {
-      res.json(await loadNginxAudit(null));
+      res.json(await nginxAuditWarm.get({ fresh: req.query.fresh === '1' }));
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Nginx audit verisi alınamadı.' });
     }
@@ -1158,10 +1164,14 @@ function initDenetim(app) {
   // ── 1c) PROD TASIMA: eski GBRVP* proxy_pass hedefleri yeni GBNGXP4x/5x'te dizin mi ────
   // Veri yukleme nginx-migration.cjs/loadMigration'da: ayni yukleyici "Tanim olustur"
   // dugmesinin anti-tamper kontrolunde de kullanilir (server/nginx-migration/index.cjs).
-  router.get('/nginx-migration', async (_req, res) => {
+  const migrationWarm = createWarmCache({ name: 'nginx-migration', ttlMs: 10 * 60 * 1000, compute: () => {
+    const { queryLong: query, sql } = require('../inventory/mssql.cjs');
+    return loadMigration({ query, sql, hasProxyColumns });
+  } });
+  migrationWarm.warm(75000);
+  router.get('/nginx-migration', async (req, res) => {
     try {
-      const { query, sql } = require('../inventory/mssql.cjs');
-      res.json(await loadMigration({ query, sql, hasProxyColumns }));
+      res.json(await migrationWarm.get({ fresh: req.query.fresh === '1' }));
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Taşıma verisi alınamadı.' });
     }

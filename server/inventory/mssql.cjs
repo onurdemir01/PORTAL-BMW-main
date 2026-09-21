@@ -77,4 +77,40 @@ async function query(sqlText, inputs = []) {
   return req.query(sqlText);
 }
 
-module.exports = { getPool, isAvailable, query, sql, poolStats };
+// UZUN sorgular icin ayri, kucuk havuz (2026-09-21): Denetim'in 14 gunluk denetim tablolarini
+// tarayan sorgulari 30 sn'lik requestTimeout'a takiliyordu ("Timeout: Request failed to complete
+// in 30000ms"). Ana havuzun zaman asimi kisa kalmali (istek yigilmasin); agir denetim okumalari
+// bu havuzdan 180 sn ile gider. Tembel kurulur, ana havuzla ayni kimlik.
+let _longPool = null;
+async function getLongPool() {
+  if (_longPool) return _longPool;
+  const base = await getPool();
+  if (!base) return null;
+  try {
+    _longPool = await new sql.ConnectionPool({
+      server: process.env.MSSQL_SERVER,
+      port: parseInt(process.env.MSSQL_PORT || "1433", 10),
+      database: process.env.MSSQL_DATABASE,
+      user: process.env.MSSQL_USER,
+      password: process.env.MSSQL_PASSWORD,
+      options: { trustServerCertificate: true, encrypt: false },
+      connectionTimeout: 10000,
+      requestTimeout: parseInt(process.env.MSSQL_LONG_REQUEST_TIMEOUT_MS || "180000", 10),
+      pool: { max: 4, min: 0, idleTimeoutMillis: 60000 },
+    }).connect();
+    _longPool.on('error', () => { _longPool = null; });
+  } catch (err) {
+    console.error("[Inventory] MSSQL uzun-sorgu havuzu kurulamadi:", err.message);
+    _longPool = null;
+  }
+  return _longPool;
+}
+async function queryLong(sqlText, inputs = []) {
+  const pool = (await getLongPool()) || (await getPool());
+  if (!pool) throw new Error("MSSQL bağlantısı yok");
+  const req = pool.request();
+  for (const { name, type, value } of inputs) req.input(name, type, value);
+  return req.query(sqlText);
+}
+
+module.exports = { getPool, isAvailable, query, queryLong, sql, poolStats };
