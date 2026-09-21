@@ -2963,6 +2963,18 @@ function initAnsibleRunner(app) {
     try {
       const token = await getTokenForServer(server);
       const overrides = readCustom(server.id, req.params.templateId);
+      // 2026-09-21: kapi bilgisi FORM ACILIRKEN gitsin. OCO simdiye kadar yalnizca
+      // launch-ss'in `ocoRequired` yanitiyla, yani form doldurulup "Baslat"a basildiktan
+      // SONRA ortaya cikiyordu; kullanici: "insanlar en basta is tetiklemeye korkuyor".
+      // Form artik en ustte bir uyari seridi gosterir. Karar YINE sunucuda (launch-ss);
+      // bu alan yalnizca on bilgidir.
+      const gates = {
+        oco: !!overrides.ocoCheck?.enabled,
+        ocoEnvironments: Array.isArray(overrides.ocoCheck?.environments)
+          ? overrides.ocoCheck.environments.map((e) => String(e ?? '').trim().toLowerCase()).filter(Boolean)
+          : null,
+        smart: !!overrides.smartApproval?.enabled,
+      };
       // ?admin=1 yalnizca GERCEKTEN Admin olan oturumlarda onurlandirilir — client'in
       // kendi bildirdigi bir bayraga guvenilmez, rol sunucu tarafinda (session) kontrol edilir.
       const isAdmin = req.session?.user?.role === 'Admin';
@@ -2997,6 +3009,7 @@ function initAnsibleRunner(app) {
           launchOptions,
           askVariables,
           templateId: req.params.templateId,
+          gates,
         });
       }
 
@@ -3047,6 +3060,7 @@ function initAnsibleRunner(app) {
         launchOptions,
         askVariables,
         templateId: req.params.templateId,
+        gates,
       });
     } catch (err) {
       const { status, message } = friendlyAwxError(err);

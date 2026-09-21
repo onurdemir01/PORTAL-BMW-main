@@ -39,6 +39,14 @@ export interface LaunchOptionFlag {
 // AWX'in "prompt on launch" olarak işaretlediği built-in çalışma-zamanı parametreleri —
 // credential/inventory BİLİNÇLİ OLARAK burada yok (kullanıcı hiçbir zaman hangi
 // credential/inventory'nin kullanılacağını seçemez, güvenlik sınırı).
+/** Survey yanitindaki kapi ozeti (2026-09-21): OCO/Smart formun EN USTUNDE onceden duyurulur. */
+export interface SurveyGates {
+  oco: boolean;
+  /** null = liste yok, kural "env|ortam = prod|production"; dolu = yalniz bu ortam etiketleri */
+  ocoEnvironments: string[] | null;
+  smart: boolean;
+}
+
 export interface LaunchOptions {
   limit: LaunchOptionFlag;
   forks: LaunchOptionFlag;
@@ -283,6 +291,8 @@ export const ansibleApi = {
     launchOptions: LaunchOptions;
     askVariables: boolean;
     message?: string;
+    /** Bu serviste tanimli kapilar (on bilgi; karar launch-ss'te). */
+    gates?: SurveyGates;
   }> => fetch(`${BASE}/survey/${serverId}/${templateId}`).then(safeJson),
 
   // Admin-only: gizlenmiş (hidden) alanlar dahil TÜM survey alanlarını döner —
@@ -298,6 +308,7 @@ export const ansibleApi = {
     launchOptions: LaunchOptions;
     askVariables: boolean;
     message?: string;
+    gates?: SurveyGates;
   }> => fetch(`${BASE}/survey/${serverId}/${templateId}?admin=1`).then(safeJson),
 
   templateDetail: (

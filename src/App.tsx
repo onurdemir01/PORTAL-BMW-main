@@ -84,6 +84,7 @@ export default function App() {
             </Route>
             <Route element={<PageVisibilityRoute pageId="Self Service" />}>
               <Route path="/self-service" element={<SelfServicePage />} />
+              <Route path="/self-service/:slug" element={<SelfServicePage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="LogX" />}>
               <Route path="/logx" element={<LogXWizardPage />} />

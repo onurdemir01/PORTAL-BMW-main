@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { selfServiceApi, type SelfServiceGroup } from '@/api/selfServiceApi';
 import { ansibleApi, type OcoWindowInfo } from '@/api/ansibleApi';
 import { nobetciApi, type NobetciResult } from '@/api/nobetciApi';
-import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions } from '@/api/ansibleApi';
+import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions, SurveyGates } from '@/api/ansibleApi';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
 import DynamicChoiceSelect, { MULTI_SEP, splitMulti } from '@/components/self_service/DynamicChoiceSelect';
 import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
@@ -79,6 +80,10 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   const [fields, setFields] = useState<SurveyField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [launchOptions, setLaunchOptions] = useState<LaunchOptions | null>(null);
+  // Bu servisin kapilari (OCO / Smart) — survey yanitiyla gelir, formun EN USTUNDE
+  // onceden duyurulur (2026-09-21, kullanici: "OCO form doldurulduktan sonra sorulunca
+  // insanlar en basta is tetiklemeye korkuyor"). Karar yine sunucuda (launch-ss).
+  const [gates, setGates] = useState<SurveyGates | null>(null);
   const [limit, setLimit] = useState('');
   const [forks, setForks] = useState('');
   const [jobTags, setJobTags] = useState('');
@@ -175,6 +180,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
           if (f.defaultValue) defaults[f.name] = f.defaultValue;
         }
         setValues(defaults);
+        setGates(r.gates || null);
         if (r.launchOptions) {
           setLaunchOptions(r.launchOptions);
           setLimit(String(r.launchOptions.limit?.current ?? ''));
@@ -198,6 +204,24 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
     return isFieldActiveShared(f.dependsOn, values);
   }
   const visibleFields = fields.filter(isFieldActive);
+
+  // OCO on uyarisi: kullanicinin SU ANKI secimi OCO isteyecek mi? Sunucudaki kuralin
+  // (server/oco/prod-detect.cjs + change-gates isOcoGateApplicable) UX kopyasi:
+  // `env|ortam` alani, deger `prod|production` — ya da admin ortam listesi verdiyse o liste.
+  // Bagla degil, yalnizca uyarinin tonunu belirler.
+  const ocoHint = (() => {
+    if (!gates?.oco) return null;
+    let envLabel = '';
+    for (const f of visibleFields) {
+      if (!['env', 'ortam'].includes(f.name.trim().toLowerCase())) continue;
+      const v = String(values[f.name] || '').trim().toLowerCase();
+      if (v) { envLabel = v; break; }
+    }
+    const envs = gates.ocoEnvironments && gates.ocoEnvironments.length ? gates.ocoEnvironments : null;
+    const willAsk = envs ? envs.includes(envLabel) : ['prod', 'production'].includes(envLabel);
+    const scope = envs ? envs.map((e) => e.toUpperCase()).join(', ') : 'PRODUCTION';
+    return { willAsk, scope, envLabel };
+  })();
 
   // Görünür ve dolu olması gereken zorunlu alanlar — submit'i istemci tarafında da
   // engeller (önceden yalnızca kozmetik bir `*` işareti vardı, hiçbir şeyi engellemiyordu).
@@ -432,6 +456,42 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
           )}
 
           {loading && <SkeletonList rows={4} />}
+
+          {/* OCO ON UYARISI — formun EN USTUNDE, alanlar doldurulmadan once. Secim henuz prod
+              degilse bilgi tonunda (mor), prod/listedeki ortam secildiyse uyari tonuna (sari)
+              doner: "OCO numaranizi hazir edin". Boylece kullanici Baslat'a basinca ne olacagini
+              en bastan bilir; OCO paneli (asagida) yine ayni akis, surpriz degil. */}
+          {!loading && !jobId && !pendingTicket && !ocoState && ocoHint && (
+            <div
+              role="status"
+              data-testid="oco-prewarn"
+              data-tone={ocoHint.willAsk ? 'warning' : 'info'}
+              className="rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5"
+              style={{
+                borderColor: ocoHint.willAsk ? 'var(--status-warning)' : 'var(--status-info)',
+                background: ocoHint.willAsk ? 'var(--status-warning-bg)' : 'var(--status-info-bg)',
+                boxShadow: `inset 4px 0 0 ${ocoHint.willAsk ? 'var(--status-warning)' : 'var(--status-info)'}`,
+              }}
+            >
+              <ShieldCheckIcon className="w-5 h-5 shrink-0 mt-0.5" style={{ color: ocoHint.willAsk ? 'var(--status-warning)' : 'var(--status-info)' }} />
+              <div className="text-[13px] leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                {ocoHint.willAsk ? (
+                  <>
+                    <b>Bu seçim için OCO gerekecek — OCO numaranızı hazır edin.</b>{' '}
+                    "Başlat"a bastığınızda iş <b>hemen tetiklenmez</b>: bir sonraki adımda OCO numarası sorulur, kesinti penceresi doğrulanır ve iş ona göre başlatılır.
+                  </>
+                ) : (
+                  <>
+                    <b>Bu serviste {ocoHint.scope} seçilirse OCO sorulur.</b>{' '}
+                    Form gönderilince iş hemen başlamaz; bir sonraki adımda OCO numarası istenir ve kesinti penceresine göre planlanır. Diğer ortamlar için OCO gerekmez, iş doğrudan başlar.
+                  </>
+                )}
+                {gates?.smart && (
+                  <> Ayrıca bu servis <b>Smart onayı</b> gerektirir: iş, onay geldikten sonra tetiklenir.</>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* OCO Kontrolu paneli — acikken form alanlari GIZLENIR: kullanicinin bu
               noktada verecegi tek karar OCO ile ilgili, alanlari tekrar duzenlemesi
@@ -1200,9 +1260,13 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
   useEffect(() => {
     reload();
   }, [reload]);
+  // Yalnizca YUKLENMIS liste bildirilir: mount anindaki bos [] ust bilesenin (sayfa
+  // acilisinda URL slug'ini cozmek icin zaten yukledigi) listesini silip slug'i
+  // "bilinmiyor"a dusuruyordu (2026-09-21).
   useEffect(() => {
+    if (loading) return;
     onItems?.(isAdmin ? items : items.filter((i) => i.enabled));
-  }, [items, isAdmin, onItems]);
+  }, [items, isAdmin, onItems, loading]);
   // Menuden "Servis Ekle" secilince form acik gelsin
   useEffect(() => {
     if (selected === 'new') { setAddForm(true); setSaveError(''); }
@@ -1480,14 +1544,32 @@ const ocoOptionCard =
   'hover:border-[var(--accent)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ' +
   'disabled:opacity-50 disabled:cursor-not-allowed';
 
+/** Menu girisinden URL parcasi: "Nginx - RVP Operations" -> "nginx-rvp-operations".
+ *  Turkce harfler sadelesir; ayni slug iki serviste cikarsa ikincisi "-<id>" alir. */
+export function ssSlug(title: string): string {
+  const tr: Record<string, string> = { ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u', â: 'a', î: 'i', û: 'u' };
+  return title
+    .replace(/İ/g, 'i').replace(/I/g, 'i')
+    .toLowerCase()
+    .replace(/[çğıöşüâîû]/g, (c) => tr[c] || c)
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'servis';
+}
+
+const FIXED_SLUG: Record<string, string> = { ip: 'ip-sorgu', openshift: 'openshift-sorgu', 'svc:new': 'servis-ekle' };
+
 export default function SelfServicePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
+  // 2026-09-21: secili bolum URL'de yasar (/self-service/nginx-rvp-operations) — link
+  // paylasilabilir, tarayici geri tusu calisir, yenileyince ayni servis acik kalir.
+  const navigate = useNavigate();
+  const { slug } = useParams<{ slug?: string }>();
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [groups, setGroups] = useState<SelfServiceGroup[]>([]);
-  const [activeTop, setActiveTop] = useState<TopTab>('ansible');
   const [showHelp, setShowHelp] = useState(false);
   // Sol menudeki servis listesi (AnsibleSection yukler, buraya bildirir)
   const [ssItems, setSsItems] = useState<AnsibleSsItem[]>([]);
@@ -1498,10 +1580,11 @@ export default function SelfServicePage() {
     (async () => {
       try {
         setLoading(true);
-        const r = await selfServiceApi.get();
+        // Menu icin servis listesi de ILK yuklemede beklenir: URL'deki slug ancak liste
+        // gelince cozulur; yoksa sayfa bir an "tumu"ne dusup sonra servise atlardi.
+        const [r, x] = await Promise.all([selfServiceApi.get(), ansibleApi.ssItems().catch(() => ({ items: [] as AnsibleSsItem[] }))]);
         if (alive) setGroups(r.groups || []);
-        // Menu icin servis listesi (AnsibleSection mount degilken de dolu olsun)
-        ansibleApi.ssItems().then((x) => { if (alive) setSsItems(isAdmin ? x.items || [] : (x.items || []).filter((i) => i.enabled)); }).catch(() => {});
+        if (alive) setSsItems(isAdmin ? x.items || [] : (x.items || []).filter((i) => i.enabled));
       } catch (e: unknown) {
         if (alive) setErr(e instanceof Error ? e.message : String(e));
       } finally {
@@ -1525,10 +1608,23 @@ export default function SelfServicePage() {
     'svc:new': { label: 'Servis Ekle', icon: PlusIcon, hint: 'AWX job template\'ini Portal\'a servis olarak tanımlayın; alanlar kayıttan sonra hemen düzenlenir.' },
   };
   // Her self servis ogesi menude ayri giris (2026-09-21, kullanici istegi)
+  const SLUG: Record<string, string> = { ...FIXED_SLUG };
+  const usedSlugs = new Set<string>(Object.values(FIXED_SLUG));
   const svcIds = [...ssItems].sort((a, b) => a.order - b.order).map((i) => {
     ENTRIES[`svc:${i.id}`] = { label: i.title, icon: PlayIcon, hint: i.description || `AWX template #${i.awxTemplateId}`, muted: !i.enabled };
+    let sl = ssSlug(i.title);
+    if (usedSlugs.has(sl)) sl = `${sl}-${i.id}`;
+    usedSlugs.add(sl);
+    SLUG[`svc:${i.id}`] = sl;
     return `svc:${i.id}` as TopTab;
   });
+  const activeTop: TopTab = (slug && (Object.keys(SLUG).find((k) => SLUG[k] === slug) as TopTab | undefined)) || 'ansible';
+  const setActiveTop = (id: TopTab) => navigate(id === 'ansible' ? '/self-service' : `/self-service/${SLUG[id]}`);
+  // Bilinmeyen/silinmis slug: sessizce "tumu"ne don (liste yuklendikten sonra)
+  useEffect(() => {
+    if (!loading && slug && !Object.values(SLUG).includes(slug)) navigate('/self-service', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, slug, ssItems.length]);
   const SECTIONS: { title: string; icon: React.ElementType; ids: TopTab[] }[] = [
     { title: ansibleGroup?.label || 'Ansible', icon: CommandLineIcon, ids: ['ansible', ...svcIds, ...(isAdmin ? (['svc:new'] as TopTab[]) : [])] },
     { title: 'Kontrol', icon: MagnifyingGlassIcon, ids: ['ip', 'openshift'] },
