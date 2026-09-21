@@ -133,7 +133,7 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   assert.ok(covSrv.includes('internetServices,') && covSrv.includes("addSvc('PROD', String(res.application).toLowerCase(), r.service)") && covSrv.includes('addSvc(e, app.toLowerCase(), r.service)'), 'servis kirilimi hesaplanmali (include vhost + PROD proxy vhost)');
   assert.ok(sum.includes('function ServiceBar(') && sum.includes('<ServiceBar total={c.internetTotal} services={c.internetServices || []}'), 'internet hucresinde servis cubugu yok');
   // 2026-09-18: uc ayri olcu - deploy edilmis (H+A, internet sunuculari) / servise tanimli / yuk aliyor
-  for (const s of ["label=\"deploy edilmiş (H+A)\"", "label=\"çalışıyor — hem deploy hem tanımlı\"", "c.missingDetail?.notDeployed", "c.missingDetail?.deployedNotDefined", "c.missingDetail?.definedNotDeployed"]) {
+  for (const s of ["label=\"deploy edilmiş (H+A, en az bir internet sunucusunda)\"", "label=\"çalışıyor — hem deploy hem tanımlı\"", "c.missingDetail?.notDeployed", "c.missingDetail?.deployedNotDefined", "c.missingDetail?.definedNotDeployed"]) {
     assert.ok(sum.includes(s), `internet hucresinde yok: ${s}`);
   }
   assert.ok(covSrv.includes("internetDeployed: deployed.length") && covSrv.includes("h.hys && h.app") && covSrv.includes("tierOfHost(host) === 'intranet') continue;"), 'sunucu deploy (H+A) olcusunu internet sunucularindan hesaplamali');

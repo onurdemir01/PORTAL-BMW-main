@@ -304,6 +304,7 @@ function initDenetim(app) {
       ].filter(Boolean))];
       let dirsReady = false;
       const dirIdx = new Map(); // "HOST|ns/app" -> {hys, app, conf}
+      const dirScannedHosts = new Set(); // son taramada satiri olan sunucular
       if (spaHosts.length) {
         try {
           const hIn = spaHosts.map((_, i) => `@h${i}`).join(', ');
@@ -317,6 +318,11 @@ function initDenetim(app) {
           dirsReady = true;
           const newProdHosts = new Set(MIGRATION_GROUPS.flatMap((g) => g.newHosts));
           const onNewProd = new Map(); // ns/app -> {hosts:Set, confName}
+          // TARANAN sunucular: son taramada EN AZ BIR satiri olan host. Kullanici (2026-09-21):
+          // "neden taranmadi gozukuyor?" — tablo yalniz izi olan (hysdeploy/app dizini/conf ya da
+          // envanterde bulunan) ciftler icin satir yazar; hic izi olmayan uygulama icin satir YOK.
+          // Bu "sunucu taranmadi" degil "sunucuda hicbir sey yok" demektir; ikisi ayri gosterilir.
+          for (const d of dr.recordset || []) dirScannedHosts.add(String(d.host || '').trim().toUpperCase());
           for (const d of dr.recordset || []) {
             const host = String(d.host || '').trim().toUpperCase();
             const nsApp = String(d.namespace || '').trim().toLowerCase() + '/' + String(d.application || '').trim().toLowerCase();
@@ -371,10 +377,13 @@ function initDenetim(app) {
           for (const cell of Object.values(r.envs)) {
             if (!cell.namespace) continue; // flat dagitimda ns/app dizini yok
             const key = String(cell.namespace).trim().toLowerCase() + '/' + r.application.toLowerCase();
-            cell.dirs = dirHostsOfCell(cell).map((h) => ({
-              host: h,
-              flags: dirIdx.get(String(h).trim().toUpperCase() + '|' + key) || null,
-            }));
+            cell.dirs = dirHostsOfCell(cell).map((h) => {
+              const H = String(h).trim().toUpperCase();
+              // null = sunucu son taramada HIC yok (taranmadi); satir yoksa ama sunucu tarandiysa
+              // "hicbir iz yok" (h a c hepsi eksik) — eskiden ikisi de "taranmadi" gorunuyordu.
+              const flags = dirIdx.get(H + '|' + key) || (dirScannedHosts.has(H) ? { hys: false, app: false, conf: false } : null);
+              return { host: h, flags };
+            });
           }
         }
       }
