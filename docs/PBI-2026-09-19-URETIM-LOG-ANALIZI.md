@@ -39,7 +39,7 @@ sınıflamıştım — **alarm dışı bırakılmalı**, düzeltilecek bir şey 
 | P1-2 Önizle/uygula | Önizle → işaretle → uygula (#119/#120) + hedef bazlı seçim (#123) |
 | P1-3 401 fırtınası | Görünürlük döngüsü (#117) + **oturum-bitti kapısı** (bu tur): imzalı 401 sonrası `/api/*` ağa çıkmaz. Kalan yarısı `SESSION_STORE` — sunucu tarafı ayar |
 | P2-1 Log gürültüsü | MCP geri çekilme + TLS önbelleği (#121); ECONNRESET **yeniden sınıflandı** |
-| P2-2 Yavaş uçlar | Kısmen (#112, #118) |
+| P2-2 Yavaş uçlar | Kısmen (#112, #118) + **artımlı stdout** (bu tur): `ss/job-status` artık stdout'un tamamını her yoklamada yeniden indirmiyor |
 | P3-1 MSSQL/AWX 403 | AWX 403 kapatıldı (#117); MSSQL havuzu **açık** |
 
 | # | Başlık | Sınıf | Öncelik | Büyüklük |
@@ -321,6 +321,31 @@ daraltma.
 
 ### Kabul ölçütü
 Her uç için önce/sonra ölçüm; `[slow]` satır sayısı **yarıya** iniyor.
+
+### Çözüldü (2026-09-22) — en büyük kalem: aynı stdout tekrar tekrar indiriliyordu
+
+`ss/job-status` her yoklamada job stdout'unun **tamamını** yeniden indiriyordu.
+İstemci ise stdout akarken **1,5 saniyede bir** yokluyor
+(`JobTrackerContext` RUN_MS) — yani üretimde **ortalama 20,8 saniye** süren bir
+indirme 1,5 saniyede bir yeniden başlatılıyordu. Toplam trafik çıktının
+**karesiyle** büyüyor.
+
+Bu, `fetchAwxPlainText` içindeki OOM notunun "BİRİKİM" dediği şeyin ta kendisi:
+orada bayt tavanı konuldu ama **tekrar tekrar indirme durmadı**.
+
+**Ölçüm** (10 dakikalık iş, 400 yoklama, biten stdout 4,3 MB):
+
+| | AWX'ten indirilen |
+|---|---|
+| bugünkü | **860,5 MB** |
+| artımlı | **4,3 MB** |
+
+AWX `?start_line=N` ile artımlı çekim destekliyor. Desteklemediği durumda
+(sürüm farkı, araya giren proxy) tüm metni döner ve naif bir birleştirme
+çıktıyı **sessizce ikiye katlardı** — bu yüzden her artımlı çekim **iki satır
+bindirme** ile yapılıyor ve dönen ilk satır önbellekteki çapa satırıyla
+karşılaştırılıyor. Tutmazsa önbellek atılıp bugünkü tam çekime düşülüyor: yani
+iyileştirme **kendini doğruluyor**.
 
 ---
 
