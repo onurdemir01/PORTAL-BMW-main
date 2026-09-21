@@ -573,7 +573,6 @@ const WorkloadStep: React.FC<Props> = ({
       }
     }
     return { hedefSayisi: dahil, haricSayisi: haric };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, rowsByName, excluded]);
 
   // ── SECIM FAZI — AWX'E HIC DOKUNMAZ ────────────────────────────────────────
