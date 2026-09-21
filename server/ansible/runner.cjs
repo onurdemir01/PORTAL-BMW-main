@@ -1275,7 +1275,22 @@ async function getJobStatusOnServer(serverId, jobId) {
   };
 }
 
-async function getJobOutputOnServer(serverId, jobId) {
+const stdoutCache = require('./job-stdout-cache.cjs');
+
+/**
+ * Job stdout'u. `artimli: true` ile AYNI ISIN onceki cekiminin UZERINE devam
+ * eder — tamami yeniden indirilmez.
+ *
+ * NEDEN: `ss/job-status` bu fonksiyonu HER YOKLAMADA cagiriyor ve istemci
+ * stdout akarken 1,5 sn'de bir yokluyor (`JobTrackerContext` RUN_MS). Uretimde
+ * tek bir stdout indirmesi ORTALAMA 20,8 saniye suruyordu; yani yoklamalar ust
+ * uste biniyor ve cikti buyudukce her yoklama daha pahali hale geliyordu.
+ * `fetchAwxPlainText` icindeki OOM notunun "BIRIKIM" dedigi sey tam olarak bu.
+ *
+ * `artimli` VARSAYILAN OLARAK KAPALI: parametresiz her cagri bugunku davranisi
+ * BIREBIR korur (gecmis arsivi, indirme ucu, opsx/logx cagricilari).
+ */
+async function getJobOutputOnServer(serverId, jobId, { artimli = false } = {}) {
   const server = getServerById(serverId);
   if (!server) throw Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404 });
 
@@ -1283,6 +1298,44 @@ async function getJobOutputOnServer(serverId, jobId) {
   if (isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
 
   const token = await getTokenForServer(server);
+
+  // ── ARTIMLI YOL ────────────────────────────────────────────────────────────
+  // Onbellekte bu isin metni varsa yalnizca SONRASI cekilir. BIR SATIR BINDIRME
+  // ile: donen ilk satir onbellegin son satiriyla tutmuyorsa AWX `start_line`i
+  // yok saymis demektir ve birlestirmek ciktiyi IKIYE KATLARDI. O durumda
+  // onbellek atilir, asagidaki tam cekime dusulur.
+  if (artimli) {
+    const kayit = stdoutCache.al(serverId, id);
+    if (kayit && kayit.lines > 0) {
+      try {
+        const parca = await fetchAwxPlainText(
+          server.url, token,
+          mapApiPath(server, `/api/v2/jobs/${id}/stdout/?format=txt&start_line=${stdoutCache.baslangicSatiri(kayit.lines)}`),
+        );
+        if (!isAwxStdoutTooLarge(parca)) {
+          const b = stdoutCache.birlestir(kayit.text, parca);
+          if (b.ok) {
+            // Tavani asarsa `yaz` satiri SILER; cikti yine dogru doner, yalnizca
+            // bir sonraki yoklama tam cekime duser.
+            stdoutCache.yaz(serverId, id, b.text, b.lines);
+            return { output: b.text, artimliKullanildi: true };
+          }
+          console.warn(`[AWX] artimli stdout birlestirilemedi (job ${id}): ${b.sebep} — tam cekime dusuluyor`);
+        }
+      } catch (err) {
+        console.warn(`[AWX] artimli stdout cekilemedi (job ${id}): ${err.message} — tam cekime dusuluyor`);
+      }
+      // BURADA ACIK BIR GECERSIZ KILMA YOK — ve bu BILEREK boyle.
+      //
+      // Ilk yazimda buraya `stdoutCache.sil(...)` konmustu. Mutasyon turu onu
+      // KALDIRDIGINDA hicbir bekci atesleme(di): cunku gozlenebilir bir sey
+      // degistirmiyordu. Asagidaki tam cekim yolu satiri ZATEN yeniden yaziyor
+      // (`yaz`, tavani asarsa SILIYOR), ve dogrulugu saglayan sey silme degil
+      // `birlestir` icindeki CAPA KONTROLU: dogrulanmamis bir metin hicbir
+      // zaman birlestirilmez. Kanitlanamayan savunma kodu birakmak yerine
+      // gercek degismezi yazili tutuyoruz (bkz. JS13).
+    }
+  }
 
   let output = '';
   try {
@@ -1293,9 +1346,13 @@ async function getJobOutputOnServer(serverId, jobId) {
 
   if (!output || !output.trim() || isAwxStdoutTooLarge(output)) {
     output = await collectJobEventsStdout((p) => awxRequestToServer(server, token, 'GET', p), id);
+    // Event'lerden toplanan metin `start_line` ile UYUMLU DEGILDIR (farkli
+    // kaynak, farkli satir bolumlemesi). Onbellege KONULMAZ.
+    return { output, artimliKullanildi: false };
   }
 
-  return { output };
+  if (artimli) stdoutCache.yaz(serverId, id, output, output.split('\n').length);
+  return { output, artimliKullanildi: false };
 }
 
 // AWX'te calisan bir job'i iptal eder (POST /api/v2/jobs/:id/cancel/). AWX zaten terminal
@@ -4629,16 +4686,24 @@ function initAnsibleRunner(app) {
         'GET',
         `/api/v2/jobs/${req.params.jobId}/`,
       );
+      // ARTIMLI CEKIM YALNIZCA IS KOSARKEN. Terminal durumda TAM cekim yapilir
+      // cunku birkac satir asagida `ansible_job_output`a ARSIVLENEN metin budur:
+      // arsiv ve kullanicinin gordugu son metin hicbir zaman artimlardan
+      // TUREMEZ, her zaman AWX'ten dogrudan gelir. Ayrica is bittiginde
+      // onbellek satiri da birakilir.
+      const TERMINAL_DURUMLAR = ['successful', 'failed', 'error', 'canceled'];
+      const bittiMi = TERMINAL_DURUMLAR.includes(data.status);
+      if (bittiMi) stdoutCache.sil(req.params.serverId, req.params.jobId);
       const { output: stdoutText } = await getJobOutputOnServer(
         req.params.serverId,
         req.params.jobId,
+        { artimli: !bittiMi },
       );
 
       // Is gecmisi durumunu SONLANDIR: ansible_job_history yalniz launch aninda (pending) yaziliyor;
       // canli durum terminal ise gecmis satirini guncelle (herhangi biri job'i goruntulediginde) —
       // aksi halde gecmis sonsuza dek "pending" gorunur (Faz 4).
-      const TERMINAL = ['successful', 'failed', 'error', 'canceled'];
-      if (TERMINAL.includes(data.status)) {
+      if (bittiMi) {
         try {
           const upd = await dbx.query(
             `UPDATE ansible_job_history SET status = $1, finished_at = COALESCE(finished_at, GETUTCDATE())
