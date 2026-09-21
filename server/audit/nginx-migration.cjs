@@ -298,9 +298,11 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
         perHost[nh] = f;
         if (f.hys && f.app) readyHosts++;
       }
-      // hazir: TARANAN her yeni sunucuda hys+app var; taranmayan varsa "kismi"
+      // hazir: TARANAN her yeni sunucuda hys+app var. Taranmamis sunucu (2026-09-21: AP32-35 yeni
+      // eklendi, ilk tarama gelene kadar) hazirligi ENGELLEMEZ — aksi halde tum liste "kismi"ye
+      // dusup ozet %0 gosteriyordu; taranmayanlar grupta ayrica (newHostsScanned) gorunur.
       const status =
-        scanned === 0 ? 'not-scanned' : readyHosts === scanned && scanned === newHosts.length ? 'ready'
+        scanned === 0 ? 'not-scanned' : readyHosts === scanned ? 'ready'
           : readyHosts === 0 ? 'missing' : 'partial';
       return { ...finish(row), perHost, readyHosts, scannedHosts: scanned, status };
     });

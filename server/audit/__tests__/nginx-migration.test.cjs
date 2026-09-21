@@ -95,8 +95,10 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
   const by = Object.fromEntries(glomo.apps.map((a) => [a.application, a]));
   assert.deepEqual(Object.keys(by).sort(), ['eksik-app-emb-v2', 'hazir-app-v1', 'kismi-app-v1']);
 
-  // hazir: 5 taranan sunucuda var ama 6. taranmadi -> 'partial' (tam hazir DENEMEZ)
-  assert.equal(by['hazir-app-v1'].status, 'partial');
+  // hazir: TARANAN 5 sunucunun hepsinde var; 6. henuz taranmadi -> yine 'ready'
+  // (2026-09-21: yeni eklenen sunucu ilk taramaya kadar tum listeyi "kismi"ye dusurmesin;
+  // taranmayan sunucu newHostsScanned/perHost=null ile ayrica gorunur)
+  assert.equal(by['hazir-app-v1'].status, 'ready');
   assert.equal(by['hazir-app-v1'].readyHosts, 5);
   assert.equal(by['hazir-app-v1'].perHost.GBNGXAP35, null, 'taranmayan sunucu null');
   assert.deepEqual(by['hazir-app-v1'].oldHosts, ['GBRVPP07', 'GBRVPP08', 'GBRVPP09'], 'upstream server host ile cozulen GBRVPP09 dahil');
@@ -118,12 +120,14 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
   assert.equal(glomo.nonSpa[0].application, 'glomo-api');
   assert.equal(glomo.unresolved.length, 1);
   assert.equal(glomo.unresolved[0].target, 'hayalet-app-v1-yok-prod' + APPS);
-  assert.deepEqual(glomo.totals, { locations: { total: 7, defined: 0, partial: 0, none: 7, notScanned: 0 }, apps: 3, ready: 0, partial: 2, missing: 1, notScanned: 0, nonSpa: 1, unresolved: 1 });
+  assert.deepEqual(glomo.totals, { locations: { total: 7, defined: 0, partial: 0, none: 7, notScanned: 0 }, apps: 3, ready: 1, partial: 1, missing: 1, notScanned: 0, nonSpa: 1, unresolved: 1 });
 
-  // Diger grup: yalniz GBNGXP44 taranmis -> partial; Glomo satiri sizmamis
+  // Diger grup: yalniz GBNGXP44 taranmis ve orada hazir -> 'ready' (taranan sunucularin hepsi);
+  // taranmayan 5 sunucu newHostsScanned disinda gorunur. Glomo satiri sizmamis.
   assert.equal(other.apps.length, 1);
   assert.equal(other.apps[0].application, 'wf-app-v1');
-  assert.equal(other.apps[0].status, 'partial');
+  assert.equal(other.apps[0].status, 'ready');
+  assert.equal(other.apps[0].scannedHosts, 1);
 });
 
 test('hic yeni sunucu taranmamissa uygulama satiri "not-scanned" - "eksik" DEGIL', () => {

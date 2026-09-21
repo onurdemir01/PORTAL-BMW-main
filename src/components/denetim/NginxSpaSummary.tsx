@@ -353,6 +353,12 @@ function ClickCell({ count, disabled = false, onClick, children, missingLabel = 
   );
 }
 
+/** Olcunun SUNUCUDA hangi dosyaya baktigi — kullanici (2026-09-21) sayilarin anlamini dosya
+ *  duzeyinde gormek istedi. Her barin altinda tek satir, monospace. */
+function Where({ children }: { children: React.ReactNode }) {
+  return <div className="text-[10px] font-mono leading-tight mt-0.5" style={{ color: 'var(--text-muted)' }}>{children}</div>;
+}
+
 function Big({ n, of, label }: { n: number; of?: number; label?: string }) {
   return (
     <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
@@ -549,8 +555,9 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           missingLabel="deploy edilmemiş (ekip)"
                           onClick={() => setOpen({ title: `${env} · deploy edilmemiş internet SPA’ları`, subtitle: `${fmtNumber(c.internetNotDeployedCount || 0)} uygulama · internete açık hiçbir nginx sunucusunda /hysdeploy/<ns>/<app>/ + /usr/nginx/applications/<ns>/<app>/ (H+A) yok — ekipler deployment geçmeli`, rows: rowsFromCoverage(c.missingDetail?.notDeployed || []) })}
                         >
-                          <Big n={c.internetDirsMeasured ? (c.internetDeployed || 0) : 0} of={c.internetTotal} label="deploy edilmiş (H+A, en az bir internet sunucusunda)" />
+                          <Big n={c.internetDirsMeasured ? (c.internetDeployed || 0) : 0} of={c.internetTotal} label="paket sunucuda (H+A)" />
                           <Bar value={c.internetDeployed || 0} total={c.internetTotal} measured={!!c.internetDirsMeasured} title="internete açık nginx sunucusunda paket + dosyalar var / internete açık SPA" />
+                          <Where>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/ + /usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/ — {env === 'PROD' ? 'yeni GBNGX prod' : 'internet'} sunucularından en az birinde</Where>
                         </ClickCell>
                         <ClickCell
                           disabled={!c.measured}
@@ -558,8 +565,11 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           missingLabel="deploy edilmiş ama servise tanımsız (biz)"
                           onClick={() => setOpen({ title: `${env} · deploy edilmiş ama servise tanımlanmamış SPA’lar`, subtitle: `${fmtNumber(c.internetDeployedNotDefinedCount || 0)} uygulama · paket sunucuda var (H+A) ama vhost’ta location/include tanımı yok — bizim işimiz: tanım oluştur`, rows: rowsFromCoverage(c.missingDetail?.deployedNotDefined || []) })}
                         >
-                          <Big n={c.measured ? c.internetInNginx : 0} of={c.internetTotal} label={env === 'PROD' ? 'servise tanımlı (eski sunucuda proxy)' : 'servise tanımlı'} />
+                          <Big n={c.measured ? c.internetInNginx : 0} of={c.internetTotal} label={env === 'PROD' ? 'nginx tanımı var (eski sunucuda proxy)' : 'nginx tanımı var (location)'} />
                           <Bar value={c.internetInNginx} total={c.internetTotal} measured={c.measured} title="vhost’ta location/include tanımı var / internete açık SPA" />
+                          <Where>{env === 'PROD'
+                            ? <>eski GBRVP sunucusunda /usr/nginx/conf.d/&lt;SERVİS&gt;-PROD.conf içinde <b>location … {'{'} proxy_pass … {'}'}</b> (trafik hâlâ oradan)</>
+                            : <>/usr/nginx/conf.d/&lt;SERVİS&gt;-{env}.conf içinde <b>location … {'{'} include application-confs/&lt;servis&gt;-&lt;app&gt;-&lt;ns&gt;.conf {'}'}</b> — nginx isteği bu uygulamaya yönlendirir</>}</Where>
                           {c.measured && (c.internetServices || []).length > 0 && (
                             <ServiceBar total={c.internetTotal} services={c.internetServices || []} multi={c.internetMultiService || 0} />
                           )}
@@ -570,25 +580,23 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           missingLabel="tanımlı ama paketi yok → 404 (ekip)"
                           onClick={() => setOpen({ title: `${env} · tanımı var ama paketi olmayan SPA’lar (404 riski)`, subtitle: `${fmtNumber(c.internetDefinedNotDeployedCount || 0)} uygulama · vhost’ta tanım var, internete açık sunucularda H+A yok — adres 404 döner`, rows: rowsFromCoverage(c.missingDetail?.definedNotDeployed || []) })}
                         >
-                          <Big n={c.measured && c.internetDirsMeasured ? (c.internetServing || 0) : 0} of={c.internetTotal} label="çalışıyor — hem deploy hem tanımlı" />
+                          <Big n={c.measured && c.internetDirsMeasured ? (c.internetServing || 0) : 0} of={c.internetTotal} label="çalışıyor = paket VAR ve tanım VAR" />
                           <Bar value={c.internetServing || 0} total={c.internetTotal} measured={!!(c.measured && c.internetDirsMeasured)} title="ilk iki satırın kesişimi: paket sunucuda var VE vhost’ta tanımı var → istek gerçekten uygulamaya gidiyor / internete açık SPA" />
+                          <Where>üstteki ikisinin kesişimi — istek nginx'e gelir, tanım onu bulur, paket de yerinde: kullanıcı sayfayı açar. Eksikler: paket yok → 404 (ekip), tanım yok → istek hiç ulaşmaz (biz)</Where>
                         </ClickCell>
                         {env === 'PROD' && prodNew && (
                           <div className="rounded-lg px-2 py-1.5 mt-1 border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-                            <div className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-muted)' }} title="Bu kume OpenShift’in ‘internet SPA’ saydığı kümeden FARKLIDIR: eski GBRVP* sunucularının proxy_pass’inde bulunan ve bir (namespace, uygulama)’ya çözülen SPA’lar — route bilgisi olmayan (route’suz) uygulamalar dâhil, aynı uygulama iki namespace’teyse iki kez. Üstteki ‘eski sunucuda proxy X / Y’ ise OpenShift’teki internet SPA’larından kaçının eski sunucuda tanımı olduğudur.">Yeni sunucularda yük almaya hazır <span className="normal-case font-normal">(eski sunucuda proxy’si olan tüm SPA’lar)</span></div>
+                            <div className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-muted)' }} title="Bu kume OpenShift’in ‘internet SPA’ saydığı kümeden FARKLIDIR: eski GBRVP* sunucularının proxy_pass’inde bulunan ve bir (namespace, uygulama)’ya çözülen SPA’lar — route bilgisi olmayan (route’suz) uygulamalar dâhil, aynı uygulama iki namespace’teyse iki kez. Üstteki ‘eski sunucuda proxy X / Y’ ise OpenShift’teki internet SPA’larından kaçının eski sunucuda tanımı olduğudur.">Yeni GBNGX sunucularına taşınmaya hazır <span className="normal-case font-normal">(eski sunucuda proxy'si olan her (namespace, uygulama) çifti)</span></div>
                             {prodNew.scanned ? (
                               <>
                                 <ClickCell
                                   count={prodNew.apps - prodNew.ready}
                                   onClick={() => setOpen({ title: 'PROD · yeni sunuculara deploy olmamış SPA’lar', subtitle: `${fmtNumber(prodNew.apps - prodNew.ready)} uygulama · eski GBRVP* sunucusunda proxy ile sunuluyor, yeni GBNGXP* sunucularının hepsinde hysdeploy + applications dizini yok`, rows: rowsFromMigration(mig?.groups || []) })}
                                 >
-                                  <Big n={prodNew.ready} of={prodNew.apps} label="(namespace, uygulama) çifti — eski sunucu proxy listesi" />
-                                  <Bar value={prodNew.ready} total={prodNew.apps} title="hazır = servisin HER yeni sunucusunda hysdeploy + applications dizini var" />
+                                  <Big n={prodNew.ready} of={prodNew.apps} label="paket, servisin TARANAN her yeni sunucusunda" />
+                                  <Bar value={prodNew.ready} total={prodNew.apps} title="hazır = servisin taranmış her yeni sunucusunda hysdeploy + applications dizini var" />
                                 </ClickCell>
-                                {/* Ustteki "deploy edilmis (H+A)" ile farki (kullanici, 2026-09-21): evren, anahtar ve esik ayri */}
-                                <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                                  Üstteki ölçüden farkı: burada evren OpenShift route listesi değil <b>eski GBRVP proxy listesi</b> ({fmtNumber(prodNew.apps)} çift, route'suzlar dâhil); "hazır" = <b>servisin tüm yeni sunucularında</b> H+A (üstte: en az bir internet sunucusunda).
-                                </div>
+                                <Where>evren: eski GBRVP proxy_pass listesi ({fmtNumber(prodNew.apps)} çift, route'suzlar dâhil) — üstteki 225 OpenShift route listesidir; "hazır" = taşıma sonrası hiçbir yeni sunucuda 404 yok</Where>
                                 <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                                   location tanımı yazılmış: <b style={{ color: 'var(--text-secondary)' }}>{fmtNumber(prodNew.locDefined)}</b> / {fmtNumber(prodNew.locTotal)} (Production Taşımaları)
                                 </div>
