@@ -54,6 +54,66 @@ function tierOf(domain, host) {
   return 'bilinmiyor';
 }
 
+/** BMW_Certificates_Inventory satirlari -> web sunucu adina gore vhost listesi (buyuk harf anahtar). */
+function buildCertIndex(certRows) {
+  const certByHost = new Map();
+  for (const c of certRows || []) {
+    const h = String(c.host || '').trim().toUpperCase();
+    if (!h) continue;
+    if (!certByHost.has(h)) certByHost.set(h, []);
+    certByHost.get(h).push({
+      host: String(c.host || '').trim(),
+      ip: c.ip == null ? '' : String(c.ip).trim(),
+      port: c.port == null ? '' : String(c.port).trim(),
+      serverName: String(c.server_name || '').trim(),
+      confFile: String(c.conf_file || '').trim(),
+      product: String(c.product || '').trim(),
+    });
+  }
+  return certByHost;
+}
+
+/**
+ * Tek uygulama satiri icin web sunucusu eslesmesi (Denetim > Web-App kurali; retirement akisi da
+ * AYNI fonksiyonu kullanir — kullanici 2026-09-21: "web sunucu kesfi icin web-app relations").
+ * @returns {{ tier, how, matched, web: object[], webHostCandidate, vhostCountOnHost }}
+ */
+function matchWebForApp({ app, appHost, domain }, certByHost) {
+  const tier = tierOf(domain, appHost);
+  const needleFull = String(app).toLowerCase();
+  const needleBase = needleFull.replace(ENV_SUFFIX, '');
+  const w = webHostOf(appHost);
+  const candidates =
+    tier === '3-tier'
+      ? [{ host: w, how: 'harf-dönüşümü' }, { host: appHost, how: 'aynı host' }]
+      : tier === '2-tier'
+        ? [{ host: appHost, how: 'aynı host' }]
+        : [{ host: w, how: 'harf-dönüşümü' }, { host: appHost, how: 'aynı host' }];
+  let matched = null;
+  let hostOnly = null;
+  for (const cand of candidates) {
+    if (!cand.host) continue;
+    const list = certByHost.get(cand.host.toUpperCase());
+    if (!list || !list.length) continue;
+    if (!hostOnly) hostOnly = { how: cand.how, host: cand.host, count: list.length };
+    for (const [form, needle] of [['tam ad', needleFull], ['taban ad', needleBase]]) {
+      if (form === 'taban ad' && needle === needleFull) continue;
+      const hits = list.filter((e) => e.serverName.toLowerCase().includes(needle));
+      if (hits.length) { matched = { how: cand.how, nameForm: form, entries: hits }; break; }
+    }
+    if (matched) break;
+  }
+  const how = matched
+    ? `${matched.how} + server_name (${matched.nameForm})`
+    : hostOnly ? 'web sunucusu var, server_name tutmadı' : 'eşleşmedi';
+  return {
+    tier, how, matched: !!matched,
+    web: matched ? matched.entries : [],
+    webHostCandidate: hostOnly ? hostOnly.host : webHostOf(appHost) || appHost,
+    vhostCountOnHost: hostOnly ? hostOnly.count : 0,
+  };
+}
+
 function registerWebApp(router) {
   router.get('/web-app', async (req, res) => {
     try {
@@ -77,23 +137,7 @@ function registerWebApp(router) {
       ]);
       const certMissing = !!certRes._missing;
 
-      // Web sunucusu adina gore vhost kayitlari.
-      const certByHost = new Map();
-      for (const c of certRes.recordset || []) {
-        const h = String(c.host || '')
-          .trim()
-          .toUpperCase();
-        if (!h) continue;
-        if (!certByHost.has(h)) certByHost.set(h, []);
-        certByHost.get(h).push({
-          host: String(c.host || '').trim(),
-          ip: c.ip == null ? '' : String(c.ip).trim(),
-          port: c.port == null ? '' : String(c.port).trim(),
-          serverName: String(c.server_name || '').trim(),
-          confFile: String(c.conf_file || '').trim(),
-          product: String(c.product || '').trim(),
-        });
-      }
+      const certByHost = buildCertIndex(certRes.recordset || []);
 
       const howCount = {};
       const tierCount = {};
@@ -106,57 +150,8 @@ function registerWebApp(router) {
         if (!app) continue;
 
         const domain = String(a.domain || '').trim();
-        const tier = tierOf(domain, appHost);
-        const needleFull = app.toLowerCase();
-        const needleBase = needleFull.replace(ENV_SUFFIX, '');
-
-        // Aday web sunuculari: kurala gore SIRALI denenir.
-        //   3-tier  -> once harf donusumu, sonra ayni host (kural tutmazsa)
-        //   2-tier  -> ayni host
-        //   bilinmiyor -> ikisi de
-        const w = webHostOf(appHost);
-        const candidates =
-          tier === '3-tier'
-            ? [
-                { host: w, how: 'harf-dönüşümü' },
-                { host: appHost, how: 'aynı host' },
-              ]
-            : tier === '2-tier'
-              ? [{ host: appHost, how: 'aynı host' }]
-              : [
-                  { host: w, how: 'harf-dönüşümü' },
-                  { host: appHost, how: 'aynı host' },
-                ];
-
-        let matched = null; // { how, nameForm, entries[] }
-        let hostOnly = null; // web sunucusu bulundu ama server_name tutmadi
-
-        for (const cand of candidates) {
-          if (!cand.host) continue;
-          const list = certByHost.get(cand.host.toUpperCase());
-          if (!list || !list.length) continue;
-          if (!hostOnly) hostOnly = { how: cand.how, host: cand.host, count: list.length };
-
-          // Once TAM ad, sonra ortam son eki atilmis TABAN ad.
-          for (const [form, needle] of [
-            ['tam ad', needleFull],
-            ['taban ad', needleBase],
-          ]) {
-            if (form === 'taban ad' && needle === needleFull) continue; // son ek yoksa tekrar deneme
-            const hits = list.filter((e) => e.serverName.toLowerCase().includes(needle));
-            if (hits.length) {
-              matched = { how: cand.how, nameForm: form, entries: hits };
-              break;
-            }
-          }
-          if (matched) break;
-        }
-
-        const how = matched
-          ? `${matched.how} + server_name (${matched.nameForm})`
-          : hostOnly
-            ? 'web sunucusu var, server_name tutmadı'
-            : 'eşleşmedi';
+        const m = matchWebForApp({ app, appHost, domain }, certByHost);
+        const { tier, how, matched } = m;
 
         howCount[how] = (howCount[how] || 0) + 1;
         tierCount[tier] = (tierCount[tier] || 0) + 1;
@@ -173,11 +168,11 @@ function registerWebApp(router) {
           domain,
           tier,
           how,
-          matched: !!matched,
+          matched,
           // Bir uygulama birden fazla vhost'ta servis ediliyor olabilir; hepsi dondurulur.
-          web: matched ? matched.entries : [],
-          webHostCandidate: hostOnly ? hostOnly.host : webHostOf(appHost) || appHost,
-          vhostCountOnHost: hostOnly ? hostOnly.count : 0,
+          web: m.web,
+          webHostCandidate: m.webHostCandidate,
+          vhostCountOnHost: m.vhostCountOnHost,
         });
       }
 
@@ -208,4 +203,4 @@ function registerWebApp(router) {
   });
 }
 
-module.exports = { registerWebApp, webHostOf, tierOf };
+module.exports = { registerWebApp, webHostOf, tierOf, buildCertIndex, matchWebForApp };
