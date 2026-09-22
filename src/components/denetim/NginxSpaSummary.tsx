@@ -105,7 +105,7 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
       <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
         <div className="flex items-center gap-2 flex-wrap">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="uygulama, namespace, ekip ya da e-posta ara" className="px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-72 bg-[var(--bg-surface)]" />
-          <span className="flex flex-wrap gap-1 text-[10px]">
+          <span className="flex flex-wrap gap-1 text-[11px]">
             {teams.slice(0, 8).map(([t, n]) => (
               <button key={t} onClick={() => setQ(t === '(ekip bilinmiyor)' ? '' : t)} className="px-1.5 py-0.5 rounded border hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }} title="bu ekibe süz">
                 {t} <b>{n}</b>
@@ -135,7 +135,7 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
                   <td className="px-2 py-1 font-mono" style={{ color: 'var(--text-muted)' }}>{r.owner.emails.join(', ') || '—'}</td>
                   <td className="px-2 py-1 whitespace-nowrap" title={r.detail}>
                     <span>{r.what}</span>
-                    {r.detail && <div className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>{r.detail}</div>}
+                    {r.detail && <div className="text-[11px] font-mono" style={{ color: 'var(--text-muted)' }}>{r.detail}</div>}
                   </td>
                 </tr>
               ))}
@@ -311,13 +311,13 @@ function ServiceBar({ total, services, multi }: { total: number; services: { ser
   const sum = services.reduce((a, x) => a + x.count, 0);
   return (
     <div className="mt-1" title="servise tanımlı SPA’lar hangi vhost’un (GLOMO, WEBFORMS, SAKLAMA…) altında; % = internete açık SPA’ların payı">
-      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>servis kırılımı <span className="normal-case">(% = internete açık SPA’ların payı)</span></div>
+      <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>servis kırılımı <span className="normal-case">(% = internete açık SPA’ların payı)</span></div>
       <div className="h-2 rounded-full overflow-hidden flex mt-0.5" style={{ background: 'var(--bg-elevated)' }}>
         {services.map((x) => (
           <span key={x.service} className="h-full" style={{ width: `${total ? Math.min(100, (x.count / total) * 100) : 0}%`, background: serviceColor(x.service) }} title={`${x.service}: ${fmtNumber(x.count)}`} />
         ))}
       </div>
-      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
         {services.map((x) => (
           <span key={x.service} className="inline-flex items-center gap-1 whitespace-nowrap">
             <span className="inline-block w-2 h-2 rounded-sm" style={{ background: serviceColor(x.service) }} />
@@ -348,7 +348,7 @@ function ClickCell({ count, disabled = false, onClick, children, missingLabel = 
     >
       {children}
       {count > 0 && (
-        <span className="block text-[10px] underline decoration-dotted" style={{ color: 'var(--accent)' }}>{fmtNumber(count)} {missingLabel} → sahipleriyle listele</span>
+        <span className="block text-[11px] underline decoration-dotted" style={{ color: 'var(--accent)' }}>{fmtNumber(count)} {missingLabel} → sahipleriyle listele</span>
       )}
     </button>
   );
@@ -357,7 +357,7 @@ function ClickCell({ count, disabled = false, onClick, children, missingLabel = 
 /** Olcunun SUNUCUDA hangi dosyaya baktigi — kullanici (2026-09-21) sayilarin anlamini dosya
  *  duzeyinde gormek istedi. Her barin altinda tek satir, monospace. */
 function Where({ children }: { children: React.ReactNode }) {
-  return <div className="text-[10px] font-mono leading-tight mt-0.5" style={{ color: 'var(--text-muted)' }}>{children}</div>;
+  return <div className="text-[11px] font-mono leading-tight mt-0.5" style={{ color: 'var(--text-muted)' }}>{children}</div>;
 }
 
 function Big({ n, of, label }: { n: number; of?: number; label?: string }) {
@@ -381,14 +381,14 @@ function IpCell({ e, onPick }: { e: RouteStatsEnv; onPick: (ip: string) => void 
         // IP tiklanir: bu IP'ye cozen route'lar pencerede (kullanici, 2026-09-17)
         <button key={x.ip} onClick={() => onPick(x.ip)} className="flex items-center gap-1.5 whitespace-nowrap rounded px-0.5 hover:bg-[var(--bg-elevated)]" title={`örnek: ${x.samples.join(', ')} — tıklayın, bu IP’ye çözen route’lar listelensin`}>
           <span className="font-mono text-[11px] underline decoration-dotted" style={{ color: 'var(--text-primary)' }}>{x.ip}</span>
-          <span className="text-[10px] tabular-nums" style={{ color: 'var(--text-muted)' }}>×{fmtNumber(x.count)}</span>
+          <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>×{fmtNumber(x.count)}</span>
         </button>
       ))}
       {e.unresolvedIp.spa > 0 && (
-        <div className="text-[10px]" style={{ color: 'var(--status-warning)' }} title="nslookup sonucu boş">çözülmeyen {fmtNumber(e.unresolvedIp.spa)}</div>
+        <div className="text-[11px]" style={{ color: 'var(--status-warning)' }} title="nslookup sonucu boş">çözülmeyen {fmtNumber(e.unresolvedIp.spa)}</div>
       )}
       {ips.length > 3 && (
-        <button onClick={() => setOpen(!open)} className="text-[10px] underline decoration-dotted" style={{ color: 'var(--text-muted)' }}>
+        <button onClick={() => setOpen(!open)} className="text-[11px] underline decoration-dotted" style={{ color: 'var(--text-muted)' }}>
           {open ? 'daha az' : `+${ips.length - 3} IP`}
         </button>
       )}
@@ -476,7 +476,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
   // Secili katmanin sutunu vurgulu; digeri soluk (ama gorunur - iki katman tek tabloda).
   const hl = (col: 'internet' | 'intranet') =>
     (col === 'intranet') === isIntra ? undefined : { opacity: 0.55 };
-  const th = 'px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-left whitespace-nowrap';
+  const th = 'px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-left whitespace-nowrap';
 
   return (
     <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
@@ -501,7 +501,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
             <UsersIcon className="w-3.5 h-3.5" /> Sahiplerine ulaş · {fmtNumber(allMissing.length)}
           </button>
           {/* Katman adi KALIN ve renkli (kullanici, 2026-09-17): Internet mavi, Intranet yesil. */}
-          <span className="text-[10px] px-2 py-0.5 rounded-full border" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
+          <span className="text-[11px] px-2 py-0.5 rounded-full border" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
             vurgulu sütun:{' '}
             <b style={{ color: isIntra ? 'var(--status-success)' : 'var(--accent)' }}>{isIntra ? 'İntranet' : 'İnternet'}</b>
           </span>
@@ -536,10 +536,10 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                       <div className="space-y-0.5">
                         <Big n={c.spaTotal} label="SPA" />
                         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          envanterin <b style={{ color: 'var(--text-secondary)' }}>{pctText(spaShare)}</b>’i ({fmtNumber(c.ocpApps)} uygulama)
+                          OpenShift envanterindeki <b style={{ color: 'var(--text-secondary)' }}>{fmtNumber(c.ocpApps)}</b> uygulamanın <b style={{ color: 'var(--text-secondary)' }}>{pctText(spaShare)}</b>’i SPA
                         </div>
-                        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                          internet {fmtNumber(c.internetTotal)} · intranet {fmtNumber(c.intranetTotal)}
+                        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                          internete açık {fmtNumber(c.internetTotal)} · iç ağda {fmtNumber(c.intranetTotal)}
                           {c.unknownTotal ? <> · <NoRouteLink c={c} env={env} onOpen={setOpen} /></> : null}
                         </div>
                       </div>
@@ -587,8 +587,8 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                         </ClickCell>
                         {env === 'PROD' && prodNew && (
                           <div className="rounded-lg px-2 py-1.5 mt-1 border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-                            <div className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-muted)' }}>Yeni GBNGX sunucularına taşınma hazırlığı <span className="normal-case font-normal">— <b>ayrı bir liste</b></span></div>
-                            <div className="text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-muted)' }}>Yeni GBNGX sunucularına taşınma hazırlığı <span className="normal-case font-normal">— <b>ayrı bir liste</b></span></div>
+                            <div className="text-[11px] mb-1" style={{ color: 'var(--text-muted)' }}>
                               Yukarıdaki üç ölçü <b>OpenShift’te internete açık {fmtNumber(c.internetTotal)} uygulamayı</b> anlatır. Buradaki sayılar ise farklı bir listeden gelir:
                               eski GBRVP sunucularının <b>proxy_pass</b> satırlarından çözülen <b>{fmtNumber(prodNew.apps)} (namespace, uygulama) çifti</b> — route kaydı olmayanlar da dâhildir ve
                               bir uygulama iki ayrı namespace’te geçiyorsa iki kez sayılır. Bu yüzden iki bölümdeki toplamlar birbirini tutmaz.
@@ -603,11 +603,11 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                                   <Bar value={prodNew.ready} total={prodNew.apps} title="Hazır sayılması için paketin, o servise ait taranmış her yeni sunucuda hem hysdeploy hem applications dizininde bulunması gerekir." />
                                 </ClickCell>
                                 <Where>Sayım evreni: eski GBRVP sunucularının proxy_pass listesi ({fmtNumber(prodNew.apps)} çift, route kaydı olmayanlar dâhil). “Hazır”, taşımadan sonra hiçbir yeni sunucuda 404 alınmayacağı anlamına gelir.</Where>
-                                <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                                   Yeni sunucularda location tanımı yazılmış olan: <b style={{ color: 'var(--text-secondary)' }}>{fmtNumber(prodNew.locDefined)}</b> / {fmtNumber(prodNew.locTotal)} (ayrıntı: Production Taşımaları sekmesi)
                                 </div>
                                 {prodNew.unscanned.length > 0 && (
-                                  <div className="text-[10px]" style={{ color: 'var(--status-warning)' }}>Henüz taranmayan sunucular: {prodNew.unscanned.join(', ')}</div>
+                                  <div className="text-[11px]" style={{ color: 'var(--status-warning)' }}>Henüz taranmayan sunucular: {prodNew.unscanned.join(', ')}</div>
                                 )}
                               </>
                             ) : (
@@ -626,14 +626,14 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           count={c.intranetMissingCount + c.intranetPartialCount}
                           onClick={() => setOpen({ title: `${env} · intranet nginx’lerine kurulmamış SPA’lar`, subtitle: `${fmtNumber(c.intranetMissingCount)} hiç yok · ${fmtNumber(c.intranetPartialCount)} yarım (üç dizinden biri eksik)`, rows: rowsFromCoverage(c.missingDetail?.intranet || []) })}
                         >
-                          <Big n={c.measuredIntranet ? c.intranetFull : 0} of={c.intranetTotal} label="tam kurulu" />
-                          <Bar value={c.intranetFull} total={c.intranetTotal} measured={c.measuredIntranet} title="üç dizin de yerinde / intranet SPA" />
+                          <Big n={c.measuredIntranet ? c.intranetFull : 0} of={c.intranetTotal} label="kurulumu tamam olan uygulama" />
+                          <Bar value={c.intranetFull} total={c.intranetTotal} measured={c.measuredIntranet} title="Gerekli üç dizin de yerinde olan iç ağ (intranet) uygulamaları." />
                         </ClickCell>
                         {c.measuredIntranet && (c.intranetPartialCount > 0 || c.intranetMissingCount > 0) && (
-                          <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                            {c.intranetPartialCount > 0 && <span style={{ color: 'var(--status-warning)' }}>yarım {fmtNumber(c.intranetPartialCount)}</span>}
+                          <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                            {c.intranetPartialCount > 0 && <span style={{ color: 'var(--status-warning)' }} title="Üç dizinden en az biri eksik.">yarım kurulu: {fmtNumber(c.intranetPartialCount)}</span>}
                             {c.intranetPartialCount > 0 && c.intranetMissingCount > 0 && ' · '}
-                            {c.intranetMissingCount > 0 && <span style={{ color: 'var(--status-danger)' }}>hiç yok {fmtNumber(c.intranetMissingCount)}</span>}
+                            {c.intranetMissingCount > 0 && <span style={{ color: 'var(--status-danger)' }} title="Hiçbir dizini bulunamadı.">hiç kurulmamış: {fmtNumber(c.intranetMissingCount)}</span>}
                           </div>
                         )}
                       </div>
@@ -642,21 +642,21 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                   <td className="px-3 py-2.5">
                     {r ? (
                       <div className="space-y-0.5">
-                        <Big n={r.spa} of={r.routes} label="SPA route" />
-                        <Bar value={r.spa} total={r.routes} title="SPA uygulamalarına ait route / ortamdaki tüm route'lar" />
+                        <Big n={r.spa} of={r.routes} label="SPA uygulamasına ait route" />
+                        <Bar value={r.spa} total={r.routes} title="SPA uygulamalarına ait route sayısının, ortamdaki tüm route’lara oranı." />
                         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          SPA değil {fmtNumber(r.nonSpa)}
-                          {r.unclassified ? ` · sınıflanamadı ${fmtNumber(r.unclassified)}` : ''}
+                          SPA olmayan route: {fmtNumber(r.nonSpa)}
+                          {r.unclassified ? ` · sınıflandırılamayan: ${fmtNumber(r.unclassified)}` : ''}
                         </div>
-                        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                          {fmtNumber(r.namespaces)} namespace · {r.terminations.map((t) => (
+                        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                          {fmtNumber(r.namespaces)} namespace · TLS sonlandırma: {r.terminations.map((t) => (
                             // "yok" = route VAR ama TLS sonlandirma tipi bos; route'suz SPA ile karistirilmasin
                             <span key={t.type} title={t.type === 'yok' ? 'route var ama termination_type boş (TLS sonlandırma tanımsız)' : `termination_type = ${t.type}`}>{t.type === 'yok' ? 'TLS tipi yok' : t.type} {fmtNumber(t.count)} </span>
                           ))}
                         </div>
                         {c && c.unknownTotal > 0 && (
-                          <div className="text-[10px]" style={{ color: 'var(--status-warning)' }}>
-                            <NoRouteLink c={c} env={env} onOpen={setOpen} /> — OpenShift’te var, route envanterinde kaydı yok
+                          <div className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
+                            <NoRouteLink c={c} env={env} onOpen={setOpen} /> — OpenShift’te bulunuyor ama route envanterinde kaydı yok
                           </div>
                         )}
                       </div>
@@ -676,7 +676,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
       </div>
       {ipOpen && <IpRoutesModal ip={ipOpen.ip} env={ipOpen.env} onClose={() => setIpOpen(null)} />}
       {open && <MissingAppsModal title={open.title} subtitle={open.subtitle} rows={open.rows} ownersReady={cov.ownersReady !== false} onClose={() => setOpen(null)} />}
-      <div className="px-4 py-2 border-t text-[10px] leading-relaxed" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
+      <div className="px-4 py-2 border-t text-[11px] leading-relaxed" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
         <b>Tıklayın:</b> sayıya tıklayınca o ortamda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta), IP’ye tıklayınca o IP’ye çözen route’lar listelenir. <b>SPA</b> = OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım uygulama × ortam. <b>İnternet</b> = route tipi passthrough; <b>deploy edilmiş</b> = internete açık sunucuda /hysdeploy + /usr/nginx/applications dizinleri (H+A), <b>servise tanımlı</b> = vhost’ta location/include (PROD’da eski GBRVP* sunucularının proxy_pass’i), <b>çalışıyor</b> = ikisi birden (kesişim; “deploy edilmiş − çalışıyor” = tanımsız olanlar, “servise tanımlı − çalışıyor” = paketi olmayanlar). <b>İntranet</b> = route tipi reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. <b>Taralı</b> = o ortam için nginx kaydı yok, ölçülemedi.
         {routes?.routeTableMissing && <span style={{ color: 'var(--status-warning)' }}> Route envanteri okunamadı (route_inventory job’ı koşmalı).</span>}
       </div>
