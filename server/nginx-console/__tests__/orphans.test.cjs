@@ -56,7 +56,9 @@ test('OR2 orphansOf: yuklenmeyen conf, yedek kalibi, kullanilmayan sertifika, re
   const o = orphansOf(summaryOf(DUMP), new Date('2026-09-22T00:00:00Z').getTime());
   assert.equal(o.known, true);
   assert.deepEqual(o.unloaded.map((f) => f.path), ['/usr/nginx/conf.d/B-OLD.conf'], 'yuklenmeyen ve yedek olmayan tek dosya');
-  assert.deepEqual(o.backups.map((f) => f.path).sort(), ['/usr/nginx/conf.d/.console_backup/A-TEST.conf.20260901', '/usr/nginx/conf.d/A-TEST.conf_1234', '/usr/nginx/conf/unused.conf.bak']);
+  // 2026-09-22 (kullanici: "yedek dosyalara bakma, cikti sisiyor"): yalniz *.conf degerlendirilir;
+  // .console_backup/ altindaki .conf.<tarih> ve .conf_<job> / .conf.bak artik hic gelmez.
+  assert.deepEqual(o.backups.map((f) => f.path).sort(), []);
   // a.crt yuklu conf'ta -> yok; b.crt yalniz B-OLD (yuklenmeyen) -> var; old.crt hic referanssiz -> var
   assert.deepEqual(o.certs.map((c) => c.path).sort(), ['/usr/nginx/ssl/b.crt', '/usr/nginx/ssl/old.crt']);
   const b = o.certs.find((c) => c.path.endsWith('b.crt'));
@@ -116,11 +118,12 @@ test('OR5 dump betigi (sahte nginx + dzdo): @@NGINX_T ok, @@LOADED nginx -T list
   assert.ok(fs.existsSync(`${tmp}/dzdo.log`), 'nginx dzdo ile kosmali');
   const p = parseDump(out);
   assert.deepEqual(p.loaded, [`${pp}/conf.d/A.conf`, `${pp}/nginx.conf`], 'yuklenen liste nginx -T ciktisindan');
-  assert.deepEqual(p.sslFiles.map((f) => f.path).sort(), [`${pp}/ssl/a.crt`, `${pp}/ssl/a.key`, `${pp}/ssl/orphan.crt`]);
+  assert.deepEqual(p.sslFiles.map((f) => f.path).sort(), [`${pp}/ssl/a.crt`, `${pp}/ssl/a.key`, `${pp}/ssl/orphan.crt`], 'ssl/ dizini ayri bolum: .conf filtresi burada uygulanmaz');
+  assert.ok(!p.tree.some((f) => /\.conf_77$/.test(f.path)), 'yedek dosya agacta yok (*.conf filtresi)');
   assert.ok(p.certs.has(`${pp}/ssl/orphan.crt`), 'ssl/ altindaki referanssiz sertifika da @@CERT ile gelmeli');
   assert.ok(!p.certs.has(`${pp}/ssl/a.key`), 'anahtar asla sertifika gibi okunmaz');
   const o = orphansOf({ host: 'T', nginxT: p.nginxT, tree: p.tree, certUses: p.certUses, certs: [...p.certs.values()], loaded: p.loaded, sslFiles: p.sslFiles });
-  assert.deepEqual(o.backups.map((f) => f.path), [`${pp}/conf.d/B.conf_77`]);
+  assert.deepEqual(o.backups.map((f) => f.path), [], 'yedek dosya (.conf degil) dokuma girmez');
   assert.deepEqual(o.certs.map((c) => c.path), [`${pp}/ssl/orphan.crt`]);
   assert.deepEqual(o.ssl.map((f) => f.path), [`${pp}/ssl/orphan.crt`]);
 });

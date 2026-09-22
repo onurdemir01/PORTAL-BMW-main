@@ -53,6 +53,8 @@ function computeDrift(hosts, dumps, opts = {}) {
     const byPath = new Map();
     for (const H of g.dumped) {
       for (const f of dumps.get(H).tree || []) {
+        // YALNIZ *.conf (kullanici, 2026-09-22): yedekler (<conf>_<job>, .bak, .old) ciktiyi sisirir.
+        if (!/\.conf$/i.test(String(f.path || ''))) continue;
         if (!byPath.has(f.path)) byPath.set(f.path, new Map());
         byPath.get(f.path).set(H, { sha: f.sha256 || '', size: f.size, mtime: f.mtime });
       }

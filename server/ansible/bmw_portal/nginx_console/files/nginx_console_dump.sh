@@ -14,9 +14,10 @@
 #   @@CERT <yol>           openssl x509 alanlari (key=value)   @@END
 #   @@CERTUSE conf<TAB>server_name<TAB>ssl_certificate<TAB>ssl_certificate_key
 #
-# Kapsam: /usr/nginx/conf.d ve /usr/nginx/conf altindaki DUZ dosyalar (sembolik baglar
-# haric). 512 KB'den buyuk dosyalarin icerigi dokulmez (agacta gorunur). Anahtar (.key)
-# dosyalari ASLA okunmaz - yalniz var mi diye bakilir.
+# Kapsam: /usr/nginx/conf.d ve /usr/nginx/conf altindaki *.conf dosyalari (kullanici, 2026-09-22:
+# "yedek dosyalara bakma, cikti sisiyor" - <conf>_<job>, .bak, .old vb. artik hic dokulmez).
+# 512 KB'den buyuk dosyalarin icerigi dokulmez (agacta gorunur). Anahtar (.key) dosyalari ASLA
+# okunmaz - yalniz var mi diye bakilir.
 set -u
 PREFIX="${NGINX_PREFIX:-/usr/nginx}"
 BIN="${NGINX_BIN:-$PREFIX/sbin/nginx}"
@@ -66,7 +67,7 @@ echo "@@END"
 echo "@@TREE"
 for d in "$PREFIX/conf.d" "$PREFIX/conf"; do
   [ -d "$d" ] || continue
-  find "$d" -type f 2>/dev/null | sort | while IFS= read -r f; do
+  find "$d" -type f -name '*.conf' 2>/dev/null | sort | while IFS= read -r f; do
     sz="$(stat -c %s "$f" 2>/dev/null || echo 0)"
     mt="$(stat -c %y "$f" 2>/dev/null | cut -d. -f1)"
     ow="$(stat -c %U "$f" 2>/dev/null)"
@@ -78,7 +79,7 @@ echo "@@END"
 #### Dosya icerikleri
 for d in "$PREFIX/conf.d" "$PREFIX/conf"; do
   [ -d "$d" ] || continue
-  find "$d" -type f 2>/dev/null | sort | while IFS= read -r f; do
+  find "$d" -type f -name '*.conf' 2>/dev/null | sort | while IFS= read -r f; do
     case "$f" in *.key|*.pem_key|*private*) continue ;; esac
     sz="$(stat -c %s "$f" 2>/dev/null || echo 0)"
     [ "$sz" -le "$MAX_FILE" ] || continue
@@ -92,7 +93,7 @@ done
 #### Sertifika kullanimlari (conf dosyasi -> server_name -> cert/key) ve sertifika ayrintilari
 for d in "$PREFIX/conf.d" "$PREFIX/conf"; do
   [ -d "$d" ] || continue
-  grep -rl --include='*' -E '^\s*ssl_certificate\s' "$d" 2>/dev/null | sort | while IFS= read -r conf; do
+  grep -rl --include='*.conf' -E '^\s*ssl_certificate\s' "$d" 2>/dev/null | sort | while IFS= read -r conf; do
     sn="$(grep -m1 -E '^\s*server_name\s' "$conf" 2>/dev/null | sed -E 's/^\s*server_name\s+//; s/;.*$//' | awk '{print $1}')"
     crt="$(grep -m1 -E '^\s*ssl_certificate\s' "$conf" | sed -E 's/^\s*ssl_certificate\s+//; s/;.*$//' | tr -d "\"'")"
     key="$(grep -m1 -E '^\s*ssl_certificate_key\s' "$conf" | sed -E 's/^\s*ssl_certificate_key\s+//; s/;.*$//' | tr -d "\"'")"

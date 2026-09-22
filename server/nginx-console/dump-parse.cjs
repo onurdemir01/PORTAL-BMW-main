@@ -226,7 +226,9 @@ function orphansOf(summary, now = Date.now()) {
   if (!known) return out;
   const isKey = (p) => /(\.key$|private)/i.test(p);
   for (const f of summary.tree || []) {
-    if (loaded.has(f.path) || isKey(f.path)) continue;
+    // Yalniz *.conf: yedek/eski kopyalar dokuma zaten girmiyor (2026-09-22), eski dokumlarda da
+    // listelenmez - kullanici "cikti sisiyor" dedi. Yedek sayaci bilgi olarak kalir.
+    if (loaded.has(f.path) || isKey(f.path) || !/\.conf$/i.test(String(f.path || ''))) continue;
     const rec = { path: f.path, size: f.size, mtime: f.mtime, owner: f.owner || null };
     (BACKUP_RE.test(f.path) ? out.backups : out.unloaded).push(rec);
   }

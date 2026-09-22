@@ -36,7 +36,7 @@ test('DR1 grup = servis+ortam; tek dokumlu grup karsilastirilmaz; cok servisli h
   assert.equal(spa.files.length, 0, 'tek dokumlu grup karsilastirilmaz');
 });
 
-test('DR2 farkli / eksik / sunucuya ozel siniflari; cogunluk ustte; sayaclar', () => {
+test('DR2 farkli / eksik / sunucuya ozel siniflari; cogunluk ustte; sayaclar (yalniz *.conf)', () => {
   const r = computeDrift(inv.filter((h) => h.host.startsWith('GBRVP')), dumps);
   const g = r.groups.find((x) => x.key === 'GLOMO|prod');
   const by = Object.fromEntries(g.files.map((f) => [f.path, f]));
@@ -49,10 +49,11 @@ test('DR2 farkli / eksik / sunucuya ozel siniflari; cogunluk ustte; sayaclar', (
   assert.equal(defaults.status, 'differ'); assert.equal(defaults.variants[0].sha, 'D');
   assert.equal(by['/usr/nginx/conf.d/only07.conf'].status, 'missing');
   assert.deepEqual(by['/usr/nginx/conf.d/only07.conf'].missing, ['GBRVPAP07', 'GBRVPP08']);
-  assert.equal(by['/usr/nginx/conf.d/GLOMO-PROD.conf_945'].status, 'local', 'deployment yedegi beklenen fark');
-  assert.equal(by['/usr/nginx/conf.d/gbrvpp07-local.conf'].status, 'local', 'yolunda host adi');
-  assert.deepEqual(g.counts, { same: 0, differ: 2, missing: 1, local: 3 });
-  assert.deepEqual(g.files.map((f) => f.status), ['differ', 'differ', 'missing', 'local', 'local', 'local'], 'siralama: farkli, eksik, ozel');
+  // 2026-09-22 (kullanici): yedek dosyalar (<conf>_<job>) HIC listelenmez - *.conf disi
+  assert.equal(by['/usr/nginx/conf.d/GLOMO-PROD.conf_945'], undefined, 'yedek dosya (.conf degil) listelenmez');
+  assert.equal(by['/usr/nginx/conf.d/gbrvpp07-local.conf'].status, 'local', 'yolunda host adi -> sunucuya ozel');
+  assert.deepEqual(g.counts, { same: 0, differ: 2, missing: 1, local: 2 });
+  assert.deepEqual(g.files.map((f) => f.status), ['differ', 'differ', 'missing', 'local', 'local'], 'siralama: farkli, eksik, ozel');
 });
 
 test('DR3 hepsi ayni -> same sayilir, listelenmez; expectedLocal', () => {

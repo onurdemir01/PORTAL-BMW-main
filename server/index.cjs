@@ -336,6 +336,23 @@ async function main() {
           },
         }),
       );
+      // ONCEKI SURUMUN DOSYALARI (2026-09-22): release sirasinda dist degisince eski hash'li
+      // chunk'lar silinir; acik sekmeler onlari isteyince "Failed to fetch dynamically imported
+      // module" alir. release betigi eski dizini dist_prev olarak birakirsa buradan servis edilir
+      // ve kullanici hic hata gormez (istemci tarafinda ayrica otomatik yenileme var).
+      const prevDir = path.join(path.dirname(distDir), 'dist_prev');
+      if (fs.existsSync(prevDir)) {
+        app.use(express.static(prevDir, { maxAge: '1y', immutable: true, index: false }));
+        console.log('[Server] onceki surum dosyalari da servis ediliyor (dist_prev)');
+      }
+
+      // VARLIK ISTEKLERI ICIN SPA FALLBACK YOK: /assets/... ya da uzantili bir dosya bulunamazsa
+      // index.html (HTML) donmek, tarayiciya "modul bekliyordum, HTML geldi" hatasi verdirir ve
+      // sebebi gizler. Duz 404 doner; istemci bunu surum atlamasi sayip sayfayi yeniler.
+      app.get(/^\/(?:assets\/|.*\.(?:js|mjs|css|map|json|png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot|txt|webmanifest)$)/, (req, res) => {
+        res.status(404).type('text/plain').send('Not found (eski surum dosyasi olabilir; sayfayi yenileyin)');
+      });
+
       // SPA fallback: /api disi tum GET'ler index.html'e (client-side routing)
       app.get(/^\/(?!api\/).*/, sendIndexHtml);
       console.log('[Server] production static serving aktif (dist/)');

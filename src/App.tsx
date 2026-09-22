@@ -10,29 +10,30 @@ import ForbiddenPage from '@/components/ForbiddenPage';
 // DenetimPage eager kalmisti — oysa ilk boyama icin kritik DEGIL (kendi route'u var,
 // giristen sonra ancak menuden acilir) ve kod tabanindaki en agir sayfalardan biri.
 // Eager oldugu icin tum agirligi giris ekraninin bile indirdigi ana bundle'a giriyordu.
-const DenetimPage = React.lazy(() => import('@/components/DenetimPage'));
+const DenetimPage = lazyWithRetry(() => import('@/components/DenetimPage'));
 // Nginx Audit > tek sunucu sayfasi: kendi URL'i var, Denetim gorunurlugune tabi.
-const NginxAuditHostPage = React.lazy(() => import('@/components/denetim/NginxAuditHostPage'));
-const EnvanterPage = React.lazy(() => import('@/components/EnvanterPage'));
-const DutyRosterPage = React.lazy(() => import('@/components/DutyRosterPage'));
+const NginxAuditHostPage = lazyWithRetry(() => import('@/components/denetim/NginxAuditHostPage'));
+const EnvanterPage = lazyWithRetry(() => import('@/components/EnvanterPage'));
+const DutyRosterPage = lazyWithRetry(() => import('@/components/DutyRosterPage'));
 // ImportantLinksPage: 2026-09-19'da menu ve route kaldirildi (bilesen duruyor; bkz. elements.ts)
-const DynatracePage = React.lazy(() => import('@/components/dynatrace/DynatracePage'));
-const SelfServicePage = React.lazy(() => import('@/components/SelfServicePage'));
-const AnsiblePage = React.lazy(() => import('@/components/ansible/AnsiblePage'));
-const LogXWizardPage = React.lazy(() => import('@/components/logx_v2/LogXWizardPage'));
-const OpsXWizardPage = React.lazy(() => import('@/components/opsx/OpsXWizardPage'));
-const NginxConsolePage = React.lazy(() => import('@/components/nginx_console/NginxConsolePage'));
-const ServerHubPage = React.lazy(() => import('@/components/server_hub/ServerHubPage'));
-const ScaleXPage = React.lazy(() => import('@/components/scalex/ScaleXPage'));
-const FileXWizardPage = React.lazy(() => import('@/components/filex/FileXWizardPage'));
-const TelnetWizardPage = React.lazy(() => import('@/components/telnet/TelnetWizardPage'));
-const AdminPage = React.lazy(() => import('@/components/admin/AdminPage'));
-const AiAnalystPage = React.lazy(() => import('@/components/ai_analyst/AiAnalystPage'));
+const DynatracePage = lazyWithRetry(() => import('@/components/dynatrace/DynatracePage'));
+const SelfServicePage = lazyWithRetry(() => import('@/components/SelfServicePage'));
+const AnsiblePage = lazyWithRetry(() => import('@/components/ansible/AnsiblePage'));
+const LogXWizardPage = lazyWithRetry(() => import('@/components/logx_v2/LogXWizardPage'));
+const OpsXWizardPage = lazyWithRetry(() => import('@/components/opsx/OpsXWizardPage'));
+const NginxConsolePage = lazyWithRetry(() => import('@/components/nginx_console/NginxConsolePage'));
+const ServerHubPage = lazyWithRetry(() => import('@/components/server_hub/ServerHubPage'));
+const ScaleXPage = lazyWithRetry(() => import('@/components/scalex/ScaleXPage'));
+const FileXWizardPage = lazyWithRetry(() => import('@/components/filex/FileXWizardPage'));
+const TelnetWizardPage = lazyWithRetry(() => import('@/components/telnet/TelnetWizardPage'));
+const AdminPage = lazyWithRetry(() => import('@/components/admin/AdminPage'));
+const AiAnalystPage = lazyWithRetry(() => import('@/components/ai_analyst/AiAnalystPage'));
 
 import ProtectedRoute from './routes/ProtectedRoute';
 import AdminRoute from './routes/AdminRoute';
 import PageVisibilityRoute from './routes/PageVisibilityRoute';
 import AppLayout from './layouts/AppLayout';
+import { lazyWithRetry } from '@/utils/lazyWithRetry';
 
 // DIS SUSPENSE — yalnizca AppLayout'un KENDISI (ve login gibi kabuksuz rotalar)
 // lazy olsaydi diye duruyor. Sayfa iceriginin sinirini AppLayout kendi icinde,

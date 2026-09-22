@@ -14,6 +14,7 @@
 // async koddaki hatalar buraya düşmez (onlar zaten ekranı beyaz bırakmıyor; adım
 // bileşenleri kendi hata mesajlarını gösteriyor).
 import React from "react";
+import { isChunkLoadError, reloadForNewVersion } from "@/utils/lazyWithRetry";
 
 interface Props {
   children: React.ReactNode;
@@ -21,13 +22,19 @@ interface Props {
 
 interface State {
   error: Error | null;
+  reloading: boolean;
 }
 
 class PageErrorBoundary extends React.Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, reloading: false };
 
   static getDerivedStateFromError(error: Error): State {
-    return { error };
+    // SURUM ATLAMASI (2026-09-22): yeni release'ten sonra acik sekme, silinmis chunk'i ister ve
+    // "Failed to fetch dynamically imported module" alir. Bu bir ariza degil; sayfa bir kez
+    // kendiliginden yenilenir (bkz. utils/lazyWithRetry). Yenileme baslatildiysa hata ekrani
+    // yerine kisa bir bilgi gosterilir.
+    if (isChunkLoadError(error)) return { error, reloading: reloadForNewVersion() };
+    return { error, reloading: false };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
@@ -37,16 +44,26 @@ class PageErrorBoundary extends React.Component<Props, State> {
   }
 
   render() {
-    const { error } = this.state;
+    const { error, reloading } = this.state;
     if (!error) return this.props.children;
+
+    if (reloading) {
+      return (
+        <div className="max-w-2xl mx-auto py-12 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+          Portal yeni sürüme güncellendi; sayfa yenileniyor…
+        </div>
+      );
+    }
+    const chunk = isChunkLoadError(error);
 
     return (
       <div className="max-w-2xl mx-auto py-12">
         <div className="bg-red-50 border border-red-100 rounded-xl p-5 space-y-3">
-          <h2 className="text-base font-semibold text-red-800">Bu sayfa yüklenemedi</h2>
+          <h2 className="text-base font-semibold text-red-800">{chunk ? 'Sayfa dosyası indirilemedi' : 'Bu sayfa yüklenemedi'}</h2>
           <p className="text-sm text-red-700">
-            Sayfa çizilirken beklenmeyen bir hata oluştu. Soldaki menüden başka bir sayfaya
-            geçebilir ya da yenilemeyi deneyebilirsiniz.
+            {chunk
+              ? 'Portal bu sırada güncellenmiş olabilir ya da ağ bağlantısı kesildi. "Sayfayı yenile" genelde çözer; sürerse ağ/VPN bağlantınızı kontrol edin.'
+              : 'Sayfa çizilirken beklenmeyen bir hata oluştu. Soldaki menüden başka bir sayfaya geçebilir ya da yenilemeyi deneyebilirsiniz.'}
           </p>
           <pre className="text-xs font-mono text-red-800 bg-white/60 border border-red-100 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">
             {error.message || String(error)}
