@@ -4,6 +4,7 @@ import { roleApi } from "@/api/adminApi";
 import { useToast } from "@/hooks/useToast";
 import { PencilSquareIcon, TrashIcon, PlusIcon, ShieldCheckIcon, UserIcon } from "@heroicons/react/24/outline";
 import { Select } from "@/components/ui/Form";
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 type RoleMap = Record<string, string>;
 
@@ -102,7 +103,7 @@ export default function UserManagementTab() {
 
       {/* Table */}
       {loading ? (
-        <div className="text-sm text-gray-400 text-center py-8">Yükleniyor…</div>
+        <LoadingLogo compact />
       ) : entries.length === 0 ? (
         <div className="text-center py-8 text-gray-400">
           <UserIcon className="h-8 w-8 mx-auto mb-2 text-gray-200" />

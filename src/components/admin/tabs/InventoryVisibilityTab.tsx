@@ -19,6 +19,7 @@ import { inventoryApi, type TableVisibilityRow, type TableUserOverride } from '@
 import { toast } from '@/hooks/useToast';
 import { Select } from '@/components/ui/Form';
 import HistoryScopePanel from './HistoryScopePanel';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 export default function InventoryVisibilityTab() {
   const [tables, setTables] = useState<TableVisibilityRow[]>([]);
@@ -156,7 +157,7 @@ export default function InventoryVisibilityTab() {
     }
   }
 
-  if (loading) return <div className="py-8 text-center text-sm text-gray-400">Yükleniyor…</div>;
+  if (loading) return <LoadingLogo compact />;
 
   return (
     <div className="space-y-4">
@@ -466,7 +467,7 @@ function UserOverridesSection({ tableVisibilityId }: { tableVisibilityId: number
     }
   }
 
-  if (loading) return <div className="text-xs text-gray-400 py-2">Yükleniyor…</div>;
+  if (loading) return <LoadingLogo compact />;
 
   return (
     <div className="space-y-2">
@@ -554,7 +555,7 @@ function ColumnVisibilitySection({ tableVisibilityId }: { tableVisibilityId: num
     }
   }
 
-  if (loading) return <div className="text-xs text-gray-400 py-2">Yükleniyor…</div>;
+  if (loading) return <LoadingLogo compact />;
 
   return (
     <div className="space-y-2">

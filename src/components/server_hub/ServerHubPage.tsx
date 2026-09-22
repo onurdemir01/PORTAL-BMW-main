@@ -17,6 +17,7 @@ import { fmtNumber, fmtDate } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import RetirementTab from './RetirementTab';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
 const smBtn = (primary = false): React.CSSProperties => (primary
@@ -161,7 +162,7 @@ function HostsTab() {
     return (data?.hosts || []).filter((h) => (sev === 'all' || h.status === sev) && (product === 'all' || h.products.includes(product)) && (!needle || h.host.includes(needle) || (h.topFinding || '').toUpperCase().includes(needle)));
   }, [data, q, sev, product]);
 
-  if (loading && !data) return <div className="py-10 text-center text-sm" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</div>;
+  if (loading && !data) return <LoadingLogo compact />;
   if (err) return <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>;
   if (!data) return null;
   const s = data.summary;
@@ -350,7 +351,7 @@ function HostModal({ host, onClose, onScan, trackJob, reload }: {
     <Modal open onClose={onClose} title={host} subtitle={d ? `${d.products.join(' · ') || 'ürün yok'} · son tarama ${d.scanDate ? fmtDate(d.scanDate) : '—'}${d.cpuS != null ? ` · tarama ${d.cpuS.toFixed(1)} sn CPU` : ''}` : undefined} icon={ServerStackIcon} size="xl"
       footer={<div className="flex items-center gap-2 w-full"><button onClick={onScan} className={SM_BTN} style={smBtn()}><BoltIcon className="w-3.5 h-3.5" /> Şimdi tara</button><span className="ml-auto" /><button onClick={onClose} className={SM_BTN} style={smBtn()}>Kapat</button></div>}>
       {err && <div className="text-sm px-3 py-2 rounded-xl border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>}
-      {!d && !err && <div className="py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</div>}
+      {!d && !err && <LoadingLogo compact />}
       {d && (
         <div className="space-y-3">
           <div className="flex gap-1 rounded-lg p-0.5 w-fit" style={{ background: 'var(--bg-elevated)' }}>

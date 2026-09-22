@@ -11,6 +11,7 @@ import {
   ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 import { fmtDateTimeSeconds as formatDate } from "@/utils/datetime";
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const PAGE_SIZE = 50;
 
@@ -291,7 +292,7 @@ const AuditLogTab: React.FC = () => {
         </div>
       )}
 
-      {loading && <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div>}
+      {loading && <LoadingLogo compact />}
       {error && (
         <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">
           {error}

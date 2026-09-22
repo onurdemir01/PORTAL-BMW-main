@@ -34,6 +34,7 @@ import {
 } from '@heroicons/react/24/outline';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { fmtDateTime } from '@/utils/datetime';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const PERFORMANCE_HELP_SECTIONS: HelpSection[] = [
   {
@@ -485,7 +486,7 @@ function ProblemsTab({ env }: { env: string }) {
                 </div>
                 <div className="flex-1 overflow-y-auto">
                   {detail.text === 'Yükleniyor…' ? (
-                    <p className="px-5 py-6 text-sm text-slate-400">Yükleniyor…</p>
+                    <LoadingLogo compact />
                   ) : (
                     <ProblemDetailBody text={detail.text} />
                   )}

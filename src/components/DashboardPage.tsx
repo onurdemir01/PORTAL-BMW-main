@@ -29,6 +29,7 @@ import { AuthContext } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppContext';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { fmtDateLong } from '@/utils/datetime';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 // ─── Kisayollar ────────────────────────────────────────────
 
@@ -565,9 +566,7 @@ const DashboardPage: React.FC = () => {
             </p>
           )}
           {!awxJobsLoaded ? (
-            <p className="text-[0.875rem] py-4 text-center" style={{ color: 'var(--text-muted)' }}>
-              Yükleniyor…
-            </p>
+            <LoadingLogo compact />
           ) : awxJobServers.every((s) => s.jobs.length === 0) ? (
             <p className="text-[0.875rem] py-4 text-center" style={{ color: 'var(--text-muted)' }}>
               Kuyrukta iş yok.

@@ -688,6 +688,32 @@ const TABLES = [
       )`,
   },
   {
+    // CIS NGINX Benchmark (2026-09-22): madde istisnalari — host NULL = tum filo. Skordan DUSER.
+    name: 'nginx_cis_exceptions',
+    sql: `
+      CREATE TABLE nginx_cis_exceptions (
+        id          INT IDENTITY(1,1) PRIMARY KEY,
+        item_id     NVARCHAR(16)  NOT NULL,
+        host        NVARCHAR(64)  NULL,
+        note        NVARCHAR(500) NOT NULL,
+        created_by  NVARCHAR(128) NULL,
+        created_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    // CIS maddesinin KURUM referans degeri (CIS'in onerdigi yerine bizimki; ornek 5.2.2 -> 10m)
+    name: 'nginx_cis_overrides',
+    sql: `
+      CREATE TABLE nginx_cis_overrides (
+        id          INT IDENTITY(1,1) PRIMARY KEY,
+        item_id     NVARCHAR(16)  NOT NULL UNIQUE,
+        expected    NVARCHAR(256) NOT NULL,
+        note        NVARCHAR(500) NULL,
+        created_by  NVARCHAR(128) NULL,
+        created_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Nginx Audit KABUL EDILEN DEGERLER (2026-09-22, kullanici): "client_max_body_size icin 1m de
     // 10m de kabul; tek referans disinda birden fazla deger ayni anda referans olabilsin."
     // Direktif + deger; Portal ayar sapmasi hesabinda referansla eslesmeyen ama bu listede olan
@@ -2280,6 +2306,17 @@ const PLAYBOOK_REGISTRY_SEED = [
       'bmw_automation_folder/server_hub/server_hub_scan.yml — init script referans uyumu, JBoss7/8 JVM auto-start/kapali/restart-required, RHA/IHS/Nginx sozdizimi + vhost yuku (hc haric), bosta IP -> dbo.Server_Hub_*. Gunluk zamanlayin; ekrandan target_hosts ile tek sunucu yenilenir. Survey: tbmwans_pwd credential.',
     playbook_path: null,
     env_var_name: 'SERVER_HUB_SCAN_TEMPLATE_ID',
+  },
+  {
+    // CIS NGINX Benchmark taramasi (2026-09-22): gunluk + Portal'dan target_hosts ile canli skor
+    key_name: 'nginx_cis_scan',
+    display_name: 'Nginx CIS — Tarama',
+    category: 'nginx',
+    handler: 'nginx_cis_scan',
+    description:
+      'bmw_nginx/nginx_cis/nginx_cis_scan.yml — CIS NGINX Benchmark maddeleri nginx -T ciktisi ve dosya izinlerinden olculur, dbo.Nginx_Cis_* tablolarina yazilir. Gunluk zamanlayin; Portal "Skoru tazele" dugmesi target_hosts ile tek sunucu koşturur. Survey: tbmwans_pwd credential.',
+    playbook_path: null,
+    env_var_name: 'NGINX_CIS_SCAN_TEMPLATE_ID',
   },
   {
     // Uygulama Retirement STOP adimi (2026-09-21): tek sunucu + tek uygulama; plan_only once

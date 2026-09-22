@@ -10,6 +10,7 @@ import { ShieldCheckIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outlin
 import { denetimAccessApi, type DenetimAccessGrant } from '@/api/adminApi';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const TAB_LABELS: Record<string, string> = {
   ocp: 'OpenShift', init: 'Init Script', deploy: 'Deployment Scripts', routetraffic: 'Route Trafiği', envanter: 'Envanter', degisim: 'Envanter Değişim', appenvs: 'JBoss/WAS', webapp: 'Web-App',
@@ -143,7 +144,7 @@ export default function DenetimAccessTab() {
           Erişimi olanlar {grants.length ? `(${grants.length})` : ''}
         </div>
         {err && <div className="px-4 py-3 text-xs text-red-600">{err}</div>}
-        {loading && !grants.length && <div className="px-4 py-4 text-xs" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</div>}
+        {loading && !grants.length && <LoadingLogo compact />}
         {!loading && !grants.length && !err && (
           <div className="px-4 py-4 text-xs" style={{ color: 'var(--text-muted)' }}>Henüz kimseye açılmamış — Denetim sayfasını yalnız yöneticiler görüyor.</div>
         )}

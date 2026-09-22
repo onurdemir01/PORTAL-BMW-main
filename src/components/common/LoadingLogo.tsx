@@ -6,9 +6,18 @@
 import React, { useEffect, useState } from 'react';
 import { PortalLogo } from '@/components/common/PortalLogo';
 
-export function LoadingLogo({ label = 'Yükleniyor…', hint, hintAfterSec = 20 }: { label?: string; hint?: string; hintAfterSec?: number }) {
+// compact: satir ici / kucuk alanlar icin (tablo hucresi, panel kosesi) - ayni donen logo, kucuk boy.
+export function LoadingLogo({ label = 'Yükleniyor…', hint, hintAfterSec = 20, compact = false }: { label?: string; hint?: string; hintAfterSec?: number; compact?: boolean }) {
   const [sec, setSec] = useState(0);
   useEffect(() => { const t = setInterval(() => setSec((s) => s + 1), 1000); return () => clearInterval(t); }, []);
+  if (compact) {
+    return (
+      <div className="py-3 flex items-center justify-center gap-2 text-xs" role="status" aria-live="polite" style={{ color: 'var(--text-muted)' }}>
+        <span className="portal-loading-logo inline-flex"><PortalLogo className="h-4 w-4" /></span>
+        {label} <span className="tabular-nums">{sec} sn</span>
+      </div>
+    );
+  }
   return (
     <div className="py-10 flex flex-col items-center gap-3 text-center" role="status" aria-live="polite">
       <div className="portal-loading-logo"><PortalLogo className="h-10 w-10" /></div>

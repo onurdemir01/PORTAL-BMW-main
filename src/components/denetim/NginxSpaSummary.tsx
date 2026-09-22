@@ -24,6 +24,7 @@ import { OwnerCell } from './OwnerCell';
 import { UsersIcon, ArrowDownTrayIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import type { SpaMissingApp, NginxMigrationApp, NginxMigrationGroup, RouteOfIp } from '@/api/denetimApi';
 import { GlobeAltIcon } from '@heroicons/react/24/outline';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 /** Pencerede listelenen satir: (uygulama, namespace'ler, ekip, eksik ne) - uc kaynak tek sekle iner. */
 interface MissingRow {
@@ -194,7 +195,7 @@ function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose:
           </div>
         </div>
         {err && <div className="text-xs text-red-600">{err}</div>}
-        {!rows && !err && <div className="py-4 text-center text-xs" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</div>}
+        {!rows && !err && <LoadingLogo compact />}
         {rows && (
           <div className="overflow-auto max-h-[70vh] rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
             <table className="w-full text-[11px]">

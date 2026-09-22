@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { MagnifyingGlassIcon, XMarkIcon, CheckIcon } from "@heroicons/react/24/outline";
 import { inventoryApi } from "@/api/inventoryApi";
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 interface Props {
   table: string;
@@ -111,7 +112,7 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
       {/* Values list */}
       <div className="overflow-y-auto max-h-52 border-t border-gray-100">
         {loading ? (
-          <div className="py-4 text-center text-xs text-gray-400">Yükleniyor...</div>
+          <LoadingLogo compact />
         ) : values.length === 0 ? (
           <div className="py-4 text-center text-xs text-gray-400">Değer bulunamadı.</div>
         ) : (

@@ -7,6 +7,7 @@ import { ArchiveBoxIcon, PlayIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, 
 import { toast } from "@/hooks/useToast";
 import { fmtDateTime as fmt, fmtNumber } from "@/utils/datetime";
 import DbUsagePanel from "./DbUsagePanel";
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 interface BackupState {
   status: "idle" | "running" | "done" | "error";
@@ -82,7 +83,7 @@ const DbBackupTab: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="text-sm" style={{ color: "var(--text-muted)" }}>Yükleniyor…</div>;
+  if (loading) return <LoadingLogo compact />;
 
   const meta = state ? STATUS_META[state.status] : STATUS_META.idle;
   const Icon = meta.icon;

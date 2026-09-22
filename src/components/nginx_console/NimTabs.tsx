@@ -13,6 +13,7 @@ import { ArrowPathIcon, ArrowDownTrayIcon, InformationCircleIcon, CheckCircleIco
 import { nginxConsoleApi, type NcHost, type NcCertsResult, type NcChange } from '@/api/nginxConsoleApi';
 import { fmtRelative, fmtNumber, fmtDateTime } from '@/utils/datetime';
 import { TableEmptyRow } from '@/components/common/EmptyState';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const ONLINE_MS = 2 * 24 * 3600 * 1000;
 const nf = (n: number) => fmtNumber(n);
@@ -165,7 +166,7 @@ export function DashboardTab({ hosts, onGo }: { hosts: NcHost[]; onGo: (tab: 'in
   return (
     <div className="grid gap-4 xl:grid-cols-3">
       <Card title="Sertifikalar" info="Dokumu alınan tüm sunuculardaki sertifikalar (aynı sertifika birden çok sunucuda tek sayılır).">
-        {!certs ? <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</div> : (
+        {!certs ? <LoadingLogo compact /> : (
           <div className="space-y-5 py-1">
             <BigStat n={Math.max(0, healthy)} label="Sağlıklı" color="var(--status-success)" />
             <BigStat n={certs.summary.within30} label="Süresi yaklaşan (≤30 gün)" color="var(--status-warning)" />

@@ -26,6 +26,7 @@ import SimpleCrudTable, { type ColumnDef } from './logxv2/SimpleCrudTable';
 import { useToast } from '@/hooks/useToast';
 import OcpRuntimeSettings from './logxv2/OcpRuntimeSettings';
 import { Select } from '@/components/ui/Form';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const SUB_TABS = [
   { id: 'clusters', label: 'OCP Cluster Hiyerarşisi', icon: ServerStackIcon },
@@ -382,7 +383,7 @@ const RestrictionsSection: React.FC = () => {
     }
   }
 
-  if (loading) return <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div>;
+  if (loading) return <LoadingLogo compact />;
   if (error) return <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{error}</div>;
 
   return (
@@ -743,7 +744,7 @@ const LogXv2AdminTab: React.FC = () => {
 
       {subTab === 'clusters' &&
         (clusters.loading ? (
-          <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div>
+          <LoadingLogo compact />
         ) : clusters.error ? (
           <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{clusters.error}</div>
         ) : (
@@ -779,7 +780,7 @@ const LogXv2AdminTab: React.FC = () => {
         ))}
       {subTab === 'vaultkeys' &&
         (vaultKeys.loading ? (
-          <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div>
+          <LoadingLogo compact />
         ) : vaultKeys.error ? (
           <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{vaultKeys.error}</div>
         ) : (
@@ -804,7 +805,7 @@ const LogXv2AdminTab: React.FC = () => {
         ))}
       {subTab === 'terminals' &&
         (terminals.loading ? (
-          <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div>
+          <LoadingLogo compact />
         ) : terminals.error ? (
           <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{terminals.error}</div>
         ) : (
@@ -827,7 +828,7 @@ const LogXv2AdminTab: React.FC = () => {
         ))}
       {subTab === 'envsuffix' &&
         (envSuffix.loading ? (
-          <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div>
+          <LoadingLogo compact />
         ) : envSuffix.error ? (
           <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{envSuffix.error}</div>
         ) : (

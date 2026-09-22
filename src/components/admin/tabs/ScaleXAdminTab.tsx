@@ -23,6 +23,7 @@ import { playbookRegistryApi, type PlaybookRegistryEntry } from '@/api/playbookR
 import { scalexApi, type ScaleXRbacFinding } from '@/api/scalexApi';
 import { fmtDateTime } from '@/utils/datetime';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const RUN_KEY = 'scalex_run';
 const DISCOVERY_KEY = 'scalex_discovery';
@@ -142,7 +143,7 @@ const RbacFindings: React.FC = () => {
       )}
 
       {loading ? (
-        <p className="text-xs text-[var(--text-muted)]">Yükleniyor…</p>
+        <LoadingLogo compact />
       ) : rows.length === 0 ? (
         <p className="text-xs text-[var(--text-muted)]">
           Kayıt yok — keşiflerde okunamayan bir tip görülmedi.
@@ -270,7 +271,7 @@ const ScaleXAdminTab: React.FC = () => {
       )}
 
       {loading ? (
-        <p className="text-sm text-[var(--text-muted)]">Yükleniyor…</p>
+        <LoadingLogo compact />
       ) : (
         <>
           {/* ── AWX bağlantısı ── */}

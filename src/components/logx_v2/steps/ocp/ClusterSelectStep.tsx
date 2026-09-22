@@ -4,6 +4,7 @@
 // ocp_terminal_host_map'e karşı yeniden doğrulanır (bkz. server/logx/v2/ocp.cjs selectClusters).
 import React, { useEffect, useState } from "react";
 import { logxV2Api } from "@/api/logxV2Api";
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const ClusterSelectStep: React.FC<{ onSubmit: (env: string, tenant: string, clusters: string[]) => void; busy?: boolean }> = ({ onSubmit, busy }) => {
   const [tree, setTree] = useState<Record<string, Record<string, string[]>>>({});
@@ -32,7 +33,7 @@ const ClusterSelectStep: React.FC<{ onSubmit: (env: string, tenant: string, clus
     });
   }
 
-  if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
+  if (loading) return <LoadingLogo compact />;
   if (error) return <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{error}</div>;
   if (envs.length === 0) {
     return <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">Henüz hiç cluster tanımlanmamış — admin panelinden "LogX v2 Yapılandırma" sekmesinden eklenmeli.</div>;

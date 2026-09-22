@@ -19,6 +19,7 @@ import React, { useEffect, useState } from "react";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
 import FilterableList from "@/components/common/FilterableList";
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const OcpTargetStep: React.FC<{
   busy?: boolean;
@@ -117,7 +118,7 @@ const OcpTargetStep: React.FC<{
 
   const ready = env && tenant && pairs.length > 0;
 
-  if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
+  if (loading) return <LoadingLogo compact />;
   if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
   if (envs.length === 0) {
     return (

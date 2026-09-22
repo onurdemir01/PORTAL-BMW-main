@@ -44,6 +44,7 @@ import { fmtDateTime } from '@/utils/datetime';
 
 const fmtWhen = (iso: string) => fmtDateTime(iso);
 import { buildSuggestions, type SurveySuggestion } from '@/utils/surveySuggestions';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 // OCO'nun istenebilecegi ortam etiketleri. Portalin cluster katalogundaki `env`
 // degerleriyle ayni sozluk (`ansible_ocp_clusters.env`, `logx_env_suffix_map`).
@@ -1020,7 +1021,7 @@ export default function FieldOverridesModal({
             </summary>
             <div className="mt-2 space-y-1">
               {history === null ? (
-                <p className="text-[11px] text-[var(--text-muted)]">Yükleniyor…</p>
+                <LoadingLogo compact />
               ) : history.length === 0 ? (
                 <p className="text-[11px] text-[var(--text-muted)]">
                   Bu servis için kayıtlı geçmiş yok (geçmiş, bu sürümden sonraki her kayıtta birikir).

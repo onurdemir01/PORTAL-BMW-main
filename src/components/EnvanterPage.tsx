@@ -34,6 +34,7 @@ import InventoryRefreshModal from './envanter/InventoryRefreshModal';
 import HistoryPanel from './envanter/HistoryPanel';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { fmtNumber } from '@/utils/datetime';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const ENVANTER_HELP_SECTIONS: HelpSection[] = [
   {
@@ -555,7 +556,7 @@ const EnvanterPage: React.FC = () => {
             </button>
           </div>
           {presetLoading ? (
-            <div className="text-sm text-gray-400 py-4 text-center">Yükleniyor...</div>
+            <LoadingLogo compact />
           ) : presetResult ? (
             <DynamicTable
               table={activeTable}

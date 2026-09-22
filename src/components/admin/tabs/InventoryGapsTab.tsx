@@ -25,6 +25,7 @@ import { toast } from '@/hooks/useToast';
 // Ham tarih bicimlendirme YOK: bicim tek bir yerden gelir (bekci G19),
 // yoksa ayni tarih ekrandan ekrana farkli gorunur.
 import { fmtDate, EMPTY_MARK } from '@/utils/datetime';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const STATUS_META: Record<InventoryGapStatus, { label: string; cls: string; hint: string }> = {
   hala_yok: {
@@ -187,7 +188,7 @@ export default function InventoryGapsTab() {
         </label>
       </div>
 
-      {loading && <p className="text-sm text-[var(--text-muted)]">Yükleniyor…</p>}
+      {loading && <LoadingLogo compact />}
 
       {!loading && rows !== null && rows.length === 0 && (
         <EmptyState

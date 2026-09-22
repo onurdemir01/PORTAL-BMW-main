@@ -12,6 +12,7 @@ import { elementsApi, type PortalElement, type ElementRule } from '@/api/adminAp
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/useToast';
 import { Select } from '@/components/ui/Form';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
   CheckIcon,
   TrashIcon,
@@ -192,7 +193,7 @@ export default function PageVisibilityTab() {
     }
   }
 
-  if (loading) return <div className="text-sm text-gray-400 text-center py-8">Yükleniyor…</div>;
+  if (loading) return <LoadingLogo compact />;
 
   const renderRow = (el: PortalElement, depth: number) => {
     const e = edit[el.key];

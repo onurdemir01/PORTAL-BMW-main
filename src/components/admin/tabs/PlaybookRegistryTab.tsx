@@ -8,6 +8,7 @@ import Badge from "@/components/common/Badge";
 import Button from "@/components/common/Button";
 import EmptyState from "@/components/common/EmptyState";
 import { Select } from "@/components/ui/Form";
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 // SEED'DEKI HER KATEGORI BURADA OLMAK ZORUNDA. Liste `mssql-setup.cjs`
 // PLAYBOOK_REGISTRY_SEED ile ayrisirsa, kategorisi listede olmayan bir satiri admin
@@ -125,7 +126,7 @@ export default function PlaybookRegistryTab() {
     else toast.error(r.message || "Silinemedi.");
   }
 
-  if (loading) return <div className="py-8 text-center text-sm text-gray-400">Yükleniyor...</div>;
+  if (loading) return <LoadingLogo compact />;
 
   return (
     <div className="space-y-5">

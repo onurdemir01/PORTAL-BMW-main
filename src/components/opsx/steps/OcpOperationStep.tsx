@@ -5,6 +5,7 @@
 import React, { useEffect, useState } from "react";
 import { ArrowPathIcon, DocumentMagnifyingGlassIcon, CircleStackIcon, SignalIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { opsxApi, type OpsxOcpOperation, type OpsxOcpOperationDef, type OpsxOcpPair } from "@/api/opsxApi";
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   restart: ArrowPathIcon,
@@ -32,7 +33,7 @@ const OcpOperationStep: React.FC<{
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Yükleniyor...</div>;
+  if (loading) return <LoadingLogo compact />;
   if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
 
   return (

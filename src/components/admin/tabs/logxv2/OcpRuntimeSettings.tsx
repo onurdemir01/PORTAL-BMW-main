@@ -18,6 +18,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { logxV2Api, type OcpRuntimeConfig } from '@/api/logxV2Api';
 import { useToast } from '@/hooks/useToast';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const TIMEOUTS: { key: keyof OcpRuntimeConfig; label: string; help: string }[] = [
   {
@@ -101,7 +102,7 @@ export default function OcpRuntimeSettings() {
     setNewPath('');
   }
 
-  if (loading) return <div className="py-8 text-center text-sm text-gray-400">Yükleniyor…</div>;
+  if (loading) return <LoadingLogo compact />;
   if (error) return <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">{error}</div>;
   if (!cfg) return null;
 

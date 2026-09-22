@@ -10,6 +10,7 @@ import React, { useRef, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { ArrowUpTrayIcon, TrashIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { fmtDateTime } from '@/utils/datetime';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 interface AssetInfo {
   mime: string;
@@ -267,9 +268,7 @@ const BrandingTab: React.FC = () => {
 
   if (loading)
     return (
-      <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
-        Yükleniyor…
-      </div>
+      <LoadingLogo compact />
     );
 
   return (

@@ -25,6 +25,7 @@ import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { DashboardTab, InstancesTab } from './NimTabs';
 import { OrphansTab } from './OrphansTab';
 import { DriftTab } from './DriftTab';
+import { CisTab } from './CisTab';
 // DENETIM'DEN TASINDI (kullanici, 2026-09-22): "Denetim'deki tum nginx sayfalarini Nginx Hub'a
 // gom." Bilesenler yerinde kaldi (denetim/), yalniz sekme burada. Denetim'de artik nginx sekmesi yok.
 import { NginxSpaAudit, NGINX_DENETIM_HELP } from '@/components/DenetimPage';
@@ -33,9 +34,10 @@ import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
 import { NginxAudit } from '@/components/denetim/NginxAudit';
 import HelpModal from '@/components/common/HelpModal';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
-type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'spa' | 'api' | 'envanter' | 'audit';
-const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'spa', 'api', 'envanter', 'audit'];
+type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'spa' | 'api' | 'envanter' | 'audit';
+const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'spa', 'api', 'envanter', 'audit'];
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -134,7 +136,7 @@ export default function NginxConsolePage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-1 rounded-lg p-0.5 flex-wrap" style={{ background: 'var(--bg-elevated)' }}>
-            {([{ id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon }, { id: 'instances', label: 'Instances', icon: ServerStackIcon }, { id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }, { id: 'orphans', label: 'Kullanılmayan', icon: TrashIcon }, { id: 'drift', label: 'Tutarlılık', icon: ScaleIcon }] as const).map((t) => (
+            {([{ id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon }, { id: 'instances', label: 'Instances', icon: ServerStackIcon }, { id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }, { id: 'orphans', label: 'Kullanılmayan', icon: TrashIcon }, { id: 'drift', label: 'Tutarlılık', icon: ScaleIcon }, { id: 'cis', label: 'CIS', icon: ShieldCheckIcon }] as const).map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                 <t.icon className="w-4 h-4" /> {t.label}
               </button>
@@ -158,6 +160,7 @@ export default function NginxConsolePage() {
       {tab === 'certs' && <CertsTab />}
       {tab === 'orphans' && <OrphansTab onOpen={(h) => go('config', h)} />}
       {tab === 'drift' && <DriftTab onOpen={(h) => go('config', h)} />}
+      {tab === 'cis' && <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />}
       {tab === 'spa' && <NginxSpaAudit />}
       {tab === 'api' && <NginxApiEnvanteri />}
       {tab === 'envanter' && <NginxEnvanteri />}
@@ -365,7 +368,7 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
         )}>
         <div className="p-2 max-h-[75vh] overflow-auto text-xs">
           {!cur && <div style={{ color: 'var(--text-muted)' }}>Soldan bir sunucu seçin.</div>}
-          {cur && treeLoading && <div style={{ color: 'var(--text-muted)' }}>Yükleniyor…</div>}
+          {cur && treeLoading && <LoadingLogo compact />}
           {cur && tree && !tree.dumped && <div className="text-amber-700">{tree.message}</div>}
           {cur && tree?.dumped && (
             <>
@@ -591,7 +594,7 @@ function FileHistory({ host, path, currentSha, isAdmin, onRestore }: { host: str
   return (
     <div className="mb-2 rounded-lg border p-2 space-y-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
       <div className="text-xs font-semibold flex items-center gap-2"><ClockIcon className="w-3.5 h-3.5" /> Sürüm geçmişi <span className="font-normal" style={{ color: 'var(--text-muted)' }}>— yalnız değişiklikler kayıtlıdır (Git gibi); "fark" = önceki sürümle</span></div>
-      {versions === null && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Yükleniyor…</div>}
+      {versions === null && <LoadingLogo compact />}
       {versions && versions.length === 0 && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Henüz kayıt yok — ilk dokumdan sonra oluşur.</div>}
       {versions && versions.length > 0 && (
         <div className="max-h-48 overflow-auto">
@@ -678,7 +681,7 @@ function ChangesTab() {
               </tr>
             ))}
             {rows && list.length === 0 && <TableEmptyRow colSpan={7} title="Kayıt yok." description="Değişiklik kayıtları ilk dokumdan sonra oluşur." />}
-            {rows === null && <TableEmptyRow colSpan={7} title="Yükleniyor…" />}
+            {rows === null && <tr><td colSpan={7}><LoadingLogo compact /></td></tr>}
           </tbody>
         </table>
       </div>

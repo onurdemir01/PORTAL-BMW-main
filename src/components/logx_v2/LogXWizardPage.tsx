@@ -28,6 +28,7 @@ import DownloadStep from './shared/DownloadStep';
 import FailedStep from './shared/FailedStep';
 import ContextChips from '@/components/common/ContextChips';
 import { isProdEnv } from '@/utils/env';
+import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 function setUrlParam(id: string | null) {
   const url = new URL(window.location.href);
@@ -450,9 +451,7 @@ const LogXWizardPage: React.FC = () => {
   // src/__tests__/hook-order.test.cjs yakalar.
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto py-16 text-center text-sm text-[var(--text-muted)]">
-        Yükleniyor...
-      </div>
+      <LoadingLogo compact />
     );
   }
 
