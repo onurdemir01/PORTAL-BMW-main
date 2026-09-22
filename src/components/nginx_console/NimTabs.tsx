@@ -323,11 +323,23 @@ export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload 
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(25);
   const [menu, setMenu] = useState<string | null>(null);
+  // Durum suzgeci (kullanici, 2026-09-22): "offline'lari / surumu bilinmeyenleri nasil yakalarim?"
+  const [only, setOnly] = useState<'all' | 'offline' | 'tfail' | 'nodump' | 'unknownver'>('all');
   const now = Date.now();
   const rows = useMemo(() => {
     const n = q.trim().toLowerCase();
-    return hosts.filter((h) => !n || h.host.toLowerCase().includes(n) || (h.env || '').toLowerCase().includes(n) || (h.services || []).some((s) => s.toLowerCase().includes(n)) || String(h.nginxVersion || '').toLowerCase().includes(n));
-  }, [hosts, q]);
+    return hosts.filter((h) => {
+      if (only === 'offline' && isOnline(h, now)) return false;
+      if (only === 'tfail' && h.nginxT !== 'fail') return false;
+      if (only === 'nodump' && h.dumpedAt) return false;
+      if (only === 'unknownver' && parseNginxVersion(h.nginxVersion).type !== 'Bilinmiyor') return false;
+      return !n || h.host.toLowerCase().includes(n) || (h.env || '').toLowerCase().includes(n) || (h.services || []).some((s) => s.toLowerCase().includes(n)) || String(h.nginxVersion || '').toLowerCase().includes(n);
+    });
+  }, [hosts, q, only, now]);
+  const cnt = useMemo(() => ({
+    offline: hosts.filter((h) => !isOnline(h, now)).length, tfail: hosts.filter((h) => h.nginxT === 'fail').length,
+    nodump: hosts.filter((h) => !h.dumpedAt).length, unknownver: hosts.filter((h) => parseNginxVersion(h.nginxVersion).type === 'Bilinmiyor').length,
+  }), [hosts, now]);
   const pages = Math.max(1, Math.ceil(rows.length / size));
   const cur = Math.min(page, pages);
   const view = rows.slice((cur - 1) * size, cur * size);
@@ -346,6 +358,11 @@ export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload 
     <div className="space-y-3" onClick={() => menu && setMenu(null)}>
       <div className="flex items-center gap-2 flex-wrap">
         <input value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} placeholder="sunucu, ortam, servis ya da sürüm ara" className="h-8 px-3 text-[12px] border rounded-md w-72" style={btnStyle} />
+        <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
+          {([['all', 'Hepsi', hosts.length], ['offline', 'Offline', cnt.offline], ['tfail', 'nginx -t FAIL', cnt.tfail], ['nodump', 'Dokumu yok', cnt.nodump], ['unknownver', 'Sürüm bilinmiyor', cnt.unknownver]] as const).map(([id, label, n]) => (
+            <button key={id} onClick={() => { setOnly(id); setPage(1); }} className={`px-2.5 py-1 text-[11px] rounded-md ${only === id ? 'shadow-sm' : ''}`} style={{ background: only === id ? 'var(--bg-surface)' : 'transparent', color: only === id ? 'var(--text-primary)' : 'var(--text-muted)' }} title={id === 'offline' ? 'Son 2 gündür fetch job\'ı ulaşamadı (ssh/dzdo) ya da hiç dokum alınmadı' : id === 'unknownver' ? 'Envanter nginx_version boş: nginx_metadata job\'ı bu sunucuda nginx -v okuyamadı' : undefined}>{label} <b className="tabular-nums">{n}</b></button>
+          ))}
+        </div>
         <span className="ml-auto" />
         <button onClick={onReload} className={btn} style={btnStyle}><ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh</button>
         <button onClick={csv} className={btn} style={btnStyle}><ArrowDownTrayIcon className="w-3.5 h-3.5" /> Export</button>

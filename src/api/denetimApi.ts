@@ -303,6 +303,7 @@ export interface SpaCoverageResult {
 }
 
 // ── Nginx Legacy (PROD, proxy_pass + upstream) ────────────────────────────────────────
+export interface NginxAuditAllowedValue { id: number; directive: string; value: string; note: string | null; created_by?: string | null; created_at?: string }
 export interface NginxLegacyFinding {
   type: string;
   /** Tip kodunun okunabilir karsiligi; bilinmeyen tip KODUYLA gosterilir. */
@@ -1089,6 +1090,14 @@ export const denetimApi = {
 
   nginxAuditExceptionClear: (host: string): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/nginx-audit/exceptions/${encodeURIComponent(host)}`, { method: 'DELETE' }).then(safeJson),
+
+  // Kabul edilen degerler (2026-09-22): referans disinda da gecerli sayilan direktif degerleri
+  nginxAuditAllowed: (): Promise<{ ok: boolean; rows: NginxAuditAllowedValue[]; message?: string }> =>
+    fetch(`${BASE}/nginx-audit/allowed`).then(safeJson),
+  nginxAuditAllowedAdd: (directive: string, value: string, note: string): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/nginx-audit/allowed`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ directive, value, note }) }).then(safeJson),
+  nginxAuditAllowedRemove: (id: number): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/nginx-audit/allowed/${id}`, { method: 'DELETE' }).then(safeJson),
 
   nginxAuditHost: (host: string): Promise<NginxAuditHostResult> =>
     fetch(`${BASE}/nginx-audit/host/${encodeURIComponent(host)}`).then(safeJson),

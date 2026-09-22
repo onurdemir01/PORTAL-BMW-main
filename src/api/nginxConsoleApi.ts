@@ -111,6 +111,10 @@ export interface NcOrphanHost {
   certs: { path: string; exists: boolean; cn: string | null; issuerCn: string | null; notAfter: string | null; daysLeft: number | null; usedBy: string[] }[];
   ssl: { path: string; size: number; mtime: string | null; isKey: boolean }[];
 }
+// Tutarlilik (2026-09-22): servis+ortam gruplarinda dosya bazinda sha farki
+export interface NcDriftFile { path: string; status: 'differ' | 'missing' | 'local' | 'same'; variants: { sha: string; hosts: string[]; size: number; mtime: string | null }[]; missing: string[]; majority: string | null }
+export interface NcDriftGroup { key: string; service: string; env: string; hosts: string[]; dumped: string[]; dumpMissing: string[]; files: NcDriftFile[]; counts: { same: number; differ: number; missing: number; local: number } }
+export interface NcDriftResult { ok: boolean; message?: string; groups: NcDriftGroup[]; services: string[]; generatedAt: string }
 export interface NcOrphansResult {
   ok: boolean;
   hosts: NcOrphanHost[];
@@ -150,6 +154,7 @@ export const nginxConsoleApi = {
   compare: (path: string, hosts?: string[]): Promise<{ ok: boolean; path: string; rows: { host: string; exists: boolean; sha256: string | null; size: number | null; mtime: string | null }[]; variants: number }> =>
     fetch(`${BASE}/compare?path=${encodeURIComponent(path)}${hosts?.length ? `&hosts=${encodeURIComponent(hosts.join(","))}` : ""}`).then(safeJson),
   certs: (host?: string): Promise<NcCertsResult> => fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ""}`).then(safeJson),
+  drift: (service?: string, env?: string): Promise<NcDriftResult> => { const u = new URLSearchParams(); if (service) u.set("service", service); if (env) u.set("env", env); const qs = u.toString(); return fetch(`${BASE}/drift${qs ? "?" + qs : ""}`).then(safeJson); },
   orphans: (host?: string): Promise<NcOrphansResult> => fetch(`${BASE}/orphans${host ? `?host=${encodeURIComponent(host)}` : ""}`).then(safeJson),
   // hosts bos + all:true -> playbook tum nginx filosunu envanterden kesfeder (30-40 dk)
   refresh: (hosts: string[], all = false): Promise<NcLaunch & { hosts: string[]; all?: boolean }> => fetch(`${BASE}/refresh`, json({ hosts, all })).then(safeJson),

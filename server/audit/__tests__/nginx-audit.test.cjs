@@ -368,3 +368,29 @@ test('Nginx Audit butun tarihli tablolari ayni parameterized snapshot ile okur',
     'Hosts, Servers, Locations, Upstreams, Settings ve Files ayni filtreyi kullanmali',
   );
 });
+
+// ── 2026-09-22: kabul edilen degerler ──────────────────────────────────────────────
+test('kabul edilen degerler: referansla eslesmeyen ama listedeki GLOBAL deger bulgu DEGIL, sayac duser; buyuk/kucuk harf ve ; farki yok; override\'lara da uygulanir', () => {
+  const S = (ctx, directive, value, ref, matches, file = '/c/x.conf') => ({ host: 'GBRVPP07', conf_file: file, context: ctx, directive, value, reference_value: ref, matches });
+  const base = () => ({
+    hosts: [{ ...host('GBRVPP07'), settings_mismatch: 3 }], servers: [], locations: [], upstreams: [],
+    settings: [
+      S('http', 'client_max_body_size', '10M;', '1m', 0),   // listede (10m) -> kabul
+      S('main', 'server_tokens', 'on', 'off', 0),           // listede yok -> sapma
+      S('global', 'charset', '', 'utf-8', 0, ''),           // sunucuda yok -> sapma (kabul listesi eksigi kurtarmaz)
+      S('location', 'client_max_body_size', '10m', '1m', 0), // override; kabul edilince sayilmaz
+    ],
+  });
+  const out = summarizeAudit({ ...base(), allowed: [{ directive: 'client_max_body_size', value: '10m' }, { directive: 'CLIENT_MAX_BODY_SIZE', value: '1M' }] });
+  const h = out.hosts[0];
+  assert.deepEqual(h.settingsMismatched.map((m) => m.directive).sort(), ['charset', 'server_tokens']);
+  assert.equal(h.settingsMismatch, 2, 'hosts.settings_mismatch (3) kabul edilen 1 kadar dusmeli');
+  assert.equal(h.settingsAccepted, 1);
+  const all = h.settingsAll.find((x) => x.directive === 'client_max_body_size');
+  assert.equal(all.matches, true); assert.equal(all.accepted, true);
+  assert.equal(h.settingsOverrides.length, 0, 'kabul edilen deger override olarak da listelenmez');
+  // liste bossa eski davranis
+  const out2 = summarizeAudit({ ...base(), allowed: [] });
+  assert.equal(out2.hosts[0].settingsMismatch, 3);
+  assert.equal(out2.hosts[0].settingsMismatched.length, 3);
+});

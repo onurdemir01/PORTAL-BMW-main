@@ -20,6 +20,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { parseDump, buildTree, aggregateCerts, daysLeft, orphansOf } = require('./dump-parse.cjs');
 const history = require('./history.cjs');
+const { computeDrift } = require('./drift.cjs');
 
 const REGISTRY_KEYS = Object.freeze({
   fetch: 'nginx_console_fetch',
@@ -520,6 +521,25 @@ function initNginxConsole(app) {
         generatedAt: new Date(now).toISOString(),
       },
     });
+  });
+
+  // Tutarlilik (2026-09-22): ayni servis+ortam sunuculari arasinda dosya bazinda sha farki
+  // (GLOMO eski sunuculari vb.). ?service=GLOMO&env=prod ile daraltilir; yoksa tum gruplar.
+  router.get('/drift', async (req, res) => {
+    try {
+      let inv = [];
+      try { inv = await inventoryHosts(); } catch (e) { return res.status(500).json({ ok: false, message: 'Envanter okunamadı: ' + e.message }); }
+      const svc = String(req.query.service || '').trim().toUpperCase();
+      const env = String(req.query.env || '').trim().toLowerCase();
+      const hosts = inv.filter((h) => (!svc || (h.services || []).map((x) => x.toUpperCase()).includes(svc) || String(h.service || '').toUpperCase() === svc) && (!env || String(h.env || '').toLowerCase() === env));
+      const dumps = new Map();
+      for (const h of hosts) { const sm = loadSummary(h.host); if (sm) dumps.set(h.host, { tree: sm.tree }); }
+      const r = computeDrift(hosts, dumps);
+      if (svc) r.groups = r.groups.filter((g) => g.service === svc);
+      res.json({ ok: true, ...r, services: [...new Set(inv.flatMap((h) => (h.services || []).map((x) => x.toUpperCase())))].sort(), generatedAt: new Date().toISOString() });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
   });
 
   // Kullanilmayan dosyalar (2026-09-22): nginx -T'nin yuklemedigi conf dosyalari, yalniz onlarda

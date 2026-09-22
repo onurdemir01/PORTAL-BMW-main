@@ -688,6 +688,23 @@ const TABLES = [
       )`,
   },
   {
+    // Nginx Audit KABUL EDILEN DEGERLER (2026-09-22, kullanici): "client_max_body_size icin 1m de
+    // 10m de kabul; tek referans disinda birden fazla deger ayni anda referans olabilsin."
+    // Direktif + deger; Portal ayar sapmasi hesabinda referansla eslesmeyen ama bu listede olan
+    // degeri "kabul" sayar (bulgu degil). Nginx Hub > Audit'te Admin duzenler.
+    name: 'nginx_audit_allowed_values',
+    sql: `
+      CREATE TABLE nginx_audit_allowed_values (
+        id          INT IDENTITY(1,1) PRIMARY KEY,
+        directive   NVARCHAR(128) NOT NULL,
+        value       NVARCHAR(256) NOT NULL,
+        note        NVARCHAR(500) NULL,
+        created_by  NVARCHAR(128) NULL,
+        created_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        CONSTRAINT UQ_nginx_audit_allowed UNIQUE (directive, value)
+      )`,
+  },
+  {
     // SELF SERVIS AYAR GECMISI (2026-09-16 olayi: bir servisin Survey Tasarimcisi ayarlari
     // "kayboldu"). ansible_ss_customizations tek satir/tek surum tutuyordu; bir kere ezilince
     // geri donus yoktu. Artik her kayittan once ONCEKI veri buraya yazilir; Admin ekrani

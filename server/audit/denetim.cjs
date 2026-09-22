@@ -1042,12 +1042,17 @@ function initDenetim(app) {
       .then((r) => r.recordset || [])
       .catch(() => []);
 
+    // Kabul edilen degerler (nginx_audit_allowed_values, Portal DB); tablo yoksa bos.
+    const allowedQ = require('../db/index.cjs')
+      .query(`SELECT id, directive, value, note FROM nginx_audit_allowed_values`)
+      .then((r) => r.rows || [])
+      .catch(() => []);
     // Istisnalar Portal DB'sinde (nginx_audit_exceptions); tablo yoksa bos.
     const excQ = require('../db/index.cjs')
       .query(`SELECT host, note, created_by, created_at, updated_by, updated_at FROM nginx_audit_exceptions`)
       .then((r) => r.rows || [])
       .catch(() => []);
-    const [hosts, servers, locations, upstreams, settings, files, inventory, exceptions] = await Promise.all([
+    const [hosts, servers, locations, upstreams, settings, files, inventory, exceptions, allowed] = await Promise.all([
       q(`SELECT host, status, status_msg, files, server_blocks, locations,
                 locations_proxy, upstreams, ups_no_resolve, ups_no_keepalive,
                 ups_no_zone, unused_upstreams, proxy_fqdn, proxy_undefined,
@@ -1064,6 +1069,7 @@ function initDenetim(app) {
       filesQ,
       invQ,
       excQ,
+      allowedQ,
     ]);
 
     const out = summarizeAudit({
@@ -1072,6 +1078,7 @@ function initDenetim(app) {
       locations: locations.recordset || [],
       upstreams: upstreams.recordset || [],
       settings: settings.recordset || [],
+      allowed,
       files: files.rows,
       inventory,
       exceptions,
@@ -1103,6 +1110,37 @@ function initDenetim(app) {
       if (typeof auth.getRequestUser === 'function') getRequestUser = auth.getRequestUser;
     } catch { /* auth modulu yoksa yazma kapali kalir */ }
     const HOST_RE = /^[A-Z0-9._-]{1,64}$/;
+
+    // Kabul edilen degerler (2026-09-22): listele / ekle / sil (Admin). Onbellek tazelenir.
+    router.get('/nginx-audit/allowed', async (_req, res) => {
+      try {
+        const r = await db.query(`SELECT id, directive, value, note, created_by, created_at FROM nginx_audit_allowed_values ORDER BY directive, value`);
+        res.json({ ok: true, rows: r.rows || [] });
+      } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+    });
+    router.put('/nginx-audit/allowed', requireAdmin, async (req, res) => {
+      try {
+        const directive = String(req.body?.directive || '').trim().toLowerCase();
+        const value = String(req.body?.value || '').trim();
+        const note = String(req.body?.note || '').trim().slice(0, 500);
+        if (!/^[a-z_][a-z0-9_]*$/.test(directive)) return res.status(400).json({ ok: false, message: 'Direktif adı geçersiz (ör. client_max_body_size).' });
+        if (!value || value.length > 256) return res.status(400).json({ ok: false, message: 'Değer zorunlu (en çok 256 karakter).' });
+        const by = req.user?.username || req.user?.email || null;
+        const ex = await db.query(`SELECT 1 FROM nginx_audit_allowed_values WHERE directive = $1 AND value = $2`, [directive, value]);
+        if (!(ex.rows || []).length) await db.query(`INSERT INTO nginx_audit_allowed_values (directive, value, note, created_by) VALUES ($1, $2, $3, $4)`, [directive, value, note || null, by]);
+        responseCache.clear(); nginxAuditWarm.run().catch(() => {});
+        res.json({ ok: true });
+      } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+    });
+    router.delete('/nginx-audit/allowed/:id', requireAdmin, async (req, res) => {
+      try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, message: 'id geçersiz' });
+        await db.query(`DELETE FROM nginx_audit_allowed_values WHERE id = $1`, [id]);
+        responseCache.clear(); nginxAuditWarm.run().catch(() => {});
+        res.json({ ok: true });
+      } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
+    });
 
     router.put('/nginx-audit/exceptions/:host', requireAdmin, async (req, res) => {
       const host = String(req.params.host || '').trim().toUpperCase();

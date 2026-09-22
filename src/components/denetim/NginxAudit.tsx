@@ -21,10 +21,13 @@ import {
   denetimApi,
   type NginxAuditHost,
   type NginxAuditResult,
+  type NginxAuditAllowedValue,
 } from '@/api/denetimApi';
 import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from './ui';
 import { Modal } from '@/components/common/Modal';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/hooks/useToast';
+import { TableEmptyRow } from '@/components/common/EmptyState';
 import { AuditGlossary, ReferenceValuesPanel, termHint } from './nginxAuditGlossary';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
@@ -49,6 +52,37 @@ export function NginxAudit() {
   const [q, setQ] = useState('');
   const [env, setEnv] = useState('');
   const [onlyProblem, setOnlyProblem] = useState(false);
+  // HIZLI SORUN SUZGECI (kullanici, 2026-09-22): "hangi sunucular sorunlu, hizli goremiyorum" -
+  // tek tikla resolve/keepalive/zone/tanimsiz/ayar/-T sorunlu sunucular, o sayiya gore sirali.
+  const [issue, setIssue] = useState<'' | 'upsNoResolve' | 'upsNoKeepalive' | 'upsNoZone' | 'proxyUndefined' | 'settingsMismatch' | 'tfail'>('');
+  // Kabul edilen degerler (Admin): referans disinda gecerli sayilan direktif degerleri
+  const [allowed, setAllowed] = useState<NginxAuditAllowedValue[]>([]);
+  const [allowedOpen, setAllowedOpen] = useState(false);
+  const [allowedForm, setAllowedForm] = useState({ directive: '', value: '', note: '' });
+  const [allowedBusy, setAllowedBusy] = useState(false);
+  const loadAllowed = useCallback(async () => { try { const r = await denetimApi.nginxAuditAllowed(); if (r.ok) setAllowed(r.rows || []); } catch { /* panel bos kalir */ } }, []);
+  useEffect(() => { loadAllowed(); }, [loadAllowed]);
+  const addAllowed = async () => {
+    if (!allowedForm.directive.trim() || !allowedForm.value.trim()) return;
+    setAllowedBusy(true);
+    try {
+      const r = await denetimApi.nginxAuditAllowedAdd(allowedForm.directive.trim(), allowedForm.value.trim(), allowedForm.note.trim());
+      if (!r.ok) { toast.error(r.message || 'Eklenemedi.'); return; }
+      toast.success('Kabul edilen değer eklendi; liste yeniden hesaplanıyor.');
+      setAllowedForm({ directive: '', value: '', note: '' });
+      await loadAllowed();
+      try { const d = await denetimApi.nginxAudit(true); if (d.ok) setData(d); } catch { /* eski liste kalir */ }
+    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setAllowedBusy(false); }
+  };
+  const removeAllowed = async (id: number) => {
+    setAllowedBusy(true);
+    try {
+      const r = await denetimApi.nginxAuditAllowedRemove(id);
+      if (!r.ok) { toast.error(r.message || 'Silinemedi.'); return; }
+      await loadAllowed();
+      try { const d = await denetimApi.nginxAudit(true); if (d.ok) setData(d); } catch { /* eski liste kalir */ }
+    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setAllowedBusy(false); }
+  };
   // ISTISNA (kullanici, 2026-09-15): yonetici bir sunucuyu not ile istisna yapar; o satirda
   // metrikler gri, en sagda rozet + not; toplamlar onu saymaz. Herkes gorur, Admin duzenler.
   const { user } = useAuth();
@@ -167,13 +201,24 @@ export function NginxAudit() {
   const rows = useMemo(() => {
     if (!data) return [];
     const needle = q.trim().toLowerCase();
-    return data.hosts.filter((h) => {
+    const list = data.hosts.filter((h) => {
       if (env && h.env !== env) return false;
       if (needle && !h.host.toLowerCase().includes(needle)) return false;
       if (onlyProblem && h.issues === 0) return false;
+      if (issue === 'tfail' && h.status === 'ok') return false;
+      if (issue && issue !== 'tfail' && !(Number(h[issue]) > 0)) return false;
       return true;
     });
-  }, [data, q, env, onlyProblem]);
+    if (issue && issue !== 'tfail') list.sort((a, b) => Number(b[issue]) - Number(a[issue]) || a.host.localeCompare(b.host));
+    return list;
+  }, [data, q, env, onlyProblem, issue]);
+  const issueCounts = useMemo(() => {
+    const hs = data?.hosts || [];
+    return {
+      upsNoResolve: hs.filter((h) => h.upsNoResolve > 0).length, upsNoKeepalive: hs.filter((h) => h.upsNoKeepalive > 0).length, upsNoZone: hs.filter((h) => h.upsNoZone > 0).length,
+      proxyUndefined: hs.filter((h) => h.proxyUndefined > 0).length, settingsMismatch: hs.filter((h) => h.settingsMismatch > 0).length, tfail: hs.filter((h) => h.status !== 'ok').length,
+    };
+  }, [data]);
 
   if (loading && !data)
     return <LoadingLogo />;
@@ -283,9 +328,54 @@ export function NginxAudit() {
         </Note>
       )}
 
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] mr-1" style={{ color: 'var(--text-muted)' }}>Hızlı süzgeç (sunucu sayısı):</span>
+        {([['', 'hepsi', data.hosts.length], ['upsNoResolve', 'upstream resolve yok', issueCounts.upsNoResolve], ['upsNoKeepalive', 'keepalive yok', issueCounts.upsNoKeepalive], ['upsNoZone', 'zone yok', issueCounts.upsNoZone], ['proxyUndefined', 'tanımsız hedef', issueCounts.proxyUndefined], ['settingsMismatch', 'ayar sapması', issueCounts.settingsMismatch], ['tfail', 'nginx -T hatalı', issueCounts.tfail]] as const).map(([id, label, n]) => (
+          <button key={id || 'all'} onClick={() => setIssue(id)} className="px-2.5 py-1 rounded-full border text-[11px]" style={{ borderColor: issue === id ? 'var(--accent)' : 'var(--border-subtle)', background: 'var(--bg-surface)', color: issue === id ? 'var(--text-primary)' : 'var(--text-secondary)' }} title={id === 'upsNoResolve' ? 'Standart: upstream bloğunda resolve (dinamik DNS) olmalı' : id === 'upsNoKeepalive' ? 'Standart: upstream bloğunda keepalive olmalı' : id === 'upsNoZone' ? 'Standart: upstream bloğunda zone (paylaşımlı bellek) olmalı' : undefined}>{label} <b className="tabular-nums">{nf(n)}</b></button>
+        ))}
+      </div>
+
+      <Panel
+        title="Kabul edilen değerler"
+        description="Referans dışında da geçerli sayılan direktif değerleri (ör. client_max_body_size → 1m ve 10m). Listedeki değer 'ayar sapması' sayılmaz; büyük/küçük harf ve noktalı virgül farkı gözetilmez."
+        actions={<button onClick={() => setAllowedOpen((v) => !v)} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}>{allowedOpen ? 'Gizle' : `Göster (${allowed.length})`}</button>}
+      >
+        {allowedOpen && (
+          <div className="space-y-2">
+            {isAdmin && (
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Direktif<br /><input list="nginx-audit-directives" value={allowedForm.directive} onChange={(e) => setAllowedForm({ ...allowedForm, directive: e.target.value })} placeholder="client_max_body_size" className="mt-0.5 px-2 py-1.5 text-xs border rounded-lg w-56 font-mono" style={{ borderColor: 'var(--border)' }} /></label>
+                <datalist id="nginx-audit-directives">{(data.reference || []).map((r) => <option key={r.directive + r.context} value={r.directive} />)}</datalist>
+                <label className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Kabul edilen değer<br /><input value={allowedForm.value} onChange={(e) => setAllowedForm({ ...allowedForm, value: e.target.value })} placeholder="10m" className="mt-0.5 px-2 py-1.5 text-xs border rounded-lg w-40 font-mono" style={{ borderColor: 'var(--border)' }} /></label>
+                <label className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Not<br /><input value={allowedForm.note} onChange={(e) => setAllowedForm({ ...allowedForm, note: e.target.value })} placeholder="neden kabul?" className="mt-0.5 px-2 py-1.5 text-xs border rounded-lg w-64" style={{ borderColor: 'var(--border)' }} /></label>
+                <button onClick={addAllowed} disabled={allowedBusy || !allowedForm.directive.trim() || !allowedForm.value.trim()} className="px-3 py-1.5 text-xs rounded-lg disabled:opacity-40" style={{ background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}>Ekle</button>
+              </div>
+            )}
+            <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+              <table className="w-full text-xs">
+                <thead><tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}><th className="px-3 py-1.5">Direktif</th><th className="px-3 py-1.5">Değer</th><th className="px-3 py-1.5">Referans</th><th className="px-3 py-1.5">Not</th><th className="px-3 py-1.5">Ekleyen</th>{isAdmin && <th className="px-3 py-1.5" />}</tr></thead>
+                <tbody>
+                  {allowed.map((a) => (
+                    <tr key={a.id} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                      <td className="px-3 py-1.5 font-mono">{a.directive}</td>
+                      <td className="px-3 py-1.5 font-mono">{a.value}</td>
+                      <td className="px-3 py-1.5 font-mono" style={{ color: 'var(--text-muted)' }}>{(data.reference || []).find((r) => r.directive === a.directive)?.value ?? '—'}</td>
+                      <td className="px-3 py-1.5"><div className="truncate max-w-[24rem]" title={a.note || ''}>{a.note || ''}</div></td>
+                      <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }}>{a.created_by || ''}</td>
+                      {isAdmin && <td className="px-3 py-1.5 text-right"><button onClick={() => removeAllowed(a.id)} disabled={allowedBusy} className="text-[11px] underline" style={{ color: 'var(--status-danger)' }}>Kaldır</button></td>}
+                    </tr>
+                  ))}
+                  {allowed.length === 0 && <TableEmptyRow colSpan={isAdmin ? 6 : 5} title="Kabul edilen değer yok." description={isAdmin ? 'Direktif + değer ekleyin; o değer artık sapma sayılmaz.' : undefined} />}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Panel>
+
       <Panel
         title="Sunucular"
-        description={`${nf(rows.length)} sunucu gösteriliyor · tarama ${data.scanDate} · sorunlu olanlar üstte · satıra tıklayınca sunucu sayfası açılır`}
+        description={`${nf(rows.length)} sunucu gösteriliyor · tarama ${data.scanDate} · ${issue ? 'seçilen soruna göre sıralı' : 'sorunlu olanlar üstte'} · satıra tıklayınca sunucu sayfası açılır`}
         actions={
           <div className="flex items-center gap-2">
             <select

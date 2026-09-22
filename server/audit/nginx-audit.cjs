@@ -32,6 +32,11 @@ async function readLatestAuditDate(query) {
 
 /** Yol yerine dosya adi: ekranda "/usr/nginx/conf.d/GLOMO-PROD.conf" yerine
  *  "GLOMO-PROD.conf". Tam yol ipucunda durur. */
+/** Deger karsilastirmasi: bosluk/tirnak/noktali virgul farki ve buyuk-kucuk harf goz ardi (10m = 10M). */
+function normVal(v) {
+  return String(v == null ? '' : v).trim().replace(/;$/, '').replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').toLowerCase();
+}
+
 function baseName(p) {
   const s = String(p || '');
   const i = s.lastIndexOf('/');
@@ -46,7 +51,17 @@ function baseName(p) {
  *                   sunucular: metrikler gosterilmez, toplamlara girmez, puan 0 (listede sona)
  * @returns {{hosts: Array, totals: Object}}
  */
-function summarizeAudit({ hosts, servers, locations, upstreams, settings, files, inventory, exceptions }) {
+function summarizeAudit({ hosts, servers, locations, upstreams, settings, files, inventory, exceptions, allowed }) {
+  // KABUL EDILEN DEGERLER (2026-09-22): directive -> Set(value). Referansla eslesmeyen ama listede
+  // olan global deger bulgu sayilmaz (accepted); host'un settingsMismatch sayaci ona gore duser.
+  const allowedMap = new Map();
+  for (const a of allowed || []) {
+    const d = String(a.directive || '').trim().toLowerCase();
+    if (!d) continue;
+    if (!allowedMap.has(d)) allowedMap.set(d, new Set());
+    allowedMap.get(d).add(normVal(a.value));
+  }
+  const isAllowed = (directive, value) => { const s = allowedMap.get(String(directive || '').trim().toLowerCase()); return !!s && s.has(normVal(value)); };
   const byHost = new Map();
   const H = (h) => String(h || '').trim().toUpperCase();
 
@@ -87,6 +102,7 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
       proxyFqdn: num(r.proxy_fqdn),
       proxyUndefined: num(r.proxy_undefined),
       settingsMismatch: num(r.settings_mismatch),
+      settingsAccepted: 0,
       servers: [],
       locationsByFile: [],
       upstreamList: [],
@@ -190,8 +206,11 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     const directive = String(r.directive || '');
     const value = String(r.value || '');
     const ref = r.reference_value == null ? null : String(r.reference_value);
-    const matches = r.matches == null ? null : bit(r.matches);
+    let matches = r.matches == null ? null : bit(r.matches);
     const isGlobal = ctx === 'main' || ctx === 'http' || ctx === 'events' || ctx === 'global';
+    // kabul edilen deger: referansla eslesmiyor ama listede -> bulgu degil
+    const accepted = matches === false && String(r.conf_file || '') && isAllowed(directive, value);
+    if (accepted) { matches = true; if (isGlobal) h.settingsAccepted += 1; }
     if (isGlobal) {
       if (ref !== null) {
         h.settingsAll.push({
@@ -200,6 +219,7 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
           value: String(r.conf_file || '') ? value : null,
           reference: ref,
           matches: matches === true,
+          accepted: !!accepted,
           file: baseName(r.conf_file),
         });
         // Referans listesi (tum sunucular icin ayni kurulum dosyalarindan gelir): ilk gorulen
@@ -229,6 +249,7 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
   for (const [k, o] of overAgg) {
     byHost.get(k.split('|')[0]).settingsOverrides.push(o);
   }
+  for (const h of byHost.values()) if (h.settingsAccepted > 0) h.settingsMismatch = Math.max(0, h.settingsMismatch - h.settingsAccepted);
 
   // Kurulum dosyalari: identical NULL = referans yok, hukum yok (ne bulgu ne temiz).
   for (const r of files || []) {
