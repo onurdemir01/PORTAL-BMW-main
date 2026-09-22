@@ -39,7 +39,7 @@ sınıflamıştım — **alarm dışı bırakılmalı**, düzeltilecek bir şey 
 | P1-2 Önizle/uygula | Önizle → işaretle → uygula (#119/#120) + hedef bazlı seçim (#123) |
 | P1-3 401 fırtınası | Görünürlük döngüsü (#117) + **oturum-bitti kapısı** (bu tur): imzalı 401 sonrası `/api/*` ağa çıkmaz. Kalan yarısı `SESSION_STORE` — sunucu tarafı ayar |
 | P2-1 Log gürültüsü | MCP geri çekilme + TLS önbelleği (#121); ECONNRESET **yeniden sınıflandı** |
-| P2-2 Yavaş uçlar | Kısmen (#112, #118) + **artımlı stdout** (bu tur): `ss/job-status` artık stdout'un tamamını her yoklamada yeniden indirmiyor |
+| P2-2 Yavaş uçlar | Kısmen (#112, #118) + artımlı stdout (#125) + **sunucu başına son tarih** (bu tur): tek bir AWX `recent-jobs` yanıtını rehin alamıyor |
 | P3-1 MSSQL/AWX 403 | AWX 403 kapatıldı (#117); MSSQL havuzu **açık** |
 
 | # | Başlık | Sınıf | Öncelik | Büyüklük |
@@ -346,6 +346,27 @@ AWX `?start_line=N` ile artımlı çekim destekliyor. Desteklemediği durumda
 bindirme** ile yapılıyor ve dönen ilk satır önbellekteki çapa satırıyla
 karşılaştırılıyor. Tutmazsa önbellek atılıp bugünkü tam çekime düşülüyor: yani
 iyileştirme **kendini doğruluyor**.
+
+### `recent-jobs`: tek yavaş sunucu tüm panoyu bekletiyordu
+
+`GET /api/ansible/awx/recent-jobs` **tüm** AWX sunucularına `Promise.all` ile
+açılıyor, yani **en yavaş** sunucu kadar yavaş. Ölçüm: 112 yavaş istek, ortalama
+4,2 sn, **en fazla 25,0 sn** — ve gösterge panosu bu ucu **15 saniyede bir**
+yokluyor.
+
+Mevcut `timeout` değerleri bu işi görmez: hepsi **hareketsizlik** zaman aşımı;
+damla damla veri gönderen bir sunucu onları her parçada sıfırlar. Üstelik token
+alımı tek başına zincirleniyor (OAuth2 iki yol + `/api/v2/tokens/`).
+
+Artık sunucu başına **8 saniyelik son tarih** var: geçerse o sunucu için
+`ok:false` + açıklama dönülüyor, diğerleri beklemiyor. Sonuç **sessizce
+yutulmuyor** — ekran zaten sunucu adıyla birlikte hata metnini yazıyor.
+
+**`awx/health` ve `templates/all` bilerek DIŞARIDA:** ikisi de yoklanmıyor
+(kullanıcı tetikliyor) ve ikisinde de son tarih **yanıtın anlamını bozardı** —
+sağlık kontrolü yavaş ama çalışan bir sunucuyu "erişilemiyor" diye
+işaretlerdi, template listesi ise eksik dönüp yöneticiye "bu template yok"
+dedirtirdi.
 
 ---
 

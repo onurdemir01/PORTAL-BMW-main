@@ -139,6 +139,43 @@ function mapApiPath(server, pathname) {
   return p.startsWith(DEFAULT_API_BASE) ? base + p.slice(DEFAULT_API_BASE.length) : p;
 }
 
+// ── TEK SUNUCU TUM YANITI REHIN ALMASIN ──────────────────────────────────────
+//
+// `Promise.all` ile TUM AWX sunucularina acilan uclar, EN YAVAS sunucu kadar
+// yavastir. Uretim olcumu: `GET /api/ansible/awx/recent-jobs` 112 yavas istek,
+// ortalama 4,2 sn, EN FAZLA 25,0 sn — ve bu uc gosterge panosundan **15
+// saniyede bir** yoklaniyor. Yani tek bir erisilemeyen sunucu, panonun o
+// kartini surekli asili birakiyor ve yoklamalar ust uste biniyor.
+//
+// MEVCUT `timeout` DEGERLERI BU ISI GORMEZ: Node'un soket `timeout`u bir
+// HAREKETSIZLIK (idle) zaman asimidir; damla damla veri gonderen bir sunucu
+// onu her parcada sifirlar. Ustelik token alimi TEK BASINA zincirleniyor —
+// OAuth2 iki yol (2 × 10 sn) sonra `/api/v2/tokens/` (10 sn) = 30 sn — ve
+// bunun uzerine istegin kendi 15 sn'si biniyor.
+//
+// Bu yuzden AYRI bir SON TARIH gerekiyor: gecerse o sunucu icin yedek bir
+// sonuc donulur, DIGERLERI beklemez. Sonuc SESSIZCE yutulmaz — cagiran uc
+// zaten sunucu basina `ok:false` + `error` tasiyor ve ekran bunu yaziyor.
+const AWX_SUNUCU_SON_TARIH_MS = 8000;
+
+/**
+ * `is` verilen sure icinde bitmezse `yedek()` sonucunu doner.
+ *
+ * `is` IPTAL EDILMEZ — arkada kosmaya devam eder ve kendi icinde cozulur
+ * (bu uclarda her map geri cagrisinin kendi `try/catch`i var, yani yakalanmamis
+ * red olusmaz). Amac istegi oldurmek degil, YANITI BEKLETMEMEKTIR.
+ */
+function sonTarihli(is, ms, yedek) {
+  let zamanlayici = null;
+  const sinir = new Promise((resolve) => {
+    zamanlayici = setTimeout(() => resolve(yedek()), ms);
+    if (typeof zamanlayici.unref === 'function') zamanlayici.unref();
+  });
+  return Promise.race([is, sinir]).finally(() => {
+    if (zamanlayici) clearTimeout(zamanlayici);
+  });
+}
+
 function getServers() {
   if (_awxServersCache && _awxServersCache.length) return _awxServersCache.slice();
   const servers = [];
@@ -1690,49 +1727,62 @@ function initAnsibleRunner(app) {
     );
     const servers = targets.length > 0 ? targets : all;
 
+    // Tek bir sunucunun yanit vermemesi TUM panoyu bekletmesin (bkz. sonTarihli).
+    const sunucununIsleri = async (server) => {
+      if (!server.token && !(server.user && server.password)) {
+        return {
+          serverId: server.id,
+          serverName: server.name,
+          ok: false,
+          jobs: [],
+          error: 'Kimlik bilgisi eksik.',
+        };
+      }
+      try {
+        const token = await getTokenForServer(server);
+        const data = await awxRequestToServer(
+          server,
+          token,
+          'GET',
+          '/api/v2/jobs/?status__in=pending,waiting,running&order_by=-created&page_size=15',
+        );
+        const jobs = (data.results || []).map((j) => ({
+          jobId: j.id,
+          status: j.status,
+          jobTemplate: j.summary_fields?.job_template?.name || j.name || '—',
+          // AWX'in LISTE endpoint'i (list serializer) summary_fields.launched_by'i
+          // DETAY endpoint'inden farkli olarak bazen atlar — created_by'e de dusuyoruz.
+          executer:
+            j.summary_fields?.launched_by?.name ||
+            j.summary_fields?.created_by?.username ||
+            j.summary_fields?.created_by?.name ||
+            '—',
+          created: j.created,
+        }));
+        return { serverId: server.id, serverName: server.name, ok: true, jobs };
+      } catch (err) {
+        return {
+          serverId: server.id,
+          serverName: server.name,
+          ok: false,
+          jobs: [],
+          error: err.message || "AWX'e erişilemedi.",
+        };
+      }
+    };
+
     const results = await Promise.all(
-      servers.map(async (server) => {
-        if (!server.token && !(server.user && server.password)) {
-          return {
-            serverId: server.id,
-            serverName: server.name,
-            ok: false,
-            jobs: [],
-            error: 'Kimlik bilgisi eksik.',
-          };
-        }
-        try {
-          const token = await getTokenForServer(server);
-          const data = await awxRequestToServer(
-            server,
-            token,
-            'GET',
-            '/api/v2/jobs/?status__in=pending,waiting,running&order_by=-created&page_size=15',
-          );
-          const jobs = (data.results || []).map((j) => ({
-            jobId: j.id,
-            status: j.status,
-            jobTemplate: j.summary_fields?.job_template?.name || j.name || '—',
-            // AWX'in LISTE endpoint'i (list serializer) summary_fields.launched_by'i
-            // DETAY endpoint'inden farkli olarak bazen atlar — created_by'e de dusuyoruz.
-            executer:
-              j.summary_fields?.launched_by?.name ||
-              j.summary_fields?.created_by?.username ||
-              j.summary_fields?.created_by?.name ||
-              '—',
-            created: j.created,
-          }));
-          return { serverId: server.id, serverName: server.name, ok: true, jobs };
-        } catch (err) {
-          return {
-            serverId: server.id,
-            serverName: server.name,
-            ok: false,
-            jobs: [],
-            error: err.message || "AWX'e erişilemedi.",
-          };
-        }
-      }),
+      servers.map((server) =>
+        sonTarihli(sunucununIsleri(server), AWX_SUNUCU_SON_TARIH_MS, () => ({
+          serverId: server.id,
+          serverName: server.name,
+          ok: false,
+          jobs: [],
+          // SESSIZ DEGIL: ekran bu metni sunucu adiyla birlikte yaziyor
+          // (DashboardPage "erişilemedi" satiri), yani yavas sunucu GORUNUR kalir.
+          error: `AWX ${Math.round(AWX_SUNUCU_SON_TARIH_MS / 1000)} sn içinde yanıt vermedi.`,
+        })),
+      ),
     );
 
     res.json({ ok: true, servers: results });
