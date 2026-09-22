@@ -9,12 +9,13 @@ import {
   ServerStackIcon, ArrowPathIcon, MagnifyingGlassIcon, BoltIcon, WrenchScrewdriverIcon, XMarkIcon,
   ExclamationTriangleIcon, InformationCircleIcon, CheckCircleIcon, ShieldExclamationIcon, ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
-import { serverHubApi, type ShOverview, type ShHostRow, type ShHostDetail, type ShFinding, type ShSeverity } from '@/api/serverHubApi';
+import { serverHubApi, type ShOverview, type ShHostRow, type ShHostDetail, type ShFinding, type ShSeverity, type ShFindingsResult } from '@/api/serverHubApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtNumber, fmtDate } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import RetirementTab from './RetirementTab';
 
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -85,7 +86,7 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
   // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
-  const [tab, setTab] = useState<'hosts' | 'retirement'>('hosts');
+  const [tab, setTab] = useState<'hosts' | 'findings' | 'retirement'>('hosts');
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -98,12 +99,14 @@ export default function ServerHubPage() {
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
-          {([{ id: 'hosts', label: 'Sunucular' }, { id: 'retirement', label: 'Retirement' }] as const).map((t) => (
+          {([{ id: 'hosts', label: 'Sunucular' }, { id: 'findings', label: 'Bulgular' }, { id: 'retirement', label: 'Retirement' }] as const).map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.label}</button>
           ))}
         </div>
       </div>
-      {tab === 'hosts' ? <HostsTab /> : <RetirementTab />}
+      {tab === 'hosts' && <HostsTab />}
+      {tab === 'findings' && <FindingsTab />}
+      {tab === 'retirement' && <RetirementTab />}
     </div>
   );
 }
@@ -190,11 +193,14 @@ function HostsTab() {
               ]} />
               <div className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}><b style={{ color: SEV.danger.color }}>{s.jvm.rebootRisk}</b> reboot riski (çalışıyor + auto-start kapalı) · <b>{s.jvm.restartRequired}</b> restart gerekli</div>
             </Kpi>
-            <Kpi title="JVM çalışma / yük" tone={s.jvm.retireCandidates ? 'warning' : 'ok'}>
+            <Kpi title="JVM durumu / trafik" tone={s.jvm.retireCandidates ? 'warning' : 'ok'}>
               <Donut label={String(s.jvm.running)} sub="çalışıyor" parts={[
                 { value: s.jvm.running, color: SEV.ok.color, title: 'çalışıyor' }, { value: s.jvm.stopped, color: 'var(--status-neutral)', title: 'kapalı' },
               ]} />
-              <div className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}><b style={{ color: SEV.warning.color }}>{s.jvm.retireCandidates}</b> retire adayı · <b>{s.jvm.noLoad}</b> yük yok · {s.jvm.mapped}/{s.jvm.total} web katmanına eşlendi</div>
+              {/* Kullanici (2026-09-22): "ne gosteriyor anlamadim" -> her sayi acik yazilir */}
+              <div className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }} title="Trafik: JVM'in önündeki web sunucusu vhost'unun access log'unda son 7 günde istek var mı (hc.html/hc.jsp hariç). Eşleme: vhost proxy hedefi (host:port) = JVM portu; olmazsa server_name içinde JVM adı.">
+                <b style={{ color: SEV.warning.color }}>{s.jvm.retireCandidates}</b> retire adayı (kapalı + 7 gün istek yok) · <b>{s.jvm.noLoad}</b> çalışıyor ama 7 gün istek yok · {s.jvm.mapped}/{s.jvm.total} JVM web vhost'una eşlendi
+              </div>
             </Kpi>
             <Kpi title="Boşta IP" tone={s.ips.unused ? 'warning' : 'ok'}>
               <Donut label={String(s.ips.unused)} sub="boşta" parts={[
@@ -210,9 +216,11 @@ function HostsTab() {
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Kpi title="Init script uyumu" tone={s.init.diffFiles ? 'warning' : 'ok'}>
-              <div className="text-2xl font-bold tabular-nums">{s.init.compliant} <span className="text-sm font-normal" style={{ color: 'var(--text-muted)' }}>/ {s.init.hosts} sunucu referansla aynı</span></div>
+              <div className="text-2xl font-bold tabular-nums">{s.init.compliant} <span className="text-sm font-normal" style={{ color: 'var(--text-muted)' }}>/ {s.init.hosts} sunucu filo çoğunluğuyla aynı</span></div>
               <div className="mt-2"><Bar value={s.init.compliant} total={s.init.hosts} color={SEV.ok.color} /></div>
-              <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{s.init.diffFiles} dosya referanstan farklı</div>
+              <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }} title="Ölçüt Denetim › Init Script ile aynı: dosya başına en kalabalık sha çoğunluktur. Repo referansından fark tek başına bulgu değildir.">
+                {s.init.diffFiles} dosya çoğunluktan farklı{s.init.missingFiles ? ` · ${s.init.missingFiles} eksik` : ''}{s.init.refDiffFiles && s.init.refDiffFiles.length ? ` · ${s.init.refDiffFiles.length} dosyada çoğunluk repo referansından farklı` : ''}
+              </div>
             </Kpi>
             {(['RHA', 'IHS', 'NGINX'] as const).map((p) => {
               const w = s.web[p]; if (!w) return null;
@@ -508,5 +516,93 @@ function HostModal({ host, onClose, onScan, trackJob, reload }: {
         </div>
       )}
     </Modal>
+  );
+}
+
+// ── Bulgular sekmesi (2026-09-22) ─────────────────────────────────────────────────
+// Kullanici: "Init script / RHA / IHS sözdizimi sorunlarını toplu halde liste şeklinde nasıl
+// görebilirim?" Tüm sunucuların bulguları tek tabloda; alan (init/web/jvm/…), kod, önem ve
+// ürün süzgeci; CSV. Satırdaki sunucuya tıklayınca sunucu penceresi açılır (Sunucular sekmesi).
+const AREA_TR: Record<string, string> = { init: 'Init script', jboss: 'JBoss host', jvm: 'JVM', web: 'Web sözdizimi / vhost', ip: 'IP', ssh: 'SSH', scan: 'Tarama' };
+export function FindingsTab() {
+  const [data, setData] = useState<ShFindingsResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [area, setArea] = useState<string>('all');
+  const [code, setCode] = useState<string>('all');
+  const [sev, setSev] = useState<'all' | ShSeverity>('all');
+  const [product, setProduct] = useState<string>('all');
+  const load = useCallback(async (fresh = false) => { setLoading(true); try { const r = await serverHubApi.findings(fresh); if (r.ok) setData(r); else toast.error(r.message || 'Bulgular alınamadı.'); } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); } }, []);
+  useAsyncEffect(async () => { await load(); }, [load]);
+  const all = data?.findings || [];
+  const codes = useMemo(() => [...new Set(all.filter((f) => area === 'all' || f.area === area).map((f) => f.code))].sort(), [all, area]);
+  const products = useMemo(() => [...new Set(all.flatMap((f) => f.products))].sort(), [all]);
+  const rows = useMemo(() => {
+    const n = q.trim().toLowerCase();
+    return all.filter((f) => (area === 'all' || f.area === area) && (code === 'all' || f.code === code) && (sev === 'all' || f.severity === sev) && (product === 'all' || f.products.includes(product)) && (!n || f.host.toLowerCase().includes(n) || f.text.toLowerCase().includes(n)));
+  }, [all, q, area, code, sev, product]);
+  const byCode = useMemo(() => { const m = new Map<string, number>(); for (const f of rows) m.set(f.code, (m.get(f.code) || 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [rows]);
+  const csv = () => {
+    const head = ['sunucu', 'urunler', 'onem', 'alan', 'kod', 'bulgu', 'duzeltilebilir', 'tarama'];
+    const body = rows.map((f) => [f.host, f.products.join(' '), f.severity, f.area, f.code, f.text, f.fixable ? 'evet' : '', f.scanDate || '']);
+    const text = [head, ...body].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type: 'text/csv;charset=utf-8' })); a.download = `server_hub_bulgular_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+  };
+  const sel = 'h-8 px-2 text-xs border rounded-lg';
+  const selStyle: React.CSSProperties = { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' };
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="sunucu ya da bulgu metni ara" className="h-8 px-3 text-xs border rounded-lg w-64" style={selStyle} />
+        <select value={area} onChange={(e) => { setArea(e.target.value); setCode('all'); }} className={sel} style={selStyle} aria-label="alan">
+          <option value="all">tüm alanlar</option>
+          {Object.entries(AREA_TR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select value={code} onChange={(e) => setCode(e.target.value)} className={sel} style={selStyle} aria-label="bulgu kodu">
+          <option value="all">tüm kodlar</option>
+          {codes.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={sev} onChange={(e) => setSev(e.target.value as 'all' | ShSeverity)} className={sel} style={selStyle} aria-label="önem">
+          <option value="all">tüm önemler</option><option value="danger">kritik</option><option value="warning">uyarı</option><option value="info">bilgi</option>
+        </select>
+        <select value={product} onChange={(e) => setProduct(e.target.value)} className={sel} style={selStyle} aria-label="ürün">
+          <option value="all">tüm ürünler</option>
+          {products.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtNumber(rows.length)} bulgu · {fmtNumber(new Set(rows.map((f) => f.host)).size)} sunucu{data?.latestScan ? ` · son tarama ${data.latestScan}` : ''}</span>
+        <div className="ml-auto flex gap-2">
+          <button onClick={csv} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}><ArrowDownTrayIcon className="w-3.5 h-3.5 inline" /> CSV</button>
+          <button onClick={() => load(true)} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}><ArrowPathIcon className={`w-3.5 h-3.5 inline ${loading ? 'animate-spin' : ''}`} /> Yenile</button>
+        </div>
+      </div>
+      {byCode.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {byCode.map(([c, n]) => (
+            <button key={c} onClick={() => setCode(code === c ? 'all' : c)} className="px-2 py-0.5 rounded-full border text-[11px]" style={{ borderColor: code === c ? 'var(--accent)' : 'var(--border-subtle)', background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}>{c} <b className="tabular-nums">{fmtNumber(n)}</b></button>
+          ))}
+        </div>
+      )}
+      <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+        <table className="w-full text-xs">
+          <thead><tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+            <th className="px-3 py-2">Sunucu</th><th className="px-3 py-2">Önem</th><th className="px-3 py-2">Alan</th><th className="px-3 py-2">Kod</th><th className="px-3 py-2">Bulgu</th><th className="px-3 py-2">Ürünler</th>
+          </tr></thead>
+          <tbody>
+            {rows.slice(0, 2000).map((f, i) => (
+              <tr key={f.host + f.code + i} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                <td className="px-3 py-1.5 font-mono font-semibold">{f.host}</td>
+                <td className="px-3 py-1.5"><SevPill s={f.severity} /></td>
+                <td className="px-3 py-1.5">{AREA_TR[f.area] || f.area}</td>
+                <td className="px-3 py-1.5 font-mono text-[11px]">{f.code}</td>
+                <td className="px-3 py-1.5"><div className="max-w-[40rem] truncate" title={f.text}>{f.text}</div></td>
+                <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>{f.products.join(' · ')}</td>
+              </tr>
+            ))}
+            {!loading && rows.length === 0 && <TableEmptyRow colSpan={6} title={all.length ? 'Süzgeçle eşleşen bulgu yok.' : 'Bulgu yok.'} description={data?.tableMissing ? 'server_hub_scan job\'ı henüz koşmadı.' : undefined} />}
+          </tbody>
+        </table>
+        {rows.length > 2000 && <div className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>İlk 2.000 satır gösteriliyor; tamamı CSV'de.</div>}
+      </div>
+    </div>
   );
 }

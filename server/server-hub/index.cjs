@@ -10,7 +10,7 @@
 'use strict';
 
 const express = require('express');
-const { assess } = require('./assess.cjs');
+const { assess, flattenFindings } = require('./assess.cjs');
 
 const REGISTRY_KEYS = Object.freeze({ scan: 'server_hub_scan', fix: 'server_hub_fix' });
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
@@ -118,6 +118,18 @@ function initServerHub(app) {
       res.json({ ok: true, tableMissing: false, latestScan: a.latestScan, summary: a.summary, hosts: a.hosts.map(hostRow) });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Server Hub verisi alınamadı.' });
+    }
+  });
+
+  // Bulgular (2026-09-22): "init/apache sozdizimi sorunlarini toplu liste olarak nasil gorurum?"
+  // Tum sunucularin bulgulari tek listede; istemci suzer (alan/kod/onem/urun), CSV verir.
+  router.get('/findings', async (req, res) => {
+    try {
+      const a = await getAssessment(req.query.fresh === '1');
+      if (a.tableMissing) return res.json({ ok: true, tableMissing: true, findings: [], latestScan: null });
+      res.json({ ok: true, tableMissing: false, latestScan: a.latestScan, findings: flattenFindings(a.hosts) });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message || 'Bulgular alınamadı.' });
     }
   });
 

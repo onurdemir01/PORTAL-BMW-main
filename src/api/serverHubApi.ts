@@ -33,7 +33,7 @@ export interface ShHostDetail extends Omit<ShHostRow, 'jvms' | 'vhosts'> {
 }
 export interface ShSummary {
   hosts: { total: number; ok: number; info: number; warning: number; danger: number };
-  init: { hosts: number; compliant: number; diffFiles: number };
+  init: { hosts: number; compliant: number; diffFiles: number; missingFiles?: number; refDiffFiles?: { file: string; hosts: number }[] };
   jvm: { total: number; running: number; stopped: number; autoOn: number; autoOff: number; autoUnknown: number; restartRequired: number; rebootRisk: number; retireCandidates: number; noLoad: number; mapped: number };
   web: Record<string, { hosts: number; syntaxOk: number; syntaxFail: number; notRunning: number; vhosts: number; idleVhosts: number }>;
   ips: { total: number; unused: number };
@@ -41,6 +41,8 @@ export interface ShSummary {
   scan: { avgCpuS: number | null; maxCpuS: number | null; maxCpuHost: string | null };
 }
 export interface ShOverview { ok: boolean; message?: string; tableMissing: boolean; latestScan: string | null; summary: ShSummary | null; hosts: ShHostRow[] }
+export interface ShFindingRow { host: string; products: string[]; scanDate: string | null; severity: Exclude<ShSeverity, 'ok'>; area: ShFinding['area']; code: string; text: string; fixable: boolean }
+export interface ShFindingsResult { ok: boolean; message?: string; tableMissing: boolean; latestScan: string | null; findings: ShFindingRow[] }
 export interface ShLaunch { ok: boolean; message?: string; jobId: number | null; status: string | null; awxServerId: number; planOnly?: boolean }
 export interface ShJobStatus { ok: boolean; status: string; output: string; result?: unknown; message?: string }
 
@@ -48,6 +50,7 @@ const json = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'a
 
 export const serverHubApi = {
   overview: (fresh = false): Promise<ShOverview> => fetch(`${BASE}/overview${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  findings: (fresh = false): Promise<ShFindingsResult> => fetch(`${BASE}/findings${fresh ? '?fresh=1' : ''}`).then(safeJson),
   host: (host: string, fresh = false): Promise<{ ok: boolean; host: ShHostDetail; message?: string }> =>
     fetch(`${BASE}/host/${encodeURIComponent(host)}${fresh ? '?fresh=1' : ''}`).then(safeJson),
   scan: (hosts: string[]): Promise<ShLaunch> => fetch(`${BASE}/scan`, json({ hosts })).then(safeJson),

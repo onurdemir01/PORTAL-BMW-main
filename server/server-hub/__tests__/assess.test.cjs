@@ -113,3 +113,43 @@ test('SH8: parseTargets host:port / ajp / IPv6 / bos', () => {
   assert.deepEqual(parseTargets('app1_up'), [{ host: 'APP1_UP', port: null }]);
   assert.deepEqual(parseTargets(''), []);
 });
+
+// ── 2026-09-22 (job 3339002 sonrasi) ─────────────────────────────────────────────
+test('SH9: init uyumu FILO COGUNLUGUNA gore (Denetim ile ayni): repo referansindan farkli ama cogunlukla ayni dosya bulgu DEGIL', () => {
+  const d = base();
+  d.hosts.push({ host: 'H2', scan_date: D, products: 'JBOSS7' }, { host: 'H3', scan_date: D, products: 'JBOSS7' });
+  // start.sh: 3 sunucuda ayni sha 'A' ama repo referansi baska (hepsi DIFF geldi) -> cogunluk A, hepsi OK
+  d.init = [
+    { host: 'DACRAAP01', root: 'vhosting', file: 'start.sh', status: 'DIFF', sha512: 'A' },
+    { host: 'H2', root: 'vhosting', file: 'start.sh', status: 'DIFF', sha512: 'A' },
+    { host: 'H3', root: 'vhosting', file: 'start.sh', status: 'DIFF', sha512: 'A' },
+    // functions.sh: 2 sunucu B (repo ile ayni), 1 sunucu C -> C cogunluktan farkli (DIFF), digerleri OK
+    { host: 'DACRAAP01', root: 'vhosting', file: 'functions.sh', status: 'OK', sha512: 'B' },
+    { host: 'H2', root: 'vhosting', file: 'functions.sh', status: 'OK', sha512: 'B' },
+    { host: 'H3', root: 'vhosting', file: 'functions.sh', status: 'DIFF', sha512: 'C' },
+    { host: 'H3', root: 'vhosting', file: 'startNginx.sh', status: 'MISSING', sha512: null },
+  ];
+  const r = assess(d);
+  const h1 = r.hosts.find((h) => h.host === 'DACRAAP01'), h3 = r.hosts.find((h) => h.host === 'H3');
+  assert.ok(!h1.findings.some((f) => f.code === 'INIT_DIFF'), 'repo referansindan farkli ama cogunlukla ayni -> bulgu yok');
+  assert.equal(h1.init.find((i) => i.file === 'start.sh').status, 'OK');
+  const f = h3.findings.find((x) => x.code === 'INIT_DIFF');
+  assert.ok(f && /functions\.sh/.test(f.text) && /çoğunluk 2\/3/.test(f.text), f && f.text);
+  assert.ok(h3.findings.some((x) => x.code === 'INIT_MISSING'));
+  assert.equal(r.summary.init.compliant, 2, 'H1 ve H2 cogunlukla ayni');
+  assert.equal(r.summary.init.diffFiles, 1);
+  assert.equal(r.summary.init.missingFiles, 1);
+  assert.deepEqual(r.summary.init.refDiffFiles, [{ file: 'vhosting/start.sh', hosts: 3 }], 'cogunluk repo referansindan farkli -> bilgi');
+});
+
+test('SH10: flattenFindings tum sunuculari tek listede, en agirdan hafife', () => {
+  const { flattenFindings } = require('../assess.cjs');
+  const r = assess(base());
+  const rows = flattenFindings(r.hosts);
+  assert.ok(rows.length > 3);
+  assert.equal(rows[0].severity, 'danger');
+  assert.ok(rows.every((x) => x.host && x.code && x.text && Array.isArray(x.products)));
+  const sevOrder = rows.map((x) => ({ danger: 3, warning: 2, info: 1 }[x.severity]));
+  assert.deepEqual(sevOrder, [...sevOrder].sort((a, b) => b - a));
+  assert.ok(rows.some((x) => x.code === 'SYNTAX_FAIL' || x.code === 'REBOOT_RISK'));
+});

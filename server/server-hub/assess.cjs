@@ -46,7 +46,7 @@ function assess(data) {
     h.wallS = r.wall_s == null ? null : Number(r.wall_s);
     h.cpuS = r.cpu_s == null ? null : Number(r.cpu_s);
   }
-  for (const r of data.init || []) H(r.host).init.push({ root: r.root, file: r.file, status: U(r.status) });
+  for (const r of data.init || []) H(r.host).init.push({ root: r.root, file: r.file, refStatus: U(r.status), sha: r.sha512 || null, status: U(r.status), majority: null, majorityCount: 0, variantCount: 0 });
   for (const r of data.jboss || []) H(r.host).jboss.push({ gen: Number(r.gen), hostName: r.host_name || '', hostState: L(r.host_state), cli: U(r.cli), note: r.note || '' });
   for (const r of data.jvms || []) H(r.host).jvms.push({
     gen: Number(r.gen), name: String(r.jvm || '').trim(), group: r.grp || '', running: Number(r.running) === 1,
@@ -94,6 +94,32 @@ function assess(data) {
     }
   }
 
+  // ── Init: FILO COGUNLUGU (Denetim > Init Script ile ayni olcut; 2026-09-22) ──────
+  // Kullanici: "Denetim'e gore cogu sunucu referansla uyumlu ama Server Hub 85/1114 diyor."
+  // Repo referansi (INIT.status) ile sunuculardaki dosya mesru olarak farkli olabilir (repo
+  // guncel degil / satir sonu). Olcut: dosya basina en kalabalik sha = cogunluk; ona uyan OK,
+  // uymayan DIFF (bulgu), yok MISSING. Repo referansiyla fark yalniz bilgi olarak tasinir.
+  const shaCounts = new Map(); // "root/file" -> Map(sha -> n)
+  for (const h of byHost.values()) for (const i of h.init) {
+    if (!i.sha) continue;
+    const k = `${i.root}/${i.file}`;
+    if (!shaCounts.has(k)) shaCounts.set(k, new Map());
+    shaCounts.get(k).set(i.sha, (shaCounts.get(k).get(i.sha) || 0) + 1);
+  }
+  const majorityOf = new Map();
+  for (const [k, m] of shaCounts) {
+    const sorted = [...m.entries()].sort((a, b) => b[1] - a[1]);
+    majorityOf.set(k, { sha: sorted[0][0], count: sorted[0][1], variants: sorted.length, total: sorted.reduce((a, x) => a + x[1], 0) });
+  }
+  for (const h of byHost.values()) for (const i of h.init) {
+    const mj = majorityOf.get(`${i.root}/${i.file}`);
+    if (!mj) continue;
+    i.majority = mj.sha; i.majorityCount = mj.count; i.variantCount = mj.variants; i.majorityTotal = mj.total;
+    if (i.refStatus === 'MISSING') i.status = 'MISSING';
+    else if (i.sha && i.sha === mj.sha) i.status = 'OK';
+    else if (i.sha) i.status = 'DIFF';
+  }
+
   // ── Bulgular ───────────────────────────────────────────────────────────────────
   const hosts = [];
   for (const h of byHost.values()) {
@@ -101,7 +127,7 @@ function assess(data) {
     const add = (severity, area, code, text, fix) => F.push({ severity, area, code, text, fix: fix || null });
     // init
     for (const i of h.init) {
-      if (i.status === 'DIFF') add('warning', 'init', 'INIT_DIFF', `${i.root}/${i.file} referanstan farklı`);
+      if (i.status === 'DIFF') add('warning', 'init', 'INIT_DIFF', `${i.root}/${i.file} filo çoğunluğundan farklı (çoğunluk ${i.majorityCount}/${i.majorityTotal || '?'} sunucu, ${i.variantCount} sürüm)${i.refStatus === 'OK' ? ' — repo referansıyla AYNI' : ''}`);
       else if (i.status === 'MISSING') add('info', 'init', 'INIT_MISSING', `${i.root}/${i.file} yok`);
     }
     // jboss host
@@ -161,7 +187,14 @@ function assess(data) {
   const web = hosts.flatMap((h) => h.web);
   const summary = {
     hosts: { total: hosts.length, ok: 0, info: 0, warning: 0, danger: 0 },
-    init: { hosts: hosts.filter((h) => h.init.length).length, compliant: hosts.filter((h) => h.init.length && h.init.every((i) => i.status === 'OK')).length, diffFiles: hosts.reduce((a, h) => a + h.init.filter((i) => i.status === 'DIFF').length, 0) },
+    init: {
+      hosts: hosts.filter((h) => h.init.length).length,
+      compliant: hosts.filter((h) => h.init.length && h.init.every((i) => i.status === 'OK')).length,
+      diffFiles: hosts.reduce((a, h) => a + h.init.filter((i) => i.status === 'DIFF').length, 0),
+      missingFiles: hosts.reduce((a, h) => a + h.init.filter((i) => i.status === 'MISSING').length, 0),
+      // repo referansi ile filo cogunlugu ayrisan dosyalar (repo guncel degil ya da dagitim eksik)
+      refDiffFiles: [...majorityOf.entries()].filter(([, m]) => { const any = [...byHost.values()].flatMap((h) => h.init).find((i) => i.sha === m.sha); return any && any.refStatus !== 'OK'; }).map(([k, m]) => ({ file: k, hosts: m.count })),
+    },
     jvm: {
       total: jvms.length, running: jvms.filter((j) => j.running).length, stopped: jvms.filter((j) => !j.running).length,
       autoOn: jvms.filter((j) => j.autoStart === 'true').length, autoOff: jvms.filter((j) => j.autoStart === 'false').length, autoUnknown: jvms.filter((j) => j.autoStart === 'unknown').length,
@@ -193,4 +226,12 @@ function assess(data) {
   return { hosts, summary, latestScan };
 }
 
-module.exports = { assess, parseTargets, SEV };
+/** Tum bulgular tek listede (Bulgular sekmesi / CSV): host + urunler + bulgu. */
+function flattenFindings(hosts) {
+  const out = [];
+  for (const h of hosts) for (const f of h.findings) out.push({ host: h.host, products: h.products, scanDate: h.scanDate, severity: f.severity, area: f.area, code: f.code, text: f.text, fixable: !!f.fix });
+  out.sort((a, b) => SEV[b.severity] - SEV[a.severity] || a.area.localeCompare(b.area) || a.host.localeCompare(b.host));
+  return out;
+}
+
+module.exports = { assess, parseTargets, SEV, flattenFindings };
