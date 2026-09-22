@@ -17,6 +17,9 @@
 
 // table -> indeks adi + sutunlar. scan_date onde: Portal'in tum okuma kaliplari bu esitlikle
 // basliyor; host ikinci (tek sunucu sorgulari icin).
+// Bu satir sayisinin ustundeki tabloda otomatik CREATE INDEX yapilmaz (log riski).
+const MAX_ROWS_AUTO = Number(process.env.EXTERNAL_INDEX_MAX_ROWS || 1000000);
+
 const WANTED = [
   { table: 'Nginx_Audit_Hosts', name: 'IX_Nginx_Audit_Hosts_scan', cols: 'scan_date, host' },
   { table: 'Nginx_Audit_Servers', name: 'IX_Nginx_Audit_Servers_scan', cols: 'scan_date, host' },
@@ -58,6 +61,13 @@ async function ensureExternalIndexes(pool, log = console) {
       );
       const row = r.recordset?.[0] || {};
       if (!row.has_table || row.has_index || !row.has_col) continue;
+      // BUYUK TABLODA YARATMA (2026-09-22): milyon satirlik Nginx_Audit_Settings'te CREATE INDEX
+      // GB'larca transaction log yazdi; log doluyken (9002) yarim kaldi, AG failover'ina kadar giden
+      // zincirin parcasi oldu. Esigin ustunde yalniz loglanir; indeksi DBA ile koordine edip
+      // (log backup sonrasi / tablo kucultulunce) elle acmak gerekir.
+      const cnt = await pool.request().query(`SELECT SUM(p.rows) AS n FROM sys.partitions p JOIN sys.tables t ON t.object_id = p.object_id WHERE t.name = '${w.table}' AND t.schema_id = SCHEMA_ID('dbo') AND p.index_id IN (0, 1)`);
+      const rows = Number(cnt.recordset?.[0]?.n || 0);
+      if (rows > MAX_ROWS_AUTO) { log.warn(`[DB] Indeks ATLANDI (buyuk tablo, ${rows} satir > ${MAX_ROWS_AUTO}): dbo.${w.table} — DBA ile koordine edip elle: CREATE INDEX ${w.name} ON dbo.${w.table} (${w.cols})`); continue; }
       const t0 = Date.now();
       await (await ddlPool()).request().query(`CREATE INDEX ${w.name} ON dbo.${w.table} (${w.cols})`);
       done.push(w.name);
@@ -72,4 +82,4 @@ async function ensureExternalIndexes(pool, log = console) {
   return done;
 }
 
-module.exports = { ensureExternalIndexes, WANTED };
+module.exports = { ensureExternalIndexes, WANTED, MAX_ROWS_AUTO };

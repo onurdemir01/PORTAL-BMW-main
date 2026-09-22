@@ -12,6 +12,7 @@ function fakePool(state, executed) {
     if (/CREATE INDEX/.test(q)) { executed.push(q); return {}; }
     const m = q.match(/t\.name = '(\w+)'/);
     const st = state[m[1]] || { table: 0, index: 0, col: 0 };
+    if (/SUM\(p\.rows\)/.test(q)) return { recordset: [{ n: st.rows || 0 }] };
     return { recordset: [{ has_table: st.table, has_index: st.index, has_col: st.col }] };
   } }) };
 }
@@ -39,6 +40,15 @@ test('EI2: scan_date sutunu olmayan tablo atlanir', async () => {
   const executed = [];
   const done = await withFakeMssql(executed, () => ensureExternalIndexes(fakePool({ Nginx_Config_Audit: { table: 1, index: 0, col: 0 } }, executed), quiet));
   assert.deepEqual(done, []);
+});
+
+test('EI4: buyuk tabloda (esik ustu) indeks yaratilmaz, yalniz loglanir', async () => {
+  const executed = [];
+  const warned = [];
+  const done = await withFakeMssql(executed, () => ensureExternalIndexes(fakePool({ Nginx_Audit_Settings: { table: 1, index: 0, col: 1, rows: 5000000 } }, executed), { log() {}, warn: (m) => warned.push(m) }));
+  assert.deepEqual(done, []);
+  assert.equal(executed.length, 0);
+  assert.ok(warned.some((m) => /ATLANDI/.test(m) && /CREATE INDEX IX_Nginx_Audit_Settings_scan/.test(m)));
 });
 
 test('EI3: istenen liste Portal\'in scan_date ile okudugu tablolari kapsar', () => {
