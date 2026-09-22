@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, DocumentPlusIcon, FolderIcon, FolderOpenIcon,
-  MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon, ChartBarIcon,
+  MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon, ChartBarIcon, TrashIcon,
 } from '@heroicons/react/24/outline';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useAuth } from '@/contexts/AuthContext';
@@ -23,6 +23,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { Pill, Panel, Code } from '@/components/denetim/ui';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { DashboardTab, InstancesTab } from './NimTabs';
+import { OrphansTab } from './OrphansTab';
 // DENETIM'DEN TASINDI (kullanici, 2026-09-22): "Denetim'deki tum nginx sayfalarini Nginx Hub'a
 // gom." Bilesenler yerinde kaldi (denetim/), yalniz sekme burada. Denetim'de artik nginx sekmesi yok.
 import { NginxSpaAudit, NGINX_DENETIM_HELP } from '@/components/DenetimPage';
@@ -32,8 +33,8 @@ import { NginxAudit } from '@/components/denetim/NginxAudit';
 import HelpModal from '@/components/common/HelpModal';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
 
-type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'spa' | 'api' | 'envanter' | 'audit';
-const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'spa', 'api', 'envanter', 'audit'];
+type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'spa' | 'api' | 'envanter' | 'audit';
+const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'spa', 'api', 'envanter', 'audit'];
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -132,7 +133,7 @@ export default function NginxConsolePage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-1 rounded-lg p-0.5 flex-wrap" style={{ background: 'var(--bg-elevated)' }}>
-            {([{ id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon }, { id: 'instances', label: 'Instances', icon: ServerStackIcon }, { id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }] as const).map((t) => (
+            {([{ id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon }, { id: 'instances', label: 'Instances', icon: ServerStackIcon }, { id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }, { id: 'orphans', label: 'Kullanılmayan', icon: TrashIcon }] as const).map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                 <t.icon className="w-4 h-4" /> {t.label}
               </button>
@@ -154,6 +155,7 @@ export default function NginxConsolePage() {
       {tab === 'config' && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}
       {tab === 'changes' && <ChangesTab />}
       {tab === 'certs' && <CertsTab />}
+      {tab === 'orphans' && <OrphansTab onOpen={(h) => go('config', h)} />}
       {tab === 'spa' && <NginxSpaAudit />}
       {tab === 'api' && <NginxApiEnvanteri />}
       {tab === 'envanter' && <NginxEnvanteri />}
@@ -690,7 +692,7 @@ function CertsTab() {
   const [data, setData] = useState<NcCertsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [only, setOnly] = useState<'all' | 'expiring' | 'expired' | 'missing' | 'self'>('all');
+  const [only, setOnly] = useState<'all' | 'expiring' | 'expired' | 'missing' | 'self' | 'unused'>('all');
   const [sel, setSel] = useState<NcAggCert | null>(null);
   const load = useCallback(async () => { setLoading(true); try { setData(await nginxConsoleApi.certs()); } finally { setLoading(false); } }, []);
   useAsyncEffect(async () => { await load(); }, [load]);
@@ -703,6 +705,8 @@ function CertsTab() {
       if (only === 'expired' && !(c.daysLeft != null && c.daysLeft < 0)) return false;
       if (only === 'missing' && c.exists) return false;
       if (only === 'self' && !c.selfSigned) return false;
+      // kullanilmayan: nginx'in yukledigi hicbir conf'ta gecmiyor (yalniz yedek/eski dosyada ya da hic)
+      if (only === 'unused' && (c.loadedUseCount ?? c.useCount) !== 0) return false;
       if (!needle) return true;
       return [c.cn, c.issuerCn, c.subject, c.issuer, ...(c.san || []), ...c.hosts.map((h) => h.host), ...c.hosts.map((h) => h.path), ...c.hosts.flatMap((h) => h.uses.map((u) => u.serverName + ' ' + u.conf))].some((x) => String(x || '').toLowerCase().includes(needle));
     });
@@ -718,12 +722,13 @@ function CertsTab() {
   return (
     <div className="space-y-3">
       {data && (
-        <div className="grid gap-3 md:grid-cols-6">
+        <div className="grid gap-3 md:grid-cols-7">
           <Tile n={data.summary.total} l="sertifika" />
           <Tile n={data.summary.expired} l="süresi dolmuş" tone="danger" onClick={() => setOnly('expired')} />
           <Tile n={data.summary.within30} l="≤ 30 gün" tone="danger" onClick={() => setOnly('expiring')} />
           <Tile n={data.summary.within90} l="31–90 gün" tone="warning" onClick={() => setOnly('expiring')} />
           <Tile n={data.summary.missing} l="dosyası yok" tone="danger" onClick={() => setOnly('missing')} />
+          <Tile n={data.summary.unused ?? 0} l="kullanılmayan" tone="warning" onClick={() => setOnly('unused')} />
           <Tile n={data.hostsScanned} l="taranan sunucu" />
         </div>
       )}
@@ -733,7 +738,7 @@ function CertsTab() {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="CN / imzalayan / sunucu / server_name / dosya" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-80" style={{ borderColor: 'var(--border)' }} />
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
-          {([['all', 'Hepsi'], ['expiring', '≤ 90 gün'], ['expired', 'Dolmuş'], ['missing', 'Dosyası yok'], ['self', 'Self-signed']] as const).map(([id, label]) => (
+          {([['all', 'Hepsi'], ['expiring', '≤ 90 gün'], ['expired', 'Dolmuş'], ['missing', 'Dosyası yok'], ['self', 'Self-signed'], ['unused', 'Kullanılmayan']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setOnly(id)} className={`px-2.5 py-1 text-xs rounded-md ${only === id ? 'shadow-sm' : ''}`} style={{ background: only === id ? 'var(--bg-surface)' : 'transparent', color: only === id ? 'var(--text-primary)' : 'var(--text-muted)' }}>{label}</button>
           ))}
         </div>
@@ -743,11 +748,11 @@ function CertsTab() {
           <button onClick={load} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}><ArrowPathIcon className={`w-3.5 h-3.5 inline ${loading ? 'animate-spin' : ''}`} /> Yenile</button>
         </div>
       </div>
-      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Kaynak: sunucuların son dokumu (Konfigürasyon sekmesinde "Yenile"). Aynı sertifika = aynı SHA-256 parmak izi; farklı sunuculardaki kopyalar tek satırda toplanır.</div>
+      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Kaynak: sunucuların son dokumu (Konfigürasyon sekmesinde "Yenile"). Aynı sertifika = aynı SHA-256 parmak izi; farklı sunuculardaki kopyalar tek satırda toplanır. Liste conf'larda geçen sertifikalar + <code>ssl/</code> altındaki sertifika dosyalarıdır; "kullanılmıyor" = nginx'in yüklediği hiçbir conf'ta geçmiyor (ayrıntı: Kullanılmayan sekmesi).</div>
       <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
         <table className="w-full text-xs">
           <thead><tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-            <th className="px-3 py-2">Sertifika (CN)</th><th className="px-3 py-2">İmzalayan</th><th className="px-3 py-2">Bitiş</th><th className="px-3 py-2">Kalan</th><th className="px-3 py-2">Anahtar</th><th className="px-3 py-2 text-right">Sunucu</th><th className="px-3 py-2 text-right">Kullanım</th><th className="px-3 py-2 text-right">SAN</th>
+            <th className="px-3 py-2">Sertifika (CN)</th><th className="px-3 py-2">İmzalayan</th><th className="px-3 py-2">Bitiş</th><th className="px-3 py-2">Kalan</th><th className="px-3 py-2">Anahtar</th><th className="px-3 py-2 text-right">Sunucu</th><th className="px-3 py-2 text-right" title="nginx -T'nin yüklediği conf'lardaki kullanım / toplam referans">Kullanım</th><th className="px-3 py-2 text-right">SAN</th>
           </tr></thead>
           <tbody>
             {rows.map((c, i) => (
@@ -758,7 +763,7 @@ function CertsTab() {
                 <td className="px-3 py-1.5"><Pill tone={daysTone(c.daysLeft)}>{daysLabel(c.daysLeft)}</Pill></td>
                 <td className="px-3 py-1.5">{c.keybits ? `${c.keybits} bit` : ''} <span style={{ color: 'var(--text-muted)' }}>{c.sigalg || ''}</span></td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{c.hostCount}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{c.useCount}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{(c.loadedUseCount ?? c.useCount) === 0 ? <Pill tone="warning">kullanılmıyor</Pill> : (c.loadedUseCount != null && c.loadedUseCount !== c.useCount ? <span title={`${c.loadedUseCount} yüklü conf'ta; ${c.useCount - c.loadedUseCount} referans yalnız yüklenmeyen dosyada`}>{c.loadedUseCount}<span style={{ color: 'var(--text-muted)' }}> / {c.useCount}</span></span> : c.useCount)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{c.san?.length || 0}</td>
               </tr>
             ))}

@@ -18,7 +18,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { parseDump, buildTree, aggregateCerts, daysLeft } = require('./dump-parse.cjs');
+const { parseDump, buildTree, aggregateCerts, daysLeft, orphansOf } = require('./dump-parse.cjs');
 const history = require('./history.cjs');
 
 const REGISTRY_KEYS = Object.freeze({
@@ -116,6 +116,8 @@ function summaryOf(parsed, mtimeMs, ingested) {
     certs: [...parsed.certs.values()],
     certUses: parsed.certUses,
     fileCount: parsed.tree.length,
+    loaded: parsed.loaded, // nginx -T'nin yukledigi dosyalar (eski dokumda null)
+    sslFiles: parsed.sslFiles,
   };
 }
 function writeSummary(host, summary) {
@@ -499,7 +501,7 @@ function initNginxConsole(app) {
     const dumps = hosts
       .map(loadSummary)
       .filter(Boolean)
-      .map((sm) => ({ host: sm.host, certUses: sm.certUses, certs: new Map(sm.certs.map((c) => [c.path, c])) }));
+      .map((sm) => ({ host: sm.host, certUses: sm.certUses, certs: new Map(sm.certs.map((c) => [c.path, c])), loaded: sm.loaded ?? null }));
     const certs = aggregateCerts(dumps);
     const now = Date.now();
     res.json({
@@ -513,6 +515,30 @@ function initNginxConsole(app) {
         within90: certs.filter((c) => c.daysLeft != null && c.daysLeft > 30 && c.daysLeft <= 90).length,
         missing: certs.filter((c) => !c.exists).length,
         selfSigned: certs.filter((c) => c.selfSigned).length,
+        // yuklu hicbir conf'ta gecmeyen (yalniz yedek/eski dosyada ya da hic) - loaded bilinen sunucularda
+        unused: certs.filter((c) => c.loadedUseCount === 0).length,
+        generatedAt: new Date(now).toISOString(),
+      },
+    });
+  });
+
+  // Kullanilmayan dosyalar (2026-09-22): nginx -T'nin yuklemedigi conf dosyalari, yalniz onlarda
+  // gecen sertifikalar, ssl/ altinda referanssiz dosyalar. Sunucu bazinda; ?host= tek sunucu.
+  router.get('/orphans', (req, res) => {
+    const only = String(req.query.host || '').toUpperCase();
+    const hosts = only ? [only] : listDumpedHosts().map((d) => d.host);
+    const now = Date.now();
+    const rows = hosts.map(loadSummary).filter(Boolean).map((sm) => orphansOf(sm, now)).sort((a, b) => a.host.localeCompare(b.host));
+    res.json({
+      ok: true,
+      hosts: rows,
+      summary: {
+        hostsScanned: rows.length,
+        hostsUnknown: rows.filter((r) => !r.known).length,
+        unloaded: rows.reduce((a, r) => a + r.unloaded.length, 0),
+        backups: rows.reduce((a, r) => a + r.backups.length, 0),
+        certs: rows.reduce((a, r) => a + r.certs.length, 0),
+        ssl: rows.reduce((a, r) => a + r.ssl.length, 0),
         generatedAt: new Date(now).toISOString(),
       },
     });

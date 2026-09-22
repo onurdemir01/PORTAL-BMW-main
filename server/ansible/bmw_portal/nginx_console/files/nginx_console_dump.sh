@@ -5,6 +5,10 @@
 # Cikti bolumleri (Portal tarafi: server/nginx-console/dump-parse.cjs):
 #   @@HOST <ad>            @@TIME <ISO>          @@PREFIX <nginx prefix>
 #   @@NGINX_T <ok|fail>    (ardindan nginx -t ciktisi, @@END ile biter)
+#   @@LOADED               nginx -T'nin GERCEKTEN yukledigi dosyalar (satir basina yol) ... @@END
+#                          (2026-09-22: agactaki her dosya nginx'e dahil degil - .bak, eski kopya,
+#                          include edilmeyen conf; Portal "Kullanilmayan" sekmesi bu listeyle ayirir)
+#   @@SSLDIR               /usr/nginx/ssl altindaki dosyalar: size<TAB>mtime<TAB>yol ... @@END (anahtar OKUNMAZ)
 #   @@TREE                 size<TAB>mtime<TAB>sha256<TAB>sahip<TAB>yol  ... @@END   (sahip: stat %U)
 #   @@FILE <yol> <sha256> <size>   ...icerik...   @@END
 #   @@CERT <yol>           openssl x509 alanlari (key=value)   @@END
@@ -39,6 +43,23 @@ else
   echo "@@NGINX_T fail"
 fi
 printf '%s\n' "$out"
+echo "@@END"
+
+#### nginx -T: yuklenen dosya listesi ("# configuration file <yol>:" satirlari). -t dustuyse bos kalir.
+echo "@@LOADED"
+NGINX_TT_CMD=("$BIN" -p "$PREFIX/" -c "$PREFIX/nginx.conf" -e "${NGINX_ERRLOG:-/web_log/error.log}" -T)
+{ command -v dzdo >/dev/null 2>&1 && dzdo -n "${NGINX_TT_CMD[@]}" 2>/dev/null || "${NGINX_TT_CMD[@]}" 2>/dev/null; } \
+  | sed -nE 's/^# configuration file (.+):$/\1/p' | sort -u
+echo "@@END"
+
+#### ssl dizini (sertifika/anahtar dosyalari; anahtar icerigi hicbir zaman okunmaz)
+SSLDIR="${NGINX_SSLDIR:-$PREFIX/ssl}"
+echo "@@SSLDIR"
+if [ -d "$SSLDIR" ]; then
+  find "$SSLDIR" -maxdepth 3 -type f 2>/dev/null | sort | while IFS= read -r f; do
+    printf '%s\t%s\t%s\n' "$(stat -c %s "$f" 2>/dev/null || echo 0)" "$(stat -c %y "$f" 2>/dev/null | cut -d. -f1)" "$f"
+  done
+fi
 echo "@@END"
 
 #### Agac
@@ -82,8 +103,14 @@ for d in "$PREFIX/conf.d" "$PREFIX/conf"; do
   done
 done | tee /tmp/.nginx_console_certuse.$$
 
-#### Ayrintilar - her sertifika bir kez
-cut -f3 /tmp/.nginx_console_certuse.$$ 2>/dev/null | sed 's/^@@CERTUSE //' | sort -u | while IFS= read -r crt; do
+#### Ayrintilar - her sertifika bir kez: conf'larda gecenler + ssl/ altinda HIC gecmeyen sertifika
+#### dosyalari (2026-09-22; Portal "kullanilmayan sertifika" bunlari da gorsun). Anahtarlar haric.
+{
+  cut -f3 /tmp/.nginx_console_certuse.$$ 2>/dev/null | sed 's/^@@CERTUSE //'
+  if [ -d "$SSLDIR" ]; then
+    find "$SSLDIR" -maxdepth 3 -type f \( -iname '*.crt' -o -iname '*.pem' -o -iname '*.cer' \) 2>/dev/null | grep -viE 'key|private' | head -300
+  fi
+} | grep -v '^$' | sort -u | while IFS= read -r crt; do
   [ -n "$crt" ] || continue
   echo "@@CERT $crt"
   if [ -f "$crt" ]; then

@@ -86,15 +86,35 @@ export interface NcFile {
 
 export interface NcAggCert extends Omit<NcCert, "path" | "sha256" | "size" | "mtime" | "exists"> {
   exists: boolean;
-  hosts: { host: string; path: string; sha256: string | null; uses: { conf: string; serverName: string; key: string; keyState: string }[] }[];
+  hosts: { host: string; path: string; sha256: string | null; uses: { conf: string; serverName: string; key: string; keyState: string; loaded?: boolean | null }[] }[];
   hostCount: number;
   useCount: number;
+  /** yalniz nginx -T'nin YUKLEDIGI conf'lardaki kullanim (eski dokumda = useCount) */
+  loadedUseCount?: number;
 }
 export interface NcCertsResult {
   ok: boolean;
   hostsScanned: number;
   certs: NcAggCert[];
-  summary: { total: number; expired: number; within30: number; within90: number; missing: number; selfSigned: number; generatedAt: string };
+  summary: { total: number; expired: number; within30: number; within90: number; missing: number; selfSigned: number; unused?: number; generatedAt: string };
+}
+
+// Kullanilmayan dosyalar (2026-09-22): nginx -T'nin yuklemedigi conf'lar, yalniz onlarda gecen
+// sertifikalar, ssl/ altinda referanssiz dosyalar. Sunucu bazinda.
+export interface NcOrphanFile { path: string; size: number; mtime: string | null; owner?: string | null }
+export interface NcOrphanHost {
+  host: string;
+  known: boolean;
+  reason: string | null;
+  unloaded: NcOrphanFile[];
+  backups: NcOrphanFile[];
+  certs: { path: string; exists: boolean; cn: string | null; issuerCn: string | null; notAfter: string | null; daysLeft: number | null; usedBy: string[] }[];
+  ssl: { path: string; size: number; mtime: string | null; isKey: boolean }[];
+}
+export interface NcOrphansResult {
+  ok: boolean;
+  hosts: NcOrphanHost[];
+  summary: { hostsScanned: number; hostsUnknown: number; unloaded: number; backups: number; certs: number; ssl: number; generatedAt: string };
 }
 
 // Gecmis (Git benzeri, 2026-09-19): yalniz degisiklikte satir; icerik blob deposunda (sha256)
@@ -130,6 +150,7 @@ export const nginxConsoleApi = {
   compare: (path: string, hosts?: string[]): Promise<{ ok: boolean; path: string; rows: { host: string; exists: boolean; sha256: string | null; size: number | null; mtime: string | null }[]; variants: number }> =>
     fetch(`${BASE}/compare?path=${encodeURIComponent(path)}${hosts?.length ? `&hosts=${encodeURIComponent(hosts.join(","))}` : ""}`).then(safeJson),
   certs: (host?: string): Promise<NcCertsResult> => fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ""}`).then(safeJson),
+  orphans: (host?: string): Promise<NcOrphansResult> => fetch(`${BASE}/orphans${host ? `?host=${encodeURIComponent(host)}` : ""}`).then(safeJson),
   // hosts bos + all:true -> playbook tum nginx filosunu envanterden kesfeder (30-40 dk)
   refresh: (hosts: string[], all = false): Promise<NcLaunch & { hosts: string[]; all?: boolean }> => fetch(`${BASE}/refresh`, json({ hosts, all })).then(safeJson),
   // Publish (NIM "Publish"): bir dosya, bir ya da daha fazla sunucu (instance group = servis).

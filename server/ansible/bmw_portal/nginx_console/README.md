@@ -85,3 +85,14 @@ Ekran: dosya panelinde **Geçmiş** (sürümler, fark, şu ankiyle, "bu sürüme
 - **`nginx -t`** dump betiğinde estate standardıyla koşar: `dzdo nginx -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -t`
   (`nginx_audit_scan.sh`, `nginx_deploy_lock.sh`, `activate.yaml` ile aynı). `www` ile ve `-e`'siz koşunca anahtar dosyaları
   (root:600) / varsayılan error.log yüzünden hemen her sunucu "fail" görünüyordu. dzdo yoksa eski yol denenir.
+
+## Kullanılmayan dosyalar (`@@LOADED`, `@@SSLDIR`; 2026-09-22)
+
+Dokum `conf.d`/`conf` altındaki **her** dosyayı alır; nginx'in gerçekten yüklediğine bakmaz. Bu yüzden
+Sertifikalar'da "hiçbir konfigürasyonda kullanılmayan" sertifika görünebiliyordu (eski/yedek conf'ta geçiyor).
+Betik artık `dzdo nginx … -T` çıktısındaki `# configuration file <yol>:` satırlarını `@@LOADED` bölümüne, `/usr/nginx/ssl`
+altındaki dosyaları (boyut/mtime/yol; **anahtar içeriği asla okunmaz**) `@@SSLDIR` bölümüne yazar ve `ssl/` altındaki
+referanssız `.crt/.pem/.cer` dosyalarını da `@@CERT` ile (en çok 300) döker. Portal › Nginx Hub › **Kullanılmayan**:
+yüklenmeyen conf dosyaları (yedek kalıbı `<conf>_<job>`, `.bak/.old`, `.console_backup/` ayrı), yalnız yüklenmeyen dosyada
+geçen ya da hiç geçmeyen sertifikalar, `ssl/` altında referanssız dosyalar. Sertifikalar sekmesinde "Kullanım" =
+yüklü conf'taki kullanım / toplam referans. Eski dokumda `@@LOADED` yok → sunucu "belirlenemedi" (Yenile ile yeni dokum).

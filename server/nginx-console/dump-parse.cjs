@@ -15,6 +15,9 @@ function parseDump(text) {
     files: new Map(), // path -> {sha256, size, content}
     certUses: [], // {conf, serverName, cert, key, keyState}
     certs: new Map(), // path -> {exists, ...fields}
+    // 2026-09-22: nginx -T'nin yukledigi dosyalar (null = dokumda bolum yok, eski dokum) ve ssl/ dizini
+    loaded: null, // string[] | null
+    sslFiles: [], // {path, size, mtime}
   };
   const lines = String(text || '').split('\n');
   let i = 0;
@@ -30,6 +33,17 @@ function parseDump(text) {
       i++;
       while (i < n && lines[i].replace(/\r$/, '') !== '@@END') buf.push(lines[i]), i++;
       out.nginxT.output = buf.join('\n');
+    } else if (line === '@@LOADED') {
+      out.loaded = [];
+      i++;
+      while (i < n && lines[i].replace(/\r$/, '') !== '@@END') { const l = lines[i].replace(/\r$/, '').trim(); if (l) out.loaded.push(l); i++; }
+    } else if (line === '@@SSLDIR') {
+      i++;
+      while (i < n && lines[i].replace(/\r$/, '') !== '@@END') {
+        const f = lines[i].replace(/\r$/, '').split('\t');
+        if (f.length >= 3) out.sslFiles.push({ size: Number(f[0]) || 0, mtime: f[1], path: f.slice(2).join('\t') });
+        i++;
+      }
     } else if (line === '@@TREE') {
       i++;
       while (i < n && lines[i].replace(/\r$/, '') !== '@@END') {
@@ -148,10 +162,12 @@ function buildTree(entries, prefix) {
 function aggregateCerts(dumps, now = Date.now()) {
   const byFp = new Map();
   for (const d of dumps) {
+    // loaded: nginx -T'nin yukledigi dosyalar; eski dokumda yok (null) -> her kullanim "yuklu" sayilir (bilinmiyor)
+    const loadedSet = Array.isArray(d.loaded) ? new Set(d.loaded) : null;
     const usesByCert = new Map();
     for (const u of d.certUses) {
       if (!usesByCert.has(u.cert)) usesByCert.set(u.cert, []);
-      usesByCert.get(u.cert).push({ conf: u.conf, serverName: u.serverName, key: u.key, keyState: u.keyState });
+      usesByCert.get(u.cert).push({ conf: u.conf, serverName: u.serverName, key: u.key, keyState: u.keyState, loaded: loadedSet ? loadedSet.has(u.conf) : null });
     }
     for (const [p, c] of d.certs) {
       const fp = c.exists && c.fingerprint ? c.fingerprint : `missing:${d.host}:${p}`;
@@ -185,10 +201,51 @@ function aggregateCerts(dumps, now = Date.now()) {
     hosts: r.hosts.sort((a, b) => a.host.localeCompare(b.host)),
     hostCount: new Set(r.hosts.map((h) => h.host)).size,
     useCount: r.hosts.reduce((a, h) => a + h.uses.length, 0),
+    // yalniz nginx'in YUKLEDIGI conf'lardaki kullanim (loaded bilinmiyorsa = useCount)
+    loadedUseCount: r.hosts.reduce((a, h) => a + h.uses.filter((u) => u.loaded !== false).length, 0),
   }));
   // Once suresi en yakin dolacak olan
   list.sort((a, b) => (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9) || String(a.cn).localeCompare(String(b.cn)));
   return list;
 }
 
-module.exports = { parseDump, buildTree, aggregateCerts, daysLeft, cnOf, parseOpensslDate };
+/** Yedek/eski kopya kalibi: deployment yedegi <conf>_<job_no>, .bak/.old/.orig/~, .console_backup/ */
+const BACKUP_RE = /(\/\.console_backup\/|_[0-9]{2,}$|\.(bak|old|orig|save|backup|disabled|off)(\.[0-9]+)?$|~$|\.rpm(new|save)$)/i;
+
+/**
+ * "Kullanilmayan" (2026-09-22): kullanici "sertifika hicbir konfigurasyonda kullanilmiyor ama
+ * listede" dedi - cunku dokum conf.d/conf altindaki HER dosyayi alir, nginx'in yukledigine bakmaz.
+ * Tek sunucu ozeti + nginx -T yuklenen listesinden: yuklenmeyen conf dosyalari (yedek kalibi ayri),
+ * yalniz yuklenmeyen dosyada gecen sertifikalar, ssl/ altinda hic referanssiz dosyalar.
+ * summary: { host, tree, certUses, certs[], loaded, sslFiles, nginxT }
+ */
+function orphansOf(summary, now = Date.now()) {
+  const loaded = Array.isArray(summary.loaded) ? new Set(summary.loaded) : null;
+  const known = !!loaded && (summary.nginxT?.status !== 'fail' || loaded.size > 0);
+  const out = { host: summary.host, known, reason: known ? null : (Array.isArray(summary.loaded) ? 'nginx -T basarisiz (yuklenen liste alinamadi)' : 'eski dokum: yuklenen dosya listesi yok - "Yenile" ile yeni dokum alin'), unloaded: [], backups: [], certs: [], ssl: [] };
+  if (!known) return out;
+  const isKey = (p) => /(\.key$|private)/i.test(p);
+  for (const f of summary.tree || []) {
+    if (loaded.has(f.path) || isKey(f.path)) continue;
+    const rec = { path: f.path, size: f.size, mtime: f.mtime, owner: f.owner || null };
+    (BACKUP_RE.test(f.path) ? out.backups : out.unloaded).push(rec);
+  }
+  // sertifika: her kullanimi yuklenmeyen dosyada (ya da hic kullanim yok)
+  const usesByCert = new Map();
+  for (const u of summary.certUses || []) { if (!usesByCert.has(u.cert)) usesByCert.set(u.cert, []); usesByCert.get(u.cert).push(u); }
+  const referenced = new Set();
+  for (const c of summary.certs || []) {
+    const uses = usesByCert.get(c.path) || [];
+    const loadedUses = uses.filter((u) => loaded.has(u.conf));
+    for (const u of uses) { referenced.add(u.cert); if (u.key && u.key !== '?') referenced.add(u.key); }
+    if (loadedUses.length > 0) continue;
+    out.certs.push({ path: c.path, exists: c.exists, cn: c.cn, issuerCn: c.issuerCn, notAfter: c.notAfter, daysLeft: daysLeft(c.notAfter, now), usedBy: uses.map((u) => u.conf) });
+  }
+  for (const f of summary.sslFiles || []) {
+    if (referenced.has(f.path)) continue;
+    out.ssl.push({ path: f.path, size: f.size, mtime: f.mtime, isKey: isKey(f.path) });
+  }
+  return out;
+}
+
+module.exports = { parseDump, buildTree, aggregateCerts, daysLeft, cnOf, parseOpensslDate, orphansOf, BACKUP_RE };
