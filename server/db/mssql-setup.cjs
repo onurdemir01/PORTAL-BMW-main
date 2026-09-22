@@ -706,11 +706,12 @@ const TABLES = [
     sql: `
       CREATE TABLE nginx_cis_overrides (
         id          INT IDENTITY(1,1) PRIMARY KEY,
-        item_id     NVARCHAR(16)  NOT NULL UNIQUE,
+        item_id     NVARCHAR(16)  NOT NULL,
         expected    NVARCHAR(256) NOT NULL,
         note        NVARCHAR(500) NULL,
         created_by  NVARCHAR(128) NULL,
-        created_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        created_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        CONSTRAINT UQ_nginx_cis_override UNIQUE (item_id, expected)
       )`,
   },
   {
@@ -2751,6 +2752,29 @@ async function migrateSelfServiceSectionsToGroups(pool) {
 //
 // GERI ALMAK ICIN: bu fonksiyonun cagrisini kaldirmak ve seed satirlarini geri koymak
 // yeterli - ELEMENT_SEED bir sonraki aciliste kayitlari yeniden olusturur.
+// 2026-09-22: bir CIS maddesi icin BIRDEN FAZLA kurum referans degeri girilebilsin (kullanici).
+// Ilk surumde item_id tekil UNIQUE idi; o kisit dusurulup (item_id, expected) ciftine gecilir.
+async function allowMultipleCisOverrides(pool) {
+  try {
+    const r = await pool.request().query(`
+      SELECT kc.name FROM sys.key_constraints kc
+        JOIN sys.index_columns ic ON ic.object_id = kc.parent_object_id AND ic.index_id = kc.unique_index_id
+        JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+       WHERE kc.parent_object_id = OBJECT_ID('nginx_cis_overrides') AND kc.type = 'UQ'
+       GROUP BY kc.name HAVING COUNT(*) = 1 AND MAX(c.name) = 'item_id'`);
+    for (const row of r.recordset || []) {
+      await pool.request().query(`ALTER TABLE nginx_cis_overrides DROP CONSTRAINT [${row.name}]`);
+      console.log('[DB] nginx_cis_overrides: tekil item_id kisiti kaldirildi (coklu referans degeri)');
+    }
+    const has = await pool.request().query(`SELECT 1 AS x FROM sys.key_constraints WHERE name = 'UQ_nginx_cis_override' AND parent_object_id = OBJECT_ID('nginx_cis_overrides')`);
+    if (!(has.recordset || []).length) {
+      await pool.request().query(`ALTER TABLE nginx_cis_overrides ADD CONSTRAINT UQ_nginx_cis_override UNIQUE (item_id, expected)`);
+    }
+  } catch (e) {
+    console.warn('[DB] allowMultipleCisOverrides:', e.message);
+  }
+}
+
 // 2026-09-22: Denetim'in nginx sekmeleri Nginx Hub'a tasindi; eski tab elementleri ve
 // gorunurluk kurallari silinir ki Admin > Denetim Erisimi'nde olu secenek kalmasin.
 async function removeMovedDenetimTabs(pool) {
@@ -2878,6 +2902,7 @@ async function setupTables() {
   // 2026-09-19: Yardımcı Araçlar / Faydalı Linkler menuden kaldirildi (bkz. elements.ts)
   await removeKaynaklarNavGroup(pool);
   await removeMovedDenetimTabs(pool);
+  await allowMultipleCisOverrides(pool);
   // removeKaynaklarNavGroup ARTIK CAGRILMIYOR (2026-09-07): "Linkler" sayfasi geri
   // acildi. Cagri kalsaydi kayit HER ACILISTA silinir, sayfa her restart'ta menuden
   // duser ve sebebi hicbir yerde gorunmezdi. Fonksiyon SILINMEDI — ileride yeniden

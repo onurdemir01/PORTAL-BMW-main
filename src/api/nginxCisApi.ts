@@ -22,6 +22,8 @@ export interface NcCisItemRow {
   /** Neden onemli / nasil olculuyor (madde detay penceresi) */
   rationale?: string | null; check?: string | null;
   hosts?: NcCisItemHost[];
+  /** Kurum referansi birden fazla olabilir (2026-09-22); CIS onerisi varsa tek elemanli */
+  expectedValues?: string[];
   expected: string | null; expectedSource: 'kurum' | 'CIS' | null;
   exception: { scope: string; note: string } | null;
 }

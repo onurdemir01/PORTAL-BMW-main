@@ -27,7 +27,16 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     if (e.host) excHost.set(`${U(e.host)}|${e.item_id}`, e.note || '');
     else excGlobal.set(String(e.item_id), e.note || '');
   }
-  const ovr = new Map(overrides.map((o) => [String(o.item_id), { expected: String(o.expected ?? ''), note: o.note || '' }]));
+  // KURUM REFERANSLARI (2026-09-22): bir madde icin BIRDEN FAZLA kabul edilen deger olabilir
+  // (ornek 5.2.2 -> "1m" ve "10m"); olculen deger bunlardan HERHANGI BIRINE esitse gecer.
+  const ovr = new Map();
+  for (const o of overrides) {
+    const k = String(o.item_id);
+    if (!ovr.has(k)) ovr.set(k, { values: [], notes: [] });
+    ovr.get(k).values.push(String(o.expected ?? ''));
+    if (o.note) ovr.get(k).notes.push(o.note);
+  }
+  const expectedText = (k) => (ovr.has(k) ? ovr.get(k).values.join(' | ') : null);
 
   const byHost = new Map();
   for (const h of hosts) {
@@ -57,7 +66,7 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
       // "istisna" gorunur; boylece madde detayinda filo genelinde tek bir durum okunur.
       if (exScope) { status = 'EXCEPTED'; source = exScope === 'host' ? 'istisna (bu sunucu)' : 'istisna (tüm filo)'; }
       else if (!r) { status = 'NODATA'; source = 'tarama yok'; }
-      else if (o) { status = normVal(observed) === normVal(o.expected) ? 'PASS' : 'FAIL'; source = 'kurum referansı'; }
+      else if (o) { status = o.values.some((v) => normVal(observed) === normVal(v)) ? 'PASS' : 'FAIL'; source = o.values.length > 1 ? `kurum referansı (${o.values.length} kabul edilen değer)` : 'kurum referansı'; }
       else { status = U(r.status) || 'NODATA'; source = 'CIS'; }
 
       const counts = item.scored && status !== 'EXCEPTED' && status !== 'NA' && status !== 'MANUAL' && status !== 'NODATA';
@@ -70,7 +79,7 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
         id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored,
         rationale: item.rationale || null, check: item.check || null,
         status, source, observed, detail: r ? r.detail || '' : '',
-        expected: o ? o.expected : item.expects, expectedSource: o ? 'kurum' : (item.expects ? 'CIS' : null),
+        expected: o ? expectedText(item.id) : item.expects, expectedSource: o ? 'kurum' : (item.expects ? 'CIS' : null),
         exceptionNote: exNote, counts, fix: item.fix,
       });
     }
@@ -89,7 +98,8 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     return { id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored, pass, fail, excepted: exc, other, fix: item.fix,
       rationale: item.rationale || null, check: item.check || null,
       hosts: cells.map((c, i) => ({ host: list[i].host, status: c.status, observed: c.observed, detail: c.detail, exceptionNote: c.exceptionNote })),
-      expected: (ovr.get(item.id) || {}).expected ?? item.expects, expectedSource: ovr.has(item.id) ? 'kurum' : (item.expects ? 'CIS' : null),
+      expected: expectedText(item.id) ?? item.expects, expectedSource: ovr.has(item.id) ? 'kurum' : (item.expects ? 'CIS' : null),
+      expectedValues: ovr.has(item.id) ? ovr.get(item.id).values : (item.expects ? [item.expects] : []),
       exception: excGlobal.has(item.id) ? { scope: 'global', note: excGlobal.get(item.id) } : null };
   }).sort((a, b) => cmpItemId(a.id, b.id));
 

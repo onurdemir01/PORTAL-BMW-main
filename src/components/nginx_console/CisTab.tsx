@@ -14,7 +14,7 @@ import { Pill } from '@/components/denetim/ui';
 import { Modal } from '@/components/common/Modal';
 import { toast } from '@/hooks/useToast';
 import { fmtNumber } from '@/utils/datetime';
-import { nginxCisApi, type NcCisOverview, type NcCisItemRow, type NcCisHostRow, type NcCisHostDetail, type NcCisCell } from '@/api/nginxCisApi';
+import { nginxCisApi, type NcCisOverview, type NcCisItemRow, type NcCisHostRow, type NcCisHostDetail, type NcCisCell, type NcCisOverride } from '@/api/nginxCisApi';
 
 /** Madde numarasi dogal sirasi: 2.4.3 < 2.10.1 (metin sirasi bunu yanlis yapar). */
 function cmpItemId(a: string, b: string) {
@@ -62,6 +62,18 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
       : hostSort === 'failed' ? b.failed - a.failed || a.host.localeCompare(b.host)
       : (a.score ?? 101) - (b.score ?? 101) || a.host.localeCompare(b.host)));
   }, [data, q, only, hostSort]);
+  // Mevcut kurallar (kullanici, 2026-09-22): "istisna olanlar butonlardan belli olmuyor, ust uste
+  // istisnaya al'a basabiliyorum." Dugmeler artik DURUM gosterir: istisna/kurum referansi varsa
+  // "kaldir" / "degistir" olur, ayni kural ikinci kez eklenemez.
+  const excById = useMemo(() => new Map((data?.exceptions || []).filter((e) => !e.host).map((e) => [e.item_id, e])), [data]);
+  const excByHostItem = useMemo(() => new Map((data?.exceptions || []).filter((e) => e.host).map((e) => [`${String(e.host).toUpperCase()}|${e.item_id}`, e])), [data]);
+  // Bir madde icin BIRDEN FAZLA kabul edilen deger olabilir (kullanici, 2026-09-22).
+  const ovrByItem = useMemo(() => {
+    const m = new Map<string, NcCisOverride[]>();
+    for (const o of data?.overrides || []) { const a = m.get(o.item_id) || []; a.push(o); m.set(o.item_id, a); }
+    return m;
+  }, [data]);
+
   const items = useMemo(() => {
     const n = q.trim().toLowerCase();
     const list = (data?.perItem || []).filter((i) => !n || i.id.includes(n) || i.title.toLowerCase().includes(n) || i.section.toLowerCase().includes(n));
@@ -224,14 +236,18 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                   <td className="px-3 py-1.5 font-mono">{i.id}{i.scored ? '' : <span title="CIS'te puanlanmayan (manuel) madde" style={{ color: 'var(--text-muted)' }}> ·m</span>}</td>
                   <td className="px-3 py-1.5"><div className="max-w-[24rem] underline decoration-dotted underline-offset-2">{i.title}</div></td>
                   <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }}>{i.section} · L{i.level}</td>
-                  <td className="px-3 py-1.5 font-mono">{i.expected || '—'}{i.expectedSource === 'kurum' && <Pill tone="info">kurum</Pill>}</td>
+                  <td className="px-3 py-1.5 font-mono">{i.expected || '—'}{i.expectedSource === 'kurum' && <span className="ml-1"><Pill tone="info">kurum referansı</Pill></span>}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--status-success)' }}>{i.pass}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums font-semibold" style={{ color: i.fail ? 'var(--status-danger)' : undefined }}>{i.fail}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>{i.excepted}{i.exception && <span title={i.exception.note}> ·g</span>}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                    {i.excepted}{i.exception && <span className="ml-1"><Pill tone="info">tüm filo istisna</Pill></span>}
+                  </td>
                   <td className="px-3 py-1.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {isAdmin && <>
-                      <button onClick={() => setRule({ kind: 'override', itemId: i.id, title: i.title, value: i.expected || '', note: '' })} className="text-[11px] underline mr-2" style={{ color: 'var(--accent)' }}>kendi referansım</button>
-                      <button onClick={() => setRule({ kind: 'exception', itemId: i.id, title: i.title, value: '', note: '' })} className="text-[11px] underline" style={{ color: 'var(--text-secondary)' }}>istisnaya al</button>
+                      <button onClick={() => setRule({ kind: 'override', itemId: i.id, title: i.title, value: '', note: '' })} className="text-[11px] underline mr-2" style={{ color: 'var(--accent)' }} title={(ovrByItem.get(i.id) || []).length ? `Kabul edilen değerler: ${(ovrByItem.get(i.id) || []).map((o) => o.expected).join(', ')} — bu düğme yenisini ekler` : 'CIS önerisi yerine kurum değerini tanımla'}>{(ovrByItem.get(i.id) || []).length ? `referans ekle (${(ovrByItem.get(i.id) || []).length})` : 'kendi referansım'}</button>
+                      {excById.get(i.id)
+                        ? <button onClick={() => dropRule('exception', excById.get(i.id)!.id)} disabled={busy} className="text-[11px] underline" style={{ color: 'var(--status-danger)' }} title={`İstisna gerekçesi: ${excById.get(i.id)?.note}`}>istisnadan çıkar</button>
+                        : <button onClick={() => setRule({ kind: 'exception', itemId: i.id, title: i.title, value: '', note: '' })} className="text-[11px] underline" style={{ color: 'var(--text-secondary)' }}>istisnaya al</button>}
                     </>}
                   </td>
                 </tr>
@@ -244,8 +260,8 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
 
       {(data?.exceptions?.length || data?.overrides?.length) ? (
         <div className="grid gap-3 md:grid-cols-2">
-          <RuleList title={`İstisnalar (${data?.exceptions.length || 0})`} desc="Bu maddeler skor paydasından düşer." rows={(data?.exceptions || []).map((e) => ({ id: e.id, a: e.item_id, b: e.host || 'tüm filo', note: e.note, by: e.created_by }))} isAdmin={isAdmin} busy={busy} onDrop={(id) => dropRule('exception', id)} />
-          <RuleList title={`Kurum referansları (${data?.overrides.length || 0})`} desc="CIS değeri yerine bu değer beklenir." rows={(data?.overrides || []).map((o) => ({ id: o.id, a: o.item_id, b: o.expected, note: o.note, by: o.created_by }))} isAdmin={isAdmin} busy={busy} onDrop={(id) => dropRule('override', id)} />
+          <RuleList title={`İstisnalar (${data?.exceptions.length || 0})`} desc="Skor paydasından düşer; “kaldır” dediğinizde madde yeniden sayılmaya başlar." rows={(data?.exceptions || []).map((e) => ({ id: e.id, a: e.item_id, b: e.host || 'tüm filo', note: e.note, by: e.created_by }))} isAdmin={isAdmin} busy={busy} onDrop={(id) => dropRule('exception', id)} />
+          <RuleList title={`Kabul edilen değerler (${data?.overrides.length || 0})`} desc="CIS önerisi yerine bu değerler beklenir; bir maddede birden fazla değer olabilir." rows={(data?.overrides || []).map((o) => ({ id: o.id, a: o.item_id, b: o.expected, note: o.note, by: o.created_by }))} isAdmin={isAdmin} busy={busy} onDrop={(id) => dropRule('override', id)} />
         </div>
       ) : null}
 
@@ -269,10 +285,17 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                       <td className="px-2 py-1"><div className="max-w-[22rem]" title={c.fix}>{c.status === 'EXCEPTED' ? <i>{c.exceptionNote}</i> : c.title}{c.detail ? <span style={{ color: 'var(--text-muted)' }}> — {c.detail}</span> : null}</div></td>
                       {isAdmin && (
                         <td className="px-2 py-1 text-right whitespace-nowrap">
-                          {c.status === 'FAIL' && <>
-                            <button onClick={() => setRule({ kind: 'override', itemId: c.id, title: c.title, value: c.observed || '', note: '' })} className="underline mr-2" style={{ color: 'var(--accent)' }}>referansım</button>
-                            <button onClick={() => setRule({ kind: 'exception', itemId: c.id, title: c.title, host: detail.host, value: '', note: '' })} className="underline" style={{ color: 'var(--text-secondary)' }}>istisna</button>
-                          </>}
+                          {(() => {
+                            const hx = excByHostItem.get(`${detail.host}|${c.id}`);
+                            const gx = excById.get(c.id);
+                            if (hx) return <button onClick={() => dropRule('exception', hx.id)} disabled={busy} className="underline" style={{ color: 'var(--status-danger)' }} title={`İstisna gerekçesi: ${hx.note}`}>istisnadan çıkar</button>;
+                            if (gx) return <span style={{ color: 'var(--text-muted)' }} title={`Tüm filo için istisna: ${gx.note}`}>tüm filo istisnası</span>;
+                            if (c.status !== 'FAIL') return null;
+                            return (<>
+                              <button onClick={() => setRule({ kind: 'override', itemId: c.id, title: c.title, value: c.observed || '', note: '' })} className="underline mr-2" style={{ color: 'var(--accent)' }}>{(ovrByItem.get(c.id) || []).length ? 'referans ekle' : 'referansım'}</button>
+                              <button onClick={() => setRule({ kind: 'exception', itemId: c.id, title: c.title, host: detail.host, value: '', note: '' })} className="underline" style={{ color: 'var(--text-secondary)' }}>istisna</button>
+                            </>);
+                          })()}
                         </td>
                       )}
                     </tr>
@@ -289,8 +312,18 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
           <div className="space-y-3 text-xs">
             <div className="grid gap-2 md:grid-cols-3">
               <Box label="Beklenen değer">
-                <span className="font-mono">{itemOpen.expected || '—'}</span>
-                {itemOpen.expectedSource === 'kurum' ? <Pill tone="info">kurum referansı</Pill> : itemOpen.expected ? <Pill tone="neutral">CIS önerisi</Pill> : null}
+                {itemOpen.expectedSource === 'kurum' ? (
+                  <div className="space-y-0.5">
+                    {(ovrByItem.get(itemOpen.id) || []).map((o) => (
+                      <div key={o.id} className="flex items-center gap-1.5">
+                        <span className="font-mono">{o.expected}</span>
+                        {o.note && <span style={{ color: 'var(--text-muted)' }} title={o.note}>· {o.note}</span>}
+                        {isAdmin && <button onClick={() => dropRule('override', o.id)} disabled={busy} className="underline text-[11px]" style={{ color: 'var(--status-danger)' }}>kaldır</button>}
+                      </div>
+                    ))}
+                    <Pill tone="info">{(ovrByItem.get(itemOpen.id) || []).length > 1 ? `kurum referansı · ${(ovrByItem.get(itemOpen.id) || []).length} değerden biri yeterli` : 'kurum referansı'}</Pill>
+                  </div>
+                ) : (<><span className="font-mono">{itemOpen.expected || '—'}</span>{itemOpen.expected ? <Pill tone="neutral">CIS önerisi</Pill> : null}</>)}
               </Box>
               <Box label="Filo durumu">
                 <span style={{ color: 'var(--status-success)' }}>{itemOpen.pass} geçti</span> ·{' '}
@@ -298,16 +331,23 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                 <span style={{ color: 'var(--text-muted)' }}>{itemOpen.excepted} istisna · {itemOpen.other} skor dışı</span>
               </Box>
               <Box label="İstisna">
-                {itemOpen.exception ? <span title={itemOpen.exception.note}>tüm filo için istisna — {itemOpen.exception.note}</span> : <span style={{ color: 'var(--text-muted)' }}>yok</span>}
+                {itemOpen.exception ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span title={itemOpen.exception.note}>tüm filo için istisna — {itemOpen.exception.note}</span>
+                    {isAdmin && excById.get(itemOpen.id) && <button onClick={() => { dropRule('exception', excById.get(itemOpen.id)!.id); setItemOpen(null); }} disabled={busy} className="underline text-[11px]" style={{ color: 'var(--status-danger)' }}>istisnadan çıkar</button>}
+                  </div>
+                ) : <span style={{ color: 'var(--text-muted)' }}>yok</span>}
               </Box>
             </div>
             {itemOpen.rationale && <Box label="Neden önemli?"><span style={{ color: 'var(--text-secondary)' }}>{itemOpen.rationale}</span></Box>}
             {itemOpen.check && <Box label="Nasıl ölçülüyor?"><span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{itemOpen.check}</span></Box>}
             <Box label="Nasıl düzeltilir?"><span className="font-mono text-[11px]">{itemOpen.fix}</span></Box>
             {isAdmin && (
-              <div className="flex gap-2">
-                <button onClick={() => { setRule({ kind: 'override', itemId: itemOpen.id, title: itemOpen.title, value: itemOpen.expected || '', note: '' }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>Kendi referansımı tanımla</button>
-                <button onClick={() => { setRule({ kind: 'exception', itemId: itemOpen.id, title: itemOpen.title, value: '', note: '' }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>Tüm filoda istisnaya al</button>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => { setRule({ kind: 'override', itemId: itemOpen.id, title: itemOpen.title, value: '', note: '' }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>{(ovrByItem.get(itemOpen.id) || []).length ? 'Kabul edilen değer ekle' : 'Kendi referansımı tanımla'}</button>
+                {excById.get(itemOpen.id)
+                  ? <button onClick={() => { dropRule('exception', excById.get(itemOpen.id)!.id); setItemOpen(null); }} disabled={busy} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)', color: 'var(--status-danger)' }}>İstisnadan çıkar (madde yeniden sayılsın)</button>
+                  : <button onClick={() => { setRule({ kind: 'exception', itemId: itemOpen.id, title: itemOpen.title, value: '', note: '' }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>Tüm filoda istisnaya al</button>}
               </div>
             )}
             <div>
@@ -335,11 +375,21 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
         )}
       </Modal>
 
-      <Modal open={!!rule} onClose={() => setRule(null)} title={rule ? (rule.kind === 'exception' ? `İstisna · ${rule.itemId}` : `Kurum referansı · ${rule.itemId}`) : ''} subtitle={rule?.title}>
+      <Modal open={!!rule} onClose={() => setRule(null)} title={rule ? (rule.kind === 'exception' ? `İstisna · ${rule.itemId}` : `Kabul edilen değer · ${rule.itemId}`) : ''} subtitle={rule?.title}>
         {rule && (
           <div className="space-y-2 text-xs">
+            {rule.kind === 'override' && (ovrByItem.get(rule.itemId) || []).length > 0 && (
+              <div className="rounded-lg px-2 py-1.5" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+                Bu maddede kabul edilen değer(ler) zaten var: <b className="font-mono">{(ovrByItem.get(rule.itemId) || []).map((o) => o.expected).join(', ')}</b>. Yeni değer <b>listeye eklenir</b>; ölçülen değer bunlardan herhangi birine eşitse madde geçer.
+              </div>
+            )}
+            {rule.kind === 'exception' && (rule.host ? excByHostItem.has(`${rule.host}|${rule.itemId}`) : excById.has(rule.itemId)) && (
+              <div className="rounded-lg px-2 py-1.5" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+                Bu madde için zaten bir istisna var; kaydettiğinizde <b>gerekçesi güncellenir</b>.
+              </div>
+            )}
             {rule.kind === 'override' ? (
-              <label className="block">Beklenen değer (CIS yerine bu değer aranır)
+              <label className="block">Kabul edilen değer (CIS önerisi yerine; aynı maddeye birden fazla değer ekleyebilirsiniz)
                 <input value={rule.value} onChange={(e) => setRule({ ...rule, value: e.target.value })} className="mt-1 w-full px-2 py-1.5 border rounded-lg font-mono" style={{ borderColor: 'var(--border)' }} placeholder="ör. 10m" />
               </label>
             ) : (

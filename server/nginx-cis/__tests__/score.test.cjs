@@ -131,3 +131,22 @@ test('CIS7 siralama ve madde detayi: maddeler DOGAL numara sirasinda, her madded
   assert.ok(/setItemOpen\(i\)/.test(tab) && /Nasıl düzeltilir\?/.test(tab) && /Neden önemli\?/.test(tab), 'madde detay penceresi');
   assert.ok(/\[\.\.\.detail\.items\]\.sort\(\(a, b\) => cmpItemId/.test(tab), 'sunucu detayinda maddeler dogal sirali');
 });
+
+test('CIS8 coklu kurum referansi: olculen deger kabul edilen degerlerden HERHANGI BIRINE esitse gecer', () => {
+  const d = { hosts: [{ host: 'H' }], results: [R('H', '5.2.2', 'MANUAL', '10m'), R('H', '2.4.3', 'FAIL', '65')] };
+  const r = scoreAll({ ...d, overrides: [{ item_id: '5.2.2', expected: '1m' }, { item_id: '5.2.2', expected: '10M;' }, { item_id: '2.4.3', expected: '75' }] });
+  const c = r.hosts[0].items.find((i) => i.id === '5.2.2');
+  assert.equal(c.status, 'PASS', 'ikinci kabul edilen degere esit');
+  assert.equal(c.expected, '1m | 10M;');
+  assert.match(c.source, /2 kabul edilen/);
+  assert.equal(r.hosts[0].items.find((i) => i.id === '2.4.3').status, 'FAIL', 'tek deger tutmuyorsa kalir');
+  assert.deepEqual(r.perItem.find((i) => i.id === '5.2.2').expectedValues, ['1m', '10M;']);
+  // UI/uc sozlesmesi: ayni maddeye ikinci deger EKLENIR (uzerine yazilmaz), istisna kaldirilabilir
+  const idx = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.ok(/WHERE item_id = \$1 AND expected = \$2/.test(idx), 'ayni deger iki kez eklenmemeli, farkli deger EKLENMELI');
+  assert.ok(/async function rulesStamp\(\)/.test(idx) && /_cache\.stamp === stamp/.test(idx), 'kural degisince onbellek damgasi duser');
+  const tab = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'CisTab.tsx'), 'utf8');
+  assert.ok(/istisnadan çıkar/.test(tab), 'istisnayi kaldirma dugmesi');
+  assert.ok(/referans ekle/.test(tab), 'ikinci kabul edilen deger ekleme dugmesi');
+  assert.ok(!/ovrById/.test(tab), 'tekil referans haritasi kalmamali');
+});

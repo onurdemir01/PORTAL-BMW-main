@@ -36,14 +36,32 @@ async function loadPortalRules() {
   return { exceptions, overrides };
 }
 
+/** Kural damgasi: istisna/referans sayisi + en son degisiklik zamani. Kural BASKA bir Portal
+ *  surecinde (ya da baska bir sekmede) degistiyse bu damga degisir ve onbellek dusurulur —
+ *  kullanici: "istisnaya aldiktan sonra hemen guncellenmiyor gibi". */
+async function rulesStamp() {
+  try {
+    const r = await require('../db/index.cjs').query(`
+      SELECT (SELECT COUNT(*) FROM nginx_cis_exceptions) AS ec,
+             (SELECT COUNT(*) FROM nginx_cis_overrides) AS oc,
+             (SELECT MAX(created_at) FROM nginx_cis_exceptions) AS em,
+             (SELECT MAX(created_at) FROM nginx_cis_overrides) AS om`);
+    const x = (r.rows || [])[0] || {};
+    return `${x.ec || 0}|${x.oc || 0}|${x.em || ''}|${x.om || ''}`;
+  } catch {
+    return 'na';
+  }
+}
+
 async function getAssessment(fresh) {
-  if (!fresh && _cache.value && Date.now() - _cache.at < CACHE_MS) return _cache.value;
+  const stamp = await rulesStamp();
+  if (!fresh && _cache.value && _cache.stamp === stamp && Date.now() - _cache.at < CACHE_MS) return _cache.value;
   const raw = await loadRaw();
   const rules = await loadPortalRules();
   const value = raw.tableMissing
     ? { tableMissing: true, hosts: [], perItem: [], summary: null, ...rules }
     : { tableMissing: false, ...scoreAll({ ...raw, ...rules }), ...rules };
-  _cache = { at: Date.now(), value };
+  _cache = { at: Date.now(), stamp, value };
   return value;
 }
 
@@ -140,8 +158,10 @@ function initNginxCis(app) {
       if (!expected) return res.status(400).json({ ok: false, message: 'Beklenen değer zorunlu.' });
       const db = require('../db/index.cjs');
       const by = req.session?.user?.username || null;
-      const ex = await db.query(`SELECT id FROM nginx_cis_overrides WHERE item_id = $1`, [itemId]);
-      if ((ex.rows || []).length) await db.query(`UPDATE nginx_cis_overrides SET expected = $2, note = $3, created_by = $4, created_at = GETUTCDATE() WHERE id = $1`, [ex.rows[0].id, expected, note, by]);
+      // Coklu deger (2026-09-22, kullanici): bir madde icin birden fazla kabul edilen deger
+      // girilebilir (ornek 5.2.2 -> 1m ve 10m); ayni deger ikinci kez eklenirse notu guncellenir.
+      const ex = await db.query(`SELECT id FROM nginx_cis_overrides WHERE item_id = $1 AND expected = $2`, [itemId, expected]);
+      if ((ex.rows || []).length) await db.query(`UPDATE nginx_cis_overrides SET note = $2, created_by = $3, created_at = GETUTCDATE() WHERE id = $1`, [ex.rows[0].id, note, by]);
       else await db.query(`INSERT INTO nginx_cis_overrides (item_id, expected, note, created_by) VALUES ($1, $2, $3, $4)`, [itemId, expected, note, by]);
       _cache = { at: 0, value: null };
       try { require('../audit/index.cjs').auditPortal(req, 'nginx_cis_override_set', { detail: JSON.stringify({ itemId, expected, note }) }); } catch { /* best-effort */ }
