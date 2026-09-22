@@ -9,6 +9,7 @@
 // (/sw'den okunur), yazma = nginx_console_push.yml (www, kilit, yedek, nginx -t, geri alma,
 // reload). Tum filo dokumu 30-40 dk surdugu icin "Yenile" yalniz secili sunuculari gonderir.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, DocumentPlusIcon, FolderIcon, FolderOpenIcon,
   MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon, ChartBarIcon,
@@ -22,9 +23,17 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { Pill, Panel, Code } from '@/components/denetim/ui';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { DashboardTab, InstancesTab } from './NimTabs';
+// DENETIM'DEN TASINDI (kullanici, 2026-09-22): "Denetim'deki tum nginx sayfalarini Nginx Hub'a
+// gom." Bilesenler yerinde kaldi (denetim/), yalniz sekme burada. Denetim'de artik nginx sekmesi yok.
+import { NginxSpaAudit, NGINX_DENETIM_HELP } from '@/components/DenetimPage';
+import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
+import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
+import { NginxAudit } from '@/components/denetim/NginxAudit';
+import HelpModal from '@/components/common/HelpModal';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
 
-type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes';
+type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'spa' | 'api' | 'envanter' | 'audit';
+const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'spa', 'api', 'envanter', 'audit'];
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -79,7 +88,11 @@ export default function NginxConsolePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
   // NIM benzeri Dashboard/Instances (2026-09-21) varsayilan acilis: once genel durum.
-  const [tab, setTab] = useState<Tab>('dashboard');
+  // ?tab=audit: Nginx Audit sunucu sayfasindan (/denetim/nginx-audit/:host) geri donus.
+  const [searchParams] = useSearchParams();
+  const initialTab = ((): Tab => { const v = searchParams.get('tab') as Tab | null; return v && TABS.includes(v) ? v : 'dashboard'; })();
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [showHelp, setShowHelp] = useState(false);
   const [focusHost, setFocusHost] = useState<string | null>(null);
   const [hosts, setHosts] = useState<NcHost[]>([]);
   const [hostsLoading, setHostsLoading] = useState(false);
@@ -117,12 +130,23 @@ export default function NginxConsolePage() {
             Tüm nginx sunucularının konfigürasyon ağacı, dosya içerikleri ve sertifikaları; tek dosya değişikliği push (nginx -t, geri alma, reload). Veriler Ansible dokumundan gelir; zamanlanmış tarama yalnız değişen sunucuları döker (parmak izi), "Yenile" tam dokum alır.
           </p>
         </div>
-        <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
-          {([{ id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon }, { id: 'instances', label: 'Instances', icon: ServerStackIcon }, { id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }] as const).map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-              <t.icon className="w-4 h-4" /> {t.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex gap-1 rounded-lg p-0.5 flex-wrap" style={{ background: 'var(--bg-elevated)' }}>
+            {([{ id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon }, { id: 'instances', label: 'Instances', icon: ServerStackIcon }, { id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }] as const).map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                <t.icon className="w-4 h-4" /> {t.label}
+              </button>
+            ))}
+          </div>
+          {/* Denetim sekmeleri: ayri grup, ayni gorsel dil (kullanici, 2026-09-22) */}
+          <div className="flex gap-1 rounded-lg p-0.5 flex-wrap" style={{ background: 'var(--bg-elevated)' }} aria-label="Nginx denetim bölümleri">
+            {([{ id: 'spa', label: 'SPA' }, { id: 'api', label: 'API Envanteri' }, { id: 'envanter', label: 'Envanter' }, { id: 'audit', label: 'Audit' }] as const).map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                <ShieldCheckIcon className="w-4 h-4" /> {t.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setShowHelp(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }} title="Denetim bölümleri nasıl okunur?" aria-label="Nasıl kullanılır?">?</button>
         </div>
       </div>
       {tab === 'dashboard' && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
@@ -130,6 +154,11 @@ export default function NginxConsolePage() {
       {tab === 'config' && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}
       {tab === 'changes' && <ChangesTab />}
       {tab === 'certs' && <CertsTab />}
+      {tab === 'spa' && <NginxSpaAudit />}
+      {tab === 'api' && <NginxApiEnvanteri />}
+      {tab === 'envanter' && <NginxEnvanteri />}
+      {tab === 'audit' && <NginxAudit />}
+      <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Nginx Hub — Denetim bölümleri" sections={NGINX_DENETIM_HELP} />
     </div>
   );
 }

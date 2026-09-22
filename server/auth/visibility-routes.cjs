@@ -134,7 +134,8 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   // ── Denetim Erisimi (2026-09-17): kullanici / AD grubu -> sekme listesi ─────────────
   // Ayni motorun uzerinde ince bir yuz: bir principal icin 'Denetim' sayfasina allow +
   // secilen 'tab:denetim:<id>' elementlerine allow yazar; silmek tum bu kurallari kaldirir.
-  const DENETIM_TAB_KEYS = ['nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp'];
+  // nginx sekmeleri 2026-09-22'de Nginx Hub'a tasindi (Admin); burada yok.
+  const DENETIM_TAB_KEYS = ['ocp', 'init', 'deploy', 'routetraffic', 'envanter', 'degisim', 'appenvs', 'webapp'];
   const denetimKeys = () => ['Denetim', ...DENETIM_TAB_KEYS.map((t) => 'tab:denetim:' + t)];
 
   router.get("/denetim-access", requireAdmin, async (_req, res) => {

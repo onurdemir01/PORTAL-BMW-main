@@ -43,9 +43,6 @@ import { Select } from '@/components/ui/Form';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import EnvanterMetrics from '@/components/denetim/EnvanterMetrics';
 import EnvanterDegisim from '@/components/denetim/EnvanterDegisim';
-import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
-import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
-import { NginxAudit } from '@/components/denetim/NginxAudit';
 import NginxProdMigration from '@/components/denetim/NginxProdMigration';
 import { OwnerCell, ownerText } from '@/components/denetim/OwnerCell';
 import { DirCell, HacLegend } from '@/components/denetim/HacCell';
@@ -58,12 +55,32 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import CodeChip from '@/components/common/CodeChip';
 import { fmtNumber } from '@/utils/datetime';
 
-const HELP: HelpSection[] = [
+// NGINX BOLUMLERI NGINX HUB'A TASINDI (kullanici, 2026-09-22): sekmeler ve yardim metinleri
+// Nginx Hub'da; bilesenler yerinde. Bu dizi oradan import edilir.
+export const NGINX_DENETIM_HELP: HelpSection[] = [
   {
     icon: ServerStackIcon,
     title: 'Nginx SPA Audit',
     body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır; hücredeki H A C harfleri o sunucudaki dizinleri gösterir (H=/hysdeploy, A=/usr/nginx/applications, C=application-confs; büyük harf var, küçük harf yok — matrisin üstündeki sözlük). Internet katmanında ayrıca 'OpenShift route istatistikleri' paneli: ortam başına kaç route, kaçı SPA / SPA değil, hangi IP'lere çözüyor (route_inventory job'ının nslookup sonucu). PROD kapsamı eski GBRVP* sunucularının proxy_pass satırlarından çözülür (Production Taşımaları ile aynı çözüm, -prod eki dâhil); dipnotta kaç satırın çözüldüğü yazar. 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz. PRODUCTION TAŞIMALARI sekmesi (2026-09-14): eski GBRVP* sunucularının vhost'larındaki her proxy_pass hedefi OpenShift route envanteriyle (namespace, uygulama)'ya çözülür ve yeni GBNGXP4x/5x sunucularında /hysdeploy/<ns>/<app>/ ile /usr/nginx/applications/<ns>/<app>/ var mı gösterilir (H/A/C hücreleri). Bir uygulama ancak yeni sunucuların HEPSİNDE H+A varsa 'hazır'dır; SPA olmayan (API) hedefler dizin beklemez, ayrı listelenir. Satırdaki 'Tanım oluştur' düğmesi, seçilen location için yeni sunucularda <SERVICE>-PROD.conf içine location bloğu ve application-confs/<service>-<app>-<ns>.conf dosyasını üreten AWX job'ını (nginx_ops/nginx_prod_migration.yml) tetikler — non-prod SPA oluşturma akışının aynısı; uygulama dizini yoksa durur, nginx -t düşerse geri alır. Eski sunucuya dokunmaz. 'Eski tanımı kaldır' düğmesi ise eski GBRVP* sunucusundaki location bloğunu ve (başka tanım kullanmıyorsa) upstream'i kaldırmak için mevcut nginx_ops job'ını action=delete/env=prod ile tetikler — PROD kuralı gereği iş şimdi doğrular, 23:00 kesinti penceresine zamanlar, gerçek silmeyi nginx_scheduled_ops yapar; geçiş kaydı 'geçti' değilse pencere uyarır. Geçiş sütunu: planlandı/geçti/iptal + tarih, tıklayarak düzenlenir. Sıralama ekip bazında yapılabilir (çok uygulaması olan ekip üstte).",
   },
+  {
+    icon: ServerStackIcon,
+    title: 'Nginx API Envanteri',
+    body: "nginx_ratelimit_inventory job'ının günlük taramasını gösterir: hangi sunucuda, hangi konfigürasyon dosyasında kaç API (location) bloğu tanımlı ve bunların rate limit durumu. ÖNEMLİ: kaynak tablo ortam bilgisi TAŞIMAZ ve konfigürasyon dosya adları ortamdan bağımsız olarak AYNIDIR — aynı 'x.conf' hem DEV hem PROD sunucusunda bulunur. Bu yüzden ortam sunucu adından türetilir (GBNGWD..=dev, GBNGWT..=test, GBNGWQ..=qa, GBNGWP../GBNGWAP..=prod); kalıba uymayan sunucu sessizce bir ortama atanmaz, 'BİLİNMİYOR' olarak görünür. 'Konfigürasyon Karşılaştırma' görünümü asıl bulguyu üretir: bir satır tek bir dosyanın tüm ortamlardaki hâlidir, hücredeki sayı o ortamdaki API bloğu sayısıdır ve '—' dosyanın o ortamda hiç bulunmadığı anlamına gelir. İki tür sürüklenme ayrı işaretlenir: 'ortam farkı' ortamların beklenen API sayısı birbirinden farklı, 'sunucu farkı' AYNI ortamdaki sunucular birbirinden farklı (hücrede aralık olarak gösterilir, örn. 17–20) — ikincisi genelde bir sunucuya dağıtımın ulaşmadığı anlamına gelir. 'Rate limit tanımı olmayan konfigürasyonlar' listesi ise hiçbir location'ında ne IP bazlı ne de sunucu bazlı limit bulunmayan dosyaları toplar.",
+  },
+  {
+    icon: ServerStackIcon,
+    title: 'Nginx Audit',
+    body: "TUM nginx sunucularinin konfigurasyon denetimi; veriyi bmw_nginx/nginx_audit isi uretir. Konfigurasyon 'nginx -T' ile okunur - yani include'lar dahil, nginx'in kendi gordugu haliyle; dosyalari tek tek okumak conf/ altindaki include'lari kacirirdi. Hostlar dbo.Inventory'den kesfedilir, sabit liste yoktur. Ortam once sunucu adi kalibindan, tutmazsa dbo.Inventory.env kaydindan gelir; ikisi de bilmiyorsa BILINMIYOR gorunur. Her satir bir SUNUCU; tiklayinca sunucunun KENDI SAYFASI acilir (/denetim/nginx-audit/<host>), bes bolum: (1) server bloklari - hangi ip:port dinleniyor, hangi sertifika sunuluyor; (2) location'lar dosya basina - kac tane, kaci proxy_pass tasiyor, kaci tanimli bir upstream'e gidiyor, kaci dogrudan DNS adina gidiyor (calisir ama resolve/keepalive/zone devre disi), kaci TANIMSIZ bir hedefe gidiyor (nginx BASLAMAZ); (3) upstream'ler - resolve/keepalive/zone var mi, en az bir location kullaniyor mu; (4) ayarlar - kurulum referansiyla (nginx_installation: bmw_defaults.conf, proxy_settings.conf, rate_limits.conf, nginx.conf) karsilastirma. AYAR MANTIGI: sunucudaki GLOBAL deger referanstan farkliysa bulgudur; bir location'in kendi icinde farkli deger vermesi (orn. 60s timeout) bulgu DEGIL yerel ayardir ve ayri listelenir. (5) kurulum dosyasi uyumu - nginx_installation/operations/files altindaki dosyalar (licences haric) sunucuya oldugu gibi kopyalanir; sunucudaki kopya referansla birebir mi, degilse hangi direktif eksik/degismis/fazla. Referans degerler koda gomulu degildir, her kosuda kurulum dosyalarindan okunur. Terimler icin sekmenin ustundeki Sozluk acilir. ISTISNA: yonetici bir sunucuyu not ile istisna yapabilir (en sagdaki sutun) - o satirda ayar sapmasi/atlayan/tanimsiz/dosya farki gosterilmez, toplam kartlarina girmez, siralamada sona duser; sunucu sayfasi ham veriyi gostermeye devam eder. Not zorunludur (neden istisna?). 'nginx -T' hata verdiyse sunucu HATA olarak isaretlenir: konfigurasyon reload edilemez. (Eski 'Nginx Legacy (PROD)' sekmesi 2026-09-17'de kaldirildi: burada gosterilenler onu kapsiyor.)",
+  },
+  {
+    icon: ServerStackIcon,
+    title: 'Nginx Envanteri',
+    body: "nginx_metadata job'ının topladığı sunucu üst verisini gösterir (dbo.nginx_inventory). Her sunucuda bir .metadata dosyası üretilip toplanır. ÖNEMLİ: tablo her koşuda TRUNCATE edilip yeniden yazılır — yani GEÇMİŞ YOKTUR, gördüğünüz her zaman \"şu anki hâl\"dir; bu yüzden tarih seçici yerine en yeni source_last_update değeri gösterilir. NginxRateLimitInventory'den farklı olarak bu tabloda ORTAM KOLONU vardır, sunucu adından türetmeye gerek kalmaz. Beş görünüm var: 'Ortam' hangi ortamda kaç sunucu olduğunu ve bunların Pendik/Ankara dağılımını; 'Versiyonlar' nginx/OS/kernel/mimari dağılımını; 'Service'ler' bir service'i kaç sunucunun barındırdığını (services alanı tekil adlara bölünüp sayılır); 'Kaynaklar' cpu/bellek/disk/konfigürasyon dağılımını; 'Sunucular' ise tüm alanları arama ve CSV ile birlikte verir. Bellek ve disk toplamları yalnızca ÇÖZÜMLENEBİLEN değerlerden hesaplanır — çözümlenemeyen sunucu varsa sayı sarı renkle işaretlenir ve kaçının dışarıda kaldığı ipucunda yazar; uydurulmuş bir sayı toplamı sessizce bozardı.",
+  },
+];
+
+const HELP: HelpSection[] = [
   {
     icon: ChartBarSquareIcon,
     title: 'Envanter Audit',
@@ -98,21 +115,6 @@ const HELP: HelpSection[] = [
     icon: SignalIcon,
     title: 'Route Trafiği',
     body: "route_traffic job'ının her cluster'ın Thanos'undan çektiği route başına HTTP istek sayıları (OCP router/HAProxy sayacı, günde bir). Soru: bu uygulama yaşıyor mu? 'aktif' = son 30 günde istek var; 'atıl aday' = 30 gündür istek yok ama 90 gün içinde vardı; 'emekli aday' = 90 gündür (ya da verinin tamamında) hiç istek yok; 'veri yok' = route envanterde var ama router sayacında hiç görünmedi. Job yeni koşmaya başladıysa üstteki not kaç günün kapsandığını yazar — 'emekli' hükmü 90 gün dolunca kesinleşir. 4xx/5xx yüzdeleri son 90 günün toplamına göre; %100 4xx = trafik geliyor ama uygulama cevap vermiyor. Dikkat: GBNGX'e taşınan internet SPA'larında paket doğrudan nginx'ten sunulur, OCP route sayacı düşer — bu atıl demek değildir.",
-  },
-  {
-    icon: ServerStackIcon,
-    title: 'Nginx API Envanteri',
-    body: "nginx_ratelimit_inventory job'ının günlük taramasını gösterir: hangi sunucuda, hangi konfigürasyon dosyasında kaç API (location) bloğu tanımlı ve bunların rate limit durumu. ÖNEMLİ: kaynak tablo ortam bilgisi TAŞIMAZ ve konfigürasyon dosya adları ortamdan bağımsız olarak AYNIDIR — aynı 'x.conf' hem DEV hem PROD sunucusunda bulunur. Bu yüzden ortam sunucu adından türetilir (GBNGWD..=dev, GBNGWT..=test, GBNGWQ..=qa, GBNGWP../GBNGWAP..=prod); kalıba uymayan sunucu sessizce bir ortama atanmaz, 'BİLİNMİYOR' olarak görünür. 'Konfigürasyon Karşılaştırma' görünümü asıl bulguyu üretir: bir satır tek bir dosyanın tüm ortamlardaki hâlidir, hücredeki sayı o ortamdaki API bloğu sayısıdır ve '—' dosyanın o ortamda hiç bulunmadığı anlamına gelir. İki tür sürüklenme ayrı işaretlenir: 'ortam farkı' ortamların beklenen API sayısı birbirinden farklı, 'sunucu farkı' AYNI ortamdaki sunucular birbirinden farklı (hücrede aralık olarak gösterilir, örn. 17–20) — ikincisi genelde bir sunucuya dağıtımın ulaşmadığı anlamına gelir. 'Rate limit tanımı olmayan konfigürasyonlar' listesi ise hiçbir location'ında ne IP bazlı ne de sunucu bazlı limit bulunmayan dosyaları toplar.",
-  },
-  {
-    icon: ServerStackIcon,
-    title: 'Nginx Audit',
-    body: "TUM nginx sunucularinin konfigurasyon denetimi; veriyi bmw_nginx/nginx_audit isi uretir. Konfigurasyon 'nginx -T' ile okunur - yani include'lar dahil, nginx'in kendi gordugu haliyle; dosyalari tek tek okumak conf/ altindaki include'lari kacirirdi. Hostlar dbo.Inventory'den kesfedilir, sabit liste yoktur. Ortam once sunucu adi kalibindan, tutmazsa dbo.Inventory.env kaydindan gelir; ikisi de bilmiyorsa BILINMIYOR gorunur. Her satir bir SUNUCU; tiklayinca sunucunun KENDI SAYFASI acilir (/denetim/nginx-audit/<host>), bes bolum: (1) server bloklari - hangi ip:port dinleniyor, hangi sertifika sunuluyor; (2) location'lar dosya basina - kac tane, kaci proxy_pass tasiyor, kaci tanimli bir upstream'e gidiyor, kaci dogrudan DNS adina gidiyor (calisir ama resolve/keepalive/zone devre disi), kaci TANIMSIZ bir hedefe gidiyor (nginx BASLAMAZ); (3) upstream'ler - resolve/keepalive/zone var mi, en az bir location kullaniyor mu; (4) ayarlar - kurulum referansiyla (nginx_installation: bmw_defaults.conf, proxy_settings.conf, rate_limits.conf, nginx.conf) karsilastirma. AYAR MANTIGI: sunucudaki GLOBAL deger referanstan farkliysa bulgudur; bir location'in kendi icinde farkli deger vermesi (orn. 60s timeout) bulgu DEGIL yerel ayardir ve ayri listelenir. (5) kurulum dosyasi uyumu - nginx_installation/operations/files altindaki dosyalar (licences haric) sunucuya oldugu gibi kopyalanir; sunucudaki kopya referansla birebir mi, degilse hangi direktif eksik/degismis/fazla. Referans degerler koda gomulu degildir, her kosuda kurulum dosyalarindan okunur. Terimler icin sekmenin ustundeki Sozluk acilir. ISTISNA: yonetici bir sunucuyu not ile istisna yapabilir (en sagdaki sutun) - o satirda ayar sapmasi/atlayan/tanimsiz/dosya farki gosterilmez, toplam kartlarina girmez, siralamada sona duser; sunucu sayfasi ham veriyi gostermeye devam eder. Not zorunludur (neden istisna?). 'nginx -T' hata verdiyse sunucu HATA olarak isaretlenir: konfigurasyon reload edilemez. (Eski 'Nginx Legacy (PROD)' sekmesi 2026-09-17'de kaldirildi: burada gosterilenler onu kapsiyor.)",
-  },
-  {
-    icon: ServerStackIcon,
-    title: 'Nginx Envanteri',
-    body: "nginx_metadata job'ının topladığı sunucu üst verisini gösterir (dbo.nginx_inventory). Her sunucuda bir .metadata dosyası üretilip toplanır. ÖNEMLİ: tablo her koşuda TRUNCATE edilip yeniden yazılır — yani GEÇMİŞ YOKTUR, gördüğünüz her zaman \"şu anki hâl\"dir; bu yüzden tarih seçici yerine en yeni source_last_update değeri gösterilir. NginxRateLimitInventory'den farklı olarak bu tabloda ORTAM KOLONU vardır, sunucu adından türetmeye gerek kalmaz. Beş görünüm var: 'Ortam' hangi ortamda kaç sunucu olduğunu ve bunların Pendik/Ankara dağılımını; 'Versiyonlar' nginx/OS/kernel/mimari dağılımını; 'Service'ler' bir service'i kaç sunucunun barındırdığını (services alanı tekil adlara bölünüp sayılır); 'Kaynaklar' cpu/bellek/disk/konfigürasyon dağılımını; 'Sunucular' ise tüm alanları arama ve CSV ile birlikte verir. Bellek ve disk toplamları yalnızca ÇÖZÜMLENEBİLEN değerlerden hesaplanır — çözümlenemeyen sunucu varsa sayı sarı renkle işaretlenir ve kaçının dışarıda kaldığı ipucunda yazar; uydurulmuş bir sayı toplamı sessizce bozardı.",
   },
   {
     icon: Squares2X2Icon,
@@ -173,10 +175,6 @@ function csvDownload(name: string, header: string[], rows: (string | number)[][]
 }
 
 type DenetimTab =
-  | 'nginx'
-  | 'nginxapi'
-  | 'nginxenv'
-  | 'nginxaudit'
   | 'ocp'
   | 'init'
   | 'deploy'
@@ -185,18 +183,17 @@ type DenetimTab =
   | 'degisim'
   | 'appenvs'
   | 'webapp';
+// nginx sekmeleri (nginx, nginxapi, nginxenv, nginxaudit) 2026-09-22'de Nginx Hub'a tasindi.
 const DENETIM_TABS: DenetimTab[] = [
-  'nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'deploy', 'routetraffic',
-  'envanter', 'degisim', 'appenvs', 'webapp',
+  'ocp', 'init', 'deploy', 'routetraffic', 'envanter', 'degisim', 'appenvs', 'webapp',
 ];
 
 export default function DenetimPage() {
-  // ?tab=nginxaudit: sunucu sayfasindan geri donus dogru sekmeye gelsin. Tanınmayan
-  // deger sessizce ilk sekmeye duser.
+  // ?tab=<id>: dis baglantidan dogru sekmeye gelsin. Tanınmayan deger sessizce ilk sekmeye duser.
   const [searchParams] = useSearchParams();
   const initialTab = ((): DenetimTab => {
     const v = searchParams.get('tab') as DenetimTab | null;
-    return v && DENETIM_TABS.includes(v) ? v : 'nginx';
+    return v && DENETIM_TABS.includes(v) ? v : 'ocp';
   })();
   const [tab, setTab] = useState<DenetimTab>(initialTab);
   const [showHelp, setShowHelp] = useState(false);
@@ -273,10 +270,6 @@ export default function DenetimPage() {
         >
           {(
             [
-              { id: 'nginx', label: 'Nginx SPA', icon: ServerStackIcon },
-              { id: 'nginxapi', label: 'Nginx API Envanteri', icon: ServerStackIcon },
-              { id: 'nginxenv', label: 'Nginx Envanteri', icon: ServerStackIcon },
-              { id: 'nginxaudit', label: 'Nginx Audit', icon: ServerStackIcon },
               { id: 'ocp', label: 'OpenShift', icon: Squares2X2Icon },
               { id: 'init', label: 'Init Script', icon: DocumentDuplicateIcon },
               { id: 'deploy', label: 'Deployment Scripts', icon: DocumentDuplicateIcon },
@@ -310,10 +303,6 @@ export default function DenetimPage() {
         </nav>
       </header>
 
-      {activeTab === 'nginx' && <NginxSpaAudit />}
-      {activeTab === 'nginxapi' && <NginxApiEnvanteri />}
-      {activeTab === 'nginxenv' && <NginxEnvanteri />}
-      {activeTab === 'nginxaudit' && <NginxAudit />}
       {activeTab === 'ocp' && <OcpCoverage />}
       {activeTab === 'init' && <ScriptsAudit kind="init" />}
       {activeTab === 'deploy' && <ScriptsAudit kind="deploy" />}
@@ -342,7 +331,7 @@ export default function DenetimPage() {
 // paydaya katmak, cikmasi zaten yasak olanlari "eksik" saymak olurdu.
 // Grafik CSS ile cizilir - projede grafik kutuphanesi yok.
 /** Bar renklerinin ne anlama geldigini gosteren kucuk kare + etiket. */
-function NginxSpaAudit() {
+export function NginxSpaAudit() {
   // KATMAN BURADA TUTULUYOR, ozet bileseninin icinde DEGIL. Icerideyken yalnizca kapsam
   // paneli katmani biliyordu; altindaki servis matrisi (GLOMO/SAKLAMA...), Location
   // Detayi ve Proxy panelleri INTERNET tarafina ait olduklari halde her iki katmanda da

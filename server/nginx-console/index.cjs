@@ -274,17 +274,68 @@ function listDumpedHosts() {
   }
 }
 
+// ── Son gorulme (raw/_seen.json) ─────────────────────────────────────────────────────
+// "Cogu sunucu Offline" (kullanici, 2026-09-22): fetch playbook'u parmak izi degismeyen
+// sunucuda dokumu YENIDEN YAZMAZ (dogru), ama Portal "online"i dokum dosyasinin mtime'indan
+// turetiyordu -> konfigurasyonu 2 gundur degismeyen her sunucu Offline gorunuyordu. Playbook
+// artik her kosuda ulasabildigi sunuculari raw/_seen.json'a yazar ({at, hosts: {HOST: iso}};
+// secili host yenilemesi digerlerini SILMEZ, playbook birlestirir); son gorulme =
+// max(dokum mtime, seen[host]). Dosya yoksa eski davranis (yalniz dokum mtime).
+let _seen = { mtimeMs: 0, at: null, hosts: new Map() };
+function seenMap() {
+  const p = path.join(rawDir(), '_seen.json');
+  try {
+    const st = fs.statSync(p);
+    if (st.mtimeMs !== _seen.mtimeMs) {
+      const j = JSON.parse(fs.readFileSync(p, 'utf8')) || {};
+      const at = j.at && !Number.isNaN(new Date(j.at).getTime()) ? new Date(j.at).toISOString() : st.mtime.toISOString();
+      const hosts = new Map();
+      if (Array.isArray(j.hosts)) for (const h of j.hosts) hosts.set(String(h).toUpperCase(), at);
+      else if (j.hosts && typeof j.hosts === 'object') for (const [h, v] of Object.entries(j.hosts)) { const d = new Date(v); if (!Number.isNaN(d.getTime())) hosts.set(String(h).toUpperCase(), d.toISOString()); }
+      _seen = { mtimeMs: st.mtimeMs, at, hosts };
+    }
+  } catch {
+    _seen = { mtimeMs: 0, at: null, hosts: new Map() };
+  }
+  return _seen;
+}
+/** Sunucunun son gorulme zamani: dokum mtime ile _seen.json kaydinin buyugu (ikisi de yoksa null). */
+function seenAtOf(host, dumpedAt) {
+  const s = seenMap();
+  const a = dumpedAt ? new Date(dumpedAt).getTime() : 0;
+  const v = s.hosts.get(String(host).toUpperCase());
+  const b = v ? new Date(v).getTime() : 0;
+  const m = Math.max(a || 0, b || 0);
+  return m > 0 ? new Date(m).toISOString() : null;
+}
+
 // ── Envanter: nginx sunuculari (dbo.nginx_inventory, nginx_metadata job'i) ──────────────
+// + dbo.Inventory'den kaynak (cpu, memory GB, os) — Dashboard "Kaynaklar" ve "Pendik/Ankara"
+// kartlari icin (kullanici, 2026-09-22). Inventory sorgusu dusse de liste gelir (kaynak null).
 async function inventoryHosts() {
   const { query } = require('../inventory/mssql.cjs');
   const r = await query(
     `SELECT hostname, env, location, service, services, nginx_version, nginx_prefix, config_count, ip
        FROM dbo.nginx_inventory ORDER BY env, service, hostname`,
   );
+  let res = new Map();
+  try {
+    const rr = await query(
+      `SELECT host, TRY_CONVERT(float, cpu) AS cpu, TRY_CONVERT(float, memory) AS memory, os, os_version FROM dbo.Inventory WHERE nginx_version IS NOT NULL AND LTRIM(RTRIM(nginx_version)) <> ''`,
+    );
+    res = new Map((rr.recordset || []).map((x) => [String(x.host || '').trim().toUpperCase(), x]));
+  } catch (e) {
+    console.warn('[NginxHub] Inventory kaynak sorgusu:', e.message);
+  }
+  const { siteOfHost } = require('../audit/nginx-hosts.cjs');
   return (r.recordset || []).map((x) => ({
     host: String(x.hostname || '').trim().toUpperCase(),
     env: String(x.env || '').trim().toLowerCase() || null,
     location: x.location || null,
+    site: siteOfHost(x.hostname) || null,
+    cpu: res.get(String(x.hostname || '').trim().toUpperCase())?.cpu ?? null,
+    memoryGb: res.get(String(x.hostname || '').trim().toUpperCase())?.memory ?? null,
+    os: (() => { const i = res.get(String(x.hostname || '').trim().toUpperCase()); return i ? [i.os, i.os_version].filter(Boolean).join(' ') || null : null; })(),
     service: x.service || null,
     services: String(x.services || '')
       .split(/[,\s]+/)
@@ -373,6 +424,7 @@ function initNginxConsole(app) {
         return {
           ...h,
           dumpedAt: d ? d.dumpedAt : null,
+          seenAt: seenAtOf(h.host, d ? d.dumpedAt : null),
           nginxT: parsed ? parsed.nginxT.status : null,
           fileCount: parsed ? parsed.tree.length : null,
           certCount: parsed ? parsed.certs.length : null,
@@ -383,9 +435,9 @@ function initNginxConsole(app) {
       for (const d of dumped.values()) {
         if (seen.has(d.host)) continue;
         const parsed = loadDump(d.host);
-        hosts.push({ host: d.host, env: null, location: null, service: null, services: [], nginxVersion: null, prefix: null, configCount: null, ip: null, dumpedAt: d.dumpedAt, nginxT: parsed ? parsed.nginxT.status : null, fileCount: parsed ? parsed.tree.length : null, certCount: parsed ? parsed.certs.length : null, certMinDays: parsed ? minDays(parsed) : null, inventoryMissing: true });
+        hosts.push({ host: d.host, env: null, location: null, site: null, cpu: null, memoryGb: null, os: null, service: null, services: [], nginxVersion: null, prefix: null, configCount: null, ip: null, dumpedAt: d.dumpedAt, seenAt: seenAtOf(d.host, d.dumpedAt), nginxT: parsed ? parsed.nginxT.status : null, fileCount: parsed ? parsed.tree.length : null, certCount: parsed ? parsed.certs.length : null, certMinDays: parsed ? minDays(parsed) : null, inventoryMissing: true });
       }
-      res.json({ ok: true, hosts, consoleDir: consoleDir(), inventoryError: invError });
+      res.json({ ok: true, hosts, consoleDir: consoleDir(), inventoryError: invError, seenAt: seenMap().at });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
@@ -621,4 +673,4 @@ function minDays(parsed) {
   return m;
 }
 
-module.exports = { initNginxConsole, REGISTRY_KEYS, ALLOWED_PATH_RE, HOST_RE, consoleDir, _loadDumpForTest: loadDump, _loadFullForTest: loadFull, _loadSummaryForTest: loadSummary };
+module.exports = { initNginxConsole, REGISTRY_KEYS, ALLOWED_PATH_RE, HOST_RE, consoleDir, _loadDumpForTest: loadDump, _loadFullForTest: loadFull, _loadSummaryForTest: loadSummary, _seenAtOfForTest: seenAtOf, _seenMapForTest: seenMap };

@@ -19,7 +19,8 @@ import { Panel, StatTile, Pill, Code, Note } from './ui';
 import { AuditGlossary, termHint } from './nginxAuditGlossary';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
-const BACK = '/denetim?tab=nginxaudit';
+// Nginx Audit sekmesi 2026-09-22'de Nginx Hub'a tasindi; geri donus oraya.
+const BACK = '/nginx-console?tab=audit';
 
 function YesNo({ v, bad }: { v: boolean; bad?: boolean }) {
   if (v) return <span className="text-emerald-600 font-semibold">✓</span>;

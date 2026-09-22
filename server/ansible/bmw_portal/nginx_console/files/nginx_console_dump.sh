@@ -26,7 +26,14 @@ echo "@@TIME $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo "@@PREFIX $PREFIX"
 
 #### nginx -t (salt okunur syntax testi)
-if out="$($BIN -p "$PREFIX/" -c "$PREFIX/nginx.conf" -t 2>&1)"; then
+#### ESTATE STANDARDI (nginx_audit_scan.sh, nginx_deploy_lock.sh, activate.yaml): nginx -t ROOT
+#### (dzdo) ile ve -e /web_log/error.log ile kosar. www olarak kosunca anahtar dosyalari (root:600)
+#### okunamiyor / varsayilan error.log acilamiyor ve hemen her sunucu "fail" gorunuyordu
+#### (kullanici, 2026-09-22). dzdo yoksa/reddederse eski yol denenir; sonuc yine ok/fail.
+NGINX_T_CMD=("$BIN" -p "$PREFIX/" -c "$PREFIX/nginx.conf" -e "${NGINX_ERRLOG:-/web_log/error.log}" -t)
+if command -v dzdo >/dev/null 2>&1 && out="$(dzdo -n "${NGINX_T_CMD[@]}" 2>&1)"; then
+  echo "@@NGINX_T ok"
+elif out="$("${NGINX_T_CMD[@]}" 2>&1)"; then
   echo "@@NGINX_T ok"
 else
   echo "@@NGINX_T fail"

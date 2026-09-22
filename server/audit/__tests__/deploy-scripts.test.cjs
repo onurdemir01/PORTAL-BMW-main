@@ -39,7 +39,7 @@ test('DS2 istemci: sekme, tip, liste, yardim bolumu, API', () => {
 
 test('DS3 erisim: seed tab:denetim:deploy + DENETIM_TAB_KEYS', () => {
   assert.match(read('server/db/mssql-setup.cjs'), /element_key: 'tab:denetim:deploy'/);
-  assert.match(read('server/auth/visibility-routes.cjs'), /'init', 'deploy', 'envanter'/);
+  assert.match(read('server/auth/visibility-routes.cjs'), /'init', 'deploy', 'routetraffic', 'envanter'/);
 });
 
 test('DS4 Ansible job dosyalari repo icinde belgelenmis (tablo adi ve CSV sozlesmesi ayni)', () => {

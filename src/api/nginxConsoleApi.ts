@@ -14,7 +14,15 @@ export interface NcHost {
   prefix: string | null;
   configCount: number | null;
   ip: string | null;
+  /** Pendik | Ankara (envanter location ya da sunucu adi) */
+  site?: string | null;
+  /** dbo.Inventory cpu / memory (GB) / os — Dashboard Kaynaklar (2026-09-22) */
+  cpu?: number | null;
+  memoryGb?: number | null;
+  os?: string | null;
   dumpedAt: string | null;
+  /** fetch job'inin bu sunucuya son ulastigi an (_seen.json ya da dokum); Online bunun uzerinden */
+  seenAt?: string | null;
   nginxT: "ok" | "fail" | null;
   fileCount: number | null;
   certCount: number | null;

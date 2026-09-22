@@ -45,9 +45,15 @@ test('sunucu satiri kendi sayfasina gider; rota tanimli; geri donus Nginx Audit 
   assert.match(list.replace(/\s+/g, ' '), /<Link to=\{to\}/, 'sunucu adi gercek bir Link olmali (yeni sekmede acilabilsin)');
   assert.ok(!/onToggle|open === h\.host/.test(list), 'eski satir-ici acilir bolum kalmamali');
   assert.ok(app.includes('path="/denetim/nginx-audit/:host"'), 'App.tsx rotasi yok');
-  assert.ok(page.includes("'/denetim?tab=nginxaudit'"), 'geri baglantisi Nginx Audit sekmesine gitmeli');
-  assert.ok(denetim.includes("searchParams.get('tab')"), 'DenetimPage ?tab= okumali');
-  assert.ok(/DENETIM_TABS\.includes\(v\) \? v : 'nginx'/.test(denetim), 'taninmayan tab ilk sekmeye dusmeli');
+  assert.ok(page.includes("'/nginx-console?tab=audit'"), 'geri baglantisi Nginx Hub > Audit sekmesine gitmeli (2026-09-22)');
+  // 2026-09-22: Nginx Audit sekmesi Nginx Hub'a tasindi; ?tab=audit'i NginxConsolePage okur,
+  // taninmayan deger Dashboard'a duser. Denetim'in ilk sekmesi artik 'ocp'.
+  const hub = read('components/nginx_console/NginxConsolePage.tsx');
+  assert.ok(hub.includes("searchParams.get('tab')"), 'NginxConsolePage ?tab= okumali');
+  assert.ok(/TABS\.includes\(v\) \? v : 'dashboard'/.test(hub), "taninmayan tab Dashboard'a dusmeli");
+  assert.ok(/\{tab === 'audit' && <NginxAudit \/>\}/.test(hub), 'Nginx Hub audit sekmesi NginxAudit render etmeli');
+  assert.ok(/DENETIM_TABS\.includes\(v\) \? v : 'ocp'/.test(denetim), 'Denetim: taninmayan tab ilk sekmeye (ocp) dusmeli');
+  assert.ok(!/id: ['"]nginxaudit['"]/.test(denetim), 'Denetim sekme cubugunda nginxaudit kalmamali');
 });
 
 test('sunucu sayfasi bes bolumu ve dosya uyumu DDL uyarisini tasir', () => {

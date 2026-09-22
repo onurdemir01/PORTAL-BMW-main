@@ -25,8 +25,58 @@ export function parseNginxVersion(v: string | null | undefined): { type: 'NGINX 
   const release = (s.match(/plus[- ]?(r\d+(?:-p\d+)?)/i) || [])[1] || null;
   return { type: /plus/i.test(s) ? 'NGINX Plus' : 'Open Source', version, release: release ? release.toLowerCase() : null };
 }
+/** Online = son 2 gun icinde GORULDU (fetch job'i ulasti: _seen.json ya da yeni dokum). Onceden
+ *  yalniz dokum mtime'ina bakiliyordu; parmak izi degismeyen sunucuda dokum yeniden yazilmadigi
+ *  icin konfigurasyonu 2 gundur degismeyen her sunucu Offline gorunuyordu (kullanici, 2026-09-22). */
+export function lastSeen(h: NcHost): string | null {
+  const a = h.seenAt ? new Date(h.seenAt).getTime() : 0;
+  const b = h.dumpedAt ? new Date(h.dumpedAt).getTime() : 0;
+  const m = Math.max(a || 0, b || 0);
+  return m > 0 ? new Date(m).toISOString() : null;
+}
 export function isOnline(h: NcHost, now = Date.now()): boolean {
-  return !!h.dumpedAt && now - new Date(h.dumpedAt).getTime() <= ONLINE_MS;
+  const s = lastSeen(h);
+  return !!s && now - new Date(s).getTime() <= ONLINE_MS;
+}
+export const isProdEnv = (env: string | null | undefined) => /^prod/i.test(String(env || ''));
+/** Sunucu adindan lokasyon (sunucu `site` vermediyse): tier harfinden sonra fazladan A = Ankara. */
+export function siteOf(h: NcHost): 'Pendik' | 'Ankara' | null {
+  if (h.site === 'Pendik' || h.site === 'Ankara') return h.site;
+  const m = /^GBNG[WX](A?)[DTQP]/i.exec(h.host) || /^GBRVP(A?)P/i.exec(h.host);
+  if (!m) return null;
+  return m[1] ? 'Ankara' : 'Pendik';
+}
+const sum = (xs: (number | null | undefined)[]) => xs.reduce<number>((a, x) => a + (typeof x === 'number' && Number.isFinite(x) ? x : 0), 0);
+
+/** Halka grafik (Server Hub ile ayni cizim) */
+function Donut({ parts, size = 104, label, sub }: { parts: { value: number; color: string; title: string }[]; size?: number; label: string; sub?: string }) {
+  const total = parts.reduce((a, p) => a + p.value, 0) || 1;
+  const r = 40, c = 2 * Math.PI * r;
+  let acc = 0;
+  return (
+    <div className="flex items-center gap-3">
+      <svg width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={label}>
+        <circle cx="50" cy="50" r={r} fill="none" stroke="var(--bg-elevated)" strokeWidth="12" />
+        {parts.filter((p) => p.value > 0).map((p, i) => {
+          const len = (p.value / total) * c;
+          const el = <circle key={i} cx="50" cy="50" r={r} fill="none" stroke={p.color} strokeWidth="12" strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-acc} transform="rotate(-90 50 50)"><title>{p.title}: {p.value}</title></circle>;
+          acc += len;
+          return el;
+        })}
+        <text x="50" y="47" textAnchor="middle" fontSize="18" fontWeight="700" fill="var(--text-primary)">{label}</text>
+        {sub && <text x="50" y="62" textAnchor="middle" fontSize="8" fill="var(--text-muted)">{sub}</text>}
+      </svg>
+      <ul className="text-[11px] space-y-0.5">
+        {parts.map((p, i) => (
+          <li key={i} className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: p.color }} /> <span style={{ color: 'var(--text-secondary)' }}>{p.title}</span> <b className="tabular-nums">{nf(p.value)}</b></li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+const SITE_COLOR: Record<string, string> = { Pendik: 'var(--nginx-green)', Ankara: 'var(--accent)', Bilinmiyor: 'var(--status-warning)' };
+function MiniBar({ value, total, color }: { value: number; total: number; color: string }) {
+  return <div className="h-1.5 rounded-full" style={{ background: 'var(--bg-elevated)' }}><div className="h-full rounded-full" style={{ width: `${Math.round((value / Math.max(1, total)) * 100)}%`, background: color }} /></div>;
 }
 
 // ── NIM kart kabugu ─────────────────────────────────────────────────────────────────
@@ -80,6 +130,24 @@ export function DashboardTab({ hosts, onGo }: { hosts: NcHost[]; onGo: (tab: 'in
   const now = Date.now();
   const online = hosts.filter((h) => isOnline(h, now)).length;
   const tFail = hosts.filter((h) => h.nginxT === 'fail');
+  const noDump = hosts.filter((h) => !h.dumpedAt).length;
+  const unknownT = hosts.filter((h) => h.dumpedAt && h.nginxT !== 'ok' && h.nginxT !== 'fail').length;
+  // Kaynaklar (dbo.Inventory cpu/memory): ortam bazinda toplam vCPU / GB; verisi olmayanlar sayilir
+  const res = useMemo(() => {
+    const m = new Map<string, { n: number; cpu: number; mem: number; missing: number }>();
+    for (const h of hosts) { const k = h.env || '—'; const e = m.get(k) || { n: 0, cpu: 0, mem: 0, missing: 0 }; e.n += 1; e.cpu += sum([h.cpu]); e.mem += sum([h.memoryGb]); if (h.cpu == null && h.memoryGb == null) e.missing += 1; m.set(k, e); }
+    return [...m.entries()].sort((a, b) => b[1].cpu - a[1].cpu);
+  }, [hosts]);
+  const totCpu = sum(hosts.map((h) => h.cpu)), totMem = sum(hosts.map((h) => h.memoryGb)), resMissing = hosts.filter((h) => h.cpu == null && h.memoryGb == null).length;
+  const oses = useMemo(() => { const m = new Map<string, number>(); for (const h of hosts) { const k = h.os || 'bilinmiyor'; m.set(k, (m.get(k) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [hosts]);
+  // Production: Pendik / Ankara
+  const prod = useMemo(() => hosts.filter((h) => isProdEnv(h.env)), [hosts]);
+  const sites = useMemo(() => {
+    const m = new Map<string, { n: number; online: number; cpu: number; mem: number; tFail: number }>();
+    for (const h of prod) { const k = siteOf(h) || 'Bilinmiyor'; const e = m.get(k) || { n: 0, online: 0, cpu: 0, mem: 0, tFail: 0 }; e.n += 1; if (isOnline(h, now)) e.online += 1; e.cpu += sum([h.cpu]); e.mem += sum([h.memoryGb]); if (h.nginxT === 'fail') e.tFail += 1; m.set(k, e); }
+    return [...m.entries()].sort((a, b) => b[1].n - a[1].n);
+  }, [prod, now]);
+  const oss = hosts.filter((h) => parseNginxVersion(h.nginxVersion).type === 'Open Source').length;
   const versions = useMemo(() => {
     const m = new Map<string, { type: string; version: string; n: number }>();
     for (const h of hosts) { const p = parseNginxVersion(h.nginxVersion); const key = `${p.type}|${p.version || '?'}${p.release ? ' ' + p.release : ''}`; const e = m.get(key) || { type: p.type, version: `${p.version || '?'}${p.release ? ` (${p.release})` : ''}`, n: 0 }; e.n += 1; m.set(key, e); }
@@ -127,18 +195,19 @@ export function DashboardTab({ hosts, onGo }: { hosts: NcHost[]; onGo: (tab: 'in
         <div className="-mx-5 -mb-4 mt-3"><SeeAll label="Daha fazla" onClick={() => onGo('certs')} /></div>
       </Card>
 
-      <Card title="Sunucular" info="Envanterdeki nginx sunucuları; Online = son 2 gün içinde dokumu alınmış.">
+      <Card title="Sunucular" info="Envanterdeki nginx sunucuları; Online = fetch job'ı son 2 gün içinde ulaştı (konfigürasyon değişmese de). nginx -t sonucu son dokumdan.">
         <div className="space-y-5 py-1">
           <BigStat n={hosts.length} label="Toplam sunucu" color="var(--accent)" />
           <BigStat n={online} label="Online (dokum ≤ 2 gün)" color="var(--status-success)" />
-          <BigStat n={hosts.length - online} label="Offline / dokum yok" color="var(--status-warning)" />
+          <BigStat n={hosts.length - online} label="Offline (2 gündür ulaşılamadı)" color="var(--status-warning)" />
           <BigStat n={tFail.length} label="nginx -t başarısız" color="var(--status-danger)" />
+          {(noDump > 0 || unknownT > 0) && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{noDump > 0 && <>{nf(noDump)} sunucunun dokumu hiç alınmamış. </>}{unknownT > 0 && <>{nf(unknownT)} dokumda nginx -t sonucu yok.</>}</div>}
         </div>
         <div className="-mx-5 -mb-4 mt-2"><SeeAll label="Tüm sunucular" onClick={() => onGo('instances')} /></div>
       </Card>
 
       <Card title="Sürümler" info="Envanter nginx -v çıktısından: NGINX Plus / Open Source ve sürüm dağılımı.">
-        <div className="text-[12px] mb-2" style={{ color: 'var(--text-secondary)' }}><b>{plus}</b> NGINX Plus · <b>{hosts.length - plus}</b> Open Source / bilinmiyor</div>
+        <div className="mb-3"><Donut label={nf(hosts.length)} sub="sunucu" parts={[{ value: plus, color: 'var(--nginx-green)', title: 'NGINX Plus' }, { value: oss, color: 'var(--accent)', title: 'Open Source' }, { value: hosts.length - plus - oss, color: 'var(--status-warning)', title: 'Bilinmiyor' }]} /></div>
         <div className="overflow-auto rounded-md border" style={{ borderColor: 'var(--border-subtle)' }}>
           <table className="w-full text-[13px] border-collapse">
             <thead><tr><Th>Tür</Th><Th>Sürüm</Th><Th right>Sunucu</Th><Th>Dağılım</Th></tr></thead>
@@ -172,6 +241,56 @@ export function DashboardTab({ hosts, onGo }: { hosts: NcHost[]; onGo: (tab: 'in
             </tbody>
           </table>
         </div>
+      </Card>
+
+      <Card title="Kaynaklar" info="dbo.Inventory (middleware_inventory) cpu/memory alanlarından: nginx sunucularının toplam vCPU ve bellek dağılımı, ortam bazında. Verisi olmayan sunucu toplama girmez.">
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <BigStat n={totCpu} label="toplam vCPU" color="var(--nginx-green)" />
+          <BigStat n={Math.round(totMem)} label="toplam bellek (GB)" color="var(--accent)" />
+        </div>
+        {resMissing > 0 && <div className="text-[11px] mb-2" style={{ color: 'var(--status-warning)' }}>{nf(resMissing)} sunucunun kaynak verisi envanterde yok.</div>}
+        <div className="overflow-auto rounded-md border" style={{ borderColor: 'var(--border-subtle)' }}>
+          <table className="w-full text-[13px] border-collapse">
+            <thead><tr><Th>Ortam</Th><Th right>Sunucu</Th><Th right>vCPU</Th><Th right>GB</Th><Th>Pay</Th></tr></thead>
+            <tbody>
+              {res.map(([env, e]) => (
+                <tr key={env} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                  <td className="px-3 py-2 font-semibold">{env}{e.missing > 0 && <span className="ml-1 text-[10px] font-normal" style={{ color: 'var(--text-muted)' }} title={`${e.missing} sunucunun kaynak verisi yok`}>({e.missing} eksik)</span>}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{nf(e.n)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{nf(e.cpu)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{nf(Math.round(e.mem))}</td>
+                  <td className="px-3 py-2 w-28"><MiniBar value={e.cpu} total={totCpu} color="var(--nginx-green)" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {oses.length > 0 && <div className="mt-3 text-[11px] flex flex-wrap gap-x-3 gap-y-1" style={{ color: 'var(--text-secondary)' }}>{oses.slice(0, 6).map(([os, n]) => <span key={os}><b className="tabular-nums">{nf(n)}</b> {os}</span>)}</div>}
+      </Card>
+
+      <Card title="Production: Pendik / Ankara" info="Ortamı production olan nginx sunucularının lokasyon dağılımı. Lokasyon envanterden, yoksa sunucu adından (tier harfinden sonra fazladan A = Ankara: GBNGXAP34 Ankara, GBNGXP40 Pendik).">
+        {prod.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Envanterde production nginx sunucusu yok.</div> : (
+          <>
+            <div className="mb-3"><Donut label={nf(prod.length)} sub="prod sunucu" parts={sites.map(([k, e]) => ({ value: e.n, color: SITE_COLOR[k] || 'var(--text-muted)', title: k }))} /></div>
+            <div className="overflow-auto rounded-md border" style={{ borderColor: 'var(--border-subtle)' }}>
+              <table className="w-full text-[13px] border-collapse">
+                <thead><tr><Th>Lokasyon</Th><Th right>Sunucu</Th><Th right>Online</Th><Th right>vCPU</Th><Th right>GB</Th><Th right>nginx -t ✗</Th></tr></thead>
+                <tbody>
+                  {sites.map(([k, e]) => (
+                    <tr key={k} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                      <td className="px-3 py-2 font-semibold"><span className="inline-block w-2 h-2 rounded-sm mr-1.5 align-middle" style={{ background: SITE_COLOR[k] || 'var(--text-muted)' }} />{k}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{nf(e.n)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums" style={{ color: e.online < e.n ? 'var(--status-warning)' : 'var(--status-success)' }}>{nf(e.online)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{nf(e.cpu)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{nf(Math.round(e.mem))}</td>
+                      <td className="px-3 py-2 text-right tabular-nums" style={{ color: e.tFail ? 'var(--status-danger)' : 'var(--text-muted)' }}>{nf(e.tFail)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </Card>
 
       <Card title="Son değişiklikler" info="Konfigürasyon geçmişi: son 8 değişiklik (sunucu taraması ya da Portal push)." className="xl:col-span-3">
@@ -214,8 +333,8 @@ export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload 
   const view = rows.slice((cur - 1) * size, cur * size);
   const allChecked = view.length > 0 && view.every((h) => checked.has(h.host));
   const csv = () => {
-    const header = ['hostname', 'type', 'version', 'env', 'services', 'nginx_t', 'status', 'last_dump', 'ip'];
-    const body = [header, ...rows.map((h) => { const p = parseNginxVersion(h.nginxVersion); return [h.host, p.type, p.version || '', h.env || '', (h.services || []).join(' '), h.nginxT || '', isOnline(h, now) ? 'Online' : 'Offline', h.dumpedAt || '', h.ip || '']; })]
+    const header = ['hostname', 'type', 'version', 'env', 'site', 'services', 'nginx_t', 'status', 'last_seen', 'last_dump', 'cpu', 'memory_gb', 'ip'];
+    const body = [header, ...rows.map((h) => { const p = parseNginxVersion(h.nginxVersion); return [h.host, p.type, p.version || '', h.env || '', siteOf(h) || '', (h.services || []).join(' '), h.nginxT || '', isOnline(h, now) ? 'Online' : 'Offline', lastSeen(h) || '', h.dumpedAt || '', h.cpu ?? '', h.memoryGb ?? '', h.ip || '']; })]
       .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a'); a.href = url; a.download = `nginx_instances_${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url);
@@ -236,19 +355,20 @@ export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload 
         <table className="w-full text-[13px] border-collapse">
           <thead><tr>
             <th className="px-3 py-2 w-8" style={{ background: 'var(--bg-elevated)' }}><input type="checkbox" checked={allChecked} onChange={(e) => { const s = new Set(checked); view.forEach((h) => (e.target.checked ? s.add(h.host) : s.delete(h.host))); setChecked(s); }} aria-label="sayfadakileri seç" /></th>
-            <Th>Hostname</Th><Th>Type</Th><Th>System Tags</Th><Th>nginx -t</Th><Th>Status</Th><Th>Last Status Report</Th><Th right>Actions</Th>
+            <Th>Hostname</Th><Th>Type</Th><Th>System Tags</Th><Th>nginx -t</Th><Th>Status</Th><Th>Son görülme</Th><Th>Son dokum</Th><Th right>Actions</Th>
           </tr></thead>
           <tbody>
-            {view.length === 0 ? <TableEmptyRow colSpan={8} title={hosts.length ? 'Süzgeçle eşleşen sunucu yok.' : 'Envanterde nginx sunucusu yok.'} /> : view.map((h) => {
+            {view.length === 0 ? <TableEmptyRow colSpan={9} title={hosts.length ? 'Süzgeçle eşleşen sunucu yok.' : 'Envanterde nginx sunucusu yok.'} /> : view.map((h) => {
               const p = parseNginxVersion(h.nginxVersion); const online = isOnline(h, now);
               return (
                 <tr key={h.host} className="border-t hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-subtle)' }}>
                   <td className="px-3 py-2.5"><input type="checkbox" checked={checked.has(h.host)} onChange={(e) => { const s = new Set(checked); e.target.checked ? s.add(h.host) : s.delete(h.host); setChecked(s); }} aria-label={h.host} /></td>
                   <td className="px-3 py-2.5"><button className="underline font-medium" style={{ color: 'var(--accent)' }} onClick={() => onOpen(h.host)}>{h.host.toLowerCase()}</button>{h.inventoryMissing && <span className="ml-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>(envanterde yok)</span>}</td>
                   <td className="px-3 py-2.5"><div className="truncate max-w-[16rem]" title={h.nginxVersion || ''}>{p.type}{p.version ? ` - ${p.version}` : ''}{p.release ? ` (${p.release})` : ''}</div></td>
-                  <td className="px-3 py-2.5"><div className="flex gap-1 flex-wrap">{[h.env, ...(h.services || [])].filter(Boolean).slice(0, 3).map((t) => <span key={t as string} className="px-1.5 py-0.5 rounded text-[11px]" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>{t}</span>)}{(h.services || []).length > 2 && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>+{(h.services || []).length - 2}</span>}{!h.env && !(h.services || []).length && '-'}</div></td>
+                  <td className="px-3 py-2.5"><div className="flex gap-1 flex-wrap">{[h.env, isProdEnv(h.env) ? siteOf(h) : null, ...(h.services || [])].filter(Boolean).slice(0, 3).map((t) => <span key={t as string} className="px-1.5 py-0.5 rounded text-[11px]" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>{t}</span>)}{(h.services || []).length > 2 && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>+{(h.services || []).length - 2}</span>}{!h.env && !(h.services || []).length && '-'}</div></td>
                   <td className="px-3 py-2.5">{h.nginxT === 'ok' ? <span style={{ color: 'var(--status-success)' }}>Syntax OK</span> : h.nginxT === 'fail' ? <span className="font-semibold" style={{ color: 'var(--status-danger)' }}>FAIL</span> : <span style={{ color: 'var(--text-muted)' }}>N/A</span>}</td>
                   <td className="px-3 py-2.5"><StatusCell online={online} /></td>
+                  <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)' }} title={lastSeen(h) ? fmtDateTime(lastSeen(h) as string) : ''}>{lastSeen(h) ? fmtRelative(lastSeen(h) as string) : 'hiç görülmedi'}</td>
                   <td className="px-3 py-2.5" style={{ color: 'var(--text-secondary)' }} title={h.dumpedAt ? fmtDateTime(h.dumpedAt) : ''}>{h.dumpedAt ? fmtRelative(h.dumpedAt) : 'dokum yok'}</td>
                   <td className="px-3 py-2.5 text-right relative" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => setMenu(menu === h.host ? null : h.host)} className="p-1 rounded" aria-label={`${h.host} eylemler`}><EllipsisHorizontalIcon className="w-5 h-5" /></button>

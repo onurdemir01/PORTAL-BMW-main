@@ -60,7 +60,9 @@ test('seed: Denetim yalniz Admin; sekme elementleri varsayilan kapali; tek sefer
   const src = read('server/db/mssql-setup.cjs');
   const i = src.indexOf("element_key: 'Denetim',");
   assert.ok(/roles: \['Admin'\],/.test(src.slice(i, i + 600)), 'Denetim seed roles Admin olmali');
-  for (const t of ['nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp']) {
+  // nginx* sekmeleri 2026-09-22'de Nginx Hub'a tasindi: seed'de OLMAMALI (removeMovedDenetimTabs siler)
+  for (const t of ['nginx', 'nginxapi', 'nginxenv', 'nginxaudit']) assert.ok(!src.includes(`element_key: 'tab:denetim:${t}',`), `tab:denetim:${t} seed'i kalmamali (Nginx Hub'a tasindi)`);
+  for (const t of ['ocp', 'init', 'deploy', 'routetraffic', 'envanter', 'degisim', 'appenvs', 'webapp']) {
     const j = src.indexOf(`element_key: 'tab:denetim:${t}',`);
     assert.ok(j > 0, `tab:denetim:${t} seed yok`);
     const blk = src.slice(j, j + 300);
@@ -78,9 +80,11 @@ test('sunucu: /api/denetim yol -> sekme kapisi; panel uclari', () => {
   const den = read('server/audit/denetim.cjs');
   assert.ok(den.includes("requireVisiblePrefix('Denetim')"), 'sayfa kapisi');
   assert.ok(den.includes("requireVisible('tab:denetim:' + hit[1])"), 'sekme kapisi yok');
-  for (const t of ['nginx', 'nginxapi', 'nginxenv', 'nginxaudit', 'ocp', 'init', 'deploy', 'envanter', 'appenvs', 'webapp']) {
+  for (const t of ['ocp', 'init', 'deploy', 'routetraffic', 'envanter', 'appenvs', 'webapp']) {
     assert.ok(new RegExp(`'${t}'\\]`).test(den), `yol eslemesinde ${t} yok`);
   }
+  // nginx denetim uclari artik Nginx Hub sayfa kapisindan (2026-09-22; tab:denetim:nginx* silindi)
+  assert.ok(/NGINX_PATH\.test\(req\.path\)\) return requireVisible\('NginxConsole'\)/.test(den), 'nginx yollari NginxConsole kapisiyla korunmali');
   const routes = read('server/auth/visibility-routes.cjs');
   for (const s of ['router.get("/denetim-access", requireAdmin', 'router.put("/denetim-access", requireAdmin', 'router.delete("/denetim-access", requireAdmin']) {
     assert.ok(routes.includes(s), `uc yok: ${s}`);
@@ -107,10 +111,10 @@ test('istemci: DenetimPage sekmeleri canSee ile suzer, hic yoksa mesaj; Admin se
   // YASAK olan: ham `tab` durumunu KOSULSUZ render etmek.
   const izin = /const\s+tabAllowed\s*=\s*visibleTabs\.includes\(tab\)/.test(page);
   assert.ok(izin, 'gorunurluk kontrolu (`visibleTabs.includes(tab)`) yok');
-  const korumali = /\{\s*tabAllowed\s*&&\s*tab === 'nginx'\s*&& <NginxSpaAudit \/>\}/.test(page);
+  const korumali = /\{\s*tabAllowed\s*&&\s*tab === 'ocp'\s*&& <OcpCoverage \/>\}/.test(page);
   const turetilmis =
     /const\s+activeTab[^=]*=\s*tabAllowed \? tab :/.test(page) &&
-    /\{\s*activeTab === 'nginx'\s*&& <NginxSpaAudit \/>\}/.test(page);
+    /\{\s*activeTab === 'ocp'\s*&& <OcpCoverage \/>\}/.test(page);
   assert.ok(
     korumali || turetilmis,
     'icerik de kapali olmali: ham `tab` durumu kosulsuz render ediliyor',

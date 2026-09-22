@@ -202,6 +202,35 @@
       loop_control:
         label: "{{ item }}"
 
+    # SON GORULME (2026-09-22): parmak izi degismeyen sunucuda dokum yeniden yazilmaz, Portal da
+    # "Online"i dokum mtime'indan turetiyordu -> konfigurasyonu degismeyen her sunucu 2 gun sonra
+    # Offline gorunuyordu. Ulasilan (ok) her host icin raw/_seen.json'a zaman damgasi yazilir;
+    # secili host yenilemesi digerlerini silmesin diye mevcut dosya okunup BIRLESTIRILIR.
+    - name: --- [Task] Son gorulme dosyasini oku (_seen.json) ---
+      ansible.builtin.slurp:
+        src: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}/raw/_seen.json"
+      delegate_to: GBLABT02
+      register: seen_raw
+      failed_when: false
+
+    - name: --- [Task] Son gorulme - onceki kayitlar ---
+      ansible.builtin.set_fact:
+        seen_prev: "{{ ((seen_raw.content | default('e30=')) | b64decode | from_json).hosts | default({}) }}"
+      ignore_errors: true
+
+    - name: --- [Task] Son gorulme yaz (_seen.json) ---
+      vars:
+        seen_now: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+        seen_hosts: "{{ fetch_results | default([]) | selectattr('ok') | map(attribute='host') | map('upper') | list }}"
+        seen_new: "{{ dict(seen_hosts | zip(seen_hosts | map('regex_replace', '^.*$', seen_now) | list)) }}"
+      ansible.builtin.copy:
+        content: "{{ {'at': seen_now, 'hosts': ((seen_prev | default({})) if (seen_prev | default({})) is mapping else {}) | combine(seen_new)} | to_nice_json }}\n"
+        dest: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}/raw/_seen.json"
+        mode: '0666'
+      delegate_to: GBLABT02
+      when: (seen_hosts | length) > 0
+      failed_when: false
+
     - name: --- [Task] set_stats ---
       ansible.builtin.set_stats:
         data:

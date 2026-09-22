@@ -1870,38 +1870,8 @@ const ELEMENT_SEED = [
   // Denetim sekmeleri (2026-09-17): varsayilan KAPALI; Admin > "Denetim Erisimi" paneli
   // kullanici/AD grubu bazinda acar. Sayfa (parent) gorunmuyorsa kaskadla sekme de gorunmez.
   // Anahtarlar DenetimPage sekme id'leriyle birebir (tab:denetim:<id>).
-  {
-    element_key: 'tab:denetim:nginx',
-    element_type: 'tab',
-    parent_key: 'Denetim',
-    label: 'Nginx SPA',
-    sort_order: 1,
-    default_visible: 0,
-  },
-  {
-    element_key: 'tab:denetim:nginxapi',
-    element_type: 'tab',
-    parent_key: 'Denetim',
-    label: 'Nginx API Envanteri',
-    sort_order: 2,
-    default_visible: 0,
-  },
-  {
-    element_key: 'tab:denetim:nginxenv',
-    element_type: 'tab',
-    parent_key: 'Denetim',
-    label: 'Nginx Envanteri',
-    sort_order: 3,
-    default_visible: 0,
-  },
-  {
-    element_key: 'tab:denetim:nginxaudit',
-    element_type: 'tab',
-    parent_key: 'Denetim',
-    label: 'Nginx Audit',
-    sort_order: 4,
-    default_visible: 0,
-  },
+  // nginx / nginxapi / nginxenv / nginxaudit 2026-09-22'de Nginx Hub'a tasindi (Admin);
+  // eski satirlar removeMovedDenetimTabs ile silinir.
   {
     element_key: 'tab:denetim:ocp',
     element_type: 'tab',
@@ -2727,6 +2697,22 @@ async function migrateSelfServiceSectionsToGroups(pool) {
 //
 // GERI ALMAK ICIN: bu fonksiyonun cagrisini kaldirmak ve seed satirlarini geri koymak
 // yeterli - ELEMENT_SEED bir sonraki aciliste kayitlari yeniden olusturur.
+// 2026-09-22: Denetim'in nginx sekmeleri Nginx Hub'a tasindi; eski tab elementleri ve
+// gorunurluk kurallari silinir ki Admin > Denetim Erisimi'nde olu secenek kalmasin.
+async function removeMovedDenetimTabs(pool) {
+  try {
+    let removed = 0;
+    for (const key of ['tab:denetim:nginx', 'tab:denetim:nginxapi', 'tab:denetim:nginxenv', 'tab:denetim:nginxaudit']) {
+      await pool.request().input('k', key).query(`DELETE FROM portal_element_visibility WHERE element_key = @k`);
+      const r = await pool.request().input('k', key).query(`DELETE FROM portal_elements WHERE element_key = @k`);
+      removed += r.rowsAffected?.[0] || 0;
+    }
+    if (removed) console.log(`[DB] Denetim nginx sekmeleri temizlendi (Nginx Hub'a tasindi): ${removed} element`);
+  } catch (e) {
+    console.warn('[DB] removeMovedDenetimTabs:', e.message);
+  }
+}
+
 // portal_links tablosu ve server/links/* API'si HIC ELLENMEDI, link verisi duruyor.
 async function removeKaynaklarNavGroup(pool) {
   try {
@@ -2837,6 +2823,7 @@ async function setupTables() {
   await migratePageParentKeysToNavGroups(pool);
   // 2026-09-19: Yardımcı Araçlar / Faydalı Linkler menuden kaldirildi (bkz. elements.ts)
   await removeKaynaklarNavGroup(pool);
+  await removeMovedDenetimTabs(pool);
   // removeKaynaklarNavGroup ARTIK CAGRILMIYOR (2026-09-07): "Linkler" sayfasi geri
   // acildi. Cagri kalsaydi kayit HER ACILISTA silinir, sayfa her restart'ta menuden
   // duser ve sebebi hicbir yerde gorunmezdi. Fonksiyon SILINMEDI — ileride yeniden

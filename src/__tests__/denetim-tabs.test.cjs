@@ -23,7 +23,7 @@ function tabIds() {
   // (2026-09-10) JS dizeleri TEK tirnaga dondu ve bu toplayici SIFIR sekme
   // dondurdu. Kotusu: bos liste, ALTTAKI "her sekmenin render satiri var"
   // testini de SESSIZCE gecirdi — dongu hic donmedi. Olcut BICIM degil KURAL.
-  const bas = SRC.search(/\{\s*id:\s*["']nginx["']/);
+  const bas = SRC.search(/\{\s*id:\s*["']ocp["']/);
   // BITIS ISARETI DE BICIMDEN BAGIMSIZ: `] as const).map` tek parca yazilmisti;
   // prettier diziyi cok satira boldugunde `]` ile `as const` arasina satir sonu
   // girdi ve isaret KAYBOLDU.
@@ -48,7 +48,7 @@ function tabIds() {
 test('sekme listesi okunabiliyor (regex bozulmadi)', () => {
   const ids = tabIds();
   assert.ok(ids.length >= 6, `sekme bulunamadi (${ids.length})`);
-  assert.ok(ids.includes('nginx') && ids.includes('degisim'), ids.join(','));
+  assert.ok(ids.includes('ocp') && ids.includes('degisim'), ids.join(','));
 });
 
 // Bir sekmenin RENDER SATIRI. Kosul degiskeninin ADI serbest (`tab`, `activeTab`,

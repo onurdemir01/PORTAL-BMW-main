@@ -12,8 +12,7 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 
 const TAB_LABELS: Record<string, string> = {
-  nginx: 'Nginx SPA', nginxapi: 'Nginx API Envanteri', nginxenv: 'Nginx Envanteri', nginxaudit: 'Nginx Audit',
-  ocp: 'OpenShift', init: 'Init Script', envanter: 'Envanter', degisim: 'Envanter Değişim', appenvs: 'JBoss/WAS', webapp: 'Web-App',
+  ocp: 'OpenShift', init: 'Init Script', deploy: 'Deployment Scripts', routetraffic: 'Route Trafiği', envanter: 'Envanter', degisim: 'Envanter Değişim', appenvs: 'JBoss/WAS', webapp: 'Web-App',
 };
 
 export default function DenetimAccessTab() {

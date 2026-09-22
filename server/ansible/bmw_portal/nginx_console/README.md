@@ -74,3 +74,14 @@ Ek job/SSH **yok**; dokumdaki sha256'lar kullanılır. Portal her yeni dokumu i�
 Ekran: dosya panelinde **Geçmiş** (sürümler, fark, şu ankiyle, "bu sürüme dön" → Publish),
 üst sekmede **Değişiklikler** (filo geneli akış, kaynak/tarih filtresi, diff). Uçlar:
 `GET /history/:host?path=`, `GET /changes`, `GET /blob/:sha`.
+
+## Son görülme ve `nginx -t` (2026-09-22)
+
+- **`raw/_seen.json`**: fetch her koşuda ulaşabildiği (ok) sunucular için `{ "at": <UTC>, "hosts": { "<HOST>": <UTC> } }` yazar;
+  mevcut dosya önce okunup **birleştirilir** (seçili host yenilemesi diğerlerinin kaydını silmez). Portal Nginx Hub'da
+  **Online = son 2 gün içinde görüldü** (dokum mtime ile bunun büyüğü). Önceden yalnız dokum mtime'ına bakılıyordu ve
+  parmak izi değişmeyen (dokumu yeniden yazılmayan) her sunucu 2 gün sonra Offline görünüyordu. Bu dosyanın dolması için
+  `nginx_console_fetch` şablonunun **gece zamanlanmış** olması gerekir (tam filo, `target_hosts` boş).
+- **`nginx -t`** dump betiğinde estate standardıyla koşar: `dzdo nginx -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -t`
+  (`nginx_audit_scan.sh`, `nginx_deploy_lock.sh`, `activate.yaml` ile aynı). `www` ile ve `-e`'siz koşunca anahtar dosyaları
+  (root:600) / varsayılan error.log yüzünden hemen her sunucu "fail" görünüyordu. dzdo yoksa eski yol denenir.
