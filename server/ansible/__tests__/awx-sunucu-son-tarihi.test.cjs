@@ -20,6 +20,23 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..', '..');
 const RUNNER_SRC = fs.readFileSync(path.join(ROOT, 'server/ansible/runner.cjs'), 'utf8');
 
+/**
+ * ASILMAYA DAYANIKLI BEKLEME. Bu suitteki testlerin konusu ZAMAN ASIMIDIR;
+ * yarismayi bozan bir mutasyon promise'i hic cozmez ve `await` YALNIZCA o
+ * testi degil DOSYADAKI HEPSINI sonsuza dek bloklar — yani mutasyon turu
+ * "kor bekci" degil "hic bitmedi" uretirdi. Her bekleyis kendi sinirini tasir.
+ * (Ayni ders `job-output-bounds.test.cjs`te de yazili.)
+ */
+function sureSinirli(p, ms, etiket) {
+  // Kendi zamanlayicisini TEMIZLER: aksi halde SN4'un (sizinti) sayimi bu
+  // yardimcinin zamanlayicisini gorur ve URETIM kodunu degil KENDINI olcerdi.
+  let t = null;
+  const sinir = new Promise((_, rej) => {
+    t = setTimeout(() => rej(new Error(`${etiket}: ${ms} ms icinde cozulmedi`)), ms);
+  });
+  return Promise.race([p, sinir]).finally(() => clearTimeout(t));
+}
+
 function kodOnly(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
@@ -33,19 +50,38 @@ function dilim(src, bas, son) {
   return src.slice(i, j);
 }
 
-/** GERCEK `sonTarihli` govdesi — kopyasi degil. */
-function gercekSonTarihli() {
+/**
+ * GERCEK `sonTarihli` govdesi — kopyasi degil.
+ *
+ * `sayac` verilirse zamanlayicilar SAYILIR. Bu gerekli, cunku uretim kodu
+ * `unref()` cagiriyor ve `process.getActiveResourcesInfo()` unref'li bir
+ * zamanlayiciyi GORMEZ — o olcuyle yazilan ilk SN4 KORDU (mutasyon
+ * `clearTimeout`u kaldirdiginda bile geciyordu). Zamanlayicilari dogrudan
+ * saymak, olcmek istedigimiz degismeze birebir baglidir.
+ */
+function gercekSonTarihli(sayac = null) {
   const i = RUNNER_SRC.indexOf('function sonTarihli(');
   const j = RUNNER_SRC.indexOf('\nfunction getServers()');
   assert.ok(i > 0 && j > i, 'kaynak cikarimi bozuldu — desen degismis');
-  return new Function(`${RUNNER_SRC.slice(i, j)}\nreturn sonTarihli;`)();
+  const st = sayac
+    ? (fn, ms) => { sayac.kurulan++; return setTimeout(fn, ms); }
+    : setTimeout;
+  const ct = sayac
+    ? (t) => { if (t) sayac.temizlenen++; return clearTimeout(t); }
+    : clearTimeout;
+  return new Function('setTimeout', 'clearTimeout',
+    `${RUNNER_SRC.slice(i, j)}\nreturn sonTarihli;`)(st, ct);
 }
 
 test('SN1 son tarih gecince YEDEK doner ve BEKLEMEZ', async () => {
   const sonTarihli = gercekSonTarihli();
   const asilan = new Promise(() => {}); // hicbir zaman cozulmez
   const t0 = Date.now();
-  const r = await sonTarihli(asilan, 120, () => ({ ok: false, error: 'zaman asimi' }));
+  const r = await sureSinirli(
+    sonTarihli(asilan, 120, () => ({ ok: false, error: 'zaman asimi' })),
+    5000,
+    'SN1',
+  );
   const gecen = Date.now() - t0;
   assert.equal(r.error, 'zaman asimi');
   assert.ok(gecen < 2000, `${gecen} ms beklendi — son tarih isletilmedi`);
@@ -54,7 +90,7 @@ test('SN1 son tarih gecince YEDEK doner ve BEKLEMEZ', async () => {
 test('SN2 is ZAMANINDA biterse GERCEK sonuc doner (yedek kazanmaz)', async () => {
   const sonTarihli = gercekSonTarihli();
   const hizli = Promise.resolve({ ok: true, jobs: [1, 2, 3] });
-  const r = await sonTarihli(hizli, 5000, () => ({ ok: false, error: 'olmamali' }));
+  const r = await sureSinirli(sonTarihli(hizli, 5000, () => ({ ok: false, error: 'olmamali' })), 5000, 'SN2');
   assert.equal(r.ok, true);
   assert.deepEqual(r.jobs, [1, 2, 3]);
 });
@@ -62,24 +98,30 @@ test('SN2 is ZAMANINDA biterse GERCEK sonuc doner (yedek kazanmaz)', async () =>
 test('SN3 yedek TEMBEL: is zamaninda biterse yedek HIC uretilmez', async () => {
   const sonTarihli = gercekSonTarihli();
   let uretildi = 0;
-  await sonTarihli(Promise.resolve('ok'), 5000, () => { uretildi++; return 'yedek'; });
+  await sureSinirli(sonTarihli(Promise.resolve('ok'), 5000, () => { uretildi++; return 'yedek'; }), 5000, 'SN3');
   assert.equal(uretildi, 0, 'yedek her cagride uretiliyor — yan etkili bir yedek zarar verirdi');
 });
 
-test('SN4 zamanlayici SIZDIRMAZ — is bitince temizlenir', async () => {
-  const sonTarihli = gercekSonTarihli();
-  const oncesi = process.getActiveResourcesInfo().filter((x) => x === 'Timeout').length;
-  await Promise.all(
-    Array.from({ length: 30 }, () => sonTarihli(Promise.resolve(1), 60_000, () => 2)),
+test('SN4 KURULAN her zamanlayici TEMIZLENIR (sizinti yok)', async () => {
+  const sayac = { kurulan: 0, temizlenen: 0 };
+  const sonTarihli = gercekSonTarihli(sayac);
+  await sureSinirli(
+    Promise.all(Array.from({ length: 30 }, () => sonTarihli(Promise.resolve(1), 60_000, () => 2))),
+    5000,
+    'SN4',
   );
-  const sonrasi = process.getActiveResourcesInfo().filter((x) => x === 'Timeout').length;
-  assert.ok(sonrasi <= oncesi, `${sonrasi - oncesi} zamanlayici asili kaldi — 60 sn boyunca sizinti`);
+  assert.equal(sayac.kurulan, 30, 'zamanlayici kurulmamis — son tarih yok');
+  assert.equal(
+    sayac.temizlenen, 30,
+    `${sayac.kurulan - sayac.temizlenen} zamanlayici asili kaldi; her biri 60 sn boyunca ` +
+      'kapanisini (ve icindeki `server`/`yedek` nesnelerini) tutar',
+  );
 });
 
 test('SN5 is REDDEDERSE red gecer (hata yutulmaz)', async () => {
   const sonTarihli = gercekSonTarihli();
   await assert.rejects(
-    () => sonTarihli(Promise.reject(new Error('patladi')), 5000, () => 'yedek'),
+    () => sureSinirli(sonTarihli(Promise.reject(new Error('patladi')), 5000, () => 'yedek'), 5000, 'SN5'),
     /patladi/,
     'red sessizce yedege cevrildi — gercek hata kaybolurdu',
   );
