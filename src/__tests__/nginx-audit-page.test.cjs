@@ -139,14 +139,17 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   assert.ok(covSrv.includes('internetServices,') && covSrv.includes("addSvc('PROD', String(res.application).toLowerCase(), r.service)") && covSrv.includes('addSvc(e, app.toLowerCase(), r.service)'), 'servis kirilimi hesaplanmali (include vhost + PROD proxy vhost)');
   assert.ok(sum.includes('function ServiceBar(') && sum.includes('<ServiceBar total={c.internetTotal} services={c.internetServices || []}'), 'internet hucresinde servis cubugu yok');
   // 2026-09-18: uc ayri olcu - deploy edilmis (H+A, internet sunuculari) / servise tanimli / yuk aliyor
-  for (const s of ["label=\"paket sunucuda (H+A)\"", "label=\"çalışıyor = paket VAR ve tanım VAR\"", "<Where>", "c.missingDetail?.notDeployed", "c.missingDetail?.deployedNotDefined", "c.missingDetail?.definedNotDeployed"]) {
+  // 2026-09-22: kullanici istegiyle etiketler duzgun Turkce'ye cevrildi ("H+A", "paket VAR
+  // ve tanim VAR" gibi ic terimler ekrandan kalkti). OLCULERIN KENDISI ayni; bekci artik
+  // yeni etiketleri ariyor.
+  for (const s of ["label=\"paketi sunucuda duran uygulama\"", "label=\"hem paketi hem tanımı olan uygulama (hizmet veriyor)\"", "<Where>", "c.missingDetail?.notDeployed", "c.missingDetail?.deployedNotDefined", "c.missingDetail?.definedNotDeployed"]) {
     assert.ok(sum.includes(s), `internet hucresinde yok: ${s}`);
   }
   assert.ok(covSrv.includes("internetDeployed: deployed.length") && covSrv.includes("h.hys && h.app") && covSrv.includes("tierOfHost(host) === 'intranet') continue;"), 'sunucu deploy (H+A) olcusunu internet sunucularindan hesaplamali');
   for (const gone of ['<RouteStats />', '<NginxLocations />', '<NginxProxy />', "label: 'Location Detayı'", "label: 'Proxy Tanımları (PROD)'"]) {
     assert.ok(!den.includes(gone), `kaldirilmis olmali: ${gone}`);
   }
-  for (const s of ['OpenShift SPA', 'İnternet · deploy / tanım / çalışıyor', 'İntranet · nginx’e kurulu', 'Route’lar', 'SPA route → IP', 'Yeni GBNGX sunucularına taşınmaya hazır', 'spaTotal', 'ocpApps']) {
+  for (const s of ['OpenShift SPA', 'İnternet · deploy / tanım / çalışıyor', 'İntranet · nginx’e kurulu', 'Route’lar', 'SPA route → IP', 'Yeni GBNGX sunucularına taşınma hazırlığı', 'spaTotal', 'ocpApps']) {
     assert.ok(sum.includes(s), `ozette yok: ${s}`);
   }
   assert.ok(sum.includes("['DEV', 'TEST', 'QA', 'EDU', 'PROD']"), 'EDU ortami sirada yok');

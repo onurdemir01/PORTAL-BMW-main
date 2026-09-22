@@ -450,9 +450,10 @@ test('U26 sayfa uc yerde de AYNI anahtarla kayitli', () => {
 
 test('U27 sayfa route bazli code-splitting ile yukleniyor', () => {
   // Tirnaktan bagimsiz (bkz. U26 notu).
+  // lazyWithRetry = React.lazy + chunk hatasinda bir kez yeniden deneme (2026-09-22).
   assert.match(
     read('App.tsx').replace(/"/g, "'"),
-    /React\.lazy\(\(\) => import\('@\/components\/scalex\/ScaleXPage'\)\)/,
+    /(React\.lazy|lazyWithRetry)\(\(\) => import\('@\/components\/scalex\/ScaleXPage'\)\)/,
   );
 });
 

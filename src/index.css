@@ -903,7 +903,7 @@ thead th {
 /* Koyu ton metinler — koyu temada zeminle AYNI tonda kaliyor, okunmuyorlardi */
 :root .text-red-800, :root .text-red-900, :root .text-rose-800 { color: var(--status-danger); }
 :root .text-amber-800, :root .text-amber-900, :root .text-yellow-800, :root .text-orange-800 { color: var(--status-warning); }
-:root .text-green-800, :root .text-green-900, :root .text-emerald-800 { color: var(--status-success); }
+:root .text-green-800, :root .text-green-900, :root .text-emerald-800, :root .text-emerald-900 { color: var(--status-success); }
 :root .text-blue-800, :root .text-blue-900 { color: var(--accent); }
 :root .text-indigo-700, :root .text-indigo-800, :root .text-purple-700, :root .text-purple-800 { color: var(--status-info); }
 

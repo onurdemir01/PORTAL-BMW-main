@@ -33,9 +33,14 @@ test('DenetimPage lazy', () => {
   // TIRNAKTAN BAGIMSIZ: App.tsx prettier'a ilk kez girdiginde cift tirnaklar tek
   // tirnaga cevrildi ve bu bekci KOD DOGRUYKEN kirmizi dondu. Olcut, sayfanin
   // GERCEKTEN lazy yuklendigi — hangi tirnakla yazildigi degil.
+  //
+  // 2026-09-22: sayfalar `lazyWithRetry` ile yukleniyor (React.lazy'i sarmalar; yeni
+  // surumden sonra silinmis chunk istenirse bir kez yeniden dener, sonra sayfayi
+  // tazeler — bkz. src/utils/lazyWithRetry.ts). Bekcinin sordugu sey DEGISMEDI:
+  // sayfa ana bundle'a girmesin, lazy yuklensin.
   assert.match(
     SRC.replace(/"/g, "'"),
-    /const DenetimPage = React\.lazy\(\(\) => import\('@\/components\/DenetimPage'\)\)/,
+    /const DenetimPage = (React\.lazy|lazyWithRetry)\(\(\) => import\('@\/components\/DenetimPage'\)\)/,
   );
 });
 
