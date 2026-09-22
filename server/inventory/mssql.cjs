@@ -23,7 +23,11 @@ async function getPool() {
     return null;
   }
   try {
-    _pool = await sql.connect({
+    // `sql.connect()` DEGIL: o, node-mssql'in GLOBAL havuzunu kurar ve
+    // `config` argumanini YALNIZCA ILK cagride kullanir (bkz. asagidaki not).
+    // Bu dosya ile `mssql-readonly.cjs` ayni anda global havuzu istediginde
+    // IKINCISI SESSIZCE BIRINCISININ KIMLIGIYLE calisiyordu.
+    _pool = await new sql.ConnectionPool({
       server: process.env.MSSQL_SERVER,
       port: parseInt(process.env.MSSQL_PORT || "1433", 10),
       database: process.env.MSSQL_DATABASE,
@@ -33,7 +37,7 @@ async function getPool() {
       connectionTimeout: 10000,
       requestTimeout: 30000,
       pool: { max: 20, min: 0, idleTimeoutMillis: 30000 },
-    });
+    }).connect();
     _available = true;
     // Reset cached pool if it closes unexpectedly so next call reconnects
     _pool.on('error', (err) => {

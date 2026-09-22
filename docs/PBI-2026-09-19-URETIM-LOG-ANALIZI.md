@@ -40,7 +40,7 @@ sınıflamıştım — **alarm dışı bırakılmalı**, düzeltilecek bir şey 
 | P1-3 401 fırtınası | Görünürlük döngüsü (#117) + **oturum-bitti kapısı** (bu tur): imzalı 401 sonrası `/api/*` ağa çıkmaz. Kalan yarısı `SESSION_STORE` — sunucu tarafı ayar |
 | P2-1 Log gürültüsü | MCP geri çekilme + TLS önbelleği (#121); ECONNRESET **yeniden sınıflandı** |
 | P2-2 Yavaş uçlar | Kısmen (#112, #118) + artımlı stdout (#125) + **sunucu başına son tarih** (bu tur): tek bir AWX `recent-jobs` yanıtını rehin alamıyor |
-| P3-1 MSSQL/AWX 403 | AWX 403 kapatıldı (#117); MSSQL havuzu **açık** |
+| P3-1 MSSQL/AWX 403 | AWX 403 kapatıldı (#117); MSSQL havuzu **kök neden bulundu ve kapatıldı** (bu tur): iki envanter modülü node-mssql'in GLOBAL havuzunu paylaşıyordu |
 
 | # | Başlık | Sınıf | Öncelik | Büyüklük |
 |---|---|---|---|---|
@@ -377,6 +377,39 @@ dedirtirdi.
 12 × `MSSQL pool error — baglanti yeniden kurulacak` ve 8 × AWX iş iptalinde
 HTTP 403. Düşük hacim; kök neden araştırması ve kullanıcıya dönen mesajın
 netleştirilmesi.
+
+### Kök neden (2026-09-22) — ve yanında bulunan çalışmayan bir güvenlik kapısı
+
+`server/inventory/mssql.cjs` ve `server/inventory/mssql-readonly.cjs`'in **ikisi
+de** `sql.connect(config)` çağırıyordu. node-mssql'in `connect`i **global** bir
+havuz kurar ve `config`i **yalnızca ilk çağrıda** kullanır
+(`node_modules/mssql/lib/global-connection.js`):
+
+```js
+function connect (config, callback) {
+  if (!globalConnection) {
+    globalConnection = new shared.driver.ConnectionPool(config)
+  }                      // ← sonraki config'ler SESSİZCE yok sayılır
+  return globalConnection.connect()
+}
+```
+
+**İki sonucu vardı:**
+
+1. **Havuz hatası (P3-1'in kendisi).** İki modül **aynı** havuz nesnesine `error`
+   dinleyicisi takıyor, her biri **yalnız kendi** `_pool`unu `null`luyordu. Bir
+   havuz hatasından sonra ikisi bağlantı durumu konusunda anlaşmazlığa düşüyor;
+   biri yeniden bağlanırken diğeri bayat referansı tutuyordu.
+
+2. **Salt-okunur ayrımı hiç çalışmıyordu.** Envanter ekranları yönetici "Custom
+   SQL" ekranından çok önce açıldığı için global havuzu pratikte **hep**
+   yazma-yetkili modül kuruyordu. `getReadOnlyPool()` **yazma yetkili** havuzu
+   döndürüyor, `MSSQL_RO_USER` hesabı **hiç kullanılmıyor** ve
+   *"Salt-okunur MSSQL bağlantısı kuruldu."* satırı **yanlış** bilgi veriyordu.
+   DB seviyesindeki SELECT-only savunması bir kapı değil, yalnızca bir **niyetti**.
+
+Her iki modül artık kendi `new sql.ConnectionPool(...)` nesnesini kuruyor
+(`server/db/portal-mssql.cjs` bunu zaten doğru yapıyordu).
 
 ---
 
