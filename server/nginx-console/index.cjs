@@ -160,18 +160,27 @@ function loadSummary(host) {
   } catch (e) {
     if (!e || !e.tooLarge) throw e;
     console.warn('[NginxHub] dokum cok buyuk, ozet uretilemedi:', H, e.message);
+    // ALAN ADLARI VE TIPLERI normal ozetle BIREBIR AYNI olmali (2026-09-22):
+    // `certUses` burada {} yazilmisti ve /certs ucu "d.certUses is not iterable"
+    // ile 500 donuyordu; `nginxT` hic yoktu ve /hosts ucu `parsed.nginxT.status`
+    // okurken patliyordu — tek bir dev dokum yuzunden Nginx Hub hic acilmiyordu.
     const bozuk = {
       mtimeMs: st.mtimeMs,
       ingested: false,
       host: H,
       dumpedAt: st.mtime.toISOString(),
+      time: null,
+      prefix: null,
       tooLarge: true,
       tooLargeBytes: st.size,
       error: e.message,
+      nginxT: { status: 'unknown', output: '' },
       tree: [],
       certs: [],
-      certUses: {},
+      certUses: [],
       fileCount: 0,
+      loaded: null,
+      sslFiles: [],
     };
     _summaries.set(H, { mtimeMs: st.mtimeMs, summary: bozuk });
     // Yan dosyaya YAZILMAZ: dokum kuculdugunde (ya da tavan yukseldiginde)
@@ -428,7 +437,7 @@ function initNginxConsole(app) {
           ...h,
           dumpedAt: d ? d.dumpedAt : null,
           seenAt: seenAtOf(h.host, d ? d.dumpedAt : null),
-          nginxT: parsed ? parsed.nginxT.status : null,
+          nginxT: parsed?.nginxT ? parsed.nginxT.status : null,
           fileCount: parsed ? parsed.tree.length : null,
           certCount: parsed ? parsed.certs.length : null,
           certMinDays: parsed ? minDays(parsed) : null,
@@ -438,7 +447,7 @@ function initNginxConsole(app) {
       for (const d of dumped.values()) {
         if (seen.has(d.host)) continue;
         const parsed = loadDump(d.host);
-        hosts.push({ host: d.host, env: null, location: null, site: null, cpu: null, memoryGb: null, os: null, service: null, services: [], nginxVersion: null, prefix: null, configCount: null, ip: null, dumpedAt: d.dumpedAt, seenAt: seenAtOf(d.host, d.dumpedAt), nginxT: parsed ? parsed.nginxT.status : null, fileCount: parsed ? parsed.tree.length : null, certCount: parsed ? parsed.certs.length : null, certMinDays: parsed ? minDays(parsed) : null, inventoryMissing: true });
+        hosts.push({ host: d.host, env: null, location: null, site: null, cpu: null, memoryGb: null, os: null, service: null, services: [], nginxVersion: null, prefix: null, configCount: null, ip: null, dumpedAt: d.dumpedAt, seenAt: seenAtOf(d.host, d.dumpedAt), nginxT: parsed?.nginxT ? parsed.nginxT.status : null, fileCount: parsed?.tree ? parsed.tree.length : null, certCount: parsed?.certs ? parsed.certs.length : null, certMinDays: parsed ? minDays(parsed) : null, inventoryMissing: true });
       }
       res.json({ ok: true, hosts, consoleDir: consoleDir(), inventoryError: invError, seenAt: seenMap().at });
     } catch (err) {
@@ -502,7 +511,12 @@ function initNginxConsole(app) {
     const dumps = hosts
       .map(loadSummary)
       .filter(Boolean)
-      .map((sm) => ({ host: sm.host, certUses: sm.certUses, certs: new Map(sm.certs.map((c) => [c.path, c])), loaded: sm.loaded ?? null }));
+      .map((sm) => ({
+        host: sm.host,
+        certUses: Array.isArray(sm.certUses) ? sm.certUses : [],
+        certs: new Map((Array.isArray(sm.certs) ? sm.certs : []).map((c) => [c.path, c])),
+        loaded: sm.loaded ?? null,
+      }));
     const certs = aggregateCerts(dumps);
     const now = Date.now();
     res.json({

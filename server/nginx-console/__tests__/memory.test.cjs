@@ -151,3 +151,51 @@ test('MEM3 dev dokum host\'u LISTEDEN DUSURMEZ — `loadSummary` bayrakla doner'
     delete require.cache[require.resolve('../index.cjs')];
   }
 });
+
+
+// ── MEM4 — DEV DOKUMUN YEDEK OZETI, NORMAL OZETLE AYNI SEKILDE OLMALI ─────────
+//
+// URETIM (2026-09-22): 8 reverse-proxy sunucusunun dokumu tavani asti ve Nginx Hub
+// HIC ACILMAMAYA basladi:
+//   GET /api/nginx-console/certs 500 "d.certUses is not iterable"
+//   GET /api/nginx-console/hosts 500 "Cannot read properties of undefined (reading 'status')"
+// Sebep: "cok buyuk" yedek ozetinde `certUses` dizi yerine {} idi ve `nginxT` hic yoktu.
+// MEM3 bayragi kontrol ediyordu ama SEKLI kontrol etmiyordu; bu test onu kapatir.
+test('MEM4 dev dokum ozeti normal ozetle AYNI alanlari tasir — /hosts ve /certs patlamaz', async () => {
+  const onceki = process.env.NGINX_CONSOLE_DIR;
+  const dir = await devDokumKur(26 * 1024 * 1024);
+  try {
+    // Ayni dizine KUCUK bir dokum de koy: karsilastirma icin normal ozet gerekiyor.
+    const kucuk =
+      '@@HOST SMALLHOST\n@@TIME 2026-09-20T00:00:00Z\n@@PREFIX /usr/nginx\n' +
+      '@@NGINX_T ok\nok\n@@END\n@@TREE\n@@END\n';
+    fs.writeFileSync(path.join(dir, 'raw', 'SMALLHOST.txt'), kucuk);
+
+    delete require.cache[require.resolve('../index.cjs')];
+    const mod = require('../index.cjs');
+    const dev = mod._loadSummaryForTest('BIGHOST');
+    const normal = mod._loadSummaryForTest('SMALLHOST');
+
+    for (const alan of Object.keys(normal)) {
+      assert.ok(alan in dev, `yedek ozette "${alan}" alani yok — tuketici uclar patlar`);
+      if (Array.isArray(normal[alan])) assert.ok(Array.isArray(dev[alan]), `"${alan}" dizi olmali`);
+    }
+    assert.equal(typeof dev.nginxT?.status, 'string', 'nginxT.status yok — /hosts 500 doner');
+    assert.ok(Array.isArray(dev.certUses), 'certUses dizi olmali — /certs 500 doner');
+
+    // /certs ucunun yaptigi donusumun AYNISI: bozuk ozet zinciri dusurmemeli.
+    const { aggregateCerts } = require('../dump-parse.cjs');
+    const dumps = [dev, normal].map((sm) => ({
+      host: sm.host,
+      certUses: Array.isArray(sm.certUses) ? sm.certUses : [],
+      certs: new Map((Array.isArray(sm.certs) ? sm.certs : []).map((c) => [c.path, c])),
+      loaded: sm.loaded ?? null,
+    }));
+    assert.deepEqual(aggregateCerts(dumps), [], 'sertifika birlestirme dev dokumda patliyor');
+  } finally {
+    if (onceki === undefined) delete process.env.NGINX_CONSOLE_DIR;
+    else process.env.NGINX_CONSOLE_DIR = onceki;
+    fs.rmSync(dir, { recursive: true, force: true });
+    delete require.cache[require.resolve('../index.cjs')];
+  }
+});

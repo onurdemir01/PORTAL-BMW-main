@@ -71,3 +71,36 @@ test('OS7 akis sozlesmesi: bilet TALEP ANINDA acilir, onay sonrasi AWX schedule 
   const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'SelfServicePage.tsx'), 'utf8');
   assert.ok(/r\.smartFirst/.test(page) && /kesinti saatini beklemenize gerek yok/.test(page), 'kullaniciya akis anlatilmali');
 });
+
+// Kullanici (2026-09-22, ekran goruntusu ile): "Smart kaydi tetiklendi ama ekrana hangi
+// kaydin acildigini gostermiyor. Birde su ekranda bembeyaz bos alan gozukuyor. Bu tarz
+// UI/UX sorunu yasamak istemiyorum." + "Iptal'e basmanin bir anlami yok, sayfa surekli
+// ayni kaliyor." + "Bazi job'larda ayni ekranda Ansible ciktisi aktigini unutma."
+test('OS8 OCO sonuc paneli: mesaj TEKRARLANMAZ, Smart kayit no gorunur, bos kutu kalmaz', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'SelfServicePage.tsx'), 'utf8');
+
+  // 1) Ayni cumle hem sari baslikta hem yesil kutuda ciziliyordu.
+  assert.ok(/ocoState\.phase !== 'done' && \(/.test(page), "'done' asamasinda sari baslik cizilmemeli");
+  const doneCard = page.slice(page.indexOf('data-testid="oco-done"'), page.indexOf('data-testid="oco-done"') + 4000);
+  assert.ok(!/\{ocoState\.message\}\s*<\/div>/.test(doneCard), 'sonuc kutusu tek satir mesaj kutusu olmamali');
+
+  // 2) Acilan Smart kaydinin numarasi EKRANDA.
+  assert.ok(/data-testid="oco-smart-no"/.test(page), 'Smart kayit no alani olmali');
+  assert.ok(/Smart Kayıt No/.test(doneCard) && /externalTicketId/.test(doneCard), 'kayit no sonuc kartinda gosterilmeli');
+  assert.ok(/title=\{ocoState\.done\.externalTicketId\}/.test(doneCard), 'kisalan numara title ile tam gorunmeli');
+
+  // 3) Bilet paneli: ekranda karsiligi olmayan durum BOS KUTU birakmasin.
+  assert.ok(/RENDERED_TICKET_STATES/.test(page), 'bilinmeyen bilet durumu icin yedek gosterim olmali');
+  assert.ok(/pendingTicket\.status === 'SCHEDULED'/.test(page), 'SCHEDULED durumunun ekran karsiligi olmali');
+
+  // 4) OCO sonucu, bilet paneliyle BIRLIKTE gorunur (ikisi de ayni ekranda).
+  assert.ok(/!pendingTicket \|\| ocoState\.phase === 'done'/.test(page), 'sonuc karti bilet acikken de gorunmeli');
+
+  // 5) Inline formda "Iptal" yerine ne yaptigini soyleyen dugme.
+  assert.ok(/Formu Temizle/.test(page) && /Yeni Talep/.test(page), 'inline dugme yaptigi isi soylemeli');
+  assert.ok(/disabled=\{jobStreaming \|\| \(!resultView && !formDirty\)\}/.test(page), 'bos formda ve is akarken pasif olmali');
+  assert.ok(/data-testid="ss-form-reset-note"/.test(page), 'sifirlama gorunur bir bildirim birakmali');
+
+  // 6) Ansible ciktisi ayni ekranda akarken form sifirlanamaz.
+  assert.ok(/const JOB_FINISHED = /.test(page) && /jobStreaming/.test(page), 'canli cikti korunmali');
+});

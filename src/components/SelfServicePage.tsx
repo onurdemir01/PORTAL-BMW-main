@@ -29,6 +29,8 @@ import {
   ChevronRightIcon,
   GlobeAltIcon,
   CubeIcon,
+  CheckCircleIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { useBackdropDismiss } from '@/components/common/backdropDismiss';
@@ -42,6 +44,18 @@ import { isFieldActive as isFieldActiveShared } from '../../shared/surveyConditi
 // BEKLEME durumudur — sonlanmış gibi davranıp yoklamayı kesersek ekran "başlatılıyor"da
 // donar ve iş gerçekte çalışırken kullanıcı bunu hiç görmez.
 const WAITING_TICKET_STATES = ['PENDING', 'LAUNCHING'];
+
+// AWX isinin BITTIGI durumlar (JobTrackerContext ile ayni kume). Bazi servislerde
+// Ansible ciktisi AYNI EKRANDA akiyor; is akarken formu sifirlamak canli terminali
+// ekrandan silerdi (2026-09-22 kullanici hatirlatmasi), o yuzden sifirlama ancak is
+// bittikten sonra acilir.
+const JOB_FINISHED = ['successful', 'failed', 'error', 'canceled'];
+
+// Ekranda KARSILIGI OLAN bilet durumlari. Listede olmayan bir durum gelirse (or.
+// poller'in yeni ekledigi SCHEDULED) panel bos bir kutu olarak ciziliyordu —
+// kullanici bunu "bembeyaz bos alan" olarak bildirdi (2026-09-22). Artik bilinmeyen
+// durumlar da yazili bir satirla gosterilir.
+const RENDERED_TICKET_STATES = ['PENDING', 'LAUNCHING', 'SCHEDULED', 'REJECTED', 'TIMEOUT', 'ERROR'];
 
 const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   {
@@ -313,6 +327,16 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
     phase: 'ask' | 'decide' | 'done';
     info?: OcoWindowInfo;
     message?: string;
+    // 'done' SONUCU ARTIK YAPISAL (2026-09-22): eskiden tek uzun cumleydi ve ayni
+    // cumle hem ustteki uyari kutusunda hem alttaki sonuc kutusunda ciziliyordu.
+    // Simdi ust kutu 'done' asamasinda hic cizilmiyor; asagidaki kart Smart kayit
+    // numarasini, OCO penceresini ve sirada ne oldugunu ayri ayri gosteriyor.
+    done?: {
+      kind: 'smart-first' | 'awx' | 'portal' | 'deferred';
+      externalTicketId?: string | null;
+      awxScheduleId?: number | null;
+      runAtText?: string | null;
+    };
   } | null>(null);
   const [ocoNumber, setOcoNumber] = useState('');
   const [ocoBusy, setOcoBusy] = useState(false);
@@ -399,19 +423,12 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
         setOcoState({
           phase: 'done',
           info: r.oco,
-          message: r.smartFirst
-            ? `Smart onay talebi şimdi açıldı${r.externalTicketId ? ` (kayıt no ${r.externalTicketId})` : ''}. ` +
-              `Onayı BUGÜN, mesai içinde verebilirsiniz — kesinti saatini beklemenize gerek yok. ` +
-              `Onay verildiği anda iş, OCO'da belirtilen ${r.oco?.windowStartText} kesinti penceresine zamanlanır ` +
-              `ve o saatte kendiliğinden çalışır; onay o saatten sonra gelirse ve pencere hâlâ açıksa iş hemen başlar. ` +
-              `Durumu "Taleplerim" ve "Zamanlanmış İşler" ekranlarından izleyebilirsiniz.`
-            : r.awxScheduleId
-              ? `İş AWX'te zamanlandı (schedule #${r.awxScheduleId}) ve OCO'da belirtilen ` +
-                `${r.oco?.windowStartText} saatinde AWX tarafından tetiklenecek. Portal kapalı olsa bile çalışır. ` +
-                `Bu ekranı kapatabilirsiniz.`
-              : `İş ${r.oco?.windowStartText} saatine zamanlandı. Bu serviste Smart onayı da gerektiği için ` +
-                `tetikleme Portal üzerinden yapılacak; Smart talebi o saatte açılacağı için onayın da o sırada ` +
-                `verilmesi gerekir. Bu ekranı kapatabilirsiniz.`,
+          done: {
+            kind: r.smartFirst ? 'smart-first' : r.awxScheduleId ? 'awx' : 'portal',
+            externalTicketId: r.externalTicketId ?? null,
+            awxScheduleId: r.awxScheduleId ?? null,
+            runAtText: r.oco?.windowStartText ?? null,
+          },
         });
         if (r.smartFirst && r.smartTicketId != null) {
           setPendingTicket({ id: r.smartTicketId, status: 'PENDING', externalTicketId: r.externalTicketId });
@@ -423,6 +440,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
         setOcoState({
           phase: 'done',
           info: r.oco,
+          done: { kind: 'deferred', runAtText: r.oco?.windowStartText ?? null },
           message: `İş başlatılmadı. ${r.oco?.windowStartText} — ${r.oco?.windowEndText} aralığında tekrar gelip çalıştırabilirsiniz.`,
         });
         return;
@@ -452,6 +470,21 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
       setLaunching(false);
     }
   }
+
+  // Alt satirdaki sol dugmenin ne yapacagini belirleyen durumlar (2026-09-22).
+  const resultView = !!jobId || !!pendingTicket || ocoState?.phase === 'done';
+  // Canli cikti akiyor mu? (is basladi, henuz sonuclanmadi)
+  const jobStreaming = !!jobId && !JOB_FINISHED.includes(trackedJob?.status || '');
+  const formDirty =
+    !!ocoState ||
+    !!err ||
+    Object.values(values).some((v) => (v || '').trim() !== '') ||
+    !!limit.trim() ||
+    !!forks.trim() ||
+    !!jobTags.trim() ||
+    !!skipTags.trim() ||
+    verbosity !== '0' ||
+    jobType !== 'run';
 
   if (typeof document === 'undefined') return null;
 
@@ -508,17 +541,22 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
           {/* OCO Kontrolu paneli — acikken form alanlari GIZLENIR: kullanicinin bu
               noktada verecegi tek karar OCO ile ilgili, alanlari tekrar duzenlemesi
               kafa karistirici olurdu (degerler state'te duruyor, geri donunce kaybolmaz). */}
-          {!loading && !jobId && !pendingTicket && ocoState && (
+          {!loading && !jobId && ocoState && (!pendingTicket || ocoState.phase === 'done') && (
             <div className="space-y-3">
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="text-[15px] font-bold text-amber-900">
-                  Production talebi — OCO kontrolü
-                </p>
-                <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">
-                  {ocoState.message ||
-                    'Bu iş PRODUCTION ortamına yöneliktir; devam etmek için OCO kaydı gerekir.'}
-                </p>
-              </div>
+              {/* 'done' asamasinda bu baslik CIZILMEZ: sonuc metni asagidaki yesil kartta
+                  zaten var, ikisi birden basilinca ayni cumle ekranda iki kez gorunuyordu
+                  (2026-09-22 kullanici bildirimi). */}
+              {ocoState.phase !== 'done' && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-[15px] font-bold text-amber-900">
+                    Production talebi — OCO kontrolü
+                  </p>
+                  <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">
+                    {ocoState.message ||
+                      'Bu iş PRODUCTION ortamına yöneliktir; devam etmek için OCO kaydı gerekir.'}
+                  </p>
+                </div>
+              )}
 
               {ocoState.phase === 'ask' && (
                 <div className="space-y-2">
@@ -668,8 +706,95 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
               )}
 
               {ocoState.phase === 'done' && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                  {ocoState.message}
+                <div
+                  data-testid="oco-done"
+                  className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 space-y-2.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <CheckCircleIcon className="w-5 h-5 shrink-0 text-emerald-600" />
+                    <p className="text-[15px] font-bold text-emerald-900">
+                      {ocoState.done?.kind === 'deferred'
+                        ? 'İş başlatılmadı'
+                        : ocoState.done?.kind === 'smart-first'
+                          ? 'Smart onay talebi açıldı'
+                          : 'İş kesinti penceresine zamanlandı'}
+                    </p>
+                  </div>
+
+                  {ocoState.done?.externalTicketId && (
+                    <div
+                      data-testid="oco-smart-no"
+                      className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 py-2"
+                    >
+                      <span className="text-[12px] font-semibold text-emerald-900">Smart Kayıt No</span>
+                      <span
+                        className="font-mono text-[13px] font-bold text-emerald-900 truncate"
+                        title={ocoState.done.externalTicketId}
+                      >
+                        {ocoState.done.externalTicketId}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const no = ocoState.done?.externalTicketId;
+                          if (no) navigator.clipboard?.writeText(no);
+                        }}
+                        className="ml-auto text-[11px] font-medium text-emerald-700 hover:text-emerald-900 transition"
+                        title="Smart kayıt numarasını kopyala"
+                      >
+                        Kopyala
+                      </button>
+                    </div>
+                  )}
+
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px] text-emerald-900">
+                    {ocoState.info?.ocoNumber && (
+                      <>
+                        <dt className="font-semibold">OCO kaydı</dt>
+                        <dd className="font-mono">{ocoState.info.ocoNumber}</dd>
+                      </>
+                    )}
+                    {ocoState.info && (
+                      <>
+                        <dt className="font-semibold">Kesinti penceresi</dt>
+                        <dd className="font-mono tabular-nums">
+                          {ocoState.info.windowStartText} — {ocoState.info.windowEndText}
+                        </dd>
+                      </>
+                    )}
+                    {ocoState.done?.awxScheduleId != null && (
+                      <>
+                        <dt className="font-semibold">AWX zamanlaması</dt>
+                        <dd className="font-mono">#{ocoState.done.awxScheduleId}</dd>
+                      </>
+                    )}
+                  </dl>
+
+                  <p className="text-[12px] leading-relaxed text-emerald-900">
+                    {ocoState.done?.kind === 'smart-first' ? (
+                      <>
+                        Onayı <b>bugün, mesai içinde</b> verebilirsiniz;
+                        kesinti saatini beklemenize gerek yok. Onay verildiği anda iş{' '}
+                        {ocoState.done.runAtText} kesinti penceresine zamanlanır
+                        ve o saatte kendiliğinden çalışır. Onay pencere açıldıktan sonra gelirse ve pencere
+                        hâlâ açıksa iş hemen başlar. Durumu aşağıdaki kutudan ve "Taleplerim" panelinden
+                        izleyebilirsiniz.
+                      </>
+                    ) : ocoState.done?.kind === 'awx' ? (
+                      <>
+                        İş AWX'te zamanlandı; {ocoState.done.runAtText} saatinde AWX tarafından tetiklenecek.
+                        Portal kapalı olsa bile çalışır. Bu ekranı kapatabilirsiniz.
+                      </>
+                    ) : ocoState.done?.kind === 'portal' ? (
+                      <>
+                        İş {ocoState.done.runAtText} saatine zamanlandı. Bu serviste Smart onayı da gerektiği
+                        için tetikleme Portal üzerinden yapılacak; Smart talebi o saatte açılacağından onayın
+                        da o sırada verilmesi gerekir.
+                      </>
+                    ) : (
+                      ocoState.message
+                    )}
+                  </p>
                 </div>
               )}
             </div>
@@ -891,8 +1016,15 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
                   )}
                   <p className="text-xs text-[var(--text-muted)]">
                     Lütfen ilgili Smart kaydını takip edin — <strong>Kapama Onayı</strong> adımında{' '}
-                    <strong>Tamamla</strong>'ya basmadan otomasyon tetiklenmeyecektir. Onaylanınca
-                    iş otomatik başlar, bu pencereyi kapatabilirsiniz.
+                    <strong>Tamamla</strong>'ya basmadan otomasyon tetiklenmeyecektir.{' '}
+                    {ocoState?.done?.kind === 'smart-first' ? (
+                      <>
+                        Onay verildiğinde iş <strong>hemen değil</strong>, {ocoState.done.runAtText}{' '}
+                        kesinti penceresinde çalışacak.
+                      </>
+                    ) : (
+                      <>Onaylanınca iş otomatik başlar, bu pencereyi kapatabilirsiniz.</>
+                    )}
                   </p>
                   <div className="text-left text-xs bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mx-auto max-w-sm text-amber-800">
                     Kapama Onayı tamamlandıktan ortalama 5 dakika sonra Teams bildirimi gelmezse{' '}
@@ -944,6 +1076,28 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
                   </p>
                 </>
               )}
+              {pendingTicket.status === 'SCHEDULED' && (
+                <>
+                  <p className="text-sm font-medium text-emerald-700">
+                    Onay alındı — iş kesinti penceresine zamanlandı.
+                  </p>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    {pendingTicket.errorMessage ||
+                      'İş, OCO kaydındaki kesinti penceresinde kendiliğinden çalışacak; tekrar bir işlem yapmanız gerekmiyor.'}
+                  </p>
+                </>
+              )}
+              {!RENDERED_TICKET_STATES.includes(pendingTicket.status) && (
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Smart talebi durumu: <b>{pendingTicket.status}</b>
+                  {pendingTicket.externalTicketId ? (
+                    <>
+                      {' '}
+                      — kayıt no <span className="font-mono">{pendingTicket.externalTicketId}</span>
+                    </>
+                  ) : null}
+                </p>
+              )}
             </div>
           )}
 
@@ -973,12 +1127,39 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
         </div>
 
         <div className="px-5 py-4 border-t border-[var(--border)] flex items-center justify-between gap-3 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
-          >
-            {jobId || pendingTicket || ocoState?.phase === 'done' ? 'Kapat' : 'İptal'}
-          </button>
+          {/* INLINE FORMDA "Iptal"IN KAPATACAGI BIR PENCERE YOK (2026-09-22, kullanici:
+              "Iptal'e basmanin bir anlami yok, sayfa surekli ayni kaliyor"): servis
+              kartin icinde acik duruyor, onClose yalnizca formu sifirliyordu ve bos
+              formda hicbir sey degismis gibi gorunmuyordu. Artik dugme yaptigi isi
+              soyluyor: sonuc ekranindayken "Yeni Talep", formdayken "Formu Temizle" —
+              temizlenecek bir sey yoksa pasif. Modal modunda davranis aynen korunur. */}
+          {inline ? (
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={jobStreaming || (!resultView && !formDirty)}
+              title={
+                jobStreaming
+                  ? 'İş çalışıyor — Ansible çıktısı bu ekranda akıyor. İş bitince yeni talep açabilirsiniz (iş alt çubuktan da izlenir).'
+                  : resultView
+                    ? 'Formu sıfırlayıp yeni bir talep oluşturun'
+                    : formDirty
+                      ? 'Girdiğiniz değerleri temizler'
+                      : 'Temizlenecek bir şey yok — form zaten boş.'
+              }
+              className="text-sm font-medium inline-flex items-center gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[var(--text-secondary)]"
+            >
+              <ArrowPathIcon className="w-4 h-4" />
+              {jobStreaming ? 'İş çalışıyor…' : resultView ? 'Yeni Talep' : 'Formu Temizle'}
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
+            >
+              {resultView ? 'Kapat' : 'İptal'}
+            </button>
+          )}
           {!jobId && !pendingTicket && !ocoState && (
             <button
               onClick={() => launch()}
@@ -1259,7 +1440,16 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [fieldsItem, setFieldsItem] = useState<AnsibleSsItem | null>(null);
-  const [formEpoch, setFormEpoch] = useState(0); // inline formu sifirlamak icin (Iptal/Kapat)
+  const [formEpoch, setFormEpoch] = useState(0); // inline formu sifirlamak icin
+  // Sifirlama GORUNUR olmali (2026-09-22): bos bir formda "Formu Temizle"ye basinca
+  // ekranda hicbir sey degismiyordu ve dugme calismiyor sanildi. Kisa bir bildirim
+  // basiyoruz; kendiliginden kayboluyor.
+  const [resetNote, setResetNote] = useState(false);
+  useEffect(() => {
+    if (!resetNote) return;
+    const timer = setTimeout(() => setResetNote(false), 2500);
+    return () => clearTimeout(timer);
+  }, [resetNote]);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -1344,6 +1534,16 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">kullanıcılara kapalı</span>
           )}
           <span style={{ color: 'var(--text-muted)' }}>AWX template #{item.awxTemplateId} · sunucu {item.awxServerId}</span>
+          {resetNote && (
+            <span
+              role="status"
+              data-testid="ss-form-reset-note"
+              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border animate-fade-in"
+              style={{ borderColor: 'var(--status-success)', color: 'var(--status-success)', background: 'var(--status-success-bg)' }}
+            >
+              <CheckCircleIcon className="w-3.5 h-3.5" /> Form sıfırlandı
+            </span>
+          )}
           <span className="ml-auto flex items-center gap-1.5">
             <button onClick={() => setShowHistory(true)} className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }} title="Bu servisin geçmişi">
               <ClockIcon className="w-3.5 h-3.5" /> Geçmiş
@@ -1362,7 +1562,15 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
         </div>
         <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
           {/* key: servis degisince form sifirdan kurulsun; onClose (Iptal/Kapat) = ayni servisi yeniden ac */}
-          <SurveyModal key={item.id + ':' + formEpoch} item={item} inline onClose={() => setFormEpoch((n) => n + 1)} />
+          <SurveyModal
+            key={item.id + ':' + formEpoch}
+            item={item}
+            inline
+            onClose={() => {
+              setFormEpoch((n) => n + 1);
+              setResetNote(true);
+            }}
+          />
         </div>
         {showHistory && <HistoryModal item={item} onClose={() => setShowHistory(false)} />}
         {fieldsItem && <FieldOverridesModal item={fieldsItem} onClose={() => setFieldsItem(null)} />}

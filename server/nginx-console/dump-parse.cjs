@@ -165,11 +165,11 @@ function aggregateCerts(dumps, now = Date.now()) {
     // loaded: nginx -T'nin yukledigi dosyalar; eski dokumda yok (null) -> her kullanim "yuklu" sayilir (bilinmiyor)
     const loadedSet = Array.isArray(d.loaded) ? new Set(d.loaded) : null;
     const usesByCert = new Map();
-    for (const u of d.certUses) {
+    for (const u of Array.isArray(d.certUses) ? d.certUses : []) {
       if (!usesByCert.has(u.cert)) usesByCert.set(u.cert, []);
       usesByCert.get(u.cert).push({ conf: u.conf, serverName: u.serverName, key: u.key, keyState: u.keyState, loaded: loadedSet ? loadedSet.has(u.conf) : null });
     }
-    for (const [p, c] of d.certs) {
+    for (const [p, c] of d.certs instanceof Map ? d.certs : new Map()) {
       const fp = c.exists && c.fingerprint ? c.fingerprint : `missing:${d.host}:${p}`;
       if (!byFp.has(fp)) {
         byFp.set(fp, {
