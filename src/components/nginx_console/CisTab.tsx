@@ -14,7 +14,7 @@ import { Pill } from '@/components/denetim/ui';
 import { Modal } from '@/components/common/Modal';
 import { toast } from '@/hooks/useToast';
 import { fmtNumber } from '@/utils/datetime';
-import { nginxCisApi, type NcCisOverview, type NcCisItemRow, type NcCisHostRow, type NcCisHostDetail, type NcCisCell, type NcCisOverride } from '@/api/nginxCisApi';
+import { nginxCisApi, type NcCisOverview, type NcCisItemRow, type NcCisHostRow, type NcCisHostDetail, type NcCisCell, type NcCisOverride, type NcCisObservedValue } from '@/api/nginxCisApi';
 
 /** Madde numarasi dogal sirasi: 2.4.3 < 2.10.1 (metin sirasi bunu yanlis yapar). */
 function cmpItemId(a: string, b: string) {
@@ -42,7 +42,9 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
   // en cok kalan / en az gecen / bolum. Sunucularda: skor, ad, kalan.
   const [itemSort, setItemSort] = useState<'id' | 'fail' | 'pass' | 'section'>('id');
   const [hostSort, setHostSort] = useState<'score' | 'host' | 'failed'>('score');
-  const [rule, setRule] = useState<{ kind: 'exception' | 'override'; itemId: string; title: string; host?: string; value: string; note: string } | null>(null);
+  // `values`: o maddede filoda OLCULEN degerler — referans penceresinde tek tikla secilir
+  // (2026-09-22 kullanici: "bazi maddelerde eklenecek degerde karisiklik var").
+  const [rule, setRule] = useState<{ kind: 'exception' | 'override'; itemId: string; title: string; host?: string; value: string; note: string; values?: NcCisObservedValue[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const { addJob } = useJobTracker();
 
@@ -100,6 +102,10 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
   };
 
+  /** Bir maddenin filoda olculen degerleri (madde satirindan ya da filo ozetinden). */
+  const observedOf = (itemId: string): NcCisObservedValue[] =>
+    (data?.perItem || []).find((p) => p.id === itemId)?.observedValues || [];
+
   const openHost = async (host: string) => {
     try { const r = await nginxCisApi.host(host); if (r.ok) setDetail(r.host); else toast.error(r.message || 'Sunucu detayı alınamadı.'); }
     catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
@@ -113,9 +119,15 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
         ? await nginxCisApi.setException(rule.itemId, rule.host || null, rule.note)
         : await nginxCisApi.setOverride(rule.itemId, rule.value, rule.note);
       if (!r.ok) { toast.error(r.message || 'Kaydedilemedi.'); return; }
-      toast.success(rule.kind === 'exception' ? 'İstisna kaydedildi; skor yeniden hesaplandı.' : 'Kurum referansı kaydedildi; skor yeniden hesaplandı.');
       setRule(null);
-      await load(true);
+      const fresh = await nginxCisApi.overview(true);
+      if (fresh.ok) setData(fresh);
+      // SONUCU SOYLE (2026-09-22): "referansi ekledim ama gectigini yazmiyor" — kaydin
+      // ardindan kac sunucunun gectigi/kaldigi dogrudan bildirilir.
+      const row = fresh.ok ? (fresh.perItem || []).find((p) => p.id === rule.itemId) : null;
+      if (rule.kind === 'exception') toast.success('İstisna kaydedildi; madde skordan düştü.');
+      else if (row) toast.success(`Kurum referansı kaydedildi — ${rule.itemId}: ${row.pass} sunucu geçiyor, ${row.fail} sunucu kalıyor.`);
+      else toast.success('Kurum referansı kaydedildi; skor yeniden hesaplandı.');
       if (detail) await openHost(detail.host);
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
@@ -244,7 +256,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                   </td>
                   <td className="px-3 py-1.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {isAdmin && <>
-                      <button onClick={() => setRule({ kind: 'override', itemId: i.id, title: i.title, value: '', note: '' })} className="text-[11px] underline mr-2" style={{ color: 'var(--accent)' }} title={(ovrByItem.get(i.id) || []).length ? `Kabul edilen değerler: ${(ovrByItem.get(i.id) || []).map((o) => o.expected).join(', ')} — bu düğme yenisini ekler` : 'CIS önerisi yerine kurum değerini tanımla'}>{(ovrByItem.get(i.id) || []).length ? `referans ekle (${(ovrByItem.get(i.id) || []).length})` : 'kendi referansım'}</button>
+                      <button onClick={() => setRule({ kind: 'override', itemId: i.id, title: i.title, value: '', note: '', values: i.observedValues || [] })} className="text-[11px] underline mr-2" style={{ color: 'var(--accent)' }} title={(ovrByItem.get(i.id) || []).length ? `Kabul edilen değerler: ${(ovrByItem.get(i.id) || []).map((o) => o.expected).join(', ')} — bu düğme yenisini ekler` : 'CIS önerisi yerine kurum değerini tanımla'}>{(ovrByItem.get(i.id) || []).length ? `referans ekle (${(ovrByItem.get(i.id) || []).length})` : 'kendi referansım'}</button>
                       {excById.get(i.id)
                         ? <button onClick={() => dropRule('exception', excById.get(i.id)!.id)} disabled={busy} className="text-[11px] underline" style={{ color: 'var(--status-danger)' }} title={`İstisna gerekçesi: ${excById.get(i.id)?.note}`}>istisnadan çıkar</button>
                         : <button onClick={() => setRule({ kind: 'exception', itemId: i.id, title: i.title, value: '', note: '' })} className="text-[11px] underline" style={{ color: 'var(--text-secondary)' }}>istisnaya al</button>}
@@ -292,7 +304,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                             if (gx) return <span style={{ color: 'var(--text-muted)' }} title={`Tüm filo için istisna: ${gx.note}`}>tüm filo istisnası</span>;
                             if (c.status !== 'FAIL') return null;
                             return (<>
-                              <button onClick={() => setRule({ kind: 'override', itemId: c.id, title: c.title, value: c.observed || '', note: '' })} className="underline mr-2" style={{ color: 'var(--accent)' }}>{(ovrByItem.get(c.id) || []).length ? 'referans ekle' : 'referansım'}</button>
+                              <button onClick={() => setRule({ kind: 'override', itemId: c.id, title: c.title, value: c.observed || '', note: '', values: observedOf(c.id) })} className="underline mr-2" style={{ color: 'var(--accent)' }}>{(ovrByItem.get(c.id) || []).length ? 'referans ekle' : 'referansım'}</button>
                               <button onClick={() => setRule({ kind: 'exception', itemId: c.id, title: c.title, host: detail.host, value: '', note: '' })} className="underline" style={{ color: 'var(--text-secondary)' }}>istisna</button>
                             </>);
                           })()}
@@ -339,12 +351,38 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                 ) : <span style={{ color: 'var(--text-muted)' }}>yok</span>}
               </Box>
             </div>
+            {(itemOpen.observedValues || []).length > 0 && (
+              <Box label="Filoda ölçülen değerler">
+                <div className="flex flex-wrap gap-1.5">
+                  {(itemOpen.observedValues || []).map((o) => (
+                    <span key={o.value} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-mono text-[11px]" style={{ borderColor: 'var(--border)', background: 'var(--bg-elevated)' }} title={`${o.count} sunucu: ${o.hosts.join(', ')}`}>
+                      {o.value}
+                      <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>×{o.count}</span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => { setRule({ kind: 'override', itemId: itemOpen.id, title: itemOpen.title, value: o.value, note: '', values: itemOpen.observedValues || [] }); setItemOpen(null); }}
+                          className="underline"
+                          style={{ color: 'var(--accent)' }}
+                          title="Bu ölçülen değeri kurum referansı olarak ekle"
+                        >
+                          referans yap
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Kurum referansı, <b>ölçülen değerin tamamıyla</b> karşılaştırılır. Birim ve büyük/küçük harf farkı önemsenmez
+                  (20M = 20m, 1024k = 1m, 10 = 10s), ancak “header=10 body=10” gibi birleşik ölçümlerde değeri buradan aynen seçin.
+                </div>
+              </Box>
+            )}
             {itemOpen.rationale && <Box label="Neden önemli?"><span style={{ color: 'var(--text-secondary)' }}>{itemOpen.rationale}</span></Box>}
             {itemOpen.check && <Box label="Nasıl ölçülüyor?"><span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{itemOpen.check}</span></Box>}
             <Box label="Nasıl düzeltilir?"><span className="font-mono text-[11px]">{itemOpen.fix}</span></Box>
             {isAdmin && (
               <div className="flex gap-2 flex-wrap">
-                <button onClick={() => { setRule({ kind: 'override', itemId: itemOpen.id, title: itemOpen.title, value: '', note: '' }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>{(ovrByItem.get(itemOpen.id) || []).length ? 'Kabul edilen değer ekle' : 'Kendi referansımı tanımla'}</button>
+                <button onClick={() => { setRule({ kind: 'override', itemId: itemOpen.id, title: itemOpen.title, value: '', note: '', values: itemOpen.observedValues || [] }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>{(ovrByItem.get(itemOpen.id) || []).length ? 'Kabul edilen değer ekle' : 'Kendi referansımı tanımla'}</button>
                 {excById.get(itemOpen.id)
                   ? <button onClick={() => { dropRule('exception', excById.get(itemOpen.id)!.id); setItemOpen(null); }} disabled={busy} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)', color: 'var(--status-danger)' }}>İstisnadan çıkar (madde yeniden sayılsın)</button>
                   : <button onClick={() => { setRule({ kind: 'exception', itemId: itemOpen.id, title: itemOpen.title, value: '', note: '' }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>Tüm filoda istisnaya al</button>}
@@ -389,9 +427,35 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
               </div>
             )}
             {rule.kind === 'override' ? (
-              <label className="block">Kabul edilen değer (CIS önerisi yerine; aynı maddeye birden fazla değer ekleyebilirsiniz)
-                <input value={rule.value} onChange={(e) => setRule({ ...rule, value: e.target.value })} className="mt-1 w-full px-2 py-1.5 border rounded-lg font-mono" style={{ borderColor: 'var(--border)' }} placeholder="ör. 10m" />
-              </label>
+              <>
+                <label className="block">Kabul edilen değer (CIS önerisi yerine; aynı maddeye birden fazla değer ekleyebilirsiniz)
+                  <input value={rule.value} onChange={(e) => setRule({ ...rule, value: e.target.value })} className="mt-1 w-full px-2 py-1.5 border rounded-lg font-mono" style={{ borderColor: 'var(--border)' }} placeholder="ör. 10m" />
+                </label>
+                {(rule.values || []).length > 0 ? (
+                  <div>
+                    <div style={{ color: 'var(--text-muted)' }}>Filoda ölçülen değerler — tıklayın, alana yazılsın:</div>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {(rule.values || []).map((o) => (
+                        <button
+                          key={o.value}
+                          type="button"
+                          onClick={() => setRule({ ...rule, value: o.value })}
+                          className="px-1.5 py-0.5 rounded border font-mono text-[11px]"
+                          style={{ borderColor: rule.value === o.value ? 'var(--accent)' : 'var(--border)', background: 'var(--bg-elevated)' }}
+                          title={`${o.count} sunucu: ${o.hosts.join(', ')}`}
+                        >
+                          {o.value} <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>×{o.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                      Değer, ölçülen metnin <b>tamamıyla</b> karşılaştırılır; birim/harf farkı önemsenmez (20M = 20m, 1024k = 1m).
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--text-muted)' }}>Bu madde için henüz ölçülen bir değer yok — tarama koşmadan referans eşleşmesi görünmez.</div>
+                )}
+              </>
             ) : (
               <div style={{ color: 'var(--text-secondary)' }}>{rule.host ? <>Yalnız <b>{rule.host}</b> için istisna.</> : <>Tüm filo için istisna (madde hiçbir sunucunun skorunda sayılmaz).</>}</div>
             )}

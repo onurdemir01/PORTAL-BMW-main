@@ -61,10 +61,12 @@ test('CIS4 kendi referansim: olculen deger kurum degerine esitse PASS, degilse F
   const h = r.hosts[0];
   const kt = h.items.find((i) => i.id === '2.4.3');
   assert.equal(kt.status, 'PASS'); assert.equal(kt.expected, '65'); assert.equal(kt.expectedSource, 'kurum'); assert.equal(kt.source, 'kurum referansı');
-  // scored=false madde kurum referansiyla da skora girmez (CIS'te manuel)
+  // KURUM REFERANSI OLAN MADDE SKORA GIRER (2026-09-22, kullanici: "kendi referansimi
+  // ekledigim halde tablo guncellenip gectigini yazmiyor"): CIS'te "manuel" (scored:false)
+  // isaretli 5.2.2, kurum kendi beklenen degerini tanimladiginda olculebilir hale gelir.
   const cmb = h.items.find((i) => i.id === '5.2.2');
-  assert.equal(cmb.status, 'PASS'); assert.equal(cmb.counts, false);
-  assert.equal(h.score, 67, 'keepalive artik geciyor: 2 gecen (2.5.1, 2.4.3) / 3 sayilan');
+  assert.equal(cmb.status, 'PASS'); assert.equal(cmb.counts, true); assert.equal(cmb.measurable, true);
+  assert.equal(h.score, 75, '3 gecen (2.5.1, 2.4.3, 5.2.2) / 4 sayilan (4.1.7 kaldi)');
   // deger tutmuyorsa FAIL; buyuk/kucuk harf ve ; farki gozetilmez
   const r2 = scoreAll({ ...base(), overrides: [{ item_id: '2.5.1', expected: 'OFF;', note: '' }] });
   assert.equal(r2.hosts[0].items.find((i) => i.id === '2.5.1').status, 'PASS');
@@ -149,4 +151,53 @@ test('CIS8 coklu kurum referansi: olculen deger kabul edilen degerlerden HERHANG
   assert.ok(/istisnadan çıkar/.test(tab), 'istisnayi kaldirma dugmesi');
   assert.ok(/referans ekle/.test(tab), 'ikinci kabul edilen deger ekleme dugmesi');
   assert.ok(!/ovrById/.test(tab), 'tekil referans haritasi kalmamali');
+});
+
+
+// ── CIS9 — "kendi referansimi ekledim ama gectigini yazmiyor" (2026-09-22) ────
+//
+// Iki ayri sebep vardi:
+//   1) CIS'te manuel (scored:false) isaretli maddeler kurum referansi tanimlansa da
+//      skora girmiyordu -> skor hic kipirdamiyordu.
+//   2) Karsilastirma duz metin esitligiydi: "20M" ile "20m", "10" ile "10s",
+//      "1024k" ile "1m" tutmuyordu.
+// Ayrica bazi maddelerde OLCULEN deger birlesik ("header=10 body=10"); kullanici ne
+// yazacagini bilemiyordu -> filoda olculen degerler listelenir, tek tikla secilir.
+test('CIS9 kurum referansi: birim/harf farki gozetilmez, madde skora girer, olculen degerler listelenir', () => {
+  const { sameVal } = require('../catalog.cjs');
+  assert.equal(sameVal('20M', '20m'), true, 'buyuk/kucuk harf');
+  assert.equal(sameVal('20m;', '20m'), true, 'noktali virgul');
+  assert.equal(sameVal('10', '10s'), true, 'birimi yazilmamis sayi');
+  assert.equal(sameVal('1024k', '1m'), true, 'bayt birimi donusumu');
+  assert.equal(sameVal('20m', '10m'), false, 'farkli deger gecmemeli');
+  assert.equal(sameVal('header=10 body=10', '10'), false, 'birlesik olcum parcasiyla gecmemeli');
+
+  const hosts = [{ host: 'H1', scan_date: '2026-09-22' }, { host: 'H2', scan_date: '2026-09-22' }];
+  const results = [
+    R('H1', '5.2.2', 'MANUAL', '20M'),
+    R('H2', '5.2.2', 'MANUAL', '1m'),
+  ];
+  const r = scoreAll({ hosts, results, overrides: [{ item_id: '5.2.2', expected: '20m', note: 'kurum' }] });
+  const h1 = r.hosts.find((h) => h.host === 'H1');
+  const h2 = r.hosts.find((h) => h.host === 'H2');
+  assert.equal(h1.items.find((i) => i.id === '5.2.2').status, 'PASS');
+  assert.equal(h2.items.find((i) => i.id === '5.2.2').status, 'FAIL');
+  assert.equal(h1.score, 100, 'referans tanimli madde skora girmeli');
+  assert.equal(h2.score, 0);
+
+  const item = r.perItem.find((i) => i.id === '5.2.2');
+  assert.equal(item.pass, 1);
+  assert.equal(item.fail, 1);
+  assert.deepEqual(
+    item.observedValues.map((o) => o.value).sort(),
+    ['1m', '20M'],
+    'filoda olculen degerler madde ozetinde olmali',
+  );
+  assert.equal(item.observedValues.find((o) => o.value === '1m').hosts[0], 'H2');
+
+  // Ekran sozlesmesi: olculen degerler tek tikla secilir, kayittan sonra sonuc soylenir.
+  const tab = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'CisTab.tsx'), 'utf8');
+  assert.ok(/Filoda ölçülen değerler/.test(tab), 'madde detayinda olculen degerler kutusu');
+  assert.ok(/setRule\(\{ \.\.\.rule, value: o\.value \}\)/.test(tab), 'olculen deger tek tikla alana yazilmali');
+  assert.ok(/sunucu geçiyor, \$\{row\.fail\} sunucu kalıyor/.test(tab), 'kayittan sonra kac sunucunun gectigi soylenmeli');
 });

@@ -10,7 +10,7 @@
 // Skor = gecen / (gecen + kalan) * 100, yalniz "scored" ve skora giren maddeler uzerinden.
 'use strict';
 
-const { ITEMS, BY_ID, normVal, cmpItemId } = require('./catalog.cjs');
+const { ITEMS, BY_ID, normVal, sameVal, cmpItemId } = require('./catalog.cjs');
 
 const U = (s) => String(s || '').trim().toUpperCase();
 
@@ -66,10 +66,15 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
       // "istisna" gorunur; boylece madde detayinda filo genelinde tek bir durum okunur.
       if (exScope) { status = 'EXCEPTED'; source = exScope === 'host' ? 'istisna (bu sunucu)' : 'istisna (tüm filo)'; }
       else if (!r) { status = 'NODATA'; source = 'tarama yok'; }
-      else if (o) { status = o.values.some((v) => normVal(observed) === normVal(v)) ? 'PASS' : 'FAIL'; source = o.values.length > 1 ? `kurum referansı (${o.values.length} kabul edilen değer)` : 'kurum referansı'; }
+      else if (o) { status = o.values.some((v) => sameVal(observed, v)) ? 'PASS' : 'FAIL'; source = o.values.length > 1 ? `kurum referansı (${o.values.length} kabul edilen değer)` : 'kurum referansı'; }
       else { status = U(r.status) || 'NODATA'; source = 'CIS'; }
 
-      const counts = item.scored && status !== 'EXCEPTED' && status !== 'NA' && status !== 'MANUAL' && status !== 'NODATA';
+      // KURUM REFERANSI OLAN MADDE SKORA GIRER (2026-09-22): CIS'te "manuel" (scored:false)
+      // isaretli maddeler olculebilir degildi; kurum kendi beklenen degerini tanimladiginda
+      // madde OLCULEBILIR hale gelir. Aksi halde referans ekleyen kullanici skorun hic
+      // kipirdamadigini goruyor ve "referansin gectigini yazmiyor" diyordu.
+      const measurable = item.scored || !!o;
+      const counts = measurable && status !== 'EXCEPTED' && status !== 'NA' && status !== 'MANUAL' && status !== 'NODATA';
       if (status === 'EXCEPTED') h.excepted += 1;
       else if (!counts) h.skipped += 1;
       else if (status === 'PASS') h.passed += 1;
@@ -78,7 +83,7 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
       h.items.push({
         id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored,
         rationale: item.rationale || null, check: item.check || null,
-        status, source, observed, detail: r ? r.detail || '' : '',
+        status, source, observed, detail: r ? r.detail || '' : '', measurable,
         expected: o ? expectedText(item.id) : item.expects, expectedSource: o ? 'kurum' : (item.expects ? 'CIS' : null),
         exceptionNote: exNote, counts, fix: item.fix,
       });
@@ -95,7 +100,22 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     const fail = cells.filter((c) => c.status === 'FAIL').length;
     const exc = cells.filter((c) => c.status === 'EXCEPTED').length;
     const other = cells.length - pass - fail - exc;
-    return { id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored, pass, fail, excepted: exc, other, fix: item.fix,
+    // OLCULEN DEGERLER (2026-09-22): "referansi ekledim ama gecmiyor" durumunda kullanici
+    // filoda GERCEKTEN hangi degerlerin oldugunu gorsun ve tek tikla referans yapabilsin.
+    const obsMap = new Map();
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i];
+      if (c.status === 'EXCEPTED' || c.status === 'NODATA') continue;
+      const v = String(c.observed || '').trim();
+      if (!v || v === '-') continue;
+      if (!obsMap.has(v)) obsMap.set(v, []);
+      obsMap.get(v).push(list[i].host);
+    }
+    const observedValues = [...obsMap.entries()]
+      .map(([value, hs]) => ({ value, count: hs.length, hosts: hs.slice(0, 20) }))
+      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+      .slice(0, 25);
+    return { id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored, pass, fail, excepted: exc, other, fix: item.fix, observedValues,
       rationale: item.rationale || null, check: item.check || null,
       hosts: cells.map((c, i) => ({ host: list[i].host, status: c.status, observed: c.observed, detail: c.detail, exceptionNote: c.exceptionNote })),
       expected: expectedText(item.id) ?? item.expects, expectedSource: ovr.has(item.id) ? 'kurum' : (item.expects ? 'CIS' : null),

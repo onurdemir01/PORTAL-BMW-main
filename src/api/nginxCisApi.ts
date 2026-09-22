@@ -16,9 +16,13 @@ export interface NcCisCell {
 export interface NcCisHostRow { host: string; nginxVersion: string | null; tState: string | null; scanDate: string | null; score: number | null; passed: number; failed: number; excepted: number; skipped: number }
 export interface NcCisHostDetail extends NcCisHostRow { items: NcCisCell[]; msg?: string | null }
 export interface NcCisItemHost { host: string; status: NcCisCell['status']; observed: string; detail: string; exceptionNote: string | null }
+/** Filoda OLCULEN degerler (2026-09-22): referans girerken tahmin edilmesin, secilsin. */
+export interface NcCisObservedValue { value: string; count: number; hosts: string[] }
+
 export interface NcCisItemRow {
   id: string; title: string; section: string; level: number; scored: boolean;
-  pass: number; fail: number; excepted: number; other: number; fix: string;
+  pass: number;
+  observedValues?: NcCisObservedValue[]; fail: number; excepted: number; other: number; fix: string;
   /** Neden onemli / nasil olculuyor (madde detay penceresi) */
   rationale?: string | null; check?: string | null;
   hosts?: NcCisItemHost[];

@@ -68,4 +68,31 @@ function normVal(v) {
   return String(v == null ? '' : v).trim().replace(/;$/, '').replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').toLowerCase();
 }
 
-module.exports = { ITEMS, BY_ID, normVal, cmpItemId };
+/**
+ * Iki degerin AYNI seyi soyleyip soylemedigi (2026-09-22, kullanici: "kendi referansimi
+ * ekledigim halde gectigini yazmiyor"). Duz metin esitligi cok kati kaliyordu:
+ *   "20M" ile "20m", "10" ile "10s", "1024k" ile "1m" ayni degerdir.
+ * Kural:
+ *   - normalize (bosluk/tirnak/noktali virgul/buyuk-kucuk harf) esitse AYNI
+ *   - ikisi de "sayi + birim" ise: birimlerden biri boska ve sayilar esitse AYNI
+ *   - ikisi de bayt birimi (k/m/g) ise bayta cevrilip karsilastirilir
+ * Dogrudan zaman birimi donusumu YAPILMAZ: "m" nginx'te hem megabayt hem dakika olabilir,
+ * yanlis gecirme riskini almiyoruz.
+ */
+const BYTE_UNIT = { k: 1024, m: 1048576, g: 1073741824 };
+function numUnit(v) {
+  const m = /^(\d+(?:\.\d+)?)\s*([a-z]*)$/.exec(normVal(v));
+  return m ? { n: Number(m[1]), u: m[2] } : null;
+}
+function sameVal(a, b) {
+  if (normVal(a) === normVal(b)) return true;
+  const A = numUnit(a);
+  const B = numUnit(b);
+  if (!A || !B) return false;
+  if (A.u === B.u) return A.n === B.n;
+  if (!A.u || !B.u) return A.n === B.n;
+  if (BYTE_UNIT[A.u] && BYTE_UNIT[B.u]) return A.n * BYTE_UNIT[A.u] === B.n * BYTE_UNIT[B.u];
+  return false;
+}
+
+module.exports = { ITEMS, BY_ID, normVal, sameVal, cmpItemId };
