@@ -101,3 +101,33 @@ test('CIS6 uc/sekme/is sozlesmesi: rescan job, istisna/override uclari, sekme, p
   assert.ok(tab.includes('LoadingLogo'), 'yuklemede donen logo');
   assert.ok(tab.includes('İptal'), 'modal iptal metni');
 });
+
+test('CIS7 siralama ve madde detayi: maddeler DOGAL numara sirasinda, her maddede sunucu dokumu + neden/nasil alanlari', () => {
+  const { cmpItemId } = require('../catalog.cjs');
+  assert.deepEqual(['2.10.1', '2.4.3', '1.1.1', '2.4.4', '5.3.2'].sort(cmpItemId), ['1.1.1', '2.4.3', '2.4.4', '2.10.1', '5.3.2']);
+  const r = scoreAll({
+    hosts: [{ host: 'H1', scan_date: '2026-09-22' }, { host: 'H2', scan_date: '2026-09-22' }],
+    results: [R('H1', '2.5.1', 'FAIL', 'on'), R('H2', '2.5.1', 'PASS', 'off'), R('H1', '2.4.3', 'FAIL', '65')],
+    exceptions: [{ item_id: '2.4.3', host: 'H2', note: 'yalniz bu sunucu' }],
+  });
+  // dogal sira
+  const ids = r.perItem.map((i) => i.id);
+  assert.deepEqual(ids, [...ids].sort(cmpItemId), 'perItem madde numarasina gore sirali dondurulmeli');
+  assert.equal(ids[0], '1.1.1');
+  // madde detayi: sunucu dokumu
+  const tok = r.perItem.find((i) => i.id === '2.5.1');
+  assert.equal(tok.hosts.length, 2);
+  assert.deepEqual(tok.hosts.find((h) => h.host === 'H1'), { host: 'H1', status: 'FAIL', observed: 'on', detail: '', exceptionNote: null });
+  assert.equal(tok.hosts.find((h) => h.host === 'H2').status, 'PASS');
+  const kt = r.perItem.find((i) => i.id === '2.4.3');
+  assert.equal(kt.hosts.find((h) => h.host === 'H2').status, 'EXCEPTED');
+  assert.equal(kt.hosts.find((h) => h.host === 'H2').exceptionNote, 'yalniz bu sunucu');
+  // neden onemli / nasil olculuyor her maddede
+  assert.ok(r.perItem.every((i) => i.rationale && i.check), 'her maddede rationale + check olmali');
+  assert.ok(r.hosts[0].items.every((c) => c.rationale && c.check), 'sunucu hucrelerinde de tasinmali');
+  // UI sozlesmesi
+  const tab = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'CisTab.tsx'), 'utf8');
+  assert.ok(/aria-label="sıralama"/.test(tab), 'siralama secici');
+  assert.ok(/setItemOpen\(i\)/.test(tab) && /Nasıl düzeltilir\?/.test(tab) && /Neden önemli\?/.test(tab), 'madde detay penceresi');
+  assert.ok(/\[\.\.\.detail\.items\]\.sort\(\(a, b\) => cmpItemId/.test(tab), 'sunucu detayinda maddeler dogal sirali');
+});

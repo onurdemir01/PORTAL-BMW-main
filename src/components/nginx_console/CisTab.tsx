@@ -16,6 +16,13 @@ import { toast } from '@/hooks/useToast';
 import { fmtNumber } from '@/utils/datetime';
 import { nginxCisApi, type NcCisOverview, type NcCisItemRow, type NcCisHostRow, type NcCisHostDetail, type NcCisCell } from '@/api/nginxCisApi';
 
+/** Madde numarasi dogal sirasi: 2.4.3 < 2.10.1 (metin sirasi bunu yanlis yapar). */
+function cmpItemId(a: string, b: string) {
+  const pa = a.split('.').map(Number); const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d; }
+  return 0;
+}
+
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 const STATUS_TONE: Record<string, 'success' | 'danger' | 'warning' | 'neutral' | 'info'> = {
   PASS: 'success', FAIL: 'danger', EXCEPTED: 'info', NA: 'neutral', MANUAL: 'warning', NODATA: 'neutral',
@@ -30,6 +37,11 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
   const [q, setQ] = useState('');
   const [only, setOnly] = useState<'all' | 'fail' | 'under80'>('all');
   const [detail, setDetail] = useState<NcCisHostDetail | null>(null);
+  const [itemOpen, setItemOpen] = useState<NcCisItemRow | null>(null);
+  // Siralama (kullanici, 2026-09-22): maddeler varsayilan MADDE NUMARASINA gore; istenirse
+  // en cok kalan / en az gecen / bolum. Sunucularda: skor, ad, kalan.
+  const [itemSort, setItemSort] = useState<'id' | 'fail' | 'pass' | 'section'>('id');
+  const [hostSort, setHostSort] = useState<'score' | 'host' | 'failed'>('score');
   const [rule, setRule] = useState<{ kind: 'exception' | 'override'; itemId: string; title: string; host?: string; value: string; note: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const { addJob } = useJobTracker();
@@ -44,13 +56,20 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
 
   const hosts = useMemo(() => {
     const n = q.trim().toLowerCase();
-    return (data?.hosts || []).filter((h) => (!n || h.host.toLowerCase().includes(n))
+    const list = (data?.hosts || []).filter((h) => (!n || h.host.toLowerCase().includes(n))
       && (only === 'all' || (only === 'fail' ? h.failed > 0 : h.score != null && h.score < 80)));
-  }, [data, q, only]);
+    return [...list].sort((a, b) => (hostSort === 'host' ? a.host.localeCompare(b.host)
+      : hostSort === 'failed' ? b.failed - a.failed || a.host.localeCompare(b.host)
+      : (a.score ?? 101) - (b.score ?? 101) || a.host.localeCompare(b.host)));
+  }, [data, q, only, hostSort]);
   const items = useMemo(() => {
     const n = q.trim().toLowerCase();
-    return (data?.perItem || []).filter((i) => !n || i.id.includes(n) || i.title.toLowerCase().includes(n) || i.section.toLowerCase().includes(n));
-  }, [data, q]);
+    const list = (data?.perItem || []).filter((i) => !n || i.id.includes(n) || i.title.toLowerCase().includes(n) || i.section.toLowerCase().includes(n));
+    return [...list].sort((a, b) => (itemSort === 'fail' ? b.fail - a.fail || cmpItemId(a.id, b.id)
+      : itemSort === 'pass' ? a.pass - b.pass || cmpItemId(a.id, b.id)
+      : itemSort === 'section' ? a.section.localeCompare(b.section) || cmpItemId(a.id, b.id)
+      : cmpItemId(a.id, b.id)));
+  }, [data, q, itemSort]);
 
   const rescan = async (list: string[]) => {
     try {
@@ -138,6 +157,20 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={view === 'hosts' ? 'sunucu ara' : 'madde no / başlık'} className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-56" style={{ borderColor: 'var(--border)' }} />
         </div>
+        <select value={view === 'hosts' ? hostSort : itemSort} onChange={(e) => (view === 'hosts' ? setHostSort(e.target.value as typeof hostSort) : setItemSort(e.target.value as typeof itemSort))} className="h-8 px-2 text-xs border rounded-lg" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }} aria-label="sıralama">
+          {view === 'hosts'
+            ? (<>
+                <option value="score">sırala: skora göre (düşükten)</option>
+                <option value="failed">sırala: kalan madde sayısı</option>
+                <option value="host">sırala: sunucu adı</option>
+              </>)
+            : (<>
+                <option value="id">sırala: madde numarası</option>
+                <option value="fail">sırala: en çok kalan</option>
+                <option value="pass">sırala: en az geçen</option>
+                <option value="section">sırala: bölüm</option>
+              </>)}
+        </select>
         {view === 'hosts' && (
           <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
             {([['all', 'Hepsi'], ['fail', 'Kalan maddesi olan'], ['under80', 'Skor < %80']] as const).map(([id, label]) => (
@@ -187,15 +220,15 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
             </tr></thead>
             <tbody>
               {items.map((i: NcCisItemRow) => (
-                <tr key={i.id} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
+                <tr key={i.id} className="border-t align-top cursor-pointer hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-subtle)' }} onClick={() => setItemOpen(i)} title="Madde detayını aç">
                   <td className="px-3 py-1.5 font-mono">{i.id}{i.scored ? '' : <span title="CIS'te puanlanmayan (manuel) madde" style={{ color: 'var(--text-muted)' }}> ·m</span>}</td>
-                  <td className="px-3 py-1.5"><div className="max-w-[24rem]" title={i.fix}>{i.title}</div></td>
+                  <td className="px-3 py-1.5"><div className="max-w-[24rem] underline decoration-dotted underline-offset-2">{i.title}</div></td>
                   <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }}>{i.section} · L{i.level}</td>
                   <td className="px-3 py-1.5 font-mono">{i.expected || '—'}{i.expectedSource === 'kurum' && <Pill tone="info">kurum</Pill>}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--status-success)' }}>{i.pass}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums font-semibold" style={{ color: i.fail ? 'var(--status-danger)' : undefined }}>{i.fail}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>{i.excepted}{i.exception && <span title={i.exception.note}> ·g</span>}</td>
-                  <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                  <td className="px-3 py-1.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {isAdmin && <>
                       <button onClick={() => setRule({ kind: 'override', itemId: i.id, title: i.title, value: i.expected || '', note: '' })} className="text-[11px] underline mr-2" style={{ color: 'var(--accent)' }}>kendi referansım</button>
                       <button onClick={() => setRule({ kind: 'exception', itemId: i.id, title: i.title, value: '', note: '' })} className="text-[11px] underline" style={{ color: 'var(--text-secondary)' }}>istisnaya al</button>
@@ -227,7 +260,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
               <table className="w-full text-[11px]">
                 <thead><tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}><th className="px-2 py-1">Madde</th><th className="px-2 py-1">Durum</th><th className="px-2 py-1">Ölçülen</th><th className="px-2 py-1">Beklenen</th><th className="px-2 py-1">Açıklama</th>{isAdmin && <th className="px-2 py-1" />}</tr></thead>
                 <tbody>
-                  {detail.items.map((c: NcCisCell) => (
+                  {[...detail.items].sort((a, b) => cmpItemId(a.id, b.id)).map((c: NcCisCell) => (
                     <tr key={c.id} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
                       <td className="px-2 py-1 font-mono whitespace-nowrap" title={c.title}>{c.id}</td>
                       <td className="px-2 py-1"><Pill tone={STATUS_TONE[c.status] || 'neutral'}>{STATUS_TR[c.status] || c.status}</Pill>{!c.counts && c.status !== 'EXCEPTED' && <span style={{ color: 'var(--text-muted)' }} title="skora girmez"> ·</span>}</td>
@@ -246,6 +279,57 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!itemOpen} onClose={() => setItemOpen(null)} title={itemOpen ? `CIS ${itemOpen.id} · ${itemOpen.title}` : ''} subtitle={itemOpen ? `${itemOpen.section} · Seviye ${itemOpen.level}${itemOpen.scored ? '' : ' · CIS’te puanlanmayan (manuel) madde'}` : undefined} size="wide">
+        {itemOpen && (
+          <div className="space-y-3 text-xs">
+            <div className="grid gap-2 md:grid-cols-3">
+              <Box label="Beklenen değer">
+                <span className="font-mono">{itemOpen.expected || '—'}</span>
+                {itemOpen.expectedSource === 'kurum' ? <Pill tone="info">kurum referansı</Pill> : itemOpen.expected ? <Pill tone="neutral">CIS önerisi</Pill> : null}
+              </Box>
+              <Box label="Filo durumu">
+                <span style={{ color: 'var(--status-success)' }}>{itemOpen.pass} geçti</span> ·{' '}
+                <span style={{ color: itemOpen.fail ? 'var(--status-danger)' : undefined }}>{itemOpen.fail} kaldı</span> ·{' '}
+                <span style={{ color: 'var(--text-muted)' }}>{itemOpen.excepted} istisna · {itemOpen.other} skor dışı</span>
+              </Box>
+              <Box label="İstisna">
+                {itemOpen.exception ? <span title={itemOpen.exception.note}>tüm filo için istisna — {itemOpen.exception.note}</span> : <span style={{ color: 'var(--text-muted)' }}>yok</span>}
+              </Box>
+            </div>
+            {itemOpen.rationale && <Box label="Neden önemli?"><span style={{ color: 'var(--text-secondary)' }}>{itemOpen.rationale}</span></Box>}
+            {itemOpen.check && <Box label="Nasıl ölçülüyor?"><span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{itemOpen.check}</span></Box>}
+            <Box label="Nasıl düzeltilir?"><span className="font-mono text-[11px]">{itemOpen.fix}</span></Box>
+            {isAdmin && (
+              <div className="flex gap-2">
+                <button onClick={() => { setRule({ kind: 'override', itemId: itemOpen.id, title: itemOpen.title, value: itemOpen.expected || '', note: '' }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>Kendi referansımı tanımla</button>
+                <button onClick={() => { setRule({ kind: 'exception', itemId: itemOpen.id, title: itemOpen.title, value: '', note: '' }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>Tüm filoda istisnaya al</button>
+              </div>
+            )}
+            <div>
+              <div className="font-semibold mb-1">Sunucular ({(itemOpen.hosts || []).length})</div>
+              <div className="max-h-[45vh] overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+                <table className="w-full text-[11px]">
+                  <thead><tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}><th className="px-2 py-1">Sunucu</th><th className="px-2 py-1">Durum</th><th className="px-2 py-1">Ölçülen</th><th className="px-2 py-1">Açıklama</th></tr></thead>
+                  <tbody>
+                    {[...(itemOpen.hosts || [])]
+                      .sort((a, b) => (a.status === 'FAIL' ? 0 : a.status === 'EXCEPTED' ? 2 : 1) - (b.status === 'FAIL' ? 0 : b.status === 'EXCEPTED' ? 2 : 1) || a.host.localeCompare(b.host))
+                      .map((h) => (
+                        <tr key={h.host} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                          <td className="px-2 py-1 font-mono"><button className="underline" style={{ color: 'var(--accent)' }} onClick={() => { setItemOpen(null); openHost(h.host); }}>{h.host.toLowerCase()}</button></td>
+                          <td className="px-2 py-1"><Pill tone={STATUS_TONE[h.status] || 'neutral'}>{STATUS_TR[h.status] || h.status}</Pill></td>
+                          <td className="px-2 py-1 font-mono"><div className="max-w-[16rem] truncate" title={h.observed}>{h.observed || '—'}</div></td>
+                          <td className="px-2 py-1"><div className="max-w-[22rem] truncate" title={h.exceptionNote || h.detail}>{h.status === 'EXCEPTED' ? <i>{h.exceptionNote}</i> : h.detail}</div></td>
+                        </tr>
+                      ))}
+                    {(itemOpen.hosts || []).length === 0 && <TableEmptyRow colSpan={4} title="Bu madde için sunucu verisi yok." />}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -271,6 +355,15 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+function Box({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+      <div className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: 'var(--text-muted)' }}>{label}</div>
+      <div>{children}</div>
     </div>
   );
 }

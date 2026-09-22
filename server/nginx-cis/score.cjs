@@ -10,7 +10,7 @@
 // Skor = gecen / (gecen + kalan) * 100, yalniz "scored" ve skora giren maddeler uzerinden.
 'use strict';
 
-const { ITEMS, BY_ID, normVal } = require('./catalog.cjs');
+const { ITEMS, BY_ID, normVal, cmpItemId } = require('./catalog.cjs');
 
 const U = (s) => String(s || '').trim().toUpperCase();
 
@@ -53,8 +53,10 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
       const o = ovr.get(item.id) || null;
       const observed = r ? (r.observed == null ? '' : String(r.observed)) : '';
       let status; let source;
-      if (!r) { status = 'NODATA'; source = 'tarama yok'; }
-      else if (exScope) { status = 'EXCEPTED'; source = exScope === 'host' ? 'istisna (bu sunucu)' : 'istisna (tüm filo)'; }
+      // ISTISNA HER SEYDEN ONCE (2026-09-22): madde istisnaya alindiysa tarama verisi olmasa da
+      // "istisna" gorunur; boylece madde detayinda filo genelinde tek bir durum okunur.
+      if (exScope) { status = 'EXCEPTED'; source = exScope === 'host' ? 'istisna (bu sunucu)' : 'istisna (tüm filo)'; }
+      else if (!r) { status = 'NODATA'; source = 'tarama yok'; }
       else if (o) { status = normVal(observed) === normVal(o.expected) ? 'PASS' : 'FAIL'; source = 'kurum referansı'; }
       else { status = U(r.status) || 'NODATA'; source = 'CIS'; }
 
@@ -66,6 +68,7 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
 
       h.items.push({
         id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored,
+        rationale: item.rationale || null, check: item.check || null,
         status, source, observed, detail: r ? r.detail || '' : '',
         expected: o ? o.expected : item.expects, expectedSource: o ? 'kurum' : (item.expects ? 'CIS' : null),
         exceptionNote: exNote, counts, fix: item.fix,
@@ -84,9 +87,11 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     const exc = cells.filter((c) => c.status === 'EXCEPTED').length;
     const other = cells.length - pass - fail - exc;
     return { id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored, pass, fail, excepted: exc, other, fix: item.fix,
+      rationale: item.rationale || null, check: item.check || null,
+      hosts: cells.map((c, i) => ({ host: list[i].host, status: c.status, observed: c.observed, detail: c.detail, exceptionNote: c.exceptionNote })),
       expected: (ovr.get(item.id) || {}).expected ?? item.expects, expectedSource: ovr.has(item.id) ? 'kurum' : (item.expects ? 'CIS' : null),
       exception: excGlobal.has(item.id) ? { scope: 'global', note: excGlobal.get(item.id) } : null };
-  }).sort((a, b) => b.fail - a.fail || a.id.localeCompare(b.id));
+  }).sort((a, b) => cmpItemId(a.id, b.id));
 
   const scored = list.filter((h) => h.score != null);
   const summary = {

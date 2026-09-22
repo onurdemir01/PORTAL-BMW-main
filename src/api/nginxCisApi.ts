@@ -7,6 +7,7 @@ const BASE = '/api/nginx-cis';
 
 export interface NcCisCell {
   id: string; title: string; section: string; level: number; scored: boolean;
+  rationale?: string | null; check?: string | null;
   status: 'PASS' | 'FAIL' | 'EXCEPTED' | 'NA' | 'MANUAL' | 'NODATA';
   source: string; observed: string; detail: string;
   expected: string | null; expectedSource: 'kurum' | 'CIS' | null;
@@ -14,9 +15,13 @@ export interface NcCisCell {
 }
 export interface NcCisHostRow { host: string; nginxVersion: string | null; tState: string | null; scanDate: string | null; score: number | null; passed: number; failed: number; excepted: number; skipped: number }
 export interface NcCisHostDetail extends NcCisHostRow { items: NcCisCell[]; msg?: string | null }
+export interface NcCisItemHost { host: string; status: NcCisCell['status']; observed: string; detail: string; exceptionNote: string | null }
 export interface NcCisItemRow {
   id: string; title: string; section: string; level: number; scored: boolean;
   pass: number; fail: number; excepted: number; other: number; fix: string;
+  /** Neden onemli / nasil olculuyor (madde detay penceresi) */
+  rationale?: string | null; check?: string | null;
+  hosts?: NcCisItemHost[];
   expected: string | null; expectedSource: 'kurum' | 'CIS' | null;
   exception: { scope: string; note: string } | null;
 }
