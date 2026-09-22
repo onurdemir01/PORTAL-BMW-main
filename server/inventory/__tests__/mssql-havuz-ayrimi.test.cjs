@@ -113,9 +113,25 @@ test('MV4 Custom SQL ucu salt-okunur havuzu TERCIH eder, paylasilana yalniz DUSE
   const d = kod.slice(i, kod.indexOf('const req2 = pool.request();', i));
   assert.ok(d.length > 0, 'dilim bos');
   assert.match(d, /getReadOnlyPool\(\)/, 'salt-okunur havuz istenmiyor');
-  // Paylasilan havuza dusus YALNIZ salt-okunur havuz yoksa olmali.
-  assert.match(d, /if\s*\(\s*!pool\s*\)/, 'paylasilan havuza kosulsuz dusuluyor');
-  assert.doesNotMatch(d, /if\s*\(\s*(false|0|null|undefined)\s*\)/, 'olu dal');
+
+  // ── DILIM DAR OLMALI ──────────────────────────────────────────────────────
+  // Ilk yazimda yalnizca "dilimde bir `if (!pool)` VAR MI" soruluyordu ve bekci
+  // KORDU: dusus kosulu `if (true)` yapildiginda, ASAGIDAKI ikinci `if (!pool)`
+  // (baglanti hic yoksa 503) esleseiyor ve bekci geciyordu. Bu, depodaki 4
+  // numarali korluk desenidir — tanimlayicinin VARLIGI sorulmus, DOGRU YERDE
+  // olup olmadigi degil.
+  //
+  // Artik TAM dusus blogu dilimlenip basi sinaniyor.
+  const bas = d.indexOf("let usedPool = 'readonly';");
+  const son = d.indexOf("usedPool = 'shared';");
+  assert.ok(bas >= 0 && son > bas, 'dusus blogu bulunamadi — desen degismis');
+  const dusus = d.slice(bas, son);
+  assert.match(
+    dusus.split('\n')[1] || '',
+    /^\s*if\s*\(\s*!pool\s*\)\s*\{/,
+    'paylasilan havuza dusus `!pool` ile korunmuyor — salt-okunur kapi olur',
+  );
+  assert.doesNotMatch(dusus, /if\s*\(\s*(true|1|false|0|null|undefined)\s*\)/, 'sabit kosullu dal');
 });
 
 test('MV5 salt-okunur modul yazma kimligini HIC okumaz', () => {
