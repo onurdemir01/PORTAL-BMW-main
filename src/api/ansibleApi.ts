@@ -351,6 +351,9 @@ export const ansibleApi = {
     ocoDecisionRequired?: boolean;
     ocoExpired?: boolean;
     ocoScheduled?: boolean;
+    /** OCO penceresi ileride + Smart gerekli: bilet TALEP ANINDA acildi (2026-09-22) */
+    smartFirst?: boolean;
+    smartTicketId?: number;
     ocoDeferred?: boolean;
     scheduleId?: number;
     oco?: OcoWindowInfo;

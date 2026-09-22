@@ -80,3 +80,17 @@ test('DR4 UI/uc sozlesmesi: /drift ucu, Tutarlilik sekmesi, Instances durum suzg
   const drift = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'DriftTab.tsx'), 'utf8');
   assert.ok(/title=\{f\.path\}/.test(drift) && /title=\{g\.hosts\.join/.test(drift) && !/confirm\(|alert\(/.test(drift), 'kirpilan alanlarda title, popup yok');
 });
+
+test('DR5 her sekmede KAYNAK satiri: hangi AWX isi besliyor, veri ne zamanki, nasil tazelenir', () => {
+  const note = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'SourceNote.tsx'), 'utf8');
+  for (const job of ['nginx_console_fetch', 'nginx_audit', 'nginx_cis', 'nginx_ratelimit_inventory', 'nginx_metadata']) {
+    assert.ok(note.includes(job), 'kaynak isi eksik: ' + job);
+  }
+  const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
+  assert.ok(/<SourceNote source=\{SOURCE_OF\[tab\]\}/.test(page), 'kaynak satiri her sekmede cizilmeli');
+  const map = page.slice(page.indexOf('const SOURCE_OF'), page.indexOf('};', page.indexOf('const SOURCE_OF')));
+  for (const [tab, src] of [['dashboard', 'console'], ['certs', 'console'], ['drift', 'console'], ['audit', 'audit'], ['cis', 'cis'], ['spa', 'spa'], ['api', 'api'], ['envanter', 'inventory']]) {
+    assert.ok(new RegExp(`${tab}: '${src}'`).test(map), `${tab} sekmesi ${src} kaynagina baglanmali`);
+  }
+  assert.ok(/lastDump/.test(page) && /seenAt \|\| h\.dumpedAt/.test(page), 'dokum tabanli sekmelerde son tarama = en yeni dokum/gorulme');
+});

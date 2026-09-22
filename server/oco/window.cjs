@@ -103,6 +103,40 @@ function evaluateWindow({ startDate, endDate, now = new Date() }) {
   };
 }
 
+/**
+ * ONAY SONRASI CALISMA ANI (2026-09-22, kullanici):
+ * "OCO 18:00, giris 15:00 -> Smart onayindan sonra is 18:00'a zamanlanir.
+ *  OCO 23:00, giris 23:30, pencere hala aciksa -> onaydan sonra HEMEN calisir.
+ *  Pencere kapandiysa ve OCO araligi ertesi gunu de kapsiyorsa -> ertesi gunun ayni saatine."
+ *
+ * Donus: { mode: 'now' | 'schedule' | 'none', runAt, text, reason }
+ *   now      -> pencere acik, is hemen tetiklenmeli
+ *   schedule -> runAt anina zamanlanmali (pencere baslangici ya da sonraki gunun baslangici)
+ *   none     -> calistirilamaz (pencere tamamen gecti)
+ * `graceMs`: onay ile tetikleme arasindaki kucuk gecikmeye tolerans (varsayilan 60 sn);
+ * pencerenin son saniyesinde onay gelirse is yine de baslar.
+ */
+function nextRunAt({ windowStart, windowEnd, now = new Date(), graceMs = 60000 }) {
+  const ws = windowStart instanceof Date ? windowStart : new Date(windowStart);
+  const we = windowEnd instanceof Date ? windowEnd : new Date(windowEnd);
+  if (Number.isNaN(ws.getTime()) || Number.isNaN(we.getTime())) {
+    return { mode: 'none', runAt: null, text: '', reason: 'Kesinti penceresi okunamadı.' };
+  }
+  const t = now.getTime();
+  if (t < ws.getTime()) {
+    return { mode: 'schedule', runAt: ws, text: fmt(ws), reason: `Kesinti penceresi ${fmt(ws)} tarihinde açılıyor; iş o ana zamanlandı.` };
+  }
+  if (t <= we.getTime() + graceMs) {
+    return { mode: 'now', runAt: now, text: fmt(now), reason: `Kesinti penceresi açık (${fmt(ws)} — ${fmt(we)}); iş hemen çalıştırılıyor.` };
+  }
+  // PENCERE KAPANDI. "Ertesi gune ertele" BILEREK YAPILMIYOR: OCO kaydi TEK bir kesinti
+  // araligi tasir (PlannedStart - PlannedEnd). O aralik bittikten sonra is calistirmak,
+  // onayli kesinti penceresinin DISINDA prod'a dokunmak olurdu. Aralik birden cok gunu
+  // kapsiyorsa zaten yukaridaki 'now' dali calisir (pencere hala acik). Kullaniciya yeni
+  // bir OCO acmasi soylenir.
+  return { mode: 'none', runAt: null, text: '', reason: `OCO kesinti penceresi ${fmt(we)} tarihinde kapandı; iş çalıştırılamaz. Yeni bir OCO kaydı ile tekrar deneyin.` };
+}
+
 // OCO cevabinin govdesinden kesinti penceresini cikarir. ONCELIK (kullanici, 2026-09-16):
 //   1) Result.PlannedStartDate / PlannedEndDate  (WCF "/Date(ms+0300)/" ya da dd.MM.yyyy)
 //   2) Result.PlannedInterruption.InterruptionStartDate / InterruptionEndDate (eski alan;
@@ -142,4 +176,5 @@ function toRRuleStamp(d) {
        + `T${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
-module.exports = { parseOcoDate, evaluateWindow, extractPlannedInterruption, fmt, toRRuleStamp, EQUAL_DATE_WINDOW_MS };
+module.exports = {
+  nextRunAt, parseOcoDate, evaluateWindow, extractPlannedInterruption, fmt, toRRuleStamp, EQUAL_DATE_WINDOW_MS };

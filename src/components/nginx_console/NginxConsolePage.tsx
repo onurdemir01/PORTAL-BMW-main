@@ -26,6 +26,7 @@ import { DashboardTab, InstancesTab } from './NimTabs';
 import { OrphansTab } from './OrphansTab';
 import { DriftTab } from './DriftTab';
 import { CisTab } from './CisTab';
+import { SourceNote, type SourceKey } from './SourceNote';
 // DENETIM'DEN TASINDI (kullanici, 2026-09-22): "Denetim'deki tum nginx sayfalarini Nginx Hub'a
 // gom." Bilesenler yerinde kaldi (denetim/), yalniz sekme burada. Denetim'de artik nginx sekmesi yok.
 import { NginxSpaAudit, NGINX_DENETIM_HELP } from '@/components/DenetimPage';
@@ -125,6 +126,19 @@ export default function NginxConsolePage() {
   };
   const go = (t: Tab, host?: string) => { if (host) setFocusHost(host.toUpperCase()); setTab(t); };
 
+  // HANGI IS BESLIYOR (kullanici, 2026-09-22): Nginx Hub'da uc ayri kaynak yan yana duruyor;
+  // her sekmenin basinda kaynak isi, verinin tarihi ve nasil tazelenecegi yazar.
+  const SOURCE_OF: Record<Tab, SourceKey> = {
+    dashboard: 'console', instances: 'console', config: 'console', changes: 'console', certs: 'console',
+    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', spa: 'spa', api: 'api', envanter: 'inventory',
+  };
+  // Dokum tabanli sekmelerde "son tarama" = en yeni dokum/gorulme ani.
+  const lastDump = useMemo(() => {
+    const times = hosts.map((h) => h.seenAt || h.dumpedAt).filter(Boolean) as string[];
+    if (!times.length) return null;
+    return fmtDateTime(times.sort().pop() as string);
+  }, [hosts]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -153,6 +167,7 @@ export default function NginxConsolePage() {
           <button onClick={() => setShowHelp(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }} title="Denetim bölümleri nasıl okunur?" aria-label="Nasıl kullanılır?">?</button>
         </div>
       </div>
+      <SourceNote source={SOURCE_OF[tab]} scanDate={SOURCE_OF[tab] === 'console' ? lastDump : undefined} />
       {tab === 'dashboard' && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
       {tab === 'instances' && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={refreshHosts} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
       {tab === 'config' && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}

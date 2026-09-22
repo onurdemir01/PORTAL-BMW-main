@@ -213,6 +213,8 @@ async function evaluateOcoGate({
   ocoNumber: rawOcoNumber, ocoAction: rawOcoAction,
   createOcoAwxSchedule, friendlyAwxError,
   preferPortalScheduler, ownerGroups,
+  // Smart bileti artik BU kapida (kesinti saatinde degil, talep aninda) acilabiliyor.
+  buildSmartMetadata: ctxBuildSmartMetadata,
 }) {
   assertHooks({ createOcoAwxSchedule, friendlyAwxError }, ['createOcoAwxSchedule', 'friendlyAwxError']);
   const ocoClient = require('../oco/client.cjs');
@@ -274,6 +276,14 @@ async function evaluateOcoGate({
       return { outcome: 'respond', body: { ok: true, ocoDeferred: true, oco: ocoInfo } };
     }
     const pendingLaunch = { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName };
+    // ONAY ONCE, ZAMANLAMA SONRA (2026-09-22, kullanici): eskiden Smart bileti kesinti
+    // SAATINDE aciliyordu; personel 15:00'te talebi birakip 23:00'te tekrar gelip Smart'i
+    // onaylamak zorunda kaliyordu. Artik Smart bileti HEMEN acilir; onay gelince is
+    // pencereye zamanlanir (pencere zaten aciksa hemen calisir). Pencere bilgisi bilete
+    // gomulur (oco/window.nextRunAt bunu onay aninda yeniden degerlendirir).
+    pendingLaunch.ocoWindowStartIso = w.windowStart instanceof Date ? w.windowStart.toISOString() : null;
+    pendingLaunch.ocoWindowEndIso = w.windowEnd instanceof Date ? w.windowEnd.toISOString() : null;
+    pendingLaunch.ocoNumber = ocoNumber;
 
     // ZAMANLAMA NEREDE TUTULUR?
     //   * Varsayilan: AWX'te NATIVE bir schedule. Is kesinti saatinde AWX tarafindan
@@ -325,6 +335,45 @@ async function evaluateOcoGate({
       // Gorunurluk icin: kullanici KENDI ve GRUBUNUN kayitlarini gorur.
       ownerGroups,
     });
+
+    // SMART DE GEREKIYORSA: bileti SIMDI ac (onay 15:00'te alinir), is onay sonrasi
+    // pencereye zamanlanir. Bilet acilamazsa kayit yine kalir ve eski davranisa duseriz
+    // (Portal poller kesinti saatinde onay isteyecek) — kullanici isini kaybetmez.
+    if (smartAlsoRequired) {
+      try {
+        const opened = await openSmartTicket({
+          server, templateId, username,
+          email: req?.session?.user?.mail || '',
+          templateName, overrides,
+          extraVars: { ...extraVars },
+          detail, resolvedLaunchOptions, specFields,
+          buildSmartMetadata: ctxBuildSmartMetadata,
+          auditAction: 'selfservice_smart_ticket_open',
+          req,
+          pendingLaunchExtras: { ocoRecordId: rec.id, ...pendingLaunch },
+        });
+        await ocoStore.markPendingApproval(rec.id, { smartTicketId: opened.ticketId, externalTicketId: opened.externalTicketId });
+        audit.auditPortal(req, 'selfservice_oco_smart_first', {
+          detail: JSON.stringify({ templateId, ocoNumber, scheduleId: rec.id, runAt: w.windowStartText, externalTicketId: opened.externalTicketId }),
+        });
+        return {
+          outcome: 'respond',
+          body: {
+            ok: true, ocoScheduled: true, scheduleId: rec.id,
+            viaSmart: true, viaPortalScheduler: true, smartFirst: true,
+            smartTicketId: opened.ticketId, externalTicketId: opened.externalTicketId,
+            oco: ocoInfo,
+            message: `Smart onay talebi açıldı (${opened.externalTicketId}). Onay verildiğinde iş ${w.windowStartText} kesinti penceresine zamanlanacak; pencere o an açıksa hemen çalışacak.`,
+          },
+        };
+      } catch (smartErr) {
+        audit.auditPortal(req, 'selfservice_oco_smart_first_failed', {
+          detail: JSON.stringify({ templateId, ocoNumber, scheduleId: rec.id, error: smartErr.message }),
+        });
+        console.warn('[OCO] Smart bileti simdi acilamadi, kesinti saatinde denenecek:', smartErr.message);
+      }
+    }
+
     audit.auditPortal(req, 'selfservice_oco_scheduled', {
       detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id, viaPortalPoller: true }),
     });
@@ -373,7 +422,7 @@ async function runChangeGates(ctx) {
       server, templateId, username, req,
       overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
       ocoNumber, ocoAction, createOcoAwxSchedule, friendlyAwxError,
-      preferPortalScheduler, ownerGroups,
+      preferPortalScheduler, ownerGroups, buildSmartMetadata,
     });
     if (ocoDecision.outcome !== 'proceed') return ocoDecision;
   }

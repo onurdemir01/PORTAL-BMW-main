@@ -394,17 +394,29 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
       if (r.ok && r.ocoScheduled) {
         // İki tetikleyici olabilir; kullanıcıya HANGİSİ olduğunu söylüyoruz çünkü
         // "Portal kapalıysa ne olur" sorusunun cevabı değişiyor.
+        // ONAY ONCE, ZAMANLAMA SONRA (2026-09-22): Smart gerekiyorsa bilet ARTIK ŞİMDİ
+        // açılıyor; kullanıcı gece tekrar gelmesin diye akış net anlatılır.
         setOcoState({
           phase: 'done',
           info: r.oco,
-          message: r.awxScheduleId
-            ? `İş AWX'te zamanlandı (schedule #${r.awxScheduleId}) ve OCO'da belirtilen ` +
-              `${r.oco?.windowStartText} saatinde AWX tarafından tetiklenecek. ` +
-              `Bu ekranı kapatabilirsiniz.`
-            : `İş ${r.oco?.windowStartText} saatine zamanlandı. Bu serviste Smart onayı da ` +
-              `gerektiği için tetikleme Portal üzerinden yapılacak ve o saatte önce Smart ` +
-              `talebi açılacak. Bu ekranı kapatabilirsiniz.`,
+          message: r.smartFirst
+            ? `Smart onay talebi şimdi açıldı${r.externalTicketId ? ` (kayıt no ${r.externalTicketId})` : ''}. ` +
+              `Onayı BUGÜN, mesai içinde verebilirsiniz — kesinti saatini beklemenize gerek yok. ` +
+              `Onay verildiği anda iş, OCO'da belirtilen ${r.oco?.windowStartText} kesinti penceresine zamanlanır ` +
+              `ve o saatte kendiliğinden çalışır; onay o saatten sonra gelirse ve pencere hâlâ açıksa iş hemen başlar. ` +
+              `Durumu "Taleplerim" ve "Zamanlanmış İşler" ekranlarından izleyebilirsiniz.`
+            : r.awxScheduleId
+              ? `İş AWX'te zamanlandı (schedule #${r.awxScheduleId}) ve OCO'da belirtilen ` +
+                `${r.oco?.windowStartText} saatinde AWX tarafından tetiklenecek. Portal kapalı olsa bile çalışır. ` +
+                `Bu ekranı kapatabilirsiniz.`
+              : `İş ${r.oco?.windowStartText} saatine zamanlandı. Bu serviste Smart onayı da gerektiği için ` +
+                `tetikleme Portal üzerinden yapılacak; Smart talebi o saatte açılacağı için onayın da o sırada ` +
+                `verilmesi gerekir. Bu ekranı kapatabilirsiniz.`,
         });
+        if (r.smartFirst && r.smartTicketId != null) {
+          setPendingTicket({ id: r.smartTicketId, status: 'PENDING', externalTicketId: r.externalTicketId });
+          window.dispatchEvent(new CustomEvent('portal:smart-ticket-created'));
+        }
         return;
       }
       if (r.ok && r.ocoDeferred) {

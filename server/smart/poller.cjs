@@ -80,23 +80,34 @@ async function _tickBody() {
     // "Tamamlandi" donse BILE asagidaki launch blogunа HIC ULASMAZ (continue). TIMEOUT
     // yazildiktan sonra listPending() yalnizca status='PENDING' dondurdugu icin talep
     // bir daha hic islenmez - otomasyon ASLA tetiklenmez.
+    // SURE SINIRI: varsayilan kisa (15 dk). AMA bilet bir OCO kaydindan dogduysa onay
+    // penceresi kesinti saatine kadar acik kalmali (2026-09-22): personel 15:00'te talebi
+    // birakiyor, onay is akisinda birkac saat surebiliyor. Sinir, kesinti penceresinin
+    // SONU (+1 saat) ile varsayilanin buyugudur.
     const ageMinutes = (Date.now() - new Date(ticket.createdAt).getTime()) / 60000;
-    if (ageMinutes > cfg.ticketTimeoutMinutes) {
+    let timeoutMinutes = cfg.ticketTimeoutMinutes;
+    const winEndIso = ticket?.pendingLaunch?.ocoWindowEndIso;
+    if (winEndIso) {
+      const until = new Date(winEndIso).getTime() + 3600 * 1000;
+      const allowed = (until - new Date(ticket.createdAt).getTime()) / 60000;
+      if (Number.isFinite(allowed) && allowed > timeoutMinutes) timeoutMinutes = allowed;
+    }
+    if (ageMinutes > timeoutMinutes) {
       await store
         .markState(ticket.id, {
           status: 'TIMEOUT',
           smartStateName: ticket.smartStateName,
-          errorMessage: `${cfg.ticketTimeoutMinutes} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
+          errorMessage: `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
           resolved: true,
           expected: 'PENDING', // arada iptal edildiyse CANCELLED korunur
         })
         .catch((e) => console.warn('[Smart] TIMEOUT yazilamadi:', e.message));
       await syncOcoRecord(ticket, {
         status: 'FAILED',
-        message: `Smart onayi ${cfg.ticketTimeoutMinutes} dakikada gelmedi — is tetiklenmedi.`,
+        message: `Smart onayi ${Math.round(timeoutMinutes)} dakikada gelmedi — is tetiklenmedi.`,
       });
       console.log(
-        `[Smart] ticket #${ticket.id} ZAMAN ASIMI (${cfg.ticketTimeoutMinutes} dk) - otomasyon tetiklenmedi.`,
+        `[Smart] ticket #${ticket.id} ZAMAN ASIMI (${Math.round(timeoutMinutes)} dk) - otomasyon tetiklenmedi.`,
       );
       continue;
     }
@@ -150,7 +161,22 @@ async function _tickBody() {
       }
 
       try {
-        const { jobId } = await _onApproved(ticket);
+        // Sonuc IKI turlu olabilir (2026-09-22): is hemen tetiklendi (jobId) ya da OCO
+        // kesinti penceresine zamanlandi (scheduled: true) — ikincisinde job numarasi yok,
+        // bilet "SCHEDULED" olarak kapanir ve OCO kaydi zamanlanmis olarak kalir.
+        const outcome = (await _onApproved(ticket)) || {};
+        const { jobId } = outcome;
+        if (outcome.scheduled) {
+          await store.markState(ticket.id, {
+            status: 'SCHEDULED',
+            smartStateName: status.stateName,
+            errorMessage: `Onay alındı; iş ${outcome.runAtText || 'kesinti penceresine'} zamanlandı.`,
+            resolved: true,
+            expected: 'LAUNCHING',
+          });
+          console.log(`[Smart] ticket #${ticket.id} onaylandi -> is ${outcome.runAtText || ''} zamanlandi (AWX schedule ${outcome.awxScheduleId || '?'}).`);
+          continue;
+        }
         await store.markState(ticket.id, {
           status: 'LAUNCHED',
           smartStateName: status.stateName,

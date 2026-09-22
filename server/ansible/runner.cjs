@@ -2936,7 +2936,39 @@ function initAnsibleRunner(app) {
         overrides,
         username,
         templateName,
+        ocoWindowStartIso,
+        ocoWindowEndIso,
+        ocoRecordId,
+        ocoNumber,
       } = ticket.pendingLaunch;
+
+      // ONAY SONRASI OCO PENCERESI (2026-09-22, kullanici): Smart bileti artik talep aninda
+      // aciliyor (15:00), onay da o sirada geliyor. Onay geldiginde pencere HENUZ ACILMADIYSA
+      // is AWX'te o ana zamanlanir — personelin gece tekrar gelmesi gerekmez. Onay kapisi
+      // ZATEN GECILDIGI icin AWX-native zamanlama guvenlidir.
+      if (ocoWindowStartIso && ocoWindowEndIso) {
+        const ocoWindow = require('../oco/window.cjs');
+        const plan = ocoWindow.nextRunAt({ windowStart: new Date(ocoWindowStartIso), windowEnd: new Date(ocoWindowEndIso) });
+        if (plan.mode === 'none') throw new Error(plan.reason);
+        if (plan.mode === 'schedule') {
+          const schedName = `PORTAL_OCO_${ocoNumber || 'X'}_${ticket.awxTemplateId}_${Date.now()}`;
+          const sched = await createOcoAwxSchedule(server, ticket.awxTemplateId, detail, {
+            name: schedName, runAt: plan.runAt, extraVars, resolvedLaunchOptions,
+            requester: username ? { username } : null,
+          });
+          if (ocoRecordId) {
+            try {
+              await require('../oco/store.cjs').markAwxScheduledAfterApproval(ocoRecordId, {
+                awxScheduleId: sched.scheduleId, runAt: plan.runAt,
+              });
+            } catch (e) { console.warn('[OCO] onay sonrasi zamanlama kaydi guncellenemedi:', e.message); }
+          }
+          console.log(`[Smart] ticket #${ticket.id} onaylandi -> is ${plan.text} kesinti penceresine zamanlandi (AWX schedule ${sched.scheduleId}).`);
+          return { jobId: null, scheduled: true, runAtText: plan.text, awxScheduleId: sched.scheduleId };
+        }
+        // plan.mode === 'now': pencere acik, asagidaki normal launch calisir.
+      }
+
       return performSsLaunch(server, ticket.awxTemplateId, {
         detail,
         extraVars,

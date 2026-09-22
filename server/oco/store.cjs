@@ -266,6 +266,16 @@ async function markPendingApproval(id, { smartTicketId, externalTicketId }) {
 
 // Smart bileti onaylanip AWX job'i gercekten tetiklendiginde cagrilir (bkz.
 // runner.cjs smart poller callback'i). PENDING_APPROVAL -> LAUNCHED.
+/** Smart onayi ALINDI ve is kesinti penceresine AWX'te zamanlandi (2026-09-22). */
+async function markAwxScheduledAfterApproval(id, { awxScheduleId, runAt }) {
+  await db.query(
+    `UPDATE oco_scheduled_jobs
+        SET status = 'AWX_SCHEDULED', awx_schedule_id = $2, run_at = $3, updated_at = GETUTCDATE()
+      WHERE id = $1`,
+    [id, awxScheduleId || null, runAt instanceof Date ? runAt : new Date(runAt)],
+  );
+}
+
 async function markApprovedLaunched(id, awxJobId) {
   const { rows } = await db.query(
     `UPDATE oco_scheduled_launches
@@ -344,4 +354,5 @@ async function adminCancel(id, { cancelledBy, note }) {
   return rows[0] ? rowToRec(rows[0]) : null;
 }
 
-module.exports = { create, createAwxScheduled, get, listScheduled, listAll, listByUsername, listForUser, canManage, update, cancelBy, gruplarKesisiyor, claimForLaunch, markLaunched, markPendingApproval, markApprovedLaunched, markApprovalResolved, markFailed, markExpired, cancel, adminCancel };
+module.exports = {
+  markAwxScheduledAfterApproval, create, createAwxScheduled, get, listScheduled, listAll, listByUsername, listForUser, canManage, update, cancelBy, gruplarKesisiyor, claimForLaunch, markLaunched, markPendingApproval, markApprovedLaunched, markApprovalResolved, markFailed, markExpired, cancel, adminCancel };
