@@ -1314,6 +1314,46 @@ function withRequesterVars(extraVars, user) {
   };
 }
 
+/**
+ * Survey'i ZORUNLU olan ama bu launch'ta gonderilmeyen alanlari template'in KENDI survey
+ * varsayilanlariyla tamamlar (2026-09-22 uretim olayi: Portal'daki "Skoru tazele" dugmesi
+ * "AWX HTTP 400: survey'inde zorunlu alan(lar) eksik: 'tbmwans_pwd' value missing" veriyordu —
+ * alan AWX survey'inde TANIMLI ve varsayilani vardi, ama Portal onu payload'a koymadigi icin
+ * AWX launch'i reddediyordu).
+ *
+ * Kurallar:
+ *   - Yalniz ZORUNLU (required) ve payload'da OLMAYAN alanlar doldurulur; kullanicinin
+ *     gonderdigi deger ASLA ezilmez.
+ *   - Parola tipi alanlarin varsayilani AWX'te "$encrypted$" olarak doner; bu deger AYNEN
+ *     geri gonderilir — AWX bunu "varsayilani kullan" diye yorumlar, parola Portal'a hic inmez.
+ *   - Varsayilani olmayan zorunlu alan varsa doldurulamaz; AWX'in kendi hatasi gecerli kalir
+ *     (mesaj zaten hangi alanin eksik oldugunu soyluyor).
+ * Survey okunamazsa (404 / yetki / AWX erisilemez) hicbir sey yapilmaz: fail-open.
+ */
+async function fillRequiredSurveyDefaults(server, token, templateId, extraVars) {
+  try {
+    const spec = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${templateId}/survey_spec/`);
+    const fields = (spec && spec.spec) || [];
+    if (!fields.length) return extraVars;
+    const out = { ...extraVars };
+    const filled = [];
+    for (const f of fields) {
+      const name = f.variable;
+      if (!name || !f.required) continue;
+      if (Object.prototype.hasOwnProperty.call(out, name) && String(out[name] ?? '') !== '') continue;
+      const def = f.default;
+      if (def === undefined || def === null || def === '') continue;
+      out[name] = def; // parola alanlarinda def === '$encrypted$'
+      filled.push(name);
+    }
+    if (filled.length) console.log(`[AWX] template ${templateId}: zorunlu survey alanlari varsayilanla dolduruldu: ${filled.join(', ')}`);
+    return out;
+  } catch (e) {
+    if (e && e.status !== 404) console.warn(`[AWX] survey_spec okunamadi (template ${templateId}):`, e.message);
+    return extraVars;
+  }
+}
+
 async function launchJobOnServer(
   serverId,
   templateId,
@@ -1328,11 +1368,13 @@ async function launchJobOnServer(
   if (isNaN(id) || id <= 0)
     throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
 
-  const finalExtraVars = withRequesterVars(extraVars, requester);
+  const token = await getTokenForServer(server);
+  // Zorunlu survey alanlari (or. tbmwans_pwd) payload'da yoksa template varsayilanindan tamamla.
+  const withDefaults = await fillRequiredSurveyDefaults(server, token, id, extraVars);
+  const finalExtraVars = withRequesterVars(withDefaults, requester);
   const payload = { extra_vars: JSON.stringify(finalExtraVars) };
   if (limit) payload.limit = limit;
 
-  const token = await getTokenForServer(server);
   const data = await awxRequestToServer(
     server,
     token,
