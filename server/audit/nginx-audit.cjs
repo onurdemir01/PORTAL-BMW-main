@@ -324,6 +324,27 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
       h.proxyFqdn +
       h.unusedUpstreams +
       h.upsNoResolve;
+    // UYUM ORANI (kullanici, 2026-09-22): "sunucularin uyum oranini %'sel olarak satirda gor."
+    // Denetlenen her "kontrol" bir tane: her upstream 3 kontrol (resolve/keepalive/zone) + 1
+    // kullanim, her proxy location 1 (hedef tanimli mi), her global referans direktifi 1, her
+    // kurulum referans dosyasi 1. Gecen kontrol / toplam kontrol. nginx -T dusen sunucu 0 alir
+    // (konfigurasyon hic yuklenmiyor), veri yoksa null (hukum yok).
+    const parts = [];
+    if (h.upstreams > 0) {
+      parts.push(['upstream resolve', h.upstreams - h.upsNoResolve, h.upstreams]);
+      parts.push(['upstream keepalive', h.upstreams - h.upsNoKeepalive, h.upstreams]);
+      parts.push(['upstream zone', h.upstreams - h.upsNoZone, h.upstreams]);
+      parts.push(['upstream kullanımı', h.upstreams - h.unusedUpstreams, h.upstreams]);
+    }
+    if (h.locationsProxy > 0) parts.push(['proxy hedefi', h.locationsProxy - h.proxyUndefined - h.proxyFqdn, h.locationsProxy]);
+    const refTotal = h.settingsAll.length;
+    if (refTotal > 0) parts.push(['global ayarlar', h.settingsAll.filter((s) => s.matches).length, refTotal]);
+    if (h.refFiles.length > 0) parts.push(['kurulum dosyaları', h.refFiles.filter((f) => f.identical === true).length, h.refFiles.length]);
+    const passed = parts.reduce((a, x) => a + Math.max(0, x[1]), 0);
+    const total = parts.reduce((a, x) => a + x[2], 0);
+    h.complianceParts = parts.map(([label, ok, tot]) => ({ label, ok: Math.max(0, ok), total: tot, pct: tot > 0 ? Math.round((Math.max(0, ok) / tot) * 100) : null }));
+    h.complianceChecks = total;
+    h.compliance = h.status === 'fail' ? 0 : (total > 0 ? Math.round((passed / total) * 100) : null);
   }
   list.sort((a, b) => b.issues - a.issues || a.host.localeCompare(b.host));
 
@@ -334,6 +355,8 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
   const totals = {
     hosts: list.length,
     excepted: list.filter((h) => h.exception).length,
+    complianceAvg: (() => { const v = list.filter((h) => h.compliance != null); return v.length ? Math.round(v.reduce((a, h) => a + h.compliance, 0) / v.length) : null; })(),
+    complianceUnder90: list.filter((h) => h.compliance != null && h.compliance < 90).length,
     configInvalid: list.filter((h) => h.status === 'fail').length,
     serverBlocks: sum((h) => h.serverBlocks),
     locations: sum((h) => h.locations),

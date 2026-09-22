@@ -54,7 +54,7 @@ export function NginxAudit() {
   const [onlyProblem, setOnlyProblem] = useState(false);
   // HIZLI SORUN SUZGECI (kullanici, 2026-09-22): "hangi sunucular sorunlu, hizli goremiyorum" -
   // tek tikla resolve/keepalive/zone/tanimsiz/ayar/-T sorunlu sunucular, o sayiya gore sirali.
-  const [issue, setIssue] = useState<'' | 'upsNoResolve' | 'upsNoKeepalive' | 'upsNoZone' | 'proxyUndefined' | 'settingsMismatch' | 'tfail'>('');
+  const [issue, setIssue] = useState<'' | 'upsNoResolve' | 'upsNoKeepalive' | 'upsNoZone' | 'proxyUndefined' | 'settingsMismatch' | 'tfail' | 'compliance'>('');
   // Kabul edilen degerler (Admin): referans disinda gecerli sayilan direktif degerleri
   const [allowed, setAllowed] = useState<NginxAuditAllowedValue[]>([]);
   const [allowedOpen, setAllowedOpen] = useState(false);
@@ -206,10 +206,12 @@ export function NginxAudit() {
       if (needle && !h.host.toLowerCase().includes(needle)) return false;
       if (onlyProblem && h.issues === 0) return false;
       if (issue === 'tfail' && h.status === 'ok') return false;
-      if (issue && issue !== 'tfail' && !(Number(h[issue]) > 0)) return false;
+      if (issue === 'compliance' && !(h.compliance != null && h.compliance < 90)) return false;
+      if (issue && issue !== 'tfail' && issue !== 'compliance' && !(Number(h[issue]) > 0)) return false;
       return true;
     });
-    if (issue && issue !== 'tfail') list.sort((a, b) => Number(b[issue]) - Number(a[issue]) || a.host.localeCompare(b.host));
+    if (issue === 'compliance') list.sort((a, b) => (a.compliance ?? 101) - (b.compliance ?? 101) || a.host.localeCompare(b.host));
+    else if (issue && issue !== 'tfail') list.sort((a, b) => Number(b[issue]) - Number(a[issue]) || a.host.localeCompare(b.host));
     return list;
   }, [data, q, env, onlyProblem, issue]);
   const issueCounts = useMemo(() => {
@@ -217,6 +219,7 @@ export function NginxAudit() {
     return {
       upsNoResolve: hs.filter((h) => h.upsNoResolve > 0).length, upsNoKeepalive: hs.filter((h) => h.upsNoKeepalive > 0).length, upsNoZone: hs.filter((h) => h.upsNoZone > 0).length,
       proxyUndefined: hs.filter((h) => h.proxyUndefined > 0).length, settingsMismatch: hs.filter((h) => h.settingsMismatch > 0).length, tfail: hs.filter((h) => h.status !== 'ok').length,
+      compliance: hs.filter((h) => h.compliance != null && h.compliance < 90).length,
     };
   }, [data]);
 
@@ -330,7 +333,7 @@ export function NginxAudit() {
 
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-[11px] mr-1" style={{ color: 'var(--text-muted)' }}>Hızlı süzgeç (sunucu sayısı):</span>
-        {([['', 'hepsi', data.hosts.length], ['upsNoResolve', 'upstream resolve yok', issueCounts.upsNoResolve], ['upsNoKeepalive', 'keepalive yok', issueCounts.upsNoKeepalive], ['upsNoZone', 'zone yok', issueCounts.upsNoZone], ['proxyUndefined', 'tanımsız hedef', issueCounts.proxyUndefined], ['settingsMismatch', 'ayar sapması', issueCounts.settingsMismatch], ['tfail', 'nginx -T hatalı', issueCounts.tfail]] as const).map(([id, label, n]) => (
+        {([['', 'hepsi', data.hosts.length], ['upsNoResolve', 'upstream resolve yok', issueCounts.upsNoResolve], ['upsNoKeepalive', 'keepalive yok', issueCounts.upsNoKeepalive], ['upsNoZone', 'zone yok', issueCounts.upsNoZone], ['proxyUndefined', 'tanımsız hedef', issueCounts.proxyUndefined], ['settingsMismatch', 'ayar sapması', issueCounts.settingsMismatch], ['tfail', 'nginx -T hatalı', issueCounts.tfail], ['compliance', 'uyum < %90', issueCounts.compliance]] as const).map(([id, label, n]) => (
           <button key={id || 'all'} onClick={() => setIssue(id)} className="px-2.5 py-1 rounded-full border text-[11px]" style={{ borderColor: issue === id ? 'var(--accent)' : 'var(--border-subtle)', background: 'var(--bg-surface)', color: issue === id ? 'var(--text-primary)' : 'var(--text-secondary)' }} title={id === 'upsNoResolve' ? 'Standart: upstream bloğunda resolve (dinamik DNS) olmalı' : id === 'upsNoKeepalive' ? 'Standart: upstream bloğunda keepalive olmalı' : id === 'upsNoZone' ? 'Standart: upstream bloğunda zone (paylaşımlı bellek) olmalı' : undefined}>{label} <b className="tabular-nums">{nf(n)}</b></button>
         ))}
       </div>
@@ -417,6 +420,7 @@ export function NginxAudit() {
                     'ortam_kaynagi',
                     'lokasyon',
                     'nginx_-T',
+                    'uyum_yuzde',
                     'server_blogu',
                     'location',
                     'location_proxy',
@@ -437,6 +441,7 @@ export function NginxAudit() {
                     h.envSource,
                     h.site,
                     h.status,
+                    h.compliance ?? '',
                     h.serverBlocks,
                     h.locations,
                     h.locationsProxy,
@@ -472,6 +477,7 @@ export function NginxAudit() {
             <tr>
               <Th>Sunucu</Th>
               <Th>Ortam</Th>
+              <Th align="right"><span title="Uyum oranı: denetlenen kontrollerin kaçı geçti — upstream resolve/keepalive/zone/kullanım, proxy hedefi, global ayarlar, kurulum dosyaları. nginx -T düşen sunucu %0; veri yoksa —">Uyum</span></Th>
               <Th>nginx -T</Th>
               <Th align="right">Server</Th>
               <Th align="right">Location</Th>
@@ -587,6 +593,16 @@ function HostRow({ h, filesReady, canEdit, onEditException }: { h: NginxAuditHos
         </span>
         {h.site && <span className="text-[var(--text-muted)]"> · {h.site}</span>}
         {h.tier === 'intranet' && <span className="text-[var(--text-muted)]"> · intranet</span>}
+      </Td>
+      <Td align="right" className="tabular-nums">
+        {h.compliance == null ? dash : (
+          <span title={(h.complianceParts || []).map((p) => `${p.label}: ${p.ok}/${p.total}${p.pct == null ? '' : ` (%${p.pct})`}`).join('\n') || undefined}>
+            <span className="font-semibold" style={{ color: h.compliance >= 95 ? 'var(--status-success)' : h.compliance >= 80 ? 'var(--status-warning)' : 'var(--status-danger)' }}>%{h.compliance}</span>
+            <span className="inline-block align-middle ml-1.5 w-12 h-1.5 rounded-full" style={{ background: 'var(--bg-elevated)' }}>
+              <span className="block h-full rounded-full" style={{ width: `${h.compliance}%`, background: h.compliance >= 95 ? 'var(--status-success)' : h.compliance >= 80 ? 'var(--status-warning)' : 'var(--status-danger)' }} />
+            </span>
+          </span>
+        )}
       </Td>
       <Td>
         {h.status === 'ok' ? (

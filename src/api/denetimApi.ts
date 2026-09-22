@@ -500,6 +500,10 @@ export interface NginxAuditHost {
   proxyFqdnRaw?: number;
   proxyUndefinedRaw?: number;
   settingsMismatch: number;
+  /** Uyum orani % (2026-09-22): gecen kontrol / toplam kontrol; nginx -T dusen sunucu 0, veri yoksa null */
+  compliance?: number | null;
+  complianceChecks?: number;
+  complianceParts?: { label: string; ok: number; total: number; pct: number | null }[];
   issues: number;
   servers: NginxAuditServer[];
   locationsByFile: NginxAuditFileLocations[];
@@ -571,6 +575,8 @@ export interface NginxAuditResult {
     hostsEnvUnknown: number;
     /** istisnali sunucu sayisi (toplamlarin disinda) */
     excepted: number;
+  complianceAvg?: number | null;
+  complianceUnder90?: number;
     upsNoKeepalive: number;
     settingsMismatch: number;
     hostsWithMismatch: number;

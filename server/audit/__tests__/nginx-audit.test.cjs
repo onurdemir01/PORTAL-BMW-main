@@ -394,3 +394,31 @@ test('kabul edilen degerler: referansla eslesmeyen ama listedeki GLOBAL deger bu
   assert.equal(out2.hosts[0].settingsMismatch, 3);
   assert.equal(out2.hosts[0].settingsMismatched.length, 3);
 });
+
+test('uyum orani: gecen kontrol / toplam kontrol; -T dusen sunucu %0; veri yoksa null; kabul edilen deger orani yukseltir', () => {
+  const U = (name, resolve, keepalive, zone, used) => ({ host: 'H1', conf_file: '/c/x.conf', name, server: 'a:1', resolve, keepalive, zone, used });
+  const L = (kind) => ({ host: 'H1', conf_file: '/c/x.conf', srv_seq: 1, location: '/a', behaviour: 'proxy', proxy_target: 'up', target_kind: kind });
+  const S = (directive, value, ref, matches) => ({ host: 'H1', conf_file: '/c/x.conf', context: 'http', directive, value, reference_value: ref, matches });
+  const base = () => ({
+    hosts: [{ ...host('H1'), upstreams: 2, ups_no_resolve: 1, ups_no_keepalive: 0, ups_no_zone: 2, unused_upstreams: 1, locations_proxy: 2, proxy_undefined: 1, proxy_fqdn: 0, settings_mismatch: 1 }],
+    servers: [], locations: [L('upstream'), L('undefined')],
+    upstreams: [U('a', 1, 1, 0, 1), U('b', 0, 1, 0, 0)],
+    settings: [S('client_max_body_size', '10m', '1m', 0), S('autoindex', 'off', 'off', 1)],
+  });
+  const h = summarizeAudit(base()).hosts[0];
+  // upstream 4 kontrol x 2 = 8 -> gecen: resolve 1, keepalive 2, zone 0, kullanim 1 = 4
+  // proxy hedefi: 2 location, 1 tanimsiz -> 1/2 ; global ayar: 2 referans, 1 uyumlu -> 1/2
+  assert.equal(h.complianceChecks, 12);
+  assert.equal(h.compliance, Math.round((4 + 1 + 1) / 12 * 100));
+  assert.deepEqual(h.complianceParts.find((p) => p.label === 'upstream zone'), { label: 'upstream zone', ok: 0, total: 2, pct: 0 });
+  // kabul edilen deger: ayar uyumlu sayilir -> oran yukselir
+  const h2 = summarizeAudit({ ...base(), allowed: [{ directive: 'client_max_body_size', value: '10m' }] }).hosts[0];
+  assert.equal(h2.compliance, Math.round((4 + 1 + 2) / 12 * 100));
+  assert.ok(h2.compliance > h.compliance);
+  // nginx -T dusen sunucu 0; veri olmayan sunucu null
+  const fail = summarizeAudit({ ...base(), hosts: [{ ...host('H1'), status: 'fail', upstreams: 2, ups_no_resolve: 0, ups_no_keepalive: 0, ups_no_zone: 0, unused_upstreams: 0 }] }).hosts[0];
+  assert.equal(fail.compliance, 0);
+  const empty = summarizeAudit({ hosts: [{ ...host('H2'), upstreams: 0, locations_proxy: 0 }], servers: [], locations: [], upstreams: [], settings: [] }).hosts[0];
+  assert.equal(empty.compliance, null, 'hicbir kontrol yoksa hukum yok');
+  assert.equal(empty.complianceChecks, 0);
+});
