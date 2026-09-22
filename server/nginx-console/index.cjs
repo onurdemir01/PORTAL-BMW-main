@@ -18,7 +18,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { parseDump, buildTree, aggregateCerts, daysLeft, orphansOf } = require('./dump-parse.cjs');
+const { parseDump, parseDumpFileSync, buildTree, aggregateCerts, daysLeft, orphansOf } = require('./dump-parse.cjs');
 const history = require('./history.cjs');
 const { computeDrift } = require('./drift.cjs');
 
@@ -77,6 +77,9 @@ function statDump(host) {
 //
 // Kod yorumu "host basina ~2 MB" diyordu — bu bir GOZLEM, bir SINIR degildi.
 const DUMP_MAX_BYTES = 24 * 1024 * 1024;
+// Akisli ozet tavani: dosya bellege ALINMADAN okundugu icin cok daha yuksek olabilir;
+// yine de sonsuz degil (ozetin kendisi de bellekte tutulur).
+const DUMP_STREAM_MAX_BYTES = 256 * 1024 * 1024;
 
 /**
  * Tavani asan dokum icin firlatilir. `tooLarge` isareti cagiranin bunu
@@ -159,6 +162,28 @@ function loadSummary(host) {
     tam = parseFull(H, st);
   } catch (e) {
     if (!e || !e.tooLarge) throw e;
+    // TAVANI ASAN DOKUM: bellege almadan, diskten parca parca okuyarak ozet cikarmayi
+    // dene (2026-09-22). Ozet ekranlarinin (host listesi, sertifikalar, tutarlilik,
+    // artik dosyalar) dosya ICERIGINE ihtiyaci yok; icerik isteyen uclar yine "cok
+    // buyuk" der. Boylece 31-33 MB'lik reverse-proxy dokumleri Hub'da gorunur kalir.
+    if (st.size <= DUMP_STREAM_MAX_BYTES) {
+      try {
+        const akisli = parseDumpFileSync(dumpPathOf(H), { skipFileContent: true });
+        akisli.dumpedAt = st.mtime.toISOString();
+        akisli.host = akisli.host || H;
+        const ozet = JSON.parse(JSON.stringify(summaryOf(akisli, st.mtimeMs, false)));
+        // Icerik YOK: bunu soyleyen bayraklar (ekranda "dokum cok buyuk" notu icin).
+        ozet.tooLarge = true;
+        ozet.tooLargeBytes = st.size;
+        ozet.contentAvailable = false;
+        _summaries.set(H, { mtimeMs: st.mtimeMs, summary: ozet });
+        writeSummary(H, ozet);
+        console.warn(`[NginxHub] dokum tavani asiyor (${Math.round(st.size / 1048576)} MB), ozet AKISLA uretildi (icerik yok):`, H);
+        return ozet;
+      } catch (akisHatasi) {
+        console.warn('[NginxHub] akisli ozet de uretilemedi:', H, akisHatasi.message);
+      }
+    }
     console.warn('[NginxHub] dokum cok buyuk, ozet uretilemedi:', H, e.message);
     // ALAN ADLARI VE TIPLERI normal ozetle BIREBIR AYNI olmali (2026-09-22):
     // `certUses` burada {} yazilmisti ve /certs ucu "d.certUses is not iterable"
@@ -441,13 +466,16 @@ function initNginxConsole(app) {
           fileCount: parsed ? parsed.tree.length : null,
           certCount: parsed ? parsed.certs.length : null,
           certMinDays: parsed ? minDays(parsed) : null,
+          // Dokum tavani asiyorsa ozet AKISLA uretilir: agac/sertifika gelir, dosya
+          // ICERIGI gelmez. Ekran bunu soylesin ki "dosya acilmiyor" sasirtmasin.
+          dumpTooLarge: parsed?.tooLarge ? Math.round((parsed.tooLargeBytes || 0) / 1048576) : null,
         };
       });
       // Envanterde olmayip dokumu olan host'lar da listelenir (envanter gecikmis olabilir)
       for (const d of dumped.values()) {
         if (seen.has(d.host)) continue;
         const parsed = loadDump(d.host);
-        hosts.push({ host: d.host, env: null, location: null, site: null, cpu: null, memoryGb: null, os: null, service: null, services: [], nginxVersion: null, prefix: null, configCount: null, ip: null, dumpedAt: d.dumpedAt, seenAt: seenAtOf(d.host, d.dumpedAt), nginxT: parsed?.nginxT ? parsed.nginxT.status : null, fileCount: parsed?.tree ? parsed.tree.length : null, certCount: parsed?.certs ? parsed.certs.length : null, certMinDays: parsed ? minDays(parsed) : null, inventoryMissing: true });
+        hosts.push({ host: d.host, env: null, location: null, site: null, cpu: null, memoryGb: null, os: null, service: null, services: [], nginxVersion: null, prefix: null, configCount: null, ip: null, dumpedAt: d.dumpedAt, seenAt: seenAtOf(d.host, d.dumpedAt), nginxT: parsed?.nginxT ? parsed.nginxT.status : null, fileCount: parsed?.tree ? parsed.tree.length : null, certCount: parsed?.certs ? parsed.certs.length : null, certMinDays: parsed ? minDays(parsed) : null, dumpTooLarge: parsed?.tooLarge ? Math.round((parsed.tooLargeBytes || 0) / 1048576) : null, inventoryMissing: true });
       }
       res.json({ ok: true, hosts, consoleDir: consoleDir(), inventoryError: invError, seenAt: seenMap().at });
     } catch (err) {

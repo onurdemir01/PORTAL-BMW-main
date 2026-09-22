@@ -5,7 +5,20 @@
 // @@CERT <yol> key=value... @@END. Sozlesme betigin basinda; degisirse ikisi birlikte.
 'use strict';
 
-function parseDump(text) {
+const fs = require('node:fs');
+const { StringDecoder } = require('node:string_decoder');
+
+/**
+ * Ayristirici SATIR CEKER (readLine() -> string | null). Boylece ayni kod hem
+ * bellekteki metin icin (parseDump) hem de dosyayi parca parca okuyan akis icin
+ * (parseDumpFileSync) kullanilabiliyor — 30 MB'lik dokumu bellege almadan ozet
+ * cikarmanin tek yolu bu (2026-09-22: 8 reverse-proxy dokumu tavani asiyordu).
+ *
+ * opts.skipFileContent: @@FILE bloklarinin ICERIGI saklanmaz (yalniz sha/size).
+ * Ozet ekranlarinin (host listesi, sertifika, tutarlilik) icerige ihtiyaci yok.
+ */
+function parseDumpFrom(readLine, opts = {}) {
+  const skipContent = !!opts.skipFileContent;
   const out = {
     host: null,
     time: null,
@@ -19,39 +32,35 @@ function parseDump(text) {
     loaded: null, // string[] | null
     sslFiles: [], // {path, size, mtime}
   };
-  const lines = String(text || '').split('\n');
-  let i = 0;
-  const n = lines.length;
-  while (i < n) {
-    const line = lines[i].replace(/\r$/, '');
+  let raw;
+  while ((raw = readLine()) !== null) {
+    const line = raw.replace(/\r$/, '');
     if (line.startsWith('@@HOST ')) out.host = line.slice(7).trim();
     else if (line.startsWith('@@TIME ')) out.time = line.slice(7).trim();
     else if (line.startsWith('@@PREFIX ')) out.prefix = line.slice(9).trim() || '/usr/nginx';
     else if (line.startsWith('@@NGINX_T ')) {
       out.nginxT.status = line.slice(10).trim() === 'ok' ? 'ok' : 'fail';
       const buf = [];
-      i++;
-      while (i < n && lines[i].replace(/\r$/, '') !== '@@END') buf.push(lines[i]), i++;
+      let l;
+      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') buf.push(l);
       out.nginxT.output = buf.join('\n');
     } else if (line === '@@LOADED') {
       out.loaded = [];
-      i++;
-      while (i < n && lines[i].replace(/\r$/, '') !== '@@END') { const l = lines[i].replace(/\r$/, '').trim(); if (l) out.loaded.push(l); i++; }
+      let l;
+      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') { const v = l.replace(/\r$/, '').trim(); if (v) out.loaded.push(v); }
     } else if (line === '@@SSLDIR') {
-      i++;
-      while (i < n && lines[i].replace(/\r$/, '') !== '@@END') {
-        const f = lines[i].replace(/\r$/, '').split('\t');
+      let l;
+      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') {
+        const f = l.replace(/\r$/, '').split('\t');
         if (f.length >= 3) out.sslFiles.push({ size: Number(f[0]) || 0, mtime: f[1], path: f.slice(2).join('\t') });
-        i++;
       }
     } else if (line === '@@TREE') {
-      i++;
-      while (i < n && lines[i].replace(/\r$/, '') !== '@@END') {
-        const f = lines[i].replace(/\r$/, '').split('\t');
+      let l;
+      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') {
+        const f = l.replace(/\r$/, '').split('\t');
         // 5 alan (2026-09-19, sahip eklendi) ya da eski 4 alan; yol her zaman SON alan
         if (f.length >= 5) out.tree.push({ size: Number(f[0]) || 0, mtime: f[1], sha256: f[2], owner: f[3] === '?' ? null : f[3], path: f.slice(4).join('\t') });
         else if (f.length === 4) out.tree.push({ size: Number(f[0]) || 0, mtime: f[1], sha256: f[2], owner: null, path: f[3] });
-        i++;
       }
     } else if (line.startsWith('@@FILE ')) {
       // "@@FILE <yol> <sha> <size>" — yol bosluk icerebilir: sondan iki alan sabittir.
@@ -60,28 +69,69 @@ function parseDump(text) {
       const sha256 = parts.pop() || '';
       const p = parts.join(' ');
       const buf = [];
-      i++;
-      while (i < n && lines[i].replace(/\r$/, '') !== '@@END') buf.push(lines[i]), i++;
-      out.files.set(p, { sha256, size, content: buf.join('\n') });
+      let l;
+      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') { if (!skipContent) buf.push(l); }
+      if (!skipContent) out.files.set(p, { sha256, size, content: buf.join('\n') });
     } else if (line.startsWith('@@CERTUSE ')) {
       const f = line.slice(10).split('\t');
       out.certUses.push({ conf: f[0] || '', serverName: f[1] || '', cert: f[2] || '', key: f[3] || '', keyState: f[4] || '' });
     } else if (line.startsWith('@@CERT ')) {
       const p = line.slice(7).trim();
       const rec = { path: p, exists: false };
-      i++;
-      while (i < n && lines[i].replace(/\r$/, '') !== '@@END') {
-        const l = lines[i].replace(/\r$/, '');
-        const eq = l.indexOf('=');
-        if (eq > 0) rec[l.slice(0, eq).trim()] = l.slice(eq + 1).trim();
-        i++;
+      let l;
+      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') {
+        const v = l.replace(/\r$/, '');
+        const eq = v.indexOf('=');
+        if (eq > 0) rec[v.slice(0, eq).trim()] = v.slice(eq + 1).trim();
       }
       rec.exists = rec.exists === '1' || rec.exists === true;
       out.certs.set(p, normalizeCert(rec));
     }
-    i++;
   }
   return out;
+}
+
+/** Bellekteki metni ayristirir (eski davranis). */
+function parseDump(text, opts = {}) {
+  const lines = String(text || '').split('\n');
+  let i = 0;
+  return parseDumpFrom(() => (i < lines.length ? lines[i++] : null), opts);
+}
+
+/**
+ * Dokumu DISKTEN PARCA PARCA okuyarak ayristirir: dosyanin tamami hicbir zaman
+ * bellekte tutulmaz. `skipFileContent` ile 30 MB'lik bir dokumden bile birkac MB
+ * ozet cikar. Cok baytli karakterler parca sinirinda bolunmesin diye StringDecoder.
+ */
+function parseDumpFileSync(filePath, opts = {}) {
+  const fd = fs.openSync(filePath, 'r');
+  const CHUNK = 1 << 20;
+  const buf = Buffer.allocUnsafe(CHUNK);
+  const decoder = new StringDecoder('utf8');
+  let queue = [];
+  let qi = 0;
+  let tail = '';
+  let eof = false;
+  const readLine = () => {
+    for (;;) {
+      if (qi < queue.length) return queue[qi++];
+      if (eof) {
+        if (tail !== '') { const son = tail; tail = ''; return son; }
+        return null;
+      }
+      const n = fs.readSync(fd, buf, 0, CHUNK, null);
+      if (n === 0) { eof = true; tail += decoder.end(); continue; }
+      const parcalar = (tail + decoder.write(buf.subarray(0, n))).split('\n');
+      tail = parcalar.pop();
+      queue = parcalar;
+      qi = 0;
+    }
+  };
+  try {
+    return parseDumpFrom(readLine, opts);
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 // openssl tarih bicimi: "Sep 19 18:46:18 2026 GMT"
@@ -250,4 +300,4 @@ function orphansOf(summary, now = Date.now()) {
   return out;
 }
 
-module.exports = { parseDump, buildTree, aggregateCerts, daysLeft, cnOf, parseOpensslDate, orphansOf, BACKUP_RE };
+module.exports = { parseDump, parseDumpFileSync, buildTree, aggregateCerts, daysLeft, cnOf, parseOpensslDate, orphansOf, BACKUP_RE };

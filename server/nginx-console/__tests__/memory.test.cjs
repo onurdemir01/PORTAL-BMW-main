@@ -137,13 +137,22 @@ test('MEM3 dev dokum host\'u LISTEDEN DUSURMEZ — `loadSummary` bayrakla doner'
     assert.ok(ozet, 'ozet null dondu — host listeden dusuyor');
     assert.equal(ozet.tooLarge, true, '"cok buyuk" bayragi yok');
     assert.equal(ozet.host, 'BIGHOST');
-    assert.deepEqual(ozet.tree, [], 'icerik agaci bellege alinmis');
-    // Yan dosyaya YAZILMAMALI: dokum kuculdugunde yeniden denensin.
-    assert.equal(
-      fs.existsSync(path.join(dir, 'raw', 'BIGHOST.summary.json')),
-      false,
-      '"cok buyuk" karari diske kalici yazildi — duzelen dokum sonsuza dek bozuk gorunur',
-    );
+    assert.equal(ozet.contentAvailable, false, 'icerik yok bayragi eksik');
+    assert.ok(!('files' in ozet), 'dosya icerikleri bellege alinmis');
+    // 2026-09-22: ozet artik AKISLA (diskten parca parca) uretiliyor, bu yuzden yan
+    // dosyaya yazilabilir. Kalici yanlis bilgi riski yok: kayit dokumun mtime'ini
+    // tasir, dokum degisince (kuculunce de) yeniden uretilir.
+    const yan = path.join(dir, 'raw', 'BIGHOST.summary.json');
+    if (fs.existsSync(yan)) {
+      const kayit = JSON.parse(fs.readFileSync(yan, 'utf8'));
+      assert.equal(kayit.tooLarge, true);
+      assert.equal(kayit.contentAvailable, false);
+      assert.equal(
+        kayit.mtimeMs,
+        fs.statSync(path.join(dir, 'raw', 'BIGHOST.txt')).mtimeMs,
+        'yan dosya dokum damgasini tasimali — yoksa duzelen dokum bir daha okunmaz',
+      );
+    }
   } finally {
     if (onceki === undefined) delete process.env.NGINX_CONSOLE_DIR;
     else process.env.NGINX_CONSOLE_DIR = onceki;
@@ -197,5 +206,64 @@ test('MEM4 dev dokum ozeti normal ozetle AYNI alanlari tasir — /hosts ve /cert
     else process.env.NGINX_CONSOLE_DIR = onceki;
     fs.rmSync(dir, { recursive: true, force: true });
     delete require.cache[require.resolve('../index.cjs')];
+  }
+});
+
+
+// ── MEM5 — AKISLI OZET: 30 MB'lik dokum Hub'da GORUNUR kalir ──────────────────
+//
+// Uretimde 8 reverse-proxy dokumu 31-33 MB (tavan 24 MB) ve bu sunucular Hub'da
+// bos gorunuyordu. Artik dosya BELLEGE ALINMADAN, diskten parca parca okunarak
+// ozetleniyor: agac, sertifikalar ve nginx -t durumu geliyor; yalniz dosya
+// icerikleri gelmiyor (icerik isteyen uclar zaten "cok buyuk" diyor).
+test('MEM5 akisli ayristirici: bellekteki ayristiriciyla AYNI sonucu verir; dev dokum ozetlenir', async () => {
+  const { parseDump, parseDumpFileSync } = require('../dump-parse.cjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nh-stream-'));
+  try {
+    const govde = 'server {\n  location /x { proxy_pass http://up; }\n}\n';
+    const kucukMetin =
+      '@@HOST STREAMHOST\n@@TIME 2026-09-22T00:00:00Z\n@@PREFIX /usr/nginx\n' +
+      '@@NGINX_T ok\nconfiguration file test is successful\n@@END\n' +
+      '@@LOADED\n/usr/nginx/nginx.conf\n@@END\n' +
+      '@@TREE\n120\t2026-09-22 00:00:00\tabc\twww\t/usr/nginx/nginx.conf\n@@END\n' +
+      `@@FILE /usr/nginx/nginx.conf abc ${govde.length}\n${govde}@@END\n` +
+      '@@CERTUSE /usr/nginx/nginx.conf\twww.example.com\t/usr/nginx/ssl/a.crt\t/usr/nginx/ssl/a.key\tok\n' +
+      '@@CERT /usr/nginx/ssl/a.crt\nexists=1\nsubject=CN=www.example.com\n@@END\n';
+    const dosya = path.join(dir, 'STREAMHOST.txt');
+    fs.writeFileSync(dosya, kucukMetin);
+
+    const bellekte = parseDump(kucukMetin);
+    const akisla = parseDumpFileSync(dosya);
+    assert.deepEqual(akisla.tree, bellekte.tree, 'agac farkli');
+    assert.deepEqual([...akisla.certs.keys()], [...bellekte.certs.keys()], 'sertifikalar farkli');
+    assert.deepEqual(akisla.certUses, bellekte.certUses, 'sertifika kullanimlari farkli');
+    assert.deepEqual(akisla.loaded, bellekte.loaded, 'yuklenen dosya listesi farkli');
+    assert.equal(akisla.nginxT.status, 'ok');
+    assert.equal(akisla.files.get('/usr/nginx/nginx.conf').content, govde.trimEnd());
+
+    // skipFileContent: icerik saklanmaz, geri kalan ayni
+    const icerikSiz = parseDumpFileSync(dosya, { skipFileContent: true });
+    assert.equal(icerikSiz.files.size, 0, 'icerik atlanmadi');
+    assert.deepEqual(icerikSiz.tree, bellekte.tree);
+
+    // ~26 MB dokum: 1 MB'lik okuma parcalarinin ICINDE kalan bloklar da dogru okunmali
+    const buyuk = path.join(dir, 'BIGSTREAM.txt');
+    const akis = fs.createWriteStream(buyuk);
+    akis.write('@@HOST BIGSTREAM\n@@PREFIX /usr/nginx\n@@TREE\n');
+    for (let i = 0; i < 2000; i++) akis.write(`100\t2026-09-22 00:00:00\tsha${i}\twww\t/usr/nginx/conf.d/app-${i}.conf\n`);
+    akis.write('@@END\n');
+    const dolgu = '# ' + 'x'.repeat(4094) + '\n';
+    for (let i = 0; i < 6500; i++) akis.write(`@@FILE /usr/nginx/conf.d/app-${i % 2000}.conf sha${i} 4096\n${dolgu}@@END\n`);
+    akis.write('@@CERT /usr/nginx/ssl/b.crt\nexists=1\nsubject=CN=b.example.com\n@@END\n');
+    await new Promise((r) => akis.end(r));
+    assert.ok(fs.statSync(buyuk).size > 25 * 1024 * 1024, 'test dokumu yeterince buyuk degil');
+
+    const devOzet = parseDumpFileSync(buyuk, { skipFileContent: true });
+    assert.equal(devOzet.host, 'BIGSTREAM');
+    assert.equal(devOzet.tree.length, 2000, 'dev dokumun agaci eksik okundu');
+    assert.equal(devOzet.certs.size, 1, 'dev dokumun sertifikasi okunmadi');
+    assert.equal(devOzet.files.size, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

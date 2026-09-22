@@ -27,6 +27,8 @@ export interface NcHost {
   fileCount: number | null;
   certCount: number | null;
   certMinDays: number | null;
+  /** Dokum portal tavanini asiyor (MB): ozet var, dosya ICERIGI yok (2026-09-22) */
+  dumpTooLarge?: number | null;
   inventoryMissing?: boolean;
 }
 
