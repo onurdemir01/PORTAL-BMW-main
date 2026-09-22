@@ -153,3 +153,53 @@ test('SH10: flattenFindings tum sunuculari tek listede, en agirdan hafife', () =
   assert.deepEqual(sevOrder, [...sevOrder].sort((a, b) => b - a));
   assert.ok(rows.some((x) => x.code === 'SYNTAX_FAIL' || x.code === 'REBOOT_RISK'));
 });
+
+test('SH11: JVM gercegi dbo.MWAppsInventory ile birlesir - CLI auto-start bilmiyorsa envanter kazanir, CLI\'da olmayan uygulama envanterden eklenir, celiski bulgusu', () => {
+  const d = {
+    hosts: [{ host: 'GBCJAP01', scan_date: D, products: 'JBOSS7' }],
+    jvms: [
+      { host: 'GBCJAP01', gen: 7, jvm: 'crm', grp: 'g', running: 1, auto_start: 'unknown', server_state: 'running', ports: '8080' },
+      { host: 'GBCJAP01', gen: 7, jvm: 'odeme', grp: 'g', running: 1, auto_start: 'true', server_state: 'running', ports: '8180' },
+    ],
+    mwApps: [
+      { host: 'GBCJAP01', app: 'crm', env: 'Production', status: 'running', jvm_count: 2, autostarts: 'true true' },
+      { host: 'GBCJAP01', app: 'odeme', env: 'Production', status: 'stopped', jvm_count: 1, autostarts: 'false' },
+      { host: 'GBCJAP01', app: 'batch', env: 'Production', status: 'stopped', jvm_count: 1, autostarts: 'false' },
+    ],
+    invEnv: [{ host: 'GBCJAP01', env: 'Production' }],
+  };
+  const h = assess(d).hosts[0];
+  const crm = h.jvms.find((j) => j.name === 'crm');
+  assert.equal(crm.autoStart, 'true', 'CLI bilmiyordu -> envanterden');
+  assert.equal(crm.autoStartSource, 'envanter');
+  assert.equal(crm.source, 'cli');
+  const odeme = h.jvms.find((j) => j.name === 'odeme');
+  assert.deepEqual(odeme.mismatch, ['durum: envanter stopped, tarama çalışıyor', 'auto-start: envanter false, tarama true']);
+  assert.ok(h.findings.some((f) => f.code === 'INV_MISMATCH' && /odeme/.test(f.text)), 'celiski bulgusu');
+  const batch = h.jvms.find((j) => j.name === 'batch');
+  assert.equal(batch.source, 'envanter'); assert.equal(batch.running, false); assert.equal(batch.autoStart, 'false');
+  assert.equal(h.invApps, 3);
+});
+
+test('SH12: ortam kirilimi (Production / Non-Production) ve kart -> bulgu gecisi sozlesmesi', () => {
+  const fs = require('node:fs'); const path = require('node:path');
+  const d = {
+    hosts: [{ host: 'GBCJAP01', scan_date: D, products: 'JBOSS7' }, { host: 'GBCJAT01', scan_date: D, products: 'JBOSS7' }, { host: 'XX99', scan_date: D, products: 'NONE' }],
+    jvms: [{ host: 'GBCJAP01', gen: 7, jvm: 'crm', grp: 'g', running: 1, auto_start: 'false', server_state: 'running', ports: '' }],
+    invEnv: [{ host: 'GBCJAP01', env: 'Production' }, { host: 'GBCJAT01', env: 'Test' }],
+  };
+  const r = assess(d);
+  assert.equal(r.hosts.find((h) => h.host === 'GBCJAP01').envGroup, 'Production');
+  assert.equal(r.hosts.find((h) => h.host === 'GBCJAT01').envGroup, 'Non-Production');
+  assert.equal(r.hosts.find((h) => h.host === 'XX99').envGroup, 'Bilinmiyor', 'envanterde ve ad kalibinda yoksa bilinmiyor');
+  assert.equal(r.summary.byEnv.Production.hosts, 1);
+  assert.equal(r.summary.byEnv.Production.rebootRisk, 1);
+  assert.equal(r.summary.byEnv['Non-Production'].hosts, 1);
+  const { flattenFindings } = require('../assess.cjs');
+  const rows = flattenFindings(r.hosts);
+  assert.ok(rows.every((x) => x.envGroup));
+  const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'server_hub', 'ServerHubPage.tsx'), 'utf8');
+  assert.ok(/onGoFindings\(\{ area: 'init' \}\)/.test(page) && /onGoFindings\(\{ area: 'web', code: 'SYNTAX_FAIL', product: p \}\)/.test(page), 'kartlar bulgu detayina gitmeli');
+  assert.ok(/Ortam kırılımı/.test(page) && /onGoFindings\(\{ envGroup: g \}\)/.test(page), 'ortam kirilimi paneli');
+  assert.ok(/function FindingsTab\(\{ initial \}/.test(page), 'Bulgular sekmesi disaridan suzgec almali');
+});

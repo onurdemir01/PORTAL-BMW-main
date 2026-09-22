@@ -62,8 +62,72 @@ function assess(data) {
     hc24h: r.hc_24h == null ? null : Number(r.hc_24h), shared: Number(r.shared) === 1, sampled: Number(r.sampled) === 1,
     confFile: r.conf_file || '', jvm: null,
   });
+  // ── Ortam (2026-09-22): dbo.Inventory.env; yoksa sunucu adindan (…P\d = prod). Non-Prod/Prod kirilimi.
+  const ENV_TR = { PRODUCTION: 'PROD', PROD: 'PROD', TEST: 'TEST', QA: 'QA', ALPHA: 'ALPHA', ODM: 'ODM', DEV: 'DEV', EDU: 'EDU' };
+  const envByHost = new Map();
+  for (const r of data.invEnv || []) {
+    const k = shortHost(r.host);
+    const v = ENV_TR[U(r.env)] || null;
+    if (k && v) envByHost.set(k, v);
+  }
+  const envOf = (host) => {
+    if (envByHost.has(host)) return envByHost.get(host);
+    const m = /^[A-Z]{4,6}?(A?)([DTQPO])\d+$/.exec(host);
+    if (m) return { D: 'DEV', T: 'TEST', Q: 'QA', P: 'PROD', O: 'ODM' }[m[2]] || 'BILINMIYOR';
+    return 'BILINMIYOR';
+  };
+
+  // ── JVM: envanter (MWAppsInventory) ile birlestir ──────────────────────────────
+  const appsByHost = new Map();
+  for (const r of data.mwApps || []) {
+    const k = shortHost(r.host);
+    if (!k) continue;
+    if (!appsByHost.has(k)) appsByHost.set(k, []);
+    appsByHost.get(k).push({
+      app: String(r.app || '').trim(),
+      status: L(r.status),
+      jvmCount: Number(r.jvm_count) || 0,
+      autoStarts: String(r.autostarts || '').trim().split(/\s+/).filter(Boolean).map((x) => L(x)),
+      tier: r.tier == null ? null : String(r.tier),
+      env: ENV_TR[U(r.env)] || null,
+    });
+  }
+
   for (const r of data.sshd || []) H(r.host).sshd = { maxSessions: r.max_sessions == null ? null : Number(r.max_sessions), maxStartups: r.max_startups || '', activeSessions: r.active_sessions == null ? null : Number(r.active_sessions) };
   for (const r of data.ips || []) H(r.host).ips.push({ ip: r.ip, iface: r.iface || '', usedBy: L(r.used_by) || 'none', primary: Number(r.is_primary) === 1 });
+
+  // Envanter <-> CLI birlestirme: CLI'da olmayan uygulamalar envanterden eklenir (kaynak isaretli),
+  // ikisinde de varsa celiski (calisiyor/kapali ya da auto-start) BULGU olarak isaretlenir.
+  for (const h of byHost.values()) {
+    h.env = envOf(h.host);
+    h.envGroup = h.env === 'PROD' ? 'Production' : (h.env === 'BILINMIYOR' ? 'Bilinmiyor' : 'Non-Production');
+    const apps = appsByHost.get(h.host) || [];
+    h.invApps = apps.length;
+    for (const a of apps) {
+      const hit = h.jvms.find((j) => L(j.name) === L(a.app));
+      const invRunning = a.status === 'running';
+      const invAuto = a.autoStarts.length ? (a.autoStarts.every((x) => x === 'true') ? 'true' : (a.autoStarts.every((x) => x === 'false') ? 'false' : 'karisik')) : 'unknown';
+      if (hit) {
+        hit.invStatus = a.status || null;
+        hit.invAutoStart = invAuto;
+        hit.invJvmCount = a.jvmCount;
+        hit.mismatch = [];
+        if (a.status && hit.running !== invRunning) hit.mismatch.push(`durum: envanter ${a.status}, tarama ${hit.running ? 'çalışıyor' : 'kapalı'}`);
+        if (invAuto !== 'unknown' && invAuto !== 'karisik' && hit.autoStart !== 'unknown' && hit.autoStart !== invAuto) hit.mismatch.push(`auto-start: envanter ${invAuto}, tarama ${hit.autoStart}`);
+        // CLI auto-start okuyamadiysa ENVANTER kazanir (kullanici: "JVM bilgisi envanterden gelsin")
+        if (hit.autoStart === 'unknown' && invAuto !== 'unknown') { hit.autoStart = invAuto === 'karisik' ? 'unknown' : invAuto; hit.autoStartSource = 'envanter'; }
+        else hit.autoStartSource = hit.autoStartSource || 'cli';
+      } else {
+        h.jvms.push({
+          gen: 0, name: a.app, group: '', running: invRunning, autoStart: invAuto === 'karisik' ? 'unknown' : invAuto,
+          serverState: a.status || 'unknown', ports: [], vhosts: [], req24h: null, req7d: null, matchKind: null,
+          source: 'envanter', invStatus: a.status || null, invAutoStart: invAuto, invJvmCount: a.jvmCount, mismatch: [],
+          autoStartSource: 'envanter',
+        });
+      }
+    }
+    for (const j of h.jvms) if (!j.source) j.source = 'cli';
+  }
 
   // ── JVM <-> vhost eslemesi ──────────────────────────────────────────────────────
   const allVhosts = [];
@@ -141,7 +205,8 @@ function assess(data) {
       const fixOn = { action: 'jboss_autostart_on', gen: j.gen, jvm: j.name };
       const fixOff = { action: 'jboss_autostart_off', gen: j.gen, jvm: j.name };
       if (j.running && j.autoStart === 'false') add('danger', 'jvm', 'REBOOT_RISK', `${id} çalışıyor ama auto-start KAPALI — reboot sonrası açılmaz`, fixOn);
-      if (j.running && j.autoStart === 'unknown') add('info', 'jvm', 'AUTOSTART_UNKNOWN', `${id} auto-start okunamadı`);
+      if (j.running && j.autoStart === 'unknown') add('info', 'jvm', 'AUTOSTART_UNKNOWN', `${id} auto-start okunamadı (CLI ve envanter)`);
+      if ((j.mismatch || []).length) add('info', 'jvm', 'INV_MISMATCH', `${id}: ${j.mismatch.join('; ')}`);
       if (!j.running && j.autoStart === 'true') add('warning', 'jvm', 'STOPPED_AUTOSTART_ON', `${id} kapalı ama auto-start AÇIK — reboot'ta açılacak`, fixOff);
       if (j.running && (j.serverState === 'restart-required' || j.serverState === 'reload-required')) add('warning', 'jvm', 'RESTART_REQUIRED', `${id} ${j.serverState}: runtime'da etkin olmayan değişiklik var`);
       const hasTraffic = j.req7d != null;
@@ -185,7 +250,29 @@ function assess(data) {
   // ── Ozet ───────────────────────────────────────────────────────────────────────
   const jvms = hosts.flatMap((h) => h.jvms);
   const web = hosts.flatMap((h) => h.web);
+  const envGroups = ['Production', 'Non-Production', 'Bilinmiyor'];
+  const byEnv = {};
+  for (const g of envGroups) {
+    const hs = hosts.filter((h) => h.envGroup === g);
+    if (!hs.length) continue;
+    const js = hs.flatMap((h) => h.jvms);
+    byEnv[g] = {
+      hosts: hs.length,
+      danger: hs.filter((h) => h.status === 'danger').length,
+      warning: hs.filter((h) => h.status === 'warning').length,
+      ok: hs.filter((h) => h.status === 'ok').length,
+      jvms: js.length, jvmRunning: js.filter((j) => j.running).length,
+      autoOff: js.filter((j) => j.autoStart === 'false').length,
+      rebootRisk: hs.reduce((a, h) => a + h.findings.filter((f) => f.code === 'REBOOT_RISK').length, 0),
+      initDiff: hs.reduce((a, h) => a + h.init.filter((i) => i.status === 'DIFF').length, 0),
+      web: Object.fromEntries(['IHS', 'RHA', 'NGINX'].map((p) => {
+        const rows = hs.flatMap((h) => h.web).filter((w) => w.product === p);
+        return [p, { hosts: rows.length, syntaxFail: rows.filter((w) => w.syntax === 'FAIL').length, notRunning: rows.filter((w) => !w.running).length }];
+      })),
+    };
+  }
   const summary = {
+    byEnv,
     hosts: { total: hosts.length, ok: 0, info: 0, warning: 0, danger: 0 },
     init: {
       hosts: hosts.filter((h) => h.init.length).length,
@@ -203,6 +290,10 @@ function assess(data) {
       retireCandidates: hosts.reduce((a, h) => a + h.findings.filter((f) => f.code === 'RETIRE_CANDIDATE').length, 0),
       noLoad: hosts.reduce((a, h) => a + h.findings.filter((f) => f.code === 'NO_LOAD').length, 0),
       mapped: jvms.filter((j) => j.req7d != null).length,
+      fromInventory: jvms.filter((j) => j.source === 'envanter').length,
+      autoStartFromInventory: jvms.filter((j) => j.autoStartSource === 'envanter').length,
+      mismatched: jvms.filter((j) => (j.mismatch || []).length > 0).length,
+      invApps: hosts.reduce((a, h) => a + (h.invApps || 0), 0),
     },
     web: {},
     ips: { total: hosts.reduce((a, h) => a + h.ips.length, 0), unused: hosts.reduce((a, h) => a + h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length, 0) },
@@ -229,7 +320,7 @@ function assess(data) {
 /** Tum bulgular tek listede (Bulgular sekmesi / CSV): host + urunler + bulgu. */
 function flattenFindings(hosts) {
   const out = [];
-  for (const h of hosts) for (const f of h.findings) out.push({ host: h.host, products: h.products, scanDate: h.scanDate, severity: f.severity, area: f.area, code: f.code, text: f.text, fixable: !!f.fix });
+  for (const h of hosts) for (const f of h.findings) out.push({ host: h.host, products: h.products, env: h.env, envGroup: h.envGroup, scanDate: h.scanDate, severity: f.severity, area: f.area, code: f.code, text: f.text, fixable: !!f.fix });
   out.sort((a, b) => SEV[b.severity] - SEV[a.severity] || a.area.localeCompare(b.area) || a.host.localeCompare(b.host));
   return out;
 }

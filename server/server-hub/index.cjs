@@ -31,12 +31,22 @@ async function loadLatest() {
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
   ).then((r) => r.recordset || []);
+  // JVM GERCEGI (kullanici, 2026-09-22): "JVM bilgilerini middleware_applications_inventory/jboss
+  // job'inin veritabanindan cek." dbo.MWAppsInventory uygulama basina satir tutar: status
+  // (running/stopped), jvm_count, autostarts ("true false ..."), env, tier. Server Hub'in kendi CLI
+  // taramasiyla BIRLESTIRILIR: CLI yoksa envanter, ikisi de varsa celiski bulgusu.
+  const mwApps = await query(
+    `SELECT host, app, env, status, jvm_count, autostarts, tier FROM dbo.MWAppsInventory WHERE host IS NOT NULL AND app IS NOT NULL`,
+  ).then((r) => r.recordset || []).catch(() => []);
+  const invEnv = await query(
+    `SELECT host, env FROM dbo.Inventory WHERE host IS NOT NULL`,
+  ).then((r) => r.recordset || []).catch(() => []);
   const [hosts, init, jboss, jvms, web, vhosts, ips, sshd] = await Promise.all([
     q('dbo.Server_Hub_Hosts'), q('dbo.Server_Hub_Init'), q('dbo.Server_Hub_Jboss'), q('dbo.Server_Hub_Jvms'),
     q('dbo.Server_Hub_Web'), q('dbo.Server_Hub_Vhosts'), q('dbo.Server_Hub_Ips'),
     q('dbo.Server_Hub_Sshd').catch(() => []), // tablo eski taramada yoksa
   ]);
-  return { tableMissing: false, data: { hosts, init, jboss, jvms, web, vhosts, ips, sshd } };
+  return { tableMissing: false, data: { hosts, init, jboss, jvms, web, vhosts, ips, sshd, mwApps, invEnv } };
 }
 
 async function getAssessment(fresh) {
@@ -52,7 +62,7 @@ async function getAssessment(fresh) {
 // Yanit sekli: sunucu listesi HAFIF (bulgu sayilari + urunler), ayrinti /host/:host ile.
 function hostRow(h) {
   return {
-    host: h.host, scanDate: h.scanDate, products: h.products, status: h.status, counts: h.counts,
+    host: h.host, scanDate: h.scanDate, products: h.products, status: h.status, counts: h.counts, env: h.env, envGroup: h.envGroup,
     wallS: h.wallS, cpuS: h.cpuS,
     jvms: h.jvms.length, jvmsRunning: h.jvms.filter((j) => j.running).length,
     vhosts: h.vhosts.length, unusedIps: h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length,

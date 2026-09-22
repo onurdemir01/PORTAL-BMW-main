@@ -70,9 +70,17 @@ function Bar({ value, total, color = 'var(--accent)', title }: { value: number; 
   );
 }
 
-function Kpi({ title, children, tone }: { title: string; children: React.ReactNode; tone?: ShSeverity }) {
+function Kpi({ title, children, tone, onClick }: { title: string; children: React.ReactNode; tone?: ShSeverity; onClick?: () => void }) {
   return (
-    <section className="rounded-xl border p-4" style={{ borderColor: tone && tone !== 'ok' ? SEV[tone].color : 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+    <section
+      className={`rounded-xl border p-4 ${onClick ? 'cursor-pointer hover:shadow-sm' : ''}`}
+      style={{ borderColor: tone && tone !== 'ok' ? SEV[tone].color : 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      title={onClick ? 'Bulgu detayını aç' : undefined}
+    >
       <h3 className="text-[11px] font-semibold uppercase tracking-wide mb-2 truncate" style={{ color: 'var(--text-muted)' }} title={title}>{title}</h3>
       {children}
     </section>
@@ -88,6 +96,9 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 export default function ServerHubPage() {
   // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
   const [tab, setTab] = useState<'hosts' | 'findings' | 'retirement'>('hosts');
+  // Kartlardan bulgu detayina gecis (kullanici, 2026-09-22): kart -> Bulgular sekmesi + hazir suzgec
+  const [findingsFilter, setFindingsFilter] = useState<{ area?: string; code?: string; product?: string; envGroup?: string } | null>(null);
+  const goFindings = (f: { area?: string; code?: string; product?: string; envGroup?: string }) => { setFindingsFilter(f); setTab('findings'); };
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -105,14 +116,14 @@ export default function ServerHubPage() {
           ))}
         </div>
       </div>
-      {tab === 'hosts' && <HostsTab />}
-      {tab === 'findings' && <FindingsTab />}
+      {tab === 'hosts' && <HostsTab onGoFindings={goFindings} />}
+      {tab === 'findings' && <FindingsTab initial={findingsFilter} />}
       {tab === 'retirement' && <RetirementTab />}
     </div>
   );
 }
 
-function HostsTab() {
+function HostsTab({ onGoFindings }: { onGoFindings: (f: { area?: string; code?: string; product?: string; envGroup?: string }) => void }) {
   const { addJob } = useJobTracker();
   const [data, setData] = useState<ShOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -182,19 +193,23 @@ function HostsTab() {
         <>
           {/* ── Genel durum: yuvarlak + bar ── */}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Kpi title="Sunucular" tone={s.hosts.danger ? 'danger' : s.hosts.warning ? 'warning' : 'ok'}>
+            <Kpi title="Sunucular" tone={s.hosts.danger ? 'danger' : s.hosts.warning ? 'warning' : 'ok'} onClick={() => onGoFindings({})}>
               <Donut label={String(s.hosts.total)} sub="sunucu" parts={[
                 { value: s.hosts.ok, color: SEV.ok.color, title: 'sorun yok' }, { value: s.hosts.info, color: SEV.info.color, title: 'bilgi' },
                 { value: s.hosts.warning, color: SEV.warning.color, title: 'uyarı' }, { value: s.hosts.danger, color: SEV.danger.color, title: 'kritik' },
               ]} />
             </Kpi>
-            <Kpi title="JBoss JVM auto-start" tone={s.jvm.rebootRisk ? 'danger' : 'ok'}>
+            <Kpi title="JBoss JVM auto-start" tone={s.jvm.rebootRisk ? 'danger' : 'ok'} onClick={() => onGoFindings({ area: 'jvm' })}>
               <Donut label={String(s.jvm.total)} sub="JVM" parts={[
                 { value: s.jvm.autoOn, color: SEV.ok.color, title: 'auto-start açık' }, { value: s.jvm.autoOff, color: SEV.warning.color, title: 'auto-start kapalı' }, { value: s.jvm.autoUnknown, color: 'var(--status-neutral)', title: 'bilinmiyor' },
               ]} />
-              <div className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}><b style={{ color: SEV.danger.color }}>{s.jvm.rebootRisk}</b> reboot riski (çalışıyor + auto-start kapalı) · <b>{s.jvm.restartRequired}</b> restart gerekli</div>
+              <div className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }} title="auto-start ve durum önce JBoss CLI'dan, CLI okuyamazsa dbo.MWAppsInventory (middleware_applications_inventory/jboss job'ı) kaydından alınır; iki kaynak çelişirse satırda işaretlenir.">
+                <b style={{ color: SEV.danger.color }}>{s.jvm.rebootRisk}</b> reboot riski · <b>{s.jvm.restartRequired}</b> restart gerekli
+                {(s.jvm.fromInventory ?? 0) > 0 && <> · <b>{s.jvm.fromInventory}</b> JVM envanterden</>}
+                {(s.jvm.mismatched ?? 0) > 0 && <> · <b style={{ color: SEV.warning.color }}>{s.jvm.mismatched}</b> envanterle çelişiyor</>}
+              </div>
             </Kpi>
-            <Kpi title="JVM durumu / trafik" tone={s.jvm.retireCandidates ? 'warning' : 'ok'}>
+            <Kpi title="JVM durumu / trafik" tone={s.jvm.retireCandidates ? 'warning' : 'ok'} onClick={() => onGoFindings({ area: 'jvm', code: 'RETIRE_CANDIDATE' })}>
               <Donut label={String(s.jvm.running)} sub="çalışıyor" parts={[
                 { value: s.jvm.running, color: SEV.ok.color, title: 'çalışıyor' }, { value: s.jvm.stopped, color: 'var(--status-neutral)', title: 'kapalı' },
               ]} />
@@ -203,7 +218,7 @@ function HostsTab() {
                 <b style={{ color: SEV.warning.color }}>{s.jvm.retireCandidates}</b> retire adayı (kapalı + 7 gün istek yok) · <b>{s.jvm.noLoad}</b> çalışıyor ama 7 gün istek yok · {s.jvm.mapped}/{s.jvm.total} JVM web vhost'una eşlendi
               </div>
             </Kpi>
-            <Kpi title="Boşta IP" tone={s.ips.unused ? 'warning' : 'ok'}>
+            <Kpi title="Boşta IP" tone={s.ips.unused ? 'warning' : 'ok'} onClick={() => onGoFindings({ area: 'ip' })}>
               <Donut label={String(s.ips.unused)} sub="boşta" parts={[
                 { value: s.ips.total - s.ips.unused, color: SEV.ok.color, title: 'kullanımda' }, { value: s.ips.unused, color: SEV.warning.color, title: 'boşta' },
               ]} />
@@ -216,7 +231,7 @@ function HostsTab() {
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Kpi title="Init script uyumu" tone={s.init.diffFiles ? 'warning' : 'ok'}>
+            <Kpi title="Init script uyumu" tone={s.init.diffFiles ? 'warning' : 'ok'} onClick={() => onGoFindings({ area: 'init' })}>
               <div className="text-2xl font-bold tabular-nums">{s.init.compliant} <span className="text-sm font-normal" style={{ color: 'var(--text-muted)' }}>/ {s.init.hosts} sunucu filo çoğunluğuyla aynı</span></div>
               <div className="mt-2"><Bar value={s.init.compliant} total={s.init.hosts} color={SEV.ok.color} /></div>
               <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }} title="Ölçüt Denetim › Init Script ile aynı: dosya başına en kalabalık sha çoğunluktur. Repo referansından fark tek başına bulgu değildir.">
@@ -226,7 +241,7 @@ function HostsTab() {
             {(['RHA', 'IHS', 'NGINX'] as const).map((p) => {
               const w = s.web[p]; if (!w) return null;
               return (
-                <Kpi key={p} title={`${p === 'RHA' ? 'Red Hat Apache' : p === 'IHS' ? 'IBM HTTP Server' : 'Nginx'} sözdizimi`} tone={w.syntaxFail ? 'danger' : 'ok'}>
+                <Kpi key={p} title={`${p === 'RHA' ? 'Red Hat Apache' : p === 'IHS' ? 'IBM HTTP Server' : 'Nginx'} sözdizimi`} tone={w.syntaxFail ? 'danger' : 'ok'} onClick={() => onGoFindings({ area: 'web', code: 'SYNTAX_FAIL', product: p })}>
                   <div className="text-2xl font-bold tabular-nums">{w.syntaxOk} <span className="text-sm font-normal" style={{ color: 'var(--text-muted)' }}>/ {w.hosts} sunucu OK</span></div>
                   <div className="mt-2"><Bar value={w.syntaxOk} total={w.hosts} color={w.syntaxFail ? SEV.danger.color : SEV.ok.color} /></div>
                   <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{w.syntaxFail} hatalı · {w.notRunning} çalışmıyor · {w.vhosts} vhost, {w.idleVhosts} yüksüz</div>
@@ -234,6 +249,39 @@ function HostsTab() {
               );
             })}
           </div>
+
+          {s.byEnv && Object.keys(s.byEnv).length > 0 && (
+            <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+              <h3 className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>Ortam kırılımı</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-left" style={{ color: 'var(--text-muted)' }}>
+                    <th className="px-2 py-1">Ortam</th><th className="px-2 py-1 text-right">Sunucu</th><th className="px-2 py-1 text-right">Kritik</th><th className="px-2 py-1 text-right">Uyarı</th>
+                    <th className="px-2 py-1 text-right">JVM</th><th className="px-2 py-1 text-right">Çalışan</th><th className="px-2 py-1 text-right">auto-start kapalı</th><th className="px-2 py-1 text-right">Reboot riski</th>
+                    <th className="px-2 py-1 text-right">Init farkı</th><th className="px-2 py-1">Sözdizimi hatası</th>
+                  </tr></thead>
+                  <tbody>
+                    {Object.entries(s.byEnv).map(([g, e]) => (
+                      <tr key={g} className="border-t cursor-pointer hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-subtle)' }} onClick={() => onGoFindings({ envGroup: g })} title="Bu ortamın bulgularını aç">
+                        <td className="px-2 py-1 font-semibold">{g}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{nf(e.hosts)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums" style={{ color: e.danger ? SEV.danger.color : undefined }}>{nf(e.danger)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums" style={{ color: e.warning ? SEV.warning.color : undefined }}>{nf(e.warning)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{nf(e.jvms)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{nf(e.jvmRunning)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{nf(e.autoOff)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums" style={{ color: e.rebootRisk ? SEV.danger.color : undefined }}>{nf(e.rebootRisk)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{nf(e.initDiff)}</td>
+                        <td className="px-2 py-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                          {(['RHA', 'IHS', 'NGINX'] as const).map((p) => (e.web?.[p]?.syntaxFail ? <span key={p} className="mr-2">{p}: <b style={{ color: SEV.danger.color }}>{e.web[p].syntaxFail}</b></span> : null))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -525,14 +573,15 @@ function HostModal({ host, onClose, onScan, trackJob, reload }: {
 // görebilirim?" Tüm sunucuların bulguları tek tabloda; alan (init/web/jvm/…), kod, önem ve
 // ürün süzgeci; CSV. Satırdaki sunucuya tıklayınca sunucu penceresi açılır (Sunucular sekmesi).
 const AREA_TR: Record<string, string> = { init: 'Init script', jboss: 'JBoss host', jvm: 'JVM', web: 'Web sözdizimi / vhost', ip: 'IP', ssh: 'SSH', scan: 'Tarama' };
-export function FindingsTab() {
+export function FindingsTab({ initial }: { initial?: { area?: string; code?: string; product?: string; envGroup?: string } | null }) {
   const [data, setData] = useState<ShFindingsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [area, setArea] = useState<string>('all');
-  const [code, setCode] = useState<string>('all');
+  const [area, setArea] = useState<string>(initial?.area || 'all');
+  const [code, setCode] = useState<string>(initial?.code || 'all');
   const [sev, setSev] = useState<'all' | ShSeverity>('all');
-  const [product, setProduct] = useState<string>('all');
+  const [product, setProduct] = useState<string>(initial?.product || 'all');
+  const [envGroup, setEnvGroup] = useState<string>(initial?.envGroup || 'all');
   const load = useCallback(async (fresh = false) => { setLoading(true); try { const r = await serverHubApi.findings(fresh); if (r.ok) setData(r); else toast.error(r.message || 'Bulgular alınamadı.'); } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); } }, []);
   useAsyncEffect(async () => { await load(); }, [load]);
   const all = data?.findings || [];
@@ -540,12 +589,14 @@ export function FindingsTab() {
   const products = useMemo(() => [...new Set(all.flatMap((f) => f.products))].sort(), [all]);
   const rows = useMemo(() => {
     const n = q.trim().toLowerCase();
-    return all.filter((f) => (area === 'all' || f.area === area) && (code === 'all' || f.code === code) && (sev === 'all' || f.severity === sev) && (product === 'all' || f.products.includes(product)) && (!n || f.host.toLowerCase().includes(n) || f.text.toLowerCase().includes(n)));
-  }, [all, q, area, code, sev, product]);
+    return all.filter((f) => (area === 'all' || f.area === area) && (code === 'all' || f.code === code) && (sev === 'all' || f.severity === sev)
+      && (product === 'all' || f.products.includes(product)) && (envGroup === 'all' || (f.envGroup || 'Bilinmiyor') === envGroup)
+      && (!n || f.host.toLowerCase().includes(n) || f.text.toLowerCase().includes(n)));
+  }, [all, q, area, code, sev, product, envGroup]);
   const byCode = useMemo(() => { const m = new Map<string, number>(); for (const f of rows) m.set(f.code, (m.get(f.code) || 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [rows]);
   const csv = () => {
-    const head = ['sunucu', 'urunler', 'onem', 'alan', 'kod', 'bulgu', 'duzeltilebilir', 'tarama'];
-    const body = rows.map((f) => [f.host, f.products.join(' '), f.severity, f.area, f.code, f.text, f.fixable ? 'evet' : '', f.scanDate || '']);
+    const head = ['sunucu', 'ortam', 'urunler', 'onem', 'alan', 'kod', 'bulgu', 'duzeltilebilir', 'tarama'];
+    const body = rows.map((f) => [f.host, f.env || '', f.products.join(' '), f.severity, f.area, f.code, f.text, f.fixable ? 'evet' : '', f.scanDate || '']);
     const text = [head, ...body].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type: 'text/csv;charset=utf-8' })); a.download = `server_hub_bulgular_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
   };
@@ -570,6 +621,12 @@ export function FindingsTab() {
           <option value="all">tüm ürünler</option>
           {products.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <select value={envGroup} onChange={(e) => setEnvGroup(e.target.value)} className={sel} style={selStyle} aria-label="ortam">
+          <option value="all">tüm ortamlar</option>
+          <option value="Production">Production</option>
+          <option value="Non-Production">Non-Production</option>
+          <option value="Bilinmiyor">Bilinmiyor</option>
+        </select>
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtNumber(rows.length)} bulgu · {fmtNumber(new Set(rows.map((f) => f.host)).size)} sunucu{data?.latestScan ? ` · son tarama ${data.latestScan}` : ''}</span>
         <div className="ml-auto flex gap-2">
           <button onClick={csv} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}><ArrowDownTrayIcon className="w-3.5 h-3.5 inline" /> CSV</button>
@@ -586,12 +643,13 @@ export function FindingsTab() {
       <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
         <table className="w-full text-xs">
           <thead><tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-            <th className="px-3 py-2">Sunucu</th><th className="px-3 py-2">Önem</th><th className="px-3 py-2">Alan</th><th className="px-3 py-2">Kod</th><th className="px-3 py-2">Bulgu</th><th className="px-3 py-2">Ürünler</th>
+            <th className="px-3 py-2">Sunucu</th><th className="px-3 py-2">Ortam</th><th className="px-3 py-2">Önem</th><th className="px-3 py-2">Alan</th><th className="px-3 py-2">Kod</th><th className="px-3 py-2">Bulgu</th><th className="px-3 py-2">Ürünler</th>
           </tr></thead>
           <tbody>
             {rows.slice(0, 2000).map((f, i) => (
               <tr key={f.host + f.code + i} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                 <td className="px-3 py-1.5 font-mono font-semibold">{f.host}</td>
+                <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>{f.env || f.envGroup || '—'}</td>
                 <td className="px-3 py-1.5"><SevPill s={f.severity} /></td>
                 <td className="px-3 py-1.5">{AREA_TR[f.area] || f.area}</td>
                 <td className="px-3 py-1.5 font-mono text-[11px]">{f.code}</td>
@@ -599,7 +657,7 @@ export function FindingsTab() {
                 <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>{f.products.join(' · ')}</td>
               </tr>
             ))}
-            {!loading && rows.length === 0 && <TableEmptyRow colSpan={6} title={all.length ? 'Süzgeçle eşleşen bulgu yok.' : 'Bulgu yok.'} description={data?.tableMissing ? 'server_hub_scan job\'ı henüz koşmadı.' : undefined} />}
+            {!loading && rows.length === 0 && <TableEmptyRow colSpan={7} title={all.length ? 'Süzgeçle eşleşen bulgu yok.' : 'Bulgu yok.'} description={data?.tableMissing ? 'server_hub_scan job\'ı henüz koşmadı.' : undefined} />}
           </tbody>
         </table>
         {rows.length > 2000 && <div className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>İlk 2.000 satır gösteriliyor; tamamı CSV'de.</div>}

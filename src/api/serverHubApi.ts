@@ -7,6 +7,7 @@ export type ShSeverity = 'ok' | 'info' | 'warning' | 'danger';
 export interface ShFix { action: string; gen?: number; jvm?: string; product?: string; file?: string; line?: number; server_name?: string }
 export interface ShFinding { severity: Exclude<ShSeverity, 'ok'>; area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'ssh' | 'scan'; code: string; text: string; fix: ShFix | null }
 export interface ShHostRow {
+  env?: string; envGroup?: string;
   host: string; scanDate: string | null; products: string[]; status: ShSeverity;
   counts: { danger: number; warning: number; info: number };
   wallS: number | null; cpuS: number | null;
@@ -14,6 +15,8 @@ export interface ShHostRow {
 }
 export interface ShJvm {
   gen: number; name: string; group: string; running: boolean; autoStart: 'true' | 'false' | 'unknown'; serverState: string; ports: number[];
+  /** 2026-09-22: 'cli' (JBoss CLI taramasi) | 'envanter' (dbo.MWAppsInventory) */
+  source?: string; autoStartSource?: string; invStatus?: string | null; invAutoStart?: string; invJvmCount?: number; mismatch?: string[];
   req24h: number | null; req7d: number | null; matchKind: 'proxy' | 'name' | null;
   vhosts: { host: string; product: string; serverName: string; req24h: number | null; req7d: number | null; hc24h: number | null; sampled: boolean }[];
 }
@@ -31,17 +34,23 @@ export interface ShHostDetail extends Omit<ShHostRow, 'jvms' | 'vhosts'> {
   ips: { ip: string; iface: string; usedBy: string; primary: boolean }[];
   sshd: { maxSessions: number | null; maxStartups: string; activeSessions: number | null } | null;
 }
+export interface ShEnvBlock {
+  hosts: number; danger: number; warning: number; ok: number; jvms: number; jvmRunning: number; autoOff: number;
+  rebootRisk: number; initDiff: number; web: Record<string, { hosts: number; syntaxFail: number; notRunning: number }>;
+}
 export interface ShSummary {
+  /** Ortam kirilimi (2026-09-22): Production / Non-Production / Bilinmiyor */
+  byEnv?: Record<string, ShEnvBlock>;
   hosts: { total: number; ok: number; info: number; warning: number; danger: number };
   init: { hosts: number; compliant: number; diffFiles: number; missingFiles?: number; refDiffFiles?: { file: string; hosts: number }[] };
-  jvm: { total: number; running: number; stopped: number; autoOn: number; autoOff: number; autoUnknown: number; restartRequired: number; rebootRisk: number; retireCandidates: number; noLoad: number; mapped: number };
+  jvm: { total: number; running: number; stopped: number; autoOn: number; autoOff: number; autoUnknown: number; restartRequired: number; rebootRisk: number; retireCandidates: number; noLoad: number; mapped: number; fromInventory?: number; autoStartFromInventory?: number; mismatched?: number; invApps?: number };
   web: Record<string, { hosts: number; syntaxOk: number; syntaxFail: number; notRunning: number; vhosts: number; idleVhosts: number }>;
   ips: { total: number; unused: number };
   ssh: { hosts: number; lowMaxSessions: number; near: number };
   scan: { avgCpuS: number | null; maxCpuS: number | null; maxCpuHost: string | null };
 }
 export interface ShOverview { ok: boolean; message?: string; tableMissing: boolean; latestScan: string | null; summary: ShSummary | null; hosts: ShHostRow[] }
-export interface ShFindingRow { host: string; products: string[]; scanDate: string | null; severity: Exclude<ShSeverity, 'ok'>; area: ShFinding['area']; code: string; text: string; fixable: boolean }
+export interface ShFindingRow { host: string; products: string[]; env?: string; envGroup?: string; scanDate: string | null; severity: Exclude<ShSeverity, 'ok'>; area: ShFinding['area']; code: string; text: string; fixable: boolean }
 export interface ShFindingsResult { ok: boolean; message?: string; tableMissing: boolean; latestScan: string | null; findings: ShFindingRow[] }
 export interface ShLaunch { ok: boolean; message?: string; jobId: number | null; status: string | null; awxServerId: number; planOnly?: boolean }
 export interface ShJobStatus { ok: boolean; status: string; output: string; result?: unknown; message?: string }
