@@ -59,17 +59,38 @@ test('TY2 legacy `run` ISLEMIN KENDISINI de kapidan gecirir', () => {
   assert.ok(kapi >= 0 && (calistirma < 0 || calistirma > kapi), 'kapi calistirmadan SONRA');
 });
 
-test('TY3 kapi LogX ile AYNI kaynak tipini kullanir (kisit tek yerde tanimlansin)', () => {
+test('TY3 HER kapi PAYLASILAN modulu kullanir (yerel taklit kabul edilmez)', () => {
   const telnet = TELNET();
   const logx = kodOnly(oku('server/logx/v2/index.cjs'));
   const tip = /assertAllowed\(\s*\n?\s*'legacy_app'/;
   assert.match(logx, tip, 'LogX emsali kaybolmus — karsilastirma anlamsiz');
   assert.match(telnet, tip, 'Telnet farkli bir kaynak tipi kullaniyor');
-  // Ayni modulden gelmeli; Telnet kendi kopyasini kurmamali.
-  assert.match(
+
+  // ── DOSYADA VAR OLMASI YETMEZ ───────────────────────────────────────────────
+  // Ilk yazimda yalnizca "dosya bu modulu require ediyor mu" soruluyordu ve bekci
+  // KORDU: bir kapinin require'i yerel bir taklitle (`{ assertAllowed: async () => {} }`)
+  // degistirildiginde DIGER kapinin require'i eslesiyor ve bekci geciyordu.
+  // Depodaki 4 numarali korluk deseni — tanimlayicinin VARLIGI sorulmus, DOGRU
+  // YERDE kullanilip kullanilmadigi degil.
+  //
+  // Artik HER `assertAllowed` cagrisinin kendi kapsaminda, cagridan ONCE gelen
+  // gercek bir require aranir.
+  const PAYLASILAN = "require('../logx/v2/restrictions.cjs')";
+  let bulunan = 0;
+  for (const m of telnet.matchAll(/assertAllowed\(/g)) {
+    bulunan++;
+    const once = telnet.slice(Math.max(0, m.index - 500), m.index);
+    assert.ok(
+      once.includes(PAYLASILAN),
+      `assertAllowed cagrisi (offset ${m.index}) paylasilan modulden gelmiyor — yerel taklit`,
+    );
+  }
+  assert.ok(bulunan >= 2, `beklenen en az iki kapi, bulunan ${bulunan}`);
+  // Yerel bir `assertAllowed` TANIMI hicbir zaman olmamali.
+  assert.doesNotMatch(
     telnet,
-    /require\('\.\.\/logx\/v2\/restrictions\.cjs'\)/,
-    'Telnet kisitlama mantigini kendi icinde yeniden kuruyor',
+    /assertAllowed\s*:\s*(async\s*)?\(/,
+    'Telnet icinde yerel bir assertAllowed tanimi var',
   );
 });
 
