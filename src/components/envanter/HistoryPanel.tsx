@@ -19,6 +19,7 @@ import { Modal } from "@/components/common/Modal";
 import { TextInput } from "@/components/ui/Form";
 import { inventoryApi, type HistoryRow, type HistoryDiff } from "@/api/inventoryApi";
 import { fmtNumber } from "@/utils/datetime";
+import { downloadCsv as csvDownload } from '@/utils/csv';
 
 type Mode = "at" | "diff";
 
@@ -31,18 +32,6 @@ function daysAgo(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
-function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const body = [header, ...rows]
-    .map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-  const blob = new Blob(["﻿" + body], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${name}_${today()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 /** Küçük, tekrar eden başlık şeridi — üç fark bölümü de aynı görsel dili kullanır. */
 function SectionHead({

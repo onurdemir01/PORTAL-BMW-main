@@ -19,6 +19,7 @@ import { Select } from '@/components/ui/Form';
 import OcoSchedulesPanel from './OcoSchedulesPanel';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDateTime as fmt } from '@/utils/datetime';
+import { downloadCsv as csvIndir } from '@/utils/csv';
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'Onay Bekliyor', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -52,32 +53,10 @@ function duration(a: string, b?: string | null) {
   return min > 0 ? `${min}dk ${sec}sn` : `${sec}sn`;
 }
 
-function toCsv(rows: AdminSmartTicket[]): string {
-  const cols = [
-    'id',
-    'externalTicketId',
-    'username',
-    'status',
-    'smartStateName',
-    'module',
-    'templateName',
-    'flowKey',
-    'jobId',
-    'createdAt',
-    'resolvedAt',
-    'errorMessage',
-  ];
-  const head = cols.join(',');
-  const body = rows.map((r) =>
-    cols
-      .map(
-        (c) =>
-          `"${String((r as unknown as Record<string, unknown>)[c] ?? '').replace(/"/g, '""')}"`,
-      )
-      .join(','),
-  );
-  return [head, ...body].join('\n');
-}
+const CSV_KOLONLARI = [
+  'id', 'externalTicketId', 'username', 'status', 'smartStateName', 'module',
+  'templateName', 'flowKey', 'jobId', 'createdAt', 'resolvedAt', 'errorMessage',
+] as const;
 
 export default function SmartTicketsTab() {
   // 2026-08-26: bu sekme artik IKI listeyi barindiriyor. "OCO Zamanlamalari" ayri bir
@@ -178,13 +157,11 @@ export default function SmartTicketsTab() {
       toast.error('Dışa aktarılacak kayıt yok.');
       return;
     }
-    const blob = new Blob(['﻿' + toCsv(rows)], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `smart_talepleri_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    csvIndir(
+      'smart_talepleri',
+      [...CSV_KOLONLARI],
+      rows.map((r) => CSV_KOLONLARI.map((c) => (r as unknown as Record<string, unknown>)[c])),
+    );
   }
 
   const shown = `${total === 0 ? 0 : offset + 1}–${Math.min(offset + rows.length, total)} / ${total}`;

@@ -29,21 +29,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/useToast';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { AuditGlossary, ReferenceValuesPanel, termHint } from './nginxAuditGlossary';
+import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
 export const hostPagePath = (host: string) => `/denetim/nginx-audit/${encodeURIComponent(host)}`;
 
-function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const csv = [header, ...rows].map((r) => r.map(esc).join(';')).join('\r\n');
-  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export function NginxAudit() {
   const [data, setData] = useState<NginxAuditResult | null>(null);

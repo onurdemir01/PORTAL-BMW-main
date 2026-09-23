@@ -32,6 +32,7 @@ import {
 import { Panel, StatTile, Pill, Code, Note } from './ui';
 import { OwnerCell, ownerText } from './OwnerCell';
 import { DirCell, HacLegend } from './HacCell';
+import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
@@ -42,16 +43,6 @@ const STATUS: Record<NginxMigrationApp['status'], { label: string; tone: 'succes
   'not-scanned': { label: 'taranmadı', tone: 'neutral', hint: 'Yeni sunucuların hiçbiri henüz taranmadı (nginx_config_audit job’ı koşmalı)' },
 };
 
-function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const csv = [header, ...rows].map((r) => r.map(esc).join(';')).join('\r\n');
-  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function NginxProdMigration() {
   const [data, setData] = useState<NginxMigrationResult | null>(null);

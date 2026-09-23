@@ -12,6 +12,7 @@ import {
 import { inventoryApi, type SavedQuery, type QueryResult } from "@/api/inventoryApi";
 import DynamicTable from "./DynamicTable";
 import QueryHelpPanel from "./QueryHelpPanel";
+import { downloadCsv as csvIndir } from '@/utils/csv';
 
 interface Props {
   onClose: () => void;
@@ -25,16 +26,9 @@ interface Props {
 // yanit doner), bu yuzden burada sayfalama yok; dosya adi kayitli sorgunun adi.
 // Ayirici ";" - Turkce Excel ";" bekler, "," tek sutuna yigar (denetim CSV'leriyle ayni).
 function downloadResultCsv(columns: string[], rows: Record<string, unknown>[], name: string) {
-  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const lines = [columns.map(esc).join(";"), ...rows.map((r) => columns.map((c) => esc(r[c])).join(";"))];
-  const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
+  // Dosya adi kayitli sorgunun adi; dosya sistemi icin guvenli hale getirilir.
   const safe = (name || "custom_sql").replace(/[^\w.-]+/g, "_").slice(0, 60);
-  a.download = `${safe}_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  csvIndir(safe, columns, rows.map((r) => columns.map((c) => r[c])));
 }
 
 const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange }) => {

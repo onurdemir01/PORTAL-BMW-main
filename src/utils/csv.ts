@@ -10,13 +10,20 @@
 //   BOM         : kimi dosya gorunmez literal karakter, kimi U+FEFF kacisi
 //   satır sonu  : `\n` ↔ `\r\n`
 //
-// ── AYIRICI NEDEN VARSAYILAN OLARAK `;` ─────────────────────────────────────
-// Türkçe yerel ayarlı Excel liste ayırıcısı olarak `;` bekler; virgüllü bir
-// dosyayı tek sütuna doldurur. Portalın en yeni ekranları bu yüzden `;`
-// kullanıyor. Eski `denetim/*` dosyaları virgül kullanıyor ve onları çevirmek
-// **kullanıcının indirdiği dosyanın biçimini değiştirmek** demek — bu ayrı bir
-// karar, sessizce yapılmaz. Bu yüzden `separator` seçeneği var: eski ekranlar
-// taşınırken kendi biçimlerini koruyabilir.
+// ── AYIRICI SABİT DEĞİL, KULLANICI TERCİHİ ──────────────────────────────────
+// Ayırıcı portalda ikiye bölünmüştü: `denetim/` içinde bile 6 ekran virgül,
+// 5 ekran noktalı virgül kullanıyordu. Birini seçip hepsini ona çevirmek
+// **kullanıcının indirdiği dosyanın biçimini değiştirmek** demekti ve iki
+// meşru ihtiyaç var:
+//
+//   * Türkçe yerel ayarlı Excel liste ayırıcısı olarak `;` bekler; virgüllü
+//     dosyayı tek sütuna doldurur → "portal bozuk CSV veriyor".
+//   * Dosyayı bir script/araca besleyen için RFC 4180 virgülü doğru olan.
+//
+// Bu yüzden ayırıcı **kullanıcı başına** bir tercih (`csv_separator`,
+// `portal_user_preferences`). Varsayılan `;` — portalın kullanıcıları Excel'de
+// açıyor. Tercih okunamazsa (DB yok, oturum yok) varsayılana düşer; CSV
+// indirmek asla bir tercih okumasına BAĞIMLI olmamalı.
 //
 // KAÇIŞ: her hücre tırnaklanır ve içindeki `"` ikilenir (RFC 4180). Böylece
 // ayırıcı, satır sonu ve tırnak içeren değerler bozulmadan geçer — hücreden
@@ -32,8 +39,38 @@
  */
 const BOM = '\uFEFF';
 
+import { prefsApi } from '@/api/prefsApi';
+
+/** Tercih anahtarı — `portal_user_preferences`. */
+export const CSV_SEPARATOR_PREF = 'csv_separator';
+
+/** Desteklenen ayırıcılar. Serbest metin KABUL EDİLMEZ: bir harf ya da tırnak
+ *  ayırıcı olarak yazılırsa üretilen dosya sessizce bozulurdu. */
+export const CSV_SEPARATORS = [';', ','] as const;
+export type CsvSeparator = (typeof CSV_SEPARATORS)[number];
+
+const VARSAYILAN_AYIRICI: CsvSeparator = ';';
+
+/**
+ * Kullanıcının seçtiği ayırıcı. Tercih yoksa/geçersizse varsayılana düşer —
+ * CSV indirmek bir tercih okumasına BAĞIMLI olmamalı.
+ */
+export function csvSeparator(): CsvSeparator {
+  try {
+    const v = prefsApi.get(CSV_SEPARATOR_PREF);
+    return (CSV_SEPARATORS as readonly string[]).includes(v || '')
+      ? (v as CsvSeparator)
+      : VARSAYILAN_AYIRICI;
+  } catch {
+    return VARSAYILAN_AYIRICI;
+  }
+}
+
 export interface CsvOptions {
-  /** Liste ayırıcı. Türkçe Excel `;` bekler. */
+  /**
+   * Liste ayırıcı. VERİLMEZSE kullanıcının tercihi okunur — çağıran tarafın
+   * sabit bir değer yazması, tercihi işlevsiz kılardı.
+   */
   separator?: string;
   /** Dosya adına tarih eklensin mi (`ad_2026-09-23.csv`). */
   withDate?: boolean;
@@ -48,9 +85,10 @@ export function csvCell(value: unknown): string {
 export function toCsv(
   header: readonly string[],
   rows: readonly (readonly unknown[])[],
-  { separator = ';' }: CsvOptions = {},
+  { separator }: CsvOptions = {},
 ): string {
-  return [header, ...rows].map((r) => r.map(csvCell).join(separator)).join('\r\n');
+  const sep = separator ?? csvSeparator();
+  return [header, ...rows].map((r) => r.map(csvCell).join(sep)).join('\r\n');
 }
 
 /**

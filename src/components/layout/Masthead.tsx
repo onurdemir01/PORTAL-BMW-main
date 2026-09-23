@@ -21,6 +21,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { AuthContext } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { prefsApi } from "@/api/prefsApi";
+import { CSV_SEPARATOR_PREF, csvSeparator, type CsvSeparator } from "@/utils/csv";
 import { PortalLogo } from "@/components/common/PortalLogo";
 
 interface Props {
@@ -31,10 +33,32 @@ export default function Masthead({ onToggleNav }: Props) {
   const { user, logout } = useContext(AuthContext);
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Sunucudaki tercih acilista ASENKRON dolar. Ilk deger onbellekten okunur
+  // (dolmussa dogru, dolmamissa varsayilan) ve asagidaki effect dolduktan
+  // sonra tazeler — yoksa menu her zaman varsayilani gosterirdi.
+  //
+  // NOT: indirilen DOSYA bundan etkilenmez; `toCsv` ayiriciyi CAGRI ANINDA
+  // okur, yani onbellek o ana kadar dolmustur.
+  const [csvAyirici, setCsvAyirici] = useState<CsvSeparator>(csvSeparator());
   const menuRef = useRef<HTMLDivElement>(null);
 
   const displayName = user?.displayName || user?.username || "?";
   const initial = displayName[0]?.toUpperCase() ?? "?";
+
+  useEffect(() => {
+    let alive = true;
+    prefsApi
+      .getAll()
+      .then(() => {
+        if (alive) setCsvAyirici(csvSeparator());
+      })
+      .catch(() => {
+        /* tercih okunamadi → varsayilan kalir */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -124,6 +148,40 @@ export default function Masthead({ onToggleNav }: Props) {
               >
                 <UserCircleIcon className="h-4 w-4" /> Nobet listesi
               </NavLink>
+              {/* ── CSV AYIRICI ─────────────────────────────────────────────
+                  Portalda ayirici ikiye bolunmustu (`denetim/` icinde bile 6
+                  ekran virgul, 5 ekran noktali virgul). Birini secip hepsini
+                  ona cevirmek KULLANICININ INDIRDIGI DOSYANIN bicimini
+                  degistirmek olurdu ve iki mesru ihtiyac var: Turkce Excel `;`
+                  bekler, bir script'e besleyen RFC 4180 virgulunu ister.
+                  Bu yuzden KULLANICI BASINA bir tercih. */}
+              <div className="px-4 py-2" style={{ borderTop: "1px solid var(--border)" }}>
+                <label
+                  className="flex items-center justify-between gap-2 text-[0.75rem]"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  CSV ayırıcı
+                  <select
+                    value={csvAyirici}
+                    onChange={(e) => {
+                      const v = e.target.value as CsvSeparator;
+                      setCsvAyirici(v);
+                      // Fire-and-forget: tercih yazilamazsa CSV yine calisir,
+                      // yalnizca varsayilana duser.
+                      prefsApi.set({ [CSV_SEPARATOR_PREF]: v }).catch(() => {});
+                    }}
+                    className="rounded border px-1.5 py-0.5 text-[0.75rem]"
+                    style={{
+                      background: "var(--bg-surface)",
+                      color: "var(--text-primary)",
+                      borderColor: "var(--border)",
+                    }}
+                  >
+                    <option value=";">noktalı virgül ( ; ) — Excel</option>
+                    <option value=",">virgül ( , ) — RFC 4180</option>
+                  </select>
+                </label>
+              </div>
               <button
                 onClick={() => { setMenuOpen(false); logout(); }}
                 className="flex w-full items-center gap-2 px-4 py-2 text-left text-[0.875rem] hover:bg-[var(--bg-elevated)]"

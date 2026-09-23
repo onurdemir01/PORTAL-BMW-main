@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/Form';
 import { fmtNumber, fmtDate } from '@/utils/datetime';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { StatTile, Pill, TableShell, Th, Td, Note, type Tone } from '@/components/denetim/ui';
+import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => fmtNumber(n);
 
@@ -25,18 +26,6 @@ const STATUS: Record<RouteTrafficStatus, { label: string; tone: Tone; icon: Reac
   nodata: { label: 'veri yok', tone: 'neutral', icon: QuestionMarkCircleIcon, hint: 'envanterde var, router sayacında hiç görünmedi' },
 };
 
-function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const body = [header, ...rows]
-    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function RouteTraffic() {
   const [data, setData] = useState<RouteTrafficResult | null>(null);
