@@ -88,6 +88,20 @@ function buildExtraVars({ service, application, namespace, inputPath, user }) {
     application: String(application || '').trim(),
     namespace: String(namespace || '').trim(),
     input_path: String(inputPath || '').trim(),
+    // AKIS SABITLERI ACIKCA GONDERILIR (job 3343114, 2026-09-23).
+    //
+    // Eskiden bunlar gonderilmiyordu: "playbook zaten sabitliyor" deniyordu. Ama playbook'un
+    // GIRDI DOGRULAMA play'inde (hosts: localhost) bu degiskenlerin play vars'i YOKTUR ve
+    // AWX, template survey'inde tanimli bir alanin VARSAYILANINI is baslarken extra_vars'a
+    // koyar. Survey'de env/action/app_type kalmissa (bu template nginx_ops'tan turetilmisti)
+    // is "env prod degil" diyerek daha ilk gorevde dusuyordu - uretimde tam olarak bu oldu.
+    //
+    // Acikca gonderilen deger, survey varsayilanini da play vars'i da EZER; playbook'un
+    // kapisi (assert) yine yerinde durur ve yanlis bir akisi engellemeye devam eder.
+    env: 'prod',
+    action: 'create',
+    app_type: 'spa',
+    migration_mode: true,
     requester_name: (user && (user.displayName || user.username)) || '',
     requester_email: (user && user.email) || '',
   };

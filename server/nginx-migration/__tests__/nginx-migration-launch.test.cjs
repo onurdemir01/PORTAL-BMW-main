@@ -7,16 +7,23 @@ const { buildExtraVars, validateRequest } = require('../index.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 
-test('extra_vars: playbookun bekledigi 4 alan + requester; env/action/app_type GONDERILMEZ (playbook sabitler)', () => {
+// 2026-09-23 (job 3343114): env/action/app_type ARTIK GONDERILIR. Eskiden "playbook sabitler"
+// deniyordu; ama playbook'un girdi dogrulama play'inde bu degiskenlerin play vars'i yok ve AWX
+// survey VARSAYILANLARINI extra_vars'a koyuyor - is "env prod degil" diye ilk gorevde dusuyordu.
+test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () => {
   const v = buildExtraVars({
     service: 'glomo', application: 'base-app-v0', namespace: 'digital-banking-ch-prod', inputPath: '/base/',
     user: { displayName: 'Onur Demir', username: 'odemir', email: 'o@x' },
   });
   assert.deepEqual(v, {
     service: 'GLOMO', application: 'base-app-v0', namespace: 'digital-banking-ch-prod', input_path: '/base/',
+    env: 'prod', action: 'create', app_type: 'spa', migration_mode: true,
     requester_name: 'Onur Demir', requester_email: 'o@x',
   });
-  assert.ok(!('env' in v) && !('action' in v) && !('app_type' in v) && !('migration_mode' in v));
+  // Playbook'un kapisi (assert) bu degerleri bekler; survey varsayilani karisirsa is duser.
+  assert.equal(v.env, 'prod');
+  assert.equal(v.action, 'create');
+  assert.equal(v.app_type, 'spa');
 });
 
 const groups = [{
