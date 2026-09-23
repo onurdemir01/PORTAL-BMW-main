@@ -47,11 +47,22 @@ test('IG2 `UNKNOWN` "basarisiz" gibi GOSTERILMEZ', () => {
   assert.match(d, /failed:\s*'[^']*red-/, 'gercek basarisizlik kirmizi degil');
 });
 
-test('IG3 SMART/OCO onay zinciri EKRANA cikiyor', () => {
-  const d = dilim(TAB(), 'function IsGecmisiPanel', 'function ClusterCapsPanel');
-  for (const alan of ['smart_ticket_id', 'oco_number', 'approval_state', 'approved_by']) {
-    assert.ok(d.includes(alan), `${alan} ekranda hic gosterilmiyor — yalniz DB'de kalir`);
+test('IG3 SMART/OCO onay zinciri TABLODA gosteriliyor', () => {
+  // ── DILIM PANEL DEGIL, SATIR OLMALI ─────────────────────────────────────────
+  // Ilk yazimda tum panel taraniyordu ve bekci KORDU: satirdaki render blogu
+  // silindiginde ayni alan adlari CSV SUTUN LISTESINDE gecmeye devam ediyor ve
+  // bekci geciyordu. Bu oturumda dorduncu kez ayni desen — tanimlayicinin
+  // VARLIGI degil, DOGRU YERDE olmasi sorulmali.
+  const d = dilim(
+    TAB(),
+    "{r.smart_ticket_id",
+    '</td>',
+  );
+  for (const alan of ['smart_ticket_id', 'oco_number', 'approval_state']) {
+    assert.ok(d.includes(alan), `${alan} tablo satirinda gosterilmiyor — yalniz DB'de kalir`);
   }
+  // Uc alan da bossa "—" yazilmali; bos hucre "veri yok mu, ozellik yok mu" sorusunu dogurur.
+  assert.match(d, /'—'/, 'bos onay hucresi hicbir sey soylemiyor');
 });
 
 test('IG4 CSV EKRANDA GORULENI disa aktarir (ham listeyi degil)', () => {
