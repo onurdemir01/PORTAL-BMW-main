@@ -20,7 +20,14 @@ import {
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { playbookRegistryApi, type PlaybookRegistryEntry } from '@/api/playbookRegistryApi';
-import { scalexApi, type ScaleXRbacFinding, type ScaleXClusterTree } from '@/api/scalexApi';
+import {
+  scalexApi,
+  type ScaleXRbacFinding,
+  type ScaleXClusterTree,
+  type ScaleXHistoryRow,
+} from '@/api/scalexApi';
+import { downloadCsv } from '@/utils/csv';
+import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDateTime } from '@/utils/datetime';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -368,6 +375,8 @@ const ScaleXAdminTab: React.FC = () => {
         </>
       )}
 
+      <IsGecmisiPanel />
+
       <RbacFindings />
 
       {/* AYNI MODAL, AYNI TABLO, AYNI UÇLAR — yalnızca doğru yerden açılıyor. */}
@@ -586,6 +595,280 @@ function OcoDiagnosePanel() {
 //
 // ÜÇ DURUM AYRI GÖSTERİLİR — ikisini birleştirmek bu depoda iki ayrı arıza
 // üretti: "hiç taranmadı" / "tarandı, ekstra CRD yok" / "okunamadı".
+/** `UNKNOWN` = uzlastirici 24 saat boyunca isin durumunu OKUYAMADI — "basarisiz" DEGIL. */
+const DURUM_TONU: Record<string, string> = {
+  successful: 'bg-green-100 text-green-800',
+  failed: 'bg-red-100 text-red-800',
+  error: 'bg-red-100 text-red-800',
+  canceled: 'bg-[var(--bg-inset)] text-[var(--text-muted)]',
+  UNKNOWN: 'bg-amber-100 text-amber-900',
+};
+
+function uygulamalariCoz(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.map((x) => String(x)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * IS GECMISI — `GET /api/scalex/history`.
+ *
+ * NEDEN VAR: uc PR #115'ten beri yaziliydi ve `scalexApi.history()` sarmalayicisi
+ * da vardi, ama HICBIR BILESEN cagirmiyordu. Sonuclari:
+ *   * uzlastiricinin `UNKNOWN` yazdigi isler kullaniciya HIC gorunmuyordu,
+ *   * SMART onay zinciri (approval_state / approved_by / approved_at) yalniz DB'deydi,
+ *   * tarayici sekmesi kapandiktan sonra bir isin sonucuna ulasmanin yolu yoktu
+ *     (`JobTrackerContext` oturum-omurlu).
+ *
+ * Sunucuda SIFIR degisiklik: yalnizca ekran.
+ */
+function IsGecmisiPanel() {
+  const [rows, setRows] = useState<ScaleXHistoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const [durum, setDurum] = useState('');
+  const [islem, setIslem] = useState('');
+  const [acik, setAcik] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await scalexApi.history();
+      if (r.ok) {
+        setRows(r.items || []);
+        setErr(null);
+      } else setErr(r.message || 'İş geçmişi okunamadı.');
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useAsyncEffect(async (alive) => {
+    if (alive()) await load();
+  }, []);
+
+  const durumlar = useMemo(
+    () => [...new Set(rows.map((r) => r.status).filter(Boolean))] as string[],
+    [rows],
+  );
+  const islemler = useMemo(
+    () => [...new Set(rows.map((r) => r.action).filter(Boolean))] as string[],
+    [rows],
+  );
+
+  const suzulmus = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (durum && r.status !== durum) return false;
+      if (islem && r.action !== islem) return false;
+      if (!needle) return true;
+      const alan = [
+        r.username, r.env, r.tenant, r.cluster_name, r.namespace,
+        r.oco_number, r.smart_ticket_id, r.awx_job_id, r.app_names_json,
+      ]
+        .map((x) => String(x ?? '').toLowerCase())
+        .join(' ');
+      return alan.includes(needle);
+    });
+  }, [rows, q, durum, islem]);
+
+  const csv = () =>
+    downloadCsv(
+      'scalex_is_gecmisi',
+      ['Tarih', 'Kullanıcı', 'Ortam', 'Tenant', 'Cluster', 'Namespace', 'İşlem', 'Mod',
+       'Uygulamalar', 'Durum', 'Sonuç', 'AWX işi', 'SMART', 'OCO', 'Onay', 'Onaylayan', 'Gerekçe'],
+      // SUZULMUS satirlar disa aktarilir — ekranda gordugunu indirir.
+      suzulmus.map((r) => [
+        r.created_at, r.username, r.env, r.tenant, r.cluster_name, r.namespace,
+        r.action, r.execution_mode, uygulamalariCoz(r.app_names_json).join(' '),
+        r.status, r.overall_status, r.awx_job_id, r.smart_ticket_id, r.oco_number,
+        r.approval_state, r.approved_by, r.reason,
+      ]),
+    );
+
+  return (
+    <section className="rounded-xl border border-[var(--border)] p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">İş geçmişi</p>
+          <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+            Son 200 ScaleX işlemi. Admin tümünü, diğer kullanıcılar yalnızca kendi
+            işlerini görür. <strong>UNKNOWN</strong> = uzlaştırıcı 24 saat boyunca işin
+            durumunu okuyamadı — “başarısız” demek <em>değil</em>.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <button type="button" onClick={csv} disabled={!suzulmus.length}
+            className="text-xs text-[var(--accent)] hover:underline disabled:opacity-50">
+            CSV
+          </button>
+          <button type="button" onClick={load}
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline">
+            <ArrowPathIcon aria-hidden="true" className="w-3.5 h-3.5" /> Yenile
+          </button>
+        </div>
+      </div>
+
+      {err && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+          {err}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="kullanıcı, cluster, namespace, OCO, iş no…"
+          className="w-64 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]" />
+        <select value={islem} onChange={(e) => setIslem(e.target.value)}
+          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]">
+          <option value="">tüm işlemler</option>
+          {islemler.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={durum} onChange={(e) => setDurum(e.target.value)}
+          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]">
+          <option value="">tüm durumlar</option>
+          {durumlar.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <span className="text-xs text-[var(--text-muted)]">
+          {suzulmus.length} / {rows.length}
+          {rows.length >= 200 && ' · liste 200 satırda kırpılıyor'}
+        </span>
+      </div>
+
+      {loading && !rows.length ? (
+        <LoadingLogo compact />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[var(--text-muted)]">
+                <th className="py-1.5 pr-3 font-medium">Tarih</th>
+                <th className="py-1.5 pr-3 font-medium">Kullanıcı</th>
+                <th className="py-1.5 pr-3 font-medium">Kapsam</th>
+                <th className="py-1.5 pr-3 font-medium">İşlem</th>
+                <th className="py-1.5 pr-3 font-medium">Durum</th>
+                <th className="py-1.5 pr-3 font-medium">Onay</th>
+                <th className="py-1.5 font-medium" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {!suzulmus.length && (
+                <TableEmptyRow
+                  colSpan={7}
+                  title={rows.length ? 'Süzgece uyan kayıt yok.' : 'Henüz ScaleX işlemi yok.'}
+                  description={
+                    rows.length
+                      ? 'Arama metnini ya da süzgeçleri gevşetin.'
+                      : 'Bir ScaleX işlemi çalıştırıldığında burası dolar.'
+                  }
+                />
+              )}
+              {suzulmus.map((r) => {
+                const uygulamalar = uygulamalariCoz(r.app_names_json);
+                return (
+                  <React.Fragment key={r.id}>
+                    <tr className="align-top">
+                      <td className="py-1.5 pr-3 whitespace-nowrap text-[var(--text-muted)]">
+                        {fmtDateTime(r.created_at)}
+                      </td>
+                      <td className="py-1.5 pr-3">{r.username || '—'}</td>
+                      <td className="py-1.5 pr-3">
+                        <span className="font-mono">{r.cluster_name || '—'}</span>
+                        <span className="text-[var(--text-muted)]">
+                          {' '}/ {r.namespace || '—'}
+                        </span>
+                        <div className="text-[var(--text-muted)]">
+                          {r.tenant} / {r.env}
+                        </div>
+                      </td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">
+                        {r.action}
+                        {r.execution_mode === 'dry_run' && (
+                          <span className="ml-1 text-[10px] text-[var(--text-muted)]">(prova)</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                          DURUM_TONU[r.status || ''] || 'bg-[var(--bg-inset)] text-[var(--text-muted)]'
+                        }`}>
+                          {r.status || '—'}
+                        </span>
+                        {r.overall_status && r.overall_status !== r.status && (
+                          <div className="mt-0.5 text-[var(--text-muted)]">{r.overall_status}</div>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3 text-[var(--text-muted)]">
+                        {/* SMART/OCO zinciri: bugune kadar YALNIZ DB'deydi. */}
+                        {r.smart_ticket_id ? `SMART #${r.smart_ticket_id}` : null}
+                        {r.oco_number ? <div>OCO {r.oco_number}</div> : null}
+                        {r.approval_state ? <div>{r.approval_state}</div> : null}
+                        {!r.smart_ticket_id && !r.oco_number && !r.approval_state && '—'}
+                      </td>
+                      <td className="py-1.5 text-right">
+                        <button type="button" onClick={() => setAcik(acik === r.id ? null : r.id)}
+                          className="text-[var(--accent)] hover:underline">
+                          {acik === r.id ? 'gizle' : 'ayrıntı'}
+                        </button>
+                      </td>
+                    </tr>
+                    {acik === r.id && (
+                      <tr>
+                        <td colSpan={7} className="pb-3">
+                          <div className="rounded-lg bg-[var(--bg-inset)] p-2.5 space-y-1">
+                            <p>
+                              <span className="text-[var(--text-muted)]">Uygulamalar: </span>
+                              {uygulamalar.length ? uygulamalar.join(', ') : '—'}
+                            </p>
+                            {r.target_replicas != null && (
+                              <p>
+                                <span className="text-[var(--text-muted)]">Hedef replika: </span>
+                                {r.target_replicas}
+                              </p>
+                            )}
+                            <p>
+                              <span className="text-[var(--text-muted)]">AWX: </span>
+                              {r.awx_job_id ? `sunucu ${r.awx_server_id} / iş #${r.awx_job_id}` : '—'}
+                            </p>
+                            {r.approved_by && (
+                              <p>
+                                <span className="text-[var(--text-muted)]">Onaylayan: </span>
+                                {r.approved_by}
+                                {r.approved_at && ` · ${fmtDateTime(r.approved_at)}`}
+                              </p>
+                            )}
+                            {r.reason && (
+                              <p>
+                                <span className="text-[var(--text-muted)]">Gerekçe: </span>
+                                {r.reason}
+                              </p>
+                            )}
+                            <p className="text-[var(--text-muted)]">
+                              Tam çıktı ve hedef bazlı sonuç bu listede taşınmaz (tek işin
+                              sonucu yüz binlerce karakter olabiliyor); AWX iş numarasından
+                              Otomasyon ekranında okunabilir.
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ClusterCapsPanel() {
   const [rows, setRows] = useState<Awaited<ReturnType<typeof scalexApi.clusterCaps>>['items']>([]);
   const [ttl, setTtl] = useState<number | null>(null);

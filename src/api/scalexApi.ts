@@ -261,6 +261,38 @@ export interface ScaleXPreview {
   targets: { env: string; tenant: string; namespace: string; clusters: string[]; apps: string[] };
 }
 
+/**
+ * `scalex_operations` satırı — sunucunun `/history` ucundan döndürdüğü kolonlar.
+ * Alan adları SQL kolon adlarıyla birebir (sunucu satırı olduğu gibi yolluyor).
+ */
+export interface ScaleXHistoryRow {
+  id: number;
+  request_key: string | null;
+  username: string | null;
+  env: string | null;
+  tenant: string | null;
+  cluster_name: string | null;
+  namespace: string | null;
+  action: string | null;
+  execution_mode: string | null;
+  target_replicas: number | null;
+  /** JSON dizi metni; ekran güvenli biçimde çözer. */
+  app_names_json: string | null;
+  awx_server_id: number | null;
+  awx_job_id: number | null;
+  /** İşin portal tarafındaki durumu (`UNKNOWN` = uzlaştırıcı 24 saat okuyamadı). */
+  status: string | null;
+  overall_status: string | null;
+  smart_ticket_id: number | null;
+  oco_number: string | null;
+  approval_state: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  reason: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
 export interface ScaleXJobRef {
   serverId: number;
   templateId: number;
@@ -730,10 +762,22 @@ export const scalexApi = {
     return post<{ ok: boolean; message?: string }>('/adopt', body);
   },
 
+  /**
+   * İş geçmişi. Admin HEPSİNİ, kullanıcı YALNIZ KENDİNİNKİNİ görür (sunucu süzer).
+   *
+   * Uç PR #115'ten beri vardı ama **hiçbir ekran çağırmıyordu**: uzlaştırıcının
+   * `UNKNOWN` yazdığı işler, SMART onay zinciri (`approvalState`/`approvedBy`)
+   * ve `ocoNumber` yalnızca DB'de duruyordu. Tarayıcı sekmesi kapandıktan sonra
+   * bir işin sonucuna portal içinden ulaşmanın yolu yoktu.
+   *
+   * `result_json` ve `error_message` liste yanıtında BİLEREK YOK — tek bir işin
+   * sonucu yüz binlerce karakter olabiliyor ve 200 satırla çarpılınca yanıt
+   * onlarca MB'a çıkardı (sunucudaki not bunu açıkça söylüyor).
+   */
   async history() {
     return safeJson(await fetch(`${BASE}/history`)) as Promise<{
       ok: boolean;
-      items: Record<string, unknown>[];
+      items: ScaleXHistoryRow[];
       message?: string;
     }>;
   },
