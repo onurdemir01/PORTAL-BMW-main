@@ -191,9 +191,25 @@ function initLogXv2(app) {
     /* auth modulu yoksa deny kalir */
   }
 
-  // A4 fetch-back UPLOAD — requireAuth'tan ONCE (auth = tek-kullanimlik token, kaynak host'un
-  // session'i yok). Body streaming diske yazilir; global express.json octet-stream'i yutmaz.
-  router.post('/ingest/:token', asyncRoute(ingest.handleIngestRoute));
+  // ── A4 fetch-back UPLOAD — VARSAYILAN OLARAK KAPALI (2026-09-23) ────────────
+  //
+  // Bu uc `requireAuth`tan ONCE mount edilir (kimlik = tek-kullanimlik token;
+  // kaynak host'un portal oturumu yoktur). Yani portalin KIMLIK DOGRULAMASIZ
+  // TEK yazma ucu.
+  //
+  // Ozellik ise OLU: hicbir playbook `ingest_url`i okumuyor ve uretilen URL
+  // portalin kendi adresini isaret ettigi icin bastion arkasindaki kaynak host
+  // oraya zaten ulasamiyordu. Token ureten son yol da (`legacy.cjs`) kaldirildi.
+  //
+  // SILINMIYOR, BAYRAKLANIYOR: bir gun playbook tarafi yazilirsa mekanizma
+  // yerinde dursun. Ama kullanilmayan bir yukleme ucunu acik birakmak, olmayan
+  // bir ozellik icin acik saldiri yuzeyi tasimak demektir.
+  if (process.env.LOGX_V2_INGEST_ENABLED === '1') {
+    console.warn('[LogX v2] A4 ingest ucu ACIK (LOGX_V2_INGEST_ENABLED=1) — kimlik dogrulamasiz yukleme yolu.');
+    // MUAFIYET GEREKCESI: kimlik = tek-kullanimlik token; kaynak host'un portal
+    // oturumu yoktur, bu yuzden requireAuth'tan ONCE mount edilir (bkz. ingest.cjs).
+    router.post('/ingest/:token', asyncRoute(ingest.handleIngestRoute));
+  }
 
   router.use(requireAuth);
 
