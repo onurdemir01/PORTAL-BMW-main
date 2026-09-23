@@ -430,11 +430,20 @@ async function transfer(requestRow, selected) {
   }
 
   const archiveName = `${cryptoRandomId()}.zip`;
-  // A4 fetch-back: kaynak host NFS'e yazamazsa arsivi bu URL'ye push edebilir (bkz. ingest.cjs).
-  // DB yoksa null → sadece NFS yolu kalir (graceful).
-  const ingestInfo = await require('./ingest.cjs')
-    .issueIngestToken({ requestId: requestRow.request_id, filename: archiveName })
-    .catch(() => null);
+  // ── INGEST (A4 fetch-back) BILEREK KULLANILMIYOR ────────────────────────────
+  //
+  // `ocp.cjs` bunu 2026-09'da birakmis ve yorumuna "legacy de dahil" yazmisti —
+  // AMA BURASI HALA TOKEN URETIYORDU. Yani yorum gercegi anlatmiyordu: her
+  // legacy transfer'de bosuna bir `logx_v2_ingest` satiri aciliyor ve playbook'a
+  // hicbir gorevin okumadigi bir `ingest_url` gidiyordu (`grep ingest_url`
+  // playbook agacinda 0 sonuc).
+  //
+  // Ustelik uretilen URL portalin KENDI adresini isaret ediyor; kaynak host
+  // bastion arkasinda oldugu icin oraya zaten ULASAMIYORDU. Yani ozellik
+  // yalnizca kullanilmiyor degil, CALISAMAZ durumdaydi.
+  //
+  // Teslim yolu OCP ile ayni: arsiv paylasimli staging dizinine (NFS) yazilir,
+  // portal `resolveStagedFile` ile oradan okur; erisilemezse `fallback_dir`.
   const job = await jobs.launchJob(requestRow.request_id, 'legacy_transfer', {
     selected_files: selected,
     staging_dir: process.env.LOGX_V2_STAGING_LEGACY_DIR || '/sw/BMW_PORTAL/logs/legacy',
@@ -443,7 +452,6 @@ async function transfer(requestRow, selected) {
     // yerel dizini tariyordu ve fallback'e dusen arsiv asla servis edilemiyordu.
     fallback_dir: require('./downloads.cjs').remoteFallbackDir(),
     archive_name: archiveName,
-    ...(ingestInfo ? { ingest_url: ingestInfo.url } : {}),
   });
 
   await requests.updateRequest(requestRow.request_id, {

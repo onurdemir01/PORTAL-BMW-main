@@ -278,9 +278,23 @@ function initTelnet(app) {
 
   // GET /api/telnet/hosts?app= — OpsX'in hostsForApp'ini DOGRUDAN yeniden kullanir
   // (ayni env/jboss_version/status alanlari — kod tekrari yok).
+  //
+  // ── YETKI KAPISI (2026-09-23) ────────────────────────────────────────────────
+  // Bu uc uzun sure kisitlamalardan MUAFTI. OCP dalina 2026-08-28'de namespace
+  // kapisi eklenmisti (bkz. asagidaki not) ama LEGACY dali atlanmisti: LogX v2
+  // ayni `logx_v2_restrictions` tablosunu kullanarak `/legacy/hosts` ucunu
+  // koruyor (server/logx/v2/index.cjs:307, gerekcesi orada yazili: "kisitli bir
+  // uygulamanin SUNUCU LISTESI sizmasin"), Telnet ise korumuyordu. Ayni kisit,
+  // ayni tablo, iki farkli sonuc.
   app.get('/api/telnet/hosts', requireAuth, async (req, res) => {
     try {
-      const hosts = await hostsForApp(req.query.app);
+      const uygulama = String(req.query.app || '').trim();
+      if (!uygulama) {
+        return res.status(400).json({ ok: false, message: 'app parametresi gerekli.' });
+      }
+      const restrictions = require('../logx/v2/restrictions.cjs');
+      await restrictions.assertAllowed('legacy_app', uygulama, req.session?.user || {});
+      const hosts = await hostsForApp(uygulama);
       res.json({ ok: true, hosts });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -673,6 +687,25 @@ function initTelnet(app) {
     }
     if (!Array.isArray(hosts) || hosts.length === 0) {
       return res.status(400).json({ ok: false, message: 'En az bir sunucu seçilmeli.' });
+    }
+
+    // YETKI KAPISI: liste sizintisini `/hosts` kapatiyor, ama ISLEMIN KENDISI de
+    // gecmeli — istemci `/hosts`u hic cagirmadan govdeye uygulama adini ELLE
+    // yazabilir. LogX v2 ayni sebeple `discover` ucunda da assert ediyor
+    // (server/logx/v2/index.cjs:321). Kisitlama modeli VARSAYILAN-ACIK oldugu
+    // icin bilinmeyen bir ad zaten gecer; bir kisit TANIMLIYSA elle yazmak onu
+    // ATLATAMAZ.
+    {
+      const restrictions = require('../logx/v2/restrictions.cjs');
+      try {
+        await restrictions.assertAllowed(
+          'legacy_app',
+          String(application).trim(),
+          req.session?.user || {},
+        );
+      } catch (err) {
+        return res.status(err.status || 403).json({ ok: false, message: err.message });
+      }
     }
 
     // ANTI-TOCTOU: OpsX ile AYNI kontrol — client'in gonderdigi host listesine guvenilmez.
