@@ -15,6 +15,7 @@ import {
   type NginxApiLocationRow,
 } from '@/api/denetimApi';
 import { Panel, StatTile, Pill, TableShell, Th, Td, Note } from './ui';
+import { API_CLUSTERS, clusterCoverage } from '../../../shared/nginxApiClusters.cjs';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
@@ -126,7 +127,8 @@ export function NginxApiLocations() {
       <Note tone="info" title="Bu tablo nasıl okunur?">
         Her satır <b>tek bir API yolu</b>dur (location). Hücredeki sayı, o yolun o ortamda kaç
         sunucuda bulunduğudur; <b>—</b> o ortamda hiç bulunmadığı anlamına gelir. Bir satıra
-        tıklayınca sunucu adları ve o ortamdaki rate limit değerleri açılır.
+        tıklayınca sunucu adları, o ortamdaki rate limit değerleri ve <b>sunucu kümesi kırılımı</b>
+        (mblcustomers / customers / mcustomers — hangi gateway&apos;de var, hangisinde yok) açılır.
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
           <Pill tone="danger">sunucu farkı</Pill>
           <span>aynı ortamdaki sunucular farklı limit taşıyor ·</span>
@@ -190,15 +192,29 @@ export function NginxApiLocations() {
               onClick={() =>
                 csvDownload(
                   'nginx_api_bazli',
-                  ['konfigurasyon', 'yol', ...envs, 'eksik_ortam', 'sunucu_farki', 'ortam_farki'],
-                  rows.map((r) => [
+                  [
+                    'konfigurasyon',
+                    'yol',
+                    ...envs,
+                    ...API_CLUSTERS.map((c) => c.label + '_var'),
+                    ...API_CLUSTERS.map((c) => c.label + '_eksik'),
+                    'eksik_ortam',
+                    'sunucu_farki',
+                    'ortam_farki',
+                  ],
+                  rows.map((r) => {
+                    const cov = clusterCoverage(r.presentEnvs.flatMap((e) => r.envs[e]?.hosts || []));
+                    return [
                     r.config,
                     r.location,
                     ...envs.map((e) => (r.envs[e] ? r.envs[e].hosts.join(' ') : '')),
+                    ...cov.rows.map((c) => `${c.present.length}/${c.cluster.hosts.length}`),
+                    ...cov.rows.map((c) => c.missing.join(' ')),
                     r.missingEnvs.join(' '),
                     r.limitDrift ? 'EVET' : '',
                     r.envLimitDrift ? 'EVET' : '',
-                  ]),
+                    ];
+                  }),
                 )
               }
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
@@ -220,6 +236,7 @@ export function NginxApiLocations() {
             <tr>
               <Th>API yolu</Th>
               <Th>Dosya</Th>
+              <Th>Sunucu kümeleri</Th>
               {envs.map((e) => (
                 <Th key={e} align="right">
                   {e}
@@ -258,6 +275,11 @@ function LocationRow({
   open: boolean;
   onToggle: () => void;
 }) {
+  // Kume kapsami: API'nin BULUNDUGU sunucular tum ortamlarin birlesimidir; kumeler zaten
+  // yalniz production gateway'lerini icerir, dolayisiyla birlesimi kullanmak dogru sonucu verir.
+  const allHosts = row.presentEnvs.flatMap((e) => row.envs[e]?.hosts || []);
+  const coverage = clusterCoverage(allHosts);
+
   return (
     <>
       <tr className="cursor-pointer hover:bg-[var(--bg-elevated)]/60" onClick={onToggle}>
@@ -266,6 +288,22 @@ function LocationRow({
         </Td>
         <Td className="font-mono text-[11px] whitespace-nowrap" title={row.config}>
           {row.config}
+        </Td>
+        <Td>
+          <span className="flex flex-wrap gap-1">
+            {coverage.rows.map(({ cluster, present }) => {
+              const tone = present.length === 0
+                ? 'neutral'
+                : present.length === cluster.hosts.length
+                  ? 'success'
+                  : 'warning';
+              return (
+                <Pill key={cluster.key} tone={tone}>
+                  {cluster.label} {present.length}/{cluster.hosts.length}
+                </Pill>
+              );
+            })}
+          </span>
         </Td>
         {envs.map((e) => {
           const cell = row.envs[e];
@@ -293,11 +331,84 @@ function LocationRow({
       </tr>
       {open && (
         <tr>
-          <td colSpan={envs.length + 3} className="p-0">
+          <td colSpan={envs.length + 4} className="p-0">
             <div
               className="px-4 py-3 border-t"
               style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
             >
+              <div className="mb-3">
+                <div className="text-[11px] font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  Sunucu kümeleri — bu API hangi gateway&apos;lerde var, hangilerinde yok?
+                </div>
+                <div className="space-y-1.5">
+                  {coverage.rows.map(({ cluster, present, missing }) => (
+                    <div key={cluster.key} className="flex flex-wrap items-start gap-2 text-[11px]">
+                      <span
+                        className="w-28 shrink-0 font-semibold"
+                        style={{ color: 'var(--text-secondary)' }}
+                        title={`${cluster.label} kümesi: ${cluster.hosts.join(', ')}`}
+                      >
+                        {cluster.label}
+                      </span>
+                      <span className="shrink-0 tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                        {present.length}/{cluster.hosts.length}
+                      </span>
+                      <span className="flex flex-wrap gap-1">
+                        {present.length === 0 ? (
+                          <Pill tone="neutral">hiçbir sunucuda yok</Pill>
+                        ) : (
+                          present.map((h) => (
+                            <span
+                              key={h}
+                              className="px-1.5 py-0.5 rounded font-mono"
+                              style={{ background: 'var(--status-success-bg)', color: 'var(--status-success)' }}
+                              title="bu sunucuda VAR"
+                            >
+                              {h.toLowerCase()}
+                            </span>
+                          ))
+                        )}
+                        {missing.length > 0 && present.length > 0 && (
+                          <span className="mx-1" style={{ color: 'var(--text-muted)' }}>
+                            · eksik:
+                          </span>
+                        )}
+                        {present.length > 0 &&
+                          missing.map((h) => (
+                            <span
+                              key={h}
+                              className="px-1.5 py-0.5 rounded font-mono"
+                              style={{ background: 'var(--status-danger-bg)', color: 'var(--status-danger)' }}
+                              title="bu sunucuda YOK"
+                            >
+                              {h.toLowerCase()}
+                            </span>
+                          ))}
+                      </span>
+                    </div>
+                  ))}
+                  {coverage.outside.length > 0 && (
+                    <div className="flex flex-wrap items-start gap-2 text-[11px]">
+                      <span className="w-28 shrink-0 font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                        liste dışı
+                      </span>
+                      <span className="flex flex-wrap gap-1">
+                        {coverage.outside.map((h) => (
+                          <span
+                            key={h}
+                            className="px-1.5 py-0.5 rounded font-mono"
+                            style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                            title="Bu sunucu tanımlı kümelerin hiçbirinde yok — küme listesi güncellenmeli olabilir."
+                          >
+                            {h.toLowerCase()}
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="space-y-2">
                 {row.presentEnvs.map((e) => {
                   const c = row.envs[e];
