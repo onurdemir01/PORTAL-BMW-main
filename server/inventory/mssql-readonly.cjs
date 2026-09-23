@@ -9,6 +9,33 @@
 // ONEMLI (kod-disi/operasyonel): bu kullanicinin gercek MSSQL sunucusunda SADECE
 // GRANT SELECT ile olusturulmasi gerekir (yazma yetkisi KESINLIKLE verilmemeli) — bu adimi
 // DBA/altyapi ekibi yapmali, uygulama kodu bunu dogrulayamaz/zorlayamaz.
+//
+// ── 2026-09-22: BU AYRIM CALISMIYORDU ────────────────────────────────────────
+// Hem bu dosya hem `mssql.cjs` `sql.connect(config)` cagiriyordu. node-mssql'in
+// `connect`i GLOBAL bir havuz kurar ve `config`i YALNIZCA ILK cagride kullanir
+// (node_modules/mssql/lib/global-connection.js):
+//
+//     function connect (config, callback) {
+//       if (!globalConnection) {
+//         globalConnection = new shared.driver.ConnectionPool(config)
+//       }                      // ← sonraki config'ler SESSIZCE YOK SAYILIR
+//       ...
+//       return globalConnection.connect()
+//     }
+//
+// Envanter ekranlari yonetici "Custom SQL" ekranindan cok once acildigi icin
+// global havuzu pratikte HEP `mssql.cjs` (YAZMA YETKILI) kuruyordu. Sonuc:
+// `getReadOnlyPool()` yazma yetkili havuzu donuyor, `MSSQL_RO_USER` hesabi HIC
+// KULLANILMIYOR ve asagidaki "Salt-okunur baglanti kuruldu" satiri YANLIS
+// bilgi veriyordu. Yani DB seviyesindeki SELECT-only savunmasi bir kapi degil,
+// yalnizca bir NIYETTI.
+//
+// Ayrica iki modul AYNI havuz nesnesine `error` dinleyicisi takip her biri
+// YALNIZ KENDI `_pool`unu null'luyordu; bir havuz hatasindan sonra ikisi
+// baglanti durumu konusunda ANLASMAZLIGA dusuyordu (uretimde 12 kez
+// "MSSQL pool error").
+//
+// Artik her iki modul de KENDI `new sql.ConnectionPool(...)` nesnesini kurar.
 'use strict';
 
 const sql = require('mssql');
@@ -26,7 +53,9 @@ async function getReadOnlyPool() {
   if (Date.now() - _lastErrorAt < RETRY_COOLDOWN_MS) return null;
   if (!isConfigured()) return null;
   try {
-    _pool = await sql.connect({
+    // `sql.connect()` KULLANILMAZ — bu dosyanin VAR OLUS SEBEBINI yok ederdi.
+    // Ayrinti icin dosyanin basindaki nota bak.
+    _pool = await new sql.ConnectionPool({
       server: process.env.MSSQL_SERVER,
       port: parseInt(process.env.MSSQL_PORT || '1433', 10),
       database: process.env.MSSQL_DATABASE,
@@ -36,7 +65,7 @@ async function getReadOnlyPool() {
       connectionTimeout: 10000,
       requestTimeout: 30000,
       pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-    });
+    }).connect();
     _pool.on('error', (err) => {
       console.error('[Inventory:RO] MSSQL pool hatasi — yeniden kurulacak:', err.message);
       _pool = null;
