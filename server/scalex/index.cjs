@@ -764,7 +764,8 @@ function initScaleX(app) {
       });
       // Kesif de bu degerleri playbook'a, oradan `oc` komut satirina tasiyor — `/preview`
       // ve `/run` ile AYNI format kurallari burada da gecerli (bkz. launch.cjs basligi).
-      launch.assertValidDiscoveryTargets({ namespace, apps });
+      // `mode` GECILIR: `capabilities` cluster duzeyi bir taramadir ve namespace istemez.
+      launch.assertValidDiscoveryTargets({ namespace, apps, mode });
       // CLUSTER YETENEK ONBELLEGI — kesifteki ~50 `oc get --raw` cagrisini atlatir.
       //
       // UC DURUM AYRI (bkz. cluster-caps.cjs): guvenilir bir kayit YOKSA

@@ -702,6 +702,9 @@ const ScaleXPage: React.FC = () => {
         {step === 'preview' && (
           <PreviewStep
             scope={scope}
+            /* HEDEFLER ONIZLEMEYE DE GITMELI: yoksa onizleme carpimi,
+               calistirma gercek sayiyi kullanir ve ikisi AYRISIR. */
+            selectedTargets={selectedTargets}
             action={action}
             executionMode={executionMode}
             targetReplicas={targetReplicas}

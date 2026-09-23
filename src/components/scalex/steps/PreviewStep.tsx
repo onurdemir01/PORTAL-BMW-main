@@ -15,6 +15,13 @@ import { humanSeconds } from "./OperationStep";
 
 interface Props {
   scope: ScaleXScope;
+  /**
+   * Kullanıcının GERÇEKTEN seçtiği (cluster, uygulama) çiftleri.
+   *
+   * Boş bırakılırsa sunucu tam çarpımı varsayar — bugünkü davranış. Dolu ise
+   * patlama yarıçapı, yazılı onay eşiği ve hedef tavanı bu sayıdan hesaplanır.
+   */
+  selectedTargets?: { cluster: string; name: string }[];
   action: ScaleXAction;
   executionMode: ScaleXMode;
   targetReplicas?: string;
@@ -33,7 +40,7 @@ interface Props {
 const ACTION_LABEL: Record<ScaleXAction, string> = { stop: "DURDUR", restore: "GERİ AL", scale: "ÖLÇEKLE" };
 
 const PreviewStep: React.FC<Props> = ({
-  scope, action, executionMode, targetReplicas, verificationTimeout, workloads, hpaPin,
+  scope, selectedTargets, action, executionMode, targetReplicas, verificationTimeout, workloads, hpaPin,
   allowPartial, mailCc, fetchedAt, busy, onConfirm,
 }) => {
   const [preview, setPreview] = useState<ScaleXPreview | null>(null);
@@ -42,13 +49,30 @@ const PreviewStep: React.FC<Props> = ({
   const [reason, setReason] = useState("");
   const [ocoNumber, setOcoNumber] = useState("");
 
+  // HEDEF ANAHTARI: bağımlılık dizisinde nesne dizisi kullanılamaz (her render'da
+  // yeni referans → sonsuz istek). Düz bir dizgeye indirgenir.
+  const hedefAnahtari = (selectedTargets || []).map((t) => `${t.cluster}\u0000${t.name}`).sort().join("|");
+
   useEffect(() => {
     let alive = true;
-    scalexApi.preview({ ...scope, action, executionMode, targetReplicas, verificationTimeout })
+    scalexApi
+      .preview({
+        ...scope,
+        action,
+        executionMode,
+        targetReplicas,
+        verificationTimeout,
+        // PR #123'te sunucu tarafı bağlanmış ama BU ÇAĞRI atlanmıştı: sunucu
+        // `req.body.targets` okuyup gerçek sayıyı hesaplıyordu, istemci hiç
+        // göndermiyordu. Sonuç: kullanıcı 12 hedeften 5'ini hariç tutsa bile
+        // önizleme "12 hedef" diyor, gereksiz yazılı onay istiyor ve
+        // çalıştırmayla ayrışıyordu.
+        targets: selectedTargets,
+      })
       .then((r) => { if (!alive) return; if (r.ok) setPreview(r); else setError(r.message || "Önizleme alınamadı."); })
       .catch((e) => alive && setError((e as Error).message));
     return () => { alive = false; };
-  }, [scope.clusters.join(","), scope.apps?.join(","), action, executionMode, targetReplicas]);
+  }, [scope.clusters.join(","), scope.apps?.join(","), hedefAnahtari, action, executionMode, targetReplicas, verificationTimeout]);
 
   if (error) {
     return (
@@ -61,7 +85,14 @@ const PreviewStep: React.FC<Props> = ({
 
   const r = preview.blastRadius;
   const g = preview.gatePolicy;
-  const picked = workloads.filter((w) => (scope.apps || []).includes(w.name));
+  // LISTE DE HARIC TUTULANLARI GOSTERMEMELI. Eskiden yalnizca `apps` ADINA
+  // bakiliyordu, yani kullanicinin cikardigi cluster'daki satir listede kaliyordu.
+  const haricKumesi = new Set((selectedTargets || []).map((t) => `${t.cluster}\u0000${t.name}`));
+  const picked = workloads.filter(
+    (w) =>
+      (scope.apps || []).includes(w.name) &&
+      (haricKumesi.size === 0 || haricKumesi.has(`${w.cluster}\u0000${w.name}`)),
+  );
   // Satirlarin hepsi CANLI kesiften mi geliyor? Panelden/sonuctan gelen kisayol
   // yolunda satirlar AYNADAN turetiliyor ve replica/imaj alanlari UYDURMA olur —
   // o durumda canli ayrinti gosterilmez.
