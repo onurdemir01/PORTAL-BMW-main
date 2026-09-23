@@ -3,10 +3,10 @@
 // Kullanıcı: "Nginx Hub'a da istediğim kullanıcıları sokmak istiyorum ama yine sadece
 // istediğim sayfaları görsünler — CIS, SPA, API Envanteri, Envanter, Audit gibi."
 //
-// DENETİM'DEN FARKI ve testin asıl koruduğu şey: Nginx Hub sekmeleri varsayılan AÇIK
-// (default_visible=1). Bugün sayfayı gören herkes tüm sekmeleri görüyor; varsayılanı
-// kapatmak çalışan ekranları bir anda karartırdı. Bu yüzden kişi/grup kaydı açıldığında
-// seçilmeyen sekmelere açıkça DENY yazılır. Varsayılan 0'a çevrilirse bu test kırmızı döner.
+// Model Denetim ile aynıdır (kullanıcı kararı, 2026-09-23): sayfa da sekmeler de VARSAYILAN
+// KAPALI; erişim Admin > "Nginx Hub Erişimi" panelinden sayfa + seçilen sekmeler olarak verilir.
+// Varsayılan bir tur ÖNCE 1'di; kapatırken sayfaya zaten erişimi olanlar boş ekran görmesin
+// diye tek seferlik migration onlara tüm sekmeleri açar — o migration da burada kilitlidir.
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -16,28 +16,31 @@ const read = (p) => fs.readFileSync(path.join(__dirname, '..', '..', '..', p), '
 
 const TABS = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'spa', 'api', 'envanter', 'audit'];
 
-test('NH-A1 seed: her sekme element olarak kayıtlı, parent NginxConsole, varsayılan AÇIK', () => {
+test('NH-A1 seed: her sekme element olarak kayıtlı, parent NginxConsole, varsayılan KAPALI', () => {
   const src = read('server/db/mssql-setup.cjs');
   for (const t of TABS) {
     const i = src.indexOf(`element_key: 'tab:nginx:${t}',`);
     assert.ok(i > 0, `tab:nginx:${t} seed yok`);
     const blk = src.slice(i, i + 300);
     assert.ok(blk.includes("parent_key: 'NginxConsole'"), `tab:nginx:${t} parent yanlış`);
-    assert.ok(blk.includes('default_visible: 1'), `tab:nginx:${t} varsayılanı KAPALI — mevcut kullanıcılar boş ekran görür`);
+    assert.ok(blk.includes('default_visible: 0'), `tab:nginx:${t} varsayılanı AÇIK — sayfayı gören herkes tüm sekmeleri görür`);
   }
   assert.ok(src.includes("element_key: 'admintab:nginxaccess'"), 'admin sekmesi seed yok');
+  // Kapatma turunda mevcut erisim sahipleri bos ekranda kalmasin: tek seferlik migration.
+  assert.ok(src.includes('migration:nginx-hub-tabs-default-closed-2026-09-23'), 'kapatma migration isareti yok');
+  assert.ok(/WHERE element_key = 'NginxConsole' AND allow = 1 AND principal_type IN \('user', 'group'\)/.test(src), 'migration mevcut erisim sahiplerini bulmuyor');
   assert.ok(read('src/config/elements.ts').includes("{ id: 'admintab:nginxaccess', label: 'Nginx Hub Erişimi' }"), 'elements.ts admintab kaydı yok');
 });
 
-test('NH-A2 panel uçları: seçilmeyen sekmeye DENY yazılır (varsayılan açık olduğu için)', () => {
+test('NH-A2 panel uçları: sayfaya + seçilen sekmelere allow yazılır (seçilmeyene kural yok)', () => {
   const routes = read('server/auth/visibility-routes.cjs');
   for (const s of ['router.get("/nginx-access", requireAdmin', 'router.put("/nginx-access", requireAdmin', 'router.delete("/nginx-access", requireAdmin']) {
     assert.ok(routes.includes(s), `uç yok: ${s}`);
   }
   const i = routes.indexOf('router.put("/nginx-access"');
   const blk = routes.slice(i, i + 2000);
-  assert.ok(blk.includes('allow: want.includes(tab)'), 'seçilmeyen sekmeye deny yazılmıyor — sınırlama işe yaramaz');
-  assert.ok(blk.includes("[{ principalType: pt, principalId: pid, allow: true }]"), 'sayfaya allow yazılmıyor');
+  assert.ok(blk.includes("const allow = key === 'NginxConsole' ? true : want.includes(tab);"), 'seçim kuralı yok');
+  assert.ok(blk.includes("(key === 'NginxConsole' || allow) ? [{ principalType: pt, principalId: pid, allow: true }] : []"), 'seçilmeyen sekmeye kural yazılmamalı (varsayılan kapalı)');
   for (const t of TABS) assert.ok(new RegExp(`'${t}'`).test(routes.slice(routes.indexOf('const NGINX_TAB_KEYS'), routes.indexOf('const NGINX_TAB_KEYS') + 400)), `NGINX_TAB_KEYS içinde ${t} yok`);
 });
 

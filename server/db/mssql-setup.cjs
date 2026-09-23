@@ -1992,18 +1992,19 @@ const ELEMENT_SEED = [
     sort_order: 10,
     default_visible: 0,
   },
-  // Nginx Hub sekmeleri (2026-09-23): varsayilan ACIK. Sayfayi gorebilen herkes tum
-  // sekmeleri gorur; Admin > "Nginx Hub Erisimi" paneli bir kullaniciyi/AD grubunu
-  // SECILEN sekmelerle sinirlamak icin secilmeyenlere DENY kurali yazar (motor: kullanici
-  // kurali kazanir). Varsayilani 0 yapmak, bugun sayfaya erisen herkesi bir anda bos
-  // ekranla birakirdi - bu yuzden bilerek 1.
+  // Nginx Hub sekmeleri (2026-09-23): varsayilan KAPALI (kullanici karari). Sayfa zaten
+  // yalniz Admin; baska bir kullaniciya/AD grubuna Admin > "Nginx Hub Erisimi" panelinden
+  // sayfa + SECILEN sekmeler acilir. Denetim ile ayni model.
+  // NOT: bu varsayilan onceki turda 1'di; mevcut kurulumlarda sayfaya erisimi olan
+  // principal'larin bos ekran gormemesi icin tek seferlik migration tum sekmeleri onlara
+  // acar (grantNginxTabsToExistingPrincipals).
   {
     element_key: 'tab:nginx:dashboard',
     element_type: 'tab',
     parent_key: 'NginxConsole',
     label: 'Dashboard',
     sort_order: 20,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:instances',
@@ -2011,7 +2012,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'Instances',
     sort_order: 21,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:config',
@@ -2019,7 +2020,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'Konfigürasyon',
     sort_order: 22,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:changes',
@@ -2027,7 +2028,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'Değişiklikler',
     sort_order: 23,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:certs',
@@ -2035,7 +2036,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'Sertifikalar',
     sort_order: 24,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:orphans',
@@ -2043,7 +2044,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'Kullanılmayan',
     sort_order: 25,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:drift',
@@ -2051,7 +2052,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'Tutarlılık',
     sort_order: 26,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:cis',
@@ -2059,7 +2060,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'CIS',
     sort_order: 27,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:spa',
@@ -2067,7 +2068,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'SPA',
     sort_order: 28,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:api',
@@ -2075,7 +2076,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'API Envanteri',
     sort_order: 29,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:envanter',
@@ -2083,7 +2084,7 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'Envanter',
     sort_order: 30,
-    default_visible: 1,
+    default_visible: 0,
   },
   {
     element_key: 'tab:nginx:audit',
@@ -2091,9 +2092,11 @@ const ELEMENT_SEED = [
     parent_key: 'NginxConsole',
     label: 'Audit',
     sort_order: 31,
-    default_visible: 1,
+    default_visible: 0,
   },
 ];
+
+const NGINX_TAB_KEYS_SEED = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'spa', 'api', 'envanter', 'audit'];
 
 async function seedPortalElements(pool) {
   // 1) Element satirlari — idempotent
@@ -2143,6 +2146,40 @@ async function seedPortalElements(pool) {
     }
   } catch (err) {
     console.warn('[DB] Denetim admin-only migration uygulanamadi:', err.message);
+  }
+
+  // 2026-09-23: Nginx Hub sekmeleri varsayilan KAPALI'ya cevrildi. Bu degisiklik, sayfaya
+  // zaten erisimi olan (user/group allow kurali yazilmis) kisileri bos ekranda birakabilirdi;
+  // tek seferlik migration onlara TUM sekmeleri acar. Admin'in sonradan yaptigi sinirlamalar
+  // etkilenmez (migration yalnizca bir kez kosar).
+  try {
+    const MARK = 'migration:nginx-hub-tabs-default-closed-2026-09-23';
+    const done = await pool.request().input('n', MARK).query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    if (!done.recordset.length) {
+      const holders = await pool.request().query(
+        `SELECT principal_type, principal_id FROM portal_element_visibility
+          WHERE element_key = 'NginxConsole' AND allow = 1 AND principal_type IN ('user', 'group')`,
+      );
+      for (const row of holders.recordset || []) {
+        for (const tab of NGINX_TAB_KEYS_SEED) {
+          try {
+            await pool.request()
+              .input('k', 'tab:nginx:' + tab)
+              .input('pt', row.principal_type)
+              .input('pi', row.principal_id)
+              .query(`IF NOT EXISTS (SELECT 1 FROM portal_element_visibility WHERE element_key = @k AND principal_type = @pt AND principal_id = @pi)
+                      INSERT INTO portal_element_visibility (element_key, principal_type, principal_id, allow) VALUES (@k, @pt, @pi, 1)`);
+          } catch (e) {
+            console.warn('[DB] nginx sekme grant eklenemedi:', row.principal_id, tab, e.message);
+          }
+        }
+      }
+      await pool.request().input('n', MARK).input('d', JSON.stringify({ at: new Date().toISOString(), principals: (holders.recordset || []).length }))
+        .query(`INSERT INTO portal_config_blobs (name, data) VALUES (@n, @d)`);
+      console.log(`[DB] Nginx Hub sekmeleri varsayilan kapaliya alindi; mevcut ${(holders.recordset || []).length} erisim sahibine tum sekmeler acildi.`);
+    }
+  } catch (err) {
+    console.warn('[DB] Nginx Hub sekme migration uygulanamadi:', err.message);
   }
 
   // 2026-09-19: Nginx Hub Envanter grubundan kendi grubuna tasindi. Seed var olan satiri

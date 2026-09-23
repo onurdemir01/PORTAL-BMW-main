@@ -556,6 +556,8 @@ export interface NginxAuditResult {
   /** dbo.Nginx_Audit_Files yoksa false: dosya uyumu DDL'i sonradan eklendi. */
   filesReady: boolean;
   scanDate: string | null;
+  /** taramanin gercek ani (ISO, UTC); `scanned_at` sutunu/satiri yoksa null */
+  scannedAt?: string | null;
   hosts: NginxAuditHost[];
   /** standart degerler (kurulum referansi), direktif bazinda */
   reference?: NginxAuditReferenceValue[];
@@ -904,6 +906,8 @@ export interface NginxApiConfigRow {
 }
 
 export interface NginxApiResult {
+  /** taramanin gercek ani (ISO, UTC) - sutun/tarama yoksa null */
+  scannedAt?: string | null;
   ok: boolean;
   scanDate: string | null;
   availableDates: string[];
@@ -966,7 +970,22 @@ export interface NginxApiLocationCell {
   serverRateLimits: string[];
 }
 
+/** Bir kumenin (mblcustomers/customers/mcustomers) bu API icin durumu (sunucu hesaplar). */
+export interface NginxApiClusterCell {
+  key: string;
+  label: string;
+  total: number;
+  present: number;
+  missing: string[];
+  /** Ayni limiti tasiyan sunucular bir grup; birden fazla grup = KUME ICINDE FARK */
+  groups: { ip: string; srv: string; hosts: string[] }[];
+  limitDrift: boolean;
+}
+
 export interface NginxApiLocationRow {
+  clusters?: NginxApiClusterCell[];
+  /** en az bir kumede es sunucular farkli rate limit tasiyor */
+  clusterLimitDrift?: boolean;
   config: string;
   location: string;
   envs: Record<string, NginxApiLocationCell>;
@@ -980,6 +999,7 @@ export interface NginxApiLocationRow {
 }
 
 export interface NginxApiLocationsResult {
+  scannedAt?: string | null;
   ok: boolean;
   scanDate: string | null;
   envs: string[];

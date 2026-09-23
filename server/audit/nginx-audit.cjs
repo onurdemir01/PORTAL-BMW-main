@@ -19,6 +19,8 @@ function isMissingTableError(err) {
   return number === 208 || /invalid object name/i.test(String(err?.message || ''));
 }
 
+const { scanStamp } = require('./scan-stamp.cjs');
+
 async function readLatestAuditDate(query) {
   try {
     return await query(

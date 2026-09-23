@@ -75,15 +75,25 @@ test('AC3 hiçbir kümede olmayan sunucu "liste dışı" olarak görünür (list
 test('AC4 ekran sözleşmesi: satırda küme özeti, detayda var/yok dökümü, CSV sütunları', () => {
   assert.ok(/<Th>Sunucu kümeleri<\/Th>/.test(UI), 'tabloya küme sütunu eklenmemiş');
   assert.ok(/rowsCov\.map/.test(UI), 'küme kapsamı satırda gösterilmiyor');
-  // PERFORMANS (2026-09-23, kullanici "ekran kasiyor"): kapsam her cizimde degil, VERI
-  // basina bir kez hesaplanir; satir bileseni React.memo ile sarmalidir.
-  assert.ok(/const coverageByRow = useMemo\(/.test(UI), 'kapsam her cizimde yeniden hesaplaniyor');
+  // 2026-09-23: kapsam + RATE LIMIT karsilastirmasi SUNUCUDA hesaplanir (satir basina
+  // sunucu sunucu limit tasimak yaniti sisirirdi); ekran yalniz cizer.
+  assert.ok(/const rowsCov = row\.clusters \|\| \[\]/.test(UI), 'kume ozeti sunucudan gelmiyor');
+  assert.ok(/küme içi limit farkı/.test(UI), 'kume ici limit farki isaretlenmiyor');
+  assert.ok(/IP \{g\.ip \|\| '—'\} · location \{g\.srv \|\| '—'\}/.test(UI), 'limit degerleri gosterilmiyor');
+  // PERFORMANS (kullanici "ekran kasiyor"): satir bileseni React.memo, arama ertelenir,
+  // liste ilk dilimle acilir.
   assert.ok(/React\.memo\(function LocationRow/.test(UI), 'satir bileseni memo degil');
   assert.ok(/useDeferredValue/.test(UI), 'arama her tusta tum tabloyu yeniden ciziyor');
   assert.ok(/rows\.slice\(0, limit\)/.test(UI), 'tum satirlar birden cizilirse ekran kasar');
+  // Sunucu sozlesmesi: kume + limit ozeti uretiliyor mu?
+  const SRV = fs.readFileSync(path.join(__dirname, '..', '..', 'server', 'audit', 'nginx-api-locations.cjs'), 'utf8');
+  assert.ok(/function clusterBreakdown\(/.test(SRV), 'sunucu kume ozeti uretmiyor');
+  assert.ok(/limitDrift: groups\.length > 1/.test(SRV), 'kume ici limit farki hesaplanmiyor');
+  assert.ok(/require\('\.\.\/\.\.\/shared\/nginxApiClusters\.cjs'\)/.test(SRV), 'sunucu ortak kume listesini kullanmiyor');
   assert.ok(/hangi gateway&apos;lerde var, hangilerinde yok/.test(UI), 'detayda başlık yok');
-  assert.ok(/title="bu sunucuda VAR"/.test(UI) && /title="bu sunucuda YOK"/.test(UI), 'var/yok ayrımı okunmuyor');
-  assert.ok(/liste dışı/.test(UI), 'liste dışı sunucular gösterilmiyor');
+  // "var" tarafi limit gruplariyla, "yok" tarafi ayri bir rozetle gosterilir (2026-09-23).
+  assert.ok(/sunucuda YOK/.test(UI), 'eksik sunucular gösterilmiyor');
+  assert.ok(/tüm eş sunucularda aynı/.test(UI), 'limitlerin eş sunucularda aynı olup olmadığı yazmıyor');
   assert.ok(/API_CLUSTERS\.map\(\(c\) => c\.label \+ '_var'\)/.test(UI), 'CSV küme sütunları yok');
   assert.ok(/colSpan=\{envs\.length \+ 4\}/.test(UI), 'yeni sütun sonrası detay satırı colSpan güncellenmemiş');
   // Renkler token'dan: koyu temada okunabilirlik (bkz. src/__tests__/inline-color-leaks).

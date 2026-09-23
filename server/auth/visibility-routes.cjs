@@ -197,11 +197,9 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   });
 
   // ── Nginx Hub Erisimi (2026-09-23): kullanici / AD grubu -> sekme listesi ──────────
-  // Denetim'den FARKI: Nginx Hub sekmeleri varsayilan ACIK (default_visible=1), cunku bugun
-  // sayfayi gorebilen herkes tum sekmeleri goruyor ve bunu bir anda kapatmak calisan
-  // ekranlari karartirdi. Dolayisiyla bir principal'i SINIRLAMAK icin secilmeyen sekmelere
-  // DENY kurali yazilir (motor: kullanici kurali allow/deny olarak KAZANIR; grup kuralinda
-  // yalniz deny varsa gizlenir). Kayit silinince principal yine varsayilana (hepsi acik) doner.
+  // Denetim ile AYNI model: sayfa ve sekmeler varsayilan KAPALI; burada sayfaya allow +
+  // secilen sekmelere allow yazilir, secilmeyene kural YAZILMAZ (varsayilan zaten kapali).
+  // Kayit silinince principal sayfayi da sekmeleri de goremez.
   const NGINX_TAB_KEYS = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'spa', 'api', 'envanter', 'audit'];
   const nginxKeys = () => ['NginxConsole', ...NGINX_TAB_KEYS.map((t) => 'tab:nginx:' + t)];
 
@@ -234,11 +232,9 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
       for (const key of nginxKeys()) {
         const others = all.filter((r) => r.elementKey === key && !(r.principalType === pt && r.principalId.toLowerCase() === pid));
         const tab = key.replace('tab:nginx:', '');
-        // Sayfa: allow. Sekme: secildiyse allow, SECILMEDIYSE DENY (varsayilan acik oldugu icin
-        // kural yazmamak sekmeyi acik birakirdi).
-        const mine = key === 'NginxConsole'
-          ? [{ principalType: pt, principalId: pid, allow: true }]
-          : [{ principalType: pt, principalId: pid, allow: want.includes(tab) }];
+        // Sayfa: allow. Sekme: secildiyse allow, secilmediyse kural yok (varsayilan kapali).
+        const allow = key === 'NginxConsole' ? true : want.includes(tab);
+        const mine = (key === 'NginxConsole' || allow) ? [{ principalType: pt, principalId: pid, allow: true }] : [];
         await elementsStore.setElementRules(key, [...others, ...mine]);
       }
       visibilityEngine.bumpVersion();
