@@ -41,7 +41,11 @@ test('Ortak yardimci Excel sozlesmesini tasiyor: BOM + CRLF', () => {
   // Bu iki kural ayirici tercihinden BAGIMSIZ ve mutlak: BOM olmadan Excel
   // dosyayi Windows-1252 sanir ve Turkce karakterler bozulur.
   const u = fs.readFileSync(path.join(__dirname, '..', 'utils/csv.ts'), 'utf8');
-  assert.match(u, /\\uFEFF/, 'BOM yok — Excel Turkce karakterleri bozar');
+  // TANIMIN VARLIGI YETMEZ, KULLANILMALI: ilk yazimda yalnizca `\\uFEFF` gecip
+  // gecmedigine bakiliyordu ve bekci KORDU — sabit tanimda dururken `Blob`tan
+  // cikarildiginda test geciyordu. Bu oturumda besinci kez ayni desen.
+  assert.match(u, /const BOM = '\\uFEFF';/, 'BOM kacis ile tanimlanmamis');
+  assert.match(u, /new Blob\(\[BOM \+ body\]/, 'BOM uretilen dosyaya EKLENMIYOR');
   assert.match(u, /join\('\\r\\n'\)/, 'satir sonu CRLF degil');
   assert.ok(!u.includes(String.fromCharCode(0xfeff)), 'kaynakta GORUNMEZ BOM karakteri var');
 });
