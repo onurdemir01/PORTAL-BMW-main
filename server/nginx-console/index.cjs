@@ -438,8 +438,23 @@ function initNginxConsole(app) {
   // sunucu tarafinda da kapali ki gorunurluk kurali degistirilse bile uclar acilmasin.
   router.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'Nginx Hub yalnız Admin.' })));
   try {
-    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
+    const { requireVisiblePrefix, requireVisible } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('NginxConsole'));
+    // SEKME BAZLI kapi (2026-09-23): sayfa acik olsa da yalniz izin verilen sekmenin uclari.
+    // /hosts BILEREK sayfa kapisinda kalir: dashboard, instances, config ve digerleri ayni
+    // listeyi okur; onu bir sekmeye baglamak diger sekmeleri de kirardi.
+    const TAB_OF_PATH = [
+      [/^\/(tree|file|push|preview)(\/|$)/, 'config'],
+      [/^\/certs(\/|$)/, 'certs'],
+      [/^\/(changes|history|diff)(\/|$)/, 'changes'],
+      [/^\/orphans(\/|$)/, 'orphans'],
+      [/^\/drift(\/|$)/, 'drift'],
+    ];
+    router.use((req, res, next) => {
+      const hit = TAB_OF_PATH.find(([re]) => re.test(req.path));
+      if (!hit) return next();
+      return requireVisible('tab:nginx:' + hit[1])(req, res, next);
+    });
   } catch { /* motor yoksa yoksay */ }
 
   // Sunucu listesi: envanter (env/servis) + dokum durumu (var mi, ne zaman, nginx -t, sertifika sayisi)

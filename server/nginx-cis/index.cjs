@@ -81,8 +81,9 @@ function initNginxCis(app) {
   router.use(requireAuth);
   router.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'CIS denetimi yalnız Admin.' })));
   try {
-    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
+    const { requireVisiblePrefix, requireVisible } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('NginxConsole'));
+    router.use(requireVisible('tab:nginx:cis'));
   } catch { /* motor yoksa yoksay */ }
 
   router.get('/overview', async (req, res) => {

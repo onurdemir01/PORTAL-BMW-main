@@ -47,6 +47,24 @@ const smBtn = (primary = false): React.CSSProperties => (primary
   : { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' });
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 
+// Sekme tanimlari TEK YERDE: hem sekme cubugu hem gorunurluk suzgeci (tab:nginx:<id>) bunu okur.
+const HUB_TABS = [
+  { id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon },
+  { id: 'instances', label: 'Instances', icon: ServerStackIcon },
+  { id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon },
+  { id: 'changes', label: 'Değişiklikler', icon: ClockIcon },
+  { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon },
+  { id: 'orphans', label: 'Kullanılmayan', icon: TrashIcon },
+  { id: 'drift', label: 'Tutarlılık', icon: ScaleIcon },
+  { id: 'cis', label: 'CIS', icon: ShieldCheckIcon },
+] as const;
+const HUB_AUDIT_TABS = [
+  { id: 'spa', label: 'SPA' },
+  { id: 'api', label: 'API Envanteri' },
+  { id: 'envanter', label: 'Envanter' },
+  { id: 'audit', label: 'Audit' },
+] as const;
+
 const fmtBytes = (n: number | null | undefined) => (n == null ? '—' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`);
 const shortSha = (s: string | null | undefined) => (s ? s.slice(0, 10) : '—');
 const ageOf = (iso: string | null | undefined) => {
@@ -90,7 +108,7 @@ function lineDiff(a: string, b: string): { added: number; removed: number; hunks
 }
 
 export default function NginxConsolePage() {
-  const { user } = useAuth();
+  const { user, canSee } = useAuth();
   const isAdmin = user?.role === 'Admin';
   // NIM benzeri Dashboard/Instances (2026-09-21) varsayilan acilis: once genel durum.
   // ?tab=audit: Nginx Audit sunucu sayfasindan (/denetim/nginx-audit/:host) geri donus.
@@ -126,6 +144,17 @@ export default function NginxConsolePage() {
   };
   const go = (t: Tab, host?: string) => { if (host) setFocusHost(host.toUpperCase()); setTab(t); };
 
+  // SEKME BAZLI GORUNURLUK (2026-09-23, kullanici: "istedigim kullanicilar yalniz istedigim
+  // sekmeleri gorsun"). Varsayilan ACIK; Admin > Nginx Hub Erisimi bir kisiyi/grubu secilen
+  // sekmelerle sinirlar. Sunucu tarafi da ayni kapiyi uygular (403), bu yalniz ekran tarafi.
+  const hubTabs = HUB_TABS.filter((x) => canSee(`tab:nginx:${x.id}`));
+  const auditTabs = HUB_AUDIT_TABS.filter((x) => canSee(`tab:nginx:${x.id}`));
+  const visibleIds = [...hubTabs, ...auditTabs].map((x) => x.id) as Tab[];
+  // Acik sekme kapatildiysa ilk gorunur sekmeye gec (bos ekranda kalma).
+  useEffect(() => {
+    if (visibleIds.length && !visibleIds.includes(tab)) setTab(visibleIds[0]);
+  }, [visibleIds.join(','), tab]);
+
   // HANGI IS BESLIYOR (kullanici, 2026-09-22): Nginx Hub'da uc ayri kaynak yan yana duruyor;
   // her sekmenin basinda kaynak isi, verinin tarihi ve nasil tazelenecegi yazar.
   const SOURCE_OF: Record<Tab, SourceKey> = {
@@ -149,16 +178,16 @@ export default function NginxConsolePage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex gap-1 rounded-lg p-0.5 flex-wrap" style={{ background: 'var(--bg-elevated)' }}>
-            {([{ id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon }, { id: 'instances', label: 'Instances', icon: ServerStackIcon }, { id: 'config', label: 'Konfigürasyon', icon: Squares2X2Icon }, { id: 'changes', label: 'Değişiklikler', icon: ClockIcon }, { id: 'certs', label: 'Sertifikalar', icon: ShieldCheckIcon }, { id: 'orphans', label: 'Kullanılmayan', icon: TrashIcon }, { id: 'drift', label: 'Tutarlılık', icon: ScaleIcon }, { id: 'cis', label: 'CIS', icon: ShieldCheckIcon }] as const).map((t) => (
+          <div className={`flex gap-1 rounded-lg p-0.5 flex-wrap ${hubTabs.length ? '' : 'hidden'}`} style={{ background: 'var(--bg-elevated)' }}>
+            {hubTabs.map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                 <t.icon className="w-4 h-4" /> {t.label}
               </button>
             ))}
           </div>
           {/* Denetim sekmeleri: ayri grup, ayni gorsel dil (kullanici, 2026-09-22) */}
-          <div className="flex gap-1 rounded-lg p-0.5 flex-wrap" style={{ background: 'var(--bg-elevated)' }} aria-label="Nginx denetim bölümleri">
-            {([{ id: 'spa', label: 'SPA' }, { id: 'api', label: 'API Envanteri' }, { id: 'envanter', label: 'Envanter' }, { id: 'audit', label: 'Audit' }] as const).map((t) => (
+          <div className={`flex gap-1 rounded-lg p-0.5 flex-wrap ${auditTabs.length ? '' : 'hidden'}`} style={{ background: 'var(--bg-elevated)' }} aria-label="Nginx denetim bölümleri">
+            {auditTabs.map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                 <ShieldCheckIcon className="w-4 h-4" /> {t.label}
               </button>
@@ -167,19 +196,26 @@ export default function NginxConsolePage() {
           <button onClick={() => setShowHelp(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }} title="Denetim bölümleri nasıl okunur?" aria-label="Nasıl kullanılır?">?</button>
         </div>
       </div>
-      <SourceNote source={SOURCE_OF[tab]} scanDate={SOURCE_OF[tab] === 'console' ? lastDump : undefined} />
-      {tab === 'dashboard' && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
-      {tab === 'instances' && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={refreshHosts} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
-      {tab === 'config' && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}
-      {tab === 'changes' && <ChangesTab />}
-      {tab === 'certs' && <CertsTab />}
-      {tab === 'orphans' && <OrphansTab onOpen={(h) => go('config', h)} />}
-      {tab === 'drift' && <DriftTab onOpen={(h) => go('config', h)} />}
-      {tab === 'cis' && <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />}
-      {tab === 'spa' && <NginxSpaAudit />}
-      {tab === 'api' && <NginxApiEnvanteri />}
-      {tab === 'envanter' && <NginxEnvanteri />}
-      {tab === 'audit' && <NginxAudit />}
+      {visibleIds.length === 0 && (
+        <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}>
+          Bu sayfada size açık bir bölüm yok. Erişim için yöneticinize başvurun (Admin &gt; Nginx Hub Erişimi).
+        </div>
+      )}
+      {visibleIds.includes(tab) && (
+        <SourceNote source={SOURCE_OF[tab]} scanDate={SOURCE_OF[tab] === 'console' ? lastDump : undefined} />
+      )}
+      {tab === 'dashboard' && canSee('tab:nginx:dashboard') && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
+      {tab === 'instances' && canSee('tab:nginx:instances') && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={refreshHosts} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
+      {tab === 'config' && canSee('tab:nginx:config') && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}
+      {tab === 'changes' && canSee('tab:nginx:changes') && <ChangesTab />}
+      {tab === 'certs' && canSee('tab:nginx:certs') && <CertsTab />}
+      {tab === 'orphans' && canSee('tab:nginx:orphans') && <OrphansTab onOpen={(h) => go('config', h)} />}
+      {tab === 'drift' && canSee('tab:nginx:drift') && <DriftTab onOpen={(h) => go('config', h)} />}
+      {tab === 'cis' && canSee('tab:nginx:cis') && <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />}
+      {tab === 'spa' && canSee('tab:nginx:spa') && <NginxSpaAudit />}
+      {tab === 'api' && canSee('tab:nginx:api') && <NginxApiEnvanteri />}
+      {tab === 'envanter' && canSee('tab:nginx:envanter') && <NginxEnvanteri />}
+      {tab === 'audit' && canSee('tab:nginx:audit') && <NginxAudit />}
       <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Nginx Hub — Denetim bölümleri" sections={NGINX_DENETIM_HELP} />
     </div>
   );

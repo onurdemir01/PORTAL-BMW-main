@@ -83,8 +83,10 @@ test('sunucu: /api/denetim yol -> sekme kapisi; panel uclari', () => {
   for (const t of ['ocp', 'init', 'deploy', 'routetraffic', 'envanter', 'appenvs', 'webapp']) {
     assert.ok(new RegExp(`'${t}'\\]`).test(den), `yol eslemesinde ${t} yok`);
   }
-  // nginx denetim uclari artik Nginx Hub sayfa kapisindan (2026-09-22; tab:denetim:nginx* silindi)
-  assert.ok(/NGINX_PATH\.test\(req\.path\)\) return requireVisible\('NginxConsole'\)/.test(den), 'nginx yollari NginxConsole kapisiyla korunmali');
+  // nginx denetim uclari Nginx Hub SAYFA kapisindan gecer (2026-09-22) ve 2026-09-23'ten beri
+  // ayrica O SEKMENIN kapisindan: "istedigim kullanicilar yalniz istedigim sekmeleri gorsun".
+  assert.ok(/NGINX_PATH\.test\(req\.path\)/.test(den) && /requireVisible\('NginxConsole'\)/.test(den), 'nginx yollari NginxConsole kapisiyla korunmali');
+  assert.ok(/requireVisible\('tab:nginx:' \+ nx\[1\]\)/.test(den), 'nginx yollari sekme kapisindan gecmiyor');
   const routes = read('server/auth/visibility-routes.cjs');
   for (const s of ['router.get("/denetim-access", requireAdmin', 'router.put("/denetim-access", requireAdmin', 'router.delete("/denetim-access", requireAdmin']) {
     assert.ok(routes.includes(s), `uc yok: ${s}`);
@@ -121,6 +123,10 @@ test('istemci: DenetimPage sekmeleri canSee ile suzer, hic yoksa mesaj; Admin se
   );
   const admin = read('src/components/admin/AdminPage.tsx');
   assert.ok(admin.includes("{ id: 'denetimaccess', label: 'Denetim Erişimi'") && admin.includes("{activeTab === 'denetimaccess' && <DenetimAccessTab />}"), 'admin sekmesi bagli degil');
+  // Panel 2026-09-23'te ortaklastirildi (TabAccessPanel): Nginx Hub Erisimi ayni bileseni
+  // kullaniyor. Sekme dosyasi API'yi baglar, davranis panelde.
   const tab = read('src/components/admin/tabs/DenetimAccessTab.tsx');
-  assert.ok(tab.includes('denetimAccessApi.set(') && tab.includes("<option value=\"group\">"), 'panelde grup secenegi / kayit yok');
+  assert.ok(tab.includes('denetimAccessApi') && tab.includes('TabAccessPanel'), "Denetim sekmesi ortak paneli/API'yi baglamiyor");
+  const panel = read('src/components/admin/tabs/TabAccessPanel.tsx');
+  assert.ok(panel.includes('api.set(') && panel.includes("<option value=\"group\">"), 'panelde grup secenegi / kayit yok');
 });

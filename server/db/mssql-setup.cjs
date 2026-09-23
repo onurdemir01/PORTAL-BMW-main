@@ -1884,6 +1884,16 @@ const ELEMENT_SEED = [
     default_visible: 1,
   },
   {
+    // Nginx Hub Erisimi (2026-09-23): Nginx Hub sekmelerini kullanici / AD grubu bazinda
+    // SINIRLAYAN panel (sekmeler varsayilan acik oldugu icin secilmeyene deny yazilir).
+    element_key: 'admintab:nginxaccess',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Nginx Hub Erişimi',
+    sort_order: 11,
+    default_visible: 1,
+  },
+  {
     // Elle girilmis (envanterde olmayan) adlarin takip ekrani. Kayitsiz birakilirsa
     // sekme "varsayilan gorunur" olur ve Sayfa Erisimi'nden YONETILEMEZ.
     element_key: 'admintab:inventorygaps',
@@ -1981,6 +1991,107 @@ const ELEMENT_SEED = [
     label: 'Web-App',
     sort_order: 10,
     default_visible: 0,
+  },
+  // Nginx Hub sekmeleri (2026-09-23): varsayilan ACIK. Sayfayi gorebilen herkes tum
+  // sekmeleri gorur; Admin > "Nginx Hub Erisimi" paneli bir kullaniciyi/AD grubunu
+  // SECILEN sekmelerle sinirlamak icin secilmeyenlere DENY kurali yazar (motor: kullanici
+  // kurali kazanir). Varsayilani 0 yapmak, bugun sayfaya erisen herkesi bir anda bos
+  // ekranla birakirdi - bu yuzden bilerek 1.
+  {
+    element_key: 'tab:nginx:dashboard',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Dashboard',
+    sort_order: 20,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:instances',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Instances',
+    sort_order: 21,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:config',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Konfigürasyon',
+    sort_order: 22,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:changes',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Değişiklikler',
+    sort_order: 23,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:certs',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Sertifikalar',
+    sort_order: 24,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:orphans',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Kullanılmayan',
+    sort_order: 25,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:drift',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Tutarlılık',
+    sort_order: 26,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:cis',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'CIS',
+    sort_order: 27,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:spa',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'SPA',
+    sort_order: 28,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:api',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'API Envanteri',
+    sort_order: 29,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:envanter',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Envanter',
+    sort_order: 30,
+    default_visible: 1,
+  },
+  {
+    element_key: 'tab:nginx:audit',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Audit',
+    sort_order: 31,
+    default_visible: 1,
   },
 ];
 

@@ -178,6 +178,21 @@ export const denetimAccessApi = {
   },
 };
 
+// Nginx Hub Erisimi (Admin, 2026-09-23): kullanici / AD grubu -> Nginx Hub sekmeleri.
+// Denetim'den farki sunucuda: secilmeyen sekmeye DENY yazilir (sekmeler varsayilan ACIK).
+export const nginxAccessApi = {
+  async list(): Promise<{ tabs: string[]; grants: DenetimAccessGrant[] }> {
+    const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = await okJson(await fetch("/api/visibility/nginx-access")) as never;
+    return { tabs: d.tabs ?? [], grants: d.grants ?? [] };
+  },
+  async set(body: { principalType: 'user' | 'group'; principalId: string; tabs: string[] | 'all' }): Promise<void> {
+    await okJson(await fetch("/api/visibility/nginx-access", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  },
+  async remove(principalType: 'user' | 'group', principalId: string): Promise<void> {
+    await okJson(await fetch(`/api/visibility/nginx-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`, { method: "DELETE" }));
+  },
+};
+
 export const elementsApi = {
   async list(): Promise<{ elements: PortalElement[]; rules: ElementRule[] }> {
     const res = await fetch("/api/visibility/elements");

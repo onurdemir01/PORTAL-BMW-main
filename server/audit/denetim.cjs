@@ -70,7 +70,16 @@ function initDenetim(app) {
     // Yol -> sekme eslemesi DenetimPage sekme id'leriyle ayni; eslesmeyen yol sayfa kapisiyla kalir.
     // nginx sekmeleri 2026-09-22'de Nginx Hub'a tasindi: bu yollar artik 'NginxConsole' SAYFA
     // kapisindan gecer (tab:denetim:nginx* elementleri silindi).
+    // Nginx yollari Nginx Hub sayfasina + O SEKMEYE baglidir (2026-09-23): "istedigim
+    // kullanicilar yalniz istedigim sekmeleri gorsun" (kullanici). Eslesmeyen nginx yolu
+    // sayfa kapisinda kalir.
     const NGINX_PATH = /^\/(nginx-spa|nginx-spa-coverage|route-stats|nginx-migration|nginx-legacy|nginx-locations|nginx-proxy|nginx-api|nginx-api-locations|nginx-inventory|nginx-audit)(\/|$)/;
+    const NGINX_TAB_OF_PATH = [
+      [/^\/(nginx-spa|nginx-spa-coverage|route-stats|nginx-migration|nginx-legacy)(\/|$)/, 'spa'],
+      [/^\/(nginx-api|nginx-api-locations)(\/|$)/, 'api'],
+      [/^\/nginx-inventory(\/|$)/, 'envanter'],
+      [/^\/(nginx-audit|nginx-locations|nginx-proxy)(\/|$)/, 'audit'],
+    ];
     const TAB_OF_PATH = [
       [/^\/ocp-coverage(\/|$)/, 'ocp'],
       [/^\/init-scripts(\/|$)/, 'init'],
@@ -81,7 +90,13 @@ function initDenetim(app) {
       [/^\/web-app(\/|$)/, 'webapp'],
     ];
     router.use((req, res, next) => {
-      if (NGINX_PATH.test(req.path)) return requireVisible('NginxConsole')(req, res, next);
+      if (NGINX_PATH.test(req.path)) {
+        const nx = NGINX_TAB_OF_PATH.find(([re]) => re.test(req.path));
+        return requireVisible('NginxConsole')(req, res, () => {
+          if (!nx) return next();
+          return requireVisible('tab:nginx:' + nx[1])(req, res, next);
+        });
+      }
       const hit = TAB_OF_PATH.find(([re]) => re.test(req.path));
       if (!hit) return next();
       return requireVisible('tab:denetim:' + hit[1])(req, res, next);

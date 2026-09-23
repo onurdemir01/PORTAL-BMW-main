@@ -196,6 +196,75 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
     }
   });
 
+  // ── Nginx Hub Erisimi (2026-09-23): kullanici / AD grubu -> sekme listesi ──────────
+  // Denetim'den FARKI: Nginx Hub sekmeleri varsayilan ACIK (default_visible=1), cunku bugun
+  // sayfayi gorebilen herkes tum sekmeleri goruyor ve bunu bir anda kapatmak calisan
+  // ekranlari karartirdi. Dolayisiyla bir principal'i SINIRLAMAK icin secilmeyen sekmelere
+  // DENY kurali yazilir (motor: kullanici kurali allow/deny olarak KAZANIR; grup kuralinda
+  // yalniz deny varsa gizlenir). Kayit silinince principal yine varsayilana (hepsi acik) doner.
+  const NGINX_TAB_KEYS = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'spa', 'api', 'envanter', 'audit'];
+  const nginxKeys = () => ['NginxConsole', ...NGINX_TAB_KEYS.map((t) => 'tab:nginx:' + t)];
+
+  router.get("/nginx-access", requireAdmin, async (_req, res) => {
+    try {
+      const rules = (await elementsStore.listRules()).filter((r) => nginxKeys().includes(r.elementKey) && r.principalType !== 'role');
+      const byP = new Map();
+      for (const r of rules) {
+        const k = r.principalType + '|' + r.principalId;
+        if (!byP.has(k)) byP.set(k, { principalType: r.principalType, principalId: r.principalId, page: false, tabs: [] });
+        const e = byP.get(k);
+        if (r.elementKey === 'NginxConsole') e.page = r.allow;
+        else if (r.allow) e.tabs.push(r.elementKey.replace('tab:nginx:', ''));
+      }
+      res.json({ ok: true, tabs: NGINX_TAB_KEYS, grants: [...byP.values()].sort((a, b) => a.principalType.localeCompare(b.principalType) || a.principalId.localeCompare(b.principalId)) });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // body: { principalType: 'user'|'group', principalId, tabs: string[] | 'all' }
+  router.put("/nginx-access", requireAdmin, async (req, res) => {
+    try {
+      const pt = req.body?.principalType === 'group' ? 'group' : req.body?.principalType === 'user' ? 'user' : null;
+      const pid = String(req.body?.principalId || '').trim().toLowerCase();
+      if (!pt || !pid) return res.status(400).json({ ok: false, error: 'principalType (user|group) ve principalId zorunlu.' });
+      const want = req.body?.tabs === 'all' ? NGINX_TAB_KEYS : (Array.isArray(req.body?.tabs) ? req.body.tabs : []).filter((t) => NGINX_TAB_KEYS.includes(t));
+      if (want.length === 0) return res.status(400).json({ ok: false, error: 'En az bir sekme secilmeli.' });
+      const all = await elementsStore.listRules();
+      for (const key of nginxKeys()) {
+        const others = all.filter((r) => r.elementKey === key && !(r.principalType === pt && r.principalId.toLowerCase() === pid));
+        const tab = key.replace('tab:nginx:', '');
+        // Sayfa: allow. Sekme: secildiyse allow, SECILMEDIYSE DENY (varsayilan acik oldugu icin
+        // kural yazmamak sekmeyi acik birakirdi).
+        const mine = key === 'NginxConsole'
+          ? [{ principalType: pt, principalId: pid, allow: true }]
+          : [{ principalType: pt, principalId: pid, allow: want.includes(tab) }];
+        await elementsStore.setElementRules(key, [...others, ...mine]);
+      }
+      visibilityEngine.bumpVersion();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  router.delete("/nginx-access", requireAdmin, async (req, res) => {
+    try {
+      const pt = req.query.principalType === 'group' ? 'group' : 'user';
+      const pid = String(req.query.principalId || '').trim().toLowerCase();
+      if (!pid) return res.status(400).json({ ok: false, error: 'principalId zorunlu.' });
+      const all = await elementsStore.listRules();
+      for (const key of nginxKeys()) {
+        const others = all.filter((r) => r.elementKey === key && !(r.principalType === pt && r.principalId.toLowerCase() === pid));
+        await elementsStore.setElementRules(key, others);
+      }
+      visibilityEngine.bumpVersion();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   router.delete("/elements/:key", requireAdmin, async (req, res) => {
     const removed = await elementsStore.deleteElement(req.params.key);
     visibilityEngine.bumpVersion();

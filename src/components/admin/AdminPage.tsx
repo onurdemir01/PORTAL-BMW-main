@@ -38,6 +38,7 @@ import SystemConfigTab from './tabs/SystemConfigTab';
 import UserManagementTab from './tabs/UserManagementTab';
 import PageVisibilityTab from './tabs/PageVisibilityTab';
 import DenetimAccessTab from './tabs/DenetimAccessTab';
+import NginxAccessTab from './tabs/NginxAccessTab';
 import LogXv2AdminTab from './tabs/LogXv2AdminTab';
 import ScaleXAdminTab from './tabs/ScaleXAdminTab';
 import InventoryVisibilityTab from './tabs/InventoryVisibilityTab';
@@ -63,6 +64,7 @@ const DEFAULT_TABS = [
   { id: 'users', label: 'Kullanıcılar', icon: UsersIcon, hint: 'Yerel kullanıcılar, roller ve LDAP eşleşmeleri.' },
   { id: 'visibility', label: 'Sayfa Erişimi', icon: EyeIcon, hint: 'Hangi sayfa/sekme kime görünür — rol, kullanıcı ve grup kuralları.' },
   { id: 'denetimaccess', label: 'Denetim Erişimi', icon: ShieldCheckIcon, hint: 'Denetim sekmelerini kişi ya da LDAP grubu bazında açma.' },
+  { id: 'nginxaccess', label: 'Nginx Hub Erişimi', icon: ShieldCheckIcon, hint: 'Nginx Hub sekmelerini kişi ya da LDAP grubu bazında sınırlama (varsayılan: hepsi açık).' },
   { id: 'inventoryvis', label: 'Envanter Görünürlüğü', icon: TableCellsIcon, hint: 'Envanter tablolarının ve sütunlarının kimlere açık olduğu.' },
   { id: 'inventorygaps', label: 'Envanter Boşlukları', icon: ExclamationTriangleIcon, hint: 'Envanterde eksik ya da tutarsız kayıtlar.' },
   { id: 'branding', label: 'Logo', icon: PhotoIcon, hint: 'Portal logosu ve sekme simgesi.' },
@@ -75,7 +77,7 @@ const TAB_BY_ID = new Map<TabId, (typeof DEFAULT_TABS)[number]>(DEFAULT_TABS.map
 // Dort bolum — sira sabit, surukleme yok. Bir sekme gorunmezse (admintab kurali) bolumden
 // duser; bolum bosalirsa basligi da gizlenir.
 const SECTIONS: { title: string; icon: React.ElementType; ids: TabId[] }[] = [
-  { title: 'Erişim', icon: KeyIcon, ids: ['users', 'visibility', 'denetimaccess', 'inventoryvis'] },
+  { title: 'Erişim', icon: KeyIcon, ids: ['users', 'visibility', 'denetimaccess', 'nginxaccess', 'inventoryvis'] },
   { title: 'Otomasyon', icon: CommandLineIcon, ids: ['playbooks', 'ansible', 'logxv2', 'scalex'] },
   { title: 'Kayıtlar', icon: ArchiveBoxIcon, ids: ['audit', 'smarttickets', 'dbbackup', 'inventorygaps'] },
   { title: 'Sistem', icon: CogIcon, ids: ['system', 'branding'] },
@@ -195,6 +197,7 @@ const AdminPage: React.FC = () => {
               {activeTab === 'users' && <UserManagementTab />}
               {activeTab === 'visibility' && <PageVisibilityTab />}
               {activeTab === 'denetimaccess' && <DenetimAccessTab />}
+              {activeTab === 'nginxaccess' && <NginxAccessTab />}
               {activeTab === 'logxv2' && <LogXv2AdminTab />}
               {activeTab === 'scalex' && <ScaleXAdminTab />}
               {activeTab === 'inventoryvis' && <InventoryVisibilityTab />}

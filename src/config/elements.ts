@@ -122,6 +122,7 @@ export const ADMIN_TABS: TabElement[] = [
   { id: 'admintab:visibility', label: 'Sayfa Erişimi' },
   { id: 'admintab:inventoryvis', label: 'Envanter Görünürlüğü' },
   { id: 'admintab:denetimaccess', label: 'Denetim Erişimi' },
+  { id: 'admintab:nginxaccess', label: 'Nginx Hub Erişimi' },
   { id: 'admintab:inventorygaps', label: 'Envanter Boşlukları' },
   { id: 'admintab:branding', label: 'Marka' },
 ];
