@@ -51,7 +51,10 @@ test('sunucu satiri kendi sayfasina gider; rota tanimli; geri donus Nginx Audit 
   const hub = read('components/nginx_console/NginxConsolePage.tsx');
   assert.ok(hub.includes("searchParams.get('tab')"), 'NginxConsolePage ?tab= okumali');
   assert.ok(/TABS\.includes\(v\) \? v : 'dashboard'/.test(hub), "taninmayan tab Dashboard'a dusmeli");
-  assert.ok(/\{tab === 'audit' && <NginxAudit \/>\}/.test(hub), 'Nginx Hub audit sekmesi NginxAudit render etmeli');
+  // 2026-09-23: sekme icerigi ayrica GORUNURLUK kapisindan gecer (tab:nginx:<id>) -
+  // kural "audit sekmesi NginxAudit cizer", yazim degil.
+  assert.ok(/\{tab === 'audit' &&[^}]*<NginxAudit \/>\}/.test(hub), 'Nginx Hub audit sekmesi NginxAudit render etmeli');
+  assert.ok(/canSee\('tab:nginx:audit'\)/.test(hub), 'audit sekmesi gorunurluk kapisinda degil');
   assert.ok(/DENETIM_TABS\.includes\(v\) \? v : 'ocp'/.test(denetim), 'Denetim: taninmayan tab ilk sekmeye (ocp) dusmeli');
   assert.ok(!/id: ['"]nginxaudit['"]/.test(denetim), 'Denetim sekme cubugunda nginxaudit kalmamali');
 });
@@ -79,7 +82,10 @@ test('Nginx SPA > Prod Tasima sekmesi bagli ve kapsam paneli o sekmede gizli', (
 test('Production Tasimalari: Tanim olustur dugmesi, ekip siralamasi, H/A/C sozlugu', () => {
   const src = read('components/denetim/NginxProdMigration.tsx');
   // dugme: yapilandirma yoksa / eksik / taranmadi -> pasif; onay penceresi formlu -> arka plan tiklamasi kapali
-  assert.ok(src.includes("disabled={!canCreate || a.status === 'missing' || a.status === 'not-scanned'}"));
+  // 2026-09-23 (kullanici): tanim ZATEN olusturulduysa (job basarili + tarama dogruladi)
+  // dugme de pasif. Kosul buyudu; bekcinin sordugu sey ayni: uc durumda pasif olmali.
+  assert.ok(src.includes("disabled={!canCreate || allDone || a.status === 'missing' || a.status === 'not-scanned'}"));
+  assert.ok(/const allDone = a\.paths\.length > 0 && confirmed\.length === a\.paths\.length/.test(src), 'tum yollar dogrulanmadan dugme kapanmamali');
   assert.ok(src.includes('dismissOnBackdrop={false}'), 'onay penceresi surukleme ile kapanmamali');
   assert.ok(src.includes('nginxMigrationApi.create({'), 'launch ucu cagrilmiyor');
   // ekip siralamasi: cok uygulamasi olan ekip ustte, ekipsizler en sona
