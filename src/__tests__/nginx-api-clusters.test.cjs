@@ -74,8 +74,13 @@ test('AC3 hiçbir kümede olmayan sunucu "liste dışı" olarak görünür (list
 
 test('AC4 ekran sözleşmesi: satırda küme özeti, detayda var/yok dökümü, CSV sütunları', () => {
   assert.ok(/<Th>Sunucu kümeleri<\/Th>/.test(UI), 'tabloya küme sütunu eklenmemiş');
-  assert.ok(/coverage\.rows\.map/.test(UI), 'küme kapsamı hesaplanmıyor');
-  assert.ok(/clusterCoverage\(allHosts\)/.test(UI), 'kapsam tüm ortamların birleşiminden hesaplanmalı');
+  assert.ok(/rowsCov\.map/.test(UI), 'küme kapsamı satırda gösterilmiyor');
+  // PERFORMANS (2026-09-23, kullanici "ekran kasiyor"): kapsam her cizimde degil, VERI
+  // basina bir kez hesaplanir; satir bileseni React.memo ile sarmalidir.
+  assert.ok(/const coverageByRow = useMemo\(/.test(UI), 'kapsam her cizimde yeniden hesaplaniyor');
+  assert.ok(/React\.memo\(function LocationRow/.test(UI), 'satir bileseni memo degil');
+  assert.ok(/useDeferredValue/.test(UI), 'arama her tusta tum tabloyu yeniden ciziyor');
+  assert.ok(/rows\.slice\(0, limit\)/.test(UI), 'tum satirlar birden cizilirse ekran kasar');
   assert.ok(/hangi gateway&apos;lerde var, hangilerinde yok/.test(UI), 'detayda başlık yok');
   assert.ok(/title="bu sunucuda VAR"/.test(UI) && /title="bu sunucuda YOK"/.test(UI), 'var/yok ayrımı okunmuyor');
   assert.ok(/liste dışı/.test(UI), 'liste dışı sunucular gösterilmiyor');

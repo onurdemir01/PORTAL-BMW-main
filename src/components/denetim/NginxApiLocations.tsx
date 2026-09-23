@@ -6,7 +6,7 @@
 // Rate limit farkı iki ayrı şeydir ve ayrı işaretlenir:
 //   · sunucu farkı — AYNI ortamdaki sunucular farklı limit taşıyor → genelde hata
 //   · ortam farkı  — ortamlar arası limit farkı → kasıtlı olabilir (test 50, prod 300)
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
@@ -88,9 +88,13 @@ export function NginxApiLocations() {
     };
   }, []);
 
+  // ARAMA ERTELENIR (2026-09-23): her tus vurusunda binlerce satir yeniden suzulup
+  // ciziliyordu; useDeferredValue ile yazma akici kalir, liste bir tik geriden gelir.
+  const qDeferred = useDeferredValue(q);
+
   const rows = useMemo(() => {
     if (!data) return [];
-    const needle = q.trim().toLowerCase();
+    const needle = qDeferred.trim().toLowerCase();
     return data.rows.filter((r) => {
       if (needle && !`${r.location} ${r.config}`.toLowerCase().includes(needle)) return false;
       if (envFilter && !r.presentEnvs.includes(envFilter)) return false;
@@ -98,7 +102,25 @@ export function NginxApiLocations() {
         return false;
       return true;
     });
-  }, [data, q, envFilter, onlyProblem]);
+  }, [data, qDeferred, envFilter, onlyProblem]);
+
+  // KUME KAPSAMI SATIR BASINA BIR KEZ (2026-09-23): eskiden her cizimde, her satir icin
+  // yeniden hesaplaniyordu (suzgec degisince de). Artik yalnizca VERI degisince hesaplanir.
+  const coverageByRow = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof clusterCoverage>>();
+    for (const r of data?.rows || []) {
+      const hosts: string[] = [];
+      for (const e of r.presentEnvs) for (const h of r.envs[e]?.hosts || []) hosts.push(h);
+      m.set(`${r.config}|${r.location}`, clusterCoverage(hosts));
+    }
+    return m;
+  }, [data]);
+
+  // Cok satirda tarayici zorlaniyor: once ilk dilim cizilir, kullanici isterse buyutur.
+  const [limit, setLimit] = useState(300);
+  useEffect(() => {
+    setLimit(300);
+  }, [qDeferred, envFilter, onlyProblem]);
 
   if (loading && !data)
     return <LoadingLogo />;
@@ -156,7 +178,7 @@ export function NginxApiLocations() {
 
       <Panel
         title="API bazlı dağılım"
-        description={`${nf(rows.length)} yol gösteriliyor · tarama ${data.scanDate}`}
+        description={`${nf(Math.min(rows.length, limit))} / ${nf(rows.length)} yol gösteriliyor · tarama ${data.scanDate}`}
         actions={
           <div className="flex items-center gap-2">
             <select
@@ -203,13 +225,14 @@ export function NginxApiLocations() {
                     'ortam_farki',
                   ],
                   rows.map((r) => {
-                    const cov = clusterCoverage(r.presentEnvs.flatMap((e) => r.envs[e]?.hosts || []));
+                    const cov = coverageByRow.get(`${r.config}|${r.location}`);
+                    const covRows = cov ? cov.rows : [];
                     return [
                     r.config,
                     r.location,
                     ...envs.map((e) => (r.envs[e] ? r.envs[e].hosts.join(' ') : '')),
-                    ...cov.rows.map((c) => `${c.present.length}/${c.cluster.hosts.length}`),
-                    ...cov.rows.map((c) => c.missing.join(' ')),
+                    ...covRows.map((c) => `${c.present.length}/${c.cluster.hosts.length}`),
+                    ...covRows.map((c) => c.missing.join(' ')),
                     r.missingEnvs.join(' '),
                     r.limitDrift ? 'EVET' : '',
                     r.envLimitDrift ? 'EVET' : '',
@@ -246,17 +269,33 @@ export function NginxApiLocations() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <LocationRow
-                key={`${r.config}|${r.location}`}
-                row={r}
-                envs={envs}
-                open={open === `${r.config}|${r.location}`}
-                onToggle={() =>
-                  setOpen(open === `${r.config}|${r.location}` ? null : `${r.config}|${r.location}`)
-                }
-              />
-            ))}
+            {rows.slice(0, limit).map((r) => {
+              const key = `${r.config}|${r.location}`;
+              return (
+                <LocationRow
+                  key={key}
+                  rowKey={key}
+                  row={r}
+                  envs={envs}
+                  coverage={coverageByRow.get(key)}
+                  open={open === key}
+                  onToggle={setOpen}
+                />
+              );
+            })}
+            {rows.length > limit && (
+              <tr>
+                <td colSpan={envs.length + 4} className="p-0">
+                  <button
+                    onClick={() => setLimit((n) => n + 500)}
+                    className="w-full px-3 py-2 text-xs border-t hover:bg-[var(--bg-elevated)]"
+                    style={{ borderColor: 'var(--border-subtle)', color: 'var(--accent)' }}
+                  >
+                    {nf(rows.length - limit)} satır daha var — devamını göster
+                  </button>
+                </td>
+              </tr>
+            )}
           </tbody>
         </TableShell>
       </Panel>
@@ -264,25 +303,30 @@ export function NginxApiLocations() {
   );
 }
 
-function LocationRow({
+const LocationRow = React.memo(function LocationRow({
   row,
+  rowKey,
   envs,
+  coverage,
   open,
   onToggle,
 }: {
   row: NginxApiLocationRow;
+  rowKey: string;
   envs: string[];
+  coverage?: ReturnType<typeof clusterCoverage>;
   open: boolean;
-  onToggle: () => void;
+  onToggle: (key: string | null) => void;
 }) {
-  // Kume kapsami: API'nin BULUNDUGU sunucular tum ortamlarin birlesimidir; kumeler zaten
-  // yalniz production gateway'lerini icerir, dolayisiyla birlesimi kullanmak dogru sonucu verir.
-  const allHosts = row.presentEnvs.flatMap((e) => row.envs[e]?.hosts || []);
-  const coverage = clusterCoverage(allHosts);
+  // Kume kapsami ust bilesende, VERI BASINA BIR KEZ hesaplanir (bkz. coverageByRow).
+  const rowsCov = coverage ? coverage.rows : [];
 
   return (
     <>
-      <tr className="cursor-pointer hover:bg-[var(--bg-elevated)]/60" onClick={onToggle}>
+      <tr
+        className="cursor-pointer hover:bg-[var(--bg-elevated)]/60"
+        onClick={() => onToggle(open ? null : rowKey)}
+      >
         <Td className="font-mono whitespace-nowrap" title={row.location}>
           {row.location}
         </Td>
@@ -291,7 +335,7 @@ function LocationRow({
         </Td>
         <Td>
           <span className="flex flex-wrap gap-1">
-            {coverage.rows.map(({ cluster, present }) => {
+            {rowsCov.map(({ cluster, present }) => {
               const tone = present.length === 0
                 ? 'neutral'
                 : present.length === cluster.hosts.length
@@ -341,7 +385,7 @@ function LocationRow({
                   Sunucu kümeleri — bu API hangi gateway&apos;lerde var, hangilerinde yok?
                 </div>
                 <div className="space-y-1.5">
-                  {coverage.rows.map(({ cluster, present, missing }) => (
+                  {rowsCov.map(({ cluster, present, missing }) => (
                     <div key={cluster.key} className="flex flex-wrap items-start gap-2 text-[11px]">
                       <span
                         className="w-28 shrink-0 font-semibold"
@@ -387,13 +431,13 @@ function LocationRow({
                       </span>
                     </div>
                   ))}
-                  {coverage.outside.length > 0 && (
+                  {(coverage?.outside.length || 0) > 0 && (
                     <div className="flex flex-wrap items-start gap-2 text-[11px]">
                       <span className="w-28 shrink-0 font-semibold" style={{ color: 'var(--text-secondary)' }}>
                         liste dışı
                       </span>
                       <span className="flex flex-wrap gap-1">
-                        {coverage.outside.map((h) => (
+                        {(coverage?.outside || []).map((h) => (
                           <span
                             key={h}
                             className="px-1.5 py-0.5 rounded font-mono"
@@ -457,4 +501,4 @@ function LocationRow({
       )}
     </>
   );
-}
+});
