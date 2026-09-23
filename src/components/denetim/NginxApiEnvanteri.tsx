@@ -26,6 +26,7 @@ import { denetimApi, type NginxApiResult, type NginxApiConfigRow } from '@/api/d
 import { Panel, StatTile, Pill, TableShell, Th, Td, Code, Note } from './ui';
 import { NginxInternetExpose } from './NginxInternetExpose';
 import { NginxApiLocations } from './NginxApiLocations';
+import { fmtDateTime } from '@/utils/datetime';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
@@ -201,7 +202,7 @@ export function NginxApiEnvanteri() {
       <div className="flex flex-wrap items-center gap-2">
         {viewTabs}
         <span className="text-xs text-[var(--text-muted)]">
-          tarama <span className="tabular-nums">{data.scanDate}</span>
+          tarama <span className="tabular-nums">{data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate}</span>
         </span>
         <button
           onClick={() => load()}

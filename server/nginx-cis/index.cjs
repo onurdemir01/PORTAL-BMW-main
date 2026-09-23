@@ -22,7 +22,10 @@ async function loadRaw() {
   const latest = `JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Nginx_Cis_Hosts GROUP BY host) m ON m.host = t.host AND m.d = t.scan_date`;
   const [results, hosts] = await Promise.all([
     query(`SELECT t.host, t.item_id, t.status, t.observed, t.detail FROM dbo.Nginx_Cis_Results t ${latest}`).then((r) => r.recordset || []),
-    query(`SELECT t.host, t.nginx_version, t.t_state, t.msg, t.scan_date FROM dbo.Nginx_Cis_Hosts t ${latest}`).then((r) => r.recordset || []),
+    // scanned_at: taramanin GERCEK ani (UTC). scan_date yalniz gun tutuyor; kullanici
+    // "tarama tarihlerine saat dakika da ekleyelim" dedi (2026-09-23). Sutun loader'in
+    // DDL'inde zaten vardi, yalniz okunmuyordu.
+    query(`SELECT t.host, t.nginx_version, t.t_state, t.msg, t.scan_date, t.scanned_at FROM dbo.Nginx_Cis_Hosts t ${latest}`).then((r) => r.recordset || []),
   ]);
   return { tableMissing: false, results, hosts };
 }
@@ -95,7 +98,7 @@ function initNginxCis(app) {
       res.json({
         ok: true, tableMissing: false, summary: a.summary, perItem: a.perItem, catalog: ITEMS,
         exceptions: a.exceptions, overrides: a.overrides,
-        hosts: a.hosts.map((h) => ({ host: h.host, nginxVersion: h.nginxVersion, tState: h.tState, scanDate: h.scanDate, score: h.score, passed: h.passed, failed: h.failed, excepted: h.excepted, skipped: h.skipped })),
+        hosts: a.hosts.map((h) => ({ host: h.host, nginxVersion: h.nginxVersion, tState: h.tState, scanDate: h.scanDate, scannedAt: h.scannedAt, score: h.score, passed: h.passed, failed: h.failed, excepted: h.excepted, skipped: h.skipped })),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'CIS verisi alınamadı.' });

@@ -13,7 +13,7 @@ export interface NcCisCell {
   expected: string | null; expectedSource: 'kurum' | 'CIS' | null;
   exceptionNote: string | null; counts: boolean; fix: string;
 }
-export interface NcCisHostRow { host: string; nginxVersion: string | null; tState: string | null; scanDate: string | null; score: number | null; passed: number; failed: number; excepted: number; skipped: number }
+export interface NcCisHostRow { host: string; nginxVersion: string | null; tState: string | null; scanDate: string | null; scannedAt?: string | null; score: number | null; passed: number; failed: number; excepted: number; skipped: number }
 export interface NcCisHostDetail extends NcCisHostRow { items: NcCisCell[]; msg?: string | null }
 export interface NcCisItemHost { host: string; status: NcCisCell['status']; observed: string; detail: string; exceptionNote: string | null }
 /** Filoda OLCULEN degerler (2026-09-22): referans girerken tahmin edilmesin, secilsin. */
@@ -35,7 +35,7 @@ export interface NcCisException { id: number; item_id: string; host: string | nu
 export interface NcCisOverride { id: number; item_id: string; expected: string; note: string | null; created_by?: string | null; created_at?: string }
 export interface NcCisOverview {
   ok: boolean; message?: string; tableMissing: boolean;
-  summary: { hosts: number; scanDate: string | null; avgScore: number | null; under80: number; perfect: number; failCells: number; exceptedCells: number; items: number; tFail: number } | null;
+  summary: { hosts: number; scanDate: string | null; scannedAt?: string | null; avgScore: number | null; under80: number; perfect: number; failCells: number; exceptedCells: number; items: number; tFail: number } | null;
   hosts: NcCisHostRow[]; perItem: NcCisItemRow[]; catalog: { id: string; title: string; section: string }[];
   exceptions: NcCisException[]; overrides: NcCisOverride[];
 }

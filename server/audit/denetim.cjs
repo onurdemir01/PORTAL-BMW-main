@@ -19,6 +19,8 @@ const { tierOfHost, envOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const { summarizeLegacy } = require('./nginx-legacy.cjs');
 const { summarizeAudit, readLatestAuditDate } = require('./nginx-audit.cjs');
+// Tarama SAATI (2026-09-23): tablolarda `scanned_at` varsa okunur, yoksa null.
+const { scanStamp } = require('./scan-stamp.cjs');
 const { loadMigration, resolveTarget, buildResolverMaps, MIGRATION_GROUPS } = require('./nginx-migration.cjs');
 const { buildRouteStats } = require('./route-stats.cjs');
 const { loadNamespaceOwners, ownersFor } = require('./ns-owners.cjs');
@@ -420,6 +422,7 @@ function initDenetim(app) {
         prodProxy: prodProxyStats,
         serviceStats,
         scanDate: effectiveDate,
+        scannedAt: await scanStamp(query, 'dbo.Nginx_Config_Audit'),
         availableDates: (datesRes.recordset || []).map((x) => x.d),
         services: [...new Set(rows.map((r) => r.service))].sort(), // NEW_ONLY satirlari dahil
         envs: envList,
@@ -1206,6 +1209,7 @@ function initDenetim(app) {
         schemaReady: out.schemaReady,
         filesReady: out.filesReady,
         scanDate: out.scanDate,
+        scannedAt: await scanStamp(query, 'dbo.Nginx_Audit_Hosts'),
         host: found,
         reference: out.reference || [],
       });
@@ -1430,6 +1434,7 @@ function initDenetim(app) {
       res.json({
         ok: true,
         scanDate: effectiveDate,
+        scannedAt: await scanStamp(query, 'dbo.NginxRateLimitInventory'),
         availableDates: (datesRes.recordset || []).map((r) => r.d),
         ...summary,
       });
@@ -1508,6 +1513,7 @@ function initDenetim(app) {
         ok: true,
         schemaReady: true,
         scanDate: effectiveDate,
+        scannedAt: await scanStamp(query, 'dbo.NginxRateLimitInventory'),
         envs: [...new Set(rows.map((x) => x.env))].sort(),
         services: [...new Set(rows.map((x) => x.service))].filter(Boolean).sort(),
         totals: {

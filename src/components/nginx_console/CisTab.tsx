@@ -12,6 +12,7 @@ import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { Pill } from '@/components/denetim/ui';
 import { Modal } from '@/components/common/Modal';
+import { fmtDateTime } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 import { fmtNumber } from '@/utils/datetime';
 import { nginxCisApi, type NcCisOverview, type NcCisItemRow, type NcCisHostRow, type NcCisHostDetail, type NcCisCell, type NcCisOverride, type NcCisObservedValue } from '@/api/nginxCisApi';
@@ -202,7 +203,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
             ))}
           </div>
         )}
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{s?.scanDate ? `tarama ${s.scanDate}` : ''}</span>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{s?.scannedAt ? `tarama ${fmtDateTime(s.scannedAt)}` : s?.scanDate ? `tarama ${s.scanDate}` : ''}</span>
         <div className="ml-auto flex gap-2">
           {isAdmin && <button onClick={() => rescan([])} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }} title="Tüm filoda CIS taramasını yeniden koş (canlı skor)"><BoltIcon className="w-3.5 h-3.5 inline" /> Skoru tazele</button>}
           <button onClick={csv} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}><ArrowDownTrayIcon className="w-3.5 h-3.5 inline" /> CSV</button>
@@ -226,7 +227,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                   <td className="px-3 py-1.5 text-right tabular-nums">{h.passed}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: h.failed ? 'var(--status-danger)' : undefined }}>{h.failed}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>{h.excepted}</td>
-                  <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }}>{h.scanDate || '—'}</td>
+                  <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }} title={h.scannedAt ? fmtDateTime(h.scannedAt) : ''}>{h.scannedAt ? fmtDateTime(h.scannedAt) : h.scanDate || '—'}</td>
                   <td className="px-3 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
                     {isAdmin && <button onClick={() => rescan([h.host])} className="text-[11px] underline" style={{ color: 'var(--accent)' }} title="Yalnız bu sunucuda CIS taramasını yeniden koş">tazele</button>}
                   </td>
@@ -277,7 +278,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
         </div>
       ) : null}
 
-      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail ? `${detail.host} · CIS skoru %${detail.score ?? '—'}` : ''} subtitle={detail ? `${detail.passed} geçti · ${detail.failed} kaldı · ${detail.excepted} istisna · ${detail.skipped} skora girmedi${detail.scanDate ? ` · tarama ${detail.scanDate}` : ''}` : undefined} size="wide">
+      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail ? `${detail.host} · CIS skoru %${detail.score ?? '—'}` : ''} subtitle={detail ? `${detail.passed} geçti · ${detail.failed} kaldı · ${detail.excepted} istisna · ${detail.skipped} skora girmedi${detail.scannedAt ? ` · tarama ${fmtDateTime(detail.scannedAt)}` : detail.scanDate ? ` · tarama ${detail.scanDate}` : ''}` : undefined} size="wide">
         {detail && (
           <div className="space-y-2">
             <div className="flex gap-2">

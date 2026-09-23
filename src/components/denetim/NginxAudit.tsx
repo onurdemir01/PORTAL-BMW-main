@@ -12,6 +12,7 @@
 // Legacy denetiminden AYRIDIR: o, 12 prod sunucusunu servis tanesinde ve eslenik
 // karsilastirmasiyla olcer. Bu, tum filoyu sunucu tanesinde olcer.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 // Ham tarih bicimlendirme YOK: bicim tek yerden gelir (bekci G19).
 import { fmtDate } from '@/utils/datetime';
@@ -378,7 +379,7 @@ export function NginxAudit() {
 
       <Panel
         title="Sunucular"
-        description={`${nf(rows.length)} sunucu gösteriliyor · tarama ${data.scanDate} · ${issue ? 'seçilen soruna göre sıralı' : 'sorunlu olanlar üstte'} · satıra tıklayınca sunucu sayfası açılır`}
+        description={`${nf(rows.length)} sunucu gösteriliyor · tarama ${data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate} · ${issue ? 'seçilen soruna göre sıralı' : 'sorunlu olanlar üstte'} · satıra tıklayınca sunucu sayfası açılır`}
         actions={
           <div className="flex items-center gap-2">
             <select

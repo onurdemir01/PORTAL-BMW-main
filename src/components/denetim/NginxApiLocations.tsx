@@ -15,7 +15,8 @@ import {
   type NginxApiLocationRow,
 } from '@/api/denetimApi';
 import { Panel, StatTile, Pill, TableShell, Th, Td, Note } from './ui';
-import { API_CLUSTERS, clusterCoverage } from '../../../shared/nginxApiClusters.cjs';
+import { fmtDateTime } from '@/utils/datetime';
+import { API_CLUSTERS } from '../../../shared/nginxApiClusters.cjs';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
@@ -104,17 +105,10 @@ export function NginxApiLocations() {
     });
   }, [data, qDeferred, envFilter, onlyProblem]);
 
-  // KUME KAPSAMI SATIR BASINA BIR KEZ (2026-09-23): eskiden her cizimde, her satir icin
-  // yeniden hesaplaniyordu (suzgec degisince de). Artik yalnizca VERI degisince hesaplanir.
-  const coverageByRow = useMemo(() => {
-    const m = new Map<string, ReturnType<typeof clusterCoverage>>();
-    for (const r of data?.rows || []) {
-      const hosts: string[] = [];
-      for (const e of r.presentEnvs) for (const h of r.envs[e]?.hosts || []) hosts.push(h);
-      m.set(`${r.config}|${r.location}`, clusterCoverage(hosts));
-    }
-    return m;
-  }, [data]);
+  // KUME KAPSAMI + RATE LIMIT KARSILASTIRMASI SUNUCUDAN GELIR (2026-09-23):
+  // "rate limitler tum es sunucularda ayni mi?" sorusu sunucu bazli limit ister; bunu
+  // istemciye satir satir tasimak yaniti sisirirdi. Sunucu kume basina tek ozet uretir
+  // (bkz. server/audit/nginx-api-locations.cjs clusterBreakdown); burada yalniz cizilir.
 
   // Cok satirda tarayici zorlaniyor: once ilk dilim cizilir, kullanici isterse buyutur.
   const [limit, setLimit] = useState(300);
@@ -155,7 +149,9 @@ export function NginxApiLocations() {
           <Pill tone="danger">sunucu farkı</Pill>
           <span>aynı ortamdaki sunucular farklı limit taşıyor ·</span>
           <Pill tone="warning">ortam farkı</Pill>
-          <span>ortamlar arası limit farkı (kasıtlı olabilir)</span>
+          <span>ortamlar arası limit farkı (kasıtlı olabilir) ·</span>
+          <Pill tone="danger">küme içi limit farkı</Pill>
+          <span>aynı kümedeki (mblcustomers/customers/mcustomers) eş sunucular farklı limit taşıyor</span>
         </div>
       </Note>
 
@@ -178,7 +174,7 @@ export function NginxApiLocations() {
 
       <Panel
         title="API bazlı dağılım"
-        description={`${nf(Math.min(rows.length, limit))} / ${nf(rows.length)} yol gösteriliyor · tarama ${data.scanDate}`}
+        description={`${nf(Math.min(rows.length, limit))} / ${nf(rows.length)} yol gösteriliyor · tarama ${data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate}`}
         actions={
           <div className="flex items-center gap-2">
             <select
@@ -219,19 +215,20 @@ export function NginxApiLocations() {
                     'yol',
                     ...envs,
                     ...API_CLUSTERS.map((c) => c.label + '_var'),
+                    ...API_CLUSTERS.map((c) => c.label + '_limit'),
                     ...API_CLUSTERS.map((c) => c.label + '_eksik'),
                     'eksik_ortam',
                     'sunucu_farki',
                     'ortam_farki',
                   ],
                   rows.map((r) => {
-                    const cov = coverageByRow.get(`${r.config}|${r.location}`);
-                    const covRows = cov ? cov.rows : [];
+                    const covRows = r.clusters || [];
                     return [
                     r.config,
                     r.location,
                     ...envs.map((e) => (r.envs[e] ? r.envs[e].hosts.join(' ') : '')),
-                    ...covRows.map((c) => `${c.present.length}/${c.cluster.hosts.length}`),
+                    ...covRows.map((c) => `${c.present}/${c.total}`),
+                    ...covRows.map((c) => c.groups.map((g) => `${g.ip || '-'}/${g.srv || '-'} x${g.hosts.length}`).join(' | ')),
                     ...covRows.map((c) => c.missing.join(' ')),
                     r.missingEnvs.join(' '),
                     r.limitDrift ? 'EVET' : '',
@@ -277,7 +274,6 @@ export function NginxApiLocations() {
                   rowKey={key}
                   row={r}
                   envs={envs}
-                  coverage={coverageByRow.get(key)}
                   open={open === key}
                   onToggle={setOpen}
                 />
@@ -307,19 +303,16 @@ const LocationRow = React.memo(function LocationRow({
   row,
   rowKey,
   envs,
-  coverage,
   open,
   onToggle,
 }: {
   row: NginxApiLocationRow;
   rowKey: string;
   envs: string[];
-  coverage?: ReturnType<typeof clusterCoverage>;
   open: boolean;
   onToggle: (key: string | null) => void;
 }) {
-  // Kume kapsami ust bilesende, VERI BASINA BIR KEZ hesaplanir (bkz. coverageByRow).
-  const rowsCov = coverage ? coverage.rows : [];
+  const rowsCov = row.clusters || [];
 
   return (
     <>
@@ -335,15 +328,23 @@ const LocationRow = React.memo(function LocationRow({
         </Td>
         <Td>
           <span className="flex flex-wrap gap-1">
-            {rowsCov.map(({ cluster, present }) => {
-              const tone = present.length === 0
-                ? 'neutral'
-                : present.length === cluster.hosts.length
-                  ? 'success'
-                  : 'warning';
+            {rowsCov.map((c) => {
+              const tone = c.limitDrift
+                ? 'danger'
+                : c.present === 0
+                  ? 'neutral'
+                  : c.present === c.total
+                    ? 'success'
+                    : 'warning';
+              const limitOzet = c.groups.length === 1
+                ? [c.groups[0].ip, c.groups[0].srv].filter(Boolean).join(' / ') || 'limit yok'
+                : c.groups.length > 1
+                  ? `${c.groups.length} farklı limit`
+                  : '';
               return (
-                <Pill key={cluster.key} tone={tone}>
-                  {cluster.label} {present.length}/{cluster.hosts.length}
+                <Pill key={c.key} tone={tone}>
+                  {c.label} {c.present}/{c.total}
+                  {limitOzet ? ` · ${limitOzet}` : ''}
                 </Pill>
               );
             })}
@@ -369,6 +370,7 @@ const LocationRow = React.memo(function LocationRow({
               <Pill tone="info">eksik: {row.missingEnvs.join(', ')}</Pill>
             )}
             {row.limitDrift && <Pill tone="danger">sunucu farkı</Pill>}
+            {row.clusterLimitDrift && <Pill tone="danger">küme içi limit farkı</Pill>}
             {row.envLimitDrift && <Pill tone="warning">ortam farkı</Pill>}
           </span>
         </Td>
@@ -382,74 +384,61 @@ const LocationRow = React.memo(function LocationRow({
             >
               <div className="mb-3">
                 <div className="text-[11px] font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
-                  Sunucu kümeleri — bu API hangi gateway&apos;lerde var, hangilerinde yok?
+                  Sunucu kümeleri — bu API hangi gateway&apos;lerde var, hangilerinde yok ve
+                  rate limitler eş sunucularda aynı mı?
                 </div>
-                <div className="space-y-1.5">
-                  {rowsCov.map(({ cluster, present, missing }) => (
-                    <div key={cluster.key} className="flex flex-wrap items-start gap-2 text-[11px]">
-                      <span
-                        className="w-28 shrink-0 font-semibold"
-                        style={{ color: 'var(--text-secondary)' }}
-                        title={`${cluster.label} kümesi: ${cluster.hosts.join(', ')}`}
-                      >
-                        {cluster.label}
+                <div className="space-y-2">
+                  {rowsCov.map((c) => (
+                    <div key={c.key} className="flex flex-wrap items-start gap-2 text-[11px]">
+                      <span className="w-28 shrink-0 font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                        {c.label}
                       </span>
                       <span className="shrink-0 tabular-nums" style={{ color: 'var(--text-muted)' }}>
-                        {present.length}/{cluster.hosts.length}
+                        {c.present}/{c.total}
                       </span>
-                      <span className="flex flex-wrap gap-1">
-                        {present.length === 0 ? (
+                      <span className="flex flex-col gap-1">
+                        {c.present === 0 ? (
                           <Pill tone="neutral">hiçbir sunucuda yok</Pill>
                         ) : (
-                          present.map((h) => (
-                            <span
-                              key={h}
-                              className="px-1.5 py-0.5 rounded font-mono"
-                              style={{ background: 'var(--status-success-bg)', color: 'var(--status-success)' }}
-                              title="bu sunucuda VAR"
-                            >
-                              {h.toLowerCase()}
+                          c.groups.map((g, gi) => (
+                            <span key={gi} className="flex flex-wrap items-center gap-1">
+                              <span
+                                className="px-1.5 py-0.5 rounded font-mono"
+                                style={{
+                                  background: c.limitDrift && gi > 0 ? 'var(--status-danger-bg)' : 'var(--status-success-bg)',
+                                  color: c.limitDrift && gi > 0 ? 'var(--status-danger)' : 'var(--status-success)',
+                                }}
+                                title={c.limitDrift ? 'bu sunucularda FARKLI limit' : 'tüm eş sunucularda aynı'}
+                              >
+                                IP {g.ip || '—'} · location {g.srv || '—'}
+                              </span>
+                              <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                                × {g.hosts.length}
+                              </span>
+                              <span className="font-mono" style={{ color: 'var(--text-muted)' }} title={g.hosts.join(', ')}>
+                                {g.hosts.slice(0, 6).map((h) => h.toLowerCase()).join(', ')}
+                                {g.hosts.length > 6 ? ` +${g.hosts.length - 6}` : ''}
+                              </span>
                             </span>
                           ))
                         )}
-                        {missing.length > 0 && present.length > 0 && (
-                          <span className="mx-1" style={{ color: 'var(--text-muted)' }}>
-                            · eksik:
+                        {c.missing.length > 0 && (
+                          <span className="flex flex-wrap items-center gap-1">
+                            <span
+                              className="px-1.5 py-0.5 rounded"
+                              style={{ background: 'var(--status-danger-bg)', color: 'var(--status-danger)' }}
+                            >
+                              {c.missing.length} sunucuda YOK
+                            </span>
+                            <span className="font-mono" style={{ color: 'var(--text-muted)' }} title={c.missing.join(', ')}>
+                              {c.missing.slice(0, 6).map((h) => h.toLowerCase()).join(', ')}
+                              {c.missing.length > 6 ? ` +${c.missing.length - 6}` : ''}
+                            </span>
                           </span>
                         )}
-                        {present.length > 0 &&
-                          missing.map((h) => (
-                            <span
-                              key={h}
-                              className="px-1.5 py-0.5 rounded font-mono"
-                              style={{ background: 'var(--status-danger-bg)', color: 'var(--status-danger)' }}
-                              title="bu sunucuda YOK"
-                            >
-                              {h.toLowerCase()}
-                            </span>
-                          ))}
                       </span>
                     </div>
                   ))}
-                  {(coverage?.outside.length || 0) > 0 && (
-                    <div className="flex flex-wrap items-start gap-2 text-[11px]">
-                      <span className="w-28 shrink-0 font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                        liste dışı
-                      </span>
-                      <span className="flex flex-wrap gap-1">
-                        {(coverage?.outside || []).map((h) => (
-                          <span
-                            key={h}
-                            className="px-1.5 py-0.5 rounded font-mono"
-                            style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-                            title="Bu sunucu tanımlı kümelerin hiçbirinde yok — küme listesi güncellenmeli olabilir."
-                          >
-                            {h.toLowerCase()}
-                          </span>
-                        ))}
-                      </span>
-                    </div>
-                  )}
                 </div>
               </div>
 

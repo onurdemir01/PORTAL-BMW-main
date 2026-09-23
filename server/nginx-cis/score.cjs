@@ -42,7 +42,10 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
   for (const h of hosts) {
     byHost.set(U(h.host), {
       host: U(h.host), nginxVersion: h.nginx_version || null, tState: h.t_state || null, msg: h.msg || null,
-      scanDate: h.scan_date ? String(h.scan_date).slice(0, 10) : null, items: [], score: null, passed: 0, failed: 0, excepted: 0, skipped: 0,
+      scanDate: h.scan_date ? String(h.scan_date).slice(0, 10) : null,
+      // scannedAt: taramanin gercek ani (ISO, UTC) - ekranda saat:dakika ile gosterilir.
+      scannedAt: h.scanned_at ? new Date(h.scanned_at).toISOString() : null,
+      items: [], score: null, passed: 0, failed: 0, excepted: 0, skipped: 0,
     });
   }
   const resByHost = new Map();
@@ -51,7 +54,7 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     if (!resByHost.has(H)) resByHost.set(H, new Map());
     resByHost.get(H).set(String(r.item_id), r);
   }
-  for (const H of resByHost.keys()) if (!byHost.has(H)) byHost.set(H, { host: H, nginxVersion: null, tState: null, msg: null, scanDate: null, items: [], score: null, passed: 0, failed: 0, excepted: 0, skipped: 0 });
+  for (const H of resByHost.keys()) if (!byHost.has(H)) byHost.set(H, { host: H, nginxVersion: null, tState: null, msg: null, scanDate: null, scannedAt: null, items: [], score: null, passed: 0, failed: 0, excepted: 0, skipped: 0 });
 
   for (const h of byHost.values()) {
     const rs = resByHost.get(h.host) || new Map();
@@ -127,6 +130,7 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
   const summary = {
     hosts: list.length,
     scanDate: list.reduce((a, h) => (h.scanDate && (!a || h.scanDate > a) ? h.scanDate : a), null),
+    scannedAt: list.reduce((a, h) => (h.scannedAt && (!a || h.scannedAt > a) ? h.scannedAt : a), null),
     avgScore: scored.length ? Math.round(scored.reduce((a, h) => a + h.score, 0) / scored.length) : null,
     under80: scored.filter((h) => h.score < 80).length,
     perfect: scored.filter((h) => h.score === 100).length,
