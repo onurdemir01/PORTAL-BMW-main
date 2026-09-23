@@ -60,6 +60,19 @@ function del<T>(path: string): Promise<T> {
   return fetch(`${BASE}${path}`, { method: 'DELETE' }).then((r) => json<T>(r));
 }
 
+/**
+ * GOVDELI DELETE. Grup grant'i silmek icin gerekli: DN yol parametresine
+ * konulamaz (virgul/esittir/bosluk icerir ve erisim loglarina yazilirdi), bu
+ * yuzden sunucu onu govdeden okuyor.
+ */
+function delJson<T>(path: string, body?: unknown): Promise<T> {
+  return fetch(`${BASE}${path}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  }).then((r) => json<T>(r));
+}
+
 export type Platform = 'legacy' | 'openshift';
 
 export type RequestState =
@@ -432,6 +445,28 @@ export const logxV2Api = {
         `/admin/restrictions/${restrictionId}/grants/${encodeURIComponent(username)}`,
       ),
 
+    // ── GRUP GRANT'LARI ────────────────────────────────────────────────────────
+    // Sunucu route'lari vardi, istemci sarmalayicisi YOKTU. DN GOVDEDE gonderilir,
+    // yol parametresinde DEGIL: bir AD DN'i virgul, esittir ve bosluk icerir
+    // ("CN=odeme-ekibi,OU=Groups,DC=...") — URL'e komak hem kacis sorunlari
+    // cikarir hem de grup adlarini erisim loglarina yazardi (sunucudaki not).
+    addGroupGrant: (restrictionId: number, groupDn: string) =>
+      postJson<{ ok: boolean }>(`/admin/restrictions/${restrictionId}/group-grants`, { groupDn }),
+    removeGroupGrant: (restrictionId: number, groupDn: string) =>
+      delJson<{ ok: boolean }>(`/admin/restrictions/${restrictionId}/group-grants`, { groupDn }),
+
+    // ── MASKELEME KURALLARI ────────────────────────────────────────────────────
+    // Tablo, sunucu CRUD'u ve `masker.reloadMaskRules()` vardi; istemci YOKTU.
+    listMaskRules: () =>
+      fetch(`${BASE}/admin/mask-rules`).then((r) =>
+        json<{ ok: boolean; rows: MaskRuleRow[] }>(r),
+      ),
+    createMaskRule: (data: Partial<MaskRuleRow>) =>
+      postJson<{ ok: boolean; row: MaskRuleRow }>('/admin/mask-rules', data),
+    updateMaskRule: (id: number, data: Partial<MaskRuleRow>) =>
+      putJson<{ ok: boolean; row: MaskRuleRow }>(`/admin/mask-rules/${id}`, data),
+    deleteMaskRule: (id: number) => del<{ ok: boolean }>(`/admin/mask-rules/${id}`),
+
     listRequests: (params: { state?: string; platform?: string } = {}) => {
       const qs = new URLSearchParams(params as Record<string, string>).toString();
       return fetch(`${BASE}/admin/requests${qs ? `?${qs}` : ''}`).then((r) =>
@@ -559,5 +594,40 @@ export interface RestrictionRow {
   resourceType: string;
   resourceKey: string;
   description: string | null;
+  /**
+   * ESKI SOZLESME: yalnizca kullanici adlari. Sunucu bu alanin bicimini
+   * degistirmemek icin gruplari AYRI alanda donduruyor (restrictions.cjs notu).
+   */
   grants: string[];
+  /**
+   * AD grubu DN'leri. Sunucu bunu PR'dan beri donduruyordu ama tipte YOKTU ve
+   * hicbir ekran okumuyordu — yani "yetki bir gruba verilebiliyor gibi"
+   * gorunuyor, portal uzerinden verilmesinin yolu YOKTU. Opsiyonel: eski
+   * sunucu surumleri alani gondermeyebilir.
+   */
+  groupGrants?: string[];
+}
+
+/** `logx_mask_rules` satiri — indirilen loglarda PII maskeleme kurali. */
+export interface MaskRuleRow {
+  id: number;
+  name: string;
+  /** JS RegExp deseni (sunucu `new RegExp` ile DERLEYEREK dogruluyor). */
+  pattern: string;
+  flags: string;
+  replacement: string;
+  sort_order: number;
+  enabled: boolean;
+}
+
+/** `/admin/requests` satiri — hangi istek hangi durumda takili. */
+export interface AdminRequestRow {
+  id: string;
+  username: string;
+  platform: string;
+  state: string;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+  expiresAt: string | null;
 }

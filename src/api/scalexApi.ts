@@ -228,6 +228,16 @@ export interface ScaleXOcoSchedule {
   windowEnd: string;
   status: string;
   awxJobId: number | null;
+  /**
+   * Zamanlanmış çalıştırmanın TAM paketi. `detail` bir JSON **metnidir** ve
+   * ScaleX için `{ env, tenant, clusters, namespace, apps, action, executionMode }`
+   * taşır (`server/scalex/index.cjs`).
+   *
+   * Sunucu bunu baştan beri döndürüyordu ama tipte yoktu ve panel okumuyordu:
+   * kullanıcı "OCO 12345 zamanlandı" görüyor, **neyin** zamanlandığını
+   * göremiyordu — iptal kararı verecek kişi neyi iptal ettiğini bilmiyordu.
+   */
+  pendingLaunch?: { detail?: string } & Record<string, unknown>;
   /** `null` = eski kayıt, grup bilgisi hiç yazılmamış (boş diziden FARKLI). */
   ownerGroups: string[] | null;
   cancelledBy: string | null;
