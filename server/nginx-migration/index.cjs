@@ -81,6 +81,28 @@ function rowToTracking(r) {
   };
 }
 
+/**
+ * "Tanim zaten olusturuldu mu?" - dugmeyi pasife cekme kurali (2026-09-23, kullanici).
+ *
+ * IKI KANIT BIRDEN aranir:
+ *   1) o yol icin tanim job'i BASARIYLA bitti (`status === 'successful'`)
+ *   2) BIR SONRAKI TARAMA donusunde tanim gercekten gorundu (`newStatus === 'defined'`,
+ *      yani nginx_config_audit o location'i yeni sunuculariN TAMAMINDA buldu)
+ *
+ * Neden ikisi birden: yalniz job'a bakmak yanlis olurdu (job basarili bitip de dosya
+ * beklenen yere yazilmamis olabilir; ornegin yanlis servis/vhost). Yalniz taramaya bakmak
+ * da yetmez - tanim elle de yazilmis olabilir ve kullanici "biz mi yaptik" diye bilemez.
+ * Kullanicinin istegi acikti: "ancak ve ancak job basarili bittiyse VE bir sonraki
+ * veritabani dongusunde tanimin gercekten yapildigini goruyorsan".
+ *
+ * @param {{status?: string|null}|null} pathJob  o yol icin tanim job kaydi
+ * @param {string|null} newStatus                taramanin yeni sunuculardaki durumu
+ */
+function isDefinitionConfirmed(pathJob, newStatus) {
+  const jobOk = !!pathJob && String(pathJob.status || '').toLowerCase() === 'successful';
+  return jobOk && String(newStatus || '') === 'defined';
+}
+
 /** Playbook'a giden extra_vars - saf, test edilebilir. */
 function buildExtraVars({ service, application, namespace, inputPath, user }) {
   return {
@@ -192,6 +214,12 @@ async function syncJobStatusToTracking(db, jobId, status) {
   if (!jobId || !status) return;
   const fin = JOB_TERMINAL.has(status);
   try {
+    // Yol basina kayit da ayni anda guncellenir: dugmenin pasif olmasi bu satira bakar.
+    await db.query(
+      `UPDATE nginx_migration_path_jobs SET status = $2${fin ? ', finished_at = COALESCE(finished_at, GETUTCDATE())' : ''}
+        WHERE job_id = $1 AND (status IS NULL OR status <> $2)`,
+      [jobId, status],
+    ).catch(() => {});
     await db.query(
       `UPDATE nginx_migration_tracking SET config_job_status = $2${fin ? ', config_job_finished_at = COALESCE(config_job_finished_at, GETUTCDATE())' : ''}
         WHERE config_job_id = $1 AND (config_job_status IS NULL OR config_job_status <> $2)`,
@@ -284,7 +312,29 @@ function initNginxMigration(app) {
                 delete_job_id, delete_requested_at, delete_requested_by, delete_job_status, updated_by, updated_at
            FROM nginx_migration_tracking`,
       );
-      res.json({ ok: true, rows: rows.map(rowToTracking) });
+      // Yol basina tanim job'lari: ekran "tanim zaten olusturuldu" kararini bunlardan verir.
+      let pathJobs = [];
+      try {
+        const pj = await db.query(
+          `SELECT group_id, namespace, application, service, location, job_id, status, created_at, created_by, finished_at
+             FROM nginx_migration_path_jobs`,
+        );
+        pathJobs = (pj.rows || []).map((r) => ({
+          group: r.group_id,
+          namespace: r.namespace,
+          application: r.application,
+          service: r.service,
+          location: r.location,
+          jobId: r.job_id == null ? null : Number(r.job_id),
+          status: r.status || null,
+          createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
+          createdBy: r.created_by || null,
+          finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null,
+        }));
+      } catch (e) {
+        console.warn('[nginx-migration] yol bazli job kayitlari okunamadi:', e.message);
+      }
+      res.json({ ok: true, rows: rows.map(rowToTracking), pathJobs });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }
@@ -381,6 +431,26 @@ function initNginxMigration(app) {
       const v = validateRequest(view.groups, req.body || {});
       if (!v.ok) return res.status(v.status).json({ ok: false, message: v.message });
 
+      // TANIM ZATEN OLUSTURULDUYSA YENIDEN TETIKLENMEZ (2026-09-23, kullanici).
+      // Ekran dugmeyi pasife ceker; burasi ikinci kapidir - bayat bir sekme ya da dogrudan
+      // istek de ayni kurala tabidir. Kural: job BASARILI + tarama tanimi GORDU.
+      try {
+        const gid = String(req.body?.group || '');
+        const pj = await db.query(
+          `SELECT status FROM nginx_migration_path_jobs
+            WHERE group_id = $1 AND namespace = $2 AND application = $3 AND service = $4 AND location = $5`,
+          [gid, v.app.namespace, v.app.application, v.path.service, v.path.location],
+        );
+        if (isDefinitionConfirmed((pj.rows || [])[0] || null, v.path.newStatus)) {
+          return res.status(409).json({
+            ok: false,
+            message: `${v.path.service} ${v.path.location} tanimi zaten olusturuldu: job basariyla bitti ve tarama tanimi yeni sunucularda gordu. Yeniden olusturmaya gerek yok.`,
+          });
+        }
+      } catch (e) {
+        console.warn('[nginx-migration] tanim kontrolu atlandi:', e.message);
+      }
+
       const { launchJobOnServer } = require('../ansible/runner.cjs');
       const user = getRequestUser(req) || {};
       const extra = buildExtraVars({
@@ -413,6 +483,25 @@ function initNginxMigration(app) {
           `SELECT id FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
           [gid, v.app.namespace, v.app.application],
         );
+        // Yol basina kayit: dugmenin pasif olmasi bu satira bakar (uygulama basina tek
+        // satir tutan tracking, cok yollu uygulamalarda son yolu ezerdi).
+        try {
+          const upd = await db.query(
+            `UPDATE nginx_migration_path_jobs
+                SET job_id = $6, status = $7, created_at = GETUTCDATE(), created_by = $8, finished_at = NULL
+              WHERE group_id = $1 AND namespace = $2 AND application = $3 AND service = $4 AND location = $5`,
+            [gid, v.app.namespace, v.app.application, v.path.service, v.path.location, jobId, job.status || 'pending', user.username || null],
+          );
+          if (!upd.rowCount) {
+            await db.query(
+              `INSERT INTO nginx_migration_path_jobs (group_id, namespace, application, service, location, job_id, status, created_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              [gid, v.app.namespace, v.app.application, v.path.service, v.path.location, jobId, job.status || 'pending', user.username || null],
+            );
+          }
+        } catch (e) {
+          console.warn('[nginx-migration] yol bazli job kaydi yazilamadi:', e.message);
+        }
         if (ex.rows.length) {
           await db.query(
             `UPDATE nginx_migration_tracking SET config_job_id = $4, config_created_at = GETUTCDATE(), config_created_by = $5,
@@ -502,4 +591,4 @@ function initNginxMigration(app) {
   app.use('/api/nginx-migration', router);
 }
 
-module.exports = { initNginxMigration, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };
+module.exports = { initNginxMigration, isDefinitionConfirmed, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };

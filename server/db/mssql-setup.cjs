@@ -749,6 +749,28 @@ const TABLES = [
       )`,
   },
   {
+    // 2026-09-23 (kullanici): "tasinan uygulamalar icin bir daha tanim olusturma dugmesi
+    // aktif olmasin". nginx_migration_tracking uygulama basina TEK satir tutar ve son
+    // olusturulan yolu ezer; oysa bir uygulamada birden fazla (servis, location) olabilir.
+    // Bu tablo YOL BASINA job kaydi tutar; dugme "job basarili + tarama dogruladi" ikilisini arar.
+    name: 'nginx_migration_path_jobs',
+    sql: `
+      CREATE TABLE nginx_migration_path_jobs (
+        id          INT IDENTITY(1,1) PRIMARY KEY,
+        group_id    NVARCHAR(64)  NOT NULL,
+        namespace   NVARCHAR(128) NOT NULL,
+        application NVARCHAR(128) NOT NULL,
+        service     NVARCHAR(64)  NOT NULL,
+        location    NVARCHAR(400) NOT NULL,
+        job_id      INT           NULL,
+        status      NVARCHAR(32)  NULL,
+        created_at  DATETIME2     NOT NULL DEFAULT GETUTCDATE(),
+        created_by  NVARCHAR(128) NULL,
+        finished_at DATETIME2     NULL,
+        CONSTRAINT UQ_nginx_migration_path UNIQUE (group_id, namespace, application, service, location)
+      )`,
+  },
+  {
     // Nginx SPA > Production Tasimalari takibi (2026-09-14, kullanici talebi): uygulama
     // basina gecis durumu/tarihi. Kaynak gorunum (hangi uygulamalar) MSSQL denetim
     // tablolarindan hesaplanir; BURASI yalnizca insan girdisi: planlanan/gecis tarihi, not.

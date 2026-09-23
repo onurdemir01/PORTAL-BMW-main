@@ -116,8 +116,26 @@ export interface MigrationTracking {
   updatedAt: string | null;
 }
 
+/**
+ * YOL BAZINDA tanim job'i (2026-09-23): "Tanim olustur" dugmesi, o (servis, location) icin
+ * tanim ZATEN olusturulduysa pasif olur. Uygulama basina tek satir tutan `MigrationTracking`
+ * cok yollu uygulamalarda son yolu ezdigi icin ayri kayit tutulur.
+ */
+export interface MigrationPathJob {
+  group: string;
+  namespace: string;
+  application: string;
+  service: string;
+  location: string;
+  jobId: number | null;
+  status: string | null;
+  createdAt: string | null;
+  createdBy: string | null;
+  finishedAt: string | null;
+}
+
 export const nginxMigrationTrackingApi = {
-  list: (): Promise<{ ok: boolean; rows: MigrationTracking[]; message?: string }> =>
+  list: (): Promise<{ ok: boolean; rows: MigrationTracking[]; pathJobs?: MigrationPathJob[]; message?: string }> =>
     fetch(`${BASE}/tracking`).then(safeJson),
 
   save: (body: {

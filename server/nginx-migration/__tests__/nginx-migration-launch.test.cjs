@@ -3,7 +3,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildExtraVars, validateRequest } = require('../index.cjs');
+const { buildExtraVars, validateRequest, isDefinitionConfirmed } = require('../index.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -114,14 +114,21 @@ test('JT2 syncJobStatusToTracking: config_job_id ve delete_job_id eslesen satirl
   const calls = [];
   const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rowCount: 1 }; } };
   await syncJobStatusToTracking(db, 77, 'successful');
-  assert.equal(calls.length, 2);
-  assert.match(calls[0].sql, /config_job_status = \$2/);
-  assert.match(calls[0].sql, /config_job_finished_at = COALESCE/);
-  assert.match(calls[1].sql, /delete_job_status = \$2/);
-  assert.deepEqual(calls[0].params, [77, 'successful']);
+  // 2026-09-23: YOL BAZLI kayit da guncellenir (dugmenin pasif olmasi ona bakar), bu yuzden
+  // sorgular SIRAYA degil ICERIGE gore aranir - yeni bir tablo eklenince test kirilmasin.
+  const find = (re) => calls.find((c) => re.test(c.sql));
+  assert.equal(calls.length, 3);
+  const cfg = find(/config_job_status = \$2/);
+  assert.ok(cfg, 'tracking config_job_status guncellenmedi');
+  assert.match(cfg.sql, /config_job_finished_at = COALESCE/);
+  assert.deepEqual(cfg.params, [77, 'successful']);
+  assert.ok(find(/delete_job_status = \$2/), 'tracking delete_job_status guncellenmedi');
+  const pathq = find(/nginx_migration_path_jobs/);
+  assert.ok(pathq, 'yol bazli job kaydi guncellenmedi');
+  assert.match(pathq.sql, /finished_at = COALESCE/);
   calls.length = 0;
   await syncJobStatusToTracking(db, 77, 'running');
-  assert.doesNotMatch(calls[0].sql, /config_job_finished_at/); // canli durumda bitis yazilmaz
+  for (const c of calls) assert.doesNotMatch(c.sql, /finished_at = COALESCE/); // canli durumda bitis yazilmaz
   calls.length = 0;
   await syncJobStatusToTracking(db, null, 'running');
   assert.equal(calls.length, 0);
@@ -140,4 +147,38 @@ test('JT3 kaynak sozlesme: job.id okunmaz, job-status ucu var, /tracking uzlasti
   assert.match(ui, /useJobTracker/);
   assert.match(ui, /trackMigrationJob\(/);
   assert.match(ui, /configJobStatus === 'successful'/);
+});
+
+// 2026-09-23 (kullanici): "tasinan uygulamalar icin bir daha tanim olusturma dugmesi aktif
+// olmasin. Ama unutma ANCAK VE ANCAK tanimlama jobu basarili bittiyse VE bir sonraki
+// veritabani dongusunde tanimin gercekten yapildigini goruyorsan."
+test('MG1 tanim dogrulama: IKI kanit birden (job successful + tarama defined)', () => {
+  assert.equal(isDefinitionConfirmed({ status: 'successful' }, 'defined'), true, 'ikisi de varken pasif olmali');
+
+  // Tek basina hicbiri yetmez:
+  assert.equal(isDefinitionConfirmed(null, 'defined'), false, 'job kaydi yokken (elle yazilmis olabilir) dugme ACIK kalmali');
+  assert.equal(isDefinitionConfirmed({ status: 'successful' }, 'partial'), false, 'tarama YALNIZ BAZI sunucularda gormus');
+  assert.equal(isDefinitionConfirmed({ status: 'successful' }, 'none'), false, 'tarama tanimi hic gormemis');
+  assert.equal(isDefinitionConfirmed({ status: 'successful' }, 'not-scanned'), false, 'yeni sunucular taranmamis');
+  assert.equal(isDefinitionConfirmed({ status: 'failed' }, 'defined'), false, 'job dusmus');
+  assert.equal(isDefinitionConfirmed({ status: 'running' }, 'defined'), false, 'job hala kosuyor');
+  assert.equal(isDefinitionConfirmed({ status: null }, 'defined'), false, 'durum bilinmiyor');
+});
+
+test('MG2 sozlesme: sunucu kapisi ve ekran AYNI kurali uygular', () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  // Sunucu: create ucu, dogrulanmis yol icin 409 doner (bayat sekme / dogrudan istek).
+  assert.ok(/isDefinitionConfirmed\(\(pj\.rows \|\| \[\]\)\[0\] \|\| null, v\.path\.newStatus\)/.test(srv), 'create ucunda kapi yok');
+  assert.ok(/status\(409\)/.test(srv), 'tekrar tetiklemede 409 donmeli');
+  // Yol basina kayit tutulmali (uygulama basina tek satir cok yollu uygulamada yetmez).
+  assert.ok(/nginx_migration_path_jobs/.test(srv), 'yol bazli job kaydi yok');
+
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.ok(/const isDefinitionConfirmed = \(job: MigrationPathJob \| undefined, newStatus/.test(ui), 'ekranda kural yok');
+  assert.ok(/disabled=\{!canCreate \|\| allDone/.test(ui), 'dugme dogrulanmis tanimda pasif degil');
+  assert.ok(/Tanım oluşturuldu/.test(ui), 'pasif dugme neden pasif oldugunu soylemeli');
+
+  const ddl = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  assert.ok(/CREATE TABLE nginx_migration_path_jobs/.test(ddl), 'tablo seed edilmemis');
+  assert.ok(/UQ_nginx_migration_path UNIQUE \(group_id, namespace, application, service, location\)/.test(ddl), 'yol basina tekillik yok');
 });

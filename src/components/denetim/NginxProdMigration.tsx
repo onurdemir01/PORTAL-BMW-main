@@ -16,6 +16,7 @@ import {
   nginxMigrationTrackingApi,
   type NginxMigrationConfig,
   type MigrationTracking,
+  type MigrationPathJob,
   type MigrationTrackState,
 } from '@/api/nginxMigrationApi';
 import { ansibleApi, type AwxServer } from '@/api/ansibleApi';
@@ -85,6 +86,8 @@ export default function NginxProdMigration() {
   // GECIS TAKIBI (kullanici, 2026-09-14): uygulama basina planlanan/gecis tarihi + not.
   // Anahtar "group|ns/app". Ayri uctan gelir; ana veri yuklenmese de takip listesi okunur.
   const [tracking, setTracking] = useState<Map<string, MigrationTracking>>(new Map());
+  // Yol bazinda tanim job'lari: anahtar grup|ns|app|SERVIS|location
+  const [pathJobs, setPathJobs] = useState<Map<string, MigrationPathJob>>(new Map());
   const [trackingReady, setTrackingReady] = useState(true);
   const [editing, setEditing] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp } | null>(null);
   const [trackFilter, setTrackFilter] = useState<'all' | 'open' | 'planned' | 'migrated'>('all');
@@ -97,6 +100,7 @@ export default function NginxProdMigration() {
       const r = await nginxMigrationTrackingApi.list();
       if (r.ok) {
         setTracking(new Map(r.rows.map((t) => [trackKey(t.group, t.namespace, t.application), t])));
+        setPathJobs(new Map((r.pathJobs || []).map((j) => [pathJobKey(j.group, j.namespace, j.application, j.service, j.location), j])));
         setTrackingReady(true);
       } else setTrackingReady(false);
     } catch {
@@ -317,6 +321,7 @@ export default function NginxProdMigration() {
           ownersReady={data.ownersReady !== false}
           canCreate={configured}
           onCreate={(app) => setPending({ group: g, app, pathIdx: 0 })}
+          pathJobs={pathJobs}
           canDelete={deleteConfigured}
           onDelete={(app) => setPendingDelete({ group: g, app, pathIdx: 0 })}
           tracking={tracking}
@@ -450,6 +455,23 @@ export default function NginxProdMigration() {
     </div>
   );
 }
+
+/**
+ * TANIM ZATEN OLUSTURULDU MU? (2026-09-23, kullanici: "tasinan uygulamalar icin bir daha
+ * tanim olusturma dugmesi aktif olmasin")
+ *
+ * IKI KANIT BIRDEN aranir - kullanicinin sarti buydu:
+ *   1) o yol icin tanim job'i BASARIYLA bitti
+ *   2) BIR SONRAKI TARAMA donusunde tanim gercekten gorundu (newStatus === 'defined')
+ * Yalniz job'a bakmak yanlis olurdu (job yesil bitip dosya beklenen yere yazilmamis
+ * olabilir); yalniz taramaya bakmak da yetmez (tanim elle de yazilmis olabilir).
+ * Ayni kural sunucuda da uygulanir (server/nginx-migration/index.cjs isDefinitionConfirmed).
+ */
+const pathJobKey = (g: string, ns: string, app: string, svc: string, loc: string) =>
+  `${g}|${ns}|${app}|${svc.toUpperCase()}|${loc}`;
+
+const isDefinitionConfirmed = (job: MigrationPathJob | undefined, newStatus: string | null | undefined) =>
+  !!job && String(job.status || '').toLowerCase() === 'successful' && newStatus === 'defined';
 
 const trackKey = (group: string, ns: string, app: string) => `${group}|${ns}/${app}`;
 // DUZ TARIH (YYYY-MM-DD) — ortak `fmtDate` DEGIL, bilerek. Bu degerler DB'den
@@ -767,7 +789,7 @@ function LocationProgress({ g }: { g: NginxMigrationGroup }) {
 }
 
 function GroupPanel({
-  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, trackFilter, onTrack, canDelete, onDelete,
+  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, pathJobs, trackFilter, onTrack, canDelete, onDelete,
 }: {
   g: NginxMigrationGroup;
   onlyProblem: boolean;
@@ -776,6 +798,7 @@ function GroupPanel({
   ownersReady: boolean;
   canCreate: boolean;
   onCreate: (app: NginxMigrationApp) => void;
+  pathJobs: Map<string, MigrationPathJob>;
   tracking: Map<string, MigrationTracking>;
   trackingReady: boolean;
   trackFilter: 'all' | 'open' | 'planned' | 'migrated';
@@ -908,20 +931,33 @@ function GroupPanel({
               {rows.map((a) => (
                 <tr key={a.namespace + '/' + a.application} className="border-t border-[var(--border-subtle)]">
                   <td className="pr-2 py-1">
+                    {(() => {
+                      // TANIM ZATEN OLUSTURULDU MU (2026-09-23): her yol icin "job basarili +
+                      // tarama gordu" ise dugme pasif; bir yol bile eksikse acik kalir.
+                      const jobOf = (pp: { service: string; location: string }) =>
+                        pathJobs.get(pathJobKey(g.id, a.namespace, a.application, pp.service, pp.location));
+                      const confirmed = a.paths.filter((pp) => isDefinitionConfirmed(jobOf(pp), pp.newStatus));
+                      const allDone = a.paths.length > 0 && confirmed.length === a.paths.length;
+                      return (
+                      <>
                     <button
                       onClick={() => onCreate(a)}
-                      disabled={!canCreate || a.status === 'missing' || a.status === 'not-scanned'}
+                      disabled={!canCreate || allDone || a.status === 'missing' || a.status === 'not-scanned'}
                       className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg text-white disabled:opacity-40 whitespace-nowrap"
                       style={{ background: 'var(--accent)' }}
                       title={
                         !canCreate ? 'Job yapılandırılmamış (yönetici paneli)'
+                          : allDone ? `Tanım zaten oluşturuldu: ${confirmed.map((pp) => pp.service + ' ' + pp.location).join(', ')} — job başarıyla bitti ve tarama tanımı yeni sunucuların tamamında gördü.`
                           : a.status === 'missing' ? 'Taranan hiçbir yeni sunucuda uygulama dizini yok — önce deploy'
                           : a.status === 'not-scanned' ? 'Yeni sunucular henüz taranmadı'
-                          : `Yeni sunucularda ${a.paths.map((p) => p.service + '-PROD.conf ' + p.location).join(' / ')} tanımını oluştur`
+                          : `Yeni sunucularda ${a.paths.filter((pp) => !isDefinitionConfirmed(jobOf(pp), pp.newStatus)).map((pp) => pp.service + '-PROD.conf ' + pp.location).join(' / ')} tanımını oluştur`
                       }
                     >
-                      <DocumentPlusIcon className="w-3.5 h-3.5" /> Tanım oluştur
+                      <DocumentPlusIcon className="w-3.5 h-3.5" /> {allDone ? 'Tanım oluşturuldu' : 'Tanım oluştur'}
                     </button>
+                      </>
+                      );
+                    })()}
                     <button
                       onClick={() => onDelete(a)}
                       disabled={!canDelete}
@@ -956,9 +992,13 @@ function GroupPanel({
                         // Tanim job'i BASARILI ama tarama (nginx_config_audit) henuz kosmadi:
                         // chip'te "olusturuldu (job)" - kullanici ertesi taramayi beklemesin (2026-09-18).
                         const t = trackOf(a);
+                        const pj = pathJobs.get(pathJobKey(g.id, a.namespace, a.application, p.service, p.location));
+                        const dogrulandi = isDefinitionConfirmed(pj, p.newStatus);
                         const jobDone = !!t && t.configJobStatus === 'successful' && p.newStatus !== 'defined'
                           && (t.configService || '').toLowerCase() === p.service.toLowerCase() && (t.configLocation || '') === p.location;
-                        const mark = jobDone ? { mark: '✓⚙', color: 'var(--status-success)', hint: `job ${t!.configJobId} ile oluşturuldu (${t!.configJobFinishedAt ? fmtDateTime(t!.configJobFinishedAt) : ''}); tarama henüz doğrulamadı — nginx_config_audit koşunca ✓ olur` } : NEW_LOC[p.newStatus];
+                        const mark = dogrulandi
+                          ? { mark: '✓', color: 'var(--status-success)', hint: `tanım oluşturuldu: job ${pj!.jobId} başarıyla bitti${pj!.finishedAt ? ` (${fmtDateTime(pj!.finishedAt)})` : ''} ve tarama tanımı yeni sunucuların tamamında gördü — düğme bu yüzden pasif` }
+                          : jobDone ? { mark: '✓⚙', color: 'var(--status-success)', hint: `job ${t!.configJobId} ile oluşturuldu (${t!.configJobFinishedAt ? fmtDateTime(t!.configJobFinishedAt) : ''}); tarama henüz doğrulamadı — nginx_config_audit koşunca ✓ olur` } : NEW_LOC[p.newStatus];
                         return (
                         <span
                           key={p.service + p.location}
