@@ -9,7 +9,13 @@ const BASE = '/api/scalex';
 
 export type ScaleXAction = 'stop' | 'restore' | 'scale';
 export type ScaleXMode = 'dry_run' | 'apply';
-export type DiscoveryMode = 'workloads' | 'state' | 'health';
+/**
+ * `capabilities`: CLUSTER düzeyi yetenek taraması (API grupları + ölçeklenebilir
+ * CRD listesi). Namespace İSTEMEZ ve `scalex_cluster_caps` tablosunu **üretir**
+ * (tüketmez). Sunucu bu modu baştan beri tanıyordu ama burada eksikti; sonuç
+ * olarak tabloyu dolduran tek kod yolu hiçbir yerden tetiklenemiyordu.
+ */
+export type DiscoveryMode = 'workloads' | 'state' | 'health' | 'capabilities';
 
 export interface ScaleXClusterTree {
   [env: string]: { [tenant: string]: string[] };
@@ -381,6 +387,13 @@ export const scalexApi = {
       executionMode: ScaleXMode;
       targetReplicas?: number | string;
       verificationTimeout?: string;
+      /**
+       * Seçilen (cluster, uygulama) çiftleri. Sunucu bunu PR #123'ten beri
+       * okuyordu (`normalizeTargets` → `computeBlastRadius`) ama tipte yoktu ve
+       * hiçbir çağrı göndermiyordu; önizleme tam çarpımı gösteriyordu.
+       * Boş/verilmemiş → sunucu tam çarpım varsayar (bugünkü davranış).
+       */
+      targets?: { cluster: string; name: string }[];
     },
   ) {
     return post<ScaleXPreview & { message?: string }>('/preview', scope);
@@ -581,7 +594,10 @@ export const scalexApi = {
         /** `false` ise liste GÜVENİLMEZ — keşfi hızlandırmak için kullanılmaz. */
         resourcesReadable: boolean;
         scannedBy: string | null;
+        /** Hangi AWX işi taradı — izi takip edebilmek için. */
+        awxJobId: number | null;
         fetchedAt: string;
+        expiresAt: string | null;
         stale: boolean;
       }[];
     }>;

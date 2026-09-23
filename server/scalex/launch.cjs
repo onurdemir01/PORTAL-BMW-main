@@ -139,12 +139,31 @@ function buildScaleXClusterCatalog({ env, tenant, clusters, hosts, meta }) {
 //
 // Kesifte `apps` OPSIYONEL (namespace'i tarayip listeyi ogrenmek icin cagriliyor) —
 // tek fark bu; format kurallari BIREBIR ayni ve tek yerden geliyor.
-function assertValidDiscoveryTargets({ namespace, apps = [] }) {
+//
+// ── `capabilities` MODU NAMESPACE ISTEMEZ (2026-09-23) ──────────────────────
+//
+// Bu fonksiyon namespace'i KOSULSUZ zorunlu kiliyordu ve `/discover` onu HER
+// modda cagiriyordu. Oysa `capabilities` CLUSTER duzeyi bir taramadir: API
+// gruplarini ve olceklenebilir CRD'leri listeler, hicbir namespace'e girmez —
+// betik de (`scalex_runner.sh`) ve AWX survey'i de boyle davraniyor.
+//
+// Sonuc: namespace'siz her `capabilities` istegi 400 ile duyuyordu, yani
+// `scalex_cluster_caps` tablosunu dolduran TEK kod yolu hic calismiyordu.
+// PR #116'nin butun makinesi (TTL, uc-durum ayrimi, `kindsForScope` fail-safe'i)
+// yazilmis ve testlenmisti ama BESLENMIYORDU — "calismayan kapi" sinifi.
+//
+// `mode` VARSAYILAN OLARAK YOK: parametresiz her cagri bugunku davranisi
+// BIREBIR korur. Namespace `capabilities`te de VERILIRSE yine dogrulanir —
+// gecerlilik kurali gevsemiyor, yalnizca ZORUNLULUK moda bagli.
+function assertValidDiscoveryTargets({ namespace, apps = [], mode } = {}) {
   const bad = (msg) => {
     throw Object.assign(new Error(msg), { status: 400 });
   };
-  if (!namespace || namespace.length > 63 || !NS_RE.test(namespace))
-    bad(`Geçersiz namespace: ${namespace}`);
+  const namespaceGerekli = mode !== 'capabilities';
+  if (namespaceGerekli || namespace) {
+    if (!namespace || namespace.length > 63 || !NS_RE.test(namespace))
+      bad(`Geçersiz namespace: ${namespace}`);
+  }
   for (const a of apps) {
     if (!a || a.length > 253 || !APP_RE.test(a)) bad(`Geçersiz uygulama adı: ${a}`);
   }

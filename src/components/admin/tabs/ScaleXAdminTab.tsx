@@ -20,7 +20,7 @@ import {
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { playbookRegistryApi, type PlaybookRegistryEntry } from '@/api/playbookRegistryApi';
-import { scalexApi, type ScaleXRbacFinding } from '@/api/scalexApi';
+import { scalexApi, type ScaleXRbacFinding, type ScaleXClusterTree } from '@/api/scalexApi';
 import { fmtDateTime } from '@/utils/datetime';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -591,11 +591,20 @@ function ClusterCapsPanel() {
   const [ttl, setTtl] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Kapsam süzgeci: uç `env`/`tenant` parametrelerini ZATEN destekliyordu, ekran
+  // parametresiz çağırıyordu. Çok cluster'lı kurulumda 500 satırlık düz liste oluyordu.
+  const [tree, setTree] = useState<ScaleXClusterTree>({});
+  const [env, setEnv] = useState('');
+  const [tenant, setTenant] = useState('');
+  const [tarayan, setTarayan] = useState(false);
+  const [taramaNotu, setTaramaNotu] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (kapsam?: { env: string; tenant: string }) => {
     setLoading(true);
     try {
-      const r = await scalexApi.clusterCaps();
+      const r = await scalexApi.clusterCaps(
+        kapsam?.env && kapsam?.tenant ? { env: kapsam.env, tenant: kapsam.tenant } : {},
+      );
       if (r.ok) {
         setRows(r.items || []);
         setTtl(r.ttlDays ?? null);
@@ -609,8 +618,56 @@ function ClusterCapsPanel() {
   }, []);
 
   useAsyncEffect(async (alive) => {
-    if (alive()) await load();
+    if (!alive()) return;
+    await load();
+    try {
+      const t = await scalexApi.clusters();
+      if (alive() && t.ok) setTree(t.tree || {});
+    } catch {
+      /* kapsam süzgeci olmadan da panel çalışır */
+    }
   }, []);
+
+  const tenantlar = useMemo(() => Object.keys(tree[env] || {}), [tree, env]);
+  const clusterlar = useMemo(
+    () => (env && tenant ? tree[env]?.[tenant] || [] : []),
+    [tree, env, tenant],
+  );
+
+  /**
+   * TARAMAYI BURADAN BAŞLAT.
+   *
+   * Bu düğme olmadan tabloyu dolduran hiçbir yol yoktu: `capabilities` keşfi
+   * sunucuda tanımlıydı ama istemci tipinde yoktu ve doğrulayıcı namespace'i
+   * koşulsuz zorunlu kıldığı için API'den de çağrılamıyordu.
+   *
+   * Tarama bir AWX işidir — SONUCU ANINDA GELMEZ. Bu yüzden iş numarası
+   * yazılır ve "bitince Yenile" denir; sahte bir ilerleme çubuğu gösterilmez.
+   */
+  const tara = useCallback(async () => {
+    if (!env || !tenant || !clusterlar.length) return;
+    setTarayan(true);
+    setTaramaNotu(null);
+    setErr(null);
+    try {
+      const r = await scalexApi.discover(
+        { env, tenant, namespace: '', clusters: clusterlar, apps: [] },
+        'capabilities',
+      );
+      if (r.ok) {
+        setTaramaNotu(
+          `Tarama başlatıldı — AWX işi #${r.jobId} (${clusterlar.length} cluster). ` +
+            'İş bitince "Yenile" ile listeyi tazeleyin.',
+        );
+      } else {
+        setErr(r.message || 'Tarama başlatılamadı.');
+      }
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setTarayan(false);
+    }
+  }, [env, tenant, clusterlar]);
 
   return (
     <section className="rounded-xl border border-[var(--border)] p-4 space-y-3">
@@ -626,12 +683,76 @@ function ClusterCapsPanel() {
         </div>
         <button
           type="button"
-          onClick={load}
+          onClick={() => load(env && tenant ? { env, tenant } : undefined)}
           className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline flex-shrink-0"
         >
           <ArrowPathIcon aria-hidden="true" className="w-3.5 h-3.5" /> Yenile
         </button>
       </div>
+
+      {/* KAPSAM + TARAMA. Taramayı başlatan tek yer burası. */}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-[var(--text-muted)]">
+          Ortam
+          <select
+            value={env}
+            onChange={(e) => {
+              setEnv(e.target.value);
+              setTenant('');
+              setTaramaNotu(null);
+            }}
+            className="mt-0.5 block w-36 px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
+          >
+            <option value="">tümü</option>
+            {Object.keys(tree).map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs text-[var(--text-muted)]">
+          Tenant
+          <select
+            value={tenant}
+            onChange={(e) => {
+              setTenant(e.target.value);
+              setTaramaNotu(null);
+            }}
+            disabled={!env}
+            className="mt-0.5 block w-36 px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] disabled:opacity-50"
+          >
+            <option value="">seçin</option>
+            {tenantlar.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={tara}
+          disabled={tarayan || !env || !tenant || !clusterlar.length}
+          className="btn-primary text-xs py-1.5 disabled:opacity-50"
+        >
+          {tarayan ? 'Başlatılıyor…' : `Tara${clusterlar.length ? ` (${clusterlar.length} cluster)` : ''}`}
+        </button>
+        <button
+          type="button"
+          onClick={() => load(env && tenant ? { env, tenant } : undefined)}
+          disabled={!env || !tenant}
+          className="text-xs text-[var(--accent)] hover:underline disabled:opacity-50"
+        >
+          bu kapsamı listele
+        </button>
+      </div>
+
+      {taramaNotu && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-800">
+          {taramaNotu}
+        </div>
+      )}
 
       {err && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
@@ -645,9 +766,9 @@ function ClusterCapsPanel() {
 
       {!loading && !rows.length && !err && (
         <p className="text-xs text-[var(--text-muted)]">
-          Henüz hiçbir cluster taranmamış. Keşif ekranından bir tarama koştuğunuzda liste
-          kendiliğinden dolar — o ana kadar keşif <strong>eski (yavaş) yolu</strong> kullanır,
-          sonuç yine doğrudur.
+          Bu kapsamda taranmış cluster yok. Yukarıdan ortam + tenant seçip{' '}
+          <strong>Tara</strong> deyin — liste ancak bu taramayla dolar. O ana kadar keşif{' '}
+          <strong>eski (yavaş) yolu</strong> kullanır, sonuç yine doğrudur.
         </p>
       )}
 
@@ -690,6 +811,9 @@ function ClusterCapsPanel() {
                 <p className="text-xs text-[var(--text-muted)]">
                   {fmtDateTime(r.fetchedAt)}
                   {r.scannedBy && ` · ${r.scannedBy}`}
+                  {/* HANGI IS TARADI: bayat/yanlis bir satirin izini surebilmek icin. */}
+                  {r.awxJobId != null && ` · AWX #${r.awxJobId}`}
+                  {r.expiresAt && ` · geçerlilik ${fmtDateTime(r.expiresAt)}`}
                 </p>
                 {rbacEksik.length > 0 && (
                   <p className="text-xs text-amber-800">
