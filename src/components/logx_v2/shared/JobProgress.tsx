@@ -42,6 +42,9 @@ const JobProgress: React.FC<Props> = ({
   const [errorCount, setErrorCount] = useState(0);
   const [showOutput, setShowOutput] = useState(false);
   const [output, setOutput] = useState('');
+  // Canli cikti KALICI olarak alinamiyorsa sebebi EKRANA yazilir; bos bir
+  // terminal kullaniciya hicbir sey anlatmiyordu.
+  const [outputError, setOutputError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const doneRef = useRef(false);
 
@@ -99,24 +102,63 @@ const JobProgress: React.FC<Props> = ({
   }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Canlı çıktı yalnızca kullanıcı panel açıkken poll edilir (gereksiz istek yapmamak için).
+  //
+  // ── ÇIKTI YOKLAMASININ KENDİ DURDURUCUSU OLMALI ─────────────────────────────
+  //
+  // Eski hali `.catch(() => {})` ile hatayı yutuyordu ve tek durma koşulu
+  // `doneRef` idi — yani DURUM yoklamasının kararıydı. Oturum düştüğünde durum
+  // yoklaması 5 hatada duruyor ve bunu da durduruyor, o yüzden "sonsuza dek
+  // döner" DEĞİLDİ.
+  //
+  // Ama KALICI bir çıktı hatası (örn. AWX çıktısı bayt tavanını aşıyor → 502
+  // `tooLarge`, `permanent`) durum yoklamasını HİÇ etkilemez: durum başarıyla
+  // gelmeye devam eder, `doneRef` kurulmaz ve çıktı isteği 3 saniyede bir,
+  // **iş bitene kadar**, hiçbir şey söylemeden yeniden denenir. Kullanıcı boş
+  // bir terminal görür ve nedenini öğrenemez.
+  //
+  // Artık kendi sayacı var: beş ardışık hatadan sonra yoklama durur ve sebep
+  // EKRANA yazılır. Başarılı bir çekim sayacı sıfırlar (geçici bir kesinti
+  // panelin canlı takibini kalıcı olarak öldürmesin).
   useEffect(() => {
     if (!showOutput) return;
     let cancelled = false;
+    let ardArdaHata = 0;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const durdur = () => {
+      if (interval) clearInterval(interval);
+      interval = null;
+    };
+
     const fetchOutput = () => {
       logxV2Api
         .jobOutput(jobId)
         .then((r) => {
-          if (!cancelled) setOutput(r.output || '');
+          if (cancelled) return;
+          ardArdaHata = 0;
+          setOutputError(null);
+          setOutput(r.output || '');
         })
-        .catch(() => {});
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          ardArdaHata += 1;
+          if (ardArdaHata >= 5) {
+            durdur();
+            setOutputError(
+              (e as Error)?.message ||
+                'Canlı çıktı alınamıyor. İş çalışmaya devam ediyor; sonuç ekranından tam çıktıya bakabilirsiniz.',
+            );
+          }
+        });
     };
+
     fetchOutput();
-    const interval = setInterval(() => {
+    interval = setInterval(() => {
       if (!doneRef.current) fetchOutput();
     }, 3000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      durdur();
     };
   }, [showOutput, jobId]);
 
@@ -156,6 +198,15 @@ const JobProgress: React.FC<Props> = ({
           )}
           {showOutput ? 'Ansible çıktısını gizle' : 'Ansible çıktısını göster'}
         </button>
+        {showOutput && outputError && (
+          <div
+            role="alert"
+            className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900"
+          >
+            {outputError}
+          </div>
+        )}
+
         {showOutput && (
           <div className="mt-2 animate-fade-in">
             <AnsibleLogTerminal
