@@ -18,6 +18,25 @@ import { fmtDateTime } from '@/utils/datetime';
 /** Beklemede olan — yani iptal/güncelleme yapılabilen durumlar. */
 const ACIK = new Set(['SCHEDULED', 'AWX_SCHEDULED', 'PENDING_APPROVAL']);
 
+/**
+ * Zamanlanmış işin KAPSAMI. `pendingLaunch.detail` bir JSON metni; bozuksa ya da
+ * eski bir kayıtsa `null` döner ve ekran bunu sessizce atlar — bir ayrıntının
+ * okunamaması panelin tamamını düşürmemeli.
+ */
+function kapsamCoz(it: ScaleXOcoSchedule): {
+  env?: string; tenant?: string; clusters?: string[];
+  namespace?: string; apps?: string[]; action?: string; executionMode?: string;
+} | null {
+  const ham = it.pendingLaunch?.detail;
+  if (!ham) return null;
+  try {
+    const v = JSON.parse(ham);
+    return v && typeof v === 'object' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 const DURUM_ETIKET: Record<string, string> = {
   SCHEDULED: 'Zamanlandı',
   AWX_SCHEDULED: 'AWX zamanlaması',
@@ -106,7 +125,16 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0 }) => {
   if (loading && !items.length) {
     return <p className="text-sm text-[var(--text-muted)]">Zamanlanmış işlemler okunuyor…</p>;
   }
-  if (!items.length && !error) return null;
+  // BOS LISTEDE HIC CIZMEMEK YANLISTI: kullanici "zamanlanmis isim var miydi?"
+  // sorusuna ekrandan cevap alamiyordu. Artik kisa bir satir yaziliyor.
+  if (!items.length && !error) {
+    return (
+      <p className="text-xs text-[var(--text-muted)]">
+        Zamanlanmış işlem yok. OCO penceresi henüz açılmamışken bir işlem
+        başlatırsanız, burada “pencere açılınca çalıştır” kaydı görünür.
+      </p>
+    );
+  }
 
   return (
     <section className="rounded-xl border border-[var(--border)] p-4 space-y-3">
@@ -160,6 +188,31 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0 }) => {
                   {it.ocoSubject}
                 </p>
               )}
+
+              {/* NE ZAMANLANDI: iptal kararini verecek kisi neyi iptal ettigini
+                  gormeli. Veri sunucuda ZATEN vardi, panel okumuyordu. */}
+              {(() => {
+                const k = kapsamCoz(it);
+                if (!k) return null;
+                const cl = (k.clusters || []).join(', ');
+                const uy = k.apps || [];
+                return (
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    <span className="font-semibold">{k.action || 'işlem'}</span>
+                    {k.executionMode === 'dry_run' && ' (prova)'}
+                    {' · '}
+                    <span className="font-mono">{cl || '—'}</span>
+                    {k.namespace ? ` / ${k.namespace}` : ''}
+                    {uy.length ? ` · ${uy.length} uygulama` : ''}
+                    {k.tenant || k.env ? ` · ${k.tenant ?? ''}${k.tenant && k.env ? '/' : ''}${k.env ?? ''}` : ''}
+                    {uy.length > 0 && (
+                      <span className="block text-[var(--text-muted)] truncate" title={uy.join(', ')}>
+                        {uy.join(', ')}
+                      </span>
+                    )}
+                  </p>
+                );
+              })()}
               {it.errorMessage && (
                 <p className="text-xs text-red-700">{it.errorMessage}</p>
               )}

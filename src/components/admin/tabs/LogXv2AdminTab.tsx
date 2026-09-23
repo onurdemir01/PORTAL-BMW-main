@@ -12,6 +12,8 @@ import {
   KeyIcon,
   SignalIcon,
   CubeIcon,
+  EyeSlashIcon,
+  ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 import {
   logxV2Api,
@@ -21,12 +23,17 @@ import {
   type RestrictionRow,
   type OcpVaultKeyRow,
   type PlaybookReadinessRow,
+  type MaskRuleRow,
+  type AdminRequestRow,
 } from '@/api/logxV2Api';
 import SimpleCrudTable, { type ColumnDef } from './logxv2/SimpleCrudTable';
 import { useToast } from '@/hooks/useToast';
 import OcpRuntimeSettings from './logxv2/OcpRuntimeSettings';
 import { Select } from '@/components/ui/Form';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { TableEmptyRow } from '@/components/common/EmptyState';
+import { downloadCsv } from '@/utils/csv';
+import { fmtDateTime } from '@/utils/datetime';
 
 const SUB_TABS = [
   { id: 'clusters', label: 'OCP Cluster Hiyerarşisi', icon: ServerStackIcon },
@@ -35,6 +42,8 @@ const SUB_TABS = [
   { id: 'ocpruntime', label: 'OCP Çalıştırma Ayarları', icon: WrenchScrewdriverIcon },
   { id: 'envsuffix', label: 'Legacy Ortam Son-Eki', icon: TagIcon },
   { id: 'restrictions', label: 'Kısıtlamalar', icon: LockClosedIcon },
+  { id: 'maskrules', label: 'Maskeleme Kuralları', icon: EyeSlashIcon },
+  { id: 'requests', label: 'İstek İzleme', icon: ClipboardDocumentListIcon },
 ] as const;
 type SubTabId = (typeof SUB_TABS)[number]['id'];
 
@@ -318,6 +327,249 @@ function useCrudSection<T extends { id: number }>(
   };
 }
 
+/**
+ * MASKELEME KURALLARI.
+ *
+ * `logx_mask_rules` tablosu, sunucu CRUD'u ve `masker.reloadMaskRules()`
+ * (her mutasyondan sonra cagriliyor, yani degisiklik ANINDA etkili) yazilmisti
+ * — ama hicbir ekran bu dort ucu cagirmiyordu. Kural yazmanin portal icinde
+ * bir yolu yoktu.
+ *
+ * ONEMLI SINIR: bu kurallar BUGUN yalnizca AI analiz yolunda uygulaniyor
+ * (`server/logx/ai-analyzer.cjs`, `server/ai-analyst/portal-tools.cjs`).
+ * Indirilen ARSIVE uygulanmiyor — ekran bunu acikca soyluyor ki admin
+ * "maskeleme var" sanip yanlis bir guvence hissetmesin.
+ */
+const MaskRulesSection: React.FC = () => {
+  const [rows, setRows] = useState<MaskRuleRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await logxV2Api.admin.listMaskRules();
+      setRows(r.rows || []);
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useAsyncEffect(async (alive) => {
+    if (alive()) await load();
+  }, [load]);
+
+  const columns: ColumnDef<MaskRuleRow>[] = [
+    { key: 'name', label: 'Ad', placeholder: 'tc_kimlik' },
+    { key: 'pattern', label: 'Desen (RegExp)', placeholder: '\\b\\d{11}\\b', truncate: true },
+    { key: 'flags', label: 'Bayrak', placeholder: 'g' },
+    { key: 'replacement', label: 'Yerine', placeholder: '[TCKN]' },
+    { key: 'sort_order', label: 'Sıra', type: 'number' },
+    { key: 'enabled', label: 'Açık', type: 'checkbox' },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+        <strong>Bu kurallar bugün yalnızca AI analiz yolunda uygulanıyor.</strong> İndirilen
+        arşive <em>uygulanmıyor</em> — yani buraya kural yazmak indirilen log dosyalarını
+        maskelemez. Teslim yoluna bağlanması ayrı bir iş.
+      </div>
+      <p className="text-xs text-gray-500">
+        Desen sunucuda <code>new RegExp(desen, bayrak)</code> ile <strong>derlenerek</strong>
+        doğrulanır; derlenmeyen kural kaydedilmez. Kayıttan sonra maskeleyici önbelleği
+        yeniden yüklenir — değişiklik <strong>anında</strong> etkilidir.
+      </p>
+      {err && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+          {err}
+        </div>
+      )}
+      {loading && !rows.length ? (
+        <LoadingLogo compact />
+      ) : (
+        <SimpleCrudTable<MaskRuleRow>
+          columns={columns}
+          rows={rows}
+          emptyRow={{ name: '', pattern: '', flags: 'g', replacement: '', sort_order: 0, enabled: true }}
+          onCreate={async (d) => {
+            await logxV2Api.admin.createMaskRule(d);
+            await load();
+          }}
+          onUpdate={async (id, d) => {
+            await logxV2Api.admin.updateMaskRule(id, d);
+            await load();
+          }}
+          onDelete={async (id) => {
+            await logxV2Api.admin.deleteMaskRule(id);
+            await load();
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+/** Sihirbazin takildigi yeri gosteren durumlar — bunlar "devam ediyor" demek. */
+const SURUYOR = new Set([
+  'discovering', 'namespace_discovering', 'app_discovering', 'transferring',
+]);
+
+/**
+ * ISTEK IZLEME — `GET /admin/requests`.
+ *
+ * Uc ve istemci sarmalayicisi (`logxV2Api.admin.listRequests`) yazilmisti ama
+ * HICBIR BILESEN cagirmiyordu: admin, hangi istegin hangi state'te takildigini
+ * goremiyordu. LogX'in TEK gercegi `logx_v2_requests.state` oldugu icin bu,
+ * "kullanici bekliyor ama neden" sorusunun tek cevap yeriydi.
+ */
+const RequestsSection: React.FC = () => {
+  const [rows, setRows] = useState<AdminRequestRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [state, setState] = useState('');
+  const [platform, setPlatform] = useState('');
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await logxV2Api.admin.listRequests({
+        ...(state ? { state } : {}),
+        ...(platform ? { platform } : {}),
+      });
+      setRows(r.requests || []);
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [state, platform]);
+
+  useAsyncEffect(async (alive) => {
+    if (alive()) await load();
+  }, [load]);
+
+  const durumlar = React.useMemo(
+    () => [...new Set(rows.map((r) => r.state).filter(Boolean))],
+    [rows],
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={platform}
+          onChange={(e) => setPlatform(e.target.value)}
+          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
+        >
+          <option value="">tüm platformlar</option>
+          <option value="legacy">legacy</option>
+          <option value="openshift">openshift</option>
+        </select>
+        <select
+          value={state}
+          onChange={(e) => setState(e.target.value)}
+          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
+        >
+          <option value="">tüm durumlar</option>
+          {durumlar.map((d) => (
+            <option key={d} value={d}>{d}</option>
+          ))}
+        </select>
+        <button type="button" onClick={load} className="text-xs text-[var(--accent)] hover:underline">
+          Yenile
+        </button>
+        <button
+          type="button"
+          disabled={!rows.length}
+          onClick={() =>
+            downloadCsv(
+              'logx_istekler',
+              ['İstek', 'Kullanıcı', 'Platform', 'Durum', 'Hata', 'Oluşturma', 'Güncelleme', 'Son kullanma'],
+              rows.map((r) => [
+                r.id, r.username, r.platform, r.state, r.errorMessage,
+                r.createdAt, r.updatedAt, r.expiresAt,
+              ]),
+            )
+          }
+          className="text-xs text-[var(--accent)] hover:underline disabled:opacity-50"
+        >
+          CSV
+        </button>
+        <span className="text-xs text-gray-500">{rows.length} kayıt</span>
+      </div>
+
+      {err && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+          {err}
+        </div>
+      )}
+
+      {loading && !rows.length ? (
+        <LoadingLogo compact />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-gray-400">
+                <th className="py-1.5 pr-3 font-medium">İstek</th>
+                <th className="py-1.5 pr-3 font-medium">Kullanıcı</th>
+                <th className="py-1.5 pr-3 font-medium">Platform</th>
+                <th className="py-1.5 pr-3 font-medium">Durum</th>
+                <th className="py-1.5 pr-3 font-medium">Güncelleme</th>
+                <th className="py-1.5 font-medium">Not</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {!rows.length && (
+                <TableEmptyRow
+                  colSpan={6}
+                  title={state || platform ? 'Süzgece uyan istek yok.' : 'Hiç LogX isteği yok.'}
+                  description={
+                    state || platform
+                      ? 'Süzgeçleri gevşetin.'
+                      : 'Bir kullanıcı LogX sihirbazını başlattığında burası dolar.'
+                  }
+                />
+              )}
+              {rows.map((r) => (
+                <tr key={r.id} className="align-top">
+                  <td className="py-1.5 pr-3 font-mono text-gray-500">{r.id.slice(0, 8)}</td>
+                  <td className="py-1.5 pr-3">{r.username}</td>
+                  <td className="py-1.5 pr-3">{r.platform}</td>
+                  <td className="py-1.5 pr-3">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        r.state === 'failed'
+                          ? 'bg-red-100 text-red-800'
+                          : r.state === 'ready'
+                            ? 'bg-green-100 text-green-800'
+                            : SURUYOR.has(r.state)
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {r.state}
+                    </span>
+                  </td>
+                  <td className="py-1.5 pr-3 whitespace-nowrap text-gray-500">
+                    {fmtDateTime(r.updatedAt || r.createdAt)}
+                  </td>
+                  <td className="py-1.5 text-gray-500">{r.errorMessage || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const RestrictionsSection: React.FC = () => {
   const [restrictions, setRestrictions] = useState<RestrictionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -326,6 +578,7 @@ const RestrictionsSection: React.FC = () => {
   const [resourceKey, setResourceKey] = useState('');
   const [description, setDescription] = useState('');
   const [grantInputs, setGrantInputs] = useState<Record<number, string>>({});
+  const [groupInputs, setGroupInputs] = useState<Record<number, string>>({});
   const [editingDescId, setEditingDescId] = useState<number | null>(null);
   const [editDescValue, setEditDescValue] = useState('');
 
@@ -377,6 +630,23 @@ const RestrictionsSection: React.FC = () => {
     try {
       await logxV2Api.admin.addGrant(id, username);
       setGrantInputs((prev) => ({ ...prev, [id]: '' }));
+      await load();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // ── GRUP GRANT'LARI ──────────────────────────────────────────────────────────
+  // Sunucu route'lari ve `restrictions.cjs` mantigi vardi; ekran YOKTU. Sunucudaki
+  // not bunu aciklikla yaziyordu: "yetki bir AD grubuna verilebiliyor GIBI
+  // gorunuyor, ama portal uzerinden verilmesinin bir yolu YOKTU". Bu, ozelligin
+  // ON YUZ yarisiydi ve hala oluydu.
+  async function addGroupGrant(id: number) {
+    const dn = (groupInputs[id] || '').trim();
+    if (!dn) return;
+    try {
+      await logxV2Api.admin.addGroupGrant(id, dn);
+      setGroupInputs((prev) => ({ ...prev, [id]: '' }));
       await load();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
@@ -517,6 +787,40 @@ const RestrictionsSection: React.FC = () => {
                 }}
                 placeholder="kullanıcı adı ekle..."
                 className="px-2 py-1 text-xs border border-gray-200 rounded-full outline-none focus:border-black w-32"
+              />
+            </div>
+
+            {/* GRUP GRANT'LARI — kullanıcı çiplerinden AYRI satır. İkisini aynı
+                kümede göstermek "bu bir kişi mi ekip mi" sorusunu doğururdu ve
+                bir DN'i yanlışlıkla kullanıcı adı sanmak kolay olurdu. */}
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wide text-gray-400">grup</span>
+              {(r.groupGrants || []).map((g) => (
+                <span
+                  key={g}
+                  title={g}
+                  className="flex items-center gap-1 text-xs bg-sky-50 text-sky-800 px-2 py-0.5 rounded-full max-w-[22rem]"
+                >
+                  <span className="truncate" title={g}>{g}</span>
+                  <button
+                    onClick={async () => {
+                      await logxV2Api.admin.removeGroupGrant(r.id, g);
+                      await load();
+                    }}
+                    className="text-sky-500 hover:text-sky-900 flex-shrink-0"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                value={groupInputs[r.id] || ''}
+                onChange={(e) => setGroupInputs((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addGroupGrant(r.id);
+                }}
+                placeholder="AD grubu DN'i ekle (CN=...,OU=...)"
+                className="px-2 py-1 text-xs border border-gray-200 rounded-full outline-none focus:border-black w-64"
               />
             </div>
           </div>
@@ -843,6 +1147,8 @@ const LogXv2AdminTab: React.FC = () => {
         ))}
       {subTab === 'ocpruntime' && <OcpRuntimeSettings />}
       {subTab === 'restrictions' && <RestrictionsSection />}
+      {subTab === 'maskrules' && <MaskRulesSection />}
+      {subTab === 'requests' && <RequestsSection />}
     </div>
   );
 };

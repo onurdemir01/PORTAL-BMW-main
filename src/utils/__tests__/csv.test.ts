@@ -4,6 +4,8 @@
 // ayrışmıştı (ayırıcı, BOM biçimi, satır sonu). Bu testler yardımcının
 // SÖZLEŞMESİNİ kilitliyor; en kritik olanları kaçış ve BOM.
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { toCsv, csvCell } from '../csv';
 
 describe('csv', () => {
@@ -37,12 +39,18 @@ describe('csv', () => {
     expect(toCsv(['a', 'b'], [])).toBe('"a";"b"');
   });
 
-  it('CV6 kaynakta GÖRÜNMEZ BOM karakteri taşınmaz', async () => {
+  it('CV6 kaynakta GÖRÜNMEZ BOM karakteri taşınmaz', () => {
     // Bu dosyanın var oluş sebebi tutarsızlığı kapatmak; kaynağa görünmez bir
     // karakter koymak aynı sınıfın yeni bir örneği olurdu (ESLint
     // `no-irregular-whitespace` da uyarır).
-    const kaynak = await import('../csv?raw').catch(() => null);
-    if (!kaynak) return; // ?raw desteklenmiyorsa atla
-    expect(String((kaynak as { default: string }).default)).not.toContain('﻿');
+    //
+    // Kaynağı `fs` ile okuruz: ilk yazımda `import('../csv?raw')` kullanılmıştı
+    // ve Vite bunu çözse de `tsc` "Cannot find module" diyordu — tip denetimi
+    // D1'in SON doğrulamasında koşturulmadığı için o kırmızı sessizce geçmişti.
+    const BOM = String.fromCharCode(0xfeff);
+    const kaynak = readFileSync(resolve(process.cwd(), 'src/utils/csv.ts'), 'utf8');
+    expect(kaynak).not.toContain(BOM);
+    // Kaçış dizisi DURMALI — BOM'un kendisi gerekli, yalnızca YAZIMI önemli.
+    expect(kaynak).toContain('\\uFEFF');
   });
 });
