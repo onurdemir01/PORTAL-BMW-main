@@ -17,19 +17,10 @@ import {
 import { Panel, StatTile, Pill, TableShell, Th, Td, Note } from './ui';
 import { fmtDateTime } from '@/utils/datetime';
 import { API_CLUSTERS } from '../../../shared/nginxApiClusters.cjs';
+import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
-function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const csv = [header, ...rows].map((r) => r.map(esc).join(';')).join('\r\n');
-  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export function NginxApiLocations() {
   const [data, setData] = useState<NginxApiLocationsResult | null>(null);

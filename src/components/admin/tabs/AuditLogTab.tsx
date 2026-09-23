@@ -12,6 +12,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { fmtDateTimeSeconds as formatDate } from "@/utils/datetime";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { downloadCsv as csvIndir } from '@/utils/csv';
 
 const PAGE_SIZE = 50;
 
@@ -151,19 +152,14 @@ const AuditLogTab: React.FC = () => {
   // sorguyu tarayiciya yuklemek olurdu. Filtreleri daraltip indirmek dogru yol.
   // Desen `SmartTicketsTab`ten; ayni kacis kurallari (tirnak ikilenir).
   function exportCsv() {
-    const head = ["zaman", "kullanici", "rol", "aksiyon", "sonuc", "hedef", "istemci_ip", "detay"];
-    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const body = logs.map((l) => [
-      formatDate(l.created_at), l.username, l.role, l.action,
-      l.result, l.target_host, l.client_ip, l.detail,
-    ].map(esc).join(","));
-    const blob = new Blob([`\uFEFF${[head.join(","), ...body].join("\n")}`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `denetim-${source}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    csvIndir(
+      `denetim-${source}`,
+      ["zaman", "kullanici", "rol", "aksiyon", "sonuc", "hedef", "istemci_ip", "detay"],
+      logs.map((l) => [
+        formatDate(l.created_at), l.username, l.role, l.action,
+        l.result, l.target_host, l.client_ip, l.detail,
+      ]),
+    );
   }
   function goPage(p: number) { setPage(p); load(p); }
 

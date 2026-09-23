@@ -3,10 +3,11 @@
 // Aynı 8-10 satır portalda 20'den fazla ekranda yeniden yazılmıştı ve ayrıntılar
 // ayrışmıştı (ayırıcı, BOM biçimi, satır sonu). Bu testler yardımcının
 // SÖZLEŞMESİNİ kilitliyor; en kritik olanları kaçış ve BOM.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { toCsv, csvCell } from '../csv';
+import { toCsv, csvCell, csvSeparator, CSV_SEPARATORS, CSV_SEPARATOR_PREF } from '../csv';
+import { prefsApi } from '@/api/prefsApi';
 
 describe('csv', () => {
   it('CV1 ayırıcı, satır sonu ve tırnak içeren hücreler BOZULMADAN geçer', () => {
@@ -29,6 +30,40 @@ describe('csv', () => {
 
   it('CV3 varsayılan ayırıcı `;` (Türkçe Excel liste ayırıcısı)', () => {
     expect(toCsv(['a', 'b'], [[1, 2]])).toBe('"a";"b"\r\n"1";"2"');
+  });
+
+  it('CV7 ayırıcı KULLANICI TERCİHİNDEN okunur', () => {
+    // Ayırıcı portalda ikiye bölünmüştü; sabitlemek yerine kullanıcı başına
+    // tercih yapıldı. Çağıran taraf açıkça bir değer vermedikçe tercih kazanır.
+    vi.spyOn(prefsApi, 'get').mockReturnValue(',');
+    expect(csvSeparator()).toBe(',');
+    expect(toCsv(['a'], [[1]])).toBe('"a"\r\n"1"'); // tek sütunda fark görünmez
+    expect(toCsv(['a', 'b'], [[1, 2]])).toBe('"a","b"\r\n"1","2"');
+    vi.restoreAllMocks();
+  });
+
+  it('CV8 GEÇERSİZ tercih varsayılana düşer (dosya sessizce bozulmaz)', () => {
+    // Serbest metin kabul edilseydi bir harf ya da tırnak ayırıcı olarak
+    // yazılabilir ve üretilen dosya SESSİZCE bozulurdu.
+    for (const kotu of ['x', '"', '', '\t', ';;']) {
+      vi.spyOn(prefsApi, 'get').mockReturnValue(kotu);
+      expect(CSV_SEPARATORS).toContain(csvSeparator());
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('CV9 tercih OKUNAMAZSA indirme yine çalışır', () => {
+    // CSV indirmek bir tercih okumasına BAĞIMLI olmamalı.
+    vi.spyOn(prefsApi, 'get').mockImplementation(() => {
+      throw new Error('prefs yok');
+    });
+    expect(CSV_SEPARATORS).toContain(csvSeparator());
+    expect(() => toCsv(['a'], [[1]])).not.toThrow();
+    vi.restoreAllMocks();
+  });
+
+  it('CV10 tercih anahtarı sabit (menü ile yardımcı ayrışmasın)', () => {
+    expect(CSV_SEPARATOR_PREF).toBe('csv_separator');
   });
 
   it('CV4 ayırıcı DEĞİŞTİRİLEBİLİR (eski ekranlar biçimini koruyabilsin)', () => {

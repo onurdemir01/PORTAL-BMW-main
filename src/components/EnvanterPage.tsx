@@ -35,6 +35,7 @@ import HistoryPanel from './envanter/HistoryPanel';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { fmtNumber } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { downloadCsv as csvIndir } from '@/utils/csv';
 
 const ENVANTER_HELP_SECTIONS: HelpSection[] = [
   {
@@ -68,23 +69,8 @@ const LIMIT_OPTIONS_ADMIN = [200, 500, 1000, 5000, 10000];
 const EMPTY_FILTER_GROUP: FilterGroup = { mode: 'AND', filters: [] };
 
 function downloadCsv(columns: string[], rows: Record<string, unknown>[], tableName: string) {
-  const header = columns.join(',');
-  const body = rows.map((r) =>
-    columns
-      .map((c) => {
-        const v = r[c] ?? '';
-        return `"${String(v).replace(/"/g, '""')}"`;
-      })
-      .join(','),
-  );
-  const csv = [header, ...body].join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${tableName}_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  // Kacis/BOM/ayirici artik ORTAK yardimcida; ayirici kullanicinin tercihi.
+  csvIndir(tableName, columns, rows.map((r) => columns.map((c) => r[c] ?? '')));
 }
 
 const EnvanterPage: React.FC = () => {

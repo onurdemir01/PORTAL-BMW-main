@@ -25,6 +25,7 @@ import { UsersIcon, ArrowDownTrayIcon, ClipboardDocumentIcon } from '@heroicons/
 import type { SpaMissingApp, NginxMigrationApp, NginxMigrationGroup, RouteOfIp } from '@/api/denetimApi';
 import { GlobeAltIcon } from '@heroicons/react/24/outline';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { downloadCsv as csvIndir } from '@/utils/csv';
 
 /** Pencerede listelenen satir: (uygulama, namespace'ler, ekip, eksik ne) - uc kaynak tek sekle iner. */
 interface MissingRow {
@@ -66,17 +67,15 @@ function MissingAppsModal({ title, subtitle, rows, ownersReady, onClose }: {
       toast.error('Panoya kopyalanamadı; CSV indirip oradan alın.');
     }
   };
-  const csv = () => {
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const body = [['ortam', 'katman', 'uygulama', 'namespace', 'ekip', 'eposta', 'eksik', 'ayrinti'], ...list.map((r) => [r.env || '', r.tier || '', r.app, r.namespaces.join(' '), r.owner.groups.join(' | '), r.owner.emails.join(' | '), r.what, r.detail || ''])]
-      .map((r) => r.map(esc).join(';')).join('\r\n');
-    const url = URL.createObjectURL(new Blob(['\ufeff' + body], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const csv = () =>
+    csvIndir(
+      title.replace(/[^a-z0-9]+/gi, '_').toLowerCase(),
+      ['ortam', 'katman', 'uygulama', 'namespace', 'ekip', 'eposta', 'eksik', 'ayrinti'],
+      list.map((r) => [
+        r.env || '', r.tier || '', r.app, r.namespaces.join(' '),
+        r.owner.groups.join(' | '), r.owner.emails.join(' | '), r.what, r.detail || '',
+      ]),
+    );
   return (
     <Modal
       open
@@ -167,12 +166,12 @@ function IpRoutesModal({ ip, env, onClose }: { ip: string; env: string; onClose:
     return (rows || []).filter((r) => (kind === 'all' || r.kind === kind) && (!n || r.namespace.includes(n) || r.address.toLowerCase().includes(n) || r.route.toLowerCase().includes(n)));
   }, [rows, kind, q]);
   const counts = useMemo(() => ({ all: rows?.length || 0, spa: rows?.filter((r) => r.kind === 'spa').length || 0, nonSpa: rows?.filter((r) => r.kind === 'nonSpa').length || 0 }), [rows]);
-  const csv = () => {
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const body = [['ip', 'ortam', 'namespace', 'route', 'adres', 'tip', 'tur'], ...list.map((r) => [ip, env, r.namespace, r.route, r.address, r.type, r.kind])].map((r) => r.map(esc).join(';')).join('\r\n');
-    const url = URL.createObjectURL(new Blob(['\ufeff' + body], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a'); a.href = url; a.download = `route_ip_${ip.replace(/[^0-9a-z]/gi, '_')}_${env}.csv`; a.click(); URL.revokeObjectURL(url);
-  };
+  const csv = () =>
+    csvIndir(
+      `${env}_${ip}_route`,
+      ['ip', 'ortam', 'namespace', 'route', 'adres', 'tip', 'tur'],
+      list.map((r) => [ip, env, r.namespace, r.route, r.address, r.type, r.kind]),
+    );
   const KIND_LABEL = { all: 'hepsi', spa: 'SPA', nonSpa: 'SPA değil' } as const;
   return (
     <Modal open onClose={onClose} title={`${ip} → route’lar`} subtitle={`${env} ortamında bu IP’ye çözen route’lar (route_inventory nslookup)`} icon={GlobeAltIcon} size="wide"

@@ -1198,6 +1198,13 @@ function initDenetim(app) {
   // Tek sunucunun ayrintisi (Denetim > Nginx Audit > sunucu sayfasi).
   router.get('/nginx-audit/host/:host', async (req, res) => {
     try {
+      // `query` BU HANDLER'DA TANIMSIZDI (2026-09-23): asagidaki `scanStamp(query, ...)`
+      // cagrisi calisma aninda ReferenceError veriyordu — yani sunucu detay sayfasi
+      // 500 donuyordu. Bu dosyadaki desen her handler'in `query`yi KENDI icinde
+      // require etmesi (bkz. `/nginx-api` handler'i); burada atlanmisti.
+      // `server/__tests__` altindaki "TANIMSIZ KIMLIK yok (gateVars sinifi)" bekcisi
+      // bunu yakalamisti.
+      const { query } = require('../inventory/mssql.cjs');
       const host = String(req.params.host || '').trim().toUpperCase();
       if (!/^[A-Z0-9._-]{1,64}$/.test(host)) {
         return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });

@@ -12,21 +12,10 @@ import { denetimApi, type WebAppResult } from "@/api/denetimApi";
 import { Select } from "@/components/ui/Form";
 import { fmtNumber } from "@/utils/datetime";
 import { TableEmptyRow } from "@/components/common/EmptyState";
+import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => fmtNumber(n);
 
-function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const body = [header, ...rows]
-    .map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-  const blob = new Blob(["﻿" + body], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${name}_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function WebApp() {
   const [source, setSource] = useState("mw");

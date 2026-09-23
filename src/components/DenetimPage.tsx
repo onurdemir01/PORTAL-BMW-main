@@ -54,6 +54,7 @@ import { toast } from '@/hooks/useToast';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import CodeChip from '@/components/common/CodeChip';
 import { fmtNumber } from '@/utils/datetime';
+import { downloadCsv as csvDownload } from '@/utils/csv';
 
 // NGINX BOLUMLERI NGINX HUB'A TASINDI (kullanici, 2026-09-22): sekmeler ve yardim metinleri
 // Nginx Hub'da; bilesenler yerinde. Bu dizi oradan import edilir.
@@ -161,18 +162,6 @@ function envGapOf(r: NginxSpaRow): EnvGap {
   return 'none';
 }
 
-function csvDownload(name: string, header: string[], rows: (string | number)[][]) {
-  const body = [header, ...rows]
-    .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 type DenetimTab =
   | 'ocp'
