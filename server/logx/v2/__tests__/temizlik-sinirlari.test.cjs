@@ -86,7 +86,21 @@ test('TS6 cikti yoklamasinin KENDI durdurucusu var', () => {
   const blok = d.slice(Math.max(0, i - 900), i + 1200);
   assert.doesNotMatch(blok, /\.catch\(\(\)\s*=>\s*\{\}\)/, 'hata hala sessizce yutuluyor');
   assert.match(blok, /ardArdaHata/, 'kendi hata sayaci yok');
-  assert.match(blok, /setOutputError/, 'sebep ekrana yazilmiyor — kullanici bos terminal gorur');
+
+  // ── SEBEP HATA DALINDA YAZILMALI ────────────────────────────────────────────
+  // Ilk yazimda yalnizca "blokta `setOutputError` geciyor mu" soruluyordu ve
+  // bekci KORDU: hata dalindaki cagri silindiginde BASARI dalindaki
+  // `setOutputError(null)` esleseiyor ve bekci geciyordu. Bu oturumda ucuncu kez
+  // ayni desen (tanimlayicinin VARLIGI ≠ DOGRU YERDE olmasi). Artik yalnizca
+  // `.catch(` sonrasina bakiliyor.
+  const katch = d.indexOf('.catch(', i);
+  assert.ok(katch > 0, 'hata dali bulunamadi');
+  const hataDali = d.slice(katch, katch + 900);
+  assert.match(
+    hataDali,
+    /setOutputError\(/,
+    'sebep HATA dalinda ekrana yazilmiyor — kullanici bos terminal gorur ve nedenini ogrenemez',
+  );
 });
 
 test('TS7 BASARILI cekim sayaci SIFIRLAR (gecici kesinti kalici olmasin)', () => {
