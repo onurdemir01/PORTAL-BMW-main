@@ -7,7 +7,7 @@ const downloads = require('./downloads.cjs');
 const ingest = require('./ingest.cjs');
 
 function startCleanupJob() {
-  setInterval(async () => {
+  const t = setInterval(async () => {
     try {
       const expiredRequests = await requests.expireOldRequests(downloads.deleteStagedFile);
       const expiredDownloads = await downloads.cleanupExpiredDownloads();
@@ -19,6 +19,9 @@ function startCleanupJob() {
       console.error('[LogXv2] Temizlik job hatasi:', err.message);
     }
   }, 5 * 60 * 1000);
+  // `unref()`: temizlik turu dagitimda/kapanista sureci CANLI TUTMASIN.
+  // `ocp-sync.cjs`teki ayni desen — orada vardi, burada atlanmisti.
+  if (typeof t.unref === 'function') t.unref();
 }
 
 module.exports = { startCleanupJob };

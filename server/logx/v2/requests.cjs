@@ -4,6 +4,7 @@
 'use strict';
 
 const db = require('../../db/index.cjs');
+const { chunk } = require('../../util/sql-chunk.cjs');
 
 const REQUEST_TTL_HOURS = 24;
 
@@ -83,12 +84,18 @@ async function updateRequest(requestId, fields) {
 // Suresi dolmus istekleri 'expired' isaretler ve iliskili staged dosyalari diskten siler
 // (bkz. downloads.cjs deleteStagedFile) — periyodik expiry-sweep job deseni, dosya
 // sistemi temizligi eklenmis haliyle.
+/** Tek turda islenecek en fazla suresi dolmus istek. Kalan bir sonraki tura kalir. */
+const EXPIRE_BATCH = 1000;
+
 async function expireOldRequests(deleteStagedFileFn) {
+  // TUR BASINA TAVAN: bir istegin birden fazla indirmesi olabildigi icin bu JOIN
+  // istek sayisindan daha fazla satir dondurur; sinirsiz okuma bellegi doldurur.
   const { rows } = await db.query(
-    `SELECT r.request_id, d.staged_path
+    `SELECT TOP (${EXPIRE_BATCH}) r.request_id, d.staged_path
      FROM logx_v2_requests r
      LEFT JOIN logx_v2_downloads d ON d.request_id = r.request_id
-     WHERE r.expires_at < GETUTCDATE() AND r.state <> 'expired'`
+     WHERE r.expires_at < GETUTCDATE() AND r.state <> 'expired'
+     ORDER BY r.expires_at`
   );
   const seen = new Set();
   for (const row of rows) {
@@ -98,11 +105,21 @@ async function expireOldRequests(deleteStagedFileFn) {
     seen.add(row.request_id);
   }
   // Dosya temizligi per-row kalir (farkli staged_path'ler), ama state guncellemesi
-  // dongu disina, ayni WHERE predikatiyla tek toplu sorguya alinir — N+1 UPDATE yerine
-  // 1 UPDATE (kurumsal AI kod incelemesi, review.md #9).
-  if (seen.size > 0) {
+  // dongu disina alinir — N+1 UPDATE yerine parca basina 1 UPDATE (kurumsal AI kod
+  // incelemesi, review.md #9).
+  //
+  // GORULEN SATIRLARI HEDEFLER (2026-09-23): eskiden UPDATE ayni WHERE predikatiyla
+  // TOPLU kosuyordu. Yukariya tavan konulunca bu SESSIZ BIR TUZAGA donusurdu:
+  // SELECT ilk 1000'i okur, UPDATE ise suresi dolmus HEPSINI 'expired' yapardi —
+  // yani okunmayan isteklerin staged dosyalari HIC SILINMEDEN yetim kalirdi ve
+  // bir daha hicbir tur onlari gormezdi (`state <> 'expired'` artik tutmaz).
+  // Simdi yalnizca dosyasi islenmis istekler isaretleniyor; kalan bir sonraki tura.
+  const idler = [...seen];
+  for (const parca of chunk(idler)) {
     await db.query(
-      `UPDATE logx_v2_requests SET state = 'expired' WHERE expires_at < GETUTCDATE() AND state <> 'expired'`
+      `UPDATE logx_v2_requests SET state = 'expired'
+        WHERE request_id IN (${parca.map((_, i) => `$${i + 1}`).join(',')})`,
+      parca
     );
   }
   return seen.size;

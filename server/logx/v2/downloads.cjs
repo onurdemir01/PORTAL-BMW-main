@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../../db/index.cjs');
 const audit = require('../audit.cjs');
+const { chunk } = require('../../util/sql-chunk.cjs');
 
 const DOWNLOAD_TTL_MINUTES = 15;
 
@@ -213,9 +214,15 @@ async function deleteStagedFile(stagedPath) {
 
 // Suresi dolmus indirme token'larinin dosyalarini temizler (henuz bir request-expiry
 // dongusunden silinmemisse) — TTL cleanup job'inin ikinci ayagi.
+/** Tek turda islenecek en fazla suresi dolmus indirme. Kalan bir sonraki tura kalir. */
+const CLEANUP_BATCH = 1000;
+
 async function cleanupExpiredDownloads() {
+  // TUR BASINA TAVAN: sinirsiz `SELECT` once BELLEGI doldurur. Kalan satirlar
+  // kaybolmaz — temizlik 5 dakikada bir kosuyor, bir sonraki tur devam eder.
   const { rows } = await db.query(
-    `SELECT token, staged_path FROM logx_v2_downloads WHERE expires_at < GETUTCDATE()`
+    `SELECT TOP (${CLEANUP_BATCH}) token, staged_path FROM logx_v2_downloads
+      WHERE expires_at < GETUTCDATE()`
   );
   for (const row of rows) {
     await deleteStagedFile(row.staged_path);
@@ -223,11 +230,17 @@ async function cleanupExpiredDownloads() {
   // Ikinci bagimsiz WHERE-predikatli DELETE yerine, SELECT'te GORULEN token'lari hedefler
   // — aradaki surede yeni suresi dolan satirlarin dosyasiz silinmesini (TOCTOU) onler
   // (kurumsal AI kod incelemesi, review.md #10). token 256-bit rastgele hex, IN(...) icin guvenli.
-  if (rows.length > 0) {
-    const tokens = rows.map((r) => r.token);
+  //
+  // PARCALI (2026-09-23): MSSQL bir sorguda en fazla 2100 parametre kabul eder ve
+  // burada parametre sayisi = suresi dolmus satir sayisiydi. Temizlik bir sure
+  // kosamazsa (portal kapali, DB erisilemez) sayi birikir; 2100'u astigi anda
+  // DELETE HATA verir, tur basarisiz olur ve satirlar TEMIZLENMEZ — yani her
+  // turda daha da buyur. Kendi kendini kotulestiren bir ariza.
+  const tokens = rows.map((r) => r.token);
+  for (const parca of chunk(tokens)) {
     await db.query(
-      `DELETE FROM logx_v2_downloads WHERE token IN (${tokens.map((_, i) => `$${i + 1}`).join(',')})`,
-      tokens
+      `DELETE FROM logx_v2_downloads WHERE token IN (${parca.map((_, i) => `$${i + 1}`).join(',')})`,
+      parca
     );
   }
   return rows.length;
