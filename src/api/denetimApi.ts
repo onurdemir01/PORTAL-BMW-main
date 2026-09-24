@@ -302,103 +302,8 @@ export interface SpaCoverageResult {
   message?: string;
 }
 
-// ── Nginx Legacy (PROD, proxy_pass + upstream) ────────────────────────────────────────
+// ── Nginx Audit: izin verilen deger katalogu ──────────────────────────────────────────
 export interface NginxAuditAllowedValue { id: number; directive: string; value: string; note: string | null; created_by?: string | null; created_at?: string }
-export interface NginxLegacyFinding {
-  type: string;
-  /** Tip kodunun okunabilir karsiligi; bilinmeyen tip KODUYLA gosterilir. */
-  label: string;
-  severity: number;
-  item: string;
-  detail: string;
-}
-
-export interface NginxLegacyHost {
-  host: string;
-  vhostFiles: string;
-  upstreamFiles: string;
-  serverBlocks: number;
-  locationsTotal: number;
-  locationsProxy: number;
-  /** deny / return / rewrite / static - KASITLI olarak proxy'siz olanlar. */
-  locationsOther: number;
-  upstreamsTotal: number;
-  /** ANA conf dosyasinda tanimli upstream sayisi. */
-  upstreamsInVhost: number;
-  upstreamsInFile: number;
-  /** Hedefi tanimli bir upstream OLMAYAN location - upstream katmanini atliyor. */
-  proxyWithoutUpstream: number;
-  unusedUpstreams: number;
-  upsNoResolve: number;
-  upsNoKeepalive: number;
-  upsNoZone: number;
-  findings: NginxLegacyFinding[];
-}
-
-export interface NginxLegacyService {
-  service: string;
-  peerGroup: string;
-  hostCount: number;
-  hosts: NginxLegacyHost[];
-  findings: number;
-  /** Eslenik sunucularin sayilari AYNI mi. */
-  consistent: boolean;
-  signatures: string[];
-  locationsTotal: number;
-  locationsProxy: number;
-  upstreamsTotal: number;
-  upstreamsInVhost: number;
-  proxyWithoutUpstream: number;
-  unusedUpstreams: number;
-  upsNoResolve: number;
-  upsNoKeepalive: number;
-  upsNoZone: number;
-}
-
-export interface NginxLegacyResult {
-  ok: boolean;
-  /** dbo.Nginx_Legacy_Audit yoksa false: DDL calistirilmamis. "Bulgu yok" DEGIL. */
-  schemaReady: boolean;
-  scanDate: string | null;
-  services: NginxLegacyService[];
-  totals: {
-    services: number;
-    hosts: number;
-    locations: number;
-    upstreams: number;
-    proxyWithoutUpstream: number;
-    unusedUpstreams: number;
-    inconsistent: number;
-    findings: number;
-  } | null;
-  byType: NginxLegacyType[];
-  /** Ekran icin gruplu gorunum; yalnizca bulgusu OLAN gruplar. */
-  groups: NginxLegacyGroup[];
-  message?: string;
-}
-
-export interface NginxLegacyType {
-  type: string;
-  count: number;
-  label: string;
-  title: string;
-  /** "Bu ne demek?" - tek cumle. */
-  meaning: string;
-  /** "Ne yapmali?" - tek cumle. */
-  action: string;
-  group: 'critical' | 'peer' | 'hygiene' | 'info' | string;
-  severity: number;
-}
-
-export interface NginxLegacyGroup {
-  id: string;
-  title: string;
-  blurb: string;
-  tone: 'danger' | 'warning' | 'neutral' | 'muted' | string;
-  types: NginxLegacyType[];
-  count: number;
-}
-
 // ── Nginx Audit (tum sunucular, nginx -T) ────────────────────────────────────────────
 export interface NginxAuditServer {
   file: string;
@@ -1143,8 +1048,6 @@ export const denetimApi = {
   nginxAuditHost: (host: string): Promise<NginxAuditHostResult> =>
     fetch(`${BASE}/nginx-audit/host/${encodeURIComponent(host)}`).then(safeJson),
 
-  nginxLegacy: (fresh = false): Promise<NginxLegacyResult> =>
-    fetch(`${BASE}/nginx-legacy${fresh ? '?fresh=1' : ''}`).then(safeJson),
 
   nginxMigration: (fresh = false): Promise<NginxMigrationResult> =>
     fetch(`${BASE}/nginx-migration${fresh ? '?fresh=1' : ''}`).then(safeJson),

@@ -5,8 +5,8 @@
 // birlestirilir ki ekran "sunucuyu ac -> server bloklari -> location'lar ->
 // upstream'ler -> ayarlar" seklinde akabilsin.
 //
-// Legacy denetiminden (nginx-legacy.cjs) AYRIDIR: o, 12 prod sunucusunu servis
-// tanesinde ve eslenik karsilastirmasiyla olcer. Bu, tum filoyu sunucu tanesinde.
+// Kaldirilan legacy denetimiyle (dbo.Nginx_Legacy_*) karistirilmasin: o ekran d69097d ile,
+// job'i da 2026-09-24'te kaldirildi.
 'use strict';
 
 const { envOfHost, envFromInventory, siteOfHost, tierOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
