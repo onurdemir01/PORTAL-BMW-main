@@ -1751,7 +1751,17 @@ function initDenetim(app) {
         if (r.scan_date && (!scanDate || r.scan_date > scanDate)) scanDate = r.scan_date;
       }
       const raw = [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host));
-      const { scriptStats, hostRows } = scriptDeviationReport(raw, scripts);
+      // Init ile AYNI ayrim (kullanici, 2026-09-24): cogunluk genel envanterden, GBEVM*/GBPRV*
+      // ayni cogunluga gore olculup ayri blokta.
+      const genelRaw = raw.filter((r) => !isSpecialHost(r.host));
+      const ozelRaw = raw.filter((r) => isSpecialHost(r.host));
+      const { scriptStats, hostRows } = scriptDeviationReport(genelRaw, scripts);
+      let special = null;
+      if (ozelRaw.length) {
+        const majorityOf = new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
+        const ozel = scriptDeviationReport(ozelRaw, scripts, majorityOf);
+        special = scriptReportSummary(scripts, ozel.scriptStats, ozel.hostRows);
+      }
       res.json({
         ok: true,
         root,
@@ -1759,6 +1769,7 @@ function initDenetim(app) {
         scanDate: scanDate ? new Date(scanDate).toISOString().slice(0, 10) : null,
         missingColumns: [],
         ...scriptReportSummary(scripts, scriptStats, hostRows),
+        special,
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Deployment script denetim verisi alinamadi.' });

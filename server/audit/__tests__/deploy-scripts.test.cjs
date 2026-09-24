@@ -24,7 +24,12 @@ test('DS1 sunucu: /deploy-scripts ucu, uzun tablodan pivot, tab kapisi "deploy"'
   // 2026-09-24: ucuncu parametre (majorityOverride) eklendi - GBEVM/GBPRV sunuculari GENEL
   // envanterin cogunluguna gore olculur. Init ve Deployment ekranlari ayni fonksiyonu paylasir.
   assert.match(src, /function scriptDeviationReport\(raw, scripts, majorityOverride\)/);
-  assert.equal((src.match(/scriptDeviationReport\(/g) || []).length, 4, 'tanim + init(genel) + init(GBEVM/GBPRV) + deploy');
+  assert.equal((src.match(/scriptDeviationReport\(/g) || []).length, 5,
+    'tanim + init(genel) + init(GBEVM/GBPRV) + deploy(genel) + deploy(GBEVM/GBPRV)');
+  // 2026-09-24: Deployment Scripts de GBEVM/GBPRV'yi ayirir - Init ile ayni sekil
+  assert.match(src, /const genelRaw = raw\.filter\(\(r\) => !isSpecialHost\(r\.host\)\)/g);
+  assert.equal((src.match(/scriptDeviationReport\(ozelRaw, scripts, majorityOf\)/g) || []).length, 2,
+    'hem Init hem Deployment ozel sunuculari GENEL cogunluga gore olcmeli');
 });
 
 test('DS2 istemci: sekme, tip, liste, yardim bolumu, API', () => {
