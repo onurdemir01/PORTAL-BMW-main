@@ -182,3 +182,31 @@ test('MG2 sozlesme: sunucu kapisi ve ekran AYNI kurali uygular', () => {
   assert.ok(/CREATE TABLE nginx_migration_path_jobs/.test(ddl), 'tablo seed edilmemis');
   assert.ok(/UQ_nginx_migration_path UNIQUE \(group_id, namespace, application, service, location\)/.test(ddl), 'yol basina tekillik yok');
 });
+
+// BULK1 (2026-09-24, kullanici: "toplu uygulama secip gecis tarihi ve planlama tarihi
+// girebilmek istiyorum"). Toplu uc, YARIM UYGULAMA birakmamali: bir ogede dogrulama
+// hatasi varsa HICBIRI yazilmaz - aksi halde kullanici hangi kaydin gecтigini bilemez.
+test('BULK1 toplu takip ucu: once tumu dogrulanir, sonra yazilir; sinir ve denetim kaydi', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.match(src, /router\.put\('\/tracking\/bulk'/, 'toplu uc yok');
+  assert.match(src, /BULK_MAX = \d+/, 'toplu istege ust sinir konmali');
+  // dogrulama dongusu YAZMA dongusunden ONCE gelmeli
+  const iValidate = src.indexOf('norm.push(normalizeTracking(');
+  const iWrite = src.indexOf('written.push(it)');
+  assert.ok(iValidate > 0 && iWrite > iValidate, 'once TUM ogeler dogrulanmali, sonra yazilmali');
+  assert.match(src, /nginx_prod_migration_track_bulk/, 'toplu islem denetim kaydina girmeli');
+});
+
+// BULK2: ekran sozlesmesi - secim kutulari, islem cubugu, toplu modal ve "ustune yazilir" uyarisi.
+test('BULK2 ekran: satir secimi, toplu cubuk, onay listesi ve uzerine yazma uyarisi', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.match(page, /function BulkTrackingModal/, 'toplu modal yok');
+  assert.match(page, /Toplu geçiş takibi gir/, 'toplu islem dugmesi yok');
+  assert.match(page, /saveBulk\(/, 'toplu uc cagrilmiyor');
+  assert.match(page, /Seçimi temizle/, 'secimi temizleme yok');
+  assert.match(page, /el\.indeterminate/, 'kismi secimde baslik kutusu belirsiz gorunmeli');
+  // yikici davranis EKRANDA yazmali: not bos birakilirsa mevcut notlar silinir
+  assert.match(page, /mevcut notlar silinir/, 'uzerine yazma uyarisi yok');
+  assert.match(page, /Bu \{apps\.length\} uygulamaya yazılacak/, 'yazilacak uygulama listesi gosterilmiyor');
+});

@@ -86,6 +86,11 @@ export default function NginxProdMigration() {
   // GECIS TAKIBI (kullanici, 2026-09-14): uygulama basina planlanan/gecis tarihi + not.
   // Anahtar "group|ns/app". Ayri uctan gelir; ana veri yuklenmese de takip listesi okunur.
   const [tracking, setTracking] = useState<Map<string, MigrationTracking>>(new Map());
+  // TOPLU TAKIP (kullanici, 2026-09-24): "toplu uygulama secip gecis tarihi ve planlama
+  // tarihi girebilmek istiyorum". Secim anahtari trackKey ile AYNI - boylece secili satir
+  // ile yazilacak kayit birebir ortusur.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
   // Yol bazinda tanim job'lari: anahtar grup|ns|app|SERVIS|location
   const [pathJobs, setPathJobs] = useState<Map<string, MigrationPathJob>>(new Map());
   const [trackingReady, setTrackingReady] = useState(true);
@@ -94,6 +99,18 @@ export default function NginxProdMigration() {
   // Gruplar SEKME (kullanici, 2026-09-17): Glomo / Openbanking-Saklama-Webforms alt alta degil,
   // sekmeyle gecilir. Ilk grup varsayilan.
   const [groupId, setGroupId] = useState<string>('');
+
+  // Secili anahtarlardan gercek (grup, uygulama) listesi. Suzgec degisip satir ekrandan
+  // kalksa bile secim korunur; bu yuzden cozumleme her zaman TUM gruplar uzerinden yapilir.
+  const selectedApps = useMemo(() => {
+    const out: { group: NginxMigrationGroup; app: NginxMigrationApp }[] = [];
+    for (const g of data?.groups || []) {
+      for (const a of g.apps) {
+        if (selected.has(trackKey(g.id, a.namespace, a.application))) out.push({ group: g, app: a });
+      }
+    }
+    return out;
+  }, [data, selected]);
 
   const loadTracking = async () => {
     try {
@@ -322,6 +339,20 @@ export default function NginxProdMigration() {
           canCreate={configured}
           onCreate={(app) => setPending({ group: g, app, pathIdx: 0 })}
           pathJobs={pathJobs}
+          selected={selected}
+          onToggleSelect={(key, on) => setSelected((prev) => {
+            const next = new Set(prev);
+            if (on) next.add(key); else next.delete(key);
+            return next;
+          })}
+          onToggleMany={(keys, on) => setSelected((prev) => {
+            const next = new Set(prev);
+            for (const k of keys) { if (on) next.add(k); else next.delete(k); }
+            return next;
+          })}
+          onBulk={() => setBulkOpen(true)}
+          onClearSelection={() => setSelected(new Set())}
+          selectedTotal={selectedApps.length}
           canDelete={deleteConfigured}
           onDelete={(app) => setPendingDelete({ group: g, app, pathIdx: 0 })}
           tracking={tracking}
@@ -440,6 +471,22 @@ export default function NginxProdMigration() {
         })()}
       </Modal>
 
+      {bulkOpen && selectedApps.length > 0 && (
+        <BulkTrackingModal
+          apps={selectedApps}
+          onClose={() => setBulkOpen(false)}
+          onSaved={(rows, clear) => {
+            setTracking((prev) => {
+              const next = new Map(prev);
+              for (const row of rows) next.set(trackKey(row.group, row.namespace, row.application), row);
+              return next;
+            });
+            if (clear) setSelected(new Set());
+            setBulkOpen(false);
+          }}
+        />
+      )}
+
       {editing && (
         <TrackingModal
           group={editing.group}
@@ -526,6 +573,123 @@ function TrackCell({ t, ready, onEdit }: { t: MigrationTracking | null; ready: b
       )}
       <CalendarDaysIcon className="w-3.5 h-3.5 text-[var(--text-muted)]" />
     </button>
+  );
+}
+
+/**
+ * TOPLU gecis takibi (kullanici, 2026-09-24): secilen uygulamalarin HEPSINE ayni durum ve
+ * tarihler yazilir. Tekil modalla ayni alanlar; farki: ne yazilacagini ONCE ozetler ve
+ * yazmadan once kullanicinin listeyi gormesini saglar (yanlis secimle 40 kaydi bozmasin).
+ * NOT alani BOS BIRAKILIRSA mevcut notlara DOKUNULMAZ mi? Hayir - uc, gonderilen degeri
+ * aynen yazar; bu yuzden bos birakmak "notu sil" demektir ve ekranda acikca yaziyor.
+ */
+function BulkTrackingModal({ apps, onClose, onSaved }: {
+  apps: { group: NginxMigrationGroup; app: NginxMigrationApp }[];
+  onClose: () => void;
+  onSaved: (rows: MigrationTracking[], clearSelection: boolean) => void;
+}) {
+  const [state, setState] = useState<MigrationTrackState>('planned');
+  const [plannedDate, setPlannedDate] = useState('');
+  const [migratedDate, setMigratedDate] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [failed, setFailed] = useState<{ namespace: string; application: string; message: string }[]>([]);
+
+  const eksik = (state === 'planned' && !plannedDate) || (state === 'migrated' && !migratedDate);
+
+  const save = async () => {
+    setBusy(true); setMsg(''); setFailed([]);
+    try {
+      const r = await nginxMigrationTrackingApi.saveBulk({
+        items: apps.map(({ group, app }) => ({ group: group.id, namespace: app.namespace, application: app.application })),
+        state,
+        plannedDate: plannedDate || null,
+        migratedDate: migratedDate || null,
+        note: note || null,
+      });
+      if (r.rows?.length) onSaved(r.rows, r.ok === true);
+      if (!r.ok) {
+        setFailed(r.failed || []);
+        setMsg(r.message || (r.failed?.length ? `${r.failed.length} uygulama yazılamadı.` : 'Kaydedilemedi.'));
+      }
+    } catch (e: unknown) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputCls = 'px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]';
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Toplu geçiş takibi"
+      subtitle={`${apps.length} uygulama`}
+      icon={CalendarDaysIcon}
+      dismissOnBackdrop={false}
+      footer={
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border)]">İptal</button>
+          <button onClick={save} disabled={busy || eksik} className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50" style={{ background: 'var(--accent)' }}>
+            {busy ? 'Kaydediliyor…' : `${apps.length} uygulamaya yaz`}
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-3 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+        <div className="flex flex-wrap gap-3">
+          {(['none', 'planned', 'migrated', 'cancelled'] as MigrationTrackState[]).map((st) => (
+            <label key={st} className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="bulkstate" checked={state === st} onChange={() => setState(st)} />
+              <Pill tone={TRACK_LABEL[st].tone}>{TRACK_LABEL[st].label}</Pill>
+            </label>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Planlanan tarih{state === 'planned' ? ' *' : ''}</span>
+            <input type="date" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)} className={inputCls} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Geçiş tarihi{state === 'migrated' ? ' *' : ''}</span>
+            <input type="date" value={migratedDate} onChange={(e) => setMigratedDate(e.target.value)} className={inputCls} />
+          </label>
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Not (OCO no, sorumlu, koşul…)</span>
+          <textarea value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} rows={2} className={inputCls} />
+        </label>
+
+        <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+          <div className="font-semibold mb-1">Bu {apps.length} uygulamaya yazılacak</div>
+          <div className="max-h-32 overflow-y-auto font-mono text-[11px] leading-relaxed">
+            {apps.map(({ group, app }) => (
+              <div key={group.id + '/' + app.namespace + '/' + app.application}>
+                {app.application} <span style={{ color: 'var(--text-muted)' }}>· {app.namespace} · {group.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            Durum, tarihler ve not <b>hepsinin üzerine yazılır</b>; not alanını boş bırakırsanız
+            mevcut notlar silinir.
+          </div>
+        </div>
+
+        {eksik && (
+          <div className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
+            {state === 'planned' ? '“Planlandı” için planlanan tarih zorunlu.' : '“Geçti” için geçiş tarihi zorunlu.'}
+          </div>
+        )}
+        {msg && <div className="text-[11px]" style={{ color: 'var(--status-danger)' }}>{msg}</div>}
+        {failed.length > 0 && (
+          <div className="max-h-24 overflow-y-auto text-[11px] font-mono" style={{ color: 'var(--status-danger)' }}>
+            {failed.map((f) => <div key={f.namespace + '/' + f.application}>{f.application} · {f.namespace}: {f.message}</div>)}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -789,7 +953,7 @@ function LocationProgress({ g }: { g: NginxMigrationGroup }) {
 }
 
 function GroupPanel({
-  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, pathJobs, trackFilter, onTrack, canDelete, onDelete,
+  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, pathJobs, selected, onToggleSelect, onToggleMany, onBulk, onClearSelection, selectedTotal, trackFilter, onTrack, canDelete, onDelete,
 }: {
   g: NginxMigrationGroup;
   onlyProblem: boolean;
@@ -799,6 +963,12 @@ function GroupPanel({
   canCreate: boolean;
   onCreate: (app: NginxMigrationApp) => void;
   pathJobs: Map<string, MigrationPathJob>;
+  selected: Set<string>;
+  onToggleSelect: (key: string, on: boolean) => void;
+  onToggleMany: (keys: string[], on: boolean) => void;
+  onBulk: () => void;
+  onClearSelection: () => void;
+  selectedTotal: number;
   tracking: Map<string, MigrationTracking>;
   trackingReady: boolean;
   trackFilter: 'all' | 'open' | 'planned' | 'migrated';
@@ -908,10 +1078,40 @@ function GroupPanel({
           </div>
         )}
 
+        {/* Secim varken cikan islem cubugu. Sayi TUM gruplardaki secimi gosterir: kullanici
+            gruplar arasi gecerken secimini kaybetmesin, ama kac uygulamaya yazacagini da
+            yanlis bilmesin. */}
+        {selectedTotal > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[12px]" style={{ borderColor: 'var(--accent)', background: 'var(--bg-elevated)' }}>
+            <b>{selectedTotal} uygulama seçildi</b>
+            <span style={{ color: 'var(--text-muted)' }}>(diğer gruplardaki seçimler dahil)</span>
+            <button onClick={onBulk} className="px-2.5 py-1 text-[11px] font-semibold rounded-lg text-white" style={{ background: 'var(--accent)' }}>
+              <CalendarDaysIcon className="w-3.5 h-3.5 inline" /> Toplu geçiş takibi gir
+            </button>
+            <button onClick={onClearSelection} className="px-2.5 py-1 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)' }}>Seçimi temizle</button>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="text-[11px] w-full">
             <thead>
               <tr className="text-[var(--text-muted)]">
+                <th className="pr-1 pb-1">
+                  {(() => {
+                    const keys = rows.map((a) => trackKey(g.id, a.namespace, a.application));
+                    const on = keys.length > 0 && keys.every((k) => selected.has(k));
+                    return (
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        ref={(el) => { if (el) el.indeterminate = !on && keys.some((k) => selected.has(k)); }}
+                        onChange={(e) => onToggleMany(keys, e.target.checked)}
+                        title="Süzgeçten geçen tüm uygulamaları seç"
+                        aria-label="Tümünü seç"
+                      />
+                    );
+                  })()}
+                </th>
                 <th className="pr-2 pb-1" />
                 <th className="text-left pr-3 pb-1">Uygulama</th>
                 <th className="text-left pr-3 pb-1">Namespace</th>
@@ -929,7 +1129,15 @@ function GroupPanel({
             </thead>
             <tbody>
               {rows.map((a) => (
-                <tr key={a.namespace + '/' + a.application} className="border-t border-[var(--border-subtle)]">
+                <tr key={a.namespace + '/' + a.application} className="border-t border-[var(--border-subtle)]" style={selected.has(trackKey(g.id, a.namespace, a.application)) ? { background: 'var(--bg-elevated)' } : undefined}>
+                  <td className="pr-1 py-1">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(trackKey(g.id, a.namespace, a.application))}
+                      onChange={(e) => onToggleSelect(trackKey(g.id, a.namespace, a.application), e.target.checked)}
+                      aria-label={`${a.application} seç`}
+                    />
+                  </td>
                   <td className="pr-2 py-1">
                     {(() => {
                       // TANIM ZATEN OLUSTURULDU MU (2026-09-23): her yol icin "job basarili +

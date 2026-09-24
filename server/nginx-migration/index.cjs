@@ -388,6 +388,93 @@ function initNginxMigration(app) {
     }
   });
 
+  // TOPLU TAKIP (kullanici, 2026-09-24): "toplu uygulama secip gecis tarihi ve planlama
+  // tarihi girebilmek istiyorum". Tek tek kaydetmek yerine ayni durum/tarih/not N uygulamaya
+  // yazilir. Tek tek PUT atmak da mumkundu; tek ucta toplamanin sebebi: N istegin yarisinda
+  // tarayici kapanirsa kayitlarin yarisi eski yarisi yeni kalirdi ve kullanici hangisinin
+  // yazildigini bilemezdi. Burada her ogenin sonucu AYRI donuyor (yazilan / hata), ekran da
+  // ne olduğunu satir satir gosteriyor.
+  const BULK_MAX = 200;
+  router.put('/tracking/bulk', async (req, res) => {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) return res.status(400).json({ ok: false, message: 'En az bir uygulama seçilmeli.' });
+    if (items.length > BULK_MAX) {
+      return res.status(400).json({ ok: false, message: `Tek seferde en fazla ${BULK_MAX} uygulama güncellenebilir (seçilen: ${items.length}).` });
+    }
+    const user = getRequestUser(req) || {};
+    const by = user.username || null;
+
+    // Once TUMUNU dogrula: bir ogede hata varsa HICBIRI yazilmaz. Yarim uygulanan toplu
+    // islem, kullanicinin "hangileri gecti?" diye tek tek bakmasi demektir.
+    const norm = [];
+    for (const raw of items) {
+      try {
+        norm.push(normalizeTracking({ ...req.body, ...raw }));
+      } catch (err) {
+        return res.status(400).json({
+          ok: false,
+          message: `${raw?.application || '(uygulama?)'} · ${raw?.namespace || '?'}: ${err.message}`,
+        });
+      }
+    }
+
+    const written = [];
+    const failed = [];
+    for (const it of norm) {
+      try {
+        const ex = await db.query(
+          `SELECT id FROM nginx_migration_tracking WHERE group_id = $1 AND namespace = $2 AND application = $3`,
+          [it.group, it.namespace, it.application],
+        );
+        if (ex.rows.length) {
+          await db.query(
+            `UPDATE nginx_migration_tracking
+                SET state = $4, planned_date = $5, migrated_date = $6, note = $7, updated_by = $8, updated_at = GETUTCDATE()
+              WHERE group_id = $1 AND namespace = $2 AND application = $3`,
+            [it.group, it.namespace, it.application, it.state, it.plannedDate, it.migratedDate, it.note, by],
+          );
+        } else {
+          await db.query(
+            `INSERT INTO nginx_migration_tracking (group_id, namespace, application, state, planned_date, migrated_date, note, updated_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [it.group, it.namespace, it.application, it.state, it.plannedDate, it.migratedDate, it.note, by],
+          );
+        }
+        written.push(it);
+      } catch (err) {
+        failed.push({ namespace: it.namespace, application: it.application, message: err.message });
+      }
+    }
+
+    try {
+      require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_track_bulk', {
+        username: by,
+        result: failed.length ? 'partial' : 'ok',
+        detail: JSON.stringify({
+          count: norm.length, written: written.length, failed: failed.length,
+          state: norm[0]?.state, plannedDate: norm[0]?.plannedDate, migratedDate: norm[0]?.migratedDate,
+          apps: written.map((x) => `${x.namespace}/${x.application}`).slice(0, 50),
+        }),
+      });
+    } catch { /* audit yoksa yoksay */ }
+
+    let rows = [];
+    try {
+      const r = await db.query(
+        `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
+                config_job_id, config_created_at, config_created_by,
+                config_job_status, config_job_finished_at, config_service, config_location,
+                delete_job_id, delete_requested_at, delete_requested_by, delete_job_status, updated_by, updated_at
+           FROM nginx_migration_tracking`,
+      );
+      const key = new Set(written.map((x) => `${x.group}|${x.namespace}|${x.application}`));
+      rows = (r.rows || []).map(rowToTracking).filter((x) => key.has(`${x.group}|${x.namespace}|${x.application}`));
+    } catch (err) {
+      return res.json({ ok: true, written: written.length, failed, rows: [], message: `Kaydedildi ama liste okunamadı: ${err.message}` });
+    }
+    res.json({ ok: failed.length === 0, written: written.length, failed, rows });
+  });
+
   router.get('/config', async (_req, res) => {
     res.json({ ok: true, config: await readConfig() });
   });

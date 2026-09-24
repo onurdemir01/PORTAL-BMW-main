@@ -138,6 +138,23 @@ export const nginxMigrationTrackingApi = {
   list: (): Promise<{ ok: boolean; rows: MigrationTracking[]; pathJobs?: MigrationPathJob[]; message?: string }> =>
     fetch(`${BASE}/tracking`).then(safeJson),
 
+  /**
+   * TOPLU kayit (2026-09-24): ayni durum/tarih/not birden fazla uygulamaya yazilir.
+   * Dogrulama once TUM ogeler icin yapilir - biri gecersizse HICBIRI yazilmaz.
+   */
+  saveBulk: (body: {
+    items: { group: string; namespace: string; application: string }[];
+    state: MigrationTrackState;
+    plannedDate?: string | null;
+    migratedDate?: string | null;
+    note?: string | null;
+  }): Promise<{ ok: boolean; written?: number; failed?: { namespace: string; application: string; message: string }[]; rows?: MigrationTracking[]; message?: string }> =>
+    fetch(`${BASE}/tracking/bulk`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(safeJson),
+
   save: (body: {
     group: string;
     namespace: string;
