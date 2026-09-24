@@ -44,6 +44,10 @@ export interface ShSummary {
   /** Ortam kirilimi (2026-09-22): Production / Non-Production / Bilinmiyor */
   byEnv?: Record<string, ShEnvBlock>;
   hosts: { total: number; ok: number; info: number; warning: number; danger: number };
+  /** 2026-09-24: envanter (dbo.Inventory) kac sunucuda diyor / tarama kacinda gordu */
+  coverage?: Record<string, { inventory: number; scanned: number; scannedNotInInventory: number }>;
+  /** 2026-09-24: genel envanter disi sunucular (GBEVM / GBPRV) */
+  special?: { hosts: number; danger: number; warning: number; info: number; ok: number; byPrefix: Record<string, number>; jvms: number };
   init: { hosts: number; compliant: number; diffFiles: number; missingFiles?: number; refDiffFiles?: { file: string; hosts: number }[] };
   jvm: { total: number; running: number; stopped: number; autoOn: number; autoOff: number; autoUnknown: number; restartRequired: number; rebootRisk: number; retireCandidates: number; noLoad: number; mapped: number; fromInventory?: number; autoStartFromInventory?: number; mismatched?: number; invApps?: number };
   web: Record<string, { hosts: number; syntaxOk: number; syntaxFail: number; notRunning: number; vhosts: number; idleVhosts: number }>;

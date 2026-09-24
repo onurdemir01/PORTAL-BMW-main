@@ -252,6 +252,17 @@ function HostsTab({ onGoFindings }: { onGoFindings: (f: { area?: string; code?: 
                   <div className="text-2xl font-bold tabular-nums">{w.syntaxOk} <span className="text-sm font-normal" style={{ color: 'var(--text-muted)' }}>/ {w.hosts} sunucu OK</span></div>
                   <div className="mt-2"><Bar value={w.syntaxOk} total={w.hosts} color={w.syntaxFail ? SEV.danger.color : SEV.ok.color} /></div>
                   <div className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{w.syntaxFail} hatalı · {w.notRunning} çalışmıyor · {w.vhosts} vhost, {w.idleVhosts} yüksüz</div>
+                  {s.coverage?.[p] && (
+                    <div
+                      className="mt-1 text-[11px]"
+                      style={{ color: s.coverage[p].inventory > s.coverage[p].scanned ? 'var(--status-warning)' : 'var(--text-muted)' }}
+                      title="Envanter (dbo.Inventory) bu ürünü kaç sunucuda gösteriyor, tarama kaçında görebildi. Fark, ürünün yok olduğu anlamına gelmez - tarama yetki ya da yol farkı yüzünden görememiş olabilir."
+                    >
+                      Envanter: {nf(s.coverage[p].inventory)} sunucu · tarama {nf(s.coverage[p].scanned)} tanesinde gördü
+                      {s.coverage[p].inventory > s.coverage[p].scanned ? ` · ${nf(s.coverage[p].inventory - s.coverage[p].scanned)} eksik` : ''}
+                      {s.coverage[p].scannedNotInInventory ? ` · envanterde olmayan ${nf(s.coverage[p].scannedNotInInventory)}` : ''}
+                    </div>
+                  )}
                 </Kpi>
               );
             })}
