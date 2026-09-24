@@ -190,6 +190,11 @@ export function NginxAudit() {
     [data],
   );
 
+  // Uyum skoruna gore siralama (kullanici, 2026-09-24). Baslik tikladikca: kotuden iyiye ->
+  // iyiden kotuye -> kapali. VERISI OLMAYAN sunucu (compliance == null) HER IKI yonde de
+  // SONA yazilir: "—" bir skor degildir, listenin basinda durursa gercek en kotuyu gizler.
+  const [sortCompliance, setSortCompliance] = useState<'none' | 'asc' | 'desc'>('none');
+
   const rows = useMemo(() => {
     if (!data) return [];
     const needle = q.trim().toLowerCase();
@@ -202,10 +207,18 @@ export function NginxAudit() {
       if (issue && issue !== 'tfail' && issue !== 'compliance' && !(Number(h[issue]) > 0)) return false;
       return true;
     });
-    if (issue === 'compliance') list.sort((a, b) => (a.compliance ?? 101) - (b.compliance ?? 101) || a.host.localeCompare(b.host));
+    // Kullanicinin actigi siralama, suzgecin ortuk siralamasini EZER.
+    if (sortCompliance !== 'none') {
+      const yok = sortCompliance === 'asc' ? Infinity : -Infinity;
+      list.sort((a, b) => {
+        const x = a.compliance ?? yok;
+        const y = b.compliance ?? yok;
+        return (sortCompliance === 'asc' ? x - y : y - x) || a.host.localeCompare(b.host);
+      });
+    } else if (issue === 'compliance') list.sort((a, b) => (a.compliance ?? 101) - (b.compliance ?? 101) || a.host.localeCompare(b.host));
     else if (issue && issue !== 'tfail') list.sort((a, b) => Number(b[issue]) - Number(a[issue]) || a.host.localeCompare(b.host));
     return list;
-  }, [data, q, env, onlyProblem, issue]);
+  }, [data, q, env, onlyProblem, issue, sortCompliance]);
   const issueCounts = useMemo(() => {
     const hs = data?.hosts || [];
     return {
@@ -469,7 +482,19 @@ export function NginxAudit() {
             <tr>
               <Th>Sunucu</Th>
               <Th>Ortam</Th>
-              <Th align="right"><span title="Uyum oranı: denetlenen kontrollerin kaçı geçti — upstream resolve/keepalive/zone/kullanım, proxy hedefi, global ayarlar, kurulum dosyaları. nginx -T düşen sunucu %0; veri yoksa —">Uyum</span></Th>
+              <Th align="right">
+                <button
+                  type="button"
+                  onClick={() => setSortCompliance((s) => (s === 'none' ? 'asc' : s === 'asc' ? 'desc' : 'none'))}
+                  className="inline-flex items-center gap-1 font-semibold hover:underline"
+                  style={{ color: sortCompliance === 'none' ? 'inherit' : 'var(--accent)' }}
+                  title="Uyum oranı: denetlenen kontrollerin kaçı geçti — upstream resolve/keepalive/zone/kullanım, proxy hedefi, global ayarlar, kurulum dosyaları. nginx -T düşen sunucu %0; veri yoksa —. Tıklayınca sırala: önce en düşük, sonra en yüksek, sonra kapalı."
+                  aria-label="Uyum skoruna göre sırala"
+                >
+                  Uyum
+                  <span aria-hidden="true">{sortCompliance === 'asc' ? '↑' : sortCompliance === 'desc' ? '↓' : '↕'}</span>
+                </button>
+              </Th>
               <Th>nginx -T</Th>
               <Th align="right">Server</Th>
               <Th align="right">Location</Th>

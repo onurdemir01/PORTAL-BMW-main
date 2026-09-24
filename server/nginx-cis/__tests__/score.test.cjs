@@ -7,7 +7,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { scoreAll } = require('../score.cjs');
+const { scoreAll, HOST_ALL } = require('../score.cjs');
 const { ITEMS, BY_ID } = require('../catalog.cjs');
 
 const R = (host, item_id, status, observed = '', detail = '') => ({ host, item_id, status, observed, detail });
@@ -93,7 +93,10 @@ test('CIS6 uc/sekme/is sozlesmesi: rescan job, istisna/override uclari, sekme, p
   }
   assert.ok(/_cache = \{ at: 0, value: null \}/.test(idx), 'kural degisince onbellek dusmeli');
   const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
-  assert.ok(/\{tab === 'cis' && <CisTab/.test(page) && page.includes("label: 'CIS'"), 'CIS sekmesi');
+  // 2026-09-23'ten beri sekme icerigi GORUNURLUK KAPISIYLA birlikte ciziliyor:
+  // `{tab === 'cis' && canSee('tab:nginx:cis') && <CisTab ...`
+  assert.ok(/tab === 'cis' &&[^\n]*<CisTab/.test(page) && page.includes("label: 'CIS'"), 'CIS sekmesi');
+  assert.ok(/tab === 'cis' && canSee\('tab:nginx:cis'\)/.test(page), 'CIS sekmesi gorunurluk kapisina bagli degil');
   const setup = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
   for (const must of ["name: 'nginx_cis_exceptions'", "name: 'nginx_cis_overrides'", "key_name: 'nginx_cis_scan'"]) assert.ok(setup.includes(must), 'seed eksik: ' + must);
   const server = fs.readFileSync(path.join(__dirname, '..', '..', 'index.cjs'), 'utf8');
@@ -200,4 +203,35 @@ test('CIS9 kurum referansi: birim/harf farki gozetilmez, madde skora girer, olcu
   assert.ok(/Filoda ölçülen değerler/.test(tab), 'madde detayinda olculen degerler kutusu');
   assert.ok(/setRule\(\{ \.\.\.rule, value: o\.value \}\)/.test(tab), 'olculen deger tek tikla alana yazilmali');
   assert.ok(/sunucu geçiyor, \$\{row\.fail\} sunucu kalıyor/.test(tab), 'kayittan sonra kac sunucunun gectigi soylenmeli');
+});
+
+// CIS10 (2026-09-24, kullanici: "bir sunucuyu komple istisnaya alabilmek istiyorum").
+// item_id '*' + host: o sunucudaki HER madde istisna; skoru null olur ve filo ortalamasina,
+// "skor < %80" ve "tam puan" sayimlarina GIRMEZ. Ayri tablo yok - ayni istisna tablosunda
+// sentinel, boylece kural listesi / kaldirma / denetim kaydi tek yerde kalir.
+test('CIS10 sunucuyu komple istisnaya alma: skor null, ortalama disi, her madde istisna', () => {
+  const hosts = [{ host: 'A' }, { host: 'B' }];
+  const results = [
+    { host: 'A', item_id: '2.1.3', status: 'FAIL', observed: 'on' },
+    { host: 'B', item_id: '2.1.3', status: 'FAIL', observed: 'on' },
+  ];
+  const once = scoreAll({ results, hosts, exceptions: [], overrides: [] });
+  assert.equal(once.summary.under80, 2);
+
+  const r = scoreAll({ results, hosts, exceptions: [{ item_id: HOST_ALL, host: 'b', note: 'emekliye ayrildi' }], overrides: [] });
+  const B = r.hosts.find((h) => h.host === 'B');
+  const A = r.hosts.find((h) => h.host === 'A');
+
+  assert.equal(B.score, null, 'komple istisnali sunucunun skoru olmamali');
+  assert.equal(B.exceptedHost, true);
+  assert.equal(B.exceptionNote, 'emekliye ayrildi');
+  assert.equal(B.failed, 0, 'kalan madde sayilmamali');
+  assert.ok(B.items.every((i) => i.status === 'EXCEPTED'), 'her madde istisna olmali');
+  assert.match(B.items[0].source, /sunucu komple/);
+
+  // host adi kucuk harf girilse de tutar
+  assert.equal(A.score, 0, 'diger sunucu etkilenmemeli');
+  assert.equal(r.summary.under80, 1, 'komple istisnali sunucu "skor < %80" sayiminda olmamali');
+  assert.equal(r.summary.exceptedHosts, 1);
+  assert.equal(r.summary.hosts, 2, 'sunucu listeden kaybolmamali');
 });

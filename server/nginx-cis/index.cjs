@@ -124,7 +124,11 @@ function initNginxCis(app) {
       const itemId = String(req.body?.itemId || '').trim();
       const host = req.body?.host ? String(req.body.host).trim().toUpperCase() : null;
       const note = String(req.body?.note || '').trim().slice(0, 500);
-      if (!BY_ID.has(itemId)) return res.status(400).json({ ok: false, message: 'Bilinmeyen CIS maddesi.' });
+      // '*' = sunucuyu KOMPLE istisnaya al (2026-09-24). Yalniz sunucu ile birlikte anlamli:
+      // '*' + host yok, "tum filoyu istisnaya al" demek olurdu - skor tablosu tamamen bosalirdi.
+      const hostAll = itemId === '*';
+      if (!hostAll && !BY_ID.has(itemId)) return res.status(400).json({ ok: false, message: 'Bilinmeyen CIS maddesi.' });
+      if (hostAll && !host) return res.status(400).json({ ok: false, message: 'Sunucu komple istisna için sunucu adı zorunlu.' });
       if (host && !HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
       if (!note) return res.status(400).json({ ok: false, message: 'Not zorunlu — istisnanın gerekçesi kaybolmasın.' });
       const db = require('../db/index.cjs');

@@ -15,7 +15,7 @@ import { Modal } from '@/components/common/Modal';
 import { fmtDateTime } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 import { fmtNumber } from '@/utils/datetime';
-import { nginxCisApi, type NcCisOverview, type NcCisItemRow, type NcCisHostRow, type NcCisHostDetail, type NcCisCell, type NcCisOverride, type NcCisObservedValue } from '@/api/nginxCisApi';
+import { nginxCisApi, CIS_HOST_ALL, type NcCisOverview, type NcCisItemRow, type NcCisHostRow, type NcCisHostDetail, type NcCisCell, type NcCisOverride, type NcCisObservedValue } from '@/api/nginxCisApi';
 
 /** Madde numarasi dogal sirasi: 2.4.3 < 2.10.1 (metin sirasi bunu yanlis yapar). */
 function cmpItemId(a: string, b: string) {
@@ -69,7 +69,10 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
   // istisnaya al'a basabiliyorum." Dugmeler artik DURUM gosterir: istisna/kurum referansi varsa
   // "kaldir" / "degistir" olur, ayni kural ikinci kez eklenemez.
   const excById = useMemo(() => new Map((data?.exceptions || []).filter((e) => !e.host).map((e) => [e.item_id, e])), [data]);
-  const excByHostItem = useMemo(() => new Map((data?.exceptions || []).filter((e) => e.host).map((e) => [`${String(e.host).toUpperCase()}|${e.item_id}`, e])), [data]);
+  const excByHostItem = useMemo(() => new Map((data?.exceptions || []).filter((e) => e.host && e.item_id !== CIS_HOST_ALL).map((e) => [`${String(e.host).toUpperCase()}|${e.item_id}`, e])), [data]);
+  // Sunucuyu KOMPLE istisnaya alma (kullanici, 2026-09-24): o sunucudaki her madde istisna
+  // sayilir, skoru "—" olur ve filo ortalamasina girmez.
+  const excByHostAll = useMemo(() => new Map((data?.exceptions || []).filter((e) => e.host && e.item_id === CIS_HOST_ALL).map((e) => [String(e.host).toUpperCase(), e])), [data]);
   // Bir madde icin BIRDEN FAZLA kabul edilen deger olabilir (kullanici, 2026-09-22).
   const ovrByItem = useMemo(() => {
     const m = new Map<string, NcCisOverride[]>();
@@ -170,6 +173,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
           <Tile n={fmtNumber(s.under80)} l="%80 altı" color={s.under80 ? 'var(--status-danger)' : undefined} />
           <Tile n={fmtNumber(s.failCells)} l="kalan kontrol" color={s.failCells ? 'var(--status-warning)' : undefined} />
           <Tile n={fmtNumber(s.exceptedCells)} l="istisna hücre" />
+          {!!s.exceptedHosts && <Tile n={fmtNumber(s.exceptedHosts)} l="komple istisna sunucu" />}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
@@ -220,7 +224,14 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
             <tbody>
               {hosts.map((h: NcCisHostRow) => (
                 <tr key={h.host} className="border-t hover:bg-[var(--bg-elevated)] cursor-pointer" style={{ borderColor: 'var(--border-subtle)' }} onClick={() => openHost(h.host)}>
-                  <td className="px-3 py-1.5 font-mono font-semibold">{h.host.toLowerCase()}</td>
+                  <td className="px-3 py-1.5 font-mono font-semibold">
+                    {h.host.toLowerCase()}
+                    {excByHostAll.has(h.host.toUpperCase()) && (
+                      <span className="ml-1.5 font-sans font-normal" title={`Komple istisna — gerekçe: ${excByHostAll.get(h.host.toUpperCase())?.note || ''}`}>
+                        <Pill tone="info">komple istisna</Pill>
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-1.5" style={{ color: 'var(--text-secondary)' }}>{h.nginxVersion || '—'}</td>
                   <td className="px-3 py-1.5">{h.tState === 'ok' ? <Pill tone="success">geçerli</Pill> : h.tState === 'fail' ? <Pill tone="danger">HATA</Pill> : '—'}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums font-semibold" style={{ color: scoreColor(h.score) }}>{h.score == null ? '—' : `%${h.score}`}</td>
@@ -228,8 +239,11 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                   <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: h.failed ? 'var(--status-danger)' : undefined }}>{h.failed}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>{h.excepted}</td>
                   <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }} title={h.scannedAt ? fmtDateTime(h.scannedAt) : ''}>{h.scannedAt ? fmtDateTime(h.scannedAt) : h.scanDate || '—'}</td>
-                  <td className="px-3 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 py-1.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {isAdmin && <button onClick={() => rescan([h.host])} className="text-[11px] underline" style={{ color: 'var(--accent)' }} title="Yalnız bu sunucuda CIS taramasını yeniden koş">tazele</button>}
+                    {isAdmin && (excByHostAll.has(h.host.toUpperCase())
+                      ? <button onClick={() => dropRule('exception', excByHostAll.get(h.host.toUpperCase())!.id)} disabled={busy} className="ml-2 text-[11px] underline" style={{ color: 'var(--status-danger)' }} title={`İstisna gerekçesi: ${excByHostAll.get(h.host.toUpperCase())?.note}`}>istisnadan çıkar</button>
+                      : <button onClick={() => setRule({ kind: 'exception', itemId: CIS_HOST_ALL, title: `${h.host.toLowerCase()} — tüm maddeler`, host: h.host, value: '', note: '' })} disabled={busy} className="ml-2 text-[11px] underline" style={{ color: 'var(--text-secondary)' }} title="Bu sunucudaki TÜM maddeler istisna sayılır; skoru “—” olur ve filo ortalamasına girmez">komple istisnaya al</button>)}
                   </td>
                 </tr>
               ))}
@@ -273,7 +287,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
 
       {(data?.exceptions?.length || data?.overrides?.length) ? (
         <div className="grid gap-3 md:grid-cols-2">
-          <RuleList title={`İstisnalar (${data?.exceptions.length || 0})`} desc="Skor paydasından düşer; “kaldır” dediğinizde madde yeniden sayılmaya başlar." rows={(data?.exceptions || []).map((e) => ({ id: e.id, a: e.item_id, b: e.host || 'tüm filo', note: e.note, by: e.created_by }))} isAdmin={isAdmin} busy={busy} onDrop={(id) => dropRule('exception', id)} />
+          <RuleList title={`İstisnalar (${data?.exceptions.length || 0})`} desc="Skor paydasından düşer; “kaldır” dediğinizde madde yeniden sayılmaya başlar." rows={(data?.exceptions || []).map((e) => ({ id: e.id, a: e.item_id === CIS_HOST_ALL ? 'tüm maddeler' : e.item_id, b: e.host || 'tüm filo', note: e.note, by: e.created_by }))} isAdmin={isAdmin} busy={busy} onDrop={(id) => dropRule('exception', id)} />
           <RuleList title={`Kabul edilen değerler (${data?.overrides.length || 0})`} desc="CIS önerisi yerine bu değerler beklenir; bir maddede birden fazla değer olabilir." rows={(data?.overrides || []).map((o) => ({ id: o.id, a: o.item_id, b: o.expected, note: o.note, by: o.created_by }))} isAdmin={isAdmin} busy={busy} onDrop={(id) => dropRule('override', id)} />
         </div>
       ) : null}

@@ -20,11 +20,20 @@ const U = (s) => String(s || '').trim().toUpperCase();
  * exceptions: [{item_id, host|null, note}]   host null = tum filo
  * overrides:  [{item_id, expected, note}]
  */
+/** Sunucuyu KOMPLE istisnaya alan sentinel item_id (2026-09-24). */
+const HOST_ALL = '*';
+
 function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } = {}) {
   const excGlobal = new Map();
   const excHost = new Map(); // HOST|item -> note
+  // SUNUCU KOMPLE ISTISNA (kullanici, 2026-09-24): item_id '*' + host. O sunucudaki HER madde
+  // istisna sayilir, sunucunun skoru null olur ve filo ortalamasina/altinda-80 sayimina
+  // GIRMEZ. Ayri bir tablo acmak yerine ayni tablodaki sentinel: kural listesi, denetim kaydi
+  // ve "kaldir" akisi tek yerde kalsin.
+  const excHostAll = new Map(); // HOST -> note
   for (const e of exceptions) {
-    if (e.host) excHost.set(`${U(e.host)}|${e.item_id}`, e.note || '');
+    if (e.host && String(e.item_id) === HOST_ALL) excHostAll.set(U(e.host), e.note || '');
+    else if (e.host) excHost.set(`${U(e.host)}|${e.item_id}`, e.note || '');
     else excGlobal.set(String(e.item_id), e.note || '');
   }
   // KURUM REFERANSLARI (2026-09-22): bir madde icin BIRDEN FAZLA kabul edilen deger olabilir
@@ -60,14 +69,19 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     const rs = resByHost.get(h.host) || new Map();
     for (const item of ITEMS) {
       const r = rs.get(item.id);
-      const exNote = excHost.has(`${h.host}|${item.id}`) ? excHost.get(`${h.host}|${item.id}`) : (excGlobal.has(item.id) ? excGlobal.get(item.id) : null);
-      const exScope = excHost.has(`${h.host}|${item.id}`) ? 'host' : (excGlobal.has(item.id) ? 'global' : null);
+      const exNote = excHostAll.has(h.host) ? excHostAll.get(h.host)
+        : (excHost.has(`${h.host}|${item.id}`) ? excHost.get(`${h.host}|${item.id}`) : (excGlobal.has(item.id) ? excGlobal.get(item.id) : null));
+      const exScope = excHostAll.has(h.host) ? 'hostAll'
+        : (excHost.has(`${h.host}|${item.id}`) ? 'host' : (excGlobal.has(item.id) ? 'global' : null));
       const o = ovr.get(item.id) || null;
       const observed = r ? (r.observed == null ? '' : String(r.observed)) : '';
       let status; let source;
       // ISTISNA HER SEYDEN ONCE (2026-09-22): madde istisnaya alindiysa tarama verisi olmasa da
       // "istisna" gorunur; boylece madde detayinda filo genelinde tek bir durum okunur.
-      if (exScope) { status = 'EXCEPTED'; source = exScope === 'host' ? 'istisna (bu sunucu)' : 'istisna (tüm filo)'; }
+      if (exScope) {
+        status = 'EXCEPTED';
+        source = exScope === 'hostAll' ? 'istisna (sunucu komple)' : exScope === 'host' ? 'istisna (bu sunucu)' : 'istisna (tüm filo)';
+      }
       else if (!r) { status = 'NODATA'; source = 'tarama yok'; }
       else if (o) { status = o.values.some((v) => sameVal(observed, v)) ? 'PASS' : 'FAIL'; source = o.values.length > 1 ? `kurum referansı (${o.values.length} kabul edilen değer)` : 'kurum referansı'; }
       else { status = U(r.status) || 'NODATA'; source = 'CIS'; }
@@ -91,6 +105,8 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
         exceptionNote: exNote, counts, fix: item.fix,
       });
     }
+    h.exceptedHost = excHostAll.has(h.host);
+    h.exceptionNote = h.exceptedHost ? (excHostAll.get(h.host) || '') : null;
     const tot = h.passed + h.failed;
     h.score = tot > 0 ? Math.round((h.passed / tot) * 100) : null;
   }
@@ -129,6 +145,9 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
   const scored = list.filter((h) => h.score != null);
   const summary = {
     hosts: list.length,
+    // Komple istisnaya alinan sunucular: ortalamaya girmezler (skorlari null), ama kac tane
+    // olduklari gorunur - sessizce kaybolmasinlar.
+    exceptedHosts: list.filter((h) => h.exceptedHost).length,
     scanDate: list.reduce((a, h) => (h.scanDate && (!a || h.scanDate > a) ? h.scanDate : a), null),
     scannedAt: list.reduce((a, h) => (h.scannedAt && (!a || h.scannedAt > a) ? h.scannedAt : a), null),
     avgScore: scored.length ? Math.round(scored.reduce((a, h) => a + h.score, 0) / scored.length) : null,
@@ -142,4 +161,4 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
   return { hosts: list, perItem, summary };
 }
 
-module.exports = { scoreAll };
+module.exports = { scoreAll, HOST_ALL };
