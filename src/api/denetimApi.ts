@@ -658,6 +658,12 @@ export interface InitScriptsResult {
   message?: string;
   /** Deployment Scripts: son tarama gunu (uzun tablo scan_date) */
   scanDate?: string | null;
+  /**
+   * 2026-09-24: GBEVM / GBPRV onekli sunucular genel envanterden AYRI raporlanir.
+   * Cogunluk genel envanterden hesaplanir, bu sunucular AYNI cogunluga gore olculur.
+   * Ayni ayrim Server Hub'da da var.
+   */
+  special?: Omit<InitScriptsResult, 'root' | 'roots' | 'missingColumns' | 'ok' | 'special'> | null;
 }
 
 export interface EnvanterDistRow {

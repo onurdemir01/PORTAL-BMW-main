@@ -1253,30 +1253,40 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
     await load(root);
   }, [root, load]);
 
+  // GBEVM* / GBPRV* genel envanterden AYRI (kullanici, 2026-09-24; ayni ayrim Server Hub'da).
+  // Cogunluk sunucuda GENEL envanterden hesaplanir; bu sunucular AYNI cogunluga gore olculur,
+  // yalnizca ayri listelenir. Ucta `special` yoksa (eski yanit / hic ozel sunucu yok) secim
+  // gorunmez ve ekran eskisi gibi calisir.
+  const [cls, setCls] = useState<'genel' | 'ozel'>('genel');
+  const shown = useMemo(
+    () => (cls === 'ozel' && data?.special ? ({ ...data, ...data.special } as InitScriptsResult) : data),
+    [data, cls],
+  );
+
   // startCustom.sh (sunucuya ozel) sutunu yalniz Init'te var
-  const hasCustomCol = !!data?.scripts.some((sc) => sc.perServer);
+  const hasCustomCol = !!shown?.scripts.some((sc) => sc.perServer);
 
   const scripts = useMemo(() => {
-    if (!data) return [];
+    if (!shown) return [];
     const needle = q.trim().toLowerCase();
-    return data.scripts.filter((sc) => {
+    return shown.scripts.filter((sc) => {
       if (onlyDiff && !sc.perServer && sc.variantCount <= 1 && sc.missing === 0) return false;
       if (needle && !sc.label.toLowerCase().includes(needle)) return false;
       return true;
     });
-  }, [data, q, onlyDiff]);
+  }, [shown, q, onlyDiff]);
 
   const hostRows = useMemo(() => {
-    if (!data) return [];
+    if (!shown) return [];
     const needle = q.trim().toLowerCase();
-    return data.hostRows
+    return shown.hostRows
       .filter((h) => {
         if (onlyDiff && h.deviationCount === 0 && h.missingCount === 0) return false;
         if (needle && !h.host.toLowerCase().includes(needle)) return false;
         return true;
       })
       .sort((a, b) => b.deviationCount - a.deviationCount || a.host.localeCompare(b.host));
-  }, [data, q, onlyDiff]);
+  }, [shown, q, onlyDiff]);
 
   if (loading && !data)
     return <LoadingLogo />;
@@ -1297,6 +1307,34 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
             </option>
           ))}
         </Select>
+
+        {data?.special && (
+          <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)]">
+            {(
+              [
+                { id: 'genel', label: 'Genel envanter', n: data.hosts },
+                { id: 'ozel', label: 'GBEVM / GBPRV', n: data.special.hosts },
+              ] as const
+            ).map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setCls(c.id)}
+                title={
+                  c.id === 'ozel'
+                    ? 'Genel envanterden ayrı tutulur: çoğunluk bu sunuculardan hesaplanmaz, ama aynı çoğunluğa göre ölçülürler'
+                    : 'Çoğunluk yalnızca bu sunuculardan hesaplanır'
+                }
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  cls === c.id
+                    ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {c.label} · {c.n}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)]">
           {(
@@ -1405,10 +1443,10 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
 
       {data && (
         <div className="grid gap-3 md:grid-cols-4">
-          <Stat n={data.hosts} l="sunucu" />
-          <Stat n={data.identicalHosts} l="çoğunlukla birebir aynı" tone="ok" />
-          <Stat n={data.hosts - data.identicalHosts} l="en az bir script'te farklı" tone="warn" />
-          <Stat n={data.totalVariants} l="toplam farklı sürüm" />
+          <Stat n={shown!.hosts} l="sunucu" />
+          <Stat n={shown!.identicalHosts} l="çoğunlukla birebir aynı" tone="ok" />
+          <Stat n={shown!.hosts - shown!.identicalHosts} l="en az bir script'te farklı" tone="warn" />
+          <Stat n={shown!.totalVariants} l="toplam farklı sürüm" />
         </div>
       )}
 

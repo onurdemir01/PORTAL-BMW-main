@@ -21,8 +21,10 @@ test('DS1 sunucu: /deploy-scripts ucu, uzun tablodan pivot, tab kapisi "deploy"'
   assert.match(src, /WHERE root = @root/);
   assert.match(src, /\[\{ name: 'root', type: sql\.NVarChar, value: root \}\]/);
   // Init ile ortak hesap
-  assert.match(src, /function scriptDeviationReport\(raw, scripts\)/);
-  assert.equal((src.match(/scriptDeviationReport\(raw, scripts\)/g) || []).length, 3, 'tanim + 2 kullanim');
+  // 2026-09-24: ucuncu parametre (majorityOverride) eklendi - GBEVM/GBPRV sunuculari GENEL
+  // envanterin cogunluguna gore olculur. Init ve Deployment ekranlari ayni fonksiyonu paylasir.
+  assert.match(src, /function scriptDeviationReport\(raw, scripts, majorityOverride\)/);
+  assert.equal((src.match(/scriptDeviationReport\(/g) || []).length, 4, 'tanim + init(genel) + init(GBEVM/GBPRV) + deploy');
 });
 
 test('DS2 istemci: sekme, tip, liste, yardim bolumu, API', () => {

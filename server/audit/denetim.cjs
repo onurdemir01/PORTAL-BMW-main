@@ -1618,7 +1618,22 @@ function initDenetim(app) {
 
   // Ortak hesap (Init Script + Deployment Scripts, 2026-09-18): raw = [{host, <key>: sha}],
   // scripts = [{key,label,perServer?}] -> script bazli surum dagilimi + sunucu bazli sapma.
-  function scriptDeviationReport(raw, scripts) {
+  /**
+   * GENEL ENVANTER DISI SUNUCULAR (kullanici, 2026-09-24): GBEVM* ve GBPRV* filo
+   * cogunlugunu bozuyor. Cogunluk YALNIZCA genel envanterden hesaplanir; bu sunucular
+   * ayni cogunluga gore degerlendirilip AYRI raporlanir. Server Hub'da da ayni ayrim var
+   * (server/server-hub/assess.cjs SPECIAL_HOST_RE) - iki ekran ayni olcutu kullansin.
+   */
+  const SPECIAL_HOST_RE = /^(GBEVM|GBPRV)/i;
+  const isSpecialHost = (h) => SPECIAL_HOST_RE.test(String(h || '').trim());
+
+  /**
+   * @param {object[]} raw satirlar
+   * @param {object[]} scripts script tanimlari
+   * @param {Map<string,string>} [majorityOverride] cogunluk disaridan verilirse (ozel
+   *   sunucular GENEL envanterin cogunluguna gore olculur; kendi aralarinda degil)
+   */
+  function scriptDeviationReport(raw, scripts, majorityOverride) {
     const hostCount = raw.length;
     const scriptStats = scripts.map((sc) => {
       const byHash = new Map();
@@ -1651,7 +1666,7 @@ function initDenetim(app) {
         variants,
       };
     });
-    const majorityOf = new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
+    const majorityOf = majorityOverride || new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
     const hostRows = raw.map((r) => {
       const deviations = [];
       const missing = [];
@@ -1821,13 +1836,23 @@ function initDenetim(app) {
       );
       const raw = (rowsRes.recordset || []).filter((r) => String(r.host || '').trim());
 
-      const { scriptStats, hostRows } = scriptDeviationReport(raw, scripts);
+      // Cogunluk GENEL envanterden; GBEVM*/GBPRV* ayni cogunluga gore olculup ayri raporlanir.
+      const genelRaw = raw.filter((r) => !isSpecialHost(r.host));
+      const ozelRaw = raw.filter((r) => isSpecialHost(r.host));
+      const { scriptStats, hostRows } = scriptDeviationReport(genelRaw, scripts);
+      let special = null;
+      if (ozelRaw.length) {
+        const majorityOf = new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
+        const ozel = scriptDeviationReport(ozelRaw, scripts, majorityOf);
+        special = scriptReportSummary(scripts, ozel.scriptStats, ozel.hostRows);
+      }
       res.json({
         ok: true,
         root,
         roots: Object.keys(INIT_TABLES),
         missingColumns,
         ...scriptReportSummary(scripts, scriptStats, hostRows),
+        special,
       });
     } catch (err) {
       res
