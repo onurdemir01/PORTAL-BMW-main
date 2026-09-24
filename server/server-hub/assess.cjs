@@ -15,6 +15,15 @@
 const { webHostOf } = require('../audit/web-app.cjs');
 
 const SEV = { ok: 0, info: 1, warning: 2, danger: 3 };
+
+/**
+ * GENEL ENVANTER DISI SUNUCULAR (kullanici, 2026-09-24): GBEVM* ve GBPRV* filo
+ * ortalamalarini bozuyor (farkli kurulum, farkli omur). Taranmaya devam ederler ve
+ * bulgulari durur; yalnizca OZET/ORTAM kirilimi ve varsayilan liste GENEL envanteri
+ * gosterir, bunlar AYRI listelenir. Ayni ayrim Denetim > Init Scripts icin de gecerli.
+ */
+const SPECIAL_HOST_RE = /^(GBEVM|GBPRV)/i;
+const hostClassOf = (host) => (SPECIAL_HOST_RE.test(String(host || '').trim()) ? 'ozel' : 'genel');
 const L = (s) => String(s || '').trim().toLowerCase();
 const U = (s) => String(s || '').trim().toUpperCase();
 // IP'ler kisaltilmaz (10.1.1.5 -> '10' olurdu); yalniz ad ise ilk etiket
@@ -240,6 +249,7 @@ function assess(data) {
     // scan cost
     if (h.cpuS != null && h.cpuS > 10) add('info', 'scan', 'SCAN_COST', `tarama ${h.cpuS.toFixed(1)} sn CPU harcadı`);
 
+    h.hostClass = hostClassOf(h.host);
     const worst = F.reduce((a, f) => Math.max(a, SEV[f.severity]), 0);
     h.status = Object.keys(SEV).find((k) => SEV[k] === worst);
     h.counts = { danger: F.filter((f) => f.severity === 'danger').length, warning: F.filter((f) => f.severity === 'warning').length, info: F.filter((f) => f.severity === 'info').length };
@@ -248,12 +258,17 @@ function assess(data) {
   hosts.sort((a, b) => SEV[b.status] - SEV[a.status] || a.host.localeCompare(b.host));
 
   // ── Ozet ───────────────────────────────────────────────────────────────────────
-  const jvms = hosts.flatMap((h) => h.jvms);
-  const web = hosts.flatMap((h) => h.web);
+  // Ozet ve ortam kirilimi GENEL envanter uzerinden hesaplanir; GBEVM*/GBPRV* ayri blokta
+  // (kullanici, 2026-09-24). `hosts` yine HEPSINI tasir - ekran sinifa gore suzer, sunucu
+  // ayrinti sayfasi ve "simdi tara" ozel sunucularda da calisir.
+  const special = hosts.filter((h) => h.hostClass === 'ozel');
+  const genel = hosts.filter((h) => h.hostClass !== 'ozel');
+  const jvms = genel.flatMap((h) => h.jvms);
+  const web = genel.flatMap((h) => h.web);
   const envGroups = ['Production', 'Non-Production', 'Bilinmiyor'];
   const byEnv = {};
   for (const g of envGroups) {
-    const hs = hosts.filter((h) => h.envGroup === g);
+    const hs = genel.filter((h) => h.envGroup === g);
     if (!hs.length) continue;
     const js = hs.flatMap((h) => h.jvms);
     byEnv[g] = {
@@ -273,12 +288,12 @@ function assess(data) {
   }
   const summary = {
     byEnv,
-    hosts: { total: hosts.length, ok: 0, info: 0, warning: 0, danger: 0 },
+    hosts: { total: genel.length, ok: 0, info: 0, warning: 0, danger: 0 },
     init: {
-      hosts: hosts.filter((h) => h.init.length).length,
-      compliant: hosts.filter((h) => h.init.length && h.init.every((i) => i.status === 'OK')).length,
-      diffFiles: hosts.reduce((a, h) => a + h.init.filter((i) => i.status === 'DIFF').length, 0),
-      missingFiles: hosts.reduce((a, h) => a + h.init.filter((i) => i.status === 'MISSING').length, 0),
+      hosts: genel.filter((h) => h.init.length).length,
+      compliant: genel.filter((h) => h.init.length && h.init.every((i) => i.status === 'OK')).length,
+      diffFiles: genel.reduce((a, h) => a + h.init.filter((i) => i.status === 'DIFF').length, 0),
+      missingFiles: genel.reduce((a, h) => a + h.init.filter((i) => i.status === 'MISSING').length, 0),
       // repo referansi ile filo cogunlugu ayrisan dosyalar (repo guncel degil ya da dagitim eksik)
       refDiffFiles: [...majorityOf.entries()].filter(([, m]) => { const any = [...byHost.values()].flatMap((h) => h.init).find((i) => i.sha === m.sha); return any && any.refStatus !== 'OK'; }).map(([k, m]) => ({ file: k, hosts: m.count })),
     },
@@ -286,28 +301,38 @@ function assess(data) {
       total: jvms.length, running: jvms.filter((j) => j.running).length, stopped: jvms.filter((j) => !j.running).length,
       autoOn: jvms.filter((j) => j.autoStart === 'true').length, autoOff: jvms.filter((j) => j.autoStart === 'false').length, autoUnknown: jvms.filter((j) => j.autoStart === 'unknown').length,
       restartRequired: jvms.filter((j) => j.running && /required/.test(j.serverState)).length,
-      rebootRisk: hosts.reduce((a, h) => a + h.findings.filter((f) => f.code === 'REBOOT_RISK').length, 0),
-      retireCandidates: hosts.reduce((a, h) => a + h.findings.filter((f) => f.code === 'RETIRE_CANDIDATE').length, 0),
-      noLoad: hosts.reduce((a, h) => a + h.findings.filter((f) => f.code === 'NO_LOAD').length, 0),
+      rebootRisk: genel.reduce((a, h) => a + h.findings.filter((f) => f.code === 'REBOOT_RISK').length, 0),
+      retireCandidates: genel.reduce((a, h) => a + h.findings.filter((f) => f.code === 'RETIRE_CANDIDATE').length, 0),
+      noLoad: genel.reduce((a, h) => a + h.findings.filter((f) => f.code === 'NO_LOAD').length, 0),
       mapped: jvms.filter((j) => j.req7d != null).length,
       fromInventory: jvms.filter((j) => j.source === 'envanter').length,
       autoStartFromInventory: jvms.filter((j) => j.autoStartSource === 'envanter').length,
       mismatched: jvms.filter((j) => (j.mismatch || []).length > 0).length,
-      invApps: hosts.reduce((a, h) => a + (h.invApps || 0), 0),
+      invApps: genel.reduce((a, h) => a + (h.invApps || 0), 0),
     },
     web: {},
-    ips: { total: hosts.reduce((a, h) => a + h.ips.length, 0), unused: hosts.reduce((a, h) => a + h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length, 0) },
-    ssh: { hosts: hosts.filter((h) => h.sshd).length, lowMaxSessions: hosts.filter((h) => h.sshd && h.sshd.maxSessions != null && h.sshd.maxSessions <= 10).length, near: hosts.reduce((a, h) => a + h.findings.filter((f) => f.code === 'SSH_SESSIONS_NEAR').length, 0) },
+    ips: { total: genel.reduce((a, h) => a + h.ips.length, 0), unused: genel.reduce((a, h) => a + h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length, 0) },
+    ssh: { hosts: genel.filter((h) => h.sshd).length, lowMaxSessions: genel.filter((h) => h.sshd && h.sshd.maxSessions != null && h.sshd.maxSessions <= 10).length, near: genel.reduce((a, h) => a + h.findings.filter((f) => f.code === 'SSH_SESSIONS_NEAR').length, 0) },
     scan: { avgCpuS: null, maxCpuS: null, maxCpuHost: null },
+    // Genel envanter DISI sunucular (GBEVM*/GBPRV*) - ayri listelenir, ozete karismaz
+    special: {
+      hosts: special.length,
+      danger: special.filter((h) => h.status === 'danger').length,
+      warning: special.filter((h) => h.status === 'warning').length,
+      info: special.filter((h) => h.status === 'info').length,
+      ok: special.filter((h) => h.status === 'ok').length,
+      byPrefix: ['GBEVM', 'GBPRV'].reduce((a, pfx) => { a[pfx] = special.filter((h) => U(h.host).startsWith(pfx)).length; return a; }, {}),
+      jvms: special.reduce((a, h) => a + h.jvms.length, 0),
+    },
   };
-  for (const h of hosts) summary.hosts[h.status] += 1;
+  for (const h of genel) summary.hosts[h.status] += 1;
   for (const p of ['IHS', 'RHA', 'NGINX']) {
     const rows = web.filter((w) => w.product === p);
     summary.web[p] = { hosts: rows.length, syntaxOk: rows.filter((w) => w.syntax === 'OK').length, syntaxFail: rows.filter((w) => w.syntax === 'FAIL').length, notRunning: rows.filter((w) => !w.running).length,
-      vhosts: hosts.reduce((a, h) => a + h.vhosts.filter((v) => v.product === p).length, 0),
-      idleVhosts: hosts.reduce((a, h) => a + h.vhosts.filter((v) => v.product === p && v.req7d === 0).length, 0) };
+      vhosts: genel.reduce((a, h) => a + h.vhosts.filter((v) => v.product === p).length, 0),
+      idleVhosts: genel.reduce((a, h) => a + h.vhosts.filter((v) => v.product === p && v.req7d === 0).length, 0) };
   }
-  const cpu = hosts.filter((h) => h.cpuS != null);
+  const cpu = genel.filter((h) => h.cpuS != null);
   if (cpu.length) {
     summary.scan.avgCpuS = Math.round((cpu.reduce((a, h) => a + h.cpuS, 0) / cpu.length) * 10) / 10;
     const mx = cpu.reduce((a, h) => (h.cpuS > a.cpuS ? h : a), cpu[0]);
@@ -320,9 +345,9 @@ function assess(data) {
 /** Tum bulgular tek listede (Bulgular sekmesi / CSV): host + urunler + bulgu. */
 function flattenFindings(hosts) {
   const out = [];
-  for (const h of hosts) for (const f of h.findings) out.push({ host: h.host, products: h.products, env: h.env, envGroup: h.envGroup, scanDate: h.scanDate, severity: f.severity, area: f.area, code: f.code, text: f.text, fixable: !!f.fix });
+  for (const h of hosts) for (const f of h.findings) out.push({ host: h.host, hostClass: h.hostClass || 'genel', products: h.products, env: h.env, envGroup: h.envGroup, scanDate: h.scanDate, severity: f.severity, area: f.area, code: f.code, text: f.text, fixable: !!f.fix });
   out.sort((a, b) => SEV[b.severity] - SEV[a.severity] || a.area.localeCompare(b.area) || a.host.localeCompare(b.host));
   return out;
 }
 
-module.exports = { assess, parseTargets, SEV, flattenFindings };
+module.exports = { assess, parseTargets, SEV, flattenFindings, hostClassOf, SPECIAL_HOST_RE };

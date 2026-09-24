@@ -131,6 +131,9 @@ function HostsTab({ onGoFindings }: { onGoFindings: (f: { area?: string; code?: 
   const [q, setQ] = useState('');
   const [sev, setSev] = useState<'all' | ShSeverity>('all');
   const [product, setProduct] = useState('all');
+  // GBEVM*/GBPRV* genel envanterden ayri (kullanici, 2026-09-24): ozet ve varsayilan liste
+  // GENEL envanteri gosterir, bu sunucular kendi sekmelerinde listelenir.
+  const [cls, setCls] = useState<'genel' | 'ozel'>('genel');
   const [openHost, setOpenHost] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -170,8 +173,12 @@ function HostsTab({ onGoFindings }: { onGoFindings: (f: { area?: string; code?: 
   const products = useMemo(() => { const s = new Set<string>(); for (const h of data?.hosts || []) h.products.forEach((p) => s.add(p)); return [...s].sort(); }, [data]);
   const rows = useMemo(() => {
     const needle = q.trim().toUpperCase();
-    return (data?.hosts || []).filter((h) => (sev === 'all' || h.status === sev) && (product === 'all' || h.products.includes(product)) && (!needle || h.host.includes(needle) || (h.topFinding || '').toUpperCase().includes(needle)));
-  }, [data, q, sev, product]);
+    return (data?.hosts || []).filter((h) => (h.hostClass || 'genel') === cls && (sev === 'all' || h.status === sev) && (product === 'all' || h.products.includes(product)) && (!needle || h.host.includes(needle) || (h.topFinding || '').toUpperCase().includes(needle)));
+  }, [data, q, sev, product, cls]);
+  const clsCounts = useMemo(() => {
+    const all = data?.hosts || [];
+    return { genel: all.filter((h) => (h.hostClass || 'genel') === 'genel').length, ozel: all.filter((h) => h.hostClass === 'ozel').length };
+  }, [data]);
 
   if (loading && !data) return <LoadingLogo compact />;
   if (err) return <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>;
@@ -285,6 +292,13 @@ function HostsTab({ onGoFindings }: { onGoFindings: (f: { area?: string; code?: 
         </>
       )}
 
+      {cls === 'ozel' && (
+        <div className="rounded-xl border px-4 py-2.5 text-[12px]" style={{ borderColor: 'var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+          GBEVM* ve GBPRV* sunucuları <b>genel envanterden ayrı</b> tutulur: yukarıdaki özet ve ortam
+          kırılımı bunları saymaz. Taranırlar, bulguları ve “şimdi tara / düzelt” işlemleri çalışır.
+        </div>
+      )}
+
       {/* ── Sunucu listesi ── */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
@@ -302,7 +316,14 @@ function HostsTab({ onGoFindings }: { onGoFindings: (f: { area?: string; code?: 
           <option value="all">tüm ürünler</option>
           {products.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
-        <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>{nf(rows.length)} / {nf(data.hosts.length)} sunucu</span>
+        <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
+          {([{ id: 'genel', label: 'Genel envanter' }, { id: 'ozel', label: 'GBEVM / GBPRV' }] as const).map((c) => (
+            <button key={c.id} onClick={() => setCls(c.id)} className="px-2.5 py-1 text-[11px] font-medium rounded-md" style={{ background: cls === c.id ? 'var(--bg-surface)' : 'transparent', color: cls === c.id ? 'var(--text-primary)' : 'var(--text-muted)' }} title={c.id === 'ozel' ? 'Genel envanterden ayrı tutulur: özet ve ortam kırılımı bu sunucuları saymaz' : 'Özet ve ortam kırılımı bu sunuculardan hesaplanır'}>
+              {c.label} · {nf(clsCounts[c.id])}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>{nf(rows.length)} / {nf(cls === 'ozel' ? clsCounts.ozel : clsCounts.genel)} sunucu</span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => {
@@ -582,6 +603,7 @@ export function FindingsTab({ initial }: { initial?: { area?: string; code?: str
   const [sev, setSev] = useState<'all' | ShSeverity>('all');
   const [product, setProduct] = useState<string>(initial?.product || 'all');
   const [envGroup, setEnvGroup] = useState<string>(initial?.envGroup || 'all');
+  const [fCls, setFCls] = useState<'genel' | 'ozel' | 'all'>('genel');
   const load = useCallback(async (fresh = false) => { setLoading(true); try { const r = await serverHubApi.findings(fresh); if (r.ok) setData(r); else toast.error(r.message || 'Bulgular alınamadı.'); } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); } }, []);
   useAsyncEffect(async () => { await load(); }, [load]);
   const all = data?.findings || [];
@@ -591,8 +613,9 @@ export function FindingsTab({ initial }: { initial?: { area?: string; code?: str
     const n = q.trim().toLowerCase();
     return all.filter((f) => (area === 'all' || f.area === area) && (code === 'all' || f.code === code) && (sev === 'all' || f.severity === sev)
       && (product === 'all' || f.products.includes(product)) && (envGroup === 'all' || (f.envGroup || 'Bilinmiyor') === envGroup)
+      && (fCls === 'all' || (f.hostClass || 'genel') === fCls)
       && (!n || f.host.toLowerCase().includes(n) || f.text.toLowerCase().includes(n)));
-  }, [all, q, area, code, sev, product, envGroup]);
+  }, [all, q, area, code, sev, product, envGroup, fCls]);
   const byCode = useMemo(() => { const m = new Map<string, number>(); for (const f of rows) m.set(f.code, (m.get(f.code) || 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [rows]);
   const csv = () => {
     const head = ['sunucu', 'ortam', 'urunler', 'onem', 'alan', 'kod', 'bulgu', 'duzeltilebilir', 'tarama'];
@@ -620,6 +643,11 @@ export function FindingsTab({ initial }: { initial?: { area?: string; code?: str
         <select value={product} onChange={(e) => setProduct(e.target.value)} className={sel} style={selStyle} aria-label="ürün">
           <option value="all">tüm ürünler</option>
           {products.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={fCls} onChange={(e) => setFCls(e.target.value as 'genel' | 'ozel' | 'all')} className={sel} style={selStyle} aria-label="envanter sınıfı">
+          <option value="genel">genel envanter</option>
+          <option value="ozel">GBEVM / GBPRV</option>
+          <option value="all">hepsi</option>
         </select>
         <select value={envGroup} onChange={(e) => setEnvGroup(e.target.value)} className={sel} style={selStyle} aria-label="ortam">
           <option value="all">tüm ortamlar</option>

@@ -8,6 +8,8 @@ export interface ShFix { action: string; gen?: number; jvm?: string; product?: s
 export interface ShFinding { severity: Exclude<ShSeverity, 'ok'>; area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'ssh' | 'scan'; code: string; text: string; fix: ShFix | null }
 export interface ShHostRow {
   env?: string; envGroup?: string;
+  /** 2026-09-24: 'ozel' = GBEVM / GBPRV onekli sunucular (genel envanterden ayri listelenir) */
+  hostClass?: 'genel' | 'ozel';
   host: string; scanDate: string | null; products: string[]; status: ShSeverity;
   counts: { danger: number; warning: number; info: number };
   wallS: number | null; cpuS: number | null;
@@ -50,7 +52,7 @@ export interface ShSummary {
   scan: { avgCpuS: number | null; maxCpuS: number | null; maxCpuHost: string | null };
 }
 export interface ShOverview { ok: boolean; message?: string; tableMissing: boolean; latestScan: string | null; summary: ShSummary | null; hosts: ShHostRow[] }
-export interface ShFindingRow { host: string; products: string[]; env?: string; envGroup?: string; scanDate: string | null; severity: Exclude<ShSeverity, 'ok'>; area: ShFinding['area']; code: string; text: string; fixable: boolean }
+export interface ShFindingRow { host: string; hostClass?: 'genel' | 'ozel'; products: string[]; env?: string; envGroup?: string; scanDate: string | null; severity: Exclude<ShSeverity, 'ok'>; area: ShFinding['area']; code: string; text: string; fixable: boolean }
 export interface ShFindingsResult { ok: boolean; message?: string; tableMissing: boolean; latestScan: string | null; findings: ShFindingRow[] }
 export interface ShLaunch { ok: boolean; message?: string; jobId: number | null; status: string | null; awxServerId: number; planOnly?: boolean }
 export interface ShJobStatus { ok: boolean; status: string; output: string; result?: unknown; message?: string }

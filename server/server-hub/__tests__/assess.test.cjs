@@ -203,3 +203,31 @@ test('SH12: ortam kirilimi (Production / Non-Production) ve kart -> bulgu gecisi
   assert.ok(/Ortam kırılımı/.test(page) && /onGoFindings\(\{ envGroup: g \}\)/.test(page), 'ortam kirilimi paneli');
   assert.ok(/function FindingsTab\(\{ initial \}/.test(page), 'Bulgular sekmesi disaridan suzgec almali');
 });
+
+// SH13 (2026-09-24, kullanici): GBEVM* / GBPRV* genel envanterden AYRI. Bu sunucular filo
+// ortalamasini bozuyordu; taranmaya devam ederler, bulgulari durur, ama ozet ve ortam
+// kirilimi onlari SAYMAZ ve ekranda ayri listelenirler.
+test('SH13: GBEVM/GBPRV genel envanterden ayri - ozete girmez, bulgusu ve sunucusu durur', () => {
+  const d = base();
+  d.hosts.push({ host: 'GBEVM01', scan_date: D, products: 'RHA', wall_s: 1, cpu_s: 0.2 });
+  d.hosts.push({ host: 'GBPRV77', scan_date: D, products: 'NGINX', wall_s: 1, cpu_s: 0.2 });
+  d.ips.push({ host: 'GBEVM01', ip: '10.9.9.9', iface: 'eth0', used_by: 'none', is_primary: 0 });
+  const r = assess(d);
+
+  const genelSayisi = r.hosts.filter((h) => h.hostClass !== 'ozel').length;
+  assert.equal(r.summary.hosts.total, genelSayisi, 'ozet yalniz genel envanteri saymali');
+  assert.equal(r.summary.special.hosts, 2);
+  assert.deepEqual(r.summary.special.byPrefix, { GBEVM: 1, GBPRV: 1 });
+
+  // sunucular listede DURUR (ayrinti/tarama calissin diye), sinifi isaretli
+  const ozel = r.hosts.find((h) => h.host === 'GBEVM01');
+  assert.equal(ozel.hostClass, 'ozel');
+  assert.ok(ozel.findings.some((f) => f.code === 'IP_UNUSED'), 'ozel sunucunun bulgusu uretilmeli');
+
+  // ozet sayaclari ozel sunucunun bulgusunu SAYMAZ
+  assert.equal(r.summary.ips.unused, 1, 'bosta IP sayisi yalniz genel envanterden');
+
+  // ortam kirilimi de saymaz
+  const toplamEnv = Object.values(r.summary.byEnv).reduce((a, b) => a + b.hosts, 0);
+  assert.equal(toplamEnv, genelSayisi);
+});

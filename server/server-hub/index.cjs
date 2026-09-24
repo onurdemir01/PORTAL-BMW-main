@@ -63,6 +63,7 @@ async function getAssessment(fresh) {
 function hostRow(h) {
   return {
     host: h.host, scanDate: h.scanDate, products: h.products, status: h.status, counts: h.counts, env: h.env, envGroup: h.envGroup,
+    hostClass: h.hostClass || 'genel',
     wallS: h.wallS, cpuS: h.cpuS,
     jvms: h.jvms.length, jvmsRunning: h.jvms.filter((j) => j.running).length,
     vhosts: h.vhosts.length, unusedIps: h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length,
