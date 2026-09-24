@@ -101,6 +101,73 @@ export default function NginxProdMigration() {
   // TARAMAYA gore suzgec: elle isaretlemeden bagimsiz (2026-09-24)
   const [sideFilter, setSideFilter] = useState<'all' | 'defined' | 'partial' | 'none' | 'not-scanned'>('all');
   const [rescanning, setRescanning] = useState(false);
+  // TOPLU TANIM OLUSTURMA (kullanici, 2026-09-24)
+  const [bulkCreate, setBulkCreate] = useState<null | { run: boolean }>(null);
+  const [bulkLog, setBulkLog] = useState<{ text: string; tone: 'ok' | 'bad' | 'skip' }[]>([]);
+
+  // Secili anahtarlardan gercek (grup, uygulama) listesi. Suzgec degisip satir ekrandan
+  // kalksa bile secim korunur; bu yuzden cozumleme her zaman TUM gruplar uzerinden yapilir.
+  const selectedApps = useMemo(() => {
+    const out: { group: NginxMigrationGroup; app: NginxMigrationApp }[] = [];
+    for (const g of data?.groups || []) {
+      for (const a of g.apps) {
+        if (selected.has(trackKey(g.id, a.namespace, a.application))) out.push({ group: g, app: a });
+      }
+    }
+    return out;
+  }, [data, selected]);
+
+  /**
+   * SECILENLER ICIN TANIM PLANI.
+   *
+   * Yeni sunuculara tanim, uygulama ORAYA DEPLOY EDILMEDEN yazilamaz: SPA akisi
+   * `/usr/nginx/applications/<ns>/<app>` yoksa "once deploy ediniz" ile durur. Bu yuzden
+   * toplu islem "hepsini dene" DEMEZ - hazir olmayani ATLAR ve NEDENINI yazar. Aksi halde
+   * 40 isin 30'u kirmizi biter ve hangisinin gercekten sorunlu oldugu kaybolurdu.
+   */
+  const bulkPlan = useMemo(() => {
+    const yapilacak: { group: NginxMigrationGroup; app: NginxMigrationApp; path: { service: string; location: string } }[] = [];
+    const atlanan: { app: string; neden: string }[] = [];
+    for (const { group, app } of selectedApps) {
+      if (app.status === 'missing') { atlanan.push({ app: app.application, neden: 'uygulama yeni sunuculara deploy edilmemiş' }); continue; }
+      if (app.status === 'not-scanned') { atlanan.push({ app: app.application, neden: 'yeni sunucular henüz taranmadı' }); continue; }
+      let eklendi = 0;
+      for (const pp of app.paths) {
+        const pj = pathJobs.get(pathJobKey(group.id, app.namespace, app.application, pp.service, pp.location));
+        if (isDefinitionConfirmed(pj, pp.newStatus)) continue; // zaten tanimli
+        yapilacak.push({ group, app, path: { service: pp.service, location: pp.location } });
+        eklendi++;
+      }
+      if (!eklendi) atlanan.push({ app: app.application, neden: 'tüm tanımları zaten oluşturulmuş' });
+    }
+    return { yapilacak, atlanan };
+  }, [selectedApps, pathJobs]);
+
+  const runBulkCreate = async () => {
+    setBulkCreate({ run: true });
+    const log: { text: string; tone: 'ok' | 'bad' | 'skip' }[] = bulkPlan.atlanan.map((x) => ({ tone: 'skip' as const, text: `${x.app}: atlandı — ${x.neden}` }));
+    setBulkLog(log);
+    // SIRAYLA: ayni anda 40 job atmak AWX'i ve nginx'i gereksiz yorar; ayrica hata
+    // ciktisi karisir. Her is baslatildikca satir yazilir, kullanici ilerlemeyi gorur.
+    for (const it of bulkPlan.yapilacak) {
+      try {
+        const r = await nginxMigrationApi.create({
+          group: it.group.id, namespace: it.app.namespace, application: it.app.application,
+          service: it.path.service, inputPath: it.path.location,
+        });
+        if (r.ok) {
+          if (r.job?.id) trackMigrationJob(`Tanım oluştur · ${it.app.application} #${r.job.id}`, r.job.id);
+          log.push({ tone: 'ok', text: `${it.app.application} · ${it.path.service} ${it.path.location} → iş ${r.job?.id ?? '?'}` });
+        } else {
+          log.push({ tone: 'bad', text: `${it.app.application} · ${it.path.service} ${it.path.location}: ${r.message || 'başlatılamadı'}` });
+        }
+      } catch (e: unknown) {
+        log.push({ tone: 'bad', text: `${it.app.application} · ${it.path.service} ${it.path.location}: ${e instanceof Error ? e.message : String(e)}` });
+      }
+      setBulkLog([...log]);
+    }
+    loadTracking();
+  };
 
   /**
    * TARAMAYI TAZELE (kullanici, 2026-09-24): ekran verisi gunluk nginx_config_audit
@@ -125,17 +192,6 @@ export default function NginxProdMigration() {
   // sekmeyle gecilir. Ilk grup varsayilan.
   const [groupId, setGroupId] = useState<string>('');
 
-  // Secili anahtarlardan gercek (grup, uygulama) listesi. Suzgec degisip satir ekrandan
-  // kalksa bile secim korunur; bu yuzden cozumleme her zaman TUM gruplar uzerinden yapilir.
-  const selectedApps = useMemo(() => {
-    const out: { group: NginxMigrationGroup; app: NginxMigrationApp }[] = [];
-    for (const g of data?.groups || []) {
-      for (const a of g.apps) {
-        if (selected.has(trackKey(g.id, a.namespace, a.application))) out.push({ group: g, app: a });
-      }
-    }
-    return out;
-  }, [data, selected]);
 
   const loadTracking = async () => {
     try {
@@ -399,6 +455,7 @@ export default function NginxProdMigration() {
             return next;
           })}
           onBulk={() => setBulkOpen(true)}
+          onBulkCreate={configured ? () => { setBulkLog([]); setBulkCreate({ run: false }); } : undefined}
           onClearSelection={() => setSelected(new Set())}
           selectedTotal={selectedApps.length}
           canDelete={deleteConfigured}
@@ -519,6 +576,66 @@ export default function NginxProdMigration() {
           );
         })()}
       </Modal>
+
+      {bulkCreate && (
+        <Modal
+          open
+          onClose={() => setBulkCreate(null)}
+          title="Seçilenler için tanım oluştur"
+          subtitle={`${bulkPlan.yapilacak.length} tanım işi · ${bulkPlan.atlanan.length} uygulama atlanacak`}
+          icon={DocumentPlusIcon}
+          dismissOnBackdrop={false}
+          footer={
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setBulkCreate(null)} className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border)]">
+                {bulkCreate.run ? 'Kapat' : 'İptal'}
+              </button>
+              {!bulkCreate.run && (
+                <button onClick={runBulkCreate} disabled={bulkPlan.yapilacak.length === 0} className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50" style={{ background: 'var(--accent)' }}>
+                  {bulkPlan.yapilacak.length} işi başlat
+                </button>
+              )}
+            </div>
+          }
+        >
+          <div className="space-y-3 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+            {!bulkCreate.run && (
+              <>
+                <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                  <div className="font-semibold mb-1">Başlatılacak {bulkPlan.yapilacak.length} iş</div>
+                  <div className="max-h-40 overflow-y-auto font-mono text-[11px] leading-relaxed">
+                    {bulkPlan.yapilacak.map((x, i) => (
+                      <div key={i}>{x.app.application} <span style={{ color: 'var(--text-muted)' }}>· {x.path.service}-PROD.conf {x.path.location}</span></div>
+                    ))}
+                    {bulkPlan.yapilacak.length === 0 && <div style={{ color: 'var(--text-muted)' }}>Başlatılacak iş yok.</div>}
+                  </div>
+                </div>
+                {bulkPlan.atlanan.length > 0 && (
+                  <div className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
+                    <div className="font-semibold mb-1">Atlanan {bulkPlan.atlanan.length} uygulama</div>
+                    <div className="max-h-28 overflow-y-auto text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      {bulkPlan.atlanan.map((x, i) => <div key={i}>{x.app} — {x.neden}</div>)}
+                    </div>
+                  </div>
+                )}
+                <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  İşler <b>sırayla</b> başlatılır. Deploy edilmemiş ya da taranmamış uygulamalar
+                  denenmez — yeni sunucularda uygulama dizini yoksa tanım işi zaten
+                  “önce deploy ediniz” diyerek durur.
+                </div>
+              </>
+            )}
+            {bulkCreate.run && (
+              <div className="max-h-72 overflow-y-auto space-y-1 font-mono text-[11px]">
+                {bulkLog.map((l, i) => (
+                  <div key={i} style={{ color: l.tone === 'bad' ? 'var(--status-danger)' : l.tone === 'skip' ? 'var(--text-muted)' : 'var(--status-success)' }}>{l.text}</div>
+                ))}
+                {bulkLog.length < bulkPlan.yapilacak.length + bulkPlan.atlanan.length && <div style={{ color: 'var(--text-muted)' }}>çalışıyor…</div>}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {bulkOpen && selectedApps.length > 0 && (
         <BulkTrackingModal
@@ -1033,7 +1150,7 @@ function LocationProgress({ g }: { g: NginxMigrationGroup }) {
 }
 
 function GroupPanel({
-  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, pathJobs, selected, onToggleSelect, onToggleMany, onBulk, onClearSelection, selectedTotal, trackFilter, sideFilter, onTrack, canDelete, onDelete,
+  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, pathJobs, selected, onToggleSelect, onToggleMany, onBulk, onClearSelection, selectedTotal, onBulkCreate, trackFilter, sideFilter, onTrack, canDelete, onDelete,
 }: {
   g: NginxMigrationGroup;
   onlyProblem: boolean;
@@ -1047,6 +1164,7 @@ function GroupPanel({
   onToggleSelect: (key: string, on: boolean) => void;
   onToggleMany: (keys: string[], on: boolean) => void;
   onBulk: () => void;
+  onBulkCreate?: () => void;
   onClearSelection: () => void;
   selectedTotal: number;
   tracking: Map<string, MigrationTracking>;
@@ -1170,6 +1288,11 @@ function GroupPanel({
             <button onClick={onBulk} className="px-2.5 py-1 text-[11px] font-semibold rounded-lg text-white" style={{ background: 'var(--accent)' }}>
               <CalendarDaysIcon className="w-3.5 h-3.5 inline" /> Toplu geçiş takibi gir
             </button>
+            {onBulkCreate && (
+              <button onClick={onBulkCreate} className="px-2.5 py-1 text-[11px] font-semibold rounded-lg text-white" style={{ background: 'var(--accent)' }} title="Seçilenlerden HAZIR olan ve tanımı eksik olanlar için tanım işlerini başlat. Deploy edilmemiş / taranmamış olanlar atlanır.">
+                <DocumentPlusIcon className="w-3.5 h-3.5 inline" /> Seçilenler için tanım oluştur
+              </button>
+            )}
             <button onClick={onClearSelection} className="px-2.5 py-1 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)' }}>Seçimi temizle</button>
           </div>
         )}

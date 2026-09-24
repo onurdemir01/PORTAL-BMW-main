@@ -254,3 +254,22 @@ test('RS1 tarama tazeleme: uc, katalog kaydi ve ekran dugmesi', () => {
   // yalniz o grubun sunuculari taranmali (tum filo degil)
   assert.match(page, /\[\.\.\.grp\.oldHosts, \.\.\.grp\.newHosts\]/, 'tarama grubun sunucularina daraltilmali');
 });
+
+// BC1 (2026-09-24, kullanici (a) secenegi): "secilenlerden HAZIR olanlar icin toplu tanim
+// olustur". Yeni sunuculara tanim, uygulama ORAYA DEPLOY EDILMEDEN yazilamaz (SPA akisi
+// "once deploy ediniz" ile durur); bu yuzden toplu islem hazir olmayani DENEMEZ, atlar ve
+// NEDENINI yazar - aksi halde islerin cogu bosuna kirmizi biterdi.
+test('BC1 toplu tanim olusturma: hazir olmayan ATLANIR, sebebi yazilir, isler sirayla', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  const plan = page.slice(page.indexOf('const bulkPlan'), page.indexOf('const runBulkCreate'));
+  assert.match(plan, /status === 'missing'/, 'deploy edilmemis uygulama atlanmali');
+  assert.match(plan, /status === 'not-scanned'/, 'taranmamis uygulama atlanmali');
+  assert.match(plan, /deploy edilmemiş/, 'atlama sebebi yazilmali');
+  assert.match(plan, /isDefinitionConfirmed/, 'zaten tanimli yol tekrar olusturulmamali');
+  // sirayla: paralel Promise.all DEGIL, for dongusu icinde await
+  const run = page.slice(page.indexOf('const runBulkCreate'), page.indexOf('const loadTracking'));
+  assert.ok(!/Promise\.all/.test(run), 'isler sirayla baslatilmali (AWX/nginx bosuna yorulmasin)');
+  assert.match(run, /for \(const it of bulkPlan\.yapilacak\)/);
+  assert.match(page, /Seçilenler için tanım oluştur/, 'cubukta dugme yok');
+});
