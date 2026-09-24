@@ -24,6 +24,18 @@ export interface NginxSpaEnvCell {
   /** H/A/C dizin bayraklari (sunucu basina); flags null = o sunucuda dizin yok.
    *  PROD proxy hucrelerinde sunucular YENI prod SPA sunuculardir (tasima grubu). */
   dirs?: { host: string; flags: { hys: boolean; app: boolean; conf: boolean } | null }[];
+  /**
+   * YUK (2026-09-24): access log'dan location basina istek sayisi. hc.jsp / hc.html HARIC -
+   * saglik kontrolu yuk degildir, ayri sayilir.
+   *   active  : 7 gun icinde istek var
+   *   idle    : log okundu, 7 gundur istek YOK
+   *   unknown : log okunamadi ya da kuyruk 7 gunu kapsamiyor ("yuk yok" DEMEK DEGILDIR)
+   */
+  traffic?: {
+    state: 'active' | 'idle' | 'unknown';
+    req24: number | null; req7: number | null; hc24: number | null;
+    lastSeen: string | null; sampled: boolean; hosts: number; unknownHosts: number;
+  } | null;
 }
 
 /** Uygulamanin sorumlu ekibi = namespace'inin CMDB sahibi (dbo.Openshift_Namespace_Owners). */
@@ -137,6 +149,8 @@ export interface NginxSpaResult {
   services: string[];
   envs: string[];
   envStats?: NginxEnvStat[];
+  /** 2026-09-24: kac location yuk aliyor / almiyor / bilinmiyor (dbo.Nginx_Spa_Traffic) */
+  trafficStats?: { ready: boolean; active: number; idle: number; unknown: number };
   rows: NginxSpaRow[];
   /** dbo.Openshift_Namespace_Owners okunabildi mi */
   ownersReady?: boolean;

@@ -526,6 +526,24 @@ export function NginxSpaAudit() {
       {/* ENV TESHISI: bir ortam bos gorunuyorsa NEDENI burada gorulur. env degeri vhost
           DOSYA ADINDAN turer (<SERVIS>-<ORTAM>.conf), taranan SUNUCUDAN degil - bu ayrim
           "PROD nicin bos" sorusunun cevabi. */}
+      {/* YUK OZETI (kullanici, 2026-09-24): kac location yuk aliyor / almiyor / olculemedi.
+          Tablo yoksa (job henuz kosmadi) hic gorunmez - bos rakam gostermek yaniltirdi. */}
+      {data.trafficStats?.ready && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px] rounded-xl border px-3 py-2"
+             style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+          <span className="font-semibold">Yük (access log, son 7 gün)</span>
+          <span className="px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">yük var: {fmtNumber(data.trafficStats.active)}</span>
+          <span className="px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">yük yok: {fmtNumber(data.trafficStats.idle)}</span>
+          {!!data.trafficStats.unknown && (
+            <span className="px-1.5 py-0.5 rounded border" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  title="Log okunamadı ya da log kuyruğu 7 günü kapsamıyor — “yük yok” demek DEĞİLDİR.">
+              ölçülemedi: {fmtNumber(data.trafficStats.unknown)}
+            </span>
+          )}
+          <span style={{ color: 'var(--text-muted)' }}>hc.jsp / hc.html sayılmaz</span>
+        </div>
+      )}
+
       {tier === 'internet' && data.envStats && data.envStats.some((e) => e.rows === 0) && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
           <div className="font-semibold mb-1">
@@ -746,6 +764,43 @@ export function NginxSpaAudit() {
   );
 }
 
+/**
+ * YUK ROZETI (kullanici, 2026-09-24: "bu uygulamalar yuk aliyor mu? En iyi access log'dan
+ * goruruz"). Kaynak dbo.Nginx_Spa_Traffic: location basina istek sayisi, hc.jsp / hc.html
+ * HARIC - saglik kontrolu yuk degildir ve ayri sayilir.
+ *
+ * UC DURUM (ikiye indirmek yaniltirdi): yuk var / yuk yok / BILINMIYOR. Log okunamadiysa ya
+ * da kuyruk 7 gunu kapsamiyorsa "yuk yok" demek yanlis olurdu - atil sanip tanim silmeye
+ * goturebilirdi.
+ */
+function TrafficBadge({ t }: { t?: NginxSpaEnvCell['traffic'] }) {
+  if (!t) return null;
+  const meta =
+    t.state === 'active'
+      ? { label: 'yük var', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+      : t.state === 'idle'
+        ? { label: 'yük yok', cls: 'bg-red-50 text-red-700 border-red-200' }
+        : { label: 'yük ?', cls: 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]' };
+  const sonIstek = t.lastSeen && /^\d{14}$/.test(t.lastSeen)
+    ? `${t.lastSeen.slice(6, 8)}.${t.lastSeen.slice(4, 6)}.${t.lastSeen.slice(0, 4)} ${t.lastSeen.slice(8, 10)}:${t.lastSeen.slice(10, 12)}`
+    : null;
+  const title = [
+    t.state === 'active' ? 'Access log’da istek var (hc.jsp / hc.html hariç).'
+      : t.state === 'idle' ? '7 gündür hc dışı istek YOK — atıl aday.'
+        : 'Ölçülemedi: log okunamadı ya da log kuyruğu 7 günü kapsamıyor. “Yük yok” demek DEĞİLDİR.',
+    t.req24 != null ? `Son 24 saat: ${t.req24} istek` : null,
+    t.req7 != null ? `Son 7 gün: ${t.req7} istek${t.sampled ? ' (alt sınır — log kuyruğu 7 günü kapsamıyor)' : ''}` : null,
+    t.hc24 ? `Sağlık kontrolü (hariç tutuldu): ${t.hc24}` : null,
+    sonIstek ? `Son istek: ${sonIstek}` : null,
+    t.hosts ? `Okunan sunucu: ${t.hosts}${t.unknownHosts ? ` · log okunamayan: ${t.unknownHosts}` : ''}` : null,
+  ].filter(Boolean).join('\n');
+  return (
+    <span className={`px-1.5 py-0.5 rounded border text-[10px] whitespace-nowrap ${meta.cls}`} title={title}>
+      {meta.label}{t.state === 'active' && t.req24 != null ? ` · ${t.req24}/24s` : ''}
+    </span>
+  );
+}
+
 function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
   if (!cell)
     return (
@@ -830,6 +885,8 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
               <span className="block text-[10px]">eksik: {oldMissing.map((h) => h.replace(/^GBRVP/, '')).join(', ')}</span>
             )}
             {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
+            {/* YUK: eski sunucunun access log'undan - trafik hala oraya geliyor (2026-09-24) */}
+            {cell.traffic && <span className="block mt-0.5"><TrafficBadge t={cell.traffic} /></span>}
           </div>
           <div className={`px-2 py-1 rounded-lg border ${dirsIncomplete || !cell.dirs?.length ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -849,6 +906,8 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
         {/* Context path GORUNUR (kullanici, 2026-09-14: "servislerde location bilgisi yok") */}
         {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
         {!cell.inOcpInventory && <span className="opacity-80">OCP'de yok</span>}
+        {/* YUK: access log'dan (2026-09-24) - tanim yerinde ama istek geliyor mu? */}
+        {cell.traffic && <span className="mt-0.5"><TrafficBadge t={cell.traffic} /></span>}
         {/* H/A/C dizin bayraklari (sunucu basina) - Production Tasimalari ile ayni gosterim */}
         {dirsBlock && <span className="mt-0.5">{dirsBlock}</span>}
       </div>

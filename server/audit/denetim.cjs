@@ -150,6 +150,57 @@ function initDenetim(app) {
 
       const raw = rowsRes.recordset || [];
 
+      // YUK ALIYOR MU (kullanici, 2026-09-24): "bu uygulamalar yuk aliyor mu? Bunu en iyi
+      // access log'dan goruruz." Kaynak dbo.Nginx_Spa_Traffic - bmw_nginx/nginx_config_audit
+      // icindeki files/nginx_spa_traffic.sh location basina istek sayar (hc.jsp / hc.html
+      // HARIC: saglik kontrolu yuk degildir). Tablo yoksa ekran eskisi gibi calisir.
+      //
+      // ANAHTAR (service, env, location): ayni tanim birden fazla mirror sunucuda durur,
+      // sayilar TOPLANIR; "son istek" en yenisi alinir. Log okunamayan sunucu sayiya
+      // KATILMAZ ama "bilinmiyor" bayragini kaldirir - "yuk yok" demek degildir.
+      const traffic = new Map(); // SERVICE|ENV|LOCATION -> {req24, req7, hc24, hosts, lastSeen, sampled, unknown}
+      try {
+        const tr = await query(
+          `SELECT service, env, location, req_24h, req_7d, hc_24h, sampled, last_seen, error
+             FROM dbo.Nginx_Spa_Traffic
+            WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)`,
+        );
+        for (const x of tr.recordset || []) {
+          const k = `${String(x.service || '').toUpperCase()}|${String(x.env || '').toUpperCase()}|${String(x.location || '')}`;
+          if (!traffic.has(k)) traffic.set(k, { req24: 0, req7: 0, hc24: 0, hosts: 0, lastSeen: null, sampled: false, unknown: 0 });
+          const c = traffic.get(k);
+          if (x.error) { c.unknown += 1; continue; }
+          c.hosts += 1;
+          c.req24 += Number(x.req_24h) || 0;
+          c.req7 += Number(x.req_7d) || 0;
+          c.hc24 += Number(x.hc_24h) || 0;
+          if (x.sampled) c.sampled = true;
+          const ls = x.last_seen ? String(x.last_seen) : null;
+          if (ls && (!c.lastSeen || ls > c.lastSeen)) c.lastSeen = ls;
+        }
+      } catch {
+        /* tablo yoksa trafik gosterilmez - ekran calismaya devam eder */
+      }
+
+      /**
+       * Hucrenin yuk durumu. UC AYRI DURUM (ikiye indirmek yaniltirdi):
+       *   active   : 7 gun icinde hc DISI istek var
+       *   idle     : log OKUNDU ve 7 gundur hc disi istek YOK
+       *   unknown  : log okunamadi / tarama bu location'i hic gormedi
+       * `sampled` ise req7 ALT SINIRDIR (log kuyrugu 7 gunu kapsamiyor): "yuk yok" demeden
+       * once bunu soyleriz, aksi halde buyuk loglu sunucuda yanlis "atil" cikardik.
+       */
+      const trafficOf = (service, env, location) => {
+        const c = traffic.get(`${String(service || '').toUpperCase()}|${String(env || '').toUpperCase()}|${String(location || '')}`);
+        if (!c || (c.hosts === 0 && c.unknown === 0)) return null;
+        if (c.hosts === 0) return { state: 'unknown', req24: null, req7: null, hc24: null, lastSeen: null, sampled: false, hosts: 0, unknownHosts: c.unknown };
+        return {
+          state: c.req7 > 0 ? 'active' : (c.sampled ? 'unknown' : 'idle'),
+          req24: c.req24, req7: c.req7, hc24: c.hc24,
+          lastSeen: c.lastSeen, sampled: c.sampled, hosts: c.hosts, unknownHosts: c.unknown,
+        };
+      };
+
       // PROD MATRISTE (2026-09-14, kullanici: "prod uygulamalarin bilgileri gozukmuyor"):
       // eski GBRVP* vhost'lari SPA include'u degil proxy_pass kullanir; bu satirlar
       // spaFilter ile disarida kaliyor ve PROD sutunu bos kaliyordu. Proxy satirlari
@@ -286,6 +337,7 @@ function initDenetim(app) {
           hosts: [r.host],
           proxyTarget: r._proxyTarget || null,
           suffixAdded: r._suffixAdded === true,
+          traffic: trafficOf(r.service, r.env, r.location_path),
         };
         if (!prev) {
           entry.envs[env] = cell;
@@ -414,8 +466,18 @@ function initDenetim(app) {
         r.owner = { ...ownersFor(owners.byNs, nss), namespaces: nss };
       }
 
+      // Filo ozeti: kac location yuk aliyor / almiyor / bilinmiyor (ekranda tek bakista)
+      const trafficStats = { ready: traffic.size > 0, active: 0, idle: 0, unknown: 0 };
+      for (const r of rows) {
+        for (const c of Object.values(r.envs)) {
+          if (!c || !c.traffic) continue;
+          trafficStats[c.traffic.state === 'active' ? 'active' : c.traffic.state === 'idle' ? 'idle' : 'unknown'] += 1;
+        }
+      }
+
       res.json({
         ok: true,
+        trafficStats,
         ownersReady: owners.ready,
         dirsReady,
         prodProxy: prodProxyStats,
