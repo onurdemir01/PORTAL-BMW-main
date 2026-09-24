@@ -208,6 +208,7 @@ export function NginxApiLocations() {
                     ...API_CLUSTERS.map((c) => c.label + '_var'),
                     ...API_CLUSTERS.map((c) => c.label + '_limit'),
                     ...API_CLUSTERS.map((c) => c.label + '_eksik'),
+                    ...API_CLUSTERS.map((c) => c.label + '_taranmamis'),
                     'eksik_ortam',
                     'sunucu_farki',
                     'ortam_farki',
@@ -221,6 +222,7 @@ export function NginxApiLocations() {
                     ...covRows.map((c) => `${c.present}/${c.total}`),
                     ...covRows.map((c) => c.groups.map((g) => `${g.ip || '-'}/${g.srv || '-'} x${g.hosts.length}`).join(' | ')),
                     ...covRows.map((c) => c.missing.join(' ')),
+                    ...covRows.map((c) => (c.notScanned || []).join(' ')),
                     r.missingEnvs.join(' '),
                     r.limitDrift ? 'EVET' : '',
                     r.envLimitDrift ? 'EVET' : '',
@@ -418,12 +420,28 @@ const LocationRow = React.memo(function LocationRow({
                             <span
                               className="px-1.5 py-0.5 rounded"
                               style={{ background: 'var(--status-danger-bg)', color: 'var(--status-danger)' }}
+                              title="Sunucu tarandı ama bu location orada bulunamadı."
                             >
                               {c.missing.length} sunucuda YOK
                             </span>
                             <span className="font-mono" style={{ color: 'var(--text-muted)' }} title={c.missing.join(', ')}>
                               {c.missing.slice(0, 6).map((h) => h.toLowerCase()).join(', ')}
                               {c.missing.length > 6 ? ` +${c.missing.length - 6}` : ''}
+                            </span>
+                          </span>
+                        )}
+                        {(c.notScanned?.length || 0) > 0 && (
+                          <span className="flex flex-wrap items-center gap-1">
+                            <span
+                              className="px-1.5 py-0.5 rounded"
+                              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+                              title="Bu sunucu son taramada HİÇ satır üretmedi: ulaşılamamış ya da dbo.Inventory'de nginx_version boş olduğu için taramanın sunucu listesine hiç girmemiş olabilir. 'Yok' demek DEĞİLDİR — soru sorulmamıştır."
+                            >
+                              {c.notScanned!.length} sunucu taranmamış
+                            </span>
+                            <span className="font-mono" style={{ color: 'var(--text-muted)' }} title={c.notScanned!.join(', ')}>
+                              {c.notScanned!.slice(0, 6).map((h) => h.toLowerCase()).join(', ')}
+                              {c.notScanned!.length > 6 ? ` +${c.notScanned!.length - 6}` : ''}
                             </span>
                           </span>
                         )}

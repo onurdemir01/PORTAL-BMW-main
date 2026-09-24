@@ -982,7 +982,14 @@ export interface NginxApiClusterCell {
   label: string;
   total: number;
   present: number;
+  /** Sunucu TARANDI ama bu location orada YOK - gercek eksik */
   missing: string[];
+  /**
+   * Sunucu o taramada HIC satir uretmedi: ulasilamamis ya da dbo.Inventory'de
+   * nginx_version bos oldugu icin taramanin host listesine hic girmemis olabilir.
+   * "Yok" DEGILDIR - soru sorulmamistir (2026-09-24).
+   */
+  notScanned?: string[];
   /** Ayni limiti tasiyan sunucular bir grup; birden fazla grup = KUME ICINDE FARK */
   groups: { ip: string; srv: string; hosts: string[] }[];
   limitDrift: boolean;
@@ -992,6 +999,8 @@ export interface NginxApiLocationRow {
   clusters?: NginxApiClusterCell[];
   /** en az bir kumede es sunucular farkli rate limit tasiyor */
   clusterLimitDrift?: boolean;
+  /** kumelerde HIC taranmamis sunucu sayisi (eksik sayilmaz, ayri gosterilir) */
+  clusterNotScanned?: number;
   config: string;
   location: string;
   envs: Record<string, NginxApiLocationCell>;

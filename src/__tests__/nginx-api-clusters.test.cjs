@@ -100,3 +100,29 @@ test('AC4 ekran sözleşmesi: satırda küme özeti, detayda var/yok dökümü, 
   assert.ok(!/#[0-9a-fA-F]{6}/.test(UI), 'ekranda sabit hex renk var');
   assert.ok(/var\(--status-success\)/.test(UI) && /var\(--status-danger\)/.test(UI), 'durum renkleri token değil');
 });
+
+// AC5 (2026-09-24, kullanici: "bazi API'lar sunucularda olmasina ragmen sunucuda yok diye
+// raporlaniyor"). Tarama tablosunda O GUN HIC satir uretmemis bir sunucu - ulasilamamis ya da
+// dbo.Inventory'de nginx_version bos oldugu icin taramanin host listesine hic girmemis - eskiden
+// "YOK" sayiliyordu. Kanit yoktur: soru sorulmamistir. Uc durum ayrilir.
+test('AC5 "yok" ile "taranmadi" ayridir: hic satir uretmemis sunucu eksik SAYILMAZ', () => {
+  const { summarizeLocations } = require('../../server/audit/nginx-api-locations.cjs');
+  const { API_CLUSTERS } = require('../../shared/nginxApiClusters.cjs');
+  const kume = API_CLUSTERS[0];
+  const [varHost, yokHost, taranmayanHost] = kume.hosts;
+
+  // varHost: location var · yokHost: tarandi (baska location uretti) ama bu location yok
+  // taranmayanHost: hic satir yok
+  const rows = summarizeLocations([
+    { host: varHost, config_file: 'api.conf', api_location: '/v1/x', ip_rate_limit: '10r/s', server_rate_limit: null },
+    { host: yokHost, config_file: 'api.conf', api_location: '/v1/baska', ip_rate_limit: null, server_rate_limit: null },
+  ]).rows;
+
+  const r = rows.find((x) => x.location === '/v1/x');
+  const c = r.clusters.find((x) => x.key === kume.key);
+  assert.ok(c.missing.includes(yokHost), 'taranan ama location tasimayan sunucu EKSIK sayilmali');
+  assert.ok(!c.missing.includes(taranmayanHost), 'hic taranmamis sunucu eksik SAYILMAMALI');
+  assert.ok(c.notScanned.includes(taranmayanHost), 'hic taranmamis sunucu notScanned altinda olmali');
+  assert.equal(c.present + c.missing.length + c.notScanned.length, c.total, 'uc kume toplami kumeyi vermeli');
+  assert.ok(r.clusterNotScanned > 0);
+});

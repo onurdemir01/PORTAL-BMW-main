@@ -1568,8 +1568,8 @@ function initDenetim(app) {
         [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
       );
 
-      const { envs, rows } = summarizeLocations(r.recordset || []);
-      res.json({ ok: true, scanDate: effectiveDate, envs, rows });
+      const { envs, rows, scannedHosts } = summarizeLocations(r.recordset || []);
+      res.json({ ok: true, scanDate: effectiveDate, envs, rows, scannedHosts });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }
