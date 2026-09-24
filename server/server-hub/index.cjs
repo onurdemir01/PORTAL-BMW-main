@@ -36,11 +36,36 @@ async function loadLatest() {
   // (running/stopped), jvm_count, autostarts ("true false ..."), env, tier. Server Hub'in kendi CLI
   // taramasiyla BIRLESTIRILIR: CLI yoksa envanter, ikisi de varsa celiski bulgusu.
   const mwApps = await query(
-    `SELECT host, app, env, status, jvm_count, autostarts, tier FROM dbo.MWAppsInventory WHERE host IS NOT NULL AND app IS NOT NULL`,
+    `SELECT host, app, env, domain, status, jvm_count, autostarts, tier FROM dbo.MWAppsInventory WHERE host IS NOT NULL AND app IS NOT NULL`,
   ).then((r) => r.recordset || []).catch(() => []);
+  // URUN KAYNAGI ENVANTER (kullanici, 2026-09-24): "hangi sunucuda hangi urun var" dbo.Inventory'den
+  // gelir; tarama sonucu CANLI durumdur. Ikisi ayri tutulur ve ORTUSMEYENLER bulgu olur - tarama bir
+  // urunu goremediyse (yetki/yol) sessizce "urun yok" demek yerine kapsam farki raporlanir.
+  // Kolon adlari kuruluma gore degisebildigi icin once sys.columns'a bakilir; olmayan kolon sorguya
+  // girmez (eksik kolon tum sorguyu dusururdu).
+  const invCols = await query(
+    `SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Inventory')`,
+  ).then((r) => (r.recordset || []).map((c) => String(c.name))).catch(() => []);
+  const hasCol = (n) => invCols.some((c) => c.toLowerCase() === n.toLowerCase());
+  const PRODUCT_COLS = [
+    { col: 'nginx_version', product: 'NGINX' },
+    { col: 'ihs_version', product: 'IHS' },
+    { col: 'apache_version', product: 'RHA' },
+    { col: 'httpd_version', product: 'RHA' },
+    { col: 'jboss_version', product: 'JBOSS' },
+    { col: 'was_version', product: 'WAS' },
+  ].filter((x) => hasCol(x.col));
+  const invSelect = ['host', hasCol('env') ? 'env' : null, ...PRODUCT_COLS.map((x) => x.col)].filter(Boolean).join(', ');
   const invEnv = await query(
-    `SELECT host, env FROM dbo.Inventory WHERE host IS NOT NULL`,
-  ).then((r) => r.recordset || []).catch(() => []);
+    `SELECT ${invSelect} FROM dbo.Inventory WHERE host IS NOT NULL`,
+  ).then((r) => (r.recordset || []).map((row) => {
+    const products = [];
+    for (const { col, product } of PRODUCT_COLS) {
+      const v = row[col] == null ? '' : String(row[col]).trim();
+      if (v && !products.includes(product)) products.push(product);
+    }
+    return { host: row.host, env: row.env, invProducts: products };
+  })).catch(() => []);
   const [hosts, init, jboss, jvms, web, vhosts, ips, sshd] = await Promise.all([
     q('dbo.Server_Hub_Hosts'), q('dbo.Server_Hub_Init'), q('dbo.Server_Hub_Jboss'), q('dbo.Server_Hub_Jvms'),
     q('dbo.Server_Hub_Web'), q('dbo.Server_Hub_Vhosts'), q('dbo.Server_Hub_Ips'),

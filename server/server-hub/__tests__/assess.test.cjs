@@ -34,12 +34,22 @@ test('SH1: proxy hedefi (host:port) ile JVM<->vhost kesin eslesir; trafik JVM\'e
   assert.equal(crm.vhosts[0].v.serverName, 'crm.fw.local');
 });
 
-test('SH2: port tutmayan proxy hedefi eslesmez, ad tahmini 5. harf A->W web sunucusunda devreye girer', () => {
+// 2026-09-24 (kullanici): ad tahmini yerine Denetim > Web-App iliskisi kullanilir - ayni
+// fonksiyon (audit/web-app.cjs matchWebForApp): tier domain'den, web sunucusu adayi 3-tier'da
+// 5. harf A->W, eslesme server_name icinde uygulama adi. matchKind bu yuzden 'web-app'.
+test('SH2: proxy hedefi tutmazsa Web-App iliskisi devreye girer (5. harf A->W web sunucusu)', () => {
   const r = assess(base());
   const app = r.hosts.find((h) => h.host === 'DACRAAP01');
   const old = app.jvms.find((j) => j.name === 'oldapp');
-  assert.equal(old.matchKind, 'name'); // port 8280 JVM'de yok (kapali, port yok) -> ada gore DACRWAP01 uzerinde
+  assert.equal(old.matchKind, 'web-app'); // port 8280 JVM'de yok (kapali, port yok) -> Web-App ile DACRWAP01
   assert.equal(old.req7d, 0);
+  assert.equal(old.vhosts[0].host, 'DACRWAP01');
+  assert.match(old.webMatch.how, /server_name/);
+  // kanit bulgu metninde: web sunucusu / vhost / access log
+  const f = app.findings.find((x) => x.code === 'RETIRE_CANDIDATE');
+  assert.match(f.text, /hc\.jsp\/hc\.html hariç/i);
+  assert.match(f.text, /DACRWAP01\/oldapp\.fw\.local/);
+  assert.match(f.text, /\/l\/old/);
 });
 
 test('SH3: bulgu kodlari ve siddet: REBOOT_RISK danger, RETIRE_CANDIDATE warning, RESTART_REQUIRED warning, INIT_DIFF warning', () => {

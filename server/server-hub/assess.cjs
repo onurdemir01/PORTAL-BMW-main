@@ -12,7 +12,7 @@
 // Bulgu siddeti: danger > warning > info; sunucu durumu = en kotu bulgu.
 'use strict';
 
-const { webHostOf } = require('../audit/web-app.cjs');
+const { webHostOf, matchWebForApp } = require('../audit/web-app.cjs');
 
 const SEV = { ok: 0, info: 1, warning: 2, danger: 3 };
 
@@ -97,6 +97,7 @@ function assess(data) {
       status: L(r.status),
       jvmCount: Number(r.jvm_count) || 0,
       autoStarts: String(r.autostarts || '').trim().split(/\s+/).filter(Boolean).map((x) => L(x)),
+      domain: String(r.domain || '').trim(),
       tier: r.tier == null ? null : String(r.tier),
       env: ENV_TR[U(r.env)] || null,
     });
@@ -107,16 +108,35 @@ function assess(data) {
 
   // Envanter <-> CLI birlestirme: CLI'da olmayan uygulamalar envanterden eklenir (kaynak isaretli),
   // ikisinde de varsa celiski (calisiyor/kapali ya da auto-start) BULGU olarak isaretlenir.
+  // Envanterdeki urunler (dbo.Inventory) - tarama sonucundan AYRI tutulur (kullanici, 2026-09-24)
+  const invProductsByHost = new Map();
+  for (const r of (data.invEnv || [])) {
+    if (!r || !r.host) continue;
+    const k = U(shortHost(r.host));
+    if ((r.invProducts || []).length) invProductsByHost.set(k, r.invProducts);
+  }
   for (const h of byHost.values()) {
+    h.invProducts = invProductsByHost.get(U(h.host)) || [];
     h.env = envOf(h.host);
     h.envGroup = h.env === 'PROD' ? 'Production' : (h.env === 'BILINMIYOR' ? 'Bilinmiyor' : 'Non-Production');
-    const apps = appsByHost.get(h.host) || [];
+    // JBOSS OLMAYAN SUNUCU (kullanici, 2026-09-24): "JBoss olmayan sunuculara bakmani istemiyorum".
+    // Eskiden dbo.MWAppsInventory'deki her uygulama icin JVM satiri uretiliyordu; JBoss kurulu
+    // OLMAYAN sunucularda bunlarin auto-start'i dogal olarak okunamiyor ve ekran "bilinmiyor"
+    // doluyordu. Artik envanter JVM'leri yalnizca sunucuda JBoss VARSA eklenir.
+    const hasJboss = h.jboss.length > 0
+      || h.jvms.some((j) => j.source === 'cli' || j.gen > 0)
+      || (h.products || []).some((x) => /^JBOSS/i.test(x))
+      || (h.invProducts || []).includes('JBOSS');
+    const apps = hasJboss ? (appsByHost.get(h.host) || []) : [];
+    h.hasJboss = hasJboss;
     h.invApps = apps.length;
+    h.invAppsSkipped = hasJboss ? 0 : (appsByHost.get(h.host) || []).length;
     for (const a of apps) {
       const hit = h.jvms.find((j) => L(j.name) === L(a.app));
       const invRunning = a.status === 'running';
       const invAuto = a.autoStarts.length ? (a.autoStarts.every((x) => x === 'true') ? 'true' : (a.autoStarts.every((x) => x === 'false') ? 'false' : 'karisik')) : 'unknown';
       if (hit) {
+        hit.domain = a.domain || hit.domain || '';
         hit.invStatus = a.status || null;
         hit.invAutoStart = invAuto;
         hit.invJvmCount = a.jvmCount;
@@ -128,7 +148,7 @@ function assess(data) {
         else hit.autoStartSource = hit.autoStartSource || 'cli';
       } else {
         h.jvms.push({
-          gen: 0, name: a.app, group: '', running: invRunning, autoStart: invAuto === 'karisik' ? 'unknown' : invAuto,
+          gen: 0, name: a.app, group: '', domain: a.domain || '', running: invRunning, autoStart: invAuto === 'karisik' ? 'unknown' : invAuto,
           serverState: a.status || 'unknown', ports: [], vhosts: [], req24h: null, req7d: null, matchKind: null,
           source: 'envanter', invStatus: a.status || null, invAutoStart: invAuto, invJvmCount: a.jvmCount, mismatch: [],
           autoStartSource: 'envanter',
@@ -139,8 +159,27 @@ function assess(data) {
   }
 
   // ── JVM <-> vhost eslemesi ──────────────────────────────────────────────────────
+  // KAYNAK (kullanici, 2026-09-24): "JVM'in web host'unu bulacaksin, web host'unda uygulamaya ait
+  // VirtualHost blogunu bulacaksin, o blokta access log'un yazdigi lokasyonu bulacaksin ve oradan
+  // hc.jsp/hc.html haric istek var mi diye bakacaksin."
+  //   1) proxy hedefi (host:port) - kesin kanit, once bu denenir
+  //   2) Denetim > Web-App iliskisi - AYNI fonksiyon (audit/web-app.cjs matchWebForApp): tier
+  //      domain'den, web sunucusu adayi 3-tier'da 5. harf A->W, server_name'de uygulama adi
+  //   3) ayni aday sunucuda alias eslesmesi (server_name tutmadiginda)
+  // Istek sayilari taramadan gelir ve hc.jsp/hc.html ZATEN haric tutulur (count_log: hc ayri
+  // sayilir, r24/r7'ye girmez); access log yolu VHOST kaydinda accessLog alanindadir.
   const allVhosts = [];
   for (const h of byHost.values()) for (const v of h.vhosts) allVhosts.push({ host: h.host, v });
+  // Web-App kuralinin bekledigi indeks: SUNUCU -> vhost listesi (buyuk harf anahtar).
+  // Sertifika envanteri yerine BU TARAMANIN vhost'lari kullanilir; trafik sayilari da ayni
+  // kayittan gelsin diye her girdi kendi vhost'una geri referans tasir.
+  const vhostIndex = new Map();
+  for (const { host, v } of allVhosts) {
+    const k = U(host);
+    if (!vhostIndex.has(k)) vhostIndex.set(k, []);
+    const [vip, vport] = String(v.listen || '').split(':');
+    vhostIndex.get(k).push({ host, ip: vip || '', port: vport || '', serverName: v.serverName || '', confFile: v.confFile || '', product: v.product || '', __host: host, __v: v });
+  }
   for (const h of byHost.values()) {
     for (const j of h.jvms) {
       // 1) proxy hedefi kesin eslesme
@@ -149,13 +188,20 @@ function assess(data) {
           j.vhosts.push({ host, v }); j.matchKind = j.matchKind || 'proxy';
         }
       }
-      // 2) ad tahmini (yalniz kesin eslesme yoksa)
+      // 2) Denetim > Web-App iliskisi (yalniz kesin eslesme yoksa)
       if (!j.vhosts.length && j.name) {
-        const cands = new Set([h.host, shortHost(webHostOf(h.host) || '')].filter(Boolean));
-        const needle = L(j.name);
-        for (const { host, v } of allVhosts) {
-          if (!cands.has(host)) continue;
-          if (L(v.serverName).includes(needle) || L(v.aliases).includes(needle)) { j.vhosts.push({ host, v }); j.matchKind = 'name'; }
+        const rel = matchWebForApp({ app: j.name, appHost: h.host, domain: j.domain || '' }, vhostIndex);
+        j.webMatch = { tier: rel.tier, how: rel.how, webHost: rel.webHostCandidate, vhostsOnWebHost: rel.vhostCountOnHost };
+        if (rel.matched) {
+          for (const e of rel.web) { j.vhosts.push({ host: e.__host, v: e.__v }); j.matchKind = 'web-app'; }
+        } else {
+          // 3) server_name tutmadi: ayni aday sunucuda ALIAS'ta ad geciyor mu
+          const needle = L(j.name);
+          const cands = new Set([U(h.host), U(rel.webHostCandidate || '')].filter(Boolean));
+          for (const { host, v } of allVhosts) {
+            if (!cands.has(U(host))) continue;
+            if (L(v.aliases).includes(needle)) { j.vhosts.push({ host, v }); j.matchKind = 'alias'; }
+          }
         }
       }
       for (const m of j.vhosts) m.v.jvm = `${h.host}/${j.name}`;
@@ -214,14 +260,32 @@ function assess(data) {
       const fixOn = { action: 'jboss_autostart_on', gen: j.gen, jvm: j.name };
       const fixOff = { action: 'jboss_autostart_off', gen: j.gen, jvm: j.name };
       if (j.running && j.autoStart === 'false') add('danger', 'jvm', 'REBOOT_RISK', `${id} çalışıyor ama auto-start KAPALI — reboot sonrası açılmaz`, fixOn);
-      if (j.running && j.autoStart === 'unknown') add('info', 'jvm', 'AUTOSTART_UNKNOWN', `${id} auto-start okunamadı (CLI ve envanter)`);
+      if (j.running && j.autoStart === 'unknown' && h.hasJboss) add('info', 'jvm', 'AUTOSTART_UNKNOWN', `${id} auto-start okunamadı (CLI ve envanter)`);
       if ((j.mismatch || []).length) add('info', 'jvm', 'INV_MISMATCH', `${id}: ${j.mismatch.join('; ')}`);
       if (!j.running && j.autoStart === 'true') add('warning', 'jvm', 'STOPPED_AUTOSTART_ON', `${id} kapalı ama auto-start AÇIK — reboot'ta açılacak`, fixOff);
       if (j.running && (j.serverState === 'restart-required' || j.serverState === 'reload-required')) add('warning', 'jvm', 'RESTART_REQUIRED', `${id} ${j.serverState}: runtime'da etkin olmayan değişiklik var`);
       const hasTraffic = j.req7d != null;
-      if (!j.running && hasTraffic && j.req7d === 0) add('warning', 'jvm', 'RETIRE_CANDIDATE', `${id} kapalı ve web katmanında 7 gündür istek yok — retire adayı`, { action: 'jboss_retire', gen: j.gen, jvm: j.name });
-      else if (!j.running && !hasTraffic && j.autoStart === 'false') add('info', 'jvm', 'STOPPED', `${id} kapalı (web katmanı eşlenemedi)`);
-      if (j.running && hasTraffic && j.req7d === 0) add('warning', 'jvm', 'NO_LOAD', `${id} çalışıyor ama 7 gündür istek yok (hc hariç)`);
+      // Kanit: hangi web sunucusu, hangi vhost, hangi access log (kullanici istegi)
+      const kanit = j.vhosts.length
+        ? ` [${j.matchKind === 'proxy' ? 'proxy hedefi' : j.matchKind === 'web-app' ? 'Web-App ilişkisi' : j.matchKind}: ${j.vhosts.map((m) => `${m.host}/${m.v.serverName || '?'}${m.v.accessLog ? ' → ' + m.v.accessLog : ''}`).slice(0, 2).join(', ')}${j.vhosts.length > 2 ? ' +' + (j.vhosts.length - 2) : ''}]`
+        : '';
+      if (!j.running && hasTraffic && j.req7d === 0) add('warning', 'jvm', 'RETIRE_CANDIDATE', `${id} kapalı ve web katmanında 7 gündür istek yok (hc.jsp/hc.html hariç) — retire adayı${kanit}`, { action: 'jboss_retire', gen: j.gen, jvm: j.name });
+      else if (!j.running && !hasTraffic && j.autoStart === 'false') add('info', 'jvm', 'STOPPED', `${id} kapalı (web katmanı eşlenemedi${j.webMatch ? ': ' + j.webMatch.how : ''})`);
+      if (j.running && hasTraffic && j.req7d === 0) add('warning', 'jvm', 'NO_LOAD', `${id} çalışıyor ama 7 gündür istek yok (hc.jsp/hc.html hariç)${kanit}`);
+    }
+    // URUN KAPSAMI (kullanici, 2026-09-24): envanter (dbo.Inventory) ne diyor, tarama ne gordu.
+    // Tarama bir urunu goremediyse bu "urun yok" demek DEGILDIR - yetki/yol sorunu olabilir ve
+    // sayfa "300 sunucuda 127 nginx" gibi eksik bir tablo gosterir. Fark acikca bulgu olur.
+    for (const ip of (h.invProducts || [])) {
+      const gorundu = (h.products || []).some((x) => U(x).startsWith(ip));
+      if (!gorundu) add('warning', 'scan', 'PRODUCT_NOT_SCANNED', `Envanterde ${ip} var ama tarama bu sunucuda göremedi (yetki ya da yol farkı olabilir)`);
+    }
+    for (const sp of (h.products || [])) {
+      if (sp === 'NONE') continue;
+      const base = U(sp).replace(/[0-9]+$/, '');
+      if ((h.invProducts || []).length && !(h.invProducts || []).some((x) => base.startsWith(x) || x.startsWith(base))) {
+        add('info', 'scan', 'PRODUCT_NOT_IN_INVENTORY', `Taramada ${sp} bulundu ama envanterde (dbo.Inventory) yok`);
+      }
     }
     // web
     for (const w of h.web) {
@@ -313,6 +377,16 @@ function assess(data) {
     web: {},
     ips: { total: genel.reduce((a, h) => a + h.ips.length, 0), unused: genel.reduce((a, h) => a + h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length, 0) },
     ssh: { hosts: genel.filter((h) => h.sshd).length, lowMaxSessions: genel.filter((h) => h.sshd && h.sshd.maxSessions != null && h.sshd.maxSessions <= 10).length, near: genel.reduce((a, h) => a + h.findings.filter((f) => f.code === 'SSH_SESSIONS_NEAR').length, 0) },
+    // Urun kapsami: envanterde KAC sunucuda var, tarama KACINDA gordu (kullanici, 2026-09-24)
+    coverage: ['NGINX', 'IHS', 'RHA', 'JBOSS'].reduce((a, prod) => {
+      const inv = genel.filter((h) => (h.invProducts || []).includes(prod));
+      a[prod] = {
+        inventory: inv.length,
+        scanned: inv.filter((h) => (h.products || []).some((x) => U(x).startsWith(prod))).length,
+        scannedNotInInventory: genel.filter((h) => (h.products || []).some((x) => U(x).startsWith(prod)) && !(h.invProducts || []).includes(prod)).length,
+      };
+      return a;
+    }, {}),
     scan: { avgCpuS: null, maxCpuS: null, maxCpuHost: null },
     // Genel envanter DISI sunucular (GBEVM*/GBPRV*) - ayri listelenir, ozete karismaz
     special: {
