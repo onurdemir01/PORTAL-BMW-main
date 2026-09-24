@@ -75,16 +75,22 @@ function getConfig() {
     // KOPYALANMADI (bkz. arastirma notlari) — bir talep bu sureyi asarsa TIMEOUT
     // olarak isaretlenir, otomasyon ASLA tetiklenmez, worker sonsuza dek beklemez.
     //
-    // 2026-08-20: sure 24 SAAT'ten 15 DAKIKA'ya cekildi (kullanici talebi). Birim de
-    // saatten DAKIKA'ya gecti ve degisken adi BILEREK degistirildi
-    // (SMART_TICKET_TIMEOUT_HOURS -> SMART_TICKET_TIMEOUT_MINUTES): eski ad
-    // portal_env_overrides allowlist'indeydi, yani Admin > Sistem ekranindan DB'ye
-    // yazilmis eski bir "24" degeri process.env'e uygulanip KOD VARSAYILANINI EZIYOR
-    // olabilirdi - sadece varsayilani degistirmek 15 dakikayi SESSIZCE uygulamazdi.
-    // Eski ad artik HIC OKUNMUYOR, dolayisiyla bayat bir DB satiri etkisiz.
+    // 2026-09-24 (kullanici): SURE SINIRI KALKTI. Insanlar onayi tamamlamadan sayfayi
+    // kapatiyor, Smart tarafinda birden fazla onayci varsa akis saatler surebiliyordu ve
+    // 15 dakikalik sinir talebi sessizce iptal ediyordu - kullanici da isin neden
+    // calismadigini anlamiyordu. Varsayilan artik SINIRSIZ (null): talep, onaylanana ya da
+    // Smart'ta reddedilene/iptal edilene kadar bekler.
+    //   * OCO'dan dogan (production) talepler AYRI: onlarin siniri kesinti penceresinin
+    //     SONUDUR (bkz. poller.cjs) - pencere kapandiktan sonra is zaten calismamali.
+    //   * Yine de bir sinir istenirse SMART_TICKET_TIMEOUT_MINUTES ile verilir.
+    //
+    // 2026-08-20 notu (duruyor): eski ad SMART_TICKET_TIMEOUT_HOURS HIC OKUNMUYOR.
+    // 2026-09-24: bu ad da portal_env_overrides allowlist'inden CIKARILDI - Admin > Sistem
+    // uzerinden DB'ye yazilmis bayat bir "15" degeri, kod varsayilanini (sinirsiz) sessizce
+    // ezerdi. Sinir gerekiyorsa sunucunun GERCEK ortam degiskeniyle verilir.
     ticketTimeoutMinutes: (() => {
       const v = Number(process.env.SMART_TICKET_TIMEOUT_MINUTES);
-      return Number.isFinite(v) && v > 0 ? v : 15;
+      return Number.isFinite(v) && v > 0 ? v : null;
     })(),
     // Opsiyonel, Smart'a OZEL proxy (global HTTPS_PROXY'den BILEREK bagimsiz — o,
     // MCP/Splunk/AI gibi diger tum entegrasyonlari da etkiler, admin sadece Smart

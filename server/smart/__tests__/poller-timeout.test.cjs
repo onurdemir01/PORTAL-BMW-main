@@ -89,19 +89,29 @@ function ticketAgedMinutes(min) {
   };
 }
 
-test('varsayilan zaman asimi 15 DAKIKA (saat degil)', () => {
+// 2026-09-24 (kullanici): sure siniri KALKTI. Onay akisi birden fazla kisiden gecebiliyor,
+// kullanici sayfayi kapatip sonra onaylayabiliyor; 15 dakikalik sinir talebi sessizce iptal
+// ediyordu. Varsayilan artik SINIRSIZ; OCO'dan dogan (production) talepte sinir kesinti
+// penceresinin SONUDUR.
+test('varsayilan SINIRSIZ (null) - sure siniri yok', () => {
   withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_MINUTES: undefined }, () => {
     delete require.cache[require.resolve('../config.cjs')];
     const { getConfig } = require('../config.cjs');
-    assert.strictEqual(getConfig().ticketTimeoutMinutes, 15);
+    assert.strictEqual(getConfig().ticketTimeoutMinutes, null);
   });
 });
 
-test('bayat SMART_TICKET_TIMEOUT_HOURS degeri ARTIK OKUNMUYOR (15 dk korunur)', () => {
+test('bayat DB degeri kod varsayilanini EZEMEZ: anahtar env-overrides allowlistinde DEGIL', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'db', 'env-overrides.cjs'), 'utf8');
+  assert.ok(!src.includes('SMART_TICKET_TIMEOUT_MINUTES'),
+    'anahtar allowlistte kalirsa Admin > Sistem uzerinden yazilmis eski bir 15 degeri sinirsizligi sessizce geri alir');
+});
+
+test('bayat SMART_TICKET_TIMEOUT_HOURS degeri ARTIK OKUNMUYOR (sinirsiz korunur)', () => {
   withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_HOURS: '24', SMART_TICKET_TIMEOUT_MINUTES: undefined }, () => {
     delete require.cache[require.resolve('../config.cjs')];
     const { getConfig } = require('../config.cjs');
-    assert.strictEqual(getConfig().ticketTimeoutMinutes, 15);
+    assert.strictEqual(getConfig().ticketTimeoutMinutes, null);
   });
 });
 
@@ -148,12 +158,57 @@ test('14 dakikalik ONAYLI talep normal sekilde tetiklenir (timeout erken calisma
   });
 });
 
-test('gecersiz/sifir SMART_TICKET_TIMEOUT_MINUTES guvenli varsayilana (15) duser', () => {
+test('gecersiz/sifir SMART_TICKET_TIMEOUT_MINUTES sinirsiza duser (yarim yamalak deger kisa sinir kurmasin)', () => {
   for (const bad of ['0', '-5', 'abc', '']) {
     withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_MINUTES: bad }, () => {
       delete require.cache[require.resolve('../config.cjs')];
       const { getConfig } = require('../config.cjs');
-      assert.strictEqual(getConfig().ticketTimeoutMinutes, 15, `deger "${bad}" icin 15 beklendi`);
+      assert.strictEqual(getConfig().ticketTimeoutMinutes, null, `deger "${bad}" icin sinirsiz beklendi`);
     });
   }
+});
+
+// PRODUCTION (OCO) TALEBI: sinir kesinti penceresinin SONU. Pencere acikken talep
+// TIMEOUT olmaz - onay akisi saatler surse bile; pencere kapaninca is tetiklenmez.
+test('OCO talebi: pencere KAPANMADAN timeout olmaz, KAPANINCA tetiklenmez', async () => {
+  await withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_MINUTES: undefined }, async () => {
+    const acik = ticketAgedMinutes(600); // 10 saattir bekliyor
+    acik.pendingLaunch = { ocoWindowEndIso: new Date(Date.now() + 3600 * 1000).toISOString() };
+    let launched = 0;
+    let r = loadPollerWith({ tickets: [acik], statusFor: () => ({ completed: true, rejected: false, stateName: 'Tamamlandı', statusCode: '1000' }) });
+    try {
+      r.poller.startPoller(async () => { launched++; return { jobId: 1 }; });
+      await r.poller.tick();
+      assert.strictEqual(launched, 1, 'pencere acikken 10 saatlik talep hala tetiklenebilmeli');
+      assert.ok(!r.marks.some((m) => m.status === 'TIMEOUT'), 'pencere acikken TIMEOUT yazilmamali');
+    } finally { r.poller.stopPoller(); r.restore(); }
+
+    const kapali = ticketAgedMinutes(600);
+    kapali.pendingLaunch = { ocoWindowEndIso: new Date(Date.now() - 60 * 1000).toISOString() };
+    launched = 0;
+    r = loadPollerWith({ tickets: [kapali], statusFor: () => ({ completed: true, rejected: false, stateName: 'Tamamlandı', statusCode: '1000' }) });
+    try {
+      r.poller.startPoller(async () => { launched++; return { jobId: 2 }; });
+      await r.poller.tick();
+      assert.strictEqual(launched, 0, 'pencere kapandiktan sonra is TETIKLENMEMELI');
+      assert.strictEqual(r.marks[0].status, 'TIMEOUT');
+      assert.match(r.marks[0].errorMessage, /pencere/i);
+    } finally { r.poller.stopPoller(); r.restore(); }
+  });
+});
+
+test('sinirsizda bekleyen talep (30 gun) TIMEOUT OLMAZ', async () => {
+  await withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_MINUTES: undefined }, async () => {
+    let launched = 0;
+    const { poller, marks, restore } = loadPollerWith({
+      tickets: [ticketAgedMinutes(60 * 24 * 30)],
+      statusFor: () => ({ completed: false, rejected: false, stateName: 'Onay Bekliyor', statusCode: null }),
+    });
+    try {
+      poller.startPoller(async () => { launched++; return { jobId: 3 }; });
+      await poller.tick();
+      assert.strictEqual(launched, 0, 'onaylanmadan tetiklenmemeli');
+      assert.ok(!marks.some((m) => m.status === 'TIMEOUT'), 'sure sinirsizken TIMEOUT yazilmamali');
+    } finally { poller.stopPoller(); restore(); }
+  });
 });

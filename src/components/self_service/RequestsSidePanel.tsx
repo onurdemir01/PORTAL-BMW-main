@@ -273,9 +273,15 @@ export default function RequestsSidePanel() {
           className="relative flex flex-col items-center gap-2 py-4 px-2 w-11 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors shadow-[var(--shadow-sm)]"
         >
           {pendingCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 text-[10px] font-bold text-white bg-amber-500 rounded-full">
-              {pendingCount}
-            </span>
+            <>
+              {/* Nabiz atan halka: kullanici onayi tamamlamadan sayfadan ayrilabiliyor ve
+                  bekleyen talebi fark etmiyordu (2026-09-24). Halka animasyonsuz modda
+                  (prefers-reduced-motion) sabit kalir; sayi her durumda gorunur. */}
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 motion-safe:animate-ping" aria-hidden="true" />
+              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 text-[10px] font-bold text-white bg-amber-500 rounded-full">
+                {pendingCount}
+              </span>
+            </>
           )}
           <ChevronDoubleLeftIcon className="w-4 h-4 text-gray-400" />
           <ClipboardDocumentListIcon className="w-5 h-5 text-[var(--accent)]" />
@@ -298,7 +304,15 @@ export default function RequestsSidePanel() {
             <div className="flex items-center gap-2 min-w-0">
               <ClipboardDocumentListIcon className="w-5 h-5 text-[var(--accent)] flex-shrink-0" />
               <div className="min-w-0">
-                <div className="font-bold text-sm">Taleplerim</div>
+                <div className="font-bold text-sm flex items-center gap-1.5">
+                  Taleplerim
+                  {pendingCount > 0 && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 motion-safe:animate-pulse" aria-hidden="true" />
+                      {pendingCount} onay bekliyor
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                   Açtığınız Smart talepleri
                 </div>
@@ -314,6 +328,19 @@ export default function RequestsSidePanel() {
           </div>
 
           <div className="p-3 max-h-[70vh] overflow-y-auto">
+            {/* KULLANICI YANLIS ANLAMASI (2026-09-24): "insanlar Smart'i onaylamadan sayfayi
+                kapatiyor; birden fazla onayci varsa onay akisini tamamlayip isi
+                calistirabilecegini anlamiyor." Bekleyen talep varken ne olacagi ACIKCA
+                yaziliyor - artik sure siniri da yok, talep onaylanana kadar bekliyor. */}
+            {!loading && !err && pendingCount > 0 && (
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                <b>{pendingCount} talebiniz Smart onayı bekliyor.</b> Bu sayfayı kapatabilirsiniz —
+                onay tamamlandığında (Smart’ta birden fazla onaycı varsa <b>hepsi</b> onayladığında)
+                iş kendiliğinden başlar. Süre sınırı yok; OCO kaydından açılan talepler en geç
+                <b> kesinti penceresinin sonuna</b> kadar onaylanabilir.
+              </div>
+            )}
+
             {loading && <SkeletonList rows={3} />}
 
             {!loading && err && (

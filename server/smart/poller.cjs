@@ -5,9 +5,15 @@
 // worker'i sonsuza dek isgal edebiliyordu (dis periyodik senkron isi calismazsa asla
 // bitmiyordu) hem de o dis senkron isin NEREDE/NASIL zamanlandigi koddan gorunmuyordu
 // (arastirma sirasinda dogrulanamadi). Burada TEK bir zamanlanmis interval, TUM
-// bekleyen taleplere bakar; her talebin ayrica bir SURE SINIRI
-// (SMART_TICKET_TIMEOUT_MINUTES, varsayilan 15 DAKIKA) vardir — bu sure asilirsa talep
-// TIMEOUT olarak isaretlenip IPTAL edilir, otomasyon ASLA tetiklenmez, sonsuza dek beklemez.
+// bekleyen taleplere bakar.
+//
+// SURE SINIRI (2026-09-24, kullanici): varsayilan olarak SINIRSIZ. Onceki 15 dakikalik sinir,
+// onay akisi birden fazla kisiden geciyorsa ya da kullanici sayfayi kapatip sonra onayladiysa
+// talebi sessizce iptal ediyordu. Artik talep, onaylanana / reddedilene / elle iptal edilene
+// kadar bekler. IKI istisna:
+//   * OCO'dan dogan (production) talep: sinir kesinti penceresinin SONU - o saatten sonra is
+//     zaten calismamali.
+//   * SMART_TICKET_TIMEOUT_MINUTES ortam degiskeni verilmisse o sure.
 'use strict';
 
 const store = require('./store.cjs');
@@ -80,31 +86,37 @@ async function _tickBody() {
     // "Tamamlandi" donse BILE asagidaki launch blogunа HIC ULASMAZ (continue). TIMEOUT
     // yazildiktan sonra listPending() yalnizca status='PENDING' dondurdugu icin talep
     // bir daha hic islenmez - otomasyon ASLA tetiklenmez.
-    // SURE SINIRI: varsayilan kisa (15 dk). AMA bilet bir OCO kaydindan dogduysa onay
-    // penceresi kesinti saatine kadar acik kalmali (2026-09-22): personel 15:00'te talebi
-    // birakiyor, onay is akisinda birkac saat surebiliyor. Sinir, kesinti penceresinin
-    // SONU (+1 saat) ile varsayilanin buyugudur.
+    // SURE SINIRI: varsayilan SINIRSIZ (null). OCO'dan dogan talepte sinir, kesinti
+    // penceresinin SONUDUR: o saatten sonra is zaten calismamali, talebi acik tutmak
+    // kullaniciya yanlis umut verir. Ortam degiskeni verilmisse ikisinin BUYUGU alinir -
+    // pencere sonuna kadar onaylayabilmek, kisa bir genel sinir yuzunden kaybolmasin.
     const ageMinutes = (Date.now() - new Date(ticket.createdAt).getTime()) / 60000;
-    let timeoutMinutes = cfg.ticketTimeoutMinutes;
+    let timeoutMinutes = cfg.ticketTimeoutMinutes; // null = sinirsiz
     const winEndIso = ticket?.pendingLaunch?.ocoWindowEndIso;
     if (winEndIso) {
-      const until = new Date(winEndIso).getTime() + 3600 * 1000;
+      const until = new Date(winEndIso).getTime();
       const allowed = (until - new Date(ticket.createdAt).getTime()) / 60000;
-      if (Number.isFinite(allowed) && allowed > timeoutMinutes) timeoutMinutes = allowed;
+      if (Number.isFinite(allowed)) {
+        timeoutMinutes = timeoutMinutes == null ? allowed : Math.max(timeoutMinutes, allowed);
+      }
     }
-    if (ageMinutes > timeoutMinutes) {
+    if (timeoutMinutes != null && ageMinutes > timeoutMinutes) {
       await store
         .markState(ticket.id, {
           status: 'TIMEOUT',
           smartStateName: ticket.smartStateName,
-          errorMessage: `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
+          errorMessage: winEndIso
+            ? `Kesinti penceresi (${new Date(winEndIso).toISOString()}) kapandi, Smart onayi gelmedi - is tetiklenmedi.`
+            : `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
           resolved: true,
           expected: 'PENDING', // arada iptal edildiyse CANCELLED korunur
         })
         .catch((e) => console.warn('[Smart] TIMEOUT yazilamadi:', e.message));
       await syncOcoRecord(ticket, {
         status: 'FAILED',
-        message: `Smart onayi ${Math.round(timeoutMinutes)} dakikada gelmedi — is tetiklenmedi.`,
+        message: winEndIso
+          ? 'Kesinti penceresi kapandi, Smart onayi gelmedi — is tetiklenmedi.'
+          : `Smart onayi ${Math.round(timeoutMinutes)} dakikada gelmedi — is tetiklenmedi.`,
       });
       console.log(
         `[Smart] ticket #${ticket.id} ZAMAN ASIMI (${Math.round(timeoutMinutes)} dk) - otomasyon tetiklenmedi.`,

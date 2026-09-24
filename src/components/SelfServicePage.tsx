@@ -777,8 +777,10 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
                         kesinti saatini beklemenize gerek yok. Onay verildiği anda iş{' '}
                         {ocoState.done.runAtText} kesinti penceresine zamanlanır
                         ve o saatte kendiliğinden çalışır. Onay pencere açıldıktan sonra gelirse ve pencere
-                        hâlâ açıksa iş hemen başlar. Durumu aşağıdaki kutudan ve "Taleplerim" panelinden
-                        izleyebilirsiniz.
+                        hâlâ açıksa iş hemen başlar. <b>Bu sayfayı kapatabilirsiniz</b> — Smart'ta birden
+                        fazla onaycı varsa hepsi onayladığında iş kendiliğinden başlar; onay için süre
+                        sınırı yok, en geç kesinti penceresinin sonuna kadar onaylanabilir. Durumu
+                        aşağıdaki kutudan ve "Taleplerim" panelinden izleyebilirsiniz.
                       </>
                     ) : ocoState.done?.kind === 'awx' ? (
                       <>
