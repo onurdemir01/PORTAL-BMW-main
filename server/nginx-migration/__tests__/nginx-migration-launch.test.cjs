@@ -210,3 +210,24 @@ test('BULK2 ekran: satir secimi, toplu cubuk, onay listesi ve uzerine yazma uyar
   assert.match(page, /mevcut notlar silinir/, 'uzerine yazma uyarisi yok');
   assert.match(page, /Bu \{apps\.length\} uygulamaya yazılacak/, 'yazilacak uygulama listesi gosterilmiyor');
 });
+
+// VIS1 (2026-09-24, kullanici: "gecis yapildi diye isaretlemezsem sunucuda tanim olup
+// olmadigi gorunmuyor gibi; tik/carpi daha gorunur olsun").
+// Sozlesme: "yeni sunucularda tanimli mi" sutunu TARAMADAN gelir (newStatus), elle takip
+// (planlandi/gecti) bu karari ETKILEMEZ; durum ayri bir sutunda rozet olarak durur, ayrica
+// suzgec ve CSV'de yer alir.
+test('VIS1 ekran: yeni sunuculardaki tanim durumu TARAMADAN gelir, ayri sutun/suzgec/CSV', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.match(page, /function newSideStatus/, 'ozet durum fonksiyonu yok');
+  // karar YALNIZ newStatus'a bakar; tracking/state'e bakmamali
+  const fn = page.slice(page.indexOf('function newSideStatus'), page.indexOf('const NEW_SIDE'));
+  assert.ok(!/tracking|trackOf|\.state\b/.test(fn), 'durum elle takipten etkilenmemeli');
+  assert.match(fn, /newStatus === 'defined'/);
+  assert.match(page, /Yeni sunucularda<\/th>/, 'ayri sutun yok');
+  assert.match(page, /sideFilter/, 'taramaya gore suzgec yok');
+  assert.match(page, /'yeni_sunucularda'/, 'CSV sutunu yok');
+  // "taranmadi" ile "yok" AYRI kalmali
+  assert.match(page, /TARANMADI/);
+  assert.ok(page.includes('"yok" demek DEĞİLDİR'), 'taranmadi ile yok ayrimi aciklanmali');
+});

@@ -96,6 +96,8 @@ export default function NginxProdMigration() {
   const [trackingReady, setTrackingReady] = useState(true);
   const [editing, setEditing] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp } | null>(null);
   const [trackFilter, setTrackFilter] = useState<'all' | 'open' | 'planned' | 'migrated'>('all');
+  // TARAMAYA gore suzgec: elle isaretlemeden bagimsiz (2026-09-24)
+  const [sideFilter, setSideFilter] = useState<'all' | 'defined' | 'partial' | 'none' | 'not-scanned'>('all');
   // Gruplar SEKME (kullanici, 2026-09-17): Glomo / Openbanking-Saklama-Webforms alt alta degil,
   // sekmeyle gecilir. Ilk grup varsayilan.
   const [groupId, setGroupId] = useState<string>('');
@@ -273,6 +275,20 @@ export default function NginxProdMigration() {
           <option value="planned">geçiş: planlandı</option>
           <option value="migrated">geçiş: geçti</option>
         </select>
+        {/* TARAMAYA gore suzgec (kullanici, 2026-09-24): elle isaretlemeye bakmadan
+            "yeni sunucularda gercekten tanimli mi" sorusuna gore listeyi daralt. */}
+        <select
+          value={sideFilter}
+          onChange={(e) => setSideFilter(e.target.value as 'all' | 'defined' | 'partial' | 'none' | 'not-scanned')}
+          className="px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
+          title="Taramaya göre yeni sunuculardaki tanım durumu"
+        >
+          <option value="all">yeni sunucularda: hepsi</option>
+          <option value="defined">yeni sunucularda: TANIMLI</option>
+          <option value="partial">yeni sunucularda: KISMEN</option>
+          <option value="none">yeni sunucularda: YOK</option>
+          <option value="not-scanned">yeni sunucularda: taranmadı</option>
+        </select>
         <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
           <input type="checkbox" checked={onlyProblem} onChange={(e) => setOnlyProblem(e.target.checked)} />
           Sadece hazır olmayanlar
@@ -281,10 +297,11 @@ export default function NginxProdMigration() {
           onClick={() =>
             csvDownload(
               'nginx_prod_tasima',
-              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'gecis_durumu', 'planlanan_tarih', 'gecis_tarihi', 'gecis_notu', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'eski_locationlar', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
+              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'yeni_sunucularda', 'gecis_durumu', 'planlanan_tarih', 'gecis_tarihi', 'gecis_notu', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'eski_locationlar', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
               data.groups.flatMap((g) =>
                 g.apps.map((a) => [
                   g.label, a.namespace, a.suffixAdded ? 'evet' : '', a.application, a.owner?.groups.join(' | ') || '',
+                  (() => { const st = newSideStatus(a.paths); return NEW_SIDE[st.kind].label + (st.kind === 'partial' ? ` ${st.done}/${st.total}` : ''); })(),
                   TRACK_LABEL[tracking.get(trackKey(g.id, a.namespace, a.application))?.state || 'none'].label,
                   tracking.get(trackKey(g.id, a.namespace, a.application))?.plannedDate || '',
                   tracking.get(trackKey(g.id, a.namespace, a.application))?.migratedDate || '',
@@ -358,6 +375,7 @@ export default function NginxProdMigration() {
           tracking={tracking}
           trackingReady={trackingReady}
           trackFilter={trackFilter}
+          sideFilter={sideFilter}
           onTrack={(app) => setEditing({ group: g, app })}
         />
       ))}
@@ -874,6 +892,37 @@ function cellText(f: { hys: boolean; app: boolean; conf: boolean } | null | unde
 const STATUS_ORDER: Record<NginxMigrationApp['status'], number> = { missing: 0, partial: 1, 'not-scanned': 2, ready: 3 };
 
 /** Location'in YENI sunuculardaki tanim durumu (nginx-migration.cjs newLocStatus). */
+/**
+ * UYGULAMANIN YENI SUNUCULARDAKI TANIM DURUMU (kullanici, 2026-09-24: "gecis yapildi diye
+ * isaretlemezsem sunucuda tanim olup olmadigi gorunmuyor gibi; tik/carpi daha gorunur olsun").
+ *
+ * Kaynak TARAMADIR, elle isaretleme DEGIL: `newStatus` alanini nginx_config_audit uretir.
+ * Yani "gecis yapildi" kutusunu hic isaretlemesen de bu sutun gercegi gosterir. Elle takip
+ * (planlandi/gecti) AYRI bir sutundur ve bu karari ETKILEMEZ.
+ *
+ *   defined      : her yolun tanimi YENI sunucularin TAMAMINDA var
+ *   partial      : bir kismi var (kac yol tamam / toplam kac yol)
+ *   none         : hicbiri yok
+ *   not-scanned  : yeni sunucular henuz taranmadi - "yok" DEMEK DEGILDIR
+ */
+function newSideStatus(paths: { newStatus?: string | null }[]): { kind: 'defined' | 'partial' | 'none' | 'not-scanned'; done: number; total: number } {
+  const total = paths.length;
+  if (!total) return { kind: 'not-scanned', done: 0, total: 0 };
+  const done = paths.filter((p) => p.newStatus === 'defined').length;
+  const bilinmiyor = paths.filter((p) => !p.newStatus || p.newStatus === 'not-scanned').length;
+  if (done === total) return { kind: 'defined', done, total };
+  if (bilinmiyor === total) return { kind: 'not-scanned', done, total };
+  if (done === 0 && paths.every((p) => p.newStatus === 'none' || !p.newStatus)) return { kind: 'none', done, total };
+  return { kind: 'partial', done, total };
+}
+
+const NEW_SIDE: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral'; hint: string }> = {
+  defined: { label: 'TANIMLI', tone: 'success', hint: 'Taramaya göre bu uygulamanın TÜM location tanımları yeni sunucuların hepsinde var.' },
+  partial: { label: 'KISMEN', tone: 'warning', hint: 'Bazı location tanımları yeni sunucularda yok ya da bazı sunucularda eksik.' },
+  none: { label: 'YOK', tone: 'danger', hint: 'Taramaya göre hiçbir location tanımı yeni sunucularda yok.' },
+  'not-scanned': { label: 'TARANMADI', tone: 'neutral', hint: 'Yeni sunucular henüz taranmadı — "yok" demek DEĞİLDİR. nginx_config_audit koşunca netleşir.' },
+};
+
 const NEW_LOC: Record<'defined' | 'partial' | 'none' | 'not-scanned', { mark: string; color: string; hint: string }> = {
   defined: { mark: '✓', color: 'var(--status-success)', hint: 'her yeni sunucuda tanımlı' },
   partial: { mark: '◐', color: 'var(--status-warning)', hint: 'bazı yeni sunucularda tanımlı' },
@@ -953,7 +1002,7 @@ function LocationProgress({ g }: { g: NginxMigrationGroup }) {
 }
 
 function GroupPanel({
-  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, pathJobs, selected, onToggleSelect, onToggleMany, onBulk, onClearSelection, selectedTotal, trackFilter, onTrack, canDelete, onDelete,
+  g, onlyProblem, q, sortBy, ownersReady, canCreate, onCreate, tracking, trackingReady, pathJobs, selected, onToggleSelect, onToggleMany, onBulk, onClearSelection, selectedTotal, trackFilter, sideFilter, onTrack, canDelete, onDelete,
 }: {
   g: NginxMigrationGroup;
   onlyProblem: boolean;
@@ -972,6 +1021,7 @@ function GroupPanel({
   tracking: Map<string, MigrationTracking>;
   trackingReady: boolean;
   trackFilter: 'all' | 'open' | 'planned' | 'migrated';
+  sideFilter: 'all' | 'defined' | 'partial' | 'none' | 'not-scanned';
   onTrack: (app: NginxMigrationApp) => void;
   canDelete: boolean;
   onDelete: (app: NginxMigrationApp) => void;
@@ -985,6 +1035,7 @@ function GroupPanel({
       if (trackFilter === 'open' && (ts === 'migrated' || ts === 'cancelled')) return false;
       if (trackFilter === 'planned' && ts !== 'planned') return false;
       if (trackFilter === 'migrated' && ts !== 'migrated') return false;
+      if (sideFilter !== 'all' && newSideStatus(a.paths).kind !== sideFilter) return false;
       if (needle && !a.application.includes(needle) && !a.namespace.includes(needle) && !ownerText(a.owner).includes(needle)) return false;
       return true;
     });
@@ -1007,7 +1058,7 @@ function GroupPanel({
     }
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [g, onlyProblem, q, sortBy, tracking, trackFilter]);
+  }, [g, onlyProblem, q, sortBy, tracking, trackFilter, sideFilter]);
   const trackTotals = useMemo(() => {
     const c = { planned: 0, migrated: 0, cancelled: 0, none: 0 };
     for (const a of g.apps) c[trackOf(a)?.state || 'none'] += 1;
@@ -1116,6 +1167,7 @@ function GroupPanel({
                 <th className="text-left pr-3 pb-1">Uygulama</th>
                 <th className="text-left pr-3 pb-1">Namespace</th>
                 <th className="text-left pr-3 pb-1" title="namespace'in CMDB sahibi">Ekip</th>
+                <th className="text-left pr-3 pb-1" title="TARAMAYA göre: bu uygulamanın location tanımları yeni sunucularda var mı? Elle işaretlemeden bağımsızdır.">Yeni sunucularda</th>
                 <th className="text-left pr-3 pb-1" title="geçiş takibi: planlandı / geçti / iptal + tarih; tıklayarak düzenleyin">Geçiş</th>
                 <th className="text-left pr-3 pb-1">Durum</th>
                 <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost ve location tanımları (proxy_pass ile). Sondaki işaret: bu location YENİ sunucularda tanımlı mı (✓ hepsinde, ◐ bazısında, ✗ hiçbirinde, ? taranmadı)">Location (eski → yeni)</th>
@@ -1186,6 +1238,20 @@ function GroupPanel({
                     )}
                   </td>
                   <td className="pr-3 py-1"><OwnerCell owner={a.owner} ready={ownersReady} /></td>
+                  <td className="pr-3 py-1 whitespace-nowrap">
+                    {(() => {
+                      const st = newSideStatus(a.paths);
+                      const meta = NEW_SIDE[st.kind];
+                      return (
+                        <span title={`${meta.hint}
+${st.total ? `${st.done}/${st.total} location tanımlı` : ''}`}>
+                          <Pill tone={meta.tone}>
+                            {meta.label}{st.kind === 'partial' ? ` ${st.done}/${st.total}` : ''}
+                          </Pill>
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="pr-3 py-1"><TrackCell t={trackOf(a)} ready={trackingReady} onEdit={() => onTrack(a)} /></td>
                   <td className="pr-3 py-1">
                     <Pill tone={STATUS[a.status].tone} title={STATUS[a.status].hint}>
@@ -1211,12 +1277,12 @@ function GroupPanel({
                         <span
                           key={p.service + p.location}
                           className="text-[10px] px-1.5 py-0.5 rounded border font-mono whitespace-nowrap inline-flex items-center gap-1"
-                          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+                          style={{ borderColor: mark.color, background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
                           title={`${p.service}-PROD.conf · location ${p.location}\neski: ${p.hosts.join(', ')}\nyeni sunucuda tanım: ${mark.hint}${!jobDone && p.newHosts.length ? ` (${p.newHosts.join(', ')})` : ''}`}
                         >
                           <span className="text-[var(--text-muted)]">{p.service}</span> {p.location}
                           {/* yeni sunucudaki tanim durumu (location ilerlemesi, 2026-09-17) */}
-                          <span className="font-sans font-semibold" style={{ color: mark.color }}>{mark.mark}</span>
+                          <span className="font-sans font-bold text-[12px] leading-none" style={{ color: mark.color }}>{mark.mark}</span>
                         </span>
                         );
                       })}
