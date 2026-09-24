@@ -28,6 +28,11 @@ test('playbook bmw_portal/opsx_openshift_pod_delete altinda ve PLAYBOOKS ile kay
   assert.match(text, /pod_delete_consent/);
   assert.match(text, /opsx_pod_delete_result/);
   assert.match(text, /oc delete pod/);
+  // 2026-09-24 (kullanici: "bazen takili kaliyor"): --force TEK BASINA yok sayilir
+  // ("--force is ignored because --grace-period is not 0") ve komut zarif kapanmayi bekler.
+  // Ikisi birlikte + zaman asimi olmali.
+  assert.match(text, /--force --grace-period=0/);
+  assert.match(text, /--timeout=/);
   // Teams webhook URL'si depoda ASLA sabit yazilmaz — opsiyonel degisken
   assert.match(text, /opsx_teams_webhook_url/);
   assert.doesNotMatch(text, /webhook\.office\.com|sig=/);

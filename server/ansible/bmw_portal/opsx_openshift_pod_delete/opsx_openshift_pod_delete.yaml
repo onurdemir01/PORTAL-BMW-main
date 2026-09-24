@@ -24,6 +24,13 @@
 #   set_stats: { opsx_pod_delete_result: { overall_status: ok|partial|failed, results: [
 #     {cluster, namespace, pod, existence: 'Exist'|'Not Exist', ok: true|false, error?} ] } }
 #
+# SILME KOMUTU: `oc delete pod --force --grace-period=0 --timeout=<pod_delete_timeout>`.
+# `--force` TEK BASINA YETMEZ: kubectl/oc onu grace-period 0 DEGILSE yok sayar ("--force is
+# ignored because --grace-period is not 0") ve komut, pod terminating'de takilirsa varsayilan
+# zarif kapanma suresince BEKLER - kullanicinin "bazen takili kaliyor" dedigi durum budur.
+# Ikisi birlikte "hemen sil" anlamina gelir; --timeout (varsayilan 60s) isin sonsuza kadar
+# beklemesini de engeller.
+#
 # GÜVENLİK: silme YALNIZ `oc delete pod` — deployment/rollout'a dokunulmaz; pod bulunamazsa
 # "Not Exist" olarak raporlanır, hata sayılmaz ama ok:false'tur. Teams webhook'u bu (public)
 # repoda TUTULMAZ: `opsx_teams_webhook_url` tanımlıysa (AWX extra var ya da
@@ -226,7 +233,7 @@
             "{{ oc_bin }}" logout >/dev/null 2>&1 || true
             exit 0
           fi
-          ERR="$("{{ oc_bin }}" delete pod "$POD" -n "$NS" --force 2>&1 >/dev/null)"; RC=$?
+          ERR="$("{{ oc_bin }}" delete pod "$POD" -n "$NS" --force --grace-period=0 --timeout={{ pod_delete_timeout | default('60s') }} 2>&1 >/dev/null)"; RC=$?
           "{{ oc_bin }}" logout >/dev/null 2>&1 || true
           if [ "$RC" -eq 0 ]; then
             echo "Exist|true|Silindi; OpenShift yeni pod'u ayağa kaldırır"
