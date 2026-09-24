@@ -394,6 +394,44 @@ function initNginxMigration(app) {
   // tarayici kapanirsa kayitlarin yarisi eski yarisi yeni kalirdi ve kullanici hangisinin
   // yazildigini bilemezdi. Burada her ogenin sonucu AYRI donuyor (yazilan / hata), ekran da
   // ne olduğunu satir satir gosteriyor.
+  // TARAMA TAZELEME (kullanici, 2026-09-24): "yeni gelen uygulamalar tasimalarda direkt
+  // gozuksun ki tasinip tasinmadigini anlayabileyim". Ekran verisi nginx_config_audit
+  // taramasindan gelir ve o is gunde bir kosar; yeni tanim ertesi gune kadar gorunmezdi.
+  // Artik ayni is target_hosts ile ANINDA kosturulabiliyor - veri yine TEK kaynaktan
+  // (taramadan) gelir, Portal kendi "beklemede" kaydini uydurmaz.
+  const AUDIT_KEY = 'nginx_config_audit';
+  const HOSTS_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
+
+  async function launchAudit(hosts, user, label) {
+    const { templateId, serverId } = await resolveByKey(AUDIT_KEY);
+    if (!templateId) {
+      const e = new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${AUDIT_KEY}" satırına Template ID girilmeli.`);
+      e.status = 501;
+      throw e;
+    }
+    const clean = (hosts || []).map((h) => String(h).trim().toUpperCase()).filter((h) => HOSTS_RE.test(h));
+    const extraVars = clean.length ? { target_hosts: clean.join(',') } : {};
+    await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: AUDIT_KEY });
+    const result = await require('../ansible/runner.cjs').launchJobOnServer(serverId, templateId, extraVars, '', user || {});
+    try {
+      await db.query(
+        `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [(user && user.username) || 'portal', serverId, templateId, `Nginx tarama: ${label || (clean.length ? clean.join(',') : 'tüm filo')}`, result?.jobId, result?.status || 'pending', JSON.stringify(extraVars)],
+      );
+    } catch (e) { console.warn('[nginx-migration] tarama job gecmisi yazilamadi:', e.message); }
+    return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId, hosts: clean };
+  }
+
+  router.post('/rescan', async (req, res) => {
+    try {
+      const hosts = Array.isArray(req.body?.hosts) ? req.body.hosts : [];
+      const out = await launchAudit(hosts, getRequestUser(req), req.body?.label);
+      res.json({ ok: true, ...out });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   const BULK_MAX = 200;
   router.put('/tracking/bulk', async (req, res) => {
     const items = Array.isArray(req.body?.items) ? req.body.items : [];

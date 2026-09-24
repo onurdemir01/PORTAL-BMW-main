@@ -2480,6 +2480,19 @@ const PLAYBOOK_REGISTRY_SEED = [
   },
   {
     // CIS NGINX Benchmark taramasi (2026-09-22): gunluk + Portal'dan target_hosts ile canli skor
+    // TARAMA TAZELEME (2026-09-24, kullanici: "yeni gelen uygulamalar tasima ekraninda
+    // hemen gorunsun"). Gunluk tarama yeni tanimi ertesi gune tasiyordu; Portal artik
+    // ayni is'i target_hosts ile ANINDA kosturabiliyor.
+    key_name: 'nginx_config_audit',
+    display_name: 'Nginx Config Audit — Tarama',
+    category: 'nginx',
+    handler: 'nginx_config_audit',
+    description:
+      'bmw_nginx/nginx_config_audit/nginx_config_audit.yml — SPA/proxy tanimlarini tarar, dbo.Nginx_Config_Audit tablolarina yazar. Gunluk zamanlayin; Portal > Denetim > Production Tasimalari "Taramayi tazele" dugmesi target_hosts ile tek grup kosturur. Survey: tbmwans_pwd credential.',
+    playbook_path: null,
+    env_var_name: 'NGINX_CONFIG_AUDIT_TEMPLATE_ID',
+  },
+  {
     key_name: 'nginx_cis_scan',
     display_name: 'Nginx CIS — Tarama',
     category: 'nginx',

@@ -231,3 +231,26 @@ test('VIS1 ekran: yeni sunuculardaki tanim durumu TARAMADAN gelir, ayri sutun/su
   assert.match(page, /TARANMADI/);
   assert.ok(page.includes('"yok" demek DEĞİLDİR'), 'taranmadi ile yok ayrimi aciklanmali');
 });
+
+// RS1 (2026-09-24, kullanici: "yeni gelen uygulamalar tasimalarda direkt gozuksun").
+// Ekran verisi nginx_config_audit taramasindan gelir ve o is gunde bir kosar. Portal artik
+// ayni isi target_hosts ile ANINDA kosturabiliyor - kendi "beklemede" kaydini UYDURMUYOR,
+// tek dogruluk kaynagi yine tarama.
+test('RS1 tarama tazeleme: uc, katalog kaydi ve ekran dugmesi', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.match(src, /router\.post\('\/rescan'/, 'tazeleme ucu yok');
+  assert.match(src, /AUDIT_KEY = 'nginx_config_audit'/, 'katalog anahtari yok');
+  assert.match(src, /target_hosts/, 'yalniz secili sunucular taranmali');
+  assert.match(src, /assertTemplateAcceptsExtraVars/, 'template on kontrolu yok');
+
+  const setup = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  assert.match(setup, /key_name: 'nginx_config_audit'/, 'katalog kaydi seed edilmemis');
+  assert.match(setup, /NGINX_CONFIG_AUDIT_TEMPLATE_ID/, 'env_var adi yok');
+
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.match(page, /Taramayı tazele/, 'ekranda tazeleme dugmesi yok');
+  assert.match(page, /nginxMigrationScanApi\.rescan/, 'dugme ucu cagirmiyor');
+  // yalniz o grubun sunuculari taranmali (tum filo degil)
+  assert.match(page, /\[\.\.\.grp\.oldHosts, \.\.\.grp\.newHosts\]/, 'tarama grubun sunucularina daraltilmali');
+});

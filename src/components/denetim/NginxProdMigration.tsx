@@ -14,6 +14,7 @@ import { ArrowDownTrayIcon, ArrowPathIcon, DocumentPlusIcon, CalendarDaysIcon, T
 import {
   nginxMigrationApi,
   nginxMigrationTrackingApi,
+  nginxMigrationScanApi,
   type NginxMigrationConfig,
   type MigrationTracking,
   type MigrationPathJob,
@@ -34,6 +35,7 @@ import { Panel, StatTile, Pill, Code, Note } from './ui';
 import { OwnerCell, ownerText } from './OwnerCell';
 import { DirCell, HacLegend } from './HacCell';
 import { downloadCsv as csvDownload } from '@/utils/csv';
+import { toast } from '@/hooks/useToast';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
@@ -98,6 +100,27 @@ export default function NginxProdMigration() {
   const [trackFilter, setTrackFilter] = useState<'all' | 'open' | 'planned' | 'migrated'>('all');
   // TARAMAYA gore suzgec: elle isaretlemeden bagimsiz (2026-09-24)
   const [sideFilter, setSideFilter] = useState<'all' | 'defined' | 'partial' | 'none' | 'not-scanned'>('all');
+  const [rescanning, setRescanning] = useState(false);
+
+  /**
+   * TARAMAYI TAZELE (kullanici, 2026-09-24): ekran verisi gunluk nginx_config_audit
+   * taramasindan gelir; yeni acilan bir tanim ertesi gune kadar gorunmezdi. Bu dugme ayni
+   * isi SIMDI ve YALNIZ bu grubun sunuculari icin kosturur. Portal kendi "beklemede"
+   * kaydini uydurmuyor - tek dogruluk kaynagi yine tarama.
+   */
+  const rescan = async (grp: NginxMigrationGroup | null) => {
+    const hosts = grp ? [...grp.oldHosts, ...grp.newHosts] : [];
+    setRescanning(true);
+    try {
+      const r = await nginxMigrationScanApi.rescan(hosts, grp ? grp.label : 'tüm gruplar');
+      if (!r.ok) { toast.error(r.message || 'Tarama başlatılamadı.'); return; }
+      toast.success(`Tarama başladı (iş #${r.jobId}). Bitince "Yenile" ile liste güncellenir.`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRescanning(false);
+    }
+  };
   // Gruplar SEKME (kullanici, 2026-09-17): Glomo / Openbanking-Saklama-Webforms alt alta degil,
   // sekmeyle gecilir. Ilk grup varsayilan.
   const [groupId, setGroupId] = useState<string>('');
@@ -316,6 +339,14 @@ export default function NginxProdMigration() {
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
         >
           <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
+        </button>
+        <button
+          onClick={() => rescan(data.groups.find((x) => x.id === groupId) || null)}
+          disabled={rescanning}
+          title="Bu grubun eski ve yeni sunucularını ŞİMDİ yeniden tara (nginx_config_audit). Yeni açılan tanımlar günlük taramayı beklemeden listeye düşer."
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)] disabled:opacity-50"
+        >
+          <ArrowPathIcon className={`w-3.5 h-3.5 ${rescanning ? 'animate-spin' : ''}`} /> Taramayı tazele
         </button>
         <button
           onClick={() => setTick((t) => t + 1)}

@@ -134,6 +134,19 @@ export interface MigrationPathJob {
   finishedAt: string | null;
 }
 
+export const nginxMigrationScanApi = {
+  /**
+   * Tarama tazeleme (2026-09-24): gunluk nginx_config_audit isini SIMDI, yalniz verilen
+   * sunucular icin kosturur. Yeni acilan bir tanim ertesi gunu beklemeden ekrana duser.
+   */
+  rescan: (hosts: string[], label?: string): Promise<{ ok: boolean; jobId?: number | null; awxServerId?: number; message?: string }> =>
+    fetch(`${BASE}/rescan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hosts, label }),
+    }).then(safeJson),
+};
+
 export const nginxMigrationTrackingApi = {
   list: (): Promise<{ ok: boolean; rows: MigrationTracking[]; pathJobs?: MigrationPathJob[]; message?: string }> =>
     fetch(`${BASE}/tracking`).then(safeJson),
