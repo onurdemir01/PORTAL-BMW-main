@@ -31,6 +31,7 @@ export const PAGES: PageElement[] = [
   { id: 'Denetim', label: 'Denetim', route: '/denetim' },
   { id: 'NginxConsole', label: 'Nginx Hub', route: '/nginx-console' },
   { id: 'ServerHub', label: 'Server Hub', route: '/server-hub' },
+  { id: 'CryptoHub', label: 'Crypto Hub', route: '/crypto-hub' },
   { id: 'LogX', label: 'LogX', route: '/logx' },
   { id: 'OpsX', label: 'OpsX', route: '/opsx' },
   { id: 'FileX', label: 'FileX', route: '/filex' },
@@ -76,6 +77,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
   { id: 'nginxhub', label: 'Nginx Hub', itemIds: ['NginxConsole'] },
   // Server Hub (2026-09-21): reboot hazirligi / atil kaynak raporu, kendi girisi
   { id: 'serverhub', label: 'Server Hub', itemIds: ['ServerHub'] },
+  // Crypto Hub (2026-09-25): Metaco + Wyden, kendi girisi
+  { id: 'cryptohub', label: 'Crypto Hub', itemIds: ['CryptoHub'] },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
   { id: 'operasyon', label: 'Nöbetçiler', itemIds: ['Nöbet'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.

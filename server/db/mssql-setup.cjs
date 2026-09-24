@@ -1512,6 +1512,7 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'Denetim', roles: 'Admin,User' },
   { page_name: 'NginxConsole', roles: 'Admin' },
   { page_name: 'ServerHub', roles: 'Admin' },
+  { page_name: 'CryptoHub', roles: 'Admin' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
   { page_name: 'FileX', roles: 'Admin,User' },
@@ -1561,6 +1562,8 @@ const ELEMENT_SEED = [
   { element_key: 'navgroup:nginxhub', element_type: 'nav_group', label: 'Nginx Hub', sort_order: 3 },
   // Server Hub (2026-09-21): reboot hazirligi + atil kaynak raporu, kendi grubu (Nginx Hub gibi)
   { element_key: 'navgroup:serverhub', element_type: 'nav_group', label: 'Server Hub', sort_order: 3 },
+  // Crypto Hub (2026-09-25): ekibin yonettigi ucuncu parti uygulamalar (Metaco, Wyden)
+  { element_key: 'navgroup:cryptohub', element_type: 'nav_group', label: 'Crypto Hub', sort_order: 3 },
   {
     element_key: 'navgroup:performance',
     element_type: 'nav_group',
@@ -1631,6 +1634,17 @@ const ELEMENT_SEED = [
     parent_key: 'navgroup:serverhub',
     label: 'Server Hub',
     route: '/server-hub',
+    sort_order: 1,
+    roles: ['Admin'],
+  },
+  {
+    // Crypto Hub (2026-09-25): Metaco + Wyden icin ortam secimi -> durum ve surumler
+    // (faz 1 salt okunur). Prod islemleri sonraki fazlarda OCO + Smart onayina baglanacak.
+    element_key: 'CryptoHub',
+    element_type: 'page',
+    parent_key: 'navgroup:cryptohub',
+    label: 'Crypto Hub',
+    route: '/crypto-hub',
     sort_order: 1,
     roles: ['Admin'],
   },
@@ -2466,6 +2480,18 @@ const PLAYBOOK_REGISTRY_SEED = [
       'bmw_portal/nginx_console/nginx_console_fetch.yml — target_hosts listesindeki sunucularda conf.d/conf agaci, dosya icerikleri ve sertifika bilgileri (www ile) dokulur, GBLABT02 uzerinden /sw/BMW_PORTAL/nginx_console/raw/ altina yazilir. Tum filo 30-40 dk: gece zamanlayin, ekrandan yalniz secili sunucular yenilenir.',
     playbook_path: null,
     env_var_name: 'NGINX_CONSOLE_FETCH_TEMPLATE_ID',
+  },
+  {
+    // Crypto Hub (2026-09-25): Metaco/Wyden kiracilarinin durum + surum taramasi.
+    // SALT OKUNUR (oc get / helm list / helm search / skopeo list-tags).
+    key_name: 'crypto_hub_inventory',
+    display_name: 'Crypto Hub — Durum ve Surum Taramasi',
+    category: 'openshift',
+    handler: 'crypto_hub_inventory',
+    description:
+      'bmw_automation_folder/crypto_hub/crypto_hub_inventory.yml — crypto_hub_keys ile secilen kiracilarin (bos ise hepsi) bilesen/replika, helm release ve depodaki chart surumleri toplanir; dbo.Crypto_Hub_* tablolarina yazilir.',
+    playbook_path: null,
+    env_var_name: 'CRYPTO_HUB_INVENTORY_TEMPLATE_ID',
   },
   {
     // Server Hub (2026-09-21): gunluk tarama; target_hosts ile tek sunucu (reboot oncesi)

@@ -79,16 +79,19 @@ export default function PageNav({ onNavigate }: Props) {
               const isHub = item.id === "NginxConsole";
               // Server Hub (2026-09-21): ayni "hub" cercevesi, accent tonunda (.server-hub-link)
               const isServerHub = item.id === "ServerHub";
+              // Crypto Hub (2026-09-25): ayni "hub" cercevesi (bkz. index.css .crypto-hub-link)
+              const isCryptoHub = item.id === "CryptoHub";
               return (
                 <li key={group.id}>
                   <NavLink
                     to={item.to}
-                    className={({ isActive }) => `${linkClass({ isActive })}${isHub ? " nginx-hub-link" : ""}${isServerHub ? " nginx-hub-link server-hub-link" : ""}`}
+                    className={({ isActive }) => `${linkClass({ isActive })}${isHub ? " nginx-hub-link" : ""}${isServerHub ? " nginx-hub-link server-hub-link" : ""}${isCryptoHub ? " nginx-hub-link crypto-hub-link" : ""}`}
                     style={{ paddingLeft: "1rem" }}
                     onClick={onNavigate}
                   >
                     {isHub ? <span className="nginx-hub-label"><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span>
                       : isServerHub ? <span className="nginx-hub-label"><span>Server</span> <span className="nginx-hub-word">Hub</span></span>
+                      : isCryptoHub ? <span className="nginx-hub-label"><span>Crypto</span> <span className="nginx-hub-word">Hub</span></span>
                       : group.label}
                   </NavLink>
                 </li>

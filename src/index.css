@@ -686,6 +686,19 @@ thead th {
 .server-hub-link::after { border-color: var(--accent-light); }
 .server-hub-link.is-current { background: var(--accent-bg); }
 .server-hub-link .nginx-hub-word { color: var(--accent); text-shadow: 0 0 6px var(--accent-light); animation-name: sh-glow; }
+/* Crypto Hub (2026-09-25): ayni hub cercevesi, mor-menekse tonunda — Nginx/Server Hub ile
+   karismasin diye bilerek FARKLI bir renk. */
+.crypto-hub-link { --ch-hue: #7c5cff; --ch-hue-soft: rgba(124, 92, 255, 0.16); }
+.crypto-hub-link::before {
+  background: conic-gradient(from var(--nh-angle), transparent 0 62%, var(--ch-hue-soft) 74%, var(--ch-hue) 86%, var(--ch-hue) 93%, transparent 100%);
+}
+.crypto-hub-link::after { border-color: var(--ch-hue); }
+.crypto-hub-link.is-current { background: var(--ch-hue-soft); }
+.crypto-hub-link .nginx-hub-word { color: var(--ch-hue); text-shadow: 0 0 6px var(--ch-hue-soft); animation-name: ch-glow; }
+@keyframes ch-glow {
+  from { text-shadow: 0 0 2px var(--ch-hue-soft); color: var(--ch-hue); }
+  to { text-shadow: 0 0 10px var(--ch-hue-soft), 0 0 18px var(--ch-hue-soft); color: var(--ch-hue); }
+}
 @keyframes sh-glow {
   from { text-shadow: 0 0 2px var(--accent-light); color: var(--accent); }
   to { text-shadow: 0 0 10px var(--accent-light), 0 0 18px var(--accent-light); color: var(--accent); }
