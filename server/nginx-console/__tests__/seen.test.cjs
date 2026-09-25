@@ -68,7 +68,10 @@ test('SEEN6 Nginx Hub UI: Online = son gorulme (seenAt), Denetim nginx sekmeleri
   assert.ok(nim.includes('Production: Pendik / Ankara') && nim.includes('title="Kaynaklar"'), 'Dashboard kaynak + lokasyon kartlari');
   assert.ok(/<Th>Son görülme<\/Th><Th>Son dokum<\/Th>/.test(nim), 'Instances: son gorulme ve son dokum ayri sutun');
   const hub = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
-  for (const id of ['spa', 'api', 'envanter', 'audit']) assert.ok(new RegExp(`\\{tab === '${id}' && <`).test(hub), `Hub sekmesi yok: ${id}`);
+  // Kapi (canSee) arada olabilir: sekmenin BIR BILESEN actigini dogrula, yazimini degil.
+  for (const id of ['spa', 'api', 'envanter', 'audit']) {
+    assert.ok(new RegExp(`\\{tab === '${id}'[\\s\\S]{0,80}<`).test(hub), `Hub sekmesi yok: ${id}`);
+  }
   const den = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'DenetimPage.tsx'), 'utf8');
   assert.ok(!/id: 'nginx(api|env|audit)?'/.test(den), 'Denetim sekme cubugunda nginx kalmamali');
   assert.ok(/export function NginxSpaAudit\(\)/.test(den) && /export const NGINX_DENETIM_HELP/.test(den), 'NginxSpaAudit + yardim export');
@@ -76,7 +79,11 @@ test('SEEN6 Nginx Hub UI: Online = son gorulme (seenAt), Denetim nginx sekmeleri
   assert.ok(!/element_key: 'tab:denetim:nginx/.test(setup), 'tab:denetim:nginx* seed\'i kalmamali');
   assert.ok(/await removeMovedDenetimTabs\(pool\)/.test(setup), 'eski satirlar acilista silinmeli');
   const gate = fs.readFileSync(path.join(__dirname, '..', '..', 'audit', 'denetim.cjs'), 'utf8');
-  assert.ok(/NGINX_PATH\.test\(req\.path\)\) return requireVisible\('NginxConsole'\)/.test(gate), 'nginx denetim uclari NginxConsole sayfa kapisiyla');
+  // Kural ayni, YAZIMI degisti (ic ice sekme kapisi eklendi): metin yerine ANLAM aranir.
+  const i = gate.indexOf('NGINX_PATH.test(req.path)');
+  assert.ok(i > 0, 'nginx denetim uclari icin ayri yol suzgeci yok');
+  assert.match(gate.slice(i, i + 400), /requireVisible\('NginxConsole'\)/,
+    'nginx denetim uclari NginxConsole sayfa kapisiyla');
   const vis = fs.readFileSync(path.join(__dirname, '..', '..', 'auth', 'visibility-routes.cjs'), 'utf8');
   assert.ok(!/DENETIM_TAB_KEYS = \[[^\]]*'nginx'/.test(vis), 'Denetim Erisimi listesinde nginx kalmamali');
 });

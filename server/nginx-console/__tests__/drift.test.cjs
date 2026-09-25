@@ -68,7 +68,8 @@ test('DR4 UI/uc sozlesmesi: /drift ucu, Tutarlilik sekmesi, Instances durum suzg
   const idx = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
   assert.ok(idx.includes("router.get('/drift'") && idx.includes('computeDrift(hosts, dumps)'), '/drift ucu');
   const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
-  assert.ok(/\{tab === 'drift' && <DriftTab/.test(page) && page.includes("label: 'Tutarlılık'"), 'Tutarlilik sekmesi');
+  // Kapi (canSee) arada olabilir; onemli olan sekmenin DriftTab'i acmasi.
+  assert.ok(/\{tab === 'drift'[\s\S]{0,80}<DriftTab/.test(page) && page.includes("label: 'Tutarlılık'"), 'Tutarlilik sekmesi');
   const nim = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NimTabs.tsx'), 'utf8');
   for (const id of ["'offline'", "'tfail'", "'nodump'", "'unknownver'"]) assert.ok(nim.includes(id), 'Instances suzgeci ' + id);
   const audit = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxAudit.tsx'), 'utf8');

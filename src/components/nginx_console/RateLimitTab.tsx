@@ -44,6 +44,7 @@ export function RateLimitTab() {
   const [q, setQ] = useState('');
   const [env, setEnv] = useState<'all' | string>('all');
   const [sadeceLimitsiz, setSadeceLimitsiz] = useState(false);
+  const [sadeceOzel, setSadeceOzel] = useState(false);
 
   useAsyncEffect(async (alive) => {
     setLoading(true); setErr('');
@@ -59,6 +60,7 @@ export function RateLimitTab() {
     const needle = q.trim().toLowerCase();
     return (data?.rows || []).filter((r) => {
       if (sadeceLimitsiz && r.state !== 'yok') return false;
+      if (sadeceOzel && !(r.ipStd === false || r.serverStd === false)) return false;
       if (env !== 'all' && r.env !== env) return false;
       if (!needle) return true;
       return r.host.toLowerCase().includes(needle)
@@ -67,7 +69,7 @@ export function RateLimitTab() {
         || (r.ipLimit || '').toLowerCase().includes(needle)
         || (r.serverLimit || '').toLowerCase().includes(needle);
     });
-  }, [data, q, env, sadeceLimitsiz]);
+  }, [data, q, env, sadeceLimitsiz, sadeceOzel]);
 
   const s = data?.summary;
   const envler = useMemo(() => Object.keys(s?.byEnv || {}).sort(), [s]);
@@ -96,12 +98,39 @@ export function RateLimitTab() {
 
       {/* ÖZET: "kaç location limitsiz" sorusu en üstte cevaplanır. */}
       {s && (
-        <div className="grid sm:grid-cols-4 gap-3">
+        <div className="grid sm:grid-cols-5 gap-3">
           <Kpi title="Sunucu" value={s.hosts} />
           <Kpi title="Location" value={s.rows} />
           <Kpi title="Limitli" value={s.limitli} tone="ok" />
           <Kpi title="Limitsiz" value={s.limitsiz} tone={s.limitsiz > 0 ? 'danger' : 'ok'} />
+          <Kpi title="Özel oran" value={s.ozel} tone={s.ozel > 0 ? 'warn' : undefined} />
         </div>
+      )}
+
+      {/* ESTATE STANDARDI (kullanici, 2026-09-26: "3 farkli rate limit tanimimiz var"):
+          ucu de HTTP seviyesinde tanimli ve uygulaniyor, yani her location MIRAS alir.
+          Bu kart olmadan ekran "limitim yok mu" sorusunu dogurmaya devam ederdi. */}
+      {data?.catalog && (
+        <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+          <div className="text-[11px] uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
+            Estate standardı — <code>{data.catalog.file}</code> (http seviyesinde, tüm location'lara miras)
+          </div>
+          <div className="grid sm:grid-cols-3 gap-2">
+            {data.catalog.zones.map((z) => (
+              <div key={z.key} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                <div className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{z.label}</div>
+                <div className="text-[11px] tabular-nums" style={{ color: 'var(--accent)' }}>
+                  {z.rate || `${z.limit} bağlantı`}{z.burst ? ` · burst ${z.burst}${z.nodelay ? ' nodelay' : ''}` : ''}
+                </div>
+                <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>{z.desc}</div>
+                <div className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                  zone <code>{z.key}</code> · {z.variable} · {z.size}
+                  {z.perLocation === false && ' · location bazlı ölçülmez'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -123,6 +152,11 @@ export function RateLimitTab() {
         <label className="inline-flex items-center gap-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
           <input type="checkbox" checked={sadeceLimitsiz} onChange={(e) => setSadeceLimitsiz(e.target.checked)} />
           yalnız limitsizler
+        </label>
+        <label className="inline-flex items-center gap-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}
+          title="Estate standardından farklı bir oran; yanlış olmak zorunda değil ama bilerek mi konulduğu sorulmalı.">
+          <input type="checkbox" checked={sadeceOzel} onChange={(e) => setSadeceOzel(e.target.checked)} />
+          yalnız özel oranlar
         </label>
         {(data?.availableDates || []).length > 1 && (
           <select value={scanDate} onChange={(e) => setScanDate(e.target.value)} className="h-7 text-[12px] rounded-lg border px-1.5"
@@ -190,8 +224,14 @@ export function RateLimitTab() {
                     <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>{r.env}</td>
                     <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{r.configFile}</td>
                     <td className="px-3 py-1.5 text-[11px] break-all" style={{ color: 'var(--text-secondary)' }}>{r.location}</td>
-                    <td className="px-3 py-1.5 text-[11px] tabular-nums">{r.ipLimit || '—'}</td>
-                    <td className="px-3 py-1.5 text-[11px] tabular-nums">{r.serverLimit || '—'}</td>
+                    <td className="px-3 py-1.5 text-[11px] tabular-nums" style={{ color: r.ipStd === false ? 'var(--status-warning)' : undefined }}
+                      title={r.ipStd === false ? 'Estate standardı 500r/s — bu location özel bir oranla koşuyor' : undefined}>
+                      {r.ipLimit || '—'}{r.ipStd === false ? ' ●' : ''}
+                    </td>
+                    <td className="px-3 py-1.5 text-[11px] tabular-nums" style={{ color: r.serverStd === false ? 'var(--status-warning)' : undefined }}
+                      title={r.serverStd === false ? 'Estate standardı 5000r/s — bu location özel bir oranla koşuyor' : undefined}>
+                      {r.serverLimit || '—'}{r.serverStd === false ? ' ●' : ''}
+                    </td>
                     <td className="px-3 py-1.5">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
                         style={{ color: d.color, background: d.bg, border: `1px solid ${d.color}` }}>
@@ -216,8 +256,10 @@ export function RateLimitTab() {
   );
 }
 
-function Kpi({ title, value, tone }: { title: string; value: number; tone?: 'ok' | 'danger' }) {
-  const color = tone === 'danger' ? 'var(--status-danger)' : tone === 'ok' ? 'var(--status-success)' : 'var(--text-primary)';
+function Kpi({ title, value, tone }: { title: string; value: number; tone?: 'ok' | 'danger' | 'warn' }) {
+  const color = tone === 'danger' ? 'var(--status-danger)'
+    : tone === 'warn' ? 'var(--status-warning)'
+    : tone === 'ok' ? 'var(--status-success)' : 'var(--text-primary)';
   return (
     <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
       <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>{title}</div>

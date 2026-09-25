@@ -191,6 +191,25 @@ export interface NginxRateLimitRow {
   serverLimit: string | null;
   /** yok = gerçekten limitsiz · server = limit server bloğundan MİRAS */
   state: 'yok' | 'ip' | 'server' | 'ikisi';
+  /** null = limit yok · true = estate standardı · false = ÖZEL oran */
+  ipStd: boolean | null;
+  serverStd: boolean | null;
+}
+
+/** /usr/nginx/conf/rate_limits.conf içindeki estate tanımları (üçü de http seviyesinde). */
+export interface NginxRateLimitZone {
+  key: string;
+  kind: 'ip' | 'server' | 'conn';
+  rate?: string;
+  limit?: number;
+  burst?: number;
+  nodelay?: boolean;
+  variable: string;
+  size: string;
+  label: string;
+  desc: string;
+  /** false = location bazlı ölçülmez (bağlantı limiti) */
+  perLocation?: boolean;
 }
 
 export interface NginxRateLimitSummary {
@@ -198,6 +217,8 @@ export interface NginxRateLimitSummary {
   rows: number;
   limitli: number;
   limitsiz: number;
+  /** estate standardından farklı oranla koşan satır sayısı */
+  ozel: number;
   ipOnly: number;
   serverOnly: number;
   ikisi: number;
@@ -214,4 +235,5 @@ export interface NginxRateLimitResult {
   availableDates: string[];
   rows: NginxRateLimitRow[];
   summary: NginxRateLimitSummary | null;
+  catalog?: { file: string; zones: NginxRateLimitZone[] };
 }

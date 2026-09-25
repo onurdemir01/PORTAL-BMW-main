@@ -133,7 +133,8 @@ test('OR6 UI/uc sozlesmesi: /orphans ucu, Kullanilmayan sekmesi, Sertifikalar "k
   assert.ok(idx.includes("router.get('/orphans'") && idx.includes('orphansOf(sm, now)'), '/orphans ucu');
   assert.ok(/unused: certs\.filter\(\(c\) => c\.loadedUseCount === 0\)/.test(idx), '/certs summary.unused');
   const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
-  assert.ok(/\{tab === 'orphans' && <OrphansTab/.test(page) && page.includes("label: 'Kullanılmayan'"), 'Kullanilmayan sekmesi');
+  // Kapi (canSee) arada olabilir; onemli olan sekmenin OrphansTab'i acmasi.
+  assert.ok(/\{tab === 'orphans'[\s\S]{0,80}<OrphansTab/.test(page) && page.includes("label: 'Kullanılmayan'"), 'Kullanilmayan sekmesi');
   assert.ok(page.includes("['unused', 'Kullanılmayan']") && /only === 'unused'/.test(page), 'Sertifikalar kullanilmayan filtresi');
   const tab = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'OrphansTab.tsx'), 'utf8');
   assert.ok(!/confirm\(|alert\(/.test(tab), 'tarayici popup yok');
