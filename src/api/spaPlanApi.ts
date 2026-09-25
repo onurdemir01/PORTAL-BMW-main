@@ -51,6 +51,8 @@ export interface SpaPlanResult {
   all?: boolean;
   /** kendi ekibine ait olmadığı için gizlenen satır sayısı */
   hiddenByOwner?: number;
+  /** oturumdaki AD grup sayısı; 0 ise sahiplik süzgeci uygulanamaz (LDAP kapalı vb.) */
+  groupCount?: number;
   ownersReady?: boolean;
   /** false = trafik tablosu yok; ekran "ölçülemedi" der, "yük yok" DEMEZ */
   trafficReady?: boolean;
@@ -60,8 +62,14 @@ export interface SpaPlanResult {
 }
 
 export const spaPlanApi = {
-  rows: (all = false, fresh = false): Promise<SpaPlanResult> =>
-    fetch(`${BASE}/rows${all || fresh ? '?' : ''}${all ? 'all=1' : ''}${all && fresh ? '&' : ''}${fresh ? 'fresh=1' : ''}`).then(safeJson),
+  /** all: undefined = sunucu karar versin (yönetici/gruпsuz kullanıcıda tümü) */
+  rows: (all?: boolean, fresh = false): Promise<SpaPlanResult> => {
+    const q = new URLSearchParams();
+    if (all !== undefined) q.set('all', all ? '1' : '0');
+    if (fresh) q.set('fresh', '1');
+    const qs = q.toString();
+    return fetch(`${BASE}/rows${qs ? '?' + qs : ''}`).then(safeJson);
+  },
 
   /** Ekip beyanı: kullanımda mı + deployment/rollout tarihi (+ not). Başka alan yazılmaz. */
   declare: (body: {

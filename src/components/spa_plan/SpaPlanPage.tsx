@@ -164,7 +164,8 @@ export default function SpaPlanPage() {
   const [data, setData] = useState<SpaPlanResult | null>(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
-  const [all, setAll] = useState(false);
+  // undefined = sunucu karar versin (yonetici ve grubu olmayan kullanici icin tumu).
+  const [all, setAll] = useState<boolean | undefined>(undefined);
   const [q, setQ] = useState('');
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [tick, setTick] = useState(0);
@@ -189,6 +190,32 @@ export default function SpaPlanPage() {
       return r.application.includes(needle) || r.namespace.includes(needle) || r.services.join(' ').toLowerCase().includes(needle);
     });
   }, [data, q, onlyOpen]);
+
+  // BOS EKRAN SEBEBINI SOYLER (2026-09-26): "hic satir yok" ile "suzgec hepsini eledi"
+  // ayri seylerdir. Ilkini ikincisi gibi gostermek, kullaniciyi sayfanin bozuk oldugunu
+  // dusunmeye iter - nitekim ilk surumde tam olarak bu oldu.
+  const bosSebep = useMemo(() => {
+    const toplam = data?.rows?.length ?? 0;
+    if (toplam === 0 && (data?.hiddenByOwner ?? 0) > 0) {
+      return {
+        title: 'Sahiplik süzgeci tüm uygulamaları eledi',
+        description: `${data?.hiddenByOwner} uygulama başka ekiplerin AD gruplarına ait görünüyor. “Tüm ekipler” kutusunu işaretleyerek hepsini görebilirsiniz.`,
+      };
+    }
+    if (toplam === 0) {
+      return {
+        title: 'Taşıma listesi boş',
+        description: 'Nginx taraması henüz uygulama üretmemiş olabilir (nginx_config_audit koşmamış) ya da bu gruplarda taşınacak uygulama yok.',
+      };
+    }
+    if (onlyOpen) {
+      return {
+        title: 'Bekleyen bilgi yok',
+        description: 'Tüm uygulamalar için bilgi girilmiş. “Yalnız bilgi bekleyenler” kutusunu kaldırarak tamamını görebilirsiniz.',
+      };
+    }
+    return { title: 'Uygulama bulunamadı', description: 'Arama ölçütünüze uyan uygulama yok.' };
+  }, [data, onlyOpen]);
 
   const bekleyen = useMemo(
     () => (data?.rows || []).filter((r) => !r.inUse || (r.inUse === 'yes' && !r.plannedDate)).length,
@@ -235,9 +262,13 @@ export default function SpaPlanPage() {
           <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
           yalnız bilgi bekleyenler
         </label>
-        {data?.isAdmin && (
-          <label className="inline-flex items-center gap-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-            <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
+        {(data?.isAdmin || (data?.groupCount ?? 0) === 0) && (
+          <label
+            className="inline-flex items-center gap-1 text-[11px]"
+            style={{ color: 'var(--text-secondary)' }}
+            title="Kapatırsanız yalnızca AD gruplarınıza ait uygulamalar listelenir."
+          >
+            <input type="checkbox" checked={data?.all === true} onChange={(e) => setAll(e.target.checked)} />
             tüm ekipler
           </label>
         )}
@@ -254,7 +285,7 @@ export default function SpaPlanPage() {
         </div>
       )}
 
-      {(data?.hiddenByOwner ?? 0) > 0 && !all && (
+      {(data?.hiddenByOwner ?? 0) > 0 && data?.all !== true && (
         <div className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
           style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>
           <InformationCircleIcon className="h-4 w-4 mt-0.5 shrink-0" />
@@ -278,11 +309,7 @@ export default function SpaPlanPage() {
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <TableEmptyRow
-                  colSpan={7}
-                  title={onlyOpen ? 'Bekleyen bilgi yok' : 'Uygulama bulunamadı'}
-                  description={onlyOpen ? 'Tüm uygulamalarınız için bilgi girilmiş. “Yalnız bilgi bekleyenler” kutusunu kaldırarak tamamını görebilirsiniz.' : 'Arama ölçütünüze uyan uygulama yok.'}
-                />
+                <TableEmptyRow colSpan={7} title={bosSebep.title} description={bosSebep.description} />
               )}
               {rows.map((r) => (
                 <Row key={`${r.group}|${r.namespace}|${r.application}`} r={r} trafficReady={data?.trafficReady !== false} onSaved={() => setTick((n) => n + 1)} />

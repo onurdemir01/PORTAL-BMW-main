@@ -137,3 +137,41 @@ export const cryptoHubApi = {
   jobStatus: (awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output?: string; message?: string }> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };
+
+// ── İşlemler (log / pod silme / rollout / replika), 2026-09-26 ────────────────────────
+export type CryptoOpsAction = 'pods' | 'logs' | 'pod_delete' | 'rollout' | 'scale';
+
+export interface CryptoPod {
+  name: string;
+  phase: string;
+  /** tüm kaplar hazır mı */
+  ready: boolean;
+  containers: number;
+  restarts: number;
+  startedAt: string;
+  node: string;
+}
+
+export interface CryptoOpsResult {
+  action?: string | null;
+  pods: CryptoPod[];
+  logs: { target: string; line: string }[];
+  results: { target: string; ok: boolean; message: string }[];
+  errors: { stage: string; message: string }[];
+}
+
+export const cryptoOpsApi = {
+  /** Yazan işlemlerde `confirmed` şart; sunucu onaysız çalıştırmaz (HTTP 428). */
+  run: (body: {
+    tenant: string; action: CryptoOpsAction; targets: string[];
+    tail?: number; container?: string; previous?: boolean; replicas?: number; confirmed?: boolean;
+  }): Promise<{ ok: boolean; jobId?: number | null; awxServerId?: number; needsConfirm?: boolean; message?: string }> =>
+    fetch(`${BASE}/ops`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(safeJson),
+
+  result: (awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; result: CryptoOpsResult | null; message?: string }> =>
+    fetch(`${BASE}/ops-result/${awxServerId}/${jobId}`).then(safeJson),
+};

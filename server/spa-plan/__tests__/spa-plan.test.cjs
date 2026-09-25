@@ -80,3 +80,22 @@ test('SP4: ekip "geçti" işaretine dokunamaz', () => {
   // Gövdeden gelen state DOGRUDAN kullanilmamali.
   assert.ok(!/req\.body\?\.state/.test(src), 'istemciden gelen state kullanilmamali');
 });
+
+test('SP5: bos ekran tuzagi - yonetici ve grupsuz kullanicida varsayilan TUM EKIPLER', () => {
+  // Uretimde gorulen (2026-09-26): sayfa bombos geldi. Sebep, varsayilan "yalniz kendi
+  // ekibim" suzgeciydi; yonetici hicbir uygulama ekibinin AD grubunda DEGIL, dolayisiyla
+  // her satir eleniyordu. Ayni sey LDAP kapaliyken (grup listesi bos) HERKESTE olurdu.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.match(src, /varsayilanTumu\s*=\s*isAdmin \|\| keysOn\.size === 0/,
+    'yonetici ve grupsuz kullanicida varsayilan tum ekipler olmali');
+  assert.match(src, /istek === '1' \|\| \(istek !== '0' && varsayilanTumu\)/,
+    'istemci acikca all=0 derse suzgec yine uygulanabilmeli');
+  assert.match(src, /groupCount: keysOn\.size/, 'ekran grup sayisini bilmeli (0 ise suzgec anlamsiz)');
+
+  // Ekran, BOS kalma sebebini yaziyor mu?
+  const page = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'spa_plan', 'SpaPlanPage.tsx'), 'utf8',
+  );
+  assert.match(page, /Sahiplik süzgeci tüm uygulamaları eledi/);
+  assert.match(page, /Taşıma listesi boş/);
+});

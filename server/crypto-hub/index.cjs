@@ -22,6 +22,98 @@ const CLOSED_MSG = 'Production ortamları Crypto Hub\'da şimdilik kapalı.';
 
 const { ACTIONS, actionOf, buildPlan } = require('../../shared/cryptoHubActions.cjs');
 
+const OPS_KEY = 'crypto_hub_ops';
+
+// Hangi islem OKUR, hangisi YAZAR. Bu ayrim tek yerde durur: ekran da, sunucu kapisi da
+// buradan okur (ikinci bir liste tutmak, bir gun yazan bir islemi "okur" sanmaya yol acardi).
+const OPS = {
+  pods: { writes: false },
+  logs: { writes: false },
+  pod_delete: { writes: true },
+  rollout: { writes: true },
+  scale: { writes: true },
+};
+
+// k8s ad deseni (istege bagli tur oneki). Betikte AYNI denetim var - burasi ilk kapi.
+const TARGET_RE = /^((deployment|statefulset|pod)\/)?[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/;
+const MAX_TARGETS = 50;
+
+function normalizeOps(body) {
+  const action = String(body?.action || '').trim();
+  if (!OPS[action]) throw new Error(`Bilinmeyen işlem: ${action}`);
+  const writes = OPS[action].writes;
+
+  const targets = [];
+  for (const raw of Array.isArray(body?.targets) ? body.targets : []) {
+    const t = String(raw || '').trim();
+    if (!t) continue;
+    if (!TARGET_RE.test(t)) throw new Error(`Geçersiz hedef adı: ${t}`);
+    if (!targets.includes(t)) targets.push(t);
+  }
+  if (targets.length > MAX_TARGETS) throw new Error(`En fazla ${MAX_TARGETS} hedef seçilebilir (seçilen: ${targets.length}).`);
+  // BOS HEDEFLE YAZAN ISLEM KOSMAZ: "hepsi" anlamina gelen bir bosluk, bu ekranda en
+  // tehlikeli hatadir (tum namespace'i sondurmek).
+  if (writes && targets.length === 0) throw new Error('Hedef seçilmedi.');
+  if (action === 'logs' && targets.length === 0) throw new Error('Log için en az bir pod seçilmeli.');
+  if (action === 'pod_delete' && targets.some((t) => t.includes('/') && !t.startsWith('pod/'))) {
+    throw new Error('Pod silme yalnız pod hedefi alır; deployment/statefulset için rollout kullanın.');
+  }
+  if ((action === 'rollout' || action === 'scale') && targets.some((t) => !/^(deployment|statefulset)\//.test(t))) {
+    throw new Error(`${action} için hedef deployment/<ad> veya statefulset/<ad> olmalı.`);
+  }
+
+  const out = { action, writes, targets };
+  if (action === 'logs') {
+    const tail = Number(body?.tail);
+    out.tail = Number.isFinite(tail) ? Math.min(Math.max(Math.trunc(tail), 1), 5000) : 200;
+    out.container = String(body?.container || '').trim().slice(0, 64) || '';
+    out.previous = body?.previous === true;
+  }
+  if (action === 'scale') {
+    const r = Number(body?.replicas);
+    if (!Number.isFinite(r) || r < 0 || r > 50 || Math.trunc(r) !== r) {
+      throw new Error('Replika sayısı 0-50 arasında bir tam sayı olmalı.');
+    }
+    out.replicas = r;
+  }
+  return out;
+}
+
+/** Betigin TAB ayrilmis satirlarini ekranin anlayacagi bicime cevirir. */
+function parseOpsLines(lines) {
+  if (!Array.isArray(lines)) return null;
+  const pods = []; const logs = []; const results = []; const errors = [];
+  for (const raw of lines) {
+    const f = String(raw == null ? '' : raw).split('\t');
+    switch (f[0]) {
+      case 'POD':
+        if (f.length >= 8) {
+          pods.push({
+            name: f[2], phase: f[3],
+            // "true,false," -> hazir olmayan kap var mi
+            ready: String(f[4] || '').split(',').filter(Boolean).every((v) => v === 'true'),
+            containers: String(f[4] || '').split(',').filter(Boolean).length,
+            restarts: String(f[5] || '').split(',').filter(Boolean).reduce((a, v) => a + (Number(v) || 0), 0),
+            startedAt: f[6] || '', node: f[7] || '',
+          });
+        }
+        break;
+      case 'LOG':
+        if (f.length >= 4) logs.push({ target: f[2], line: f.slice(3).join('\t') });
+        break;
+      case 'RES':
+        if (f.length >= 5) results.push({ target: f[2], ok: f[3] === 'ok', message: f[4] });
+        break;
+      case 'ERR':
+        if (f.length >= 4) errors.push({ stage: f[2], message: f[3] });
+        break;
+      default:
+        break;
+    }
+  }
+  return { pods, logs, results, errors };
+}
+
 const REGISTRY_KEY = 'crypto_hub_inventory';
 
 // Son tarama okumasi 1-2 sn surer; ekran her sekme degisiminde DB'yi yormasin.
@@ -230,6 +322,90 @@ function initCryptoHub(app) {
     }
   });
 
+  // ── ISLEMLER (log / pod silme / rollout / replika) ──────────────────────────────────
+  // Kullanici (2026-09-26): "secilen pod'un loglarini hizlica gosterelim - LogX'e girmesinler;
+  // pod silme ve rollout icin OpsX'e gerek kalmasin; replika sayisini da ayarlayabilsinler."
+  //
+  // OKUYAN ISLEM (pods, logs) dogrudan kosar. YAZAN ISLEM (pod_delete, rollout, scale) once
+  // ON ONAY penceresinden gecer: istemci `confirmed: true` gondermeden calistirilmaz. Bu
+  // sunucu tarafi bir kapidir - ekranin onay penceresini atlamasi yetmez.
+  router.post('/ops', async (req, res) => {
+    const tenant = tenantOf(req.body?.tenant);
+    if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
+    if (!isOpen(tenant)) return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
+    if (!tenant.namespace) return res.status(409).json({ ok: false, message: 'Bu ortam henüz yapılandırılmadı.' });
+
+    let params;
+    try {
+      params = normalizeOps(req.body);
+    } catch (err) {
+      return res.status(400).json({ ok: false, message: err.message });
+    }
+    if (params.writes && req.body?.confirmed !== true) {
+      return res.status(428).json({ ok: false, needsConfirm: true, message: 'Bu işlem önce onay penceresinden geçmeli.' });
+    }
+
+    try {
+      const reg = require('../ansible/playbook-registry.cjs');
+      const row = await reg.getByKey(OPS_KEY).catch(() => null);
+      const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
+      const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
+      if (!templateId) {
+        return res.status(501).json({ ok: false, message: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${OPS_KEY}" satırına Template ID girilmeli.` });
+      }
+      const extraVars = {
+        crypto_hub_tenant: tenant.key,
+        crypto_hub_action: params.action,
+        crypto_hub_targets: params.targets.join(','),
+      };
+      if (params.action === 'logs') {
+        extraVars.crypto_hub_tail = params.tail;
+        if (params.container) extraVars.crypto_hub_container = params.container;
+        if (params.previous) extraVars.crypto_hub_previous = true;
+      }
+      if (params.action === 'scale') extraVars.crypto_hub_replicas = params.replicas;
+
+      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: OPS_KEY });
+      const user = req.session?.user || {};
+      const result = await require('../ansible/runner.cjs').launchJobOnServer(serverId, templateId, extraVars, '', user);
+      // DENETIM KAYDI: "kim yapti" servis hesabinin ardinda kaybolmasin (isler uxmid ile kosar).
+      try {
+        await require('../db/index.cjs').query(
+          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [user.username || 'unknown', serverId, templateId, `Crypto Hub: ${params.action} @ ${tenant.key}`, result?.jobId, result?.status || 'pending', JSON.stringify(extraVars)],
+        );
+      } catch (e) { console.warn('[CryptoHub] islem gecmisi yazilamadi:', e.message); }
+      if (params.writes) _cache = { at: 0, key: '', value: null };
+      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId, action: params.action });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // Isin SONUCU: set_stats ile donen satirlar (POD/LOG/RES/ERR) ayristirilir.
+  router.get('/ops-result/:serverId/:jobId', async (req, res) => {
+    const serverId = Number(req.params.serverId);
+    const jobId = Number(req.params.jobId);
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
+    }
+    try {
+      const runner = require('../ansible/runner.cjs');
+      const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
+      const terminal = ['successful', 'failed', 'error', 'canceled'].includes(statusInfo.status);
+      let parsed = null;
+      if (terminal) {
+        const { extractStatsKey } = require('../opsx/index.cjs');
+        const stats = extractStatsKey(statusInfo.artifacts, 'crypto_hub_ops_result');
+        parsed = parseOpsLines(stats && stats.lines);
+        if (parsed) parsed.action = (stats && stats.action) || null;
+      }
+      res.json({ ok: true, status: statusInfo.status, result: parsed });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // Taramayi SIMDI kostur (yalniz secili kiraci). Yazan bir is DEGIL - tarama salt okunur.
   router.post('/rescan', async (req, res) => {
     const tenant = tenantOf(req.body?.tenant);
@@ -288,4 +464,4 @@ function initCryptoHub(app) {
   console.log('[CryptoHub] module mounted at /api/crypto-hub');
 }
 
-module.exports = { initCryptoHub, cmpVersion, loadTenant };
+module.exports = { initCryptoHub, cmpVersion, loadTenant, normalizeOps, parseOpsLines, OPS };

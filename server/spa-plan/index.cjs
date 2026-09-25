@@ -152,7 +152,14 @@ function initSpaPlan(app) {
   router.get('/rows', async (req, res) => {
     const user = (req.session && req.session.user) || {};
     const isAdmin = String(user.role || '') === 'Admin';
-    const all = String(req.query.all || '') === '1';
+    const keysOn = groupKeysOf(user);
+    // BOS EKRAN TUZAGI (2026-09-26, uretimde gorulen): varsayilan "yalniz kendi ekibim"
+    // idi. Yonetici hicbir uygulama ekibinin AD grubunda DEGILDIR; her satir elenip
+    // sayfa bombos geliyordu. Ayni sey LDAP kapaliyken (grup listesi bos) HERKES icin
+    // olurdu. Bu iki durumda varsayilan TUM EKIPLER; istemci acikca all=0 derse suzulur.
+    const varsayilanTumu = isAdmin || keysOn.size === 0;
+    const istek = String(req.query.all || '');
+    const all = istek === '1' || (istek !== '0' && varsayilanTumu);
     try {
       const data = await migrationWarm.get({ fresh: req.query.fresh === '1' });
       if (!data || data.ok === false) {
@@ -173,7 +180,7 @@ function initSpaPlan(app) {
         console.warn('[spa-plan] takip satirlari okunamadi:', e.message);
       }
 
-      const keys = groupKeysOf(user);
+      const keys = keysOn;
       const d = (v) => (v ? String(v instanceof Date ? v.toISOString().slice(0, 10) : v).slice(0, 10) : null);
       const rows = [];
       let hiddenByOwner = 0;
@@ -212,6 +219,8 @@ function initSpaPlan(app) {
         ok: true,
         isAdmin,
         all,
+        /** oturumdaki AD grup sayisi: 0 ise sahiplik suzgeci ANLAMSIZDIR */
+        groupCount: keysOn.size,
         hiddenByOwner,
         ownersReady: data.ownersReady !== false,
         trafficReady: traffic !== null,
