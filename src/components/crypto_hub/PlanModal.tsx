@@ -15,7 +15,7 @@
 // PENCERENİN SÖZLEŞMESİ:
 //   * Komutlar SUNUCUDA üretilir (shared/cryptoHubActions.cjs) — aynı plan yarın playbook'a
 //     girdi olacak; iki ayrı yerde yazılırsa ayrışır.
-//   * YAZAN adımlar görsel olarak ayrılır; "kaç komut kümeye dokunuyor" onaydan önce
+//   * YAZAN adımlar görsel olarak ayrılır; "kaç komut ortama dokunuyor" onaydan önce
 //     tek bakışta görünür.
 //   * Portal dışı adımlar (LinuxOne, Jenkins, iş birimi) gizlenmez — sırası önemli.
 //   * Onay şimdilik KAPALI: yazan playbook bağlanana kadar bu ekran yalnızca gösterir.
@@ -83,7 +83,7 @@ function Step({ s }: { s: CryptoPlanStep }) {
         {s.writes && (
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
             style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>
-            <PencilSquareIcon className="h-3 w-3" /> değiştirir
+            <PencilSquareIcon className="h-3 w-3" /> değişiklik yapar
           </span>
         )}
         {s.unknown && (
@@ -345,7 +345,7 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
                 </span>
                 <span className="px-2 py-0.5 rounded-full font-semibold"
                   style={{ background: 'var(--status-danger-bg)', color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>
-                  {plan.writeCount} adım kümeyi değiştirir
+                  {plan.writeCount} adım ortamda değişiklik yapar
                 </span>
                 {plan.unknownCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full"

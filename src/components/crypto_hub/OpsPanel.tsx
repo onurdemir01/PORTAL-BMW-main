@@ -149,7 +149,7 @@ export function OpsConfirm({ req, namespace, tenantLabel, onCancel, onConfirm }:
           style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>
           <ExclamationTriangleIcon className="h-4 w-4 mt-0.5 shrink-0" />
           <span>
-            Bu işlem kümede <b>değişiklik yapar</b>. Aşağıdaki komut(lar) {namespace} namespace'inde koşacak.
+            Bu işlem <b>ortamda gerçek değişiklik yapar</b>. Aşağıdaki komut(lar) {namespace} namespace'inde koşacak.
             {req.action === 'scale' && req.replicas === 0 && ' Replika 0 demek, bileşenin KAPATILMASI demektir.'}
           </span>
         </div>

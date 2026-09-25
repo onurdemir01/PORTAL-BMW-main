@@ -28,7 +28,7 @@ const NO_PROXY = 'localhost,.fw.garanti.com.tr,.fw.dijitalvarlik.com.tr,.fw.goha
   + '.fw.teknoloji.com.tr,.fw.gteknoloji.com.tr,.fw.takasnet.com.tr,.fw.eurekosigorta.com.tr,'
   + '.gtdmz.com.tr,.gteknolojidmz.com.tr,10.0.0.0/8,172.16.0.0/16,192.168.0.0/16';
 
-/** Ekranda seçilebilen işlemler. `writes` = kümede değişiklik yapar. */
+/** Ekranda seçilebilen işlemler. `writes` = ortamda gerçek değişiklik yapar. */
 const ACTIONS = Object.freeze([
   {
     key: 'upgrade',
