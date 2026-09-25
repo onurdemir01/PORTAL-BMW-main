@@ -120,10 +120,18 @@ test('CH7: production kapaliyken prod kiracilari SECILEMEZ ve API reddeder', () 
   assert.equal(envs.length, CRYPTO_TENANTS.length, 'kapali ortam agactan silinmemeli');
   for (const e of envs) assert.equal(e.open, isOpen(tenantOf(e.key)), `${e.key}: open bayragi yanlis`);
 
-  // Sunucu yalnizca ekrana guvenmemeli: veri donduren/is baslatan UCLARIN HEPSI kesmeli.
+  // Sunucu yalnizca ekrana guvenmemeli. SAYI SAYMAK KIRILGANDI (yeni bir uc eklenince test
+  // "3 olmali" diye duserdi ama asil soru bu degil): her KIRACI COZEN uc, kapali kiraciyi
+  // kesiyor mu? Yeni bir uc eklendiginde bu bekci onu da kapsar.
   const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  const kesmeSayisi = (src.match(/if \(!isOpen\(tenant\)\) return res\.status\(403\)/g) || []).length;
-  assert.equal(kesmeSayisi, 3, '/overview, /plan ve /rescan uclarinin UCU de kapali kiraciyi 403 ile kesmeli');
+  const bloklar = src.split(/router\.(?:get|post|put|delete)\(/).slice(1);
+  const kiraciAlan = bloklar.filter((b) => /tenantOf\(/.test(b));
+  assert.ok(kiraciAlan.length >= 4, `kiraci cozen uc sayisi beklenenden az: ${kiraciAlan.length}`);
+  for (const b of kiraciAlan) {
+    const yol = (b.match(/^\s*'([^']+)'/) || [])[1] || '(bilinmeyen)';
+    assert.match(b, /if \(!isOpen\(tenant\)\) return res\.status\(403\)/,
+      `${yol} ucu kapali kiraciyi 403 ile kesmiyor`);
+  }
 });
 
 // ── ON ONAY PLANI (kullanici, 2026-09-26) ────────────────────────────────────────────
@@ -217,4 +225,62 @@ test('CH12: tarama asamasi dustuyse plan EKSIK oldugunu soyler', () => {
   // NOTE (hata degil) plani eksik ILAN ETMEMELI.
   const bilgi = buildPlan(t, 'stop', {}, { components: ORNEK, lastNonZero: ORNEK, notes: [{ level: 'NOTE', stage: '', message: 'chart deposu tanimli degil' }] });
   assert.ok(!bilgi.warnings.some((w) => w.includes('planda YOK')));
+});
+
+// ── ISLEMLER: log / pod silme / rollout / replika (kullanici, 2026-09-26) ─────────────
+const { normalizeOps, parseOpsLines, OPS } = require('../index.cjs');
+
+test('CH13: yazan islem ONAYSIZ kosmaz, hedefsiz kosmaz', () => {
+  // Okur/yazar ayrimi TEK yerde durmali.
+  assert.equal(OPS.pods.writes, false);
+  assert.equal(OPS.logs.writes, false);
+  for (const a of ['pod_delete', 'rollout', 'scale']) assert.equal(OPS[a].writes, true, a);
+
+  // Bos hedef = "hepsi" demek DEGIL; yazan islem reddedilir.
+  for (const a of ['pod_delete', 'rollout', 'scale']) {
+    assert.throws(() => normalizeOps({ action: a, targets: [], replicas: 1 }), /Hedef seçilmedi/, a);
+  }
+
+  // Sunucu kapisi: confirmed olmadan yazan islem 428 doner.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.match(src, /params\.writes && req\.body\?\.confirmed !== true/);
+  assert.match(src, /status\(428\)/, 'onaysiz yazan istek 428 ile reddedilmeli');
+});
+
+test('CH14: hedef adi denetimi ve tur uyumu', () => {
+  assert.throws(() => normalizeOps({ action: 'logs', targets: ['pod-a; rm -rf /'] }), /Geçersiz hedef/);
+  assert.throws(() => normalizeOps({ action: 'logs', targets: ['../../etc/passwd'] }), /Geçersiz hedef/);
+  // pod silme yalniz pod alir - `oc delete pod deployment/web` anlamsiz ve tehlikeli.
+  assert.throws(() => normalizeOps({ action: 'pod_delete', targets: ['deployment/web'] }), /yalnız pod hedefi/);
+  // rollout/scale yalniz is yuku alir.
+  assert.throws(() => normalizeOps({ action: 'rollout', targets: ['pod-a'] }), /deployment\/<ad>/);
+  assert.throws(() => normalizeOps({ action: 'scale', targets: ['pod-a'], replicas: 1 }), /deployment\/<ad>/);
+  // replika sinirlari
+  assert.throws(() => normalizeOps({ action: 'scale', targets: ['deployment/w'], replicas: 51 }), /0-50/);
+  assert.throws(() => normalizeOps({ action: 'scale', targets: ['deployment/w'], replicas: 1.5 }), /tam sayı/);
+  assert.equal(normalizeOps({ action: 'scale', targets: ['deployment/w'], replicas: 0 }).replicas, 0,
+    'replika 0 GECERLIDIR (kapatma); yanlislikla reddedilmemeli');
+  // tail ust siniri
+  assert.equal(normalizeOps({ action: 'logs', targets: ['p'], tail: 99999 }).tail, 5000);
+  // toplu secim ust siniri
+  assert.throws(() => normalizeOps({ action: 'pod_delete', targets: Array.from({ length: 51 }, (_, i) => `p-${i}`) }), /En fazla 50/);
+});
+
+test('CH15: is ciktisi ayristirma - bos sonuc "sorun yok" DEMEK DEGIL', () => {
+  const p = parseOpsLines([
+    'POD\tt\tapi-0\tRunning\ttrue,false,\t2,1,\t2026-09-26T08:00:00Z\tnode3',
+    'LOG\tt\tapi-0\tbir  iki\tuc',
+    'RES\tt\tapi-1\tfail\tsilinemedi',
+    'ERR\tt\tget-pods\tForbidden',
+    'COP\tbozuk satir',
+  ]);
+  assert.equal(p.pods.length, 1);
+  assert.equal(p.pods[0].ready, false, 'bir kap hazir degilse pod hazir SAYILMAZ');
+  assert.equal(p.pods[0].restarts, 3, 'kaplarin restart sayilari toplanir');
+  assert.equal(p.logs[0].line, 'bir  iki\tuc', 'log satirindaki TAB korunur');
+  assert.equal(p.results[0].ok, false);
+  assert.equal(p.errors[0].stage, 'get-pods');
+  // Hata satiri OLAN ama sonucu bos bir kosu, "basarili" gibi gosterilmemeli.
+  assert.ok(p.errors.length > 0 && p.results.filter((r) => r.ok).length === 0);
+  assert.equal(parseOpsLines(null), null, 'satir gelmediyse null - bos dizi ile karistirilmaz');
 });

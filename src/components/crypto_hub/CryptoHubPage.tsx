@@ -25,6 +25,7 @@ import {
 } from '@/api/cryptoHubApi';
 import { PlanModal } from './PlanModal';
 import { BitcoinIcon, AppIcon, DomainIcon } from '@/components/common/BrandIcons';
+import { PodsTab, ComponentOps } from './OpsPanel';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -218,7 +219,9 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
 }
 
 // ── Sekme: Durum ──────────────────────────────────────────────────────────────────────
-function DurumTab({ data }: { data: CryptoOverview }) {
+function DurumTab({ data, tenantKey, tenantLabel, namespace, onDone }: {
+  data: CryptoOverview; tenantKey: string; tenantLabel: string; namespace: string; onDone: () => void;
+}) {
   const comps = data.components || [];
   const s = data.summary;
   return (
@@ -241,10 +244,11 @@ function DurumTab({ data }: { data: CryptoOverview }) {
                 <th className="text-left font-medium px-3 py-2">Sürüm</th>
                 <th className="text-left font-medium px-3 py-2">İmaj</th>
                 <th className="text-left font-medium px-3 py-2">Durum</th>
+                <th className="text-left font-medium px-3 py-2">İşlem</th>
               </tr>
             </thead>
             <tbody>
-              {comps.length === 0 && <TableEmptyRow colSpan={6} title="Tarama kaydı yok" description="Bu ortam için henüz bir tarama koşmamış. “Taramayı tazele” ile başlatabilirsiniz." />}
+              {comps.length === 0 && <TableEmptyRow colSpan={7} title="Tarama kaydı yok" description="Bu ortam için henüz bir tarama koşmamış. “Taramayı tazele” ile başlatabilirsiniz." />}
               {comps.map((c) => {
                 const st = STATE[c.state];
                 return (
@@ -258,6 +262,18 @@ function DurumTab({ data }: { data: CryptoOverview }) {
                       <span className="inline-flex items-center gap-1 text-[11px] font-medium" style={{ color: st.color }}>
                         <st.Icon className="h-3.5 w-3.5" /> {st.label}
                       </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      {/* Rollout / replika: LogX-OpsX'e girmeden, KOSACAK KOMUT onaylanarak. */}
+                      <ComponentOps
+                        tenantKey={tenantKey}
+                        tenantLabel={tenantLabel}
+                        namespace={namespace}
+                        kind={c.kind}
+                        name={c.name}
+                        want={c.want}
+                        onDone={onDone}
+                      />
                     </td>
                   </tr>
                 );
@@ -428,7 +444,7 @@ export default function CryptoHubPage() {
   const [apps, setApps] = useState<CryptoApp[] | null>(null);
   const [scope, setScope] = useState<{ env: CryptoEnvOption; app: string; appLabel: string; domain: string; domainLabel: string } | null>(null);
   const [data, setData] = useState<CryptoOverview | null>(null);
-  const [tab, setTab] = useState<'durum' | 'surumler'>('durum');
+  const [tab, setTab] = useState<'durum' | 'podlar' | 'surumler'>('durum');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -616,7 +632,7 @@ export default function CryptoHubPage() {
       {!data?.notConfigured && (
         <>
           <nav className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-            {([['durum', 'Durum'], ['surumler', 'Sürümler']] as const).map(([id, label]) => (
+            {([['durum', 'Durum'], ['podlar', 'Podlar'], ['surumler', 'Sürümler']] as const).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -634,7 +650,23 @@ export default function CryptoHubPage() {
             ))}
           </nav>
 
-          {loading && !data ? <LoadingLogo compact /> : data ? (tab === 'durum' ? <DurumTab data={data} /> : <SurumTab data={data} />) : null}
+          {loading && !data ? <LoadingLogo compact /> : data ? (
+            tab === 'durum' ? (
+              <DurumTab
+                data={data}
+                tenantKey={scope.env.key}
+                tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
+                namespace={scope.env.namespace}
+                onDone={() => void load(scope.env.key, true)}
+              />
+            ) : tab === 'podlar' ? (
+              <PodsTab
+                tenantKey={scope.env.key}
+                tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
+                namespace={scope.env.namespace}
+              />
+            ) : <SurumTab data={data} />
+          ) : null}
         </>
       )}
     </div>

@@ -2497,6 +2497,18 @@ const PLAYBOOK_REGISTRY_SEED = [
     env_var_name: 'NGINX_CONSOLE_FETCH_TEMPLATE_ID',
   },
   {
+    // Crypto Hub (2026-09-26): ekrandan tetiklenen islemler - pod listesi, log (salt okunur),
+    // pod silme, rollout restart ve replika. Kullanici: "LogX/OpsX'e girmeden yapabilsinler."
+    key_name: 'crypto_hub_ops',
+    display_name: 'Crypto Hub — Islemler (log / pod / rollout / replika)',
+    category: 'openshift',
+    handler: 'crypto_hub_ops',
+    description:
+      'bmw_automation_folder/crypto_hub/crypto_hub_ops.yml — crypto_hub_action ile pods|logs|pod_delete|rollout|scale. Hedefler acikca verilir (--all/-l YOK), yazan islemler Portal tarafinda onay penceresinden gecer, sonuc set_stats ile doner.',
+    playbook_path: null,
+    env_var_name: 'CRYPTO_HUB_OPS_TEMPLATE_ID',
+  },
+  {
     // Crypto Hub (2026-09-25): Metaco/Wyden kiracilarinin durum + surum taramasi.
     // SALT OKUNUR (oc get / helm list / helm search / skopeo list-tags).
     key_name: 'crypto_hub_inventory',
