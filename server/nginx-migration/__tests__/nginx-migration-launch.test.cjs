@@ -282,3 +282,20 @@ test('BC1 toplu tanim olusturma: hazir olmayan ATLANIR, sebebi yazilir, isler si
   assert.match(run, /for \(const it of bulkPlan\.yapilacak\)/);
   assert.match(page, /Seçilenler için tanım oluştur/, 'cubukta dugme yok');
 });
+
+test('MG3 yeniden olustur: ekranda ACIK bir yol var ve uyari veriyor', () => {
+  // Kullanici (2026-09-26): "bozuk tanimi duzeltmek icin ekrana da 'yeniden olustur'
+  // ekler misin". Sunucu tarafi zaten force'u kabul ediyordu; ekranda karsiligi olmayinca
+  // bozuk bir tanimi duzeltmenin yolu yoktu.
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  // Dugme YALNIZ tanimli satirda cikmali (kazara tetiklenmesin).
+  assert.match(ui, /\{allDone && canCreate && \(/, 'yeniden olustur yalniz tanimli satirda gorunmeli');
+  assert.match(ui, /Yeniden oluştur/, 'dugme yok');
+  assert.match(ui, /onCreate\(a, true\)/, 'force gecirilmiyor');
+  // Onay penceresi "yeni tanim" ile "ustune yazma"yi AYNI cumleyle anlatmamali.
+  assert.match(ui, /Tanımı YENİDEN oluştur/, 'pencere basligi force durumunu soylemeli');
+  assert.match(ui, /yeniden oluşturulur ve üzerine yazılır/, 'ustune yazma uyarisi yok');
+  assert.match(ui, /Evet, üzerine yaz/, 'onay dugmesi ne yaptigini soylemeli');
+  // force YALNIZCA kullanici sectiginde gitmeli - varsayilan istekte olmamali.
+  assert.match(ui, /\.\.\.\(pending\.force \? \{ force: true \} : \{\}\)/, 'force kosulsuz gonderiliyor');
+});

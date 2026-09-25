@@ -150,6 +150,10 @@ export interface NcJobStatus { ok: boolean; status: string; output: string; resu
 const json = (body: unknown) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 export const nginxConsoleApi = {
+  /** Tüm Nginx sunucularının rate limit dökümü (satır düzeyinde). */
+  rateLimit: (scanDate?: string): Promise<NginxRateLimitResult> =>
+    fetch(`${BASE}/ratelimit${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(safeJson),
+
   hosts: (): Promise<{ ok: boolean; hosts: NcHost[]; consoleDir: string; inventoryError: string | null }> => fetch(`${BASE}/hosts`).then(safeJson),
   tree: (host: string): Promise<NcTree> => fetch(`${BASE}/tree/${encodeURIComponent(host)}`).then(safeJson),
   file: (host: string, path: string): Promise<NcFile> => fetch(`${BASE}/file/${encodeURIComponent(host)}?path=${encodeURIComponent(path)}`).then(safeJson),
@@ -175,3 +179,39 @@ export const nginxConsoleApi = {
   },
   blob: (sha: string): Promise<{ ok: boolean; sha256: string; content: string; message?: string }> => fetch(`${BASE}/blob/${encodeURIComponent(sha)}`).then(safeJson),
 };
+
+// ── Rate Limit sekmesi (2026-09-26) ──────────────────────────────────────────────────
+export interface NginxRateLimitRow {
+  host: string;
+  /** sunucu ADINDAN türetilir (dosya adı ortamdan bağımsız olarak aynıdır) */
+  env: string;
+  configFile: string;
+  location: string;
+  ipLimit: string | null;
+  serverLimit: string | null;
+  /** yok = gerçekten limitsiz · server = limit server bloğundan MİRAS */
+  state: 'yok' | 'ip' | 'server' | 'ikisi';
+}
+
+export interface NginxRateLimitSummary {
+  hosts: number;
+  rows: number;
+  limitli: number;
+  limitsiz: number;
+  ipOnly: number;
+  serverOnly: number;
+  ikisi: number;
+  byEnv: Record<string, { rows: number; limitsiz: number; hosts: number }>;
+  topZones: { zone: string; count: number }[];
+}
+
+export interface NginxRateLimitResult {
+  ok: boolean;
+  message?: string;
+  /** true = tablo yok (job hiç koşmamış) — "limit yok" ile KARIŞTIRILMAZ */
+  tableMissing?: boolean;
+  scanDate: string | null;
+  availableDates: string[];
+  rows: NginxRateLimitRow[];
+  summary: NginxRateLimitSummary | null;
+}

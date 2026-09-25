@@ -449,6 +449,7 @@ function initNginxConsole(app) {
       [/^\/(changes|history|diff)(\/|$)/, 'changes'],
       [/^\/orphans(\/|$)/, 'orphans'],
       [/^\/drift(\/|$)/, 'drift'],
+      [/^\/ratelimit(\/|\.|$)/, 'ratelimit'],
     ];
     router.use((req, res, next) => {
       const hit = TAB_OF_PATH.find(([re]) => re.test(req.path));
@@ -582,6 +583,43 @@ function initNginxConsole(app) {
 
   // Tutarlilik (2026-09-22): ayni servis+ortam sunuculari arasinda dosya bazinda sha farki
   // (GLOMO eski sunuculari vb.). ?service=GLOMO&env=prod ile daraltilir; yoksa tum gruplar.
+  // ── RATE LIMIT (2026-09-26) ─────────────────────────────────────────────────────────
+  // Kullanici: "tum Nginx sunucularinin rate limitlerini ayri bir sekmede gorup raporu
+  // indirebilmek istiyorum."
+  router.get('/ratelimit', async (req, res) => {
+    try {
+      const { loadRateLimits } = require('./ratelimit.cjs');
+      res.json(await loadRateLimits({ scanDate: String(req.query.scanDate || '').trim() || undefined }));
+    } catch (err) {
+      // Tablo yoksa ekran calismaya devam etsin ama SEBEBI soylesin: "limit yok" ile
+      // "tarama hic kosmadi" ayri seylerdir.
+      const yok = /Invalid object name/i.test(err.message || '');
+      res.status(yok ? 200 : 503).json({
+        ok: !yok ? false : true,
+        tableMissing: yok,
+        rows: [], summary: null, availableDates: [], scanDate: null,
+        message: yok
+          ? 'dbo.NginxRateLimitInventory tablosu yok — nginx_ratelimit_inventory job\'i hic kosmamis olabilir.'
+          : err.message,
+      });
+    }
+  });
+
+  // Rapor SUNUCUDA uretilir: 50.000 satirlik dokumu tarayicida birlestirmek yerine akis
+  // olarak iner. Excel'in ayraci dogru tahmin etmesi icin noktali virgul + UTF-8 BOM.
+  router.get('/ratelimit.csv', async (req, res) => {
+    try {
+      const { loadRateLimits, toCsv } = require('./ratelimit.cjs');
+      const data = await loadRateLimits({ scanDate: String(req.query.scanDate || '').trim() || undefined });
+      const ad = `nginx-rate-limit-${data.scanDate || 'bos'}.csv`;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${ad}"`);
+      res.send(toCsv(data.rows, data.scanDate));
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
   router.get('/drift', async (req, res) => {
     try {
       let inv = [];

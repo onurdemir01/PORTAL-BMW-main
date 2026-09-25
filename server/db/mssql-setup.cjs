@@ -2118,6 +2118,16 @@ const ELEMENT_SEED = [
     default_visible: 0,
   },
   {
+    // Rate Limit (2026-09-26, kullanici: "tum Nginx sunucularinin rate limitlerini ayri
+    // bir sekmede gorup raporu indirebilmek istiyorum").
+    element_key: 'tab:nginx:ratelimit',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Rate Limit',
+    sort_order: 28,
+    default_visible: 0,
+  },
+  {
     element_key: 'tab:nginx:spa',
     element_type: 'tab',
     parent_key: 'NginxConsole',
@@ -2151,7 +2161,7 @@ const ELEMENT_SEED = [
   },
 ];
 
-const NGINX_TAB_KEYS_SEED = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'spa', 'api', 'envanter', 'audit'];
+const NGINX_TAB_KEYS_SEED = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'spa', 'api', 'envanter', 'audit', 'ratelimit'];
 
 async function seedPortalElements(pool) {
   // 1) Element satirlari — idempotent

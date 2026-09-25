@@ -63,7 +63,8 @@ export default function NginxProdMigration() {
   // Silme onayi (eski sunucudan location + upstream; nginx_ops 23:00'e zamanlar)
   const [pendingDelete, setPendingDelete] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
   // Onay penceresi: hangi satir, hangi location (birden fazla olabilir)
-  const [pending, setPending] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
+  // force: tanim zaten varken BILEREK yeniden olusturma (bozuk tanimi duzeltmek icin).
+  const [pending, setPending] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number; force?: boolean } | null>(null);
   // Izleme penceresi (2026-09-18): OpsX/Self Service ile AYNI JobTracker - AWX'e gitmeden canli log.
   // Terminal olunca takip tablosu yeniden okunur ki "tanim olusturuldu" hemen yansisin.
   const { addJob } = useJobTracker();
@@ -237,6 +238,8 @@ export default function NginxProdMigration() {
     })();
   }, [tick]);
 
+  // Onay penceresi metni force'a gore degisir: "yeni tanim" ile "ustune yazma" ayni
+  // cumleyle anlatilamaz.
   async function confirmCreate() {
     if (!pending) return;
     const path = pending.app.paths[pending.pathIdx];
@@ -248,6 +251,10 @@ export default function NginxProdMigration() {
         application: pending.app.application,
         service: path.service,
         inputPath: path.location,
+        // YENIDEN OLUSTURMA (2026-09-26, kullanici: "bozuk tanimi duzeltmek icin ekrana da
+        // 'yeniden olustur' ekler misin"): tanim zaten varken sunucu 409 doner; force yalnizca
+        // kullanici bunu ACIKCA sectiginde gider.
+        ...(pending.force ? { force: true } : {}),
       });
       if (r.ok) {
         if (r.job?.id) trackMigrationJob(`Tanım oluştur · ${pending.app.application} #${r.job.id}`, r.job.id);
@@ -441,7 +448,7 @@ export default function NginxProdMigration() {
           sortBy={sortBy}
           ownersReady={data.ownersReady !== false}
           canCreate={configured}
-          onCreate={(app) => setPending({ group: g, app, pathIdx: 0 })}
+          onCreate={(app, force) => setPending({ group: g, app, pathIdx: 0, force })}
           pathJobs={pathJobs}
           selected={selected}
           onToggleSelect={(key, on) => setSelected((prev) => {
@@ -471,7 +478,7 @@ export default function NginxProdMigration() {
       <Modal
         open={!!pending}
         onClose={() => setPending(null)}
-        title="Yeni sunucularda tanım oluştur"
+        title={pending?.force ? 'Tanımı YENİDEN oluştur' : 'Yeni sunucularda tanım oluştur'}
         subtitle={pending ? `${pending.app.application} · ${pending.app.namespace}` : undefined}
         icon={DocumentPlusIcon}
         dismissOnBackdrop={false}
@@ -484,11 +491,21 @@ export default function NginxProdMigration() {
               className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
               style={{ background: 'var(--accent)' }}
             >
-              {busy ? 'Başlatılıyor…' : 'Evet, tanımı oluştur'}
+              {busy ? 'Başlatılıyor…' : pending?.force ? 'Evet, üzerine yaz' : 'Evet, tanımı oluştur'}
             </button>
           </div>
         }
       >
+        {pending?.force && (
+          <div className="mb-3 text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+            style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
+            <span>
+              Bu tanım son taramada <b>zaten mevcut</b> görünüyor. Devam ederseniz aynı dosya
+              <b> yeniden oluşturulur ve üzerine yazılır</b>. Bunu yalnızca tanımın bozuk olduğunu
+              düşünüyorsanız yapın; playbook kendi yedeğini alır ve <code>nginx -t</code> düşerse geri alır.
+            </span>
+          </div>
+        )}
         {pending && (() => {
           const path = pending.app.paths[pending.pathIdx];
           const svc = path.service;
@@ -1169,7 +1186,7 @@ function GroupPanel({
   sortBy: 'status' | 'team' | 'app' | 'plan';
   ownersReady: boolean;
   canCreate: boolean;
-  onCreate: (app: NginxMigrationApp) => void;
+  onCreate: (app: NginxMigrationApp, force?: boolean) => void;
   pathJobs: Map<string, MigrationPathJob>;
   selected: Set<string>;
   onToggleSelect: (key: string, on: boolean) => void;
@@ -1381,6 +1398,19 @@ function GroupPanel({
                     >
                       <DocumentPlusIcon className="w-3.5 h-3.5" /> {allDone ? 'Tanımlı' : 'Tanım oluştur'}
                     </button>
+                    {/* YENIDEN OLUSTUR (2026-09-26, kullanici istegi): tanim var ama BOZUK
+                        olabilir. Ayri ve sessiz bir dugme - kazara tetiklenmesin diye
+                        yalnizca tanimli satirda cikar ve onay penceresinden gecer. */}
+                    {allDone && canCreate && (
+                      <button
+                        onClick={() => onCreate(a, true)}
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg mt-1 whitespace-nowrap"
+                        style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)', background: 'var(--bg-surface)' }}
+                        title="Tanım zaten var. Bozuk olduğunu düşünüyorsanız aynı tanımı YENİDEN oluşturur (mevcut dosyanın üzerine yazar)."
+                      >
+                        <ArrowPathIcon className="w-3.5 h-3.5" /> Yeniden oluştur
+                      </button>
+                    )}
                       </>
                       );
                     })()}

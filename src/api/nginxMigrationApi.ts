@@ -78,6 +78,8 @@ export const nginxMigrationApi = {
     application: string;
     service: string;
     inputPath: string;
+    /** true = tanım zaten varken BİLEREK yeniden oluştur (bozuk tanımı düzeltmek için) */
+    force?: boolean;
   }): Promise<NginxMigrationCreateResult> =>
     fetch(`${BASE}/create`, {
       method: "POST",
