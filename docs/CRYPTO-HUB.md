@@ -102,6 +102,11 @@ olarak geldiği için zincirde `default(…, true)` kullanılır; sade `default(
 Kimlik verilmezse sürüm listesi **atlanır** ve ekran "ölçülemedi" der — "yeni sürüm yok"
 DEMEZ. Bekçi CH16, parolanın koda sızmadığını her koşuda doğrular.
 
+**`skopeo` kurulu değilse liste kaybolmaz:** tarama Docker Registry v2 API'sine düşer
+(önce Basic, olmazsa ACR token takası) ve bu yola düştüğünü NOTE ile yazar. Kimlik curl'e
+stdin'den verilir; komut satırına yazılmaz (`ps` ile okunabilirdi). TLS doğrulaması
+varsayılan açıktır, `REG_INSECURE=1` ile bilinçli olarak kapatılabilir.
+
 ---
 
 ## 3. Kiracılar
