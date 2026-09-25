@@ -352,11 +352,17 @@ test('GORUNURLUK: seed ELEMENT BAZINDA idempotent (yeni sayfa mevcut kurulumda g
   // YALNIZCA gorunurluk seed'i incelenir: dosyadaki diger "tablo bossa doldur" seed'leri
   // (splunk_products, selfservice_groups) tek seferlik LISTE seed'i ve sonrasi admin
   // yonetiminde — ayni hata sinifinda degiller.
-  const i = SETUP.indexOf('portal_element_visibility (element_key, principal_type');
-  assert.ok(i > 0, 'gorunurluk seed blogu bulunamadi');
-  const block = SETUP.slice(Math.max(0, i - 2000), i + 400);
-  assert.match(block, /SELECT DISTINCT element_key FROM portal_element_visibility/);
+  // BEKCININ KORLUGU (2026-09-26): blok, ilk "INSERT INTO portal_element_visibility"
+  // etrafindaki sabit pencereden aliniyordu. 2026-09-23'te nginx sekme migration'i seed'in
+  // USTUNE eklenince pencere yanlis bloga kaydi ve bekci, korudugu kodu hic gormeden
+  // patladi. Artik seed'in KENDI imzasina (SELECT DISTINCT ...) tutunuyor; araya kac blok
+  // girerse girsin dogru yeri bulur.
+  const i = SETUP.indexOf('SELECT DISTINCT element_key FROM portal_element_visibility');
+  assert.ok(i > 0, 'gorunurluk seed blogu bulunamadi (SELECT DISTINCT imzasi yok)');
+  const block = SETUP.slice(i, i + 2400);
   assert.match(block, /hasRules\.has\(el\.element_key\)/);
+  assert.match(block, /INSERT INTO portal_element_visibility \(element_key, principal_type/,
+    'seed, okudugu listeyi yazmiyor');
   // Eski "tablo TAMAMEN bossa bas" davranisi bu blokta kalmamali.
   assert.doesNotMatch(block, /if \(any\.recordset\.length\) return;/);
 });
