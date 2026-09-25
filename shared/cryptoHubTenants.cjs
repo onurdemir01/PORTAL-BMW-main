@@ -87,7 +87,9 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'prod', envLabel: 'Production', production: true,
     bastion: 'daaocp01', cluster: 'gbocp3rdcwprod1',
     apiUrl: 'https://api.gbocp3rdcwprod1.fw.garanti.com.tr:6443',
-    namespace: 'harmonize-prod', helmRelease: 'hmz',
+    // GAR PROD'DA RELEASE ADI FARKLI: runbook'ta `helm upgrade --install … hmzbank ./harmonize/`
+    // ve tum deployment'lar `hmzbank-harmonize-*`. DAS tarafi ve testler `hmz`.
+    namespace: 'harmonize-prod', helmRelease: 'hmzbank',
     chartRef: METACO_CHART, chartRepo: '', chartName: '',
   },
 

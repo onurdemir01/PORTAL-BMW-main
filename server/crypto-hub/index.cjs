@@ -20,6 +20,8 @@ const { CRYPTO_TENANTS, tenantOf, selectionTree, isOpen } = require('../../share
 // olurdu.
 const CLOSED_MSG = 'Production ortamları Crypto Hub\'da şimdilik kapalı.';
 
+const { ACTIONS, actionOf, buildPlan } = require('../../shared/cryptoHubActions.cjs');
+
 const REGISTRY_KEY = 'crypto_hub_inventory';
 
 // Son tarama okumasi 1-2 sn surer; ekran her sekme degisiminde DB'yi yormasin.
@@ -163,6 +165,47 @@ function initCryptoHub(app) {
       const value = await loadTenant(tenant);
       _cache = { at: Date.now(), key: tenant.key, value };
       res.json({ ok: true, tenant, ...value });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
+  // ── ON ONAY PLANI ───────────────────────────────────────────────────────────────────
+  // Kullanici: "upgrade/kapat/degisiklikte kullaniciya UYGULANACAK KOMUTLARI gosteren bir on
+  // onay penceresi olsun". Plan SALT OKUNUR uretilir; hicbir sey calistirilmaz.
+  router.get('/actions', (_req, res) => {
+    res.json({ ok: true, actions: ACTIONS.map(({ key, label, hint, writes, params }) => ({ key, label, hint, writes, params })) });
+  });
+
+  router.get('/plan', async (req, res) => {
+    const tenant = tenantOf(req.query.tenant);
+    if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
+    if (!isOpen(tenant)) return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
+    if (!actionOf(req.query.action)) return res.status(400).json({ ok: false, message: 'Bilinmeyen işlem.' });
+    try {
+      const veri = await loadTenant(tenant);
+      // ACMA ADIMI ICIN: "hepsini 1 yap" YANLIS olurdu - runbook'ta ornegin api-management 4
+      // replika ile aciliyor. Her bilesenin SON SIFIRDAN FARKLI istenen replikasi okunur;
+      // hic gorulmediyse plan o adimi "bilinmiyor" diye isaretler.
+      let lastNonZero = [];
+      if (!veri.tableMissing) {
+        const { query, sql } = require('../inventory/mssql.cjs');
+        lastNonZero = await query(
+          `SELECT kind, name, want FROM (
+             SELECT kind, name, want,
+                    ROW_NUMBER() OVER (PARTITION BY kind, name ORDER BY scan_date DESC) AS rn
+               FROM dbo.Crypto_Hub_Components
+              WHERE tenant_key = @t AND want > 0
+           ) x WHERE rn = 1`,
+          [{ name: 't', type: sql.NVarChar(64), value: tenant.key }],
+        ).then((r) => r.recordset || []).catch(() => []);
+      }
+      const plan = buildPlan(tenant, req.query.action, { version: req.query.version || '' }, {
+        components: veri.components || [],
+        lastNonZero,
+        scannedAt: veri.scannedAt,
+      });
+      res.json({ ok: true, tenant, plan });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }

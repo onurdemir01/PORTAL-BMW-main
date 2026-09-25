@@ -69,6 +69,38 @@ export interface CryptoOverview {
   message?: string;
 }
 
+export interface CryptoActionDef {
+  key: string; label: string; hint: string; writes: boolean;
+  params: { key: string; label: string; required?: boolean; placeholder?: string }[];
+}
+
+export interface CryptoPlanStep {
+  n: number;
+  /** command = koşulacak komut · check = doğrulama · manual = Portal dışı (LinuxOne, Jenkins, iş birimi) */
+  kind: 'command' | 'check' | 'manual';
+  /** true = kümede DEĞİŞİKLİK yapar */
+  writes: boolean;
+  title: string;
+  command?: string;
+  note?: string;
+  /** true = runbook'ta kesinleşmemiş bir değer var; ekran "doğrulanmalı" der */
+  unknown?: boolean;
+  source?: string;
+}
+
+export interface CryptoPlan {
+  action: string; label: string; tenantKey: string;
+  params: Record<string, string>;
+  scannedAt: string | null;
+  steps: CryptoPlanStep[];
+  writeCount: number;
+  unknownCount: number;
+  warnings: string[];
+  /** false = işlem Portal'dan henüz ÇALIŞTIRILMIYOR; ekran yalnızca komutları gösterir */
+  runnable: boolean;
+  runnableNote: string;
+}
+
 export const cryptoHubApi = {
   tenants: (): Promise<{ ok: boolean; apps: CryptoApp[]; message?: string }> =>
     fetch(`${BASE}/tenants`).then(safeJson),
@@ -83,6 +115,14 @@ export const cryptoHubApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tenant }),
     }).then(safeJson),
+
+  actions: (): Promise<{ ok: boolean; actions: CryptoActionDef[]; message?: string }> =>
+    fetch(`${BASE}/actions`).then(safeJson),
+
+  /** Ön onay planı: uygulanacak komutlar (salt okunur; hiçbir şey çalıştırmaz). */
+  plan: (tenant: string, action: string, version = ''): Promise<{ ok: boolean; plan?: CryptoPlan; message?: string }> =>
+    fetch(`${BASE}/plan?tenant=${encodeURIComponent(tenant)}&action=${encodeURIComponent(action)}`
+      + (version ? `&version=${encodeURIComponent(version)}` : '')).then(safeJson),
 
   jobStatus: (awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output?: string; message?: string }> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),

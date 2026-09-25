@@ -17,11 +17,13 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ArrowPathIcon, ChevronRightIcon, ExclamationTriangleIcon, InformationCircleIcon,
   CheckCircleIcon, StopCircleIcon, CubeTransparentIcon, ArrowUpCircleIcon, QuestionMarkCircleIcon,
-  LockClosedIcon,
+  LockClosedIcon, PlayCircleIcon,
 } from '@heroicons/react/24/outline';
 import {
   cryptoHubApi, type CryptoApp, type CryptoEnvOption, type CryptoOverview, type CryptoComponent,
+  type CryptoActionDef,
 } from '@/api/cryptoHubApi';
+import { PlanModal } from './PlanModal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -323,6 +325,8 @@ export default function CryptoHubPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [actions, setActions] = useState<CryptoActionDef[]>([]);
+  const [planFor, setPlanFor] = useState<CryptoActionDef | null>(null);
 
   useAsyncEffect(async (alive) => {
     try {
@@ -331,6 +335,12 @@ export default function CryptoHubPage() {
       if (!r.ok) { setErr(r.message || 'Kiracı listesi alınamadı.'); return; }
       setApps(r.apps);
     } catch (e: unknown) { if (alive()) setErr(e instanceof Error ? e.message : String(e)); }
+    // Islem katalogu: ekran hangi islemleri sunacagini SUNUCUDAN ogrenir; yeni islem
+    // eklendiginde arayuz degismek zorunda kalmasin.
+    try {
+      const a = await cryptoHubApi.actions();
+      if (alive() && a.ok) setActions(a.actions);
+    } catch { /* islem listesi alinamazsa ekran calismaya devam eder */ }
   }, []);
 
   const load = useCallback(async (key: string, fresh = false) => {
@@ -403,6 +413,37 @@ export default function CryptoHubPage() {
           Ortamı değiştir
         </button>
       </div>
+
+      {/* ISLEMLER: her biri once ON ONAY PENCERESI acar - hicbiri dogrudan calismaz. */}
+      {!data?.notConfigured && actions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>İşlemler</span>
+          {actions.map((a) => (
+            <button
+              key={a.key}
+              type="button"
+              className={SM_BTN}
+              style={btnStyle()}
+              title={a.hint + ' — önce uygulanacak komutlar gösterilir'}
+              onClick={() => setPlanFor(a)}
+            >
+              <PlayCircleIcon className="h-3.5 w-3.5" /> {a.label}
+            </button>
+          ))}
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            komutlar önce onay penceresinde gösterilir
+          </span>
+        </div>
+      )}
+
+      {planFor && (
+        <PlanModal
+          tenantKey={scope.env.key}
+          tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
+          action={planFor}
+          onClose={() => setPlanFor(null)}
+        />
+      )}
 
       {err && <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>}
 

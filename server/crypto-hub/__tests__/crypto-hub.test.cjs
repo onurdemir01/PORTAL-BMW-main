@@ -62,8 +62,12 @@ test('CH2: Portal katalogu Ansible katalogu ile ayni', () => {
     assert.ok(block, `${t.key} tenants.yml'de yok`);
     const ns = (block.match(/^\s*namespace:\s*"?([^"\n]*)"?/m) || [])[1] || '';
     const cl = (block.match(/^\s*cluster:\s*(\S+)/m) || [])[1] || '';
+    const hr = (block.match(/^\s*helm_release:\s*"?([^"\n]*)"?/m) || [])[1] || '';
     assert.equal(ns.trim(), t.namespace, `${t.key}: namespace ayristi`);
     assert.equal(cl.trim(), t.cluster, `${t.key}: cluster ayristi`);
+    // Release adi da ayni olmali: Metaco GAR prod'da `hmzbank`, digerlerinde `hmz` -
+    // ayrisirsa "kosan surum" yanlis release'ten okunur.
+    assert.equal(hr.trim(), t.helmRelease, `${t.key}: helm_release ayristi`);
   }
 });
 
@@ -116,8 +120,83 @@ test('CH7: production kapaliyken prod kiracilari SECILEMEZ ve API reddeder', () 
   assert.equal(envs.length, CRYPTO_TENANTS.length, 'kapali ortam agactan silinmemeli');
   for (const e of envs) assert.equal(e.open, isOpen(tenantOf(e.key)), `${e.key}: open bayragi yanlis`);
 
-  // Sunucu yalnizca ekrana guvenmemeli: /overview ve /rescan de kapali kiraciyi kesmeli.
+  // Sunucu yalnizca ekrana guvenmemeli: veri donduren/is baslatan UCLARIN HEPSI kesmeli.
   const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
   const kesmeSayisi = (src.match(/if \(!isOpen\(tenant\)\) return res\.status\(403\)/g) || []).length;
-  assert.equal(kesmeSayisi, 2, 'overview ve rescan uclarinin IKISI de kapali kiraciyi 403 ile kesmeli');
+  assert.equal(kesmeSayisi, 3, '/overview, /plan ve /rescan uclarinin UCU de kapali kiraciyi 403 ile kesmeli');
+});
+
+// ── ON ONAY PLANI (kullanici, 2026-09-26) ────────────────────────────────────────────
+const { ACTIONS, buildPlan } = require('../../../shared/cryptoHubActions.cjs');
+
+const ORNEK = [
+  { kind: 'Deployment', name: 'hmz-harmonize-gateway', want: 2, ready: 2 },
+  { kind: 'Deployment', name: 'hmz-harmonize-api-management', want: 4, ready: 4 },
+  { kind: 'StatefulSet', name: 'hmz-harmonize-keycloak', want: 1, ready: 1 },
+];
+
+test('CH8: plan komutlarinda PAROLA gorunmez', () => {
+  const t = tenantOf('metaco_das_test');
+  for (const a of ACTIONS) {
+    const plan = buildPlan(t, a.key, { version: '1.34.4' }, { components: ORNEK, lastNonZero: ORNEK });
+    const metin = plan.steps.map((s) => `${s.title} ${s.command || ''} ${s.note || ''}`).join('\n');
+    // Runbook'ta `helm registry login … -p <parola>` var; plana ASLA gecmemeli.
+    assert.ok(!/-p\s+\S{8,}/.test(metin), `${a.key}: planda parola gibi bir deger var`);
+    assert.ok(!/--password[= ]\S+/.test(metin), `${a.key}: planda --password var`);
+    assert.ok(!/3ahXek/i.test(metin), `${a.key}: runbook'taki duz metin parola plana sizmis`);
+  }
+});
+
+test('CH9: scale adimlari OLCULEN bilesenden uretilir, sabit listeden degil', () => {
+  const t = tenantOf('metaco_das_test');
+  const plan = buildPlan(t, 'stop', {}, { components: ORNEK, lastNonZero: ORNEK });
+  const scale = plan.steps.filter((s) => (s.command || '').startsWith('oc scale'));
+  assert.equal(scale.length, 3, 'olculen her bilesen icin bir scale adimi olmali');
+  // Katalogda olmayan yeni bir bilesen eklenirse plan da buyumeli (bayat liste tuzagi).
+  const plan2 = buildPlan(t, 'stop', {}, {
+    components: [...ORNEK, { kind: 'Deployment', name: 'hmz-harmonize-yeni-zincir', want: 1 }],
+    lastNonZero: [],
+  });
+  assert.equal(plan2.steps.filter((s) => (s.command || '').startsWith('oc scale')).length, 4);
+  // StatefulSet, `oc scale deployment` ile kapatilamaz.
+  const sts = scale.find((s) => s.command.includes('keycloak'));
+  assert.match(sts.command, /oc scale statefulset /);
+  // Metaco'da once gateway kapanir (runbook sirasi).
+  assert.match(scale[0].command, /gateway/);
+  // Tarama yoksa sessizce bos plan degil, ACIK uyari.
+  const bos = buildPlan(t, 'stop', {}, { components: [], lastNonZero: [] });
+  assert.ok(bos.warnings.some((w) => w.includes('tarama kaydı yok')));
+});
+
+test('CH10: "Ac" plani replikayi 1 VARSAYMAZ', () => {
+  const t = tenantOf('metaco_das_test');
+  // Her sey kapaliyken (want=0) hedef, son sifirdan farkli olcumden gelir: api-management 4.
+  const kapali = ORNEK.map((c) => ({ ...c, want: 0, ready: 0 }));
+  const plan = buildPlan(t, 'start', {}, { components: kapali, lastNonZero: ORNEK });
+  const api = plan.steps.find((s) => (s.command || '').includes('api-management'));
+  assert.match(api.command, /--replicas=4/, 'runbook api-management\'i 4 replika ile aciyor');
+
+  // Hic sifirdan farkli olculmemis bilesen "bilinmiyor" diye ISARETLENIR.
+  const plan2 = buildPlan(t, 'start', {}, { components: kapali, lastNonZero: [] });
+  assert.ok(plan2.unknownCount > 0);
+  assert.ok(plan2.warnings.some((w) => w.includes('bilinmiyor')));
+});
+
+test('CH11: onay kapali, yazan adimlar isaretli, Portal disi adimlar planda duruyor', () => {
+  const t = tenantOf('metaco_das_test');
+  const plan = buildPlan(t, 'stop', {}, { components: ORNEK, lastNonZero: ORNEK });
+  assert.equal(plan.runnable, false, 'yazan playbook baglanmadan islem calistirilabilir gorunmemeli');
+  assert.equal(plan.writeCount, plan.steps.filter((s) => s.writes).length);
+  assert.ok(plan.steps.filter((s) => s.writes).every((s) => (s.command || '').startsWith('oc scale')));
+  // LinuxOne adimi Hub'dan TETIKLENMEZ ama SIRASI onemli oldugu icin planda gorunur.
+  const linuxone = plan.steps.find((s) => (s.title + (s.note || '')).includes('LinuxOne'));
+  assert.ok(linuxone && linuxone.kind === 'manual' && linuxone.writes === false);
+
+  // Wyden upgrade: kapat -> helm upgrade -> ac sirasi (runbook 11).
+  const w = buildPlan(tenantOf('wyden_test'), 'upgrade', { version: '1.14.0' }, { components: [{ kind: 'Deployment', name: 'wydenapp-rest-api', want: 1 }], lastNonZero: [{ kind: 'Deployment', name: 'wydenapp-rest-api', want: 1 }] });
+  const idxKapat = w.steps.findIndex((s) => (s.title || '').startsWith('Kapat:'));
+  const idxHelm = w.steps.findIndex((s) => (s.command || '').includes('helm upgrade'));
+  const idxAc = w.steps.findIndex((s) => (s.title || '').startsWith('Aç:'));
+  assert.ok(idxKapat > -1 && idxHelm > idxKapat && idxAc > idxHelm, 'Wyden upgrade sirasi: kapat -> upgrade -> ac');
+  assert.match(w.steps[idxHelm].command, /wyden\/wyden --version 1\.14\.0/);
 });
