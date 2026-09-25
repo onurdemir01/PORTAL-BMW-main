@@ -24,8 +24,14 @@ test('CH1: katalog kendi icinde tutarli', () => {
     assert.equal(t.production, t.env.startsWith('prod'), `${t.key}: production bayragi env ile uyusmuyor`);
     assert.ok(t.apiUrl.includes(t.cluster), `${t.key}: api_url cluster adini icermiyor (yanlis cluster'a baglanma riski)`);
     assert.ok(t.bastion && t.appLabel && t.envLabel, `${t.key}: zorunlu alan bos`);
-    // Surum kaynagi ya OCI ya klasik helm deposu; ikisi birden olmaz.
-    assert.ok(!(t.chartRef && t.chartName), `${t.key}: hem chartRef hem chartName dolu - hangi depo sorgulanacagi belirsiz`);
+    // SURUM KAYNAGI ZINCIRI (2026-09-26): klasik helm deposu (chartName) birincil, OCI
+    // (chartRef) yedektir; Metaco'da yalniz OCI var ve onun da iki yolu var (helm-next /
+    // helm-flat). Kural: yapilandirilmis her kiracinin EN AZ BIR kaynagi olmali ve yedek
+    // yol, birincil yol olmadan tanimlanmamali.
+    if (t.namespace) {
+      assert.ok(t.chartName || t.chartRef, `${t.key}: hicbir surum kaynagi tanimli degil`);
+    }
+    if (t.chartRefAlt) assert.ok(t.chartRef, `${t.key}: yedek chart yolu var ama birincil yok`);
     if (t.chartName) assert.ok(t.chartRepo, `${t.key}: chartName var ama chartRepo (alias) yok`);
     if (t.namespace) assert.ok(t.helmRelease, `${t.key}: namespace var ama ana helm release yok`);
   }
@@ -283,4 +289,36 @@ test('CH15: is ciktisi ayristirma - bos sonuc "sorun yok" DEMEK DEGIL', () => {
   // Hata satiri OLAN ama sonucu bos bir kosu, "basarili" gibi gosterilmemeli.
   assert.ok(p.errors.length > 0 && p.results.filter((r) => r.ok).length === 0);
   assert.equal(parseOpsLines(null), null, 'satir gelmediyse null - bos dizi ile karistirilmaz');
+});
+
+test('CH16: chart deposu kimligi KODA YAZILMAZ, yalniz vault degiskeninin adi durur', () => {
+  // Kullanici 2026-09-26'da iki depo parolasini sohbete yapistirdi. Katalog yalnizca
+  // KULLANICI ADINI ve vault degiskeninin ADINI tutar; parolalar AWX credential'inda /
+  // ansible-vault icinde kalir. Bu bekci, birinin "kolay olsun" diye kataloga parola
+  // yazmasini engeller.
+  const dosyalar = [
+    path.join(__dirname, '..', '..', '..', 'shared', 'cryptoHubTenants.cjs'),
+    path.join(__dirname, '..', '..', '..', 'shared', 'cryptoHubActions.cjs'),
+    path.join(__dirname, '..', 'index.cjs'),
+  ];
+  for (const f of dosyalar) {
+    const src = fs.readFileSync(f, 'utf8');
+    assert.ok(!/(password|parola|pwd|secret)\s*[:=]\s*['"][^'"]{6,}['"]/i.test(src),
+      `${path.basename(f)}: duz metin parola gibi bir deger var`);
+    // `-p <deger>` / `--password <deger>` bicimindeki komut ornekleri de girmemeli.
+    assert.ok(!/(^|\s)-p\s+\S{8,}/.test(src), `${path.basename(f)}: komut orneginde parola var`);
+    assert.ok(!/--password[= ]\S{8,}/.test(src), `${path.basename(f)}: --password degeri var`);
+  }
+
+  // Chart yollari: Metaco'nun guncel yolu helm-next, yedegi helm-flat.
+  const metaco = CRYPTO_TENANTS.filter((t) => t.app === 'metaco');
+  for (const t of metaco) {
+    assert.match(t.chartRef, /metaco\.azurecr\.io\/helm-next\/harmonize/, `${t.key}: guncel chart yolu`);
+    assert.match(t.chartRefAlt, /metaco\.azurecr\.io\/helm-flat\/harmonize/, `${t.key}: yedek chart yolu`);
+  }
+  // Wyden: klasik depo birincil, OCI yedek.
+  for (const t of CRYPTO_TENANTS.filter((x) => x.app === 'wyden')) {
+    assert.equal(t.chartName, 'wyden/wyden');
+    assert.match(t.chartRef, /^repo\.wyden\.io\//, `${t.key}: OCI yedegi wyden deposunu gostermeli`);
+  }
 });

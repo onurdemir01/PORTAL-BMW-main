@@ -66,8 +66,28 @@ Girilmemişse Portal 501 döner ve ekranda "Template ID girilmeli" yazar — ses
 
 * **Wyden**: `gbaocp01` üzerinde `was` kullanıcısında `wyden` helm deposu ekli olmalı
   (`helm repo list | grep wyden` → `https://repo.wyden.io/nexus/repository/wyden/`).
-* **Metaco**: chart deposu OCI'dir (`metaco.azurecr.io`); `crypto_hub_registry_user` /
-  `_password` verilmezse sürüm listesi **atlanır** ve ekran "ölçülemedi" der.
+* **Metaco**: chart deposu OCI'dir — güncel yol `metaco.azurecr.io/helm-next/harmonize`,
+  yedek yol `helm-flat` (runbook'ta geçen eski yol). Tarama önce günceli dener, cevap
+  gelmezse yedeğe düşer ve "katalog güncellenmeli" notu yazar.
+
+### Depo kimlikleri
+
+Kullanıcı adı katalogda durur, **parola durmaz**. Her uygulamanın parolası
+`bmw_openshift_jobs/global_variables/credentials.yaml` içinde ansible-vault ile şifreli bir
+değişkendir; katalog yalnızca değişkenin **adını** taşır (`registry_cred_key`).
+
+| Uygulama | Kullanıcı | Vault değişkeni |
+|---|---|---|
+| Metaco | `client-garantibbva` | `metaco_registry_pwd` |
+| Wyden | `garantibbva` | `wyden_registry_pwd` |
+
+```bash
+ansible-vault encrypt_string --name metaco_registry_pwd
+ansible-vault encrypt_string --name wyden_registry_pwd
+```
+
+Kimlik verilmezse sürüm listesi **atlanır** ve ekran "ölçülemedi" der — "yeni sürüm yok"
+DEMEZ. Bekçi CH16, parolanın koda sızmadığını her koşuda doğrular.
 
 ---
 

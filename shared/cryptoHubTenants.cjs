@@ -36,12 +36,19 @@
  * @property {string} apiUrl
  * @property {string} namespace    boş = yapılandırma eksik
  * @property {string} helmRelease  ana release (ekranda "koşan sürüm" bundan okunur)
- * @property {string} chartRef     OCI chart deposu (Metaco)
+ * @property {string} chartRef     OCI chart deposu (birincil yol)
+ * @property {string} chartRefAlt  OCI chart deposu yedek yolu (bos olabilir)
  * @property {string} chartRepo    klasik helm deposu alias'ı (Wyden)
  * @property {string} chartName    alias/chart (Wyden)
  */
 
-const METACO_CHART = 'metaco.azurecr.io/helm-flat/harmonize';
+// Metaco chart yolu 2026-09-26'da DEGISMIS gorunuyor: runbook (1.34.0) `helm-flat`,
+// kullanicinin verdigi guncel komut (1.34.14) `helm-next`. Hangisinin gecerli oldugu
+// TAHMIN EDILMEZ - tarama once guncel yolu, cevap gelmezse yedegi dener ve hangisinin
+// cevapladigini NOTE olarak yazar.
+const METACO_CHART = 'metaco.azurecr.io/helm-next/harmonize';
+const METACO_CHART_ALT = 'metaco.azurecr.io/helm-flat/harmonize';
+const WYDEN_CHART_OCI = 'repo.wyden.io/nexus/repository/wyden/wyden';
 
 /** @type {CryptoTenant[]} */
 const CRYPTO_TENANTS = Object.freeze([
@@ -52,7 +59,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'damtct01', cluster: 'daocptest1',
     apiUrl: 'https://api.daocptest1.fw.dijitalvarlik.com.tr:6443',
     namespace: 'harmonize-test', helmRelease: 'hmz',
-    chartRef: METACO_CHART, chartRepo: '', chartName: '',
+    chartRef: METACO_CHART, chartRefAlt: METACO_CHART_ALT, chartRepo: '', chartName: '',
   },
   {
     key: 'metaco_das_prod', app: 'metaco', appLabel: 'Metaco',
@@ -61,7 +68,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'daaocp01', cluster: 'daocpprod1',
     apiUrl: 'https://api.daocpprod1.fw.dijitalvarlik.com.tr:6443',
     namespace: 'harmonize-prod', helmRelease: 'hmz',
-    chartRef: METACO_CHART, chartRepo: '', chartName: '',
+    chartRef: METACO_CHART, chartRefAlt: METACO_CHART_ALT, chartRepo: '', chartName: '',
   },
   {
     key: 'metaco_das_prod_ank', app: 'metaco', appLabel: 'Metaco',
@@ -70,7 +77,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'daaocp01', cluster: 'daocpankprod1',
     apiUrl: 'https://api.daocpankprod1.fw.dijitalvarlik.com.tr:6443',
     namespace: 'harmonize-prod', helmRelease: 'hmz',
-    chartRef: METACO_CHART, chartRepo: '', chartName: '',
+    chartRef: METACO_CHART, chartRefAlt: METACO_CHART_ALT, chartRepo: '', chartName: '',
   },
   {
     key: 'metaco_gar_test', app: 'metaco', appLabel: 'Metaco',
@@ -79,7 +86,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'damtct01', cluster: 'gbocp3rdcwtest1',
     apiUrl: 'https://api.gbocp3rdcwtest1.fw.garanti.com.tr:6443',
     namespace: 'harmonize-test', helmRelease: 'hmz',
-    chartRef: METACO_CHART, chartRepo: '', chartName: '',
+    chartRef: METACO_CHART, chartRefAlt: METACO_CHART_ALT, chartRepo: '', chartName: '',
   },
   {
     key: 'metaco_gar_prod', app: 'metaco', appLabel: 'Metaco',
@@ -90,7 +97,7 @@ const CRYPTO_TENANTS = Object.freeze([
     // GAR PROD'DA RELEASE ADI FARKLI: runbook'ta `helm upgrade --install … hmzbank ./harmonize/`
     // ve tum deployment'lar `hmzbank-harmonize-*`. DAS tarafi ve testler `hmz`.
     namespace: 'harmonize-prod', helmRelease: 'hmzbank',
-    chartRef: METACO_CHART, chartRepo: '', chartName: '',
+    chartRef: METACO_CHART, chartRefAlt: METACO_CHART_ALT, chartRepo: '', chartName: '',
   },
 
   // ── WYDEN ───────────────────────────────────────────────────────────────────────────
@@ -104,7 +111,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'gbaocp01', cluster: 'giocp3rdwytest1',
     apiUrl: 'https://api.giocp3rdwytest1.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-dev', helmRelease: 'wydenapp',
-    chartRef: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
+    chartRef: WYDEN_CHART_OCI, chartRefAlt: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
   },
   {
     key: 'wyden_test', app: 'wyden', appLabel: 'Wyden',
@@ -113,7 +120,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'gbaocp01', cluster: 'giocp3rdwytest2',
     apiUrl: 'https://api.giocp3rdwytest2.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-test', helmRelease: 'wydenapp',
-    chartRef: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
+    chartRef: WYDEN_CHART_OCI, chartRefAlt: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
   },
   {
     key: 'wyden_qa_h2', app: 'wyden', appLabel: 'Wyden',
@@ -122,7 +129,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'gbaocp01', cluster: 'giocp3rdwytest1',
     apiUrl: 'https://api.giocp3rdwytest1.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-qa', helmRelease: 'wydenapp',
-    chartRef: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
+    chartRef: WYDEN_CHART_OCI, chartRefAlt: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
   },
   {
     key: 'wyden_qa_h3', app: 'wyden', appLabel: 'Wyden',
@@ -131,7 +138,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'gbaocp01', cluster: 'giocp3rdwytest2',
     apiUrl: 'https://api.giocp3rdwytest2.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-qa', helmRelease: 'wydenapp',
-    chartRef: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
+    chartRef: WYDEN_CHART_OCI, chartRefAlt: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
   },
   {
     key: 'wyden_prod_h3', app: 'wyden', appLabel: 'Wyden',
@@ -140,7 +147,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'gbaocp01', cluster: 'giocp3rdwyprod2',
     apiUrl: 'https://api.giocp3rdwyprod2.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-prod', helmRelease: 'wydenapp',
-    chartRef: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
+    chartRef: WYDEN_CHART_OCI, chartRefAlt: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
   },
   {
     key: 'wyden_prod_h2', app: 'wyden', appLabel: 'Wyden',
@@ -149,7 +156,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'gbaocp01', cluster: 'giocp3rdwyprod1',
     apiUrl: 'https://api.giocp3rdwyprod1.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-prod', helmRelease: 'wydenapp',
-    chartRef: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
+    chartRef: WYDEN_CHART_OCI, chartRefAlt: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
   },
   {
     key: 'wyden_prod_ank', app: 'wyden', appLabel: 'Wyden',
@@ -158,7 +165,7 @@ const CRYPTO_TENANTS = Object.freeze([
     bastion: 'gbaocp01', cluster: 'giocpank3rdwyprod1',
     apiUrl: 'https://api.giocpank3rdwyprod1.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-prod', helmRelease: 'wydenapp',
-    chartRef: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
+    chartRef: WYDEN_CHART_OCI, chartRefAlt: '', chartRepo: 'wyden', chartName: 'wyden/wyden',
   },
 ]);
 
