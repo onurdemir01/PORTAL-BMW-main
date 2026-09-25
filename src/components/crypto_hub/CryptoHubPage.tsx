@@ -65,61 +65,110 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
   const dom = app?.domains.find((d) => d.domain === domain) || (app && app.domains.length === 1 ? app.domains[0] : null);
   const kapali = apps.reduce((n, a) => n + a.domains.reduce((m, d) => m + d.envs.filter((e) => e.open === false).length, 0), 0);
 
+  // GIRIS EKRANI (2026-09-26, kullanici: "bu pencere cok kucuk gozukuyor"): kartlar
+  // dar bir sutuna sikismis kucuk dugmelerdi. Artik sayfanin genisligini kullanan,
+  // tiklama alani buyuk kartlar - bu ekran Hub'a girisin TEK kapisi, ufak durmamali.
+  //
   // KAPALI ORTAM GIZLENMEZ, KILITLENIR: menuden yok olsaydi kullanici "production nerede?"
   // diye arardi; burada duruyor ve neden girilemedigi yaziyor.
-  const Card = ({ title, sub, onClick, tone, closed, icon }: { title: string; sub?: string; onClick: () => void; tone?: 'prod'; closed?: boolean; icon?: React.ReactNode }) => (
+  const Card = ({ title, sub, meta, onClick, tone, closed, icon }: {
+    title: string; sub?: string; meta?: string; onClick: () => void;
+    tone?: 'prod'; closed?: boolean; icon?: React.ReactNode;
+  }) => (
     <button
       type="button"
       onClick={onClick}
       disabled={closed}
       title={closed ? 'Bu ortam şimdilik kapalı' : undefined}
-      className={`text-left rounded-xl border px-4 py-3 w-full ${closed ? 'cursor-not-allowed opacity-60' : 'hover:shadow-sm'}`}
-      style={{ borderColor: tone === 'prod' && !closed ? 'var(--status-danger)' : 'var(--border-subtle)', background: closed ? 'var(--bg-elevated)' : 'var(--bg-surface)' }}
+      className={`group text-left rounded-2xl border p-5 w-full transition-shadow ${closed ? 'cursor-not-allowed opacity-70' : 'hover:shadow-md'}`}
+      style={{
+        borderColor: closed ? 'var(--border-subtle)' : tone === 'prod' ? 'var(--status-danger)' : 'var(--border-subtle)',
+        background: closed ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+        minHeight: '6.5rem',
+      }}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold inline-flex items-center gap-2" style={{ color: closed ? 'var(--text-muted)' : tone === 'prod' ? 'var(--status-danger)' : 'var(--text-primary)' }}>
-          {icon}{title}
+      <div className="flex items-start gap-4">
+        {icon && (
+          <span className="h-12 w-12 rounded-xl inline-flex items-center justify-center shrink-0" style={{ background: 'var(--bg-elevated)' }}>
+            {icon}
+          </span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="text-lg font-semibold truncate" style={{ color: closed ? 'var(--text-muted)' : tone === 'prod' ? 'var(--status-danger)' : 'var(--text-primary)' }}>
+              {title}
+            </span>
+            {tone === 'prod' && !closed && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>production</span>
+            )}
+          </span>
+          {sub && <span className="block text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{sub}</span>}
+          {meta && <span className="block text-[11px] mt-1.5" style={{ color: 'var(--text-muted)' }}>{meta}</span>}
         </span>
         {closed
-          ? <LockClosedIcon className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />
-          : <ChevronRightIcon className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />}
+          ? <LockClosedIcon className="h-5 w-5 shrink-0 mt-1" style={{ color: 'var(--text-muted)' }} />
+          : <ChevronRightIcon className="h-5 w-5 shrink-0 mt-1 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--text-muted)' }} />}
       </div>
-      {sub && <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{sub}</div>}
+    </button>
+  );
+
+  const Adim = ({ n, label, aktif, tamam }: { n: number; label: string; aktif: boolean; tamam: boolean }) => (
+    <li className="flex items-center gap-2">
+      <span
+        className="h-6 w-6 rounded-full inline-flex items-center justify-center text-[11px] font-semibold"
+        style={aktif || tamam
+          ? { background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
+          : { background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+      >{n}</span>
+      <span className="text-[12px]" style={{ color: aktif ? 'var(--accent)' : 'var(--text-muted)', fontWeight: aktif ? 600 : 400 }}>{label}</span>
+    </li>
+  );
+
+  const geriBtn = (label: string, onClick: () => void) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 h-8 px-3 text-[12px] rounded-lg border"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}
+    >
+      ‹ {label}
     </button>
   );
 
   return (
-    <div className="max-w-3xl mx-auto py-8 space-y-6">
-      <header className="text-center space-y-1">
-        <h1 className="text-xl font-semibold inline-flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-          <BitcoinIcon className="h-6 w-6" /> Crypto Hub
+    <div className="max-w-5xl mx-auto py-10 space-y-8">
+      <header className="text-center space-y-2">
+        <h1 className="text-3xl font-semibold inline-flex items-center gap-3" style={{ color: 'var(--text-primary)' }}>
+          <BitcoinIcon className="h-9 w-9" /> Crypto Hub
         </h1>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-base" style={{ color: 'var(--text-secondary)' }}>
           Hangi uygulamada, hangi domainde ve hangi ortamda çalışacağınızı seçin.
         </p>
         {kapali > 0 && (
-          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
             Production ortamları ({kapali}) şimdilik kapalı.
           </p>
         )}
       </header>
 
-      <ol className="flex items-center justify-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-        <li style={app ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>1. Uygulama</li>
-        <li>›</li>
-        <li style={dom ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>2. Domain</li>
-        <li>›</li>
-        <li>3. Ortam</li>
+      <ol className="flex items-center justify-center gap-4">
+        <Adim n={1} label="Uygulama" aktif={!app} tamam={!!app} />
+        <span style={{ color: 'var(--text-muted)' }}>›</span>
+        <Adim n={2} label="Domain" aktif={!!app && !dom} tamam={!!dom} />
+        <span style={{ color: 'var(--text-muted)' }}>›</span>
+        <Adim n={3} label="Ortam" aktif={!!app && !!dom} tamam={false} />
       </ol>
 
       {!app && (
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid sm:grid-cols-2 gap-4">
           {apps.map((a) => (
             <Card
               key={a.app}
-              icon={<AppIcon app={a.app} className="h-5 w-5" />}
+              icon={<AppIcon app={a.app} className="h-8 w-8" />}
               title={a.label}
-              sub={a.domains.length + ' domain · ' + a.domains.reduce((n, d) => n + d.envs.length, 0) + ' ortam'}
+              sub={a.domains.map((d) => d.label).join(' · ')}
+              meta={a.domains.reduce((n, d) => n + d.envs.length, 0) + ' ortam'}
               onClick={() => { setApp(a); setDomain(null); }}
             />
           ))}
@@ -127,32 +176,36 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
       )}
 
       {app && !dom && (
-        <div className="space-y-3">
-          <button type="button" className="text-[11px] underline" style={{ color: 'var(--text-muted)' }} onClick={() => setApp(null)}>‹ uygulama seçimine dön</button>
-          <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-4">
+          {geriBtn('uygulama seçimine dön', () => setApp(null))}
+          <div className="grid sm:grid-cols-2 gap-4">
             {app.domains.map((d) => (
-              <Card key={d.domain} title={d.label} sub={d.envs.length + ' ortam'} onClick={() => setDomain(d.domain)} />
+              <Card
+                key={d.domain}
+                icon={<AppIcon app={app.app} className="h-8 w-8" />}
+                title={d.label}
+                sub={d.envs.map((e) => e.label).join(' · ')}
+                meta={d.envs.length + ' ortam'}
+                onClick={() => setDomain(d.domain)}
+              />
             ))}
           </div>
         </div>
       )}
 
       {app && dom && (
-        <div className="space-y-3">
-          <button
-            type="button"
-            className="text-[11px] underline"
-            style={{ color: 'var(--text-muted)' }}
-            onClick={() => { setDomain(null); if (app.domains.length === 1) setApp(null); }}
-          >‹ geri</button>
-          <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-4">
+          {geriBtn('geri', () => { setDomain(null); if (app.domains.length === 1) setApp(null); })}
+          <div className="grid sm:grid-cols-2 gap-4">
             {dom.envs.map((e) => (
               <Card
                 key={e.key}
+                icon={<AppIcon app={app.app} className="h-8 w-8" />}
                 title={e.label}
-                sub={e.open === false
-                  ? e.cluster + ' · şimdilik kapalı'
-                  : e.ready ? e.cluster : e.cluster + ' · yapılandırma eksik'}
+                sub={e.cluster}
+                meta={e.open === false
+                  ? 'şimdilik kapalı'
+                  : e.ready ? (e.namespace || '') : 'yapılandırma eksik'}
                 tone={e.production ? 'prod' : undefined}
                 closed={e.open === false}
                 onClick={() => onPick(e, app, dom.label)}
