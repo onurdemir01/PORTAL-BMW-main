@@ -241,3 +241,22 @@ test('SH13: GBEVM/GBPRV genel envanterden ayri - ozete girmez, bulgusu ve sunucu
   const toplamEnv = Object.values(r.summary.byEnv).reduce((a, b) => a + b.hosts, 0);
   assert.equal(toplamEnv, genelSayisi);
 });
+
+test('SH10: nginx sozdizimi OLCULEMEDI ile HATALI ayri raporlanir', () => {
+  // Kullanici (2026-09-26): "nginx sozdizimi kismi halen hatali gozukuyor; www ile
+  // yapiyorsun degil mi?" Tarama www ile kosuyor; sertifika ANAHTARLARI cogu sunucuda
+  // 0400 root oldugu icin `nginx -t` yetki hatasiyla dusebiliyor. Bunu "sozdizimi hatali"
+  // saymak YANLIS ALARM, hic gostermemek ise sunucuyu sorunsuz gibi gostermek olurdu.
+  const d = base();
+  d.web = [
+    { host: 'DACRWAP01', product: 'NGINX', running: 1, syntax: 'UNKNOWN', detail: 'yetki (kosan: www) - dosya okunamadi, sozdizimi OLCULEMEDI' },
+  ];
+  const r = assess(d);
+  const host = r.hosts.find((h) => h.host === 'DACRWAP01');
+  const bulgular = (host.findings || []).filter((f) => f.code === 'SYNTAX_UNKNOWN');
+  assert.equal(bulgular.length, 1, 'olculemedi bir bulgu uretmeli');
+  assert.equal(bulgular[0].severity, 'info', 'olculemedi bir HATA degil, bilgidir');
+  assert.ok(!(host.findings || []).some((f) => f.code === 'SYNTAX_FAIL'), 'yetki hatasi FAIL sayilmamali');
+  assert.equal(r.summary.web.NGINX.syntaxUnknown, 1);
+  assert.equal(r.summary.web.NGINX.syntaxFail, 0);
+});

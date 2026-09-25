@@ -294,6 +294,12 @@ function assess(data) {
         add('danger', 'web', 'SYNTAX_FAIL', `${w.product} sözdizimi hatalı: ${w.detail}`.trim(),
           m && w.product !== 'NGINX' ? { action: 'apache_comment_line', product: w.product, file: m[2].replace(/:$/, ''), line: Number(m[1]) } : null);
       }
+      // OLCULEMEDI SESSIZ KALMAZ (2026-09-26): tarama www ile kosuyor; sertifika anahtari
+      // okunamadiginda nginx -t duser. Bunu "sozdizimi hatali" saymak yanlis alarm, hic
+      // gostermemek ise sunucuyu "sorunsuz" gibi gostermek olurdu.
+      if (w.syntax === 'UNKNOWN') {
+        add('info', 'web', 'SYNTAX_UNKNOWN', `${w.product} sözdizimi ölçülemedi: ${w.detail}`.trim());
+      }
       if (!w.running && h.vhosts.some((v) => v.product === w.product)) add('warning', 'web', 'NOT_RUNNING', `${w.product} çalışmıyor ama vhost tanımları var`);
     }
     for (const v of h.vhosts) {
@@ -402,7 +408,7 @@ function assess(data) {
   for (const h of genel) summary.hosts[h.status] += 1;
   for (const p of ['IHS', 'RHA', 'NGINX']) {
     const rows = web.filter((w) => w.product === p);
-    summary.web[p] = { hosts: rows.length, syntaxOk: rows.filter((w) => w.syntax === 'OK').length, syntaxFail: rows.filter((w) => w.syntax === 'FAIL').length, notRunning: rows.filter((w) => !w.running).length,
+    summary.web[p] = { hosts: rows.length, syntaxOk: rows.filter((w) => w.syntax === 'OK').length, syntaxFail: rows.filter((w) => w.syntax === 'FAIL').length, syntaxUnknown: rows.filter((w) => w.syntax === 'UNKNOWN').length, notRunning: rows.filter((w) => !w.running).length,
       vhosts: genel.reduce((a, h) => a + h.vhosts.filter((v) => v.product === p).length, 0),
       idleVhosts: genel.reduce((a, h) => a + h.vhosts.filter((v) => v.product === p && v.req7d === 0).length, 0) };
   }
