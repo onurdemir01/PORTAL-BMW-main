@@ -213,7 +213,8 @@ export interface NginxRateLimitHost {
   /** audit'in referans dosyayla karşılaştırmasında uyuşmayan direktif sayısı */
   mismatch: number;
   /** eksik = zone yok YA DA tanımlı ama uygulanmıyor */
-  durum: 'standart' | 'farkli' | 'eksik';
+  /** bilinmiyor = direktifler henüz taranmamış (ölçülmedi) — EKSİK ile karıştırılmaz */
+  durum: 'standart' | 'farkli' | 'eksik' | 'bilinmiyor';
   eksikler: string[];
   farklar: string[];
   detay: { file: string; context: string; directive: string; value: string; matches: boolean }[];
@@ -224,6 +225,7 @@ export interface NginxRateLimitSummary {
   standart: number;
   farkli: number;
   eksik: number;
+  bilinmiyor: number;
   dosyaYuklenmemis: number;
   byEnv: Record<string, { hosts: number; standart: number; farkli: number; eksik: number }>;
   /** filodaki farklı limit kombinasyonları: "filo tek tip mi" sorusunun cevabı */
@@ -234,6 +236,8 @@ export interface NginxRateLimitResult {
   ok: boolean;
   message?: string;
   tableMissing?: boolean;
+  /** true = bu taramada limit direktifleri yok (eski nginx_audit sürümü) */
+  directivesMissing?: boolean;
   scanDate: string | null;
   availableDates: string[];
   hosts: NginxRateLimitHost[];

@@ -76,7 +76,12 @@ function parseReqApply(value) {
  * "Tanımlı ama uygulanmamış" sessiz ve tehlikeli bir durumdur: zone bellekte durur,
  * hiçbir isteği sınırlamaz. Bu yüzden ayrı bir durum olarak gösterilir.
  */
-function hostStatus(h) {
+function hostStatus(h, olculdu = true) {
+  // OLCULMEDI != EKSIK (2026-09-26). nginx_audit'in WATCH listesinde limit_req_zone /
+  // limit_conn_zone / limit_req / limit_conn YOKTU; tabloda hic satir olmadigi icin ilk
+  // surum TUM FILOYU "eksik" diye kirmiziya boyadi - oysa sunucularda limitler duruyordu.
+  // Direktifler henuz taranmamissa hicbir iddiada BULUNMAYIZ.
+  if (!olculdu) return { durum: 'bilinmiyor', eksikler: [], farklar: [] };
   const eksikler = [];
   const farklar = [];
   for (const z of ZONE_CATALOG) {
@@ -166,8 +171,12 @@ async function loadRateLimits({ scanDate } = {}) {
     if (h.raw.length < 20) h.raw.push({ file: r.conf_file, context: r.context, directive: r.directive, value: v, matches: r.matches === true || r.matches === 1 });
   }
 
+  // Filodaki HICBIR sunucuda zone/uygulama satiri yoksa: direktifler taranmamis demektir
+  // (eski nginx_audit surumu). Tek tek sunucularda eksiklik ARAMAYIZ.
+  const olculdu = [...byHost.values()].some((h) => Object.keys(h.zones).length > 0 || Object.keys(h.applied).length > 0);
+
   const hosts = [...byHost.values()].map((h) => {
-    const st = hostStatus(h);
+    const st = hostStatus(h, olculdu);
     return {
       host: h.host,
       env: envOfHost(h.host),
@@ -194,6 +203,13 @@ async function loadRateLimits({ scanDate } = {}) {
     hosts,
     summary: summarize(hosts),
     catalog: { file: LIMIT_FILE, zones: ZONE_CATALOG },
+    // Ekran bunu gorursa "eksik" DEMEZ, "henuz olculmedi" der.
+    directivesMissing: !olculdu && hosts.length > 0,
+    message: !olculdu && hosts.length > 0
+      ? 'Bu taramada limit direktifleri yok: nginx_audit\'in WATCH listesine limit_req_zone / '
+        + 'limit_conn_zone / limit_req / limit_conn eklendi, ama o sürüm henüz koşmamış. '
+        + 'Sunucularda limit OLMADIĞI anlamına GELMEZ.'
+      : undefined,
   };
 }
 
@@ -205,7 +221,7 @@ function envOfHost(host) {
 }
 
 function emptySummary() {
-  return { hosts: 0, standart: 0, farkli: 0, eksik: 0, dosyaYuklenmemis: 0, byEnv: {}, rates: [] };
+  return { hosts: 0, standart: 0, farkli: 0, eksik: 0, bilinmiyor: 0, dosyaYuklenmemis: 0, byEnv: {}, rates: [] };
 }
 
 function summarize(hosts) {
@@ -215,7 +231,7 @@ function summarize(hosts) {
   for (const h of hosts) {
     s[h.durum] += 1;
     if (!h.fileLoaded) s.dosyaYuklenmemis += 1;
-    const e = (s.byEnv[h.env] = s.byEnv[h.env] || { hosts: 0, standart: 0, farkli: 0, eksik: 0 });
+    const e = (s.byEnv[h.env] = s.byEnv[h.env] || { hosts: 0, standart: 0, farkli: 0, eksik: 0, bilinmiyor: 0 });
     e.hosts += 1;
     e[h.durum] += 1;
     const k = `${h.requestRate || '—'} / ${h.serverRate || '—'}`;
@@ -240,7 +256,7 @@ function toCsv(hosts, scanDate) {
     lines.push([
       scanDate, h.host, h.env, h.requestRate, h.serverRate, h.connLimit,
       h.applied.length, h.fileLoaded ? 'evet' : 'HAYIR',
-      { standart: 'standart', farkli: 'FARKLI', eksik: 'EKSİK' }[h.durum],
+      { standart: 'standart', farkli: 'FARKLI', eksik: 'EKSİK', bilinmiyor: 'ölçülmedi' }[h.durum],
       h.eksikler.join(' | '), h.farklar.join(' | '),
     ].map(csvField).join(';'));
   }

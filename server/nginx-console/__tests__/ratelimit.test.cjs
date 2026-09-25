@@ -10,6 +10,7 @@
 // RL3 rapor: sunucu basina satir, Excel uyumlu CSV
 // RL4 OOM korumasi: ekran satir listesi degil SUNUCU listesi gosterir, detay sinirli
 // RL5 dogru kaynak: APIGW envanteri DEGIL, nginx -T tabanli audit tablosu
+// RL6 OLCULMEDI != EKSIK: tarama direktifi hic toplamadiysa iddia yok
 'use strict';
 
 const { test } = require('node:test');
@@ -106,4 +107,26 @@ test('RL5: kaynak APIGW envanteri DEGIL, nginx -T tabanli audit', () => {
   for (const d of ['limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn']) {
     assert.ok(rl.DIRECTIVES.includes(d), `${d} sorgulanmali`);
   }
+});
+
+test('RL6: tarama limit direktiflerini toplamadiysa "eksik" DENMEZ', () => {
+  // 2026-09-26 kullanici bulgusu: "tum sunucularda eksik geldi, halbuki neredeyse
+  // tum sunucularda var". Kok neden ekran degil TARAMAYDI - nginx_audit_scan.sh'in
+  // WATCH listesinde limit_req_zone/limit_conn_zone/limit_req/limit_conn YOKTU,
+  // yani dbo.Nginx_Audit_Settings'e hic satir yazilmamisti. Sifir satiri "limit yok"
+  // diye okumak, ekranin BILMEDIGI bir seyi iddia etmesidir.
+  const bos = { zones: {}, applied: {} };
+  assert.equal(rl.hostStatus(bos, false).durum, 'bilinmiyor');
+  assert.deepEqual(rl.hostStatus(bos, false).eksikler, [], 'olculmeyen sunucuya eksik yazilamaz');
+  // Olculdugu HALDE bossa: bu gercek bir eksiktir, yumusatilmaz.
+  assert.equal(rl.hostStatus(bos, true).durum, 'eksik');
+  // Varsayilan geriye donuk uyumlu olmali (olculdu).
+  assert.equal(rl.hostStatus(bos).durum, 'eksik');
+
+  // Sunucu kodu bu ayrimi yanita tasimali; ekran da sebebi yazmali.
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'ratelimit.cjs'), 'utf8');
+  assert.match(srv, /directivesMissing/);
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'RateLimitTab.tsx'), 'utf8');
+  assert.match(ui, /data\?\.directivesMissing/, 'ekran sebebi gostermiyor, filoyu kirmiziya boyar');
 });

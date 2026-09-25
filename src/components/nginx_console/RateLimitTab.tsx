@@ -35,6 +35,7 @@ const DURUM: Record<NginxRateLimitHost['durum'], { label: string; color: string;
   standart: { label: 'standart', color: 'var(--status-success)', bg: 'var(--status-success-bg)' },
   farkli: { label: 'farklı', color: 'var(--status-warning)', bg: 'var(--status-warning-bg)' },
   eksik: { label: 'eksik', color: 'var(--status-danger)', bg: 'var(--status-danger-bg)' },
+  bilinmiyor: { label: 'ölçülmedi', color: 'var(--text-muted)', bg: 'var(--bg-elevated)' },
 };
 
 export function RateLimitTab() {
@@ -45,7 +46,7 @@ export function RateLimitTab() {
   const [scanDate, setScanDate] = useState('');
   const [q, setQ] = useState('');
   const [env, setEnv] = useState('all');
-  const [durum, setDurum] = useState<'all' | 'standart' | 'farkli' | 'eksik'>('all');
+  const [durum, setDurum] = useState<'all' | 'standart' | 'farkli' | 'eksik' | 'bilinmiyor'>('all');
   const [acik, setAcik] = useState<string | null>(null);
 
   useAsyncEffect(async (alive) => {
@@ -86,6 +87,14 @@ export function RateLimitTab() {
 
   return (
     <div className="space-y-3">
+      {data?.directivesMissing && (
+        <div
+          className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+          style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}
+        >
+          <span>{data.message}</span>
+        </div>
+      )}
       {data?.tableMissing && (
         <div className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
           style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
@@ -122,6 +131,7 @@ export function RateLimitTab() {
           <Kpi title="Standart" value={s.standart} tone="ok" />
           <Kpi title="Farklı" value={s.farkli} tone={s.farkli > 0 ? 'warn' : undefined} />
           <Kpi title="Eksik" value={s.eksik} tone={s.eksik > 0 ? 'danger' : undefined} />
+          {s.bilinmiyor > 0 && <Kpi title="Ölçülmedi" value={s.bilinmiyor} />}
           <Kpi title="Dosya yüklü değil" value={s.dosyaYuklenmemis} tone={s.dosyaYuklenmemis > 0 ? 'danger' : undefined} />
         </div>
       )}
@@ -157,6 +167,7 @@ export function RateLimitTab() {
           <option value="eksik">yalnız eksik</option>
           <option value="farkli">yalnız farklı</option>
           <option value="standart">yalnız standart</option>
+          <option value="bilinmiyor">yalnız ölçülmeyenler</option>
         </select>
         {(data?.availableDates || []).length > 1 && (
           <select value={scanDate} onChange={(e) => setScanDate(e.target.value)} className="h-7 text-[12px] rounded-lg border px-1.5"
