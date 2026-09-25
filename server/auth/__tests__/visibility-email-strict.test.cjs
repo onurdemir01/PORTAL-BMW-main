@@ -105,3 +105,26 @@ test('VE6: "neden goremiyor" tanisi - explain ucu', () => {
   assert.match(blok, /me\.role !== "Admin"/);
   assert.match(blok, /status\(403\)/);
 });
+
+test('VE7: kullanici adi BUYUK/KUCUK harf ayrimi yapmaz', () => {
+  // Uretimde gorulen (2026-09-26): "osmankoz ile girersem yetkin yok diyor, OsmanKoz ile
+  // girersem goruyorum." Oturumdaki kullanici adi zaten normalizeUsername ile kucuk harfe
+  // ceviriliyor; kirilma noktasi VERITABANI tarafiydi - rol override'i YAZARKEN kullanicinin
+  // yazdigi bicim kaydediliyor, OKURKEN kucuk harf araniyordu. Harf duyarli bir collation'da
+  // satir bulunamiyor ve kullanici rolunu sessizce kaybediyordu.
+  const rs = fs.readFileSync(path.join(__dirname, '..', 'role-store.cjs'), 'utf8');
+  assert.match(rs, /const uname = String\(username \|\| ''\)\.trim\(\)\.toLowerCase\(\);/,
+    'setRoleOverride kullanici adini kucuk harfe cevirmeli');
+  // Okuma ve silme de collation'dan BAGIMSIZ olmali.
+  for (const sorgu of [/SELECT role FROM user_role_overrides WHERE LOWER\(username\)/,
+                       /DELETE FROM user_role_overrides WHERE LOWER\(username\)/,
+                       /UPDATE user_role_overrides SET role = \$1[\s\S]{0,140}WHERE LOWER\(username\)/]) {
+    assert.match(rs, sorgu, 'sorgu LOWER(username) ile eslestirmeli');
+  }
+  // Ham (normalize edilmemis) kullanici adiyla yazma KALMAMALI.
+  assert.ok(!/VALUES \(\$1, \$2, 'manual'[\s\S]{0,80}\[username,/.test(rs),
+    'INSERT ham kullanici adini yazmamali');
+
+  // Gorunurluk kural indeksi de okuma tarafinda normalize etmeli (elle atilmis satirlar).
+  assert.match(SRC, /String\(r\.principal_id\)\.trim\(\)\.toLowerCase\(\)/);
+});

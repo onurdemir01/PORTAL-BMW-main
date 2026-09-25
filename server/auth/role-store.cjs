@@ -40,29 +40,38 @@ async function readRolesDetailed() {
 // UPDATE-once, INSERT-only-if-0-rows deseni (bkz. server/auth/users.cjs recordLogin/setPref) —
 // eski SELECT+kosullu UPDATE/INSERT ikilisi yerine yaygin durumda (satir zaten var) TEK
 // round-trip; ayrica SELECT ile UPDATE arasindaki TOCTOU yarisini ortadan kaldirir.
+// KULLANICI ADI HER ZAMAN KUCUK HARF (2026-09-26).
+//
+// Asimetri vardi: `getRoleOverride` okurken `username.toLowerCase()` kullaniyordu ama
+// `setRoleOverride`/`removeRoleOverride` KULLANICININ YAZDIGI bicimi kaydediyordu. Veritabani
+// harf duyarli bir collation kullaniyorsa "OsmanKoz" diye kaydedilen satir "osmankoz" ile
+// ARANINCA BULUNMAZ; kullanici rolunu sessizce kaybeder. Oturumdaki kullanici adi zaten
+// normalizeUsername ile kucuk harfe cevriliyor - yazma tarafi da ayni sozlesmeye uyar.
 async function setRoleOverride(username, role, { createdBy = null, description = null, ldapRole = null } = {}) {
+  const uname = String(username || '').trim().toLowerCase();
   const upd = await db.query(
-    `UPDATE user_role_overrides SET role = $1, is_active = 1, description = COALESCE($2, description), updated_at = GETUTCDATE() WHERE username = $3`,
-    [role, description, username]
+    `UPDATE user_role_overrides SET role = $1, is_active = 1, description = COALESCE($2, description), updated_at = GETUTCDATE() WHERE LOWER(username) = $3`,
+    [role, description, uname]
   );
   if (!upd.rowCount) {
     await db.query(
       `INSERT INTO user_role_overrides (username, role, source_type, ldap_role, created_by, description) VALUES ($1, $2, 'manual', $3, $4, $5)`,
-      [username, role, ldapRole, createdBy, description]
+      [uname, role, ldapRole, createdBy, description]
     );
   }
 }
 
 async function removeRoleOverride(username) {
-  await db.query(`DELETE FROM user_role_overrides WHERE username = $1`, [username]);
+  // LOWER(...) ile: harf duyarli collation'da eski kayitlar da silinebilsin.
+  await db.query(`DELETE FROM user_role_overrides WHERE LOWER(username) = $1`, [String(username || '').trim().toLowerCase()]);
 }
 
 async function getRoleOverride(username) {
   try {
-    const { rows } = await db.query(`SELECT role FROM user_role_overrides WHERE username = $1 AND is_active = 1`, [username.toLowerCase()]);
+    const { rows } = await db.query(`SELECT role FROM user_role_overrides WHERE LOWER(username) = $1 AND is_active = 1`, [String(username || '').trim().toLowerCase()]);
     if (!rows[0]) return null;
     // Best-effort — son uygulanma zamanini kaydeder, login akisini bloklamaz.
-    db.query(`UPDATE user_role_overrides SET last_applied_at = GETUTCDATE() WHERE username = $1`, [username.toLowerCase()]).catch(() => {});
+    db.query(`UPDATE user_role_overrides SET last_applied_at = GETUTCDATE() WHERE LOWER(username) = $1`, [String(username || '').trim().toLowerCase()]).catch(() => {});
     return rows[0].role;
   } catch { return null; }
 }

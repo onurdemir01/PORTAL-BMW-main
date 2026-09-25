@@ -106,7 +106,10 @@ function buildRuleIndex(rules) {
   // key: `${element_key}|${principal_type}|${principal_id_lower}` → boolean allow
   const idx = new Map();
   for (const r of rules) {
-    idx.set(`${r.element_key}|${r.principal_type}|${String(r.principal_id).toLowerCase()}`, truthy(r.allow));
+    // Kural anahtarlari KUCUK HARF: yazma tarafi da kucuk harfe ceviriyor ama eski
+    // kayitlar ya da elle atilmis satirlar buyuk harf icerebilir - okuma tarafinda da
+    // normalize ediyoruz ki "OsmanKoz" yazilmis bir satir sessizce olu kalmasin.
+    idx.set(`${r.element_key}|${r.principal_type}|${String(r.principal_id).trim().toLowerCase()}`, truthy(r.allow));
   }
   return idx;
 }

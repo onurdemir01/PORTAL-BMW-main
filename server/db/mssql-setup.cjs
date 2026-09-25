@@ -3187,6 +3187,37 @@ async function setupTables() {
     }
   }
 
+  // KULLANICI ADI NORMALIZASYONU (2026-09-26): rol override'lari eskiden kullanicinin
+  // YAZDIGI bicimde kaydediliyordu ("OsmanKoz"), okuma ise kucuk harfle yapiliyordu. Harf
+  // duyarli bir collation'da satir bulunamiyor ve kullanici rolunu sessizce kaybediyor.
+  // Kod artik iki tarafta da kucuk harf kullaniyor; mevcut satirlar da bir kez duzeltilir.
+  // Cakisma olursa (hem 'OsmanKoz' hem 'osmankoz' varsa) BUYUK harfli olan SILINMEZ,
+  // dokunulmadan birakilir ve loglanir - veri kaybetmektense gorunur kalsin.
+  try {
+    const dup = await pool.request().query(`
+      SELECT a.username FROM user_role_overrides a
+       WHERE a.username <> LOWER(a.username)
+         AND EXISTS (SELECT 1 FROM user_role_overrides b WHERE b.username = LOWER(a.username))`);
+    for (const r of dup.recordset || []) {
+      console.warn(`[DB] user_role_overrides: '${r.username}' icin kucuk harfli satir ZATEN VAR - elle temizlenmeli.`);
+    }
+    const upd = await pool.request().query(`
+      UPDATE user_role_overrides SET username = LOWER(username)
+       WHERE username <> LOWER(username)
+         AND NOT EXISTS (SELECT 1 FROM user_role_overrides b WHERE b.username = LOWER(user_role_overrides.username))`);
+    if (upd.rowsAffected && upd.rowsAffected[0]) {
+      console.log(`[DB] user_role_overrides: ${upd.rowsAffected[0]} kullanici adi kucuk harfe cevrildi.`);
+    }
+    const vis = await pool.request().query(`
+      UPDATE portal_element_visibility SET principal_id = LOWER(principal_id)
+       WHERE principal_type <> 'role' AND principal_id <> LOWER(principal_id)`);
+    if (vis.rowsAffected && vis.rowsAffected[0]) {
+      console.log(`[DB] portal_element_visibility: ${vis.rowsAffected[0]} principal kucuk harfe cevrildi.`);
+    }
+  } catch (err) {
+    console.warn('[DB] kullanici adi normalizasyonu atlandi:', err.message);
+  }
+
   // Alter existing tables to add missing columns
   const alters = [
     {
