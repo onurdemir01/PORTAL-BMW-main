@@ -25,7 +25,9 @@ import {
 interface Editable {
   enabled: boolean;
   userVisible: boolean; // 'User' rol kuralı (allow)
-  overrides: { username: string; allow: boolean }[]; // kullanıcı-bazlı override'lar
+  // Kişi bazlı kurallar: kullanıcı adı ya da E-POSTA (2026-09-26, kullanıcı isteği —
+  // LDAP kullanıcı adını bilmeden yetki verebilmek için).
+  overrides: { kind: 'user' | 'email'; principalId: string; allow: boolean }[];
   defaultVisible: boolean;
 }
 
@@ -34,8 +36,8 @@ function deriveEditable(el: PortalElement, rules: ElementRule[]): Editable {
     (r) => r.elementKey === el.key && r.principalType === 'role' && r.principalId === 'User',
   );
   const overrides = rules
-    .filter((r) => r.elementKey === el.key && r.principalType === 'user')
-    .map((r) => ({ username: r.principalId, allow: r.allow }));
+    .filter((r) => r.elementKey === el.key && (r.principalType === 'user' || r.principalType === 'email'))
+    .map((r) => ({ kind: r.principalType as 'user' | 'email', principalId: r.principalId, allow: r.allow }));
   return {
     enabled: el.enabled,
     userVisible: userRule ? userRule.allow : el.defaultVisible,
@@ -126,7 +128,7 @@ export default function PageVisibilityTab() {
         const preserved = allRules
           .filter((r) => r.elementKey === key)
           .filter((r) => !(r.principalType === 'role' && r.principalId === 'User'))
-          .filter((r) => r.principalType !== 'user')
+          .filter((r) => r.principalType !== 'user' && r.principalType !== 'email')
           .map((r) => ({
             principalType: r.principalType,
             principalId: r.principalId,
@@ -136,10 +138,10 @@ export default function PageVisibilityTab() {
           ...preserved,
           { principalType: 'role' as const, principalId: 'User', allow: e.userVisible },
           ...e.overrides
-            .filter((o) => o.username.trim())
+            .filter((o) => o.principalId.trim())
             .map((o) => ({
-              principalType: 'user' as const,
-              principalId: o.username.trim(),
+              principalType: o.kind,
+              principalId: o.principalId.trim(),
               allow: o.allow,
             })),
         ];
@@ -272,7 +274,7 @@ export default function PageVisibilityTab() {
               className="text-xs text-gray-500 hover:text-blue-600"
             >
               {e.overrides.length > 0
-                ? `${e.overrides.length} kullanıcı override`
+                ? `${e.overrides.length} kişi kuralı`
                 : 'override ekle'}
             </button>
           </td>
@@ -590,15 +592,21 @@ function VisibilityHelpModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// Kullanıcı-bazlı override mini editörü — username + görünür/gizli.
+// Kişi bazlı kural editörü — kullanıcı adı VEYA e-posta + görür/gizli.
+// E-posta (2026-09-26): LDAP kullanıcı adını bilmeden yetki verebilmek için. Motor
+// e-posta kuralını kullanıcı kuralından sonra, grup kurallarından önce değerlendirir.
 function OverrideEditor({
   overrides,
   onChange,
 }: {
-  overrides: { username: string; allow: boolean }[];
-  onChange: (o: { username: string; allow: boolean }[]) => void;
+  overrides: { kind: 'user' | 'email'; principalId: string; allow: boolean }[];
+  onChange: (o: { kind: 'user' | 'email'; principalId: string; allow: boolean }[]) => void;
 }) {
   const [username, setUsername] = useState('');
+  const [kind, setKind] = useState<'user' | 'email'>('user');
+  const gecerli = kind === 'email'
+    ? /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username.trim())
+    : username.trim().length > 0;
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
@@ -607,7 +615,10 @@ function OverrideEditor({
             key={i}
             className="inline-flex items-center gap-1.5 text-xs bg-white border border-gray-200 rounded-full pl-2.5 pr-1 py-1"
           >
-            <code>{o.username}</code>
+            <span className="text-[10px] px-1 rounded bg-gray-100 text-gray-600">
+              {o.kind === 'email' ? 'e-posta' : 'kullanıcı'}
+            </span>
+            <code>{o.principalId}</code>
             <button
               onClick={() =>
                 onChange(overrides.map((x, j) => (j === i ? { ...x, allow: !x.allow } : x)))
@@ -625,25 +636,45 @@ function OverrideEditor({
           </span>
         ))}
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 items-center">
+        <select
+          value={kind}
+          onChange={(e) => setKind(e.target.value as 'user' | 'email')}
+          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5"
+        >
+          <option value="user">kullanıcı adı</option>
+          <option value="email">e-posta</option>
+        </select>
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="kullanıcı adı"
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 font-mono"
+          placeholder={kind === 'email' ? 'ad.soyad@garantibbva.com.tr' : 'kullanıcı adı'}
+          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 font-mono min-w-[16rem]"
         />
         <button
+          disabled={!gecerli}
           onClick={() => {
-            if (username.trim()) {
-              onChange([...overrides, { username: username.trim(), allow: false }]);
-              setUsername('');
-            }
+            onChange([...overrides, { kind, principalId: username.trim(), allow: true }]);
+            setUsername('');
           }}
-          className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:border-blue-300 hover:text-blue-600"
+          className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:border-emerald-300 hover:text-emerald-600 disabled:opacity-40"
         >
-          + gizle (override)
+          + görsün
+        </button>
+        <button
+          disabled={!gecerli}
+          onClick={() => {
+            onChange([...overrides, { kind, principalId: username.trim(), allow: false }]);
+            setUsername('');
+          }}
+          className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:border-blue-300 hover:text-blue-600 disabled:opacity-40"
+        >
+          + gizle
         </button>
       </div>
+      {kind === 'email' && username.trim() && !gecerli && (
+        <div className="text-[11px] text-red-600">Geçerli bir e-posta adresi girin.</div>
+      )}
     </div>
   );
 }

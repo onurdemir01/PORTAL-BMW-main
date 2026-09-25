@@ -126,11 +126,28 @@ function groupKeysOf(user) {
   return out;
 }
 
-function decide(el, ruleIndex, role, usernameLower, groupKeys) {
+function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower) {
   if (!truthy(el.enabled)) return false;                 // 1) global kill-switch
-  if (role === 'Admin') return true;                     // 2) admin her enabled ogeyi gorur
+
+  // SIKI ELEMENT (2026-09-26, kullanici: "sadece istedigim kisiler goruntuleyebilsin"):
+  // metadata.strict=true olan ogede ADMIN MUAFIYETI YOKTUR - yonetici de acikca
+  // yetkilendirilmis olmali. Kill-switch'ten farki: oge kapanmiyor, yalnizca listeye
+  // girenlere aciliyor. Varsayilan davranis DEGISMEDI (strict yoksa admin yine gorur).
+  let strict = false;
+  try {
+    const m = el.metadata ? (typeof el.metadata === 'string' ? JSON.parse(el.metadata) : el.metadata) : null;
+    strict = !!(m && m.strict);
+  } catch { strict = false; }
+
+  if (role === 'Admin' && !strict) return true;          // 2) admin her enabled ogeyi gorur
   const uKey = `${el.element_key}|user|${usernameLower}`;
   if (ruleIndex.has(uKey)) return ruleIndex.get(uKey);   // 3) user kurali kazanir
+  // 3a) E-POSTA kurali: LDAP'ta kullanici adini bilmeden, e-postayla yetki verebilmek icin
+  // (kullanici istegi). Kullanici adi kuralindan SONRA, grup kurallarindan ONCE gelir.
+  if (mailLower) {
+    const eKey = `${el.element_key}|email|${mailLower}`;
+    if (ruleIndex.has(eKey)) return ruleIndex.get(eKey);
+  }
   if (groupKeys && groupKeys.size) {                     // 3b) grup kurali: bir allow yeter
     let seen = false, allow = false;
     for (const g of groupKeys) {
@@ -141,12 +158,19 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys) {
   }
   const rKey = `${el.element_key}|role|${role.toLowerCase()}`;
   if (ruleIndex.has(rKey)) return ruleIndex.get(rKey);   // 4) role kurali
+  // SIKI ogede varsayilan HER ZAMAN kapalidir: acik bir kural yoksa erisim yok.
+  if (strict) return false;
   return truthy(el.default_visible);                     // 5) varsayilan
 }
 
 // Parent → child kaskadi (G11): admin ekraninda belgelenen "bir menu/sayfa kapatilirsa
 // altindaki tab/buton da gizlenir" kurali artik GERCEKTEN uygulanir. Bir ogenin ATA
 // zincirinde gorunmeyen tek bir halka varsa oge de gorunmez.
+//
+// SIKI OGE NOTU: metadata.strict=true olan ogede admin muafiyeti yoktur; erisim yalnizca
+// acik kurallarla (user / email / group / role) verilir. Seed, roles: ['Admin'] verildiginde
+// bir ROL kurali yazar - yani ilk kurulumda yoneticiler gorur; listeyi daraltmak isteyen o
+// rol kuralini Admin ekranindan kaldirir.
 //
 // Admin muafiyeti KASITLI olarak kaskadin da USTUNDEDIR: decide() Admin'e her enabled
 // ogeyi acar; ata `enabled=false` ise decide zaten false doner ve kaskad da onu tasir
@@ -182,10 +206,11 @@ let _resolvedMemoVersion = _version;
 async function resolveVisibility(user) {
   const role = (user && user.role) || 'User';
   const usernameLower = ((user && user.username) || '').toLowerCase();
+  const mailLower = ((user && user.mail) || '').trim().toLowerCase();
 
   if (_resolvedMemoVersion !== _version) { _resolvedMemo = new Map(); _resolvedMemoVersion = _version; }
   const groupKeys = groupKeysOf(user);
-  const memoKey = `${role}|${usernameLower}|${[...groupKeys].sort().join(',')}`;
+  const memoKey = `${role}|${usernameLower}|${mailLower}|${[...groupKeys].sort().join(',')}`;
   const hit = _resolvedMemo.get(memoKey);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { version: _version, visibility: hit.visibility };
 
@@ -204,7 +229,7 @@ async function resolveVisibility(user) {
   }
   const ruleIndex = buildRuleIndex(rules);
   const map = {};
-  for (const el of elements) map[el.element_key] = decide(el, ruleIndex, role, usernameLower, groupKeys);
+  for (const el of elements) map[el.element_key] = decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower);
   const visibility = applyParentCascade(map, elements);
   _resolvedMemo.set(memoKey, { visibility, at: Date.now() });
   return { version: _version, visibility };

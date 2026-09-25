@@ -38,6 +38,19 @@ const ACTIONS = Object.freeze([
     params: [{ key: 'version', label: 'Hedef sürüm', required: true, placeholder: 'örn. 1.34.4' }],
   },
   {
+    // Kullanici (2026-09-26): "mevcut helm surumunun uzerine sadece values yaml tekrar
+    // sorulsun; upgrade'de de mevcut surumu secebilmeyi kapatalim."
+    //
+    // Upgrade ile teknik olarak ayni komut kosuyor; AYRI TUTULMASININ sebebi NIYETIN
+    // farkli olmasi: burada surum DEGISMEZ, degisen yalnizca values. Ayni dugmeye iki
+    // farkli isi yukleyince "hangi surume gidiyorum" sorusu belirsizlesir.
+    key: 'values_rollout',
+    label: 'Rollout — values\'ı yeniden uygula',
+    hint: 'Sürüm değişmez; koşan sürüm values.yaml ile yeniden uygulanır',
+    writes: true,
+    params: [],
+  },
+  {
     key: 'stop',
     label: 'Kapat',
     hint: 'Tüm bileşenleri sıfıra indir (scale down)',
@@ -213,6 +226,43 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     return out;
   };
 
+  // ROLLOUT: kosan surumun UZERINE ayni surumle yeniden uygulama. Surum parametresi YOK;
+  // koşan sürüm neyse odur - yanlislikla baska bir surume gitme ihtimali ortadan kalkar.
+  if (action.key === 'values_rollout') {
+    const kosan = String(veri.running || '').trim();
+    if (!kosan) {
+      warnings.push('Koşan sürüm okunamadı (helm release bulunamadı) — komutta <sürüm> yer tutucusu duruyor.');
+    }
+    const ver = kosan || '<sürüm>';
+    steps.push({
+      kind: 'check', writes: false, title: 'Uygulanacak values',
+      note: 'Bu işlem values.yaml dosyasını yeniden uygular; onaydan önce içeriği ekranda görürsünüz.',
+      source: 'Crypto Hub',
+    });
+    if (tenant.app === 'metaco') {
+      steps.push({
+        kind: 'command', writes: true, title: `Helm upgrade (aynı sürüm ${ver})`,
+        command: `helm upgrade --install --namespace=${tenant.namespace} ${tenant.helmRelease} ./harmonize/ -f ./garanti_values.yaml`,
+        note: 'Sürüm değişmiyor; chart dizini koşan sürümün dizini olmalı.',
+        source: 'Metaco runbook (upgrade)',
+      });
+    } else {
+      steps.push({
+        kind: 'command', writes: true, title: `Helm upgrade (aynı sürüm ${ver})`,
+        command: `helm upgrade --install ${tenant.helmRelease} ${tenant.chartName || 'wyden/wyden'} --version ${ver} -f <garanti_values.yaml yolu>`,
+        note: 'Sürüm değişmiyor; yalnız values yeniden uygulanıyor.',
+        unknown: !kosan,
+        source: 'Wyden runbook (upgrade)',
+      });
+    }
+    steps.push({
+      kind: 'check', writes: false, title: 'Route ve pod kontrolü',
+      command: `oc get route -n ${tenant.namespace}\noc get pods -n ${tenant.namespace}`,
+      note: 'Runbook notu: helm upgrade bazen route\'ları siliyor; gerekirse iki kez koşulur.',
+      source: 'runbook uyarısı',
+    });
+  }
+
   if (action.key === 'stop') steps.push(...kapatAdimlari());
   if (action.key === 'start') steps.push(...acAdimlari());
 
@@ -220,6 +270,11 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
   if (action.key === 'upgrade') {
     const v = String(params.version || '').trim();
     if (!v) warnings.push('Hedef sürüm girilmedi — komutlarda <sürüm> yer tutucusu duruyor.');
+    // AYNI SURUME "UPGRADE" OLMAZ (kullanici karari): bu, values'i yeniden uygulamaktir ve
+    // kendi islemi vardir. Ayrimi burada da koruyoruz; ekran zaten sectirmiyor.
+    if (v && v === String(veri.running || '').trim()) {
+      warnings.push(`${v} zaten koşan sürüm — sürümü değiştirmeyen bir uygulama için "Rollout — values'ı yeniden uygula" işlemini kullanın.`);
+    }
     const ver = v || '<sürüm>';
 
     if (tenant.app === 'metaco') {

@@ -362,6 +362,8 @@ function initCryptoHub(app) {
       const plan = buildPlan(tenant, req.query.action, { version: req.query.version || '' }, {
         components: veri.components || [],
         lastNonZero,
+        // Kosan surum: "ayni surume upgrade" uyarisi ve rollout komutu bundan uretilir.
+        running: (veri.versions && veri.versions.running) || '',
         // Tarama asamasi dustuyse (ornegin statefulset listesi Forbidden) bilesen listesi
         // EKSIKTIR; plan bunu uyari olarak yazsin diye notlar da gecirilir.
         notes: veri.notes || [],

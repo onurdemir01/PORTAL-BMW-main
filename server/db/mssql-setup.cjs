@@ -1662,6 +1662,10 @@ const ELEMENT_SEED = [
     route: '/crypto-hub',
     sort_order: 1,
     roles: ['Admin'],
+    // SIKI (kullanici, 2026-09-26: "sadece istedigim kisiler goruntuleyebilsin"):
+    // admin olmak YETMEZ, kullanici/e-posta/grup kurallarindan biriyle acikca
+    // yetkilendirilmis olmak gerekir. Kill-switch degildir; oge acik kalir.
+    metadata: { strict: true },
   },
   {
     element_key: 'LogX',
@@ -2175,8 +2179,11 @@ async function seedPortalElements(pool) {
         .input('r', el.route || null)
         .input('o', el.sort_order || 0)
         .input('dv', defaultVisible)
-        .query(`INSERT INTO portal_elements (element_key, element_type, parent_key, label, route, sort_order, enabled, default_visible)
-                VALUES (@k, @t, @p, @l, @r, @o, 1, @dv)`);
+        // metadata: siki ogeler icin {"strict":true} - admin muafiyeti DE gecerli olmaz
+        // (bkz. auth/visibility.cjs decide()).
+        .input('md', el.metadata ? JSON.stringify(el.metadata) : null)
+        .query(`INSERT INTO portal_elements (element_key, element_type, parent_key, label, route, sort_order, enabled, default_visible, metadata)
+                VALUES (@k, @t, @p, @l, @r, @o, 1, @dv, @md)`);
     } catch (err) {
       console.warn(`[DB] portal_elements seed eklenemedi (${el.element_key}):`, err.message);
     }

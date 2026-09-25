@@ -24,7 +24,7 @@ function normElement(row) {
 function normRule(row) {
   return {
     elementKey: row.element_key,
-    principalType: row.principal_type,   // 'role' | 'user' | 'group' (AD grubu, 2026-09-17)
+    principalType: row.principal_type,   // 'role' | 'user' | 'group' (AD grubu) | 'email' (2026-09-26)
     principalId: row.principal_id,
     allow: row.allow === true || row.allow === 1,
   };
@@ -84,11 +84,12 @@ async function deleteElement(key) {
 }
 
 // Bir elementin TUM hedefleme kurallarini verilen listeyle degistirir (idempotent replace).
-// rules: [{ principalType:'role'|'user', principalId, allow }]
+// rules: [{ principalType:'role'|'user'|'group'|'email', principalId, allow }]
 async function setElementRules(key, rules) {
   await db.query(`DELETE FROM portal_element_visibility WHERE element_key = $1`, [key]);
   for (const r of rules || []) {
-    const pt = r.principalType === 'user' ? 'user' : r.principalType === 'group' ? 'group' : 'role';
+    // 'email' (2026-09-26): LDAP kullanici adini bilmeden e-postayla yetki verebilmek icin.
+    const pt = ['user', 'group', 'email'].includes(r.principalType) ? r.principalType : 'role';
     const pid = String(r.principalId || '').trim();
     if (!pid) continue;
     const allow = r.allow === false ? 0 : 1;

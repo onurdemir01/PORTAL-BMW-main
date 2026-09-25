@@ -150,7 +150,8 @@ export interface PortalElement {
 }
 export interface ElementRule {
   elementKey: string;
-  principalType: "role" | "user";
+  // "email" (2026-09-26): LDAP kullanici adini bilmeden e-postayla yetki verebilmek icin.
+  principalType: "role" | "user" | "group" | "email";
   principalId: string;
   allow: boolean;
 }
@@ -214,7 +215,7 @@ export const elementsApi = {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }),
     }));
   },
-  async setRules(key: string, rules: { principalType: "role" | "user"; principalId: string; allow: boolean }[]): Promise<void> {
+  async setRules(key: string, rules: { principalType: "role" | "user" | "group" | "email"; principalId: string; allow: boolean }[]): Promise<void> {
     await okJson(await fetch(`/api/visibility/elements/${encodeURIComponent(key)}/rules`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rules }),
     }));

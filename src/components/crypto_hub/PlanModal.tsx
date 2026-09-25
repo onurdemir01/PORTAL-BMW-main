@@ -28,7 +28,7 @@ import {
 import { Modal } from '@/components/common/Modal';
 import { cryptoHubApi, type CryptoActionDef, type CryptoPlan, type CryptoPlanStep } from '@/api/cryptoHubApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
-import { useOps } from './OpsPanel';
+import { ValuesEditor, type ValuesFileOption } from './ValuesEditor';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { toast } from '@/hooks/useToast';
 
@@ -235,21 +235,15 @@ function VersionStep({ running, known, value, onChange, onNext }: {
   );
 }
 
-/** 2. ADIM — koşan values.yaml. Maskeli gösterilir; "gerçek değerler" ayrı bir istektir. */
-function ValuesStep({ tenantKey, release, onBack, onNext }: {
-  tenantKey: string; release: string; onBack: () => void; onNext: () => void;
+/** 2. ADIM — koşan values.yaml. Maskeli gösterilir ve BURADA DÜZENLENEBİLİR
+ *  (kullanıcı, 2026-09-26: "upgrade denerken values'a dokunamıyorum"). Düzenleme/kaydetme
+ *  kuralları ValuesEditor'de tek yerde durur: maskeli metin kaydedilemez, yazmadan önce
+ *  fark gösterilir ve dosyanın yedeği alınır. */
+function ValuesStep({ tenantKey, tenantLabel, release, files, onBack, onNext }: {
+  tenantKey: string; tenantLabel: string; release: string; files: ValuesFileOption[];
+  onBack: () => void; onNext: () => void;
 }) {
-  const { run, busy } = useOps(tenantKey);
-  const [metin, setMetin] = useState<string | null>(null);
-  const [hata, setHata] = useState('');
   const [okundu, setOkundu] = useState(false);
-
-  useAsyncEffect(async (alive) => {
-    const r = await run({ action: 'values_get', targets: [], release });
-    if (!alive() || !r) return;
-    if (r.errors?.length) setHata(r.errors.map((e) => `${e.stage}: ${e.message}`).join(' · '));
-    setMetin((r.values || []).join(String.fromCharCode(10)));
-  }, [tenantKey, release]);
 
   return (
     <div className="space-y-3">
@@ -257,24 +251,17 @@ function ValuesStep({ tenantKey, release, onBack, onNext }: {
         style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>
         <DocumentTextIcon className="h-4 w-4 mt-0.5 shrink-0" />
         <span>
-          Upgrade, <b>{release}</b> release'inin values dosyasını kullanır. Aşağıda şu an koşan değerler var
-          (parola/token alanları <b>****</b> ile gizli). Değiştirmeniz gerekiyorsa önce Sürümler sekmesindeki
-          <b> values.yaml</b> ekranından düzenleyin.
+          Bu işlem <b>{release}</b> release'inin values dosyasını kullanır. Aşağıda şu an koşan değerler var
+          (parola/token alanları <b>****</b> ile gizli). Gerekiyorsa <b>Düzenle</b> ile burada değiştirip
+          kaydedebilirsiniz; kaydetmek tek başına ortama dokunmaz, değerler bir sonraki adımdaki komutla uygulanır.
         </span>
       </div>
-      {hata && (
-        <div className="text-sm rounded-lg px-3 py-2 border"
-          style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{hata}</div>
-      )}
-      {busy && metin == null ? <LoadingLogo compact /> : (
-        <pre className="text-[12px] leading-relaxed rounded-lg px-3 py-2.5 overflow-auto"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', maxHeight: '46vh', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-          {metin || '(değerler okunamadı)'}
-        </pre>
-      )}
+
+      <ValuesEditor tenantKey={tenantKey} tenantLabel={tenantLabel} release={release} files={files} compact />
+
       <label className="flex items-start gap-2 text-sm" style={{ color: 'var(--text-primary)' }}>
         <input type="checkbox" checked={okundu} onChange={(e) => setOkundu(e.target.checked)} className="mt-0.5" />
-        Yukarıdaki değerleri gördüm, bu değerlerle devam ediyorum.
+        Değerleri gördüm, bu değerlerle devam ediyorum.
       </label>
       <div className="flex items-center gap-2">
         <button type="button" className="inline-flex items-center gap-1 h-9 px-3 text-xs font-medium rounded-lg border"
@@ -293,7 +280,7 @@ function ValuesStep({ tenantKey, release, onBack, onNext }: {
   );
 }
 
-export function PlanModal({ tenantKey, tenantLabel, action, running = '', known = [], release = '', onClose }: {
+export function PlanModal({ tenantKey, tenantLabel, action, running = '', known = [], release = '', valuesFiles = [], onClose }: {
   tenantKey: string;
   tenantLabel: string;
   action: CryptoActionDef;
@@ -301,6 +288,8 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
   known?: KnownVersion[];
   /** koşan ana helm release — values adımı bunun değerlerini gösterir */
   release?: string;
+  /** bastion arşivinden bulunan values dosyaları (düzenleme hedefi) */
+  valuesFiles?: ValuesFileOption[];
   onClose: () => void;
 }) {
   const needsVersion = action.params.some((p) => p.key === 'version');
@@ -309,7 +298,11 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
   // UPGRADE'DE MEVCUT VALUES SORULUR (kullanici, 2026-09-26): surum secildikten sonra,
   // komutlari gostermeden ONCE kosan values gosterilir ve "bu degerlerle devam" denir.
   // Upgrade values dosyasini kullanir; icine bakmadan onaylamak, gozu kapali degistirmektir.
-  const [step, setStep] = useState<'version' | 'values' | 'plan'>(needsVersion ? 'version' : 'plan');
+  // Rollout'ta surum secimi YOKTUR (kosan surum neyse odur); akis dogrudan values ile baslar.
+  const rolloutMu = action.key === 'values_rollout';
+  const [step, setStep] = useState<'version' | 'values' | 'plan'>(
+    needsVersion ? 'version' : (rolloutMu && release ? 'values' : 'plan'),
+  );
   const [plan, setPlan] = useState<CryptoPlan | null>(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
@@ -384,25 +377,33 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
       )}
     >
       <div className="space-y-4">
-        {needsVersion && (
+        {(needsVersion || rolloutMu) && (
           <ol className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            <li style={step === 'version' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>1. Hedef sürüm</li>
-            <li>›</li>
-            {release && (
+            {needsVersion && (
               <>
-                <li style={step === 'values' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>2. Mevcut values</li>
+                <li style={step === 'version' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>1. Hedef sürüm</li>
                 <li>›</li>
               </>
             )}
-            <li style={step === 'plan' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>{release ? '3.' : '2.'} Uygulanacak komutlar</li>
+            {release && (
+              <>
+                <li style={step === 'values' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>{needsVersion ? '2.' : '1.'} Mevcut values</li>
+                <li>›</li>
+              </>
+            )}
+            <li style={step === 'plan' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>
+              {needsVersion ? (release ? '3.' : '2.') : '2.'} Uygulanacak komutlar
+            </li>
           </ol>
         )}
 
         {step === 'values' ? (
           <ValuesStep
             tenantKey={tenantKey}
+            tenantLabel={tenantLabel}
             release={release}
-            onBack={() => setStep('version')}
+            files={valuesFiles}
+            onBack={() => setStep(needsVersion ? 'version' : 'plan')}
             onNext={() => { setStep('plan'); setReload((n) => n + 1); }}
           />
         ) : step === 'version' ? (
