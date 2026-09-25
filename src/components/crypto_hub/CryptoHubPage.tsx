@@ -13,14 +13,15 @@
 //  2) "OLCULEMEDI" != "YENI SURUM YOK". Registry kimligi verilmediyse surum listesi BOS gelir;
 //     ekran bunu acikca "olculemedi" yazar. Bos listeyi "guncelsiniz" diye gostermek,
 //     kullaniciya yanlis guven verirdi.
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ArrowPathIcon, ChevronRightIcon, ExclamationTriangleIcon, InformationCircleIcon,
   CheckCircleIcon, StopCircleIcon, ArrowUpCircleIcon, QuestionMarkCircleIcon,
   LockClosedIcon, PlayCircleIcon, PowerIcon, BoltIcon,
 } from '@heroicons/react/24/outline';
 import {
-  cryptoHubApi, type CryptoApp, type CryptoDomain, type CryptoEnvOption, type CryptoOverview, type CryptoComponent,
+  cryptoHubApi, type CryptoApp, type CryptoEnvOption, type CryptoOverview, type CryptoComponent,
   type CryptoActionDef,
 } from '@/api/cryptoHubApi';
 import { PlanModal } from './PlanModal';
@@ -60,7 +61,7 @@ function Pill({ tone, children, title }: { tone: 'ok' | 'warn' | 'danger' | 'mut
 }
 
 // ── Secim: uygulama -> domain -> ortam ────────────────────────────────────────────────
-function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOption, app: CryptoApp, domain: CryptoDomain) => void }) {
+function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOption) => void }) {
   const [app, setApp] = useState<CryptoApp | null>(apps.length === 1 ? apps[0] : null);
   const [domain, setDomain] = useState<string | null>(null);
   const dom = app?.domains.find((d) => d.domain === domain) || (app && app.domains.length === 1 ? app.domains[0] : null);
@@ -208,7 +209,7 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
                   : e.ready ? (e.namespace || '') : 'yapılandırma eksik'}
                 tone={e.production ? 'prod' : undefined}
                 closed={e.open === false}
-                onClick={() => onPick(e, app, dom)}
+                onClick={() => onPick(e)}
               />
             ))}
           </div>
@@ -442,7 +443,11 @@ function SurumTab({ data }: { data: CryptoOverview }) {
 export default function CryptoHubPage() {
   const { addJob } = useJobTracker();
   const [apps, setApps] = useState<CryptoApp[] | null>(null);
-  const [scope, setScope] = useState<{ env: CryptoEnvOption; app: string; appLabel: string; domain: string; domainLabel: string } | null>(null);
+  // SECIM URL'DE TUTULUR (?t=<kiraci>). Bilesen durumunda tutuldugunda yan menudeki
+  // "Crypto Hub" baglantisi ayni rotaya gittigi icin sayfa secim ekranina DONMUYORDU;
+  // ayrica tarayici geri tusu ve baglanti paylasimi da calismiyordu.
+  const [params, setParams] = useSearchParams();
+  const tenantKey = params.get('t') || '';
   const [data, setData] = useState<CryptoOverview | null>(null);
   const [tab, setTab] = useState<'durum' | 'podlar' | 'surumler'>('durum');
   const [loading, setLoading] = useState(false);
@@ -475,11 +480,7 @@ export default function CryptoHubPage() {
     } catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); setData(null); } finally { setLoading(false); }
   }, []);
 
-  const pick = (env: CryptoEnvOption, app: CryptoApp, dom: CryptoDomain) => {
-    setScope({ env, app: app.app, appLabel: app.label, domain: dom.domain, domainLabel: dom.label });
-    setTab('durum');
-    void load(env.key);
-  };
+  const pick = (env: CryptoEnvOption) => setParams({ t: env.key });
 
   const rescan = async () => {
     if (!scope) return;
@@ -506,11 +507,43 @@ export default function CryptoHubPage() {
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
 
+  /** URL'deki kiracı anahtarından kapsamı çöz. Anahtar bilinmiyorsa seçim ekranı açılır. */
+  const scope = useMemo(() => {
+    if (!tenantKey || !apps) return null;
+    for (const a of apps) {
+      for (const d of a.domains) {
+        const env = d.envs.find((e) => e.key === tenantKey);
+        if (env) return { env, app: a.app, appLabel: a.label, domain: d.domain, domainLabel: d.label };
+      }
+    }
+    return null;
+  }, [tenantKey, apps]);
+
+  // URL'de gecerli bir kiraci varsa verisi yuklenir; kullanici menuden geri dondugunde
+  // (t parametresi kalkinca) ekran temizlenir.
+  useEffect(() => {
+    if (!apps) return;
+    if (scope) { setTab('durum'); void load(scope.env.key); } else { setData(null); setErr(''); }
+  }, [scope?.env.key, apps]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const notes = useMemo(() => data?.notes || [], [data]);
 
   if (err && !apps) return <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>;
   if (!apps) return <LoadingLogo compact />;
-  if (!scope) return <Picker apps={apps} onPick={pick} />;
+  if (!scope) {
+    return (
+      <>
+        {tenantKey && (
+          <div className="max-w-5xl mx-auto -mb-4 text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+            style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
+            <ExclamationTriangleIcon className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>Bağlantıdaki ortam ({tenantKey}) katalogda yok — aşağıdan seçebilirsiniz.</span>
+          </div>
+        )}
+        <Picker apps={apps} onPick={pick} />
+      </>
+    );
+  }
 
   const prod = scope.env.production;
   return (
@@ -533,7 +566,7 @@ export default function CryptoHubPage() {
         <button type="button" className={SM_BTN} style={btnStyle()} onClick={rescan} disabled={busy || !!data?.notConfigured}>
           <ArrowPathIcon className={'h-3.5 w-3.5 ' + (busy ? 'animate-spin' : '')} /> Taramayı tazele
         </button>
-        <button type="button" className={SM_BTN} style={btnStyle()} onClick={() => { setScope(null); setData(null); setErr(''); }}>
+        <button type="button" className={SM_BTN} style={btnStyle()} onClick={() => setParams({})}>
           Ortamı değiştir
         </button>
       </div>

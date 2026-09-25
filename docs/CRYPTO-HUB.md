@@ -86,6 +86,19 @@ ansible-vault encrypt_string --name metaco_registry_pwd
 ansible-vault encrypt_string --name wyden_registry_pwd
 ```
 
+Alternatif: **AWX survey**. Survey'in `password` tipi yanıtı şifreli saklar ve çıktıda
+maskeler; iki şartla kullanılabilir:
+
+* **Soru zorunlu (required) olmamalı** — Portal bu template'i API'den, survey doldurmadan
+  tetikler; zorunlu soru Portal'ın başlattığı işleri düşürür.
+* **Uygulama başına ayrı değişken** kullanılmalı (`crypto_hub_registry_password_metaco` /
+  `_wyden`): iki uygulamanın depo kimlikleri farklıdır, tek alan tüm kiracılar taranırken
+  yalnız birine doğru gelir.
+
+Sıra: uygulamaya özel → genel → katalog + vault. Doldurulmayan bir survey alanı **boş dizgi**
+olarak geldiği için zincirde `default(…, true)` kullanılır; sade `default()` boş yanıtı
+"tanımlı" sayıp vault yedeğini sessizce devre dışı bırakırdı.
+
 Kimlik verilmezse sürüm listesi **atlanır** ve ekran "ölçülemedi" der — "yeni sürüm yok"
 DEMEZ. Bekçi CH16, parolanın koda sızmadığını her koşuda doğrular.
 
@@ -126,6 +139,12 @@ Geri açarken **iki yer birden** açılmalı: Portal sabiti ve AWX extra_var'ı.
 ### Durum
 Deployment/StatefulSet listesi: istenen/hazır replika, imaj, sürüm, durum
 (çalışıyor · eksik replika · kapalı). Her satırda **Rollout** ve **Replika** işlemleri.
+
+### Ortam seçimi ve geri dönüş
+
+Seçilen kiracı **URL'de** tutulur (`/crypto-hub?t=metaco_gar_test`). Bu sayede yan menüdeki
+"Crypto Hub" bağlantısı seçim ekranına döner, tarayıcı geri tuşu çalışır ve bağlantı
+paylaşılabilir. Bağlantıdaki anahtar katalogda yoksa ekran bunu söyler ve seçim ekranını açar.
 
 ### Podlar
 Pod listesi (faz, hazır kap, restart, node), çoklu seçim, **Log göster** ve

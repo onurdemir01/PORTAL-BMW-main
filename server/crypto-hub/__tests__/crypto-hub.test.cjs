@@ -322,3 +322,18 @@ test('CH16: chart deposu kimligi KODA YAZILMAZ, yalniz vault degiskeninin adi du
     assert.match(t.chartRef, /^repo\.wyden\.io\//, `${t.key}: OCI yedegi wyden deposunu gostermeli`);
   }
 });
+
+test('CH17: secilen ortam URLde tutulur (menuden geri donus calissin)', () => {
+  // Uretimde gorulen (2026-09-26): ortam secildikten sonra yan menudeki "Crypto Hub"
+  // baglantisi ayni rotaya gittigi icin sayfa secim ekranina DONMUYORDU. Secim bilesen
+  // durumunda degil URL'de tutulunca menu baglantisi, tarayici geri tusu ve baglanti
+  // paylasimi -ucu birden- calisir.
+  const page = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'crypto_hub', 'CryptoHubPage.tsx'), 'utf8',
+  );
+  assert.match(page, /useSearchParams/, 'kapsam URL parametresinden okunmali');
+  assert.match(page, /params\.get\('t'\)/, "kiraci anahtari ?t= ile tasinmali");
+  assert.match(page, /setParams\(\{ t: env\.key \}\)/, 'secim URL yazmali');
+  assert.match(page, /setParams\(\{\}\)/, '"Ortami degistir" URL parametresini temizlemeli');
+  assert.ok(!/setScope\(/.test(page), 'kapsam artik bilesen durumunda tutulmamali');
+});
