@@ -52,3 +52,27 @@ test('VE4: kural yazimi email principalini kabul eder', () => {
   // role disindaki her principal kucuk harfe cevrilmeli (e-posta dahil).
   assert.match(el, /pt === 'role' \? pid : pid\.toLowerCase\(\)/);
 });
+
+test('VE5: sikilik Admin ekranindan yonetilebilir', () => {
+  // Kullanici: "Crypto Hub gorunurlugunu Admin sekmesine ekler misin? bazi kisilere
+  // gosterecegim." Oge zaten listede duruyordu ama SIKI bayragi ne gorunuyordu ne de
+  // degistirilebiliyordu; ustelik "Admin her zaman gorur" ipucu siki ogede YANLISTI.
+  const el = fs.readFileSync(path.join(__dirname, '..', 'elements.cjs'), 'utf8');
+  assert.match(el, /async function setElementStrict/);
+  // metadata'nin DIGER alanlari korunmali - strict yazarken ustune yazilmamali.
+  assert.match(el, /if \(strict\) meta\.strict = true; else delete meta\.strict;/);
+  assert.match(el, /strict: \(\(\) => \{/, 'listElements strict bayragini dondurmeli');
+
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'visibility-routes.cjs'), 'utf8');
+  assert.match(routes, /elements\/:key\/strict/);
+  assert.match(routes, /requireAdmin/);
+  // Degisiklik aninda yansimali (gorunurluk onbellegi dusurulmeli).
+  const i = routes.indexOf('elements/:key/strict');
+  assert.match(routes.slice(i, i + 400), /bumpVersion\(\)/);
+
+  const tab = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'admin', 'tabs', 'PageVisibilityTab.tsx'), 'utf8',
+  );
+  assert.match(tab, /elementsApi\.setStrict/);
+  assert.match(tab, /admin muafiyeti YOKTUR/, 'siki ogede ipucu duzeltilmis olmali');
+});

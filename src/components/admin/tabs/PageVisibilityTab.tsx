@@ -20,10 +20,13 @@ import {
   ChevronRightIcon,
   QuestionMarkCircleIcon,
   XMarkIcon,
+  LockClosedIcon,
 } from '@heroicons/react/24/outline';
 
 interface Editable {
   enabled: boolean;
+  /** SIKI: admin muafiyeti yok — açık kural olmadan kimse göremez */
+  strict: boolean;
   userVisible: boolean; // 'User' rol kuralı (allow)
   // Kişi bazlı kurallar: kullanıcı adı ya da E-POSTA (2026-09-26, kullanıcı isteği —
   // LDAP kullanıcı adını bilmeden yetki verebilmek için).
@@ -40,6 +43,7 @@ function deriveEditable(el: PortalElement, rules: ElementRule[]): Editable {
     .map((r) => ({ kind: r.principalType as 'user' | 'email', principalId: r.principalId, allow: r.allow }));
   return {
     enabled: el.enabled,
+    strict: !!el.strict,
     userVisible: userRule ? userRule.allow : el.defaultVisible,
     overrides,
     defaultVisible: el.defaultVisible,
@@ -120,6 +124,9 @@ export default function PageVisibilityTab() {
         const e = edit[key];
         if (!e) continue;
         await elementsApi.setEnabled(key, e.enabled);
+        // Sikilik ayri bir uc: metadata'nin diger alanlarina dokunmadan degistirir.
+        const onceki = elements.find((x) => x.key === key);
+        if (!!onceki?.strict !== e.strict) await elementsApi.setStrict(key, e.strict);
         // setRules ilgili elementin TÜM kurallarını silip yenisini yazar. Bu ekran yalnız
         // "User" rol kuralını ve kullanıcı override'larını yönetir; bu yüzden DOKUNMADIĞIMIZ
         // diğer principal'lar (ör. seed'den gelen "Admin" rol kuralı veya ileride eklenecek
@@ -262,9 +269,28 @@ export default function PageVisibilityTab() {
                   ? 'bg-blue-600 border-blue-600 text-white'
                   : 'border-gray-200 hover:border-blue-300'
               }`}
-              title="User rolü bu öğeyi görebilir mi (Admin her zaman görür)"
+              title={e.strict
+                ? 'SIKI öge: rol kuralı da geçerlidir ama admin muafiyeti YOKTUR — kimse açık kural olmadan göremez'
+                : 'User rolü bu öğeyi görebilir mi (Admin her zaman görür)'}
             >
               {e.userVisible && <CheckIcon className="h-3.5 w-3.5" />}
+            </button>
+          </td>
+          {/* SIKI (2026-09-26, kullanici: "sadece istedigim kisiler goruntuleyebilsin") */}
+          <td className="px-3 py-2.5 text-center">
+            <button
+              onClick={() => patch(el.key, { strict: !e.strict })}
+              disabled={!e.enabled}
+              className={`w-6 h-6 rounded border-2 flex items-center justify-center mx-auto transition-colors disabled:opacity-30 ${
+                e.strict
+                  ? 'bg-amber-500 border-amber-500 text-white'
+                  : 'border-gray-200 hover:border-amber-300'
+              }`}
+              title={e.strict
+                ? 'SIKI: yalnız açık kuralı olanlar görür (admin dahil). Kapatmak için tıkla.'
+                : 'Normal: Admin her zaman görür. Sıkı yapmak için tıkla — o zaman yöneticinin de kuralı olmalı.'}
+            >
+              {e.strict && <LockClosedIcon className="h-3.5 w-3.5" />}
             </button>
           </td>
           {/* Override sayısı + sil */}
@@ -290,7 +316,7 @@ export default function PageVisibilityTab() {
         </tr>
         {isExpanded && (
           <tr className="bg-gray-50/40">
-            <td colSpan={5} className="px-3 py-3" style={{ paddingLeft: `${32 + depth * 20}px` }}>
+            <td colSpan={6} className="px-3 py-3" style={{ paddingLeft: `${32 + depth * 20}px` }}>
               <OverrideEditor
                 overrides={e.overrides}
                 onChange={(overrides) => patch(el.key, { overrides })}
@@ -400,8 +426,11 @@ export default function PageVisibilityTab() {
               <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500">
                 User görür
               </th>
+              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500" title="Sıkı: admin muafiyeti yok, açık kural şart">
+                Sıkı
+              </th>
               <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500">
-                Kullanıcı override
+                Kişi kuralı
               </th>
               <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500"></th>
             </tr>

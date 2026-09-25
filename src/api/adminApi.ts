@@ -144,6 +144,8 @@ export interface PortalElement {
   enabled: boolean;
   defaultVisible: boolean;
   metadata: string | null;
+  /** true = SIKI öge: admin muafiyeti yok, açık kural olmadan kimse göremez */
+  strict?: boolean;
   // actions.md #15 — eskiden yalniz kullanilmayan metadata JSON blob'unda gizliydi.
   description: string | null;
   createdAt: string | null;
@@ -210,6 +212,15 @@ export const elementsApi = {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(el),
     }));
   },
+  /** Sıkı öge: admin muafiyetini kaldırır — açık kural olmadan kimse göremez. */
+  async setStrict(key: string, strict: boolean): Promise<void> {
+    await okJson(await fetch(`/api/visibility/elements/${encodeURIComponent(key)}/strict`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ strict }),
+    }));
+  },
+
   async setEnabled(key: string, enabled: boolean): Promise<void> {
     await okJson(await fetch(`/api/visibility/elements/${encodeURIComponent(key)}/enabled`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }),

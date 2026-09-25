@@ -124,6 +124,14 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
     res.json({ ok: true });
   });
 
+  // SIKI OGE: admin muafiyetini KALDIRIR (acik kural olmadan kimse goremez).
+  router.put("/elements/:key/strict", requireAdmin, async (req, res) => {
+    const ok = await elementsStore.setElementStrict(req.params.key, req.body?.strict === true);
+    if (!ok) return res.status(404).json({ ok: false, error: "Element bulunamadi." });
+    visibilityEngine.bumpVersion();
+    res.json({ ok: true });
+  });
+
   // Bir elementin tum rol/kullanici kurallarini degistirir (idempotent replace).
   router.put("/elements/:key/rules", requireAdmin, async (req, res) => {
     await elementsStore.setElementRules(req.params.key, req.body?.rules || []);

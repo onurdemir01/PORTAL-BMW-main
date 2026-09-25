@@ -16,6 +16,14 @@ function normElement(row) {
     enabled: row.enabled === true || row.enabled === 1,
     defaultVisible: row.default_visible === true || row.default_visible === 1,
     metadata: row.metadata || null,
+    // SIKI OGE (2026-09-26): admin muafiyeti YOK, acik kural sart. Ekranin gostermesi ve
+    // degistirebilmesi icin metadata icinden ayri bir alan olarak cikarilir.
+    strict: (() => {
+      try {
+        const m = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+        return !!(m && m.strict);
+      } catch { return false; }
+    })(),
     description: row.description || null,
     createdAt: row.created_at || null,
   };
@@ -112,6 +120,25 @@ async function setElementEnabled(key, enabled) {
   return rowCount > 0;
 }
 
+/** Sikilik bayragini degistirir. metadata icindeki DIGER alanlar korunur. */
+async function setElementStrict(key, strict) {
+  const { rows } = await db.query(`SELECT metadata FROM portal_elements WHERE element_key = $1`, [key]);
+  if (!rows.length) return false;
+  let meta = {};
+  try {
+    const m = rows[0].metadata;
+    meta = (typeof m === 'string' ? JSON.parse(m) : m) || {};
+  } catch { meta = {}; }
+  if (strict) meta.strict = true; else delete meta.strict;
+  const bos = Object.keys(meta).length === 0;
+  const { rowCount } = await db.query(
+    `UPDATE portal_elements SET metadata=$1, updated_at=GETUTCDATE() WHERE element_key=$2`,
+    [bos ? null : JSON.stringify(meta), key],
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
   listElements, listRules, upsertElement, deleteElement, setElementRules, setElementEnabled,
+  setElementStrict,
 };
