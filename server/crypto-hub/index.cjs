@@ -52,7 +52,7 @@ async function loadTenant(tenant) {
   const p = [{ name: 't', type: sql.NVarChar(64), value: tenant.key }];
   const son = (table) => `(SELECT MAX(scan_date) FROM ${table} WHERE tenant_key = @t)`;
 
-  const [comp, rel, tag, note] = await Promise.all([
+  const [comp, rel, tag, note, arch] = await Promise.all([
     query(`SELECT kind, name, want, ready, image, version, scanned_at
              FROM dbo.Crypto_Hub_Components
             WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_Components')}
@@ -69,11 +69,18 @@ async function loadTenant(tenant) {
              FROM dbo.Crypto_Hub_Notes
             WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_Notes')}`, p)
       .then((r) => r.recordset || []).catch(() => []),
+    // Yerel chart arsivi (kullanici, 2026-09-26): bastion'da duran eski surumler + values
+    // dosyalari. Metaco'da chart deposu sorgulanamadigi icin SOMUT surum gecmisi burasi.
+    query(`SELECT version, dir, kind, file_name, size_bytes, mtime
+             FROM dbo.Crypto_Hub_Archives
+            WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_Archives')}
+            ORDER BY version, kind DESC, file_name`, p)
+      .then((r) => r.recordset || []).catch(() => []),
   ]);
 
   // comp null = tablo yok (DDL calistirilmamis). "Bilesen yok" ile ayni sey DEGIL.
   if (comp === null) {
-    return { tableMissing: true, components: [], releases: [], tags: [], notes: [], scannedAt: null, versions: null };
+    return { tableMissing: true, components: [], releases: [], tags: [], notes: [], archives: [], scannedAt: null, versions: null };
   }
 
   const scannedAt = [...comp, ...rel, ...tag, ...note]
@@ -110,6 +117,15 @@ async function loadTenant(tenant) {
     components,
     releases,
     notes: note.map((r) => ({ level: r.level, stage: r.stage || '', message: r.message || '' })),
+    // Yerel arsiv, surum basina gruplanir: bir surumun chart .tgz'i ve values dosyalari
+    // ayni satirda gorunsun. DOSYA ICERIGI YOK - values'ta parola olabiliyor.
+    archives: Object.values(arch.reduce((acc, r) => {
+      const k = String(r.version);
+      acc[k] = acc[k] || { version: k, dir: r.dir, chart: '', values: [] };
+      if (r.kind === 'chart') acc[k].chart = r.file_name || '';
+      else acc[k].values.push({ file: r.file_name || '', size: Number(r.size_bytes || 0), mtime: r.mtime || '' });
+      return acc;
+    }, {})).sort((a, b) => cmpVersion(b.version, a.version)),
     versions: {
       running,
       release: main ? main.name : tenant.helmRelease,

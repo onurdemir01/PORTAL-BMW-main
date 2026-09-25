@@ -16,7 +16,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ArrowPathIcon, ChevronRightIcon, ExclamationTriangleIcon, InformationCircleIcon,
-  CheckCircleIcon, StopCircleIcon, CubeTransparentIcon, ArrowUpCircleIcon, QuestionMarkCircleIcon,
+  CheckCircleIcon, StopCircleIcon, ArrowUpCircleIcon, QuestionMarkCircleIcon,
   LockClosedIcon, PlayCircleIcon,
 } from '@heroicons/react/24/outline';
 import {
@@ -24,6 +24,7 @@ import {
   type CryptoActionDef,
 } from '@/api/cryptoHubApi';
 import { PlanModal } from './PlanModal';
+import { BitcoinIcon, AppIcon } from '@/components/common/BrandIcons';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -66,7 +67,7 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
 
   // KAPALI ORTAM GIZLENMEZ, KILITLENIR: menuden yok olsaydi kullanici "production nerede?"
   // diye arardi; burada duruyor ve neden girilemedigi yaziyor.
-  const Card = ({ title, sub, onClick, tone, closed }: { title: string; sub?: string; onClick: () => void; tone?: 'prod'; closed?: boolean }) => (
+  const Card = ({ title, sub, onClick, tone, closed, icon }: { title: string; sub?: string; onClick: () => void; tone?: 'prod'; closed?: boolean; icon?: React.ReactNode }) => (
     <button
       type="button"
       onClick={onClick}
@@ -76,7 +77,9 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
       style={{ borderColor: tone === 'prod' && !closed ? 'var(--status-danger)' : 'var(--border-subtle)', background: closed ? 'var(--bg-elevated)' : 'var(--bg-surface)' }}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold" style={{ color: closed ? 'var(--text-muted)' : tone === 'prod' ? 'var(--status-danger)' : 'var(--text-primary)' }}>{title}</span>
+        <span className="text-sm font-semibold inline-flex items-center gap-2" style={{ color: closed ? 'var(--text-muted)' : tone === 'prod' ? 'var(--status-danger)' : 'var(--text-primary)' }}>
+          {icon}{title}
+        </span>
         {closed
           ? <LockClosedIcon className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />
           : <ChevronRightIcon className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />}
@@ -88,7 +91,9 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-6">
       <header className="text-center space-y-1">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Crypto Hub</h1>
+        <h1 className="text-xl font-semibold inline-flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+          <BitcoinIcon className="h-6 w-6" /> Crypto Hub
+        </h1>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Hangi uygulamada, hangi domainde ve hangi ortamda çalışacağınızı seçin.
         </p>
@@ -112,6 +117,7 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
           {apps.map((a) => (
             <Card
               key={a.app}
+              icon={<AppIcon app={a.app} className="h-5 w-5" />}
               title={a.label}
               sub={a.domains.length + ' domain · ' + a.domains.reduce((n, d) => n + d.envs.length, 0) + ' ortam'}
               onClick={() => { setApp(a); setDomain(null); }}
@@ -281,6 +287,55 @@ function SurumTab({ data }: { data: CryptoOverview }) {
         </section>
       )}
 
+      {/* BASTION'DAKI ARSIV: Metaco'da chart deposu sorgulanamadigi icin SOMUT surum gecmisi
+          burasi. "Depoda mevcut" ile AYNI SEY DEGIL - ayri baslik altinda duruyor. */}
+      {(data.archives || []).length > 0 && (
+        <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+          <div className="px-3 py-2 text-[11px] uppercase tracking-wide border-b" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-subtle)' }}>
+            Bastion'da hazır sürümler ({(data.archives || []).length}) — indirilmiş chart + values dosyaları
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+                  <th className="text-left font-medium px-3 py-2">Sürüm</th>
+                  <th className="text-left font-medium px-3 py-2">Chart paketi</th>
+                  <th className="text-left font-medium px-3 py-2">values dosyaları</th>
+                  <th className="text-left font-medium px-3 py-2">Dizin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data.archives || []).map((a) => (
+                  <tr key={a.version + a.dir} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                    <td className="px-3 py-2 tabular-nums font-medium" style={{ color: a.version === v?.running ? 'var(--accent)' : 'var(--text-primary)' }}>
+                      {a.version}{a.version === v?.running && <span className="ml-1 text-[10px]">koşan</span>}
+                    </td>
+                    <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{a.chart || '—'}</td>
+                    <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                      {a.values.length === 0 ? '—' : (
+                        <ul className="space-y-0.5">
+                          {a.values.map((f) => (
+                            <li key={f.file} className="flex items-center gap-2">
+                              <span>{f.file}</span>
+                              <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{Math.round(f.size / 102.4) / 10} KB</span>
+                              <span style={{ color: 'var(--text-muted)' }}>{f.mtime}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-[11px] break-all" style={{ color: 'var(--text-muted)' }}>{a.dir}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-3 py-2 text-[11px] border-t" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-subtle)' }}>
+            Dosya içerikleri Portal'a alınmaz — values dosyalarında parola bulunabiliyor; yalnızca ad, boyut ve tarih tutulur.
+          </div>
+        </section>
+      )}
+
       {releases.length > 0 && (
         <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
           <div className="overflow-x-auto">
@@ -319,7 +374,7 @@ function SurumTab({ data }: { data: CryptoOverview }) {
 export default function CryptoHubPage() {
   const { addJob } = useJobTracker();
   const [apps, setApps] = useState<CryptoApp[] | null>(null);
-  const [scope, setScope] = useState<{ env: CryptoEnvOption; appLabel: string; domainLabel: string } | null>(null);
+  const [scope, setScope] = useState<{ env: CryptoEnvOption; app: string; appLabel: string; domainLabel: string } | null>(null);
   const [data, setData] = useState<CryptoOverview | null>(null);
   const [tab, setTab] = useState<'durum' | 'surumler'>('durum');
   const [loading, setLoading] = useState(false);
@@ -353,7 +408,7 @@ export default function CryptoHubPage() {
   }, []);
 
   const pick = (env: CryptoEnvOption, app: CryptoApp, domainLabel: string) => {
-    setScope({ env, appLabel: app.label, domainLabel });
+    setScope({ env, app: app.app, appLabel: app.label, domainLabel });
     setTab('durum');
     void load(env.key);
   };
@@ -397,7 +452,7 @@ export default function CryptoHubPage() {
         className="rounded-xl border px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
         style={{ borderColor: prod ? 'var(--status-danger)' : 'var(--border-subtle)', background: prod ? 'var(--status-danger-bg)' : 'var(--bg-surface)' }}
       >
-        <CubeTransparentIcon className="h-5 w-5 shrink-0" style={{ color: prod ? 'var(--status-danger)' : 'var(--accent)' }} />
+        <AppIcon app={scope.app} className="h-5 w-5 shrink-0" />
         <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{scope.appLabel}</span>
         <span style={{ color: 'var(--text-muted)' }}>·</span>
         <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{scope.domainLabel}</span>

@@ -40,6 +40,15 @@ export interface CryptoRelease {
   status: string; updatedAt: string;
 }
 
+export interface CryptoArchive {
+  version: string;
+  dir: string;
+  /** indirilmiş chart paketi (harmonize-1.34.4.tgz); boş = dizinde .tgz yok */
+  chart: string;
+  /** values dosyaları — yalnızca ad/boyut/tarih; İÇERİK TUTULMAZ (parola barındırabilir) */
+  values: { file: string; size: number; mtime: string }[];
+}
+
 export interface CryptoVersions {
   running: string;
   /** koşan sürümün okunduğu ANA helm release (Wyden: wydenapp, Metaco: hmz) */
@@ -63,6 +72,7 @@ export interface CryptoOverview {
   scannedAt?: string | null;
   components?: CryptoComponent[];
   releases?: CryptoRelease[];
+  archives?: CryptoArchive[];
   versions?: CryptoVersions | null;
   notes?: { level: string; stage: string; message: string }[];
   summary?: { total: number; running: number; stopped: number; degraded: number };

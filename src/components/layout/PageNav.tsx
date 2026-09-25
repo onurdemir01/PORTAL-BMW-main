@@ -7,6 +7,8 @@
 import React, { useContext, useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+// Hub girisleri kendi markalariyla ayrisir (kullanici, 2026-09-26): Nginx, Tux, Bitcoin.
+import { NginxIcon, TuxIcon, BitcoinIcon } from "@/components/common/BrandIcons";
 import { AuthContext } from "@/contexts/AuthContext";
 import { PAGES, NAV_GROUPS } from "@/config/elements";
 import { visibilityApi, type NavGroup } from "@/api/adminApi";
@@ -89,9 +91,9 @@ export default function PageNav({ onNavigate }: Props) {
                     style={{ paddingLeft: "1rem" }}
                     onClick={onNavigate}
                   >
-                    {isHub ? <span className="nginx-hub-label"><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span>
-                      : isServerHub ? <span className="nginx-hub-label"><span>Server</span> <span className="nginx-hub-word">Hub</span></span>
-                      : isCryptoHub ? <span className="nginx-hub-label"><span>Crypto</span> <span className="nginx-hub-word">Hub</span></span>
+                    {isHub ? <span className="nginx-hub-label"><NginxIcon className="h-4 w-4 shrink-0" /><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span>
+                      : isServerHub ? <span className="nginx-hub-label"><TuxIcon className="h-4 w-4 shrink-0" /><span>Server</span> <span className="nginx-hub-word">Hub</span></span>
+                      : isCryptoHub ? <span className="nginx-hub-label"><BitcoinIcon className="h-4 w-4 shrink-0" /><span>Crypto</span> <span className="nginx-hub-word">Hub</span></span>
                       : group.label}
                   </NavLink>
                 </li>
