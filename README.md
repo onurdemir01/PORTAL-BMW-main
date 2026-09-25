@@ -8,7 +8,13 @@ Node.js + Express backend, React 19 + TypeScript + Vite frontend'den oluşan por
 |---|---|
 | **Dashboard** | KPI'lar, günün nöbetçisi, canlı kullanıcılar, Dynatrace problem özeti |
 | **Envanter** | MSSQL envanter tabloları — rol bazlı görünürlük, gelişmiş filtre, CSV |
+| **Denetim** | Nginx/SPA/API envanteri, OpenShift ortam kapsamı, route trafiği, init/deployment script uyumu |
+| **Nginx Hub** | Nginx filosu: konfigürasyon dökümü, CIS skoru, rate limit envanteri, **Production Taşımaları** |
+| **Taşıma Planı** | SPA taşımaları için **ekip** ekranı: uygulama kullanımda mı + deployment/rollout tarihi (Nginx Hub'ın dışında, ekiplere açık) |
+| **Server Hub** | Reboot hazırlığı ve atıl kaynak raporu: init uyumu, JBoss auto-start, web sunucu sözdizimi, boştaki IP'ler |
+| **Crypto Hub** | Üçüncü parti **Metaco / Wyden**: ortam seçimi → durum, sürümler, podlar, log, rollout, replika (yazan işlemler ön onaylı) |
 | **LogX** | Hedef sunuculardaki :1111 log arayüzüne güvenli proxy (izole origin iframe), audit hash zinciri |
+| **OpsX / ScaleX / FileX / Telnet** | OpenShift ve sunucu operasyonları: pod/dump işlemleri, replika durdurma-ölçekleme, dosya aktarımı, port kontrolü |
 | **Self Service / Ansible** | AWX template kataloğu (çoklu sunucu), survey/extra_vars formları, canlı job çıktısı |
 | **Performance** | Dynatrace **Managed** MCP — problems/events/entities/metrics, çoklu ortam (alias) |
 | **AI Analist** | LLM'in Dynatrace+Instana MCP araçlarını zincirleme çağırdığı analiz sohbeti (SSE) + PII maskeli log analizi |
@@ -24,6 +30,7 @@ Node.js + Express backend, React 19 + TypeScript + Vite frontend'den oluşan por
 | [docs/SETUP-SIMPLE.md](docs/SETUP-SIMPLE.md) | Yerel gelistirme kurulumu |
 | [docs/MCP-SETUP.md](docs/MCP-SETUP.md) | Dynatrace/Instana MCP bağlantı kurulumu + TLS |
 | [docs/SCALABILITY.md](docs/SCALABILITY.md) | 3.000 kullanıcı ölçekleme analizi |
+| [docs/CRYPTO-HUB.md](docs/CRYPTO-HUB.md) | **Crypto Hub** — Metaco/Wyden kiracıları, AWX template'leri, DDL, yetkiler, production kapısı |
 | [docs/SCALEX.md](docs/SCALEX.md) | **ScaleX** — OCP replica durdurma/geri alma/ölçekleme; kapılar, yetki, tuzaklar |
 | [Jenkinsfile](Jenkinsfile) | CI/CD pipeline (build → paket → onaylı deploy → health/rollback) |
 
@@ -185,6 +192,8 @@ Limitler kullanıcı başına: log analizi 10/saat, AI Analist sohbeti 20/saat.
 │   ├── ai-analyst/          # AI Analist — MCP tool-use orkestrasyonu (SSE)
 │   ├── auth/                # LDAP + session + online kullanıcılar + roller
 │   ├── ansible/             # AWX entegrasyonu (çoklu sunucu, survey/extra_vars)
+│   ├── audit/               # Denetim ekranları: nginx/SPA/API envanteri, taşıma verisi, route trafiği
+│   ├── crypto-hub/          # Crypto Hub — Metaco/Wyden durum, sürüm, plan ve işlemler
 │   ├── db/                  # MSSQL pool + PG-dialect adapter + şema kurulumu
 │   ├── dynatrace/           # Dynatrace MANAGED MCP proxy route'ları
 │   ├── instana/             # Instana MCP (nonprod/prod header'lı)
@@ -192,9 +201,19 @@ Limitler kullanıcı başına: log analizi 10/saat, AI Analist sohbeti 20/saat.
 │   ├── inventory/           # Envanter sorguları (rol bazlı görünürlük)
 │   ├── links/               # Portal linkleri (kategori bazlı)
 │   ├── logx/                # :1111 proxy (izole origin), PII maskeli analiz, audit zinciri
+│   ├── nginx-cis/           # Nginx CIS skoru ve istisnalar
+│   ├── nginx-console/       # Nginx Hub — konfigürasyon dökümü ve arama
+│   ├── nginx-migration/     # Production taşımaları: takip, tanım oluşturma/silme
+│   ├── opsx/                # OpenShift/legacy operasyonları (pod, dump, restart)
+│   ├── scalex/              # Replica durdurma / geri alma / ölçekleme
+│   ├── server-hub/          # Reboot hazırlığı + atıl kaynak değerlendirmesi
+│   ├── smart/ oco/          # Smart onayı ve OCO penceresi kapıları
+│   ├── spa-plan/            # SPA Taşıma Planı — ekip beyanı (kullanımda mı + tarih)
 │   ├── selfservice/         # Self-service katalog CRUD
 │   ├── tasks/               # Görev yönetimi
 │   └── data/                # JSON store (git'e girmez; prod'da shared/data symlink'i)
+│
+├── shared/                  # Sunucu + Ansible ile PAYLAŞILAN kataloglar (cryptoHubTenants, cryptoHubActions)
 │
 ├── src/
 │   ├── api/                 # Fetch client'lar

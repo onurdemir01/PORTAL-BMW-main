@@ -79,6 +79,37 @@ elle yapilir (varsayilan GUVENLI: `--drop-tables` verilmedikce tablolar birakili
 | `inventory_hosts` | Yonetilen host kayitlari |
 | `EnvanterApps` vb. | Harici envanter tablolari (portal sahibi degil, salt-okunur sorgulanir) |
 
+## Nginx / tasima
+
+| Tablo | Amac | Modul |
+|---|---|---|
+| `nginx_migration_tracking` | Uygulama basina tasima durumu: planlanan/gecis tarihi, not, tanim ve silme job damgalari. **`in_use` / `in_use_by` / `in_use_at`**: ekibin "kullanimda mi" beyani (SPA Tasima Plani ekrani) | nginx-migration/index.cjs, spa-plan/index.cjs |
+| `nginx_migration_path_jobs` | Yol (servis + location) basina tanim olusturma job kayitlari | nginx-migration/index.cjs |
+| `nginx_cis_overrides` | CIS maddesi istisnalari (sunucu bazli ve `*` ile host-geneli) | nginx-cis/index.cjs |
+
+**Tek kayit yeri (bilincli):** SPA Tasima Plani ekraninda ekibin girdigi tarih, yoneticinin
+Production Tasimalari ekraniyla AYNI satira yazilir. Ayri bir "ekip tablosu" iki listenin
+ayrismasina yol acardi. Ekip yalnizca `in_use`, `planned_date` ve `note` yazabilir; "gecti"
+isareti (`migrated_date`) taramayla dogrulanan bir olgudur ve `/api/spa-plan/declare` ona
+DOKUNMAZ (bekci SP4).
+
+## Crypto Hub (harici tarama verisi)
+
+DDL portal boot'unda DEGIL, `bmw_automation_folder/crypto_hub/files/crypto_hub_schema.sql`
+ile elle kurulur (idempotent). Tablolar yoksa ekran "tablolar yok" der — "bilesen yok" ile
+karistirmaz.
+
+| Tablo | Amac |
+|---|---|
+| `dbo.Crypto_Hub_Components` | Kiraci basina Deployment/StatefulSet: istenen/hazir replika, imaj, surum |
+| `dbo.Crypto_Hub_Releases` | Helm release'leri: chart, chart surumu, uygulama surumu, durum |
+| `dbo.Crypto_Hub_ChartTags` | Depodaki mevcut chart surumleri (OCI veya helm deposu) |
+| `dbo.Crypto_Hub_Archives` | Bastion'da duran indirilmis chart ve values dosyalari — **yalniz ad/boyut/tarih, ICERIK YOK** |
+| `dbo.Crypto_Hub_Notes` | `NOTE` / `ERR` satirlari: "olculemedi" ile "sorun yok" karismasin |
+
+Hepsi "son tarama" mantigiyla okunur (`MAX(scan_date)`); yukleyici sifir satirda veritabanina
+dokunmaz ve ayni gun tekrar kosulursa yalniz o gunun satirlarini yeniler.
+
 ## Diger
 
 | Tablo | Amac |
@@ -93,3 +124,5 @@ elle yapilir (varsayilan GUVENLI: `--drop-tables` verilmedikce tablolar birakili
 - `server/data/logx-legacy-snapshot.json` — Envanter DB'si KESIKKEN kullanilan dosya
   fallback'i; DB'ye tasimak amacini bozar.
 - LogX staging dizinleri (`/sw/BMW_PORTAL/logs/*`) — TTL ile temizlenen runtime artefakti.
+- Crypto Hub `garanti_values.yaml` ve benzeri values dosyalarinin ICERIGI — parola
+  barindirabiliyor; yalnizca dosya adi/boyutu/tarihi tutulur (bkz. `Crypto_Hub_Archives`).
