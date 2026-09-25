@@ -20,11 +20,11 @@ import {
   LockClosedIcon, PlayCircleIcon, PowerIcon,
 } from '@heroicons/react/24/outline';
 import {
-  cryptoHubApi, type CryptoApp, type CryptoEnvOption, type CryptoOverview, type CryptoComponent,
+  cryptoHubApi, type CryptoApp, type CryptoDomain, type CryptoEnvOption, type CryptoOverview, type CryptoComponent,
   type CryptoActionDef,
 } from '@/api/cryptoHubApi';
 import { PlanModal } from './PlanModal';
-import { BitcoinIcon, AppIcon } from '@/components/common/BrandIcons';
+import { BitcoinIcon, AppIcon, DomainIcon } from '@/components/common/BrandIcons';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -59,7 +59,7 @@ function Pill({ tone, children, title }: { tone: 'ok' | 'warn' | 'danger' | 'mut
 }
 
 // ── Secim: uygulama -> domain -> ortam ────────────────────────────────────────────────
-function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOption, app: CryptoApp, domainLabel: string) => void }) {
+function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOption, app: CryptoApp, domain: CryptoDomain) => void }) {
   const [app, setApp] = useState<CryptoApp | null>(apps.length === 1 ? apps[0] : null);
   const [domain, setDomain] = useState<string | null>(null);
   const dom = app?.domains.find((d) => d.domain === domain) || (app && app.domains.length === 1 ? app.domains[0] : null);
@@ -167,7 +167,6 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
               key={a.app}
               icon={<AppIcon app={a.app} className="h-8 w-8" />}
               title={a.label}
-              sub={a.domains.map((d) => d.label).join(' · ')}
               meta={a.domains.reduce((n, d) => n + d.envs.length, 0) + ' ortam'}
               onClick={() => { setApp(a); setDomain(null); }}
             />
@@ -182,7 +181,7 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
             {app.domains.map((d) => (
               <Card
                 key={d.domain}
-                icon={<AppIcon app={app.app} className="h-8 w-8" />}
+                icon={<DomainIcon domain={d.domain} app={app.app} className="h-8 w-8" />}
                 title={d.label}
                 sub={d.envs.map((e) => e.label).join(' · ')}
                 meta={d.envs.length + ' ortam'}
@@ -200,7 +199,7 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
             {dom.envs.map((e) => (
               <Card
                 key={e.key}
-                icon={<AppIcon app={app.app} className="h-8 w-8" />}
+                icon={<DomainIcon domain={dom.domain} app={app.app} className="h-8 w-8" />}
                 title={e.label}
                 sub={e.cluster}
                 meta={e.open === false
@@ -208,7 +207,7 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
                   : e.ready ? (e.namespace || '') : 'yapılandırma eksik'}
                 tone={e.production ? 'prod' : undefined}
                 closed={e.open === false}
-                onClick={() => onPick(e, app, dom.label)}
+                onClick={() => onPick(e, app, dom)}
               />
             ))}
           </div>
@@ -427,7 +426,7 @@ function SurumTab({ data }: { data: CryptoOverview }) {
 export default function CryptoHubPage() {
   const { addJob } = useJobTracker();
   const [apps, setApps] = useState<CryptoApp[] | null>(null);
-  const [scope, setScope] = useState<{ env: CryptoEnvOption; app: string; appLabel: string; domainLabel: string } | null>(null);
+  const [scope, setScope] = useState<{ env: CryptoEnvOption; app: string; appLabel: string; domain: string; domainLabel: string } | null>(null);
   const [data, setData] = useState<CryptoOverview | null>(null);
   const [tab, setTab] = useState<'durum' | 'surumler'>('durum');
   const [loading, setLoading] = useState(false);
@@ -460,8 +459,8 @@ export default function CryptoHubPage() {
     } catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); setData(null); } finally { setLoading(false); }
   }, []);
 
-  const pick = (env: CryptoEnvOption, app: CryptoApp, domainLabel: string) => {
-    setScope({ env, app: app.app, appLabel: app.label, domainLabel });
+  const pick = (env: CryptoEnvOption, app: CryptoApp, dom: CryptoDomain) => {
+    setScope({ env, app: app.app, appLabel: app.label, domain: dom.domain, domainLabel: dom.label });
     setTab('durum');
     void load(env.key);
   };
@@ -506,6 +505,7 @@ export default function CryptoHubPage() {
         style={{ borderColor: prod ? 'var(--status-danger)' : 'var(--border-subtle)', background: prod ? 'var(--status-danger-bg)' : 'var(--bg-surface)' }}
       >
         <AppIcon app={scope.app} className="h-5 w-5 shrink-0" />
+        <DomainIcon domain={scope.domain} app={scope.app} className="h-5 w-5 shrink-0" />
         <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{scope.appLabel}</span>
         <span style={{ color: 'var(--text-muted)' }}>·</span>
         <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{scope.domainLabel}</span>

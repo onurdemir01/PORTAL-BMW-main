@@ -101,6 +101,57 @@ export function WydenIcon({ className = 'h-4 w-4', style, title = 'Wyden' }: Ico
   );
 }
 
+const DAS_VIOLET = '#6D4AFF';
+const GAR_GREEN = '#00A650';
+
+/**
+ * DAS — Dijital Varlık. Blok zinciri düğümleriyle bağlı bir küp: "dijital varlık"ı
+ * anlatan genel bir işaret (bir şirket logosu DEĞİL).
+ */
+export function DasIcon({ className = 'h-4 w-4', style, title = 'DAS — Dijital Varlık' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} style={style} role="img" aria-label={title}>
+      <title>{title}</title>
+      <rect x="1" y="1" width="22" height="22" rx="6" fill={DAS_VIOLET} />
+      {/* kup */}
+      <path d="M12 6.2 17 9v6l-5 2.8L7 15V9z" fill="none" stroke="#fff" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M12 6.2V12m0 0 5-3m-5 3-5-3m5 3v5.8" stroke="#fff" strokeWidth="1.1" strokeLinejoin="round" opacity=".85" />
+      {/* dugumler */}
+      <circle cx="12" cy="6.2" r="1.5" fill="#fff" />
+      <circle cx="17" cy="15" r="1.5" fill="#fff" />
+      <circle cx="7" cy="15" r="1.5" fill="#fff" />
+    </svg>
+  );
+}
+
+/**
+ * GAR — Banka tarafı. Sütunlu banka binası: bankacılık için genel bir işaret.
+ * Garanti BBVA'nın resmî logosu DEĞİL; marka dosyası kullanılmıyor.
+ */
+export function GarIcon({ className = 'h-4 w-4', style, title = 'GAR — Banka' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} style={style} role="img" aria-label={title}>
+      <title>{title}</title>
+      <rect x="1" y="1" width="22" height="22" rx="6" fill={GAR_GREEN} />
+      {/* cati */}
+      <path d="M12 5.2 19 9H5z" fill="#fff" />
+      {/* sutunlar */}
+      <rect x="7" y="10.2" width="2.1" height="6" fill="#fff" />
+      <rect x="10.95" y="10.2" width="2.1" height="6" fill="#fff" />
+      <rect x="14.9" y="10.2" width="2.1" height="6" fill="#fff" />
+      {/* zemin */}
+      <rect x="5" y="17" width="14" height="1.8" rx=".6" fill="#fff" />
+    </svg>
+  );
+}
+
+/** Domain anahtarından simge: das → dijital varlık, gar → banka. */
+export function DomainIcon({ domain, app, className, style }: { domain: string; app?: string; className?: string; style?: React.CSSProperties }) {
+  if (domain === 'das') return <DasIcon className={className} style={style} />;
+  if (domain === 'gar') return <GarIcon className={className} style={style} />;
+  return <AppIcon app={app || ''} className={className} style={style} />;
+}
+
 /** Uygulama anahtarından simge (crypto hub içi). */
 export function AppIcon({ app, className, style }: { app: string; className?: string; style?: React.CSSProperties }) {
   if (app === 'metaco') return <RippleIcon className={className} style={style} />;
