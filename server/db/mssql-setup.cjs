@@ -1513,6 +1513,7 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'NginxConsole', roles: 'Admin' },
   { page_name: 'ServerHub', roles: 'Admin' },
   { page_name: 'CryptoHub', roles: 'Admin' },
+  { page_name: 'SpaPlan', roles: 'Admin,User' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
   { page_name: 'FileX', roles: 'Admin,User' },
@@ -1564,6 +1565,8 @@ const ELEMENT_SEED = [
   { element_key: 'navgroup:serverhub', element_type: 'nav_group', label: 'Server Hub', sort_order: 3 },
   // Crypto Hub (2026-09-25): ekibin yonettigi ucuncu parti uygulamalar (Metaco, Wyden)
   { element_key: 'navgroup:cryptohub', element_type: 'nav_group', label: 'Crypto Hub', sort_order: 3 },
+  // SPA Tasima Plani (2026-09-26): EKIPLERE acik, Nginx Hub'in DISINDA duran planlama ekrani
+  { element_key: 'navgroup:spaplan', element_type: 'nav_group', label: 'Taşıma Planı', sort_order: 4 },
   {
     element_key: 'navgroup:performance',
     element_type: 'nav_group',
@@ -1636,6 +1639,18 @@ const ELEMENT_SEED = [
     route: '/server-hub',
     sort_order: 1,
     roles: ['Admin'],
+  },
+  {
+    // SPA Tasima Plani (2026-09-26, kullanici): "ekiplerden planlama almak istiyorum ama
+    // e-postadan takip etmek cok zor". Production Tasimalari'nin EKIP yansimasi: ekip
+    // uygulamasi kullanimda mi soyler ve deployment/rollout tarihini girer.
+    element_key: 'SpaPlan',
+    element_type: 'page',
+    parent_key: 'navgroup:spaplan',
+    label: 'Taşıma Planı',
+    route: '/tasima-plani',
+    sort_order: 1,
+    roles: ['Admin', 'User'],
   },
   {
     // Crypto Hub (2026-09-25): Metaco + Wyden icin ortam secimi -> durum ve surumler
@@ -3155,6 +3170,23 @@ async function setupTables() {
 
   // Alter existing tables to add missing columns
   const alters = [
+    {
+      // SPA Tasima Plani (2026-09-26): ekibin BEYANI - uygulama kullanimda mi?
+      // Olcum (access log) ayri durur; bu alan ekibin dedigi seydir.
+      table: 'nginx_migration_tracking',
+      col: 'in_use',
+      sql: `ALTER TABLE nginx_migration_tracking ADD in_use NVARCHAR(16) NULL`,
+    },
+    {
+      table: 'nginx_migration_tracking',
+      col: 'in_use_by',
+      sql: `ALTER TABLE nginx_migration_tracking ADD in_use_by NVARCHAR(128) NULL`,
+    },
+    {
+      table: 'nginx_migration_tracking',
+      col: 'in_use_at',
+      sql: `ALTER TABLE nginx_migration_tracking ADD in_use_at DATETIME2 NULL`,
+    },
     {
       // Production Tasimalari > eski sunucudan tanim silme (2026-09-14): job damgasi.
       table: 'nginx_migration_tracking',

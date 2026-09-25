@@ -1906,4 +1906,7 @@ function initDenetim(app) {
   console.log('[Denetim] module mounted at /api/denetim');
 }
 
-module.exports = { initDenetim };
+// hasProxyColumns disari veriliyor (2026-09-26): SPA Taşıma Planı ekranı ayni tasima
+// verisini kuruyor; kolon kontrolunun IKINCI bir kopyasi iki ekranin sessizce farkli
+// veri gostermesine yol acardi.
+module.exports = { initDenetim, hasProxyColumns };

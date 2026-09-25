@@ -156,6 +156,7 @@ async function main() {
     { name: 'nginxConsole', init: () => require('./nginx-console/index.cjs').initNginxConsole(app), optional: true },
     { name: 'serverHub', init: () => require('./server-hub/index.cjs').initServerHub(app), optional: true },
     { name: 'cryptoHub', init: () => require('./crypto-hub/index.cjs').initCryptoHub(app), optional: true },
+    { name: 'spaPlan', init: () => require('./spa-plan/index.cjs').initSpaPlan(app), optional: true },
     { name: 'nginxCis', init: () => require('./nginx-cis/index.cjs').initNginxCis(app), optional: true },
     { name: 'retirement', init: () => require('./retirement/index.cjs').initRetirement(app), optional: true },
     { name: 'fileX', init: () => require('./filex/index.cjs').initFileX(app), optional: true },
