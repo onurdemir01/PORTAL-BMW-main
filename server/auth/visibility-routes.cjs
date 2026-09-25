@@ -124,6 +124,32 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
     res.json({ ok: true });
   });
 
+  // NEDEN GOREMIYOR? (2026-09-26) Kararin GEREKCESINI doner.
+  //   * Herkes KENDI erisimini sorgulayabilir  -> /explain?element=CryptoHub
+  //   * Admin baska birini SIMULE edebilir     -> &email=... veya &username=...
+  // Admin olmayan biri baskasini simule EDEMEZ; aksi halde bu uc, kimin neye erisebildigini
+  // sizdiran bir kesif araci olurdu.
+  router.get("/explain", async (req, res) => {
+    const me = req.session?.user;
+    if (!me) return res.status(401).json({ ok: false, error: "Oturum bulunamadi." });
+    const elementKey = String(req.query.element || "").trim();
+    if (!elementKey) return res.status(400).json({ ok: false, error: "element parametresi gerekli." });
+
+    let hedef = me;
+    const simule = String(req.query.email || req.query.username || "").trim();
+    if (simule) {
+      if (me.role !== "Admin") return res.status(403).json({ ok: false, error: "Baska kullanici sorgulamak icin Admin olmalisiniz." });
+      hedef = req.query.email
+        ? { username: "", mail: String(req.query.email), role: "User", groups: [] }
+        : { username: String(req.query.username), mail: "", role: "User", groups: [] };
+    }
+    try {
+      res.json({ ok: true, simulasyon: !!simule, ...(await visibilityEngine.explainVisibility(hedef, elementKey)) });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // SIKI OGE: admin muafiyetini KALDIRIR (acik kural olmadan kimse goremez).
   router.put("/elements/:key/strict", requireAdmin, async (req, res) => {
     const ok = await elementsStore.setElementStrict(req.params.key, req.body?.strict === true);

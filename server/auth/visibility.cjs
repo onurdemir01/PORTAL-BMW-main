@@ -126,8 +126,9 @@ function groupKeysOf(user) {
   return out;
 }
 
-function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower) {
-  if (!truthy(el.enabled)) return false;                 // 1) global kill-switch
+function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
+  const not = (sebep, kural) => { if (iz) { iz.sebep = sebep; iz.kural = kural || null; } };
+  if (!truthy(el.enabled)) { not('kill-switch: oge kapali (enabled=false)'); return false; }
 
   // SIKI ELEMENT (2026-09-26, kullanici: "sadece istedigim kisiler goruntuleyebilsin"):
   // metadata.strict=true olan ogede ADMIN MUAFIYETI YOKTUR - yonetici de acikca
@@ -139,27 +140,41 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower) {
     strict = !!(m && m.strict);
   } catch { strict = false; }
 
-  if (role === 'Admin' && !strict) return true;          // 2) admin her enabled ogeyi gorur
+  if (iz) iz.strict = strict;
+  if (role === 'Admin' && !strict) { not('admin muafiyeti (oge siki degil)'); return true; }
   const uKey = `${el.element_key}|user|${usernameLower}`;
-  if (ruleIndex.has(uKey)) return ruleIndex.get(uKey);   // 3) user kurali kazanir
+  if (ruleIndex.has(uKey)) {
+    const v = ruleIndex.get(uKey);
+    not(`kullanici kurali: ${usernameLower} -> ${v ? 'gorur' : 'gizli'}`, uKey);
+    return v;
+  }
   // 3a) E-POSTA kurali: LDAP'ta kullanici adini bilmeden, e-postayla yetki verebilmek icin
   // (kullanici istegi). Kullanici adi kuralindan SONRA, grup kurallarindan ONCE gelir.
   if (mailLower) {
     const eKey = `${el.element_key}|email|${mailLower}`;
-    if (ruleIndex.has(eKey)) return ruleIndex.get(eKey);
+    if (ruleIndex.has(eKey)) {
+      const v = ruleIndex.get(eKey);
+      not(`e-posta kurali: ${mailLower} -> ${v ? 'gorur' : 'gizli'}`, eKey);
+      return v;
+    }
   }
   if (groupKeys && groupKeys.size) {                     // 3b) grup kurali: bir allow yeter
-    let seen = false, allow = false;
+    let seen = false, allow = false, eslesen = null;
     for (const g of groupKeys) {
       const gKey = `${el.element_key}|group|${g}`;
-      if (ruleIndex.has(gKey)) { seen = true; if (ruleIndex.get(gKey)) { allow = true; break; } }
+      if (ruleIndex.has(gKey)) { seen = true; if (ruleIndex.get(gKey)) { allow = true; eslesen = gKey; break; } }
     }
-    if (seen) return allow;
+    if (seen) { not(`grup kurali -> ${allow ? 'gorur' : 'gizli'}`, eslesen); return allow; }
   }
   const rKey = `${el.element_key}|role|${role.toLowerCase()}`;
-  if (ruleIndex.has(rKey)) return ruleIndex.get(rKey);   // 4) role kurali
+  if (ruleIndex.has(rKey)) {
+    const v = ruleIndex.get(rKey);
+    not(`rol kurali: ${role} -> ${v ? 'gorur' : 'gizli'}`, rKey);
+    return v;
+  }
   // SIKI ogede varsayilan HER ZAMAN kapalidir: acik bir kural yoksa erisim yok.
-  if (strict) return false;
+  if (strict) { not('SIKI oge ve eslesen kural YOK -> kapali'); return false; }
+  not(`varsayilan: default_visible=${truthy(el.default_visible) ? 1 : 0}`);
   return truthy(el.default_visible);                     // 5) varsayilan
 }
 
@@ -235,6 +250,66 @@ async function resolveVisibility(user) {
   return { version: _version, visibility };
 }
 
+/**
+ * TEK BIR OGE ICIN KARARI VE GEREKCESINI ACIKLAR (2026-09-26).
+ *
+ * Neden var: "e-postasini ekledim ama hala 403 aliyor" sorusunu TAHMINLE degil OLCUMLE
+ * cevaplamak icin. Cogu zaman sebep kuralin yanlis olmasi degildir; oturumdaki e-posta
+ * bos ya da farklidir (LDAP'taki mail baska yazilmistir). Bu uc, motorun GERCEKTEN hangi
+ * degerlerle karar verdigini gosterir.
+ */
+async function explainVisibility(user, elementKey) {
+  const { elements, rules } = await loadAll();
+  const el = elements.find((e) => e.element_key === elementKey);
+  const role = (user && user.role) || 'User';
+  const usernameLower = ((user && user.username) || '').toLowerCase();
+  const mailLower = ((user && user.mail) || '').trim().toLowerCase();
+  const groupKeys = groupKeysOf(user);
+  if (!el) {
+    return {
+      element: elementKey, bulundu: false, gorunur: true,
+      sebep: 'oge kayitli degil - kayitsiz oge varsayilan olarak GORUNUR',
+      kullanici: { username: usernameLower, mail: mailLower, role, grupSayisi: groupKeys.size },
+    };
+  }
+  const ruleIndex = buildRuleIndex(rules);
+  const iz = {};
+  const kendi = decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz);
+
+  // Ata zinciri: bir ust oge gorunmuyorsa cocuk da gorunmez (kaskad).
+  const byKey = new Map(elements.map((e) => [e.element_key, e]));
+  const zincir = [];
+  let p = el.parent_key;
+  const gorulen = new Set([el.element_key]);
+  while (p && byKey.has(p) && !gorulen.has(p)) {
+    gorulen.add(p);
+    const ata = byKey.get(p);
+    const ataIz = {};
+    zincir.push({
+      element: p,
+      gorunur: decide(ata, ruleIndex, role, usernameLower, groupKeys, mailLower, ataIz),
+      sebep: ataIz.sebep || null,
+    });
+    p = ata.parent_key;
+  }
+  const ataEngeli = zincir.find((z) => !z.gorunur) || null;
+
+  return {
+    element: elementKey,
+    bulundu: true,
+    siki: !!iz.strict,
+    gorunur: kendi && !ataEngeli,
+    sebep: ataEngeli ? `ust oge gizli: ${ataEngeli.element} (${ataEngeli.sebep})` : (iz.sebep || null),
+    eslesenKural: iz.kural || null,
+    atalar: zincir,
+    kullanici: { username: usernameLower, mail: mailLower, role, grupSayisi: groupKeys.size },
+    // Bu ogeye tanimli kurallar: "kural var mi, hangi principal ile" sorusunu kapatir.
+    kurallar: rules
+      .filter((r) => r.element_key === elementKey)
+      .map((r) => ({ tip: r.principal_type, kim: r.principal_id, izin: truthy(r.allow) })),
+  };
+}
+
 // UI icin yumusak surum: motor okunamazsa bos harita doner (istemci varsayilan-acik
 // davranir, ekran bos kalmaz). Gercek yetki karari her zaman sunucuda requireVisible'dadir.
 async function resolveVisibilitySoft(user) {
@@ -300,6 +375,7 @@ function requireVisiblePrefix(elementKey, opts = {}) {
 }
 
 module.exports = {
+  explainVisibility,
   resolveVisibility, resolveVisibilitySoft, canSee, requireVisible, requireVisiblePrefix, getVersion, bumpVersion,
   _applyParentCascade: applyParentCascade,
   // Legacy sayfa-gorunurlugu (DEFAULT_VISIBILITY tablosu) — element-bazli motordan ayri.

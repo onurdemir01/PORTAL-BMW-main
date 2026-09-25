@@ -26,12 +26,17 @@ test('VE1: e-posta kurali kullanici kuralindan SONRA, grup kuralindan ONCE', () 
 });
 
 test('VE2: SIKI ogede admin muafiyeti YOK ve varsayilan kapali', () => {
+  // NOT: bu iddialar KODUN YAZIMINA degil ANLAMINA baksin diye desen esnek tutuldu;
+  // 2026-09-26'da iz (explain) eklenince birebir metin eslesmesi bosuna dusmustu.
   // Admin muafiyeti yalnizca strict DEGILKEN gecerli olmali.
-  assert.match(SRC, /if \(role === 'Admin' && !strict\) return true;/);
+  assert.match(SRC, /role === 'Admin' && !strict[\s\S]{0,120}return true/);
   // Acik kural yoksa strict oge KAPALIDIR (default_visible'a bakilmaz).
-  assert.match(SRC, /if \(strict\) return false;/);
+  const iStrictFalse = SRC.search(/if \(strict\)[\s\S]{0,120}return false/);
+  const iDefault = SRC.indexOf('return truthy(el.default_visible)');
+  assert.ok(iStrictFalse > 0, 'strict ogede acik kural yoksa erisim kapali olmali');
+  assert.ok(iStrictFalse < iDefault, "strict kontrolu default_visible'dan ONCE gelmeli");
   // Kill-switch hala once gelir: strict, kapali bir ogeyi acmamali.
-  const iEnabled = SRC.indexOf("if (!truthy(el.enabled)) return false;");
+  const iEnabled = SRC.indexOf("!truthy(el.enabled)");
   const iStrict = SRC.indexOf('let strict = false;');
   assert.ok(iEnabled > 0 && iEnabled < iStrict, 'enabled kontrolu strict\'ten once olmali');
 });
@@ -75,4 +80,28 @@ test('VE5: sikilik Admin ekranindan yonetilebilir', () => {
   );
   assert.match(tab, /elementsApi\.setStrict/);
   assert.match(tab, /admin muafiyeti YOKTUR/, 'siki ogede ipucu duzeltilmis olmali');
+});
+
+test('VE6: "neden goremiyor" tanisi - explain ucu', () => {
+  // Kullanici: "e-postalarini ekledigim kisiler icin halen 403 aliyorum."
+  // Sebebi TAHMIN etmek yerine OLCMEK icin: explain, motorun gercekten hangi degerlerle
+  // karar verdigini (ozellikle oturumdaki e-postayi) ve hangi kuralin eslestigini doner.
+  assert.match(SRC, /async function explainVisibility/);
+  // Karar gerekcesi ve eslesen kural donmeli.
+  assert.match(SRC, /sebep:/);
+  assert.match(SRC, /eslesenKural:/);
+  // OTURUMDAKI E-POSTA gorunmeli: en sik sebep, kuralin yanlis olmasi degil oturumdaki
+  // mail'in bos/farkli olmasidir.
+  assert.match(SRC, /kullanici: \{ username: usernameLower, mail: mailLower/);
+  // Ata zinciri de degerlendirilmeli: ust oge gizliyse cocuk da gorunmez.
+  assert.match(SRC, /ust oge gizli/);
+
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'visibility-routes.cjs'), 'utf8');
+  const i = routes.indexOf('"/explain"');
+  assert.ok(i > 0, 'explain ucu olmali');
+  const blok = routes.slice(i, i + 1200);
+  // Herkes KENDINI sorgulayabilir; BASKASINI yalniz Admin simule edebilir - aksi halde bu
+  // uc, kimin neye erisebildigini sizdiran bir kesif araci olurdu.
+  assert.match(blok, /me\.role !== "Admin"/);
+  assert.match(blok, /status\(403\)/);
 });
