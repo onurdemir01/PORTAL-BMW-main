@@ -168,7 +168,20 @@ async function loadRateLimits({ scanDate } = {}) {
     }
     // Ham satirlar yalnizca DETAY icin tutulur; sunucu basina en fazla 20 satir - ekran
     // bir sunucuyu acinca gosterir, listeye HEPSI birden gonderilmez (OOM dersi).
-    if (h.raw.length < 20) h.raw.push({ file: r.conf_file, context: r.context, directive: r.directive, value: v, matches: r.matches === true || r.matches === 1 });
+    // nginx_audit_analyze.py, referansta olup sunucuda bulunmayan direktif icin SENTETIK
+    // bir satir yazar: conf_file bos, value bos, reference_value standart deger. Bu bir
+    // OLCUM degil, bir YOKLUK kaydidir - degeri bos oldugu icin yukarida zone olarak
+    // ayristirilmaz (sahte "standart" uretmez), ama detayda bos satir gibi gorunmesin.
+    const sentetik = !r.conf_file && !v;
+    if (h.raw.length < 20) {
+      h.raw.push({
+        file: r.conf_file || (sentetik ? '(sunucuda yok)' : ''),
+        context: r.context,
+        directive: r.directive,
+        value: sentetik ? `— referansta: ${r.reference_value || ''}` : v,
+        matches: r.matches === true || r.matches === 1,
+      });
+    }
   }
 
   // Filodaki HICBIR sunucuda zone/uygulama satiri yoksa: direktifler taranmamis demektir
