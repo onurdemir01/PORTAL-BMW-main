@@ -160,6 +160,18 @@ const CRYPTO_TENANTS = Object.freeze([
   },
 ]);
 
+// PRODUCTION ŞİMDİLİK KAPALI (kullanıcı, 2026-09-26: "şimdilik Crypto Hub için Production'ı
+// kapat"). Tek anahtar: `true` yapıldığında ekranda seçilebilir ve API yeniden açılır.
+// Kapatma YALNIZCA ekranda gizlemek DEĞİL — sunucu da /overview ve /rescan'i reddeder, yoksa
+// doğrudan API çağrısıyla production'a bakılabilirdi. Ansible tarafındaki karşılığı:
+// crypto_hub_inventory.yml'deki `crypto_hub_include_production` (varsayılan false).
+const PRODUCTION_ENABLED = false;
+
+/** Kiracı şu an kullanıma açık mı? (production kapalıyken prod kiracıları kapalıdır) */
+function isOpen(tenant) {
+  return !!tenant && (PRODUCTION_ENABLED || !tenant.production);
+}
+
 const byKey = new Map(CRYPTO_TENANTS.map((t) => [t.key, t]));
 
 /** Anahtardan kiracı; bilinmeyen anahtar null döner (istemciden gelen metin doğrudan kullanılmaz). */
@@ -167,8 +179,8 @@ function tenantOf(key) {
   return byKey.get(String(key || '').trim()) || null;
 }
 
-/** Ekranın seçim ağacı: uygulama → domain → ortam. Yapılandırması eksik olan da GÖRÜNÜR
- *  (kullanıcı neden veri olmadığını anlasın), ama `ready:false` ile işaretlenir. */
+/** Ekranın seçim ağacı: uygulama → domain → ortam. Yapılandırması eksik olan da, şu an kapalı
+ *  olan da GÖRÜNÜR (kullanıcı neden giremediğini anlasın); `ready`/`open` ile işaretlenir. */
 function selectionTree() {
   const apps = [];
   for (const t of CRYPTO_TENANTS) {
@@ -179,9 +191,10 @@ function selectionTree() {
     dom.envs.push({
       key: t.key, env: t.env, label: t.envLabel, production: t.production,
       cluster: t.cluster, namespace: t.namespace, ready: !!t.namespace,
+      open: isOpen(t),
     });
   }
   return apps;
 }
 
-module.exports = { CRYPTO_TENANTS, tenantOf, selectionTree };
+module.exports = { CRYPTO_TENANTS, tenantOf, selectionTree, isOpen, PRODUCTION_ENABLED };

@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { CRYPTO_TENANTS, tenantOf, selectionTree } = require('../../../shared/cryptoHubTenants.cjs');
+const { CRYPTO_TENANTS, tenantOf, selectionTree, isOpen, PRODUCTION_ENABLED } = require('../../../shared/cryptoHubTenants.cjs');
 const { cmpVersion } = require('../index.cjs');
 
 test('CH1: katalog kendi icinde tutarli', () => {
@@ -98,4 +98,26 @@ test('CH5/CH6: secim agaci ve ana release', () => {
   const wyden = CRYPTO_TENANTS.filter((t) => t.app === 'wyden');
   assert.ok(wyden.length > 0);
   for (const t of wyden) assert.equal(t.helmRelease, 'wydenapp', `${t.key}: ana release wydenapp olmali`);
+});
+
+test('CH7: production kapaliyken prod kiracilari SECILEMEZ ve API reddeder', () => {
+  // Kullanici (2026-09-26): "simdilik Crypto Hub icin Production'i kapat".
+  assert.equal(PRODUCTION_ENABLED, false, 'production acilacaksa bu testin beklentisi de guncellenmeli');
+
+  const prod = CRYPTO_TENANTS.filter((t) => t.production);
+  const nonProd = CRYPTO_TENANTS.filter((t) => !t.production);
+  assert.ok(prod.length > 0 && nonProd.length > 0);
+  for (const t of prod) assert.equal(isOpen(t), false, `${t.key}: production kapali olmali`);
+  for (const t of nonProd) assert.equal(isOpen(t), true, `${t.key}: non-prod kapatilmamali`);
+
+  // KAPALI ORTAM AGACTAN SILINMEZ: kullanici "production nerede?" diye aramasin diye
+  // gorunur kalir, yalnizca open:false ile kilitlenir.
+  const envs = selectionTree().flatMap((a) => a.domains.flatMap((d) => d.envs));
+  assert.equal(envs.length, CRYPTO_TENANTS.length, 'kapali ortam agactan silinmemeli');
+  for (const e of envs) assert.equal(e.open, isOpen(tenantOf(e.key)), `${e.key}: open bayragi yanlis`);
+
+  // Sunucu yalnizca ekrana guvenmemeli: /overview ve /rescan de kapali kiraciyi kesmeli.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  const kesmeSayisi = (src.match(/if \(!isOpen\(tenant\)\) return res\.status\(403\)/g) || []).length;
+  assert.equal(kesmeSayisi, 2, 'overview ve rescan uclarinin IKISI de kapali kiraciyi 403 ile kesmeli');
 });

@@ -13,7 +13,12 @@
 'use strict';
 
 const express = require('express');
-const { CRYPTO_TENANTS, tenantOf, selectionTree } = require('../../shared/cryptoHubTenants.cjs');
+const { CRYPTO_TENANTS, tenantOf, selectionTree, isOpen } = require('../../shared/cryptoHubTenants.cjs');
+
+// Production simdilik kapali (kullanici, 2026-09-26). Ekran zaten sectirmiyor; bu kontrol
+// DOGRUDAN API cagrisini de keser - aksi halde "kapali" yalnizca gorsel bir suslemeden ibaret
+// olurdu.
+const CLOSED_MSG = 'Production ortamları Crypto Hub\'da şimdilik kapalı.';
 
 const REGISTRY_KEY = 'crypto_hub_inventory';
 
@@ -143,6 +148,7 @@ function initCryptoHub(app) {
     if (!tenant) {
       return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı. Geçerli anahtarlar: ' + CRYPTO_TENANTS.map((t) => t.key).join(', ') });
     }
+    if (!isOpen(tenant)) return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
     if (!tenant.namespace) {
       return res.json({
         ok: true, tenant, notConfigured: true,
@@ -166,6 +172,7 @@ function initCryptoHub(app) {
   router.post('/rescan', async (req, res) => {
     const tenant = tenantOf(req.body?.tenant);
     if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
+    if (!isOpen(tenant)) return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
     if (!tenant.namespace) return res.status(409).json({ ok: false, message: 'Bu ortam henüz yapılandırılmadı.' });
     try {
       const reg = require('../ansible/playbook-registry.cjs');

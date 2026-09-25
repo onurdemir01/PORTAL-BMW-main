@@ -13,6 +13,8 @@ export interface CryptoEnvOption {
   namespace: string;
   /** false = namespace/helm tanımı girilmemiş; tarama bu ortamı atlar */
   ready: boolean;
+  /** false = ortam şimdilik kapalı (2026-09-26: production kapatıldı); seçilemez, API de reddeder */
+  open: boolean;
 }
 export interface CryptoDomain { domain: string; label: string; envs: CryptoEnvOption[] }
 export interface CryptoApp { app: string; label: string; domains: CryptoDomain[] }

@@ -17,6 +17,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ArrowPathIcon, ChevronRightIcon, ExclamationTriangleIcon, InformationCircleIcon,
   CheckCircleIcon, StopCircleIcon, CubeTransparentIcon, ArrowUpCircleIcon, QuestionMarkCircleIcon,
+  LockClosedIcon,
 } from '@heroicons/react/24/outline';
 import {
   cryptoHubApi, type CryptoApp, type CryptoEnvOption, type CryptoOverview, type CryptoComponent,
@@ -59,17 +60,24 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
   const [app, setApp] = useState<CryptoApp | null>(apps.length === 1 ? apps[0] : null);
   const [domain, setDomain] = useState<string | null>(null);
   const dom = app?.domains.find((d) => d.domain === domain) || (app && app.domains.length === 1 ? app.domains[0] : null);
+  const kapali = apps.reduce((n, a) => n + a.domains.reduce((m, d) => m + d.envs.filter((e) => e.open === false).length, 0), 0);
 
-  const Card = ({ title, sub, onClick, tone }: { title: string; sub?: string; onClick: () => void; tone?: 'prod' }) => (
+  // KAPALI ORTAM GIZLENMEZ, KILITLENIR: menuden yok olsaydi kullanici "production nerede?"
+  // diye arardi; burada duruyor ve neden girilemedigi yaziyor.
+  const Card = ({ title, sub, onClick, tone, closed }: { title: string; sub?: string; onClick: () => void; tone?: 'prod'; closed?: boolean }) => (
     <button
       type="button"
       onClick={onClick}
-      className="text-left rounded-xl border px-4 py-3 w-full hover:shadow-sm"
-      style={{ borderColor: tone === 'prod' ? 'var(--status-danger)' : 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      disabled={closed}
+      title={closed ? 'Bu ortam şimdilik kapalı' : undefined}
+      className={`text-left rounded-xl border px-4 py-3 w-full ${closed ? 'cursor-not-allowed opacity-60' : 'hover:shadow-sm'}`}
+      style={{ borderColor: tone === 'prod' && !closed ? 'var(--status-danger)' : 'var(--border-subtle)', background: closed ? 'var(--bg-elevated)' : 'var(--bg-surface)' }}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold" style={{ color: tone === 'prod' ? 'var(--status-danger)' : 'var(--text-primary)' }}>{title}</span>
-        <ChevronRightIcon className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />
+        <span className="text-sm font-semibold" style={{ color: closed ? 'var(--text-muted)' : tone === 'prod' ? 'var(--status-danger)' : 'var(--text-primary)' }}>{title}</span>
+        {closed
+          ? <LockClosedIcon className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />
+          : <ChevronRightIcon className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />}
       </div>
       {sub && <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{sub}</div>}
     </button>
@@ -82,6 +90,11 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Hangi uygulamada, hangi domainde ve hangi ortamda çalışacağınızı seçin.
         </p>
+        {kapali > 0 && (
+          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            Production ortamları ({kapali}) şimdilik kapalı.
+          </p>
+        )}
       </header>
 
       <ol className="flex items-center justify-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
@@ -129,8 +142,11 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
               <Card
                 key={e.key}
                 title={e.label}
-                sub={e.ready ? e.cluster : e.cluster + ' · yapılandırma eksik'}
+                sub={e.open === false
+                  ? e.cluster + ' · şimdilik kapalı'
+                  : e.ready ? e.cluster : e.cluster + ' · yapılandırma eksik'}
                 tone={e.production ? 'prod' : undefined}
+                closed={e.open === false}
                 onClick={() => onPick(e, app, dom.label)}
               />
             ))}
