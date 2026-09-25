@@ -180,60 +180,63 @@ export const nginxConsoleApi = {
   blob: (sha: string): Promise<{ ok: boolean; sha256: string; content: string; message?: string }> => fetch(`${BASE}/blob/${encodeURIComponent(sha)}`).then(safeJson),
 };
 
-// ── Rate Limit sekmesi (2026-09-26) ──────────────────────────────────────────────────
-export interface NginxRateLimitRow {
-  host: string;
-  /** sunucu ADINDAN türetilir (dosya adı ortamdan bağımsız olarak aynıdır) */
-  env: string;
-  configFile: string;
-  location: string;
-  ipLimit: string | null;
-  serverLimit: string | null;
-  /** yok = gerçekten limitsiz · server = limit server bloğundan MİRAS */
-  state: 'yok' | 'ip' | 'server' | 'ikisi';
-  /** null = limit yok · true = estate standardı · false = ÖZEL oran */
-  ipStd: boolean | null;
-  serverStd: boolean | null;
-}
+// ── Rate Limit sekmesi (v2, 2026-09-26) ──────────────────────────────────────────────
+// Kaynak dbo.Nginx_Audit_Settings: nginx_audit her sunucuda `nginx -T` koşar, yani
+// ÇALIŞAN konfigürasyon. Satır = SUNUCU (location değil) — ilk sürüm ~50.000 satırı
+// tarayıcıya yığıp sayfayı OOM'a düşürmüştü.
 
-/** /usr/nginx/conf/rate_limits.conf içindeki estate tanımları (üçü de http seviyesinde). */
 export interface NginxRateLimitZone {
   key: string;
-  kind: 'ip' | 'server' | 'conn';
+  kind: 'req' | 'conn';
   rate?: string;
-  limit?: number;
+  conn?: number;
   burst?: number;
   nodelay?: boolean;
   variable: string;
   size: string;
   label: string;
   desc: string;
-  /** false = location bazlı ölçülmez (bağlantı limiti) */
-  perLocation?: boolean;
+}
+
+export interface NginxRateLimitHost {
+  host: string;
+  env: string;
+  /** rate_limits.conf'taki request_limit oranı (nginx -T'den) */
+  requestRate: string | null;
+  serverRate: string | null;
+  connLimit: number | null;
+  /** gerçekten UYGULANAN zone adları (limit_req / limit_conn) */
+  applied: string[];
+  zoneCount: number;
+  /** nginx -T çıktısında rate_limits.conf görünüyor mu */
+  fileLoaded: boolean;
+  /** audit'in referans dosyayla karşılaştırmasında uyuşmayan direktif sayısı */
+  mismatch: number;
+  /** eksik = zone yok YA DA tanımlı ama uygulanmıyor */
+  durum: 'standart' | 'farkli' | 'eksik';
+  eksikler: string[];
+  farklar: string[];
+  detay: { file: string; context: string; directive: string; value: string; matches: boolean }[];
 }
 
 export interface NginxRateLimitSummary {
   hosts: number;
-  rows: number;
-  limitli: number;
-  limitsiz: number;
-  /** estate standardından farklı oranla koşan satır sayısı */
-  ozel: number;
-  ipOnly: number;
-  serverOnly: number;
-  ikisi: number;
-  byEnv: Record<string, { rows: number; limitsiz: number; hosts: number }>;
-  topZones: { zone: string; count: number }[];
+  standart: number;
+  farkli: number;
+  eksik: number;
+  dosyaYuklenmemis: number;
+  byEnv: Record<string, { hosts: number; standart: number; farkli: number; eksik: number }>;
+  /** filodaki farklı limit kombinasyonları: "filo tek tip mi" sorusunun cevabı */
+  rates: { combo: string; hosts: number }[];
 }
 
 export interface NginxRateLimitResult {
   ok: boolean;
   message?: string;
-  /** true = tablo yok (job hiç koşmamış) — "limit yok" ile KARIŞTIRILMAZ */
   tableMissing?: boolean;
   scanDate: string | null;
   availableDates: string[];
-  rows: NginxRateLimitRow[];
+  hosts: NginxRateLimitHost[];
   summary: NginxRateLimitSummary | null;
   catalog?: { file: string; zones: NginxRateLimitZone[] };
 }

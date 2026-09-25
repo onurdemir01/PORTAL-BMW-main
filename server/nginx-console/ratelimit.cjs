@@ -1,80 +1,99 @@
-// server/nginx-console/ratelimit.cjs — Nginx Hub › Rate Limit sekmesi (2026-09-26).
+// server/nginx-console/ratelimit.cjs — Nginx Hub › Rate Limit (2026-09-26, v2).
 //
-// Kullanıcı: "tüm Nginx sunucularının rate limitlerini de Nginx Hub'da ayrı bir sekmede
-// görüntülemek, raporu indirebilmek istiyorum."
+// KULLANICI DÜZELTMESİ: ilk sürüm yanlış kaynaktan besleniyordu.
+//   * dbo.NginxRateLimitInventory = APIGW'lerdeki API location'larının limitleri
+//   * İstenen = TÜM nginx sunucularındaki /usr/nginx/conf/rate_limits.conf değerleri
+// Kullanıcı: "bunlar birbirinden komple farklı; tüm Nginx'lerin taranmasını ve
+// rate_limits.conf içindeki değerleri görmek istiyorum. İstersen nginx -T çıktısıyla
+// runtime'da uygulanıp uygulanmadığını da test edebilirsin."
 //
-// Kaynak: dbo.NginxRateLimitInventory — bir satır = (host, config_file, api_location) ve
-// o location'a uygulanan iki zone: ip_rate_limit / server_rate_limit.
+// YENİ JOB GEREKMEDİ: nginx_audit zaten tüm filoda `nginx -T` koşuyor (yani DOSYAYI değil
+// ÇALIŞAN konfigürasyonu okuyor) ve limit_* direktiflerini dbo.Nginx_Audit_Settings'e
+// yazıyor. Yani "tanımlı mı" ile "runtime'da uygulanıyor mu" AYNI kaynaktan gelir.
 //
-// DENETİM'DEKİ "API ENVANTERİ" EKRANIYLA AYNI TABLO AMA FARKLI SORU: orası "hangi API
-// hangi sunucuda var" diye sorar ve (host, config) düzeyinde sayı verir. Burada soru
-// "limitler ne" — bu yüzden satır düzeyinde, limit değerleriyle ve filtrelenebilir.
-//
-// ÜÇ SÖZLEŞME:
-//  1) "LİMİTİ YOK" ile "ÖLÇÜLMEDİ" AYRI. Tarama o sunucuyu hiç görmediyse satır yoktur;
-//     satır varsa ve iki alan da boşsa GERÇEKTEN limit yoktur. Ekran ikisini karıştırmaz.
-//  2) SERVER SEVİYESİ MİRAS SAYILIR: nginx'te `limit_req` server bloğunda tanımlıysa
-//     location'a MİRAS kalır. Tarayıcı bunu zaten çözüp server_rate_limit'e yazıyor;
-//     burada "kaynak" sütunu bunu görünür kılar (location mı, miras mı).
-//  3) RAPOR SUNUCUDA ÜRETİLİR: 50.000 satırlık bir dökümü tarayıcıda birleştirmek yerine
-//     CSV akış olarak iner; Excel'in ayraç tahminini bozmamak için UTF-8 BOM eklenir.
+// OOM DERSİ (ilk sürüm): ekran ~50.000 location satırını tarayıcıya yığıyordu ve sayfa
+// çöküyordu. Bu sürüm SUNUCU BAŞINA tek satır üretir (~300 satır): soru zaten
+// "hangi sunucuda hangi limit var", location başına döküm değil.
 'use strict';
 
-const TABLE = 'dbo.NginxRateLimitInventory';
-
-// ── ESTATE STANDARDI: /usr/nginx/conf/rate_limits.conf (kullanici, 2026-09-26) ────────
-// Uc tanim da HTTP SEVIYESINDE hem tanimlanir hem uygulanir; yani her server/location
-// bunlari MIRAS ALIR - location'inda `limit_req` gormemek "limitsizim" demek degildir.
-// Kaynak dosya: bmw_nginx/configuration_delivery/files/rate_limits.conf
-//
-// Tarama tablosu zone ADINI degil ORANI tutuyor (parse: rate, yoksa zone adi). Bu yuzden
-// standart/ozel ayrimi ORAN uzerinden yapilir.
-const ZONE_CATALOG = Object.freeze([
-  {
-    key: 'request_limit', kind: 'ip', rate: '500r/s', burst: 200, nodelay: true,
-    variable: '$binary_remote_addr', size: '20m',
-    label: 'IP başına istek', desc: 'Aynı IP saniyede 500 istek (burst 200, nodelay)',
-  },
-  {
-    key: 'server_limit', kind: 'server', rate: '5000r/s', burst: 200, nodelay: true,
-    variable: '$server_name', size: '50m',
-    label: 'Sunucu adı başına istek', desc: 'Bir vhost saniyede 5000 istek (burst 200, nodelay)',
-  },
-  {
-    key: 'limit_connection_perip', kind: 'conn', limit: 200,
-    variable: '$binary_remote_addr', size: '20m',
-    label: 'IP başına eşzamanlı bağlantı', desc: 'Aynı IP en fazla 200 eşzamanlı bağlantı',
-    // Baglanti limiti location bazli DEGIL: tarama bunu satir satir olcmez, http
-    // seviyesinde herkese uygulanir. Ekranda bilgi olarak durur, sutun olarak degil.
-    perLocation: false,
-  },
-]);
-const STD_IP = ZONE_CATALOG.find((z) => z.key === 'request_limit').rate;
-const STD_SRV = ZONE_CATALOG.find((z) => z.key === 'server_limit').rate;
+const TABLE = 'dbo.Nginx_Audit_Settings';
 const LIMIT_FILE = '/usr/nginx/conf/rate_limits.conf';
 
-/** Deger estate standardi mi? (bos = limit yok, standart disi = ozel ayar) */
-function standardMi(deger, beklenen) {
-  if (!deger) return null;
-  return String(deger).trim() === beklenen;
+// Estate standardı — bmw_nginx/configuration_delivery/files/rate_limits.conf.
+// Üçü de http seviyesinde tanımlanır VE uygulanır; her server/location miras alır.
+const ZONE_CATALOG = Object.freeze([
+  { key: 'request_limit', kind: 'req', variable: '$binary_remote_addr', size: '20m', rate: '500r/s', burst: 200, nodelay: true,
+    label: 'IP başına istek', desc: 'Aynı IP saniyede 500 istek (burst 200, nodelay)' },
+  { key: 'server_limit', kind: 'req', variable: '$server_name', size: '50m', rate: '5000r/s', burst: 200, nodelay: true,
+    label: 'Sunucu adı başına istek', desc: 'Bir vhost saniyede 5000 istek (burst 200, nodelay)' },
+  { key: 'limit_connection_perip', kind: 'conn', variable: '$binary_remote_addr', size: '20m', conn: 200,
+    label: 'IP başına eşzamanlı bağlantı', desc: 'Aynı IP en fazla 200 eşzamanlı bağlantı' },
+]);
+
+const DIRECTIVES = ['limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn', 'limit_req_status', 'limit_conn_status'];
+
+const rx = {
+  zone: /zone=([A-Za-z0-9_.\-]+)(?::([0-9]+[kmg]?))?/i,
+  rate: /rate=([0-9]+r\/[sm])/i,
+  burst: /burst=([0-9]+)/i,
+  firstWord: /^\s*(\S+)/,
+};
+
+/** `$binary_remote_addr zone=request_limit:20m rate=500r/s` → {name,size,rate,variable} */
+function parseReqZone(value) {
+  const v = String(value || '');
+  const z = rx.zone.exec(v);
+  return {
+    name: z ? z[1] : null,
+    size: z && z[2] ? z[2] : null,
+    rate: (rx.rate.exec(v) || [])[1] || null,
+    variable: (rx.firstWord.exec(v) || [])[1] || null,
+  };
 }
 
-/** Ortam: sunucu ADINDAN türetilir (dosya adından DEĞİL — aynı ad her ortamda var). */
-function envOfHost(host) {
-  const h = String(host || '').toUpperCase();
-  if (/^GBNGX?P|^GBRVP/.test(h)) return 'PROD';
-  if (/T\d*$/.test(h) || /TEST/.test(h)) return 'TEST';
-  return 'DIGER';
+/** `limit_conn limit_connection_perip 200` → {name, conn} */
+function parseConnApply(value) {
+  const p = String(value || '').trim().split(/\s+/);
+  return { name: p[0] || null, conn: p[1] != null && /^\d+$/.test(p[1]) ? Number(p[1]) : null };
 }
 
-/** Satırın limit durumu: ikisinden biri varsa limitli. */
-function limitState(row) {
-  const ip = row.ip_rate_limit || null;
-  const srv = row.server_rate_limit || null;
-  if (ip && srv) return 'ikisi';
-  if (ip) return 'ip';
-  if (srv) return 'server';
-  return 'yok';
+/** `zone=request_limit burst=200 nodelay` → {name, burst, nodelay} */
+function parseReqApply(value) {
+  const v = String(value || '');
+  const z = rx.zone.exec(v);
+  return {
+    name: z ? z[1] : null,
+    burst: (rx.burst.exec(v) || [])[1] ? Number((rx.burst.exec(v) || [])[1]) : null,
+    nodelay: /\bnodelay\b/i.test(v),
+  };
+}
+
+/**
+ * Sunucu başına durum. Üç ayrı soruyu AYRI AYRI cevaplar:
+ *   tanimli  — zone `nginx -T` çıktısında var mı (limit_req_zone / limit_conn_zone)
+ *   uygulanan— o zone GERÇEKTEN uygulanıyor mu (limit_req / limit_conn)
+ *   standart — değer estate standardıyla aynı mı
+ * "Tanımlı ama uygulanmamış" sessiz ve tehlikeli bir durumdur: zone bellekte durur,
+ * hiçbir isteği sınırlamaz. Bu yüzden ayrı bir durum olarak gösterilir.
+ */
+function hostStatus(h) {
+  const eksikler = [];
+  const farklar = [];
+  for (const z of ZONE_CATALOG) {
+    const tanim = h.zones[z.key];
+    if (!tanim) { eksikler.push(`${z.key} tanımlı değil`); continue; }
+    const uyg = h.applied[z.key];
+    if (!uyg) { eksikler.push(`${z.key} tanımlı ama UYGULANMIYOR`); continue; }
+    if (z.kind === 'req') {
+      if (z.rate && tanim.rate && tanim.rate !== z.rate) farklar.push(`${z.key} rate=${tanim.rate} (standart ${z.rate})`);
+      if (z.burst != null && uyg.burst != null && uyg.burst !== z.burst) farklar.push(`${z.key} burst=${uyg.burst} (standart ${z.burst})`);
+      if (z.nodelay && uyg.nodelay === false) farklar.push(`${z.key} nodelay YOK`);
+    } else if (z.conn != null && uyg.conn != null && uyg.conn !== z.conn) {
+      farklar.push(`${z.key} ${uyg.conn} bağlantı (standart ${z.conn})`);
+    }
+  }
+  const durum = eksikler.length ? 'eksik' : farklar.length ? 'farkli' : 'standart';
+  return { durum, eksikler, farklar };
 }
 
 async function loadRateLimits({ scanDate } = {}) {
@@ -88,96 +107,148 @@ async function loadRateLimits({ scanDate } = {}) {
   );
   const effectiveDate = dRes.recordset?.[0]?.d || null;
   if (!effectiveDate) {
-    return { ok: true, scanDate: null, availableDates: [], rows: [], summary: emptySummary(), tableMissing: false };
+    return { ok: true, scanDate: null, availableDates: [], hosts: [], summary: emptySummary(), catalog: { file: LIMIT_FILE, zones: ZONE_CATALOG } };
   }
 
-  const [rowsRes, datesRes] = await Promise.all([
+  const [setRes, datesRes] = await Promise.all([
     query(
-      `SELECT host, config_file, api_location, ip_rate_limit, server_rate_limit
+      `SELECT host, conf_file, context, directive, value, reference_value, matches
          FROM ${TABLE}
-        WHERE scan_date = @d
-        ORDER BY host, config_file, api_location`,
-      [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
+        WHERE scan_date = @d AND directive IN (${DIRECTIVES.map((_, i) => `@x${i}`).join(',')})
+        ORDER BY host, directive`,
+      [
+        { name: 'd', type: sql.NVarChar(10), value: effectiveDate },
+        ...DIRECTIVES.map((v, i) => ({ name: `x${i}`, type: sql.NVarChar(64), value: v })),
+      ],
     ),
-    query(`SELECT DISTINCT CONVERT(varchar(10), scan_date, 23) AS d FROM ${TABLE} ORDER BY d DESC`),
+    query(`SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d FROM ${TABLE} ORDER BY d DESC`),
   ]);
 
-  const rows = (rowsRes.recordset || []).map((r) => {
-    const ipLimit = r.ip_rate_limit || null;
-    const serverLimit = r.server_rate_limit || null;
+  const byHost = new Map();
+  const al = (host) => {
+    if (!byHost.has(host)) {
+      byHost.set(host, { host, zones: {}, applied: {}, files: new Set(), status: null, mismatch: 0, raw: [] });
+    }
+    return byHost.get(host);
+  };
+
+  for (const r of setRes.recordset || []) {
+    const h = al(r.host);
+    if (r.conf_file) h.files.add(r.conf_file);
+    if (r.matches === false || r.matches === 0) h.mismatch += 1;
+    const v = r.value || '';
+    switch (r.directive) {
+      case 'limit_req_zone': {
+        const z = parseReqZone(v);
+        if (z.name) h.zones[z.name] = { kind: 'req', ...z, file: r.conf_file, context: r.context };
+        break;
+      }
+      case 'limit_conn_zone': {
+        const z = parseReqZone(v);
+        if (z.name) h.zones[z.name] = { kind: 'conn', ...z, file: r.conf_file, context: r.context };
+        break;
+      }
+      case 'limit_req': {
+        const a = parseReqApply(v);
+        if (a.name) h.applied[a.name] = { kind: 'req', ...a, context: r.context };
+        break;
+      }
+      case 'limit_conn': {
+        const a = parseConnApply(v);
+        if (a.name) h.applied[a.name] = { kind: 'conn', ...a, context: r.context };
+        break;
+      }
+      default:
+        break; // limit_*_status: ekranda ayrica gosterilmiyor
+    }
+    // Ham satirlar yalnizca DETAY icin tutulur; sunucu basina en fazla 20 satir - ekran
+    // bir sunucuyu acinca gosterir, listeye HEPSI birden gonderilmez (OOM dersi).
+    if (h.raw.length < 20) h.raw.push({ file: r.conf_file, context: r.context, directive: r.directive, value: v, matches: r.matches === true || r.matches === 1 });
+  }
+
+  const hosts = [...byHost.values()].map((h) => {
+    const st = hostStatus(h);
     return {
-      host: r.host,
-      env: envOfHost(r.host),
-      configFile: r.config_file,
-      location: r.api_location,
-      ipLimit,
-      serverLimit,
-      state: limitState(r),
-      // null = limit yok · true = estate standardi · false = OZEL bir oran (bilincli mi?)
-      ipStd: standardMi(ipLimit, STD_IP),
-      serverStd: standardMi(serverLimit, STD_SRV),
+      host: h.host,
+      env: envOfHost(h.host),
+      // Estate zone'larinin OZETI: ekranda sutun olarak gosterilir.
+      requestRate: h.zones.request_limit?.rate || null,
+      serverRate: h.zones.server_limit?.rate || null,
+      connLimit: h.applied.limit_connection_perip?.conn ?? null,
+      applied: Object.keys(h.applied),
+      zoneCount: Object.keys(h.zones).length,
+      // rate_limits.conf gercekten yuklenmis mi (nginx -T dokumu bu dosyayi gosteriyor mu)
+      fileLoaded: [...h.files].some((f) => String(f || '').includes('rate_limits.conf')),
+      mismatch: h.mismatch,
+      durum: st.durum,
+      eksikler: st.eksikler,
+      farklar: st.farklar,
+      detay: h.raw,
     };
-  });
+  }).sort((a, b) => a.host.localeCompare(b.host));
 
   return {
     ok: true,
     scanDate: effectiveDate,
     availableDates: (datesRes.recordset || []).map((x) => x.d),
-    rows,
-    summary: summarize(rows),
+    hosts,
+    summary: summarize(hosts),
     catalog: { file: LIMIT_FILE, zones: ZONE_CATALOG },
   };
 }
 
-function emptySummary() {
-  return { hosts: 0, rows: 0, limitli: 0, limitsiz: 0, ipOnly: 0, serverOnly: 0, ikisi: 0, ozel: 0, byEnv: {}, topZones: [] };
+function envOfHost(host) {
+  const h = String(host || '').toUpperCase();
+  if (/^GBNGX?P|^GBRVP/.test(h)) return 'PROD';
+  if (/T\d*$/.test(h) || /TEST/.test(h)) return 'TEST';
+  return 'DIGER';
 }
 
-function summarize(rows) {
+function emptySummary() {
+  return { hosts: 0, standart: 0, farkli: 0, eksik: 0, dosyaYuklenmemis: 0, byEnv: {}, rates: [] };
+}
+
+function summarize(hosts) {
   const s = emptySummary();
-  s.rows = rows.length;
-  s.hosts = new Set(rows.map((r) => r.host)).size;
-  const zone = new Map();
-  for (const r of rows) {
-    if (r.state === 'yok') s.limitsiz += 1; else s.limitli += 1;
-    if (r.state === 'ip') s.ipOnly += 1;
-    if (r.state === 'server') s.serverOnly += 1;
-    if (r.state === 'ikisi') s.ikisi += 1;
-    // OZEL ORAN: estate standardindan farkli bir deger. Yanlis olmak zorunda degil ama
-    // bilerek mi konuldugu sorulmali - bu yuzden ayri sayilir.
-    if (r.ipStd === false || r.serverStd === false) s.ozel += 1;
-    const e = (s.byEnv[r.env] = s.byEnv[r.env] || { rows: 0, limitsiz: 0, hosts: new Set() });
-    e.rows += 1;
-    if (r.state === 'yok') e.limitsiz += 1;
-    e.hosts.add(r.host);
-    for (const z of [r.ipLimit, r.serverLimit]) {
-      if (!z) continue;
-      zone.set(z, (zone.get(z) || 0) + 1);
-    }
+  s.hosts = hosts.length;
+  const rate = new Map();
+  for (const h of hosts) {
+    s[h.durum] += 1;
+    if (!h.fileLoaded) s.dosyaYuklenmemis += 1;
+    const e = (s.byEnv[h.env] = s.byEnv[h.env] || { hosts: 0, standart: 0, farkli: 0, eksik: 0 });
+    e.hosts += 1;
+    e[h.durum] += 1;
+    const k = `${h.requestRate || '—'} / ${h.serverRate || '—'}`;
+    rate.set(k, (rate.get(k) || 0) + 1);
   }
-  for (const k of Object.keys(s.byEnv)) s.byEnv[k] = { ...s.byEnv[k], hosts: s.byEnv[k].hosts.size };
-  s.topZones = [...zone.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([z, n]) => ({ zone: z, count: n }));
+  // Filoda kac FARKLI limit kombinasyonu var: tek satirda "filo tek tip mi" cevabi.
+  s.rates = [...rate.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ combo: k, hosts: n }));
   return s;
 }
 
-/** CSV alanı: ayraç/tırnak/satırsonu içeren değerler tırnaklanır (Excel uyumlu). */
 function csvField(v) {
   const t = v == null ? '' : String(v);
   return /[";\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
 }
 
-/** Rapor: noktalı virgül ayraçlı (TR Excel) + UTF-8 BOM. */
-function toCsv(rows, scanDate) {
-  const head = ['Tarama', 'Sunucu', 'Ortam', 'Konfigürasyon', 'Location', 'IP limiti', 'Server limiti', 'Durum', 'Estate standardı'];
-  const durum = { yok: 'limit YOK', ip: 'IP', server: 'server (miras)', ikisi: 'IP + server' };
+/** Rapor: sunucu başına tek satır (TR Excel: noktalı virgül + UTF-8 BOM). */
+function toCsv(hosts, scanDate) {
+  const head = ['Tarama', 'Sunucu', 'Ortam', 'IP istek limiti', 'Sunucu adı limiti', 'Eşzamanlı bağlantı',
+    'Uygulanan zone sayısı', 'rate_limits.conf yüklü', 'Durum', 'Eksikler', 'Farklar'];
   const lines = [head.join(';')];
-  for (const r of rows) {
-    const std = r.ipStd === false || r.serverStd === false ? 'ÖZEL oran'
-      : r.state === 'yok' ? '—' : 'standart';
-    lines.push([scanDate, r.host, r.env, r.configFile, r.location, r.ipLimit, r.serverLimit, durum[r.state], std]
-      .map(csvField).join(';'));
+  for (const h of hosts) {
+    lines.push([
+      scanDate, h.host, h.env, h.requestRate, h.serverRate, h.connLimit,
+      h.applied.length, h.fileLoaded ? 'evet' : 'HAYIR',
+      { standart: 'standart', farkli: 'FARKLI', eksik: 'EKSİK' }[h.durum],
+      h.eksikler.join(' | '), h.farklar.join(' | '),
+    ].map(csvField).join(';'));
   }
   return `﻿${lines.join('\r\n')}\r\n`;
 }
 
-module.exports = { loadRateLimits, summarize, toCsv, csvField, envOfHost, limitState, standardMi, ZONE_CATALOG, LIMIT_FILE, TABLE };
+module.exports = {
+  loadRateLimits, summarize, toCsv, csvField, envOfHost, hostStatus,
+  parseReqZone, parseReqApply, parseConnApply,
+  ZONE_CATALOG, LIMIT_FILE, DIRECTIVES, TABLE,
+};

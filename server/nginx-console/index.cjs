@@ -597,7 +597,7 @@ function initNginxConsole(app) {
       res.status(yok ? 200 : 503).json({
         ok: !yok ? false : true,
         tableMissing: yok,
-        rows: [], summary: null, availableDates: [], scanDate: null,
+        hosts: [], summary: null, availableDates: [], scanDate: null,
         message: yok
           ? 'dbo.NginxRateLimitInventory tablosu yok — nginx_ratelimit_inventory job\'i hic kosmamis olabilir.'
           : err.message,
@@ -614,7 +614,7 @@ function initNginxConsole(app) {
       const ad = `nginx-rate-limit-${data.scanDate || 'bos'}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${ad}"`);
-      res.send(toCsv(data.rows, data.scanDate));
+      res.send(toCsv(data.hosts, data.scanDate));
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }

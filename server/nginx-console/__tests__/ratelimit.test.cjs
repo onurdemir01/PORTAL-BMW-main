@@ -1,9 +1,15 @@
-// server/nginx-console/__tests__/ratelimit.test.cjs — Nginx Hub › Rate Limit (2026-09-26).
+// server/nginx-console/__tests__/ratelimit.test.cjs — Nginx Hub › Rate Limit (v2).
 //
-// RL1 ozet: limitli/limitsiz ayrimi ve ortam kirilimi
-// RL2 "limit YOK" ile "olculmedi" AYRI
-// RL3 rapor: Excel uyumlu CSV (ayrac, kacis, BOM) ve sunucuda uretiliyor
-// RL4 sekme gorunurluk kapisina bagli
+// Kullanici duzeltmesi (2026-09-26): ilk surum APIGW envanterini gosteriyordu ve ~50.000
+// satir yukleyip sayfayi OOM'a dusurdu. Bu surum TUM nginx sunucularinin
+// /usr/nginx/conf/rate_limits.conf degerlerini nginx -T ciktisindan (dbo.Nginx_Audit_Settings)
+// okur ve SUNUCU BASINA tek satir uretir.
+//
+// RL1 ayristirma: zone tanimi ve uygulama satirlari
+// RL2 durum: standart / farkli / EKSIK (tanimli ama uygulanmiyor DA eksiktir)
+// RL3 rapor: sunucu basina satir, Excel uyumlu CSV
+// RL4 OOM korumasi: ekran satir listesi degil SUNUCU listesi gosterir, detay sinirli
+// RL5 dogru kaynak: APIGW envanteri DEGIL, nginx -T tabanli audit tablosu
 'use strict';
 
 const { test } = require('node:test');
@@ -11,87 +17,93 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { summarize, toCsv, csvField, envOfHost, limitState } = require('../ratelimit.cjs');
+const rl = require('../ratelimit.cjs');
 
-const R = (host, loc, ip, srv) => ({
-  host, env: envOfHost(host), configFile: 'x.conf', location: loc,
-  ipLimit: ip, serverLimit: srv, state: limitState({ ip_rate_limit: ip, server_rate_limit: srv }),
+test('RL1: zone tanimi ve uygulama satirlari dogru ayristirilir', () => {
+  assert.deepEqual(
+    rl.parseReqZone('$binary_remote_addr zone=request_limit:20m rate=500r/s'),
+    { name: 'request_limit', size: '20m', rate: '500r/s', variable: '$binary_remote_addr' },
+  );
+  // NGINX Plus kume senkronu: `sync` eki oranı bozmamali.
+  assert.equal(rl.parseReqZone('$server_name zone=server_limit:50m rate=5000r/s sync').rate, '5000r/s');
+  assert.deepEqual(rl.parseReqApply('zone=request_limit burst=200 nodelay'), { name: 'request_limit', burst: 200, nodelay: true });
+  assert.equal(rl.parseReqApply('zone=request_limit').nodelay, false);
+  assert.deepEqual(rl.parseConnApply('limit_connection_perip 200'), { name: 'limit_connection_perip', conn: 200 });
 });
 
-test('RL1: ozet - limitli/limitsiz ve ortam kirilimi', () => {
-  const rows = [
-    R('GBNGXP40', '/a', 'ip_zone 10r/s', null),
-    R('GBNGXP40', '/b', null, null),
-    R('GBNGXP41', '/c', null, 'srv 5r/s'),
-    R('GBNGWT03', '/d', 'ip_zone 10r/s', 'srv 5r/s'),
-  ];
-  const s = summarize(rows);
-  assert.equal(s.rows, 4);
-  assert.equal(s.hosts, 3);
-  assert.equal(s.limitsiz, 1);
-  assert.equal(s.limitli, 3);
-  assert.equal(s.ipOnly, 1);
-  assert.equal(s.serverOnly, 1);
-  assert.equal(s.ikisi, 1);
-  // SERVER SEVIYESI LIMIT LIMITSIZ SAYILMAZ: nginx onu location'a MIRAS birakir.
-  assert.equal(rows[2].state, 'server');
-  // En cok kullanilan zone: iki satirda gecen ip_zone basta.
-  assert.equal(s.topZones[0].zone, 'ip_zone 10r/s');
-  assert.equal(s.topZones[0].count, 2);
-  // Ortam SUNUCU ADINDAN turetilir (dosya adi her ortamda ayni).
-  assert.equal(s.byEnv.PROD.rows, 3);
-  assert.equal(s.byEnv.PROD.limitsiz, 1);
-  assert.equal(s.byEnv.TEST.rows, 1);
+test('RL2: "tanimli ama uygulanmiyor" EKSIK sayilir', () => {
+  const tam = {
+    zones: { request_limit: { rate: '500r/s' }, server_limit: { rate: '5000r/s' }, limit_connection_perip: {} },
+    applied: { request_limit: { burst: 200, nodelay: true }, server_limit: { burst: 200, nodelay: true }, limit_connection_perip: { conn: 200 } },
+  };
+  assert.equal(rl.hostStatus(tam).durum, 'standart');
+
+  // Zone var ama limit_req YOK: bellekte duran ama HICBIR ISTEGI sinirlamayan bir zone.
+  // Bu sessiz durumu "standart" saymak, olmayan bir korumayi var gostermek olurdu.
+  const uygulanmiyor = { zones: { request_limit: { rate: '500r/s' } }, applied: {} };
+  const st = rl.hostStatus(uygulanmiyor);
+  assert.equal(st.durum, 'eksik');
+  assert.ok(st.eksikler.some((x) => x.includes('UYGULANMIYOR')));
+
+  // Oran/burst/nodelay farki: "farkli" - yanlis olmak zorunda degil ama gorunur olmali.
+  const farkli = JSON.parse(JSON.stringify(tam));
+  farkli.zones.request_limit.rate = '100r/s';
+  farkli.applied.server_limit.nodelay = false;
+  const f = rl.hostStatus(farkli);
+  assert.equal(f.durum, 'farkli');
+  assert.ok(f.farklar.some((x) => x.includes('100r/s')));
+  assert.ok(f.farklar.some((x) => x.includes('nodelay')));
+
+  // EKSIK, FARKLI'yi bastirir: bir zone hic uygulanmiyorsa oncelik odur.
+  const ikisi = JSON.parse(JSON.stringify(farkli));
+  delete ikisi.applied.limit_connection_perip;
+  assert.equal(rl.hostStatus(ikisi).durum, 'eksik');
 });
 
-test('RL2: "limit YOK" ile "olculmedi" ayri', () => {
-  // Satir VARSA ve iki alan da bossa: gercekten limitsiz.
-  assert.equal(limitState({ ip_rate_limit: null, server_rate_limit: null }), 'yok');
-  // Hic satir YOKSA ozet sifir doner - bu "hepsi limitsiz" DEMEK DEGIL.
-  const bos = summarize([]);
-  assert.equal(bos.rows, 0);
-  assert.equal(bos.limitsiz, 0, 'satir yokken limitsiz sayaci sismemeli');
+test('RL3: rapor sunucu basina satir, Excel uyumlu', () => {
+  const hosts = [{
+    host: 'GBNGXP40', env: 'PROD', requestRate: '500r/s', serverRate: '5000r/s', connLimit: 200,
+    applied: ['request_limit', 'server_limit'], zoneCount: 3, fileLoaded: true, mismatch: 0,
+    durum: 'farkli', eksikler: [], farklar: ['server_limit burst=100 (standart 200)'], detay: [],
+  }];
+  const csv = rl.toCsv(hosts, '2026-09-26');
+  assert.equal(csv.charCodeAt(0), 0xFEFF, 'BOM yoksa Excel Turkce karakteri bozar');
+  assert.ok(csv.includes('Sunucu;Ortam'), 'TR Excel icin noktali virgul');
+  assert.ok(csv.includes('GBNGXP40;PROD;500r/s;5000r/s;200'));
+  assert.ok(csv.includes('\r\n'));
+  // Ayrac iceren metin kacisli olmali - yoksa sutunlar kayar.
+  const kacisli = rl.toCsv([{ ...hosts[0], farklar: ['a;b'] }], '2026-09-26');
+  assert.ok(kacisli.includes('"a;b"'));
+});
 
-  // Sunucu ucu tablo yoksa bunu ACIKCA soyluyor mu?
-  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  assert.match(src, /tableMissing: yok/);
-  assert.match(src, /hic kosmamis olabilir/);
+test('RL4: OOM korumasi - ekran SUNUCU listeler, detay sinirli', () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'ratelimit.cjs'), 'utf8');
+  // Sunucu basina ham direktif sayisi sinirli olmali (detay icin, liste icin degil).
+  assert.match(srv, /h\.raw\.length < 20/, 'ham satirlar sinirlandirilmamis');
+  // Yanit SUNUCU dizisi dondurmeli; location satir dizisi DEGIL.
+  assert.match(srv, /hosts,\n\s*summary: summarize\(hosts\)/);
 
-  // Ekran da ayni ayrimi yapmali.
   const ui = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'RateLimitTab.tsx'), 'utf8');
-  assert.match(ui, /"limit yok" anlamına GELMEZ|limit yok" anlamına GELMEZ/i);
+  assert.match(ui, /data\?\.hosts/, 'ekran sunucu listesi okumali');
+  assert.ok(!/data\?\.rows/.test(ui), 'ekran hala location satirlarini okuyor (OOM riski)');
+  // Detay yalnizca ACILAN sunucu icin render edilmeli.
+  assert.match(ui, /\{open && \(/);
 });
 
-test('RL3: rapor Excel uyumlu ve SUNUCUDA uretiliyor', () => {
-  const rows = [R('GBNGXP40', '/a;b', 'ip"z', null)];
-  const csv = toCsv(rows, '2026-09-26');
-  assert.equal(csv.charCodeAt(0), 0xFEFF, 'UTF-8 BOM yoksa Excel Turkce karakteri bozar');
-  assert.ok(csv.includes('Sunucu;Ortam'), 'TR Excel icin noktali virgul ayrac');
-  // Ayrac ve tirnak iceren degerler kacisli olmali - yoksa sutunlar kayar.
-  assert.ok(csv.includes('"/a;b"'));
-  assert.ok(csv.includes('"ip""z"'));
-  assert.equal(csvField('duz'), 'duz', 'gereksiz tirnak eklenmemeli');
-  // Satir sonu CRLF (Excel).
-  assert.ok(csv.includes('\r\n'));
-
-  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  assert.match(src, /ratelimit\.csv/);
-  assert.match(src, /Content-Disposition/, 'indirme basligi yok');
-  assert.match(src, /text\/csv; charset=utf-8/);
-});
-
-test('RL4: sekme gorunurluk kapisina bagli', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  // Hem veri hem rapor ucu tab:nginx:ratelimit kapisindan gecmeli.
-  // Regex'i regex ile aramak okunmaz oluyor: duz metin arayalim.
-  assert.ok(src.includes("'ratelimit'],"), 'ratelimit yolu sekme kapisina baglanmamis');
-
-  const setup = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
-  assert.match(setup, /element_key: 'tab:nginx:ratelimit'/, 'sekme seed edilmemis');
-  assert.match(setup, /NGINX_TAB_KEYS_SEED = \[[^\]]*'ratelimit'/, 'mevcut grantlar yeni sekmeyi de almali');
-
-  const page = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
-  assert.match(page, /canSee\('tab:nginx:ratelimit'\)/);
+test('RL5: kaynak APIGW envanteri DEGIL, nginx -T tabanli audit', () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'ratelimit.cjs'), 'utf8');
+  assert.match(srv, /dbo\.Nginx_Audit_Settings/);
+  // YORUMLARI AY: dosyanin basindaki "eski kaynak neydi" aciklamasi bir ihlal degil.
+  const kod = srv.split(String.fromCharCode(10)).filter((l) => !l.trim().startsWith('//')).join(String.fromCharCode(10));
+  assert.ok(!/NginxRateLimitInventory/.test(kod),
+    'APIGW envanteri farkli bir veri - bu sekme tum filonun rate_limits.conf degerlerini gosterir');
+  // Estate katalogu rate_limits.conf ile ayni uc tanimi tasimali.
+  const anahtarlar = rl.ZONE_CATALOG.map((z) => z.key).sort();
+  assert.deepEqual(anahtarlar, ['limit_connection_perip', 'request_limit', 'server_limit']);
+  assert.equal(rl.LIMIT_FILE, '/usr/nginx/conf/rate_limits.conf');
+  // Sorgu, zone tanimini da uygulamasini da cekmeli - biri olmadan "uygulanmiyor" denemez.
+  for (const d of ['limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn']) {
+    assert.ok(rl.DIRECTIVES.includes(d), `${d} sorgulanmali`);
+  }
 });
