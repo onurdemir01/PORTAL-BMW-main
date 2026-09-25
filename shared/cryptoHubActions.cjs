@@ -132,6 +132,19 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     warnings.push('Bu ortam için tarama kaydı yok — scale adımları üretilemedi. Önce "Taramayı tazele".');
   }
 
+  // EKSIK BILESEN LISTESI SESSIZ KALMAMALI (2026-09-26, uretimde gorulen durum):
+  // `oc get statefulset` RBAC yuzunden Forbidden dondugunde tarama ERR yazar ama bilesen
+  // listesi EKSIK kalir. Plan bu listeden uretildigi icin "Kapat" planinda statefulset'ler
+  // HIC gorunmez - yani eksik bir plan, eksik oldugunu soylemeden onaya cikardi.
+  const eksik = (veri.notes || []).filter((n) => n.level === 'ERR' && /^get-/.test(String(n.stage || '')));
+  for (const n of eksik) {
+    const tur = String(n.stage).replace(/^get-/, '');
+    warnings.push(
+      `Son taramada ${tur} listesi alınamadı (${(n.message || '').slice(0, 120)}) — bu türdeki bileşenler `
+      + 'planda YOK. Plan eksiktir; yetki verilip tarama tazelenmeden uygulanmamalı.',
+    );
+  }
+
   // ── KAPAT ───────────────────────────────────────────────────────────────────────────
   const kapatAdimlari = () => {
     const out = [];

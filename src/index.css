@@ -662,7 +662,11 @@ thead th {
   pointer-events: none;
 }
 .nginx-hub-link.is-current { background: rgba(0, 150, 57, 0.12); }
-.nginx-hub-label { display: inline-flex; gap: 0.3rem; align-items: baseline; }
+/* align-items: baseline IDI (2026-09-26): metin icin dogruydu ama satira bir SVG rozet
+   eklendiginde simge tabanini yaziya oturtup yukari kaydiriyordu. Ortalama, hem simgeyi hem
+   iki kelimeyi dogru hizalar. */
+.nginx-hub-label { display: inline-flex; gap: 0.3rem; align-items: center; line-height: 1; }
+.nginx-hub-label > svg { flex: none; margin-right: 0.1rem; }
 /* "Hub" rengi temaya gore (--nh-* token'lari :root ve [data-theme=dark] altinda). */
 .nginx-hub-word {
   color: var(--nh-hub);

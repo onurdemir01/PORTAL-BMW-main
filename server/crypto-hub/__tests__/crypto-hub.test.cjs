@@ -200,3 +200,21 @@ test('CH11: onay kapali, yazan adimlar isaretli, Portal disi adimlar planda duru
   assert.ok(idxKapat > -1 && idxHelm > idxKapat && idxAc > idxHelm, 'Wyden upgrade sirasi: kapat -> upgrade -> ac');
   assert.match(w.steps[idxHelm].command, /wyden\/wyden --version 1\.14\.0/);
 });
+
+test('CH12: tarama asamasi dustuyse plan EKSIK oldugunu soyler', () => {
+  // Uretimde gorulen durum (2026-09-26): `oc get statefulset` Forbidden dondu, bilesen
+  // listesi eksik kaldi. Plan bu listeden uretildigi icin sessizce eksik bir "Kapat"
+  // plani cikarirdi - bekci bunu engeller.
+  const t = tenantOf('metaco_gar_test');
+  const notes = [{ level: 'ERR', stage: 'get-statefulset', message: 'statefulsets.apps is forbidden' }];
+  const plan = buildPlan(t, 'stop', {}, { components: ORNEK, lastNonZero: ORNEK, notes });
+  assert.ok(plan.warnings.some((w) => w.includes('statefulset') && w.includes('planda YOK')));
+
+  // Hata yoksa bu uyari CIKMAMALI (yoksa uyari gurultuye donusur, kimse okumaz).
+  const temiz = buildPlan(t, 'stop', {}, { components: ORNEK, lastNonZero: ORNEK, notes: [] });
+  assert.ok(!temiz.warnings.some((w) => w.includes('planda YOK')));
+
+  // NOTE (hata degil) plani eksik ILAN ETMEMELI.
+  const bilgi = buildPlan(t, 'stop', {}, { components: ORNEK, lastNonZero: ORNEK, notes: [{ level: 'NOTE', stage: '', message: 'chart deposu tanimli degil' }] });
+  assert.ok(!bilgi.warnings.some((w) => w.includes('planda YOK')));
+});

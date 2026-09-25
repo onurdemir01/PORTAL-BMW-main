@@ -17,7 +17,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ArrowPathIcon, ChevronRightIcon, ExclamationTriangleIcon, InformationCircleIcon,
   CheckCircleIcon, StopCircleIcon, ArrowUpCircleIcon, QuestionMarkCircleIcon,
-  LockClosedIcon, PlayCircleIcon,
+  LockClosedIcon, PlayCircleIcon, PowerIcon,
 } from '@heroicons/react/24/outline';
 import {
   cryptoHubApi, type CryptoApp, type CryptoEnvOption, type CryptoOverview, type CryptoComponent,
@@ -469,26 +469,48 @@ export default function CryptoHubPage() {
         </button>
       </div>
 
-      {/* ISLEMLER: her biri once ON ONAY PENCERESI acar - hicbiri dogrudan calismaz. */}
+      {/* ISLEMLER (2026-09-26 yeniden tasarim): kullanici "ac/kapa gorunumu amator duruyor"
+          dedi. Kucuk butonlar yerine, her islem KENDI KARTI: ne yapacagi bir cumleyle yazili,
+          kumeye dokunanlar isaretli. Hicbiri dogrudan calismaz - once on onay penceresi. */}
       {!data?.notConfigured && actions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>İşlemler</span>
-          {actions.map((a) => (
-            <button
-              key={a.key}
-              type="button"
-              className={SM_BTN}
-              style={btnStyle()}
-              title={a.hint + ' — önce uygulanacak komutlar gösterilir'}
-              onClick={() => setPlanFor(a)}
-            >
-              <PlayCircleIcon className="h-3.5 w-3.5" /> {a.label}
-            </button>
-          ))}
-          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            komutlar önce onay penceresinde gösterilir
-          </span>
-        </div>
+        <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+          <div className="px-4 py-2 flex items-center gap-2 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+            <span className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: 'var(--text-secondary)' }}>İşlemler</span>
+            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              her işlem önce uygulanacak komutları gösterir; onaysız hiçbir şey çalışmaz
+            </span>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-px" style={{ background: 'var(--border-subtle)' }}>
+            {actions.map((a) => {
+              const Icon = a.key === 'upgrade' ? ArrowUpCircleIcon : a.key === 'stop' ? PowerIcon : PlayCircleIcon;
+              const tone = a.key === 'upgrade' ? 'var(--accent)' : a.key === 'stop' ? 'var(--status-danger)' : 'var(--status-success)';
+              return (
+                <button
+                  key={a.key}
+                  type="button"
+                  onClick={() => setPlanFor(a)}
+                  className="text-left px-4 py-3 flex items-start gap-3 hover:brightness-[0.98] focus:outline-none focus-visible:ring-2"
+                  style={{ background: 'var(--bg-surface)' }}
+                >
+                  <span className="mt-0.5 h-8 w-8 rounded-lg inline-flex items-center justify-center shrink-0"
+                    style={{ background: 'var(--bg-elevated)', color: tone }}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{a.label}</span>
+                    <span className="block text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{a.hint}</span>
+                    {a.writes && (
+                      <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                        style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>
+                        kümeyi değiştirir
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {planFor && (
@@ -496,6 +518,11 @@ export default function CryptoHubPage() {
           tenantKey={scope.env.key}
           tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
           action={planFor}
+          running={data?.versions?.running || ''}
+          known={[
+            ...(data?.versions?.available || []).map((v) => ({ version: v, source: 'depo' as const })),
+            ...(data?.archives || []).map((a) => ({ version: a.version, source: 'arsiv' as const })),
+          ]}
           onClose={() => setPlanFor(null)}
         />
       )}
