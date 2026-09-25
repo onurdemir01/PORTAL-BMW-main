@@ -18,7 +18,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   ArrowPathIcon, ChevronRightIcon, ExclamationTriangleIcon, InformationCircleIcon,
   CheckCircleIcon, StopCircleIcon, ArrowUpCircleIcon, QuestionMarkCircleIcon,
-  LockClosedIcon, PlayCircleIcon, PowerIcon, BoltIcon,
+  LockClosedIcon, PlayCircleIcon, PowerIcon, BoltIcon, DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import {
   cryptoHubApi, type CryptoApp, type CryptoEnvOption, type CryptoOverview, type CryptoComponent,
@@ -27,6 +27,7 @@ import {
 import { PlanModal } from './PlanModal';
 import { BitcoinIcon, AppIcon, DomainIcon } from '@/components/common/BrandIcons';
 import { PodsTab, ComponentOps } from './OpsPanel';
+import { ValuesModal } from './ValuesModal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -288,7 +289,8 @@ function DurumTab({ data, tenantKey, tenantLabel, namespace, onDone }: {
 }
 
 // ── Sekme: Surumler ───────────────────────────────────────────────────────────────────
-function SurumTab({ data }: { data: CryptoOverview }) {
+function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tenantKey: string; tenantLabel: string }) {
+  const [valuesFor, setValuesFor] = useState<string | null>(null);
   const v = data.versions;
   const releases = data.releases || [];
   // ANA release: Wyden namespace'inde wydenapp yaninda keycloak + vault release'leri de var;
@@ -304,6 +306,16 @@ function SurumTab({ data }: { data: CryptoOverview }) {
             <div className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
               {main.name} · {main.chart} · uygulama {main.appVersion || '—'} · {main.status}
             </div>
+          )}
+          {main && (
+            <button
+              type="button"
+              className="mt-2 inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium rounded-lg border"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              onClick={() => setValuesFor(main.name)}
+            >
+              <DocumentTextIcon className="h-3.5 w-3.5" /> values.yaml
+            </button>
           )}
         </section>
 
@@ -405,6 +417,10 @@ function SurumTab({ data }: { data: CryptoOverview }) {
         </section>
       )}
 
+      {valuesFor && (
+        <ValuesModal tenantKey={tenantKey} tenantLabel={tenantLabel} release={valuesFor} onClose={() => setValuesFor(null)} />
+      )}
+
       {releases.length > 0 && (
         <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
           <div className="overflow-x-auto">
@@ -417,6 +433,7 @@ function SurumTab({ data }: { data: CryptoOverview }) {
                   <th className="text-left font-medium px-3 py-2">Uygulama sürümü</th>
                   <th className="text-left font-medium px-3 py-2">Durum</th>
                   <th className="text-left font-medium px-3 py-2">Son güncelleme</th>
+                  <th className="text-left font-medium px-3 py-2"> </th>
                 </tr>
               </thead>
               <tbody>
@@ -428,6 +445,11 @@ function SurumTab({ data }: { data: CryptoOverview }) {
                     <td className="px-3 py-2 tabular-nums">{r.appVersion || '—'}</td>
                     <td className="px-3 py-2">{r.status || '—'}</td>
                     <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>{r.updatedAt || '—'}</td>
+                    <td className="px-3 py-2">
+                      <button type="button" className={SM_BTN} style={btnStyle()} onClick={() => setValuesFor(r.name)}>
+                        <DocumentTextIcon className="h-3.5 w-3.5" /> values
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -638,6 +660,7 @@ export default function CryptoHubPage() {
           tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
           action={planFor}
           running={data?.versions?.running || ''}
+          release={data?.versions?.release || ''}
           known={[
             ...(data?.versions?.available || []).map((v) => ({ version: v, source: 'depo' as const })),
             ...(data?.archives || []).map((a) => ({ version: a.version, source: 'arsiv' as const })),
@@ -715,7 +738,7 @@ export default function CryptoHubPage() {
                 tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
                 namespace={scope.env.namespace}
               />
-            ) : <SurumTab data={data} />
+            ) : <SurumTab data={data} tenantKey={scope.env.key} tenantLabel={`${scope.appLabel} · ${scope.env.label}`} />
           ) : null}
         </>
       )}

@@ -337,3 +337,54 @@ test('CH17: secilen ortam URLde tutulur (menuden geri donus calissin)', () => {
   assert.match(page, /setParams\(\{\}\)/, '"Ortami degistir" URL parametresini temizlemeli');
   assert.ok(!/setScope\(/.test(page), 'kapsam artik bilesen durumunda tutulmamali');
 });
+
+test('CH18: values MASKELI gelir, maskeli metin KAYDEDILEMEZ', () => {
+  // Kullanici: "calisan surum icin values.yaml'i gorebilelim, degistirebilelim".
+  // values icinde veritabani parolasi/token olur; varsayilan gorunum MASKELI.
+  const { maskValues } = require('../index.cjs');
+  const out = maskValues([
+    'image:', '  tag: 1.34.4',
+    'db:', '  password: COKGIZLI', '  jdbcUrl: jdbc:sqlserver://db:1433',
+    'api_key: abc12345', 'keystorePassword: xyz', 'sifre_yok: 5',
+    'note: parola kelimesi degerde gecmiyor', 'blok: |',
+  ]);
+  assert.ok(out.includes('  password: ****'));
+  assert.ok(out.includes('api_key: ****'));
+  assert.ok(out.includes('keystorePassword: ****'));
+  // Sir OLMAYAN alanlara dokunulmamali - yoksa ekran okunmaz hale gelir.
+  assert.ok(out.includes('  tag: 1.34.4'));
+  assert.ok(out.includes('  jdbcUrl: jdbc:sqlserver://db:1433'));
+  assert.ok(out.includes('sifre_yok: 5'));
+  assert.ok(out.includes('blok: |'), 'blok gostergesi maskelenmemeli');
+
+  // MASKELI METIN KAYDEDILEMEZ: "****" yazmak gercek parolayi silerdi.
+  assert.throws(
+    () => normalizeOps({ action: 'values_put', valuesPath: '/vhosting/x/v.yaml', content: 'db:\n  password: ****\n' }),
+    /maskelenmiş/i,
+  );
+
+  // Yol denetimi: yalniz /vhosting altinda ve .. yok.
+  assert.throws(() => normalizeOps({ action: 'values_put', valuesPath: '/etc/passwd', content: 'a: b' }), /\/vhosting/);
+  assert.throws(() => normalizeOps({ action: 'values_put', valuesPath: '/vhosting/../etc/x', content: 'a: b' }), /\/vhosting/);
+  assert.equal(normalizeOps({ action: 'values_put', valuesPath: '/vhosting/a/v.yaml', content: 'a: b' }).writes, true,
+    'values_put YAZAN islemdir - onay ister');
+
+  // values_get salt okunur ve release zorunlu.
+  assert.equal(OPS.values_get.writes, false);
+  assert.throws(() => normalizeOps({ action: 'values_get' }), /release/i);
+
+  // Ham icerik ayri ve DENETLENEN bir istek.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.match(src, /req\.query\.reveal/, 'maskesiz icerik ayri bir istek olmali');
+  assert.match(src, /crypto_hub_values_reveal/, 'maskesiz goruntuleme denetim kaydina yazilmali');
+});
+
+test('CH19: upgrade akisi mevcut values adimindan gecer', () => {
+  // Kullanici: "upgrade'lerde de mevcut values.yaml gosterilip sorulmali".
+  const modal = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'crypto_hub', 'PlanModal.tsx'), 'utf8',
+  );
+  assert.match(modal, /'version' \| 'values' \| 'plan'/, 'upgrade akisinda values adimi olmali');
+  assert.match(modal, /bu değerlerle devam ediyorum/i, 'kullanicidan acik onay istenmeli');
+  assert.match(modal, /setStep\(release \? 'values' : 'plan'\)/, 'surum seciminden sonra values adimi gelmeli');
+});

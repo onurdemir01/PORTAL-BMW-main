@@ -23,11 +23,12 @@ import React, { useMemo, useState } from 'react';
 import {
   ClipboardDocumentIcon, CheckIcon, ExclamationTriangleIcon, InformationCircleIcon,
   CommandLineIcon, HandRaisedIcon, MagnifyingGlassIcon, PencilSquareIcon,
-  ArrowRightIcon, ArrowLeftIcon, ArchiveBoxIcon, CloudArrowDownIcon,
+  ArrowRightIcon, ArrowLeftIcon, ArchiveBoxIcon, CloudArrowDownIcon, DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import { Modal } from '@/components/common/Modal';
 import { cryptoHubApi, type CryptoActionDef, type CryptoPlan, type CryptoPlanStep } from '@/api/cryptoHubApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { useOps } from './OpsPanel';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { toast } from '@/hooks/useToast';
 
@@ -234,18 +235,81 @@ function VersionStep({ running, known, value, onChange, onNext }: {
   );
 }
 
-export function PlanModal({ tenantKey, tenantLabel, action, running = '', known = [], onClose }: {
+/** 2. ADIM — koşan values.yaml. Maskeli gösterilir; "gerçek değerler" ayrı bir istektir. */
+function ValuesStep({ tenantKey, release, onBack, onNext }: {
+  tenantKey: string; release: string; onBack: () => void; onNext: () => void;
+}) {
+  const { run, busy } = useOps(tenantKey);
+  const [metin, setMetin] = useState<string | null>(null);
+  const [hata, setHata] = useState('');
+  const [okundu, setOkundu] = useState(false);
+
+  useAsyncEffect(async (alive) => {
+    const r = await run({ action: 'values_get', targets: [], release });
+    if (!alive() || !r) return;
+    if (r.errors?.length) setHata(r.errors.map((e) => `${e.stage}: ${e.message}`).join(' · '));
+    setMetin((r.values || []).join(String.fromCharCode(10)));
+  }, [tenantKey, release]);
+
+  return (
+    <div className="space-y-3">
+      <div className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+        style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>
+        <DocumentTextIcon className="h-4 w-4 mt-0.5 shrink-0" />
+        <span>
+          Upgrade, <b>{release}</b> release'inin values dosyasını kullanır. Aşağıda şu an koşan değerler var
+          (parola/token alanları <b>****</b> ile gizli). Değiştirmeniz gerekiyorsa önce Sürümler sekmesindeki
+          <b> values.yaml</b> ekranından düzenleyin.
+        </span>
+      </div>
+      {hata && (
+        <div className="text-sm rounded-lg px-3 py-2 border"
+          style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{hata}</div>
+      )}
+      {busy && metin == null ? <LoadingLogo compact /> : (
+        <pre className="text-[12px] leading-relaxed rounded-lg px-3 py-2.5 overflow-auto"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', maxHeight: '46vh', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+          {metin || '(değerler okunamadı)'}
+        </pre>
+      )}
+      <label className="flex items-start gap-2 text-sm" style={{ color: 'var(--text-primary)' }}>
+        <input type="checkbox" checked={okundu} onChange={(e) => setOkundu(e.target.checked)} className="mt-0.5" />
+        Yukarıdaki değerleri gördüm, bu değerlerle devam ediyorum.
+      </label>
+      <div className="flex items-center gap-2">
+        <button type="button" className="inline-flex items-center gap-1 h-9 px-3 text-xs font-medium rounded-lg border"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+          onClick={onBack}>
+          <ArrowLeftIcon className="h-4 w-4" /> Sürüm seçimi
+        </button>
+        <button type="button" disabled={!okundu}
+          className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ borderColor: 'var(--accent)', background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}
+          onClick={onNext}>
+          Komutları göster <ArrowRightIcon className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function PlanModal({ tenantKey, tenantLabel, action, running = '', known = [], release = '', onClose }: {
   tenantKey: string;
   tenantLabel: string;
   action: CryptoActionDef;
   running?: string;
   known?: KnownVersion[];
+  /** koşan ana helm release — values adımı bunun değerlerini gösterir */
+  release?: string;
   onClose: () => void;
 }) {
   const needsVersion = action.params.some((p) => p.key === 'version');
   const [version, setVersion] = useState('');
   // Surum isteyen islemlerde once SURUM adimi; digerlerinde dogrudan plan.
-  const [step, setStep] = useState<'version' | 'plan'>(needsVersion ? 'version' : 'plan');
+  // UPGRADE'DE MEVCUT VALUES SORULUR (kullanici, 2026-09-26): surum secildikten sonra,
+  // komutlari gostermeden ONCE kosan values gosterilir ve "bu degerlerle devam" denir.
+  // Upgrade values dosyasini kullanir; icine bakmadan onaylamak, gozu kapali degistirmektir.
+  const [step, setStep] = useState<'version' | 'values' | 'plan'>(needsVersion ? 'version' : 'plan');
   const [plan, setPlan] = useState<CryptoPlan | null>(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
@@ -286,9 +350,9 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
               type="button"
               className="inline-flex items-center gap-1 h-9 px-3 text-xs font-medium rounded-lg border"
               style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-              onClick={() => setStep('version')}
+              onClick={() => setStep(release ? 'values' : 'version')}
             >
-              <ArrowLeftIcon className="h-4 w-4" /> Sürüm seçimine dön
+              <ArrowLeftIcon className="h-4 w-4" /> {release ? 'Values adımına dön' : 'Sürüm seçimine dön'}
             </button>
           )}
           {step === 'plan' && (
@@ -324,17 +388,30 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
           <ol className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
             <li style={step === 'version' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>1. Hedef sürüm</li>
             <li>›</li>
-            <li style={step === 'plan' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>2. Uygulanacak komutlar</li>
+            {release && (
+              <>
+                <li style={step === 'values' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>2. Mevcut values</li>
+                <li>›</li>
+              </>
+            )}
+            <li style={step === 'plan' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>{release ? '3.' : '2.'} Uygulanacak komutlar</li>
           </ol>
         )}
 
-        {step === 'version' ? (
+        {step === 'values' ? (
+          <ValuesStep
+            tenantKey={tenantKey}
+            release={release}
+            onBack={() => setStep('version')}
+            onNext={() => { setStep('plan'); setReload((n) => n + 1); }}
+          />
+        ) : step === 'version' ? (
           <VersionStep
             running={running}
             known={known}
             value={version}
             onChange={setVersion}
-            onNext={() => { setStep('plan'); setReload((n) => n + 1); }}
+            onNext={() => setStep(release ? 'values' : 'plan')}
           />
         ) : (
           <>

@@ -29,10 +29,34 @@ const OPS_KEY = 'crypto_hub_ops';
 const OPS = {
   pods: { writes: false },
   logs: { writes: false },
+  values_get: { writes: false },
   pod_delete: { writes: true },
   rollout: { writes: true },
   scale: { writes: true },
+  // values_put dosyayi degistirir (yedegini alarak); tek basina kumeye dokunmaz ama
+  // ardindan gelen upgrade onu kullanir - bu yuzden YAZAN sayilir ve onay ister.
+  values_put: { writes: true },
 };
+
+// SIR MASKELEME. values.yaml icinde veritabani parolasi, token, keystore sifresi bulunur.
+// Varsayilan gorunum MASKELIDIR; ham icerik yalnizca kullanici acikca "Duzenle" dedigi
+// zaman gonderilir ve bu istek denetim kaydina yazilir. Duzenlenemeyecek bir metni
+// duzenletmek anlamsiz oldugu icin maskeyi tamamen zorunlu kilmiyoruz; ama varsayilan
+// GORME degil, KORUMA tarafinda duruyor.
+const SIR_ANAHTARI = /(pass|passwd|password|pwd|secret|token|apikey|api_key|accesskey|access_key|credential|keystore|truststore|private[_-]?key)/i;
+
+/** `anahtar: deger` satirlarinda sir gorunen degerleri yildizlar. Yorumlara dokunmaz. */
+function maskValues(lines) {
+  return (lines || []).map((raw) => {
+    const l = String(raw == null ? '' : raw);
+    const m = l.match(/^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/);
+    if (!m) return l;
+    const [, girinti, anahtar, deger] = m;
+    if (!SIR_ANAHTARI.test(anahtar)) return l;
+    if (deger === '|' || deger === '>' || deger === '{}' || deger === '[]' || deger === 'null') return l;
+    return `${girinti}${anahtar}: ****`;
+  });
+}
 
 // k8s ad deseni (istege bagli tur oneki). Betikte AYNI denetim var - burasi ilk kapi.
 const TARGET_RE = /^((deployment|statefulset|pod)\/)?[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/;
@@ -53,7 +77,8 @@ function normalizeOps(body) {
   if (targets.length > MAX_TARGETS) throw new Error(`En fazla ${MAX_TARGETS} hedef seçilebilir (seçilen: ${targets.length}).`);
   // BOS HEDEFLE YAZAN ISLEM KOSMAZ: "hepsi" anlamina gelen bir bosluk, bu ekranda en
   // tehlikeli hatadir (tum namespace'i sondurmek).
-  if (writes && targets.length === 0) throw new Error('Hedef seçilmedi.');
+  // values_put'ta "hedef" bir k8s nesnesi degil DOSYA YOLUDUR; asagida ayrica dogrulanir.
+  if (writes && action !== 'values_put' && targets.length === 0) throw new Error('Hedef seçilmedi.');
   if (action === 'logs' && targets.length === 0) throw new Error('Log için en az bir pod seçilmeli.');
   if (action === 'pod_delete' && targets.some((t) => t.includes('/') && !t.startsWith('pod/'))) {
     throw new Error('Pod silme yalnız pod hedefi alır; deployment/statefulset için rollout kullanın.');
@@ -69,6 +94,27 @@ function normalizeOps(body) {
     out.container = String(body?.container || '').trim().slice(0, 64) || '';
     out.previous = body?.previous === true;
   }
+  if (action === 'values_get') {
+    out.release = String(body?.release || '').trim().slice(0, 128);
+    if (!out.release) throw new Error('Helm release adı gerekli.');
+    out.valuesAll = body?.valuesAll === true;
+    // Ham (maskesiz) icerik yalnizca ACIKCA istenirse doner ve denetime yazilir.
+    out.reveal = body?.reveal === true;
+  }
+  if (action === 'values_put') {
+    out.valuesPath = String(body?.valuesPath || '').trim();
+    if (!/^\/vhosting\/[^\0]*$/.test(out.valuesPath) || out.valuesPath.includes('..')) {
+      throw new Error('values dosyası /vhosting altında olmalı ve yolunda .. bulunmamalı.');
+    }
+    const icerik = String(body?.content || '');
+    if (!icerik.trim()) throw new Error('values içeriği boş olamaz.');
+    if (icerik.length > 512 * 1024) throw new Error('values içeriği 512 KB sınırını aşıyor.');
+    // MASKELENMIS METIN KAYDEDILEMEZ: "****" yazan bir dosya, gercek parolayi silerdi.
+    if (/:\s*\*{4}\s*$/m.test(icerik)) {
+      throw new Error('İçerikte maskelenmiş (****) değer var — maskeli metin kaydedilemez. Önce "Gerçek değerleri göster" ile açın.');
+    }
+    out.content = icerik;
+  }
   if (action === 'scale') {
     const r = Number(body?.replicas);
     if (!Number.isFinite(r) || r < 0 || r > 50 || Math.trunc(r) !== r) {
@@ -82,7 +128,7 @@ function normalizeOps(body) {
 /** Betigin TAB ayrilmis satirlarini ekranin anlayacagi bicime cevirir. */
 function parseOpsLines(lines) {
   if (!Array.isArray(lines)) return null;
-  const pods = []; const logs = []; const results = []; const errors = [];
+  const pods = []; const logs = []; const results = []; const errors = []; const values = [];
   for (const raw of lines) {
     const f = String(raw == null ? '' : raw).split('\t');
     switch (f[0]) {
@@ -101,6 +147,11 @@ function parseOpsLines(lines) {
       case 'LOG':
         if (f.length >= 4) logs.push({ target: f[2], line: f.slice(3).join('\t') });
         break;
+      case 'VAL':
+        // Satirda TAB olabilir (YAML girintisi degil ama olabilir): bastaki 3 alandan
+        // sonrasi OLDUGU GIBI korunur.
+        if (f.length >= 4) values.push(f.slice(3).join('\t'));
+        break;
       case 'RES':
         if (f.length >= 5) results.push({ target: f[2], ok: f[3] === 'ok', message: f[4] });
         break;
@@ -111,7 +162,7 @@ function parseOpsLines(lines) {
         break;
     }
   }
-  return { pods, logs, results, errors };
+  return { pods, logs, results, errors, values };
 }
 
 const REGISTRY_KEY = 'crypto_hub_inventory';
@@ -364,6 +415,14 @@ function initCryptoHub(app) {
         if (params.previous) extraVars.crypto_hub_previous = true;
       }
       if (params.action === 'scale') extraVars.crypto_hub_replicas = params.replicas;
+      if (params.action === 'values_get') {
+        extraVars.crypto_hub_release = params.release;
+        if (params.valuesAll) extraVars.crypto_hub_values_all = true;
+      }
+      if (params.action === 'values_put') {
+        extraVars.crypto_hub_values_path = params.valuesPath;
+        extraVars.crypto_hub_values_b64 = Buffer.from(params.content, 'utf8').toString('base64');
+      }
 
       await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: OPS_KEY });
       const user = req.session?.user || {};
@@ -398,7 +457,21 @@ function initCryptoHub(app) {
         const { extractStatsKey } = require('../opsx/index.cjs');
         const stats = extractStatsKey(statusInfo.artifacts, 'crypto_hub_ops_result');
         parsed = parseOpsLines(stats && stats.lines);
-        if (parsed) parsed.action = (stats && stats.action) || null;
+        if (parsed) {
+          parsed.action = (stats && stats.action) || null;
+          // VARSAYILAN MASKELI. Ham icerik icin ayri ve denetlenen bir uc var (?reveal=1).
+          if (parsed.values && parsed.values.length) {
+            parsed.masked = String(req.query.reveal || '') !== '1';
+            if (parsed.masked) parsed.values = maskValues(parsed.values);
+            else {
+              try {
+                require('../audit/index.cjs').auditPortal(req, 'crypto_hub_values_reveal', {
+                  jobId, detail: 'values ham icerik goruntulendi',
+                });
+              } catch { /* denetim yoksa yoksay */ }
+            }
+          }
+        }
       }
       res.json({ ok: true, status: statusInfo.status, result: parsed });
     } catch (err) {
@@ -464,4 +537,4 @@ function initCryptoHub(app) {
   console.log('[CryptoHub] module mounted at /api/crypto-hub');
 }
 
-module.exports = { initCryptoHub, cmpVersion, loadTenant, normalizeOps, parseOpsLines, OPS };
+module.exports = { initCryptoHub, cmpVersion, loadTenant, normalizeOps, parseOpsLines, maskValues, OPS };

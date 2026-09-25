@@ -38,6 +38,12 @@ export interface OpsRequest {
   container?: string;
   previous?: boolean;
   replicas?: number;
+  release?: string;
+  valuesAll?: boolean;
+  valuesPath?: string;
+  content?: string;
+  /** true = values satirlari MASKESIZ istenir (denetim kaydina yazilir) */
+  reveal?: boolean;
 }
 
 /** İşlemin koşacağı komutun İNSAN OKUNUR karşılığı — onay penceresinde gösterilir. */
@@ -45,6 +51,9 @@ export function opsCommand(req: OpsRequest, namespace: string): string {
   const ns = `-n ${namespace}`;
   switch (req.action) {
     case 'pods': return `oc get pods ${ns}`;
+    case 'values_get': return `helm get values ${req.release} ${ns}${req.valuesAll ? ' --all' : ''}`;
+    case 'values_put': return `cp -p ${req.valuesPath} ${req.valuesPath}.<tarih>.bak
+# yeni içerik ${req.valuesPath} dosyasına yazılır`;
     case 'logs': return req.targets.map((t) => `oc logs ${t} ${ns} --tail=${req.tail || 200}${req.container ? ` -c ${req.container}` : ''}${req.previous ? ' --previous' : ''}`).join('\n');
     case 'pod_delete': return req.targets.map((t) => `oc delete pod ${t} ${ns} --force --grace-period=0 --timeout=60s`).join('\n');
     case 'rollout': return req.targets.map((t) => `oc rollout restart ${t} ${ns}`).join('\n');
@@ -54,7 +63,8 @@ export function opsCommand(req: OpsRequest, namespace: string): string {
 }
 
 const WRITES: Record<CryptoOpsAction, boolean> = {
-  pods: false, logs: false, pod_delete: true, rollout: true, scale: true,
+  pods: false, logs: false, values_get: false,
+  pod_delete: true, rollout: true, scale: true, values_put: true,
 };
 
 /** AWX işini başlatır ve bitene kadar yoklar. Sonuç ile hata AYRI döner. */
@@ -82,7 +92,7 @@ export function useOps(tenantKey: string) {
       const bitis = Date.now() + 5 * 60 * 1000;
       for (;;) {
         // eslint-disable-next-line no-await-in-loop
-        const r = await cryptoOpsApi.result(serverId, jobId);
+        const r = await cryptoOpsApi.result(serverId, jobId, req.reveal === true);
         if (!r.ok) { toast.error(r.message || 'Sonuç okunamadı.'); return null; }
         if (r.result) return r.result;
         if (['failed', 'error', 'canceled'].includes(r.status)) {

@@ -139,7 +139,7 @@ export const cryptoHubApi = {
 };
 
 // ── İşlemler (log / pod silme / rollout / replika), 2026-09-26 ────────────────────────
-export type CryptoOpsAction = 'pods' | 'logs' | 'pod_delete' | 'rollout' | 'scale';
+export type CryptoOpsAction = 'pods' | 'logs' | 'values_get' | 'pod_delete' | 'rollout' | 'scale' | 'values_put';
 
 export interface CryptoPod {
   name: string;
@@ -154,6 +154,10 @@ export interface CryptoPod {
 
 export interface CryptoOpsResult {
   action?: string | null;
+  /** values_get: satırlar maskeli mi (varsayılan evet) */
+  masked?: boolean;
+  /** values.yaml satırları (values_get) */
+  values?: string[];
   pods: CryptoPod[];
   logs: { target: string; line: string }[];
   results: { target: string; ok: boolean; message: string }[];
@@ -165,6 +169,7 @@ export const cryptoOpsApi = {
   run: (body: {
     tenant: string; action: CryptoOpsAction; targets: string[];
     tail?: number; container?: string; previous?: boolean; replicas?: number; confirmed?: boolean;
+    release?: string; valuesAll?: boolean; valuesPath?: string; content?: string;
   }): Promise<{ ok: boolean; jobId?: number | null; awxServerId?: number; needsConfirm?: boolean; message?: string }> =>
     fetch(`${BASE}/ops`, {
       method: 'POST',
@@ -172,6 +177,7 @@ export const cryptoOpsApi = {
       body: JSON.stringify(body),
     }).then(safeJson),
 
-  result: (awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; result: CryptoOpsResult | null; message?: string }> =>
-    fetch(`${BASE}/ops-result/${awxServerId}/${jobId}`).then(safeJson),
+  /** reveal=true: values satırları MASKESİZ döner ve bu istek denetim kaydına yazılır. */
+  result: (awxServerId: number, jobId: number, reveal = false): Promise<{ ok: boolean; status: string; result: CryptoOpsResult | null; message?: string }> =>
+    fetch(`${BASE}/ops-result/${awxServerId}/${jobId}${reveal ? '?reveal=1' : ''}`).then(safeJson),
 };

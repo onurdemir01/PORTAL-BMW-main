@@ -145,6 +145,14 @@ Geri açarken **iki yer birden** açılmalı: Portal sabiti ve AWX extra_var'ı.
 Deployment/StatefulSet listesi: istenen/hazır replika, imaj, sürüm, durum
 (çalışıyor · eksik replika · kapalı). Her satırda **Rollout** ve **Replika** işlemleri.
 
+### Upgrade akışı
+
+Üç adım: **1) Hedef sürüm → 2) Mevcut values → 3) Uygulanacak komutlar.**
+
+İkinci adımda koşan release'in values'ı (maskeli) gösterilir ve kullanıcıdan
+*"bu değerlerle devam ediyorum"* onayı istenir. Upgrade bu dosyayı kullandığı için, içine
+bakmadan onaylamak gözü kapalı değiştirmek olurdu.
+
 ### Ortam seçimi ve geri dönüş
 
 Seçilen kiracı **URL'de** tutulur (`/crypto-hub?t=metaco_gar_test`). Bu sayede yan menüdeki
@@ -160,8 +168,22 @@ Koşan chart sürümü (ana release'ten), depodaki sürümler ve **bastion'da ha
 (indirilmiş chart + values dosyaları). Metaco'da depo sorgulanamadığı için pratik sürüm
 geçmişi bu arşivdir.
 
-> **values dosyalarının içeriği Portal'a alınmaz.** `garanti_values.yaml` parola
-> barındırabiliyor; yalnızca ad, boyut ve tarih tutulur.
+> **values dosyalarının içeriği veritabanında tutulmaz.** Arşiv tablosunda yalnızca ad,
+> boyut ve tarih vardır. İçerik **istendiği anda** canlı okunur (aşağıya bakın) ve hiçbir
+> yerde saklanmaz.
+
+### values.yaml
+
+Sürümler sekmesinde koşan release'in **values.yaml** düğmesi var. Ekran:
+
+* **Varsayılan maskeli** — `password`, `secret`, `token`, `keystore`… anahtarlarının değerleri
+  `****`. Gerçek değerler ancak "Gerçek değerleri göster" ile gelir ve bu istek
+  `crypto_hub_values_reveal` olarak denetim kaydına yazılır.
+* **Düzenle** — metni değiştirir, yanında satır bazlı **fark** gösterir. Kaydetmeden önce
+  dosyanın yedeği alınır (`<dosya>.<tarih>.bak`); yedek alınamazsa yazılmaz.
+* **Maskeli metin kaydedilemez.** `****` içeren bir içeriği yazmak gerçek parolayı silerdi;
+  hem ekran hem sunucu bunu reddeder.
+* Yazmak tek başına kümeye dokunmaz; yeni değerler bir sonraki **upgrade** ile uygulanır.
 
 ---
 
