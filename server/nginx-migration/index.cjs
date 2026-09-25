@@ -146,7 +146,7 @@ function buildDeleteExtraVars({ service, inputPath, user }) {
  * Istegi tasima gorunumune karsi dogrular.
  * @returns {{ok:true, app:Object, path:Object} | {ok:false, status:number, message:string}}
  */
-function validateRequest(groups, { group, namespace, application, service, inputPath }, { ignoreStatus = false } = {}) {
+function validateRequest(groups, { group, namespace, application, service, inputPath, force = false }, { ignoreStatus = false } = {}) {
   const g = (groups || []).find((x) => x.id === String(group || ''));
   if (!g) return { ok: false, status: 400, message: 'Geçersiz taşıma grubu.' };
   const ns = String(namespace || '').trim().toLowerCase();
@@ -178,6 +178,19 @@ function validateRequest(groups, { group, namespace, application, service, input
       ok: false,
       status: 409,
       message: `${app} taranan hiçbir yeni sunucuda deploy edilmemiş (/usr/nginx/applications/${ns}/${app}). Playbook dizin yoksa durur; önce deploy gerekli.`,
+    };
+  }
+  // ZATEN TANIMLI YOLA TEKRAR TANIM ACMA (2026-09-26, kullanici: "tanimli uygulamalarda
+  // 'Tanim olustur' butonu aktif, engeller misin").
+  //
+  // KANIT TARAMADIR, job kaydi DEGIL: tanim elle ya da baska bir akisla acilmis olabilir
+  // (Glomo'da yeni tanimlar hala eski yoldan geliyor). Job kaydi arayan eski kural, boyle
+  // satirlari "tanimsiz" sayip ustune bir kez daha yaziyordu.
+  if (!force && p.newStatus === 'defined') {
+    return {
+      ok: false,
+      status: 409,
+      message: `${svc} ${loc} yeni sunucuların tamamında ZATEN TANIMLI (son tarama). Yeniden oluşturmak istiyorsanız force ile gönderin.`,
     };
   }
   return { ok: true, app: row, path: p };

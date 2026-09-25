@@ -134,7 +134,7 @@ export default function NginxProdMigration() {
       let eklendi = 0;
       for (const pp of app.paths) {
         const pj = pathJobs.get(pathJobKey(group.id, app.namespace, app.application, pp.service, pp.location));
-        if (isDefinitionConfirmed(pj, pp.newStatus)) continue; // zaten tanimli
+        if (isPathDefined(pp) || isDefinitionConfirmed(pj, pp.newStatus)) continue; // zaten tanimli
         yapilacak.push({ group, app, path: { service: pp.service, location: pp.location } });
         eklendi++;
       }
@@ -685,6 +685,17 @@ const pathJobKey = (g: string, ns: string, app: string, svc: string, loc: string
 
 const isDefinitionConfirmed = (job: MigrationPathJob | undefined, newStatus: string | null | undefined) =>
   !!job && String(job.status || '').toLowerCase() === 'successful' && newStatus === 'defined';
+
+/**
+ * YOL YENİ SUNUCULARDA TANIMLI MI — tek kanıt TARAMADIR (2026-09-26).
+ *
+ * Kullanıcı: "tanımlı uygulamalarda 'Tanım oluştur' butonu aktif, engeller misin."
+ * Sebep: `isDefinitionConfirmed` Portal'ın kendi job kaydını ŞART koşuyordu. Tanım elle
+ * ya da başka bir akışla açıldıysa (Glomo'da yeni tanımlar hâlâ eski yoldan geliyor) job
+ * kaydı olmaz ve satır "tanımsız" görünürdü — oysa tarama onu yeni sunucuların tamamında
+ * görüyor. Tarama, job kaydından DAHA GÜÇLÜ bir kanıttır: gerçekten oradadır.
+ */
+const isPathDefined = (p: { newStatus?: string | null }) => p.newStatus === 'defined';
 
 const trackKey = (group: string, ns: string, app: string) => `${group}|${ns}/${app}`;
 // DUZ TARIH (YYYY-MM-DD) — ortak `fmtDate` DEGIL, bilerek. Bu degerler DB'den
@@ -1350,7 +1361,8 @@ function GroupPanel({
                       // tarama gordu" ise dugme pasif; bir yol bile eksikse acik kalir.
                       const jobOf = (pp: { service: string; location: string }) =>
                         pathJobs.get(pathJobKey(g.id, a.namespace, a.application, pp.service, pp.location));
-                      const confirmed = a.paths.filter((pp) => isDefinitionConfirmed(jobOf(pp), pp.newStatus));
+                      // Tanimli sayilma olcutu TARAMA; job kaydi yalnizca "kim actı" bilgisi.
+                      const confirmed = a.paths.filter((pp) => isPathDefined(pp) || isDefinitionConfirmed(jobOf(pp), pp.newStatus));
                       const allDone = a.paths.length > 0 && confirmed.length === a.paths.length;
                       return (
                       <>
@@ -1361,13 +1373,13 @@ function GroupPanel({
                       style={{ background: 'var(--accent)' }}
                       title={
                         !canCreate ? 'Job yapılandırılmamış (yönetici paneli)'
-                          : allDone ? `Tanım zaten oluşturuldu: ${confirmed.map((pp) => pp.service + ' ' + pp.location).join(', ')} — job başarıyla bitti ve tarama tanımı yeni sunucuların tamamında gördü.`
+                          : allDone ? `Tanım zaten var: ${confirmed.map((pp) => pp.service + ' ' + pp.location).join(', ')} — son tarama bu tanımları yeni sunucuların tamamında gördü.`
                           : a.status === 'missing' ? 'Taranan hiçbir yeni sunucuda uygulama dizini yok — önce deploy'
                           : a.status === 'not-scanned' ? 'Yeni sunucular henüz taranmadı'
-                          : `Yeni sunucularda ${a.paths.filter((pp) => !isDefinitionConfirmed(jobOf(pp), pp.newStatus)).map((pp) => pp.service + '-PROD.conf ' + pp.location).join(' / ')} tanımını oluştur`
+                          : `Yeni sunucularda ${a.paths.filter((pp) => !(isPathDefined(pp) || isDefinitionConfirmed(jobOf(pp), pp.newStatus))).map((pp) => pp.service + '-PROD.conf ' + pp.location).join(' / ')} tanımını oluştur`
                       }
                     >
-                      <DocumentPlusIcon className="w-3.5 h-3.5" /> {allDone ? 'Tanım oluşturuldu' : 'Tanım oluştur'}
+                      <DocumentPlusIcon className="w-3.5 h-3.5" /> {allDone ? 'Tanımlı' : 'Tanım oluştur'}
                     </button>
                       </>
                       );

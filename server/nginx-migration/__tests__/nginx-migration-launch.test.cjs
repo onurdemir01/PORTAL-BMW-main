@@ -174,9 +174,18 @@ test('MG2 sozlesme: sunucu kapisi ve ekran AYNI kurali uygular', () => {
   assert.ok(/nginx_migration_path_jobs/.test(srv), 'yol bazli job kaydi yok');
 
   const ui = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  // TANIMLI SAYILMA OLCUTU TARAMADIR (2026-09-26, kullanici: "tanimli uygulamalarda
+  // 'Tanim olustur' butonu aktif"). Job kaydi SART KOSULURSA elle ya da baska akisla
+  // acilmis tanimlar "tanimsiz" gorunur ve ustune bir kez daha yazilir.
+  assert.ok(/const isPathDefined = \(p: \{ newStatus\?: string \| null \}\) => p\.newStatus === 'defined'/.test(ui),
+    'ekranda tarama temelli kural yok');
   assert.ok(/const isDefinitionConfirmed = \(job: MigrationPathJob \| undefined, newStatus/.test(ui), 'ekranda kural yok');
-  assert.ok(/disabled=\{!canCreate \|\| allDone/.test(ui), 'dugme dogrulanmis tanimda pasif degil');
-  assert.ok(/Tanım oluşturuldu/.test(ui), 'pasif dugme neden pasif oldugunu soylemeli');
+  assert.ok(/disabled=\{!canCreate \|\| allDone/.test(ui), 'dugme tanimli satirda pasif degil');
+  assert.ok(/isPathDefined\(pp\) \|\| isDefinitionConfirmed/.test(ui), 'toplu secim tanimli yollari atlamiyor');
+  assert.ok(/'Tanımlı' : 'Tanım oluştur'/.test(ui), 'pasif dugme neden pasif oldugunu soylemeli');
+  // Sunucu: tarama tanimli diyorsa 409; force ile bilincli yeniden olusturma acik kalir.
+  assert.ok(/!force && p\.newStatus === 'defined'/.test(srv), 'sunucu kapisi tarama temelli degil');
+  assert.ok(/force ile gönderin/.test(srv), 'yeniden olusturma yolu belgelenmeli');
 
   const ddl = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
   assert.ok(/CREATE TABLE nginx_migration_path_jobs/.test(ddl), 'tablo seed edilmemis');
