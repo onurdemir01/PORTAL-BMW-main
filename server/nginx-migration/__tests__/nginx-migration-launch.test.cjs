@@ -19,11 +19,75 @@ test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () 
     service: 'GLOMO', application: 'base-app-v0', namespace: 'digital-banking-ch-prod', input_path: '/base/',
     env: 'prod', action: 'create', app_type: 'spa', migration_mode: true,
     requester_name: 'Onur Demir', requester_email: 'o@x',
+    fetch_package: false, ocp_cluster: '', pod_webroot: '',
   });
   // Playbook'un kapisi (assert) bu degerleri bekler; survey varsayilani karisirsa is duser.
   assert.equal(v.env, 'prod');
   assert.equal(v.action, 'create');
   assert.equal(v.app_type, 'spa');
+});
+
+// MG4 (2026-09-26): "Paketi getir" secilmediyse cekme ALANLARI DA GONDERILIR, bos olarak.
+// Sebep yukaridakiyle ayni: gondermezsek AWX survey varsayilani devreye girer ve kimsenin
+// istemedigi bir paket cekme baslar. Bos deger, varsayilani EZER.
+test('MG4 paket cekme alanlari: istenmediginde bos GONDERILIR, istendiginde dolar', () => {
+  const kapali = buildExtraVars({ service: 'glomo', application: 'a', namespace: 'n', inputPath: '/x/', user: {} });
+  assert.equal(kapali.fetch_package, false);
+  assert.equal(kapali.ocp_cluster, '');
+  assert.ok('fetch_package' in kapali, 'alan hic gonderilmezse survey varsayilani devreye girer');
+
+  const acik = buildExtraVars({
+    service: 'glomo', application: 'a', namespace: 'n', inputPath: '/x/', user: {},
+    fetchPackage: true, ocpCluster: 'gbocp3rdprod1', podWebroot: '/app/dist',
+  });
+  assert.equal(acik.fetch_package, true);
+  assert.equal(acik.ocp_cluster, 'gbocp3rdprod1');
+  assert.equal(acik.pod_webroot, '/app/dist');
+
+  // Cekme KAPALIYKEN cluster/webroot sizmamali: playbook bu alanlara bakarak karar verir.
+  const sizinti = buildExtraVars({
+    service: 'glomo', application: 'a', namespace: 'n', inputPath: '/x/', user: {},
+    fetchPackage: false, ocpCluster: 'gbocp3rdprod1', podWebroot: '/app/dist',
+  });
+  assert.equal(sizinti.ocp_cluster, '');
+  assert.equal(sizinti.pod_webroot, '');
+});
+
+// MG5: cluster TAHMIN EDILMEZ. Playbook'un cekme play'i `name == ocp_cluster` ile suzulur;
+// yanlis ya da belirsiz bir deger verirsek hicbir jump server kosmaz ve is "paket gelmemis"
+// halde YESIL biter. Belirsizlikte cekmeyi hic baslatmamak dogru davranistir.
+test('MG5 cluster cozumu: tek sonuc secilir, belirsiz/yok ise secilmez', async () => {
+  const mig = require('../index.cjs');
+  const path = require('node:path');
+  const mssqlPath = require.resolve('../../inventory/mssql.cjs');
+  const onceki = require.cache[mssqlPath];
+  const sahte = (rows) => ({
+    exports: {
+      sql: { NVarChar: () => 'nvarchar' },
+      query: async () => ({ recordset: rows }),
+    },
+    id: mssqlPath, filename: mssqlPath, loaded: true, paths: [], children: [],
+  });
+  try {
+    require.cache[mssqlPath] = sahte([{ cluster: 'gbocp3rdprod1' }]);
+    assert.equal((await mig.resolveCluster('n', 'a')).cluster, 'gbocp3rdprod1');
+
+    require.cache[mssqlPath] = sahte([{ cluster: 'gbocp3rdprod1' }, { cluster: 'giocp3rdprod2' }]);
+    const iki = await mig.resolveCluster('n', 'a');
+    assert.equal(iki.cluster, null, 'iki cluster varsa birini SECMEK tahmin olurdu');
+    assert.equal(iki.clusters.length, 2, 'kullaniciya hangileri oldugu soylenebilmeli');
+
+    require.cache[mssqlPath] = sahte([]);
+    assert.equal((await mig.resolveCluster('n', 'a')).cluster, null);
+
+    // Bos/bosluklu cluster degeri "bulundu" sayilmamali.
+    require.cache[mssqlPath] = sahte([{ cluster: '   ' }]);
+    assert.equal((await mig.resolveCluster('n', 'a')).cluster, null);
+  } finally {
+    if (onceki) require.cache[mssqlPath] = onceki;
+    else delete require.cache[mssqlPath];
+    void path;
+  }
 });
 
 const groups = [{
@@ -298,4 +362,21 @@ test('MG3 yeniden olustur: ekranda ACIK bir yol var ve uyari veriyor', () => {
   assert.match(ui, /Evet, üzerine yaz/, 'onay dugmesi ne yaptigini soylemeli');
   // force YALNIZCA kullanici sectiginde gitmeli - varsayilan istekte olmamali.
   assert.match(ui, /\.\.\.\(pending\.force \? \{ force: true \} : \{\}\)/, 'force kosulsuz gonderiliyor');
+});
+
+// MG6: ekran sozlesmesi. "Paketi getir" YALNIZ paketi olmayan satirda cikmali - hazir bir
+// uygulamada cikarsa, calisan bir deployment'in uzerine pod'dan kazinmis kopya cekmeyi
+// teklif etmis oluruz (playbook 71 ile durdurur ama dugmeyi hic gostermemek daha dogru).
+test('MG6 ekran: paket getirme dugmesi yalniz eksik/kismi satirda', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.match(ui, /a\.status === 'missing' \|\| a\.status === 'partial'/,
+    'dugme durum suzgeci olmadan gosteriliyor');
+  assert.match(ui, /onCreate\(a, false, true\)/, 'dugme fetchPackage bayragini gondermiyor');
+  assert.match(ui, /fetchPackage: true/, 'istek govdesinde fetchPackage yok');
+  // Normal "Tanim olustur" akisi bayragi GONDERMEMELI.
+  const normal = ui.slice(ui.indexOf('onClick={() => onCreate(a)}'), ui.indexOf('Tanım oluştur'));
+  assert.ok(!/fetchPackage/.test(normal), 'normal tanim olusturma da paket cekiyor');
 });

@@ -104,7 +104,27 @@ function isDefinitionConfirmed(pathJob, newStatus) {
 }
 
 /** Playbook'a giden extra_vars - saf, test edilebilir. */
-function buildExtraVars({ service, application, namespace, inputPath, user }) {
+// OCP cluster'i ENVANTERDEN cozulur, TAHMIN EDILMEZ (2026-09-26). Playbook'un cekme
+// play'i `name == ocp_cluster` ile suzulur; yanlis/bos bir deger verirsek HICBIR jump
+// server kosmaz ve is "paket gelmemis" halde yesil biter. Bu yuzden cluster bulunamazsa
+// paket cekmeyi hic BASLATMIYORUZ (playbook'taki assert ikinci kapi).
+async function resolveCluster(namespace, application) {
+  const { query, sql } = require('../inventory/mssql.cjs');
+  const r = await query(
+    `SELECT DISTINCT cluster FROM dbo.Openshift_Inventory
+      WHERE namespace = @ns AND application = @app AND cluster IS NOT NULL AND LTRIM(RTRIM(cluster)) <> ''`,
+    [
+      { name: 'ns', type: sql.NVarChar(256), value: String(namespace || '').trim() },
+      { name: 'app', type: sql.NVarChar(256), value: String(application || '').trim() },
+    ],
+  );
+  const rows = (r.recordset || []).map((x) => String(x.cluster || '').trim()).filter(Boolean);
+  // Ayni uygulama birden fazla cluster'da olabilir; hangisinden cekecegimizi TAHMIN
+  // ETMEYIZ - belirsizligi cagirana soyleriz.
+  return { clusters: rows, cluster: rows.length === 1 ? rows[0] : null };
+}
+
+function buildExtraVars({ service, application, namespace, inputPath, user, fetchPackage, ocpCluster, podWebroot }) {
   return {
     service: String(service || '').trim().toUpperCase(),
     application: String(application || '').trim(),
@@ -126,6 +146,11 @@ function buildExtraVars({ service, application, namespace, inputPath, user }) {
     migration_mode: true,
     requester_name: (user && (user.displayName || user.username)) || '',
     requester_email: (user && user.email) || '',
+    // Paket cekme ISTEGE BAGLI: alanlar her zaman gonderilir ki survey varsayilani
+    // sessizce devreye girip beklenmedik bir cekme baslatmasin.
+    fetch_package: !!fetchPackage,
+    ocp_cluster: fetchPackage ? String(ocpCluster || '').trim() : '',
+    pod_webroot: fetchPackage ? String(podWebroot || '').trim() : '',
   };
 }
 
@@ -591,18 +616,45 @@ function initNginxMigration(app) {
 
       const { launchJobOnServer } = require('../ansible/runner.cjs');
       const user = getRequestUser(req) || {};
+      const fetchPackage = req.body?.fetchPackage === true;
+      let ocpCluster = '';
+      if (fetchPackage) {
+        let found = { clusters: [], cluster: null };
+        try {
+          found = await resolveCluster(v.app.namespace, v.app.application);
+        } catch (e) {
+          return res.status(503).json({
+            ok: false,
+            message: `OpenShift envanteri okunamadi, paket cekilemez: ${e.message}`,
+          });
+        }
+        if (!found.cluster) {
+          return res.status(409).json({
+            ok: false,
+            message: found.clusters.length
+              ? `${v.app.application} birden fazla cluster'da bulundu (${found.clusters.join(', ')}). `
+                + 'Hangisinden cekilecegi belirsiz - paket cekme baslatilmadi.'
+              : `${v.app.application} (${v.app.namespace}) OpenShift envanterinde bulunamadi. `
+                + 'Paket cekilemez; once openshift_inventory job\'i kosmali.',
+          });
+        }
+        ocpCluster = found.cluster;
+      }
       const extra = buildExtraVars({
         service: v.path.service,
         application: v.app.application,
         namespace: v.app.namespace,
         inputPath: v.path.location,
         user,
+        fetchPackage,
+        ocpCluster,
+        podWebroot: req.body?.podWebroot,
       });
       const launched = await launchJobOnServer(cfg.awxServerId, cfg.templateId, extra, '', user.username || null);
       // launchJobOnServer { jobId, status } dondurur; onceki kod `job.id` okuyordu ve damga
       // HEP NULL kaliyordu (2026-09-18). Istemciye ayni sekil + awxServerId (izleme penceresi).
       const job = jobShape(launched, cfg.awxServerId);
-      await recordJobHistory(cfg.awxServerId, cfg.templateId, 'Nginx PROD taşıması: tanım oluştur', job, extra, user);
+      await recordJobHistory(cfg.awxServerId, cfg.templateId, (fetchPackage ? 'Nginx PROD taşıması: paket getir + tanım oluştur' : 'Nginx PROD taşıması: tanım oluştur'), job, extra, user);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_create', {
           username: user.username,
@@ -658,7 +710,7 @@ function initNginxMigration(app) {
         console.warn('[nginx-migration] takip damgasi yazilamadi:', e.message);
       }
       const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
-      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, targetHosts: g ? g.newHosts : [] });
+      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, targetHosts: g ? g.newHosts : [], fetchPackage, ocpCluster });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
     }
@@ -729,4 +781,5 @@ function initNginxMigration(app) {
   app.use('/api/nginx-migration', router);
 }
 
-module.exports = { initNginxMigration, isDefinitionConfirmed, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };
+module.exports = {
+  resolveCluster, initNginxMigration, isDefinitionConfirmed, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };

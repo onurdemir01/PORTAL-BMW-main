@@ -31,6 +31,10 @@ export interface NginxMigrationCreateResult {
   extraVars?: Record<string, string>;
   targetHosts?: string[];
   message?: string;
+  /** true = bu is paketi OpenShift'ten cekerek basladi */
+  fetchPackage?: boolean;
+  /** paketin cekildigi OpenShift cluster'i (envanterden cozuldu, tahmin degil) */
+  ocpCluster?: string;
 }
 
 export interface NginxMigrationDeleteResult {
@@ -80,6 +84,10 @@ export const nginxMigrationApi = {
     inputPath: string;
     /** true = tanım zaten varken BİLEREK yeniden oluştur (bozuk tanımı düzeltmek için) */
     force?: boolean;
+    /** true = paketi önce OpenShift'teki çalışan pod'dan çek (deployment hiç geçmemiş SPA'lar) */
+    fetchPackage?: boolean;
+    /** pod içindeki web kök dizini; boş bırakılırsa playbook index.html'e bakarak KEŞFEDER */
+    podWebroot?: string;
   }): Promise<NginxMigrationCreateResult> =>
     fetch(`${BASE}/create`, {
       method: "POST",

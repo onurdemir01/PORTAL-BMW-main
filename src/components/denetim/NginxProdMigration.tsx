@@ -10,7 +10,7 @@ import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 // Ham tarih bicimlendirme YOK: bicim tek yerden gelir (bekci G19).
 import { fmtDateTime } from '@/utils/datetime';
-import { ArrowDownTrayIcon, ArrowPathIcon, DocumentPlusIcon, CalendarDaysIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, ArrowPathIcon, CloudArrowDownIcon, DocumentPlusIcon, CalendarDaysIcon, TrashIcon } from '@heroicons/react/24/outline';
 import {
   nginxMigrationApi,
   nginxMigrationTrackingApi,
@@ -64,7 +64,7 @@ export default function NginxProdMigration() {
   const [pendingDelete, setPendingDelete] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
   // Onay penceresi: hangi satir, hangi location (birden fazla olabilir)
   // force: tanim zaten varken BILEREK yeniden olusturma (bozuk tanimi duzeltmek icin).
-  const [pending, setPending] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number; force?: boolean } | null>(null);
+  const [pending, setPending] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number; force?: boolean; fetchPackage?: boolean } | null>(null);
   // Izleme penceresi (2026-09-18): OpsX/Self Service ile AYNI JobTracker - AWX'e gitmeden canli log.
   // Terminal olunca takip tablosu yeniden okunur ki "tanim olusturuldu" hemen yansisin.
   const { addJob } = useJobTracker();
@@ -255,12 +255,16 @@ export default function NginxProdMigration() {
         // 'yeniden olustur' ekler misin"): tanim zaten varken sunucu 409 doner; force yalnizca
         // kullanici bunu ACIKCA sectiginde gider.
         ...(pending.force ? { force: true } : {}),
+        // PAKETI OPENSHIFT'TEN GETIR (2026-09-26): deployment hic gecmemis uygulamalarda
+        // paket yeni sunuculara gelmedigi icin tanim isi duruyordu. Bayrak yalnizca
+        // kullanici o dugmeye bastiginda gider; normal "Tanim olustur" akisi degismez.
+        ...(pending.fetchPackage ? { fetchPackage: true } : {}),
       });
       if (r.ok) {
-        if (r.job?.id) trackMigrationJob(`Tanım oluştur · ${pending.app.application} #${r.job.id}`, r.job.id);
+        if (r.job?.id) trackMigrationJob(`${pending.fetchPackage ? 'Paket + tanım' : 'Tanım oluştur'} · ${pending.app.application} #${r.job.id}`, r.job.id);
         setResult({
           tone: 'ok',
-          text: `${pending.app.application} için tanım işi başlatıldı${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içinde ${path.location} → application-confs/${path.service.toLowerCase()}-${pending.app.application}-${pending.app.namespace}.conf · hedef: ${(r.targetHosts || []).join(', ')}. ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde; bitince Geçiş sütununa yansır.' : "Sonucu Teams / AWX'ten izleyin."}`,
+          text: `${pending.app.application} için ${pending.fetchPackage ? `paket getirme + tanım işi başlatıldı (paket ${r.ocpCluster || 'OpenShift'} cluster'ındaki çalışan pod'dan çekilecek)` : 'tanım işi başlatıldı'}${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içinde ${path.location} → application-confs/${path.service.toLowerCase()}-${pending.app.application}-${pending.app.namespace}.conf · hedef: ${(r.targetHosts || []).join(', ')}. ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde; bitince Geçiş sütununa yansır.' : "Sonucu Teams / AWX'ten izleyin."}`,
         });
       } else setResult({ tone: 'bad', text: r.message || 'İş başlatılamadı.' });
     } catch (e: unknown) {
@@ -448,7 +452,7 @@ export default function NginxProdMigration() {
           sortBy={sortBy}
           ownersReady={data.ownersReady !== false}
           canCreate={configured}
-          onCreate={(app, force) => setPending({ group: g, app, pathIdx: 0, force })}
+          onCreate={(app, force, fetchPackage) => setPending({ group: g, app, pathIdx: 0, force, fetchPackage })}
           pathJobs={pathJobs}
           selected={selected}
           onToggleSelect={(key, on) => setSelected((prev) => {
@@ -478,9 +482,9 @@ export default function NginxProdMigration() {
       <Modal
         open={!!pending}
         onClose={() => setPending(null)}
-        title={pending?.force ? 'Tanımı YENİDEN oluştur' : 'Yeni sunucularda tanım oluştur'}
+        title={pending?.fetchPackage ? "Paketi OpenShift'ten getir ve tanımla" : pending?.force ? 'Tanımı YENİDEN oluştur' : 'Yeni sunucularda tanım oluştur'}
         subtitle={pending ? `${pending.app.application} · ${pending.app.namespace}` : undefined}
-        icon={DocumentPlusIcon}
+        icon={pending?.fetchPackage ? CloudArrowDownIcon : DocumentPlusIcon}
         dismissOnBackdrop={false}
         footer={
           <div className="flex justify-end gap-2">
@@ -491,11 +495,27 @@ export default function NginxProdMigration() {
               className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
               style={{ background: 'var(--accent)' }}
             >
-              {busy ? 'Başlatılıyor…' : pending?.force ? 'Evet, üzerine yaz' : 'Evet, tanımı oluştur'}
+              {busy ? 'Başlatılıyor…' : pending?.fetchPackage ? 'Evet, paketi getir ve tanımla' : pending?.force ? 'Evet, üzerine yaz' : 'Evet, tanımı oluştur'}
             </button>
           </div>
         }
       >
+        {pending?.fetchPackage && (
+          <div className="mb-3 text-[12px] rounded-lg px-3 py-2 border"
+            style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>
+            <div className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Bu iş iki adım koşar</div>
+            <ol className="list-decimal ml-4 space-y-0.5">
+              <li>Uygulamanın OpenShift&apos;te <b>çalışan</b> pod&apos;undan statik dosyalar çekilir
+                (web kök dizini <code>index.html</code>&apos;e bakılarak keşfedilir; bulunamazsa iş durur).</li>
+              <li>Paket <code>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</code> ve
+                <code> /usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/</code> altına açılır, sonra tanım oluşturulur.</li>
+            </ol>
+            <div className="mt-1.5">
+              Sunucuda <b>zaten içerik varsa iş durur</b> — ekibin dağıttığı sürüm ezilmez.
+              Paketin pod&apos;dan geldiği, dosya adındaki <code>ocp-</code> önekinden okunur.
+            </div>
+          </div>
+        )}
         {pending?.force && (
           <div className="mb-3 text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
             style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
@@ -1186,7 +1206,7 @@ function GroupPanel({
   sortBy: 'status' | 'team' | 'app' | 'plan';
   ownersReady: boolean;
   canCreate: boolean;
-  onCreate: (app: NginxMigrationApp, force?: boolean) => void;
+  onCreate: (app: NginxMigrationApp, force?: boolean, fetchPackage?: boolean) => void;
   pathJobs: Map<string, MigrationPathJob>;
   selected: Set<string>;
   onToggleSelect: (key: string, on: boolean) => void;
@@ -1398,6 +1418,23 @@ function GroupPanel({
                     >
                       <DocumentPlusIcon className="w-3.5 h-3.5" /> {allDone ? 'Tanımlı' : 'Tanım oluştur'}
                     </button>
+                    {/* PAKETI GETIR (2026-09-26, kullanici istegi): bazi SPA'lara henuz
+                        deployment gecilmedigi icin paket yeni sunuculara HIC gelmedi ve
+                        "Tanim olustur" pasif kaliyordu. Eski GBRVP* sunuculari bu SPA'lari
+                        proxy_pass ile OCP'ye yolladigi icin onlarda da paket yok - tek
+                        kaynak calisan pod. Dugme YALNIZ paketi olmayan satirda cikar. */}
+                    {!allDone && canCreate && (a.status === 'missing' || a.status === 'partial') && (
+                      <button
+                        onClick={() => onCreate(a, false, true)}
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg mt-1 whitespace-nowrap"
+                        style={{ border: '1px solid var(--accent)', color: 'var(--accent)', background: 'var(--bg-surface)' }}
+                        title={'Uygulamanın paketi yeni sunuculara hiç gelmemiş (deployment geçilmemiş). '
+                          + "Paket OpenShift'te ÇALIŞAN pod'dan çekilir, /hysdeploy ve /usr/nginx/applications altına açılır, "
+                          + 'ardından tanım oluşturulur. Sunucuda zaten içerik varsa iş durur — mevcut deployment ezilmez.'}
+                      >
+                        <CloudArrowDownIcon className="w-3.5 h-3.5" /> Paketi getir + tanımla
+                      </button>
+                    )}
                     {/* YENIDEN OLUSTUR (2026-09-26, kullanici istegi): tanim var ama BOZUK
                         olabilir. Ayri ve sessiz bir dugme - kazara tetiklenmesin diye
                         yalnizca tanimli satirda cikar ve onay penceresinden gecer. */}
