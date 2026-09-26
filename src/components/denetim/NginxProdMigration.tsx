@@ -496,6 +496,19 @@ export default function NginxProdMigration() {
           </div>
         }
       >
+        {/* BAYAT TARAMA UYARISI (2026-09-26): dugme artik engellenmiyor, ama kullanici
+            neye baktigini bilsin. Engel degil, bilgi. */}
+        {pending && !pending.force && (pending.app.status === 'missing' || pending.app.status === 'not-scanned') && (
+          <div className="mb-3 text-[12px] rounded-lg px-3 py-2 border"
+            style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
+            {pending.app.status === 'missing'
+              ? 'Son tarama bu uygulamanın dizinini yeni sunucuların hiçbirinde görmedi.'
+              : 'Yeni sunucular henüz taranmadı.'}
+            {' '}Tarama <b>günlük</b> koşar; paketi elle koyduysanız ekran bunu henüz görmemiş olabilir.
+            İş, dizini sunucuda <b>kendisi doğrular</b>: yoksa açık hatayla durur,
+            <code> nginx -t</code> düşerse geri alır.
+          </div>
+        )}
         {pending?.force && (
           <div className="mb-3 text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
             style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
@@ -1385,14 +1398,16 @@ function GroupPanel({
                       <>
                     <button
                       onClick={() => onCreate(a)}
-                      disabled={!canCreate || allDone || a.status === 'missing' || a.status === 'not-scanned'}
+                      disabled={!canCreate || allDone}
                       className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg text-white disabled:opacity-40 whitespace-nowrap"
                       style={{ background: 'var(--accent)' }}
                       title={
                         !canCreate ? 'Job yapılandırılmamış (yönetici paneli)'
                           : allDone ? `Tanım zaten var: ${confirmed.map((pp) => pp.service + ' ' + pp.location).join(', ')} — son tarama bu tanımları yeni sunucuların tamamında gördü.`
-                          : a.status === 'missing' ? 'Taranan hiçbir yeni sunucuda uygulama dizini yok — önce deploy'
-                          : a.status === 'not-scanned' ? 'Yeni sunucular henüz taranmadı'
+                          // TARAMA BAYAT OLABILIR: paket elle konulduysa ekran ertesi güne
+                          // kadar görmez. Düğme artık engellenmez, durum UYARI olarak yazılır.
+                          : a.status === 'missing' ? 'Son tarama hiçbir yeni sunucuda uygulama dizini görmedi. Paketi elle koyduysanız deneyin — iş, dizini sunucuda kendisi doğrular ve yoksa durur.'
+                          : a.status === 'not-scanned' ? 'Yeni sunucular henüz taranmadı; iş dizini sunucuda kendisi doğrular.'
                           : `Yeni sunucularda ${a.paths.filter((pp) => !(isPathDefined(pp) || isDefinitionConfirmed(jobOf(pp), pp.newStatus))).map((pp) => pp.service + '-PROD.conf ' + pp.location).join(' / ')} tanımını oluştur`
                       }
                     >

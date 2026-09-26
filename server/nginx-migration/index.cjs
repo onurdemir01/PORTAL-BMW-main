@@ -166,20 +166,19 @@ function validateRequest(groups, { group, namespace, application, service, input
     };
   }
   if (ignoreStatus) return { ok: true, app: row, path: p };
-  if (row.status === 'not-scanned') {
-    return {
-      ok: false,
-      status: 409,
-      message: 'Yeni sunucular henüz taranmadı; uygulama dizini var mı bilinmiyor. Önce nginx_config_audit koşmalı.',
-    };
-  }
-  if (row.status === 'missing') {
-    return {
-      ok: false,
-      status: 409,
-      message: `${app} taranan hiçbir yeni sunucuda deploy edilmemiş (/usr/nginx/applications/${ns}/${app}). Playbook dizin yoksa durur; önce deploy gerekli.`,
-    };
-  }
+
+  // TARAMA DURUMU ARTIK ENGEL DEGIL (2026-09-26, kullanici: "paketler gelmesine ragmen
+  // halen Tanim olustur butonu aktif olmadi").
+  //
+  // Buradaki 'missing' / 'not-scanned' kapilari, uygulama dizini yoksa isin bosuna
+  // kosmasini onlemek icin konmustu. Ama `status` GUNLUK taramadan gelir: paket sunucuya
+  // elle konuldugunda ekran bunu ertesi gune kadar GORMEZ ve kullanici, dizin yerinde
+  // oldugu halde dugmeyi pasif bulur. Yani kapi, olmayan bir sorunu raporluyordu.
+  //
+  // GERCEK KONTROL PLAYBOOK'TA: nginx_ops rolu (spa_facts) uygulama dizinini sunucuda
+  // ARAR ve yoksa acik hatayla DURUR, `nginx -t` duserse GERI ALIR. Yani "bosuna kosma"
+  // riskinin bedeli bir basarisiz job ciktisidir - bayat veriye dayanarak kullaniciyi
+  // engellemekten iyidir. Durum bilgisi ekranda UYARI olarak durmaya devam eder.
   // ZATEN TANIMLI YOLA TEKRAR TANIM ACMA (2026-09-26, kullanici: "tanimli uygulamalarda
   // 'Tanim olustur' butonu aktif, engeller misin").
   //

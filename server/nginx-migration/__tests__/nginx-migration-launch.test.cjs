@@ -49,14 +49,33 @@ test('anti-tamper: yalnizca tasima gorunumundeki (grup, ns, app, servis, locatio
   assert.equal(r.ok, false); // listede olmayan uygulama
 });
 
-test('deploy edilmemis (missing) ve taranmamis uygulama icin job KOSTURULMAZ (409, acik mesaj)', () => {
-  let r = validateRequest(groups, { group: 'glomo', namespace: 'glomo-prod', application: 'eksik-app-v1', service: 'GLOMO', inputPath: '/e/' });
-  assert.equal(r.ok, false);
-  assert.equal(r.status, 409);
-  assert.match(r.message, /deploy/);
-  r = validateRequest(groups, { group: 'glomo', namespace: 'glomo-prod', application: 'ns-app-v1', service: 'GLOMO', inputPath: '/n/' });
-  assert.equal(r.status, 409);
-  assert.match(r.message, /taranmadı/);
+test('TARAMA DURUMU ENGEL DEGIL: bayat tarama kullaniciyi durdurmaz', () => {
+  // Kullanici (2026-09-26): "paketler gelmesine ragmen halen Tanim olustur butonu aktif
+  // olmadi". status GUNLUK taramadan gelir; paket elle konuldugunda ekran ertesi gune
+  // kadar gormez ve kapi, olmayan bir sorunu raporlar. Gercek kontrol playbook'ta:
+  // spa_facts uygulama dizinini sunucuda ARAR, yoksa acik hatayla DURUR.
+  for (const [app, loc] of [['eksik-app-v1', '/e/'], ['ns-app-v1', '/n/']]) {
+    const r = validateRequest(groups, {
+      group: 'glomo', namespace: 'glomo-prod', application: app, service: 'GLOMO', inputPath: loc,
+    });
+    assert.equal(r.ok, true, `${app}: tarama durumu yuzunden reddedildi`);
+    assert.equal(r.app.application, app);
+  }
+
+  // ANTI-TAMPER KAPILARI YERINDE KALMALI: serbest birakilan yalnizca TARAMA DURUMU.
+  // Listede olmayan bir uygulama ya da yol hala reddedilir.
+  assert.equal(validateRequest(groups, {
+    group: 'glomo', namespace: 'glomo-prod', application: 'olmayan-app', service: 'GLOMO', inputPath: '/e/',
+  }).ok, false, 'listede olmayan uygulama kabul edildi');
+  assert.equal(validateRequest(groups, {
+    group: 'glomo', namespace: 'glomo-prod', application: 'eksik-app-v1', service: 'GLOMO', inputPath: '/olmayan/',
+  }).ok, false, 'listede olmayan location kabul edildi');
+
+  // Ekran da engellememeli; durum UYARI olarak durur.
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.match(ui, /disabled=\{!canCreate \|\| allDone\}/, 'dugme hala tarama durumuna gore pasif');
+  assert.match(ui, /Tarama <b>günlük<\/b> koşar/, 'bayat tarama uyarisi yok');
 });
 
 // ── Gecis takibi ──
