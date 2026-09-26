@@ -39,6 +39,46 @@ import { toast } from '@/hooks/useToast';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
+// YÜK GÖSTERGESİ (2026-09-27, kullanıcı isteği). Ölçüm ESKİ sunuculardan (GBRVPP07-10 ve
+// eşlenikleri) gelir: iş şu an oradan akıyor. Yeni sunuculara bakmak yanlış cevap verirdi —
+// tanım yeni olduğu için log kısa, "yük yok" gibi görünürdü.
+//
+// ÜÇ DURUM, ikiye indirilmedi: ölçememek "yük yok" değildir.
+const YUK: Record<'active' | 'idle' | 'unknown', { isaret: string; label: string; color: string }> = {
+  active: { isaret: '●', label: 'yük alıyor', color: 'var(--status-success)' },
+  idle: { isaret: '○', label: 'yük almıyor', color: 'var(--text-muted)' },
+  unknown: { isaret: '?', label: 'ölçülemedi', color: 'var(--status-warning)' },
+};
+
+type YukBilgi = NginxMigrationApp['paths'][number]['traffic'];
+
+function yukIpucu(t: NonNullable<YukBilgi>): string {
+  if (t.state === 'unknown') {
+    return t.hosts === 0
+      ? `Log okunamadı (${t.unknownHosts} sunucu) — "yük yok" DEMEK DEĞİL.`
+      : `Log kuyruğu 7 günü kapsamıyor: 7 günlük sayı (${nf(t.req7 || 0)}) ALT SINIR. `
+        + 'Bu yüzden "yük almıyor" denmiyor.';
+  }
+  const parca = [
+    `24 saat: ${nf(t.req24 || 0)} istek`,
+    `7 gün: ${nf(t.req7 || 0)}${t.sampled ? ' (alt sınır)' : ''}`,
+    `sağlık kontrolü (hariç): ${nf(t.hc24 || 0)}`,
+    `okunan sunucu: ${t.hosts}${t.unknownHosts ? ` · okunamayan: ${t.unknownHosts}` : ''}`,
+  ];
+  if (t.lastSeen) parca.push(`son istek: ${t.lastSeen}`);
+  return parca.join(' · ') + ' — ölçüm ESKİ sunucuların access log’undan (hc.jsp/hc.html hariç).';
+}
+
+/** Uygulamanın en yüksek yük durumu: bir yolu bile yük alıyorsa uygulama aktiftir. */
+function yukOzet(paths: NginxMigrationApp['paths']): YukBilgi {
+  const olcumler = paths.map((p) => p.traffic).filter(Boolean) as NonNullable<YukBilgi>[];
+  if (!olcumler.length) return null;
+  const aktif = olcumler.find((t) => t.state === 'active');
+  if (aktif) return aktif;
+  const bilinmeyen = olcumler.find((t) => t.state === 'unknown');
+  return bilinmeyen || olcumler[0];
+}
+
 const STATUS: Record<NginxMigrationApp['status'], { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral'; hint: string }> = {
   ready: { label: 'hazır', tone: 'success', hint: 'Yeni sunucuların HEPSİNDE hysdeploy + applications dizini var' },
   partial: { label: 'kısmi', tone: 'warning', hint: 'Bazı yeni sunucularda var, bazılarında yok (ya da bazıları henüz taranmadı)' },
@@ -383,11 +423,15 @@ export default function NginxProdMigration() {
           onClick={() =>
             csvDownload(
               'nginx_prod_tasima',
-              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'yeni_sunucularda', 'gecis_durumu', 'planlanan_tarih', 'gecis_tarihi', 'gecis_notu', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'eski_locationlar', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
+              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'yeni_sunucularda', 'yuk', 'yuk_7g', 'yuk_24s', 'gecis_durumu', 'planlanan_tarih', 'gecis_tarihi', 'gecis_notu', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'eski_locationlar', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
               data.groups.flatMap((g) =>
                 g.apps.map((a) => [
                   g.label, a.namespace, a.suffixAdded ? 'evet' : '', a.application, a.owner?.groups.join(' | ') || '',
                   (() => { const st = newSideStatus(a.paths); return NEW_SIDE[st.kind].label + (st.kind === 'partial' ? ` ${st.done}/${st.total}` : ''); })(),
+                  // YUK: olcum yoksa BOS birakilir - "yuk almiyor" yazmak uydurma olurdu.
+                  (() => { const t = yukOzet(a.paths); return t ? YUK[t.state].label : ''; })(),
+                  (() => { const t = yukOzet(a.paths); return t && t.req7 != null ? t.req7 : ''; })(),
+                  (() => { const t = yukOzet(a.paths); return t && t.req24 != null ? t.req24 : ''; })(),
                   TRACK_LABEL[tracking.get(trackKey(g.id, a.namespace, a.application))?.state || 'none'].label,
                   tracking.get(trackKey(g.id, a.namespace, a.application))?.plannedDate || '',
                   tracking.get(trackKey(g.id, a.namespace, a.application))?.migratedDate || '',
@@ -1363,6 +1407,7 @@ function GroupPanel({
                 <th className="text-left pr-3 pb-1">Namespace</th>
                 <th className="text-left pr-3 pb-1" title="namespace'in CMDB sahibi">Ekip</th>
                 <th className="text-left pr-3 pb-1" title="TARAMAYA göre: bu uygulamanın location tanımları yeni sunucularda var mı? Elle işaretlemeden bağımsızdır.">Yeni sunucularda</th>
+                <th className="text-left pr-3 pb-1" title="ESKİ sunucuların access log'una göre bu uygulama yük alıyor mu? Sağlık kontrolü (hc.jsp/hc.html) sayılmaz. ● yük alıyor · ○ yük almıyor · ? ölçülemedi — boş ise ölçüm satırı yok.">Yük</th>
                 <th className="text-left pr-3 pb-1" title="geçiş takibi: planlandı / geçti / iptal + tarih; tıklayarak düzenleyin">Geçiş</th>
                 <th className="text-left pr-3 pb-1">Durum</th>
                 <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost ve location tanımları (proxy_pass ile). Sondaki işaret: bu location YENİ sunucularda tanımlı mı (✓ hepsinde, ◐ bazısında, ✗ hiçbirinde, ? taranmadı)">Location (eski → yeni)</th>
@@ -1459,6 +1504,24 @@ ${st.total ? `${st.done}/${st.total} location tanımlı` : ''}`}>
                           <Pill tone={meta.tone}>
                             {meta.label}{st.kind === 'partial' ? ` ${st.done}/${st.total}` : ''}
                           </Pill>
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td className="pr-3 py-1">
+                    {(() => {
+                      const t = yukOzet(a.paths);
+                      // OLCUM YOKSA UYDURMA: bos hucre, "yuk almiyor" DEGIL.
+                      if (!t) return <span style={{ color: 'var(--text-muted)' }} title="Bu uygulama için yük ölçümü satırı yok (nginx_config_audit'in trafik adımı koşmamış olabilir).">—</span>;
+                      const y = YUK[t.state];
+                      return (
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px]"
+                          style={{ color: y.color }} title={yukIpucu(t)}>
+                          <span aria-hidden>{y.isaret}</span>
+                          {y.label}
+                          {t.state === 'active' && t.req7 != null && (
+                            <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>({nf(t.req7)}/7g)</span>
+                          )}
                         </span>
                       );
                     })()}

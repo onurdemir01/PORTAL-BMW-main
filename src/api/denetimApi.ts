@@ -90,7 +90,19 @@ export interface NginxMigrationApp {
   /** eski sunucudaki (vhost servisi, context path) ciftleri - "Tanim olustur" secimi icin.
    *  newHosts / newStatus (2026-09-17): bu location YENI sunucularda tanimli mi
    *  (defined = hepsinde, partial = bazisinda, none = hicbirinde, not-scanned). */
-  paths: { service: string; location: string; hosts: string[]; newHosts: string[]; newStatus: 'defined' | 'partial' | 'none' | 'not-scanned' }[];
+  paths: {
+    service: string; location: string; hosts: string[]; newHosts: string[];
+    newStatus: 'defined' | 'partial' | 'none' | 'not-scanned';
+    /** YÜK ÖLÇÜMÜ (2026-09-27): ESKİ sunuculardan (GBRVPP07-10 vb.) okunur — iş şu an
+     *  oradan akıyor. null = bu location için ölçüm satırı yok.
+     *  active = 7 günde hc dışı istek var · idle = log okundu, istek yok ·
+     *  unknown = log okunamadı ya da örneklem 7 günü kapsamıyor (req7 ALT SINIR). */
+    traffic: {
+      state: 'active' | 'idle' | 'unknown';
+      req24: number | null; req7: number | null; hc24: number | null;
+      lastSeen: string | null; sampled: boolean; hosts: number; unknownHosts: number;
+    } | null;
+  }[];
   /** yeni host -> bayraklar; null = o sunucu henuz taranmadi */
   perHost: Record<string, NginxMigrationDirFlags | null>;
   readyHosts: number;

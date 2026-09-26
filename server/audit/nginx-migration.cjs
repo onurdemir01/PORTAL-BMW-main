@@ -159,7 +159,55 @@ for (const r of ocpRows || []) {
  *                     spa include'u ya da proxy - "bu location yeni sunucuda TANIMLI mi" (2026-09-17,
  *                     kullanici ilerlemeyi location uzerinden takip ediyor)
  */
-function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, newLocRows, groups = MIGRATION_GROUPS }) {
+// YUK ALIYOR MU (2026-09-27, kullanici): "yuk alip almama gostergesini Production
+// Tasimalari sayfasina da ekler misin? yuk alimini GBRVPP07-08-09-10 sunucularindan
+// kontrol etmelisin."
+//
+// NEDEN ESKI SUNUCULAR: trafik su an ORADAN geciyor (Pendik yuku halen GBRVP*'lerde).
+// Yeni sunuculara bakmak yanlis cevap verirdi - oralarda tanim yeni olustugu icin log
+// bos ya da cok kisa, "yuk yok" gibi gorunurdu. Olcum, isin GERCEKTEN aktigi yerden
+// alinir. Kaynak dbo.Nginx_Spa_Traffic (bmw_nginx/nginx_config_audit/files/
+// nginx_spa_traffic.sh, hc.jsp/hc.html HARIC sayar).
+//
+// ANAHTAR (service, location): ayni tanim mirror sunucularda durur, sayilar TOPLANIR.
+// Log okunamayan sunucu sayiya KATILMAZ ama "bilinmiyor" bayragini kaldirir - "yuk yok"
+// demek DEGILDIR.
+function trafficIndex(trafficRows, oldHostSet) {
+  const idx = new Map();
+  for (const r of trafficRows || []) {
+    const host = H(r.host);
+    if (oldHostSet && oldHostSet.size && !oldHostSet.has(host)) continue;
+    const k = String(r.service || '').toUpperCase() + '|' + String(r.location || '');
+    if (!idx.has(k)) idx.set(k, { req24: 0, req7: 0, hc24: 0, hosts: 0, unknownHosts: 0, lastSeen: null, sampled: false });
+    const c = idx.get(k);
+    if (r.error) { c.unknownHosts += 1; continue; }
+    c.hosts += 1;
+    c.req24 += Number(r.req_24h) || 0;
+    c.req7 += Number(r.req_7d) || 0;
+    c.hc24 += Number(r.hc_24h) || 0;
+    if (r.sampled) c.sampled = true;
+    const ls = r.last_seen ? String(r.last_seen) : null;
+    if (ls && (!c.lastSeen || ls > c.lastSeen)) c.lastSeen = ls;
+  }
+  return idx;
+}
+
+/** UC DURUM: active / idle / unknown. Ikiye indirmek yaniltirdi - olcememek "yuk yok"
+ *  degildir. `sampled` ise req7 ALT SINIRDIR, "atil" demeden once soylenir. */
+function trafficState(c) {
+  if (!c || (c.hosts === 0 && c.unknownHosts === 0)) return null;
+  if (c.hosts === 0) {
+    return { state: 'unknown', req24: null, req7: null, hc24: null, lastSeen: null,
+             sampled: false, hosts: 0, unknownHosts: c.unknownHosts };
+  }
+  return {
+    state: c.req7 > 0 ? 'active' : (c.sampled ? 'unknown' : 'idle'),
+    req24: c.req24, req7: c.req7, hc24: c.hc24, lastSeen: c.lastSeen,
+    sampled: c.sampled, hosts: c.hosts, unknownHosts: c.unknownHosts,
+  };
+}
+
+function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, newLocRows, trafficRows, groups = MIGRATION_GROUPS }) {
   const { routeByAddress, routeByLabel, ocpByLabel } = buildResolverMaps(routeRows, ocpRows);
   // yeni sunuculardaki location tanimlari: "SERVICE|location" -> Set(host)
   const newLoc = new Map();
@@ -197,6 +245,8 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
   const out = [];
   for (const g of groups) {
     const oldSet = new Set(g.oldHosts.map(H));
+    // Trafik YALNIZ bu grubun ESKI sunucularindan okunur: is su an oradan akiyor.
+    const trafIdx = trafficIndex(trafficRows, oldSet);
     const apps = new Map(); // "ns/app" -> satir
     const nonSpa = new Map(); // hedef host -> satir
     const unresolved = new Map(); // hedef host -> satir
@@ -279,7 +329,11 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       forms: [...row.forms].sort(),
       written: [...row.written].sort(),
       paths: [...row.paths.values()]
-        .map((x) => ({ service: x.service, location: x.location, hosts: [...x.hosts].sort(), ...newLocStatus(x.service, x.location) }))
+        .map((x) => ({
+          service: x.service, location: x.location, hosts: [...x.hosts].sort(),
+          ...newLocStatus(x.service, x.location),
+          traffic: trafficState(trafIdx.get(String(x.service).toUpperCase() + '|' + String(x.location))),
+        }))
         .sort((a, b) => a.service.localeCompare(b.service) || a.location.localeCompare(b.location)),
     });
 
@@ -399,7 +453,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
       .then((r) => r.recordset?.[0]?.d || null).catch(() => null),
   ]);
 
-  const [proxy, ups, routes, ocp, dirs, newLocs] = await Promise.all([
+  const [proxy, ups, routes, ocp, dirs, newLocs, traffic] = await Promise.all([
     proxyDate
       ? query(
           `SELECT host, vhost, service, location_path AS location, upstream_name, target_url
@@ -440,9 +494,18 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
           newIn.params,
         ).then((r) => r.recordset || []).catch(() => [])
       : Promise.resolve([]),
+    // YUK OLCUMU (2026-09-27): trafik ESKI sunuculardan okunur - is su an oradan akiyor.
+    // Tablo yoksa ekran eskisi gibi calisir, gosterge gorunmez (uydurma yapmaz).
+    query(
+      `SELECT host, service, env, location, req_24h, req_7d, hc_24h, sampled, last_seen, error
+         FROM dbo.Nginx_Spa_Traffic
+        WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)
+          AND host IN (${oldIn.sqlText})`,
+      oldIn.params,
+    ).then((r) => r.recordset || []).catch(() => []),
   ]);
 
-  const groups = buildMigration({ proxyRows: proxy, upstreamRows: ups, routeRows: routes, ocpRows: ocp, dirRows: dirs, newLocRows: newLocs });
+  const groups = buildMigration({ proxyRows: proxy, upstreamRows: ups, routeRows: routes, ocpRows: ocp, dirRows: dirs, newLocRows: newLocs, trafficRows: traffic });
   const owners = await loadNamespaceOwners(query);
   for (const g of groups) {
     for (const a of g.apps) a.owner = ownersFor(owners.byNs, [a.namespace]);
@@ -451,6 +514,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     ok: true,
     ownersReady: owners.ready,
     proxyReady: !!proxyDate,
+    trafficReady: (traffic || []).length > 0,
     dirsReady: !!dirDate,
     proxyScanDate: proxyDate,
     dirScanDate: dirDate,
