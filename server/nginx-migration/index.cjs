@@ -104,42 +104,7 @@ function isDefinitionConfirmed(pathJob, newStatus) {
 }
 
 /** Playbook'a giden extra_vars - saf, test edilebilir. */
-// OCP cluster'i ENVANTERDEN cozulur, TAHMIN EDILMEZ (2026-09-26). Playbook'un cekme
-// play'i `name == ocp_cluster` ile suzulur; yanlis/bos bir deger verirsek HICBIR jump
-// server kosmaz ve is "paket gelmemis" halde yesil biter. Bu yuzden cluster bulunamazsa
-// paket cekmeyi hic BASLATMIYORUZ (playbook'taki assert ikinci kapi).
-//
-// BIRDEN FAZLA CLUSTER: kullanici (2026-09-26) "paketi gbocpprod1'den cekebiliriz,
-// hepsinde ayni paket var zaten" dedi. Uretimde gorulen ornek: card-dispute-mng-app-v0
-// bes cluster'da birden duruyor. Bu bir TAHMIN DEGIL, kullanicinin verdigi kural:
-// ayni uygulama coklu cluster'da ise statik paket ayni oldugu icin tek bir referans
-// cluster'dan cekmek yeterli.
-//
-// Tercih listesi SIRALIDIR; ilk bulunan kazanir. Listede hicbiri yoksa ve birden fazla
-// aday varsa YINE belirsizdir - rastgele birini secmeyiz.
-const CLUSTER_TERCIHI = ['gbocpprod1'];
-async function resolveCluster(namespace, application) {
-  const { query, sql } = require('../inventory/mssql.cjs');
-  const r = await query(
-    `SELECT DISTINCT cluster FROM dbo.Openshift_Inventory
-      WHERE namespace = @ns AND application = @app AND cluster IS NOT NULL AND LTRIM(RTRIM(cluster)) <> ''`,
-    [
-      { name: 'ns', type: sql.NVarChar(256), value: String(namespace || '').trim() },
-      { name: 'app', type: sql.NVarChar(256), value: String(application || '').trim() },
-    ],
-  );
-  const rows = [...new Set((r.recordset || []).map((x) => String(x.cluster || '').trim()).filter(Boolean))];
-  if (rows.length === 1) return { clusters: rows, cluster: rows[0], preferred: false };
-  // Coklu cluster: tercih listesinden ILK bulunan. Bulunmazsa belirsiz kalir.
-  const tercih = CLUSTER_TERCIHI.find((c) => rows.some((x) => x.toLowerCase() === c.toLowerCase()));
-  if (tercih) {
-    const asil = rows.find((x) => x.toLowerCase() === tercih.toLowerCase());
-    return { clusters: rows, cluster: asil, preferred: true };
-  }
-  return { clusters: rows, cluster: null, preferred: false };
-}
-
-function buildExtraVars({ service, application, namespace, inputPath, user, fetchPackage, ocpCluster, podWebroot }) {
+function buildExtraVars({ service, application, namespace, inputPath, user }) {
   return {
     service: String(service || '').trim().toUpperCase(),
     application: String(application || '').trim(),
@@ -161,16 +126,6 @@ function buildExtraVars({ service, application, namespace, inputPath, user, fetc
     migration_mode: true,
     requester_name: (user && (user.displayName || user.username)) || '',
     requester_email: (user && user.email) || '',
-    // Paket cekme ISTEGE BAGLI: alanlar her zaman gonderilir ki survey varsayilani
-    // sessizce devreye girip beklenmedik bir cekme baslatmasin.
-    fetch_package: !!fetchPackage,
-    ocp_cluster: fetchPackage ? String(ocpCluster || '').trim() : '',
-    pod_webroot: fetchPackage ? String(podWebroot || '').trim() : '',
-    // ZINCIRI PORTAL KURAR (2026-09-26, kullanici karari): cekme isi AWX REST API'sini
-    // CAGIRMAZ, dolayisiyla bir API jetonuna ihtiyac duymaz. then_migrate ACIKCA false
-    // gider - alan hic gonderilmezse AWX survey varsayilani devreye girip is kendi
-    // basina tasima baslatabilirdi.
-    then_migrate: false,
   };
 }
 
@@ -191,7 +146,7 @@ function buildDeleteExtraVars({ service, inputPath, user }) {
  * Istegi tasima gorunumune karsi dogrular.
  * @returns {{ok:true, app:Object, path:Object} | {ok:false, status:number, message:string}}
  */
-function validateRequest(groups, { group, namespace, application, service, inputPath, force = false }, { ignoreStatus = false, allowMissing = false } = {}) {
+function validateRequest(groups, { group, namespace, application, service, inputPath, force = false }, { ignoreStatus = false } = {}) {
   const g = (groups || []).find((x) => x.id === String(group || ''));
   if (!g) return { ok: false, status: 400, message: 'Geçersiz taşıma grubu.' };
   const ns = String(namespace || '').trim().toLowerCase();
@@ -218,21 +173,11 @@ function validateRequest(groups, { group, namespace, application, service, input
       message: 'Yeni sunucular henüz taranmadı; uygulama dizini var mı bilinmiyor. Önce nginx_config_audit koşmalı.',
     };
   }
-  // "DEPLOY EDILMEMIS" ENGELI, PAKET GETIRME ISTENDIGINDE GECERSIZDIR (2026-09-26).
-  //
-  // Bu kapi, uygulama dizini olmadan tanim isinin duracagi icin konmustu. Paketi
-  // OpenShift'ten getirme ozelligi TAM OLARAK bu durumu cozuyor: is once paketi
-  // pod'dan cekip /hysdeploy + /usr/nginx/applications altina aciyor, SONRA tanimi
-  // olusturuyor. Kapiyi burada da uygulamak, ozelligin hedefledigi tek senaryoyu
-  // bastan reddetmek olurdu - kullanici dugmeye basar, "once deploy gerekli" cevabini
-  // alir ve dugmenin ne ise yaradigini anlamaz.
-  if (row.status === 'missing' && !allowMissing) {
+  if (row.status === 'missing') {
     return {
       ok: false,
       status: 409,
-      message: `${app} taranan hiçbir yeni sunucuda deploy edilmemiş (/usr/nginx/applications/${ns}/${app}). `
-        + 'Playbook dizin yoksa durur; önce deploy gerekli — ya da "Paketi getir + tanımla" ile '
-        + "paketi OpenShift'teki çalışan pod'dan getirin.",
+      message: `${app} taranan hiçbir yeni sunucuda deploy edilmemiş (/usr/nginx/applications/${ns}/${app}). Playbook dizin yoksa durur; önce deploy gerekli.`,
     };
   }
   // ZATEN TANIMLI YOLA TEKRAR TANIM ACMA (2026-09-26, kullanici: "tanimli uygulamalarda
@@ -319,15 +264,9 @@ function initNginxMigration(app) {
         awxServerId: Number(cfg.awxServerId) || 0,
         templateId: Number(cfg.templateId) || 0,
         deleteTemplateId: Number(cfg.deleteTemplateId) || 0,
-        // PAKET CEKME AYRI TEMPLATE (2026-09-26, job 3352755): tasima DINAMIK envanterde
-        // kosar, OpenShift jump server'lari STATIK envanterde. Ayni template ikisine birden
-        // ulasamaz - Ansible "Could not match supplied host pattern" deyip play'i atliyordu.
-        // Cekme isi statik envanterle kosar, paketi GBLABT02'nin gordugu paylasilan alana
-        // koyar; GBLABT02 iki envanterde de oldugu icin koprudur.
-        fetchTemplateId: Number(cfg.fetchTemplateId) || 0,
       };
     } catch {
-      return { awxServerId: 0, templateId: 0, deleteTemplateId: 0, fetchTemplateId: 0 };
+      return { awxServerId: 0, templateId: 0, deleteTemplateId: 0 };
     }
   }
 
@@ -595,11 +534,10 @@ function initNginxMigration(app) {
     const awxServerId = Number(req.body?.awxServerId) || 0;
     const templateId = Number(req.body?.templateId) || 0;
     const deleteTemplateId = Number(req.body?.deleteTemplateId) || 0; // istege bagli: nginx_ops
-    const fetchTemplateId = Number(req.body?.fetchTemplateId) || 0; // istege bagli: nginx_spa_package_fetch
     if (awxServerId <= 0 || templateId <= 0) {
       return res.status(400).json({ ok: false, message: 'AWX sunucusu ve template ID zorunlu.' });
     }
-    const data = JSON.stringify({ awxServerId, templateId, deleteTemplateId, fetchTemplateId });
+    const data = JSON.stringify({ awxServerId, templateId, deleteTemplateId });
     try {
       const ex = await db.query(`SELECT 1 FROM portal_config_blobs WHERE name = $1`, [CONFIG_NAME]);
       if (ex.rows.length) {
@@ -607,7 +545,7 @@ function initNginxMigration(app) {
       } else {
         await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [CONFIG_NAME, data]);
       }
-      res.json({ ok: true, config: { awxServerId, templateId, deleteTemplateId, fetchTemplateId } });
+      res.json({ ok: true, config: { awxServerId, templateId, deleteTemplateId } });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }
@@ -628,10 +566,7 @@ function initNginxMigration(app) {
       const { query, sql } = require('../inventory/mssql.cjs');
       const { loadMigration } = require('../audit/nginx-migration.cjs');
       const view = await loadMigration({ query, sql, hasProxyColumns: null });
-      // Paket getirme isteniyorsa "deploy edilmemis" kapisi ACILIR: isin kendisi paketi
-      // getirecek. Diger kapilar (taranmadi / zaten tanimli) yerinde kalir.
-      const fetchPackage = req.body?.fetchPackage === true;
-      const v = validateRequest(view.groups, req.body || {}, { allowMissing: fetchPackage });
+      const v = validateRequest(view.groups, req.body || {});
       if (!v.ok) return res.status(v.status).json({ ok: false, message: v.message });
 
       // TANIM ZATEN OLUSTURULDUYSA YENIDEN TETIKLENMEZ (2026-09-23, kullanici).
@@ -656,60 +591,18 @@ function initNginxMigration(app) {
 
       const { launchJobOnServer } = require('../ansible/runner.cjs');
       const user = getRequestUser(req) || {};
-      let ocpCluster = '';
-      let ocpClusterPreferred = false;
-      if (fetchPackage) {
-        let found = { clusters: [], cluster: null };
-        try {
-          found = await resolveCluster(v.app.namespace, v.app.application);
-        } catch (e) {
-          return res.status(503).json({
-            ok: false,
-            message: `OpenShift envanteri okunamadi, paket cekilemez: ${e.message}`,
-          });
-        }
-        if (!found.cluster) {
-          return res.status(409).json({
-            ok: false,
-            message: found.clusters.length
-              ? `${v.app.application} birden fazla cluster'da bulundu (${found.clusters.join(', ')}) `
-                + `ve hicbiri tercih listesinde (${CLUSTER_TERCIHI.join(', ')}) yok. `
-                + 'Hangisinden cekilecegi belirsiz - paket cekme baslatilmadi.'
-              : `${v.app.application} (${v.app.namespace}) OpenShift envanterinde bulunamadi. `
-                + 'Paket cekilemez; once openshift_inventory job\'i kosmali.',
-          });
-        }
-        ocpCluster = found.cluster;
-        ocpClusterPreferred = !!found.preferred;
-      }
       const extra = buildExtraVars({
         service: v.path.service,
         application: v.app.application,
         namespace: v.app.namespace,
         inputPath: v.path.location,
         user,
-        fetchPackage,
-        ocpCluster,
-        podWebroot: req.body?.podWebroot,
       });
-      // PAKET ISTENIYORSA once CEKME isi kosar; tasimayi o tetikler (then_migrate).
-      // Iki isi Portal'dan sirayla baslatip beklemiyoruz: AWX islerinin arasinda
-      // denetleyici konteyneri degisebilir ve /tmp'deki zip kaybolur. Zincir Ansible
-      // tarafinda, paket de paylasilan alanda durur.
-      const hedefTemplate = fetchPackage ? cfg.fetchTemplateId : cfg.templateId;
-      if (fetchPackage && !hedefTemplate) {
-        return res.status(409).json({
-          ok: false,
-          message: 'Paket getirme job\'i yapilandirilmamis. nginx_spa_package_fetch.yml icin '
-            + 'AWX\'te acilan template (STATIK OpenShift envanteriyle) bu sayfadaki yonetici '
-            + 'panelinde "Paket getirme job\'i" alanina girilmeli.',
-        });
-      }
-      const launched = await launchJobOnServer(cfg.awxServerId, hedefTemplate, extra, '', user.username || null);
+      const launched = await launchJobOnServer(cfg.awxServerId, cfg.templateId, extra, '', user.username || null);
       // launchJobOnServer { jobId, status } dondurur; onceki kod `job.id` okuyordu ve damga
       // HEP NULL kaliyordu (2026-09-18). Istemciye ayni sekil + awxServerId (izleme penceresi).
       const job = jobShape(launched, cfg.awxServerId);
-      await recordJobHistory(cfg.awxServerId, hedefTemplate, (fetchPackage ? 'Nginx PROD taşıması: paket getir (tanımı kendisi tetikler)' : 'Nginx PROD taşıması: tanım oluştur'), job, extra, user);
+      await recordJobHistory(cfg.awxServerId, cfg.templateId, 'Nginx PROD taşıması: tanım oluştur', job, extra, user);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_create', {
           username: user.username,
@@ -764,41 +657,8 @@ function initNginxMigration(app) {
       } catch (e) {
         console.warn('[nginx-migration] takip damgasi yazilamadi:', e.message);
       }
-      // ZINCIR: cekme isi bitince tasimayi Portal baslatir. Kayit DB'de durur, yani
-      // tarayici kapansa da zincir tamamlanir.
-      let chained = false;
-      if (fetchPackage && job.id) {
-        try {
-          const chain = require('./chain.cjs');
-          const migVars = { ...extra };
-          delete migVars.then_migrate;
-          delete migVars.ocp_cluster;
-          delete migVars.pod_webroot;
-          // Tasima paketi paylasilan alandan ALIR: fetch_package true kalir.
-          await chain.enqueue(db, {
-            fetchJobId: job.id,
-            awxServerId: cfg.awxServerId,
-            templateId: cfg.templateId,
-            extraVars: migVars,
-            requestedBy: user.username || null,
-          });
-          chained = true;
-        } catch (e) {
-          // Zincir kaydi yazilamadiysa SUSMAYIZ: paket gelecek ama tanim olusmayacak.
-          console.warn('[nginx-migration] zincir kaydi yazilamadi:', e.message);
-        }
-      }
       const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
-      res.json({
-        ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra,
-        targetHosts: g ? g.newHosts : [], fetchPackage, ocpCluster,
-        ocpClusterPreferred: !!ocpClusterPreferred,
-        chained,
-        message: fetchPackage && !chained
-          ? 'Paket getirme isi basladi ama ZINCIR KAYDI YAZILAMADI: paket gelecek, tanim '
-            + 'OTOMATIK olusmayacak. Is bitince "Tanim olustur" ile elle tamamlayin.'
-          : undefined,
-      });
+      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, targetHosts: g ? g.newHosts : [] });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
     }
@@ -866,30 +726,8 @@ function initNginxMigration(app) {
     }
   });
 
-  // ZINCIR IZLEYICISI: cekme isi bitince tasimayi baslatir (long-job-watcher ile ayni
-  // periyodik-tick deseni). Tarayiciya bagli degil.
-  try {
-    require('./chain.cjs').startWatcher(db);
-  } catch (e) {
-    console.warn('[nginx-migration] zincir izleyicisi baslatilamadi:', e.message);
-  }
-
-  router.get('/chain', async (_req, res) => {
-    try {
-      const chain = require('./chain.cjs');
-      await chain.ensureTable(db);
-      const r = await db.query(
-        `SELECT TOP 50 id, fetch_job_id, migration_job_id, status, message, requested_by, created_at, finished_at
-           FROM ${chain.TABLE} ORDER BY id DESC`,
-      );
-      res.json({ ok: true, rows: r.rows || [] });
-    } catch (err) {
-      res.status(503).json({ ok: false, message: err.message });
-    }
-  });
-
   app.use('/api/nginx-migration', router);
 }
 
 module.exports = {
-  resolveCluster, initNginxMigration, isDefinitionConfirmed, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };
+  initNginxMigration, isDefinitionConfirmed, buildExtraVars, buildDeleteExtraVars, validateRequest, normalizeTracking, rowToTracking, jobShape, syncJobStatusToTracking, JOB_TERMINAL, JOB_LIVE, TRACK_STATES, _CONFIG_NAME: CONFIG_NAME };
