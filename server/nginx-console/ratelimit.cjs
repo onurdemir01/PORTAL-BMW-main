@@ -262,7 +262,7 @@ function csvField(v) {
 
 /** Rapor: sunucu başına tek satır (TR Excel: noktalı virgül + UTF-8 BOM). */
 function toCsv(hosts, scanDate) {
-  const head = ['Tarama', 'Sunucu', 'Ortam', 'IP istek limiti', 'Sunucu adı limiti', 'Eşzamanlı bağlantı',
+  const head = ['Tarama', 'Sunucu', 'Ortam', 'IP istek limiti/kullanıcı başına', 'Sunucu limiti', 'Concurrent bağlantı limiti/kullanıcı başına',
     'Uygulanan zone sayısı', 'rate_limits.conf yüklü', 'Durum', 'Eksikler', 'Farklar'];
   const lines = [head.join(';')];
   for (const h of hosts) {

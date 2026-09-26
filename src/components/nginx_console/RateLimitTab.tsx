@@ -194,9 +194,9 @@ export function RateLimitTab() {
                 <th className="w-6" />
                 <th className="text-left font-medium px-3 py-2">Sunucu</th>
                 <th className="text-left font-medium px-3 py-2">Ortam</th>
-                <th className="text-left font-medium px-3 py-2">IP istek limiti</th>
-                <th className="text-left font-medium px-3 py-2">Sunucu adı limiti</th>
-                <th className="text-right font-medium px-3 py-2">Eşzamanlı bağlantı</th>
+                <th className="text-left font-medium px-3 py-2">IP istek limiti/kullanıcı başına</th>
+                <th className="text-left font-medium px-3 py-2">Sunucu limiti</th>
+                <th className="text-right font-medium px-3 py-2">Concurrent bağlantı limiti/kullanıcı başına</th>
                 <th className="text-left font-medium px-3 py-2">Durum</th>
               </tr>
             </thead>
