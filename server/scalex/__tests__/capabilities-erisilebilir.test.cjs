@@ -23,7 +23,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
-const oku = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+// SATIR SONU NORMALIZASYONU (2026-09-26): bu bekciler kaynakta LF arar, ama depo
+// Windows'ta CRLF ile checkout ediliyor - cok satirli capalar HIC eslesmiyordu ve
+// bekci, korudugu kodu gormeden kirmiziya donuyordu (LF checkout'ta yesil, CRLF'te
+// kirmizi; ikisi de kodla ilgili bir sey soylemiyor).
+const oku = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8').replace(/\r\n/g, '\n');
 const kodOnly = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 function dilim(src, bas, son) {

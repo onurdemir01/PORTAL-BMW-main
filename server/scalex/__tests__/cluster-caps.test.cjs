@@ -22,8 +22,12 @@ const path = require('node:path');
 const RUNNER = fs.readFileSync(
   path.join(__dirname, '..', '..', 'ansible', 'bmw_portal', 'scalex', 'scalex_app', 'files', 'scalex_runner.sh'),
   'utf8',
-);
-const IX = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+).replace(/\r\n/g, '\n');
+// SATIR SONU NORMALIZASYONU (2026-09-26): bu bekciler kaynakta LF arar, ama depo
+// Windows'ta CRLF ile checkout ediliyor - cok satirli capalar HIC eslesmiyordu ve
+// bekci, korudugu kodu gormeden kirmiziya donuyordu (LF checkout'ta yesil, CRLF'te
+// kirmizi; ikisi de kodla ilgili bir sey soylemiyor).
+const IX = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8').replace(/\r\n/g, '\n');
 const CAPS_SRC = fs.readFileSync(path.join(__dirname, '..', 'cluster-caps.cjs'), 'utf8');
 const SETUP = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
 const RESULT = require('../result.cjs');
