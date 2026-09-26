@@ -130,3 +130,38 @@ test('RL6: tarama limit direktiflerini toplamadiysa "eksik" DENMEZ', () => {
     path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'RateLimitTab.tsx'), 'utf8');
   assert.match(ui, /data\?\.directivesMissing/, 'ekran sebebi gostermiyor, filoyu kirmiziya boyar');
 });
+
+test('RL7: nginx kurulu degil / calismiyor, "limit eksik" DEMEK degildir', () => {
+  // Kullanici (2026-09-26): "bir Nginx instance'i calismiyorsa ve Nginx dizini var ancak
+  // Nginx hic kurulu degilse bunu belirtmeni istiyorum." Kurulu olmayan bir sunucuda
+  // limit sayisi 0'dir - ama bu bir EKSIKLIK degil, olcumun konusu olmamasidir.
+  const bos = { zones: {}, applied: {} };
+  assert.equal(rl.hostStatus(bos, true, 'kurulumyok').durum, 'kurulumyok');
+  assert.deepEqual(rl.hostStatus(bos, true, 'kurulumyok').eksikler, [],
+    'kurulu olmayan sunucuya eksik yazilamaz');
+  assert.equal(rl.hostStatus(bos, true, 'configbozuk').durum, 'configbozuk');
+  assert.equal(rl.hostStatus(bos, true, 'bilinmiyor').durum, 'bilinmiyor');
+
+  // DURAN nginx bastirilmaz: `nginx -T` calistigi icin degerler OLCULMUSTUR. Onlari
+  // gizlemek, dogru olcumu atmak olurdu; ekran ayrica "calismiyor" bayragini gosterir.
+  const tam = {
+    zones: { request_limit: { rate: '500r/s' }, server_limit: { rate: '5000r/s' }, limit_connection_perip: {} },
+    applied: { request_limit: { burst: 200, nodelay: true }, server_limit: { burst: 200, nodelay: true }, limit_connection_perip: { conn: 200 } },
+  };
+  assert.equal(rl.hostStatus(tam, true, 'calismiyor').durum, 'standart');
+
+  // Sunucu kodu host durumlarini AYRI tablodan okumali; ayar satiri olmayan sunucu da
+  // listede kalmali (eskiden listeden tamamen dusuyor, "sorun yok" gibi gorunuyordu).
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'ratelimit.cjs'), 'utf8');
+  assert.match(srv, /nginx-host-state\.cjs/, 'sunucu durumlari okunmuyor');
+  assert.match(srv, /if \(!byHost\.has\(host\)\) al\(host\)/,
+    'ayar satiri olmayan sunucu listeden dusuyor');
+
+  // CSV raporu da ayni ayrimi tasimali.
+  const csv = rl.toCsv([{
+    host: 'GBNGXP99', env: 'PROD', requestRate: null, serverRate: null, connLimit: null,
+    applied: [], zoneCount: 0, fileLoaded: false, mismatch: 0, durum: 'kurulumyok',
+    eksikler: [], farklar: [], detay: [], calisiyor: null,
+  }], '2026-09-26');
+  assert.match(csv, /NGINX KURULU DEĞİL/, 'rapor sebebi yazmiyor, "eksik" gibi okunur');
+});

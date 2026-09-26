@@ -76,7 +76,14 @@ function parseReqApply(value) {
  * "Tanımlı ama uygulanmamış" sessiz ve tehlikeli bir durumdur: zone bellekte durur,
  * hiçbir isteği sınırlamaz. Bu yüzden ayrı bir durum olarak gösterilir.
  */
-function hostStatus(h, olculdu = true) {
+function hostStatus(h, olculdu = true, hostDurum = null) {
+  // SUNUCU DURUMU OLCUMU BASTIRIR (2026-09-26, kullanici). nginx kurulu degilse ya da
+  // durum hic olculmediyse "limit eksik" DEMEK yanlistir: eksik olan limit degil, olcum.
+  // Calisan ama duran bir nginx'te konfigurasyon okunabilir, o yuzden onu bastirmayiz -
+  // degerleri gosteririz, ama ekran "su an uygulanmiyor" der.
+  if (hostDurum === 'kurulumyok') return { durum: 'kurulumyok', eksikler: [], farklar: [] };
+  if (hostDurum === 'configbozuk') return { durum: 'configbozuk', eksikler: [], farklar: [] };
+  if (hostDurum === 'bilinmiyor') return { durum: 'bilinmiyor', eksikler: [], farklar: [] };
   // OLCULMEDI != EKSIK (2026-09-26). nginx_audit'in WATCH listesinde limit_req_zone /
   // limit_conn_zone / limit_req / limit_conn YOKTU; tabloda hic satir olmadigi icin ilk
   // surum TUM FILOYU "eksik" diye kirmiziya boyadi - oysa sunucularda limitler duruyordu.
@@ -188,11 +195,31 @@ async function loadRateLimits({ scanDate } = {}) {
   // (eski nginx_audit surumu). Tek tek sunucularda eksiklik ARAMAYIZ.
   const olculdu = [...byHost.values()].some((h) => Object.keys(h.zones).length > 0 || Object.keys(h.applied).length > 0);
 
+  // SUNUCU DURUMLARI: nginx kurulu degilse o sunucunun HIC ayar satiri olmaz ve eski
+  // surumde listeden TAMAMEN dusuyordu - "sorun yok" gibi gorunuyordu. Artik host
+  // listesi Nginx_Audit_Hosts'tan gelir; ayar satiri olmayan sunucu da sebebiyle cikar.
+  const { loadHostStates } = require('../audit/nginx-host-state.cjs');
+  let durumlar = new Map();
+  try {
+    durumlar = await loadHostStates({ query, sql, scanDate: effectiveDate });
+  } catch (e) {
+    console.warn('[ratelimit] sunucu durumlari okunamadi:', e.message);
+  }
+  for (const [host] of durumlar) if (!byHost.has(host)) al(host);
+
   const hosts = [...byHost.values()].map((h) => {
-    const st = hostStatus(h, olculdu);
+    const d = durumlar.get(String(h.host || '').toUpperCase()) || null;
+    const st = hostStatus(h, olculdu, d ? d.durum : null);
     return {
       host: h.host,
       env: envOfHost(h.host),
+      // Ayri gercekler, ayri alanlar: "kurulu mu", "calisiyor mu", "konfigurasyon gecerli mi".
+      kurulu: d ? d.durum !== 'kurulumyok' : null,
+      calisiyor: d ? (d.runState === 'running' ? true : d.runState === 'stopped' ? false : null) : null,
+      hostDurum: d ? d.durum : 'bilinmiyor',
+      hostDurumLabel: d ? d.label : 'ölçülmedi',
+      hostDurumHint: d ? d.hint : 'Bu sunucu için tarama kaydı yok.',
+      hostDurumMsg: d ? (d.statusMsg || d.runMsg || null) : null,
       // Estate zone'larinin OZETI: ekranda sutun olarak gosterilir.
       requestRate: h.zones.request_limit?.rate || null,
       serverRate: h.zones.server_limit?.rate || null,
@@ -234,7 +261,7 @@ function envOfHost(host) {
 }
 
 function emptySummary() {
-  return { hosts: 0, standart: 0, farkli: 0, eksik: 0, bilinmiyor: 0, dosyaYuklenmemis: 0, byEnv: {}, rates: [] };
+  return { hosts: 0, standart: 0, farkli: 0, eksik: 0, bilinmiyor: 0, kurulumyok: 0, calismiyor: 0, configbozuk: 0, dosyaYuklenmemis: 0, byEnv: {}, rates: [] };
 }
 
 function summarize(hosts) {
@@ -244,7 +271,10 @@ function summarize(hosts) {
   for (const h of hosts) {
     s[h.durum] += 1;
     if (!h.fileLoaded) s.dosyaYuklenmemis += 1;
-    const e = (s.byEnv[h.env] = s.byEnv[h.env] || { hosts: 0, standart: 0, farkli: 0, eksik: 0, bilinmiyor: 0 });
+    const e = (s.byEnv[h.env] = s.byEnv[h.env] || { hosts: 0, standart: 0, farkli: 0, eksik: 0, bilinmiyor: 0, kurulumyok: 0, calismiyor: 0, configbozuk: 0 });
+    // "Calismiyor" bir DURUM degil bir BAYRAK: limit degerleri yine olculmustur, ama
+    // su an uygulanmiyor. Ayri sayilir ki ozet "her sey standart" demesin.
+    if (h.calisiyor === false && h.durum !== 'kurulumyok') s.calismiyor += 1;
     e.hosts += 1;
     e[h.durum] += 1;
     const k = `${h.requestRate || '—'} / ${h.serverRate || '—'}`;
@@ -269,7 +299,9 @@ function toCsv(hosts, scanDate) {
     lines.push([
       scanDate, h.host, h.env, h.requestRate, h.serverRate, h.connLimit,
       h.applied.length, h.fileLoaded ? 'evet' : 'HAYIR',
-      { standart: 'standart', farkli: 'FARKLI', eksik: 'EKSİK', bilinmiyor: 'ölçülmedi' }[h.durum],
+      { standart: 'standart', farkli: 'FARKLI', eksik: 'EKSİK', bilinmiyor: 'ölçülmedi',
+      kurulumyok: 'NGINX KURULU DEĞİL', calismiyor: 'nginx ÇALIŞMIYOR', configbozuk: 'KONFİGÜRASYON GEÇERSİZ' }[h.durum]
+      + (h.calisiyor === false && h.durum !== 'kurulumyok' ? ' (nginx çalışmıyor)' : ''),
       h.eksikler.join(' | '), h.farklar.join(' | '),
     ].map(csvField).join(';'));
   }

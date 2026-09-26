@@ -36,6 +36,11 @@ const DURUM: Record<NginxRateLimitHost['durum'], { label: string; color: string;
   farkli: { label: 'farklı', color: 'var(--status-warning)', bg: 'var(--status-warning-bg)' },
   eksik: { label: 'eksik', color: 'var(--status-danger)', bg: 'var(--status-danger-bg)' },
   bilinmiyor: { label: 'ölçülmedi', color: 'var(--text-muted)', bg: 'var(--bg-elevated)' },
+  // SUNUCUNUN KENDI DURUMU (2026-09-26): bunlar bir limit bulgusu DEGIL, olcumun
+  // neden yapilamadiginin sebebidir. 'eksik' ile ayni renkte gosterilmezler.
+  kurulumyok: { label: 'nginx kurulu değil', color: 'var(--status-danger)', bg: 'var(--status-danger-bg)' },
+  calismiyor: { label: 'nginx çalışmıyor', color: 'var(--status-warning)', bg: 'var(--status-warning-bg)' },
+  configbozuk: { label: 'konfigürasyon geçersiz', color: 'var(--status-danger)', bg: 'var(--status-danger-bg)' },
 };
 
 export function RateLimitTab() {
@@ -46,7 +51,7 @@ export function RateLimitTab() {
   const [scanDate, setScanDate] = useState('');
   const [q, setQ] = useState('');
   const [env, setEnv] = useState('all');
-  const [durum, setDurum] = useState<'all' | 'standart' | 'farkli' | 'eksik' | 'bilinmiyor'>('all');
+  const [durum, setDurum] = useState<'all' | 'standart' | 'farkli' | 'eksik' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk'>('all');
   const [acik, setAcik] = useState<string | null>(null);
 
   useAsyncEffect(async (alive) => {
@@ -132,6 +137,9 @@ export function RateLimitTab() {
           <Kpi title="Farklı" value={s.farkli} tone={s.farkli > 0 ? 'warn' : undefined} />
           <Kpi title="Eksik" value={s.eksik} tone={s.eksik > 0 ? 'danger' : undefined} />
           {s.bilinmiyor > 0 && <Kpi title="Ölçülmedi" value={s.bilinmiyor} />}
+          {s.kurulumyok > 0 && <Kpi title="nginx kurulu değil" value={s.kurulumyok} tone="danger" />}
+          {s.calismiyor > 0 && <Kpi title="nginx çalışmıyor" value={s.calismiyor} tone="warn" />}
+          {s.configbozuk > 0 && <Kpi title="Konfigürasyon geçersiz" value={s.configbozuk} tone="danger" />}
           <Kpi title="Dosya yüklü değil" value={s.dosyaYuklenmemis} tone={s.dosyaYuklenmemis > 0 ? 'danger' : undefined} />
         </div>
       )}
@@ -168,6 +176,9 @@ export function RateLimitTab() {
           <option value="farkli">yalnız farklı</option>
           <option value="standart">yalnız standart</option>
           <option value="bilinmiyor">yalnız ölçülmeyenler</option>
+          <option value="kurulumyok">yalnız nginx kurulu olmayanlar</option>
+          <option value="calismiyor">yalnız nginx çalışmayanlar</option>
+          <option value="configbozuk">yalnız konfigürasyonu geçersizler</option>
         </select>
         {(data?.availableDates || []).length > 1 && (
           <select value={scanDate} onChange={(e) => setScanDate(e.target.value)} className="h-7 text-[12px] rounded-lg border px-1.5"
@@ -221,7 +232,14 @@ export function RateLimitTab() {
                       </td>
                       <td className="px-3 py-1.5 font-medium" style={{ color: 'var(--text-primary)' }}>
                         {h.host}
-                        {!h.fileLoaded && (
+                        {h.calisiyor === false && h.durum !== 'kurulumyok' && (
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded"
+                            style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}
+                            title={h.hostDurumMsg || 'nginx ayakta degil: buradaki degerler DOSYADA yazan degerler, su an uygulanmiyor.'}>
+                            durdurulmus
+                          </span>
+                        )}
+                        {!h.fileLoaded && h.durum !== 'kurulumyok' && (
                           <span className="ml-2 text-[10px]" style={{ color: 'var(--status-danger)' }}
                             title="nginx -T çıktısında rate_limits.conf görünmüyor — dosya yüklenmemiş olabilir">
                             rate_limits.conf yok

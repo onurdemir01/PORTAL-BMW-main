@@ -231,8 +231,17 @@ export interface NginxRateLimitHost {
   /** audit'in referans dosyayla karşılaştırmasında uyuşmayan direktif sayısı */
   mismatch: number;
   /** eksik = zone yok YA DA tanımlı ama uygulanmıyor */
-  /** bilinmiyor = direktifler henüz taranmamış (ölçülmedi) — EKSİK ile karıştırılmaz */
-  durum: 'standart' | 'farkli' | 'eksik' | 'bilinmiyor';
+  /** bilinmiyor = ölçülmedi; kurulumyok/calismiyor/configbozuk = sunucunun kendi durumu.
+   *  Hiçbiri EKSİK ile karıştırılmaz: eksik olan limit değil, ölçümdür. */
+  durum: 'standart' | 'farkli' | 'eksik' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk';
+  /** null = ölçülmedi */
+  kurulu: boolean | null;
+  /** null = ölçülmedi. false iken değerler DOSYADA yazandır, şu an uygulanmıyor. */
+  calisiyor: boolean | null;
+  hostDurum: string;
+  hostDurumLabel: string;
+  hostDurumHint: string;
+  hostDurumMsg: string | null;
   eksikler: string[];
   farklar: string[];
   detay: { file: string; context: string; directive: string; value: string; matches: boolean }[];
@@ -244,6 +253,9 @@ export interface NginxRateLimitSummary {
   farkli: number;
   eksik: number;
   bilinmiyor: number;
+  kurulumyok: number;
+  calismiyor: number;
+  configbozuk: number;
   dosyaYuklenmemis: number;
   byEnv: Record<string, { hosts: number; standart: number; farkli: number; eksik: number }>;
   /** filodaki farklı limit kombinasyonları: "filo tek tip mi" sorusunun cevabı */
