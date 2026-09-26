@@ -74,8 +74,31 @@ test('MG5 cluster cozumu: tek sonuc secilir, belirsiz/yok ise secilmez', async (
 
     require.cache[mssqlPath] = sahte([{ cluster: 'gbocp3rdprod1' }, { cluster: 'giocp3rdprod2' }]);
     const iki = await mig.resolveCluster('n', 'a');
-    assert.equal(iki.cluster, null, 'iki cluster varsa birini SECMEK tahmin olurdu');
+    assert.equal(iki.cluster, null, 'tercih listesinde olmayan iki cluster: birini SECMEK tahmin olurdu');
     assert.equal(iki.clusters.length, 2, 'kullaniciya hangileri oldugu soylenebilmeli');
+
+    // TERCIH LISTESI (2026-09-26, kullanici): "paketi gbocpprod1'den cekebiliriz, hepsinde
+    // ayni paket var zaten". Uretimde gorulen ornek: card-dispute-mng-app-v0 bes cluster'da.
+    // Bu bir tahmin DEGIL, kullanicinin verdigi kural - o yuzden rastgele secim degil,
+    // ISIMLI bir tercih.
+    require.cache[mssqlPath] = sahte([
+      { cluster: 'gbocpankprod2' }, { cluster: 'gbocpdrcprod1' }, { cluster: 'gbocpprod1' },
+      { cluster: 'gbocpprod2' }, { cluster: 'gbocpprod4' },
+    ]);
+    const cok = await mig.resolveCluster('n', 'card-dispute-mng-app-v0');
+    assert.equal(cok.cluster, 'gbocpprod1', 'tercih edilen cluster secilmedi');
+    assert.equal(cok.preferred, true, 'secimin tercihle yapildigi bildirilmiyor');
+    assert.equal(cok.clusters.length, 5, 'adaylarin tamami raporlanmali');
+
+    // Buyuk/kucuk harf tutmazligi secimi kacirmamali.
+    require.cache[mssqlPath] = sahte([{ cluster: 'GBOCPPROD1' }, { cluster: 'gbocpprod2' }]);
+    assert.equal((await mig.resolveCluster('n', 'a')).cluster, 'GBOCPPROD1');
+
+    // Tek aday tercih listesinde OLMASA DA secilir; belirsizlik yok.
+    require.cache[mssqlPath] = sahte([{ cluster: 'gbocpprod4' }]);
+    const tek = await mig.resolveCluster('n', 'a');
+    assert.equal(tek.cluster, 'gbocpprod4');
+    assert.equal(tek.preferred, false, 'tek aday tercihle secilmis gibi raporlanmamali');
 
     require.cache[mssqlPath] = sahte([]);
     assert.equal((await mig.resolveCluster('n', 'a')).cluster, null);

@@ -108,6 +108,16 @@ function isDefinitionConfirmed(pathJob, newStatus) {
 // play'i `name == ocp_cluster` ile suzulur; yanlis/bos bir deger verirsek HICBIR jump
 // server kosmaz ve is "paket gelmemis" halde yesil biter. Bu yuzden cluster bulunamazsa
 // paket cekmeyi hic BASLATMIYORUZ (playbook'taki assert ikinci kapi).
+//
+// BIRDEN FAZLA CLUSTER: kullanici (2026-09-26) "paketi gbocpprod1'den cekebiliriz,
+// hepsinde ayni paket var zaten" dedi. Uretimde gorulen ornek: card-dispute-mng-app-v0
+// bes cluster'da birden duruyor. Bu bir TAHMIN DEGIL, kullanicinin verdigi kural:
+// ayni uygulama coklu cluster'da ise statik paket ayni oldugu icin tek bir referans
+// cluster'dan cekmek yeterli.
+//
+// Tercih listesi SIRALIDIR; ilk bulunan kazanir. Listede hicbiri yoksa ve birden fazla
+// aday varsa YINE belirsizdir - rastgele birini secmeyiz.
+const CLUSTER_TERCIHI = ['gbocpprod1'];
 async function resolveCluster(namespace, application) {
   const { query, sql } = require('../inventory/mssql.cjs');
   const r = await query(
@@ -118,10 +128,15 @@ async function resolveCluster(namespace, application) {
       { name: 'app', type: sql.NVarChar(256), value: String(application || '').trim() },
     ],
   );
-  const rows = (r.recordset || []).map((x) => String(x.cluster || '').trim()).filter(Boolean);
-  // Ayni uygulama birden fazla cluster'da olabilir; hangisinden cekecegimizi TAHMIN
-  // ETMEYIZ - belirsizligi cagirana soyleriz.
-  return { clusters: rows, cluster: rows.length === 1 ? rows[0] : null };
+  const rows = [...new Set((r.recordset || []).map((x) => String(x.cluster || '').trim()).filter(Boolean))];
+  if (rows.length === 1) return { clusters: rows, cluster: rows[0], preferred: false };
+  // Coklu cluster: tercih listesinden ILK bulunan. Bulunmazsa belirsiz kalir.
+  const tercih = CLUSTER_TERCIHI.find((c) => rows.some((x) => x.toLowerCase() === c.toLowerCase()));
+  if (tercih) {
+    const asil = rows.find((x) => x.toLowerCase() === tercih.toLowerCase());
+    return { clusters: rows, cluster: asil, preferred: true };
+  }
+  return { clusters: rows, cluster: null, preferred: false };
 }
 
 function buildExtraVars({ service, application, namespace, inputPath, user, fetchPackage, ocpCluster, podWebroot }) {
@@ -630,6 +645,7 @@ function initNginxMigration(app) {
       const { launchJobOnServer } = require('../ansible/runner.cjs');
       const user = getRequestUser(req) || {};
       let ocpCluster = '';
+      let ocpClusterPreferred = false;
       if (fetchPackage) {
         let found = { clusters: [], cluster: null };
         try {
@@ -644,13 +660,15 @@ function initNginxMigration(app) {
           return res.status(409).json({
             ok: false,
             message: found.clusters.length
-              ? `${v.app.application} birden fazla cluster'da bulundu (${found.clusters.join(', ')}). `
+              ? `${v.app.application} birden fazla cluster'da bulundu (${found.clusters.join(', ')}) `
+                + `ve hicbiri tercih listesinde (${CLUSTER_TERCIHI.join(', ')}) yok. `
                 + 'Hangisinden cekilecegi belirsiz - paket cekme baslatilmadi.'
               : `${v.app.application} (${v.app.namespace}) OpenShift envanterinde bulunamadi. `
                 + 'Paket cekilemez; once openshift_inventory job\'i kosmali.',
           });
         }
         ocpCluster = found.cluster;
+        ocpClusterPreferred = !!found.preferred;
       }
       const extra = buildExtraVars({
         service: v.path.service,
@@ -722,7 +740,7 @@ function initNginxMigration(app) {
         console.warn('[nginx-migration] takip damgasi yazilamadi:', e.message);
       }
       const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
-      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, targetHosts: g ? g.newHosts : [], fetchPackage, ocpCluster });
+      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, targetHosts: g ? g.newHosts : [], fetchPackage, ocpCluster, ocpClusterPreferred: !!ocpClusterPreferred });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
     }
