@@ -139,7 +139,7 @@ async function resolveCluster(namespace, application) {
   return { clusters: rows, cluster: null, preferred: false };
 }
 
-function buildExtraVars({ service, application, namespace, inputPath, user, fetchPackage, ocpCluster, podWebroot, migrationTemplateId }) {
+function buildExtraVars({ service, application, namespace, inputPath, user, fetchPackage, ocpCluster, podWebroot }) {
   return {
     service: String(service || '').trim().toUpperCase(),
     application: String(application || '').trim(),
@@ -166,12 +166,11 @@ function buildExtraVars({ service, application, namespace, inputPath, user, fetc
     fetch_package: !!fetchPackage,
     ocp_cluster: fetchPackage ? String(ocpCluster || '').trim() : '',
     pod_webroot: fetchPackage ? String(podWebroot || '').trim() : '',
-    // ZINCIR (2026-09-26): paket isteniyorsa is CEKME template'ine gider ve o, paketi
-    // paylasilan alana koyduktan SONRA tasimayi kendisi tetikler. Hangi template'i
-    // tetikleyecegini TAHMIN ETMESIN diye id'yi buradan veriyoruz - isimle arama bu
-    // depoda benzer adli iki template'de yanilirdi.
-    then_migrate: !!fetchPackage,
-    migration_template_id: fetchPackage && migrationTemplateId != null ? Number(migrationTemplateId) : null,
+    // ZINCIRI PORTAL KURAR (2026-09-26, kullanici karari): cekme isi AWX REST API'sini
+    // CAGIRMAZ, dolayisiyla bir API jetonuna ihtiyac duymaz. then_migrate ACIKCA false
+    // gider - alan hic gonderilmezse AWX survey varsayilani devreye girip is kendi
+    // basina tasima baslatabilirdi.
+    then_migrate: false,
   };
 }
 
@@ -692,7 +691,6 @@ function initNginxMigration(app) {
         fetchPackage,
         ocpCluster,
         podWebroot: req.body?.podWebroot,
-        migrationTemplateId: cfg.templateId,
       });
       // PAKET ISTENIYORSA once CEKME isi kosar; tasimayi o tetikler (then_migrate).
       // Iki isi Portal'dan sirayla baslatip beklemiyoruz: AWX islerinin arasinda
@@ -766,8 +764,41 @@ function initNginxMigration(app) {
       } catch (e) {
         console.warn('[nginx-migration] takip damgasi yazilamadi:', e.message);
       }
+      // ZINCIR: cekme isi bitince tasimayi Portal baslatir. Kayit DB'de durur, yani
+      // tarayici kapansa da zincir tamamlanir.
+      let chained = false;
+      if (fetchPackage && job.id) {
+        try {
+          const chain = require('./chain.cjs');
+          const migVars = { ...extra };
+          delete migVars.then_migrate;
+          delete migVars.ocp_cluster;
+          delete migVars.pod_webroot;
+          // Tasima paketi paylasilan alandan ALIR: fetch_package true kalir.
+          await chain.enqueue(db, {
+            fetchJobId: job.id,
+            awxServerId: cfg.awxServerId,
+            templateId: cfg.templateId,
+            extraVars: migVars,
+            requestedBy: user.username || null,
+          });
+          chained = true;
+        } catch (e) {
+          // Zincir kaydi yazilamadiysa SUSMAYIZ: paket gelecek ama tanim olusmayacak.
+          console.warn('[nginx-migration] zincir kaydi yazilamadi:', e.message);
+        }
+      }
       const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
-      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, targetHosts: g ? g.newHosts : [], fetchPackage, ocpCluster, ocpClusterPreferred: !!ocpClusterPreferred });
+      res.json({
+        ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra,
+        targetHosts: g ? g.newHosts : [], fetchPackage, ocpCluster,
+        ocpClusterPreferred: !!ocpClusterPreferred,
+        chained,
+        message: fetchPackage && !chained
+          ? 'Paket getirme isi basladi ama ZINCIR KAYDI YAZILAMADI: paket gelecek, tanim '
+            + 'OTOMATIK olusmayacak. Is bitince "Tanim olustur" ile elle tamamlayin.'
+          : undefined,
+      });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
     }
@@ -832,6 +863,28 @@ function initNginxMigration(app) {
       res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, oldHosts: g ? g.oldHosts : [], scheduled: true });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
+    }
+  });
+
+  // ZINCIR IZLEYICISI: cekme isi bitince tasimayi baslatir (long-job-watcher ile ayni
+  // periyodik-tick deseni). Tarayiciya bagli degil.
+  try {
+    require('./chain.cjs').startWatcher(db);
+  } catch (e) {
+    console.warn('[nginx-migration] zincir izleyicisi baslatilamadi:', e.message);
+  }
+
+  router.get('/chain', async (_req, res) => {
+    try {
+      const chain = require('./chain.cjs');
+      await chain.ensureTable(db);
+      const r = await db.query(
+        `SELECT TOP 50 id, fetch_job_id, migration_job_id, status, message, requested_by, created_at, finished_at
+           FROM ${chain.TABLE} ORDER BY id DESC`,
+      );
+      res.json({ ok: true, rows: r.rows || [] });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
     }
   });
 

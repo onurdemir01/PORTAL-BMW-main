@@ -20,7 +20,7 @@ test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () 
     env: 'prod', action: 'create', app_type: 'spa', migration_mode: true,
     requester_name: 'Onur Demir', requester_email: 'o@x',
     fetch_package: false, ocp_cluster: '', pod_webroot: '',
-    then_migrate: false, migration_template_id: null,
+    then_migrate: false,
   });
   // Playbook'un kapisi (assert) bu degerleri bekler; survey varsayilani karisirsa is duser.
   assert.equal(v.env, 'prod');
@@ -52,34 +52,103 @@ test('MG4 paket cekme alanlari: istenmediginde bos GONDERILIR, istendiginde dola
   });
   assert.equal(sizinti.ocp_cluster, '');
   assert.equal(sizinti.pod_webroot, '');
-  // Zincir de kapali olmali: cekme istenmiyorsa tasima dogrudan kosar.
+  // Zincir ANSIBLE tarafinda DEGIL: then_migrate her zaman false gider.
   assert.equal(sizinti.then_migrate, false);
-  assert.equal(sizinti.migration_template_id, null);
 });
 
-// MG9 (2026-09-26, uretimde yakalandi - job 3352755): tasima DINAMIK envanterde kosar,
-// OpenShift jump server'lari STATIK envanterde. Ayni template ikisine birden ULASAMAZ
-// ("Could not match supplied host pattern: openshift_jump_servers"). Bu yuzden paket
-// isteniyorsa is AYRI bir template'e gider; o, paketi GBLABT02'nin gordugu paylasilan
-// alana koyup tasimayi kendisi tetikler.
-test("MG9 zincir: paket istenince CEKME template'ine gider, tasimayi o tetikler", () => {
+// MG9 (2026-09-26): ZINCIRI PORTAL KURAR. Iki is ayri template'lerde kosmak zorunda
+// (tasima dinamik, jump server'lar statik envanterde - job 3352755). Zinciri Ansible'da
+// kurmak cekme isinin AWX REST API'sini cagirmasini, o da depoda duz metin bir API jetonu
+// tutulmasini gerektiriyordu. Portal'in AWX kimligi zaten var; zincir burada kurulunca
+// jeton ihtiyaci TAMAMEN kalkti.
+test('MG9 zincir: Ansible AWX API cagirmaz, zinciri Portal kurar', () => {
   const zincir = buildExtraVars({
     service: 'glomo', application: 'a', namespace: 'n', inputPath: '/x/', user: {},
-    fetchPackage: true, ocpCluster: 'gbocpprod1', migrationTemplateId: 412,
+    fetchPackage: true, ocpCluster: 'gbocpprod1',
   });
-  assert.equal(zincir.then_migrate, true, 'cekme isi tasimayi tetiklemiyor');
-  assert.equal(zincir.migration_template_id, 412, 'hangi template tetiklenecek belirsiz');
+  // Alan HER ZAMAN gonderilir ve false'tur: gondermezsek AWX survey varsayilani devreye
+  // girip cekme isi kendi basina tasima baslatabilirdi.
+  assert.ok('then_migrate' in zincir, 'then_migrate hic gonderilmiyor');
+  assert.equal(zincir.then_migrate, false);
+  assert.ok(!('migration_template_id' in zincir), 'jeton donemi alani hala gonderiliyor');
 
   const srv = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  // Hedef template fetchPackage'a gore SECILMELI; ayni template'e gitmek eski hatadir.
+  // Hedef template fetchPackage'a gore SECILMELI.
   assert.match(srv, /fetchPackage \? cfg\.fetchTemplateId : cfg\.templateId/,
     'paket istenince ayri template kullanilmiyor');
-  // Yapilandirilmamissa ACIK mesajla durmali, sessizce tasimaya dusmemeli.
   assert.match(srv, /Paket getirme job/, 'cekme template yoksa acik mesaj yok');
-  assert.match(srv, /fetchTemplateId: Number\(cfg\.fetchTemplateId\)/, 'yapilandirmada alan yok');
-  // Template id YAPILANDIRMADAN gelir, istemciden DEGIL.
-  assert.match(srv, /migrationTemplateId: cfg\.templateId/);
-  assert.ok(!/migrationTemplateId: req\.body/.test(srv), 'template id istemciden aliniyor');
+  // Zincir kaydi acilmali; yazilamazsa SESSIZ KALINMAMALI.
+  assert.match(srv, /chain\.enqueue/, 'zincir kaydi acilmiyor: tanim otomatik olusmaz');
+  assert.match(srv, /ZINCIR KAYDI YAZILAMADI/, 'zincir kaydi yazilamazsa kullanici bilgilendirilmiyor');
+  assert.match(srv, /startWatcher/, 'zincir izleyicisi baslatilmiyor');
+});
+
+test('MG10 zincir izleyicisi: basarisiz cekmede tasima BASLATILMAZ, gecici hata KALICI sayilmaz', async () => {
+  const chain = require('../chain.cjs');
+  const satirlar = [{
+    id: 1, fetch_job_id: 900, awx_server_id: 2, template_id: 412,
+    extra_vars: JSON.stringify({ application: 'a' }), created_at: new Date().toISOString(),
+    requested_by: 'odemir',
+  }];
+  const yapilan = [];
+  const db = {
+    query: async (sql, p) => {
+      if (/CREATE TABLE|IF NOT EXISTS/.test(sql)) return { rows: [], rowCount: 0 };
+      if (/SELECT TOP 50/.test(sql)) return { rows: satirlar };
+      if (/SET status = 'launching'/.test(sql)) return { rowCount: 1 };
+      if (/SET status = \$2/.test(sql)) { yapilan.push(['finish', p[1], p[3]]); return { rowCount: 1 }; }
+      return { rows: [], rowCount: 0 };
+    },
+  };
+
+  // 1) Cekme BASARISIZ: tasima baslatilmamali.
+  let baslatildi = 0;
+  let r = await chain.tick(db, {
+    runner: {
+      getJobStatusOnServer: async () => ({ status: 'failed' }),
+      launchJobOnServer: async () => { baslatildi += 1; return { jobId: 5 }; },
+    },
+  });
+  assert.equal(baslatildi, 0, 'cekme dustugu halde tasima baslatildi - bos dizine tanim yazilirdi');
+  assert.equal(r.failed, 1);
+  assert.equal(yapilan.at(-1)[1], 'fetch_failed');
+
+  // 2) AWX'e ULASILAMADI: kayit BEKLEMEDE kalmali, kalici basarisizlik YAZILMAMALI.
+  yapilan.length = 0;
+  r = await chain.tick(db, {
+    runner: {
+      getJobStatusOnServer: async () => { throw new Error('ag hatasi'); },
+      launchJobOnServer: async () => { baslatildi += 1; return { jobId: 5 }; },
+    },
+  });
+  assert.equal(yapilan.length, 0, 'gecici ag hatasi KALICI basarisizliga cevrildi');
+  assert.equal(r.failed, 0);
+  assert.equal(baslatildi, 0);
+
+  // 3) Cekme BASARILI: tasima baslatilir ve job id kaydedilir.
+  yapilan.length = 0;
+  r = await chain.tick(db, {
+    runner: {
+      getJobStatusOnServer: async () => ({ status: 'successful' }),
+      launchJobOnServer: async () => ({ jobId: 777 }),
+    },
+  });
+  assert.equal(r.launched, 1);
+  assert.equal(yapilan.at(-1)[1], 'launched');
+
+  // 4) Kaydi baska bir Portal ornegi aldiysa (claim kaybedildi) IKINCI KEZ baslatilmaz.
+  const dbKaybeden = { ...db, query: async (sql, p) => {
+    if (/SET status = 'launching'/.test(sql)) return { rowCount: 0 };
+    return db.query(sql, p);
+  } };
+  baslatildi = 0;
+  r = await chain.tick(dbKaybeden, {
+    runner: {
+      getJobStatusOnServer: async () => ({ status: 'successful' }),
+      launchJobOnServer: async () => { baslatildi += 1; return { jobId: 9 }; },
+    },
+  });
+  assert.equal(baslatildi, 0, 'ayni zincir iki kez baslatildi (coklu Portal ornegi)');
 });
 
 // MG5: cluster TAHMIN EDILMEZ. Playbook'un cekme play'i `name == ocp_cluster` ile suzulur;
