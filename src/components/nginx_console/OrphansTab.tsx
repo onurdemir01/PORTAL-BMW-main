@@ -38,7 +38,43 @@ function countOf(h: NcOrphanHost, kind: Kind): number {
   return h.unloaded.length + h.backups.length + h.certs.length + h.ssl.length + (h.known ? 0 : 1);
 }
 
-export function OrphansTab({ onOpen }: { onOpen: (host: string) => void }) {
+export function OrphansTab({ onOpen, isAdmin }: { onOpen: (host: string) => void; isAdmin?: boolean }) {
+  // SECIM SUNUCU BAZINDA (2026-09-26, kullanici istegi): temizlik isi tek sunucuda
+  // kosar, cunku karantina ve nginx -t o sunucunun kendi gercegidir. Filoyu tek
+  // dugmeyle temizlemek, bir sunucudaki yanlisi on sunucuya birden yayardi.
+  const [sel, setSel] = useState<Record<string, string[]>>({});
+  const [busy, setBusy] = useState('');
+  const [sonuc, setSonuc] = useState<{ host: string; mode: string; text: string; tone: 'ok' | 'bad' } | null>(null);
+  const secili = (host: string) => sel[host] || [];
+  const secimDegistir = (host: string, path: string) =>
+    setSel((s) => {
+      const cur = new Set(s[host] || []);
+      if (cur.has(path)) cur.delete(path); else cur.add(path);
+      return { ...s, [host]: [...cur] };
+    });
+
+  async function temizle(host: string, mode: 'plan' | 'apply') {
+    const paths = secili(host);
+    if (!paths.length) return;
+    setBusy(host + mode);
+    try {
+      const r = await nginxConsoleApi.orphansCleanup({ host, paths, mode });
+      if (r.ok) {
+        setSonuc({
+          host, mode, tone: 'ok',
+          text: mode === 'plan'
+            ? `${host}: ${paths.length} dosya için PLAN işi başlatıldı${r.job?.jobId ? ` (job ${r.job.jobId})` : ''}. Hiçbir şey taşınmadı — AWX çıktısında hangi dosyanın kabul, hangisinin RED edildiğini görün.`
+            : `${host}: ${paths.length} dosya karantinaya alınıyor${r.job?.jobId ? ` (job ${r.job.jobId})` : ''}. Dosyalar /usr/nginx/.portal_karantina/<damga>/ altına taşınır; nginx -t düşerse hepsi geri alınır.`,
+        });
+        if (mode === 'apply') setSel((s) => ({ ...s, [host]: [] }));
+      } else setSonuc({ host, mode, tone: 'bad', text: r.message || 'İş başlatılamadı.' });
+    } catch (e: unknown) {
+      setSonuc({ host, mode, tone: 'bad', text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy('');
+    }
+  }
+
   const [data, setData] = useState<NcOrphansResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -95,7 +131,7 @@ export function OrphansTab({ onOpen }: { onOpen: (host: string) => void }) {
         </div>
       </div>
       <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-        Kaynak: sunucunun son dokumu. "Yüklenmeyen" = <code>conf.d</code>/<code>conf</code> altında duruyor ama <code>nginx -T</code> çıktısında yok (include edilmiyor). Yedek kalıbı: <code>&lt;conf&gt;_&lt;job&gt;</code> (deployment yedeği), <code>.bak/.old</code>, <code>.console_backup/</code>. Sertifika: yalnız yüklenmeyen dosyada geçiyor ya da hiç geçmiyor. Sayfa hiçbir şeyi silmez.
+        Kaynak: sunucunun son dokumu. "Yüklenmeyen" = <code>conf.d</code>/<code>conf</code> altında duruyor ama <code>nginx -T</code> çıktısında yok (include edilmiyor). Yedek kalıbı: <code>&lt;conf&gt;_&lt;job&gt;</code> (deployment yedeği), <code>.bak/.old</code>, <code>.console_backup/</code>. Sertifika: yalnız yüklenmeyen dosyada geçiyor ya da hiç geçmiyor. Sayfa hiçbir şeyi <b>silmez</b>; Admin seçtiği dosyaları <b>karantinaya</b> aldırabilir (<code>/usr/nginx/.portal_karantina/</code>) — iş, taşımadan önce sunucuda taze <code>nginx -T</code> koşup gerçekten kullanılan bir yol seçilmişse reddeder.
       </div>
       <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
         <table className="w-full text-xs">
@@ -120,14 +156,23 @@ export function OrphansTab({ onOpen }: { onOpen: (host: string) => void }) {
                     <td colSpan={7} className="px-4 py-3">
                       <div className="grid gap-4 lg:grid-cols-2">
                         <Section title={`nginx'in yüklemediği conf dosyaları (${h.unloaded.length})`} empty="Yüklenmeyen dosya yok.">
-                          {h.unloaded.map((f) => <FileRow key={f.path} path={f.path} size={f.size} mtime={f.mtime} owner={f.owner} />)}
+                          {h.unloaded.map((f) => <FileRow key={f.path} path={f.path} size={f.size} mtime={f.mtime} owner={f.owner} pick={isAdmin ? { on: secili(h.host).includes(f.path), toggle: () => secimDegistir(h.host, f.path) } : undefined} />)}
                         </Section>
                         <Section title={`Yedek / eski kopya (${h.backups.length})`} empty="Yedek dosya yok.">
-                          {h.backups.map((f) => <FileRow key={f.path} path={f.path} size={f.size} mtime={f.mtime} owner={f.owner} />)}
+                          {h.backups.map((f) => <FileRow key={f.path} path={f.path} size={f.size} mtime={f.mtime} owner={f.owner} pick={isAdmin ? { on: secili(h.host).includes(f.path), toggle: () => secimDegistir(h.host, f.path) } : undefined} />)}
                         </Section>
                         <Section title={`Kullanılmayan sertifikalar (${h.certs.length})`} empty="Her sertifika yüklü bir conf'ta kullanılıyor.">
                           {h.certs.map((c) => (
                             <div key={c.path} className="flex items-start gap-2 py-1 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                              {isAdmin && c.exists && (
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 shrink-0"
+                                  checked={secili(h.host).includes(c.path)}
+                                  onChange={() => secimDegistir(h.host, c.path)}
+                                  title="Bu sertifikayı karantinaya alınacaklar arasına ekle"
+                                />
+                              )}
                               <div className="min-w-0 flex-1">
                                 <div className="font-semibold truncate" title={c.cn || c.path}>{c.cn || (c.exists ? c.path.split('/').pop() : 'DOSYA YOK')}</div>
                                 <div className="font-mono text-[10px] truncate" title={c.path} style={{ color: 'var(--text-muted)' }}>{c.path}</div>
@@ -138,9 +183,45 @@ export function OrphansTab({ onOpen }: { onOpen: (host: string) => void }) {
                           ))}
                         </Section>
                         <Section title={`ssl/ altında referanssız dosyalar (${h.ssl.length})`} empty="ssl/ altında referanssız dosya yok.">
-                          {h.ssl.map((f) => <FileRow key={f.path} path={f.path} size={f.size} mtime={f.mtime} tag={f.isKey ? 'anahtar' : undefined} />)}
+                          {h.ssl.map((f) => <FileRow key={f.path} path={f.path} size={f.size} mtime={f.mtime} tag={f.isKey ? 'anahtar' : undefined} pick={isAdmin ? { on: secili(h.host).includes(f.path), toggle: () => secimDegistir(h.host, f.path) } : undefined} />)}
                         </Section>
                       </div>
+                      {isAdmin && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 pt-2 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                          <span className="text-[11px] font-semibold">
+                            {secili(h.host).length ? `${secili(h.host).length} dosya seçili` : 'Karantinaya almak için dosya seçin'}
+                          </span>
+                          <button
+                            onClick={() => temizle(h.host, 'plan')}
+                            disabled={!secili(h.host).length || busy === h.host + 'plan'}
+                            className="px-2.5 py-1.5 text-[11px] border rounded-lg disabled:opacity-40"
+                            style={{ borderColor: 'var(--border)' }}
+                            title="Hiçbir şeye dokunmaz: sunucuda taze nginx -T koşup hangi dosyanın gerçekten kullanılmadığını raporlar."
+                          >
+                            {busy === h.host + 'plan' ? 'Başlatılıyor…' : 'Önce planla'}
+                          </button>
+                          <button
+                            onClick={() => temizle(h.host, 'apply')}
+                            disabled={!secili(h.host).length || busy === h.host + 'apply'}
+                            className="px-2.5 py-1.5 text-[11px] rounded-lg text-white disabled:opacity-40"
+                            style={{ background: 'var(--status-danger)' }}
+                            title="Seçilen dosyaları /usr/nginx/.portal_karantina/<damga>/ altına taşır. Silmez — geri almak tek mv. Kullanılan bir yol seçildiyse iş onu reddeder; taşıma sonrası nginx -t düşerse hepsi geri alınır."
+                          >
+                            {busy === h.host + 'apply' ? 'Başlatılıyor…' : 'Karantinaya al'}
+                          </button>
+                          {secili(h.host).length > 0 && (
+                            <button onClick={() => setSel((s) => ({ ...s, [h.host]: [] }))} className="text-[11px] underline" style={{ color: 'var(--text-muted)' }}>seçimi temizle</button>
+                          )}
+                        </div>
+                      )}
+                      {sonuc && sonuc.host === h.host && (
+                        <div className="mt-2 text-[11px] rounded-lg px-3 py-2 border"
+                          style={sonuc.tone === 'ok'
+                            ? { color: 'var(--status-success)', background: 'var(--status-success-bg)', borderColor: 'var(--status-success)' }
+                            : { color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>
+                          {sonuc.text}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -162,9 +243,10 @@ function Section({ title, empty, children }: { title: string; empty: string; chi
     </div>
   );
 }
-function FileRow({ path, size, mtime, owner, tag }: { path: string; size: number; mtime: string | null; owner?: string | null; tag?: string }) {
+function FileRow({ path, size, mtime, owner, tag, pick }: { path: string; size: number; mtime: string | null; owner?: string | null; tag?: string; pick?: { on: boolean; toggle: () => void } }) {
   return (
     <div className="flex items-center gap-2 py-1 border-t font-mono text-[11px]" style={{ borderColor: 'var(--border-subtle)' }}>
+      {pick && <input type="checkbox" className="shrink-0" checked={pick.on} onChange={pick.toggle} title="Karantinaya alınacaklar arasına ekle" />}
       <div className="truncate flex-1" title={path}>{path}</div>
       {tag && <Pill tone="neutral">{tag}</Pill>}
       <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{fmtKb(size)}</span>

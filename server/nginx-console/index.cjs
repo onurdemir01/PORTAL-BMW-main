@@ -681,6 +681,89 @@ function initNginxConsole(app) {
 
   // Publish (NIM "Publish" karsiligi): BIR dosya, bir ya da daha fazla sunucu (instance group =
   // servis). Yalniz Admin. expectedSha: host basina Portal'in gordugu sha (anti-TOCTOU).
+  // ── Kullanilmayan dosyalari temizle ──────────────────────────────────────────────
+  //
+  // Kullanici (2026-09-26): "kullanilmayan sertifikalarin ve dosyalarin silinmesi icin
+  // bir buton ve playbook". SILMIYORUZ, KARANTINAYA ALIYORUZ: "kullanilmayan" bir
+  // olcumdur ve bu dokum bayat olabilir - aradan gecen surede biri o conf'u include
+  // etmis olabilir. Playbook da bu listeye guvenmez, sunucuda taze `nginx -T` kosup
+  // yuklu/referansli olani reddeder. Buradaki dogrulama ONCE degil, EK bir kapidir.
+  const CLEAN_PATH_RE = /^\/usr\/nginx\/(conf\.d\/|conf\/|ssl\/)[A-Za-z0-9._\-/]+$|^\/usr\/nginx\/[A-Za-z0-9._-]+\.conf$/;
+  const MAX_CLEAN_PATHS = 200;
+
+  function validateCleanPaths(raw) {
+    const list = Array.isArray(raw) ? raw : [];
+    if (!list.length) return { ok: false, message: 'Silinecek dosya seçilmedi.' };
+    if (list.length > MAX_CLEAN_PATHS) {
+      return { ok: false, message: `Tek seferde en fazla ${MAX_CLEAN_PATHS} dosya.` };
+    }
+    const paths = [];
+    for (const x of list) {
+      const p = String(x || '').trim();
+      // Satir sonu, yol listesini IKIYE BOLERDI: playbook'a satir basina bir yol gidiyor.
+      if (!p || /[\r\n\0]/.test(p)) return { ok: false, message: 'Geçersiz karakter içeren yol.' };
+      if (p.includes('..')) return { ok: false, message: `Yolda '..' olamaz: ${p}` };
+      if (!CLEAN_PATH_RE.test(p)) {
+        return { ok: false, message: `Yol yalnız /usr/nginx/conf.d/, /usr/nginx/conf/ veya /usr/nginx/ssl/ altında olabilir: ${p}` };
+      }
+      paths.push(p);
+    }
+    return { ok: true, paths: [...new Set(paths)] };
+  }
+
+  router.post('/orphans/cleanup', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ ok: false, message: 'Dosya temizliği yalnız Admin.' });
+    const host = String(req.body?.host || '').trim().toUpperCase();
+    if (!HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+    const mode = String(req.body?.mode || 'plan').trim().toLowerCase();
+    if (!['plan', 'apply'].includes(mode)) return res.status(400).json({ ok: false, message: "mode 'plan' ya da 'apply' olmalı." });
+
+    const v = validateCleanPaths(req.body?.paths);
+    if (!v.ok) return res.status(400).json({ ok: false, message: v.message });
+
+    // Bu dokumde GERCEKTEN kullanilmayan mi: ekrandan gelen yol listesini, sunucunun son
+    // dokumunden hesaplanan orphan listesiyle karsilastiririz. Ekran bayatsa ya da istek
+    // elle uydurulduysa burada durur. (Sunucudaki taze kontrol yine de playbook'ta.)
+    const sm = loadSummary(host);
+    if (!sm) return res.status(409).json({ ok: false, message: `${host} için döküm yok — önce "Yenile" ile döküm alın.` });
+    const orp = orphansOf(sm, Date.now());
+    if (!orp.known) return res.status(409).json({ ok: false, message: `${host}: ${orp.reason || 'yüklenen dosya listesi bilinmiyor'} — temizlik yapılmaz.` });
+    const bilinen = new Set([
+      ...orp.unloaded.map((f) => f.path),
+      ...orp.backups.map((f) => f.path),
+      ...orp.certs.map((c) => c.path),
+      ...orp.ssl.map((f) => f.path),
+    ]);
+    const disarida = v.paths.filter((p) => !bilinen.has(p));
+    if (disarida.length) {
+      return res.status(409).json({
+        ok: false,
+        message: `Bu dosyalar ${host} için "kullanılmayan" listesinde DEĞİL: ${disarida.slice(0, 5).join(', ')}`
+          + (disarida.length > 5 ? ` (+${disarida.length - 5})` : '')
+          + '. Döküm bayat olabilir — "Yenile" deyip tekrar deneyin.',
+        rejected: disarida,
+      });
+    }
+
+    try {
+      const extraVars = {
+        target_host: host,
+        cleanup_mode: mode,
+        paths_b64: Buffer.from(v.paths.join('\n') + '\n', 'utf8').toString('base64'),
+      };
+      const job = await launch(
+        req,
+        'nginx_orphan_cleanup',
+        mode === 'apply' ? 'Nginx: kullanılmayan dosyaları karantinaya al' : 'Nginx: kullanılmayan dosya temizliği (plan)',
+        extraVars,
+        { action: 'orphan_cleanup', host, mode, count: v.paths.length, paths: v.paths.slice(0, 50) },
+      );
+      res.json({ ok: true, job, host, mode, paths: v.paths });
+    } catch (err) {
+      res.status(err.status || 503).json({ ok: false, message: err.message });
+    }
+  });
+
   router.post('/push', async (req, res) => {
     if (!isAdmin(req)) return res.status(403).json({ ok: false, message: 'Konfigürasyon değişikliği yalnız Admin.' });
     const list = Array.isArray(req.body?.hosts) ? req.body.hosts : req.body?.host ? [req.body.host] : [];

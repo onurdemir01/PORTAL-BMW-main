@@ -149,6 +149,17 @@ export interface NcJobStatus { ok: boolean; status: string; output: string; resu
 
 const json = (body: unknown) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+export interface NcOrphanCleanupResult {
+  ok: boolean;
+  message?: string;
+  job?: { jobId?: number | null; status?: string | null; awxServerId?: number };
+  host?: string;
+  mode?: "plan" | "apply";
+  paths?: string[];
+  /** sunucunun "kullanılmayan" listesinde bulunmayan yollar (döküm bayatsa dolar) */
+  rejected?: string[];
+}
+
 export const nginxConsoleApi = {
   /** Tüm Nginx sunucularının rate limit dökümü (satır düzeyinde). */
   rateLimit: (scanDate?: string): Promise<NginxRateLimitResult> =>
@@ -162,6 +173,13 @@ export const nginxConsoleApi = {
   certs: (host?: string): Promise<NcCertsResult> => fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ""}`).then(safeJson),
   drift: (service?: string, env?: string): Promise<NcDriftResult> => { const u = new URLSearchParams(); if (service) u.set("service", service); if (env) u.set("env", env); const qs = u.toString(); return fetch(`${BASE}/drift${qs ? "?" + qs : ""}`).then(safeJson); },
   orphans: (host?: string): Promise<NcOrphansResult> => fetch(`${BASE}/orphans${host ? `?host=${encodeURIComponent(host)}` : ""}`).then(safeJson),
+  /** Kullanılmayan dosyaları karantinaya alır. mode=plan hiçbir şeye dokunmaz. */
+  orphansCleanup: (body: { host: string; paths: string[]; mode: "plan" | "apply" }): Promise<NcOrphanCleanupResult> =>
+    fetch(`${BASE}/orphans/cleanup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(safeJson),
   // hosts bos + all:true -> playbook tum nginx filosunu envanterden kesfeder (30-40 dk)
   refresh: (hosts: string[], all = false): Promise<NcLaunch & { hosts: string[]; all?: boolean }> => fetch(`${BASE}/refresh`, json({ hosts, all })).then(safeJson),
   // Publish (NIM "Publish"): bir dosya, bir ya da daha fazla sunucu (instance group = servis).

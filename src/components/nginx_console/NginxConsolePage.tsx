@@ -212,7 +212,7 @@ export default function NginxConsolePage() {
       {tab === 'config' && canSee('tab:nginx:config') && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}
       {tab === 'changes' && canSee('tab:nginx:changes') && <ChangesTab />}
       {tab === 'certs' && canSee('tab:nginx:certs') && <CertsTab />}
-      {tab === 'orphans' && canSee('tab:nginx:orphans') && <OrphansTab onOpen={(h) => go('config', h)} />}
+      {tab === 'orphans' && canSee('tab:nginx:orphans') && <OrphansTab isAdmin={isAdmin} onOpen={(h) => go('config', h)} />}
       {tab === 'drift' && canSee('tab:nginx:drift') && <DriftTab onOpen={(h) => go('config', h)} />}
       {tab === 'cis' && canSee('tab:nginx:cis') && <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />}
       {tab === 'ratelimit' && canSee('tab:nginx:ratelimit') && <RateLimitTab />}

@@ -2573,6 +2573,18 @@ const PLAYBOOK_REGISTRY_SEED = [
     env_var_name: 'NGINX_CIS_SCAN_TEMPLATE_ID',
   },
   {
+    // Kullanilmayan dosya temizligi (2026-09-26): SILMEZ, karantinaya alir. Varsayilan mod
+    // plan; "apply"i kullanici Portal'da acikca secer.
+    key_name: 'nginx_orphan_cleanup',
+    display_name: 'Nginx — Kullanilmayan dosya temizligi',
+    category: 'nginx',
+    handler: 'nginx_orphan_cleanup',
+    description:
+      'bmw_nginx/nginx_orphan_cleanup/nginx_orphan_cleanup.yml — Portal > Nginx Hub > "Kullanilmayan" sekmesinde secilen conf/sertifika/ssl dosyalarini /usr/nginx/.portal_karantina/<damga>/ altina TASIR (silmez). Tasimadan once sunucuda taze nginx -T kosar; yuklu ya da referansli bir yol secilmisse reddeder. Tasima sonrasi nginx -t duserse hepsini geri alir. Girdiler: target_host, paths_b64, cleanup_mode (plan|apply). Zamanlanmaz, yalniz dugmeyle kosar.',
+    playbook_path: null,
+    env_var_name: 'NGINX_ORPHAN_CLEANUP_TEMPLATE_ID',
+  },
+  {
     // Uygulama Retirement STOP adimi (2026-09-21): tek sunucu + tek uygulama; plan_only once
     key_name: 'app_retirement_stop',
     display_name: 'Retirement — STOP adimi',
