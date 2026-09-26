@@ -253,11 +253,28 @@ async function loadRateLimits({ scanDate } = {}) {
   };
 }
 
+// ORTAM, SUNUCU ADINDAN OKUNUR (2026-09-26, kullanici kurali):
+// "sunucunun sayilardan onceki ilk harf P ise Production, Q-T-D ise Non-Production".
+//
+// Onceki surum bir on-ek kalibiydi (`^GBNGX?P|^GBRVP`) ve UYDURMAYDI: GBNGXAP32 kalibi
+// tutmuyordu (GBNGX + optional X + P), GBNGXQ01 hic taninmiyordu. Ikisi de "DIGER"
+// olarak dusuyordu - yani ekran, adindan ortami OKUNABILEN sunucular icin "bilmiyorum"
+// diyordu. Kural artik tek ve net: SAYILARDAN HEMEN ONCEKI HARF.
+//
+//   GBNGXP40 -> P   Production      GBRVPAP01 -> P   Production
+//   GBNGXAP34 -> P  Production      GBNGXT33  -> T   Non-Production
+//   GBNGXQ01 -> Q   Non-Production  GBNGXD01  -> D   Non-Production
+//
+// DIGER yalnizca adi bu kalibi hic tutmayan sunucu icin kalir (harf+sayi degil). Bu bir
+// tahmin degil, "olcemedim" demektir.
+const ENV_HARF = { P: 'Production', Q: 'Non-Production', T: 'Non-Production', D: 'Non-Production' };
+
 function envOfHost(host) {
-  const h = String(host || '').toUpperCase();
-  if (/^GBNGX?P|^GBRVP/.test(h)) return 'PROD';
-  if (/T\d*$/.test(h) || /TEST/.test(h)) return 'TEST';
-  return 'DIGER';
+  const h = String(host || '').trim().toUpperCase();
+  // Sondaki sayi grubu ve ondan hemen onceki harf.
+  const m = /^([A-Z]+)(\d+)[A-Z]*$/.exec(h);
+  if (!m) return 'DIGER';
+  return ENV_HARF[m[1].slice(-1)] || 'DIGER';
 }
 
 function emptySummary() {
@@ -309,7 +326,7 @@ function toCsv(hosts, scanDate) {
 }
 
 module.exports = {
-  loadRateLimits, summarize, toCsv, csvField, envOfHost, hostStatus,
+  loadRateLimits, summarize, toCsv, csvField, envOfHost, hostStatus, ENV_HARF,
   parseReqZone, parseReqApply, parseConnApply,
   ZONE_CATALOG, LIMIT_FILE, DIRECTIVES, TABLE,
 };
