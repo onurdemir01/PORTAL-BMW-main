@@ -13,6 +13,10 @@ export interface NginxMigrationConfig {
   templateId: number;
   /** nginx_ops/nginx_ops.yml (Eski tanımı kaldır: action=delete, env=prod — 23:00'e zamanlanır) */
   deleteTemplateId?: number;
+  /** nginx_ops/nginx_spa_package_fetch.yml — STATİK OpenShift envanteriyle koşar.
+   *  Taşıma dinamik envanterde olduğu için jump server'lara ulaşamaz; paketi bu iş çeker
+   *  ve GBLABT02'nin gördüğü paylaşılan alana koyar, sonra taşımayı kendisi tetikler. */
+  fetchTemplateId?: number;
 }
 
 export interface NginxMigrationJobStatus {

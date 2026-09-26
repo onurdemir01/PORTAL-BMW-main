@@ -59,7 +59,7 @@ export default function NginxProdMigration() {
   const [q, setQ] = useState('');
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const [config, setConfig] = useState<NginxMigrationConfig>({ awxServerId: 0, templateId: 0, deleteTemplateId: 0 });
+  const [config, setConfig] = useState<NginxMigrationConfig>({ awxServerId: 0, templateId: 0, deleteTemplateId: 0, fetchTemplateId: 0 });
   // Silme onayi (eski sunucudan location + upstream; nginx_ops 23:00'e zamanlar)
   const [pendingDelete, setPendingDelete] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
   // Onay penceresi: hangi satir, hangi location (birden fazla olabilir)
@@ -264,7 +264,7 @@ export default function NginxProdMigration() {
         if (r.job?.id) trackMigrationJob(`${pending.fetchPackage ? 'Paket + tanım' : 'Tanım oluştur'} · ${pending.app.application} #${r.job.id}`, r.job.id);
         setResult({
           tone: 'ok',
-          text: `${pending.app.application} için ${pending.fetchPackage ? `paket getirme + tanım işi başlatıldı (paket ${r.ocpCluster || 'OpenShift'} cluster'ındaki çalışan pod'dan çekilecek)` : 'tanım işi başlatıldı'}${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içinde ${path.location} → application-confs/${path.service.toLowerCase()}-${pending.app.application}-${pending.app.namespace}.conf · hedef: ${(r.targetHosts || []).join(', ')}. ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde; bitince Geçiş sütununa yansır.' : "Sonucu Teams / AWX'ten izleyin."}`,
+          text: `${pending.app.application} için ${pending.fetchPackage ? `paket getirme işi başlatıldı (paket ${r.ocpCluster || 'OpenShift'} cluster'ındaki çalışan pod'dan çekilecek; bu iş bitince tanım işini KENDİSİ tetikler)` : 'tanım işi başlatıldı'}${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içinde ${path.location} → application-confs/${path.service.toLowerCase()}-${pending.app.application}-${pending.app.namespace}.conf · hedef: ${(r.targetHosts || []).join(', ')}. ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde; bitince Geçiş sütununa yansır.' : "Sonucu Teams / AWX'ten izleyin."}`,
         });
       } else setResult({ tone: 'bad', text: r.message || 'İş başlatılamadı.' });
     } catch (e: unknown) {
@@ -507,8 +507,9 @@ export default function NginxProdMigration() {
             <ol className="list-decimal ml-4 space-y-0.5">
               <li>Uygulamanın OpenShift&apos;te <b>çalışan</b> pod&apos;undan statik dosyalar çekilir
                 (web kök dizini <code>index.html</code>&apos;e bakılarak keşfedilir; bulunamazsa iş durur).</li>
-              <li>Paket <code>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</code> ve
-                <code> /usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/</code> altına açılır, sonra tanım oluşturulur.</li>
+              <li>Paket paylaşılan alana (<code>/sw/WAS_IMAGES/Nginx/spa_packages/</code>) konur;
+                taşıma işi oradan alıp <code>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</code> ve
+                <code> /usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/</code> altına açar, sonra tanımı oluşturur.</li>
             </ol>
             <div className="mt-1.5">
               Sunucuda <b>zaten içerik varsa iş durur</b> — ekibin dağıttığı sürüm ezilmez.
@@ -994,19 +995,21 @@ function MigrationConfigPanel({ config, onSaved }: { config: NginxMigrationConfi
   const [awxServerId, setAwxServerId] = useState(config.awxServerId || 0);
   const [templateId, setTemplateId] = useState(String(config.templateId || ''));
   const [deleteTemplateId, setDeleteTemplateId] = useState(String(config.deleteTemplateId || ''));
+  const [fetchTemplateId, setFetchTemplateId] = useState(String(config.fetchTemplateId || ''));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   // PROP DEGISINCE STATE'I AYARLA — EFFECT DEGIL, RENDER SIRASINDA. Effect'te
   // yapmak ESKI degerlerle BIR RENDER daha uretiyordu ve React 19 bunu
   // `set-state-in-effect` ile isaretliyordu. Kosul bir sonraki render'da yanlis
   // olur, yani yakinsar (React'in belgeledigi desen).
-  const propKey = `${config.awxServerId || 0}|${config.templateId || ''}|${config.deleteTemplateId || ''}`;
+  const propKey = `${config.awxServerId || 0}|${config.templateId || ''}|${config.deleteTemplateId || ''}|${config.fetchTemplateId || ''}`;
   const [prevPropKey, setPrevPropKey] = useState(propKey);
   if (prevPropKey !== propKey) {
     setPrevPropKey(propKey);
     setAwxServerId(config.awxServerId || 0);
     setTemplateId(String(config.templateId || ''));
     setDeleteTemplateId(String(config.deleteTemplateId || ''));
+    setFetchTemplateId(String(config.fetchTemplateId || ''));
   }
   useEffect(() => {
     let alive = true;
@@ -1025,7 +1028,7 @@ function MigrationConfigPanel({ config, onSaved }: { config: NginxMigrationConfi
     if (awxServerId <= 0 || tid <= 0) { setMsg({ tone: 'bad', text: 'AWX sunucusu ve job template ID zorunlu.' }); return; }
     setBusy(true);
     try {
-      const r = await nginxMigrationApi.saveConfig({ awxServerId, templateId: tid, deleteTemplateId: Number(deleteTemplateId) || 0 });
+      const r = await nginxMigrationApi.saveConfig({ awxServerId, templateId: tid, deleteTemplateId: Number(deleteTemplateId) || 0, fetchTemplateId: Number(fetchTemplateId) || 0 });
       if (r.ok) { setMsg({ tone: 'ok', text: 'Kaydedildi. Düğme artık çalışır.' }); onSaved(); }
       else setMsg({ tone: 'bad', text: r.message || 'Kaydedilemedi.' });
     } catch (e: unknown) {
@@ -1050,6 +1053,19 @@ function MigrationConfigPanel({ config, onSaved }: { config: NginxMigrationConfi
         <label className="flex flex-col gap-1">
           <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Silme job'ı (nginx_ops) ID</span>
           <input value={deleteTemplateId} onChange={(e) => setDeleteTemplateId(e.target.value.replace(/[^0-9]/g, ''))} placeholder="isteğe bağlı" inputMode="numeric" className={`${inputCls} w-28`} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Paket getirme job'ı ID</span>
+          <input
+            value={fetchTemplateId}
+            onChange={(e) => setFetchTemplateId(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="isteğe bağlı"
+            inputMode="numeric"
+            className={`${inputCls} w-28`}
+            title={'nginx_ops/nginx_spa_package_fetch.yml — STATİK OpenShift envanteriyle açılmalı. '
+              + 'Taşıma job\'ı dinamik envanterde koştuğu için jump server\'lara ulaşamaz; '
+              + 'paketi bu iş çeker ve taşımayı kendisi tetikler.'}
+          />
         </label>
         <button onClick={save} disabled={busy} className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50" style={{ background: 'var(--accent)' }}>
           {busy ? 'Kaydediliyor…' : 'Kaydet'}

@@ -139,7 +139,7 @@ async function resolveCluster(namespace, application) {
   return { clusters: rows, cluster: null, preferred: false };
 }
 
-function buildExtraVars({ service, application, namespace, inputPath, user, fetchPackage, ocpCluster, podWebroot }) {
+function buildExtraVars({ service, application, namespace, inputPath, user, fetchPackage, ocpCluster, podWebroot, migrationTemplateId }) {
   return {
     service: String(service || '').trim().toUpperCase(),
     application: String(application || '').trim(),
@@ -166,6 +166,12 @@ function buildExtraVars({ service, application, namespace, inputPath, user, fetc
     fetch_package: !!fetchPackage,
     ocp_cluster: fetchPackage ? String(ocpCluster || '').trim() : '',
     pod_webroot: fetchPackage ? String(podWebroot || '').trim() : '',
+    // ZINCIR (2026-09-26): paket isteniyorsa is CEKME template'ine gider ve o, paketi
+    // paylasilan alana koyduktan SONRA tasimayi kendisi tetikler. Hangi template'i
+    // tetikleyecegini TAHMIN ETMESIN diye id'yi buradan veriyoruz - isimle arama bu
+    // depoda benzer adli iki template'de yanilirdi.
+    then_migrate: !!fetchPackage,
+    migration_template_id: fetchPackage && migrationTemplateId != null ? Number(migrationTemplateId) : null,
   };
 }
 
@@ -314,9 +320,15 @@ function initNginxMigration(app) {
         awxServerId: Number(cfg.awxServerId) || 0,
         templateId: Number(cfg.templateId) || 0,
         deleteTemplateId: Number(cfg.deleteTemplateId) || 0,
+        // PAKET CEKME AYRI TEMPLATE (2026-09-26, job 3352755): tasima DINAMIK envanterde
+        // kosar, OpenShift jump server'lari STATIK envanterde. Ayni template ikisine birden
+        // ulasamaz - Ansible "Could not match supplied host pattern" deyip play'i atliyordu.
+        // Cekme isi statik envanterle kosar, paketi GBLABT02'nin gordugu paylasilan alana
+        // koyar; GBLABT02 iki envanterde de oldugu icin koprudur.
+        fetchTemplateId: Number(cfg.fetchTemplateId) || 0,
       };
     } catch {
-      return { awxServerId: 0, templateId: 0, deleteTemplateId: 0 };
+      return { awxServerId: 0, templateId: 0, deleteTemplateId: 0, fetchTemplateId: 0 };
     }
   }
 
@@ -584,10 +596,11 @@ function initNginxMigration(app) {
     const awxServerId = Number(req.body?.awxServerId) || 0;
     const templateId = Number(req.body?.templateId) || 0;
     const deleteTemplateId = Number(req.body?.deleteTemplateId) || 0; // istege bagli: nginx_ops
+    const fetchTemplateId = Number(req.body?.fetchTemplateId) || 0; // istege bagli: nginx_spa_package_fetch
     if (awxServerId <= 0 || templateId <= 0) {
       return res.status(400).json({ ok: false, message: 'AWX sunucusu ve template ID zorunlu.' });
     }
-    const data = JSON.stringify({ awxServerId, templateId, deleteTemplateId });
+    const data = JSON.stringify({ awxServerId, templateId, deleteTemplateId, fetchTemplateId });
     try {
       const ex = await db.query(`SELECT 1 FROM portal_config_blobs WHERE name = $1`, [CONFIG_NAME]);
       if (ex.rows.length) {
@@ -595,7 +608,7 @@ function initNginxMigration(app) {
       } else {
         await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [CONFIG_NAME, data]);
       }
-      res.json({ ok: true, config: { awxServerId, templateId, deleteTemplateId } });
+      res.json({ ok: true, config: { awxServerId, templateId, deleteTemplateId, fetchTemplateId } });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }
@@ -679,12 +692,26 @@ function initNginxMigration(app) {
         fetchPackage,
         ocpCluster,
         podWebroot: req.body?.podWebroot,
+        migrationTemplateId: cfg.templateId,
       });
-      const launched = await launchJobOnServer(cfg.awxServerId, cfg.templateId, extra, '', user.username || null);
+      // PAKET ISTENIYORSA once CEKME isi kosar; tasimayi o tetikler (then_migrate).
+      // Iki isi Portal'dan sirayla baslatip beklemiyoruz: AWX islerinin arasinda
+      // denetleyici konteyneri degisebilir ve /tmp'deki zip kaybolur. Zincir Ansible
+      // tarafinda, paket de paylasilan alanda durur.
+      const hedefTemplate = fetchPackage ? cfg.fetchTemplateId : cfg.templateId;
+      if (fetchPackage && !hedefTemplate) {
+        return res.status(409).json({
+          ok: false,
+          message: 'Paket getirme job\'i yapilandirilmamis. nginx_spa_package_fetch.yml icin '
+            + 'AWX\'te acilan template (STATIK OpenShift envanteriyle) bu sayfadaki yonetici '
+            + 'panelinde "Paket getirme job\'i" alanina girilmeli.',
+        });
+      }
+      const launched = await launchJobOnServer(cfg.awxServerId, hedefTemplate, extra, '', user.username || null);
       // launchJobOnServer { jobId, status } dondurur; onceki kod `job.id` okuyordu ve damga
       // HEP NULL kaliyordu (2026-09-18). Istemciye ayni sekil + awxServerId (izleme penceresi).
       const job = jobShape(launched, cfg.awxServerId);
-      await recordJobHistory(cfg.awxServerId, cfg.templateId, (fetchPackage ? 'Nginx PROD taşıması: paket getir + tanım oluştur' : 'Nginx PROD taşıması: tanım oluştur'), job, extra, user);
+      await recordJobHistory(cfg.awxServerId, hedefTemplate, (fetchPackage ? 'Nginx PROD taşıması: paket getir (tanımı kendisi tetikler)' : 'Nginx PROD taşıması: tanım oluştur'), job, extra, user);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_create', {
           username: user.username,

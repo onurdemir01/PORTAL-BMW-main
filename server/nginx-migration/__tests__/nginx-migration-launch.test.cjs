@@ -20,6 +20,7 @@ test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () 
     env: 'prod', action: 'create', app_type: 'spa', migration_mode: true,
     requester_name: 'Onur Demir', requester_email: 'o@x',
     fetch_package: false, ocp_cluster: '', pod_webroot: '',
+    then_migrate: false, migration_template_id: null,
   });
   // Playbook'un kapisi (assert) bu degerleri bekler; survey varsayilani karisirsa is duser.
   assert.equal(v.env, 'prod');
@@ -51,6 +52,34 @@ test('MG4 paket cekme alanlari: istenmediginde bos GONDERILIR, istendiginde dola
   });
   assert.equal(sizinti.ocp_cluster, '');
   assert.equal(sizinti.pod_webroot, '');
+  // Zincir de kapali olmali: cekme istenmiyorsa tasima dogrudan kosar.
+  assert.equal(sizinti.then_migrate, false);
+  assert.equal(sizinti.migration_template_id, null);
+});
+
+// MG9 (2026-09-26, uretimde yakalandi - job 3352755): tasima DINAMIK envanterde kosar,
+// OpenShift jump server'lari STATIK envanterde. Ayni template ikisine birden ULASAMAZ
+// ("Could not match supplied host pattern: openshift_jump_servers"). Bu yuzden paket
+// isteniyorsa is AYRI bir template'e gider; o, paketi GBLABT02'nin gordugu paylasilan
+// alana koyup tasimayi kendisi tetikler.
+test("MG9 zincir: paket istenince CEKME template'ine gider, tasimayi o tetikler", () => {
+  const zincir = buildExtraVars({
+    service: 'glomo', application: 'a', namespace: 'n', inputPath: '/x/', user: {},
+    fetchPackage: true, ocpCluster: 'gbocpprod1', migrationTemplateId: 412,
+  });
+  assert.equal(zincir.then_migrate, true, 'cekme isi tasimayi tetiklemiyor');
+  assert.equal(zincir.migration_template_id, 412, 'hangi template tetiklenecek belirsiz');
+
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  // Hedef template fetchPackage'a gore SECILMELI; ayni template'e gitmek eski hatadir.
+  assert.match(srv, /fetchPackage \? cfg\.fetchTemplateId : cfg\.templateId/,
+    'paket istenince ayri template kullanilmiyor');
+  // Yapilandirilmamissa ACIK mesajla durmali, sessizce tasimaya dusmemeli.
+  assert.match(srv, /Paket getirme job/, 'cekme template yoksa acik mesaj yok');
+  assert.match(srv, /fetchTemplateId: Number\(cfg\.fetchTemplateId\)/, 'yapilandirmada alan yok');
+  // Template id YAPILANDIRMADAN gelir, istemciden DEGIL.
+  assert.match(srv, /migrationTemplateId: cfg\.templateId/);
+  assert.ok(!/migrationTemplateId: req\.body/.test(srv), 'template id istemciden aliniyor');
 });
 
 // MG5: cluster TAHMIN EDILMEZ. Playbook'un cekme play'i `name == ocp_cluster` ile suzulur;
