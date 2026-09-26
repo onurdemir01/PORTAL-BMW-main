@@ -124,7 +124,7 @@ async function resolveCluster(namespace, application) {
   return { clusters: rows, cluster: rows.length === 1 ? rows[0] : null };
 }
 
-function buildExtraVars({ service, application, namespace, inputPath, user, fetchPackage, ocpCluster, podWebroot, templateId }) {
+function buildExtraVars({ service, application, namespace, inputPath, user, fetchPackage, ocpCluster, podWebroot }) {
   return {
     service: String(service || '').trim().toUpperCase(),
     application: String(application || '').trim(),
@@ -151,16 +151,6 @@ function buildExtraVars({ service, application, namespace, inputPath, user, fetc
     fetch_package: !!fetchPackage,
     ocp_cluster: fetchPackage ? String(ocpCluster || '').trim() : '',
     pod_webroot: fetchPackage ? String(podWebroot || '').trim() : '',
-    // 23:00 KESINTI PENCERESI (2026-09-26). Yeni Ankara sunuculari (GBNGXAP3x) artik
-    // CANLI trafik tasiyor, yani tasima da PROD kuralina tabi: is once yalnizca
-    // zamanlar, gercek degisiklik pencerede yapilir.
-    //
-    // apply_now'i ACIKCA false gonderiyoruz: alani hic gondermezsek AWX survey
-    // varsayilani devreye girip aninda uygulamaya dusebilir.
-    apply_now: false,
-    // Zamanlamayi playbook AWX API'sine kendisi yazar; hangi template'i zamanlayacagini
-    // TAHMIN ETMESIN diye id'yi buradan veriyoruz (isim aramasi iki template'de yanilir).
-    migration_template_id: templateId != null ? Number(templateId) : null,
   };
 }
 
@@ -671,13 +661,12 @@ function initNginxMigration(app) {
         fetchPackage,
         ocpCluster,
         podWebroot: req.body?.podWebroot,
-        templateId: cfg.templateId,
       });
       const launched = await launchJobOnServer(cfg.awxServerId, cfg.templateId, extra, '', user.username || null);
       // launchJobOnServer { jobId, status } dondurur; onceki kod `job.id` okuyordu ve damga
       // HEP NULL kaliyordu (2026-09-18). Istemciye ayni sekil + awxServerId (izleme penceresi).
       const job = jobShape(launched, cfg.awxServerId);
-      await recordJobHistory(cfg.awxServerId, cfg.templateId, (fetchPackage ? 'Nginx PROD taşıması: paket getir + tanım (23:00)' : 'Nginx PROD taşıması: tanım oluştur (23:00)'), job, extra, user);
+      await recordJobHistory(cfg.awxServerId, cfg.templateId, (fetchPackage ? 'Nginx PROD taşıması: paket getir + tanım oluştur' : 'Nginx PROD taşıması: tanım oluştur'), job, extra, user);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_prod_migration_create', {
           username: user.username,
@@ -733,7 +722,7 @@ function initNginxMigration(app) {
         console.warn('[nginx-migration] takip damgasi yazilamadi:', e.message);
       }
       const g = view.groups.find((x) => x.id === String(req.body?.group || ''));
-      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, targetHosts: g ? g.newHosts : [], fetchPackage, ocpCluster, scheduled: true });
+      res.json({ ok: true, job, awxServerId: cfg.awxServerId, extraVars: extra, targetHosts: g ? g.newHosts : [], fetchPackage, ocpCluster });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
     }

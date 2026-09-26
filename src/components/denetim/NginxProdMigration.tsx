@@ -264,7 +264,7 @@ export default function NginxProdMigration() {
         if (r.job?.id) trackMigrationJob(`${pending.fetchPackage ? 'Paket + tanım' : 'Tanım oluştur'} · ${pending.app.application} #${r.job.id}`, r.job.id);
         setResult({
           tone: 'ok',
-          text: `${pending.app.application} için ${pending.fetchPackage ? `paket getirme + tanım işi 23:00 kesinti penceresine ZAMANLANDI (paket ${r.ocpCluster || 'OpenShift'} cluster'ındaki çalışan pod'dan o saatte çekilecek)` : 'tanım işi 23:00 kesinti penceresine ZAMANLANDI'}${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içinde ${path.location} → application-confs/${path.service.toLowerCase()}-${pending.app.application}-${pending.app.namespace}.conf · hedef: ${(r.targetHosts || []).join(', ')}. ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde; bitince Geçiş sütununa yansır.' : "Sonucu Teams / AWX'ten izleyin."}`,
+          text: `${pending.app.application} için ${pending.fetchPackage ? `paket getirme + tanım işi başlatıldı (paket ${r.ocpCluster || 'OpenShift'} cluster'ındaki çalışan pod'dan çekilecek)` : 'tanım işi başlatıldı'}${r.job?.id ? ` (job ${r.job.id})` : ''}: ${path.service}-PROD.conf içinde ${path.location} → application-confs/${path.service.toLowerCase()}-${pending.app.application}-${pending.app.namespace}.conf · hedef: ${(r.targetHosts || []).join(', ')}. ${r.job?.id ? 'Canlı log sağ alttaki iş penceresinde; bitince Geçiş sütununa yansır.' : "Sonucu Teams / AWX'ten izleyin."}`,
         });
       } else setResult({ tone: 'bad', text: r.message || 'İş başlatılamadı.' });
     } catch (e: unknown) {
@@ -500,15 +500,6 @@ export default function NginxProdMigration() {
           </div>
         }
       >
-        {/* 23:00 PENCERESI (2026-09-26): yeni Ankara sunuculari artik CANLI trafik
-            tasiyor, tasima da PROD kuralina tabi. Kullanici "tanim simdi olustu"
-            sanmasin diye bunu ONAY oncesinde yaziyoruz. */}
-        <div className="mb-3 text-[12px] rounded-lg px-3 py-2 border"
-          style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
-          Bu iş sunuculara <b>hemen dokunmaz</b>: doğrular ve kendini <b>23:00 kesinti
-          penceresine zamanlar</b>. Yeni Ankara sunucuları (GBNGXAP3x) canlı trafik
-          taşıdığı için taşıma da PROD kuralına tabidir.
-        </div>
         {pending?.fetchPackage && (
           <div className="mb-3 text-[12px] rounded-lg px-3 py-2 border"
             style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>

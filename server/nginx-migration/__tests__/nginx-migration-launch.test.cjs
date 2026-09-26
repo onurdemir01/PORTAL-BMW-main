@@ -20,7 +20,6 @@ test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () 
     env: 'prod', action: 'create', app_type: 'spa', migration_mode: true,
     requester_name: 'Onur Demir', requester_email: 'o@x',
     fetch_package: false, ocp_cluster: '', pod_webroot: '',
-    apply_now: false, migration_template_id: null,
   });
   // Playbook'un kapisi (assert) bu degerleri bekler; survey varsayilani karisirsa is duser.
   assert.equal(v.env, 'prod');
@@ -52,33 +51,6 @@ test('MG4 paket cekme alanlari: istenmediginde bos GONDERILIR, istendiginde dola
   });
   assert.equal(sizinti.ocp_cluster, '');
   assert.equal(sizinti.pod_webroot, '');
-});
-
-// MG7 (2026-09-26): 23:00 KESINTI PENCERESI. Yeni Ankara sunuculari (GBNGXAP3x) artik
-// CANLI trafik tasiyor, yani tasima da PROD kuralina tabi. Portal isi ANINDA uygulatmaz:
-// apply_now=false gonderir, playbook kendini 23:00'e zamanlar.
-test('MG7 pencere: apply_now ACIKCA false gider, template id tahmin edilmez', () => {
-  const v = buildExtraVars({
-    service: 'glomo', application: 'a', namespace: 'n', inputPath: '/x/', user: {}, templateId: 412,
-  });
-  // Alani hic gondermezsek AWX survey varsayilani devreye girip aninda uygulamaya duserdi.
-  assert.ok('apply_now' in v, 'apply_now hic gonderilmiyor: survey varsayilani devreye girer');
-  assert.equal(v.apply_now, false);
-  // Playbook hangi template'i zamanlayacagini TAHMIN ETMEMELI: isim aramasi iki
-  // template'de yanilir, yanlis is zamanlanir.
-  assert.equal(v.migration_template_id, 412);
-
-  // Template tanimli degilse null gider ve playbook'un girdi kapisi bunu REDDEDER -
-  // sessizce 0 ya da '' gondermek yanlis template'i zamanlama riski yaratirdi.
-  const yok = buildExtraVars({ service: 'glomo', application: 'a', namespace: 'n', inputPath: '/x/', user: {} });
-  assert.equal(yok.migration_template_id, null);
-
-  // Sunucu kodu template id'sini YAPILANDIRMADAN almali, istekten DEGIL.
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const srv = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  assert.match(srv, /templateId: cfg\.templateId/, 'template id yapilandirmadan gelmiyor');
-  assert.ok(!/templateId: req\.body/.test(srv), 'template id istemciden aliniyor (anti-tamper)');
 });
 
 // MG5: cluster TAHMIN EDILMEZ. Playbook'un cekme play'i `name == ocp_cluster` ile suzulur;

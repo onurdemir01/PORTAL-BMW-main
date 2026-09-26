@@ -35,8 +35,6 @@ export interface NginxMigrationCreateResult {
   fetchPackage?: boolean;
   /** paketin cekildigi OpenShift cluster'i (envanterden cozuldu, tahmin degil) */
   ocpCluster?: string;
-  /** true = is sunuculara dokunmadi, kendini 23:00 kesinti penceresine zamanladi */
-  scheduled?: boolean;
 }
 
 export interface NginxMigrationDeleteResult {
