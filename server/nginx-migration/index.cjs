@@ -146,7 +146,7 @@ function buildDeleteExtraVars({ service, inputPath, user }) {
  * Istegi tasima gorunumune karsi dogrular.
  * @returns {{ok:true, app:Object, path:Object} | {ok:false, status:number, message:string}}
  */
-function validateRequest(groups, { group, namespace, application, service, inputPath, force = false }, { ignoreStatus = false } = {}) {
+function validateRequest(groups, { group, namespace, application, service, inputPath }, { ignoreStatus = false } = {}) {
   const g = (groups || []).find((x) => x.id === String(group || ''));
   if (!g) return { ok: false, status: 400, message: 'Geçersiz taşıma grubu.' };
   const ns = String(namespace || '').trim().toLowerCase();
@@ -185,11 +185,22 @@ function validateRequest(groups, { group, namespace, application, service, input
   // KANIT TARAMADIR, job kaydi DEGIL: tanim elle ya da baska bir akisla acilmis olabilir
   // (Glomo'da yeni tanimlar hala eski yoldan geliyor). Job kaydi arayan eski kural, boyle
   // satirlari "tanimsiz" sayip ustune bir kez daha yaziyordu.
-  if (!force && p.newStatus === 'defined') {
+  // KAPI KOSULSUZ (2026-09-27): "Yeniden olustur" dugmesi KALDIRILDI.
+  //
+  // Dugme, tanimi yeniden yazacagini soyluyordu ama YAZAMIYORDU: Portal `force` ile kendi
+  // kapisini asiyordu, ama o bayrak Ansible'a HIC gitmiyordu ve playbook migration_mode'da
+  // location'i vhost'ta bulunca o sunucuyu tamamen atliyor (`meta: end_host`,
+  // "Tanim bu sunucuda DEGISTIRILMIYOR"). Yani is yesil bitiyor, hicbir sey degismiyordu.
+  //
+  // Yanlis vaadi kaldirdik. Yeniden yazma gercekten istenirse yapilacak is bu kapiyi
+  // acmak DEGIL: playbook'a bir overwrite bayragi gecirip o end_host'u kosullu yapmak.
+  if (p.newStatus === 'defined') {
     return {
       ok: false,
       status: 409,
-      message: `${svc} ${loc} yeni sunucuların tamamında ZATEN TANIMLI (son tarama). Yeniden oluşturmak istiyorsanız force ile gönderin.`,
+      message: `${svc} ${loc} yeni sunucuların tamamında ZATEN TANIMLI (son tarama). `
+        + 'Tanımı yeniden yazmak için bu iş kullanılamaz: playbook, tanımı olan sunucuyu '
+        + 'atlıyor. Bozuk bir tanımı düzeltmek gerekiyorsa sunucuda elle bakılmalı.',
     };
   }
   return { ok: true, app: row, path: p };

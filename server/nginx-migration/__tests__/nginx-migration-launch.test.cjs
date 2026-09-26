@@ -202,9 +202,12 @@ test('MG2 sozlesme: sunucu kapisi ve ekran AYNI kurali uygular', () => {
   assert.ok(/disabled=\{!canCreate \|\| allDone/.test(ui), 'dugme tanimli satirda pasif degil');
   assert.ok(/isPathDefined\(pp\) \|\| isDefinitionConfirmed/.test(ui), 'toplu secim tanimli yollari atlamiyor');
   assert.ok(/'Tanımlı' : 'Tanım oluştur'/.test(ui), 'pasif dugme neden pasif oldugunu soylemeli');
-  // Sunucu: tarama tanimli diyorsa 409; force ile bilincli yeniden olusturma acik kalir.
-  assert.ok(/!force && p\.newStatus === 'defined'/.test(srv), 'sunucu kapisi tarama temelli degil');
-  assert.ok(/force ile gönderin/.test(srv), 'yeniden olusturma yolu belgelenmeli');
+  // Sunucu: tarama tanimli diyorsa 409 - KOSULSUZ. "Yeniden olustur" kaldirildi (2026-09-27),
+  // cunku playbook tanimi olan sunucuyu atliyor ve is hicbir sey yapmadan yesil bitiyordu.
+  assert.ok(/if \(p\.newStatus === 'defined'\)/.test(srv), 'sunucu kapisi tarama temelli degil');
+  // YORUMLARI AY: "neden kaldirdik" aciklamasinda 'force' gecmesi bir ihlal degil.
+  const srvKod = srv.split(String.fromCharCode(10)).filter((l) => !l.trim().startsWith('//')).join(String.fromCharCode(10));
+  assert.ok(!/force/.test(srvKod), 'force kalintisi var: kapi hala asilabilir gorunuyor');
 
   const ddl = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
   assert.ok(/CREATE TABLE nginx_migration_path_jobs/.test(ddl), 'tablo seed edilmemis');
@@ -301,20 +304,46 @@ test('BC1 toplu tanim olusturma: hazir olmayan ATLANIR, sebebi yazilir, isler si
   assert.match(run, /for \(const it of bulkPlan\.yapilacak\)/);
   assert.match(page, /Seçilenler için tanım oluştur/, 'cubukta dugme yok');
 });
+// MG3 (2026-09-27): "Yeniden olustur" dugmesi KALDIRILDI ve geri gelmemeli.
+//
+// Dugme, tanimi yeniden yazacagini soyluyordu ama YAZAMIYORDU: Portal `force` ile kendi
+// kapisini asiyordu, o bayrak Ansible'a HIC gitmiyordu ve playbook migration_mode'da
+// location'i vhost'ta bulunca o sunucuyu tamamen atliyor (`meta: end_host`). Is yesil
+// bitiyor, hicbir sey degismiyordu - yani yanlis bir vaat.
+//
+// Geri eklenecekse yapilacak is bu kapiyi acmak DEGIL: playbook'a overwrite bayragi
+// gecirip o end_host'u kosullu yapmak. Bu test, kapinin sessizce asilabilir hale
+// gelmesini engeller.
+test('MG3 yanlis vaat yok: tanimli yol KOSULSUZ reddedilir', () => {
+  const tanimli = [{
+    id: 'glomo',
+    newHosts: ['GBNGXP40'],
+    apps: [{
+      namespace: 'glomo-prod', application: 'var-app-v1', status: 'ready',
+      paths: [{ service: 'GLOMO', location: '/v/', hosts: ['GBRVPP07'], newStatus: 'defined' }],
+    }],
+  }];
+  const istek = { group: 'glomo', namespace: 'glomo-prod', application: 'var-app-v1', service: 'GLOMO', inputPath: '/v/' };
 
-test('MG3 yeniden olustur: ekranda ACIK bir yol var ve uyari veriyor', () => {
-  // Kullanici (2026-09-26): "bozuk tanimi duzeltmek icin ekrana da 'yeniden olustur'
-  // ekler misin". Sunucu tarafi zaten force'u kabul ediyordu; ekranda karsiligi olmayinca
-  // bozuk bir tanimi duzeltmenin yolu yoktu.
-  const ui = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
-  // Dugme YALNIZ tanimli satirda cikmali (kazara tetiklenmesin).
-  assert.match(ui, /\{allDone && canCreate && \(/, 'yeniden olustur yalniz tanimli satirda gorunmeli');
-  assert.match(ui, /Yeniden oluştur/, 'dugme yok');
-  assert.match(ui, /onCreate\(a, true\)/, 'force gecirilmiyor');
-  // Onay penceresi "yeni tanim" ile "ustune yazma"yi AYNI cumleyle anlatmamali.
-  assert.match(ui, /Tanımı YENİDEN oluştur/, 'pencere basligi force durumunu soylemeli');
-  assert.match(ui, /yeniden oluşturulur ve üzerine yazılır/, 'ustune yazma uyarisi yok');
-  assert.match(ui, /Evet, üzerine yaz/, 'onay dugmesi ne yaptigini soylemeli');
-  // force YALNIZCA kullanici sectiginde gitmeli - varsayilan istekte olmamali.
-  assert.match(ui, /\.\.\.\(pending\.force \? \{ force: true \} : \{\}\)/, 'force kosulsuz gonderiliyor');
+  const r = validateRequest(tanimli, istek);
+  assert.equal(r.ok, false, 'zaten tanimli yol kabul edildi');
+  assert.equal(r.status, 409);
+  // Mesaj, YAPILAMAYACAGINI soylemeli - "force ile gonderin" gibi olmayan bir kacis
+  // yolu ONERMEMELI.
+  assert.ok(!/force/i.test(r.message), 'mesaj hala force oneriyor');
+  assert.match(r.message, /yeniden yazmak için bu iş kullanılamaz/);
+
+  // force GONDERSE BILE gecmemeli: kapi kosulsuz.
+  assert.equal(validateRequest(tanimli, { ...istek, force: true }).ok, false,
+    'force ile kapi asilabiliyor - dugme kaldirildi ama arka kapi acik');
+
+  // Ekranda dugme ve force izi kalmamali.
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.ok(!/Yeniden oluştur/.test(ui), 'dugme hala ekranda');
+  assert.ok(!/onCreate\(a, true\)/.test(ui), 'force gecisi hala var');
+  // Iddia DUGME metniyle ilgili: 'uzerine yaz' toplu takip penceresinde de geciyor
+  // (alakasiz bir ozellik) - ilk kalip onu da yakaliyordu.
+  assert.ok(!/Evet, üzerine yaz/.test(ui), 'yanlis vaat veren onay butonu hala duruyor');
+  assert.ok(!/mevcut dosyanın üzerine yazar/.test(ui), 'yanlis vaat ipucu hala duruyor');
 });

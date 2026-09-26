@@ -115,8 +115,7 @@ export default function NginxProdMigration() {
   // Silme onayi (eski sunucudan location + upstream; nginx_ops 23:00'e zamanlar)
   const [pendingDelete, setPendingDelete] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
   // Onay penceresi: hangi satir, hangi location (birden fazla olabilir)
-  // force: tanim zaten varken BILEREK yeniden olusturma (bozuk tanimi duzeltmek icin).
-  const [pending, setPending] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number; force?: boolean } | null>(null);
+  const [pending, setPending] = useState<{ group: NginxMigrationGroup; app: NginxMigrationApp; pathIdx: number } | null>(null);
   // Izleme penceresi (2026-09-18): OpsX/Self Service ile AYNI JobTracker - AWX'e gitmeden canli log.
   // Terminal olunca takip tablosu yeniden okunur ki "tanim olusturuldu" hemen yansisin.
   const { addJob } = useJobTracker();
@@ -290,8 +289,6 @@ export default function NginxProdMigration() {
     })();
   }, [tick]);
 
-  // Onay penceresi metni force'a gore degisir: "yeni tanim" ile "ustune yazma" ayni
-  // cumleyle anlatilamaz.
   async function confirmCreate() {
     if (!pending) return;
     const path = pending.app.paths[pending.pathIdx];
@@ -303,10 +300,6 @@ export default function NginxProdMigration() {
         application: pending.app.application,
         service: path.service,
         inputPath: path.location,
-        // YENIDEN OLUSTURMA (2026-09-26, kullanici: "bozuk tanimi duzeltmek icin ekrana da
-        // 'yeniden olustur' ekler misin"): tanim zaten varken sunucu 409 doner; force yalnizca
-        // kullanici bunu ACIKCA sectiginde gider.
-        ...(pending.force ? { force: true } : {}),
       });
       if (r.ok) {
         if (r.job?.id) trackMigrationJob(`Tanım oluştur · ${pending.app.application} #${r.job.id}`, r.job.id);
@@ -504,7 +497,7 @@ export default function NginxProdMigration() {
           sortBy={sortBy}
           ownersReady={data.ownersReady !== false}
           canCreate={configured}
-          onCreate={(app, force) => setPending({ group: g, app, pathIdx: 0, force })}
+          onCreate={(app) => setPending({ group: g, app, pathIdx: 0 })}
           pathJobs={pathJobs}
           selected={selected}
           onToggleSelect={(key, on) => setSelected((prev) => {
@@ -534,7 +527,7 @@ export default function NginxProdMigration() {
       <Modal
         open={!!pending}
         onClose={() => setPending(null)}
-        title={pending?.force ? 'Tanımı YENİDEN oluştur' : 'Yeni sunucularda tanım oluştur'}
+        title='Yeni sunucularda tanım oluştur'
         subtitle={pending ? `${pending.app.application} · ${pending.app.namespace}` : undefined}
         icon={DocumentPlusIcon}
         dismissOnBackdrop={false}
@@ -547,14 +540,14 @@ export default function NginxProdMigration() {
               className="px-3 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
               style={{ background: 'var(--accent)' }}
             >
-              {busy ? 'Başlatılıyor…' : pending?.force ? 'Evet, üzerine yaz' : 'Evet, tanımı oluştur'}
+              {busy ? 'Başlatılıyor…' : 'Evet, tanımı oluştur'}
             </button>
           </div>
         }
       >
         {/* BAYAT TARAMA UYARISI (2026-09-26): dugme artik engellenmiyor, ama kullanici
             neye baktigini bilsin. Engel degil, bilgi. */}
-        {pending && !pending.force && (pending.app.status === 'missing' || pending.app.status === 'not-scanned') && (
+        {pending && (pending.app.status === 'missing' || pending.app.status === 'not-scanned') && (
           <div className="mb-3 text-[12px] rounded-lg px-3 py-2 border"
             style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
             {pending.app.status === 'missing'
@@ -565,48 +558,6 @@ export default function NginxProdMigration() {
             <code> nginx -t</code> düşerse geri alır.
           </div>
         )}
-        {pending?.force && (
-          <div className="mb-3 text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
-            style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
-            <span>
-              Bu tanım son taramada <b>zaten mevcut</b> görünüyor. Devam ederseniz aynı dosya
-              <b> yeniden oluşturulur ve üzerine yazılır</b>. Bunu yalnızca tanımın bozuk olduğunu
-              düşünüyorsanız yapın; playbook kendi yedeğini alır ve <code>nginx -t</code> düşerse geri alır.
-            </span>
-          </div>
-        )}
-        {pending && (() => {
-          const path = pending.app.paths[pending.pathIdx];
-          const svc = path.service;
-          return (
-            <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-              {pending.app.paths.length > 1 && (
-                <div>
-                  Bu uygulama eski sunucuda <b>{pending.app.paths.length}</b> farklı location&apos;dan sunuluyor; hangisi taşınsın?
-                  <div className="mt-1 space-y-0.5">
-                    {pending.app.paths.map((p, i) => (
-                      <label key={p.service + p.location} className="flex items-center gap-2 cursor-pointer">
-                        <input type="radio" name="path" checked={i === pending.pathIdx} onChange={() => setPending({ ...pending, pathIdx: i })} />
-                        <span className="font-mono text-[11px]" style={{ color: 'var(--text-primary)' }}>{p.service}-PROD.conf · {p.location}</span>
-                        <span className="text-[10px] text-[var(--text-muted)]">({p.hosts.join(', ')})</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <p>Yeni sunucularda (<span className="font-mono">{pending.group.newHosts.join(', ')}</span>) şunlar oluşturulacak:</p>
-              <div className="font-mono text-[11px] space-y-0.5 rounded-lg px-3 py-2" style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
-                <div>/usr/nginx/conf.d/{svc}-PROD.conf → <span className="text-[var(--text-muted)]">location {path.location} {'{'} include …/{svc.toLowerCase()}-{pending.app.application}-{pending.app.namespace}.conf; {'}'}</span></div>
-                <div>/usr/nginx/conf.d/application-confs/{svc.toLowerCase()}-{pending.app.application}-{pending.app.namespace}.conf</div>
-              </div>
-              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                Non-prod SPA oluşturma akışının aynısı: uygulama dizini yoksa durur; aynı context path zaten tanımlıysa durur;
-                aynı ad varsa dosya <Code>-N</Code> eki alır; <Code>nginx -t</Code> düşerse değişiklik geri alınır, geçerse reload.
-                Eski sunucudaki proxy_pass tanımına <b>dokunulmaz</b>; trafik geçişi ayrıca planlanır.
-              </p>
-            </div>
-          );
-        })()}
       </Modal>
 
       <Modal
@@ -1255,7 +1206,7 @@ function GroupPanel({
   sortBy: 'status' | 'team' | 'app' | 'plan';
   ownersReady: boolean;
   canCreate: boolean;
-  onCreate: (app: NginxMigrationApp, force?: boolean) => void;
+  onCreate: (app: NginxMigrationApp) => void;
   pathJobs: Map<string, MigrationPathJob>;
   selected: Set<string>;
   onToggleSelect: (key: string, on: boolean) => void;
@@ -1470,19 +1421,6 @@ function GroupPanel({
                     >
                       <DocumentPlusIcon className="w-3.5 h-3.5" /> {allDone ? 'Tanımlı' : 'Tanım oluştur'}
                     </button>
-                    {/* YENIDEN OLUSTUR (2026-09-26, kullanici istegi): tanim var ama BOZUK
-                        olabilir. Ayri ve sessiz bir dugme - kazara tetiklenmesin diye
-                        yalnizca tanimli satirda cikar ve onay penceresinden gecer. */}
-                    {allDone && canCreate && (
-                      <button
-                        onClick={() => onCreate(a, true)}
-                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg mt-1 whitespace-nowrap"
-                        style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)', background: 'var(--bg-surface)' }}
-                        title="Tanım zaten var. Bozuk olduğunu düşünüyorsanız aynı tanımı YENİDEN oluşturur (mevcut dosyanın üzerine yazar)."
-                      >
-                        <ArrowPathIcon className="w-3.5 h-3.5" /> Yeniden oluştur
-                      </button>
-                    )}
                       </>
                       );
                     })()}
