@@ -165,3 +165,45 @@ test('RL7: nginx kurulu degil / calismiyor, "limit eksik" DEMEK degildir', () =>
   }], '2026-09-26');
   assert.match(csv, /NGINX KURULU DEĞİL/, 'rapor sebebi yazmiyor, "eksik" gibi okunur');
 });
+
+test('RL8: siralama - sorunlu ustte, oranlar SAYISAL, olculemeyen sona', () => {
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'RateLimitTab.tsx'), 'utf8');
+
+  // Varsayilan "sorun": bu bir envanter degil DENETIM ekrani, once bakilmasi gereken ustte.
+  assert.match(ui, /useState<Sira>\('sorun'\)/, 'varsayilan siralama sorunlu-ustte degil');
+  assert.match(ui, /DURUM_AGIRLIK/, 'durum agirliklari yok, alfabetik siralaniyor');
+
+  // Agirlik sirasi ANLAMLI olmali: kurulu degil > config bozuk > eksik > standart.
+  const blok = ui.slice(ui.indexOf('DURUM_AGIRLIK'), ui.indexOf('type Sira'));
+  const agirlik = (k) => {
+    // RegExp KURMUYORUZ: bu dosyaya yazilirken kacis karakterleri bozulabiliyor
+    // (heredoc), sessizce eslesmeyen bir kalip bekciyi kor yapardi. Duz ayristirma.
+    const i = blok.indexOf(k + ':');
+    assert.ok(i >= 0, `${k} agirligi yok`);
+    const n = Number(blok.slice(i + k.length + 1, blok.indexOf(',', i)).trim());
+    assert.ok(Number.isFinite(n), `${k} agirligi sayi degil`);
+    return n;
+  };
+  const sira = ['kurulumyok', 'configbozuk', 'eksik', 'bilinmiyor', 'farkli', 'standart'].map(agirlik);
+  for (let i = 1; i < sira.length; i += 1) {
+    assert.ok(sira[i] > sira[i - 1], 'durum agirliklari artan sirada degil: ' + sira.join(','));
+  }
+
+  // ORAN METIN DEGIL SAYI olarak karsilastirilmali. Metin siralamasi "100r/s" > "50r/s"
+  // derdi ve rapor yanlis okunurdu.
+  assert.match(ui, /function oranSayi/, 'oran metinden sayiya cevrilmiyor');
+  assert.ok(ui.includes(String.raw`r\/(s|m)`), 'r/m birimi taninmiyor');
+
+  // OLCULEMEYEN (null) deger HER ZAMAN sona: 0 gibi davranmasi, limiti olmayan sunucuyu
+  // "en dusuk limitli" gibi gosterirdi - bugun duzelttigimiz hata sinifinin aynisi.
+  assert.match(ui, /function sayiKarsilastir/);
+  const sk = ui.slice(ui.indexOf('function sayiKarsilastir'), ui.indexOf('function sayiKarsilastir') + 400);
+  assert.match(sk, /if \(a == null\) return 1;/, 'null deger sona gitmiyor');
+  assert.match(sk, /if \(b == null\) return -1;/);
+
+  // Yanit dizisi YERINDE siralanmamali: data.hosts yanitin kendisi.
+  assert.match(ui, /\[\.\.\.suzulmus\]\.sort/, 'yanit dizisi yerinde sort ediliyor');
+  // Esitlik bozulmasi kararli olmali (ad ile), yoksa her render sira degistirir.
+  assert.match(ui, /localeCompare\(b\.host, 'tr'\)/, 'esitlikte kararli siralama yok');
+});

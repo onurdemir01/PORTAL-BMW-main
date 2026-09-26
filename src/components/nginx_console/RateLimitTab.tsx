@@ -27,6 +27,55 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { toast } from '@/hooks/useToast';
 
 const SM = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
+
+// SIRALAMA (2026-09-26, kullanici istegi). Varsayilan "sorun" cunku bu bir ENVANTER degil
+// bir DENETIM ekrani: once bakilmasi gereken sunucu ustte olmali.
+//
+// Agirlik sirasi kasitli: "nginx kurulu degil" en ustte, cunku o sunucuda hicbir limit
+// olcumu anlamli degil. "olculmedi" EN ALTTA degil ortada: bir bulgu degil ama bir
+// eksiklik - gozden kacmasin.
+const DURUM_AGIRLIK: Record<NginxRateLimitHost['durum'], number> = {
+  kurulumyok: 0,
+  // 'calismiyor' pratikte durum olarak DONMEZ (olcum yapilabildigi icin standart/farkli/eksik
+  // doner, "calismiyor" ayri bir bayrakta tasinir) - ama tipte gecerli bir deger, agirligi
+  // tanimsiz kalmasin. Duran nginx, bozuk konfigurasyon kadar aciledir.
+  calismiyor: 1,
+  configbozuk: 2,
+  eksik: 3,
+  bilinmiyor: 4,
+  farkli: 5,
+  standart: 6,
+};
+
+type Sira = 'sorun' | 'sunucu' | 'ortam' | 'ipLimit' | 'baglanti';
+
+const SIRA_ETIKET: Record<Sira, string> = {
+  sorun: 'sorunlu üstte',
+  sunucu: 'sunucu adı',
+  ortam: 'ortam, sonra sunucu',
+  ipLimit: 'IP istek limiti',
+  baglanti: 'concurrent bağlantı limiti',
+};
+
+/** Oran metnini sayiya cevirir ("500r/s" -> 500). Sayisal siralama icin; metin
+ *  siralamasi "100r/s" > "50r/s" derdi ve rapor yanlis okunurdu. */
+function oranSayi(v: string | null): number | null {
+  if (!v) return null;
+  const m = /([\d.]+)\s*r\/(s|m)/i.exec(v);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return null;
+  return m[2].toLowerCase() === 'm' ? n / 60 : n;
+}
+
+/** Olculemeyen deger (null) HER ZAMAN sona gider - 0 gibi davranmasi, limiti olmayan bir
+ *  sunucuyu "en dusuk limitli" gibi gosterirdi. */
+function sayiKarsilastir(a: number | null, b: number | null): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a - b;
+}
 const btn = (primary = false): React.CSSProperties => (primary
   ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
   : { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' });
@@ -52,6 +101,7 @@ export function RateLimitTab() {
   const [q, setQ] = useState('');
   const [env, setEnv] = useState('all');
   const [durum, setDurum] = useState<'all' | 'standart' | 'farkli' | 'eksik' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk'>('all');
+  const [sira, setSira] = useState<Sira>('sorun');
   const [acik, setAcik] = useState<string | null>(null);
 
   useAsyncEffect(async (alive) => {
@@ -66,7 +116,7 @@ export function RateLimitTab() {
 
   const hosts = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return (data?.hosts || []).filter((h) => {
+    const suzulmus = (data?.hosts || []).filter((h) => {
       if (durum !== 'all' && h.durum !== durum) return false;
       if (env !== 'all' && h.env !== env) return false;
       if (!needle) return true;
@@ -74,7 +124,30 @@ export function RateLimitTab() {
         || (h.requestRate || '').includes(needle)
         || (h.serverRate || '').includes(needle);
     });
-  }, [data, q, env, durum]);
+    // Kopyada siralariz: data.hosts yanitin kendisi, yerinde sort etmek sonraki
+    // render'larda sirayi kalici olarak bozardi.
+    const ad = (a: NginxRateLimitHost, b: NginxRateLimitHost) => a.host.localeCompare(b.host, 'tr');
+    return [...suzulmus].sort((a, b) => {
+      switch (sira) {
+        case 'sunucu':
+          return ad(a, b);
+        case 'ortam':
+          return a.env.localeCompare(b.env, 'tr') || ad(a, b);
+        case 'ipLimit':
+          return sayiKarsilastir(oranSayi(a.requestRate), oranSayi(b.requestRate)) || ad(a, b);
+        case 'baglanti':
+          return sayiKarsilastir(a.connLimit, b.connLimit) || ad(a, b);
+        default: {
+          // Once durum agirligi; esitse CALISMAYAN ustte (degerler dosyada yazan degerler,
+          // su an uygulanmiyor - bu da bakilmasi gereken bir durum), sonra ad.
+          const d = (DURUM_AGIRLIK[a.durum] ?? 9) - (DURUM_AGIRLIK[b.durum] ?? 9);
+          if (d) return d;
+          const c = Number(a.calisiyor === false) - Number(b.calisiyor === false);
+          return -c || ad(a, b);
+        }
+      }
+    });
+  }, [data, q, env, durum, sira]);
 
   const s = data?.summary;
   const envler = useMemo(() => Object.keys(s?.byEnv || {}).sort(), [s]);
@@ -168,6 +241,13 @@ export function RateLimitTab() {
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
           <option value="all">tüm ortamlar</option>
           {envler.map((e) => <option key={e} value={e}>{e}</option>)}
+        </select>
+        <select value={sira} onChange={(e) => setSira(e.target.value as Sira)} className="h-7 text-[12px] rounded-lg border px-1.5"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+          title="Sıralama">
+          {(Object.keys(SIRA_ETIKET) as Sira[]).map((k) => (
+            <option key={k} value={k}>sırala: {SIRA_ETIKET[k]}</option>
+          ))}
         </select>
         <select value={durum} onChange={(e) => setDurum(e.target.value as typeof durum)} className="h-7 text-[12px] rounded-lg border px-1.5"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
