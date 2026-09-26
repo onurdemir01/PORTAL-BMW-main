@@ -123,3 +123,28 @@ test('MT4 olcum satiri yoksa null - ekran uydurmaz', () => {
   // Baska servisin olcumu de karismamali.
   assert.equal(yolOf(kur([satir(ESKI, { service: 'WEBFORMS', req_7d: 999 })])).traffic, null);
 });
+
+test('MT5 "olculemedi" IKI sebebi ayirt edilebilir olmali', () => {
+  // Kullanici (2026-09-27): "tum uygulamalar icin '? olculemedi' yaziyor". Iki sebep var
+  // ve cozumleri TAMAMEN farkli; ekran ikisini ayni gosterirse teshis imkansizlasir:
+  //   hosts === 0        -> log okunamadi (izin / yol / dosya yok)
+  //   sampled && hosts>0 -> log kuyrugu 7 gunu kapsamiyor (LOG_TAIL_MB kucuk)
+  const okunamadi = yolOf(kur([satir(ESKI, { error: 'log bulunamadi' })])).traffic;
+  assert.equal(okunamadi.state, 'unknown');
+  assert.equal(okunamadi.hosts, 0, 'log okunamadi durumu hosts=0 ile ayirt edilir');
+  assert.equal(okunamadi.unknownHosts, 1);
+
+  const kismi = yolOf(kur([satir(ESKI, { req_7d: 0, sampled: 1 })])).traffic;
+  assert.equal(kismi.state, 'unknown');
+  assert.ok(kismi.hosts > 0, 'kismi olcumde log OKUNDU');
+  assert.equal(kismi.sampled, true);
+
+  // Ekran ikisine AYRI etiket vermeli.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.match(ui, /log okunamadı/, 'log okunamadi etiketi yok');
+  assert.match(ui, /kısmi ölçüm/, 'kismi olcum etiketi yok');
+  assert.match(ui, /function yukEtiket/, 'etiket ayrimi yapilmiyor');
+});

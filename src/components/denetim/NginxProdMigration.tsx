@@ -50,6 +50,18 @@ const YUK: Record<'active' | 'idle' | 'unknown', { isaret: string; label: string
   unknown: { isaret: '?', label: 'ölçülemedi', color: 'var(--status-warning)' },
 };
 
+// "Olculemedi" IKI FARKLI SEBEPTEN cikar ve ilk surum ikisini AYNI gosteriyordu (kullanici
+// 2026-09-27: "tum uygulamalar icin '? olculemedi' yaziyor"). Hangisi oldugu tiklamadan
+// gorunmeli, cunku cozumleri tamamen farkli:
+//
+//   log okunamadi  -> betik access log'a erisemedi (izin / yol / dosya yok)
+//   kismi olcum    -> log kuyrugu 7 gunu KAPSAMIYOR (LOG_TAIL_MB kucuk), req7 ALT SINIR
+function yukEtiket(t: NonNullable<YukBilgi>): string {
+  if (t.state !== 'unknown') return YUK[t.state].label;
+  if (t.hosts === 0) return 'log okunamadı';
+  return 'kısmi ölçüm';
+}
+
 type YukBilgi = NginxMigrationApp['paths'][number]['traffic'];
 
 function yukIpucu(t: NonNullable<YukBilgi>): string {
@@ -1518,7 +1530,7 @@ ${st.total ? `${st.done}/${st.total} location tanımlı` : ''}`}>
                         <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px]"
                           style={{ color: y.color }} title={yukIpucu(t)}>
                           <span aria-hidden>{y.isaret}</span>
-                          {y.label}
+                          {yukEtiket(t)}
                           {t.state === 'active' && t.req7 != null && (
                             <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>({nf(t.req7)}/7g)</span>
                           )}
