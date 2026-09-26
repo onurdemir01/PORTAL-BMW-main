@@ -151,6 +151,41 @@ test('deploy edilmemis (missing) ve taranmamis uygulama icin job KOSTURULMAZ (40
   assert.match(r.message, /taranmadı/);
 });
 
+// MG8 (2026-09-26, uretimde yakalandi): kullanici "Paketi getir + tanimla"ya basti ve
+// "once deploy gerekli" cevabini aldi. Kapi, ozelligin TAM OLARAK cozdugu senaryoyu
+// reddediyordu - is once paketi pod'dan getirip dizini olusturuyor, sonra tanimliyor.
+test('MG8 paket getirme istendiginde "deploy edilmemis" kapisi ACILIR', () => {
+  const istek = { group: 'glomo', namespace: 'glomo-prod', application: 'eksik-app-v1', service: 'GLOMO', inputPath: '/e/' };
+
+  // Varsayilan: kapi KAPALI kalir (paket getirilmeyecekse dizin gercekten gerekli).
+  assert.equal(validateRequest(groups, istek).ok, false);
+  // Kullaniciya cikis yolu gosterilmeli, yoksa dugmenin ne ise yaradigi anlasilmaz.
+  assert.match(validateRequest(groups, istek).message, /Paketi getir/);
+
+  // Paket getirilecekse GECER.
+  const acik = validateRequest(groups, istek, { allowMissing: true });
+  assert.equal(acik.ok, true, 'paket getirme istendigi halde hala reddediliyor');
+  assert.equal(acik.app.application, 'eksik-app-v1');
+
+  // DIGER kapilar acilmaz: taranmamis sunucuda ne oldugunu BILMIYORUZ, paket getirmek
+  // bunu degistirmez.
+  const taranmamis = validateRequest(
+    groups,
+    { group: 'glomo', namespace: 'glomo-prod', application: 'ns-app-v1', service: 'GLOMO', inputPath: '/n/' },
+    { allowMissing: true },
+  );
+  assert.equal(taranmamis.ok, false, 'taranmamis sunucu kapisi da acilmis');
+  assert.match(taranmamis.message, /taranmadı/);
+
+  // Sunucu kodu kapiyi fetchPackage'a bagli acmali; her zaman acik BIRAKMAMALI.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.match(srv, /allowMissing: fetchPackage/, 'kapi fetchPackage ile baglanmamis');
+  assert.ok(!/allowMissing: true \}\);[\s\S]{0,200}router\.post\('\/create'/.test(srv),
+    'kapi kosulsuz aciliyor');
+});
+
 // ── Gecis takibi (2026-09-14): planlandi / gecti / iptal + tarihler ─────────────────
 const { normalizeTracking, rowToTracking } = require('../index.cjs');
 

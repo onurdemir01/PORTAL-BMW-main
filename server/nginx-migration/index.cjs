@@ -181,7 +181,7 @@ function buildDeleteExtraVars({ service, inputPath, user }) {
  * Istegi tasima gorunumune karsi dogrular.
  * @returns {{ok:true, app:Object, path:Object} | {ok:false, status:number, message:string}}
  */
-function validateRequest(groups, { group, namespace, application, service, inputPath, force = false }, { ignoreStatus = false } = {}) {
+function validateRequest(groups, { group, namespace, application, service, inputPath, force = false }, { ignoreStatus = false, allowMissing = false } = {}) {
   const g = (groups || []).find((x) => x.id === String(group || ''));
   if (!g) return { ok: false, status: 400, message: 'Geçersiz taşıma grubu.' };
   const ns = String(namespace || '').trim().toLowerCase();
@@ -208,11 +208,21 @@ function validateRequest(groups, { group, namespace, application, service, input
       message: 'Yeni sunucular henüz taranmadı; uygulama dizini var mı bilinmiyor. Önce nginx_config_audit koşmalı.',
     };
   }
-  if (row.status === 'missing') {
+  // "DEPLOY EDILMEMIS" ENGELI, PAKET GETIRME ISTENDIGINDE GECERSIZDIR (2026-09-26).
+  //
+  // Bu kapi, uygulama dizini olmadan tanim isinin duracagi icin konmustu. Paketi
+  // OpenShift'ten getirme ozelligi TAM OLARAK bu durumu cozuyor: is once paketi
+  // pod'dan cekip /hysdeploy + /usr/nginx/applications altina aciyor, SONRA tanimi
+  // olusturuyor. Kapiyi burada da uygulamak, ozelligin hedefledigi tek senaryoyu
+  // bastan reddetmek olurdu - kullanici dugmeye basar, "once deploy gerekli" cevabini
+  // alir ve dugmenin ne ise yaradigini anlamaz.
+  if (row.status === 'missing' && !allowMissing) {
     return {
       ok: false,
       status: 409,
-      message: `${app} taranan hiçbir yeni sunucuda deploy edilmemiş (/usr/nginx/applications/${ns}/${app}). Playbook dizin yoksa durur; önce deploy gerekli.`,
+      message: `${app} taranan hiçbir yeni sunucuda deploy edilmemiş (/usr/nginx/applications/${ns}/${app}). `
+        + 'Playbook dizin yoksa durur; önce deploy gerekli — ya da "Paketi getir + tanımla" ile '
+        + "paketi OpenShift'teki çalışan pod'dan getirin.",
     };
   }
   // ZATEN TANIMLI YOLA TEKRAR TANIM ACMA (2026-09-26, kullanici: "tanimli uygulamalarda
@@ -601,7 +611,10 @@ function initNginxMigration(app) {
       const { query, sql } = require('../inventory/mssql.cjs');
       const { loadMigration } = require('../audit/nginx-migration.cjs');
       const view = await loadMigration({ query, sql, hasProxyColumns: null });
-      const v = validateRequest(view.groups, req.body || {});
+      // Paket getirme isteniyorsa "deploy edilmemis" kapisi ACILIR: isin kendisi paketi
+      // getirecek. Diger kapilar (taranmadi / zaten tanimli) yerinde kalir.
+      const fetchPackage = req.body?.fetchPackage === true;
+      const v = validateRequest(view.groups, req.body || {}, { allowMissing: fetchPackage });
       if (!v.ok) return res.status(v.status).json({ ok: false, message: v.message });
 
       // TANIM ZATEN OLUSTURULDUYSA YENIDEN TETIKLENMEZ (2026-09-23, kullanici).
@@ -626,7 +639,6 @@ function initNginxMigration(app) {
 
       const { launchJobOnServer } = require('../ansible/runner.cjs');
       const user = getRequestUser(req) || {};
-      const fetchPackage = req.body?.fetchPackage === true;
       let ocpCluster = '';
       if (fetchPackage) {
         let found = { clusters: [], cluster: null };
