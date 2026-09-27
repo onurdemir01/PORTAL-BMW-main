@@ -178,7 +178,7 @@ function trafficIndex(trafficRows, oldHostSet) {
     const host = H(r.host);
     if (oldHostSet && oldHostSet.size && !oldHostSet.has(host)) continue;
     const k = String(r.service || '').toUpperCase() + '|' + String(r.location || '');
-    if (!idx.has(k)) idx.set(k, { req24: 0, req7: 0, hc24: 0, hosts: 0, unknownHosts: 0, lastSeen: null, sampled: false });
+    if (!idx.has(k)) idx.set(k, { req24: 0, req7: 0, hc24: 0, hosts: 0, unknownHosts: 0, lastSeen: null, firstSeen: null, sampled: false });
     const c = idx.get(k);
     if (r.error) { c.unknownHosts += 1; continue; }
     c.hosts += 1;
@@ -188,6 +188,10 @@ function trafficIndex(trafficRows, oldHostSet) {
     if (r.sampled) c.sampled = true;
     const ls = r.last_seen ? String(r.last_seen) : null;
     if (ls && (!c.lastSeen || ls > c.lastSeen)) c.lastSeen = ls;
+    // OLCULEN PENCERENIN BASI: mirror sunucular arasinda EN ESKI olan alinir - kapsam,
+    // en kotu sunucunun kapsamidir. En yenisini almak "7 gun olctuk" demek olurdu.
+    const fs = r.first_seen ? String(r.first_seen) : null;
+    if (fs && (!c.firstSeen || fs < c.firstSeen)) c.firstSeen = fs;
   }
   return idx;
 }
@@ -198,11 +202,12 @@ function trafficState(c) {
   if (!c || (c.hosts === 0 && c.unknownHosts === 0)) return null;
   if (c.hosts === 0) {
     return { state: 'unknown', req24: null, req7: null, hc24: null, lastSeen: null,
-             sampled: false, hosts: 0, unknownHosts: c.unknownHosts };
+             firstSeen: null, sampled: false, hosts: 0, unknownHosts: c.unknownHosts };
   }
   return {
     state: c.req7 > 0 ? 'active' : (c.sampled ? 'unknown' : 'idle'),
     req24: c.req24, req7: c.req7, hc24: c.hc24, lastSeen: c.lastSeen,
+    firstSeen: c.firstSeen,
     sampled: c.sampled, hosts: c.hosts, unknownHosts: c.unknownHosts,
   };
 }
@@ -497,7 +502,9 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     // YUK OLCUMU (2026-09-27): trafik ESKI sunuculardan okunur - is su an oradan akiyor.
     // Tablo yoksa ekran eskisi gibi calisir, gosterge gorunmez (uydurma yapmaz).
     query(
-      `SELECT host, service, env, location, req_24h, req_7d, hc_24h, sampled, last_seen, error
+      `SELECT host, service, env, location, req_24h, req_7d, hc_24h, sampled, last_seen, error,
+              CASE WHEN COL_LENGTH('dbo.Nginx_Spa_Traffic', 'first_seen') IS NULL
+                   THEN NULL ELSE first_seen END AS first_seen
          FROM dbo.Nginx_Spa_Traffic
         WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)
           AND host IN (${oldIn.sqlText})`,

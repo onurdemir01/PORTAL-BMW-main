@@ -148,3 +148,34 @@ test('MT5 "olculemedi" IKI sebebi ayirt edilebilir olmali', () => {
   assert.match(ui, /kısmi ölçüm/, 'kismi olcum etiketi yok');
   assert.match(ui, /function yukEtiket/, 'etiket ayrimi yapilmiyor');
 });
+
+test('MT6 kismi olcumde OLCULEN PENCERE bildirilir, yorumlanabilir olur', () => {
+  // Kullanici (2026-09-27): "'? kismi olcum' yazanlar var, bunlari tam anlamlandiramiyorum".
+  // Eksik bilgi olcumun GERCEKTEN kac gunu kapsadigiydi: log kuyrugu 7 gunu kapsamiyorsa
+  // "0 istek" atil DEMEK DEGIL - yalnizca o kadar gunde istek gorulmedi demek.
+  const t = yolOf(kur([satir(ESKI, { req_7d: 0, sampled: 1, first_seen: '20260925120000' })])).traffic;
+  assert.equal(t.state, 'unknown');
+  assert.equal(t.firstSeen, '20260925120000', 'olculen pencerenin basi tasinmiyor');
+
+  // Mirror sunucularda EN ESKI pencere alinir: kapsam en kotu sunucunun kapsamidir.
+  const iki = yolOf(kur([
+    satir(ESKI, { req_7d: 0, sampled: 1, first_seen: '20260926000000' }),
+    satir(ESKI2, { req_7d: 0, sampled: 1, first_seen: '20260921000000' }),
+  ])).traffic;
+  assert.equal(iki.firstSeen, '20260921000000', 'en YENI pencere alinmis - "7 gun olctuk" yalani');
+
+  // Eski tarama bu alani basmaz: null kalir, ekran "kac gun" DEMEZ ama patlamaz.
+  assert.equal(yolOf(kur([satir(ESKI, { req_7d: 0, sampled: 1 })])).traffic.firstSeen, null);
+
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.match(ui, /günde istek yok/, 'etiket olculen sureyi soylemiyor');
+  assert.match(ui, /function kapsananGun/, 'kapsanan gun hesabi yok');
+  // Pencere bilinmiyorsa ETIKET UYDURMAMALI.
+  assert.match(ui, /if \(gun == null\) return 'kısmi ölçüm';/, 'pencere yokken sure uyduruluyor');
+  // "Yazim" sutunu kaldirildi (kullanici istegi) ve geri gelmemeli.
+  assert.ok(!/>Yazım</.test(ui), 'Yazim sutunu geri gelmis');
+  assert.ok(!/FormCell/.test(ui), 'FormCell olu kod olarak kalmis');
+});

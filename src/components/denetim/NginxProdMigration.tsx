@@ -56,10 +56,39 @@ const YUK: Record<'active' | 'idle' | 'unknown', { isaret: string; label: string
 //
 //   log okunamadi  -> betik access log'a erisemedi (izin / yol / dosya yok)
 //   kismi olcum    -> log kuyrugu 7 gunu KAPSAMIYOR (LOG_TAIL_MB kucuk), req7 ALT SINIR
+/** yyyyMMddHHmmss -> Date. Bozuk/eksik degerde null (asla patlamaz). */
+function damgaTarih(v: string | null): Date | null {
+  if (!v || v.length < 8) return null;
+  const y = Number(v.slice(0, 4)); const m = Number(v.slice(4, 6)); const g = Number(v.slice(6, 8));
+  const sa = Number(v.slice(8, 10) || '0'); const dk = Number(v.slice(10, 12) || '0');
+  if (!y || !m || !g) return null;
+  const d = new Date(y, m - 1, g, sa || 0, dk || 0);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Olcumun gercekten kapsadigi gun sayisi (asagi yuvarlanir). null = bilinmiyor. */
+function kapsananGun(t: NonNullable<YukBilgi>): number | null {
+  const bas = damgaTarih(t.firstSeen);
+  if (!bas) return null;
+  const gun = (Date.now() - bas.getTime()) / 86_400_000;
+  return gun < 0 ? null : Math.floor(gun);
+}
+
+// "Kismi olcum" ETIKETI TEK BASINA YORUMLANAMIYORDU (kullanici 2026-09-27: "bunlari tam
+// anlamlandiramiyorum"). Eksik olan bilgi, olcumun GERCEKTEN kac gunu kapsadigi: log
+// kuyrugu 7 gunu kapsamiyorsa "0 istek" sonucu "atil" DEMEK DEGIL - yalnizca o kadar
+// gunde istek gorulmedi demek. Etiket artik o sureyi soyluyor.
 function yukEtiket(t: NonNullable<YukBilgi>): string {
   if (t.state !== 'unknown') return YUK[t.state].label;
   if (t.hosts === 0) return 'log okunamadı';
-  return 'kısmi ölçüm';
+  const gun = kapsananGun(t);
+  if (gun == null) return 'kısmi ölçüm';
+  if (gun < 1) {
+    const bas = damgaTarih(t.firstSeen);
+    const saat = bas ? Math.max(1, Math.round((Date.now() - bas.getTime()) / 3_600_000)) : null;
+    return saat ? `son ${saat} saatte istek yok` : 'kısmi ölçüm';
+  }
+  return `son ${gun} günde istek yok`;
 }
 
 type YukBilgi = NginxMigrationApp['paths'][number]['traffic'];
@@ -75,10 +104,15 @@ const BEYAN: Record<string, { isaret: string; label: string; color: string }> = 
 
 function yukIpucu(t: NonNullable<YukBilgi>): string {
   if (t.state === 'unknown') {
-    return t.hosts === 0
-      ? `Log okunamadı (${t.unknownHosts} sunucu) — "yük yok" DEMEK DEĞİL.`
-      : `Log kuyruğu 7 günü kapsamıyor: 7 günlük sayı (${nf(t.req7 || 0)}) ALT SINIR. `
-        + 'Bu yüzden "yük almıyor" denmiyor.';
+    if (t.hosts === 0) return `Log okunamadı (${t.unknownHosts} sunucu) — "yük yok" DEMEK DEĞİL.`;
+    const gun = kapsananGun(t);
+    const bas = damgaTarih(t.firstSeen);
+    const pencere = bas
+      ? `Okunan log ${bas.toLocaleString('tr-TR')} tarihinden beri, yani ${gun != null ? `${gun} gün` : 'kısmi bir süre'}.`
+      : 'Okunan log 7 günü kapsamıyor (ne kadarını kapsadığı bu taramada ölçülmemiş).';
+    return `${pencere} Bu pencerede sağlık kontrolü dışında istek GÖRÜLMEDİ. `
+      + '"Yük almıyor" DENMİYOR: 7 günün tamamına bakılmadı, o yüzden bu bir alt sınır. '
+      + 'Daha uzun pencere için spa_traffic_tail_mb yükseltilmeli.';
   }
   const parca = [
     `24 saat: ${nf(t.req24 || 0)} istek`,
@@ -1077,20 +1111,6 @@ const SOURCE_LABEL: Record<string, string> = {
   proxy_ssl_name: 'location’daki proxy_ssl_name',
   proxy_pass: 'proxy_pass’teki adın kendisi',
 };
-
-function FormCell({ forms, written, source, target }: { forms: string[]; written: string[]; source: string; target: string }) {
-  const title = [`yazılan: ${written.join(', ')}`, `gerçek hedef: ${target}`, `kaynak: ${SOURCE_LABEL[source] || source}`].join('\n');
-  return (
-    <span className="inline-flex gap-1" title={title}>
-      {forms.map((f) => (
-        <span key={f} className="text-[10px] px-1.5 py-0.5 rounded border font-mono" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
-          {f === 'fqdn' ? 'FQDN' : 'upstream'}
-        </span>
-      ))}
-    </span>
-  );
-}
-
 function cellText(f: { hys: boolean; app: boolean; conf: boolean } | null | undefined): string {
   if (f === null) return 'taranmadi';
   if (!f) return '';
@@ -1387,7 +1407,6 @@ function GroupPanel({
                 <th className="text-left pr-3 pb-1" title="geçiş takibi: planlandı / geçti / iptal + tarih; tıklayarak düzenleyin">Geçiş</th>
                 <th className="text-left pr-3 pb-1">Durum</th>
                 <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost ve location tanımları (proxy_pass ile). Sondaki işaret: bu location YENİ sunucularda tanımlı mı (✓ hepsinde, ◐ bazısında, ✗ hiçbirinde, ? taranmadı)">Location (eski → yeni)</th>
-                <th className="text-left pr-3 pb-1" title="proxy_pass yazımı: FQDN ya da upstream adı; ipucunda yazılan ad(lar) ve gerçek hedefin kaynağı">Yazım</th>
                 {g.newHosts.map((h) => (
                   <th key={h} className="text-center px-1.5 pb-1 font-mono whitespace-nowrap" title={g.newHostsScanned.includes(h) ? 'tarandı' : 'henüz taranmadı'}>
                     {h}
@@ -1543,7 +1562,6 @@ ${st.total ? `${st.done}/${st.total} location tanımlı` : ''}`}>
                     </div>
                     <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{a.oldHosts.length} sunucu</div>
                   </td>
-                  <td className="pr-3 py-1 whitespace-nowrap"><FormCell forms={a.forms} written={a.written} source={a.targetSource} target={a.target} /></td>
                   {g.newHosts.map((h) => (
                     <td key={h} className="text-center px-1.5 py-1">
                       <DirCell f={a.perHost[h]} />

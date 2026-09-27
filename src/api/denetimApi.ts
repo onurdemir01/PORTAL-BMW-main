@@ -100,7 +100,11 @@ export interface NginxMigrationApp {
     traffic: {
       state: 'active' | 'idle' | 'unknown';
       req24: number | null; req7: number | null; hc24: number | null;
-      lastSeen: string | null; sampled: boolean; hosts: number; unknownHosts: number;
+      lastSeen: string | null;
+      /** ÖLÇÜLEN pencerenin başı (yyyyMMddHHmmss). sampled iken "0 istek" ancak bununla
+       *  yorumlanabilir: 7 gün mü bakıldı, 3 saat mi? null = eski tarama, bilinmiyor. */
+      firstSeen: string | null;
+      sampled: boolean; hosts: number; unknownHosts: number;
     } | null;
   }[];
   /** yeni host -> bayraklar; null = o sunucu henuz taranmadi */
