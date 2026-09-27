@@ -64,6 +64,15 @@ function yukEtiket(t: NonNullable<YukBilgi>): string {
 
 type YukBilgi = NginxMigrationApp['paths'][number]['traffic'];
 
+// EKIP BEYANI (2026-09-27): "Tasima Plani" ekrani kaldirilinca bu bilgi yazilmaya devam
+// ediyor ama gorunmuyordu. OLCUM DEGIL: Yuk sutunu access log'dan olculur, bu ekibin
+// dedigidir. Ayri sutun, cunku celisebilirler ve celiski BILGIDIR - biri digerini ezmez.
+const BEYAN: Record<string, { isaret: string; label: string; color: string }> = {
+  yes: { isaret: '✓', label: 'kullanıyor', color: 'var(--status-success)' },
+  no: { isaret: '✕', label: 'kullanmıyor', color: 'var(--status-danger)' },
+  unknown: { isaret: '?', label: 'bilmiyor', color: 'var(--status-warning)' },
+};
+
 function yukIpucu(t: NonNullable<YukBilgi>): string {
   if (t.state === 'unknown') {
     return t.hosts === 0
@@ -428,7 +437,7 @@ export default function NginxProdMigration() {
           onClick={() =>
             csvDownload(
               'nginx_prod_tasima',
-              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'yeni_sunucularda', 'yuk', 'yuk_7g', 'yuk_24s', 'gecis_durumu', 'planlanan_tarih', 'gecis_tarihi', 'gecis_notu', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'eski_locationlar', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
+              ['grup', 'namespace', 'prod_eki_eklendi', 'uygulama', 'ekip', 'yeni_sunucularda', 'yuk', 'yuk_7g', 'yuk_24s', 'ekip_beyani', 'beyan_eden', 'gecis_durumu', 'planlanan_tarih', 'gecis_tarihi', 'gecis_notu', 'yazim', 'yazilan_ad', 'durum', 'hazir_sunucu', 'taranan_sunucu', 'eski_sunucular', 'servis', 'location_sayisi', 'eski_locationlar', 'hedef', ...data.groups.flatMap((g) => g.newHosts)],
               data.groups.flatMap((g) =>
                 g.apps.map((a) => [
                   g.label, a.namespace, a.suffixAdded ? 'evet' : '', a.application, a.owner?.groups.join(' | ') || '',
@@ -437,6 +446,9 @@ export default function NginxProdMigration() {
                   (() => { const t = yukOzet(a.paths); return t ? YUK[t.state].label : ''; })(),
                   (() => { const t = yukOzet(a.paths); return t && t.req7 != null ? t.req7 : ''; })(),
                   (() => { const t = yukOzet(a.paths); return t && t.req24 != null ? t.req24 : ''; })(),
+                  // BEYAN: yoksa BOS - "kullanmiyor" yazmak uydurma olurdu.
+                  (() => { const t = tracking.get(trackKey(g.id, a.namespace, a.application)); return t?.inUse ? (BEYAN[t.inUse]?.label || t.inUse) : ''; })(),
+                  (() => { const t = tracking.get(trackKey(g.id, a.namespace, a.application)); return t?.inUseBy || ''; })(),
                   TRACK_LABEL[tracking.get(trackKey(g.id, a.namespace, a.application))?.state || 'none'].label,
                   tracking.get(trackKey(g.id, a.namespace, a.application))?.plannedDate || '',
                   tracking.get(trackKey(g.id, a.namespace, a.application))?.migratedDate || '',
@@ -1371,6 +1383,7 @@ function GroupPanel({
                 <th className="text-left pr-3 pb-1" title="namespace'in CMDB sahibi">Ekip</th>
                 <th className="text-left pr-3 pb-1" title="TARAMAYA göre: bu uygulamanın location tanımları yeni sunucularda var mı? Elle işaretlemeden bağımsızdır.">Yeni sunucularda</th>
                 <th className="text-left pr-3 pb-1" title="ESKİ sunucuların access log'una göre bu uygulama yük alıyor mu? Sağlık kontrolü (hc.jsp/hc.html) sayılmaz. ● yük alıyor · ○ yük almıyor · ? ölçülemedi — boş ise ölçüm satırı yok.">Yük</th>
+                <th className="text-left pr-3 pb-1" title="EKİBİN BEYANI (ölçüm değil): uygulamayı kullanıyor mu? Yük sütunuyla çelişebilir — yılda bir koşan bir iş ölçümde 'yük almıyor' görünür ama ekip kullanıyordur. Boş ise ekip beyan etmemiş.">Ekip beyanı</th>
                 <th className="text-left pr-3 pb-1" title="geçiş takibi: planlandı / geçti / iptal + tarih; tıklayarak düzenleyin">Geçiş</th>
                 <th className="text-left pr-3 pb-1">Durum</th>
                 <th className="text-left pr-3 pb-1" title="eski sunucudaki vhost ve location tanımları (proxy_pass ile). Sondaki işaret: bu location YENİ sunucularda tanımlı mı (✓ hepsinde, ◐ bazısında, ✗ hiçbirinde, ? taranmadı)">Location (eski → yeni)</th>
@@ -1472,6 +1485,23 @@ ${st.total ? `${st.done}/${st.total} location tanımlı` : ''}`}>
                           {t.state === 'active' && t.req7 != null && (
                             <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>({nf(t.req7)}/7g)</span>
                           )}
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td className="pr-3 py-1">
+                    {(() => {
+                      const t = trackOf(a);
+                      const b = t?.inUse ? BEYAN[t.inUse] : null;
+                      // BEYAN YOKSA UYDURMA: bos hucre, "kullanmiyor" DEGIL.
+                      if (!b) return <span style={{ color: 'var(--text-muted)' }} title="Ekip bu uygulama için beyan girmemiş.">—</span>;
+                      const kim = [t?.inUseBy, t?.inUseAt ? fmtDateTime(t.inUseAt) : null].filter(Boolean).join(' · ');
+                      return (
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px]"
+                          style={{ color: b.color }}
+                          title={`Ekip beyanı: ${b.label}${kim ? ` (${kim})` : ''} — bu bir ÖLÇÜM DEĞİL. Yük sütunu access log'dan ölçülür; ikisi çelişebilir.`}>
+                          <span aria-hidden>{b.isaret}</span>
+                          {b.label}
                         </span>
                       );
                     })()}

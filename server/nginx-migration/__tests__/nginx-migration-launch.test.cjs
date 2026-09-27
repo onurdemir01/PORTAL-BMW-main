@@ -347,3 +347,34 @@ test('MG3 yanlis vaat yok: tanimli yol KOSULSUZ reddedilir', () => {
   assert.ok(!/Evet, üzerine yaz/.test(ui), 'yanlis vaat veren onay butonu hala duruyor');
   assert.ok(!/mevcut dosyanın üzerine yazar/.test(ui), 'yanlis vaat ipucu hala duruyor');
 });
+
+test('IU1 ekip beyani OLCUM DEGIL: ayri sutun, beyan yoksa BOS', () => {
+  // Kullanici (2026-09-27): "in_use bilgisini Production Tasimalari'na sutun olarak ekle".
+  // "Tasima Plani" ekrani kaldirilinca bu bilgi yazilmaya devam ediyor ama gorunmuyordu.
+  const t = rowToTracking({
+    group_id: 'glomo', namespace: 'n', application: 'a', state: 'planned',
+    in_use: 'yes', in_use_by: 'odemir', in_use_at: '2026-09-27T08:00:00.000Z',
+  });
+  assert.equal(t.inUse, 'yes');
+  assert.equal(t.inUseBy, 'odemir');
+  assert.match(t.inUseAt, /^2026-09-27/);
+
+  // BEYAN YOKSA null - "kullanmiyor" DEGIL. Uydurma, olculemeyeni iddia etmektir.
+  const bos = rowToTracking({ group_id: 'glomo', namespace: 'n', application: 'a' });
+  assert.equal(bos.inUse, null);
+  assert.equal(bos.inUseBy, null);
+  assert.equal(bos.inUseAt, null);
+
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  // Sorgular kolonlari CEKMELI; biri unutulursa o uc sessizce null doner.
+  assert.equal((srv.match(/in_use, in_use_by, in_use_at/g) || []).length, 3,
+    'in_use kolonlari tum tracking sorgularinda yok');
+
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  assert.match(ui, /Ekip beyanı/, 'sutun basligi yok');
+  assert.match(ui, /const BEYAN/, 'beyan etiketleri yok');
+  // OLCUM ile BEYAN ayri kalmali: beyan, yuk gostergesinin yerine GECMEMELI.
+  assert.match(ui, /ÖLÇÜM DEĞİL/, 'beyanin olcum olmadigi soylenmiyor');
+  assert.ok(!/yukOzet[\s\S]{0,80}inUse/.test(ui), 'beyan yuk olcumune karistirilmis');
+});

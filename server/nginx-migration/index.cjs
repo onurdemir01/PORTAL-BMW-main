@@ -65,6 +65,14 @@ function rowToTracking(r) {
     plannedDate: d(r.planned_date),
     migratedDate: d(r.migrated_date),
     note: r.note || null,
+    // EKIP BEYANI (2026-09-27): "Taşıma Planı" ekrani kaldirilinca bu bilgi yazilmaya
+    // devam ediyor ama gorunmuyordu. OLCUM DEGIL BEYANDIR: yuk gostergesi access log'dan
+    // OLCULUR, bu ise ekibin "kullaniyoruz / kullanmiyoruz" dedigidir. Ikisi celisebilir
+    // (yilda bir kosan bir is olcumde 'idle' gorunur ama ekip kullaniyordur) - o yuzden
+    // ayri sutunlarda, biri digerinin yerine GECMEZ.
+    inUse: r.in_use == null ? null : String(r.in_use),
+    inUseBy: r.in_use_by || null,
+    inUseAt: r.in_use_at ? new Date(r.in_use_at).toISOString() : null,
     configJobId: r.config_job_id == null ? null : Number(r.config_job_id),
     configCreatedAt: r.config_created_at ? new Date(r.config_created_at).toISOString() : null,
     configCreatedBy: r.config_created_by || null,
@@ -330,6 +338,7 @@ function initNginxMigration(app) {
       }
       const { rows } = await db.query(
         `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
+                in_use, in_use_by, in_use_at,
                 config_job_id, config_created_at, config_created_by,
                 config_job_status, config_job_finished_at, config_service, config_location,
                 delete_job_id, delete_requested_at, delete_requested_by, delete_job_status, updated_by, updated_at
@@ -399,6 +408,7 @@ function initNginxMigration(app) {
       } catch { /* audit yoksa yoksay */ }
       const r = await db.query(
         `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
+                in_use, in_use_by, in_use_at,
                 config_job_id, config_created_at, config_created_by,
                 config_job_status, config_job_finished_at, config_service, config_location,
                 delete_job_id, delete_requested_at, delete_requested_by, delete_job_status, updated_by, updated_at
@@ -523,6 +533,7 @@ function initNginxMigration(app) {
     try {
       const r = await db.query(
         `SELECT group_id, namespace, application, state, planned_date, migrated_date, note,
+                in_use, in_use_by, in_use_at,
                 config_job_id, config_created_at, config_created_by,
                 config_job_status, config_job_finished_at, config_service, config_location,
                 delete_job_id, delete_requested_at, delete_requested_by, delete_job_status, updated_by, updated_at

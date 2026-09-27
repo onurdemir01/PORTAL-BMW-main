@@ -99,6 +99,13 @@ export interface MigrationTracking {
   plannedDate: string | null;
   migratedDate: string | null;
   note: string | null;
+  /** EKİP BEYANI — ölçüm DEĞİL. Yük göstergesi access log'dan ölçülür; bu, ekibin
+   *  "kullanıyoruz / kullanmıyoruz" dediğidir. İkisi çelişebilir ve biri diğerinin yerine
+   *  geçmez: yılda bir koşan bir iş ölçümde "yük almıyor" görünür ama ekip kullanıyordur.
+   *  'yes' | 'no' | 'unknown' | null (hiç beyan yok) */
+  inUse: string | null;
+  inUseBy: string | null;
+  inUseAt: string | null;
   /** "Tanım oluştur" ile başlatılan son job */
   configJobId: number | null;
   configCreatedAt: string | null;
