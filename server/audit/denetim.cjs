@@ -1906,7 +1906,8 @@ function initDenetim(app) {
   console.log('[Denetim] module mounted at /api/denetim');
 }
 
-// hasProxyColumns disari veriliyor (2026-09-26): SPA Taşıma Planı ekranı ayni tasima
-// verisini kuruyor; kolon kontrolunun IKINCI bir kopyasi iki ekranin sessizce farkli
-// veri gostermesine yol acardi.
-module.exports = { initDenetim, hasProxyColumns };
+// hasProxyColumns 2026-09-26'da disari veriliyordu: "Taşıma Planı" ekrani ayni tasima
+// verisini kuruyordu ve kolon kontrolunun ikinci bir kopyasi iki ekranin sessizce farkli
+// veri gostermesine yol acardi. O ekran 2026-09-27'de kaldirildi; tek tuketicisi oydu,
+// ihrac da kaldirildi. loadMigration cagiranlar zaten null geciyor.
+module.exports = { initDenetim };

@@ -1513,7 +1513,6 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'NginxConsole', roles: 'Admin' },
   { page_name: 'ServerHub', roles: 'Admin' },
   { page_name: 'CryptoHub', roles: 'Admin' },
-  { page_name: 'SpaPlan', roles: 'Admin,User' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
   { page_name: 'FileX', roles: 'Admin,User' },
@@ -1566,7 +1565,6 @@ const ELEMENT_SEED = [
   // Crypto Hub (2026-09-25): ekibin yonettigi ucuncu parti uygulamalar (Metaco, Wyden)
   { element_key: 'navgroup:cryptohub', element_type: 'nav_group', label: 'Crypto Hub', sort_order: 3 },
   // SPA Tasima Plani (2026-09-26): EKIPLERE acik, Nginx Hub'in DISINDA duran planlama ekrani
-  { element_key: 'navgroup:spaplan', element_type: 'nav_group', label: 'Taşıma Planı', sort_order: 4 },
   {
     element_key: 'navgroup:performance',
     element_type: 'nav_group',
@@ -1639,18 +1637,6 @@ const ELEMENT_SEED = [
     route: '/server-hub',
     sort_order: 1,
     roles: ['Admin'],
-  },
-  {
-    // SPA Tasima Plani (2026-09-26, kullanici): "ekiplerden planlama almak istiyorum ama
-    // e-postadan takip etmek cok zor". Production Tasimalari'nin EKIP yansimasi: ekip
-    // uygulamasi kullanimda mi soyler ve deployment/rollout tarihini girer.
-    element_key: 'SpaPlan',
-    element_type: 'page',
-    parent_key: 'navgroup:spaplan',
-    label: 'Taşıma Planı',
-    route: '/tasima-plani',
-    sort_order: 1,
-    roles: ['Admin', 'User'],
   },
   {
     // Crypto Hub (2026-09-25): Metaco + Wyden icin ortam secimi -> durum ve surumler
