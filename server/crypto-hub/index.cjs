@@ -30,6 +30,12 @@ const OPS = {
   pods: { writes: false },
   logs: { writes: false },
   values_get: { writes: false },
+  // WYDEN AKTIF-PASIF (2026-09-27, kullanici): her ortam icin AYRI cluster'lara ozgu
+  // values dosyalari var (non-prod 2, prod 3). values_get CALISAN release'i okur - tek
+  // cluster. Bu ise bastion diskindeki cluster dosyalarini okur ki BIRBIRIYLE
+  // karsilastirilabilsinler: ayni surumun dosyalari sessizce ayrisirsa, aktif-pasif
+  // devrinde uygulama baska bir konfigurasyonla acilir.
+  values_files: { writes: false },
   pod_delete: { writes: true },
   rollout: { writes: true },
   scale: { writes: true },
@@ -101,6 +107,24 @@ function normalizeOps(body) {
     // Ham (maskesiz) icerik yalnizca ACIKCA istenirse doner ve denetime yazilir.
     out.reveal = body?.reveal === true;
   }
+  if (action === 'values_files') {
+    const ham = Array.isArray(body?.valuesPaths) ? body.valuesPaths : [];
+    if (!ham.length) throw new Error('Karşılaştırılacak dosya seçilmedi.');
+    if (ham.length > 8) throw new Error('Tek seferde en fazla 8 dosya karşılaştırılabilir.');
+    const yollar = [];
+    for (const x of ham) {
+      const y = String(x || '').trim();
+      // Satir sonu listeyi IKIYE bolerdi: betige satir basina bir yol gidiyor.
+      if (!y || /[\r\n\0]/.test(y)) throw new Error('Geçersiz karakter içeren yol.');
+      if (!/^\/vhosting\/[^\0]*$/.test(y) || y.includes('..')) {
+        throw new Error(`values dosyası /vhosting altında olmalı ve yolunda .. bulunmamalı: ${y}`);
+      }
+      yollar.push(y);
+    }
+    out.valuesPaths = [...new Set(yollar)];
+    // Ham (maskesiz) icerik yalnizca ACIKCA istenirse doner ve denetime yazilir.
+    out.reveal = body?.reveal === true;
+  }
   if (action === 'values_put') {
     out.valuesPath = String(body?.valuesPath || '').trim();
     if (!/^\/vhosting\/[^\0]*$/.test(out.valuesPath) || out.valuesPath.includes('..')) {
@@ -129,9 +153,30 @@ function normalizeOps(body) {
 function parseOpsLines(lines) {
   if (!Array.isArray(lines)) return null;
   const pods = []; const logs = []; const results = []; const errors = []; const values = [];
+  // Dosya basina satirlar: VFBEG boyut, VF icerik, VFEND bitis, VFERR okunamadi.
+  const files = new Map();
   for (const raw of lines) {
     const f = String(raw == null ? '' : raw).split('\t');
     switch (f[0]) {
+      case 'VFBEG':
+        if (f.length >= 3) {
+          files.set(f[2], { path: f[2], size: Number(f[3] || 0), lines: [], error: null });
+        }
+        break;
+      case 'VF':
+        if (f.length >= 3) {
+          if (!files.has(f[2])) files.set(f[2], { path: f[2], size: 0, lines: [], error: null });
+          // f[3] bos olabilir (bos satir); slice(3).join korur cunku icerikte sekme olabilir.
+          files.get(f[2]).lines.push(f.slice(3).join('\t'));
+        }
+        break;
+      case 'VFEND':
+        break;
+      case 'VFERR':
+        if (f.length >= 3) {
+          files.set(f[2], { path: f[2], size: 0, lines: [], error: f[3] || 'okunamadı' });
+        }
+        break;
       case 'POD':
         if (f.length >= 8) {
           pods.push({
@@ -162,7 +207,7 @@ function parseOpsLines(lines) {
         break;
     }
   }
-  return { pods, logs, results, errors, values };
+  return { pods, logs, results, errors, values, files: [...files.values()] };
 }
 
 const REGISTRY_KEY = 'crypto_hub_inventory';
@@ -421,6 +466,11 @@ function initCryptoHub(app) {
         extraVars.crypto_hub_release = params.release;
         if (params.valuesAll) extraVars.crypto_hub_values_all = true;
       }
+      if (params.action === 'values_files') {
+        // Satir basina bir yol; base64 cunku yollarda bosluk/ozel karakter olabilir.
+        extraVars.crypto_hub_values_paths_b64 =
+          Buffer.from(params.valuesPaths.join(String.fromCharCode(10)) + String.fromCharCode(10), 'utf8').toString('base64');
+      }
       if (params.action === 'values_put') {
         extraVars.crypto_hub_values_path = params.valuesPath;
         extraVars.crypto_hub_values_b64 = Buffer.from(params.content, 'utf8').toString('base64');
@@ -469,6 +519,27 @@ function initCryptoHub(app) {
               try {
                 require('../audit/index.cjs').auditPortal(req, 'crypto_hub_values_reveal', {
                   jobId, detail: 'values ham icerik goruntulendi',
+                });
+              } catch { /* denetim yoksa yoksay */ }
+            }
+          }
+          // CLUSTER DOSYALARI da AYNI kurala tabi: varsayilan maskeli, ham icerik ayri ve
+          // denetlenen bir istekle gelir.
+          //
+          // SIRA ONEMLI: karsilastirma HAM satirlar uzerinde, MASKELEMEDEN ONCE yapilir.
+          // Maskeleme her sirri '****' yaptigi icin, maskeli veride iki FARKLI parola AYNI
+          // gorunur ve gercek bir fark sessizce kaybolurdu. Karsilastirma hamda yapilinca
+          // fark tespit edilir, deger yine gosterilmez (values-compare.cjs maske notu).
+          if (parsed.files && parsed.files.length) {
+            parsed.masked = String(req.query.reveal || '') !== '1';
+            parsed.compare = require('./values-compare.cjs')
+              .karsilastir(parsed.files, parsed.masked ? SIR_ANAHTARI : null);
+            if (parsed.masked) {
+              parsed.files = parsed.files.map((f) => ({ ...f, lines: maskValues(f.lines) }));
+            } else {
+              try {
+                require('../audit/index.cjs').auditPortal(req, 'crypto_hub_values_reveal', {
+                  jobId, detail: 'cluster values dosyalari ham icerik goruntulendi',
                 });
               } catch { /* denetim yoksa yoksay */ }
             }

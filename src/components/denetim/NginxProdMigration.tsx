@@ -108,7 +108,7 @@ function yukIpucu(t: NonNullable<YukBilgi>): string {
     const gun = kapsananGun(t);
     const bas = damgaTarih(t.firstSeen);
     const pencere = bas
-      ? `Okunan log ${bas.toLocaleString('tr-TR')} tarihinden beri, yani ${gun != null ? `${gun} gün` : 'kısmi bir süre'}.`
+      ? `Okunan log ${fmtDateTime(bas)} tarihinden beri, yani ${gun != null ? `${gun} gün` : 'kısmi bir süre'}.`
       : 'Okunan log 7 günü kapsamıyor (ne kadarını kapsadığı bu taramada ölçülmemiş).';
     return `${pencere} Bu pencerede sağlık kontrolü dışında istek GÖRÜLMEDİ. `
       + '"Yük almıyor" DENMİYOR: 7 günün tamamına bakılmadı, o yüzden bu bir alt sınır. '

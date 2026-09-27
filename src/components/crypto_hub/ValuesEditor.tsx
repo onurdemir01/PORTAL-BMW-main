@@ -133,7 +133,7 @@ export function ValuesEditor({ tenantKey, tenantLabel, release, files = [], comp
               Kaydet ({fark ? fark.eklenen.length + fark.cikarilan.length : 0} satır)
             </button>
             <button type="button" className={SM} style={vbtn()} onClick={() => { setDuzenle(false); setTaslak(metin || ''); }}>
-              <ArrowUturnLeftIcon className="h-3.5 w-3.5" /> Vazgeç
+              <ArrowUturnLeftIcon className="h-3.5 w-3.5" /> İptal
             </button>
             <select
               value={hedef}

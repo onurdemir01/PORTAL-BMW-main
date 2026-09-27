@@ -42,6 +42,7 @@ const TEST_DIRS = [
   'server/retirement/__tests__',
   'server/admin/__tests__',
   'server/opsx/__tests__',
+  'server/crypto-hub/__tests__',
   'server/filex/__tests__',
   'server/smart/__tests__',
   'server/oco/__tests__',

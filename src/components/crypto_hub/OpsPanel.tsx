@@ -41,6 +41,8 @@ export interface OpsRequest {
   release?: string;
   valuesAll?: boolean;
   valuesPath?: string;
+  /** values_files: karsilastirilacak cluster dosyalarinin TAM yollari */
+  valuesPaths?: string[];
   content?: string;
   /** true = values satirlari MASKESIZ istenir (denetim kaydina yazilir) */
   reveal?: boolean;
@@ -51,6 +53,7 @@ export function opsCommand(req: OpsRequest, namespace: string): string {
   const ns = `-n ${namespace}`;
   switch (req.action) {
     case 'pods': return `oc get pods ${ns}`;
+    case 'values_files': return (req.valuesPaths || []).map((p) => `cat ${p}`).join('\n');
     case 'values_get': return `helm get values ${req.release} ${ns}${req.valuesAll ? ' --all' : ''}`;
     case 'values_put': return `cp -p ${req.valuesPath} ${req.valuesPath}.<tarih>.bak
 # yeni içerik ${req.valuesPath} dosyasına yazılır`;
@@ -63,7 +66,7 @@ export function opsCommand(req: OpsRequest, namespace: string): string {
 }
 
 const WRITES: Record<CryptoOpsAction, boolean> = {
-  pods: false, logs: false, values_get: false,
+  pods: false, logs: false, values_get: false, values_files: false,
   pod_delete: true, rollout: true, scale: true, values_put: true,
 };
 
@@ -150,7 +153,7 @@ export function OpsConfirm({ req, namespace, tenantLabel, onCancel, onConfirm }:
           </button>
           <CopyBtn text={komut} />
           <span className="flex-1" />
-          <button type="button" className="h-9 px-3 text-xs font-medium rounded-lg border" style={btn()} onClick={onCancel}>Vazgeç</button>
+          <button type="button" className="h-9 px-3 text-xs font-medium rounded-lg border" style={btn()} onClick={onCancel}>İptal</button>
         </div>
       )}
     >
@@ -434,7 +437,7 @@ export function ComponentOps({ tenantKey, tenantLabel, namespace, kind, name, wa
                 Devam
               </button>
               <span className="flex-1" />
-              <button type="button" className="h-9 px-3 text-xs rounded-lg border" style={btn()} onClick={() => setReplika(false)}>Vazgeç</button>
+              <button type="button" className="h-9 px-3 text-xs rounded-lg border" style={btn()} onClick={() => setReplika(false)}>İptal</button>
             </div>
           )}>
           <div className="space-y-2">

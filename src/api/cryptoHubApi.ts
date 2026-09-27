@@ -45,7 +45,8 @@ export interface CryptoArchive {
   dir: string;
   /** indirilmiş chart paketi (harmonize-1.34.4.tgz); boş = dizinde .tgz yok */
   chart: string;
-  /** values dosyaları — yalnızca ad/boyut/tarih; İÇERİK TUTULMAZ (parola barındırabilir) */
+  /** values dosyaları — yalnızca ad/boyut/tarih; İÇERİK TUTULMAZ (parola barındırabilir).
+   *  `file` cluster alt dizinini de taşır: "cldev1/garanti_values.yaml". */
   values: { file: string; size: number; mtime: string }[];
 }
 
@@ -139,7 +140,7 @@ export const cryptoHubApi = {
 };
 
 // ── İşlemler (log / pod silme / rollout / replika), 2026-09-26 ────────────────────────
-export type CryptoOpsAction = 'pods' | 'logs' | 'values_get' | 'pod_delete' | 'rollout' | 'scale' | 'values_put';
+export type CryptoOpsAction = 'pods' | 'logs' | 'values_get' | 'pod_delete' | 'rollout' | 'scale' | 'values_put' | 'values_files';
 
 export interface CryptoPod {
   name: string;
@@ -162,6 +163,23 @@ export interface CryptoOpsResult {
   logs: { target: string; line: string }[];
   results: { target: string; ok: boolean; message: string }[];
   errors: { stage: string; message: string }[];
+  /** values_files: cluster başına okunan dosya. `lines` VARSAYILAN OLARAK MASKELİ gelir.
+   *  `error` doluysa o dosya okunamadı: "fark yok" DEMEK DEĞİL. */
+  files?: { path: string; size: number; lines: string[]; error: string | null }[];
+  /** values_files: cluster karşılaştırması. Sunucuda, HAM satırlar üzerinde hesaplanır —
+   *  maskeleme her sırrı `****` yaptığı için maskeli veride iki FARKLI parola AYNI görünür
+   *  ve gerçek bir fark sessizce kaybolurdu. `sirli` satırlarda fark bildirilir ama değer
+   *  gösterilmez (server/crypto-hub/values-compare.cjs). */
+  compare?: {
+    okunan: { path: string; cluster: string }[];
+    okunamayan: { path: string; cluster: string; error: string }[];
+    /** yalnızca FARKLI olan ayarlar; `degerler` dizisi `okunan` ile aynı sıradadır */
+    satirlar: { anahtar: string; degerler: (string | null)[]; ayni: boolean; sirli: boolean; eksikVar: boolean }[];
+    farkliSayi: number;
+    anahtarSayi: number;
+    /** iki dosyadan az okunduysa false — "uyumlu" demek yanlış olurdu */
+    karsilastirilabilir: boolean;
+  };
 }
 
 export const cryptoOpsApi = {
@@ -170,6 +188,8 @@ export const cryptoOpsApi = {
     tenant: string; action: CryptoOpsAction; targets: string[];
     tail?: number; container?: string; previous?: boolean; replicas?: number; confirmed?: boolean;
     release?: string; valuesAll?: boolean; valuesPath?: string; content?: string;
+    /** values_files: karşılaştırılacak cluster dosyalarının TAM yolları (/vhosting altı) */
+    valuesPaths?: string[];
   }): Promise<{ ok: boolean; jobId?: number | null; awxServerId?: number; needsConfirm?: boolean; message?: string }> =>
     fetch(`${BASE}/ops`, {
       method: 'POST',

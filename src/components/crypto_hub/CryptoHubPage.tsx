@@ -28,6 +28,8 @@ import { PlanModal } from './PlanModal';
 import { BitcoinIcon, AppIcon, DomainIcon } from '@/components/common/BrandIcons';
 import { PodsTab, ComponentOps } from './OpsPanel';
 import { ValuesModal } from './ValuesModal';
+import { ValuesCompare } from './ValuesCompare';
+import { Modal } from '@/components/common/Modal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -289,8 +291,20 @@ function DurumTab({ data, tenantKey, tenantLabel, namespace, onDone }: {
 }
 
 // ── Sekme: Surumler ───────────────────────────────────────────────────────────────────
+/** Bir arsiv surumunde KARSILASTIRILACAK dosyalarin tam yollari.
+ *  CLUSTER'A OZGU dosyalar alt dizinlerde durur ("1.5.19/clqa1/garanti_values.yaml");
+ *  surum kokundeki tek dosya ("1.5.19/garanti_values.yaml") eski duzendir ve bir
+ *  cluster'i temsil etmez. Ikisini ayni tabloda karsilastirmak, "cluster'lar ayrisiyor"
+ *  diye okunacak bir fark uretirdi; bu yuzden alt dizindeki dosya VARSA yalniz onlar alinir. */
+export function karsilastirmaYollari(a: { dir: string; values: { file: string }[] }): string[] {
+  const altta = a.values.filter((f) => f.file.includes('/'));
+  const secilen = altta.length >= 2 ? altta : a.values;
+  return secilen.map((f) => `${a.dir}/${f.file}`);
+}
+
 function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tenantKey: string; tenantLabel: string }) {
   const [valuesFor, setValuesFor] = useState<string | null>(null);
+  const [kiyas, setKiyas] = useState<{ version: string; paths: string[] } | null>(null);
   const v = data.versions;
   const releases = data.releases || [];
   // ANA release: Wyden namespace'inde wydenapp yaninda keycloak + vault release'leri de var;
@@ -383,6 +397,7 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
                   <th className="text-left font-medium px-3 py-2">Chart paketi</th>
                   <th className="text-left font-medium px-3 py-2">values dosyaları</th>
                   <th className="text-left font-medium px-3 py-2">Dizin</th>
+                  <th className="text-left font-medium px-3 py-2"> </th>
                 </tr>
               </thead>
               <tbody>
@@ -406,6 +421,19 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
                       )}
                     </td>
                     <td className="px-3 py-2 text-[11px] break-all" style={{ color: 'var(--text-muted)' }}>{a.dir}</td>
+                    {/* Wyden aktif-pasif: bir surumun cluster'a ozgu values dosyalari
+                        ayrismamali. Tek dosya varsa karsilastiracak ikinci taraf yok. */}
+                    <td className="px-3 py-2">
+                      {a.values.length >= 2 ? (
+                        <button type="button" className={SM_BTN} style={btnStyle()}
+                          onClick={() => setKiyas({ version: a.version, paths: karsilastirmaYollari(a) })}>
+                          <DocumentTextIcon className="h-3.5 w-3.5" /> Karşılaştır
+                        </button>
+                      ) : (
+                        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}
+                          title="karşılaştırmak için en az iki values dosyası gerekir">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -415,6 +443,21 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
             Dosya içerikleri Portal'a alınmaz — values dosyalarında parola bulunabiliyor; yalnızca ad, boyut ve tarih tutulur.
           </div>
         </section>
+      )}
+
+      {kiyas && (
+        <Modal open size="wide" onClose={() => setKiyas(null)}
+          title="Cluster values karşılaştırması"
+          subtitle={`${tenantLabel} · sürüm ${kiyas.version} · ${kiyas.paths.length} dosya`}>
+          <div className="space-y-2">
+            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              Aktif-pasif yapıda her cluster kendi values dosyasıyla açılır; bu dosyaların
+              ayrışması, devir anında uygulamanın <b>başka</b> bir konfigürasyonla açılması
+              demektir. Yalnızca <b>farklı</b> olan ayarlar listelenir.
+            </div>
+            <ValuesCompare tenantKey={tenantKey} paths={kiyas.paths} />
+          </div>
+        </Modal>
       )}
 
       {valuesFor && (

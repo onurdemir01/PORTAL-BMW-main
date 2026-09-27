@@ -169,7 +169,10 @@ test('G18: yaricap kuralinin BASLIGI guncel olcegi soyluyor', () => {
 test('G19: ham toLocaleString kalmadi (ortak modul haric)', () => {
   const bad = [];
   for (const f of SRC_FILES) {
-    if (f.endsWith('utils/datetime.ts')) continue;
+    // AYIRICIYI NORMALLE: Windows'ta yollar `\` ile gelir, `endsWith('utils/datetime.ts')`
+    // hic tutmaz ve bicimlendiricinin KENDISI ihlal listesine dusup bekciyi yanlis sebeple
+    // kirmizi tutardi (oyle de oldu). Yanlis sebeple kirmizi duran bekci, gorulmez olur.
+    if (path.relative(ROOT, f).split(path.sep).join('/') === 'utils/datetime.ts') continue;
     const src = stripComments(fs.readFileSync(f, 'utf8'));
     if (/\.toLocale(String|DateString|TimeString)\(/.test(src)) bad.push(path.relative(ROOT, f));
   }
