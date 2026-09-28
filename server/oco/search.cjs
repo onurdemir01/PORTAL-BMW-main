@@ -99,8 +99,32 @@ function fail(message, status) {
   return err;
 }
 
+/**
+ * Arama ucunun KÖKÜ — `OCO_API_URL` bir kök adres DEĞİL.
+ *
+ * ÜRETİMDE ÖLÇÜLDÜ (kullanıcı, 2026-09-28): ayar şu şekilde girilmiş —
+ *   https://servicerepository/ChangeManagement/…ServiceRepository.svc/Change/
+ *   getChangeOrderByWfInstanceId/?wfInstanceId=
+ * yani DETAY UCUNUN TAM URL'İ, sorgu parametresi dahil (detay çağrısı numarayı sonuna
+ * ekleyerek çalışıyor). Arama yolunu bu dizginin sonuna eklemek, yolu `wfInstanceId`
+ * değerinin İÇİNE gömdü:
+ *   …getChangeOrderByWfInstanceId/?wfInstanceId=%2FChangeManagement%2F…%2F0%2F&count=100…
+ * Servis bunu ayrıştıramayıp HTTP 400 + "Request Error" döndürüyordu. Adres mesaja
+ * yazılmasaydı bu tek bakışta görülemezdi.
+ *
+ * ÇÖZÜM: ayarın YOL ve SORGU kısmına güvenilmez. Servis kökü `.svc` segmentine kadar
+ * kesilir; ayarda `.svc` yoksa yalnız origin alınır ve tam yol eklenir. İki durumda da
+ * kullanıcının tarayıcıda çalıştırdığı adresin AYNISI üretilir.
+ */
+function aramaKoku(baseUrl) {
+  const u = new URL(baseUrl);
+  const m = /^(.*?\.svc)(\/|$)/i.exec(u.pathname);
+  if (m) return `${u.origin}${m[1]}/Change/SearchChangeOrderWithOffset/`;
+  return `${u.origin}${SEARCH_PATH}`;
+}
+
 function sayfaUrl(cfg, skip, groupId) {
-  const u = new URL(`${cfg.baseUrl}${SEARCH_PATH}${Number(skip) || 0}/`);
+  const u = new URL(`${aramaKoku(cfg.baseUrl)}${Number(skip) || 0}/`);
   u.searchParams.set('count', String(PAGE_SIZE));
   // Kullanıcının verdiği çağrıdaki süzgeçler: -1 = "hepsi".
   u.searchParams.set('pcabRequired', '-1');
@@ -259,6 +283,8 @@ async function httpPage(cfg, skip, grup) {
 module.exports = {
   searchChangeOrders,
   aramaHatasi,
+  aramaKoku,
+  sayfaUrl,
   normalizeOrder,
   sortChronological,
   SEARCH_PATH,

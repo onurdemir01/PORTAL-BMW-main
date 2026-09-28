@@ -20,6 +20,7 @@ const path = require('node:path');
 
 process.env.OCO_API_URL = process.env.OCO_API_URL || 'https://ornek-servis';
 const {
+  sayfaUrl,
   normalizeOrder,
   sortChronological,
   searchChangeOrders,
@@ -227,4 +228,29 @@ test('OC7: 400 mesaji OCO NUMARASINI degil, cagrilan ADRESI gosterir', () => {
   // WCF hata sayfasinin CSS'i EKRANA DOKULMEZ; yalniz baslik tasinir.
   assert.doesNotMatch(err.message, /background-color/, 'HTML/CSS ekrana sizmis');
   assert.match(err.message, /Request Error/, 'servisin kendi basligi tasinmamis');
+});
+
+// OC8 (2026-09-28, URETIMDE OLCULDU): arama ucu HTTP 400 donuyordu. Sebep: `OCO_API_URL`
+// bir KOK ADRES DEGIL, detay ucunun TAM URL'i (sorgu parametresi dahil):
+//   https://servicerepository/ChangeManagement/....svc/Change/getChangeOrderByWfInstanceId/?wfInstanceId=
+// Arama yolunu bu dizginin sonuna eklemek yolu wfInstanceId DEGERININ ICINE gomuyordu.
+test('OC8: arama adresi ayarin YOL/SORGU kismindan bagimsiz kurulur', () => {
+  const BEKLENEN =
+    'https://servicerepository/ChangeManagement/ChangeManagementServiceRepository.svc' +
+    '/Change/SearchChangeOrderWithOffset/0/?count=100&pcabRequired=-1&isAgentPatch=-1' +
+    '&changeEnvironment=-1&parameterChange=-1&openningGroupId=6203';
+  const ayarlar = [
+    // URETIMDEKI GERCEK DEGER.
+    'https://servicerepository/ChangeManagement/ChangeManagementServiceRepository.svc/Change/getChangeOrderByWfInstanceId/?wfInstanceId=',
+    // Kok adres olarak girilmis hali de AYNI sonucu vermeli.
+    'https://servicerepository',
+  ];
+  for (const baseUrl of ayarlar) {
+    assert.equal(sayfaUrl({ baseUrl }, 0, '6203'), BEKLENEN, `ayar: ${baseUrl}`);
+  }
+  // Ofset yola girer, sorguya DEGIL.
+  assert.match(
+    sayfaUrl({ baseUrl: 'https://servicerepository' }, 100, '6203'),
+    /SearchChangeOrderWithOffset\/100\/\?/,
+  );
 });
