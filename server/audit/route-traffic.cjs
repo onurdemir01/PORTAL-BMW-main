@@ -28,14 +28,52 @@ const SILENT_DAYS = 30;
 const DEAD_DAYS = 90;
 const DAY = 86400000;
 
-const L = (s) => String(s || '').trim().toLowerCase();
+const L = (s) =>
+  String(s || '')
+    .trim()
+    .toLowerCase();
 const dayKey = (d) => (d instanceof Date ? d : new Date(d)).toISOString().slice(0, 10);
+
+/**
+ * Dynatrace SERVIS olcumu (dbo.BMW_Application_Usage) -> (namespace|app) haritasi.
+ *
+ * NEDEN EN YENI SATIR, TOPLAM DEGIL: her satir zaten `window_days` gunluk bir PENCEREYI
+ * tasiyor (varsayilan 35). Gunleri toplamak ayni istekleri defalarca saymak olurdu.
+ *
+ * OLCULEMEYEN SATIR 0 SAYILMAZ: measured=0 ise sayi degil, "olculemedi" bilgisi tasinir.
+ * Ornek kodda dusen metrik sorgusu 0 istek gibi gorunuyordu; emeklilik kararinda calisan
+ * bir uygulamayi "kullanilmiyor" diye okutan tam olarak buydu.
+ */
+function buildUsageMap(usageRows) {
+  const m = new Map();
+  for (const r of usageRows || []) {
+    const ns = L(r.namespace);
+    const app = L(r.app);
+    if (!ns || !app || !r.scan_date) continue;
+    const day = dayKey(r.scan_date);
+    const k = ns + '|' + app;
+    const onceki = m.get(k);
+    if (onceki && onceki.scanDate >= day) continue;
+    m.set(k, {
+      scanDate: day,
+      windowDays: Number(r.window_days) || 0,
+      req: Number(r.req_total) || 0,
+      measured: r.measured === true || Number(r.measured) === 1,
+      services: Number(r.services_total) || 0,
+      servicesMeasured: Number(r.services_measured) || 0,
+      servicesSkipped: Number(r.services_skipped) || 0,
+      note: String(r.note || '').trim(),
+      cluster: String(r.cluster || '').trim(),
+    });
+  }
+  return m;
+}
 
 /**
  * @param {Array<{scan_date:any, window_hours:number, cluster:string, namespace:string, route:string,
  *   req_total:number, r2xx:number, r4xx:number, r5xx:number}>} trafficRows  son DEAD_DAYS gunun satirlari
  * @param {Array<{cluster_name:string, namespace_name:string, route_name:string, route_address:string}>} inventoryRows
- * @param {{now?: Date, silentDays?: number, deadDays?: number}} [opt]
+ * @param {{now?: Date, silentDays?: number, deadDays?: number, usageRows?: Array<object>}} [opt]
  */
 function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
   const now = opt.now || new Date();
@@ -49,7 +87,12 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
   for (const r of inventoryRows || []) {
     const k = L(r.namespace_name) + '|' + L(r.route_name);
     if (!k.startsWith('|') && !k.endsWith('|')) {
-      const e = inv.get(k) || { namespace: String(r.namespace_name).trim(), route: String(r.route_name).trim(), address: '', clusters: new Set() };
+      const e = inv.get(k) || {
+        namespace: String(r.namespace_name).trim(),
+        route: String(r.route_name).trim(),
+        address: '',
+        clusters: new Set(),
+      };
       if (r.route_address && !e.address) e.address = String(r.route_address).trim();
       if (r.cluster_name) e.clusters.add(String(r.cluster_name).trim());
       inv.set(k, e);
@@ -72,7 +115,9 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
     if (!latestScan || day > latestScan) latestScan = day;
     if (!earliestScan || day < earliestScan) earliestScan = day;
     const a = agg.get(key) || {
-      namespace: String(r.namespace).trim(), route: String(r.route).trim(), clusters: new Set(),
+      namespace: String(r.namespace).trim(),
+      route: String(r.route).trim(),
+      clusters: new Set(),
       days: new Map(), // day -> {req, r2xx, r4xx, r5xx, hours}
     };
     if (r.cluster) a.clusters.add(String(r.cluster).trim());
@@ -87,6 +132,11 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
   }
   const daysCovered = scanDays.size;
 
+  // DYNATRACE SERVIS OLCUMU (istege bagli): tablo yoksa ya da job hic kosmadiysa harita
+  // BOS kalir ve satirlar "olcum yok" gorunur - route sonuclari bundan ETKILENMEZ.
+  const usage = buildUsageMap(opt.usageRows);
+  const usageEslesen = new Set();
+
   const rows = [];
   const keys = new Set([...agg.keys(), ...inv.keys()]);
   for (const key of keys) {
@@ -98,7 +148,14 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
     const address = e?.address || '';
     const app = appFromAddress(address, nsLower) || route;
     const spa = SPA_RE.test(address) || SPA_RE.test(route);
-    let req7 = 0, req30 = 0, req90 = 0, r4xx = 0, r5xx = 0, hours90 = 0, lastSeen = null, lastScan = null;
+    let req7 = 0,
+      req30 = 0,
+      req90 = 0,
+      r4xx = 0,
+      r5xx = 0,
+      hours90 = 0,
+      lastSeen = null,
+      lastScan = null;
     if (a) {
       for (const [day, d] of a.days) {
         const age = ageDays(day);
@@ -106,7 +163,12 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
         if (!lastScan || day > lastScan) lastScan = day;
         if (age < 7) req7 += d.req;
         if (age < silentDays) req30 += d.req;
-        if (age < deadDays) { req90 += d.req; r4xx += d.r4xx; r5xx += d.r5xx; hours90 += d.hours; }
+        if (age < deadDays) {
+          req90 += d.req;
+          r4xx += d.r4xx;
+          r5xx += d.r5xx;
+          hours90 += d.hours;
+        }
         if (d.req > 0 && (!lastSeen || day > lastSeen)) lastSeen = day;
       }
     }
@@ -116,25 +178,94 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
     else if (req90 > 0) status = 'silent';
     else status = 'dead';
     rows.push({
-      namespace, route, address, app, spa,
+      namespace,
+      route,
+      address,
+      app,
+      spa,
       env: envOfNamespace(namespace),
       clusters: [...(a?.clusters || e?.clusters || [])].sort(),
       inInventory: !!e,
-      req7, req30, req90,
+      req7,
+      req30,
+      req90,
       perDay: hours90 > 0 ? Math.round((req90 / hours90) * 24) : 0,
       err4xxPct: req90 > 0 ? Math.round((r4xx / req90) * 100) : 0,
       err5xxPct: req90 > 0 ? Math.round((r5xx / req90) * 100) : 0,
-      lastSeen, lastScan, status,
+      lastSeen,
+      lastScan,
+      status,
+      // SERVIS OLCUMU: route trafigi ROUTER'dan gecen istekleri sayar; bu ise uygulamanin
+      // aldigi TUM servis cagrilarini. Eslesme (namespace + uygulama adi) tutmazsa `null`
+      // doner - "0 istek" DEMEK DEGIL, "bu uygulama icin olcum bulunamadi" demek.
+      usage: (() => {
+        // ESLESME TEK ISIMLE GUVENILIR DEGIL: Dynatrace uygulama adi (deployment adi) ile
+        // route adi cogu zaman ayni degil. Birkac aday denenir; hicbiri tutmazsa null
+        // doner ve ekran "eslesmedi" der - "0 istek" DEMEZ. Eslesmeyen olcumlerin sayisi
+        // ozette ayrica bildirilir ki "hepsini gordum" yanilgisi olusmasin.
+        const adaylar = [L(app), routeLower, L(String(address).split('.')[0])];
+        let k = null;
+        for (const c of adaylar) {
+          if (c && usage.has(nsLower + '|' + c)) {
+            k = nsLower + '|' + c;
+            break;
+          }
+        }
+        if (!k) return null;
+        const u = usage.get(k);
+        usageEslesen.add(k);
+        return {
+          req: u.measured ? u.req : null,
+          measured: u.measured,
+          windowDays: u.windowDays,
+          scanDate: u.scanDate,
+          services: u.services,
+          servicesSkipped: u.servicesSkipped,
+          note: u.note,
+        };
+      })(),
     });
   }
   rows.sort((x, y) => (x.namespace + x.route).localeCompare(y.namespace + y.route));
 
-  const summary = { routes: rows.length, active: 0, silent: 0, dead: 0, nodata: 0, spa: 0, spaDead: 0 };
+  const summary = {
+    routes: rows.length,
+    active: 0,
+    silent: 0,
+    dead: 0,
+    nodata: 0,
+    spa: 0,
+    spaDead: 0,
+  };
   for (const r of rows) {
     summary[r.status] += 1;
-    if (r.spa) { summary.spa += 1; if (r.status === 'dead' || r.status === 'silent') summary.spaDead += 1; }
+    if (r.spa) {
+      summary.spa += 1;
+      if (r.status === 'dead' || r.status === 'silent') summary.spaDead += 1;
+    }
   }
-  return { rows, summary, latestScan, earliestScan, daysCovered, silentDays, deadDays };
+
+  // ROUTE'U OLMAYAN UYGULAMALAR: Dynatrace'te olculmus ama bu listede KARSILIGI OLMAYAN
+  // uygulamalar. Route trafiginin kor noktasi tam olarak burasi - sayiyi gostermezsek
+  // "hepsini gordum" yanilgisi olusur.
+  const usageRowsCount = usage.size;
+  const usageRoutesuz = [...usage.keys()].filter((k) => !usageEslesen.has(k)).length;
+
+  return {
+    rows,
+    summary,
+    latestScan,
+    earliestScan,
+    daysCovered,
+    silentDays,
+    deadDays,
+    usage: {
+      olculenUygulama: usageRowsCount,
+      eslesen: usageEslesen.size,
+      routesuz: usageRoutesuz,
+      olculemeyen: [...usage.values()].filter((u) => !u.measured).length,
+    },
+  };
 }
 
-module.exports = { buildRouteTraffic, SILENT_DAYS, DEAD_DAYS };
+module.exports = { buildRouteTraffic, buildUsageMap, SILENT_DAYS, DEAD_DAYS };

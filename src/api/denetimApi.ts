@@ -1,8 +1,8 @@
 // src/api/denetimApi.ts — "Denetim" sayfasinin veri istemcisi
 // (bkz. server/audit/denetim.cjs).
-import { safeJson } from "./http";
+import { safeJson } from './http';
 
-const BASE = "/api/denetim";
+const BASE = '/api/denetim';
 
 export interface NginxSpaEnvCell {
   present: boolean;
@@ -33,8 +33,13 @@ export interface NginxSpaEnvCell {
    */
   traffic?: {
     state: 'active' | 'idle' | 'unknown';
-    req24: number | null; req7: number | null; hc24: number | null;
-    lastSeen: string | null; sampled: boolean; hosts: number; unknownHosts: number;
+    req24: number | null;
+    req7: number | null;
+    hc24: number | null;
+    lastSeen: string | null;
+    sampled: boolean;
+    hosts: number;
+    unknownHosts: number;
   } | null;
 }
 
@@ -91,7 +96,10 @@ export interface NginxMigrationApp {
    *  newHosts / newStatus (2026-09-17): bu location YENI sunucularda tanimli mi
    *  (defined = hepsinde, partial = bazisinda, none = hicbirinde, not-scanned). */
   paths: {
-    service: string; location: string; hosts: string[]; newHosts: string[];
+    service: string;
+    location: string;
+    hosts: string[];
+    newHosts: string[];
     newStatus: 'defined' | 'partial' | 'none' | 'not-scanned';
     /** YÜK ÖLÇÜMÜ (2026-09-27): ESKİ sunuculardan (GBRVPP07-10 vb.) okunur — iş şu an
      *  oradan akıyor. null = bu location için ölçüm satırı yok.
@@ -99,12 +107,16 @@ export interface NginxMigrationApp {
      *  unknown = log okunamadı ya da örneklem 7 günü kapsamıyor (req7 ALT SINIR). */
     traffic: {
       state: 'active' | 'idle' | 'unknown';
-      req24: number | null; req7: number | null; hc24: number | null;
+      req24: number | null;
+      req7: number | null;
+      hc24: number | null;
       lastSeen: string | null;
       /** ÖLÇÜLEN pencerenin başı (yyyyMMddHHmmss). sampled iken "0 istek" ancak bununla
        *  yorumlanabilir: 7 gün mü bakıldı, 3 saat mi? null = eski tarama, bilinmiyor. */
       firstSeen: string | null;
-      sampled: boolean; hosts: number; unknownHosts: number;
+      sampled: boolean;
+      hosts: number;
+      unknownHosts: number;
     } | null;
   }[];
   /** yeni host -> bayraklar; null = o sunucu henuz taranmadi */
@@ -137,14 +149,33 @@ export interface NginxMigrationGroup {
   oldHostsSeen: string[];
   /** eski sunucularda servis basina location sayisi (SPA-disi dahil) ve yeni sunucudaki
    *  tanim durumu sayilari (location ilerlemesi, 2026-09-17) */
-  serviceLocations: { service: string; locations: number; defined: number; partial: number; none: number; notScanned: number }[];
+  serviceLocations: {
+    service: string;
+    locations: number;
+    defined: number;
+    partial: number;
+    none: number;
+    notScanned: number;
+  }[];
   apps: NginxMigrationApp[];
   nonSpa: NginxMigrationOther[];
   unresolved: NginxMigrationOther[];
   totals: {
-    apps: number; ready: number; partial: number; missing: number; notScanned: number; nonSpa: number; unresolved: number;
+    apps: number;
+    ready: number;
+    partial: number;
+    missing: number;
+    notScanned: number;
+    nonSpa: number;
+    unresolved: number;
     /** location ilerlemesi: eski sunuculardaki tum location'lar (SPA + SPA-disi + cozulemeyen) */
-    locations: { total: number; defined: number; partial: number; none: number; notScanned: number };
+    locations: {
+      total: number;
+      defined: number;
+      partial: number;
+      none: number;
+      notScanned: number;
+    };
   };
 }
 export interface NginxMigrationResult {
@@ -208,7 +239,11 @@ export interface SpaCoverageRow {
   /** Uc dizinden en az biri eksik. 404 doner ama "hic kurulmamis"tan AYRI bir
    *  istir; ikisini birlestirmek nerede mudahale gerektigini gizlerdi. */
   intranetPartialCount: number;
-  intranetPartial: { app: string; namespace: string; hosts: { host: string; missing: string[] }[] }[];
+  intranetPartial: {
+    app: string;
+    namespace: string;
+    hosts: { host: string; missing: string[] }[];
+  }[];
   /** Hicbir intranet sunucusunda izi yok. */
   intranetMissingCount: number;
   intranetMissing: string[];
@@ -235,8 +270,12 @@ export interface SpaCoverageRow {
   /** Deploy olmamis uygulamalar + sahiplik (2026-09-17). internet: nginx'te tanimi yok;
    *  intranet: hic kurulmamis (missing) ya da yarim (partial: eksik dizinler sunucu basina). */
   missingDetail?: {
-    internet: SpaMissingApp[]; intranet: SpaMissingApp[]; noRoute?: SpaMissingApp[];
-    notDeployed?: SpaMissingApp[]; deployedNotDefined?: SpaMissingApp[]; definedNotDeployed?: SpaMissingApp[];
+    internet: SpaMissingApp[];
+    intranet: SpaMissingApp[];
+    noRoute?: SpaMissingApp[];
+    notDeployed?: SpaMissingApp[];
+    deployedNotDefined?: SpaMissingApp[];
+    definedNotDeployed?: SpaMissingApp[];
   };
   /** internet sunucularinda dizin taramasi (H+A) - 2026-09-18 */
   internetDirsMeasured?: boolean;
@@ -333,7 +372,14 @@ export interface SpaCoverageResult {
 }
 
 // ── Nginx Audit: izin verilen deger katalogu ──────────────────────────────────────────
-export interface NginxAuditAllowedValue { id: number; directive: string; value: string; note: string | null; created_by?: string | null; created_at?: string }
+export interface NginxAuditAllowedValue {
+  id: number;
+  directive: string;
+  value: string;
+  note: string | null;
+  created_by?: string | null;
+  created_at?: string;
+}
 // ── Nginx Audit (tum sunucular, nginx -T) ────────────────────────────────────────────
 export interface NginxAuditServer {
   file: string;
@@ -407,7 +453,12 @@ export interface NginxAuditRefFile {
   changed: number;
   /** sunucuda var, referansta yok */
   extra: number;
-  details: { kind: 'missing' | 'changed' | 'extra' | string; key: string; ref: string | null; server: string | null }[];
+  details: {
+    kind: 'missing' | 'changed' | 'extra' | string;
+    key: string;
+    ref: string | null;
+    server: string | null;
+  }[];
 }
 
 export interface NginxAuditHost {
@@ -512,8 +563,8 @@ export interface NginxAuditResult {
     hostsEnvUnknown: number;
     /** istisnali sunucu sayisi (toplamlarin disinda) */
     excepted: number;
-  complianceAvg?: number | null;
-  complianceUnder90?: number;
+    complianceAvg?: number | null;
+    complianceUnder90?: number;
     upsNoKeepalive: number;
     settingsMismatch: number;
     hostsWithMismatch: number;
@@ -638,7 +689,7 @@ export interface EnvanterSummary {
 export interface EnvanterPivot {
   ok: boolean;
   source: string;
-  metric: "rows" | "hosts";
+  metric: 'rows' | 'hosts';
   x: { key: string; label: string; values: { value: string; count: number }[] };
   y: { key: string; label: string; values: { value: string; count: number }[] };
   /** Anahtar: `${sutunDegeri}\u0001${satirDegeri}` — ayirici sunucu tarafiyla AYNI. */
@@ -728,18 +779,44 @@ export interface RouteTrafficRow {
   lastSeen: string | null;
   lastScan: string | null;
   status: RouteTrafficStatus;
+  /**
+   * Dynatrace SERVİS ölçümü (application_usage job'ı). Route trafiği router'dan geçen
+   * istekleri sayar; bu ise uygulamanın aldığı tüm servis çağrılarını.
+   *
+   * `null`   = bu satır için ölçüm BULUNAMADI (eşleşme tutmadı) — "0 istek" DEMEK DEĞİL.
+   * `measured:false` = ölçüm DENENDİ ama düştü; `req` o zaman `null` olur.
+   */
+  usage: {
+    req: number | null;
+    measured: boolean;
+    windowDays: number;
+    scanDate: string;
+    services: number;
+    servicesSkipped: number;
+    note: string;
+  } | null;
 }
 export interface RouteTrafficResult {
   ok: boolean;
   message?: string;
   tableMissing: boolean;
   rows: RouteTrafficRow[];
-  summary: { routes: number; active: number; silent: number; dead: number; nodata: number; spa: number; spaDead: number };
+  summary: {
+    routes: number;
+    active: number;
+    silent: number;
+    dead: number;
+    nodata: number;
+    spa: number;
+    spaDead: number;
+  };
   latestScan: string | null;
   earliestScan: string | null;
   daysCovered: number;
   silentDays: number;
   deadDays: number;
+  /** Dynatrace servis ölçümünün kapsamı — route'u OLMAYAN uygulamalar burada görünür */
+  usage?: { olculenUygulama: number; eslesen: number; routesuz: number; olculemeyen: number };
 }
 
 export interface WebAppResult {
@@ -1042,22 +1119,31 @@ export interface NginxInventoryResult {
 
 export const denetimApi = {
   nginxProxy: (scanDate?: string): Promise<NginxProxyResult> =>
-    fetch(`${BASE}/nginx-proxy${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+    fetch(`${BASE}/nginx-proxy${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(
+      safeJson,
+    ),
 
   nginxInventory: (): Promise<NginxInventoryResult> =>
     fetch(`${BASE}/nginx-inventory`).then(safeJson),
 
   nginxApiLocations: (scanDate?: string): Promise<NginxApiLocationsResult> =>
-    fetch(`${BASE}/nginx-api-locations${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+    fetch(
+      `${BASE}/nginx-api-locations${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`,
+    ).then(safeJson),
 
   nginxApi: (scanDate?: string): Promise<NginxApiResult> =>
-    fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ""}`).then(safeJson),
+    fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(
+      safeJson,
+    ),
 
   // fresh=true: sunucu onbellegini atla (Yenile dugmesi). Varsayilan: 60 sn onbellek.
   nginxAudit: (fresh = false): Promise<NginxAuditResult> =>
     fetch(`${BASE}/nginx-audit${fresh ? '?fresh=1' : ''}`).then(safeJson),
 
-  nginxAuditExceptionSet: (host: string, note: string): Promise<{ ok: boolean; message?: string; by?: string | null }> =>
+  nginxAuditExceptionSet: (
+    host: string,
+    note: string,
+  ): Promise<{ ok: boolean; message?: string; by?: string | null }> =>
     fetch(`${BASE}/nginx-audit/exceptions/${encodeURIComponent(host)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1065,29 +1151,41 @@ export const denetimApi = {
     }).then(safeJson),
 
   nginxAuditExceptionClear: (host: string): Promise<{ ok: boolean; message?: string }> =>
-    fetch(`${BASE}/nginx-audit/exceptions/${encodeURIComponent(host)}`, { method: 'DELETE' }).then(safeJson),
+    fetch(`${BASE}/nginx-audit/exceptions/${encodeURIComponent(host)}`, { method: 'DELETE' }).then(
+      safeJson,
+    ),
 
   // Kabul edilen degerler (2026-09-22): referans disinda da gecerli sayilan direktif degerleri
-  nginxAuditAllowed: (): Promise<{ ok: boolean; rows: NginxAuditAllowedValue[]; message?: string }> =>
-    fetch(`${BASE}/nginx-audit/allowed`).then(safeJson),
-  nginxAuditAllowedAdd: (directive: string, value: string, note: string): Promise<{ ok: boolean; message?: string }> =>
-    fetch(`${BASE}/nginx-audit/allowed`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ directive, value, note }) }).then(safeJson),
+  nginxAuditAllowed: (): Promise<{
+    ok: boolean;
+    rows: NginxAuditAllowedValue[];
+    message?: string;
+  }> => fetch(`${BASE}/nginx-audit/allowed`).then(safeJson),
+  nginxAuditAllowedAdd: (
+    directive: string,
+    value: string,
+    note: string,
+  ): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/nginx-audit/allowed`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ directive, value, note }),
+    }).then(safeJson),
   nginxAuditAllowedRemove: (id: number): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/nginx-audit/allowed/${id}`, { method: 'DELETE' }).then(safeJson),
 
   nginxAuditHost: (host: string): Promise<NginxAuditHostResult> =>
     fetch(`${BASE}/nginx-audit/host/${encodeURIComponent(host)}`).then(safeJson),
 
-
   nginxMigration: (fresh = false): Promise<NginxMigrationResult> =>
     fetch(`${BASE}/nginx-migration${fresh ? '?fresh=1' : ''}`).then(safeJson),
 
   nginxSpa: (scanDate?: string, fresh = false): Promise<NginxSpaResult> => {
     const q = new URLSearchParams();
-    if (scanDate) q.set("scanDate", scanDate);
-    if (fresh) q.set("fresh", "1");
+    if (scanDate) q.set('scanDate', scanDate);
+    if (fresh) q.set('fresh', '1');
     const qs = q.toString();
-    return fetch(`${BASE}/nginx-spa${qs ? `?${qs}` : ""}`).then(safeJson);
+    return fetch(`${BASE}/nginx-spa${qs ? `?${qs}` : ''}`).then(safeJson);
   },
 
   spaCoverage: (platform: string): Promise<SpaCoverageResult> =>
@@ -1096,8 +1194,15 @@ export const denetimApi = {
   routeStats: (platform = 'ark'): Promise<RouteStatsResult> =>
     fetch(`${BASE}/route-stats?platform=${encodeURIComponent(platform)}`).then(safeJson),
   /** Bir IP'ye cozen route'lar (ortam ve tur suzgeciyle). */
-  routesOfIp: (p: { ip: string; env?: string; kind?: 'spa' | 'nonSpa' | 'all'; platform?: string }): Promise<RoutesOfIpResult> =>
-    fetch(`${BASE}/route-stats/ip?ip=${encodeURIComponent(p.ip)}&env=${encodeURIComponent(p.env || '')}&kind=${p.kind || 'all'}&platform=${encodeURIComponent(p.platform || 'ark')}`).then(safeJson),
+  routesOfIp: (p: {
+    ip: string;
+    env?: string;
+    kind?: 'spa' | 'nonSpa' | 'all';
+    platform?: string;
+  }): Promise<RoutesOfIpResult> =>
+    fetch(
+      `${BASE}/route-stats/ip?ip=${encodeURIComponent(p.ip)}&env=${encodeURIComponent(p.env || '')}&kind=${p.kind || 'all'}&platform=${encodeURIComponent(p.platform || 'ark')}`,
+    ).then(safeJson),
 
   ocpCoverage: (platform: string): Promise<OcpCoverageResult> =>
     fetch(`${BASE}/ocp-coverage?platform=${encodeURIComponent(platform)}`).then(safeJson),
@@ -1108,21 +1213,28 @@ export const denetimApi = {
   deployScripts: (root: string): Promise<InitScriptsResult> =>
     fetch(`${BASE}/deploy-scripts?root=${encodeURIComponent(root)}`).then(safeJson),
 
-  nginxLocations: (p: { service?: string; env?: string; status?: string; q?: string }): Promise<NginxLocationsResult> => {
+  nginxLocations: (p: {
+    service?: string;
+    env?: string;
+    status?: string;
+    q?: string;
+  }): Promise<NginxLocationsResult> => {
     const qs = new URLSearchParams();
-    if (p.service) qs.set("service", p.service);
-    if (p.env) qs.set("env", p.env);
-    if (p.status) qs.set("status", p.status);
-    if (p.q) qs.set("q", p.q);
+    if (p.service) qs.set('service', p.service);
+    if (p.env) qs.set('env', p.env);
+    if (p.status) qs.set('status', p.status);
+    if (p.q) qs.set('q', p.q);
     return fetch(`${BASE}/nginx-locations?${qs.toString()}`).then(safeJson);
   },
 
   routeTraffic: (fresh = false): Promise<RouteTrafficResult> =>
     fetch(`${BASE}/route-traffic${fresh ? '?fresh=1' : ''}`).then(safeJson),
   webApp: (source: string, q?: string, onlyUnmatched?: boolean): Promise<WebAppResult> =>
-    fetch(`${BASE}/web-app?source=${encodeURIComponent(source)}`
-      + (q ? `&q=${encodeURIComponent(q)}` : "")
-      + (onlyUnmatched ? "&onlyUnmatched=1" : "")).then(safeJson),
+    fetch(
+      `${BASE}/web-app?source=${encodeURIComponent(source)}` +
+        (q ? `&q=${encodeURIComponent(q)}` : '') +
+        (onlyUnmatched ? '&onlyUnmatched=1' : ''),
+    ).then(safeJson),
 
   appEnvs: (source: string): Promise<AppEnvsResult> =>
     fetch(`${BASE}/app-envs?source=${encodeURIComponent(source)}`).then(safeJson),
@@ -1131,9 +1243,15 @@ export const denetimApi = {
     fetch(`${BASE}/envanter/summary?source=${encodeURIComponent(source)}`).then(safeJson),
 
   envanterPivot: (p: {
-    source: string; x: string; y: string; metric: string; hideEmpty: boolean;
+    source: string;
+    x: string;
+    y: string;
+    metric: string;
+    hideEmpty: boolean;
   }): Promise<EnvanterPivot> =>
-    fetch(`${BASE}/envanter/pivot?source=${encodeURIComponent(p.source)}`
-      + `&x=${encodeURIComponent(p.x)}&y=${encodeURIComponent(p.y)}`
-      + `&metric=${encodeURIComponent(p.metric)}&hideEmpty=${p.hideEmpty ? "1" : "0"}`).then(safeJson),
+    fetch(
+      `${BASE}/envanter/pivot?source=${encodeURIComponent(p.source)}` +
+        `&x=${encodeURIComponent(p.x)}&y=${encodeURIComponent(p.y)}` +
+        `&metric=${encodeURIComponent(p.metric)}&hideEmpty=${p.hideEmpty ? '1' : '0'}`,
+    ).then(safeJson),
 };
