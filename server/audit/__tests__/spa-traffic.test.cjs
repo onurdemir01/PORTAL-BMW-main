@@ -17,19 +17,35 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
-const PAGE = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'DenetimPage.tsx'), 'utf8');
+const PAGE = fs.readFileSync(
+  path.join(__dirname, '..', '..', '..', 'src', 'components', 'DenetimPage.tsx'),
+  'utf8',
+);
 // Betik tarafinin iddialari (hc ayrimi, en uzun onek eslesmesi, regex location atlama)
 // Ansible deposunun KENDI bekcisindedir: bmw_nginx/tests/check_spa_traffic.py. Portal testi
 // baska bir deponun diskteki yerine bagimli olmamali.
 test('T1 saglik kontrolu yuke SAYILMAZ (ekran bunu soyluyor)', () => {
   assert.ok(PAGE.includes('hc.jsp / hc.html sayılmaz'), 'ekranda hc haric oldugu yazmali');
-  assert.ok(PAGE.includes('Sağlık kontrolü (hariç tutuldu)'), 'ipucunda hc sayisi ayri gosterilmeli');
+  assert.ok(
+    PAGE.includes('Sağlık kontrolü (hariç tutuldu)'),
+    'ipucunda hc sayisi ayri gosterilmeli',
+  );
 });
 
 test('T2 uc durum: aktif / atil / BILINMIYOR - olculemeyen "yuk yok" sayilmaz', () => {
-  assert.match(SRC, /state: c\.req7 > 0 \? 'active' : \(c\.sampled \? 'unknown' : 'idle'\)/,
-    'kuyruk 7 gunu kapsamiyorsa (sampled) "atil" DENMEMELI');
-  assert.match(SRC, /if \(x\.error\) \{ c\.unknown \+= 1; continue; \}/, 'log okunamayan sunucu sayiya katilmamali');
+  // PARANTEZ ZORUNLU DEGIL: bicimlendirici (prettier) ic ternary'nin parantezlerini
+  // kaldiriyor ve ham regex tutmuyordu; bekci YANLIS SEBEPLE kirmiziya donuyordu. Iddia
+  // parantezler degil, KARARIN KENDISI: req7 yoksa "atil" DEMEDEN once sampled'a bakilmali.
+  assert.match(
+    SRC.replace(/\s+/g, ' '),
+    /state: c\.req7 > 0 \? 'active' : \(?c\.sampled \? 'unknown' : 'idle'\)?/,
+    'kuyruk 7 gunu kapsamiyorsa (sampled) "atil" DENMEMELI',
+  );
+  assert.match(
+    SRC.replace(/\s+/g, ' '),
+    /if \(x\.error\) \{ c\.unknown \+= 1; continue; \}/,
+    'log okunamayan sunucu sayiya katilmamali',
+  );
   assert.ok(PAGE.includes('“Yük yok” demek DEĞİLDİR'), 'ekranda bilinmiyor/yok ayrimi aciklanmali');
 });
 
