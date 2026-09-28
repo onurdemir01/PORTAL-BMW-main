@@ -20,10 +20,26 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..', '..');
 const TAB = path.join(ROOT, 'src/components/admin/tabs/SystemConfigTab.tsx');
 
+/** Ekrandaki `ENV_VARS` girdileri: anahtar -> girdinin TAM METNI.
+ *
+ *  BLOK BAZLI OKUNUR, SATIR BAZLI DEGIL: bicimlendirici (prettier) girdileri tek
+ *  satirdan cok satira cevirince, satir arayan eski okuyucu girdiyi HIC bulamiyor ve
+ *  bekci yanlis sebeple kirmiziya donuyordu (2026-09-28).
+ */
+function ekranGirdileri() {
+  const src = fs.readFileSync(TAB, 'utf8');
+  const m = new Map();
+  for (const g of src.matchAll(/\{[^{}]*key:\s*['"]([A-Z0-9_]+)['"][^{}]*\}/g)) m.set(g[1], g[0]);
+  return m;
+}
+
 /** Ekrandaki `ENV_VARS` girdilerinin anahtarlari. */
 function ekranAnahtarlari() {
   const src = fs.readFileSync(TAB, 'utf8');
-  return [...src.matchAll(/\{\s*key:\s*"([A-Z0-9_]+)"/g)].map((m) => m[1]);
+  // TIRNAK TURU IDDIANIN KONUSU DEGIL: bicimlendirici (prettier) cift tirnagi tek
+  // tirnaga cevirince toplayici SIFIR anahtar gordu ve bekci tum anahtarlarda
+  // yanlis sebeple kirmiziya dondu (2026-09-28).
+  return [...src.matchAll(/\{\s*key:\s*['"]([A-Z0-9_]+)['"]/g)].map((m) => m[1]);
 }
 
 test('S11 `SYSTEM_CONFIG_KEYS`teki her anahtar admin ekraninda GORUNUYOR', () => {
@@ -48,12 +64,13 @@ test('S11 `SYSTEM_CONFIG_KEYS`teki her anahtar admin ekraninda GORUNUYOR', () =>
 // planliyordu. Artik karar sunucunun `hotReloadable` alanindan geliyor.
 test('S12 sicak yuklenen anahtarlar ekranda `restartRequired: true` TASIMIYOR', () => {
   const { HOT_RELOADABLE_KEYS } = require('../../db/env-overrides.cjs');
-  const src = fs.readFileSync(TAB, 'utf8');
+  const girdiler = ekranGirdileri();
   const yanlis = [];
   for (const key of HOT_RELOADABLE_KEYS) {
-    const satir = src.split('\n').find((l) => l.includes(`key: "${key}"`));
-    assert.ok(satir, `${key} ekranda yok (S11 bunu zaten yakalamali)`);
-    if (/restartRequired:\s*true/.test(satir)) yanlis.push(key);
+    // GIRDININ TAMAMI okunur: alanlar satirlara bolunmus olabilir (prettier).
+    const girdi = girdiler.get(key);
+    assert.ok(girdi, `${key} ekranda yok (S11 bunu zaten yakalamali)`);
+    if (/restartRequired:\s*true/.test(girdi)) yanlis.push(key);
   }
   assert.deepEqual(yanlis, [], `sicak yuklenen ama "restart gerekir" yazan: ${yanlis.join(', ')}`);
 });
