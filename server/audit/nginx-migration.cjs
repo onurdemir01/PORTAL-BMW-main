@@ -48,12 +48,58 @@
 
 const SPA_RE = /-app(-emb)?-v/i;
 
+// SPA KALIBI GENISLETILDI (kullanici, 2026-09-28: "SPA olmayan hedefler" listesini
+// gosterip "bu tanimlari da olusturmamiz lazim" dedi).
+//
+// Eski kural yalnizca "-app-v" / "-app-emb-v" iceren adlari SPA sayiyordu. Ekipteki
+// on yuz uygulamalarinin bir kismi bu ara eki TASIMIYOR ama surum ekini tasiyor:
+//   non-core-assets-v0, doc-acceptance-frontend-v0, digital-fast-limit-cf-v0,
+//   disney-bonus-cfa-v0, dlyd-prdct-rstrctring-v0, investor-dps-mngmnt-v0
+// Bunlar envanterde (ns, app) olarak COZULUYOR ama ad kalibina takildiklari icin
+// "SPA olmayan" listesine dusuyor, yani yeni sunucuda dizin BEKLENMIYOR ve "Tanim
+// olustur" dugmesi hic cikmiyordu.
+//
+// YENI KURAL: uygulama adi SURUM EKIYLE bitiyorsa (-v0, -v1, ...) SPA'dir. Eski kalip
+// KALDIRILMADI, uzerine EKLENDI - boylece bugun SPA sayilan hicbir satir listeden
+// dusmez (ornegin "x-app-v0-y" gibi surum ekiyle BITMEYEN adlar).
+//
+// KABUL EDILEN RISK: gercekten API olan ama "-v1" ile biten bir servis de artik SPA
+// sayilir ve ekranda "dizin eksik" gorunur. Yanlis alarm, sessiz kayip degil: tanim
+// ancak kullanici dugmeye basarsa olusur. Tersi (gercek bir SPA'yi listeden dusurmek)
+// tasimanin unutulmasi demekti.
+//
+// BU KURAL YALNIZ TASIMA EKRANINA AITTIR. route-stats.cjs ve denetim.cjs'teki SPA_RE
+// kopyalari BILEREK dar kaldi: oradaki soru "bu route bir SPA mi" (siniflandirma),
+// burada ise "bu hedef yeni sunucuda DIZIN ister mi" (tasima islemi). Farkli sorular.
+const SPA_VER_RE = /-v\d+$/i;
+/** Cozulmus uygulama adi yeni sunucuda dizin ister mi? */
+const isSpaApp = (app) => {
+  const a = String(app || '');
+  return SPA_RE.test(a) || SPA_VER_RE.test(a);
+};
+// FQDN'in ilk etiketinde ("<app>-<ns>") surum eki ORTADA kalir: non-core-assets-v0-front-architecture
+const SPA_LABEL_VER_RE = /-v\d+-/i;
+/** Cozulememis hedefin ilk etiketi SPA kalibinda mi? */
+const isSpaLabel = (label) => {
+  const s = String(label || '');
+  return SPA_RE.test(s) || SPA_LABEL_VER_RE.test(s);
+};
+
 /** Sabit tasima gruplari (kullanici verdi, 2026-09-14). */
 const MIGRATION_GROUPS = [
   {
     id: 'glomo',
     label: 'Glomo',
-    oldHosts: ['GBRVPP07', 'GBRVPP08', 'GBRVPP09', 'GBRVPP10', 'GBRVPAP03', 'GBRVPAP04', 'GBRVPAP05', 'GBRVPAP06'],
+    oldHosts: [
+      'GBRVPP07',
+      'GBRVPP08',
+      'GBRVPP09',
+      'GBRVPP10',
+      'GBRVPAP03',
+      'GBRVPAP04',
+      'GBRVPAP05',
+      'GBRVPAP06',
+    ],
     newHosts: ['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP34', 'GBNGXAP35'],
   },
   {
@@ -64,8 +110,14 @@ const MIGRATION_GROUPS = [
   },
 ];
 
-const H = (h) => String(h || '').trim().toUpperCase();
-const L = (s) => String(s || '').trim().toLowerCase();
+const H = (h) =>
+  String(h || '')
+    .trim()
+    .toUpperCase();
+const L = (s) =>
+  String(s || '')
+    .trim()
+    .toLowerCase();
 const bit = (v) => v === true || v === 1 || v === '1';
 
 /** "https://x.y:443/" ya da "x.y" -> "x.y" */
@@ -101,12 +153,22 @@ function resolveTarget(host, routeByAddress, ocpByLabel, routeByLabel = new Map(
     if (ns) {
       const suf = '-' + ns;
       if (label.endsWith(suf) && label.length > suf.length) {
-        return { namespace: ns, application: label.slice(0, -suf.length), how: 'route', suffixAdded };
+        return {
+          namespace: ns,
+          application: label.slice(0, -suf.length),
+          how: 'route',
+          suffixAdded,
+        };
       }
     }
     const cands = ocpByLabel.get(label) || [];
     if (cands.length === 1) {
-      return { namespace: cands[0].namespace, application: cands[0].application, how: 'inventory', suffixAdded };
+      return {
+        namespace: cands[0].namespace,
+        application: cands[0].application,
+        how: 'inventory',
+        suffixAdded,
+      };
     }
     if (cands.length > 1 && !ambiguous) {
       ambiguous = {
@@ -121,31 +183,57 @@ function resolveTarget(host, routeByAddress, ocpByLabel, routeByLabel = new Map(
   return ambiguous || { namespace: null, application: null, how: 'unresolved', suffixAdded: false };
 }
 
+/** "app-ns.apps.fw.garanti.com.tr" -> "app-ns" (ciplak ad zaten etikettir). */
+const labelOf = (host) => L(host).split('.')[0];
+
+/**
+ * Etiketten (ns, app) CIKARIR — envanterde karsiligi olmayan hedefler icin SON CARE.
+ *
+ * NEDEN TAHMIN DEGIL: "<app>-<ns>" kalibinda nerede bolunecegi genelde belirsizdir
+ * (hem app hem ns tire icerir) — resolveTarget bu yuzden bilerek tahmin etmez. Ama SURUM
+ * EKI (-v0, -v1…) bolme noktasini KESIN verir: surumden sonrasi namespace'tir.
+ *   non-core-assets-v0-front-architecture -> non-core-assets-v0 + front-architecture-prod
+ * Bu kural, envanterde COZULEBILEN 6 hedefte (digital-fast-limit-cf-v0, disney-bonus-cfa-v0,
+ * dlyd-prdct-rstrctring-v0, doc-acceptance-frontend-v0, investor-dps-mngmnt-v0,
+ * non-core-assets-v0) envanterin verdigi cevabin AYNISINI uretiyor — testte kilitlendi.
+ *
+ * YINE DE ENVANTER DEGILDIR: sonuc `how: 'fromName'` ile isaretlenir ve tasinacaklar
+ * listesine girmez. "Ad boyle diyor" ile "envanterde var" ayni sey degil.
+ */
+function deriveFromName(host) {
+  const m = /^(.*?-v\d+)-(.+)$/i.exec(labelOf(host));
+  if (!m) return null;
+  const application = m[1];
+  const ns = m[2];
+  return { namespace: ns.endsWith(PROD_SUFFIX) ? ns : ns + PROD_SUFFIX, application };
+}
+
 /** Cozum haritalari: route adresi/etiketi -> ns, "<app>-<ns>" -> [(ns, app)].
  *  buildMigration ve Denetim kapsam ucu (PROD proxy satirlari) ayni haritayi kullanir. */
 function buildResolverMaps(routeRows, ocpRows) {
-// route adresi -> namespace (birebir)
-const routeByAddress = new Map();
-const routeByLabel = new Map(); // ilk etiket -> ns (ciplak upstream adi icin)
-for (const r of routeRows || []) {
-  const a = hostOf(r.route_address);
-  const ns = L(r.namespace_name);
-  if (!a || !ns) continue;
-  if (!routeByAddress.has(a)) routeByAddress.set(a, ns);
-  const lbl = a.split('.')[0];
-  if (lbl && !routeByLabel.has(lbl)) routeByLabel.set(lbl, ns);
-}
-// "<app>-<ns>" etiketi -> [(ns, app)] (yedek cozum)
-const ocpByLabel = new Map();
-for (const r of ocpRows || []) {
-  const ns = L(r.namespace);
-  const app = L(r.application);
-  if (!ns || !app) continue;
-  const label = app + '-' + ns;
-  if (!ocpByLabel.has(label)) ocpByLabel.set(label, []);
-  const arr = ocpByLabel.get(label);
-  if (!arr.some((c) => c.namespace === ns && c.application === app)) arr.push({ namespace: ns, application: app });
-}
+  // route adresi -> namespace (birebir)
+  const routeByAddress = new Map();
+  const routeByLabel = new Map(); // ilk etiket -> ns (ciplak upstream adi icin)
+  for (const r of routeRows || []) {
+    const a = hostOf(r.route_address);
+    const ns = L(r.namespace_name);
+    if (!a || !ns) continue;
+    if (!routeByAddress.has(a)) routeByAddress.set(a, ns);
+    const lbl = a.split('.')[0];
+    if (lbl && !routeByLabel.has(lbl)) routeByLabel.set(lbl, ns);
+  }
+  // "<app>-<ns>" etiketi -> [(ns, app)] (yedek cozum)
+  const ocpByLabel = new Map();
+  for (const r of ocpRows || []) {
+    const ns = L(r.namespace);
+    const app = L(r.application);
+    if (!ns || !app) continue;
+    const label = app + '-' + ns;
+    if (!ocpByLabel.has(label)) ocpByLabel.set(label, []);
+    const arr = ocpByLabel.get(label);
+    if (!arr.some((c) => c.namespace === ns && c.application === app))
+      arr.push({ namespace: ns, application: app });
+  }
   return { routeByAddress, routeByLabel, ocpByLabel };
 }
 
@@ -178,9 +266,22 @@ function trafficIndex(trafficRows, oldHostSet) {
     const host = H(r.host);
     if (oldHostSet && oldHostSet.size && !oldHostSet.has(host)) continue;
     const k = String(r.service || '').toUpperCase() + '|' + String(r.location || '');
-    if (!idx.has(k)) idx.set(k, { req24: 0, req7: 0, hc24: 0, hosts: 0, unknownHosts: 0, lastSeen: null, firstSeen: null, sampled: false });
+    if (!idx.has(k))
+      idx.set(k, {
+        req24: 0,
+        req7: 0,
+        hc24: 0,
+        hosts: 0,
+        unknownHosts: 0,
+        lastSeen: null,
+        firstSeen: null,
+        sampled: false,
+      });
     const c = idx.get(k);
-    if (r.error) { c.unknownHosts += 1; continue; }
+    if (r.error) {
+      c.unknownHosts += 1;
+      continue;
+    }
     c.hosts += 1;
     c.req24 += Number(r.req_24h) || 0;
     c.req7 += Number(r.req_7d) || 0;
@@ -201,18 +302,41 @@ function trafficIndex(trafficRows, oldHostSet) {
 function trafficState(c) {
   if (!c || (c.hosts === 0 && c.unknownHosts === 0)) return null;
   if (c.hosts === 0) {
-    return { state: 'unknown', req24: null, req7: null, hc24: null, lastSeen: null,
-             firstSeen: null, sampled: false, hosts: 0, unknownHosts: c.unknownHosts };
+    return {
+      state: 'unknown',
+      req24: null,
+      req7: null,
+      hc24: null,
+      lastSeen: null,
+      firstSeen: null,
+      sampled: false,
+      hosts: 0,
+      unknownHosts: c.unknownHosts,
+    };
   }
   return {
-    state: c.req7 > 0 ? 'active' : (c.sampled ? 'unknown' : 'idle'),
-    req24: c.req24, req7: c.req7, hc24: c.hc24, lastSeen: c.lastSeen,
+    state: c.req7 > 0 ? 'active' : c.sampled ? 'unknown' : 'idle',
+    req24: c.req24,
+    req7: c.req7,
+    hc24: c.hc24,
+    lastSeen: c.lastSeen,
     firstSeen: c.firstSeen,
-    sampled: c.sampled, hosts: c.hosts, unknownHosts: c.unknownHosts,
+    sampled: c.sampled,
+    hosts: c.hosts,
+    unknownHosts: c.unknownHosts,
   };
 }
 
-function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, newLocRows, trafficRows, groups = MIGRATION_GROUPS }) {
+function buildMigration({
+  proxyRows,
+  upstreamRows,
+  routeRows,
+  ocpRows,
+  dirRows,
+  newLocRows,
+  trafficRows,
+  groups = MIGRATION_GROUPS,
+}) {
   const { routeByAddress, routeByLabel, ocpByLabel } = buildResolverMaps(routeRows, ocpRows);
   // yeni sunuculardaki location tanimlari: "SERVICE|location" -> Set(host)
   const newLoc = new Map();
@@ -280,8 +404,15 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       const push = (map, key, extra) => {
         if (!map.has(key)) {
           map.set(key, {
-            ...extra, target, targetSource, suffixAdded: res.suffixAdded === true,
-            services: new Set(), oldHosts: new Set(), locations: new Set(), forms: new Set(), written: new Set(),
+            ...extra,
+            target,
+            targetSource,
+            suffixAdded: res.suffixAdded === true,
+            services: new Set(),
+            oldHosts: new Set(),
+            locations: new Set(),
+            forms: new Set(),
+            written: new Set(),
             paths: new Map(), // "SERVICE|location" -> {service, location, hosts:Set}
           });
         }
@@ -294,19 +425,37 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
         // "Tanim olustur" icin: hangi vhost (servis) + hangi context path. Ayni uygulama
         // birden fazla location'dan sunuluyorsa kullanici birini secer.
         const pk = svc + '|' + loc;
-        if (!row.paths.has(pk)) row.paths.set(pk, { service: svc, location: loc, hosts: new Set() });
+        if (!row.paths.has(pk))
+          row.paths.set(pk, { service: svc, location: loc, hosts: new Set() });
         row.paths.get(pk).hosts.add(host);
       };
 
       if (res.namespace && res.application) {
         const key = res.namespace + '/' + res.application;
-        if (!SPA_RE.test(res.application)) {
-          push(nonSpa, key, { namespace: res.namespace, application: res.application, how: res.how });
+        if (!isSpaApp(res.application)) {
+          push(nonSpa, key, {
+            namespace: res.namespace,
+            application: res.application,
+            how: res.how,
+          });
         } else {
           push(apps, key, { namespace: res.namespace, application: res.application, how: res.how });
         }
-      } else if (SPA_RE.test(target)) {
-        push(unresolved, target, { how: res.how, candidates: res.candidates || [] });
+      } else if (isSpaLabel(labelOf(target))) {
+        // ENVANTERDE YOK AMA ADI KONUSUYOR: hedef SPA kalibinda, ne route ne OpenShift
+        // envanterinde karsiligi var. Satiri bos birakmak "bu neyin nesi" sorusunu ekibe
+        // birakiyordu; ad kurumsal kalipta oldugu icin (<app>-<ns>.apps…) ns/app buradan
+        // CIKARILABILIR. Cikarim DOGRULANMIS BIR ESLESME DEGILDIR ve oyle gosterilmez:
+        // `how: 'fromName'` ile isaretlenir, ekran "addan cikarildi (envanterde yok)" der
+        // ve satir TASINACAKLAR listesine GIRMEZ - uygulama kaldirilmis olabilir, olmayan
+        // bir uygulama icin yeni sunucuda dizin acmak yanlis olurdu.
+        const ad = deriveFromName(target);
+        push(unresolved, target, {
+          how: ad ? 'fromName' : res.how,
+          namespace: ad ? ad.namespace : null,
+          application: ad ? ad.application : null,
+          candidates: res.candidates || [],
+        });
       } else {
         // SPA kalibina uymayan ve cozulemeyen: API/arka uc olabilir - SPA-disi listede
         push(nonSpa, target, { namespace: null, application: null, how: res.how });
@@ -321,7 +470,14 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       const have = newLoc.get(locKey(svc, loc)) || new Set();
       const on = newHosts.filter((h) => have.has(h));
       const known = newHosts.filter((h) => newLocHosts.has(h) || scannedHosts.has(h));
-      const status = known.length === 0 ? 'not-scanned' : on.length === newHosts.length ? 'defined' : on.length === 0 ? 'none' : 'partial';
+      const status =
+        known.length === 0
+          ? 'not-scanned'
+          : on.length === newHosts.length
+            ? 'defined'
+            : on.length === 0
+              ? 'none'
+              : 'partial';
       return { newHosts: on, newStatus: status };
     };
     const finish = (row) => ({
@@ -335,9 +491,13 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       written: [...row.written].sort(),
       paths: [...row.paths.values()]
         .map((x) => ({
-          service: x.service, location: x.location, hosts: [...x.hosts].sort(),
+          service: x.service,
+          location: x.location,
+          hosts: [...x.hosts].sort(),
           ...newLocStatus(x.service, x.location),
-          traffic: trafficState(trafIdx.get(String(x.service).toUpperCase() + '|' + String(x.location))),
+          traffic: trafficState(
+            trafIdx.get(String(x.service).toUpperCase() + '|' + String(x.location)),
+          ),
         }))
         .sort((a, b) => a.service.localeCompare(b.service) || a.location.localeCompare(b.location)),
     });
@@ -361,12 +521,19 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       // eklendi, ilk tarama gelene kadar) hazirligi ENGELLEMEZ — aksi halde tum liste "kismi"ye
       // dusup ozet %0 gosteriyordu; taranmayanlar grupta ayrica (newHostsScanned) gorunur.
       const status =
-        scanned === 0 ? 'not-scanned' : readyHosts === scanned ? 'ready'
-          : readyHosts === 0 ? 'missing' : 'partial';
+        scanned === 0
+          ? 'not-scanned'
+          : readyHosts === scanned
+            ? 'ready'
+            : readyHosts === 0
+              ? 'missing'
+              : 'partial';
       return { ...finish(row), perHost, readyHosts, scannedHosts: scanned, status };
     });
     const order = { missing: 0, partial: 1, 'not-scanned': 2, ready: 3 };
-    appRows.sort((a, b) => order[a.status] - order[b.status] || a.application.localeCompare(b.application));
+    appRows.sort(
+      (a, b) => order[a.status] - order[b.status] || a.application.localeCompare(b.application),
+    );
 
     // Servis basina location sayisi (eski sunucular; ayni tanim birden fazla sunucuda
     // olsa da BIR kez). SPA-disi ve cozulemeyen hedefler de dahil - vhost'un tamami.
@@ -380,14 +547,16 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
         if (!m.has(svc)) m.set(svc, new Set());
         m.get(svc).add(String(r.location || ''));
       }
-      return [...m.entries()].map(([service, set]) => {
-        const c = { defined: 0, partial: 0, none: 0, notScanned: 0 };
-        for (const loc of set) {
-          const st = newLocStatus(service, loc).newStatus;
-          c[st === 'not-scanned' ? 'notScanned' : st]++;
-        }
-        return { service, locations: set.size, ...c };
-      }).sort((a, b) => b.locations - a.locations || a.service.localeCompare(b.service));
+      return [...m.entries()]
+        .map(([service, set]) => {
+          const c = { defined: 0, partial: 0, none: 0, notScanned: 0 };
+          for (const loc of set) {
+            const st = newLocStatus(service, loc).newStatus;
+            c[st === 'not-scanned' ? 'notScanned' : st]++;
+          }
+          return { service, locations: set.size, ...c };
+        })
+        .sort((a, b) => b.locations - a.locations || a.service.localeCompare(b.service));
     })();
     const locationTotals = { total: 0, defined: 0, partial: 0, none: 0, notScanned: 0 };
     for (const sl of serviceLocations) {
@@ -404,11 +573,15 @@ function buildMigration({ proxyRows, upstreamRows, routeRows, ocpRows, dirRows, 
       oldHosts: g.oldHosts.map(H),
       newHosts,
       newHostsScanned: newHosts.filter((h) => scannedHosts.has(h)),
-      oldHostsSeen: [...new Set((proxyRows || []).map((r) => H(r.host)).filter((h) => oldSet.has(h)))].sort(),
+      oldHostsSeen: [
+        ...new Set((proxyRows || []).map((r) => H(r.host)).filter((h) => oldSet.has(h))),
+      ].sort(),
       serviceLocations,
       apps: appRows,
       nonSpa: [...nonSpa.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),
-      unresolved: [...unresolved.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),
+      unresolved: [...unresolved.values()]
+        .map(finish)
+        .sort((a, b) => a.target.localeCompare(b.target)),
       totals: {
         // location ilerlemesi (SPA + SPA-disi + cozulemeyen; vhost'un tamami)
         locations: locationTotals,
@@ -446,16 +619,29 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
   // kind/target_url kolonlari DDL ile geldi; yoksa proxy satirlari hic yazilmamistir.
   if (hasProxyColumns && !(await hasProxyColumns())) {
     return {
-      ok: true, ownersReady: false, proxyReady: false, dirsReady: false, proxyScanDate: null, dirScanDate: null,
-      groups: buildMigration({ proxyRows: [], upstreamRows: [], routeRows: [], ocpRows: [], dirRows: [] }),
+      ok: true,
+      ownersReady: false,
+      proxyReady: false,
+      dirsReady: false,
+      proxyScanDate: null,
+      dirScanDate: null,
+      groups: buildMigration({
+        proxyRows: [],
+        upstreamRows: [],
+        routeRows: [],
+        ocpRows: [],
+        dirRows: [],
+      }),
     };
   }
 
   const [proxyDate, dirDate] = await Promise.all([
     query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`)
-      .then((r) => r.recordset?.[0]?.d || null).catch(() => null),
+      .then((r) => r.recordset?.[0]?.d || null)
+      .catch(() => null),
     query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Intranet_Audit`)
-      .then((r) => r.recordset?.[0]?.d || null).catch(() => null),
+      .then((r) => r.recordset?.[0]?.d || null)
+      .catch(() => null),
   ]);
 
   const [proxy, ups, routes, ocp, dirs, newLocs, traffic] = await Promise.all([
@@ -474,11 +660,15 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
         WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Upstreams)
           AND host IN (${oldIn.sqlText})`,
       oldIn.params,
-    ).then((r) => r.recordset || []).catch(() => []),
+    )
+      .then((r) => r.recordset || [])
+      .catch(() => []),
     query(`SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`)
-      .then((r) => r.recordset || []).catch(() => []),
+      .then((r) => r.recordset || [])
+      .catch(() => []),
     query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory`)
-      .then((r) => r.recordset || []).catch(() => []),
+      .then((r) => r.recordset || [])
+      .catch(() => []),
     dirDate
       ? query(
           `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists
@@ -497,7 +687,9 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
             WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
               AND host IN (${newIn.sqlText})`,
           newIn.params,
-        ).then((r) => r.recordset || []).catch(() => [])
+        )
+          .then((r) => r.recordset || [])
+          .catch(() => [])
       : Promise.resolve([]),
     // YUK OLCUMU (2026-09-27): trafik ESKI sunuculardan okunur - is su an oradan akiyor.
     // Tablo yoksa ekran eskisi gibi calisir, gosterge gorunmez (uydurma yapmaz).
@@ -509,10 +701,20 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
         WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)
           AND host IN (${oldIn.sqlText})`,
       oldIn.params,
-    ).then((r) => r.recordset || []).catch(() => []),
+    )
+      .then((r) => r.recordset || [])
+      .catch(() => []),
   ]);
 
-  const groups = buildMigration({ proxyRows: proxy, upstreamRows: ups, routeRows: routes, ocpRows: ocp, dirRows: dirs, newLocRows: newLocs, trafficRows: traffic });
+  const groups = buildMigration({
+    proxyRows: proxy,
+    upstreamRows: ups,
+    routeRows: routes,
+    ocpRows: ocp,
+    dirRows: dirs,
+    newLocRows: newLocs,
+    trafficRows: traffic,
+  });
   const owners = await loadNamespaceOwners(query);
   for (const g of groups) {
     for (const a of g.apps) a.owner = ownersFor(owners.byNs, [a.namespace]);
@@ -529,4 +731,15 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
   };
 }
 
-module.exports = { buildMigration, loadMigration, resolveTarget, buildResolverMaps, MIGRATION_GROUPS, SPA_RE, _hostOf: hostOf };
+module.exports = {
+  buildMigration,
+  loadMigration,
+  resolveTarget,
+  buildResolverMaps,
+  deriveFromName,
+  isSpaApp,
+  isSpaLabel,
+  MIGRATION_GROUPS,
+  SPA_RE,
+  _hostOf: hostOf,
+};
