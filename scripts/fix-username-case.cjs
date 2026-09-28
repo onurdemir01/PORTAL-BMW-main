@@ -76,6 +76,19 @@ async function main() {
     }
     const ek = h.kosul ? ` AND ${h.kosul}` : '';
 
+    // KAC SATIRA BAKILDI (2026-09-28, uretim raporu): rapor alti tablo icin de "temiz"
+    // dedi. "Temiz" ile "BAKILACAK SATIR YOKTU" ayni cumleye cikiyordu — bos bir tablo da,
+    // kosulun hicbir satiri tutmadigi bir tablo da ayni sekilde temiz gorunuyordu. Bu,
+    // kullanicinin sordugu soruyu ("Osman'in sorunu duzeldi mi?") cevapsiz birakiyordu:
+    // sifir bulgu, ancak paydayi bilirsen bir sey ifade eder. Ozellikle
+    // portal_element_visibility'de principal_type='user' satiri HIC yoksa, yetkiler
+    // grup/e-posta ile veriliyor demektir ve kullanici adi yazimi orada zaten hic rol
+    // oynamamistir — bu bilgi rapordan okunabilmeli.
+    const { rows: sayim } = await db.query(
+      `SELECT COUNT(*) AS adet FROM dbo.${h.tablo} WHERE 1 = 1${ek}`,
+    );
+    const bakilan = Number((sayim[0] && sayim[0].adet) || 0);
+
     // Karisik yazimli satirlar: kolonun kendisi kucuk halinden FARKLI olanlar.
     const { rows: bozuk } = await db.query(
       `SELECT ${h.kolon} AS deger, COUNT(*) AS adet
@@ -85,9 +98,14 @@ async function main() {
         ORDER BY ${h.kolon}`,
     );
     if (!bozuk.length) {
-      console.log(`\n[${h.tablo}] temiz.`);
+      console.log(
+        bakilan === 0
+          ? `\n[${h.tablo}] BAKILACAK SATIR YOK (${h.kosul ? h.kosul + ' kosuluna uyan kayit yok' : 'tablo bos'}) — "temiz" DEGIL, olculecek bir sey yoktu.`
+          : `\n[${h.tablo}] temiz — ${bakilan} satir bakildi, hepsi tek bicimde.`,
+      );
       continue;
     }
+    console.log(`\n[${h.tablo}] ${bakilan} satir bakildi.`);
 
     // Cakisma: kucultuldugunde ayni benzersizlik anahtarina sahip BASKA bir satir varsa.
     let cakisan = [];
