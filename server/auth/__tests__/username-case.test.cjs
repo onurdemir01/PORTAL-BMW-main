@@ -83,8 +83,11 @@ test('UC4: yetki kurallari harf duyarsiz - yazarken ve okurken', () => {
 
 test('UC5: LDAP arama ucu - admin, en az 3 karakter, tavanli, hatayi YUTMAZ', () => {
   const rotalar = duz(oku('visibility-routes.cjs'));
-  assert.ok(
-    rotalar.includes('router.get("/ldap-users", requireAdmin'),
+  // TIRNAK TURU IDDIANIN KONUSU DEGIL: prettier cift tirnagi tek tirnaga cevirdi ve bu
+  // bekci daha dogdugu gun yanlis sebeple kirmiziya dondu. Iddia: uc VAR ve ADMIN kapili.
+  assert.match(
+    rotalar,
+    /router\.get\(['"]\/ldap-users['"], requireAdmin/,
     'LDAP arama ucu yok ya da admin kapisi yok',
   );
   assert.ok(
