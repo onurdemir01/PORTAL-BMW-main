@@ -2151,11 +2151,15 @@ function initDenetim(app) {
         // DYNATRACE SERVIS OLCUMU (application_usage job'i). Tablo HENUZ YOKSA sorgu duser
         // ve BOS gecilir: route trafigi bundan etkilenmemeli - bir kaynagin eksikligi
         // otekini de karartmasin.
+        //
+        // YALNIZ SON 7 GUN: her satir ZATEN 35 gunluk bir pencereyi tasiyor ve yalnizca EN
+        // YENI olcum kullaniliyor. 90 gun cekmek, uygulama x gun kadar satiri (binlerce)
+        // bosuna tasimak olurdu. 7 gun, birkac basarisiz kosuyu atlatacak kadar genis.
         query(
           `SELECT scan_date, window_days, cluster, namespace, app, req_total,
                   services_total, services_measured, services_skipped, measured, note
              FROM dbo.BMW_Application_Usage
-            WHERE scan_date >= DATEADD(day, -${DEAD_DAYS}, CAST(GETDATE() AS DATE))`,
+            WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))`,
         ).catch(() => ({ recordset: [] })),
       ]);
       res.json({
