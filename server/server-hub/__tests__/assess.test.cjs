@@ -306,6 +306,122 @@ test('SH9b: appdomain.service sunucuya OZELDIR - warning degil, metrikleri bozma
   );
 });
 
+test('SH9c: NO_LOAD bulgusu HANGI LOGA dayandigini tasir; okunamayan log KANIT DEGIL', () => {
+  // Kullanici (2026-09-28): "NO_LOAD bulgulari icin en son hangi log dosyasinin
+  // okundugunu da gormek istiyorum." Bulgu metni en fazla iki vhost gosterip gerisini
+  // "+3" diye kisiyordu; eksik kalan tam da bakilmasi gereken satir olabilirdi.
+  const d = base();
+  // crm CALISIYOR; iki vhost ona proxy'liyor. Biri okundu (7g=0), oteki OKUNAMADI.
+  d.vhosts = [
+    {
+      host: 'DACRWAP01',
+      product: 'RHA',
+      listen: '10.1.1.13:443',
+      server_name: 'crm.fw.local',
+      aliases: '',
+      access_log: '/l/crm',
+      proxy_targets: 'dacraap01.fw.local:8080',
+      req_24h: 0,
+      req_7d: 0,
+      hc_24h: 0,
+      shared: 0,
+      sampled: 0,
+      conf_file: '/usr/apache/conf/vhosts.conf',
+    },
+    {
+      host: 'DACRWAP01',
+      product: 'RHA',
+      listen: '10.1.1.15:443',
+      server_name: 'crm2.fw.local',
+      aliases: '',
+      access_log: '/l/crm2',
+      proxy_targets: 'dacraap01.fw.local:8080',
+      req_24h: null,
+      req_7d: null,
+      hc_24h: null,
+      shared: 0,
+      sampled: 0,
+      conf_file: '/usr/apache/conf/vhosts.conf',
+    },
+  ];
+  const r = assess(d);
+  const h = r.hosts.find((x) => x.host === 'DACRAAP01');
+  const f = h.findings.find((x) => x.code === 'NO_LOAD');
+  assert.ok(f, 'NO_LOAD bulgusu uretilmedi - senaryo kurulamadi');
+  assert.ok(
+    Array.isArray(f.logs) && f.logs.length === 2,
+    'bulgu hangi loglara dayandigini tasimiyor',
+  );
+  assert.deepEqual(f.logs.map((l) => l.path).sort(), ['/l/crm', '/l/crm2']);
+  const a = f.logs.find((l) => l.path === '/l/crm');
+  const b = f.logs.find((l) => l.path === '/l/crm2');
+  assert.equal(a.read, true);
+  assert.equal(a.req7d, 0);
+  // OKUNAMAYAN LOG "0 ISTEK" SAYILMAZ: aksi halde olculemeyen bir dosya, "yuk yok"
+  // iddiasinin kaniti gibi gorunurdu.
+  assert.equal(b.read, false, 'okunamayan log okunmus gibi isaretlenmis');
+  assert.equal(b.req7d, null, 'okunamayan log 0 istek gibi yazilmis');
+  assert.equal(f.scanDate, D, 'loglarin NE ZAMAN okundugu tasinmiyor');
+});
+
+test('SH9d: auto-start "bilinmiyor" SEBEBIYLE gelir; ucu ayri sayilir', () => {
+  // Kullanici (2026-09-28): "JVM Auto-Start durumu icinde 1930 bilinmiyor durumunda
+  // raporlamissin, nedir bunlar? neyi bilinmiyor olarak algiliyorsun". Uc apayri durum
+  // tek kelimeye cikiyordu. "Bilinmiyor" hicbirinde "KAPALI" demek DEGILDIR.
+  const d = base();
+  d.jvms = [
+    // CLI auto-start'i okuyamadi, envanterde de kayit yok.
+    {
+      host: 'DACRAAP01',
+      gen: 7,
+      jvm: 'cliyok',
+      grp: 'g',
+      running: 1,
+      auto_start: '',
+      server_state: 'running',
+      ports: '8080',
+    },
+    // Envanterde kayit VAR ama autostarts alani celiskili.
+    {
+      host: 'DACRAAP01',
+      gen: 7,
+      jvm: 'celiskili',
+      grp: 'g',
+      running: 1,
+      auto_start: '',
+      server_state: 'running',
+      ports: '8081',
+    },
+  ];
+  d.mwApps = [
+    {
+      host: 'DACRAAP01',
+      app: 'celiskili',
+      domain: 'd1',
+      status: 'running',
+      autostarts: 'true false',
+      jvm_count: 2,
+    },
+  ];
+  const r = assess(d);
+  const h = r.hosts.find((x) => x.host === 'DACRAAP01');
+  const bulgular = h.findings.filter((f) => f.code === 'AUTOSTART_UNKNOWN');
+  assert.equal(bulgular.length, 2, 'iki JVM de bilinmiyor olmali');
+  const sebepler = bulgular.map((f) => f.autoStartReason).sort();
+  assert.deepEqual(sebepler, ['cli-okunamadi', 'envanter-celiskili'], 'sebep tasinmiyor');
+  // Metin de sebebi SOYLEMELI: "okunamadi" tek basina neyin okunamadigini anlatmiyor.
+  assert.ok(
+    bulgular.some((f) => /çelişkili/.test(f.text)),
+    'bulgu metni sebebi anlatmiyor',
+  );
+  // Ozet kirilimi: tek sayi "neyi bilmiyoruz" sorusunu cevapsiz birakiyordu.
+  assert.equal(r.summary.jvm.autoUnknown, 2);
+  assert.equal(r.summary.jvm.autoUnknownBy['envanter-celiskili'], 1);
+  assert.equal(r.summary.jvm.autoUnknownBy['cli-okunamadi'], 1);
+  // "bilinmiyor" KAPALI sayilmamali - reboot riski uretmemeli.
+  assert.ok(!h.findings.some((f) => f.code === 'REBOOT_RISK'), 'bilinmiyor, KAPALI gibi islenmis');
+});
+
 test('SH10: flattenFindings tum sunuculari tek listede, en agirdan hafife', () => {
   const { flattenFindings } = require('../assess.cjs');
   const r = assess(base());

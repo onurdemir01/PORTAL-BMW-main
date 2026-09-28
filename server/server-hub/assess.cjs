@@ -261,7 +261,13 @@ function assess(data) {
         if (hit.autoStart === 'unknown' && invAuto !== 'unknown') {
           hit.autoStart = invAuto === 'karisik' ? 'unknown' : invAuto;
           hit.autoStartSource = 'envanter';
+          // Envanter de cevap veremediyse SEBEBI yaz: "karisik" demek, ayni uygulamanin
+          // JVM'lerinden bazisi true bazisi false demektir - tek bir cevap UYDURULMAZ.
+          if (invAuto === 'karisik') hit.autoStartReason = 'envanter-celiskili';
         } else hit.autoStartSource = hit.autoStartSource || 'cli';
+        // Ne CLI ne envanter: sebep "ikisi de okunamadi".
+        if (hit.autoStart === 'unknown' && !hit.autoStartReason)
+          hit.autoStartReason = invAuto === 'unknown' ? 'envanterde-yok' : 'cli-okunamadi';
       } else {
         h.jvms.push({
           gen: 0,
@@ -282,6 +288,12 @@ function assess(data) {
           invJvmCount: a.jvmCount,
           mismatch: [],
           autoStartSource: 'envanter',
+          autoStartReason:
+            invAuto === 'karisik'
+              ? 'envanter-celiskili'
+              : invAuto === 'unknown'
+                ? 'envanterde-yok'
+                : null,
         });
       }
     }
@@ -308,18 +320,16 @@ function assess(data) {
     const k = U(host);
     if (!vhostIndex.has(k)) vhostIndex.set(k, []);
     const [vip, vport] = String(v.listen || '').split(':');
-    vhostIndex
-      .get(k)
-      .push({
-        host,
-        ip: vip || '',
-        port: vport || '',
-        serverName: v.serverName || '',
-        confFile: v.confFile || '',
-        product: v.product || '',
-        __host: host,
-        __v: v,
-      });
+    vhostIndex.get(k).push({
+      host,
+      ip: vip || '',
+      port: vport || '',
+      serverName: v.serverName || '',
+      confFile: v.confFile || '',
+      product: v.product || '',
+      __host: host,
+      __v: v,
+    });
   }
   for (const h of byHost.values()) {
     for (const j of h.jvms) {
@@ -386,6 +396,17 @@ function assess(data) {
   // kullanicinin Denetim'den bakacagi konuyu Server Hub'da gorunmez kilardi.
   const SUNUCUYA_OZEL_INIT = new Set(['appdomain.service']);
 
+  // AUTO-START "BILINMIYOR" SEBEPLERI (kullanici, 2026-09-28): "1930 bilinmiyor durumunda
+  // raporlamissin, nedir bunlar? neyi bilinmiyor olarak algiliyorsun". Uc apayri durum tek
+  // kelimeye cikiyordu; hangisinin agir bastigi gorunmedigi icin sayinin ne anlama geldigi
+  // de belirsizdi. "Bilinmiyor" hicbirinde "KAPALI" demek DEGILDIR.
+  const AUTOSTART_SEBEP = {
+    'cli-okunamadi': 'JBoss CLI cevap vermedi (envanterde de kayıt yok)',
+    'envanterde-yok': 'CLI okunamadı, envanterde de auto-start alanı boş',
+    'envanter-celiskili':
+      'envanterde çelişkili: aynı uygulamanın JVM’lerinden bazısı açık, bazısı kapalı',
+  };
+
   // ── Init: FILO COGUNLUGU (Denetim > Init Script ile ayni olcut; 2026-09-22) ──────
   // Kullanici: "Denetim'e gore cogu sunucu referansla uyumlu ama Server Hub 85/1114 diyor."
   // Repo referansi (INIT.status) ile sunuculardaki dosya mesru olarak farkli olabilir (repo
@@ -427,8 +448,8 @@ function assess(data) {
   const hosts = [];
   for (const h of byHost.values()) {
     const F = h.findings;
-    const add = (severity, area, code, text, fix) =>
-      F.push({ severity, area, code, text, fix: fix || null });
+    const add = (severity, area, code, text, fix, ek) =>
+      F.push({ severity, area, code, text, fix: fix || null, ...(ek || {}) });
     // init
     for (const i of h.init) {
       if (i.status === 'DIFF' && i.hostSpecific) {
@@ -469,8 +490,18 @@ function assess(data) {
           `${id} çalışıyor ama auto-start KAPALI — reboot sonrası açılmaz`,
           fixOn,
         );
+      // NEDEN BILINMIYOR (kullanici, 2026-09-28: "1930 bilinmiyor durumunda raporlamissin,
+      // nedir bunlar? neyi bilinmiyor olarak algiliyorsun"). Uc ayri durum ayni kelimeyle
+      // gosteriliyordu; hangisinin agir bastigi rapordan okunamiyordu.
       if (j.running && j.autoStart === 'unknown' && h.hasJboss)
-        add('info', 'jvm', 'AUTOSTART_UNKNOWN', `${id} auto-start okunamadı (CLI ve envanter)`);
+        add(
+          'info',
+          'jvm',
+          'AUTOSTART_UNKNOWN',
+          `${id} auto-start okunamadı — ${AUTOSTART_SEBEP[j.autoStartReason] || AUTOSTART_SEBEP['cli-okunamadi']}`,
+          null,
+          { autoStartReason: j.autoStartReason || 'cli-okunamadi' },
+        );
       if ((j.mismatch || []).length)
         add('info', 'jvm', 'INV_MISMATCH', `${id}: ${j.mismatch.join('; ')}`);
       if (!j.running && j.autoStart === 'true')
@@ -492,6 +523,32 @@ function assess(data) {
           `${id} ${j.serverState}: runtime'da etkin olmayan değişiklik var`,
         );
       const hasTraffic = j.req7d != null;
+      // HANGI LOG OKUNDU (kullanici, 2026-09-28): "NO_LOAD bulgulari icin en son hangi
+      // log dosyasinin okundugunu da gormek istiyorum."
+      //
+      // "7 gundur istek yok" iddiasinin DAYANAGI bir dosyadir; dosya adi gorunmezse iddia
+      // denetlenemez. Metindeki kanit en fazla iki vhost gosterip gerisini "+3" diye
+      // kisiyordu - eksik kalan tam da bakilmasi gereken satir olabilirdi.
+      //
+      // OKUNAN ile OKUNAMAYAN AYRI: req7d null ise o log HIC okunamamistir; onu "0 istek"
+      // sayip listeye katmak, olculemeyen bir dosyayi kanit diye gostermek olurdu.
+      const loglar = j.vhosts.map((m) => ({
+        host: m.host,
+        serverName: m.v.serverName || '',
+        path: m.v.accessLog || '',
+        confFile: m.v.confFile || '',
+        req7d: m.v.req7d,
+        req24h: m.v.req24h,
+        // KISMI OKUMA: log kuyrugundan okunduysa sayi ALT SINIRDIR, "0" kesin degildir.
+        sampled: m.v.sampled === true,
+        shared: m.v.shared === true,
+        read: m.v.req7d != null,
+      }));
+      const logKanit = {
+        logs: loglar,
+        scanDate: h.scanDate || null,
+        matchKind: j.matchKind || null,
+      };
       // Kanit: hangi web sunucusu, hangi vhost, hangi access log (kullanici istegi)
       const kanit = j.vhosts.length
         ? ` [${j.matchKind === 'proxy' ? 'proxy hedefi' : j.matchKind === 'web-app' ? 'Web-App ilişkisi' : j.matchKind}: ${j.vhosts
@@ -509,6 +566,7 @@ function assess(data) {
           'RETIRE_CANDIDATE',
           `${id} kapalı ve web katmanında 7 gündür istek yok (hc.jsp/hc.html hariç) — retire adayı${kanit}`,
           { action: 'jboss_retire', gen: j.gen, jvm: j.name },
+          logKanit,
         );
       else if (!j.running && !hasTraffic && j.autoStart === 'false')
         add(
@@ -523,6 +581,8 @@ function assess(data) {
           'jvm',
           'NO_LOAD',
           `${id} çalışıyor ama 7 gündür istek yok (hc.jsp/hc.html hariç)${kanit}`,
+          null,
+          logKanit,
         );
     }
     // URUN KAPSAMI (kullanici, 2026-09-24): envanter (dbo.Inventory) ne diyor, tarama ne gordu.
@@ -725,6 +785,13 @@ function assess(data) {
       autoOn: jvms.filter((j) => j.autoStart === 'true').length,
       autoOff: jvms.filter((j) => j.autoStart === 'false').length,
       autoUnknown: jvms.filter((j) => j.autoStart === 'unknown').length,
+      // BILINMIYOR'UN KIRILIMI: tek sayi "neyi bilmiyoruz" sorusunu cevapsiz birakiyordu.
+      autoUnknownBy: ['cli-okunamadi', 'envanterde-yok', 'envanter-celiskili'].reduce((m, k) => {
+        m[k] = jvms.filter(
+          (j) => j.autoStart === 'unknown' && (j.autoStartReason || 'cli-okunamadi') === k,
+        ).length;
+        return m;
+      }, {}),
       restartRequired: jvms.filter((j) => j.running && /required/.test(j.serverState)).length,
       rebootRisk: genel.reduce(
         (a, h) => a + h.findings.filter((f) => f.code === 'REBOOT_RISK').length,

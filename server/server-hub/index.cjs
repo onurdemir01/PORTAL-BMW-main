@@ -14,7 +14,13 @@ const { assess, flattenFindings } = require('./assess.cjs');
 
 const REGISTRY_KEYS = Object.freeze({ scan: 'server_hub_scan', fix: 'server_hub_fix' });
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
-const FIX_ACTIONS = new Set(['jboss_autostart_on', 'jboss_autostart_off', 'jboss_retire', 'apache_comment_line', 'apache_retire_vhost']);
+const FIX_ACTIONS = new Set([
+  'jboss_autostart_on',
+  'jboss_autostart_off',
+  'jboss_retire',
+  'apache_comment_line',
+  'apache_retire_vhost',
+]);
 
 // Son degerlendirme onbellegi (tum filo icin 7 tablo okumak 1-2 sn; ekran her acilista yeniden
 // okumasin). 60 sn; ?fresh=1 ve is bitisleri atlar.
@@ -26,18 +32,21 @@ async function loadLatest() {
   const ex = await query(`SELECT OBJECT_ID('dbo.Server_Hub_Hosts') AS oid`);
   if (!ex.recordset?.[0]?.oid) return { tableMissing: true, data: null };
   // her sunucunun SON taramasi (gun): Hosts tablosundaki max scan_date
-  const q = (table) => query(
-    `SELECT t.* FROM ${table} t
+  const q = (table) =>
+    query(
+      `SELECT t.* FROM ${table} t
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
-  ).then((r) => r.recordset || []);
+    ).then((r) => r.recordset || []);
   // JVM GERCEGI (kullanici, 2026-09-22): "JVM bilgilerini middleware_applications_inventory/jboss
   // job'inin veritabanindan cek." dbo.MWAppsInventory uygulama basina satir tutar: status
   // (running/stopped), jvm_count, autostarts ("true false ..."), env, tier. Server Hub'in kendi CLI
   // taramasiyla BIRLESTIRILIR: CLI yoksa envanter, ikisi de varsa celiski bulgusu.
   const mwApps = await query(
     `SELECT host, app, env, domain, status, jvm_count, autostarts, tier FROM dbo.MWAppsInventory WHERE host IS NOT NULL AND app IS NOT NULL`,
-  ).then((r) => r.recordset || []).catch(() => []);
+  )
+    .then((r) => r.recordset || [])
+    .catch(() => []);
   // URUN KAYNAGI ENVANTER (kullanici, 2026-09-24): "hangi sunucuda hangi urun var" dbo.Inventory'den
   // gelir; tarama sonucu CANLI durumdur. Ikisi ayri tutulur ve ORTUSMEYENLER bulgu olur - tarama bir
   // urunu goremediyse (yetki/yol) sessizce "urun yok" demek yerine kapsam farki raporlanir.
@@ -45,7 +54,9 @@ async function loadLatest() {
   // girmez (eksik kolon tum sorguyu dusururdu).
   const invCols = await query(
     `SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Inventory')`,
-  ).then((r) => (r.recordset || []).map((c) => String(c.name))).catch(() => []);
+  )
+    .then((r) => (r.recordset || []).map((c) => String(c.name)))
+    .catch(() => []);
   const hasCol = (n) => invCols.some((c) => c.toLowerCase() === n.toLowerCase());
   const PRODUCT_COLS = [
     { col: 'nginx_version', product: 'NGINX' },
@@ -55,23 +66,35 @@ async function loadLatest() {
     { col: 'jboss_version', product: 'JBOSS' },
     { col: 'was_version', product: 'WAS' },
   ].filter((x) => hasCol(x.col));
-  const invSelect = ['host', hasCol('env') ? 'env' : null, ...PRODUCT_COLS.map((x) => x.col)].filter(Boolean).join(', ');
-  const invEnv = await query(
-    `SELECT ${invSelect} FROM dbo.Inventory WHERE host IS NOT NULL`,
-  ).then((r) => (r.recordset || []).map((row) => {
-    const products = [];
-    for (const { col, product } of PRODUCT_COLS) {
-      const v = row[col] == null ? '' : String(row[col]).trim();
-      if (v && !products.includes(product)) products.push(product);
-    }
-    return { host: row.host, env: row.env, invProducts: products };
-  })).catch(() => []);
+  const invSelect = ['host', hasCol('env') ? 'env' : null, ...PRODUCT_COLS.map((x) => x.col)]
+    .filter(Boolean)
+    .join(', ');
+  const invEnv = await query(`SELECT ${invSelect} FROM dbo.Inventory WHERE host IS NOT NULL`)
+    .then((r) =>
+      (r.recordset || []).map((row) => {
+        const products = [];
+        for (const { col, product } of PRODUCT_COLS) {
+          const v = row[col] == null ? '' : String(row[col]).trim();
+          if (v && !products.includes(product)) products.push(product);
+        }
+        return { host: row.host, env: row.env, invProducts: products };
+      }),
+    )
+    .catch(() => []);
   const [hosts, init, jboss, jvms, web, vhosts, ips, sshd] = await Promise.all([
-    q('dbo.Server_Hub_Hosts'), q('dbo.Server_Hub_Init'), q('dbo.Server_Hub_Jboss'), q('dbo.Server_Hub_Jvms'),
-    q('dbo.Server_Hub_Web'), q('dbo.Server_Hub_Vhosts'), q('dbo.Server_Hub_Ips'),
+    q('dbo.Server_Hub_Hosts'),
+    q('dbo.Server_Hub_Init'),
+    q('dbo.Server_Hub_Jboss'),
+    q('dbo.Server_Hub_Jvms'),
+    q('dbo.Server_Hub_Web'),
+    q('dbo.Server_Hub_Vhosts'),
+    q('dbo.Server_Hub_Ips'),
     q('dbo.Server_Hub_Sshd').catch(() => []), // tablo eski taramada yoksa
   ]);
-  return { tableMissing: false, data: { hosts, init, jboss, jvms, web, vhosts, ips, sshd, mwApps, invEnv } };
+  return {
+    tableMissing: false,
+    data: { hosts, init, jboss, jvms, web, vhosts, ips, sshd, mwApps, invEnv },
+  };
 }
 
 async function getAssessment(fresh) {
@@ -87,12 +110,28 @@ async function getAssessment(fresh) {
 // Yanit sekli: sunucu listesi HAFIF (bulgu sayilari + urunler), ayrinti /host/:host ile.
 function hostRow(h) {
   return {
-    host: h.host, scanDate: h.scanDate, products: h.products, status: h.status, counts: h.counts, env: h.env, envGroup: h.envGroup,
+    host: h.host,
+    scanDate: h.scanDate,
+    products: h.products,
+    status: h.status,
+    counts: h.counts,
+    env: h.env,
+    envGroup: h.envGroup,
     hostClass: h.hostClass || 'genel',
-    wallS: h.wallS, cpuS: h.cpuS,
-    jvms: h.jvms.length, jvmsRunning: h.jvms.filter((j) => j.running).length,
-    vhosts: h.vhosts.length, unusedIps: h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length,
-    topFinding: h.findings.slice().sort((a, b) => ({ danger: 3, warning: 2, info: 1 }[b.severity] || 0) - ({ danger: 3, warning: 2, info: 1 }[a.severity] || 0))[0]?.text || null,
+    wallS: h.wallS,
+    cpuS: h.cpuS,
+    jvms: h.jvms.length,
+    jvmsRunning: h.jvms.filter((j) => j.running).length,
+    vhosts: h.vhosts.length,
+    unusedIps: h.ips.filter((i) => i.usedBy === 'none' && !i.primary).length,
+    topFinding:
+      h.findings
+        .slice()
+        .sort(
+          (a, b) =>
+            (({ danger: 3, warning: 2, info: 1 })[b.severity] || 0) -
+            ({ danger: 3, warning: 2, info: 1 }[a.severity] || 0),
+        )[0]?.text || null,
   };
 }
 
@@ -100,9 +139,24 @@ function hostDetail(h) {
   return {
     ...hostRow(h),
     findings: h.findings,
-    init: h.init, jboss: h.jboss,
-    jvms: h.jvms.map((j) => ({ ...j, vhosts: j.vhosts.map((m) => ({ host: m.host, product: m.v.product, serverName: m.v.serverName, req24h: m.v.req24h, req7d: m.v.req7d, hc24h: m.v.hc24h, sampled: m.v.sampled })) })),
-    web: h.web, vhosts: h.vhosts.map((v) => ({ ...v, proxyTargets: v.proxyTargetsRaw })), ips: h.ips, sshd: h.sshd,
+    init: h.init,
+    jboss: h.jboss,
+    jvms: h.jvms.map((j) => ({
+      ...j,
+      vhosts: j.vhosts.map((m) => ({
+        host: m.host,
+        product: m.v.product,
+        serverName: m.v.serverName,
+        req24h: m.v.req24h,
+        req7d: m.v.req7d,
+        hc24h: m.v.hc24h,
+        sampled: m.v.sampled,
+      })),
+    })),
+    web: h.web,
+    vhosts: h.vhosts.map((v) => ({ ...v, proxyTargets: v.proxyTargetsRaw })),
+    ips: h.ips,
+    sshd: h.sshd,
   };
 }
 
@@ -111,26 +165,55 @@ async function resolveByKey(keyName) {
   const reg = require('../ansible/playbook-registry.cjs');
   const row = await reg.getByKey(keyName).catch(() => null);
   if (!row || row.enabled === false) return { templateId: null, serverId: null };
-  return { templateId: reg.getEffectiveTemplateId(row) || null, serverId: row.awxServerId != null ? Number(row.awxServerId) : 0 };
+  return {
+    templateId: reg.getEffectiveTemplateId(row) || null,
+    serverId: row.awxServerId != null ? Number(row.awxServerId) : 0,
+  };
 }
 
 async function launch(req, keyName, templateName, extraVars, detail) {
   const { templateId, serverId } = await resolveByKey(keyName);
   if (!templateId) {
-    throw Object.assign(new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${keyName}" satırına Template ID girilmeli.`), { status: 501 });
+    throw Object.assign(
+      new Error(
+        `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${keyName}" satırına Template ID girilmeli.`,
+      ),
+      { status: 501 },
+    );
   }
   const runner = require('../ansible/runner.cjs');
-  await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
+  await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+    serverId,
+    templateId,
+    extraVars,
+    { label: keyName },
+  );
   const user = req.session?.user || {};
   const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
   try {
     const db = require('../db/index.cjs');
     await db.query(
       `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [user.username || 'unknown', serverId, templateId, templateName, result?.jobId, result?.status || 'pending', JSON.stringify(extraVars)],
+      [
+        user.username || 'unknown',
+        serverId,
+        templateId,
+        templateName,
+        result?.jobId,
+        result?.status || 'pending',
+        JSON.stringify(extraVars),
+      ],
     );
-  } catch (e) { console.warn('[ServerHub] job gecmisi yazilamadi:', e.message); }
-  try { require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify({ ...detail, jobId: result?.jobId ?? null }) }); } catch { /* best-effort */ }
+  } catch (e) {
+    console.warn('[ServerHub] job gecmisi yazilamadi:', e.message);
+  }
+  try {
+    require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+      detail: JSON.stringify({ ...detail, jobId: result?.jobId ?? null }),
+    });
+  } catch {
+    /* best-effort */
+  }
   return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId };
 }
 
@@ -141,17 +224,37 @@ function initServerHub(app) {
   const router = express.Router();
   router.use(express.json({ limit: '256kb' }));
   router.use(requireAuth);
-  router.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'Server Hub yalnız Admin.' })));
+  router.use((req, res, next) =>
+    isAdmin(req)
+      ? next()
+      : res.status(403).json({ ok: false, message: 'Server Hub yalnız Admin.' }),
+  );
   try {
     const { requireVisiblePrefix } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('ServerHub'));
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   router.get('/overview', async (req, res) => {
     try {
       const a = await getAssessment(req.query.fresh === '1');
-      if (a.tableMissing) return res.json({ ok: true, tableMissing: true, message: 'dbo.Server_Hub_* tabloları henüz yok — server_hub_scan job\'ı bir kez koşmalı.', hosts: [], summary: null, latestScan: null });
-      res.json({ ok: true, tableMissing: false, latestScan: a.latestScan, summary: a.summary, hosts: a.hosts.map(hostRow) });
+      if (a.tableMissing)
+        return res.json({
+          ok: true,
+          tableMissing: true,
+          message: "dbo.Server_Hub_* tabloları henüz yok — server_hub_scan job'ı bir kez koşmalı.",
+          hosts: [],
+          summary: null,
+          latestScan: null,
+        });
+      res.json({
+        ok: true,
+        tableMissing: false,
+        latestScan: a.latestScan,
+        summary: a.summary,
+        hosts: a.hosts.map(hostRow),
+      });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Server Hub verisi alınamadı.' });
     }
@@ -162,8 +265,14 @@ function initServerHub(app) {
   router.get('/findings', async (req, res) => {
     try {
       const a = await getAssessment(req.query.fresh === '1');
-      if (a.tableMissing) return res.json({ ok: true, tableMissing: true, findings: [], latestScan: null });
-      res.json({ ok: true, tableMissing: false, latestScan: a.latestScan, findings: flattenFindings(a.hosts) });
+      if (a.tableMissing)
+        return res.json({ ok: true, tableMissing: true, findings: [], latestScan: null });
+      res.json({
+        ok: true,
+        tableMissing: false,
+        latestScan: a.latestScan,
+        findings: flattenFindings(a.hosts),
+      });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Bulgular alınamadı.' });
     }
@@ -171,11 +280,13 @@ function initServerHub(app) {
 
   router.get('/host/:host', async (req, res) => {
     const host = String(req.params.host || '').toUpperCase();
-    if (!HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+    if (!HOST_RE.test(host))
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
     try {
       const a = await getAssessment(req.query.fresh === '1');
       const h = a.hosts.find((x) => x.host === host);
-      if (!h) return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
+      if (!h)
+        return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
       res.json({ ok: true, host: hostDetail(h) });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -184,10 +295,27 @@ function initServerHub(app) {
 
   // Tek sunucu (reboot oncesi) tarama: target_hosts ile; loader o sunucunun bugunku satirlarini yeniler.
   router.post('/scan', async (req, res) => {
-    const hosts = [...new Set((Array.isArray(req.body?.hosts) ? req.body.hosts : []).map((h) => String(h || '').trim().toUpperCase()).filter(Boolean))];
-    if (!hosts.length || hosts.length > 50 || hosts.some((h) => !HOST_RE.test(h))) return res.status(400).json({ ok: false, message: '1-50 arası geçerli sunucu adı gerekli.' });
+    const hosts = [
+      ...new Set(
+        (Array.isArray(req.body?.hosts) ? req.body.hosts : [])
+          .map((h) =>
+            String(h || '')
+              .trim()
+              .toUpperCase(),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    if (!hosts.length || hosts.length > 50 || hosts.some((h) => !HOST_RE.test(h)))
+      return res.status(400).json({ ok: false, message: '1-50 arası geçerli sunucu adı gerekli.' });
     try {
-      const r = await launch(req, REGISTRY_KEYS.scan, `Server Hub: tara ${hosts.length === 1 ? hosts[0] : hosts.length + ' sunucu'}`, { target_hosts: hosts.join(',') }, { op: 'scan', hosts });
+      const r = await launch(
+        req,
+        REGISTRY_KEYS.scan,
+        `Server Hub: tara ${hosts.length === 1 ? hosts[0] : hosts.length + ' sunucu'}`,
+        { target_hosts: hosts.join(',') },
+        { op: 'scan', hosts },
+      );
       res.json({ ok: true, ...r });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -202,19 +330,154 @@ function initServerHub(app) {
     const fixKey = String(req.body?.fixKey || '');
     const confirmed = req.body?.confirmed === true;
     const reload = req.body?.reload === true;
-    if (!HOST_RE.test(host)) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+    if (!HOST_RE.test(host))
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
     try {
       const a = await getAssessment(true);
       const h = a.hosts.find((x) => x.host === host);
-      if (!h) return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
-      const finding = h.findings.find((f) => f.fix && f.code === code && JSON.stringify(f.fix) === fixKey);
-      if (!finding) return res.status(400).json({ ok: false, message: 'Bu bulgu için tanımlı bir düzeltme yok ya da tarama verisi değişti — sayfayı yenileyin.' });
+      if (!h)
+        return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
+      const finding = h.findings.find(
+        (f) => f.fix && f.code === code && JSON.stringify(f.fix) === fixKey,
+      );
+      if (!finding)
+        return res
+          .status(400)
+          .json({
+            ok: false,
+            message:
+              'Bu bulgu için tanımlı bir düzeltme yok ya da tarama verisi değişti — sayfayı yenileyin.',
+          });
       const fix = finding.fix;
-      if (!FIX_ACTIONS.has(fix.action)) return res.status(400).json({ ok: false, message: 'Bilinmeyen eylem.' });
+      if (!FIX_ACTIONS.has(fix.action))
+        return res.status(400).json({ ok: false, message: 'Bilinmeyen eylem.' });
       const extraVars = { target_host: host, action: fix.action, plan_only: !confirmed, reload };
-      for (const k of ['gen', 'jvm', 'product', 'file', 'line', 'server_name']) if (fix[k] != null) extraVars[k] = fix[k];
-      const r = await launch(req, REGISTRY_KEYS.fix, `Server Hub: ${confirmed ? 'düzelt' : 'plan'} ${fix.action} @ ${host}`, extraVars, { op: confirmed ? 'fix' : 'plan', host, code, fix });
+      for (const k of ['gen', 'jvm', 'product', 'file', 'line', 'server_name'])
+        if (fix[k] != null) extraVars[k] = fix[k];
+      const r = await launch(
+        req,
+        REGISTRY_KEYS.fix,
+        `Server Hub: ${confirmed ? 'düzelt' : 'plan'} ${fix.action} @ ${host}`,
+        extraVars,
+        { op: confirmed ? 'fix' : 'plan', host, code, fix },
+      );
       res.json({ ok: true, ...r, planOnly: !confirmed });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // ── TOPLU AUTO-START DÜZELTMESİ (kullanıcı, 2026-09-28) ─────────────────────────────
+  // "auto-start'ı kapalı olup JVM process'i açık olan TÜM bulguları tek tuşla aç" ve
+  // tersi: "auto-start'ı açık olup process'i kapalı olanları tek tuşla kapat".
+  //
+  // ÖNCE PLAN, SONRA ONAY (kullanıcının seçimi): plan HİÇBİR İŞ BAŞLATMAZ — liste zaten
+  // değerlendirmede var, sunucuya gitmeye gerek yok. Böylece kullanıcı neyin değişeceğini
+  // bedelsiz görür. Uygulama ayrı bir çağrıdır ve `confirm: true` ister.
+  //
+  // HER SUNUCU AYRI İŞ: düzeltme playbook'u tek hedef kabul eder (virgül reddedilir —
+  // bilinçli bir koruma). Toplu iş, o korumayı delmek yerine onu N kez çağırır.
+  const BULK_CODES = Object.freeze({
+    // çalışıyor ama auto-start kapalı  -> aç
+    REBOOT_RISK: 'jboss_autostart_on',
+    // kapalı ama auto-start açık       -> kapat
+    STOPPED_AUTOSTART_ON: 'jboss_autostart_off',
+  });
+  // ÜST SINIR: tek tıkla açılacak iş sayısı sınırsız olmamalı. Sınıra takılırsa liste
+  // KIRPILDIĞI SÖYLENİR — sessizce yarısını yapmak "hepsi bitti" gibi okunurdu.
+  const BULK_MAX = 100;
+
+  async function bulkPlan(code) {
+    const action = BULK_CODES[code];
+    if (!action)
+      throw Object.assign(new Error('Bu kod için toplu düzeltme tanımlı değil.'), { status: 400 });
+    const a = await getAssessment(true);
+    const items = [];
+    for (const h of a.hosts || []) {
+      for (const f of h.findings || []) {
+        if (f.code !== code || !f.fix || f.fix.action !== action) continue;
+        items.push({
+          host: h.host,
+          env: h.env || null,
+          gen: f.fix.gen,
+          jvm: f.fix.jvm,
+          action,
+          text: f.text,
+        });
+      }
+    }
+    items.sort(
+      (x, y) => x.host.localeCompare(y.host) || String(x.jvm).localeCompare(String(y.jvm)),
+    );
+    return { action, items, truncated: items.length > BULK_MAX, latestScan: a.latestScan || null };
+  }
+
+  router.post('/bulk-plan', async (req, res) => {
+    try {
+      const p = await bulkPlan(String(req.body?.code || ''));
+      res.json({ ok: true, ...p, hosts: [...new Set(p.items.map((i) => i.host))].length });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  router.post('/bulk-fix', async (req, res) => {
+    if (req.body?.confirm !== true) {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Toplu düzeltme için açık onay gerekir (önce planı görün).' });
+    }
+    try {
+      const { action, items, truncated } = await bulkPlan(String(req.body?.code || ''));
+      if (!items.length)
+        return res.json({
+          ok: true,
+          action,
+          started: [],
+          failed: [],
+          truncated: false,
+          message: 'Bu koda uyan bulgu kalmamış — tarama tazelenmiş olabilir.',
+        });
+      const sirada = items.slice(0, BULK_MAX);
+      const started = [];
+      const failed = [];
+      for (const it of sirada) {
+        try {
+          const extraVars = {
+            target_host: it.host,
+            action,
+            plan_only: false,
+            reload: false,
+            gen: it.gen,
+            jvm: it.jvm,
+          };
+          const r = await launch(
+            req,
+            REGISTRY_KEYS.fix,
+            `Server Hub: toplu ${action} @ ${it.host}`,
+            extraVars,
+            {
+              op: 'bulk-fix',
+              host: it.host,
+              code: String(req.body?.code || ''),
+              fix: { action, gen: it.gen, jvm: it.jvm },
+            },
+          );
+          started.push({ host: it.host, jvm: it.jvm, gen: it.gen, ...r });
+        } catch (err) {
+          // BIR SUNUCU DUSERSE DIGERLERI DEVAM EDER, ama hangisi dustu SOYLENIR.
+          failed.push({ host: it.host, jvm: it.jvm, gen: it.gen, message: err.message });
+        }
+      }
+      res.json({
+        ok: true,
+        action,
+        started,
+        failed,
+        truncated: truncated || items.length > sirada.length,
+        total: items.length,
+        limit: BULK_MAX,
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -223,15 +486,22 @@ function initServerHub(app) {
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
     const serverId = Number(req.params.serverId);
     const jobId = Number(req.params.jobId);
-    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
+    if (!Number.isInteger(serverId) || !Number.isInteger(jobId) || jobId <= 0)
+      return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
     try {
       const runner = require('../ansible/runner.cjs');
-      const [statusInfo, outputInfo] = await Promise.all([runner.getJobStatusOnServer(serverId, jobId), runner.getJobOutputOnServer(serverId, jobId)]);
+      const [statusInfo, outputInfo] = await Promise.all([
+        runner.getJobStatusOnServer(serverId, jobId),
+        runner.getJobOutputOnServer(serverId, jobId),
+      ]);
       const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
       let result = null;
       if (TERMINAL.has(statusInfo.status)) {
         const { extractStatsKey } = require('../opsx/index.cjs');
-        result = extractStatsKey(statusInfo.artifacts, 'server_hub_fix_result') || extractStatsKey(statusInfo.artifacts, 'server_hub_scan_result') || null;
+        result =
+          extractStatsKey(statusInfo.artifacts, 'server_hub_fix_result') ||
+          extractStatsKey(statusInfo.artifacts, 'server_hub_scan_result') ||
+          null;
         _cache = { at: 0, value: null }; // tarama/duzeltme bitti -> sonraki okuma taze
       }
       res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', result });

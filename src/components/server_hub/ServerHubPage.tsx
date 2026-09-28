@@ -26,6 +26,8 @@ import {
   type ShFinding,
   type ShSeverity,
   type ShFindingsResult,
+  type ShBulkPlan,
+  type ShBulkResult,
 } from '@/api/serverHubApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
@@ -342,6 +344,37 @@ function HostsTab({
   const [cls, setCls] = useState<'genel' | 'ozel'>('genel');
   const [openHost, setOpenHost] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // TOPLU AUTO-START DUZELTMESI: once plan (hicbir is baslamaz), sonra onay.
+  const [bulk, setBulk] = useState<{
+    code: 'REBOOT_RISK' | 'STOPPED_AUTOSTART_ON';
+    phase: 'plan' | 'planning' | 'applying' | 'done';
+    plan?: ShBulkPlan;
+    sonuc?: ShBulkResult;
+    hata?: string;
+  } | null>(null);
+
+  // PLAN, EFFECT'TE DEGIL TIKLAMADA alinir: effect icinde state yazip ayni state'e bagli
+  // olmak React 19'da dongu uretir (depoda useAsyncEffect'e gecisin sebebi buydu).
+  const bulkPlaniAl = useCallback(async (code: 'REBOOT_RISK' | 'STOPPED_AUTOSTART_ON') => {
+    setBulk({ code, phase: 'planning' });
+    try {
+      const r = await serverHubApi.bulkPlan(code);
+      setBulk({ code, phase: 'plan', plan: r, hata: r.ok ? '' : r.message || 'Plan alınamadı.' });
+    } catch (e) {
+      setBulk({ code, phase: 'plan', hata: String(e) });
+    }
+  }, []);
+
+  const bulkUygula = useCallback(async () => {
+    if (!bulk) return;
+    setBulk({ ...bulk, phase: 'applying' });
+    try {
+      const r = await serverHubApi.bulkFix(bulk.code);
+      setBulk({ ...bulk, phase: 'done', sonuc: r, hata: r.ok ? '' : r.message || 'Uygulanamadı.' });
+    } catch (e) {
+      setBulk({ ...bulk, phase: 'done', hata: String(e) });
+    }
+  }, [bulk]);
 
   const load = useCallback(async (fresh = false) => {
     setLoading(true);
@@ -498,7 +531,25 @@ function HostsTab({
                 parts={[
                   { value: s.jvm.autoOn, color: SEV.ok.color, title: 'auto-start açık' },
                   { value: s.jvm.autoOff, color: SEV.warning.color, title: 'auto-start kapalı' },
-                  { value: s.jvm.autoUnknown, color: 'var(--status-neutral)', title: 'bilinmiyor' },
+                  {
+                    value: s.jvm.autoUnknown,
+                    color: 'var(--status-neutral)',
+                    // NE BILINMIYOR (kullanici, 2026-09-28): tek kelime uc apayri durumu
+                    // ortuyordu. "Bilinmiyor" hicbirinde "KAPALI" demek DEGILDIR.
+                    title: `bilinmiyor${
+                      s.jvm.autoUnknownBy
+                        ? ' — ' +
+                          [
+                            ['cli-okunamadi', 'CLI cevap vermedi'],
+                            ['envanterde-yok', 'envanterde alan boş'],
+                            ['envanter-celiskili', 'envanter çelişkili'],
+                          ]
+                            .filter(([k]) => (s.jvm.autoUnknownBy || {})[k])
+                            .map(([k, ad]) => `${ad}: ${(s.jvm.autoUnknownBy || {})[k]}`)
+                            .join(' · ')
+                        : ''
+                    }`,
+                  },
                 ]}
               />
               <div
@@ -521,6 +572,27 @@ function HostsTab({
                     çelişiyor
                   </>
                 )}
+              </div>
+              {/* TOPLU DUZELTME (kullanici, 2026-09-28). Once PLAN, sonra onay: dugme
+                  hicbir sey degistirmeden neyin degisecegini listeler. Tiklama karti
+                  acmasin diye stopPropagation. */}
+              <div className="mt-2 flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className={SM_BTN}
+                  style={smBtn(true)}
+                  onClick={() => bulkPlaniAl('REBOOT_RISK')}
+                  title="auto-start KAPALI ama JVM çalışıyor olan tüm bulgular: auto-start'ı AÇ. Önce plan gösterilir."
+                >
+                  <WrenchScrewdriverIcon className="w-3.5 h-3.5" /> Toplu: auto-start AÇ
+                </button>
+                <button
+                  className={SM_BTN}
+                  style={smBtn(true)}
+                  onClick={() => bulkPlaniAl('STOPPED_AUTOSTART_ON')}
+                  title="JVM kapalı ama auto-start AÇIK olan tüm bulgular: auto-start'ı KAPAT. Önce plan gösterilir."
+                >
+                  <WrenchScrewdriverIcon className="w-3.5 h-3.5" /> Toplu: auto-start KAPAT
+                </button>
               </div>
             </Kpi>
             <Kpi
@@ -1013,6 +1085,166 @@ function HostsTab({
           reload={() => load(true)}
         />
       )}
+      {bulk && (
+        <BulkAutoStartModal
+          state={bulk}
+          onApply={bulkUygula}
+          onClose={() => {
+            const yenile = bulk.phase === 'done';
+            setBulk(null);
+            if (yenile) load(true);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Toplu auto-start düzeltmesi: ÖNCE PLAN, SONRA ONAY (kullanıcının seçimi, 2026-09-28).
+ *
+ * Plan hiçbir iş başlatmaz — liste zaten taramada var, sunucuya gitmeye gerek yok. Böylece
+ * "ne değişecek" sorusu bedelsiz cevaplanır. Uygulama ayrı bir çağrıdır ve her sunucu için
+ * AYRI bir AWX işi açar: düzeltme playbook'u tek hedef kabul eder (virgül bilinçli olarak
+ * reddedilir), toplu iş o korumayı delmek yerine onu N kez çağırır.
+ */
+function BulkAutoStartModal({
+  state,
+  onApply,
+  onClose,
+}: {
+  state: {
+    code: 'REBOOT_RISK' | 'STOPPED_AUTOSTART_ON';
+    phase: 'plan' | 'planning' | 'applying' | 'done';
+    plan?: ShBulkPlan;
+    sonuc?: ShBulkResult;
+    hata?: string;
+  };
+  onApply: () => void;
+  onClose: () => void;
+}) {
+  const baslik =
+    state.code === 'REBOOT_RISK'
+      ? 'Toplu: auto-start AÇ (çalışan ama auto-start kapalı JVM’ler)'
+      : 'Toplu: auto-start KAPAT (kapalı ama auto-start açık JVM’ler)';
+  const items = state.plan?.items || [];
+  const kapanabilir = state.phase !== 'applying';
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,.45)' }}
+      onClick={() => kapanabilir && onClose()}
+    >
+      <div
+        className="w-full max-w-2xl rounded-2xl border p-5 space-y-3"
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-sm font-semibold">{baslik}</div>
+        {state.hata && (
+          <div className="text-[12px]" style={{ color: SEV.danger.color }}>
+            {state.hata}
+          </div>
+        )}
+        {state.phase === 'planning' && (
+          <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+            Plan hazırlanıyor — hiçbir şey değiştirilmiyor…
+          </div>
+        )}
+        {state.phase !== 'planning' && state.phase !== 'done' && (
+          <>
+            <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+              <b>{items.length}</b> JVM, <b>{state.plan?.hosts ?? 0}</b> sunucu değişecek. Her
+              sunucu için ayrı bir iş açılır. Bu liste <b>{state.plan?.latestScan || 'son'}</b>{' '}
+              taramasına dayanır; o tarihten sonra elle yapılan değişiklikler burada görünmez.
+            </div>
+            <div
+              className="max-h-72 overflow-auto rounded-lg border"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr style={{ color: 'var(--text-muted)' }}>
+                    <th className="text-left px-2 py-1">Sunucu</th>
+                    <th className="text-left px-2 py-1">JVM</th>
+                    <th className="text-left px-2 py-1">Gen</th>
+                    <th className="text-left px-2 py-1">Ortam</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it, i) => (
+                    <tr
+                      key={i}
+                      className="border-t"
+                      style={{ borderColor: 'var(--border-subtle)' }}
+                    >
+                      <td className="px-2 py-1 font-mono">{it.host}</td>
+                      <td className="px-2 py-1 font-mono">{it.jvm}</td>
+                      <td className="px-2 py-1">{it.gen || '-'}</td>
+                      <td className="px-2 py-1">{it.env || '-'}</td>
+                    </tr>
+                  ))}
+                  {!items.length && (
+                    <tr>
+                      <td className="px-2 py-2" colSpan={4} style={{ color: 'var(--text-muted)' }}>
+                        Bu koda uyan bulgu yok.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {state.plan?.truncated && (
+              <div className="text-[12px]" style={{ color: SEV.warning.color }}>
+                Liste üst sınırı aştı: bu koşuda ilk 100 JVM işlenecek, kalanlar için düğmeye tekrar
+                basın. (Sessizce yarısını yapmak "hepsi bitti" gibi okunurdu.)
+              </div>
+            )}
+          </>
+        )}
+        {state.phase === 'done' && (
+          <div className="text-[12px] space-y-1" style={{ color: 'var(--text-secondary)' }}>
+            <div>
+              <b>{state.sonuc?.started?.length ?? 0}</b> iş başlatıldı
+              {state.sonuc?.failed?.length ? (
+                <>
+                  {' · '}
+                  <b style={{ color: SEV.danger.color }}>{state.sonuc.failed.length}</b>{' '}
+                  başlatılamadı
+                </>
+              ) : null}
+              {state.sonuc?.truncated ? ' · liste kırpıldı, tekrar çalıştırın' : ''}
+            </div>
+            {!!state.sonuc?.failed?.length && (
+              <ul className="max-h-40 overflow-auto">
+                {state.sonuc.failed.map((f, i) => (
+                  <li key={i} className="font-mono text-[10px]" style={{ color: SEV.danger.color }}>
+                    {f.host}/{f.jvm}: {f.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div style={{ color: 'var(--text-muted)' }}>
+              İşlerin sonucu AWX'te görünür; bir sonraki taramadan sonra sayılar güncellenir.
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end gap-2 pt-1">
+          <button className={SM_BTN} style={smBtn(false)} onClick={onClose} disabled={!kapanabilir}>
+            {state.phase === 'done' ? 'Kapat' : 'İptal'}
+          </button>
+          {state.phase !== 'done' && (
+            <button
+              className={SM_BTN}
+              style={smBtn(true)}
+              onClick={onApply}
+              disabled={state.phase !== 'plan' || !items.length}
+            >
+              {state.phase === 'applying' ? 'Uygulanıyor…' : `Uygula (${items.length} JVM)`}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1213,6 +1445,7 @@ function HostModal({
                         <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                           {AREA[f.area] || f.area} · {f.code}
                         </div>
+                        <LogKanit f={f} />
                       </div>
                       {f.fix && (
                         <button
@@ -1761,6 +1994,53 @@ function HostModal({
 // Kullanici: "Init script / RHA / IHS sözdizimi sorunlarını toplu halde liste şeklinde nasıl
 // görebilirim?" Tüm sunucuların bulguları tek tabloda; alan (init/web/jvm/…), kod, önem ve
 // ürün süzgeci; CSV. Satırdaki sunucuya tıklayınca sunucu penceresi açılır (Sunucular sekmesi).
+/**
+ * Bulgunun DAYANDIĞI log dosyaları.
+ *
+ * Kullanıcı (2026-09-28): "NO_LOAD bulguları için en son hangi log dosyasının okunduğunu
+ * da görmek istiyorum." Bulgu metni en fazla iki vhost gösterip gerisini "+3" diye
+ * kısıyordu; eksik kalan tam da bakılması gereken satır olabilirdi.
+ *
+ * OKUNAN ile OKUNAMAYAN AYRI GÖSTERİLİR: okunamayan bir log "0 istek" değildir, ölçüm
+ * yokluğudur — "7 gündür istek yok" iddiasının dayanağı sayılamaz.
+ */
+function LogKanit({ f }: { f: ShFinding }) {
+  if (!f.logs || !f.logs.length) return null;
+  const okunan = f.logs.filter((l) => l.read);
+  const okunamayan = f.logs.filter((l) => !l.read);
+  return (
+    <details className="mt-1">
+      <summary
+        className="text-[10px] cursor-pointer select-none"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        Okunan log: {okunan.length}
+        {okunamayan.length ? ` · okunamayan: ${okunamayan.length}` : ''}
+        {f.scanDate ? ` · tarama ${f.scanDate}` : ''}
+      </summary>
+      <ul className="mt-1 space-y-0.5">
+        {f.logs.map((l, i) => (
+          <li
+            key={i}
+            className="text-[10px] font-mono break-all"
+            style={{ color: l.read ? 'var(--text-secondary)' : 'var(--status-warning)' }}
+          >
+            {l.path || '(access_log tanımsız)'}
+            <span className="font-sans" style={{ color: 'var(--text-muted)' }}>
+              {' — '}
+              {l.host}/{l.serverName || '?'}
+              {l.read
+                ? ` · 7g ${l.req7d ?? 0}${l.sampled ? ' (alt sınır: log kuyruğu okundu)' : ''}`
+                : ' · OKUNAMADI — bu dosya kanıt sayılmaz'}
+              {l.shared ? ' · paylaşımlı log' : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 const AREA_TR: Record<string, string> = {
   init: 'Init script',
   jboss: 'JBoss host',
