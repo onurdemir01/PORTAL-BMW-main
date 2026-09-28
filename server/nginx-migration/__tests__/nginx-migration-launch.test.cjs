@@ -2,6 +2,10 @@
 // "Tanim olustur": extra_vars sozlesmesi (playbook girdi kapisiyla ayni) ve anti-tamper.
 'use strict';
 const { test } = require('node:test');
+// BICIMLENDIRICIDEN BAGIMSIZ OKUMA: prettier tek satirlik ifadeleri cok satira
+// bolunce dizgi arayan bekciler DAVRANIS degismeden kirmiziya donuyordu (10. kez,
+// 2026-09-28). Desenler TEK BOSLUKLU yazilir; bkz. server/util/guard-text.cjs.
+const { flatten } = require('../../util/guard-text.cjs');
 const assert = require('node:assert/strict');
 const { buildExtraVars, validateRequest, isDefinitionConfirmed } = require('../index.cjs');
 const fs = require('node:fs');
@@ -12,13 +16,23 @@ const path = require('node:path');
 // survey VARSAYILANLARINI extra_vars'a koyuyor - is "env prod degil" diye ilk gorevde dusuyordu.
 test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () => {
   const v = buildExtraVars({
-    service: 'glomo', application: 'base-app-v0', namespace: 'digital-banking-ch-prod', inputPath: '/base/',
+    service: 'glomo',
+    application: 'base-app-v0',
+    namespace: 'digital-banking-ch-prod',
+    inputPath: '/base/',
     user: { displayName: 'Onur Demir', username: 'odemir', email: 'o@x' },
   });
   assert.deepEqual(v, {
-    service: 'GLOMO', application: 'base-app-v0', namespace: 'digital-banking-ch-prod', input_path: '/base/',
-    env: 'prod', action: 'create', app_type: 'spa', migration_mode: true,
-    requester_name: 'Onur Demir', requester_email: 'o@x',
+    service: 'GLOMO',
+    application: 'base-app-v0',
+    namespace: 'digital-banking-ch-prod',
+    input_path: '/base/',
+    env: 'prod',
+    action: 'create',
+    app_type: 'spa',
+    migration_mode: true,
+    requester_name: 'Onur Demir',
+    requester_email: 'o@x',
   });
   // Playbook'un kapisi (assert) bu degerleri bekler; survey varsayilani karisirsa is duser.
   assert.equal(v.env, 'prod');
@@ -26,26 +40,69 @@ test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () 
   assert.equal(v.app_type, 'spa');
 });
 
-const groups = [{
-  id: 'glomo',
-  newHosts: ['GBNGXP40'],
-  apps: [
-    { namespace: 'digital-banking-ch-prod', application: 'base-app-v0', status: 'partial',
-      paths: [{ service: 'GLOMO', location: '/base/', hosts: ['GBRVPP07'] }, { service: 'GLOMO', location: '/base2/', hosts: ['GBRVPP08'] }] },
-    { namespace: 'glomo-prod', application: 'eksik-app-v1', status: 'missing', paths: [{ service: 'GLOMO', location: '/e/', hosts: [] }] },
-    { namespace: 'glomo-prod', application: 'ns-app-v1', status: 'not-scanned', paths: [{ service: 'GLOMO', location: '/n/', hosts: [] }] },
-  ],
-}];
+const groups = [
+  {
+    id: 'glomo',
+    newHosts: ['GBNGXP40'],
+    apps: [
+      {
+        namespace: 'digital-banking-ch-prod',
+        application: 'base-app-v0',
+        status: 'partial',
+        paths: [
+          { service: 'GLOMO', location: '/base/', hosts: ['GBRVPP07'] },
+          { service: 'GLOMO', location: '/base2/', hosts: ['GBRVPP08'] },
+        ],
+      },
+      {
+        namespace: 'glomo-prod',
+        application: 'eksik-app-v1',
+        status: 'missing',
+        paths: [{ service: 'GLOMO', location: '/e/', hosts: [] }],
+      },
+      {
+        namespace: 'glomo-prod',
+        application: 'ns-app-v1',
+        status: 'not-scanned',
+        paths: [{ service: 'GLOMO', location: '/n/', hosts: [] }],
+      },
+    ],
+  },
+];
 
 test('anti-tamper: yalnizca tasima gorunumundeki (grup, ns, app, servis, location) kabul edilir', () => {
-  let r = validateRequest(groups, { group: 'glomo', namespace: 'digital-banking-ch-prod', application: 'base-app-v0', service: 'glomo', inputPath: '/base2/' });
+  let r = validateRequest(groups, {
+    group: 'glomo',
+    namespace: 'digital-banking-ch-prod',
+    application: 'base-app-v0',
+    service: 'glomo',
+    inputPath: '/base2/',
+  });
   assert.equal(r.ok, true);
   assert.equal(r.path.location, '/base2/');
-  r = validateRequest(groups, { group: 'other', namespace: 'digital-banking-ch-prod', application: 'base-app-v0', service: 'GLOMO', inputPath: '/base/' });
+  r = validateRequest(groups, {
+    group: 'other',
+    namespace: 'digital-banking-ch-prod',
+    application: 'base-app-v0',
+    service: 'GLOMO',
+    inputPath: '/base/',
+  });
   assert.equal(r.ok, false); // yanlis grup
-  r = validateRequest(groups, { group: 'glomo', namespace: 'digital-banking-ch-prod', application: 'base-app-v0', service: 'GLOMO', inputPath: '/uydurma/' });
+  r = validateRequest(groups, {
+    group: 'glomo',
+    namespace: 'digital-banking-ch-prod',
+    application: 'base-app-v0',
+    service: 'GLOMO',
+    inputPath: '/uydurma/',
+  });
   assert.equal(r.ok, false); // listede olmayan location
-  r = validateRequest(groups, { group: 'glomo', namespace: 'hayalet', application: 'x', service: 'GLOMO', inputPath: '/base/' });
+  r = validateRequest(groups, {
+    group: 'glomo',
+    namespace: 'hayalet',
+    application: 'x',
+    service: 'GLOMO',
+    inputPath: '/base/',
+  });
   assert.equal(r.ok, false); // listede olmayan uygulama
 });
 
@@ -54,9 +111,16 @@ test('TARAMA DURUMU ENGEL DEGIL: bayat tarama kullaniciyi durdurmaz', () => {
   // olmadi". status GUNLUK taramadan gelir; paket elle konuldugunda ekran ertesi gune
   // kadar gormez ve kapi, olmayan bir sorunu raporlar. Gercek kontrol playbook'ta:
   // spa_facts uygulama dizinini sunucuda ARAR, yoksa acik hatayla DURUR.
-  for (const [app, loc] of [['eksik-app-v1', '/e/'], ['ns-app-v1', '/n/']]) {
+  for (const [app, loc] of [
+    ['eksik-app-v1', '/e/'],
+    ['ns-app-v1', '/n/'],
+  ]) {
     const r = validateRequest(groups, {
-      group: 'glomo', namespace: 'glomo-prod', application: app, service: 'GLOMO', inputPath: loc,
+      group: 'glomo',
+      namespace: 'glomo-prod',
+      application: app,
+      service: 'GLOMO',
+      inputPath: loc,
     });
     assert.equal(r.ok, true, `${app}: tarama durumu yuzunden reddedildi`);
     assert.equal(r.app.application, app);
@@ -64,16 +128,43 @@ test('TARAMA DURUMU ENGEL DEGIL: bayat tarama kullaniciyi durdurmaz', () => {
 
   // ANTI-TAMPER KAPILARI YERINDE KALMALI: serbest birakilan yalnizca TARAMA DURUMU.
   // Listede olmayan bir uygulama ya da yol hala reddedilir.
-  assert.equal(validateRequest(groups, {
-    group: 'glomo', namespace: 'glomo-prod', application: 'olmayan-app', service: 'GLOMO', inputPath: '/e/',
-  }).ok, false, 'listede olmayan uygulama kabul edildi');
-  assert.equal(validateRequest(groups, {
-    group: 'glomo', namespace: 'glomo-prod', application: 'eksik-app-v1', service: 'GLOMO', inputPath: '/olmayan/',
-  }).ok, false, 'listede olmayan location kabul edildi');
+  assert.equal(
+    validateRequest(groups, {
+      group: 'glomo',
+      namespace: 'glomo-prod',
+      application: 'olmayan-app',
+      service: 'GLOMO',
+      inputPath: '/e/',
+    }).ok,
+    false,
+    'listede olmayan uygulama kabul edildi',
+  );
+  assert.equal(
+    validateRequest(groups, {
+      group: 'glomo',
+      namespace: 'glomo-prod',
+      application: 'eksik-app-v1',
+      service: 'GLOMO',
+      inputPath: '/olmayan/',
+    }).ok,
+    false,
+    'listede olmayan location kabul edildi',
+  );
 
   // Ekran da engellememeli; durum UYARI olarak durur.
   const ui = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'denetim',
+      'NginxProdMigration.tsx',
+    ),
+    'utf8',
+  );
   assert.match(ui, /disabled=\{!canCreate \|\| allDone\}/, 'dugme hala tarama durumuna gore pasif');
   assert.match(ui, /Tarama <b>günlük<\/b> koşar/, 'bayat tarama uyarisi yok');
 });
@@ -82,21 +173,76 @@ test('TARAMA DURUMU ENGEL DEGIL: bayat tarama kullaniciyi durdurmaz', () => {
 const { normalizeTracking, rowToTracking } = require('../index.cjs');
 
 test('takip kaydi: durumlar ve tarih zorunluluklari', () => {
-  const ok = normalizeTracking({ group: 'glomo', namespace: 'Glomo-Prod', application: 'X-App-V1', state: 'planned', plannedDate: '2026-09-20', note: ' oco 1234 ' });
-  assert.deepEqual(ok, { group: 'glomo', namespace: 'glomo-prod', application: 'x-app-v1', state: 'planned', plannedDate: '2026-09-20', migratedDate: null, note: 'oco 1234' });
-  assert.throws(() => normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'planned' }), /planlanan tarih/i);
-  assert.throws(() => normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'migrated' }), /gecis tarihi/i);
-  assert.throws(() => normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'migrated', migratedDate: '20.09.2026' }), /YYYY-AA-GG/);
-  assert.throws(() => normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'bilinmez' }), /Gecersiz durum/);
-  assert.throws(() => normalizeTracking({ group: '', namespace: 'a', application: 'b' }), /zorunlu/);
+  const ok = normalizeTracking({
+    group: 'glomo',
+    namespace: 'Glomo-Prod',
+    application: 'X-App-V1',
+    state: 'planned',
+    plannedDate: '2026-09-20',
+    note: ' oco 1234 ',
+  });
+  assert.deepEqual(ok, {
+    group: 'glomo',
+    namespace: 'glomo-prod',
+    application: 'x-app-v1',
+    state: 'planned',
+    plannedDate: '2026-09-20',
+    migratedDate: null,
+    note: 'oco 1234',
+  });
+  assert.throws(
+    () => normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'planned' }),
+    /planlanan tarih/i,
+  );
+  assert.throws(
+    () =>
+      normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'migrated' }),
+    /gecis tarihi/i,
+  );
+  assert.throws(
+    () =>
+      normalizeTracking({
+        group: 'glomo',
+        namespace: 'a',
+        application: 'b',
+        state: 'migrated',
+        migratedDate: '20.09.2026',
+      }),
+    /YYYY-AA-GG/,
+  );
+  assert.throws(
+    () =>
+      normalizeTracking({ group: 'glomo', namespace: 'a', application: 'b', state: 'bilinmez' }),
+    /Gecersiz durum/,
+  );
+  assert.throws(
+    () => normalizeTracking({ group: '', namespace: 'a', application: 'b' }),
+    /zorunlu/,
+  );
   // durum 'none' tarihsiz olabilir; not 500 ile kesilir
-  const n = normalizeTracking({ group: 'g', namespace: 'a', application: 'b', note: 'x'.repeat(600) });
+  const n = normalizeTracking({
+    group: 'g',
+    namespace: 'a',
+    application: 'b',
+    note: 'x'.repeat(600),
+  });
   assert.equal(n.state, 'none');
   assert.equal(n.note.length, 500);
 });
 
 test('DB satiri -> API sekli (tarihler YYYY-AA-GG, Date nesnesi de string de olsa)', () => {
-  const r = rowToTracking({ group_id: 'glomo', namespace: 'ns', application: 'app', state: 'migrated', planned_date: new Date('2026-09-20T00:00:00Z'), migrated_date: '2026-09-25', note: null, config_job_id: '77', config_created_at: '2026-09-14T10:00:00Z', updated_at: null });
+  const r = rowToTracking({
+    group_id: 'glomo',
+    namespace: 'ns',
+    application: 'app',
+    state: 'migrated',
+    planned_date: new Date('2026-09-20T00:00:00Z'),
+    migrated_date: '2026-09-25',
+    note: null,
+    config_job_id: '77',
+    config_created_at: '2026-09-14T10:00:00Z',
+    updated_at: null,
+  });
   assert.equal(r.plannedDate, '2026-09-20');
   assert.equal(r.migratedDate, '2026-09-25');
   assert.equal(r.configJobId, 77);
@@ -107,14 +253,46 @@ test('DB satiri -> API sekli (tarihler YYYY-AA-GG, Date nesnesi de string de ols
 const { buildDeleteExtraVars } = require('../index.cjs');
 
 test('silme extra_vars: nginx_ops sozlesmesi (action=delete, env=prod, service, input_path, email)', () => {
-  const v = buildDeleteExtraVars({ service: 'glomo', inputPath: '/base/', user: { displayName: 'Onur', username: 'od', email: 'o@x' } });
-  assert.deepEqual(v, { action: 'delete', env: 'prod', service: 'GLOMO', input_path: '/base/', email: 'o@x', requester_name: 'Onur', requester_email: 'o@x' });
+  const v = buildDeleteExtraVars({
+    service: 'glomo',
+    inputPath: '/base/',
+    user: { displayName: 'Onur', username: 'od', email: 'o@x' },
+  });
+  assert.deepEqual(v, {
+    action: 'delete',
+    env: 'prod',
+    service: 'GLOMO',
+    input_path: '/base/',
+    email: 'o@x',
+    requester_name: 'Onur',
+    requester_email: 'o@x',
+  });
 });
 
 test('silme dogrulamasi: yeni sunucu hazirligi ONEMSIZ (eksik/taranmadi satir da silinebilir), listede olmayan yine reddedilir', () => {
-  let r = validateRequest(groups, { group: 'glomo', namespace: 'glomo-prod', application: 'eksik-app-v1', service: 'GLOMO', inputPath: '/e/' }, { ignoreStatus: true });
+  let r = validateRequest(
+    groups,
+    {
+      group: 'glomo',
+      namespace: 'glomo-prod',
+      application: 'eksik-app-v1',
+      service: 'GLOMO',
+      inputPath: '/e/',
+    },
+    { ignoreStatus: true },
+  );
   assert.equal(r.ok, true);
-  r = validateRequest(groups, { group: 'glomo', namespace: 'glomo-prod', application: 'eksik-app-v1', service: 'GLOMO', inputPath: '/yok/' }, { ignoreStatus: true });
+  r = validateRequest(
+    groups,
+    {
+      group: 'glomo',
+      namespace: 'glomo-prod',
+      application: 'eksik-app-v1',
+      service: 'GLOMO',
+      inputPath: '/yok/',
+    },
+    { ignoreStatus: true },
+  );
   assert.equal(r.ok, false);
 });
 
@@ -124,14 +302,23 @@ test('silme dogrulamasi: yeni sunucu hazirligi ONEMSIZ (eksik/taranmadi satir da
 // durumu takip tablosuna isler; /tracking canli job'lari AWX'ten uzlastirir.
 test('JT1 jobShape: launchJobOnServer ciktisindan id/status/awxServerId', () => {
   const { jobShape } = require('../index.cjs');
-  assert.deepEqual(jobShape({ jobId: 4242, status: 'pending' }, 3), { id: 4242, status: 'pending', awxServerId: 3 });
+  assert.deepEqual(jobShape({ jobId: 4242, status: 'pending' }, 3), {
+    id: 4242,
+    status: 'pending',
+    awxServerId: 3,
+  });
   assert.deepEqual(jobShape(null, 3), { id: null, status: 'pending', awxServerId: 3 });
 });
 
 test('JT2 syncJobStatusToTracking: config_job_id ve delete_job_id eslesen satirlar, terminalde bitis zamani', async () => {
   const { syncJobStatusToTracking } = require('../index.cjs');
   const calls = [];
-  const db = { query: async (sql, params) => { calls.push({ sql, params }); return { rowCount: 1 }; } };
+  const db = {
+    query: async (sql, params) => {
+      calls.push({ sql, params });
+      return { rowCount: 1 };
+    },
+  };
   await syncJobStatusToTracking(db, 77, 'successful');
   // 2026-09-23: YOL BAZLI kayit da guncellenir (dugmenin pasif olmasi ona bakar), bu yuzden
   // sorgular SIRAYA degil ICERIGE gore aranir - yeni bir tablo eklenince test kirilmasin.
@@ -153,16 +340,43 @@ test('JT2 syncJobStatusToTracking: config_job_id ve delete_job_id eslesen satirl
   assert.equal(calls.length, 0);
 });
 
-test('JT3 kaynak sozlesme: job.id okunmaz, job-status ucu var, /tracking uzlastirir, kolonlar seed\'de', () => {
+test("JT3 kaynak sozlesme: job.id okunmaz, job-status ucu var, /tracking uzlastirir, kolonlar seed'de", () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
   assert.doesNotMatch(src, /job\?\.id \|\| null/);
   assert.match(src, /router\.get\('\/job-status\/:jobId'/);
-  assert.match(src, /config_job_status IS NULL OR config_job_status IN \('pending','waiting','running','new'\)/);
+  assert.match(
+    src,
+    /config_job_status IS NULL OR config_job_status IN \('pending','waiting','running','new'\)/,
+  );
   const setup = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
-  for (const c of ['config_job_status', 'config_job_finished_at', 'config_service', 'config_location', 'delete_job_status']) {
-    assert.match(setup, new RegExp(`ALTER TABLE nginx_migration_tracking ADD ${c} `), `${c} kolonu seed'de yok`);
+  for (const c of [
+    'config_job_status',
+    'config_job_finished_at',
+    'config_service',
+    'config_location',
+    'delete_job_status',
+  ]) {
+    assert.match(
+      setup,
+      new RegExp(`ALTER TABLE nginx_migration_tracking ADD ${c} `),
+      `${c} kolonu seed'de yok`,
+    );
   }
-  const ui = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  const ui = flatten(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'src',
+        'components',
+        'denetim',
+        'NginxProdMigration.tsx',
+      ),
+      'utf8',
+    ),
+  );
   assert.match(ui, /useJobTracker/);
   assert.match(ui, /trackMigrationJob\(/);
   assert.match(ui, /configJobStatus === 'successful'/);
@@ -172,13 +386,33 @@ test('JT3 kaynak sozlesme: job.id okunmaz, job-status ucu var, /tracking uzlasti
 // olmasin. Ama unutma ANCAK VE ANCAK tanimlama jobu basarili bittiyse VE bir sonraki
 // veritabani dongusunde tanimin gercekten yapildigini goruyorsan."
 test('MG1 tanim dogrulama: IKI kanit birden (job successful + tarama defined)', () => {
-  assert.equal(isDefinitionConfirmed({ status: 'successful' }, 'defined'), true, 'ikisi de varken pasif olmali');
+  assert.equal(
+    isDefinitionConfirmed({ status: 'successful' }, 'defined'),
+    true,
+    'ikisi de varken pasif olmali',
+  );
 
   // Tek basina hicbiri yetmez:
-  assert.equal(isDefinitionConfirmed(null, 'defined'), false, 'job kaydi yokken (elle yazilmis olabilir) dugme ACIK kalmali');
-  assert.equal(isDefinitionConfirmed({ status: 'successful' }, 'partial'), false, 'tarama YALNIZ BAZI sunucularda gormus');
-  assert.equal(isDefinitionConfirmed({ status: 'successful' }, 'none'), false, 'tarama tanimi hic gormemis');
-  assert.equal(isDefinitionConfirmed({ status: 'successful' }, 'not-scanned'), false, 'yeni sunucular taranmamis');
+  assert.equal(
+    isDefinitionConfirmed(null, 'defined'),
+    false,
+    'job kaydi yokken (elle yazilmis olabilir) dugme ACIK kalmali',
+  );
+  assert.equal(
+    isDefinitionConfirmed({ status: 'successful' }, 'partial'),
+    false,
+    'tarama YALNIZ BAZI sunucularda gormus',
+  );
+  assert.equal(
+    isDefinitionConfirmed({ status: 'successful' }, 'none'),
+    false,
+    'tarama tanimi hic gormemis',
+  );
+  assert.equal(
+    isDefinitionConfirmed({ status: 'successful' }, 'not-scanned'),
+    false,
+    'yeni sunucular taranmamis',
+  );
   assert.equal(isDefinitionConfirmed({ status: 'failed' }, 'defined'), false, 'job dusmus');
   assert.equal(isDefinitionConfirmed({ status: 'running' }, 'defined'), false, 'job hala kosuyor');
   assert.equal(isDefinitionConfirmed({ status: null }, 'defined'), false, 'durum bilinmiyor');
@@ -187,38 +421,74 @@ test('MG1 tanim dogrulama: IKI kanit birden (job successful + tarama defined)', 
 test('MG2 sozlesme: sunucu kapisi ve ekran AYNI kurali uygular', () => {
   const srv = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
   // Sunucu: create ucu, dogrulanmis yol icin 409 doner (bayat sekme / dogrudan istek).
-  assert.ok(/isDefinitionConfirmed\(\(pj\.rows \|\| \[\]\)\[0\] \|\| null, v\.path\.newStatus\)/.test(srv), 'create ucunda kapi yok');
+  assert.ok(
+    /isDefinitionConfirmed\(\(pj\.rows \|\| \[\]\)\[0\] \|\| null, v\.path\.newStatus\)/.test(srv),
+    'create ucunda kapi yok',
+  );
   assert.ok(/status\(409\)/.test(srv), 'tekrar tetiklemede 409 donmeli');
   // Yol basina kayit tutulmali (uygulama basina tek satir cok yollu uygulamada yetmez).
   assert.ok(/nginx_migration_path_jobs/.test(srv), 'yol bazli job kaydi yok');
 
-  const ui = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  const ui = fs.readFileSync(
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'denetim',
+      'NginxProdMigration.tsx',
+    ),
+    'utf8',
+  );
   // TANIMLI SAYILMA OLCUTU TARAMADIR (2026-09-26, kullanici: "tanimli uygulamalarda
   // 'Tanim olustur' butonu aktif"). Job kaydi SART KOSULURSA elle ya da baska akisla
   // acilmis tanimlar "tanimsiz" gorunur ve ustune bir kez daha yazilir.
-  assert.ok(/const isPathDefined = \(p: \{ newStatus\?: string \| null \}\) => p\.newStatus === 'defined'/.test(ui),
-    'ekranda tarama temelli kural yok');
-  assert.ok(/const isDefinitionConfirmed = \(job: MigrationPathJob \| undefined, newStatus/.test(ui), 'ekranda kural yok');
+  assert.ok(
+    /const isPathDefined = \(p: \{ newStatus\?: string \| null \}\) => p\.newStatus === 'defined'/.test(
+      ui,
+    ),
+    'ekranda tarama temelli kural yok',
+  );
+  assert.ok(
+    /const isDefinitionConfirmed = \(\s*job: MigrationPathJob \| undefined,\s*newStatus/.test(ui),
+    'ekranda kural yok',
+  );
   assert.ok(/disabled=\{!canCreate \|\| allDone/.test(ui), 'dugme tanimli satirda pasif degil');
-  assert.ok(/isPathDefined\(pp\) \|\| isDefinitionConfirmed/.test(ui), 'toplu secim tanimli yollari atlamiyor');
+  assert.ok(
+    /isPathDefined\(pp\) \|\| isDefinitionConfirmed/.test(ui),
+    'toplu secim tanimli yollari atlamiyor',
+  );
   assert.ok(/'Tanımlı' : 'Tanım oluştur'/.test(ui), 'pasif dugme neden pasif oldugunu soylemeli');
   // Sunucu: tarama tanimli diyorsa 409 - KOSULSUZ. "Yeniden olustur" kaldirildi (2026-09-27),
   // cunku playbook tanimi olan sunucuyu atliyor ve is hicbir sey yapmadan yesil bitiyordu.
   assert.ok(/if \(p\.newStatus === 'defined'\)/.test(srv), 'sunucu kapisi tarama temelli degil');
   // YORUMLARI AY: "neden kaldirdik" aciklamasinda 'force' gecmesi bir ihlal degil.
-  const srvKod = srv.split(String.fromCharCode(10)).filter((l) => !l.trim().startsWith('//')).join(String.fromCharCode(10));
+  const srvKod = srv
+    .split(String.fromCharCode(10))
+    .filter((l) => !l.trim().startsWith('//'))
+    .join(String.fromCharCode(10));
   assert.ok(!/force/.test(srvKod), 'force kalintisi var: kapi hala asilabilir gorunuyor');
 
   const ddl = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
   assert.ok(/CREATE TABLE nginx_migration_path_jobs/.test(ddl), 'tablo seed edilmemis');
-  assert.ok(/UQ_nginx_migration_path UNIQUE \(group_id, namespace, application, service, location\)/.test(ddl), 'yol basina tekillik yok');
+  assert.ok(
+    /UQ_nginx_migration_path UNIQUE \(group_id, namespace, application, service, location\)/.test(
+      ddl,
+    ),
+    'yol basina tekillik yok',
+  );
 });
 
 // BULK1 (2026-09-24, kullanici: "toplu uygulama secip gecis tarihi ve planlama tarihi
 // girebilmek istiyorum"). Toplu uc, YARIM UYGULAMA birakmamali: bir ogede dogrulama
 // hatasi varsa HICBIRI yazilmaz - aksi halde kullanici hangi kaydin gecтigini bilemez.
 test('BULK1 toplu takip ucu: once tumu dogrulanir, sonra yazilir; sinir ve denetim kaydi', () => {
-  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.cjs'), 'utf8');
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'index.cjs'),
+    'utf8',
+  );
   assert.match(src, /router\.put\('\/tracking\/bulk'/, 'toplu uc yok');
   assert.match(src, /BULK_MAX = \d+/, 'toplu istege ust sinir konmali');
   // dogrulama dongusu YAZMA dongusunden ONCE gelmeli
@@ -231,7 +501,18 @@ test('BULK1 toplu takip ucu: once tumu dogrulanir, sonra yazilir; sinir ve denet
 // BULK2: ekran sozlesmesi - secim kutulari, islem cubugu, toplu modal ve "ustune yazilir" uyarisi.
 test('BULK2 ekran: satir secimi, toplu cubuk, onay listesi ve uzerine yazma uyarisi', () => {
   const page = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+    require('node:path').join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'denetim',
+      'NginxProdMigration.tsx',
+    ),
+    'utf8',
+  );
   assert.match(page, /function BulkTrackingModal/, 'toplu modal yok');
   assert.match(page, /Toplu geçiş takibi gir/, 'toplu islem dugmesi yok');
   assert.match(page, /saveBulk\(/, 'toplu uc cagrilmiyor');
@@ -239,7 +520,11 @@ test('BULK2 ekran: satir secimi, toplu cubuk, onay listesi ve uzerine yazma uyar
   assert.match(page, /el\.indeterminate/, 'kismi secimde baslik kutusu belirsiz gorunmeli');
   // yikici davranis EKRANDA yazmali: not bos birakilirsa mevcut notlar silinir
   assert.match(page, /mevcut notlar silinir/, 'uzerine yazma uyarisi yok');
-  assert.match(page, /Bu \{apps\.length\} uygulamaya yazılacak/, 'yazilacak uygulama listesi gosterilmiyor');
+  assert.match(
+    page,
+    /Bu \{apps\.length\} uygulamaya yazılacak/,
+    'yazilacak uygulama listesi gosterilmiyor',
+  );
 });
 
 // VIS1 (2026-09-24, kullanici: "gecis yapildi diye isaretlemezsem sunucuda tanim olup
@@ -248,14 +533,27 @@ test('BULK2 ekran: satir secimi, toplu cubuk, onay listesi ve uzerine yazma uyar
 // (planlandi/gecti) bu karari ETKILEMEZ; durum ayri bir sutunda rozet olarak durur, ayrica
 // suzgec ve CSV'de yer alir.
 test('VIS1 ekran: yeni sunuculardaki tanim durumu TARAMADAN gelir, ayri sutun/suzgec/CSV', () => {
-  const page = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+  const page = flatten(
+    require('node:fs').readFileSync(
+      require('node:path').join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'src',
+        'components',
+        'denetim',
+        'NginxProdMigration.tsx',
+      ),
+      'utf8',
+    ),
+  );
   assert.match(page, /function newSideStatus/, 'ozet durum fonksiyonu yok');
   // karar YALNIZ newStatus'a bakar; tracking/state'e bakmamali
   const fn = page.slice(page.indexOf('function newSideStatus'), page.indexOf('const NEW_SIDE'));
   assert.ok(!/tracking|trackOf|\.state\b/.test(fn), 'durum elle takipten etkilenmemeli');
   assert.match(fn, /newStatus === 'defined'/);
-  assert.match(page, /Yeni sunucularda<\/th>/, 'ayri sutun yok');
+  assert.match(page, /Yeni sunucularda\s*<\/th>/, 'ayri sutun yok');
   assert.match(page, /sideFilter/, 'taramaya gore suzgec yok');
   assert.match(page, /'yeni_sunucularda'/, 'CSV sutunu yok');
   // "taranmadi" ile "yok" AYRI kalmali
@@ -268,22 +566,45 @@ test('VIS1 ekran: yeni sunuculardaki tanim durumu TARAMADAN gelir, ayri sutun/su
 // ayni isi target_hosts ile ANINDA kosturabiliyor - kendi "beklemede" kaydini UYDURMUYOR,
 // tek dogruluk kaynagi yine tarama.
 test('RS1 tarama tazeleme: uc, katalog kaydi ve ekran dugmesi', () => {
-  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.cjs'), 'utf8');
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'index.cjs'),
+    'utf8',
+  );
   assert.match(src, /router\.post\('\/rescan'/, 'tazeleme ucu yok');
   assert.match(src, /AUDIT_KEY = 'nginx_config_audit'/, 'katalog anahtari yok');
   assert.match(src, /target_hosts/, 'yalniz secili sunucular taranmali');
   assert.match(src, /assertTemplateAcceptsExtraVars/, 'template on kontrolu yok');
 
-  const setup = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  const setup = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'),
+    'utf8',
+  );
   assert.match(setup, /key_name: 'nginx_config_audit'/, 'katalog kaydi seed edilmemis');
   assert.match(setup, /NGINX_CONFIG_AUDIT_TEMPLATE_ID/, 'env_var adi yok');
 
-  const page = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
-  assert.match(page, /Taramayı tazele/, 'ekranda tazeleme dugmesi yok');
+  const page = flatten(
+    require('node:fs').readFileSync(
+      require('node:path').join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'src',
+        'components',
+        'denetim',
+        'NginxProdMigration.tsx',
+      ),
+      'utf8',
+    ),
+  );
+  assert.match(page, /Taramayı\s*tazele/, 'ekranda tazeleme dugmesi yok');
   assert.match(page, /nginxMigrationScanApi\.rescan/, 'dugme ucu cagirmiyor');
   // yalniz o grubun sunuculari taranmali (tum filo degil)
-  assert.match(page, /\[\.\.\.grp\.oldHosts, \.\.\.grp\.newHosts\]/, 'tarama grubun sunucularina daraltilmali');
+  assert.match(
+    page,
+    /\[\.\.\.grp\.oldHosts, \.\.\.grp\.newHosts\]/,
+    'tarama grubun sunucularina daraltilmali',
+  );
 });
 
 // BC1 (2026-09-24, kullanici (a) secenegi): "secilenlerden HAZIR olanlar icin toplu tanim
@@ -292,7 +613,18 @@ test('RS1 tarama tazeleme: uc, katalog kaydi ve ekran dugmesi', () => {
 // NEDENINI yazar - aksi halde islerin cogu bosuna kirmizi biterdi.
 test('BC1 toplu tanim olusturma: hazir olmayan ATLANIR, sebebi yazilir, isler sirayla', () => {
   const page = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+    require('node:path').join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'denetim',
+      'NginxProdMigration.tsx',
+    ),
+    'utf8',
+  );
   const plan = page.slice(page.indexOf('const bulkPlan'), page.indexOf('const runBulkCreate'));
   assert.match(plan, /status === 'missing'/, 'deploy edilmemis uygulama atlanmali');
   assert.match(plan, /status === 'not-scanned'/, 'taranmamis uygulama atlanmali');
@@ -315,15 +647,27 @@ test('BC1 toplu tanim olusturma: hazir olmayan ATLANIR, sebebi yazilir, isler si
 // gecirip o end_host'u kosullu yapmak. Bu test, kapinin sessizce asilabilir hale
 // gelmesini engeller.
 test('MG3 yanlis vaat yok: tanimli yol KOSULSUZ reddedilir', () => {
-  const tanimli = [{
-    id: 'glomo',
-    newHosts: ['GBNGXP40'],
-    apps: [{
-      namespace: 'glomo-prod', application: 'var-app-v1', status: 'ready',
-      paths: [{ service: 'GLOMO', location: '/v/', hosts: ['GBRVPP07'], newStatus: 'defined' }],
-    }],
-  }];
-  const istek = { group: 'glomo', namespace: 'glomo-prod', application: 'var-app-v1', service: 'GLOMO', inputPath: '/v/' };
+  const tanimli = [
+    {
+      id: 'glomo',
+      newHosts: ['GBNGXP40'],
+      apps: [
+        {
+          namespace: 'glomo-prod',
+          application: 'var-app-v1',
+          status: 'ready',
+          paths: [{ service: 'GLOMO', location: '/v/', hosts: ['GBRVPP07'], newStatus: 'defined' }],
+        },
+      ],
+    },
+  ];
+  const istek = {
+    group: 'glomo',
+    namespace: 'glomo-prod',
+    application: 'var-app-v1',
+    service: 'GLOMO',
+    inputPath: '/v/',
+  };
 
   const r = validateRequest(tanimli, istek);
   assert.equal(r.ok, false, 'zaten tanimli yol kabul edildi');
@@ -334,12 +678,26 @@ test('MG3 yanlis vaat yok: tanimli yol KOSULSUZ reddedilir', () => {
   assert.match(r.message, /yeniden yazmak için bu iş kullanılamaz/);
 
   // force GONDERSE BILE gecmemeli: kapi kosulsuz.
-  assert.equal(validateRequest(tanimli, { ...istek, force: true }).ok, false,
-    'force ile kapi asilabiliyor - dugme kaldirildi ama arka kapi acik');
+  assert.equal(
+    validateRequest(tanimli, { ...istek, force: true }).ok,
+    false,
+    'force ile kapi asilabiliyor - dugme kaldirildi ama arka kapi acik',
+  );
 
   // Ekranda dugme ve force izi kalmamali.
   const ui = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'denetim',
+      'NginxProdMigration.tsx',
+    ),
+    'utf8',
+  );
   assert.ok(!/Yeniden oluştur/.test(ui), 'dugme hala ekranda');
   assert.ok(!/onCreate\(a, true\)/.test(ui), 'force gecisi hala var');
   // Iddia DUGME metniyle ilgili: 'uzerine yaz' toplu takip penceresinde de geciyor
@@ -352,8 +710,13 @@ test('IU1 ekip beyani OLCUM DEGIL: ayri sutun, beyan yoksa BOS', () => {
   // Kullanici (2026-09-27): "in_use bilgisini Production Tasimalari'na sutun olarak ekle".
   // "Tasima Plani" ekrani kaldirilinca bu bilgi yazilmaya devam ediyor ama gorunmuyordu.
   const t = rowToTracking({
-    group_id: 'glomo', namespace: 'n', application: 'a', state: 'planned',
-    in_use: 'yes', in_use_by: 'odemir', in_use_at: '2026-09-27T08:00:00.000Z',
+    group_id: 'glomo',
+    namespace: 'n',
+    application: 'a',
+    state: 'planned',
+    in_use: 'yes',
+    in_use_by: 'odemir',
+    in_use_at: '2026-09-27T08:00:00.000Z',
   });
   assert.equal(t.inUse, 'yes');
   assert.equal(t.inUseBy, 'odemir');
@@ -367,11 +730,25 @@ test('IU1 ekip beyani OLCUM DEGIL: ayri sutun, beyan yoksa BOS', () => {
 
   const srv = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
   // Sorgular kolonlari CEKMELI; biri unutulursa o uc sessizce null doner.
-  assert.equal((srv.match(/in_use, in_use_by, in_use_at/g) || []).length, 3,
-    'in_use kolonlari tum tracking sorgularinda yok');
+  assert.equal(
+    (srv.match(/in_use, in_use_by, in_use_at/g) || []).length,
+    3,
+    'in_use kolonlari tum tracking sorgularinda yok',
+  );
 
   const ui = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'denetim',
+      'NginxProdMigration.tsx',
+    ),
+    'utf8',
+  );
   assert.match(ui, /Ekip beyanı/, 'sutun basligi yok');
   assert.match(ui, /const BEYAN/, 'beyan etiketleri yok');
   // OLCUM ile BEYAN ayri kalmali: beyan, yuk gostergesinin yerine GECMEMELI.

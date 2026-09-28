@@ -12,6 +12,10 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+// Prettier tek satirlik ifadeleri cok satira bolunce dizgi arayan bekciler, kodun
+// DAVRANISI hic degismedigi halde kirmiziya donuyor. Duzlestirilmis metin bunu keser;
+// silinen bir alan yine yakalanir (bkz. server/util/guard-text.cjs).
+const { flatten } = require('../../server/util/guard-text.cjs');
 
 test('sozluk kullanicinin sordugu uc terimi ve dosya uyumunu ACIKLIYOR', () => {
   const src = read('components/denetim/nginxAuditGlossary.tsx');
@@ -134,9 +138,10 @@ test('Production Tasimalari: Tanim olustur dugmesi, ekip siralamasi, H/A/C sozlu
     !/disabled=\{[^}]*a\.status/.test(src),
     'tarama durumu dugmeyi yeniden ENGELLIYOR — 2026-09-24 karari geri alinmis (elle konan paket yine bekletilir)',
   );
+  const flat = flatten(src);
   for (const s of ['missing', 'not-scanned']) {
     assert.ok(
-      new RegExp(`a\\.status === '${s}' \\? '[^']+`).test(src),
+      new RegExp(`a\\.status === '${s}'\\s*\\? '[^']+`).test(flat),
       `'${s}' durumu artik dugmeyi engellemiyor; SEBEBI de yazilmazsa kullanici neden bos dondugunu HIC ogrenemez`,
     );
   }
@@ -318,7 +323,7 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
       mig.includes("mark: '✓⚙'"),
     'path cipinde yeni sunucu durumu / job sonucu yok',
   );
-  const srvm = read('../server/audit/nginx-migration.cjs');
+  const srvm = flatten(read('../server/audit/nginx-migration.cjs'));
   assert.ok(
     srvm.includes('newLocRows') &&
       srvm.includes("'defined' : on.length === 0 ? 'none' : 'partial'"),
