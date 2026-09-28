@@ -448,8 +448,12 @@ test('SH12: ortam kirilimi (Production / Non-Production) ve kart -> bulgu gecisi
     /Ortam kırılımı/.test(page) && /onGoFindings\(\{ envGroup: g \}\)/.test(page),
     'ortam kirilimi paneli',
   );
+  // BICIMLENDIRICIDEN BAGIMSIZ: prettier imzayi cok satira bolunce bu iddia, kod
+  // degismedigi halde kirmiziya donuyordu (bkz. server/util/guard-text.cjs).
   assert.ok(
-    /function FindingsTab\(\{ initial \}/.test(page),
+    /function FindingsTab\(\s*\{\s*initial\b/.test(
+      require('../../util/guard-text.cjs').flatten(page),
+    ),
     'Bulgular sekmesi disaridan suzgec almali',
   );
 });
