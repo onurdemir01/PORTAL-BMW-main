@@ -17,7 +17,7 @@
 // göndermek, maskeli bir metnin yazılma ihtimalini ve gereksiz bir sır dolaşımını
 // beraberinde getirirdi. Geri yüklemeden önce MEVCUT HALİN yedeği de alınır — yanlış
 // sürüme dönen kullanıcı geri dönemeyeceği bir yere düşmesin.
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ArrowPathIcon,
   ArrowUturnLeftIcon,
@@ -30,6 +30,7 @@ import { vbtn, type ValuesFileOption } from './ValuesEditor';
 import { CompareTable } from './ValuesCompare';
 import type { CryptoOpsResult } from '@/api/cryptoHubApi';
 import { toast } from '@/hooks/useToast';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 
 const SM =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -72,9 +73,14 @@ export function ValuesHistory({
     if (r) setListe(r);
   };
 
-  useEffect(() => {
-    void getir(hedef);
-  }, [tenantKey, hedef]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Deponun kendi hook'u: yuklemeyi effect flush'indan SONRAKI mikro-goreve erteler,
+  // boylece ilk setState effect govdesinde SENKRON olmaz (React 19 set-state-in-effect).
+  useAsyncEffect(
+    async (alive) => {
+      if (alive()) await getir(hedef);
+    },
+    [tenantKey, hedef],
+  );
 
   const karsilastir = async (yedek: string) => {
     // Yedek de bir values dosyasi: karsilastirma AYNI motorla yapilir.
