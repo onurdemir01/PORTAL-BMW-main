@@ -129,9 +129,13 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   //   * Admin baska birini SIMULE edebilir     -> &email=... veya &username=...
   // Admin olmayan biri baskasini simule EDEMEZ; aksi halde bu uc, kimin neye erisebildigini
   // sizdiran bir kesif araci olurdu.
-  router.get("/explain", async (req, res) => {
+  // KAPI ELLE YAZILMAZ (2026-09-27): ilk surum `if (!me) res.status(401)` diyordu.
+  // Islevsel olarak dogru gorunuyordu ama 401'i `oturumYok` ile IMZALAMIYORDU; istemci
+  // oturum-bitti kapisi o basliga bakar, yani suresi dolmus bir oturumda bu uc
+  // kullaniciyi giris ekranina DUSURMEZ, yalnizca sessiz bir hata gosterirdi.
+  // `requireAuth` hem imzayi hem de tek bir kapi noktasini garanti eder.
+  router.get("/explain", requireAuth, async (req, res) => {
     const me = req.session?.user;
-    if (!me) return res.status(401).json({ ok: false, error: "Oturum bulunamadi." });
     const elementKey = String(req.query.element || "").trim();
     if (!elementKey) return res.status(400).json({ ok: false, error: "element parametresi gerekli." });
 

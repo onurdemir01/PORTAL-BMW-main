@@ -829,11 +829,17 @@ test('D4 keşif HICBIR MUTASYON komutu calistirmiyor', () => {
   // denememesi gerekir. Kayit tutan bir sahte istemciyle dogruluyoruz.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-ocaudit-'));
   const logFile = path.join(dir, 'calls.log');
+  // KABUGA WINDOWS YOLU GONDERILEMEZ: `C:\Users\...` icindeki her ters bolu bash'te
+  // bir KACIS karakteridir. Tirnaksiz yazildiginda yonlendirme `CUsersdemir...calls.log`
+  // adli bir dosyaya gidiyordu (depo kokune cop birakarak) ve `logFile` HIC olusmuyordu;
+  // bekci de "sahte istemci hic cagrilmadi" diye kendi olcumunu kaybettigini saniyordu.
+  // Git Bash `C:/...` bicimini sorunsuz kabul eder.
+  const logForShell = logFile.split(path.sep).join('/');
   fs.writeFileSync(
     path.join(dir, 'oc'),
     OC_STUB.replace(
       'case "$1" in\n  login|project)',
-      `printf '%s\\n' "$*" >> ${logFile}\ncase "$1" in\n  login|project)`,
+      `printf '%s\\n' "$*" >> "${logForShell}"\ncase "$1" in\n  login|project)`,
     ),
     { mode: 0o755 },
   );

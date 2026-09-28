@@ -322,7 +322,9 @@ function toCsv(hosts, scanDate) {
       h.eksikler.join(' | '), h.farklar.join(' | '),
     ].map(csvField).join(';'));
   }
-  return `﻿${lines.join('\r\n')}\r\n`;
+  // BOM Excel icin GEREKLI, ama KACISLA yazilir: kaynakta literal olarak durdugunda
+  // gorunmez bir karakterdir ve kopyala-yapistirda sessizce kaybolur ya da cogalir.
+  return `\uFEFF${lines.join('\r\n')}\r\n`;
 }
 
 module.exports = {

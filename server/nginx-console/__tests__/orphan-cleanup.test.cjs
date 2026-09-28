@@ -23,7 +23,6 @@ function kodSatirlari(s) {
 test('OC1: yol dogrulama - yalniz /usr/nginx agaci, .. ve satir sonu yok', () => {
   const m = SRC.match(/const CLEAN_PATH_RE = (\/.*\/);/);
   assert.ok(m, 'CLEAN_PATH_RE bulunamadi');
-  // eslint-disable-next-line no-eval
   const re = eval(m[1]);
 
   for (const iyi of [

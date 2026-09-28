@@ -94,7 +94,6 @@ export function useOps(tenantKey: string) {
       // AWX isi birkac saniye surer; 3 saniyede bir yoklanir, 5 dakikada vazgecilir.
       const bitis = Date.now() + 5 * 60 * 1000;
       for (;;) {
-        // eslint-disable-next-line no-await-in-loop
         const r = await cryptoOpsApi.result(serverId, jobId, req.reveal === true);
         if (!r.ok) { toast.error(r.message || 'Sonuç okunamadı.'); return null; }
         if (r.result) return r.result;
@@ -103,7 +102,6 @@ export function useOps(tenantKey: string) {
           return null;
         }
         if (Date.now() > bitis) { toast.error(`İş hâlâ sürüyor (#${jobId}); Ansible ekranından izleyebilirsiniz.`); return null; }
-        // eslint-disable-next-line no-await-in-loop
         await new Promise((res) => { timer.current = window.setTimeout(res, 3000); });
       }
     } catch (e: unknown) {

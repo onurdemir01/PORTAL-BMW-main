@@ -97,6 +97,11 @@
   --nh-hub:             #007a2e;
   --nh-hub-bright:      #009639;
   --nh-glow:            rgba(0, 150, 57, 0.55);
+  /* Crypto Hub mor-menekse tonu. Deger `.crypto-hub-link` kuralinin ICINDE sabit
+     yaziliydi; tema bloklari orayi goremedigi icin KOYU temada da AYNI doygun mor
+     basiyordu — `--nav-text`in basina gelenin aynisi. Acik tema degeri degismedi. */
+  --ch-hue:             #7c5cff;
+  --ch-hue-soft:        rgba(124, 92, 255, 0.16);
   --nav-hover-bg:    #e0e0e0;
   --nav-current-bg:  #e0e0e0;
   --nav-text:        #151515;
@@ -179,6 +184,10 @@
   --nh-hub:        #8cf5b3;
   --nh-hub-bright: #b9ffd2;
   --nh-glow:       rgba(140, 245, 179, 0.9);
+  /* Koyu zeminde #7c5cff okunmuyordu (nh-hub'in koyu temada aciga cekilmesiyle ayni
+     gerekce); menekse kimligi korunur, ton acilir. */
+  --ch-hue:        #c4b5fd;
+  --ch-hue-soft:   rgba(196, 181, 253, 0.18);
   /* KOYU TEMADA MARKA RENGI ACIK MAVIDIR — PF6'nin bilincli karari.
      `dark--color--brand--200` = blue-20 (#b9dafc), uzerindeki metin ise
      `dark--text--color--300` = gray-90 (#1f1f1f).
@@ -692,7 +701,7 @@ thead th {
 .server-hub-link .nginx-hub-word { color: var(--accent); text-shadow: 0 0 6px var(--accent-light); animation-name: sh-glow; }
 /* Crypto Hub (2026-09-25): ayni hub cercevesi, mor-menekse tonunda — Nginx/Server Hub ile
    karismasin diye bilerek FARKLI bir renk. */
-.crypto-hub-link { --ch-hue: #7c5cff; --ch-hue-soft: rgba(124, 92, 255, 0.16); }
+/* --ch-hue / --ch-hue-soft :root ve [data-theme=dark] altinda tanimli (--nh-* gibi). */
 .crypto-hub-link::before {
   background: conic-gradient(from var(--nh-angle), transparent 0 62%, var(--ch-hue-soft) 74%, var(--ch-hue) 86%, var(--ch-hue) 93%, transparent 100%);
 }
@@ -877,7 +886,11 @@ thead th {
 :root .text-yellow-500, :root .text-yellow-600, :root .text-orange-500, :root .text-orange-600 { color: var(--status-warning); }
 :root .bg-amber-500, :root .bg-yellow-500, :root .bg-orange-500 { background-color: var(--status-warning); }
 :root .bg-amber-50, :root .bg-amber-100, :root .bg-yellow-50, :root .bg-yellow-100, :root .bg-orange-50 { background-color: var(--status-warning-bg); }
-:root .border-amber-200, :root .border-amber-300, :root .border-yellow-200 { border-color: var(--status-warning); }
+/* border-amber-500: PageVisibilityTab'daki secili durum rozeti (2026-09-27). Sinif
+   `bg-amber-500` ile BIRLIKTE yaziliydi; zemin eslesiyordu ama KENARLIK katmanin
+   disinda kaliyor, koyu temada ham Tailwind sarisi cerceve basiyordu. */
+:root .border-amber-200, :root .border-amber-300, :root .border-amber-500,
+:root .border-yellow-200 { border-color: var(--status-warning); }
 
 :root .text-emerald-500, :root .text-emerald-600, :root .text-emerald-700,
 :root .text-green-500, :root .text-green-600, :root .text-green-700, :root .text-teal-600 { color: var(--status-success); }

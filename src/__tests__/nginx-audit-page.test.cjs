@@ -81,10 +81,30 @@ test('Nginx SPA > Prod Tasima sekmesi bagli ve kapsam paneli o sekmede gizli', (
 
 test('Production Tasimalari: Tanim olustur dugmesi, ekip siralamasi, H/A/C sozlugu', () => {
   const src = read('components/denetim/NginxProdMigration.tsx');
-  // dugme: yapilandirma yoksa / eksik / taranmadi -> pasif; onay penceresi formlu -> arka plan tiklamasi kapali
-  // 2026-09-23 (kullanici): tanim ZATEN olusturulduysa (job basarili + tarama dogruladi)
-  // dugme de pasif. Kosul buyudu; bekcinin sordugu sey ayni: uc durumda pasif olmali.
-  assert.ok(src.includes("disabled={!canCreate || allDone || a.status === 'missing' || a.status === 'not-scanned'}"));
+  // DUGME NE ZAMAN PASIF (sozlesme 2026-09-24'te DARALDI):
+  //   * yapilandirma yok (!canCreate)  -> pasif
+  //   * tanim zaten var (allDone)      -> pasif
+  //   * status 'missing' / 'not-scanned' -> ARTIK PASIF DEGIL
+  //
+  // Bekci bunu fark etmemisti: hala eski, GENIS kosulun metnini ariyordu ve aylardir
+  // kirmiziydi. Daraltma bilincli bir karardi — tarama gunde bir kosuyor, paketi ELLE
+  // koyan kullanici ertesi gune kadar bekliyordu; is zaten dizini sunucuda kendisi
+  // dogruluyor. Bekcinin gorevi kararin YERINDELIGINI tartismak degil, kararin
+  // BILGISININ kaybolmadigini kanitlamak: iki durum da kullaniciya SEBEBIYLE yaziliyor.
+  assert.ok(
+    src.includes('disabled={!canCreate || allDone}'),
+    'dugme pasiflik kosulu degismis — sozlesme: yalnizca yapilandirma yoksa ya da tanim zaten varsa pasif',
+  );
+  assert.ok(
+    !/disabled=\{[^}]*a\.status/.test(src),
+    "tarama durumu dugmeyi yeniden ENGELLIYOR — 2026-09-24 karari geri alinmis (elle konan paket yine bekletilir)",
+  );
+  for (const s of ['missing', 'not-scanned']) {
+    assert.ok(
+      new RegExp(`a\\.status === '${s}' \\? '[^']+`).test(src),
+      `'${s}' durumu artik dugmeyi engellemiyor; SEBEBI de yazilmazsa kullanici neden bos dondugunu HIC ogrenemez`,
+    );
+  }
   assert.ok(/const allDone = a\.paths\.length > 0 && confirmed\.length === a\.paths\.length/.test(src), 'tum yollar dogrulanmadan dugme kapanmamali');
   assert.ok(src.includes('dismissOnBackdrop={false}'), 'onay penceresi surukleme ile kapanmamali');
   assert.ok(src.includes('nginxMigrationApi.create({'), 'launch ucu cagrilmiyor');

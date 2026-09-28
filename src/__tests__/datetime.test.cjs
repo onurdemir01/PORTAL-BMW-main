@@ -124,7 +124,7 @@ test('D8: sabitlenen saat dilimi TEK yerde', () => {
     return out;
   }
   const leaks = walk(ROOT)
-    .filter((f) => !f.endsWith('utils/datetime.ts'))
+    .filter((f) => !f.split(path.sep).join('/').endsWith('utils/datetime.ts'))
     .filter((f) =>
       /Europe\/Istanbul/.test(
         fs

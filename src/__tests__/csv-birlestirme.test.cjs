@@ -35,7 +35,10 @@ function dosyalar(dir = SRC, out = []) {
   return out;
 }
 
-const goreli = (p) => path.relative(ROOT, p);
+// YOL AYRACI: Windows'ta `path.relative` `src\components\...` dondurur ve asagidaki
+// KAPSAM_DISI deseni (`/` ile yazili) HIC eslesmezdi — muafiyet sessizce dusuyor,
+// bekci kendi platformunda yanlis sebeple kirmizi kaliyordu.
+const goreli = (p) => path.relative(ROOT, p).split(path.sep).join('/');
 
 // KAPSAM DISI (kullanici karari): Onur'un aktif alani. Bu iki agactaki kopyalar
 // bilerek birakildi; listeyi DARALTMAK icin degil, kapsami BELGELEMEK icin var.

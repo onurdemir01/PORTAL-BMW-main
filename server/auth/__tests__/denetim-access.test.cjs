@@ -72,8 +72,44 @@ test('seed: Denetim yalniz Admin; sekme elementleri varsayilan kapali; tek sefer
   assert.ok(src.includes("element_key: 'admintab:denetimaccess'"), 'admin sekmesi seed yok');
   const els = read('src/config/elements.ts');
   assert.ok(els.includes("{ id: 'admintab:denetimaccess', label: 'Denetim Erişimi' }"), 'elements.ts admintab kaydi yok');
-  const store = read('server/auth/elements.cjs');
-  assert.ok(store.includes("r.principalType === 'group' ? 'group'"), 'setElementRules group principal kabul etmeli');
+});
+
+// setElementRules: BICIM DEGIL DAVRANIS (2026-09-27).
+//
+// Bu iddia once `store.includes("r.principalType === 'group' ? 'group'")` diye yaziliydi —
+// yani belirli bir UCLU IFADENIN metnini ariyordu. 2026-09-26'da ifade
+// `['user','group','email'].includes(...)` seklinde yeniden yazilinca (email destegi
+// eklenirken) bekci kirmiziya dondu; oysa sordugu davranis ("grup kurali kabul ediliyor
+// mu") BOZULMAMISTI. Kaynak metnine bakan bir iddia, kodun IYILESMESINI de regresyon
+// sayar. Artik fonksiyon cikarilip GERCEKTEN kosturuluyor — decide() icin yapilanin aynisi.
+function loadSetElementRules() {
+  const src = read('server/auth/elements.cjs');
+  const a = src.indexOf('async function setElementRules(');
+  const b = src.indexOf('async function setElementEnabled(');
+  assert.ok(a > 0 && b > a, 'setElementRules kaynakta bulunamadi');
+  const yazilan = [];
+  const db = { query: async (_sql, params) => { yazilan.push(params); return { rowCount: 1 }; } };
+  const fn = new Function('db', `${src.slice(a, b)}; return setElementRules;`)(db);
+  return { fn, yazilan };
+}
+
+test('setElementRules: principal turleri — group kabul, bilinmeyen role`a duser', async () => {
+  const { fn, yazilan } = loadSetElementRules();
+  await fn('Denetim', [
+    { principalType: 'group', principalId: 'GT-Middleware', allow: true },
+    { principalType: 'user', principalId: 'ADemir', allow: false },
+    { principalType: 'email', principalId: 'A@B.COM', allow: true },
+    { principalType: 'sacmalik', principalId: 'Admin', allow: true },
+    { principalType: 'group', principalId: '   ', allow: true },
+  ]);
+  // yazilan[0] DELETE'in parametresi; INSERT'ler sonra gelir.
+  const satirlar = yazilan.slice(1).map((p) => ({ tip: p[1], kimlik: p[2], allow: p[3] }));
+  assert.deepEqual(satirlar, [
+    { tip: 'group', kimlik: 'gt-middleware', allow: 1 },   // grup KABUL ediliyor
+    { tip: 'user', kimlik: 'ademir', allow: 0 },           // user kucuk harfe iniyor
+    { tip: 'email', kimlik: 'a@b.com', allow: 1 },
+    { tip: 'role', kimlik: 'Admin', allow: 1 },            // bilinmeyen tur role`a DUSER
+  ], 'bos principalId atlanmali; role DISINDAKI turler kucuk harfe inmeli');
 });
 
 test('sunucu: /api/denetim yol -> sekme kapisi; panel uclari', () => {

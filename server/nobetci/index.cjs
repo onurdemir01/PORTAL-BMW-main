@@ -104,7 +104,7 @@ function fetchNobetList() {
         .then((ham) => {
           const raw = ham.trim();
           try {
-            const data = JSON.parse(raw.replace(/^﻿/, ""));
+            const data = JSON.parse(raw.replace(/^\uFEFF/, ""));
             const arr = Array.isArray(data) ? data : (data?.data ?? data?.result ?? []);
             resolve(arr);
           } catch (e) {

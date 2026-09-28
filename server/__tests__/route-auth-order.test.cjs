@@ -17,6 +17,12 @@ const path = require('node:path');
 
 const SERVER = path.join(__dirname, '..');
 
+// YOL AYRACI: `path.relative` Windows'ta `logx\v2\index.cjs` dondurur; asagidaki
+// muafiyet anahtarlari ise `/` ile yazili. Eslesmeyince UC muafiyet birden sessizce
+// dusuyor ve bekci Windows'ta HER KOSUDA kirmizi kaliyordu — yani hicbir sey
+// soylemiyordu. Anahtar bicimi TEK: her zaman `/`.
+const rel = (f) => path.relative(SERVER, f).split(path.sep).join('/');
+
 // BILINCLI MUAFIYETLER — her biri kodda da gerekcesiyle yazili.
 //   * logx/v2 `/ingest/:token` : kimlik TEK KULLANIMLIK TOKEN'dir; yukleyen kaynak
 //     host'un portal session'i YOKTUR. `requireAuth` onu 401'e dusururdu.
@@ -54,13 +60,13 @@ test('RO1 hicbir uc KIMLIK KAPISINDAN once tanimlanmamis (bilinen muafiyetler ha
     if (gate < 0) continue; // bu modul kapi uygulamiyor — kapsam disi
     checked++;
 
-    const rel = path.relative(SERVER, f);
+    const relPath = rel(f);
     lines.slice(0, gate).forEach((l, i) => {
       const m = l.match(/router\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)['"`]/);
       if (!m) return;
-      const key = `${rel}::${m[2]}`;
+      const key = `${relPath}::${m[2]}`;
       if (EXEMPT.has(key)) return;
-      offenders.push(`${rel}:${i + 1}  ${m[1].toUpperCase()} ${m[2]}`);
+      offenders.push(`${relPath}:${i + 1}  ${m[1].toUpperCase()} ${m[2]}`);
     });
   }
 
@@ -103,8 +109,8 @@ test('RO1b kapiyi IMPORT eden her router onu GERCEKTEN UYGULAR', () => {
   const offenders = [];
   let inspected = 0;
   for (const f of routerFiles()) {
-    const rel = path.relative(SERVER, f);
-    if (EXEMPT_MODULES.has(rel)) continue;
+    const relPath = rel(f);
+    if (EXEMPT_MODULES.has(relPath)) continue;
     const src = fs.readFileSync(f, 'utf8');
     if (!/\brequireAuth\b/.test(src)) continue;
     const routes = [
@@ -119,7 +125,7 @@ test('RO1b kapiyi IMPORT eden her router onu GERCEKTEN UYGULAR', () => {
     const unguarded = routes.filter((m) => !/require(Auth|Admin)/.test(m[3]));
     if (unguarded.length === 0) continue; // her uc kendi kapisini tasiyor
     offenders.push(
-      `${rel} — ${unguarded.length}/${routes.length} uc kapisiz: ` +
+      `${relPath} — ${unguarded.length}/${routes.length} uc kapisiz: ` +
         unguarded
           .slice(0, 4)
           .map((m) => m[2])

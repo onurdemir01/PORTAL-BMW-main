@@ -86,6 +86,27 @@ Ekran: dosya panelinde **Geçmiş** (sürümler, fark, şu ankiyle, "bu sürüme
   (`nginx_audit_scan.sh`, `nginx_deploy_lock.sh`, `activate.yaml` ile aynı). `www` ile ve `-e`'siz koşunca anahtar dosyaları
   (root:600) / varsayılan error.log yüzünden hemen her sunucu "fail" görünüyordu. dzdo yoksa eski yol denenir.
 
+## Keşif play'i artık **arıza yalıtımlı** (2026-09-27)
+
+`nginx_console_fetch.yml` üç play: **(1)** GBLABT02'de hedef keşfi + `add_host`, **(2)** hedeflerde
+dökum, **(3)** localhost'ta toplayıcı (`set_stats`). Play 1 korumasızdı: GBLABT02 ulaşılamazsa ya da
+keşif düşerse (örn. `middleware_inventory` henüz koşmamış → 0 host → "Hedef yoksa DUR") Ansible
+**NO MORE HOSTS LEFT** ile toplayıcı play'i **atlıyor**, `set_stats` hiç yayınlanmıyordu. Portal iş
+sonucunu okuyamadığı için kullanıcıya ham AWX logundan başka bir şey gösteremiyordu — LogX'te
+yaşanan AWX #3297277 ile aynı sınıf.
+
+Şimdi:
+
+- Play 1: `ignore_unreachable: true` + tüm görevler tek bir `block` altında, `rescue` sebebi
+  `console_discovery_error` fact'ine yazıyor.
+- Toplayıcı: `groups['nginx_console_targets'] | default([])` (grup hiç oluşmamış olabilir) ve
+  `set_stats` içinde yeni **`discovery_error`** alanı.
+- İş yine **kırmızı** biter: `set_stats` yayınlandıktan **sonra** gelen `fail` görevi, hiç döküm
+  alınamadığında keşif hatasını mesaja koyar. Sıra önemli — `fail` önce gelseydi iş doğru şekilde
+  kırmızı olurdu ama sonuç sözleşmesi yine yayınlanmazdı.
+
+Bu kuralı `playbook-jinja-traps.test.cjs` içindeki **TUZAK 3** bekçisi kilitler.
+
 ## Kullanılmayan dosyalar (`@@LOADED`, `@@SSLDIR`; 2026-09-22)
 
 Dokum `conf.d`/`conf` altındaki **her** dosyayı alır; nginx'in gerçekten yüklediğine bakmaz. Bu yüzden

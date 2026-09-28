@@ -435,6 +435,21 @@ function initNginxMigration(app) {
   const AUDIT_KEY = 'nginx_config_audit';
   const HOSTS_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
 
+  // `nginx_config_audit` AWX kaydini cozer. Bu yardimci nginx-cis / nginx-console /
+  // opsx / scalex modullerinde de ayni bicimde duruyor; buraya kopyalanmasinin sebebi
+  // o modullerin HICBIRININ disa aktarmamasi (hepsi kendi dosyasinda yerel).
+  //
+  // 2026-09-27: BURADA HIC YOKTU. `launchAudit` tanimsiz `resolveByKey`e basvuruyordu,
+  // yani "tarama tazeleme" ucu her cagrildiginda ReferenceError ile 502 donuyordu.
+  // Kaynak metninde ad GECTIGI icin metin arayan bekciler bunu goremedi; tsc kapsam
+  // analizi (unbound-identifier bekcisi) yakaladi.
+  async function resolveByKey(keyName) {
+    const reg = require('../ansible/playbook-registry.cjs');
+    const row = await reg.getByKey(keyName).catch(() => null);
+    if (!row || row.enabled === false) return { templateId: null, serverId: null };
+    return { templateId: reg.getEffectiveTemplateId(row) || null, serverId: row.awxServerId != null ? Number(row.awxServerId) : 0 };
+  }
+
   async function launchAudit(hosts, user, label) {
     const { templateId, serverId } = await resolveByKey(AUDIT_KEY);
     if (!templateId) {

@@ -40,7 +40,9 @@ const FILES = allPlaybookFiles();
 // Agac artik ic ice; toplayici MUTLAK yol donduruyor. Basename ile karsilastiran
 // her kume/istisna listesi bu yardimciyi kullanmali — yoksa istisnalar SESSIZCE
 // eslesmez ve bekci yanlis yere kirmizi/yesil doner.
-const baseName = (f) => f.split('/').pop();
+// Windows'ta yollar `\` ile gelir; `split('/')` TUM YOLU tek parca dondururdu ve
+// asagidaki muafiyet kumeleri (dosya ADIYLA yazili) HIC eslesmezdi.
+const baseName = (f) => path.basename(f);
 
 function read(f) {
   return fs.readFileSync(f, 'utf8'); // toplayici MUTLAK yol dondurur
@@ -295,11 +297,32 @@ test('TUZAK 3 bekcisi KOR DEGIL: sentetik ihlali yakalar', () => {
 // blogunda tanimliydi. Sonuc: DUZELTMENIN KENDISI, duzeltmeye calistigi hata
 // yolunda "'ns_list' is undefined" ile patlardi. YAML gecerliydi, testler yesildi.
 //
-// Bir degiskenin sonraki play'de gorunur olmasinin UC mesru yolu var:
+// Bir degiskenin sonraki play'de gorunur olmasinin DORT mesru yolu var:
 //   1. extra_vars / vars_files  → her play'de gorunur (bu bekci gormez, sorun degil)
 //   2. `set_fact`               → host fact'i olarak kalici
 //   3. `add_host: ... <var>:`   → dinamik envanterdeki host'a host var olarak yazilir
+//   4. `{{ x | default(...) }}` → tanimsizlik SESSIZ DEGILDIR; yazili bir yedek deger var
 // Bunlarin disinda, onceki play'in `vars:` bloguna basvurmak SESSIZ tanimsizliktir.
+//
+// 4 NUMARA 2026-09-27'DE EKLENDI. Bekci `| default(...)` ile korunan basvurulari da
+// ihlal sayiyordu ve nginx_console_fetch.yml'i haksiz yere isaretliyordu: toplayici
+// play'deki UC `console_dir` basvurusunun UCU DE `| default('/sw/BMW_PORTAL/nginx_console')`
+// tasiyor, yani tanimsizlik diye bir sey yok. Yanlis pozitif de bir korluktur: bekciye
+// guven biter ve bir sonraki GERCEK bulgu da gorulmez.
+//
+// OLCUM BASVURU BASINADIR, DEGISKEN BASINA DEGIL: ayni degisken bir yerde `default`
+// ile bir yerde CIPLAK geciyorsa ciplak olan YINE ihlaldir.
+const DEFAULTLI = (text, name) => {
+  const re = new RegExp(`(?<![\\w.])${name}(?![\\w])`, 'g');
+  let m;
+  let gorulen = 0;
+  while ((m = re.exec(text))) {
+    gorulen++;
+    const sonrasi = text.slice(m.index + name.length, m.index + name.length + 40);
+    if (!/^\s*\|\s*default\s*\(/.test(sonrasi)) return false; // ciplak basvuru var
+  }
+  return gorulen > 0;
+};
 //
 // ISTISNA — nginx_config_migration.yml: play#5 `source_host`a basvuruyor, deger
 // play#1 `vars:`inda. Playbook basligi bunu bir extra_var olarak belgeliyor
@@ -322,6 +345,7 @@ test('TUZAK 4: bir play, onceki play’in `vars:` blogundaki degiskene basvurmuy
       for (const [name, j] of definedIn) {
         if (j >= i) continue;
         if (!new RegExp(`(?<![\\w.])${name}(?![\\w])`).test(text)) continue;
+        if (DEFAULTLI(text, name)) continue; // her basvuru yazili bir yedege dusuyor
         // Mesru tasima yollari: set_fact, add_host host var'i, ya da bu play'in kendi vars'i
         const carried = plays.slice(0, i).some((prev) => {
           const t = prev.text;
@@ -367,4 +391,17 @@ test('TUZAK 4 bekcisi KOR DEGIL: sentetik ihlali yakalar', () => {
     /(?<![\w.])benim_degiskenim(?![\w])/.test(plays[1].text),
     'bekcinin arama deseni ikinci play’deki basvuruyu gormeli',
   );
+  // `default` muafiyeti bir DELIK acmasin: ciplak basvuru hala ihlaldir.
+  assert.equal(DEFAULTLI(plays[1].text, 'benim_degiskenim'), false);
+});
+
+test('TUZAK 4 `default` muafiyeti KOR DEGIL: bir tek ciplak basvuru yeter', () => {
+  // Muafiyetin kendisi de sinanir, yoksa "default gecen her degiskeni gec" diye
+  // okunup bekciyi sessizce kapatirdi.
+  const hepsiKorumali = '{{ yol | default("/a") }} ve {{ yol|default("/b") }}';
+  const biriCiplak = '{{ yol | default("/a") }} ve {{ yol }}';
+  const hicYok = '{{ baska_sey }}';
+  assert.equal(DEFAULTLI(hepsiKorumali, 'yol'), true, 'her basvuru korumali — muafiyet gecerli');
+  assert.equal(DEFAULTLI(biriCiplak, 'yol'), false, 'TEK ciplak basvuru muafiyeti DUSURMELI');
+  assert.equal(DEFAULTLI(hicYok, 'yol'), false, 'hic basvuru yoksa muafiyet URETILMEZ');
 });

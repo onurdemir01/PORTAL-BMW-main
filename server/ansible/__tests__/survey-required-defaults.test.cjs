@@ -26,7 +26,6 @@ function loadFn(specFields, { throws = null } = {}) {
     return { spec: specFields };
   };
   const console_ = { log: () => {}, warn: () => {} };
-  // eslint-disable-next-line no-new-func
   const factory = new Function('awxRequestToServer', 'console', `${body}; return fillRequiredSurveyDefaults;`);
   return { fn: factory(awxRequestToServer, console_), calls };
 }

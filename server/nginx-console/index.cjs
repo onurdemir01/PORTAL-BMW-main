@@ -782,7 +782,7 @@ function initNginxConsole(app) {
     if (!['create', 'update'].includes(mode)) return res.status(400).json({ ok: false, message: 'mode create|update olmalı.' });
     if (content == null || !content.trim()) return res.status(400).json({ ok: false, message: 'İçerik boş.' });
     if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT) return res.status(400).json({ ok: false, message: 'İçerik 512 KB sınırını aşıyor.' });
-    if (/\x00/.test(content)) return res.status(400).json({ ok: false, message: 'İçerikte geçersiz karakter.' });
+    if (content.includes('\0')) return res.status(400).json({ ok: false, message: 'İçerikte geçersiz karakter.' });
 
     // Host basina on kontrol (dokum uzerinden): update'te dosya var mi + sha; create'te dosya yok mu.
     const expected = {};

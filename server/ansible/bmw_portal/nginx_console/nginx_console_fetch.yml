@@ -30,72 +30,80 @@
 - name: "--- [Play] Hedef sunucular - verilen liste ya da envanterden kesif ---"
   hosts: GBLABT02
   gather_facts: no
+  ignore_unreachable: true
   vars:
     console_dir: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}"
   tasks:
-    - name: --- [Task] Cikti dizini ---
-      ansible.builtin.file:
-        path: "{{ console_dir }}/raw"
-        state: directory
-        mode: '0777'
-      ignore_errors: true
-
-    # target_hosts verilmediyse: nginx_audit.yml / nginx_metadata ile AYNI kesif
-    # (bmw_nginx/nginx_metadata/files/get_nginx_hosts.py -> dbo.Inventory, nginx_version dolu).
-    - name: --- [Task] Envanter kesfi (target_hosts bos) ---
-      when: (target_hosts | default([]) | length) == 0
+    - name: --- [Block] Hedef kesfi ---
       block:
-        - name: --- [Task] Host kesif script'ini kopyala ---
-          become: true
-          become_method: dzdo
-          become_user: was
-          ansible.builtin.copy:
-            src: ../../bmw_nginx/nginx_metadata/files/get_nginx_hosts.py
-            dest: /vhosting/scripts/get_nginx_hosts.py
-            mode: '0755'
-
-        - name: --- [Task] Envanterden nginx hostlarini sor ---
-          become: true
-          become_method: dzdo
-          become_user: was
-          ansible.builtin.command: python3 /vhosting/scripts/get_nginx_hosts.py
-          register: nginx_known_hosts_result
-          changed_when: false
-      always:
-        - name: --- [Task] Host kesif script'ini kaldir ---
-          become: true
-          become_method: dzdo
-          become_user: was
+        - name: --- [Task] Cikti dizini ---
           ansible.builtin.file:
-            path: /vhosting/scripts/get_nginx_hosts.py
-            state: absent
-          failed_when: false
+            path: "{{ console_dir }}/raw"
+            state: directory
+            mode: '0777'
+          ignore_errors: true
 
-    - name: --- [Task] Hedef listesi ---
-      ansible.builtin.set_fact:
-        console_targets: >-
-          {{ ((target_hosts | default([]) | length) > 0)
-             | ternary(target_hosts | default([]), nginx_known_hosts_result.stdout_lines | default([]))
-             | map('trim') | map('upper') | reject('equalto', '') | unique | list }}
+        # target_hosts verilmediyse: nginx_audit.yml / nginx_metadata ile AYNI kesif
+        # (bmw_nginx/nginx_metadata/files/get_nginx_hosts.py -> dbo.Inventory, nginx_version dolu).
+        - name: --- [Task] Envanter kesfi (target_hosts bos) ---
+          when: (target_hosts | default([]) | length) == 0
+          block:
+            - name: --- [Task] Host kesif script'ini kopyala ---
+              become: true
+              become_method: dzdo
+              become_user: was
+              ansible.builtin.copy:
+                src: ../../bmw_nginx/nginx_metadata/files/get_nginx_hosts.py
+                dest: /vhosting/scripts/get_nginx_hosts.py
+                mode: '0755'
 
-    - name: --- [Task] Hedef yoksa DUR ---
-      ansible.builtin.fail:
-        msg: >-
-          Hedef sunucu yok: target_hosts bos ve envanter kesfi 0 host dondurdu (muhtemelen
-          middleware_inventory henuz calismadi). "all"a dusup tum filoyu taramak yerine duruyoruz.
-      when: (console_targets | length) == 0
+            - name: --- [Task] Envanterden nginx hostlarini sor ---
+              become: true
+              become_method: dzdo
+              become_user: was
+              ansible.builtin.command: python3 /vhosting/scripts/get_nginx_hosts.py
+              register: nginx_known_hosts_result
+              changed_when: false
+          always:
+            - name: --- [Task] Host kesif script'ini kaldir ---
+              become: true
+              become_method: dzdo
+              become_user: was
+              ansible.builtin.file:
+                path: /vhosting/scripts/get_nginx_hosts.py
+                state: absent
+              failed_when: false
 
-    - name: --- [Task] add_host ---
-      ansible.builtin.add_host:
-        name: "{{ item }}"
-        groups: nginx_console_targets
-      loop: "{{ console_targets }}"
-      loop_control:
-        label: "{{ item }}"
+        - name: --- [Task] Hedef listesi ---
+          ansible.builtin.set_fact:
+            console_targets: >-
+              {{ ((target_hosts | default([]) | length) > 0)
+                 | ternary(target_hosts | default([]), nginx_known_hosts_result.stdout_lines | default([]))
+                 | map('trim') | map('upper') | reject('equalto', '') | unique | list }}
 
-    - name: --- [Task] Ozet ---
-      ansible.builtin.debug:
-        msg: "{{ console_targets | length }} sunucu ({{ 'verilen liste' if (target_hosts | default([]) | length) > 0 else 'envanter kesfi' }}) -> {{ console_dir }}/raw"
+        - name: --- [Task] Hedef yoksa DUR ---
+          ansible.builtin.fail:
+            msg: >-
+              Hedef sunucu yok: target_hosts bos ve envanter kesfi 0 host dondurdu (muhtemelen
+              middleware_inventory henuz calismadi). "all"a dusup tum filoyu taramak yerine duruyoruz.
+          when: (console_targets | length) == 0
+
+        - name: --- [Task] add_host ---
+          ansible.builtin.add_host:
+            name: "{{ item }}"
+            groups: nginx_console_targets
+          loop: "{{ console_targets }}"
+          loop_control:
+            label: "{{ item }}"
+
+        - name: --- [Task] Ozet ---
+          ansible.builtin.debug:
+            msg: "{{ console_targets | length }} sunucu ({{ 'verilen liste' if (target_hosts | default([]) | length) > 0 else 'envanter kesfi' }}) -> {{ console_dir }}/raw"
+      rescue:
+        - name: --- [Task] Kesif hatasi kaydi ---
+          ansible.builtin.set_fact:
+            console_discovery_error: >-
+              {{ ansible_failed_result.msg | default(ansible_failed_result | default('hedef kesfi basarisiz')) }}
 
 - name: --- [Play] Konfigurasyon + sertifika dokumu ---
   hosts: nginx_console_targets
@@ -198,7 +206,7 @@
                'skipped': (hostvars[item].console_fetch_skipped | default(false) | bool),
                'error': (hostvars[item].console_fetch_error | default('unreachable' if hostvars[item].console_fetch_ok is not defined else ''))
              } ] }}
-      loop: "{{ groups['nginx_console_targets'] }}"
+      loop: "{{ groups['nginx_console_targets'] | default([]) }}"
       loop_control:
         label: "{{ item }}"
 
@@ -235,6 +243,7 @@
       ansible.builtin.set_stats:
         data:
           nginx_console_fetch_result:
+            discovery_error: "{{ hostvars['GBLABT02'].console_discovery_error | default('') }}"
             hosts: "{{ fetch_results | default([]) }}"
             ok_count: "{{ fetch_results | default([]) | selectattr('ok') | list | length }}"
             dumped_count: "{{ fetch_results | default([]) | selectattr('ok') | rejectattr('skipped') | list | length }}"
@@ -242,5 +251,9 @@
 
     - name: --- [Task] Hic host dokulemediyse basarisiz ---
       ansible.builtin.fail:
-        msg: "Hicbir sunucudan dokum alinamadi: {{ fetch_results | default([]) }}"
+        msg: >-
+          Hicbir sunucudan dokum alinamadi.
+          {{ ("Hedef kesfi basarisiz: " + (hostvars['GBLABT02'].console_discovery_error | string))
+             if (hostvars['GBLABT02'].console_discovery_error | default('')) | length > 0
+             else ("Sonuclar: " + (fetch_results | default([]) | string)) }}
       when: (fetch_results | default([]) | selectattr('ok') | list | length) == 0

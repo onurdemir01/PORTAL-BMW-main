@@ -155,14 +155,37 @@ test('glob’da var olmayan dizin YOK (bayat girdi kalmasin)', () => {
 // BU BEKCI NE ISE YARAR: `N`in sessizce YUKARI kaymasini engeller. Biri uyari
 // ekleyip siniri buyutur ve kimse fark etmezse cirCir anlamsizlasir — `lint:ascii`
 // kapisinin basina gelenin aynisi.
+//
+// ── 2026-09-27: CIRCIR KAYMISTI VE BEKCI BUNU GOREMIYORDU ───────────────────
+//
+// Bekci eslint'i `npx` ile cagiriyordu; Windows'ta `npx` bir `.cmd` dosyasidir ve
+// `execFileSync` kabuk acmadigi icin ENOENT atiyordu. Cikti bos kaliyor, `JSON.parse('')`
+// patliyordu — yani bekci OLCEMEDIGI icin kirmiziydi. Yerel betik dogrudan
+// calistirilinca gercek tablo cikti: sinir 87, gercek 124 (ve 1 HATA). Yani
+// `npm run lint` de bir suredir DUSUYORDU.
+//
+// YAPILAN: once react-hooks birikimiyle ilgisi olmayan 7 bulgu GERCEKTEN duzeltildi —
+//   * no-control-regex (HATA): `/\x00/` yerine `content.includes('\0')`
+//   * 2 x no-irregular-whitespace: kaynaktaki literal BOM karakteri `U+FEFF` kacisina
+//   * 4 x olu `eslint-disable` yonergesi kaldirildi
+// Geriye kalan 118in TAMAMI yukarida anlatilan react-hooks birikimidir; sinir
+// BILEREK 118e cekildi. Bu bir KAZANIM DEGIL, kaybedilen zeminin KAYDIDIR:
+// 87den 118e cikis, bekci kor oldugu donemde sessizce olmustu.
 test('RT1 `--max-warnings` siniri GERCEK uyari sayisiyla AYNI', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   const declared = Number((pkg.scripts.lint.match(/--max-warnings\s+(\d+)/) || [])[1]);
   assert.ok(Number.isInteger(declared), '`lint` scripti --max-warnings tasimiyor');
 
+  // `npx` ILE CAGRILMAZ: Windows'ta `npx` bir `.cmd` dosyasidir ve `execFileSync`
+  // kabuk acmadigi icin ENOENT atar — `err.stdout` tanimsiz kalir, `out` bos gelir
+  // ve `JSON.parse('')` ile bekci "SyntaxError" diye duserdi. Yani bekci bir seyi
+  // OLCEMEDIGI icin kirmizi oluyordu, olctugu sey bozuk oldugu icin degil.
+  // Yerel eslint betigi dogrudan `process.execPath` ile kosturulur.
+  const eslintPkg = require.resolve('eslint/package.json');
+  const eslintBin = path.join(path.dirname(eslintPkg), 'bin', 'eslint.js');
   let out = '';
   try {
-    out = execFileSync('npx', ['eslint', 'src/', 'server/', '-f', 'json'], {
+    out = execFileSync(process.execPath, [eslintBin, 'src/', 'server/', '-f', 'json'], {
       cwd: ROOT,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
@@ -171,6 +194,9 @@ test('RT1 `--max-warnings` siniri GERCEK uyari sayisiyla AYNI', () => {
     // eslint uyari varken de 0 doner (hata yoksa); yine de savunmaci okuyoruz.
     out = String(err.stdout || '');
   }
+  // Bos cikti "uyari yok" DEGIL, "eslint kosmadi" demektir. Ayirmazsak bekci
+  // sinir 0 oldugunda sessizce yesile donerdi.
+  assert.ok(out.trim().length > 0, 'eslint hic calismadi — bu bekci hicbir sey olcmedi');
   const actual = JSON.parse(out).reduce((n, f) => n + f.warningCount, 0);
 
   assert.equal(
