@@ -634,14 +634,11 @@ function initDenetim(app) {
   // Ortam bilgisi OpenShift tarafinda NAMESPACE son ekinden gelir (-dev/-test/-qa/-prod),
   // cluster'dan DEGIL: ark_dev ile ark_test ayni cluster'lari paylasir, cluster tek basina
   // ortam bilgisi tasimaz. nginx tarafinda ise env, vhost DOSYA ADINDAN turer.
-  // SPA TANIMI (kullanici tarafindan verildi): uygulama adinda "-app-v" ya da
-  // "-app-emb-v" GECIYORSA o uygulama bir SPA'dir. Ad kalibina bakmak zorundayiz cunku
-  // dbo.Openshift_Inventory yalnizca cluster/namespace/application tutuyor - SPA olup
-  // olmadigini soyleyen bir sutun YOK.
-  // ICERIR (contains) kontrolu, "ile biter" DEGIL: kural boyle verildi ve ornegin
-  // "...-app-emb-v0" gibi adlarda surum sonekinden sonra baska bir sey de gelebilir.
-  const SPA_RE = /-app(-emb)?-v/i;
-  const SPA_LABEL = '-app-v / -app-emb-v';
+  // SPA TANIMI TEK KAYNAKTA: server/audit/spa-pattern.cjs. Bu dosyanin kendi kopyasi
+  // vardi; 2026-09-28'de kural genisletilirken (kullanici: "bazi SPA uygulamalarinin
+  // standarta uymayan kalibi var, bence genisletelim") burasi da ayni kurali kullanmali,
+  // yoksa Nginx SPA ekranindaki sayilar Tasima ekranininkini tutmaz.
+  const { isSpaApp, SPA_PATTERN_LABEL: SPA_LABEL } = require('./spa-pattern.cjs');
 
   // ── 1c) ROUTE ISTATISTIKLERI: ortam basina route / SPA / SPA-disi / IP ──────────────
   // Hesap route-stats.cjs'te (birim testli). Platform suzgeci kapsam ucuyla ayni.
@@ -891,7 +888,7 @@ function initDenetim(app) {
           if (!ocpAll.has(E)) ocpAll.set(E, new Set());
           ocpAll.get(E).add(app.toLowerCase());
         }
-        if (!SPA_RE.test(app)) {
+        if (!isSpaApp(app)) {
           ocpNonSpa.add(app.toLowerCase());
           continue;
         }
@@ -968,7 +965,7 @@ function initDenetim(app) {
           .toUpperCase();
         const app = String(r.application || '').trim();
         if (!app || !e) continue;
-        if (!SPA_RE.test(app)) {
+        if (!isSpaApp(app)) {
           ngxNonSpa.add(app);
           continue;
         }
@@ -1009,7 +1006,7 @@ function initDenetim(app) {
             continue;
           }
           proxyStats.resolved++;
-          if (!SPA_RE.test(res.application)) {
+          if (!isSpaApp(res.application)) {
             ngxNonSpa.add(res.application);
             continue;
           }

@@ -46,44 +46,10 @@
 // kalibina uymayanlar ayri listede gosterilir, "eksik" sayilmaz.
 'use strict';
 
-const SPA_RE = /-app(-emb)?-v/i;
-
-// SPA KALIBI GENISLETILDI (kullanici, 2026-09-28: "SPA olmayan hedefler" listesini
-// gosterip "bu tanimlari da olusturmamiz lazim" dedi).
-//
-// Eski kural yalnizca "-app-v" / "-app-emb-v" iceren adlari SPA sayiyordu. Ekipteki
-// on yuz uygulamalarinin bir kismi bu ara eki TASIMIYOR ama surum ekini tasiyor:
-//   non-core-assets-v0, doc-acceptance-frontend-v0, digital-fast-limit-cf-v0,
-//   disney-bonus-cfa-v0, dlyd-prdct-rstrctring-v0, investor-dps-mngmnt-v0
-// Bunlar envanterde (ns, app) olarak COZULUYOR ama ad kalibina takildiklari icin
-// "SPA olmayan" listesine dusuyor, yani yeni sunucuda dizin BEKLENMIYOR ve "Tanim
-// olustur" dugmesi hic cikmiyordu.
-//
-// YENI KURAL: uygulama adi SURUM EKIYLE bitiyorsa (-v0, -v1, ...) SPA'dir. Eski kalip
-// KALDIRILMADI, uzerine EKLENDI - boylece bugun SPA sayilan hicbir satir listeden
-// dusmez (ornegin "x-app-v0-y" gibi surum ekiyle BITMEYEN adlar).
-//
-// KABUL EDILEN RISK: gercekten API olan ama "-v1" ile biten bir servis de artik SPA
-// sayilir ve ekranda "dizin eksik" gorunur. Yanlis alarm, sessiz kayip degil: tanim
-// ancak kullanici dugmeye basarsa olusur. Tersi (gercek bir SPA'yi listeden dusurmek)
-// tasimanin unutulmasi demekti.
-//
-// BU KURAL YALNIZ TASIMA EKRANINA AITTIR. route-stats.cjs ve denetim.cjs'teki SPA_RE
-// kopyalari BILEREK dar kaldi: oradaki soru "bu route bir SPA mi" (siniflandirma),
-// burada ise "bu hedef yeni sunucuda DIZIN ister mi" (tasima islemi). Farkli sorular.
-const SPA_VER_RE = /-v\d+$/i;
-/** Cozulmus uygulama adi yeni sunucuda dizin ister mi? */
-const isSpaApp = (app) => {
-  const a = String(app || '');
-  return SPA_RE.test(a) || SPA_VER_RE.test(a);
-};
-// FQDN'in ilk etiketinde ("<app>-<ns>") surum eki ORTADA kalir: non-core-assets-v0-front-architecture
-const SPA_LABEL_VER_RE = /-v\d+-/i;
-/** Cozulememis hedefin ilk etiketi SPA kalibinda mi? */
-const isSpaLabel = (label) => {
-  const s = String(label || '');
-  return SPA_RE.test(s) || SPA_LABEL_VER_RE.test(s);
-};
+// SPA KALIBI TEK YERDE (2026-09-28): kural bes dosyada ayri ayri yaziliydi; genisletirken
+// birini unutmak, ayni uygulamanin bir ekranda SPA, otekinde "SPA degil" gorunmesi demekti.
+// Kuralin kendisi ve gerekcesi: server/audit/spa-pattern.cjs.
+const { SPA_RE, isSpaApp, isSpaLabel, labelOf } = require('./spa-pattern.cjs');
 
 /** Sabit tasima gruplari (kullanici verdi, 2026-09-14). */
 const MIGRATION_GROUPS = [
@@ -182,9 +148,6 @@ function resolveTarget(host, routeByAddress, ocpByLabel, routeByLabel = new Map(
   }
   return ambiguous || { namespace: null, application: null, how: 'unresolved', suffixAdded: false };
 }
-
-/** "app-ns.apps.fw.garanti.com.tr" -> "app-ns" (ciplak ad zaten etikettir). */
-const labelOf = (host) => L(host).split('.')[0];
 
 /**
  * Etiketten (ns, app) CIKARIR — envanterde karsiligi olmayan hedefler icin SON CARE.
@@ -441,7 +404,7 @@ function buildMigration({
         } else {
           push(apps, key, { namespace: res.namespace, application: res.application, how: res.how });
         }
-      } else if (isSpaLabel(labelOf(target))) {
+      } else if (isSpaLabel(target)) {
         // ENVANTERDE YOK AMA ADI KONUSUYOR: hedef SPA kalibinda, ne route ne OpenShift
         // envanterinde karsiligi var. Satiri bos birakmak "bu neyin nesi" sorusunu ekibe
         // birakiyordu; ad kurumsal kalipta oldugu icin (<app>-<ns>.apps…) ns/app buradan

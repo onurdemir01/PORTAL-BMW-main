@@ -17,8 +17,15 @@
 
 const { envOfNamespace } = require('./ocp-platforms.cjs');
 
-const SPA_RE = /-app(-emb)?-v/i;
-const L = (s) => String(s || '').trim().toLowerCase();
+// SPA kalibi TEK KAYNAKTAN (2026-09-28, kullanici: "bazi SPA uygulamalarinin standarta
+// uymayan kalibi var, bence genisletelim"). Burada da ayni kural gecerli: eskiden bu
+// dosyanin kendi kopyasi vardi ve Nginx SPA ekranindaki sayilar Tasima ekraniyla
+// tutmuyordu. Gerekce: server/audit/spa-pattern.cjs.
+const { SPA_RE, isSpaApp } = require('./spa-pattern.cjs');
+const L = (s) =>
+  String(s || '')
+    .trim()
+    .toLowerCase();
 
 /** Route adresinden uygulama adi: "<app>-<ns>.apps..." -> app (ns biliniyor). */
 function appFromAddress(addr, nsLower) {
@@ -69,7 +76,7 @@ function buildRouteStats(routeRows) {
       b.unclassified++;
       continue;
     }
-    const kind = SPA_RE.test(app) ? 'spa' : 'nonSpa';
+    const kind = isSpaApp(app) ? 'spa' : 'nonSpa';
     b[kind]++;
     const ip = String(r.resolved_ip || '').trim();
     if (!ip) {
@@ -86,7 +93,8 @@ function buildRouteStats(routeRows) {
   const ORDER = ['DEV', 'TEST', 'QA', 'EDU', 'PROD'];
   const envs = [...byEnv.entries()]
     .sort((a, b) => {
-      const ia = ORDER.indexOf(a[0]), ib = ORDER.indexOf(b[0]);
+      const ia = ORDER.indexOf(a[0]),
+        ib = ORDER.indexOf(b[0]);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a[0].localeCompare(b[0]);
     })
     .map(([env, b]) => ({
@@ -97,9 +105,15 @@ function buildRouteStats(routeRows) {
       unclassified: b.unclassified,
       clusters: [...b.clusters].filter(Boolean).sort(),
       namespaces: b.namespaces.size,
-      terminations: [...b.terminations.entries()].map(([type, count]) => ({ type, count })).sort((a, c) => c.count - a.count),
-      spaIps: [...b.ips.spa.values()].map((x) => ({ ip: x.ip, count: x.count, samples: [...x.samples] })).sort((a, c) => c.count - a.count),
-      nonSpaIps: [...b.ips.nonSpa.values()].map((x) => ({ ip: x.ip, count: x.count, samples: [...x.samples] })).sort((a, c) => c.count - a.count),
+      terminations: [...b.terminations.entries()]
+        .map(([type, count]) => ({ type, count }))
+        .sort((a, c) => c.count - a.count),
+      spaIps: [...b.ips.spa.values()]
+        .map((x) => ({ ip: x.ip, count: x.count, samples: [...x.samples] }))
+        .sort((a, c) => c.count - a.count),
+      nonSpaIps: [...b.ips.nonSpa.values()]
+        .map((x) => ({ ip: x.ip, count: x.count, samples: [...x.samples] }))
+        .sort((a, c) => c.count - a.count),
       unresolvedIp: { ...b.unresolvedIp },
     }));
 
@@ -123,7 +137,9 @@ function buildRouteStats(routeRows) {
  */
 function routesOfIp(routeRows, ip, env, kind = 'all') {
   const want = String(ip || '').trim();
-  const E = String(env || '').trim().toUpperCase();
+  const E = String(env || '')
+    .trim()
+    .toUpperCase();
   const out = [];
   for (const r of routeRows || []) {
     if (String(r.resolved_ip || '').trim() !== want) continue;
@@ -131,7 +147,7 @@ function routesOfIp(routeRows, ip, env, kind = 'all') {
     const e = envOfNamespace(ns);
     if (E && (!e || e.toUpperCase() !== E)) continue;
     const app = appFromAddress(r.route_address, ns) || L(r.route_name) || null;
-    const k = !app ? 'unclassified' : SPA_RE.test(app) ? 'spa' : 'nonSpa';
+    const k = !app ? 'unclassified' : isSpaApp(app) ? 'spa' : 'nonSpa';
     if (kind !== 'all' && k !== kind) continue;
     out.push({
       namespace: ns,
@@ -142,7 +158,9 @@ function routesOfIp(routeRows, ip, env, kind = 'all') {
       cluster: String(r.cluster_name || '').trim(),
     });
   }
-  return out.sort((a, b) => a.namespace.localeCompare(b.namespace) || a.address.localeCompare(b.address));
+  return out.sort(
+    (a, b) => a.namespace.localeCompare(b.namespace) || a.address.localeCompare(b.address),
+  );
 }
 
 module.exports = { buildRouteStats, routesOfIp, appFromAddress, SPA_RE };

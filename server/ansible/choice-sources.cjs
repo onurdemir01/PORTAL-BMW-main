@@ -45,7 +45,9 @@ function cacheKey(source, params) {
 // Ortam adlari: survey'de kucuk harf (dev/test/qa/prod), nginx-hosts.cjs'te buyuk
 // (DEV/TEST/QA/PROD). Kaynak ikisini de kabul eder.
 function normEnv(v) {
-  const s = String(v || '').trim().toUpperCase();
+  const s = String(v || '')
+    .trim()
+    .toUpperCase();
   if (!s) return '';
   if (s === 'PRODUCTION') return 'PROD';
   return s;
@@ -58,23 +60,37 @@ function normEnv(v) {
 // `tenant` verilirse (or. 'ark' — RVP tanimlari YALNIZCA ARK cluster'i icin yapilir,
 // 2026-09-15 kullanici kurali) yalniz o tenant'in cluster'lari; yoksa ortamin tumu.
 async function clustersForEnv(env, tenant) {
-  const key = String(env || '').trim().toLowerCase();
-  const ten = String(tenant || '').trim().toLowerCase();
+  const key = String(env || '')
+    .trim()
+    .toLowerCase();
+  const ten = String(tenant || '')
+    .trim()
+    .toLowerCase();
   if (!key) return [];
   try {
     const tree = await require('../logx/v2/admin.cjs').getClusterTree();
     const byEnv = Object.entries(tree || {}).find(([k]) => String(k).toLowerCase() === key);
     if (!byEnv) return [];
-    const groups = Object.entries(byEnv[1]).filter(([t]) => !ten || String(t).toLowerCase() === ten);
-    return [...new Set(groups.map(([, cs]) => cs).flat().map((c) => String(c || '').trim()).filter(Boolean))];
+    const groups = Object.entries(byEnv[1]).filter(
+      ([t]) => !ten || String(t).toLowerCase() === ten,
+    );
+    return [
+      ...new Set(
+        groups
+          .map(([, cs]) => cs)
+          .flat()
+          .map((c) => String(c || '').trim())
+          .filter(Boolean),
+      ),
+    ];
   } catch {
     return [];
   }
 }
 
-// SPA uygulamasi: Nginx SPA tanimi yalnizca bu ada sahip uygulamalar icin yapilir
-// (Denetim > Nginx SPA ile AYNI kural — nginx-migration.cjs SPA_RE).
-const SPA_RE = /-app(-emb)?-v/i;
+// SPA uygulamasi: Nginx SPA tanimi yalnizca bu ada sahip uygulamalar icin yapilir.
+// Kural TEK KAYNAKTA (Denetim ekranlariyla ayni): server/audit/spa-pattern.cjs.
+const { SPA_RE, isSpaApp } = require('../audit/spa-pattern.cjs');
 
 // dbo.Openshift_Inventory: ortamin cluster'larindaki (namespace, application) ciftleri.
 // Cluster katalogu bos ise namespace son-eki ile daralir (digital-ch-test -> test).
@@ -95,7 +111,11 @@ async function ocpPairsForEnv(env, tenant) {
     // Katalogda o ortam/tenant yoksa: tenant verilmisse BOS doner (yanlis cluster'in
     // namespace'lerini listelemektense hic listelememek yegdir); tenant yoksa son-ek.
     if (String(tenant || '').trim()) return [];
-    const suffix = '%-' + String(env || '').trim().toLowerCase();
+    const suffix =
+      '%-' +
+      String(env || '')
+        .trim()
+        .toLowerCase();
     rows = (
       await query(
         `SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE LOWER(namespace) LIKE @s`,
@@ -114,7 +134,9 @@ async function nginxAuditRows(env, service) {
   const { query, sql } = require('../inventory/mssql.cjs');
   const params = [{ name: 'e', type: sql.NVarChar(16), value: normEnv(env) }];
   let where = `scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit) AND UPPER(env) = @e`;
-  const svc = String(service || '').trim().toUpperCase();
+  const svc = String(service || '')
+    .trim()
+    .toUpperCase();
   if (svc) {
     where += ` AND UPPER(service) = @svc`;
     params.push({ name: 'svc', type: sql.NVarChar(64), value: svc });
@@ -142,7 +164,7 @@ const SOURCES = {
       for (const p of pairs) {
         if (!p.namespace) continue;
         if (!count.has(p.namespace)) count.set(p.namespace, 0);
-        if (SPA_RE.test(p.application)) count.set(p.namespace, count.get(p.namespace) + 1);
+        if (isSpaApp(p.application)) count.set(p.namespace, count.get(p.namespace) + 1);
       }
       // SPA'si olan namespace'ler once — nginx_ops SPA tanimi icin anlamli olanlar onlar.
       return [...count.entries()]
@@ -166,7 +188,13 @@ const SOURCES = {
     async load({ env, namespace, tenant }) {
       const ns = String(namespace || '').trim();
       const pairs = await ocpPairsForEnv(env, tenant);
-      const apps = [...new Set(pairs.filter((p) => p.namespace === ns && SPA_RE.test(p.application)).map((p) => p.application))];
+      const apps = [
+        ...new Set(
+          pairs
+            .filter((p) => p.namespace === ns && isSpaApp(p.application))
+            .map((p) => p.application),
+        ),
+      ];
       return apps.sort().map((a) => ({ value: a, label: a }));
     },
   },
@@ -184,12 +212,18 @@ const SOURCES = {
       const r = await query(`SELECT hostname, env, location, service FROM dbo.nginx_inventory`);
       const out = [];
       for (const row of r.recordset || []) {
-        const host = String(row.hostname || '').trim().toUpperCase();
+        const host = String(row.hostname || '')
+          .trim()
+          .toUpperCase();
         if (!host) continue;
         const e = normEnv(row.env) || envOfHost(host);
         if (wantEnv && e !== wantEnv) continue;
         const svc = String(row.service || '').trim();
-        out.push({ value: host, label: `${host}${svc ? '  ·  ' + svc : ''}${row.location ? '  ·  ' + row.location : ''}`, group: e || 'BILINMIYOR' });
+        out.push({
+          value: host,
+          label: `${host}${svc ? '  ·  ' + svc : ''}${row.location ? '  ·  ' + row.location : ''}`,
+          group: e || 'BILINMIYOR',
+        });
       }
       out.sort((a, b) => a.group.localeCompare(b.group) || a.value.localeCompare(b.value));
       return out;
@@ -203,7 +237,17 @@ const SOURCES = {
     params: [{ name: 'env', label: 'Ortam alanı', required: true }],
     async load({ env }) {
       const rows = await nginxAuditRows(env, '');
-      const svcs = [...new Set(rows.map((r) => String(r.service || '').trim().toUpperCase()).filter(Boolean))];
+      const svcs = [
+        ...new Set(
+          rows
+            .map((r) =>
+              String(r.service || '')
+                .trim()
+                .toUpperCase(),
+            )
+            .filter(Boolean),
+        ),
+      ];
       return svcs.sort().map((s) => ({ value: s, label: s }));
     },
   },
@@ -268,13 +312,16 @@ const SOURCES = {
       for (const row of r.recordset || []) {
         if (envOfHost(row.host) !== wantEnv) continue;
         const loc = String(row.api_location || '').trim();
-        const conf = String(row.config_file || '').trim().replace(/\.conf$/i, '');
+        const conf = String(row.config_file || '')
+          .trim()
+          .replace(/\.conf$/i, '');
         if (loc) locs.add(loc);
         if (conf) confs.add(conf);
       }
       const out = [];
       for (const v of [...locs].sort()) out.push({ value: v, label: v, group: 'API yolu' });
-      for (const v of [...confs].sort()) out.push({ value: v, label: v, group: 'Konfigürasyon dosyası' });
+      for (const v of [...confs].sort())
+        out.push({ value: v, label: v, group: 'Konfigürasyon dosyası' });
       return out;
     },
   },

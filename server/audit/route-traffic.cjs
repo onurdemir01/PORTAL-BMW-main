@@ -22,7 +22,8 @@
 'use strict';
 
 const { envOfNamespace } = require('./ocp-platforms.cjs');
-const { appFromAddress, SPA_RE } = require('./route-stats.cjs');
+const { appFromAddress } = require('./route-stats.cjs');
+const { isSpaLabel } = require('./spa-pattern.cjs');
 
 const SILENT_DAYS = 30;
 const DEAD_DAYS = 90;
@@ -147,7 +148,9 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
     const route = a ? a.route : e ? e.route : routeLower;
     const address = e?.address || '';
     const app = appFromAddress(address, nsLower) || route;
-    const spa = SPA_RE.test(address) || SPA_RE.test(route);
+    // Burada elde UYGULAMA ADI degil route adresi/adi var: "<app>-<ns>" kalibinda surum
+    // eki ORTADA kalabilir, o yuzden isSpaApp degil isSpaLabel (bkz. spa-pattern.cjs).
+    const spa = isSpaLabel(address) || isSpaLabel(route);
     let req7 = 0,
       req30 = 0,
       req90 = 0,
