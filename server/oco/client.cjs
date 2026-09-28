@@ -52,7 +52,10 @@ function describeUpstreamError(statusCode, text, num) {
     );
   }
   if (statusCode === 400) {
-    return fail(`OCO servisi ${num} numarasını kabul etmedi (HTTP 400). Numarayı kontrol edin.${suffix}`, 400);
+    return fail(
+      `OCO servisi ${num} numarasını kabul etmedi (HTTP 400). Numarayı kontrol edin.${suffix}`,
+      400,
+    );
   }
   if (statusCode >= 500) {
     return fail(
@@ -72,13 +75,28 @@ function upstreamHint(text) {
   try {
     const j = JSON.parse(raw);
     const m = j?.ResultMessage || j?.Message || j?.message || j?.error || '';
-    return String(m || '').trim().slice(0, 160);
+    return String(m || '')
+      .trim()
+      .slice(0, 160);
   } catch {
     /* JSON degil */
   }
-  // HTML hata sayfasi (IIS/ASP.NET 404 sayfasi gibi) kullaniciya gosterilecek bir sey degil.
-  if (/^\s*<(!doctype|html)/i.test(raw)) return '';
-  const plain = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  // HTML hata sayfasi (IIS/ASP.NET/WCF) kullaniciya gosterilecek bir sey DEGIL.
+  //
+  // Eski kontrol yalnizca `<!doctype` / `<html` ile baslayanlari eliyordu. WCF'in hata
+  // sayfasi `<?xml ...?>` ya da bosluklarla basliyor; kontrolden KACIP gecti ve kullaniciya
+  // "(Request Error BODY { color: #000000; background-color: white; ... })" diye CSS
+  // dokuldu (kullanici ekran goruntusu, 2026-09-28). Artik govdede HTML etiketi gorulmesi
+  // yeter; sayfanin <title>'i varsa TEK BASINA onu tasiriz ("Request Error" gibi kisa ve
+  // gercekten bilgi veren tek parca odur.)
+  if (/<\s*(\?xml|!doctype|html|head|body|style)\b/i.test(raw)) {
+    const t = /<title[^>]*>([^<]{1,120})<\/title>/i.exec(raw);
+    return t ? t[1].trim() : '';
+  }
+  const plain = raw
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   return plain.slice(0, 120);
 }
 
@@ -120,7 +138,8 @@ async function getChangeOrder(ocoNumber) {
   if (!num) throw fail('OCO numarası yalnızca rakamlardan oluşmalıdır.', 400);
 
   const cfg = getConfig();
-  if (!cfg.baseUrl) throw fail('OCO servisi yapılandırılmamış (Admin > Sistem > OCO_API_URL).', 503);
+  if (!cfg.baseUrl)
+    throw fail('OCO servisi yapılandırılmamış (Admin > Sistem > OCO_API_URL).', 503);
 
   const url = new URL(`${cfg.baseUrl}${cfg.changeOrderPath}`);
   url.searchParams.set('wfInstanceId', num);
@@ -161,12 +180,16 @@ async function getChangeOrder(ocoNumber) {
   }
 
   const wrapper = payload?.GetChangeOrderByWfInstanceIdResult;
-  if (!wrapper) throw fail('OCO cevabı beklenen biçimde değil (GetChangeOrderByWfInstanceIdResult yok).', 502);
+  if (!wrapper)
+    throw fail('OCO cevabı beklenen biçimde değil (GetChangeOrderByWfInstanceIdResult yok).', 502);
   // Ornek cevapta basari kodu 1000. Kod farkliysa ya da Result bos ise kayit
   // bulunamamis demektir - "bos kaydi gecerli say" YAPILMAZ, prod'a dokunuyoruz.
   if (!wrapper.Result) {
     const msg = wrapper.ResultMessage ? ` (${wrapper.ResultMessage})` : '';
-    throw fail(`OCO ${num} bulunamadı. Numarayı kontrol edin — kayıt OCO sisteminde açılmış olmalı.${msg}`, 404);
+    throw fail(
+      `OCO ${num} bulunamadı. Numarayı kontrol edin — kayıt OCO sisteminde açılmış olmalı.${msg}`,
+      404,
+    );
   }
 
   return { payload, result: wrapper.Result, resultCode: wrapper.ResultCode };
@@ -184,4 +207,11 @@ function httpStatus(err) {
   return NGINX_INTERCEPTED.has(s) ? 400 : s;
 }
 
-module.exports = { getChangeOrder, normalizeOcoNumber, describeUpstreamError, upstreamHint, httpStatus, NGINX_INTERCEPTED };
+module.exports = {
+  getChangeOrder,
+  normalizeOcoNumber,
+  describeUpstreamError,
+  upstreamHint,
+  httpStatus,
+  NGINX_INTERCEPTED,
+};

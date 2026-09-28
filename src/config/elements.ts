@@ -44,6 +44,7 @@ export const PAGES: PageElement[] = [
   { id: 'Performance', label: 'Performance', route: '/performance' },
   { id: 'AI Analist', label: 'AI Analist', route: '/ai-analyst' },
   { id: 'Nöbet', label: 'Nöbet', route: '/duty-roster' },
+  { id: 'OcoTakvimi', label: 'OCO Takvimi', route: '/oco-takvimi' },
   // 2026-09-19: "Yardımcı Araçlar" / "Faydalı Linkler" MENUDEN KALDIRILDI (kullanici: "su an
   // hicbir ise yaramiyor"). Ilk kaldirma 2026-08-26, geri acma 2026-09-07 — uc yer birden:
   // burasi (ELEMENTS + NAV_GROUPS), src/App.tsx route'u, mssql-setup removeKaynaklarNavGroup().
@@ -80,7 +81,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
   // Crypto Hub (2026-09-25): Metaco + Wyden, kendi girisi
   { id: 'cryptohub', label: 'Crypto Hub', itemIds: ['CryptoHub'] },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
-  { id: 'operasyon', label: 'Nöbetçiler', itemIds: ['Nöbet'] },
+  { id: 'operasyon', label: 'Nöbetçiler', itemIds: ['Nöbet', 'OcoTakvimi'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.
   // Grup etiketi "Otomasyon" -> "Self Servis"; grup ANAHTARI ("otomasyon") degismedi
   // (DB'deki nav_group element_key'i ve ona bagli kayitlar korunsun diye).

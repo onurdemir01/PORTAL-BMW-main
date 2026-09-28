@@ -14,6 +14,7 @@
 'use strict';
 
 const express = require('express');
+const { httpStatus } = require('./client.cjs');
 
 const TTL_MS = 60 * 1000;
 let _cache = { at: 0, key: '', value: null };
@@ -36,7 +37,12 @@ function initOco(app) {
     if (!isConfigured()) {
       // "YAPILANDIRILMAMIS" ile "OCO YOK" AYRI: boş bir liste döndürmek, ekipte hiç
       // değişiklik yokmuş gibi okunurdu.
-      return res.status(503).json({
+      //
+      // HTTP KODU 400: anlam olarak 503 ama TELDEN 503 GEÇMEZ. Portal nginx arkasında
+      // `proxy_intercept_errors on` ile çalışıyor ve 403/404/500/502/503/504 cevaplarının
+      // GÖVDESİNİ kendi HTML sayfasıyla değiştiriyor — yani aşağıdaki mesaj kullanıcıya
+      // hiç ulaşmaz, ekranda ham HTML görünürdü (bkz. oco/client.cjs httpStatus).
+      return res.status(httpStatus({ status: 503 })).json({
         ok: false,
         notConfigured: true,
         message: 'OCO servisi yapılandırılmamış (Admin > Sistem > OCO_API_URL).',
@@ -66,7 +72,8 @@ function initOco(app) {
       _cache = { at: Date.now(), key, value };
       res.json({ ...value, cached: false });
     } catch (err) {
-      res.status(err.status || 502).json({ ok: false, message: err.message });
+      // 502/503 gövdesini nginx yutardı; anlam err.status'ta kalır, tel üzerinde 400'e çevrilir.
+      res.status(httpStatus(err)).json({ ok: false, message: err.message });
     }
   });
 

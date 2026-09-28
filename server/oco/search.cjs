@@ -112,6 +112,66 @@ function sayfaUrl(cfg, skip, groupId) {
 }
 
 /**
+ * Arama ucunun HTTP hatasını anlatır.
+ *
+ * NEDEN AYRI BİR FONKSİYON: burada client.cjs'in `describeUpstreamError`'ı kullanılıyordu.
+ * O metinler TEK BİR OCO KAYDI çeken uç için yazılmış; 400 alınca "…numarasını kabul
+ * etmedi, numarayı kontrol edin" diyor. Arama ucunda kullanıcıya gösterilen sayı ise OCO
+ * numarası değil GRUP KİMLİĞİ (6203) ve kullanıcının onu "kontrol etmesi" hiçbir işe
+ * yaramıyor — mesaj, yanlış yere bakmayı öğütlüyordu (kullanıcı bildirimi, 2026-09-28).
+ *
+ * ÇAĞRILAN ADRES MESAJA YAZILIR: bu uçta sorunun iki apayrı kaynağı var ve ikisi de aynı
+ * HTTP kodunu üretiyor — (a) OCO_API_URL yanlış/eksik girilmiş, (b) adres doğru ama servis
+ * isteği reddediyor. Adres görünmeden ikisi ayırt edilemiyordu; tarayıcıda aynı adresi
+ * açmak farkı bir bakışta gösteriyor.
+ */
+function aramaHatasi(statusCode, text, url, grup) {
+  const { upstreamHint } = require('./client.cjs');
+  const ipucu = upstreamHint(text);
+  const ek = ipucu ? ` Servis notu: ${ipucu}` : '';
+  const nerede = ` Çağrılan adres: ${url}`;
+  // Sunucu günlüğüne HAM gövdenin başı da düşer: ekrana taşınmayan WCF/IIS hata
+  // sayfalarında sebep çoğu zaman burada yazıyor.
+  console.warn(
+    `[OCO] arama HTTP ${statusCode} — ${url} — gövde: ${String(text || '')
+      .slice(0, 300)
+      .replace(/\s+/g, ' ')}`,
+  );
+
+  if (statusCode === 400) {
+    return fail(
+      `OCO arama servisi isteği reddetti (HTTP 400). Bu bir yapılandırma/servis sorunudur,` +
+        ` girdiğiniz bir değerden kaynaklanmıyor. Grup kimliği: ${grup}.${nerede}${ek}`,
+      502,
+    );
+  }
+  if (statusCode === 401 || statusCode === 403) {
+    return fail(
+      `OCO arama servisi Portal'ın erişimini reddetti (HTTP ${statusCode}). Servis bu çağrı` +
+        ` için kimlik doğrulaması bekliyor olabilir; yöneticiye bildirin.${nerede}${ek}`,
+      502,
+    );
+  }
+  if (statusCode === 404) {
+    return fail(
+      `OCO arama ucu bulunamadı (HTTP 404). OCO_API_URL yanlış olabilir (Admin > Sistem).${nerede}${ek}`,
+      502,
+    );
+  }
+  if (statusCode >= 500) {
+    return fail(
+      `OCO arama servisi şu an yanıt veremiyor (HTTP ${statusCode}). Biraz sonra tekrar` +
+        ` deneyin; sorun sürerse yöneticiye bildirin.${nerede}${ek}`,
+      502,
+    );
+  }
+  return fail(
+    `OCO arama servisi beklenmeyen bir cevap döndü (HTTP ${statusCode}).${nerede}${ek}`,
+    502,
+  );
+}
+
+/**
  * Grubun TÜM OCO'larını çeker (sayfalayarak) ve kronolojik döndürür.
  * @returns {{ rows: object[], total: number, fetched: number, truncated: boolean }}
  */
@@ -128,17 +188,22 @@ async function searchChangeOrders({ groupId, fetchPage } = {}) {
   const cek = fetchPage || ((skip) => httpPage(cfg, skip, grup));
 
   const rows = [];
+  // OFSET HAM KAYIT SAYISIDIR, ekrana çıkan satır sayısı DEĞİL. `rows.length` kullanmak
+  // sinsi bir hataydı: normalizeOrder numarasız bir kaydı düşürürse ofset geride kalır,
+  // sonraki sayfa aynı kayıtları tekrar getirir ve liste ya tekrarlar ya da hiç bitmez.
+  let alinan = 0;
   let total = 0;
   let sayfa = 0;
   let truncated = false;
 
   for (;;) {
-    const payload = await cek(rows.length);
+    const payload = await cek(alinan);
     const sonuc = payload && payload.SearchChangeOrderWithOffsetResult;
     if (!sonuc) throw fail('OCO arama servisinden beklenen yanıt gelmedi.', 502);
 
     const dilim = Array.isArray(sonuc.Result) ? sonuc.Result : [];
     total = Number(sonuc.TotalCount) || total;
+    alinan += dilim.length;
     for (const r of dilim) {
       const n = normalizeOrder(r);
       if (n) rows.push(n);
@@ -147,7 +212,7 @@ async function searchChangeOrders({ groupId, fetchPage } = {}) {
     sayfa += 1;
     // BOŞ SAYFA = DUR: aksi halde servis hep boş dönerse döngü TotalCount'a hiç ulaşamaz.
     if (!dilim.length) break;
-    if (rows.length >= total) break;
+    if (alinan >= total) break;
     if (sayfa >= MAX_PAGES) {
       // SESSİZ KIRPMA YOK: eksik liste "bu kadar OCO var" diye okunurdu.
       truncated = true;
@@ -182,8 +247,7 @@ async function httpPage(cfg, skip, grup) {
   }
 
   if (statusCode < 200 || statusCode >= 300) {
-    const { describeUpstreamError } = require('./client.cjs');
-    throw describeUpstreamError(statusCode, text, grup);
+    throw aramaHatasi(statusCode, text, url, grup);
   }
   try {
     return JSON.parse(text);
@@ -194,6 +258,7 @@ async function httpPage(cfg, skip, grup) {
 
 module.exports = {
   searchChangeOrders,
+  aramaHatasi,
   normalizeOrder,
   sortChronological,
   SEARCH_PATH,

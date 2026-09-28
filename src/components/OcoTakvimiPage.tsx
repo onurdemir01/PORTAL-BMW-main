@@ -295,7 +295,9 @@ export default function OcoTakvimiPage() {
           }}
         >
           <ExclamationTriangleIcon className="h-4 w-4 shrink-0" />
-          <span>{data.message || 'OCO listesi alınamadı.'}</span>
+          {/* Mesaj artik cagrilan ADRESI de tasiyor (bkz. server/oco/search.cjs
+              aramaHatasi). Uzun bir URL sarmalanmazsa kutuyu yatayda tasirir. */}
+          <span className="min-w-0 break-words">{data.message || 'OCO listesi alınamadı.'}</span>
         </div>
       )}
 

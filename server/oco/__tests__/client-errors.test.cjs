@@ -30,8 +30,16 @@ test('OE2 5xx -> "yanit veremiyor, tekrar deneyin"; 401/403 -> "yoneticiye bildi
 });
 
 test('OE3 servis govdesi: JSON mesaji ipucu olur, HTML hata sayfasi ATILIR', () => {
-  assert.equal(upstreamHint('{"Message":"No record for wfInstanceId"}'), 'No record for wfInstanceId');
-  assert.equal(upstreamHint('<!DOCTYPE html><html><body><h1>404 - File or directory not found.</h1></body></html>'), '');
+  assert.equal(
+    upstreamHint('{"Message":"No record for wfInstanceId"}'),
+    'No record for wfInstanceId',
+  );
+  assert.equal(
+    upstreamHint(
+      '<!DOCTYPE html><html><body><h1>404 - File or directory not found.</h1></body></html>',
+    ),
+    '',
+  );
   assert.equal(upstreamHint(''), '');
   assert.match(describeUpstreamError(404, '{"Message":"yok"}', '5').message, /\(yok\)$/);
 });
@@ -46,8 +54,37 @@ test('OE4 nginx tarafindan yakalanan kodlar (404/502/503) HTTP katmaninda 400 ol
   assert.equal(httpStatus({ status: 400 }), 400);
   assert.equal(httpStatus({ status: 422 }), 422);
   assert.equal(httpStatus({}), 400);
-  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'ansible', 'change-gates.cjs'), 'utf8');
-  assert.match(src, /status: ocoClient\.httpStatus\(ocoErr\)/, 'change-gates OCO hatasinda ham status donuyor (404 -> HTML)');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'ansible', 'change-gates.cjs'),
+    'utf8',
+  );
+  assert.match(
+    src,
+    /status: ocoClient\.httpStatus\(ocoErr\)/,
+    'change-gates OCO hatasinda ham status donuyor (404 -> HTML)',
+  );
   const runner = fs.readFileSync(path.join(__dirname, '..', '..', 'ansible', 'runner.cjs'), 'utf8');
-  assert.match(runner, /httpStatus\(err\)\)\.json\(\{ ok: false, message: err\.message \}\)/, 'oco/validate ucu ham status donuyor');
+  assert.match(
+    runner,
+    /httpStatus\(err\)\)\.json\(\{ ok: false, message: err\.message \}\)/,
+    'oco/validate ucu ham status donuyor',
+  );
+});
+
+test('CE-WCF: WCF hata sayfasindan yalniz BASLIK tasinir, CSS ekrana dokulmez', () => {
+  // Kullanici ekraninda gorulen (2026-09-28): "(Request Error BODY { color: #000000;
+  // background-color: white; font-family: Verdana; ... })". Eski kontrol yalnizca
+  // `<!doctype`/`<html` ile BASLAYAN govdeleri eliyordu; WCF sayfasi `<?xml` ile basliyor.
+  const wcf =
+    '<?xml version="1.0" encoding="utf-8"?><html><head><title>Request Error</title>' +
+    '<style>BODY { color: #000000; background-color: white; font-family: Verdana; ' +
+    'margin-left: 0px; margin-top: 0px; }</style></head><body>' +
+    'The server encountered an error processing the request.</body></html>';
+  const h = upstreamHint(wcf);
+  assert.equal(h, 'Request Error');
+  assert.doesNotMatch(h, /background-color|Verdana|margin-left/);
+  // Basliksiz HTML sayfasi hic bir sey tasimaz (eski davranis korunur).
+  assert.equal(upstreamHint('<html><body><h1>404</h1></body></html>'), '');
+  // JSON gövde ETKILENMEZ.
+  assert.equal(upstreamHint('{"Message":"grup bulunamadi"}'), 'grup bulunamadi');
 });

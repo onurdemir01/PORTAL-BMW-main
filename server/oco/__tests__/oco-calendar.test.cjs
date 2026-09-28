@@ -23,6 +23,7 @@ const {
   normalizeOrder,
   sortChronological,
   searchChangeOrders,
+  aramaHatasi,
   MAX_PAGES,
 } = require('../search.cjs');
 
@@ -148,11 +149,82 @@ test('OC5: uc sozlesmesi - yapilandirilmamis servis BOS LISTE donmez', () => {
     .replace(/\s+/g, ' ');
   // "Ayar yok" ile "OCO yok" ayri: bos liste, ekipte hic degisiklik yokmus gibi okunurdu.
   assert.ok(kod.includes('notConfigured: true'), 'yapilandirilmamis durum ayirt edilmiyor');
-  assert.ok(kod.includes('res.status(503)'), 'yapilandirilmamis servis 200 ile bos liste donuyor');
+  // ...ama HTTP KODU 503 OLAMAZ: Portal nginx arkasinda `proxy_intercept_errors on` ile
+  // calisiyor ve 403/404/500/502/503/504 cevaplarinin GOVDESINI kendi HTML sayfasiyla
+  // degistiriyor - yani yukaridaki mesaj kullaniciya hic ulasmaz (bkz. client.cjs httpStatus).
+  assert.ok(kod.includes('httpStatus('), 'hata kodlari nginx-guvenli koda cevrilmiyor');
+  assert.ok(
+    !/res\.status\((503|502|404)\)/.test(kod),
+    'nginx tarafindan yutulacak bir kod dondurulmus',
+  );
   // Sayfa siniri asildiysa ekran bunu gormeli.
   assert.ok(kod.includes('truncated: r.truncated'), 'eksik liste bayragi ekrana tasinmiyor');
   // Uc SALT OKUNUR olmali: bu modul OCO acmaz/kapatmaz.
   assert.ok(!/router\.(post|put|delete)\(/.test(kod), 'OCO takvimi ucu YAZAN bir yol acmis');
   // Gorunurluk kapisi: sol menude gorunen her sayfa gibi bu da motordan gecer.
   assert.ok(kod.includes("requireVisible('OcoTakvimi')"), 'gorunurluk kapisi yok');
+});
+
+// OC6/OC7 (2026-09-28): kullanici ekranda "OCO servisi 6203 numarasini kabul etmedi
+// (HTTP 400). Numarayi kontrol edin." gordu. Iki ayri kusur:
+//   * mesaj TEK OCO cekmek icin yazilmis metindi; 6203 bir OCO numarasi degil GRUP
+//     kimligi ve kullanicinin "kontrol etmesi" hicbir seyi degistirmiyordu,
+//   * mesaj hangi adresin cagrildigini SOYLEMIYORDU; yanlis OCO_API_URL ile "servis
+//     reddetti" durumu ayni cumleye cikiyordu.
+test('OC6: sayfa ofseti HAM kayit sayisidir, ekrana cikan satir sayisi degil', async () => {
+  const ofsetler = [];
+  // Ilk sayfadaki iki kaydin BIRI numarasiz: normalizeOrder onu duser.
+  const sayfalar = [
+    {
+      SearchChangeOrderWithOffsetResult: {
+        TotalCount: 3,
+        Result: [{ ...ORNEK, OcoWfInstanceId: 1 }, { Subject: 'numarasiz' }],
+      },
+    },
+    {
+      SearchChangeOrderWithOffsetResult: {
+        TotalCount: 3,
+        Result: [{ ...ORNEK, OcoWfInstanceId: 2 }],
+      },
+    },
+    { SearchChangeOrderWithOffsetResult: { TotalCount: 3, Result: [] } },
+  ];
+  let i = 0;
+  const cek = async (skip) => {
+    ofsetler.push(skip);
+    const s = sayfalar[Math.min(i, sayfalar.length - 1)];
+    i += 1;
+    return s;
+  };
+  const r = await searchChangeOrders({ groupId: '6203', fetchPage: cek });
+  // Ofset `rows.length` olsaydi ikinci istek 1'den baslar, 2 numarali kayit ATLANIRDI.
+  assert.deepEqual(ofsetler.slice(0, 2), [0, 2], 'ofset dusurulen kayitlari saymamis');
+  assert.deepEqual(
+    r.rows.map((x) => x.oco),
+    [1, 2],
+  );
+});
+
+test('OC7: 400 mesaji OCO NUMARASINI degil, cagrilan ADRESI gosterir', () => {
+  const url =
+    'https://servicerepository/ChangeManagement/x.svc/Change/SearchChangeOrderWithOffset/0/';
+  const govde =
+    '<?xml version="1.0"?><html><head><title>Request Error</title>' +
+    '<style>BODY { color: #000000; background-color: white; font-family: Verdana; }</style>' +
+    '</head><body>hata</body></html>';
+  const err = aramaHatasi(400, govde, url, '6203');
+  assert.match(err.message, /HTTP 400/);
+  assert.ok(
+    err.message.includes(url),
+    'cagrilan adres mesajda yok - yanlis OCO_API_URL ayirt edilemez',
+  );
+  // "Numarayi kontrol edin" YANLIS YERE BAKTIRIYORDU: 6203 kullanicinin girdigi bir sey degil.
+  assert.doesNotMatch(
+    err.message,
+    /[Nn]umaray[ıi] kontrol/,
+    'kullanici duzeltemeyecegi bir sey icin yonlendiriliyor',
+  );
+  // WCF hata sayfasinin CSS'i EKRANA DOKULMEZ; yalniz baslik tasinir.
+  assert.doesNotMatch(err.message, /background-color/, 'HTML/CSS ekrana sizmis');
+  assert.match(err.message, /Request Error/, 'servisin kendi basligi tasinmamis');
 });
