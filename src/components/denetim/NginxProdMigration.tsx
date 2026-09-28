@@ -180,7 +180,7 @@ export default function NginxProdMigration() {
   const [onlyProblem, setOnlyProblem] = useState(false);
   // Siralama (kullanici, 2026-09-14): 'status' (sorunlu ustte) | 'team' (cok uygulamasi
   // olan ekip ustte, ekip icinde uygulama adi) | 'app' (ad)
-  const [sortBy, setSortBy] = useState<'status' | 'team' | 'app' | 'plan'>('status');
+  const [sortBy, setSortBy] = useState<'status' | 'team' | 'app' | 'plan' | 'load'>('status');
   const [q, setQ] = useState('');
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
@@ -539,12 +539,13 @@ export default function NginxProdMigration() {
         />
         <select
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as 'status' | 'team' | 'app' | 'plan')}
+          onChange={(e) => setSortBy(e.target.value as 'status' | 'team' | 'app' | 'plan' | 'load')}
           className="px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
           title="Sıralama"
         >
           <option value="status">sırala: durum (sorunlu üstte)</option>
           <option value="team">sırala: ekip (çok uygulaması olan üstte)</option>
+          <option value="load">sırala: yük (çok istek alan üstte)</option>
           <option value="app">sırala: uygulama adı</option>
           <option value="plan">sırala: geçiş tarihi</option>
         </select>
@@ -1939,7 +1940,7 @@ function GroupPanel({
   g: NginxMigrationGroup;
   onlyProblem: boolean;
   q: string;
-  sortBy: 'status' | 'team' | 'app' | 'plan';
+  sortBy: 'status' | 'team' | 'app' | 'plan' | 'load';
   ownersReady: boolean;
   canCreate: boolean;
   onCreate: (app: NginxMigrationApp) => void;
@@ -1995,6 +1996,29 @@ function GroupPanel({
           a.application.localeCompare(b.application)
         );
       });
+    } else if (sortBy === 'load') {
+      // YÜKE GÖRE SIRALAMA (kullanıcı, 2026-09-28). Bantlar ÖNCE, sayı SONRA — çünkü
+      // "ölçülemedi" ile "yük yok" aynı kefeye konamaz: ölçülemeyen bir uygulamayı
+      // sıfırla yan yana dizmek, onu taşınması risksizmiş gibi gösterirdi.
+      //   1) yük alıyor      → istek sayısı ÇOK olan üstte (taşıması en riskli)
+      //   2) ölçülemedi      → bakılması gereken; sıfır DEĞİL
+      //   3) ölçüm yok       → hiç log okunamadı
+      //   4) yük almıyor     → tek güvenle "sakin" diyebildiğimiz bant, en altta
+      const bant = (a: NginxMigrationApp) => {
+        const t = yukOzet(a.paths);
+        if (!t) return 2;
+        if (t.state === 'active') return 0;
+        if (t.state === 'unknown') return 1;
+        return 3;
+      };
+      const istek = (a: NginxMigrationApp) => {
+        const t = yukOzet(a.paths);
+        return t && typeof t.req7 === 'number' ? t.req7 : 0;
+      };
+      list = [...list].sort(
+        (a, b) =>
+          bant(a) - bant(b) || istek(b) - istek(a) || a.application.localeCompare(b.application),
+      );
     } else if (sortBy === 'app') {
       list = [...list].sort((a, b) => a.application.localeCompare(b.application));
     } else if (sortBy === 'plan') {
