@@ -13,12 +13,17 @@
 'use strict';
 
 const express = require('express');
-const { CRYPTO_TENANTS, tenantOf, selectionTree, isOpen } = require('../../shared/cryptoHubTenants.cjs');
+const {
+  CRYPTO_TENANTS,
+  tenantOf,
+  selectionTree,
+  isOpen,
+} = require('../../shared/cryptoHubTenants.cjs');
 
 // Production simdilik kapali (kullanici, 2026-09-26). Ekran zaten sectirmiyor; bu kontrol
 // DOGRUDAN API cagrisini de keser - aksi halde "kapali" yalnizca gorsel bir suslemeden ibaret
 // olurdu.
-const CLOSED_MSG = 'Production ortamları Crypto Hub\'da şimdilik kapalı.';
+const CLOSED_MSG = "Production ortamları Crypto Hub'da şimdilik kapalı.";
 
 const { ACTIONS, actionOf, buildPlan } = require('../../shared/cryptoHubActions.cjs');
 
@@ -36,6 +41,20 @@ const OPS = {
   // karsilastirilabilsinler: ayni surumun dosyalari sessizce ayrisirsa, aktif-pasif
   // devrinde uygulama baska bir konfigurasyonla acilir.
   values_files: { writes: false },
+  // helm_template SALT OKUNUR: manifest URETIR, kumeye dokunmaz. Onizlemenin yazan
+  // sayilmasi, "once bakayim" diyen kullaniciya gereksiz bir onay penceresi acardi.
+  helm_template: { writes: false },
+  // values_diff SALT OKUNUR: canli degerler ile uygulanacak dosyayi AYNI iste yan yana
+  // okur. Iki ayri iste okunsa, arada degisen bir dosya "fark yok" gibi gorunebilirdi.
+  values_diff: { writes: false },
+  // Gecmis ZATEN diskte duruyordu (values_put her yazmadan once .bak birakir); bu islem
+  // onu gorunur kilar. Salt okunur.
+  values_backups: { writes: false },
+  // Geri yukleme YAZAR: dosyanin uzerine yazar (once mevcut halin yedegini alarak).
+  values_restore: { writes: true },
+  // helm_upgrade YAZAR: kosan release'i yeniden uygular. Surum DEGISMEZ - bunu betik de
+  // ayrica dogrular (Portal'in bildigi surum ile gercek kosan surum tutmuyorsa durur).
+  helm_upgrade: { writes: true },
   pod_delete: { writes: true },
   rollout: { writes: true },
   scale: { writes: true },
@@ -49,7 +68,8 @@ const OPS = {
 // zaman gonderilir ve bu istek denetim kaydina yazilir. Duzenlenemeyecek bir metni
 // duzenletmek anlamsiz oldugu icin maskeyi tamamen zorunlu kilmiyoruz; ama varsayilan
 // GORME degil, KORUMA tarafinda duruyor.
-const SIR_ANAHTARI = /(pass|passwd|password|pwd|secret|token|apikey|api_key|accesskey|access_key|credential|keystore|truststore|private[_-]?key)/i;
+const SIR_ANAHTARI =
+  /(pass|passwd|password|pwd|secret|token|apikey|api_key|accesskey|access_key|credential|keystore|truststore|private[_-]?key)/i;
 
 /** `anahtar: deger` satirlarinda sir gorunen degerleri yildizlar. Yorumlara dokunmaz. */
 function maskValues(lines) {
@@ -59,7 +79,8 @@ function maskValues(lines) {
     if (!m) return l;
     const [, girinti, anahtar, deger] = m;
     if (!SIR_ANAHTARI.test(anahtar)) return l;
-    if (deger === '|' || deger === '>' || deger === '{}' || deger === '[]' || deger === 'null') return l;
+    if (deger === '|' || deger === '>' || deger === '{}' || deger === '[]' || deger === 'null')
+      return l;
     return `${girinti}${anahtar}: ****`;
   });
 }
@@ -67,6 +88,20 @@ function maskValues(lines) {
 // k8s ad deseni (istege bagli tur oneki). Betikte AYNI denetim var - burasi ilk kapi.
 const TARGET_RE = /^((deployment|statefulset|pod)\/)?[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/;
 const MAX_TARGETS = 50;
+
+/**
+ * helm_upgrade / helm_template icin chart referansi. Katalogdan cozulur, ISTEMCIDEN DEGIL.
+ *
+ * Wyden: klasik helm deposu alias'i (`wyden/wyden`) + `--version <kosan>` ile sabitlenir.
+ * Metaco: runbook chart'i BASTION DISKINDEKI bir DIZINDEN kuruyor (`./harmonize/`) ve dogru
+ * dizin kosan surumun arsiv dizinine bagli. Bunu tahmin etmek, yanlis surumu "ayni surum"
+ * diye uygulamak demek olurdu - o yuzden Metaco icin chart cozulmez ve ozellik ACILMAZ;
+ * ekran komutu gostermeye devam eder. ("olculemedi" ile "yok" ayrimi burada da gecerli.)
+ */
+function chartRefOf(tenant) {
+  const ad = String(tenant?.chartName || '').trim();
+  return ad || '';
+}
 
 function normalizeOps(body) {
   const action = String(body?.action || '').trim();
@@ -80,16 +115,26 @@ function normalizeOps(body) {
     if (!TARGET_RE.test(t)) throw new Error(`Geçersiz hedef adı: ${t}`);
     if (!targets.includes(t)) targets.push(t);
   }
-  if (targets.length > MAX_TARGETS) throw new Error(`En fazla ${MAX_TARGETS} hedef seçilebilir (seçilen: ${targets.length}).`);
+  if (targets.length > MAX_TARGETS)
+    throw new Error(`En fazla ${MAX_TARGETS} hedef seçilebilir (seçilen: ${targets.length}).`);
   // BOS HEDEFLE YAZAN ISLEM KOSMAZ: "hepsi" anlamina gelen bir bosluk, bu ekranda en
   // tehlikeli hatadir (tum namespace'i sondurmek).
-  // values_put'ta "hedef" bir k8s nesnesi degil DOSYA YOLUDUR; asagida ayrica dogrulanir.
-  if (writes && action !== 'values_put' && targets.length === 0) throw new Error('Hedef seçilmedi.');
-  if (action === 'logs' && targets.length === 0) throw new Error('Log için en az bir pod seçilmeli.');
+  // values_put ve helm_upgrade'de "hedef" bir k8s nesnesi DEGIL: biri DOSYA YOLU, oteki
+  // HELM RELEASE'idir; ikisi de asagida ayrica dogrulanir.
+  const hedefsiz = ['values_put', 'helm_upgrade', 'values_restore'];
+  if (writes && !hedefsiz.includes(action) && targets.length === 0)
+    throw new Error('Hedef seçilmedi.');
+  if (action === 'logs' && targets.length === 0)
+    throw new Error('Log için en az bir pod seçilmeli.');
   if (action === 'pod_delete' && targets.some((t) => t.includes('/') && !t.startsWith('pod/'))) {
-    throw new Error('Pod silme yalnız pod hedefi alır; deployment/statefulset için rollout kullanın.');
+    throw new Error(
+      'Pod silme yalnız pod hedefi alır; deployment/statefulset için rollout kullanın.',
+    );
   }
-  if ((action === 'rollout' || action === 'scale') && targets.some((t) => !/^(deployment|statefulset)\//.test(t))) {
+  if (
+    (action === 'rollout' || action === 'scale') &&
+    targets.some((t) => !/^(deployment|statefulset)\//.test(t))
+  ) {
     throw new Error(`${action} için hedef deployment/<ad> veya statefulset/<ad> olmalı.`);
   }
 
@@ -97,11 +142,16 @@ function normalizeOps(body) {
   if (action === 'logs') {
     const tail = Number(body?.tail);
     out.tail = Number.isFinite(tail) ? Math.min(Math.max(Math.trunc(tail), 1), 5000) : 200;
-    out.container = String(body?.container || '').trim().slice(0, 64) || '';
+    out.container =
+      String(body?.container || '')
+        .trim()
+        .slice(0, 64) || '';
     out.previous = body?.previous === true;
   }
   if (action === 'values_get') {
-    out.release = String(body?.release || '').trim().slice(0, 128);
+    out.release = String(body?.release || '')
+      .trim()
+      .slice(0, 128);
     if (!out.release) throw new Error('Helm release adı gerekli.');
     out.valuesAll = body?.valuesAll === true;
     // Ham (maskesiz) icerik yalnizca ACIKCA istenirse doner ve denetime yazilir.
@@ -125,6 +175,43 @@ function normalizeOps(body) {
     // Ham (maskesiz) icerik yalnizca ACIKCA istenirse doner ve denetime yazilir.
     out.reveal = body?.reveal === true;
   }
+  if (action === 'values_backups') {
+    out.valuesPath = String(body?.valuesPath || '').trim();
+    if (!/^\/vhosting\/[^\0]*$/.test(out.valuesPath) || out.valuesPath.includes('..')) {
+      throw new Error('values dosyası /vhosting altında olmalı ve yolunda .. bulunmamalı.');
+    }
+  }
+
+  if (action === 'values_restore') {
+    out.valuesPath = String(body?.valuesPath || '').trim();
+    out.backupPath = String(body?.backupPath || '').trim();
+    for (const y of [out.valuesPath, out.backupPath]) {
+      if (!/^\/vhosting\/[^\0]*$/.test(y) || y.includes('..')) {
+        throw new Error('Dosya yolları /vhosting altında olmalı ve yolunda .. bulunmamalı.');
+      }
+    }
+    // YEDEK, HEDEF DOSYANIN KENDI YEDEGI OLMALI. Betikte de ayni kapi var; burada da
+    // duruyor cunku bu kontrol olmasa islem "herhangi bir dosyayi herhangi bir yerin
+    // uzerine kopyala"ya donusurdu ve tek bir kapinin dusmesi yeterdi.
+    if (!out.backupPath.startsWith(`${out.valuesPath}.`) || !out.backupPath.endsWith('.bak')) {
+      throw new Error('Seçilen yedek bu dosyaya ait değil.');
+    }
+  }
+
+  if (action === 'helm_upgrade' || action === 'helm_template' || action === 'values_diff') {
+    out.release = String(body?.release || '').trim();
+    if (!out.release) throw new Error('Helm release adı gerekli.');
+    out.valuesPath = String(body?.valuesPath || '').trim();
+    if (!/^\/vhosting\/[^\0]*$/.test(out.valuesPath) || out.valuesPath.includes('..')) {
+      throw new Error('values dosyası /vhosting altında olmalı ve yolunda .. bulunmamalı.');
+    }
+    // CHART ve SURUM ISTEMCIDEN ALINMAZ. Ikisi de sunucuda cozulur (katalog + tarama):
+    // aksi halde "yalniz values degisecek" diyen bir istek, govdesine baska bir chart ya
+    // da baska bir surum yazarak SESSIZCE bambaska bir sey uygulayabilirdi.
+    out.chartRef = '';
+    out.expectVersion = '';
+  }
+
   if (action === 'values_put') {
     out.valuesPath = String(body?.valuesPath || '').trim();
     if (!/^\/vhosting\/[^\0]*$/.test(out.valuesPath) || out.valuesPath.includes('..')) {
@@ -135,7 +222,9 @@ function normalizeOps(body) {
     if (icerik.length > 512 * 1024) throw new Error('values içeriği 512 KB sınırını aşıyor.');
     // MASKELENMIS METIN KAYDEDILEMEZ: "****" yazan bir dosya, gercek parolayi silerdi.
     if (/:\s*\*{4}\s*$/m.test(icerik)) {
-      throw new Error('İçerikte maskelenmiş (****) değer var — maskeli metin kaydedilemez. Önce "Gerçek değerleri göster" ile açın.');
+      throw new Error(
+        'İçerikte maskelenmiş (****) değer var — maskeli metin kaydedilemez. Önce "Gerçek değerleri göster" ile açın.',
+      );
     }
     out.content = icerik;
   }
@@ -152,9 +241,20 @@ function normalizeOps(body) {
 /** Betigin TAB ayrilmis satirlarini ekranin anlayacagi bicime cevirir. */
 function parseOpsLines(lines) {
   if (!Array.isArray(lines)) return null;
-  const pods = []; const logs = []; const results = []; const errors = []; const values = [];
+  const pods = [];
+  const logs = [];
+  const results = [];
+  const errors = [];
+  const values = [];
   // Dosya basina satirlar: VFBEG boyut, VF icerik, VFEND bitis, VFERR okunamadi.
   const files = new Map();
+  // helm_upgrade: route listesi ONCE ve SONRA. Runbook "upgrade bazen route siliyor" diyor;
+  // bu bir UYARI olarak kalmasin diye OLCULUYOR - ekran kaybolani gosterir.
+  const routes = { once: [], sonra: [] };
+  // helm_template: uretilecek nesneler (ozet) + ham manifest.
+  const template = { objects: [], lines: [] };
+  // values_backups: bir values dosyasinin .bak surumleri (en yenisi basta).
+  const backups = [];
   for (const raw of lines) {
     const f = String(raw == null ? '' : raw).split('\t');
     switch (f[0]) {
@@ -172,6 +272,23 @@ function parseOpsLines(lines) {
         break;
       case 'VFEND':
         break;
+      case 'ROUTE': {
+        const faz = (f[2] || '').trim();
+        const ad = (f[3] || '').trim();
+        if (ad && (faz === 'once' || faz === 'sonra')) routes[faz].push(ad);
+        break;
+      }
+      case 'BAK':
+        if (f.length >= 3) {
+          backups.push({ path: f[2], size: Number(f[3] || 0), mtime: (f[4] || '').trim() });
+        }
+        break;
+      case 'TPLO':
+        template.objects.push({ kind: (f[2] || '?').trim(), name: (f[3] || '?').trim() });
+        break;
+      case 'TPL':
+        template.lines.push(f.slice(2).join('\t'));
+        break;
       case 'VFERR':
         if (f.length >= 3) {
           files.set(f[2], { path: f[2], size: 0, lines: [], error: f[3] || 'okunamadı' });
@@ -180,12 +297,22 @@ function parseOpsLines(lines) {
       case 'POD':
         if (f.length >= 8) {
           pods.push({
-            name: f[2], phase: f[3],
+            name: f[2],
+            phase: f[3],
             // "true,false," -> hazir olmayan kap var mi
-            ready: String(f[4] || '').split(',').filter(Boolean).every((v) => v === 'true'),
-            containers: String(f[4] || '').split(',').filter(Boolean).length,
-            restarts: String(f[5] || '').split(',').filter(Boolean).reduce((a, v) => a + (Number(v) || 0), 0),
-            startedAt: f[6] || '', node: f[7] || '',
+            ready: String(f[4] || '')
+              .split(',')
+              .filter(Boolean)
+              .every((v) => v === 'true'),
+            containers: String(f[4] || '')
+              .split(',')
+              .filter(Boolean).length,
+            restarts: String(f[5] || '')
+              .split(',')
+              .filter(Boolean)
+              .reduce((a, v) => a + (Number(v) || 0), 0),
+            startedAt: f[6] || '',
+            node: f[7] || '',
           });
         }
         break;
@@ -207,7 +334,17 @@ function parseOpsLines(lines) {
         break;
     }
   }
-  return { pods, logs, results, errors, values, files: [...files.values()] };
+  return {
+    pods,
+    logs,
+    results,
+    errors,
+    values,
+    files: [...files.values()],
+    routes,
+    template,
+    backups: backups.sort((a, b) => String(b.mtime).localeCompare(String(a.mtime))),
+  };
 }
 
 const REGISTRY_KEY = 'crypto_hub_inventory';
@@ -241,53 +378,90 @@ async function loadTenant(tenant) {
   const son = (table) => `(SELECT MAX(scan_date) FROM ${table} WHERE tenant_key = @t)`;
 
   const [comp, rel, tag, note, arch] = await Promise.all([
-    query(`SELECT kind, name, want, ready, image, version, scanned_at
+    query(
+      `SELECT kind, name, want, ready, image, version, scanned_at
              FROM dbo.Crypto_Hub_Components
             WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_Components')}
-            ORDER BY kind, name`, p).then((r) => r.recordset || []).catch(() => null),
-    query(`SELECT release_name, chart, chart_version, app_version, status, updated_at, scanned_at
+            ORDER BY kind, name`,
+      p,
+    )
+      .then((r) => r.recordset || [])
+      .catch(() => null),
+    query(
+      `SELECT release_name, chart, chart_version, app_version, status, updated_at, scanned_at
              FROM dbo.Crypto_Hub_Releases
-            WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_Releases')}`, p)
-      .then((r) => r.recordset || []).catch(() => []),
-    query(`SELECT chart_ref, tag
+            WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_Releases')}`,
+      p,
+    )
+      .then((r) => r.recordset || [])
+      .catch(() => []),
+    query(
+      `SELECT chart_ref, tag
              FROM dbo.Crypto_Hub_ChartTags
-            WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_ChartTags')}`, p)
-      .then((r) => r.recordset || []).catch(() => []),
-    query(`SELECT level, stage, message, scanned_at
+            WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_ChartTags')}`,
+      p,
+    )
+      .then((r) => r.recordset || [])
+      .catch(() => []),
+    query(
+      `SELECT level, stage, message, scanned_at
              FROM dbo.Crypto_Hub_Notes
-            WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_Notes')}`, p)
-      .then((r) => r.recordset || []).catch(() => []),
+            WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_Notes')}`,
+      p,
+    )
+      .then((r) => r.recordset || [])
+      .catch(() => []),
     // Yerel chart arsivi (kullanici, 2026-09-26): bastion'da duran eski surumler + values
     // dosyalari. Metaco'da chart deposu sorgulanamadigi icin SOMUT surum gecmisi burasi.
-    query(`SELECT version, dir, kind, file_name, size_bytes, mtime
+    query(
+      `SELECT version, dir, kind, file_name, size_bytes, mtime
              FROM dbo.Crypto_Hub_Archives
             WHERE tenant_key = @t AND scan_date = ${son('dbo.Crypto_Hub_Archives')}
-            ORDER BY version, kind DESC, file_name`, p)
-      .then((r) => r.recordset || []).catch(() => []),
+            ORDER BY version, kind DESC, file_name`,
+      p,
+    )
+      .then((r) => r.recordset || [])
+      .catch(() => []),
   ]);
 
   // comp null = tablo yok (DDL calistirilmamis). "Bilesen yok" ile ayni sey DEGIL.
   if (comp === null) {
-    return { tableMissing: true, components: [], releases: [], tags: [], notes: [], archives: [], scannedAt: null, versions: null };
+    return {
+      tableMissing: true,
+      components: [],
+      releases: [],
+      tags: [],
+      notes: [],
+      archives: [],
+      scannedAt: null,
+      versions: null,
+    };
   }
 
-  const scannedAt = [...comp, ...rel, ...tag, ...note]
-    .map((r) => r.scanned_at)
-    .filter(Boolean)
-    .sort()
-    .pop() || null;
+  const scannedAt =
+    [...comp, ...rel, ...tag, ...note]
+      .map((r) => r.scanned_at)
+      .filter(Boolean)
+      .sort()
+      .pop() || null;
 
   const components = comp.map((r) => ({
-    kind: r.kind, name: r.name,
+    kind: r.kind,
+    name: r.name,
     want: r.want == null ? null : Number(r.want),
     ready: r.ready == null ? null : Number(r.ready),
-    image: r.image || '', version: r.version || '',
-    state: r.want === 0 ? 'stopped' : (Number(r.ready) >= Number(r.want) ? 'running' : 'degraded'),
+    image: r.image || '',
+    version: r.version || '',
+    state: r.want === 0 ? 'stopped' : Number(r.ready) >= Number(r.want) ? 'running' : 'degraded',
   }));
 
   const releases = rel.map((r) => ({
-    name: r.release_name, chart: r.chart || '', chartVersion: r.chart_version || '',
-    appVersion: r.app_version || '', status: r.status || '', updatedAt: r.updated_at || '',
+    name: r.release_name,
+    chart: r.chart || '',
+    chartVersion: r.chart_version || '',
+    appVersion: r.app_version || '',
+    status: r.status || '',
+    updatedAt: r.updated_at || '',
   }));
 
   const tagList = [...new Set(tag.map((r) => String(r.tag)))].sort(cmpVersion);
@@ -307,13 +481,20 @@ async function loadTenant(tenant) {
     notes: note.map((r) => ({ level: r.level, stage: r.stage || '', message: r.message || '' })),
     // Yerel arsiv, surum basina gruplanir: bir surumun chart .tgz'i ve values dosyalari
     // ayni satirda gorunsun. DOSYA ICERIGI YOK - values'ta parola olabiliyor.
-    archives: Object.values(arch.reduce((acc, r) => {
-      const k = String(r.version);
-      acc[k] = acc[k] || { version: k, dir: r.dir, chart: '', values: [] };
-      if (r.kind === 'chart') acc[k].chart = r.file_name || '';
-      else acc[k].values.push({ file: r.file_name || '', size: Number(r.size_bytes || 0), mtime: r.mtime || '' });
-      return acc;
-    }, {})).sort((a, b) => cmpVersion(b.version, a.version)),
+    archives: Object.values(
+      arch.reduce((acc, r) => {
+        const k = String(r.version);
+        acc[k] = acc[k] || { version: k, dir: r.dir, chart: '', values: [] };
+        if (r.kind === 'chart') acc[k].chart = r.file_name || '';
+        else
+          acc[k].values.push({
+            file: r.file_name || '',
+            size: Number(r.size_bytes || 0),
+            mtime: r.mtime || '',
+          });
+        return acc;
+      }, {}),
+    ).sort((a, b) => cmpVersion(b.version, a.version)),
     versions: {
       running,
       release: main ? main.name : tenant.helmRelease,
@@ -341,7 +522,9 @@ function initCryptoHub(app) {
   try {
     const { requireVisible } = require('../auth/visibility.cjs');
     router.use(requireVisible('CryptoHub'));
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // Secim agaci: uygulama -> domain -> ortam. Tarama HIC kosmamis olsa da doner ki
   // kullanici ekrani bos gormesin, neyin eksik oldugunu okusun.
@@ -352,12 +535,21 @@ function initCryptoHub(app) {
   router.get('/overview', async (req, res) => {
     const tenant = tenantOf(req.query.tenant);
     if (!tenant) {
-      return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı. Geçerli anahtarlar: ' + CRYPTO_TENANTS.map((t) => t.key).join(', ') });
+      return res
+        .status(400)
+        .json({
+          ok: false,
+          message:
+            'Bilinmeyen kiracı. Geçerli anahtarlar: ' + CRYPTO_TENANTS.map((t) => t.key).join(', '),
+        });
     }
-    if (!isOpen(tenant)) return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
+    if (!isOpen(tenant))
+      return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
     if (!tenant.namespace) {
       return res.json({
-        ok: true, tenant, notConfigured: true,
+        ok: true,
+        tenant,
+        notConfigured: true,
         message: `${tenant.appLabel} ${tenant.envLabel} için namespace/helm tanımı henüz girilmedi — tarama bu ortamı atlıyor.`,
       });
     }
@@ -378,14 +570,25 @@ function initCryptoHub(app) {
   // Kullanici: "upgrade/kapat/degisiklikte kullaniciya UYGULANACAK KOMUTLARI gosteren bir on
   // onay penceresi olsun". Plan SALT OKUNUR uretilir; hicbir sey calistirilmaz.
   router.get('/actions', (_req, res) => {
-    res.json({ ok: true, actions: ACTIONS.map(({ key, label, hint, writes, params }) => ({ key, label, hint, writes, params })) });
+    res.json({
+      ok: true,
+      actions: ACTIONS.map(({ key, label, hint, writes, params }) => ({
+        key,
+        label,
+        hint,
+        writes,
+        params,
+      })),
+    });
   });
 
   router.get('/plan', async (req, res) => {
     const tenant = tenantOf(req.query.tenant);
     if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
-    if (!isOpen(tenant)) return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
-    if (!actionOf(req.query.action)) return res.status(400).json({ ok: false, message: 'Bilinmeyen işlem.' });
+    if (!isOpen(tenant))
+      return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
+    if (!actionOf(req.query.action))
+      return res.status(400).json({ ok: false, message: 'Bilinmeyen işlem.' });
     try {
       const veri = await loadTenant(tenant);
       // ACMA ADIMI ICIN: "hepsini 1 yap" YANLIS olurdu - runbook'ta ornegin api-management 4
@@ -402,18 +605,25 @@ function initCryptoHub(app) {
               WHERE tenant_key = @t AND want > 0
            ) x WHERE rn = 1`,
           [{ name: 't', type: sql.NVarChar(64), value: tenant.key }],
-        ).then((r) => r.recordset || []).catch(() => []);
+        )
+          .then((r) => r.recordset || [])
+          .catch(() => []);
       }
-      const plan = buildPlan(tenant, req.query.action, { version: req.query.version || '' }, {
-        components: veri.components || [],
-        lastNonZero,
-        // Kosan surum: "ayni surume upgrade" uyarisi ve rollout komutu bundan uretilir.
-        running: (veri.versions && veri.versions.running) || '',
-        // Tarama asamasi dustuyse (ornegin statefulset listesi Forbidden) bilesen listesi
-        // EKSIKTIR; plan bunu uyari olarak yazsin diye notlar da gecirilir.
-        notes: veri.notes || [],
-        scannedAt: veri.scannedAt,
-      });
+      const plan = buildPlan(
+        tenant,
+        req.query.action,
+        { version: req.query.version || '' },
+        {
+          components: veri.components || [],
+          lastNonZero,
+          // Kosan surum: "ayni surume upgrade" uyarisi ve rollout komutu bundan uretilir.
+          running: (veri.versions && veri.versions.running) || '',
+          // Tarama asamasi dustuyse (ornegin statefulset listesi Forbidden) bilesen listesi
+          // EKSIKTIR; plan bunu uyari olarak yazsin diye notlar da gecirilir.
+          notes: veri.notes || [],
+          scannedAt: veri.scannedAt,
+        },
+      );
       res.json({ ok: true, tenant, plan });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
@@ -430,8 +640,10 @@ function initCryptoHub(app) {
   router.post('/ops', async (req, res) => {
     const tenant = tenantOf(req.body?.tenant);
     if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
-    if (!isOpen(tenant)) return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
-    if (!tenant.namespace) return res.status(409).json({ ok: false, message: 'Bu ortam henüz yapılandırılmadı.' });
+    if (!isOpen(tenant))
+      return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
+    if (!tenant.namespace)
+      return res.status(409).json({ ok: false, message: 'Bu ortam henüz yapılandırılmadı.' });
 
     let params;
     try {
@@ -440,7 +652,13 @@ function initCryptoHub(app) {
       return res.status(400).json({ ok: false, message: err.message });
     }
     if (params.writes && req.body?.confirmed !== true) {
-      return res.status(428).json({ ok: false, needsConfirm: true, message: 'Bu işlem önce onay penceresinden geçmeli.' });
+      return res
+        .status(428)
+        .json({
+          ok: false,
+          needsConfirm: true,
+          message: 'Bu işlem önce onay penceresinden geçmeli.',
+        });
     }
 
     try {
@@ -449,7 +667,12 @@ function initCryptoHub(app) {
       const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
       const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
       if (!templateId) {
-        return res.status(501).json({ ok: false, message: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${OPS_KEY}" satırına Template ID girilmeli.` });
+        return res
+          .status(501)
+          .json({
+            ok: false,
+            message: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${OPS_KEY}" satırına Template ID girilmeli.`,
+          });
       }
       const extraVars = {
         crypto_hub_tenant: tenant.key,
@@ -468,26 +691,97 @@ function initCryptoHub(app) {
       }
       if (params.action === 'values_files') {
         // Satir basina bir yol; base64 cunku yollarda bosluk/ozel karakter olabilir.
-        extraVars.crypto_hub_values_paths_b64 =
-          Buffer.from(params.valuesPaths.join(String.fromCharCode(10)) + String.fromCharCode(10), 'utf8').toString('base64');
+        extraVars.crypto_hub_values_paths_b64 = Buffer.from(
+          params.valuesPaths.join(String.fromCharCode(10)) + String.fromCharCode(10),
+          'utf8',
+        ).toString('base64');
+      }
+      if (params.action === 'values_backups') {
+        extraVars.crypto_hub_values_path = params.valuesPath;
+      }
+      if (params.action === 'values_restore') {
+        extraVars.crypto_hub_values_path = params.valuesPath;
+        extraVars.crypto_hub_backup_path = params.backupPath;
+      }
+      if (params.action === 'values_diff') {
+        extraVars.crypto_hub_release = params.release;
+        extraVars.crypto_hub_values_path = params.valuesPath;
+      }
+      if (params.action === 'helm_upgrade' || params.action === 'helm_template') {
+        // KOSAN SURUM taramadan okunur; istemci ne gonderirse gondersin dikkate alinmaz.
+        // Betik bu degeri bastion'da GERCEKTEN kosan surumle ayrica karsilastirir: iki
+        // kaynak da ayni demiyorsa hicbir sey uygulanmaz.
+        const veri = await loadTenant(tenant).catch(() => null);
+        const kosan = String((veri && veri.versions && veri.versions.running) || '').trim();
+        const chart = chartRefOf(tenant);
+        if (!chart) {
+          return res.status(501).json({
+            ok: false,
+            message:
+              'Bu uygulamada chart bastion diskindeki bir dizinden kuruluyor; doğru dizin koşan sürüme bağlı olduğu için Portal bunu kendisi çalıştırmıyor. Plan penceresindeki komutu kullanın.',
+          });
+        }
+        if (!kosan) {
+          return res.status(409).json({
+            ok: false,
+            message:
+              'Koşan sürüm ÖLÇÜLEMEDİ (tarama sürümü okuyamamış). "Aynı sürüm" güvencesi verilemeyeceği için işlem başlatılmadı.',
+          });
+        }
+        extraVars.crypto_hub_release = params.release;
+        extraVars.crypto_hub_values_path = params.valuesPath;
+        extraVars.crypto_hub_chart_ref = chart;
+        extraVars.crypto_hub_expect_version = kosan;
+        if (params.action === 'helm_upgrade') {
+          // AWX isi helm'den ONCE olmemeli: async penceresi helm zaman asimindan genis.
+          extraVars.crypto_hub_helm_timeout = '10m';
+          extraVars.crypto_hub_timeout = 900;
+        }
       }
       if (params.action === 'values_put') {
         extraVars.crypto_hub_values_path = params.valuesPath;
         extraVars.crypto_hub_values_b64 = Buffer.from(params.content, 'utf8').toString('base64');
       }
 
-      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: OPS_KEY });
+      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+        serverId,
+        templateId,
+        extraVars,
+        { label: OPS_KEY },
+      );
       const user = req.session?.user || {};
-      const result = await require('../ansible/runner.cjs').launchJobOnServer(serverId, templateId, extraVars, '', user);
+      const result = await require('../ansible/runner.cjs').launchJobOnServer(
+        serverId,
+        templateId,
+        extraVars,
+        '',
+        user,
+      );
       // DENETIM KAYDI: "kim yapti" servis hesabinin ardinda kaybolmasin (isler uxmid ile kosar).
       try {
         await require('../db/index.cjs').query(
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [user.username || 'unknown', serverId, templateId, `Crypto Hub: ${params.action} @ ${tenant.key}`, result?.jobId, result?.status || 'pending', JSON.stringify(extraVars)],
+          [
+            user.username || 'unknown',
+            serverId,
+            templateId,
+            `Crypto Hub: ${params.action} @ ${tenant.key}`,
+            result?.jobId,
+            result?.status || 'pending',
+            JSON.stringify(extraVars),
+          ],
         );
-      } catch (e) { console.warn('[CryptoHub] islem gecmisi yazilamadi:', e.message); }
+      } catch (e) {
+        console.warn('[CryptoHub] islem gecmisi yazilamadi:', e.message);
+      }
       if (params.writes) _cache = { at: 0, key: '', value: null };
-      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId, action: params.action });
+      res.json({
+        ok: true,
+        jobId: result?.jobId ?? null,
+        status: result?.status ?? null,
+        awxServerId: serverId,
+        action: params.action,
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -518,9 +812,12 @@ function initCryptoHub(app) {
             else {
               try {
                 require('../audit/index.cjs').auditPortal(req, 'crypto_hub_values_reveal', {
-                  jobId, detail: 'values ham icerik goruntulendi',
+                  jobId,
+                  detail: 'values ham icerik goruntulendi',
                 });
-              } catch { /* denetim yoksa yoksay */ }
+              } catch {
+                /* denetim yoksa yoksay */
+              }
             }
           }
           // CLUSTER DOSYALARI da AYNI kurala tabi: varsayilan maskeli, ham icerik ayri ve
@@ -532,16 +829,21 @@ function initCryptoHub(app) {
           // fark tespit edilir, deger yine gosterilmez (values-compare.cjs maske notu).
           if (parsed.files && parsed.files.length) {
             parsed.masked = String(req.query.reveal || '') !== '1';
-            parsed.compare = require('./values-compare.cjs')
-              .karsilastir(parsed.files, parsed.masked ? SIR_ANAHTARI : null);
+            parsed.compare = require('./values-compare.cjs').karsilastir(
+              parsed.files,
+              parsed.masked ? SIR_ANAHTARI : null,
+            );
             if (parsed.masked) {
               parsed.files = parsed.files.map((f) => ({ ...f, lines: maskValues(f.lines) }));
             } else {
               try {
                 require('../audit/index.cjs').auditPortal(req, 'crypto_hub_values_reveal', {
-                  jobId, detail: 'cluster values dosyalari ham icerik goruntulendi',
+                  jobId,
+                  detail: 'cluster values dosyalari ham icerik goruntulendi',
                 });
-              } catch { /* denetim yoksa yoksay */ }
+              } catch {
+                /* denetim yoksa yoksay */
+              }
             }
           }
         }
@@ -552,32 +854,114 @@ function initCryptoHub(app) {
     }
   });
 
+  // ── VALUES ESITLEME ONIZLEMESI ─────────────────────────────────────────────────────
+  //
+  // Kullanici (2026-09-28): karsilastirmada gorulen farki oteki cluster'a da yazabilmek.
+  //
+  // BU UC HICBIR SEY YAZMAZ: yalnizca "secilen anahtarlar uygulanirsa hedef dosya NE OLUR"
+  // sorusunu cevaplar. Gercek yazma, mevcut values_put isiyle olur (yedek alir, denetime
+  // yazilir). Boylece tek bir yazma yolu kalir - ikinci bir yol acmak, yedek kuralini bir
+  // gun birinde unutmak demekti.
+  //
+  // YAML mantigi values-compare.cjs'te TEK KOPYA: karsilastirma da guncelleme de ayni
+  // ayristiriciyi kullanir, yoksa "farkli" diyen ile "yazan" bir gun ayrisirdi.
+  router.post('/values-apply', (req, res) => {
+    const tenant = tenantOf(req.body?.tenant);
+    if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
+    if (!isOpen(tenant))
+      return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
+
+    const lines = Array.isArray(req.body?.lines)
+      ? req.body.lines.map((x) => String(x == null ? '' : x))
+      : [];
+    const secimler = Array.isArray(req.body?.secimler) ? req.body.secimler : [];
+    if (!lines.length)
+      return res.status(400).json({ ok: false, message: 'Hedef dosya içeriği boş.' });
+    if (lines.length > 20000)
+      return res.status(413).json({ ok: false, message: 'Hedef dosya çok büyük.' });
+    if (!secimler.length)
+      return res.status(400).json({ ok: false, message: 'Yazılacak ayar seçilmedi.' });
+    if (secimler.length > 50)
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Tek seferde en fazla 50 ayar yazılabilir.' });
+
+    const r = require('./values-compare.cjs').uygula(lines, secimler);
+    if (r.maskeli) {
+      // MASKELI ICERIGI GERI YAZMAK gercek parolayi '****' ile degistirmek olurdu.
+      return res.status(409).json({
+        ok: false,
+        message:
+          'Hedef dosya maskeli okunmuş — bu içerikle yazmak gerçek değerleri yok ederdi. Önce "Gerçek değerleri göster" deyin.',
+      });
+    }
+    res.json({
+      ok: true,
+      content: r.lines.join(String.fromCharCode(10)) + String.fromCharCode(10),
+      degisen: r.degisen,
+      atlanan: r.atlanan,
+    });
+  });
+
   // Taramayi SIMDI kostur (yalniz secili kiraci). Yazan bir is DEGIL - tarama salt okunur.
   router.post('/rescan', async (req, res) => {
     const tenant = tenantOf(req.body?.tenant);
     if (!tenant) return res.status(400).json({ ok: false, message: 'Bilinmeyen kiracı.' });
-    if (!isOpen(tenant)) return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
-    if (!tenant.namespace) return res.status(409).json({ ok: false, message: 'Bu ortam henüz yapılandırılmadı.' });
+    if (!isOpen(tenant))
+      return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
+    if (!tenant.namespace)
+      return res.status(409).json({ ok: false, message: 'Bu ortam henüz yapılandırılmadı.' });
     try {
       const reg = require('../ansible/playbook-registry.cjs');
       const row = await reg.getByKey(REGISTRY_KEY).catch(() => null);
       const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
       const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
       if (!templateId) {
-        return res.status(501).json({ ok: false, message: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${REGISTRY_KEY}" satırına Template ID girilmeli.` });
+        return res
+          .status(501)
+          .json({
+            ok: false,
+            message: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${REGISTRY_KEY}" satırına Template ID girilmeli.`,
+          });
       }
       const extraVars = { crypto_hub_keys: tenant.key };
-      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: REGISTRY_KEY });
+      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+        serverId,
+        templateId,
+        extraVars,
+        { label: REGISTRY_KEY },
+      );
       const user = req.session?.user || {};
-      const result = await require('../ansible/runner.cjs').launchJobOnServer(serverId, templateId, extraVars, '', user);
+      const result = await require('../ansible/runner.cjs').launchJobOnServer(
+        serverId,
+        templateId,
+        extraVars,
+        '',
+        user,
+      );
       try {
         await require('../db/index.cjs').query(
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [user.username || 'unknown', serverId, templateId, `Crypto Hub: ${tenant.key}`, result?.jobId, result?.status || 'pending', JSON.stringify(extraVars)],
+          [
+            user.username || 'unknown',
+            serverId,
+            templateId,
+            `Crypto Hub: ${tenant.key}`,
+            result?.jobId,
+            result?.status || 'pending',
+            JSON.stringify(extraVars),
+          ],
         );
-      } catch (e) { console.warn('[CryptoHub] job gecmisi yazilamadi:', e.message); }
+      } catch (e) {
+        console.warn('[CryptoHub] job gecmisi yazilamadi:', e.message);
+      }
       _cache = { at: 0, key: '', value: null };
-      res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId });
+      res.json({
+        ok: true,
+        jobId: result?.jobId ?? null,
+        status: result?.status ?? null,
+        awxServerId: serverId,
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -610,4 +994,12 @@ function initCryptoHub(app) {
   console.log('[CryptoHub] module mounted at /api/crypto-hub');
 }
 
-module.exports = { initCryptoHub, cmpVersion, loadTenant, normalizeOps, parseOpsLines, maskValues, OPS };
+module.exports = {
+  initCryptoHub,
+  cmpVersion,
+  loadTenant,
+  normalizeOps,
+  parseOpsLines,
+  maskValues,
+  OPS,
+};

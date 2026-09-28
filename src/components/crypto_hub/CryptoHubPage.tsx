@@ -16,12 +16,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ArrowPathIcon, ChevronRightIcon, ExclamationTriangleIcon, InformationCircleIcon,
-  CheckCircleIcon, StopCircleIcon, ArrowUpCircleIcon, QuestionMarkCircleIcon,
-  LockClosedIcon, PlayCircleIcon, PowerIcon, BoltIcon, DocumentTextIcon,
+  ArrowPathIcon,
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  CheckCircleIcon,
+  StopCircleIcon,
+  ArrowUpCircleIcon,
+  QuestionMarkCircleIcon,
+  LockClosedIcon,
+  PlayCircleIcon,
+  PowerIcon,
+  BoltIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import {
-  cryptoHubApi, type CryptoApp, type CryptoEnvOption, type CryptoOverview, type CryptoComponent,
+  cryptoHubApi,
+  type CryptoApp,
+  type CryptoEnvOption,
+  type CryptoOverview,
+  type CryptoComponent,
   type CryptoActionDef,
 } from '@/api/cryptoHubApi';
 import { PlanModal } from './PlanModal';
@@ -38,16 +52,40 @@ import { fmtDateTime } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
-const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
-const btnStyle = (): React.CSSProperties => ({ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' });
+const SM_BTN =
+  'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
+const btnStyle = (): React.CSSProperties => ({
+  borderColor: 'var(--border)',
+  background: 'var(--bg-surface)',
+  color: 'var(--text-primary)',
+});
 
-const STATE: Record<CryptoComponent['state'], { label: string; color: string; Icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }> = {
+const STATE: Record<
+  CryptoComponent['state'],
+  {
+    label: string;
+    color: string;
+    Icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  }
+> = {
   running: { label: 'çalışıyor', color: 'var(--status-success)', Icon: CheckCircleIcon },
-  degraded: { label: 'eksik replika', color: 'var(--status-warning)', Icon: ExclamationTriangleIcon },
+  degraded: {
+    label: 'eksik replika',
+    color: 'var(--status-warning)',
+    Icon: ExclamationTriangleIcon,
+  },
   stopped: { label: 'kapalı', color: 'var(--text-muted)', Icon: StopCircleIcon },
 };
 
-function Pill({ tone, children, title }: { tone: 'ok' | 'warn' | 'danger' | 'muted' | 'accent'; children: React.ReactNode; title?: string }) {
+function Pill({
+  tone,
+  children,
+  title,
+}: {
+  tone: 'ok' | 'warn' | 'danger' | 'muted' | 'accent';
+  children: React.ReactNode;
+  title?: string;
+}) {
   const map = {
     ok: ['var(--status-success)', 'var(--status-success-bg)'],
     warn: ['var(--status-warning)', 'var(--status-warning-bg)'],
@@ -57,7 +95,11 @@ function Pill({ tone, children, title }: { tone: 'ok' | 'warn' | 'danger' | 'mut
   } as const;
   const [color, bg] = map[tone];
   return (
-    <span title={title} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium leading-none" style={{ color, background: bg, border: '1px solid ' + color }}>
+    <span
+      title={title}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium leading-none"
+      style={{ color, background: bg, border: '1px solid ' + color }}
+    >
       {children}
     </span>
   );
@@ -67,8 +109,13 @@ function Pill({ tone, children, title }: { tone: 'ok' | 'warn' | 'danger' | 'mut
 function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOption) => void }) {
   const [app, setApp] = useState<CryptoApp | null>(apps.length === 1 ? apps[0] : null);
   const [domain, setDomain] = useState<string | null>(null);
-  const dom = app?.domains.find((d) => d.domain === domain) || (app && app.domains.length === 1 ? app.domains[0] : null);
-  const kapali = apps.reduce((n, a) => n + a.domains.reduce((m, d) => m + d.envs.filter((e) => e.open === false).length, 0), 0);
+  const dom =
+    app?.domains.find((d) => d.domain === domain) ||
+    (app && app.domains.length === 1 ? app.domains[0] : null);
+  const kapali = apps.reduce(
+    (n, a) => n + a.domains.reduce((m, d) => m + d.envs.filter((e) => e.open === false).length, 0),
+    0,
+  );
 
   // GIRIS EKRANI (2026-09-26, kullanici: "bu pencere cok kucuk gozukuyor"): kartlar
   // dar bir sutuna sikismis kucuk dugmelerdi. Artik sayfanin genisligini kullanan,
@@ -76,9 +123,22 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
   //
   // KAPALI ORTAM GIZLENMEZ, KILITLENIR: menuden yok olsaydi kullanici "production nerede?"
   // diye arardi; burada duruyor ve neden girilemedigi yaziyor.
-  const Card = ({ title, sub, meta, onClick, tone, closed, icon }: {
-    title: string; sub?: string; meta?: string; onClick: () => void;
-    tone?: 'prod'; closed?: boolean; icon?: React.ReactNode;
+  const Card = ({
+    title,
+    sub,
+    meta,
+    onClick,
+    tone,
+    closed,
+    icon,
+  }: {
+    title: string;
+    sub?: string;
+    meta?: string;
+    onClick: () => void;
+    tone?: 'prod';
+    closed?: boolean;
+    icon?: React.ReactNode;
   }) => (
     <button
       type="button"
@@ -87,46 +147,104 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
       title={closed ? 'Bu ortam şimdilik kapalı' : undefined}
       className={`group text-left rounded-2xl border p-5 w-full transition-shadow ${closed ? 'cursor-not-allowed opacity-70' : 'hover:shadow-md'}`}
       style={{
-        borderColor: closed ? 'var(--border-subtle)' : tone === 'prod' ? 'var(--status-danger)' : 'var(--border-subtle)',
+        borderColor: closed
+          ? 'var(--border-subtle)'
+          : tone === 'prod'
+            ? 'var(--status-danger)'
+            : 'var(--border-subtle)',
         background: closed ? 'var(--bg-elevated)' : 'var(--bg-surface)',
         minHeight: '6.5rem',
       }}
     >
       <div className="flex items-start gap-4">
         {icon && (
-          <span className="h-12 w-12 rounded-xl inline-flex items-center justify-center shrink-0" style={{ background: 'var(--bg-elevated)' }}>
+          <span
+            className="h-12 w-12 rounded-xl inline-flex items-center justify-center shrink-0"
+            style={{ background: 'var(--bg-elevated)' }}
+          >
             {icon}
           </span>
         )}
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
-            <span className="text-lg font-semibold truncate" style={{ color: closed ? 'var(--text-muted)' : tone === 'prod' ? 'var(--status-danger)' : 'var(--text-primary)' }}>
+            <span
+              className="text-lg font-semibold truncate"
+              style={{
+                color: closed
+                  ? 'var(--text-muted)'
+                  : tone === 'prod'
+                    ? 'var(--status-danger)'
+                    : 'var(--text-primary)',
+              }}
+            >
               {title}
             </span>
             {tone === 'prod' && !closed && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
-                style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>production</span>
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}
+              >
+                production
+              </span>
             )}
           </span>
-          {sub && <span className="block text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{sub}</span>}
-          {meta && <span className="block text-[11px] mt-1.5" style={{ color: 'var(--text-muted)' }}>{meta}</span>}
+          {sub && (
+            <span className="block text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+              {sub}
+            </span>
+          )}
+          {meta && (
+            <span className="block text-[11px] mt-1.5" style={{ color: 'var(--text-muted)' }}>
+              {meta}
+            </span>
+          )}
         </span>
-        {closed
-          ? <LockClosedIcon className="h-5 w-5 shrink-0 mt-1" style={{ color: 'var(--text-muted)' }} />
-          : <ChevronRightIcon className="h-5 w-5 shrink-0 mt-1 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--text-muted)' }} />}
+        {closed ? (
+          <LockClosedIcon
+            className="h-5 w-5 shrink-0 mt-1"
+            style={{ color: 'var(--text-muted)' }}
+          />
+        ) : (
+          <ChevronRightIcon
+            className="h-5 w-5 shrink-0 mt-1 transition-transform group-hover:translate-x-0.5"
+            style={{ color: 'var(--text-muted)' }}
+          />
+        )}
       </div>
     </button>
   );
 
-  const Adim = ({ n, label, aktif, tamam }: { n: number; label: string; aktif: boolean; tamam: boolean }) => (
+  const Adim = ({
+    n,
+    label,
+    aktif,
+    tamam,
+  }: {
+    n: number;
+    label: string;
+    aktif: boolean;
+    tamam: boolean;
+  }) => (
     <li className="flex items-center gap-2">
       <span
         className="h-6 w-6 rounded-full inline-flex items-center justify-center text-[11px] font-semibold"
-        style={aktif || tamam
-          ? { background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
-          : { background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-      >{n}</span>
-      <span className="text-[12px]" style={{ color: aktif ? 'var(--accent)' : 'var(--text-muted)', fontWeight: aktif ? 600 : 400 }}>{label}</span>
+        style={
+          aktif || tamam
+            ? { background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
+            : { background: 'var(--bg-elevated)', color: 'var(--text-muted)' }
+        }
+      >
+        {n}
+      </span>
+      <span
+        className="text-[12px]"
+        style={{
+          color: aktif ? 'var(--accent)' : 'var(--text-muted)',
+          fontWeight: aktif ? 600 : 400,
+        }}
+      >
+        {label}
+      </span>
     </li>
   );
 
@@ -135,7 +253,11 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
       type="button"
       onClick={onClick}
       className="inline-flex items-center gap-1 h-8 px-3 text-[12px] rounded-lg border"
-      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}
+      style={{
+        borderColor: 'var(--border)',
+        background: 'var(--bg-surface)',
+        color: 'var(--text-secondary)',
+      }}
     >
       ‹ {label}
     </button>
@@ -144,7 +266,10 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
   return (
     <div className="max-w-5xl mx-auto py-10 space-y-8">
       <header className="text-center space-y-2">
-        <h1 className="text-3xl font-semibold inline-flex items-center gap-3" style={{ color: 'var(--text-primary)' }}>
+        <h1
+          className="text-3xl font-semibold inline-flex items-center gap-3"
+          style={{ color: 'var(--text-primary)' }}
+        >
           <BitcoinIcon className="h-9 w-9" /> Crypto Hub
         </h1>
         <p className="text-base" style={{ color: 'var(--text-secondary)' }}>
@@ -173,7 +298,10 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
               icon={<AppIcon app={a.app} className="h-8 w-8" />}
               title={a.label}
               meta={a.domains.reduce((n, d) => n + d.envs.length, 0) + ' ortam'}
-              onClick={() => { setApp(a); setDomain(null); }}
+              onClick={() => {
+                setApp(a);
+                setDomain(null);
+              }}
             />
           ))}
         </div>
@@ -199,7 +327,10 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
 
       {app && dom && (
         <div className="space-y-4">
-          {geriBtn('geri', () => { setDomain(null); if (app.domains.length === 1) setApp(null); })}
+          {geriBtn('geri', () => {
+            setDomain(null);
+            if (app.domains.length === 1) setApp(null);
+          })}
           <div className="grid sm:grid-cols-2 gap-4">
             {dom.envs.map((e) => (
               <Card
@@ -207,9 +338,13 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
                 icon={<DomainIcon domain={dom.domain} app={app.app} className="h-8 w-8" />}
                 title={e.label}
                 sub={e.cluster}
-                meta={e.open === false
-                  ? 'şimdilik kapalı'
-                  : e.ready ? (e.namespace || '') : 'yapılandırma eksik'}
+                meta={
+                  e.open === false
+                    ? 'şimdilik kapalı'
+                    : e.ready
+                      ? e.namespace || ''
+                      : 'yapılandırma eksik'
+                }
                 tone={e.production ? 'prod' : undefined}
                 closed={e.open === false}
                 onClick={() => onPick(e)}
@@ -223,8 +358,18 @@ function Picker({ apps, onPick }: { apps: CryptoApp[]; onPick: (env: CryptoEnvOp
 }
 
 // ── Sekme: Durum ──────────────────────────────────────────────────────────────────────
-function DurumTab({ data, tenantKey, tenantLabel, namespace, onDone }: {
-  data: CryptoOverview; tenantKey: string; tenantLabel: string; namespace: string; onDone: () => void;
+function DurumTab({
+  data,
+  tenantKey,
+  tenantLabel,
+  namespace,
+  onDone,
+}: {
+  data: CryptoOverview;
+  tenantKey: string;
+  tenantLabel: string;
+  namespace: string;
+  onDone: () => void;
 }) {
   const comps = data.components || [];
   const s = data.summary;
@@ -237,11 +382,17 @@ function DurumTab({ data, tenantKey, tenantLabel, namespace, onDone }: {
         {(s?.stopped ?? 0) > 0 && <Pill tone="muted">{s?.stopped} kapalı</Pill>}
       </div>
 
-      <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+      <div
+        className="rounded-xl border overflow-hidden"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+              <tr
+                className="text-[11px] uppercase tracking-wide"
+                style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}
+              >
                 <th className="text-left font-medium px-3 py-2">Bileşen</th>
                 <th className="text-left font-medium px-3 py-2">Tür</th>
                 <th className="text-right font-medium px-3 py-2">Hazır / İstenen</th>
@@ -252,18 +403,42 @@ function DurumTab({ data, tenantKey, tenantLabel, namespace, onDone }: {
               </tr>
             </thead>
             <tbody>
-              {comps.length === 0 && <TableEmptyRow colSpan={7} title="Tarama kaydı yok" description="Bu ortam için henüz bir tarama koşmamış. “Taramayı tazele” ile başlatabilirsiniz." />}
+              {comps.length === 0 && (
+                <TableEmptyRow
+                  colSpan={7}
+                  title="Tarama kaydı yok"
+                  description="Bu ortam için henüz bir tarama koşmamış. “Taramayı tazele” ile başlatabilirsiniz."
+                />
+              )}
               {comps.map((c) => {
                 const st = STATE[c.state];
                 return (
-                  <tr key={c.kind + '/' + c.name} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <td className="px-3 py-2 font-medium" style={{ color: 'var(--text-primary)' }}>{c.name}</td>
-                    <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>{c.kind}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{c.ready ?? '—'} / {c.want ?? '—'}</td>
+                  <tr
+                    key={c.kind + '/' + c.name}
+                    className="border-t"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                  >
+                    <td className="px-3 py-2 font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {c.name}
+                    </td>
+                    <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      {c.kind}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {c.ready ?? '—'} / {c.want ?? '—'}
+                    </td>
                     <td className="px-3 py-2 tabular-nums">{c.version || '—'}</td>
-                    <td className="px-3 py-2 text-[11px] break-all" style={{ color: 'var(--text-secondary)' }}>{c.image || '—'}</td>
+                    <td
+                      className="px-3 py-2 text-[11px] break-all"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      {c.image || '—'}
+                    </td>
                     <td className="px-3 py-2">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium" style={{ color: st.color }}>
+                      <span
+                        className="inline-flex items-center gap-1 text-[11px] font-medium"
+                        style={{ color: st.color }}
+                      >
                         <st.Icon className="h-3.5 w-3.5" /> {st.label}
                       </span>
                     </td>
@@ -291,6 +466,26 @@ function DurumTab({ data, tenantKey, tenantLabel, namespace, onDone }: {
 }
 
 // ── Sekme: Surumler ───────────────────────────────────────────────────────────────────
+/** Bastion arsivindeki values dosyalari, DUZENLEME/UYGULAMA hedefi olarak.
+ *  KOSAN SURUMUN dosyalari basa alinir: rollout "kosan surumu yeniden uygula" demek, o
+ *  yuzden listenin ilk siradaki (varsayilan secili) ogesi baska bir surumun dosyasi olursa
+ *  kullanici farkinda olmadan yanlis dosyayi uygulayabilirdi. */
+export function valuesSecenekleri(
+  archives: { version: string; dir: string; values: { file: string }[] }[],
+  running: string,
+): { path: string; label: string }[] {
+  const hepsi = archives.flatMap((a) =>
+    a.values.map((f) => ({
+      path: `${a.dir}/${f.file}`,
+      label: `${a.version} · ${f.file}`,
+      kosan: !!running && a.version === running,
+    })),
+  );
+  return [...hepsi.filter((x) => x.kosan), ...hepsi.filter((x) => !x.kosan)].map(
+    ({ path, label }) => ({ path, label }),
+  );
+}
+
 /** Bir arsiv surumunde KARSILASTIRILACAK dosyalarin tam yollari.
  *  CLUSTER'A OZGU dosyalar alt dizinlerde durur ("1.5.19/clqa1/garanti_values.yaml");
  *  surum kokundeki tek dosya ("1.5.19/garanti_values.yaml") eski duzendir ve bir
@@ -302,7 +497,17 @@ export function karsilastirmaYollari(a: { dir: string; values: { file: string }[
   return secilen.map((f) => `${a.dir}/${f.file}`);
 }
 
-function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tenantKey: string; tenantLabel: string }) {
+function SurumTab({
+  data,
+  tenantKey,
+  tenantLabel,
+  namespace,
+}: {
+  data: CryptoOverview;
+  tenantKey: string;
+  tenantLabel: string;
+  namespace: string;
+}) {
   const [valuesFor, setValuesFor] = useState<string | null>(null);
   const [kiyas, setKiyas] = useState<{ version: string; paths: string[] } | null>(null);
   const v = data.versions;
@@ -313,9 +518,22 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
   return (
     <div className="space-y-4">
       <div className="grid md:grid-cols-2 gap-3">
-        <section className="rounded-xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Şu an koşan chart sürümü</div>
-          <div className="text-2xl font-semibold tabular-nums mt-1" style={{ color: 'var(--text-primary)' }}>{v?.running || '—'}</div>
+        <section
+          className="rounded-xl border p-4"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <div
+            className="text-[11px] uppercase tracking-wide"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Şu an koşan chart sürümü
+          </div>
+          <div
+            className="text-2xl font-semibold tabular-nums mt-1"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {v?.running || '—'}
+          </div>
           {main && (
             <div className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
               {main.name} · {main.chart} · uygulama {main.appVersion || '—'} · {main.status}
@@ -325,7 +543,11 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
             <button
               type="button"
               className="mt-2 inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium rounded-lg border"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              style={{
+                borderColor: 'var(--border)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+              }}
               onClick={() => setValuesFor(main.name)}
             >
               <DocumentTextIcon className="h-3.5 w-3.5" /> values.yaml
@@ -333,21 +555,38 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
           )}
         </section>
 
-        <section className="rounded-xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Depoda en yeni</div>
+        <section
+          className="rounded-xl border p-4"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <div
+            className="text-[11px] uppercase tracking-wide"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Depoda en yeni
+          </div>
           {!v?.measured ? (
             // OLCULEMEDI: bos etiket listesi "guncelsiniz" DEMEK DEGIL.
             <div className="mt-1 space-y-1">
-              <span className="inline-flex items-center gap-1 text-sm font-semibold" style={{ color: 'var(--text-muted)' }}>
+              <span
+                className="inline-flex items-center gap-1 text-sm font-semibold"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 <QuestionMarkCircleIcon className="h-4 w-4" /> ölçülemedi
               </span>
               <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                Chart deposu sorgulanamadı (kimlik girilmemiş olabilir). Bu, “yeni sürüm yok” anlamına <b>gelmez</b>.
+                Chart deposu sorgulanamadı (kimlik girilmemiş olabilir). Bu, “yeni sürüm yok”
+                anlamına <b>gelmez</b>.
               </div>
             </div>
           ) : (
             <>
-              <div className="text-2xl font-semibold tabular-nums mt-1" style={{ color: v.newer.length ? 'var(--status-warning)' : 'var(--text-primary)' }}>{v.latest || '—'}</div>
+              <div
+                className="text-2xl font-semibold tabular-nums mt-1"
+                style={{ color: v.newer.length ? 'var(--status-warning)' : 'var(--text-primary)' }}
+              >
+                {v.latest || '—'}
+              </div>
               <div className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
                 {v.newer.length ? v.newer.length + ' yeni sürüm var' : 'Koşan sürüm en güncel.'}
               </div>
@@ -357,27 +596,64 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
       </div>
 
       {v?.measured && v.available.length > 0 && (
-        <section className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Depodaki sürümler</div>
+        <section
+          className="rounded-xl border p-4 space-y-2"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <div
+            className="text-[11px] uppercase tracking-wide"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Depodaki sürümler
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {v.available.map((t) => (
               <span
                 key={t}
                 className="px-2 py-0.5 rounded-md text-[11px] tabular-nums border"
-                style={t === v.running
-                  ? { color: 'var(--accent)', background: 'var(--accent-bg)', borderColor: 'var(--accent)', fontWeight: 600 }
-                  : v.newer.includes(t)
-                    ? { color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }
-                    : { color: 'var(--text-muted)', background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
-                title={t === v.running ? 'şu an koşan' : v.newer.includes(t) ? 'koşandan yeni' : 'eski'}
+                style={
+                  t === v.running
+                    ? {
+                        color: 'var(--accent)',
+                        background: 'var(--accent-bg)',
+                        borderColor: 'var(--accent)',
+                        fontWeight: 600,
+                      }
+                    : v.newer.includes(t)
+                      ? {
+                          color: 'var(--status-warning)',
+                          background: 'var(--status-warning-bg)',
+                          borderColor: 'var(--status-warning)',
+                        }
+                      : {
+                          color: 'var(--text-muted)',
+                          background: 'var(--bg-elevated)',
+                          borderColor: 'var(--border-subtle)',
+                        }
+                }
+                title={
+                  t === v.running ? 'şu an koşan' : v.newer.includes(t) ? 'koşandan yeni' : 'eski'
+                }
               >
                 {t}
               </span>
             ))}
           </div>
           <div className="flex flex-wrap gap-3 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: 'var(--accent)' }} /> koşan</span>
-            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: 'var(--status-warning)' }} /> daha yeni</span>
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="w-2.5 h-2.5 rounded-sm inline-block"
+                style={{ background: 'var(--accent)' }}
+              />{' '}
+              koşan
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="w-2.5 h-2.5 rounded-sm inline-block"
+                style={{ background: 'var(--status-warning)' }}
+              />{' '}
+              daha yeni
+            </span>
           </div>
         </section>
       )}
@@ -385,14 +661,24 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
       {/* BASTION'DAKI ARSIV: Metaco'da chart deposu sorgulanamadigi icin SOMUT surum gecmisi
           burasi. "Depoda mevcut" ile AYNI SEY DEGIL - ayri baslik altinda duruyor. */}
       {(data.archives || []).length > 0 && (
-        <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <div className="px-3 py-2 text-[11px] uppercase tracking-wide border-b" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-subtle)' }}>
-            Bastion'da hazır sürümler ({(data.archives || []).length}) — indirilmiş chart + values dosyaları
+        <section
+          className="rounded-xl border overflow-hidden"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <div
+            className="px-3 py-2 text-[11px] uppercase tracking-wide border-b"
+            style={{ color: 'var(--text-muted)', borderColor: 'var(--border-subtle)' }}
+          >
+            Bastion'da hazır sürümler ({(data.archives || []).length}) — indirilmiş chart + values
+            dosyaları
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+                <tr
+                  className="text-[11px] uppercase tracking-wide"
+                  style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}
+                >
                   <th className="text-left font-medium px-3 py-2">Sürüm</th>
                   <th className="text-left font-medium px-3 py-2">Chart paketi</th>
                   <th className="text-left font-medium px-3 py-2">values dosyaları</th>
@@ -402,36 +688,74 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
               </thead>
               <tbody>
                 {(data.archives || []).map((a) => (
-                  <tr key={a.version + a.dir} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <td className="px-3 py-2 tabular-nums font-medium" style={{ color: a.version === v?.running ? 'var(--accent)' : 'var(--text-primary)' }}>
-                      {a.version}{a.version === v?.running && <span className="ml-1 text-[10px]">koşan</span>}
+                  <tr
+                    key={a.version + a.dir}
+                    className="border-t"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                  >
+                    <td
+                      className="px-3 py-2 tabular-nums font-medium"
+                      style={{
+                        color: a.version === v?.running ? 'var(--accent)' : 'var(--text-primary)',
+                      }}
+                    >
+                      {a.version}
+                      {a.version === v?.running && <span className="ml-1 text-[10px]">koşan</span>}
                     </td>
-                    <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{a.chart || '—'}</td>
-                    <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                      {a.values.length === 0 ? '—' : (
+                    <td
+                      className="px-3 py-2 text-[11px]"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      {a.chart || '—'}
+                    </td>
+                    <td
+                      className="px-3 py-2 text-[11px]"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      {a.values.length === 0 ? (
+                        '—'
+                      ) : (
                         <ul className="space-y-0.5">
                           {a.values.map((f) => (
                             <li key={f.file} className="flex items-center gap-2">
                               <span>{f.file}</span>
-                              <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{Math.round(f.size / 102.4) / 10} KB</span>
+                              <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                                {Math.round(f.size / 102.4) / 10} KB
+                              </span>
                               <span style={{ color: 'var(--text-muted)' }}>{f.mtime}</span>
                             </li>
                           ))}
                         </ul>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-[11px] break-all" style={{ color: 'var(--text-muted)' }}>{a.dir}</td>
+                    <td
+                      className="px-3 py-2 text-[11px] break-all"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {a.dir}
+                    </td>
                     {/* Wyden aktif-pasif: bir surumun cluster'a ozgu values dosyalari
                         ayrismamali. Tek dosya varsa karsilastiracak ikinci taraf yok. */}
                     <td className="px-3 py-2">
                       {a.values.length >= 2 ? (
-                        <button type="button" className={SM_BTN} style={btnStyle()}
-                          onClick={() => setKiyas({ version: a.version, paths: karsilastirmaYollari(a) })}>
+                        <button
+                          type="button"
+                          className={SM_BTN}
+                          style={btnStyle()}
+                          onClick={() =>
+                            setKiyas({ version: a.version, paths: karsilastirmaYollari(a) })
+                          }
+                        >
                           <DocumentTextIcon className="h-3.5 w-3.5" /> Karşılaştır
                         </button>
                       ) : (
-                        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}
-                          title="karşılaştırmak için en az iki values dosyası gerekir">—</span>
+                        <span
+                          className="text-[11px]"
+                          style={{ color: 'var(--text-muted)' }}
+                          title="karşılaştırmak için en az iki values dosyası gerekir"
+                        >
+                          —
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -439,16 +763,24 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
               </tbody>
             </table>
           </div>
-          <div className="px-3 py-2 text-[11px] border-t" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-subtle)' }}>
-            Dosya içerikleri Portal'a alınmaz — values dosyalarında parola bulunabiliyor; yalnızca ad, boyut ve tarih tutulur.
+          <div
+            className="px-3 py-2 text-[11px] border-t"
+            style={{ color: 'var(--text-muted)', borderColor: 'var(--border-subtle)' }}
+          >
+            Dosya içerikleri Portal'a alınmaz — values dosyalarında parola bulunabiliyor; yalnızca
+            ad, boyut ve tarih tutulur.
           </div>
         </section>
       )}
 
       {kiyas && (
-        <Modal open size="wide" onClose={() => setKiyas(null)}
+        <Modal
+          open
+          size="wide"
+          onClose={() => setKiyas(null)}
           title="Cluster values karşılaştırması"
-          subtitle={`${tenantLabel} · sürüm ${kiyas.version} · ${kiyas.paths.length} dosya`}>
+          subtitle={`${tenantLabel} · sürüm ${kiyas.version} · ${kiyas.paths.length} dosya`}
+        >
           <div className="space-y-2">
             <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
               Aktif-pasif yapıda her cluster kendi values dosyasıyla açılır; bu dosyaların
@@ -461,15 +793,28 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
       )}
 
       {valuesFor && (
-        <ValuesModal tenantKey={tenantKey} tenantLabel={tenantLabel} release={valuesFor} onClose={() => setValuesFor(null)} />
+        <ValuesModal
+          tenantKey={tenantKey}
+          tenantLabel={tenantLabel}
+          release={valuesFor}
+          namespace={namespace}
+          files={valuesSecenekleri(data.archives || [], data.versions?.running || '')}
+          onClose={() => setValuesFor(null)}
+        />
       )}
 
       {releases.length > 0 && (
-        <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+        <section
+          className="rounded-xl border overflow-hidden"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+                <tr
+                  className="text-[11px] uppercase tracking-wide"
+                  style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}
+                >
                   <th className="text-left font-medium px-3 py-2">Helm release</th>
                   <th className="text-left font-medium px-3 py-2">Chart</th>
                   <th className="text-left font-medium px-3 py-2">Chart sürümü</th>
@@ -481,15 +826,28 @@ function SurumTab({ data, tenantKey, tenantLabel }: { data: CryptoOverview; tena
               </thead>
               <tbody>
                 {releases.map((r) => (
-                  <tr key={r.name} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <td className="px-3 py-2 font-medium" style={{ color: 'var(--text-primary)' }}>{r.name}</td>
+                  <tr
+                    key={r.name}
+                    className="border-t"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                  >
+                    <td className="px-3 py-2 font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {r.name}
+                    </td>
                     <td className="px-3 py-2">{r.chart || '—'}</td>
                     <td className="px-3 py-2 tabular-nums">{r.chartVersion || '—'}</td>
                     <td className="px-3 py-2 tabular-nums">{r.appVersion || '—'}</td>
                     <td className="px-3 py-2">{r.status || '—'}</td>
-                    <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>{r.updatedAt || '—'}</td>
+                    <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      {r.updatedAt || '—'}
+                    </td>
                     <td className="px-3 py-2">
-                      <button type="button" className={SM_BTN} style={btnStyle()} onClick={() => setValuesFor(r.name)}>
+                      <button
+                        type="button"
+                        className={SM_BTN}
+                        style={btnStyle()}
+                        onClick={() => setValuesFor(r.name)}
+                      >
                         <DocumentTextIcon className="h-3.5 w-3.5" /> values
                       </button>
                     </td>
@@ -525,24 +883,41 @@ export default function CryptoHubPage() {
     try {
       const r = await cryptoHubApi.tenants();
       if (!alive()) return;
-      if (!r.ok) { setErr(r.message || 'Kiracı listesi alınamadı.'); return; }
+      if (!r.ok) {
+        setErr(r.message || 'Kiracı listesi alınamadı.');
+        return;
+      }
       setApps(r.apps);
-    } catch (e: unknown) { if (alive()) setErr(e instanceof Error ? e.message : String(e)); }
+    } catch (e: unknown) {
+      if (alive()) setErr(e instanceof Error ? e.message : String(e));
+    }
     // Islem katalogu: ekran hangi islemleri sunacagini SUNUCUDAN ogrenir; yeni islem
     // eklendiginde arayuz degismek zorunda kalmasin.
     try {
       const a = await cryptoHubApi.actions();
       if (alive() && a.ok) setActions(a.actions);
-    } catch { /* islem listesi alinamazsa ekran calismaya devam eder */ }
+    } catch {
+      /* islem listesi alinamazsa ekran calismaya devam eder */
+    }
   }, []);
 
   const load = useCallback(async (key: string, fresh = false) => {
-    setLoading(true); setErr('');
+    setLoading(true);
+    setErr('');
     try {
       const r = await cryptoHubApi.overview(key, fresh);
-      if (!r.ok) { setErr(r.message || 'Veri alınamadı.'); setData(null); return; }
+      if (!r.ok) {
+        setErr(r.message || 'Veri alınamadı.');
+        setData(null);
+        return;
+      }
       setData(r);
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); setData(null); } finally { setLoading(false); }
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const pick = (env: CryptoEnvOption) => setParams({ t: env.key });
@@ -553,7 +928,10 @@ export default function CryptoHubPage() {
     setBusy(true);
     try {
       const r = await cryptoHubApi.rescan(key);
-      if (!r.ok) { toast.error(r.message || 'Tarama başlatılamadı.'); return; }
+      if (!r.ok) {
+        toast.error(r.message || 'Tarama başlatılamadı.');
+        return;
+      }
       toast.success('Tarama başladı (iş #' + r.jobId + '). Bitince ekran yenilenir.');
       if (r.jobId != null && r.awxServerId != null) {
         const serverId = r.awxServerId;
@@ -564,12 +942,19 @@ export default function CryptoHubPage() {
           fetchStatus: async () => {
             const s = await cryptoHubApi.jobStatus(serverId, jobId);
             if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
-            if (TERMINAL.has(s.status) && !done) { done = true; void load(key, true); }
+            if (TERMINAL.has(s.status) && !done) {
+              done = true;
+              void load(key, true);
+            }
             return { status: s.status, output: s.output || '' };
           },
         });
       }
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   /** URL'deki kiracı anahtarından kapsamı çöz. Anahtar bilinmiyorsa seçim ekranı açılır. */
@@ -578,7 +963,8 @@ export default function CryptoHubPage() {
     for (const a of apps) {
       for (const d of a.domains) {
         const env = d.envs.find((e) => e.key === tenantKey);
-        if (env) return { env, app: a.app, appLabel: a.label, domain: d.domain, domainLabel: d.label };
+        if (env)
+          return { env, app: a.app, appLabel: a.label, domain: d.domain, domainLabel: d.label };
       }
     }
     return null;
@@ -588,19 +974,43 @@ export default function CryptoHubPage() {
   // (t parametresi kalkinca) ekran temizlenir.
   useEffect(() => {
     if (!apps) return;
-    if (scope) { setTab('durum'); void load(scope.env.key); } else { setData(null); setErr(''); }
+    if (scope) {
+      setTab('durum');
+      void load(scope.env.key);
+    } else {
+      setData(null);
+      setErr('');
+    }
   }, [scope?.env.key, apps]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const notes = useMemo(() => data?.notes || [], [data]);
 
-  if (err && !apps) return <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>;
+  if (err && !apps)
+    return (
+      <div
+        className="text-sm rounded-xl px-3 py-2 border"
+        style={{
+          color: 'var(--status-danger)',
+          background: 'var(--status-danger-bg)',
+          borderColor: 'var(--status-danger)',
+        }}
+      >
+        {err}
+      </div>
+    );
   if (!apps) return <LoadingLogo compact />;
   if (!scope) {
     return (
       <>
         {tenantKey && (
-          <div className="max-w-5xl mx-auto -mb-4 text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
-            style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
+          <div
+            className="max-w-5xl mx-auto -mb-4 text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+            style={{
+              color: 'var(--status-warning)',
+              background: 'var(--status-warning-bg)',
+              borderColor: 'var(--status-warning)',
+            }}
+          >
             <ExclamationTriangleIcon className="h-4 w-4 mt-0.5 shrink-0" />
             <span>Bağlantıdaki ortam ({tenantKey}) katalogda yok — aşağıdan seçebilirsiniz.</span>
           </div>
@@ -616,20 +1026,40 @@ export default function CryptoHubPage() {
       {/* KAPSAM SERIDI - her zaman gorunur; production kirmizi. */}
       <div
         className="rounded-xl border px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
-        style={{ borderColor: prod ? 'var(--status-danger)' : 'var(--border-subtle)', background: prod ? 'var(--status-danger-bg)' : 'var(--bg-surface)' }}
+        style={{
+          borderColor: prod ? 'var(--status-danger)' : 'var(--border-subtle)',
+          background: prod ? 'var(--status-danger-bg)' : 'var(--bg-surface)',
+        }}
       >
         <AppIcon app={scope.app} className="h-5 w-5 shrink-0" />
         <DomainIcon domain={scope.domain} app={scope.app} className="h-5 w-5 shrink-0" />
-        <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{scope.appLabel}</span>
+        <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          {scope.appLabel}
+        </span>
         <span style={{ color: 'var(--text-muted)' }}>·</span>
-        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{scope.domainLabel}</span>
+        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          {scope.domainLabel}
+        </span>
         <span style={{ color: 'var(--text-muted)' }}>·</span>
         <Pill tone={prod ? 'danger' : 'ok'}>{scope.env.label}</Pill>
-        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{scope.env.cluster} / {scope.env.namespace || '—'}</span>
+        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          {scope.env.cluster} / {scope.env.namespace || '—'}
+        </span>
         <span className="flex-1" />
-        {data?.scannedAt && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>son tarama: {fmtDateTime(data.scannedAt)}</span>}
-        <button type="button" className={SM_BTN} style={btnStyle()} onClick={rescan} disabled={busy || !!data?.notConfigured}>
-          <ArrowPathIcon className={'h-3.5 w-3.5 ' + (busy ? 'animate-spin' : '')} /> Taramayı tazele
+        {data?.scannedAt && (
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            son tarama: {fmtDateTime(data.scannedAt)}
+          </span>
+        )}
+        <button
+          type="button"
+          className={SM_BTN}
+          style={btnStyle()}
+          onClick={rescan}
+          disabled={busy || !!data?.notConfigured}
+        >
+          <ArrowPathIcon className={'h-3.5 w-3.5 ' + (busy ? 'animate-spin' : '')} /> Taramayı
+          tazele
         </button>
         <button type="button" className={SM_BTN} style={btnStyle()} onClick={() => setParams({})}>
           Ortamı değiştir
@@ -649,19 +1079,33 @@ export default function CryptoHubPage() {
             className="px-4 py-3 flex items-center gap-3 flex-wrap border-b"
             style={{ borderColor: 'var(--border-subtle)', background: 'var(--accent-bg)' }}
           >
-            <span className="h-8 w-8 rounded-lg inline-flex items-center justify-center shrink-0"
-              style={{ background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}>
+            <span
+              className="h-8 w-8 rounded-lg inline-flex items-center justify-center shrink-0"
+              style={{ background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}
+            >
               <BoltIcon className="h-5 w-5" />
             </span>
-            <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>İşlemler</span>
+            <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+              İşlemler
+            </span>
             <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
               her işlem önce uygulanacak komutları gösterir — onaysız hiçbir şey çalışmaz
             </span>
           </div>
           <div className="grid sm:grid-cols-3 gap-3 p-3">
             {actions.map((a) => {
-              const Icon = a.key === 'upgrade' ? ArrowUpCircleIcon : a.key === 'stop' ? PowerIcon : PlayCircleIcon;
-              const tone = a.key === 'upgrade' ? 'var(--accent)' : a.key === 'stop' ? 'var(--status-danger)' : 'var(--status-success)';
+              const Icon =
+                a.key === 'upgrade'
+                  ? ArrowUpCircleIcon
+                  : a.key === 'stop'
+                    ? PowerIcon
+                    : PlayCircleIcon;
+              const tone =
+                a.key === 'upgrade'
+                  ? 'var(--accent)'
+                  : a.key === 'stop'
+                    ? 'var(--status-danger)'
+                    : 'var(--status-success)';
               return (
                 <button
                   key={a.key}
@@ -671,22 +1115,45 @@ export default function CryptoHubPage() {
                   style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
                 >
                   {/* ust serit: islemin rengi karta uzaktan bakinca da okunsun */}
-                  <span className="absolute inset-x-0 top-0 h-1 rounded-t-xl" style={{ background: tone }} />
+                  <span
+                    className="absolute inset-x-0 top-0 h-1 rounded-t-xl"
+                    style={{ background: tone }}
+                  />
                   <span className="flex items-center gap-3">
-                    <span className="h-11 w-11 rounded-xl inline-flex items-center justify-center shrink-0"
-                      style={{ background: 'var(--bg-elevated)', color: tone }}>
+                    <span
+                      className="h-11 w-11 rounded-xl inline-flex items-center justify-center shrink-0"
+                      style={{ background: 'var(--bg-elevated)', color: tone }}
+                    >
                       <Icon className="h-6 w-6" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>{a.label}</span>
-                      <span className="block text-[12px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>{a.hint}</span>
+                      <span
+                        className="block text-[15px] font-semibold"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {a.label}
+                      </span>
+                      <span
+                        className="block text-[12px] mt-0.5"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
+                        {a.hint}
+                      </span>
                     </span>
-                    <ChevronRightIcon className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5"
-                      style={{ color: 'var(--text-muted)' }} />
+                    <ChevronRightIcon
+                      className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5"
+                      style={{ color: 'var(--text-muted)' }}
+                    />
                   </span>
                   {a.writes && (
-                    <span className="inline-flex items-center gap-1 mt-3 px-2 py-0.5 rounded-md text-[11px] font-semibold"
-                      style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', border: '1px solid var(--status-danger)' }}>
+                    <span
+                      className="inline-flex items-center gap-1 mt-3 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+                      style={{
+                        color: 'var(--status-danger)',
+                        background: 'var(--status-danger-bg)',
+                        border: '1px solid var(--status-danger)',
+                      }}
+                    >
                       <ExclamationTriangleIcon className="h-3.5 w-3.5" /> Ortamda değişiklik yapar
                     </span>
                   )}
@@ -701,30 +1168,66 @@ export default function CryptoHubPage() {
         <PlanModal
           tenantKey={scope.env.key}
           tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
+          namespace={scope.env.namespace}
           action={planFor}
           running={data?.versions?.running || ''}
           release={data?.versions?.release || ''}
+          valuesFiles={valuesSecenekleri(data?.archives || [], data?.versions?.running || '')}
           known={[
-            ...(data?.versions?.available || []).map((v) => ({ version: v, source: 'depo' as const })),
-            ...(data?.archives || []).map((a) => ({ version: a.version, source: 'arsiv' as const })),
+            ...(data?.versions?.available || []).map((v) => ({
+              version: v,
+              source: 'depo' as const,
+            })),
+            ...(data?.archives || []).map((a) => ({
+              version: a.version,
+              source: 'arsiv' as const,
+            })),
           ]}
           onClose={() => setPlanFor(null)}
         />
       )}
 
-      {err && <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>}
+      {err && (
+        <div
+          className="text-sm rounded-xl px-3 py-2 border"
+          style={{
+            color: 'var(--status-danger)',
+            background: 'var(--status-danger-bg)',
+            borderColor: 'var(--status-danger)',
+          }}
+        >
+          {err}
+        </div>
+      )}
 
       {data?.notConfigured && (
-        <div className="text-sm rounded-xl px-3 py-2 border flex items-start gap-2" style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
+        <div
+          className="text-sm rounded-xl px-3 py-2 border flex items-start gap-2"
+          style={{
+            color: 'var(--status-warning)',
+            background: 'var(--status-warning-bg)',
+            borderColor: 'var(--status-warning)',
+          }}
+        >
           <InformationCircleIcon className="h-4 w-4 mt-0.5 shrink-0" />
           <span>{data.message}</span>
         </div>
       )}
 
       {data?.tableMissing && (
-        <div className="text-sm rounded-xl px-3 py-2 border flex items-start gap-2" style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
+        <div
+          className="text-sm rounded-xl px-3 py-2 border flex items-start gap-2"
+          style={{
+            color: 'var(--status-warning)',
+            background: 'var(--status-warning-bg)',
+            borderColor: 'var(--status-warning)',
+          }}
+        >
           <InformationCircleIcon className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>Crypto Hub tabloları bu veritabanında yok — <code>crypto_hub_schema.sql</code> henüz çalıştırılmamış olabilir. Bu, “bileşen yok” anlamına gelmez.</span>
+          <span>
+            Crypto Hub tabloları bu veritabanında yok — <code>crypto_hub_schema.sql</code> henüz
+            çalıştırılmamış olabilir. Bu, “bileşen yok” anlamına gelmez.
+          </span>
         </div>
       )}
 
@@ -734,12 +1237,28 @@ export default function CryptoHubPage() {
             <li
               key={i}
               className="text-[12px] rounded-lg px-3 py-1.5 border flex items-start gap-2"
-              style={n.level === 'ERR'
-                ? { color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }
-                : { color: 'var(--text-secondary)', background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
+              style={
+                n.level === 'ERR'
+                  ? {
+                      color: 'var(--status-danger)',
+                      background: 'var(--status-danger-bg)',
+                      borderColor: 'var(--status-danger)',
+                    }
+                  : {
+                      color: 'var(--text-secondary)',
+                      background: 'var(--bg-elevated)',
+                      borderColor: 'var(--border-subtle)',
+                    }
+              }
             >
-              {n.level === 'ERR' ? <ExclamationTriangleIcon className="h-4 w-4 mt-0.5 shrink-0" /> : <InformationCircleIcon className="h-4 w-4 mt-0.5 shrink-0" />}
-              <span><b>{n.stage || n.level}</b> — {n.message}</span>
+              {n.level === 'ERR' ? (
+                <ExclamationTriangleIcon className="h-4 w-4 mt-0.5 shrink-0" />
+              ) : (
+                <InformationCircleIcon className="h-4 w-4 mt-0.5 shrink-0" />
+              )}
+              <span>
+                <b>{n.stage || n.level}</b> — {n.message}
+              </span>
             </li>
           ))}
         </ul>
@@ -747,26 +1266,44 @@ export default function CryptoHubPage() {
 
       {!data?.notConfigured && (
         <>
-          <nav className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-            {([['durum', 'Durum'], ['podlar', 'Podlar'], ['surumler', 'Sürümler']] as const).map(([id, label]) => (
+          <nav
+            className="flex items-center gap-1 border-b"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
+            {(
+              [
+                ['durum', 'Durum'],
+                ['podlar', 'Podlar'],
+                ['surumler', 'Sürümler'],
+              ] as const
+            ).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setTab(id)}
                 className="px-3 py-2 text-sm font-medium -mb-px border-b-2"
-                style={tab === id
-                  ? { color: 'var(--accent)', borderColor: 'var(--accent)' }
-                  : { color: 'var(--text-muted)', borderColor: 'transparent' }}
+                style={
+                  tab === id
+                    ? { color: 'var(--accent)', borderColor: 'var(--accent)' }
+                    : { color: 'var(--text-muted)', borderColor: 'transparent' }
+                }
               >
                 {label}
-                {id === 'surumler' && data?.versions?.measured && data.versions.newer.length > 0 && (
-                  <ArrowUpCircleIcon className="h-3.5 w-3.5 inline-block ml-1" style={{ color: 'var(--status-warning)' }} />
-                )}
+                {id === 'surumler' &&
+                  data?.versions?.measured &&
+                  data.versions.newer.length > 0 && (
+                    <ArrowUpCircleIcon
+                      className="h-3.5 w-3.5 inline-block ml-1"
+                      style={{ color: 'var(--status-warning)' }}
+                    />
+                  )}
               </button>
             ))}
           </nav>
 
-          {loading && !data ? <LoadingLogo compact /> : data ? (
+          {loading && !data ? (
+            <LoadingLogo compact />
+          ) : data ? (
             tab === 'durum' ? (
               <DurumTab
                 data={data}
@@ -781,7 +1318,14 @@ export default function CryptoHubPage() {
                 tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
                 namespace={scope.env.namespace}
               />
-            ) : <SurumTab data={data} tenantKey={scope.env.key} tenantLabel={`${scope.appLabel} · ${scope.env.label}`} />
+            ) : (
+              <SurumTab
+                data={data}
+                tenantKey={scope.env.key}
+                tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
+                namespace={scope.env.namespace}
+              />
+            )
           ) : null}
         </>
       )}

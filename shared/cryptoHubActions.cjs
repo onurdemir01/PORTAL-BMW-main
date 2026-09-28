@@ -24,9 +24,10 @@
 'use strict';
 
 const PROXY = 'http://tekprxv2.fw.garanti.com.tr:80';
-const NO_PROXY = 'localhost,.fw.garanti.com.tr,.fw.dijitalvarlik.com.tr,.fw.gohas.com.tr,'
-  + '.fw.teknoloji.com.tr,.fw.gteknoloji.com.tr,.fw.takasnet.com.tr,.fw.eurekosigorta.com.tr,'
-  + '.gtdmz.com.tr,.gteknolojidmz.com.tr,10.0.0.0/8,172.16.0.0/16,192.168.0.0/16';
+const NO_PROXY =
+  'localhost,.fw.garanti.com.tr,.fw.dijitalvarlik.com.tr,.fw.gohas.com.tr,' +
+  '.fw.teknoloji.com.tr,.fw.gteknoloji.com.tr,.fw.takasnet.com.tr,.fw.eurekosigorta.com.tr,' +
+  '.gtdmz.com.tr,.gteknolojidmz.com.tr,10.0.0.0/8,172.16.0.0/16,192.168.0.0/16';
 
 /** Ekranda seçilebilen işlemler. `writes` = ortamda gerçek değişiklik yapar. */
 const ACTIONS = Object.freeze([
@@ -45,7 +46,7 @@ const ACTIONS = Object.freeze([
     // farkli olmasi: burada surum DEGISMEZ, degisen yalnizca values. Ayni dugmeye iki
     // farkli isi yukleyince "hangi surume gidiyorum" sorusu belirsizlesir.
     key: 'values_rollout',
-    label: 'Rollout — values\'ı yeniden uygula',
+    label: "Rollout — values'ı yeniden uygula",
     hint: 'Sürüm değişmez; koşan sürüm values.yaml ile yeniden uygulanır',
     writes: true,
     params: [],
@@ -85,29 +86,42 @@ function orderComponents(app, comps, reverse = false) {
     if (rules.stopLast.some((k) => n.endsWith('-' + k) || n === k)) return 2;
     return 1;
   };
-  const sorted = [...comps].sort((a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name)));
+  const sorted = [...comps].sort(
+    (a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name)),
+  );
   return reverse ? sorted.reverse() : sorted;
 }
 
-const ocKind = (kind) => (String(kind || '').toLowerCase().startsWith('stateful') ? 'statefulset' : 'deployment');
+const ocKind = (kind) =>
+  String(kind || '')
+    .toLowerCase()
+    .startsWith('stateful')
+    ? 'statefulset'
+    : 'deployment';
 
 /** Her plan aynı üç adımla başlar: proxy, cluster oturumu, namespace. */
 function girisAdimlari(tenant) {
   return [
     {
-      kind: 'command', writes: false, title: 'Proxy değişkenleri',
+      kind: 'command',
+      writes: false,
+      title: 'Proxy değişkenleri',
       command: `export http_proxy="${PROXY}"\nexport https_proxy="${PROXY}"\nexport no_proxy=${NO_PROXY}`,
       note: `Bastion: ${tenant.bastion} (dzdo su - was)`,
       source: 'runbook adım 1-3',
     },
     {
-      kind: 'command', writes: false, title: 'Cluster oturumu',
+      kind: 'command',
+      writes: false,
+      title: 'Cluster oturumu',
       command: `oc login ${tenant.apiUrl} --username=<servis-hesabı>`,
-      note: 'Parola AWX credential\'ından gelir; planda ve logda GÖRÜNMEZ.',
+      note: "Parola AWX credential'ından gelir; planda ve logda GÖRÜNMEZ.",
       source: 'runbook adım 4',
     },
     {
-      kind: 'command', writes: false, title: 'Namespace',
+      kind: 'command',
+      writes: false,
+      title: 'Namespace',
       command: `oc project ${tenant.namespace}`,
       source: 'runbook adım 5',
     },
@@ -116,7 +130,8 @@ function girisAdimlari(tenant) {
 
 function scaleAdimlari(tenant, comps, replicasOf, baslik) {
   return comps.map((c) => ({
-    kind: 'command', writes: true,
+    kind: 'command',
+    writes: true,
     title: `${baslik}: ${c.name}`,
     command: `oc scale ${ocKind(c.kind)} ${c.name} --replicas=${replicasOf(c)} -n ${tenant.namespace}`,
     note: c.note,
@@ -142,19 +157,23 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
   const steps = [...girisAdimlari(tenant)];
 
   if (!components.length) {
-    warnings.push('Bu ortam için tarama kaydı yok — scale adımları üretilemedi. Önce "Taramayı tazele".');
+    warnings.push(
+      'Bu ortam için tarama kaydı yok — scale adımları üretilemedi. Önce "Taramayı tazele".',
+    );
   }
 
   // EKSIK BILESEN LISTESI SESSIZ KALMAMALI (2026-09-26, uretimde gorulen durum):
   // `oc get statefulset` RBAC yuzunden Forbidden dondugunde tarama ERR yazar ama bilesen
   // listesi EKSIK kalir. Plan bu listeden uretildigi icin "Kapat" planinda statefulset'ler
   // HIC gorunmez - yani eksik bir plan, eksik oldugunu soylemeden onaya cikardi.
-  const eksik = (veri.notes || []).filter((n) => n.level === 'ERR' && /^get-/.test(String(n.stage || '')));
+  const eksik = (veri.notes || []).filter(
+    (n) => n.level === 'ERR' && /^get-/.test(String(n.stage || '')),
+  );
   for (const n of eksik) {
     const tur = String(n.stage).replace(/^get-/, '');
     warnings.push(
-      `Son taramada ${tur} listesi alınamadı (${(n.message || '').slice(0, 120)}) — bu türdeki bileşenler `
-      + 'planda YOK. Plan eksiktir; yetki verilip tarama tazelenmeden uygulanmamalı.',
+      `Son taramada ${tur} listesi alınamadı (${(n.message || '').slice(0, 120)}) — bu türdeki bileşenler ` +
+        'planda YOK. Plan eksiktir; yetki verilip tarama tazelenmeden uygulanmamalı.',
     );
   }
 
@@ -164,27 +183,37 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     const ayakta = components.filter((c) => Number(c.want) > 0);
     if (tenant.app === 'metaco') {
       out.push({
-        kind: 'check', writes: false, title: 'Notary ve vault istek almıyor mu?',
-        command: 'tail -f /var/log/hpcr.log | grep metacovault\ntail -f /var/log/hpcr.log | grep metaconotary',
+        kind: 'check',
+        writes: false,
+        title: 'Notary ve vault istek almıyor mu?',
+        command:
+          'tail -f /var/log/hpcr.log | grep metacovault\ntail -f /var/log/hpcr.log | grep metaconotary',
         note: 'Gateway kapandıktan sonra istek görülmemeli.',
         source: 'Metaco runbook adım 3',
       });
       out.push({
-        kind: 'manual', writes: false, title: 'harmonize-keycloak-kc secret yedeği',
+        kind: 'manual',
+        writes: false,
+        title: 'harmonize-keycloak-kc secret yedeği',
         note: 'Runbook adım 4 — kapatmadan önce secret yedeklenir.',
         source: 'Metaco runbook adım 4',
       });
     }
     if (tenant.app === 'wyden') {
       out.push({
-        kind: 'check', writes: false, title: 'Aeron cluster lideri ve konsensüs',
-        command: 'oc exec -it wydenapp-aeron-cluster-0 -- bash -c "… ClusterTool … cluster list-members"',
+        kind: 'check',
+        writes: false,
+        title: 'Aeron cluster lideri ve konsensüs',
+        command:
+          'oc exec -it wydenapp-aeron-cluster-0 -- bash -c "… ClusterTool … cluster list-members"',
         note: 'Runbook 12: her üç node için lider/konsensüs kontrolü yapılır.',
         source: 'Wyden runbook 12',
       });
       if (tenant.production) {
         out.push({
-          kind: 'manual', writes: false, title: 'İş birimi: "Trading" kapatılır',
+          kind: 'manual',
+          writes: false,
+          title: 'İş birimi: "Trading" kapatılır',
           note: 'Garanti BBVA Kripto Mobil tarafında Trading kapatılmadan podlara dokunulmaz.',
           source: 'Wyden runbook adım 6',
         });
@@ -193,8 +222,10 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     out.push(...scaleAdimlari(tenant, orderComponents(tenant.app, ayakta), () => 0, 'Kapat'));
     if (tenant.app === 'metaco') {
       out.push({
-        kind: 'manual', writes: false, title: 'LinuxOne: önce vault sonra notary kapatılır',
-        note: 'Hub LinuxOne\'a DOKUNMAZ (kullanıcı kararı) — kontrol listesi: virsh shutdown metacovault / metaconotary / grep11vault.',
+        kind: 'manual',
+        writes: false,
+        title: 'LinuxOne: önce vault sonra notary kapatılır',
+        note: "Hub LinuxOne'a DOKUNMAZ (kullanıcı kararı) — kontrol listesi: virsh shutdown metacovault / metaconotary / grep11vault.",
         source: 'Metaco runbook adım 5',
       });
     }
@@ -206,8 +237,10 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     const out = [];
     if (tenant.app === 'metaco') {
       out.push({
-        kind: 'manual', writes: false, title: 'LinuxOne: grep11 → grep11vault → notary → vault açılır',
-        note: 'Hub LinuxOne\'a dokunmaz; podlardan ÖNCE açılması gerekir.',
+        kind: 'manual',
+        writes: false,
+        title: 'LinuxOne: grep11 → grep11vault → notary → vault açılır',
+        note: "Hub LinuxOne'a dokunmaz; podlardan ÖNCE açılması gerekir.",
         source: 'Metaco runbook adım 10',
       });
     }
@@ -217,12 +250,28 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     const liste = (components.length ? components : lastNonZero).map((c) => {
       const k = `${c.kind}/${c.name}`;
       const w = hedef.get(k);
-      return w ? { ...c, hedefReplika: w } : { ...c, hedefReplika: 1, unknown: true, note: 'Son taramalarda hep 0 görüldü — istenen replika sayısı BİLİNMİYOR, 1 varsayıldı.' };
+      return w
+        ? { ...c, hedefReplika: w }
+        : {
+            ...c,
+            hedefReplika: 1,
+            unknown: true,
+            note: 'Son taramalarda hep 0 görüldü — istenen replika sayısı BİLİNMİYOR, 1 varsayıldı.',
+          };
     });
     if (liste.some((c) => c.unknown)) {
-      warnings.push('Bazı bileşenlerin istenen replika sayısı bilinmiyor (hiç sıfırdan farklı ölçülmediler); o adımlar işaretli.');
+      warnings.push(
+        'Bazı bileşenlerin istenen replika sayısı bilinmiyor (hiç sıfırdan farklı ölçülmediler); o adımlar işaretli.',
+      );
     }
-    out.push(...scaleAdimlari(tenant, orderComponents(tenant.app, liste, true), (c) => c.hedefReplika, 'Aç'));
+    out.push(
+      ...scaleAdimlari(
+        tenant,
+        orderComponents(tenant.app, liste, true),
+        (c) => c.hedefReplika,
+        'Aç',
+      ),
+    );
     return out;
   };
 
@@ -231,24 +280,32 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
   if (action.key === 'values_rollout') {
     const kosan = String(veri.running || '').trim();
     if (!kosan) {
-      warnings.push('Koşan sürüm okunamadı (helm release bulunamadı) — komutta <sürüm> yer tutucusu duruyor.');
+      warnings.push(
+        'Koşan sürüm okunamadı (helm release bulunamadı) — komutta <sürüm> yer tutucusu duruyor.',
+      );
     }
     const ver = kosan || '<sürüm>';
     steps.push({
-      kind: 'check', writes: false, title: 'Uygulanacak values',
+      kind: 'check',
+      writes: false,
+      title: 'Uygulanacak values',
       note: 'Bu işlem values.yaml dosyasını yeniden uygular; onaydan önce içeriği ekranda görürsünüz.',
       source: 'Crypto Hub',
     });
     if (tenant.app === 'metaco') {
       steps.push({
-        kind: 'command', writes: true, title: `Helm upgrade (aynı sürüm ${ver})`,
+        kind: 'command',
+        writes: true,
+        title: `Helm upgrade (aynı sürüm ${ver})`,
         command: `helm upgrade --install --namespace=${tenant.namespace} ${tenant.helmRelease} ./harmonize/ -f ./garanti_values.yaml`,
         note: 'Sürüm değişmiyor; chart dizini koşan sürümün dizini olmalı.',
         source: 'Metaco runbook (upgrade)',
       });
     } else {
       steps.push({
-        kind: 'command', writes: true, title: `Helm upgrade (aynı sürüm ${ver})`,
+        kind: 'command',
+        writes: true,
+        title: `Helm upgrade (aynı sürüm ${ver})`,
         command: `helm upgrade --install ${tenant.helmRelease} ${tenant.chartName || 'wyden/wyden'} --version ${ver} -f <garanti_values.yaml yolu>`,
         note: 'Sürüm değişmiyor; yalnız values yeniden uygulanıyor.',
         unknown: !kosan,
@@ -256,9 +313,11 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
       });
     }
     steps.push({
-      kind: 'check', writes: false, title: 'Route ve pod kontrolü',
+      kind: 'check',
+      writes: false,
+      title: 'Route ve pod kontrolü',
       command: `oc get route -n ${tenant.namespace}\noc get pods -n ${tenant.namespace}`,
-      note: 'Runbook notu: helm upgrade bazen route\'ları siliyor; gerekirse iki kez koşulur.',
+      note: "Runbook notu: helm upgrade bazen route'ları siliyor; gerekirse iki kez koşulur.",
       source: 'runbook uyarısı',
     });
   }
@@ -273,42 +332,56 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     // AYNI SURUME "UPGRADE" OLMAZ (kullanici karari): bu, values'i yeniden uygulamaktir ve
     // kendi islemi vardir. Ayrimi burada da koruyoruz; ekran zaten sectirmiyor.
     if (v && v === String(veri.running || '').trim()) {
-      warnings.push(`${v} zaten koşan sürüm — sürümü değiştirmeyen bir uygulama için "Rollout — values'ı yeniden uygula" işlemini kullanın.`);
+      warnings.push(
+        `${v} zaten koşan sürüm — sürümü değiştirmeyen bir uygulama için "Rollout — values'ı yeniden uygula" işlemini kullanın.`,
+      );
     }
     const ver = v || '<sürüm>';
 
     if (tenant.app === 'metaco') {
       steps.push(
         {
-          kind: 'command', writes: false, title: 'Chart deposuna giriş',
+          kind: 'command',
+          writes: false,
+          title: 'Chart deposuna giriş',
           command: 'helm registry login metaco.azurecr.io -u <kullanıcı> --password-stdin',
-          note: 'Parola AWX credential\'ından okunur. Runbook\'taki düz metin parola KULLANILMAZ (rotasyon bekliyor).',
+          note: "Parola AWX credential'ından okunur. Runbook'taki düz metin parola KULLANILMAZ (rotasyon bekliyor).",
           source: 'Metaco runbook (chart indirme) adım 2',
         },
         {
-          kind: 'command', writes: false, title: 'Chart indir',
+          kind: 'command',
+          writes: false,
+          title: 'Chart indir',
           command: `helm pull oci://${tenant.chartRef || 'metaco.azurecr.io/helm-flat/harmonize'} --version ${ver}`,
           source: 'Metaco runbook adım 3',
         },
         {
-          kind: 'command', writes: false, title: 'Chart aç ve imaj listesini çıkar',
+          kind: 'command',
+          writes: false,
+          title: 'Chart aç ve imaj listesini çıkar',
           command: `tar xvf harmonize-${ver}.tgz\ncd harmonize/\ncat values.yaml | grep -i image -A5 | grep -E "(repository|tag)" | grep -v "#"`,
           source: 'Metaco runbook adım 4',
         },
         {
-          kind: 'manual', writes: false, title: 'İmajlar gtrepo\'ya push edilir',
+          kind: 'manual',
+          writes: false,
+          title: "İmajlar gtrepo'ya push edilir",
           note: 'Jenkins: metaco-artifactory-push. "kms-ibm", "approval-notary" ve "vault-releases" HARİÇ.',
           source: 'Metaco runbook adım 5',
         },
         {
-          kind: 'command', writes: true, title: 'Helm upgrade',
+          kind: 'command',
+          writes: true,
+          title: 'Helm upgrade',
           command: `helm upgrade --install --namespace=${tenant.namespace} ${tenant.helmRelease} ./harmonize/ -f ./garanti_values.yaml`,
           source: 'Metaco runbook (upgrade) ',
         },
         {
-          kind: 'check', writes: false, title: 'Route kontrolü',
+          kind: 'check',
+          writes: false,
+          title: 'Route kontrolü',
           command: `oc get route -n ${tenant.namespace}`,
-          note: 'Runbook notu: helm upgrade bazen route\'ları siliyor ve geri oluşturmuyor; gerekirse upgrade İKİ KEZ koşulur.',
+          note: "Runbook notu: helm upgrade bazen route'ları siliyor ve geri oluşturmuyor; gerekirse upgrade İKİ KEZ koşulur.",
           source: 'Metaco runbook (upgrade) uyarı 3',
         },
       );
@@ -316,14 +389,18 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
       steps.push(...kapatAdimlari());
       steps.push(
         {
-          kind: 'command', writes: true, title: 'Helm upgrade',
+          kind: 'command',
+          writes: true,
+          title: 'Helm upgrade',
           command: `helm upgrade --install ${tenant.helmRelease} ${tenant.chartName || 'wyden/wyden'} --version ${ver} -f <garanti_values.yaml yolu>`,
           note: 'Values dosyası setup-wyden ağacından seçilir (ortam + sürüm + cluster klasörü); yol doğrulanmalı.',
           unknown: true,
           source: 'Wyden runbook (upgrade) adım 10',
         },
         {
-          kind: 'check', writes: false, title: 'Route ve pod kontrolü',
+          kind: 'check',
+          writes: false,
+          title: 'Route ve pod kontrolü',
           command: `oc get route -n ${tenant.namespace}\noc get pods -n ${tenant.namespace}`,
           source: 'Wyden runbook (route oluşturma adımları)',
         },
@@ -333,15 +410,22 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
   }
 
   steps.push({
-    kind: 'check', writes: false, title: 'Son durum',
+    kind: 'check',
+    writes: false,
+    title: 'Son durum',
     command: `oc get deploy,sts -n ${tenant.namespace}`,
     note: 'Hub\'da "Taramayı tazele" ile aynı bilgiyi ekrandan da görebilirsiniz.',
     source: 'Crypto Hub',
   });
 
   if (tenant.production) {
-    warnings.push('PRODUCTION ortam: yazan adımlar OCO penceresi ve Smart onayına bağlanmadan çalıştırılmaz.');
+    warnings.push(
+      'PRODUCTION ortam: yazan adımlar OCO penceresi ve Smart onayına bağlanmadan çalıştırılmaz.',
+    );
   }
+
+  // Depo chart'i (Wyden: `wyden/wyden`) varsa Portal `helm upgrade` kosturabiliyor.
+  const portaldanKosar = action.key === 'values_rollout' && !!String(tenant.chartName || '').trim();
 
   return {
     action: action.key,
@@ -353,10 +437,22 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     writeCount: steps.filter((s) => s.writes).length,
     unknownCount: steps.filter((s) => s.unknown).length,
     warnings,
-    // Yazan playbook'lar yazilana kadar bu ekran YALNIZCA gosterir.
-    runnable: false,
-    runnableNote: 'Bu işlem Portal\'dan henüz çalıştırılmıyor — komutlar şimdilik elle koşulur. '
-      + 'Yazan playbook bağlandığında onay bu ekrandan verilecek.',
+    // PORTAL'DAN KOSABILIR MI? Yalniz rollout icin ve yalniz chart bir DEPO chart'iysa.
+    // Metaco'da chart bastion diskindeki bir dizinden kuruluyor ve dogru dizin kosan
+    // surumun arsiv dizinine bagli; bunu tahmin etmek, "ayni surum" diyen bir islemi
+    // sessizce BASKA bir surume goturebilirdi. Tahmin etmektense ACMIYORUZ: ekran
+    // sebebini yazar ve komutlar yine gosterilir.
+    runnable: portaldanKosar,
+    runnableNote: portaldanKosar
+      ? 'Bu işlemi Portal çalıştırabilir: aşağıdaki panelden önce farkı görün, isterseniz ' +
+        'helm template ile oluşacak nesneleri önizleyin, sonra uygulayın. Sürüm DEĞİŞMEZ — ' +
+        'koşan sürüm hem Portal hem bastion tarafında ayrıca doğrulanır.'
+      : action.key === 'values_rollout'
+        ? 'Bu uygulamada chart, bastion diskindeki bir dizinden kuruluyor ve doğru dizin ' +
+          'koşan sürüme bağlı; Portal tahmin etmemek için işlemi kendisi çalıştırmıyor. ' +
+          'Aşağıdaki komutlar elle koşulur.'
+        : "Bu işlem Portal'dan henüz çalıştırılmıyor — komutlar şimdilik elle koşulur. " +
+          'Yazan playbook bağlandığında onay bu ekrandan verilecek.',
   };
 }
 

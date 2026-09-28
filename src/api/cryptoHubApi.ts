@@ -16,28 +16,52 @@ export interface CryptoEnvOption {
   /** false = ortam şimdilik kapalı (2026-09-26: production kapatıldı); seçilemez, API de reddeder */
   open: boolean;
 }
-export interface CryptoDomain { domain: string; label: string; envs: CryptoEnvOption[] }
-export interface CryptoApp { app: string; label: string; domains: CryptoDomain[] }
+export interface CryptoDomain {
+  domain: string;
+  label: string;
+  envs: CryptoEnvOption[];
+}
+export interface CryptoApp {
+  app: string;
+  label: string;
+  domains: CryptoDomain[];
+}
 
 export interface CryptoTenant {
-  key: string; app: string; appLabel: string;
-  domain: string; domainLabel: string;
-  env: string; envLabel: string; production: boolean;
-  bastion: string; cluster: string; apiUrl: string;
-  namespace: string; helmRelease: string; chartRef: string;
+  key: string;
+  app: string;
+  appLabel: string;
+  domain: string;
+  domainLabel: string;
+  env: string;
+  envLabel: string;
+  production: boolean;
+  bastion: string;
+  cluster: string;
+  apiUrl: string;
+  namespace: string;
+  helmRelease: string;
+  chartRef: string;
 }
 
 export interface CryptoComponent {
-  kind: string; name: string;
-  want: number | null; ready: number | null;
-  image: string; version: string;
+  kind: string;
+  name: string;
+  want: number | null;
+  ready: number | null;
+  image: string;
+  version: string;
   /** running = hazır ≥ istenen · stopped = istenen 0 · degraded = eksik replika */
   state: 'running' | 'stopped' | 'degraded';
 }
 
 export interface CryptoRelease {
-  name: string; chart: string; chartVersion: string; appVersion: string;
-  status: string; updatedAt: string;
+  name: string;
+  chart: string;
+  chartVersion: string;
+  appVersion: string;
+  status: string;
+  updatedAt: string;
 }
 
 export interface CryptoArchive {
@@ -81,7 +105,10 @@ export interface CryptoOverview {
 }
 
 export interface CryptoActionDef {
-  key: string; label: string; hint: string; writes: boolean;
+  key: string;
+  label: string;
+  hint: string;
+  writes: boolean;
   params: { key: string; label: string; required?: boolean; placeholder?: string }[];
 }
 
@@ -100,7 +127,9 @@ export interface CryptoPlanStep {
 }
 
 export interface CryptoPlan {
-  action: string; label: string; tenantKey: string;
+  action: string;
+  label: string;
+  tenantKey: string;
   params: Record<string, string>;
   scannedAt: string | null;
   steps: CryptoPlanStep[];
@@ -117,10 +146,14 @@ export const cryptoHubApi = {
     fetch(`${BASE}/tenants`).then(safeJson),
 
   overview: (tenant: string, fresh = false): Promise<CryptoOverview> =>
-    fetch(`${BASE}/overview?tenant=${encodeURIComponent(tenant)}${fresh ? '&fresh=1' : ''}`).then(safeJson),
+    fetch(`${BASE}/overview?tenant=${encodeURIComponent(tenant)}${fresh ? '&fresh=1' : ''}`).then(
+      safeJson,
+    ),
 
   /** Taramayı şimdi koştur (salt okunur iş; yalnız seçili kiracı). */
-  rescan: (tenant: string): Promise<{ ok: boolean; jobId?: number | null; awxServerId?: number; message?: string }> =>
+  rescan: (
+    tenant: string,
+  ): Promise<{ ok: boolean; jobId?: number | null; awxServerId?: number; message?: string }> =>
     fetch(`${BASE}/rescan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -131,16 +164,38 @@ export const cryptoHubApi = {
     fetch(`${BASE}/actions`).then(safeJson),
 
   /** Ön onay planı: uygulanacak komutlar (salt okunur; hiçbir şey çalıştırmaz). */
-  plan: (tenant: string, action: string, version = ''): Promise<{ ok: boolean; plan?: CryptoPlan; message?: string }> =>
-    fetch(`${BASE}/plan?tenant=${encodeURIComponent(tenant)}&action=${encodeURIComponent(action)}`
-      + (version ? `&version=${encodeURIComponent(version)}` : '')).then(safeJson),
+  plan: (
+    tenant: string,
+    action: string,
+    version = '',
+  ): Promise<{ ok: boolean; plan?: CryptoPlan; message?: string }> =>
+    fetch(
+      `${BASE}/plan?tenant=${encodeURIComponent(tenant)}&action=${encodeURIComponent(action)}` +
+        (version ? `&version=${encodeURIComponent(version)}` : ''),
+    ).then(safeJson),
 
-  jobStatus: (awxServerId: number, jobId: number): Promise<{ ok: boolean; status: string; output?: string; message?: string }> =>
+  jobStatus: (
+    awxServerId: number,
+    jobId: number,
+  ): Promise<{ ok: boolean; status: string; output?: string; message?: string }> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
 };
 
 // ── İşlemler (log / pod silme / rollout / replika), 2026-09-26 ────────────────────────
-export type CryptoOpsAction = 'pods' | 'logs' | 'values_get' | 'pod_delete' | 'rollout' | 'scale' | 'values_put' | 'values_files';
+export type CryptoOpsAction =
+  | 'pods'
+  | 'logs'
+  | 'values_get'
+  | 'pod_delete'
+  | 'rollout'
+  | 'scale'
+  | 'values_put'
+  | 'values_files'
+  | 'values_diff'
+  | 'helm_template'
+  | 'helm_upgrade'
+  | 'values_backups'
+  | 'values_restore';
 
 export interface CryptoPod {
   name: string;
@@ -174,23 +229,59 @@ export interface CryptoOpsResult {
     okunan: { path: string; cluster: string }[];
     okunamayan: { path: string; cluster: string; error: string }[];
     /** yalnızca FARKLI olan ayarlar; `degerler` dizisi `okunan` ile aynı sıradadır */
-    satirlar: { anahtar: string; degerler: (string | null)[]; ayni: boolean; sirli: boolean; eksikVar: boolean }[];
+    satirlar: {
+      anahtar: string;
+      degerler: (string | null)[];
+      ayni: boolean;
+      sirli: boolean;
+      eksikVar: boolean;
+    }[];
     farkliSayi: number;
     anahtarSayi: number;
     /** iki dosyadan az okunduysa false — "uyumlu" demek yanlış olurdu */
     karsilastirilabilir: boolean;
   };
+  /** helm_upgrade: upgrade ÖNCESİ ve SONRASI route listesi. Runbook "upgrade bazen
+   *  route'ları siliyor" diyor; bu bir uyarı olarak kalmasın diye ÖLÇÜLÜYOR. */
+  routes?: { once: string[]; sonra: string[] };
+  /** helm_template: uygulanınca oluşacak nesneler (özet) ve ham manifest.
+   *  `--validate` KULLANILMAZ: önizleme küme erişimine bağlı değildir, dolayısıyla
+   *  "kümenin bunu kabul edeceği" GARANTİSİ DEĞİL, "ne üretileceği"nin gösterimidir. */
+  template?: { objects: { kind: string; name: string }[]; lines: string[] };
+  /** values_backups: dosyanın `.bak` sürümleri, EN YENİSİ BAŞTA. values_put her yazmadan
+   *  önce yedek bıraktığı için geçmiş zaten diskte duruyordu; bu onu görünür kılar. */
+  backups?: { path: string; size: number; mtime: string }[];
 }
 
 export const cryptoOpsApi = {
   /** Yazan işlemlerde `confirmed` şart; sunucu onaysız çalıştırmaz (HTTP 428). */
   run: (body: {
-    tenant: string; action: CryptoOpsAction; targets: string[];
-    tail?: number; container?: string; previous?: boolean; replicas?: number; confirmed?: boolean;
-    release?: string; valuesAll?: boolean; valuesPath?: string; content?: string;
+    tenant: string;
+    action: CryptoOpsAction;
+    targets: string[];
+    tail?: number;
+    container?: string;
+    previous?: boolean;
+    replicas?: number;
+    confirmed?: boolean;
+    release?: string;
+    valuesAll?: boolean;
+    valuesPath?: string;
+    content?: string;
     /** values_files: karşılaştırılacak cluster dosyalarının TAM yolları (/vhosting altı) */
     valuesPaths?: string[];
-  }): Promise<{ ok: boolean; jobId?: number | null; awxServerId?: number; needsConfirm?: boolean; message?: string }> =>
+    /** values_restore: geri yüklenecek yedek — hedef dosyanın KENDİ yedeği olmalı */
+    backupPath?: string;
+    /** values_diff / helm_template / helm_upgrade: chart ve koşan sürüm SUNUCUDA çözülür;
+     *  gövdeye yazılan chart/sürüm dikkate ALINMAZ (aksi halde "yalnız values değişecek"
+     *  diyen bir istek sessizce başka bir sürüm uygulayabilirdi). */
+  }): Promise<{
+    ok: boolean;
+    jobId?: number | null;
+    awxServerId?: number;
+    needsConfirm?: boolean;
+    message?: string;
+  }> =>
     fetch(`${BASE}/ops`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -198,6 +289,31 @@ export const cryptoOpsApi = {
     }).then(safeJson),
 
   /** reveal=true: values satırları MASKESİZ döner ve bu istek denetim kaydına yazılır. */
-  result: (awxServerId: number, jobId: number, reveal = false): Promise<{ ok: boolean; status: string; result: CryptoOpsResult | null; message?: string }> =>
+  result: (
+    awxServerId: number,
+    jobId: number,
+    reveal = false,
+  ): Promise<{ ok: boolean; status: string; result: CryptoOpsResult | null; message?: string }> =>
     fetch(`${BASE}/ops-result/${awxServerId}/${jobId}${reveal ? '?reveal=1' : ''}`).then(safeJson),
+
+  /** Seçilen ayarları hedef dosya içeriğine uygular ve YENİ İÇERİĞİ döndürür — HİÇBİR ŞEY
+   *  YAZMAZ. Gerçek yazma `values_put` ile olur (yedek alır, denetime yazar): tek yazma
+   *  yolu kalsın diye burada ikinci bir yol açılmadı. Maskeli içerik reddedilir (HTTP 409):
+   *  maskeli metni geri yazmak gerçek parolayı `****` ile değiştirmek olurdu. */
+  valuesApply: (body: {
+    tenant: string;
+    lines: string[];
+    secimler: { anahtar: string; deger: string }[];
+  }): Promise<{
+    ok: boolean;
+    content?: string;
+    degisen?: { anahtar: string; eski: string; yeni: string }[];
+    atlanan?: { anahtar: string; sebep: string }[];
+    message?: string;
+  }> =>
+    fetch(`${BASE}/values-apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(safeJson),
 };

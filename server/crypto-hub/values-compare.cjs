@@ -46,8 +46,10 @@ function anahtarla(lines) {
 /** Dosya yolundan cluster adı: ".../1.8.2/cldev1/garanti_values.yaml" -> "cldev1".
  *  Alt dizin yoksa dosya adına düşer (eski düzen: sürüm dizininde tek dosya). */
 function clusterAdi(p) {
-  const par = String(p || '').split('/').filter(Boolean);
-  return par.length >= 2 ? par[par.length - 2] : (par[par.length - 1] || String(p || ''));
+  const par = String(p || '')
+    .split('/')
+    .filter(Boolean);
+  return par.length >= 2 ? par[par.length - 2] : par[par.length - 1] || String(p || '');
 }
 
 /**
@@ -59,7 +61,8 @@ function karsilastir(files, sirRe) {
   const hepsi = Array.isArray(files) ? files : [];
   // OKUNAMAYAN DOSYA KARSILASTIRMAYA GIRMEZ ve "fark yok" DEMEK DEGILDIR: ayri raporlanir.
   const okunan = hepsi.filter((f) => f && !f.error);
-  const okunamayan = hepsi.filter((f) => f && f.error)
+  const okunamayan = hepsi
+    .filter((f) => f && f.error)
     .map((f) => ({ path: f.path, cluster: clusterAdi(f.path), error: f.error }));
 
   const haritalar = okunan.map((f) => anahtarla(f.lines));
@@ -75,7 +78,7 @@ function karsilastir(files, sirRe) {
     return {
       anahtar: a,
       // GOSTERILEN deger maskeli olabilir; `ayni` YUKARIDA HAM degerlerden hesaplandi.
-      degerler: ham.map((v) => (v === null ? null : (sirli ? '****' : v))),
+      degerler: ham.map((v) => (v === null ? null : sirli ? '****' : v)),
       ayni,
       sirli,
       eksikVar: ham.some((v) => v === null),
@@ -95,4 +98,77 @@ function karsilastir(files, sirRe) {
   };
 }
 
-module.exports = { anahtarla, karsilastir, clusterAdi };
+/**
+ * Secilen anahtarlarin degerini HEDEF dosyada gunceller.
+ *
+ * Kullanici (2026-09-28): karsilastirmada gorulen farki oteki cluster'a da yazabilmek.
+ *
+ * YALNIZ VAR OLAN ANAHTAR GUNCELLENIR. Olmayan anahtar EKLENMEZ: nereye, hangi girintiyle
+ * ve hangi blogun altina ekleneceği bu dosyalarda tek bir dogru cevabi olmayan bir sorudur
+ * ve yanlis tahmin, values dosyasini sessizce bozar. Eklenemeyenler `atlanan` olarak
+ * DONDURULUR - ekran bunlari "elle eklenmeli" diye gosterir, sessizce yutmaz.
+ *
+ * MASKELI ICERIGE YAZILMAZ: maskeli bir dosyayi geri yazmak, gercek parolayi '****' ile
+ * degistirmek olurdu. Cagiran taraf ham icerik vermek zorunda; kontrol burada.
+ *
+ * @param lines hedef dosyanin HAM satirlari
+ * @param secimler [{ anahtar: 'a.b.c', deger: 'x' }]
+ * @returns { lines, degisen, atlanan, maskeli }
+ */
+function uygula(lines, secimler) {
+  const kaynak = Array.isArray(lines) ? lines.map((x) => String(x == null ? '' : x)) : [];
+  const istek = Array.isArray(secimler) ? secimler : [];
+
+  // MASKE KAPISI: tek bir maskeli satir bile varsa HICBIR SEY yazilmaz.
+  const maskeli = kaynak.some((l) => /:\s*\*{4}\s*$/.test(l));
+  if (maskeli) return { lines: kaynak, degisen: [], atlanan: [], maskeli: true };
+
+  const cikti = [...kaynak];
+  const degisen = [];
+  const atlanan = [];
+
+  for (const sec of istek) {
+    const anahtar = String((sec && sec.anahtar) || '').trim();
+    const deger = String(sec && sec.deger != null ? sec.deger : '');
+    if (!anahtar) continue;
+
+    // Hedef satiri YOL uzerinden bul: ayni adli baska bir anahtar (ornegin iki ayri blokta
+    // `enabled`) yanlislikla guncellenmesin.
+    const yol = [];
+    let bulundu = -1;
+    let girinti = '';
+    for (let i = 0; i < cikti.length; i += 1) {
+      const l = cikti[i];
+      if (!l.trim() || l.trim().startsWith('#')) continue;
+      const m = l.match(/^(\s*)(-\s*)?([A-Za-z0-9_.\-/]+)\s*:\s*(.*)$/);
+      if (!m) continue;
+      const gir = m[1].length;
+      while (yol.length && yol[yol.length - 1].girinti >= gir) yol.pop();
+      const tam = [...yol.map((x) => x.ad), m[3]].join('.');
+      if (String(m[4] || '').trim() === '') {
+        yol.push({ girinti: gir, ad: m[3] });
+      } else if (tam === anahtar) {
+        bulundu = i;
+        girinti = m[1];
+        break;
+      }
+    }
+
+    if (bulundu < 0) {
+      atlanan.push({
+        anahtar,
+        sebep: 'hedef dosyada bu anahtar yok - nereye ekleneceği belirsiz, elle eklenmeli',
+      });
+      continue;
+    }
+    const eski = cikti[bulundu];
+    const ad = eski.match(/^\s*(-\s*)?([A-Za-z0-9_.\-/]+)\s*:/);
+    cikti[bulundu] =
+      `${girinti}${(ad && ad[1]) || ''}${(ad && ad[2]) || anahtar.split('.').pop()}: ${deger}`;
+    degisen.push({ anahtar, eski: eski.trim(), yeni: cikti[bulundu].trim() });
+  }
+
+  return { lines: cikti, degisen, atlanan, maskeli: false };
+}
+
+module.exports = { anahtarla, karsilastir, clusterAdi, uygula };

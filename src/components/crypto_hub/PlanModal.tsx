@@ -21,20 +21,46 @@
 //   * Onay şimdilik KAPALI: yazan playbook bağlanana kadar bu ekran yalnızca gösterir.
 import React, { useMemo, useState } from 'react';
 import {
-  ClipboardDocumentIcon, CheckIcon, ExclamationTriangleIcon, InformationCircleIcon,
-  CommandLineIcon, HandRaisedIcon, MagnifyingGlassIcon, PencilSquareIcon,
-  ArrowRightIcon, ArrowLeftIcon, ArchiveBoxIcon, CloudArrowDownIcon, DocumentTextIcon,
+  ClipboardDocumentIcon,
+  CheckIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  CommandLineIcon,
+  HandRaisedIcon,
+  MagnifyingGlassIcon,
+  PencilSquareIcon,
+  ArrowRightIcon,
+  ArrowLeftIcon,
+  ArchiveBoxIcon,
+  CloudArrowDownIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import { Modal } from '@/components/common/Modal';
-import { cryptoHubApi, type CryptoActionDef, type CryptoPlan, type CryptoPlanStep } from '@/api/cryptoHubApi';
+import {
+  cryptoHubApi,
+  type CryptoActionDef,
+  type CryptoPlan,
+  type CryptoPlanStep,
+} from '@/api/cryptoHubApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { ValuesEditor, type ValuesFileOption } from './ValuesEditor';
+import { RolloutApply } from './RolloutApply';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { toast } from '@/hooks/useToast';
 
-export interface KnownVersion { version: string; source: 'depo' | 'arsiv' }
+export interface KnownVersion {
+  version: string;
+  source: 'depo' | 'arsiv';
+}
 
-const KIND: Record<CryptoPlanStep['kind'], { label: string; color: string; Icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }> = {
+const KIND: Record<
+  CryptoPlanStep['kind'],
+  {
+    label: string;
+    color: string;
+    Icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  }
+> = {
   command: { label: 'komut', color: 'var(--text-secondary)', Icon: CommandLineIcon },
   check: { label: 'kontrol', color: 'var(--status-info)', Icon: MagnifyingGlassIcon },
   manual: { label: 'Portal dışı', color: 'var(--status-warning)', Icon: HandRaisedIcon },
@@ -48,16 +74,26 @@ function CopyButton({ text, label = 'Kopyala' }: { text: string; label?: string 
     <button
       type="button"
       className="inline-flex items-center gap-1 h-7 px-2 text-[11px] rounded-md border"
-      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}
+      style={{
+        borderColor: 'var(--border)',
+        background: 'var(--bg-surface)',
+        color: 'var(--text-secondary)',
+      }}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(text);
           setDone(true);
           setTimeout(() => setDone(false), 1500);
-        } catch { toast.error('Panoya kopyalanamadı.'); }
+        } catch {
+          toast.error('Panoya kopyalanamadı.');
+        }
       }}
     >
-      {done ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+      {done ? (
+        <CheckIcon className="h-3.5 w-3.5" />
+      ) : (
+        <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+      )}
       {done ? 'kopyalandı' : label}
     </button>
   );
@@ -77,19 +113,29 @@ function Step({ s }: { s: CryptoPlanStep }) {
         <span
           className="tabular-nums text-[11px] font-semibold h-6 w-6 rounded-full inline-flex items-center justify-center shrink-0"
           style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-        >{s.n}</span>
+        >
+          {s.n}
+        </span>
         <k.Icon className="h-4 w-4 shrink-0" style={{ color: k.color }} />
-        <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{s.title}</span>
-        <span className="text-[10px] uppercase tracking-wide" style={{ color: k.color }}>{k.label}</span>
+        <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          {s.title}
+        </span>
+        <span className="text-[10px] uppercase tracking-wide" style={{ color: k.color }}>
+          {k.label}
+        </span>
         {s.writes && (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
-            style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>
+          <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+            style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}
+          >
             <PencilSquareIcon className="h-3 w-3" /> değişiklik yapar
           </span>
         )}
         {s.unknown && (
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
-            style={{ color: 'var(--status-warning)', border: '1px solid var(--status-warning)' }}>
+          <span
+            className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+            style={{ color: 'var(--status-warning)', border: '1px solid var(--status-warning)' }}
+          >
             doğrulanmalı
           </span>
         )}
@@ -100,18 +146,38 @@ function Step({ s }: { s: CryptoPlanStep }) {
       {s.command && (
         <pre
           className="text-[12px] leading-relaxed rounded-lg px-3 py-2.5 overflow-x-auto"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
-        >{s.command}</pre>
+          style={{
+            background: 'var(--bg-elevated)',
+            color: 'var(--text-primary)',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          }}
+        >
+          {s.command}
+        </pre>
       )}
 
-      {s.note && <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{s.note}</div>}
-      {s.source && <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>kaynak: {s.source}</div>}
+      {s.note && (
+        <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+          {s.note}
+        </div>
+      )}
+      {s.source && (
+        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+          kaynak: {s.source}
+        </div>
+      )}
     </li>
   );
 }
 
 /** 1. ADIM — hedef sürüm. Koşan sürüm solda, seçenekler sağda; listede yoksa serbest metin. */
-function VersionStep({ running, known, value, onChange, onNext }: {
+function VersionStep({
+  running,
+  known,
+  value,
+  onChange,
+  onNext,
+}: {
   running: string;
   known: KnownVersion[];
   value: string;
@@ -136,13 +202,40 @@ function VersionStep({ running, known, value, onChange, onNext }: {
   return (
     <div className="space-y-4">
       <div className="grid sm:grid-cols-2 gap-3">
-        <section className="rounded-xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Şu an koşan</div>
-          <div className="text-2xl font-semibold tabular-nums mt-1" style={{ color: 'var(--text-primary)' }}>{running || '—'}</div>
+        <section
+          className="rounded-xl border p-4"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <div
+            className="text-[11px] uppercase tracking-wide"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Şu an koşan
+          </div>
+          <div
+            className="text-2xl font-semibold tabular-nums mt-1"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {running || '—'}
+          </div>
         </section>
-        <section className="rounded-xl border p-4" style={{ borderColor: value ? 'var(--accent)' : 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Geçilecek sürüm</div>
-          <div className="text-2xl font-semibold tabular-nums mt-1" style={{ color: value ? 'var(--accent)' : 'var(--text-muted)' }}>
+        <section
+          className="rounded-xl border p-4"
+          style={{
+            borderColor: value ? 'var(--accent)' : 'var(--border-subtle)',
+            background: 'var(--bg-surface)',
+          }}
+        >
+          <div
+            className="text-[11px] uppercase tracking-wide"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Geçilecek sürüm
+          </div>
+          <div
+            className="text-2xl font-semibold tabular-nums mt-1"
+            style={{ color: value ? 'var(--accent)' : 'var(--text-muted)' }}
+          >
             {value || 'seçilmedi'}
           </div>
         </section>
@@ -150,7 +243,12 @@ function VersionStep({ running, known, value, onChange, onNext }: {
 
       {liste.length > 0 && (
         <div className="space-y-2">
-          <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Bilinen sürümler</div>
+          <div
+            className="text-[11px] uppercase tracking-wide"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Bilinen sürümler
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {liste.map((k) => {
               const secili = value === k.version && !manual;
@@ -158,25 +256,59 @@ function VersionStep({ running, known, value, onChange, onNext }: {
                 <button
                   key={k.version}
                   type="button"
-                  onClick={() => { setManual(false); onChange(k.version); }}
+                  onClick={() => {
+                    setManual(false);
+                    onChange(k.version);
+                  }}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[12px] tabular-nums"
-                  style={secili
-                    ? { borderColor: 'var(--accent)', background: 'var(--accent-bg)', color: 'var(--accent)', fontWeight: 600 }
-                    : { borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-                  title={k.kaynaklar.includes('depo') ? 'Chart deposunda mevcut' : 'Bastion\'da indirilmiş'}
+                  style={
+                    secili
+                      ? {
+                          borderColor: 'var(--accent)',
+                          background: 'var(--accent-bg)',
+                          color: 'var(--accent)',
+                          fontWeight: 600,
+                        }
+                      : {
+                          borderColor: 'var(--border-subtle)',
+                          background: 'var(--bg-surface)',
+                          color: 'var(--text-primary)',
+                        }
+                  }
+                  title={
+                    k.kaynaklar.includes('depo')
+                      ? 'Chart deposunda mevcut'
+                      : "Bastion'da indirilmiş"
+                  }
                 >
-                  {k.kaynaklar.includes('depo')
-                    ? <CloudArrowDownIcon className="h-3.5 w-3.5" style={{ color: 'var(--text-muted)' }} />
-                    : <ArchiveBoxIcon className="h-3.5 w-3.5" style={{ color: 'var(--text-muted)' }} />}
+                  {k.kaynaklar.includes('depo') ? (
+                    <CloudArrowDownIcon
+                      className="h-3.5 w-3.5"
+                      style={{ color: 'var(--text-muted)' }}
+                    />
+                  ) : (
+                    <ArchiveBoxIcon
+                      className="h-3.5 w-3.5"
+                      style={{ color: 'var(--text-muted)' }}
+                    />
+                  )}
                   {k.version}
-                  {k.version === running && <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>koşan</span>}
+                  {k.version === running && (
+                    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                      koşan
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
           <div className="flex flex-wrap gap-3 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-            <span className="inline-flex items-center gap-1"><CloudArrowDownIcon className="h-3.5 w-3.5" /> chart deposunda</span>
-            <span className="inline-flex items-center gap-1"><ArchiveBoxIcon className="h-3.5 w-3.5" /> bastion'da indirilmiş</span>
+            <span className="inline-flex items-center gap-1">
+              <CloudArrowDownIcon className="h-3.5 w-3.5" /> chart deposunda
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <ArchiveBoxIcon className="h-3.5 w-3.5" /> bastion'da indirilmiş
+            </span>
           </div>
         </div>
       )}
@@ -184,12 +316,24 @@ function VersionStep({ running, known, value, onChange, onNext }: {
       {/* LISTEDE OLMAYAN SURUM: Metaco'da chart deposu sorgulanamiyor; yeni bir surum
           listede HIC gorunmeyebilir. Serbest metin olmazsa ekran, kullanicinin bildigi bir
           gercegi reddetmis olurdu. */}
-      <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: manual ? 'var(--accent)' : 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-        <label className="inline-flex items-center gap-2 text-sm" style={{ color: 'var(--text-primary)' }}>
+      <div
+        className="rounded-xl border p-4 space-y-2"
+        style={{
+          borderColor: manual ? 'var(--accent)' : 'var(--border-subtle)',
+          background: 'var(--bg-surface)',
+        }}
+      >
+        <label
+          className="inline-flex items-center gap-2 text-sm"
+          style={{ color: 'var(--text-primary)' }}
+        >
           <input
             type="checkbox"
             checked={manual}
-            onChange={(e) => { setManual(e.target.checked); if (e.target.checked) onChange(''); }}
+            onChange={(e) => {
+              setManual(e.target.checked);
+              if (e.target.checked) onChange('');
+            }}
           />
           Listede olmayan bir sürüme geçeceğim
         </label>
@@ -201,7 +345,11 @@ function VersionStep({ running, known, value, onChange, onNext }: {
               onChange={(e) => onChange(e.target.value)}
               placeholder="örn. 1.35.0"
               className="h-9 px-3 text-sm rounded-lg border w-56 tabular-nums"
-              style={{ borderColor: gecerli ? 'var(--border)' : 'var(--status-danger)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              style={{
+                borderColor: gecerli ? 'var(--border)' : 'var(--status-danger)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+              }}
             />
             {!gecerli && (
               <div className="text-[11px]" style={{ color: 'var(--status-danger)' }}>
@@ -223,7 +371,11 @@ function VersionStep({ running, known, value, onChange, onNext }: {
           disabled={!value.trim() || !gecerli}
           onClick={onNext}
           className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ borderColor: 'var(--accent)', background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}
+          style={{
+            borderColor: 'var(--accent)',
+            background: 'var(--accent)',
+            color: 'var(--accent-fg, #fff)',
+          }}
         >
           Komutları göster <ArrowRightIcon className="h-4 w-4" />
         </button>
@@ -239,40 +391,83 @@ function VersionStep({ running, known, value, onChange, onNext }: {
  *  (kullanıcı, 2026-09-26: "upgrade denerken values'a dokunamıyorum"). Düzenleme/kaydetme
  *  kuralları ValuesEditor'de tek yerde durur: maskeli metin kaydedilemez, yazmadan önce
  *  fark gösterilir ve dosyanın yedeği alınır. */
-function ValuesStep({ tenantKey, tenantLabel, release, files, onBack, onNext }: {
-  tenantKey: string; tenantLabel: string; release: string; files: ValuesFileOption[];
-  onBack: () => void; onNext: () => void;
+function ValuesStep({
+  tenantKey,
+  tenantLabel,
+  release,
+  files,
+  onBack,
+  onNext,
+}: {
+  tenantKey: string;
+  tenantLabel: string;
+  release: string;
+  files: ValuesFileOption[];
+  onBack: () => void;
+  onNext: () => void;
 }) {
   const [okundu, setOkundu] = useState(false);
 
   return (
     <div className="space-y-3">
-      <div className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
-        style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>
+      <div
+        className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+        style={{
+          color: 'var(--text-secondary)',
+          background: 'var(--bg-elevated)',
+          borderColor: 'var(--border-subtle)',
+        }}
+      >
         <DocumentTextIcon className="h-4 w-4 mt-0.5 shrink-0" />
         <span>
-          Bu işlem <b>{release}</b> release'inin values dosyasını kullanır. Aşağıda şu an koşan değerler var
-          (parola/token alanları <b>****</b> ile gizli). Gerekiyorsa <b>Düzenle</b> ile burada değiştirip
-          kaydedebilirsiniz; kaydetmek tek başına ortama dokunmaz, değerler bir sonraki adımdaki komutla uygulanır.
+          Bu işlem <b>{release}</b> release'inin values dosyasını kullanır. Aşağıda şu an koşan
+          değerler var (parola/token alanları <b>****</b> ile gizli). Gerekiyorsa <b>Düzenle</b> ile
+          burada değiştirip kaydedebilirsiniz; kaydetmek tek başına ortama dokunmaz, değerler bir
+          sonraki adımdaki komutla uygulanır.
         </span>
       </div>
 
-      <ValuesEditor tenantKey={tenantKey} tenantLabel={tenantLabel} release={release} files={files} compact />
+      <ValuesEditor
+        tenantKey={tenantKey}
+        tenantLabel={tenantLabel}
+        release={release}
+        files={files}
+        compact
+      />
 
       <label className="flex items-start gap-2 text-sm" style={{ color: 'var(--text-primary)' }}>
-        <input type="checkbox" checked={okundu} onChange={(e) => setOkundu(e.target.checked)} className="mt-0.5" />
+        <input
+          type="checkbox"
+          checked={okundu}
+          onChange={(e) => setOkundu(e.target.checked)}
+          className="mt-0.5"
+        />
         Değerleri gördüm, bu değerlerle devam ediyorum.
       </label>
       <div className="flex items-center gap-2">
-        <button type="button" className="inline-flex items-center gap-1 h-9 px-3 text-xs font-medium rounded-lg border"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-          onClick={onBack}>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 h-9 px-3 text-xs font-medium rounded-lg border"
+          style={{
+            borderColor: 'var(--border)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-primary)',
+          }}
+          onClick={onBack}
+        >
           <ArrowLeftIcon className="h-4 w-4" /> Sürüm seçimi
         </button>
-        <button type="button" disabled={!okundu}
+        <button
+          type="button"
+          disabled={!okundu}
           className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ borderColor: 'var(--accent)', background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }}
-          onClick={onNext}>
+          style={{
+            borderColor: 'var(--accent)',
+            background: 'var(--accent)',
+            color: 'var(--accent-fg, #fff)',
+          }}
+          onClick={onNext}
+        >
           Komutları göster <ArrowRightIcon className="h-4 w-4" />
         </button>
       </div>
@@ -280,9 +475,21 @@ function ValuesStep({ tenantKey, tenantLabel, release, files, onBack, onNext }: 
   );
 }
 
-export function PlanModal({ tenantKey, tenantLabel, action, running = '', known = [], release = '', valuesFiles = [], onClose }: {
+export function PlanModal({
+  tenantKey,
+  tenantLabel,
+  namespace = '',
+  action,
+  running = '',
+  known = [],
+  release = '',
+  valuesFiles = [],
+  onClose,
+}: {
   tenantKey: string;
   tenantLabel: string;
+  /** onay penceresinde gosterilecek komutlar icin namespace */
+  namespace?: string;
   action: CryptoActionDef;
   running?: string;
   known?: KnownVersion[];
@@ -301,32 +508,49 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
   // Rollout'ta surum secimi YOKTUR (kosan surum neyse odur); akis dogrudan values ile baslar.
   const rolloutMu = action.key === 'values_rollout';
   const [step, setStep] = useState<'version' | 'values' | 'plan'>(
-    needsVersion ? 'version' : (rolloutMu && release ? 'values' : 'plan'),
+    needsVersion ? 'version' : rolloutMu && release ? 'values' : 'plan',
   );
   const [plan, setPlan] = useState<CryptoPlan | null>(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
   const [reload, setReload] = useState(0);
 
-  useAsyncEffect(async (alive) => {
-    if (step !== 'plan') return;
-    setLoading(true); setErr('');
-    try {
-      const r = await cryptoHubApi.plan(tenantKey, action.key, version);
-      if (!alive()) return;
-      if (!r.ok || !r.plan) { setErr(r.message || 'Plan üretilemedi.'); setPlan(null); return; }
-      setPlan(r.plan);
-    } catch (e: unknown) { if (alive()) setErr(e instanceof Error ? e.message : String(e)); } finally { if (alive()) setLoading(false); }
-  }, [tenantKey, action.key, step, reload]);
+  useAsyncEffect(
+    async (alive) => {
+      if (step !== 'plan') return;
+      setLoading(true);
+      setErr('');
+      try {
+        const r = await cryptoHubApi.plan(tenantKey, action.key, version);
+        if (!alive()) return;
+        if (!r.ok || !r.plan) {
+          setErr(r.message || 'Plan üretilemedi.');
+          setPlan(null);
+          return;
+        }
+        setPlan(r.plan);
+      } catch (e: unknown) {
+        if (alive()) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive()) setLoading(false);
+      }
+    },
+    [tenantKey, action.key, step, reload],
+  );
 
   const tumKomutlar = useMemo(
-    () => (plan?.steps || []).filter((s) => s.command).map((s) => `# ${s.n}. ${s.title}\n${s.command}`).join('\n\n'),
+    () =>
+      (plan?.steps || [])
+        .filter((s) => s.command)
+        .map((s) => `# ${s.n}. ${s.title}\n${s.command}`)
+        .join('\n\n'),
     [plan],
   );
 
-  const altBaslik = needsVersion && version
-    ? `${tenantLabel} · ${running || '—'} → ${version}`
-    : `${tenantLabel} · uygulanacak adımlar`;
+  const altBaslik =
+    needsVersion && version
+      ? `${tenantLabel} · ${running || '—'} → ${version}`
+      : `${tenantLabel} · uygulanacak adımlar`;
 
   return (
     <Modal
@@ -336,16 +560,21 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
       dismissOnBackdrop={false}
       title={`${action.label} — ön onay`}
       subtitle={altBaslik}
-      footer={(
+      footer={
         <div className="flex items-center gap-2 flex-wrap w-full">
           {step === 'plan' && needsVersion && (
             <button
               type="button"
               className="inline-flex items-center gap-1 h-9 px-3 text-xs font-medium rounded-lg border"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              style={{
+                borderColor: 'var(--border)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+              }}
               onClick={() => setStep(release ? 'values' : 'version')}
             >
-              <ArrowLeftIcon className="h-4 w-4" /> {release ? 'Values adımına dön' : 'Sürüm seçimine dön'}
+              <ArrowLeftIcon className="h-4 w-4" />{' '}
+              {release ? 'Values adımına dön' : 'Sürüm seçimine dön'}
             </button>
           )}
           {step === 'plan' && (
@@ -368,26 +597,45 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
           <button
             type="button"
             className="h-9 px-3 text-xs font-medium rounded-lg border"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+            style={{
+              borderColor: 'var(--border)',
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+            }}
             onClick={onClose}
           >
             Kapat
           </button>
         </div>
-      )}
+      }
     >
       <div className="space-y-4">
         {(needsVersion || rolloutMu) && (
-          <ol className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          <ol
+            className="flex items-center gap-2 text-[11px]"
+            style={{ color: 'var(--text-muted)' }}
+          >
             {needsVersion && (
               <>
-                <li style={step === 'version' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>1. Hedef sürüm</li>
+                <li
+                  style={
+                    step === 'version' ? { color: 'var(--accent)', fontWeight: 600 } : undefined
+                  }
+                >
+                  1. Hedef sürüm
+                </li>
                 <li>›</li>
               </>
             )}
             {release && (
               <>
-                <li style={step === 'values' ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>{needsVersion ? '2.' : '1.'} Mevcut values</li>
+                <li
+                  style={
+                    step === 'values' ? { color: 'var(--accent)', fontWeight: 600 } : undefined
+                  }
+                >
+                  {needsVersion ? '2.' : '1.'} Mevcut values
+                </li>
                 <li>›</li>
               </>
             )}
@@ -404,7 +652,10 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
             release={release}
             files={valuesFiles}
             onBack={() => setStep(needsVersion ? 'version' : 'plan')}
-            onNext={() => { setStep('plan'); setReload((n) => n + 1); }}
+            onNext={() => {
+              setStep('plan');
+              setReload((n) => n + 1);
+            }}
           />
         ) : step === 'version' ? (
           <VersionStep
@@ -418,47 +669,119 @@ export function PlanModal({ tenantKey, tenantLabel, action, running = '', known 
           <>
             {plan && (
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                <span className="px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+                <span
+                  className="px-2 py-0.5 rounded-full"
+                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                >
                   {plan.steps.length} adım
                 </span>
-                <span className="px-2 py-0.5 rounded-full font-semibold"
-                  style={{ background: 'var(--status-danger-bg)', color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>
+                <span
+                  className="px-2 py-0.5 rounded-full font-semibold"
+                  style={{
+                    background: 'var(--status-danger-bg)',
+                    color: 'var(--status-danger)',
+                    border: '1px solid var(--status-danger)',
+                  }}
+                >
                   {plan.writeCount} adım ortamda değişiklik yapar
                 </span>
                 {plan.unknownCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full"
-                    style={{ background: 'var(--status-warning-bg)', color: 'var(--status-warning)' }}>
+                  <span
+                    className="px-2 py-0.5 rounded-full"
+                    style={{
+                      background: 'var(--status-warning-bg)',
+                      color: 'var(--status-warning)',
+                    }}
+                  >
                     {plan.unknownCount} adım doğrulanmalı
                   </span>
                 )}
                 {plan.scannedAt && (
-                  <span style={{ color: 'var(--text-muted)' }}>plan, son taramadaki bileşenlerden üretildi</span>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    plan, son taramadaki bileşenlerden üretildi
+                  </span>
                 )}
               </div>
             )}
 
-            <div className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
-              style={{ color: 'var(--status-info)', background: 'var(--status-info-bg)', borderColor: 'var(--status-info)' }}>
+            <div
+              className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+              style={
+                plan?.runnable
+                  ? {
+                      color: 'var(--status-success)',
+                      background: 'var(--status-success-bg)',
+                      borderColor: 'var(--status-success)',
+                    }
+                  : {
+                      color: 'var(--status-info)',
+                      background: 'var(--status-info-bg)',
+                      borderColor: 'var(--status-info)',
+                    }
+              }
+            >
               <InformationCircleIcon className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>{plan?.runnableNote || 'Bu ekran yalnızca uygulanacak komutları gösterir; hiçbir şey çalıştırmaz.'}</span>
+              <span>
+                {plan?.runnableNote ||
+                  'Bu ekran yalnızca uygulanacak komutları gösterir; hiçbir şey çalıştırmaz.'}
+              </span>
             </div>
 
+            {/* PORTAL'DAN UYGULAMA. Yalniz plan `runnable` dediyse cizilir: aksi halde ekran
+                kosturamayacagi bir dugme gosterirdi (bu oturumda "Yeniden olustur" tam olarak
+                boyleydi ve kullanici hakli olarak kaldirtti). */}
+            {plan?.runnable && rolloutMu && (
+              <div
+                className="rounded-xl border p-3"
+                style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+              >
+                <RolloutApply
+                  tenantKey={tenantKey}
+                  tenantLabel={tenantLabel}
+                  namespace={namespace}
+                  release={release}
+                  running={running}
+                  files={valuesFiles}
+                  onApplied={() => setReload((n) => n + 1)}
+                />
+              </div>
+            )}
+
             {(plan?.warnings || []).map((w, i) => (
-              <div key={i} className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
-                style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
+              <div
+                key={i}
+                className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+                style={{
+                  color: 'var(--status-warning)',
+                  background: 'var(--status-warning-bg)',
+                  borderColor: 'var(--status-warning)',
+                }}
+              >
                 <ExclamationTriangleIcon className="h-4 w-4 mt-0.5 shrink-0" />
                 <span>{w}</span>
               </div>
             ))}
 
             {err && (
-              <div className="text-sm rounded-lg px-3 py-2 border"
-                style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>
+              <div
+                className="text-sm rounded-lg px-3 py-2 border"
+                style={{
+                  color: 'var(--status-danger)',
+                  background: 'var(--status-danger-bg)',
+                  borderColor: 'var(--status-danger)',
+                }}
+              >
+                {err}
+              </div>
             )}
 
-            {loading && !plan ? <LoadingLogo compact /> : (
+            {loading && !plan ? (
+              <LoadingLogo compact />
+            ) : (
               <ol className="space-y-2">
-                {(plan?.steps || []).map((s) => <Step key={s.n} s={s} />)}
+                {(plan?.steps || []).map((s) => (
+                  <Step key={s.n} s={s} />
+                ))}
               </ol>
             )}
           </>
