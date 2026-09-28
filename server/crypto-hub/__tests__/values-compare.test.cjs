@@ -189,8 +189,15 @@ test('VC4: sunucu sozlesmesi - yol kapilari, salt okunurluk, maskeleme sirasi', 
   bekle('8 dosya', 'dosya sayisi sinirlanmamis');
 
   // SIRA: karsilastirma MASKELEMEDEN ONCE olmali (VC3'teki tuzak).
-  const iKarsilastir = kod.indexOf('.karsilastir(parsed.files');
-  const iMaske = kod.indexOf('lines: maskValues(f.lines)');
+  // BOSLUKLARI NORMALLE: bicimlendirici (prettier) uzun cagriyi satirlara bolunce ham
+  // dizge aramasi kirildi ve bekci YANLIS SEBEPLE kirmizi oldu. Iddia cagrinin nasil
+  // bicimlendigi degil; VAR OLMASI ve maskelemeden ONCE gelmesi.
+  const duz = kod.replace(/\s+/g, ' ');
+  const iKarsilastir =
+    duz.indexOf('.karsilastir( parsed.files') >= 0
+      ? duz.indexOf('.karsilastir( parsed.files')
+      : duz.indexOf('.karsilastir(parsed.files');
+  const iMaske = duz.indexOf('lines: maskValues(f.lines)');
   assert.ok(iKarsilastir > 0, 'sunucu karsilastirmayi hic cagirmiyor');
   assert.ok(
     iKarsilastir < iMaske,
