@@ -1,10 +1,19 @@
 // server/audit/__tests__/spa-pattern.test.cjs — "bu uygulama SPA mi" kurali.
 //
-// Kullanici (2026-09-28): "bazi SPA uygulamalarinin standarta uymayan kalibi var evet
-// haklisin, bence genisletelim." Kural artik iki kalibi birden kabul ediyor ve BES
-// dosyanin ortak kaynagi. Buradaki bekciler iki seyi korur:
-//   * genisletme GERI ALMA degildir - eski kurala gore SPA olan her ad hala SPA,
+// GUN ICINDE IKI KARAR (2026-09-28):
+//   1) Kural "-v0/-v1 ile de bitebilir" diye genisletildi (kullanici: "bazi SPA
+//      uygulamalarinin standarta uymayan kalibi var, bence genisletelim").
+//   2) Ayni gun GERI ALINDI (kullanici: "bu geliştirmeyi direkt geri alalım, -app-v ve
+//      -app-emb-v kuralı tekrar geçerli olsun"). Surum eki SPA'ya OZGU degil - bir API de
+//      "-v1" ile biter; ada bakip SPA demek uydurma bir olcute guvenmekti.
+//
+// Buradaki bekciler iki seyi korur:
+//   * kural DAR kalir - genisletme yanlislikla geri gelmez,
 //   * kural TEK YERDE durur - yeni bir kopya acilirsa ekranlar birbirini tutmaz.
+//
+// SIRADAKI: kullanicinin container icinde nginx process'i arayan betigi. Olcut adin
+// yerine KANIT olacak; degisiklik spa-pattern.cjs'teki iki fonksiyonda yapilacak ve bu
+// dosyadaki beklentiler o zaman birlikte guncellenecek.
 'use strict';
 
 const { test } = require('node:test');
@@ -14,9 +23,17 @@ const path = require('node:path');
 
 const { isSpaApp, isSpaLabel, SPA_RE, SPA_PATTERN_LABEL } = require('../spa-pattern.cjs');
 
-// Uretimde gorulen, ESKI kurala takilan ve bu yuzden "SPA degil" sayilan uygulamalar
-// (kullanicinin ekran goruntusundeki "SPA olmayan hedefler" listesi).
-const STANDART_DISI = [
+// Kurumsal kalip - SPA sayilir.
+const STANDART = [
+  'sube-portali-app-v1',
+  'x-app-emb-v2',
+  'fund-management-app-emb-v1',
+  'cust-limit-mgmt-app-v0',
+  'x-app-v0-y',
+];
+// Surum ekiyle biten ama kurumsal kalibi tasimayan adlar. Bir sure SPA sayildilar,
+// GERI ALINDI - ad tek basina yeterli kanit degil.
+const SURUM_EKLI = [
   'non-core-assets-v0',
   'doc-acceptance-frontend-v0',
   'digital-fast-limit-cf-v0',
@@ -24,41 +41,41 @@ const STANDART_DISI = [
   'dlyd-prdct-rstrctring-v0',
   'investor-dps-mngmnt-v0',
 ];
-// Kurumsal standarda uyanlar - eskiden de SPA'ydilar, OYLE KALMALI.
-const STANDART = [
-  'sube-portali-app-v1',
-  'x-app-emb-v2',
-  'fund-management-app-emb-v1',
-  'x-app-v0-y',
-];
-// Gercek API / arka uc: surum eki de tasimiyorlar.
+// Ne kurumsal kalip ne surum eki.
 const API = ['apigw', 'ps-api-orch-management', 'digi-money-transfers', 'some-backend'];
 
-test('SP1: standarta uymayan surum ekli adlar da SPA sayilir', () => {
-  for (const a of STANDART_DISI) assert.equal(isSpaApp(a), true, a);
-});
-
-test('SP2: GENISLETME, geri alma degil - eski kurala gore SPA olan her ad hala SPA', () => {
-  for (const a of [...STANDART, ...STANDART_DISI]) {
-    if (SPA_RE.test(a))
-      assert.equal(isSpaApp(a), true, `${a} eski kurala gore SPA'ydi, artik degil`);
-  }
-  // Ve API'ler SPA sayilmamali: kural "her sey SPA" haline gelmis olmamali.
+test('SP1: kural DAR - yalnizca kurumsal kalip SPA sayilir', () => {
+  for (const a of STANDART) assert.equal(isSpaApp(a), true, a);
   for (const a of API) assert.equal(isSpaApp(a), false, a);
 });
 
-test('SP3: route adresi/etiketi icin surum eki ORTADA da olabilir', () => {
+test('SP2: surum eki TEK BASINA SPA yapmaz (genisletme geri alindi)', () => {
+  for (const a of SURUM_EKLI) {
+    assert.equal(
+      isSpaApp(a),
+      false,
+      `${a} yeniden SPA sayiliyor — genisletme geri geldi. Kullanici bunu 2026-09-28'de ` +
+        `geri aldirdi; dogru olcut ad degil, container'da nginx process'i (bkz. spa-pattern.cjs).`,
+    );
+  }
+  // Kural gercekten "-app-v/-app-emb-v icerir" olmali: kalibi tasiyan her ad SPA.
+  for (const a of [...STANDART, ...SURUM_EKLI, ...API]) {
+    assert.equal(isSpaApp(a), SPA_RE.test(a), `${a}: kural SPA_RE'den sapmis`);
+  }
+});
+
+test('SP3: etiket kurali - alan adi kuyrugu karari ETKILEMEZ', () => {
   const APPS = '.apps.fw.garanti.com.tr';
-  // "<app>-<ns>" : surum eki ortada
-  assert.equal(isSpaLabel('non-core-assets-v0-front-architecture' + APPS), true);
+  assert.equal(isSpaLabel('sube-portali-app-v1-kurumsal-prod' + APPS), true);
   assert.equal(isSpaLabel('fund-management-app-emb-v1-fund-management-ch' + APPS), true);
-  // Uygulama adi tek basina (ns yok): sonda
-  assert.equal(isSpaLabel('non-core-assets-v0' + APPS), true);
-  // API adresleri
+  assert.equal(isSpaLabel('non-core-assets-v0-front-architecture' + APPS), false);
   assert.equal(isSpaLabel('apigw' + APPS), false);
-  assert.equal(isSpaLabel('foreign-money-transfer-digi-money-transfers-ch-prod' + APPS), false);
-  // Alan adi kuyrugu karari ETKILEMEZ: yalniz ilk etikete bakilir.
-  assert.equal(isSpaLabel('apigw.v0-sahte.example.com'), false, 'alan adindan SPA cikarilmis');
+  // Yalniz ILK etikete bakilir: alan adindan SPA cikarilmamali.
+  assert.equal(
+    isSpaLabel('apigw.x-app-v1-sahte.example.com'),
+    false,
+    'alan adindan SPA cikarilmis',
+  );
 });
 
 test('SP4: kalip TEK DOSYADA tanimli - kopya acilirsa ekranlar birbirini tutmaz', () => {
@@ -75,7 +92,6 @@ test('SP4: kalip TEK DOSYADA tanimli - kopya acilirsa ekranlar birbirini tutmaz'
         gez(tam);
       } else if (ad.endsWith('.cjs') && tam !== KAYNAK) {
         const src = fs.readFileSync(tam, 'utf8');
-        // Kuralin KENDISININ yeniden yazilmasi: /-app(-emb)?-v/ gibi bir regex tanimi.
         if (/\/-app\(-emb\)\?-v\//.test(src)) kopyalar.push(path.relative(KOK, tam));
       }
     }
@@ -85,13 +101,14 @@ test('SP4: kalip TEK DOSYADA tanimli - kopya acilirsa ekranlar birbirini tutmaz'
     kopyalar,
     [],
     `SPA kalibi su dosyalarda YENIDEN tanimlanmis: ${kopyalar.join(', ')} — ` +
-      `kural degisince biri unutulur ve ayni uygulama bir ekranda SPA, otekinde degil gorunur.`,
+      `kural degisince biri unutulur ve ayni uygulama bir ekranda SPA, otekinde degil gorunur. ` +
+      `Ozellikle onemli: nginx-process olcutu geldiginde TEK dosya degisecek.`,
   );
 });
 
 test('SP5: ekranda gosterilen kalip metni GERCEK kurali anlatir', () => {
-  // Metin eski halinde kalirsa ("-app-v / -app-emb-v") kullanici, surum ekli uygulamalarin
-  // neden SPA sayildigini ekranda hicbir yerde goremezdi.
-  assert.match(SPA_PATTERN_LABEL, /-app-v/);
-  assert.match(SPA_PATTERN_LABEL, /-v<surum>|-v\\d/);
+  assert.equal(SPA_PATTERN_LABEL, '-app-v / -app-emb-v');
+  // Genisletme geri alindi: metin surum ekinden SOZ ETMEMELI, yoksa ekran kullaniciya
+  // uygulanmayan bir kurali anlatir.
+  assert.doesNotMatch(SPA_PATTERN_LABEL, /surum|-v</i);
 });

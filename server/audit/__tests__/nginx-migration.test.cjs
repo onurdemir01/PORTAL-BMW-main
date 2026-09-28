@@ -454,27 +454,34 @@ test('location ilerlemesi (2026-09-17): yeni sunuculardaki tanimlara gore define
 // gibi). Envanterde COZULUYORLAR ama SPA sayilmadiklari icin ne "eksik" sayiliyor ne de
 // "Tanim olustur" dugmesi cikiyordu.
 
-test('SPA kalibi: surum ekiyle (-v0) biten uygulama adlari da tasinacaklara girer', () => {
+test('SPA kalibi DAR: surum eki tek basina tasinacaklar listesine SOKMAZ', () => {
   const out = buildMigration({
     proxyRows: [
+      // Kurumsal kalip: tasinacaklar listesine GIRER.
+      P('GBRVPP07', 'GLOMO', '/sube/', 'sube-portali-app-v1-kurumsal-prod' + APPS),
+      // Surum ekli ama kurumsal kalibi YOK: envanterde cozulse bile SPA sayilmaz.
+      // (2026-09-28: bir sure SPA sayiliyordu, kullanici geri aldirdi - surum eki
+      // SPA'ya ozgu degil, bir API de "-v1" ile biter.)
       P('GBRVPP07', 'GLOMO', '/nca/', 'non-core-assets-v0-front-architecture' + APPS),
-      // GERCEK API: surum eki yok, envanterde de karsiligi yok -> SPA-disi kalmali.
       P('GBRVPP07', 'GLOMO', '/apigw/', 'apigw' + APPS),
     ],
-    ocpRows: [{ namespace: 'front-architecture-prod', application: 'non-core-assets-v0' }],
-    dirRows: [D('GBNGXP40', 'front-architecture-prod', 'non-core-assets-v0')],
+    ocpRows: [
+      { namespace: 'kurumsal-prod', application: 'sube-portali-app-v1' },
+      { namespace: 'front-architecture-prod', application: 'non-core-assets-v0' },
+    ],
+    dirRows: [D('GBNGXP40', 'kurumsal-prod', 'sube-portali-app-v1')],
   });
   const g = out.find((x) => x.id === 'glomo');
   assert.deepEqual(
     g.apps.map((a) => a.namespace + '/' + a.application),
-    ['front-architecture-prod/non-core-assets-v0'],
-    'surum ekli on yuz uygulamasi hala SPA-disi sayiliyor - tanim olusturulamaz',
+    ['kurumsal-prod/sube-portali-app-v1'],
+    'surum ekli uygulama yeniden tasinacaklar listesine girmis (genisletme geri geldi)',
   );
-  assert.deepEqual(
-    g.nonSpa.map((x) => x.target),
-    ['apigw' + APPS],
-    'gercek API listeden dusmus',
-  );
+  // Ikisi de SPA-disi listede: biri cozuldu, oteki cozulemedi - ikisi de "eksik" sayilmaz.
+  assert.deepEqual(g.nonSpa.map((x) => x.target).sort(), [
+    'apigw' + APPS,
+    'non-core-assets-v0-front-architecture' + APPS,
+  ]);
 });
 
 test('cozulemeyen SPA hedefi: ns/app ADDAN cikarilir ama tasinacaklara GIRMEZ', () => {

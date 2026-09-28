@@ -2531,7 +2531,11 @@ ${st.total ? `${st.done}/${st.total} location tanımlı` : ''}`}
         {g.nonSpa.length > 0 && (
           <OtherList
             title={`SPA olmayan hedefler (${nf(g.nonSpa.length)})`}
-            hint="API / arka uç servisleri: yeni sunucuda dizin beklenmez, proxy tanımıyla taşınır"
+            // ÖLÇÜT BUGÜN YALNIZCA AD: "-app-v / -app-emb-v". Bu listede gerçekte SPA olan
+            // uygulamalar da bulunabilir (ad kalıbına uymayanlar) — liste "kesinlikle API"
+            // demez, "ad kalıbına uymuyor" der. Ayrımı container'da nginx process'i arayan
+            // tarama yapacak (bkz. server/audit/spa-pattern.cjs).
+            hint="Ad kalıbı (-app-v / -app-emb-v) tutmayan hedefler: yeni sunucuda dizin beklenmez, proxy tanımıyla taşınır. Ad kalıbına uymayan gerçek SPA'lar da burada olabilir."
             rows={g.nonSpa}
             tone="neutral"
           />
