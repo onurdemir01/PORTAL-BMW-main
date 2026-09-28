@@ -201,7 +201,10 @@ export type CryptoOpsAction =
   | 'helm_template'
   | 'helm_upgrade'
   | 'values_backups'
-  | 'values_restore';
+  | 'values_restore'
+  | 'configmaps'
+  | 'configmap_get'
+  | 'configmap_put';
 
 export interface CryptoPod {
   name: string;
@@ -257,6 +260,20 @@ export interface CryptoOpsResult {
   /** values_backups: dosyanın `.bak` sürümleri, EN YENİSİ BAŞTA. values_put her yazmadan
    *  önce yedek bıraktığı için geçmiş zaten diskte duruyordu; bu onu görünür kılar. */
   backups?: { path: string; size: number; mtime: string }[];
+  /** configmaps: namespace'teki config map özetleri. `managedBy` doluysa (örn. "Helm")
+   *  nesne bir chart'a ait — elle değiştirilen alan bir sonraki `helm upgrade`de geri alınır. */
+  configMaps?: {
+    name: string;
+    keys: number;
+    createdAt: string;
+    managedBy: string;
+    /** Config map değişince NE rollout edilmeli — SUNUCUDA çözülür.
+     *  `kaynak`: 'kayitli' (doğrulanmış eşleşme) · 'tahmin' (addan çıkarıldı, doğrulanmalı)
+     *  · 'yok' (kayıtlı değil — uydurulmaz). */
+    rollout?: { kaynak: 'kayitli' | 'tahmin' | 'yok'; targets: string[]; note: string };
+  }[];
+  /** configmap_get: anahtar → değer (değerler çok satırlı olabilir) */
+  configMapData?: { key: string; value: string }[];
 }
 
 export const cryptoOpsApi = {
@@ -278,6 +295,10 @@ export const cryptoOpsApi = {
     valuesPaths?: string[];
     /** values_restore: geri yüklenecek yedek — hedef dosyanın KENDİ yedeği olmalı */
     backupPath?: string;
+    /** configmap_get / configmap_put: config map adı */
+    cmName?: string;
+    /** configmap_put: yazılacak `data` alanları. null = anahtarı SİL (merge patch). */
+    data?: Record<string, string | null>;
     /** values_diff / helm_template / helm_upgrade: chart ve koşan sürüm SUNUCUDA çözülür;
      *  gövdeye yazılan chart/sürüm dikkate ALINMAZ (aksi halde "yalnız values değişecek"
      *  diyen bir istek sessizce başka bir sürüm uygulayabilirdi). */

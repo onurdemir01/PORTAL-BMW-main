@@ -52,6 +52,11 @@ const OPS = {
   values_backups: { writes: false },
   // Geri yukleme YAZAR: dosyanin uzerine yazar (once mevcut halin yedegini alarak).
   values_restore: { writes: true },
+  configmaps: { writes: false },
+  configmap_get: { writes: false },
+  // configmap_put YAZAR ama POD'LARI YENIDEN BASLATMAZ: "kaydedildi" ile "yururluge girdi"
+  // ayri seylerdir; ekran rollout gerektigini ayrica soyler (shared/cryptoHubConfigMaps.cjs).
+  configmap_put: { writes: true },
   // helm_upgrade YAZAR: kosan release'i yeniden uygular. Surum DEGISMEZ - bunu betik de
   // ayrica dogrular (Portal'in bildigi surum ile gercek kosan surum tutmuyorsa durur).
   helm_upgrade: { writes: true },
@@ -121,7 +126,7 @@ function normalizeOps(body) {
   // tehlikeli hatadir (tum namespace'i sondurmek).
   // values_put ve helm_upgrade'de "hedef" bir k8s nesnesi DEGIL: biri DOSYA YOLU, oteki
   // HELM RELEASE'idir; ikisi de asagida ayrica dogrulanir.
-  const hedefsiz = ['values_put', 'helm_upgrade', 'values_restore'];
+  const hedefsiz = ['values_put', 'helm_upgrade', 'values_restore', 'configmap_put'];
   if (writes && !hedefsiz.includes(action) && targets.length === 0)
     throw new Error('Hedef seçilmedi.');
   if (action === 'logs' && targets.length === 0)
@@ -175,6 +180,42 @@ function normalizeOps(body) {
     // Ham (maskesiz) icerik yalnizca ACIKCA istenirse doner ve denetime yazilir.
     out.reveal = body?.reveal === true;
   }
+  if (action === 'configmap_get' || action === 'configmap_put') {
+    out.cmName = String(body?.cmName || '').trim();
+    // k8s nesne adi deseni: betikte de AYNI denetim var - burasi ilk kapi.
+    if (!/^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/.test(out.cmName)) {
+      throw new Error(`Geçersiz config map adı: ${out.cmName}`);
+    }
+    if (action === 'configmap_put') {
+      const veri = body && body.data;
+      if (!veri || typeof veri !== 'object' || Array.isArray(veri)) {
+        throw new Error('Config map verisi gerekli.');
+      }
+      const anahtarlar = Object.keys(veri);
+      if (!anahtarlar.length) throw new Error('Değiştirilecek anahtar seçilmedi.');
+      if (anahtarlar.length > 100) throw new Error('Tek seferde en fazla 100 anahtar yazılabilir.');
+      for (const k of anahtarlar) {
+        // k8s config map anahtar deseni. Gecersiz anahtar patch'i tumden reddettirir;
+        // once burada durdurmak, yarim uygulanmis bir degisiklikten iyidir.
+        if (!/^[-._a-zA-Z0-9]+$/.test(k)) throw new Error(`Geçersiz anahtar adı: ${k}`);
+        const d = veri[k];
+        // null = anahtari SIL (merge patch kurali). Baska tur kabul edilmez.
+        if (d !== null && typeof d !== 'string')
+          throw new Error(`Anahtar değeri metin olmalı: ${k}`);
+        if (typeof d === 'string' && d.length > 512 * 1024) {
+          throw new Error(`Anahtar 512 KB sınırını aşıyor: ${k}`);
+        }
+      }
+      // MASKELI ICERIK GERI YAZILMAZ: '****' yazmak gercek degeri silmek olurdu.
+      for (const k of anahtarlar) {
+        if (typeof veri[k] === 'string' && /^\*{4}$/.test(veri[k].trim())) {
+          throw new Error(`Maskelenmiş değer kaydedilemez: ${k} — önce gerçek değerleri gösterin.`);
+        }
+      }
+      out.cmData = veri;
+    }
+  }
+
   if (action === 'values_backups') {
     out.valuesPath = String(body?.valuesPath || '').trim();
     if (!/^\/vhosting\/[^\0]*$/.test(out.valuesPath) || out.valuesPath.includes('..')) {
@@ -255,8 +296,16 @@ function parseOpsLines(lines) {
   const template = { objects: [], lines: [] };
   // values_backups: bir values dosyasinin .bak surumleri (en yenisi basta).
   const backups = [];
+  // configmaps: namespace'teki config map ozetleri. configmap_get: anahtar -> deger
+  // (deger BASE64 tasinir; config map degerleri cok satirli olabiliyor).
+  const configMaps = [];
+  const configMapData = new Map();
+  // Kiraci anahtari cikti satirlarinin 2. alanindadir; rollout eslesmesi uygulamaya
+  // (metaco/wyden) bagli oldugu icin sonuca tasinir.
+  let tenantKey = '';
   for (const raw of lines) {
     const f = String(raw == null ? '' : raw).split('\t');
+    if (!tenantKey && f.length > 1 && f[1]) tenantKey = String(f[1]).trim();
     switch (f[0]) {
       case 'VFBEG':
         if (f.length >= 3) {
@@ -278,6 +327,27 @@ function parseOpsLines(lines) {
         if (ad && (faz === 'once' || faz === 'sonra')) routes[faz].push(ad);
         break;
       }
+      case 'CM':
+        if (f.length >= 3) {
+          configMaps.push({
+            name: f[2],
+            keys: Number(f[3] || 0),
+            createdAt: (f[4] || '').trim(),
+            managedBy: (f[5] || '').trim(),
+          });
+        }
+        break;
+      case 'CMK':
+        if (f.length >= 5) {
+          let deger = '';
+          try {
+            deger = Buffer.from(f[4] || '', 'base64').toString('utf8');
+          } catch {
+            deger = '';
+          }
+          configMapData.set(f[3], deger);
+        }
+        break;
       case 'BAK':
         if (f.length >= 3) {
           backups.push({ path: f[2], size: Number(f[3] || 0), mtime: (f[4] || '').trim() });
@@ -344,6 +414,9 @@ function parseOpsLines(lines) {
     routes,
     template,
     backups: backups.sort((a, b) => String(b.mtime).localeCompare(String(a.mtime))),
+    tenantKey,
+    configMaps,
+    configMapData: [...configMapData.entries()].map(([key, value]) => ({ key, value })),
   };
 }
 
@@ -695,6 +768,18 @@ function initCryptoHub(app) {
           'utf8',
         ).toString('base64');
       }
+      if (params.action === 'configmap_get') {
+        extraVars.crypto_hub_cm_name = params.cmName;
+      }
+      if (params.action === 'configmap_put') {
+        extraVars.crypto_hub_cm_name = params.cmName;
+        // MERGE PATCH: yalnizca `data` gonderilir; metadata/ownerReferences ve helm
+        // etiketlerine DOKUNULMAZ. Silinen anahtar null olarak gider (merge patch kurali).
+        extraVars.crypto_hub_cm_patch_b64 = Buffer.from(
+          JSON.stringify({ data: params.cmData }),
+          'utf8',
+        ).toString('base64');
+      }
       if (params.action === 'values_backups') {
         extraVars.crypto_hub_values_path = params.valuesPath;
       }
@@ -826,6 +911,17 @@ function initCryptoHub(app) {
           // Maskeleme her sirri '****' yaptigi icin, maskeli veride iki FARKLI parola AYNI
           // gorunur ve gercek bir fark sessizce kaybolurdu. Karsilastirma hamda yapilinca
           // fark tespit edilir, deger yine gosterilmez (values-compare.cjs maske notu).
+          // CONFIG MAP -> ROLLOUT ESLESMESI SUNUCUDA cozulur: istemci `shared/` altindan
+          // import edemiyor (takma ad yok) ve iki kopya tutmak, bir gun birinin eskimesi
+          // demekti. Uc durum korunur: kayitli / tahmin / yok.
+          if (parsed.configMaps && parsed.configMaps.length) {
+            const kiraci = tenantOf(parsed.tenantKey);
+            const { rolloutHedefleri } = require('../../shared/cryptoHubConfigMaps.cjs');
+            parsed.configMaps = parsed.configMaps.map((c) => ({
+              ...c,
+              rollout: rolloutHedefleri(kiraci && kiraci.app, c.name),
+            }));
+          }
           if (parsed.files && parsed.files.length) {
             parsed.masked = String(req.query.reveal || '') !== '1';
             parsed.compare = require('./values-compare.cjs').karsilastir(

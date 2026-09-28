@@ -322,3 +322,104 @@ test('VC8: sunucu sozlesmesi - chart/surum sunucuda cozulur, olculemezse UYGULAN
     'esitleme onizlemesi AWX isi baslatiyor - yazma ikinci bir yol acmis',
   );
 });
+
+// ── CM1-CM4: config map duzenleme (2026-09-28) ───────────────────────────────────────
+// Kullanici: "Crypto Hub'a config map'leri editleyebilmeleri icin bir ozellik ekle. Mesela
+// Ledger Accounting Config Map'i degistirilince Ledger Accounting'in rollout edilmesi
+// gerektiginde oraya yazalim."
+
+test('CM1: rollout eslesmesi UC DURUM - kayitli / tahmin / yok (uydurulmaz)', () => {
+  const { rolloutHedefleri } = require('../../../shared/cryptoHubConfigMaps.cjs');
+
+  // KAYITLI: elle yazilmis, dogrulanmis eslesme.
+  const k = rolloutHedefleri('wyden', 'ledger-accounting-config');
+  assert.equal(k.kaynak, 'kayitli');
+  assert.deepEqual(k.targets, ['deployment/ledger-accounting']);
+
+  // TAHMIN: addan cikarilan oneri - KESIN GIBI gosterilmemeli.
+  const t = rolloutHedefleri('wyden', 'wyden-extra-cm');
+  assert.equal(t.kaynak, 'tahmin', 'ad-temelli oneri "kayitli" gibi dondu');
+  assert.deepEqual(t.targets, ['deployment/wyden-extra']);
+  assert.match(t.note, /kayıtlı değil|doğrulayın/i, 'tahmin oldugu soylenmiyor');
+
+  // YOK: hicbir sey uydurulmaz. Yanlis bileseni rollout etmek, duzeltilmeye calisilan
+  // kesintiyi buyutmenin en hizli yoludur.
+  const y = rolloutHedefleri('wyden', 'rastgele');
+  assert.equal(y.kaynak, 'yok');
+  assert.deepEqual(y.targets, [], 'hedef bilinmiyorken hedef uyduruldu');
+
+  // UYGULAMA AYRIMI: wyden kurali metaco'da KAYITLI sayilmamali.
+  assert.notEqual(rolloutHedefleri('metaco', 'ledger-accounting-config').kaynak, 'kayitli');
+});
+
+test('CM2: configmap_put kapilari - ad, anahtar, tur, maske, bos', () => {
+  const { normalizeOps, OPS } = require('../index.cjs');
+  const g = (b) => normalizeOps({ action: 'configmap_put', ...b });
+
+  assert.equal(OPS.configmaps.writes, false, 'listeleme YAZAN sayilmis');
+  assert.equal(OPS.configmap_get.writes, false, 'okuma YAZAN sayilmis');
+  assert.equal(OPS.configmap_put.writes, true, 'config map yazma OKUYAN sayilmis');
+
+  assert.deepEqual(g({ cmName: 'ledger-config', data: { a: 'b' } }).cmData, { a: 'b' });
+  // null = anahtari SIL (merge patch kurali) - gecerli bir deger.
+  assert.deepEqual(g({ cmName: 'x', data: { a: null } }).cmData, { a: null });
+
+  assert.throws(() => g({ cmName: 'Bad Name', data: { a: 'b' } }), /Geçersiz config map/);
+  assert.throws(() => g({ cmName: 'x', data: {} }), /seçilmedi/, 'bos degisiklik gecti');
+  assert.throws(() => g({ cmName: 'x', data: { 'boşluk lu': 'v' } }), /Geçersiz anahtar/);
+  assert.throws(() => g({ cmName: 'x', data: { a: 5 } }), /metin olmalı/, 'sayi deger gecti');
+  // MASKELI DEGER GERI YAZILAMAZ: '****' yazmak gercek degeri silmek olurdu.
+  assert.throws(() => g({ cmName: 'x', data: { pass: '****' } }), /Maskelenmiş/);
+});
+
+test('CM3: "kaydedildi" ile "yururluge girdi" AYRI - betik ve ekran ayni seyi soyler', () => {
+  // Bu ozelligin en onemli iddiasi: config map guncellenince POD'LAR ESKI degerlerle
+  // kosmaya devam eder. Bunu soylemeyen bir ekran, degismedigi halde degisti sanilan bir
+  // konfigurasyon birakir.
+  const panel = fs.readFileSync(
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'crypto_hub',
+      'ConfigMapsPanel.tsx',
+    ),
+    'utf8',
+  );
+  const duz = panel.replace(/\s+/g, ' ');
+  assert.match(
+    duz,
+    /pod’lara yansımadı|pod'lara yansımadı/i,
+    'ekran "pod-lara yansimadi" uyarisini vermiyor',
+  );
+  assert.match(duz, /rollout/i, 'ekran rollout gerektigini soylemiyor');
+  // Rollout dugmesi ayni panelden kosmali: uyariyi okuyup baska ekrana gitmek zorunda
+  // kalan kullanici, cogu zaman gitmez.
+  assert.match(duz, /action: 'rollout'/, 'panelden rollout kosulamiyor');
+  // TAHMIN ile KAYITLI ekranda AYRI yazilir.
+  assert.match(duz, /Önerilen \(tahmin\)/, 'tahmin, kayitli eslesme gibi gosteriliyor');
+});
+
+test('CM4: sunucu sozlesmesi - yalniz data, merge patch, eslesme sunucuda', () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  const kod = srv
+    .split(String.fromCharCode(10))
+    .filter((l) => !l.trim().startsWith('//'))
+    .join(String.fromCharCode(10))
+    .replace(/\s+/g, ' ');
+
+  // YALNIZ `data`: tum nesneyi apply etmek helm sahipligini bozabilirdi.
+  assert.ok(
+    kod.includes('JSON.stringify({ data: params.cmData })'),
+    'patch govdesi yalnizca data alanini tasimiyor',
+  );
+  assert.ok(kod.includes('crypto_hub_cm_patch_b64'), 'patch base64 ile tasinmiyor');
+  // ESLESME SUNUCUDA: istemci shared/ altindan import edemiyor; iki kopya eskirdi.
+  assert.ok(
+    kod.includes('rolloutHedefleri(kiraci && kiraci.app, c.name)'),
+    'rollout eslesmesi sunucuda cozulmuyor',
+  );
+});

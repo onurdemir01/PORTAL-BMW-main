@@ -43,6 +43,7 @@ import { BitcoinIcon, AppIcon, DomainIcon } from '@/components/common/BrandIcons
 import { PodsTab, ComponentOps } from './OpsPanel';
 import { ValuesModal } from './ValuesModal';
 import { ValuesCompare } from './ValuesCompare';
+import { ConfigMapsPanel } from './ConfigMapsPanel';
 import { Modal } from '@/components/common/Modal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -888,7 +889,7 @@ export default function CryptoHubPage() {
   const [params, setParams] = useSearchParams();
   const tenantKey = params.get('t') || '';
   const [data, setData] = useState<CryptoOverview | null>(null);
-  const [tab, setTab] = useState<'durum' | 'podlar' | 'surumler'>('durum');
+  const [tab, setTab] = useState<'durum' | 'podlar' | 'surumler' | 'configmap'>('durum');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1292,6 +1293,7 @@ export default function CryptoHubPage() {
                 ['durum', 'Durum'],
                 ['podlar', 'Podlar'],
                 ['surumler', 'Sürümler'],
+                ['configmap', 'Config Map'],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -1331,6 +1333,12 @@ export default function CryptoHubPage() {
               />
             ) : tab === 'podlar' ? (
               <PodsTab
+                tenantKey={scope.env.key}
+                tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
+                namespace={scope.env.namespace}
+              />
+            ) : tab === 'configmap' ? (
+              <ConfigMapsPanel
                 tenantKey={scope.env.key}
                 tenantLabel={`${scope.appLabel} · ${scope.env.label}`}
                 namespace={scope.env.namespace}

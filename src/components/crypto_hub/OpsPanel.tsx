@@ -70,6 +70,10 @@ export interface OpsRequest {
   valuesPath?: string;
   /** values_files: karsilastirilacak cluster dosyalarinin TAM yollari */
   valuesPaths?: string[];
+  /** configmap_get / configmap_put: config map adi */
+  cmName?: string;
+  /** configmap_put: yazilacak data alanlari (null = anahtari sil) */
+  data?: Record<string, string | null>;
   /** values_restore: geri yuklenecek yedek (hedefin KENDI yedegi olmali) */
   backupPath?: string;
   content?: string;
@@ -85,6 +89,16 @@ export function opsCommand(req: OpsRequest, namespace: string): string {
       return `oc get pods ${ns}`;
     case 'values_files':
       return (req.valuesPaths || []).map((p) => `cat ${p}`).join('\n');
+    case 'configmaps':
+      return `oc get configmap ${ns}`;
+    case 'configmap_get':
+      return `oc get configmap ${req.cmName} ${ns} -o json`;
+    case 'configmap_put':
+      return [
+        `oc get configmap ${req.cmName} ${ns} -o yaml > <yedek>`,
+        `oc patch configmap ${req.cmName} ${ns} --type=merge -p '{"data":{…}}'`,
+        "# NOT: pod'lar yeniden BAŞLATILMAZ — rollout ayrı bir işlemdir",
+      ].join('\n');
     case 'values_backups':
       return `ls -l ${req.valuesPath}.*.bak`;
     case 'values_restore':
@@ -132,6 +146,9 @@ const WRITES: Record<CryptoOpsAction, boolean> = {
   helm_upgrade: true,
   values_backups: false,
   values_restore: true,
+  configmaps: false,
+  configmap_get: false,
+  configmap_put: true,
   pod_delete: true,
   rollout: true,
   scale: true,
@@ -254,7 +271,9 @@ export function OpsConfirm({
             ? 'values.yaml yazma'
             : req.action === 'values_restore'
               ? 'Eski values sürümüne dönme'
-              : 'Replika değişikliği';
+              : req.action === 'configmap_put'
+                ? "Config map değişikliği (pod'lar yeniden başlatılmaz)"
+                : 'Replika değişikliği';
   const komut = opsCommand(req, namespace);
   return (
     <Modal
