@@ -36,9 +36,9 @@ test('VE2: SIKI ogede admin muafiyeti YOK ve varsayilan kapali', () => {
   assert.ok(iStrictFalse > 0, 'strict ogede acik kural yoksa erisim kapali olmali');
   assert.ok(iStrictFalse < iDefault, "strict kontrolu default_visible'dan ONCE gelmeli");
   // Kill-switch hala once gelir: strict, kapali bir ogeyi acmamali.
-  const iEnabled = SRC.indexOf("!truthy(el.enabled)");
+  const iEnabled = SRC.indexOf('!truthy(el.enabled)');
   const iStrict = SRC.indexOf('let strict = false;');
-  assert.ok(iEnabled > 0 && iEnabled < iStrict, 'enabled kontrolu strict\'ten once olmali');
+  assert.ok(iEnabled > 0 && iEnabled < iStrict, "enabled kontrolu strict'ten once olmali");
 });
 
 test('VE3: Crypto Hub SIKI olarak seed ediliyor', () => {
@@ -76,7 +76,18 @@ test('VE5: sikilik Admin ekranindan yonetilebilir', () => {
   assert.match(routes.slice(i, i + 400), /bumpVersion\(\)/);
 
   const tab = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'components', 'admin', 'tabs', 'PageVisibilityTab.tsx'), 'utf8',
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'admin',
+      'tabs',
+      'PageVisibilityTab.tsx',
+    ),
+    'utf8',
   );
   assert.match(tab, /elementsApi\.setStrict/);
   assert.match(tab, /admin muafiyeti YOKTUR/, 'siki ogede ipucu duzeltilmis olmali');
@@ -97,12 +108,14 @@ test('VE6: "neden goremiyor" tanisi - explain ucu', () => {
   assert.match(SRC, /ust oge gizli/);
 
   const routes = fs.readFileSync(path.join(__dirname, '..', 'visibility-routes.cjs'), 'utf8');
-  const i = routes.indexOf('"/explain"');
+  // Tirnak turu degisebilir (prettier); iddia ucun VARLIGI.
+  const i = routes.search(/['"]\/explain['"]/);
   assert.ok(i > 0, 'explain ucu olmali');
   const blok = routes.slice(i, i + 1200);
   // Herkes KENDINI sorgulayabilir; BASKASINI yalniz Admin simule edebilir - aksi halde bu
   // uc, kimin neye erisebildigini sizdiran bir kesif araci olurdu.
-  assert.match(blok, /me\.role !== "Admin"/);
+  // Tirnak turu iddianin konusu degil (prettier cevirebiliyor).
+  assert.match(blok, /me\.role !== ['"]Admin['"]/);
   assert.match(blok, /status\(403\)/);
 });
 
@@ -113,17 +126,24 @@ test('VE7: kullanici adi BUYUK/KUCUK harf ayrimi yapmaz', () => {
   // yazdigi bicim kaydediliyor, OKURKEN kucuk harf araniyordu. Harf duyarli bir collation'da
   // satir bulunamiyor ve kullanici rolunu sessizce kaybediyordu.
   const rs = fs.readFileSync(path.join(__dirname, '..', 'role-store.cjs'), 'utf8');
-  assert.match(rs, /const uname = String\(username \|\| ''\)\.trim\(\)\.toLowerCase\(\);/,
-    'setRoleOverride kullanici adini kucuk harfe cevirmeli');
+  assert.match(
+    rs,
+    /const uname = String\(username \|\| ''\)\.trim\(\)\.toLowerCase\(\);/,
+    'setRoleOverride kullanici adini kucuk harfe cevirmeli',
+  );
   // Okuma ve silme de collation'dan BAGIMSIZ olmali.
-  for (const sorgu of [/SELECT role FROM user_role_overrides WHERE LOWER\(username\)/,
-                       /DELETE FROM user_role_overrides WHERE LOWER\(username\)/,
-                       /UPDATE user_role_overrides SET role = \$1[\s\S]{0,140}WHERE LOWER\(username\)/]) {
+  for (const sorgu of [
+    /SELECT role FROM user_role_overrides WHERE LOWER\(username\)/,
+    /DELETE FROM user_role_overrides WHERE LOWER\(username\)/,
+    /UPDATE user_role_overrides SET role = \$1[\s\S]{0,140}WHERE LOWER\(username\)/,
+  ]) {
     assert.match(rs, sorgu, 'sorgu LOWER(username) ile eslestirmeli');
   }
   // Ham (normalize edilmemis) kullanici adiyla yazma KALMAMALI.
-  assert.ok(!/VALUES \(\$1, \$2, 'manual'[\s\S]{0,80}\[username,/.test(rs),
-    'INSERT ham kullanici adini yazmamali');
+  assert.ok(
+    !/VALUES \(\$1, \$2, 'manual'[\s\S]{0,80}\[username,/.test(rs),
+    'INSERT ham kullanici adini yazmamali',
+  );
 
   // Gorunurluk kural indeksi de okuma tarafinda normalize etmeli (elle atilmis satirlar).
   assert.match(SRC, /String\(r\.principal_id\)\.trim\(\)\.toLowerCase\(\)/);

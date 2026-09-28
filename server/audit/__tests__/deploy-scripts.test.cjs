@@ -16,7 +16,10 @@ test('DS1 sunucu: /deploy-scripts ucu, uzun tablodan pivot, tab kapisi "deploy"'
   const src = read('server/audit/denetim.cjs');
   assert.match(src, /router\.get\('\/deploy-scripts'/);
   assert.match(src, /dbo\.DeployScriptsInventory/);
-  assert.ok(src.includes(String.raw`deploy-scripts(\/|$)/, 'deploy']`), 'TAB_OF_PATH deploy kapisi yok');
+  assert.ok(
+    src.includes(String.raw`deploy-scripts(\/|$)/, 'deploy']`),
+    'TAB_OF_PATH deploy kapisi yok',
+  );
   // root parametresi SQL'e metin olarak DEGIL, bagli parametre olarak girer
   assert.match(src, /WHERE root = @root/);
   assert.match(src, /\[\{ name: 'root', type: sql\.NVarChar, value: root \}\]/);
@@ -24,12 +27,18 @@ test('DS1 sunucu: /deploy-scripts ucu, uzun tablodan pivot, tab kapisi "deploy"'
   // 2026-09-24: ucuncu parametre (majorityOverride) eklendi - GBEVM/GBPRV sunuculari GENEL
   // envanterin cogunluguna gore olculur. Init ve Deployment ekranlari ayni fonksiyonu paylasir.
   assert.match(src, /function scriptDeviationReport\(raw, scripts, majorityOverride\)/);
-  assert.equal((src.match(/scriptDeviationReport\(/g) || []).length, 5,
-    'tanim + init(genel) + init(GBEVM/GBPRV) + deploy(genel) + deploy(GBEVM/GBPRV)');
+  assert.equal(
+    (src.match(/scriptDeviationReport\(/g) || []).length,
+    5,
+    'tanim + init(genel) + init(GBEVM/GBPRV) + deploy(genel) + deploy(GBEVM/GBPRV)',
+  );
   // 2026-09-24: Deployment Scripts de GBEVM/GBPRV'yi ayirir - Init ile ayni sekil
   assert.match(src, /const genelRaw = raw\.filter\(\(r\) => !isSpecialHost\(r\.host\)\)/g);
-  assert.equal((src.match(/scriptDeviationReport\(ozelRaw, scripts, majorityOf\)/g) || []).length, 2,
-    'hem Init hem Deployment ozel sunuculari GENEL cogunluga gore olcmeli');
+  assert.equal(
+    (src.match(/scriptDeviationReport\(ozelRaw, scripts, majorityOf\)/g) || []).length,
+    2,
+    'hem Init hem Deployment ozel sunuculari GENEL cogunluga gore olcmeli',
+  );
 });
 
 test('DS2 istemci: sekme, tip, liste, yardim bolumu, API', () => {
@@ -37,7 +46,10 @@ test('DS2 istemci: sekme, tip, liste, yardim bolumu, API', () => {
   assert.match(page, /\| 'deploy'/);
   assert.match(page, /'init', 'deploy',/);
   assert.match(page, /\{ id: 'deploy', label: 'Deployment Scripts'/);
-  assert.ok(page.includes(`activeTab === 'deploy' && <ScriptsAudit kind="deploy" />`), 'deploy sekmesi render edilmiyor');
+  assert.ok(
+    page.includes(`activeTab === 'deploy' && <ScriptsAudit kind="deploy" />`),
+    'deploy sekmesi render edilmiyor',
+  );
   assert.match(page, /title: 'Deployment Scripts Audit'/);
   const api = read('src/api/denetimApi.ts');
   assert.match(api, /deployScripts: \(root: string\)/);
@@ -46,14 +58,22 @@ test('DS2 istemci: sekme, tip, liste, yardim bolumu, API', () => {
 
 test('DS3 erisim: seed tab:denetim:deploy + DENETIM_TAB_KEYS', () => {
   assert.match(read('server/db/mssql-setup.cjs'), /element_key: 'tab:denetim:deploy'/);
-  assert.match(read('server/auth/visibility-routes.cjs'), /'init', 'deploy', 'routetraffic', 'envanter'/);
+  // Dizi satirlara bolunmus olabilir (prettier): bosluklar normallenerek aranir.
+  assert.match(
+    read('server/auth/visibility-routes.cjs').replace(/\s+/g, ' '),
+    /'init', 'deploy', 'routetraffic', 'envanter'/,
+  );
 });
 
 test('DS4 Ansible job dosyalari repo icinde belgelenmis (tablo adi ve CSV sozlesmesi ayni)', () => {
   // Portal tablo adi ile Ansible loader'in tablo adi AYNI olmali (iki repo, tek sozlesme)
-  const ans = 'C:/Users/demir/Downloads/Compressed/gar_bmt_ansible_scripts/bmw_wds_scripts/deployment_scripts';
+  const ans =
+    'C:/Users/demir/Downloads/Compressed/gar_bmt_ansible_scripts/bmw_wds_scripts/deployment_scripts';
   if (!fs.existsSync(ans)) return; // baska makinede Ansible deposu yoksa atla
-  const loader = fs.readFileSync(path.join(ans, 'files', 'deployment_scripts_inventory.py'), 'utf8');
+  const loader = fs.readFileSync(
+    path.join(ans, 'files', 'deployment_scripts_inventory.py'),
+    'utf8',
+  );
   assert.match(loader, /dbo\.DeployScriptsInventory/);
   assert.match(loader, /scan_date, host, root, script, sha512, size_bytes, mtime/);
   assert.doesNotMatch(loader, /PWD=[A-Za-z0-9]{8,}/, 'loader parola icermemeli');
