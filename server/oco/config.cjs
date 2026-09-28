@@ -20,7 +20,9 @@ function getConfig() {
     // Ayar hic girilmemisse istek uydurma bir hosta gidiyor, DNS/TLS dusuyor ve
     // kullanici "OCO servisine ulasilamadi" goruyordu — yani "ayar YOK" durumu
     // "servis COKMUS" gibi gorunuyordu. Iki apayri sorun, tek mesaj.
-    baseUrl: String(process.env.OCO_API_URL || '').trim().replace(/\/+$/, ''),
+    baseUrl: String(process.env.OCO_API_URL || '')
+      .trim()
+      .replace(/\/+$/, ''),
     // Path ve sorgu parametresi ayri tutulur ki uc degisirse kod degil ayar guncellensin.
     changeOrderPath:
       process.env.OCO_CHANGE_ORDER_PATH ||
@@ -32,6 +34,11 @@ function getConfig() {
       const v = Number(process.env.OCO_TIMEOUT_MS);
       return Number.isFinite(v) && v > 0 ? v : 15000;
     })(),
+    // OCO TAKVIMI (2026-09-28): ekibin OCO'larini listeleyen arama ucunun grup kimligi.
+    // Kullanicinin verdigi cagrida openningGroupId=6203. Varsayilan BILEREK var: bu deger
+    // ekibin kimligi, gizli bir sir degil; ayarlanmadigi icin ekranin bos kalmasi
+    // "OCO yok" gibi okunurdu. Baska bir ekip icin Admin > Sistem'den degistirilir.
+    searchGroupId: String(process.env.OCO_SEARCH_GROUP_ID || '6203').trim(),
     // Zamanlanmis tetiklemeleri kontrol eden poller'in tick araligi.
     pollIntervalSeconds: (() => {
       const v = Number(process.env.OCO_POLL_INTERVAL_SECONDS);

@@ -11,6 +11,8 @@ import ForbiddenPage from '@/components/ForbiddenPage';
 // giristen sonra ancak menuden acilir) ve kod tabanindaki en agir sayfalardan biri.
 // Eager oldugu icin tum agirligi giris ekraninin bile indirdigi ana bundle'a giriyordu.
 const DenetimPage = lazyWithRetry(() => import('@/components/DenetimPage'));
+// OCO Takvimi (2026-09-28): ekibin degisiklik kayitlari, kronolojik. Kendi route'u var.
+const OcoTakvimiPage = lazyWithRetry(() => import('@/components/OcoTakvimiPage'));
 // Nginx Audit > tek sunucu sayfasi: kendi URL'i var, Denetim gorunurlugune tabi.
 const NginxAuditHostPage = lazyWithRetry(() => import('@/components/denetim/NginxAuditHostPage'));
 const EnvanterPage = lazyWithRetry(() => import('@/components/EnvanterPage'));
@@ -78,6 +80,9 @@ export default function App() {
             </Route>
             <Route element={<PageVisibilityRoute pageId="Nöbet" />}>
               <Route path="/duty-roster" element={<DutyRosterPage />} />
+            </Route>
+            <Route element={<PageVisibilityRoute pageId="OcoTakvimi" />}>
+              <Route path="/oco-takvimi" element={<OcoTakvimiPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="Performance" />}>
               <Route path="/performance" element={<DynatracePage />} />

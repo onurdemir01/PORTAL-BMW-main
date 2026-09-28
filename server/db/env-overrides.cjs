@@ -22,9 +22,13 @@ function getEncryptionKey() {
   const raw = process.env.ENV_OVERRIDES_ENCRYPTION_KEY;
   if (!raw) return null;
   try {
-    const buf = /^[0-9a-fA-F]{64}$/.test(raw) ? Buffer.from(raw, 'hex') : Buffer.from(raw, 'base64');
+    const buf = /^[0-9a-fA-F]{64}$/.test(raw)
+      ? Buffer.from(raw, 'hex')
+      : Buffer.from(raw, 'base64');
     return buf.length === 32 ? buf : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // Anahtar tanimliysa sifreler. PRODUCTION'da anahtar tanimli DEGILSE artik sessizce duz
@@ -36,14 +40,20 @@ function encryptSecretValue(plain) {
   const key = getEncryptionKey();
   if (!key) {
     if (process.env.NODE_ENV === 'production') {
-      throw new Error('ENV_OVERRIDES_ENCRYPTION_KEY tanimli degil: production ortaminda gizli degerler duz metin saklanamaz.');
+      throw new Error(
+        'ENV_OVERRIDES_ENCRYPTION_KEY tanimli degil: production ortaminda gizli degerler duz metin saklanamaz.',
+      );
     }
     return plain;
   }
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const enc = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
-  const payload = { iv: iv.toString('base64'), enc: enc.toString('base64'), tag: cipher.getAuthTag().toString('base64') };
+  const payload = {
+    iv: iv.toString('base64'),
+    enc: enc.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+  };
   return ENC_PREFIX + Buffer.from(JSON.stringify(payload)).toString('base64');
 }
 
@@ -51,10 +61,15 @@ function decryptSecretValue(stored) {
   if (!stored.startsWith(ENC_PREFIX)) return stored; // eski/anahtarsiz-yazilmis duz metin satir
   const key = getEncryptionKey();
   if (!key) throw new Error('ENV_OVERRIDES_ENCRYPTION_KEY tanimli degil');
-  const payload = JSON.parse(Buffer.from(stored.slice(ENC_PREFIX.length), 'base64').toString('utf8'));
+  const payload = JSON.parse(
+    Buffer.from(stored.slice(ENC_PREFIX.length), 'base64').toString('utf8'),
+  );
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'base64'));
   decipher.setAuthTag(Buffer.from(payload.tag, 'base64'));
-  return Buffer.concat([decipher.update(Buffer.from(payload.enc, 'base64')), decipher.final()]).toString('utf8');
+  return Buffer.concat([
+    decipher.update(Buffer.from(payload.enc, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
 }
 
 // server/admin/system-config.cjs ile paylasilir (tek dogruluk kaynagi burasi).
@@ -80,30 +95,76 @@ function decryptSecretValue(stored) {
 // (gizli olmayan) anahtarlar duz metin kalir.
 const SYSTEM_CONFIG_KEYS = [
   'PORT',
-  'MSSQL_SERVER', 'MSSQL_DATABASE', 'MSSQL_RO_USER', 'MSSQL_RO_PASSWORD',
+  'MSSQL_SERVER',
+  'MSSQL_DATABASE',
+  'MSSQL_RO_USER',
+  'MSSQL_RO_PASSWORD',
   'LOGX_APPS_TABLE',
-  'OPSX_LEGACY_TEMPLATE_ID', 'OPSX_OPENSHIFT_TEMPLATE_ID', 'OPSX_AWX_SERVER_ID',
-  'OPSX_LEGACY_DUMP_TEMPLATE_ID', 'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID', 'OPSX_DUMP_STAGING_DIR',
-  'OPSX_OPENSHIFT_PODS_TEMPLATE_ID', 'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
-  'LDAP_URL', 'LDAP_BASE_DN',
-  'AWX_URL', 'AWX_LOG_FETCH_TEMPLATE_ID', 'AWX_USER', 'AWX_PASSWORD', 'AWX_READ_ONLY_TEMPLATE_IDS',
-  'NOBETCI_API_URL', 'NOBETCI_TEAM_NAME', 'NOBETCI_TEAM_ID', 'NOBETCI_TEAM_TYPE', 'NOBETCI_API_HOST',
-  'DT_MANAGED_MCP_URL', 'INSTANA_MCP_URL', 'CORP_CA_CERT_PATH',
-  'AI_PROVIDER', 'ANTHROPIC_MODEL', 'OPENAI_MODEL', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY',
-  'LOGX_V2_STAGING_LEGACY_DIR', 'LOGX_V2_STAGING_OCP_DIR', 'LOGX_STAGING_FALLBACK_DIR',
-  'SMART_API_URL', 'SMART_API_USERNAME', 'SMART_API_PASSWORD', 'SMART_RFF_TOKEN', 'SMART_DOMAIN',
+  'OPSX_LEGACY_TEMPLATE_ID',
+  'OPSX_OPENSHIFT_TEMPLATE_ID',
+  'OPSX_AWX_SERVER_ID',
+  'OPSX_LEGACY_DUMP_TEMPLATE_ID',
+  'OPSX_OPENSHIFT_DUMP_TEMPLATE_ID',
+  'OPSX_DUMP_STAGING_DIR',
+  'OPSX_OPENSHIFT_PODS_TEMPLATE_ID',
+  'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
+  'LDAP_URL',
+  'LDAP_BASE_DN',
+  'AWX_URL',
+  'AWX_LOG_FETCH_TEMPLATE_ID',
+  'AWX_USER',
+  'AWX_PASSWORD',
+  'AWX_READ_ONLY_TEMPLATE_IDS',
+  'NOBETCI_API_URL',
+  'NOBETCI_TEAM_NAME',
+  'NOBETCI_TEAM_ID',
+  'NOBETCI_TEAM_TYPE',
+  'NOBETCI_API_HOST',
+  'DT_MANAGED_MCP_URL',
+  'INSTANA_MCP_URL',
+  'CORP_CA_CERT_PATH',
+  'AI_PROVIDER',
+  'ANTHROPIC_MODEL',
+  'OPENAI_MODEL',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  'LOGX_V2_STAGING_LEGACY_DIR',
+  'LOGX_V2_STAGING_OCP_DIR',
+  'LOGX_STAGING_FALLBACK_DIR',
+  'SMART_API_URL',
+  'SMART_API_USERNAME',
+  'SMART_API_PASSWORD',
+  'SMART_RFF_TOKEN',
+  'SMART_DOMAIN',
   // OCO (ChangeManagement ServiceRepository) — Smart'tan AYRI sistem, kimlik dogrulamasi yok.
-  'OCO_API_URL', 'OCO_CHANGE_ORDER_PATH', 'OCO_PROXY_URL', 'OCO_TIMEOUT_MS', 'OCO_POLL_INTERVAL_SECONDS',
-  'SMART_CREATE_TICKET_PATH', 'SMART_GET_METADATA_PATH', 'SMART_CHECK_TICKET_PATH',
-  'SMART_POLL_INTERVAL_SECONDS', 'SMART_PROXY_URL',
-  'TEAMS_LONGJOB_WEBHOOK_URL', 'TEAMS_LONGJOB_THRESHOLD_MINUTES', 'TEAMS_LONGJOB_POLL_INTERVAL_SECONDS',
-  'DB_FULL_BACKUP_DIR', 'DB_FULL_BACKUP_RETENTION_DAYS', 'DB_FULL_BACKUP_HOUR', 'DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES',
+  'OCO_API_URL',
+  'OCO_CHANGE_ORDER_PATH',
+  'OCO_PROXY_URL',
+  'OCO_TIMEOUT_MS',
+  'OCO_POLL_INTERVAL_SECONDS',
+  'OCO_SEARCH_GROUP_ID',
+  'SMART_CREATE_TICKET_PATH',
+  'SMART_GET_METADATA_PATH',
+  'SMART_CHECK_TICKET_PATH',
+  'SMART_POLL_INTERVAL_SECONDS',
+  'SMART_PROXY_URL',
+  'TEAMS_LONGJOB_WEBHOOK_URL',
+  'TEAMS_LONGJOB_THRESHOLD_MINUTES',
+  'TEAMS_LONGJOB_POLL_INTERVAL_SECONDS',
+  'DB_FULL_BACKUP_DIR',
+  'DB_FULL_BACKUP_RETENTION_DAYS',
+  'DB_FULL_BACKUP_HOUR',
+  'DB_FULL_BACKUP_CHECK_INTERVAL_MINUTES',
   // ── ScaleX sinirlari — SICAK YUKLENIR (restart GEREKMEZ) ──────────────────
   // `server/scalex/config.cjs` bunlari HER ISTEKTE `process.env`den okur. Bu
   // listedeki diger anahtarlarin cogundan farkli olarak degisiklik ANINDA gecerli
   // olur; `HOT_RELOADABLE_KEYS` bunu ekrana da soyler.
-  'SCALEX_VERIFY_TIMEOUT_DEFAULT', 'SCALEX_VERIFY_TIMEOUT_MIN', 'SCALEX_VERIFY_TIMEOUT_MAX',
-  'SCALEX_VERIFY_FAIL_MULTIPLIER', 'SCALEX_MAX_TARGETS', 'SCALEX_PROD_CONFIRM_THRESHOLD',
+  'SCALEX_VERIFY_TIMEOUT_DEFAULT',
+  'SCALEX_VERIFY_TIMEOUT_MIN',
+  'SCALEX_VERIFY_TIMEOUT_MAX',
+  'SCALEX_VERIFY_FAIL_MULTIPLIER',
+  'SCALEX_MAX_TARGETS',
+  'SCALEX_PROD_CONFIRM_THRESHOLD',
   'SCALEX_MAX_AUDIT_GROUPS',
 ];
 
@@ -113,8 +174,12 @@ const SYSTEM_CONFIG_KEYS = [
 // kaydettigi anda gecerli olur. Ekrana YANLIS bilgi vermemek icin ayri liste:
 // "restart gerekir" deyip gerekmemesi, kullaniciyi bosuna kesinti planlamaya iter.
 const HOT_RELOADABLE_KEYS = [
-  'SCALEX_VERIFY_TIMEOUT_DEFAULT', 'SCALEX_VERIFY_TIMEOUT_MIN', 'SCALEX_VERIFY_TIMEOUT_MAX',
-  'SCALEX_VERIFY_FAIL_MULTIPLIER', 'SCALEX_MAX_TARGETS', 'SCALEX_PROD_CONFIRM_THRESHOLD',
+  'SCALEX_VERIFY_TIMEOUT_DEFAULT',
+  'SCALEX_VERIFY_TIMEOUT_MIN',
+  'SCALEX_VERIFY_TIMEOUT_MAX',
+  'SCALEX_VERIFY_FAIL_MULTIPLIER',
+  'SCALEX_MAX_TARGETS',
+  'SCALEX_PROD_CONFIRM_THRESHOLD',
   'SCALEX_MAX_AUDIT_GROUPS',
 ];
 
@@ -139,7 +204,10 @@ async function loadEnvOverrides() {
           value = decryptSecretValue(value);
         } catch (e) {
           if (!warnedNoKey) {
-            console.warn(`[EnvOverrides] '${r.env_key}' sifresi cozulemedi (ENV_OVERRIDES_ENCRYPTION_KEY eksik/yanlis olabilir), atlaniyor:`, e.message);
+            console.warn(
+              `[EnvOverrides] '${r.env_key}' sifresi cozulemedi (ENV_OVERRIDES_ENCRYPTION_KEY eksik/yanlis olabilir), atlaniyor:`,
+              e.message,
+            );
             warnedNoKey = true;
           }
           continue;
@@ -162,12 +230,12 @@ async function setEnvOverride(key, value, updatedBy) {
   const upd = await db.query(
     `UPDATE portal_env_overrides SET env_value = $1, updated_by = $2, updated_at = GETUTCDATE()
      WHERE env_key = $3`,
-    [stored, updatedBy || null, key]
+    [stored, updatedBy || null, key],
   );
   if (!upd.rowCount) {
     await db.query(
       `INSERT INTO portal_env_overrides (env_key, env_value, updated_by) VALUES ($1, $2, $3)`,
-      [key, stored, updatedBy || null]
+      [key, stored, updatedBy || null],
     );
   }
   process.env[key] = v; // process.env'e her zaman duz deger yazilir, sifreli metin degil
@@ -183,4 +251,11 @@ function isFromDb(key) {
   return _appliedFromDb.has(key);
 }
 
-module.exports = { SYSTEM_CONFIG_KEYS, HOT_RELOADABLE_KEYS, loadEnvOverrides, setEnvOverride, deleteEnvOverride, isFromDb };
+module.exports = {
+  SYSTEM_CONFIG_KEYS,
+  HOT_RELOADABLE_KEYS,
+  loadEnvOverrides,
+  setEnvOverride,
+  deleteEnvOverride,
+  isFromDb,
+};

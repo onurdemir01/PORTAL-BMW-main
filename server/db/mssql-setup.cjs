@@ -1559,11 +1559,26 @@ const ELEMENT_SEED = [
   { element_key: 'navgroup:genel', element_type: 'nav_group', label: 'Genel', sort_order: 1 },
   { element_key: 'navgroup:envanter', element_type: 'nav_group', label: 'Envanter', sort_order: 2 },
   // Nginx Hub kendi basina bir sekme (kullanici, 2026-09-19): Envanter grubundan AYRILDI.
-  { element_key: 'navgroup:nginxhub', element_type: 'nav_group', label: 'Nginx Hub', sort_order: 3 },
+  {
+    element_key: 'navgroup:nginxhub',
+    element_type: 'nav_group',
+    label: 'Nginx Hub',
+    sort_order: 3,
+  },
   // Server Hub (2026-09-21): reboot hazirligi + atil kaynak raporu, kendi grubu (Nginx Hub gibi)
-  { element_key: 'navgroup:serverhub', element_type: 'nav_group', label: 'Server Hub', sort_order: 3 },
+  {
+    element_key: 'navgroup:serverhub',
+    element_type: 'nav_group',
+    label: 'Server Hub',
+    sort_order: 3,
+  },
   // Crypto Hub (2026-09-25): ekibin yonettigi ucuncu parti uygulamalar (Metaco, Wyden)
-  { element_key: 'navgroup:cryptohub', element_type: 'nav_group', label: 'Crypto Hub', sort_order: 3 },
+  {
+    element_key: 'navgroup:cryptohub',
+    element_type: 'nav_group',
+    label: 'Crypto Hub',
+    sort_order: 3,
+  },
   // SPA Tasima Plani (2026-09-26): EKIPLERE acik, Nginx Hub'in DISINDA duran planlama ekrani
   {
     element_key: 'navgroup:performance',
@@ -1652,6 +1667,19 @@ const ELEMENT_SEED = [
     // admin olmak YETMEZ, kullanici/e-posta/grup kurallarindan biriyle acikca
     // yetkilendirilmis olmak gerekir. Kill-switch degildir; oge acik kalir.
     metadata: { strict: true },
+  },
+  {
+    // OCO TAKVIMI (kullanici, 2026-09-28): "ekibime ait production operational change
+    // order'lari ... solda bir sekme olustur ve kronolojik listele". SALT OKUNUR bir
+    // liste; OCO acmaz/kapatmaz. Ekip disina kapali degil - roller Admin+User, cunku
+    // takvimi gormek bir yetki degil, koordinasyon ihtiyacidir.
+    element_key: 'OcoTakvimi',
+    element_type: 'page',
+    parent_key: 'navgroup:operasyon',
+    label: 'OCO Takvimi',
+    route: '/oco-takvimi',
+    sort_order: 4,
+    roles: ['Admin', 'User'],
   },
   {
     element_key: 'LogX',
@@ -2147,7 +2175,21 @@ const ELEMENT_SEED = [
   },
 ];
 
-const NGINX_TAB_KEYS_SEED = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'spa', 'api', 'envanter', 'audit', 'ratelimit'];
+const NGINX_TAB_KEYS_SEED = [
+  'dashboard',
+  'instances',
+  'config',
+  'changes',
+  'certs',
+  'orphans',
+  'drift',
+  'cis',
+  'spa',
+  'api',
+  'envanter',
+  'audit',
+  'ratelimit',
+];
 
 async function seedPortalElements(pool) {
   // 1) Element satirlari — idempotent
@@ -2190,11 +2232,23 @@ async function seedPortalElements(pool) {
   // Admin'in verecegi kullanici/grup grant'lari (Denetim Erisimi paneli) dokunulmaz.
   try {
     const MARK = 'migration:denetim-admin-only-2026-09-17';
-    const done = await pool.request().input('n', MARK).query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    const done = await pool
+      .request()
+      .input('n', MARK)
+      .query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
     if (!done.recordset.length) {
-      await pool.request().query(`UPDATE portal_elements SET default_visible = 0 WHERE element_key = 'Denetim'`);
-      await pool.request().query(`DELETE FROM portal_element_visibility WHERE element_key = 'Denetim' AND principal_type = 'role' AND principal_id = 'User'`);
-      await pool.request().input('n', MARK).input('d', JSON.stringify({ at: new Date().toISOString() }))
+      await pool
+        .request()
+        .query(`UPDATE portal_elements SET default_visible = 0 WHERE element_key = 'Denetim'`);
+      await pool
+        .request()
+        .query(
+          `DELETE FROM portal_element_visibility WHERE element_key = 'Denetim' AND principal_type = 'role' AND principal_id = 'User'`,
+        );
+      await pool
+        .request()
+        .input('n', MARK)
+        .input('d', JSON.stringify({ at: new Date().toISOString() }))
         .query(`INSERT INTO portal_config_blobs (name, data) VALUES (@n, @d)`);
       console.log('[DB] Denetim sayfasi yalniz Admin olarak kapatildi (migration isaretlendi).');
     }
@@ -2208,7 +2262,10 @@ async function seedPortalElements(pool) {
   // etkilenmez (migration yalnizca bir kez kosar).
   try {
     const MARK = 'migration:nginx-hub-tabs-default-closed-2026-09-23';
-    const done = await pool.request().input('n', MARK).query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    const done = await pool
+      .request()
+      .input('n', MARK)
+      .query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
     if (!done.recordset.length) {
       const holders = await pool.request().query(
         `SELECT principal_type, principal_id FROM portal_element_visibility
@@ -2217,7 +2274,8 @@ async function seedPortalElements(pool) {
       for (const row of holders.recordset || []) {
         for (const tab of NGINX_TAB_KEYS_SEED) {
           try {
-            await pool.request()
+            await pool
+              .request()
               .input('k', 'tab:nginx:' + tab)
               .input('pt', row.principal_type)
               .input('pi', row.principal_id)
@@ -2228,9 +2286,20 @@ async function seedPortalElements(pool) {
           }
         }
       }
-      await pool.request().input('n', MARK).input('d', JSON.stringify({ at: new Date().toISOString(), principals: (holders.recordset || []).length }))
+      await pool
+        .request()
+        .input('n', MARK)
+        .input(
+          'd',
+          JSON.stringify({
+            at: new Date().toISOString(),
+            principals: (holders.recordset || []).length,
+          }),
+        )
         .query(`INSERT INTO portal_config_blobs (name, data) VALUES (@n, @d)`);
-      console.log(`[DB] Nginx Hub sekmeleri varsayilan kapaliya alindi; mevcut ${(holders.recordset || []).length} erisim sahibine tum sekmeler acildi.`);
+      console.log(
+        `[DB] Nginx Hub sekmeleri varsayilan kapaliya alindi; mevcut ${(holders.recordset || []).length} erisim sahibine tum sekmeler acildi.`,
+      );
     }
   } catch (err) {
     console.warn('[DB] Nginx Hub sekme migration uygulanamadi:', err.message);
@@ -2239,9 +2308,11 @@ async function seedPortalElements(pool) {
   // 2026-09-19: Nginx Hub Envanter grubundan kendi grubuna tasindi. Seed var olan satiri
   // guncellemez; yalniz hala eski grupta duran kayit tasinir (admin baska yere koyduysa dokunulmaz).
   try {
-    await pool.request().query(
-      `UPDATE portal_elements SET parent_key = 'navgroup:nginxhub' WHERE element_key = 'NginxConsole' AND parent_key = 'navgroup:envanter'`,
-    );
+    await pool
+      .request()
+      .query(
+        `UPDATE portal_elements SET parent_key = 'navgroup:nginxhub' WHERE element_key = 'NginxConsole' AND parent_key = 'navgroup:envanter'`,
+      );
   } catch (err) {
     console.warn('[DB] Nginx Hub nav grubu guncellenemedi:', err.message);
   }
@@ -2901,8 +2972,7 @@ async function seedInventoryHistoryConfig(pool) {
         .input('label', t.label || t.table)
         .input('mode', t.mode || 'snapshot')
         .input('keys', JSON.stringify(t.key || []))
-        .input('vol', JSON.stringify(t.volatile || []))
-        .query(`
+        .input('vol', JSON.stringify(t.volatile || [])).query(`
           INSERT INTO inventory_history_config
             (table_name, label, mode, key_columns, volatile_columns, enabled, updated_by)
           VALUES (@t, @label, @mode, @keys, @vol, 1, 'seed')
@@ -3015,11 +3085,21 @@ async function allowMultipleCisOverrides(pool) {
        GROUP BY kc.name HAVING COUNT(*) = 1 AND MAX(c.name) = 'item_id'`);
     for (const row of r.recordset || []) {
       await pool.request().query(`ALTER TABLE nginx_cis_overrides DROP CONSTRAINT [${row.name}]`);
-      console.log('[DB] nginx_cis_overrides: tekil item_id kisiti kaldirildi (coklu referans degeri)');
+      console.log(
+        '[DB] nginx_cis_overrides: tekil item_id kisiti kaldirildi (coklu referans degeri)',
+      );
     }
-    const has = await pool.request().query(`SELECT 1 AS x FROM sys.key_constraints WHERE name = 'UQ_nginx_cis_override' AND parent_object_id = OBJECT_ID('nginx_cis_overrides')`);
+    const has = await pool
+      .request()
+      .query(
+        `SELECT 1 AS x FROM sys.key_constraints WHERE name = 'UQ_nginx_cis_override' AND parent_object_id = OBJECT_ID('nginx_cis_overrides')`,
+      );
     if (!(has.recordset || []).length) {
-      await pool.request().query(`ALTER TABLE nginx_cis_overrides ADD CONSTRAINT UQ_nginx_cis_override UNIQUE (item_id, expected)`);
+      await pool
+        .request()
+        .query(
+          `ALTER TABLE nginx_cis_overrides ADD CONSTRAINT UQ_nginx_cis_override UNIQUE (item_id, expected)`,
+        );
     }
   } catch (e) {
     console.warn('[DB] allowMultipleCisOverrides:', e.message);
@@ -3031,12 +3111,26 @@ async function allowMultipleCisOverrides(pool) {
 async function removeMovedDenetimTabs(pool) {
   try {
     let removed = 0;
-    for (const key of ['tab:denetim:nginx', 'tab:denetim:nginxapi', 'tab:denetim:nginxenv', 'tab:denetim:nginxaudit']) {
-      await pool.request().input('k', key).query(`DELETE FROM portal_element_visibility WHERE element_key = @k`);
-      const r = await pool.request().input('k', key).query(`DELETE FROM portal_elements WHERE element_key = @k`);
+    for (const key of [
+      'tab:denetim:nginx',
+      'tab:denetim:nginxapi',
+      'tab:denetim:nginxenv',
+      'tab:denetim:nginxaudit',
+    ]) {
+      await pool
+        .request()
+        .input('k', key)
+        .query(`DELETE FROM portal_element_visibility WHERE element_key = @k`);
+      const r = await pool
+        .request()
+        .input('k', key)
+        .query(`DELETE FROM portal_elements WHERE element_key = @k`);
       removed += r.rowsAffected?.[0] || 0;
     }
-    if (removed) console.log(`[DB] Denetim nginx sekmeleri temizlendi (Nginx Hub'a tasindi): ${removed} element`);
+    if (removed)
+      console.log(
+        `[DB] Denetim nginx sekmeleri temizlendi (Nginx Hub'a tasindi): ${removed} element`,
+      );
   } catch (e) {
     console.warn('[DB] removeMovedDenetimTabs:', e.message);
   }
@@ -3127,7 +3221,9 @@ async function setupTables() {
         // TABLE_SCHEMA IN ('dbo', SCHEMA_NAME()): DEV ortami ayni TBMWANS icinde ayri SEMADA (dev)
         // calisir (bkz. docs/DEV-PROD.md); filtre olmasa dev, prod'un dbo tablosunu gorup
         // kendi semasinda CREATE'i atlar ve ilk sorguda "Invalid object name" alirdi.
-        .query(`SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${name}' AND TABLE_SCHEMA IN ('dbo', SCHEMA_NAME())`);
+        .query(
+          `SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${name}' AND TABLE_SCHEMA IN ('dbo', SCHEMA_NAME())`,
+        );
       if (!exists.recordset.length) {
         await pool.request().query(sql);
         console.log(`[DB] Tablo olusturuldu: ${name}`);
@@ -3140,8 +3236,11 @@ async function setupTables() {
   // Denetim tablolarina scan_date indeksi (2026-09-21, Nginx Audit 30 sn zaman asimi) —
   // arka planda, boot'u bloklamaz; olan indekse dokunmaz.
   setTimeout(() => {
-    require('./external-indexes.cjs').ensureExternalIndexes(pool)
-      .then((done) => { if (done.length) console.log(`[DB] ${done.length} indeks olusturuldu: ${done.join(', ')}`); })
+    require('./external-indexes.cjs')
+      .ensureExternalIndexes(pool)
+      .then((done) => {
+        if (done.length) console.log(`[DB] ${done.length} indeks olusturuldu: ${done.join(', ')}`);
+      })
       .catch((err) => console.warn('[DB] Indeks kontrolu basarisiz:', err.message));
   }, 15000);
 
@@ -3185,7 +3284,9 @@ async function setupTables() {
     try {
       const exists = await pool
         .request()
-        .query(`SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${deadTable}' AND TABLE_SCHEMA IN ('dbo', SCHEMA_NAME())`);
+        .query(
+          `SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '${deadTable}' AND TABLE_SCHEMA IN ('dbo', SCHEMA_NAME())`,
+        );
       if (exists.recordset.length) {
         await pool.request().query(`DROP TABLE ${deadTable}`);
         console.log(`[DB] Olu tablo dusuruldu: ${deadTable} (eski LogX proxy kalintisi)`);
@@ -3207,20 +3308,26 @@ async function setupTables() {
        WHERE a.username <> LOWER(a.username)
          AND EXISTS (SELECT 1 FROM user_role_overrides b WHERE b.username = LOWER(a.username))`);
     for (const r of dup.recordset || []) {
-      console.warn(`[DB] user_role_overrides: '${r.username}' icin kucuk harfli satir ZATEN VAR - elle temizlenmeli.`);
+      console.warn(
+        `[DB] user_role_overrides: '${r.username}' icin kucuk harfli satir ZATEN VAR - elle temizlenmeli.`,
+      );
     }
     const upd = await pool.request().query(`
       UPDATE user_role_overrides SET username = LOWER(username)
        WHERE username <> LOWER(username)
          AND NOT EXISTS (SELECT 1 FROM user_role_overrides b WHERE b.username = LOWER(user_role_overrides.username))`);
     if (upd.rowsAffected && upd.rowsAffected[0]) {
-      console.log(`[DB] user_role_overrides: ${upd.rowsAffected[0]} kullanici adi kucuk harfe cevrildi.`);
+      console.log(
+        `[DB] user_role_overrides: ${upd.rowsAffected[0]} kullanici adi kucuk harfe cevrildi.`,
+      );
     }
     const vis = await pool.request().query(`
       UPDATE portal_element_visibility SET principal_id = LOWER(principal_id)
        WHERE principal_type <> 'role' AND principal_id <> LOWER(principal_id)`);
     if (vis.rowsAffected && vis.rowsAffected[0]) {
-      console.log(`[DB] portal_element_visibility: ${vis.rowsAffected[0]} principal kucuk harfe cevrildi.`);
+      console.log(
+        `[DB] portal_element_visibility: ${vis.rowsAffected[0]} principal kucuk harfe cevrildi.`,
+      );
     }
   } catch (err) {
     console.warn('[DB] kullanici adi normalizasyonu atlandi:', err.message);
@@ -3794,7 +3901,11 @@ async function setupTables() {
   // Sik filtrelenen/siralanan sutunlar; tablo buyudukce (audit, download, job) sorgulari hizlandirir.
   const indexes = [
     // Kesif her calistirmada (env, tenant, cluster) ile okur.
-    { name: 'IX_scalexcaps_scope', table: 'scalex_cluster_caps', cols: 'env, tenant, cluster_name' },
+    {
+      name: 'IX_scalexcaps_scope',
+      table: 'scalex_cluster_caps',
+      cols: 'env, tenant, cluster_name',
+    },
     { name: 'IX_audit_created', table: 'logx_audit_logs', cols: 'created_at DESC' },
     { name: 'IX_audit_user_created', table: 'logx_audit_logs', cols: 'username, created_at DESC' },
     { name: 'IX_dl_expires', table: 'logx_v2_downloads', cols: 'expires_at' },

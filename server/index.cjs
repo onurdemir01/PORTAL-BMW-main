@@ -153,11 +153,32 @@ async function main() {
     { name: 'logX', init: () => initLogX(app), optional: true },
     { name: 'logXv2', init: () => initLogXv2(app), optional: true },
     { name: 'opsX', init: () => require('./opsx/index.cjs').initOpsX(app), optional: true },
-    { name: 'nginxConsole', init: () => require('./nginx-console/index.cjs').initNginxConsole(app), optional: true },
-    { name: 'serverHub', init: () => require('./server-hub/index.cjs').initServerHub(app), optional: true },
-    { name: 'cryptoHub', init: () => require('./crypto-hub/index.cjs').initCryptoHub(app), optional: true },
-    { name: 'nginxCis', init: () => require('./nginx-cis/index.cjs').initNginxCis(app), optional: true },
-    { name: 'retirement', init: () => require('./retirement/index.cjs').initRetirement(app), optional: true },
+    {
+      name: 'nginxConsole',
+      init: () => require('./nginx-console/index.cjs').initNginxConsole(app),
+      optional: true,
+    },
+    {
+      name: 'serverHub',
+      init: () => require('./server-hub/index.cjs').initServerHub(app),
+      optional: true,
+    },
+    {
+      name: 'cryptoHub',
+      init: () => require('./crypto-hub/index.cjs').initCryptoHub(app),
+      optional: true,
+    },
+    { name: 'oco', init: () => require('./oco/index.cjs').initOco(app), optional: true },
+    {
+      name: 'nginxCis',
+      init: () => require('./nginx-cis/index.cjs').initNginxCis(app),
+      optional: true,
+    },
+    {
+      name: 'retirement',
+      init: () => require('./retirement/index.cjs').initRetirement(app),
+      optional: true,
+    },
     { name: 'fileX', init: () => require('./filex/index.cjs').initFileX(app), optional: true },
     { name: 'telnet', init: () => require('./telnet/index.cjs').initTelnet(app), optional: true },
     { name: 'scalex', init: () => require('./scalex/index.cjs').initScaleX(app), optional: true },
@@ -350,9 +371,15 @@ async function main() {
       // VARLIK ISTEKLERI ICIN SPA FALLBACK YOK: /assets/... ya da uzantili bir dosya bulunamazsa
       // index.html (HTML) donmek, tarayiciya "modul bekliyordum, HTML geldi" hatasi verdirir ve
       // sebebi gizler. Duz 404 doner; istemci bunu surum atlamasi sayip sayfayi yeniler.
-      app.get(/^\/(?:assets\/|.*\.(?:js|mjs|css|map|json|png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot|txt|webmanifest)$)/, (req, res) => {
-        res.status(404).type('text/plain').send('Not found (eski surum dosyasi olabilir; sayfayi yenileyin)');
-      });
+      app.get(
+        /^\/(?:assets\/|.*\.(?:js|mjs|css|map|json|png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot|txt|webmanifest)$)/,
+        (req, res) => {
+          res
+            .status(404)
+            .type('text/plain')
+            .send('Not found (eski surum dosyasi olabilir; sayfayi yenileyin)');
+        },
+      );
 
       // SPA fallback: /api disi tum GET'ler index.html'e (client-side routing)
       app.get(/^\/(?!api\/).*/, sendIndexHtml);
