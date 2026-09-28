@@ -22,6 +22,7 @@ import {
   XMarkIcon,
   LockClosedIcon,
 } from '@heroicons/react/24/outline';
+import { LdapUserPicker } from '../LdapUserPicker';
 
 interface Editable {
   enabled: boolean;
@@ -39,8 +40,14 @@ function deriveEditable(el: PortalElement, rules: ElementRule[]): Editable {
     (r) => r.elementKey === el.key && r.principalType === 'role' && r.principalId === 'User',
   );
   const overrides = rules
-    .filter((r) => r.elementKey === el.key && (r.principalType === 'user' || r.principalType === 'email'))
-    .map((r) => ({ kind: r.principalType as 'user' | 'email', principalId: r.principalId, allow: r.allow }));
+    .filter(
+      (r) => r.elementKey === el.key && (r.principalType === 'user' || r.principalType === 'email'),
+    )
+    .map((r) => ({
+      kind: r.principalType as 'user' | 'email',
+      principalId: r.principalId,
+      allow: r.allow,
+    }));
   return {
     enabled: el.enabled,
     strict: !!el.strict,
@@ -269,9 +276,11 @@ export default function PageVisibilityTab() {
                   ? 'bg-blue-600 border-blue-600 text-white'
                   : 'border-gray-200 hover:border-blue-300'
               }`}
-              title={e.strict
-                ? 'SIKI öge: rol kuralı da geçerlidir ama admin muafiyeti YOKTUR — kimse açık kural olmadan göremez'
-                : 'User rolü bu öğeyi görebilir mi (Admin her zaman görür)'}
+              title={
+                e.strict
+                  ? 'SIKI öge: rol kuralı da geçerlidir ama admin muafiyeti YOKTUR — kimse açık kural olmadan göremez'
+                  : 'User rolü bu öğeyi görebilir mi (Admin her zaman görür)'
+              }
             >
               {e.userVisible && <CheckIcon className="h-3.5 w-3.5" />}
             </button>
@@ -286,9 +295,11 @@ export default function PageVisibilityTab() {
                   ? 'bg-amber-500 border-amber-500 text-white'
                   : 'border-gray-200 hover:border-amber-300'
               }`}
-              title={e.strict
-                ? 'SIKI: yalnız açık kuralı olanlar görür (admin dahil). Kapatmak için tıkla.'
-                : 'Normal: Admin her zaman görür. Sıkı yapmak için tıkla — o zaman yöneticinin de kuralı olmalı.'}
+              title={
+                e.strict
+                  ? 'SIKI: yalnız açık kuralı olanlar görür (admin dahil). Kapatmak için tıkla.'
+                  : 'Normal: Admin her zaman görür. Sıkı yapmak için tıkla — o zaman yöneticinin de kuralı olmalı.'
+              }
             >
               {e.strict && <LockClosedIcon className="h-3.5 w-3.5" />}
             </button>
@@ -299,9 +310,7 @@ export default function PageVisibilityTab() {
               onClick={() => toggleExpand(el.key)}
               className="text-xs text-gray-500 hover:text-blue-600"
             >
-              {e.overrides.length > 0
-                ? `${e.overrides.length} kişi kuralı`
-                : 'override ekle'}
+              {e.overrides.length > 0 ? `${e.overrides.length} kişi kuralı` : 'override ekle'}
             </button>
           </td>
           <td className="px-3 py-2.5 text-center">
@@ -426,7 +435,10 @@ export default function PageVisibilityTab() {
               <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500">
                 User görür
               </th>
-              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500" title="Sıkı: admin muafiyeti yok, açık kural şart">
+              <th
+                className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500"
+                title="Sıkı: admin muafiyeti yok, açık kural şart"
+              >
                 Sıkı
               </th>
               <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-500">
@@ -633,9 +645,10 @@ function OverrideEditor({
 }) {
   const [username, setUsername] = useState('');
   const [kind, setKind] = useState<'user' | 'email'>('user');
-  const gecerli = kind === 'email'
-    ? /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username.trim())
-    : username.trim().length > 0;
+  const gecerli =
+    kind === 'email'
+      ? /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username.trim())
+      : username.trim().length > 0;
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
@@ -674,16 +687,31 @@ function OverrideEditor({
           <option value="user">kullanıcı adı</option>
           <option value="email">e-posta</option>
         </select>
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder={kind === 'email' ? 'ad.soyad@garantibbva.com.tr' : 'kullanıcı adı'}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 font-mono min-w-[16rem]"
-        />
+        {/* KULLANICI ADINDA SECIM: elle yazim hem yazim hatasi hem BUYUK/KUCUK HARF
+            farki uretiyordu. E-posta alaninda arama yok - orada zaten tam adres yaziliyor. */}
+        {kind === 'user' ? (
+          <div className="min-w-[16rem]">
+            <LdapUserPicker
+              value={username}
+              onChange={setUsername}
+              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 font-mono"
+            />
+          </div>
+        ) : (
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="ad.soyad@garantibbva.com.tr"
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 font-mono min-w-[16rem]"
+          />
+        )}
         <button
           disabled={!gecerli}
           onClick={() => {
-            onChange([...overrides, { kind, principalId: username.trim(), allow: true }]);
+            onChange([
+              ...overrides,
+              { kind, principalId: username.trim().toLowerCase(), allow: true },
+            ]);
             setUsername('');
           }}
           className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:border-emerald-300 hover:text-emerald-600 disabled:opacity-40"
@@ -693,7 +721,10 @@ function OverrideEditor({
         <button
           disabled={!gecerli}
           onClick={() => {
-            onChange([...overrides, { kind, principalId: username.trim(), allow: false }]);
+            onChange([
+              ...overrides,
+              { kind, principalId: username.trim().toLowerCase(), allow: false },
+            ]);
             setUsername('');
           }}
           className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg hover:border-blue-300 hover:text-blue-600 disabled:opacity-40"

@@ -256,7 +256,8 @@ async function findLdapUserByEmail(email) {
     const avatarUrl = normalizePhotoToDataUrl(rawPhoto);
 
     return {
-      username: String(user.sAMAccountName || ''),
+      // Login yoluyla AYNI bicim (bkz. findLdapUserByUsername notu).
+      username: normalizeUsername(user.sAMAccountName),
       displayName: String(user.displayName || user.cn || ''),
       email: String(user.mail || email),
       // G-05: physicalDeliveryOfficeName or ou as fallback if department is empty/numeric
@@ -284,6 +285,69 @@ async function findLdapUserByEmail(email) {
 //
 // `findLdapUserByEmail` ile AYNI desen: servis bind'i + tek arama; tek fark filtre.
 // Hata durumunda `null` doner — atif ikincildir, is akisini durdurmaz.
+/**
+ * LDAP'ta kullanici ARAR (yetki ekranindaki secim kutusu icin).
+ *
+ * Kullanici (2026-09-28): "ekranlara yetki verirken tum LDAP kullanicilarini cekip oradan
+ * secerek yetki versem olur mu? Kucuk harf buyuk harf sorunu yasiyoruz."
+ *
+ * HEPSINI CEKMEK YOK, ARAMA VAR: kurumsal AD'de on binlerce hesap olabilir; hepsini
+ * tarayiciya indirmek hem yavas hem gereksiz. En az 3 karakter istenir, sonuc TAVANLIDIR.
+ *
+ * DONEN KULLANICI ADI NORMALIZEDIR: secimden gelen ad dogrudan yetki kaydina yaziliyor;
+ * elle yazmak (ve yaziminda hata/harf farki) bu sayede ortadan kalkiyor.
+ */
+async function searchLdapUsers(query, limit = 25) {
+  const q = String(query || '').trim();
+  if (q.length < 3 || !isConfigured()) return [];
+
+  const baseDn = process.env.LDAP_BASE_DN;
+  const bindDn = process.env.LDAP_BIND_DN;
+  const bindPass = process.env.LDAP_BIND_PASSWORD || '';
+  const tavan = Math.min(Math.max(Number(limit) || 25, 1), 50);
+  const e = escapeFilter(q);
+
+  const client = createClient();
+  try {
+    await client.bind(bindDn, bindPass);
+    const { searchEntries } = await client.search(baseDn, {
+      // Kullanici adi, gorunen ad ve e-postada ONEK/ICEREN aramasi. `objectClass=user` +
+      // devre disi hesaplari eleyen filtre: kapali hesaba yetki vermek anlamsiz.
+      filter:
+        `(&(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))` +
+        `(|(sAMAccountName=${e}*)(displayName=*${e}*)(mail=${e}*)))`,
+      scope: 'sub',
+      attributes: [
+        'sAMAccountName',
+        'displayName',
+        'cn',
+        'mail',
+        'userPrincipalName',
+        'department',
+        'title',
+      ],
+      sizeLimit: tavan,
+    });
+    return (searchEntries || [])
+      .map((u) => ({
+        username: normalizeUsername(u.sAMAccountName),
+        displayName: String(u.displayName || u.cn || ''),
+        mail: String(u.mail || u.userPrincipalName || ''),
+        department: String(u.department || '') || null,
+        title: String(u.title || '') || null,
+      }))
+      .filter((u) => u.username)
+      .slice(0, tavan);
+  } catch (err) {
+    // SESSIZ BOS LISTE YOK: arama duserse cagiran bunu bilmeli, yoksa ekran "boyle bir
+    // kullanici yok" der ve kullanici olmayan bir sorunu arar.
+    console.warn('[LDAP] searchLdapUsers hatasi:', err.message);
+    throw new Error('LDAP araması yapılamadı: ' + err.message);
+  } finally {
+    await client.unbind().catch(() => {});
+  }
+}
+
 async function findLdapUserByUsername(username) {
   const uname = String(username || '').trim();
   if (!uname || !isConfigured()) return null;
@@ -304,7 +368,10 @@ async function findLdapUserByUsername(username) {
     if (!user) return null;
 
     return {
-      username: String(user.sAMAccountName || uname),
+      // LOGIN YOLUYLA AYNI BICIM: authenticateLdap `normalizeUsername` donuyordu, burasi
+      // AD'deki yazimi ("Osman.Koz") aynen donuyordu. Ayni kisi iki farkli yazimla
+      // dolasinca kullanici adiyla anahtarlanan kayitlar ikiye boluniyordu.
+      username: normalizeUsername(user.sAMAccountName || uname),
       displayName: String(user.displayName || user.cn || ''),
       // 'mail' bos olan AD hesaplarinda userPrincipalName ayni adresi tasir
       // (bkz. USER_ATTRS yorumu) — authenticateLdap ile AYNI oncelik.
@@ -430,6 +497,7 @@ function clearCache(username) {
 
 module.exports = {
   authenticate,
+  searchLdapUsers,
   authenticateLocal,
   isConfigured,
   clearCache,

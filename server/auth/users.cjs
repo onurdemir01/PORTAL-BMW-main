@@ -6,6 +6,7 @@
 'use strict';
 
 const db = require('../db/index.cjs');
+const { normalizeUsername } = require('./utils.cjs');
 
 // Login basarisinda cagirilir — best-effort (DB yoksa login bloklanmaz).
 async function recordLogin(user) {
@@ -51,7 +52,12 @@ async function recordLogin(user) {
  * Hicbir dalda hata firlatmaz: atif ikincildir, isi durdurmaz.
  */
 async function getUserIdentity(username) {
-  const uname = String(username || '').trim();
+  // KULLANICI ADI TEK BICIMDE DOLASIR (2026-09-28, kullanici: "kucuk harf buyuk harf
+  // sorunu yasiyoruz"): burasi eskiden VERILEN yazimi aynen geri donuyordu. Cagiran taraf
+  // elle yazilmis bir ad verdiyse (ornegin "Osman.Koz"), o yazim AWX is atfina ve
+  // kullanici adiyla anahtarlanan tablolara gidiyor; ayni kisi iki ayri kimlik gibi
+  // gorunuyordu. normalizeUsername login yolunda zaten uygulaniyor - burada da uygulanir.
+  const uname = normalizeUsername(username);
   if (!uname) return null;
 
   let displayName = '';
@@ -60,7 +66,7 @@ async function getUserIdentity(username) {
   try {
     const { rows } = await db.query(
       `SELECT display_name, mail FROM portal_users WHERE username = $1`,
-      [uname.toLowerCase()],
+      [uname],
     );
     displayName = String(rows[0]?.display_name || '').trim();
     mail = String(rows[0]?.mail || '').trim();
