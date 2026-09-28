@@ -500,6 +500,11 @@ async function loadTenant(tenant) {
       release: main ? main.name : tenant.helmRelease,
       // OLCULEMEDI: etiket listesi bos + NOTE varsa "yeni surum yok" DEMEYIZ.
       measured: tagsMeasured,
+      // SORGULANMIYOR ile OLCULEMEDI AYRI SEY (kullanici, 2026-09-28): Metaco'nun chart
+      // deposu listeleme desteklemiyor, yeni surum ELLE bildiriliyor. Ikisini ayni
+      // gostermek, duzeltilecek bir ariza varmis gibi okunur ve gercek arizalari da
+      // gorunmez yapar. Ekran buna gore iki ayri metin gosterir.
+      listing: tenant.chartListing !== false,
       available: tagList,
       newer,
       latest: tagList.length ? tagList[tagList.length - 1] : '',
@@ -535,13 +540,11 @@ function initCryptoHub(app) {
   router.get('/overview', async (req, res) => {
     const tenant = tenantOf(req.query.tenant);
     if (!tenant) {
-      return res
-        .status(400)
-        .json({
-          ok: false,
-          message:
-            'Bilinmeyen kiracı. Geçerli anahtarlar: ' + CRYPTO_TENANTS.map((t) => t.key).join(', '),
-        });
+      return res.status(400).json({
+        ok: false,
+        message:
+          'Bilinmeyen kiracı. Geçerli anahtarlar: ' + CRYPTO_TENANTS.map((t) => t.key).join(', '),
+      });
     }
     if (!isOpen(tenant))
       return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
@@ -652,13 +655,11 @@ function initCryptoHub(app) {
       return res.status(400).json({ ok: false, message: err.message });
     }
     if (params.writes && req.body?.confirmed !== true) {
-      return res
-        .status(428)
-        .json({
-          ok: false,
-          needsConfirm: true,
-          message: 'Bu işlem önce onay penceresinden geçmeli.',
-        });
+      return res.status(428).json({
+        ok: false,
+        needsConfirm: true,
+        message: 'Bu işlem önce onay penceresinden geçmeli.',
+      });
     }
 
     try {
@@ -667,12 +668,10 @@ function initCryptoHub(app) {
       const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
       const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
       if (!templateId) {
-        return res
-          .status(501)
-          .json({
-            ok: false,
-            message: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${OPS_KEY}" satırına Template ID girilmeli.`,
-          });
+        return res.status(501).json({
+          ok: false,
+          message: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${OPS_KEY}" satırına Template ID girilmeli.`,
+        });
       }
       const extraVars = {
         crypto_hub_tenant: tenant.key,
@@ -917,12 +916,10 @@ function initCryptoHub(app) {
       const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
       const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
       if (!templateId) {
-        return res
-          .status(501)
-          .json({
-            ok: false,
-            message: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${REGISTRY_KEY}" satırına Template ID girilmeli.`,
-          });
+        return res.status(501).json({
+          ok: false,
+          message: `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › "${REGISTRY_KEY}" satırına Template ID girilmeli.`,
+        });
       }
       const extraVars = { crypto_hub_keys: tenant.key };
       await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(

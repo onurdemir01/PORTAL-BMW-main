@@ -565,7 +565,23 @@ function SurumTab({
           >
             Depoda en yeni
           </div>
-          {!v?.measured ? (
+          {v?.listing === false ? (
+            // SORGULANMIYOR: Metaco'nun chart deposu listeleme desteklemiyor, yeni surum
+            // ELLE bildiriliyor. Bunu "olculemedi" gibi gostermek, duzeltilecek bir ariza
+            // varmis gibi okunurdu - oysa ortada arıza yok.
+            <div className="mt-1 space-y-1">
+              <span
+                className="inline-flex items-center gap-1 text-sm font-semibold"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <InformationCircleIcon className="h-4 w-4" /> sorgulanmıyor
+              </span>
+              <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                Bu uygulamanın chart deposu sürüm listesi vermiyor; yeni sürüm <b>elle</b> girilir.
+                Eski sürümler aşağıda, bastion arşivinden okunuyor.
+              </div>
+            </div>
+          ) : !v?.measured ? (
             // OLCULEMEDI: bos etiket listesi "guncelsiniz" DEMEK DEGIL.
             <div className="mt-1 space-y-1">
               <span
@@ -1172,6 +1188,7 @@ export default function CryptoHubPage() {
           action={planFor}
           running={data?.versions?.running || ''}
           release={data?.versions?.release || ''}
+          listing={data?.versions?.listing !== false}
           valuesFiles={valuesSecenekleri(data?.archives || [], data?.versions?.running || '')}
           known={[
             ...(data?.versions?.available || []).map((v) => ({

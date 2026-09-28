@@ -484,6 +484,7 @@ export function PlanModal({
   known = [],
   release = '',
   valuesFiles = [],
+  listing = true,
   onClose,
 }: {
   tenantKey: string;
@@ -497,6 +498,8 @@ export function PlanModal({
   release?: string;
   /** bastion arşivinden bulunan values dosyaları (düzenleme hedefi) */
   valuesFiles?: ValuesFileOption[];
+  /** false = bu uygulamada sürüm listesi hiç sorgulanmaz (Metaco); boş liste ARIZA DEĞİL */
+  listing?: boolean;
   onClose: () => void;
 }) {
   const needsVersion = action.params.some((p) => p.key === 'version');

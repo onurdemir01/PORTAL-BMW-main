@@ -83,6 +83,12 @@ export interface CryptoVersions {
    * boştur ama bu "yeni sürüm yok" DEMEK DEĞİLDİR — ekran "ölçülemedi" gösterir.
    */
   measured: boolean;
+  /**
+   * false = bu uygulamada sürüm listesi HİÇ SORGULANMAZ (Metaco'nun chart deposu listeleme
+   * desteklemiyor; yeni sürüm elle bildirilir). `measured: false` ile KARIŞTIRILMAMALI:
+   * biri "deneyip başaramadık", öteki "denemiyoruz, gerek yok".
+   */
+  listing: boolean;
   available: string[];
   newer: string[];
   latest: string;
