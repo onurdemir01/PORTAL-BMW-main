@@ -170,6 +170,11 @@ async function main() {
     },
     { name: 'oco', init: () => require('./oco/index.cjs').initOco(app), optional: true },
     {
+      name: 'spa-report',
+      init: () => require('./spa-report/index.cjs').initSpaReport(app),
+      optional: true,
+    },
+    {
       name: 'nginxCis',
       init: () => require('./nginx-cis/index.cjs').initNginxCis(app),
       optional: true,

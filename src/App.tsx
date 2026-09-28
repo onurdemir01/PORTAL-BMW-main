@@ -13,6 +13,7 @@ import ForbiddenPage from '@/components/ForbiddenPage';
 const DenetimPage = lazyWithRetry(() => import('@/components/DenetimPage'));
 // OCO Takvimi (2026-09-28): ekibin degisiklik kayitlari, kronolojik. Kendi route'u var.
 const OcoTakvimiPage = lazyWithRetry(() => import('@/components/OcoTakvimiPage'));
+const ArkSpaRaporuPage = lazyWithRetry(() => import('@/components/ArkSpaRaporuPage'));
 // Nginx Audit > tek sunucu sayfasi: kendi URL'i var, Denetim gorunurlugune tabi.
 const NginxAuditHostPage = lazyWithRetry(() => import('@/components/denetim/NginxAuditHostPage'));
 const EnvanterPage = lazyWithRetry(() => import('@/components/EnvanterPage'));
@@ -83,6 +84,9 @@ export default function App() {
             </Route>
             <Route element={<PageVisibilityRoute pageId="OcoTakvimi" />}>
               <Route path="/oco-takvimi" element={<OcoTakvimiPage />} />
+            </Route>
+            <Route element={<PageVisibilityRoute pageId="ArkSpaRaporu" />}>
+              <Route path="/ark-spa-raporu" element={<ArkSpaRaporuPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="Performance" />}>
               <Route path="/performance" element={<DynatracePage />} />

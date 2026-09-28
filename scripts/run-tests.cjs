@@ -46,6 +46,7 @@ const TEST_DIRS = [
   'server/filex/__tests__',
   'server/smart/__tests__',
   'server/oco/__tests__',
+  'server/spa-report/__tests__',
   'server/telnet/__tests__',
   'server/scalex/__tests__',
   'server/audit/__tests__',

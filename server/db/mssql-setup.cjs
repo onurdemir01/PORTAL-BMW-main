@@ -1579,6 +1579,14 @@ const ELEMENT_SEED = [
     label: 'Crypto Hub',
     sort_order: 3,
   },
+  // NGINX ARK SPA RAPORU (kullanici, 2026-09-28): tum servisler icin tek liste; ekipler
+  // kendi uygulamalari icin beyan girer. Kendi bolumu - Denetim'in altinda degil.
+  {
+    element_key: 'navgroup:arkspa',
+    element_type: 'nav_group',
+    label: 'Nginx ARK SPA Raporu',
+    sort_order: 4,
+  },
   // SPA Tasima Plani (2026-09-26): EKIPLERE acik, Nginx Hub'in DISINDA duran planlama ekrani
   {
     element_key: 'navgroup:performance',
@@ -1667,6 +1675,19 @@ const ELEMENT_SEED = [
     // admin olmak YETMEZ, kullanici/e-posta/grup kurallarindan biriyle acikca
     // yetkilendirilmis olmak gerekir. Kill-switch degildir; oge acik kalir.
     metadata: { strict: true },
+  },
+  {
+    // NGINX ARK SPA RAPORU (kullanici, 2026-09-28): tum servisler icin SPA listesi.
+    // EKIPLERE ACIK (roller Admin+User): beyani girecek olan, veriyi bilen ekiptir;
+    // salt okunur birakip beyani Admin'e birakmak veriyi bilen kisiyi devre disi
+    // birakirdi. Kim yazdigi kaydedilir ve ekranda gorunur.
+    element_key: 'ArkSpaRaporu',
+    element_type: 'page',
+    parent_key: 'navgroup:arkspa',
+    label: 'Nginx ARK SPA Raporu',
+    route: '/ark-spa-raporu',
+    sort_order: 1,
+    roles: ['Admin', 'User'],
   },
   {
     // OCO TAKVIMI (kullanici, 2026-09-28): "ekibime ait production operational change

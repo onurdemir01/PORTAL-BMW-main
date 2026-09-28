@@ -45,6 +45,7 @@ export const PAGES: PageElement[] = [
   { id: 'AI Analist', label: 'AI Analist', route: '/ai-analyst' },
   { id: 'Nöbet', label: 'Nöbet', route: '/duty-roster' },
   { id: 'OcoTakvimi', label: 'OCO Takvimi', route: '/oco-takvimi' },
+  { id: 'ArkSpaRaporu', label: 'Nginx ARK SPA Raporu', route: '/ark-spa-raporu' },
   // 2026-09-19: "Yardımcı Araçlar" / "Faydalı Linkler" MENUDEN KALDIRILDI (kullanici: "su an
   // hicbir ise yaramiyor"). Ilk kaldirma 2026-08-26, geri acma 2026-09-07 — uc yer birden:
   // burasi (ELEMENTS + NAV_GROUPS), src/App.tsx route'u, mssql-setup removeKaynaklarNavGroup().
@@ -80,6 +81,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
   { id: 'serverhub', label: 'Server Hub', itemIds: ['ServerHub'] },
   // Crypto Hub (2026-09-25): Metaco + Wyden, kendi girisi
   { id: 'cryptohub', label: 'Crypto Hub', itemIds: ['CryptoHub'] },
+  // Nginx ARK SPA Raporu (2026-09-28): tum servisler icin tek liste, kendi bolumu
+  { id: 'arkspa', label: 'Nginx ARK SPA Raporu', itemIds: ['ArkSpaRaporu'] },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
   { id: 'operasyon', label: 'Nöbetçiler', itemIds: ['Nöbet', 'OcoTakvimi'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.
