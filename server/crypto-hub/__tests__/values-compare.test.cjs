@@ -419,7 +419,7 @@ test('CM4: sunucu sozlesmesi - yalniz data, merge patch, eslesme sunucuda', () =
   assert.ok(kod.includes('crypto_hub_cm_patch_b64'), 'patch base64 ile tasinmiyor');
   // ESLESME SUNUCUDA: istemci shared/ altindan import edemiyor; iki kopya eskirdi.
   assert.ok(
-    kod.includes('rolloutHedefleri(kiraci && kiraci.app, c.name)'),
+    kod.includes('rolloutHedefleri(tenant && tenant.app, c.name)'),
     'rollout eslesmesi sunucuda cozulmuyor',
   );
 });
