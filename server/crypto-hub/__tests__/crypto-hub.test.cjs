@@ -213,7 +213,10 @@ test('CH7: production kapaliyken prod kiracilari SECILEMEZ ve API reddeder', () 
     // Yanlis sebeple kirmizi duran bekci, bir sure sonra bakilmayan bekcidir.
     assert.match(
       b.replace(/\s+/g, ' '),
-      /if \(!isOpen\(tenant\)\) return res\.status\(403\)/,
+      // `tenant &&` KABUL EDILIR: kiracinin GOVDEDEN degil, IS CIKTISINDAN cozuldugu
+      // uclarda (ops-result) kiraci bulunamayabilir; o durumda kesecek bir kiraci da yok.
+      // Kapinin kendisi yine zorunlu.
+      /if \((?:tenant && )?!isOpen\(tenant\)\) return res\.status\(403\)/,
       `${yol} ucu kapali kiraciyi 403 ile kesmiyor`,
     );
   }

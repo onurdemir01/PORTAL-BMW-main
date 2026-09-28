@@ -888,6 +888,13 @@ function initCryptoHub(app) {
         const stats = extractStatsKey(statusInfo.artifacts, 'crypto_hub_ops_result');
         parsed = parseOpsLines(stats && stats.lines);
         if (parsed) {
+          // KAPALI KIRACININ SONUCU DA DONMEZ. Bu uc kiraci parametresi almiyor ama isin
+          // ciktisi kiraci anahtarini tasiyor; is baslatilirken kapi vardi, sonucu okurken
+          // de olmali - aksi halde "production kapali" yalnizca baslatma tarafinda gecerli
+          // bir kural olurdu. (CH7 bekcisi bu eksigi yakaladi.)
+          const tenant = tenantOf(parsed.tenantKey);
+          if (tenant && !isOpen(tenant))
+            return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
           parsed.action = (stats && stats.action) || null;
           // VARSAYILAN MASKELI. Ham icerik icin ayri ve denetlenen bir uc var (?reveal=1).
           if (parsed.values && parsed.values.length) {
@@ -915,11 +922,10 @@ function initCryptoHub(app) {
           // import edemiyor (takma ad yok) ve iki kopya tutmak, bir gun birinin eskimesi
           // demekti. Uc durum korunur: kayitli / tahmin / yok.
           if (parsed.configMaps && parsed.configMaps.length) {
-            const kiraci = tenantOf(parsed.tenantKey);
             const { rolloutHedefleri } = require('../../shared/cryptoHubConfigMaps.cjs');
             parsed.configMaps = parsed.configMaps.map((c) => ({
               ...c,
-              rollout: rolloutHedefleri(kiraci && kiraci.app, c.name),
+              rollout: rolloutHedefleri(tenant && tenant.app, c.name),
             }));
           }
           if (parsed.files && parsed.files.length) {
