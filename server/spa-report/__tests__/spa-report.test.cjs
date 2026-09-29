@@ -144,3 +144,61 @@ test('AR8: sayfa UC YERDE de kayitli (menu sessizce dusmesin)', () => {
   assert.match(oku('src/App.tsx'), /path='\/ark-spa-raporu'/, 'App.tsx route');
   assert.match(oku('server/index.cjs'), /spa-report/, 'sunucu modulu baglanmamis');
 });
+
+const EKRAN = path.join(__dirname, '..', '..', '..', 'src', 'components', 'ArkSpaRaporuPage.tsx');
+// YORUMLAR CIKARILIR: bekci, hatayi ANLATAN yorumun kendisini bulgu sayarsa dogru kodda
+// kirmiziya doner (bu depoda ayni tuzaga birkac kez dusuldu).
+const ekran = () =>
+  flatten(
+    fs
+      .readFileSync(EKRAN, 'utf8')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')
+      .split(chr10)
+      .filter((l) => !l.trim().startsWith('//'))
+      .join(chr10),
+  );
+const chr10 = String.fromCharCode(10);
+
+test('AR9: kolon sirasi - Location, Ekip Beyanindan HEMEN SONRA', () => {
+  // Kullanici (2026-09-29): "Location kolonunu en basa ama Ekip Beyani'ndan sonraya
+  // alalim". Satiri okurken once "hangi adres" sorusu cevaplaniyor.
+  const src = ekran();
+  const sira = [
+    'Ekip Beyanı',
+    'Location',
+    'Uygulama',
+    'Namespace',
+    'Ekip',
+    'Yük Durumu',
+    'Açıklama',
+  ];
+  const yerler = sira.map((b) => src.indexOf(`>${b}</th>`));
+  for (let i = 0; i < sira.length; i += 1) {
+    assert.ok(yerler[i] >= 0, `"${sira[i]}" basligi yok`);
+    if (i)
+      assert.ok(
+        yerler[i] > yerler[i - 1],
+        `kolon sirasi bozuk: "${sira[i]}" "${sira[i - 1]}"nden once geliyor`,
+      );
+  }
+  // BASLIK ile HUCRE sirasi ayni olmali: yalniz basligi tasimak veriyi yanlis sutuna yazar.
+  const govde = src.slice(src.indexOf('satirlar.map'));
+  // HUCRE isaretleri (sablon dizgisindeki ${r.application} DEGIL): <td>...</td> icerigi.
+  const locIdx = govde.indexOf("{r.location || '—'}");
+  const appIdx = govde.indexOf('>{r.application}</td>');
+  assert.ok(locIdx >= 0 && appIdx >= 0, 'hucreler bulunamadi');
+  assert.ok(locIdx < appIdx, 'baslik tasindi ama HUCRE tasinmadi - veri yanlis sutunda gorunur');
+});
+
+test('AR10: "olculemedi" ipucu jargonla degil OLAN BITENLE anlatilir', () => {
+  // Kullanici (2026-09-29): "'Log kuyrugu 7 gunu kapsamiyor: sayi ALT SINIRDIR' diye bir
+  // ibare var, bu ne demek anlamadim? bozuk bir Turkce'yle yazilmis."
+  const src = ekran();
+  assert.ok(!/ALT SINIRDIR/.test(src), 'anlasilmayan jargon geri gelmis');
+  assert.ok(!/[Ll]og kuyruğu/.test(src), '"log kuyrugu" ifadesi kullaniciya hicbir sey soylemiyor');
+  // Iki sebep de ACIKCA anlatilmali ve ikisi de "yuk yok" DEGIL.
+  assert.match(src, /yalnızca son bölümü okunabildi/, 'kismi okuma sade dille anlatilmiyor');
+  assert.match(src, /Access log okunamadı/, 'okunamama durumu anlatilmiyor');
+  const kez = (src.match(/yük almıyor” demek değil|“yük almıyor” denemez/g) || []).length;
+  assert.ok(kez >= 2, '"olculemedi" ile "yuk almiyor" farki her iki sebepte de yazilmamis');
+});

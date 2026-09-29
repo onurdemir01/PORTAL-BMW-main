@@ -3,7 +3,9 @@
 // Kullanıcı (2026-09-28): "SPA Taşımaları sayfasının birebir aynısını Glomo / Webforms /
 // Saklama / Geintdigital vb. TÜM servislerimiz için, sol menüye yeni bir bölüm ekleyerek
 // 'Nginx ARK SPA Raporu' adıyla istiyorum. Buraya ekiplerin giriş yapabilmesini istiyorum.
-// Kolonlar: Ekip Beyanı, Uygulama, Namespace, Ekip, Yük Durumu, Location, Açıklama."
+/// Kolonlar: Ekip Beyanı, Uygulama, Namespace, Ekip, Yük Durumu, Location, Açıklama."
+// Kolon sırası 2026-09-29'da kullanıcı isteğiyle değişti: Location, Ekip Beyanı'ndan
+// hemen sonra geliyor (satırı okurken önce "hangi adres" sorusu cevaplanıyor).
 //
 // TAŞIMA EKRANINDAN FARKI: orası iki sabit sunucu grubunun taşınmasını izler. Burası
 // taşıma sormaz; envanterin tamamını SERVİS bazında listeler ve ekibin beyanını toplar.
@@ -51,21 +53,29 @@ function YukHucre({ t }: { t: ArkYuk | null }) {
     return (
       <span
         style={{ color: 'var(--text-secondary)' }}
-        title="Log OKUNDU ve 7 gündür hc dışı istek yok."
+        title="Access log okundu, 7 günün tamamına bakıldı ve sağlık kontrolü dışında hiç istek bulunamadı."
       >
         yük almıyor
       </span>
     );
+  // "ÖLÇÜLEMEDİ" İKİ AYRI SEBEPTEN OLUR ve ikisi de "yük yok" DEĞİLDİR. Metin, teknik
+  // terimle değil OLAN BİTENLE anlatılır (kullanıcı, 2026-09-29: "bu ne demek anlamadım?
+  // bozuk bir Türkçe'yle yazılmış" — eski metin "log kuyruğu 7 günü kapsamıyor: sayı ALT
+  // SINIRDIR" diyordu, okuyana hiçbir şey söylemiyordu).
   return (
     <span
       style={{ color: 'var(--status-warning)' }}
       title={
         t.hosts === 0
-          ? `Log okunamadı (${t.unknownHosts} sunucu) — “yük yok” DEMEK DEĞİL.`
-          : 'Log kuyruğu 7 günü kapsamıyor: sayı ALT SINIRDIR.'
+          ? `Access log okunamadı (${t.unknownHosts} sunucu). Bu uygulamanın istek alıp almadığı ölçülemedi — “yük almıyor” demek değil.`
+          : `Access log dosyasının tamamı değil, yalnızca son bölümü okunabildi; okunan bölüm 7 günün tamamını kapsamıyor.${
+              t.req7
+                ? ` Orada ${t.req7} istek görüldü, gerçek sayı bundan fazla olabilir.`
+                : ' Okunan bölümde istek yok, ama 7 günün tamamına bakılamadığı için “yük almıyor” denemez.'
+            } Daha uzun süre ölçmek için tarama ayarındaki log okuma boyutu (spa_traffic_tail_mb) artırılmalı.`
       }
     >
-      ölçülemedi{t.sampled && t.req7 != null ? ` (≥ ${t.req7})` : ''}
+      ölçülemedi{t.sampled && t.req7 ? ` (en az ${t.req7})` : ''}
     </span>
   );
 }
@@ -224,12 +234,14 @@ export default function ArkSpaRaporuPage() {
         <table className="w-full text-[12px]">
           <thead>
             <tr style={{ color: 'var(--text-muted)' }}>
+              {/* Kolon sırası kullanıcının istediği gibi: Location, Ekip Beyanı'ndan
+                  HEMEN SONRA (2026-09-29). */}
               <th className="text-left px-2 py-1.5">Ekip Beyanı</th>
+              <th className="text-left px-2 py-1.5">Location</th>
               <th className="text-left px-2 py-1.5">Uygulama</th>
               <th className="text-left px-2 py-1.5">Namespace</th>
               <th className="text-left px-2 py-1.5">Ekip</th>
               <th className="text-left px-2 py-1.5">Yük Durumu</th>
-              <th className="text-left px-2 py-1.5">Location</th>
               <th className="text-left px-2 py-1.5">Açıklama</th>
             </tr>
           </thead>
@@ -262,6 +274,16 @@ export default function ArkSpaRaporuPage() {
                       <option value="unknown">bilmiyor</option>
                     </select>
                   </td>
+                  <td
+                    className="px-2 py-1 font-mono break-all"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {r.location || '—'}
+                    <span className="font-sans" style={{ color: 'var(--text-muted)' }}>
+                      {' '}
+                      · {r.service} · {r.hosts.length} sunucu
+                    </span>
+                  </td>
                   <td className="px-2 py-1 font-mono">{r.application}</td>
                   <td className="px-2 py-1 font-mono" style={{ color: 'var(--text-secondary)' }}>
                     {r.namespace}
@@ -274,16 +296,6 @@ export default function ArkSpaRaporuPage() {
                   </td>
                   <td className="px-2 py-1">
                     <YukHucre t={r.traffic} />
-                  </td>
-                  <td
-                    className="px-2 py-1 font-mono break-all"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {r.location || '—'}
-                    <span className="font-sans" style={{ color: 'var(--text-muted)' }}>
-                      {' '}
-                      · {r.service} · {r.hosts.length} sunucu
-                    </span>
                   </td>
                   <td className="px-2 py-1">
                     <input
