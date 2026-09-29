@@ -214,17 +214,61 @@ function buildRouteTraffic(trafficRows, inventoryRows, opt = {}) {
             break;
           }
         }
-        if (!k) return null;
-        const u = usage.get(k);
-        usageEslesen.add(k);
+        if (k) {
+          const u = usage.get(k);
+          usageEslesen.add(k);
+          return {
+            req: u.measured ? u.req : null,
+            measured: u.measured,
+            windowDays: u.windowDays,
+            scanDate: u.scanDate,
+            services: u.services,
+            servicesSkipped: u.servicesSkipped,
+            note: u.note,
+          };
+        }
+
+        // ── SON CARE: AYNI ONEKI TASIYAN UYGULAMALAR ─────────────────────────────
+        // Uretimde olculdu (2026-09-29): route `apigw.apps.fw.garanti.com.tr`, namespace
+        // `middleware-architecture-prod`. Dynatrace ayni namespace'te `apigw-1-prod`,
+        // `apigw-2-prod`, `apigw-3-prod` diyor - ucu de ~9,63 milyar istek, yani AYNI
+        // gecidin uc ornegi. Tam ad eslesmesi tutmuyordu ve EN COK ISTEK ALAN satirlar
+        // bos kaliyordu.
+        //
+        // SINIR TIRE ILE: "apigw" -> "apigw-1-prod" EVET, "apigwhc" HAYIR. Tiresiz onek
+        // eslesmesi "api" ile "apigw"yi de birlestirirdi.
+        //
+        // TOPLAM SESSIZCE VERILMEZ: hangi uygulamalarin toplandigi satirda tasinir ve
+        // ekran bunu gosterir. Uc gecit ornegini toplamak dogru, ama "apigw-4" gibi ayri
+        // bir uygulamayi da katmis olabiliriz - karar veren kisi NEYIN toplandigini
+        // gormeden buna guvenmemeli.
+        // HER ADAY denenir, yalnizca ilki DEGIL: route adi cogu zaman tam adresin
+        // kendisidir ("apigw.apps.fw.garanti.com.tr") ve onek olarak ise yaramaz;
+        // isimize yarayan aday adresin ILK ETIKETIDIR ("apigw").
+        let esles = [];
+        for (const c of adaylar) {
+          if (!c) continue;
+          const bas = nsLower + '|' + c + '-';
+          esles = [...usage.entries()].filter(([anahtar]) => anahtar.startsWith(bas));
+          if (esles.length) break;
+        }
+        if (!esles.length) return null;
+        const olculen = esles.filter(([, u]) => u.measured);
+        for (const [anahtar] of esles) usageEslesen.add(anahtar);
+        const ilk = olculen[0] ? olculen[0][1] : esles[0][1];
         return {
-          req: u.measured ? u.req : null,
-          measured: u.measured,
-          windowDays: u.windowDays,
-          scanDate: u.scanDate,
-          services: u.services,
-          servicesSkipped: u.servicesSkipped,
-          note: u.note,
+          // Yalniz OLCULEN uygulamalarin toplami; olculemeyen bir uygulamayi 0 sayip
+          // toplama katmak, eksik olcumu tam gibi gosterirdi.
+          req: olculen.length ? olculen.reduce((t, [, u]) => t + (Number(u.req) || 0), 0) : null,
+          measured: olculen.length > 0,
+          windowDays: ilk.windowDays,
+          scanDate: ilk.scanDate,
+          services: esles.reduce((t, [, u]) => t + (Number(u.services) || 0), 0),
+          servicesSkipped: esles.reduce((t, [, u]) => t + (Number(u.servicesSkipped) || 0), 0),
+          note: ilk.note,
+          // TOPLAMIN ICERIGI: ekranda gosterilir, tahmin degil kanit olsun diye.
+          aggregated: esles.map(([anahtar]) => anahtar.split('|')[1]).sort(),
+          unmeasured: esles.length - olculen.length,
         };
       })(),
     });

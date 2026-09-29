@@ -794,6 +794,10 @@ export interface RouteTrafficRow {
     services: number;
     servicesSkipped: number;
     note: string;
+    /** Tam ad tutmayip ONEK ile eslesildiyse: toplama giren uygulama adlari. */
+    aggregated?: string[];
+    /** Toplama giren ama olculemeyen uygulama sayisi (0 sayilmadilar). */
+    unmeasured?: number;
   } | null;
 }
 export interface RouteTrafficResult {

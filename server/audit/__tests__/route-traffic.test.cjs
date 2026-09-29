@@ -325,3 +325,77 @@ test('RTU4: olcum tablosu YOKKEN route sonuclari degismez', () => {
   assert.equal(olmadan.rows[0].usage, null);
   assert.deepEqual(olmadan.usage, { olculenUygulama: 0, eslesen: 0, routesuz: 0, olculemeyen: 0 });
 });
+
+// ── RTU5/RTU6: ONEK ESLESMESI (uretimde olculdu, 2026-09-29) ─────────────────────────
+// Route `apigw.apps.fw.garanti.com.tr`, namespace `middleware-architecture-prod`.
+// Dynatrace ayni namespace'te `apigw-1-prod`, `apigw-2-prod`, `apigw-3-prod` diyor -
+// ucu de ~9,63 milyar istek, yani AYNI gecidin uc ornegi. Tam ad eslesmesi tutmuyordu ve
+// EN COK ISTEK ALAN satirlar bos kaliyordu.
+const kullanim = (ns, app, req, measured = 1, extra = {}) => ({
+  scan_date: day(0),
+  namespace: ns,
+  app,
+  req_total: req,
+  window_days: 7,
+  measured,
+  services_total: 5948,
+  services_measured: 5948,
+  services_skipped: 0,
+  note: '',
+  cluster: 'gbocpprod1',
+  ...extra,
+});
+
+test('RTU5: ayni onegi tasiyan uygulamalar TOPLANIR ve NELERIN toplandigi yazilir', () => {
+  const NS = 'middleware-architecture-prod';
+  const ADR = 'apigw.apps.fw.garanti.com.tr';
+  const r = buildRouteTraffic([row(1, NS, ADR, 10)], [inv(NS, ADR, ADR)], {
+    now: NOW,
+    usageRows: [
+      kullanim(NS, 'apigw-1-prod', 9632261646),
+      kullanim(NS, 'apigw-2-prod', 9630161449),
+      kullanim(NS, 'apigw-3-prod', 9630896886),
+      // Ayni onek AMA tiresiz: baska bir route. TOPLAMA GIRMEMELI.
+      kullanim(NS, 'apigwhc', 5),
+    ],
+  });
+  const satir = r.rows.find((x) => x.route === ADR);
+  assert.ok(satir && satir.usage, 'en cok istek alan satir hala eslesmiyor');
+  assert.equal(satir.usage.req, 9632261646 + 9630161449 + 9630896886);
+  assert.deepEqual(satir.usage.aggregated, ['apigw-1-prod', 'apigw-2-prod', 'apigw-3-prod']);
+  assert.ok(
+    !satir.usage.aggregated.includes('apigwhc'),
+    'tiresiz onek eslesmesi ayri bir uygulamayi toplama katmis',
+  );
+});
+
+test('RTU6: OLCULEMEYEN uygulama toplama 0 olarak KATILMAZ', () => {
+  const NS = 'ns-prod';
+  const ADR = 'gw.apps.fw.garanti.com.tr';
+  const r = buildRouteTraffic([row(1, NS, ADR, 10)], [inv(NS, ADR, ADR)], {
+    now: NOW,
+    usageRows: [
+      kullanim(NS, 'gw-1', 100),
+      // measured=0: olculemedi. Satirda bir sayi DURSA BILE toplama katilmamali -
+      // olculemeyen bir olcumu tam gibi gostermek, eksik toplami kesin gosterirdi.
+      kullanim(NS, 'gw-2', 50, 0, { note: 'metrik sorgusu dustu' }),
+    ],
+  });
+  const u = r.rows.find((x) => x.route === ADR).usage;
+  assert.equal(u.req, 100, 'olculemeyen uygulama toplama katilmis');
+  assert.equal(u.measured, true, 'en az bir olcum varken olculemedi denmis');
+  assert.equal(u.unmeasured, 1, 'kac uygulamanin olculemedigi tasinmiyor');
+  assert.deepEqual(u.aggregated, ['gw-1', 'gw-2']);
+});
+
+test('RTU7: TAM AD eslesmesi varsa onek eslesmesine DUSULMEZ', () => {
+  const NS = 'ns-prod';
+  const ADR = 'gw.apps.fw.garanti.com.tr';
+  const r = buildRouteTraffic([row(1, NS, ADR, 10)], [inv(NS, ADR, ADR)], {
+    now: NOW,
+    usageRows: [kullanim(NS, 'gw', 7), kullanim(NS, 'gw-1', 100)],
+  });
+  const u = r.rows.find((x) => x.route === ADR).usage;
+  assert.equal(u.req, 7, 'tam ad eslesmesi varken onek toplami kullanilmis');
+  assert.equal(u.aggregated, undefined, 'tam eslesmede toplam isareti birakilmis');
+});

@@ -87,12 +87,22 @@ function servisIstegi(r: RouteTrafficRow) {
       </span>
     );
   }
+  // ONEK ESLESMESI (2026-09-29): route adi "apigw", Dynatrace "apigw-1-prod",
+  // "apigw-2-prod", "apigw-3-prod" diyor - ayni gecidin uc ornegi. Toplam SESSIZCE
+  // verilmez: NELERIN toplandigi ipucunda yazar, cunku "apigw-4" gibi ayri bir uygulama
+  // da toplama girmis olabilir ve karar veren kisi bunu gormeden guvenmemeli.
+  const toplam = u.aggregated && u.aggregated.length > 1;
   return (
     <span
       style={{ color: u.req ? 'var(--text-primary)' : 'var(--status-warning)' }}
-      title={`Dynatrace servis çağrıları · son ${u.windowDays} gün · ${u.services} servis${u.servicesSkipped ? ` (${u.servicesSkipped} tanesi yalnızca altyapı servisi çağırdığı için sayılmadı)` : ''} · ölçüm ${u.scanDate}`}
+      title={`Dynatrace servis çağrıları · son ${u.windowDays} gün · ${u.services} servis${u.servicesSkipped ? ` (${u.servicesSkipped} tanesi yalnızca altyapı servisi çağırdığı için sayılmadı)` : ''} · ölçüm ${u.scanDate}${
+        u.aggregated
+          ? `\n\nAd birebir tutmadı; ÖNEK ile eşleşen ${u.aggregated.length} uygulama toplandı:\n${u.aggregated.join('\n')}${u.unmeasured ? `\n(${u.unmeasured} tanesi ölçülemedi, toplama KATILMADI)` : ''}`
+          : ''
+      }`}
     >
       {nf(u.req || 0)}
+      {toplam && <span style={{ color: 'var(--text-muted)' }}> · {u.aggregated!.length} uyg.</span>}
     </span>
   );
 }
