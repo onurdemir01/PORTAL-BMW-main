@@ -73,6 +73,13 @@ const WYDEN_CHART_OCI = 'repo.wyden.io/nexus/repository/wyden/wyden';
  * `helm upgrade` YANLIS RELEASE'e gidecek, "kosan surum" yanlis release'ten okunacakti.
  * Kural artik TEK YERDE; yeni bir kiraci eklenince degeri kopyalamak gerekmiyor ve CH2b
  * bekcisi alan ile onegin ayrismasini engelliyor.
+ *
+ * KUMEDE OLCULDU (2026-09-29) - varsayim degil. Iki test kumesi de `harmonize-test`
+ * namespace'ini ve ayni bastion'i (damtct01) kullandigi icin `helm list` ciktisi tek
+ * basina hangi kiraciya ait oldugunu SOYLEMEZ; `oc whoami -c` ile ayirt edildi:
+ *   daocptest1        (DAS test) -> hmz      rev 88, harmonize-1.34.18
+ *   gbocp3rdcwtest1   (GAR test) -> hmzbank  rev 11, harmonize-1.34.20
+ * Her iki namespace'te de TEK release var; yanlis release adiyla acilmis bir kalinti yok.
  */
 const metacoRelease = (domain) => (String(domain) === 'gar' ? 'hmzbank' : 'hmz');
 
