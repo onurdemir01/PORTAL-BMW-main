@@ -9,7 +9,7 @@
 // `server/ansible/bmw_portal/scalex/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
-const EXPECTED_PACKAGE_VERSION = '13';
+const EXPECTED_PACKAGE_VERSION = '14';
 
 function extractStatsKey(rawArtifacts, key) {
   const a = rawArtifacts || {};
@@ -64,6 +64,16 @@ function toBool(value) {
 function toInt(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+// OLCULEMEDI ile SIFIR ayri seyler. Betik olcemedigi degeri '-' ile bildirir
+// (bkz. scalex_runner.sh `ms_delta`); `toInt` onu 0'a cevirirdi ve ekran
+// "bu adim bedava" derdi. Burada eksik deger `null` kalir ve ekran "olculmedi"
+// diyebilir.
+function msOrNull(value) {
+  if (value === undefined || value === null || value === '' || value === '-') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 // Mutasyon isinin sonucu. Playbook IKI bicim yayinlayabilir:
@@ -184,6 +194,39 @@ function extractDiscoveryResult(rawArtifacts) {
         detail: String(i.detail || ''),
       })),
   };
+
+  // ── SURE OLCUMU ────────────────────────────────────────────────────────────
+  //
+  // Betik her kesif isinde cluster basina BIR `TIMING` satiri basar. Bu olcumun
+  // varlik sebebi: "kesif yavas" sikayeti uzun sure NEREDE yavas oldugu
+  // bilinmeden tartisildi. `setup_ms` (bastion + `oc login` + kubeconfig) ile
+  // `discover_ms` (tip taramasi) AYRI gelir — toplam sureye bakip `oc` cagrisi
+  // azaltmak, darbogaz login tarafindaysa hicbir sey kazandirmaz.
+  //
+  // Satir `INFO` statusundedir: sayaclara, `overall_status`a ve `problems[]`e
+  // KARISMAZ. Olcum bir ariza degildir.
+  //
+  // `TIMING` satiri basmayan ESKI bir paket kosuyorsa dizi BOS kalir ve ekran
+  // "olculmedi" der — sifir YAZMAZ. Uydurulmus bir sifir, grafikte "bu adim
+  // bedava" diye okunur ve yanlis kaldiraca yatirim yaptirir.
+  base.timing = items
+    .filter((i) => String(i.step) === 'TIMING')
+    .map((i) => {
+      const d = parseDetailPairs(i.detail);
+      return {
+        cluster: String(i.cluster || ''),
+        mode: d.mode && d.mode !== '-' ? String(d.mode) : '',
+        namespace: d.namespace && d.namespace !== '-' ? String(d.namespace) : '',
+        // `kinds` yalnizca `workloads` modunda anlamli; diger modlar '-' gonderir.
+        kinds: msOrNull(d.kinds),
+        // ucuncu bir deger var: onbellegin HIC sorulmadigi modlar ('-' → null).
+        // `false` demek "onbellek vardi ama tutmadi" olurdu — ayri bir arizadir.
+        cached: d.cached === 'yes' ? true : d.cached === 'no' ? false : null,
+        setupMs: msOrNull(d.setup_ms),
+        discoverMs: msOrNull(d.discover_ms),
+        elapsedMs: msOrNull(d.elapsed_ms),
+      };
+    });
 
   // ── CLUSTER YETENEK TARAMASI ───────────────────────────────────────────────
   //
@@ -365,6 +408,7 @@ module.exports = {
   extractScaleXResult,
   extractDiscoveryResult,
   parseDetailPairs,
+  msOrNull,
   normalizeStatus,
   toBool,
   EXPECTED_PACKAGE_VERSION,

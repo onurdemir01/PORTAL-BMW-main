@@ -9,7 +9,7 @@ umask 077
 # "playbook'un guncel surumu kopyalanmamis olabilir" diye TAHMIN ediyordu; artik
 # calistirici surumu bildiriyor ve portal kendi bekledigi surumle karsilastirip
 # SOYLUYOR. Bu dosya `scalex_app/VERSION` ile ayni sayiyi tasimali (test kilitler).
-PACKAGE_VERSION="13"
+PACKAGE_VERSION="14"
 
 PHASE="${SCALEX_PHASE:-${CHAOS_PHASE:-precheck}}"
 CLUSTER="${CLUSTER:-}"
@@ -77,6 +77,55 @@ log() {
   printf '%s;%s;%s;%s;%s;%s;%s\n' "$cluster" "$jump" "$app" "$kind" "$step" "$result" "$detail"
 }
 
+# ── SURE OLCUMU ─────────────────────────────────────────────────────────────
+# Kesfin "cok yavas" oldugu biliniyordu ama NEREDE yavas oldugu bilinmiyordu:
+# AWX kuyrugu mu, bastion uzerinden `oc login` mi, yoksa tip taramasi mi. Tahminle
+# optimizasyon yapmamak icin betik kendi suresini BILDIRIR; portal onu Admin'de
+# gosterir ve her iyilestirmenin etkisi URETIMDE olculur.
+#
+# UC KADEMELI SAAT, cunku hicbiri her yerde YOK.
+#   1) `$EPOCHREALTIME` (bash 5+): mikrosaniye, DIS SUREC CAGIRMAZ. Ondalik
+#      ayraci yerel ayara gore nokta ya da virgul olabilir.
+#   2) `date +%s%3N`: GNU'ya ozgu. BSD/macOS `%3N`i cozmez ve metni OLDUGU GIBI
+#      birakir (hata da vermez) - bu yuzden olcut "cikti rakamlardan mi olusuyor
+#      ve milisaniye uzunlugunda mi". `date`in hata BICIMINI tahmin eden bir
+#      desen yazmak, tahmin uzerine tahmin olurdu.
+#   3) `date +%s` x 1000: her yerde var ama cozunurluk 1 SANIYE. Olcum kabalasir,
+#      KAYBOLMAZ - ve bu yolun kosmasi ancak GNU olmayan bir jump sunucusunda
+#      mumkun.
+now_ms() {
+  local s="" e sec frac
+  e="${EPOCHREALTIME:-}"
+  if [ -n "$e" ]; then
+    sec="${e%%[.,]*}"
+    frac="${e#*[.,]}000"
+    s="${sec}${frac:0:3}"
+  fi
+  case "$s" in ''|*[!0-9]*) s="$(date +%s%3N 2>/dev/null || true)" ;; esac
+  case "$s" in ''|*[!0-9]*) s="" ;; esac
+  if [ -n "$s" ] && [ "${#s}" -ge 13 ]; then
+    printf '%s' "$s"
+  else
+    printf '%s' "$(( $(date +%s 2>/dev/null || echo 0) * 1000 ))"
+  fi
+}
+
+# OLCEMEDIYSE '-' DER, SIFIR DEMEZ. Uydurulmus bir sifir, grafikte "bu adim bedava"
+# diye okunur ve yanlis kaldiraca yatirim yaptirir.
+ms_delta() {
+  local a="${1:-0}" b="${2:-0}" d
+  case "$a$b" in *[!0-9]*) printf '%s' '-'; return 0 ;; esac
+  d=$(( b - a ))
+  if [ "$a" -le 0 ] || [ "$b" -le 0 ] || [ "$d" -lt 0 ]; then printf '%s' '-'; else printf '%s' "$d"; fi
+}
+
+SCRIPT_START_MS="$(now_ms)"
+# Kesif tarama maliyetinin iki belirleyicisi: taranan tip sayisi ve yetenek
+# onbelleginin ISE YARAYIP yaramadigi. Ikisi de yalnizca `workloads` modunda
+# anlamli; diger modlar '-' birakir ve ekran "olculmedi" der.
+TIMING_KINDS="-"
+TIMING_CACHED="-"
+
 cleanup() {
   if [ -n "$KUBECONFIG_FILE" ]; then
     rm -f "$KUBECONFIG_FILE" >/dev/null 2>&1 || true
@@ -131,9 +180,17 @@ if [ "$PHASE" = "discover" ] && [ "$DISCOVERY_MODE" = "health" ] && [ -z "$APP_R
   exit 0
 fi
 
-if ! printf '%s' "$NS" | grep -Eq '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$' || [ "$(printf '%s' "$NS" | wc -c)" -gt 63 ]; then
-  log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" "Namespace failed shell-side Kubernetes-safe validation"
-  exit 0
+# `capabilities` NAMESPACE'SIZ KOSAR — yukaridaki zorunluluk kurali onu bilerek
+# disarida birakiyor ve asagidaki `oc project` adimi da atlaniyor. BU dogrulama o
+# istisnayi TANIMIYORDU: bos NS regex'e takiliyor ve cluster duzeyindeki mod
+# "Namespace failed shell-side Kubernetes-safe validation" ile duruyordu. Yetenek
+# onbellegini dolduran TEK yol bu mod oldugu icin tablo uretimde bos kaliyor,
+# her kesif de soguk yolu kosuyordu.
+if [ -n "$NS" ] || [ "$DISCOVERY_MODE" != "capabilities" ]; then
+  if ! printf '%s' "$NS" | grep -Eq '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$' || [ "$(printf '%s' "$NS" | wc -c)" -gt 63 ]; then
+    log "$CLUSTER" "$JUMP_SERVER" "-" "-" "INPUT" "FAIL" "Namespace failed shell-side Kubernetes-safe validation"
+    exit 0
+  fi
 fi
 
 if [ "$PHASE" != "discover" ]; then
@@ -1381,10 +1438,15 @@ discover_workloads() {
   # (operator CRD'leri). Ikinci kume envanter okunamadiginda BOS kalir; davranis
   # bugunku sabit listeye duser, gerilemez.
   kinds_to_scan="$DISCOVERY_KINDS"
+  # `load_extra_scalable_resources` KOMUT IKAMESI icinde kosar, yani ALT KABUKTA:
+  # icinde yapilan atama buraya DONMEZ. Onbellek isabeti bu yuzden cagrinin
+  # kendisinden degil, onun baktigi AYNI degiskenden okunur.
+  if [ -n "$EXTRA_KINDS_TEXT" ]; then TIMING_CACHED="yes"; else TIMING_CACHED="no"; fi
   extra="$(load_extra_scalable_resources 2>/dev/null | awk 'NF' | sort -u || true)"
   if [ -n "$extra" ]; then
     kinds_to_scan="$kinds_to_scan $(printf '%s' "$extra" | tr '\n' ' ')"
   fi
+  TIMING_KINDS="$(printf '%s' "$kinds_to_scan" | wc -w | tr -d ' ')"
 
   for kind in $kinds_to_scan; do
     res=""
@@ -1657,12 +1719,23 @@ EOF_CAPS
 
 rc=0
 if [ "$PHASE" = "discover" ]; then
+  DISC_START_MS="$(now_ms)"
   case "$DISCOVERY_MODE" in
     workloads)    discover_workloads ;;
     state)        discover_state ;;
     health)       discover_health ;;
     capabilities) discover_capabilities ;;
   esac
+  # SURE RAPORU. `INFO` — OK/WARN/FAIL sayaclarina ve `overall_status`a KARISMAZ,
+  # `problems[]`e dusmez: olcum bir ariza degildir.
+  #
+  # `setup_ms` oturum acmaya kadar geceni (AWX'ten sonraki bastion + `oc login` +
+  # kubeconfig), `discover_ms` yalnizca taramayi olcer. Ikisini AYIRMAK sart: toplam
+  # sureye bakip `oc` cagrisi azaltmak, darbogaz login tarafindaysa hicbir sey
+  # kazandirmaz.
+  TIMING_NOW_MS="$(now_ms)"
+  log "$CLUSTER" "$JUMP_SERVER" "-" "-" "TIMING" "INFO" \
+    "phase=discover mode=$(disc_val "$DISCOVERY_MODE") namespace=$(disc_val "${NS:-}") kinds=$(disc_val "$TIMING_KINDS") cached=$(disc_val "$TIMING_CACHED") setup_ms=$(ms_delta "$SCRIPT_START_MS" "$DISC_START_MS") discover_ms=$(ms_delta "$DISC_START_MS" "$TIMING_NOW_MS") elapsed_ms=$(ms_delta "$SCRIPT_START_MS" "$TIMING_NOW_MS")"
 else
   while IFS= read -r app; do
     [ -z "$app" ] && continue

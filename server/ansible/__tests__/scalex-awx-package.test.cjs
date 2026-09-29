@@ -1351,3 +1351,206 @@ test('S10 survey min/max, config.cjs`in izin verdigi HER (butce x carpan) degeri
     `butce ${butce} sn -> verify_fail_seconds ${fail} sn, survey tavani ${q('verify_fail_seconds').max}`,
   );
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-0 — OLCUM TABANI
+//
+// "ScaleX kesfi cok yavas" aylarca NEREDE yavas oldugu bilinmeden tartisildi.
+// Asagidaki bekciler olcumun VAR ve ANLAMLI oldugunu kilitler; kaldiraclarin
+// kendisi (probe kaldirma, birlesik `oc get`, cok-namespace) sonraki turlarda.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Sahte `oc` ile kesif kostur, ENV'i cagiran belirlesin. `runDiscovery` NS'i
+// sabitliyor; T2 icin bos NS gerekiyor ve o testin var olus sebebi tam olarak
+// "bos NS kabul ediliyor mu".
+function runDiscoveryRaw(overrides) {
+  const dir = stubDir();
+  return execFileSync('bash', [RUNNER], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      SCALEX_PHASE: 'discover',
+      DISCOVERY_MODE: 'workloads',
+      CLUSTER: 'gbocplab2',
+      JUMP_SERVER: 'gbjump1',
+      API_URL: 'https://api.lab:6443',
+      OCP_USERNAME: 'uxmid',
+      OCP_PASSWORD: 'x',
+      OCP_OC_PATHS: path.join(dir, 'oc'),
+      NS: 'odeme-lab',
+      APP_RAW: '',
+      ACTION: '',
+      TLS_VERIFY: 'false',
+      JOB_ID: '999',
+      ...overrides,
+    },
+  });
+}
+
+// ── T1: KESIF KENDI SURESINI BILDIRIYOR ─────────────────────────────────────
+//
+// KORLUK PANZEHIRI: "TIMING gecen bir satir var mi" diye bakmak YETMEZ — satir
+// basilip alanlari bos gelse de gecerdi. Burada portalin GERCEK ayristiricisi
+// (`result.cjs`) kullanilir ve `elapsedMs`in SAYI oldugu dogrulanir. Ayrica
+// `setup` + `discover` toplaminin `elapsed`i ASMADIGI sinanir: alanlar birbirine
+// karisirsa (ya da hepsi ayni degeri tasirsa) bu tutmaz.
+test('T1 kesif her modda kendi suresini bildiriyor (TIMING satiri)', () => {
+  for (const mode of ['workloads', 'state', 'health']) {
+    const items = runDiscovery(mode, mode === 'health' ? 'odeme-api' : '');
+    const parsed = result.extractDiscoveryResult({
+      scalex_discovery_result: { mode, items, clusters: ['gbocplab2'] },
+    });
+    assert.ok(parsed, `${mode}: sonuc ayristirilamadi`);
+    assert.equal(parsed.timing.length, 1, `${mode}: TIMING satiri sayisi`);
+
+    const t = parsed.timing[0];
+    assert.equal(t.cluster, 'gbocplab2', `${mode}: cluster`);
+    assert.equal(t.mode, mode, `${mode}: mod`);
+    assert.equal(typeof t.elapsedMs, 'number', `${mode}: elapsed_ms sayi degil`);
+    assert.equal(typeof t.setupMs, 'number', `${mode}: setup_ms sayi degil`);
+    assert.equal(typeof t.discoverMs, 'number', `${mode}: discover_ms sayi degil`);
+    assert.ok(
+      t.setupMs + t.discoverMs <= t.elapsedMs + 1,
+      `${mode}: setup(${t.setupMs}) + discover(${t.discoverMs}) > elapsed(${t.elapsedMs})`,
+    );
+  }
+});
+
+// OLCUM BIR ARIZA DEGILDIR. `TIMING` satiri `INFO` statusunde olmali: `WARN`/`FAIL`
+// olsaydi playbook'un sayaclarina girer, `overall_status`u `warning`e cevirir ve
+// portalin `problems[]` listesinde "sorun" gibi gorunurdu.
+test('T1b TIMING satiri INFO — sayaclara ve problems[]e karismaz', () => {
+  const items = runDiscovery('workloads');
+  const t = items.filter((i) => i.step === 'TIMING');
+  assert.equal(t.length, 1);
+  assert.equal(t[0].status, 'INFO', 'TIMING statusu INFO olmali');
+
+  const parsed = result.extractDiscoveryResult({
+    scalex_discovery_result: { mode: 'workloads', items, clusters: ['gbocplab2'] },
+  });
+  assert.equal(
+    parsed.problems.filter((p) => p.step === 'TIMING').length,
+    0,
+    'olcum satiri problems[] icine dusmemeli',
+  );
+});
+
+// ── T1c: `workloads` MODU ONBELLEK ISABETINI BILDIRIYOR ─────────────────────
+//
+// Bu alan olmadan "kesif hizlandi" ile "bu sefer onbellek tuttu" ayirt edilemez;
+// ikisini karistirmak, kazanci olmayan bir degisikligi basarili ilan ettirir.
+// KORLUK PANZEHIRI: yalnizca `cached=yes` halini sinamak, alani SABIT `yes`
+// yazarak da gecerdi — iki hal de sinanir.
+test('T1c onbellek isabeti bildirilir (sicak/soguk AYIRT EDILEBILIR)', () => {
+  const soguk = runDiscovery('workloads');
+  const soguklar = soguk.filter((i) => i.step === 'TIMING');
+  assert.match(soguklar[0].detail, /\bcached=no\b/, 'onbelleksiz kosuda cached=no bekleniyor');
+
+  const sicakOut = runDiscoveryRaw({ SCALEX_EXTRA_KINDS: 'widgets.example.io' });
+  const sicakSatir = sicakOut.split('\n').find((l) => l.includes(';TIMING;'));
+  assert.ok(sicakSatir, 'sicak kosuda TIMING satiri yok');
+  assert.match(sicakSatir, /\bcached=yes\b/, 'onbellek doluyken cached=yes bekleniyor');
+
+  // Tip sayisi da GERCEKTEN degismeli: `kinds` sabit yazilsaydi bu tutmazdi.
+  const sayi = (l) => Number(/\bkinds=(\d+)\b/.exec(l)[1]);
+  assert.ok(
+    sayi(sicakSatir) > sayi(soguklar[0].detail),
+    `onbellekten gelen tip sayisi listeye eklenmeli (sicak=${sayi(sicakSatir)} soguk=${sayi(soguklar[0].detail)})`,
+  );
+});
+
+// ── T2: `capabilities` NAMESPACE'SIZ KOSAR ──────────────────────────────────
+//
+// URETIM ARIZASI: betigin girdi kurali `capabilities` modunda namespace'i
+// BILEREK opsiyonel birakiyor ve `oc project` adimi da atlaniyordu; ama aradaki
+// Kubernetes-adi dogrulamasi bos NS'i KOSULSUZ reddediyordu. Sonuc: yetenek
+// onbellegini dolduran TEK mod hic calismadi, tablo bos kaldi ve her kesif soguk
+// yolu kostu — yani "kesif yavas" sikayetinin dogrudan sebeplerinden biri.
+test('T2 `capabilities` modu bos namespace ile INPUT hatasi vermez', () => {
+  const out = runDiscoveryRaw({ DISCOVERY_MODE: 'capabilities', NS: '' });
+  assert.ok(
+    !/;INPUT;FAIL;/.test(out),
+    `bos namespace ile capabilities INPUT hatasi verdi:\n${out}`,
+  );
+  // Modun GERCEKTEN kostugunun kaniti: ozet satiri. Yalnizca "FAIL yok" demek,
+  // betik hic bir sey yapmasa da gecerdi.
+  assert.match(out, /;CAP_SUMMARY;/, 'capabilities modu ozet satirini basmadi');
+});
+
+// Dogrulamanin kendisi SILINMEDI: gecersiz bir namespace hala reddedilmeli.
+// Bu ikinci assert olmadan T2, dogrulamayi tamamen kaldirarak da gecerdi.
+test('T2b namespace dogrulamasi duruyor — gecersiz ad hala reddedilir', () => {
+  const kotu = runDiscoveryRaw({ NS: 'Gecersiz_NS' });
+  assert.match(kotu, /;INPUT;FAIL;.*Namespace failed/, 'gecersiz namespace reddedilmedi');
+  // `capabilities` modunda da: istisna YALNIZCA bos degere ait.
+  const kotuCap = runDiscoveryRaw({ DISCOVERY_MODE: 'capabilities', NS: 'Gecersiz_NS' });
+  assert.match(
+    kotuCap,
+    /;INPUT;FAIL;.*Namespace failed/,
+    'capabilities modunda gecersiz namespace de reddedilmeli',
+  );
+});
+
+// ── T1d: ALANLAR GERCEKTEN OLCULUYOR (SABIT DEGIL) ──────────────────────────
+//
+// KORLUK PANZEHIRI — bu bekci bir mutasyon turunda dogdu: `setup_ms=0` diye
+// SABITLEMEK T1'i kizartmiyordu (0 da bir sayidir ve `setup + discover <=
+// elapsed` invaryanti hala tutuyordu). Burada sahte `oc` BILEREK yavaslatilir:
+// once oturum acmada, sonra namespace taramasinda birer saniye. Iki alan da
+// gecen sureyi GORMEK zorunda.
+//
+// 1 SANIYELIK gecikme sart: GNU olmayan bir `date`te betigin saati 1 saniye
+// cozunurluklu calisir (bkz. `now_ms`) ve daha kisa bir gecikme 0 olarak
+// olculebilirdi. `floor(t+1) >= floor(t)+1` her zaman dogru oldugu icin bu
+// esik her iki saat kaynaginda da guvenli.
+test('T1d setup ve kesif sureleri GERCEK gecen sureyi olcuyor', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scalex-slow-'));
+  const stub = [
+    '#!/bin/bash',
+    'case "$1" in',
+    '  login) sleep 1; exit 0 ;;',
+    '  project) exit 0 ;;',
+    "  api-resources) printf 'deployments.apps\\n'; exit 0 ;;",
+    '  auth) echo yes; exit 0 ;;',
+    '  get)',
+    '    case "$2" in',
+    '      --raw) exit 1 ;;',
+    // Namespace basina TEK kez cagrilir (disc_load_hpa): kesif tarafindaki
+    // gecikmeyi tek noktadan verir.
+    '      hpa) sleep 1; exit 0 ;;',
+    "      deploy|deployment|deployments.apps) printf 'a|1|1|1|i||\\n'; exit 0 ;;",
+    '      *) exit 0 ;;',
+    '    esac ;;',
+    'esac',
+    'exit 0',
+  ].join('\n');
+  fs.writeFileSync(path.join(dir, 'oc'), stub, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'curl'), CURL_STUB, { mode: 0o755 });
+  const out = execFileSync('bash', [RUNNER], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      SCALEX_PHASE: 'discover',
+      DISCOVERY_MODE: 'workloads',
+      CLUSTER: 'c1',
+      JUMP_SERVER: 'j1',
+      API_URL: 'https://api.lab:6443',
+      OCP_USERNAME: 'u',
+      OCP_PASSWORD: 'x',
+      OCP_OC_PATHS: path.join(dir, 'oc'),
+      NS: 'ns1',
+      APP_RAW: '',
+      ACTION: '',
+      TLS_VERIFY: 'false',
+      JOB_ID: '1',
+    },
+  });
+  const satir = out.split('\n').find((l) => l.includes(';TIMING;'));
+  assert.ok(satir, 'TIMING satiri yok');
+  const al = (ad) => Number(new RegExp(`\\b${ad}=(\\d+)\\b`).exec(satir)[1]);
+  assert.ok(al('setup_ms') >= 900, `setup_ms gecen sureyi olcmuyor: ${satir}`);
+  assert.ok(al('discover_ms') >= 900, `discover_ms gecen sureyi olcmuyor: ${satir}`);
+  assert.ok(al('elapsed_ms') >= al('setup_ms'), `elapsed_ms setup'tan kucuk: ${satir}`);
+});
