@@ -28,6 +28,8 @@ import {
 } from '@/api/scalexApi';
 import { downloadCsv } from '@/utils/csv';
 import { TableEmptyRow } from '@/components/common/EmptyState';
+import { SourceNote } from '@/components/common/SourceNote';
+import { SCALEX_CAPS } from '@/config/dataSources';
 import { fmtDateTime } from '@/utils/datetime';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -911,6 +913,12 @@ function ClusterCapsPanel() {
     }
   }, []);
 
+  /** Listedeki EN YENI tarama damgasi — not bunu gosterir. */
+  const enYeniTarama = useMemo(
+    () => rows.map((r) => r.fetchedAt).sort().slice(-1)[0] || '',
+    [rows],
+  );
+
   const tenantlar = useMemo(() => Object.keys(tree[env] || {}), [tree, env]);
   const clusterlar = useMemo(
     () => (env && tenant ? tree[env]?.[tenant] || [] : []),
@@ -1030,6 +1038,15 @@ function ClusterCapsPanel() {
           bu kapsamı listele
         </button>
       </div>
+
+      {/* "Bu liste nereden geliyor, ne zamanki hali?" — portalin en sik
+          tekrarlayan kullanici sorusu. Damga EN YENI satirdan alinir; hic
+          satir yoksa `null` gecilir ve not "tarama kaydi yok" der (VERI YOK
+          ile TARAMA DAMGASI YOK ayri seylerdir). */}
+      <SourceNote
+        source={SCALEX_CAPS}
+        scanDate={rows.length ? fmtDateTime(enYeniTarama) : null}
+      />
 
       {taramaNotu && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-800">

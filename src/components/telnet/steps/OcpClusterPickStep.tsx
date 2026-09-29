@@ -11,6 +11,8 @@
 import React, { useEffect, useState } from "react";
 import { ServerStackIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { telnetApi } from "@/api/telnetApi";
+import { SourceNote } from '@/components/common/SourceNote';
+import { OCP_CLUSTER_INDEX } from '@/config/dataSources';
 
 const ALL = "__all__";
 
@@ -59,6 +61,11 @@ const OcpClusterPickStep: React.FC<{
 
   return (
     <div className="space-y-4">
+      {/* Bu katalog bir TARAMA DEGIL, portal ayaridir. Ekran bunu yalnizca BOS
+          durumda soyluyordu; dolu listede kullanici eksik bir cluster'i
+          "tarama yapilmamis" sanip AWX job'i bekleyebilirdi. */}
+      <SourceNote source={OCP_CLUSTER_INDEX} />
+
       <div>
         <p className="text-sm text-[var(--text-secondary)]">Testin hedefleneceği cluster'ı seçin.</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
