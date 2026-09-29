@@ -311,13 +311,26 @@ test('CC17 bos kapsam bos sozluk doner (null degil)', async () => {
 test('CC18 portal IKI bicimi de gonderiyor, BOS sozlugu GONDERMIYOR', () => {
   // Eski AWX paketleri yalnizca `scalex_extra_kinds`i okuyabiliyor; yeni bicim
   // eskisinin YERINE degil YANINA konur.
-  assert.match(IX, /scalex_extra_kinds: extraKinds/, 'birlesik liste artik gonderilmiyor');
-  assert.match(IX, /scalex_cluster_kinds: Object\.fromEntries/, 'cluster basina sozluk gonderilmiyor');
-  // BOS SOZLUK GONDERILMEZ: yeni playbook sozluk gorunce birlesik listeyi yok
-  // sayar; bos bir sozluk gondermek elde HICBIR onbellek birakmazdi.
+  assert.match(IX, /\.\.\.\(extraKinds \? \{ scalex_extra_kinds: extraKinds \}/, 'birlesik liste artik gonderilmiyor');
+
+  // KORLUK PANZEHIRI (mutasyon turunda bulundu): anahtarin VARLIGINA bakmak
+  // yetmiyor. `...(false && Object.keys(clusterKinds).length ? {...} : {})`
+  // yazildiginda sozluk HIC gonderilmiyor ama metin hala esliyordu — bu deponun
+  // tekrar eden bekci korlugu #4: "tanimlayici var" ile "ulasilabilir" ayni sey
+  // degil. Kosul bu yuzden `...(` ile BASLAYACAK sekilde capalaniyor.
+  const spread = /\.\.\.\(Object\.keys\(clusterKinds\)\.length\s*\?\s*\{\s*scalex_cluster_kinds:/;
   assert.match(
     IX,
-    /Object\.keys\(clusterKinds\)\.length\s*\?/,
-    'bos sozluk de gonderiliyor — onbellek tamamen kaybolur',
+    spread,
+    'cluster basina sozluk gonderilmiyor ya da kosulu degismis (bos sozluk de gidiyor olabilir)',
+  );
+
+  // OLU DAL YASAGI: `false &&`/`&& false` ile kapatilmis bir gonderim, yukaridaki
+  // capayi da kacirabilirdi (or. kosulun ICINE yazilirsa).
+  const i = IX.indexOf('const extraVars = {');
+  const blok = IX.slice(i, IX.indexOf('\n      };', i));
+  assert.ok(
+    !/(false\s*&&|&&\s*false|\?\s*\{\}\s*:)/.test(blok),
+    'extra_vars blogunda OLU DAL var — gonderilmeyen bir anahtar gonderiliyormus gibi gorunur',
   );
 });

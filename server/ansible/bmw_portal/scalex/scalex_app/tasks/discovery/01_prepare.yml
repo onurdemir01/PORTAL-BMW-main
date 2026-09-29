@@ -88,7 +88,17 @@
 # istedigimiz birlesik listeye geri dusururdu. Yalnizca ANAHTAR YOKSA dusulur.
 - name: "Resolve per-cluster capability cache"
   ansible.builtin.set_fact:
-    scalex_cluster_kinds_effective: "{{ scalex_cluster_kinds if (scalex_cluster_kinds is defined and scalex_cluster_kinds is mapping) else {} }}"
+    # Burada `is mapping` YOK ve bu BILEREK: olculdu, DAVRANISI DEGISTIRMIYOR.
+    # Sozluk olmayan bir deger (metin/liste/sayi) zaten anahtarla indekslenemez,
+    # ifade `undefined` verir ve asagidaki `default` calisir. Kanitlanamayan
+    # savunma kodu bu depoda tutulmuyor. Kontrol bir ASAGIDAKI satirda DURUYOR,
+    # cunku ORADA gercekten fark yaratiyor (bkz. CK6).
+    scalex_cluster_kinds_effective: "{{ scalex_cluster_kinds | default({}) }}"
+    # `is mapping` BURADA SART ve olculdu: sozluk yerine bir METIN gelirse
+    # (`| length` metinde de calisir) bu kosul ates alir, geri dusus `''` olur ve
+    # HICBIR cluster onbellek almaz — yani bozuk bir girdi tum kapsami sessizce
+    # soguk yola dusururdu. `is mapping` ile bozuk girdi yok sayilir ve birlesik
+    # listeye duseriz: yanlis bir hizlanma degil, ESKI dogru davranis.
     scalex_extra_kinds_fallback: "{{ '' if (scalex_cluster_kinds is defined and scalex_cluster_kinds is mapping and (scalex_cluster_kinds | length) > 0) else (scalex_extra_kinds | default('') | string | trim) }}"
 
 - name: "Validate discovery inputs"

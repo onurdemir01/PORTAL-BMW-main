@@ -165,3 +165,42 @@ test('CK5 sozlukteki BOS deger birlesige geri DUSMEZ', { skip: !HAS_ANSIBLE }, (
   assert.equal(c.c1, '', '`default(x, true)` kullanilmis — bos deger birlesige dustu');
   assert.equal(c.c2, 'z.io');
 });
+
+// ── CK6: BOZUK SOZLUK TUM KAPSAMI SOGUK YOLA DUSURMESIN ─────────────────────
+//
+// Sozluk "Prompt on launch > Variables" ile geliyor; oraya bir operator elle
+// metin de yazabilir. `| length` metinde de calisir, yani `is mapping` olmadan
+// "sozluk geldi" sanilir, geri dusus `''` olur ve HICBIR cluster onbellek almaz.
+// Bozuk bir girdinin bedeli, tum kapsamin sessizce soguk yola dusmesi olurdu.
+test('CK6 sozluk yerine METIN gelirse birlesik listeye DUSULUR', { skip: !HAS_ANSIBLE }, () => {
+  for (const bozuk of ['a.io', ['a.io'], 5]) {
+    const c = cozumle({ scalex_cluster_kinds: bozuk, scalex_extra_kinds: 'u.io' }, ['c1']);
+    assert.equal(
+      c.c1,
+      'u.io',
+      `bozuk sozluk (${JSON.stringify(bozuk)}) tum kapsami soguk yola dusurdu`,
+    );
+  }
+});
+
+// ── CK7: `default(x, true)` BOOLEAN BICIMI KULLANILMIYOR ────────────────────
+//
+// DURUST NOT — BU BIR METIN BEKCISI ve oldugunu biliyoruz. Iki bicim BUGUNKU
+// veriyle AYNI sonucu veriyor: `kindsPerCluster` sozluge hic bos deger koymuyor,
+// yani "anahtar var ama degeri falsy" hali uretimde olusmuyor. Dolayisiyla
+// davranissal bir bekci yazilamaz; yazilsaydi ikisini de yesil gorurdu.
+//
+// Yine de kilitleniyor, cunku bu bicim bir sonraki turun tuzagi: "tarandi ama
+// CRD YOK" halini ifade etmek icin sozluge BILEREK bos bir deger konacak
+// (bkz. cluster-caps.cjs `kindsPerCluster` notu). Boolean default o kasitli bos
+// degeri "tanimsiz" sayip birlesik listeye geri dusururdu — `10_run_phase.yml`
+// `WORKLOAD_KINDS` notundaki hatanin AYNISI.
+test('CK7 `default(x, true)` boolean bicimi kullanilmiyor', () => {
+  const ifade = envIfadesi('SCALEX_EXTRA_KINDS');
+  assert.match(ifade, /\|\s*default\(/, 'geri dusus hic yok — eski portal kirilir');
+  assert.doesNotMatch(
+    ifade,
+    /\|\s*default\([^)]*,\s*(true|True|1)\s*\)/,
+    'boolean `default` bicimi: kasitli bos deger birlesik listeye geri duser',
+  );
+});
